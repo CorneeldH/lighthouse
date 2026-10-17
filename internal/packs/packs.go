@@ -99,6 +99,41 @@ func IsLighthouseCommand(command string) bool {
 	return strings.Contains(command, HookDir)
 }
 
+// installDirs are the directories a file unit may live in; agents are files named
+// .claude/agents/lighthouse-<name>.md directly.
+var installDirs = []string{HookDir, ".lighthouse/lib/lighthouse_lib/", ".lighthouse/scripts/"}
+
+// IsInstallPath reports whether p is a path lighthouse may own for a unit of kind:
+// a clean relative path under a lighthouse directory, AGENTS.md for a block, and
+// .claude/settings.json for a hook. A manifest is committed and may be edited in a
+// PR, so every path read from it passes this check before anything is written or
+// removed.
+func IsInstallPath(kind Kind, p string) bool {
+	if p == "" || path.IsAbs(p) || path.Clean(p) != p || strings.Contains(p, "\\") {
+		return false
+	}
+	for _, part := range strings.Split(p, "/") {
+		if part == ".." {
+			return false
+		}
+	}
+	switch kind {
+	case KindBlock:
+		return p == agentsMDPath
+	case KindHook:
+		return p == settingsPath
+	case KindFile:
+		for _, dir := range installDirs {
+			if strings.HasPrefix(p, dir) && len(p) > len(dir) {
+				return true
+			}
+		}
+		const agents = ".claude/agents/lighthouse-"
+		return strings.HasPrefix(p, agents) && !strings.Contains(p[len(agents):], "/") && path.Ext(p) == ".md"
+	}
+	return false
+}
+
 // junk is never installed: caches the test lanes leave in the package tree.
 func junk(p string) bool {
 	for _, part := range strings.Split(p, "/") {

@@ -2,6 +2,9 @@ package deps
 
 import (
 	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -25,6 +28,9 @@ func checker(missing map[string]bool, runErr error, ran *[]string) Checker {
 		},
 		Run: func(name string, args ...string) error {
 			*ran = append(*ran, name+" "+args[0]+" "+args[1])
+			if args[len(args)-1] != "import tomllib" {
+				panic("unexpected python code")
+			}
 			return runErr
 		},
 	}
@@ -41,7 +47,7 @@ func TestMissingTool(t *testing.T) {
 func TestTomllibRunsPython(t *testing.T) {
 	var ran []string
 	got := checker(nil, errors.New("exit 1"), &ran).Check(reqs)
-	if len(ran) != 1 || ran[0] != "python3 -c import tomllib" {
+	if len(ran) != 1 || ran[0] != "python3 -I -c" {
 		t.Fatalf("ran %v", ran)
 	}
 	if want := []Missing{{Tool: "tomllib", NeededBy: []string{"lighthouse_lib.config"}}}; !reflect.DeepEqual(got, want) {
@@ -71,5 +77,22 @@ func TestDefaultIsUsable(t *testing.T) {
 	d := Default()
 	if d.LookPath == nil || d.Run == nil {
 		t.Fatal("Default has nil fields")
+	}
+}
+
+func TestDefaultTomllibCheckIgnoresTheCwd(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("no python3")
+	}
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "ran")
+	planted := "open(" + "\"" + marker + "\"" + ", \"w\").close()\n"
+	if err := os.WriteFile(filepath.Join(dir, "tomllib.py"), []byte(planted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	Default().Check([]packs.Requirement{{Tool: "tomllib", NeededBy: []string{"x"}}})
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("a tomllib.py in the cwd ran during the dependency check")
 	}
 }

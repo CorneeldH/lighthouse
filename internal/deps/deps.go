@@ -46,7 +46,8 @@ func (c Checker) present(tool string) bool {
 		if _, err := c.LookPath("python3"); err != nil {
 			return false
 		}
-		return c.Run("python3", "-c", "import tomllib") == nil
+		// -I: isolated mode, so a tomllib.py in the user's cwd is never imported.
+		return c.Run("python3", "-I", "-c", "import tomllib") == nil
 	}
 	_, err := c.LookPath(tool)
 	return err == nil

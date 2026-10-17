@@ -110,3 +110,49 @@ func TestSum(t *testing.T) {
 		t.Fatalf("sum = %s", got)
 	}
 }
+
+func unitText(kind, path, id string) string {
+	s := "version = \"dev\"\npackages = [\"core\"]\n[[unit]]\nkind = \"" + kind + "\"\npath = \"" + path + "\"\n"
+	if id != "" {
+		s += "id = \"" + id + "\"\n"
+	}
+	return s + "package = \"core\"\nversion = \"dev\"\nsha256 = \"" + sum + "\"\n"
+}
+
+func TestReadRejectsPathsOutsideLighthouse(t *testing.T) {
+	cases := map[string]string{
+		"parent":          unitText("file", "../outside.txt", ""),
+		"absolute":        unitText("file", "/etc/passwd", ""),
+		"dotdot inside":   unitText("file", ".claude/hooks/lighthouse/../../../README.md", ""),
+		"not clean":       unitText("file", ".claude/hooks/lighthouse//g.sh", ""),
+		"project file":    unitText("file", "README.md", ""),
+		"git config":      unitText("file", ".git/config", ""),
+		"own hook dir":    unitText("file", ".claude/hooks/own.sh", ""),
+		"block elsewhere": unitText("block", "README.md", "core"),
+		"hook elsewhere":  unitText("hook", ".claude/settings.local.json", "x"),
+		"backslash":       unitText("file", ".claude/hooks/lighthouse/..\\\\x", ""),
+	}
+	for name, text := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeManifest(t, root, []byte(text))
+			if _, err := Read(root); err == nil || !strings.Contains(err.Error(), "path") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+	for _, ok := range []string{
+		unitText("file", ".claude/hooks/lighthouse/g.sh", ""),
+		unitText("file", ".lighthouse/lib/lighthouse_lib/a.py", ""),
+		unitText("file", ".lighthouse/scripts/s.py", ""),
+		unitText("file", ".claude/agents/lighthouse-scout.md", ""),
+		unitText("block", "AGENTS.md", "core"),
+		unitText("hook", ".claude/settings.json", "PreToolUse|Bash|x"),
+	} {
+		root := t.TempDir()
+		writeManifest(t, root, []byte(ok))
+		if _, err := Read(root); err != nil {
+			t.Errorf("valid unit rejected: %v\n%s", err, ok)
+		}
+	}
+}

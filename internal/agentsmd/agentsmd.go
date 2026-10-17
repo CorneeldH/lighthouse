@@ -72,7 +72,25 @@ func Find(doc []byte, pkg string) (body []byte, found bool, err error) {
 	if !ok {
 		return nil, false, nil
 	}
-	return []byte(strings.Join(lines[s.begin+1:s.end], "")), true, nil
+	// Line endings are not content: a block normalised to CRLF is the same block.
+	return []byte(strings.ReplaceAll(strings.Join(lines[s.begin+1:s.end], ""), "\r\n", "\n")), true, nil
+}
+
+// newline is the line ending of doc: CRLF if it has any, else LF.
+func newline(doc []byte) string {
+	if bytes.Contains(doc, []byte("\r\n")) {
+		return "\r\n"
+	}
+	return "\n"
+}
+
+// withNewline gives body the line ending nl.
+func withNewline(body []byte, nl string) string {
+	text := strings.ReplaceAll(string(body), "\r\n", "\n")
+	if nl != "\n" {
+		text = strings.ReplaceAll(text, "\n", nl)
+	}
+	return text
 }
 
 // Set replaces the body of pkg's block, or appends the block after a blank line.
@@ -81,13 +99,10 @@ func Set(doc []byte, pkg string, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	nl := newline(doc)
 	if s, ok := spans[pkg]; ok {
-		out := strings.Join(lines[:s.begin+1], "") + string(body) + strings.Join(lines[s.end:], "")
+		out := strings.Join(lines[:s.begin+1], "") + withNewline(body, nl) + strings.Join(lines[s.end:], "")
 		return []byte(out), nil
-	}
-	nl := "\n"
-	if bytes.Contains(doc, []byte("\r\n")) {
-		nl = "\r\n"
 	}
 	out := string(doc)
 	if out != "" {
@@ -98,7 +113,7 @@ func Set(doc []byte, pkg string, body []byte) ([]byte, error) {
 			out += nl
 		}
 	}
-	out += Begin(pkg) + nl + string(body) + End(pkg) + nl
+	out += Begin(pkg) + nl + withNewline(body, nl) + End(pkg) + nl
 	return []byte(out), nil
 }
 

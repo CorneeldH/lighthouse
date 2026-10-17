@@ -62,7 +62,7 @@ func TestFind(t *testing.T) {
 func TestFindToleratesCRLF(t *testing.T) {
 	doc := "intro\r\n\r\n<!-- lighthouse:begin core -->\r\nx\r\n<!-- lighthouse:end core -->  \r\noutro\r\n"
 	body, found, err := Find([]byte(doc), "core")
-	if err != nil || !found || string(body) != "x\r\n" {
+	if err != nil || !found || string(body) != "x\n" {
 		t.Fatalf("find = %q %v %v", body, found, err)
 	}
 	out := set(t, doc, "y\n")
@@ -129,5 +129,17 @@ func TestSetThenRemoveRestores(t *testing.T) {
 	out, err := Remove([]byte(set(t, doc, "x\n")), "core")
 	if err != nil || string(out) != doc {
 		t.Fatalf("got %q %v", out, err)
+	}
+}
+
+func TestSetUsesTheDocNewline(t *testing.T) {
+	doc := "intro\r\n"
+	out := set(t, doc, "a\nb\n")
+	if strings.Count(out, "\n") != strings.Count(out, "\r\n") {
+		t.Fatalf("mixed endings: %q", out)
+	}
+	replaced := set(t, out, "c\n")
+	if strings.Count(replaced, "\n") != strings.Count(replaced, "\r\n") || !strings.Contains(replaced, "\r\nc\r\n") {
+		t.Fatalf("mixed endings on replace: %q", replaced)
 	}
 }

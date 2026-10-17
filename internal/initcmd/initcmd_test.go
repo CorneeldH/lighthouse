@@ -496,3 +496,43 @@ func TestNewFileDiffHasNoPhantomLine(t *testing.T) {
 		t.Fatalf("new-file hunk header missing:\n%s", r.out)
 	}
 }
+
+func TestUpgradeNeverDeletesOutsideTheRepo(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	write(t, filepath.Dir(outside), "outside.txt", "secret\n")
+	rel, err := filepath.Rel(root, outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := read(t, root, ".lighthouse/manifest.toml")
+	m += "\n[[unit]]\nkind = \"file\"\npath = \"" + filepath.ToSlash(rel) + "\"\npackage = \"core\"\nversion = \"dev\"\nsha256 = \"" + manifest.Sum([]byte("secret\n")) + "\"\n"
+	write(t, root, ".lighthouse/manifest.toml", m)
+	r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+	if r.code != 1 || !exists(filepath.Dir(outside), "outside.txt") {
+		t.Fatalf("rc %d, outside file exists: %v\n%s%s", r.code, exists(filepath.Dir(outside), "outside.txt"), r.out, r.err)
+	}
+}
+
+func TestInitOnCRLFAgentsMD(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "AGENTS.md", "# Rules\r\n\r\nBe nice.\r\n")
+	initYes(t, root)
+	doc := read(t, root, "AGENTS.md")
+	if strings.Count(doc, "\n") != strings.Count(doc, "\r\n") {
+		t.Fatalf("mixed line endings: %q", doc)
+	}
+	if r := run(t, root, "", upgrade); r.code != 0 || r.out != "No changes.\n" {
+		t.Fatalf("upgrade: rc %d out %q err %q", r.code, r.out, r.err)
+	}
+}
+
+func TestUpgradeAfterCRLFNormalization(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	write(t, root, "AGENTS.md", strings.ReplaceAll(read(t, root, "AGENTS.md"), "\n", "\r\n"))
+	if r := run(t, root, "", upgrade); r.code != 0 || r.out != "No changes.\n" {
+		t.Fatalf("upgrade: rc %d out %q err %q", r.code, r.out, r.err)
+	}
+}

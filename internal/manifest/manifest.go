@@ -78,6 +78,9 @@ func Read(root string) (Manifest, error) {
 		if e.Path == "" || e.Package == "" || e.Version == "" {
 			return Manifest{}, fmt.Errorf("%s: unit %d: path, package and version are required", Path, i+1)
 		}
+		if !packs.IsInstallPath(e.Kind, e.Path) {
+			return Manifest{}, fmt.Errorf("%s: unit %d: path %q is not a lighthouse path for a %s unit", Path, i+1, e.Path, e.Kind)
+		}
 		if !hexSum.MatchString(e.SHA256) {
 			return Manifest{}, fmt.Errorf("%s: unit %d (%s): sha256 must be 64 hex characters", Path, i+1, e.Path)
 		}
