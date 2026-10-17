@@ -8,6 +8,7 @@ import pytest
 from tests.pack._testkit import IMPORT_ROOT, INSTALL_ROOT
 
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+sys.dont_write_bytecode = True
 sys.path.insert(0, str(IMPORT_ROOT))
 
 
