@@ -1,0 +1,8 @@
+# Worktrees live inside the repo, never in git.
+.claude/worktrees/
+.claude/settings.local.json
+
+# Python
+__pycache__/
+.venv/
+.pytest_cache/
