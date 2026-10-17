@@ -15,6 +15,9 @@ import (
 func Execute() int {
 	root := NewRoot(os.Stdin, os.Stdout, os.Stderr)
 	if err := root.Execute(); err != nil {
+		if err != errSilent {
+			fmt.Fprintf(os.Stderr, "lighthouse: %v\n", err)
+		}
 		return 1
 	}
 	return 0
@@ -26,11 +29,12 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 		Use:           "lighthouse",
 		Short:         "Install and upgrade the lighthouse packages in a repository",
 		SilenceUsage:  true,
-		SilenceErrors: false,
+		SilenceErrors: true,
 	}
 	root.SetIn(in)
 	root.SetOut(out)
 	root.SetErr(errOut)
+	root.AddCommand(newInitCommand())
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version of this binary",

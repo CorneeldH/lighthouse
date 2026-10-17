@@ -12,7 +12,7 @@ func TestPlanTable(t *testing.T) {
 	const absent = "<absent>"
 	rows := []struct {
 		desired, current, recorded string // "" = not there
-		want                           Action
+		want                       Action
 	}{
 		{"a", absent, "", Add},
 		{"a", "a", "", Adopt},
