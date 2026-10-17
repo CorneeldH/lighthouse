@@ -1,0 +1,14 @@
+# Where each file in pack/ that was taken over came from (spec, Opdeling (b) and (d)).
+# source_path is the path in the source repository, source_sha the commit it was taken
+# from. Both files below reached lighthouse through the English bootstrap of M0 (a0).
+# This file names no repository: the literal grep runs over pack/ as well.
+
+[[file]]
+path = "pack/core/hooks/main-commit-guard.sh"
+source_path = ".claude/hooks/main-commit-guard.sh"
+source_sha = "231f6e84fa709dd37c4fc8578453907a8a6efdf6"
+
+[[file]]
+path = "pack/core/lib/git_invocations.py"
+source_path = ".claude/hooks/lib/git_invocations.py"
+source_sha = "231f6e84fa709dd37c4fc8578453907a8a6efdf6"

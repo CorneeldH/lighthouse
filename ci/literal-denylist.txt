@@ -1,0 +1,59 @@
+# Literals that must never appear in pack/ (spec, Portabiliteit). One fixed string per
+# line, matched case-insensitively as a substring by ci/literal-grep.sh. Lines starting
+# with '#' and blank lines are ignored.
+#
+# Left out on purpose: the GitHub default labels and the plain-word labels of the source
+# repository (bug, documentation, test, testing, notes, lane, tech, ceda, email, ...).
+# As substrings they hit ordinary text.
+
+# Owner, repository and host paths
+CorneeldH
+corneel
+/home/
+personal_ai_agent
+personal-ai-agent
+paia
+
+# Host
+100.76.126.126
+beelink
+gates.slice
+
+# Board and option IDs from the source repository's lighthouse.toml
+PVT_kwHOAGmU3s4BfI-i
+PVTSSF_lAHOAGmU3s4BfI-izhZeAEs
+PVTSSF_lAHOAGmU3s4BfI-izhlFDTc
+5995ef76
+5c4502d5
+4a797cd3
+6a2f466b
+7c834c1d
+e78d8910
+5866e321
+321d79fc
+
+# Labels of the source repository
+3-needs-shaping
+3-blocked-external
+3-needs-hands
+3-needs-decision
+3-blocked-issue
+3-needs-testing
+1-loc:mac
+1-loc:beelink
+1-loc:container
+2-area:intake
+2-area:nexus
+2-area:flow
+2-area:models
+2-area:clients
+2-area:infra
+2-area:product
+2-area:meta
+2-area:lighthouse
+4-lane:review-passed
+4-lane:stalled
+wbso
+open-claw
+os-layout
+python:uv
