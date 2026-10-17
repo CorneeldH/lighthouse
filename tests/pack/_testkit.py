@@ -150,3 +150,10 @@ def install_core(root: Path) -> Path:
 INSTALL_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-core-"))
 atexit.register(shutil.rmtree, INSTALL_ROOT, True)
 GUARD = install_core(INSTALL_ROOT)
+
+
+# `lighthouse_lib` as an importable package for in-process tests: a symlink to
+# pack/core/lib in a temporary directory, placed first on sys.path by the conftest.
+IMPORT_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-lib-"))
+atexit.register(shutil.rmtree, IMPORT_ROOT, True)
+(IMPORT_ROOT / "lighthouse_lib").symlink_to(LIB, target_is_directory=True)
