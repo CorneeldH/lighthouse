@@ -137,3 +137,52 @@ func TestCoreTablesWithoutRepo(t *testing.T) {
 		t.Fatalf("tables %+v", tables)
 	}
 }
+
+func TestParseFragment(t *testing.T) {
+	got, err := ParseFragment([]byte("# c\n[test_gate]\ncommand = \"uv run pytest -q\"\n\nunchecked_exit_codes = [3, 4, 5]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Table{{Name: "test_gate", Keys: []KV{{"command", `"uv run pytest -q"`}, {"unchecked_exit_codes", "[3, 4, 5]"}}}}
+	if len(got) != 1 || got[0].Name != want[0].Name || len(got[0].Keys) != 2 || got[0].Keys[0] != want[0].Keys[0] || got[0].Keys[1] != want[0].Keys[1] {
+		t.Fatalf("got %#v", got)
+	}
+}
+
+func TestParseFragmentTwoTables(t *testing.T) {
+	got, err := ParseFragment([]byte("[a]\nx = 1\n[b.c]\ny = \"z\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[1].Name != "b.c" || got[1].Keys[0] != (KV{"y", `"z"`}) {
+		t.Fatalf("got %#v", got)
+	}
+}
+
+func TestParseFragmentRejects(t *testing.T) {
+	cases := map[string]struct{ in, line string }{
+		"key before header":   {"a = 1\n[t]\nb = 2\n", "line 1"},
+		"multi-line value":    {"[t]\na = [1,\n2]\n", "line 2"},
+		"empty table":         {"[t]\n[u]\nb = 1\n", "line 1"},
+		"empty last table":    {"[t]\nb = 1\n[u]\n", "line 3"},
+		"table twice":         {"[t]\na = 1\n[t]\nb = 1\n", "line 3"},
+		"key twice":           {"[t]\na = 1\na = 2\n", "line 3"},
+		"array of tables":     {"[[t]]\na = 1\n", "line 1"},
+		"dotted key":          {"[t]\na.b = 1\n", "line 2"},
+		"upper-case table":    {"[T]\na = 1\n", "line 1"},
+		"no value":            {"[t]\na = \n", "line 2"},
+		"trailing comment":    {"[t]\na = 1 # c\n", "line 2"},
+		"subtable of a table": {"[t]\na = 1\n[t.a]\nb = 1\n", "line 3"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseFragment([]byte(c.in))
+			if err == nil {
+				t.Fatal("no error")
+			}
+			if !strings.Contains(err.Error(), c.line) {
+				t.Fatalf("error %q does not name %s", err, c.line)
+			}
+		})
+	}
+}

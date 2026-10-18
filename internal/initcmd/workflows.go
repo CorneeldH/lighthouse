@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/packs"
+	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
 
 // errNoPython means the config reader cannot run; workflows are then skipped, not fatal.
@@ -58,10 +59,11 @@ func fillWorkflows(w io.Writer, desired []packs.Unit, lookup packs.Lookup, insta
 // pythonLookup answers config keys with the package's own config reader, so the
 // defaults have one source. It reads lighthouse.toml as init will leave it.
 type pythonLookup struct {
-	packs fs.FS
-	root  string
-	dir   string // temporary: lighthouse_lib/ and the proposed lighthouse.toml
-	err   error
+	packs  fs.FS
+	root   string
+	tables []projectconfig.Table // what lighthouse.toml gets; see configTables
+	dir    string                // temporary: lighthouse_lib/ and the proposed lighthouse.toml
+	err    error
 }
 
 func (p *pythonLookup) setup() error {
@@ -97,7 +99,7 @@ func (p *pythonLookup) setup() error {
 	if err != nil {
 		return err
 	}
-	proposed, _, _, err := proposeConfig(p.root, old)
+	proposed, _, err := proposeConfig(old, p.tables)
 	if err != nil {
 		return err
 	}

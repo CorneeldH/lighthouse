@@ -74,6 +74,19 @@ en = "phase"
 nl = "taak"
 en = "task"
 
+# The visible line of an artefact comment
+[artefact_version]
+nl = "versie"
+en = "version"
+
+[artefact_part]
+nl = "deel"
+en = "part"
+
+[artefact_source]
+nl = "bron"
+en = "source"
+
 # start-issue and its scout
 [gate_line]
 nl = "Poort"

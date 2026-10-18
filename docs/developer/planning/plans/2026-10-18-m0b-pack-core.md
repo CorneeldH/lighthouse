@@ -549,6 +549,7 @@ Voor elke skill geldt het recept, met V4 als zwaartepunt. Per skill: één kopie
 
 **Files:**
 - Create (V1): `pack/core/skills/{start-issue,route-issue,handoff}/…`; tests uit `test_issue_skills_contract.py` (het deel van deze drie) en de handoff-regels uit `test_instructielagen.py:1617-1742` → `tests/pack/test_skills_issue_flow.py`
+- Ook (V1): de start-issue-helft van paia's `test_issue_impact_scout.py` (regel 158-223: de drie meldregels `Scout: …`, de binding aan poort 4b/4c, de reden-eis van de ontsnapping, het fail-open-pad, de overdrachtszin en de `.agents`-variant zonder persona). Taak 23 liet die weg, omdat de skill toen nog niet in `pack/core` stond. De meldregels lopen via `heading:scout_skipped` en de vaste tokens die `measure_start_issue_kpi.py` telt.
 
 - [ ] **Stap 1–2: V1, V2.** De labels `3-blocked-*` in de tests worden `config.py labels.*`-aanroepen. Nieuw: `test_start_issue_skips_board_without_config`, waarin de bordstap het pad met rc 1 noemt; `test_handoff_writes_new_tokens`, waarin het handoff-blok `next:`, `when: now|night`, `anchor:` en de marker `<!-- lighthouse:` gebruikt; `test_start_issue_reads_legacy_stack`, waarin de skill `stack:` noemt en ook `stapel:` in oude comments.
 - [ ] **Stap 3: V3–V6.** Uit `start-issue` gaan weg: de KPI-tabel 266-286 en de paia-data. De meetaanroepen blijven. `PAIA_CONTROLLER_RUN` → `LIGHTHOUSE_CONTROLLER_RUN` (noteer voor (d)). "Beelink" → "the always-on host (`host.toml`)". Het `.agents`-blok *Buiten Claude Code* (start-issue 241-248) staat alleen in `agents/SKILL.md`.

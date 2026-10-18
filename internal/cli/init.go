@@ -16,7 +16,11 @@ func newInitCommand() *cobra.Command {
 		Short: "Install the lighthouse packages into this repository",
 		Long: "Install the lighthouse packages into this repository. Shows a diff per file and\n" +
 			"writes only after approval, or directly with --yes. --upgrade replaces what an\n" +
-			"earlier init wrote; a locally changed unit is refused unless --force is given.",
+			"earlier init wrote; a locally changed unit is refused unless --force is given.\n\n" +
+			"init installs core plus every language package that fits the repository. Add\n" +
+			"or leave out a package with --pack and --no-pack, also later:\n" +
+			"  lighthouse init --upgrade --pack python\n" +
+			"  lighthouse init --upgrade --no-pack shell",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := os.Getwd()
@@ -36,6 +40,8 @@ func newInitCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.Upgrade, "upgrade", false, "replace what an earlier init installed")
 	cmd.Flags().BoolVar(&o.Force, "force", false, "overwrite locally changed units")
 	cmd.Flags().BoolVar(&o.Yes, "yes", false, "approve every change without asking")
+	cmd.Flags().StringArrayVar(&o.AddPacks, "pack", nil, "add a package (repeatable)")
+	cmd.Flags().StringArrayVar(&o.DropPacks, "no-pack", nil, "leave a package out (repeatable)")
 	return cmd
 }
 
