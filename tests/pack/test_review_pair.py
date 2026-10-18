@@ -501,3 +501,11 @@ def test_usage_error_exits_2():
     assert exc.value.code == 2
 
 
+
+
+def test_outside_a_repo_is_exit_4_not_a_traceback(attempt, capsys, monkeypatch, tmp_path):
+    """Zonder repo-wortel faalt de run als SHADOW-PAIR FAILED (exit 4), niet met een traceback."""
+    monkeypatch.delenv("LIGHTHOUSE_REPO_ROOT")
+    monkeypatch.chdir(tmp_path)
+    assert rp.main(["blind", str(attempt)]) == 4
+    assert capsys.readouterr().err.startswith("SHADOW-PAIR FAILED: ")

@@ -374,6 +374,7 @@ def _run_pair(args: argparse.Namespace) -> int:
         KeyError,
         TypeError,
         subprocess.CalledProcessError,
+        _rec.ConfigError,
     ) as exc:
         print(f"SHADOW-PAIR FAILED: {exc}", file=sys.stderr)
         return 4
