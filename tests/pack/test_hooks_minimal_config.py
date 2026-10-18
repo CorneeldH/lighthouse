@@ -47,15 +47,22 @@ def _edit_payload(event: str, path: Path, cwd: Path) -> dict:
     }
 
 
-def _payload(event: str, script: str, worktree: Path) -> dict:
-    """De payload die deze hook echt raakt, of een fout als er geen is."""
+def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
+    """De payload die deze hook echt raakt, tot en met zijn configlezing."""
     name = script.split()[0]
-    doc = worktree / "doc.md"
-    if name in ("worktree-guard.sh", "worktree-linkcheck.sh"):
+    if name == "worktree-guard.sh":
+        # Een write in de hoofdcheckout op main: pas daar leest de guard
+        # forge.default_branch, en waarschuwt hij (zonder te blokkeren).
+        doc = project / "doc.md"
+        doc.write_text("# doc\n", encoding="utf-8")
+        return _edit_payload(event, doc, worktree)
+    if name == "worktree-linkcheck.sh":
+        doc = worktree / "doc.md"
         doc.write_text("# doc\n\nSee [the readme](README.md).\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
     if name == "main-commit-guard.sh":
-        cmd = "git status"
+        # Een commit op een featurebranch: de guard leest forge.default_branch.
+        cmd = "git commit -m x"
     elif name == "pre-commit-tests.sh":
         cmd = "git commit -m x"
     elif name == "pr-create-gate.sh":
@@ -83,7 +90,7 @@ def test_hooks_with_minimal_config(
     init_repo(project)
     worktree = tmp_path / "feature"
     git(project, "worktree", "add", "-q", "-b", "feature", str(worktree))
-    payload = _payload(event, script, worktree)
+    payload = _payload(event, script, worktree, project)
     name, *args = script.split()
     env = dict(
         os.environ,
@@ -106,8 +113,8 @@ def test_hooks_with_minimal_config(
     )
 
     assert result.returncode == 0, (result.stdout, result.stderr)
-    assert "Traceback" not in result.stderr
-    assert "Traceback" not in result.stdout
+    assert "Traceback" not in result.stderr + result.stdout
+    assert "COULD NOT CHECK" not in result.stderr + result.stdout
 
 
 def test_every_registration_has_a_payload() -> None:
