@@ -283,7 +283,7 @@ def _post_artefact(nr: int, pad_arg: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("nr", type=int, help="issue number")
-    parser.add_argument("bestand", help="spec or plan file")
+    parser.add_argument("bestand", metavar="file", help="spec or plan file")
     args = parser.parse_args(argv)
     try:
         regel = _post_artefact(args.nr, args.bestand)

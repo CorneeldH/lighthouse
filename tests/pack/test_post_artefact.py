@@ -376,3 +376,11 @@ def test_draait_als_geinstalleerd_bestand(tmp_path):
     )
     assert result.returncode == 1, result.stderr
     assert result.stderr.strip() == f"artefact: {tmp_path / 'weg.md'} does not exist"
+
+
+def test_help_is_english(capsys):
+    with pytest.raises(SystemExit) as exc:
+        pa.main(["-h"])
+    assert exc.value.code == 0
+    usage = capsys.readouterr().out.splitlines()[0]
+    assert usage.endswith("nr file"), usage
