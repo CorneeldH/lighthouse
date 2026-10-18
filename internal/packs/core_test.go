@@ -78,3 +78,56 @@ func TestCorePack(t *testing.T) {
 		t.Fatalf("tools = %v", tools)
 	}
 }
+
+// TestLanguagePacks loads each language package from the binary and pins its units.
+// Each package PR of M0 (c) adds its row.
+func TestLanguagePacks(t *testing.T) {
+	cases := []struct {
+		name   string
+		files  []string
+		detect bool
+		tools  string
+	}{
+		{
+			name: "expo",
+			files: []string{
+				".agents/skills/lighthouse-refresh-expo-lockfiles/SKILL.md",
+				".claude/skills/lighthouse-refresh-expo-lockfiles/SKILL.md",
+			},
+			detect: true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sub, err := fs.Sub(pack.Files, c.name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			p, err := Load(sub, c.name, "dev")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var files []string
+			for _, u := range p.Units {
+				if u.Kind != KindFile {
+					t.Fatalf("unit %s of kind %v; want only files", u.Path, u.Kind)
+				}
+				files = append(files, u.Path)
+			}
+			sort.Strings(files)
+			if strings.Join(files, "\n") != strings.Join(c.files, "\n") {
+				t.Fatalf("files:\n%s", strings.Join(files, "\n"))
+			}
+			if (p.Detect != nil) != c.detect {
+				t.Fatalf("detect = %v, want %v", p.Detect, c.detect)
+			}
+			var tools []string
+			for _, r := range p.Requires {
+				tools = append(tools, r.Tool)
+			}
+			if strings.Join(tools, ",") != c.tools {
+				t.Fatalf("tools = %v", tools)
+			}
+		})
+	}
+}

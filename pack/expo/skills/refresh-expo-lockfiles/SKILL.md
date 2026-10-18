@@ -1,153 +1,155 @@
 ---
-name: paia-refresh-expo-lockfiles
-description: Refresh the Expo app dependencies so the `Expo apps` CI lane goes green again. Use when apps.yml fails on `npx expo-doctor` with "Check that packages match versions required by installed Expo SDK", or when patch-level Expo drift blocks an unrelated PR. Stays on the pinned SDK; never upgrades it.
-metadata:
-  domain: applicatie
+name: lighthouse-refresh-expo-lockfiles
+description: Refresh the dependencies of the Expo apps in this repository so the CI check on them goes green again. Use when `npx expo-doctor` fails with "Check that packages match versions required by installed Expo SDK", or when patch-level Expo drift blocks an unrelated PR. Stays on the pinned SDK; never upgrades it.
 ---
 
 # Refresh Expo lockfiles
 
-Brengt `apps/*` weer in lijn met de versietabel van de **al gepinde** Expo SDK. Patchcijfers bewegen,
-het SDK-major niet.
+Brings every Expo app in this repository back in line with the version table of the **already
+pinned** Expo SDK. Patch numbers move; the SDK major does not.
 
 ## When to Use
 
-- `apps.yml` (`Expo apps`) valt om op `npx expo-doctor` → *Check that packages match versions
-  required by installed Expo SDK*
-- Een ongerelateerde PR staat rood omdat hij `apps/**` of `.github/workflows/apps.yml` raakt
-- Je wilt niet wachten op de maandelijkse Dependabot-PR (`npm`, lockfile-only, zie
-  [`.github/dependabot.yml`](../../../.github/dependabot.yml))
+- `npx expo-doctor` fails in CI with *Check that packages match versions required by installed
+  Expo SDK*. The workflow that runs it lives in `.github/workflows/`, if present.
+- An unrelated PR is red because it touches an Expo app or the workflow that checks the apps.
+- You do not want to wait for the next Dependabot PR (see `.github/dependabot.yml`, if present).
 
-**Niet** hiervoor: een sprong naar een nieuwe SDK-major. Zie *Afbreekpunt* onderaan.
+**Not** for a jump to a new SDK major. See *Stopping point* at the end.
 
-## Waarom dit terugkomt
+## Why this keeps coming back
 
-`expo-doctor` haalt zijn "expected"-kolom **live bij Expo** op. Elke Expo-patchrelease maakt de
-lockfiles achterstallig zonder dat er iets in de repo verandert — dezelfde commit is vandaag rood en
-was vorige maand groen. Achtergrond:
-[`docs/developer/planning/specs/2026-08-22-dependabot-lane-design.md`](../../../docs/developer/planning/specs/2026-08-22-dependabot-lane-design.md),
-addendum onderaan.
+`expo-doctor` fetches its "expected" column **live from Expo**. Every Expo patch release makes the
+lockfiles fall behind without any change in the repository: the same commit is red today and was
+green last month.
 
-## De valkuil: gebruik `npm update` niet
+## The trap: do not use `npm update`
 
-Dit is de eerste ingeving en hij is fout. Gemeten op page-capture-app, 2026-08-22:
+It is the first idea, and it is wrong. Dozens of packages inside the Expo tree declare
+`"expo": "*"` as a peer, and `npm update` reads `*` as *take the newest*. You end up with a newer
+SDK nested inside `node_modules/expo/node_modules/` while the top level stays on the pinned one.
+`expo-doctor` then reports duplicate native modules (`expo-font`, `expo-keep-awake`,
+`expo-modules-core`): you break the check with the command that was meant to repair it.
 
-```
-npm update expo jest-expo
-→ top-level expo 54.0.37 ✓, jest-expo 54.0.18 ✓   (de versiecheck slaagt)
-→ maar óók: node_modules/expo/node_modules/expo@57.0.15
-→ expo-doctor: Found duplicates for expo-font, expo-keep-awake, expo-modules-core → rood
-```
-
-Oorzaak: tientallen packages binnen de Expo-boom declareren `"expo": "*"` als peer, en `npm update`
-leest `*` als *pak de nieuwste*. Je haalt dus SDK 57 genest naar binnen terwijl je op 54 blijft. Dat
-is exact de duplicate-native-module-toestand waar deze CI-lane in juli voor is opgetuigd — je zou de
-check kapotmaken met het commando dat hem moest repareren.
-
-Gebruik `npx expo install --fix`. Dat is SDK-bewust: het leest de versietabel van de geïnstalleerde
-SDK en zet precies die versies neer, zonder `*`-peers mee te trekken.
+Use `npx expo install --fix`. It knows the SDK: it reads the version table of the installed SDK
+and installs exactly those versions, without pulling in the `*` peers.
 
 ## Workflow
 
 ### 1. Worktree
 
-Dit levert commits op, dus begin in een worktree (`superpowers:using-git-worktrees`). Branchnaam
-`fix-expo-lockfile-drift` of `issue-<nr>-expo-drift`.
+This produces commits, so start in a worktree (`superpowers:using-git-worktrees`). Branch name
+`fix-expo-lockfile-drift` or `issue-<nr>-expo-drift`.
 
-### 2. Stel de drift vast
+### 2. Find the apps and check the tools
 
-Node 22 is vereist (`node -v`) — de CI-lane draait daarop, en het testscript van dictation-app geeft
-`NODE_OPTIONS=--localstorage-file` mee, wat oudere Node afwijst.
+The apps are the directories with a `package.json` that names `"expo"`, as git tracks them. Run
+this from the repository root:
 
 ```bash
-for a in dictation-app photo-offload-app page-capture-app; do
-  echo "=== $a ==="
-  (cd "apps/$a" && npm ci --silent && npx expo-doctor)
+git ls-files -- ':(glob)**/package.json' | while read -r f; do
+  grep -q '"expo"' "$f" && dirname "$f"
 done
 ```
 
-`npm ci` eerst, niet `npm install`: je begint vanaf de gecommitte lockfile, niet vanaf wat er
-toevallig staat. Noteer per app de `package / expected / found`-tabel — die heb je in stap 5 nodig
-voor de commit-message, en in het *Afbreekpunt* om te beslissen of dit nog wel jouw taak is.
+Check that `node` and `npm` exist before anything else:
 
-### 3. Repareer
+```bash
+command -v node && command -v npm && node -v
+```
+
+If one is missing, stop and report `refresh-expo-lockfiles: node or npm not found`. Use the Node
+version CI uses (the `node-version` in the workflow under `.github/workflows/`, if present): a
+test script may pass options that an older Node rejects.
+
+### 3. Establish the drift
+
+For each app from step 2:
+
+```bash
+(cd "<app>" && npm ci --silent && npx expo-doctor)
+```
+
+`npm ci` first, not `npm install`: you start from the committed lockfile, not from whatever happens
+to be installed. Note the `package / expected / found` table per app. You need it in step 6 for the
+commit message, and at the *Stopping point* to decide whether this is still your task.
+
+### 4. Repair
 
 Per app:
 
 ```bash
-cd apps/<app>
+cd <app>
 npx expo install --fix
 npm dedupe
 ```
 
-`expo install --fix` werkt `package.json` **en** `package-lock.json` bij: de ranges schuiven op naar
-wat SDK 54 verwacht (`~54.0.36` → `~54.0.37`, `~54.0.0` → `~54.0.18`). Dat is bedoeld en blijft
-binnen SDK 54 — `expo install` kan je per constructie niet naar een volgende SDK tillen, want het
-resolvet tegen de tabel van de SDK die al geïnstalleerd is.
+`expo install --fix` updates `package.json` **and** `package-lock.json`: the ranges move up to what
+the installed SDK expects (a `~X.Y.Z` range moves to a later patch of the same `X.Y`). That is
+intended and stays within the SDK: `expo install` cannot lift you to the next SDK by construction,
+because it resolves against the table of the SDK that is already installed.
 
-`npm dedupe` erachteraan is geen ritueel. Op dictation-app (2026-08-22) liet `--fix` een duplicaat
-staan: `expo-constants@18.0.13` naast `18.0.14` onder `expo/`. De versiecheck was dan groen en de
-duplicate-native-module-check rood — je zou denken dat de fix mislukt is terwijl er alleen nog
-opgeruimd moest worden. Draai het altijd, ook als `--fix` niets lijkt te hebben gedaan; op de andere
-twee apps is het een no-op.
+`npm dedupe` afterwards is no ritual. `--fix` can leave a duplicate behind, two patch versions of
+the same package under `expo/`. The version check is then green and the duplicate native module
+check red: you would think the fix failed, while only the clean-up was missing. Always run it,
+also when `--fix` seems to have done nothing; on an app without duplicates it is a no-op.
 
-Dat de manifests hier wél bewegen is het verschil met de Dependabot-entry, die op
-`versioning-strategy: lockfile-only` staat en de ranges met rust laat. Beide komen uit op een
-geïnstalleerde 54.0.37 en dus op een groene versiecheck; deze route is alleen explicieter.
+That the manifests move here is the difference with a Dependabot entry on
+`versioning-strategy: lockfile-only` (in `.github/dependabot.yml`, if present), which leaves the
+ranges alone. Both end on the same installed patch version and so on a green version check; this
+route is only more explicit.
 
-### 4. Verifieer — allebei, per app
-
-```bash
-cd apps/<app>
-npx expo-doctor          # moet "18/18 checks passed" melden
-npm test --if-present    # exact wat de CI-lane draait
-```
-
-Claim niets over groen zonder deze twee uitvoeren gezien te hebben. Beide moeten exit 0 geven.
-Referentie-uitvoer van de eerste volledige ronde (2026-08-22, node 22.22.2), alle drie
-`18/18 checks passed`: dictation-app 15 tests, photo-offload-app 10, page-capture-app 17.
-
-### 5. Commit
-
-Eén commit per app houdt de diff leesbaar en maakt één app terugdraaibaar:
-
-```
-chore(deps): align <app> with SDK 54 patch versions
-
-expo 54.0.36 → 54.0.37, jest-expo 54.0.17 → 54.0.18. expo-doctor 18/18,
-17 tests groen. Geen SDK-wissel: alleen de patchtabel van 54 ingehaald.
-```
-
-Volg daarna de commit-flow uit `AGENTS.md`. Simplify is n.v.t. — er is geen code gewijzigd;
-`/caveman-review` over de diff en `/caveman-commit` wel.
-
-### 6. Controleer dat de diff is wat je denkt
+### 5. Verify: both, per app
 
 ```bash
-git diff --stat                                   # alleen apps/*/package{,-lock}.json
-git diff -- 'apps/*/package.json' | grep '^+.*"' # elke bump moet binnen dezelfde major blijven
+cd <app>
+npx expo-doctor          # must report that all checks passed
+npm test --if-present    # what a CI check on the app usually runs
 ```
 
-Ziet één van die regels er uit als een major-sprong (`~55.`, `^6.`), dan is stap 3 niet gelopen zoals
-bedoeld — terugdraaien en het *Afbreekpunt* lezen.
+Claim nothing about green without having seen the output of both. Both must exit 0.
 
-## Afbreekpunt: dit is een SDK-upgrade geworden
+### 6. Commit
 
-Vergelijk de `expected`-kolom uit stap 2 met de major in `package.json`:
+One commit per app keeps the diff readable and makes each app revertable on its own:
 
-| Situatie | Betekenis | Actie |
+```
+chore(deps): align <app> with the Expo SDK patch versions
+
+expo <old> → <new>, jest-expo <old> → <new>. expo-doctor green,
+tests green. No SDK change: only caught up with the patch table.
+```
+
+Then follow the commit flow from `AGENTS.md`.
+
+### 7. Check that the diff is what you think
+
+```bash
+git diff --stat                                # only <app>/package.json and <app>/package-lock.json
+git diff -- '*package.json' | grep '^+.*"'     # every bump must stay within the same major
+```
+
+If one of those lines looks like a major jump, step 4 did not run as intended: revert, and read
+the *Stopping point*.
+
+## Stopping point: this has become an SDK upgrade
+
+Compare the `expected` column from step 3 with the major in `package.json`:
+
+| Situation | Meaning | Action |
 |---|---|---|
-| verwacht `~54.0.37`, manifest `~54.0.36` | patchdrift | deze skill lost het op |
-| verwacht `~55.x` of hoger | de SDK-pin zelf is aan de beurt | **stop** |
+| expected `~X.0.N`, manifest `~X.0.M` with `M < N` | patch drift | this skill fixes it |
+| expected `~(X+1).x` or higher | the SDK pin itself is due | **stop** |
 
-Het tweede geval is geen lockfile-refresh maar een SDK-migratie: nieuwe react-native (nu 0.81.5),
-native-module-churn, dev-client opnieuw bouwen. Alle drie de apps staan bewust op SDK 54
-([`apps/CLAUDE.md`](../../../apps/CLAUDE.md)). Schrijf er een issue voor via `/paia-write-issue`
-(`2-area:clients`) en gebruik de `upgrading-expo`-skill; smokkel het niet mee in deze fix.
+The second case is no lockfile refresh but an SDK migration: a new React Native, native module
+churn, rebuilding the dev client. Write an issue for it with `/lighthouse-write-issue`. Give it the
+area label of the apps when the project has an area prefix: read it with
+`python3 .lighthouse/lib/lighthouse_lib/config.py labels.area_prefix` (rc 1: no prefix, leave the
+label out). Use the `upgrading-expo` skill, if present. Do not smuggle the upgrade into this fix.
 
-## Bekende uitzondering
+## Known exceptions
 
-`page-capture-app/package.json` sluit `react-native-shared-group-preferences` en
-`expo-share-extension` uit van de React Native Directory-check
-(`expo.doctor.reactNativeDirectoryCheck.exclude`). Dat is bestaand en bedoeld — voeg er niets aan toe
-om een refresh groen te krijgen; zie [`apps/CLAUDE.md`](../../../apps/CLAUDE.md).
+An app may exclude packages from the React Native Directory check
+(`expo.doctor.reactNativeDirectoryCheck.exclude` in its `package.json`). Such an exclusion is
+existing and intended: never add to it to get a refresh green. The reason for each exclusion is in
+the instructions next to the app (an `AGENTS.md` or `CLAUDE.md`), if present.

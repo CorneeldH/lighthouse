@@ -1,0 +1,7 @@
+# init proposes pack/expo when a package.json that git tracks names "expo"
+# (plan M0 (c), ontwerpkeuze 3). A rule on app.json alone would also hit React
+# Native without Expo.
+
+[[contains]]
+files = ["**/package.json"]
+text = "\"expo\""
