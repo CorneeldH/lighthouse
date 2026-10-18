@@ -1,0 +1,73 @@
+# ⚠️ NO-GO: deze repo mag NIET public worden zolang `runs-on` naar de
+# self-hosted Beelink-runner wijst — zie de kop van ci.yml.
+#
+# De vrijgeef-lane. Sluit een issue als `completed`, dan haalt de GitHub App
+# `paia-bot` `3-blocked-issue` weg bij elk open issue dat erop wachtte en geen
+# andere open blocker meer heeft, met een comment op dat issue en één comment
+# terug op het gesloten issue. Het gesloten issue blijft de enige bron: de lane
+# leest alleen `dependencies/blocking` en `dependencies/blocked_by`.
+#
+# Een workflow en geen stap in `paia-close-issue`: een issue sluit ook via een
+# PR-merge of met de hand, en een sessie heeft geen paia-bot-token. De skill
+# controleert achteraf (stap 6). `workflow_dispatch` met een issuenummer is de
+# terugval voor een gemiste of rode run. De logica staat in
+# `scripts/unblock_dependents.py`; de YAML blijft dun.
+name: Unblock dependents
+# Het issuenummer in de runnaam: stap 6 van paia-close-issue zoekt de run erop.
+run-name: "Unblock dependents #${{ github.event.issue.number || inputs.issue }}"
+
+on:
+  issues:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "Het gesloten issue waarvan de afhankelijken vrij moeten"
+        required: true
+        type: number
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: false
+
+jobs:
+  unblock:
+    # Alleen `completed` geeft vrij: op jobniveau, zodat een `not_planned` geen
+    # runner provisioneert. Het script toetst het nog eens (een dispatch kan alles).
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.issue.state_reason == 'completed')
+    runs-on: [self-hosted, Linux, X64, beelink]
+    permissions:
+      # Schrijven loopt via het App-token; GITHUB_TOKEN leest alleen de checkout.
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Geen enable-cache en een exacte `version:`, zie .claude/rules/workflows.md (#1293).
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.12.24"
+
+      - name: App-token voor labels en comments
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.PAIA_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.PAIA_BOT_PRIVATE_KEY }}
+          permission-issues: write
+
+      # Het script is stdlib-only: geen `uv sync`, `--python 3.12` haalt de
+      # interpreter zelf op. Het issuenummer via env, nooit als `${{ }}` in `run:`.
+      - name: Geef afhankelijken vrij
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: uv run --no-project --python 3.12 python scripts/unblock_dependents.py --issue "$ISSUE"
