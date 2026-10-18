@@ -72,7 +72,10 @@ func current(root string, desired []packs.Unit, m manifest.Manifest) (map[packs.
 			return nil, err
 		}
 		for _, r := range rules {
-			allowed[r] = true
+			// Only a rule in the lighthouse pattern is lighthouse's (besluit 22).
+			if packs.IsLighthouseRule(r) {
+				allowed[r] = true
+			}
 		}
 		regs, err := settings.Registrations(doc)
 		if err != nil {

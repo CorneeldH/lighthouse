@@ -295,7 +295,9 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 			switch {
 			case c.Desired != nil && writes(c.Action, o.Force):
 				allowWant = append(allowWant, c.Key.ID)
-			case c.Desired == nil && (c.Action == reconcile.Remove || o.Force):
+			case c.Desired == nil && (c.Action == reconcile.Remove || o.Force) && packs.IsLighthouseRule(c.Key.ID):
+				// A rule outside the pattern is the project's, even when a
+				// (hand-edited) manifest names it (besluit 22).
 				allowDrop = append(allowDrop, c.Key.ID)
 			}
 		}
@@ -360,19 +362,10 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	if err != nil {
 		return nil, err
 	}
-	// A permission rule the project already had stays the project's: it carries no
-	// mark of ownership, so recording it would let a later upgrade remove it.
-	adopted := map[packs.Key]bool{}
-	for _, c := range changes {
-		if c.Key.Kind == packs.KindPermission && c.Action == reconcile.Adopt {
-			adopted[c.Key] = true
-		}
-	}
+	// Every pack rule points into a lighthouse directory (packs.Load checks it), so
+	// it is lighthouse's, also when the project already had it (besluit 22).
 	nm := manifest.Manifest{Version: o.Version, Packages: names}
 	for _, u := range desired {
-		if adopted[u.Key()] {
-			continue
-		}
 		nm.Units = append(nm.Units, manifest.Entry{
 			Kind: u.Kind, Path: u.Path, ID: u.ID, Package: u.Package, Version: o.Version,
 			SHA256: manifest.Sum(u.Content),

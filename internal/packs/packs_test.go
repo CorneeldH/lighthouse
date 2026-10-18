@@ -351,7 +351,7 @@ func TestIsInstallPathGitHub(t *testing.T) {
 
 func TestLoadPermissions(t *testing.T) {
 	m := basePack()
-	m["permissions.json"] = file(`{"allow": ["Bash(a:*)", "Bash(b:*)"]}`)
+	m["permissions.json"] = file(`{"allow": ["Bash(.claude/skills/lighthouse-a/run.sh:*)", "Bash(.claude/hooks/lighthouse/b.sh:*)"]}`)
 	p, err := Load(m, "core", "dev")
 	if err != nil {
 		t.Fatal(err)
@@ -365,8 +365,34 @@ func TestLoadPermissions(t *testing.T) {
 			got = append(got, u.ID)
 		}
 	}
-	if strings.Join(got, ",") != "Bash(a:*),Bash(b:*)" {
+	if strings.Join(got, ",") != "Bash(.claude/skills/lighthouse-a/run.sh:*),Bash(.claude/hooks/lighthouse/b.sh:*)" {
 		t.Fatalf("permissions = %v", got)
+	}
+}
+
+// Besluit 22: a pack rule must point into a lighthouse directory, or init could not
+// tell it from a project rule.
+func TestLoadRefusesRuleOutsidePattern(t *testing.T) {
+	m := basePack()
+	m["permissions.json"] = file(`{"allow": ["Bash(make test)"]}`)
+	_, err := Load(m, "core", "dev")
+	if err == nil || !strings.Contains(err.Error(), "Bash(make test)") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestIsLighthouseRule(t *testing.T) {
+	for rule, want := range map[string]bool{
+		"Bash(.claude/skills/lighthouse-spec-adversarial-review/review.sh:*)": true,
+		"Bash(.claude/hooks/lighthouse/x.sh)":                                 true,
+		"Bash(make test)":                                                     false,
+		"Bash(.claude/skills/other/review.sh:*)":                              false,
+		"Bash(.agents/skills/lighthouse-x/review.sh:*)":                       false,
+		"Bash(.claude/hooks/x.sh)":                                            false,
+	} {
+		if got := IsLighthouseRule(rule); got != want {
+			t.Errorf("IsLighthouseRule(%q) = %v", rule, got)
+		}
 	}
 }
 
