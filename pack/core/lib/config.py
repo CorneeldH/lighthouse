@@ -1,22 +1,27 @@
 """The lighthouse config reader: `lighthouse.toml` in the repo, `host.toml` on the host.
 
 One reader for hooks, scripts and skills. It validates loudly: a configuration
-error names the file and the key, and the CLI exits with rc 2. The board
-(`[forge.board]`) is optional; the status option `Controller` is required only
-when a `[controller]` table exists. Any other table passes through unvalidated.
+error names the file and the key, and the CLI exits with rc 2. `[forge]` is
+optional: without it every `forge.*` key without a default is not set (rc 1), and
+the rest works. The board (`[forge.board]`) is optional too; the status option
+`Controller` is required only when a `[controller]` table exists. The keys in
+`SCHEMA` are type-checked when present, and `DEFAULTS` fills the absent ones. Any
+other table passes through unvalidated.
 
 Paths: `lighthouse.toml` in the repo root (`LIGHTHOUSE_REPO_ROOT`, otherwise
 `git rev-parse --show-toplevel`), overridden by `LIGHTHOUSE_TOML`;
 `~/.config/lighthouse/host.toml`, overridden by `LIGHTHOUSE_HOST_TOML`.
 
-CLI, with `.lighthouse/lib` on `PYTHONPATH`:
+CLI, as a file on its path or with `.lighthouse/lib` on `PYTHONPATH`:
 
+    python3 .lighthouse/lib/lighthouse_lib/config.py <key>
     python3 -m lighthouse_lib.config <key>     rc 0 value, rc 1 not set, rc 2 config error
     python3 -m lighthouse_lib.config host-check rc 0 this host, rc 1 another host, rc 2 error
 
 A key is a dotted path into `lighthouse.toml` (`forge.repo`,
 `forge.board.status_options.In progress`), one of the derived keys
-`forge.owner` and `forge.name`, or `host.<key>` from `host.toml`.
+`forge.owner` and `forge.name`, or `host.<key>` from `host.toml`. A list value
+prints one element per line.
 
 The syntax stays within Python 3.9, like the rest of the lib; reading TOML
 needs `tomllib`, so Python 3.11 or newer.
@@ -36,6 +41,11 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
+# Run as a file on its path (`python3 .lighthouse/lib/lighthouse_lib/config.py`):
+# put `.lighthouse/lib` first, so `lighthouse_lib` imports from this installation.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 # The statuses the skills name; the board maps each to an option ID.
 REQUIRED_STATUS_OPTIONS = ("To do", "In progress", "Done", "On hold")
 # Required only when the repo has a `[controller]` table (besluit 16).
@@ -45,6 +55,98 @@ LANGUAGES = ("nl", "en")
 # The characters GitHub allows in owner and name. A quote or `<` never reaches a
 # URL or a regex this way.
 _REPO = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
+
+_STR, _INT, _STRS, _INTS = "str", "int", "list[str]", "list[int]"
+
+# The keys beyond `[forge]`, `[forge.board]` and `[project] language`, with their
+# type. Each one is checked when present.
+SCHEMA: Mapping[str, str] = MappingProxyType(
+    {
+        "forge.default_branch": _STR,
+        "paths.specs": _STR,
+        "paths.plans": _STR,
+        "paths.tenets": _STR,
+        "paths.areas": _STR,
+        "paths.history": _STR,
+        "paths.labels": _STR,
+        "paths.search_dirs": _STRS,
+        "paths.mirror_exceptions": _STR,
+        "labels.blocked_issue": _STR,
+        "labels.blocked_external": _STR,
+        "labels.needs_shaping": _STR,
+        "labels.needs_decision": _STR,
+        "labels.needs_hands": _STR,
+        "labels.needs_testing": _STR,
+        "labels.location_prefix": _STR,
+        "labels.area_prefix": _STR,
+        "test_gate.command": _STR,
+        "test_gate.deadline_seconds": _INT,
+        "test_gate.slots": _INT,
+        "test_gate.slot_wait_seconds": _INT,
+        "test_gate.unchecked_exit_codes": _INTS,
+        "test_gate.evidence_test_dir": _STR,
+        "ci.runs_on": _STR,
+        "ci.bot_client_id_var": _STR,
+        "ci.bot_private_key_secret": _STR,
+        "ci.bot_login": _STR,
+        "codex_usage.halt_pct_session": _INT,
+        "codex_usage.vraag_pct_week": _INT,
+        "codex_usage.app_server_timeout_seconds": _INT,
+        "codex_usage.review_pct_session": _INT,
+        "codex_usage.review_pct_week": _INT,
+        "worktree_audit.protected_refs": _STRS,
+        "worktree_audit.protected_paths": _STRS,
+        "project.instructions_word_ceiling": _INT,
+        "project.skill_prefix": _STR,
+    }
+)
+
+# The value of an absent key. A key in `SCHEMA` without a default is optional: not set.
+# Lists are tuples here; `lookup` hands out a fresh list.
+DEFAULTS: Mapping[str, object] = MappingProxyType(
+    {
+        "forge.default_branch": "main",
+        "paths.specs": "docs/developer/planning/specs",
+        "paths.plans": "docs/developer/planning/plans",
+        "paths.search_dirs": (".",),
+        "labels.blocked_issue": "blocked-issue",
+        "labels.blocked_external": "blocked-external",
+        "labels.needs_shaping": "needs-shaping",
+        "labels.needs_decision": "needs-decision",
+        "labels.needs_hands": "needs-hands",
+        "labels.needs_testing": "needs-testing",
+        "test_gate.deadline_seconds": 270,
+        "test_gate.slots": 2,
+        "test_gate.slot_wait_seconds": 180,
+        "test_gate.unchecked_exit_codes": (),
+        "test_gate.evidence_test_dir": "tests/",
+        "ci.runs_on": "ubuntu-latest",
+        "codex_usage.halt_pct_session": 85,
+        "codex_usage.vraag_pct_week": 80,
+        "codex_usage.app_server_timeout_seconds": 20,
+        "codex_usage.review_pct_session": 90,
+        "codex_usage.review_pct_week": 95,
+        "worktree_audit.protected_refs": (),
+        "worktree_audit.protected_paths": (),
+        "project.instructions_word_ceiling": 3000,
+    }
+)
+
+_BASE_KEYS = (
+    "forge.kind",
+    "forge.repo",
+    "forge.owner",
+    "forge.name",
+    "forge.board.project_number",
+    "forge.board.project_id",
+    "forge.board.status_field_id",
+    "forge.board.priority_field_id",
+    "project.language",
+)
+_OPTION_PREFIXES = ("forge.board.status_options.", "forge.board.priority_options.")
+HOST_KEYS = ("host.name", "host.tailscale_ip", "host.gate_slice")
+# Host keys a host without `host.toml` simply does not have (rc 1, not rc 2).
+_OPTIONAL_HOST_KEYS = ("host.gate_slice",)
 
 
 class ConfigError(Exception):
@@ -67,25 +169,33 @@ class Board:
 
 @dataclass(frozen=True)
 class Config:
-    kind: str
-    repo: str
+    kind: str | None
+    repo: str | None
     language: str
     board: Board | None
     raw: Mapping[str, Any]
 
     @property
-    def owner(self) -> str:
-        return self.repo.split("/", 1)[0]
+    def owner(self) -> str | None:
+        return None if self.repo is None else self.repo.split("/", 1)[0]
 
     @property
-    def name(self) -> str:
-        return self.repo.split("/", 1)[1]
+    def name(self) -> str | None:
+        return None if self.repo is None else self.repo.split("/", 1)[1]
 
 
 @dataclass(frozen=True)
 class Host:
     name: str
     tailscale_ip: str
+    gate_slice: str | None = None
+
+
+def is_known_key(key: str) -> bool:
+    """Is `key` a key this reader knows, so a skill may name it?"""
+    if key in _BASE_KEYS or key in SCHEMA or key in HOST_KEYS:
+        return True
+    return any(key.startswith(p) and len(key) > len(p) for p in _OPTION_PREFIXES)
 
 
 def repo_root() -> Path:
@@ -188,23 +298,54 @@ def _board(board: Mapping[str, Any], needs_controller: bool, path: Path) -> Boar
     )
 
 
+def _check_type(value: Any, kind: str) -> bool:
+    def is_int(v: Any) -> bool:
+        return isinstance(v, int) and not isinstance(v, bool)
+
+    if kind == _STR:
+        return isinstance(value, str)
+    if kind == _INT:
+        return is_int(value)
+    if kind == _STRS:
+        return isinstance(value, list) and all(isinstance(v, str) and v for v in value)
+    return isinstance(value, list) and all(is_int(v) for v in value)
+
+
+def _check_schema(data: Mapping[str, Any], path: Path) -> None:
+    for table in sorted({key.split(".", 1)[0] for key in SCHEMA}):
+        if table in data and not isinstance(data[table], dict):
+            raise ConfigError(f"{path}: key {table} must be a table")
+    for key, kind in SCHEMA.items():
+        table, name = key.split(".", 1)
+        if name not in data.get(table, {}):
+            continue
+        value = data[table][name]
+        if not _check_type(value, kind):
+            raise ConfigError(f"{path}: key {key} must be of type {kind}")
+        if kind == _STR and not value:
+            raise ConfigError(f"{path}: key {key} is empty")
+
+
 def load(path: Path) -> Config:
     """Read and validate one `lighthouse.toml`."""
     data = _read_toml(path, f"{path}: file is missing")
 
-    forge = _get(data, "forge", dict, "", path)
-    kind = _get(forge, "kind", str, "forge.", path)
-    if kind != "github":
-        raise ConfigError(f"{path}: key forge.kind must be 'github', not {kind!r}")
-    repo = _get(forge, "repo", str, "forge.", path)
-    if not _REPO.fullmatch(repo):
-        raise ConfigError(f"{path}: key forge.repo must have the form owner/name: {repo!r}")
-
+    kind = repo = None
     board = None
-    if "board" in forge:
-        board = _board(
-            _get(forge, "board", dict, "forge.", path), "controller" in data, path
-        )
+    if "forge" in data:
+        forge = _get(data, "forge", dict, "", path)
+        kind = _get(forge, "kind", str, "forge.", path)
+        if kind != "github":
+            raise ConfigError(f"{path}: key forge.kind must be 'github', not {kind!r}")
+        repo = _get(forge, "repo", str, "forge.", path)
+        if not _REPO.fullmatch(repo):
+            raise ConfigError(
+                f"{path}: key forge.repo must have the form owner/name: {repo!r}"
+            )
+        if "board" in forge:
+            board = _board(
+                _get(forge, "board", dict, "forge.", path), "controller" in data, path
+            )
 
     language = "en"
     if "project" in data:
@@ -216,6 +357,8 @@ def load(path: Path) -> Config:
                     f"{path}: key project.language must be one of "
                     f"{', '.join(LANGUAGES)}, not {language!r}"
                 )
+
+    _check_schema(data, path)
 
     return Config(
         kind=kind,
@@ -253,7 +396,10 @@ def load_host(path: Path) -> Host:
         raise ConfigError(
             f"{path}: key host.tailscale_ip must be an IPv4 address: {tailscale_ip!r}"
         ) from exc
-    return Host(name=name, tailscale_ip=tailscale_ip)
+    gate_slice = host.get("gate_slice")
+    if gate_slice is not None and (not isinstance(gate_slice, str) or not gate_slice):
+        raise ConfigError(f"{path}: key host.gate_slice must be a non-empty string")
+    return Host(name=name, tailscale_ip=tailscale_ip, gate_slice=gate_slice)
 
 
 def is_local(ip: str) -> bool:
@@ -282,30 +428,56 @@ def _walk(table: Mapping[str, Any], key: str) -> Any:
 
 
 def lookup(cfg: Config, key: str) -> object:
-    """The value of `key`; `KeyError` when it is not set."""
-    if key == "forge.owner":
-        return cfg.owner
-    if key == "forge.name":
-        return cfg.name
+    """The value of `key`, or its default; `KeyError` when it is not set."""
+    if key in ("forge.owner", "forge.name"):
+        value = cfg.owner if key == "forge.owner" else cfg.name
+        if value is None:
+            raise KeyError(key)
+        return value
+    if key == "project.language":
+        return cfg.language
     if key.startswith("host."):
         return _host_value(key)
-    return _walk(cfg.raw, key)
+    try:
+        return _walk(cfg.raw, key)
+    except KeyError:
+        if key not in DEFAULTS:
+            raise
+        default = DEFAULTS[key]
+        return list(default) if isinstance(default, tuple) else default
 
 
 def _host_value(key: str) -> str:
-    host = load_host(host_path())
-    values = {"host.name": host.name, "host.tailscale_ip": host.tailscale_ip}
-    if key not in values:
+    if key not in HOST_KEYS:
         raise KeyError(key)
-    return values[key]
+    path = host_path()
+    if key in _OPTIONAL_HOST_KEYS and not path.exists():
+        raise KeyError(key)
+    host = load_host(path)
+    values = {
+        "host.name": host.name,
+        "host.tailscale_ip": host.tailscale_ip,
+        "host.gate_slice": host.gate_slice,
+    }
+    value = values[key]
+    if value is None:
+        raise KeyError(key)
+    return value
 
 
-def _format(key: str, value: object) -> str:
+def _scalar(key: str, value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (str, int, float)):
         return str(value)
-    raise ConfigError(f"{key} is a table or a list, not a value")
+    raise ConfigError(f"{key} is a table, not a value")
+
+
+def _format(key: str, value: object) -> list[str]:
+    """The output lines: one for a value, one per element for a list."""
+    if isinstance(value, list):
+        return [_scalar(key, v) for v in value]
+    return [_scalar(key, value)]
 
 
 def _host_check() -> int:
@@ -340,19 +512,20 @@ def main(argv: list[str] | None = None) -> int:
             value: object = _host_value(args.key)
         else:
             value = lookup(load(config_path()), args.key)
-        text = _format(args.key, value)
+        lines = _format(args.key, value)
     except KeyError:
         print(f"config: {args.key} is not set", file=sys.stderr)
         return 1
     except ConfigError as exc:
         print(f"config: {exc}", file=sys.stderr)
         return 2
-    print(text)
+    for line in lines:
+        print(line)
     return 0
 
 
 if __name__ == "__main__":
-    # Under `-m` this file is `__main__`, while other modules import it as
+    # Under `-m` or as a file this is `__main__`, while other modules import it as
     # `lighthouse_lib.config`, with a ConfigError class of its own. Delegate.
     import importlib
 

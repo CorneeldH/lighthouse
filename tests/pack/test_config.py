@@ -25,7 +25,7 @@ from lighthouse_lib.config import (
     lookup,
     main,
 )
-from tests.pack._testkit import IMPORT_ROOT, init_repo
+from tests.pack._testkit import IMPORT_ROOT, INSTALL_ROOT, init_repo
 
 VALID: dict = {
     "forge": {
@@ -171,7 +171,6 @@ def test_load_rejects(tmp_path, mutation, needle):
 @pytest.mark.parametrize(
     "missing",
     [
-        ("forge",),
         ("forge", "kind"),
         ("forge", "repo"),
         ("forge", "board", "project_number"),
@@ -465,3 +464,215 @@ def test_host_check_rc(tmp_path, monkeypatch, capsys, ip, rc):
 def test_host_check_missing_is_rc_2(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(tmp_path / "host.toml"))
     assert main(["host-check"]) == 2
+
+
+# --- defaults, types and the optional [forge] (taak 6) ---------------------------
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("paths.specs", "docs/developer/planning/specs"),
+        ("paths.plans", "docs/developer/planning/plans"),
+        ("test_gate.slots", "2"),
+        ("test_gate.deadline_seconds", "270"),
+        ("ci.runs_on", "ubuntu-latest"),
+        ("codex_usage.review_pct_week", "95"),
+        ("forge.default_branch", "main"),
+        ("labels.blocked_issue", "blocked-issue"),
+        ("project.instructions_word_ceiling", "3000"),
+        ("project.language", "en"),
+    ],
+)
+def test_defaults_for_absent_keys(cfg_env, capsys, key, value):
+    assert main([key]) == 0
+    assert capsys.readouterr().out == value + "\n"
+
+
+def test_set_value_wins_over_default(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID).replace('"repo"', '"default_branch" = "trunk"\n"repo"'))
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main(["forge.default_branch"]) == 0
+    assert capsys.readouterr().out == "trunk\n"
+
+
+@pytest.mark.parametrize(
+    "key", ["ci.bot_login", "ci.bot_client_id_var", "test_gate.command", "paths.labels"]
+)
+def test_keys_without_default_are_rc_1(cfg_env, capsys, key):
+    assert main([key]) == 1
+    assert "not set" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("table", "line"),
+    [
+        ("test_gate", 'slots = "2"'),
+        ("test_gate", "slots = true"),
+        ("paths", 'search_dirs = "src"'),
+        ("test_gate", 'unchecked_exit_codes = ["3"]'),
+        ("ci", "runs_on = 1"),
+        ("paths", 'labels = ""'),
+        ("project", "instructions_word_ceiling = 3.5"),
+    ],
+)
+def test_wrong_type_is_rc_2(tmp_path, monkeypatch, capsys, table, line):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + f"\n[{table}]\n{line}\n")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main([f"{table}.{line.split()[0]}"]) == 2
+    err = capsys.readouterr().err
+    assert str(path) in err and f"{table}.{line.split()[0]}" in err
+
+
+def test_wrong_default_branch_type_is_rc_2(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID).replace('"repo"', '"default_branch" = 1\n"repo"'))
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main(["forge.repo"]) == 2
+    assert "forge.default_branch" in capsys.readouterr().err
+
+
+def test_list_value_prints_one_per_line(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + '\n[paths]\nsearch_dirs = ["src", "lib"]\n')
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main(["paths.search_dirs"]) == 0
+    assert capsys.readouterr().out == "src\nlib\n"
+
+
+def test_empty_list_default_prints_nothing(cfg_env, capsys):
+    assert main(["test_gate.unchecked_exit_codes"]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_lookup_returns_default(tmp_path):
+    cfg = load(_write(tmp_path, VALID))
+    assert lookup(cfg, "paths.search_dirs") == ["."]
+    assert lookup(cfg, "test_gate.unchecked_exit_codes") == []
+
+
+def test_defaults_are_not_shared(tmp_path):
+    cfg = load(_write(tmp_path, VALID))
+    lookup(cfg, "paths.search_dirs").append("x")
+    assert lookup(cfg, "paths.search_dirs") == ["."]
+
+
+@pytest.mark.parametrize(
+    ("key", "known"),
+    [
+        ("forge.repo", True),
+        ("forge.owner", True),
+        ("forge.default_branch", True),
+        ("forge.board.status_options.In progress", True),
+        ("forge.board.priority_options.P0", True),
+        ("host.name", True),
+        ("host.gate_slice", True),
+        ("paths.labels", True),
+        ("ci.bot_login", True),
+        ("project.skill_prefix", True),
+        ("paths.label_taxonomy", False),
+        ("test_gate.slice", False),
+        ("host.other", False),
+        ("forge.board", False),
+        ("labels.bug", False),
+    ],
+)
+def test_is_known_key(key, known):
+    assert cfgmod.is_known_key(key) is known
+
+
+def _without_forge(tmp_path, monkeypatch) -> Path:
+    path = tmp_path / "lighthouse.toml"
+    path.write_text('[project]\nlanguage = "nl"\n')
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    return path
+
+
+@pytest.mark.parametrize("key", ["forge.repo", "forge.owner", "forge.name", "forge.kind"])
+def test_without_forge_table_forge_keys_are_rc_1(tmp_path, monkeypatch, capsys, key):
+    _without_forge(tmp_path, monkeypatch)
+    assert main([key]) == 1
+    assert "not set" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [("test_gate.slots", "2"), ("forge.default_branch", "main"), ("project.language", "nl")],
+)
+def test_without_forge_table_rest_works(tmp_path, monkeypatch, capsys, key, value):
+    _without_forge(tmp_path, monkeypatch)
+    assert main([key]) == 0
+    assert capsys.readouterr().out == value + "\n"
+
+
+def test_without_forge_table_load(tmp_path, monkeypatch):
+    cfg = load(_without_forge(tmp_path, monkeypatch))
+    assert (cfg.repo, cfg.board, cfg.language) == (None, None, "nl")
+
+
+def test_broken_forge_is_rc_2(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text('[forge]\nkind = "github"\n')
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main(["test_gate.slots"]) == 2
+    assert "forge.repo" in capsys.readouterr().err
+
+
+def test_gate_slice_from_host(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv(
+        "LIGHTHOUSE_HOST_TOML",
+        str(
+            _host(
+                tmp_path,
+                '[host]\nname = "box"\ntailscale_ip = "100.64.0.1"\ngate_slice = "x.slice"\n',
+            )
+        ),
+    )
+    assert main(["host.gate_slice"]) == 0
+    assert capsys.readouterr().out == "x.slice\n"
+
+
+def test_gate_slice_absent_is_rc_1(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv(
+        "LIGHTHOUSE_HOST_TOML",
+        str(_host(tmp_path, '[host]\nname = "box"\ntailscale_ip = "100.64.0.1"\n')),
+    )
+    assert main(["host.gate_slice"]) == 1
+    assert "not set" in capsys.readouterr().err
+
+
+def test_gate_slice_without_host_toml_is_rc_1(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(tmp_path / "host.toml"))
+    assert main(["host.gate_slice"]) == 1
+    assert "not set" in capsys.readouterr().err
+
+
+def test_host_name_without_host_toml_stays_rc_2(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(tmp_path / "host.toml"))
+    assert main(["host.name"]) == 2
+
+
+@pytest.mark.parametrize("text", ["[host\n", '[host]\nname = "box"\ntailscale_ip = "100.64.0.1"\ngate_slice = 1\n'])
+def test_gate_slice_broken_host_toml_is_rc_2(tmp_path, monkeypatch, text):
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(_host(tmp_path, text)))
+    assert main(["host.gate_slice"]) == 2
+
+
+def test_runs_as_file(tmp_path):
+    other = tmp_path / "other"
+    init_repo(other)
+    path = _write(tmp_path, VALID)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTHON")}
+    env.pop("LIGHTHOUSE_REPO_ROOT", None)
+    env["LIGHTHOUSE_TOML"] = str(path)
+    result = subprocess.run(
+        [sys.executable, str(INSTALL_ROOT / ".lighthouse/lib/lighthouse_lib/config.py"), "forge.repo"],
+        capture_output=True,
+        text=True,
+        cwd=str(other),
+        env=env,
+        check=False,
+    )
+    assert (result.returncode, result.stdout) == (0, "Acme/widgets\n"), result.stderr

@@ -31,6 +31,7 @@ func TestCorePack(t *testing.T) {
 		".claude/hooks/lighthouse/main-commit-guard.sh",
 		".lighthouse/lib/lighthouse_lib/__init__.py",
 		".lighthouse/lib/lighthouse_lib/config.py",
+		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/git_invocations.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
