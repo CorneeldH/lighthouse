@@ -307,3 +307,119 @@ def test_the_agents_variant_names_the_missing_persona():
     assert "##### Outside Claude Code" in agents
     assert "not available" in agents and "simulate" in agents
     assert "##### Outside Claude Code" not in claude
+
+# --- handoff (letterlijk uit paia) ---
+def test_handoff_geblokkeerde_herstart_vanuit_eigen_worktree():
+    """I5: de geblokkeerde herstart uit paia-start-issue komt uit de eigen worktree;
+    vanuit `main` zet de controller hem op wacht en stapelt hij nooit."""
+    for body in skill("paia-handoff"):
+        stap3 = body[body.index("3. **`volgende:`") : body.index("4. **`wanneer:`**")]
+        assert "hoofdcheckout en `branch:` `main`" in stap3
+        assert "— blokkeerder #<x> open" in stap3
+        assert "eigen worktree en branch van het issue" in stap3
+
+
+HANDOFF_SKILL = REPO / ".claude" / "skills" / "paia-handoff" / "SKILL.md"
+HANDOFF_SKILL_AGENTS = REPO / ".agents" / "skills" / "paia-handoff" / "SKILL.md"
+    "zin",
+    [
+        "**Uitzondering: een plan, niet gereviewd.**",
+        "geen `AskUserQuestion`",
+        "[<bestandsnaam>](<absoluut pad>)",
+        "Review, controller of interactief?",
+        "Mijn advies:",
+        "eindigt de beurt",
+        "Een controller-run vraagt dit niet",
+        "Zonder issuenummer",
+        "overgeslagen op besluit van de gebruiker",
+        "`Eerste stap: /superpowers:executing-plans <plan>`",
+        "| Wat er ligt | Eerste stap | Controller |",
+        "De kolom Controller zegt wat Controller-modus stap 2 doet",
+        "`/paia-spec-adversarial-review` op die spec | `standaard` |",
+        "`/superpowers:writing-plans` op die spec | `nee` |",
+        "`/paia-plan-adversarial-review` op dat plan | `keuze` |",
+        "`/superpowers:executing-plans` | `aanbieden` |",
+        "`/paia-fix-pr <pr>` | `aanbieden` |",
+        "Bij `keuze` print je in stap 6 twee blokken vóór de vraag: eerst *review*, dan *interactief*.",
+        "Alleen *controller* vraagt nog een antwoord in dit venster.",
+        "stel de vraag dan alleen met *review* of *interactief*, zonder *controller*",
+        "Bij `nee` lees je de board-status niet; staat het issue toch op `Controller`, dan blijft het daar tot de gebruiker het verzet.",
+        "Wil de gebruiker de plan-review zelf via de controller, dan `volgende: /paia-plan-adversarial-review <plan>` en stap 5 en 6.",
+        "Bij twijfel: **review**.",
+        "Dit geldt ook als het issue al op `Controller` staat",
+    ],
+)
+def test_handoff_plan_naad_vraagt_in_chattekst(path, zin):
+    """#1046: bij een gecommit plan kiest de gebruiker zelf, na inspectie."""
+    assert zin in path.read_text(encoding="utf-8"), f"{path.parent.name}: {zin!r}"
+
+
+@pytest.mark.parametrize(
+    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
+)
+def test_handoff_plan_naad_blokken_voor_de_vraag(path):
+    """Bij *review* of *interactief* hoeft de gebruiker niet terug naar het venster:
+    review-blok, interactief-blok, dan pas planlink, advies en vraag."""
+    text = path.read_text(encoding="utf-8")
+    start = text.index("**Uitzondering: een plan, niet gereviewd.**")
+    alinea = text[start : text.index("Een controller-run vraagt dit niet", start)]
+    volgorde = [
+        "`Eerste stap: /paia-plan-adversarial-review <plan>`",
+        "`Eerste stap: /superpowers:executing-plans <plan>`",
+        "Plan staat in",
+        "Mijn advies:",
+        "Review, controller of interactief?",
+    ]
+    posities = [alinea.index(stuk) for stuk in volgorde]
+    assert posities == sorted(posities), f"{path.parent.name}: volgorde {posities}"
+
+
+@pytest.mark.parametrize(
+    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
+)
+def test_handoff_plan_naad_uitzondering_komt_voor_controller_post(path):
+    """De *Uitzondering*-alinea (stap 2) moet vóór de gewone Controller-postlogica staan,
+    anders leest de skill de vraag pas na het "meteen posten"-pad."""
+    text = path.read_text(encoding="utf-8")
+    assert text.index("**Uitzondering: een plan, niet gereviewd.**") < text.index(
+        "Alleen bij `aanbieden` (bij `standaard` hierboven nooit): staat hij al op `Controller`, meteen posten"
+    )
+
+
+@pytest.mark.parametrize(
+    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
+)
+@pytest.mark.parametrize(
+    "zin",
+    [
+        "uv run python scripts/post_artefact.py <nr> <absoluut pad>",
+        "met `dangerouslyDisableSandbox: true` (Go-TLS van `gh`):",
+        "ook in Controller-modus vóór de `🤖 Handoff`",
+        "Een fout blokkeert de handoff niet",
+        "artefact: <de regel uit post_artefact.py>",
+    ],
+)
+def test_handoff_post_artefact(path, zin):
+    """#1094: elke naad met een spec of plan als anker post dat op het issue."""
+    assert zin in path.read_text(encoding="utf-8"), f"{path.parent.name}: {zin!r}"
+
+
+@pytest.mark.parametrize(
+    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
+)
+def test_handoff_post_artefact_staat_in_stap_3(path):
+    text = path.read_text(encoding="utf-8")
+    assert (
+        "(`/superpowers:executing-plans`)" in text
+    )
+
+
+@pytest.mark.parametrize(
+    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
+)
+def test_handoff_kent_lane_native(path):
+    """#1461: Native als handoff-lane: het veld, de keuze en de modelmelding."""
+    text = path.read_text(encoding="utf-8")
+    assert "lane: native" in text
+    assert "de controller start dit op Sonnet" in text
+    assert "Ja, native" in text
