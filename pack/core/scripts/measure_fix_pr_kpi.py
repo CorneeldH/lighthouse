@@ -237,7 +237,9 @@ def measure_scope(directory: Path, since: str | None) -> dict[str, object]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser = argparse.ArgumentParser(
+        description="Review measurement for the skill lighthouse-fix-pr, from the Claude Code transcripts."
+    )
     parser.add_argument(
         "metric",
         nargs="?",

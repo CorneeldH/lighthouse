@@ -776,3 +776,28 @@ def test_skill_names_are_lighthouse() -> None:
     assert kpi.SKILL_NAME == "lighthouse-start-issue"
     assert kpi.ROUTE_SKILL_NAME == "lighthouse-route-issue"
     assert kpi.SCOUT_AGENT == "lighthouse-issue-impact-scout"
+
+
+def test_help_is_english(capsys) -> None:
+    import pytest
+
+    with pytest.raises(SystemExit):
+        kpi.main(["--help"])
+    out = capsys.readouterr().out
+    assert "Review measurement for the skill lighthouse-start-issue" in out
+    assert "KPI-meting" not in out
+
+
+def test_git_failure_is_rc_2_without_traceback(tmp_path, monkeypatch, capsys) -> None:
+    """A repo without commits: `git log` fails. That is a loud rc 2, not a traceback."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(repo))
+    config = tmp_path / "lighthouse.toml"
+    config.write_text("", encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
+    transcripts = tmp_path / "t"
+    transcripts.mkdir()
+    assert kpi.main(["paths", "--dir", str(transcripts)]) == 2
+    assert capsys.readouterr().err.startswith("measure: git log failed: ")

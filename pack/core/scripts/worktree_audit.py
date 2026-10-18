@@ -1022,7 +1022,15 @@ def collect(repo_root: Path | None = None) -> list[Row]:
     try:
         slug = repo_slug()
     except ConfigError as exc:
-        raise SystemExit(f"worktree-audit: {exc}") from exc
+        # rc 2, niet de rc 1 van SystemExit(<tekst>): onder `--only` betekent rc 1 al
+        # "niet op te ruimen".
+        print(f"worktree-audit: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+    if slug is None:
+        print(
+            "worktree-audit: PR lookup skipped — [forge] repo is not set, so every PR state is unknown",
+            file=sys.stderr,
+        )
     raw_pulls = run_gh_pulls(slug)
     pr_lookup_ok = raw_pulls is not None
     pulls = parse_pulls(raw_pulls or [])

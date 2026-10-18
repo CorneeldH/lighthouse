@@ -231,3 +231,13 @@ def test_runs_as_installed_file(tmp_path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert '"past_the_boundary": 0' in result.stdout
+
+
+def test_help_is_english(capsys) -> None:
+    import pytest
+
+    with pytest.raises(SystemExit):
+        kpi.main(["--help"])
+    out = capsys.readouterr().out
+    assert "Review measurement for the skill lighthouse-fix-pr" in out
+    assert "KPI-meting" not in out

@@ -41,6 +41,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 # Run as a file (`python3 .lighthouse/scripts/unblock_dependents.py`): put
 # `.lighthouse/lib` first, so `lighthouse_lib` imports from this installation.
@@ -121,7 +122,7 @@ def _labels(issue: dict[str, Any]) -> set[str]:
 def _verwijder_label(gh: Gh, nr: int, label: str) -> None:
     """DELETE van het label; een 404 (tussendoor met de hand weggehaald) is geen fout."""
     try:
-        gh(["api", "-X", "DELETE", f"{REPO_PAD}/issues/{nr}/labels/{label}"])
+        gh(["api", "-X", "DELETE", f"{REPO_PAD}/issues/{nr}/labels/{quote(label, safe='')}"])
     except subprocess.CalledProcessError as fout:
         if "HTTP 404" not in (fout.stderr or ""):
             raise
@@ -229,7 +230,9 @@ def run(gh: Gh, nr: int, *, label: str, dry_run: bool = False) -> tuple[int, lis
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description="Release the issues that waited on a just-closed issue, when it was their last open blocker."
+    )
     parser.add_argument("--issue", type=int, required=True, help="the closed issue")
     parser.add_argument(
         "--dry-run", action="store_true", help="read only, write nothing"

@@ -639,6 +639,14 @@ class TestBudgetCli:
         assert data["decision"] == besluit
         assert not list(tmp_path.rglob("*.json*"))
 
+    def test_broken_config_is_said_on_stderr(self, tmp_path, monkeypatch, capsys):
+        """The 0/6 contract stays, but a broken `[codex_usage]` must not hide in the JSON."""
+        write_config(tmp_path, monkeypatch, '[codex_usage]\nreview_pct_week = "x"\n')
+        assert cu.main(["budget"]) == 0
+        uit = capsys.readouterr()
+        assert json.loads(uit.out)["decision"] == "not_measurable"
+        assert uit.err.startswith("codex-usage: config: ")
+
     def test_fallback_draagt_venster_en_drempels(self, monkeypatch, capsys):
         self._stand(monkeypatch, stand(92, 41))
         assert cu.main(["budget"]) == 6

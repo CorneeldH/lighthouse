@@ -740,7 +740,9 @@ def measure_paths(since: str | None) -> dict[str, object]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser = argparse.ArgumentParser(
+        description="Review measurement for the skill lighthouse-start-issue, from the Claude Code transcripts."
+    )
     parser.add_argument(
         "metric",
         nargs="?",
@@ -774,6 +776,9 @@ def main(argv: list[str] | None = None) -> int:
         table = {name: rows[name]() for name in selected}
     except ConfigError as exc:
         print(f"measure: {exc}", file=sys.stderr)
+        return 2
+    except subprocess.CalledProcessError as exc:
+        print(f"measure: git log failed: {(exc.stderr or '').strip()}", file=sys.stderr)
         return 2
     print(json.dumps(table, indent=2, ensure_ascii=False))
     return 0

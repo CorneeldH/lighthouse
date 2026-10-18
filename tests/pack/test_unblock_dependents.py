@@ -278,3 +278,23 @@ def test_broken_config_is_rc_2(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
     assert ud.main(["--issue", "1"]) == 2
     assert "labels.blocked_issue" in capsys.readouterr().err
+
+
+def test_help_is_english(capsys) -> None:
+    with pytest.raises(SystemExit):
+        ud.main(["--help"])
+    out = capsys.readouterr().out
+    assert "Release the issues that waited on a just-closed issue" in out
+    assert "Zet issues vrij" not in out
+
+
+def test_label_with_a_space_is_url_encoded(tmp_path, monkeypatch) -> None:
+    """The label is configurable now; a space or a slash must not break the DELETE path."""
+    config = tmp_path / "lighthouse.toml"
+    config.write_text('[labels]\nblocked_issue = "blocked / issue"\n', encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
+    label = "blocked / issue"
+    gh = FakeGh(_wereld(_issue(1, "closed"), [_issue(2, labels=[label])], {2: [_issue(1, "closed")]}))
+    monkeypatch.setattr(ud, "run_gh", gh)
+    assert ud.main(["--issue", "1"]) == 0
+    assert ("api", "-X", "DELETE", f"{R}/issues/2/labels/blocked%20%2F%20issue") in gh.writes

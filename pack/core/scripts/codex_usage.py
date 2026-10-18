@@ -468,6 +468,8 @@ def cmd_budget() -> int:
     try:
         cfg = _config()
     except NietMeetbaar as exc:
+        # Het 0/6-contract blijft, maar een kapotte config mag niet alleen in de JSON staan.
+        print(f"codex-usage: {exc}", file=sys.stderr)
         uitkomst = BudgetUitkomst("not_measurable", f"not measurable: {exc}")
     else:
         now = _nu()

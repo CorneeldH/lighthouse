@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -1758,7 +1759,7 @@ def test_without_forge_repo_the_pr_lookup_is_unknown(tmp_path, monkeypatch) -> N
     assert audit.run_gh_pulls(None) is None
 
 
-def test_broken_config_stops_collect_loudly(tmp_path, monkeypatch) -> None:
+def test_broken_config_stops_collect_loudly(tmp_path, monkeypatch, capsys) -> None:
     config = tmp_path / "broken.toml"
     config.write_text('[worktree_audit]\nprotected_refs = "x"\n', encoding="utf-8")
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
@@ -1769,8 +1770,31 @@ def test_broken_config_stops_collect_loudly(tmp_path, monkeypatch) -> None:
         if args[:2] == ["worktree", "list"]
         else "",
     )
-    with pytest.raises(SystemExit, match="worktree-audit: .*protected_refs"):
+    with pytest.raises(SystemExit) as stop:
         audit.collect(Path("/repo"))
+    # rc 2, like every other script: under `--only` rc 1 already means "not cleanable".
+    assert stop.value.code == 2
+    assert re.match(r"worktree-audit: .*protected_refs", capsys.readouterr().err)
+
+
+def test_without_forge_repo_collect_says_it_skips_the_pr_lookup(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    config = tmp_path / "bare.toml"
+    config.write_text('[project]\nlanguage = "en"\n', encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
+    monkeypatch.setattr(
+        audit,
+        "run_git",
+        lambda args, *, cwd=None: "worktree /repo\nbranch refs/heads/main\n"
+        if args[:2] == ["worktree", "list"]
+        else "",
+    )
+    audit.collect(Path("/repo"))
+    assert (
+        "worktree-audit: PR lookup skipped — [forge] repo is not set, so every PR state is unknown"
+        in capsys.readouterr().err
+    )
 
 
 class TestProtectedFromConfig:
