@@ -120,6 +120,20 @@ block() {
   exit 2
 }
 
+# No lib (a `lib/` in .gitignore leaves `.lighthouse/lib/` out of a clone):
+# the two-step rule below, so a missing lib does not lock up every command.
+if [ ! -f "$LIB/git_invocations.py" ]; then
+  case "$CMD" in
+    *git*) ;;
+    *) exit 0 ;;
+  esac
+  case "$CMD" in
+    *commit*) ;;
+    *) exit 0 ;;
+  esac
+  block "the lighthouse lib is missing ($LIB). Run 'lighthouse init --upgrade'."
+fi
+
 # Keep the streams apart: stderr of parser and git does not belong in the
 # findings, which are read line by line as fields.
 ERR_FILE=$(mktemp 2>/dev/null) || ERR_FILE="${TMPDIR:-/tmp}/pre-commit-tests.$$"

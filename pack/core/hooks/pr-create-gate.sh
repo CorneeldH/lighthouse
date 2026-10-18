@@ -23,6 +23,7 @@ HOOK_NAME="pr-create-gate"
 MISSING_TOOLS=""
 command -v jq >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS jq"
 command -v python3 >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS python3"
+command -v git >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS git"
 if [ -n "$MISSING_TOOLS" ]; then
   {
     echo "$HOOK_NAME: COULD NOT CHECK — missing tooling:$MISSING_TOOLS"
@@ -62,6 +63,20 @@ block() {
   } >&2
   exit 2
 }
+
+# No lib (a `lib/` in .gitignore leaves `.lighthouse/lib/` out of a clone):
+# the two-step rule below, so a missing lib does not lock up every command.
+if [ ! -f "$LIB/pr_body_gate.py" ]; then
+  case "$CMD" in
+    *gh*) ;;
+    *) exit 0 ;;
+  esac
+  case "$CMD" in
+    *pr*) ;;
+    *) exit 0 ;;
+  esac
+  block "the lighthouse lib is missing ($LIB). Run 'lighthouse init --upgrade'."
+fi
 
 # The stderr of the lib (the block text) passes through unfiltered.
 OUT=$(printf '%s' "$CMD" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB/pr_body_gate.py" "$CWD")

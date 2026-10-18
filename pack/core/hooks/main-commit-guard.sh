@@ -69,8 +69,30 @@ trap 'rm -f "$PARSER_ERR"' EXIT
 # The parser lives in the lighthouse lib of this repo. Found through
 # LIGHTHOUSE_REPO_ROOT or git, never from this file's own path. Run as a script,
 # not with `-m`: `-m` puts the cwd first on sys.path, and the cwd is the user's
-# repo. No lib means the parser fails, and that blocks below.
+# repo. A missing lib is handled right below.
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
+LIB="$LIB_ROOT/.lighthouse/lib/lighthouse_lib"
+
+# No lib (a `lib/` in .gitignore leaves `.lighthouse/lib/` out of a clone): the
+# same two-step rule as for a command that cannot be parsed, so a missing lib
+# does not lock up every command.
+if [ ! -f "$LIB/git_invocations.py" ]; then
+  case "$CMD" in
+    *git*) ;;
+    *) exit 0 ;;
+  esac
+  case "$CMD" in
+    *commit* | *push*) ;;
+    *) exit 0 ;;
+  esac
+  {
+    echo "Main-commit guard: COULD NOT CHECK — the lighthouse lib is missing ($LIB)."
+    echo ""
+    echo "Run 'lighthouse init --upgrade'. Without the lib no commit check was done;"
+    echo "that is not a green light."
+  } >&2
+  exit 2
+fi
 
 # The protected branch comes from the config of the repo these hooks are
 # installed in. Only read when the text can hold a commit or push at all: a

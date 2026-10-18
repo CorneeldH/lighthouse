@@ -7,6 +7,7 @@ een featurebranch-worktree: geen blokkade, geen `Traceback`.
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -126,3 +127,56 @@ def test_every_registration_has_a_payload() -> None:
         "worktree-guard.sh",
         "worktree-linkcheck.sh",
     }
+
+
+
+PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
+# Per PreToolUse-Bash-hook: het commando dat hij bewaakt. `bash-write-gates.sh
+# pre` blokkeert nooit (een PreToolUse-exit 2 blokkeert de call zelf).
+GUARDED = {
+    "main-commit-guard.sh": "git commit -m x",
+    "pre-commit-tests.sh": "git commit -m x",
+    "pr-create-gate.sh": "gh pr create --body x",
+}
+
+
+def _without_lib(tmp_path: Path, script: str, cmd: str) -> subprocess.CompletedProcess:
+    """De hook uit een installatie waarvan `.lighthouse/lib` ontbreekt."""
+    root = tmp_path / "lighthouse"
+    install_core(root, toml=MINIMAL_TOML)
+    shutil.rmtree(root / ".lighthouse" / "lib")
+    project = tmp_path / "project"
+    init_repo(project, branch="feature")
+    name, *args = script.split()
+    return subprocess.run(
+        [str(root / ".claude" / "hooks" / "lighthouse" / name), *args],
+        input=json.dumps(bash_payload(cmd, project)),
+        capture_output=True,
+        text=True,
+        cwd=str(project),
+        env=dict(os.environ, LIGHTHOUSE_REPO_ROOT=str(root), CLAUDE_PROJECT_DIR=str(project)),
+        check=False,
+    )
+
+
+@pytest.mark.parametrize("script", PRE_BASH)
+def test_without_lib_a_plain_command_passes(tmp_path: Path, script: str) -> None:
+    # Een gitignore met `lib/` laat `.lighthouse/lib/` weg bij een clone: dat
+    # mag niet elk Bash-commando op slot zetten.
+    result = _without_lib(tmp_path, script, "ls")
+
+    assert result.returncode == 0, (result.stdout, result.stderr)
+
+
+@pytest.mark.parametrize("script", sorted(GUARDED))
+def test_without_lib_the_guarded_command_blocks(tmp_path: Path, script: str) -> None:
+    result = _without_lib(tmp_path, script, GUARDED[script])
+
+    assert result.returncode == 2, (result.stdout, result.stderr)
+    assert "COULD NOT CHECK" in result.stderr
+    assert ".lighthouse/lib" in result.stderr
+
+
+def test_guarded_covers_every_blocking_bash_hook() -> None:
+    blocking = {s.split()[0] for s in PRE_BASH if s != "bash-write-gates.sh pre"}
+    assert blocking == set(GUARDED)
