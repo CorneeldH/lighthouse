@@ -7,14 +7,17 @@ geen operatoren, geen schrijfopties, geen opties die een ander programma
 starten. Wat niet past draait nooit; de rij is dan `ongeldig`.
 
 De allowlist uitbreiden is een wijziging van deze lib én van de tabel in
-`paia-verify-pr`, nooit iets wat een PR-body kan. Ontwerp:
+`/lighthouse-verify-pr`, nooit iets wat een PR-body kan. Ontwerp:
 `docs/developer/planning/specs/2026-10-03-pr-verifieert-issue-design.md`,
 sectie 2 (allowlist) en 4 (vergelijkregel).
 
 CLI (taak 6 en 7 roepen hem aan):
 
     evidence.py check '<Command-cel>'
-    evidence.py run --issue N --body-file PAD --cwd MAP [--voor-pr]
+    evidence.py run --issue N --body-file PAD --cwd MAP [--before-pr]
+
+De uitkomsten en de tabelkop staan in `headings.toml` en volgen `[project]
+language`; het pytest-pad komt uit `[test_gate] evidence_test_dir`.
 
 Alleen stdlib: draait onder de host-`python3`.
 """
@@ -32,8 +35,15 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pr_body_gate import Row, evidence_rows
+from pathlib import Path
+
+# Run as a file on its path: put `.lighthouse/lib` first, so `lighthouse_lib`
+# imports from this installation.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lighthouse_lib import config, headings
+from lighthouse_lib.pr_body_gate import Row, evidence_rows
 
 # Opties zonder waarde, per commando; "VAL" = opties die één waarde slikken (los of met '=').
 GREP_FLAGS = {
@@ -63,15 +73,19 @@ GIT_LOG_VAL = {
 }  # -n alleen met een getal; -n5 mag ook
 GIT_LOG_ALLEEN_GELIJK = {"--format", "--pretty"}
 GIT_SUBS = {"log", "show", "ls-files", "grep"}
-PYTEST_FLAGS = {"-q", "-v"}  # paden: normpath begint met tests/unit/
+PYTEST_FLAGS = {"-q", "-v"}  # paden: normpath begint met `[test_gate] evidence_test_dir`
 GH_API_VAL = {"--jq", "-q"}  # graphql: plus precies één -f query=…
 GH_VIEW_FLAGS = {"--comments", "-c"}
 GH_VIEW_VAL = {"--json", "--jq", "-q", "--repo", "-R"}
 
 PUNCTUATIE = set("();<>|&")
-PYTEST_PAD = "tests/unit/"
-NA_PR = "na PR: "
-VOOR_PR_UITKOMST = "na PR, niet gemeten"
+# De uitkomsten zijn sleutels van `headings.toml`; de tekst volgt `[project] language`.
+HOLDS = "evidence_holds"
+FAILS = "evidence_fails"
+INVALID = "evidence_invalid"
+UNMEASURABLE = "evidence_unmeasurable"
+AFTER_PR_UNMEASURED = "evidence_after_pr_unmeasured"
+OUTCOMES = (HOLDS, FAILS, INVALID, UNMEASURABLE, AFTER_PR_UNMEASURED)
 GH_PROBE_TIMEOUT_S = 10
 MAX_UITVOER = 4 * 1024 * 1024  # bytes, stdout en stderr samen
 _LEESBLOK = 65536
@@ -94,21 +108,21 @@ def split_command(cell: str) -> list[str] | str:
         s = s[1:-1]
     s = s.replace("\\|", "|")
     if "$(" in s:
-        return "`$(` (commandosubstitutie) is niet toegestaan"
+        return "`$(` (command substitution) is not allowed"
     if "`" in s:
-        return "een backtick in het commando is niet toegestaan"
+        return "a backtick in the command is not allowed"
     lexer = shlex.shlex(s, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     lexer.commenters = ""
     try:
         argv = list(lexer)
     except ValueError as fout:
-        return f"het commando laat zich niet splitsen ({fout})"
+        return f"the command cannot be split ({fout})"
     for token in argv:
         if token and set(token) <= PUNCTUATIE:
-            return f"shell-operator `{token}` is niet toegestaan"
+            return f"shell operator `{token}` is not allowed"
     if not argv:
-        return "leeg commando"
+        return "empty command"
     return argv
 
 
@@ -135,14 +149,14 @@ def _waarde(
     """
     if vast:
         if not rest:
-            return f"`{naam}=` met een lege waarde is niet toegestaan"
+            return f"`{naam}=` with an empty value is not allowed"
         if not naam.startswith("--") and rest.startswith("="):
-            return f"`{naam}{rest}`: waarde die met `=` begint is niet toegestaan"
+            return f"`{naam}{rest}`: a value that starts with `=` is not allowed"
         return rest, i
     if i >= len(args):
-        return f"`{naam}` mist een waarde"
+        return f"`{naam}` lacks a value"
     if not args[i]:
-        return f"`{naam}` met een lege waarde is niet toegestaan"
+        return f"`{naam}` with an empty value is not allowed"
     return args[i], i + 1
 
 
@@ -153,7 +167,7 @@ def _parse_lang(
     tok = args[i - 1]
     naam, gelijk, waarde = tok.partition("=")
     if naam not in val:
-        return i if tok in flags else f"optie `{tok}` staat niet in de allowlist"
+        return i if tok in flags else f"option `{tok}` is not in the allowlist"
     gekregen = _waarde(args, i, naam, waarde, vast=bool(gelijk))
     if isinstance(gekregen, str):
         return gekregen
@@ -176,7 +190,7 @@ def _parse_kort(
             uit.vals.append((kort, gekregen[0]))
             return gekregen[1]
         if kort not in flags:
-            return f"optie `{kort}` (in `{tok}`) staat niet in de allowlist"
+            return f"option `{kort}` (in `{tok}`) is not in the allowlist"
     return i
 
 
@@ -196,7 +210,7 @@ def _parse(
         i += 1
         if tok == "--":
             if not dd_ok:
-                return "`--` is hier niet toegestaan"
+                return "`--` is not allowed here"
             uit.after = args[i:]
             return uit
         if tok == "-" or not tok.startswith("-"):
@@ -216,14 +230,14 @@ def _parse(
 def _jq_reden(vals: list[tuple[str, str]]) -> str | None:
     for naam, waarde in vals:
         if naam in {"--jq", "-q"} and _JQ_VERBODEN_RE.search(waarde):
-            return f"`{naam}`-expressie leest omgeving of invoer"
+            return f"`{naam}` expression reads the environment or input"
     return None
 
 
 def _ref_reden(args: list[str]) -> str | None:
     for a in args:
         if any(t in a for t in _REF_VERBODEN):
-            return f"`{a}` is branch-relatief (`..`, `@{{`, `~`, `^`)"
+            return f"`{a}` is branch-relative (`..`, `@{{`, `~`, `^`)"
     return None
 
 
@@ -234,7 +248,7 @@ def _check_grep(args: list[str]) -> str | None:
 
 def _check_git(args: list[str]) -> str | None:
     if not args or args[0] not in GIT_SUBS:
-        return "git: alleen log, show, ls-files en grep, zonder globale opties"
+        return "git: only log, show, ls-files and grep, without global options"
     sub, rest = args[0], args[1:]
     if sub == "grep":
         geparsed = _parse(rest, GIT_GREP_FLAGS, GIT_GREP_VAL, dd_ok=True)
@@ -247,31 +261,38 @@ def _check_git(args: list[str]) -> str | None:
     # volgende woord is dan een optie, geen waarde. Alleen de `=`-vorm is eenduidig.
     kaal = next((a for a in rest if a in GIT_LOG_ALLEEN_GELIJK), None)
     if kaal is not None:
-        return f"`{kaal}` alleen als `{kaal}=<waarde>`"
+        return f"`{kaal}` only as `{kaal}=<value>`"
     geparsed = _parse(rest, GIT_LOG_FLAGS, GIT_LOG_VAL, dd_ok=True)
     if isinstance(geparsed, str):
         return geparsed
     for naam, waarde in geparsed.vals:
         if naam == "-n" and not waarde.isdigit():
-            return "`-n` accepteert alleen een getal"
+            return "`-n` accepts only a number"
         if naam in {"--format", "--pretty"} and "%G" in waarde:
-            return f"`{naam}` met `%G` start gpg"
+            return f"`{naam}` with `%G` starts gpg"
     return _ref_reden(geparsed.pos + geparsed.after)
 
 
 def _check_pytest(args: list[str]) -> str | None:
     if args[:2] != ["run", "pytest"]:
-        return "uv: alleen `uv run pytest`, zonder opties tussen `run` en `pytest`"
+        return "uv: only `uv run pytest`, without options between `run` and `pytest`"
     geparsed = _parse(args[2:], PYTEST_FLAGS, set())
     if isinstance(geparsed, str):
         return geparsed
     if not geparsed.pos:
-        return "uv run pytest zonder pad zou de hele suite draaien"
+        return "uv run pytest without a path would run the whole suite"
+    test_dir = _pytest_dir()
     for tok in geparsed.pos:
         pad = posixpath.normpath(tok.split("::", 1)[0])
-        if not pad.startswith(PYTEST_PAD):
-            return f"pad `{tok}` valt niet onder `{PYTEST_PAD}`"
+        if not pad.startswith(test_dir):
+            return f"path `{tok}` is not under `{test_dir}`"
     return None
+
+
+def _pytest_dir() -> str:
+    """`[test_gate] evidence_test_dir` als `map/`; een `ConfigError` gaat omhoog."""
+    waarde = config.lookup(config.load(config.config_path()), "test_gate.evidence_test_dir")
+    return posixpath.normpath(str(waarde)) + "/"
 
 
 def _graphql_veld(args: list[str]) -> tuple[list[str], str] | str:
@@ -287,13 +308,13 @@ def _graphql_veld(args: list[str]) -> tuple[list[str], str] | str:
             velden.append(args[i + 1])
             i += 2
         else:
-            return "`-f` mist een waarde"
+            return "`-f` lacks a value"
     if len(velden) != 1:
-        return "gh api graphql: precies één `-f query=…`"
+        return "gh api graphql: exactly one `-f query=…`"
     if not velden[0].startswith("query="):
-        return "gh api graphql: de `-f`-waarde moet met `query=` beginnen"
+        return "gh api graphql: the `-f` value must start with `query=`"
     if "mutation" in velden[0].lower():
-        return "gh api graphql: een mutation is niet toegestaan"
+        return "gh api graphql: a mutation is not allowed"
     return rest, velden[0]
 
 
@@ -309,12 +330,12 @@ def _check_gh_api(args: list[str]) -> str | None:
     if isinstance(geparsed, str):
         return geparsed
     if len(geparsed.pos) != 1:
-        return "gh api: precies één pad of `graphql`"
+        return "gh api: exactly one path or `graphql`"
     pad = geparsed.pos[0]
     if graphql and pad != "graphql":
-        return "gh api graphql: `graphql` moet het enige pad zijn"
+        return "gh api graphql: `graphql` must be the only path"
     if "://" in pad or pad.startswith("//"):
-        return "gh api: alleen een pad, geen URL"
+        return "gh api: a path only, not a URL"
     return _jq_reden(geparsed.vals)
 
 
@@ -325,10 +346,10 @@ def _check_gh_view(args: list[str]) -> str | None:
     # Zonder nummer leest gh de branch van de cwd. Ingang C meet in een detached
     # worktree op `origin/main`: daar is geen branch, en de rij faalt na de merge.
     if len(geparsed.pos) != 1:
-        return "gh view: precies één issue- of PR-nummer (of github.com-URL)"
+        return "gh view: exactly one issue or PR number (or github.com URL)"
     for tok in geparsed.pos:
         if "://" in tok and not tok.startswith("https://github.com/"):
-            return "gh view: alleen een github.com-URL"
+            return "gh view: a github.com URL only"
     return _jq_reden(geparsed.vals)
 
 
@@ -337,13 +358,13 @@ def _check_gh(args: list[str]) -> str | None:
         return _check_gh_api(args[1:])
     if args[:1] in (["issue"], ["pr"]) and args[1:2] == ["view"]:
         return _check_gh_view(args[2:])
-    return "gh: alleen `gh api`, `gh issue view` en `gh pr view`"
+    return "gh: only `gh api`, `gh issue view` and `gh pr view`"
 
 
 def check(argv: list[str]) -> str | None:
     """`None` = toegestaan, anders de reden. `argv[0]` is de kale naam, geen pad of toewijzing."""
     if not argv:
-        return "leeg commando"
+        return "empty command"
     naam, args = argv[0], argv[1:]
     if naam == "grep":
         return _check_grep(args)
@@ -361,7 +382,7 @@ def check(argv: list[str]) -> str | None:
         return _check_pytest(args)
     if naam == "gh":
         return _check_gh(args)
-    return f"`{naam}` staat niet in de allowlist"
+    return f"`{naam}` is not in the allowlist"
 
 
 def _flags_alleen(args: list[str], flags: set[str]) -> str | None:
@@ -377,11 +398,26 @@ def _strip_backticks(cel: str) -> str:
 
 
 def expected(result: str) -> tuple[str, bool]:
-    """De Result-cel genormaliseerd: `(verwacht fragment, was_na_pr)`."""
+    """De Result-cel genormaliseerd: `(verwacht fragment, was_na_pr)`.
+
+    Het voorvoegsel `na PR: ` telt in elke taal van `headings.toml`.
+    """
     s = _strip_backticks(result).replace("\\|", "|")
-    if s.startswith(NA_PR):
-        return s[len(NA_PR) :], True
+    for na_pr in headings.variants("evidence_after_pr"):
+        if s.startswith(na_pr):
+            return s[len(na_pr) :], True
     return s, False
+
+
+def outcome_of(cell: str) -> str | None:
+    """De uitkomst die een tabelcel noemt, in elke taal; `None` als de cel er geen is.
+
+    De hele cel beslist: `klopt` is een voorvoegsel van `klopt niet`.
+    """
+    for key in OUTCOMES:
+        if re.fullmatch(rf"\s*{headings.any_of(key)}\s*", cell):
+            return key
+    return None
 
 
 def _stop(proc: subprocess.Popen[bytes]) -> None:
@@ -428,7 +464,7 @@ def _draai(argv: list[str], cwd: str, timeout: int) -> tuple[int, str] | str:
                 break
             buf += blok
             if len(buf) > MAX_UITVOER:
-                return f"uitvoer groter dan {MAX_UITVOER} bytes"
+                return f"output larger than {MAX_UITVOER} bytes"
         proc.wait(timeout=max(deadline - time.monotonic(), 0.001))
     finally:
         _stop(proc)
@@ -440,11 +476,11 @@ def _draai_of_reden(argv: list[str], cwd: str, timeout: int) -> tuple[int, str] 
     try:
         return _draai(argv, cwd, timeout)
     except FileNotFoundError as fout:
-        return f"niet gevonden: {fout.filename or argv[0]}"
+        return f"not found: {fout.filename or argv[0]}"
     except subprocess.TimeoutExpired:
-        return f"timeout na {timeout} s"
+        return f"timeout after {timeout} s"
     except OSError as fout:
-        return f"niet uitvoerbaar: {fout}"
+        return f"not executable: {fout}"
 
 
 def _rij_argv(row: Row) -> list[str] | str:
@@ -452,41 +488,42 @@ def _rij_argv(row: Row) -> list[str] | str:
 
     Eén toets voor vóór en na de PR: een rij die ingang C `ongeldig` noemt
     (buiten de allowlist, of een lege verwachting zoals `na PR: `), mag onder
-    `--voor-pr` niet als `na PR, niet gemeten` doorgaan.
+    `--before-pr` niet als `na PR, niet gemeten` doorgaan.
     """
     argv = split_command(row.command)
     if isinstance(argv, str):
         return argv
     reden = check(argv)
     if reden is None and not expected(row.result)[0]:
-        reden = "lege Result-cel"
+        reden = "empty Result cell"
     return argv if reden is None else reden
 
 
 def run_row(row: Row, cwd: str, gh_ok: bool, timeout: int = 300) -> tuple[str, str]:
     """Voer één Evidence-rij uit; `(uitkomst, detail)`.
 
-    Uitkomst is `klopt`, `klopt niet`, `ongeldig` (buiten de allowlist, draait
-    niet) of `niet meetbaar` (binary weg, timeout, `gh` onbereikbaar).
+    Uitkomst is `HOLDS`, `FAILS`, `INVALID` (buiten de allowlist, draait
+    niet) of `UNMEASURABLE` (binary weg, timeout, `gh` onbereikbaar): een
+    sleutel van `headings.toml`.
     """
     argv = _rij_argv(row)
     if isinstance(argv, str):
-        return "ongeldig", f"Evidence buiten allowlist: {argv}"
+        return INVALID, f"Evidence outside the allowlist: {argv}"
     fragment, _ = expected(row.result)
     if argv[0] == "gh" and not gh_ok:
-        return "niet meetbaar", "gh niet bereikbaar"
+        return UNMEASURABLE, "gh not reachable"
     gelezen = _draai_of_reden(argv, cwd, timeout)
     if isinstance(gelezen, str):
-        return "niet meetbaar", gelezen
+        return UNMEASURABLE, gelezen
     returncode, uitvoer = gelezen
     delen: list[str] = []
     if returncode != 0:
-        delen.append(f"exitcode {returncode}")
+        delen.append(f"exit code {returncode}")
     if fragment not in uitvoer:
-        delen.append(f"ontbreekt in uitvoer: {fragment!r}")
+        delen.append(f"missing from output: {fragment!r}")
     if delen:
-        return "klopt niet", "; ".join(delen)
-    return "klopt", f"exitcode 0, `{fragment}` gevonden"
+        return FAILS, "; ".join(delen)
+    return HOLDS, f"exit code 0, `{fragment}` found"
 
 
 def _gh_bereikbaar() -> bool:
@@ -522,37 +559,39 @@ def _cmd_run(args: argparse.Namespace) -> int:
         with open(args.body_file, encoding="utf-8") as f:
             body = f.read()
     except OSError as fout:
-        print(f"KON NIET CONTROLEREN: body-bestand onleesbaar ({fout})")
+        print(f"COULD NOT CHECK: body file unreadable ({fout})")
         return 3
     if not os.path.isdir(args.cwd):
-        print(f"KON NIET CONTROLEREN: --cwd {args.cwd} is geen map")
+        print(f"COULD NOT CHECK: --cwd {args.cwd} is not a directory")
         return 3
+    taal = config.load(config.config_path()).language
     rijen = evidence_rows(body, args.issue)
     if isinstance(rijen, str):
-        print(f"Closes zonder bewijsblok: {rijen}")
+        print(f"{headings.heading('evidence_closes_without_block', taal)} {rijen}")
         return 2
-    gh_ok = any(_draait_gh(r, args.voor_pr) for r in rijen) and _gh_bereikbaar()
+    gh_ok = any(_draait_gh(r, args.before_pr) for r in rijen) and _gh_bereikbaar()
     resultaten: list[tuple[Row, str, str]] = []
     for rij in rijen:
-        if args.voor_pr and expected(rij.result)[1]:
+        if args.before_pr and expected(rij.result)[1]:
             argv = _rij_argv(rij)
             if isinstance(argv, str):
                 resultaten.append(
-                    (rij, "ongeldig", f"Evidence buiten allowlist: {argv}")
+                    (rij, INVALID, f"Evidence outside the allowlist: {argv}")
                 )
             else:
-                resultaten.append((rij, VOOR_PR_UITKOMST, "draait pas na de PR"))
+                resultaten.append((rij, AFTER_PR_UNMEASURED, "runs only after the PR"))
             continue
         uitkomst, detail = run_row(rij, args.cwd, gh_ok)
         resultaten.append((rij, uitkomst, detail))
-    print("| AC | Uitkomst | Detail |")
+    print(headings.heading("evidence_table_head", taal))
     print("|---|---|---|")
     for rij, uitkomst, detail in resultaten:
-        print(f"| {_cel(rij.ac)} | {uitkomst} | {_cel(detail)} |")
+        tekst = headings.heading(uitkomst, taal)
+        print(f"| {_cel(rij.ac)} | {tekst} | {_cel(detail)} |")
     uitkomsten = {u for _, u, _ in resultaten}
-    if uitkomsten & {"klopt niet", "ongeldig"}:
+    if uitkomsten & {FAILS, INVALID}:
         return 1
-    if "niet meetbaar" in uitkomsten:
+    if UNMEASURABLE in uitkomsten:
         return 4
     return 0
 
@@ -569,17 +608,21 @@ def _cmd_check(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p_check = sub.add_parser("check", help="toets één Command-cel tegen de allowlist")
+    p_check = sub.add_parser("check", help="check one Command cell against the allowlist")
     p_check.add_argument("cell")
     p_check.set_defaults(func=_cmd_check)
-    p_run = sub.add_parser("run", help="voer de Evidence-rijen van een PR-body uit")
+    p_run = sub.add_parser("run", help="run the Evidence rows of a PR body")
     p_run.add_argument("--issue", type=int, required=True)
     p_run.add_argument("--body-file", required=True)
     p_run.add_argument("--cwd", required=True)
-    p_run.add_argument("--voor-pr", action="store_true")
+    p_run.add_argument("--before-pr", action="store_true")
     p_run.set_defaults(func=_cmd_run)
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except config.ConfigError as exc:
+        print(f"COULD NOT CHECK: {exc}")
+        return 3
 
 
 if __name__ == "__main__":

@@ -34,11 +34,13 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/deadline.py",
+		".lighthouse/lib/lighthouse_lib/evidence.py",
 		".lighthouse/lib/lighthouse_lib/gate_slot.py",
 		".lighthouse/lib/lighthouse_lib/git_invocations.py",
 		".lighthouse/lib/lighthouse_lib/headings.py",
 		".lighthouse/lib/lighthouse_lib/md_links.py",
 		".lighthouse/lib/lighthouse_lib/no_verify.py",
+		".lighthouse/lib/lighthouse_lib/pr_body_gate.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
@@ -50,7 +52,7 @@ func TestCorePack(t *testing.T) {
 	for _, r := range p.Requires {
 		tools = append(tools, r.Tool)
 	}
-	if strings.Join(tools, ",") != "git,jq,python3,tomllib" {
+	if strings.Join(tools, ",") != "gh,git,jq,python3,tomllib" {
 		t.Fatalf("tools = %v", tools)
 	}
 }

@@ -173,7 +173,8 @@ while IFS=$'\t' read -r ACTION TARGET TO_MAIN RAW; do
     block_uncheckable "the path '$RAW' cannot be resolved." "$ACTION"
   fi
 
-  ROOT=$(git -C "$TARGET" rev-parse --show-toplevel 2>"$PARSER_ERR") || ROOT=""
+  # LC_ALL=C: the message below is matched as text, and git translates it.
+  ROOT=$(LC_ALL=C git -C "$TARGET" rev-parse --show-toplevel 2>"$PARSER_ERR") || ROOT=""
   GIT_MESSAGE=$(cat "$PARSER_ERR" 2>/dev/null)
   if [ -z "$ROOT" ]; then
     # Distinguish: '$TARGET is not a repo' is a real outcome and may pass.

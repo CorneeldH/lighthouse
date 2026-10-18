@@ -1,4 +1,4 @@
-"""`.claude/hooks/lib/pr_body_gate.py` (#1091): vormen, Evidence-tabel, AC-telling.
+"""`pack/core/lib/pr_body_gate.py` (#1091): vormen, Evidence-tabel, AC-telling.
 
 De lib is de pure logica onder `pr-create-gate.sh`: welke vorm (`Closes` met
 Evidence-blok, `Refs` met reden, `No issue`) de PR-body heeft, of de tabel
@@ -14,7 +14,7 @@ import time
 
 import pytest
 
-from tests.unit._hook_testkit import HOOKS, git, init_repo, load_hook_lib, tool_bin
+from tests.pack._testkit import INSTALLED_LIB, git, init_repo, load_hook_lib, tool_bin
 
 gate = load_hook_lib("pr_body_gate")
 
@@ -65,8 +65,8 @@ def test_alle_sluitwoorden_tellen(woord):
     "doel",
     [
         "#12",
-        "CorneeldH/personal_ai_agent#12",
-        "https://github.com/CorneeldH/personal_ai_agent/issues/12",
+        "Acme/widgets#12",
+        "https://github.com/Acme/widgets/issues/12",
     ],
 )
 def test_alle_doelvormen_tellen(doel):
@@ -77,28 +77,46 @@ def test_andere_repo_telt_niet():
     assert gate.closes_targets("Closes other/repo#12") == []
 
 
+@pytest.fixture
+def other_identity(monkeypatch, tmp_path):
+    toml = tmp_path / "other.toml"
+    toml.write_text('[forge]\nkind = "github"\nrepo = "Other/repo"\n')
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(toml))
+
+
 def test_repo_comes_from_lighthouse_toml(other_identity):
-    """`REPO` komt uit `lighthouse.toml`, niet uit een literal (#1445)."""
-    vers = load_hook_lib("pr_body_gate")  # leest `REPO` bij het laden, na de fixture
-    assert vers.REPO == "Other/repo"
-    assert vers.closes_targets("Closes Other/repo#12") == [12]
-    assert vers.closes_targets("Closes CorneeldH/personal_ai_agent#12") == []
+    """De repo komt uit `lighthouse.toml`, niet uit een literal (#1445), bij elke aanroep."""
+    assert gate.repo() == "Other/repo"
+    assert gate.closes_targets("Closes Other/repo#12") == [12]
+    assert gate.closes_targets("Closes Acme/widgets#12") == []
+
+
+def test_without_forge_repo(tmp_path, monkeypatch):
+    """Zonder `forge.repo` telt alleen `#N`; de AC-telling meldt dat en de rest blijft toetsen."""
+    toml = tmp_path / "lighthouse.toml"
+    toml.write_text('[project]\nlanguage = "en"\n')
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(toml))
+    assert gate.repo() is None
+    assert gate.closes_targets("Closes #4 and Closes x/y#5") == [4]
+    assert gate.fetch_ac_count(4) == (None, "no forge.repo in lighthouse.toml")
+    assert gate.in_scope(_pc(str(tmp_path), "x/y"), str(tmp_path))[0] == "toetsen"
 
 
 def test_missing_toml_fails_loud(tmp_path):
-    """Zonder toml faalt de lib luid bij het laden; `pr-create-gate.sh` meldt dat als blokkade."""
-    lib = HOOKS / "lib" / "pr_body_gate.py"
+    """Zonder toml faalt de lib luid bij een `gh pr create`; `pr-create-gate.sh` meldt dat als blokkade."""
+    lib = INSTALLED_LIB / "pr_body_gate.py"
     weg = tmp_path / "weg.toml"
     proc = subprocess.run(
         [sys.executable, str(lib), str(tmp_path)],
         env={**os.environ, "LIGHTHOUSE_TOML": str(weg)},
-        input="",
+        input="gh pr create --repo Acme/widgets --body 'Closes #1'",
         capture_output=True,
         text=True,
         check=False,
     )
-    assert proc.returncode != 0
+    assert proc.returncode not in (0, 2, 3)
     assert "weg.toml" in proc.stderr
+    assert "Traceback" not in proc.stderr
 
 
 def test_template_commentaar_telt_niet():
@@ -106,7 +124,7 @@ def test_template_commentaar_telt_niet():
 
 
 def test_closes_uniek_en_in_volgorde():
-    body = "Closes #9\nfixes #3\nCloses #9\nResolves CorneeldH/personal_ai_agent#4"
+    body = "Closes #9\nfixes #3\nCloses #9\nResolves Acme/widgets#4"
     assert gate.closes_targets(body) == [9, 3, 4]
 
 
@@ -259,8 +277,8 @@ def test_check_body_terugval_meldt_en_laat_door():
     assert v.blokkades == []
     assert v.meldingen == [
         (
-            "pr-create-gate: AC-telling niet meetbaar voor #5 (timeout na 5 s)"
-            " — alleen structuur getoetst"
+            "pr-create-gate: AC count not measurable for #5 (timeout na 5 s)"
+            " — structure checked only"
         )
     ]
 
@@ -294,7 +312,7 @@ def test_check_body_no_issue_is_geldig():
 def test_check_body_refs_zonder_reden_hint():
     v = gate.check_body("Refs #6")
     assert v.blokkades
-    assert "reden" in v.blokkades[0]
+    assert "reason" in v.blokkades[0]
 
 
 def test_check_body_commentaar_vorm_telt_niet():
@@ -313,13 +331,13 @@ def test_check_body_ongeldig_blok_noemt_reden():
 
 def test_fetch_ac_count_zonder_gh(monkeypatch, tmp_path):  # Review Focus 4
     monkeypatch.setenv("PATH", str(tmp_path))
-    assert gate.fetch_ac_count(5) == (None, "gh ontbreekt")
+    assert gate.fetch_ac_count(5) == (None, "gh is missing")
 
 
 def test_fetch_ac_count_gh_faalt(monkeypatch, tmp_path):
     bin_dir = tool_bin(tmp_path / "bin", (), stubs={"gh": "#!/bin/sh\nexit 1\n"})
     monkeypatch.setenv("PATH", str(bin_dir))
-    assert gate.fetch_ac_count(5) == (None, "gh api faalde (rc 1)")
+    assert gate.fetch_ac_count(5) == (None, "gh api failed (rc 1)")
 
 
 def test_fetch_ac_count_telt(monkeypatch, tmp_path):
@@ -335,7 +353,7 @@ def test_fetch_ac_count_telt(monkeypatch, tmp_path):
     assert gate.fetch_ac_count(5) == (3, "")
     assert aanroep.read_text().split() == [
         "api",
-        "repos/CorneeldH/personal_ai_agent/issues/5",
+        "repos/Acme/widgets/issues/5",
         "--jq",
         ".body",
     ]
@@ -345,7 +363,7 @@ def test_fetch_ac_count_geen_ac_kop(monkeypatch, tmp_path):
     stub = "#!/bin/sh\nprintf 'geen kop hier\\n'\n"
     bin_dir = tool_bin(tmp_path / "bin", (), stubs={"gh": stub})
     monkeypatch.setenv("PATH", str(bin_dir))
-    assert gate.fetch_ac_count(5) == (None, "geen AC-kop")
+    assert gate.fetch_ac_count(5) == (None, "no acceptance criteria heading")
 
 
 def test_fetch_ac_count_timeout(monkeypatch, tmp_path):
@@ -356,7 +374,7 @@ def test_fetch_ac_count_timeout(monkeypatch, tmp_path):
     stub = f'#!/bin/sh\nread _ < "{fifo}"\n'
     bin_dir = tool_bin(tmp_path / "bin", (), stubs={"gh": stub})
     monkeypatch.setenv("PATH", str(bin_dir))
-    assert gate.fetch_ac_count(5) == (None, "timeout na 0.3 s")
+    assert gate.fetch_ac_count(5) == (None, "timeout after 0.3 s")
 
 
 # --- gh pr create vinden, body-bron, scope -----------------------------------
@@ -395,11 +413,11 @@ def test_subshell_cd_lekt_niet(tmp_path):  # Review Focus 1
         ("gh pr create -e", "-e"),
         ("gh pr create -F -", "stdin"),
         ("gh pr create --body-file=-", "stdin"),
-        ('gh pr create --body "$(cat b.md)"', "niet-letterlijke"),
-        ("gh pr create --body $BODY", "niet-letterlijke"),
-        ("gh pr create -F $F", "niet-letterlijke"),
-        ("gh pr create -t x", "geen body"),
-        ("gh pr create --body x -F b.md", "kies één"),
+        ('gh pr create --body "$(cat b.md)"', "non-literal"),
+        ("gh pr create --body $BODY", "non-literal"),
+        ("gh pr create -F $F", "non-literal"),
+        ("gh pr create -t x", "no body"),
+        ("gh pr create --body x -F b.md", "choose one"),
     ],
 )
 def test_body_bron_problemen(tmp_path, cmd, woord):
@@ -432,14 +450,14 @@ def test_titel_met_b_in_waarde_telt_niet_als_body(tmp_path):
 
 def test_relatief_pad_zonder_bekende_cwd(tmp_path):
     [pc] = gate.find_pr_creates("gh pr create -F body.md", None)
-    assert "niet te herleiden" in pc.probleem
+    assert "cannot be resolved" in pc.probleem
     [pc] = gate.find_pr_creates("gh pr create -F /abs/body.md", None)
     assert pc.probleem is None
 
 
 def test_repo_vlag(tmp_path):
-    cmd = "gh pr create -R CorneeldH/personal_ai_agent -F b"
-    assert gate.find_pr_creates(cmd, str(tmp_path))[0].repo == gate.REPO
+    cmd = "gh pr create -R Acme/widgets -F b"
+    assert gate.find_pr_creates(cmd, str(tmp_path))[0].repo == "Acme/widgets"
 
 
 @pytest.mark.parametrize(
@@ -448,7 +466,7 @@ def test_repo_vlag(tmp_path):
         ("GH_REPO=x/y gh pr create --fill", "x/y"),
         ("env GH_REPO=x/y gh pr create --fill", "x/y"),
         # gh: `-R` wint van `GH_REPO`.
-        ("GH_REPO=x/y gh pr create -R CorneeldH/personal_ai_agent -F b", gate.REPO),
+        ("GH_REPO=x/y gh pr create -R Acme/widgets -F b", "Acme/widgets"),
     ],
 )
 def test_gh_repo_toewijzing_telt_als_repo(tmp_path, cmd, repo):
@@ -468,7 +486,7 @@ def test_gh_repo_toewijzing_telt_als_repo(tmp_path, cmd, repo):
 def test_niet_letterlijke_repo_is_een_repo_probleem(tmp_path, cmd):
     [pc] = gate.find_pr_creates(cmd, str(tmp_path))
     assert pc.repo is None
-    assert "niet-letterlijke" in pc.repo_probleem
+    assert "non-literal" in pc.repo_probleem
 
 
 def test_open_quote(tmp_path):
@@ -499,21 +517,21 @@ def test_scope_eigen_repo(tmp_path, project):
 def test_scope_andere_repo_vlag(project):
     besluit, reden = gate.in_scope(_pc(str(project), "x/y"), str(project))
     assert besluit == "overslaan"
-    assert "andere repo x/y" in reden
+    assert "other repo x/y" in reden
 
 
 @pytest.mark.parametrize(
     "repo",
     [
-        "CorneeldH/personal_ai_agent",
-        "github.com/CorneeldH/personal_ai_agent",
-        "https://github.com/CorneeldH/personal_ai_agent",
-        "http://github.com/CorneeldH/personal_ai_agent/",
-        "https://github.com/CorneeldH/personal_ai_agent.git",
-        "ssh://git@github.com/CorneeldH/personal_ai_agent.git",
-        "git@github.com:CorneeldH/personal_ai_agent.git",
-        "https://github.example:8443/CorneeldH/personal_ai_agent",
-        "corneeldh/PERSONAL_AI_AGENT",
+        "Acme/widgets",
+        "github.com/Acme/widgets",
+        "https://github.com/Acme/widgets",
+        "http://github.com/Acme/widgets/",
+        "https://github.com/Acme/widgets.git",
+        "ssh://git@github.com/Acme/widgets.git",
+        "git@github.com:Acme/widgets.git",
+        "https://github.example:8443/Acme/widgets",
+        "acme/WIDGETS",
     ],
 )
 def test_scope_repo_spellingen_van_deze_repo(tmp_path, project, repo):
@@ -528,7 +546,7 @@ def test_scope_repo_spellingen_van_deze_repo(tmp_path, project, repo):
 def test_scope_repo_spellingen_van_andere_repo(project, repo):
     besluit, reden = gate.in_scope(_pc(str(project), repo), str(project))
     assert besluit == "overslaan"
-    assert f"andere repo {repo}" in reden
+    assert f"other repo {repo}" in reden
 
 
 @pytest.mark.parametrize(
@@ -549,9 +567,9 @@ def test_scope_buiten_repo(tmp_path, project):
 @pytest.mark.parametrize(
     "repo",
     [
-        "https://github.com/CorneeldH/personal_ai_agent?tab=readme",
-        "https://github.com/CorneeldH/personal_ai_agent#readme",
-        "https://github.com/CorneeldH/personal_ai_agent.git?x=1#y",
+        "https://github.com/Acme/widgets?tab=readme",
+        "https://github.com/Acme/widgets#readme",
+        "https://github.com/Acme/widgets.git?x=1#y",
     ],
 )
 def test_scope_repo_query_en_anker_vallen_weg(tmp_path, project, repo):
@@ -567,13 +585,13 @@ def test_scope_niet_letterlijke_repo_blokkeert_ook_buiten_de_repo(tmp_path, proj
     [pc] = gate.find_pr_creates('gh pr create -R "$R" -F b.md', str(buiten))
     besluit, reden = gate.in_scope(pc, str(project))
     assert besluit == "blokkeren"
-    assert "niet-letterlijke" in reden
+    assert "non-literal" in reden
 
 
 def test_scope_buiten_repo_met_R(tmp_path, project):
     buiten = tmp_path / "buiten"
     buiten.mkdir()
-    pc = _pc(str(buiten), gate.REPO)
+    pc = _pc(str(buiten), "Acme/widgets")
     assert gate.in_scope(pc, str(project))[0] == "toetsen"
 
 
@@ -607,8 +625,8 @@ def test_main_body_file_bestaat_niet(project, monkeypatch, capsys):
     err = capsys.readouterr().err
     assert rc == 2
     assert str(project / "nope.md") in err
-    assert "pr-create-gate: GEBLOKKEERD" in err
-    assert "/paia-verify-pr" in err
+    assert "pr-create-gate: BLOCKED" in err
+    assert "/lighthouse-verify-pr" in err
 
 
 def test_main_geen_gh_pr_create(project, monkeypatch, capsys):
@@ -622,13 +640,13 @@ def test_main_open_quote(project, monkeypatch):
 
 def test_main_probleem_blokkeert(project, monkeypatch, capsys):
     assert _run_main(monkeypatch, project, "gh pr create --fill", project) == 2
-    assert "--fill levert geen toetsbare body" in capsys.readouterr().err
+    assert "--fill gives no body to check" in capsys.readouterr().err
 
 
 def test_main_no_issue_doorlaat(project, monkeypatch, capsys):
     cmd = "gh pr create --body 'No issue: alleen docs gewijzigd'"
     assert _run_main(monkeypatch, project, cmd, project) == 0
-    assert capsys.readouterr().out == "pr-create-gate: body getoetst — No issue\n"
+    assert capsys.readouterr().out == "pr-create-gate: body checked — No issue\n"
 
 
 def test_main_niet_letterlijke_repo_buiten_repo_blokkeert(
@@ -638,12 +656,12 @@ def test_main_niet_letterlijke_repo_buiten_repo_blokkeert(
     buiten.mkdir()
     cmd = "GH_REPO=\"$R\" gh pr create --body 'No issue: alleen docs gewijzigd'"
     assert _run_main(monkeypatch, project, cmd, buiten) == 2
-    assert "niet-letterlijke" in capsys.readouterr().err
+    assert "non-literal" in capsys.readouterr().err
 
 
 def test_main_andere_repo_overgeslagen(project, monkeypatch, capsys):
     assert _run_main(monkeypatch, project, "gh pr create -R x/y --fill", project) == 0
-    assert capsys.readouterr().out == "pr-create-gate: overgeslagen — andere repo x/y\n"
+    assert capsys.readouterr().out == "pr-create-gate: skipped — other repo x/y\n"
 
 
 def test_main_closes_doorlaat_met_telling(project, monkeypatch, capsys, tmp_path):
@@ -654,7 +672,7 @@ def test_main_closes_doorlaat_met_telling(project, monkeypatch, capsys, tmp_path
     rc = _run_main(monkeypatch, project, "gh pr create -F body.md", project)
     assert rc == 0
     assert capsys.readouterr().out == (
-        "pr-create-gate: body getoetst — Closes #9 (2 AC, 2 rijen)\n"
+        "pr-create-gate: body checked — Closes #9 (2 AC, 2 rows)\n"
     )
 
 
@@ -665,13 +683,13 @@ def test_main_closes_ac_mismatch_blokkeert(project, monkeypatch, capsys, tmp_pat
     (project / "body.md").write_text(closes_body(9, ROWS2), encoding="utf-8")
     rc = _run_main(monkeypatch, project, "gh pr create -F body.md", project)
     assert rc == 2
-    assert "3 acceptatiecriteria" in capsys.readouterr().err
+    assert "3 acceptance criteria" in capsys.readouterr().err
 
 
 def test_main_meerdere_creates_een_blokkade_blokkeert(project, monkeypatch, capsys):
     cmd = "gh pr create --body 'No issue: alleen docs gewijzigd'; gh pr create -t x"
     assert _run_main(monkeypatch, project, cmd, project) == 2
-    assert "geen body" in capsys.readouterr().err
+    assert "no body" in capsys.readouterr().err
 
 
 def test_main_terugval_zonder_gh_meldt_en_laat_door(
@@ -682,8 +700,8 @@ def test_main_terugval_zonder_gh_meldt_en_laat_door(
     (project / "body.md").write_text(closes_body(9, ROWS1), encoding="utf-8")
     assert _run_main(monkeypatch, project, "gh pr create -F body.md", project) == 0
     uit = capsys.readouterr().out
-    assert "body getoetst — Closes #9 (AC niet geteld, 1 rijen)" in uit
-    assert "AC-telling niet meetbaar voor #9 (gh ontbreekt)" in uit
+    assert "body checked — Closes #9 (AC not counted, 1 rows)" in uit
+    assert "AC count not measurable for #9 (gh is missing)" in uit
 
 
 @pytest.fixture(autouse=True)
@@ -720,7 +738,7 @@ def test_main_deadline_begrenst_trage_gh_terugval(
     assert rc == 0
     assert verstreken < 2.5
     for nr in (5, 6, 7):
-        assert f"AC-telling niet meetbaar voor #{nr} (deadline bereikt)" in uit
+        assert f"AC count not measurable for #{nr} (deadline reached)" in uit
 
 
 def test_main_deadline_laat_blokkade_van_eerder_doel_staan(
@@ -751,19 +769,19 @@ def test_main_deadline_git_blokkeert_luid(project, monkeypatch, capsys, tmp_path
     verstreken = time.monotonic() - start
     assert rc == 2
     assert verstreken < 2.5
-    assert "KON NIET CONTROLEREN" in capsys.readouterr().err
+    assert "COULD NOT CHECK" in capsys.readouterr().err
 
 
 def test_main_deadline_op_voor_git_blokkeert(project, monkeypatch, capsys):
     monkeypatch.setattr(gate, "DEADLINE_S", -1)
     rc = _run_main(monkeypatch, project, "gh pr create --body 'zie titel'", project)
     assert rc == 2
-    assert "KON NIET CONTROLEREN: deadline bereikt" in capsys.readouterr().err
+    assert "COULD NOT CHECK: deadline reached" in capsys.readouterr().err
 
 
 def test_fetch_ac_count_deadline_op(monkeypatch):
     monkeypatch.setattr(gate, "_deadline", time.monotonic() - 1)
-    assert gate.fetch_ac_count(5) == (None, "deadline bereikt")
+    assert gate.fetch_ac_count(5) == (None, "deadline reached")
 
 
 def test_cli_als_script(project, tmp_path):
@@ -772,7 +790,7 @@ def test_cli_als_script(project, tmp_path):
     import sys
 
     proc = subprocess.run(
-        [sys.executable, str(gate.__file__), str(project)],
+        [sys.executable, str(INSTALLED_LIB / "pr_body_gate.py"), str(project)],
         input="gh pr create --body 'No issue: alleen docs gewijzigd'",
         capture_output=True,
         text=True,
@@ -780,4 +798,45 @@ def test_cli_als_script(project, tmp_path):
         check=False,
     )
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout == "pr-create-gate: body getoetst — No issue\n"
+    assert proc.stdout == "pr-create-gate: body checked — No issue\n"
+
+
+# --- lighthouse: headings and locale --------------------------------------------
+
+
+@pytest.mark.parametrize("kop", ["### Acceptatiecriteria", "### Acceptance criteria"])
+def test_ac_heading_any_language(kop, tmp_path, monkeypatch):
+    """Een Nederlands issue in een Engelse repo telt zijn AC zoals een Engels issue."""
+    toml = tmp_path / "lighthouse.toml"
+    toml.write_text('[project]\nlanguage = "en"\n\n[forge]\nkind = "github"\nrepo = "Acme/widgets"\n')
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(toml))
+    assert gate.count_acs(f"{kop}\n- [ ] a\n- [x] b\n### Next\n- [ ] c") == 2
+
+
+def _git_speaks_german(where) -> bool:
+    proc = subprocess.run(
+        ["git", "-C", str(where), "rev-parse", "--git-common-dir"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "LANG": "de_DE.UTF-8", "LC_ALL": "", "LANGUAGE": ""},
+        check=False,
+    )
+    return proc.returncode != 0 and "not a git repository" not in proc.stderr
+
+
+def test_not_a_git_repository_under_other_locale(tmp_path, project, monkeypatch):
+    """Onder een andere taal blijft een map buiten git `buiten deze repo` (inventaris §2.12).
+
+    Git levert geen Nederlandse vertaling; Duits laat dezelfde fout zien.
+    """
+    buiten = tmp_path / "buiten"
+    buiten.mkdir()
+    if not _git_speaks_german(buiten):
+        pytest.skip("git spreekt hier geen Duits (geen de_DE-locale of vertaling)")
+    monkeypatch.setenv("LANG", "de_DE.UTF-8")
+    monkeypatch.setenv("LC_ALL", "")
+    monkeypatch.setenv("LANGUAGE", "")
+    assert gate.in_scope(_pc(str(buiten)), str(project)) == (
+        "overslaan",
+        "skipped — outside this repo",
+    )

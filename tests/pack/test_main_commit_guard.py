@@ -9,6 +9,8 @@ import json
 import os
 import shutil
 import subprocess
+
+import pytest
 from pathlib import Path
 
 from tests.pack._testkit import GUARD, bash_payload, init_repo, install_core, run_hook
@@ -1276,3 +1278,23 @@ def test_guard_with_broken_config_blocks_a_commit_but_not_a_plain_command(tmp_pa
     assert commit.returncode == 2
     assert "COULD NOT CHECK" in commit.stderr and "lighthouse.toml" in commit.stderr
     assert _run(COMMIT_GUARD, _bash("ls -la", repo), repo, env).returncode == 0
+
+
+def test_guard_reads_not_a_repo_under_other_locale(tmp_path):
+    """Git under another language still means 'not a repo' (inventaris §2.12)."""
+    repo = tmp_path / "repo"
+    _init_repo(repo, branch="issue-1-x")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    env = {"LANG": "de_DE.UTF-8", "LC_ALL": "", "LANGUAGE": ""}
+    probe = subprocess.run(
+        ["git", "-C", str(outside), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, **env),
+        check=False,
+    )
+    if "not a git repository" in probe.stderr:
+        pytest.skip("git speaks no German here")
+    result = _run(COMMIT_GUARD, _bash(f"git -C {outside} commit -m x", repo), repo, env)
+    assert result.returncode == 0, result.stderr
