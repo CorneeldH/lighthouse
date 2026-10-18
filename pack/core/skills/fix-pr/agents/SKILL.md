@@ -1,44 +1,42 @@
 ---
-name: paia-fix-pr
-description: 'Use when an existing pull request in CorneeldH/personal_ai_agent is red or has merge conflicts, or when a green PR carries an unprocessed roborev review comment (findings without a `roborev-verwerkt` marker) — "fix pr 596", "fix 595", "612 heeft conflicts, fix die", "627 pr heeft errors", "PR 585 is rood". Opent met één vaste diagnose (status, checks, faallog, worktree) en werkt in de worktree van de head-branch. LET OP — deze skill stopt zodra de PR groen is (en een roborev-review verwerkt is): het sluiten van het issue is paia-close-issue, een inhoudelijke review van de diff is caveman-review, en nieuw werk aan een issue beginnen is paia-start-issue. Niet gebruiken voor een PR die alleen nog gemerged hoeft te worden.'
+name: lighthouse-fix-pr
+description: 'Use when an existing pull request in this repo is red or has merge conflicts, or when a green PR carries an unprocessed roborev review comment (findings without a `roborev-verwerkt` marker) — "fix pr 596", "fix 595", "612 has conflicts, fix it", "627 pr has errors", "PR 585 is red". Opens with one fixed diagnosis (status, checks, failure log, worktree) and works in the worktree of the head branch. NOTE — this skill stops as soon as the PR is green (and a roborev review is processed): closing the issue is lighthouse-close-issue, a review of the diff on content is caveman-review, and starting new work on an issue is lighthouse-start-issue. Do not use for a PR that only needs merging.'
 metadata:
   binding: default
   origin: own
-  domain: factory
 ---
 
 # Fix PR Skill
 
-Van "fix 596" naar een groene PR. De skill voegt geen kunde toe — hij vervangt de aanloop, die in
-acht gemeten beurten steeds dezelfde vier vragen stelde in vijf tot acht losse calls.
+From "fix 596" to a green PR. The skill adds no skill — it replaces the run-up, which in eight
+measured turns asked the same four questions in five to eight separate calls.
 
-Ontwerp en nulmeting: `docs/developer/planning/plans/2026-08-29-paia-fix-pr.md`.
+## Domain
 
-## Domein
+In scope: an **existing** PR in this repo (`forge.repo`) that is red or conflicts — diagnosis, the
+worktree of the head branch, the fix, getting it green.
 
-Hieronder valt: een **bestaande** PR in `CorneeldH/personal_ai_agent` die rood staat of
-conflicteert — diagnose, de worktree van de head-branch, de fix, groen krijgen.
+Second entry: a **green** PR with an unprocessed roborev review (section 6, only if present) —
+the controller (if present) starts the skill for it, or you say "process the roborev review on
+1407".
 
-Tweede ingang: een **groene** PR met een onverwerkte roborev-review (sectie 6) — de controller
-start de skill daarvoor, of jij zegt "verwerk de roborev-review op 1407".
+Not here: closing the issue (`/lighthouse-close-issue`), a review of the diff on content (a review
+skill such as `caveman:caveman-review`), starting new work on an issue (`/lighthouse-start-issue`),
+opening a PR (`/lighthouse-verify-pr`), and the merge itself — that is a human decision.
 
-Hier niet: het issue sluiten (`/paia-close-issue`), een inhoudelijke review van de diff
-(`/caveman-review`), nieuw werk aan een issue beginnen (`/paia-start-issue`), een PR openen
-(`/engineering-workflow-skills:pr`), en het mergen zelf — dat is een mensbeslissing.
+## 1. Diagnosis in one block
 
-## 1. Diagnose in één blok
-
-Eén Bash-call, read-only, buiten de sandbox. Vervang `<nr>`.
+One Bash call, read-only, outside the sandbox. Replace `<nr>`.
 
 ```bash
 set -uo pipefail
 N=<nr>
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 
 PR=$(gh pr view "$N" --repo "$R" --json number,title,state,isDraft,mergeable,mergeStateStatus,headRefName,url 2>&1)
 RC=$?
 if [ "$RC" -ne 0 ]; then
-  echo "geen PR #$N — is het een issue? gh zei: $PR"
+  echo "no PR #$N — is it an issue? gh said: $PR"
   exit 1
 fi
 printf '%s' "$PR" | jq -r '"PR #\(.number) [\(.state)] draft=\(.isDraft) merge=\(.mergeable)/\(.mergeStateStatus)\nbranch \(.headRefName)\n\(.url)\n\(.title)"'
@@ -48,212 +46,199 @@ echo "=== checks ==="
 gh pr checks "$N" --repo "$R" || true
 
 if [ -z "$B" ] || [ "$B" = "null" ]; then
-  echo "geen headRefName in de PR-JSON — stop hier"
+  echo "no headRefName in the PR JSON — stop here"
   exit 1
 fi
 
 echo "=== worktree ==="
-git worktree list | grep -F -- "[$B]" || echo "GEEN worktree op $B"
+git worktree list | grep -F -- "[$B]" || echo "NO worktree on $B"
 
-echo "=== faallog ==="
+echo "=== failure log ==="
 RUNS=$(gh pr checks "$N" --repo "$R" --json bucket,link --jq '.[] | select(.bucket=="fail") | .link' 2>/dev/null | grep -oE 'runs/[0-9]+' | cut -d/ -f2 | sort -u)
 if [ -z "$RUNS" ]; then
-  echo "geen fail-check — rood is dan een conflict, een pending check of een niet-gestarte run"
+  echo "no fail check — red is then a conflict, a pending check or a run that did not start"
 fi
 for r in $RUNS; do
   echo "--- run $r ---"
   gh run view "$r" --repo "$R" --log-failed 2>&1 \
     | grep -aE '##\[error\]|FAILED | E {2,}|Process completed with exit code|Error: ' \
-    | tail -15 || echo "geen faalregel gevonden — zie 'Een rode job zonder gefaalde test'"
+    | tail -15 || echo "no failure line found — see 'A red job without a failed test'"
 done
 
 echo "=== roborev ==="
-RB=$(gh api "repos/$R/issues/$N/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' 2>/dev/null) \
-  && RB=$(printf '%s\n' "$RB" | tail -1 | jq -r '. // empty' 2>/dev/null) || RB=""
-VW=$(gh api "repos/$R/issues/$N/comments" --paginate --jq '.[] | .body | split("\n")[] | select(contains("<!-- roborev-verwerkt:"))' 2>/dev/null) || VW=""
-[ -n "$RB" ] && printf '%s\n' "$RB" || echo "geen roborev-comment"
-[ -n "$VW" ] && printf '%s\n' "$VW" || echo "geen roborev-verwerkt-marker"
+if test -e .roborev.toml; then
+  RB=$(gh api "repos/$R/issues/$N/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' 2>/dev/null) \
+    && RB=$(printf '%s\n' "$RB" | tail -1 | jq -r '. // empty' 2>/dev/null) || RB=""
+  VW=$(gh api "repos/$R/issues/$N/comments" --paginate --jq '.[] | .body | split("\n")[] | select(contains("<!-- roborev-verwerkt:"))' 2>/dev/null) || VW=""
+  [ -n "$RB" ] && printf '%s\n' "$RB" || echo "no roborev comment"
+  [ -n "$VW" ] && printf '%s\n' "$VW" || echo "no roborev-verwerkt marker"
+else
+  echo "roborev: skipped — no .roborev.toml"
+fi
 ```
 
-Het `=== roborev ===`-deel toont de **volledige** body van de laatste roborev-comment, niet alleen
-kop en verdict: sectie 6 werkt per bevinding (pad, regel, severity), en een controller-run krijgt
-alleen het PR-nummer mee. Elke comment gaat als één `@json`-regel door `--paginate`, zodat
-`tail -1` over paginagrenzen heen de laatste pakt.
+The `=== roborev ===` part runs only if present (a `.roborev.toml` in the repo root) and shows the
+**full** body of the last roborev comment, not only heading and verdict: section 6 works per
+finding (path, line, severity), and a controller run (if present) gets only the PR number. Every
+comment goes as one `@json` line through `--paginate`, so `tail -1` takes the last one across page
+boundaries.
 
-Vier dingen in dit blok zijn gemeten, geen smaak (het `=== roborev ===`-deel volgt dezelfde `|| echo`-regel):
+Four things in this block are measured, not taste (the `=== roborev ===` part follows the same `|| echo` rule):
 
-- **Een guard direct na `gh pr view`.** Faalt die call — `<nr>` was een issue, geen PR — dan stopt
-  het blok met een boodschap in plaats van door te lezen met een lege `$B`: zonder guard matcht een
-  lege `grep -F -- ""` daarna elke regel, en het faallog-deel meldt ten onrechte "geen fail-check".
-- **`|| true` achter `gh pr checks`.** Die geeft exit 1 bij falende en exit 8 bij pending checks.
-  Zonder de guard breekt het blok af in precies het geval waarvoor het bedoeld is.
-- **`grep` op de foutmarkeringen, niet `tail -60`.** Gemeten op run `33113954058`: het log is
-  8.284 regels, de gefaalde test staat op regel 2.141, en de laatste 60 regels zijn
-  `Post job cleanup`. De grep gaf op datzelfde log vier regels, met de oorzaak erin.
-- **Elke zoekende stap heeft een `|| echo`-tak.** Een grep die niets vindt geeft exit 1, en met
-  `pipefail` leest "geen output" dan als "gecrasht".
+- **A guard right after `gh pr view`.** If that call fails — `<nr>` was an issue, not a PR — the
+  block stops with a message instead of reading on with an empty `$B`: without a guard an empty
+  `grep -F -- ""` afterwards matches every line, and the failure-log part wrongly reports "no fail
+  check".
+- **`|| true` after `gh pr checks`.** That gives exit 1 on failing and exit 8 on pending checks.
+  Without the guard the block breaks off in exactly the case it is meant for.
+- **`grep` on the error markers, not `tail -60`.** Measured on one run: the log was 8,284 lines,
+  the failed test was on line 2,141, and the last 60 lines were `Post job cleanup`. The grep gave
+  four lines on that same log, with the cause in them.
+- **Every searching step has an `|| echo` branch.** A grep that finds nothing gives exit 1, and
+  with `pipefail` "no output" then reads as "crashed".
 
-## 2. Werk in de worktree van de head-branch
+## 2. Work in the worktree of the head branch
 
-Nooit in de hoofdcheckout, en niet in een verse worktree vanaf `main`: het werk hoort op de
-head-branch van de PR. `EnterWorktree` en `superpowers:using-git-worktrees` maken een **nieuwe**
-branch vanaf `origin/main` en zijn hier dus verkeerd.
+Never in the main checkout, and not in a fresh worktree from the default branch: the work belongs
+on the head branch of the PR. `EnterWorktree` and `superpowers:using-git-worktrees` make a **new**
+branch from `origin/<default branch>` and are therefore wrong here.
 
 ```bash
 B=<head-branch>
 ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 WT="$ROOT/.claude/worktrees/$(printf '%s' "$B" | tr / -)"
 if git worktree list --porcelain | grep -qxF "branch refs/heads/$B"; then
-  git worktree list --porcelain | grep -B2 -xF "branch refs/heads/$B" | head -1   # bestaat al
+  git worktree list --porcelain | grep -B2 -xF "branch refs/heads/$B" | head -1   # exists already
 elif git rev-parse --verify --quiet "$B" >/dev/null; then
   git worktree add "$WT" "$B"
 else
   git fetch origin "$B" && git worktree add "$WT" --track -b "$B" "origin/$B" \
-    || echo "kon $B niet vinden op origin — bestaat de branch nog wel op de remote?"
+    || echo "could not find $B on origin — does the branch still exist on the remote?"
 fi
 ```
 
-`ROOT` is de hoofdcheckout, ook als dit blok binnen een andere worktree draait: `--git-common-dir`
-wijst altijd naar de gedeelde `.git`, nooit naar die van de worktree zelf. Zonder die ankering
-maakt `git worktree add` een geneste worktree onder de huidige worktree, waar opruimregels niet
-kijken. De `-x` op beide `grep`'s matcht de hele regel, niet een substring: `refs/heads/issue-664`
-matcht anders ook `refs/heads/issue-664-fix-pr-skill`.
+`ROOT` is the main checkout, also when this block runs inside another worktree: `--git-common-dir`
+always points at the shared `.git`, never at the worktree's own. Without that anchoring
+`git worktree add` makes a nested worktree under the current worktree, where cleanup rules do not
+look. The `-x` on both `grep`s matches the whole line, not a substring: `refs/heads/issue-664`
+otherwise also matches `refs/heads/issue-664-fix-pr-skill`.
 
-Prefix daarna **elk** commando met `cd <worktree>` of `git -C <worktree>`. De cwd van de
-persistente shell drift midden in een sessie terug naar de hoofdcheckout, en een `sed -i` raakt
-dan zonder waarschuwing de verkeerde boom.
+Then prefix **every** command with `cd <worktree>` or `git -C <worktree>`. The cwd of the
+persistent shell drifts back to the main checkout in the middle of a session, and a `sed -i` then
+hits the wrong tree without warning.
 
-## 3. De gates, en hoe je ze lokaal reproduceert
+## 3. The gates, and how to reproduce them locally
 
-Sinds #1016 is er één job, `ci`, op twee Beelink-runners; de rij-labels hieronder zijn de
-stapnamen in die job (`.github/workflows/ci.yml`), niet losse jobs.
+The red checks are steps of the CI workflows in `.github/workflows/`; the step name says which
+gate failed.
 
-| Rode check | Wat er faalt | Lokaal reproduceren |
+| Red check | What fails | Reproduce locally |
 |---|---|---|
-| `ci` — Unit tests | pytest, CI-selectie | `uv run pytest tests/unit/ -m 'not slow and not hardware_audio' -n 4 --tb=short` |
-| `ci` — Quality ratchet (ruff) | een ruff-teller in `quality-baseline.toml` liep op | `uv run python scripts/quality/ratchet.py ruff` |
-| `ci` — REUSE lint | licentiekop of `REUSE.toml` klopt niet | `uvx reuse@6.2.0 lint` |
-| `ci` — Type-check src/ | `ty` op `src/` | `uv sync --extra all --group dev` daarna `uv run --no-sync ty check src/` |
-| `ci` — Audit workflows | zizmor / ongepinde action in `.github/workflows/**` | `bash scripts/hooks/workflow-audit.sh` |
-| `ci` — Scan working tree | gitleaks op de werkboom | `gitleaks detect --no-git --source . --config .gitleaks.toml --redact --no-banner` |
-| `cla` | ondertekening ontbreekt | **niet lokaal** — de bijdrager moet zelf tekenen |
-| `Expo apps` — `expo-doctor` | patch-drift in de Expo-lockfiles | `/paia-refresh-expo-lockfiles` |
+| Tests | the test command of the repo | `python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command` prints it; run it with `bash -c` (rc 1: no test command configured, read it from the workflow) |
+| Quality ratchet (ruff) | a ruff counter in the baseline went up; pack/python, only if present | `test -e .lighthouse/scripts/quality/ratchet.py && uv run python .lighthouse/scripts/quality/ratchet.py ruff` |
+| Expo lockfiles | patch drift in the Expo lockfiles; pack/expo, only if present | `/lighthouse-refresh-expo-lockfiles` |
+| Any other step | lint, type check, scan, licence | the command of that step in `.github/workflows/`; a step that cannot run locally (a signature) the contributor fixes themselves |
 
-Geen diff-coverage-rij meer: die oordeelt sinds #1016 's nachts per gemergde PR
-(`nightly-tests.yml` → `ratchet.py nightly`), niet meer op de PR.
+Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/bash-write-gates.sh`
+(per edit, with the gates of the language packs that are installed),
+`.claude/hooks/lighthouse/pre-commit-tests.sh` (per commit) and a pre-push hook, if present
+(`test -x "$(git rev-parse --git-path hooks/pre-push)"`).
+`.claude/hooks/lighthouse/main-commit-guard.sh` blocks a commit that lands on the default branch.
 
-Zes gates zitten vóór CI en breken de push, niet de PR: de ruff-`BLOCKING_RULES` uit
-`.claude/hooks/ruff-format.sh` (per edit), `.claude/hooks/shellcheck.sh` (per bewerkt `*.sh`), en
-de vier consumenten van `scripts/hooks/pre-push.sh` — `pre-push-checkpoint-scan.sh`,
-`pre-push-workflow-audit.sh`, `pre-push-quality.sh` en `pre-push-instructielagen.sh` (#686 taak 8).
-`main-commit-guard.sh` blokkeert een commit die op `main` uitkomt.
+**With pack/python (if present): a `ty` zero without extras is no zero.** A module `ty` cannot
+resolve makes *every* symbol from it `Unknown`, and on `Unknown` no type error is possible. Always
+report with which extras you measure.
 
-**Een `ty`-nul zonder extras is geen nul.** Een module die `ty` niet kan resolven maakt élk symbool
-eruit `Unknown`, en op `Unknown` is geen typefout mogelijk. Meld altijd mét welke extras je meet.
+## 4. A red job without a failed test
 
-**Dependabot-PR's lopen anders.** Een `runs-on`-ternary stuurt dezelfde job `ci` naar
-`ubuntu-latest`; de stappen `Install gitleaks`, `Type-check src/`, `Audit workflows` en
-`Scan working tree` (en hun verify-gates) slaan over. Coverage staat sowieso niet meer op de
-PR — dat oordeelt de nightly. Een `apps/**`-only PR draait de job nog wel, maar slaat de
-Python-stappen over (de padstap zet `python=false`).
-
-## 4. Een rode job zonder gefaalde test
-
-Sloopt een host-brede OOM de Beelink-runner, dan faalt de job zonder dat één test faalde.
-Herkenning: in
-`R=$(uv run python -m src.controller.identity repo) && gh api "repos/$R/actions/runs/<id>/jobs"` staat de
-pytest-stap op `"completed_at": null` terwijl de job `failure` is, en het log is leeg of 404't.
-Bevestigen:
+If a host-wide OOM kills a self-hosted runner, the job fails without a single test failing.
+Recognition: in
+`R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/actions/runs/<id>/jobs"` the
+test step is at `"completed_at": null` while the job is `failure`, and the log is empty or 404s.
+Confirm:
 
 ```bash
-journalctl -k --since <tijd> | grep -i "Killed process"
+journalctl -k --since <time> | grep -i "Killed process"
 ```
 
-Je zoekt `Killing process <pid> (Runner.Worker)` en `Out of memory: Killed process <pid> (pytest)`.
-Draai dan de CI-selectie lokaal; groen daar plus een stap zonder `completed_at` betekent OOM. De
-fix is `gh run rerun <id> --failed`, geen codewijziging.
+You look for `Killing process <pid> (Runner.Worker)` and `Out of memory: Killed process <pid> (pytest)`.
+Then run the CI selection locally; green there plus a step without `completed_at` means OOM. The
+fix is `gh run rerun <id> --failed`, not a code change.
 
-## 5. Push in één keer, en stop bij groen
+## 5. Push once, and stop at green
 
-Werk door op de branch en push pas als het af is. Elke push naar een open PR start een volledige
-nieuwe check-ronde (CI draait alléén op PR's), dus "even tussendoor bijwerken" kost een hele
-runner-cyclus en maakt de checks-historie onleesbaar. Uitzondering: een fix op een *rode* check —
-die hoort er wél meteen op.
+Keep working on the branch and push only when it is done. Every push to an open PR starts a full
+new round of checks, so "a quick update in between" costs a whole runner cycle and makes the check
+history unreadable. Exception: a fix on a *red* check — that one does belong on it right away.
 
-Zodra `gh pr checks <nr>` groen is en `mergeable` op `MERGEABLE` staat: **melden en stoppen**.
-Niet mergen, niet reviewen, niet het issue sluiten. Dat "stop bij groen" geldt niet zolang
-sectie 6 openstaat: een groene PR met een onverwerkte roborev-review is nog niet af.
+As soon as `gh pr checks <nr>` is green and `mergeable` is `MERGEABLE`: **report and stop**.
+Do not merge, do not review, do not close the issue. That "stop at green" does not hold while
+section 6 is open: a green PR with an unprocessed roborev review is not done yet.
 
-## 6. Roborev-review verwerken
+## 6. Process a roborev review (only if present)
 
-Alleen als de checks groen zijn, het verdict in `=== roborev ===` `Changes require fixes` is en er
-voor die SHA geen `roborev-verwerkt`-regel staat. Eén ronde, niet meer:
+Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `=== roborev ===` is
+`Changes require fixes` and there is no `roborev-verwerkt` line for that SHA. One round, no more:
 
-1. Werk in de worktree van de head-branch (sectie 2).
-2. Volg per bevinding `superpowers:receiving-code-review`: fixen en committen, of weerleggen met
-   een reden. Lees de severity kritisch: in #1015 vond de gebruiker 3 van de 4 getoetste
-   `high`-bevindingen geen `high` (`experiments/roborev-retro/REPORT.md`, *Kalibratie*). Neem
-   high en medium serieus. Fix een low alleen als dat triviaal is.
-3. Push één keer (sectie 5) — alleen als er iets te pushen is. Weerleg je álle bevindingen, dan
-   is er niets te pushen en sla je deze stap over.
-4. Post **altijd** één antwoord-comment, ook als je niets pushte en ook als je elke bevinding
-   weerlegde: de marker is het enige signaal waarmee de controller de ronde als af ziet. Zonder
-   marker geeft hij het issue terug, of start hij na een push nog een fix-pr-run (maximaal drie).
-   `R=$(uv run python -m src.controller.identity repo) && gh pr comment <nr> --repo "$R" --body-file <bestand>`. Bovenaan staat
-   de marker `<!-- roborev-verwerkt: <sha> -->`, met `<sha>` letterlijk uit de kop
-   `` ## roborev: Review Complete (`<sha>`) `` (of `Combined Review`, zelfde vorm). Daaronder een tabel met de kolommen *bevinding
-   (pad:regel)*, *severity* en *uitkomst*. De uitkomst is `gefixt in <commit>`,
-   `weerlegd: <reden>` of `gelaten: low, niet triviaal`.
-5. Stop — de marker staat er dan, ook bij een ronde zonder push. Geen nieuwe review aanvragen
-   (geen sluiten en heropenen) en geen `roborev fix` of `roborev refine`. Een nieuwe review vraagt
-   de gebruiker zelf aan.
+1. Work in the worktree of the head branch (section 2).
+2. Follow `superpowers:receiving-code-review` per finding: fix and commit, or refute with
+   a reason. Read the severity critically: in one calibration the user found 3 of 4 tested
+   `high` findings not `high`. Take high and medium seriously. Fix a low only if that is trivial.
+3. Push once (section 5) — only if there is something to push. If you refute *all* findings,
+   there is nothing to push and you skip this step.
+4. Post **always** one answer comment, also if you pushed nothing and also if you refuted every
+   finding: the marker is the only signal by which the controller (if present) sees the round as
+   done. Without the marker it returns the issue, or after a push it starts another fix-pr run (at
+   most three).
+   `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh pr comment <nr> --repo "$R" --body-file <file>`. At the top is
+   the marker `<!-- roborev-verwerkt: <sha> -->`, with `<sha>` literally from the heading
+   `` ## roborev: Review Complete (`<sha>`) `` (or `Combined Review`, same form). Below it a table with the columns *finding
+   (path:line)*, *severity* and *outcome*. The outcome is `fixed in <commit>`,
+   `refuted: <reason>` or `left: low, not trivial`.
+5. Stop — the marker is there then, also for a round without a push. Request no new review
+   (no close and reopen) and no `roborev fix` or `roborev refine`. The user requests a new review
+   themselves.
 
 ## Non-negotiable
 
-- ✅ De diagnose is één Bash-call · ❌ vier losse verkennende calls
-- ✅ Read-only diagnose, mutatie pas daarna · ❌ `git rebase` in hetzelfde blok als de diagnose
-- ✅ Werken in de worktree van de head-branch · ❌ in de hoofdcheckout, of in een verse worktree vanaf `main`
-- ✅ `git worktree add <pad> --track -b <b> origin/<b>` · ❌ `EnterWorktree` (maakt een nieuwe branch vanaf `main`)
-- ✅ `gh` buiten de sandbox · ❌ zonder — Go's TLS ligt er dan uit
-- ✅ Grep op de foutmarkeringen · ❌ `--log-failed | tail -60` (mist de fout)
-- ✅ De gate lokaal reproduceren vóór je pusht · ❌ pushen en kijken wat CI zegt
-- ✅ Stoppen zodra de PR groen is · ❌ doorlopen in review, merge of `close-issue`
-- ✅ Faalt een gate op code: fix de code · ❌ de config versoepelen of `--no-verify`
-- ✅ Eén verwerkronde met altijd een marker-comment · ❌ een re-review aanvragen of `roborev fix`/`roborev refine`
+- ✅ The diagnosis is one Bash call · ❌ four separate exploring calls
+- ✅ Read-only diagnosis, mutation only after it · ❌ `git rebase` in the same block as the diagnosis
+- ✅ Work in the worktree of the head branch · ❌ in the main checkout, or in a fresh worktree from the default branch
+- ✅ `git worktree add <path> --track -b <b> origin/<b>` · ❌ `EnterWorktree` (makes a new branch from the default branch)
+- ✅ `gh` outside the sandbox · ❌ without — Go's TLS is out then
+- ✅ Grep on the error markers · ❌ `--log-failed | tail -60` (misses the error)
+- ✅ Reproduce the gate locally before you push · ❌ push and see what CI says
+- ✅ Stop as soon as the PR is green · ❌ go on into review, merge or `close-issue`
+- ✅ If a gate fails on code: fix the code · ❌ loosen the config or `--no-verify`
+- ✅ One processing round with always a marker comment · ❌ request a re-review or `roborev fix`/`roborev refine`
 
 ## KPIs
 
-| Metric | Nu | Target | Meting |
-|---|---:|---:|---|
-| Tool-calls tussen fixprompt en de eerste muterende call | mediaan 4 (n=9) | ≤ 2 | `uv run python scripts/measure_fix_pr_kpi.py leadin` |
-| Read-only `gh`/`git`-diagnosecalls vóór die mutatie | mediaan 3,0 (n=10) | ≤ 1 | `uv run python scripts/measure_fix_pr_kpi.py diagnose` |
-| Beurten waarin deze skill laadde zonder fixverzoek in de prompt | — | 0 | `uv run python scripts/measure_fix_pr_kpi.py mistrigger` |
-| Beurten waarin de skill doorliep in `paia-close-issue` of `caveman-review` | — | 0 | `uv run python scripts/measure_fix_pr_kpi.py scope` |
+| Metric | Target | Measurement |
+|---|---:|---|
+| Tool calls between fix prompt and the first mutating call | ≤ 2 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py leadin` |
+| Read-only `gh`/`git` diagnosis calls before that mutation | ≤ 1 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py diagnose` |
+| Turns in which this skill loaded without a fix request in the prompt | 0 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py mistrigger` |
+| Turns in which the skill ran on into `lighthouse-close-issue` or `caveman-review` | 0 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py scope` |
 
-Rij 1 en 2 dragen de gemeten cijfers uit `scripts/measure_fix_pr_kpi.py` (n=9 resp. n=10), niet de
-5-7 uit het issue: dat laatste was een schatting. Acht gemeten beurten lagen aan de basis van het
-ontwerp; het script telde er bij de definitieve meting negen respectievelijk tien — het script is
-de bron, niet de tekst.
+The script is the source of the numbers, not this text.
 
-Rij 3 is de rekening van de ambient-keuze. Zonder die rij is "scherpe negatieve grens" een
-bewering; met die rij is het een getal dat bij de volgende meting oploopt of niet.
+Row 3 is the bill for the ambient choice. Without that row "a sharp negative boundary" is a claim;
+with that row it is a number that rises at the next measurement or does not.
 
-Rij 4 is AC 7 als getal. Hij ziet alleen een `Skill`-call; een review die met de hand in dezelfde
-beurt gebeurt telt niet mee.
+Row 4 sees only a `Skill` call; a review done by hand in the same turn does not count.
 
-## Bekende valkuilen
+## Known pitfalls
 
-- **`gh pr checks` geeft exit 8 bij pending checks**, niet 0. Een blok met `set -e` valt daarop om.
-- **`gh issue view <nr>` en `gh pr view <nr>` delen de nummerruimte niet.** Een "fix 596" kan een
-  issue of een PR bedoelen; `gh pr view` is de test. In de acht gemeten beurten was het steeds
-  een PR.
-- **`gh issue list --json` breekt onder de rtk-proxy.** Gebruik `gh api`.
-- **Een merge-conflict geeft geen fail-check.** `mergeStateStatus: DIRTY` is het signaal; het
-  faallog-deel van het diagnoseblok blijft dan leeg en dat is correct.
-- **Links: in chat absoluut, in bestanden relatief.** In een chat-antwoord moet een link naar
-  een bestand dat alleen op de branch bestaat het volledige absolute worktree-pad dragen: de
-  IDE resolvet chatlinks tegen de hoofdcheckout. In een `.md`-bestand juist relatief;
-  `worktree-linkcheck.sh` blokkeert daar een absoluut pad.
-- **De vault heeft geen `.git`.** Raakt de PR een vaultbestand, dan is `git status` daar zinloos.
-- **De permission-classifier weigert in auto-mode `git worktree unlock` en `git worktree remove`
-  op een gelockte worktree.** Ruim dan niet op; meld het.
+- **`gh pr checks` gives exit 8 on pending checks**, not 0. A block with `set -e` falls over on it.
+- **`gh issue view <nr>` and `gh pr view <nr>` do not share the number space.** A "fix 596" can mean
+  an issue or a PR; `gh pr view` is the test. In the eight measured turns it was always a PR.
+- **`gh issue list --json` breaks under the rtk proxy.** Use `gh api`.
+- **A merge conflict gives no fail check.** `mergeStateStatus: DIRTY` is the signal; the
+  failure-log part of the diagnosis block stays empty then and that is correct.
+- **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
+  only on the branch must carry the full absolute worktree path: the IDE resolves chat links
+  against the main checkout. In a `.md` file, relative instead;
+  `.claude/hooks/lighthouse/worktree-linkcheck.sh` blocks an absolute path there.
+- **In auto mode the permission classifier refuses `git worktree unlock` and `git worktree remove`
+  on a locked worktree.** Do not clean up then; report it.

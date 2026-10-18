@@ -50,7 +50,6 @@ ALLOWED_EXTERNAL = {
 # them. A skill leaves this set in the commit that adds it (test_planned_skills_absent);
 # the set is empty when PR 4 is done.
 PLANNED = {
-    "fix-pr",
     "close-issue",
     "spec-adversarial-review",
     "plan-adversarial-review",
@@ -61,7 +60,7 @@ PLANNED = {
 
 # An installed path in a skill -> where it lives in pack/core.
 _PATH_REFS = (
-    (re.compile(r"\.lighthouse/scripts/([\w.-]+)"), lambda m: CORE / "scripts" / m[1]),
+    (re.compile(r"\.lighthouse/scripts/([\w./-]*\w)"), lambda m: CORE / "scripts" / m[1]),
     (
         re.compile(r"\.lighthouse/lib/lighthouse_lib/(\w+)\.py"),
         lambda m: CORE / "lib" / f"{m[1]}.py",
@@ -134,14 +133,22 @@ def test_frontmatter_name(unit):
         assert name == f"lighthouse-{_unit_name(unit)}", f"{f}: name is {name!r}"
 
 
+def _guarded(para: str) -> bool:
+    """A paragraph that names a unit of another package only "if present" (Kruisverwijzingen)."""
+    return "if present" in " ".join(para.split()).lower()
+
+
 @pytest.mark.parametrize("unit", UNITS)
 def test_referenced_files_exist(unit):
+    """Every installed path a unit names exists in pack/core, unless the paragraph names a file
+    of another package (a language pack) "if present"."""
     missing = []
     for rel, text in _texts(unit).items():
-        for regex, target in _PATH_REFS:
-            for m in regex.finditer(text):
-                if not target(m).is_file():
-                    missing.append(f"{rel}: {m[0]}")
+        for para in re.split(r"\n\s*\n", text):
+            for regex, target in _PATH_REFS:
+                for m in regex.finditer(para):
+                    if not target(m).is_file() and not _guarded(para):
+                        missing.append(f"{rel}: {m[0]}")
     assert not missing, "\n".join(missing)
 
 
@@ -175,9 +182,10 @@ def test_skill_links_resolve(unit):
     known = {p.name for p in _skill_dirs()} | PLANNED
     bad = []
     for rel, text in _texts(unit).items():
-        for m in _LIGHTHOUSE_SKILL_RE.finditer(text):
-            if m[1] not in known:
-                bad.append(f"{rel}: /lighthouse-{m[1]}")
+        for para in re.split(r"\n\s*\n", text):
+            for m in _LIGHTHOUSE_SKILL_RE.finditer(para):
+                if m[1] not in known and not _guarded(para):
+                    bad.append(f"{rel}: /lighthouse-{m[1]}")
         for regex in _EXTERNAL_SKILL_RES:
             for m in regex.finditer(text):
                 name = m[1]

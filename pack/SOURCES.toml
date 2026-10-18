@@ -220,3 +220,13 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/skills/verify-pr/SKILL.md"
 source_path = [".claude/skills/paia-verify-pr/SKILL.md", ".agents/skills/paia-verify-pr/SKILL.md"]
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/fix-pr/claude/SKILL.md"
+source_path = ".claude/skills/paia-fix-pr/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/fix-pr/agents/SKILL.md"
+source_path = ".agents/skills/paia-fix-pr/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
