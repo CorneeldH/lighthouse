@@ -1,178 +1,175 @@
 ---
-name: paia-plan-adversarial-review
-description: Laat een implementatieplan adversarieel reviewen door een agent uit een ándere modelfamilie (Codex, read-only, schone context) tegen de spec en de repo — ronde 1 een executability-review, daarna alleen scoped verificatie van de fixes. Gebruik na het committen van een plan en vóór subagent-driven-development. Triggers - /paia-plan-adversarial-review, "review dit plan", "tweede paar ogen op het plan". LET OP — een spec reviewen is paia-spec-adversarial-review; een diff reviewen is caveman-review.
-metadata:
-  domain: factory
+name: lighthouse-plan-adversarial-review
+description: 'Has an implementation plan reviewed adversarially by an agent from a different model family (Codex, read-only, clean context) against the spec and the repo — round 1 an executability review, after that only scoped verification of the fixes. Use after committing a plan and before subagent-driven-development. Triggers - /lighthouse-plan-adversarial-review, "review this plan", "second pair of eyes on the plan". NOTE — reviewing a spec is lighthouse-spec-adversarial-review; reviewing a diff is code-review.'
 ---
 
 # Plan Adversarial Review
 
-Tweede paar ogen op een plan vóór SDD het zonder jou uitvoert. Jij blijft operator: de
-reviewer levert bevindingen, jíj beslist wat er echt is; de gebruiker alleen waar de spec
-in het geding is (stap 6).
+A second pair of eyes on a plan before SDD executes it without you. You stay the operator: the
+reviewer delivers findings, *you* decide what is real; the user only where the spec is at
+stake (step 6).
 
-## Waarom deze skill bestaat
+## Why this skill exists
 
-De lekmeting (#970, `experiments/lekmeting-keten/REPORT.md`): van de 28 lekken hoorden er 21
-in het plan gezien te worden. Sinds superpowers 6.3.0 beslist de SDD-controller conflicten
-zelf en logt hij ze als `Ruling:` in de ledger; een slecht plan wordt dan een stapel rulings
-die de gebruiker pas bij de PR ziet. Deze skill zit tussen `writing-plans` en SDD. Ontwerp:
-`docs/developer/planning/specs/2026-09-25-plan-adversarial-review-design.md`.
+A measurement of leaks along the chain found that most of them should have been seen in the
+plan. Since superpowers 6.3.0 SDD decides conflicts itself and logs them as
+`Ruling:` in the ledger; a bad plan then becomes a stack of rulings the user sees only at the
+PR. This skill sits between `writing-plans` and SDD.
 
-Discovery en verificatie deelden lange tijd één mechanisme: elke ronde was een volledige
-review, dus elke ronde vond ook nieuwe kritiek in plaats van te convergeren (#1066). Sinds
-dan is alleen ronde 1 discovery; ronde 2 en verder verifiëren uitsluitend of de fixes uit de
-vorige ronde standhouden.
+Discovery and verification long shared one mechanism: every round was a full review, so every
+round also found new criticism instead of converging. Since then only round 1 is discovery;
+round 2 and later only verify whether the fixes of the previous round hold.
 
-## Wanneer
+## When
 
-Vaste naad (`AGENTS.md`, *Vaste naden*): plan gecommit in `docs/developer/planning/plans/` →
-deze skill → `/superpowers:subagent-driven-development`. Voor élk plan, ook een plan zonder
-aparte spec ("issue #N is de spec"), tenzij de gebruiker bij de plan-naad overslaan koos
-(`paia-handoff`).
+A fixed seam: plan committed in the plan directory
+(`python3 .lighthouse/lib/lighthouse_lib/config.py paths.plans`) → this skill →
+`/superpowers:subagent-driven-development`. For *every* plan, also a plan without a separate
+spec ("issue #N is the spec"), unless the user chose to skip at the plan seam
+(`lighthouse-handoff`).
 
-Niet hiervoor: een spec (`/paia-spec-adversarial-review`), een diff (`/caveman-review`).
+Not for: a spec (`/lighthouse-spec-adversarial-review`), a diff (`/code-review`).
 
-## Controller-run
+Controller runs exist only in Claude Code (the controller, if present, starts `claude -p`);
+here *report and stop* holds headless too.
 
-Controller-runs bestaan alleen in Claude Code (`scripts/controller_launch.sh` start `claude -p`); hier geldt ook headless *meld en stop*.
+## What it shares with the spec review
 
-## Wat hij deelt met de spec-review
+One runner. `review.sh` here is a wrapper around
+`../lighthouse-spec-adversarial-review/review.sh`, with the plan prompt (`reviewer-prompt.md`)
+and the plan schema (`findings.schema.json`, with a required `cat` field). The clean
+`CODEX_HOME` (`~/.codex-specreview/`), `--sandbox read-only`, exit codes 2/3/4/5 and the choice
+of level (`high`; `max` per run when a missed blocker is expensive, never `xhigh`) are in
+`lighthouse-spec-adversarial-review`, *Prerequisites*. Read that when Codex stalls.
 
-Eén runner. `review.sh` hier is een wrapper om `../paia-spec-adversarial-review/review.sh`,
-met de plan-prompt (`reviewer-prompt.md`) en het plan-schema (`findings.schema.json`, met een
-verplicht `cat`-veld). Schone `CODEX_HOME` (`~/.codex-specreview/`), `--sandbox read-only`,
-exitcodes 2/3/4/5 en de niveaukeuze (`high`; `max` per run als een gemiste blocker duur is,
-nooit `xhigh`) staan in `paia-spec-adversarial-review/SKILL.md`, *Voorwaarden*. Lees die als
-Codex hapert.
+From round 2 on a second wrapper runs on the same runner: `verify.sh`, with the verification
+prompt (`verifier-prompt.md`) and the verification schema (`verification.schema.json`). It does
+not search for problems again; it only verifies whether the fixes of the previous round hold
+(see *Workflow*, step 5).
 
-Vanaf ronde 2 draait een tweede wrapper op dezelfde runner: `verify.sh`, met de
-verificatieprompt (`verifier-prompt.md`) en het verificatieschema (`verification.schema.json`).
-Die zoekt niet opnieuw naar problemen; hij verifieert alleen of de fixes uit de vorige ronde
-standhouden (zie *Workflow*, stap 5).
+The review prompt (round 1) sets seven categories, each a `cat`:
 
-De reviewprompt (ronde 1) stelt zeven categorieën, elk een `cat`:
-
-| `cat` | Wanneer |
+| `cat` | When |
 |---|---|
-| `spec_mismatch` | het plan wijkt materieel af van de spec |
-| `dependency_order` | de taakvolgorde of een afhankelijkheid maakt uitvoering onmogelijk of verkeerd |
-| `repo_falsehood` | het plan neemt iets over de huidige codebase aan dat niet klopt |
-| `missing_artifact` | een bestand, interface, schema of functie bestaat nog niet op het punt waar het plan hem gebruikt |
-| `verification_gap` | de tests of verificatiestappen bewijzen niet wat het plan claimt |
-| `unverified_external_assumption` | uitvoering hangt af van een externe aanname die het plan nooit checkt |
-| `likely_runtime_failure` | het plan bevat een concreet faalpad dat waarschijnlijk verkeerd gedrag oplevert |
+| `spec_mismatch` | the plan departs materially from the spec |
+| `dependency_order` | the task order or a dependency makes execution impossible or wrong |
+| `repo_falsehood` | the plan assumes something about the current codebase that is not true |
+| `missing_artifact` | a file, interface, schema or function does not exist yet at the point where the plan uses it |
+| `verification_gap` | the tests or verification steps do not prove what the plan claims |
+| `unverified_external_assumption` | execution depends on an external assumption the plan never checks |
+| `likely_runtime_failure` | the plan contains a concrete failure path that likely yields wrong behaviour |
 
-Elke BLOCKER of MAJOR draagt drie delen: de concrete stap of omissie, bewijs uit spec, plan of
-repo, en het concrete faalscenario als het plan ongewijzigd draait — zonder faalscenario is het
-hoogstens een MINOR. Een verificatieronde voegt daar één achtste `cat` aan toe:
-`fix_incomplete` (zie stap 5 en 6).
+Every BLOCKER or MAJOR carries three parts: the concrete step or omission, evidence from spec,
+plan or repo, and the concrete failure scenario if the plan runs unchanged — without a failure
+scenario it is at most a MINOR. A verification round adds one eighth `cat`:
+`fix_incomplete` (see steps 5 and 6).
 
 ## Workflow
 
-Shellvariabelen overleven de volgende Bash-call niet: noteer de paden die een stap print
-en vul ze letterlijk in.
+Shell variables do not survive the next shell call: note the paths a step prints and fill them
+in literally.
 
 ### 1. Preflight
 
 ```bash
-command -v codex || echo "codex CLI ontbreekt"
-codex login status   # verwacht: "Logged in using ChatGPT"
+command -v codex || echo "codex CLI missing"
+codex login status   # expected: "Logged in using ChatGPT"
 ```
 
-Ontbreekt Codex, meld het hard en stop: er is geen fallback buiten Claude Code (zie *Fallback
-zonder Codex*). Niet stil doorgaan.
+If Codex is missing, report it loudly and stop: there is no fallback outside Claude Code (see
+*Fallback without Codex*). Do not go on silently.
 
-Staat het Codex-budget vooraf op, dan merk je dat bij de ronde: de runner checkt het vóór
-elke ronde (#1093) en stopt met exit 6 (`CODEX_BUDGET: fallback — <reden>`), zonder
-`codex exec`. Meld `reden` en `reset_at` uit `<OUT>.budget.json` (een gepaarde ronde 1 kent
-dat niet: buiten Claude Code is er geen paar) en stop **vóór** de ronde; de
-convergentie-uitkomst is `aborted`, zoals bij de limiet.
+If the Codex budget is exhausted beforehand, you notice at the round: the runner checks it
+before every round and stops with exit 6 (`CODEX_BUDGET: fallback — <reason>`), without
+`codex exec`. Report `reason` and `reset_at` from `<OUT>.budget.json` (a paired round 1 does
+not exist here: outside Claude Code there is no pair) and stop **before** the round; the
+convergence outcome is `aborted`, as with the limit.
 
-### 2. Plan bepalen
+### 2. Pick the plan
 
-Argument → dat pad, repo-relatief. Geen argument → het nieuwste bestand in
-`docs/developer/planning/plans/` (niet `index.md`); bevestig welk.
+Argument → that path, repo-relative. No argument → the newest file in the plan directory (not
+`index.md`); confirm which.
 
-### 3. Attempt starten
+### 3. Start an attempt
 
 ```bash
-uv run python scripts/plan_review_record.py start <plan>
+python3 .lighthouse/scripts/plan_review_record.py start <plan>
 ```
 
-Print de attempt-map `${TMPDIR:-/tmp}/plan-review/<chain-key>/<attempt>/` (hierna
-`<ATTEMPT>`) en legt de commit vast die ronde 1 leest; op de Beelink staat de attempt meteen
-ook in de datamap, zodat een review die nooit bij stap 9 komt toch de nieuwste is. Exit 2 bij
-een plan met ongecommitte wijzigingen: commit eerst. Elke nieuwe review van hetzelfde plan, ook na een terugkeer via
-`spec`, begint hier opnieuw. Een oude attempt-map hergebruik je nooit.
+Prints the attempt directory `${TMPDIR:-/tmp}/plan-review/<chain-key>/<attempt>/` (below
+`<ATTEMPT>`) and records the commit round 1 reads; on the always-on host (`host.toml`) the
+attempt is also in the data directory at once, so that a review that never reaches step 9 is
+still the newest. Exit 2 for a plan with uncommitted changes: commit first. Every new review of
+the same plan, also after a return through `spec`, starts here again. You never reuse an old
+attempt directory.
 
-### 4. Spec(s) bepalen — jij, niet de reviewer
+### 4. Pick the spec(s) — you, not the reviewer
 
-Uit de `**Spec:**`-regel van het plan:
+From the `**Spec:**` line of the plan:
 
-| De regel noemt | Jij doet |
+| The line names | You do |
 |---|---|
-| een repo-relatief pad | zo doorgeven |
-| een absoluut worktree-pad | herleiden naar repo-relatief: alles na `.claude/worktrees/<naam>/` |
-| meerdere specs | allemaal doorgeven |
-| "issue #N is de spec" | body ophalen (hieronder), dat bestand doorgeven |
-| niets | melden en vragen; niet raden |
+| a repo-relative path | pass it on as is |
+| an absolute worktree path | reduce it to repo-relative: everything after `.claude/worktrees/<name>/` |
+| several specs | pass them all on |
+| "issue #N is the spec" | fetch the body (below), pass that file on |
+| nothing | report and ask; do not guess |
 
-Issue als spec — de reviewer heeft geen GitHub, dus de body gaat als bestand mee:
+Issue as spec — the reviewer has no GitHub, so the body goes along as a file:
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh api "repos/$R/issues/<N>" --jq .body > <ATTEMPT>/issue-<N>.md
 date -u +%Y-%m-%dT%H:%M:%SZ
 ```
 
-`gh` altijd met `dangerouslyDisableSandbox: true` (`AGENTS.md`). Noteer de tijd: die gaat als
-`--issue-fetched-at` naar het record (stap 9).
+`gh` runs outside the sandbox of your harness. Note the time: it goes as
+`--issue-fetched-at` into the record (step 9).
 
-### 5. Ronde draaien — direct, op de voorgrond
+### 5. Run a round — directly, in the foreground
 
-**Gepaarde ronde 1 (#988): alleen in Claude Code.** Daar draaien in ronde 1 standaard Codex en
-een Opus-subagent naast elkaar, en verifieert Opus de rondes 2 en 3 (besluit 2026-10-04,
-[`REPORT.md`](../../../experiments/codex-fallback-paren/REPORT.md)). Hier bestaat die subagent
-niet; elke ronde loopt via Codex, zoals hieronder.
+**Paired round 1: Claude Code only.** There Codex and an Opus subagent run side by side in
+round 1 by default, and Opus verifies rounds 2 and 3. Here that subagent does not exist; every
+round runs through Codex, as below.
 
-De `spec-adversary`-agent bestaat alleen in Claude Code (`.claude/agents/`). Hier roep je de
-runner zelf aan. Vóór élke ronde een snapshot van het plan:
+The `lighthouse-spec-adversary` agent exists only in Claude Code (`.claude/agents/`). Here you
+call the runner yourself. Before *every* round a snapshot of the plan:
 
 ```bash
 cp <plan> <ATTEMPT>/round-<n>.snapshot.md
 ```
 
-**Alleen ronde 1 is een review:**
+**Only round 1 is a review:**
 
 ```bash
-.agents/skills/paia-plan-adversarial-review/review.sh <plan> 1 <ATTEMPT>/round-1.json \
-  none [max] --context <spec-pad> [--context <spec-pad-2>]
+.agents/skills/lighthouse-plan-adversarial-review/review.sh <plan> 1 <ATTEMPT>/round-1.json \
+  none [max] --context <spec path> [--context <spec path 2>]
 ```
 
-**Ronde n ≥ 2 draait alleen als ronde n-1 een BLOCKER/MAJOR had met `accept` of `spec`.**
-Geen fixes, geen ronde. Bouw dan eerst de fixes-diff:
+**Round n ≥ 2 runs only if round n-1 had a BLOCKER/MAJOR with `accept` or `spec`.**
+No fixes, no round. Build the fixes diff first:
 
 ```bash
 git diff --no-index <ATTEMPT>/round-<n-1>.snapshot.md <plan> > <ATTEMPT>/round-<n>.fixes.diff
 ```
 
-`git diff --no-index` eindigt met exit 1 als er verschil is; dat is geen fout. Kreeg een
-bevinding in de vorige ronde `spec`, haal dan vóór de dispatch de issue-body opnieuw op naar
-`<ATTEMPT>/issue-<N>.md` (zelfde `gh api`-regel als stap 4). Draai daarna:
+`git diff --no-index` exits 1 when there is a difference; that is no error. If a finding got
+`spec` in the previous round, fetch the issue body again to `<ATTEMPT>/issue-<N>.md` before the
+round (the same `gh api` line as step 4). Then run:
 
 ```bash
-.agents/skills/paia-plan-adversarial-review/verify.sh <plan> <n> <ATTEMPT>/round-<n>.json \
-  <ATTEMPT>/round-<n-1>.json [max] --context <spec-pad> [--context <spec-pad-2>] \
+.agents/skills/lighthouse-plan-adversarial-review/verify.sh <plan> <n> <ATTEMPT>/round-<n>.json \
+  <ATTEMPT>/round-<n-1>.json [max] --context <spec path> [--context <spec path 2>] \
   --context <ATTEMPT>/round-<n>.fixes.diff
 ```
 
-`max` alleen als een gemiste blocker duur is (default: weglaten). Een ronde kost ~7 minuten op
-`high` (~18 op `max`). Draai de runner en het record-script uit stap 9 buiten de sandbox van je
-harnas (of vraag escalatie): de runner schrijft onder `~/.codex-specreview/` en start een
-`codex exec` met netwerk, het record-script schrijft naar `~/.local/share/`. Zet de timeout van
-de shell-call op minstens 20 minuten. Toon daarna de bevindingen gesorteerd op severity, met het
-ID berekend **vóór** het sorteren (`r<n>-f<index>`, de positie in `findings[]`):
+`max` only when a missed blocker is expensive (default: leave it out). A round costs ~7 minutes
+on `high` (~18 on `max`). Run the runner and the record script of step 9 outside the sandbox of
+your harness (or ask for escalation): the runner writes under `~/.codex-specreview/` and starts
+a `codex exec` with network, the record script writes to the data directory
+(`~/.local/share/lighthouse/` by default). Set the timeout of the shell call to at least 20
+minutes. Then show the findings sorted by severity, with the ID computed **before** sorting
+(`r<n>-f<index>`, the position in `findings[]`):
 
 ```bash
 jq -r --arg round <n> '
@@ -184,172 +181,166 @@ jq -r --arg round <n> '
 ' <ATTEMPT>/round-<n>.json
 ```
 
-Kop: `| ID | Sev | Cat | Verifies | Section | Problem | Failure | Evidence | Proposed fix |`.
-Direct daaronder, bij een verificatieronde:
+Header: `| ID | Sev | Cat | Verifies | Section | Problem | Failure | Evidence | Proposed fix |`.
+Directly below it, for a verification round:
 
 ```bash
 jq -r '.verified // empty | "VERIFIED: " + (if length == 0 then "none" else join(", ") end)' \
   <ATTEMPT>/round-<n>.json
 ```
 
-Vat niets samen; lees `review_markdown` alleen als een bevinding onduidelijk is.
+Summarise nothing; read `review_markdown` only when a finding is unclear.
 
-**Draai je zelf in Codex**, dan is de reviewer dezelfde modelfamilie als de auteur. Zet de
-banner uit *Fallback zonder Codex* boven de tabel, en geef het record in stap 9
-`--review-mode codex_same_family` mee in plaats van `codex`.
+**If you run inside Codex yourself**, the reviewer is the same model family as the author. Put
+the banner from *Fallback without Codex* above the table, and give the record in step 9
+`--review-mode codex_same_family` instead of `codex`.
 
-### 6. Gate — jij volgt je aanbeveling, de spec is de grens
+### 6. Gate — you follow your recommendation, the spec is the boundary
 
-**Verplichte sub-skill:** `superpowers:receiving-code-review`. Niet blind fixen.
+**Required sub-skill:** `superpowers:receiving-code-review`. Do not fix blindly.
 
-Per bevinding vorm je een aanbeveling en voer je die uit, **zonder de gebruiker te vragen**.
-De gebruiker koos in de praktijk steeds de aanbevolen optie (#977: zes vragen in twee rondes,
-zes keer `accept (Recommended)`); een vraag per bevinding kostte alleen tijd.
+Per finding you form a recommendation and carry it out, **without asking the user**. In
+practice the user kept choosing the recommended option; a question per finding cost only time.
 
-Vraag de gebruiker **alleen** als je aanbeveling de spec tegenspreekt:
+Ask the user **only** when your recommendation contradicts the spec:
 
-- de fix laat het plan afwijken van wat de spec voorschrijft of uitsluit, of
-- de beslissing is `spec` en de wijziging is meer dan een verduidelijking (dan gaat de spec
-  sowieso terug naar `/paia-spec-adversarial-review`; niet in ronde 3: zie de `spec`-rij
-  hieronder).
+- the fix makes the plan depart from what the spec prescribes or excludes, or
+- the decision is `spec` and the change is more than a clarification (then the spec goes back
+  to `/lighthouse-spec-adversarial-review` anyway; not in round 3: see the `spec` row below).
 
-Een fix die het plan juist mét de spec in lijn brengt, is geen tegenspraak: gewoon doen (#977
-r2-f1 beperkte een invariant tot wat de spec al uitzonderde). Twijfel je of iets de spec
-tegenspreekt, dan vraag je.
+A fix that brings the plan *into* line with the spec is no contradiction: just do it. If you
+doubt whether something contradicts the spec, you ask.
 
-Toon na elke ronde één tabel `ID | Beslissing | Reden`, zodat de gebruiker kan ingrijpen vóór
-de volgende ronde. De beslissingen:
+After every round show one table `ID | Decision | Reason`, so that the user can step in before
+the next round. The decisions:
 
-| Beslissing | Betekenis |
+| Decision | Meaning |
 |---|---|
-| `accept` | terecht, plan aanpassen |
-| `reject` | onterecht, **met reden**; die reden gaat mee naar de volgende ronde |
-| `spec` | terecht, maar de fout zit in de spec: spec aanpassen plus één regel in het plan. Is de wijziging meer dan een verduidelijking, stop dan en meld dat de spec terug moet naar `/paia-spec-adversarial-review`. Uitzondering: in ronde 3 stopt een `spec`-beslissing de keten niet; het punt gaat via `accepteer-open` zoals elk ander open punt |
+| `accept` | valid, adjust the plan |
+| `reject` | invalid, **with a reason**; that reason goes along to the next round |
+| `spec` | valid, but the error is in the spec: adjust the spec plus one line in the plan. If the change is more than a clarification, stop and report that the spec must go back to `/lighthouse-spec-adversarial-review`. Exception: in round 3 a `spec` decision does not stop the chain; the point goes through `accept-open` like any other open point |
 
-Controleer elke `file:line` van een BLOCKER vóór `accept`: een reviewer die de repo verkeerd
-leest, produceert overtuigende onzin. Een `reject` is net zo goed een aanbeveling, mét reden.
-MINORs beslis je ook zelf, per MINOR `minor_yes` of `minor_no`, zonder batchvraag.
+Check every `file:line` of a BLOCKER before `accept`: a reviewer that misreads the repo produces
+convincing nonsense. A `reject` is just as much a recommendation, with a reason. You decide
+MINORs yourself too, per MINOR `minor_yes` or `minor_no`, without a batch question.
 
-In een verificatieronde geldt een extra check: Elk geaccepteerd ID staat in `verified` of in `verifies` van een finding
-(geaccepteerd = `accept` of `spec`). Ontbreekt er een, dan draai je
-díe verificatieronde opnieuw (zelfde `n`, zelfde `.fixes.diff`, `round-<n>.json` overschreven).
-Ontbreekt het ID dan weer, dan is de uitkomst `aborted` en noemt de handoff dat ID als open punt
-— nooit `converged`. MINORs starten nooit een ronde.
+In a verification round one extra check holds:
+Every accepted ID is in `verified` or in `verifies` of a finding (accepted = `accept` or
+`spec`). If one is missing, run *that* verification round again (same `n`, same `.fixes.diff`,
+`round-<n>.json` overwritten). If the ID is missing again, the outcome is `aborted` and the
+handoff names that ID as an open point — never `converged`. MINORs never start a round.
 
-Schrijf na **élke** ronde, ook de laatste, de beslissingen naar de sidecar
-`<ATTEMPT>/round-<n>.decisions.json`, **nooit** in de ronde-JSON (die moet schema-geldig
-blijven). Eén regel per bevinding, MINORs inbegrepen: bij `converged` en `round_limit`
-weigert stap 9 een record met een bevinding zonder beslissing (exit 4); alleen `aborted` mag
-gaten hebben.
+After **every** round, the last one too, write the decisions to the sidecar
+`<ATTEMPT>/round-<n>.decisions.json`, **never** into the round JSON (it must stay valid against
+the schema). One line per finding, MINORs included: at `converged` and `round_limit` step 9
+refuses a record with a finding without a decision (exit 4); only `aborted` may have gaps.
 
 ```json
 [
-  {"finding_id": "r2-f1", "decision": "accept", "reason": "Taak 3 noemde de verkeerde functie"},
-  {"finding_id": "r2-f2", "decision": "reject", "reason": "de cron draait wél op de Beelink, zie Taak 5", "same_as": "r1-f4"},
-  {"finding_id": "r2-f3", "decision": "minor_yes", "reason": "MINOR-batch"}
+  {"finding_id": "r2-f1", "decision": "accept", "reason": "Task 3 named the wrong function"},
+  {"finding_id": "r2-f2", "decision": "reject", "reason": "the cron does run on the always-on host, see Task 5", "same_as": "r1-f4"},
+  {"finding_id": "r2-f3", "decision": "minor_yes", "reason": "small, own choice"}
 ]
 ```
 
-- `finding_id` alleen uit de `ID`-kolom, elk precies één keer. Nooit zelf tellen in de
-  gesorteerde tabel: het ID is de positie vóór het sorteren. Een ID dat niet in die ronde
-  bestaat of dubbel staat, is in stap 9 een validatiefout.
-- `decision`: `accept`, `reject`, `spec`, `accepted_open` (alleen bij `round_limit`, gezet door
-  `accepteer-open` in stap 8, nooit met de hand), `minor_yes`, `minor_no`.
-- `same_as`: het ID van dezelfde bevinding in een eerdere ronde; anders weglaten.
+- `finding_id` only from the `ID` column, each exactly once. Never count in the sorted table
+  yourself: the ID is the position before sorting. An ID that does not exist in that round or
+  appears twice is a validation error in step 9.
+- `decision`: `accept`, `reject`, `spec`, `accepted_open` (only at `round_limit`, set by
+  `accept-open` in step 8, never by hand), `minor_yes`, `minor_no`.
+- `same_as`: the ID of the same finding in an earlier round; otherwise leave it out.
 
-`review.sh` noemt de sidecar in het prior-blok van de volgende ronde.
+`review.sh` names the sidecar in the prior block of the next round.
 
-### 7. Fixen
+### 7. Fix
 
-Alleen de `accept`s in het plan en de `spec`-verduidelijkingen in de spec. Geen code, geen
-belendende bestanden. Commit na elke ronde: `docs(plan): verwerk plan-review ronde <n> (#<issue>)`.
-Geen fixes = geen commit; maak nooit een lege commit. Die commit gaat vóór de snapshot van de
-volgende ronde (stap 5).
+Only the `accept`s in the plan and the `spec` clarifications in the spec. No code, no adjacent
+files. Commit after every round: `docs(plan): process plan review round <n> (#<issue>)`, in the
+artefact language of the project. No fixes = no commit; never make an empty commit. That commit
+goes before the snapshot of the next round (step 5).
 
-### 8. Convergentie — drie uitkomsten
+### 8. Convergence — three outcomes
 
-| `outcome` | Wanneer | Handoff |
+| `outcome` | When | Handoff |
 |---|---|---|
-| `converged` | geen open BLOCKER/MAJOR in de laatste ronde (zie *Open* hieronder); is die ronde een verificatie, dan zijn daarmee alle geaccepteerde fixes geverifieerd; stap 9 weigert anders (exit 4) | `/superpowers:subagent-driven-development <plan>` |
-| `round_limit` | ronde 3 gehaald met open BLOCKERs/MAJORs. Een derde ronde alleen als een fix uit ronde 2 niet klopt | `/superpowers:subagent-driven-development <plan>` — doorgaan, nooit een vraag: eerst `accepted_open` vastleggen (zie *Open*) |
-| `aborted` | de gebruiker zegt stop, óf een geaccepteerd ID ontbreekt ook na een herhaalde verificatieronde (stap 6) | géén SDD; de handoff noemt de open punten |
+| `converged` | no open BLOCKER/MAJOR in the last round (see *Open* below); if that round is a verification, all accepted fixes are verified with it; step 9 refuses otherwise (exit 4) | `/superpowers:subagent-driven-development <plan>` |
+| `round_limit` | round 3 reached with open BLOCKERs/MAJORs. A third round only if a fix from round 2 does not hold | `/superpowers:subagent-driven-development <plan>` — go on, never a question: first record `accepted_open` (see *Open*) |
+| `aborted` | the user says stop, or an accepted ID is missing also after a repeated verification round (step 6) | *no* SDD; the handoff names the open points |
 
-Draagt dezelfde bevinding (via de `verifies`-keten) in ronde 2 én 3 `fix_incomplete` →
-structureel oplossen, geen ronde 4.
+If the same finding (through the `verifies` chain) carries `fix_incomplete` in round 2 *and* 3
+→ solve it structurally, no round 4.
 
-**Open** = een BLOCKER/MAJOR uit de laatste ronde zonder `reject` — ook een die `accept` kreeg
-en in stap 7 gefixt is, want die fix heeft geen reviewer meer gezien. `converged` betekent: na
-de laatste ronde staat niets open. Bij `round_limit` leg je de open punten vast en ga je door,
-in deze volgorde:
+**Open** = a BLOCKER/MAJOR from the last round without `reject` — also one that got `accept` and
+was fixed in step 7, because no reviewer saw that fix any more. `converged` means: after the
+last round nothing is open. At `round_limit` you record the open points and go on, in this
+order:
 
-1. `uv run python scripts/plan_review_record.py accepteer-open <ATTEMPT> --doc <plan>`
-   (buiten de sandbox, zoals bij `start` en `write`). Dit herschrijft `round-3.decisions.json`
-   (elk open punt wordt `accepted_open`) en zet het blok `## Open na review` onderaan het plan;
-   een bestaand blok wordt vervangen, nooit verdubbeld. Exit 2 met op stderr `geen open
-   BLOCKER/MAJOR in de laatste ronde: niets te accepteren` = er staat niets open: de uitkomst is
-   dan `converged`, geen `round_limit`. Exit 2 zonder die melding is een aanroepfout: herstel
-   de aanroep. Exit 4 (`ACCEPTEER-OPEN MISLUKT: …`): meld de melding letterlijk, herstel de
-   oorzaak (pad, sidecar) en draai opnieuw. Lukt het dan nog niet, zet de open punten in de
-   handoff en ga door naar de volgende fase; nooit de sidecar of het document met de hand
-   aanpassen, nooit een vraag.
-2. Commit het plan als `git diff --quiet -- <plan>` een verschil meldt:
-   `docs(plan): leg open review-punten vast (#<issue>)`. Geen verschil (hervatte run) = geen
-   commit.
-3. Pas dan stap 9 (`write --outcome round_limit`).
+1. `python3 .lighthouse/scripts/plan_review_record.py accept-open <ATTEMPT> --doc <plan>`
+   (outside the sandbox, as with `start` and `write`). This rewrites `round-3.decisions.json`
+   (every open point becomes `accepted_open`) and puts the block `heading:open_after_review` at
+   the bottom of the plan; an existing block is replaced, never doubled. Exit 2 with on stderr
+   `no open BLOCKER/MAJOR in the last round: nothing to accept` = nothing is open: the outcome
+   is then `converged`, not `round_limit`. Exit 2 without that message is a call error: repair
+   the call. Exit 4 (`ACCEPT-OPEN FAILED: …`): report the message literally, repair the cause
+   (path, sidecar) and run again. If it still fails, put the open points in the handoff and go
+   on to the next phase; never edit the sidecar or the document by hand, never a question.
+2. Commit the plan if `git diff --quiet -- <plan>` reports a difference:
+   `docs(plan): record open review points (#<issue>)`. No difference (resumed run) = no commit.
+3. Only then step 9 (`write --outcome round_limit`).
 
-Een tweede regel voor hetzelfde ID is een validatiefout in stap 9. Vraag de gebruiker niets:
-`round_limit` is geen vraag, ook niet als er `spec`-beslissingen open staan.
-Het record (stap 9) komt altijd eerst. Na het record volgt in een controller-run de
-run-instructie (`controller.bij_rondegrens` in `lighthouse.toml`); bij `doorgaan` is dat de gewone handoff.
-Interactief is `round_limit` nooit een vraag.
+A second line for the same ID is a validation error in step 9. Ask the user nothing:
+`round_limit` is no question, also not when `spec` decisions are open. The record (step 9)
+always comes first.
 
-### 9. Record — alleen op de Beelink
+### 9. Record — only on the always-on host (`host.toml`)
 
-Ná de laatste fix-commit, bij elke uitkomst:
+After the last fix commit, at every outcome:
 
 ```bash
-uv run python scripts/plan_review_record.py write <ATTEMPT> \
+python3 .lighthouse/scripts/plan_review_record.py write <ATTEMPT> \
   --outcome <converged|round_limit|aborted> --review-mode codex \
-  --spec <spec-pad> [--spec <spec-pad-2>] [--level max] \
-  --skill-dir .agents/skills/paia-plan-adversarial-review
+  --spec <spec path> [--spec <spec path 2>] [--level max] \
+  --skill-dir .agents/skills/lighthouse-plan-adversarial-review
 ```
 
-Issue als spec: `--issue <N> --issue-body <ATTEMPT>/issue-<N>.md --issue-fetched-at <tijd>`
-in plaats van `--spec`. Vanuit Codex zelf: `--review-mode codex_same_family` (stap 5).
+Issue as spec: `--issue <N> --issue-body <ATTEMPT>/issue-<N>.md --issue-fetched-at <time>`
+instead of `--spec`. From inside Codex itself: `--review-mode codex_same_family` (step 5).
 
-| exit | Betekenis | Jij doet |
+| exit | Meaning | You do |
 |---|---|---|
-| 0 | record geschreven; het pad staat op stdout | pad melden |
-| 3 | niet op de Beelink: geen record | luid melden dat deze keten buiten de meting valt, door naar stap 10 |
-| 4 | schrijf- of validatiefout: alleen de stagingmap `.<attempt>.tmp/` blijft | de melding letterlijk doorgeven; is het een ontbrekende of foute beslissing, sidecar herstellen en `write` opnieuw; anders door naar stap 10 |
+| 0 | record written; the path is on stdout | report the path |
+| 3 | not on the always-on host (`host.toml`): no record | report loudly that this chain falls outside the measurement, on to step 10 |
+| 4 | write or validation error: only the staging directory `.<attempt>.tmp/` stays | pass the message on literally; if it is a missing or wrong decision, repair the sidecar and run `write` again; otherwise on to step 10 |
 
-Het record is meetmateriaal voor een latere meting, de review zelf is het product: een
-mislukt record blokkeert de handoff nooit.
+The record is measurement material for a later measurement, the review itself is the product: a
+failed record never blocks the handoff.
 
-### 10. Afsluiten
+### 10. Close
 
-Meld: plan-pad, aantal rondes, telling `accept`/`reject`/`spec`, eindverdict van de laatste
-ronde, `outcome`, en het record-pad of de melding uit stap 9. Eindig met `/paia-handoff`
-volgens de tabel in stap 8.
+Report: plan path, number of rounds, count of `accept`/`reject`/`spec`, the final verdict of the
+last round, `outcome`, and the record path or the message from step 9. End with
+`/lighthouse-handoff` following the table in step 8.
 
-## Fallback zonder Codex
+## Fallback without Codex
 
-Buiten Claude Code is er geen `general-purpose`-subagent om op terug te vallen. Ontbreekt
-Codex, of zit hij aan zijn limiet (exit 5, `grep -o 'try again at [^"]*' <OUT>.events`), of is
-zijn budget vooraf op (exit 6, `reden` en `reset_at` uit `<OUT>.budget.json`), meld dat met de
-resettijd en stop **vóór** de ronde: een review door jezelf is geen tweede paar ogen.
+Outside Claude Code there is no `general-purpose` subagent to fall back on. If Codex is
+missing, or at its limit (exit 5, `grep -o 'try again at [^"]*' <OUT>.events`), or its budget
+is exhausted beforehand (exit 6, `reason` and `reset_at` from `<OUT>.budget.json`), report that
+with the reset time and stop **before** the round: a review by yourself is no second pair of
+eyes.
 
-De banner voor een review binnen één modelfamilie (zie stap 5):
+The banner for a review within one model family (see step 5):
 
-> ⚠️ SAME-FAMILY — zelfde modelfamilie als de auteur van het plan.
-> Vangt grondfouten (code die niet bestaat), vangt géén gedeelde blinde vlekken.
+> ⚠️ SAME-FAMILY — same model family as the author of the plan.
+> Catches ground errors (code that does not exist), catches *no* shared blind spots.
 
-## Bekende valkuilen
+## Known pitfalls
 
-- **Het ID na het sorteren tellen.** Dan wijst elke beslissing naar de verkeerde bevinding en
-  klopt het record niet. Neem het ID uit de tabel.
-- **Beslissingen in de ronde-JSON schrijven.** Maakt hem schema-ongeldig; altijd de sidecar.
-- **Een oude attempt hervatten.** Een nieuwe review is een nieuwe `start`; de meting telt
-  alleen de nieuwste attempt per keten.
-- **Een verificatieronde dispatchen met `review.sh`.** Dat start opnieuw discovery, en dat is
-  precies de lus die #1066 sloot.
+- **Counting the ID after sorting.** Then every decision points at the wrong finding and the
+  record is wrong. Take the ID from the table.
+- **Writing decisions into the round JSON.** Makes it invalid against the schema; always the
+  sidecar.
+- **Resuming an old attempt.** A new review is a new `start`; the measurement counts only the
+  newest attempt per chain.
+- **Running a verification round with `review.sh`.** That starts discovery again, and that is
+  exactly the loop the verification rounds closed.

@@ -1,17 +1,16 @@
 # Adversarial Plan Verifier Prompt
 
-Dit bestand gaat verbatim naar de externe reviewer. `SKILL.md` parset de inhoud nooit;
-`../paia-spec-adversarial-review/review.sh` vult alleen `{{DOC_PATH}}`,
-`{{CONTEXT_PATHS}}`, `{{REPO}}`, `{{ROUND}}` en `{{PRIOR_REVIEW_BLOCK}}`.
+This file is sent verbatim to the external reviewer. `SKILL.md` never parses the content;
+`../lighthouse-spec-adversarial-review/review.sh` only substitutes `{{DOC_PATH}}`,
+`{{CONTEXT_PATHS}}`, `{{REPO}}`, `{{ROUND}}` and `{{PRIOR_REVIEW_BLOCK}}`.
 
-Vanaf ronde 2 draait `verify.sh` deze prompt in plaats van `reviewer-prompt.md` (#1066):
-geen nieuwe zoektocht naar problemen, alleen verifiëren of de BLOCKERs en MAJORs uit de
-vorige ronde met `decision` `accept` of `spec` daadwerkelijk zijn opgelost door de diff die
-via `--context` meegaat.
+From round 2 on `verify.sh` runs this prompt instead of `reviewer-prompt.md`: no new search
+for problems, only verifying whether the BLOCKERs and MAJORs of the previous round with
+`decision` `accept` or `spec` are actually resolved by the diff passed through `--context`.
 
-Markdown-blok én schema staan er allebei in, om dezelfde reden als in de reviewer-prompt:
-formaatdwang verlaagt het redeneervermogen (arXiv:2408.02442). Haal het markdown-blok er niet
-uit.
+Markdown block and schema are both in it, for the same reason as in the reviewer prompt:
+format restrictions lower reasoning ability (arXiv:2408.02442). Do not take the markdown
+block out.
 
 ---BEGIN PROMPT---
 

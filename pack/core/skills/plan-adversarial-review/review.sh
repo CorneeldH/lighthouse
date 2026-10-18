@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Draai één adversariële plan-reviewronde: de runner van de spec-review, met de
-# plan-prompt en het plan-schema van deze map.
+# Run one adversarial plan review round: the runner of the spec review, with the
+# plan prompt and the plan schema of this directory.
 #
 #   review.sh <PLAN> <ROUND> <OUT> [PRIOR] [LEVEL] [--context <SPEC>]...
 #
-# Eén runner, geen tweede kopie van de Codex-aanroep (spec #972, sectie 1). Het
-# relatieve pad naar de buurskill werkt in .claude/skills/ én .agents/skills/.
-# Exitcodes: die van ../paia-spec-adversarial-review/review.sh.
+# One runner, no second copy of the Codex call. The relative path to the sibling skill
+# works in .claude/skills/ and in .agents/skills/.
+# Exit codes: those of ../lighthouse-spec-adversarial-review/review.sh.
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SKILL_DIR/../paia-spec-adversarial-review/review.sh" \
+exec "$SKILL_DIR/../lighthouse-spec-adversarial-review/review.sh" \
   --prompt "$SKILL_DIR/reviewer-prompt.md" \
   --schema "$SKILL_DIR/findings.schema.json" \
   "$@"

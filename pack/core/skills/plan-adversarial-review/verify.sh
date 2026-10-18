@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Draai één verificatieronde: dezelfde runner als review.sh, met de verifier-prompt
-# en het verificatieschema van deze map (vanaf ronde 2, #1066).
+# Run one verification round: the same runner as review.sh, with the verifier prompt
+# and the verification schema of this directory (from round 2 on).
 #
-#   verify.sh <PLAN> <ROUND> <OUT> [PRIOR] [LEVEL] [--context <SPEC-of-diff>]...
+#   verify.sh <PLAN> <ROUND> <OUT> [PRIOR] [LEVEL] [--context <SPEC-or-diff>]...
 #
-# Eén runner, geen tweede kopie van de Codex-aanroep (spec #972, sectie 1). Het
-# relatieve pad naar de buurskill werkt in .claude/skills/ én .agents/skills/.
-# Exitcodes: die van ../paia-spec-adversarial-review/review.sh.
+# One runner, no second copy of the Codex call. The relative path to the sibling skill
+# works in .claude/skills/ and in .agents/skills/.
+# Exit codes: those of ../lighthouse-spec-adversarial-review/review.sh.
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SKILL_DIR/../paia-spec-adversarial-review/review.sh" \
+exec "$SKILL_DIR/../lighthouse-spec-adversarial-review/review.sh" \
   --prompt "$SKILL_DIR/verifier-prompt.md" \
   --schema "$SKILL_DIR/verification.schema.json" \
   "$@"

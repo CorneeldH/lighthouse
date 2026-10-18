@@ -1,18 +1,17 @@
 # Adversarial Plan Reviewer Prompt
 
-Dit bestand gaat verbatim naar de externe reviewer. `SKILL.md` parset de inhoud nooit;
-`../paia-spec-adversarial-review/review.sh` vult alleen `{{DOC_PATH}}`,
-`{{CONTEXT_PATHS}}`, `{{REPO}}`, `{{ROUND}}` en `{{PRIOR_REVIEW_BLOCK}}`.
+This file is sent verbatim to the external reviewer. `SKILL.md` never parses the content;
+`../lighthouse-spec-adversarial-review/review.sh` only substitutes `{{DOC_PATH}}`,
+`{{CONTEXT_PATHS}}`, `{{REPO}}`, `{{ROUND}}` and `{{PRIOR_REVIEW_BLOCK}}`.
 
-Afgeleid van de spec-prompt in `../paia-spec-adversarial-review/reviewer-prompt.md`. Drie
-verschillen, alle drie uit de lekmeting (#970, `experiments/lekmeting-keten/REPORT.md`: 21 van
-de 28 lekken hoorden in het plan gezien te worden): zeven executability-categorieën (#1066),
-elk met een eigen `cat`-waarde (`findings.schema.json`), een severity afgestemd op onbeheerde
-uitvoering, en het verbod de spec opnieuw te bekritiseren.
+Derived from the spec prompt in `../lighthouse-spec-adversarial-review/reviewer-prompt.md`.
+Three differences, all three from a leak measurement (most leaks of a chain should have been
+seen in the plan): seven executability categories, each with its own `cat` value
+(`findings.schema.json`), a severity tuned to unattended execution, and the ban on
+criticising the spec again.
 
-Markdown-blok én schema staan er allebei in, om dezelfde reden als in de spec-prompt:
-formaatdwang verlaagt het redeneervermogen (arXiv:2408.02442). Haal het markdown-blok er niet
-uit.
+Markdown block and schema are both in it, for the same reason as in the spec prompt: format
+restrictions lower reasoning ability (arXiv:2408.02442). Do not take the markdown block out.
 
 ---BEGIN PROMPT---
 
