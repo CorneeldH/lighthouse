@@ -96,3 +96,36 @@ func TestDefaultTomllibCheckIgnoresTheCwd(t *testing.T) {
 		t.Fatal("a tomllib.py in the cwd ran during the dependency check")
 	}
 }
+
+func TestSuperpowers(t *testing.T) {
+	sp := []packs.Requirement{{Tool: "superpowers", NeededBy: []string{"start-issue"}}}
+	write := func(t *testing.T, body string) string {
+		home := t.TempDir()
+		if body != "" {
+			dir := filepath.Join(home, ".claude", "plugins")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "installed_plugins.json"), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return home
+	}
+	var ran []string
+	c := checker(nil, nil, &ran)
+	c.Home = write(t, `{"version": 2, "plugins": {"superpowers@superpowers-dev": [{"version": "7.0.0"}]}}`)
+	if m := c.Check(sp); len(m) != 0 {
+		t.Fatalf("present: missing %v", m)
+	}
+	for name, body := range map[string]string{
+		"other plugin": `{"plugins": {"caveman@x": []}}`,
+		"no file":      "",
+		"bad json":     `{`,
+	} {
+		c.Home = write(t, body)
+		if m := c.Check(sp); len(m) != 1 || m[0].Tool != "superpowers" {
+			t.Errorf("%s: missing = %v", name, m)
+		}
+	}
+}

@@ -13,6 +13,8 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/deps"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
+	"github.com/CorneeldH/lighthouse/internal/packs"
+	"github.com/CorneeldH/lighthouse/pack"
 )
 
 const hooksJSON = `{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/g.sh", "timeout": 15}]}]}}`
@@ -64,19 +66,34 @@ func run(t *testing.T, dir string, in string, mod func(*Options)) result {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	o := Options{
-		Dir:     dir,
-		Version: "dev",
-		Packs:   testPacks(),
-		Deps:    allPresent(),
-		In:      strings.NewReader(in),
-		Out:     &out,
-		Err:     &errOut,
+		Dir:         dir,
+		Version:     "dev",
+		Packs:       testPacks(),
+		Deps:        allPresent(),
+		In:          strings.NewReader(in),
+		Out:         &out,
+		Err:         &errOut,
+		HostTOML:    hostTOMLFor(t),
+		TailscaleIP: func() (string, error) { return "", errors.New("no tailscale in tests") },
 	}
 	if mod != nil {
 		mod(&o)
 	}
 	code := Run(o)
 	return result{code, out.String(), errOut.String()}
+}
+
+// hostTOMLFor gives each test one host.toml path outside the repo, so no test ever
+// touches ~/.config.
+var hostTOMLs = map[string]string{}
+
+func hostTOMLFor(t *testing.T) string {
+	if p, ok := hostTOMLs[t.Name()]; ok {
+		return p
+	}
+	p := filepath.Join(t.TempDir(), "host.toml")
+	hostTOMLs[t.Name()] = p
+	return p
 }
 
 func yes(o *Options)     { o.Yes = true }
@@ -534,5 +551,379 @@ func TestUpgradeAfterCRLFNormalization(t *testing.T) {
 	write(t, root, "AGENTS.md", strings.ReplaceAll(read(t, root, "AGENTS.md"), "\n", "\r\n"))
 	if r := run(t, root, "", upgrade); r.code != 0 || r.out != "No changes.\n" {
 		t.Fatalf("upgrade: rc %d out %q err %q", r.code, r.out, r.err)
+	}
+}
+
+func TestInitInstallsSkill(t *testing.T) {
+	root := newRepo(t)
+	withSkill := func(o *Options) {
+		m := testPacks()
+		m["core/skills/x/SKILL.md"] = file("---\nname: lighthouse-x\n---\nbody\n")
+		o.Packs = m
+	}
+	if r := run(t, root, "", func(o *Options) { yes(o); withSkill(o) }); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+	for _, rel := range []string{".claude/skills/lighthouse-x/SKILL.md", ".agents/skills/lighthouse-x/SKILL.md"} {
+		if c := read(t, root, rel); !strings.Contains(c, `lighthouse: "core@dev"`) {
+			t.Errorf("%s = %q", rel, c)
+		}
+	}
+	r := run(t, root, "", func(o *Options) { upgrade(o); withSkill(o) })
+	if r.code != 0 || r.out != "No changes.\n" {
+		t.Fatalf("upgrade: rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+}
+
+func withWorkflow(body string) func(*Options) {
+	return func(o *Options) {
+		m := testPacks()
+		m["core/workflows/x.yml"] = file(body)
+		o.Packs = m
+	}
+}
+
+func stubLookup(values map[string]string) func(*Options) {
+	return func(o *Options) {
+		o.Lookup = func(key string) (string, bool, error) {
+			v, ok := values[key]
+			return v, ok, nil
+		}
+	}
+}
+
+func all(mods ...func(*Options)) func(*Options) {
+	return func(o *Options) {
+		for _, m := range mods {
+			m(o)
+		}
+	}
+}
+
+func TestInitFillsWorkflow(t *testing.T) {
+	root := newRepo(t)
+	mods := all(withWorkflow("runs-on: @@ci.runs_on@@\n"), stubLookup(map[string]string{"ci.runs_on": "ubuntu-latest"}))
+	if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	got := read(t, root, ".github/workflows/lighthouse-x.yml")
+	if got != "# lighthouse: core@dev\nruns-on: ubuntu-latest\n" {
+		t.Fatalf("workflow = %q", got)
+	}
+	m, err := manifest.Read(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, ok := m.Lookup(packs.Key{Kind: packs.KindFile, Path: ".github/workflows/lighthouse-x.yml"})
+	if !ok || e.SHA256 != manifest.Sum([]byte(got)) {
+		t.Fatalf("manifest entry %+v ok %v", e, ok)
+	}
+	if r := run(t, root, "", all(upgrade, mods)); r.out != "No changes.\n" {
+		t.Fatalf("upgrade: %s\n%s", r.out, r.err)
+	}
+}
+
+func TestInitSkipsWorkflowWithMissingKey(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", all(yes, withWorkflow("who: @@ci.bot_login@@\n"), stubLookup(nil)))
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if exists(root, ".github/workflows/lighthouse-x.yml") {
+		t.Fatal("workflow installed without its key")
+	}
+	if !strings.Contains(r.err, "workflow lighthouse-x.yml not installed: ci.bot_login is not set") {
+		t.Fatalf("err = %q", r.err)
+	}
+}
+
+func TestInitReportsLookupError(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", all(yes, withWorkflow("a: @@ci.runs_on@@\n"), func(o *Options) {
+		o.Lookup = func(string) (string, bool, error) { return "", false, errors.New("lighthouse.toml: broken") }
+	}))
+	if r.code != 0 || exists(root, ".github/workflows/lighthouse-x.yml") {
+		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "workflow lighthouse-x.yml not installed: lighthouse.toml: broken") {
+		t.Fatalf("err = %q", r.err)
+	}
+	if !exists(root, ".claude/hooks/lighthouse/g.sh") {
+		t.Fatal("the rest of the package was not installed")
+	}
+}
+
+func TestDefaultLookupReadsProposedConfig(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "git@github.com:acme/widgets.git")
+	m := testPacks()
+	for _, f := range []string{"__init__.py", "config.py"} {
+		b, err := fs.ReadFile(pack.Files, "core/lib/"+f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m["core/lib/"+f] = &fstest.MapFile{Data: b}
+	}
+	m["core/workflows/x.yml"] = file("repo: @@forge.repo@@\n")
+	r := run(t, root, "", all(yes, func(o *Options) { o.Packs = m }))
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if got := read(t, root, ".github/workflows/lighthouse-x.yml"); got != "# lighthouse: core@dev\nrepo: acme/widgets\n" {
+		t.Fatalf("workflow = %q", got)
+	}
+}
+
+func TestWorkflowSkippedWithoutPython(t *testing.T) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	if err := os.Symlink(gitPath, filepath.Join(bin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	root := newRepo(t)
+	t.Setenv("PATH", bin)
+	r := run(t, root, "", all(yes, withWorkflow("a: @@ci.runs_on@@\n")))
+	if r.code != 0 || exists(root, ".github/workflows/lighthouse-x.yml") {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "workflow lighthouse-x.yml not installed: python3 is not available") {
+		t.Fatalf("err = %q", r.err)
+	}
+}
+
+func withPermissions(rules string) func(*Options) {
+	return func(o *Options) {
+		m := testPacks()
+		m["core/permissions.json"] = file(`{"allow": [` + rules + `]}`)
+		o.Packs = m
+	}
+}
+
+func TestInitMergesPermissions(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/settings.json", "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(gh *)\"\n    ]\n  }\n}\n")
+	mods := withPermissions(`"Bash(x:*)"`)
+	if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	s := read(t, root, ".claude/settings.json")
+	if !strings.Contains(s, "\"allow\": [\n      \"Bash(gh *)\",\n      \"Bash(x:*)\"\n    ]") {
+		t.Fatalf("settings:\n%s", s)
+	}
+	if r := run(t, root, "", all(upgrade, mods)); r.code != 0 || r.out != "No changes.\n" {
+		t.Fatalf("upgrade: rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+}
+
+func TestUpgradeDropsPermission(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/settings.json", "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(gh *)\"\n    ]\n  }\n}\n")
+	if r := run(t, root, "", all(yes, withPermissions(`"Bash(x:*)", "Bash(y:*)"`))); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if r := run(t, root, "", all(upgrade, yes, withPermissions(`"Bash(y:*)"`))); r.code != 0 {
+		t.Fatalf("upgrade: rc %d\n%s", r.code, r.err)
+	}
+	s := read(t, root, ".claude/settings.json")
+	if strings.Contains(s, "Bash(x:*)") || !strings.Contains(s, "Bash(gh *)") || !strings.Contains(s, "Bash(y:*)") {
+		t.Fatalf("settings:\n%s", s)
+	}
+}
+
+func TestUpgradeRefusesRemovedPermission(t *testing.T) {
+	root := newRepo(t)
+	mods := withPermissions(`"Bash(x:*)"`)
+	if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	s := read(t, root, ".claude/settings.json")
+	write(t, root, ".claude/settings.json", strings.Replace(s, `"Bash(x:*)"`, `"Bash(other)"`, 1))
+	if r := run(t, root, "", all(upgrade, mods)); r.code != 1 || !strings.Contains(r.err, "refused") {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+}
+
+func withTailscale(ip string) func(*Options) {
+	return func(o *Options) {
+		o.Hostname = func() (string, error) { return "box", nil }
+		o.TailscaleIP = func() (string, error) { return ip, nil }
+	}
+}
+
+func TestInitProposesHostTOML(t *testing.T) {
+	root := newRepo(t)
+	host := hostTOMLFor(t)
+	r := run(t, root, "y\ny\n", withTailscale("100.64.0.1"))
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if !strings.Contains(r.out, "+++ "+host) || !strings.Contains(r.out, "+name = \"box\"") || !strings.Contains(r.out, "+tailscale_ip = \"100.64.0.1\"") {
+		t.Fatalf("out:\n%s", r.out)
+	}
+	b, err := os.ReadFile(host)
+	if err != nil || string(b) != "name = \"box\"\ntailscale_ip = \"100.64.0.1\"\n" {
+		t.Fatalf("host.toml = %q, %v", b, err)
+	}
+	if strings.Contains(read(t, root, ".lighthouse/manifest.toml"), "host.toml") {
+		t.Fatal("host.toml in the manifest")
+	}
+	if r := run(t, root, "", all(upgrade, withTailscale("100.64.0.1"))); r.out != "No changes.\n" {
+		t.Fatalf("upgrade: %s", r.out)
+	}
+}
+
+func TestInitDeclinedWritesNoHostTOML(t *testing.T) {
+	root := newRepo(t)
+	if r := run(t, root, "n\n", withTailscale("100.64.0.1")); r.code != 1 {
+		t.Fatalf("rc %d", r.code)
+	}
+	if _, err := os.Stat(hostTOMLFor(t)); err == nil {
+		t.Fatal("host.toml written after the repository changes were declined")
+	}
+}
+
+func TestInitSkipsHostTOMLWithoutTailscale(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", yes)
+	if !strings.Contains(r.err, "host.toml not proposed: tailscale ip unavailable; skills that check the host will report it") {
+		t.Fatalf("err = %q", r.err)
+	}
+	if _, err := os.Stat(hostTOMLFor(t)); err == nil {
+		t.Fatal("host.toml written")
+	}
+}
+
+func TestInitRejectsBadTailscaleIP(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", all(yes, withTailscale("not-an-ip")))
+	if !strings.Contains(r.err, "host.toml not proposed") {
+		t.Fatalf("err = %q", r.err)
+	}
+}
+
+func TestInitLeavesExistingHostTOML(t *testing.T) {
+	root := newRepo(t)
+	host := hostTOMLFor(t)
+	if err := os.WriteFile(host, []byte("name = \"mine\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := run(t, root, "", all(yes, withTailscale("100.64.0.1"))); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	if b, _ := os.ReadFile(host); string(b) != "name = \"mine\"\n" {
+		t.Fatalf("host.toml = %q", b)
+	}
+}
+
+// Finding 1: an installed workflow survives an upgrade that cannot fill it.
+func TestUpgradeKeepsWorkflowItCannotFill(t *testing.T) {
+	root := newRepo(t)
+	if r := run(t, root, "", all(yes, withWorkflow("runs-on: @@ci.runs_on@@\n"), stubLookup(map[string]string{"ci.runs_on": "u"}))); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s", r.code, r.err)
+	}
+	before := read(t, root, ".github/workflows/lighthouse-x.yml")
+	for name, mod := range map[string]func(*Options){
+		"not set": stubLookup(nil),
+		"lookup error": func(o *Options) {
+			o.Lookup = func(string) (string, bool, error) { return "", false, errors.New("boom") }
+		},
+	} {
+		r := run(t, root, "", all(upgrade, yes, withWorkflow("runs-on: @@ci.runs_on@@\n"), mod))
+		if r.code != 0 || r.out != "No changes.\n" {
+			t.Fatalf("%s: rc %d\n%s\n%s", name, r.code, r.out, r.err)
+		}
+		if got := read(t, root, ".github/workflows/lighthouse-x.yml"); got != before {
+			t.Fatalf("%s: workflow changed to %q", name, got)
+		}
+		if !strings.Contains(r.err, "workflow lighthouse-x.yml not updated") {
+			t.Fatalf("%s: err = %q", name, r.err)
+		}
+	}
+}
+
+// Finding 2: a crashing config reader is an error, not "not set".
+func TestDefaultLookupCrashIsNotNotSet(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	root := newRepo(t)
+	m := testPacks()
+	m["core/lib/__init__.py"] = file("")
+	m["core/lib/config.py"] = file("raise RuntimeError('crash')\n")
+	m["core/workflows/x.yml"] = file("a: @@ci.runs_on@@\n")
+	r := run(t, root, "", all(yes, func(o *Options) { o.Packs = m }))
+	if strings.Contains(r.err, "is not set") || !strings.Contains(r.err, "crash") {
+		t.Fatalf("err = %q", r.err)
+	}
+}
+
+// Finding 2: the user's PYTHON* environment does not break the lookup.
+func TestDefaultLookupIgnoresPythonEnv(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	t.Setenv("PYTHONSAFEPATH", "1")
+	t.Setenv("PYTHONPATH", t.TempDir())
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "git@github.com:acme/widgets.git")
+	m := testPacks()
+	for _, f := range []string{"__init__.py", "config.py"} {
+		b, err := fs.ReadFile(pack.Files, "core/lib/"+f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m["core/lib/"+f] = &fstest.MapFile{Data: b}
+	}
+	m["core/workflows/x.yml"] = file("repo: @@forge.repo@@\n")
+	if r := run(t, root, "", all(yes, func(o *Options) { o.Packs = m })); r.code != 0 || !exists(root, ".github/workflows/lighthouse-x.yml") {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+}
+
+// Finding 4: a rule the project already had stays the project's.
+func TestAdoptedPermissionStaysProjectOwned(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/settings.json", "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(x:*)\"\n    ]\n  }\n}\n")
+	if r := run(t, root, "", all(yes, withPermissions(`"Bash(x:*)", "Bash(y:*)"`))); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if strings.Contains(read(t, root, ".lighthouse/manifest.toml"), "Bash(x:*)") {
+		t.Fatal("adopted project rule recorded as lighthouse-owned")
+	}
+	if r := run(t, root, "", all(upgrade, yes, withPermissions(`"Bash(y:*)"`))); r.code != 0 {
+		t.Fatalf("upgrade: rc %d\n%s", r.code, r.err)
+	}
+	if !strings.Contains(read(t, root, ".claude/settings.json"), "Bash(x:*)") {
+		t.Fatal("project rule removed")
+	}
+}
+
+// Finding 5: host.toml has its own question, and --upgrade never proposes it.
+func TestHostTOMLHasItsOwnQuestion(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "y\nn\n", withTailscale("100.64.0.1"))
+	if r.code != 0 || !exists(root, ".lighthouse/manifest.toml") {
+		t.Fatalf("rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+	if !strings.Contains(r.out, "Write "+hostTOMLFor(t)+"? [y/N] ") {
+		t.Fatalf("out:\n%s", r.out)
+	}
+	if _, err := os.Stat(hostTOMLFor(t)); err == nil {
+		t.Fatal("host.toml written after no")
+	}
+}
+
+func TestUpgradeDoesNotProposeHostTOML(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	r := run(t, root, "", all(upgrade, withTailscale("100.64.0.1")))
+	if r.out != "No changes.\n" || !strings.Contains(r.err, "host.toml is missing") {
+		t.Fatalf("out %q err %q", r.out, r.err)
 	}
 }

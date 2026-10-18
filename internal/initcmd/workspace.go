@@ -65,7 +65,15 @@ func current(root string, desired []packs.Unit, m manifest.Manifest) (map[packs.
 		return nil, err
 	}
 	hooks := map[string][]byte{}
+	allowed := map[string]bool{}
 	if doc != nil {
+		rules, err := settings.Allow(doc)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range rules {
+			allowed[r] = true
+		}
 		regs, err := settings.Registrations(doc)
 		if err != nil {
 			return nil, err
@@ -105,6 +113,12 @@ func current(root string, desired []packs.Unit, m manifest.Manifest) (map[packs.
 		case packs.KindHook:
 			c, ok := hooks[k.ID]
 			out[k] = reconcile.Current{Content: c, Present: ok}
+		case packs.KindPermission:
+			if allowed[k.ID] {
+				out[k] = reconcile.Current{Content: []byte(k.ID), Present: true}
+			} else {
+				out[k] = reconcile.Current{}
+			}
 		}
 	}
 	return out, nil

@@ -215,3 +215,84 @@ func appendRegistration(events *orderedjson.Object, r packs.Registration) {
 	g.Set("hooks", []any{r.Entry})
 	events.Set(r.Event, append(arr, g))
 }
+
+// allowList returns the permissions object and its allow array, validated; either is
+// nil when absent.
+func allowList(doc *orderedjson.Object) (*orderedjson.Object, []any, error) {
+	pv, ok := doc.Get("permissions")
+	if !ok {
+		return nil, nil, nil
+	}
+	perms, ok := pv.(*orderedjson.Object)
+	if !ok {
+		return nil, nil, fmt.Errorf(`.claude/settings.json: "permissions" is not an object`)
+	}
+	av, ok := perms.Get("allow")
+	if !ok {
+		return perms, nil, nil
+	}
+	allow, ok := av.([]any)
+	if !ok {
+		return nil, nil, fmt.Errorf(".claude/settings.json: permissions.allow is not an array")
+	}
+	for i, r := range allow {
+		if _, ok := r.(string); !ok {
+			return nil, nil, fmt.Errorf(".claude/settings.json: permissions.allow[%d] is not a string", i)
+		}
+	}
+	return perms, allow, nil
+}
+
+// Allow returns the rules in permissions.allow, in file order.
+func Allow(doc *orderedjson.Object) ([]string, error) {
+	_, allow, err := allowList(doc)
+	if err != nil {
+		return nil, err
+	}
+	rules := make([]string, 0, len(allow))
+	for _, r := range allow {
+		rules = append(rules, r.(string))
+	}
+	return rules, nil
+}
+
+// ApplyAllow adds every rule of want that permissions.allow lacks, last, and removes
+// every rule of drop. Other rules keep their place. Missing "permissions" or "allow"
+// are created, last in their object, only when a rule is added.
+func ApplyAllow(doc *orderedjson.Object, want, drop []string) error {
+	perms, allow, err := allowList(doc)
+	if err != nil {
+		return err
+	}
+	dropSet := map[string]bool{}
+	for _, r := range drop {
+		dropSet[r] = true
+	}
+	have := map[string]bool{}
+	out := make([]any, 0, len(allow)+len(want))
+	for _, r := range allow {
+		if dropSet[r.(string)] {
+			continue
+		}
+		have[r.(string)] = true
+		out = append(out, r)
+	}
+	for _, r := range want {
+		if !have[r] {
+			have[r] = true
+			out = append(out, r)
+		}
+	}
+	if len(out) == len(allow) && len(drop) == 0 {
+		return nil
+	}
+	if allow == nil && len(out) == 0 {
+		return nil
+	}
+	if perms == nil {
+		perms = orderedjson.NewObject()
+		doc.Set("permissions", perms)
+	}
+	perms.Set("allow", out)
+	return nil
+}

@@ -74,7 +74,9 @@ func run(t *testing.T, dir, bin string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = cleanEnv()
+	// host.toml next to the repo, in the test's own temporary directory: an e2e run
+	// never touches ~/.config, also on a host where `tailscale ip` works.
+	cmd.Env = append(cleanEnv(), "LIGHTHOUSE_HOST_TOML="+filepath.Join(filepath.Dir(dir), "host.toml"))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {

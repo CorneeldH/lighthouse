@@ -3,7 +3,11 @@
 package deps
 
 import (
+	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/packs"
 )
@@ -18,6 +22,7 @@ type Missing struct {
 type Checker struct {
 	LookPath func(string) (string, error)
 	Run      func(name string, args ...string) error
+	Home     string // where ~/.claude lives; "" means the user's home directory
 }
 
 // Default checks the real PATH.
@@ -30,7 +35,8 @@ func Default() Checker {
 
 // Check returns the requirements that are not met, in the order of reqs. `tomllib`
 // means a python3 that can import it (Python 3.11 or newer); any other name is a
-// program on PATH.
+// program on PATH, except `superpowers`: the Claude Code plugin, present when
+// ~/.claude/plugins/installed_plugins.json lists a plugin whose name starts with it.
 func (c Checker) Check(reqs []packs.Requirement) []Missing {
 	var missing []Missing
 	for _, r := range reqs {
@@ -42,6 +48,9 @@ func (c Checker) Check(reqs []packs.Requirement) []Missing {
 }
 
 func (c Checker) present(tool string) bool {
+	if tool == "superpowers" {
+		return c.hasPlugin(tool)
+	}
 	if tool == "tomllib" {
 		if _, err := c.LookPath("python3"); err != nil {
 			return false
@@ -51,4 +60,30 @@ func (c Checker) present(tool string) bool {
 	}
 	_, err := c.LookPath(tool)
 	return err == nil
+}
+
+func (c Checker) hasPlugin(prefix string) bool {
+	home := c.Home
+	if home == "" {
+		var err error
+		if home, err = os.UserHomeDir(); err != nil {
+			return false
+		}
+	}
+	b, err := os.ReadFile(filepath.Join(home, ".claude", "plugins", "installed_plugins.json"))
+	if err != nil {
+		return false
+	}
+	var doc struct {
+		Plugins map[string]json.RawMessage `json:"plugins"`
+	}
+	if json.Unmarshal(b, &doc) != nil {
+		return false
+	}
+	for name := range doc.Plugins {
+		if strings.HasPrefix(name, prefix) {
+			return true
+		}
+	}
+	return false
 }

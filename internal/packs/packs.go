@@ -8,8 +8,19 @@
 //	lib/<rel>               .lighthouse/lib/lighthouse_lib/<rel>
 //	scripts/<rel>           .lighthouse/scripts/<rel>
 //	agents/<name>.md        .claude/agents/lighthouse-<name>.md
+//	skills/<name>/<rel>     .claude/skills/lighthouse-<name>/<rel> and
+//	                        .agents/skills/lighthouse-<name>/<rel>
+//	skills/<name>/claude/SKILL.md, skills/<name>/agents/SKILL.md
+//	                        the SKILL.md of one harness only, when the two differ
 //	instructions/AGENTS.md  the package's managed block in AGENTS.md
+//	headings.toml           .lighthouse/headings.toml (spec, besluit 8)
+//	templates/pull_request_template.md
+//	                        .github/pull_request_template.md
+//	workflows/<name>.yml    .github/workflows/lighthouse-<name>.yml; init fills its
+//	                        @@<key>@@ placeholders from the config (see Fill)
 //	requires.toml           tool -> the units that need it
+//	permissions.json        {"allow": [...]}: one permission unit per rule, merged into
+//	                        permissions.allow of .claude/settings.json
 package packs
 
 import (
@@ -28,11 +39,13 @@ import (
 // Kind is the kind of a unit.
 type Kind string
 
-// The three kinds of unit (spec, Versiemarker en manifest).
+// The kinds of unit (spec, Versiemarker en manifest). A permission is one rule in
+// permissions.allow of .claude/settings.json; its ID and content are the rule.
 const (
-	KindFile  Kind = "file"
-	KindBlock Kind = "block"
-	KindHook  Kind = "hook"
+	KindFile       Kind = "file"
+	KindBlock      Kind = "block"
+	KindHook       Kind = "hook"
+	KindPermission Kind = "permission"
 )
 
 // Key identifies a unit in a repository.
@@ -81,6 +94,13 @@ type Pack struct {
 // points here belongs to lighthouse; any other registration belongs to the project.
 const HookDir = ".claude/hooks/lighthouse/"
 
+// Fixed install paths outside the lighthouse directories.
+const (
+	HeadingsPath   = ".lighthouse/headings.toml"
+	PRTemplatePath = ".github/pull_request_template.md"
+	WorkflowPrefix = ".github/workflows/lighthouse-"
+)
+
 const (
 	settingsPath  = ".claude/settings.json"
 	agentsMDPath  = "AGENTS.md"
@@ -103,6 +123,9 @@ func IsLighthouseCommand(command string) bool {
 // .claude/agents/lighthouse-<name>.md directly.
 var installDirs = []string{HookDir, ".lighthouse/lib/lighthouse_lib/", ".lighthouse/scripts/"}
 
+// skillDirs are the two harness directories a skill lands in (spec, Indeling).
+var skillDirs = []string{".claude/skills/lighthouse-", ".agents/skills/lighthouse-"}
+
 // IsInstallPath reports whether p is a path lighthouse may own for a unit of kind:
 // a clean relative path under a lighthouse directory, AGENTS.md for a block, and
 // .claude/settings.json for a hook. A manifest is committed and may be edited in a
@@ -120,12 +143,25 @@ func IsInstallPath(kind Kind, p string) bool {
 	switch kind {
 	case KindBlock:
 		return p == agentsMDPath
-	case KindHook:
+	case KindHook, KindPermission:
 		return p == settingsPath
 	case KindFile:
 		for _, dir := range installDirs {
 			if strings.HasPrefix(p, dir) && len(p) > len(dir) {
 				return true
+			}
+		}
+		if p == HeadingsPath || p == PRTemplatePath {
+			return true
+		}
+		if rest := strings.TrimPrefix(p, WorkflowPrefix); rest != p {
+			ext := path.Ext(rest)
+			return !strings.Contains(rest, "/") && len(rest) > len(ext) && (ext == ".yml" || ext == ".yaml")
+		}
+		for _, dir := range skillDirs {
+			if rest := strings.TrimPrefix(p, dir); rest != p {
+				name, file, ok := strings.Cut(rest, "/")
+				return ok && name != "" && file != ""
 			}
 		}
 		const agents = ".claude/agents/lighthouse-"
@@ -148,6 +184,7 @@ func junk(p string) bool {
 func Load(fsys fs.FS, name, version string) (Pack, error) {
 	p := Pack{Name: name}
 	scripts := map[string]bool{}
+	skills := map[string]*skill{}
 	var hooksJSON []byte
 	err := fs.WalkDir(fsys, ".", func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -162,10 +199,8 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 		top, rest, nested := strings.Cut(rel, "/")
 		if d.IsDir() {
 			switch top {
-			case "hooks", "lib", "scripts", "agents", "instructions":
+			case "hooks", "lib", "scripts", "agents", "instructions", "skills", "templates", "workflows":
 				return nil
-			case "skills":
-				return fmt.Errorf("package %s: skills/ is not supported yet", name)
 			default:
 				return fmt.Errorf("package %s: unknown directory %s/", name, rel)
 			}
@@ -183,10 +218,28 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 				p.Requires = reqs
 				return nil
 			}
+			if rel == "permissions.json" {
+				units, err := parsePermissions(name, data)
+				if err != nil {
+					return err
+				}
+				p.Units = append(p.Units, units...)
+				return nil
+			}
+			if rel == "headings.toml" {
+				u, err := fileUnit(name, version, HeadingsPath, data)
+				if err != nil {
+					return err
+				}
+				p.Units = append(p.Units, u)
+				return nil
+			}
 			return fmt.Errorf("package %s: unknown file %s", name, rel)
 		}
 		var target string
 		switch top {
+		case "skills":
+			return collectSkill(skills, name, rel, rest, data)
 		case "hooks":
 			if rel == hooksJSONPath {
 				hooksJSON = data
@@ -196,6 +249,16 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 			target = HookDir + rest
 		case "lib":
 			target = ".lighthouse/lib/lighthouse_lib/" + rest
+		case "templates":
+			if rest != "pull_request_template.md" {
+				return fmt.Errorf("package %s: templates/ holds only pull_request_template.md, not %s", name, rel)
+			}
+			target = PRTemplatePath
+		case "workflows":
+			target = WorkflowPrefix + rest
+			if !IsInstallPath(KindFile, target) {
+				return fmt.Errorf("package %s: a workflow is workflows/<name>.yml, not %s", name, rel)
+			}
 		case "scripts":
 			target = ".lighthouse/scripts/" + rest
 		case "agents":
@@ -214,20 +277,21 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 			p.Units = append(p.Units, Unit{Kind: KindBlock, Package: name, Path: agentsMDPath, ID: name, Content: body})
 			return nil
 		}
-		content, err := Mark(target, data, name, version)
+		u, err := fileUnit(name, version, target, data)
 		if err != nil {
-			return fmt.Errorf("package %s: %w", name, err)
+			return err
 		}
-		mode := fs.FileMode(0o644)
-		if bytes.HasPrefix(content, []byte("#!")) {
-			mode = 0o755
-		}
-		p.Units = append(p.Units, Unit{Kind: KindFile, Package: name, Path: target, Content: content, Mode: mode})
+		p.Units = append(p.Units, u)
 		return nil
 	})
 	if err != nil {
 		return Pack{}, err
 	}
+	units, err := skillUnits(skills, name, version)
+	if err != nil {
+		return Pack{}, err
+	}
+	p.Units = append(p.Units, units...)
 	if hooksJSON != nil {
 		hooks, err := parseHooks(name, hooksJSON, scripts)
 		if err != nil {
@@ -236,6 +300,159 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 		p.Units = append(p.Units, hooks...)
 	}
 	return p, nil
+}
+
+// fileUnit marks data for target and gives it its mode.
+func fileUnit(pkg, version, target string, data []byte) (Unit, error) {
+	content, err := Mark(target, data, pkg, version)
+	if err != nil {
+		return Unit{}, fmt.Errorf("package %s: %w", pkg, err)
+	}
+	mode := fs.FileMode(0o644)
+	if bytes.HasPrefix(content, []byte("#!")) {
+		mode = 0o755
+	}
+	return Unit{Kind: KindFile, Package: pkg, Path: target, Content: content, Mode: mode}, nil
+}
+
+// skill holds the files of one skills/<name>/ directory while the package is walked.
+type skill struct {
+	shared map[string][]byte // rel within the skill -> content, for both harnesses
+	claude []byte            // claude/SKILL.md
+	agents []byte            // agents/SKILL.md
+}
+
+func collectSkill(skills map[string]*skill, pkg, rel, rest string, data []byte) error {
+	dir, file, ok := strings.Cut(rest, "/")
+	if !ok {
+		return fmt.Errorf("package %s: a skill is skills/<name>/..., not %s", pkg, rel)
+	}
+	s := skills[dir]
+	if s == nil {
+		s = &skill{shared: map[string][]byte{}}
+		skills[dir] = s
+	}
+	switch {
+	case file == "claude/SKILL.md":
+		s.claude = data
+	case file == "agents/SKILL.md":
+		s.agents = data
+	case strings.HasPrefix(file, "claude/") || strings.HasPrefix(file, "agents/"):
+		return fmt.Errorf("package %s: %s: claude/ and agents/ hold only SKILL.md", pkg, rel)
+	default:
+		s.shared[file] = data
+	}
+	return nil
+}
+
+// frontmatterName returns the value of `name:` in the frontmatter of a SKILL.md.
+func frontmatterName(data []byte) string {
+	lines := strings.Split(string(data), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return ""
+	}
+	for _, line := range lines[1:] {
+		line = strings.TrimRight(line, "\r")
+		if line == "---" {
+			break
+		}
+		if v, ok := strings.CutPrefix(line, "name:"); ok {
+			return strings.Trim(strings.TrimSpace(v), `"'`)
+		}
+	}
+	return ""
+}
+
+// skillUnits checks each collected skill and maps it into both harness directories.
+func skillUnits(skills map[string]*skill, pkg, version string) ([]Unit, error) {
+	names := make([]string, 0, len(skills))
+	for n := range skills {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var units []Unit
+	for _, n := range names {
+		s := skills[n]
+		where := "skills/" + n + "/"
+		shared, hasShared := s.shared["SKILL.md"]
+		switch {
+		case hasShared && (s.claude != nil || s.agents != nil):
+			return nil, fmt.Errorf("package %s: %s: SKILL.md next to claude/ or agents/SKILL.md", pkg, where)
+		case !hasShared && (s.claude == nil || s.agents == nil):
+			return nil, fmt.Errorf("package %s: %s: needs SKILL.md, or both claude/SKILL.md and agents/SKILL.md", pkg, where)
+		}
+		variants := [][]byte{s.claude, s.agents}
+		if hasShared {
+			variants = [][]byte{shared, shared}
+		}
+		for _, v := range variants {
+			if got := frontmatterName(v); got != "lighthouse-"+n {
+				return nil, fmt.Errorf("package %s: %s: frontmatter name is %q, want %q", pkg, where, got, "lighthouse-"+n)
+			}
+		}
+		rels := make([]string, 0, len(s.shared))
+		for rel := range s.shared {
+			rels = append(rels, rel)
+		}
+		sort.Strings(rels)
+		for i, dir := range skillDirs {
+			base := dir + n + "/"
+			for _, rel := range rels {
+				data := s.shared[rel]
+				if rel == "SKILL.md" {
+					data = variants[i]
+				}
+				u, err := fileUnit(pkg, version, base+rel, data)
+				if err != nil {
+					return nil, err
+				}
+				units = append(units, u)
+			}
+			if !hasShared {
+				u, err := fileUnit(pkg, version, base+"SKILL.md", variants[i])
+				if err != nil {
+					return nil, err
+				}
+				units = append(units, u)
+			}
+		}
+	}
+	return units, nil
+}
+
+// parsePermissions reads permissions.json: an object with only "allow", a list of
+// distinct, non-empty rules.
+func parsePermissions(name string, data []byte) ([]Unit, error) {
+	fail := func(format string, a ...any) error {
+		return fmt.Errorf("package %s: permissions.json: %s", name, fmt.Sprintf(format, a...))
+	}
+	v, err := orderedjson.Parse(data)
+	if err != nil {
+		return nil, fail("%v", err)
+	}
+	obj, ok := v.(*orderedjson.Object)
+	if !ok || len(obj.Keys()) != 1 || obj.Keys()[0] != "allow" {
+		return nil, fail(`must be an object with only "allow"`)
+	}
+	av, _ := obj.Get("allow")
+	rules, ok := av.([]any)
+	if !ok {
+		return nil, fail(`"allow" is not an array`)
+	}
+	seen := map[string]bool{}
+	units := make([]Unit, 0, len(rules))
+	for i, r := range rules {
+		rule, ok := r.(string)
+		if !ok || rule == "" {
+			return nil, fail("allow[%d] is not a non-empty string", i)
+		}
+		if seen[rule] {
+			return nil, fail("allow[%d] %q appears twice", i, rule)
+		}
+		seen[rule] = true
+		units = append(units, Unit{Kind: KindPermission, Package: name, Path: settingsPath, ID: rule, Content: []byte(rule)})
+	}
+	return units, nil
 }
 
 func parseRequires(data []byte) ([]Requirement, error) {

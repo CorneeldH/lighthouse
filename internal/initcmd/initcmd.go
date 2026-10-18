@@ -44,9 +44,13 @@ const (
 type Options struct {
 	Dir                 string // working directory; the root comes from git rev-parse --show-toplevel
 	Upgrade, Force, Yes bool
-	Version             string       // "" means version.String()
-	Packs               fs.FS        // holds <name>/...; nil means pack.Files
-	Deps                deps.Checker // nil fields mean deps.Default()
+	Version             string                 // "" means version.String()
+	Packs               fs.FS                  // holds <name>/...; nil means pack.Files
+	Deps                deps.Checker           // nil fields mean deps.Default()
+	Lookup              packs.Lookup           // config values for workflow placeholders; nil runs the package's config reader
+	HostTOML            string                 // "" means $LIGHTHOUSE_HOST_TOML, else ~/.config/lighthouse/host.toml
+	Hostname            func() (string, error) // nil means os.Hostname
+	TailscaleIP         func() (string, error) // nil runs `tailscale ip -4`
 	In                  io.Reader
 	Out, Err            io.Writer
 }
@@ -73,6 +77,15 @@ func Run(o Options) int {
 	}
 	if o.In == nil {
 		o.In = strings.NewReader("")
+	}
+	if o.HostTOML == "" {
+		o.HostTOML = defaultHostTOML()
+	}
+	if o.Hostname == nil {
+		o.Hostname = os.Hostname
+	}
+	if o.TailscaleIP == nil {
+		o.TailscaleIP = tailscaleIP
 	}
 	if err := execute(o); err != nil {
 		_, _ = fmt.Fprintf(o.Err, "lighthouse init: %v\n", err)
@@ -123,6 +136,19 @@ func execute(o Options) error {
 		desired = append(desired, p.Units...)
 		reqs = append(reqs, p.Requires...)
 	}
+	lookup := o.Lookup
+	if lookup == nil {
+		pl := &pythonLookup{packs: o.Packs, root: root}
+		defer pl.close()
+		lookup = pl.lookup
+	}
+	desired = fillWorkflows(o.Err, desired, lookup, func(rel string) ([]byte, bool) {
+		if _, listed := m.Lookup(packs.Key{Kind: packs.KindFile, Path: rel}); !listed {
+			return nil, false
+		}
+		b, ok, err := readFile(root, rel)
+		return b, ok && err == nil
+	})
 	for _, miss := range o.Deps.Check(reqs) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
 	}
@@ -158,31 +184,37 @@ func execute(o Options) error {
 		}
 	}
 	sort.Strings(paths)
+	in := bufio.NewReader(o.In)
 	if len(paths) == 0 {
 		_, _ = fmt.Fprintln(o.Out, "No changes.")
-		warnMissingScripts(o.Err, root)
-		return nil
-	}
-	for _, p := range paths {
-		printDiff(o.Out, p, plan[p])
-	}
-	if !o.Yes {
-		_, _ = fmt.Fprint(o.Out, "Apply these changes? [y/N] ")
-		line, _ := bufio.NewReader(o.In).ReadString('\n')
-		answer := strings.ToLower(strings.TrimSpace(line))
-		if answer != "y" && answer != "yes" {
-			_, _ = fmt.Fprintln(o.Out)
+	} else {
+		for _, p := range paths {
+			printDiff(o.Out, p, plan[p])
+		}
+		if !o.Yes && !ask(o.Out, in, "Apply these changes? [y/N] ") {
 			return errDeclined
 		}
-	}
-	for _, p := range paths {
-		if err := apply(root, p, plan[p]); err != nil {
-			return err
+		for _, p := range paths {
+			if err := apply(root, p, plan[p]); err != nil {
+				return err
+			}
 		}
+		_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
 	}
-	_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
 	warnMissingScripts(o.Err, root)
-	return nil
+	return offerHost(o, in)
+}
+
+// ask prints question and reports whether the answer is y or yes.
+func ask(w io.Writer, in *bufio.Reader, question string) bool {
+	_, _ = fmt.Fprint(w, question)
+	line, _ := in.ReadString('\n')
+	answer := strings.ToLower(strings.TrimSpace(line))
+	if answer != "y" && answer != "yes" {
+		_, _ = fmt.Fprintln(w)
+		return false
+	}
+	return true
 }
 
 func (p planned) changes() bool {
@@ -224,6 +256,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	}
 
 	var hooksTouched bool
+	var allowWant, allowDrop []string
 	for _, c := range changes {
 		switch c.Key.Kind {
 		case packs.KindFile:
@@ -258,10 +291,17 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 			}
 		case packs.KindHook:
 			hooksTouched = true
+		case packs.KindPermission:
+			switch {
+			case c.Desired != nil && writes(c.Action, o.Force):
+				allowWant = append(allowWant, c.Key.ID)
+			case c.Desired == nil && (c.Action == reconcile.Remove || o.Force):
+				allowDrop = append(allowDrop, c.Key.ID)
+			}
 		}
 	}
 
-	if hooksTouched {
+	if hooksTouched || len(allowWant) > 0 || len(allowDrop) > 0 {
 		p, err := load(settingsPath)
 		if err != nil {
 			return nil, err
@@ -273,13 +313,18 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		if doc == nil {
 			doc = orderedjson.NewObject()
 		}
-		var want []packs.Registration
-		for _, u := range desired {
-			if u.Kind == packs.KindHook {
-				want = append(want, *u.Hook)
+		if hooksTouched {
+			var want []packs.Registration
+			for _, u := range desired {
+				if u.Kind == packs.KindHook {
+					want = append(want, *u.Hook)
+				}
+			}
+			if err := settings.Apply(doc, want); err != nil {
+				return nil, err
 			}
 		}
-		if err := settings.Apply(doc, want); err != nil {
+		if err := settings.ApplyAllow(doc, allowWant, allowDrop); err != nil {
 			return nil, err
 		}
 		out, err := orderedjson.Marshal(doc)
@@ -315,8 +360,19 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	if err != nil {
 		return nil, err
 	}
+	// A permission rule the project already had stays the project's: it carries no
+	// mark of ownership, so recording it would let a later upgrade remove it.
+	adopted := map[packs.Key]bool{}
+	for _, c := range changes {
+		if c.Key.Kind == packs.KindPermission && c.Action == reconcile.Adopt {
+			adopted[c.Key] = true
+		}
+	}
 	nm := manifest.Manifest{Version: o.Version, Packages: names}
 	for _, u := range desired {
+		if adopted[u.Key()] {
+			continue
+		}
 		nm.Units = append(nm.Units, manifest.Entry{
 			Kind: u.Kind, Path: u.Path, ID: u.ID, Package: u.Package, Version: o.Version,
 			SHA256: manifest.Sum(u.Content),
@@ -346,16 +402,23 @@ func hasLine(b []byte, line string) bool {
 	return false
 }
 
+// proposeConfig returns lighthouse.toml as init will leave it: old plus the missing
+// core tables.
+func proposeConfig(root string, old []byte) (out []byte, haveRepo bool, manual []string, err error) {
+	repo := ""
+	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
+		repo, haveRepo = projectconfig.ForgeRepo(strings.TrimSpace(string(url)))
+	}
+	out, _, manual, err = projectconfig.AppendMissing(old, projectconfig.CoreTables(repo, haveRepo))
+	return out, haveRepo, manual, err
+}
+
 func planConfig(o Options, root string, load func(string) (*planned, error)) error {
 	p, err := load(configPath)
 	if err != nil {
 		return err
 	}
-	repo, haveRepo := "", false
-	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
-		repo, haveRepo = projectconfig.ForgeRepo(strings.TrimSpace(string(url)))
-	}
-	out, _, manual, err := projectconfig.AppendMissing(p.old, projectconfig.CoreTables(repo, haveRepo))
+	out, haveRepo, manual, err := proposeConfig(root, p.old)
 	if err != nil {
 		return err
 	}
