@@ -74,7 +74,7 @@ Elke taak die een paia-bestand overneemt, volgt deze stappen. Een taak noemt all
 
 ## Configsleutels
 
-Nieuw in `lighthouse.toml`, met de default in `config.py`. Een sleutel zonder default is optioneel: rc 1 betekent "stap overgeslagen, gemeld". `[forge]` is optioneel: zonder die tabel geeft elke `forge.*`-sleutel zonder default rc 1, en werkt de rest gewoon.
+Nieuw in `lighthouse.toml`, met de default in `config.py`. Een sleutel zonder default is optioneel: rc 1 betekent "stap overgeslagen, gemeld". `[forge]` is optioneel, en ook zijn sleutels `kind` en `repo`: een ontbrekende `forge.*`-sleutel zonder default geeft rc 1, en de rest werkt gewoon. Zo kan een repo zonder GitHub-remote alleen `[forge] default_branch` zetten.
 
 | Sleutel | Type | Default | Bron (inventaris) |
 |---|---|---|---|
@@ -256,7 +256,7 @@ Een PR opent na de laatste taak van zijn rij. De taaknummers blijven die van de 
 
 **Interfaces:**
 - Produces: `config.DEFAULTS: Mapping[str, object]` (tabel *Configsleutels*); `config.is_known_key(key: str) -> bool` (de sleutels van (a) onder `forge`, `forge.board` en `project`, de afgeleide `forge.owner`/`forge.name`, `host.<x>` met `host.gate_slice`, alles uit de tabel *Configsleutels*, en `forge.board.status_options.<optie>`/`priority_options.<optie>` met elke optienaam); `lookup(cfg, key)` geeft de default als de sleutel ontbreekt en er een default is; `load` valideert het type van elke bekende sleutel uit de tabel als hij er staat (`ConfigError` noemt pad en sleutel).
-- **`[forge]` is optioneel.** Zonder de tabel geeft `load` een `Config` zonder repo, en elke `forge.*`-sleutel zonder default geeft rc 1 ("not set"); `forge.default_branch` geeft ook dan `main`. Een `[forge]` die er staat maar kapot is, blijft rc 2.
+- **`[forge]` is optioneel, en ook `kind` en `repo` erin.** Zonder die sleutels geeft `load` een `Config` zonder repo, en elke `forge.*`-sleutel zonder default geeft rc 1 ("not set"); `forge.default_branch` geeft ook dan `main`, of de waarde die er staat. Een sleutel die er staat maar ongeldig is, blijft rc 2. Test: `test_forge_with_only_default_branch`.
 - **`host.gate_slice`** (besluit 20) is optioneel in `[host]` van `host.toml`. Ontbreekt de sleutel of `host.toml` zelf, dan rc 1; een kapotte `host.toml` blijft rc 2.
 - Het bestand werkt als script op zijn pad (ontwerpkeuze 6).
 - `datadir.data_dir() -> Path` en `DataDirInRepoError` (Global Constraints, besluit 27).

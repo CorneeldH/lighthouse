@@ -2,8 +2,8 @@
 
 One reader for hooks, scripts and skills. It validates loudly: a configuration
 error names the file and the key, and the CLI exits with rc 2. `[forge]` is
-optional: without it every `forge.*` key without a default is not set (rc 1), and
-the rest works. The board (`[forge.board]`) is optional too; the status option
+optional, and so are its keys: an absent `forge.*` key without a default is not
+set (rc 1), and the rest works. The board (`[forge.board]`) is optional too; the status option
 `Controller` is required only when a `[controller]` table exists. The keys in
 `SCHEMA` are type-checked when present, and `DEFAULTS` fills the absent ones. Any
 other table passes through unvalidated.
@@ -334,14 +334,18 @@ def load(path: Path) -> Config:
     board = None
     if "forge" in data:
         forge = _get(data, "forge", dict, "", path)
-        kind = _get(forge, "kind", str, "forge.", path)
-        if kind != "github":
-            raise ConfigError(f"{path}: key forge.kind must be 'github', not {kind!r}")
-        repo = _get(forge, "repo", str, "forge.", path)
-        if not _REPO.fullmatch(repo):
-            raise ConfigError(
-                f"{path}: key forge.repo must have the form owner/name: {repo!r}"
-            )
+        # `kind` and `repo` are optional too: a repo without a GitHub remote may
+        # hold only `default_branch` here.
+        if "kind" in forge:
+            kind = _get(forge, "kind", str, "forge.", path)
+            if kind != "github":
+                raise ConfigError(f"{path}: key forge.kind must be 'github', not {kind!r}")
+        if "repo" in forge:
+            repo = _get(forge, "repo", str, "forge.", path)
+            if not _REPO.fullmatch(repo):
+                raise ConfigError(
+                    f"{path}: key forge.repo must have the form owner/name: {repo!r}"
+                )
         if "board" in forge:
             board = _board(
                 _get(forge, "board", dict, "forge.", path), "controller" in data, path

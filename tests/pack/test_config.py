@@ -171,8 +171,6 @@ def test_load_rejects(tmp_path, mutation, needle):
 @pytest.mark.parametrize(
     "missing",
     [
-        ("forge", "kind"),
-        ("forge", "repo"),
         ("forge", "board", "project_number"),
         ("forge", "board", "project_id"),
         ("forge", "board", "status_field_id"),
@@ -614,10 +612,39 @@ def test_without_forge_table_load(tmp_path, monkeypatch):
 
 def test_broken_forge_is_rc_2(tmp_path, monkeypatch, capsys):
     path = tmp_path / "lighthouse.toml"
-    path.write_text('[forge]\nkind = "github"\n')
+    path.write_text('[forge]\nkind = "gitlab"\n')
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
     assert main(["test_gate.slots"]) == 2
-    assert "forge.repo" in capsys.readouterr().err
+    assert "forge.kind" in capsys.readouterr().err
+
+
+def _forge_only_branch(tmp_path, monkeypatch) -> Path:
+    path = tmp_path / "lighthouse.toml"
+    path.write_text('[forge]\ndefault_branch = "master"\n')
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("key", "rc", "out"),
+    [
+        ("forge.default_branch", 0, "master\n"),
+        ("paths.specs", 0, "docs/developer/planning/specs\n"),
+        ("forge.repo", 1, ""),
+        ("forge.owner", 1, ""),
+        ("forge.kind", 1, ""),
+    ],
+)
+def test_forge_with_only_default_branch(tmp_path, monkeypatch, capsys, key, rc, out):
+    # A repo without a GitHub remote on `master` (review PR 2, minor 2).
+    _forge_only_branch(tmp_path, monkeypatch)
+    assert main([key]) == rc
+    assert capsys.readouterr().out == out
+
+
+def test_forge_with_only_default_branch_load(tmp_path, monkeypatch):
+    cfg = load(_forge_only_branch(tmp_path, monkeypatch))
+    assert (cfg.kind, cfg.repo, cfg.board) == (None, None, None)
 
 
 def test_gate_slice_from_host(tmp_path, monkeypatch, capsys):
