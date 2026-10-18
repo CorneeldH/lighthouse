@@ -1,140 +1,190 @@
-"""Contracttest op de issue-skills: blokkade, stand van de backlog en sweeprapport.
+"""Contract test for the skill `lighthouse-close-issue`.
 
-De spec (docs/developer/planning/specs/2026-09-28-backlog-stand-en-blokkades-design.md) legt
-vast wat alleen in skilltekst leeft en door geen runtime wordt afgedwongen: de volgorde
-relatie-vóór-label in paia-write-issue, de melding van vrijgekomen issues in paia-close-issue,
-poort 0 die de blocker uit de relatie leest, en de split van de poorten naar paia-route-issue. Beide spiegels (.claude/ en .agents/) worden op
-inhoud nagelopen; tests/unit/test_skill_mirror.py vergelijkt alleen bestandsnamen.
+What lives only in skill text: step 0 waits for the merge, entry C runs only the evidence runner
+on a fresh default branch and reopens fail-closed, the released issues are checked against the
+lane `lighthouse-unblock-dependents.yml` (besluit 29), and what stays in paia (the release flow,
+backlog-stand, the controller) runs only if present. Both variants are checked on content.
+
+From paia's `test_issue_skills_contract.py` (the close-issue part).
 """
 
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
-import yaml
+from tests.pack._testkit import CORE
 
-REPO = Path(__file__).resolve().parents[2]
+SKILL_DIR = CORE / "skills" / "close-issue"
 
 
-def skill(naam: str) -> tuple[str, str]:
+def skill() -> tuple[str, str]:
     return tuple(
-        (REPO / wortel / "skills" / naam / "SKILL.md").read_text(encoding="utf-8")
-        for wortel in (".claude", ".agents")
+        (SKILL_DIR / variant / "SKILL.md").read_text(encoding="utf-8")
+        for variant in ("claude", "agents")
     )
 
-def test_close_issue_meldt_vrijgekomen_issues():
-    for body in skill("paia-close-issue"):
-        assert "dependencies/blocking" in body
-        assert "--remove-label 3-blocked-issue" in body
-        assert (
-            "unblock-dependents.yml" in body
-        )  # de lane geeft vrij, de skill controleert
 
-
-def test_stap_nul_wacht_op_merge():
-    for body in skill("paia-close-issue"):
-        assert (
-            "wacht op merge van #<pr>; draai /paia-close-issue <nr> opnieuw na de merge"
-            in body
-        )
-        assert body.index("## Stap 0") < body.index("## Ingang B")
-
-
-def test_ingang_c_draait_alleen_de_runner():
-    for body in skill("paia-close-issue"):
-        assert "evidence.py run" in body
-        assert "git worktree add --detach" in body
-        assert "origin/main" in body
-
-
-def test_ingang_c_heropent_fail_closed():
-    for body in skill("paia-close-issue"):
-        assert "gh issue reopen" in body
-        assert "board_start.py --heropen" in body
-        assert "issue heropend, board niet bijgewerkt" in body
-        assert "Closes zonder bewijsblok" in body
-        assert "Evidence buiten allowlist" in body
-        assert "na-merge-check: klopt" in body
-
-
-def test_ingang_c_meldt_een_niet_meetbare_run_luid():
-    """rc 3 (KON NIET CONTROLEREN) en een onbekende rc: geen klopt-comment, geen reopen."""
-    for body in skill("paia-close-issue"):
-        c = body[body.index("## Ingang C") :]
-        c = c[: c.index("\n## ", 1)]
-        assert "KON NIET CONTROLEREN" in c
-        assert "onbekende" in c
-
-
-def test_ingang_c_sluit_nooit_zelf():
-    for body in skill("paia-close-issue"):
-        c = body[body.index("## Ingang C") :]
-        c = c[: c.index("\n## ", 1)]
-        assert "gh issue close" not in c
-
-
-def _ingang_c(body: str) -> str:
-    c = body[body.index("## Ingang C") :]
+def _entry_c(body: str) -> str:
+    c = body[body.index("## Entry C") :]
     return c[: c.index("\n## ", 1)]
 
 
-def test_ingang_c_plakt_runner_uitvoer_niet_in_een_gequote_regel():
-    """De runner-tabel bevat vrije tekst uit de PR-body; in `"..."` zou de shell backticks en
-    `$(…)` daaruit uitvoeren. Uitvoer gaat via een bestand."""
-    for body in skill("paia-close-issue"):
-        c = _ingang_c(body)
-        assert '"<runner-tabel>"' not in c
+def _section(body: str, heading: str) -> str:
+    s = body[body.index(heading) :]
+    return s[: s.index("\n## ", 1)]
+
+
+def test_close_issue_reports_released_issues():
+    for body in skill():
+        assert "dependencies/blocking" in body
+        assert "--remove-label <labels.blocked_issue>" in body
+        assert "config.py labels.blocked_issue" in body
+
+
+def test_close_issue_finds_lighthouse_workflow():
+    """Besluit 29: the lane is installed as lighthouse-unblock-dependents.yml, and the skill
+    looks for its run under that name."""
+    for body in skill():
+        assert "--workflow lighthouse-unblock-dependents.yml" in body
+        assert "gh workflow run lighthouse-unblock-dependents.yml -f issue=<nr>" in body
+        assert re.search(r"(?<!lighthouse-)unblock-dependents\.yml", body) is None
+        assert 'startswith("Released lane after this close:")' in body
+
+
+def test_close_issue_bot_from_config():
+    for body in skill():
+        released = _section(body, "### 6.")
+        assert "config.py ci.bot_login" in released
+        assert "skipped" in released
+
+
+def test_step_zero_waits_for_merge():
+    for body in skill():
+        assert (
+            "waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge"
+            in body
+        )
+        assert body.index("## Step 0") < body.index("## Entry B")
+
+
+def test_entry_c_runs_only_the_runner():
+    for body in skill():
+        assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py run" in body
+        assert "git worktree add --detach" in body
+        assert "config.py forge.default_branch" in _entry_c(body)
+
+
+def test_entry_c_reopens_fail_closed():
+    for body in skill():
+        assert "gh issue reopen" in body
+        assert "python3 .lighthouse/scripts/board_start.py --reopen <nr>" in body
+        assert "issue reopened, board not updated" in body
+        assert "heading:evidence_closes_without_block" in body
+        assert "Evidence outside the allowlist" in body
+        assert "headings.py evidence_holds" in body
+
+
+def test_close_issue_board_skip():
+    """Without `[forge.board]` board_start says `board: skipped` (rc 0, besluit 24): that is
+    no failure and is never reported as one."""
+    for body in skill():
+        c = _entry_c(body)
+        assert "board: skipped" in c
+        assert "is no error" in c
+        assert "FOUT" not in body
+        skip = next(p for p in re.split(r"\n\s*\n", c) if "board: skipped" in p)
+        assert "issue reopened, board not updated" not in skip
+
+
+def test_entry_c_reports_an_unmeasurable_run_loudly():
+    for body in skill():
+        c = _entry_c(body)
+        assert "COULD NOT CHECK" in c
+        assert "unknown" in c
+
+
+def test_entry_c_never_closes_itself():
+    for body in skill():
+        assert "gh issue close" not in _entry_c(body)
+
+
+def test_entry_c_does_not_paste_runner_output_in_a_quoted_line():
+    for body in skill():
+        c = _entry_c(body)
         assert "run.txt" in c
-        assert "--body-file" in c or "$(cat" in c
         assert 'gh issue reopen <nr> --comment "$(cat <scratch>/run.txt)"' in c
-        assert "nooit runner-uitvoer of body-tekst in een gequote commandoregel" in c
+        assert "never paste runner output or body text into a quoted command line" in c
 
 
-def test_ingang_c_vangt_de_exitcode_voor_de_worktree_remove():
-    for body in skill("paia-close-issue"):
-        c = _ingang_c(body)
+def test_entry_c_catches_the_exit_code_before_the_worktree_remove():
+    for body in skill():
+        c = _entry_c(body)
         assert "rc=$?" in c
         assert c.index("rc=$?") < c.index("git worktree remove")
-        assert "run.err" in c  # stderr apart, zodat het begin van run.txt zuiver blijft
+        assert "run.err" in c
 
 
-def test_ingang_c_heropent_alleen_op_een_herkende_uitkomst():
-    """rc 2 zonder `Closes zonder bewijsblok` (argparse) en rc 1 zonder tabelkop (traceback)
-    zijn geen oordeel over het issue."""
-    for body in skill("paia-close-issue"):
-        c = _ingang_c(body)
-        assert "begint met `Closes zonder bewijsblok`" in c
-        assert "| AC | Uitkomst | Detail |" in c
-        herkend = c[c.index("### C3") :]
-        assert "argparse" in herkend
-        assert "traceback" in herkend
+def test_entry_c_reopens_only_on_a_recognised_outcome():
+    for body in skill():
+        c = _entry_c(body)
+        assert "starts with `heading:evidence_closes_without_block`" in c
+        assert "heading:evidence_table_head" in c
+        recognised = c[c.index("### C3") :]
+        assert "argparse" in recognised
+        assert "traceback" in recognised
 
 
-def test_ingang_c_meet_de_pr_die_het_issue_werkelijk_sloot():
-    """`closedByPullRequestsReferences` houdt elke gemergde PR vast; C1 leest de `closer`."""
-    for body in skill("paia-close-issue"):
-        stap0 = body[body.index("## Stap 0") : body.index("## Drie ingangen")]
-        assert "timelineItems(itemTypes:[CLOSED_EVENT],last:1)" in stap0
-        assert "closer{__typename ... on PullRequest{number}}" in stap0
-        c1 = _ingang_c(body)
+def test_entry_c_measures_the_pr_that_actually_closed_the_issue():
+    for body in skill():
+        step0 = body[body.index("## Step 0") : body.index("## Three entries")]
+        assert "timelineItems(itemTypes:[CLOSED_EVENT],last:1)" in step0
+        assert "closer{__typename ... on PullRequest{number}}" in step0
+        c1 = _entry_c(body)
         c1 = c1[c1.index("### C1") : c1.index("### C2")]
         assert "`closer`" in c1
-        assert "gesloten zonder sluitende PR — geen nacontrole" in c1
-        assert "`MERGED`" not in c1
+        assert "closed without a closing PR — no after-merge check" in c1
 
 
-def test_ingang_c_scratch_is_vers_en_geketend():
-    for body in skill("paia-close-issue"):
-        c = _ingang_c(body)
+def test_entry_c_scratch_is_fresh_and_chained():
+    for body in skill():
+        c = _entry_c(body)
         assert "scratch=$(mktemp -d)" in c
-        assert 'git worktree add --detach "$scratch/na-merge-<nr>" origin/main &&' in c
+        assert 'git worktree add --detach "$scratch/after-merge-<nr>" "origin/$B" &&' in c
         assert c.index("scratch=$(mktemp -d)") < c.index("evidence.py run")
-        assert "geen `rc=`-regel" in c
+        assert "no `rc=` line" in c
 
 
-def test_ingang_c_exit_4_schrijft_een_commentbestand():
-    for body in skill("paia-close-issue"):
-        c = _ingang_c(body)
+def test_entry_c_exit_4_writes_a_comment_file():
+    for body in skill():
+        c = _entry_c(body)
         assert "> <scratch>/comment.md" in c
         assert "gh issue comment <nr> --body-file <scratch>/comment.md" in c
+
+
+def test_cleanup_reads_the_audit_token():
+    for body in skill():
+        cleanup = _section(body, "## Clean up the worktree")
+        assert "python3 .lighthouse/scripts/worktree_audit.py --only <branch>" in cleanup
+        assert "`cleanup: yes`" in cleanup and "`cleanup: no — <reason>`" in cleanup
+
+
+def test_commit_urls_from_forge_repo():
+    for body in skill():
+        assert "https://github.com/<forge.repo>/commit/" in body
+        assert "identity" not in body
+
+
+def test_release_flow_only_if_present():
+    for body in skill():
+        release = body[body.index("### Step 4.") : body.index("### Step 5.")]
+        assert "test -e scripts/release.py" in release
+        assert "only if present" in release.splitlines()[0]
+
+
+def test_variants_differ_in_the_instruction_file():
+    claude, agents = skill()
+    assert "(README, CLAUDE.md, etc.)" in claude
+    assert "(README, AGENTS.md, etc.)" in agents
+    assert [line for line in claude.splitlines() if line not in agents.splitlines()] == [
+        "- [ ] Documentation updated (README, CLAUDE.md, etc.)"
+    ]

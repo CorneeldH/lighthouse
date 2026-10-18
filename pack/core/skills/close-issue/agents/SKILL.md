@@ -1,690 +1,713 @@
 ---
-name: paia-close-issue
-description: Close GitHub issues with proper verification of Acceptance Criteria and Definition of Done. Links commits correctly with full URLs. Na de merge van een `Closes`-PR — nacontrole van het bewijs, en heropenen als het niet klopt (ingang C).
+name: lighthouse-close-issue
+description: Close GitHub issues with proper verification of Acceptance Criteria and Definition of Done. Links commits correctly with full URLs. After the merge of a `Closes` PR — check the evidence afterwards, and reopen if it does not hold (entry C).
 metadata:
-  domain: factory
+  binding: default
+  origin: own
 ---
 
 # Close Issue Skill
 
-Sluit GitHub issues met verificatie van acceptatiecriteria en kwaliteitsstandaarden.
+Closes GitHub issues with verification of acceptance criteria and quality standards.
+
+Two rules hold throughout. **What counts as evidence:** a command you ran with its output, a file
+you opened, or the verdict **not measurable from here** — never an assumption. **Verify first that
+the commits belong to the issue; never close on unrelated work.**
 
 ## When to Use
 
-- Na voltooiing van een taak (**ingang A**)
-- Bij "kan X niet dicht", "is X niet al gedaan?", "pak X op als het nog relevant is" —
-  het werk is niet in deze sessie gedaan (**ingang B**, zie hieronder)
-- `/paia-close-issue 58` - Sluit issue #58
-- `/paia-close-issue 58 --commit abc123` - Sluit met specifieke commit referentie
-- Na de merge van een `Closes`-PR: het issue is dan al dicht, en de nacontrole van het
-  PR-bewijs is **ingang C**
-- Prompt `/paia-close-issue <nr> (issue #<nr>, controller-run)`: de controller startte deze
-  run na de merge van een `Refs`-PR. Dat is ingang B in controller-modus (**B7**)
+- After finishing a task (**entry A**)
+- At "can't X be closed", "isn't X already done?", "pick up X if it is still relevant" —
+  the work was not done in this session (**entry B**, see below)
+- `/lighthouse-close-issue 58` - Closes issue #58
+- `/lighthouse-close-issue 58 --commit abc123` - Closes with a specific commit reference
+- After the merge of a `Closes` PR: the issue is already closed then, and checking the PR
+  evidence afterwards is **entry C**
+- Prompt `/lighthouse-close-issue <nr> (issue #<nr>, controller-run)`: the controller (if present)
+  started this run after the merge of a `Refs` PR. That is entry B in controller mode (**B7**)
 
-## Stap 0 — vóór de merge
+## Step 0 — before the merge
 
-Eerst één query, voor stap 0 én C1: staat het issue open, verwijst er een PR naar met `Closes`,
-en wat sloot het de laatste keer (`closer`, voor C1)?
+First one query, for step 0 and C1: is the issue open, does a PR refer to it with `Closes`,
+and what closed it the last time (`closer`, for C1)?
 
 ```bash
-O=$(uv run python -m src.controller.identity owner) || exit 2
-NAME=$(uv run python -m src.controller.identity name) || exit 2
+O=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.owner) || exit 2
+NAME=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.name) || exit 2
 gh api graphql -f owner="$O" -f name="$NAME" -F nr=<nr> -f query='query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){state closedByPullRequestsReferences(first:10,includeClosedPrs:true){nodes{number state}} timelineItems(itemTypes:[CLOSED_EVENT],last:1){nodes{... on ClosedEvent{closer{__typename ... on PullRequest{number}}}}}}}}'
 ```
 
-`gh` draait buiten de sandbox (`dangerouslyDisableSandbox: true`).
+`gh` runs outside the sandbox (`dangerouslyDisableSandbox: true`).
 
-| Uitkomst | Wat nu |
+| Outcome | What now |
 |---|---|
-| issue `state` `OPEN` én een node met `state` `OPEN` | meld letterlijk `wacht op merge van #<pr>; draai /paia-close-issue <nr> opnieuw na de merge` en **stop**: geen verificatie, geen `gh issue close`. De merge van die PR sluit het issue zelf. |
-| issue `state` `CLOSED` | **ingang C** |
-| anders (geen open `Closes`-PR) | ingang A of B |
+| issue `state` `OPEN` and a node with `state` `OPEN` | report literally `waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge` and **stop**: no verification, no `gh issue close`. The merge of that PR closes the issue itself. |
+| issue `state` `CLOSED` | **entry C** |
+| otherwise (no open `Closes` PR) | entry A or B |
 
-## Drie ingangen
+## Three entries
 
-| Ingang | Wanneer | Waar het bewijs vandaan komt |
+| Entry | When | Where the evidence comes from |
 |---|---|---|
-| **A — je deed het werk zelf** | de commits staan in deze sessie | je context |
-| **B — sluit-check zonder sessiecontext** | een oud issue komt langs met de vraag *is dit inmiddels al af?* | opgraven uit `git log`, `gh pr list`, de bestanden zelf |
-| **C — nacontrole na de merge** | het issue is al dicht (merge van een `Closes`-PR of de gebruiker) | de Evidence-tabel van de sluitende PR, opnieuw gemeten op verse `origin/main` |
+| **A — you did the work yourself** | the commits are in this session | your context |
+| **B — close check without session context** | an old issue comes by with the question *is this done by now?* | dug up from `git log`, `gh pr list`, the files themselves |
+| **C — check after the merge** | the issue is already closed (merge of a `Closes` PR or the user) | the Evidence table of the closing PR, measured again on a fresh `origin/<default branch>` |
 
-Ingang A is de `## Workflow` hieronder, ongewijzigd. Ingang B is een **extra stap vooraf**: hij
-graaft het bewijs op dat ingang A uit context haalt, en gaat daarna door dezelfde stappen 4 t/m 6.
-Er is geen snellere route naar `gh issue close` — B maakt de verificatie zwaarder, niet lichter.
-Ingang C sluit nooit: het issue is al dicht, C bevestigt het of heropent het.
-Elke ingang eindigt bij *Worktree opruimen — de laatste stap*; daar staat wanneer opruimen
-wel en niet mag.
+Entry A is the `## Workflow` below, unchanged. Entry B is an **extra step up front**: it digs up
+the evidence entry A takes from context, and then goes through the same steps 4 to 6. There is no
+faster route to `gh issue close` — B makes the verification heavier, not lighter. Entry C never
+closes: the issue is already closed, C confirms it or reopens it. Every entry ends at
+*Clean up the worktree — the last step*; that says when cleaning up is and is not allowed.
 
-## Ingang B — sluit-check zonder sessiecontext
+## Entry B — close check without session context
 
-**Triggers.** "kan 650 niet dicht na recente pr's", "is 786 niet al gedaan?", "603 is toch
-opgelost?", "pak 569 op als het nog relevant is", "kan 737 niet dicht met recente commit". Het
-patroon: de vraag is niet *bouw dit*, maar *is dit inmiddels af geraakt door ander werk?*
+**Triggers.** "can't 650 be closed after recent PRs", "isn't 786 already done?", "603 is solved,
+right?", "pick up 569 if it is still relevant", "can't 737 be closed with a recent commit". The
+pattern: the question is not *build this*, but *has this been done by other work in the meantime?*
 
-Meldde `/paia-start-issue` dat een issue mogelijk al af is, dan begint de sluitactie hier.
+If `/lighthouse-start-issue` reported that an issue may already be done, the close action starts
+here.
 
-### B1. Lees het issue en pak de ankers eruit
+### B1. Read the issue and take out the anchors
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh api "repos/$R/issues/<nr>" --jq '{created_at, title, body}'
 ```
 
-Noteer drie dingen: de **aanmaakdatum** (de ondergrens van het zoekvenster), de
-**acceptatiecriteria** (elk criterium wordt straks één tabelregel), en de **ankers** — de paden,
-bestandsnamen, symbolen, commando's en labels die het issue letterlijk noemt. Op die ankers zoek
-je. Het onderwerp van het issue is geen anker.
+Note three things: the **creation date** (the lower bound of the search window), the
+**acceptance criteria** (each criterion becomes one table row later), and the **anchors** — the
+paths, file names, symbols, commands and labels the issue names literally. You search on those
+anchors. The subject of the issue is not an anchor.
 
-### B2. Graaf het bewijs op
+### B2. Dig up the evidence
 
-Drie bewegingen, in deze volgorde. De eerste twee leveren kandidaten, de derde levert bewijs.
+Three moves, in this order. The first two deliver candidates, the third delivers evidence.
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
-# 1. gemergde PR's sinds de aanmaakdatum van het issue
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+# 1. merged PRs since the creation date of the issue
 gh pr list --repo "$R" --state merged --limit 100 \
   --json number,title,mergedAt,url \
   --jq '.[] | select(.mergedAt > "<created_at>") | "\(.number)\t\(.mergedAt[:10])\t\(.title)"'
 
-# 2. commits sinds die datum die de ankers raken
-git log --since=<YYYY-MM-DD> --oneline -- <pad uit het issue>
-git log --since=<YYYY-MM-DD> --oneline -S'<symbool uit het issue>'
+# 2. commits since that date that touch the anchors
+git log --since=<YYYY-MM-DD> --oneline -- <path from the issue>
+git log --since=<YYYY-MM-DD> --oneline -S'<symbol from the issue>'
 git log --since=<YYYY-MM-DD> --oneline --grep '#<nr>'
 
-# 3. de huidige staat van de boom op die ankers
-ls <pad>; grep -rn '<symbool>' <pad>
+# 3. the current state of the tree on those anchors
+ls <path>; grep -rn '<symbol>' <path>
 ```
 
-Beweging 3 is de belangrijkste en wordt het vaakst overgeslagen. Een criterium als "bestand X
-bestaat en bevat Y" bewijs je door X te openen, niet door een PR te vinden die erover ging. Staat
-er een commando in het criterium, draai het dan — *Wat telt hier als bewijs* (`AGENTS.md`) geldt
-onverkort, inclusief de derde uitkomst **niet meetbaar vanaf hier**.
+Move 3 is the most important and the most often skipped. A criterion like "file X exists and
+contains Y" you prove by opening X, not by finding a PR that was about it. If the criterion holds
+a command, run it — the evidence rule above holds in full, including the third outcome
+**not measurable from here**.
 
-Zoek je zonder ankers, dan vind je het tijdvak in plaats van het werk — zie B4.
+If you search without anchors, you find the period instead of the work — see B4.
 
-### B3. Vul de tabel: één regel per acceptatiecriterium
+### B3. Fill the table: one row per acceptance criterion
 
-Niet één oordeel over het issue. Eén regel per criterium, elk met zijn eigen bewijsregel:
+Not one verdict about the issue. One row per criterion, each with its own evidence line:
 
-| # | Acceptatiecriterium | Verdict | Bewijs |
+| # | Acceptance criterion | Verdict | Evidence |
 |---|---|---|---|
-| 1 | … | `aantoonbaar af` | `docs/developer/planning/history/README.md:3` — kop staat er |
-| 2 | … | `deels` | PR #747 dekt het eerste deel, niet het tweede |
-| 3 | … | `niet` | `grep -rn 'foo' src/` → 0 treffers |
+| 1 | … | `demonstrably done` | `docs/developer/planning/history/README.md:3` — the heading is there |
+| 2 | … | `partly` | PR #747 covers the first part, not the second |
+| 3 | … | `not` | `grep -rn 'foo' src/` → 0 hits |
 
-Drie verdicts, parallel aan de drie uitkomsten in *Wat telt hier als bewijs*:
+Three verdicts, parallel to the three outcomes of the evidence rule:
 
-| Verdict | Betekenis |
+| Verdict | Meaning |
 |---|---|
-| `aantoonbaar af` | er is een bewijsregel die **dit** criterium raakt |
-| `deels` | een deel van het criterium is gedekt, de rest niet |
-| `niet` | geen bewijs gevonden — **ook als het waarschijnlijk wel af is** |
+| `demonstrably done` | there is an evidence line that touches **this** criterion |
+| `partly` | part of the criterion is covered, the rest not |
+| `not` | no evidence found — **also when it is probably done** |
 
-Een bewijsregel is precies één van deze vier, nooit proza:
+An evidence line is exactly one of these four, never prose:
 
-- volledige commit-URL (`https://github.com/CorneeldH/personal_ai_agent/commit/<hash>`)
-- PR-nummer (`#747`)
-- bestandspad met regelnummer (`docs/claude-workflows.md:63`)
-- commando-output (het commando **én** wat het teruggaf)
+- full commit URL (`https://github.com/<forge.repo>/commit/<hash>`)
+- PR number (`#747`)
+- file path with line number (`docs/workflows.md:63`)
+- command output (the command **and** what it returned)
 
-### B4. Wat níét als bewijs telt
+### B4. What does *not* count as evidence
 
-De makkelijkste fout die er is: iets uit het juiste tijdvak voelt als bewijs en is het niet.
-`AGENTS.md` eist *"verifieer eerst dat de commits er daadwerkelijk bij horen; sluit nooit op
-ongerelateerd werk"* — dit is die eis, uitgeschreven.
+The easiest mistake there is: something from the right period feels like evidence and is not.
+The rule *verify first that the commits belong to the issue; never close on unrelated work* is
+this demand, written out.
 
-| ❌ Telt niet | Waarom |
+| ❌ Does not count | Why |
 |---|---|
-| een commit in hetzelfde tijdvak | tijd is geen causaliteit |
-| een PR die hetzelfde bestand raakt | een bestand heeft meer regels dan dit criterium |
-| een titel die op het onderwerp lijkt | een titel is geen implementatie |
-| "dit is vast meegenomen in die refactor" | een gok, geen bewijsregel |
-| geen bewijs gevonden | **geen bewijs = `niet`** |
+| a commit in the same period | time is no causality |
+| a PR that touches the same file | a file has more lines than this criterion |
+| a title that resembles the subject | a title is no implementation |
+| "this was surely taken along in that refactor" | a guess, no evidence line |
+| no evidence found | **no evidence = `not`** |
 
-Bewijs moet het **criterium** raken, niet de **periode**.
+Evidence must touch the **criterion**, not the **period**.
 
-### B5. Drie uitkomsten
+### B5. Three outcomes
 
-Toon de tabel uit B3 **eerst aan de gebruiker**. Er gaat geen `gh issue close` overheen voordat
-die tabel gezien is — ook niet als alles `aantoonbaar af` is.
+Show the table from B3 **to the user first**. No `gh issue close` goes over it before that table
+has been seen — also not when everything is `demonstrably done`.
 
-| Verdict over alle AC | Uitkomst |
+| Verdict over all AC | Outcome |
 |---|---|
-| alle criteria `aantoonbaar af` | door naar stap 4 (DoD), 5 en 6 hieronder; de bewijsregels uit B3 gaan mee in de close-comment, met volledige commit-URL's |
-| gemengd | **stel voor het issue in te korten** tot de open criteria: vink de afgeronde criteria af in de body, laat het issue open. Niet sluiten. |
-| overwegend `niet` | `/paia-start-issue <nr>`; het issue blijft staan zoals het is |
+| all criteria `demonstrably done` | on to step 4 (DoD), 5 and 6 below; the evidence lines from B3 go along in the close comment, with full commit URLs |
+| mixed | **propose to shorten the issue** to the open criteria: tick the finished criteria in the body, leave the issue open. Do not close. |
+| mostly `not` | `/lighthouse-start-issue <nr>`; the issue stays as it is |
 
-Inkorten doe je via `/paia-write-issue`, met een comment die de tabel draagt — zo ziet de
-volgende sessie wat er al af was en waarom.
+Shortening goes through `/lighthouse-write-issue`, with a comment that carries the table — so the
+next session sees what was already done and why.
 
-### B6. Afbakening
+### B6. Boundaries
 
-| Moment | Skill | Vraag |
+| Moment | Skill | Question |
 |---|---|---|
-| schrijven | `paia-write-issue` | bestaat dit al? |
-| oppakken | `paia-start-issue` | is dit inmiddels af? *(melding, geen sluitactie)* |
-| periodiek | `paia-backlog-stand` | welke open issues zijn stilletjes af? *(alleen top-3 en controller-klaar, geen bulkscan)* |
-| **sluiten** | **deze skill, ingang B** | **is dit af — per criterium, met bewijs?** |
+| writing | `lighthouse-write-issue` | does this exist already? |
+| picking up | `lighthouse-start-issue` | is this done by now? *(report, no close action)* |
+| periodic | the backlog-stand skill, if present | which open issues are silently done? *(only top 3 and controller-ready, no bulk scan)* |
+| **closing** | **this skill, entry B** | **is this done — per criterion, with evidence?** |
 
-### B7. Controller-modus — nacontrole na een merge (#1247)
+### B7. Controller mode — check after a merge (only if present)
 
-**Wanneer.** De prompt is `/paia-close-issue <nr> (issue #<nr>, controller-run)`: de controller
-startte deze run nadat een `Refs`-PR voor het issue gemerged werd. Stap 0 en B1–B4 gelden
-ongewijzigd.
+**When.** The prompt is `/lighthouse-close-issue <nr> (issue #<nr>, controller-run)`: the
+controller started this run after a `Refs` PR for the issue was merged. Step 0 and B1–B4 hold
+unchanged.
 
-**B5 vervalt**: er is geen gebruiker die de tabel ziet. De tabel uit B3 gaat altijd als comment
-op het issue, via `--body-file` uit een `mktemp -d`-map. Kopregel: `Nacontrole na de merge van
-#<pr>`, zonder 🤖, want het is geen controllerkop. Daarna de tabel, en per AC dat niet
-`aantoonbaar af` is een regel *wat ontbreekt*.
+**B5 lapses**: there is no user who sees the table. The table from B3 always goes as a comment
+on the issue, through `--body-file` from a `mktemp -d` directory. Heading line:
+`After-merge check of #<pr>`, without 🤖, because it is no controller heading. Then the table, and
+per AC that is not `demonstrably done` a line *what is missing*.
 
-| Verdict over alle AC | Uitkomst |
+| Verdict over all AC | Outcome |
 |---|---|
-| alle criteria `aantoonbaar af` | stap 4–6 van ingang A. Voor de DoD telt de merge als review; een DoD-regel die vanaf hier niet meetbaar is, gaat zo in de close-comment en blokkeert niet. `gh issue close` kent geen bestandsflag (alleen `-c, --comment string`): post eerst de close-comment met de bewijsregels via `gh issue comment <nr> --body-file <bestand>` (uit de `mktemp -d`-map) en sluit daarna met `gh issue close <nr> --reason completed`. Faalt de comment, dan niet sluiten. De `opruimen:`-regel van *Worktree opruimen* gaat als bewijsregel mee in die close-comment; opruimen zelf doe je niet. |
-| anders: `deels`, `niet`, of een AC `niet meetbaar vanaf hier` | niet sluiten, niet inkorten via `paia-write-issue`, het board niet aanraken (de controller zet `In progress`), geen vraag, geen `/paia-handoff`. Eindig na de comment. |
+| all criteria `demonstrably done` | steps 4–6 of entry A. For the DoD the merge counts as review; a DoD line that is not measurable from here goes into the close comment as such and does not block. `gh issue close` knows no file flag (only `-c, --comment string`): first post the close comment with the evidence lines through `gh issue comment <nr> --body-file <file>` (from the `mktemp -d` directory) and then close with `gh issue close <nr> --reason completed`. If the comment fails, do not close. The `cleanup:` line of *Clean up the worktree* goes along as an evidence line in that close comment; you do not clean up yourself. |
+| otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not shorten through `lighthouse-write-issue`, do not touch the board (the controller sets `In progress`), no question, no `/lighthouse-handoff`. End after the comment. |
 
-**Meldingen.** Elke melding die stap 0, 4 of 6 aan de gebruiker richt (bv. "DoD niet voldaan →
-rapporteer", "meld #m is vrij", "wacht op merge") gaat in B7 in de nacontrole-comment: er is
-niemand om tegen te praten. Een DoD-regel die aantoonbaar níét klopt (anders dan niet meetbaar)
-behandel je als de "Anders"-tak: niet sluiten, reden in de comment.
+**Reports.** Every report that step 0, 4 or 6 addresses to the user (e.g. "DoD not met → report",
+"report #m is free", "waits for merge") goes into the after-merge comment in B7: there is nobody
+to talk to. A DoD line that demonstrably does *not* hold (other than not measurable) you treat as
+the "otherwise" branch: do not close, reason in the comment.
 
-- ✅ sluiten alleen met een bewijsregel per AC
-- ❌ sluiten op een waarschijnlijk-af
+- ✅ close only with an evidence line per AC
+- ❌ close on a probably-done
 
-## Ingang C — nacontrole na de merge
+## Entry C — check after the merge
 
-**Triggers.** Stap 0 gaf `CLOSED`; "is 1091 goed gesloten?", "klopt het bewijs van die PR
-nog?". Het issue is dicht; de vraag is of het bewijs in de PR ook op `main` standhoudt. Ontwerp:
-[spec sectie 4](../../../docs/developer/planning/specs/2026-10-03-pr-verifieert-issue-design.md).
+**Triggers.** Step 0 gave `CLOSED`; "was 1091 closed correctly?", "does the evidence of that PR
+still hold?". The issue is closed; the question is whether the evidence in the PR also stands on
+the default branch.
 
-### C1. Zoek de sluitende PR
+### C1. Find the closing PR
 
-Wat telt is wat het issue **werkelijk** sloot: de `closer` van de laatste `ClosedEvent` uit de
-query van stap 0. Niet de nodes van `closedByPullRequestsReferences`: die houden elke gemergde PR
-met een sluitwoord vast, ook een eerdere die al tot een heropening leidde, en ook na een
-handmatige sluiting.
+What counts is what **actually** closed the issue: the `closer` of the last `ClosedEvent` from the
+query of step 0. Not the nodes of `closedByPullRequestsReferences`: those keep every merged PR
+with a closing keyword, also an earlier one that already led to a reopening, and also after a
+manual close.
 
-| `closer` | Wat nu |
+| `closer` | What now |
 |---|---|
-| `__typename` `PullRequest`, `number` `<pr>` | `<pr>` is de sluitende PR: door naar C2 |
-| al het andere (`null`, `Commit`, `ProjectV2`) | meld `gesloten zonder sluitende PR — geen nacontrole` en ga door naar *Milestone sluiten* |
+| `__typename` `PullRequest`, `number` `<pr>` | `<pr>` is the closing PR: on to C2 |
+| everything else (`null`, `Commit`, `ProjectV2`) | report `closed without a closing PR — no after-merge check` and go on to *Close the milestone* |
 
-### C2. Meet de Evidence-tabel opnieuw op verse `origin/main`
+### C2. Measure the Evidence table again on a fresh default branch
 
-Vrije commandotekst uit de body draait **nooit**. Alleen de runner draait rijen, en alleen
-rijen op de allowlist. Hij meet in een wegwerp-worktree op `origin/main`, niet in jouw checkout,
-in een verse scratchmap buiten de repo. Eén shell-aanroep, want `scratch` leeft niet door naar
-de volgende; elke stap vóór de runner is met `&&` geketend, dus een mislukte `gh pr view`,
-`fetch` of `worktree add` draait de runner niet:
+Free command text from the body **never** runs. Only the runner runs rows, and only rows on the
+allowlist. It measures in a throwaway worktree on `origin/<default branch>`, not in your checkout,
+in a fresh scratch directory outside the repo. One shell call, because `scratch` does not live on
+into the next; every step before the runner is chained with `&&`, so a failed `gh pr view`,
+`fetch` or `worktree add` does not run the runner:
 
 ```bash
+B=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.default_branch) &&
 scratch=$(mktemp -d) && echo "scratch=$scratch" &&
 gh pr view <pr> --json body --jq .body > "$scratch/body.md" &&
-git fetch origin main &&
-git worktree add --detach "$scratch/na-merge-<nr>" origin/main &&
-{ python3 .claude/hooks/lib/evidence.py run --issue <nr> --body-file "$scratch/body.md" --cwd "$scratch/na-merge-<nr>" > "$scratch/run.txt" 2> "$scratch/run.err"; rc=$?; echo "rc=$rc"; git worktree remove --force "$scratch/na-merge-<nr>"; }
+git fetch origin "$B" &&
+git worktree add --detach "$scratch/after-merge-<nr>" "origin/$B" &&
+{ python3 .lighthouse/lib/lighthouse_lib/evidence.py run --issue <nr> --body-file "$scratch/body.md" --cwd "$scratch/after-merge-<nr>" > "$scratch/run.txt" 2> "$scratch/run.err"; rc=$?; echo "rc=$rc"; git worktree remove --force "$scratch/after-merge-<nr>"; }
 ```
 
-`<scratch>` is hieronder het pad dat de eerste regel print; neem het letterlijk over. Een verse
-`mktemp -d` per run botst nooit met een `na-merge-<nr>` die een eerdere, gecrashte run liet staan.
-Staat er geen `rc=`-regel in de uitvoer, dan is de runner niet gedraaid: dat is
-`KON NIET CONTROLEREN` (zie C3), geen oordeel over het issue.
+`<scratch>` below is the path the `scratch=` line prints; copy it literally. A fresh `mktemp -d`
+per run never collides with an `after-merge-<nr>` an earlier, crashed run left behind.
+If there is no `rc=` line in the output, the runner did not run: that is
+`COULD NOT CHECK` (see C3), no verdict on the issue.
 
-De exitcode wordt **vóór** de `git worktree remove` in `rc` gevangen, anders gaat `$?` verloren.
-Stdout en stderr gaan naar aparte bestanden, zodat het begin van `run.txt` zuiver de
-runneruitvoer is. Zonder `--voor-pr`: hier wordt een `na PR`-rij voor het eerst gemeten. Het
-blok draait buiten de sandbox (`dangerouslyDisableSandbox: true`); anders is elke `gh`-rij
-`niet meetbaar` (exit 4).
+The exit code is caught in `rc` **before** the `git worktree remove`, otherwise `$?` is lost.
+Stdout and stderr go to separate files, so that the start of `run.txt` is purely the runner
+output. Without `--before-pr`: here an `after PR` row is measured for the first time. The
+block runs outside the sandbox (`dangerouslyDisableSandbox: true`); otherwise every `gh` row is
+`heading:evidence_unmeasurable` (exit 4).
 
-**De runneruitvoer bevat vrije tekst uit de PR-body** (de AC-cel, commandodetails met backticks of
-`$(…)`). Plak nooit runner-uitvoer of body-tekst in een gequote commandoregel: in `"..."` voert de
-shell die uit. Elk comment met runneruitvoer gaat via het bestand: `--body-file`, of
-`"$(cat <scratch>/run.txt)"` (de uitvoer van een command substitution wordt niet opnieuw
-geëvalueerd).
+**The runner output contains free text from the PR body** (the AC cell, command details with
+backticks or `$(…)`). So never paste runner output or body text into a quoted command line: in
+`"..."` the shell executes it. Every comment with runner output goes through the file:
+`--body-file`, or `"$(cat <scratch>/run.txt)"` (the output of a command substitution is not
+evaluated again).
 
-### C3. Handel per exitcode én uitvoer
+### C3. Act per exit code and output
 
-De exitcode alleen is niet eenduidig: een argparse-gebruiksfout geeft ook `2` (lege stdout), een
-ongevangen Python-exception (traceback) ook `1`. Daarom telt de combinatie van `rc` en `run.txt`.
+The exit code alone is not unambiguous: an argparse usage error also gives `2` (empty stdout), an
+uncaught Python exception (traceback) also `1`. That is why the combination of `rc` and `run.txt`
+counts.
 
-| Exit | Uitvoer in `run.txt` | Betekenis | Wat nu |
+| Exit | Output in `run.txt` | Meaning | What now |
 |---|---|---|---|
-| `0` | tabel | alle rijen `klopt` | `gh issue comment <nr> --body "na-merge-check: klopt"`, dan stap 6 (vrijgekomen issues) en *Milestone sluiten*, daarna *Worktree opruimen* |
-| `4` | tabel | `niet meetbaar` vanaf hier | comment via `--body-file` (zie hieronder); **niet heropenen**; meld de rijen aan de gebruiker, dan stap 6 (vrijgekomen issues) en *Milestone sluiten* |
-| `1` | de tabelkop `\| AC \| Uitkomst \| Detail \|` staat erin | `klopt niet` / `ongeldig` | heropenen, zie hieronder |
-| `2` | begint met `Closes zonder bewijsblok` | geen bewijsblok in de PR-body | heropenen, zie hieronder |
-| `3` | `KON NIET CONTROLEREN` (body of `--cwd` onbruikbaar) | niet meetbaar | zie hieronder |
-| al het andere | `1` zonder tabelkop (traceback), `2` zonder `Closes zonder bewijsblok` (argparse), een onbekende exitcode | de runner is zelf stuk | zie hieronder |
+| `0` | table | all rows `heading:evidence_holds` | `gh issue comment <nr> --body "after-merge check: $(python3 .lighthouse/lib/lighthouse_lib/headings.py evidence_holds)"`, then step 6 (released issues) and *Close the milestone*, after that *Clean up the worktree* |
+| `4` | table | `heading:evidence_unmeasurable` from here | comment through `--body-file` (see below); **do not reopen**; report the rows to the user, then step 6 (released issues) and *Close the milestone* |
+| `1` | the table head `heading:evidence_table_head` is in it | `heading:evidence_fails` / `heading:evidence_invalid` | reopen, see below |
+| `2` | starts with `heading:evidence_closes_without_block` | no evidence block in the PR body | reopen, see below |
+| `3` | `COULD NOT CHECK` (body or `--cwd` unusable) | not measurable | see below |
+| everything else | `1` without table head (traceback), `2` without `heading:evidence_closes_without_block` (argparse), an unknown exit code | the runner itself is broken | see below |
 
-De tabelkop die een echte `1` altijd print is letterlijk `| AC | Uitkomst | Detail |`.
+The table head a real `1` always prints is `heading:evidence_table_head`, in any language variant.
 
-**Exit `4` — het commentbestand.** Eerst de kopregel, dan de runnertabel, samen in één bestand;
-de niet-meetbare rijen tellen bij *Milestone sluiten* niet als bewezen:
+**Exit `4` — the comment file.** First the heading line, then the runner table, together in one
+file; the unmeasurable rows do not count as proved at *Close the milestone*:
 
 ```bash
-{ printf '%s\n\n' 'na-merge-check: klopt, op rijen na die vanaf hier niet meetbaar zijn'; cat <scratch>/run.txt; } > <scratch>/comment.md
+{ printf '%s\n\n' 'after-merge check: holds, except for rows that are not measurable from here'; cat <scratch>/run.txt; } > <scratch>/comment.md
 gh issue comment <nr> --body-file <scratch>/comment.md
 ```
 
-**Exit `1` of `2` met herkende uitvoer — heropenen, fail-closed.** Eerst het issue, dan het board:
+**Exit `1` or `2` with recognised output — reopen, fail-closed.** First the issue, then the board:
 
 ```bash
 gh issue reopen <nr> --comment "$(cat <scratch>/run.txt)"
-uv run python scripts/board_start.py --heropen <nr>
+python3 .lighthouse/scripts/board_start.py --reopen <nr>
 ```
 
-Bij `2` begint de comment (`run.txt`) met `Closes zonder bewijsblok`; bij `ongeldig`-rijen staat
-`Evidence buiten allowlist` in de tabel. Zet nooit zelf een voorvoegsel in de commandoregel: wat
-erbij hoort staat al in het bestand. Eindigt `board_start.py --heropen` met exit 1 (uitvoer
-`board: FOUT — <oorzaak>`), meld dan luid `issue heropend, board niet bijgewerkt` met het
-handcommando, en wacht niet tot het vanzelf goed komt:
+At `2` the comment (`run.txt`) starts with `heading:evidence_closes_without_block`; at
+`heading:evidence_invalid` rows the table says `Evidence outside the allowlist`. Never put a prefix
+in the command line yourself: what belongs to it is already in the file.
+
+`board: skipped` (no `[forge.board]`, rc 0) is no error: report the line as it is and go on.
+
+If `board_start.py --reopen` ends with exit 1 or 2 (output `board: ERROR — <cause>`), report
+loudly `issue reopened, board not updated` with the hand command, and do not wait for it to come
+right by itself:
 
 ```bash
-gh project item-edit --id <item> --project-id <PROJECT_ID> --field-id <STATUS_FIELD_ID> --single-select-option-id <In progress>
+gh project item-edit --id <item> --project-id <forge.board.project_id> --field-id <forge.board.status_field_id> --single-select-option-id <In progress>
 ```
 
-**Exit `3`, een onbekende exitcode, een niet-herkende uitvoer of geen `rc=`-regel.** Niet meetbaar is geen geslaagde
-check en geen bewezen falen. Dus: geen `na-merge-check: klopt`-comment, **geen** `gh issue
-reopen`, geen board-mutatie, en meld luid aan de gebruiker `KON NIET CONTROLEREN` met de
-volledige inhoud van `run.txt` en `run.err`.
+**Exit `3`, an unknown exit code, an unrecognised output or no `rc=` line.** Not measurable is no
+passed check and no proved failure. So: no `after-merge check` comment, **no** `gh issue
+reopen`, no board mutation, and report loudly to the user `COULD NOT CHECK` with the
+full content of `run.txt` and `run.err`.
 
-Ingang C sluit zelf niets: het issue is al dicht, en een heropend issue sluit weer door de merge
-van de volgende `Closes`-PR (of door de gebruiker).
+Entry C closes nothing itself: the issue is already closed, and a reopened issue closes again by
+the merge of the next `Closes` PR (or by the user).
 
-## Workflow — ingang A (je deed het werk zelf)
+## Workflow — entry A (you did the work yourself)
 
-### 1. Haal issue op en analyseer
+### 1. Fetch the issue and analyse it
 
-Is het issue al gesloten? Dan ingang C.
+Is the issue already closed? Then entry C.
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
-gh issue view <nummer> --repo "$R"
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+gh issue view <number> --repo "$R"
 ```
 
-### 2. Identificeer issue type
+### 2. Identify the issue type
 
-| Type | Verificatie |
+| Type | Verification |
 |------|-------------|
-| **Bug** | Is het probleem opgelost? Reproduceerbaar? |
-| **Task** | Check Acceptatiecriteria + Definition of Done |
+| **Bug** | Is the problem solved? Reproducible? |
+| **Task** | Check `heading:acceptance_criteria` + `heading:milestone_dod` |
 
-Een Pitch is geen issue meer maar een milestone-beschrijving — zie "Milestone sluiten".
+A pitch is no longer an issue but a milestone description — see "Close the milestone".
 
-### 3. Verifieer Acceptatiecriteria (voor Tasks)
+### 3. Verify the acceptance criteria (for tasks)
 
-Ga door elk AC item:
-- [ ] Is dit criterium aantoonbaar voldaan?
-- [ ] Is er bewijs (code, test, output)?
+Go through every AC item:
+- [ ] Is this criterion demonstrably met?
+- [ ] Is there evidence (code, test, output)?
 
-**Als AC niet voldaan**: NIET sluiten, rapporteer wat mist.
+**If an AC is not met**: do NOT close, report what is missing.
 
-### 4. Verifieer Definition of Done (voor Tasks)
+### 4. Verify the Definition of Done (for tasks)
 
-Standaard DoD items:
-- [ ] Code reviewed door teamlid (of self-review gedocumenteerd)
-- [ ] Tests geschreven en passing (indien van toepassing)
-- [ ] Documentatie bijgewerkt (README, AGENTS.md, etc.)
-- [ ] Geen bekende bugs
+Standard DoD items:
+- [ ] Code reviewed by a team member (or self-review documented)
+- [ ] Tests written and passing (if applicable)
+- [ ] Documentation updated (README, AGENTS.md, etc.)
+- [ ] No known bugs
 
-**Als DoD niet voldaan**: NIET sluiten, rapporteer wat mist.
+**If the DoD is not met**: do NOT close, report what is missing.
 
-### 5. Sluit met correcte commit link
+### 5. Close with a correct commit link
 
-**BELANGRIJK**: Gebruik VOLLEDIGE GitHub URL voor commits, niet alleen de hash!
+**IMPORTANT**: Use the FULL GitHub URL for commits, not only the hash!
 
 ```bash
-# Repo uit lighthouse.toml, nooit uit de git-remote van de cwd
-R=$(uv run python -m src.controller.identity repo) || exit 2
+# Repo from lighthouse.toml, never from the git remote of the cwd
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 
-# Sluit met volledige commit URL
-# printf zet de URL; de rest in een gequote heredoc, zodat backticks en $ in de AC-tekst niet draaien
-gh issue close <nummer> --repo "$R" --comment "$(printf 'Completed in commit: https://github.com/%s/commit/%s\n\n' "$R" "<full-commit-hash>"; cat <<'EOF'
-## Verificatie
+# Close with the full commit URL
+# printf sets the URL; the rest in a quoted heredoc, so backticks and $ in the AC text do not run
+gh issue close <number> --repo "$R" --comment "$(printf 'Completed in commit: https://github.com/%s/commit/%s\n\n' "$R" "<full-commit-hash>"; cat <<'EOF'
+## Verification
 
-### Acceptatiecriteria
-- [x] Criterium 1 - Gedaan in [file](link)
-- [x] Criterium 2 - Getest met ...
+### <heading:acceptance_criteria>
+- [x] Criterion 1 - Done in [file](link)
+- [x] Criterion 2 - Tested with ...
 
-### Definition of Done
+### <heading:milestone_dod>
 - [x] Code reviewed
 - [x] Tests passing
-- [x] Documentatie bijgewerkt
+- [x] Documentation updated
 
-## Samenvatting
-Korte beschrijving van wat gedaan is.
+## Summary
+Short description of what was done.
 EOF
 )"
 ```
 
-### 6. Vrijgekomen issues
+Write the comment in the project language (`config.py project.language`); the headings come from
+`.lighthouse/headings.toml`.
 
-Vrijgeven doet de vrijgeef-lane (`.github/workflows/unblock-dependents.yml`), als paia-bot, bij
-elke sluiting als `completed`: elk open issue dat op dit issue wachtte en geen andere open blocker
-meer heeft, verliest `3-blocked-issue` en krijgt een comment. Het gesloten issue krijgt één comment
-terug (`Vrijgeef-lane na deze sluiting:`) met wat vrijkwam en wat nog wacht. Een sessie geeft
-niet zelf vrij: het paia-bot-token bestaat alleen in Actions. Jij controleert achteraf, ook in
-ingang C (na `klopt` of `niet meetbaar`) en in B7.
+### 6. Released issues
 
-Welke open issues wachtten op dit issue?
+Unblocking is done by the unblock lane (`.github/workflows/lighthouse-unblock-dependents.yml`), as
+the bot from `[ci]` (`python3 .lighthouse/lib/lighthouse_lib/config.py ci.bot_login`), at every
+close as `completed`: every open issue that waited on this issue and has no other open blocker
+any more loses the label `labels.blocked_issue` (`python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_issue`)
+and gets a comment. The closed issue gets one comment back (`Released lane after this close:`)
+with what was released and what still waits. A session does not unblock itself: the bot token
+exists only in Actions. You check afterwards, also in entry C (after `heading:evidence_holds` or
+`heading:evidence_unmeasurable`) and in B7.
+
+`init` installs the lane only when the `ci.bot_*` keys are set. If `ci.bot_login` gives rc 1 or
+the workflow file is missing (`test -e .github/workflows/lighthouse-unblock-dependents.yml`),
+report `unblock lane: skipped — no bot in [ci]`, and check the waiting issues by hand with the
+fallback below.
+
+Which open issues waited on this issue?
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh api "repos/$R/issues/<nr>/dependencies/blocking" \
   --jq '.[] | select(.state=="open") | .number'
 ```
 
-Geen treffers: klaar. Anders telt alleen wat bij **deze** sluiting hoort: een eerdere sluiting
-(heropend en weer dicht) heeft een eigen run en een eigen terugcomment. Eerst het sluitmoment,
-dan de nieuwste run van de lane voor dit issue (de runnaam draagt `#<nr>`) die daarna startte, de
-terugcomments na dat moment, en per treffer `<m>` de labels:
+No hits: done. Otherwise only what belongs to **this** close counts: an earlier close
+(reopened and closed again) has a run of its own and a reply comment of its own. First the close
+moment, then the newest run of the lane for this issue (the run name carries `#<nr>`) that started
+after it, the reply comments after that moment, and per hit `<m>` the labels:
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh issue view <nr> --repo "$R" --json closedAt -q .closedAt
-gh run list --workflow unblock-dependents.yml --limit 20 --json databaseId,conclusion,displayTitle,createdAt \
+gh run list --workflow lighthouse-unblock-dependents.yml --limit 20 --json databaseId,conclusion,displayTitle,createdAt \
   --jq '[.[] | select((.displayTitle | endswith(" #<nr>")) and .createdAt >= "<closedAt>")] | first'
 gh api "repos/$R/issues/<nr>/comments" \
-  --jq '.[] | select(.created_at >= "<closedAt>" and (.body | startswith("Vrijgeef-lane na deze sluiting:"))) | .body'
+  --jq '.[] | select(.created_at >= "<closedAt>" and (.body | startswith("Released lane after this close:"))) | .body'
 gh issue view <m> --repo "$R" --json labels -q '[.labels[].name]|join(",")'
 ```
 
-Een run of comment van vóór `<closedAt>` hoort bij een eerdere sluiting en telt niet.
+A run or comment from before `<closedAt>` belongs to an earlier close and does not count.
 
-| Wat je ziet | Wat nu |
+| What you see | What now |
 |---|---|
-| run `success` en de terugcomment staat op `<nr>` | meld per `<m>` letterlijk wat die comment zegt (vrij of wacht nog op …) |
-| run `success`, geen terugcomment | geen `<m>` droeg `3-blocked-issue`: niets vrijgekomen, niets te doen |
-| run `skipped` | gesloten als `not_planned` of `duplicate`: blokkades blijven staan, een mens beslist |
-| `<m>` heeft `0` open blockers maar draagt nog `3-blocked-issue` | twee blockers sloten tegelijk en elke run zag de ander nog open: herstart, zie hieronder |
-| run nog bezig | wacht tot hij klaar is; meld niets als vrij voordat de comment er staat |
-| run `failure`, of geen run na de sluiting | meld luid `vrijgeef-lane niet gelopen voor #<nr>` met het herstartcommando hieronder; voer het **niet** zelf uit, de gebruiker beslist |
+| run `success` and the reply comment is on `<nr>` | report per `<m>` literally what that comment says (free or still waits on …) |
+| run `success`, no reply comment | no `<m>` carried `labels.blocked_issue`: nothing released, nothing to do |
+| run `skipped` | closed as `not_planned` or `duplicate`: blockers stay, a human decides |
+| `<m>` has `0` open blockers but still carries `labels.blocked_issue` | two blockers closed at the same time and each run still saw the other open: restart, see below |
+| run still busy | wait until it is done; report nothing as free before the comment is there |
+| run `failure`, or no run after the close | report loudly `unblock lane did not run for #<nr>` with the restart command below; do **not** run it yourself, the user decides |
 
 ```bash
-gh workflow run unblock-dependents.yml -f issue=<nr>
+gh workflow run lighthouse-unblock-dependents.yml -f issue=<nr>
 ```
 
-Werkt de lane niet (paia-bot zonder Issues: write, workflow uitgeschakeld), dan is de terugval met
-de hand, per `<m>` met `0` open blockers, ook door de gebruiker:
+If the lane does not work (the bot without Issues: write, workflow disabled, or skipped above),
+the fallback is by hand, per `<m>` with `0` open blockers, also by the user:
 
 ```bash
-gh issue edit <m> --remove-label 3-blocked-issue
+gh issue edit <m> --remove-label <labels.blocked_issue>
 ```
 
-Faalt een call, meld dan "vrijgekomen issues niet uitgelezen" met dat commando, nooit "geen".
+If a call fails, report "released issues not read" with that command, never "none".
 
-## Worktree opruimen — de laatste stap
+## Clean up the worktree — the last step
 
-Na de sluiting blijven de worktree en de lokale branch van het issue anders staan (#1422). Het
-verdict komt uit `scripts/worktree_audit.py`, dezelfde ladder als `/paia-worktree-audit`: geen
-tweede set regels hier.
+After the close the worktree and the local branch of the issue otherwise stay. The verdict comes
+from `.lighthouse/scripts/worktree_audit.py`, the same ladder as `/lighthouse-worktree-audit`: no
+second set of rules here.
 
-**Wanneer.**
+**When.**
 
-| Ingang | Opruimen? |
+| Entry | Clean up? |
 |---|---|
-| C, exit `0` in C3 | ja, het hoofdmoment: de PR is gemerged en C meet in een wegwerp-worktree |
-| A of B, PR van de headbranch gemerged | ja |
-| A of B, PR open of geen PR | nee — geen voorstel, ook niet bij een ✅ zonder PR |
-| C met heropenen, `KON NIET CONTROLEREN` of `gesloten zonder sluitende PR` | nee |
-| B7 (controller-run) | nooit — zie *Headless* hieronder |
+| C, exit `0` in C3 | yes, the main moment: the PR is merged and C measures in a throwaway worktree |
+| A or B, PR of the head branch merged | yes |
+| A or B, PR open or no PR | no — no proposal, also not at a ✅ without a PR |
+| C with reopening, `COULD NOT CHECK` or `closed without a closing PR` | no |
+| B7 (controller run, if present) | never — see *Headless* below |
 
-**Branch.** Ingang C: de headbranch van de sluitende PR uit C1 (`<pr>`). B7: die van de
-gemergde `Refs`-PR waarna de controller deze run startte. Ingang A en B:
-de branch van de worktree van het issue (`issue-<nr>-<slug>`).
+**Branch.** Entry C: the head branch of the closing PR from C1 (`<pr>`). B7: that of the merged
+`Refs` PR after which the controller (if present) started this run. Entries A and B:
+the branch of the issue's worktree (`issue-<nr>-<slug>`).
 
 ```bash
 gh pr view <pr> --json headRefName -q .headRefName
-uv run python scripts/worktree_audit.py --only <branch>; echo "exit=$?"
+python3 .lighthouse/scripts/worktree_audit.py --only <branch>; echo "exit=$?"
 ```
 
-Het script draait buiten de sandbox (`dangerouslyDisableSandbox: true`): het roept `gh` aan voor
-de PR-status. Draai het zonder `cd`, vanuit de map waar de sessie startte: de cwd-toets meet de
-cwd van het script, en Codex en OpenCode schrijven geen sessiebestand dat `live` zet. Bij A of B
-telt de PR-kolom van de rij: alleen `#<pr> merged` gaat door.
+The script runs outside the sandbox (`dangerouslyDisableSandbox: true`): it calls `gh` for the PR
+status. Run it without `cd`, from the directory where the session started: the cwd test measures
+the cwd of the script, and Codex and OpenCode write no session file that sets `live`. At A or B
+the PR column of the row counts: only `#<pr> merged` goes on.
 
-**Alleen exit `0` én een regel `opruimen: ja` is opruimbaar.** Elke andere uitkomst is `nee`:
-exit ≠ 0, geen `opruimen:`-regel, een traceback, een lege uitvoer. De afwezigheid van een
-signaal is geen ja.
+**Only exit `0` and a line `cleanup: yes` can be cleaned up.** Every other outcome is `no`:
+exit ≠ 0, no `cleanup:` line, a traceback, an empty output. The absence of a signal is no yes.
 
-| Uitvoer | Wat nu |
+| Output | What now |
 |---|---|
-| `opruimen: ja` + exit `0` | één voorstel: het pad en de branch uit de regels eronder, via `AskUserQuestion` (Claude Code) of een vraag in chat. Na bevestiging die regels zelf draaien, in die volgorde, elk als `git -C <hoofdcheckout> …` |
-| `opruimen: nee — <reden>` | meld de regel letterlijk; ruim niets op. De sluiting is al gebeurd en blijft staan |
-| al het andere | meld `opruimen: nee — audit gaf geen uitslag` met de ruwe uitvoer; ruim niets op |
+| `cleanup: yes` + exit `0` | one proposal: the path and the branch from the lines below it, through `AskUserQuestion` (Claude Code) or a question in chat. After confirmation run those lines yourself, in that order, each as `git -C <main checkout> …` |
+| `cleanup: no — <reason>` | report the line literally; clean up nothing. The close has happened and stands |
+| everything else | report `cleanup: no — audit gave no verdict` with the raw output; clean up nothing |
 
-`<hoofdcheckout>` is het eerste pad uit `git worktree list --porcelain`. Weigert het harnas
-`-C` (een worktree-geïsoleerde Claude Code-sessie), draai dan dezelfde regels zonder `-C`
-vanuit de eigen cwd: het is dezelfde repo, en `--only` toetste al dat die cwd niet in de
-worktree staat. Na het opruimen het bewijs tonen; de branch staat in geen van beide:
+`<main checkout>` is the first path from `git worktree list --porcelain`. If the harness refuses
+`-C` (a worktree-isolated Claude Code session), run the same lines without `-C`
+from your own cwd: it is the same repo, and `--only` already checked that that cwd is not in the
+worktree. After cleaning up show the evidence; the branch is in neither:
 
 ```bash
-git -C <hoofdcheckout> worktree list
-git -C <hoofdcheckout> branch --list <branch>
+git -C <main checkout> worktree list
+git -C <main checkout> branch --list <branch>
 ```
 
-Weigert git een regel (bijvoorbeeld `contains modified or untracked files`), dan stop je daar en
-meld je de foutregel. Draai dan niet de volgende regel.
+If git refuses a line (for example `contains modified or untracked files`), stop there and
+report the error line. Do not run the next line then.
 
-**Headless (B7, controller-run).** Er is niemand om te bevestigen: nooit opruimen, geen vraag.
-De `opruimen:`-regel gaat als bewijsregel in de close-comment.
+**Headless (B7, controller run, if present).** There is nobody to confirm: never clean up, no
+question. The `cleanup:` line goes as an evidence line into the close comment.
 
-- ✅ alleen de regels die `--only` levert, na bevestiging
-- ❌ `--force`, `git worktree unlock` of `git push origin --delete` — ook niet als git weigert
+- ✅ only the lines `--only` delivers, after confirmation
+- ❌ `--force`, `git worktree unlock` or `git push origin --delete` — also not when git refuses
 
 ## Commit Reference Format
 
-| Methode | Voorbeeld | Resultaat |
+| Method | Example | Result |
 |---------|-----------|-----------|
-| ❌ Hash only | `26948cd` | Geen klikbare link |
-| ❌ Short ref | `Completed in commit 26948cd` | Geen klikbare link |
-| ✅ Full URL | `https://github.com/CorneeldH/personal_ai_agent/commit/26948cd...` | Klikbare link |
+| ❌ Hash only | `26948cd` | No clickable link |
+| ❌ Short ref | `Completed in commit 26948cd` | No clickable link |
+| ✅ Full URL | `https://github.com/<forge.repo>/commit/26948cd...` | Clickable link |
 
 ## Template: Close Comment
 
-`<repo>` is de uitvoer van `uv run python -m src.controller.identity repo`.
+`<forge.repo>` is the output of `python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo`.
 
 ```markdown
-Completed in commit: https://github.com/<repo>/commit/<hash>
+Completed in commit: https://github.com/<forge.repo>/commit/<hash>
 
-## Verificatie
+## Verification
 
-### Acceptatiecriteria
+### <heading:acceptance_criteria>
 - [x] AC item 1
 - [x] AC item 2
 
-### Definition of Done
+### <heading:milestone_dod>
 - [x] Code reviewed
-- [x] Tests passing (of N/A)
-- [x] Documentatie bijgewerkt
-- [x] Geen bekende bugs
+- [x] Tests passing (or N/A)
+- [x] Documentation updated
+- [x] No known bugs
 
-## Samenvatting
-Wat is er gedaan en waarom.
+## Summary
+What was done and why.
 ```
 
-## Voorbeeld: Issue #58 correct sluiten
+## Example: closing issue #58 correctly
 
 ```bash
-# Haal volledige commit hash
+# Get the full commit hash
 COMMIT=$(git rev-parse HEAD)
 # Output: 26948cd1234567890abcdef...
 
-# Sluit met volledige URL
-R=$(uv run python -m src.controller.identity repo) || exit 2
+# Close with the full URL
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh issue close 58 --repo "$R" --comment "$(printf 'Completed in commit: https://github.com/%s/commit/%s\n\n' "$R" "$COMMIT"; cat <<'EOF'
-## Verificatie
+## Verification
 
-### Acceptatiecriteria
-- [x] Claude Code plugins geïnstalleerd (claude-md-management, pyright-lsp)
-- [x] Community skills verkend en relevante geïnstalleerd
-- [x] Marketplaces toegevoegd (superpowers-dev, mhattingpete)
+### Acceptance criteria
+- [x] Claude Code plugins installed (claude-md-management, pyright-lsp)
+- [x] Community skills explored and relevant ones installed
+- [x] Marketplaces added
 
 ### Definition of Done
-- [x] Documentatie bijgewerkt (CLAUDE.md, dotfiles README)
-- [x] Geen bekende bugs
-- [x] Settings correct geconfigureerd
+- [x] Documentation updated (CLAUDE.md, dotfiles README)
+- [x] No known bugs
+- [x] Settings configured correctly
 
-## Samenvatting
-Geïnstalleerde plugins en skills voor verbeterde Claude Code workflow.
+## Summary
+Installed plugins and skills for an improved Claude Code workflow.
 EOF
 )"
 ```
 
-## Milestone sluiten
+## Close the milestone
 
-Sluit je het **laatste open issue** van een milestone, dan sluit je het blok in dezelfde beweging.
-Een blok dat op 100% blijft staan zonder gesloten te worden is precies de eeuwige bak die de
-taxonomie opruimt.
+If you close the **last open issue** of a milestone, you close the block in the same move. A block
+that stays at 100% without being closed is exactly the eternal bin the taxonomy clears up.
 
-> **Volgorde:** doe stap 1 en 2 hieronder **vóórdat** je het issue in sectie 5 sluit. Na het
-> sluiten toont de teller `open=0` in plaats van `open=1` en mis je het moment. Stap 3 (de
-> milestone `PATCH … state=closed`) draait pas **ná** sectie 5 — het DoD-bewijs uit stap 2 hoort in
-> diezelfde close-comment van sectie 5, niet in een los bericht.
+> **Order:** do steps 1 and 2 below **before** you close the issue in section 5. After the
+> close the counter shows `open=0` instead of `open=1` and you miss the moment. Step 3 (the
+> milestone `PATCH … state=closed`) runs only **after** section 5 — the DoD evidence from step 2
+> belongs in that same close comment of section 5, not in a separate message.
 
-### Stap 1. Kijk of de milestone leeg raakt
+### Step 1. See whether the milestone becomes empty
 
-Heeft het issue geen milestone? Sla deze hele sectie ("Milestone sluiten") over.
+Does the issue have no milestone? Skip this whole section ("Close the milestone").
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
-gh issue view <nummer> --repo "$R" --json milestone -q '.milestone.number'
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+gh issue view <number> --repo "$R" --json milestone -q '.milestone.number'
 gh api "repos/$R/milestones/<nr>" -q '"open=\(.open_issues)"'
 ```
 
-`open=1` betekent: dit issue is de laatste. Sloot je het issue al? Dan staat er `open=0` — controleer met `R=$(uv run python -m src.controller.identity repo) && gh issue view <nummer> --repo "$R" --json milestone -q '.milestone.number'` of het issue tot dit blok hoorde en ga gewoon door met stap 2.
+`open=1` means: this issue is the last one. Did you already close the issue? Then it says `open=0` — check with `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh issue view <number> --repo "$R" --json milestone -q '.milestone.number'` whether the issue belonged to this block and just go on with step 2.
 
-### Stap 2. Loop de DoD van de milestone na
+### Step 2. Go through the DoD of the milestone
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh api "repos/$R/milestones/<nr>" -q '.description'
 ```
 
-Ga elk DoD-punt langs en zoek bewijs (commit, test, output, runbook). **Niet elk punt aantoonbaar
-→ milestone NIET sluiten.** Rapporteer wat mist; het issue mag wel dicht.
+Go through every point under `### heading:milestone_dod` and look for evidence (commit, test,
+output, runbook). **Not every point demonstrable → do NOT close the milestone.** Report what is
+missing; the issue may be closed.
 
-### Stap 3. Sluit de milestone én hernoem de titel naar ` - DONE`
+### Step 3. Close the milestone and rename the title to ` - DONE`
 
-Sluiten is **twee** wijzigingen in één PATCH: `state=closed` en de titel met ` - DONE` erachter.
-Het board toont een gesloten milestone niet anders dan een open — zonder dat achtervoegsel blijft
-het blok op de kanban meedoen alsof het nog loopt.
+Closing is **two** changes in one PATCH: `state=closed` and the title with ` - DONE` after it.
+The board shows a closed milestone no differently from an open one — without that suffix the
+block stays on the kanban as if it is still running.
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
-# huidige titel ophalen
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+# fetch the current title
 gh api "repos/$R/milestones/<nr>" -q '.title'
-# sluiten + hernoemen (titel exact overnemen, dan " - DONE" erachter)
+# close + rename (copy the title exactly, then " - DONE" after it)
 gh api --method PATCH "repos/$R/milestones/<nr>" \
-  -f state=closed -f title='<area>: <naam> - DONE'
+  -f state=closed -f title='<area>: <name> - DONE'
 ```
 
-Eindigt de titel al op ` - DONE`, laat hem dan staan (geen tweede suffix).
+If the title already ends on ` - DONE`, leave it (no second suffix).
 
-Controleer daarna:
+Check afterwards:
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh api "repos/$R/milestones/<nr>" -q '"\(.state) — \(.title)"'
 ```
 
-Noem in de close-comment van het laatste issue expliciet: `Milestone <titel> gesloten — DoD:` en
-per punt één regel bewijs.
+Name explicitly in the close comment of the last issue: `Milestone <title> closed — DoD:` and
+per point one line of evidence.
 
-### Stap 4. Tag en publiceer de release
+### Step 4. Tag and publish the release (only if present)
 
-Een milestone is een release (`GOVERNANCE.md`). Er valt hier geen versienummer te
-verzinnen — `--draft` leidt het af uit de sluitdatum van de milestone plus de bestaande
-tags, en `--cut` leest het daarna terug uit `CHANGELOG.md`.
+The release flow stays outside lighthouse. It is present when the repo has `scripts/release.py`
+(`test -e scripts/release.py`); otherwise report `release: skipped — no scripts/release.py` and go
+on with step 5.
 
-**Heeft de milestone nul gesloten issues?** Sla deze stap over. Een release met lege
-notes is precies het artefact waar `release.py` op weigert; het script zegt dat zelf ook
-en stopt met exit 0.
+A milestone is a release (`GOVERNANCE.md`). There is no version number to make up here — `--draft`
+derives it from the close date of the milestone plus the existing tags, and `--cut` reads it back
+from `CHANGELOG.md` afterwards.
 
-In de worktree, meteen na het sluiten van de milestone:
+**Does the milestone have zero closed issues?** Skip this step. A release with empty notes is
+exactly the artefact `release.py` refuses; the script says so itself too and stops with exit 0.
+
+In the worktree, right after closing the milestone:
 
 ```bash
 uv run python scripts/release.py --draft --milestone <nr>
 ```
 
-Dat genereert de CHANGELOG-sectie uit de DoD en de gesloten issues, zet
-`publiccode.yml` in dezelfde commit op die versie plus de sluitdatum van de milestone,
-commit alles op een `release-<versie>`-branch die van `origin/main` vertakt, en opent
-een PR. Lezen mag, hoeft niet: de chore-merge-lane merget de PR zodra `ci` en `cla` groen
-zijn (afweging aanvaard 2026-10-10, #1344). De issuenummers zijn machinaal gecontroleerd, de
-proza niet. Waarschuwingen over DoD-punten die niet terugkomen staan in de output van het
-commando.
+That generates the CHANGELOG section from the DoD and the closed issues, sets `publiccode.yml` in
+the same commit to that version plus the close date of the milestone, commits everything on a
+`release-<version>` branch that branches from `origin/<default branch>`, and opens a PR. Reading
+is allowed, not required: the chore-merge lane merges the PR as soon as `ci` and `cla` are green.
+The issue numbers are checked by machine, the prose not. Warnings about DoD points that do not
+come back are in the output of the command.
 
-Je hoeft er niet voor op `main` te staan: het commando fetcht zelf en vertakt van
-`origin/main`, juist omdat deze repo squash-merget en de zojuist gemergede issue-branch
-dus geen voorouder van `main` is. Dat gebeurt in een eigen tijdelijke worktree, die na de PR
-weer verdwijnt: je eigen checkout blijft op zijn branch staan.
+You need not be on the default branch for it: the command fetches itself and branches from
+`origin/<default branch>`, precisely because the repo squash-merges and the just merged issue
+branch is therefore no ancestor of the default branch. That happens in a temporary worktree of
+its own, which disappears after the PR: your own checkout stays on its branch.
 
-Daarna doet de lane de rest. Hij draait elk uur (:41), merget de release-PR (alleen
-`CHANGELOG.md` en `publiccode.yml` mogen erin zitten) en voert op de merge-commit
-`release.py --cut` uit: tag, push en GitHub Release. Wie niet wil wachten, start hem met de hand:
+Then the lane does the rest (the release flow, if present). It runs every hour, merges the release
+PR (only `CHANGELOG.md` and `publiccode.yml` may be in it) and runs `release.py --cut` on the merge
+commit: tag, push and GitHub Release. Whoever does not want to wait starts it by hand:
 
 ```bash
 gh workflow run chore-merge.yml
 ```
 
-Bewijs dat het gelukt is:
+Evidence that it worked:
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh run list --workflow chore-merge.yml --limit 1
-git ls-remote --tags origin | grep <versie>
-gh release view <versie> --repo "$R" --json tagName,publishedAt
+git ls-remote --tags origin | grep <version>
+gh release view <version> --repo "$R" --json tagName,publishedAt
 ```
 
-#### Fallback met de hand
+#### Fallback by hand (release flow, only if present)
 
-Dit geldt wanneer de lane rood is met een `--cut na merge van #…`-regel in de summary, of
-wanneer de release-PR meer raakt dan `CHANGELOG.md` + `publiccode.yml` (dan slaat de lane hem
-over). Een kale `--cut` werkt alleen zolang er nog geen tag is: het weigert een bestaande tag,
-en zet de tag vóór de push en de publicatie. Bepaal daarom eerst de toestand:
+This holds when the lane is red with a `--cut after merge of #…` line in the summary, or when the
+release PR touches more than `CHANGELOG.md` + `publiccode.yml` (then the lane skips it). A bare
+`--cut` works only while there is no tag yet: it refuses an existing tag, and sets the tag before
+the push and the publication. So first determine the state:
 
 ```bash
-git ls-remote --tags origin <versie>
+git ls-remote --tags origin <version>
 ```
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
-gh release view <versie> --repo "$R"
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+gh release view <version> --repo "$R"
 ```
 
-- **Geen tag op de remote** (de cut weigerde, of de tag-push faalde): `--cut` met de hand, na
-  de PR-merge, op een verse `main`. Staat de tag nog lokaal, verwijder die eerst:
+- **No tag on the remote** (the cut refused, or the tag push failed): `--cut` by hand, after
+  the PR merge, on a fresh default branch. If the tag is still local, delete it first:
 
   ```bash
-  git tag -d <versie>
+  git tag -d <version>
   ```
 
   ```bash
-  git checkout main && git pull
+  git checkout <default branch> && git pull
   ```
 
   ```bash
   uv run python scripts/release.py --cut
   ```
 
-  Dat tagt `HEAD`, pusht de tag en publiceert de GitHub Release. Is er na de release-PR nog
-  een andere PR gemerged (de lane meldde dan `origin/main staat op X`), dan is `HEAD` niet
-  meer de merge-commit van de release-PR, maar een latere commit. De tag komt dan op die
-  latere commit. Meer schrijft het niet: `publiccode.yml` is al bijgewerkt op de release-PR.
-  Het weigert vóór elke mutatie wanneer er geen `## v…`-kop staat, de sectie leeg is, de tag al
-  bestaat, `main` niet gelijkloopt met `origin/main`, of `publiccode.yml` een andere versie
-  noemt (dan is de release-PR niet gemerged). Sta dus echt op een verse `main`.
-- **Tag wél op de remote, geen GitHub Release** (de publicatie faalde): publiceer alleen de
-  Release bij de bestaande tag. `--cut` zou hier weigeren. Draai het op een verse `main`.
+  That tags `HEAD`, pushes the tag and publishes the GitHub Release. If another PR was merged
+  after the release PR (the lane then reported `origin/<default branch> is at X`), `HEAD` is no
+  longer the merge commit of the release PR, but a later commit. The tag then lands on that
+  later commit. It writes nothing more: `publiccode.yml` is already updated on the release PR.
+  It refuses before every mutation when there is no `## v…` heading, the section is empty, the
+  tag already exists, the default branch does not run level with its origin, or `publiccode.yml`
+  names another version (then the release PR is not merged). So really stand on a fresh default
+  branch.
+- **Tag on the remote, no GitHub Release** (the publication failed): publish only the
+  Release at the existing tag. `--cut` would refuse here. Run it on a fresh default branch.
 
   ```bash
-  uv run python scripts/release.py --tag <versie>
+  uv run python scripts/release.py --tag <version>
   ```
 
-  Dit heeft twee bijwerkingen. Het schrijft `publiccode.yml` in je checkout om, met de
-  datum van de tag-commit. En de Release-tekst zegt dat hij achteraf is gemaakt, uit een
-  bestaande tag (`backfilled`). Controleer daarom daarna de checkout, en zet het bestand
-  terug als het veranderd is:
+  This has two side effects. It rewrites `publiccode.yml` in your checkout, with the
+  date of the tag commit. And the Release text says it was made afterwards, from an
+  existing tag (`backfilled`). So check the checkout afterwards, and put the file
+  back if it changed:
 
   ```bash
   git status --short
@@ -693,38 +716,39 @@ gh release view <versie> --repo "$R"
   ```bash
   git checkout -- publiccode.yml
   ```
-- **Tag en Release bestaan allebei**: niets te doen, de lane-run was alleen rood na de
-  publicatie.
+- **Tag and Release both exist**: nothing to do, the lane run was only red after the
+  publication.
 
-### Stap 5. Werk het nabij doel van de area bij
+### Step 5. Update the near goal of the area
 
-Sloot je een milestone in deze repo, dan werk je *Nabij doel* bij in
-`docs/developer/areas/<area>.md`, met `<area>` het titelprefix van de milestone: de
-gesloten milestone eruit, nieuwe open milestones van die area die niet op `ON-HOLD`
-of `DONE` eindigen erin. Dit hoort niet in de release-PR: `scripts/release.py` vertakt van
-`origin/main` en staged alleen `CHANGELOG.md` en `publiccode.yml`. Neem een eigen
-worktree en branch vanaf `origin/main`:
+Only with an areas folder: `python3 .lighthouse/lib/lighthouse_lib/config.py paths.areas` (rc 1:
+report `areas: skipped — no paths.areas` and stop here).
+
+If you closed a milestone in this repo, update the *near goal* in `<paths.areas>/<area>.md`, with
+`<area>` the title prefix of the milestone: the closed milestone out, new open milestones of that
+area that do not end on `ON-HOLD` or `DONE` in. This does not belong in the release PR (if
+present): the release flow branches from `origin/<default branch>` and stages only `CHANGELOG.md`
+and `publiccode.yml`. Take a worktree and branch of your own from `origin/<default branch>`:
 
 ```bash
-git fetch origin main
-git worktree add .claude/worktrees/areas-<area>-nabij-doel -b areas-<area>-nabij-doel origin/main
+B=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.default_branch) || exit 2
+git fetch origin "$B"
+git worktree add .claude/worktrees/areas-<area>-near-goal -b areas-<area>-near-goal "origin/$B"
 ```
 
-Commit als `docs(areas): nabij doel <area> na <milestonetitel>`, in een eigen PR. Dit
-geldt ook als stap 4 is overgeslagen (nul gesloten issues). De crux werk je niet
-automatisch bij.
+Commit as `docs(areas): near goal <area> after <milestone title>`, in a PR of its own. This also
+holds when step 4 was skipped (zero closed issues). You do not update the crux automatically.
 
-## Wanneer NIET sluiten
+## When NOT to close
 
-- Een open `Closes`-PR verwijst naar het issue → stap 0: wacht op merge
-- AC items niet afgevinkt → Vraag om clarificatie of werk af
-- DoD niet voldaan → Voltooi ontbrekende stappen eerst
-- Onduidelijk of het klaar is → ingang B: graaf het bewijs op, tabel per criterium
-- Een criterium zonder aanwijsbare bewijsregel → verdict `niet`, dus niet sluiten
-- Gemengde verdicts → voorstel het issue in te korten, niet sluiten
-- Gebruiker heeft de verdict-tabel nog niet gezien → eerst tonen
+- An open `Closes` PR refers to the issue → step 0: wait for the merge
+- AC items not ticked → Ask for clarification or finish the work
+- DoD not met → Complete the missing steps first
+- Unclear whether it is done → entry B: dig up the evidence, table per criterion
+- A criterion without an identifiable evidence line → verdict `not`, so do not close
+- Mixed verdicts → propose to shorten the issue, do not close
+- The user has not seen the verdict table yet → show it first
 
 ## Related Skills
 
-- `/paia-write-issue` - Maak issues met AC en DoD (deze repo)
-- `/commit` - Commit changes
+- `/lighthouse-write-issue` - Create issues with AC and DoD (this repo)

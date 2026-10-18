@@ -50,7 +50,6 @@ ALLOWED_EXTERNAL = {
 # them. A skill leaves this set in the commit that adds it (test_planned_skills_absent);
 # the set is empty when PR 4 is done.
 PLANNED = {
-    "close-issue",
     "spec-adversarial-review",
     "plan-adversarial-review",
     "write-issue",
