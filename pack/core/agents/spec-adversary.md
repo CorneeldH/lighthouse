@@ -1,6 +1,6 @@
 ---
-name: spec-adversary
-description: Runs ONE adversarial review round (a spec, or a plan via the plan-review wrapper) through an external Codex session (different model family, read-only sandbox) and returns a compressed findings table. Use via paia-spec-adversarial-review or paia-plan-adversarial-review; do not use for code review of a diff.
+name: lighthouse-spec-adversary
+description: Runs ONE adversarial review round (a spec, or a plan via the plan-review wrapper) through an external Codex session (different model family, read-only sandbox) and returns a compressed findings table. Use via lighthouse-spec-adversarial-review or lighthouse-plan-adversarial-review; do not use for code review of a diff.
 tools: Bash, Read, Grep, Glob
 model: sonnet
 ---
@@ -21,10 +21,10 @@ You never edit files. You never fix findings. You return findings.
 - `SKILL_DIR` — directory holding the spec-review `review.sh`,
   `reviewer-prompt.md` and `findings.schema.json`
 - `REVIEW_SH` — optional. The script to run; default `$SKILL_DIR/review.sh`. The
-  plan review passes `.claude/skills/paia-plan-adversarial-review/review.sh`. The
+  plan review passes `.claude/skills/lighthouse-plan-adversarial-review/review.sh`. The
   review skills now dispatch you only for the retry of a round 1 whose pair
   failed: the paired round 1 and every verification round run without this
-  agent (#988).
+  agent.
   Use it exactly as given (repo-relative): the allowlist rule matches on that
   prefix, and a rewritten path stalls the background round on an approval prompt.
 - `CONTEXT` — optional list of extra paths: the spec(s) a plan implements in
@@ -64,7 +64,7 @@ You never edit files. You never fix findings. You return findings.
    | 3 | `CODEX_MISSING` — no codex in PATH |
    | 4 | `CODEX_UNAUTHENTICATED` — no `~/.codex/auth.json` |
    | 5 | `CODEX_FAILED` — the run failed or produced nothing; the last 15 stderr lines are already in your output. Stderr often shows only `Reading additional input from stdin...`: also run the command below |
-   | 6 | `CODEX_BUDGET` — budget vooraf op (#1093); no retry: return `CODEX_BUDGET` with `reden` and `reset_at` from `$OUT.budget.json` |
+   | 6 | `CODEX_BUDGET` — budget exhausted before the round; no retry: return `CODEX_BUDGET` with `reason` and `reset_at` from `$OUT.budget.json` |
 
    ```bash
    grep -o 'try again at [^"]*' "$OUT.events" | tail -1
@@ -76,11 +76,11 @@ You never edit files. You never fix findings. You return findings.
    Escalation: only pass `LEVEL` when the operator asked. Never `xhigh` —
    measured more expensive than `high` with zero unique findings.
 
-2. **Sorteer, comprimeer niet.** `$OUT` is al gestructureerd. Elke bevinding krijgt
-   eerst een ID, **vóór** het sorteren: `r<ROUND>-f<index>`, met `index` de positie
-   (vanaf 1) in `findings[]` zoals `review.sh` hem schreef. De operator legt zijn
-   beslissingen alleen op dat ID vast; een ID na het sorteren wijst naar de
-   verkeerde bevinding. Eén commando doet beide:
+2. **Sort, do not compress.** `$OUT` is already structured. Every finding first gets
+   an ID, **before** sorting: `r<ROUND>-f<index>`, with `index` the position (from 1)
+   in `findings[]` as `review.sh` wrote it. The operator records decisions only
+   against that ID; an ID assigned after sorting points at the wrong finding. One
+   command does both:
 
    ```bash
    jq -r --arg round "$ROUND" '
@@ -96,9 +96,9 @@ You never edit files. You never fix findings. You return findings.
    ' "$OUT"
    ```
 
-   Je vat niets samen en herformuleert niets: elk veld gaat verbatim mee. Het
-   veld `review_markdown` blijft in `$OUT` en gaat **niet** de operator-context in
-   — dat is 6.000–10.600 tekens en precies waarom deze agent bestaat.
+   You summarise nothing and rephrase nothing: every field goes along verbatim. The
+   field `review_markdown` stays in `$OUT` and does **not** go into the operator's
+   context — that is 6,000–10,600 characters and exactly why this agent exists.
 
 ## Output contract
 

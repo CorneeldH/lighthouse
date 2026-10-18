@@ -28,6 +28,8 @@ func TestCorePack(t *testing.T) {
 	}
 	sort.Strings(files)
 	want := []string{
+		".claude/agents/lighthouse-issue-impact-scout.md",
+		".claude/agents/lighthouse-spec-adversary.md",
 		".claude/hooks/lighthouse/main-commit-guard.sh",
 		".github/pull_request_template.md",
 		".github/workflows/lighthouse-unblock-dependents.yml",
