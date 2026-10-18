@@ -38,6 +38,7 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/headings.py",
 		".lighthouse/lib/lighthouse_lib/protocol.py",
 		".lighthouse/scripts/board_start.py",
+		".lighthouse/scripts/codex_usage.py",
 		".lighthouse/scripts/plan_review_record.py",
 		".lighthouse/scripts/post_artefact.py",
 		".lighthouse/scripts/review_pair.py",
@@ -52,7 +53,7 @@ func TestCorePack(t *testing.T) {
 	for _, r := range p.Requires {
 		tools = append(tools, r.Tool)
 	}
-	if strings.Join(tools, ",") != "gh,git,jq,python3,tomllib" {
+	if strings.Join(tools, ",") != "codex,gh,git,jq,python3,tomllib" {
 		t.Fatalf("tools = %v", tools)
 	}
 }
