@@ -215,3 +215,8 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/skills/handoff/SKILL.md"
 source_path = [".claude/skills/paia-handoff/SKILL.md", ".agents/skills/paia-handoff/SKILL.md"]
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/verify-pr/SKILL.md"
+source_path = [".claude/skills/paia-verify-pr/SKILL.md", ".agents/skills/paia-verify-pr/SKILL.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

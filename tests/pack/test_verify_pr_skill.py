@@ -1,79 +1,82 @@
-"""Contract van de skill `paia-verify-pr` en het PR-template (#1091, taak 6).
+"""Contract of the skill `lighthouse-verify-pr`.
 
-De skill is de tegenhanger van `.claude/hooks/pr-create-gate.sh`: hij schrijft
-de PR-body (`Closes #N` + Evidence-tabel, `Refs #N — <reden>` of
-`No issue: <reden>`) die de hook afdwingt. Deze tests binden de skilltekst aan
-de hook, aan de CLI van `evidence.py` en aan diens allowlist-constanten.
+The skill is the counterpart of `.claude/hooks/lighthouse/pr-create-gate.sh`: it writes the PR
+body (`Closes #N` + Evidence table, `Refs #N — <reason>` or `No issue: <reason>`) the hook
+enforces. These tests bind the skill text to the hook, to the CLI of `evidence.py` and to its
+allowlist constants. The template itself is tested in `test_pr_template.py`.
 """
 
 import re
-from pathlib import Path
+import shutil
 
-import yaml
+from tests.pack._testkit import CORE, load_hook_lib
 
-from tests.unit._hook_testkit import load_hook_lib
-
-ROOT = Path(__file__).resolve().parents[2]
-CLAUDE = ROOT / ".claude" / "skills" / "paia-verify-pr" / "SKILL.md"
-AGENTS = ROOT / ".agents" / "skills" / "paia-verify-pr" / "SKILL.md"
-TEMPLATE = ROOT / ".github" / "pull_request_template.md"
+SKILL = CORE / "skills" / "verify-pr" / "SKILL.md"
+TEXT = SKILL.read_text(encoding="utf-8")
 
 
-def front(pad: Path) -> str:
-    """De YAML-frontmatter tussen de eerste twee `---`-regels."""
-    return pad.read_text(encoding="utf-8").split("---\n", 2)[1]
+def front(text: str) -> str:
+    """The frontmatter between the first two `---` lines."""
+    return text.split("---\n", 2)[1]
 
 
-def test_spiegels_identiek():
-    assert CLAUDE.read_bytes() == AGENTS.read_bytes()
+def _section(body: str, heading: str) -> str:
+    s = body[body.index(heading) :]
+    return s[: s.index("\n## ", 1)]
 
 
-def test_binding_hard_onder_metadata():
-    assert yaml.safe_load(front(CLAUDE))["metadata"]["binding"] == "hard"
+def test_one_shared_skill_file():
+    assert not (CORE / "skills" / "verify-pr" / "claude").exists()
 
 
-def test_description_niet_afgekapt():
-    """Een ongequote ` #N` is in YAML commentaar en knipt de LET OP-clausule af."""
-    assert yaml.safe_load(front(CLAUDE))["description"].endswith("is paia-fix-pr.")
+def test_binding_hard_under_metadata():
+    assert re.search(r"^metadata:\n(?:  .*\n)*  binding: hard$", front(TEXT), re.MULTILINE)
 
 
-def test_skill_draait_run_voor_pr():
-    assert "--voor-pr" in CLAUDE.read_text(encoding="utf-8")
+def test_description_not_cut_off():
+    """An unquoted ` #N` is a YAML comment and cuts off the NOTE clause."""
+    line = next(line for line in front(TEXT).splitlines() if line.startswith("description:"))
+    value = line[len("description:") :].strip()
+    assert value[0] == "'" and value.endswith("is lighthouse-fix-pr.'")
 
 
-def test_noemt_hook():
-    """Check 8 koppelt `binding: hard` aan de hook via deze naam."""
-    assert ".claude/hooks/pr-create-gate.sh" in CLAUDE.read_text(encoding="utf-8")
+def test_skill_runs_before_pr():
+    assert "--before-pr" in TEXT and "--voor-pr" not in TEXT
 
 
-def test_noemt_beide_nieuwe_verdicts():
-    body = CLAUDE.read_text(encoding="utf-8")
-    assert "`na merge`" in body and "`na PR`" in body
+def test_names_the_hook():
+    """Check 8 binds `binding: hard` to the hook through this name."""
+    assert ".claude/hooks/lighthouse/pr-create-gate.sh" in TEXT
 
 
-def test_noemt_evidence_cli():
-    body = CLAUDE.read_text(encoding="utf-8")
-    assert "evidence.py check" in body and "evidence.py run" in body
+def test_names_both_new_verdicts():
+    assert "`after merge`" in TEXT and "`after PR`" in TEXT
 
 
-def test_allowlist_tabel_dekt_de_code():
-    """De skilltabel noemt elk commando, elke weigering (aanscherpingen a–e) en
-    elke vlag uit de allowlist-constanten van `evidence.py`."""
+def test_verify_pr_evidence_by_path():
+    """The evidence CLI runs as a file on its installed path (ontwerpkeuze 6)."""
+    assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py check" in TEXT
+    assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py run" in TEXT
+    assert ".claude/hooks/lib/" not in TEXT
+
+
+def test_allowlist_table_covers_the_code():
+    """The skill table names every command, every refusal and every flag from the allowlist
+    constants of `evidence.py`."""
     ev = load_hook_lib("evidence")
-    body = CLAUDE.read_text(encoding="utf-8")
     for cmd in (
         "`grep`",
         "`git grep`",
         "`git log`",
         "`uv run pytest`",
-        "`gh api <pad>`",
+        "`gh api <path>`",
         "`gh api graphql`",
         "`gh pr view`",
     ):
-        assert cmd in body
-    for geweigerd in ("--web", "--output", "-H", "%G"):
-        assert geweigerd in body
-    vlaggen = (
+        assert cmd in TEXT
+    for refused in ("--web", "--output", "-H", "%G"):
+        assert refused in TEXT
+    flags = (
         ev.GIT_LOG_FLAGS
         | ev.GIT_LOG_VAL
         | ev.PYTEST_FLAGS
@@ -85,86 +88,73 @@ def test_allowlist_tabel_dekt_de_code():
         | ev.CAT_FLAGS
         | ev.GIT_GREP_VAL
     )
-    sectie = body[body.index("## Evidence-allowlist") :]
-    sectie = sectie[: sectie.index("```")]  # alleen de tabel en zijn proza
-    in_code = {re.sub(r"[`=]", "", v) for v in re.findall(r"`[^`]*`", sectie)}
-    tokens = {t for cel in in_code for t in re.split(r"[\s/,]+", cel)}
-    ontbreekt = sorted(v for v in vlaggen if v not in tokens)
-    assert not ontbreekt, (
-        f"vlaggen uit evidence.py ontbreken in de skilltabel: {ontbreekt}"
-    )
+    section = TEXT[TEXT.index("## Evidence allowlist") :]
+    section = section[: section.index("```")]  # only the table and its prose
+    in_code = {re.sub(r"[`=]", "", v) for v in re.findall(r"`[^`]*`", section)}
+    tokens = {t for cell in in_code for t in re.split(r"[\s/,]+", cell)}
+    missing = sorted(v for v in flags if v not in tokens)
+    assert not missing, f"flags from evidence.py missing in the skill table: {missing}"
     for sub in ev.GIT_SUBS:
-        assert f"git {sub}" in body
+        assert f"git {sub}" in TEXT
 
 
-def test_template_kent_drie_vormen():
-    t = TEMPLATE.read_text(encoding="utf-8")
-    assert "Evidence #" in t and "Refs #123 —" in t and "No issue:" in t
+def test_pytest_dir_comes_from_config():
+    section = _section(TEXT, "## Evidence allowlist")
+    assert "config.py test_gate.evidence_test_dir" in section
+    assert "tests/unit" not in TEXT
 
 
-def test_template_verbiedt_closes_niet():
-    assert "No `Closes`" not in TEMPLATE.read_text(encoding="utf-8")
-
-
-def test_template_bevat_geen_geldige_vorm_buiten_comments():
-    """Het lege template blokkeert: de voorbeeldvormen staan alleen in een comment.
-
-    Netwerkverbod: de AC-telling krijgt een stub; zonder `Closes` buiten de
-    comment wordt hij niet eens aangeroepen.
-    """
-    gate = load_hook_lib("pr_body_gate")
-    verdict = gate.check_body(
-        TEMPLATE.read_text(encoding="utf-8"), ac_count=lambda _nr: (None, "stub")
-    )
-    assert verdict.blokkades
-
-
-def _sectie(body: str, kop: str) -> str:
-    s = body[body.index(kop) :]
-    return s[: s.index("\n## ", 1)]
-
-
-def test_voorbeeldrij_klopt_tegen_het_template():
-    """Rij 1 van het voorbeeldblok, gekopieerd, moet `klopt` geven (grep, geen netwerk)."""
+def test_example_row_holds_against_the_template(tmp_path):
+    """Row 1 of the example block, copied, must give `holds` in a repo with the installed
+    template (grep, no network)."""
     gate = load_hook_lib("pr_body_gate")
     ev = load_hook_lib("evidence")
-    body = CLAUDE.read_text(encoding="utf-8")
-    # Het voorbeeld bevat zelf `## Related issues`: knip tot de volgende echte kop.
-    blok = body[body.index("## Vorm van het bewijsblok") : body.index("## Tegenhanger")]
-    rijen = gate.evidence_rows(blok, 1091)
-    assert isinstance(rijen, list), rijen
-    assert ev.run_row(rijen[0], str(ROOT), gh_ok=False)[0] == "klopt"
-
-
-def test_v4_geeft_titel_en_schrijft_body_apart():
-    v4 = _sectie(CLAUDE.read_text(encoding="utf-8"), "## V4.")
-    assert "gh pr create --title '<titel>' --body-file <pad>" in v4
-    assert "Write-tool" in v4
-
-
-def test_dod_draait_de_suite_niet_handmatig_in_claude_code():
-    dod = _sectie(CLAUDE.read_text(encoding="utf-8"), "## DoD")
-    assert ".claude/hooks/pre-commit-tests.sh" in dod
-    assert "Buiten Claude Code" in dod
-    assert dod.index("Buiten Claude Code") < dod.index("uv run pytest tests/unit/")
-
-
-def test_gh_view_eist_een_nummer_en_na_pr_meet_via_het_issue():
-    body = CLAUDE.read_text(encoding="utf-8")
-    assert "precies één nummer of github.com-URL" in _sectie(
-        body, "## Evidence-allowlist"
+    (tmp_path / ".github").mkdir()
+    shutil.copyfile(
+        CORE / "templates" / "pull_request_template.md",
+        tmp_path / ".github" / "pull_request_template.md",
     )
-    v3 = _sectie(body, "## V3.")
+    # The example itself contains `## Related issues`: cut up to the next real heading.
+    block = TEXT[TEXT.index("## Shape of the evidence block") : TEXT.index("## Counterpart")]
+    rows = gate.evidence_rows(block, 1091)
+    assert isinstance(rows, list), rows
+    assert ev.run_row(rows[0], str(tmp_path), gh_ok=False)[0] == ev.HOLDS
+
+
+def test_v4_gives_a_title_and_writes_the_body_separately():
+    v4 = _section(TEXT, "## V4.")
+    assert "gh pr create --title '<title>' --body-file <path>" in v4
+    assert "Write tool" in v4
+    assert "python3 .lighthouse/scripts/plan_review_record.py pr-open-points <path>..." in v4
+
+
+def test_dod_does_not_run_the_suite_by_hand_in_claude_code():
+    dod = _section(TEXT, "## DoD")
+    assert ".claude/hooks/lighthouse/pre-commit-tests.sh" in dod
+    assert "Outside Claude Code" in dod
+    assert dod.index("Outside Claude Code") < dod.index("config.py test_gate.command")
+
+
+def test_gh_view_demands_a_number_and_after_pr_measures_through_the_issue():
+    assert "exactly one number or github.com URL" in _section(TEXT, "## Evidence allowlist")
+    v3 = _section(TEXT, "## V3.")
     assert "closedByPullRequestsReferences" in v3
-    assert "`gh pr view` zonder nummer" in v3
+    assert "`gh pr view` without a number" in v3
 
 
-def test_git_grep_rij_noemt_wat_evidence_weigert():
-    """`git grep` kent alleen `-e` als waarde-optie; de rest van grep's waarde-opties niet."""
+def test_git_grep_row_names_what_evidence_refuses():
+    """`git grep` knows only `-e` as a value option; the rest of grep's value options not."""
     ev = load_hook_lib("evidence")
-    body = CLAUDE.read_text(encoding="utf-8")
-    [rij] = [r for r in body.splitlines() if r.startswith("| `git grep` |")]
-    _, toegestaan, geweigerd = (c.strip() for c in rij.strip("|").split(" | "))
-    assert "als `grep`" not in toegestaan
-    for optie in ev.GREP_VAL - ev.GIT_GREP_VAL:
-        assert f"`{optie}`" in geweigerd
+    [row] = [r for r in TEXT.splitlines() if r.startswith("| `git grep` |")]
+    _, allowed, refused = (c.strip() for c in row.strip("|").split(" | "))
+    assert "as `grep`" not in allowed
+    for option in ev.GREP_VAL - ev.GIT_GREP_VAL:
+        assert f"`{option}`" in refused
+
+
+def test_outcomes_are_headings():
+    """The runner writes its outcomes in the project language (headings.toml)."""
+    for key in ("evidence_holds", "evidence_after_pr_unmeasured", "evidence_table_head"):
+        assert f"heading:{key}" in TEXT
+    assert "COULD NOT CHECK" in TEXT
+    assert "klopt" not in TEXT and "KON NIET" not in TEXT
