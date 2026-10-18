@@ -329,6 +329,9 @@ fi
 
 # One `date` call, before the slot: the wait counts towards the deadline.
 DEADLINE=$(( $(date +%s) + DEADLINE_SECONDS ))
+# So it never runs past it either: a wait beyond the hook timeout would let the
+# commit through untested.
+[ "$SLOT_WAIT" -le "$DEADLINE_SECONDS" ] || SLOT_WAIT="$DEADLINE_SECONDS"
 
 slot_failed() {
   {

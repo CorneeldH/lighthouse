@@ -1078,3 +1078,24 @@ def test_gate_finds_the_user_bus_without_xdg(gate: Gate) -> None:
     assert result.returncode == 0, result.stderr
     seen = Path(f"{gate.mark}.xdg").read_text(encoding="utf-8").strip()
     assert seen == f"/run/user/{os.getuid()}"
+
+
+def test_slot_wait_is_capped_by_the_deadline(gate: Gate) -> None:
+    # Een wachttijd langer dan de hook-timeout (300 s) liet de commit na de
+    # timeout ongetest door; de wachttijd telt mee in de deadline.
+    gate.configure(
+        TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 100000")
+        + "deadline_seconds = 2\n"
+    )
+    fds = hold_slots(gate, "slot-1", "slot-2")
+    try:
+        start = time.monotonic()
+        result = gate.run("git commit -m x", gate.project)
+        elapsed = time.monotonic() - start
+    finally:
+        release(fds)
+
+    assert result.returncode == 2, result.stdout
+    assert "all gate slots busy" in result.stderr
+    assert elapsed < 10
+    assert not gate.mark.exists()
