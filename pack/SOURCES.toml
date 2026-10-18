@@ -33,3 +33,16 @@ new = true
 [[file]]
 path = "pack/core/requires.toml"
 new = true
+
+[[file]]
+path = "pack/core/lib/datadir.py"
+source_path = "experiments/lekmeting-keten/lk_common.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/headings.toml"
+new = true
+
+[[file]]
+path = "pack/core/lib/headings.py"
+new = true

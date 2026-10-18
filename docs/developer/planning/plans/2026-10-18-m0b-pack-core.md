@@ -4,11 +4,11 @@
 
 **Goal:** Alle core-bestanden uit paia staan vertaald en losgetrokken in `pack/core`, `lighthouse init` installeert ze, en lighthouse draait zijn eigen `pack/core` in plaats van de bootstrap van (a0).
 
-**Architecture:** Zes PR's na elkaar, elk groen op zichzelf: (1) het installatiemechanisme leert skills, templates, workflows, permissies en `host.toml`; (2) de Python-lib (configlezer, koppentabel, comment-protocol, hookhelpers); (3) de hooks; (4) de scripts en templates; (5) de skills en agents, vertaald; (6) `lighthouse init` op lighthouse zelf. Elk bestand uit paia volgt hetzelfde *verhuisrecept*: eerst een letterlijke kopie in een eigen commit, dan de aanpassing in de volgende, zodat de reviewer per bestand ziet wat er stond en wat er staat.
+**Architecture:** Zeven PR's, elk groen op zichzelf (tabel *PR-indeling*): (1) het installatiemechanisme leert skills, templates, workflows, permissies en `host.toml`; (2) het fundament: configlezer, koppentabel, `install_core` en de eigendomsregel voor permissies; dan drie lijnen tegelijk: (3A) het comment-protocol en de scripts erop, (3B) de hookhelpers en de hooks, (3C) de losse scripts, de PR-template en de agents; (4) de skills, vertaald; (5) `lighthouse init` op lighthouse zelf. Elk bestand uit paia volgt hetzelfde *verhuisrecept*: eerst een letterlijke kopie in een eigen commit, dan de aanpassing in de volgende, zodat de reviewer per bestand ziet wat er stond en wat er staat.
 
 **Tech Stack:** Go 1.26 met de libraries uit (a); Python ≥ 3.11 voor scripts, Python 3.9-syntaxis voor `pack/core/lib/`; bash 3.2-compatibel voor hooks; `uv` + `pytest` voor de Python-lane.
 
-**Spec:** [`2026-10-17-m0-pakket-design.md`](../specs/2026-10-17-m0-pakket-design.md), secties *Inventaris*, *Grensgevallen*, *Taal*, *Portabiliteit* en *Opdeling (b)*; besluiten 7, 8, 13, 14, 15 en 16. Invoer: de inventaris in het eerste comment van #7 (hieronder "inventaris §n"). Plan (a): [`2026-10-17-m0a-skelet-en-mechanisme.md`](2026-10-17-m0a-skelet-en-mechanisme.md).
+**Spec:** [`2026-10-17-m0-pakket-design.md`](../specs/2026-10-17-m0-pakket-design.md), secties *Inventaris*, *Grensgevallen*, *Besluit grensgevallen*, *Taal*, *Portabiliteit* en *Opdeling (b)*; besluiten 7, 8, 13, 14, 15, 16 en 18 tot en met 29. Besluit 18–29 kwamen na de eerste versie van dit plan (PR #11); PR 2 werkte het plan daarnaar bij. Invoer: de inventaris in het eerste comment van #7 (hieronder "inventaris §n"). Plan (a): [`2026-10-17-m0a-skelet-en-mechanisme.md`](2026-10-17-m0a-skelet-en-mechanisme.md).
 
 **Bron:** paia op `33833601349a8b79a1d1b2ac9077cc495a0d2b37` (hieronder `SRC`). Gecontroleerd op 2026-10-18: tussen `SRC` en `origin/main` van paia is geen enkel bronbestand uit dit plan gewijzigd. Elke taak kopieert met `git -C <paia> show SRC:<pad>`.
 
@@ -16,23 +16,23 @@
 
 Deze punten beslist de spec niet, of de inventaris (§2) legt ze open. Elk punt is een voorstel; wijs aan wat anders moet vóór de uitvoering.
 
-1. **Zes PR's, in volgorde.** Elke PR verwijst met `Refs #7` naar het issue; de zesde sluit het met `Closes #7`. Een PR start vanaf `main` nadat de vorige gemerged is. Branches: `issue-7-b1-mechanism`, `issue-7-b2-lib`, `issue-7-b3-hooks`, `issue-7-b4-scripts`, `issue-7-b5-skills`, `issue-7-b6-dogfood`. Dit plan landt in PR 1.
+1. **Zeven PR's, in de volgorde van *PR-indeling*.** Elke PR verwijst met `Refs #7` naar het issue; de laatste sluit het met `Closes #7`. Een PR start vanaf `main` nadat de PR's gemerged zijn die hij nodig heeft. PR 3A, 3B en 3C lopen tegelijk, elk in een eigen sessie, worktree en review. Dit plan landt in PR 1.
 2. **Verhuisrecept: kopie-commit, dan aanpas-commit.** De kopie-commit zet het paia-bestand en zijn paia-test letterlijk op het doelpad (`chore(core): <naam> letterlijk uit paia`). De aanpas-commit doet alles uit het recept. De literal-grep en de tests mogen op de kopie-commit rood zijn; de CI draait alleen op de kop van de PR.
 3. **Wat vertaald wordt.** Engels worden: skills, agents, hookmeldingen, het instructieblok, CLI-help en elke uitvoer die een mens of een skill leest. CLI-subcommando's en -vlaggen worden Engels, want Engelse skills roepen ze aan (`accepteer-open` → `accept-open`, `--heropen` → `--reopen`, `--voor-pr` → `--before-pr`). **Niet** vertaald in (b): interne namen, commentaar en docstrings. Dat zou de diff van elk bestand vullen met ruis en de vergelijking "wat stond er, wat staat er" onleesbaar maken. Dat komt onder *Verbeterpunten*. (a) deed hetzelfde met `git_invocations.py`.
 4. **Twee soorten tokens.** (a) Tekst die in een GitHub-artefact landt (issue, PR, comment) en later gelezen wordt, staat in `headings.toml`: schrijven in `[project] language`, lezen accepteert elke variant. (b) Machinetokens, zoals de sleutels van het comment-protocol, script-uitvoer die een skill parset, JSON-velden en de marker, worden vaste Engelse tokens. Sleutels in comments die al op GitHub staan, lezen we ook in hun oude Nederlandse vorm (tabel *Protocoltokens*). Script-uitvoer leest de oude vorm niet, want schrijver en lezer verhuizen samen.
 5. **Eén token voor "kon niet controleren"** (inventaris §2.1): de eerste stderr-regel van elke gate is `<gate>: COULD NOT CHECK — <reden>`, en `bash_writes.classify` matcht op `COULD NOT CHECK` in die eerste regel, voor elke gate. Ook `git_invocations.py` gaat over: `<onbekend>` → `<unknown>`, `<nieuw>` → `<new>`.
 6. **Lib-code draait als bestand op zijn pad**, net als de guard in (a) (ontwerpkeuze 6 daar). Een skill roept `python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo` aan, een script `python3 .lighthouse/scripts/<naam>.py`. Elke lib-module met een CLI en elk script zet bij het starten zijn eigen lib-map (`.lighthouse/lib`) vooraan in `sys.path`. Dat is de map van het bestand zelf, niet de repo-root. Daarna importeert het `lighthouse_lib.<x>`.
 7. **De vertaling van `identity`:** `repo` → `forge.repo`, `owner` → `forge.owner`, `name` → `forge.name`, `project-number` → `forge.board.project_number`, `project-id` → `forge.board.project_id`, `status-field-id` → `forge.board.status_field_id`, `status-option X` → `forge.board.status_options.X`, `priority-field-id` → `forge.board.priority_field_id`, `priority-option X` → `forge.board.priority_options.X`, `host check` → `host-check`. Een skill leest rc 1 ("not set") bij een `forge.board.*`-sleutel als "geen board, stap overgeslagen" en meldt dat (besluit 16). Bij rc 2 stopt hij.
-8. **Defaults in de configlezer.** Elke nieuwe sleutel uit tabel *Configsleutels* heeft een default in `config.py`, behalve de bot-sleutels onder `[ci]`. Zo werkt `pack/core` in een repo met alleen `[project]` en `[forge]`.
-9. **`[labels]` noemt alleen labels die code of een skill bij naam gebruikt.** De rest van de labeltaxonomie van `write-issue` (inventaris §7, ongeveer 60% van de skill) is projectinhoud. Die staat in het bestand van `[paths] label_taxonomy`, zoals besluit 14 dat voor tenets en areas regelt. Geen `[labels.axes.*]`.
-10. **Test-gate zonder `[test_gate] command`** (inventaris §2.3): de commit gaat door, met de melding `pre-commit-tests: no [test_gate] command in lighthouse.toml — nothing was tested` via het berichtkanaal dat de hook al heeft. Een kapotte config (rc 2) blokkeert met COULD NOT CHECK. Het pytest-specifieke deel (exitcodes 3/4/5, de xdist-hint) wordt configuratie: `[test_gate] unchecked_exit_codes`. De hint verhuist in (c) naar `pack/python`.
-11. **Ontbrekend taalpakket in `bash-write-gates`** (inventaris §2.2): staat de gate van een extensie niet in `.claude/hooks/lighthouse/`, dan geeft `post` de melding `bash-write-gates: <bestand> not checked — <gate> is not installed (pack/<pakket>)` en geen exit 2. In (b) geldt dat voor `.py` en `.sh`, want `pack/python` en `pack/shell` komen pas in (c).
-12. **`codex_usage.py` gaat half mee** (inventaris §2.11): alleen `budget` en `read`, met de drempels uit `[codex_usage]`. `gate`, `_parkeer` en `schrijf_marker` blijven in paia tot M1. (d) laat paia's `usage_window.py` het verhuisde deel laden.
+8. **Defaults in de configlezer.** Elke nieuwe sleutel uit tabel *Configsleutels* waarvoor een generieke waarde bestaat, heeft een default in `config.py`. De rest is optioneel en heeft er geen: de bot-sleutels onder `[ci]`, `test_gate.command`, de projectpaden onder `[paths]` (`tenets`, `areas`, `history`, `labels`, `mirror_exceptions`), de prefixen onder `[labels]` en `project.skill_prefix`. Zo'n sleutel geeft rc 1, en de stap die hem nodig heeft, meldt dat hij overslaat. Zo werkt `pack/core` in een repo met alleen `[project]` en `[forge]`.
+9. **`[labels]` noemt alleen labels die code of een skill bij naam gebruikt.** De rest van de labeltaxonomie van `write-issue` (inventaris §7, ongeveer 60% van de skill) is projectinhoud. Die staat in het bestand van `[paths] labels` (besluit 28, akkoord Corneel 2026-10-18), zoals besluit 14 dat voor tenets en areas regelt. Geen `[labels.axes.*]`.
+10. **Test-gate zonder `[test_gate] command`** (inventaris §2.3): de commit gaat door, met de melding `pre-commit-tests: no test command configured, nothing was tested` (besluit 20) via het berichtkanaal dat de hook al heeft. De geheugenrem (`systemd-run` in een slice, `choom`) is een eigenschap van de host: de slice staat als `gate_slice` in `[host]` van `host.toml`. Zonder die sleutel draait de gate zonder rem en meldt hij `pre-commit-tests: no gate_slice in host.toml, tests run without memory brake`. Een kapotte config (rc 2) blokkeert met COULD NOT CHECK. Het pytest-specifieke deel (exitcodes 3/4/5, de xdist-hint) wordt configuratie: `[test_gate] unchecked_exit_codes`. De hint verhuist in (c) naar `pack/python`.
+11. **Ontbrekend taalpakket in `bash-write-gates`** (inventaris §2.2): staat de gate van een extensie niet in `.claude/hooks/lighthouse/`, dan geeft `post` de melding `bash-write-gates: <bestand> not checked — no <pakket> gate installed` (besluit 19) en geen exit 2. In (b) geldt dat voor `.py` en `.sh`, want `pack/python` en `pack/shell` komen pas in (c).
+12. **`codex_usage.py` gaat half mee** (inventaris §2.11; besluit 26, akkoord Corneel 2026-10-18): alleen `budget` en `read`, met de drempels uit `[codex_usage]`. `gate`, `_parkeer` en `schrijf_marker` blijven in paia tot M1. (d) laat paia's `usage_window.py` het verhuisde deel laden.
 13. **Workflows krijgen hun waarden bij het kopiëren.** In `pack/core/workflows/*.yml` staat een plekhouder `@@<sleutel>@@` (bijvoorbeeld `@@ci.runs_on@@`); `init` vult hem uit de configlezer, met dezelfde defaults. Ontbreekt een sleutel zonder default, dan installeert `init` die workflow niet en meldt hij welke sleutel ontbreekt. De hash in het manifest is die van het ingevulde bestand. De workflow heet in de projectrepo `lighthouse-unblock-dependents.yml`, en `close-issue` zoekt hem onder die naam (inventaris §2.9).
 14. **Permissies als eenheid** (inventaris §2.5): `pack/core/permissions.json` (`{"allow": [...]}`) levert per regel een eenheid van de soort `permission`, met `Path ".claude/settings.json"` en als `ID` de regel. `init` voegt een ontbrekende regel achteraan in `permissions.allow` toe en haalt een regel weg die het manifest noemt maar het pakket niet meer levert. Andere regels blijven staan, op hun plek.
 15. **Skills in het pakket:** `pack/core/skills/<naam>/` met de gedeelde bestanden, plus `claude/SKILL.md` en `agents/SKILL.md`, of één `SKILL.md` als de varianten gelijk zijn. `init` legt ze neer in `.claude/skills/lighthouse-<naam>/` en `.agents/skills/lighthouse-<naam>/`. De frontmatter-`name` moet `lighthouse-<naam>` zijn. Agents blijven `agents/<naam>.md` (zoals in (a)), alleen voor Claude.
 16. **Wat in paia blijft, roept een skill aan als het er is** (inventaris §7, laatste lijst; besluit 17): `test -e <pad>` of een beschikbaarheidscheck vooraf, en anders de regel `<stap>: skipped — <wat ontbreekt>`. Dat geldt voor `backlog-stand`, `board-sweep`, de controller, `controller_tick.sh`, de release-flow en de pre-push-keten. Of zo'n stap ook uit moet kunnen staan, valt onder *Optionaliteit* (Verbeterpunten).
-17. **Twee punten uit de spec schuiven door.** Het meten van board-ID's in `init` (spec, *init* punt 2) heeft in (b) geen gebruiker: lighthouse heeft geen board, en paia heeft de ID's al in zijn `lighthouse.toml`. Hetzelfde geldt voor `[forge] default_branch` (inventaris §2.6): `main` staat niet op de deny-lijst. Beide komen onder *Verbeterpunten*. `host.toml` voorstellen doet (b) wel, want `handoff` gebruikt `host-check`.
+17. **Eén punt uit de spec schuift door.** Het meten van board-ID's in `init` (spec, *init* punt 2) heeft in (b) geen gebruiker: lighthouse heeft geen board, en paia heeft de ID's al in zijn `lighthouse.toml`. Het komt onder *Verbeterpunten*. `[forge] default_branch` komt er wel (besluit 23): de sleutel in taak 6, de lezers in taak 9 (`git_invocations`, `main-commit-guard`), 12 (`worktree-guard`) en 19 (`worktree_audit`, de workflow). `host.toml` voorstellen doet (b) wel, want `handoff` gebruikt `host-check`.
 18. **Namen** (besluit 6): `instrumenteren` → `instrument`, `check-instructies.sh` → `check-instructions.sh`. De rest houdt zijn paia-naam zonder `paia-`.
 19. **Een skill noemt een kop als `heading:<key>`.** Het instructieblok (taak 28) legt die vorm één keer uit: de waarde onder `<key>` in `.lighthouse/headings.toml`, in de kolom van `[project] language`, op te vragen met `python3 .lighthouse/lib/lighthouse_lib/headings.py <key>`. Bij het lezen geldt elke variant. Zo staat geen Nederlandse of Engelse kop letterlijk in een skill, en kan de contracttest elke verwijzing controleren.
 
@@ -46,7 +46,7 @@ Deze punten beslist de spec niet, of de inventaris (§2) legt ze open. Elk punt 
 - Hooks draaien onder bash 3.2 (macOS): geen `exec {var}>>`, geen `declare -A`, geen `${x,,}`.
 - Geen guard doet stil niets: elke uitgang zonder controle is een blokkade met COULD NOT CHECK (guards) of een zichtbare melding (gates die niet blokkeren).
 - Env-namen: `PAIA_<X>` wordt `LIGHTHOUSE_<X>`. Paden onder `/tmp` of `$XDG_RUNTIME_DIR` die `paia-` heten, worden `lighthouse-`.
-- Datamap van scripts: `LIGHTHOUSE_DATA`, anders `${XDG_DATA_HOME:-~/.local/share}/lighthouse/<forge.name>`, met de naam van de repo-map als `[forge]` ontbreekt.
+- Datamap van de reviewrecords (besluit 27): `LIGHTHOUSE_DATA`, anders `${XDG_DATA_HOME:-~/.local/share}/lighthouse/review-records/`. `datadir.data_dir()` weigert een map binnen een git-werkboom en maakt hem aan, zoals `lk_common.data_dir()` in paia.
 - Taal: dit plan, commits en PR's in het Nederlands; alles in `pack/` in het Engels (zie ontwerpkeuze 3 voor de uitzonderingen).
 - Elk overgenomen bestand staat in `pack/SOURCES.toml` met `source_path` en `source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"`. Een bestand dat uit meer bronnen komt, krijgt een lijst in `source_path`. Een nieuw bestand krijgt `new = true`.
 
@@ -55,7 +55,7 @@ Deze punten beslist de spec niet, of de inventaris (§2) legt ze open. Elk punt 
 1. **Een repo met alleen `[project]` en `[forge]` in `lighthouse.toml`.** Verwacht: elke hook werkt met de defaults, of meldt zichtbaar dat hij overslaat. Geen enkele hook blokkeert een gewoon commando en geen enkele crasht met een traceback. Test: `test_hooks_with_minimal_config` in taak 14, geparametriseerd over alle hooks.
 2. **Oude comments op lopende issues.** Een handoff met `<!-- paia: … -->`, `volgende:` en `wanneer: nacht`, een `🤖 Gestart` met `stapel:` en een artefact met `soort: plan`. Verwacht: ze parsen naar dezelfde waarden als hun nieuwe vorm. Test: `test_reads_legacy_*` in taak 8.
 3. **Een Nederlands issue in een Engelse repo.** `### Acceptatiecriteria` in een issue, terwijl `[project] language = "en"`. Verwacht: `pr_body_gate` doet zijn AC-check zoals bij `### Acceptance criteria`. Test: `test_ac_heading_any_language` in taak 10.
-4. **Een `.py`- of `.sh`-write zonder taalpakket.** Verwacht: een melding "not checked — … is not installed", geen exit 2. Test: `test_missing_language_pack_is_reported_not_blocked` in taak 11 en `test_post_without_language_packs` in taak 13.
+4. **Een `.py`- of `.sh`-write zonder taalpakket.** Verwacht: een melding "not checked — no <pack> gate installed", geen exit 2. Test: `test_missing_language_pack_is_reported_not_blocked` in taak 11 en `test_post_without_language_packs` in taak 13.
 5. **Een skill die naar iets wijst dat niet bestaat.** Een vertaalfout laat een skill verwijzen naar een script, lib-module, configsleutel, kop of `/lighthouse-*`-skill die niet bestaat. Verwacht: een rode test. Test: `tests/pack/test_skill_contracts.py` in taak 22, met nieuwe gevallen in elke skilltaak. Daarnaast drift tussen `pack/` en de geïnstalleerde kopie in lighthouse zelf: de CI-stap `lighthouse init --upgrade` moet "No changes." geven (taak 29).
 
 ---
@@ -74,19 +74,20 @@ Elke taak die een paia-bestand overneemt, volgt deze stappen. Een taak noemt all
 
 ## Configsleutels
 
-Nieuw in `lighthouse.toml`, met de default in `config.py`. Een sleutel zonder default is optioneel: rc 1 betekent "stap overgeslagen, gemeld".
+Nieuw in `lighthouse.toml`, met de default in `config.py`. Een sleutel zonder default is optioneel: rc 1 betekent "stap overgeslagen, gemeld". `[forge]` is optioneel, en ook zijn sleutels `kind` en `repo`: een ontbrekende `forge.*`-sleutel zonder default geeft rc 1, en de rest werkt gewoon. Zo kan een repo zonder GitHub-remote alleen `[forge] default_branch` zetten.
 
 | Sleutel | Type | Default | Bron (inventaris) |
 |---|---|---|---|
 | `paths.specs`, `paths.plans` | str | `docs/developer/planning/specs`, `…/plans` | §4 `[paths]` |
-| `paths.tenets`, `paths.areas`, `paths.history`, `paths.label_taxonomy` | str | geen | §4, ontwerpkeuze 9 |
+| `forge.default_branch` | str | `main` | besluit 23 |
+| `paths.tenets`, `paths.areas`, `paths.history`, `paths.labels` | str | geen | §4, ontwerpkeuze 9, besluit 28 |
 | `paths.search_dirs` | list[str] | `["."]` | start-issue 78 |
 | `paths.mirror_exceptions` | str | geen | check 11 |
 | `labels.blocked_issue`, `blocked_external`, `needs_shaping`, `needs_decision`, `needs_hands`, `needs_testing` | str | `blocked-issue`, `blocked-external`, `needs-shaping`, `needs-decision`, `needs-hands`, `needs-testing` | §4 `[labels]` |
 | `labels.location_prefix`, `labels.area_prefix` | str | geen | start-issue 55-56 |
 | `test_gate.command` | str (via `bash -c`) | geen | §2.3 |
 | `test_gate.deadline_seconds`, `slots`, `slot_wait_seconds` | int | `270`, `2`, `180` | §4 `[test_gate]` |
-| `test_gate.slice` | str (systemd-slice) | geen: geen `systemd-run`-rem | `pre-commit-tests.sh:342-374` |
+| `host.gate_slice` (in `host.toml`, tabel `[host]`) | str (systemd-slice) | geen: geen `systemd-run`-rem, gemeld | besluit 20, `pre-commit-tests.sh:342-374` |
 | `test_gate.unchecked_exit_codes` | list[int] | `[]` | ontwerpkeuze 10 |
 | `test_gate.evidence_test_dir` | str | `tests/` | `evidence.py:72` |
 | `ci.runs_on` | str | `ubuntu-latest` | §4 `[ci]` |
@@ -108,6 +109,7 @@ Schrijvers gebruiken de rechterkolom; lezers accepteren beide (ontwerpkeuze 4). 
 | gestart: `sessie`, `commando`, `stapel`, `blokkade` (`verrekend`), `sprong`, `terugval` | `session`, `command`, `stack`, `blocker` (`accounted`), `skip`, `fallback` |
 | herbaseerd: `voorganger`, `op`; hervat: `antwoord`; teruggegeven: `reden` | `predecessor`, `onto`, `answer`, `reason` |
 | voet `sessie <id>` | `session <id>` |
+| triage-marker (paia's `triage.py`, blijft in paia): `soort: triage`, `versie`, `poort`, `blokkers`, `label3` | `kind: triage`, `version`, `gate`, `blockers`, `label3`; `triage.py` stapt erop over in (d) |
 
 Ongewijzigd: `issue`, `worktree`, `branch`, `lane`, `start`, `head`, `runner`, `workspace`, `pr`.
 
@@ -139,6 +141,26 @@ tests/pack/   per bestand een test; test_skill_contracts.py, test_sources.py
 ```
 
 ---
+
+## PR-indeling
+
+Een PR opent na de laatste taak van zijn rij. De taaknummers blijven die van de eerste versie.
+
+| PR | Branch | Taken | Heeft nodig |
+|---|---|---|---|
+| 1 mechanisme | `issue-7-b1-mechanism` | 1–5 | — (gemerged als #12) |
+| 2 fundament | `issue-7-b2-lib` | plan bijwerken, 6, 7, 7b | PR 1 |
+| 3A protocol | `issue-7-b3a-protocol` | 8, 15, 16 | PR 2 |
+| 3B hooks | `issue-7-b3b-hooks` | 9, 10, 11, 12, 13, 14 | PR 2 |
+| 3C scripts | `issue-7-b3c-scripts` | 17, 18, 19, 20, 21, 23 | PR 2 |
+| 4 skills | `issue-7-b4-skills` | 22, 24–28 | 3A, 3B en 3C |
+| 5 dogfood | `issue-7-b5-dogfood` | 29 | PR 4 |
+
+- **Waarom deze volgorde.** Elke lijn leest de config en de koppentabel, en elke test installeert via `install_core`; dat is PR 2. De skills komen na de drie lijnen, want de contracttest (taak 22) eist dat elk script, elke lib-module en elke kop waar een skill naar verwijst, al bestaat. De agents (taak 23) hebben alleen `headings.toml` nodig en lopen mee in 3C.
+- **Gedeelde bestanden.** Elke lijn voegt regels toe aan `pack/SOURCES.toml`, `pack/core/headings.toml`, `pack/core/requires.toml`, `pack/core/hooks/hooks.json` en `TestCorePack` in `internal/packs/core_test.go`. Het zijn alleen toevoegingen; de tweede en derde PR rebasen na elke merge.
+- **Interfaces over de lijnen heen.** Taak 16 (3A) leest de budget-JSON van taak 17 (3C): de velden in *Produces* van taak 17 zijn het contract, en 16 wacht niet. De regex van check 8 (taak 20, 3C) dekt de hookmappen van 3B; er is geen codeafhankelijkheid.
+- **Besluit 29 over twee PR's.** De workflow krijgt zijn naam `lighthouse-unblock-dependents.yml` in taak 19 (3C), `close-issue` zoekt hem op die naam in taak 25 (PR 4). Het besluit vraagt één PR, zodat skill en workflow nooit uiteenlopen. Dat blijft gewaarborgd: `pack/core` heeft vóór PR 4 geen `close-issue`, en paia stapt pas in (d) over. Test `test_close_issue_finds_lighthouse_workflow` (taak 25) pint de naam.
+- **De secties hieronder** volgen het thema van de taken, niet de PR; welke taak in welke PR zit, staat alleen in deze tabel.
 
 ## PR 1 — mechanisme (`issue-7-b1-mechanism`)
 
@@ -224,20 +246,24 @@ tests/pack/   per bestand een test; test_skill_contracts.py, test_sources.py
 
 ---
 
-## PR 2 — lib (`issue-7-b2-lib`)
+## Lib (taak 6–11)
 
 ### Taak 6: Configlezer uitbreiden
 
 **Files:**
-- Modify: `pack/core/lib/config.py`, `tests/pack/test_config.py`
+- Modify: `pack/core/lib/config.py`, `tests/pack/test_config.py`, `tests/pack/_testkit.py`
 - Create: `pack/core/lib/datadir.py`, `tests/pack/test_datadir.py`
 
 **Interfaces:**
-- Produces: `config.DEFAULTS: Mapping[str, object]` (tabel *Configsleutels*); `config.is_known_key(key: str) -> bool` (de sleutels van (a) onder `forge`, `forge.board` en `project`, de afgeleide `forge.owner`/`forge.name`, `host.<x>`, alles uit de tabel *Configsleutels*, en `forge.board.status_options.<optie>`/`priority_options.<optie>` met elke optienaam); `lookup(cfg, key)` geeft de default als de sleutel ontbreekt en er een default is; `load` valideert het type van elke bekende sleutel uit de tabel als hij er staat (`ConfigError` noemt pad en sleutel). Het bestand werkt als script op zijn pad (ontwerpkeuze 6). `datadir.data_dir() -> Path` (Global Constraints; maakt de map niet aan).
+- Produces: `config.DEFAULTS: Mapping[str, object]` (tabel *Configsleutels*); `config.is_known_key(key: str) -> bool` (de sleutels van (a) onder `forge`, `forge.board` en `project`, de afgeleide `forge.owner`/`forge.name`, `host.<x>` met `host.gate_slice`, alles uit de tabel *Configsleutels*, en `forge.board.status_options.<optie>`/`priority_options.<optie>` met elke optienaam); `lookup(cfg, key)` geeft de default als de sleutel ontbreekt en er een default is; `load` valideert het type van elke bekende sleutel uit de tabel als hij er staat (`ConfigError` noemt pad en sleutel).
+- **`[forge]` is optioneel, en ook `kind` en `repo` erin.** Zonder die sleutels geeft `load` een `Config` zonder repo, en elke `forge.*`-sleutel zonder default geeft rc 1 ("not set"); `forge.default_branch` geeft ook dan `main`, of de waarde die er staat. Een sleutel die er staat maar ongeldig is, blijft rc 2. Test: `test_forge_with_only_default_branch`.
+- **`host.gate_slice`** (besluit 20) is optioneel in `[host]` van `host.toml`. Ontbreekt de sleutel of `host.toml` zelf, dan rc 1; een kapotte `host.toml` blijft rc 2.
+- Het bestand werkt als script op zijn pad (ontwerpkeuze 6).
+- `datadir.data_dir() -> Path` en `DataDirInRepoError` (Global Constraints, besluit 27).
 
-- [ ] **Stap 1: Schrijf de falende tests**: `test_defaults_for_absent_keys` (`paths.specs`, `test_gate.slots`, `ci.runs_on`, `codex_usage.review_pct_week` → defaults); `test_bot_keys_have_no_default` (`main(["ci.bot_login"]) == 1`); `test_wrong_type_is_rc_2` (geparametriseerd: `test_gate.slots = "2"`, `paths.search_dirs = "src"`, `test_gate.unchecked_exit_codes = ["3"]`); `test_list_value_prints_one_per_line`; `test_runs_as_file` (subprocess `python3 <install>/.lighthouse/lib/lighthouse_lib/config.py forge.repo` zonder `PYTHONPATH`, cwd een andere repo → rc 0); `test_data_dir_env_wins`, `test_data_dir_uses_forge_name`, `test_data_dir_without_forge_uses_dir_name`.
+- [ ] **Stap 1: Schrijf de falende tests**: `test_defaults_for_absent_keys` (`paths.specs`, `test_gate.slots`, `ci.runs_on`, `codex_usage.review_pct_week`, `forge.default_branch` → defaults); `test_bot_keys_have_no_default` (`main(["ci.bot_login"]) == 1`); `test_wrong_type_is_rc_2` (geparametriseerd: `test_gate.slots = "2"`, `paths.search_dirs = "src"`, `test_gate.unchecked_exit_codes = ["3"]`, `forge.default_branch = 1`); `test_list_value_prints_one_per_line`; `test_runs_as_file` (subprocess `python3 <install>/.lighthouse/lib/lighthouse_lib/config.py forge.repo` zonder `PYTHONPATH`, cwd een andere repo → rc 0); `test_without_forge_table` (`forge.repo` en `forge.owner` rc 1, `test_gate.slots` → `2`, `forge.default_branch` → `main`); `test_broken_forge_is_rc_2`; `test_gate_slice_from_host` (gezet → waarde; ontbreekt → rc 1; geen `host.toml` → rc 1; kapotte `host.toml` → rc 2); `test_data_dir_env_wins`, `test_data_dir_default_xdg`, `test_data_dir_default_home`, `test_data_dir_refuses_git_tree`.
 - [ ] **Stap 2: Draai** `uv run pytest tests/pack/test_config.py tests/pack/test_datadir.py -q` — verwacht: FAIL.
-- [ ] **Stap 3: Implementeer.** Bovenaan elk lib-bestand met een CLI, vóór de eigen imports: als `__package__` leeg is, zet je `Path(__file__).resolve().parents[1]` vooraan in `sys.path`. `install_core` in `_testkit.py` kopieert voortaan alles uit `pack/core` behalve `skills/`, `agents/`, `templates/`, `workflows/` en de JSON/TOML bovenin. `headings.toml` gaat naar `.lighthouse/headings.toml`.
+- [ ] **Stap 3: Implementeer.** Bovenaan elk lib-bestand met een CLI, vóór de eigen imports: als `__package__` leeg is, zet je `Path(__file__).resolve().parents[1]` vooraan in `sys.path`. `install_core` in `_testkit.py` kopieert voortaan alles uit `pack/core` behalve `skills/`, `agents/`, `templates/`, `workflows/` en de JSON/TOML bovenin. `headings.toml` gaat naar `.lighthouse/headings.toml` (vanaf taak 7).
 - [ ] **Stap 4: Draai** `uv run pytest -q` — verwacht: PASS.
 - [ ] **Stap 5: Commit** `feat(core): configlezer met defaults, typecheck en datamap`
 
@@ -254,6 +280,22 @@ tests/pack/   per bestand een test; test_skill_contracts.py, test_sources.py
 - [ ] **Stap 2–4:** Draai (FAIL), implementeer, draai `uv run pytest -q` (PASS).
 - [ ] **Stap 5: Commit** `feat(core): koppentabel headings.toml met lezer`
 
+### Taak 7b: Eigendom van een permissieregel via het patroon (besluit 22)
+
+Nazorg voor PR 1. Daar werd eigendom bepaald door het manifest, en bleef een regel die het project al had van het project (fix I4). Besluit 22 legt het eigendom in het patroon, net als bij hookregistraties. Dat lost ook de uitgestelde minor op: een gemanipuleerd manifest kan dan geen projectregel meer laten weghalen.
+
+**Files:**
+- Modify: `internal/packs/` (naast `IsLighthouseCommand`), `internal/initcmd/workspace.go`, `internal/initcmd/initcmd.go` (`buildPlan`), en hun tests
+
+**Interfaces:**
+- Produces: `packs.IsLighthouseRule(rule string) bool`: waar als de regel naar `.claude/skills/lighthouse-` of `.claude/hooks/lighthouse/` wijst. `packs.Load` weigert een pakketregel buiten dat patroon. `buildPlan` neemt elke pakketregel op in het manifest, ook een die er al stond. Een regel buiten het patroon haalt `init` nooit weg, ook niet als het manifest hem noemt.
+
+- [ ] **Stap 1: Schrijf de falende tests**: `TestPatternRuleIsLighthouseOwned` (een bestaande regel die het pakket levert, komt in het manifest, en een upgrade zonder die regel haalt hem weg; vervangt `TestAdoptedPermissionStaysProjectOwned`); `TestTamperedManifestKeepsProjectRule` (een manifest dat een projectregel noemt, laat die regel staan bij `--upgrade`); `TestLoadRefusesRuleOutsidePattern`.
+- [ ] **Stap 2: Draai** `go test ./internal/...` — verwacht: FAIL.
+- [ ] **Stap 3: Implementeer.**
+- [ ] **Stap 4: Draai** `go test ./... && uv run pytest -q` — verwacht: PASS.
+- [ ] **Stap 5: Commit** `fix(init): eigendom van een permissieregel via het patroon (besluit 22)`. Open PR 2.
+
 ### Taak 8: Comment-protocol
 
 **Files:**
@@ -261,7 +303,7 @@ tests/pack/   per bestand een test; test_skill_contracts.py, test_sources.py
 
 **Interfaces:**
 - Consumes: `headings.variants`, `headings.heading`, `config.load`.
-- Produces in `protocol.py` (publiek, inventaris §2.10): `MARKER = "<!-- lighthouse:"`, `LEGACY_MARKERS = ("<!-- paia:",)` (de enige plek in `pack/core` met die string; stap 3); `KINDS = ("handoff", "started", "question", "resumed", "done", "returned", "rebased")`; `ROBOT = "🤖"`; dataclasses `Comment`, `Header(kind: str, fields: dict[str, str], session: str | None)`, `Handoff(issue: int, worktree: str, branch: str, anchor: str, next: str, when: str, lane: str = "")`; `HandoffError(ValueError)`; `LETTERS = "abcdef"`; `MAX_QUESTIONS = 4`; `parse_header(body) -> Header | None` (elke kopvariant → canonieke `kind`, elke oude veldnaam → nieuwe); `parse_handoff(header) -> Handoff` (`when` ∈ {`now`, `night`}, oud `nu`/`nacht` → nieuw; `lane` wordt niet gevalideerd: dat is controllerbeleid); `stack_base(bodies) -> str | None`; `active_stack(bodies) -> Header | None`; `footer(session, *extra) -> str`; `render_started(**…)`, `fill_started(message, **fields)`, `render_rebased(…)`, `render_resumed(…)`, `render_done(*, session, pr_url) -> str` (alleen kop, velden en voet, zonder de controllerproza), `render_returned(…)`, `render_question(…)`, `parse_question(body) -> dict | None`, `questions_of(fields) -> list[dict]`. Elke `render_*` neemt `language: str | None = None`.
+- Produces in `protocol.py` (publiek, inventaris §2.10): `MARKER = "<!-- lighthouse:"`, `LEGACY_MARKERS = ("<!-- paia:",)` (de enige plek in `pack/core` met die string; stap 3); `KINDS = ("handoff", "started", "question", "resumed", "done", "returned", "rebased")`; `ROBOT = "🤖"` (besluit 25 noemt `KOP`; de publieke namen zijn Engels: `KOP` → `ROBOT`, `_LETTERS` → `LETTERS`, `_MAX_VRAGEN` → `MAX_QUESTIONS`, akkoord Corneel 2026-10-18); dataclasses `Comment`, `Header(kind: str, fields: dict[str, str], session: str | None)`, `Handoff(issue: int, worktree: str, branch: str, anchor: str, next: str, when: str, lane: str = "")`; `HandoffError(ValueError)`; `LETTERS = "abcdef"`; `MAX_QUESTIONS = 4`; `parse_header(body) -> Header | None` (elke kopvariant → canonieke `kind`, elke oude veldnaam → nieuwe); `parse_handoff(header) -> Handoff` (`when` ∈ {`now`, `night`}, oud `nu`/`nacht` → nieuw; `lane` wordt niet gevalideerd: dat is controllerbeleid); `stack_base(bodies) -> str | None`; `active_stack(bodies) -> Header | None`; `footer(session, *extra) -> str`; `render_started(**…)`, `fill_started(message, **fields)`, `render_rebased(…)`, `render_resumed(…)`, `render_done(*, session, pr_url) -> str` (alleen kop, velden en voet, zonder de controllerproza), `render_returned(…)`, `render_question(…)`, `parse_question(body) -> dict | None`, `questions_of(fields) -> list[dict]`. Elke `render_*` neemt `language: str | None = None`.
 - Produces in `artefacts.py`: `KINDS = ("spec", "plan")`, `GITHUB_LIMIT = 65_536`; `Meta(kind, version, part, parts, file, commit, hash, replaces)`; `parse_meta(body) -> Meta | None` (beide markers, oude en nieuwe sleutels); `content(body) -> str`; `render(meta, content) -> str` (nieuwe marker en sleutels); `hash_of(data: bytes) -> str`; `split(text, limit=60_000) -> list[str]`; `current(comments, kind, file) -> list[Comment]`; `next_version(comments, kind, file) -> int`.
 - **Blijft in paia** (controllerbeleid): `ALLOWLIST`, `EIND`, `BRAINSTORM`, `INTERACTIEF`, `NATIVE`, `NATIVE_MODEL`, `beoordeel_commando`, `is_antwoord`, `antwoord_prompt`, de proza van `render_klaar` en de lane-validatie uit `parse_handoff`. Noteer ze in de PR-beschrijving voor (d).
 
@@ -303,7 +345,7 @@ def test_lane_not_validated(): assert parse_handoff(parse_header("🤖 Handoff\n
 - Create (V1): `pack/core/lib/deadline.py`, `gate_slot.py`, `md_links.py`, `no_verify.py`; tests uit `test_hook_deadline.py`, `test_gate_slot.py`, `test_md_links.py` (en de `no_verify`-gevallen uit `test_instructie_hooks.py`)
 - Modify: `pack/core/lib/git_invocations.py`, `tests/pack/test_git_invocations.py` (ontwerpkeuze 5)
 
-- [ ] **Stap 1–2: V1, V2.** Specifiek: `md_links` geeft `dead`/`absolute` in plaats van `dood`/`absoluut`; `gate_slot` en `deadline` gebruiken `lighthouse-gate-slots` en `LIGHTHOUSE_*` (Global Constraints); de test met `paia-bestaat-niet-xyz` wordt `lighthouse-does-not-exist-xyz`. `git_invocations`: `<unknown>`, `<new>`, en de guard en zijn test lezen die tokens.
+- [ ] **Stap 1–2: V1, V2.** Specifiek: `md_links` geeft `dead`/`absolute` in plaats van `dood`/`absoluut`; `gate_slot` en `deadline` gebruiken `lighthouse-gate-slots` en `LIGHTHOUSE_*` (Global Constraints); de test met `paia-bestaat-niet-xyz` wordt `lighthouse-does-not-exist-xyz`. `git_invocations`: `<unknown>`, `<new>`, en de guard en zijn test lezen die tokens. `git_invocations` (`refspec_target(…) == "main"`, 561) en `main-commit-guard.sh` lezen `forge.default_branch` (besluit 23); nieuw `test_guard_follows_default_branch` (`default_branch = "trunk"` → een commit op `trunk` en `git push origin HEAD:trunk` geblokkeerd, op `main` niet).
 - [ ] **Stap 3: V3–V7.** Commit `feat(core): deadline, gate_slot, md_links en no_verify naar pack/core/lib`
 
 ### Taak 10: `evidence` en `pr_body_gate`
@@ -329,15 +371,15 @@ def test_lane_not_validated(): assert parse_handoff(parse_header("🤖 Handoff\n
 - Create (V1): `pack/core/lib/bash_writes.py`, `tests/pack/test_bash_writes.py`
 
 **Interfaces:**
-- Produces: `classify(rc: int, output: bytes) -> str` (`"ok"`, `"finding"`, `"unchecked"`; rc 2 is `unchecked` als de eerste regel `COULD NOT CHECK` bevat); `GATES` ongewijzigd; `gate_path(root: str, ext: str) -> Path | None` (`None` als de extensie geen gate heeft); `GATE_PACKS = {"shellcheck.sh": "shell", "ruff-format.sh": "python", "worktree-linkcheck.sh": "core"}`; `run_gate` geeft `("missing", b"<gate> is not installed (pack/<p>)")` als het script niet bestaat.
+- Produces: `classify(rc: int, output: bytes) -> str` (`"ok"`, `"finding"`, `"unchecked"`; rc 2 is `unchecked` als de eerste regel `COULD NOT CHECK` bevat); `GATES` ongewijzigd; `gate_path(root: str, ext: str) -> Path | None` (`None` als de extensie geen gate heeft); `GATE_PACKS = {"shellcheck.sh": "shell", "ruff-format.sh": "python", "worktree-linkcheck.sh": "core"}`; `run_gate` geeft `("missing", b"no <p> gate installed")` als het script niet bestaat (besluit 19).
 
-- [ ] **Stap 1–2: V1, V2.** Pin de nieuwe tokens in `test_bash_writes.py:406,1010`. Nieuw: `test_missing_language_pack_is_reported_not_blocked` (geen `ruff-format.sh` geïnstalleerd → oordeel `missing`, en de samenvatting bevat `not checked — ruff-format.sh is not installed (pack/python)`); `test_classify_first_line_only` (een bevinding waarvan de tweede regel `COULD NOT CHECK` citeert, blijft `finding`); `test_hook_dir_from_repo_root` (de gates worden gezocht in `<LIGHTHOUSE_REPO_ROOT>/.claude/hooks/lighthouse/`).
+- [ ] **Stap 1–2: V1, V2.** Pin de nieuwe tokens in `test_bash_writes.py:406,1010`. Nieuw: `test_missing_language_pack_is_reported_not_blocked` (geen `ruff-format.sh` geïnstalleerd → oordeel `missing`, en de samenvatting bevat `not checked — no python gate installed`); `test_classify_first_line_only` (een bevinding waarvan de tweede regel `COULD NOT CHECK` citeert, blijft `finding`); `test_hook_dir_from_repo_root` (de gates worden gezocht in `<LIGHTHOUSE_REPO_ROOT>/.claude/hooks/lighthouse/`).
 - [ ] **Stap 3: V3–V6.** `HOOK_DIR` (42) wordt `config.repo_root() / ".claude/hooks/lighthouse"`; `PAIA_BASH_GATES_*` worden `LIGHTHOUSE_BASH_GATES_*`, de map `lighthouse-bash-gates`.
-- [ ] **Stap 4: V7.** Commit `feat(core): bash_writes naar pack/core/lib, één COULD NOT CHECK-token`. Open PR 2.
+- [ ] **Stap 4: V7.** Commit `feat(core): bash_writes naar pack/core/lib, één COULD NOT CHECK-token`.
 
 ---
 
-## PR 3 — hooks (`issue-7-b3-hooks`)
+## Hooks (taak 12–14)
 
 Elke hook komt in `pack/core/hooks/` en in `hooks.json`, met event, matcher en timeout zoals in paia's `.claude/settings.json` op `SRC`:
 
@@ -363,7 +405,7 @@ Elke hook vindt zijn lib als de guard uit (a): `LIB_ROOT="${LIGHTHOUSE_REPO_ROOT
   - `test_linkcheck_without_git`: `tool_bin(drop="git")` → idem.
   - `test_linkcheck_unresolvable_path`: idem.
 - [ ] **Stap 2: Draai** — verwacht: FAIL.
-- [ ] **Stap 3: V3–V6.** Dicht de gaten uit inventaris §6. Alleen een echte "not a git repository" (onder `LC_ALL=C`) blijft stil. `PAIA_LINKCHECK_TRACE` wordt `LIGHTHOUSE_LINKCHECK_TRACE`. De regex van check 8 komt in taak 20.
+- [ ] **Stap 3: V3–V6.** Dicht de gaten uit inventaris §6. Alleen een echte "not a git repository" (onder `LC_ALL=C`) blijft stil. `worktree-guard.sh:62` leest `forge.default_branch` (besluit 23). `PAIA_LINKCHECK_TRACE` wordt `LIGHTHOUSE_LINKCHECK_TRACE`. De regex van check 8 komt in taak 20.
 - [ ] **Stap 4: V7.** Commit `feat(core): worktree-guard en worktree-linkcheck, zonder stille uitgangen`
 
 ### Taak 13: `pr-create-gate` en `bash-write-gates`
@@ -371,7 +413,7 @@ Elke hook vindt zijn lib als de guard uit (a): `LIB_ROOT="${LIGHTHOUSE_REPO_ROOT
 **Files:**
 - Create (V1): `pack/core/hooks/pr-create-gate.sh`, `pack/core/hooks/bash-write-gates.sh`, `tests/pack/test_pr_create_gate.py`, `tests/pack/test_bash_write_gates.py`
 
-- [ ] **Stap 1–2: V1, V2.** Pin de nieuwe tokens in `test_bash_write_gates.py:157,516`. Nieuw: `test_post_without_language_packs` (een `.py`- en een `.sh`-write via Bash, alleen `pack/core` geïnstalleerd → rc 0, en de uitvoer noemt beide als "not checked"); `test_pre_without_python_is_silent_post_is_loud` (de bestaande ontwerpkeuze, nu getest).
+- [ ] **Stap 1–2: V1, V2.** Pin de nieuwe tokens in `test_bash_write_gates.py:157,516`. Nieuw: `test_post_without_language_packs` (een `.py`- en een `.sh`-write via Bash, alleen `pack/core` geïnstalleerd → rc 0, en de uitvoer noemt `not checked — no python gate installed` en `not checked — no shell gate installed`); `test_pre_without_python_is_silent_post_is_loud` (de bestaande ontwerpkeuze, nu getest).
 - [ ] **Stap 3: V3–V6.** `HOOK_DIR` (`bash-write-gates.sh:26-27`, `pr-create-gate.sh:110-111`) via `LIB_ROOT`.
 - [ ] **Stap 4: V7.** Commit `feat(core): pr-create-gate en bash-write-gates naar pack/core`
 
@@ -381,21 +423,21 @@ Elke hook vindt zijn lib als de guard uit (a): `LIB_ROOT="${LIGHTHOUSE_REPO_ROOT
 - Create (V1): `pack/core/hooks/pre-commit-tests.sh`, `tests/pack/test_pre_commit_tests.py` (uit `test_pre_commit_gate.py`), `tests/pack/test_hooks_minimal_config.py`
 
 **Interfaces:**
-- Consumes: `test_gate.command`, `deadline_seconds`, `slots`, `slot_wait_seconds`, `slice`, `unchecked_exit_codes`.
+- Consumes: `test_gate.command`, `deadline_seconds`, `slots`, `slot_wait_seconds`, `unchecked_exit_codes`; `host.gate_slice` uit `host.toml` (besluit 20).
 - Produces: de hook exporteert `LIGHTHOUSE_GATE_TMP` (een lege map per run) voor het commando, dat hem kan gebruiken als `--basetemp="$LIGHTHOUSE_GATE_TMP"`. Commando: `bash -c "$COMMAND"` in de wortel.
 
-- [ ] **Stap 1–2: V1, V2.** De vlaggen- en `gates.slice`-tests worden tests tegen `[test_gate]`: `slice = "x.slice"` → de `systemd-run`-wrap met die slice en de memory-events onder `x.slice` (via `LIGHTHOUSE_GATE_CGROUP_ROOT`); zonder `slice` → geen wrap en geen melding "brake unavailable". Nieuw:
-  - `test_no_command_is_loud_and_allows`: rc 0, en de JSON op stdout bevat `no [test_gate] command in lighthouse.toml — nothing was tested`.
+- [ ] **Stap 1–2: V1, V2.** De vlaggen- en `gates.slice`-tests worden tests tegen `host.gate_slice` (via `LIGHTHOUSE_HOST_TOML`): `gate_slice = "x.slice"` → de `systemd-run`-wrap met die slice en de memory-events onder `x.slice` (via `LIGHTHOUSE_GATE_CGROUP_ROOT`); zonder `gate_slice` → geen wrap, en de melding `no gate_slice in host.toml, tests run without memory brake` (ontwerpkeuze 10). Nieuw:
+  - `test_no_command_is_loud_and_allows`: rc 0, en de JSON op stdout bevat `no test command configured, nothing was tested`.
   - `test_broken_config_blocks`: ongeldige TOML → rc 2, `COULD NOT CHECK`.
   - `test_unchecked_exit_code`: `command = "exit 5"`, `unchecked_exit_codes = [5]` → rc 2, `COULD NOT CHECK`, niet "tests failed".
   - `test_command_sees_gate_tmp`: `command = 'test -d "$LIGHTHOUSE_GATE_TMP"'` → rc 0.
   - `test_hooks_with_minimal_config`, geparametriseerd over alle hooks in `hooks.json`, elk met de payload die hem raakt (een `git status`, een Edit in een featurebranch-worktree, een `gh pr create` met geldige body, een `echo x > a.md`), onder een `lighthouse.toml` met alleen `[project]` en `[forge]`: geen blokkade, geen `Traceback` op stderr.
-- [ ] **Stap 3: V3–V6.** Het hardcoded testcommando (409-410), `gates.slice` (342-374) en de exitcodes 3/4/5 (491-511) worden de sleutels hierboven. `LC_ALL=C` op regel 197. `PAIA_GATE_*` → `LIGHTHOUSE_GATE_*`, `paia-gate-slots` → `lighthouse-gate-slots`.
-- [ ] **Stap 4: V7.** Commit `feat(core): pre-commit-tests als mechanisme met [test_gate]`. Open PR 3.
+- [ ] **Stap 3: V3–V6.** Het hardcoded testcommando (409-410) en de exitcodes 3/4/5 (491-511) worden de sleutels onder `[test_gate]`, `gates.slice` (342-374) wordt `host.gate_slice`. `LC_ALL=C` op regel 197. `PAIA_GATE_*` → `LIGHTHOUSE_GATE_*`, `paia-gate-slots` → `lighthouse-gate-slots`.
+- [ ] **Stap 4: V7.** Commit `feat(core): pre-commit-tests als mechanisme met [test_gate]`.
 
 ---
 
-## PR 4 — scripts en templates (`issue-7-b4-scripts`)
+## Scripts en templates (taak 15–21)
 
 Elk script begint met de sys.path-regel uit ontwerpkeuze 6 en importeert daarna `lighthouse_lib`. Tests draaien het script vanuit `install_core`.
 
@@ -406,9 +448,9 @@ Elk script begint met de sys.path-regel uit ontwerpkeuze 6 en importeert daarna 
 
 **Interfaces:**
 - Consumes: `artefacts.*`, `protocol.Comment`, `config` (`forge.repo`, `paths.specs`, `paths.plans`, `forge.board.*`).
-- Produces: `post_artefact.py <nr> <abs-pad>` geeft `artefact: …` (vast token). `board_start.py <nr>` en `board_start.py --reopen <nr>` geven `board: <status>`, `board: skipped — no [forge.board]` of `board: ERROR — <cause>`.
+- Produces: `post_artefact.py <nr> <abs-pad>` geeft `artefact: …` (vast token). `board_start.py <nr>` en `board_start.py --reopen <nr>` geven `board: <status>`, `board: skipped — no [forge.board] configured` (besluit 24) of `board: ERROR — <cause>`.
 
-- [ ] **Stap 1–2: V1, V2.** Nieuw: `test_no_board_default_mode` en `test_no_board_reopen` (beide rc 0 met `board: skipped — no [forge.board]`; inventaris §2.8); `test_broken_config_is_error` (rc 2, `board: ERROR`); `test_post_artefact_paths_from_config` (`paths.plans = "p/"` → een plan onder `p/` wordt herkend).
+- [ ] **Stap 1–2: V1, V2.** Nieuw: `test_no_board_default_mode` en `test_no_board_reopen` (beide rc 0 met `board: skipped — no [forge.board] configured`; inventaris §2.8); `test_broken_config_is_error` (rc 2, `board: ERROR`); `test_post_artefact_paths_from_config` (`paths.plans = "p/"` → een plan onder `p/` wordt herkend).
 - [ ] **Stap 3: V3–V7.** Commit `feat(core): post_artefact en board_start, board optioneel`
 
 ### Taak 16: `plan_review_record` en `review_pair`
@@ -417,11 +459,11 @@ Elk script begint met de sys.path-regel uit ontwerpkeuze 6 en importeert daarna 
 - Create (V1): `pack/core/scripts/plan_review_record.py`, `pack/core/scripts/review_pair.py`, `tests/pack/test_plan_review_record.py`, `tests/pack/test_review_pair.py`
 
 **Interfaces:**
-- Consumes: `config.host`-functies (in plaats van `src.controller.host`), `datadir.data_dir()` (in plaats van `lk_common.data_dir()`), `headings`.
+- Consumes: `config.host`-functies (in plaats van `src.controller.host`), `datadir.data_dir()` uit taak 6 (in plaats van `lk_common.data_dir()`), `headings`, en de budget-JSON van taak 17 (*PR-indeling*: het contract staat daar).
 - Produces: subcommando's `start`, `start --kind spec`, `write`, `accept-open`, `pr-open-points`; `review_pair.py blind|merge`. `DEFAULT_SKILL_DIRS = (".claude/skills/lighthouse-plan-adversarial-review", ".claude/skills/lighthouse-spec-adversarial-review")`. `review_pair` laadt `plan_review_record` als `importlib`-buur vanuit zijn eigen map (inventaris §3: geen repo-root).
 
-- [ ] **Stap 1–2: V1, V2.** `BUDGET_FIELDS` volgt de nieuwe budget-JSON uit taak 17. Nieuw: `test_data_dir_from_env` (`LIGHTHOUSE_DATA` → logs daar, niet onder `~/.local/share/lekmeting-keten`); `test_skill_dirs_are_lighthouse`; `test_open_after_review_heading_follows_language`.
-- [ ] **Stap 3: V3–V6.** Van `lk_common` gaat alleen `data_dir()` mee; het bestand zelf niet. Zet `ACCEPTEER-OPEN MISLUKT` en de andere uitvoertokens om naar Engels (`ACCEPT-OPEN FAILED`); de koppen die in een document of PR landen gaan naar `headings.toml`.
+- [ ] **Stap 1–2: V1, V2.** `BUDGET_FIELDS` volgt de nieuwe budget-JSON uit taak 17. Nieuw: `test_data_dir_from_env` (`LIGHTHOUSE_DATA` → logs daar, niet onder `~/.local/share/lekmeting-keten`; zonder override onder `lighthouse/review-records/`); `test_skill_dirs_are_lighthouse`; `test_open_after_review_heading_follows_language`.
+- [ ] **Stap 3: V3–V6.** Van `lk_common` gaat alleen `data_dir()` mee, en die staat al in `datadir.py` (taak 6); het bestand zelf niet. Zet `ACCEPTEER-OPEN MISLUKT` en de andere uitvoertokens om naar Engels (`ACCEPT-OPEN FAILED`); de koppen die in een document of PR landen gaan naar `headings.toml`.
 - [ ] **Stap 4: V7.** Commit `feat(core): plan_review_record en review_pair`
 
 ### Taak 17: `codex_usage` (budget en read)
@@ -451,7 +493,7 @@ Elk script begint met de sys.path-regel uit ontwerpkeuze 6 en importeert daarna 
 - Create (V1): `pack/core/scripts/worktree_audit.py`, `pack/core/scripts/unblock_dependents.py`, `pack/core/workflows/unblock-dependents.yml`, `tests/pack/test_worktree_audit.py`, `tests/pack/test_unblock_dependents.py`, `tests/pack/test_workflow_unblock.py`
 
 - [ ] **Stap 1–2: V1, V2.** Nieuw: `test_protected_from_config` (`entire/*` en `.port-registry` zijn alleen beschermd als ze in `worktree_audit.protected_refs`/`protected_paths` staan; `main` altijd); `test_blocked_label_from_config` (`labels.blocked_issue = "x"`); `test_release_line_token` (`unblock_dependents` print `Released lane after this close:` als vast token); in `test_workflow_unblock.py`: de workflow heeft `runs-on: @@ci.runs_on@@`, `@@ci.bot_client_id_var@@`, `@@ci.bot_private_key_secret@@`, een `run-name` die eindigt op ` #${{ … }}`, en roept `.lighthouse/scripts/unblock_dependents.py` aan.
-- [ ] **Stap 3: V3–V6.** `worktree_audit` haalt alleen `repo_slug()` uit de config (`forge.repo`). Zijn uitvoertokens `opruimen: ja`/`nee — <reden>` worden `cleanup: yes`/`no — <reason>`.
+- [ ] **Stap 3: V3–V6.** `worktree_audit` haalt `repo_slug()` (`forge.repo`) en de default branch (`forge.default_branch`, besluit 23, in plaats van `main` op 850-860) uit de config; de workflow krijgt `@@forge.default_branch@@` op regel 40. Zijn uitvoertokens `opruimen: ja`/`nee — <reden>` worden `cleanup: yes`/`no — <reason>`.
 - [ ] **Stap 4: V7.** Commit `feat(core): worktree_audit, unblock_dependents en de workflow`
 
 ### Taak 20: `check-instructions.sh`
@@ -469,11 +511,11 @@ Elk script begint met de sys.path-regel uit ontwerpkeuze 6 en importeert daarna 
 - Create (V1): `pack/core/templates/pull_request_template.md`; `tests/pack/test_pr_template.py`
 
 - [ ] **Stap 1: Test** `test_template_names_lighthouse_verify_pr` (`/lighthouse-verify-pr` op de plekken van `/paia-verify-pr`, regels 11 en 23) en `test_template_is_hostless` (geen regel over een vaste host; regel 16 wordt "a test that cannot run in CI").
-- [ ] **Stap 2: V4–V7.** De template is een pakketbestand en dus Engels; zijn tokens (`Closes #N`, `### Evidence #N`) zijn al vast Engels. Een project dat hem in het Nederlands wil, wijzigt hem lokaal; `--upgrade` meldt dat dan als lokale wijziging (besluit 4). Commit `feat(core): PR-template`. Open PR 4.
+- [ ] **Stap 2: V4–V7.** De template is een pakketbestand en dus Engels; zijn tokens (`Closes #N`, `### Evidence #N`) zijn al vast Engels. Een project dat hem in het Nederlands wil, wijzigt hem lokaal; `--upgrade` meldt dat dan als lokale wijziging (besluit 4). Commit `feat(core): PR-template`.
 
 ---
 
-## PR 5 — skills en agents (`issue-7-b5-skills`)
+## Skills en agents (taak 22–28)
 
 Voor elke skill geldt het recept, met V4 als zwaartepunt. Per skill: één kopie-commit met de `.claude`- en de `.agents`-variant uit paia, en één aanpas-commit. Daardoor toont de diff van de aanpas-commit de vertaling regel voor regel (spec, *Risico's*). Een skill met byte-identieke varianten (inventaris §8) wordt één `SKILL.md`. Elke aanroep gaat over naar ontwerpkeuze 6 en 7; elke kop uit inventaris §5 naar `headings.toml`; elke verwijzing uit inventaris §7 naar ontwerpkeuze 16.
 
@@ -481,7 +523,6 @@ Voor elke skill geldt het recept, met V4 als zwaartepunt. Per skill: één kopie
 
 **Files:**
 - Create: `tests/pack/test_skill_contracts.py`
-- Modify: `docs/developer/planning/specs/2026-10-17-m0-pakket-design.md` (nieuwe sectie *Besluit grensgevallen* onder *Grensgevallen*)
 
 **Interfaces:**
 - Produces: per skill in `pack/core/skills/` en per agent, geparametriseerd:
@@ -494,8 +535,8 @@ Voor elke skill geldt het recept, met V4 als zwaartepunt. Per skill: één kopie
   - `test_variants_both_present`: elke skill heeft een Claude- en een Agents-variant.
 
 - [ ] **Stap 1: Schrijf de test** met een lege `pack/core/skills/`. Draai: PASS, want er valt niets te parametriseren. De volgende taken maken hem rood en weer groen.
-- [ ] **Stap 2: Schrijf de sectie** *Besluit grensgevallen* in de spec. Neem de tabel uit inventaris §7 over, met per skill de reden en de wijziging van ontwerpkeuze 9 (`write-issue`: taxonomie via `[paths] label_taxonomy`, geen `[labels.axes.*]`). Neem ook de indeling van de checks uit taak 20 op.
-- [ ] **Stap 3: Commit** `docs(spec): besluit grensgevallen voor M0 (b)` en `test(core): contracttest voor skills en agents`
+- [ ] **Stap 2: Controleer de spec.** *Besluit grensgevallen* staat er al (PR #11). Klopt de indeling van de checks uit taak 20 er niet mee, werk de spec dan bij in een eigen commit `docs(spec): …`.
+- [ ] **Stap 3: Commit** `test(core): contracttest voor skills en agents`
 
 ### Taak 23: Agents
 
@@ -539,8 +580,8 @@ Voor elke skill geldt het recept, met V4 als zwaartepunt. Per skill: één kopie
 **Files:**
 - Create (V1): `pack/core/skills/{write-issue,worktree-audit,instrument}/…` (`instrument` uit `paia-instrumenteren`)
 
-- [ ] **Stap 1–2: V1, V2.** Nieuw: `test_write_issue_taxonomy_from_paths`, waarin de skill de taxonomie uit `config.py paths.label_taxonomy` leest en zonder dat bestand alleen `[labels]` en de GitHub-standaardlabels gebruikt; `test_write_issue_blocking_invariant` (de blokkeerregel noemt `labels.blocked_issue`); `test_instrument_lists_generic_checks_only` (3, 4, 5, 7, 8, 10, 11); `test_worktree_audit_no_opencode` (de verwijzing naar `scripts/opencode-lane/worktree-run.sh` krijgt ontwerpkeuze 16).
-- [ ] **Stap 3: V3–V6.** De labeltabellen van `write-issue` (95-197, 345-350, 385-414) gaan uit de skill. Ze komen in de PR-beschrijving als inhoud voor paia's `label_taxonomy`-bestand in (d). `instrument` gebruikt `project.skill_prefix` en `project.instructions_word_ceiling`; de aanroepen van `measure_skill_surface.py` krijgen ontwerpkeuze 16.
+- [ ] **Stap 1–2: V1, V2.** Nieuw: `test_write_issue_taxonomy_from_paths`, waarin de skill de taxonomie uit `config.py paths.labels` leest en zonder dat bestand alleen `[labels]` en de GitHub-standaardlabels gebruikt; `test_write_issue_blocking_invariant` (de blokkeerregel noemt `labels.blocked_issue`); `test_instrument_lists_generic_checks_only` (3, 4, 5, 7, 8, 10, 11); `test_worktree_audit_no_opencode` (de verwijzing naar `scripts/opencode-lane/worktree-run.sh` krijgt ontwerpkeuze 16).
+- [ ] **Stap 3: V3–V6.** De labeltabellen van `write-issue` (95-197, 345-350, 385-414) gaan uit de skill. Ze komen in de PR-beschrijving als inhoud voor paia's taxonomiebestand onder `[paths] labels` in (d). `instrument` gebruikt `project.skill_prefix` en `project.instructions_word_ceiling`; de aanroepen van `measure_skill_surface.py` krijgen ontwerpkeuze 16.
 - [ ] **Stap 4: V7.** Commit per skill.
 
 ### Taak 28: Instructieblok
@@ -551,11 +592,11 @@ Voor elke skill geldt het recept, met V4 als zwaartepunt. Per skill: één kopie
 - [ ] **Stap 1: Test** in `core_test.go`: `TestCorePack` noemt nu alle eenheden van `pack/core`. Met het mechanisme van (a) en PR 1 geeft `Load` geen fout. `requires.toml` noemt `gh` (skills, `pr-create-gate`), `codex` (de reviewskills), `superpowers` (de skills die een Superpowers-skill aanroepen), `jq`, `git`, `python3` en `tomllib`.
 - [ ] **Stap 2: Schrijf het blok.** Het bestaande blok, plus de ketenafspraken die een core-skill of -hook afdwingt, in het Engels: eerst een worktree, niets direct op `main`, elke wijziging via een PR met squash-merge, de test-gate, en de taal van artefacten uit `[project] language`. Daarbij de uitleg van `heading:<key>` (ontwerpkeuze 19) en de lijst van de skills met één regel per skill. Plafond: het blok telt ten hoogste 250 woorden, want paia zit op 2996 van de 3000 (spec, *Opdeling (d)*). Test `test_core_block_word_budget` in `tests/test_instruction_files.py`.
 - [ ] **Stap 3: Draai** `go test ./... && uv run pytest -q && ci/literal-grep.sh` — verwacht: groen.
-- [ ] **Stap 4: Commit** `feat(core): instructieblok met de ketenafspraken`. Open PR 5.
+- [ ] **Stap 4: Commit** `feat(core): instructieblok met de ketenafspraken`. Open PR 4.
 
 ---
 
-## PR 6 — lighthouse op zijn eigen `pack/core` (`issue-7-b6-dogfood`)
+## PR 5 — lighthouse op zijn eigen `pack/core` (`issue-7-b5-dogfood`)
 
 ### Taak 29: `lighthouse init` op lighthouse
 
@@ -580,11 +621,11 @@ Voor elke skill geldt het recept, met V4 als zwaartepunt. Per skill: één kopie
 - [ ] **Stap 3: Ruim de bootstrap op**, in dezelfde commit: haal de twee oude registraties met de hand uit `.claude/settings.json` (`init` beheert alleen registraties onder `.claude/hooks/lighthouse/`), en verwijder de oude scripts, `lib/` en `tests/hooks/`. Werk `CLAUDE.md` *Hooks* bij naar `.claude/hooks/lighthouse/` en de hooks van het blok. Haal uit `AGENTS.md` de sectie *Bootstrap* weg, plus elke regel die het beheerde blok nu draagt (niets dubbel; `test_instruction_files.py`). De regels voor lighthouse zelf blijven (taal Nederlands, `allow-main`, links, planningsmappen).
 - [ ] **Stap 4: CI.** In de job `go`, na de e2e-stap: `go run ./cmd/lighthouse init --upgrade` met de controle dat de uitvoer exact `No changes.` is (`test "$(go run ./cmd/lighthouse init --upgrade)" = "No changes."`). Breid `e2e_test.go` uit met `TestFreshRepoGetsFullCore`: na `init --yes` bestaan `.claude/skills/lighthouse-start-issue/SKILL.md`, `.agents/skills/lighthouse-start-issue/SKILL.md` en `.claude/hooks/lighthouse/pre-commit-tests.sh`. Een commit in een featurebranch zonder `[test_gate]` gaat door met de melding `nothing was tested`.
 - [ ] **Stap 5: Draai** `uv run pytest -q && go test ./... && go test -tags e2e ./e2e/ && ci/literal-grep.sh && test "$(go run ./cmd/lighthouse init --upgrade)" = "No changes."` — verwacht: alles groen. Doe daarna een echte commit in de worktree: de geïnstalleerde `pre-commit-tests` draait de suite, en `main-commit-guard` uit `.claude/hooks/lighthouse/` blokkeert een commit op `main` (controleer met een payload zoals in de e2e-test).
-- [ ] **Stap 6: Commit** `feat: lighthouse draait zijn eigen pack/core; bootstrap van (a0) weg`. Open PR 6 met `Closes #7`.
+- [ ] **Stap 6: Commit** `feat: lighthouse draait zijn eigen pack/core; bootstrap van (a0) weg`. Open PR 5 met `Closes #7`.
 
 ---
 
 ## Na de laatste taak
 
-- Zet in #7 onder *Verbeterpunten*: commentaar, docstrings en interne namen in `pack/` naar het Engels (ontwerpkeuze 3); board-ID's meten in `init` en `[forge] default_branch` (ontwerpkeuze 17); de xdist-hint naar `pack/python` (ontwerpkeuze 10, voor (c)); de punten die tijdens de uitvoering opkomen.
-- Zet in het issue van (d) wat paia moet aanpassen: het controllerbeleid uit taak 8 importeert `lighthouse_lib.protocol`; `triage.py` gebruikt de marker uit `protocol`; `LIGHTHOUSE_CONTROLLER_RUN` naast `PAIA_CONTROLLER_RUN`; `usage_window.py` laadt `.lighthouse/scripts/codex_usage.py`; de aanroepers van de hernoemde CLI-subcommando's; de labeltaxonomie in paia's `label_taxonomy`-bestand; paia's `[test_gate]` met `--basetemp="$LIGHTHOUSE_GATE_TMP"` en `unchecked_exit_codes = [3, 4, 5]`; `[labels]` met paia's labelnamen.
+- Zet in #7 onder *Verbeterpunten*: commentaar, docstrings en interne namen in `pack/` naar het Engels (ontwerpkeuze 3); board-ID's meten in `init` (ontwerpkeuze 17); de xdist-hint naar `pack/python` (ontwerpkeuze 10, voor (c)); de punten die tijdens de uitvoering opkomen.
+- Zet in het issue van (d) wat paia moet aanpassen: het controllerbeleid uit taak 8 importeert `lighthouse_lib.protocol`; `triage.py` gebruikt de marker uit `protocol`; `LIGHTHOUSE_CONTROLLER_RUN` naast `PAIA_CONTROLLER_RUN`; `usage_window.py` laadt `.lighthouse/scripts/codex_usage.py`; de aanroepers van de hernoemde CLI-subcommando's; de labeltaxonomie in paia's bestand onder `[paths] labels`; de triage-marker in de nieuwe tokens (*Protocoltokens*); paia's `[test_gate]` met `--basetemp="$LIGHTHOUSE_GATE_TMP"` en `unchecked_exit_codes = [3, 4, 5]`; `[labels]` met paia's labelnamen.

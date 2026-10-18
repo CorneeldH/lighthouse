@@ -119,6 +119,13 @@ func IsLighthouseCommand(command string) bool {
 	return strings.Contains(command, HookDir)
 }
 
+// IsLighthouseRule reports whether a permissions.allow rule is lighthouse's: it points
+// into .claude/skills/lighthouse-* or HookDir (spec, besluit 22). Every other rule is
+// the project's, whatever the manifest says.
+func IsLighthouseRule(rule string) bool {
+	return strings.Contains(rule, skillDirs[0]) || strings.Contains(rule, HookDir)
+}
+
 // installDirs are the directories a file unit may live in; agents are files named
 // .claude/agents/lighthouse-<name>.md directly.
 var installDirs = []string{HookDir, ".lighthouse/lib/lighthouse_lib/", ".lighthouse/scripts/"}
@@ -448,6 +455,9 @@ func parsePermissions(name string, data []byte) ([]Unit, error) {
 		}
 		if seen[rule] {
 			return nil, fail("allow[%d] %q appears twice", i, rule)
+		}
+		if !IsLighthouseRule(rule) {
+			return nil, fail("allow[%d] %q does not point into %s* or %s", i, rule, skillDirs[0], HookDir)
 		}
 		seen[rule] = true
 		units = append(units, Unit{Kind: KindPermission, Package: name, Path: settingsPath, ID: rule, Content: []byte(rule)})

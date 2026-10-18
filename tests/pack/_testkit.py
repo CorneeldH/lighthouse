@@ -131,19 +131,37 @@ def load_hook_lib(name: str) -> types.ModuleType:
     return module
 
 
+# Where each directory of `pack/core` lands (`internal/packs`). `skills/`, `agents/`,
+# `templates/`, `workflows/` and the JSON/TOML at the top are not installed here:
+# the hook and script tests do not need them, and `init` itself is tested in Go.
+_INSTALL_DIRS = {
+    "hooks": Path(".claude/hooks/lighthouse"),
+    "lib": Path(".lighthouse/lib/lighthouse_lib"),
+    "scripts": Path(".lighthouse/scripts"),
+}
+
+
 def install_core(root: Path) -> Path:
-    """Copy the hook and the lib of `pack/core` into `root` the way `lighthouse init`
-    lays them out, and return the path of the installed main-commit-guard."""
-    hooks = root / ".claude" / "hooks" / "lighthouse"
-    lib = root / ".lighthouse" / "lib" / "lighthouse_lib"
-    hooks.mkdir(parents=True, exist_ok=True)
-    lib.mkdir(parents=True, exist_ok=True)
-    guard = hooks / "main-commit-guard.sh"
-    shutil.copyfile(CORE / "hooks" / "main-commit-guard.sh", guard)
-    guard.chmod(0o755)
-    for source in LIB.glob("*.py"):
-        shutil.copyfile(source, lib / source.name)
-    return guard
+    """Copy `pack/core` into `root` the way `lighthouse init` lays it out, and
+    return the path of the installed main-commit-guard."""
+    for name, target in _INSTALL_DIRS.items():
+        source_dir = CORE / name
+        if not source_dir.is_dir():
+            continue
+        for source in sorted(source_dir.rglob("*")):
+            if source.is_dir() or source.suffix == ".json":
+                continue
+            dest = root / target / source.relative_to(source_dir)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, dest)
+            # Like `internal/packs`: executable when the file starts with "#!".
+            if source.read_bytes().startswith(b"#!"):
+                dest.chmod(0o755)
+    headings = CORE / "headings.toml"
+    if headings.is_file():
+        (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(headings, root / ".lighthouse" / "headings.toml")
+    return root / _INSTALL_DIRS["hooks"] / "main-commit-guard.sh"
 
 
 # One installation for the whole session; the conftest points LIGHTHOUSE_REPO_ROOT at it.

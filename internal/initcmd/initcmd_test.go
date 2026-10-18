@@ -708,12 +708,12 @@ func withPermissions(rules string) func(*Options) {
 func TestInitMergesPermissions(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, ".claude/settings.json", "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(gh *)\"\n    ]\n  }\n}\n")
-	mods := withPermissions(`"Bash(x:*)"`)
+	mods := withPermissions(`"Bash(.claude/skills/lighthouse-x/run.sh:*)"`)
 	if r := run(t, root, "", all(yes, mods)); r.code != 0 {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
 	s := read(t, root, ".claude/settings.json")
-	if !strings.Contains(s, "\"allow\": [\n      \"Bash(gh *)\",\n      \"Bash(x:*)\"\n    ]") {
+	if !strings.Contains(s, "\"allow\": [\n      \"Bash(gh *)\",\n      \"Bash(.claude/skills/lighthouse-x/run.sh:*)\"\n    ]") {
 		t.Fatalf("settings:\n%s", s)
 	}
 	if r := run(t, root, "", all(upgrade, mods)); r.code != 0 || r.out != "No changes.\n" {
@@ -724,26 +724,26 @@ func TestInitMergesPermissions(t *testing.T) {
 func TestUpgradeDropsPermission(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, ".claude/settings.json", "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(gh *)\"\n    ]\n  }\n}\n")
-	if r := run(t, root, "", all(yes, withPermissions(`"Bash(x:*)", "Bash(y:*)"`))); r.code != 0 {
+	if r := run(t, root, "", all(yes, withPermissions(`"Bash(.claude/skills/lighthouse-x/run.sh:*)", "Bash(.claude/skills/lighthouse-y/run.sh:*)"`))); r.code != 0 {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
-	if r := run(t, root, "", all(upgrade, yes, withPermissions(`"Bash(y:*)"`))); r.code != 0 {
+	if r := run(t, root, "", all(upgrade, yes, withPermissions(`"Bash(.claude/skills/lighthouse-y/run.sh:*)"`))); r.code != 0 {
 		t.Fatalf("upgrade: rc %d\n%s", r.code, r.err)
 	}
 	s := read(t, root, ".claude/settings.json")
-	if strings.Contains(s, "Bash(x:*)") || !strings.Contains(s, "Bash(gh *)") || !strings.Contains(s, "Bash(y:*)") {
+	if strings.Contains(s, "Bash(.claude/skills/lighthouse-x/run.sh:*)") || !strings.Contains(s, "Bash(gh *)") || !strings.Contains(s, "Bash(.claude/skills/lighthouse-y/run.sh:*)") {
 		t.Fatalf("settings:\n%s", s)
 	}
 }
 
 func TestUpgradeRefusesRemovedPermission(t *testing.T) {
 	root := newRepo(t)
-	mods := withPermissions(`"Bash(x:*)"`)
+	mods := withPermissions(`"Bash(.claude/skills/lighthouse-x/run.sh:*)"`)
 	if r := run(t, root, "", all(yes, mods)); r.code != 0 {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
 	s := read(t, root, ".claude/settings.json")
-	write(t, root, ".claude/settings.json", strings.Replace(s, `"Bash(x:*)"`, `"Bash(other)"`, 1))
+	write(t, root, ".claude/settings.json", strings.Replace(s, `"Bash(.claude/skills/lighthouse-x/run.sh:*)"`, `"Bash(other)"`, 1))
 	if r := run(t, root, "", all(upgrade, mods)); r.code != 1 || !strings.Contains(r.err, "refused") {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
@@ -886,21 +886,52 @@ func TestDefaultLookupIgnoresPythonEnv(t *testing.T) {
 	}
 }
 
-// Finding 4: a rule the project already had stays the project's.
-func TestAdoptedPermissionStaysProjectOwned(t *testing.T) {
+// Besluit 22: a rule that points into a lighthouse directory is lighthouse's, also
+// when the project already had it. It replaces the fix for finding 4 of PR 1.
+func TestPatternRuleIsLighthouseOwned(t *testing.T) {
 	root := newRepo(t)
-	write(t, root, ".claude/settings.json", "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(x:*)\"\n    ]\n  }\n}\n")
-	if r := run(t, root, "", all(yes, withPermissions(`"Bash(x:*)", "Bash(y:*)"`))); r.code != 0 {
+	write(t, root, ".claude/settings.json", "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(.claude/skills/lighthouse-x/run.sh:*)\"\n    ]\n  }\n}\n")
+	if r := run(t, root, "", all(yes, withPermissions(`"Bash(.claude/skills/lighthouse-x/run.sh:*)", "Bash(.claude/skills/lighthouse-y/run.sh:*)"`))); r.code != 0 {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
-	if strings.Contains(read(t, root, ".lighthouse/manifest.toml"), "Bash(x:*)") {
-		t.Fatal("adopted project rule recorded as lighthouse-owned")
+	if !strings.Contains(read(t, root, ".lighthouse/manifest.toml"), "Bash(.claude/skills/lighthouse-x/run.sh:*)") {
+		t.Fatal("pattern rule not recorded as lighthouse-owned")
 	}
-	if r := run(t, root, "", all(upgrade, yes, withPermissions(`"Bash(y:*)"`))); r.code != 0 {
+	if r := run(t, root, "", all(upgrade, yes, withPermissions(`"Bash(.claude/skills/lighthouse-y/run.sh:*)"`))); r.code != 0 {
 		t.Fatalf("upgrade: rc %d\n%s", r.code, r.err)
 	}
-	if !strings.Contains(read(t, root, ".claude/settings.json"), "Bash(x:*)") {
-		t.Fatal("project rule removed")
+	if strings.Contains(read(t, root, ".claude/settings.json"), "lighthouse-x") {
+		t.Fatal("lighthouse rule the package no longer ships was kept")
+	}
+}
+
+// Besluit 22: a manifest is committed and may be edited in a PR. A rule outside the
+// pattern stays the project's, whatever the manifest says.
+func TestTamperedManifestKeepsProjectRule(t *testing.T) {
+	root := newRepo(t)
+	mods := withPermissions(`"Bash(.claude/skills/lighthouse-y/run.sh:*)"`)
+	if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	s := read(t, root, ".claude/settings.json")
+	write(t, root, ".claude/settings.json", strings.Replace(s, `"Bash(.claude/skills/lighthouse-y/run.sh:*)"`, `"Bash(make test)", "Bash(.claude/skills/lighthouse-y/run.sh:*)"`, 1))
+	m, err := manifest.Read(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Units = append(m.Units, manifest.Entry{
+		Kind: packs.KindPermission, Path: ".claude/settings.json", ID: "Bash(make test)",
+		Package: "core", Version: m.Version, SHA256: manifest.Sum([]byte("Bash(make test)")),
+	})
+	write(t, root, manifest.Path, string(manifest.Encode(m)))
+	if r := run(t, root, "", all(upgrade, yes, mods)); r.code != 0 {
+		t.Fatalf("upgrade: rc %d\n%s", r.code, r.err)
+	}
+	if !strings.Contains(read(t, root, ".claude/settings.json"), "Bash(make test)") {
+		t.Fatal("project rule removed through the manifest")
+	}
+	if strings.Contains(read(t, root, ".lighthouse/manifest.toml"), "Bash(make test)") {
+		t.Fatal("project rule still recorded as lighthouse-owned")
 	}
 }
 
