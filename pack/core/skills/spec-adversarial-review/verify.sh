@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Draai één verificatieronde: dezelfde runner als review.sh, met de verifier-prompt
-# en het verificatieschema van deze map (vanaf ronde 2, #1066).
+# Run one verification round: the same runner as review.sh, with the verifier prompt
+# and the verification schema of this directory (from round 2 on).
 #
 #   verify.sh <SPEC> <ROUND> <OUT> [PRIOR] [LEVEL] [--context <diff>]...
 #
-# Eén runner, geen tweede kopie van de Codex-aanroep (spec #972, sectie 1).
-# Exitcodes: die van review.sh (in deze map).
+# One runner, no second copy of the Codex call.
+# Exit codes: those of review.sh (in this directory).
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

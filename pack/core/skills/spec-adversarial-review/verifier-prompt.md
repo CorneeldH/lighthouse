@@ -1,18 +1,17 @@
 # Adversarial Spec Verifier Prompt
 
-Dit bestand gaat verbatim naar de externe reviewer. `SKILL.md` parset de inhoud nooit;
-`review.sh` (in deze map) vult alleen `{{SPEC_PATH}}`, `{{CONTEXT_PATHS}}`, `{{REPO}}`,
-`{{ROUND}}` en `{{PRIOR_REVIEW_BLOCK}}`.
+This file is sent verbatim to the external reviewer. `SKILL.md` never parses the content;
+`review.sh` (in this directory) only substitutes `{{SPEC_PATH}}`, `{{CONTEXT_PATHS}}`,
+`{{REPO}}`, `{{ROUND}}` and `{{PRIOR_REVIEW_BLOCK}}`.
 
-Vanaf ronde 2 draait `verify.sh` deze prompt in plaats van `reviewer-prompt.md` (#1066): geen
-nieuwe zoektocht naar problemen, alleen verifiëren of de BLOCKERs en MAJORs uit de vorige ronde
-met `decision` `accept` daadwerkelijk zijn opgelost door de diff die via `--context` meegaat.
-Decision `defer` is open voor het plan, geen fix hier; decision `reject` blijft ook buiten
-scope.
+From round 2 on `verify.sh` runs this prompt instead of `reviewer-prompt.md`: no new search
+for problems, only verifying whether the BLOCKERs and MAJORs of the previous round with
+`decision` `accept` are actually resolved by the diff passed through `--context`. Decision
+`defer` is open for the plan, no fix here; decision `reject` stays out of scope as well.
 
-Markdown-blok én schema staan er allebei in, om dezelfde reden als in de reviewer-prompt.
-Formaatdwang verlaagt het redeneervermogen (arXiv:2408.02442). Haal het markdown-blok er niet
-uit.
+Markdown block and schema are both in it, for the same reason as in the reviewer prompt:
+format restrictions lower reasoning ability (arXiv:2408.02442). Do not take the markdown
+block out.
 
 ---BEGIN PROMPT---
 

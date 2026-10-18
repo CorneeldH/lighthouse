@@ -50,8 +50,6 @@ ALLOWED_EXTERNAL = {
 # them. A skill leaves this set in the commit that adds it (test_planned_skills_absent);
 # the set is empty when PR 4 is done.
 PLANNED = {
-    "spec-adversarial-review",
-    "plan-adversarial-review",
     "write-issue",
     "worktree-audit",
     "instrument",
@@ -66,7 +64,19 @@ _PATH_REFS = (
     ),
     (re.compile(r"\.claude/hooks/lighthouse/([\w.-]+)"), lambda m: CORE / "hooks" / m[1]),
     (re.compile(r"\.claude/agents/lighthouse-([\w-]+)\.md"), lambda m: AGENTS / f"{m[1]}.md"),
+    (
+        re.compile(r"\.(?:claude|agents)/skills/lighthouse-([a-z0-9-]+)/([\w./-]*\w)"),
+        lambda m: _skill_file(m[1], m[2]),
+    ),
 )
+
+
+def _skill_file(skill: str, rel: str) -> Path:
+    """A file of an installed skill: shared in the skill directory, or `SKILL.md` per variant."""
+    shared = SKILLS / skill / rel
+    if rel == "SKILL.md" and not shared.is_file():
+        return SKILLS / skill / "claude" / "SKILL.md"
+    return shared
 _CONFIG_RE = re.compile(r"config\.py\s+(\"[^\"]+\"|'[^']+'|[^\s`\"')|;]+)")
 _HEADING_RE = re.compile(r"heading:([A-Za-z0-9_]+)")
 _LIGHTHOUSE_SKILL_RE = re.compile(r"(?<![\w./-])/lighthouse-([a-z0-9-]+)")

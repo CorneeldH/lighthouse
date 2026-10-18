@@ -1,15 +1,18 @@
-"""Contract van de adversariële review-runner (#972).
+"""Contract of the adversarial review runner.
 
-`paia-spec-adversarial-review/review.sh` is de enige Codex-runner; de plan-review
-roept hem aan via een wrapper met eigen prompt en schema. Deze tests draaien het
-echte script tegen een nep-`codex` op PATH die de prompt en de argv vastlegt. Zo
-toetsen ze wat #972 belooft zonder netwerk of Codex-account:
+`lighthouse-spec-adversarial-review/review.sh` is the only Codex runner; the plan review calls it
+through a wrapper with its own prompt and schema. These tests run the real script, installed
+the way `init` installs it, against a fake `codex` on PATH that records the prompt and the argv.
+So they check what the runner promises without network or Codex account:
 
-- zonder nieuwe vlaggen en zonder sidecar is de prompt byte-gelijk aan die van
-  vóór #972 (`legacy_prompt` hieronder is dat oude algoritme, letterlijk);
-- met een decisions-sidecar verandert alleen het prior-blok;
-- de wrapper stuurt de plan-prompt en het plan-schema mee, en `--context` landt
-  in `{{CONTEXT_PATHS}}`.
+- without new flags and without a sidecar the prompt is byte-identical to the original
+  algorithm (`legacy_prompt` below is that algorithm, literally);
+- with a decisions sidecar only the prior block changes;
+- the wrapper sends the plan prompt and the plan schema, and `--context` lands in
+  `{{CONTEXT_PATHS}}`;
+- the budget check runs `.lighthouse/scripts/codex_usage.py budget` before Codex.
+
+From paia's `test_adversarial_review_sh.py`.
 """
 
 from __future__ import annotations
@@ -17,13 +20,41 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 
 import pytest
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
-ROOTS = (REPO / ".claude" / "skills", REPO / ".agents" / "skills")
+from tests.pack._testkit import CORE
+
+SKILLS = CORE / "skills"
+NAMES = ("spec-adversarial-review", "plan-adversarial-review")
+
+
+def install_skills(root: pathlib.Path) -> None:
+    """Install both skills under `root/.claude/skills` and `root/.agents/skills`, with the
+    shared files next to each variant's SKILL.md, as `init` does."""
+    for variant, base in (("claude", ".claude/skills"), ("agents", ".agents/skills")):
+        for name in NAMES:
+            dest = root / base / f"lighthouse-{name}"
+            dest.mkdir(parents=True)
+            for f in (SKILLS / name).iterdir():
+                if f.is_file():
+                    shutil.copy2(f, dest / f.name)
+            shutil.copy2(SKILLS / name / variant / "SKILL.md", dest / "SKILL.md")
+
+
+@pytest.fixture(scope="module")
+def installed(tmp_path_factory) -> pathlib.Path:
+    root = tmp_path_factory.mktemp("install")
+    install_skills(root)
+    return root
+
+
+@pytest.fixture(params=[".claude/skills", ".agents/skills"], ids=["claude", "agents"])
+def root(request, installed) -> pathlib.Path:
+    return installed / request.param
 
 FAKE_CODEX = """#!/usr/bin/env python3
 import json, os, pathlib, sys
@@ -43,57 +74,58 @@ FAKE_BUDGET = """#!/usr/bin/env python3
 import json, os, sys
 mode = os.environ.get("FAKE_BUDGET_MODE", "codex")
 if mode == "codex":
-    print(json.dumps({"besluit": "codex", "reden": "onder de drempels"}))
+    print(json.dumps({"decision": "codex", "reason": "below the thresholds"}))
 elif mode == "fallback":
-    print(json.dumps({"besluit": "fallback", "reden": "5u 92% \u2265 90%"}))
+    print(json.dumps({"decision": "fallback", "reason": "5h 92% \u2265 90%"}))
     sys.exit(6)
-elif mode == "fallback-kapot":
-    print("geen json")
+elif mode == "fallback-broken":
+    print("no json")
     sys.exit(6)
 elif mode == "crash":
     sys.stderr.write("Traceback (most recent call last):\\n  boem\\n")
     sys.exit(1)
-elif mode == "lijst":
+elif mode == "list":
     print("[]")
-elif mode == "lijst6":
+elif mode == "list6":
     print("[]")
     sys.exit(6)
 """
 
-FAKE_UV = """#!/usr/bin/env python3
+FAKE_CODEX_USAGE = """#!/usr/bin/env python3
 import json, os, pathlib, sys
 cap = pathlib.Path(os.environ["FAKE_CODEX_CAPTURE"])
 cap.mkdir(parents=True, exist_ok=True)
-(cap / "uv-argv.json").write_text(json.dumps(sys.argv))
-print(json.dumps({"besluit": "codex", "reden": "onder de drempels"}))
+(cap / "usage-argv.json").write_text(json.dumps(sys.argv))
+print(json.dumps({"decision": "codex", "reason": "below the thresholds"}))
 """
 
-NEGEN = [
-    "besluit",
-    "reden",
-    "venster",
+# The fields of `codex_usage.py budget`, in its JSON order.
+NINE = [
+    "decision",
+    "reason",
+    "window",
     "reset_at",
     "session_pct",
     "week_pct",
-    "bron",
-    "ondergrens",
-    "drempels",
+    "source",
+    "lower_bound",
+    "thresholds",
 ]
 
 SCRIPTS = [
-    ("paia-spec-adversarial-review", "review.sh"),
-    ("paia-plan-adversarial-review", "review.sh"),
-    ("paia-plan-adversarial-review", "verify.sh"),
-    ("paia-spec-adversarial-review", "verify.sh"),
+    ("lighthouse-spec-adversarial-review", "review.sh"),
+    ("lighthouse-plan-adversarial-review", "review.sh"),
+    ("lighthouse-plan-adversarial-review", "verify.sh"),
+    ("lighthouse-spec-adversarial-review", "verify.sh"),
 ]
 
 
 def legacy_prompt(
     template: pathlib.Path, doc: str, repo: str, round_no: str, prior: str
 ) -> str:
-    """De substitutie van review.sh zoals hij vóór #972 was, regel voor regel.
+    """The substitution of review.sh before the sidecar existed, line for line.
 
-    `print(body)` plus `"$(cat ...)"` in bash: de afsluitende newline valt weg.
+    `print(body)` plus `"$(cat ...)"` in bash: the trailing newline drops.
     """
     text = template.read_text()
     body = (
@@ -118,7 +150,7 @@ def legacy_prompt(
 
 @pytest.fixture
 def sandbox(tmp_path: pathlib.Path) -> dict:
-    """Een wegwerp-gitrepo met één document, een nep-codex en een schone HOME."""
+    """A throwaway git repo with one document, a fake codex and a clean HOME."""
     repo = tmp_path / "repo"
     (repo / "docs").mkdir(parents=True)
     (repo / "docs" / "doc.md").write_text("# doc\n")
@@ -139,14 +171,15 @@ def sandbox(tmp_path: pathlib.Path) -> dict:
     home = tmp_path / "home"
     (home / ".codex").mkdir(parents=True)
     (home / ".codex" / "auth.json").write_text("{}")
+    base = {k: v for k, v in os.environ.items() if k != "LIGHTHOUSE_REPO_ROOT"}
     env = {
-        **os.environ,
+        **base,
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "HOME": str(home),
         "CODEX_SPECREVIEW_HOME": str(tmp_path / "ch"),
         "TMPDIR": str(tmp_path),
         "FAKE_CODEX_CAPTURE": str(tmp_path / "capture"),
-        "PAIA_CODEX_BUDGET_CMD": str(budget),
+        "LIGHTHOUSE_CODEX_BUDGET_CMD": str(budget),
     }
     return {"repo": repo, "env": env, "capture": tmp_path / "capture", "tmp": tmp_path}
 
@@ -167,10 +200,9 @@ def captured(sandbox: dict) -> tuple[str, list[str]]:
     return (cap / "prompt.txt").read_text(), json.loads((cap / "argv.json").read_text())
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 @pytest.mark.parametrize("prior", ["none", "PRIOR"])
 def test_spec_review_prompt_is_byte_identical_without_new_flags(root, prior, sandbox):
-    skill = root / "paia-spec-adversarial-review"
+    skill = root / "lighthouse-spec-adversarial-review"
     out = sandbox["tmp"] / "out" / "round-2.json"
     prior_arg = (
         "none" if prior == "none" else str(sandbox["tmp"] / "out" / "round-1.json")
@@ -193,9 +225,8 @@ def test_spec_review_prompt_is_byte_identical_without_new_flags(root, prior, san
     )
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_sidecar_changes_only_the_prior_block(root, sandbox):
-    skill = root / "paia-spec-adversarial-review"
+    skill = root / "lighthouse-spec-adversarial-review"
     outdir = sandbox["tmp"] / "out"
     outdir.mkdir()
     prior = outdir / "round-1.json"
@@ -224,7 +255,7 @@ def test_sidecar_changes_only_the_prior_block(root, sandbox):
     assert prompt != legacy
     assert f"`{sidecar}`" in prompt
     assert "r<round>-f<index>" in prompt
-    # Alles buiten het prior-blok is gelijk: knip het blok uit beide en vergelijk.
+    # Everything outside the prior block is equal: cut the block from both and compare.
     before, _, rest = legacy.partition("Previous review:")
     after_legacy = rest.split("and why.", 1)[1]
     new_before, _, new_rest = prompt.partition("Previous review:")
@@ -232,11 +263,10 @@ def test_sidecar_changes_only_the_prior_block(root, sandbox):
     assert (before, after_legacy) == (new_before, after_new)
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_context_on_a_template_without_the_placeholder_fails(root, sandbox):
-    """De spec-prompt kent geen {{CONTEXT_PATHS}}: stil negeren zou de spec(s)
-    wegmoffelen die de operator juist meegaf."""
-    skill = root / "paia-spec-adversarial-review"
+    """The spec prompt has no {{CONTEXT_PATHS}}: ignoring it silently would hide the
+    spec(s) the operator passed on purpose."""
+    skill = root / "lighthouse-spec-adversarial-review"
     out = sandbox["tmp"] / "out" / "round-1.json"
     result = run(
         skill / "review.sh",
@@ -251,9 +281,8 @@ def test_context_on_a_template_without_the_placeholder_fails(root, sandbox):
     assert "{{CONTEXT_PATHS}}" in result.stderr
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_plan_wrapper_sends_plan_prompt_schema_and_context(root, sandbox):
-    plan_skill = root / "paia-plan-adversarial-review"
+    plan_skill = root / "lighthouse-plan-adversarial-review"
     out = sandbox["tmp"] / "out" / "round-1.json"
     result = run(
         plan_skill / "review.sh",
@@ -274,9 +303,8 @@ def test_plan_wrapper_sends_plan_prompt_schema_and_context(root, sandbox):
     assert schema == (plan_skill / "findings.schema.json").resolve()
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_missing_context_path_is_a_usage_error(root, sandbox):
-    plan_skill = root / "paia-plan-adversarial-review"
+    plan_skill = root / "lighthouse-plan-adversarial-review"
     out = sandbox["tmp"] / "out" / "round-1.json"
     result = run(
         plan_skill / "review.sh",
@@ -285,10 +313,10 @@ def test_missing_context_path_is_a_usage_error(root, sandbox):
         "1",
         str(out),
         "--context",
-        "docs/bestaat-niet.md",
+        "docs/does-not-exist.md",
     )
     assert result.returncode == 2
-    assert "contextpad niet gevonden" in result.stderr
+    assert "context path not found" in result.stderr
 
 
 EXECUTABILITY_CATS = [
@@ -302,10 +330,9 @@ EXECUTABILITY_CATS = [
 ]
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_plan_schema_requires_one_of_seven_categories(root):
     schema = json.loads(
-        (root / "paia-plan-adversarial-review" / "findings.schema.json").read_text()
+        (root / "lighthouse-plan-adversarial-review" / "findings.schema.json").read_text()
     )
     item = schema["properties"]["findings"]["items"]
     assert {"cat", "plan_section", "failure_scenario"} <= set(item["required"])
@@ -313,9 +340,8 @@ def test_plan_schema_requires_one_of_seven_categories(root):
     assert item["properties"]["cat"]["enum"] == EXECUTABILITY_CATS
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_plan_prompt_asks_executability_not_improvement(root):
-    text = (root / "paia-plan-adversarial-review" / "reviewer-prompt.md").read_text()
+    text = (root / "lighthouse-plan-adversarial-review" / "reviewer-prompt.md").read_text()
     body = text.split("---BEGIN PROMPT---", 1)[1].split("---END PROMPT---", 1)[0]
     for cat in EXECUTABILITY_CATS:
         assert f"`{cat}`" in body
@@ -325,9 +351,8 @@ def test_plan_prompt_asks_executability_not_improvement(root):
     assert "no concrete failure scenario, it is not a BLOCKER or MAJOR" in body
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_plan_verify_wrapper_sends_verifier_prompt_and_schema(root, sandbox):
-    plan_skill = root / "paia-plan-adversarial-review"
+    plan_skill = root / "lighthouse-plan-adversarial-review"
     outdir = sandbox["tmp"] / "out"
     outdir.mkdir()
     (outdir / "round-1.json").write_text("{}")
@@ -356,10 +381,9 @@ def test_plan_verify_wrapper_sends_verifier_prompt_and_schema(root, sandbox):
     assert schema == (plan_skill / "verification.schema.json").resolve()
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_plan_verification_schema_is_scoped(root):
     schema = json.loads(
-        (root / "paia-plan-adversarial-review" / "verification.schema.json").read_text()
+        (root / "lighthouse-plan-adversarial-review" / "verification.schema.json").read_text()
     )
     assert "verified" in schema["required"]
     item = schema["properties"]["findings"]["items"]
@@ -368,9 +392,8 @@ def test_plan_verification_schema_is_scoped(root):
     assert item["properties"]["cat"]["enum"] == [*EXECUTABILITY_CATS, "fix_incomplete"]
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_spec_blocker_needs_a_failure_scenario(root):
-    skill = root / "paia-spec-adversarial-review"
+    skill = root / "lighthouse-spec-adversarial-review"
     item = json.loads((skill / "findings.schema.json").read_text())["properties"][
         "findings"
     ]["items"]
@@ -381,9 +404,8 @@ def test_spec_blocker_needs_a_failure_scenario(root):
     assert "{{CONTEXT_PATHS}}" not in body
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 def test_spec_verify_wrapper_sends_verifier_prompt_and_schema(root, sandbox):
-    skill = root / "paia-spec-adversarial-review"
+    skill = root / "lighthouse-spec-adversarial-review"
     outdir = sandbox["tmp"] / "out"
     outdir.mkdir()
     (outdir / "round-1.json").write_text("{}")
@@ -409,34 +431,31 @@ def test_spec_verify_wrapper_sends_verifier_prompt_and_schema(root, sandbox):
     assert schema == (skill / "verification.schema.json").resolve()
 
 
-def test_verify_wrappers_are_allowlisted():
-    allow = json.loads((REPO / ".claude" / "settings.json").read_text())["permissions"][
-        "allow"
-    ]
-    assert "Bash(.claude/skills/paia-plan-adversarial-review/verify.sh:*)" in allow
-    assert "Bash(.claude/skills/paia-spec-adversarial-review/verify.sh:*)" in allow
+def test_runners_are_allowlisted():
+    """The allowlist rules come with the package (besluit 14), not from a hand edit."""
+    allow = json.loads((CORE / "permissions.json").read_text())["allow"]
+    for skill, script in SCRIPTS:
+        assert f"Bash(.claude/skills/{skill}/{script}:*)" in allow
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
 @pytest.mark.parametrize(("skill", "script"), SCRIPTS)
-def test_budget_fallback_stopt_voor_codex(root, skill, script, sandbox):
+def test_budget_fallback_stops_before_codex(root, skill, script, sandbox):
     sandbox["env"]["FAKE_BUDGET_MODE"] = "fallback"
-    out = sandbox["tmp"] / "nieuw" / "diep" / "round-1.json"  # map bestaat nog niet
+    out = sandbox["tmp"] / "new" / "deep" / "round-1.json"  # the directory does not exist yet
     res = run(root / skill / script, sandbox, "docs/doc.md", "1", str(out))
     assert res.returncode == 6
-    assert "CODEX_BUDGET: fallback \u2014 5u 92% \u2265 90%" in res.stderr
+    assert "CODEX_BUDGET: fallback \u2014 5h 92% \u2265 90%" in res.stderr
     assert not (sandbox["capture"] / "argv.json").exists()
     record = json.loads((out.parent / "round-1.json.budget.json").read_text())
-    assert record["besluit"] == "fallback"
+    assert record["decision"] == "fallback"
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
-@pytest.mark.parametrize("mode", ["fallback-kapot", "crash", "lijst", "lijst6"])
-def test_kapotte_budgetcheck_is_niet_meetbaar_en_codex_draait(root, mode, sandbox):
+@pytest.mark.parametrize("mode", ["fallback-broken", "crash", "list", "list6"])
+def test_broken_budget_check_is_not_measurable_and_codex_runs(root, mode, sandbox):
     sandbox["env"]["FAKE_BUDGET_MODE"] = mode
     out = sandbox["tmp"] / "out" / "round-1.json"
     res = run(
-        root / "paia-spec-adversarial-review" / "review.sh",
+        root / "lighthouse-spec-adversarial-review" / "review.sh",
         sandbox,
         "docs/doc.md",
         "1",
@@ -445,18 +464,17 @@ def test_kapotte_budgetcheck_is_niet_meetbaar_en_codex_draait(root, mode, sandbo
     assert res.returncode == 0, res.stderr
     assert (sandbox["capture"] / "argv.json").exists()
     data = json.loads((out.parent / "round-1.json.budget.json").read_text())
-    assert list(data) == NEGEN
-    assert data["besluit"] == "niet_meetbaar"
-    stub_exit = {"fallback-kapot": 6, "crash": 1, "lijst": 0, "lijst6": 6}[mode]
-    assert data["reden"] == f"budgetcheck faalde: exit {stub_exit}"
-    assert all(data[k] is None for k in NEGEN[2:])
+    assert list(data) == NINE
+    assert data["decision"] == "not_measurable"
+    stub_exit = {"fallback-broken": 6, "crash": 1, "list": 0, "list6": 6}[mode]
+    assert data["reason"] == f"budget check failed: exit {stub_exit}"
+    assert all(data[k] is None for k in NINE[2:])
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
-def test_budget_codex_schrijft_record_en_draait(root, sandbox):
+def test_budget_codex_writes_record_and_runs(root, sandbox):
     out = sandbox["tmp"] / "out" / "round-1.json"
     res = run(
-        root / "paia-spec-adversarial-review" / "review.sh",
+        root / "lighthouse-spec-adversarial-review" / "review.sh",
         sandbox,
         "docs/doc.md",
         "1",
@@ -464,17 +482,20 @@ def test_budget_codex_schrijft_record_en_draait(root, sandbox):
     )
     assert res.returncode == 0, res.stderr
     record = json.loads((out.parent / "round-1.json.budget.json").read_text())
-    assert record["besluit"] == "codex"
+    assert record["decision"] == "codex"
 
 
-@pytest.mark.parametrize("root", ROOTS, ids=lambda p: p.parent.name)
-def test_productiepad_roept_codex_usage_budget_aan(root, sandbox):
-    """Zonder PAIA_CODEX_BUDGET_CMD draait de runner de echte check; een fout daarin
-    zou anders stil op niet_meetbaar terugvallen en elke test groen laten."""
-    del sandbox["env"]["PAIA_CODEX_BUDGET_CMD"]
-    uv = sandbox["tmp"] / "bin" / "uv"
-    uv.write_text(FAKE_UV.replace("#!/usr/bin/env python3", f"#!{sys.executable}", 1))
-    uv.chmod(0o755)
+def _install_fake_codex_usage(repo: pathlib.Path) -> pathlib.Path:
+    script = repo / ".lighthouse" / "scripts" / "codex_usage.py"
+    script.parent.mkdir(parents=True)
+    script.write_text(FAKE_CODEX_USAGE)
+    return script
+
+
+def test_production_path_calls_codex_usage_budget(root, sandbox):
+    """Without LIGHTHOUSE_CODEX_BUDGET_CMD the runner runs the real check; an error there
+    would otherwise fall back silently on not_measurable and leave every test green."""
+    del sandbox["env"]["LIGHTHOUSE_CODEX_BUDGET_CMD"]
     top = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"],
         cwd=sandbox["repo"],
@@ -482,28 +503,48 @@ def test_productiepad_roept_codex_usage_budget_aan(root, sandbox):
         text=True,
         check=True,
     ).stdout.strip()
+    _install_fake_codex_usage(sandbox["repo"])
     out = sandbox["tmp"] / "out" / "round-1.json"
     res = run(
-        root / "paia-spec-adversarial-review" / "review.sh",
+        root / "lighthouse-spec-adversarial-review" / "review.sh",
         sandbox,
         "docs/doc.md",
         "1",
         str(out),
     )
     assert res.returncode == 0, res.stderr
-    argv = json.loads((sandbox["capture"] / "uv-argv.json").read_text())
-    assert argv[1:] == [
-        "run",
-        "--project",
-        top,
-        "python",
-        f"{top}/scripts/codex_usage.py",
-        "budget",
-    ]
+    argv = json.loads((sandbox["capture"] / "usage-argv.json").read_text())
+    assert argv == [f"{top}/.lighthouse/scripts/codex_usage.py", "budget"]
     record = json.loads((out.parent / "round-1.json.budget.json").read_text())
-    assert record["besluit"] == "codex"
+    assert record["decision"] == "codex"
 
 
-def test_review_sh_spiegel_is_byte_gelijk():
-    a, b = (r / "paia-spec-adversarial-review" / "review.sh" for r in ROOTS)
-    assert a.read_bytes() == b.read_bytes()
+def test_repo_root_from_lighthouse_repo_root(root, sandbox):
+    """`LIGHTHOUSE_REPO_ROOT` wins over the git root of the cwd (inventaris §3)."""
+    del sandbox["env"]["LIGHTHOUSE_CODEX_BUDGET_CMD"]
+    other = sandbox["tmp"] / "other"
+    (other / "docs").mkdir(parents=True)
+    (other / "docs" / "doc.md").write_text("# other\n")
+    _install_fake_codex_usage(other)
+    sandbox["env"]["LIGHTHOUSE_REPO_ROOT"] = str(other)
+    out = sandbox["tmp"] / "out" / "round-1.json"
+    res = run(
+        root / "lighthouse-spec-adversarial-review" / "review.sh",
+        sandbox,
+        "docs/doc.md",
+        "1",
+        str(out),
+    )
+    assert res.returncode == 0, res.stderr
+    argv = json.loads((sandbox["capture"] / "usage-argv.json").read_text())
+    assert argv[0] == f"{other}/.lighthouse/scripts/codex_usage.py"
+    _, codex_argv = captured(sandbox)
+    assert codex_argv[codex_argv.index("--cd") + 1] == str(other)
+
+
+def test_runner_messages_are_english(root, sandbox):
+    res = run(root / "lighthouse-spec-adversarial-review" / "review.sh", sandbox)
+    assert res.returncode == 2
+    assert res.stderr.startswith("usage: review.sh")
+    res = run(root / "lighthouse-spec-adversarial-review" / "review.sh", sandbox, "--bogus")
+    assert "unknown flag: --bogus" in res.stderr

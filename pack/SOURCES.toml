@@ -240,3 +240,48 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/skills/close-issue/agents/SKILL.md"
 source_path = ".agents/skills/paia-close-issue/SKILL.md"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/claude/SKILL.md"
+source_path = ".claude/skills/paia-spec-adversarial-review/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/agents/SKILL.md"
+source_path = ".agents/skills/paia-spec-adversarial-review/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/findings.schema.json"
+source_path = [".claude/skills/paia-spec-adversarial-review/findings.schema.json", ".agents/skills/paia-spec-adversarial-review/findings.schema.json"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/verification.schema.json"
+source_path = [".claude/skills/paia-spec-adversarial-review/verification.schema.json", ".agents/skills/paia-spec-adversarial-review/verification.schema.json"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/reviewer-prompt.md"
+source_path = [".claude/skills/paia-spec-adversarial-review/reviewer-prompt.md", ".agents/skills/paia-spec-adversarial-review/reviewer-prompt.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/verifier-prompt.md"
+source_path = [".claude/skills/paia-spec-adversarial-review/verifier-prompt.md", ".agents/skills/paia-spec-adversarial-review/verifier-prompt.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/review.sh"
+source_path = [".claude/skills/paia-spec-adversarial-review/review.sh", ".agents/skills/paia-spec-adversarial-review/review.sh"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/verify.sh"
+source_path = [".claude/skills/paia-spec-adversarial-review/verify.sh", ".agents/skills/paia-spec-adversarial-review/verify.sh"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/permissions.json"
+source_path = ".claude/settings.json"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

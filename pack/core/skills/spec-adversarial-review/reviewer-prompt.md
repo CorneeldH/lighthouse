@@ -10,12 +10,11 @@ replacement, `brainstorming/builder-check-prompt.md`. The adversarial half (grou
 gaps, testability, assumptions, severity, evidence requirement) is ours. The upstream
 `Approve unless there are serious gaps` bias is deliberately dropped.
 
-Het markdown-outputblok én het JSON-schema staan er allebei in, en dat is geen
-slordigheid. Formaatdwang verlaagt het redeneervermogen (arXiv:2408.02442), dus
-de reviewer schrijft eerst vrij in `review_markdown` en structureert daarna. Haal
-het markdown-blok er niet uit om "het schema te volgen" — dan koop je
-telbaarheid met redeneerdiepte. Gemeten in
-`experiments/spec-review-levels/REPORT.md`.
+The markdown output block and the JSON schema are both in it, and that is no
+sloppiness. Format restrictions lower reasoning ability (arXiv:2408.02442), so the
+reviewer first writes freely in `review_markdown` and structures afterwards. Do not
+take the markdown block out "to follow the schema": that buys countability with
+reasoning depth.
 
 ---BEGIN PROMPT---
 

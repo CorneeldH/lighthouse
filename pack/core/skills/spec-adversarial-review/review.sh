@@ -1,37 +1,40 @@
 #!/usr/bin/env bash
-# Draai één adversariële reviewronde via een externe Codex-sessie.
+# Run one adversarial review round through an external Codex session.
 #
-#   review.sh [--prompt F] [--schema F] [--context PAD]... <DOC> <ROUND> <OUT> [PRIOR] [LEVEL]
+#   review.sh [--prompt F] [--schema F] [--context PATH]... <DOC> <ROUND> <OUT> [PRIOR] [LEVEL]
 #
-#     DOC    pad naar het te reviewen document (spec of plan), relatief aan de repo-root
-#     ROUND  rondenummer (1, 2, 3)
-#     OUT    pad waar het JSON-resultaat landt (.events en .err komen ernaast)
-#     PRIOR  pad naar de vorige ronde, of "none" (default none). Ligt ernaast een
-#            sidecar `<naam zonder .json>.decisions.json`, dan noemt het prior-blok
-#            die; zonder sidecar is het blok byte-gelijk aan dat van vóór #972.
-#     LEVEL  redeneerniveau; leeg = uit config.toml. Gebruik `max` alleen als een
-#            gemiste blocker duur is. Nooit `xhigh` — gemeten duurder dan `high`
-#            zonder één unieke bevinding (experiments/spec-review-levels/REPORT.md).
+#     DOC    path to the document under review (spec or plan), relative to the repo root
+#     ROUND  round number (1, 2, 3)
+#     OUT    path where the JSON result lands (.events and .err land next to it)
+#     PRIOR  path to the previous round, or "none" (default none). If a sidecar
+#            `<name without .json>.decisions.json` lies next to it, the prior block names
+#            it; without a sidecar the block is the original one, byte for byte.
+#     LEVEL  reasoning effort; empty = from config.toml. Use `max` only when a missed
+#            blocker is expensive. Never `xhigh`: measured more expensive than `high`
+#            without one unique finding.
 #
-#     --prompt   promptsjabloon; default reviewer-prompt.md naast dit script
-#     --schema   outputschema; default findings.schema.json naast dit script
-#     --context  extra contextpad voor {{CONTEXT_PATHS}}, herhaalbaar; repo-relatief
-#                of absoluut, moet bestaan
+#     --prompt   prompt template; default reviewer-prompt.md next to this script
+#     --schema   output schema; default findings.schema.json next to this script
+#     --context  extra context path for {{CONTEXT_PATHS}}, repeatable; repo-relative
+#                or absolute, must exist
 #
-# Vlaggen mogen overal staan. Zonder vlaggen en zonder sidecar is de prompt
-# byte-gelijk aan die van vóór #972 — de spec-review merkt niets van de plan-review
-# (tests/unit/test_adversarial_review_sh.py).
+# Flags may stand anywhere. Without flags and without a sidecar the prompt is the
+# original one, byte for byte: the spec review notices nothing of the plan review.
 #
-# Eén vaste commandovorm, zodat hij te allowlisten is en een ronde op de
-# achtergrond kan lopen zonder tussentijdse approval.
+# One fixed command shape, so it can be allowlisted (`permissions.json`) and a round can
+# run in the background without an approval prompt in between.
 #
-# Vóór Codex draait de runner `codex_usage.py budget` (#1093) en schrijft het besluit
-# naar `<OUT>.budget.json`. Staat het budget vooraf op (besluit `fallback`), dan stopt
-# de runner met exit 6 en stderr `CODEX_BUDGET: fallback — <reden>`, zonder `codex exec`.
-# `PAIA_CODEX_BUDGET_CMD` vervangt dat commando (testnaad, op spaties gesplitst). Een
-# check die faalt of geen JSON-object geeft telt als niet meetbaar: de ronde gaat door.
+# The repo root comes from LIGHTHOUSE_REPO_ROOT, otherwise from git; never from this
+# file's own path.
 #
-# Exit: 0 ok | 2 verkeerd gebruik | 3 codex ontbreekt | 4 niet ingelogd | 5 run mislukt | 6 budget vooraf op
+# Before Codex the runner runs `.lighthouse/scripts/codex_usage.py budget` and writes the
+# decision to `<OUT>.budget.json`. If the budget is exhausted beforehand (decision
+# `fallback`), the runner stops with exit 6 and stderr `CODEX_BUDGET: fallback — <reason>`,
+# without `codex exec`. `LIGHTHOUSE_CODEX_BUDGET_CMD` replaces that command (test seam,
+# split on spaces). A check that fails or gives no JSON object counts as not measurable:
+# the round goes on.
+#
+# Exit: 0 ok | 2 usage error | 3 codex missing | 4 not logged in | 5 run failed | 6 budget exhausted beforehand
 set -euo pipefail
 
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,7 +45,7 @@ POS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --prompt | --schema | --context)
-      [ "$#" -ge 2 ] || { echo "$1 mist een waarde" >&2; exit 2; }
+      [ "$#" -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
       case "$1" in
         --prompt) PROMPT_FILE="$2" ;;
         --schema) SCHEMA_FILE="$2" ;;
@@ -50,12 +53,12 @@ while [ "$#" -gt 0 ]; do
       esac
       shift 2
       ;;
-    --*) echo "onbekende vlag: $1" >&2; exit 2 ;;
+    --*) echo "unknown flag: $1" >&2; exit 2 ;;
     *) POS+=("$1"); shift ;;
   esac
 done
-# `${POS[@]+...}`: bash 3.2 (de macOS-default) klapt onder `set -u` op een lege
-# array-expansie.
+# `${POS[@]+...}`: bash 3.2 (the macOS default) fails under `set -u` on an empty
+# array expansion.
 set -- ${POS[@]+"${POS[@]}"}
 
 SPEC="${1:-}"
@@ -65,41 +68,41 @@ PRIOR="${4:-none}"
 LEVEL="${5:-}"
 
 [ -n "$SPEC" ] && [ -n "$ROUND" ] && [ -n "$OUT" ] || {
-  echo "gebruik: review.sh [--prompt F] [--schema F] [--context PAD]... <DOC> <ROUND> <OUT> [PRIOR] [LEVEL]" >&2; exit 2; }
-[ -f "$PROMPT_FILE" ] || { echo "promptsjabloon niet gevonden: $PROMPT_FILE" >&2; exit 2; }
-[ -f "$SCHEMA_FILE" ] || { echo "schema niet gevonden: $SCHEMA_FILE" >&2; exit 2; }
+  echo "usage: review.sh [--prompt F] [--schema F] [--context PATH]... <DOC> <ROUND> <OUT> [PRIOR] [LEVEL]" >&2; exit 2; }
+[ -f "$PROMPT_FILE" ] || { echo "prompt template not found: $PROMPT_FILE" >&2; exit 2; }
+[ -f "$SCHEMA_FILE" ] || { echo "schema not found: $SCHEMA_FILE" >&2; exit 2; }
 
-command -v codex >/dev/null || { echo "CODEX_MISSING: geen codex in PATH" >&2; exit 3; }
+command -v codex >/dev/null || { echo "CODEX_MISSING: no codex in PATH" >&2; exit 3; }
 
-REPO="$(git rev-parse --show-toplevel)"
-[ -f "$REPO/$SPEC" ] || { echo "spec niet gevonden onder de repo-root: $REPO/$SPEC" >&2; exit 2; }
+REPO="${LIGHTHOUSE_REPO_ROOT:-$(git rev-parse --show-toplevel)}"
+[ -f "$REPO/$SPEC" ] || { echo "document not found under the repo root: $REPO/$SPEC" >&2; exit 2; }
 while IFS= read -r ctx; do
   [ -z "$ctx" ] && continue
   case "$ctx" in
-    /*) [ -f "$ctx" ] || { echo "contextpad niet gevonden: $ctx" >&2; exit 2; } ;;
-    *) [ -f "$REPO/$ctx" ] || { echo "contextpad niet gevonden onder de repo-root: $REPO/$ctx" >&2; exit 2; } ;;
+    /*) [ -f "$ctx" ] || { echo "context path not found: $ctx" >&2; exit 2; } ;;
+    *) [ -f "$REPO/$ctx" ] || { echo "context path not found under the repo root: $REPO/$ctx" >&2; exit 2; } ;;
   esac
 done <<<"$CONTEXTS"
 
-# Schone CODEX_HOME: de reviewer erft geen marketplaces, plugins, MCP-servers,
-# hooks of agents. Die kosten ~8k tokens en ondermijnen de schone context waar
-# deze skill op rust. `--ignore-user-config` is niet genoeg — dat slaat alleen
-# config.toml over en laadt $CODEX_HOME/agents/ alsnog.
+# Clean CODEX_HOME: the reviewer inherits no marketplaces, plugins, MCP servers,
+# hooks or agents. Those cost ~8k tokens and undermine the clean context this skill
+# rests on. `--ignore-user-config` is not enough: it skips only config.toml and still
+# loads $CODEX_HOME/agents/.
 CH="${CODEX_SPECREVIEW_HOME:-$HOME/.codex-specreview}"
 mkdir -p "$CH"
-[ -f "$HOME/.codex/auth.json" ] || { echo "CODEX_UNAUTHENTICATED: ~/.codex/auth.json ontbreekt" >&2; exit 4; }
-cp -f "$HOME/.codex/auth.json" "$CH/auth.json"   # pakt een ververst token mee
+[ -f "$HOME/.codex/auth.json" ] || { echo "CODEX_UNAUTHENTICATED: ~/.codex/auth.json missing" >&2; exit 4; }
+cp -f "$HOME/.codex/auth.json" "$CH/auth.json"   # takes a refreshed token along
 [ -s "$CH/config.toml" ] || printf 'model = "gpt-5.6-sol"\nmodel_reasoning_effort = "high"\n' > "$CH/config.toml"
 
 mkdir -p "$(dirname "$OUT")"
 
-# Budget vooraf (#1093). Geen heredoc binnen `$(...)`: bash 3.2 (macOS) parset dat fout.
+# Budget beforehand. No heredoc inside `$(...)`: bash 3.2 (macOS) parses that wrongly.
 set +e
-if [ -n "${PAIA_CODEX_BUDGET_CMD:-}" ]; then
-  read -r -a BUDGET_ARGV <<<"$PAIA_CODEX_BUDGET_CMD"
+if [ -n "${LIGHTHOUSE_CODEX_BUDGET_CMD:-}" ]; then
+  read -r -a BUDGET_ARGV <<<"$LIGHTHOUSE_CODEX_BUDGET_CMD"
   "${BUDGET_ARGV[@]}" < /dev/null > "$OUT.budget.json"
 else
-  uv run --project "$REPO" python "$REPO/scripts/codex_usage.py" budget \
+  python3 "$REPO/.lighthouse/scripts/codex_usage.py" budget \
     < /dev/null > "$OUT.budget.json"
 fi
 BUDGET_CODE=$?
@@ -115,21 +118,22 @@ except (OSError, ValueError):
     doc = None
 if code in (0, 6) and isinstance(doc, dict):
     if code == 6:
-        reden = doc.get("reden", "")
-        sys.stderr.buffer.write(f"CODEX_BUDGET: fallback — {reden}\n".encode())
+        reason = doc.get("reason", "")
+        sys.stderr.buffer.write(f"CODEX_BUDGET: fallback — {reason}\n".encode())
     raise SystemExit(code)
-sleutels = (
-    "besluit", "reden", "venster", "reset_at", "session_pct",
-    "week_pct", "bron", "ondergrens", "drempels",
+# The fields of codex_usage.py's budget answer, in its JSON order.
+keys = (
+    "decision", "reason", "window", "reset_at", "session_pct",
+    "week_pct", "source", "lower_bound", "thresholds",
 )
-synth = dict.fromkeys(sleutels)
-synth["besluit"] = "niet_meetbaar"
-synth["reden"] = f"budgetcheck faalde: exit {code}"
+synth = dict.fromkeys(keys)
+synth["decision"] = "not_measurable"
+synth["reason"] = f"budget check failed: exit {code}"
 path.write_text(json.dumps(synth, ensure_ascii=False) + "\n", encoding="utf-8")
 PY
-BUDGET_BESLUIT=$?
+BUDGET_DECISION=$?
 set -e
-if [ "$BUDGET_BESLUIT" -eq 6 ]; then
+if [ "$BUDGET_DECISION" -eq 6 ]; then
   exit 6
 fi
 
@@ -168,7 +172,7 @@ if prior != "none":
         )
 
 if context_paths and "{{CONTEXT_PATHS}}" not in body:
-    raise SystemExit("--context gegeven, maar het sjabloon heeft geen {{CONTEXT_PATHS}}")
+    raise SystemExit("--context given, but the template has no {{CONTEXT_PATHS}}")
 context_block = "\n".join(f"- {c}" for c in context_paths) or "(none)"
 
 body = (
@@ -180,12 +184,12 @@ body = (
     .replace("{{PRIOR_REVIEW_BLOCK}}", prior_block)
 )
 if "{{" in body:
-    raise SystemExit("niet-gesubstitueerde placeholder in het promptsjabloon")
+    raise SystemExit("unsubstituted placeholder in the prompt template")
 print(body)
 PY
 
-# De niveauvlag via positionele parameters, niet via een array: bash 3.2 (de
-# macOS-default) klapt onder `set -u` op een lege array-expansie.
+# The level flag through positional parameters, not an array: bash 3.2 (the macOS
+# default) fails under `set -u` on an empty array expansion.
 if [ -n "$LEVEL" ]; then
   set -- -c "model_reasoning_effort=$LEVEL"
 else
@@ -206,7 +210,7 @@ CODE=$?
 set -e
 
 if [ "$CODE" -ne 0 ] || [ ! -s "$OUT" ]; then
-  echo "CODEX_FAILED (exit $CODE). Laatste regels van $OUT.err:" >&2
+  echo "CODEX_FAILED (exit $CODE). Last lines of $OUT.err:" >&2
   tail -15 "$OUT.err" >&2
   exit 5
 fi
@@ -220,11 +224,11 @@ out, config = sys.argv[1], sys.argv[2]
 doc = json.loads(pathlib.Path(out).read_text())
 missing = {"review_markdown", "status", "findings"} - set(doc)
 if missing:
-    raise SystemExit(f"onvolledig resultaat, mist {sorted(missing)}")
+    raise SystemExit(f"incomplete result, missing {sorted(missing)}")
 model = next(
     (line.split('"')[1] for line in pathlib.Path(config).read_text().splitlines()
      if line.startswith("model =")),
-    "onbekend",
+    "unknown",
 )
 sev = {s: sum(1 for f in doc["findings"] if f["severity"] == s) for s in ("BLOCKER", "MAJOR", "MINOR")}
 print(f"ok | reviewer: {model} | status: {doc['status']} | "
