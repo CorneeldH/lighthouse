@@ -91,3 +91,18 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/scripts/measure_fix_pr_kpi.py"
 source_path = "scripts/measure_fix_pr_kpi.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/worktree_audit.py"
+source_path = "scripts/worktree_audit.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/unblock_dependents.py"
+source_path = "scripts/unblock_dependents.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/workflows/unblock-dependents.yml"
+source_path = ".github/workflows/unblock-dependents.yml"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

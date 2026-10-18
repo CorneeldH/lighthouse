@@ -1,19 +1,18 @@
-# ⚠️ NO-GO: deze repo mag NIET public worden zolang `runs-on` naar de
-# self-hosted Beelink-runner wijst — zie de kop van ci.yml.
+# The release lane. When an issue closes as `completed`, the GitHub App from `[ci]`
+# removes the `[labels] blocked_issue` label from every open issue that waited on it
+# and has no other open blocker, with a comment on that issue and one comment back on
+# the closed issue. The closed issue stays the only source: the lane reads only
+# `dependencies/blocking` and `dependencies/blocked_by`.
 #
-# De vrijgeef-lane. Sluit een issue als `completed`, dan haalt de GitHub App
-# `paia-bot` `3-blocked-issue` weg bij elk open issue dat erop wachtte en geen
-# andere open blocker meer heeft, met een comment op dat issue en één comment
-# terug op het gesloten issue. Het gesloten issue blijft de enige bron: de lane
-# leest alleen `dependencies/blocking` en `dependencies/blocked_by`.
+# A workflow and not a step in `lighthouse-close-issue`: an issue also closes through a
+# PR merge or by hand, and a session has no bot token. The skill checks afterwards.
+# `workflow_dispatch` with an issue number is the fallback for a missed or red run. The
+# logic lives in `.lighthouse/scripts/unblock_dependents.py`; the YAML stays thin.
 #
-# Een workflow en geen stap in `paia-close-issue`: een issue sluit ook via een
-# PR-merge of met de hand, en een sessie heeft geen paia-bot-token. De skill
-# controleert achteraf (stap 6). `workflow_dispatch` met een issuenummer is de
-# terugval voor een gemiste of rode run. De logica staat in
-# `scripts/unblock_dependents.py`; de YAML blijft dun.
+# `lighthouse init` fills every `@@<key>@@` from `lighthouse.toml`; without the `[ci]`
+# bot keys it does not install this workflow.
 name: Unblock dependents
-# Het issuenummer in de runnaam: stap 6 van paia-close-issue zoekt de run erop.
+# The issue number in the run name: `lighthouse-close-issue` finds the run by it.
 run-name: "Unblock dependents #${{ github.event.issue.number || inputs.issue }}"
 
 on:
@@ -22,7 +21,7 @@ on:
   workflow_dispatch:
     inputs:
       issue:
-        description: "Het gesloten issue waarvan de afhankelijken vrij moeten"
+        description: "The closed issue whose dependents should be released"
         required: true
         type: number
 
@@ -34,40 +33,41 @@ concurrency:
 
 jobs:
   unblock:
-    # Alleen `completed` geeft vrij: op jobniveau, zodat een `not_planned` geen
-    # runner provisioneert. Het script toetst het nog eens (een dispatch kan alles).
+    # Only `completed` releases: at job level, so a `not_planned` provisions no
+    # runner. The script checks it again (a dispatch can be anything).
     if: >-
-      github.ref == 'refs/heads/main' &&
+      github.ref == 'refs/heads/@@forge.default_branch@@' &&
       (github.event_name == 'workflow_dispatch' ||
        github.event.issue.state_reason == 'completed')
-    runs-on: [self-hosted, Linux, X64, beelink]
+    runs-on: @@ci.runs_on@@
     permissions:
-      # Schrijven loopt via het App-token; GITHUB_TOKEN leest alleen de checkout.
+      # Writes go through the App token; GITHUB_TOKEN only reads the checkout.
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # Geen enable-cache en een exacte `version:`, zie .claude/rules/workflows.md (#1293).
+      # No enable-cache and an exact `version:`.
       - name: Install uv
         uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.12.24"
 
-      - name: App-token voor labels en comments
+      - name: App token for labels and comments
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          client-id: ${{ vars.PAIA_BOT_CLIENT_ID }}
-          private-key: ${{ secrets.PAIA_BOT_PRIVATE_KEY }}
+          client-id: ${{ vars.@@ci.bot_client_id_var@@ }}
+          private-key: ${{ secrets.@@ci.bot_private_key_secret@@ }}
           permission-issues: write
 
-      # Het script is stdlib-only: geen `uv sync`, `--python 3.12` haalt de
-      # interpreter zelf op. Het issuenummer via env, nooit als `${{ }}` in `run:`.
-      - name: Geef afhankelijken vrij
+      # The script needs only the standard library and `.lighthouse/lib`: no `uv sync`,
+      # `--python 3.12` fetches the interpreter itself. The issue number goes through
+      # env, never as `${{ }}` in `run:`.
+      - name: Release dependents
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
-        run: uv run --no-project --python 3.12 python scripts/unblock_dependents.py --issue "$ISSUE"
+        run: uv run --no-project --python 3.12 python .lighthouse/scripts/unblock_dependents.py --issue "$ISSUE"

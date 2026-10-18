@@ -29,6 +29,7 @@ func TestCorePack(t *testing.T) {
 	sort.Strings(files)
 	want := []string{
 		".claude/hooks/lighthouse/main-commit-guard.sh",
+		".github/workflows/lighthouse-unblock-dependents.yml",
 		".lighthouse/headings.toml",
 		".lighthouse/lib/lighthouse_lib/__init__.py",
 		".lighthouse/lib/lighthouse_lib/artefacts.py",
@@ -44,6 +45,8 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/scripts/plan_review_record.py",
 		".lighthouse/scripts/post_artefact.py",
 		".lighthouse/scripts/review_pair.py",
+		".lighthouse/scripts/unblock_dependents.py",
+		".lighthouse/scripts/worktree_audit.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))

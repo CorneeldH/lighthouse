@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""worktree-audit: één join over worktrees, PR-status, branches en sessies (#665).
+"""worktree-audit: één join over worktrees, PR-status, branches en sessies.
 
 WAAROM DIT BESTAAT
 ------------------
@@ -32,15 +32,19 @@ DIT SCRIPT MUTEERT NIETS
 Geen delete, geen unlock, geen kill, geen schrijven naar `.port-registry`. Het
 levert commando's; de mens plakt. `run_git` weigert een niet-lezende git-verb, dus
 die norm zit in het uitvoerpad en niet alleen in de documentatie. Ook `--only`
-(#1422) muteert niets: paia-close-issue voert de geleverde regels uit, na
+muteert niets: lighthouse-close-issue voert de geleverde regels uit, na
 bevestiging — niet dit script.
 
 Gebruik:
-    uv run python scripts/worktree_audit.py            # --cleanup (default)
-    uv run python scripts/worktree_audit.py --sessions
-    uv run python scripts/worktree_audit.py --origin
-    uv run python scripts/worktree_audit.py --kpi
-    uv run python scripts/worktree_audit.py --only <branch>   # exit 0 = opruimbaar
+    python3 .lighthouse/scripts/worktree_audit.py            # --cleanup (default)
+    python3 .lighthouse/scripts/worktree_audit.py --sessions
+    python3 .lighthouse/scripts/worktree_audit.py --origin
+    python3 .lighthouse/scripts/worktree_audit.py --kpi
+    python3 .lighthouse/scripts/worktree_audit.py --only <branch>   # exit 0 = opruimbaar
+
+De default branch komt uit `[forge] default_branch`, de extra beschermde refs en paden uit
+`[worktree_audit]`, de repo voor de PR-lookup uit `[forge] repo`. Output is English;
+`--only` ends on the fixed token `cleanup: yes` or `cleanup: no — <reason>`.
 """
 
 from __future__ import annotations
@@ -56,22 +60,43 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+# Run as a file (`python3 .lighthouse/scripts/worktree_audit.py`): put `.lighthouse/lib`
+# first, so `lighthouse_lib` imports from this installation.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
-from src.controller.identity import identity
+from lighthouse_lib import config  # noqa: E402
+from lighthouse_lib.config import ConfigError  # noqa: E402
 
 # --- protect-lijst ---------------------------------------------------------
-# Een constante met een test eromheen, geen configuratiebestand: een instelling
-# die je kunt vergeten in te vullen is geen bescherming.
-#
-# `entire/*` zijn de checkpointrefs van de entire CLI (78 lokaal op 2026-08-24);
-# `.port-registry` is de poortregistratie die scripts/opencode-lane/worktree-run.sh
-# gebruikt. Beide hebben geen PR, zijn niet gemerged, en worden niet gemist tot
-# iets stukgaat.
-PROTECTED_REFS: tuple[str, ...] = ("main", "entire/*")
-PROTECTED_PATHS: tuple[str, ...] = (".port-registry",)
+# De default branch is altijd beschermd; een instelling die je kunt vergeten in
+# te vullen is geen bescherming. Daarbovenop komen de refs en paden die alleen
+# dit project kent, uit `[worktree_audit] protected_refs` en `protected_paths`
+# (bijvoorbeeld checkpointrefs als `entire/*` of een poortregistratie als
+# `.port-registry`): zulke dingen hebben geen PR, zijn niet gemerged, en worden
+# niet gemist tot iets stukgaat. `apply_config` vult ze; tot dan gelden de
+# defaults.
+DEFAULT_BRANCH = "main"
+PROTECTED_REFS: tuple[str, ...] = (DEFAULT_BRANCH,)
+PROTECTED_PATHS: tuple[str, ...] = ()
+
+
+def apply_config() -> str | None:
+    """Lees de beschermde refs en paden en de default branch uit `lighthouse.toml`;
+    geef de repo (`forge.repo`) terug, of None als die niet gezet is.
+
+    De origin-remote is geen bron voor de repo."""
+    global DEFAULT_BRANCH, PROTECTED_REFS, PROTECTED_PATHS
+    cfg = config.load(config.config_path())
+    DEFAULT_BRANCH = str(config.lookup(cfg, "forge.default_branch"))
+    PROTECTED_REFS = (
+        DEFAULT_BRANCH,
+        *config.lookup(cfg, "worktree_audit.protected_refs"),
+    )
+    PROTECTED_PATHS = tuple(config.lookup(cfg, "worktree_audit.protected_paths"))
+    try:
+        return str(config.lookup(cfg, "forge.repo"))
+    except KeyError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -126,7 +151,7 @@ class Verdict:
 
     @property
     def safe(self) -> bool:
-        """Alleen rang 6 en 8 zijn "veilig weg". Alles daarboven blokkeert."""
+        """Alleen rang 6 en 8 zijn "safe to remove". Alles daarboven blokkeert."""
         return self.rank in (6, 8)
 
     def render(self) -> str:
@@ -158,19 +183,19 @@ _SERVER_LOCK_PREFIX = "claude agent bridge-"
 def _lock_state(
     row: Row, alive: Callable[[int], bool]
 ) -> tuple[Verdict | None, tuple[str, ...]]:
-    """Rang 2, plus de modifier die een verweesde lock — of een server-lock —
+    """Rang 2, plus de modifier die een stale lock — of een server-lock —
     achterlaat.
 
     Een lock met een dode pid is geen blokkade maar een aantekening: de rij zakt
-    door naar de volgende rang en draagt "verweesde lock" mee. Ontgrendelen doet
+    door naar de volgende rang en draagt "stale lock" mee. Ontgrendelen doet
     dit script nooit. Een lock zonder pid blokkeert wel — onbekend is niet dood.
 
     Een lock waarvan de reden begint met "claude agent bridge-" is gezet door de
-    sessie-server van Remote Control (#963), niet door een sessie zelf. Spike R1
-    (`deploy/beelink/remote-surfaces-verification.md`, sectie R1) mat: die pid is
+    sessie-server van Remote Control (#963), niet door een sessie zelf. Een spike
+    mat: die pid is
     van de SERVER en blijft weken levend, ook lang nadat de sessie is gearchiveerd
     — hij bewijst dus niets over of er nu iemand werkt. Zo'n lock blokkeert daarom
-    nooit op zichzelf (geen "verweesde lock" ernaast, ongeacht of de pid leeft):
+    nooit op zichzelf (geen "stale lock" ernaast, ongeacht of de pid leeft):
     de rij zakt door naar de gewone ladder, met "server-lock" als aantekening. Of
     er nu wél iemand werkt, beslist de aparte `row.live`-trede in `judge`.
     """
@@ -179,38 +204,38 @@ def _lock_state(
     if row.lock_reason is not None and row.lock_reason.startswith(_SERVER_LOCK_PREFIX):
         return None, ("server-lock",)
     if row.lock_pid is None:
-        return Verdict(2, "⛔", "gelockt, pid onbekend"), ()
+        return Verdict(2, "⛔", "locked, pid unknown"), ()
     if alive(row.lock_pid):
-        return Verdict(2, "⛔", f"actieve sessie (pid {row.lock_pid})"), ()
-    return None, ("verweesde lock",)
+        return Verdict(2, "⛔", f"active session (pid {row.lock_pid})"), ()
+    return None, ("stale lock",)
 
 
 def _branch_verdict(row: Row, mods: tuple[str, ...]) -> Verdict:
     """Rang 5-8: de PR-toets en daarna de inhoudstoets.
 
     Alleen voor een rij die een branch heeft. Een wees-map komt hier niet langs —
-    zonder die grens zou hij op rang 8 "veilig weg" heten.
+    zonder die grens zou hij op rang 8 "safe to remove" heten.
     """
     if row.pr_state == "open":
         return Verdict(5, "⏸️", f"PR #{row.pr_number} open", mods)
     if row.pr_state == "merged":
-        return Verdict(6, "✅", "veilig weg", mods)
+        return Verdict(6, "✅", "safe to remove", mods)
     # Onbekend is nooit schoon. Een gemergede PR is het sterkere signaal en
     # bereikt rang 6 hierboven ook als de inhoudstoets faalde; alleen wat
     # anders naar 7/8 zou zakken wordt hier geblokkeerd.
     if not row.pr_lookup_ok:
-        return Verdict(7, "⚠️", "PR-status onbekend — controleren", mods)
+        return Verdict(7, "⚠️", "PR status unknown — check", mods)
     if row.unique_files is None:
-        return Verdict(7, "⚠️", "inhoudstoets mislukt — controleren", mods)
+        return Verdict(7, "⚠️", "content check failed — check", mods)
     if row.unique_files:
         n = len(row.unique_files)
-        return Verdict(7, "⚠️", f"uniek werk — bekijken ({n} bestanden)", mods)
+        return Verdict(7, "⚠️", f"unique work — review ({n} files)", mods)
     # Zelfde rang, andere reden: een branch zonder eigen commits heeft niets
-    # uniek omdat er niets ís. "veilig weg" zou lezen als "het werk landde in
+    # uniek omdat er niets ís. "safe to remove" zou lezen als "het werk landde in
     # main" — zo leek issue-941, aangemaakt en nooit gecommit.
     if row.own_commits == 0:
-        return Verdict(8, "✅", "leeg — geen eigen commits", mods)
-    return Verdict(8, "✅", "veilig weg", mods)
+        return Verdict(8, "✅", "empty — no own commits", mods)
+    return Verdict(8, "✅", "safe to remove", mods)
 
 
 def _squash_artefact(row: Row) -> bool:
@@ -267,12 +292,12 @@ def _unpushed_verdict(
     ongewijzigd.
     """
     if row.local and row.unpushed is None:
-        return Verdict(4, "⚠️", "ongepushte commits onbekend — controleren", mods), mods
+        return Verdict(4, "⚠️", "unpushed commits unknown — check", mods), mods
     if row.unpushed:
         if _is_test_leakage(row):
             return (
                 Verdict(
-                    4, "⚠️", "wees-commit zonder ouder — vermoedelijk testlekkage", mods
+                    4, "⚠️", "orphan commit without parent — likely test leakage", mods
                 ),
                 mods,
             )
@@ -280,7 +305,7 @@ def _unpushed_verdict(
             mods = (*mods, "squash-merge")
         else:
             return (
-                Verdict(4, "⚠️", f"{row.unpushed} lokale commits — controleren", mods),
+                Verdict(4, "⚠️", f"{row.unpushed} local commits — check", mods),
                 mods,
             )
     return None, mods
@@ -290,7 +315,7 @@ def judge(row: Row, *, alive: Callable[[int], bool] = pid_alive) -> Verdict:
     """De ladder: eerste treffer wint, veiligheid bovenaan.
 
     Rang 3 en 4 staan boven rang 6 — een gemergede branch met ongepushte commits
-    krijgt nooit plat "veilig weg". Dat is het #544-geval en de reden dat rang 4
+    krijgt nooit plat "safe to remove". Dat is het #544-geval en de reden dat rang 4
     niet met rang 6 is samengevoegd.
 
     Rang 2 dekt twee dingen: een lock met een levende of onbekende pid, en een
@@ -299,7 +324,7 @@ def judge(row: Row, *, alive: Callable[[int], bool] = pid_alive) -> Verdict:
     blokkeert op zichzelf niet; alleen deze `row.live`-trede beslist dan nog.
     """
     if is_protected(row):
-        return Verdict(1, "🔒", "nooit aanraken")
+        return Verdict(1, "🔒", "never touch")
 
     lock, mods = _lock_state(row, alive)
     if lock is not None:
@@ -307,14 +332,14 @@ def judge(row: Row, *, alive: Callable[[int], bool] = pid_alive) -> Verdict:
 
     # Een lopende sessie met deze worktree als cwd (#963). De sessie-server van
     # Remote Control maakt worktrees die nooit een PR krijgen; zonder deze trede
-    # heet een schone, lege worktree van een lópende sessie rang 8 "veilig weg".
+    # heet een schone, lege worktree van een lópende sessie rang 8 "safe to remove".
     # Het signaal is "hier werkt nu iemand", ongeacht wie de worktree aanmaakte —
     # en dus ook los van of `_lock_state` hierboven een server-lock doorliet.
     if row.live:
-        return Verdict(2, "⛔", "lopende sessie", mods)
+        return Verdict(2, "⛔", "running session", mods)
 
     if row.worktree is not None and row.dirty is not False:
-        text = "eerst wegschrijven" if row.dirty else "tree-status onleesbaar"
+        text = "save first" if row.dirty else "tree status unreadable"
         return Verdict(3, "⛔", text, mods)
 
     verdict, mods = _unpushed_verdict(row, mods)
@@ -328,11 +353,11 @@ def judge(row: Row, *, alive: Callable[[int], bool] = pid_alive) -> Verdict:
     # list`) maar kent een wees-map niet — en de wees-map is degene die iemand
     # per ongeluk `rm -rf`'t. Beide renderen rang 9, maar niet dezelfde tekst.
     if row.worktree is not None:
-        return Verdict(9, "❓", "losgekoppelde worktree — handmatig", mods)
+        return Verdict(9, "❓", "detached worktree — manual", mods)
     # Rang 9 wordt overruled door rang 1 zodra de map een `.port-registry` bevat.
     # Zonder die overrule zou `.claude/worktrees/worktrees/` als wees worden
     # gemeld, en een wees-melding is de eerste stap naar een `rm -rf`.
-    return Verdict(9, "❓", "wees — handmatig", mods)
+    return Verdict(9, "❓", "orphan — manual", mods)
 
 
 # Alleen-lezen git-verbs. De weigering hieronder is geen documentatie maar een
@@ -385,20 +410,20 @@ def _assert_readonly(args: list[str]) -> None:
     poort kan bevragen zonder ooit `subprocess.run` te raken."""
     verb = args[0] if args else ""
     if verb not in READONLY_GIT_VERBS:
-        raise ValueError(f"git {verb}: alleen-lezen commando's toegestaan")
+        raise ValueError(f"git {verb}: read-only commands only")
     if verb == "worktree" and (
         len(args) < 2 or args[1] not in _READONLY_WORKTREE_SUBVERBS
     ):
-        subverb = args[1] if len(args) > 1 else "<geen>"
-        raise ValueError(f"git worktree {subverb}: alleen-lezen commando's toegestaan")
+        subverb = args[1] if len(args) > 1 else "<none>"
+        raise ValueError(f"git worktree {subverb}: read-only commands only")
     if verb == "branch" and any(
         not a.startswith("-")
         or not (a in _READONLY_BRANCH_FLAGS or a.startswith(("--format=", "--sort=")))
         for a in args[1:]
     ):
-        raise ValueError("git branch: alleen-lezen commando's toegestaan")
+        raise ValueError("git branch: read-only commands only")
     if verb == "remote" and (len(args) < 2 or args[1] not in {"get-url", "-v"}):
-        raise ValueError("git remote: alleen-lezen commando's toegestaan")
+        raise ValueError("git remote: read-only commands only")
 
 
 def run_git(args: list[str], *, cwd: str | Path | None = None) -> str | None:
@@ -736,13 +761,16 @@ def build_rows(
 WORKTREE_DIRNAME = ".claude/worktrees"
 
 
-def run_gh_pulls(slug: str) -> list[dict] | None:
+def run_gh_pulls(slug: str | None) -> list[dict] | None:
     """`gh api` — nooit `gh pr list --json`: dat breekt onder de rtk-proxy.
 
     None betekent "de lookup is mislukt", niet "deze repo heeft geen PR's". Dat
     verschil draagt `Row.pr_lookup_ok`; zonder dat onderscheid leest een kapotte
-    `gh` als "geen enkele branch heeft een PR" en zakt alles naar rang 7/8.
+    `gh` als "geen enkele branch heeft een PR" en zakt alles naar rang 7/8. Zonder
+    `forge.repo` is er geen lookup: ook dat is None.
     """
+    if slug is None:
+        return None
     try:
         proc = subprocess.run(
             [
@@ -774,9 +802,9 @@ def run_gh_pulls(slug: str) -> list[dict] | None:
     return payload
 
 
-def repo_slug() -> str:
-    """De repo uit `lighthouse.toml`; de origin-remote is geen bron (tenet J)."""
-    return identity().repo
+def repo_slug() -> str | None:
+    """De repo uit `lighthouse.toml`; de origin-remote is geen bron."""
+    return apply_config()
 
 
 def _tip_shape(target: str, repo_root: Path) -> tuple[float | None, bool | None]:
@@ -847,17 +875,23 @@ def probe_branch(
     unique: tuple[str, ...] | None = None
     own: int | None = None
     if not skip_content:
-        ahead = run_git(["rev-list", "--count", f"main..{target}"], cwd=repo_root)
+        ahead = run_git(
+            ["rev-list", "--count", f"{DEFAULT_BRANCH}..{target}"], cwd=repo_root
+        )
         if ahead is not None and ahead.strip().isdigit():
             own = int(ahead.strip())
-        changed = run_git(["diff", "--name-only", f"main...{target}"], cwd=repo_root)
+        changed = run_git(
+            ["diff", "--name-only", f"{DEFAULT_BRANCH}...{target}"], cwd=repo_root
+        )
         if changed is not None:
             missing = []
             for path in changed.splitlines():
                 path = path.strip()
                 if (
                     path
-                    and run_git(["cat-file", "-e", f"main:{path}"], cwd=repo_root)
+                    and run_git(
+                        ["cat-file", "-e", f"{DEFAULT_BRANCH}:{path}"], cwd=repo_root
+                    )
                     is None
                 ):
                     missing.append(path)
@@ -963,7 +997,7 @@ def collect(repo_root: Path | None = None) -> list[Row]:
     porcelain = run_git(["worktree", "list", "--porcelain"])
     if porcelain is None:
         raise SystemExit(
-            "git worktree list --porcelain is mislukt — kan de repo niet lezen."
+            "git worktree list --porcelain failed — cannot read the repo."
         )
     worktrees = parse_worktrees(porcelain)
     # `git worktree list --porcelain` zet de hoofd-worktree altijd als eerste
@@ -975,17 +1009,21 @@ def collect(repo_root: Path | None = None) -> list[Row]:
     local_raw = run_git(["branch", "--format=%(refname:short)"], cwd=root)
     if local_raw is None:
         raise SystemExit(
-            "git branch --format=%(refname:short) is mislukt — kan de repo niet lezen."
+            "git branch --format=%(refname:short) failed — cannot read the repo."
         )
     local = parse_branches(local_raw)
 
     remote_raw = run_git(["branch", "-r", "--format=%(refname:short)"], cwd=root)
     if remote_raw is None:
         raise SystemExit(
-            "git branch -r --format=%(refname:short) is mislukt — kan de repo niet lezen."
+            "git branch -r --format=%(refname:short) failed — cannot read the repo."
         )
     remote = parse_branches(remote_raw, remote=True)
-    raw_pulls = run_gh_pulls(repo_slug())
+    try:
+        slug = repo_slug()
+    except ConfigError as exc:
+        raise SystemExit(f"worktree-audit: {exc}") from exc
+    raw_pulls = run_gh_pulls(slug)
     pr_lookup_ok = raw_pulls is not None
     pulls = parse_pulls(raw_pulls or [])
 
@@ -1030,8 +1068,8 @@ def collect(repo_root: Path | None = None) -> list[Row]:
 
 
 TABLE_HEADER = (
-    "| worktree | branch | PR-state | ongepushte commits | vuile tree "
-    "| laatste sessie | live? | verdict |"
+    "| worktree | branch | PR state | unpushed commits | dirty tree "
+    "| last session | live? | verdict |"
 )
 TABLE_RULE = "|---|---|---|---|---|---|---|---|"
 
@@ -1050,7 +1088,7 @@ def _row_line(row: Row, verdict: Verdict) -> str:
     worktree = Path(location).name if location else "—"
     pr = f"#{row.pr_number} {row.pr_state}" if row.pr_number else "—"
     unpushed = "?" if row.unpushed is None else str(row.unpushed)
-    dirty = {True: "ja", False: "nee", None: "?"}[row.dirty]
+    dirty = {True: "yes", False: "no", None: "?"}[row.dirty]
     return (
         f"| {worktree} | {row.name} | {pr} | {unpushed} | {dirty} "
         f"| {_fmt_time(row.last_session)} | {'LIVE' if row.live else '—'} "
@@ -1064,19 +1102,19 @@ def _judged(rows: list[Row], alive: Callable[[int], bool]) -> list[tuple[Row, Ve
 
 # Modifiers van een rij die nog gelockt is: git weigert `worktree remove` en
 # `branch -D` erop, dus nooit in de plaklijsten.
-_LOCKED_MODIFIERS = frozenset({"verweesde lock", "server-lock"})
+_LOCKED_MODIFIERS = frozenset({"stale lock", "server-lock"})
 
 
 def _safe_lists(
     pairs: list[tuple[Row, Verdict]],
 ) -> tuple[list[str], list[str], list[str]]:
-    """De drie plaklijsten. Belangrijk 1: een rij met een verweesde lock is nog
+    """De drie plaklijsten. Belangrijk 1: een rij met een stale lock is nog
     steeds gelockt — git weigert `worktree remove`/`branch -D` erop, dus zo'n
-    rij wordt hier uitgesloten, ook al is haar verdict "veilig weg". De rij
+    rij wordt hier uitgesloten, ook al is haar verdict "safe to remove". De rij
     blijft wél in de tabel staan; alleen de plakbare commando's slaan hem over.
 
     Hetzelfde geldt voor een server-lock (#963, eindreview F1): het oordeel
-    "veilig weg" klopt inhoudelijk, maar de lock van de sessie-server staat er
+    "safe to remove" klopt inhoudelijk, maar de lock van de sessie-server staat er
     nog, dus git weigert net zo goed. Die rijen krijgen hun eigen sectie.
     """
     eligible = [
@@ -1093,7 +1131,7 @@ def _safe_lists(
 def _render_command_blocks(
     safe_worktrees: list[str], safe_local: list[str], safe_remote: list[str]
 ) -> list[str]:
-    lines = ["Commando's — lees de tabel eerst; dit script voert niets uit.", ""]
+    lines = ["Commands — read the table first; this script runs nothing.", ""]
     # Plakvolgorde, niet willekeurig: een branch die in een worktree is
     # uitgecheckt kan git niet verwijderen ("Cannot delete branch … checked
     # out at …"), dus worktree remove moet vóór branch -D. De omgekeerde
@@ -1111,7 +1149,7 @@ def _render_command_blocks(
         lines.append("git push origin --delete " + " ".join(safe_remote))
         lines.append("```")
     if not (safe_remote or safe_local or safe_worktrees):
-        lines.append("Niets met verdict ✅ — geen commando's.")
+        lines.append("Nothing with verdict ✅ — no commands.")
     return lines
 
 
@@ -1120,15 +1158,15 @@ def _render_stale_locked_section(pairs: list[tuple[Row, Verdict]]) -> list[str]:
     lock is informatie, geen toestemming. Nooit `git worktree unlock`
     aanbieden: ontgrendelen doet dit script nooit, ook niet als suggestie.
     """
-    stale = [(r, v) for r, v in pairs if v.safe and "verweesde lock" in v.modifiers]
+    stale = [(r, v) for r, v in pairs if v.safe and "stale lock" in v.modifiers]
     if not stale:
         return []
     lines = [
         "",
-        "Gelockt met een dode pid — eerst met de hand ontgrendelen, daarna opnieuw draaien:",
+        "Locked with a dead pid — release the lock by hand first, then run again:",
     ]
     lines += [
-        f"  {r.worktree}   (lock-pid {r.lock_pid}, niet meer in /proc)"
+        f"  {r.worktree}   (lock-pid {r.lock_pid}, no longer in /proc)"
         for r, _ in stale
     ]
     return lines
@@ -1138,7 +1176,7 @@ def _render_server_locked_section(pairs: list[tuple[Row, Verdict]]) -> list[str]
     """Eindreview F1 (#963): de rijen die `_safe_lists` wegliet omdat de
     sessie-server ze nog gelockt houdt. De sessie is voorbij (anders was het
     rang 2), maar de server-pid blijft weken levend (spike R1). Net als bij de
-    verweesde lock: melden, nooit een ontgrendelcommando aanbieden.
+    stale lock: melden, nooit een ontgrendelcommando aanbieden.
     """
     held = [(r, v) for r, v in pairs if v.safe and "server-lock" in v.modifiers]
     if not held:
@@ -1146,14 +1184,14 @@ def _render_server_locked_section(pairs: list[tuple[Row, Verdict]]) -> list[str]
     lines = [
         "",
         (
-            "Gelockt door de sessie-server — sessie beëindigd; ontgrendel met de hand "
-            "als je hem weg wilt (of wacht op de volgende serverstart), daarna "
-            "opnieuw draaien:"
+            "Locked by the session server — session ended; release the lock by hand "
+            "if you want it gone (or wait for the next server start), then "
+            "run again:"
         ),
     ]
     lines += [
         f"  {r.worktree}   (server-pid "
-        f"{'onbekend' if r.lock_pid is None else r.lock_pid}, sessie beëindigd)"
+        f"{'unknown' if r.lock_pid is None else r.lock_pid}, session ended)"
         for r, _ in held
     ]
     return lines
@@ -1170,16 +1208,15 @@ def _render_port_blocks_section(rows: list[Row]) -> list[str]:
         return []
     lines = [
         "",
-        "Poortblokken (registratie in worktrees/.port-registry, read-only):",
+        "Port blocks (registered in worktrees/.port-registry, read-only):",
     ]
     lines += [
-        f"  {r.name}  poort {r.port_block}  {r.worktree or r.orphan_dir or 'geen worktree'}"
+        f"  {r.name}  port {r.port_block}  {r.worktree or r.orphan_dir or 'no worktree'}"
         for r in ported
     ]
     lines.append(
-        "Het proces dat de poort daadwerkelijk vasthoudt wordt hier niet "
-        "opgezocht (issue #438) — een lege lijst hierboven betekent niet dat "
-        "er niets draait."
+        "The process that actually holds the port is not looked up here "
+        "— an empty list above does not mean that nothing runs."
     )
     return lines
 
@@ -1207,17 +1244,17 @@ def render_sessions(
     # lang geleden, en mag niet onderaan wegzakken op een ontbrekende tijd.
     pairs.sort(key=lambda p: (p[0].live, p[0].last_session or 0.0), reverse=True)
     lines = [
-        "| laatste sessie | live? | worktree | resume | verdict |",
+        "| last session | live? | worktree | resume | verdict |",
         "|---|---|---|---|---|",
     ]
     for row, verdict in pairs:
         worktree = Path(row.worktree).name if row.worktree else "—"
         lines.append(
-            f"| {_fmt_time(row.last_session)} | {'LIVE' if row.live else 'dood'} "
+            f"| {_fmt_time(row.last_session)} | {'LIVE' if row.live else 'dead'} "
             f"| {worktree} | `claude --resume {row.session_id}` | {verdict.render()} |"
         )
     if len(lines) == 2:
-        lines.append("| — | — | — | geen sessies gevonden | — |")
+        lines.append("| — | — | — | no sessions found | — |")
     return "\n".join(lines) + "\n"
 
 
@@ -1232,17 +1269,17 @@ def render_only(
     cwd: Path,
     alive: Callable[[int], bool] = pid_alive,
 ) -> tuple[str, bool]:
-    """De view voor paia-close-issue (#1422): één rij plus `opruimen: ja|nee`.
+    """De view voor lighthouse-close-issue: één rij plus `cleanup: yes|no`.
 
-    Opruimbaar = verdict "veilig weg", niet gelockt, en de eigen cwd staat niet
+    Opruimbaar = verdict "safe to remove", niet gelockt, en de eigen cwd staat niet
     in de worktree — git weigert de eerste twee, en de derde zaagt de tak af
-    waar de sessie op zit. Bij `ja` volgen hoogstens twee commando's, in
+    waar de sessie op zit. Bij `yes` volgen hoogstens twee commando's, in
     plakvolgorde; nooit `push origin --delete`: de remote branch is de zaak van
     de merge, niet van het sluiten. Dit script voert ze niet uit.
     """
     match = [r for r in rows if r.name == branch]
     if not match:
-        return f"opruimen: nee — branch {branch} niet gevonden\n", False
+        return f"cleanup: no — branch {branch} not found\n", False
     if len(match) > 1:
         # Een losgekoppelde worktree of wees-map draagt zijn mapnaam als naam,
         # en die kan gelijk zijn aan de branch. Kiezen zou de andere rij — met
@@ -1251,9 +1288,9 @@ def render_only(
         lines = [TABLE_HEADER, TABLE_RULE]
         lines += [_row_line(r, v) for r, v in pairs]
         reason = (
-            f"{len(match)} rijen met naam {branch} (losgekoppelde worktree of wees-map)"
+            f"{len(match)} rows named {branch} (detached worktree or orphan dir)"
         )
-        lines += ["", f"opruimen: nee — {reason}"]
+        lines += ["", f"cleanup: no — {reason}"]
         return "\n".join(lines) + "\n", False
     target = match[0]
     ((_, verdict),) = _judged([target], alive)
@@ -1263,18 +1300,18 @@ def render_only(
     if not verdict.safe:
         reason = verdict.render()
     elif _LOCKED_MODIFIERS.intersection(verdict.modifiers):
-        reason = f"{verdict.render()} (gelockt)"
+        reason = f"{verdict.render()} (locked)"
     elif wt is not None and (wt == cwd or wt in cwd.parents):
-        reason = f"eigen cwd staat in {wt}"
+        reason = f"own cwd is in {wt}"
     elif wt is None and not target.local:
-        reason = "niets lokaal op te ruimen"
+        reason = "nothing local to clean up"
     else:
         reason = None
 
     if reason is not None:
-        lines.append(f"opruimen: nee — {reason}")
+        lines.append(f"cleanup: no — {reason}")
         return "\n".join(lines) + "\n", False
-    lines.append("opruimen: ja")
+    lines.append("cleanup: yes")
     if wt is not None:
         lines.append(f'git worktree remove "{target.worktree}"')
     if target.local:
@@ -1298,31 +1335,31 @@ def render_kpi(rows: list[Row], *, alive: Callable[[int], bool] = pid_alive) -> 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Audit worktrees, branches, PR-status en sessies. Muteert niets."
+        description="Audit worktrees, branches, PR state and sessions. Changes nothing."
     )
     view = parser.add_mutually_exclusive_group()
     view.add_argument(
         "--cleanup",
         action="store_true",
-        help="volledige tabel + commandoblokken (default)",
+        help="full table + command blocks (default)",
     )
     view.add_argument(
         "--sessions",
         action="store_true",
-        help="claude --resume per rij, gesorteerd op laatste sessie",
+        help="claude --resume per row, sorted by last session",
     )
-    view.add_argument("--origin", action="store_true", help="alleen remote-rijen")
-    view.add_argument("--kpi", action="store_true", help="de KPI-getallen, één regel")
+    view.add_argument("--origin", action="store_true", help="remote rows only")
+    view.add_argument("--kpi", action="store_true", help="the KPI numbers, one line")
     view.add_argument(
         "--only",
         metavar="BRANCH",
-        help="één branch + `opruimen: ja|nee` (exit 0 alleen bij ja), voor paia-close-issue",
+        help="one branch + `cleanup: yes|no` (exit 0 only on yes), for lighthouse-close-issue",
     )
     parser.add_argument(
         "--repo",
         type=Path,
         default=None,
-        help="pad naar de hoofdcheckout (default: uit git worktree list)",
+        help="path to the main checkout (default: from git worktree list)",
     )
     args = parser.parse_args(argv)
 
