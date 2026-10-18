@@ -37,6 +37,8 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/git_invocations.py",
 		".lighthouse/lib/lighthouse_lib/headings.py",
 		".lighthouse/lib/lighthouse_lib/protocol.py",
+		".lighthouse/scripts/board_start.py",
+		".lighthouse/scripts/post_artefact.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
@@ -48,7 +50,7 @@ func TestCorePack(t *testing.T) {
 	for _, r := range p.Requires {
 		tools = append(tools, r.Tool)
 	}
-	if strings.Join(tools, ",") != "git,jq,python3,tomllib" {
+	if strings.Join(tools, ",") != "gh,git,jq,python3,tomllib" {
 		t.Fatalf("tools = %v", tools)
 	}
 }

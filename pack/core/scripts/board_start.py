@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
-"""Zet een opgepakt issue van board-Status `To do` of `On hold` op `In progress` (#1007).
+"""Move a picked-up issue from board status `To do` or `On hold` to `In progress`.
 
-Aangeroepen door `paia-start-issue` direct na de worktree-stap. Wie een geparkeerd issue
+Aangeroepen door `start-issue` direct na de worktree-stap. Wie een geparkeerd issue
 bewust oppakt, heft de parkering op. `Controller` blijft staan omdat de controller daarop
-selecteert en zelf `paia-start-issue` draait; `In progress` en `Done` blijven ook staan.
+selecteert en zelf `start-issue` draait; `In progress` en `Done` blijven ook staan.
 
 Faalt nooit hard: altijd exit 0 en precies één regel die met `board: ` begint, zodat
 het oppakken van een issue er niet op blokkeert.
 
-Modus `--heropen <nr>` (#1091): zet een heropend issue van `Done` terug op `In progress`.
+Modus `--reopen <nr>`: zet een heropend issue van `Done` terug op `In progress`.
 Hier is het omgekeerde bedoeld: fail-closed. Een andere startstatus, een issue buiten het
 board, een uitzondering of een teruggelezen status ≠ `In progress` geeft één regel
-`board: FOUT — <oorzaak>` en exit 1; zo meldt `paia-close-issue` het board nooit stil als goed.
+`board: ERROR — <oorzaak>` en exit 1; zo meldt `close-issue` het board nooit stil als goed.
+
+Zonder `[forge.board]` geven beide modi `board: skipped — no [forge.board] configured` en
+exit 0 (besluit 16, 24). Een kapotte config geeft in beide modi `board: ERROR — <oorzaak>`
+en exit 2.
 
 USAGE
     board_start.py <nr>
-    board_start.py --heropen <nr>
+    board_start.py --reopen <nr>
 """
 
 from __future__ import annotations
@@ -25,17 +29,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+# Run as a file on its path: put `.lighthouse/lib` first, so `lighthouse_lib` imports
+# from this installation.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
-from src.controller.identity import IdentityError, identity
+from lighthouse_lib.config import Config, ConfigError, config_path, load
 
 # Owner en naam gaan als GraphQL-variabelen mee: de query kent de repo niet.
 QUERY = """
-query($owner: String!, $name: String!, $nummer: Int!) {
+query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
-    issue(number: $nummer) {
+    issue(number: $number) {
       projectItems(first: 20) {
         nodes {
           id
@@ -50,9 +55,10 @@ query($owner: String!, $name: String!, $nummer: Int!) {
 }
 """
 OPPAKBAAR = ("To do", "On hold")
-# Wat `gh` en de GraphQL-parsing kunnen gooien; gedeeld door het standaardpad en --heropen.
+OVERGESLAGEN = "board: skipped — no [forge.board] configured"
+# Wat `gh` en de GraphQL-parsing kunnen gooien; gedeeld door het standaardpad en --reopen.
 GH_FOUTEN = (
-    IdentityError,
+    ConfigError,
     subprocess.CalledProcessError,
     subprocess.TimeoutExpired,
     OSError,
@@ -63,10 +69,18 @@ GH_FOUTEN = (
 
 
 def foutnaam(fout: Exception) -> str:
-    """Typenaam, bij een `IdentityError` ook de melding (pad en sleutel), op één regel."""
-    if isinstance(fout, IdentityError):
+    """Typenaam, bij een `ConfigError` ook de melding (pad en sleutel), op één regel."""
+    if isinstance(fout, ConfigError):
         return f"{type(fout).__name__}: {' '.join(str(fout).split())}"
     return type(fout).__name__
+
+
+def identity() -> Config:
+    """De config van de repo; een board zonder `forge.repo` is een configfout."""
+    cfg = load(config_path())
+    if cfg.board is not None and cfg.repo is None:
+        raise ConfigError(f"{config_path()}: [forge.board] needs forge.repo")
+    return cfg
 
 
 def gh(*args: str) -> str:
@@ -93,7 +107,7 @@ def lees_item(nummer: int) -> tuple[str, str | None] | None:
             "-f",
             f"name={repo.name}",
             "-F",
-            f"nummer={nummer}",
+            f"number={nummer}",
         )
     )
     nodes = data["data"]["repository"]["issue"]["projectItems"]["nodes"]
@@ -125,55 +139,72 @@ def heropen(nummer: int) -> int:
     try:
         item = lees_item(nummer)
         if item is None:
-            print(f"board: FOUT — #{nummer} staat niet op het board")
+            print(f"board: ERROR — #{nummer} is not on the board")
             return 1
         item_id, status = item
         if status == "In progress":
-            print(f"board: #{nummer} staat al op In progress")
+            print(f"board: #{nummer} is already In progress")
             return 0
         if status != "Done":
             print(
-                f"board: FOUT — #{nummer} staat "
-                f"{'op ' + status if status else 'zonder status'}, niet op Done"
+                f"board: ERROR — #{nummer} is "
+                f"{'at ' + status if status else 'without status'}, not at Done"
             )
             return 1
         zet_in_progress(item_id)
         teruggelezen = lees_item(nummer)
     except GH_FOUTEN as fout:
-        print(f"board: FOUT — {foutnaam(fout)}")
+        print(f"board: ERROR — {foutnaam(fout)}")
         return 1
     na = teruggelezen[1] if teruggelezen else None
     if na != "In progress":
-        print(f"board: FOUT — #{nummer} staat na de edit op {na or 'geen status'}")
+        print(f"board: ERROR — #{nummer} is at {na or 'no status'} after the edit")
         return 1
     print(f"board: #{nummer} Done → In progress")
     return 0
 
 
-def main(argv: list[str]) -> int:
-    if argv[:1] == ["--heropen"]:
-        if len(argv) != 2 or not argv[1].isdigit():
-            print("board: gebruik: board_start.py --heropen <nr>")
-            return 1
-        return heropen(int(argv[1]))
-    if len(argv) != 1 or not argv[0].isdigit():
-        print("board: gebruik: board_start.py <nr>")
+def _geen_board() -> int | None:
+    """`None` met een board; zonder board de melding en exit 0, bij een configfout exit 2."""
+    try:
+        cfg = identity()
+    except ConfigError as fout:
+        print(f"board: ERROR — {foutnaam(fout)}")
+        return 2
+    if cfg.board is None:
+        print(OVERGESLAGEN)
         return 0
+    return None
+
+
+def main(argv: list[str]) -> int:
+    if argv[:1] == ["--reopen"]:
+        if len(argv) != 2 or not argv[1].isdigit():
+            print("board: usage: board_start.py --reopen <nr>")
+            return 1
+        code = _geen_board()
+        return heropen(int(argv[1])) if code is None else code
+    if len(argv) != 1 or not argv[0].isdigit():
+        print("board: usage: board_start.py <nr>")
+        return 0
+    code = _geen_board()
+    if code is not None:
+        return code
     nummer = int(argv[0])
     try:
         item = lees_item(nummer)
         if item is None:
-            print(f"board: #{nummer} staat niet op het board")
+            print(f"board: #{nummer} is not on the board")
             return 0
         item_id, status = item
         if status not in OPPAKBAAR:
             print(
-                f"board: #{nummer} blijft {'op ' + status if status else 'zonder status'}"
+                f"board: #{nummer} stays {'at ' + status if status else 'without status'}"
             )
             return 0
         zet_in_progress(item_id)
     except GH_FOUTEN as fout:
-        print(f"board: overgeslagen ({foutnaam(fout)})")
+        print(f"board: skipped ({foutnaam(fout)})")
         return 0
     print(f"board: #{nummer} {status} → In progress")
     return 0
