@@ -43,6 +43,22 @@ ALLOWED_EXTERNAL = {
     "superpowers:writing-skills",
 }
 
+# Core skills of this PR that are not written yet, so another skill may already link to
+# them. A skill leaves this set in the commit that adds it (test_planned_skills_absent);
+# the set is empty when PR 4 is done.
+PLANNED = {
+    "start-issue",
+    "handoff",
+    "verify-pr",
+    "fix-pr",
+    "close-issue",
+    "spec-adversarial-review",
+    "plan-adversarial-review",
+    "write-issue",
+    "worktree-audit",
+    "instrument",
+}
+
 # An installed path in a skill -> where it lives in pack/core.
 _PATH_REFS = (
     (re.compile(r"\.lighthouse/scripts/([\w.-]+)"), lambda m: CORE / "scripts" / m[1]),
@@ -135,7 +151,7 @@ def test_config_keys_known(unit):
     for rel, text in _texts(unit).items():
         for m in _CONFIG_RE.finditer(text):
             key = m[1].strip("\"'")
-            if key == "host-check" or key.startswith(("<", "$", "-")):
+            if key == "host-check" or key.startswith(("$", "-")) or "<" in key:
                 continue
             if not config.is_known_key(key):
                 unknown.append(f"{rel}: {key}")
@@ -156,7 +172,7 @@ def test_heading_keys_known(unit):
 
 @pytest.mark.parametrize("unit", UNITS)
 def test_skill_links_resolve(unit):
-    known = {p.name for p in _skill_dirs()}
+    known = {p.name for p in _skill_dirs()} | PLANNED
     bad = []
     for rel, text in _texts(unit).items():
         for m in _LIGHTHOUSE_SKILL_RE.finditer(text):
@@ -177,10 +193,14 @@ def test_optional_steps_guarded(unit):
     unguarded = []
     for rel, text in _texts(unit).items():
         for para in re.split(r"\n\s*\n", text):
-            if _OPTIONAL_RE.search(para) and not _GUARD_RE.search(para):
+            if _OPTIONAL_RE.search(para) and not _GUARD_RE.search(" ".join(para.split())):
                 first = next(line for line in para.splitlines() if _OPTIONAL_RE.search(line))
                 unguarded.append(f"{rel}: {first.strip()[:120]}")
     assert not unguarded, "\n".join(unguarded)
+
+
+def test_planned_skills_absent():
+    assert not PLANNED & {p.name for p in _skill_dirs()}
 
 
 @pytest.mark.parametrize("skill", SKILL_PARAMS)
