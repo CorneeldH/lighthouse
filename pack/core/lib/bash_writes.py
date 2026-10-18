@@ -5,11 +5,14 @@ Zie `docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
 secties *Datastroom* (Wortels, post bron 1/2), *Staat*, *Lock*, *pre*, *post*,
 *De pool*, *Dispatch*, *Uitvoer* en *Foutafhandeling* voor de semantiek.
 Aangeroepen als `python3 bash_writes.py pre|post` met de hookpayload op
-stdin, via de wrapper `.claude/hooks/bash-write-gates.sh`.
+stdin, via de wrapper `.claude/hooks/lighthouse/bash-write-gates.sh`. De gates
+staan in `<repo-root>/.claude/hooks/lighthouse/` (`config.repo_root()`); een gate
+die er niet staat, omdat zijn taalpakket ontbreekt, meldt post per bestand
+zonder te blokkeren (besluit 19).
 
-Twee omgevingsvariabelen zijn test-only naden: `PAIA_BASH_GATES_DEADLINE`
+Twee omgevingsvariabelen zijn test-only naden: `LIGHTHOUSE_BASH_GATES_DEADLINE`
 (seconden, override van de post-deadline, default 90, gelezen door
-`run_post`) en `PAIA_BASH_GATES_START_NS` (override van de pre-starttijd, in
+`run_post`) en `LIGHTHOUSE_BASH_GATES_START_NS` (override van de pre-starttijd, in
 nanoseconden, gelezen door `run_pre`).
 """
 
@@ -29,17 +32,16 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import NamedTuple
 
-# Nog geen lib-module importeert een andere; dit is de eerste. Zonder deze
-# insert vinden `import git_invocations` en `from deadline import …` de buren
-# niet, want deze module wordt ook geladen via
-# `importlib.util.spec_from_file_location` (zie `_hook_testkit.load_hook_lib`),
-# wat `sys.path` niet vanzelf uitbreidt.
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import git_invocations
-from deadline import Interrupted, run_until
+# Run as a file on its path: put `.lighthouse/lib` first, so `lighthouse_lib`
+# imports from this installation.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# `.claude/hooks/`: de map van de drie gates, de ouder van `lib/`.
-HOOK_DIR = Path(__file__).resolve().parent.parent
+from lighthouse_lib import config, git_invocations
+from lighthouse_lib.deadline import Interrupted, run_until
+
+# De map van de gates, onder de repo-root.
+HOOK_DIR = Path(".claude/hooks/lighthouse")
 
 GATES: dict[str, str] = {
     ".sh": "shellcheck.sh",
@@ -48,6 +50,19 @@ GATES: dict[str, str] = {
     ".md": "worktree-linkcheck.sh",
     ".markdown": "worktree-linkcheck.sh",
 }
+
+# Het pakket dat elke gate levert; ontbreekt de gate, dan noemt de melding het.
+GATE_PACKS: dict[str, str] = {
+    "shellcheck.sh": "shell",
+    "ruff-format.sh": "python",
+    "worktree-linkcheck.sh": "core",
+}
+
+
+def gate_path(root: str, ext: str) -> Path | None:
+    """De gate van extensie `ext` onder `root`; `None` als de extensie geen gate heeft."""
+    gate = GATES.get(ext)
+    return None if gate is None else Path(root) / HOOK_DIR / gate
 
 # Fallback-tokenizer voor een Unparseable commando (open quote): geen echte
 # shell-parse meer mogelijk, dus een ruwe woordsplitsing op wat sowieso nooit
@@ -75,7 +90,7 @@ class GitError(Exception):
 
     `returncode` is `None` bij een timeout of een `OSError` (het proces is
     dan nooit geëindigd met een exitcode); de exception-boodschap is de
-    stderr-tekst van git, of de vaste tekst `git-leesactie over de deadline`
+    stderr-tekst van git, of de vaste tekst `git read past the deadline`
     bij een timeout.
     """
 
@@ -98,7 +113,7 @@ def git(root: str, *args: str, deadline: float) -> bytes:
     try:
         result = subprocess.run(argv, capture_output=True, timeout=timeout, check=False)
     except subprocess.TimeoutExpired as exc:
-        raise GitError(root, None, "git-leesactie over de deadline") from exc
+        raise GitError(root, None, "git read past the deadline") from exc
     except OSError as exc:
         raise GitError(root, None, str(exc)) from exc
     if result.returncode != 0:
@@ -205,7 +220,7 @@ def project_filter(
         try:
             common = common_dir(root)
         except GitError as exc:
-            errors.append(f"KON NIET CONTROLEREN: {root} ({exc})")
+            errors.append(f"COULD NOT CHECK: {root} ({exc})")
             continue
         if common == ref_common:
             kept.add(root)
@@ -343,7 +358,7 @@ def _commits_until_stop(
     for entry in entries:
         if entry.sha == stop:
             notes = (
-                [f"HEAD verzet zonder commit ({moved_subject})"]
+                [f"HEAD moved without a commit ({moved_subject})"]
                 if moved_subject
                 else []
             )
@@ -352,7 +367,7 @@ def _commits_until_stop(
             collected.append((entry.sha, _is_merge_commit(entry.subject)))
         elif moved_subject is None and entry.subject:
             moved_subject = entry.subject
-    return [], [f"reflog-gat: ledger-HEAD {stop} niet gevonden"]
+    return [], [f"reflog gap: ledger HEAD {stop} not found"]
 
 
 def _commits_from_unborn(
@@ -481,18 +496,18 @@ def signature(path: str) -> Signature | None:
 
 
 def state_dir(session_id: str) -> Path:
-    """`${XDG_RUNTIME_DIR:-/tmp}/paia-bash-gates/<session_id>/`, aangemaakt met modus `0700`.
+    """`${XDG_RUNTIME_DIR:-/tmp}/lighthouse-bash-gates/<session_id>/`, aangemaakt met modus `0700`.
 
     Een `session_id` met een `/` of gelijk aan `..` zou de statusmap kunnen
     ontsnappen; die wordt geweigerd. `mkdir(..., parents=True)` maakt
-    ontbrekende oudermappen (`paia-bash-gates/` zelf) met de standaardmodus
+    ontbrekende oudermappen (`lighthouse-bash-gates/` zelf) met de standaardmodus
     aan — alleen de sessiemap zelf moet `0700` zijn, en die modus wordt na
     het aanmaken nog eens expliciet gezet: een `umask` kan de modus van
     `mkdir` zelf beïnvloeden.
     """
     if "/" in session_id or session_id == "..":
-        raise ValueError(f"ongeldige session_id: {session_id!r}")
-    base = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "paia-bash-gates"
+        raise ValueError(f"invalid session_id: {session_id!r}")
+    base = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "lighthouse-bash-gates"
     path = base / session_id
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(path, 0o700)
@@ -693,7 +708,7 @@ def _run_pre(payload: dict) -> None:
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
     if not project_dir:
         return
-    start_ns_raw = os.environ.get("PAIA_BASH_GATES_START_NS")
+    start_ns_raw = os.environ.get("LIGHTHOUSE_BASH_GATES_START_NS")
     start_ns = int(start_ns_raw) if start_ns_raw else time.time_ns()
     deadline = time.time() + _PRE_DEADLINE_S
 
@@ -769,7 +784,7 @@ def run_pre(payload: dict) -> int:
 # --- post (taak 7): bron 1, claims, dispatch, uitvoer ------------------------
 
 _PREFIX = "bash-write-gates:"
-_CANNOT = "KON NIET CONTROLEREN"
+_CANNOT = "COULD NOT CHECK"
 
 # Spec *Dispatch*: één deadline van 90 s na de start van post, 10 s grace per
 # gate — samen ruim binnen de hooktimeout van 120 s.
@@ -787,6 +802,10 @@ _SIGN_AFTER_GATE = frozenset({"ruff-format.sh"})
 # met 128 + n eindigt, is geen signaal maar een gewone niet-oordeel-exit.
 _STOPPED = "stopped"
 
+# `run_gate`: de gate staat er niet, want zijn taalpakket ontbreekt (besluit 19).
+# Geen blokkade, wel een melding per bestand; het bestand telt daarna als gezien.
+_MISSING = "missing"
+
 
 def _now() -> float:
     """De klok van `run_post`; een module-functie zodat een test hem kan vervangen."""
@@ -794,8 +813,8 @@ def _now() -> float:
 
 
 def _post_deadline_s() -> float:
-    """`PAIA_BASH_GATES_DEADLINE` (test-only naad) of de default van 90 s."""
-    raw = os.environ.get("PAIA_BASH_GATES_DEADLINE")
+    """`LIGHTHOUSE_BASH_GATES_DEADLINE` (test-only naad) of de default van 90 s."""
+    raw = os.environ.get("LIGHTHOUSE_BASH_GATES_DEADLINE")
     try:
         return float(raw) if raw else _POST_DEADLINE_S
     except ValueError:
@@ -805,21 +824,19 @@ def _post_deadline_s() -> float:
 def classify(rc: int, output: bytes) -> str:
     """Het oordeel van een gate: `"ok"`, `"finding"` of `"unchecked"`.
 
-    rc 0 is ok. rc 2 is een bevinding, tenzij de EERSTE uitvoerregel de
-    niet-gekeken-vorm van de gate zelf is: `shellcheck-gate:` met
-    `NIET gecontroleerd`, of `Linkcheck: KON NIET CONTROLEREN`. Alleen de
-    eerste regel: shellcheck en ruff citeren bronregels, dus een bestand dat
-    die zin zelf bevat mag geen echt oordeel ongedaan maken. Elke andere rc
-    (deadline 124, ontbrekend 127, een crash) is unchecked.
+    rc 0 is ok. rc 2 is een bevinding, tenzij de EERSTE uitvoerregel het
+    token `COULD NOT CHECK` bevat: de niet-gekeken-vorm van elke gate
+    (`<gate>: COULD NOT CHECK — <reden>`, besluit 18). Alleen de eerste regel:
+    shellcheck en ruff citeren bronregels, dus een bestand dat dat token zelf
+    bevat mag geen echt oordeel ongedaan maken. Elke andere rc (deadline 124,
+    ontbrekend 127, een crash) is unchecked.
     """
     if rc == 0:
         return "ok"
     if rc != 2:
         return "unchecked"
     first = output.decode(errors="replace").split("\n", 1)[0]
-    if first.startswith("shellcheck-gate:") and "NIET gecontroleerd" in first:
-        return "unchecked"
-    if first.startswith("Linkcheck: KON NIET CONTROLEREN"):
+    if _CANNOT in first:
         return "unchecked"
     return "finding"
 
@@ -830,9 +847,14 @@ def run_gate(root: str, rel: str, deadline: float) -> tuple[str, bytes]:
     Payload `{"tool_name":"Bash","cwd":root,"tool_input":{"file_path":<abs>}}`,
     proces-cwd = `root`: `ruff-format.sh` zoekt zijn `.ruff-version` vanuit de
     proces-cwd, niet via de payload. Geeft `(classify(rc, uitvoer), uitvoer)`,
-    of `(_STOPPED, uitvoer)` als een doorgestuurd signaal de gate afbrak.
+    of `(_STOPPED, uitvoer)` als een doorgestuurd signaal de gate afbrak, of
+    `(_MISSING, melding)` als de gate niet onder de repo-root staat.
     """
     gate = GATES[os.path.splitext(rel)[1]]
+    path = gate_path(str(config.repo_root()), os.path.splitext(rel)[1])
+    assert path is not None  # GATES kent de extensie
+    if not path.is_file():
+        return _MISSING, f"no {GATE_PACKS[gate]} gate installed".encode()
     payload = {
         "tool_name": "Bash",
         "cwd": root,
@@ -841,7 +863,7 @@ def run_gate(root: str, rel: str, deadline: float) -> tuple[str, bytes]:
     try:
         rc, output = run_until(
             deadline,
-            [str(HOOK_DIR / gate)],
+            [str(path)],
             grace=_GATE_GRACE_S,
             cwd=root,
             stdin_bytes=json.dumps(payload).encode("utf-8"),
@@ -969,8 +991,8 @@ def _root_view(
 
 
 _NO_START_NOTE = (
-    "bron 2 overgeslagen: geen ledger-HEAD en geen marker met een starttijd"
-    " om tegen te wandelen"
+    "source 2 skipped: no ledger HEAD and no marker with a start time"
+    " to walk back to"
 )
 
 
@@ -1142,12 +1164,12 @@ def _root_pool(view: _RootView, *, deadline: float) -> _Pool:
             result.settled.append(rel)
             continue
         if elsewhere:
-            why = f"gecommit in {stranded[rel][:12]}, niet op schijf en niet in HEAD"
+            why = f"committed in {stranded[rel][:12]}, not on disk and not in HEAD"
             result.unchecked.append((rel, why))
         elif sig is None:
-            result.unchecked.append((rel, "staat in HEAD, niet op schijf"))
+            result.unchecked.append((rel, "in HEAD, not on disk"))
         elif not _is_utf8(rel):
-            result.unchecked.append((rel, "naam is geen geldige UTF-8"))
+            result.unchecked.append((rel, "name is not valid UTF-8"))
         else:
             result.candidates.append(rel)
         if rel in from_source_2:
@@ -1288,9 +1310,12 @@ def _report_verdict(
     """
     if verdict == "ok":
         return
+    if verdict == _MISSING:
+        outcome.note(f"{_PREFIX} {label} not checked — {output.decode()}")
+        return
     lines = [f"== {label} ({gate}) =="]
     if verdict == "unchecked":
-        lines.append(f"{_PREFIX} {_CANNOT}: {label} — {gate} gaf geen oordeel")
+        lines.append(f"{_PREFIX} {_CANNOT}: {label} — {gate} gave no verdict")
     text = output.decode(errors="replace").rstrip("\n")
     if text:
         lines.append(text)
@@ -1302,7 +1327,7 @@ def _cannot_left(
 ) -> None:
     """Eén `KON NIET CONTROLEREN` met `why` en elk resterend absoluut pad."""
     outcome.cannot(
-        f"{why}, niet gecontroleerd:\n"
+        f"{why}, not checked:\n"
         + "\n".join(f"  {os.path.join(v.root, r)}" for v, r in left)
     )
 
@@ -1335,7 +1360,7 @@ def _vanished(
                 _drop_pending(record, rel)
     if in_head:
         path = os.path.join(view.root, rel)
-        outcome.cannot(f"{path} (verdween vóór de gate; staat in HEAD, niet op schijf)")
+        outcome.cannot(f"{path} (vanished before the gate; in HEAD, not on disk)")
 
 
 def _dispatch(
@@ -1361,7 +1386,7 @@ def _dispatch(
     """
     for index, (view, rel) in enumerate(claimed):
         if _now() >= deadline:
-            _cannot_left(outcome, "deadline verstreken", claimed[index:])
+            _cannot_left(outcome, "deadline passed", claimed[index:])
             return
         path = os.path.join(view.root, rel)
         gate = GATES[os.path.splitext(rel)[1]]
@@ -1372,7 +1397,7 @@ def _dispatch(
         verdict, output = run_gate(view.root, rel, deadline)
         if verdict == _STOPPED:
             _record_verdict(state, key, view, rel, "unchecked", None)
-            _cannot_left(outcome, "signaal ontvangen", claimed[index:])
+            _cannot_left(outcome, "signal received", claimed[index:])
             return
         sig = signature(path) if gate in _SIGN_AFTER_GATE else before
         _record_verdict(state, key, view, rel, verdict, sig)
@@ -1448,11 +1473,11 @@ def _post_in_state(
         return
     for root in gone:
         # Exit 0: de bestanden zijn met de wortel mee verdwenen.
-        outcome.note(f"{_PREFIX} {root} bestaat niet meer; niet gecontroleerd")
+        outcome.note(f"{_PREFIX} {root} no longer exists; not checked")
 
     ledger = _read_ledger(state / "ledger.json")
     if ledger.unreadable and roots:
-        outcome.note(f"{_PREFIX} ledger onleesbaar; terugval voor elke wortel")
+        outcome.note(f"{_PREFIX} ledger unreadable; fallback for every root")
     pools = _root_pools(
         roots, ledger, marker_roots, _marker_since(marker), deadline, outcome
     )
@@ -1460,8 +1485,8 @@ def _post_in_state(
         claimed, replaced = _claim(state, key, pools)
         if replaced:
             outcome.note(
-                f"{_PREFIX} onleesbare ledger vervangen; een wortel die deze call"
-                " niet raakte valt bij zijn volgende call terug"
+                f"{_PREFIX} unreadable ledger replaced; a root this call did not"
+                " touch falls back at its next call"
             )
         _dispatch(claimed, state, key, deadline, outcome, absolute=len(pools) > 1)
 
@@ -1491,7 +1516,7 @@ def _root_pools(
             continue
         pools.append(pool)
         if view.fallback and root in marker_roots:
-            outcome.note(f"{_PREFIX} terugval zonder ledger voor {root}")
+            outcome.note(f"{_PREFIX} fallback without ledger for {root}")
         for note in pool.notes:
             outcome.note(f"{_PREFIX} {root}: {note}")
         for rel, why in pool.unchecked:
@@ -1502,7 +1527,7 @@ def _root_pools(
 def _post(payload: dict, outcome: _Outcome) -> None:
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
     if not project_dir:
-        outcome.cannot("CLAUDE_PROJECT_DIR ontbreekt, de projectwortels zijn onbekend")
+        outcome.cannot("CLAUDE_PROJECT_DIR is missing, the project roots are unknown")
         return
     deadline = _now() + _post_deadline_s()
     state = state_dir(str(payload.get("session_id", "")))
@@ -1529,7 +1554,7 @@ def run_post(payload: dict) -> tuple[int, str, str]:
     try:
         _post(payload, outcome)
     except Exception as exc:  # noqa: BLE001 -- post faalt luid, nooit met een traceback
-        outcome.cannot(f"interne fout in de dispatcher ({type(exc).__name__}: {exc})")
+        outcome.cannot(f"internal error in the dispatcher ({type(exc).__name__}: {exc})")
     return outcome.render(str(event))
 
 
@@ -1541,7 +1566,7 @@ def main(argv: list[str]) -> int:
     """
     mode = argv[0] if argv else ""
     if mode not in ("pre", "post"):
-        sys.stderr.write(f"{_PREFIX} gebruik: bash_writes.py pre|post\n")
+        sys.stderr.write(f"{_PREFIX} usage: bash_writes.py pre|post\n")
         return 2
     try:
         payload = json.loads(sys.stdin.buffer.read())
@@ -1553,7 +1578,7 @@ def main(argv: list[str]) -> int:
         code, out, err = run_post(payload)
     else:
         outcome = _Outcome()
-        outcome.cannot("de hookpayload op stdin is geen JSON-object")
+        outcome.cannot("the hook payload on stdin is not a JSON object")
         code, out, err = outcome.render("PostToolUse")
     sys.stdout.write(out)
     sys.stderr.write(err)

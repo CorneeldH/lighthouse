@@ -76,3 +76,8 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/lib/pr_body_gate.py"
 source_path = ".claude/hooks/lib/pr_body_gate.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/lib/bash_writes.py"
+source_path = ".claude/hooks/lib/bash_writes.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

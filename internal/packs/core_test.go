@@ -31,6 +31,7 @@ func TestCorePack(t *testing.T) {
 		".claude/hooks/lighthouse/main-commit-guard.sh",
 		".lighthouse/headings.toml",
 		".lighthouse/lib/lighthouse_lib/__init__.py",
+		".lighthouse/lib/lighthouse_lib/bash_writes.py",
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/deadline.py",

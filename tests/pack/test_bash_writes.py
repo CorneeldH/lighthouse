@@ -1,4 +1,4 @@
-"""Leeslaag en staat van `.claude/hooks/lib/bash_writes.py` (#871, taak 5+6).
+"""Leeslaag en staat van `pack/core/lib/bash_writes.py` (#871, taak 5+6).
 
 Taak 5: wortels, git-records (porcelain, diff-tree, reflog) en welke commits
 een post moet controleren. Taak 6: handtekeningen, de sessiemap, de
@@ -18,7 +18,7 @@ import time
 
 import pytest
 
-from tests.unit._hook_testkit import (
+from tests.pack._testkit import (
     GIT_ENV,
     git,
     init_repo,
@@ -28,6 +28,19 @@ from tests.unit._hook_testkit import (
 
 bw = load_hook_lib("bash_writes")
 E = bw.ReflogEntry
+
+
+@pytest.fixture(autouse=True)
+def gate_root(tmp_path, monkeypatch):
+    """Een lighthouse-root met een stub voor elke gate, zodat `run_gate` er een vindt."""
+    root = tmp_path / "lighthouse-root"
+    hooks = root / ".claude" / "hooks" / "lighthouse"
+    hooks.mkdir(parents=True)
+    for gate in set(bw.GATES.values()):
+        (hooks / gate).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (hooks / gate).chmod(0o755)
+    monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(root))
+    return root
 
 
 # --- GATES --------------------------------------------------------------
@@ -61,7 +74,7 @@ def test_git_raises_giterror_on_timeout(tmp_path, monkeypatch):
     with pytest.raises(bw.GitError) as exc_info:
         bw.git(str(tmp_path), "status", deadline=time.time() + 5)
     assert exc_info.value.returncode is None
-    assert "git-leesactie over de deadline" in str(exc_info.value)
+    assert "git read past the deadline" in str(exc_info.value)
 
 
 # --- parse_porcelain / parse_diff_tree ------------------------------------
@@ -106,7 +119,7 @@ def test_reflog_stops_at_the_ledger_head_and_reports_a_checkout():
     shas, notes = bw.commits_to_check(
         [E("b2", 20, "pull: Fast-forward"), *e[2:]], "a1", None
     )
-    assert shas == [] and "zonder commit" in notes[0]
+    assert shas == [] and "without a commit" in notes[0]
 
 
 def test_reflog_empty_subject_does_not_hide_a_later_movement():
@@ -403,7 +416,7 @@ def test_project_filter_drops_a_foreign_repo_and_flags_a_broken_one(tmp_path):
     assert kept == {os.path.realpath(str(main)), os.path.realpath(str(wt))}
     assert len(errors) == 1
     assert errors[0].startswith(
-        f"KON NIET CONTROLEREN: {os.path.realpath(str(broken))}"
+        f"COULD NOT CHECK: {os.path.realpath(str(broken))}"
     )
 
 
@@ -712,7 +725,7 @@ def test_run_pre_returns_zero_without_a_project_dir(tmp_path, monkeypatch):
     assert bw.run_pre(payload) == 0
     # Zonder `CLAUDE_PROJECT_DIR` keert `_run_pre` terug vóór `state_dir`
     # ooit wordt aangeroepen: er is geen sessiemap, dus ook geen marker.
-    assert not (xdg / "paia-bash-gates" / "s").exists()
+    assert not (xdg / "lighthouse-bash-gates" / "s").exists()
 
 
 def test_run_pre_returns_zero_on_a_broken_repo(tmp_path, monkeypatch):
@@ -733,7 +746,7 @@ def test_run_pre_returns_zero_on_a_broken_repo(tmp_path, monkeypatch):
     assert bw.run_pre(payload) == 0
     # `project_filter` gooit een `GitError` op de kapotte `project_dir` zelf,
     # vóórdat `_run_pre` `state_dir` aanroept: geen sessiemap, geen marker.
-    assert not (xdg / "paia-bash-gates" / "sess-broken").exists()
+    assert not (xdg / "lighthouse-bash-gates" / "sess-broken").exists()
 
 
 def test_run_pre_does_not_overwrite_an_unreadable_ledger(tmp_path, monkeypatch):
@@ -826,21 +839,14 @@ def test_run_pre_seeds_a_fresh_root_and_writes_a_marker(tmp_path, monkeypatch):
     ("rc", "output", "verdict"),
     [
         (0, b"", "ok"),
-        # De vier eerste-regelvormen uit taak 2.
+        # Eén token voor elke gate, alleen op de eerste regel.
         (
             2,
-            b"shellcheck-gate: shellcheck-repo.sh gaf rc=4 - er is NIET gecontroleerd:\n",
+            b"shellcheck-gate: COULD NOT CHECK \xe2\x80\x94 shellcheck-repo.sh gave rc=4\n",
             "unchecked",
         ),
-        (
-            2,
-            (
-                b"shellcheck-gate: los dit op in de code. Moet een regel echt uit\n"
-                b"# NIET gecontroleerd\n"
-            ),
-            "finding",
-        ),
-        (2, b"Linkcheck: KON NIET CONTROLEREN \xe2\x80\x94 jq\n", "unchecked"),
+        (2, b"ruff-format: COULD NOT CHECK \xe2\x80\x94 ruff is missing\n", "unchecked"),
+        (2, b"Linkcheck: COULD NOT CHECK \xe2\x80\x94 jq\n", "unchecked"),
         (2, b"Linkcheck: markdown-link bestaat niet: x.md\n", "finding"),
         # ruff-format.sh: pass 1 staat vóór `Lint-gate:`, nooit een unchecked-vorm.
         (2, b"1 file left unchanged\nLint-gate: los dit op\n", "finding"),
@@ -861,8 +867,8 @@ def test_deadline_makes_progress_over_many_files(tmp_path, monkeypatch):
     past_this_second()
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "xdg"))
-    monkeypatch.delenv("PAIA_BASH_GATES_DEADLINE", raising=False)
-    monkeypatch.delenv("PAIA_BASH_GATES_START_NS", raising=False)
+    monkeypatch.delenv("LIGHTHOUSE_BASH_GATES_DEADLINE", raising=False)
+    monkeypatch.delenv("LIGHTHOUSE_BASH_GATES_START_NS", raising=False)
 
     judged: list[str] = []
     fired = {"flag": False}
@@ -905,7 +911,7 @@ def test_deadline_makes_progress_over_many_files(tmp_path, monkeypatch):
     codes = [code for code, _out, _err in results]
     assert codes == [2, 2, 2, 0], results
     first_err = results[0][2]
-    assert "KON NIET CONTROLEREN" in first_err
+    assert "COULD NOT CHECK" in first_err
     assert "b.sh" in first_err and "c.sh" in first_err
     assert results[3][1:] == ("", "")
 
@@ -920,8 +926,8 @@ def _post_env(tmp_path, monkeypatch):
     init_repo(repo)
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "xdg"))
-    monkeypatch.delenv("PAIA_BASH_GATES_DEADLINE", raising=False)
-    monkeypatch.delenv("PAIA_BASH_GATES_START_NS", raising=False)
+    monkeypatch.delenv("LIGHTHOUSE_BASH_GATES_DEADLINE", raising=False)
+    monkeypatch.delenv("LIGHTHOUSE_BASH_GATES_START_NS", raising=False)
     for name, value in GIT_ENV.items():
         monkeypatch.setenv(name, value)
     past_this_second()
@@ -946,7 +952,7 @@ def _write_bad_name(repo) -> None:
 
 
 def _ledger_root(tmp_path, repo) -> dict:
-    ledger = tmp_path / "xdg" / "paia-bash-gates" / "sess-utf8" / "ledger.json"
+    ledger = tmp_path / "xdg" / "lighthouse-bash-gates" / "sess-utf8" / "ledger.json"
 
     return json.loads(ledger.read_text(encoding="utf-8"))[os.path.realpath(repo)]
 
@@ -966,9 +972,9 @@ def test_non_utf8_name_is_unchecked_not_dispatched(tmp_path, monkeypatch):
             assert bw.run_pre(_payload(repo, n)) == 0
         code, out, err = bw.run_post(_payload(repo, n))
         assert code == 2, (out, err)
-        assert "KON NIET CONTROLEREN" in err
+        assert "COULD NOT CHECK" in err
         assert "bad\\xff.sh" in err
-        assert "KON NIET CONTROLEREN" in out
+        assert "COULD NOT CHECK" in out
     assert dispatched == []
     assert BAD_NAME not in _ledger_root(tmp_path, repo)["seen"]
 
@@ -1007,7 +1013,7 @@ def test_failing_diff_tree_in_a_born_repo_is_unchecked(tmp_path, monkeypatch):
     git(repo, "commit", "-qm", "x")
     code, _out, err = bw.run_post(_payload(repo, 0))
     assert code == 2, err
-    assert f"KON NIET CONTROLEREN: {os.path.realpath(repo)}" in err
+    assert f"COULD NOT CHECK: {os.path.realpath(repo)}" in err
     assert "fatal: kapot" in err
 
 
@@ -1038,7 +1044,7 @@ def test_missed_deadline_advances_head_and_keeps_pending(tmp_path, monkeypatch):
     monkeypatch.setattr(bw, "_now", late_now)
     code, _out, err = bw.run_post(_payload(repo, 0))
     assert code == 2, err
-    assert "KON NIET CONTROLEREN" in err
+    assert "COULD NOT CHECK" in err
     assert "SC2034" not in err
     record = _ledger_root(tmp_path, repo)
     assert record["head"] == head
@@ -1077,7 +1083,7 @@ def test_advance_merges_pending_and_keeps_what_another_post_added():
 
 def test_pending_rename_source_is_not_unchecked(tmp_path, monkeypatch):
     # a.sh komt via een gemiste deadline in `pending`, en wordt daarna gestaged
-    # hernoemd: de bron is verwijderd, niet `KON NIET CONTROLEREN`.
+    # hernoemd: de bron is verwijderd, niet `COULD NOT CHECK`.
     repo = _post_env(tmp_path, monkeypatch)
     monkeypatch.setattr(bw, "run_gate", lambda root, rel, deadline: ("ok", b""))
     assert bw.run_pre(_payload(repo, 0)) == 0
@@ -1101,7 +1107,7 @@ def test_pending_rename_source_is_not_unchecked(tmp_path, monkeypatch):
     git(repo, "mv", "a.sh", "b.sh")
     code, out, err = bw.run_post(_payload(repo, 1))
     assert code == 0, err
-    assert "KON NIET" not in err and "KON NIET" not in out
+    assert "COULD NOT" not in err and "COULD NOT" not in out
     assert _ledger_root(tmp_path, repo)["pending"] == []
 
 
@@ -1142,7 +1148,7 @@ def test_vanished_candidate_is_not_dispatched_and_not_ok(tmp_path, monkeypatch):
     code, out, err = bw.run_post(_payload(repo, 0))
     assert dispatched == []
     assert code == 2, (out, err)
-    assert "KON NIET CONTROLEREN" in err and "x.sh" in err
+    assert "COULD NOT CHECK" in err and "x.sh" in err
     # y.sh stond nooit in HEAD: verwijderd, geen melding.
     assert "y.sh" not in err
     record = _ledger_root(tmp_path, repo)
@@ -1164,7 +1170,7 @@ def test_signal_during_a_gate_stops_the_dispatch_loudly(tmp_path, monkeypatch):
     code, out, err = bw.run_post(_payload(repo, 0))
     assert len(started) == 1, started
     assert code == 2, (out, err)
-    assert "KON NIET CONTROLEREN" in err
+    assert "COULD NOT CHECK" in err
     for name in ("a.sh", "b.sh", "c.sh"):
         assert name in err
     record = _ledger_root(tmp_path, repo)
@@ -1190,8 +1196,8 @@ def test_gate_exit_128_plus_n_does_not_stop_the_dispatch(tmp_path, monkeypatch, 
     code, out, err = bw.run_post(_payload(repo, 0))
     assert started == ["a.sh", "b.sh", "c.sh"]
     assert code == 2, (out, err)
-    assert "KON NIET CONTROLEREN" in err
-    assert "signaal" not in err
+    assert "COULD NOT CHECK" in err
+    assert "signal" not in err
 
 
 def test_pre_writes_the_marker_before_seeding(tmp_path, monkeypatch):
@@ -1228,3 +1234,58 @@ def test_pre_stops_seeding_at_its_deadline(tmp_path, monkeypatch):
     assert bw.run_pre(payload) == 0
     assert seeded == []
     assert bw.read_marker(bw.state_dir("sess-utf8"), bw.marker_key(payload))
+
+
+# --- lighthouse: één token, ontbrekende taalpakketten (besluit 18, 19) --------
+
+
+def test_classify_first_line_only():
+    """Een bevinding die op een latere regel `COULD NOT CHECK` citeert, blijft een bevinding."""
+    output = b"SC2034: x appears unused\necho 'COULD NOT CHECK'\n"
+    assert bw.classify(2, output) == "finding"
+
+
+def test_gate_packs_name_every_gate():
+    assert bw.GATE_PACKS == {
+        "shellcheck.sh": "shell",
+        "ruff-format.sh": "python",
+        "worktree-linkcheck.sh": "core",
+    }
+    assert set(bw.GATE_PACKS) == set(bw.GATES.values())
+
+
+def test_hook_dir_from_repo_root(gate_root):
+    hooks = gate_root / ".claude" / "hooks" / "lighthouse"
+    assert bw.gate_path(str(gate_root), ".sh") == hooks / "shellcheck.sh"
+    assert bw.gate_path(str(gate_root), ".md") == hooks / "worktree-linkcheck.sh"
+    assert bw.gate_path(str(gate_root), ".txt") is None
+
+
+def test_run_gate_finds_the_gate_under_the_repo_root(tmp_path, gate_root):
+    hooks = gate_root / ".claude" / "hooks" / "lighthouse"
+    (hooks / "shellcheck.sh").write_text("#!/bin/sh\necho stub-ran\nexit 2\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    (repo / "a.sh").write_text("echo a\n", encoding="utf-8")
+    verdict, output = bw.run_gate(str(repo), "a.sh", time.time() + 10)
+    assert (verdict, output) == ("finding", b"stub-ran\n")
+
+
+def test_missing_language_pack_is_reported_not_blocked(tmp_path, monkeypatch, gate_root):
+    for gate in ("ruff-format.sh", "shellcheck.sh"):
+        (gate_root / ".claude" / "hooks" / "lighthouse" / gate).unlink()
+    repo = _post_env(tmp_path, monkeypatch)
+    assert bw.run_gate(str(repo), "a.py", time.time() + 10) == (
+        "missing",
+        b"no python gate installed",
+    )
+    _dirty_calls(repo, monkeypatch, ["a.py", "b.sh"])
+    code, out, err = bw.run_post(_payload(repo, 0))
+    assert code == 0, (out, err)
+    assert err == ""
+    context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+    assert "a.py not checked — no python gate installed" in context
+    assert "b.sh not checked — no shell gate installed" in context
+    # Eén melding per wijziging: de volgende call meldt ongewijzigde bestanden niet opnieuw.
+    assert bw.run_pre(_payload(repo, 1)) == 0
+    assert bw.run_post(_payload(repo, 1)) == (0, "", "")
