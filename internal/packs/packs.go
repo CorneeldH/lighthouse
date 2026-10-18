@@ -8,6 +8,10 @@
 //	lib/<rel>               .lighthouse/lib/lighthouse_lib/<rel>
 //	scripts/<rel>           .lighthouse/scripts/<rel>
 //	agents/<name>.md        .claude/agents/lighthouse-<name>.md
+//	skills/<name>/<rel>     .claude/skills/lighthouse-<name>/<rel> and
+//	                        .agents/skills/lighthouse-<name>/<rel>
+//	skills/<name>/claude/SKILL.md, skills/<name>/agents/SKILL.md
+//	                        the SKILL.md of one harness only, when the two differ
 //	instructions/AGENTS.md  the package's managed block in AGENTS.md
 //	requires.toml           tool -> the units that need it
 package packs
@@ -103,6 +107,9 @@ func IsLighthouseCommand(command string) bool {
 // .claude/agents/lighthouse-<name>.md directly.
 var installDirs = []string{HookDir, ".lighthouse/lib/lighthouse_lib/", ".lighthouse/scripts/"}
 
+// skillDirs are the two harness directories a skill lands in (spec, Indeling).
+var skillDirs = []string{".claude/skills/lighthouse-", ".agents/skills/lighthouse-"}
+
 // IsInstallPath reports whether p is a path lighthouse may own for a unit of kind:
 // a clean relative path under a lighthouse directory, AGENTS.md for a block, and
 // .claude/settings.json for a hook. A manifest is committed and may be edited in a
@@ -128,6 +135,12 @@ func IsInstallPath(kind Kind, p string) bool {
 				return true
 			}
 		}
+		for _, dir := range skillDirs {
+			if rest := strings.TrimPrefix(p, dir); rest != p {
+				name, file, ok := strings.Cut(rest, "/")
+				return ok && name != "" && file != ""
+			}
+		}
 		const agents = ".claude/agents/lighthouse-"
 		return strings.HasPrefix(p, agents) && !strings.Contains(p[len(agents):], "/") && path.Ext(p) == ".md"
 	}
@@ -148,6 +161,7 @@ func junk(p string) bool {
 func Load(fsys fs.FS, name, version string) (Pack, error) {
 	p := Pack{Name: name}
 	scripts := map[string]bool{}
+	skills := map[string]*skill{}
 	var hooksJSON []byte
 	err := fs.WalkDir(fsys, ".", func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -162,10 +176,8 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 		top, rest, nested := strings.Cut(rel, "/")
 		if d.IsDir() {
 			switch top {
-			case "hooks", "lib", "scripts", "agents", "instructions":
+			case "hooks", "lib", "scripts", "agents", "instructions", "skills":
 				return nil
-			case "skills":
-				return fmt.Errorf("package %s: skills/ is not supported yet", name)
 			default:
 				return fmt.Errorf("package %s: unknown directory %s/", name, rel)
 			}
@@ -187,6 +199,8 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 		}
 		var target string
 		switch top {
+		case "skills":
+			return collectSkill(skills, name, rel, rest, data)
 		case "hooks":
 			if rel == hooksJSONPath {
 				hooksJSON = data
@@ -214,20 +228,21 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 			p.Units = append(p.Units, Unit{Kind: KindBlock, Package: name, Path: agentsMDPath, ID: name, Content: body})
 			return nil
 		}
-		content, err := Mark(target, data, name, version)
+		u, err := fileUnit(name, version, target, data)
 		if err != nil {
-			return fmt.Errorf("package %s: %w", name, err)
+			return err
 		}
-		mode := fs.FileMode(0o644)
-		if bytes.HasPrefix(content, []byte("#!")) {
-			mode = 0o755
-		}
-		p.Units = append(p.Units, Unit{Kind: KindFile, Package: name, Path: target, Content: content, Mode: mode})
+		p.Units = append(p.Units, u)
 		return nil
 	})
 	if err != nil {
 		return Pack{}, err
 	}
+	units, err := skillUnits(skills, name, version)
+	if err != nil {
+		return Pack{}, err
+	}
+	p.Units = append(p.Units, units...)
 	if hooksJSON != nil {
 		hooks, err := parseHooks(name, hooksJSON, scripts)
 		if err != nil {
@@ -236,6 +251,124 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 		p.Units = append(p.Units, hooks...)
 	}
 	return p, nil
+}
+
+// fileUnit marks data for target and gives it its mode.
+func fileUnit(pkg, version, target string, data []byte) (Unit, error) {
+	content, err := Mark(target, data, pkg, version)
+	if err != nil {
+		return Unit{}, fmt.Errorf("package %s: %w", pkg, err)
+	}
+	mode := fs.FileMode(0o644)
+	if bytes.HasPrefix(content, []byte("#!")) {
+		mode = 0o755
+	}
+	return Unit{Kind: KindFile, Package: pkg, Path: target, Content: content, Mode: mode}, nil
+}
+
+// skill holds the files of one skills/<name>/ directory while the package is walked.
+type skill struct {
+	shared map[string][]byte // rel within the skill -> content, for both harnesses
+	claude []byte            // claude/SKILL.md
+	agents []byte            // agents/SKILL.md
+}
+
+func collectSkill(skills map[string]*skill, pkg, rel, rest string, data []byte) error {
+	dir, file, ok := strings.Cut(rest, "/")
+	if !ok {
+		return fmt.Errorf("package %s: a skill is skills/<name>/..., not %s", pkg, rel)
+	}
+	s := skills[dir]
+	if s == nil {
+		s = &skill{shared: map[string][]byte{}}
+		skills[dir] = s
+	}
+	switch {
+	case file == "claude/SKILL.md":
+		s.claude = data
+	case file == "agents/SKILL.md":
+		s.agents = data
+	case strings.HasPrefix(file, "claude/") || strings.HasPrefix(file, "agents/"):
+		return fmt.Errorf("package %s: %s: claude/ and agents/ hold only SKILL.md", pkg, rel)
+	default:
+		s.shared[file] = data
+	}
+	return nil
+}
+
+// frontmatterName returns the value of `name:` in the frontmatter of a SKILL.md.
+func frontmatterName(data []byte) string {
+	lines := strings.Split(string(data), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return ""
+	}
+	for _, line := range lines[1:] {
+		line = strings.TrimRight(line, "\r")
+		if line == "---" {
+			break
+		}
+		if v, ok := strings.CutPrefix(line, "name:"); ok {
+			return strings.Trim(strings.TrimSpace(v), `"'`)
+		}
+	}
+	return ""
+}
+
+// skillUnits checks each collected skill and maps it into both harness directories.
+func skillUnits(skills map[string]*skill, pkg, version string) ([]Unit, error) {
+	names := make([]string, 0, len(skills))
+	for n := range skills {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var units []Unit
+	for _, n := range names {
+		s := skills[n]
+		where := "skills/" + n + "/"
+		shared, hasShared := s.shared["SKILL.md"]
+		switch {
+		case hasShared && (s.claude != nil || s.agents != nil):
+			return nil, fmt.Errorf("package %s: %s: SKILL.md next to claude/ or agents/SKILL.md", pkg, where)
+		case !hasShared && (s.claude == nil || s.agents == nil):
+			return nil, fmt.Errorf("package %s: %s: needs SKILL.md, or both claude/SKILL.md and agents/SKILL.md", pkg, where)
+		}
+		variants := [][]byte{s.claude, s.agents}
+		if hasShared {
+			variants = [][]byte{shared, shared}
+		}
+		for _, v := range variants {
+			if got := frontmatterName(v); got != "lighthouse-"+n {
+				return nil, fmt.Errorf("package %s: %s: frontmatter name is %q, want %q", pkg, where, got, "lighthouse-"+n)
+			}
+		}
+		rels := make([]string, 0, len(s.shared))
+		for rel := range s.shared {
+			rels = append(rels, rel)
+		}
+		sort.Strings(rels)
+		for i, dir := range skillDirs {
+			base := dir + n + "/"
+			for _, rel := range rels {
+				data := s.shared[rel]
+				if rel == "SKILL.md" {
+					data = variants[i]
+				}
+				u, err := fileUnit(pkg, version, base+rel, data)
+				if err != nil {
+					return nil, err
+				}
+				units = append(units, u)
+			}
+			if !hasShared {
+				u, err := fileUnit(pkg, version, base+"SKILL.md", variants[i])
+				if err != nil {
+					return nil, err
+				}
+				units = append(units, u)
+			}
+		}
+	}
+	return units, nil
 }
 
 func parseRequires(data []byte) ([]Requirement, error) {

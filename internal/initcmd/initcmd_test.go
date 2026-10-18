@@ -536,3 +536,24 @@ func TestUpgradeAfterCRLFNormalization(t *testing.T) {
 		t.Fatalf("upgrade: rc %d out %q err %q", r.code, r.out, r.err)
 	}
 }
+
+func TestInitInstallsSkill(t *testing.T) {
+	root := newRepo(t)
+	withSkill := func(o *Options) {
+		m := testPacks()
+		m["core/skills/x/SKILL.md"] = file("---\nname: lighthouse-x\n---\nbody\n")
+		o.Packs = m
+	}
+	if r := run(t, root, "", func(o *Options) { yes(o); withSkill(o) }); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+	for _, rel := range []string{".claude/skills/lighthouse-x/SKILL.md", ".agents/skills/lighthouse-x/SKILL.md"} {
+		if c := read(t, root, rel); !strings.Contains(c, `lighthouse: "core@dev"`) {
+			t.Errorf("%s = %q", rel, c)
+		}
+	}
+	r := run(t, root, "", func(o *Options) { upgrade(o); withSkill(o) })
+	if r.code != 0 || r.out != "No changes.\n" {
+		t.Fatalf("upgrade: rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+}
