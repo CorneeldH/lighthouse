@@ -38,7 +38,9 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/headings.py",
 		".lighthouse/lib/lighthouse_lib/protocol.py",
 		".lighthouse/scripts/board_start.py",
+		".lighthouse/scripts/plan_review_record.py",
 		".lighthouse/scripts/post_artefact.py",
+		".lighthouse/scripts/review_pair.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))

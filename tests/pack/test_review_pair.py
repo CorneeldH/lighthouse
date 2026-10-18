@@ -4,10 +4,13 @@ Plan: docs/developer/planning/plans/2026-09-27-codex-fallback-meting.md, Taak 3�
 Getoetst: `blind` (A/B-tabel zonder bron, idempotente loting, werkboomcheck,
 schemacheck met de stdlib, escaping), `merge` (ontblinden, dubbelen samenvoegen,
 de canonieke `round-1.json` plus de twee sidecars, en de validatie van de blinde
-beslissingen), en `paired_records`/`tally`/`verdict` (Taak 4). Geen netwerk: `_coin`
-en `_tree_state` zijn gepatcht, behalve in de ene test die `_tree_state` tegen een
-wegwerp-repo draait. Geen test leest de echte datamap: `LEKMETING_DATA` wijst naar
-`tmp_path`. De uitknop `status` is weg sinds het besluit van 2026-10-04 (#988).
+beslissingen). Geen netwerk: `_coin` en `_tree_state` zijn gepatcht, behalve in de
+ene test die `_tree_state` tegen een wegwerp-repo draait. De uitknop `status` is weg
+sinds het besluit van 2026-10-04 (#988).
+
+In lighthouse: het script draait uit de geïnstalleerde indeling (`install_core`);
+`tally` en zijn tests blijven in paia. De findings-schema's komen uit `fixtures/`
+(letterlijk uit paia) tot de review-skills in de pack staan.
 """
 
 from __future__ import annotations
@@ -15,15 +18,19 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
+import shutil
 import subprocess
 
 import pytest
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
+from tests.pack._testkit import INSTALL_ROOT
+
+SCRIPTS = INSTALL_ROOT / ".lighthouse" / "scripts"
+FIXTURES = pathlib.Path(__file__).resolve().parent / "fixtures"
 
 
 def _load(name: str) -> object:
-    spec = importlib.util.spec_from_file_location(name, REPO / "scripts" / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -33,8 +40,20 @@ def _load(name: str) -> object:
 rp = _load("review_pair")
 rec = _load("plan_review_record")
 
-PLAN_SCHEMA = REPO / ".claude/skills/paia-plan-adversarial-review/findings.schema.json"
-SPEC_SCHEMA = REPO / ".claude/skills/paia-spec-adversarial-review/findings.schema.json"
+PLAN_SCHEMA = FIXTURES / "plan-findings.schema.json"
+SPEC_SCHEMA = FIXTURES / "spec-findings.schema.json"
+
+
+@pytest.fixture(autouse=True)
+def root(tmp_path, monkeypatch) -> pathlib.Path:
+    """Een repo-wortel met de findings-schema's waar `DEFAULT_SKILL_DIRS` ze zoekt."""
+    root = tmp_path / "root"
+    for kind, schema in (("plan", PLAN_SCHEMA), ("spec", SPEC_SCHEMA)):
+        skill = root / rec.DEFAULT_SKILL_DIRS[kind]
+        skill.mkdir(parents=True)
+        shutil.copyfile(schema, skill / "findings.schema.json")
+    monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(root))
+    return root
 
 
 def _plan_finding(severity: str, problem: str, **overrides: str) -> dict:
@@ -172,7 +191,7 @@ def test_blind_refuses_a_changed_tree(attempt, capsys, monkeypatch, state):
     monkeypatch.setattr(rp, "_tree_state", lambda: state)
     assert rp.main(["blind", str(attempt)]) == 4
     err = capsys.readouterr().err
-    assert "werkboom veranderd sinds start of niet schoon" in err
+    assert "work tree changed since start or not clean" in err
     assert not (attempt / "pair.json").exists()
     assert not (attempt / "round-1.blind.md").exists()
 
@@ -361,7 +380,7 @@ def test_merge_rejects_double_cover(attempt, capsys, rows):
     _blind(attempt, capsys)
     _decide(attempt, rows)
     assert rp.main(["merge", str(attempt)]) == 4
-    assert "SCHADUWPAAR MISLUKT" in capsys.readouterr().err
+    assert "SHADOW-PAIR FAILED" in capsys.readouterr().err
     for name in ("round-1.json", "round-1.decisions.json", "round-1.sources.json"):
         assert not (attempt / name).exists()
 
@@ -430,7 +449,7 @@ def test_merge_mixed_severity_uses_the_heavier_vocabulary(attempt, capsys):
         ],
     )
     assert rp.main(["merge", str(attempt)]) == 4
-    assert "SCHADUWPAAR MISLUKT" in capsys.readouterr().err
+    assert "SHADOW-PAIR FAILED" in capsys.readouterr().err
     assert not (attempt / "round-1.json").exists()
     _decide(
         attempt,
@@ -454,7 +473,7 @@ def test_merge_writes_no_sidecar_when_building_the_round_fails(
 
     monkeypatch.setattr(rp, "_merged_round", boom)
     assert rp.main(["merge", str(attempt)]) == 4
-    assert "SCHADUWPAAR MISLUKT: kapot" in capsys.readouterr().err
+    assert "SHADOW-PAIR FAILED: kapot" in capsys.readouterr().err
     for name in ("round-1.json", "round-1.decisions.json", "round-1.sources.json"):
         assert not (attempt / name).exists()
 
@@ -465,7 +484,7 @@ def test_merge_does_not_print_the_mapping_of_a_corrupt_pair(attempt, capsys):
     (attempt / "pair.json").write_text(json.dumps({"A": "codex", "B": "codex"}))
     assert rp.main(["merge", str(attempt)]) == 4
     err = capsys.readouterr().err
-    assert "pair.json ongeldig" in err
+    assert "pair.json invalid" in err
     assert "codex" not in err
 
 
@@ -482,314 +501,3 @@ def test_usage_error_exits_2():
     assert exc.value.code == 2
 
 
-# --- Taak 4: `paired_records`, `tally`, `verdict` ------------------------------------
-
-
-def _f(
-    fid: str,
-    source: str | None,
-    severity: str,
-    decision: str | None,
-    own: dict | None = None,
-) -> dict:
-    """Eén ronde-1-bevinding in recordvorm; `own` is `severity_by_source`."""
-    if own is None and source in ("codex", "fallback"):
-        own = {source: severity}
-    return {
-        "finding_id": fid,
-        "round": 1,
-        "severity": severity,
-        "decision": decision,
-        "source": source,
-        "severity_by_source": own,
-    }
-
-
-def _record(
-    root: pathlib.Path,
-    kind: str,
-    chain: str,
-    attempt: str,
-    findings: list[dict],
-    paired: bool = True,
-    outcome: str = "converged",
-    **fields: object,
-) -> pathlib.Path:
-    """Schrijf `<root>/<kind>-review/<chain>/<attempt>/record.json` (v3, gepaard)."""
-    record = {
-        "schema_version": 3,
-        "kind": kind,
-        "chain_key": chain,
-        "attempt": attempt,
-        "review_mode": "codex",
-        "prompt_sha256": "p" * 64,
-        "rounds": 1,
-        "outcome": outcome,
-        "paired": paired,
-        "shadow": {"model": rp.SHADOW_MODEL, "same_family": True} if paired else None,
-        "findings": findings,
-    }
-    record.update(fields)
-    path = root / f"{kind}-review" / chain / attempt / "record.json"
-    path.parent.mkdir(parents=True)
-    path.write_text(json.dumps(record))
-    return path
-
-
-def _pairs(root: pathlib.Path, n: int) -> None:
-    for i in range(n):
-        _record(
-            root, "plan", f"keten-{i}", "a1", [_f("r1-f1", "both", "MAJOR", "accept")]
-        )
-
-
-@pytest.fixture
-def data(tmp_path, monkeypatch) -> pathlib.Path:
-    """Een lege datamap via `LEKMETING_DATA`."""
-    root = tmp_path / "data"
-    root.mkdir()
-    monkeypatch.setenv("LEKMETING_DATA", str(root))
-    return root
-
-
-def _tally(root: pathlib.Path, capsys) -> str:
-    assert rp.main(["tally", "--data", str(root)]) == 0
-    return capsys.readouterr().out
-
-
-def _line(out: str, start: str) -> str:
-    return next(line for line in out.splitlines() if line.startswith(start))
-
-
-def _spec_pairs(root: pathlib.Path, n: int) -> None:
-    for i in range(n):
-        _record(
-            root, "spec", f"spec-{i}", "a1", [_f("r1-f1", "both", "MAJOR", "accept")]
-        )
-
-
-def test_no_kill_switch_after_the_stop_threshold(data, capsys):
-    """Het paar blijft na plan 15/15 en spec 8/8: `status` bestaat niet meer (#988, 4/10)."""
-    _pairs(data, 15)
-    _spec_pairs(data, 8)
-    assert len(rp.paired_records(data)) == 23
-    assert not hasattr(rp, "status")
-    assert not hasattr(rp, "PAIR_TARGET")
-    with pytest.raises(SystemExit):
-        rp.main(["status"])
-    capsys.readouterr()
-
-
-def test_paired_records_ignore_unpaired_staging_and_undecided(data):
-    _record(data, "plan", "ongepaard", "a1", [], paired=False)
-    _record(data, "plan", "staging", ".x.tmp", [_f("r1-f1", "both", "MAJOR", "accept")])
-    _record(
-        data,
-        "plan",
-        "onbeslist",
-        "a1",
-        [_f("r1-f1", "codex", "MAJOR", None)],
-        outcome="aborted",
-    )
-    _record(
-        data,
-        "spec",
-        "sonnet",
-        "a1",
-        [_f("r1-f1", "both", "MAJOR", "accept")],
-        shadow={"model": "claude-sonnet-5", "same_family": True},
-    )
-    assert rp.paired_records(data) == []
-
-
-def test_paired_records_and_tally_skip_legacy_records(data, capsys):
-    legacy = {
-        "finding_id": "r1-f1",
-        "round": 1,
-        "severity": "MAJOR",
-        "decision": "accept",
-    }
-    for version, chain in ((2, "v2"), (1, "v1")):
-        path = data / "plan-review" / chain / "a1" / "record.json"
-        path.parent.mkdir(parents=True)
-        path.write_text(
-            json.dumps(
-                {
-                    "schema_version": version,
-                    "review_mode": "codex",
-                    "rounds": 1,
-                    "outcome": "converged",
-                    "findings": [legacy],
-                }
-            )
-        )
-    assert rp.paired_records(data) == []
-    out = _tally(data, capsys)
-    assert _line(out, "| totaal (context) |").startswith("| totaal (context) | 0 |")
-
-
-def test_paired_records_count_a_context_suffixed_model(data):
-    _record(
-        data,
-        "plan",
-        "k",
-        "a1",
-        [_f("r1-f1", "both", "MAJOR", "accept")],
-        shadow={"model": "claude-opus-5-5[1m]", "same_family": True},
-    )
-    assert len(rp.paired_records(data)) == 1
-    assert rp.canonical_model("claude-opus-5-5[1m]") == "claude-opus-5-5"
-    assert rp.canonical_model("claude-opus-5-5") == "claude-opus-5-5"
-
-
-def test_paired_records_require_post_1066_schema(data):
-    _record(
-        data,
-        "plan",
-        "k",
-        "a1",
-        [_f("r1-f1", "both", "MAJOR", "accept")],
-        schema_version=2,
-    )
-    assert rp.paired_records(data) == []
-
-
-def _cells(row: str) -> list[str]:
-    return [c.strip() for c in row.strip().strip("|").split("|")]
-
-
-def test_tally_counts_per_reviewer_by_own_severity(tmp_path, capsys):
-    path = _record(
-        tmp_path,
-        "plan",
-        "k",
-        "a1",
-        [
-            _f(
-                "r1-f1",
-                "both",
-                "MAJOR",
-                "accept",
-                {"codex": "MAJOR", "fallback": "MINOR"},
-            ),
-            _f("r1-f2", "codex", "MAJOR", "accept"),
-            _f("r1-f3", "fallback", "BLOCKER", "reject"),
-            _f("r1-f4", "fallback", "MAJOR", "spec"),
-        ],
-    )
-    out = _tally(tmp_path, capsys)
-    # Groep | Paren | Codex B/M | Fallback B/M | both | codex | fallback | aandeel
-    assert _cells(_line(out, "| totaal (context) |")) == [
-        "totaal (context)",
-        "1",
-        "2",
-        "1",
-        "1",
-        "1",
-        "1",
-        "0.33",
-    ]
-    assert _cells(_line(out, "| plan |"))[1:] == ["1", "2", "1", "1", "1", "1", "0.33"]
-    rel = path.relative_to(tmp_path)
-    assert f"{rel}#r1-f2" in out
-    assert f"{rel}#r1-f4" in out
-    assert f"{rel}#r1-f1" not in out
-    assert f"{rel}#r1-f3" not in out
-    assert "Verdict plan: te weinig" in out
-
-
-def test_tally_gives_a_verdict_per_kind(tmp_path, capsys):
-    """Plan en spec krijgen elk een eigen verdict; het totaal is alleen context."""
-    findings = [_f(f"r1-f{i}", "both", "MAJOR", "accept") for i in range(10)]
-    _record(tmp_path, "plan", "p", "a1", findings)
-    spec = [_f(f"r1-f{i}", "codex", "MAJOR", "accept") for i in range(10)]
-    _record(tmp_path, "spec", "s", "a1", spec)
-    out = _tally(tmp_path, capsys)
-    assert "Verdict plan: houden" in out
-    assert "Verdict spec: terugdraaien" in out
-    assert "Verdict:" not in out
-
-
-def test_tally_counts_defer_as_justified_for_spec_reviews(tmp_path, capsys):
-    _record(tmp_path, "spec", "k", "a1", [_f("r1-f1", "codex", "MAJOR", "defer")])
-    out = _tally(tmp_path, capsys)
-    assert _cells(_line(out, "| spec |"))[1:] == ["1", "1", "0", "0", "1", "0", "1.00"]
-
-
-def test_tally_verdict_uses_the_unrounded_share(tmp_path, capsys):
-    """3/29 = 0,103: getoond als 0.10, maar boven 0,10 en dus `aanscherpen`."""
-    findings = [_f(f"r1-f{i}", "codex", "MAJOR", "accept") for i in (1, 2, 3)]
-    findings += [_f(f"r1-f{i}", "both", "MAJOR", "accept") for i in range(4, 30)]
-    _record(tmp_path, "plan", "k", "a1", findings)
-    out = _tally(tmp_path, capsys)
-    assert _cells(_line(out, "| plan |"))[4:] == ["26", "3", "0", "0.10"]
-    assert "Verdict plan: aanscherpen" in out
-
-
-def test_tally_fails_on_a_missing_data_dir(tmp_path, capsys):
-    missing = tmp_path / "bestaat-niet"
-    assert rp.main(["tally", "--data", str(missing)]) == 4
-    captured = capsys.readouterr()
-    assert captured.err == f"TELLING MISLUKT: datamap bestaat niet: {missing}\n"
-    assert captured.out == ""
-
-
-def test_tally_withholds_verdict_on_mixed_prompts(tmp_path, capsys):
-    finding = [_f("r1-f1", "codex", "MAJOR", "accept")]
-    _record(tmp_path, "plan", "k1", "a1", finding, prompt_sha256="a" * 64)
-    _record(tmp_path, "plan", "k2", "a1", finding, prompt_sha256="b" * 64)
-    out = _tally(tmp_path, capsys)
-    assert "Verdict plan: gemengd: 2 prompts, geen verdict" in out
-    assert _cells(_line(out, f"| plan (prompt {'a' * 12}) |"))[1] == "1"
-    assert _cells(_line(out, f"| plan (prompt {'b' * 12}) |"))[1] == "1"
-    pairs = out.split("## Context")[0]
-    assert "| plan |" not in pairs
-    assert "Verdict spec: te weinig" in out
-
-
-def test_tally_context_splits_on_the_1066_boundary(tmp_path, capsys):
-    _record(
-        tmp_path,
-        "plan",
-        "oud",
-        "a1",
-        [],
-        paired=False,
-        outcome="round_limit",
-        schema_version=1,
-        review_mode="fallback",
-        rounds=3,
-    )
-    _record(
-        tmp_path,
-        "plan",
-        "nieuw",
-        "a1",
-        [],
-        paired=False,
-        outcome="converged",
-        schema_version=2,
-        review_mode="codex",
-        rounds=2,
-    )
-    out = _tally(tmp_path, capsys)
-    context = out.split("## Context, ongepaard (geen deel van het verdict)")[1]
-    rows = [line for line in context.splitlines() if line.startswith("| plan |")]
-    assert [_cells(r) for r in rows] == [
-        ["plan", "voor #1066", "fallback", "1", "3: 1", "round_limit: 1"],
-        ["plan", "na #1066", "codex", "1", "2: 1", "converged: 1"],
-    ]
-    assert "Verdict plan: te weinig" in out
-
-
-@pytest.mark.parametrize(
-    ("share", "total", "expected"),
-    [
-        (0.33, 9, "te weinig"),
-        (0.10, 10, "houden"),
-        (0.30, 10, "aanscherpen"),
-        (0.31, 10, "terugdraaien"),
-    ],
-)
-def test_verdict_thresholds(share, total, expected):
-    assert rp.verdict(share, total) == expected

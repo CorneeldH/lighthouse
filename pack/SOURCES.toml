@@ -66,3 +66,13 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/scripts/board_start.py"
 source_path = "scripts/board_start.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/plan_review_record.py"
+source_path = "scripts/plan_review_record.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/review_pair.py"
+source_path = "scripts/review_pair.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
