@@ -8,6 +8,7 @@ package projectconfig
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -161,4 +162,87 @@ func CoreTables(repo string, haveRepo bool) []Table {
 		}})
 	}
 	return tables
+}
+
+var (
+	fragmentHeader = regexp.MustCompile(`^\[([a-z_]+(?:\.[a-z_]+)*)\]$`)
+	fragmentKey    = regexp.MustCompile(`^([a-z_]+)\s*=\s*(.*)$`)
+)
+
+// ParseFragment reads the lighthouse.toml.fragment of a package (plan M0 (c),
+// ontwerpkeuze 4): `[table]` header lines and one-line `key = value` lines, plus
+// comments and blank lines, which are dropped. Each value is kept as it is written, so
+// AppendMissing can insert it without rewriting it. Every error names the line.
+func ParseFragment(data []byte) ([]Table, error) {
+	var tables []Table
+	seen := map[string]bool{} // table names and table.key paths
+	header := 0               // line of the current table's header
+	closeTable := func() error {
+		if len(tables) > 0 && len(tables[len(tables)-1].Keys) == 0 {
+			return fmt.Errorf("line %d: table [%s] has no keys", header, tables[len(tables)-1].Name)
+		}
+		return nil
+	}
+	for i, raw := range strings.Split(string(data), "\n") {
+		n := i + 1
+		line := strings.TrimSpace(strings.TrimSuffix(raw, "\r"))
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if m := fragmentHeader.FindStringSubmatch(line); m != nil {
+			if err := closeTable(); err != nil {
+				return nil, err
+			}
+			if seen[m[1]] {
+				return nil, fmt.Errorf("line %d: [%s] is already defined", n, m[1])
+			}
+			seen[m[1]] = true
+			tables = append(tables, Table{Name: m[1]})
+			header = n
+			continue
+		}
+		m := fragmentKey.FindStringSubmatch(line)
+		switch {
+		case m == nil:
+			return nil, fmt.Errorf("line %d: not a [table] header or a key = value line", n)
+		case len(tables) == 0:
+			return nil, fmt.Errorf("line %d: key %s before the first [table]", n, m[1])
+		}
+		t := &tables[len(tables)-1]
+		path := t.Name + "." + m[1]
+		if seen[path] {
+			return nil, fmt.Errorf("line %d: %s is already defined", n, path)
+		}
+		value := strings.TrimSpace(m[2])
+		if !oneValue(value) {
+			return nil, fmt.Errorf("line %d: %s: the value is not one TOML value on one line, without a comment", n, path)
+		}
+		seen[path] = true
+		t.Keys = append(t.Keys, KV{Key: m[1], Value: value})
+	}
+	if err := closeTable(); err != nil {
+		return nil, err
+	}
+	// The whole fragment must be TOML too: this catches a table that is also a key,
+	// such as [t] a = 1 with [t.a].
+	var v map[string]any
+	if _, err := toml.Decode(string(data), &v); err != nil {
+		var pe toml.ParseError
+		if errors.As(err, &pe) {
+			return nil, fmt.Errorf("line %d: %s", pe.Position.Line, pe.Message)
+		}
+		return nil, err
+	}
+	return tables, nil
+}
+
+// oneValue reports whether value is exactly one TOML value. Inside an array, a trailing
+// comment would swallow the closing bracket, so `[value]` fails for one.
+func oneValue(value string) bool {
+	if value == "" {
+		return false
+	}
+	var v map[string]any
+	_, err := toml.Decode("v = ["+value+"]", &v)
+	return err == nil
 }
