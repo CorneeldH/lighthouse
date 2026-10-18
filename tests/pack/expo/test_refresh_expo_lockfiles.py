@@ -2,6 +2,7 @@
 guards what a project may not have, and links only to lighthouse skills."""
 
 import re
+import subprocess
 from pathlib import Path
 
 from lighthouse_lib import config
@@ -77,3 +78,42 @@ def test_no_paia_measurements():
     text = _text()
     for literal in ("2026-08-22", "18/18", "54.0.37", "SDK 54", "dictation", "rumps"):
         assert literal not in text, literal
+
+
+def _bash_blocks() -> list[str]:
+    return re.findall(r"```bash\n(.*?)```", _text(), re.S)
+
+
+def test_diff_checked_before_commit():
+    text = _text()
+    check = text.index("Check that the diff is what you think")
+    commit = re.search(r"^### \d+\. Commit$", text, re.M).start()
+    assert check < commit, "the diff check runs after the commit, so it sees an empty diff"
+
+
+def test_cd_in_subshell():
+    for block in _bash_blocks():
+        for line in block.splitlines():
+            assert not line.lstrip().startswith("cd "), f"cd outside a subshell: {line}"
+
+
+def test_app_loop_finds_only_apps_with_a_lockfile(tmp_path):
+    loop = next(b for b in _bash_blocks() if "git ls-files" in b)
+    git = ["git", "-C", str(tmp_path)]
+    subprocess.run([*git, "init", "-q"], check=True)
+    files = {
+        "package.json": '{"keywords": ["expo"]}\n',
+        "apps/a/package.json": '{"dependencies": {"expo": "~1.0.0"}}\n',
+        "apps/a/package-lock.json": "{}\n",
+        "lib/b/package.json": '{"peerDependencies": {"expo": "*"}}\n',
+        "web/package.json": '{"dependencies": {"react": "1"}}\n',
+        "web/package-lock.json": "{}\n",
+    }
+    for rel, content in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(content)
+    subprocess.run([*git, "add", "-A"], check=True)
+    out = subprocess.run(
+        ["bash", "-c", loop], cwd=tmp_path, capture_output=True, text=True, check=True
+    ).stdout
+    assert out.split() == ["apps/a"]

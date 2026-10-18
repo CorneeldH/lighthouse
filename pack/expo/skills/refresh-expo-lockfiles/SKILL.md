@@ -48,9 +48,14 @@ this from the repository root:
 
 ```bash
 git ls-files -- ':(glob)**/package.json' | while read -r f; do
-  grep -q '"expo"' "$f" && dirname "$f"
+  d=$(dirname "$f")
+  if grep -q '"expo"' "$f" && [ -f "$d/package-lock.json" ]; then echo "$d"; fi
 done
 ```
+
+A directory without its own `package-lock.json` is no app for this skill: a library that names
+`expo` as a peer, or a member of an npm workspace. `npm ci` needs that lockfile, so leave such a
+directory out and name it in your report.
 
 Check that `node` and `npm` exist before anything else:
 
@@ -71,7 +76,7 @@ For each app from step 2:
 ```
 
 `npm ci` first, not `npm install`: you start from the committed lockfile, not from whatever happens
-to be installed. Note the `package / expected / found` table per app. You need it in step 6 for the
+to be installed. Note the `package / expected / found` table per app. You need it in step 7 for the
 commit message, and at the *Stopping point* to decide whether this is still your task.
 
 ### 4. Repair
@@ -79,9 +84,7 @@ commit message, and at the *Stopping point* to decide whether this is still your
 Per app:
 
 ```bash
-cd <app>
-npx expo install --fix
-npm dedupe
+(cd "<app>" && npx expo install --fix && npm dedupe)
 ```
 
 `expo install --fix` updates `package.json` **and** `package-lock.json`: the ranges move up to what
@@ -102,14 +105,23 @@ route is only more explicit.
 ### 5. Verify: both, per app
 
 ```bash
-cd <app>
-npx expo-doctor          # must report that all checks passed
-npm test --if-present    # what a CI check on the app usually runs
+(cd "<app>" && npx expo-doctor)          # must report that all checks passed
+(cd "<app>" && npm test --if-present)    # what a CI check on the app usually runs
 ```
 
 Claim nothing about green without having seen the output of both. Both must exit 0.
 
-### 6. Commit
+### 6. Check that the diff is what you think, before you commit
+
+```bash
+git diff --stat                                # only <app>/package.json and <app>/package-lock.json
+git diff -- '*package.json' | grep '^+.*"'     # every bump must stay within the same major
+```
+
+If one of those lines looks like a major jump, step 4 did not run as intended: revert, and read
+the *Stopping point*.
+
+### 7. Commit
 
 One commit per app keeps the diff readable and makes each app revertable on its own:
 
@@ -121,16 +133,6 @@ tests green. No SDK change: only caught up with the patch table.
 ```
 
 Then follow the commit flow from `AGENTS.md`.
-
-### 7. Check that the diff is what you think
-
-```bash
-git diff --stat                                # only <app>/package.json and <app>/package-lock.json
-git diff -- '*package.json' | grep '^+.*"'     # every bump must stay within the same major
-```
-
-If one of those lines looks like a major jump, step 4 did not run as intended: revert, and read
-the *Stopping point*.
 
 ## Stopping point: this has become an SDK upgrade
 
