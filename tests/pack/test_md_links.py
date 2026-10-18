@@ -1,0 +1,134 @@
+"""`.claude/hooks/lib/md_links.py` (#886): gedeelde linkextractie voor markdown.
+
+Eén module voor de norm "links in bestanden zijn relatief en wijzen naar een
+bestaand doel; absolute links zijn een probleem". Gebruikt door de herschreven
+`worktree-linkcheck.sh` (taak 5, via de CLI) en door de docs-linktests (taak 6,
+via `strip_code`, `relative_links` en `absolute_links`) — die laatste vervangt
+de eigen `_strip_code_fences` in `test_docs_planning.py` door deze module.
+"""
+
+import os
+import subprocess
+import sys
+
+import pytest
+
+from tests.unit._hook_testkit import HOOKS, load_hook_lib
+
+ml = load_hook_lib("md_links")
+FENCE = "`" * 3  # letterlijk drie backticks in dit plan breekt de oude linkhook
+
+
+def test_strip_code_removes_both_fence_styles_and_inline_code():
+    text = (
+        f"a\n{FENCE}\n[x](f1.md)\n{FENCE}\n~~~markdown\n"
+        f"[y](f2.md)\n~~~\n`[z](f3.md)` [w](ok.md)\n"
+    )
+    assert ml.relative_links(text) == ["ok.md"]
+
+
+def test_fence_marker_inside_a_line_does_not_toggle():
+    text = f's = "{FENCE}"\n[x](echt.md)\n'
+    assert ml.relative_links(text) == ["echt.md"]
+
+
+@pytest.mark.parametrize(
+    "link,expected",
+    [
+        ("[a](b.md)", ["b.md"]),
+        ("[a](b.md#kop)", ["b.md"]),
+        ("[a](#kop)", []),
+        ("[a](https://x.nl)", []),
+        ("[a](obsidian://x)", []),
+        ("[a](mailto:iemand)", []),
+        ("[a](/abs.md)", []),
+        ('[a](c.md "titel")', ["c.md"]),
+        ("[a](b.md) [c](b.md)", ["b.md"]),
+        ("[a](<pad met spaties.md>)", ["pad met spaties.md"]),
+        ("[a](<p.md> 'titel')", ["p.md"]),
+        ("[a](d.md 'titel')", ["d.md"]),
+        ("[a](e.md (titel))", ["e.md"]),
+        ('[a](f.md "titel") [b](g.md (t))', ["f.md", "g.md"]),
+    ],
+)
+def test_relative_links(link, expected):
+    assert ml.relative_links(link) == expected
+
+
+def test_absolute_links_in_new_link_forms():
+    text = "[a](</home/x y.md>) [b](/abs.md 'titel') [c](/p.md (titel))"
+    assert ml.absolute_links(text) == ["/home/x y.md", "/abs.md", "/p.md"]
+
+
+def test_find_problems_angle_link_with_spaces(tmp_path):
+    (tmp_path / "a b.md").write_text("x")
+    doc = tmp_path / "doc.md"
+    doc.write_text("[ok](<a b.md>) [weg](<c d.md>) [t](weg.md 'titel')\n")
+    assert ml.find_problems(doc, tmp_path) == [("dood", "c d.md"), ("dood", "weg.md")]
+
+
+def test_absolute_links_outside_code_only():
+    text = f"[a](/home/x.md)\n{FENCE}\n[b](/home/y.md)\n{FENCE}\n"
+    assert ml.absolute_links(text) == ["/home/x.md"]
+
+
+def test_find_problems(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "er.md").write_text("x")
+    md = tmp_path / "docs" / "n.md"
+    md.write_text("[a](er.md) [b](weg.md) [c](/home/z.md) [d](../../buiten.md)\n")
+    assert ml.find_problems(md, tmp_path) == [
+        ("dood", "weg.md"),
+        ("absoluut", "/home/z.md"),
+    ]
+
+
+def test_find_problems_accepts_existing_directory(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "sub").mkdir()
+    md = tmp_path / "docs" / "n.md"
+    md.write_text("[h](sub/)\n")
+    assert ml.find_problems(md, tmp_path) == []
+
+
+def test_find_problems_decodes_percent_escapes(tmp_path):
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "a b.md").write_text("x")
+    md = tmp_path / "docs" / "n.md"
+    md.write_text("[x](a%20b.md)\n")
+    assert ml.find_problems(md, tmp_path) == []
+
+
+def test_cli_prints_tab_lines_and_fails_on_unreadable(tmp_path):
+    (tmp_path / "docs").mkdir()
+    md = tmp_path / "docs" / "n.md"
+    md.write_text("[b](weg.md)\n")
+    result = subprocess.run(
+        [sys.executable, str(HOOKS / "lib" / "md_links.py"), str(md), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    assert "dood\tweg.md" in result.stdout
+
+    if os.geteuid() == 0:
+        pytest.skip("root leest ook chmod 000 — geen zinvolle toets")
+
+    md.chmod(0o000)
+    try:
+        bad = subprocess.run(
+            [
+                sys.executable,
+                str(HOOKS / "lib" / "md_links.py"),
+                str(md),
+                str(tmp_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert bad.returncode == 1
+        assert bad.stderr.strip() != ""
+    finally:
+        md.chmod(0o644)
