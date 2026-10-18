@@ -177,6 +177,7 @@ INSTALL_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-core-"))
 atexit.register(shutil.rmtree, INSTALL_ROOT, True)
 GUARD = install_core(INSTALL_ROOT)
 INSTALLED_LIB = INSTALL_ROOT / _INSTALL_DIRS["lib"]
+INSTALLED_HOOKS = INSTALL_ROOT / _INSTALL_DIRS["hooks"]
 
 
 # `lighthouse_lib` as an importable package for in-process tests: a symlink to

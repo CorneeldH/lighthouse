@@ -1,56 +1,68 @@
 #!/bin/bash
-# PostToolUse hook: markdown-links moeten relatief zijn én bestaan (#886).
-# Matcher: Edit|Write, self-filtert op .md. Blokkerend: exit 2 + stderr.
+# PostToolUse hook: markdown links must be relative and must exist (#886).
+# Matcher: Edit|Write, filters itself on .md. Blocking: exit 2 + stderr.
 #
-# Tegenhanger (pairing-regel #624): de linkregel in AGENTS.md draagt norm en
-# rationale vooraf; deze hook toetst het geschreven bestand achteraf.
+# Counterpart: the link rule in AGENTS.md carries norm and rationale up
+# front; this hook checks the written file afterwards.
 #
-# Norm (#886, AC 2): een relatieve markdown-link moet bestaan, opgelost tegen
-# de map van het bestand — overal, ook een link naar een bestand dat alleen op
-# deze branch staat (een plan dat naar een net gecommitte spec linkt is geen
-# probleem meer). Een absolute link is altijd een probleem, ongeacht bestaan:
-# dood op de gerenderde site en zodra de worktree weg is.
+# Norm (#886, AC 2): a relative markdown link must exist, resolved against
+# the directory of the file — everywhere, also a link to a file that only
+# exists on this branch (a plan that links to a spec committed just now is no
+# problem). An absolute link is always a problem, whether it exists or not:
+# dead on the rendered site and as soon as the worktree is gone.
 #
-# De naam `worktree-linkcheck.sh` blijft, ook al toetst de hook niet langer
-# specifiek de worktree-situatie: hernoemen schuift alleen de registratie in
-# .claude/settings.json en check 8 (scripts/hooks/check-instructies.sh) mee,
-# zonder inhoudelijke winst. De chathelft van de AGENTS.md-regel "Links:
-# bestand relatief, chat absoluut" — in chat het volledige absolute pad —
-# blijft zonder hook: die gaat over prose in een chatantwoord, niet over een
-# bestand dat deze hook ziet.
+# The name `worktree-linkcheck.sh` stays, although the hook no longer checks
+# the worktree situation specifically: renaming only moves the registration
+# and check 8 of check-instructions.sh along, without gain. The chat half of
+# the AGENTS.md rule "Links: file relative, chat absolute" has no hook: it is
+# about prose in a chat answer, not about a file this hook sees.
 #
-# Bewust geen projectfilter, anders dan pre-commit-tests.sh (#1014): die gate
-# filtert omdat hij de suite van déze repo draait. Deze hook toetst een bestand
-# tegen de wortel van zijn eigen repo; zijn oordeel klopt dus in elke repo, en
-# een filter liet daar een dode link stil passeren. Een map buiten elke
-# git-repo heeft geen wortel om tegen op te lossen en valt buiten de toets.
+# Deliberately no project filter, unlike pre-commit-tests.sh (#1014): that gate
+# filters because it runs the suite of this repo. This hook checks a file
+# against the root of its own repo; its verdict holds in every repo, and a
+# filter let a dead link pass silently there. A directory outside every git
+# repo has no root to resolve against and falls outside the check.
 #
-# NIET fail-open (paia-shell-gates): zonder jq of python3, of als de
-# linkparser faalt, is er niet gekeken; een stille exit 0 leest dan als "alle
-# links zijn goed".
+# NOT fail-open: without jq, git or python3, with a payload that is not JSON,
+# a path that cannot be resolved, a git that breaks, or a link parser that
+# fails, nothing was checked; a silent exit 0 would read as "all links are
+# fine". Every such exit is exit 2 with `Linkcheck: COULD NOT CHECK — <reason>`
+# on the first line (the token bash_writes.classify reads, besluit 18).
+
+cannot_check() {
+  {
+    echo "Linkcheck: COULD NOT CHECK — $1"
+    echo ""
+    echo "This hook checks that markdown links are relative and exist."
+    echo "Nothing was checked; that is not a green light."
+    if [ -n "${2:-}" ]; then
+      echo ""
+      echo "$2"
+    fi
+  } >&2
+  exit 2
+}
 
 MISSING_TOOLS=""
 command -v jq >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS jq"
+command -v git >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS git"
 command -v python3 >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS python3"
 if [ -n "$MISSING_TOOLS" ]; then
-  {
-    echo "Linkcheck: KON NIET CONTROLEREN — ontbrekende tooling:$MISSING_TOOLS"
-    echo ""
-    echo "Deze hook toetst of markdown-links relatief zijn en bestaan."
-    echo "Zonder die tooling is er niet gekeken; dat is geen groen licht."
-  } >&2
-  exit 2
+  cannot_check "missing tooling:$MISSING_TOOLS"
 fi
 
-# `realpath -m` zit alleen in GNU coreutils; de BSD-realpath op macOS weigert
-# de vlag. Zie vault-write-guard.sh voor de volledige redenering.
+# `realpath -m` only exists in GNU coreutils; the BSD realpath on macOS
+# rejects the flag. The flag is needed because the target does not have to
+# exist yet.
 canon_path() {
   realpath -m "$1" 2>/dev/null && return 0
   python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null
 }
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+if ! FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null); then
+  cannot_check "the payload is not valid JSON."
+fi
 if [ -z "$FILE_PATH" ]; then
   exit 0
 fi
@@ -60,37 +72,45 @@ case "$FILE_PATH" in
   *) exit 0 ;;
 esac
 
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 case "$FILE_PATH" in
   /*) ABS="$FILE_PATH" ;;
   *)  ABS="${CWD:-$PWD}/$FILE_PATH" ;;
 esac
-ABS=$(canon_path "$ABS") || exit 0
+CANON=$(canon_path "$ABS") || CANON=""
+if [ -z "$CANON" ]; then
+  cannot_check "cannot resolve '$ABS' (no 'realpath -m' and no python3)."
+fi
+ABS="$CANON"
 if [ ! -f "$ABS" ]; then
   exit 0
 fi
 
+# "Not a git repository" is a real outcome and stays silent; any other git
+# failure is not. LC_ALL=C: git translates the text matched here.
 DIR=$(dirname "$ABS")
-ROOT=$(git -C "$DIR" rev-parse --show-toplevel 2>/dev/null) || exit 0
+if ! ROOT=$(LC_ALL=C git -C "$DIR" rev-parse --show-toplevel 2>&1); then
+  case "$ROOT" in
+    *"not a git repository"*) exit 0 ;;
+  esac
+  cannot_check "git could not read '$DIR'." "$ROOT"
+fi
 if [ -z "$ROOT" ]; then
-  exit 0
+  cannot_check "git gave no repository root for '$DIR'."
 fi
 
-# Bewijs dat dit codepad geraakt is. Zonder marker toetst een groene test niet
-# of er gekeken is of dat de hook er vroeg uit stapte.
-if [ -n "${PAIA_LINKCHECK_TRACE:-}" ]; then
-  echo "linkcheck: toetst in $ROOT" >&2
+# Proof that this code path was reached. Without the marker a green test does
+# not show whether the hook looked or stepped out early.
+if [ -n "${LIGHTHOUSE_LINKCHECK_TRACE:-}" ]; then
+  echo "linkcheck: checking in $ROOT" >&2
 fi
 
-# Geen `|| exit 0` en geen `2>/dev/null`: een klappende parser die als "geen
-# problemen gevonden" wordt gelezen is defect 4 uit paia-shell-gates.
-if ! PROBLEMS=$(python3 "$(dirname "$0")/lib/md_links.py" "$ABS" "$ROOT" 2>&1); then
-  {
-    echo "Linkcheck: KON NIET CONTROLEREN — de linkparser faalde."
-    echo ""
-    echo "$PROBLEMS"
-  } >&2
-  exit 2
+# The parser lives in the lighthouse lib of this repo. Found through
+# LIGHTHOUSE_REPO_ROOT or git, never from this file's own path. No `|| exit 0`
+# and no `2>/dev/null`: a parser that breaks must not read as "no problems".
+LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
+if ! PROBLEMS=$(python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/md_links.py" "$ABS" "$ROOT" 2>&1); then
+  cannot_check "the link parser failed." "$PROBLEMS"
 fi
 if [ -z "$PROBLEMS" ]; then
   exit 0
@@ -100,21 +120,21 @@ MESSAGE=""
 while IFS=$'\t' read -r KIND TARGET; do
   [ -n "$KIND" ] || continue
   case "$KIND" in
-    dood)
-      REDEN="bestaat niet, opgelost tegen de map van het bestand"
+    dead)
+      REASON="does not exist, resolved against the directory of the file"
       ;;
-    absoluut)
-      REDEN="een absoluut pad is dood op de gerenderde site en zodra de worktree weg is; gebruik een relatief pad"
+    absolute)
+      REASON="an absolute path is dead on the rendered site and as soon as the worktree is gone; use a relative path"
       ;;
     *)
-      REDEN="onbekend soort probleem"
+      REASON="unknown kind of problem"
       ;;
   esac
-  MESSAGE="$MESSAGE  $TARGET — $REDEN"$'\n'
+  MESSAGE="$MESSAGE  $TARGET — $REASON"$'\n'
 done <<< "$PROBLEMS"
 
 {
-  echo "Linkcheck: markdown-link(s) die niet relatief-en-bestaand zijn."
+  echo "Linkcheck: markdown link(s) that are not relative-and-existing."
   echo ""
   printf '%s' "$MESSAGE"
   echo "In: $ABS"

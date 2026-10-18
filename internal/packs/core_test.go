@@ -29,6 +29,8 @@ func TestCorePack(t *testing.T) {
 	sort.Strings(files)
 	want := []string{
 		".claude/hooks/lighthouse/main-commit-guard.sh",
+		".claude/hooks/lighthouse/worktree-guard.sh",
+		".claude/hooks/lighthouse/worktree-linkcheck.sh",
 		".lighthouse/headings.toml",
 		".lighthouse/lib/lighthouse_lib/__init__.py",
 		".lighthouse/lib/lighthouse_lib/bash_writes.py",
@@ -46,7 +48,7 @@ func TestCorePack(t *testing.T) {
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
 	}
-	if kinds[KindBlock] != 1 || kinds[KindHook] != 1 {
+	if kinds[KindBlock] != 1 || kinds[KindHook] != 3 {
 		t.Fatalf("kinds = %v", kinds)
 	}
 	var tools []string

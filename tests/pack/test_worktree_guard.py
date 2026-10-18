@@ -1,5 +1,5 @@
-# Bootstrap copy of personal_ai_agent@231f6e84 tests/unit/test_instructie_hooks.py (test_worktree_guard_*); M0 (b) replaces it.
-"""worktree-guard.sh: warns at a write into the main checkout on `main`.
+"""pack/core worktree-guard.sh, as installed: warns at a write into the main checkout
+on the default branch.
 
 The six copied tests pin the behaviour from paia. The tests below them pin
 the fix for the fail-open gap (M0 spec, risk *Fail-open guards*): a guard
@@ -10,13 +10,18 @@ import json
 import subprocess
 from pathlib import Path
 
-from tests.hooks._hook_testkit import HOOKS
-from tests.hooks._hook_testkit import git as _git
-from tests.hooks._hook_testkit import init_repo as _init_repo
-from tests.hooks._hook_testkit import run_hook as _run
-from tests.hooks._hook_testkit import tool_bin
+import os
+import shutil
 
-WORKTREE_GUARD = HOOKS / "worktree-guard.sh"
+import pytest
+
+from tests.pack._testkit import INSTALLED_HOOKS
+from tests.pack._testkit import git as _git
+from tests.pack._testkit import init_repo as _init_repo
+from tests.pack._testkit import run_hook as _run
+from tests.pack._testkit import tool_bin
+
+WORKTREE_GUARD = INSTALLED_HOOKS / "worktree-guard.sh"
 
 # Everything worktree-guard.sh calls, so a test can drop exactly one of them.
 _TOOLS = ("jq", "git", "cat", "python3", "realpath", "dirname")
@@ -222,3 +227,88 @@ def test_worktree_guard_warns_when_the_path_cannot_be_resolved(tmp_path):
     message = json.loads(result.stdout)["systemMessage"]
     assert "COULD NOT CHECK" in message
     assert str(repo / "x.py") in message
+
+
+# --- no silent exits (inventaris §6) and the default branch (besluit 23) -----
+
+
+def _write_in(repo: Path) -> dict:
+    return {
+        "tool_name": "Write",
+        "cwd": str(repo),
+        "tool_input": {"file_path": str(repo / "src" / "nieuw.py")},
+    }
+
+
+def _git_stub(tmp_path: Path, fails_on: str) -> Path:
+    real = shutil.which("git")
+    return tool_bin(
+        tmp_path / "bin",
+        _TOOLS,
+        drop="git",
+        stubs={
+            "git": f'#!/bin/sh\ncase "$*" in *{fails_on}*) echo "fatal: broken" >&2; exit 128;; esac\n'
+            f'exec {real} "$@"\n'
+        },
+    )
+
+
+def test_guard_speaks_when_git_breaks(tmp_path):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    bin_dir = _git_stub(tmp_path, "rev-parse")
+    result = _run(WORKTREE_GUARD, _write_in(repo), cwd=repo, env={"PATH": str(bin_dir)})
+    assert result.returncode == 0, result.stderr
+    assert "COULD NOT CHECK" in json.loads(result.stdout)["systemMessage"]
+
+
+def test_guard_speaks_when_branch_fails(tmp_path):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    bin_dir = _git_stub(tmp_path, "branch")
+    result = _run(WORKTREE_GUARD, _write_in(repo), cwd=repo, env={"PATH": str(bin_dir)})
+    assert result.returncode == 0, result.stderr
+    assert "COULD NOT CHECK" in json.loads(result.stdout)["systemMessage"]
+
+
+def test_guard_silent_outside_git_repo_under_other_locale(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    env = {"LANG": "de_DE.UTF-8", "LC_ALL": "", "LANGUAGE": ""}
+    probe = subprocess.run(
+        ["git", "-C", str(outside), "rev-parse", "--git-dir"],
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, **env),
+        check=False,
+    )
+    if "not a git repository" in probe.stderr:
+        pytest.skip("git speaks no German here")
+    result = _run(WORKTREE_GUARD, _write_in(outside), cwd=outside, env=env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+
+
+def test_guard_follows_default_branch(tmp_path):
+    toml = tmp_path / "lighthouse.toml"
+    toml.write_text('[forge]\ndefault_branch = "trunk"\n')
+    env = {"LIGHTHOUSE_TOML": str(toml)}
+    trunk = tmp_path / "trunk"
+    _init_repo(trunk, branch="trunk")
+    on_main = tmp_path / "on-main"
+    _init_repo(on_main, branch="main")
+
+    warned = _run(WORKTREE_GUARD, _write_in(trunk), cwd=trunk, env=env)
+    assert "'trunk'" in json.loads(warned.stdout)["systemMessage"]
+    silent = _run(WORKTREE_GUARD, _write_in(on_main), cwd=on_main, env=env)
+    assert silent.returncode == 0 and silent.stdout == ""
+
+
+def test_guard_with_broken_config_speaks(tmp_path):
+    toml = tmp_path / "lighthouse.toml"
+    toml.write_text("[forge\n")
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    result = _run(WORKTREE_GUARD, _write_in(repo), cwd=repo, env={"LIGHTHOUSE_TOML": str(toml)})
+    assert result.returncode == 0
+    assert "COULD NOT CHECK" in json.loads(result.stdout)["systemMessage"]

@@ -81,3 +81,13 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/lib/bash_writes.py"
 source_path = ".claude/hooks/lib/bash_writes.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/hooks/worktree-guard.sh"
+source_path = ".claude/hooks/worktree-guard.sh"
+source_sha = "231f6e84fa709dd37c4fc8578453907a8a6efdf6"
+
+[[file]]
+path = "pack/core/hooks/worktree-linkcheck.sh"
+source_path = ".claude/hooks/worktree-linkcheck.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

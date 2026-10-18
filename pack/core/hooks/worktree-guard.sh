@@ -1,6 +1,6 @@
 #!/bin/bash
-# Bootstrap copy of personal_ai_agent@231f6e84 .claude/hooks/worktree-guard.sh; lighthouse init replaces it in M0 (b).
-# PreToolUse hook: warn at a write into the main checkout while it is on `main`.
+# PreToolUse hook: warn at a write into the main checkout while it is on the
+# default branch (`forge.default_branch` in lighthouse.toml, `main` when unset).
 # Matcher: Edit|Write. NOT blocking: exit 0 + {"systemMessage": ...} on stdout.
 #
 # Counterpart: the worktree rule in AGENTS.md carries the norm and its
@@ -11,10 +11,11 @@
 # by main-commit-guard.sh, which covers the commit moment. This hook is the
 # early signal — it fires at the first edit, not at the commit.
 #
-# Fails loud, not open (M0 spec, risk *Fail-open guards*): the paia original
-# exited 0 without a word when jq was missing, so a fresh machine got no
-# reminder and no sign that there was none. A guard that cannot look now
-# says COULD NOT CHECK. Still exit 0: a warning hook never blocks.
+# Fails loud, not open (M0 spec, risk *Fail-open guards*): the original exited
+# 0 without a word when jq was missing, so a fresh machine got no reminder and
+# no sign that there was none. A guard that cannot look now says COULD NOT
+# CHECK. Only a real "not a git repository" stays silent. Still exit 0: a
+# warning hook never blocks.
 
 warn_uncheckable() {
   MSG="Worktree guard: COULD NOT CHECK — $1
@@ -73,22 +74,41 @@ done
 
 # A linked worktree has its own --git-dir but shares --git-common-dir.
 # `cd`+`pwd -P` instead of --path-format=absolute: the latter needs git 2.31.
-# Failing here means the target is not in a git repo: a real outcome, silent.
-GIT_DIR=$(cd "$DIR" 2>/dev/null && cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P) || exit 0
-GIT_COMMON=$(cd "$DIR" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || exit 0
+# "Not a git repository" is a real outcome and stays silent; any other git
+# failure is not, and says so. LC_ALL=C: git translates the text matched here.
+if ! RAW_GIT_DIR=$(cd "$DIR" 2>/dev/null && LC_ALL=C git rev-parse --git-dir 2>&1); then
+  case "$RAW_GIT_DIR" in
+    *"not a git repository"*) exit 0 ;;
+  esac
+  warn_uncheckable "git could not read '$DIR': ${RAW_GIT_DIR:-no message}."
+fi
+if ! RAW_GIT_COMMON=$(cd "$DIR" 2>/dev/null && LC_ALL=C git rev-parse --git-common-dir 2>&1); then
+  warn_uncheckable "git could not read '$DIR': ${RAW_GIT_COMMON:-no message}."
+fi
+GIT_DIR=$(cd "$DIR" 2>/dev/null && cd "$RAW_GIT_DIR" 2>/dev/null && pwd -P) || GIT_DIR=""
+GIT_COMMON=$(cd "$DIR" 2>/dev/null && cd "$RAW_GIT_COMMON" 2>/dev/null && pwd -P) || GIT_COMMON=""
 if [ -z "$GIT_DIR" ] || [ -z "$GIT_COMMON" ]; then
-  exit 0
+  warn_uncheckable "cannot resolve the git directories of '$DIR'."
 fi
 if [ "$GIT_DIR" != "$GIT_COMMON" ]; then
   exit 0
 fi
 
-BRANCH=$(git -C "$DIR" branch --show-current 2>/dev/null)
-if [ "$BRANCH" != "main" ]; then
+if ! BRANCH=$(git -C "$DIR" branch --show-current 2>&1); then
+  warn_uncheckable "git could not determine the branch of '$DIR': ${BRANCH:-no message}."
+fi
+
+# The protected branch comes from the config of the repo these hooks are
+# installed in (found like the lib of main-commit-guard.sh).
+LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
+if ! DEFAULT_BRANCH=$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/config.py" forge.default_branch 2>&1); then
+  warn_uncheckable "the protected branch could not be read: ${DEFAULT_BRANCH:-no message}."
+fi
+if [ "$BRANCH" != "$DEFAULT_BRANCH" ]; then
   exit 0
 fi
 
-MSG="Worktree guard: this writes into the main checkout while it is on 'main'.
+MSG="Worktree guard: this writes into the main checkout while it is on '$DEFAULT_BRANCH'.
 
   $ABS
 
@@ -96,8 +116,8 @@ Convention: work that produces a commit starts in a worktree on its own
 branch (git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>).
 Exception: read-only work, or an explicit 'on main' from the user.
 
-Note: committing on main is blocked (main-commit-guard.sh). Move this work
-now, not later."
+Note: committing on '$DEFAULT_BRANCH' is blocked (main-commit-guard.sh). Move
+this work now, not later."
 
 jq -cn --arg m "$MSG" '{systemMessage: $m}'
 exit 0

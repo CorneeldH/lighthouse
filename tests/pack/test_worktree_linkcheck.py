@@ -1,8 +1,9 @@
-"""De vier instructie-hooks (#624): waarschuwen/blokkeren ze op het juiste moment?
+"""pack/core worktree-linkcheck.sh, as installed (#886): blokkeert hij een dode of
+absolute markdown-link, en zegt hij het als hij niet kon kijken?
 
-De hooks zijn bash en lezen hun payload als JSON op stdin. Deze tests draaien ze
+De hook is bash en leest zijn payload als JSON op stdin. Deze tests draaien hem
 als subprocess met echte tijdelijke paden, zodat het contract (exit code +
-stderr/stdout) getest wordt en niet een herimplementatie ervan.
+stderr) getest wordt en niet een herimplementatie ervan.
 """
 
 import json
@@ -11,10 +12,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from tests.unit._hook_testkit import load_hook_lib
-
-HOOKS = Path(__file__).resolve().parents[2] / ".claude" / "hooks"
-VAULT_GUARD = HOOKS / "vault-write-guard.sh"
+from tests.pack._testkit import INSTALLED_HOOKS, load_hook_lib, tool_bin
 
 
 def _run(
@@ -33,8 +31,6 @@ def _run(
         check=False,
     )
 
-
-WORKTREE_GUARD = HOOKS / "worktree-guard.sh"
 
 _GIT_ENV = {
     "GIT_AUTHOR_NAME": "t",
@@ -63,7 +59,7 @@ def _init_repo(path: Path, branch: str = "main") -> None:
     _git(path, "commit", "-qm", "init")
 
 
-LINKCHECK = HOOKS / "worktree-linkcheck.sh"
+LINKCHECK = INSTALLED_HOOKS / "worktree-linkcheck.sh"
 
 
 def _repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
@@ -109,13 +105,13 @@ def test_linkcheck_allows_link_to_file_on_main(tmp_path):
         LINKCHECK,
         {"tool_name": "Write", "cwd": str(wt), "tool_input": {"file_path": str(note)}},
         cwd=wt,
-        env={"PAIA_LINKCHECK_TRACE": "1"},
+        env={"LIGHTHOUSE_LINKCHECK_TRACE": "1"},
     )
 
     assert result.returncode == 0, result.stderr
     # De marker bewijst dat de toets-tak geraakt is. Zonder deze assertie is
     # "rc 0" niet te onderscheiden van een vroege exit.
-    assert "linkcheck: toetst in" in result.stderr
+    assert "linkcheck: checking in" in result.stderr
 
 
 def test_linkcheck_ignores_urls_and_anchors(tmp_path):
@@ -254,11 +250,11 @@ def test_linkcheck_checks_other_project_too(tmp_path):
         LINKCHECK,
         {"tool_name": "Write", "cwd": str(wt), "tool_input": {"file_path": str(note)}},
         cwd=wt,
-        env={"CLAUDE_PROJECT_DIR": str(project), "PAIA_LINKCHECK_TRACE": "1"},
+        env={"CLAUDE_PROJECT_DIR": str(project), "LIGHTHOUSE_LINKCHECK_TRACE": "1"},
     )
 
     assert result.returncode == 2
-    assert f"linkcheck: toetst in {wt.resolve()}" in result.stderr
+    assert f"linkcheck: checking in {wt.resolve()}" in result.stderr
     assert "weg.md" in result.stderr
 
 
@@ -272,11 +268,11 @@ def test_linkcheck_checks_own_project(tmp_path):
         LINKCHECK,
         {"tool_name": "Write", "cwd": str(wt), "tool_input": {"file_path": str(note)}},
         cwd=wt,
-        env={"CLAUDE_PROJECT_DIR": str(repo), "PAIA_LINKCHECK_TRACE": "1"},
+        env={"CLAUDE_PROJECT_DIR": str(repo), "LIGHTHOUSE_LINKCHECK_TRACE": "1"},
     )
 
     assert result.returncode == 2
-    assert f"linkcheck: toetst in {wt.resolve()}" in result.stderr
+    assert f"linkcheck: checking in {wt.resolve()}" in result.stderr
 
 
 def test_linkcheck_ignores_non_markdown(tmp_path):
@@ -313,7 +309,7 @@ def test_linkcheck_fails_loud_without_tooling(tmp_path):
     )
 
     assert result.returncode == 2
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
 
 
 def test_linkcheck_fails_loud_when_parser_crashes(tmp_path):
@@ -339,6 +335,85 @@ def test_linkcheck_fails_loud_when_parser_crashes(tmp_path):
         os.chmod(note, 0o644)
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
 
 
+
+
+# --- no silent exits (inventaris §6) ---------------------------------------
+
+_TOOLS = ("jq", "git", "python3", "cat", "dirname", "realpath")
+
+
+def _note(tmp_path: Path) -> tuple[Path, dict]:
+    _repo, wt = _repo_with_worktree(tmp_path)
+    note = wt / "docs" / "note.md"
+    note.write_text("Zie [bestaat](bestaat.md).\n", encoding="utf-8")
+    return wt, {"tool_name": "Write", "cwd": str(wt), "tool_input": {"file_path": str(note)}}
+
+
+def _assert_unchecked(result: subprocess.CompletedProcess) -> None:
+    assert result.returncode == 2, result.stdout
+    assert result.stderr.startswith("Linkcheck: COULD NOT CHECK — "), result.stderr
+
+
+def test_linkcheck_invalid_json_is_unchecked(tmp_path):
+    proc = subprocess.run(
+        [str(LINKCHECK)], input="{nope", capture_output=True, text=True, cwd=tmp_path, check=False
+    )
+    _assert_unchecked(proc)
+
+
+def test_linkcheck_without_git(tmp_path):
+    wt, payload = _note(tmp_path)
+    bin_dir = tool_bin(tmp_path / "bin", _TOOLS, drop="git")
+    _assert_unchecked(_run(LINKCHECK, payload, cwd=wt, env={"PATH": str(bin_dir)}))
+
+
+def test_linkcheck_unresolvable_path(tmp_path):
+    wt, payload = _note(tmp_path)
+    real = shutil.which("python3")
+    bin_dir = tool_bin(
+        tmp_path / "bin",
+        _TOOLS,
+        stubs={
+            "realpath": "#!/bin/sh\nexit 1\n",
+            "python3": f'#!/bin/sh\ncase "$1" in -c) exit 1;; esac\nexec {real} "$@"\n',
+        },
+    )
+    _assert_unchecked(_run(LINKCHECK, payload, cwd=wt, env={"PATH": str(bin_dir)}))
+
+
+def test_linkcheck_git_failure_is_unchecked(tmp_path):
+    wt, payload = _note(tmp_path)
+    real = shutil.which("git")
+    bin_dir = tool_bin(
+        tmp_path / "bin",
+        _TOOLS,
+        drop="git",
+        stubs={
+            "git": f'#!/bin/sh\ncase "$*" in *rev-parse*) echo "fatal: broken" >&2; exit 128;; esac\n'
+            f'exec {real} "$@"\n'
+        },
+    )
+    _assert_unchecked(_run(LINKCHECK, payload, cwd=wt, env={"PATH": str(bin_dir)}))
+
+
+def test_linkcheck_outside_git_stays_silent(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    note = outside / "note.md"
+    note.write_text("[weg](weg.md)\n", encoding="utf-8")
+    payload = {"tool_name": "Write", "cwd": str(outside), "tool_input": {"file_path": str(note)}}
+    env = {"LANG": "de_DE.UTF-8", "LC_ALL": "", "LANGUAGE": ""}
+    result = _run(LINKCHECK, payload, cwd=outside, env=env)
+    assert result.returncode == 0, result.stderr
+
+
+def test_linkcheck_names_the_problem_in_english(tmp_path):
+    wt, payload = _note(tmp_path)
+    Path(payload["tool_input"]["file_path"]).write_text("[x](weg.md) [y](/abs.md)\n")
+    result = _run(LINKCHECK, payload, cwd=wt)
+    assert result.returncode == 2
+    assert "weg.md — does not exist" in result.stderr
+    assert "/abs.md — an absolute path" in result.stderr
