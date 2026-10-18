@@ -31,10 +31,16 @@ func TestCorePack(t *testing.T) {
 		".claude/hooks/lighthouse/main-commit-guard.sh",
 		".lighthouse/headings.toml",
 		".lighthouse/lib/lighthouse_lib/__init__.py",
+		".lighthouse/lib/lighthouse_lib/artefacts.py",
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/git_invocations.py",
 		".lighthouse/lib/lighthouse_lib/headings.py",
+		".lighthouse/lib/lighthouse_lib/protocol.py",
+		".lighthouse/scripts/board_start.py",
+		".lighthouse/scripts/plan_review_record.py",
+		".lighthouse/scripts/post_artefact.py",
+		".lighthouse/scripts/review_pair.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
@@ -46,7 +52,7 @@ func TestCorePack(t *testing.T) {
 	for _, r := range p.Requires {
 		tools = append(tools, r.Tool)
 	}
-	if strings.Join(tools, ",") != "git,jq,python3,tomllib" {
+	if strings.Join(tools, ",") != "gh,git,jq,python3,tomllib" {
 		t.Fatalf("tools = %v", tools)
 	}
 }

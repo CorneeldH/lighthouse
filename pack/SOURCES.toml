@@ -46,3 +46,33 @@ new = true
 [[file]]
 path = "pack/core/lib/headings.py"
 new = true
+
+[[file]]
+path = "pack/core/lib/protocol.py"
+source_path = "src/controller/comments.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/lib/artefacts.py"
+source_path = "src/controller/artefacten.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/post_artefact.py"
+source_path = "scripts/post_artefact.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/board_start.py"
+source_path = "scripts/board_start.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/plan_review_record.py"
+source_path = "scripts/plan_review_record.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/review_pair.py"
+source_path = "scripts/review_pair.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
