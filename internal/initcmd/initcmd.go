@@ -44,10 +44,13 @@ const (
 type Options struct {
 	Dir                 string // working directory; the root comes from git rev-parse --show-toplevel
 	Upgrade, Force, Yes bool
-	Version             string       // "" means version.String()
-	Packs               fs.FS        // holds <name>/...; nil means pack.Files
-	Deps                deps.Checker // nil fields mean deps.Default()
-	Lookup              packs.Lookup // config values for workflow placeholders; nil runs the package's config reader
+	Version             string                 // "" means version.String()
+	Packs               fs.FS                  // holds <name>/...; nil means pack.Files
+	Deps                deps.Checker           // nil fields mean deps.Default()
+	Lookup              packs.Lookup           // config values for workflow placeholders; nil runs the package's config reader
+	HostTOML            string                 // "" means $LIGHTHOUSE_HOST_TOML, else ~/.config/lighthouse/host.toml
+	Hostname            func() (string, error) // nil means os.Hostname
+	TailscaleIP         func() (string, error) // nil runs `tailscale ip -4`
 	In                  io.Reader
 	Out, Err            io.Writer
 }
@@ -74,6 +77,15 @@ func Run(o Options) int {
 	}
 	if o.In == nil {
 		o.In = strings.NewReader("")
+	}
+	if o.HostTOML == "" {
+		o.HostTOML = defaultHostTOML()
+	}
+	if o.Hostname == nil {
+		o.Hostname = os.Hostname
+	}
+	if o.TailscaleIP == nil {
+		o.TailscaleIP = tailscaleIP
 	}
 	if err := execute(o); err != nil {
 		_, _ = fmt.Fprintf(o.Err, "lighthouse init: %v\n", err)
@@ -168,13 +180,17 @@ func execute(o Options) error {
 		}
 	}
 	sort.Strings(paths)
-	if len(paths) == 0 {
+	host := proposeHost(o)
+	if len(paths) == 0 && host == nil {
 		_, _ = fmt.Fprintln(o.Out, "No changes.")
 		warnMissingScripts(o.Err, root)
 		return nil
 	}
 	for _, p := range paths {
 		printDiff(o.Out, p, plan[p])
+	}
+	if host != nil {
+		_, _ = fmt.Fprint(o.Out, unified(nil, host, "/dev/null", hostLabel(o.HostTOML)))
 	}
 	if !o.Yes {
 		_, _ = fmt.Fprint(o.Out, "Apply these changes? [y/N] ")
@@ -190,7 +206,14 @@ func execute(o Options) error {
 			return err
 		}
 	}
-	_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
+	written := len(paths)
+	if host != nil {
+		if err := writeHost(o.HostTOML, host); err != nil {
+			return err
+		}
+		written++
+	}
+	_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", written)
 	warnMissingScripts(o.Err, root)
 	return nil
 }

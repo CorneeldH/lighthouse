@@ -66,19 +66,34 @@ func run(t *testing.T, dir string, in string, mod func(*Options)) result {
 	t.Helper()
 	var out, errOut bytes.Buffer
 	o := Options{
-		Dir:     dir,
-		Version: "dev",
-		Packs:   testPacks(),
-		Deps:    allPresent(),
-		In:      strings.NewReader(in),
-		Out:     &out,
-		Err:     &errOut,
+		Dir:         dir,
+		Version:     "dev",
+		Packs:       testPacks(),
+		Deps:        allPresent(),
+		In:          strings.NewReader(in),
+		Out:         &out,
+		Err:         &errOut,
+		HostTOML:    hostTOMLFor(t),
+		TailscaleIP: func() (string, error) { return "", errors.New("no tailscale in tests") },
 	}
 	if mod != nil {
 		mod(&o)
 	}
 	code := Run(o)
 	return result{code, out.String(), errOut.String()}
+}
+
+// hostTOMLFor gives each test one host.toml path outside the repo, so no test ever
+// touches ~/.config.
+var hostTOMLs = map[string]string{}
+
+func hostTOMLFor(t *testing.T) string {
+	if p, ok := hostTOMLs[t.Name()]; ok {
+		return p
+	}
+	p := filepath.Join(t.TempDir(), "host.toml")
+	hostTOMLs[t.Name()] = p
+	return p
 }
 
 func yes(o *Options)     { o.Yes = true }
@@ -725,5 +740,70 @@ func TestUpgradeRefusesRemovedPermission(t *testing.T) {
 	write(t, root, ".claude/settings.json", strings.Replace(s, `"Bash(x:*)"`, `"Bash(other)"`, 1))
 	if r := run(t, root, "", all(upgrade, mods)); r.code != 1 || !strings.Contains(r.err, "refused") {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+}
+
+func withTailscale(ip string) func(*Options) {
+	return func(o *Options) {
+		o.Hostname = func() (string, error) { return "box", nil }
+		o.TailscaleIP = func() (string, error) { return ip, nil }
+	}
+}
+
+func TestInitProposesHostTOML(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "n\n", withTailscale("100.64.0.1"))
+	host := hostTOMLFor(t)
+	if !strings.Contains(r.out, "+++ "+host) || !strings.Contains(r.out, "+name = \"box\"") || !strings.Contains(r.out, "+tailscale_ip = \"100.64.0.1\"") {
+		t.Fatalf("out:\n%s", r.out)
+	}
+	if _, err := os.Stat(host); err == nil {
+		t.Fatal("host.toml written without approval")
+	}
+	if r := run(t, root, "", all(yes, withTailscale("100.64.0.1"))); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	b, err := os.ReadFile(host)
+	if err != nil || string(b) != "name = \"box\"\ntailscale_ip = \"100.64.0.1\"\n" {
+		t.Fatalf("host.toml = %q, %v", b, err)
+	}
+	if strings.Contains(read(t, root, ".lighthouse/manifest.toml"), "host.toml") {
+		t.Fatal("host.toml in the manifest")
+	}
+	if r := run(t, root, "", all(upgrade, withTailscale("100.64.0.1"))); r.out != "No changes.\n" {
+		t.Fatalf("upgrade: %s", r.out)
+	}
+}
+
+func TestInitSkipsHostTOMLWithoutTailscale(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", yes)
+	if !strings.Contains(r.err, "host.toml not proposed: tailscale ip unavailable; skills that check the host will report it") {
+		t.Fatalf("err = %q", r.err)
+	}
+	if _, err := os.Stat(hostTOMLFor(t)); err == nil {
+		t.Fatal("host.toml written")
+	}
+}
+
+func TestInitRejectsBadTailscaleIP(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", all(yes, withTailscale("not-an-ip")))
+	if !strings.Contains(r.err, "host.toml not proposed") {
+		t.Fatalf("err = %q", r.err)
+	}
+}
+
+func TestInitLeavesExistingHostTOML(t *testing.T) {
+	root := newRepo(t)
+	host := hostTOMLFor(t)
+	if err := os.WriteFile(host, []byte("name = \"mine\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := run(t, root, "", all(yes, withTailscale("100.64.0.1"))); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	if b, _ := os.ReadFile(host); string(b) != "name = \"mine\"\n" {
+		t.Fatalf("host.toml = %q", b)
 	}
 }
