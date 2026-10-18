@@ -8,21 +8,21 @@
 
 ## Related issues
 
-<!-- Written by /paia-verify-pr. One of three forms (mixing is allowed):
+<!-- Written by /lighthouse-verify-pr. One of three forms (mixing is allowed):
      `Closes #123` + a `### Evidence #123` table with one row per acceptance criterion
        (| AC | Command | Result |), when every criterion is proven on this branch or can only be
        measured once the PR exists;
      `Refs #123 — <reason>`, when a criterion depends on something after the merge (a deploy,
-       a measurement over days, a check on the Beelink);
+       a measurement over days, a test that cannot run in CI);
      `No issue: <reason>`.
      Give the PR the milestone of that issue (`gh pr create --milestone "<title>"`).
      No issue, no milestone. -->
 
 ## Open review points
 
-<!-- Written by /paia-verify-pr from `plan_review_record.py pr-open-punten` when a spec or plan
-     on this branch ends in an `Open na review` section (an adversarial review that hit its
-     round limit, #1352). Delete this section otherwise. -->
+<!-- Written by /lighthouse-verify-pr from `plan_review_record.py pr-open-points` when a spec or plan
+     on this branch ends in an `Open after review` section (an adversarial review that hit its
+     round limit). Delete this section otherwise. -->
 
 ## Before / After
 
@@ -30,5 +30,5 @@
 
 ## Verification
 
-<!-- Commands you ran, with their raw result: test counts, ty/ruff exit code, a spot check beyond
-     pytest. Name what could not be measured from here. -->
+<!-- Commands you ran, with their raw result: test counts, linter exit codes, a spot check beyond
+     the tests. Name what could not be measured from here. -->

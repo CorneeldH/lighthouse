@@ -29,6 +29,7 @@ func TestCorePack(t *testing.T) {
 	sort.Strings(files)
 	want := []string{
 		".claude/hooks/lighthouse/main-commit-guard.sh",
+		".github/pull_request_template.md",
 		".github/workflows/lighthouse-unblock-dependents.yml",
 		".lighthouse/headings.toml",
 		".lighthouse/lib/lighthouse_lib/__init__.py",
