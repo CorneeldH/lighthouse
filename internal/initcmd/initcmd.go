@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -44,6 +45,7 @@ const (
 type Options struct {
 	Dir                 string // working directory; the root comes from git rev-parse --show-toplevel
 	Upgrade, Force, Yes bool
+	AddPacks, DropPacks []string               // --pack and --no-pack (plan M0 (c), ontwerpkeuze 6)
 	Version             string                 // "" means version.String()
 	Packs               fs.FS                  // holds <name>/...; nil means pack.Files
 	Deps                deps.Checker           // nil fields mean deps.Default()
@@ -115,27 +117,23 @@ func execute(o Options) error {
 		return errors.New("this repository is already initialized; use `lighthouse init --upgrade`")
 	}
 
-	names := []string{"core"}
-	if o.Upgrade && len(m.Packages) > 0 {
-		names = m.Packages
+	all, err := loadAll(o.Packs, o.Version)
+	if err != nil {
+		return err
 	}
+	chosen, notes, err := choosePacks(o, root, all, m, initialized)
+	if err != nil {
+		return err
+	}
+	names := make([]string, 0, len(chosen))
 	var desired []packs.Unit
 	var reqs []packs.Requirement
-	for _, name := range names {
-		sub, err := fs.Sub(o.Packs, name)
-		if err == nil {
-			_, err = fs.Stat(sub, ".")
-		}
-		if err != nil {
-			return fmt.Errorf("package %s is not in this binary", name)
-		}
-		p, err := packs.Load(sub, name, o.Version)
-		if err != nil {
-			return err
-		}
-		desired = append(desired, p.Units...)
-		reqs = append(reqs, p.Requires...)
+	for _, c := range chosen {
+		names = append(names, c.Name)
+		desired = append(desired, all[c.Name].Units...)
+		reqs = append(reqs, all[c.Name].Requires...)
 	}
+	reportPacks(o, all, chosen, m, initialized, notes)
 	lookup := o.Lookup
 	if lookup == nil {
 		pl := &pythonLookup{packs: o.Packs, root: root}
@@ -149,7 +147,7 @@ func execute(o Options) error {
 		b, ok, err := readFile(root, rel)
 		return b, ok && err == nil
 	})
-	for _, miss := range o.Deps.Check(reqs) {
+	for _, miss := range o.Deps.Check(mergeRequires(reqs)) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
 	}
 
@@ -203,6 +201,41 @@ func execute(o Options) error {
 	}
 	warnMissingScripts(o.Err, root)
 	return offerHost(o, in)
+}
+
+// reportPacks says which packages this run installs (plan M0 (c), ontwerpkeuze 7): on
+// init one line before the diff; on --upgrade only what is added or removed, so an
+// upgrade without changes still prints exactly "No changes.".
+func reportPacks(o Options, all map[string]packs.Pack, chosen []choice, m manifest.Manifest, initialized bool, notes []string) {
+	if !initialized {
+		parts := make([]string, len(chosen))
+		for i, c := range chosen {
+			parts[i] = c.String()
+		}
+		_, _ = fmt.Fprintf(o.Out, "Packages: %s\n", strings.Join(parts, ", "))
+	} else {
+		before := m.Packages
+		if len(before) == 0 {
+			before = []string{"core"}
+		}
+		for _, c := range chosen {
+			if !slices.Contains(before, c.Name) {
+				_, _ = fmt.Fprintf(o.Out, "Adding package %s.\n", c.Name)
+			}
+		}
+		for _, n := range before {
+			if slices.ContainsFunc(chosen, func(c choice) bool { return c.Name == n }) {
+				continue
+			}
+			_, _ = fmt.Fprintf(o.Out, "Removing package %s.\n", n)
+			if len(all[n].Config) > 0 {
+				notes = append(notes, fmt.Sprintf("lighthouse.toml: the keys package %s added stay; remove them by hand if you no longer want them", n))
+			}
+		}
+	}
+	for _, n := range notes {
+		_, _ = fmt.Fprintln(o.Err, n)
+	}
 }
 
 // ask prints question and reports whether the answer is y or yes.
