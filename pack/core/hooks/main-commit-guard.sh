@@ -112,7 +112,7 @@ case "$CMD" in
             echo ""
             cat "$PARSER_ERR" 2>/dev/null
             echo ""
-            echo "Fix lighthouse.toml ([forge] default_branch), or — deliberately and once —"
+            echo "Fix the cause above, or — deliberately and once —"
             echo "'touch <repo-root>/.claude/allow-main'."
           } >&2
           exit 2

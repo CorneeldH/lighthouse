@@ -1298,3 +1298,22 @@ def test_guard_reads_not_a_repo_under_other_locale(tmp_path):
         pytest.skip("git speaks no German here")
     result = _run(COMMIT_GUARD, _bash(f"git -C {outside} commit -m x", repo), repo, env)
     assert result.returncode == 0, result.stderr
+
+
+def test_guard_names_the_python_cause_without_tomllib(tmp_path):
+    # macOS' /usr/bin/python3 is 3.9: geen tomllib. Een tomllib die niet te
+    # importeren is, vooraan op PYTHONPATH, speelt die python na.
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "tomllib.py").write_text("raise ImportError('no tomllib')\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    init_repo(repo, branch="feature")
+
+    result = _run(
+        GUARD, bash_payload("git commit -m x", repo), repo, {"PYTHONPATH": str(shadow)}
+    )
+
+    assert result.returncode == 2, result.stdout
+    assert "COULD NOT CHECK" in result.stderr
+    assert "python3 >= 3.11 is required" in result.stderr
+    assert "Fix lighthouse.toml" not in result.stderr

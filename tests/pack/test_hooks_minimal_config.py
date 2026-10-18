@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -180,3 +181,16 @@ def test_without_lib_the_guarded_command_blocks(tmp_path: Path, script: str) -> 
 def test_guarded_covers_every_blocking_bash_hook() -> None:
     blocking = {s.split()[0] for s in PRE_BASH if s != "bash-write-gates.sh pre"}
     assert blocking == set(GUARDED)
+
+
+def test_hooks_that_read_config_require_tomllib() -> None:
+    # config.py heeft tomllib nodig (Python 3.11+); `lighthouse init` meldt een
+    # ontbrekende tool alleen voor de eenheden die requires.toml noemt.
+    requires = tomllib.loads((CORE / "requires.toml").read_text(encoding="utf-8"))
+    readers = {
+        hook.stem
+        for hook in (CORE / "hooks").glob("*.sh")
+        if "config.py" in hook.read_text(encoding="utf-8")
+    }
+    assert readers
+    assert readers <= set(requires["tomllib"]), readers - set(requires["tomllib"])
