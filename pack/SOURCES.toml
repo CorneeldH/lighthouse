@@ -81,3 +81,13 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/scripts/codex_usage.py"
 source_path = "scripts/codex_usage.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/measure_start_issue_kpi.py"
+source_path = "scripts/measure_start_issue_kpi.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/measure_fix_pr_kpi.py"
+source_path = "scripts/measure_fix_pr_kpi.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

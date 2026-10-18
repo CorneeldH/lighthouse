@@ -1,4 +1,4 @@
-"""Unit tests voor scripts/measure_start_issue_kpi.py (issue #663).
+"""Unit tests for `.lighthouse/scripts/measure_start_issue_kpi.py`, taken from paia.
 
 De KPI van #663 is één getal: hoeveel tool-calls zitten er tussen "pak 610 op" en de eerste
 handeling die ergens heen leidt. Dat getal is alleen iets waard als de weg ernaartoe klopt, dus
@@ -13,13 +13,16 @@ deze tests pinnen de vier plekken waar een stille fout de uitkomst kantelt:
 from __future__ import annotations
 
 import importlib.util
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
-_SPEC = importlib.util.spec_from_file_location(
-    "measure_start_issue_kpi",
-    Path(__file__).resolve().parents[2] / "scripts" / "measure_start_issue_kpi.py",
-)
+from tests.pack._testkit import GIT_ENV, INSTALL_ROOT, git, init_repo
+
+SCRIPT = INSTALL_ROOT / ".lighthouse" / "scripts" / "measure_start_issue_kpi.py"
+_SPEC = importlib.util.spec_from_file_location("measure_start_issue_kpi", SCRIPT)
 assert _SPEC and _SPEC.loader
 kpi = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = kpi  # dataclasses zoekt de module op via __module__
@@ -207,7 +210,7 @@ def _route_split_records() -> list[dict]:
 
 
 def test_route_skill_is_skipped_like_the_start_skill() -> None:
-    """Na de split (#1115) komt de poortmelding pas na Skill{paia-route-issue}; die call is
+    """Na de split (#1115) komt de poortmelding pas na Skill{lighthouse-route-issue}; die call is
     het routeren zelf, geen route en geen aanloop."""
     turn = _gate_turn(*_route_split_records())
     assert kpi.announced_gate(turn) == 4
@@ -216,19 +219,19 @@ def test_route_skill_is_skipped_like_the_start_skill() -> None:
 
 
 def test_measure_gate_counts_a_gate_reported_after_the_route_skill(tmp_path) -> None:
-    """Zonder de uitsluiting van paia-route-issue telt elke pickup ná de split als
+    """Zonder de uitsluiting van lighthouse-route-issue telt elke pickup ná de split als
     'niet gemeld': de melding staat pas na die Skill-call."""
     write_session(tmp_path, [user("pak 610 op"), *_route_split_records()])
 
     result = kpi.measure_gate(tmp_path, None)
-    assert result["gemeld"] == 1
-    assert result["niet_gemeld"] == 0
+    assert result["reported"] == 1
+    assert result["not_reported"] == 0
 
 
 def test_scout_call_is_skipped_but_not_counted() -> None:
     """De verplichte scoutcall op 4b/4c is de voorverkenning zelf, geen aanloop ernaartoe —
     zelfde argument als de ambient Skill-call hierboven (issue #927 fix 2)."""
-    scout_call = ("Agent", {"subagent_type": "issue-impact-scout", "prompt": "..."})
+    scout_call = ("Agent", {"subagent_type": kpi.SCOUT_AGENT, "prompt": "..."})
     records = [
         user("pak 610 op"),
         assistant(
@@ -367,11 +370,11 @@ def test_measure_gate_splits_reported_unreported_and_skill_less(tmp_path) -> Non
     )
 
     result = kpi.measure_gate(tmp_path, None)
-    assert result["gemeld"] == 1
-    assert result["niet_gemeld"] == 1
-    assert result["aandeel"] == 0.5
-    assert result["verdeling"] == {"poort_2": 1}
-    assert result["pickup_zonder_skill"] == 1
+    assert result["reported"] == 1
+    assert result["not_reported"] == 1
+    assert result["share"] == 0.5
+    assert result["distribution"] == {"gate_2": 1}
+    assert result["pickup_without_skill"] == 1
 
 
 # --- scout (issue-impact-scout) ---------------------------------------------------------------
@@ -381,7 +384,7 @@ def assistant_with_scout(
     text: str, uid: str = "s1", stamp: str = "2026-09-11T10:00:00Z"
 ) -> dict:
     record = assistant(
-        ("Agent", {"subagent_type": "issue-impact-scout", "prompt": "..."}),
+        ("Agent", {"subagent_type": kpi.SCOUT_AGENT, "prompt": "..."}),
         text=text,
     )
     record["timestamp"] = stamp
@@ -401,7 +404,7 @@ def scout_result(
     record["timestamp"] = stamp
     if tool_calls is not None:
         record["toolUseResult"] = {
-            "agentType": "issue-impact-scout",
+            "agentType": kpi.SCOUT_AGENT,
             "totalToolUseCount": tool_calls,
         }
     return record
@@ -410,21 +413,21 @@ def scout_result(
 def test_a_scout_call_on_gate_four_b_counts_as_triggered(tmp_path) -> None:
     records = [
         user("pak 610 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Poort 4b: writing-plans\nScout: issue-impact-scout"),
         scout_result(),
     ]
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
-    assert result["getriggerd"] == 1
-    assert result["stil"] == 0
-    assert result["aandeel"] == 1.0
+    assert result["triggered"] == 1
+    assert result["silent"] == 0
+    assert result["share"] == 1.0
 
 
 def test_a_concrete_skip_reason_counts_as_compliant(tmp_path) -> None:
     records = [
         user("pak 611 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant(
             ("Write", {"file_path": "/x/.claude/worktrees/w/docs/a.md"}),
             text=(
@@ -435,40 +438,40 @@ def test_a_concrete_skip_reason_counts_as_compliant(tmp_path) -> None:
     ]
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
-    assert result["overgeslagen_met_reden"] == 1
-    assert result["stil"] == 0
-    assert result["aandeel"] == 1.0
+    assert result["skipped_with_reason"] == 1
+    assert result["silent"] == 0
+    assert result["share"] == 1.0
 
 
 def test_gate_four_b_without_any_scout_line_is_silent(tmp_path) -> None:
     records = [
         user("pak 612 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant(("Write", {"file_path": "/x/y.md"}), text="Poort 4b: writing-plans"),
     ]
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
-    assert result["stil"] == 1
-    assert result["aandeel"] == 0.0
+    assert result["silent"] == 1
+    assert result["share"] == 0.0
 
 
 def test_an_empty_skip_reason_is_not_a_reason(tmp_path) -> None:
     records = [
         user("pak 613 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant(
             ("Write", {"file_path": "/x/y.md"}),
             text="Poort 4b: writing-plans\nScout: overgeslagen — .",
         ),
     ]
     write_session(tmp_path, records)
-    assert kpi.measure_scout(tmp_path, None)["stil"] == 1
+    assert kpi.measure_scout(tmp_path, None)["silent"] == 1
 
 
 def test_a_scout_call_on_gate_two_is_a_mistrigger(tmp_path) -> None:
     records = [
         user("pak 614 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout(
             "Poort 2: systematic-debugging\nScout: issue-impact-scout"
         ),
@@ -477,13 +480,13 @@ def test_a_scout_call_on_gate_two_is_a_mistrigger(tmp_path) -> None:
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
     assert result["mistrigger"] == 1
-    assert result["getriggerd"] == 0, "poort 2 hoort niet in de noemer van de 4b/4c-rij"
+    assert result["triggered"] == 0, "poort 2 hoort niet in de noemer van de 4b/4c-rij"
 
 
 def test_runtime_comes_from_the_timestamp_pair(tmp_path) -> None:
     records = [
         user("pak 615 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout(
             "Poort 4b: writing-plans\nScout: issue-impact-scout",
             stamp="2026-09-11T10:00:00Z",
@@ -491,8 +494,8 @@ def test_runtime_comes_from_the_timestamp_pair(tmp_path) -> None:
         scout_result(stamp="2026-09-11T10:01:30Z"),
     ]
     write_session(tmp_path, records)
-    looptijd = kpi.measure_scout(tmp_path, None)["looptijd_seconden"]
-    assert looptijd["mediaan"] == 90.0
+    looptijd = kpi.measure_scout(tmp_path, None)["runtime_seconds"]
+    assert looptijd["median"] == 90.0
     assert looptijd["n"] == 1
 
 
@@ -500,13 +503,13 @@ def test_a_call_without_a_result_has_no_runtime(tmp_path) -> None:
     """Een afgebroken run mag de mediaan niet naar nul trekken."""
     records = [
         user("pak 616 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Poort 4b: writing-plans\nScout: issue-impact-scout"),
     ]
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
-    assert result["getriggerd"] == 1
-    assert result["looptijd_seconden"]["n"] == 0
+    assert result["triggered"] == 1
+    assert result["runtime_seconds"]["n"] == 0
 
 
 def test_a_bare_gate_four_without_subletter_is_unknown_not_mistrigger(tmp_path) -> None:
@@ -515,15 +518,15 @@ def test_a_bare_gate_four_without_subletter_is_unknown_not_mistrigger(tmp_path) 
     omkeerde (issue #927 fix 1). Zo'n beurt telt nergens in mee, ook niet in de noemer."""
     records = [
         user("pak 617 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Poort 4: writing-plans\nScout: issue-impact-scout"),
         scout_result(),
     ]
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
     assert result["mistrigger"] == 0
-    assert result["getriggerd"] == 0
-    assert result["aandeel"] is None
+    assert result["triggered"] == 0
+    assert result["share"] is None
 
 
 def test_tool_calls_come_from_the_agent_result(tmp_path) -> None:
@@ -532,27 +535,27 @@ def test_tool_calls_come_from_the_agent_result(tmp_path) -> None:
     telt beurten en één beurt draagt meerdere parallelle calls."""
     records = [
         user("pak 618 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Poort 4b: writing-plans\nScout: issue-impact-scout"),
         scout_result(tool_calls=15),
     ]
     write_session(tmp_path, records)
     tool_calls = kpi.measure_scout(tmp_path, None)["tool_calls"]
-    assert tool_calls == {"n": 1, "mediaan": 15, "max": 15}
+    assert tool_calls == {"n": 1, "median": 15, "max": 15}
 
 
 def test_a_result_without_tool_stats_is_not_counted_as_zero(tmp_path) -> None:
     """Een oudere of afgebroken run mist het veld; nul tool-calls zou de mediaan vervalsen."""
     records = [
         user("pak 619 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Poort 4b: writing-plans\nScout: issue-impact-scout"),
         scout_result(),
     ]
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
-    assert result["getriggerd"] == 1
-    assert result["tool_calls"] == {"n": 0, "mediaan": None, "max": None}
+    assert result["triggered"] == 1
+    assert result["tool_calls"] == {"n": 0, "median": None, "max": None}
 
 
 def test_a_run_over_the_search_budget_is_counted(tmp_path) -> None:
@@ -560,24 +563,24 @@ def test_a_run_over_the_search_budget_is_counted(tmp_path) -> None:
     teller is de prompt-norm decoratie — `maxTurns` telt beurten en ziet hem niet."""
     records = [
         user("pak 620 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Poort 4b: writing-plans\nScout: issue-impact-scout"),
         scout_result(tool_calls=kpi.SCOUT_TOOL_CALL_BUDGET + 5),
     ]
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
-    assert result["boven_budget"] == 1
+    assert result["over_budget"] == 1
 
 
 def test_a_run_on_the_budget_is_not_over_it(tmp_path) -> None:
     records = [
         user("pak 621 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Poort 4b: writing-plans\nScout: issue-impact-scout"),
         scout_result(tool_calls=kpi.SCOUT_TOOL_CALL_BUDGET),
     ]
     write_session(tmp_path, records)
-    assert kpi.measure_scout(tmp_path, None)["boven_budget"] == 0
+    assert kpi.measure_scout(tmp_path, None)["over_budget"] == 0
 
 
 # --- pilot #937: drie meetgaten ---------------------------------------------------------------
@@ -593,14 +596,14 @@ def test_worktree_sessions_are_read_next_to_the_main_directory(tmp_path) -> None
         directory.mkdir()
     records = [
         user("pak 610 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Poort 4b: writing-plans\nScout: issue-impact-scout"),
         scout_result(),
     ]
     write_session(sibling, records)
     write_session(stranger, records)
 
-    assert kpi.measure_scout(main, None)["getriggerd"] == 1, "andere repo telt niet mee"
+    assert kpi.measure_scout(main, None)["triggered"] == 1, "andere repo telt niet mee"
 
 
 def test_the_worktree_skill_is_not_the_route_boundary() -> None:
@@ -623,15 +626,15 @@ def test_a_scout_call_after_a_silent_route_is_unknown_not_mistrigger(tmp_path) -
     regel als de kale `Poort 4` — maar wordt wel geteld, anders verdwijnt hij uit beeld."""
     records = [
         user("pak 618 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Worktree staat, scout parallel."),
         scout_result(),
     ]
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
     assert result["mistrigger"] == 0
-    assert result["getriggerd"] == 0
-    assert result["poort_onbekend"] == 1
+    assert result["triggered"] == 0
+    assert result["gate_unknown"] == 1
 
 
 def test_an_async_launch_or_rejection_is_not_a_finished_run(tmp_path) -> None:
@@ -644,11 +647,11 @@ def test_an_async_launch_or_rejection_is_not_a_finished_run(tmp_path) -> None:
     rejected["toolUseResult"] = "User rejected tool use"
     records = [
         user("pak 619 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout("Poort 4c: brainstorming", uid="s1"),
         launched,
         user("pak 620 op"),
-        assistant(("Skill", {"skill": "paia-start-issue"})),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant_with_scout(
             "Poort 4b: writing-plans", uid="s2", stamp="2026-09-11T11:00:00Z"
         ),
@@ -656,5 +659,120 @@ def test_an_async_launch_or_rejection_is_not_a_finished_run(tmp_path) -> None:
     ]
     write_session(tmp_path, records)
     result = kpi.measure_scout(tmp_path, None)
-    assert result["getriggerd"] == 2
-    assert result["looptijd_seconden"]["n"] == 0
+    assert result["triggered"] == 2
+    assert result["runtime_seconds"]["n"] == 0
+
+
+# --- lighthouse: the transcript directory, --since, both languages ----------------------------
+
+
+def test_transcript_dir_from_git_root(tmp_path, monkeypatch) -> None:
+    """The project directory under `~/.claude/projects/` is the repo root with every character
+    outside `[A-Za-z0-9]` replaced by `-`, as Claude Code names it."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", "/srv/my_repo.d")
+    expected = tmp_path / ".claude" / "projects" / "-srv-my-repo-d"
+    assert kpi.default_transcript_dir() == expected
+
+    expected.mkdir(parents=True)
+    write_session(expected, [user("pak 610 op"), assistant(("Skill", {"skill": kpi.SKILL_NAME}))])
+    assert kpi.main(["mistrigger"]) == 0
+
+
+def test_missing_transcript_dir_is_rc_2(tmp_path, capsys) -> None:
+    assert kpi.main(["leadin", "--dir", str(tmp_path / "gone")]) == 2
+    assert "transcript directory does not exist" in capsys.readouterr().err
+
+
+def _commit_file(repo: Path, rel: str, date: str) -> None:
+    path = repo / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("x\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "-C", str(repo), "add", rel], check=True, capture_output=True
+    )
+    subprocess.run(
+        ["git", "-C", str(repo), "commit", "-qm", rel],
+        check=True,
+        capture_output=True,
+        env=dict(os.environ, **GIT_ENV, GIT_AUTHOR_DATE=date, GIT_COMMITTER_DATE=date),
+    )
+
+
+def test_since_option(tmp_path, monkeypatch) -> None:
+    """Without `--since` the whole history counts; there is no built-in convention date."""
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    _commit_file(repo, "docs/superpowers/plans/old.md", "2026-01-01T12:00:00Z")
+    _commit_file(repo, "docs/developer/planning/specs/new.md", "2026-09-01T12:00:00Z")
+    monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(repo))
+    config = tmp_path / "lighthouse.toml"
+    config.write_text('[project]\nlanguage = "en"\n', encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
+
+    whole = kpi.measure_paths(None)
+    assert (whole["since"], whole["right_dir"], whole["superpowers_default_dir"]) == (None, 1, 1)
+    window = kpi.measure_paths("2026-08-01")
+    assert (window["since"], window["right_dir"], window["superpowers_default_dir"]) == (
+        "2026-08-01",
+        1,
+        0,
+    )
+
+
+def test_paths_dirs_from_config(tmp_path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    _commit_file(repo, "s/a.md", "2026-09-01T12:00:00Z")
+    _commit_file(repo, "docs/developer/planning/specs/b.md", "2026-09-01T12:00:00Z")
+    monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(repo))
+    config = tmp_path / "lighthouse.toml"
+    config.write_text('[paths]\nspecs = "s"\nplans = "p/"\n', encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
+    assert kpi.measure_paths(None)["right_dir"] == 1
+
+
+def test_pickup_verbs_both_languages() -> None:
+    assert kpi.pickup_issue_number("pick up 610") == 610
+    assert kpi.pickup_issue_number("pick up issue #428, read the comments too") == 428
+    assert kpi.pickup_issue_number("pick 610 up") == 610
+    assert kpi.pickup_issue_number("start on issue 526") == 526
+    assert kpi.pickup_issue_number("work on #663") == 663
+    assert kpi.pickup_issue_number("continue with 663") == 663
+    assert kpi.pickup_issue_number("look at 623") == 623
+    assert kpi.pickup_issue_number("pak 610 op") == 610
+    assert kpi.pickup_issue_number("what is in issue 610?") is None
+    assert kpi.pickup_issue_number("close 610") is None
+
+
+def test_gate_line_any_language() -> None:
+    english = _gate_turn(
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
+        assistant(("Skill", {"skill": "superpowers:writing-plans"}), text="Gate 4b: writing-plans"),
+    )
+    assert kpi.announced_gate(english) == 4
+    assert kpi.announced_subgate(english) == "4b"
+    dutch = _gate_turn(assistant(bash(), text="Poort 2: systematic-debugging"))
+    assert kpi.announced_gate(dutch) == 2
+
+
+def test_scout_skip_any_language(tmp_path) -> None:
+    records = [
+        user("pick up 611"),
+        assistant(("Skill", {"skill": kpi.SKILL_NAME})),
+        assistant(
+            ("Write", {"file_path": "/x/.claude/worktrees/w/docs/a.md"}),
+            text=(
+                "Gate 4c: brainstorming\n"
+                "Scout: skipped — the spec names the three files, the pattern and the test path."
+            ),
+        ),
+    ]
+    write_session(tmp_path, records)
+    assert kpi.measure_scout(tmp_path, None)["skipped_with_reason"] == 1
+
+
+def test_skill_names_are_lighthouse() -> None:
+    assert kpi.SKILL_NAME == "lighthouse-start-issue"
+    assert kpi.ROUTE_SKILL_NAME == "lighthouse-route-issue"
+    assert kpi.SCOUT_AGENT == "lighthouse-issue-impact-scout"

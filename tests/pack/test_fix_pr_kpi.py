@@ -1,4 +1,4 @@
-"""Unit tests voor scripts/measure_fix_pr_kpi.py (issue #664).
+"""Unit tests for `.lighthouse/scripts/measure_fix_pr_kpi.py`, taken from paia.
 
 De KPI van #664 is één getal: hoeveel tool-calls zitten er tussen "fix 596" en de eerste handeling
 die de boom daadwerkelijk verandert. Dat getal is alleen iets waard als drie dingen kloppen, en
@@ -15,10 +15,10 @@ import importlib.util
 import sys
 from pathlib import Path
 
-_SPEC = importlib.util.spec_from_file_location(
-    "measure_fix_pr_kpi",
-    Path(__file__).resolve().parents[2] / "scripts" / "measure_fix_pr_kpi.py",
-)
+from tests.pack._testkit import INSTALL_ROOT
+
+SCRIPT = INSTALL_ROOT / ".lighthouse" / "scripts" / "measure_fix_pr_kpi.py"
+_SPEC = importlib.util.spec_from_file_location("measure_fix_pr_kpi", SCRIPT)
 assert _SPEC and _SPEC.loader
 kpi = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = kpi
@@ -199,12 +199,35 @@ def test_scope_sees_the_skill_running_past_green() -> None:
     """AC 7 als getal: de skill die doorloopt in close-issue is precies de overlap die niet mag."""
     t = turn(
         "fix pr 585",
-        assistant(skill("paia-fix-pr")),
-        assistant(skill("paia-close-issue")),
+        assistant(skill(kpi.SKILL_NAME)),
+        assistant(skill("lighthouse-close-issue")),
     )
     assert kpi.overruns_scope(t)
 
     binnen = turn(
-        "fix pr 585", assistant(skill("paia-fix-pr")), assistant(bash("git rebase"))
+        "fix pr 585", assistant(skill(kpi.SKILL_NAME)), assistant(bash("git rebase"))
     )
     assert not kpi.overruns_scope(binnen)
+
+
+def test_skill_names_are_lighthouse() -> None:
+    assert kpi.SKILL_NAME == "lighthouse-fix-pr"
+    assert "lighthouse-close-issue" in kpi.SCOPE_SKILLS
+
+
+def test_loads_start_issue_kpi_as_its_neighbour() -> None:
+    """The transcript layer comes from the file next to this script, not from a repo root."""
+    assert Path(kpi.tx.__file__).resolve().parent == SCRIPT.resolve().parent
+
+
+def test_runs_as_installed_file(tmp_path) -> None:
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "scope", "--dir", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert '"past_the_boundary": 0' in result.stdout

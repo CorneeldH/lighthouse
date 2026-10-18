@@ -1,8 +1,8 @@
 # Tool -> the units in this package that need it. `lighthouse init` reports a
 # missing tool with these names; it does not stop on it.
 codex = ["codex_usage"]
-git = ["main-commit-guard", "post_artefact", "plan_review_record", "review_pair"]
+git = ["main-commit-guard", "post_artefact", "plan_review_record", "review_pair", "measure_start_issue_kpi"]
 jq = ["main-commit-guard"]
-python3 = ["main-commit-guard", "lighthouse_lib.config", "lighthouse_lib.datadir", "lighthouse_lib.headings", "lighthouse_lib.protocol", "lighthouse_lib.artefacts", "post_artefact", "board_start", "plan_review_record", "review_pair", "codex_usage"]
-tomllib = ["lighthouse_lib.config", "lighthouse_lib.headings", "lighthouse_lib.protocol", "lighthouse_lib.artefacts", "post_artefact", "board_start", "plan_review_record", "review_pair", "codex_usage"]
+python3 = ["main-commit-guard", "lighthouse_lib.config", "lighthouse_lib.datadir", "lighthouse_lib.headings", "lighthouse_lib.protocol", "lighthouse_lib.artefacts", "post_artefact", "board_start", "plan_review_record", "review_pair", "codex_usage", "measure_start_issue_kpi", "measure_fix_pr_kpi"]
+tomllib = ["lighthouse_lib.config", "lighthouse_lib.headings", "lighthouse_lib.protocol", "lighthouse_lib.artefacts", "post_artefact", "board_start", "plan_review_record", "review_pair", "codex_usage", "measure_start_issue_kpi", "measure_fix_pr_kpi"]
 gh = ["post_artefact", "board_start"]

@@ -39,6 +39,8 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/protocol.py",
 		".lighthouse/scripts/board_start.py",
 		".lighthouse/scripts/codex_usage.py",
+		".lighthouse/scripts/measure_fix_pr_kpi.py",
+		".lighthouse/scripts/measure_start_issue_kpi.py",
 		".lighthouse/scripts/plan_review_record.py",
 		".lighthouse/scripts/post_artefact.py",
 		".lighthouse/scripts/review_pair.py",

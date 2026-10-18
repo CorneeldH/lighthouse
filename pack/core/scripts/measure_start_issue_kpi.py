@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""KPI-meting voor de skill paia-start-issue (issue #663).
+"""KPI-meting voor de skill lighthouse-start-issue.
 
 WAT DIT MEET
 ------------
@@ -35,12 +35,12 @@ de uitvoer. Een score van 100% betekent "van de zichtbare schrijfacties", niet "
 stond. De omgekeerde fout — een pickup waarbij de skill NIET laadde — wordt hier niet gemeten;
 die wordt indirect zichtbaar in rij 1, want zo'n beurt houdt de oude mediaan.
 
-`leadin` slaat de `Skill`-call van paia-start-issue zelf over (noch aanloop, noch route-call):
-de skill is ambient, dus bij een pickup is `Skill{skill: "paia-start-issue"}` vaak de EERSTE
+`leadin` slaat de `Skill`-call van lighthouse-start-issue zelf over (noch aanloop, noch route-call):
+de skill is ambient, dus bij een pickup is `Skill{skill: "lighthouse-start-issue"}` vaak de EERSTE
 tool_use van de beurt, vóór er ook maar iets gerouteerd is. Meetellen als route-call zou de
 metric per constructie laten slagen (lead-in 0, ongeacht of de routering daadwerkelijk verbeterde).
 Dit raakt de nulmeting hierboven niet: die stamt van vóór het bestaan van de skill, dus geen
-nulmetingbeurt bevat deze call. `Skill{skill: "paia-route-issue"}` wordt op dezelfde grond
+nulmetingbeurt bevat deze call. `Skill{skill: "lighthouse-route-issue"}` wordt op dezelfde grond
 overgeslagen: sinds de split (#1115) roept start-issue die aan voor de poorten, en de melding
 komt pas ná die call.
 
@@ -54,13 +54,16 @@ was — dat is een oordeel, geen patroon. Wat hij wel levert is de verdeling, en
 omgekeerde vraag beantwoordbaar: blijven poort 1 en 2 op nul, dan is de poortenreeks dood hout.
 
 Gebruik:
-    uv run python scripts/measure_start_issue_kpi.py                 # de hele tabel
-    uv run python scripts/measure_start_issue_kpi.py leadin --since 2026-08-24
+    python3 .lighthouse/scripts/measure_start_issue_kpi.py           # de hele tabel
+    python3 .lighthouse/scripts/measure_start_issue_kpi.py leadin --since 2026-08-24
+
+Output keys are fixed English tokens.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import re
 import statistics
@@ -71,19 +74,26 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-DEFAULT_TRANSCRIPT_DIR = (
-    Path.home()
-    / ".claude"
-    / "projects"
-    / "-home-corneel-repositories-personal-ai-agent"
-)
-REPO_ROOT = Path(__file__).resolve().parents[1]
+# Run as a file (`python3 .lighthouse/scripts/<name>.py`): put `.lighthouse/lib` first, so
+# `lighthouse_lib` imports from this installation.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
-SKILL_NAME = "paia-start-issue"
+from lighthouse_lib import config, headings  # noqa: E402
+from lighthouse_lib.config import ConfigError  # noqa: E402
+
+
+def default_transcript_dir() -> Path:
+    """The Claude Code project directory of this repo: `~/.claude/projects/<root>`, where
+    `<root>` is the repo root with every character outside `[A-Za-z0-9]` replaced by `-`."""
+    root = str(config.repo_root().resolve())
+    return Path.home() / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", root)
+
+
+SKILL_NAME = "lighthouse-start-issue"
 # Sinds #1115 staan de poorten in een eigen read-only skill die start-issue aanroept. Die call is
 # het routeren zelf, net als de ambient start-skill: `count_leadin` en `text_before_route` slaan
 # beide over. `measure_gate` en de andere noemers blijven op SKILL_NAME filteren.
-ROUTE_SKILL_NAME = "paia-route-issue"
+ROUTE_SKILL_NAME = "lighthouse-route-issue"
 ROUTING_SKILLS = frozenset({SKILL_NAME, ROUTE_SKILL_NAME})
 
 # Stap 3 van de skill zet de worktree vóór de route; deze Skill-call staat dus altijd vóór de
@@ -102,23 +112,25 @@ WRITE_TOOLS = frozenset({"Write", "Edit"})
 
 WORKTREE_MARKER = ".claude/worktrees/"
 
-CORRECT_DOC_DIRS = (
-    "docs/developer/planning/specs/",
-    "docs/developer/planning/plans/",
-)
-# Samengesteld uit delen, niet als literal: tests/unit/test_docs_planning.py
-# ::test_no_references_to_old_planning_paths scant elk tracked bestand regel voor regel op de
-# oude planningspaden en wordt rood van een letterlijke string hier.
+
+def correct_doc_dirs() -> tuple[str, ...]:
+    """De spec- en planmap van het project (`[paths] specs`, `plans`), elk met een `/`."""
+    cfg = config.load(config.config_path())
+    return tuple(
+        str(config.lookup(cfg, key)).rstrip("/") + "/" for key in ("paths.specs", "paths.plans")
+    )
+
+
+# De defaultmappen van Superpowers, waar een spec of plan landt als niemand de conventie volgt.
 _LEGACY_ROOT = "docs/" + "superpowers/"
 LEGACY_DOC_DIRS = (_LEGACY_ROOT + "specs/", _LEGACY_ROOT + "plans/")
 
-# De conventie ("designs -> specs/, plannen -> plans/") staat sinds deze commit in CLAUDE.md.
 # `paths` telt toegevoegde bestanden over de git-historie; zonder ondergrens telt hij dus ook de
-# periode waarin de conventie nog niet bestond, en kan de score 100% per constructie nooit halen.
-# De ondergrens is te overschrijven met --since.
-CONVENTION_DATE = "2026-08-02"  # commit 56999dcd
+# periode waarin de conventie nog niet bestond. Er is geen vaste ondergrens: geef de dag waarop
+# het project de conventie invoerde mee met --since.
 
-# "pak 610 op", "begin aan issue 526", "kijk naar 623", "ga verder met #663".
+# "pak 610 op", "begin aan issue 526", "kijk naar 623", "ga verder met #663"; in English
+# "pick up 610", "pick 610 up", "start on issue 526", "work on #663", "look at 623".
 # Bewust smal: een prompt die een nummer alleen NOEMT ("wat staat er in 610?") is geen pickup.
 PICKUP_RE = re.compile(
     r"""
@@ -126,11 +138,16 @@ PICKUP_RE = re.compile(
     | (?:begin(?:nen)?|start(?:en)?|ga\s+verder|ga\s+aan\s+de\s+slag|werk)\s+
       (?:aan|met)\s+(?:issue\s*)?\#?(?P<b>\d{2,4})
     | kijk\s+(?:eens\s+)?naar\s+(?:issue\s*)?\#?(?P<c>\d{2,4})
+    | pick\s+up\s+(?:issue\s*)?\#?(?P<d>\d{2,4})
+    | pick\s+(?:issue\s*)?\#?(?P<e>\d{2,4})\s+up
+    | (?:start(?:ing)?|continue|get\s+started|work(?:ing)?)\s+
+      (?:on|with)\s+(?:issue\s*)?\#?(?P<f>\d{2,4})
+    | look\s+at\s+(?:issue\s*)?\#?(?P<g>\d{2,4})
     """,
     re.IGNORECASE | re.VERBOSE,
 )
 
-# Een slash-commando, maar geen absoluut pad: `/home/corneel/...` wordt door de negatieve
+# Een slash-commando, maar geen absoluut pad: `/usr/local/...` wordt door de negatieve
 # lookahead op '/' uitgesloten.
 SLASH_SKILL_RE = re.compile(r"(?<![\w/])/([a-z][a-z0-9-]*(?::[a-z0-9-]+)?)(?![\w/])")
 
@@ -138,36 +155,53 @@ SLASH_SKILL_RE = re.compile(r"(?<![\w/])/([a-z][a-z0-9-]*(?::[a-z0-9-]+)?)(?![\w
 # match levert MINDER gerapporteerde mis-triggers, dus dit getal overdrijft het probleem nooit.
 ISSUE_NUMBER_RE = re.compile(r"(?<![\w.])#?\d{2,4}(?![\w.])")
 
-# De vaste vorm waarin de skill zijn triage-uitkomst meldt: `Poort 2: systematic-debugging`.
-# Vijf poorten (0 t/m 4); een hoger cijfer is per definitie geen poortmelding. Poort 4 draagt
-# verplicht een subletter (`Poort 4b: writing-plans`); zonder `[abc]?` valt er tussen `4` en `b`
-# geen woordgrens en telt precies de voorgeschreven vorm als "niet gemeld".
-GATE_RE = re.compile(r"\bPoort\s*(?P<gate>[0-4])[abc]?\b")
 
-SCOUT_AGENT = "issue-impact-scout"
+def _flexible(key: str) -> str:
+    """Every variant of heading `key` as a regex group; a space matches any whitespace."""
+    return "(?:" + "|".join(
+        re.escape(v).replace("\\ ", "\\s*") for v in headings.variants(key)
+    ) + ")"
+
+
+# De vaste vorm waarin de skill zijn triage-uitkomst meldt: `Poort 2: systematic-debugging`
+# (`heading:gate_line`, elke taal). Vijf poorten (0 t/m 4); een hoger cijfer is per definitie
+# geen poortmelding. Poort 4 draagt verplicht een subletter (`Poort 4b: writing-plans`); zonder
+# `[abc]?` valt er tussen `4` en `b` geen woordgrens en telt precies de voorgeschreven vorm als
+# "niet gemeld".
+@functools.cache
+def gate_re() -> re.Pattern[str]:
+    return re.compile(rf"\b{_flexible('gate_line')}\s*(?P<gate>[0-4])[abc]?\b")
+
+
+SCOUT_AGENT = "lighthouse-issue-impact-scout"
 
 # De trigger wordt structureel gelezen uit het Agent-blok (`_scout_calls`), niet uit deze regex:
 # de meldregel `Scout: issue-impact-scout` uit SKILL.md wordt door niets in dit script gemeten.
-# SCOUT_SKIP_RE hieronder wordt wél gebruikt — dat contract is woordelijk met
-# .claude/skills/paia-start-issue/SKILL.md; tests/unit/test_issue_impact_scout.py pint dezelfde
-# string aan de andere kant.
-SCOUT_SKIP_RE = re.compile(
-    r"^Scout:\s*overgeslagen\s*—\s*(?P<reden>.+?)\s*$", re.MULTILINE
-)
+# `scout_skip_re` hieronder wordt wél gebruikt — dat contract is `heading:scout_skipped` in
+# `.lighthouse/headings.toml`, dezelfde kop die de skill schrijft.
+@functools.cache
+def scout_skip_re() -> re.Pattern[str]:
+    return re.compile(
+        rf"^{_flexible('scout_skipped')}\s*—\s*(?P<reden>.+?)\s*$", re.MULTILINE
+    )
+
 
 # Een reden van één teken (of alleen een punt) is geen reden. Twintig tekens is geen diepe
 # waarheid; het is de ondergrens waaronder "duidelijk." en "simpel." niet meer doorglippen.
 SCOUT_MIN_REASON = 20
 
-# Het zoekbudget uit de persona (`.claude/agents/issue-impact-scout.md`, norm "hoogstens 35
-# zoekacties"; 25 tot #1159, toen de verplichte aanroeperszoektocht erbij kwam). Het staat hier
-# omdat `maxTurns` iets anders begrenst — beurten, niet calls — en een grens die niemand telt is
-# decoratie. tests/unit/test_issue_impact_scout.py pint dat dit getal en de persona hetzelfde
-# zeggen.
+# Het zoekbudget uit de persona (`.claude/agents/lighthouse-issue-impact-scout.md`, norm
+# "hoogstens 35 zoekacties"). Het staat hier omdat `maxTurns` iets anders begrenst — beurten,
+# niet calls — en een grens die niemand telt is decoratie. tests/pack/test_issue_impact_scout.py
+# pint dat dit getal en de persona hetzelfde zeggen.
 SCOUT_TOOL_CALL_BUDGET = 35
 
 SCOUT_GATES = frozenset({"4b", "4c"})
-GATE_SUFFIX_RE = re.compile(r"\bPoort\s*(?P<gate>[0-4])\s*(?P<sub>[abc])?\b")
+
+
+@functools.cache
+def gate_suffix_re() -> re.Pattern[str]:
+    return re.compile(rf"\b{_flexible('gate_line')}\s*(?P<gate>[0-4])\s*(?P<sub>[abc])?\b")
 
 
 @dataclass(frozen=True)
@@ -253,8 +287,7 @@ def pickup_issue_number(text: str) -> int | None:
     match = PICKUP_RE.search(text)
     if not match:
         return None
-    number = match.group("a") or match.group("b") or match.group("c")
-    return int(number)
+    return int(next(number for number in match.groups() if number))
 
 
 def names_a_skill(text: str) -> bool:
@@ -306,9 +339,9 @@ def text_before_route(turn: Turn) -> str:
 
     De poortmelding hoort vóór het doorroeren te staan. Tekst en tool_use kunnen in hetzelfde
     assistant-bericht zitten — de tekstblokken staan er dan vóór — dus de grens ligt op het
-    tool_use-blok zelf, niet op het bericht. De ambient `Skill{skill: paia-start-issue}` wordt
+    tool_use-blok zelf, niet op het bericht. De ambient `Skill{skill: lighthouse-start-issue}` wordt
     overgeslagen op dezelfde grond als in `count_leadin`: die call ís het laden van de skill, niet
-    het routeren erna. `Skill{skill: paia-route-issue}` evenzo: die call ís het routeren, en de
+    het routeren erna. `Skill{skill: lighthouse-route-issue}` evenzo: die call ís het routeren, en de
     poortmelding volgt er pas op. `Skill{skill: superpowers:using-git-worktrees}` ook: stap 3 zet
     de worktree vóór de route, dus als grens slikte hij elke poortmelding (#937). Vindt de skill geen route (poort 0 stopt), dan is er geen grens en telt de
     hele beurt.
@@ -339,7 +372,7 @@ def text_before_route(turn: Turn) -> str:
 
 def announced_gate(turn: Turn) -> int | None:
     """Het poortnummer dat de skill meldde, of None als hij stil routeerde."""
-    match = GATE_RE.search(text_before_route(turn))
+    match = gate_re().search(text_before_route(turn))
     return int(match.group("gate")) if match else None
 
 
@@ -416,7 +449,7 @@ def measure_leadin(directory: Path, since: str | None) -> dict[str, object]:
     return {
         "routed": _summary(routed),
         "unrouted": _summary(unrouted),
-        "zonder_route": no_route,
+        "no_route": no_route,
     }
 
 
@@ -426,9 +459,9 @@ def _summary(values: list[int]) -> dict[str, object]:
     return {
         "n": len(values),
         "min": min(values),
-        "mediaan": statistics.median(values),
+        "median": statistics.median(values),
         "max": max(values),
-        "gemiddeld": round(statistics.fmean(values), 1),
+        "mean": round(statistics.fmean(values), 1),
     }
 
 
@@ -445,10 +478,10 @@ def measure_worktree_first(directory: Path, since: str | None) -> dict[str, obje
     zichtbaar = inside + outside
     return {
         "in_worktree": inside,
-        "buiten_worktree": outside,
-        "geen_zichtbare_schrijfactie": invisible,
-        "aandeel": round(inside / zichtbaar, 3) if zichtbaar else None,
-        "let_op": "alleen Write/Edit; Bash-schrijfacties zijn onzichtbaar",
+        "outside_worktree": outside,
+        "no_visible_write": invisible,
+        "share": round(inside / zichtbaar, 3) if zichtbaar else None,
+        "note": "Write/Edit only; Bash writes are invisible",
     }
 
 
@@ -465,9 +498,9 @@ def measure_mistrigger(directory: Path, since: str | None) -> dict[str, object]:
                 mistriggered += 1
                 voorbeelden.append(turn.prompt[:120])
     return {
-        "geladen": loaded,
-        "zonder_issuenummer": mistriggered,
-        "voorbeelden": voorbeelden[:5],
+        "loaded": loaded,
+        "without_issue_number": mistriggered,
+        "examples": voorbeelden[:5],
     }
 
 
@@ -492,15 +525,15 @@ def measure_gate(directory: Path, since: str | None) -> dict[str, object]:
             niet_gemeld += 1
             continue
         gemeld += 1
-        key = f"poort_{gate}"
+        key = f"gate_{gate}"
         verdeling[key] = verdeling.get(key, 0) + 1
     totaal = gemeld + niet_gemeld
     return {
-        "gemeld": gemeld,
-        "niet_gemeld": niet_gemeld,
-        "aandeel": round(gemeld / totaal, 3) if totaal else None,
-        "verdeling": dict(sorted(verdeling.items())),
-        "pickup_zonder_skill": zonder_skill,
+        "reported": gemeld,
+        "not_reported": niet_gemeld,
+        "share": round(gemeld / totaal, 3) if totaal else None,
+        "distribution": dict(sorted(verdeling.items())),
+        "pickup_without_skill": zonder_skill,
     }
 
 
@@ -581,7 +614,7 @@ def _run_stats(calls: list[tuple[dict, dict | None]]) -> tuple[list[float], list
 
 def announced_subgate(turn: Turn) -> str | None:
     """`4b` of `4c` als de skill de subletter meldde, anders alleen het cijfer als string."""
-    match = GATE_SUFFIX_RE.search(text_before_route(turn))
+    match = gate_suffix_re().search(text_before_route(turn))
     if not match:
         return None
     return match.group("gate") + (match.group("sub") or "")
@@ -598,7 +631,7 @@ def measure_scout(directory: Path, since: str | None) -> dict[str, object]:
     slechte 4b/4c-run, het is een andere fout, en twee faalmodi in één percentage persen maakt
     beide onleesbaar.
 
-    `tool_calls` en `boven_budget` meten het zoekbudget uit de persona
+    `tool_calls` en `over_budget` meten het zoekbudget uit de persona
     (`SCOUT_TOOL_CALL_BUDGET`), niet `maxTurns`: dat plafond telt beurten, en één beurt draagt
     meerdere parallelle calls. Een run boven het budget is dus een overschrijding van de
     prompt-norm, geen runtimefout.
@@ -609,7 +642,7 @@ def measure_scout(directory: Path, since: str | None) -> dict[str, object]:
     noemer (`totaal`) van deze rij. Poort 0/1/2/4a blijven ondubbelzinnig en dus ongemoeid.
 
     Hetzelfde geldt voor een scoutcall zonder enige poortmelding: stil routeren is geen bewijs
-    voor poort 0/1/2/4a (#937). Die runs tellen in `poort_onbekend`, zodat ze zichtbaar blijven
+    voor poort 0/1/2/4a (#937). Die runs tellen in `gate_unknown`, zodat ze zichtbaar blijven
     zonder de noemer of `mistrigger` te vervuilen; de poortfout zelf meet rij `gate`.
     """
     getriggerd = met_reden = stil = mistrigger = onbekend = 0
@@ -632,7 +665,7 @@ def measure_scout(directory: Path, since: str | None) -> dict[str, object]:
         if calls:
             getriggerd += 1
             continue
-        skip = SCOUT_SKIP_RE.search(text_before_route(turn))
+        skip = scout_skip_re().search(text_before_route(turn))
         reden = skip.group("reden").strip(" .") if skip else ""
         if len(reden) >= SCOUT_MIN_REASON:
             met_reden += 1
@@ -640,34 +673,34 @@ def measure_scout(directory: Path, since: str | None) -> dict[str, object]:
             stil += 1
     totaal = getriggerd + met_reden + stil
     return {
-        "getriggerd": getriggerd,
-        "overgeslagen_met_reden": met_reden,
-        "stil": stil,
+        "triggered": getriggerd,
+        "skipped_with_reason": met_reden,
+        "silent": stil,
         "mistrigger": mistrigger,
-        "poort_onbekend": onbekend,
-        "aandeel": round((getriggerd + met_reden) / totaal, 3) if totaal else None,
-        "looptijd_seconden": _summary_float(looptijden),
+        "gate_unknown": onbekend,
+        "share": round((getriggerd + met_reden) / totaal, 3) if totaal else None,
+        "runtime_seconds": _summary_float(looptijden),
         "tool_calls": _summary_int(tool_calls),
-        "boven_budget": sum(1 for n in tool_calls if n > SCOUT_TOOL_CALL_BUDGET),
+        "over_budget": sum(1 for n in tool_calls if n > SCOUT_TOOL_CALL_BUDGET),
     }
 
 
 def _summary_int(values: list[int]) -> dict[str, object]:
     if not values:
-        return {"n": 0, "mediaan": None, "max": None}
+        return {"n": 0, "median": None, "max": None}
     return {
         "n": len(values),
-        "mediaan": round(statistics.median(values)),
+        "median": round(statistics.median(values)),
         "max": max(values),
     }
 
 
 def _summary_float(values: list[float]) -> dict[str, object]:
     if not values:
-        return {"n": 0, "mediaan": None, "max": None}
+        return {"n": 0, "median": None, "max": None}
     return {
         "n": len(values),
-        "mediaan": round(statistics.median(values), 1),
+        "median": round(statistics.median(values), 1),
         "max": round(max(values), 1),
     }
 
@@ -675,34 +708,31 @@ def _summary_float(values: list[float]) -> dict[str, object]:
 def measure_paths(since: str | None) -> dict[str, object]:
     """Leest git, geen transcripten: waar landden nieuwe spec- en planbestanden?
 
-    Telt vanaf CONVENTION_DATE, niet vanaf het begin van de historie. Over de volle historie
-    komt de score op 62,6% uit, en dat cijfer beweegt nooit meer: elk van de bestanden in de
-    superpowers-defaultmap is toegevoegd vóór de conventie bestond (laatste 2026-08-01), en de
-    teller van dat verleden ligt vast. Een target van 100% is dan per constructie onhaalbaar en
-    de metriek zegt niets over het huidige gedrag. Overschrijf met --since om een ander venster
-    te bekijken; `vanaf` in de uitvoer noemt altijd welk venster geteld is.
+    Zonder --since telt de hele historie, ook de periode waarin de conventie nog niet bestond;
+    een target van 100% is dan per constructie onhaalbaar. Geef daarom de dag mee waarop de
+    conventie begon; `since` in de uitvoer noemt altijd welk venster geteld is.
     """
     argv = [
         "git",
         "-C",
-        str(REPO_ROOT),
+        str(config.repo_root()),
         "log",
         "--diff-filter=A",
         "--name-only",
         "--pretty=format:",
     ]
-    window = since or CONVENTION_DATE
-    argv += ["--since", window]
+    if since:
+        argv += ["--since", since]
     output = subprocess.run(argv, capture_output=True, text=True, check=True).stdout
     added = [line for line in output.splitlines() if line.strip()]
-    correct = [f for f in added if f.startswith(CORRECT_DOC_DIRS)]
+    correct = [f for f in added if f.startswith(correct_doc_dirs())]
     legacy = [f for f in added if f.startswith(LEGACY_DOC_DIRS)]
     total = len(correct) + len(legacy)
     return {
-        "vanaf": window,
-        "juiste_map": len(correct),
-        "superpowers_defaultmap": len(legacy),
-        "aandeel": round(len(correct) / total, 3) if total else None,
+        "since": since,
+        "right_dir": len(correct),
+        "superpowers_default_dir": len(legacy),
+        "share": round(len(correct) / total, 3) if total else None,
     }
 
 
@@ -715,14 +745,20 @@ def main(argv: list[str] | None = None) -> int:
         "metric",
         nargs="?",
         choices=["leadin", "worktree-first", "mistrigger", "paths", "gate", "scout"],
-        help="laat weg voor de hele tabel",
+        help="leave out for the whole table",
     )
-    parser.add_argument("--dir", type=Path, default=DEFAULT_TRANSCRIPT_DIR)
-    parser.add_argument("--since", help="YYYY-MM-DD; alleen records vanaf deze dag")
+    parser.add_argument("--dir", type=Path, help="default: this repo's Claude Code projects dir")
+    parser.add_argument("--since", help="YYYY-MM-DD; only records from this day on")
     args = parser.parse_args(argv)
 
+    try:
+        if args.dir is None:
+            args.dir = default_transcript_dir()
+    except ConfigError as exc:
+        print(f"measure: {exc}", file=sys.stderr)
+        return 2
     if not args.dir.is_dir():
-        print(f"transcriptmap bestaat niet: {args.dir}", file=sys.stderr)
+        print(f"transcript directory does not exist: {args.dir}", file=sys.stderr)
         return 2
 
     rows = {
@@ -734,11 +770,12 @@ def main(argv: list[str] | None = None) -> int:
         "scout": lambda: measure_scout(args.dir, args.since),
     }
     selected = [args.metric] if args.metric else list(rows)
-    print(
-        json.dumps(
-            {name: rows[name]() for name in selected}, indent=2, ensure_ascii=False
-        )
-    )
+    try:
+        table = {name: rows[name]() for name in selected}
+    except ConfigError as exc:
+        print(f"measure: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(table, indent=2, ensure_ascii=False))
     return 0
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""KPI-meting voor de skill paia-fix-pr (issue #664).
+"""KPI-meting voor de skill lighthouse-fix-pr.
 
 WAT DIT MEET
 ------------
@@ -36,8 +36,10 @@ als "geen mutatie" en valt uit de noemer -- de kant die de score nooit gunstiger
 beurt houdt de oude mediaan.
 
 Gebruik:
-    uv run python scripts/measure_fix_pr_kpi.py                  # de hele tabel
-    uv run python scripts/measure_fix_pr_kpi.py leadin --since 2026-08-30
+    python3 .lighthouse/scripts/measure_fix_pr_kpi.py            # de hele tabel
+    python3 .lighthouse/scripts/measure_fix_pr_kpi.py leadin --since 2026-08-30
+
+Output keys are fixed English tokens.
 """
 
 from __future__ import annotations
@@ -49,11 +51,12 @@ import sys
 from pathlib import Path
 
 # De transcript-parseerlaag staat al in measure_start_issue_kpi.py en is daar getest. Hem hier
-# kopieren zou twee definities van "een beurt" opleveren die stil uiteen kunnen lopen.
+# kopieren zou twee definities van "een beurt" opleveren die stil uiteen kunnen lopen. Hij
+# wordt geladen als buur in de eigen map, niet via een repo-root.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import measure_start_issue_kpi as tx
+import measure_start_issue_kpi as tx  # noqa: E402
 
-SKILL_NAME = "paia-fix-pr"
+SKILL_NAME = "lighthouse-fix-pr"
 
 # De vijf gemeten vormen: `fix pr 585`, `fix 595`, `627 pr heeft errors`,
 # `612 heeft conflicts, fix die`, `kun je conflict 408 goed oplossen?`.
@@ -110,7 +113,7 @@ WRITE_TOOLS = frozenset({"Write", "Edit", "NotebookEdit"})
 
 # De twee handelingen die per AC 7 NA deze skill horen, niet erin. Een van beide in dezelfde beurt
 # betekent dat de skill doorliep voorbij "de PR is groen".
-SCOPE_SKILLS = frozenset({"paia-close-issue", "caveman:caveman-review"})
+SCOPE_SKILLS = frozenset({"lighthouse-close-issue", "caveman:caveman-review"})
 
 
 def fix_pr_number(text: str) -> int | None:
@@ -141,7 +144,7 @@ def count_leadin(turn: tx.Turn) -> int | None:
     """Tool-calls vóór de eerste muterende call, of None als de beurt nooit muteerde.
 
     Exclusief: de muterende call zelf is de fix, niet de aanloop ernaartoe. De ambient
-    `Skill{skill: paia-fix-pr}` telt niet mee -- die call ís het laden van de skill, en meetellen
+    `Skill{skill: lighthouse-fix-pr}` telt niet mee -- die call ís het laden van de skill, en meetellen
     zou de metriek per constructie laten slagen.
     """
     seen = 0
@@ -193,7 +196,7 @@ def measure_leadin(directory: Path, since: str | None) -> dict[str, object]:
             zonder_mutatie += 1
         else:
             counts.append(value)
-    return {**tx._summary(counts), "zonder_mutatie": zonder_mutatie}
+    return {**tx._summary(counts), "without_mutation": zonder_mutatie}
 
 
 def measure_diagnose(directory: Path, since: str | None) -> dict[str, object]:
@@ -214,9 +217,9 @@ def measure_mistrigger(directory: Path, since: str | None) -> dict[str, object]:
                 misgeschoten += 1
                 voorbeelden.append(turn.prompt[:120])
     return {
-        "geladen": geladen,
-        "zonder_fixverzoek": misgeschoten,
-        "voorbeelden": voorbeelden[:5],
+        "loaded": geladen,
+        "without_fix_request": misgeschoten,
+        "examples": voorbeelden[:5],
     }
 
 
@@ -230,7 +233,7 @@ def measure_scope(directory: Path, since: str | None) -> dict[str, object]:
             geladen += 1
             if overruns_scope(turn):
                 buiten += 1
-    return {"geladen": geladen, "voorbij_de_grens": buiten}
+    return {"loaded": geladen, "past_the_boundary": buiten}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -239,14 +242,20 @@ def main(argv: list[str] | None = None) -> int:
         "metric",
         nargs="?",
         choices=["leadin", "diagnose", "mistrigger", "scope"],
-        help="laat weg voor de hele tabel",
+        help="leave out for the whole table",
     )
-    parser.add_argument("--dir", type=Path, default=tx.DEFAULT_TRANSCRIPT_DIR)
-    parser.add_argument("--since", help="YYYY-MM-DD; alleen records vanaf deze dag")
+    parser.add_argument("--dir", type=Path, help="default: this repo's Claude Code projects dir")
+    parser.add_argument("--since", help="YYYY-MM-DD; only records from this day on")
     args = parser.parse_args(argv)
 
+    try:
+        if args.dir is None:
+            args.dir = tx.default_transcript_dir()
+    except tx.ConfigError as exc:
+        print(f"measure: {exc}", file=sys.stderr)
+        return 2
     if not args.dir.is_dir():
-        print(f"transcriptmap bestaat niet: {args.dir}", file=sys.stderr)
+        print(f"transcript directory does not exist: {args.dir}", file=sys.stderr)
         return 2
 
     rows = {
