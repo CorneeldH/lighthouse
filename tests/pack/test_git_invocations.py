@@ -228,3 +228,36 @@ def test_lib_names_do_not_shadow_the_stdlib():
     `sys.path[0]`, and a lib file named like a stdlib module would shadow it."""
     names = {p.stem for p in LIB.glob("*.py")} - {"__init__"}
     assert not names & set(sys.stdlib_module_names)
+
+
+def test_markers_are_english_tokens():
+    assert (gi.UNRESOLVED, gi.NEW_DIR) == ("<unknown>", "<new>")
+
+
+@pytest.mark.parametrize(
+    "cmd,default_branch,to_main",
+    [
+        ("git push origin HEAD:trunk", "trunk", "yes"),
+        ("git push origin +refs/heads/trunk", "trunk", "yes"),
+        ("git push origin HEAD:main", "trunk", "no"),
+        ("git push origin HEAD:main", "main", "yes"),
+    ],
+)
+def test_push_destination_follows_default_branch(tmp_path, cmd, default_branch, to_main):
+    x = tmp_path / "x"
+    init_repo(x, branch="issue-1-x")
+    found = gi.find_invocations(cmd, str(x), default_branch=default_branch)
+    assert [t for _, _, t, _ in found] == [to_main]
+
+
+def test_cli_takes_the_default_branch(tmp_path):
+    x = tmp_path / "x"
+    init_repo(x, branch="issue-1-x")
+    out = subprocess.run(
+        [sys.executable, str(LIB / "git_invocations.py"), "--default-branch", "trunk", str(x)],
+        input="git push origin HEAD:trunk",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert out.returncode == 0 and out.stdout == f"push\t{x}\tyes\t{x}\n"

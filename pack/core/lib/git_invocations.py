@@ -19,8 +19,8 @@ import sys
 from collections.abc import Iterator
 from typing import NamedTuple
 
-UNRESOLVED = "<onbekend>"
-NEW_DIR = "<nieuw>"
+UNRESOLVED = "<unknown>"
+NEW_DIR = "<new>"
 
 # Grenspalen van een sub-shell in de segmentenlijst. Identiteit telt, niet
 # inhoud: flush_segment() maakt altijd een verse lijst, dus verwarring kan niet.
@@ -531,8 +531,9 @@ def refspec_target(arg):
     return spec
 
 
-def push_destination(words, literal):
-    """Bestemming van een push: yes (main), all (alle branches), no, unresolved.
+def push_destination(words, literal, default_branch="main"):
+    """Bestemming van een push: yes (`default_branch`), all (alle branches), no,
+    unresolved.
 
     `unresolved` is de vierde uitkomst en hij blokkeert. `git push origin $BR`
     kán main zijn en de hook kan het niet zien; stil doorlaten zou hier hetzelfde
@@ -558,7 +559,7 @@ def push_destination(words, literal):
             if result == "no" and positional > 1:
                 result = "unresolved"
             continue
-        if refspec_target(arg) == "main":
+        if refspec_target(arg) == default_branch:
             return "yes"
     return result
 
@@ -966,6 +967,7 @@ def find_invocations(
     cwd: str,
     *,
     report_new_dirs: bool = False,
+    default_branch: str = "main",
 ) -> list[Invocation]:
     """Vind git commit/push-aanroepen in `command`, uitgevoerd vanuit `cwd`.
 
@@ -1001,7 +1003,9 @@ def find_invocations(
         # Een push met een expliciete main-bestemming telt ook als hij vanaf een
         # feature-branch gebeurt: `git push origin HEAD:main`, `+main`, `--all`.
         if action == "push":
-            to_main = push_destination(words[idx + 1 :], literal[idx + 1 :])
+            to_main = push_destination(
+                words[idx + 1 :], literal[idx + 1 :], default_branch
+            )
         else:
             to_main = "no"
         target, keep = settle_target(
@@ -1015,7 +1019,8 @@ def find_invocations(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI: `git_invocations.py [--report-new-dirs] <cwd>`, commando op stdin.
+    """CLI: `git_invocations.py [--report-new-dirs] [--default-branch B] <cwd>`,
+    commando op stdin. `B` is de beschermde branch (default `main`).
 
     Print per gevonden invocation één tab-gescheiden regel op stdout
     (`<actie>\\t<map-of-marker>\\t<naar-main>\\t<ruwe-tekst>`). Geeft 0, of 3
@@ -1024,13 +1029,20 @@ def main(argv: list[str] | None = None) -> int:
     """
     args = sys.argv[1:] if argv is None else argv
     report_new_dirs = False
-    if args and args[0] == "--report-new-dirs":
-        report_new_dirs = True
-        args = args[1:]
+    default_branch = "main"
+    while args and args[0] in ("--report-new-dirs", "--default-branch"):
+        if args[0] == "--report-new-dirs":
+            report_new_dirs = True
+            args = args[1:]
+        else:
+            default_branch = args[1]
+            args = args[2:]
     cwd = args[0]
     command = sys.stdin.read()
     try:
-        invocations = find_invocations(command, cwd, report_new_dirs=report_new_dirs)
+        invocations = find_invocations(
+            command, cwd, report_new_dirs=report_new_dirs, default_branch=default_branch
+        )
     except Unparseable:
         return 3
     for action, shown, to_main, target_raw in invocations:
