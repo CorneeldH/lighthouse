@@ -21,6 +21,10 @@
 //	requires.toml           tool -> the units that need it
 //	permissions.json        {"allow": [...]}: one permission unit per rule, merged into
 //	                        permissions.allow of .claude/settings.json
+//	detect.toml             when init proposes the package (see Detect); not copied
+//	lighthouse.toml.fragment
+//	                        keys init adds to lighthouse.toml (see
+//	                        projectconfig.ParseFragment); not copied
 package packs
 
 import (
@@ -34,6 +38,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
+	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
 
 // Kind is the kind of a unit.
@@ -83,11 +88,28 @@ type Requirement struct {
 	NeededBy []string
 }
 
-// Pack is a loaded package.
+// Contains matches when a file that one of Files names holds Text.
+type Contains struct {
+	Files []string `toml:"files"`
+	Text  string   `toml:"text"`
+}
+
+// Detect is the rule of detect.toml: a package fits a repository when one of Files
+// names a file git tracks or would track, or when a Contains rule matches. Each entry
+// is a git pathspec read with glob semantics (plan M0 (c), ontwerpkeuze 3).
+type Detect struct {
+	Files    []string   `toml:"files"`
+	Contains []Contains `toml:"contains"`
+}
+
+// Pack is a loaded package. Detect is nil without detect.toml, Config nil without
+// lighthouse.toml.fragment.
 type Pack struct {
 	Name     string
 	Units    []Unit
 	Requires []Requirement
+	Detect   *Detect
+	Config   []projectconfig.Table
 }
 
 // HookDir is where the hook scripts of every package land. A registration whose command
@@ -231,6 +253,22 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 					return err
 				}
 				p.Units = append(p.Units, units...)
+				return nil
+			}
+			if rel == "detect.toml" {
+				d, err := parseDetect(data)
+				if err != nil {
+					return fmt.Errorf("package %s: detect.toml: %w", name, err)
+				}
+				p.Detect = d
+				return nil
+			}
+			if rel == "lighthouse.toml.fragment" {
+				tables, err := projectconfig.ParseFragment(data)
+				if err != nil {
+					return fmt.Errorf("package %s: lighthouse.toml.fragment: %w", name, err)
+				}
+				p.Config = tables
 				return nil
 			}
 			if rel == "headings.toml" {
@@ -463,6 +501,47 @@ func parsePermissions(name string, data []byte) ([]Unit, error) {
 		units = append(units, Unit{Kind: KindPermission, Package: name, Path: settingsPath, ID: rule, Content: []byte(rule)})
 	}
 	return units, nil
+}
+
+// parseDetect reads detect.toml: at least one rule, and every pathspec relative to the
+// repository root, without a magic prefix of its own (init adds :(glob)).
+func parseDetect(data []byte) (*Detect, error) {
+	var d Detect
+	md, err := toml.Decode(string(data), &d)
+	if err != nil {
+		return nil, err
+	}
+	if extra := md.Undecoded(); len(extra) > 0 {
+		return nil, fmt.Errorf("unknown key %s", extra[0])
+	}
+	if len(d.Files) == 0 && len(d.Contains) == 0 {
+		return nil, fmt.Errorf("no rule: give files or [[contains]]")
+	}
+	check := func(where string, specs []string) error {
+		for i, s := range specs {
+			bad := s == "" || strings.HasPrefix(s, "/") || strings.HasPrefix(s, ":")
+			for _, part := range strings.Split(s, "/") {
+				bad = bad || part == ".."
+			}
+			if bad {
+				return fmt.Errorf("%s[%d] %q must be a pathspec relative to the repository root", where, i, s)
+			}
+		}
+		return nil
+	}
+	if err := check("files", d.Files); err != nil {
+		return nil, err
+	}
+	for i, c := range d.Contains {
+		where := fmt.Sprintf("contains[%d]", i)
+		if len(c.Files) == 0 || c.Text == "" {
+			return nil, fmt.Errorf("%s needs files and a non-empty text", where)
+		}
+		if err := check(where+".files", c.Files); err != nil {
+			return nil, err
+		}
+	}
+	return &d, nil
 }
 
 func parseRequires(data []byte) ([]Requirement, error) {

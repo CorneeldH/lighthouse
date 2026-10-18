@@ -1,4 +1,5 @@
-"""Every file in pack/core has a provenance entry in pack/SOURCES.toml (spec, Opdeling (b))."""
+"""Every file in a package under pack/ has a provenance entry in pack/SOURCES.toml
+(spec, Opdeling (b) and (c))."""
 
 import re
 import tomllib
@@ -9,10 +10,11 @@ SOURCES = REPO / "pack" / "SOURCES.toml"
 JUNK = {"__pycache__", ".pytest_cache", ".DS_Store"}
 
 
-def _pack_files() -> set[str]:
+def _pack_files(repo: Path = REPO) -> set[str]:
+    """Every file in every package directory: what `go:embed all:*/*` puts in the binary."""
     files = set()
-    for p in (REPO / "pack" / "core").rglob("*"):
-        rel = p.relative_to(REPO)
+    for p in (repo / "pack").glob("*/**/*"):
+        rel = p.relative_to(repo)
         if p.is_file() and not JUNK & set(rel.parts) and p.suffix != ".pyc":
             files.add(rel.as_posix())
     return files
@@ -44,3 +46,12 @@ def test_entry_is_new_or_has_a_source():
         assert (isinstance(src, str) and src) or (
             isinstance(src, list) and src and all(isinstance(s, str) and s for s in src)
         ), e["path"]
+
+
+def test_walks_every_package(tmp_path):
+    (tmp_path / "pack" / "core").mkdir(parents=True)
+    (tmp_path / "pack" / "core" / "a").write_text("a")
+    (tmp_path / "pack" / "zz" / "lib").mkdir(parents=True)
+    (tmp_path / "pack" / "zz" / "lib" / "x").write_text("x")
+    (tmp_path / "pack" / "SOURCES.toml").write_text("")
+    assert _pack_files(tmp_path) == {"pack/core/a", "pack/zz/lib/x"}

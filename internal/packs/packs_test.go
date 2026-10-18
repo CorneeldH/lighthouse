@@ -405,3 +405,74 @@ func TestLoadRejectsPermissions(t *testing.T) {
 		}
 	}
 }
+
+const detectTOML = "files = [\"pyproject.toml\"]\n\n[[contains]]\nfiles = [\"**/package.json\"]\ntext = '\"expo\"'\n"
+
+func TestLoadDetectAndFragment(t *testing.T) {
+	m := basePack()
+	m["detect.toml"] = file(detectTOML)
+	m["lighthouse.toml.fragment"] = file("[test_gate]\ncommand = \"uv run pytest -q\"\n")
+	p, err := Load(m, "python", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Detect == nil || len(p.Detect.Files) != 1 || p.Detect.Files[0] != "pyproject.toml" {
+		t.Fatalf("detect %#v", p.Detect)
+	}
+	if len(p.Detect.Contains) != 1 || p.Detect.Contains[0].Files[0] != "**/package.json" || p.Detect.Contains[0].Text != `"expo"` {
+		t.Fatalf("contains %#v", p.Detect.Contains)
+	}
+	if len(p.Config) != 1 || p.Config[0].Name != "test_gate" || p.Config[0].Keys[0].Value != `"uv run pytest -q"` {
+		t.Fatalf("config %#v", p.Config)
+	}
+	for _, u := range p.Units {
+		if strings.Contains(u.Path, "detect") || strings.Contains(u.Path, "fragment") {
+			t.Fatalf("unit for %s", u.Path)
+		}
+	}
+}
+
+func TestLoadWithoutDetectOrFragment(t *testing.T) {
+	p, err := Load(basePack(), "core", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Detect != nil || p.Config != nil {
+		t.Fatalf("detect %#v config %#v", p.Detect, p.Config)
+	}
+}
+
+func TestLoadRejectsDetect(t *testing.T) {
+	cases := map[string]string{
+		"absolute":        "files = [\"/x\"]\n",
+		"magic":           "files = [\":(top)x\"]\n",
+		"dot-dot":         "files = [\"a/../b\"]\n",
+		"empty pathspec":  "files = [\"\"]\n",
+		"unknown key":     "files = [\"x\"]\npaths = []\n",
+		"not a list":      "files = \"x\"\n",
+		"no text":         "[[contains]]\nfiles = [\"x\"]\n",
+		"contains files":  "[[contains]]\ntext = \"x\"\n",
+		"empty file":      "",
+		"unknown in rule": "[[contains]]\nfiles = [\"x\"]\ntext = \"y\"\nother = 1\n",
+		"invalid toml":    "files = [\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := basePack()
+			m["detect.toml"] = file(body)
+			_, err := Load(m, "python", "dev")
+			if err == nil || !strings.Contains(err.Error(), "detect.toml") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsFragment(t *testing.T) {
+	m := basePack()
+	m["lighthouse.toml.fragment"] = file("[t]\na = [1,\n2]\n")
+	_, err := Load(m, "python", "dev")
+	if err == nil || !strings.Contains(err.Error(), "lighthouse.toml.fragment") || !strings.Contains(err.Error(), "line 2") {
+		t.Fatalf("err = %v", err)
+	}
+}
