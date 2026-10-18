@@ -294,3 +294,57 @@ func TestIsInstallPathSkills(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadMapsTemplatesAndWorkflows(t *testing.T) {
+	m := basePack()
+	m["headings.toml"] = file("[x]\nnl = \"X\"\nen = \"X\"\n")
+	m["templates/pull_request_template.md"] = file("---\na: b\n---\nbody\n")
+	m["workflows/unblock.yml"] = file("on: push\n")
+	p, err := Load(m, "core", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := byPath(t, p)
+	if c := string(files[".lighthouse/headings.toml"].Content); c != "[x]\nnl = \"X\"\nen = \"X\"\n" {
+		t.Errorf("headings.toml = %q", c)
+	}
+	if c := string(files[".github/pull_request_template.md"].Content); c != "---\na: b\n---\nbody\n" {
+		t.Errorf("PR template = %q", c)
+	}
+	if c := string(files[".github/workflows/lighthouse-unblock.yml"].Content); c != "# lighthouse: core@dev\non: push\n" {
+		t.Errorf("workflow = %q", c)
+	}
+}
+
+func TestLoadRejectsOtherTemplatesAndWorkflows(t *testing.T) {
+	for name, extra := range map[string]string{
+		"other template":    "templates/ISSUE.md",
+		"nested workflow":   "workflows/a/b.yml",
+		"workflow not yml":  "workflows/x.txt",
+		"loose file in .lh": "other.toml",
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := basePack()
+			m[extra] = file("x\n")
+			if _, err := Load(m, "core", "dev"); err == nil {
+				t.Fatal("no error")
+			}
+		})
+	}
+}
+
+func TestIsInstallPathGitHub(t *testing.T) {
+	for p, want := range map[string]bool{
+		".lighthouse/headings.toml":              true,
+		".github/pull_request_template.md":       true,
+		".github/workflows/lighthouse-x.yml":     true,
+		".github/workflows/ci.yml":               false,
+		".github/workflows/lighthouse-/x.yml":    false,
+		".github/CODEOWNERS":                     false,
+		".github/workflows/lighthouse-x.yml.bak": false,
+	} {
+		if got := IsInstallPath(KindFile, p); got != want {
+			t.Errorf("IsInstallPath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}

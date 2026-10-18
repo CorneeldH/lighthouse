@@ -13,6 +13,11 @@
 //	skills/<name>/claude/SKILL.md, skills/<name>/agents/SKILL.md
 //	                        the SKILL.md of one harness only, when the two differ
 //	instructions/AGENTS.md  the package's managed block in AGENTS.md
+//	headings.toml           .lighthouse/headings.toml (spec, besluit 8)
+//	templates/pull_request_template.md
+//	                        .github/pull_request_template.md
+//	workflows/<name>.yml    .github/workflows/lighthouse-<name>.yml; init fills its
+//	                        @@<key>@@ placeholders from the config (see Fill)
 //	requires.toml           tool -> the units that need it
 package packs
 
@@ -85,6 +90,13 @@ type Pack struct {
 // points here belongs to lighthouse; any other registration belongs to the project.
 const HookDir = ".claude/hooks/lighthouse/"
 
+// Fixed install paths outside the lighthouse directories.
+const (
+	HeadingsPath   = ".lighthouse/headings.toml"
+	PRTemplatePath = ".github/pull_request_template.md"
+	WorkflowPrefix = ".github/workflows/lighthouse-"
+)
+
 const (
 	settingsPath  = ".claude/settings.json"
 	agentsMDPath  = "AGENTS.md"
@@ -135,6 +147,13 @@ func IsInstallPath(kind Kind, p string) bool {
 				return true
 			}
 		}
+		if p == HeadingsPath || p == PRTemplatePath {
+			return true
+		}
+		if rest := strings.TrimPrefix(p, WorkflowPrefix); rest != p {
+			ext := path.Ext(rest)
+			return !strings.Contains(rest, "/") && len(rest) > len(ext) && (ext == ".yml" || ext == ".yaml")
+		}
 		for _, dir := range skillDirs {
 			if rest := strings.TrimPrefix(p, dir); rest != p {
 				name, file, ok := strings.Cut(rest, "/")
@@ -176,7 +195,7 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 		top, rest, nested := strings.Cut(rel, "/")
 		if d.IsDir() {
 			switch top {
-			case "hooks", "lib", "scripts", "agents", "instructions", "skills":
+			case "hooks", "lib", "scripts", "agents", "instructions", "skills", "templates", "workflows":
 				return nil
 			default:
 				return fmt.Errorf("package %s: unknown directory %s/", name, rel)
@@ -195,6 +214,14 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 				p.Requires = reqs
 				return nil
 			}
+			if rel == "headings.toml" {
+				u, err := fileUnit(name, version, HeadingsPath, data)
+				if err != nil {
+					return err
+				}
+				p.Units = append(p.Units, u)
+				return nil
+			}
 			return fmt.Errorf("package %s: unknown file %s", name, rel)
 		}
 		var target string
@@ -210,6 +237,16 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 			target = HookDir + rest
 		case "lib":
 			target = ".lighthouse/lib/lighthouse_lib/" + rest
+		case "templates":
+			if rest != "pull_request_template.md" {
+				return fmt.Errorf("package %s: templates/ holds only pull_request_template.md, not %s", name, rel)
+			}
+			target = PRTemplatePath
+		case "workflows":
+			target = WorkflowPrefix + rest
+			if !IsInstallPath(KindFile, target) {
+				return fmt.Errorf("package %s: a workflow is workflows/<name>.yml, not %s", name, rel)
+			}
 		case "scripts":
 			target = ".lighthouse/scripts/" + rest
 		case "agents":

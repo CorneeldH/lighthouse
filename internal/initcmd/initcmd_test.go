@@ -13,6 +13,8 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/deps"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
+	"github.com/CorneeldH/lighthouse/internal/packs"
+	"github.com/CorneeldH/lighthouse/pack"
 )
 
 const hooksJSON = `{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/g.sh", "timeout": 15}]}]}}`
@@ -555,5 +557,121 @@ func TestInitInstallsSkill(t *testing.T) {
 	r := run(t, root, "", func(o *Options) { upgrade(o); withSkill(o) })
 	if r.code != 0 || r.out != "No changes.\n" {
 		t.Fatalf("upgrade: rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+}
+
+func withWorkflow(body string) func(*Options) {
+	return func(o *Options) {
+		m := testPacks()
+		m["core/workflows/x.yml"] = file(body)
+		o.Packs = m
+	}
+}
+
+func stubLookup(values map[string]string) func(*Options) {
+	return func(o *Options) {
+		o.Lookup = func(key string) (string, bool, error) {
+			v, ok := values[key]
+			return v, ok, nil
+		}
+	}
+}
+
+func all(mods ...func(*Options)) func(*Options) {
+	return func(o *Options) {
+		for _, m := range mods {
+			m(o)
+		}
+	}
+}
+
+func TestInitFillsWorkflow(t *testing.T) {
+	root := newRepo(t)
+	mods := all(withWorkflow("runs-on: @@ci.runs_on@@\n"), stubLookup(map[string]string{"ci.runs_on": "ubuntu-latest"}))
+	if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	got := read(t, root, ".github/workflows/lighthouse-x.yml")
+	if got != "# lighthouse: core@dev\nruns-on: ubuntu-latest\n" {
+		t.Fatalf("workflow = %q", got)
+	}
+	m, err := manifest.Read(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, ok := m.Lookup(packs.Key{Kind: packs.KindFile, Path: ".github/workflows/lighthouse-x.yml"})
+	if !ok || e.SHA256 != manifest.Sum([]byte(got)) {
+		t.Fatalf("manifest entry %+v ok %v", e, ok)
+	}
+	if r := run(t, root, "", all(upgrade, mods)); r.out != "No changes.\n" {
+		t.Fatalf("upgrade: %s\n%s", r.out, r.err)
+	}
+}
+
+func TestInitSkipsWorkflowWithMissingKey(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", all(yes, withWorkflow("who: @@ci.bot_login@@\n"), stubLookup(nil)))
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if exists(root, ".github/workflows/lighthouse-x.yml") {
+		t.Fatal("workflow installed without its key")
+	}
+	if !strings.Contains(r.err, "workflow lighthouse-x.yml not installed: ci.bot_login is not set") {
+		t.Fatalf("err = %q", r.err)
+	}
+}
+
+func TestInitStopsOnLookupError(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", all(yes, withWorkflow("a: @@ci.runs_on@@\n"), func(o *Options) {
+		o.Lookup = func(string) (string, bool, error) { return "", false, errors.New("lighthouse.toml: broken") }
+	}))
+	if r.code != 1 || !strings.Contains(r.err, "broken") || exists(root, ".lighthouse/manifest.toml") {
+		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+}
+
+func TestDefaultLookupReadsProposedConfig(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "git@github.com:acme/widgets.git")
+	m := testPacks()
+	for _, f := range []string{"__init__.py", "config.py"} {
+		b, err := fs.ReadFile(pack.Files, "core/lib/"+f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m["core/lib/"+f] = &fstest.MapFile{Data: b}
+	}
+	m["core/workflows/x.yml"] = file("repo: @@forge.repo@@\n")
+	r := run(t, root, "", all(yes, func(o *Options) { o.Packs = m }))
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if got := read(t, root, ".github/workflows/lighthouse-x.yml"); got != "# lighthouse: core@dev\nrepo: acme/widgets\n" {
+		t.Fatalf("workflow = %q", got)
+	}
+}
+
+func TestWorkflowSkippedWithoutPython(t *testing.T) {
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	if err := os.Symlink(gitPath, filepath.Join(bin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	root := newRepo(t)
+	t.Setenv("PATH", bin)
+	r := run(t, root, "", all(yes, withWorkflow("a: @@ci.runs_on@@\n")))
+	if r.code != 0 || exists(root, ".github/workflows/lighthouse-x.yml") {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "workflow lighthouse-x.yml not installed: python3 is not available") {
+		t.Fatalf("err = %q", r.err)
 	}
 }

@@ -47,6 +47,7 @@ type Options struct {
 	Version             string       // "" means version.String()
 	Packs               fs.FS        // holds <name>/...; nil means pack.Files
 	Deps                deps.Checker // nil fields mean deps.Default()
+	Lookup              packs.Lookup // config values for workflow placeholders; nil runs the package's config reader
 	In                  io.Reader
 	Out, Err            io.Writer
 }
@@ -122,6 +123,15 @@ func execute(o Options) error {
 		}
 		desired = append(desired, p.Units...)
 		reqs = append(reqs, p.Requires...)
+	}
+	lookup := o.Lookup
+	if lookup == nil {
+		pl := &pythonLookup{packs: o.Packs, root: root}
+		defer pl.close()
+		lookup = pl.lookup
+	}
+	if desired, err = fillWorkflows(o.Err, desired, lookup); err != nil {
+		return err
 	}
 	for _, miss := range o.Deps.Check(reqs) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
@@ -346,16 +356,23 @@ func hasLine(b []byte, line string) bool {
 	return false
 }
 
+// proposeConfig returns lighthouse.toml as init will leave it: old plus the missing
+// core tables.
+func proposeConfig(root string, old []byte) (out []byte, haveRepo bool, manual []string, err error) {
+	repo := ""
+	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
+		repo, haveRepo = projectconfig.ForgeRepo(strings.TrimSpace(string(url)))
+	}
+	out, _, manual, err = projectconfig.AppendMissing(old, projectconfig.CoreTables(repo, haveRepo))
+	return out, haveRepo, manual, err
+}
+
 func planConfig(o Options, root string, load func(string) (*planned, error)) error {
 	p, err := load(configPath)
 	if err != nil {
 		return err
 	}
-	repo, haveRepo := "", false
-	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
-		repo, haveRepo = projectconfig.ForgeRepo(strings.TrimSpace(string(url)))
-	}
-	out, _, manual, err := projectconfig.AppendMissing(p.old, projectconfig.CoreTables(repo, haveRepo))
+	out, haveRepo, manual, err := proposeConfig(root, p.old)
 	if err != nil {
 		return err
 	}
