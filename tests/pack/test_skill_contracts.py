@@ -51,7 +51,6 @@ ALLOWED_EXTERNAL = {
 # the set is empty when PR 4 is done.
 PLANNED = {
     "write-issue",
-    "instrument",
 }
 
 # An installed path in a skill -> where it lives in pack/core.
