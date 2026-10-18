@@ -51,7 +51,6 @@ ALLOWED_EXTERNAL = {
 # the set is empty when PR 4 is done.
 PLANNED = {
     "write-issue",
-    "worktree-audit",
     "instrument",
 }
 
