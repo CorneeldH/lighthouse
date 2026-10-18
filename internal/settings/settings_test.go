@@ -173,3 +173,63 @@ func TestRegistrationsAndCommands(t *testing.T) {
 		t.Fatalf("cmds = %v", cmds)
 	}
 }
+
+func applyAllow(t *testing.T, doc string, want, drop []string) string {
+	t.Helper()
+	o := parse(t, doc)
+	if err := ApplyAllow(o, want, drop); err != nil {
+		t.Fatal(err)
+	}
+	return compact(t, o)
+}
+
+func TestApplyAllowAppends(t *testing.T) {
+	got := applyAllow(t, `{"permissions":{"allow":["Bash(gh *)","Read(x)"],"deny":["y"]},"hooks":{}}`, []string{"Read(x)", "Bash(z)"}, nil)
+	if got != `{"permissions":{"allow":["Bash(gh *)","Read(x)","Bash(z)"],"deny":["y"]},"hooks":{}}` {
+		t.Fatal(got)
+	}
+}
+
+func TestApplyAllowCreatesMissingParts(t *testing.T) {
+	if got := applyAllow(t, `{"hooks":{}}`, []string{"Bash(z)"}, nil); got != `{"hooks":{},"permissions":{"allow":["Bash(z)"]}}` {
+		t.Fatal(got)
+	}
+	if got := applyAllow(t, `{"permissions":{"deny":["y"]}}`, []string{"Bash(z)"}, nil); got != `{"permissions":{"deny":["y"],"allow":["Bash(z)"]}}` {
+		t.Fatal(got)
+	}
+}
+
+func TestApplyAllowDrops(t *testing.T) {
+	got := applyAllow(t, `{"permissions":{"allow":["a","b","c"]}}`, []string{"c"}, []string{"b", "absent"})
+	if got != `{"permissions":{"allow":["a","c"]}}` {
+		t.Fatal(got)
+	}
+}
+
+func TestApplyAllowNothingToDoLeavesDocAlone(t *testing.T) {
+	if got := applyAllow(t, `{"hooks":{}}`, nil, []string{"b"}); got != `{"hooks":{}}` {
+		t.Fatal(got)
+	}
+}
+
+func TestApplyAllowIdempotent(t *testing.T) {
+	once := applyAllow(t, `{"permissions":{"allow":["a"]}}`, []string{"b"}, nil)
+	if twice := applyAllow(t, once, []string{"b"}, nil); twice != once {
+		t.Fatalf("%s != %s", twice, once)
+	}
+}
+
+func TestAllowRejectsShape(t *testing.T) {
+	for _, doc := range []string{
+		`{"permissions":[]}`,
+		`{"permissions":{"allow":"a"}}`,
+		`{"permissions":{"allow":["a",1]}}`,
+	} {
+		if _, err := Allow(parse(t, doc)); err == nil || !strings.Contains(err.Error(), "permissions") {
+			t.Errorf("%s: err = %v", doc, err)
+		}
+		if err := ApplyAllow(parse(t, doc), []string{"x"}, nil); err == nil {
+			t.Errorf("%s: ApplyAllow accepted it", doc)
+		}
+	}
+}

@@ -19,6 +19,8 @@
 //	workflows/<name>.yml    .github/workflows/lighthouse-<name>.yml; init fills its
 //	                        @@<key>@@ placeholders from the config (see Fill)
 //	requires.toml           tool -> the units that need it
+//	permissions.json        {"allow": [...]}: one permission unit per rule, merged into
+//	                        permissions.allow of .claude/settings.json
 package packs
 
 import (
@@ -37,11 +39,13 @@ import (
 // Kind is the kind of a unit.
 type Kind string
 
-// The three kinds of unit (spec, Versiemarker en manifest).
+// The kinds of unit (spec, Versiemarker en manifest). A permission is one rule in
+// permissions.allow of .claude/settings.json; its ID and content are the rule.
 const (
-	KindFile  Kind = "file"
-	KindBlock Kind = "block"
-	KindHook  Kind = "hook"
+	KindFile       Kind = "file"
+	KindBlock      Kind = "block"
+	KindHook       Kind = "hook"
+	KindPermission Kind = "permission"
 )
 
 // Key identifies a unit in a repository.
@@ -139,7 +143,7 @@ func IsInstallPath(kind Kind, p string) bool {
 	switch kind {
 	case KindBlock:
 		return p == agentsMDPath
-	case KindHook:
+	case KindHook, KindPermission:
 		return p == settingsPath
 	case KindFile:
 		for _, dir := range installDirs {
@@ -212,6 +216,14 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 					return fmt.Errorf("package %s: requires.toml: %w", name, err)
 				}
 				p.Requires = reqs
+				return nil
+			}
+			if rel == "permissions.json" {
+				units, err := parsePermissions(name, data)
+				if err != nil {
+					return err
+				}
+				p.Units = append(p.Units, units...)
 				return nil
 			}
 			if rel == "headings.toml" {
@@ -404,6 +416,41 @@ func skillUnits(skills map[string]*skill, pkg, version string) ([]Unit, error) {
 				units = append(units, u)
 			}
 		}
+	}
+	return units, nil
+}
+
+// parsePermissions reads permissions.json: an object with only "allow", a list of
+// distinct, non-empty rules.
+func parsePermissions(name string, data []byte) ([]Unit, error) {
+	fail := func(format string, a ...any) error {
+		return fmt.Errorf("package %s: permissions.json: %s", name, fmt.Sprintf(format, a...))
+	}
+	v, err := orderedjson.Parse(data)
+	if err != nil {
+		return nil, fail("%v", err)
+	}
+	obj, ok := v.(*orderedjson.Object)
+	if !ok || len(obj.Keys()) != 1 || obj.Keys()[0] != "allow" {
+		return nil, fail(`must be an object with only "allow"`)
+	}
+	av, _ := obj.Get("allow")
+	rules, ok := av.([]any)
+	if !ok {
+		return nil, fail(`"allow" is not an array`)
+	}
+	seen := map[string]bool{}
+	units := make([]Unit, 0, len(rules))
+	for i, r := range rules {
+		rule, ok := r.(string)
+		if !ok || rule == "" {
+			return nil, fail("allow[%d] is not a non-empty string", i)
+		}
+		if seen[rule] {
+			return nil, fail("allow[%d] %q appears twice", i, rule)
+		}
+		seen[rule] = true
+		units = append(units, Unit{Kind: KindPermission, Package: name, Path: settingsPath, ID: rule, Content: []byte(rule)})
 	}
 	return units, nil
 }

@@ -348,3 +348,34 @@ func TestIsInstallPathGitHub(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadPermissions(t *testing.T) {
+	m := basePack()
+	m["permissions.json"] = file(`{"allow": ["Bash(a:*)", "Bash(b:*)"]}`)
+	p, err := Load(m, "core", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, u := range p.Units {
+		if u.Kind == KindPermission {
+			if u.Path != ".claude/settings.json" || string(u.Content) != u.ID {
+				t.Errorf("unit %+v", u)
+			}
+			got = append(got, u.ID)
+		}
+	}
+	if strings.Join(got, ",") != "Bash(a:*),Bash(b:*)" {
+		t.Fatalf("permissions = %v", got)
+	}
+}
+
+func TestLoadRejectsPermissions(t *testing.T) {
+	for _, body := range []string{`{"allow": "x"}`, `{"allow": [1]}`, `{"allow": [""]}`, `{"deny": ["x"]}`, `[`, `{"allow": ["a", "a"]}`} {
+		m := basePack()
+		m["permissions.json"] = file(body)
+		if _, err := Load(m, "core", "dev"); err == nil {
+			t.Errorf("%s: no error", body)
+		}
+	}
+}

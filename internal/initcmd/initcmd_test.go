@@ -675,3 +675,55 @@ func TestWorkflowSkippedWithoutPython(t *testing.T) {
 		t.Fatalf("err = %q", r.err)
 	}
 }
+
+func withPermissions(rules string) func(*Options) {
+	return func(o *Options) {
+		m := testPacks()
+		m["core/permissions.json"] = file(`{"allow": [` + rules + `]}`)
+		o.Packs = m
+	}
+}
+
+func TestInitMergesPermissions(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/settings.json", "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(gh *)\"\n    ]\n  }\n}\n")
+	mods := withPermissions(`"Bash(x:*)"`)
+	if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	s := read(t, root, ".claude/settings.json")
+	if !strings.Contains(s, "\"allow\": [\n      \"Bash(gh *)\",\n      \"Bash(x:*)\"\n    ]") {
+		t.Fatalf("settings:\n%s", s)
+	}
+	if r := run(t, root, "", all(upgrade, mods)); r.code != 0 || r.out != "No changes.\n" {
+		t.Fatalf("upgrade: rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+}
+
+func TestUpgradeDropsPermission(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/settings.json", "{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(gh *)\"\n    ]\n  }\n}\n")
+	if r := run(t, root, "", all(yes, withPermissions(`"Bash(x:*)", "Bash(y:*)"`))); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if r := run(t, root, "", all(upgrade, yes, withPermissions(`"Bash(y:*)"`))); r.code != 0 {
+		t.Fatalf("upgrade: rc %d\n%s", r.code, r.err)
+	}
+	s := read(t, root, ".claude/settings.json")
+	if strings.Contains(s, "Bash(x:*)") || !strings.Contains(s, "Bash(gh *)") || !strings.Contains(s, "Bash(y:*)") {
+		t.Fatalf("settings:\n%s", s)
+	}
+}
+
+func TestUpgradeRefusesRemovedPermission(t *testing.T) {
+	root := newRepo(t)
+	mods := withPermissions(`"Bash(x:*)"`)
+	if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	s := read(t, root, ".claude/settings.json")
+	write(t, root, ".claude/settings.json", strings.Replace(s, `"Bash(x:*)"`, `"Bash(other)"`, 1))
+	if r := run(t, root, "", all(upgrade, mods)); r.code != 1 || !strings.Contains(r.err, "refused") {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+}

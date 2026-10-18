@@ -71,12 +71,15 @@ func Read(root string) (Manifest, error) {
 	seen := map[packs.Key]bool{}
 	for i, e := range m.Units {
 		switch e.Kind {
-		case packs.KindFile, packs.KindBlock, packs.KindHook:
+		case packs.KindFile, packs.KindBlock, packs.KindHook, packs.KindPermission:
 		default:
 			return Manifest{}, fmt.Errorf("%s: unit %d: unknown kind %q", Path, i+1, e.Kind)
 		}
 		if e.Path == "" || e.Package == "" || e.Version == "" {
 			return Manifest{}, fmt.Errorf("%s: unit %d: path, package and version are required", Path, i+1)
+		}
+		if (e.Kind == packs.KindHook || e.Kind == packs.KindPermission) && e.ID == "" {
+			return Manifest{}, fmt.Errorf("%s: unit %d: a %s unit needs an id", Path, i+1, e.Kind)
 		}
 		if !packs.IsInstallPath(e.Kind, e.Path) {
 			return Manifest{}, fmt.Errorf("%s: unit %d: path %q is not a lighthouse path for a %s unit", Path, i+1, e.Path, e.Kind)

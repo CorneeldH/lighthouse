@@ -130,6 +130,7 @@ func TestReadRejectsPathsOutsideLighthouse(t *testing.T) {
 		"own hook dir":    unitText("file", ".claude/hooks/own.sh", ""),
 		"block elsewhere": unitText("block", "README.md", "core"),
 		"hook elsewhere":  unitText("hook", ".claude/settings.local.json", "x"),
+		"perm elsewhere":  unitText("permission", ".claude/settings.local.json", "Bash(x)"),
 		"backslash":       unitText("file", ".claude/hooks/lighthouse/..\\\\x", ""),
 	}
 	for name, text := range cases {
@@ -154,5 +155,25 @@ func TestReadRejectsPathsOutsideLighthouse(t *testing.T) {
 		if _, err := Read(root); err != nil {
 			t.Errorf("valid unit rejected: %v\n%s", err, ok)
 		}
+	}
+}
+
+func TestReadAcceptsPermission(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, []byte(unitText("permission", ".claude/settings.json", "Bash(x:*)")))
+	m, err := Read(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.Lookup(packs.Key{Kind: packs.KindPermission, Path: ".claude/settings.json", ID: "Bash(x:*)"}); !ok {
+		t.Fatal("permission not read")
+	}
+}
+
+func TestReadRejectsPermissionWithoutID(t *testing.T) {
+	root := t.TempDir()
+	writeManifest(t, root, []byte(unitText("permission", ".claude/settings.json", "")))
+	if _, err := Read(root); err == nil {
+		t.Fatal("no error")
 	}
 }

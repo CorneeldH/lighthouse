@@ -234,6 +234,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	}
 
 	var hooksTouched bool
+	var allowWant, allowDrop []string
 	for _, c := range changes {
 		switch c.Key.Kind {
 		case packs.KindFile:
@@ -268,10 +269,17 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 			}
 		case packs.KindHook:
 			hooksTouched = true
+		case packs.KindPermission:
+			switch {
+			case c.Desired != nil && writes(c.Action, o.Force):
+				allowWant = append(allowWant, c.Key.ID)
+			case c.Desired == nil && (c.Action == reconcile.Remove || o.Force):
+				allowDrop = append(allowDrop, c.Key.ID)
+			}
 		}
 	}
 
-	if hooksTouched {
+	if hooksTouched || len(allowWant) > 0 || len(allowDrop) > 0 {
 		p, err := load(settingsPath)
 		if err != nil {
 			return nil, err
@@ -283,13 +291,18 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		if doc == nil {
 			doc = orderedjson.NewObject()
 		}
-		var want []packs.Registration
-		for _, u := range desired {
-			if u.Kind == packs.KindHook {
-				want = append(want, *u.Hook)
+		if hooksTouched {
+			var want []packs.Registration
+			for _, u := range desired {
+				if u.Kind == packs.KindHook {
+					want = append(want, *u.Hook)
+				}
+			}
+			if err := settings.Apply(doc, want); err != nil {
+				return nil, err
 			}
 		}
-		if err := settings.Apply(doc, want); err != nil {
+		if err := settings.ApplyAllow(doc, allowWant, allowDrop); err != nil {
 			return nil, err
 		}
 		out, err := orderedjson.Marshal(doc)
