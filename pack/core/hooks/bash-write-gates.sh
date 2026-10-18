@@ -1,36 +1,39 @@
 #!/usr/bin/env bash
-# Pre/PostToolUse hook op matcher Bash: de drie Edit|Write-gates (shellcheck.sh,
-# ruff-format.sh, worktree-linkcheck.sh) zien ook wat een Bash-call schrijft
-# (#871). Dunne wrapper; de logica staat in lib/bash_writes.py.
+# Pre/PostToolUse hook on matcher Bash: the Edit|Write gates (shellcheck.sh,
+# ruff-format.sh, worktree-linkcheck.sh) also see what a Bash call writes
+# (#871). Thin wrapper; the logic is in lighthouse_lib/bash_writes.py.
 #
-# Tegenhanger (pairing-regel #624): de normen van de drie gates dragen hun
-# eigen tegenhangers vooraf (skill paia-shell-gates, .claude/rules/python.md,
-# de linkregel in AGENTS.md); CLAUDE.md, sectie Hooks, noemt deze hook voor
-# Bash-schrijfwerk. Deze hook toetst achteraf wat een Bash-call schreef.
-# Contract en bewust niet gedekt: docs/developer/instructie-hooks.md.
+# Counterpart: the norms of the gates carry their own counterparts up front
+# (the shell and python packages, the link rule in AGENTS.md). This hook checks
+# afterwards what a Bash call wrote. A gate whose package is not installed is
+# reported per file, without blocking (besluit 19).
 #
-#   bash-write-gates.sh pre   PreToolUse: nullijn en marker. Altijd exit 0 - een
-#                             PreToolUse exit 2 blokkeert de Bash-call zelf.
-#   bash-write-gates.sh post  PostToolUse en PostToolUseFailure: vuile bestanden
-#                             door hun gate. Exit 0 of 2.
+#   bash-write-gates.sh pre   PreToolUse: baseline and marker. Always exit 0 - a
+#                             PreToolUse exit 2 blocks the Bash call itself.
+#   bash-write-gates.sh post  PostToolUse and PostToolUseFailure: dirty files
+#                             through their gate. Exit 0 or 2.
 #
-# NIET fail-open (paia-shell-gates): zonder python3, zonder lib/bash_writes.py,
-# of als de dispatcher met iets anders dan 0 of 2 eindigt, is er niet gekeken. Dat is exit 2 met
-# KON NIET CONTROLEREN, naar stderr en als additionalContext naar stdout -
-# hetzelfde uitvoerkanaal als de dispatcher zelf.
+# NOT fail-open: without python3, without bash_writes.py, or when the
+# dispatcher ends with anything but 0 or 2, nothing was checked. That is exit 2
+# with COULD NOT CHECK, to stderr and as additionalContext to stdout - the same
+# output channel as the dispatcher itself. Pre stays silent by design: post
+# reports it loudly.
 set -u
 
 MODE="${1:-}"
 
-# De hook erft de cwd van de Bash-call; de lib ligt naast dit script.
-HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIB="$HOOK_DIR/lib/bash_writes.py"
+# The lib lives in the lighthouse lib of this repo. Found through
+# LIGHTHOUSE_REPO_ROOT or git, never from this file's own path; bash_writes.py
+# looks for the gates under the same root.
+LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null)}"
+LIB="$LIB_ROOT/.lighthouse/lib/lighthouse_lib/bash_writes.py"
+export LIGHTHOUSE_REPO_ROOT="$LIB_ROOT"
 
-# Eerst in een variabele: de payload gaat naar python3, en bij een wrapperfout
-# is het event er nog uit te halen zonder python.
+# First into a variable: the payload goes to python3, and on a wrapper error
+# the event can still be read from it without python.
 INPUT="$(cat)"
 
-loud() { # melding - vaste tekst plus een getal, dus geen JSON-escaping nodig
+loud() { # message - fixed text plus a number, so no JSON escaping needed
   local event
   event="$(printf '%s\n' "$INPUT" |
     sed -n 's/.*"hook_event_name" *: *"\([A-Za-z]*\)".*/\1/p')"
@@ -51,10 +54,10 @@ case "$MODE" in
     ;;
   post)
     command -v python3 >/dev/null 2>&1 ||
-      loud "bash-write-gates: KON NIET CONTROLEREN — python3 ontbreekt"
-    # Zonder lib eindigt python3 met rc 2: dat zou als een oordeel doorgaan.
+      loud "bash-write-gates: COULD NOT CHECK — python3 is missing"
+    # Without the lib python3 ends with rc 2: that would pass as a verdict.
     [ -f "$LIB" ] ||
-      loud "bash-write-gates: KON NIET CONTROLEREN — lib/bash_writes.py ontbreekt"
+      loud "bash-write-gates: COULD NOT CHECK — .lighthouse/lib/lighthouse_lib/bash_writes.py is missing"
     out="$(printf '%s' "$INPUT" | python3 "$LIB" post)"
     rc=$?
     case "$rc" in
@@ -63,11 +66,11 @@ case "$MODE" in
         exit "$rc"
         ;;
       *)
-        loud "bash-write-gates: KON NIET CONTROLEREN — dispatcher faalde (rc=$rc)"
+        loud "bash-write-gates: COULD NOT CHECK — dispatcher failed (rc=$rc)"
         ;;
     esac
     ;;
   *)
-    loud "bash-write-gates: KON NIET CONTROLEREN — onbekende modus, verwacht pre of post"
+    loud "bash-write-gates: COULD NOT CHECK — unknown mode, expected pre or post"
     ;;
 esac

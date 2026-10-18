@@ -1,23 +1,22 @@
 #!/bin/bash
-# PreToolUse hook: toets de body van elke `gh pr create` (#1091).
-# Matcher: Bash. Blokkerend: exit 2 + stderr. Geslaagd: exit 0, meldingen als
-# JSON op stdout.
+# PreToolUse hook: check the body of every `gh pr create` (#1091).
+# Matcher: Bash. Blocking: exit 2 + stderr. Passed: exit 0, notes as JSON on
+# stdout.
 #
-# Tegenhanger: paia-verify-pr
-# De skill draagt de norm vooraf (body bouwen met Closes-bewijs); deze hook
-# dwingt hem af op het moment van `gh pr create`: een body zonder
-# `Closes #N` + Evidence-tabel, `Refs #N — <reden>` of `No issue: <reden>`
-# blokkeert. Ontwerp: docs/developer/planning/specs/2026-10-03-pr-verifieert-issue-design.md,
-# sectie 3. De toetsing zelf staat in lib/pr_body_gate.py.
+# Counterpart: /lighthouse-verify-pr
+# The skill carries the norm up front (build the body with Closes evidence);
+# this hook enforces it at the moment of `gh pr create`: a body without
+# `Closes #N` + Evidence table, `Refs #N — <reason>` or `No issue: <reason>`
+# blocks. The check itself is in lighthouse_lib/pr_body_gate.py.
 #
-# NIET fail-open (paia-shell-gates): zonder tooling, bij een commando dat niet
-# te parsen is of bij een parser die stukloopt is er niet getoetst — dat is
-# geen groen licht en blokkeert met KON NIET CONTROLEREN. De enige luide
-# doorlaat is de AC-telling (gh weg of stuk): de lib meldt dat op stdout en de
-# hook geeft die melding door aan gebruiker en model.
+# NOT fail-open: without tooling, with a command that cannot be parsed, or with
+# a parser that breaks, nothing was checked — that is no green light and blocks
+# with COULD NOT CHECK. The only loud pass is the AC count (gh missing or
+# broken): the lib reports it on stdout and the hook passes the note on to user
+# and model.
 #
-# De lib-deadline (DEADLINE_S = 12 s in lib/pr_body_gate.py) moet onder de hook-timeout
-# (15 s in .claude/settings.json) blijven: een verlopen hook laat de tool-call door.
+# The lib deadline (DEADLINE_S = 12 s in pr_body_gate.py) must stay under the
+# hook timeout (15 s in hooks.json): a hook that times out lets the call pass.
 
 HOOK_NAME="pr-create-gate"
 
@@ -26,23 +25,25 @@ command -v jq >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS jq"
 command -v python3 >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS python3"
 if [ -n "$MISSING_TOOLS" ]; then
   {
-    echo "$HOOK_NAME: KON NIET CONTROLEREN — ontbrekende tooling:$MISSING_TOOLS"
+    echo "$HOOK_NAME: COULD NOT CHECK — missing tooling:$MISSING_TOOLS"
     echo ""
-    echo "Deze hook toetst de body van elke 'gh pr create'."
-    echo "Zonder die tooling is er niet getoetst; dat is geen groen licht."
+    echo "This hook checks the body of every 'gh pr create'."
+    echo "Without that tooling nothing was checked; that is not a green light."
   } >&2
   exit 2
 fi
 
-HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
-LIB="$HOOK_DIR/lib"
+# The lib lives in the lighthouse lib of this repo. Found through
+# LIGHTHOUSE_REPO_ROOT or git, never from this file's own path.
+LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
+LIB="$LIB_ROOT/.lighthouse/lib/lighthouse_lib"
 
 INPUT=$(cat)
-if ! CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty'); then
+if ! CMD=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null); then
   {
-    echo "$HOOK_NAME: KON NIET CONTROLEREN — de payload is geen geldige JSON."
+    echo "$HOOK_NAME: COULD NOT CHECK — the payload is not valid JSON."
     echo ""
-    echo "Zonder het commando is er niet getoetst; dat is geen groen licht."
+    echo "Without the command nothing was checked; that is not a green light."
   } >&2
   exit 2
 fi
@@ -54,22 +55,22 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 
 block() {
   {
-    echo "$HOOK_NAME: KON NIET CONTROLEREN — $1"
+    echo "$HOOK_NAME: COULD NOT CHECK — $1"
     echo ""
-    echo "Er staat mogelijk een 'gh pr create' in dit commando. 'Niet kunnen"
-    echo "controleren' is geen groen licht, dus dit gaat niet stil door."
+    echo "This command may contain a 'gh pr create'. 'Could not check' is"
+    echo "not a green light, so this does not pass silently."
   } >&2
   exit 2
 }
 
-# De stderr van de lib (de blokkadetekst) gaat ongefilterd door.
-OUT=$(printf '%s' "$CMD" | python3 "$LIB/pr_body_gate.py" "$CWD")
+# The stderr of the lib (the block text) passes through unfiltered.
+OUT=$(printf '%s' "$CMD" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB/pr_body_gate.py" "$CWD")
 STATUS=$?
 
 case "$STATUS" in
   0)
     if [ -n "$OUT" ]; then
-      # additionalContext bereikt het model, systemMessage de gebruiker.
+      # additionalContext reaches the model, systemMessage the user.
       jq -cn --arg m "$OUT" '{systemMessage: $m, hookSpecificOutput: {hookEventName: "PreToolUse", additionalContext: $m}}'
     fi
     exit 0
@@ -78,8 +79,8 @@ case "$STATUS" in
     exit 2
     ;;
   3)
-    # Tweestapsregel: staat `gh` én `pr` niet in de ruwe tekst, dan is er niets
-    # te toetsen en legt één losse apostrof niets lam.
+    # Two-step rule: without `gh` and `pr` in the raw text there is nothing to
+    # check, and one stray apostrophe locks nothing up.
     case "$CMD" in
       *gh*) ;;
       *) exit 0 ;;
@@ -88,9 +89,9 @@ case "$STATUS" in
       *pr*) ;;
       *) exit 0 ;;
     esac
-    block "het commando is niet te parsen (open quote). Splits het commando op."
+    block "the command cannot be parsed (open quote). Split the command."
     ;;
   *)
-    block "de body-parser faalde (rc $STATUS)."
+    block "the body parser failed (rc $STATUS)."
     ;;
 esac

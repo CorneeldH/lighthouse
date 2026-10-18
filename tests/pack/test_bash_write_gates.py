@@ -1,21 +1,20 @@
-"""Pint het niet-gekeken-contract van de drie bestaande PostToolUse-gates
-(shellcheck.sh, ruff-format.sh, worktree-linkcheck.sh), vóórdat de
-bash-write-gates-dispatcher (#871) op de classificatie van hun eerste
-uitvoerregel gaat bouwen.
+"""pack/core bash-write-gates.sh, as installed (#871).
 
-Deze tests wijzigen geen productiecode: ze leggen bestaand gedrag vast. Elke
-gate schrijft naar stderr; `_gate` voegt stdout+stderr samen
-(`stderr=subprocess.STDOUT`) zodat de eerste regel van de gecombineerde
-uitvoer te toetsen is, precies zoals de latere dispatcher hem zal lezen.
+Eerst het niet-gekeken-contract van `worktree-linkcheck.sh`, de enige gate in
+`pack/core`: `COULD NOT CHECK` op de eerste regel (besluit 18). `_gate` voegt
+stdout+stderr samen, zoals de dispatcher de uitvoer leest.
 
-Vanaf taak 7 ook de end-to-end-tests van `bash-write-gates.sh`: `_Session`
-draait pre, de Bash-call en post tegen een tmp-repo, via de echte wrapper.
+Dan de end-to-end-tests van `bash-write-gates.sh`: `_Session` installeert
+`pack/core` in een eigen lighthouse-root, met stubs voor `shellcheck.sh` en
+`ruff-format.sh` (die gates komen met `pack/shell` en `pack/python`), en draait
+pre, de Bash-call en post tegen een tmp-repo, via de echte wrapper. De stubs
+melden een vaste bevinding (`SC2034`, `E722`) en citeren daarna het bestand, zoals
+shellcheck en ruff bronregels citeren.
 """
 
 import functools
 import json
 import os
-import re
 import subprocess
 import time
 import uuid
@@ -23,17 +22,16 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit._hook_testkit import (
+from tests.pack._testkit import (
+    CORE,
     GIT_ENV,
-    HOOKS,
+    INSTALLED_HOOKS,
     git,
     init_repo,
+    install_core,
     past_this_second,
     tool_bin,
 )
-
-REPO = Path(__file__).resolve().parents[2]
-SHELLCHECK_LIB = REPO / "scripts" / "hooks" / "lib" / "shellcheck-bin.sh"
 
 CLEAN_SH = '#!/usr/bin/env bash\nset -euo pipefail\necho "hallo"\n'
 # SC2034: `x` wordt nooit gebruikt. Warning-ernst, dus blokkeert overal.
@@ -71,11 +69,10 @@ def _gate(
         **GIT_ENV,
         CLAUDE_PROJECT_DIR=str(cwd),
         XDG_RUNTIME_DIR=str(xdg),
-        SHELLCHECK_BIN="",
     )
     full_env.update(env or {})
     return subprocess.run(
-        [str(HOOKS / name)],
+        [str(INSTALLED_HOOKS / name)],
         input=json.dumps(payload),
         cwd=str(cwd),
         env=full_env,
@@ -84,92 +81,6 @@ def _gate(
         text=True,
         check=False,
     )
-
-
-def _shellcheck_pin() -> str:
-    match = re.search(
-        r"^SHELLCHECK_PIN=(\S+)", SHELLCHECK_LIB.read_text(), re.MULTILINE
-    )
-    assert match, "SHELLCHECK_PIN niet gevonden in de lib"
-    return match.group(1)
-
-
-def _pinned_version(bin_path: str) -> bool:
-    try:
-        out = subprocess.run(
-            [bin_path, "--version"], capture_output=True, text=True, check=False
-        ).stdout
-    except OSError:
-        return False
-    return f"version: {_shellcheck_pin()}" in out.splitlines()
-
-
-@pytest.fixture(scope="module")
-def shellcheck_bin() -> str:
-    """Absoluut pad naar een al-geïnstalleerde, gepinde shellcheck.
-
-    Geen `resolve_shellcheck`: die kan downloaden of een afwijkende
-    PATH-versie teruggeven. Kandidaten: de gedeelde toolcache
-    (`--git-common-dir`/workflow-audit-tools/shellcheck) en `PATH`. Geen van
-    beide gepind aanwezig -> skip, nooit downloaden in een unit-test.
-    """
-    import shutil
-
-    common_dir = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(REPO),
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-common-dir",
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
-    candidates = []
-    if common_dir:
-        candidates.append(str(Path(common_dir) / "workflow-audit-tools" / "shellcheck"))
-    which = shutil.which("shellcheck")
-    if which:
-        candidates.append(which)
-    for candidate in candidates:
-        if Path(candidate).is_file() and _pinned_version(candidate):
-            return candidate
-    pytest.skip(
-        f"geen gepinde shellcheck ({_shellcheck_pin()}) gevonden onder {candidates}"
-    )
-
-
-# --- shellcheck.sh -----------------------------------------------------------
-
-
-def test_shellcheck_unchecked_form_is_on_the_first_line(tmp_path):
-    out = _gate(
-        "shellcheck.sh",
-        sh(tmp_path, CLEAN_SH),
-        tmp_path,
-        {"SHELLCHECK_BIN": "/nergens/shellcheck"},
-    )
-    first = out.stdout.splitlines()[0]
-    assert out.returncode == 2, out.stdout
-    assert first.startswith("shellcheck-gate:") and "NIET gecontroleerd" in first
-
-
-def test_shellcheck_finding_does_not_start_with_the_unchecked_form(
-    tmp_path, shellcheck_bin
-):
-    text = BROKEN_SH + "# NIET gecontroleerd\n"
-    out = _gate(
-        "shellcheck.sh",
-        sh(tmp_path, text),
-        tmp_path,
-        {"SHELLCHECK_BIN": shellcheck_bin},
-    )
-    first = out.stdout.splitlines()[0]
-    assert out.returncode == 2 and "SC2034" in out.stdout, out.stdout
-    assert "NIET gecontroleerd" not in first
 
 
 # --- worktree-linkcheck.sh ----------------------------------------------------
@@ -186,7 +97,7 @@ def test_linkcheck_unchecked_form_is_on_the_first_line(tmp_path):
     out = _gate("worktree-linkcheck.sh", note, tmp_path, {"PATH": str(bin_dir)})
     first = out.stdout.splitlines()[0]
     assert out.returncode == 2, out.stdout
-    assert first.startswith("Linkcheck: KON NIET CONTROLEREN")
+    assert first.startswith("Linkcheck: COULD NOT CHECK")
 
 
 def test_linkcheck_finding_first_line(tmp_path):
@@ -200,38 +111,38 @@ def test_linkcheck_finding_first_line(tmp_path):
     out = _gate("worktree-linkcheck.sh", note, repo)
     first = out.stdout.splitlines()[0]
     assert out.returncode == 2, out.stdout
-    assert first.startswith("Linkcheck: markdown-link")
-
-
-# --- ruff-format.sh ------------------------------------------------------------
-
-
-def test_ruff_finding_first_line(tmp_path):
-    repo = tmp_path / "repo"
-    init_repo(repo)
-    ruff_version = (REPO / ".ruff-version").read_text(encoding="utf-8")
-    (repo / ".ruff-version").write_text(ruff_version, encoding="utf-8")
-
-    bad = repo / "bad.py"
-    bad.write_text("try:\n    pass\nexcept:\n    pass\n", encoding="utf-8")
-
-    out = _gate("ruff-format.sh", bad, repo)
-    first = out.stdout.splitlines()[0]
-    assert out.returncode == 2, out.stdout
-    assert "E722" in out.stdout and "Lint-gate:" in out.stdout
-    # ruff-format.sh is fail-open en heeft geen "unchecked"-vorm: pass 1's eigen
-    # statusregel (bv. "1 file left unchanged") staat vóór "Lint-gate:" op de
-    # samengevoegde stream, dus de pin hier is "geen unchecked-vorm", niet
-    # "begint met Lint-gate:".
-    is_unchecked = (
-        first.startswith("shellcheck-gate:") and "NIET gecontroleerd" in first
-    ) or (first.startswith("Linkcheck: KON NIET CONTROLEREN"))
-    assert not is_unchecked
+    assert first.startswith("Linkcheck: markdown link")
 
 
 # --- bash-write-gates.sh: end-to-end (taak 7, bron 1) ---------------------
 
-WRAPPER = HOOKS / "bash-write-gates.sh"
+# Stubs for the gates of pack/shell and pack/python. Each reads the payload like
+# the real gate, reports one fixed finding and then cites the file. The shell
+# stub says COULD NOT CHECK when SHELLCHECK_BIN names a file that is not there.
+SHELLCHECK_STUB = r"""#!/bin/bash
+f=$(jq -r '.tool_input.file_path')
+[ -f "$f" ] || exit 0
+if [ -n "${SHELLCHECK_BIN:-}" ] && [ ! -e "$SHELLCHECK_BIN" ]; then
+  echo "shellcheck-gate: COULD NOT CHECK — no shellcheck at $SHELLCHECK_BIN" >&2
+  exit 2
+fi
+if grep -q 'echo "hoi"' "$f"; then
+  echo "$f:3: SC2034 (stub): x appears unused." >&2
+  cat "$f" >&2
+  exit 2
+fi
+exit 0
+"""
+RUFF_STUB = r"""#!/bin/bash
+f=$(jq -r '.tool_input.file_path')
+[ -f "$f" ] || exit 0
+if grep -q '^except:' "$f"; then
+  echo "$f:3:1: E722 (stub) Do not use bare except" >&2
+  echo "Lint-gate: fix this in the code." >&2
+  exit 2
+fi
+exit 0
+"""
 # Schoon, en exact even lang als BROKEN_SH: `"x$x"` telt net zoveel tekens als
 # `"hoi"`, dus een `cp -p` eroverheen verandert de grootte niet.
 CLEAN_SAME_SIZE_SH = '#!/usr/bin/env bash\nf() {\n  local x=1\n  echo "x$x"\n}\nf\n'
@@ -252,8 +163,21 @@ class _Session:
     """
 
     def __init__(
-        self, tmp_path: Path, shellcheck: str = "", *, unborn: bool = False
+        self,
+        tmp_path: Path,
+        shellcheck: str = "",
+        *,
+        unborn: bool = False,
+        language_gates: bool = True,
     ) -> None:
+        self.root = tmp_path / "lighthouse"
+        install_core(self.root)
+        hooks = self.root / ".claude" / "hooks" / "lighthouse"
+        if language_gates:
+            for name, stub in (("shellcheck.sh", SHELLCHECK_STUB), ("ruff-format.sh", RUFF_STUB)):
+                (hooks / name).write_text(stub, encoding="utf-8")
+                (hooks / name).chmod(0o755)
+        self.wrapper = hooks / "bash-write-gates.sh"
         self.repo = tmp_path / "repo"
         if unborn:
             # Alleen `git init`: HEAD wijst naar `main`, maar er is nog geen commit.
@@ -270,14 +194,15 @@ class _Session:
             CLAUDE_PROJECT_DIR=str(self.repo),
             XDG_RUNTIME_DIR=str(xdg),
             SHELLCHECK_BIN=shellcheck,
+            LIGHTHOUSE_REPO_ROOT=str(self.root),
         )
-        for seam in ("PAIA_BASH_GATES_DEADLINE", "PAIA_BASH_GATES_START_NS"):
+        for seam in ("LIGHTHOUSE_BASH_GATES_DEADLINE", "LIGHTHOUSE_BASH_GATES_START_NS"):
             self.env.pop(seam, None)
         self.session_id = f"sess-{uuid.uuid4().hex[:8]}"
 
     @property
     def state(self) -> Path:
-        return self.xdg / "paia-bash-gates" / self.session_id
+        return self.xdg / "lighthouse-bash-gates" / self.session_id
 
     def payload(self, cmd: str, tool_use_id: str, cwd: Path, event: str) -> dict:
         return {
@@ -293,7 +218,7 @@ class _Session:
         self, mode: str, payload: dict, env: dict | None = None
     ) -> subprocess.CompletedProcess:
         return subprocess.run(
-            [str(WRAPPER), mode],
+            [str(self.wrapper), mode],
             input=json.dumps(payload),
             capture_output=True,
             text=True,
@@ -304,7 +229,7 @@ class _Session:
 
     def hook_popen(self, mode: str, payload: dict) -> subprocess.Popen:
         proc = subprocess.Popen(
-            [str(WRAPPER), mode],
+            [str(self.wrapper), mode],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -358,8 +283,8 @@ def event_of(result: subprocess.CompletedProcess) -> str:
 
 
 @pytest.fixture
-def session(tmp_path, shellcheck_bin) -> _Session:
-    return _Session(tmp_path, shellcheck_bin)
+def session(tmp_path) -> _Session:
+    return _Session(tmp_path)
 
 
 def test_bad_sh_via_heredoc(session):
@@ -443,8 +368,6 @@ def test_space_in_path(session):
 
 def test_py_blocking_rule(tmp_path):
     s = _Session(tmp_path)
-    ruff_version = (REPO / ".ruff-version").read_text(encoding="utf-8")
-    (s.repo / ".ruff-version").write_text(ruff_version, encoding="utf-8")
     out = s.call(heredoc("bad.py", BARE_EXCEPT_PY))
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "E722" in out.stderr
@@ -460,9 +383,9 @@ def test_wrapper_without_python3_is_loud(tmp_path):
     )
     out = s.call("true", env={"PATH": str(bin_dir)}, event="PostToolUseFailure")
     assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "python3 ontbreekt" in out.stderr
-    assert "python3 ontbreekt" in context(out)
-    assert "KON NIET CONTROLEREN" in context(out)
+    assert "python3 is missing" in out.stderr
+    assert "python3 is missing" in context(out)
+    assert "COULD NOT CHECK" in context(out)
     assert event_of(out) == "PostToolUseFailure"
 
 
@@ -474,8 +397,8 @@ def test_wrapper_dispatcher_crash_is_loud(tmp_path):
     path = f"{stub_dir}{os.pathsep}{os.environ['PATH']}"
     out = s.call("true", env={"PATH": path})
     assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "dispatcher faalde (rc=7)" in out.stderr
-    assert "dispatcher faalde (rc=7)" in context(out)
+    assert "dispatcher failed (rc=7)" in out.stderr
+    assert "dispatcher failed (rc=7)" in context(out)
     assert event_of(out) == "PostToolUse"
 
 
@@ -483,18 +406,16 @@ def test_wrapper_without_the_lib_is_loud(tmp_path):
     # Zonder lib/bash_writes.py eindigt python3 met rc 2 — dat mag niet als
     # een oordeel doorgaan. Pre blijft exit 0: die blokkeert anders de call.
     s = _Session(tmp_path)
-    hooks = tmp_path / "hooks"
-    (hooks / "lib").mkdir(parents=True)
-    wrapper = hooks / "bash-write-gates.sh"
-    wrapper.write_bytes(WRAPPER.read_bytes())
-    wrapper.chmod(0o755)
+    wrapper = s.wrapper
     payload = s.payload("true", "toolu_nolib", s.repo, "PostToolUseFailure")
+    nolib = tmp_path / "nolib"
+    nolib.mkdir()
     run = functools.partial(
         subprocess.run,
         capture_output=True,
         text=True,
         cwd=str(s.repo),
-        env=s.env,
+        env=dict(s.env, LIGHTHOUSE_REPO_ROOT=str(nolib)),
         check=False,
     )
     pre = run(
@@ -504,8 +425,8 @@ def test_wrapper_without_the_lib_is_loud(tmp_path):
     assert pre.returncode == 0, pre.stderr
     out = run([str(wrapper), "post"], input=json.dumps(payload))
     assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "lib/bash_writes.py ontbreekt" in out.stderr
-    assert "KON NIET CONTROLEREN" in context(out)
+    assert "bash_writes.py is missing" in out.stderr
+    assert "COULD NOT CHECK" in context(out)
     assert event_of(out) == "PostToolUseFailure"
 
 
@@ -521,7 +442,7 @@ def test_gate_unchecked_is_retried(session):
     missing = {"SHELLCHECK_BIN": "/nergens/shellcheck"}
     first = session.call(heredoc("x.sh", BROKEN_SH), env=missing)
     assert first.returncode == 2, (first.stdout, first.stderr)
-    assert "KON NIET CONTROLEREN" in first.stderr
+    assert "COULD NOT CHECK" in first.stderr
     assert "SC2034" not in first.stderr
     second = session.call("true")
     assert second.returncode == 2, (second.stdout, second.stderr)
@@ -529,7 +450,7 @@ def test_gate_unchecked_is_retried(session):
 
 
 def test_real_verdict_with_the_phrase_in_the_file(session):
-    first = session.call(heredoc("x.sh", BROKEN_SH + "# NIET gecontroleerd\n"))
+    first = session.call(heredoc("x.sh", BROKEN_SH + "# COULD NOT CHECK\n"))
     assert first.returncode == 2, (first.stdout, first.stderr)
     assert "SC2034" in first.stderr
     second = session.call("true")
@@ -542,7 +463,7 @@ def test_late_pre_does_not_baseline_the_write(session):
     # deze pauze kan het bestand een ctime net vóór t0 krijgen.
     time.sleep(0.05)
     (session.repo / "x.sh").write_text(BROKEN_SH, encoding="utf-8")
-    out = session.call("true", env={"PAIA_BASH_GATES_START_NS": str(t0)})
+    out = session.call("true", env={"LIGHTHOUSE_BASH_GATES_START_NS": str(t0)})
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
 
@@ -550,16 +471,16 @@ def test_late_pre_does_not_baseline_the_write(session):
 def test_broken_index_is_loud(session):
     out = session.call("echo garbage > .git/index")
     assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "KON NIET CONTROLEREN" in out.stderr
-    assert "KON NIET CONTROLEREN" in context(out)
+    assert "COULD NOT CHECK" in out.stderr
+    assert "COULD NOT CHECK" in context(out)
 
 
 def test_deadline_lists_unchecked_files(session):
     out = session.call(
-        heredoc("late.sh", BROKEN_SH), env={"PAIA_BASH_GATES_DEADLINE": "0"}
+        heredoc("late.sh", BROKEN_SH), env={"LIGHTHOUSE_BASH_GATES_DEADLINE": "0"}
     )
     assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "KON NIET CONTROLEREN" in out.stderr
+    assert "COULD NOT CHECK" in out.stderr
     assert "late.sh" in out.stderr
     assert "SC2034" not in out.stderr
 
@@ -592,9 +513,9 @@ def test_two_posts_report_once(session):
 
 def test_deadline_lets_the_next_call_retry_at_once(session):
     cmd = heredoc("a.sh", BROKEN_SH) + heredoc("b.sh", BROKEN_SH)
-    first = session.call(cmd, env={"PAIA_BASH_GATES_DEADLINE": "0"})
+    first = session.call(cmd, env={"LIGHTHOUSE_BASH_GATES_DEADLINE": "0"})
     assert first.returncode == 2, (first.stdout, first.stderr)
-    assert "KON NIET CONTROLEREN" in first.stderr
+    assert "COULD NOT CHECK" in first.stderr
     assert "a.sh" in first.stderr and "b.sh" in first.stderr
     second = session.call("true")
     assert second.returncode == 2, (second.stdout, second.stderr)
@@ -623,7 +544,7 @@ def test_relative_write_from_a_subdir(session):
 def test_call_outside_any_repo_is_silent(session, tmp_path, via):
     # Een losse `.git/` zonder HEAD boven de cwd (op de Mac: `~/.git/` met
     # alleen een toolcache) maakte van elke map onder `~` een wortel; git zei
-    # "not a git repository" en post blokkeerde met KON NIET CONTROLEREN op een
+    # "not a git repository" en post blokkeerde met COULD NOT CHECK op een
     # `ls` buiten elke repo, waar niets te bewaken valt.
     home = tmp_path / "home"
     (home / ".git" / "workflow-audit-tools").mkdir(parents=True)
@@ -654,7 +575,7 @@ def _ledger_record(s: _Session) -> dict:
 
 
 def _no_unchecked(result: subprocess.CompletedProcess) -> bool:
-    return "KON NIET" not in result.stderr and "KON NIET" not in context(result)
+    return "COULD NOT" not in result.stderr and "COULD NOT" not in context(result)
 
 
 def test_write_and_commit_in_one_call(session):
@@ -687,11 +608,8 @@ def test_git_rm_and_git_mv_are_not_unchecked(session):
 
 
 def _python_session(tmp_path: Path) -> _Session:
-    """Een sessie zonder shellcheck, met de gepinde ruff in de tmp-repo."""
-    s = _Session(tmp_path)
-    ruff_version = (REPO / ".ruff-version").read_text(encoding="utf-8")
-    (s.repo / ".ruff-version").write_text(ruff_version, encoding="utf-8")
-    return s
+    """Een sessie voor `.py`-schrijfwerk (de ruff-stub)."""
+    return _Session(tmp_path)
 
 
 def test_commit_then_mv_then_commit(tmp_path):
@@ -763,10 +681,10 @@ def test_conflict_merge_checks_only_the_resolution(tmp_path, resolution, rc):
 def test_pending_path_survives_a_missed_deadline(session):
     first = session.call(
         heredoc("x.sh", BROKEN_SH) + "git add x.sh && git commit -qm x\n",
-        env={"PAIA_BASH_GATES_DEADLINE": "0"},
+        env={"LIGHTHOUSE_BASH_GATES_DEADLINE": "0"},
     )
     assert first.returncode == 2, (first.stdout, first.stderr)
-    assert "KON NIET" in first.stderr
+    assert "COULD NOT" in first.stderr
     assert "SC2034" not in first.stderr
     second = session.call("true")
     assert second.returncode == 2, (second.stdout, second.stderr)
@@ -784,7 +702,7 @@ def test_committed_path_missing_on_disk_is_unchecked(session):
         + " && git update-index --skip-worktree x.sh && rm x.sh\n"
     )
     assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "KON NIET CONTROLEREN" in out.stderr
+    assert "COULD NOT CHECK" in out.stderr
     assert "x.sh" in out.stderr
     assert "SC2034" not in out.stderr
     assert _ledger_record(session)["pending"] == ["x.sh"]
@@ -793,7 +711,6 @@ def test_committed_path_missing_on_disk_is_unchecked(session):
 def test_checkout_moves_head_without_checking(tmp_path):
     s = _python_session(tmp_path)
     repo = s.repo
-    _commit_all(repo, "ruff-pin")
     git(repo, "checkout", "-q", "-b", "side")
     # Beide fout, en de .py ook ongeformatteerd: een dispatch zou hem
     # herschrijven, dus byte-gelijk bewijst dat er niets draaide.
@@ -807,7 +724,7 @@ def test_checkout_moves_head_without_checking(tmp_path):
     assert out.returncode == 0, (out.stdout, out.stderr)
     assert (repo / "t.py").read_text(encoding="utf-8") == "x=1\n" + BARE_EXCEPT_PY
     assert (repo / "s.sh").read_text(encoding="utf-8") == BROKEN_SH
-    assert "zonder commit" in context(out)
+    assert "without a commit" in context(out)
     assert "bash-write-gates:" in context(out)
 
 
@@ -820,8 +737,8 @@ def test_reset_soft_makes_it_dirty(session):
     assert "SC2034" in out.stderr
 
 
-def test_first_commit_in_an_unborn_repo(tmp_path, shellcheck_bin):
-    s = _Session(tmp_path, shellcheck_bin, unborn=True)
+def test_first_commit_in_an_unborn_repo(tmp_path):
+    s = _Session(tmp_path, unborn=True)
     first = s.call("true")
     assert first.returncode == 0, (first.stdout, first.stderr)
     assert _no_unchecked(first), (first.stdout, first.stderr)
@@ -866,9 +783,9 @@ def test_commit_then_switch_back_is_not_silent(session):
         + "git add bad.sh && git commit -qm x && git switch -q main\n"
     )
     assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "KON NIET CONTROLEREN" in out.stderr
-    assert "bad.sh (gecommit in " in out.stderr
-    assert "KON NIET CONTROLEREN" in context(out)
+    assert "COULD NOT CHECK" in out.stderr
+    assert "bad.sh (committed in " in out.stderr
+    assert "COULD NOT CHECK" in context(out)
     back = session.call("git switch -q feat")
     assert back.returncode == 2, (back.stdout, back.stderr)
     assert "SC2034" in back.stderr
@@ -986,7 +903,7 @@ def test_worktree_add_then_commit_inside(session):
     out = session.call(cmd)
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
-    assert "terugval" not in context(out)
+    assert "fallback" not in context(out)
     wt = os.path.realpath(session.repo / "wt")
     head = subprocess.run(
         ["git", "-C", wt, "rev-parse", "HEAD"],
@@ -1019,7 +936,7 @@ def test_recreated_worktree_reflog_gap_still_walks_since_the_call(session):
     )
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
-    assert "reflog-gat" in context(out)
+    assert "reflog gap" in context(out)
 
 
 def test_relative_path_into_a_gitignored_nested_worktree(session):
@@ -1063,7 +980,7 @@ def test_ledger_gone_before_post(session):
     )
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
-    assert "terugval" in context(out)
+    assert "fallback" in context(out)
 
 
 def test_ledger_gone_commit_in_the_call_is_found(session):
@@ -1073,11 +990,11 @@ def test_ledger_gone_commit_in_the_call_is_found(session):
     out = _manual_call(session, cmd, lambda: _drop_ledger(session))
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
-    assert "terugval" in context(out)
+    assert "fallback" in context(out)
     # De wortel staat weer in de ledger: de volgende call valt niet terug.
     again = session.call("true")
     assert again.returncode == 0, (again.stdout, again.stderr)
-    assert "terugval" not in context(again)
+    assert "fallback" not in context(again)
 
 
 def test_note_on_exit_zero_names_the_failure_event(session):
@@ -1089,7 +1006,7 @@ def test_note_on_exit_zero_names_the_failure_event(session):
     )
     assert out.returncode == 0, (out.stdout, out.stderr)
     assert event_of(out) == "PostToolUseFailure"
-    assert "terugval" in context(out)
+    assert "fallback" in context(out)
 
 
 def test_unreadable_ledger_falls_back_and_is_replaced(session):
@@ -1099,8 +1016,8 @@ def test_unreadable_ledger_falls_back_and_is_replaced(session):
     out = _manual_call(session, heredoc("x.sh", BROKEN_SH), garble)
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
-    assert "onleesbaar" in context(out)
-    assert "terugval" in context(out)
+    assert "unreadable" in context(out)
+    assert "fallback" in context(out)
     head = subprocess.run(
         ["git", "-C", str(session.repo), "rev-parse", "HEAD"],
         capture_output=True,
@@ -1109,7 +1026,7 @@ def test_unreadable_ledger_falls_back_and_is_replaced(session):
     ).stdout.strip()
     assert _ledger_record(session)["head"] == head
     assert (session.state / "ledger.reset").exists()
-    assert "vervangen" in context(out)
+    assert "replaced" in context(out)
     again = session.call("true")
     assert again.returncode == 0, (again.stdout, again.stderr)
     assert context(again) == ""
@@ -1132,7 +1049,7 @@ def test_replaced_ledger_does_not_let_pre_baseline_an_unwalked_root(session, tmp
     out = session.call(f"cd {wt2} && true")
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
-    assert "terugval zonder ledger" in context(out)
+    assert "fallback without ledger" in context(out)
 
 
 def test_no_marker_and_no_ledger_skips_source_2_with_a_note(session):
@@ -1143,9 +1060,9 @@ def test_no_marker_and_no_ledger_skips_source_2_with_a_note(session):
     cmd = heredoc("x.sh", BROKEN_SH) + "git add x.sh && git commit -qm x\n"
     out = _manual_call(session, cmd, drop_both)
     assert out.returncode == 0, (out.stdout, out.stderr)
-    assert "bron 2 overgeslagen" in context(out)
+    assert "source 2 skipped" in context(out)
     # Zonder marker bestond de wortel niet aantoonbaar vóór pre: geen terugvalmelding.
-    assert "terugval zonder ledger" not in context(out)
+    assert "fallback without ledger" not in context(out)
 
 
 def test_removed_worktree_is_named_not_silent(session, tmp_path):
@@ -1159,7 +1076,7 @@ def test_removed_worktree_is_named_not_silent(session, tmp_path):
     out = session.call(cmd)
     assert not wt2.exists()
     assert out.returncode == 0, (out.stdout, out.stderr)
-    assert f"{os.path.realpath(wt2)} bestaat niet meer" in context(out)
+    assert f"{os.path.realpath(wt2)} no longer exists" in context(out)
 
 
 def test_two_roots_with_the_same_rel_path_get_distinct_headers(session, tmp_path):
@@ -1197,3 +1114,47 @@ def test_outside_any_repo_is_silent(session, tmp_path):
     # De shim zat echt op het pad: pre en post riepen git aan, geen enkele faalde.
     assert "rev-parse" in calls.read_text(encoding="utf-8")
     assert not log.exists(), log.read_text(encoding="utf-8")
+
+
+# --- lighthouse: zonder taalpakket (besluit 19) ------------------------------
+
+
+def test_post_without_language_packs(tmp_path):
+    s = _Session(tmp_path, language_gates=False)
+    out = s.call(heredoc("a.py", BARE_EXCEPT_PY) + heredoc("b.sh", BROKEN_SH))
+    assert out.returncode == 0, (out.stdout, out.stderr)
+    assert "a.py not checked — no python gate installed" in context(out)
+    assert "b.sh not checked — no shell gate installed" in context(out)
+
+
+def test_pre_without_python_is_silent_post_is_loud(tmp_path):
+    s = _Session(tmp_path)
+    bin_dir = tool_bin(
+        tmp_path / "bin", ("bash", "cat", "dirname", "sed", "git", "python3"), drop="python3"
+    )
+    payload = s.payload("true", "toolu_nopy", s.repo, "PreToolUse")
+    pre = s.hook("pre", payload, env={"PATH": str(bin_dir)})
+    assert (pre.returncode, pre.stdout, pre.stderr) == (0, "", "")
+    post = s.hook("post", dict(payload, hook_event_name="PostToolUse"), env={"PATH": str(bin_dir)})
+    assert post.returncode == 2
+    assert "COULD NOT CHECK" in post.stderr and "python3 is missing" in context(post)
+
+
+def test_hooks_registered_pre_post_and_failure() -> None:
+    """Pre vóór de Bash-call, post na een geslaagde én een mislukte call."""
+    registered = json.loads((CORE / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+    want = {
+        "PreToolUse": ("bash-write-gates.sh pre", 5),
+        "PostToolUse": ("bash-write-gates.sh post", 120),
+        "PostToolUseFailure": ("bash-write-gates.sh post", 120),
+    }
+    for event, (script, timeout) in want.items():
+        entries = [
+            h
+            for block in registered["hooks"].get(event, [])
+            if block.get("matcher") == "Bash"
+            for h in block["hooks"]
+            if h["command"].endswith("/" + script)
+        ]
+        assert [h["timeout"] for h in entries] == [timeout], (event, entries)
+    assert os.access(INSTALLED_HOOKS / "bash-write-gates.sh", os.X_OK)

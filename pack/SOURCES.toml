@@ -91,3 +91,13 @@ source_sha = "231f6e84fa709dd37c4fc8578453907a8a6efdf6"
 path = "pack/core/hooks/worktree-linkcheck.sh"
 source_path = ".claude/hooks/worktree-linkcheck.sh"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/hooks/pr-create-gate.sh"
+source_path = ".claude/hooks/pr-create-gate.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/hooks/bash-write-gates.sh"
+source_path = ".claude/hooks/bash-write-gates.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

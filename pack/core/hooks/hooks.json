@@ -8,6 +8,16 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/main-commit-guard.sh",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-gates.sh pre",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pr-create-gate.sh",
+            "timeout": 15
           }
         ]
       },
@@ -30,6 +40,28 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/worktree-linkcheck.sh",
             "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-gates.sh post",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-gates.sh post",
+            "timeout": 120
           }
         ]
       }

@@ -1,7 +1,7 @@
 # Tool -> the units in this package that need it. `lighthouse init` reports a
 # missing tool with these names; it does not stop on it.
 gh = ["lighthouse_lib.evidence", "lighthouse_lib.pr_body_gate"]
-git = ["main-commit-guard", "worktree-guard", "worktree-linkcheck", "lighthouse_lib.evidence", "lighthouse_lib.pr_body_gate", "lighthouse_lib.bash_writes"]
-jq = ["main-commit-guard", "worktree-guard", "worktree-linkcheck"]
-python3 = ["main-commit-guard", "worktree-guard", "worktree-linkcheck", "lighthouse_lib.config", "lighthouse_lib.datadir", "lighthouse_lib.headings", "lighthouse_lib.deadline", "lighthouse_lib.gate_slot", "lighthouse_lib.md_links", "lighthouse_lib.no_verify", "lighthouse_lib.evidence", "lighthouse_lib.pr_body_gate", "lighthouse_lib.bash_writes"]
+git = ["main-commit-guard", "worktree-guard", "worktree-linkcheck", "pr-create-gate", "bash-write-gates", "lighthouse_lib.evidence", "lighthouse_lib.pr_body_gate", "lighthouse_lib.bash_writes"]
+jq = ["main-commit-guard", "worktree-guard", "worktree-linkcheck", "pr-create-gate"]
+python3 = ["main-commit-guard", "worktree-guard", "worktree-linkcheck", "pr-create-gate", "bash-write-gates", "lighthouse_lib.config", "lighthouse_lib.datadir", "lighthouse_lib.headings", "lighthouse_lib.deadline", "lighthouse_lib.gate_slot", "lighthouse_lib.md_links", "lighthouse_lib.no_verify", "lighthouse_lib.evidence", "lighthouse_lib.pr_body_gate", "lighthouse_lib.bash_writes"]
 tomllib = ["lighthouse_lib.config", "lighthouse_lib.headings", "lighthouse_lib.evidence", "lighthouse_lib.pr_body_gate"]

@@ -1,4 +1,4 @@
-"""End-to-end tests voor `.claude/hooks/pr-create-gate.sh` (#1091).
+"""End-to-end tests voor pack/core `pr-create-gate.sh`, as installed (#1091).
 
 De hook draait als subprocess met een echte projectrepo in `tmp_path` als
 `CLAUDE_PROJECT_DIR`. Netwerkverbod: een stub-`gh` staat altijd vooraan op
@@ -13,15 +13,15 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit._hook_testkit import (
-    HOOKS,
+from tests.pack._testkit import (
+    CORE,
+    INSTALLED_HOOKS,
     bash_payload,
     init_repo,
-    load_hook_lib,
     run_hook,
     tool_bin,
 )
-from tests.unit.test_pr_body_gate import (
+from tests.pack.test_pr_body_gate import (
     ISSUE_MET_DRIE_AC,
     ROWS1,
     ROWS2,
@@ -29,9 +29,10 @@ from tests.unit.test_pr_body_gate import (
     closes_body,
 )
 
-HOOK = HOOKS / "pr-create-gate.sh"
-SETTINGS = HOOKS.parent / "settings.json"
-REPO = load_hook_lib("pr_body_gate").REPO
+HOOK = INSTALLED_HOOKS / "pr-create-gate.sh"
+HOOKS_JSON = CORE / "hooks" / "hooks.json"
+# `forge.repo` of the lighthouse.toml that install_core leaves behind.
+REPO = "Acme/widgets"
 
 # Nep-`gh`: print $GH_ISSUE_BODY voor het issue-endpoint, exit 1 met GH_FAIL.
 FAKE_GH = (
@@ -92,7 +93,7 @@ def test_geldige_closes_gaat_door(gate: Gate) -> None:
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
-    assert "body getoetst" in out["systemMessage"]
+    assert "body checked" in out["systemMessage"]
     assert out["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
     assert out["hookSpecificOutput"]["additionalContext"] == out["systemMessage"]
 
@@ -101,14 +102,14 @@ def test_geldige_refs_gaat_door(gate: Gate) -> None:
     result = gate.run("gh pr create --body 'Refs #5 — wacht op deploy op de Beelink'")
 
     assert result.returncode == 0, result.stderr
-    assert "body getoetst" in json.loads(result.stdout)["systemMessage"]
+    assert "body checked" in json.loads(result.stdout)["systemMessage"]
 
 
 def test_geen_vorm_blokkeert(gate: Gate) -> None:
     result = gate.run("gh pr create --body 'zie titel'")
 
     assert result.returncode == 2, result.stdout
-    assert "/paia-verify-pr" in result.stderr
+    assert "/lighthouse-verify-pr" in result.stderr
 
 
 def test_cd_prefix_leest_relatief(gate: Gate) -> None:
@@ -134,7 +135,7 @@ def test_andere_repo_overgeslagen(gate: Gate) -> None:
     result = gate.run("gh pr create -R other/repo --body 'zie titel'")
 
     assert result.returncode == 0, result.stderr
-    assert "andere repo" in json.loads(result.stdout)["systemMessage"]
+    assert "other repo" in json.loads(result.stdout)["systemMessage"]
 
 
 def test_buiten_repo_met_R_getoetst(gate: Gate, tmp_path: Path) -> None:
@@ -156,7 +157,7 @@ def test_onparseerbaar_met_gh_pr_blokkeert(gate: Gate) -> None:
     result = gate.run("gh pr create --body 'x")
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
     assert "open quote" in result.stderr
 
 
@@ -176,7 +177,7 @@ def test_gh_faalt_laat_luid_door(gate: Gate) -> None:
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
-    melding = "AC-telling niet meetbaar voor #5"
+    melding = "AC count not measurable for #5"
     assert melding in out["systemMessage"]
     assert melding in out["hookSpecificOutput"]["additionalContext"]
 
@@ -189,8 +190,8 @@ def test_gh_ontbreekt_laat_luid_door(gate: Gate, tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
-    assert "gh ontbreekt" in out["systemMessage"]
-    assert "gh ontbreekt" in out["hookSpecificOutput"]["additionalContext"]
+    assert "gh is missing" in out["systemMessage"]
+    assert "gh is missing" in out["hookSpecificOutput"]["additionalContext"]
 
 
 @pytest.mark.parametrize("drop", ["jq", "python3"])
@@ -200,7 +201,7 @@ def test_zonder_tooling_blokkeert(gate: Gate, tmp_path: Path, drop: str) -> None
     result = gate.run("gh pr create --body 'zie titel'", path=str(kaal), stub=False)
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
     assert drop in result.stderr
 
 
@@ -212,15 +213,15 @@ def test_parser_met_onverwachte_rc_blokkeert(gate: Gate) -> None:
     result = gate.run("gh pr create --body 'Refs #5 — wacht op deploy op de Beelink'")
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
-    assert "body-parser faalde (rc 1)" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
+    assert "the body parser failed (rc 1)" in result.stderr
 
 
 def test_ongeldige_payload_blokkeert(gate: Gate) -> None:
     result = run_hook_raw(gate)
 
     assert result.returncode == 2
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
 
 
 def test_leeg_commando_stil(gate: Gate) -> None:
@@ -238,9 +239,9 @@ def test_geen_gh_pr_create_stil(gate: Gate) -> None:
 
 
 def test_hook_registered_and_executable() -> None:
-    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    registered = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
     bash_blocks = [
-        b for b in settings["hooks"]["PreToolUse"] if b.get("matcher") == "Bash"
+        b for b in registered["hooks"]["PreToolUse"] if b.get("matcher") == "Bash"
     ]
     assert len(bash_blocks) == 1
     entries = [
@@ -249,7 +250,7 @@ def test_hook_registered_and_executable() -> None:
     assert len(entries) == 1, bash_blocks[0]["hooks"]
     assert entries[0]["timeout"] == 15
     assert os.access(HOOK, os.X_OK)
-    assert "# Tegenhanger: paia-verify-pr" in HOOK.read_text(encoding="utf-8")
+    assert "# Counterpart: /lighthouse-verify-pr" in HOOK.read_text(encoding="utf-8")
 
 
 def run_hook_raw(gate: Gate):
