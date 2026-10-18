@@ -134,9 +134,17 @@ func execute(o Options) error {
 		reqs = append(reqs, all[c.Name].Requires...)
 	}
 	reportPacks(o, all, chosen, m, initialized, notes)
+	var chosenPacks []packs.Pack
+	for _, c := range chosen {
+		chosenPacks = append(chosenPacks, all[c.Name])
+	}
+	tables, haveRepo, err := configTables(root, chosenPacks)
+	if err != nil {
+		return err
+	}
 	lookup := o.Lookup
 	if lookup == nil {
-		pl := &pythonLookup{packs: o.Packs, root: root}
+		pl := &pythonLookup{packs: o.Packs, root: root, tables: tables}
 		defer pl.close()
 		lookup = pl.lookup
 	}
@@ -171,7 +179,7 @@ func execute(o Options) error {
 		}
 	}
 
-	plan, err := buildPlan(o, root, names, desired, changes)
+	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo)
 	if err != nil {
 		return err
 	}
@@ -273,7 +281,7 @@ func writes(a reconcile.Action, force bool) bool {
 	return a == reconcile.Add || a == reconcile.Replace || (force && a == reconcile.Conflict)
 }
 
-func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change) (map[string]*planned, error) {
+func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool) (map[string]*planned, error) {
 	plan := map[string]*planned{}
 	load := func(rel string) (*planned, error) {
 		if p, ok := plan[rel]; ok {
@@ -387,7 +395,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		_, _ = fmt.Fprintln(o.Err, "warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules")
 	}
 
-	if err := planConfig(o, root, load); err != nil {
+	if err := planConfig(o, load, tables, haveRepo); err != nil {
 		return nil, err
 	}
 
@@ -428,23 +436,66 @@ func hasLine(b []byte, line string) bool {
 	return false
 }
 
-// proposeConfig returns lighthouse.toml as init will leave it: old plus the missing
-// core tables.
-func proposeConfig(root string, old []byte) (out []byte, haveRepo bool, manual []string, err error) {
-	repo := ""
+// configTables are the tables lighthouse.toml should have: the core tables, then the
+// fragments of the chosen packages in their order (plan M0 (c), ontwerpkeuze 4).
+func configTables(root string, chosen []packs.Pack) ([]projectconfig.Table, bool, error) {
+	repo, haveRepo := "", false
 	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
 		repo, haveRepo = projectconfig.ForgeRepo(strings.TrimSpace(string(url)))
 	}
-	out, _, manual, err = projectconfig.AppendMissing(old, projectconfig.CoreTables(repo, haveRepo))
-	return out, haveRepo, manual, err
+	tables, err := mergeTables(projectconfig.CoreTables(repo, haveRepo), chosen)
+	return tables, haveRepo, err
 }
 
-func planConfig(o Options, root string, load func(string) (*planned, error)) error {
+// mergeTables joins core and the fragments of chosen per table name, in order. A key
+// that two of them give is an error: which value wins would depend on the order.
+func mergeTables(core []projectconfig.Table, chosen []packs.Pack) ([]projectconfig.Table, error) {
+	var out []projectconfig.Table
+	at := map[string]int{}      // table name -> index in out
+	from := map[string]string{} // table.key -> package
+	add := func(pkg string, tables []projectconfig.Table) error {
+		for _, t := range tables {
+			i, ok := at[t.Name]
+			if !ok {
+				at[t.Name] = len(out)
+				out = append(out, projectconfig.Table{Name: t.Name})
+				i = len(out) - 1
+			}
+			for _, kv := range t.Keys {
+				path := t.Name + "." + kv.Key
+				if other, ok := from[path]; ok {
+					return fmt.Errorf("lighthouse.toml: %s comes from both package %s and package %s", path, other, pkg)
+				}
+				from[path] = pkg
+				out[i].Keys = append(out[i].Keys, kv)
+			}
+		}
+		return nil
+	}
+	if err := add("core", core); err != nil {
+		return nil, err
+	}
+	for _, p := range chosen {
+		if err := add(p.Name, p.Config); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// proposeConfig returns lighthouse.toml as init will leave it: old plus what tables
+// has and old lacks.
+func proposeConfig(old []byte, tables []projectconfig.Table) (out []byte, manual []string, err error) {
+	out, _, manual, err = projectconfig.AppendMissing(old, tables)
+	return out, manual, err
+}
+
+func planConfig(o Options, load func(string) (*planned, error), tables []projectconfig.Table, haveRepo bool) error {
 	p, err := load(configPath)
 	if err != nil {
 		return err
 	}
-	out, haveRepo, manual, err := proposeConfig(root, p.old)
+	out, manual, err := proposeConfig(p.old, tables)
 	if err != nil {
 		return err
 	}
