@@ -29,10 +29,12 @@ func TestCorePack(t *testing.T) {
 	sort.Strings(files)
 	want := []string{
 		".claude/hooks/lighthouse/main-commit-guard.sh",
+		".lighthouse/headings.toml",
 		".lighthouse/lib/lighthouse_lib/__init__.py",
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/git_invocations.py",
+		".lighthouse/lib/lighthouse_lib/headings.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
