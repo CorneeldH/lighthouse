@@ -26,8 +26,11 @@ SKILLS = CORE / "skills"
 AGENTS = CORE / "agents"
 TEXT_SUFFIXES = {".md", ".sh", ".json", ".txt"}
 
-# Skills outside lighthouse that a core skill may call: the Superpowers skills.
+# Skills outside lighthouse that a core skill may call: the Superpowers skills, and the two
+# Claude Code built-in commands paia's skills already name (`/clear`, `/code-review`).
 ALLOWED_EXTERNAL = {
+    "clear",
+    "code-review",
     "superpowers:brainstorming",
     "superpowers:dispatching-parallel-agents",
     "superpowers:executing-plans",
@@ -47,7 +50,6 @@ ALLOWED_EXTERNAL = {
 # them. A skill leaves this set in the commit that adds it (test_planned_skills_absent);
 # the set is empty when PR 4 is done.
 PLANNED = {
-    "handoff",
     "verify-pr",
     "fix-pr",
     "close-issue",
@@ -187,14 +189,35 @@ def test_skill_links_resolve(unit):
     assert not bad, "\n".join(bad)
 
 
+def _paragraphs(text: str):
+    """Each paragraph with the markdown headings that enclose it (outside code fences)."""
+    headings: list[tuple[int, str]] = []
+    in_fence = False
+    for para in re.split(r"\n\s*\n", text):
+        yield para, [h for _, h in headings]
+        for line in para.splitlines():
+            if line.lstrip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            m = re.match(r"^(#{1,6})\s", line)
+            if m and not in_fence:
+                level = len(m[1])
+                headings = [(lvl, h) for lvl, h in headings if lvl < level] + [(level, line)]
+
+
 @pytest.mark.parametrize("unit", UNITS)
 def test_optional_steps_guarded(unit):
+    """A paragraph that names something that stays in paia says "if present" or "skipped",
+    itself or in a heading that encloses it (a whole section that applies only if present)."""
     unguarded = []
     for rel, text in _texts(unit).items():
-        for para in re.split(r"\n\s*\n", text):
-            if _OPTIONAL_RE.search(para) and not _GUARD_RE.search(" ".join(para.split())):
-                first = next(line for line in para.splitlines() if _OPTIONAL_RE.search(line))
-                unguarded.append(f"{rel}: {first.strip()[:120]}")
+        for para, enclosing in _paragraphs(text):
+            if not _OPTIONAL_RE.search(para):
+                continue
+            if _GUARD_RE.search(" ".join(para.split())) or any(map(_GUARD_RE.search, enclosing)):
+                continue
+            first = next(line for line in para.splitlines() if _OPTIONAL_RE.search(line))
+            unguarded.append(f"{rel}: {first.strip()[:120]}")
     assert not unguarded, "\n".join(unguarded)
 
 

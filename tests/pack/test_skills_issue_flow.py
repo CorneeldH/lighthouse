@@ -308,118 +308,135 @@ def test_the_agents_variant_names_the_missing_persona():
     assert "not available" in agents and "simulate" in agents
     assert "##### Outside Claude Code" not in claude
 
-# --- handoff (letterlijk uit paia) ---
-def test_handoff_geblokkeerde_herstart_vanuit_eigen_worktree():
-    """I5: de geblokkeerde herstart uit paia-start-issue komt uit de eigen worktree;
-    vanuit `main` zet de controller hem op wacht en stapelt hij nooit."""
-    for body in skill("paia-handoff"):
-        stap3 = body[body.index("3. **`volgende:`") : body.index("4. **`wanneer:`**")]
-        assert "hoofdcheckout en `branch:` `main`" in stap3
-        assert "— blokkeerder #<x> open" in stap3
-        assert "eigen worktree en branch van het issue" in stap3
+
+# --- handoff -----------------------------------------------------------------------
 
 
-HANDOFF_SKILL = REPO / ".claude" / "skills" / "paia-handoff" / "SKILL.md"
-HANDOFF_SKILL_AGENTS = REPO / ".agents" / "skills" / "paia-handoff" / "SKILL.md"
-    "zin",
-    [
-        "**Uitzondering: een plan, niet gereviewd.**",
-        "geen `AskUserQuestion`",
-        "[<bestandsnaam>](<absoluut pad>)",
-        "Review, controller of interactief?",
-        "Mijn advies:",
-        "eindigt de beurt",
-        "Een controller-run vraagt dit niet",
-        "Zonder issuenummer",
-        "overgeslagen op besluit van de gebruiker",
-        "`Eerste stap: /superpowers:executing-plans <plan>`",
-        "| Wat er ligt | Eerste stap | Controller |",
-        "De kolom Controller zegt wat Controller-modus stap 2 doet",
-        "`/paia-spec-adversarial-review` op die spec | `standaard` |",
-        "`/superpowers:writing-plans` op die spec | `nee` |",
-        "`/paia-plan-adversarial-review` op dat plan | `keuze` |",
-        "`/superpowers:executing-plans` | `aanbieden` |",
-        "`/paia-fix-pr <pr>` | `aanbieden` |",
-        "Bij `keuze` print je in stap 6 twee blokken vóór de vraag: eerst *review*, dan *interactief*.",
-        "Alleen *controller* vraagt nog een antwoord in dit venster.",
-        "stel de vraag dan alleen met *review* of *interactief*, zonder *controller*",
-        "Bij `nee` lees je de board-status niet; staat het issue toch op `Controller`, dan blijft het daar tot de gebruiker het verzet.",
-        "Wil de gebruiker de plan-review zelf via de controller, dan `volgende: /paia-plan-adversarial-review <plan>` en stap 5 en 6.",
-        "Bij twijfel: **review**.",
-        "Dit geldt ook als het issue al op `Controller` staat",
-    ],
-)
-def test_handoff_plan_naad_vraagt_in_chattekst(path, zin):
-    """#1046: bij een gecommit plan kiest de gebruiker zelf, na inspectie."""
-    assert zin in path.read_text(encoding="utf-8"), f"{path.parent.name}: {zin!r}"
+def test_handoff_blocked_restart_from_its_own_worktree():
+    """The blocked restart from lighthouse-start-issue comes from the issue's own worktree;
+    from `main` the controller puts it on hold and never stacks."""
+    for body in skill("handoff"):
+        step3 = _step(body, "3. **`next:`", "4. **`when:`**")
+        assert "main checkout and `branch:` `main`" in step3
+        assert "— blocker #<x> open" in step3
+        assert "own worktree and branch of the issue" in step3
 
 
-@pytest.mark.parametrize(
-    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
-)
-def test_handoff_plan_naad_blokken_voor_de_vraag(path):
-    """Bij *review* of *interactief* hoeft de gebruiker niet terug naar het venster:
-    review-blok, interactief-blok, dan pas planlink, advies en vraag."""
-    text = path.read_text(encoding="utf-8")
-    start = text.index("**Uitzondering: een plan, niet gereviewd.**")
-    alinea = text[start : text.index("Een controller-run vraagt dit niet", start)]
-    volgorde = [
-        "`Eerste stap: /paia-plan-adversarial-review <plan>`",
-        "`Eerste stap: /superpowers:executing-plans <plan>`",
-        "Plan staat in",
-        "Mijn advies:",
-        "Review, controller of interactief?",
-    ]
-    posities = [alinea.index(stuk) for stuk in volgorde]
-    assert posities == sorted(posities), f"{path.parent.name}: volgorde {posities}"
+PLAN_SEAM = [
+    "**Exception: a plan, not reviewed.**",
+    "no `AskUserQuestion`",
+    "[<file name>](<absolute path>)",
+    "Review, controller or interactive?",
+    "My advice:",
+    "end the turn",
+    "A controller run does not ask this",
+    "Without an issue number",
+    "skipped on a decision of the user",
+    "`First step: /superpowers:executing-plans <plan>`",
+    "| What there is | First step | Controller (if present) |",
+    "The Controller column says what controller mode step 2 does",
+    "`/lighthouse-spec-adversarial-review` on that spec | `default` |",
+    "`/superpowers:writing-plans` on that spec | `no` |",
+    "`/lighthouse-plan-adversarial-review` on that plan | `choice` |",
+    "`/superpowers:executing-plans` | `offer` |",
+    "`/lighthouse-fix-pr <pr>` | `offer` |",
+    "At `choice` you print two blocks in step 6 before the question: first *review*, then *interactive*.",
+    "Only *controller* still asks for an answer in this window.",
+    "then ask the question only with *review* or *interactive*, without *controller*",
+    "At `no` you do not read the board status; if the issue is on `Controller` anyway, it stays there until the user moves it.",
+    "If the user wants the plan review itself through the controller: `next: /lighthouse-plan-adversarial-review <plan>` and steps 5 and 6.",
+    "When in doubt: **review**.",
+    "This also holds when the issue is already on `Controller`",
+]
 
 
-@pytest.mark.parametrize(
-    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
-)
-def test_handoff_plan_naad_uitzondering_komt_voor_controller_post(path):
-    """De *Uitzondering*-alinea (stap 2) moet vóór de gewone Controller-postlogica staan,
-    anders leest de skill de vraag pas na het "meteen posten"-pad."""
-    text = path.read_text(encoding="utf-8")
-    assert text.index("**Uitzondering: een plan, niet gereviewd.**") < text.index(
-        "Alleen bij `aanbieden` (bij `standaard` hierboven nooit): staat hij al op `Controller`, meteen posten"
-    )
+def test_handoff_plan_seam_asks_in_chat_text():
+    """At a committed plan the user chooses, after inspection."""
+    for body in skill("handoff"):
+        flat = " ".join(body.split())
+        missing = [phrase for phrase in PLAN_SEAM if " ".join(phrase.split()) not in flat]
+        assert not missing, missing
 
 
-@pytest.mark.parametrize(
-    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
-)
-@pytest.mark.parametrize(
-    "zin",
-    [
-        "uv run python scripts/post_artefact.py <nr> <absoluut pad>",
-        "met `dangerouslyDisableSandbox: true` (Go-TLS van `gh`):",
-        "ook in Controller-modus vóór de `🤖 Handoff`",
-        "Een fout blokkeert de handoff niet",
-        "artefact: <de regel uit post_artefact.py>",
-    ],
-)
-def test_handoff_post_artefact(path, zin):
-    """#1094: elke naad met een spec of plan als anker post dat op het issue."""
-    assert zin in path.read_text(encoding="utf-8"), f"{path.parent.name}: {zin!r}"
+def test_handoff_plan_seam_blocks_before_the_question():
+    """At *review* or *interactive* the user need not come back to the window: review
+    block, interactive block, only then plan link, advice and question."""
+    for body in skill("handoff"):
+        start = body.index("**Exception: a plan, not reviewed.**")
+        para = body[start : body.index("A controller run does not ask this", start)]
+        order = [
+            "`First step: /lighthouse-plan-adversarial-review <plan>`",
+            "`First step: /superpowers:executing-plans <plan>`",
+            "Plan is in",
+            "My advice:",
+            "Review, controller or interactive?",
+        ]
+        positions = [para.index(piece) for piece in order]
+        assert positions == sorted(positions), positions
 
 
-@pytest.mark.parametrize(
-    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
-)
-def test_handoff_post_artefact_staat_in_stap_3(path):
-    text = path.read_text(encoding="utf-8")
-    assert (
-        "(`/superpowers:executing-plans`)" in text
-    )
+def test_handoff_plan_seam_exception_before_controller_post():
+    for body in skill("handoff"):
+        assert body.index("**Exception: a plan, not reviewed.**") < body.index(
+            "Only at `offer` (never at `default` above): if it is already on `Controller`, "
+            "post at once"
+        )
 
 
-@pytest.mark.parametrize(
-    "path", [HANDOFF_SKILL, HANDOFF_SKILL_AGENTS], ids=["claude", "agents"]
-)
-def test_handoff_kent_lane_native(path):
-    """#1461: Native als handoff-lane: het veld, de keuze en de modelmelding."""
-    text = path.read_text(encoding="utf-8")
-    assert "lane: native" in text
-    assert "de controller start dit op Sonnet" in text
-    assert "Ja, native" in text
+def test_handoff_post_artefact():
+    for body in skill("handoff"):
+        flat = " ".join(body.split())
+        for phrase in (
+            "python3 .lighthouse/scripts/post_artefact.py <nr> <absolute path>",
+            "with `dangerouslyDisableSandbox: true` (Go TLS of `gh`):",
+            "also in controller mode (if present) before the `🤖 heading:kind_handoff`",
+            "An error does not block the handoff",
+            "artefact: <the line from post_artefact.py>",
+        ):
+            assert phrase in flat, phrase
+
+
+def test_handoff_post_artefact_is_in_step_3():
+    for body in skill("handoff"):
+        assert (
+            body.index("3. **Decide the anchor.**")
+            < body.index(".lighthouse/scripts/post_artefact.py")
+            < body.index("4. **Decide the first step")
+        )
+
+
+def test_handoff_knows_lane_native():
+    for body in skill("handoff"):
+        assert "lane: native" in body
+        assert "the controller starts it on Sonnet" in body
+        assert "Yes, native" in body
+
+
+def test_handoff_writes_new_tokens():
+    """The handoff block writes the tokens of `lighthouse_lib.protocol` (Protocoltokens):
+    `next:`, `when: now|night`, `anchor:`, under the heading from headings.toml."""
+    for body in skill("handoff"):
+        post = body[body.index("5. **Post**") : body.index("6. **Status")]
+        for token in ("anchor: <anchor>", "next: <command> <argument>", "when: now"):
+            assert token in post, token
+        assert "headings.py kind_handoff" in post
+        for old in ("volgende:", "wanneer:", "anker:", "`nu`", "`nacht`"):
+            assert old not in body, old
+        assert "`when:`** is `now`, unless the user chooses or asks for `night`" in body
+
+
+def test_handoff_board_and_host_from_config():
+    for body in skill("handoff"):
+        for key in (
+            "forge.owner",
+            "forge.name",
+            "forge.board.project_number",
+            "forge.board.project_id",
+            "forge.board.status_field_id",
+            "forge.board.status_options.Controller",
+        ):
+            assert f"config.py {key}" in body, key
+        assert "config.py host-check" in body
+        assert "the always-on host (`host.toml`)" in body
+        assert "LIGHTHOUSE_CONTROLLER_RUN" in body
+        assert "identity" not in body and "controller_tick" not in body

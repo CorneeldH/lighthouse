@@ -1,111 +1,118 @@
 ---
-name: paia-handoff
-description: Schrijf het startcommando voor de volgende sessie. Gebruik aan het einde van een fase, of wanneer de gebruiker vraagt om "een command voor een nieuwe sessie", "hoe start ik dit in een nieuw venster", "geef me het command", "hand-off", of /paia-handoff. Produceert één copy-pasteklaar blok met worktree, branch, doel, relevante achtergrond-informatie (of een verwijzing daarnaar) en de eerste stap met het slash-commando waarmee die sessie begint.
-metadata:
-  domain: factory
+name: lighthouse-handoff
+description: Write the start command for the next session. Use at the end of a phase, or when the user asks for "a command for a new session", "how do I start this in a new window", "give me the command", "hand-off", or /lighthouse-handoff. Produces one copy-paste-ready block with worktree, branch, goal, relevant background information (or a reference to it) and the first step with the slash command that session starts with.
 ---
 
 # Handoff Skill
 
-Eén blok tekst dat de gebruiker plakt in een verse sessie, waarna die sessie zonder
-verdere uitleg verder kan. Geen samenvatting van wat er gebeurd is — dat staat in
-git en in het issue. Wél: waar het werk staat en wat de volgende stap is.
+One block of text the user pastes into a fresh session, after which that session can go on
+without further explanation. No summary of what happened — that is in git and in the issue.
+Instead: where the work stands and what the next step is.
 
-Sluit aan op de AGENTS.md-regel **Fresh Context Per Phase**: één afgeronde eenheid
-werk = één venster. De hand-off is de brug tussen twee vensters.
+Follows the rule **Fresh Context Per Phase**: one finished unit of work = one window. The
+hand-off is the bridge between two windows.
 
 ## When to Use
 
-- De gebruiker vraagt erom ("command voor nieuwe sessie", "hoe pak ik dit op", "hand-off").
-- Een fase is af (plan geschreven, PR open, spec klaar) en het vervolg hoort in schone context.
-- Je loopt tegen de contextlimiet aan en het werk is op een natuurlijke naad.
+- The user asks for it ("command for a new session", "how do I pick this up", "hand-off").
+- A phase is done (plan written, PR open, spec ready) and the follow-up belongs in a clean context.
+- You are running into the context limit and the work is at a natural seam.
 
-Niet gebruiken midden in een taak die in dit venster afgemaakt kan worden.
+Do not use in the middle of a task that can be finished in this window.
 
 ## Workflow
 
-1. **Bepaal de plek.** In een worktree? Dan het absolute pad + de branch:
+1. **Decide the place.** In a worktree? Then the absolute path + the branch:
    ```bash
    git rev-parse --show-toplevel && git branch --show-current
    ```
-   Op main zonder worktree: zeg dat de volgende sessie zélf een worktree opzet
-   (AGENTS.md-regel: worktree vóór de eerste schrijfactie).
-2. **Bepaal de staat.** Wat is gecommit, wat staat er nog open?
+   On the default branch without a worktree: say that the next session sets up a worktree
+   *itself* (rule: worktree before the first write).
+2. **Decide the state.** What is committed, what is still open?
    ```bash
    git status --short && git log --oneline -3
    ```
-   Ongecommit werk noem je expliciet — de volgende sessie mag er niet over struikelen.
-3. **Bepaal het anker.** Precies één van: issuenummer, plan-/specpad, of PR-nummer.
-   Bestaat er een plan in `docs/developer/planning/plans/`, gebruik dat pad; anders
-   de spec in `docs/developer/planning/specs/`; anders het issue.
+   Name uncommitted work explicitly — the next session must not trip over it.
+3. **Decide the anchor.** Exactly one of: issue number, plan/spec path, or PR number.
+   If there is a plan in the plans folder (`python3 .lighthouse/lib/lighthouse_lib/config.py paths.plans`),
+   use that path; otherwise the spec in the specs folder
+   (`python3 .lighthouse/lib/lighthouse_lib/config.py paths.specs`); otherwise the issue.
 
-   **Is het anker een spec- of planpad en is het issuenummer bekend** (uit de prompt of de
-   branch `issue-<nr>-…`), post het dan op het issue,
-   ook in Controller-modus vóór de `🤖 Handoff`,
-   met `dangerouslyDisableSandbox: true` (Go-TLS van `gh`):
+   **If the anchor is a spec or plan path and the issue number is known** (from the prompt or the
+   branch `issue-<nr>-…`), post it on the issue,
+   also in controller mode (if present) before the `🤖 heading:kind_handoff`,
+   with `dangerouslyDisableSandbox: true` (Go TLS of `gh`):
    ```bash
-   cd <worktree> && uv run python scripts/post_artefact.py <nr> <absoluut pad>
+   cd <worktree> && python3 .lighthouse/scripts/post_artefact.py <nr> <absolute path>
    ```
-   Het script is idempotent: zonder inhoudswijziging post het niets. Kent GitHub de commit nog
-   niet, dan pusht het de branch zelf (alleen zonder open PR, nooit `main`). Zet de
-   `artefact:`-regel in het blok onder `Staat:`.
-   Een fout blokkeert de handoff niet: de foutregel komt onder `Let op:`.
-4. **Bepaal de eerste stap, en die draagt altijd een commando.** Eén concrete
-   handeling, geen agenda van vijf punten — maar wél met het slash-commando erbij
-   waarmee de verse sessie begint. Een verse sessie kent de gewoontes van dit venster
-   niet: zonder commando begint hij zonder skill en doet het werk op de vrije hand.
-   Route op wat er al ligt:
+   The script is idempotent: without a content change it posts nothing. If GitHub does not know
+   the commit yet, it pushes the branch itself (only without an open PR, never the default
+   branch). Put the `artefact:` line in the block under `State:`.
+   An error does not block the handoff: the error line goes under `Watch out:`.
+4. **Decide the first step, and it always carries a command.** One concrete
+   action, not an agenda of five points — but *with* the slash command
+   the fresh session starts with. A fresh session does not know the habits of this window:
+   without a command it starts without a skill and does the work freehand.
+   Route on what there is:
 
-   | Wat er ligt | Eerste stap | Controller |
+   | What there is | First step | Controller (if present) |
    |---|---|---|
-   | een plan in `docs/developer/planning/plans/`, nog niet adversarieel gereviewd | `/paia-plan-adversarial-review` op dat plan | `keuze` |
-   | een plan, review geconvergeerd, open punten aanvaard, of overgeslagen op besluit van de gebruiker | `/superpowers:subagent-driven-development` op dat plan; bij *Ja, native* (Controller-modus stap 2, alleen een plan dat het native-criterium haalt) `/superpowers:executing-plans` met `lane: native`; bij antwoord *interactief* (Controller-modus stap 2, *Uitzondering*) `/superpowers:executing-plans` | `aanbieden` |
-   | een spec, nog niet adversarieel gereviewd | `/paia-spec-adversarial-review` op die spec | `standaard` |
-   | een spec, review geconvergeerd of rondegrens met open punten vastgelegd, nog geen plan | `/superpowers:writing-plans` op die spec | `nee` |
-   | een issue, nog geen spec, meerdere ontwerpen mogelijk | `/superpowers:brainstorming` | `nee` |
-   | een issue dat het HOE al vastlegt | `/paia-start-issue <nr>` | `nee` |
-   | een bug of falende test | `/superpowers:systematic-debugging` | `nee` |
-   | werk af, issue kan dicht | `/paia-close-issue <nr>` | `nee` |
-   | PR open, review nodig | `/code-review` | `nee` |
-   | PR rood | `/paia-fix-pr <pr>` | `aanbieden` |
-   | context vol, zelfde fase | hetzelfde commando als deze fase; draagt de vorige handoff `lane: native`, dan draagt de nieuwe hem ook | als die fase, maar `standaard` wordt `nee` (bij een lopende plan-review: `aanbieden`) |
+   | a plan in the plans folder, not yet adversarially reviewed | `/lighthouse-plan-adversarial-review` on that plan | `choice` |
+   | a plan, review converged, open points accepted, or skipped on a decision of the user | `/superpowers:subagent-driven-development` on that plan; at *Yes, native* (controller mode step 2, only a plan that meets the native criterion) `/superpowers:executing-plans` with `lane: native`; at the answer *interactive* (controller mode step 2, *Exception*) `/superpowers:executing-plans` | `offer` |
+   | a spec, not yet adversarially reviewed | `/lighthouse-spec-adversarial-review` on that spec | `default` |
+   | a spec, review converged or round limit with open points recorded, no plan yet | `/superpowers:writing-plans` on that spec | `no` |
+   | an issue, no spec yet, several designs possible | `/superpowers:brainstorming` | `no` |
+   | an issue that already settles the HOW | `/lighthouse-start-issue <nr>` | `no` |
+   | a bug or failing test | `/superpowers:systematic-debugging` | `no` |
+   | work done, issue can be closed | `/lighthouse-close-issue <nr>` | `no` |
+   | PR open, review needed | `/code-review` | `no` |
+   | PR red | `/lighthouse-fix-pr <pr>` | `offer` |
+   | context full, same phase | the same command as this phase; if the previous handoff carries `lane: native`, the new one carries it too | as that phase, but `default` becomes `no` (during a running plan review: `offer`) |
 
-   De kolom Controller zegt wat Controller-modus stap 2 doet: `nee` is alleen het gewone
-   blok, zonder vraag; `keuze` is de keuze in chattekst (stap 2, *Uitzondering*);
-   `aanbieden` is de `AskUserQuestion` uit stap 2; `standaard` is posten en Status `Controller` zonder vraag (stap 2, *`standaard`*). Een controller-run kijkt niet naar de
-   kolom: die post altijd. Bij `keuze` print je in stap 6 twee blokken vóór de vraag: eerst *review*, dan *interactief*.
+   The Controller column says what controller mode step 2 does (only if present; without a
+   controller every row is `no`): `no` is only the plain
+   block, without a question; `choice` is the choice in chat text (step 2, *Exception*);
+   `offer` is the `AskUserQuestion` from step 2; `default` is posting and Status `Controller` without a question (step 2, *`default`*). A controller run does not look at the
+   column: it always posts. At `choice` you print two blocks in step 6 before the question: first *review*, then *interactive*.
 
-   Past geen enkele rij, kies dan alsnog expliciet: noem het commando dat je zelf zou
-   draaien. "Ga verder waar je gebleven was" is geen eerste stap.
-5. **Noem de valkuilen** die deze sessie geleerd heeft en die de volgende sessie
-   opnieuw zou raken: een harde poort, een dienst die plat ligt, een test die
-   alleen op de Mac meet. Maximaal drie regels, alleen als ze echt bestaan.
-6. **Print het blok** in het format hieronder, gevolgd door de suggestie om
-   `/clear` te draaien.
-7. **Lees je eigen blok terug** vóór je het afgeeft. Staat er een slash-commando op de
-   `Eerste stap:`-regel? Zo niet: terug naar stap 4. Dit is de fout die deze skill het
-   vaakst maakt.
+   If no row fits, still choose explicitly: name the command you would run
+   yourself. "Carry on where you left off" is not a first step.
+5. **Name the pitfalls** this session learned and the next session
+   would hit again: a hard gate, a service that is down, a test that
+   only measures on one machine. At most three lines, only if they really exist.
+6. **Print the block** in the format below, followed by the suggestion to run
+   `/clear`.
+7. **Read your own block back** before you hand it over. Is there a slash command on the
+   `First step:` line? If not: back to step 4. This is the mistake this skill makes
+   most often.
 
-## Controller-modus
+## Controller mode (only if present)
 
-Het blok gaat óók als comment `🤖 Handoff` op het issue, zodat `scripts/controller_tick.sh` de
-volgende fase zelf start. Twee ingangen:
+The controller stays outside lighthouse. It is present when `lighthouse.toml` has a
+`[controller]` table (`grep -q '^\[controller\]' lighthouse.toml`); otherwise this whole section
+is skipped: only the plain block, and report `controller: skipped — no [controller] in lighthouse.toml`
+if the user asked for it.
 
-- **Controller-run** (de prompt eindigde op `(issue #<nr>, controller-run)`, of `PAIA_CONTROLLER_RUN`
-  staat in de omgeving: na een hervatting draagt de prompt het achtervoegsel niet): altijd posten.
-- **Interactief, na een fase**: bied het aan (zie de kolom Controller in Workflow-stap 4). De gebruiker zet het issue niet zelf op het board en plakt geen velden;
-  dat doet deze skill na één vraag.
+The block also goes as a comment `🤖 heading:kind_handoff` on the issue, so that the controller's
+tick starts the next phase itself. Two entries:
 
-1. **Issuenummer.** Uit de prompt, anders uit de branch (`issue-<nr>-…`). Lukt geen van
-   beide: geen comment, alleen het gewone blok.
-2. **Aanbieden** (alleen interactief, en alleen als de kolom Controller in Workflow-stap 4
-   niet `nee` zegt). Bij `nee` lees je de board-status niet; staat het issue toch op `Controller`, dan blijft het daar tot de gebruiker het verzet. Lees de board-status en
-   het item-ID (`gh` met `dangerouslyDisableSandbox: true`):
+- **Controller run** (the prompt ended on `(issue #<nr>, controller-run)`, or `LIGHTHOUSE_CONTROLLER_RUN`
+  is set in the environment: after a resume the prompt does not carry the suffix): always post.
+- **Interactive, after a phase**: offer it (see the Controller column in Workflow step 4). The user does not put the issue on the board and does not paste fields;
+  this skill does that after one question.
+
+1. **Issue number.** From the prompt, otherwise from the branch (`issue-<nr>-…`). If neither
+   works: no comment, only the plain block.
+2. **Offer** (only interactive, and only if the Controller column in Workflow step 4
+   does not say `no`). At `no` you do not read the board status; if the issue is on `Controller` anyway, it stays there until the user moves it. Read the board status and
+   the item ID (`gh` with `dangerouslyDisableSandbox: true`). Gives one of the `forge.board.*` keys
+   rc 1, there is no board: report `board: skipped — no [forge.board] configured` and post without
+   a status change. At rc 2, stop.
    ```bash
    set -o pipefail
-   O=$(uv run python -m src.controller.identity owner) || exit 2
-   NAME=$(uv run python -m src.controller.identity name) || exit 2
-   N=$(uv run python -m src.controller.identity project-number) || exit 2
+   O=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.owner) || exit 2
+   NAME=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.name) || exit 2
+   N=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_number) || exit $?
    gh api graphql -f owner="$O" -f name="$NAME" -F nr=<nr> -f query='query($owner: String!, $name: String!, $nr: Int!) {
      repository(owner: $owner, name: $name) { issue(number: $nr) {
        projectItems(first: 20) { nodes { id project { number }
@@ -113,191 +120,195 @@ volgende fase zelf start. Twee ingangen:
            ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }' \
      | jq -r --argjson n "$N" '.data.repository.issue.projectItems.nodes[] | select(.project.number == $n) | "\(.id) \(.status.name)"'
    ```
-   Niet `gh project item-list`: dat haalt het hele board op met alle velden en kost honderden
-   GraphQL-punten van het gedeelde uurbudget.
+   Not `gh project item-list`: that fetches the whole board with all fields and costs hundreds
+   of GraphQL points of the shared hourly budget.
 
-   **`standaard`: een spec, net gecommit.** Bij `standaard` stel je geen vraag: lees de
-   board-status en het item-ID (query hierboven), post met
-   `volgende: /paia-spec-adversarial-review <absoluut specpad>` (stap 5) en zet de Status op
-   `Controller` (stap 6). Meld in één regel: de worktree is nu van de controller, een edit daar
-   breekt de gepaarde ronde 1 (`blind` weigert een werkboom die niet schoon is). Dit geldt alleen
-   in het venster dat de spec net committe (de brainstorm); een ander venster dat een ongereviewde
-   spec overdraagt (pauze, context vol) valt onder `nee`. Gaf de gebruiker in dit gesprek vóór de
-   commit een opt-out ("interactief", "zelf reviewen"), dan is het `nee`: alleen het gewone blok,
-   geen post, geen Status-wijziging. Het geldt ook alleen op de Beelink
-   (`uv run python -m src.controller.host check`, exit 0). Elders: het gewone blok plus één
-   regel waarom: de worktree bestaat daar niet voor de controller, en `_start_handoff` zou het
-   issue teruggeven. Terug na de commit: de gebruiker zet de Status van `Controller` af. Dat
-   houdt alleen de volgende fase tegen; een lopende run maakt zijn fase af
-   (`decide.py` stopt geen actieve unit).
+   **`default`: a spec, just committed.** At `default` you ask no question: read the
+   board status and the item ID (query above), post with
+   `next: /lighthouse-spec-adversarial-review <absolute spec path>` (step 5) and set the Status to
+   `Controller` (step 6). Report in one line: the worktree now belongs to the controller, an edit there
+   breaks the paired round 1 (`blind` refuses a work tree that is not clean). This holds only
+   in the window that just committed the spec (the brainstorm); another window that hands over an unreviewed
+   spec (pause, context full) falls under `no`. If the user gave an opt-out in this conversation before the
+   commit ("interactive", "review myself"), it is `no`: only the plain block, no post,
+   no Status change. It also holds only on the always-on host (`host.toml`)
+   (`python3 .lighthouse/lib/lighthouse_lib/config.py host-check`, exit 0). Elsewhere: the plain block plus one
+   line why: the worktree does not exist there for the controller, and the controller would
+   return the issue. Back after the commit: the user moves the Status off `Controller`. That
+   only stops the next phase; a running run finishes its phase
+   (the controller stops no active unit).
 
-   **Uitzondering: een plan, niet gereviewd.** Hier stel je geen `AskUserQuestion`. Je schrijft
-   in gewone chattekst, in deze volgorde, en eindigt de beurt daarna:
+   **Exception: a plan, not reviewed.** Here you ask no `AskUserQuestion`. You write
+   in plain chat text, in this order, and end the turn after it:
 
-   1. Het blok voor **review** (format van stap 6), met
-      `Eerste stap: /paia-plan-adversarial-review <plan>`.
-   2. Het blok voor **interactief**, met `Eerste stap: /superpowers:executing-plans <plan>`.
-   3. Planlink, advies en vraag. De planlink is klikbaar: `[<bestandsnaam>](<absoluut pad>)`,
-      geen kaal pad. Vorm:
-      `Plan staat in [<bestandsnaam>](<absoluut pad>). Mijn advies: <optie>, omdat <één criterium>.`
-      `Review, controller of interactief?`
+   1. The block for **review** (format of step 6), with
+      `First step: /lighthouse-plan-adversarial-review <plan>`.
+   2. The block for **interactive**, with `First step: /superpowers:executing-plans <plan>`.
+   3. Plan link, advice and question. The plan link is clickable: `[<file name>](<absolute path>)`,
+      not a bare path. Form:
+      `Plan is in [<file name>](<absolute path>). My advice: <option>, because <one criterion>.`
+      `Review, controller or interactive?`
 
-   Kiest de gebruiker *review* of *interactief*, dan plakt die het blok en hoeft niet terug.
-   Alleen *controller* vraagt nog een antwoord in dit venster. Dat geldt ook voor het vierde
-   antwoord, *controller (native)*; de vraagzin hierboven noemt het niet, het staat in de
-   adviesregel en in de bullet hieronder.
+   If the user chooses *review* or *interactive*, they paste the block and need not come back.
+   Only *controller* still asks for an answer in this window. That also holds for the fourth
+   answer, *controller (native)*; the question above does not name it, it is in the
+   advice line and in the bullet below.
 
-   Criteria voor het advies, één noemen: **review** bij meerdere taken met interfaces tussen
-   elkaar, bij code of diensten, of bij een onomkeerbare stap. **Overslaan** bij één taak die
-   alleen markdown raakt en waarvan de tests de tekst pinnen. Dan **controller** als er tijdens
-   de uitvoering geen besluit van de gebruiker te verwachten valt, anders **interactief**. Bij twijfel: **review**.
-   **Controller (native)** adviseer je alleen bij hoogstens vier taken met weinig interfaces
-   tussen de taken, en als de uitvoering geen besluit van de gebruiker vraagt; je noemt het in
-   de adviesregel (`Mijn advies: controller (native), omdat …`).
+   Criteria for the advice, name one: **review** for several tasks with interfaces between
+   them, for code or services, or for an irreversible step. **Skip** for one task that
+   touches only markdown and whose tests pin the text. Then **controller** if no
+   decision of the user is to be expected during the execution, otherwise **interactive**. When in doubt: **review**.
+   **Controller (native)** you advise only for at most four tasks with few interfaces
+   between the tasks, and if the execution asks no decision of the user; you name it in
+   the advice line (`My advice: controller (native), because …`).
 
-   - Antwoord *review*: het blok staat er al. Geen comment. Wil de gebruiker de plan-review zelf via de controller, dan `volgende: /paia-plan-adversarial-review <plan>` en stap 5 en 6.
-   - Antwoord *controller*: `volgende: /superpowers:subagent-driven-development <plan>`, dan
-     stap 5 (posten) en stap 6 (Status `Controller`). Dit geldt ook als het issue al op `Controller` staat.
-   - Antwoord *interactief*: het blok staat er al; de agent voert zelf uit, in een vers
-     venster. Geen comment, geen statuswijziging.
-   - Antwoord *controller (native)*: `volgende: /superpowers:executing-plans <plan>` plus het
-     veld `lane: native`, dan stap 5 (posten) en stap 6 (Status `Controller`). De controller
-     start dit op Sonnet; alleen ná dit antwoord, nooit op eigen houtje.
+   - Answer *review*: the block is already there. No comment. If the user wants the plan review itself through the controller: `next: /lighthouse-plan-adversarial-review <plan>` and steps 5 and 6.
+   - Answer *controller*: `next: /superpowers:subagent-driven-development <plan>`, then
+     step 5 (post) and step 6 (Status `Controller`). This also holds when the issue is already on `Controller`.
+   - Answer *interactive*: the block is already there; the agent executes itself, in a fresh
+     window. No comment, no status change.
+   - Answer *controller (native)*: `next: /superpowers:executing-plans <plan>` plus the
+     field `lane: native`, then step 5 (post) and step 6 (Status `Controller`). The controller
+     starts it on Sonnet; only after this answer, never on your own initiative.
 
-   Een controller-run vraagt dit niet: daar blijft `volgende: /paia-plan-adversarial-review
-   <plan>`, want overslaan vraagt een besluit van de gebruiker. Zonder issuenummer (stap 1) is er niets te posten: stel de vraag dan alleen met *review* of *interactief*, zonder *controller*.
+   A controller run does not ask this: there `next: /lighthouse-plan-adversarial-review
+   <plan>` stays, because skipping needs a decision of the user. Without an issue number (step 1) there is nothing to post: then ask the question only with *review* or *interactive*, without *controller*.
 
-   Alleen bij `aanbieden` (bij `standaard` hierboven nooit): staat hij al op `Controller`, meteen posten (stap 5), behalve bij de route *interactief*
-   (hierboven). Anders vraag je met
-   `AskUserQuestion`: "Zal ik de handoff aan #<nr> toevoegen en het issue op Controller
-   zetten?", met de opties **Ja, nu** (`wanneer: nu`), **Ja, 's nachts** (`wanneer: nacht`) en
-   **Nee, ik plak zelf** (alleen het gewone blok). Haalt het gereviewde plan het native-criterium
-   (hoogstens vier taken, weinig interfaces tussen de taken), dan komt er een vierde optie bij:
-   **Ja, native** (`volgende: /superpowers:executing-plans <plan>` plus `lane: native`,
-   `wanneer: nu`, dan stap 5 en 6). De drie andere opties blijven. Bij ja: eerst posten (stap 5), dán de status
-   zetten (stap 6). Andersom kan een tick ertussen een issue op `Controller` zonder handoff zien
-   en zelf `/paia-start-issue` starten.
-3. **`volgende:` is precies één commando plus één argument.** Iets anders geeft de
-   controller terug.
+   Only at `offer` (never at `default` above): if it is already on `Controller`, post at once (step 5), except for the route *interactive*
+   (above). Otherwise ask with
+   `AskUserQuestion`: "Shall I add the handoff to #<nr> and put the issue on
+   Controller?", with the options **Yes, now** (`when: now`), **Yes, at night** (`when: night`) and
+   **No, I paste it myself** (only the plain block). If the reviewed plan meets the native criterion
+   (at most four tasks, few interfaces between the tasks), a fourth option is added:
+   **Yes, native** (`next: /superpowers:executing-plans <plan>` plus `lane: native`,
+   `when: now`, then steps 5 and 6). The three other options stay. At yes: first post (step 5), then set the
+   status (step 6). The other way round, a tick in between can see an issue on `Controller` without a handoff
+   and start `/lighthouse-start-issue` itself.
+3. **`next:` is exactly one command plus one argument.** Anything else the
+   controller returns.
 
-   | Wat er ligt | `volgende:` |
+   | What there is | `next:` |
    |---|---|
-   | een plan, niet gereviewd | `/paia-plan-adversarial-review <absoluut planpad>` |
-   | een plan, review geconvergeerd of overgeslagen op besluit van de gebruiker | `/superpowers:subagent-driven-development <absoluut planpad>` |
-   | een spec, niet gereviewd | `/paia-spec-adversarial-review <absoluut specpad>` |
-   | een spec, review geconvergeerd | `/superpowers:writing-plans <absoluut specpad>` |
-   | PR open | `/paia-close-issue <nr>` — eindhandoff: de controller start dit nooit, hij wacht op groen |
-   | PR rood | `/paia-fix-pr <pr>` |
-   | issue zonder spec, ontwerp open | `/superpowers:brainstorming` — de controller geeft het issue terug |
-   | plan dat de gebruiker zelf moet begeleiden (alleen controller-run) | `/superpowers:executing-plans <absoluut planpad>` zonder `lane:` — de controller start dit nooit: hij geeft het terug, de status blijft `Controller` (zichtbaar in `/paia-controller`) |
-   | een plan, Native op besluit van de gebruiker | `/superpowers:executing-plans <absoluut planpad>`, met veld `lane: native` — de controller start dit op Sonnet |
-   | context vol, zelfde fase | hetzelfde commando als deze fase, en `lane: native` als de vorige handoff dat droeg |
+   | a plan, not reviewed | `/lighthouse-plan-adversarial-review <absolute plan path>` |
+   | a plan, review converged or skipped on a decision of the user | `/superpowers:subagent-driven-development <absolute plan path>` |
+   | a spec, not reviewed | `/lighthouse-spec-adversarial-review <absolute spec path>` |
+   | a spec, review converged | `/superpowers:writing-plans <absolute spec path>` |
+   | PR open | `/lighthouse-close-issue <nr>` — final handoff: the controller never starts this, it waits for green |
+   | PR red | `/lighthouse-fix-pr <pr>` |
+   | issue without spec, design open | `/superpowers:brainstorming` — the controller returns the issue |
+   | plan the user has to guide themselves (only controller run) | `/superpowers:executing-plans <absolute plan path>` without `lane:` — the controller never starts this: it returns it, the status stays `Controller` |
+   | a plan, native on a decision of the user | `/superpowers:executing-plans <absolute plan path>`, with field `lane: native` — the controller starts it on Sonnet |
+   | context full, same phase | the same command as this phase, and `lane: native` if the previous handoff carried it |
 
-   Een pad is absoluut en zonder spaties. Bij `/paia-start-issue <nr>` zijn `worktree:` de
-   hoofdcheckout en `branch:` `main`. Uitzondering: de geblokkeerde herstart uit
-   `paia-start-issue` (controller-run, de poort-0-regel draagt `— blokkeerder #<x> open`) —
-   dan zijn `worktree:` en `branch:` de eigen worktree en branch van het issue. Vanuit `main`
-   zet de controller een uitvoerende handoff op wacht en stapelt hij nooit.
-4. **`wanneer:`** is `nu`, tenzij de gebruiker `nacht` kiest of vraagt.
-5. **Post** het blok:
+   A path is absolute and without spaces. At `/lighthouse-start-issue <nr>`, `worktree:` is the
+   main checkout and `branch:` `main` (the default branch, `config.py forge.default_branch`). Exception: the blocked restart from
+   `lighthouse-start-issue` (controller run, the gate-0 line carries `— blocker #<x> open`) —
+   then `worktree:` and `branch:` are the own worktree and branch of the issue. From `main`
+   the controller puts an executing handoff on hold and never stacks.
+4. **`when:`** is `now`, unless the user chooses or asks for `night`.
+5. **Post** the block:
    ```bash
-   R=$(uv run python -m src.controller.identity repo) || exit 2
-   gh issue comment <nr> --repo "$R" --body-file - <<'EOF'
-   🤖 Handoff
+   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+   H=$(python3 .lighthouse/lib/lighthouse_lib/headings.py kind_handoff) || exit 2
+   { printf '🤖 %s\n' "$H"; cat <<'EOF'
    issue: #<nr>
-   worktree: <absoluut pad>
+   worktree: <absolute path>
    branch: <branch>
-   anker: <anker>
-   volgende: <commando> <argument>
-   wanneer: nu
+   anchor: <anchor>
+   next: <command> <argument>
+   when: now
 
    ```
-   <het blok uit Output-format>
+   <the block from Output format>
    ```
    EOF
+   } | gh issue comment <nr> --repo "$R" --body-file -
    ```
-   Tussen de kop en de laatste veldregel staat geen lege regel: de parser stopt bij de eerste.
-   Bij Native staat er een extra regel `lane: native` tussen `volgende:` en `wanneer:` (zonder
-   lege regel); anders laat je hem weg. Het veld is alleen geldig naast
-   `volgende: /superpowers:executing-plans <absoluut planpad>`; elders geeft de controller het terug.
-6. **Status op `Controller`** (alleen interactief, ook bij `standaard`, na de comment). Zonder item-ID in stap 2
-   eerst
-   `N=$(uv run python -m src.controller.identity project-number) && O=$(uv run python -m src.controller.identity owner) && gh project item-add "$N" --owner "$O" --url <issue-url> --format json --jq .id`.
+   Between the heading and the last field line there is no blank line: the parser stops at the first.
+   For native there is an extra line `lane: native` between `next:` and `when:` (without
+   a blank line); otherwise leave it out. The field is valid only next to
+   `next: /superpowers:executing-plans <absolute plan path>`; elsewhere the controller returns it.
+   The field names are fixed tokens (`lighthouse_lib.protocol`); the prose of the block follows
+   `[project] language`.
+6. **Status on `Controller`** (only interactive, also at `default`, after the comment; only with a
+   board, otherwise skipped). Without an item ID from step 2
+   first
+   `N=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_number) && O=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.owner) && gh project item-add "$N" --owner "$O" --url <issue-url> --format json --jq .id`.
    ```bash
-   P=$(uv run python -m src.controller.identity project-id) || exit 2
-   F=$(uv run python -m src.controller.identity status-field-id) || exit 2
-   S=$(uv run python -m src.controller.identity status-option Controller) || exit 2
+   P=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_id) || exit 2
+   F=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.status_field_id) || exit 2
+   S=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.status_options.Controller) || exit 2
    gh project item-edit --id <item-id> --project-id "$P" --field-id "$F" --single-select-option-id "$S"
    ```
-   Meld daarna in één regel dat de controller het binnen tien minuten oppakt; de
-   `/clear`-suggestie vervalt dan.
-7. **In een controller-run stop je na de comment.** Geen `/clear`-suggestie, geen verdere
-   tool-call: de tick ziet de nieuwe handoff en start de volgende fase.
+   Then report in one line that the controller picks it up within ten minutes; the
+   `/clear` suggestion lapses then.
+7. **In a controller run you stop after the comment.** No `/clear` suggestion, no further
+   tool call: the tick sees the new handoff and starts the next phase.
 
-## Output-format
+## Output format
 
-Altijd één fenced block, zodat het in één klik te kopiëren is:
+Always one fenced block, so it can be copied in one click:
 
 ```
-Werk in worktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/<naam>
-(branch <branch>). Doel: <één zin>.
+Work in worktree <absolute path>/.claude/worktrees/<name>
+(branch <branch>). Goal: <one sentence>.
 
-Anker: <issue #nr | pad naar plan/spec | PR #nr>
-Context: <besluiten en bevindingen die niet in het anker staan, of een verwijzing ernaar>
-Auto: <categorie> — <vraag in één zin> → <gekozen optie>   ← alleen in een controller-run
-Staat: <wat er gecommit is; expliciet "niets ongecommit" of wat er open staat>
-artefact: <de regel uit post_artefact.py>   ← alleen bij een spec- of plananker
-Eerste stap: <slash-commando> <waarop>, <wat daarna>
-Let op: <valkuil>   ← alleen als die er is
+Anchor: <issue #nr | path to plan/spec | PR #nr>
+Context: <decisions and findings that are not in the anchor, or a reference to them>
+Auto: <category> — <question in one sentence> → <chosen option>   ← only in a controller run (if present)
+State: <what is committed; explicitly "nothing uncommitted" or what is open>
+artefact: <the line from post_artefact.py>   ← only with a spec or plan anchor
+First step: <slash command> <on what>, <what next>
+Watch out: <pitfall>   ← only if there is one
 ```
 
-De regel `Eerste stap:` begint met een slash-commando. Staat er geen `/` in, dan is het
-blok niet af — zie de regels hieronder.
+The `First step:` line starts with a slash command. If there is no `/` in it, the
+block is not done — see the rules below.
 
-Daaronder, buiten het blok, één regel: `Draai eerst /clear, plak dan het blok.`
+Below it, outside the block, one line: `Run /clear first, then paste the block.`
 
-## Regels
+## Rules
 
-- **Absolute paden.** Een link of pad naar een bestand dat alleen op de worktree-branch
-  bestaat moet het volledige `/home/corneel/.../.claude/worktrees/<naam>/...`-pad zijn —
-  de verse sessie start in de hoofd-checkout en een relatief pad wijst daar naar niets.
-- **Geen geschiedenis.** Niet navertellen wat er is gebeurd; de volgende sessie leest
-  het issue en `git log`. Hand-off = vooruit, niet terug.
-- **Context is wat het anker niet draagt.** Besluiten van de gebruiker, bevindingen en
-  afwegingen uit deze sessie die de volgende sessie nodig heeft, maar die (nog) niet in het
-  issue, de spec of het plan staan. Kort, of een verwijzing (issuecomment, pad). Staat alles
-  al in het anker, schrijf dan `Context: staat in het anker.` Het is geen verslag: wat er
-  gebeurd is hoort niet in deze regel, wat de volgende sessie moet weten wel.
-- **Spoor van automatische keuzes.** Alleen in een controller-run: onder `Context:` één
-  regel per keuze die de run zelf maakte (`[controller]` `auto_aanbevolen` in `lighthouse.toml`), in de vorm
-  `Auto: <categorie> — <vraag in één zin> → <gekozen optie>`. Geen keuzes = geen regels.
-- **Eén doel per hand-off.** Twee doelen = twee blokken = twee sessies.
-- **Geen aannames over de tak.** Staat de branch achter op `origin/main`, zeg dat
-  erbij met het rebase-commando; verzin niet dat het wel goed komt.
-- **Ongecommit werk is een blokkade.** Meld het, of commit het eerst — een verse
-  sessie die een vuile tree aantreft gaat raden.
-- **Elke hand-off draagt een commando.** De `Eerste stap:`-regel bevat een slash-commando
-  (meestal een `superpowers:`-skill, zie de tabel in stap 4). Een hand-off zonder
-  commando levert een sessie op die het werk zonder skill begint — precies wat de
-  hand-off moest voorkomen. Geen uitzonderingen: weet je het commando niet, dan is de
-  eerste stap nog niet bepaald.
+- **Absolute paths.** A link or path to a file that exists only on the worktree branch
+  must be the full `<repo>/.claude/worktrees/<name>/...` path —
+  the fresh session starts in the main checkout and a relative path points at nothing there.
+- **No history.** Do not retell what happened; the next session reads
+  the issue and `git log`. Hand-off = forward, not back.
+- **Context is what the anchor does not carry.** Decisions of the user, findings and
+  trade-offs from this session that the next session needs, but that are not (yet) in the
+  issue, the spec or the plan. Short, or a reference (issue comment, path). If everything is
+  already in the anchor, write `Context: in the anchor.` It is not a report: what
+  happened does not belong in this line, what the next session must know does.
+- **Trace of automatic choices.** Only in a controller run (if present): under `Context:` one
+  line per choice the run made itself (`[controller]` `auto_aanbevolen` in `lighthouse.toml`), in the form
+  `Auto: <category> — <question in one sentence> → <chosen option>`. No choices = no lines.
+- **One goal per hand-off.** Two goals = two blocks = two sessions.
+- **No assumptions about the branch.** If the branch is behind `origin/<default branch>`, say
+  so with the rebase command; do not pretend it will be fine.
+- **Uncommitted work is a blocker.** Report it, or commit it first — a fresh
+  session that finds a dirty tree starts guessing.
+- **Every hand-off carries a command.** The `First step:` line contains a slash command
+  (usually a `superpowers:` skill, see the table in step 4). A hand-off without a
+  command produces a session that starts the work without a skill — exactly what the
+  hand-off was meant to prevent. No exceptions: if you do not know the command, the
+  first step is not decided yet.
 
-## Voorbeeld
+## Example
 
-Input: `/paia-handoff`
+Input: `/lighthouse-handoff`
 
 Output:
 
 ```
-Werk in worktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/issue-537-miniflux-broncuratie
-(branch worktree-issue-537-miniflux-broncuratie). Doel: de spec van #537 uitvoeren.
+Work in worktree /srv/src/widgets/.claude/worktrees/issue-537-feed-curation
+(branch issue-537-feed-curation). Goal: execute the spec of #537.
 
-Anker: /home/corneel/repositories/personal_ai_agent/.claude/worktrees/issue-537-miniflux-broncuratie/docs/developer/planning/specs/2026-08-17-miniflux-broncuratie-design.md
-Context: gebruiker koos in de review voor per-feed curatie, niet per categorie; dat staat nog niet in de spec.
-Staat: spec gecommit (a1b2c3d), adversarial review geconvergeerd na 2 rondes (fixes in d4e5f6a),
-verder niets ongecommit.
-Eerste stap: /superpowers:writing-plans op die spec, daarna uitvoeren.
-Let op: ik zit op de Beelink — Miniflux (:8092) direct benaderen, geen SSH. Token in ~/.config/personal-ai-agent/.
+Anchor: /srv/src/widgets/.claude/worktrees/issue-537-feed-curation/docs/developer/planning/specs/2026-08-17-feed-curation-design.md
+Context: in the review the user chose curation per feed, not per category; that is not in the spec yet.
+State: spec committed (a1b2c3d), adversarial review converged after 2 rounds (fixes in d4e5f6a),
+nothing else uncommitted.
+First step: /superpowers:writing-plans on that spec, then execute.
+Watch out: on the always-on host the feed service is reached directly, no SSH.
 ```
 
-Draai eerst /clear, plak dan het blok.
+Run /clear first, then paste the block.
