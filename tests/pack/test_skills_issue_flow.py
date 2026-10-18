@@ -144,134 +144,166 @@ def test_route_issue_guards_what_stays_in_paia():
                 if name in para:
                     assert "if present" in " ".join(para.split()), para
 
-# --- start-issue (letterlijk uit paia) ---
-def test_start_issue_houdt_geblokkeerde_uitvoering_vast():
-    for body in skill("paia-start-issue"):
-        stap4 = body[body.index("### 4.") : body.index("#### Scout")]
-        assert "volgende: /paia-start-issue" in stap4
-        assert "stapel:" in stap4
-        # I6: een start met `blokkade: verrekend` voert de route uit, geen nieuwe handoff.
-        assert "`stapel:` of `blokkade:`" in stap4
-        for poort in ("`1`", "`2`", "`4a`"):
-            assert poort in stap4
+
+# --- start-issue -------------------------------------------------------------------
 
 
-def test_start_issue_delegeert_stap_4():
-    for body in skill("paia-start-issue"):
-        stap4 = body[body.index("### 4.") : body.index("#### Scout")]
-        assert "paia-route-issue" in stap4
-        assert "#### Poort 1" not in body  # poorten verhuisd, niet gedupliceerd
+def _step(body: str, start: str, end: str) -> str:
+    return body[body.index(start) : body.index(end)]
 
 
-def _bash_blok(body: str, kop: str) -> str:
-    start = body.index("```bash", body.index(kop))
+def _bash_block(body: str, heading: str) -> str:
+    start = body.index("```bash", body.index(heading))
     return body[start : body.index("```", start + 7) + 3]
 
 
-def test_start_issue_vraagt_al_af_voor_de_worktree():
-    recept = _bash_blok(skill("paia-backlog-stand")[0], "### 7. Al af?")
-    for body in skill("paia-start-issue"):
-        stap2 = body[body.index("### 2.") : body.index("### 3.")]
-        assert recept in stap2  # één mechanisme, letterlijk gedeeld met backlog-stand
-        assert "al af? nee — gezocht op " in stap2
-        assert "dekt de AC niet" in stap2  # variant van de nee-regel
-        assert "toch door" in stap2
-        assert "controller-run" in stap2.lower()  # headless: keuze als tekst, stop
-        assert "al af? waarschijnlijk — " in stap2
-        assert (
-            "aantoonbaar dekt" in stap2
-        )  # precisie: een losse vermelding is geen treffer
-        assert (
-            "één Bash-call" in stap2
-        )  # KPI leadin: het recept kost één call, niet vier
-        assert "/paia-close-issue <nr>" in stap2  # ingang B verifieert, deze stap niet
-        assert "gh issue close" not in stap2 and "wontfix" not in stap2
-        assert "al af? niet meetbaar — fetch faalde" in stap2  # geen `nee` op oude data
+def test_start_issue_holds_a_blocked_execution():
+    for body in skill("start-issue"):
+        step4 = _step(body, "### 4.", "#### Scout")
+        assert "next: /lighthouse-start-issue" in step4
+        # A start with `blocker: accounted` runs the route, no new handoff.
+        assert "`stack:` or `blocker:`" in step4
+        for gate in ("`1`", "`2`", "`4a`"):
+            assert gate in step4
 
 
-def test_start_issue_leest_fog_van_de_milestone():
-    for body in skill("paia-start-issue"):
-        stap2 = body[body.index("### 2.") : body.index("### 3.")]
-        assert "### Nog niet vastgelegd" in stap2
-        assert "fog: " in stap2
+def test_start_issue_reads_legacy_stack():
+    """The skill writes and reads `stack:`; an old 🤖 comment on a running issue still says
+    `stapel:` or `blokkade:` (Protocoltokens), and counts the same."""
+    for body in skill("start-issue"):
+        step4 = _step(body, "### 4.", "#### Scout")
+        assert "stack:" in step4
+        assert "`stapel:`" in step4 and "`blokkade:`" in step4
+        assert "heading:kind_started" in step4
+
+
+def test_start_issue_delegates_step_4():
+    for body in skill("start-issue"):
+        step4 = _step(body, "### 4.", "#### Scout")
+        assert "lighthouse-route-issue" in step4
+        assert "#### Gate 1" not in body  # gates moved, not duplicated
+
+
+def test_start_issue_asks_already_done_before_the_worktree():
+    for body in skill("start-issue"):
+        step2 = _step(body, "### 2.", "### 3.")
+        recipe = _bash_block(body, "**Already done?**")
+        assert "config.py forge.default_branch" in recipe
+        assert "FETCH FAILED" in recipe
+        assert "config.py paths.search_dirs" in recipe
+        assert "already done? no — searched for " in step2
+        assert "does not cover the AC" in step2  # variant of the no line
+        assert "carry on anyway" in step2
+        assert "controller run" in step2.lower()  # headless: choice as text, stop
+        assert "already done? likely — " in step2
+        assert "demonstrably covers" in step2  # precision: a loose mention is no hit
+        assert "one Bash call" in step2  # KPI leadin: the recipe costs one call, not four
+        assert "/lighthouse-close-issue <nr>" in step2  # entry B verifies, this step does not
+        assert "gh issue close" not in step2 and "wontfix" not in step2
+        assert "already done? not measurable — fetch failed" in step2
+
+
+def test_start_issue_reads_fog_from_the_milestone():
+    for body in skill("start-issue"):
+        step2 = _step(body, "### 2.", "### 3.")
+        assert "### heading:milestone_not_yet_decided" in step2
+        assert "heading:milestone_dod" in step2 and "heading:milestone_no_gos" in step2
+        assert "fog: " in step2
         scout = body[body.index("#### Scout") :]
-        assert "Nog niet vastgelegd" in scout[: scout.index("Meld de trigger")]
+        assert "heading:milestone_not_yet_decided" in scout[: scout.index("Report the trigger")]
 
 
-START_ISSUE_SKILL = REPO / ".claude" / "skills" / "paia-start-issue" / "SKILL.md"
-START_ISSUE_SKILL_AGENTS = REPO / ".agents" / "skills" / "paia-start-issue" / "SKILL.md"
-def test_start_issue_verbiedt_overslaan_zonder_besluit(path):
-    text = path.read_text(encoding="utf-8")
-    assert "de plan-review overslaan zonder besluit van de gebruiker" in text
-    assert (
-        "Die laat de gebruiker kiezen: plan-review, controller (SDD) of interactief "
-        "(`/superpowers:executing-plans`)" in text
-    )
+def test_start_issue_reads_axes_from_config():
+    for body in skill("start-issue"):
+        step2 = _step(body, "### 2.", "### 3.")
+        assert "config.py labels.location_prefix" in step2
+        assert "config.py labels.area_prefix" in step2
+        assert "1-loc" not in body and "2-area" not in body
 
 
-CLAUDE_SKILL = REPO / ".claude" / "skills" / "paia-start-issue" / "SKILL.md"
-AGENTS_SKILL = REPO / ".agents" / "skills" / "paia-start-issue" / "SKILL.md"
-SKILLS = (CLAUDE_SKILL, AGENTS_SKILL)
+def test_start_issue_skips_board_without_config():
+    """Without `[forge.board]` the board step reports and goes on (besluit 16, 24)."""
+    for body in skill("start-issue"):
+        step3 = _step(body, "### 3.", "### 4.")
+        assert "python3 .lighthouse/scripts/board_start.py <nr>" in step3
+        assert "config.py forge.board.project_number" in step3 and "rc 1" in step3
+        assert "board: skipped" in step3
+        assert "is not a stop" in step3
 
-# De drie meldregels zijn woordelijk contract: scripts/measure_start_issue_kpi.py telt erop.
-TRIGGER_LINE = "Scout: issue-impact-scout"
-SKIP_PREFIX = "Scout: overgeslagen — "
-FAIL_PREFIX = "Scout: mislukt — "
-HANDOVER = "IMPACT PACK: staat in context, niet herhalen"
 
-
-def test_both_skill_trees_mention_the_scout() -> None:
-    for path in SKILLS:
-        assert "issue-impact-scout" in path.read_text(encoding="utf-8"), (
-            f"{path} mist de scout"
+def test_start_issue_forbids_skipping_without_a_decision():
+    for body in skill("start-issue"):
+        assert "skip the plan review without a decision of the user" in body
+        assert (
+            "That lets the user choose: plan review, controller (SDD, if present) or "
+            "interactive (`/superpowers:executing-plans`)" in body
         )
 
 
-def test_both_trees_carry_the_three_report_lines() -> None:
-    for path in SKILLS:
-        body = path.read_text(encoding="utf-8")
+def test_start_issue_names_the_project_paths():
+    for body in skill("start-issue"):
+        assert "config.py paths.specs" in body and "config.py paths.plans" in body
+
+
+def test_start_issue_keeps_the_measurements_not_the_numbers():
+    for body in skill("start-issue"):
+        for sub in ("leadin", "worktree-first", "mistrigger", "paths", "gate", "scout"):
+            assert f"python3 .lighthouse/scripts/measure_start_issue_kpi.py {sub}" in body
+        assert "n=11" not in body and "78,6%" not in body and "2026-08-02" not in body
+
+
+def test_start_issue_controller_run_env():
+    for body in skill("start-issue"):
+        assert "PAIA_CONTROLLER_RUN" not in body
+
+
+# The three report lines are a contract: measure_start_issue_kpi.py counts on them.
+TRIGGER_LINE = "Scout: lighthouse-issue-impact-scout"
+SKIP_PREFIX = "heading:scout_skipped — "
+FAIL_PREFIX = "Scout: failed — "
+HANDOVER = "IMPACT PACK: in context, do not repeat"
+
+
+def test_both_variants_mention_the_scout():
+    for body in skill("start-issue"):
+        assert "subagent_type: lighthouse-issue-impact-scout" in body
+
+
+def test_both_variants_carry_the_three_report_lines():
+    for body in skill("start-issue"):
         for line in (TRIGGER_LINE, SKIP_PREFIX, FAIL_PREFIX):
-            assert line in body, (
-                f"{path.parent.parent.name}: meldregel ontbreekt: {line!r}"
-            )
+            assert line in body, line
 
 
-def test_the_scout_is_bound_to_gate_four_b_and_c() -> None:
-    """De trigger hangt aan 4b/4c; poort 0, 1, 2 en 4a noemen hem niet."""
-    for path in SKILLS:
-        body = path.read_text(encoding="utf-8")
-        section = body[body.index("## Scout") :]
+def test_the_scout_is_bound_to_gate_four_b_and_c():
+    """The trigger hangs on 4b/4c; gates 0, 1, 2 and 4a do not call it."""
+    for body in skill("start-issue"):
+        section = body[body.index("#### Scout") :]
         assert "4b" in section and "4c" in section
-        assert "4a" in section, "4a moet expliciet als niet-trigger genoemd staan"
+        assert "4a" in section, "4a must be named as a non-trigger"
 
 
-def test_the_escape_hatch_demands_a_concrete_reason() -> None:
-    """`lijkt eenvoudig` is geen reden; de skill moet dat met zoveel woorden verbieden."""
-    for path in SKILLS:
-        body = path.read_text(encoding="utf-8").lower()
-        assert "lijkt eenvoudig" in body
-        assert "geen geldige reden" in body
+def test_the_escape_hatch_demands_a_concrete_reason():
+    for body in skill("start-issue"):
+        lower = body.lower()
+        assert "looks simple" in lower
+        assert "not a valid reason" in lower
 
 
-def test_the_failure_path_is_fail_open() -> None:
-    for path in SKILLS:
-        body = path.read_text(encoding="utf-8")
-        assert "Route vervolgt met normale contextverkenning." in body
+def test_the_failure_path_is_fail_open():
+    for body in skill("start-issue"):
+        assert "The route continues with the normal context exploration." in body
 
 
-def test_the_handover_has_one_unambiguous_demand() -> None:
-    """Pilot #937: het pack ging in 1 van 5 runs letterlijk in de Skill-args, in 4 alleen als
-    verwijzing, terwijl de skill 'verbatim' eiste. Eén eis, en de oude mag er niet naast staan."""
-    for path in SKILLS:
-        body = path.read_text(encoding="utf-8")
-        assert HANDOVER in body, f"{path.parent.parent.name}: overdrachtszin ontbreekt"
-        assert "verbatim" not in body.lower(), (
-            f"{path.parent.parent.name}: oude eis staat er nog"
-        )
+def test_the_handover_has_one_unambiguous_demand():
+    for body in skill("start-issue"):
+        assert HANDOVER in body
+        assert "verbatim" not in body.lower()
 
 
-def test_the_opencode_mirror_names_the_missing_persona() -> None:
-    """De persona is Claude-only; .agents/ moet zeggen wat daar dan gebeurt."""
-    body = AGENTS_SKILL.read_text(encoding="utf-8")
-    assert "niet beschikbaar" in body
-    assert "simuleert" in body, "geen algemene executor als namaakpersona"
+def test_the_agents_variant_names_the_missing_persona():
+    """The persona is Claude-only; the Agents variant says what happens there."""
+    claude, agents = skill("start-issue")
+    assert "##### Outside Claude Code" in agents
+    assert "not available" in agents and "simulate" in agents
+    assert "##### Outside Claude Code" not in claude
