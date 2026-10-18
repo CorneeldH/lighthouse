@@ -75,6 +75,24 @@ M0 is mislukt, ook als alles technisch werkt, wanneer:
 | 15 | Het comment-protocol tussen skills en controller verhuist naar `pack/core/lib/`: de opmaak en het lezen van artefacten (nu `src/controller/artefacten.py` en het protocoldeel van `src/controller/comments.py`). De paia-controller importeert het tot M2 uit `.lighthouse/lib/`. De marker wordt `<!-- lighthouse: {json} -->`; lezers accepteren tot M2 ook `<!-- paia: … -->`. De koppen (`🤖 Handoff`, `🤖 Vraag`, …) en de vraagvelden (`Waar het staat`, `Wat er speelt`, …) gaan in `headings.toml` | Eén bron voor het protocol; de controller blijft werken zonder twee kopieën |
 | 16 | Het board is optioneel. Zonder `[forge.board]` slaan de skills de bordstappen over en melden ze dat. De statusoptie `Controller` is alleen verplicht als `[controller]` bestaat. `init` maakt geen board aan | Lighthouse zelf, de CI-test en de Mac-repo hebben geen board |
 
+Besluiten 18 tot en met 29 komen uit de inventaris voor (b), op paia `33833601` (comment op #7).
+Ze gelden voor (b) en (c).
+
+| # | Besluit | Reden |
+|---|---|---|
+| 18 | Elke hook die niet kon controleren, meldt dat met het vaste token `COULD NOT CHECK`. `bash_writes.classify` herkent "niet gecontroleerd" aan dat token, niet aan de Nederlandse eerste regel van een gate. Een gate en `classify` worden in dezelfde PR vertaald | `classify` (`bash_writes.py:805-824`) matcht nu `NIET gecontroleerd` en `Linkcheck: KON NIET CONTROLEREN`. Vertaal je één kant, dan telt "niet gecontroleerd" als een echte bevinding |
+| 19 | `bash-write-gates` stuurt alleen door naar gates die geïnstalleerd zijn. Ontbreekt de gate voor een extensie, omdat zijn taalpakket ontbreekt, dan meldt hij per bestand `not checked — no <pack> gate installed`. Hij blokkeert dan niet | Nu geeft een ontbrekende `ruff-format.sh` of `shellcheck.sh` exit 127, en dus exit 2 bij elke `.py`- of `.sh`-write. Dit is de regel van *Kruisverwijzingen*, toegepast op een hook |
+| 20 | Heeft een repo geen `[test_gate] command`, dan blokkeert de test-gate niet. Hij meldt bij elke commit `no test command configured, nothing was tested`. De geheugenrem (`gates.slice`, `choom`) is een eigenschap van de host: de slice-naam staat in `host.toml`, en zonder die sleutel draait de gate zonder rem en meldt hij dat | Een letterlijke kopie laat zo'n commit stil door (anti-goal). Altijd blokkeren maakt een repo zonder tests onwerkbaar. `gates.slice` bestaat alleen op de Beelink |
+| 21 | Alle sleutels in het comment-protocol worden vaste Engelse tokens, niet alleen die van de handoff. Dat geldt voor de meta van een artefact (`soort`→`kind`, `versie`→`version`, `deel`→`part`, `delen`→`parts`, `bestand`→`file`, `vervangt`→`replaces`; `commit` en `hash` blijven), voor de sleutels van 🤖 Gestart, Herbaseerd, Hervat, Klaar en Teruggegeven, en voor de triage-marker. Lezers accepteren tot M2 beide vormen. De waarden `spec` en `plan` blijven. *Mijn keuze* | Dezelfde regel als in *Taal* voor de handoff. Dit zijn protocoltokens, geen proza. De bouwer legt de volledige afbeelding vast in (b) |
+| 22 | `init` merget ook de `permissions.allow`-regels die een pakket vraagt, met dezelfde eigendomsregel als bij hooks. Een regel die naar `.claude/skills/lighthouse-*` of `.claude/hooks/lighthouse/` wijst, is van lighthouse; elke andere regel is projecteigen en blijft staan. Elke regel is een eenheid in het manifest | De reviewskills draaien `review.sh` en `verify.sh` via een allowlist-regel (spec-review C:261-262, plan-review C:172), en de tests pinnen die. Stap 5 van *init* dekte alleen hookregistraties |
+| 23 | Nieuwe sleutels, buiten de tabellenlijst van *Portabiliteit*:<br>- `[forge] default_branch`, default `main`;<br>- `[codex_usage]`, met de vijf drempels uit paia als defaults;<br>- `[worktree_audit] protected_refs` en `protected_paths`, bovenop een vaste `default_branch`;<br>- `[project] instructions_word_ceiling`, default 3000;<br>- `[project] skill_prefix`.<br>**Afwijking van de pitch**, net als `[project]` en `[ci]` | `main` staat hardcoded in `git_invocations.py:561`, `main-commit-guard.sh`, `worktree-guard.sh:62`, `worktree_audit.py:850-860` en `unblock-dependents.yml:40`. `codex_usage.py:484-489` haalt zijn drempels uit `src.config`. `entire/*` en `.port-registry` zijn paia-eigen. De configlezer van (a) laat onbekende tabellen al door (`config.py:6`) |
+| 24 | Zonder `[forge.board]` geeft `board_start.py` in beide modi `board: skipped — no [forge.board] configured` en exit 0, ook met `--heropen` | `--heropen` geeft nu exit 1 (`board_start.py:143-144`), dus `close-issue` meldt `board: FOUT` in elke repo zonder board |
+| 25 | Het protocol in `lighthouse_lib` exporteert publiek wat de controller nu privé gebruikt: `Comment`, `KOP`, en wat nu `_LETTERS` en `_MAX_VRAGEN` heet. Het controllerbeleid blijft in paia:<br>- `parse_handoff` leest `lane` als gewoon veld, en de controller valideert het tegen `NATIVE` en `INTERACTIEF`;<br>- het controllerproza in `render_klaar` (`comments.py:365-366`) komt van de aanroeper | Lostrekken zonder het gedrag te wijzigen: dezelfde controle, op een andere plek. Zonder publieke namen breekt de paia-controller bij de overstap in (d) |
+| 26 | Van `codex_usage.py` krijgt core alleen `budget` en `read`, wat de reviewskills nodig hebben. `gate`, `_parkeer` en `schrijf_marker` blijven in paia tot M1, bij de usage-guard. `usage_window.py` laadt het core-deel uit `.lighthouse/scripts/`. **Vraag aan Corneel** | Het gate-deel draagt `PAIA_CONTROLLER_RUN` en de marker `paia/resume` (`codex_usage.py:522-531`), en zou de literal-grep laten falen. Splitsen is wel een kleine herstructurering. Het alternatief: het hele bestand meenemen, met die literals in de config |
+| 27 | De functies die `plan_review_record.py` en `review_pair.py` uit `experiments/lekmeting-keten/lk_common.py` halen, komen in `lighthouse_lib`. De default datamap wordt `${XDG_DATA_HOME:-~/.local/share}/lighthouse/review-records/`, met de override `LIGHTHOUSE_DATA`. Paia zet die override in (d) als de records op de oude plek moeten blijven. *Mijn keuze* | `lk_common.py` is paia-eigen en staat niet in de inventaris. Zonder vervanger werken de reviewskills buiten paia niet |
+| 28 | `write-issue` gaat naar `pack/core` als skelet: het zoeken naar duplicaten, de templatekeuze, het milestone-oordeel en de blokkade-invariant. De labeltaxonomie (`write-issue` C:95-197, 345-350, 385-414) blijft projectinhoud en komt via `[paths] labels`. Namen die code leest, zoals `blocked_issue`, staan in `[labels]`. **Vraag aan Corneel** | Ongeveer 60% van de skill is paia's taxonomie. Die als config modelleren (`[labels.axes.*]`) is herontwerp, en dat past niet in besluit 14 |
+| 29 | `close-issue` zoekt de vrijgeef-run op de nieuwe naam `lighthouse-unblock-dependents.yml`. De hernoeming en de skillwijziging gebeuren in dezelfde PR | `close-issue` C:384-386 zoekt met `--workflow unblock-dependents.yml` en `displayTitle endswith " #<nr>"`. Hernoem je alleen de workflow, dan vindt de skill de run niet meer |
+
 ## Opbouw
 
 ### Binary
@@ -233,10 +251,19 @@ volledige lijst per bestand, met zijn literals.
 | `pack/expo` | `refresh-expo-lockfiles` | | | |
 
 De lijst is niet compleet. Volgens besluit 14 verhuist alles wat een core-skill nodig heeft. De
-bouwer loopt in (b) per skill na wat hij aanroept, importeert en leest. Al bekend en nog niet in de
-tabel: `worktree_audit.py` (bij `worktree-audit`), `unblock_dependents.py`, de board-helpers die
-`board_start.py` uit `src/controller/` haalt, en wat `codex_usage.py` uit `src.config` leest. De
-paia-tests voor deze bestanden verhuizen mee (zie *Binary*).
+bouwer loopt in (b) per skill na wat hij aanroept, importeert en leest. De paia-tests voor deze
+bestanden verhuizen mee (zie *Binary*).
+
+De inventaris op paia `33833601` (comment op #7) vond nog deze bestanden die niet in de tabel staan:
+
+- `worktree_audit.py`, nodig voor `worktree-audit` en voor `close-issue --only`;
+- `unblock_dependents.py`;
+- `src/controller/host.py`, nodig voor `plan_review_record.py:88`; gaat op in de configlezer;
+- `experiments/lekmeting-keten/lk_common.py` (besluit 27);
+- de drempels in `src/config.py` → `CodexUsageConfig` (besluit 23).
+
+`board_start.py` haalt geen board-helpers uit `src/controller/`; zijn enige src-import is
+`identity`.
 
 Blijft in paia: `paia-controller` (besluit 9), `usage-guard` en `paia-pauzeer` (M1; *mijn keuze*:
 `pause` is gebouwd rond de usage-guard, `usage_window.py` en `usage_resume.py`, en verhuist met
@@ -254,6 +281,22 @@ Toets: kan de skill met een projectconfig voor labels en status generiek worden?
 elke skill in (b) en legt het besluit met reden vast in deze spec, in een sectie *Besluit
 grensgevallen*. Verwachting van Corneel: `write-issue`, `worktree-audit` en `instrumenteren` gaan
 naar `pack/core`; `backlog-stand` en `board-sweep` blijven in paia.
+
+### Besluit grensgevallen
+
+Getoetst op paia `33833601` (comment op #7). De verwachting klopt voor alle vijf.
+
+| Skill | Besluit | Reden |
+|---|---|---|
+| `write-issue` | `pack/core`, als skelet (besluit 28) | Core-skills leunen op zijn blokkade-invariant: route-issue C:31, 98, 107, 112, 175; start-issue C:13, 23; close-issue C:157, 164, 183, 729. Ook `unblock_dependents.py` leunt erop |
+| `worktree-audit` | `pack/core` | `close-issue` roept `worktree_audit.py --only` aan (C:418, 437). De skill gebruikt geen labels en geen board |
+| `instrumenteren` | `pack/core`, ingekort | De generieke tekst verwijst naar de checks 3, 4, 5, 7, 8, 10 en 11 van `check-instructions.sh`, en naar de `source`-regel. De checks 6, 9, 12 en 13 zijn paia-eigen (prefix, provenance, persoonlijke skills, `domain`) en blijven in paia |
+| `backlog-stand` | blijft in paia | Heeft het board, de controller (`controller-klaar`, status `Controller`) en `scripts/board_report.py` nodig |
+| `board-sweep` | blijft in paia | Een config zou de hele skill herhalen: assen, area-set, verwijderlijst en koppen. Heeft het board nodig |
+
+Core-skills die naar `backlog-stand`, `board-sweep` of `paia-controller` verwijzen, doen dat
+volgens *Kruisverwijzingen*: als de skill er is, en anders melden ze het. Het gaat om route-issue
+C:27, 31, 38, 63, 136, 171; start-issue C:24, 309; close-issue C:166; en handoff C:192.
 
 ## Opdeling
 
@@ -323,6 +366,11 @@ elk punt een eigen issue. Het eerste punt staat er al:
   is (besluit 16).
 - **Release-flow en pre-push-keten naar lighthouse.** Wat ervan generiek is, en of `init` git-hooks
   moet installeren (besluit 17).
+- **Locale van git.** `main-commit-guard.sh:148`, `pre-commit-tests.sh:197` en `pr_body_gate.py:475`
+  matchen op de Engelse git-tekst "not a git repository". Onder een andere locale blokkeren ze ten
+  onrechte. Dat faalt dicht, niet open, en is dus een verbetering: `LC_ALL=C` op die aanroepen.
+- **`main-commit-guard` en `git push --delete`.** Vanuit een checkout op `main` blokkeert de guard
+  ook het verwijderen van een andere remote branch.
 
 ## Aan de bouwer
 
