@@ -1,51 +1,68 @@
 #!/usr/bin/env bash
-# Dertien deterministische checks over de instructielaag van deze repo.
+# De generieke deterministische checks over de instructielaag van een repo:
+# 1, 2, 3, 4, 5, 7, 8, 10 en 11. De nummers komen uit de bron; 6, 9, 12 en 13
+# zijn projecteigen en zitten hier niet in.
 #
 # Laag 2 van de gate-spec (commit-tijd): geen netwerk, geen LLM, geen state.
 # Het maakt de instructielaag zelf meetbaar -- het verschil tussen een norm en
 # een wens.
 #
 # Uitvoercontract, drie uitkomsten en niet twee:
-#   ok            de check heeft gemeten en niets gevonden
-#   FOUT          de check heeft gemeten en iets gevonden -> exit 1
-#   OVERGESLAGEN  de check kon hier niet meten. Exit 0, maar luid: de
-#                 afwezigheid van een signaal is geen negatief resultaat.
+#   ok       de check heeft gemeten en niets gevonden
+#   FAIL     de check heeft gemeten en iets gevonden -> exit 1
+#   SKIPPED  de check kon hier niet meten. Exit 0, maar luid: de
+#            afwezigheid van een signaal is geen negatief resultaat.
+# Kan het script als geheel niet meten (geen repo-root, kapotte
+# lighthouse.toml), dan `check-instructions: COULD NOT CHECK — <reden>` op
+# stderr en exit 2.
 #
-# Draaien:  scripts/hooks/check-instructies.sh
-# Testen:   uv run pytest tests/unit/test_check_instructies.py -x --tb=short
+# Draaien:  .lighthouse/scripts/check-instructions.sh
 set -uo pipefail
 
-ROOT="${CHECK_INSTRUCTIES_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
+could_not_check() {
+  printf 'check-instructions: COULD NOT CHECK — %s\n' "$1" >&2
+  exit 2
+}
+
+# De repo-root: `LIGHTHOUSE_REPO_ROOT`, anders git. Niet de map van dit script:
+# dat staat geïnstalleerd in `.lighthouse/scripts/`, en de configlezer kiest
+# dezelfde root.
+ROOT="${LIGHTHOUSE_REPO_ROOT:-}"
+if [ -z "$ROOT" ]; then
+  ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" ||
+    could_not_check "no repository root: LIGHTHOUSE_REPO_ROOT is not set and git rev-parse --show-toplevel failed"
+fi
+[ -d "$ROOT" ] || could_not_check "repository root '$ROOT' is not a directory"
 CLAUDE_SKILLS="$ROOT/.claude/skills"
 AGENTS_SKILLS="$ROOT/.agents/skills"
-PERSONAL_SKILLS="${CHECK_INSTRUCTIES_PERSONAL:-$HOME/.claude/skills}"
-PERSONAL_AGENTS="${CHECK_INSTRUCTIES_PERSONAL_AGENTS:-$HOME/.claude/agents}"
+PERSONAL_SKILLS="${CHECK_INSTRUCTIONS_PERSONAL:-$HOME/.claude/skills}"
+CONFIG_PY="$(dirname "${BASH_SOURCE[0]}")/../lib/lighthouse_lib/config.py"
 
 findings=0
 
 fail() {
-  printf 'FOUT  %s\n' "$1"
+  printf 'FAIL  %s\n' "$1"
   findings=$((findings + 1))
 }
 
-skip() { printf 'OVERGESLAGEN  %s\n' "$1"; }
+skip() { printf 'SKIPPED  %s\n' "$1"; }
 ok() { printf 'ok    %s\n' "$1"; }
 
-# sha256sum bestaat niet op macOS. Deze repo wordt op de Beelink EN op een Mac
+# sha256sum bestaat niet op macOS. Een repo wordt op Linux EN op een Mac
 # bewerkt, en een gate die op een van de twee stil niets doet is geen gate.
 if command -v sha256sum >/dev/null 2>&1; then
   SHA_CMD="sha256sum"
 elif command -v shasum >/dev/null 2>&1; then
   SHA_CMD="shasum -a 256"
 else
-  printf 'FOUT  geen sha256sum en geen shasum op deze machine; de duplicaatcheck kan niet draaien\n'
+  printf 'FAIL  no sha256sum and no shasum on this machine; the duplicate check cannot run\n'
   exit 1
 fi
 
 # python3 ontbreekt zelden, maar check 8 (pairing) parseert settings.json ermee
-# en kan zonder python3 niet meten of een hookpad geregistreerd staat. Anders
-# dan sha256sum/shasum raakt dit maar één check -- vandaar OVERGESLAGEN op die
-# ene check in plaats van een script-brede FOUT.
+# en kan zonder python3 niet meten of een hookpad geregistreerd staat; checks 10
+# en 11 lezen er lighthouse.toml mee. Anders dan sha256sum/shasum raakt dit maar
+# enkele checks -- vandaar SKIPPED op die checks in plaats van een script-brede FAIL.
 if command -v python3 >/dev/null 2>&1; then
   HAVE_PYTHON3=1
 else
@@ -54,19 +71,53 @@ fi
 
 # 'wc' hoort tot coreutils en ontbreekt zelden, maar check 10 (omvang) kan
 # zonder niet meten of de instructies binnen het plafond blijven. Zelfde behandeling
-# als python3 hierboven: dit raakt maar één check, dus OVERGESLAGEN op die ene
-# check in plaats van een script-brede FOUT.
+# als python3 hierboven: dit raakt maar één check, dus SKIPPED op die ene
+# check in plaats van een script-brede FAIL.
 if command -v wc >/dev/null 2>&1; then
   HAVE_WC=1
 else
   HAVE_WC=0
 fi
 
+# Een sleutel uit lighthouse.toml via de configlezer van deze installatie.
+# Zet CONFIG_WAARDE en geeft de rc van de lezer: 0 waarde, 1 niet gezet. Een
+# kapotte config (rc 2) stopt het hele script: elke uitkomst daarna zou op een
+# gok staan. Zonder python3 geeft hij 3; de check die de waarde nodig heeft,
+# meldt dan SKIPPED.
+config_value() {
+  local uit rc
+  [ "$HAVE_PYTHON3" -eq 1 ] || return 3
+  uit="$(LIGHTHOUSE_REPO_ROOT="$ROOT" python3 "$CONFIG_PY" "$1" 2>&1)"
+  rc=$?
+  case "$rc" in
+    0) CONFIG_WAARDE="$uit" ;;
+    1) CONFIG_WAARDE="" ;;
+    *) could_not_check "$uit" ;;
+  esac
+  return "$rc"
+}
+
 # Woordental waarboven de altijd geladen instructies (CLAUDE.md plus het
-# AGENTS.md dat het importeert) weer behang worden. Aanvang van de herverdeling
-# was 3046 woorden (#42); dit plafond ligt daar net onder, zodat het geheel
-# niet ongemerkt terugkruipt.
-PLAFOND="${CHECK_INSTRUCTIES_PLAFOND:-3000}"
+# AGENTS.md dat het importeert) weer behang worden: `[project]
+# instructions_word_ceiling`, default 3000. Leeg zonder python3.
+PLAFOND=""
+config_value project.instructions_word_ceiling && PLAFOND="$CONFIG_WAARDE"
+
+# Het bestand met de vastgelegde verschillen van check 11: `[paths]
+# mirror_exceptions`, relatief aan de repo-root. Optioneel: niet gezet betekent
+# geen uitzonderingen. SPIEGEL_CONFIG is 0 zonder python3 (niet te lezen).
+SPIEGEL_UITZONDERINGEN=""
+SPIEGEL_CONFIG=1
+config_value paths.mirror_exceptions
+case "$?" in
+  0)
+    case "$CONFIG_WAARDE" in
+      /*) SPIEGEL_UITZONDERINGEN="$CONFIG_WAARDE" ;;
+      *) SPIEGEL_UITZONDERINGEN="$ROOT/$CONFIG_WAARDE" ;;
+    esac
+    ;;
+  3) SPIEGEL_CONFIG=0 ;;
+esac
 
 # Een frontmatter-veld uit een SKILL.md. Leeg als het veld ontbreekt OF geen
 # waarde draagt: `upstream:` zonder waarde moet als "ontbreekt" tellen, anders
@@ -78,8 +129,8 @@ PLAFOND="${CHECK_INSTRUCTIES_PLAFOND:-3000}"
 # blijft ongelezen -- check 4 (overlap) vergelijkt dan tegen ">" in plaats van
 # de description en vindt nooit gedeelde triggerwoorden.
 #
-# `frontmatter_field` werkt op een bestandspad, zodat check 12 hem ook op een
-# agent-`.md` kan zetten; `skill_field` blijft de wrapper voor een skillmap.
+# `frontmatter_field` werkt op een bestandspad; `skill_field` is de wrapper
+# voor een skillmap.
 frontmatter_field() {
   local file="$1" field="$2"
   [ -f "$file" ] || return 0
@@ -169,6 +220,10 @@ dir_hash() {
 # Twee directories die dezelfde `name:` in hun frontmatter dragen. Claude
 # laadt er dan een en zwijgt over de ander.
 check_dubbele_naam() {
+  if [ ! -d "$CLAUDE_SKILLS" ]; then
+    skip "duplicate names: no .claude/skills, so there is nothing to measure here"
+    return 0
+  fi
   local naam dir dubbel gevonden=0
   local regels=""
   while IFS= read -r dir; do
@@ -179,11 +234,11 @@ check_dubbele_naam() {
   while IFS= read -r dubbel; do
     [ -z "$dubbel" ] && continue
     gevonden=1
-    fail "dubbele naam '$dubbel' geclaimd door: $(printf '%s' "$regels" |
+    fail "duplicate name '$dubbel' claimed by: $(printf '%s' "$regels" |
       awk -F'\t' -v n="$dubbel" '$1 == n { printf "%s ", $2 }')"
   done < <(printf '%s' "$regels" | cut -f1 | LC_ALL=C sort | uniq -d)
 
-  [ "$gevonden" -eq 0 ] && ok "geen dubbel geclaimde namen"
+  [ "$gevonden" -eq 0 ] && ok "no names claimed twice"
   return 0
 }
 
@@ -192,6 +247,10 @@ check_dubbele_naam() {
 # `generate_slides_retro`-geval: zelfde md5, en de tweede kost een volle
 # description in elke sessie.
 check_byte_identiek() {
+  if [ ! -d "$CLAUDE_SKILLS" ]; then
+    skip "byte-identical: no .claude/skills, so there is nothing to measure here"
+    return 0
+  fi
   local wortel dir hash dubbel regels gevonden=0
   # Per wortel, NOOIT over de spiegel heen. `.claude/skills/x` en
   # `.agents/skills/x` zijn per ontwerp een paar; bij een gevendorde externe
@@ -207,12 +266,12 @@ check_byte_identiek() {
     while IFS= read -r dubbel; do
       [ -z "$dubbel" ] && continue
       gevonden=1
-      fail "byte-identiek paar in $(basename "$(dirname "$wortel")")/skills: $(printf '%s' "$regels" |
+      fail "byte-identical pair in $(basename "$(dirname "$wortel")")/skills: $(printf '%s' "$regels" |
         awk -F'\t' -v h="$dubbel" '$1 == h { printf "%s ", $2 }')"
     done < <(printf '%s' "$regels" | cut -f1 | LC_ALL=C sort | uniq -d)
   done
 
-  [ "$gevonden" -eq 0 ] && ok "geen byte-identieke paren binnen een skillmap"
+  [ "$gevonden" -eq 0 ] && ok "no byte-identical pairs within a skill root"
   return 0
 }
 
@@ -224,10 +283,10 @@ check_spiegel() {
   while IFS= read -r ontbreekt; do
     [ -z "$ontbreekt" ] && continue
     gevonden=1
-    fail "spiegel ontbreekt: '$ontbreekt' staat niet in beide van .claude/skills/ en .agents/skills/"
+    fail "mirror missing: '$ontbreekt' is not in both .claude/skills/ and .agents/skills/"
   done < <(LC_ALL=C comm -3 <(skill_dirs "$CLAUDE_SKILLS") <(skill_dirs "$AGENTS_SKILLS") | tr -d '\t')
 
-  [ "$gevonden" -eq 0 ] && ok "spiegel .claude/skills <-> .agents/skills is gelijk"
+  [ "$gevonden" -eq 0 ] && ok "mirror .claude/skills <-> .agents/skills matches"
   return 0
 }
 
@@ -238,7 +297,10 @@ check_spiegel() {
 # SPIEGEL_UITZONDERINGEN, in dezelfde vorm als spiegel_verschillen() print.
 # Geen regelnummers in die vorm: een gelijke edit aan beide kanten verschuift
 # de verschillen maar verandert ze niet, en mag dus niet rood worden.
-SPIEGEL_UITZONDERINGEN="$ROOT/scripts/hooks/spiegel-uitzonderingen.txt"
+#
+# Een skillmap waarvan een `SKILL.md` de lighthouse-marker draagt
+# (`metadata.lighthouse`), slaat de check over: die is van het pakket, dat zijn
+# twee varianten zelf beheert, en `lighthouse init` legt ze neer.
 
 # Print per verschillend bestand een kop en de afwijkende regels (`<` = .claude,
 # `>` = .agents). Exit 4 als diff een paar niet kon vergelijken: dat is "kon
@@ -247,6 +309,10 @@ spiegel_verschillen() {
   local naam rel links rechts uit rc lijst_links lijst_rechts
   while IFS= read -r naam; do
     [ -z "$naam" ] && continue
+    if [ -n "$(skill_meta "$CLAUDE_SKILLS/$naam" lighthouse)" ] ||
+      [ -n "$(skill_meta "$AGENTS_SKILLS/$naam" lighthouse)" ]; then
+      continue
+    fi
     # Los van de lus en met rc-check: een map die cd of find niet kan lezen,
     # levert anders een lege lijst op, en die leest als "geen verschil".
     lijst_links="$(cd "$CLAUDE_SKILLS/$naam" && find . -type f)" || return 4
@@ -257,7 +323,7 @@ spiegel_verschillen() {
       rechts="$AGENTS_SKILLS/$naam/$rel"
       [ -f "$links" ] || links=/dev/null
       [ -f "$rechts" ] || rechts=/dev/null
-      # `git diff`, niet `diff`: GNU diff (Beelink) en de FreeBSD-diff van macOS
+      # `git diff`, niet `diff`: GNU diff (Linux) en de FreeBSD-diff van macOS
       # lijnen dezelfde hunks anders uit, en dan wijkt deze uitvoer per machine af
       # van het vastgelegde bestand. Git met vast algoritme is op beide gelijk.
       uit="$(git diff --no-index --no-color --no-ext-diff --no-textconv -U0 \
@@ -284,22 +350,37 @@ spiegel_verschillen() {
 }
 
 check_spiegel_inhoud() {
-  local actueel verwacht=""
-  if ! actueel="$(spiegel_verschillen)"; then
-    skip "spiegel-inhoud: diff kon een skillpaar niet vergelijken, dus de inhoud is niet gemeten"
+  local actueel verwacht="" bron rel
+  if [ "$SPIEGEL_CONFIG" -eq 0 ]; then
+    skip "mirror-content: python3 is missing on this machine, so [paths] mirror_exceptions cannot be read"
     return 0
   fi
-  [ -f "$SPIEGEL_UITZONDERINGEN" ] && verwacht="$(cat "$SPIEGEL_UITZONDERINGEN")"
+  if ! actueel="$(spiegel_verschillen)"; then
+    skip "mirror-content: diff could not compare a skill pair, so the content was not measured"
+    return 0
+  fi
+  [ -n "$SPIEGEL_UITZONDERINGEN" ] && [ -f "$SPIEGEL_UITZONDERINGEN" ] &&
+    verwacht="$(cat "$SPIEGEL_UITZONDERINGEN")"
 
   if [ "$actueel" = "$verwacht" ]; then
-    ok "spiegel-inhoud gelijk, op de vastgelegde uitzonderingen na"
+    ok "mirror-content matches, apart from the recorded exceptions"
     return 0
   fi
 
-  fail "spiegel-inhoud wijkt af van scripts/hooks/spiegel-uitzonderingen.txt (- vastgelegd, + nu; < .claude, > .agents):"
+  if [ -n "$SPIEGEL_UITZONDERINGEN" ]; then
+    rel="${SPIEGEL_UITZONDERINGEN#"$ROOT"/}"
+    bron="$rel"
+  else
+    rel="<file>"
+    bron="no recorded exceptions ([paths] mirror_exceptions is not set)"
+  fi
+  fail "mirror-content differs from $bron (- recorded, + now; < .claude, > .agents):"
   diff -u <(printf '%s\n' "$verwacht") <(printf '%s\n' "$actueel") | tail -n +3 | sed 's/^/      /'
-  printf '      Trek de andere kant gelijk. Is het verschil bewust per harnas, leg het dan vast met\n'
-  printf '      scripts/hooks/check-instructies.sh --print-spiegel-uitzonderingen > scripts/hooks/spiegel-uitzonderingen.txt\n'
+  printf '      Bring the other side in line. If the difference is deliberate per harness, record it with\n'
+  if [ -z "$SPIEGEL_UITZONDERINGEN" ]; then
+    printf '      [paths] mirror_exceptions = "<file>" in lighthouse.toml, and then\n'
+  fi
+  printf '      .lighthouse/scripts/check-instructions.sh --print-mirror-exceptions > %s\n' "$rel"
   return 0
 }
 
@@ -321,8 +402,8 @@ trigger_tokens() {
   printf '%s\n' "$1" |
     tr '[:upper:]' '[:lower:]' |
     tr -cs 'a-z0-9' '\n' |
-    PAIA_STOPWOORDEN="$(printf '%s' "$STOPWOORDEN" | tr '\n' ' ')" awk '
-      BEGIN { stop = ENVIRON["PAIA_STOPWOORDEN"] }
+    LIGHTHOUSE_STOPWORDS="$(printf '%s' "$STOPWOORDEN" | tr '\n' ' ')" awk '
+      BEGIN { stop = ENVIRON["LIGHTHOUSE_STOPWORDS"] }
       length($0) >= 5 && index(stop, " " $0 " ") == 0 { print }
     ' |
     LC_ALL=C sort -u
@@ -378,11 +459,11 @@ check_overlap() {
       has_exclusion_clause "${descs[i]}" "${namen[i]}" && continue
       has_exclusion_clause "${descs[j]}" "${namen[j]}" && continue
       gevonden=1
-      fail "overlap zonder afgrenzende clausule: '${namen[i]}' en '${namen[j]}' delen $gedeeld triggerwoorden"
+      fail "overlap without a bounding clause: '${namen[i]}' and '${namen[j]}' share $gedeeld trigger words"
     done
   done
 
-  [ "$gevonden" -eq 0 ] && ok "geen onafgegrensde overlap tussen descriptions"
+  [ "$gevonden" -eq 0 ] && ok "no unbounded overlap between descriptions"
   return 0
 }
 
@@ -392,7 +473,7 @@ check_overlap() {
 # nooit laadt, en dat gebeurt stil.
 check_schaduw() {
   if [ ! -d "$PERSONAL_SKILLS" ]; then
-    skip "schaduwcheck: '$PERSONAL_SKILLS' bestaat niet op deze machine, dus er valt hier niets te meten"
+    skip "shadow: '$PERSONAL_SKILLS' does not exist on this machine, so there is nothing to measure here"
     return 0
   fi
 
@@ -400,152 +481,10 @@ check_schaduw() {
   while IFS= read -r naam; do
     [ -z "$naam" ] && continue
     gevonden=1
-    fail "schaduw: '$naam' staat in $PERSONAL_SKILLS en in .claude/skills/; de personal-versie wint"
+    fail "shadow: '$naam' is in $PERSONAL_SKILLS and in .claude/skills/; the personal version wins"
   done < <(LC_ALL=C comm -12 <(skill_dirs "$PERSONAL_SKILLS") <(skill_dirs "$CLAUDE_SKILLS"))
 
-  [ "$gevonden" -eq 0 ] && ok "geen personal skill schaduwt een project-skill"
-  return 0
-}
-
-# --- Check 12: aanwezigheid van personal skills en agents (#905) ------------
-# Check 5 vangt een NAAMSBOTSING: een personal skill die een project-skill
-# overschaduwt. Dit is iets anders: elke personal skill of agent die Claude
-# Code laadt kost tokens in elke sessie, ook zonder botsing. Daarom telt
-# aanwezigheid zelf, ongeacht naam. De ontsnapping is alleen de exacte waarde
-# CHECK_INSTRUCTIES_PERSONAL_OK=1; "ja" of "true" is een typfout, geen akkoord.
-#
-# `skills/synced/` is de claude.ai-account-sync: beheerd door die sync, niet
-# door de gebruiker; de archiefroute is daar niet de knop. Hij telt dus niet
-# mee voor de uitkomst, maar aantal en tokens worden wel luid gemeld.
-#
-# `find -H`: een PERSONAL_SKILLS of PERSONAL_AGENTS die zelf een symlink is
-# (dotfiles-opzet) moet gevolgd worden, anders meet `find` niets en volgt een
-# valse `ok`. Alleen het startpunt: submappen volgen we niet (geen -L, lusrisico),
-# dus een symlink naar een submap onder agents/ wordt niet binnengegaan.
-
-# Vind in een map; vult AANW_LIJST (gesorteerd) en geeft de exitstatus van
-# find terug, zodat een onleesbare submap geen stille `ok` wordt. Een pijp
-# naar sort zou die status verbergen.
-aanwezigheid_find() {
-  local uit rc
-  uit="$(find -H "$@")"
-  rc=$?
-  AANW_LIJST="$(printf '%s\n' "$uit" | LC_ALL=C sort)"
-  return "$rc"
-}
-
-# Tekens die een skill in de sessie-context kost: naam (frontmatter, anders de
-# mapnaam) plus description.
-aanwezigheid_skill_tekens() {
-  local pad="$1" naam beschrijving
-  naam="$(frontmatter_field "$pad/SKILL.md" name)"
-  [ -z "$naam" ] && naam="${pad##*/}"
-  beschrijving="$(frontmatter_field "$pad/SKILL.md" description)"
-  echo $((${#naam} + ${#beschrijving}))
-}
-
-check_aanwezigheid() {
-  local map
-  for map in "$PERSONAL_SKILLS" "$PERSONAL_AGENTS"; do
-    # Een map die niet bestaat is gemeten: daar laadt niets. Bestaat hij maar
-    # is hij niet te lezen, dan weten we het niet -- dat is geen "ok".
-    if [ -e "$map" ] && { [ ! -r "$map" ] || [ ! -x "$map" ]; }; then
-      skip "aanwezigheid: '$map' bestaat maar is niet leesbaar, dus er valt hier niets te tellen"
-      return 0
-    fi
-  done
-
-  local aantal_skills=0 aantal_agents=0 tekens=0 aanwezig="" pad naam beschrijving
-  if [ -d "$PERSONAL_SKILLS" ]; then
-    if ! aanwezigheid_find "$PERSONAL_SKILLS" -mindepth 1 -maxdepth 1 ! -name '.*' ! -name synced \( -type d -o -type l \); then
-      skip "aanwezigheid: find faalde op '$PERSONAL_SKILLS' (onleesbare submap?), dus er valt hier niets te tellen"
-      return 0
-    fi
-    while IFS= read -r pad; do
-      [ -z "$pad" ] && continue
-      aantal_skills=$((aantal_skills + 1))
-      aanwezig="${aanwezig:+$aanwezig, }${pad##*/}"
-      tekens=$((tekens + $(aanwezigheid_skill_tekens "$pad")))
-    done <<< "$AANW_LIJST"
-  fi
-  if [ -d "$PERSONAL_AGENTS" ]; then
-    if ! aanwezigheid_find "$PERSONAL_AGENTS" -mindepth 1 -name '.*' -prune -o -name '*.md' \( -type f -o -type l \) -print; then
-      skip "aanwezigheid: find faalde op '$PERSONAL_AGENTS' (onleesbare submap?), dus er valt hier niets te tellen"
-      return 0
-    fi
-    while IFS= read -r pad; do
-      [ -z "$pad" ] && continue
-      naam="$(frontmatter_field "$pad" name)"
-      beschrijving="$(frontmatter_field "$pad" description)"
-      tekens=$((tekens + ${#naam} + ${#beschrijving}))
-      naam="${pad##*/}"
-      naam="${naam%.md}"
-      aantal_agents=$((aantal_agents + 1))
-      aanwezig="${aanwezig:+$aanwezig, }$naam"
-    done <<< "$AANW_LIJST"
-  fi
-
-  # Zelfde CHARS_PER_TOKEN = 4 als scripts/measure_skill_surface.py.
-  local tokens=$((tekens / 4))
-  if [ $((aantal_skills + aantal_agents)) -eq 0 ]; then
-    ok "aanwezigheid: geen personal skills of agents"
-  elif [ "${CHECK_INSTRUCTIES_PERSONAL_OK:-}" = "1" ]; then
-    ok "aanwezigheid: $aantal_skills personal skill(s), $aantal_agents personal agent(s), ~$tokens tokens per sessie, toegestaan via CHECK_INSTRUCTIES_PERSONAL_OK=1"
-  else
-    fail "aanwezigheid: $aantal_skills personal skill(s) in $PERSONAL_SKILLS, $aantal_agents personal agent(s) in $PERSONAL_AGENTS, ~$tokens tokens in elke sessie: $aanwezig. Verplaats ze naar ~/.claude/skills-archief/<datum>/, of sta ze tijdelijk toe met CHECK_INSTRUCTIES_PERSONAL_OK=1"
-  fi
-
-  # synced/<account>/<skill>: niet meegeteld voor de uitkomst, wel gemeten.
-  if [ -d "$PERSONAL_SKILLS/synced" ]; then
-    local aantal_synced=0 tekens_synced=0 account accounts
-    if ! aanwezigheid_find "$PERSONAL_SKILLS/synced" -mindepth 1 -maxdepth 1 ! -name '.*' \( -type d -o -type l \); then
-      skip "aanwezigheid: find faalde op '$PERSONAL_SKILLS/synced' (onleesbare submap?), dus synced/ is niet gemeten"
-      return 0
-    fi
-    accounts="$AANW_LIJST"
-    while IFS= read -r account; do
-      [ -z "$account" ] && continue
-      if ! aanwezigheid_find "$account" -mindepth 1 -maxdepth 1 ! -name '.*' \( -type d -o -type l \); then
-        skip "aanwezigheid: find faalde op '$account' (onleesbare submap?), dus synced/ is niet gemeten"
-        return 0
-      fi
-      while IFS= read -r pad; do
-        [ -z "$pad" ] && continue
-        aantal_synced=$((aantal_synced + 1))
-        tekens_synced=$((tekens_synced + $(aanwezigheid_skill_tekens "$pad")))
-      done <<< "$AANW_LIJST"
-    done <<< "$accounts"
-    ok "aanwezigheid: $PERSONAL_SKILLS/synced/ niet meegeteld: $aantal_synced skill(s), ~$((tekens_synced / 4)) tokens (claude.ai-sync, beheer via claude.ai)"
-  fi
-  return 0
-}
-
-# --- Check 6: naamcontract, met vrijstelling voor origin: external ----------
-# Alles in .claude/skills/ draagt een `paia-`-voorvoegsel. Uitzondering: een
-# gevendorde externe skill. Hernoemen breekt daar de updateroute (de folderhash
-# verwijst naar een pad) en de attributie. De vrijstelling geldt alleen als hij
-# aantoonbaar is -- upstream EN license gevuld.
-check_naamcontract() {
-  local dir origin upstream licentie gevonden=0
-  while IFS= read -r dir; do
-    case "$dir" in
-      paia-*) continue ;;
-    esac
-    origin="$(skill_meta "$CLAUDE_SKILLS/$dir" origin)"
-    if [ "$origin" != "external" ]; then
-      gevonden=1
-      fail "naamcontract: '$dir' heeft geen 'paia-'-voorvoegsel en geen 'origin: external'"
-      continue
-    fi
-    upstream="$(skill_meta "$CLAUDE_SKILLS/$dir" upstream)"
-    licentie="$(skill_field "$CLAUDE_SKILLS/$dir" license)"
-    if [ -z "$upstream" ] || [ -z "$licentie" ]; then
-      gevonden=1
-      fail "herkomstkop: '$dir' claimt 'origin: external' maar mist 'upstream' of 'license'; de vrijstelling is niet aantoonbaar"
-    fi
-  done < <(skill_dirs "$CLAUDE_SKILLS")
-
-  [ "$gevonden" -eq 0 ] && ok "naamcontract gerespecteerd (origin: external vrijgesteld)"
+  [ "$gevonden" -eq 0 ] && ok "no personal skill shadows a project skill"
   return 0
 }
 
@@ -557,7 +496,7 @@ check_scoping() {
   local rules="$ROOT/.claude/rules" bestand gevonden=0
 
   if [ ! -d "$rules" ]; then
-    skip "scoping: '$rules' bestaat niet, dus er valt hier geen rule te toetsen"
+    skip "scoping: '$rules' does not exist, so there is no rule to check here"
     return 0
   fi
 
@@ -597,11 +536,11 @@ check_scoping() {
       END { exit found ? 0 : 1 }
     ' "$bestand"; then
       gevonden=1
-      fail "scoping: '$(basename "$bestand")' heeft geen paths:-blok met een niet-lege waarde in zijn frontmatter"
+      fail "scoping: '$(basename "$bestand")' has no paths: block with a non-empty value in its frontmatter"
     fi
   done < <(find "$rules" -maxdepth 1 -type f -name '*.md' | LC_ALL=C sort)
 
-  [ "$gevonden" -eq 0 ] && ok "elke rule is pad-gescoped"
+  [ "$gevonden" -eq 0 ] && ok "every rule is path-scoped"
   return 0
 }
 
@@ -662,7 +601,8 @@ sys.exit(0 if found else 1)
 # claim dat er een afdwinging bestaat; deze check maakt die claim toetsbaar.
 # Geen vierde frontmatter-veld: de skill noemt zijn hook in de body, en die
 # hook moet bestaan én in settings.json geregistreerd staan. Een hookscript dat
-# nergens geregistreerd is, draait nooit.
+# nergens geregistreerd is, draait nooit. Het pad mag in een submap van
+# `.claude/hooks/` staan: `lighthouse init` legt de zijne in `.claude/hooks/lighthouse/`.
 check_pairing() {
   local settings="$ROOT/.claude/settings.json"
   local dir binding hooks hook gedekt gevonden=0 hard=0 overgeslagen=0
@@ -675,7 +615,7 @@ check_pairing() {
     [ "$binding" = "hard" ] || continue
     hard=$((hard + 1))
 
-    hooks="$(grep -oE '\.claude/hooks/[A-Za-z0-9_-]+\.sh' \
+    hooks="$(grep -oE '\.claude/hooks/([A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.sh' \
       "$CLAUDE_SKILLS/$dir/SKILL.md" 2>/dev/null | LC_ALL=C sort -u)"
 
     # Geen enkel hookpad in de body genoemd: dat is een gemeten bevinding,
@@ -683,23 +623,23 @@ check_pairing() {
     # genoemd is, wordt registratie de resterende vraag.
     if [ -z "$hooks" ]; then
       gevonden=1
-      fail "pairing: '$dir' draagt 'binding: hard' maar noemt geen tegenhanger die bestaat én in settings.json staat"
+      fail "pairing: '$dir' carries 'binding: hard' but names no counterpart that exists and is registered in settings.json"
       continue
     fi
 
     # `continue`, niet `return 0`: een ontbrekende voorwaarde maakt alléén de
     # registratie van DEZE skill onmeetbaar. Een `return 0` hier brak eerder
     # de hele lus af en liet elke alfabetisch latere hard-skill ongemeten --
-    # inclusief een skill zonder enig hookpad, wat wél een gemeten FOUT is.
+    # inclusief een skill zonder enig hookpad, wat wél een gemeten FAIL is.
     if [ "$settings_bestaat" -eq 0 ]; then
       overgeslagen=1
-      overslag_reden="pairing: '$settings' bestaat niet, dus registratie is hier niet te toetsen"
+      overslag_reden="pairing: '$settings' does not exist, so registration cannot be checked here"
       continue
     fi
 
     if [ "$HAVE_PYTHON3" -eq 0 ]; then
       overgeslagen=1
-      overslag_reden="pairing: python3 ontbreekt op deze machine, dus registratie is hier niet te toetsen"
+      overslag_reden="pairing: python3 is missing on this machine, so registration cannot be checked here"
       continue
     fi
 
@@ -720,177 +660,34 @@ check_pairing() {
 
     if [ "$gedekt" -eq 0 ]; then
       gevonden=1
-      # Kapotte/geen-object settings.json is een FOUT, geen OVERGESLAGEN: het
+      # Kapotte/geen-object settings.json is een FAIL, geen SKIPPED: het
       # bestand bestaat en is leesbaar, dus dit ís meetbaar -- en de oorzaak
       # is settings.json, niet de skill-body. Zonder deze tak kreeg de lezer
       # dezelfde "noemt geen tegenhanger"-boodschap en ging de skill-body
       # repareren in plaats van settings.json.
       if [ "$settings_kapot" -eq 1 ]; then
-        fail "pairing: '$settings' is geen geldige JSON (of geen object), dus '$dir' kan niet getoetst worden op een geregistreerde hook"
+        fail "pairing: '$settings' is not valid JSON (or not an object), so '$dir' cannot be checked for a registered hook"
       else
-        fail "pairing: '$dir' draagt 'binding: hard' maar noemt geen tegenhanger die bestaat én in settings.json staat"
+        fail "pairing: '$dir' carries 'binding: hard' but names no counterpart that exists and is registered in settings.json"
       fi
     fi
   done < <(skill_dirs "$CLAUDE_SKILLS")
 
   if [ "$hard" -eq 0 ]; then
-    ok "geen skill claimt 'binding: hard'"
+    ok "no skill claims 'binding: hard'"
     return 0
   fi
 
   # Onvoorwaardelijk: een niet-meetbare skill hoort altijd luid gemeld te
-  # worden, ook naast een FOUT elders. Eerder onderdrukte een `elif` op
-  # gevonden deze regel zodra er ook maar één FOUT viel.
+  # worden, ook naast een FAIL elders. Eerder onderdrukte een `elif` op
+  # gevonden deze regel zodra er ook maar één FAIL viel.
   [ "$overgeslagen" -eq 1 ] && skip "$overslag_reden"
-  [ "$gevonden" -eq 0 ] && [ "$overgeslagen" -eq 0 ] && ok "elke binding: hard heeft een geregistreerde hook"
-  return 0
-}
-
-# Licentienamen die als vermelding tellen. Bewust kort: dit is een
-# aanwezigheidstoets, geen SPDX-parser. Copyleft staat er niet bij omdat een
-# gevendorde AGPL/GPL-skill hier sowieso niet mag landen.
-#
-# Structurele grens, geen letter-grens. Een eerdere versie gebruikte een
-# letter-grens ((^|[^A-Za-z])...([^A-Za-z]|$)); die loste de zes gevallen
-# hierboven op, maar opende een nieuw gat: een licentienaam in een pad matcht
-# een letter-grens ook -- github.com/foo/mit-tools, apache/airflow,
-# github.com/CorneeldH/werken-mit-claude, foo/bsd-tools, owner/repo cc0-fork
-# gaven allemaal ten onrechte 'ok'. Een echte licentievermelding staat achter
-# een `(` of een `,` (zie de twee vendorde skills hieronder); een licentienaam
-# in een pad staat achter een `/` of een `-`. Vandaar het anker op `[(,]`
-# i.p.v. op willekeurige niet-letters: dat onderscheidt de twee gevallen waar
-# een letter-grens dat niet kan.
-#
-# Gevolg, met opzet: `upstream: owner/repo MIT` -- een kale licentienaam
-# zonder `(` of `,` ervoor -- telt vanaf nu NIET meer als vermelding en geeft
-# FOUT. Schrijf 'm als `(MIT)` of `, MIT`. Verruim dit anker niet terug naar
-# een letter-grens: dat maakt elk pad met een licentienaam erin weer geldig.
-#
-# Rechterkant blijft een niet-letter-grens ([^A-Za-z]|$): dat is waar 'MIT'
-# in 'MITRE' of 'ISC' in 'ISCSI' stopt, en een `(`/`,` aan de rechterkant is
-# hier niet nodig -- '(MIT,' en '(MIT)' hebben allebei al de linker `(`.
-#
-# `-i` erbij zodat kleine letters ('(mit)', '(apache-2.0)') ook meetellen;
-# met het structurele anker is dat veilig, want een licentienaam in een pad
-# staat nooit direct achter een `(` of een `,`.
-LICENTIE_PATROON='[(,][[:space:]]*(MIT|Apache|BSD|ISC|MPL|HPND|Unlicense|CC0)([^A-Za-z]|$)'
-
-# De vijf vormen die `source:` mag dragen (zie stap 5 van paia-instrumenteren).
-# `self` en een pad-vorm hebben geen patroon: `self` is een letterlijke
-# vergelijking en alles wat geen van de vier andere vormen is, wordt als
-# repo-pad gelezen en moet dan bestaan. Dat is bewust de restcategorie -- een
-# pad-detectie op '/' of '.' zou een vrije tekst ("uit mijn hoofd") stil
-# doorlaten.
-SOURCE_ISSUE='^#[0-9]+$'
-SOURCE_COMMIT='^[0-9a-f]{7,40}$'
-SOURCE_URL='^https?://'
-
-# De pin op de upstream-versie: altijd de volle 40-tekens-SHA, kleine letters.
-UPSTREAM_COMMIT='^[0-9a-f]{40}$'
-
-# --- Check 9: herkomst, repo-breed ------------------------------------------
-# Check 6 toetst upstream+license alleen op skills ZONDER paia--voorvoegsel,
-# als voorwaarde voor de naamcontract-vrijstelling. Een paia--skill met
-# `origin: extended` glipt daar doorheen. Zonder upstream is een overgenomen
-# skill over drie maanden niet bij te werken; zonder licentie mag hij hier niet
-# staan (gehost product, kopiëren is de handeling die copyleft laat overslaan).
-# `upstream-commit` (en bij `external` ook `upstream-path`) maakt de pin
-# machine-leesbaar: de bumplane (#1140) kan zo de kopie tegen upstream diffen en
-# een versiesprong wordt een reviewbare diff in plaats van een gok.
-check_herkomst() {
-  local dir origin upstream licentie commit pad bron gevonden=0 bron_gevonden=0
-  while IFS= read -r dir; do
-    origin="$(skill_meta "$CLAUDE_SKILLS/$dir" origin)"
-    case "$origin" in
-      extended | external) ;;
-      *) continue ;;
-    esac
-
-    upstream="$(skill_meta "$CLAUDE_SKILLS/$dir" upstream)"
-    if [ -z "$upstream" ]; then
-      gevonden=1
-      fail "herkomst: '$dir' draagt 'origin: $origin' zonder upstream; de bron is niet terug te vinden"
-      continue
-    fi
-
-    licentie="$(skill_field "$CLAUDE_SKILLS/$dir" license)"
-    if [ -z "$licentie" ] && ! printf '%s' "$upstream" | grep -qiE "$LICENTIE_PATROON"; then
-      gevonden=1
-      fail "herkomst: '$dir' draagt 'origin: $origin' zonder licentievermelding, niet als license:-veld en niet in de upstream-regel; schrijf 'm als '(MIT)' of ', MIT' -- achter een haakje of komma, anders telt hij niet"
-    fi
-
-    # Quotes horen niet bij de waarde (zie de source-lus); strip ze voor de toets.
-    commit="$(skill_meta "$CLAUDE_SKILLS/$dir" upstream-commit)"
-    commit="${commit%\"}"
-    commit="${commit#\"}"
-    commit="${commit%\'}"
-    commit="${commit#\'}"
-    if [ -z "$commit" ]; then
-      gevonden=1
-      fail "herkomst: '$dir' draagt 'origin: $origin' zonder upstream-commit; niet te zien op welke upstream-versie de kopie staat"
-    elif ! printf '%s' "$commit" | grep -qE "$UPSTREAM_COMMIT"; then
-      gevonden=1
-      fail "herkomst: '$dir' draagt upstream-commit '$commit' -- geen volledige 40-tekens-SHA in kleine letters"
-    fi
-
-    if [ "$origin" = external ]; then
-      pad="$(skill_meta "$CLAUDE_SKILLS/$dir" upstream-path)"
-      pad="${pad%\"}"
-      pad="${pad#\"}"
-      pad="${pad%\'}"
-      pad="${pad#\'}"
-      if [ -z "$pad" ]; then
-        gevonden=1
-        fail "herkomst: '$dir' draagt 'origin: external' zonder upstream-path; de bron binnen de upstream-repo is niet eenduidig"
-      elif [ "${pad#/}" != "$pad" ]; then
-        gevonden=1
-        fail "herkomst: '$dir' draagt upstream-path '$pad' met voorloop-/; het pad is relatief binnen de upstream-repo"
-      fi
-    fi
-  done < <(skill_dirs "$CLAUDE_SKILLS")
-
-  [ "$gevonden" -eq 0 ] && ok "elke overgenomen skill draagt herkomst, commit en licentie"
-
-  # Tweede lus, over ALLE skills en niet alleen de overgenomen: de vorm van
-  # `source`. Afwezigheid is geen fout -- er is geen backfill, dus de 33
-  # bestaande skills dragen het veld niet. Wat dit vangt is de fout die anders
-  # stil blijft: een `source` die naar een verplaatst of hernoemd bestand wijst,
-  # want niets anders leest dat pad ooit.
-  while IFS= read -r dir; do
-    bron="$(skill_meta "$CLAUDE_SKILLS/$dir" source)"
-    [ -z "$bron" ] && continue
-
-    # Een `#`-waarde hoort geciteerd ("#914"), anders leest YAML hem als
-    # commentaar. Die quotes horen niet bij de waarde; strip ze voor de
-    # vormtoets. Ongequoteerd komt hier ook binnen -- dat gat dicht de
-    # YAML-kant (test_frontmatter_is_valid_yaml eist een string-waarde,
-    # en `source: #914` parseert naar null).
-    bron="${bron%\"}"
-    bron="${bron#\"}"
-    bron="${bron%\'}"
-    bron="${bron#\'}"
-
-    if [ "$bron" = "self" ] ||
-      printf '%s' "$bron" | grep -qE "$SOURCE_ISSUE" ||
-      printf '%s' "$bron" | grep -qE "$SOURCE_URL" ||
-      printf '%s' "$bron" | grep -qE "$SOURCE_COMMIT"; then
-      continue
-    fi
-
-    if [ ! -e "$ROOT/$bron" ]; then
-      bron_gevonden=1
-      fail "herkomst: '$dir' draagt 'source: $bron' -- geen issue (#123), geen commit-sha, geen https-URL en geen 'self', en als pad bestaat het niet in de repo"
-    fi
-  done < <(skill_dirs "$CLAUDE_SKILLS")
-
-  [ "$bron_gevonden" -eq 0 ] && ok "elke source wijst ergens heen"
+  [ "$gevonden" -eq 0 ] && [ "$overgeslagen" -eq 0 ] && ok "every binding: hard has a registered hook"
   return 0
 }
 
 # --- Check 10: omvang van CLAUDE.md + AGENTS.md -----------------------------
-# De DoD van milestone #42, permanent gemaakt. Zonder teller kruipt het
-# woordental gewoon weer omhoog -- dat is precies wat er tussen 2026-08-22 en
-# 2026-09-02 gebeurde: 3046 -> 5053. CLAUDE.md is sinds de samenvoeging een
+# Zonder teller kruipt het woordental gewoon weer omhoog. CLAUDE.md is een
 # `@AGENTS.md`-import plus de Claude-rest: alleen CLAUDE.md tellen zou een
 # placebo zijn, dus telt de check wat Claude Code werkelijk laadt -- beide.
 check_omvang() {
@@ -899,12 +696,17 @@ check_omvang() {
   local -a bestanden=("$claude")
 
   if [ "$HAVE_WC" -eq 0 ]; then
-    skip "omvang: 'wc' ontbreekt op deze machine, dus CLAUDE.md is hier niet te tellen"
+    skip "size: 'wc' is missing on this machine, so CLAUDE.md cannot be counted here"
     return 0
   fi
 
   if [ ! -f "$claude" ]; then
-    skip "omvang: '$claude' bestaat niet, dus er valt hier niets te tellen"
+    skip "size: '$claude' does not exist, so there is nothing to count here"
+    return 0
+  fi
+
+  if [ -z "$PLAFOND" ]; then
+    skip "size: python3 is missing on this machine, so [project] instructions_word_ceiling cannot be read"
     return 0
   fi
 
@@ -915,7 +717,7 @@ check_omvang() {
 
   for bestand in "${bestanden[@]}"; do
     if [ ! -r "$bestand" ]; then
-      skip "omvang: '$bestand' is niet leesbaar, dus er valt hier niets te tellen"
+      skip "size: '$bestand' is not readable, so there is nothing to count here"
       return 0
     fi
 
@@ -925,76 +727,24 @@ check_omvang() {
     # binnen het plafond" over een bestand dat hij niet gemeten heeft.
     n="$(wc -w <"$bestand" 2>/dev/null | tr -d '[:space:]')"
     if ! [[ "$n" =~ ^[0-9]+$ ]]; then
-      skip "omvang: 'wc' kon '$bestand' niet tellen, dus er valt hier niets te tellen"
+      skip "size: 'wc' could not count '$bestand', so there is nothing to count here"
       return 0
     fi
     woorden=$((woorden + n))
   done
 
   if [ "$woorden" -gt "$PLAFOND" ]; then
-    fail "omvang: $label telt $woorden woorden, plafond is $PLAFOND"
+    fail "size: $label counts $woorden words, ceiling is $PLAFOND"
     return 0
   fi
 
-  ok "$label telt $woorden woorden, binnen het plafond van $PLAFOND"
+  ok "$label counts $woorden words, within the ceiling of $PLAFOND"
   return 0
 }
 
-# --- Check 13: domein (#1161) -----------------------------------------------
-# Milestone #58 wil dat elk pad in de repo bij precies een domein hoort, en de
-# SKILL.md-frontmatter is voor een skill de enige drager (tenet J): geen tweede
-# register dat uit de pas kan lopen. Anders dan `source` (check 9, afwezigheid
-# is daar geen fout) is dit veld verplicht voor elke skill, want een skill
-# zonder domein hoort bij geen enkel pad en valt dus buiten de indeling. Het
-# veld staat onder `metadata:` (zie skill_meta); een top-level `domain:` telt
-# als afwezig. Beide spiegels worden gelezen; dat ze hetzelfde domein dragen
-# bewaakt check 11. De vier waarden staan ook in tests/unit/test_instructielagen.py
-# (DOMEINEN) -- houd ze gelijk.
-check_domein() {
-  local wortel rel dir domein gevonden=0 overgeslagen=0
-  for wortel in "$CLAUDE_SKILLS" "$AGENTS_SKILLS"; do
-    rel="${wortel#"$ROOT"/}"
-    while IFS= read -r dir; do
-      # Een map zonder SKILL.md is het oordeel van een andere check.
-      [ -e "$wortel/$dir/SKILL.md" ] || continue
-      if [ ! -r "$wortel/$dir/SKILL.md" ]; then
-        skip "domein: '$rel/$dir' niet leesbaar"
-        overgeslagen=1
-        continue
-      fi
-
-      domein="$(skill_meta "$wortel/$dir" domain)"
-      # Eerst afsluitende witruimte, dan de quotes (zie de source-lus van check 9):
-      # `domain: "inhoud" ` met een spatie na de quote blijft zo geldig. Alleen
-      # één bijpassend paar telt als YAML-quoting: `"'factory'"` is voor een
-      # parser de waarde `'factory'`, en die hoort als onbekend te falen.
-      domein="${domein%"${domein##*[![:space:]]}"}"
-      case "$domein" in
-        \"*\") domein="${domein#\"}" domein="${domein%\"}" ;;
-        \'*\') domein="${domein#\'}" domein="${domein%\'}" ;;
-      esac
-
-      case "$domein" in
-        applicatie | inhoud | factory | infra) ;;
-        "")
-          gevonden=1
-          fail "domein: '$rel/$dir' mist metadata.domain; kies applicatie, inhoud, factory of infra"
-          ;;
-        *)
-          gevonden=1
-          fail "domein: '$rel/$dir' draagt '$domein' -- geen van applicatie, inhoud, factory, infra"
-          ;;
-      esac
-    done < <(skill_dirs "$wortel")
-  done
-
-  [ "$gevonden" -eq 0 ] && [ "$overgeslagen" -eq 0 ] && ok "elke skill in beide spiegels draagt een domein"
-  return 0
-}
-
-if [ "${1:-}" = "--print-spiegel-uitzonderingen" ]; then
+if [ "${1:-}" = "--print-mirror-exceptions" ]; then
   spiegel_verschillen || {
-    printf 'OVERGESLAGEN  diff kon een skillpaar niet vergelijken\n' >&2
+    printf 'SKIPPED  diff could not compare a skill pair\n' >&2
     exit 4
   }
   exit 0
@@ -1006,16 +756,12 @@ check_spiegel
 check_spiegel_inhoud
 check_overlap
 check_schaduw
-check_aanwezigheid
-check_naamcontract
 check_scoping
 check_pairing
-check_herkomst
 check_omvang
-check_domein
 
 if [ "$findings" -gt 0 ]; then
-  printf '\n%d bevinding(en).\n' "$findings"
+  printf '\n%d finding(s).\n' "$findings"
   exit 1
 fi
 exit 0

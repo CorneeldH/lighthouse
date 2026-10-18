@@ -106,3 +106,8 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/workflows/unblock-dependents.yml"
 source_path = ".github/workflows/unblock-dependents.yml"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/scripts/check-instructions.sh"
+source_path = "scripts/hooks/check-instructies.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
