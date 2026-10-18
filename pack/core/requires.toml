@@ -1,7 +1,8 @@
 # Tool -> the units in this package that need it. `lighthouse init` reports a
 # missing tool with these names; it does not stop on it.
-git = ["main-commit-guard", "post_artefact", "plan_review_record", "review_pair"]
-jq = ["main-commit-guard"]
-python3 = ["main-commit-guard", "lighthouse_lib.config", "lighthouse_lib.datadir", "lighthouse_lib.headings", "lighthouse_lib.protocol", "lighthouse_lib.artefacts", "post_artefact", "board_start", "plan_review_record", "review_pair"]
-tomllib = ["lighthouse_lib.config", "lighthouse_lib.headings", "lighthouse_lib.protocol", "lighthouse_lib.artefacts", "post_artefact", "board_start", "plan_review_record", "review_pair"]
-gh = ["post_artefact", "board_start"]
+codex = ["codex_usage"]
+git = ["main-commit-guard", "post_artefact", "plan_review_record", "review_pair", "measure_start_issue_kpi", "worktree_audit", "check-instructions"]
+jq = ["main-commit-guard", "spec-adversary"]
+python3 = ["main-commit-guard", "lighthouse_lib.config", "lighthouse_lib.datadir", "lighthouse_lib.headings", "lighthouse_lib.protocol", "lighthouse_lib.artefacts", "post_artefact", "board_start", "plan_review_record", "review_pair", "codex_usage", "measure_start_issue_kpi", "measure_fix_pr_kpi", "worktree_audit", "unblock_dependents", "check-instructions"]
+tomllib = ["lighthouse_lib.config", "lighthouse_lib.headings", "lighthouse_lib.protocol", "lighthouse_lib.artefacts", "post_artefact", "board_start", "plan_review_record", "review_pair", "codex_usage", "measure_start_issue_kpi", "measure_fix_pr_kpi", "worktree_audit", "unblock_dependents", "check-instructions"]
+gh = ["post_artefact", "board_start", "worktree_audit", "unblock_dependents"]

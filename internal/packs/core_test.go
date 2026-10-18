@@ -28,7 +28,11 @@ func TestCorePack(t *testing.T) {
 	}
 	sort.Strings(files)
 	want := []string{
+		".claude/agents/lighthouse-issue-impact-scout.md",
+		".claude/agents/lighthouse-spec-adversary.md",
 		".claude/hooks/lighthouse/main-commit-guard.sh",
+		".github/pull_request_template.md",
+		".github/workflows/lighthouse-unblock-dependents.yml",
 		".lighthouse/headings.toml",
 		".lighthouse/lib/lighthouse_lib/__init__.py",
 		".lighthouse/lib/lighthouse_lib/artefacts.py",
@@ -38,9 +42,15 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/headings.py",
 		".lighthouse/lib/lighthouse_lib/protocol.py",
 		".lighthouse/scripts/board_start.py",
+		".lighthouse/scripts/check-instructions.sh",
+		".lighthouse/scripts/codex_usage.py",
+		".lighthouse/scripts/measure_fix_pr_kpi.py",
+		".lighthouse/scripts/measure_start_issue_kpi.py",
 		".lighthouse/scripts/plan_review_record.py",
 		".lighthouse/scripts/post_artefact.py",
 		".lighthouse/scripts/review_pair.py",
+		".lighthouse/scripts/unblock_dependents.py",
+		".lighthouse/scripts/worktree_audit.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
@@ -52,7 +62,7 @@ func TestCorePack(t *testing.T) {
 	for _, r := range p.Requires {
 		tools = append(tools, r.Tool)
 	}
-	if strings.Join(tools, ",") != "gh,git,jq,python3,tomllib" {
+	if strings.Join(tools, ",") != "codex,gh,git,jq,python3,tomllib" {
 		t.Fatalf("tools = %v", tools)
 	}
 }

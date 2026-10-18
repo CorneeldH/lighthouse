@@ -1,0 +1,73 @@
+# The release lane. When an issue closes as `completed`, the GitHub App from `[ci]`
+# removes the `[labels] blocked_issue` label from every open issue that waited on it
+# and has no other open blocker, with a comment on that issue and one comment back on
+# the closed issue. The closed issue stays the only source: the lane reads only
+# `dependencies/blocking` and `dependencies/blocked_by`.
+#
+# A workflow and not a step in `lighthouse-close-issue`: an issue also closes through a
+# PR merge or by hand, and a session has no bot token. The skill checks afterwards.
+# `workflow_dispatch` with an issue number is the fallback for a missed or red run. The
+# logic lives in `.lighthouse/scripts/unblock_dependents.py`; the YAML stays thin.
+#
+# `lighthouse init` fills every `@@<key>@@` from `lighthouse.toml`; without the `[ci]`
+# bot keys it does not install this workflow.
+name: Unblock dependents
+# The issue number in the run name: `lighthouse-close-issue` finds the run by it.
+run-name: "Unblock dependents #${{ github.event.issue.number || inputs.issue }}"
+
+on:
+  issues:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: "The closed issue whose dependents should be released"
+        required: true
+        type: number
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: false
+
+jobs:
+  unblock:
+    # Only `completed` releases: at job level, so a `not_planned` provisions no
+    # runner. The script checks it again (a dispatch can be anything).
+    if: >-
+      github.ref == 'refs/heads/@@forge.default_branch@@' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.issue.state_reason == 'completed')
+    runs-on: @@ci.runs_on@@
+    permissions:
+      # Writes go through the App token; GITHUB_TOKEN only reads the checkout.
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No enable-cache and an exact `version:`.
+      - name: Install uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.12.24"
+
+      - name: App token for labels and comments
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.@@ci.bot_client_id_var@@ }}
+          private-key: ${{ secrets.@@ci.bot_private_key_secret@@ }}
+          permission-issues: write
+
+      # The script needs only the standard library and `.lighthouse/lib`: no `uv sync`,
+      # `--python 3.12` fetches the interpreter itself. The issue number goes through
+      # env, never as `${{ }}` in `run:`.
+      - name: Release dependents
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number || inputs.issue }}
+        run: uv run --no-project --python 3.12 python .lighthouse/scripts/unblock_dependents.py --issue "$ISSUE"
