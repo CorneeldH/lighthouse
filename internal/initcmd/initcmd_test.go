@@ -763,11 +763,11 @@ func TestInitProposesHostTOML(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
-	if !strings.Contains(r.out, "+++ "+host) || !strings.Contains(r.out, "+name = \"box\"") || !strings.Contains(r.out, "+tailscale_ip = \"100.64.0.1\"") {
+	if !strings.Contains(r.out, "+++ "+host) || !strings.Contains(r.out, "+[host]\n+name = \"box\"\n+tailscale_ip = \"100.64.0.1\"\n") {
 		t.Fatalf("out:\n%s", r.out)
 	}
 	b, err := os.ReadFile(host)
-	if err != nil || string(b) != "name = \"box\"\ntailscale_ip = \"100.64.0.1\"\n" {
+	if err != nil || string(b) != "[host]\nname = \"box\"\ntailscale_ip = \"100.64.0.1\"\n" {
 		t.Fatalf("host.toml = %q, %v", b, err)
 	}
 	if strings.Contains(read(t, root, ".lighthouse/manifest.toml"), "host.toml") {
@@ -775,6 +775,33 @@ func TestInitProposesHostTOML(t *testing.T) {
 	}
 	if r := run(t, root, "", all(upgrade, withTailscale("100.64.0.1"))); r.out != "No changes.\n" {
 		t.Fatalf("upgrade: %s", r.out)
+	}
+}
+
+// The config reader reads the host.toml that init writes: Go and Python share no
+// schema, so only a run across the language boundary keeps them in step.
+func TestConfigReadsProposedHostTOML(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	root := newRepo(t)
+	host := hostTOMLFor(t)
+	m := testPacks()
+	for _, f := range []string{"__init__.py", "config.py"} {
+		b, err := fs.ReadFile(pack.Files, "core/lib/"+f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m["core/lib/"+f] = &fstest.MapFile{Data: b}
+	}
+	if r := run(t, root, "", all(yes, withTailscale("100.64.0.1"), func(o *Options) { o.Packs = m })); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	cmd := exec.Command("python3", "-I", filepath.Join(root, ".lighthouse/lib/lighthouse_lib/config.py"), "host.name")
+	cmd.Env = append(os.Environ(), "LIGHTHOUSE_HOST_TOML="+host)
+	out, err := cmd.CombinedOutput()
+	if err != nil || string(out) != "box\n" {
+		t.Fatalf("host.name: %v\n%s", err, out)
 	}
 }
 
@@ -810,13 +837,13 @@ func TestInitRejectsBadTailscaleIP(t *testing.T) {
 func TestInitLeavesExistingHostTOML(t *testing.T) {
 	root := newRepo(t)
 	host := hostTOMLFor(t)
-	if err := os.WriteFile(host, []byte("name = \"mine\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(host, []byte("[host]\nname = \"mine\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if r := run(t, root, "", all(yes, withTailscale("100.64.0.1"))); r.code != 0 {
 		t.Fatal(r.err)
 	}
-	if b, _ := os.ReadFile(host); string(b) != "name = \"mine\"\n" {
+	if b, _ := os.ReadFile(host); string(b) != "[host]\nname = \"mine\"\n" {
 		t.Fatalf("host.toml = %q", b)
 	}
 }
