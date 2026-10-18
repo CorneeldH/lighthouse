@@ -2,5 +2,5 @@
 # missing tool with these names; it does not stop on it.
 git = ["main-commit-guard"]
 jq = ["main-commit-guard"]
-python3 = ["main-commit-guard", "lighthouse_lib.config", "lighthouse_lib.datadir", "lighthouse_lib.headings"]
+python3 = ["main-commit-guard", "lighthouse_lib.config", "lighthouse_lib.datadir", "lighthouse_lib.headings", "lighthouse_lib.deadline", "lighthouse_lib.gate_slot", "lighthouse_lib.md_links", "lighthouse_lib.no_verify"]
 tomllib = ["lighthouse_lib.config", "lighthouse_lib.headings"]

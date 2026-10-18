@@ -1,4 +1,4 @@
-"""`.claude/hooks/lib/deadline.py` (#884): commando's afkappen op een epoch-deadline.
+"""`pack/core/lib/deadline.py`, as installed (#884): commando's afkappen op een epoch-deadline.
 
 De pre-commit test-gate (taak 3) draait de pytest-suite via dit script zodat de gate
 zélf eindigt vóór de PreToolUse-hooktimeout, in plaats van te vertrouwen op het
@@ -14,7 +14,7 @@ import time
 
 import pytest
 
-from tests.unit._hook_testkit import HOOKS, load_hook_lib
+from tests.pack._testkit import INSTALLED_LIB, load_hook_lib
 
 dl = load_hook_lib("deadline")
 
@@ -74,19 +74,20 @@ def test_past_deadline_does_not_start(tmp_path):
 
 def test_cli_usage_error_exits_2():
     r = subprocess.run(
-        [sys.executable, str(HOOKS / "lib" / "deadline.py"), "nope"],
+        [sys.executable, str(INSTALLED_LIB / "deadline.py"), "nope"],
         capture_output=True,
         text=True,
         check=False,
     )
     assert r.returncode == 2 and "usage" in r.stderr.lower()
+    assert "epoch-seconds" in r.stderr
 
 
 def test_cli_runs_command_and_passes_exit_code(tmp_path):
     r = subprocess.run(
         [
             sys.executable,
-            str(HOOKS / "lib" / "deadline.py"),
+            str(INSTALLED_LIB / "deadline.py"),
             str(time.time() + 30),
             "--",
             "sh",
@@ -103,7 +104,7 @@ def test_cli_runs_command_and_passes_exit_code(tmp_path):
 @pytest.mark.parametrize("argv", [[], ["123"], ["123", "--"]])
 def test_cli_usage_error_variants_exit_2(argv):
     r = subprocess.run(
-        [sys.executable, str(HOOKS / "lib" / "deadline.py"), *argv],
+        [sys.executable, str(INSTALLED_LIB / "deadline.py"), *argv],
         capture_output=True,
         text=True,
         check=False,
@@ -123,7 +124,7 @@ def test_signal_to_deadline_kills_the_group(tmp_path, signum):
     proc = subprocess.Popen(
         [
             sys.executable,
-            str(HOOKS / "lib" / "deadline.py"),
+            str(INSTALLED_LIB / "deadline.py"),
             str(time.time() + 60),
             "--",
             "sh",
@@ -150,17 +151,17 @@ def test_signal_to_deadline_kills_the_group(tmp_path, signum):
 
 
 def test_missing_command_returns_127():
-    assert dl.run_until(time.time() + 30, ["paia-bestaat-niet-xyz"]) == 127
+    assert dl.run_until(time.time() + 30, ["lighthouse-does-not-exist-xyz"]) == 127
 
 
 def test_cli_missing_command_exits_127_with_one_line():
     r = subprocess.run(
         [
             sys.executable,
-            str(HOOKS / "lib" / "deadline.py"),
+            str(INSTALLED_LIB / "deadline.py"),
             str(time.time() + 30),
             "--",
-            "paia-bestaat-niet-xyz",
+            "lighthouse-does-not-exist-xyz",
         ],
         capture_output=True,
         text=True,
@@ -169,7 +170,8 @@ def test_cli_missing_command_exits_127_with_one_line():
     assert r.returncode == 127
     assert "Traceback" not in r.stderr
     assert len(r.stderr.strip().splitlines()) == 1
-    assert "paia-bestaat-niet-xyz" in r.stderr
+    assert "lighthouse-does-not-exist-xyz" in r.stderr
+    assert "command not found" in r.stderr
 
 
 def test_timeout_survives_child_vanishing_before_the_kill(monkeypatch):
@@ -228,7 +230,7 @@ def test_default_call_still_returns_a_bare_int():
 
 def test_capture_on_missing_command_returns_not_found_and_empty_bytes():
     """Zoals de docstring belooft: de melding gaat alleen naar stderr, niet in de buffer."""
-    rc, out = dl.run_until(time.time() + 30, ["paia-bestaat-niet-xyz"], capture=True)
+    rc, out = dl.run_until(time.time() + 30, ["lighthouse-does-not-exist-xyz"], capture=True)
     assert rc == dl.NOT_FOUND_EXIT and out == b""
 
 

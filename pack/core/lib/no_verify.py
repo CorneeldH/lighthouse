@@ -16,8 +16,14 @@ CLI: commando op stdin; exit 2 als de vlag er is, anders 0.
 
 import os
 import sys
+from pathlib import Path
 
-from git_invocations import Unparseable, basename, git_target, walk
+# Run as a file on its path: put `.lighthouse/lib` first, so `lighthouse_lib`
+# imports from this installation.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lighthouse_lib.git_invocations import Unparseable, basename, git_target, walk
 
 # Lange opties die een waarde opeisen: zonder "=" is het volgende token de
 # waarde, niet een losse vlag om te scannen (anders zou "-m --no-verify"

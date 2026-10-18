@@ -119,10 +119,10 @@ def find_problems(md_path: Path, root: Path) -> list[tuple[str, str]]:
         if rel.startswith(".."):
             continue
         if not os.path.exists(resolved):
-            problems.append(("dood", target))
+            problems.append(("dead", target))
 
     for target in absolute_links(text):
-        problems.append(("absoluut", target))
+        problems.append(("absolute", target))
 
     return problems
 
@@ -139,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         problems = find_problems(md_path, root)
     except OSError as exc:
-        print(f"md_links: kon {md_path} niet lezen: {exc}", file=sys.stderr)
+        print(f"md_links: could not read {md_path}: {exc}", file=sys.stderr)
         return 1
     for kind, target in problems:
         print(f"{kind}\t{target}")

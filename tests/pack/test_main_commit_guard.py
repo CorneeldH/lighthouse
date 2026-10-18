@@ -290,9 +290,15 @@ def test_commit_guard_blocks_when_the_parser_crashes(tmp_path):
     """I8: een parser die niet met 0 of 3 eindigt mag geen stille pass worden."""
     repo = tmp_path / "repo"
     _init_repo(repo)
+    # Only the parser crashes; the config read before it uses the real python3.
+    real = shutil.which("python3")
     stuk = _tool_bin(
         tmp_path / "kapotte-python",
-        stubs={"python3": "#!/bin/sh\necho 'Traceback: stuk' >&2\nexit 1\n"},
+        stubs={
+            "python3": "#!/bin/sh\ncase \"$1\" in *git_invocations.py) "
+            "echo 'Traceback: stuk' >&2; exit 1;; esac\n"
+            f'exec {real} "$@"\n'
+        },
     )
 
     result = _run(
@@ -1222,3 +1228,51 @@ def test_guard_blocks_when_its_lib_is_missing(tmp_path):
     )
     assert result.returncode == 2
     assert "COULD NOT CHECK" in result.stderr
+
+
+def _trunk_toml(tmp_path: Path) -> dict:
+    toml = tmp_path / "lighthouse.toml"
+    toml.write_text('[project]\nlanguage = "en"\n\n[forge]\ndefault_branch = "trunk"\n')
+    return {"LIGHTHOUSE_TOML": str(toml)}
+
+
+def test_guard_follows_default_branch(tmp_path):
+    env = _trunk_toml(tmp_path)
+    trunk = tmp_path / "trunk"
+    _init_repo(trunk, branch="trunk")
+    on_main = tmp_path / "on-main"
+    _init_repo(on_main, branch="main")
+    feature = tmp_path / "feature"
+    _init_repo(feature, branch="issue-1-x")
+
+    blocked = _run(COMMIT_GUARD, _bash("git commit -m x", trunk), trunk, env)
+    assert blocked.returncode == 2 and "'trunk'" in blocked.stderr
+    pushed = _run(COMMIT_GUARD, _bash("git push origin HEAD:trunk", feature), feature, env)
+    assert pushed.returncode == 2 and "'trunk'" in pushed.stderr
+
+    assert _run(COMMIT_GUARD, _bash("git commit -m x", on_main), on_main, env).returncode == 0
+    assert (
+        _run(COMMIT_GUARD, _bash("git push origin HEAD:main", feature), feature, env).returncode
+        == 0
+    )
+
+
+def test_guard_push_all_looks_for_the_default_branch(tmp_path):
+    env = _trunk_toml(tmp_path)
+    repo = tmp_path / "repo"
+    _init_repo(repo, branch="issue-1-x")
+    _git(repo, "branch", "trunk")
+    result = _run(COMMIT_GUARD, _bash("git push --all origin", repo), repo, env)
+    assert result.returncode == 2
+
+
+def test_guard_with_broken_config_blocks_a_commit_but_not_a_plain_command(tmp_path):
+    toml = tmp_path / "lighthouse.toml"
+    toml.write_text("[forge\n")
+    env = {"LIGHTHOUSE_TOML": str(toml)}
+    repo = tmp_path / "repo"
+    _init_repo(repo, branch="issue-1-x")
+    commit = _run(COMMIT_GUARD, _bash("git commit -m x", repo), repo, env)
+    assert commit.returncode == 2
+    assert "COULD NOT CHECK" in commit.stderr and "lighthouse.toml" in commit.stderr
+    assert _run(COMMIT_GUARD, _bash("ls -la", repo), repo, env).returncode == 0

@@ -46,3 +46,23 @@ new = true
 [[file]]
 path = "pack/core/lib/headings.py"
 new = true
+
+[[file]]
+path = "pack/core/lib/deadline.py"
+source_path = ".claude/hooks/lib/deadline.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/lib/gate_slot.py"
+source_path = ".claude/hooks/lib/gate_slot.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/lib/md_links.py"
+source_path = ".claude/hooks/lib/md_links.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/lib/no_verify.py"
+source_path = ".claude/hooks/lib/no_verify.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

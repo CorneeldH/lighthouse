@@ -1,5 +1,6 @@
 #!/bin/bash
-# PreToolUse hook: block `git commit` and `git push` on `main`.
+# PreToolUse hook: block `git commit` and `git push` on the default branch:
+# `forge.default_branch` from lighthouse.toml, `main` when it is not set.
 # Matcher: Bash. Blocking: exit 2 + stderr.
 #
 # Counterpart: the rule "nothing lands directly on main" in AGENTS.md carries
@@ -35,7 +36,7 @@ if [ -n "$MISSING_TOOLS" ]; then
   {
     echo "Main-commit guard: COULD NOT CHECK — missing tooling:$MISSING_TOOLS"
     echo ""
-    echo "This hook makes sure nothing lands directly on 'main'."
+    echo "This hook makes sure nothing lands directly on the default branch."
     echo "Without that tooling nothing was checked; that is not a green light."
   } >&2
   exit 2
@@ -58,7 +59,7 @@ CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
 
 # Marker the parser uses for a path it could not resolve with certainty
 # (unknown variable, command substitution, glob).
-UNRESOLVED="<onbekend>"
+UNRESOLVED="<unknown>"
 
 # Keep the streams apart: parser stderr must not end up in the findings,
 # which are read line by line as fields.
@@ -70,7 +71,36 @@ trap 'rm -f "$PARSER_ERR"' EXIT
 # not with `-m`: `-m` puts the cwd first on sys.path, and the cwd is the user's
 # repo. No lib means the parser fails, and that blocks below.
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
-FINDINGS=$(printf '%s' "$CMD" | python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/git_invocations.py" "$CWD" 2>"$PARSER_ERR")
+
+# The protected branch comes from the config of the repo these hooks are
+# installed in. Only read when the text can hold a commit or push at all: a
+# broken config must not block `ls`. A config that cannot be read blocks the
+# commit — guarding 'main' while the repo protects another branch is no check.
+DEFAULT_BRANCH="main"
+case "$CMD" in
+  *git*)
+    case "$CMD" in
+      *commit* | *push*)
+        if ! DEFAULT_BRANCH=$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/config.py" forge.default_branch 2>"$PARSER_ERR"); then
+          if ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) && [ -e "$ROOT/.claude/allow-main" ]; then
+            exit 0
+          fi
+          {
+            echo "Main-commit guard: COULD NOT CHECK — the protected branch could not be read."
+            echo ""
+            cat "$PARSER_ERR" 2>/dev/null
+            echo ""
+            echo "Fix lighthouse.toml ([forge] default_branch), or — deliberately and once —"
+            echo "'touch <repo-root>/.claude/allow-main'."
+          } >&2
+          exit 2
+        fi
+        ;;
+    esac
+    ;;
+esac
+
+FINDINGS=$(printf '%s' "$CMD" | python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/git_invocations.py" --default-branch "$DEFAULT_BRANCH" "$CWD" 2>"$PARSER_ERR")
 STATUS=$?
 PARSER_MESSAGE=$(cat "$PARSER_ERR" 2>/dev/null)
 
@@ -173,8 +203,8 @@ while IFS=$'\t' read -r ACTION TARGET TO_MAIN RAW; do
 
   if [ "$TO_MAIN" = "all" ]; then
     # `--all` / `--mirror` pushes every local branch; only relevant if there
-    # actually is a local 'main' here.
-    if git -C "$ROOT" show-ref --verify --quiet refs/heads/main; then
+    # actually is a local default branch here.
+    if git -C "$ROOT" show-ref --verify --quiet "refs/heads/$DEFAULT_BRANCH"; then
       TO_MAIN="yes"
     else
       TO_MAIN="no"
@@ -184,32 +214,32 @@ while IFS=$'\t' read -r ACTION TARGET TO_MAIN RAW; do
   # Destination cannot be resolved (`git push origin $BR`): the same rule as
   # for an unresolvable path. If the repo itself is on main, the message
   # below is clearer — that one takes precedence.
-  if [ "$TO_MAIN" = "unresolved" ] && [ "$BRANCH" != "main" ]; then
+  if [ "$TO_MAIN" = "unresolved" ] && [ "$BRANCH" != "$DEFAULT_BRANCH" ]; then
     block_uncheckable "the destination of this push cannot be resolved." "$ACTION"
   fi
 
-  if [ "$BRANCH" != "main" ] && [ "$TO_MAIN" != "yes" ]; then
+  if [ "$BRANCH" != "$DEFAULT_BRANCH" ] && [ "$TO_MAIN" != "yes" ]; then
     continue
   fi
 
-  if [ "$TO_MAIN" = "yes" ] && [ "$BRANCH" != "main" ]; then
-    REASON="this push explicitly targets 'main' ($ACTION from branch '$BRANCH')"
+  if [ "$TO_MAIN" = "yes" ] && [ "$BRANCH" != "$DEFAULT_BRANCH" ]; then
+    REASON="this push explicitly targets '$DEFAULT_BRANCH' ($ACTION from branch '$BRANCH')"
   else
-    REASON="'$ROOT' is on branch 'main' ($ACTION)"
+    REASON="'$ROOT' is on branch '$DEFAULT_BRANCH' ($ACTION)"
   fi
 
   {
     echo "Main-commit guard: blocked — $REASON."
     echo ""
     echo "This repo has no branch protection on GitHub (free private repo),"
-    echo "so the line is drawn here. Nothing lands directly on main."
+    echo "so the line is drawn here. Nothing lands directly on '$DEFAULT_BRANCH'."
     echo ""
     echo "What you can do:"
     echo "  1. Work in a worktree on its own branch:"
     echo "     git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>"
     echo "  2. Is the work already in the main checkout? Move it:"
     echo "     git -C '$ROOT' stash push -u -m move-<tag>"
-    echo "  3. If it really has to go on main, deliberately and once:"
+    echo "  3. If it really has to go on '$DEFAULT_BRANCH', deliberately and once:"
     echo "     touch '$ROOT/.claude/allow-main'   # and remove it afterwards"
   } >&2
   exit 2

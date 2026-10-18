@@ -1,4 +1,4 @@
-"""`.claude/hooks/lib/md_links.py` (#886): gedeelde linkextractie voor markdown.
+"""`pack/core/lib/md_links.py`, as installed (#886): gedeelde linkextractie voor markdown.
 
 Eén module voor de norm "links in bestanden zijn relatief en wijzen naar een
 bestaand doel; absolute links zijn een probleem". Gebruikt door de herschreven
@@ -13,7 +13,7 @@ import sys
 
 import pytest
 
-from tests.unit._hook_testkit import HOOKS, load_hook_lib
+from tests.pack._testkit import INSTALLED_LIB, load_hook_lib
 
 ml = load_hook_lib("md_links")
 FENCE = "`" * 3  # letterlijk drie backticks in dit plan breekt de oude linkhook
@@ -64,7 +64,7 @@ def test_find_problems_angle_link_with_spaces(tmp_path):
     (tmp_path / "a b.md").write_text("x")
     doc = tmp_path / "doc.md"
     doc.write_text("[ok](<a b.md>) [weg](<c d.md>) [t](weg.md 'titel')\n")
-    assert ml.find_problems(doc, tmp_path) == [("dood", "c d.md"), ("dood", "weg.md")]
+    assert ml.find_problems(doc, tmp_path) == [("dead", "c d.md"), ("dead", "weg.md")]
 
 
 def test_absolute_links_outside_code_only():
@@ -78,8 +78,8 @@ def test_find_problems(tmp_path):
     md = tmp_path / "docs" / "n.md"
     md.write_text("[a](er.md) [b](weg.md) [c](/home/z.md) [d](../../buiten.md)\n")
     assert ml.find_problems(md, tmp_path) == [
-        ("dood", "weg.md"),
-        ("absoluut", "/home/z.md"),
+        ("dead", "weg.md"),
+        ("absolute", "/home/z.md"),
     ]
 
 
@@ -104,13 +104,13 @@ def test_cli_prints_tab_lines_and_fails_on_unreadable(tmp_path):
     md = tmp_path / "docs" / "n.md"
     md.write_text("[b](weg.md)\n")
     result = subprocess.run(
-        [sys.executable, str(HOOKS / "lib" / "md_links.py"), str(md), str(tmp_path)],
+        [sys.executable, str(INSTALLED_LIB / "md_links.py"), str(md), str(tmp_path)],
         capture_output=True,
         text=True,
         check=False,
     )
     assert result.returncode == 0
-    assert "dood\tweg.md" in result.stdout
+    assert "dead\tweg.md" in result.stdout
 
     if os.geteuid() == 0:
         pytest.skip("root leest ook chmod 000 — geen zinvolle toets")
@@ -120,7 +120,7 @@ def test_cli_prints_tab_lines_and_fails_on_unreadable(tmp_path):
         bad = subprocess.run(
             [
                 sys.executable,
-                str(HOOKS / "lib" / "md_links.py"),
+                str(INSTALLED_LIB / "md_links.py"),
                 str(md),
                 str(tmp_path),
             ],
@@ -129,6 +129,6 @@ def test_cli_prints_tab_lines_and_fails_on_unreadable(tmp_path):
             check=False,
         )
         assert bad.returncode == 1
-        assert bad.stderr.strip() != ""
+        assert "could not read" in bad.stderr
     finally:
         md.chmod(0o644)

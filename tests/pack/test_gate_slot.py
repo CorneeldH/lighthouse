@@ -1,4 +1,4 @@
-"""Tests voor `.claude/hooks/lib/gate_slot.py`, de slot-semafoor van de test-gate (#1184).
+"""Tests voor `pack/core/lib/gate_slot.py`, as installed, de slot-semafoor van de test-gate (#1184).
 
 Een tweede `os.open` op hetzelfde pad is een eigen open file description en botst dus
 met een `flock` op de eerste, ook binnen één proces. Zo houdt de test een slot "bezet"
@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.unit._hook_testkit import HOOKS, load_hook_lib
+from tests.pack._testkit import INSTALLED_LIB, load_hook_lib
 
 gate_slot = load_hook_lib("gate_slot")
-GATE_SLOT = HOOKS / "lib" / "gate_slot.py"
+GATE_SLOT = INSTALLED_LIB / "gate_slot.py"
 
 
 def _open(path: Path) -> int:

@@ -141,9 +141,17 @@ _INSTALL_DIRS = {
 }
 
 
-def install_core(root: Path) -> Path:
-    """Copy `pack/core` into `root` the way `lighthouse init` lays it out, and
-    return the path of the installed main-commit-guard."""
+# The smallest `lighthouse.toml` init leaves behind: `[project]` and `[forge]`.
+MINIMAL_TOML = '[project]\nlanguage = "en"\n\n[forge]\nkind = "github"\nrepo = "Acme/widgets"\n'
+
+
+def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
+    """Copy `pack/core` into `root` the way `lighthouse init` lays it out, with a
+    `lighthouse.toml` unless `toml` is None or one is there, and return the path of
+    the installed main-commit-guard."""
+    if toml is not None and not (root / "lighthouse.toml").exists():
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
     for name, target in _INSTALL_DIRS.items():
         source_dir = CORE / name
         if not source_dir.is_dir():
@@ -168,6 +176,7 @@ def install_core(root: Path) -> Path:
 INSTALL_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-core-"))
 atexit.register(shutil.rmtree, INSTALL_ROOT, True)
 GUARD = install_core(INSTALL_ROOT)
+INSTALLED_LIB = INSTALL_ROOT / _INSTALL_DIRS["lib"]
 
 
 # `lighthouse_lib` as an importable package for in-process tests: a symlink to

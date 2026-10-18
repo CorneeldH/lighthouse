@@ -25,7 +25,7 @@ NOT_FOUND_EXIT = 127
 # sessie en krijgt ze dus niet vanzelf: zonder doorgeven liep de suite als wees door.
 FORWARDED = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 
-USAGE = "usage: deadline.py <epoch-seconden> -- <cmd> [args...]"
+USAGE = "usage: deadline.py <epoch-seconds> -- <cmd> [args...]"
 
 
 class _Stopped(Exception):
@@ -120,7 +120,7 @@ def _start(
             argv, start_new_session=True, cwd=cwd, stdin=stdin, **kwargs
         )
     except FileNotFoundError:
-        sys.stderr.write(f"deadline.py: commando niet gevonden: {argv[0]}\n")
+        sys.stderr.write(f"deadline.py: command not found: {argv[0]}\n")
         return None
 
 
