@@ -101,3 +101,8 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/hooks/bash-write-gates.sh"
 source_path = ".claude/hooks/bash-write-gates.sh"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/hooks/pre-commit-tests.sh"
+source_path = ".claude/hooks/pre-commit-tests.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

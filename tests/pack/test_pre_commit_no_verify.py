@@ -1,25 +1,17 @@
-"""De drie kwaliteitshooks: blokkeren ze wat ze moeten blokkeren, en laten ze de rest door?
+"""De --no-verify-weigering van pack/core `pre-commit-tests.sh`, as installed.
 
-De hooks zijn bash en lezen hun input als JSON op stdin. Deze tests draaien ze
-als subprocess met een echte tijdelijke file, zodat het contract (exit code +
-stderr) getest wordt en niet een herimplementatie ervan.
+Uit paia's `test_quality_hooks.py`: de hook draait als subprocess met de JSON
+op stdin, zodat het contract (exit code + stderr) getest wordt en niet een
+herimplementatie ervan.
 """
 
 import json
-import os
-import re
-import shutil
 import subprocess
-import sys
-import tomllib
 from pathlib import Path
 
 import pytest
 
-HOOKS = Path(__file__).resolve().parents[2] / ".claude" / "hooks"
-RUFF_HOOK = HOOKS / "ruff-format.sh"
-TY_HOOK = HOOKS / "ty-check.sh"
-PYPROJECT = Path(__file__).resolve().parents[2] / "pyproject.toml"
+from tests.pack._testkit import INSTALLED_HOOKS
 
 
 def _run(hook: Path, payload: dict, cwd: Path) -> subprocess.CompletedProcess:
@@ -33,7 +25,7 @@ def _run(hook: Path, payload: dict, cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
-PRECOMMIT_HOOK = HOOKS / "pre-commit-tests.sh"
+PRECOMMIT_HOOK = INSTALLED_HOOKS / "pre-commit-tests.sh"
 
 
 def test_precommit_hook_blocks_no_verify(tmp_path):
@@ -83,7 +75,7 @@ def test_precommit_hook_ignores_no_verify_in_commit_message_text(tmp_path):
         tmp_path,
     )
     assert (
-        result.returncode != 2 or "--no-verify is niet toegestaan" not in result.stderr
+        result.returncode != 2 or "--no-verify is not allowed" not in result.stderr
     )
 
 
@@ -127,7 +119,7 @@ def test_precommit_hook_allows_am_bundle(tmp_path):
         tmp_path,
     )
     assert (
-        result.returncode != 2 or "--no-verify is niet toegestaan" not in result.stderr
+        result.returncode != 2 or "--no-verify is not allowed" not in result.stderr
     )
 
 
@@ -144,7 +136,7 @@ def test_precommit_hook_allows_apostrophe_idiom_in_message(tmp_path):
         tmp_path,
     )
     assert (
-        result.returncode != 2 or "--no-verify is niet toegestaan" not in result.stderr
+        result.returncode != 2 or "--no-verify is not allowed" not in result.stderr
     )
 
 
@@ -160,7 +152,7 @@ def test_precommit_hook_allows_escaped_quotes_in_message(tmp_path):
         tmp_path,
     )
     assert (
-        result.returncode != 2 or "--no-verify is niet toegestaan" not in result.stderr
+        result.returncode != 2 or "--no-verify is not allowed" not in result.stderr
     )
 
 
@@ -172,7 +164,7 @@ def test_precommit_hook_allows_no_verify_as_message_value(tmp_path):
         tmp_path,
     )
     assert (
-        result.returncode != 2 or "--no-verify is niet toegestaan" not in result.stderr
+        result.returncode != 2 or "--no-verify is not allowed" not in result.stderr
     )
 
 
@@ -188,7 +180,7 @@ def test_precommit_hook_allows_untracked_files_no_short_flag(tmp_path):
         tmp_path,
     )
     assert (
-        result.returncode != 2 or "--no-verify is niet toegestaan" not in result.stderr
+        result.returncode != 2 or "--no-verify is not allowed" not in result.stderr
     )
 
 
@@ -200,7 +192,7 @@ def test_precommit_hook_allows_gpg_sign_short_flag(tmp_path):
         tmp_path,
     )
     assert (
-        result.returncode != 2 or "--no-verify is niet toegestaan" not in result.stderr
+        result.returncode != 2 or "--no-verify is not allowed" not in result.stderr
     )
 
 
@@ -212,7 +204,7 @@ def test_precommit_hook_allows_no_verify_after_bare_separator(tmp_path):
         tmp_path,
     )
     assert (
-        result.returncode != 2 or "--no-verify is niet toegestaan" not in result.stderr
+        result.returncode != 2 or "--no-verify is not allowed" not in result.stderr
     )
 
 
@@ -232,7 +224,7 @@ def test_precommit_hook_ignores_short_n_of_other_commands(tmp_path, command):
         tmp_path,
     )
     assert (
-        result.returncode != 2 or "--no-verify is niet toegestaan" not in result.stderr
+        result.returncode != 2 or "--no-verify is not allowed" not in result.stderr
     )
 
 
@@ -253,5 +245,4 @@ def test_precommit_hook_still_blocks_no_verify_in_compound_command(tmp_path, com
         tmp_path,
     )
     assert result.returncode == 2, result.stdout
-    assert "--no-verify is niet toegestaan" in result.stderr
-
+    assert "--no-verify is not allowed" in result.stderr

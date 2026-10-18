@@ -1,10 +1,10 @@
-"""End-to-end tests voor de test-gate `.claude/hooks/pre-commit-tests.sh` (#884).
+"""End-to-end tests voor pack/core `pre-commit-tests.sh`, as installed (#884).
 
 De hook draait als subprocess, met echte git-repo's in `tmp_path` en een
-nep-`uv` vooraan op `PATH`. Veiligheid: elke test zet `CLAUDE_PROJECT_DIR` op
-een tijdelijke repo en zet de stubmap met de nep-`uv` als eerste op `PATH`.
-Een gate-test die zonder nep-`uv` de echte repo bereikt, draait de hele suite
-binnen de suite.
+nep-`uv` vooraan op `PATH`. Het testcommando komt uit `[test_gate] command`
+(via `LIGHTHOUSE_TOML`), de slice uit `[host] gate_slice` (via
+`LIGHTHOUSE_HOST_TOML`). Veiligheid: elke test zet `CLAUDE_PROJECT_DIR` op een
+tijdelijke repo en zet de stubmap met de nep-`uv` als eerste op `PATH`.
 """
 
 import fcntl
@@ -15,13 +15,14 @@ import shutil
 import signal
 import subprocess
 import time
-import tomllib
 from pathlib import Path
 
 import pytest
 
-from tests.unit._hook_testkit import (
-    HOOKS,
+from tests.pack._testkit import (
+    CORE,
+    INSTALLED_HOOKS,
+    MINIMAL_TOML,
     bash_payload,
     git,
     init_repo,
@@ -29,10 +30,20 @@ from tests.unit._hook_testkit import (
     tool_bin,
 )
 
-HOOK = HOOKS / "pre-commit-tests.sh"
-REPO = HOOKS.parents[1]
-SETTINGS = HOOKS.parent / "settings.json"
+HOOK = INSTALLED_HOOKS / "pre-commit-tests.sh"
+HOOKS_JSON = CORE / "hooks" / "hooks.json"
 REAL_GIT = shutil.which("git")
+REAL_PYTHON3 = shutil.which("python3")
+
+# Het testcommando van een project zoals paia het zou zetten; de nep-`uv`
+# noteert zijn argumenten. `slot_wait_seconds = 1`: geen test wacht 180 s.
+TEST_GATE = (
+    "[test_gate]\n"
+    "command = 'uv run pytest -q --basetemp=\"$LIGHTHOUSE_GATE_TMP\"'\n"
+    "slot_wait_seconds = 1\n"
+)
+HOST = '[host]\nname = "h"\ntailscale_ip = "100.64.0.1"\ngate_slice = "x.slice"\n'
+HOST_WITHOUT_SLICE = '[host]\nname = "h"\ntailscale_ip = "100.64.0.1"\n'
 
 # Nep-`uv`: noteert waar hij draaide, geeft een pytest-achtige slotregel en
 # de exitcode uit UV_EXIT. Met UV_SLOW_SECOND slaapt de tweede aanroep eerst,
@@ -96,6 +107,14 @@ class Gate:
         self.mark = tmp_path / "mark"
         self.slot_dir = tmp_path / "slots"
         self.cgroup = tmp_path / "cgroup"
+        self.toml = tmp_path / "lighthouse.toml"
+        self.host = tmp_path / "host.toml"
+        self.configure(TEST_GATE)
+        self.host.write_text(HOST, encoding="utf-8")
+
+    def configure(self, test_gate: str) -> None:
+        """`lighthouse.toml`: de minimale config plus dit `[test_gate]`-blok."""
+        self.toml.write_text(MINIMAL_TOML + "\n" + test_gate, encoding="utf-8")
 
     def add_stub(self, name: str, script: str) -> None:
         tool_bin(self.stub, (), stubs={name: script})
@@ -107,11 +126,12 @@ class Gate:
             "PATH": f"{self.stub}{os.pathsep}{tail}",
             "CLAUDE_PROJECT_DIR": str(self.project),
             "UV_MARK": str(self.mark),
+            "LIGHTHOUSE_TOML": str(self.toml),
+            "LIGHTHOUSE_HOST_TOML": str(self.host),
             # Elke gate-test draait zelf binnen een echte gate die een echt
             # slot houdt: zonder eigen lockmap blokkeert de suite zichzelf.
-            "PAIA_GATE_SLOT_DIR": str(self.slot_dir),
-            "PAIA_GATE_CGROUP_ROOT": str(self.cgroup),
-            "PAIA_GATE_SLOT_WAIT": "1",
+            "LIGHTHOUSE_GATE_SLOT_DIR": str(self.slot_dir),
+            "LIGHTHOUSE_GATE_CGROUP_ROOT": str(self.cgroup),
             **env,
         }
         return run_hook(HOOK, bash_payload(cmd, cwd), cwd, full_env)
@@ -162,17 +182,90 @@ def test_gate_tests_the_dash_c_target_not_cwd(gate: Gate) -> None:
     assert gate.marks() == [str(gate.project.resolve())]
 
 
-def test_gate_runs_four_workers_with_its_own_basetemp(gate: Gate) -> None:
+def test_gate_runs_the_configured_command(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 0, result.stderr
     lines = gate.args()
     assert len(lines) == 1
-    line = lines[0]
-    assert "-n auto --maxprocesses 4" in line
-    assert "--maxprocesses 8" not in line
-    assert "--basetemp=" in line
-    assert "-m not hardware_audio and not slow" in line
+    # `bash -c` vult $LIGHTHOUSE_GATE_TMP in; de rest staat er letterlijk.
+    assert lines[0].startswith("run pytest -q --basetemp=/")
+    assert "$LIGHTHOUSE_GATE_TMP" not in lines[0]
+
+
+def test_command_sees_gate_tmp(gate: Gate) -> None:
+    gate.configure("[test_gate]\ncommand = 'test -d \"$LIGHTHOUSE_GATE_TMP\"'\n")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_command_runs_in_the_root(gate: Gate) -> None:
+    gate.configure("[test_gate]\ncommand = 'pwd > \"$UV_MARK\"'\n")
+
+    result = gate.run(f"git -C {gate.project} commit -m x", gate.tmp)
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+
+
+def test_no_command_is_loud_and_allows(gate: Gate) -> None:
+    gate.configure("")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    out = json.loads(result.stdout)
+    message = "pre-commit-tests: no test command configured, nothing was tested"
+    assert message in out["systemMessage"]
+    assert message in out["hookSpecificOutput"]["additionalContext"]
+    assert not gate.mark.exists()
+
+
+def test_broken_config_blocks(gate: Gate) -> None:
+    gate.toml.write_text("[test_gate\n", encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
+    assert str(gate.toml) in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_broken_host_toml_blocks(gate: Gate) -> None:
+    gate.host.write_text("[host\n", encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
+    assert str(gate.host) in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_deadline_from_config(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "deadline_seconds = 30\n")
+
+    result = gate.run("git commit -m x", gate.project, UV_EXIT="124")
+
+    assert result.returncode == 2, result.stdout
+    assert "deadline of 30 s" in result.stderr
+
+
+@pytest.mark.parametrize("seconds", [0, 281])
+def test_deadline_outside_the_hook_timeout_blocks(gate: Gate, seconds: int) -> None:
+    # De hook-timeout is 300 s, de grace van deadline.py 10 s: een deadline
+    # boven 280 s laat de timeout eerst verlopen, en een timeout is fail-open.
+    gate.configure(TEST_GATE + f"deadline_seconds = {seconds}\n")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "COULD NOT CHECK" in result.stderr
+    assert "test_gate.deadline_seconds" in result.stderr
+    assert not gate.mark.exists()
 
 
 def test_gate_removes_its_basetemp(gate: Gate) -> None:
@@ -186,36 +279,38 @@ def test_gate_removes_its_basetemp(gate: Gate) -> None:
     assert not Path(recorded[0]).exists()
 
 
-def test_gate_blocks_when_xdist_is_missing(gate: Gate) -> None:
-    gate.add_stub(
-        "uv",
-        '#!/bin/sh\necho "pytest: error: unrecognized arguments: -n" >&2\nexit 4\n',
-    )
+def test_unchecked_exit_code(gate: Gate) -> None:
+    gate.configure('[test_gate]\ncommand = "exit 5"\nunchecked_exit_codes = [5]\n')
 
     result = gate.run("git commit -m x", gate.project)
 
-    # Een boom zonder xdist is niet getest, niet rood: de melding wijst naar
-    # de rebase, niet naar kapotte tests. De ruwe pytest-uitvoer blijft staan.
     assert result.returncode == 2, result.stdout
-    assert "Test-gate: KON NIET CONTROLEREN" in result.stderr
+    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
+    assert "exit code 5" in result.stderr
     assert "tests failed" not in result.stderr
-    assert "pytest-xdist ontbreekt" in result.stderr
-    assert "origin/main" in result.stderr
-    assert "unrecognized arguments: -n" in result.stderr
 
 
 @pytest.mark.parametrize("exit_code", ["3", "5"])
-def test_gate_reports_untested_on_pytest_error_exit(gate: Gate, exit_code: str) -> None:
-    # pytest 3 (interne fout), 4 (gebruiksfout), 5 (niets verzameld): er is
-    # niets getest. Dat blokkeert, maar heet geen falende test.
+def test_unchecked_exit_codes_keep_the_output(gate: Gate, exit_code: str) -> None:
+    # Bij paia: pytest 3 (interne fout), 4 (gebruiksfout), 5 (niets
+    # verzameld). Dat blokkeert, maar heet geen falende test.
+    gate.configure(TEST_GATE + "unchecked_exit_codes = [3, 4, 5]\n")
+
     result = gate.run("git commit -m x", gate.project, UV_EXIT=exit_code)
 
     assert result.returncode == 2, result.stdout
-    assert "Test-gate: KON NIET CONTROLEREN" in result.stderr
-    assert f"exitcode {exit_code}" in result.stderr
+    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
+    assert f"exit code {exit_code}" in result.stderr
     assert "tests failed" not in result.stderr
-    assert "pytest-xdist" not in result.stderr
     assert "3 passed" in result.stderr
+
+
+def test_exit_code_not_listed_is_a_failure(gate: Gate) -> None:
+    result = gate.run("git commit -m x", gate.project, UV_EXIT="5")
+
+    assert result.returncode == 2, result.stdout
+    assert "tests failed" in result.stderr
+    assert "COULD NOT CHECK" not in result.stderr
 
 
 def test_gate_blocks_on_failing_tests(gate: Gate) -> None:
@@ -230,8 +325,8 @@ def test_gate_blocks_on_deadline(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project, UV_EXIT="124")
 
     assert result.returncode == 2, result.stdout
-    assert "deadline van 270 s" in result.stderr
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "deadline of 270 s" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
 
 
 def test_gate_skips_foreign_repo_visibly(gate: Gate) -> None:
@@ -242,8 +337,8 @@ def test_gate_skips_foreign_repo_visibly(gate: Gate) -> None:
 
     assert result.returncode == 0, result.stderr
     assert not gate.mark.exists()
-    assert "overgeslagen — ander project" in result.stdout
-    assert "overgeslagen — ander project" in _context(result.stdout)
+    assert "skipped — other project" in result.stdout
+    assert "skipped — other project" in _context(result.stdout)
 
 
 def test_gate_silent_outside_any_repo(gate: Gate) -> None:
@@ -255,6 +350,26 @@ def test_gate_silent_outside_any_repo(gate: Gate) -> None:
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
     assert not gate.mark.exists()
+
+
+def test_gate_silent_outside_any_repo_under_other_locale(gate: Gate) -> None:
+    plain = gate.tmp / "plain"
+    plain.mkdir()
+    env = {"LANG": "de_DE.UTF-8", "LC_ALL": "", "LANGUAGE": ""}
+    probe = subprocess.run(
+        ["git", "-C", str(plain), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, **env),
+        check=False,
+    )
+    if "not a git repository" in probe.stderr:
+        pytest.skip("git speaks no German here")
+
+    result = gate.run(f"cd {plain} && git commit -m x", gate.tmp, **env)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
 
 
 def test_gate_silent_without_commit(gate: Gate) -> None:
@@ -269,8 +384,8 @@ def test_gate_loud_on_unresolved_path(gate: Gate) -> None:
     result = gate.run('git -C "$ONBEKEND" commit -m x', gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
-    assert "niet te herleiden" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
+    assert "cannot be resolved" in result.stderr
     assert not gate.mark.exists()
 
 
@@ -278,8 +393,8 @@ def test_gate_loud_on_new_dir(gate: Gate) -> None:
     result = gate.run(f"cd {gate.project}/nieuw && git commit -m x", gate.tmp)
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
-    assert "bestaat nog niet" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
+    assert "does not exist yet" in result.stderr
     assert not gate.mark.exists()
 
 
@@ -297,7 +412,7 @@ def test_gate_loud_when_git_breaks(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
     assert "dubious ownership" in result.stderr
     assert not gate.mark.exists()
 
@@ -323,7 +438,7 @@ def test_gate_loud_when_common_dir_fails_for_target(gate: Gate) -> None:
     result = gate.run("git commit -m x", second)
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
     assert "kapot" in result.stderr
     assert not gate.mark.exists()
 
@@ -336,7 +451,7 @@ def test_gate_loud_when_common_dir_fails_for_reference(gate: Gate) -> None:
     result = gate.run("git commit -m x", second)
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
     assert "kapot" in result.stderr
     assert not gate.mark.exists()
 
@@ -348,7 +463,7 @@ def test_gate_loud_without_cat(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project, path=str(bin_dir))
 
     assert result.returncode == 2, result.stdout
-    assert "ontbrekende tooling" in result.stderr
+    assert "missing tooling" in result.stderr
     assert "cat" in result.stderr
     assert not gate.mark.exists()
 
@@ -366,7 +481,7 @@ def test_gate_loud_without_uv(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project, path=str(bin_dir))
 
     assert result.returncode == 2, result.stdout
-    assert "Test-gate: KON NIET CONTROLEREN" in result.stderr
+    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
     assert "uv" in result.stderr
     assert "tests failed" not in result.stderr
     assert not gate.mark.exists()
@@ -376,7 +491,7 @@ def test_gate_blocks_unparseable_commit(gate: Gate) -> None:
     result = gate.run("git commit -m 'x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
     assert not gate.mark.exists()
 
 
@@ -417,7 +532,7 @@ def test_gate_uses_one_deadline_for_two_roots(gate: Gate) -> None:
     )
 
     assert result.returncode == 2, result.stdout
-    assert "deadline van 270 s" in result.stderr
+    assert "deadline of 270 s" in result.stderr
     assert date_log.read_text(encoding="utf-8").splitlines() == ["call"]
     assert gate.marks() == [str(gate.project.resolve()), str(second.resolve())]
 
@@ -431,18 +546,20 @@ def test_gate_handles_space_in_repo_path(tmp_path: Path) -> None:
     assert spaced.marks() == [str(spaced.project.resolve())]
 
 
-def test_settings_timeout_exceeds_deadline() -> None:
-    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
+def test_hook_timeout_exceeds_deadline() -> None:
+    registered = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))
     entries = [
         hook
-        for block in settings["hooks"]["PreToolUse"]
+        for block in registered["hooks"]["PreToolUse"]
+        if block.get("matcher") == "Bash"
         for hook in block["hooks"]
         if "pre-commit-tests.sh" in hook["command"]
     ]
 
     assert len(entries) == 1
     assert entries[0]["timeout"] == 300
-    assert entries[0]["timeout"] > 270 + 10
+    assert entries[0]["timeout"] > 280 + 10
+    assert os.access(HOOK, os.X_OK)
 
 
 def hold_slots(gate: Gate, *names: str) -> list[int]:
@@ -482,7 +599,44 @@ def test_gate_waits_then_blocks_when_both_slots_are_held(gate: Gate) -> None:
         release(fds)
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN — beide gate-slots bezet na 1 s" in result.stderr
+    assert "COULD NOT CHECK — all gate slots busy after 1 s (slots: 2)" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_slots_from_config(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "slots = 1\n")
+    fds = hold_slots(gate, "slot-1")
+    try:
+        result = gate.run("git commit -m x", gate.project)
+    finally:
+        release(fds)
+
+    assert result.returncode == 2, result.stdout
+    assert "all gate slots busy after 1 s (slots: 1)" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_three_slots_take_the_third(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "slots = 3\n")
+    fds = hold_slots(gate, "slot-1", "slot-2")
+    try:
+        result = gate.run("git commit -m x", gate.project)
+    finally:
+        release(fds)
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+
+
+@pytest.mark.parametrize("slots", [0, 8])
+def test_slots_out_of_range_block(gate: Gate, slots: int) -> None:
+    gate.configure(TEST_GATE + f"slots = {slots}\n")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "COULD NOT CHECK" in result.stderr
+    assert "test_gate.slots" in result.stderr
     assert not gate.mark.exists()
 
 
@@ -501,11 +655,11 @@ def test_gate_blocks_when_the_lock_dir_cannot_be_made(gate: Gate) -> None:
     blocker = gate.tmp / "geen-map"
     blocker.write_text("ik ben een bestand\n", encoding="utf-8")
 
-    result = gate.run("git commit -m x", gate.project, PAIA_GATE_SLOT_DIR=str(blocker))
+    result = gate.run("git commit -m x", gate.project, LIGHTHOUSE_GATE_SLOT_DIR=str(blocker))
 
     assert result.returncode == 2, result.stdout
-    assert "KON NIET CONTROLEREN — gate-slot niet te nemen" in result.stderr
-    assert f"lockmap {blocker} niet aan te maken" in result.stderr
+    assert "COULD NOT CHECK — cannot take a gate slot" in result.stderr
+    assert f"lock dir {blocker} cannot be created" in result.stderr
     assert not gate.mark.exists()
 
 
@@ -515,17 +669,25 @@ def test_gate_blocks_when_a_lock_file_cannot_be_opened(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "gate-slot niet te nemen" in result.stderr
-    assert f"lockbestanden in {gate.slot_dir} niet te openen" in result.stderr
+    assert "cannot take a gate slot" in result.stderr
+    assert f"lock files in {gate.slot_dir} cannot be opened" in result.stderr
     assert not gate.mark.exists()
 
 
 def test_gate_blocks_when_gate_slot_breaks(gate: Gate) -> None:
-    # argparse in gate_slot.py weigert de wachttijd: exit 2, geen slotnummer.
-    result = gate.run("git commit -m x", gate.project, PAIA_GATE_SLOT_WAIT="geen-getal")
+    # Een python3 die alleen voor gate_slot.py met exit 2 stopt, zonder
+    # slotnummer; config, parser en no_verify draaien gewoon.
+    gate.add_stub(
+        "python3",
+        "#!/bin/sh\n"
+        'case "$1" in *gate_slot.py) echo kapot >&2; exit 2 ;; esac\n'
+        f'exec "{REAL_PYTHON3}" "$@"\n',
+    )
+
+    result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "gate-slot niet te nemen: gate_slot.py gaf exit 2" in result.stderr
+    assert "cannot take a gate slot: gate_slot.py gave exit 2" in result.stderr
     assert not gate.mark.exists()
 
 
@@ -543,7 +705,7 @@ def test_foreign_commit_takes_no_slot(gate: Gate) -> None:
 
     assert result.returncode == 0, result.stderr
     assert elapsed < 5
-    assert "overgeslagen — ander project" in result.stdout
+    assert "skipped — other project" in result.stdout
     assert not gate.mark.exists()
 
 
@@ -559,9 +721,10 @@ def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
         PATH=f"{gate.stub}{os.pathsep}{os.environ['PATH']}",
         CLAUDE_PROJECT_DIR=str(gate.project),
         UV_MARK=str(gate.mark),
-        PAIA_GATE_SLOT_DIR=str(gate.slot_dir),
-        PAIA_GATE_CGROUP_ROOT=str(gate.cgroup),
-        PAIA_GATE_SLOT_WAIT="1",
+        LIGHTHOUSE_TOML=str(gate.toml),
+        LIGHTHOUSE_HOST_TOML=str(gate.host),
+        LIGHTHOUSE_GATE_SLOT_DIR=str(gate.slot_dir),
+        LIGHTHOUSE_GATE_CGROUP_ROOT=str(gate.cgroup),
         TMPDIR=str(tmpdir),
     )
     payload = json.dumps(bash_payload("git commit -m x", gate.project))
@@ -617,39 +780,31 @@ def test_hook_has_no_bash4_fd_variables() -> None:
     assert hits == []
 
 
-def test_pytest_keeps_only_failed_tmp_paths() -> None:
-    config = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
-
-    assert (
-        config["tool"]["pytest"]["ini_options"]["tmp_path_retention_policy"] == "failed"
-    )
-
-
 # --- De rem (#1184, Taak 3) ---------------------------------------------------
 
 # systemd meldt de eigenschappen niet in de volgorde van de `-p`-argumenten;
 # de stub draait ze bewust om.
 REM_ON_SYSTEMCTL = (
     "#!/bin/sh\n"
-    'printf "MemoryMax=9663676416\\nFragmentPath=/x/gates.slice\\n"\n'
+    'printf "MemoryMax=9663676416\\nFragmentPath=/x/x.slice\\n"\n'
     "exit 0\n"
 )
-OOM_NOTICE = "gate afgeremd (oom-kill in gates.slice tijdens deze run)"
-PRESSURE_NOTICE = "gates.slice stond onder geheugendruk"
-SIGNAL_NOTICE = "gate gedood door signaal 9 (systemd-oomd in gates.slice?)"
+OOM_NOTICE = "gate throttled (oom-kill in x.slice during this run)"
+PRESSURE_NOTICE = "x.slice was under memory pressure"
+SIGNAL_NOTICE = "gate killed by signal 9 (systemd-oomd in x.slice?)"
 
 
 def rem_on(gate: Gate) -> None:
-    """Een `systemctl` waarvoor `gates.slice` geïnstalleerd is en een plafond heeft."""
+    """Een `systemctl` waarvoor `x.slice` geïnstalleerd is en een plafond heeft."""
     gate.add_stub("systemctl", REM_ON_SYSTEMCTL)
 
 
 def events_file(gate: Gate) -> Path:
-    return gate.cgroup / "gates.slice" / "memory.events"
+    return gate.cgroup / "x.slice" / "memory.events"
 
 
 def events(gate: Gate, text: str) -> None:
-    """De tellers van `gates.slice` vóór de run."""
+    """De tellers van `x.slice` vóór de run."""
     path = events_file(gate)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text + "\n", encoding="utf-8")
@@ -680,20 +835,49 @@ def test_gate_wraps_pytest_in_the_slice_and_raises_its_score(gate: Gate) -> None
     wrap = Path(f"{gate.mark}.wrap").read_text(encoding="utf-8").splitlines()
     choom = Path(f"{gate.mark}.choom").read_text(encoding="utf-8").splitlines()
     assert len(wrap) == 1
-    assert "--user --scope --slice=gates.slice --quiet --" in wrap[0]
+    assert "--user --scope --slice=x.slice --quiet --" in wrap[0]
     assert len(choom) == 1
     assert choom[0].startswith("-n 800 --")
-    assert "--maxprocesses 4" in gate.args()[0]
-    assert "rem niet beschikbaar" not in result.stdout
+    assert gate.args()[0].startswith("run pytest")
+    assert "memory brake" not in result.stdout
+
+
+@pytest.mark.parametrize("host", ["absent", "without_key"])
+def test_without_gate_slice_no_wrap(gate: Gate, host: str) -> None:
+    rem_on(gate)
+    if host == "absent":
+        gate.host.unlink()
+    else:
+        gate.host.write_text(HOST_WITHOUT_SLICE, encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+    assert (
+        "pre-commit-tests: no gate_slice in host.toml, tests run without memory brake"
+        in _context(result.stdout)
+    )
+    assert not Path(f"{gate.mark}.wrap").exists()
+
+
+def test_signal_kill_without_gate_slice_names_it(gate: Gate) -> None:
+    gate.host.write_text(HOST_WITHOUT_SLICE, encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project, UV_EXIT="137")
+
+    assert result.returncode == 2, result.stdout
+    assert "gate killed by signal 9 (no gate_slice in host.toml)." in result.stderr
+    assert "systemd-oomd" not in result.stderr
 
 
 @pytest.mark.parametrize(
     ("show", "reason"),
     [
-        ("FragmentPath=\nMemoryMax=infinity\n", "gates.slice niet geïnstalleerd"),
+        ("FragmentPath=\nMemoryMax=infinity\n", "x.slice not installed"),
         (
-            "FragmentPath=/x/gates.slice\nMemoryMax=infinity\n",
-            "gates.slice zonder MemoryMax",
+            "FragmentPath=/x/x.slice\nMemoryMax=infinity\n",
+            "x.slice without MemoryMax",
         ),
     ],
 )
@@ -704,7 +888,7 @@ def test_gate_still_tests_without_the_rem(gate: Gate, show: str, reason: str) ->
 
     assert result.returncode == 0, result.stderr
     assert gate.marks() == [str(gate.project.resolve())]
-    assert f"rem niet beschikbaar: {reason}" in _context(result.stdout)
+    assert f"memory brake not available: {reason}" in _context(result.stdout)
     assert not Path(f"{gate.mark}.wrap").exists()
 
 
@@ -712,7 +896,7 @@ def test_gate_reports_a_failing_systemctl(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 0, result.stderr
-    assert "rem niet beschikbaar: systemctl --user faalde" in _context(result.stdout)
+    assert "memory brake not available: systemctl --user failed" in _context(result.stdout)
     assert not Path(f"{gate.mark}.wrap").exists()
 
 
@@ -729,7 +913,7 @@ def test_gate_reports_a_missing_choom(gate: Gate) -> None:
 
     assert result.returncode == 0, result.stderr
     assert gate.marks() == [str(gate.project.resolve())]
-    assert "rem niet beschikbaar: geen choom" in _context(result.stdout)
+    assert "memory brake not available: no choom" in _context(result.stdout)
 
 
 def test_gate_reports_oom_kill_in_the_slice(gate: Gate) -> None:
@@ -740,8 +924,8 @@ def test_gate_reports_oom_kill_in_the_slice(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "Test-gate: KON NIET CONTROLEREN — " + OOM_NOTICE in result.stderr
-    assert "Wortel:" in result.stderr
+    assert "pre-commit-tests: COULD NOT CHECK — " + OOM_NOTICE in result.stderr
+    assert "Root:" in result.stderr
     assert "3 passed" in result.stderr
     assert "tests failed" not in result.stderr
 
@@ -791,7 +975,7 @@ def test_gate_reports_systemd_run_that_did_not_start(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "Test-gate: KON NIET CONTROLEREN — systemd-run startte niet" in result.stderr
+    assert "pre-commit-tests: COULD NOT CHECK — systemd-run did not start" in result.stderr
     assert "Failed to start transient scope unit: x" in result.stderr
     assert "tests failed" not in result.stderr
     assert not gate.mark.exists()
@@ -814,7 +998,7 @@ def test_gate_reports_systemd_run_without_a_bus(gate: Gate, bus_error: str) -> N
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "Test-gate: KON NIET CONTROLEREN — systemd-run startte niet" in result.stderr
+    assert "pre-commit-tests: COULD NOT CHECK — systemd-run did not start" in result.stderr
     assert bus_error in result.stderr
     assert "tests failed" not in result.stderr
     assert not gate.mark.exists()
@@ -829,7 +1013,7 @@ def test_deadline_message_names_memory_pressure(gate: Gate) -> None:
 
     assert result.returncode == 2, result.stdout
     lines = result.stderr.splitlines()
-    assert "deadline van 270 s" in lines[0]
+    assert "deadline of 270 s" in lines[0]
     assert PRESSURE_NOTICE in lines[1]
 
 
@@ -841,8 +1025,8 @@ def test_deadline_message_unchanged_without_pressure(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "deadline van 270 s" in result.stderr
-    assert "geheugendruk" not in result.stderr
+    assert "deadline of 270 s" in result.stderr
+    assert "memory pressure" not in result.stderr
 
 
 @pytest.mark.parametrize("code", ["137", "247"])
@@ -852,7 +1036,7 @@ def test_gate_reports_a_signal_kill(gate: Gate, code: str) -> None:
     result = gate.run("git commit -m x", gate.project, UV_EXIT=code)
 
     assert result.returncode == 2, result.stdout
-    assert "Test-gate: KON NIET CONTROLEREN — " + SIGNAL_NOTICE in result.stderr
+    assert "pre-commit-tests: COULD NOT CHECK — " + SIGNAL_NOTICE in result.stderr
     assert "tests failed" not in result.stderr
 
 
@@ -863,8 +1047,8 @@ def test_signal_kill_without_the_rem_names_the_reason_not_the_slice(gate: Gate) 
 
     assert result.returncode == 2, result.stdout
     assert (
-        "Test-gate: KON NIET CONTROLEREN — gate gedood door signaal 9 "
-        "(rem niet beschikbaar: systemctl --user faalde)." in result.stderr
+        "pre-commit-tests: COULD NOT CHECK — gate killed by signal 9 "
+        "(memory brake not available: systemctl --user failed)." in result.stderr
     )
     assert "systemd-oomd" not in result.stderr
     assert "tests failed" not in result.stderr
