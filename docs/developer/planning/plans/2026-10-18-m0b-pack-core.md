@@ -96,6 +96,7 @@ Nieuw in `lighthouse.toml`, met de default in `config.py`. Een sleutel zonder de
 | `worktree_audit.protected_refs`, `worktree_audit.protected_paths` | list[str] | `[]` | §2.6 |
 | `project.instructions_word_ceiling` | int | `3000` | §2.6 |
 | `project.skill_prefix` | str | geen | §2.6 |
+| `project.milestone_prefix` | str | geen: geen prefix, gemeld | taak 27 stap 3b |
 
 ## Protocoltokens
 
@@ -581,8 +582,14 @@ Voor elke skill geldt het recept, met V4 als zwaartepunt. Per skill: één kopie
 **Files:**
 - Create (V1): `pack/core/skills/{write-issue,worktree-audit,instrument}/…` (`instrument` uit `paia-instrumenteren`)
 
-- [ ] **Stap 1–2: V1, V2.** Nieuw: `test_write_issue_taxonomy_from_paths`, waarin de skill de taxonomie uit `config.py paths.labels` leest en zonder dat bestand alleen `[labels]` en de GitHub-standaardlabels gebruikt; `test_write_issue_blocking_invariant` (de blokkeerregel noemt `labels.blocked_issue`); `test_instrument_lists_generic_checks_only` (3, 4, 5, 7, 8, 10, 11); `test_worktree_audit_no_opencode` (de verwijzing naar `scripts/opencode-lane/worktree-run.sh` krijgt ontwerpkeuze 16).
+- [ ] **Stap 1–2: V1, V2.** Nieuw: `test_write_issue_taxonomy_from_paths`, waarin de skill de taxonomie uit `config.py paths.labels` leest en zonder dat bestand alleen `[labels]` en de GitHub-standaardlabels gebruikt; `test_write_issue_blocking_invariant` (de blokkeerregel noemt `labels.blocked_issue`); `test_instrument_lists_generic_checks_only` (3, 4, 5, 7, 8, 10, 11); `test_worktree_audit_no_opencode` (de verwijzing naar `scripts/opencode-lane/worktree-run.sh` krijgt ontwerpkeuze 16); `test_write_issue_milestone_prefix_from_config` (de naamregel noemt `project.milestone_prefix`).
 - [ ] **Stap 3: V3–V6.** De labeltabellen van `write-issue` (95-197, 345-350, 385-414) gaan uit de skill. Ze komen in de PR-beschrijving als inhoud voor paia's taxonomiebestand onder `[paths] labels` in (d). `instrument` gebruikt `project.skill_prefix` en `project.instructions_word_ceiling`; de aanroepen van `measure_skill_surface.py` krijgen ontwerpkeuze 16.
+- [ ] **Stap 3b: milestone-ontwerp.** De sectie *Milestones* van `write-issue` (C:340-370) wordt generiek. Drie regels:
+  - **Naam:** `<project.milestone_prefix> <naam>`, bijvoorbeeld `LH M0 — Pakket` en `PAIA infra: security-hygiëne van de staande toestand`. Het prefix staat in de titel, omdat een projectboard over meerdere repo's op milestone óf op repo slicet, niet op allebei. Zonder `project.milestone_prefix` komt er geen prefix, gemeld. De vorm na het prefix (`M<n> — …` of `<area>: …`) is projectinhoud en staat in het bestand van `[paths] labels`.
+  - **Omvang:** het plan van een milestone splitst hem in minstens ongeveer vijf issues. Zijn het er minder, dan is het werk één issue of hoort het in een andere milestone.
+  - **DoD en poortwachter:** de harde regel ("een milestone zonder DoD-tekst bestaat niet") en de poortwachterrol van de beschrijving blijven.
+
+  Het hernoemen van de open milestones (`LH` in lighthouse, `PAIA` in paia) zit niet in deze taak. Dat gebeurt apart, na akkoord van Corneel, samen met paia's eigen `write-issue` en `close-issue` (`- DONE`). Vooraf: check of `src/github/silver/notes.py:338` in paia notitiepaden uit de milestonetitel bouwt die dan verschuiven.
 - [ ] **Stap 4: V7.** Commit per skill.
 
 ### Taak 28: Instructieblok
