@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -106,8 +107,8 @@ func detect(root string, d *packs.Detect) (string, bool, error) {
 		for _, f := range files {
 			path := filepath.Join(root, filepath.FromSlash(f))
 			info, err := os.Stat(path)
-			if errors.Is(err, fs.ErrNotExist) {
-				continue // tracked, but deleted in the working tree
+			if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+				continue // tracked, but gone from the working tree
 			}
 			if err != nil {
 				return "", false, err
@@ -167,10 +168,12 @@ func choosePacks(o Options, root string, all map[string]packs.Pack, m manifest.M
 			continue
 		}
 		match, ok, err := detect(root, all[n].Detect)
-		if err != nil {
-			return nil, nil, fmt.Errorf("package %s: cannot check whether it fits: %w", n, err)
-		}
 		switch {
+		case err != nil && initialized:
+			// On --upgrade detection only suggests a package; it never stops the run.
+			notes = append(notes, fmt.Sprintf("package %s: cannot check whether it fits: %v", n, err))
+		case err != nil:
+			return nil, nil, fmt.Errorf("package %s: cannot check whether it fits: %w", n, err)
 		case !ok:
 		case initialized:
 			notes = append(notes, fmt.Sprintf("package %s fits this repository (found %s); add it with: lighthouse init --upgrade --pack %s", n, match, n))

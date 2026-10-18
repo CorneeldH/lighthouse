@@ -3,6 +3,8 @@ package initcmd
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -303,5 +305,45 @@ func TestBrokenUnchosenPackFails(t *testing.T) {
 	r := run(t, root, "", all(yes, func(o *Options) { o.Packs.(fstest.MapFS)["rust/notes.txt"] = file("x") }))
 	if r.code != 1 || !strings.Contains(r.err, "package rust") {
 		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+}
+
+func withExpo(o *Options) {
+	o.Packs.(fstest.MapFS)["expo/detect.toml"] = file("[[contains]]\nfiles = [\"**/package.json\"]\ntext = '\"expo\"'\n")
+	o.Packs.(fstest.MapFS)["expo/lib/e.py"] = file("x = 1\n")
+}
+
+// A tracked file whose directory became a file is gone, like a deleted one.
+func TestDetectSkipsPathUnderAFile(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "a/package.json", `{"expo": 1}`)
+	gitIn(t, root, "add", "a/package.json")
+	if err := os.RemoveAll(filepath.Join(root, "a")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, root, "a", "now a file")
+	rule := &packs.Detect{Contains: []packs.Contains{{Files: []string{"**/package.json"}, Text: `"expo"`}}}
+	if match, ok, err := detect(root, rule); err != nil || ok {
+		t.Fatalf("match %q ok %v err %v", match, ok, err)
+	}
+}
+
+// On --upgrade detection only suggests, so it cannot stop the upgrade.
+func TestUpgradeDetectionErrorIsANote(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file with mode 000")
+	}
+	root := newRepo(t)
+	if r := run(t, root, "", all(yes, withExpo)); r.code != 0 {
+		t.Fatalf("init: %s", r.err)
+	}
+	write(t, root, "x/package.json", `{"expo": 1}`)
+	if err := os.Chmod(filepath.Join(root, "x/package.json"), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "x/package.json"), 0o644) })
+	r := run(t, root, "", all(upgrade, withExpo))
+	if r.code != 0 || r.out != "No changes.\n" || !strings.Contains(r.err, "package expo: cannot check whether it fits:") {
+		t.Fatalf("rc %d out %q err %q", r.code, r.out, r.err)
 	}
 }
