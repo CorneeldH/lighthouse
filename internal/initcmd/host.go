@@ -100,7 +100,7 @@ func proposeHost(o Options) []byte {
 		_, _ = fmt.Fprintln(o.Err, "warning: host.toml not proposed: hostname unavailable; skills that check the host will report it")
 		return nil
 	}
-	return []byte(fmt.Sprintf("name = %q\ntailscale_ip = %q\n", strings.TrimSpace(name), strings.TrimSpace(ip)))
+	return []byte(fmt.Sprintf("[host]\nname = %q\ntailscale_ip = %q\n", strings.TrimSpace(name), strings.TrimSpace(ip)))
 }
 
 func writeHost(path string, content []byte) error {
