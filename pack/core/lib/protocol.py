@@ -1,77 +1,89 @@
-"""Comment-koppen van de controller: herkennen, parsen en schrijven.
+"""The comment protocol: the `🤖 <kind>` comments on an issue, read and written.
 
-Elke comment van de controller begint met `🤖 <Soort>`. Daaronder staan, tot de
-eerste lege regel, velden als `sleutel: waarde`. De voet `<sub>sessie <uuid> ...</sub>`
-koppelt een uitkomst aan precies één run; de LAATSTE voet telt, zodat een
-sessie-id in vrije tekst niets kan overschrijven.
+Every comment of the protocol starts with `🤖 <Kind>`. Below it, up to the first
+blank line, stand fields as `key: value`. The footer `<sub>session <uuid> ...</sub>`
+ties an outcome to exactly one run; the LAST footer counts, so a session id in free
+text cannot override anything.
 
-Spec: docs/developer/planning/specs/2026-09-24-controller-romp-design.md,
-*Comment-typen* en *Vraag-format*. Plan: B5 (eind/brainstorm/interactief), B10 (antwoord).
+Writers use the English keys and the heading in `[project] language` (`headings.toml`).
+Readers accept every heading variant and the keys and values of the comments that
+already stand on issues (`_LEGACY_KEYS`, `_LEGACY_VALUES`, `LEGACY_MARKERS`, besluit
+15 and 21). The kinds and the keys of a header are protocol tokens, not prose.
+
+Controller policy stays with the caller (besluit 25): which commands may start, what
+counts as an answer, the check of `lane`, and the prose of a `🤖 Done`.
+
+The syntax stays within Python 3.9, like the rest of the lib.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+import sys
 from dataclasses import dataclass, field
-from typing import Literal
+from pathlib import Path
+from typing import Iterable
 
-KOP = "🤖"
-ARTEFACT = "<!-- paia:"
-SOORTEN = (
-    "Handoff",
-    "Gestart",
-    "Vraag",
-    "Hervat",
-    "Klaar",
-    "Teruggegeven",
-    "Herbaseerd",
-)
+# Run as a file on its path: put `.lighthouse/lib` first (see `config.py`).
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# Vastgesteld 4. Exact: wat hier niet letterlijk staat, start nooit.
-ALLOWLIST = (
-    "/paia-start-issue",
-    "/paia-spec-adversarial-review",
-    "/paia-plan-adversarial-review",
-    "/superpowers:writing-plans",
-    "/superpowers:subagent-driven-development",
-    "/paia-fix-pr",
-)
-EIND = "/paia-close-issue"
-BRAINSTORM = "/superpowers:brainstorming"
-# Een plan dat de gebruiker zelf moet begeleiden: nooit headless, altijd terug.
-INTERACTIEF = "/superpowers:executing-plans"
-# Handoffveld `lane: native` (#1461): dat plan start de controller wél, headless, op dit model.
-NATIVE = "native"
-NATIVE_MODEL = "sonnet"
+from lighthouse_lib import headings
+from lighthouse_lib.config import config_path, load, lookup
 
-Oordeel = Literal["start", "eind", "brainstorm", "interactief", "afgewezen"]
+ROBOT = "🤖"
+# The marker of an artefact comment (`artefacts.py`). Readers accept the legacy one
+# until M2 (besluit 15).
+MARKER = "<!-- lighthouse:"
+LEGACY_MARKERS = ("<!-- paia:",)
+# The canonical kinds; the heading of kind `x` is `kind_x` in `headings.toml`.
+KINDS = ("handoff", "started", "question", "resumed", "done", "returned", "rebased")
+# The option letters of a question, and the most questions in one comment.
+LETTERS = "abcdef"
+MAX_QUESTIONS = 4
 
-_VELD = re.compile(r"^([a-z_]+):\s?(.*)$")
-_SESSIE = re.compile(
-    r"<sub>sessie ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-)
-# Absoluut pad naar een .md-bestand, zonder spaties of shell-tekens.
-_PAD = re.compile(r"/[A-Za-z0-9._/\-]+\.md")
-_GETAL = re.compile(r"[0-9]+")
-_LETTERS = "abcdef"
-_VRAAG_KOP = re.compile(r"^.* · fase (.*?)(?: · taak (.*))?$")
-_VRAAG_VELD = re.compile(
-    r"^\*\*(Waar het staat|Wat er speelt|Vraag(?: [1-4])?):\*\*(?: (.*))?$"
-)
-_VRAAG_OPTIE = re.compile(r"^- \*\*[1-4]?[a-f]\)\*\*(?: (.*))?$")
-_VRAAG_VELDNAMEN = {
-    "Waar het staat": "waar_het_staat",
-    "Wat er speelt": "wat_er_speelt",
+# The keys of a header as they stand in comments from before the move (besluit 21).
+_LEGACY_KEYS = {
+    "volgende": "next",
+    "wanneer": "when",
+    "anker": "anchor",
+    "basis": "base",
+    "sessie": "session",
+    "commando": "command",
+    "stapel": "stack",
+    "blokkade": "blocker",
+    "sprong": "skip",
+    "terugval": "fallback",
+    "voorganger": "predecessor",
+    "op": "onto",
+    "antwoord": "answer",
+    "reden": "reason",
 }
-_VRAAG_SLOT = "**Max 1 comment als reactie.**"
-# Alleen bij een bundel, direct na de slotregel; voor de mens, de parser slaat hem over.
-_VRAAG_BUNDELHINT = "Antwoord per vraag, bijvoorbeeld `1a, 2c`."
-_MAX_VRAGEN = 4
-# #1351: wat de gebruiker zelf moet draaien, letterlijk, elk commando een eigen codeblok.
-_ZELF_DRAAIEN = "**Zelf draaien:**"
+_LEGACY_VALUES = {
+    ("when", "nu"): "now",
+    ("when", "nacht"): "night",
+    ("blocker", "verrekend"): "accounted",
+}
+# The fields of a question as a classification from before the move holds them.
+_LEGACY_QUESTION_FIELDS = {
+    "fase": "phase",
+    "taak": "task",
+    "waar_het_staat": "where",
+    "wat_er_speelt": "what",
+    "commandos": "commands",
+    "vragen": "questions",
+    "vraag": "question",
+    "opties": "options",
+}
+_LEGACY_OPTION_FIELDS = {"tekst": "text", "aanbevolen": "recommended"}
+
+_FIELD = re.compile(r"^([a-z_]+):\s?(.*)$")
+_SESSION = re.compile(
+    r"<sub>(?:session|sessie) "
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+)
+_QUESTION_OPTION = re.compile(r"^- \*\*[1-4]?[a-f]\)\*\*(?: (.*))?$")
 FENCE_OPEN = re.compile(r"^(`{3,})bash$")
-_AANBEVOLEN = "*(aanbevolen)*"
 
 
 @dataclass(frozen=True)
@@ -84,7 +96,7 @@ class Comment:
 
     @classmethod
     def from_gh(cls, raw: dict) -> Comment:
-        """Eén element uit `gh api repos/<repo>/issues/<nr>/comments`."""
+        """One element of `gh api repos/<repo>/issues/<nr>/comments`."""
         reactions = raw.get("reactions") or {}
         return cls(
             id=int(raw["id"]),
@@ -96,10 +108,10 @@ class Comment:
 
 
 @dataclass(frozen=True)
-class Kop:
-    soort: str
-    velden: dict[str, str] = field(default_factory=dict)
-    sessie: str | None = None
+class Header:
+    kind: str
+    fields: dict[str, str] = field(default_factory=dict)
+    session: str | None = None
 
 
 @dataclass(frozen=True)
@@ -107,433 +119,484 @@ class Handoff:
     issue: int
     worktree: str
     branch: str
-    anker: str
-    volgende: str
-    wanneer: str
+    anchor: str
+    next: str
+    when: str
     lane: str = ""
 
 
-class HandoffFout(ValueError):
-    """Een handoff die niet te starten is; de tekst is de reden voor 🤖 Teruggegeven."""
+class HandoffError(ValueError):
+    """A handoff that cannot start; the text is the reason for a `🤖 Returned`."""
 
 
-def parse_kop(body: str) -> Kop | None:
-    regels = body.strip().splitlines()
-    if not regels or not regels[0].startswith(KOP + " "):
+# A parser reads the heading table for every comment, and `headings` reads the file
+# on every call. Cached per state of the file: path, mtime and size.
+_cache: dict = {"stamp": None, "variants": {}}
+
+
+def _variants(key: str) -> tuple[str, ...]:
+    where = headings.path()
+    try:
+        stat = where.stat()
+    except OSError:
+        return headings.variants(key)  # raises the ConfigError that names the file
+    stamp = (str(where), stat.st_mtime_ns, stat.st_size)
+    if _cache["stamp"] != stamp:
+        _cache["stamp"], _cache["variants"] = stamp, {}
+    known = _cache["variants"]
+    if key not in known:
+        known[key] = headings.variants(key)
+    return known[key]
+
+
+def _alternatives(key: str) -> str:
+    """A regex group that matches every variant of `key` literally."""
+    return "(?:" + "|".join(re.escape(v) for v in _variants(key)) + ")"
+
+
+def _language(language: str | None) -> str:
+    """`language`, or `[project] language` of the repo when it is `None`."""
+    return language if language is not None else load(config_path()).language
+
+
+def _heading(key: str, language: str | None) -> str:
+    return headings.heading(key, _language(language))
+
+
+def _kind_of(title: str) -> str | None:
+    """The canonical kind of the text after `🤖 `: a variant, followed by nothing,
+    whitespace or `·`."""
+    pairs = sorted(
+        ((variant, kind) for kind in KINDS for variant in _variants("kind_" + kind)),
+        key=lambda pair: -len(pair[0]),
+    )
+    for variant, kind in pairs:
+        rest = title[len(variant) :]
+        if title.startswith(variant) and (not rest or rest[0].isspace() or rest[0] == "·"):
+            return kind
+    return None
+
+
+def parse_header(body: str) -> Header | None:
+    lines = body.strip().splitlines()
+    if not lines or not lines[0].startswith(ROBOT + " "):
         return None
-    soort = re.split(r"[\s·]", regels[0][len(KOP) + 1 :].strip(), maxsplit=1)[0]
-    if soort not in SOORTEN:
+    kind = _kind_of(lines[0][len(ROBOT) + 1 :].strip())
+    if kind is None:
         return None
-    velden: dict[str, str] = {}
-    for regel in regels[1:]:
-        if not regel.strip():
+    fields: dict[str, str] = {}
+    for line in lines[1:]:
+        if not line.strip():
             break
-        match = _VELD.match(regel.strip())
+        match = _FIELD.match(line.strip())
         if match:
-            velden[match.group(1)] = match.group(2).strip()
-    sessies = _SESSIE.findall(body)
-    return Kop(soort=soort, velden=velden, sessie=sessies[-1] if sessies else None)
+            key = _LEGACY_KEYS.get(match.group(1), match.group(1))
+            value = match.group(2).strip()
+            fields[key] = _LEGACY_VALUES.get((key, value), value)
+    sessions = _SESSION.findall(body)
+    return Header(kind=kind, fields=fields, session=sessions[-1] if sessions else None)
 
 
-def stapel_basis(bodies: Iterable[str]) -> str | None:
-    """Het veld `basis` van de laatste `🤖 Gestart` die er een heeft, ongeacht wat erna komt."""
-    basis = None
+def stack_base(bodies: Iterable[str]) -> str | None:
+    """The field `base` of the last `🤖 Started` that has one, whatever comes after."""
+    base = None
     for body in bodies:
-        kop = parse_kop(body)
-        if kop is not None and kop.soort == "Gestart" and kop.velden.get("basis"):
-            basis = kop.velden["basis"]
-    return basis
+        header = parse_header(body)
+        if header is not None and header.kind == "started" and header.fields.get("base"):
+            base = header.fields["base"]
+    return base
 
 
-def actieve_stapel(bodies: Iterable[str]) -> Kop | None:
-    """De laatste `🤖 Gestart` met `basis`, mits er geen `Herbaseerd` of `Teruggegeven` na staat."""
-    actief = None
+def active_stack(bodies: Iterable[str]) -> Header | None:
+    """The last `🤖 Started` with `base`, unless a `Rebased` or `Returned` follows it."""
+    active = None
     for body in bodies:
-        kop = parse_kop(body)
-        if kop is None:
+        header = parse_header(body)
+        if header is None:
             continue
-        if kop.soort == "Gestart" and kop.velden.get("basis"):
-            actief = kop
-        elif kop.soort in ("Herbaseerd", "Teruggegeven"):
-            actief = None
-    return actief
+        if header.kind == "started" and header.fields.get("base"):
+            active = header
+        elif header.kind in ("rebased", "returned"):
+            active = None
+    return active
 
 
-def parse_handoff(kop: Kop) -> Handoff:
-    if kop.soort != "Handoff":
-        raise HandoffFout(f"geen handoff maar {kop.soort}")
-    velden = kop.velden
-    ontbreekt = [
-        k
-        for k in ("issue", "worktree", "branch", "volgende", "wanneer")
-        if not velden.get(k)
+def parse_handoff(header: Header) -> Handoff:
+    """The fields of a `🤖 Handoff`. `lane` is an ordinary field here; the caller
+    checks it against its own policy."""
+    if header.kind != "handoff":
+        raise HandoffError(f"not a handoff but {header.kind}")
+    fields = header.fields
+    missing = [
+        k for k in ("issue", "worktree", "branch", "next", "when") if not fields.get(k)
     ]
-    if ontbreekt:
-        raise HandoffFout("velden ontbreken: " + ", ".join(ontbreekt))
-    nummer = re.fullmatch(r"#?([0-9]+)", velden["issue"])
-    if nummer is None:
-        raise HandoffFout(f"issue onleesbaar: {velden['issue']}")
-    if velden["wanneer"] not in ("nu", "nacht"):
-        raise HandoffFout(f"wanneer moet nu of nacht zijn, niet {velden['wanneer']}")
-    lane = velden.get("lane", "")
-    if lane and (lane != NATIVE or velden["volgende"].split()[0] != INTERACTIEF):
-        raise HandoffFout(f"lane {lane} alleen native bij {INTERACTIEF}")
+    if missing:
+        raise HandoffError("fields missing: " + ", ".join(missing))
+    number = re.fullmatch(r"#?([0-9]+)", fields["issue"])
+    if number is None:
+        raise HandoffError(f"issue unreadable: {fields['issue']}")
+    if fields["when"] not in ("now", "night"):
+        raise HandoffError(f"when must be now or night, not {fields['when']}")
     return Handoff(
-        issue=int(nummer.group(1)),
-        worktree=velden["worktree"].rstrip("/"),
-        branch=velden["branch"],
-        anker=velden.get("anker", ""),
-        volgende=velden["volgende"],
-        wanneer=velden["wanneer"],
-        lane=lane,
+        issue=int(number.group(1)),
+        worktree=fields["worktree"].rstrip("/"),
+        branch=fields["branch"],
+        anchor=fields.get("anchor", ""),
+        next=fields["next"],
+        when=fields["when"],
+        lane=fields.get("lane", ""),
     )
 
 
-def beoordeel_commando(
-    volgende: str, issue: int, lane: str = ""
-) -> tuple[Oordeel, str]:
-    """Strikt: het commando staat exact op de allowlist, en het argument heeft de
-    vorm die bij dat commando hoort. Het tweede element is de reden bij afwijzing.
-    `lane == NATIVE` maakt van `INTERACTIEF` een gewone start met een planpad."""
-    delen = volgende.split()
-    if not delen:
-        return "afgewezen", "leeg commando"
-    commando, argumenten = delen[0], delen[1:]
-    if commando == EIND:
-        return "eind", ""
-    if commando == BRAINSTORM:
-        return "brainstorm", ""
-    native = commando == INTERACTIEF and lane == NATIVE
-    if commando == INTERACTIEF and not native:
-        return "interactief", ""
-    if commando not in ALLOWLIST and not native:
-        return "afgewezen", f"{commando} staat niet op de allowlist"
-    if commando == "/paia-start-issue":
-        past = argumenten == [str(issue)]
-    elif commando == "/paia-fix-pr":
-        past = len(argumenten) == 1 and _GETAL.fullmatch(argumenten[0]) is not None
-    else:
-        past = len(argumenten) == 1 and _PAD.fullmatch(argumenten[0]) is not None
-    if past:
-        return "start", ""
+def _clean(text: str) -> str:
+    """Free text cannot break open a footer or a code block."""
     return (
-        "afgewezen",
-        f"argument past niet bij {commando}: {' '.join(argumenten) or '(geen)'}",
-    )
-
-
-def is_antwoord(body: str) -> bool:
-    """Elk mens-comment telt: niet leeg, geen 🤖-kop, en geen artefact-comment.
-    Artefact-comments (spec/plan als issue-comment) tellen niet als antwoord zodat
-    de controller ze niet als hervatting van een parked sessie interpreteert."""
-    tekst = body.strip()
-    return bool(tekst) and not tekst.startswith(KOP) and not tekst.startswith(ARTEFACT)
-
-
-def _schoon(tekst: str) -> str:
-    """Vrije tekst kan geen voet en geen codeblok openbreken."""
-    return (
-        tekst.replace("```", "'''")
+        text.replace("```", "'''")
         .replace("~~~", "'''")
         .replace("<sub>", "&lt;sub&gt;")
         .strip()
     )
 
 
-def _codeblok(commando: str) -> list[str]:
-    """Eén commando letterlijk als fenced codeblok; de fence is langer dan elke reeks
-    backticks in het commando, zodat het blok nooit vroeg sluit (#1351)."""
-    langste = max((len(r) for r in re.findall(r"`+", commando)), default=0)
-    fence = "`" * max(3, langste + 1)
-    return [f"{fence}bash", commando, fence]
+def _code_block(command: str) -> list[str]:
+    """One command literally as a fenced code block; the fence is longer than every
+    run of backticks in the command, so the block never closes early."""
+    longest = max((len(r) for r in re.findall(r"`+", command)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return [f"{fence}bash", command, fence]
 
 
-def voet(sessie: str, *extra: str) -> str:
-    return (
-        "<sub>" + " · ".join([f"sessie {sessie}", *[e for e in extra if e]]) + "</sub>"
-    )
+def footer(session: str, *extra: str) -> str:
+    return "<sub>" + " · ".join([f"session {session}", *[e for e in extra if e]]) + "</sub>"
 
 
-def render_gestart(
+def render_started(
     *,
-    sessie: str,
+    session: str,
     worktree: str,
-    commando: str,
+    command: str,
     start: str,
     head_sha: str = "",
-    stapel: str = "",
-    basis: str = "",
+    stack: str = "",
+    base: str = "",
     branch: str = "",
-    blokkade: str = "",
-    sprong: str = "",
+    blocker: str = "",
+    skip: str = "",
     runner: str = "",
     workspace: str = "",
-    terugval: str = "",
+    fallback: str = "",
+    language: str | None = None,
 ) -> str:
-    """Een gestapelde start zet `stapel` (`#<x> <branch-x>`), `basis` en `branch`;
-    `actieve_stapel` leest ze terug. `blokkade: verrekend` zegt de run dat de stapelregel
-    een open blokkeerder al heeft verrekend (poort 0 post dan geen handoff). `sprong` meldt
-    dat de controller een review uit de config heeft overgeslagen (#1354). Een forge-run
-    (#1058) draagt `runner` en, zodra hij er een heeft, `workspace`; `terugval` is de reden
-    waarom een verse forge-start toch headless liep. Elk veld staat er alleen als het niet
-    leeg is."""
-    regels = [
-        "🤖 Gestart",
-        f"sessie: {sessie}",
+    """A stacked start sets `stack` (`#<x> <branch-x>`), `base` and `branch`;
+    `active_stack` reads them back. `blocker: accounted` tells the run that the stack
+    rule already accounted for an open blocker. `skip` reports that a review from the
+    config was skipped. A forge run carries `runner` and, once it has one,
+    `workspace`; `fallback` is why a fresh forge start ran headless after all. Each
+    field stands there only when it is not empty."""
+    lines = [
+        f"{ROBOT} {_heading('kind_started', language)}",
+        f"session: {session}",
         f"worktree: {worktree}",
-        f"commando: {commando}",
+        f"command: {command}",
         f"start: {start}",
     ]
-    for sleutel, waarde in (
+    for key, value in (
         ("head", head_sha),
-        ("stapel", stapel),
-        ("basis", basis),
+        ("stack", stack),
+        ("base", base),
         ("branch", branch),
-        ("blokkade", blokkade),
-        ("sprong", sprong),
+        ("blocker", blocker),
+        ("skip", skip),
         ("runner", runner),
         ("workspace", workspace),
-        ("terugval", terugval),
+        ("fallback", fallback),
     ):
-        if waarde:
-            regels.append(f"{sleutel}: {waarde}")
-    return "\n".join(regels) + "\n\n" + voet(sessie)
+        if value:
+            lines.append(f"{key}: {value}")
+    return "\n".join(lines) + "\n\n" + footer(session)
 
 
-def vul_gestart(bericht: str, **velden: str) -> str:
-    """Zet velden in de kop van een `🤖 Gestart`, of vervang ze; de rest blijft staan.
+def fill_started(message: str, **fields: str) -> str:
+    """Set fields in the header of a `🤖 Started`, or replace them; the rest stays.
 
-    Apply weet pas ná `voorbereiden` (Taak 8) in welke worktree en met welke runner een
-    run echt start. Een bestaand veld houdt zijn plek, een nieuw komt achteraan de kop; een
-    lege waarde haalt het veld weg, net als `render_gestart` het dan weglaat. Een waarde is
-    één regel: witruimte (ook een newline) wordt één spatie, zodat ze de kop niet openbreekt.
-    De voet en alles na de eerste lege regel blijven letterlijk staan."""
-    regels = bericht.split("\n")
-    einde = next((i for i, r in enumerate(regels) if not r.strip()), len(regels))
-    kop = regels[:einde]
-    for sleutel, waarde in velden.items():
-        schoon = " ".join(str(waarde).split())
-        plek = next(
-            (i for i, r in enumerate(kop) if i > 0 and r.startswith(f"{sleutel}:")),
+    An existing field keeps its place, a new one goes to the end of the header; an
+    empty value removes the field, as `render_started` leaves it out. A value is one
+    line: whitespace (a newline too) becomes one space, so it cannot break the header
+    open. The footer and everything after the first blank line stay literally."""
+    lines = message.split("\n")
+    end = next((i for i, line in enumerate(lines) if not line.strip()), len(lines))
+    header = lines[:end]
+    for key, value in fields.items():
+        clean = " ".join(str(value).split())
+        place = next(
+            (i for i, line in enumerate(header) if i > 0 and line.startswith(f"{key}:")),
             None,
         )
-        if not schoon:
-            if plek is not None:
-                del kop[plek]
-        elif plek is not None:
-            kop[plek] = f"{sleutel}: {schoon}"
+        if not clean:
+            if place is not None:
+                del header[place]
+        elif place is not None:
+            header[place] = f"{key}: {clean}"
         else:
-            kop.append(f"{sleutel}: {schoon}")
-    return "\n".join(kop + regels[einde:])
+            header.append(f"{key}: {clean}")
+    return "\n".join(header + lines[end:])
 
 
-def render_herbaseerd(*, voorganger: int, basis: str, sessie: str | None = None) -> str:
-    """Na de squash-merge van de voorganger: de eigen commits staan nu op origin/main."""
-    tekst = f"🤖 Herbaseerd\nvoorganger: #{voorganger}\nbasis: {basis}\nop: origin/main"
-    if sessie:
-        tekst += "\n\n" + voet(sessie)
-    return tekst
-
-
-def antwoord_prompt(vraag: str, antwoord: str) -> str:
-    """De hervat-prompt: de vraag zoals gepost, dan het antwoord letterlijk.
-
-    De optieletters zet `render_vraag` erbij, en de classifier kan de opties van de
-    sessie herschrijven of samenvoegen. Een kaal `a` zegt de sessie dus niets (#1140);
-    met de geposte vraag ervoor kan ze elk antwoord lezen, letter of vrije tekst.
-    Voet en slotregel zijn voor de mens en blijven weg."""
-    regels = [
-        r
-        for r in vraag.strip().splitlines()
-        if not r.startswith("<sub>")
-        and r.strip() not in (_VRAAG_SLOT, _VRAAG_BUNDELHINT)
-    ]
-    gepost = "\n".join(regels).strip()
-    return (
-        "Je vraag staat zo op het issue; de optieletters zette de controller erbij:\n\n"
-        f"{gepost}\n\nAntwoord van de gebruiker:\n\n{antwoord.strip()}"
-    )
-
-
-def render_hervat(*, sessie: str, antwoord_id: int) -> str:
-    return f"🤖 Hervat\nsessie: {sessie}\nantwoord: {antwoord_id}\n\n" + voet(sessie)
-
-
-def render_klaar(*, sessie: str, pr_url: str) -> str:
-    return (
-        f"🤖 Klaar\nsessie: {sessie}\npr: {pr_url}\n\n"
-        "Checks groen, klaar voor review. Mergen blijft bij jou; na de merge toetst de "
-        "controller het issue opnieuw als het nog open staat.\n\n" + voet(sessie)
-    )
-
-
-def render_teruggegeven(
-    *, reden: str, sessie: str | None = None, detail: str = ""
+def render_rebased(
+    *,
+    predecessor: int,
+    base: str,
+    session: str | None = None,
+    onto: str | None = None,
+    language: str | None = None,
 ) -> str:
-    regels = ["🤖 Teruggegeven", "reden: " + " ".join(reden.split())]
-    if sessie:
-        regels.append(f"sessie: {sessie}")
-    tekst = "\n".join(regels)
+    """After the squash merge of the predecessor: the own commits now stand on
+    `onto`, by default `origin/<forge.default_branch>`."""
+    if onto is None:
+        onto = "origin/" + str(lookup(load(config_path()), "forge.default_branch"))
+    text = (
+        f"{ROBOT} {_heading('kind_rebased', language)}\n"
+        f"predecessor: #{predecessor}\nbase: {base}\nonto: {onto}"
+    )
+    if session:
+        text += "\n\n" + footer(session)
+    return text
+
+
+def render_resumed(*, session: str, answer_id: int, language: str | None = None) -> str:
+    return (
+        f"{ROBOT} {_heading('kind_resumed', language)}\n"
+        f"session: {session}\nanswer: {answer_id}\n\n" + footer(session)
+    )
+
+
+def render_done(
+    *, session: str, pr_url: str, note: str = "", language: str | None = None
+) -> str:
+    """Header, fields and footer; the prose in between (`note`) comes from the caller."""
+    text = f"{ROBOT} {_heading('kind_done', language)}\nsession: {session}\npr: {pr_url}"
+    if note.strip():
+        text += "\n\n" + note.strip()
+    return text + "\n\n" + footer(session)
+
+
+def render_returned(
+    *,
+    reason: str,
+    session: str | None = None,
+    detail: str = "",
+    language: str | None = None,
+) -> str:
+    lines = [
+        f"{ROBOT} {_heading('kind_returned', language)}",
+        "reason: " + " ".join(reason.split()),
+    ]
+    if session:
+        lines.append(f"session: {session}")
+    text = "\n".join(lines)
     if detail.strip():
-        tekst += "\n\n```\n" + _schoon(detail) + "\n```"
-    if sessie:
-        tekst += "\n\n" + voet(sessie)
-    return tekst
+        text += "\n\n```\n" + _clean(detail) + "\n```"
+    if session:
+        text += "\n\n" + footer(session)
+    return text
 
 
-def vragen_van(velden: dict) -> list[dict]:
-    """De vragen van een `velden`-dict: `vragen`, of de oude vorm met één `vraag`/`opties`.
-
-    De oude vorm is een `classify.<n>.json` van vóór de bundel, nog op schijf."""
-    if "vragen" in velden:
-        return list(velden["vragen"])
-    return [{"vraag": velden.get("vraag", ""), "opties": velden.get("opties", [])}]
+def _option(option: dict) -> dict:
+    return {_LEGACY_OPTION_FIELDS.get(k, k): v for k, v in option.items()}
 
 
-def _zelf_draaien(velden: dict) -> list[str]:
-    """Het `**Zelf draaien:**`-blok: elk commando een eigen codeblok, leeg zonder commando's."""
-    commandos = [str(c) for c in velden.get("commandos") or [] if str(c).strip()]
-    if not commandos:
+def _new_fields(fields: dict) -> dict:
+    """`fields` with the keys of a classification from before the move renamed."""
+    return {_LEGACY_QUESTION_FIELDS.get(k, k): v for k, v in fields.items()}
+
+
+def questions_of(fields: dict) -> list[dict]:
+    """The questions of a `fields` dict: `questions`, or the old form with a single
+    `question`/`options`. Keys from before the move are read too."""
+    fields = _new_fields(fields)
+    if "questions" in fields:
+        raw = [_new_fields(q) for q in fields["questions"]]
+    else:
+        raw = [{"question": fields.get("question", ""), "options": fields.get("options", [])}]
+    return [
+        {
+            "question": q.get("question", ""),
+            "options": [_option(o) for o in q.get("options", [])],
+        }
+        for q in raw
+    ]
+
+
+def _run_yourself(fields: dict, language: str | None) -> list[str]:
+    """The run-yourself block: each command its own code block, empty without commands."""
+    commands = [str(c) for c in fields.get("commands") or [] if str(c).strip()]
+    if not commands:
         return []
-    regels = ["", _ZELF_DRAAIEN]
-    for commando in commandos:
-        regels += ["", *_codeblok(commando)]
-    return [*regels, ""]
+    lines = ["", _heading("question_run_yourself", language)]
+    for command in commands:
+        lines += ["", *_code_block(command)]
+    return [*lines, ""]
 
 
-def render_vraag(
+def render_question(
     *,
     issue: int,
-    titel: str,
+    title: str,
     issue_url: str,
-    velden: dict,
-    sessie: str,
+    fields: dict,
+    session: str,
     worktree: str,
     handoff_url: str = "",
+    language: str | None = None,
 ) -> str:
-    kop = f"🤖 Vraag · #{issue} {titel} ([link]({issue_url})) · fase {_schoon(str(velden.get('fase') or '?'))}"
-    if velden.get("taak"):
-        kop += f" · taak {_schoon(str(velden['taak']))}"
-    vragen = vragen_van(velden)[:_MAX_VRAGEN] or [{"vraag": "", "opties": []}]
-    bundel = len(vragen) > 1
-    regels = [
-        kop,
+    fields = _new_fields(fields)
+    language = _language(language)
+
+    def h(key: str) -> str:
+        return _heading(key, language)
+
+    top = (
+        f"{ROBOT} {h('kind_question')} · #{issue} {title} ([link]({issue_url})) · "
+        f"{h('question_phase')} {_clean(str(fields.get('phase') or '?'))}"
+    )
+    if fields.get("task"):
+        top += f" · {h('question_task')} {_clean(str(fields['task']))}"
+    questions = questions_of(fields)[:MAX_QUESTIONS] or [{"question": "", "options": []}]
+    bundle = len(questions) > 1
+    lines = [
+        top,
         "",
-        f"**Waar het staat:** {_schoon(velden['waar_het_staat'])}",
-        f"**Wat er speelt:** {_schoon(velden['wat_er_speelt'])}",
+        f"**{h('question_where')}:** {_clean(fields['where'])}",
+        f"**{h('question_what')}:** {_clean(fields['what'])}",
     ]
-    # Eén `**Zelf draaien:**`-blok voor de hele Vraag (#1351): bij één vraag onder de
-    # vraagregel zoals vóór de bundel, bij een bundel vóór `**Vraag 1:**`.
-    zelf_draaien = _zelf_draaien(velden)
-    if bundel:
-        regels += zelf_draaien
-    for nummer, vraag in enumerate(vragen, start=1):
-        voorvoegsel = str(nummer) if bundel else ""
-        if bundel and nummer > 1:
-            # Zonder lege regel wordt `**Vraag n:**` een vervolg van de vorige optie.
-            regels.append("")
-        regels.append(
-            f"**Vraag{' ' + voorvoegsel if bundel else ''}:** {_schoon(vraag['vraag'])}"
+    # One run-yourself block for the whole comment: with one question below the
+    # question line, with a bundle before question 1.
+    run_yourself = _run_yourself(fields, language)
+    if bundle:
+        lines += run_yourself
+    for number, question in enumerate(questions, start=1):
+        prefix = str(number) if bundle else ""
+        if bundle and number > 1:
+            # Without a blank line, question n continues the previous option.
+            lines.append("")
+        lines.append(
+            f"**{h('question_label')}{' ' + prefix if bundle else ''}:** "
+            f"{_clean(question['question'])}"
         )
-        if not bundel:
-            regels += zelf_draaien
-        opties = list(vraag["opties"])[: len(_LETTERS)]
-        for letter, optie in zip(_LETTERS, opties, strict=False):
-            regel = f"- **{voorvoegsel}{letter})** {_schoon(optie['tekst'])}"
-            if optie.get("aanbevolen"):
-                regel += " *(aanbevolen)*"
-            regels.append(regel)
-    regels += ["", _VRAAG_SLOT]
-    if bundel:
-        regels.append(_VRAAG_BUNDELHINT)
-    regels.append(
-        voet(
-            sessie,
+        if not bundle:
+            lines += run_yourself
+        options = list(question["options"])[: len(LETTERS)]
+        for letter, option in zip(LETTERS, options):
+            line = f"- **{prefix}{letter})** {_clean(option['text'])}"
+            if option.get("recommended"):
+                line += " " + h("question_recommended")
+            lines.append(line)
+    lines += ["", h("question_close")]
+    if bundle:
+        lines.append(h("question_bundle_hint"))
+    lines.append(
+        footer(
+            session,
             f"worktree {worktree}",
             f"handoff {handoff_url}" if handoff_url else "",
         )
     )
-    return "\n".join(regels)
+    return "\n".join(lines)
 
 
-def _voeg_optie_toe(vragen: list[dict], tekst: str) -> None:
-    """Zet een optie bij de laatste vraag; staat er nog geen, dan bij een lege vraag."""
-    if not vragen:
-        vragen.append({"vraag": "", "opties": []})
-    aanbevolen = tekst == _AANBEVOLEN or tekst.endswith(" " + _AANBEVOLEN)
-    if aanbevolen:
-        tekst = tekst[: -len(_AANBEVOLEN)].strip()
-    vragen[-1]["opties"].append({"tekst": tekst, "aanbevolen": aanbevolen})
+def _add_option(questions: list[dict], text: str) -> None:
+    """Add an option to the last question; without one, to an empty question."""
+    if not questions:
+        questions.append({"question": "", "options": []})
+    recommended = None
+    for variant in _variants("question_recommended"):
+        if text == variant or text.endswith(" " + variant):
+            recommended = variant
+            break
+    if recommended is not None:
+        text = text[: -len(recommended)].strip()
+    questions[-1]["options"].append({"text": text, "recommended": recommended is not None})
 
 
-def _vraag_stukken(
-    regels: list[str],
+def _question_pieces(
+    lines: list[str],
 ) -> tuple[list[tuple[str, list[str]]], list[str]]:
-    """De regels tussen kop en slot als stukken per veld of optie, en apart de commando's:
-    de inhoud van elk codeblok onder `**Zelf draaien:**`, letterlijk. Binnen een codeblok
-    begint geen regel een nieuw stuk, ook niet een die op een optie lijkt. Elk Vraag-veld
-    (`**Vraag:**` of `**Vraag <n>:**`) opent een stuk `vraag`."""
-    stukken: list[tuple[str, list[str]]] = []
-    commandos: list[str] = []
-    fence: str | None = None
-    blok: list[str] = []
-    for regel in regels:
-        if fence is not None:
-            if regel == fence:
-                commandos.append("\n".join(blok))
-                fence, blok = None, []
-            else:
-                blok.append(regel)
-            continue
-        open_ = FENCE_OPEN.match(regel)
-        veld = _VRAAG_VELD.match(regel)
-        optie = _VRAAG_OPTIE.match(regel)
-        if regel == _ZELF_DRAAIEN:
-            stukken.append(("commandos", []))
-        elif open_ and stukken and stukken[-1][0] == "commandos":
-            fence = open_.group(1)
-        elif veld:
-            naam = _VRAAG_VELDNAMEN.get(veld.group(1), "vraag")
-            stukken.append((naam, [veld.group(2) or ""]))
-        elif optie:
-            stukken.append(("optie", [optie.group(1) or ""]))
-        elif stukken:
-            stukken[-1][1].append(regel)
-    return stukken, commandos
-
-
-def parse_vraag(body: str) -> dict | None:
-    """De inverse van `render_vraag`: de `velden` zoals die erin gingen, geschoond.
-
-    `None` als de comment geen 🤖 Vraag is. Het blok loopt van de lege regel na de kop
-    tot de LAATSTE slotregel; een lege regel in vrije tekst hoort bij het lopende
-    stuk, alleen de kopregels van een veld of optie beginnen een nieuw stuk."""
-    kop = parse_kop(body)
-    if kop is None or kop.soort != "Vraag":
-        return None
-    regels = body.strip().splitlines()
-    kopmatch = _VRAAG_KOP.match(regels[0])
-    velden: dict = {
-        "fase": kopmatch.group(1).strip() if kopmatch else "",
-        "taak": (kopmatch.group(2) or "").strip() if kopmatch else "",
-        "waar_het_staat": "",
-        "wat_er_speelt": "",
-        "commandos": [],
-        "vragen": [],
-    }
-    slot = max(
-        (i for i, r in enumerate(regels) if r.strip() == _VRAAG_SLOT),
-        default=len(regels),
+    """The lines between header and close as pieces per field or option, and apart
+    the commands: the content of each code block under the run-yourself line,
+    literally. Inside a code block no line starts a new piece, not even one that
+    looks like an option. Every question field opens a piece `question`."""
+    field_line = re.compile(
+        r"^\*\*(?:(?P<where>{})|(?P<what>{})|{}(?: [1-4])?):\*\*(?: (?P<text>.*))?$".format(
+            _alternatives("question_where"),
+            _alternatives("question_what"),
+            _alternatives("question_label"),
+        )
     )
-    stukken, velden["commandos"] = _vraag_stukken(regels[1:slot])
-    for naam, delen in stukken:
-        tekst = "\n".join(delen).strip()
-        if naam == "commandos":
+    run_yourself = set(_variants("question_run_yourself"))
+    pieces: list[tuple[str, list[str]]] = []
+    commands: list[str] = []
+    fence: str | None = None
+    block: list[str] = []
+    for line in lines:
+        if fence is not None:
+            if line == fence:
+                commands.append("\n".join(block))
+                fence, block = None, []
+            else:
+                block.append(line)
             continue
-        if naam == "optie":
-            _voeg_optie_toe(velden["vragen"], tekst)
-        elif naam == "vraag":
-            velden["vragen"].append({"vraag": tekst, "opties": []})
+        open_ = FENCE_OPEN.match(line)
+        match = field_line.match(line)
+        option = _QUESTION_OPTION.match(line)
+        if line in run_yourself:
+            pieces.append(("commands", []))
+        elif open_ and pieces and pieces[-1][0] == "commands":
+            fence = open_.group(1)
+        elif match:
+            name = "where" if match.group("where") else "what" if match.group("what") else "question"
+            pieces.append((name, [match.group("text") or ""]))
+        elif option:
+            pieces.append(("option", [option.group(1) or ""]))
+        elif pieces:
+            pieces[-1][1].append(line)
+    return pieces, commands
+
+
+def parse_question(body: str) -> dict | None:
+    """The inverse of `render_question`: the `fields` as they went in, cleaned.
+
+    `None` when the comment is no `🤖 Question`. The block runs from the blank line
+    after the header to the LAST close line; a blank line in free text belongs to the
+    running piece, only the opening lines of a field or option start a new piece."""
+    header = parse_header(body)
+    if header is None or header.kind != "question":
+        return None
+    lines = body.strip().splitlines()
+    top = re.match(
+        r"^.* · {} (.*?)(?: · {} (.*))?$".format(
+            _alternatives("question_phase"), _alternatives("question_task")
+        ),
+        lines[0],
+    )
+    fields: dict = {
+        "phase": top.group(1).strip() if top else "",
+        "task": (top.group(2) or "").strip() if top else "",
+        "where": "",
+        "what": "",
+        "commands": [],
+        "questions": [],
+    }
+    close = set(_variants("question_close"))
+    end = max((i for i, line in enumerate(lines) if line.strip() in close), default=len(lines))
+    pieces, fields["commands"] = _question_pieces(lines[1:end])
+    for name, parts in pieces:
+        text = "\n".join(parts).strip()
+        if name == "commands":
+            continue
+        if name == "option":
+            _add_option(fields["questions"], text)
+        elif name == "question":
+            fields["questions"].append({"question": text, "options": []})
         else:
-            velden[naam] = tekst
-    return velden
+            fields[name] = text
+    return fields

@@ -63,3 +63,63 @@ def test_python_caches_are_skipped(tmp_path):
     (cache / "x.cpython-314.pyc").write_bytes(b"paia")
     (tmp_path / "lib" / "y.pyc").write_bytes(b"paia")
     assert _grep(tmp_path).returncode == 0
+
+
+def _allow(tmp_path, *lines: str) -> dict:
+    import os
+
+    allow = tmp_path / "allow.txt"
+    allow.write_text("# exceptions\n\n" + "".join(f"{line}\n" for line in lines))
+    return dict(os.environ, LITERAL_ALLOWLIST=str(allow))
+
+
+def test_allowlisted_line_passes(tmp_path):
+    pack = tmp_path / "pack"
+    pack.mkdir()
+    (pack / "a.py").write_text('MARKERS = ("<!-- paia:",)\n')
+    env = _allow(tmp_path, f'{pack}/a.py:MARKERS = ("<!-- paia:",)')
+    result = _grep(pack, env=env)
+    assert result.returncode == 0, result.stdout
+
+
+def test_same_text_in_other_file_fails(tmp_path):
+    pack = tmp_path / "pack"
+    pack.mkdir()
+    (pack / "a.py").write_text('MARKERS = ("<!-- paia:",)\n')
+    (pack / "b.py").write_text('MARKERS = ("<!-- paia:",)\n')
+    env = _allow(tmp_path, f'{pack}/a.py:MARKERS = ("<!-- paia:",)')
+    result = _grep(pack, env=env)
+    assert result.returncode == 1
+    assert f"{pack}/b.py:1:" in result.stdout
+    assert f"{pack}/a.py" not in result.stdout
+
+
+def test_other_line_in_allowlisted_file_fails(tmp_path):
+    pack = tmp_path / "pack"
+    pack.mkdir()
+    (pack / "a.py").write_text('MARKERS = ("<!-- paia:",)\nPAIA_ROOT = 1\n')
+    env = _allow(tmp_path, f'{pack}/a.py:MARKERS = ("<!-- paia:",)')
+    result = _grep(pack, env=env)
+    assert result.returncode == 1
+    assert f"{pack}/a.py:2:" in result.stdout
+    assert f"{pack}/a.py:1:" not in result.stdout
+
+
+def test_sources_toml_is_skipped(tmp_path):
+    pack = tmp_path / "pack"
+    (pack / "core").mkdir(parents=True)
+    line = 'source_path = ".claude/skills/paia-start-issue/SKILL.md"\n'
+    (pack / "SOURCES.toml").write_text(line)
+    assert _grep(pack).returncode == 0
+    (pack / "core" / "x.md").write_text(line)
+    result = _grep(pack)
+    assert result.returncode == 1
+    assert "SOURCES.toml" not in result.stdout
+
+
+def test_unreadable_allowlist_is_rc_2(tmp_path):
+    import os
+
+    (tmp_path / "a.txt").write_text("clean\n")
+    env = dict(os.environ, LITERAL_ALLOWLIST=str(tmp_path / "missing.txt"))
+    assert _grep(tmp_path, env=env).returncode == 2

@@ -1,11 +1,12 @@
-"""Artefact-comments van de controller: verborgen metadata, zichtbare kop, inhoud.
+"""Artefact comments: hidden metadata, a visible header line, the content.
 
-Een spec of plan staat als versie-comment op het issue. Regel 1 is een HTML-comment
-met JSON-metadata (`<!-- paia: {...} -->`), daarna een zichtbare `<sub>`-regel, een lege
-regel en de inhoud. Deze module is puur: geen I/O, geen netwerk.
+A spec or plan stands as a version comment on its issue. Line 1 is an HTML comment
+with JSON metadata (`<!-- lighthouse: {...} -->`), then a visible `<sub>` line, a
+blank line and the content. Readers accept the legacy marker and the legacy keys
+until M2 (besluit 15 and 21); writers use the new ones. Apart from `render`, which
+reads the config for the source link and the language, this module does no I/O.
 
-Spec: docs/developer/planning/specs/2026-10-03-spec-plan-als-issue-comment-design.md,
-*Formaat*.
+The syntax stays within Python 3.9, like the rest of the lib.
 """
 
 from __future__ import annotations
@@ -14,197 +15,232 @@ import hashlib
 import html
 import json
 import re
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from src.controller.comments import Comment
-from src.controller.identity import identity
+# Run as a file on its path: put `.lighthouse/lib` first (see `config.py`).
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# Maximale lengte van een GitHub-comment, in tekens.
-LIMIET_GITHUB = 65_536
+from lighthouse_lib import headings
+from lighthouse_lib.config import ConfigError, config_path, load
+from lighthouse_lib.protocol import LEGACY_MARKERS, MARKER, Comment
 
-SOORTEN = ("spec", "plan")
+# The maximum length of a GitHub comment, in characters.
+GITHUB_LIMIT = 65_536
 
-_METAREGEL = re.compile(r"^<!-- paia: (\{.*\}) -->$")
+KINDS = ("spec", "plan")
+
+_META_LINE = re.compile(
+    r"^(?:" + "|".join(re.escape(m) for m in (MARKER, *LEGACY_MARKERS)) + r") (\{.*\}) -->$"
+)
 _SHA = re.compile(r"[0-9a-f]{40}")
 _HASH = re.compile(r"[0-9a-f]{12}")
+
+_FIELDS = ("kind", "version", "part", "parts", "file", "commit", "hash", "replaces")
+# The keys as they stand in comments from before the move.
+_LEGACY_FIELDS = {
+    "soort": "kind",
+    "versie": "version",
+    "deel": "part",
+    "delen": "parts",
+    "bestand": "file",
+    "vervangt": "replaces",
+}
 
 
 @dataclass(frozen=True)
 class Meta:
-    soort: str
-    versie: int
-    deel: int
-    delen: int
-    bestand: str
+    kind: str
+    version: int
+    part: int
+    parts: int
+    file: str
     commit: str
     hash: str
-    vervangt: str | None
-    # Onbekende velden: de parser bewaart ze, `render` schrijft ze terug.
+    replaces: str | None
+    # Unknown fields: the parser keeps them, `render` writes them back.
     extra: dict = field(default_factory=dict)
 
 
-_VELDEN = ("soort", "versie", "deel", "delen", "bestand", "commit", "hash", "vervangt")
-
-
-def _positief(waarde: object) -> bool:
-    return isinstance(waarde, int) and not isinstance(waarde, bool) and waarde >= 1
+def _positive(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 1
 
 
 def parse_meta(body: str) -> Meta | None:
-    """Metadata uit de eerste regel van `body`, of `None` als die ontbreekt of ongeldig is."""
-    regels = body.strip().splitlines()
-    if not regels or not (treffer := _METAREGEL.match(regels[0])):
+    """The metadata of the first line of `body`, or `None` when absent or invalid."""
+    lines = body.strip().splitlines()
+    if not lines:
+        return None
+    match = _META_LINE.match(lines[0])
+    if not match:
         return None
     try:
-        data = json.loads(treffer.group(1))
+        raw = json.loads(match.group(1))
     except ValueError:
         return None
-    if not isinstance(data, dict) or any(veld not in data for veld in _VELDEN):
+    if not isinstance(raw, dict):
         return None
-    geldig = (
-        data["soort"] in SOORTEN
-        and _positief(data["versie"])
-        and _positief(data["deel"])
-        and _positief(data["delen"])
-        and data["deel"] <= data["delen"]
-        and isinstance(data["bestand"], str)
+    data = {_LEGACY_FIELDS.get(key, key): value for key, value in raw.items()}
+    if any(name not in data for name in _FIELDS):
+        return None
+    valid = (
+        data["kind"] in KINDS
+        and _positive(data["version"])
+        and _positive(data["part"])
+        and _positive(data["parts"])
+        and data["part"] <= data["parts"]
+        and isinstance(data["file"], str)
         and isinstance(data["commit"], str)
         and _SHA.fullmatch(data["commit"]) is not None
         and isinstance(data["hash"], str)
         and _HASH.fullmatch(data["hash"]) is not None
-        and (data["vervangt"] is None or isinstance(data["vervangt"], str))
+        and (data["replaces"] is None or isinstance(data["replaces"], str))
     )
-    if not geldig:
+    if not valid:
         return None
-    extra = {
-        sleutel: waarde for sleutel, waarde in data.items() if sleutel not in _VELDEN
-    }
-    return Meta(**{veld: data[veld] for veld in _VELDEN}, extra=extra)
+    extra = {key: value for key, value in data.items() if key not in _FIELDS}
+    return Meta(**{name: data[name] for name in _FIELDS}, extra=extra)
 
 
-def inhoud(body: str) -> str:
-    """Alles na de metadataregel, de `<sub>`-regel en de lege regel."""
+def content(body: str) -> str:
+    """Everything after the metadata line, the `<sub>` line and the blank line."""
     return "".join(body.lstrip().split("\n", 3)[3:])
 
 
-def render(meta: Meta, inhoud: str) -> str:
-    """Comment-body: metadataregel, zichtbare kop, lege regel, inhoud."""
-    data = {veld: getattr(meta, veld) for veld in _VELDEN} | meta.extra
-    json_tekst = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-    # `--` kan de HTML-comment voortijdig sluiten.
-    if "--" in json_tekst:
-        raise ValueError("metadata bevat '--'; dat sluit de HTML-comment")
-    pad = html.escape(meta.bestand)
-    kop = (
-        f"<sub>{meta.soort} · versie {meta.versie} · deel {meta.deel}/{meta.delen} · "
-        f'bron <a href="{identity().url}/blob/{meta.commit}/{pad}">{pad}</a> '
+def render(meta: Meta, content: str, language: str | None = None) -> str:
+    """The comment body: metadata line, visible header line, blank line, content.
+
+    The header line links to the file at its commit on `forge.repo`, in `language`
+    (default `[project] language`)."""
+    data = {name: getattr(meta, name) for name in _FIELDS}
+    data.update(meta.extra)
+    json_text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    # `--` can close the HTML comment early.
+    if "--" in json_text:
+        raise ValueError("metadata holds '--'; that closes the HTML comment")
+    cfg = load(config_path())
+    if cfg.repo is None:
+        raise ConfigError(f"{config_path()}: forge.repo is not set; an artefact links to its source")
+    language = cfg.language if language is None else language
+
+    def h(key: str) -> str:
+        return headings.heading(key, language)
+
+    path = html.escape(meta.file)
+    header = (
+        f"<sub>{meta.kind} · {h('artefact_version')} {meta.version} · "
+        f"{h('artefact_part')} {meta.part}/{meta.parts} · {h('artefact_source')} "
+        f'<a href="https://github.com/{cfg.repo}/blob/{meta.commit}/{path}">{path}</a> '
         f"@ {meta.commit[:7]}</sub>"
     )
-    return f"<!-- paia: {json_tekst} -->\n{kop}\n\n{inhoud}"
+    return f"{MARKER} {json_text} -->\n{header}\n\n{content}"
 
 
-def hash_van(data: bytes) -> str:
-    """Eerste 12 hex-tekens van sha256 over `data`."""
+def hash_of(data: bytes) -> str:
+    """The first 12 hex characters of the sha256 of `data`."""
     return hashlib.sha256(data).hexdigest()[:12]
 
 
 _FENCE = re.compile(r" {0,3}(`{3,}|~{3,})(.*)")
 
 
-def _knippunten(tekst: str) -> list[tuple[int, int]]:
-    """Alle knippunten als `(offset, klasse)`; klasse 1 is het sterkst.
+def _cut_points(text: str) -> list[tuple[int, int]]:
+    """All cut points as `(offset, class)`; class 1 is the strongest.
 
-    Elke regelstart `p > 0` is een knippunt van klasse 4. Klasse 1 (`## `), 2 (`### `) en
-    3 (na een lege regel) gelden alleen buiten een codeblok: de regel vóór `p` én de regel
-    op `p` beginnen buiten een blok.
+    Every line start `p > 0` is a cut point of class 4. Class 1 (`## `), 2 (`### `)
+    and 3 (after a blank line) hold only outside a code block: the line before `p`
+    and the line at `p` both start outside a block.
     """
-    punten: list[tuple[int, int]] = []
-    fence: tuple[str, int] | None = None  # (teken, lengte) van het open blok
-    vorige_buiten = False
-    vorige_leeg = False
+    points: list[tuple[int, int]] = []
+    fence: tuple[str, int] | None = None  # (character, length) of the open block
+    previous_outside = False
+    previous_blank = False
     offset = 0
-    for regel in tekst.splitlines(keepends=True):
-        buiten = fence is None
+    for line in text.splitlines(keepends=True):
+        outside = fence is None
         if offset > 0:
-            klasse = 4
-            if vorige_buiten and buiten:
-                if regel.startswith("## "):
-                    klasse = 1
-                elif regel.startswith("### "):
-                    klasse = 2
-                elif vorige_leeg:
-                    klasse = 3
-            punten.append((offset, klasse))
-        if treffer := _FENCE.match(regel):
-            teken, rest = treffer.group(1), treffer.group(2)
+            cls = 4
+            if previous_outside and outside:
+                if line.startswith("## "):
+                    cls = 1
+                elif line.startswith("### "):
+                    cls = 2
+                elif previous_blank:
+                    cls = 3
+            points.append((offset, cls))
+        match = _FENCE.match(line)
+        if match:
+            char, rest = match.group(1), match.group(2)
             if fence is None:
-                fence = (teken[0], len(teken))
-            elif teken[0] == fence[0] and len(teken) >= fence[1] and rest.strip() == "":
+                fence = (char[0], len(char))
+            elif char[0] == fence[0] and len(char) >= fence[1] and rest.strip() == "":
                 fence = None
-        vorige_buiten = buiten
-        vorige_leeg = regel.strip() == ""
-        offset += len(regel)
-    return punten
+        previous_outside = outside
+        previous_blank = line.strip() == ""
+        offset += len(line)
+    return points
 
 
-def splits(tekst: str, limiet: int = 60_000) -> list[str]:
-    """Knip `tekst` in delen van hoogstens `limiet` tekens, op markdown-grenzen.
+def split(text: str, limit: int = 60_000) -> list[str]:
+    """Cut `text` into parts of at most `limit` characters, on markdown boundaries.
 
-    Per deel: de sterkste knippuntklasse in het venster `(start, start + limiet]`, daarbinnen
-    het verste punt; zonder knippunt wordt midden in de regel geknipt. Geen deel is leeg
-    (behalve bij lege invoer) en de delen samen zijn exact `tekst`.
+    Per part: the strongest cut-point class in the window `(start, start + limit]`,
+    within it the furthest point; without a cut point the cut falls mid-line. No part
+    is empty (except for empty input) and the parts together are exactly `text`.
     """
-    punten = _knippunten(tekst)
-    delen: list[str] = []
+    points = _cut_points(text)
+    parts: list[str] = []
     start = 0
-    while len(tekst) - start > limiet:
-        kandidaten = [(k, p) for p, k in punten if start < p <= start + limiet]
-        if kandidaten:
-            sterkste = min(k for k, _ in kandidaten)
-            knip = max(p for k, p in kandidaten if k == sterkste)
+    while len(text) - start > limit:
+        candidates = [(c, p) for p, c in points if start < p <= start + limit]
+        if candidates:
+            strongest = min(c for c, _ in candidates)
+            cut = max(p for c, p in candidates if c == strongest)
         else:
-            knip = start + limiet
-        delen.append(tekst[start:knip])
-        start = knip
-    delen.append(tekst[start:])
-    return delen
+            cut = start + limit
+        parts.append(text[start:cut])
+        start = cut
+    parts.append(text[start:])
+    return parts
 
 
-def _versies(
-    comments: list[Comment], soort: str, bestand: str
+def _versions(
+    comments: list[Comment], kind: str, file: str
 ) -> dict[int, list[tuple[Meta, Comment]]]:
-    """Delen van één keten (`soort` + `bestand`), gegroepeerd per versie."""
-    versies: dict[int, list[tuple[Meta, Comment]]] = {}
+    """The parts of one chain (`kind` + `file`), grouped per version."""
+    versions: dict[int, list[tuple[Meta, Comment]]] = {}
     for comment in comments:
         meta = parse_meta(comment.body)
-        if meta is not None and meta.soort == soort and meta.bestand == bestand:
-            versies.setdefault(meta.versie, []).append((meta, comment))
-    return versies
+        if meta is not None and meta.kind == kind and meta.file == file:
+            versions.setdefault(meta.version, []).append((meta, comment))
+    return versions
 
 
-def _compleet(delen: list[tuple[Meta, Comment]]) -> bool:
-    """Alle delen hebben dezelfde `delen`, en `deel` is exact `1..delen`."""
-    totaal = delen[0][0].delen
-    nummers = sorted(meta.deel for meta, _ in delen)
-    return all(meta.delen == totaal for meta, _ in delen) and nummers == list(
-        range(1, totaal + 1)
+def _complete(parts: list[tuple[Meta, Comment]]) -> bool:
+    """All parts have the same `parts`, and `part` is exactly `1..parts`."""
+    total = parts[0][0].parts
+    numbers = sorted(meta.part for meta, _ in parts)
+    return all(meta.parts == total for meta, _ in parts) and numbers == list(
+        range(1, total + 1)
     )
 
 
-def huidige(comments: list[Comment], soort: str, bestand: str) -> list[Comment]:
-    """Delen van de hoogste complete versie van de keten, op `deel` gesorteerd.
+def current(comments: list[Comment], kind: str, file: str) -> list[Comment]:
+    """The parts of the highest complete version of the chain, sorted on `part`.
 
-    Onvolledige versies (een post die halverwege faalde) tellen niet mee. `[]` als de
-    keten geen complete versie heeft.
+    Incomplete versions (a post that failed halfway) do not count. `[]` when the chain
+    has no complete version.
     """
-    versies = _versies(comments, soort, bestand)
-    for versie in sorted(versies, reverse=True):
-        if _compleet(versies[versie]):
-            gesorteerd = sorted(versies[versie], key=lambda paar: paar[0].deel)
-            return [comment for _, comment in gesorteerd]
+    versions = _versions(comments, kind, file)
+    for version in sorted(versions, reverse=True):
+        if _complete(versions[version]):
+            ordered = sorted(versions[version], key=lambda pair: pair[0].part)
+            return [comment for _, comment in ordered]
     return []
 
 
-def volgende_versie(comments: list[Comment], soort: str, bestand: str) -> int:
-    """`max(versies van de keten, ook onvolledige) + 1`; 1 voor een lege keten."""
-    return max(_versies(comments, soort, bestand), default=0) + 1
+def next_version(comments: list[Comment], kind: str, file: str) -> int:
+    """`max(versions of the chain, incomplete ones too) + 1`; 1 for an empty chain."""
+    return max(_versions(comments, kind, file), default=0) + 1

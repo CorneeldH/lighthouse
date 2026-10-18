@@ -1,0 +1,5 @@
+# Exact exceptions to ci/literal-grep.sh, one per line as <path>:<exact line text>,
+# without the line number. Each one has a test that pins why it is needed.
+
+# The old artefact marker, read until M2 (besluit 15); the only place in pack/core.
+pack/core/lib/protocol.py:LEGACY_MARKERS = ("<!-- paia:",)

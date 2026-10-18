@@ -1,69 +1,166 @@
-"""De 🤖-koppen van de controller (spec *Comment-typen*, *Vraag-format*; plan B5, B10)."""
+"""`lighthouse_lib.protocol`: the `🤖 <kind>` comments on an issue (besluit 15, 21, 25).
+
+Taken over from the source repository's `test_controller_comments.py`. Dropped there,
+because they test controller policy that stays in the source repository (plan, taak
+8): the allowlist (`beoordeel_commando`), `is_antwoord`, `antwoord_prompt`, the lane
+check in `parse_handoff`, and the prose of `render_klaar`.
+
+Most tests write with `[project] language = "nl"`, so the rendered text compares
+literally with the comments that already stand on issues; `TestLanguage` covers `en`.
+"""
+
+import re
+from collections.abc import Sequence
 
 import pytest
 
-from src.controller.comments import (
+from lighthouse_lib.protocol import (
+    KINDS,
+    LEGACY_MARKERS,
+    LETTERS,
+    MARKER,
+    MAX_QUESTIONS,
+    ROBOT,
     Comment,
-    HandoffFout,
-    _schoon,
-    actieve_stapel,
-    antwoord_prompt,
-    beoordeel_commando,
-    is_antwoord,
+    Handoff,
+    HandoffError,
+    _clean,
+    active_stack,
+    fill_started,
+    footer,
     parse_handoff,
-    parse_kop,
-    parse_vraag,
-    render_gestart,
-    render_herbaseerd,
-    render_hervat,
-    render_klaar,
-    render_teruggegeven,
-    render_vraag,
-    stapel_basis,
-    voet,
-    vragen_van,
-    vul_gestart,
+    parse_header,
+    parse_question,
+    questions_of,
+    render_done,
+    render_question,
+    render_rebased,
+    render_resumed,
+    render_returned,
+    render_started,
+    stack_base,
 )
-from tests.helpers.controller import markdown_vormfouten
 
 UUID = "0b7e3c1a-1111-4222-8333-444455556666"
-ANDER = "0b7e3c1a-9999-4222-8333-444455556666"
+OTHER = "0b7e3c1a-9999-4222-8333-444455556666"
 
 
-class TestParseKop:
-    def test_een_gewone_comment_is_geen_kop(self):
-        assert parse_kop("ik denk a") is None
+@pytest.fixture
+def config(tmp_path, monkeypatch):
+    """Write `lighthouse.toml` with `body` and point `LIGHTHOUSE_TOML` at it."""
 
-    def test_een_onbekende_soort_is_geen_kop(self):
-        assert parse_kop("🤖 Iets\nx: y") is None
+    def write(body: str) -> None:
+        path = tmp_path / "lighthouse.toml"
+        path.write_text(body, encoding="utf-8")
+        monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
 
-    def test_velden_tot_de_eerste_lege_regel(self):
-        kop = parse_kop(
-            "🤖 Handoff\nissue: #12\nvolgende: /paia-fix-pr 3\n\nnoot: niet meer"
+    return write
+
+
+@pytest.fixture(autouse=True)
+def nl_env(config):
+    config('[project]\nlanguage = "nl"\n')
+
+
+def test_public_names():
+    assert ROBOT == "🤖"
+    assert MARKER == "<!-- lighthouse:"
+    assert LEGACY_MARKERS == ("<!-- paia:",)
+    assert LETTERS == "abcdef"
+    assert MAX_QUESTIONS == 4
+    assert KINDS == (
+        "handoff",
+        "started",
+        "question",
+        "resumed",
+        "done",
+        "returned",
+        "rebased",
+    )
+
+
+class TestParseHeader:
+    def test_an_ordinary_comment_is_no_header(self):
+        assert parse_header("ik denk a") is None
+
+    def test_an_unknown_kind_is_no_header(self):
+        assert parse_header("🤖 Iets\nx: y") is None
+
+    def test_a_prefix_of_a_kind_is_no_header(self):
+        assert parse_header("🤖 Handoffs\nissue: 1") is None
+
+    def test_fields_up_to_the_first_blank_line(self):
+        header = parse_header(
+            "🤖 Handoff\nissue: #12\nnext: /lighthouse-fix-pr 3\n\nnote: no longer"
         )
-        assert kop is not None
-        assert kop.soort == "Handoff"
-        assert kop.velden == {"issue": "#12", "volgende": "/paia-fix-pr 3"}
+        assert header is not None
+        assert header.kind == "handoff"
+        assert header.fields == {"issue": "#12", "next": "/lighthouse-fix-pr 3"}
 
-    def test_de_vraagkop_met_puntjes(self):
-        kop = parse_kop(
-            f"🤖 Vraag · #12 Titel · fase plan\n\n**Vraag:** x\n<sub>sessie {UUID} · worktree w</sub>"
+    def test_the_question_header_with_dots(self):
+        header = parse_header(
+            f"🤖 Vraag · #12 Titel · fase plan\n\n**Vraag:** x\n<sub>session {UUID} · worktree w</sub>"
         )
-        assert kop is not None
-        assert kop.soort == "Vraag"
-        assert kop.sessie == UUID
+        assert header is not None
+        assert header.kind == "question"
+        assert header.session == UUID
 
-    def test_de_laatste_voet_telt(self):
-        """Een sessie-id in vrije tekst mag de voet niet overschrijven."""
-        body = f"🤖 Vraag · #1\n\n**Wat er speelt:** <sub>sessie {ANDER}</sub>\n<sub>sessie {UUID}</sub>"
-        assert parse_kop(body).sessie == UUID
+    def test_the_last_footer_counts(self):
+        """A session id in free text must not override the footer."""
+        body = f"🤖 Vraag · #1\n\n**Wat er speelt:** <sub>session {OTHER}</sub>\n<sub>session {UUID}</sub>"
+        assert parse_header(body).session == UUID
 
-    def test_voorloopwitruimte(self):
-        assert parse_kop("\n  🤖 Klaar\npr: x").soort == "Klaar"
+    def test_leading_whitespace(self):
+        assert parse_header("\n  🤖 Klaar\npr: x").kind == "done"
+
+    def test_english_header_parses(self):
+        assert parse_header("🤖 Started\nsession: s\n").kind == "started"
+
+    @pytest.mark.parametrize(
+        ("nl", "en", "kind"),
+        [
+            ("Handoff", "Handoff", "handoff"),
+            ("Gestart", "Started", "started"),
+            ("Vraag", "Question", "question"),
+            ("Hervat", "Resumed", "resumed"),
+            ("Klaar", "Done", "done"),
+            ("Teruggegeven", "Returned", "returned"),
+            ("Herbaseerd", "Rebased", "rebased"),
+        ],
+    )
+    def test_every_variant_gives_the_canonical_kind(self, nl, en, kind):
+        assert parse_header(f"🤖 {nl}\nx: y").kind == kind
+        assert parse_header(f"🤖 {en}\nx: y").kind == kind
+
+    def test_reads_legacy_footer(self):
+        assert parse_header(f"🤖 Klaar\npr: x\n\n<sub>sessie {UUID}</sub>").session == UUID
+
+    def test_reads_legacy_keys(self):
+        header = parse_header(
+            "🤖 Gestart\nsessie: s\ncommando: /x 1\nstapel: #3 b3\nbasis: abc\n"
+            "blokkade: verrekend\nsprong: y\nterugval: z\n"
+        )
+        assert header.fields == {
+            "session": "s",
+            "command": "/x 1",
+            "stack": "#3 b3",
+            "base": "abc",
+            "blocker": "accounted",
+            "skip": "y",
+            "fallback": "z",
+        }
+
+    def test_reads_legacy_rebased_resumed_and_returned(self):
+        assert parse_header("🤖 Herbaseerd\nvoorganger: #11\nop: origin/main").fields == {
+            "predecessor": "#11",
+            "onto": "origin/main",
+        }
+        assert parse_header("🤖 Hervat\nantwoord: 5").fields == {"answer": "5"}
+        assert parse_header("🤖 Teruggegeven\nreden: x").fields == {"reason": "x"}
 
 
 class TestComment:
-    def test_uit_gh(self):
+    def test_from_gh(self):
         c = Comment.from_gh(
             {
                 "id": 7,
@@ -77,399 +174,299 @@ class TestComment:
             id=7, body="a", created_at="2026-09-25T09:00:00Z", rockets=2, url="u"
         )
 
-    def test_zonder_reacties(self):
+    def test_without_reactions(self):
         assert Comment.from_gh({"id": 7, "body": None}).rockets == 0
 
 
-def _handoff(**velden):
+def _handoff(**fields):
     base = {
         "issue": "#12",
         "worktree": "/w/",
         "branch": "issue-12-x",
-        "anker": "/w/spec.md",
-        "volgende": "/superpowers:writing-plans /w/spec.md",
-        "wanneer": "nu",
+        "anchor": "/w/spec.md",
+        "next": "/superpowers:writing-plans /w/spec.md",
+        "when": "now",
     }
-    base.update(velden)
-    return parse_kop(
-        "🤖 Handoff\n"
-        + "\n".join(f"{k}: {v}" for k, v in base.items() if v is not None)
+    base.update(fields)
+    return parse_header(
+        "🤖 Handoff\n" + "\n".join(f"{k}: {v}" for k, v in base.items() if v is not None)
     )
 
 
-def _handoff_tekst() -> str:
+def _handoff_text() -> str:
     return "\n".join(
         f"{k}: {v}"
         for k, v in {
             "issue": "#12",
             "worktree": "/w/",
             "branch": "issue-12-x",
-            "anker": "/w/spec.md",
-            "volgende": "/superpowers:writing-plans /w/spec.md",
-            "wanneer": "nu",
+            "anchor": "/w/spec.md",
+            "next": "/superpowers:writing-plans /w/spec.md",
+            "when": "now",
         }.items()
     )
 
 
 class TestHandoff:
-    def test_een_complete_handoff(self):
+    def test_a_complete_handoff(self):
         h = parse_handoff(_handoff())
-        assert (h.issue, h.worktree, h.branch, h.wanneer) == (
+        assert (h.issue, h.worktree, h.branch, h.anchor, h.when) == (
             12,
             "/w",
             "issue-12-x",
-            "nu",
+            "/w/spec.md",
+            "now",
         )
 
     @pytest.mark.parametrize(
-        "velden",
+        "fields",
         [
-            {"volgende": None},
-            {"wanneer": "morgen"},
-            {"issue": "twaalf"},
+            {"next": None},
+            {"when": "tomorrow"},
+            {"issue": "twelve"},
             {"worktree": None},
         ],
     )
-    def test_onvolledig_of_onleesbaar(self, velden):
-        with pytest.raises(HandoffFout):
-            parse_handoff(_handoff(**velden))
+    def test_incomplete_or_unreadable(self, fields):
+        with pytest.raises(HandoffError):
+            parse_handoff(_handoff(**fields))
 
-    def test_handoff_met_lane_native(self):
-        native = "/superpowers:executing-plans /abs/plan.md"
-        assert parse_handoff(_handoff(volgende=native, lane="native")).lane == "native"
-        assert parse_handoff(_handoff(volgende=native)).lane == ""
+    def test_lane_not_validated(self):
+        header = parse_header(
+            "🤖 Handoff\nissue: 1\nworktree: w\nbranch: b\nnext: /x\nwhen: now\nlane: anything\n"
+        )
+        assert parse_handoff(header).lane == "anything"
 
-    @pytest.mark.parametrize(
-        ("volgende", "lane"),
-        [
-            ("/superpowers:subagent-driven-development /abs/plan.md", "native"),
-            ("/superpowers:executing-plans /abs/plan.md", "snel"),
-        ],
-    )
-    def test_lane_alleen_native_bij_executing_plans(self, volgende, lane):
-        with pytest.raises(HandoffFout, match="lane"):
-            parse_handoff(_handoff(volgende=volgende, lane=lane))
-
-    def test_handoff_met_auto_regels_parset_ongewijzigd(self):
+    def test_handoff_with_auto_lines_parses_unchanged(self):
         auto = (
-            "Context: gekozen zonder vraag\n"
-            "Auto: technische-keuze — sqlite of json? → sqlite\n"
-            "Auto: intentie-scope — ook de CLI? → ja"
+            "Context: chosen without a question\n"
+            "Auto: technical-choice — sqlite or json? → sqlite\n"
+            "Auto: intent-scope — the CLI too? → yes"
         )
-        zonder = parse_kop(
-            "🤖 Handoff\n" + _handoff_tekst() + "\nContext: gekozen zonder vraag"
+        without = parse_header(
+            "🤖 Handoff\n" + _handoff_text() + "\nContext: chosen without a question"
         )
-        met = parse_kop("🤖 Handoff\n" + _handoff_tekst() + "\n" + auto)
-        assert parse_handoff(met) == parse_handoff(zonder)
+        with_auto = parse_header("🤖 Handoff\n" + _handoff_text() + "\n" + auto)
+        assert parse_handoff(with_auto) == parse_handoff(without)
 
-    def test_geen_handoff(self):
-        with pytest.raises(HandoffFout):
-            parse_handoff(parse_kop("🤖 Klaar\npr: x"))
+    def test_no_handoff(self):
+        with pytest.raises(HandoffError):
+            parse_handoff(parse_header("🤖 Klaar\npr: x"))
 
-
-class TestBeoordeelCommando:
-    @pytest.mark.parametrize(
-        "volgende",
-        [
-            "/paia-start-issue 12",
-            "/paia-fix-pr 34",
-            "/superpowers:writing-plans /abs/docs/spec.md",
-            "/paia-spec-adversarial-review /abs/docs/spec.md",
-            "/superpowers:subagent-driven-development /abs/docs/plan.md",
-            "/paia-plan-adversarial-review /abs/docs/plan.md",
-        ],
-    )
-    def test_op_de_allowlist(self, volgende):
-        assert beoordeel_commando(volgende, 12) == ("start", "")
-
-    @pytest.mark.parametrize(
-        "volgende",
-        [
-            "/paia-start-issue 13",
-            "/paia-fix-pr abc",
-            "/paia-fix-pr ٣",
-            "/superpowers:writing-plans spec.md",
-            "/superpowers:writing-plans /a.md; rm -rf /",
-            "/superpowers:writing-plans /a.md /b.md",
-            "/superpowers:writing-plans /mijn spec.md",
-            "/paia-merge 3",
-            "",
-        ],
-    )
-    def test_afgewezen(self, volgende):
-        oordeel, reden = beoordeel_commando(volgende, 12)
-        assert oordeel == "afgewezen"
-        assert reden
-
-    def test_close_issue_is_een_eindhandoff(self):
-        assert beoordeel_commando("/paia-close-issue 12", 12) == ("eind", "")
-
-    def test_brainstorm(self):
-        assert beoordeel_commando("/superpowers:brainstorming", 12) == (
-            "brainstorm",
-            "",
+    def test_reads_legacy_handoff(self):
+        body = "🤖 Handoff\nissue: #12\nworktree: /w/x/\nbranch: b\nvolgende: /x\nwanneer: nacht\nanker: a\n"
+        assert parse_handoff(parse_header(body)) == Handoff(
+            12, "/w/x", "b", "a", "/x", "night"
         )
 
-    def test_executing_plans_is_interactief(self):
-        assert beoordeel_commando("/superpowers:executing-plans /a/plan.md", 12) == (
-            "interactief",
-            "",
-        )
-
-    def test_native_start(self):
-        assert beoordeel_commando(
-            "/superpowers:executing-plans /abs/plan.md", 1461, lane="native"
-        ) == ("start", "")
-
-    def test_native_eist_een_absoluut_planpad(self):
-        oordeel, reden = beoordeel_commando(
-            "/superpowers:executing-plans plan.md", 1461, lane="native"
-        )
-        assert oordeel == "afgewezen"
-        assert "argument past niet" in reden
-
-
-class TestAntwoord:
-    @pytest.mark.parametrize(
-        "body",
-        [
-            "a",
-            "B",
-            "antwoord: neem b",
-            "Versleuteld",
-            "ik kies a",
-            "denk na",
-            "z",
-            "ab",
-        ],
-    )
-    def test_wel(self, body):
-        assert is_antwoord(body)
-
-    @pytest.mark.parametrize(
-        "body",
-        [
-            "",
-            "   \n  ",
-            "🤖 Hervat\nsessie: x",
-            "🤖 Onbekend\nx: y",
-            '<!-- paia: {"soort":"plan"} -->\n<sub>x</sub>\n\ninhoud',
-            "  <!-- paia: {kapot\nx",
-        ],
-    )
-    def test_niet(self, body):
-        assert not is_antwoord(body)
-
-    def test_antwoord_prompt_op_een_bundel_houdt_alle_vragen(self):  # Review Focus 4
-        body = _vraag_body(
-            _velden(
-                vragen=[
-                    {
-                        "vraag": "eerst?",
-                        "opties": [{"tekst": "x", "aanbevolen": False}],
-                    },
-                    {"vraag": "dan?", "opties": [{"tekst": "p", "aanbevolen": False}]},
-                ]
-            )
-        )
-        prompt = antwoord_prompt(body, "1a, en bij 2 liever X")
-        assert "**Vraag 1:** eerst?" in prompt and "**Vraag 2:** dan?" in prompt
-        assert prompt.rstrip().endswith("1a, en bij 2 liever X")
-        assert "<sub>" not in prompt and "**Max 1 comment als reactie.**" not in prompt
-        assert "Antwoord per vraag" not in prompt
+    def test_reads_legacy_now(self):
+        body = "🤖 Handoff\nissue: 1\nworktree: w\nbranch: b\nvolgende: /x\nwanneer: nu\n"
+        assert parse_handoff(parse_header(body)).when == "now"
 
 
 class TestRender:
-    def test_gestart_leest_terug(self):
-        kop = parse_kop(
-            render_gestart(
-                sessie=UUID,
+    def test_started_reads_back(self):
+        header = parse_header(
+            render_started(
+                session=UUID,
                 worktree="/w",
-                commando="/paia-fix-pr 7",
+                command="/lighthouse-fix-pr 7",
                 start="t",
                 head_sha="b" * 40,
             )
         )
-        assert kop.soort == "Gestart"
-        assert kop.sessie == UUID
-        assert kop.velden["commando"] == "/paia-fix-pr 7"
-        assert kop.velden["head"] == "b" * 40
+        assert header.kind == "started"
+        assert header.session == UUID
+        assert header.fields["command"] == "/lighthouse-fix-pr 7"
+        assert header.fields["head"] == "b" * 40
 
-    def test_render_gestart_met_stapel(self):
-        body = render_gestart(
-            sessie=UUID,
+    def test_render_started_with_stack(self):
+        body = render_started(
+            session=UUID,
             worktree="/w",
-            commando="/paia-start-issue 12",
+            command="/lighthouse-start-issue 12",
             start="t",
-            stapel="#11 issue-11-x",
-            basis="c" * 40,
+            stack="#11 issue-11-x",
+            base="c" * 40,
             branch="issue-12-y",
         )
-        kop = parse_kop(body)
-        assert kop.velden["stapel"] == "#11 issue-11-x"
-        assert kop.velden["basis"] == "c" * 40
-        assert kop.velden["branch"] == "issue-12-y"
-        assert actieve_stapel([body]) == kop
+        header = parse_header(body)
+        assert header.fields["stack"] == "#11 issue-11-x"
+        assert header.fields["base"] == "c" * 40
+        assert header.fields["branch"] == "issue-12-y"
+        assert active_stack([body]) == header
 
-    def test_render_gestart_zonder_stapel_heeft_geen_stapelvelden(self):
-        kop = parse_kop(
-            render_gestart(sessie=UUID, worktree="/w", commando="c", start="t")
+    def test_render_started_without_stack_has_no_stack_fields(self):
+        header = parse_header(
+            render_started(session=UUID, worktree="/w", command="c", start="t")
         )
-        assert not {"stapel", "basis", "branch", "blokkade"} & kop.velden.keys()
+        assert not {"stack", "base", "branch", "blocker"} & header.fields.keys()
 
-    def test_render_gestart_met_blokkade(self):
-        kop = parse_kop(
-            render_gestart(
-                sessie=UUID,
-                worktree="/w",
-                commando="c",
-                start="t",
-                blokkade="verrekend",
+    def test_render_started_with_blocker(self):
+        header = parse_header(
+            render_started(
+                session=UUID, worktree="/w", command="c", start="t", blocker="accounted"
             )
         )
-        assert kop.velden["blokkade"] == "verrekend"
-        assert "basis" not in kop.velden
+        assert header.fields["blocker"] == "accounted"
+        assert "base" not in header.fields
 
-    def test_render_gestart_met_runner_workspace_en_terugval(self):
-        kop = parse_kop(
-            render_gestart(
-                sessie=UUID,
+    def test_render_started_with_runner_workspace_and_fallback(self):
+        header = parse_header(
+            render_started(
+                session=UUID,
                 worktree="/w",
-                commando="c",
+                command="c",
                 start="t",
                 runner="forge",
                 workspace="ws1",
-                terugval="x",
+                fallback="x",
             )
         )
         assert (
-            kop.velden["runner"],
-            kop.velden["workspace"],
-            kop.velden["terugval"],
+            header.fields["runner"],
+            header.fields["workspace"],
+            header.fields["fallback"],
         ) == ("forge", "ws1", "x")
 
-    def test_render_gestart_zonder_runner_heeft_geen_forgevelden(self):
-        kop = parse_kop(
-            render_gestart(sessie=UUID, worktree="/w", commando="c", start="t")
+    def test_render_started_without_runner_has_no_forge_fields(self):
+        header = parse_header(
+            render_started(session=UUID, worktree="/w", command="c", start="t")
         )
-        assert not {"runner", "workspace", "terugval"} & kop.velden.keys()
+        assert not {"runner", "workspace", "fallback"} & header.fields.keys()
 
-    def test_vul_gestart_zet_runner_workspace_en_terugval_en_houdt_de_voet(self):
-        body = render_gestart(
-            sessie=UUID,
+    def test_fill_started_sets_runner_workspace_and_fallback_and_keeps_the_footer(self):
+        body = render_started(
+            session=UUID,
             worktree="",
-            commando="/paia-start-issue 12",
+            command="/lighthouse-start-issue 12",
             start="t",
             runner="forge",
             workspace="ws1",
         )
-        nieuw = vul_gestart(
+        new = fill_started(
             body,
-            worktree="/home/u/.kenn/forge/worktrees/x",
+            worktree="/u/.kenn/forge/worktrees/x",
             runner="headless",
             workspace="",
-            terugval="forge niet beschikbaar:\nkeyring dicht",
+            fallback="forge not available:\nkeyring closed",
         )
-        kop = parse_kop(nieuw)
-        assert kop.soort == "Gestart"
-        assert kop.velden["worktree"] == "/home/u/.kenn/forge/worktrees/x"
-        assert kop.velden["runner"] == "headless"
-        assert "workspace" not in kop.velden
-        # Een veld is één regel: een newline in de waarde breekt de kop niet open.
-        assert kop.velden["terugval"] == "forge niet beschikbaar: keyring dicht"
-        assert kop.velden["commando"] == "/paia-start-issue 12"
-        assert kop.sessie == UUID
-        assert nieuw.endswith("\n\n" + voet(UUID))
-        # Een bestaand veld blijft op zijn plek.
-        regels = nieuw.splitlines()
-        assert regels[1:3] == [
-            f"sessie: {UUID}",
-            "worktree: /home/u/.kenn/forge/worktrees/x",
+        header = parse_header(new)
+        assert header.kind == "started"
+        assert header.fields["worktree"] == "/u/.kenn/forge/worktrees/x"
+        assert header.fields["runner"] == "headless"
+        assert "workspace" not in header.fields
+        # A field is one line: a newline in the value does not break the header open.
+        assert header.fields["fallback"] == "forge not available: keyring closed"
+        assert header.fields["command"] == "/lighthouse-start-issue 12"
+        assert header.session == UUID
+        assert new.endswith("\n\n" + footer(UUID))
+        # An existing field keeps its place.
+        assert new.splitlines()[1:3] == [
+            f"session: {UUID}",
+            "worktree: /u/.kenn/forge/worktrees/x",
         ]
 
-    def test_vul_gestart_zet_een_nieuw_veld_achteraan_de_kop(self):
-        body = render_gestart(sessie=UUID, worktree="/w", commando="c", start="t")
-        nieuw = vul_gestart(body, runner="forge", workspace="ws1")
-        kop = parse_kop(nieuw)
-        assert (kop.velden["runner"], kop.velden["workspace"]) == ("forge", "ws1")
-        assert nieuw.splitlines()[5:7] == ["runner: forge", "workspace: ws1"]
-        assert vul_gestart(nieuw, runner="forge", workspace="ws1") == nieuw
+    def test_fill_started_puts_a_new_field_at_the_end_of_the_header(self):
+        body = render_started(session=UUID, worktree="/w", command="c", start="t")
+        new = fill_started(body, runner="forge", workspace="ws1")
+        header = parse_header(new)
+        assert (header.fields["runner"], header.fields["workspace"]) == ("forge", "ws1")
+        assert new.splitlines()[5:7] == ["runner: forge", "workspace: ws1"]
+        assert fill_started(new, runner="forge", workspace="ws1") == new
 
-    def test_gestart_met_sprong(self):
-        body = render_gestart(
-            sessie=UUID,
+    def test_started_with_skip(self):
+        body = render_started(
+            session=UUID,
             worktree="/w",
-            commando="c",
+            command="c",
             start="t",
-            sprong="spec-review overgeslagen (config)",
+            skip="spec-review skipped (config)",
         )
-        assert "sprong: spec-review overgeslagen (config)" in body.splitlines()
-        assert parse_kop(body).velden["sprong"] == "spec-review overgeslagen (config)"
-        zonder = render_gestart(sessie=UUID, worktree="/w", commando="c", start="t")
-        assert "sprong:" not in zonder
+        assert "skip: spec-review skipped (config)" in body.splitlines()
+        assert parse_header(body).fields["skip"] == "spec-review skipped (config)"
+        without = render_started(session=UUID, worktree="/w", command="c", start="t")
+        assert "skip:" not in without
 
-    def test_render_herbaseerd_parset_als_kop(self):
-        body = render_herbaseerd(voorganger=11, basis="c" * 40, sessie=UUID)
+    def test_render_rebased_parses_as_header(self):
+        body = render_rebased(predecessor=11, base="c" * 40, session=UUID)
         assert body.splitlines()[0] == "🤖 Herbaseerd"
-        kop = parse_kop(body)
-        assert kop.soort == "Herbaseerd"
-        assert kop.velden["basis"] == "c" * 40
-        assert kop.velden["voorganger"] == "#11"
-        assert kop.velden["op"] == "origin/main"
-        assert kop.sessie == UUID
+        header = parse_header(body)
+        assert header.kind == "rebased"
+        assert header.fields["base"] == "c" * 40
+        assert header.fields["predecessor"] == "#11"
+        assert header.fields["onto"] == "origin/main"
+        assert header.session == UUID
 
-    def test_render_herbaseerd_zonder_sessie_heeft_geen_voet(self):
-        assert "<sub>" not in render_herbaseerd(voorganger=11, basis="c" * 40)
+    def test_render_rebased_follows_default_branch(self, config):
+        config('[project]\nlanguage = "nl"\n[forge]\ndefault_branch = "trunk"\n')
+        body = render_rebased(predecessor=11, base="c" * 40)
+        assert parse_header(body).fields["onto"] == "origin/trunk"
 
-    def test_hervat_en_klaar(self):
+    def test_render_rebased_without_session_has_no_footer(self):
+        assert "<sub>" not in render_rebased(predecessor=11, base="c" * 40)
+
+    def test_resumed_and_done(self):
         assert (
-            parse_kop(render_hervat(sessie=UUID, antwoord_id=5)).velden["antwoord"]
+            parse_header(render_resumed(session=UUID, answer_id=5)).fields["answer"]
             == "5"
         )
-        klaar = parse_kop(render_klaar(sessie=UUID, pr_url="https://x/pull/7"))
-        assert (klaar.soort, klaar.velden["pr"], klaar.sessie) == (
-            "Klaar",
+        done = parse_header(render_done(session=UUID, pr_url="https://x/pull/7"))
+        assert (done.kind, done.fields["pr"], done.session) == (
+            "done",
             "https://x/pull/7",
             UUID,
         )
 
-    def test_klaar_noemt_de_nacontrole(self):
-        body = render_klaar(sessie=UUID, pr_url="https://x/pull/7")
-        assert "`/paia-close-issue` blijven bij jou" not in body
-        assert "na de merge" in body
+    def test_render_follows_language(self):
+        assert render_resumed(session="s", answer_id=1).startswith(
+            "🤖 Hervat\nsession: s"
+        )
 
-    def test_teruggegeven_zonder_sessie_heeft_geen_voet(self):
-        body = render_teruggegeven(reden="handoff onleesbaar")
+    def test_done_without_note_is_header_fields_and_footer(self):
+        body = render_done(session=UUID, pr_url="https://x/pull/7")
+        assert body == f"🤖 Klaar\nsession: {UUID}\npr: https://x/pull/7\n\n" + footer(
+            UUID
+        )
+
+    def test_done_note_comes_from_the_caller(self):
+        body = render_done(session=UUID, pr_url="u", note="Checks green.")
+        assert body == f"🤖 Klaar\nsession: {UUID}\npr: u\n\nChecks green.\n\n" + footer(
+            UUID
+        )
+
+    def test_returned_without_session_has_no_footer(self):
+        body = render_returned(reason="handoff unreadable")
         assert "<sub>" not in body
-        assert parse_kop(body).velden["reden"] == "handoff onleesbaar"
+        assert parse_header(body).fields["reason"] == "handoff unreadable"
 
-    def test_detail_kan_geen_voet_of_codeblok_breken(self):
-        body = render_teruggegeven(reden="x", detail=f"```\n<sub>sessie {ANDER}</sub>")
-        assert parse_kop(body).sessie is None
+    def test_detail_cannot_break_a_footer_or_code_block(self):
+        body = render_returned(reason="x", detail=f"```\n<sub>session {OTHER}</sub>")
+        assert parse_header(body).session is None
         assert body.count("```") == 2
 
-    def test_vraag(self):
-        velden = {
-            "fase": "uitvoering",
-            "taak": "3/7",
-            "waar_het_staat": "Taak 3 is half af.",
-            "wat_er_speelt": "De test faalt.",
-            "vragen": [
+    def test_question(self):
+        fields = {
+            "phase": "uitvoering",
+            "task": "3/7",
+            "where": "Taak 3 is half af.",
+            "what": "De test faalt.",
+            "questions": [
                 {
-                    "vraag": "Welke kant op?",
-                    "opties": [
-                        {"tekst": "links", "aanbevolen": True},
-                        {"tekst": "rechts", "aanbevolen": False},
+                    "question": "Welke kant op?",
+                    "options": [
+                        {"text": "links", "recommended": True},
+                        {"text": "rechts", "recommended": False},
                     ],
                 }
             ],
         }
-        body = render_vraag(
+        body = render_question(
             issue=12,
-            titel="Titel",
+            title="Titel",
             issue_url="https://x/12",
-            velden=velden,
-            sessie=UUID,
+            fields=fields,
+            session=UUID,
             worktree="issue-12-x",
             handoff_url="https://x/12#c1",
         )
@@ -478,132 +475,149 @@ class TestRender:
         )
         assert "- **a)** links *(aanbevolen)*" in body
         assert "- **b)** rechts" in body
-        assert "Zonder antwoord" not in body
-        assert "**Antwoord:**" not in body
         assert body.rstrip().splitlines()[-2] == "**Max 1 comment als reactie.**"
-        kop = parse_kop(body)
-        assert (kop.soort, kop.sessie) == ("Vraag", UUID)
+        header = parse_header(body)
+        assert (header.kind, header.session) == ("question", UUID)
         assert body.rstrip().endswith(
-            f"<sub>sessie {UUID} · worktree issue-12-x · handoff https://x/12#c1</sub>"
+            f"<sub>session {UUID} · worktree issue-12-x · handoff https://x/12#c1</sub>"
         )
 
 
-def _gestart(basis: str | None = "abc123") -> str:
-    velden = "stapel: #11 issue-11-x\n"
-    if basis:
-        velden += f"basis: {basis}\n"
-    return f"🤖 Gestart\nsessie: {UUID}\n{velden}branch: issue-12-x\n\n<sub>sessie {UUID}</sub>"
+def _started(base: str | None = "abc123") -> str:
+    fields = "stack: #11 issue-11-x\n"
+    if base:
+        fields += f"base: {base}\n"
+    return f"🤖 Gestart\nsession: {UUID}\n{fields}branch: issue-12-x\n\n<sub>session {UUID}</sub>"
 
 
-class TestStapel:
-    def test_actieve_stapel(self):
-        kop = actieve_stapel([_gestart()])
-        assert kop is not None
-        assert kop.velden["basis"] == "abc123"
+class TestStack:
+    def test_active_stack(self):
+        header = active_stack([_started()])
+        assert header is not None
+        assert header.fields["base"] == "abc123"
 
-    def test_actieve_stapel_zonder_basis_is_geen_stapel(self):
-        assert actieve_stapel([_gestart(basis=None)]) is None
-
-    @pytest.mark.parametrize(
-        "daarna", ["🤖 Herbaseerd\nbasis: abc123", "🤖 Teruggegeven\nreden: x"]
-    )
-    def test_actieve_stapel_gesloten_door_herbaseerd_of_teruggegeven(self, daarna):
-        assert actieve_stapel([_gestart(), daarna]) is None
-
-    def test_actieve_stapel_negeert_gewone_comments_erna(self):
-        kop = actieve_stapel([_gestart(), "ik denk a"])
-        assert kop is not None
-
-    def test_actieve_stapel_leeg(self):
-        assert actieve_stapel([]) is None
+    def test_active_stack_without_base_is_no_stack(self):
+        assert active_stack([_started(base=None)]) is None
 
     @pytest.mark.parametrize(
-        "daarna", ["🤖 Herbaseerd\nbasis: abc123", "🤖 Teruggegeven\nreden: x"]
+        "after", ["🤖 Herbaseerd\nbase: abc123", "🤖 Teruggegeven\nreason: x"]
     )
-    def test_stapel_basis_ongeacht_wat_erna_komt(self, daarna):
-        assert stapel_basis([_gestart(), daarna]) == "abc123"
+    def test_active_stack_closed_by_rebased_or_returned(self, after):
+        assert active_stack([_started(), after]) is None
 
-    def test_stapel_basis_zonder_gestart_met_basis(self):
-        assert stapel_basis([_gestart(basis=None), "ik denk a"]) is None
+    def test_active_stack_ignores_ordinary_comments_after(self):
+        assert active_stack([_started(), "ik denk a"]) is not None
 
-    def test_stapel_basis_laatste_gestart_met_basis_wint(self):
-        assert (
-            stapel_basis([_gestart("aaa"), _gestart(basis=None), _gestart("bbb")])
-            == "bbb"
-        )
+    def test_active_stack_empty(self):
+        assert active_stack([]) is None
 
-    def test_herbaseerd_is_een_soort(self):
-        assert parse_kop("🤖 Herbaseerd\nbasis: abc").soort == "Herbaseerd"
+    @pytest.mark.parametrize(
+        "after", ["🤖 Herbaseerd\nbase: abc123", "🤖 Teruggegeven\nreason: x"]
+    )
+    def test_stack_base_whatever_comes_after(self, after):
+        assert stack_base([_started(), after]) == "abc123"
+
+    def test_stack_base_without_started_with_base(self):
+        assert stack_base([_started(base=None), "ik denk a"]) is None
+
+    def test_stack_base_last_started_with_base_wins(self):
+        assert stack_base([_started("aaa"), _started(base=None), _started("bbb")]) == "bbb"
+
+    def test_rebased_is_a_kind(self):
+        assert parse_header("🤖 Herbaseerd\nbase: abc").kind == "rebased"
+
+    def test_reads_legacy_started_stack(self):
+        assert stack_base(["🤖 Gestart\nsessie: s\nstapel: #3 b3\nbasis: abc\n"]) == "abc"
+
+    def test_reads_english_started_stack(self):
+        assert stack_base(["🤖 Started\nsession: s\nstack: #3 b3\nbase: abc\n"]) == "abc"
 
 
-def _geschoond(velden: dict) -> dict:
-    """Wat parse_vraag teruggeeft: de invoer zoals render_vraag hem schoont."""
+def _cleaned(fields: dict) -> dict:
+    """What parse_question returns: the input as render_question cleans it."""
     return {
-        "fase": _schoon(str(velden.get("fase") or "?")),
-        "taak": _schoon(str(velden.get("taak") or "")),
-        "waar_het_staat": _schoon(velden["waar_het_staat"]),
-        "wat_er_speelt": _schoon(velden["wat_er_speelt"]),
-        "vragen": [
+        "phase": _clean(str(fields.get("phase") or "?")),
+        "task": _clean(str(fields.get("task") or "")),
+        "where": _clean(fields["where"]),
+        "what": _clean(fields["what"]),
+        "questions": [
             {
-                "vraag": _schoon(v["vraag"]),
-                "opties": [
-                    {
-                        "tekst": _schoon(o["tekst"]),
-                        "aanbevolen": bool(o.get("aanbevolen")),
-                    }
-                    for o in v["opties"][:6]
+                "question": _clean(q["question"]),
+                "options": [
+                    {"text": _clean(o["text"]), "recommended": bool(o.get("recommended"))}
+                    for o in q["options"][:6]
                 ],
             }
-            for v in velden["vragen"][:4]
+            for q in fields["questions"][:4]
         ],
-        "commandos": list(velden.get("commandos") or []),
+        "commands": list(fields.get("commands") or []),
     }
 
 
-def _vraag_body(velden: dict) -> str:
-    return render_vraag(
+def _question_body(fields: dict, language: str | None = None) -> str:
+    return render_question(
         issue=12,
-        titel="Titel",
+        title="Titel",
         issue_url="https://x/12",
-        velden=velden,
-        sessie=UUID,
+        fields=fields,
+        session=UUID,
         worktree="issue-12-x",
+        language=language,
     )
 
 
-def _velden(**extra) -> dict:
-    """Basisvelden met één vraag; `vraag=`/`opties=` passen die ene vraag aan,
-    `vragen=` vervangt de hele bundel."""
-    vraag = {
-        "vraag": extra.pop("vraag", "welke?"),
-        "opties": extra.pop("opties", [{"tekst": "links", "aanbevolen": False}]),
+def _fields(**extra) -> dict:
+    """Base fields with one question; `question=`/`options=` adjust that one question,
+    `questions=` replaces the whole bundle."""
+    question = {
+        "question": extra.pop("question", "welke?"),
+        "options": extra.pop("options", [{"text": "links", "recommended": False}]),
     }
-    basis = {
-        "waar_het_staat": "in de plan-fase",
-        "wat_er_speelt": "twee wegen",
-        "vragen": [vraag],
-    }
-    return basis | extra
+    base = {"where": "in de plan-fase", "what": "twee wegen", "questions": [question]}
+    return base | extra
 
 
-OUDE_VRAAG = (
-    f"🤖 Vraag · #12 Titel ([link](https://x/12)) · fase plan\n\n"
+QUESTION = (
+    "🤖 Vraag · #12 Titel ([link](https://x/12)) · fase plan\n\n"
     "**Waar het staat:** in de plan-fase\n**Wat er speelt:** twee wegen\n"
     "**Vraag:** welke?\n- **a)** links *(aanbevolen)*\n- **b)** rechts\n\n"
-    f"**Max 1 comment als reactie.**\n<sub>sessie {UUID} · worktree issue-12-x</sub>"
+    f"**Max 1 comment als reactie.**\n<sub>session {UUID} · worktree issue-12-x</sub>"
 )
+# The same question as it stands on issues from before the move.
+LEGACY_QUESTION = QUESTION.replace("<sub>session", "<sub>sessie")
+
+ONE_QUESTION = [
+    {
+        "question": "welke?",
+        "options": [
+            {"text": "links", "recommended": True},
+            {"text": "rechts", "recommended": False},
+        ],
+    }
+]
 
 
-def test_vragen_van_leest_oude_classificatie():
-    oud = {"vraag": "z?", "opties": [{"tekst": "een", "aanbevolen": True}]}
-    assert vragen_van(oud) == [
-        {"vraag": "z?", "opties": [{"tekst": "een", "aanbevolen": True}]}
+def test_questions_of_reads_old_classification():
+    old = {"vraag": "z?", "opties": [{"tekst": "een", "aanbevolen": True}]}
+    assert questions_of(old) == [
+        {"question": "z?", "options": [{"text": "een", "recommended": True}]}
     ]
 
 
-class TestParseVraag:
-    def test_oude_vraag_parset_als_bundel_van_een(self):  # Review Focus 1
-        assert parse_vraag(OUDE_VRAAG)["vragen"] == [
+def test_questions_of_reads_old_bundle():
+    old = {"vragen": [{"vraag": "z?", "opties": [{"tekst": "een", "aanbevolen": False}]}]}
+    assert questions_of(old) == [
+        {"question": "z?", "options": [{"text": "een", "recommended": False}]}
+    ]
+
+
+def test_render_question_reads_old_fields():
+    """A classification on disk from before the move keeps rendering."""
+    old = {
+        "fase": "plan",
+        "waar_het_staat": "in de plan-fase",
+        "wat_er_speelt": "twee wegen",
+        "vragen": [
             {
                 "vraag": "welke?",
                 "opties": [
@@ -611,236 +625,251 @@ class TestParseVraag:
                     {"tekst": "rechts", "aanbevolen": False},
                 ],
             }
-        ]
+        ],
+    }
+    assert _question_body(old) == QUESTION
 
-    def test_een_vraag_rendert_als_voorheen(self):
-        body = _vraag_body(
-            _velden(
-                fase="plan",
-                vragen=[
-                    {
-                        "vraag": "welke?",
-                        "opties": [
-                            {"tekst": "links", "aanbevolen": True},
-                            {"tekst": "rechts", "aanbevolen": False},
-                        ],
-                    }
-                ],
-            )
-        )
-        assert body == OUDE_VRAAG
 
-    def test_bundel_nummert_vragen_en_opties(self):
-        body = _vraag_body(
-            _velden(
-                vragen=[
+class TestParseQuestion:
+    def test_legacy_question_parses_as_bundle_of_one(self):
+        assert parse_question(LEGACY_QUESTION)["questions"] == ONE_QUESTION
+
+    def test_one_question_renders_as_before(self):
+        assert _question_body(_fields(phase="plan", questions=ONE_QUESTION)) == QUESTION
+
+    def test_bundle_numbers_questions_and_options(self):
+        body = _question_body(
+            _fields(
+                questions=[
                     {
-                        "vraag": "eerst?",
-                        "opties": [
-                            {"tekst": "x", "aanbevolen": True},
-                            {"tekst": "y", "aanbevolen": False},
+                        "question": "eerst?",
+                        "options": [
+                            {"text": "x", "recommended": True},
+                            {"text": "y", "recommended": False},
                         ],
                     },
                     {
-                        "vraag": "dan?",
-                        "opties": [
-                            {"tekst": "p", "aanbevolen": False},
-                            {"tekst": "q", "aanbevolen": True},
+                        "question": "dan?",
+                        "options": [
+                            {"text": "p", "recommended": False},
+                            {"text": "q", "recommended": True},
                         ],
                     },
                 ]
             )
         )
         assert "**Vraag 1:** eerst?" in body and "**Vraag 2:** dan?" in body
-        # Zonder lege regel hangt Vraag 2 als lazy continuation in de laatste optie.
+        # Without a blank line, Question 2 hangs as a lazy continuation in the last option.
         assert "\n\n**Vraag 2:**" in body
         assert "\n\n**Vraag 1:**" not in body
-        assert (
-            "- **1a)** x *(aanbevolen)*" in body
-            and "- **2b)** q *(aanbevolen)*" in body
-        )
+        assert "- **1a)** x *(aanbevolen)*" in body and "- **2b)** q *(aanbevolen)*" in body
         assert "Antwoord per vraag, bijvoorbeeld `1a, 2c`." in body
         assert "**Vraag:**" not in body
 
-    def test_roundtrip_maximale_bundel(self):  # Review Focus 5
-        vragen = [
+    def test_roundtrip_maximal_bundle(self):
+        questions = [
             {
-                "vraag": f"vraag {n}\n\nmet lege regel",
-                "opties": [
-                    {
-                        "tekst": f"optie {n}{letter}\ntweede regel",
-                        "aanbevolen": letter == "c",
-                    }
+                "question": f"vraag {n}\n\nmet lege regel",
+                "options": [
+                    {"text": f"optie {n}{letter}\ntweede regel", "recommended": letter == "c"}
                     for letter in "abcdef"
                 ],
             }
             for n in range(1, 5)
         ]
-        self._roundtrip(_velden(fase="uitvoering", taak="2/5", vragen=vragen))
+        self._roundtrip(_fields(phase="uitvoering", task="2/5", questions=questions))
 
-    def _roundtrip(self, velden: dict) -> None:
-        assert parse_vraag(_vraag_body(velden)) == _geschoond(velden)
+    def _roundtrip(self, fields: dict, language: str | None = None) -> None:
+        assert parse_question(_question_body(fields, language)) == _cleaned(fields)
 
-    def test_roundtrip_een_optie(self):
-        self._roundtrip(_velden(fase="plan"))
+    def test_roundtrip_one_option(self):
+        self._roundtrip(_fields(phase="plan"))
 
-    def test_roundtrip_zes_opties_met_aanbevolen(self):
-        opties = [
-            {"tekst": f"optie {letter}", "aanbevolen": letter == "b"}
-            for letter in "abcdef"
+    def test_roundtrip_six_options_with_recommended(self):
+        options = [
+            {"text": f"optie {letter}", "recommended": letter == "b"} for letter in "abcdef"
         ]
-        self._roundtrip(_velden(fase="uitvoering", taak="3/7", opties=opties))
+        self._roundtrip(_fields(phase="uitvoering", task="3/7", options=options))
 
-    def test_roundtrip_zonder_fase(self):
-        velden = _velden()
-        assert parse_vraag(_vraag_body(velden))["fase"] == "?"
-        self._roundtrip(velden)
+    def test_roundtrip_without_phase(self):
+        fields = _fields()
+        assert parse_question(_question_body(fields))["phase"] == "?"
+        self._roundtrip(fields)
 
-    def test_vrije_tekst_met_sterretjes(self):
+    def test_free_text_with_asterisks(self):
         self._roundtrip(
-            _velden(
-                vraag="kies **a** of **b**?",
-                opties=[{"tekst": "**vet** bedoeld", "aanbevolen": False}],
+            _fields(
+                question="kies **a** of **b**?",
+                options=[{"text": "**vet** bedoeld", "recommended": False}],
             )
         )
 
-    def test_codeblok_wordt_geschoond(self):
-        velden = _velden(wat_er_speelt="zie\n```\nx\n```")
-        resultaat = parse_vraag(_vraag_body(velden))
-        assert resultaat["wat_er_speelt"] == "zie\n'''\nx\n'''"
-        assert resultaat == _geschoond(velden)
+    def test_code_block_is_cleaned(self):
+        fields = _fields(what="zie\n```\nx\n```")
+        result = parse_question(_question_body(fields))
+        assert result["what"] == "zie\n'''\nx\n'''"
+        assert result == _cleaned(fields)
 
-    def test_meerregelige_optie(self):
+    def test_multiline_option(self):
         self._roundtrip(
-            _velden(
-                opties=[
-                    {"tekst": "eerste regel\ntweede regel", "aanbevolen": True},
-                    {"tekst": "andere", "aanbevolen": False},
+            _fields(
+                options=[
+                    {"text": "eerste regel\ntweede regel", "recommended": True},
+                    {"text": "andere", "recommended": False},
                 ]
             )
         )
 
-    def test_lege_regel_in_vrije_tekst(self):
-        """Een lege regel in de vrije tekst breekt het blok niet af (Review Focus 3)."""
-        velden = _velden(wat_er_speelt="a\n\nb")
-        resultaat = parse_vraag(_vraag_body(velden))
-        assert resultaat["wat_er_speelt"] == "a\n\nb"
-        assert resultaat == _geschoond(velden)
+    def test_blank_line_in_free_text(self):
+        """A blank line in the free text does not end the block."""
+        fields = _fields(what="a\n\nb")
+        result = parse_question(_question_body(fields))
+        assert result["what"] == "a\n\nb"
+        assert result == _cleaned(fields)
 
-    def test_lege_regel_in_laatste_optie(self):
-        self._roundtrip(_velden(opties=[{"tekst": "a\n\nb", "aanbevolen": True}]))
+    def test_blank_line_in_last_option(self):
+        self._roundtrip(_fields(options=[{"text": "a\n\nb", "recommended": True}]))
 
-    def test_geen_vraag_geeft_none(self):
-        assert parse_vraag("ik denk a") is None
-        assert parse_vraag(render_klaar(sessie=UUID, pr_url="u")) is None
+    def test_no_question_gives_none(self):
+        assert parse_question("ik denk a") is None
+        assert parse_question(render_done(session=UUID, pr_url="u")) is None
+
+    def test_roundtrip_in_english(self):
+        fields = _fields(phase="plan", task="1/2", questions=ONE_QUESTION, commands=[RPM])
+        self._roundtrip(fields, "en")
+
+    def test_english_question_parses_in_a_dutch_repo(self):
+        """Reading accepts every variant, whatever `[project] language` says."""
+        body = _question_body(_fields(phase="plan", questions=ONE_QUESTION), "en")
+        assert body.startswith("🤖 Question · #12 Titel ([link](https://x/12)) · phase plan")
+        assert "**Where it stands:** in de plan-fase" in body
+        assert "- **a)** links *(recommended)*" in body
+        assert "**At most 1 comment in reply.**" in body
+        assert parse_question(body) == _cleaned(_fields(phase="plan", questions=ONE_QUESTION))
 
 
 RPM = "sudo dnf install -y /tmp/orca-ide-1.0.rpm"
-FIREWALL = "sudo bash deploy/beelink/firewall.sh &&\n  sudo firewall-cmd --list-rich-rules | grep 6768"
+FIREWALL = "sudo bash deploy/host/firewall.sh &&\n  sudo firewall-cmd --list-rich-rules | grep 6768"
+
+_FENCE = re.compile(r"^( *)(`{3,}|~{3,})(.*)$")
 
 
-class TestVraagvorm:
-    """#1351: de vraag rendert als markdown, en elk zelf-te-draaien commando als codeblok."""
+def markdown_shape_errors(text: str, commands: Sequence[str] = ()) -> list[str]:
+    """The shape of a question text: no enclosing code block, no indented code block
+    outside a fence, every fence closed, and every command literally as the content of
+    a fenced code block. Empty = the text renders as markdown with live links.
 
-    def test_zonder_commandos_geen_codeblok_en_geldige_vorm(self):
-        body = _vraag_body(_velden())
+    Taken over from the source repository's `tests/helpers/controller.py`."""
+    errors: list[str] = []
+    lines = text.splitlines()
+    first = next((line for line in lines if line.strip()), "")
+    if _FENCE.match(first):
+        errors.append("the text starts with a code block")
+    blocks: list[str] = []
+    open_: tuple[int, str] | None = None
+    content: list[str] = []
+    for line in lines:
+        if open_ is not None:
+            indent, char = open_
+            bare = line.strip()
+            if bare and set(bare) == {char[0]} and len(bare) >= len(char):
+                blocks.append("\n".join(content))
+                open_, content = None, []
+            else:
+                content.append(line[indent:] if line[:indent].isspace() else line)
+            continue
+        match = _FENCE.match(line)
+        if match:
+            open_ = (len(match.group(1)), match.group(2))
+        elif line.startswith("    ") and line.strip():
+            errors.append(f"indented code block: {line!r}")
+    if open_ is not None:
+        errors.append("a code block does not close")
+    errors += [f"command not as code block: {c!r}" for c in commands if c not in blocks]
+    return errors
+
+
+class TestQuestionShape:
+    """The question renders as markdown, and every command to run as a code block."""
+
+    def test_without_commands_no_code_block_and_valid_shape(self):
+        body = _question_body(_fields())
         assert "```" not in body
         assert "**Zelf draaien:**" not in body
-        assert markdown_vormfouten(body) == []
+        assert markdown_shape_errors(body) == []
 
-    def test_elk_commando_staat_letterlijk_als_eigen_codeblok(self):
-        body = _vraag_body(_velden(commandos=[RPM, FIREWALL]))
+    def test_every_command_stands_literally_as_its_own_code_block(self):
+        body = _question_body(_fields(commands=[RPM, FIREWALL]))
         assert f"**Zelf draaien:**\n\n```bash\n{RPM}\n```" in body
-        assert markdown_vormfouten(body, [RPM, FIREWALL]) == []
+        assert markdown_shape_errors(body, [RPM, FIREWALL]) == []
 
-    def test_commandos_staan_tussen_vraag_en_opties(self):
-        body = _vraag_body(_velden(commandos=[RPM]))
+    def test_commands_stand_between_question_and_options(self):
+        body = _question_body(_fields(commands=[RPM]))
         assert body.index("**Vraag:**") < body.index(RPM) < body.index("- **a)**")
 
-    def test_een_commando_met_backticks_krijgt_een_langere_fence(self):
+    def test_a_command_with_backticks_gets_a_longer_fence(self):
         cmd = "echo '```' && printf '%s' \"$(date)\""
-        body = _vraag_body(_velden(commandos=[cmd]))
+        body = _question_body(_fields(commands=[cmd]))
         assert f"````bash\n{cmd}\n````" in body
-        assert markdown_vormfouten(body, [cmd]) == []
+        assert markdown_shape_errors(body, [cmd]) == []
 
-    def test_vrije_tekst_kan_geen_tilde_codeblok_openen(self):
-        body = _vraag_body(_velden(wat_er_speelt="zie\n~~~\nx"))
+    def test_free_text_cannot_open_a_tilde_code_block(self):
+        body = _question_body(_fields(what="zie\n~~~\nx"))
         assert "~~~" not in body
-        assert markdown_vormfouten(body) == []
+        assert markdown_shape_errors(body) == []
 
-    def test_roundtrip_met_commandos(self):
-        self_ = TestParseVraag()
-        self_._roundtrip(_velden(commandos=[RPM, FIREWALL]))
+    def test_roundtrip_with_commands(self):
+        TestParseQuestion()._roundtrip(_fields(commands=[RPM, FIREWALL]))
 
-    def test_een_commando_dat_op_een_optie_lijkt_blijft_een_commando(self):
+    def test_a_command_that_looks_like_an_option_stays_a_command(self):
         cmd = "- **a)** geen optie"
-        resultaat = parse_vraag(_vraag_body(_velden(commandos=[cmd])))
-        assert resultaat["commandos"] == [cmd]
-        assert [o["tekst"] for o in resultaat["vragen"][0]["opties"]] == ["links"]
+        result = parse_question(_question_body(_fields(commands=[cmd])))
+        assert result["commands"] == [cmd]
+        assert [o["text"] for o in result["questions"][0]["options"]] == ["links"]
 
 
-POST_1351_VRAAG = (
-    f"🤖 Vraag · #12 Titel ([link](https://x/12)) · fase plan\n\n"
+QUESTION_WITH_COMMAND = (
+    "🤖 Vraag · #12 Titel ([link](https://x/12)) · fase plan\n\n"
     "**Waar het staat:** in de plan-fase\n**Wat er speelt:** twee wegen\n"
     f"**Vraag:** welke?\n\n**Zelf draaien:**\n\n```bash\n{RPM}\n```\n\n"
     "- **a)** links *(aanbevolen)*\n- **b)** rechts\n\n"
-    f"**Max 1 comment als reactie.**\n<sub>sessie {UUID} · worktree issue-12-x</sub>"
+    f"**Max 1 comment als reactie.**\n<sub>session {UUID} · worktree issue-12-x</sub>"
 )
 
 
-def _twee_vragen() -> list[dict]:
+def _two_questions() -> list[dict]:
     return [
         {
-            "vraag": "eerst?",
-            "opties": [
-                {"tekst": "x", "aanbevolen": True},
-                {"tekst": "y", "aanbevolen": False},
+            "question": "eerst?",
+            "options": [
+                {"text": "x", "recommended": True},
+                {"text": "y", "recommended": False},
             ],
         },
         {
-            "vraag": "dan?",
-            "opties": [
-                {"tekst": "p", "aanbevolen": False},
-                {"tekst": "q", "aanbevolen": False},
+            "question": "dan?",
+            "options": [
+                {"text": "p", "recommended": False},
+                {"text": "q", "recommended": False},
             ],
         },
     ]
 
 
-class TestBundelMetCommandos:
-    """R11 (#1361 x #1351): één `commandos` per Vraag, gedeeld door de bundel."""
+class TestBundleWithCommands:
+    """One `commands` per question comment, shared by the bundle."""
 
-    def test_een_vraag_met_commando_rendert_als_na_1351(self):
-        velden = _velden(
-            fase="plan",
-            vragen=[
-                {
-                    "vraag": "welke?",
-                    "opties": [
-                        {"tekst": "links", "aanbevolen": True},
-                        {"tekst": "rechts", "aanbevolen": False},
-                    ],
-                }
-            ],
-            commandos=[RPM],
-        )
-        assert _vraag_body(velden) == POST_1351_VRAAG
+    def test_one_question_with_command(self):
+        fields = _fields(phase="plan", questions=ONE_QUESTION, commands=[RPM])
+        assert _question_body(fields) == QUESTION_WITH_COMMAND
 
-    def test_vraag_van_na_1351_parset_als_bundel_van_een(self):
-        uit = parse_vraag(POST_1351_VRAAG)
-        assert uit["commandos"] == [RPM]
-        assert uit["vragen"] == [
-            {
-                "vraag": "welke?",
-                "opties": [
-                    {"tekst": "links", "aanbevolen": True},
-                    {"tekst": "rechts", "aanbevolen": False},
-                ],
-            }
-        ]
+    def test_question_with_command_parses_as_bundle_of_one(self):
+        result = parse_question(QUESTION_WITH_COMMAND)
+        assert result["commands"] == [RPM]
+        assert result["questions"] == ONE_QUESTION
 
-    def test_bundel_zet_het_blok_voor_vraag_1(self):
-        body = _vraag_body(_velden(vragen=_twee_vragen(), commandos=[RPM, FIREWALL]))
+    def test_bundle_puts_the_block_before_question_1(self):
+        body = _question_body(_fields(questions=_two_questions(), commands=[RPM, FIREWALL]))
         assert (
             body.index("**Wat er speelt:**")
             < body.index("**Zelf draaien:**")
@@ -849,14 +878,37 @@ class TestBundelMetCommandos:
             < body.index("**Vraag 2:**")
         )
         assert body.count("**Zelf draaien:**") == 1
-        slot = body.index("**Max 1 comment als reactie.**")
-        assert body.index("Antwoord per vraag, bijvoorbeeld `1a, 2c`.") > slot
+        close = body.index("**Max 1 comment als reactie.**")
+        assert body.index("Antwoord per vraag, bijvoorbeeld `1a, 2c`.") > close
 
-    def test_bundel_met_commandos_roundtript(self):
-        TestParseVraag()._roundtrip(
-            _velden(fase="plan", vragen=_twee_vragen(), commandos=[RPM, FIREWALL])
+    def test_bundle_with_commands_roundtrips(self):
+        TestParseQuestion()._roundtrip(
+            _fields(phase="plan", questions=_two_questions(), commands=[RPM, FIREWALL])
         )
 
-    def test_bundel_met_commandos_heeft_geldige_markdownvorm(self):
-        body = _vraag_body(_velden(vragen=_twee_vragen(), commandos=[RPM, FIREWALL]))
-        assert markdown_vormfouten(body, [RPM, FIREWALL]) == []
+    def test_bundle_with_commands_has_valid_markdown_shape(self):
+        body = _question_body(_fields(questions=_two_questions(), commands=[RPM, FIREWALL]))
+        assert markdown_shape_errors(body, [RPM, FIREWALL]) == []
+
+
+class TestLanguage:
+    def test_english_repo_writes_english_headers(self, config):
+        config('[project]\nlanguage = "en"\n')
+        assert render_resumed(session="s", answer_id=1).startswith("🤖 Resumed\nsession: s")
+        assert render_returned(reason="x").startswith("🤖 Returned\nreason: x")
+
+    def test_explicit_language_wins(self):
+        assert render_done(session="s", pr_url="u", language="en").startswith("🤖 Done\n")
+
+    def test_without_config_an_explicit_language_still_renders(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("LIGHTHOUSE_TOML", str(tmp_path / "missing.toml"))
+        assert render_started(
+            session="s", worktree="w", command="c", start="t", language="en"
+        ).startswith("🤖 Started\n")
+
+    def test_missing_heading_table_is_loud(self, monkeypatch, tmp_path):
+        from lighthouse_lib.config import ConfigError
+
+        monkeypatch.setenv("LIGHTHOUSE_HEADINGS", str(tmp_path / "missing.toml"))
+        with pytest.raises(ConfigError):
+            parse_header("🤖 Klaar\npr: x")

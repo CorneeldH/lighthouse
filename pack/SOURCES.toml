@@ -46,3 +46,13 @@ new = true
 [[file]]
 path = "pack/core/lib/headings.py"
 new = true
+
+[[file]]
+path = "pack/core/lib/protocol.py"
+source_path = "src/controller/comments.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/lib/artefacts.py"
+source_path = "src/controller/artefacten.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
