@@ -142,9 +142,13 @@ func execute(o Options) error {
 		defer pl.close()
 		lookup = pl.lookup
 	}
-	if desired, err = fillWorkflows(o.Err, desired, lookup); err != nil {
-		return err
-	}
+	desired = fillWorkflows(o.Err, desired, lookup, func(rel string) ([]byte, bool) {
+		if _, listed := m.Lookup(packs.Key{Kind: packs.KindFile, Path: rel}); !listed {
+			return nil, false
+		}
+		b, ok, err := readFile(root, rel)
+		return b, ok && err == nil
+	})
 	for _, miss := range o.Deps.Check(reqs) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
 	}
@@ -180,42 +184,37 @@ func execute(o Options) error {
 		}
 	}
 	sort.Strings(paths)
-	host := proposeHost(o)
-	if len(paths) == 0 && host == nil {
+	in := bufio.NewReader(o.In)
+	if len(paths) == 0 {
 		_, _ = fmt.Fprintln(o.Out, "No changes.")
-		warnMissingScripts(o.Err, root)
-		return nil
-	}
-	for _, p := range paths {
-		printDiff(o.Out, p, plan[p])
-	}
-	if host != nil {
-		_, _ = fmt.Fprint(o.Out, unified(nil, host, "/dev/null", hostLabel(o.HostTOML)))
-	}
-	if !o.Yes {
-		_, _ = fmt.Fprint(o.Out, "Apply these changes? [y/N] ")
-		line, _ := bufio.NewReader(o.In).ReadString('\n')
-		answer := strings.ToLower(strings.TrimSpace(line))
-		if answer != "y" && answer != "yes" {
-			_, _ = fmt.Fprintln(o.Out)
+	} else {
+		for _, p := range paths {
+			printDiff(o.Out, p, plan[p])
+		}
+		if !o.Yes && !ask(o.Out, in, "Apply these changes? [y/N] ") {
 			return errDeclined
 		}
-	}
-	for _, p := range paths {
-		if err := apply(root, p, plan[p]); err != nil {
-			return err
+		for _, p := range paths {
+			if err := apply(root, p, plan[p]); err != nil {
+				return err
+			}
 		}
+		_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
 	}
-	written := len(paths)
-	if host != nil {
-		if err := writeHost(o.HostTOML, host); err != nil {
-			return err
-		}
-		written++
-	}
-	_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", written)
 	warnMissingScripts(o.Err, root)
-	return nil
+	return offerHost(o, in)
+}
+
+// ask prints question and reports whether the answer is y or yes.
+func ask(w io.Writer, in *bufio.Reader, question string) bool {
+	_, _ = fmt.Fprint(w, question)
+	line, _ := in.ReadString('\n')
+	answer := strings.ToLower(strings.TrimSpace(line))
+	if answer != "y" && answer != "yes" {
+		_, _ = fmt.Fprintln(w)
+		return false
+	}
+	return true
 }
 
 func (p planned) changes() bool {
@@ -361,8 +360,19 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	if err != nil {
 		return nil, err
 	}
+	// A permission rule the project already had stays the project's: it carries no
+	// mark of ownership, so recording it would let a later upgrade remove it.
+	adopted := map[packs.Key]bool{}
+	for _, c := range changes {
+		if c.Key.Kind == packs.KindPermission && c.Action == reconcile.Adopt {
+			adopted[c.Key] = true
+		}
+	}
 	nm := manifest.Manifest{Version: o.Version, Packages: names}
 	for _, u := range desired {
+		if adopted[u.Key()] {
+			continue
+		}
 		nm.Units = append(nm.Units, manifest.Entry{
 			Kind: u.Kind, Path: u.Path, ID: u.ID, Package: u.Package, Version: o.Version,
 			SHA256: manifest.Sum(u.Content),

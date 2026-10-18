@@ -18,10 +18,12 @@ import (
 // errNoPython means the config reader cannot run; workflows are then skipped, not fatal.
 var errNoPython = errors.New("python3 is not available")
 
-// fillWorkflows fills the @@<key>@@ placeholders of every workflow unit. A workflow
-// with a key that is not set is left out and reported (plan M0 (b), ontwerpkeuze 13);
-// a config that cannot be read stops the run.
-func fillWorkflows(w io.Writer, desired []packs.Unit, lookup packs.Lookup) ([]packs.Unit, error) {
+// fillWorkflows fills the @@<key>@@ placeholders of every workflow unit (plan M0 (b),
+// ontwerpkeuze 13). A workflow that cannot be filled (a key not set, no python3, a
+// config that cannot be read) is reported, never fatal: a new one is left out, and one
+// that installed returns stays as it is, so a passing problem never deletes it.
+// installed returns the content on disk of a workflow the manifest lists.
+func fillWorkflows(w io.Writer, desired []packs.Unit, lookup packs.Lookup, installed func(rel string) ([]byte, bool)) []packs.Unit {
 	out := desired[:0:0]
 	for _, u := range desired {
 		if u.Kind != packs.KindFile || !strings.HasPrefix(u.Path, packs.WorkflowPrefix) {
@@ -30,20 +32,27 @@ func fillWorkflows(w io.Writer, desired []packs.Unit, lookup packs.Lookup) ([]pa
 		}
 		name := path.Base(u.Path)
 		content, missing, err := packs.Fill(u.Content, lookup)
+		reason := ""
 		switch {
-		case errors.Is(err, errNoPython):
-			_, _ = fmt.Fprintf(w, "workflow %s not installed: %v\n", name, err)
-			continue
 		case err != nil:
-			return nil, fmt.Errorf("workflow %s: %w", name, err)
+			reason = err.Error()
 		case len(missing) > 0:
-			_, _ = fmt.Fprintf(w, "workflow %s not installed: %s is not set\n", name, strings.Join(missing, ", "))
+			reason = strings.Join(missing, ", ") + " is not set"
+		}
+		if reason == "" {
+			u.Content = content
+			out = append(out, u)
 			continue
 		}
-		u.Content = content
-		out = append(out, u)
+		if old, ok := installed(u.Path); ok {
+			_, _ = fmt.Fprintf(w, "workflow %s not updated: %s; the installed version stays\n", name, reason)
+			u.Content = old
+			out = append(out, u)
+			continue
+		}
+		_, _ = fmt.Fprintf(w, "workflow %s not installed: %s\n", name, reason)
 	}
-	return out, nil
+	return out
 }
 
 // pythonLookup answers config keys with the package's own config reader, so the
@@ -105,10 +114,19 @@ func (p *pythonLookup) lookup(key string) (string, bool, error) {
 	// -m puts the cwd first on sys.path: the temporary directory, never the user's repo.
 	cmd := exec.Command("python3", "-m", "lighthouse_lib.config", key)
 	cmd.Dir = p.dir
-	cmd.Env = append(os.Environ(),
+	// The user's PYTHON* settings could hide the temporary lib (PYTHONSAFEPATH drops the
+	// cwd from sys.path) or shadow it; the lib is found through PYTHONPATH alone.
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "PYTHON") {
+			env = append(env, kv)
+		}
+	}
+	cmd.Env = append(env,
+		"PYTHONPATH="+p.dir,
+		"PYTHONDONTWRITEBYTECODE=1",
 		"LIGHTHOUSE_REPO_ROOT="+p.root,
 		"LIGHTHOUSE_TOML="+filepath.Join(p.dir, configPath),
-		"PYTHONDONTWRITEBYTECODE=1",
 	)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -117,10 +135,20 @@ func (p *pythonLookup) lookup(key string) (string, bool, error) {
 	switch {
 	case err == nil:
 		return strings.TrimSuffix(stdout.String(), "\n"), true, nil
-	case errors.As(err, &exit) && exit.ExitCode() == 1:
+	case errors.As(err, &exit) && exit.ExitCode() == 1 && strings.Contains(stderr.String(), key+" is not set"):
 		return "", false, nil
 	default:
-		return "", false, fmt.Errorf("%s: %s", key, strings.TrimSpace(stderr.String()))
+		// The last line says what went wrong (a traceback ends with it); the temporary
+		// copy of lighthouse.toml stands for the repository's own.
+		msg := strings.TrimSpace(stderr.String())
+		if i := strings.LastIndex(msg, "\n"); i >= 0 {
+			msg = msg[i+1:]
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		msg = strings.ReplaceAll(msg, filepath.Join(p.dir, configPath), configPath)
+		return "", false, fmt.Errorf("%s: %s", key, msg)
 	}
 }
 
