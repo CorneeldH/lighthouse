@@ -93,13 +93,14 @@ These two are about the measurement, not about the file.
 
 ## Reporting done
 
-Before you say done, run every KPI row, not only the one you think you touched. Report per row:
+Before you say done, run rows 1 to 3, also those you think you did not touch; row 4 is optional
+(see above). Report per row, row 4 included:
 
 - the command, as it ran;
 - the outcome: passed, failed, or not measurable from here;
 - for row 2, the extras that were synced;
 - what was not measurable, and why. Row 4 without the ratchet's project files is not
-  measurable, not passed.
+  measurable, not passed; row 4 left out by choice is reported as not run.
 
 A row left out of the report reads as passed. Leave none out.
 

@@ -38,3 +38,17 @@ def test_english():
     text = SKILL.lower()
     for word in (" het ", " niet ", " een ", " wordt ", " dat ", " je "):
         assert word not in text, word
+
+def _section(heading):
+    return SKILL.split(heading, 1)[1].split("\n## ", 1)[0]
+
+def test_inspiration_says_where_the_classification_sentence_comes_from():
+    inspiration = _section("## Inspiration")
+    assert "classification sentence" in inspiration
+    assert "forge" in inspiration.split("classification sentence", 1)[1]
+
+def test_red_flags_catch_hidden_tautologies():
+    flags = _section("## Red flags")
+    for phrase in ("helper, loop or builder", "equal by construction", "only fails by crashing",
+                   "line by line", "only for coverage"):
+        assert phrase in flags, phrase

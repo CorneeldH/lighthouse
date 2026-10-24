@@ -210,3 +210,11 @@ def test_pairing_names_the_testing_skill():
     for path in VARIANTS:
         pairing = path.read_text(encoding="utf-8").split("## The pairing", 1)[1].split("\n## ", 1)[0]
         assert "lighthouse-testing" in pairing, path
+
+
+def test_reporting_done_matches_the_optional_row_4():
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        section = text.split("## Reporting done", 1)[1].split("\n## ", 1)[0]
+        assert "rows 1 to 3" in section, path
+        assert "not only the one you think you touched" not in section, path

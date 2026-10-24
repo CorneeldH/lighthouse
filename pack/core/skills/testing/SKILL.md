@@ -88,7 +88,7 @@ body. Pick the class from the table, and let its minimal check set the floor for
 | `config` | Which behaviour switches with the setting? | One test per value, including the default and a missing key. |
 | `test-only` | Which production change does the test catch now, or no longer? | The mutation check below, on the tests you touched. |
 
-A change that spans classes takes the strictest check, or both.
+Touching more than one class? Each class brings its own minimal check; run all of them.
 
 ## Mutation check
 
@@ -116,10 +116,17 @@ Each of these means: stop and redesign the test.
 - It only checks that something removed is still absent.
 - It checks that a library works.
 - Deleting the line under test leaves the test green.
+- The expected value is built by a helper, loop or builder instead of written out.
+- Setup and expectation share one object, so they are equal by construction.
+- It only fails by crashing: an exception or a missing element, never a wrong value.
+- It restates the code line by line, so any change to the code is a change to the test.
+- It exists only for coverage: it runs the code and asserts nothing that matters.
 
 ## Inspiration
 
-Written fresh for lighthouse; the ideas come from these two, no text is taken over:
+Written fresh for lighthouse, with the ideas of these two. One line is shared: the
+classification sentence has the same shape as the template in forge's skill, because the issue
+behind this skill asked for exactly that sentence.
 
 - [agentsview `testing-without-tautologies`](https://github.com/kenn-io/agentsview/blob/main/.agents/skills/testing-without-tautologies/SKILL.md)
 - [forge `small-change-verification`](https://github.com/kenn-io/forge/blob/main/skills/small-change-verification/SKILL.md)
