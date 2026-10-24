@@ -1446,10 +1446,11 @@ class TestRenderIssue:
         }
 
     @staticmethod
-    def _pr(head, *, merged=True, repo="o/r", body=None):
+    def _pr(head, *, merged=True, repo="o/r", body=None, cross_repo=False):
         node = {
             "headRefName": head,
             "merged": merged,
+            "isCrossRepository": cross_repo,
             "repository": {"nameWithOwner": repo},
         }
         if body is not None:
@@ -1467,6 +1468,22 @@ class TestRenderIssue:
         for body in ("zie #9", "Refs #93", None):
             payload = self._payload(cross=[self._pr("fix-y", body=body)])
             assert audit.parse_issue_pr_heads(payload, "o/r", 9) == []
+
+    def test_parse_cross_ref_refs_in_comment_does_not_count(self):
+        body = "<!-- Refs #9 — voorbeeld uit het template -->\nzie #9"
+        payload = self._payload(cross=[self._pr("fix-y", body=body)])
+        assert audit.parse_issue_pr_heads(payload, "o/r", 9) == []
+
+    def test_parse_cross_ref_refs_without_reason_counts(self):
+        payload = self._payload(cross=[self._pr("fix-y", body="Refs #9")])
+        assert audit.parse_issue_pr_heads(payload, "o/r", 9) == ["fix-y"]
+
+    def test_parse_skips_cross_repository_prs(self):
+        payload = self._payload(
+            closing=[self._pr("patch-1", cross_repo=True)],
+            cross=[self._pr("patch-2", cross_repo=True, body="Refs #9")],
+        )
+        assert audit.parse_issue_pr_heads(payload, "o/r", 9) == []
 
     def test_parse_skips_unmerged_and_non_pr(self):
         payload = self._payload(

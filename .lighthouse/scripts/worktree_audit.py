@@ -46,7 +46,8 @@ Gebruik:
 
 De default branch komt uit `[forge] default_branch`, de extra beschermde refs en paden uit
 `[worktree_audit]`, de repo voor de PR-lookup uit `[forge] repo`. Output is English;
-`--only` ends on the fixed token `cleanup: yes` or `cleanup: no — <reason>`.
+`--only` ends on the fixed token `cleanup: yes` or `cleanup: no — <reason>`; `--issue`
+prints one such block per branch of the issue, each ending on that token.
 """
 
 from __future__ import annotations
@@ -68,6 +69,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 
 from lighthouse_lib import config  # noqa: E402
 from lighthouse_lib.config import ConfigError  # noqa: E402
+from lighthouse_lib.pr_body_gate import refs_targets  # noqa: E402
 
 # --- protect-lijst ---------------------------------------------------------
 # De default branch is altijd beschermd; een instelling die je kunt vergeten in
@@ -810,8 +812,8 @@ def repo_slug() -> str | None:
 
 
 ISSUE_PRS_QUERY = """query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){
-  closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged repository{nameWithOwner}}}
-  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged body repository{nameWithOwner}}}}}}}}}"""
+  closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged isCrossRepository repository{nameWithOwner}}}
+  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged isCrossRepository body repository{nameWithOwner}}}}}}}}}"""
 
 
 def parse_issue_pr_heads(payload: dict, slug: str, nr: int) -> list[str] | None:
@@ -821,9 +823,12 @@ def parse_issue_pr_heads(payload: dict, slug: str, nr: int) -> list[str] | None:
     sluitwoord; een PR met `Refs #<nr>` staat daar niet in. Die maakt op het issue
     wel een `CrossReferencedEvent` met de PR als `source`. Zo'n event ontstaat ook
     voor een PR die het issue alleen noemt ("zie #<nr>"), en die hoort er niet bij:
-    een cross-ref telt alleen als de PR-body `Refs #<nr>` bevat (de vorm die
-    `pr-create-gate` eist). Een closing-node telt altijd. Beide moeten `merged`
-    zijn en uit dezelfde repo komen.
+    een cross-ref telt alleen als `refs_targets` (de lezer van `pr-create-gate`:
+    buiten HTML-commentaar, zonder reden-eis) `<nr>` in de PR-body vindt. Een
+    closing-node telt altijd. Beide moeten `merged` zijn en uit dezelfde repo komen:
+    `repository` van een PR is de *basis*-repo, dus een fork-PR naar `slug` slaagt
+    daarop; `isCrossRepository` sluit die uit (een forkbranch als `patch-1` mag niet
+    met een lokale branch van dezelfde naam verward worden).
 
     None = de lookup is mislukt (GraphQL-`errors`, of `issue: null` bij een
     verkeerd nummer): dat is geen "geen PR's".
@@ -836,7 +841,6 @@ def parse_issue_pr_heads(payload: dict, slug: str, nr: int) -> list[str] | None:
         return None
     if not isinstance(issue, dict):
         return None
-    refs = re.compile(rf"(?i)\brefs\s+#{nr}\b")
     heads: list[str] = []
 
     def take(node: object, *, needs_refs: bool) -> None:
@@ -844,9 +848,9 @@ def parse_issue_pr_heads(payload: dict, slug: str, nr: int) -> list[str] | None:
             return
         head = node.get("headRefName")
         repo = (node.get("repository") or {}).get("nameWithOwner")
-        if not head or repo != slug:
+        if not head or repo != slug or node.get("isCrossRepository"):
             return
-        if needs_refs and not refs.search(node.get("body") or ""):
+        if needs_refs and nr not in refs_targets(node.get("body") or ""):
             return
         if head not in heads:
             heads.append(head)

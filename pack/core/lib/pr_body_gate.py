@@ -147,6 +147,15 @@ def _refs_alle(body: str) -> list[tuple[int, str]]:
     ]
 
 
+def refs_targets(body: str) -> list[int]:
+    """Elk issuenummer achter een `Refs #N` buiten commentaar, in volgorde, zonder reden-eis.
+
+    Anders dan `refs_issues` telt ook een `Refs #N` zonder (lange) reden: wie alleen
+    wil weten *of* een PR-body naar een issue verwijst, leest de gate-vorm zo.
+    """
+    return [nr for nr, _ in _refs_alle(body)]
+
+
 def refs_issues(body: str) -> list[int]:
     """Alleen de `Refs #N` met een reden van minstens `MIN_REDEN` tekens."""
     uit: list[int] = []
