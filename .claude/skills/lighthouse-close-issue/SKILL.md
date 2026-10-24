@@ -58,7 +58,8 @@ Entry A is the `## Workflow` below, unchanged. Entry B is an **extra step up fro
 the evidence entry A takes from context, and then goes through the same steps 4 to 6. There is no
 faster route to `gh issue close` — B makes the verification heavier, not lighter. Entry C never
 closes: the issue is already closed, C confirms it or reopens it. Every entry ends at
-*Clean up the worktree — the last step*; that says when cleaning up is and is not allowed.
+*Clean up the worktree — the last step*, except B7, which runs it before its close comment; that
+says when cleaning up is and is not allowed.
 
 ## Entry B — close check without session context
 
@@ -445,7 +446,7 @@ second set of rules here.
 | Entry | Clean up? |
 |---|---|
 | C, exit `0` in C3 | yes, the main moment: the PR is merged and C measures in a throwaway worktree |
-| A or B, after the close | yes |
+| A or B (not B7), after the close | yes |
 | B7, all criteria `demonstrably done` | yes, before the close comment |
 | C with reopening, `COULD NOT CHECK` or `closed without a closing PR`; A, B or B7 without a close | no |
 
@@ -467,7 +468,7 @@ block without a `cleanup:` line, a traceback, an empty output. The absence of a 
 
 | Block | What now |
 |---|---|
-| `cleanup: yes` | run the lines below it yourself, in that order, each as `git -C <main checkout> …`. No question: the verdict is the safety check |
+| `cleanup: yes` | run the lines below it (a block runs from its `branch:` line to the next blank line) yourself, in that order, each as `git -C <main checkout> …`. No question: the verdict is the safety check |
 | `cleanup: no — <reason>` | report the line literally with its branch; clean up nothing for that branch |
 | everything else | report `cleanup: no — audit gave no verdict` with the raw output; clean up nothing |
 
