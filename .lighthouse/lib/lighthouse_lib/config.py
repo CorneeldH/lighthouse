@@ -106,6 +106,8 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "python.nightly_workflow": _STR,
         "python.coverage_issue_labels": _STRS,
         "shell.strict_dirs": _STRS,
+        "project.code_language": _STR,
+        "project.code_language_exempt": _STRS,
     }
 )
 
@@ -378,6 +380,11 @@ def load(path: Path) -> Config:
                     f"{path}: key project.language must be one of "
                     f"{', '.join(LANGUAGES)}, not {language!r}"
                 )
+        if "code_language" in project and project["code_language"] != "en":
+            value = project["code_language"]
+            raise ConfigError(
+                f"{path}: key project.code_language must be en, not {value!r}"
+            )
 
     _check_schema(data, path)
 
