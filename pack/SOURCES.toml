@@ -110,7 +110,7 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 [[file]]
 path = "pack/core/lib/protocol.py"
 source_path = "src/controller/comments.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "5a35ac3e9c80e010461896699b3d1f87fc520978"
 
 [[file]]
 path = "pack/core/lib/artefacts.py"
@@ -165,12 +165,12 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 [[file]]
 path = "pack/core/workflows/unblock-dependents.yml"
 source_path = ".github/workflows/unblock-dependents.yml"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "5a35ac3e9c80e010461896699b3d1f87fc520978"
 
 [[file]]
 path = "pack/core/scripts/check-instructions.sh"
 source_path = "scripts/hooks/check-instructies.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "5a35ac3e9c80e010461896699b3d1f87fc520978"
 
 [[file]]
 path = "pack/core/templates/pull_request_template.md"
@@ -190,7 +190,7 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 [[file]]
 path = "pack/expo/skills/refresh-expo-lockfiles/SKILL.md"
 source_path = [".claude/skills/paia-refresh-expo-lockfiles/SKILL.md", ".agents/skills/paia-refresh-expo-lockfiles/SKILL.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "5a35ac3e9c80e010461896699b3d1f87fc520978"
 
 [[file]]
 path = "pack/expo/detect.toml"
