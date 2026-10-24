@@ -1,6 +1,6 @@
 ---
 name: lighthouse-verify-pr
-description: 'Use before every `gh pr create` in this repo — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate.sh blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Closes #N` with an Evidence table (one row per AC), `Refs #N — <reason>`, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — closing an issue or checking after the merge is lighthouse-close-issue; repairing a red PR is lighthouse-fix-pr.'
+description: 'Use before every `gh pr create` in this repo — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate.sh blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Closes #N` with an Evidence table (one row per AC), `Refs #N — <reason>`, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — not for closing an issue or checking after the merge: use lighthouse-close-issue instead; repairing a red PR is lighthouse-fix-pr.'
 metadata:
   binding: hard
   origin: own

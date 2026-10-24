@@ -1,6 +1,6 @@
 ---
 name: lighthouse-fix-pr
-description: 'Use when an existing pull request in this repo is red or has merge conflicts, or when a green PR carries an unprocessed roborev review comment (findings without a `roborev-verwerkt` marker) — "fix pr 596", "fix 595", "612 has conflicts, fix it", "627 pr has errors", "PR 585 is red". Opens with one fixed diagnosis (status, checks, failure log, worktree) and works in the worktree of the head branch. NOTE — this skill stops as soon as the PR is green (and a roborev review is processed): closing the issue is lighthouse-close-issue, a review of the diff on content is caveman-review, and starting new work on an issue is lighthouse-start-issue. Do not use for a PR that only needs merging.'
+description: 'Use when an existing pull request in this repo is red or has merge conflicts, or when a green PR carries an unprocessed roborev review comment (findings without a `roborev-verwerkt` marker) — "fix pr 596", "fix 595", "612 has conflicts, fix it", "627 pr has errors", "PR 585 is red". Opens with one fixed diagnosis (status, checks, failure log, worktree) and works in the worktree of the head branch. NOTE — this skill stops as soon as the PR is green (and a roborev review is processed): closing the issue is lighthouse-close-issue, a review of the diff on content is caveman-review, and starting new work on an issue is lighthouse-start-issue. Not for a PR that only needs merging.'
 metadata:
   binding: default
   origin: own

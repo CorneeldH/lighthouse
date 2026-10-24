@@ -240,3 +240,43 @@ def test_planned_skills_absent():
 @pytest.mark.parametrize("skill", SKILL_PARAMS)
 def test_variants_both_present(skill):
     assert set(_variants(skill)) == {"claude", "agents"}
+
+
+def _install_skills(root: Path) -> None:
+    """Every core skill under `.claude/skills` and `.agents/skills`, as `init` lays them out."""
+    import shutil
+
+    for skill in _skill_dirs():
+        for variant, base in (("claude", ".claude/skills"), ("agents", ".agents/skills")):
+            dest = root / base / f"lighthouse-{skill.name}"
+            dest.mkdir(parents=True)
+            for f in skill.iterdir():
+                if f.is_file():
+                    shutil.copy2(f, dest / f.name)
+            shutil.copy2(_variants(skill)[variant], dest / "SKILL.md")
+
+
+def test_descriptions_pass_the_overlap_check(tmp_path):
+    """Check 4 of check-instructions.sh fails two descriptions that share five trigger words
+    unless one carries a bounding clause it recognises ("not for", "instead", …). The core
+    skills land together in every repo, so their descriptions must pass it."""
+    import os
+    import subprocess
+
+    from tests.pack._testkit import install_core
+
+    install_core(tmp_path)
+    _install_skills(tmp_path)
+    env = {
+        **os.environ,
+        "LIGHTHOUSE_REPO_ROOT": str(tmp_path),
+        "CHECK_INSTRUCTIONS_PERSONAL": str(tmp_path / "no-personal-skills"),
+    }
+    out = subprocess.run(
+        [str(tmp_path / ".lighthouse/scripts/check-instructions.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert "overlap without a bounding clause" not in out.stdout, out.stdout
