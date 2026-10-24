@@ -76,7 +76,8 @@ def test_installed_core_block_matches_the_package():
 
 def test_project_part_does_not_repeat_the_core_block():
     """Nothing twice: a rule the core block carries is not in the project part of AGENTS.md.
-    Each token below belongs to one rule of the block."""
+    Each token below belongs to one rule of the block, except `uv run pytest`: that keeps the
+    old Tests rule, which the test gate replaced, from coming back."""
     part = _project_part()
     for token in (
         "squash",
