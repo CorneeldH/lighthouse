@@ -255,6 +255,18 @@ source_path = "scripts/quality/prcov_issues.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 
 [[file]]
+path = "pack/python/detect.toml"
+new = true
+
+[[file]]
+path = "pack/python/lighthouse.toml.fragment"
+new = true
+
+[[file]]
+path = "pack/python/instructions/AGENTS.md"
+new = true
+
+[[file]]
 path = "pack/python/scripts/quality/ratchet.py"
 source_path = "scripts/quality/ratchet.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

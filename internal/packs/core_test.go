@@ -83,10 +83,13 @@ func TestCorePack(t *testing.T) {
 // Each package PR of M0 (c) adds its row.
 func TestLanguagePacks(t *testing.T) {
 	cases := []struct {
-		name   string
-		files  []string
-		detect bool
-		tools  string
+		name     string
+		files    []string
+		detect   bool
+		tools    string
+		blocks   int
+		hooks    int
+		fragment string
 	}{
 		{
 			name: "expo",
@@ -95,6 +98,27 @@ func TestLanguagePacks(t *testing.T) {
 				".claude/skills/lighthouse-refresh-expo-lockfiles/SKILL.md",
 			},
 			detect: true,
+		},
+		{
+			name: "python",
+			files: []string{
+				".agents/skills/lighthouse-python-writing/SKILL.md",
+				".claude/hooks/lighthouse/ruff-format.sh",
+				".claude/hooks/lighthouse/ty-check.sh",
+				".claude/skills/lighthouse-python-writing/SKILL.md",
+				".lighthouse/scripts/quality/__init__.py",
+				".lighthouse/scripts/quality/baseline.py",
+				".lighthouse/scripts/quality/diffcov.py",
+				".lighthouse/scripts/quality/gitenv.py",
+				".lighthouse/scripts/quality/prcov.py",
+				".lighthouse/scripts/quality/prcov_issues.py",
+				".lighthouse/scripts/quality/ratchet.py",
+			},
+			detect:   true,
+			tools:    "gh,jq,uv",
+			blocks:   1,
+			hooks:    2,
+			fragment: "test_gate",
 		},
 	}
 	for _, c := range cases {
@@ -108,15 +132,26 @@ func TestLanguagePacks(t *testing.T) {
 				t.Fatal(err)
 			}
 			var files []string
+			kinds := map[Kind]int{}
 			for _, u := range p.Units {
-				if u.Kind != KindFile {
-					t.Fatalf("unit %s of kind %v; want only files", u.Path, u.Kind)
+				kinds[u.Kind]++
+				if u.Kind == KindFile {
+					files = append(files, u.Path)
 				}
-				files = append(files, u.Path)
+			}
+			if kinds[KindBlock] != c.blocks || kinds[KindHook] != c.hooks || kinds[KindPermission] != 0 {
+				t.Fatalf("kinds = %v, want %d block(s) and %d hook(s)", kinds, c.blocks, c.hooks)
 			}
 			sort.Strings(files)
 			if strings.Join(files, "\n") != strings.Join(c.files, "\n") {
 				t.Fatalf("files:\n%s", strings.Join(files, "\n"))
+			}
+			var tables []string
+			for _, tb := range p.Config {
+				tables = append(tables, tb.Name)
+			}
+			if strings.Join(tables, ",") != c.fragment {
+				t.Fatalf("fragment tables = %v, want %q", tables, c.fragment)
 			}
 			if (p.Detect != nil) != c.detect {
 				t.Fatalf("detect = %v, want %v", p.Detect, c.detect)

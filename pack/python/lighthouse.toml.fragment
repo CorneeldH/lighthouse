@@ -1,0 +1,6 @@
+# The default test gate of a Python repository. pytest exits with 3 (internal error),
+# 4 (usage error) or 5 (no tests collected) when it tested nothing. Turn the gate off
+# with command = "".
+[test_gate]
+command = "uv run pytest -q"
+unchecked_exit_codes = [3, 4, 5]
