@@ -485,7 +485,7 @@ def ensure_on_board(
 
     if status in NIET_OVERGEDRAGEN and config.CONTROLLER_STATUS_OPTION not in repo.board.status_options:
         return (
-            f"#{issue_number} on board, status {status or 'To do'}; "
+            f"#{issue_number} on board, status {status or 'none'}; "
             "board: status Controller skipped — no such status option"
         )
     if status in NIET_OVERGEDRAGEN:

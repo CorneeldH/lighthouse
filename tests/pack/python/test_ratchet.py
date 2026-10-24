@@ -1285,6 +1285,15 @@ def test_a_broken_config_is_red(tmp_path, monkeypatch):
         ratchet.coverage_argv()
 
 
+@pytest.mark.parametrize("key", ["source_dirs", "lint_dirs"])
+def test_an_empty_dir_list_is_red(tmp_path, monkeypatch, key):
+    """`[]` would run ruff, complexipy and `git diff --` over the whole repository and
+    pytest without `--cov`: stop instead, and name the key."""
+    _config(tmp_path, monkeypatch, f"\n[python]\n{key} = []\n")
+    with pytest.raises(SystemExit, match=f"ratchet: python.{key} is empty"):
+        ratchet._dirs(f"python.{key}")
+
+
 def test_complexity_skill_path():
     path, _, rest = ratchet.COMPLEXITY_SKILL.partition(", section ")
     assert path == ".claude/skills/lighthouse-python-writing/SKILL.md"

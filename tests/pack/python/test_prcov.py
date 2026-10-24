@@ -194,7 +194,7 @@ def test_a_commit_without_pr_ref_is_skipped(repo):
     assert commits == []
 
 
-def test_a_watermark_outside_history_falls_back_to_24h(repo):
+def test_a_watermark_outside_history_falls_back_to_24h(repo, capsys):
     three_days_ago = int(time.time()) - 3 * 86400
     repo.commit(
         {"src/old.py": "A = 1\n"},
@@ -210,6 +210,11 @@ def test_a_watermark_outside_history_falls_back_to_24h(repo):
 
     assert with_watermark == without_watermark
     assert {c.pr for c in with_watermark} == {11}
+    # Not silent: a shallow clone or rewritten history would hide here every night.
+    err = capsys.readouterr().err
+    assert f"nightly: {'0' * 40} is not an ancestor of HEAD" in err
+    assert "judging the merges of the last 24 hours" in err
+    assert err.count("nightly:") == 1  # without a watermark: no message here
 
 
 def test_since_a_real_ancestor_excludes_it_and_everything_before(repo):

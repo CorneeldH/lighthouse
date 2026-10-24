@@ -29,8 +29,7 @@ from pathlib import Path
 from types import ModuleType
 
 # scripts/ is geen geïnstalleerd pakket. Zelf op sys.path zetten, zodat de
-# aanroepvorm hierboven werkt zonder PYTHONPATH van buiten. Dezelfde vorm die
-# tests/unit/lane/conftest.py voor scripts/opencode-lane gebruikt.
+# aanroepvorm hierboven werkt zonder PYTHONPATH van buiten.
 _SCRIPTS = Path(__file__).resolve().parents[1]
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
@@ -56,8 +55,7 @@ ALL_RULES: tuple[str, ...] = ZERO_RULES + COUNTED_RULES
 
 # Dezelfde signatuur als quality.prcov_issues.Gh, hier los gedefinieerd in
 # plaats van geïmporteerd — cmd_nightly importeert prcov_issues pas binnen
-# zichzelf (zie de moduledocstring), dus deze alias mag geen module-brede
-# afhankelijkheid van src.controller.* toevoegen.
+# zichzelf, dus de andere subcommando's laden die module niet.
 Gh = Callable[[Sequence[str], Mapping[str, str] | None, str | None], str]
 
 # Hoeveel locaties er per regel in de melding komen. Alle 64 C901-locaties
@@ -69,7 +67,7 @@ BASELINE_NAME = "quality-baseline.toml"
 # De teller telt functies met een cognitieve complexiteit strikt boven dit getal.
 COGNITIVE_COUNTER_THRESHOLD = 15
 
-# De twee harde grenzen per functie (#1192): geen baseline, geen bump, ook niet
+# De twee harde grenzen per functie: geen baseline, geen bump, ook niet
 # met een noqa-comment. Een score gelijk aan de grens is groen, strikt erboven rood.
 CYCLOMATIC_LIMIT = 20
 COGNITIVE_LIMIT = 25
@@ -105,8 +103,12 @@ def setting(key: str) -> object:
 
 
 def _dirs(key: str) -> list[str]:
+    """De mappen onder `key`; een lege lijst stopt de ratel. Zonder paden zouden
+    ruff, complexipy en `git diff --` de hele repo nemen en pytest geen `--cov`."""
     value = setting(key)
     assert isinstance(value, list)  # de configlezer controleert het type
+    if not value:
+        raise SystemExit(f"ratchet: {key} is empty; the ratchet needs at least one directory")
     return [str(item) for item in value]
 
 
@@ -114,7 +116,7 @@ def _read_pin(root: Path, name: str) -> str:
     """Lees een versiepin uit een eigen bestand in de repowortel.
 
     Eigen bestand en geen variabele in drie scripts: één plek betekent dat er
-    niets uit elkaar kán lopen. .claude/hooks/ruff-format.sh leest hetzelfde
+    niets uit elkaar kán lopen. De hook ruff-format.sh leest hetzelfde
     bestand; CI leest het transitief via deze module.
 
     Ongepind was prima zolang ruff alleen autofixte. Zodra dezelfde ruff telt,
@@ -145,8 +147,7 @@ def _ruff_findings(root: Path) -> list[dict]:
     """De ruff-bevindingen (JSON) over `python.lint_dirs`, of SystemExit als ruff niet draait.
 
     --ignore-noqa is niet optioneel: zonder die vlag onderdrukt één
-    `# noqa: F401` de teller en is de gate met één comment te omzeilen (§3.2).
-    Er staan vandaag 23 zulke comments in de repo.
+    `# noqa: F401` de teller en is de gate met één comment te omzeilen.
 
     Geen --isolated: de PT011-instelling uit pyproject.toml moet meedoen. Wel
     een expliciete --select, zodat de getelde set exact deze vijftien blijft,
@@ -170,7 +171,7 @@ def _ruff_findings(root: Path) -> list[dict]:
     ]
     proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, check=False)
     # ruff geeft 0 (schoon) of 1 (bevindingen); al het andere is "de tool kon
-    # niet draaien" en dat is rood, niet groen. Fail closed (§7).
+    # niet draaien" en dat is rood, niet groen. Fail closed.
     if proc.returncode not in (0, 1):
         raise SystemExit(
             f"ratchet: ruff@{version} could not run (rc={proc.returncode}) — the pin "
@@ -196,7 +197,7 @@ def _c901_score(finding: dict, location: str) -> tuple[str, int]:
     """(`locatie functie`, score) uit het bericht van één C901-bevinding.
 
     Een bericht zonder leesbare score is rood: na een ruff-bump zou een stille
-    nul de harde cyclomatische grens uitzetten (fail closed, §7).
+    nul de harde cyclomatische grens uitzetten (fail closed).
     """
     message = finding.get("message", "")
     match = C901_SCORE.search(message)
@@ -226,7 +227,7 @@ def count_ruff(
         filename = _relative_name(finding, root)
         if code == "invalid-syntax":
             # ruff kon dit bestand niet parsen: elke echte hit erin blijft
-            # ongeteld en de arm zou stil groen rapporteren — fail closed (§7)
+            # ongeteld en de arm zou stil groen rapporteren — fail closed
             # in plaats van "de baseline kan omlaag".
             invalid_syntax_files.append(filename)
             continue
@@ -286,7 +287,7 @@ def _complexipy_scores(output: Path, version: str) -> list[tuple[str, int]]:
 
 
 def count_complexipy(root: Path) -> list[tuple[str, int]]:
-    """Per functie (`pad::functie`, cognitieve score) over src/ + tests/.
+    """Per functie (`pad::functie`, cognitieve score) over `python.lint_dirs`.
 
     --no-ignore is niet optioneel, om dezelfde reden als --ignore-noqa bij ruff:
     één `# noqa: complexipy` achter een `def` zou de functie uit de telling
@@ -296,12 +297,12 @@ def count_complexipy(root: Path) -> list[tuple[str, int]]:
     De drempel staat op een miljoen: complexipy geeft rc 1 bij een functie boven
     die drempel én bij een bestand dat hij niet kon verwerken, en alleen het
     tweede mag hier rood geven. Dat tweede zou stil minder functies tellen, dus
-    het is fail closed (§7) en niet "de baseline kan omlaag".
+    het is fail closed en niet "de baseline kan omlaag".
 
     De cwd is de tijdelijke map, niet de repo: complexipy leest `[tool.complexipy]
     exclude` uit pyproject.toml, of een (.)complexipy.toml, uit zijn cwd, en
     --no-ignore stopt dat niet. Eén configregel zou anders bestanden stil uit de
-    teller en de harde grens halen. src/ en tests/ gaan er absoluut in, de paden
+    teller en de harde grens halen. De mappen gaan er absoluut in, de paden
     in de uitvoer komen relatief terug; .gitignore blijft gewoon gelden.
     """
     version = complexipy_pin(root)
@@ -434,7 +435,7 @@ def compare(
             )
         elif now < base:
             # Zonder deze melding zakt de streep nooit en is de ratel
-            # eenrichtingsverkeer dat vastroest op de openingsstand (§3.4).
+            # eenrichtingsverkeer dat vastroest op de openingsstand.
             notes.append(f"{rule}: {base} -> {now}; the baseline can go down")
     return failures, notes
 
@@ -536,7 +537,7 @@ def judge_total(baseline: Baseline, total_pct: float) -> list[str]:
 
     Anders dan de diff-drempel is dit een vastgezette meting: hij staat op wat
     de repo haalde toen de gate aanging en kruipt omhoog zodra nieuwe code de
-    dekking optilt (#703). De prijs is bekend en geaccepteerd: een groot
+    dekking optilt. De prijs is bekend en geaccepteerd: een groot
     goed-getest bestand verwijderen laat het gemiddelde zakken en is dan rood.
     """
     if total_pct >= baseline.min_total_pct:

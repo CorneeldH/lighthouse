@@ -314,6 +314,16 @@ def test_no_controller_option_keeps_to_do(lighthouse_toml):
     assert "board: status Controller skipped — no such status option" in line
 
 
+def test_no_controller_option_and_no_status_says_none(lighthouse_toml):
+    """No Auto-add: the item has no status after five reads; the line says so."""
+    lighthouse_toml(BOARD_TOML.replace('"Controller" = "opt-controller"\n', ""))
+    gh = FakeGh()
+    for _ in range(5):
+        gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", None)]))
+    line = pi.ensure_on_board(gh, 1016, "u", "tok", sleep=lambda _s: None)
+    assert line.startswith("#1016 on board, status none;"), line
+
+
 def test_the_board_comes_from_the_config():
     assert pi.board() is not None
     assert pi.board().project_id == "PVT_other"

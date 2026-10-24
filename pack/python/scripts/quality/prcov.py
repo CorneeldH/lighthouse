@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -85,6 +86,14 @@ def select_commits(root: Path, since: str | None) -> list[SquashCommit]:
     if since is not None and _is_ancestor(root, since):
         args = ["log", "--first-parent", "--format=%H%x1f%s", f"{since}..HEAD"]
     else:
+        if since is not None:
+            # Niet stil: een shallow clone of herschreven geschiedenis valt hier
+            # anders elke nacht terug, en dan ook nog met een verkeerde blame.
+            print(
+                f"nightly: {since} is not an ancestor of HEAD (shallow clone or "
+                "rewritten history?); judging the merges of the last 24 hours",
+                file=sys.stderr,
+            )
         args = [
             "log",
             "--first-parent",

@@ -560,3 +560,19 @@ def test_nightly_follows_source_dirs(nightly_repo, lighthouse_toml, monkeypatch,
     assert rc == 0
     assert "ratchet: PR #11 100.0% (2/2)" in out
     assert gh.calls == []
+
+
+def test_the_old_board_token_does_not_count(nightly_repo, monkeypatch, capsys):
+    """Only LIGHTHOUSE_BOARD_TOKEN counts: with just the source repository's old
+    variable the board step is missing, and the run is red."""
+    monkeypatch.delenv(prcov_issues.BOARD_TOKEN_ENV, raising=False)
+    monkeypatch.setenv("PAIA_BOARD_TOKEN", "tok")
+    report_path = _one_pr_below(nightly_repo)
+    gh = _FakeGh()
+    gh.queue("issue list", "[]")
+    gh.queue("issue create", "https://github.com/x/y/issues/510")
+    gh.queue("comments", "")
+    rc = ratchet.cmd_nightly(nightly_repo.root, str(report_path), nightly_repo.initial_sha, None, False, gh=gh)
+    assert rc == 1
+    assert "LIGHTHOUSE_BOARD_TOKEN is missing or empty" in capsys.readouterr().err
+    assert not gh.calls_for("project item-add")
