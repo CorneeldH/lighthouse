@@ -144,6 +144,7 @@ func TestLanguagePacks(t *testing.T) {
 				".claude/skills/lighthouse-refresh-expo-lockfiles/SKILL.md",
 			},
 			detect: true,
+			tools:  "git,python3,superpowers,tomllib",
 		},
 		{
 			name: "python",
@@ -161,7 +162,7 @@ func TestLanguagePacks(t *testing.T) {
 				".lighthouse/scripts/quality/ratchet.py",
 			},
 			detect:   true,
-			tools:    "gh,jq,uv",
+			tools:    "gh,jq,python3,tomllib,uv",
 			blocks:   1,
 			hooks:    2,
 			fragment: "test_gate",
