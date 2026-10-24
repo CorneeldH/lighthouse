@@ -54,6 +54,15 @@ def test_core_block_says_how_to_read_a_heading():
     assert "reading accepts every language variant" in text
 
 
+def test_core_block_says_finish_what_is_authorised():
+    """#22: an agent does not hand back an action it already has permission for."""
+    text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
+    assert (
+        'Finish what you are already authorised to do; never end on an offer to do it '
+        '("ready to push if you want" is not done).'
+    ) in text
+
+
 BLOCK_BEGIN = "<!-- lighthouse:begin core -->"
 BLOCK_END = "<!-- lighthouse:end core -->"
 
