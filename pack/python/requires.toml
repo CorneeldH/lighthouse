@@ -2,3 +2,4 @@
 # missing tool with these names; it does not stop on it.
 jq = ["ruff-format", "ty-check"]
 uv = ["ruff-format", "ty-check", "quality/ratchet.py", "pre-commit-tests ([test_gate] command)"]
+gh = ["quality/ratchet.py nightly"]

@@ -245,6 +245,16 @@ source_path = "scripts/quality/gitenv.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 
 [[file]]
+path = "pack/python/scripts/quality/prcov.py"
+source_path = "scripts/quality/prcov.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/prcov_issues.py"
+source_path = "scripts/quality/prcov_issues.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
 path = "pack/python/scripts/quality/ratchet.py"
 source_path = "scripts/quality/ratchet.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

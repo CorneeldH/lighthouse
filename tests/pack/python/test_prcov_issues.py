@@ -1,8 +1,8 @@
-"""Issue, handoff en board per PR (#1016 taak 5): `prcov_issues.py`.
+"""Issue, handoff and board per PR: `prcov_issues.py`.
 
-Ontwerp: docs/developer/planning/specs/2026-09-26-ci-doorlooptijd-design.md
-Interfaces: src.controller.board (id's), src.controller.comments (KOP, parse_kop,
-parse_handoff, beoordeel_commando).
+From the source repository's `test_quality_prcov_issues.py`. The identity comes from
+`lighthouse.toml` (the `lighthouse_toml` fixture, with a board) instead of the source
+repository's controller; the handoff is checked with `protocol` from `pack/core`.
 """
 
 from __future__ import annotations
@@ -15,36 +15,49 @@ from pathlib import Path
 
 import pytest
 
-# scripts/ is geen geïnstalleerd pakket; zelfde vorm als test_quality_prcov.py:15.
-_SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+from lighthouse_lib import protocol
+from tests.pack._testkit import GIT_ENV, git, init_repo
+from tests.pack.python.conftest import BOARD_TOML, PY_SCRIPTS
+
+_SCRIPTS = Path(__file__).resolve().parents[3] / "pack" / "python" / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 from quality import prcov_issues as pi
 from quality.diffcov import DiffCoverage
 
-from src.controller.comments import KOP, beoordeel_commando, parse_handoff, parse_kop
-from src.controller.identity import identity
+LEGACY_HANDOFF = (
+    "🤖 Handoff\n"
+    "issue: #12\n"
+    "worktree: /srv/checkout\n"
+    "branch: main\n"
+    "anker: #12\n"
+    "volgende: /old-start-issue 12\n"
+    "wanneer: nu\n"
+)
 
-PAD = Path(__file__).resolve().parents[2] / "scripts" / "quality" / "prcov_issues.py"
+
+@pytest.fixture(autouse=True)
+def _board(lighthouse_toml, monkeypatch):
+    monkeypatch.setenv("LIGHTHOUSE_HANDOFF_WORKTREE", "/srv/checkout")
+    return lighthouse_toml
 
 
 class FakeGh:
-    """Logt elke aanroep (args, env, input) en geeft canned antwoorden terug.
+    """Logs every call (args, env, input) and returns canned answers.
 
-    `queue(key, *antwoorden)` hangt antwoorden achter elkaar aan voor een key; elke
-    aanroep met die key pop't het volgende antwoord (het laatste blijft staan zodra de
-    rij leeg is). `key(args)` groepeert op de eerste twee woorden van het commando,
-    behalve voor `api graphql` (key "graphql") en overige `api ...`-aanroepen (key
-    "comments") — genoeg onderscheid voor deze module.
+    `queue(key, *answers)` lines answers up for a key; every call with that key pops the
+    next one (the last stays once the queue is empty). `key(args)` groups on the first
+    two words of the command, except `api graphql` ("graphql") and other `api ...`
+    calls ("comments").
     """
 
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[str, ...], dict[str, str] | None, str | None]] = []
         self._responses: dict[str, list[str]] = {}
 
-    def queue(self, key: str, *antwoorden: str) -> None:
-        self._responses.setdefault(key, []).extend(antwoorden)
+    def queue(self, key: str, *answers: str) -> None:
+        self._responses.setdefault(key, []).extend(answers)
 
     @staticmethod
     def key(args: tuple[str, ...]) -> str:
@@ -72,6 +85,11 @@ class FakeGh:
         self, group: str
     ) -> list[tuple[tuple[str, ...], dict | None, str | None]]:
         return [c for c in self.calls if self.key(c[0]) == group]
+
+
+def comments(*bodies: str) -> str:
+    """What `gh api … --jq '.[].body | @json'` prints: one JSON string per comment."""
+    return "".join(json.dumps(body) + "\n" for body in bodies)
 
 
 def project_item_json(nodes: list[dict]) -> str:
@@ -115,6 +133,11 @@ def test_body_lists_uncovered_files_with_ranges():
     assert "# pragma: no cover" in text
 
 
+def test_body_names_the_default_branch(lighthouse_toml):
+    lighthouse_toml(BOARD_TOML.replace('repo = "Other/repo"', 'repo = "Other/repo"\ndefault_branch = "trunk"'))
+    assert "PR #7 is on `trunk` with" in pi.body(7, _result({"src/a.py": [1]}), 85, None)
+
+
 def test_body_without_run_url_drops_that_line():
     result = _result({"src/a.py": [3]})
     text = pi.body(1016, result, 85, None)
@@ -126,43 +149,40 @@ def test_the_search_matches_the_exact_pr_not_a_prefix():
     gh.queue(
         "issue list",
         json.dumps(
-            [
-                {
-                    "number": 101,
-                    "state": "OPEN",
-                    "url": "u",
-                    "title": "Diff-coverage #101 x",
-                    "labels": [],
-                }
-            ]
+            [{"number": 101, "state": "OPEN", "url": "u", "title": "Diff-coverage #101 x", "labels": []}]
         ),
     )
     gh.queue("issue create", "https://github.com/x/y/issues/55")
-    result = _result({"src/a.py": [1]})
-    action = pi.ensure_issue(gh, 10, result, 85, None)
+    action = pi.ensure_issue(gh, 10, _result({"src/a.py": [1]}), 85, None)
     assert action is not None
     assert action[0] == "created"
-    creates = gh.calls_for("issue create")
-    assert len(creates) == 1
+    assert len(gh.calls_for("issue create")) == 1
 
 
-def test_no_issue_yet_creates_one_with_both_labels():
+def test_no_issue_yet_creates_one_without_labels_by_default():
     gh = FakeGh()
     gh.queue("issue list", json.dumps([]))
     gh.queue("issue create", "https://github.com/x/y/issues/55")
-    result = _result({"src/a.py": [3, 4]})
-    action = pi.ensure_issue(gh, 1016, result, 85, "https://example.invalid/run/9")
+    action = pi.ensure_issue(gh, 1016, _result({"src/a.py": [3, 4]}), 85, "https://example.invalid/run/9")
     assert action == ("created", 55, "https://github.com/x/y/issues/55")
-    creates = gh.calls_for("issue create")
-    assert len(creates) == 1
-    create_args = creates[0][0]
-    assert create_args.count("--label") == 2
-    assert "1-loc:container" in create_args
-    assert "2-area:meta" in create_args
-    assert creates[0][1] is None  # geen board-token op een issue-call
+    [create] = gh.calls_for("issue create")
+    assert "--label" not in create[0]
+    assert create[1] is None  # no board token on an issue call
 
 
-def test_an_open_issue_is_reconciled_not_duplicated():
+def test_labels_from_config(lighthouse_toml):
+    lighthouse_toml(BOARD_TOML + '\n[python]\ncoverage_issue_labels = ["x", "y"]\n')
+    gh = FakeGh()
+    gh.queue("issue list", json.dumps([]))
+    gh.queue("issue create", "https://github.com/x/y/issues/55")
+    pi.ensure_issue(gh, 1016, _result({"src/a.py": [3]}), 85, None)
+    [create] = gh.calls_for("issue create")
+    args = create[0]
+    assert [args[i + 1] for i, a in enumerate(args) if a == "--label"] == ["x", "y"]
+
+
+def test_an_open_issue_is_reconciled_not_duplicated(lighthouse_toml):
+    lighthouse_toml(BOARD_TOML + '\n[python]\ncoverage_issue_labels = ["loc", "area"]\n')
     gh = FakeGh()
     gh.queue(
         "issue list",
@@ -173,20 +193,16 @@ def test_an_open_issue_is_reconciled_not_duplicated():
                     "state": "OPEN",
                     "url": "https://github.com/x/y/issues/12",
                     "title": "Diff-coverage #1016 70.0% < 85%",
-                    "labels": [{"name": "1-loc:container"}],
+                    "labels": [{"name": "loc"}],
                 }
             ]
         ),
     )
-    result = _result({"src/a.py": [1]})
-    action = pi.ensure_issue(gh, 1016, result, 85, None)
+    action = pi.ensure_issue(gh, 1016, _result({"src/a.py": [1]}), 85, None)
     assert action == ("reconciled", 12, "https://github.com/x/y/issues/12")
     assert not gh.calls_for("issue create")
-    edits = gh.calls_for("issue edit")
-    assert len(edits) == 1
-    assert "--add-label" in edits[0][0]
-    assert "2-area:meta" in edits[0][0]
-    assert "1-loc:container" not in edits[0][0][edits[0][0].index("--add-label") + 1 :]
+    [edit] = gh.calls_for("issue edit")
+    assert edit[0] == ("issue", "edit", "12", "--add-label", "area")
 
 
 def test_a_closed_issue_counts_as_handled():
@@ -194,20 +210,10 @@ def test_a_closed_issue_counts_as_handled():
     gh.queue(
         "issue list",
         json.dumps(
-            [
-                {
-                    "number": 12,
-                    "state": "CLOSED",
-                    "url": "u",
-                    "title": "Diff-coverage #1016 70.0% < 85%",
-                    "labels": [],
-                }
-            ]
+            [{"number": 12, "state": "CLOSED", "url": "u", "title": "Diff-coverage #1016 70.0% < 85%", "labels": []}]
         ),
     )
-    result = _result({"src/a.py": [1]})
-    action = pi.ensure_issue(gh, 1016, result, 85, None)
-    assert action is None
+    assert pi.ensure_issue(gh, 1016, _result({"src/a.py": [1]}), 85, None) is None
     assert not gh.calls_for("issue create")
     assert not gh.calls_for("issue edit")
 
@@ -215,130 +221,113 @@ def test_a_closed_issue_counts_as_handled():
 def test_a_new_item_gets_status_controller():
     gh = FakeGh()
     for _ in range(5):
-        gh.queue(
-            "graphql",
-            project_item_json([node("PVTI_a", identity().board.project_id, None)]),
-        )
-    gh.queue(
-        "graphql",
-        project_item_json([node("PVTI_a", identity().board.project_id, "Controller")]),
-    )
+        gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", None)]))
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", "Controller")]))
     sleeps: list[float] = []
-    line = pi.ensure_on_board(
-        gh, 1016, "https://github.com/x/y/issues/55", "tok", sleep=sleeps.append
-    )
-    edits = gh.calls_for("project item-edit")
-    assert len(edits) == 1
-    assert identity().board.status_options["Controller"] in edits[0][0]
-    assert edits[0][1] == {"GH_TOKEN": "tok"}
-    assert line == "#1016 op board, Status Controller"
-    adds = gh.calls_for("project item-add")
-    assert len(adds) == 1
-    assert adds[0][1] == {"GH_TOKEN": "tok"}
+    line = pi.ensure_on_board(gh, 1016, "https://github.com/x/y/issues/55", "tok", sleep=sleeps.append)
+    [edit] = gh.calls_for("project item-edit")
+    assert "opt-controller" in edit[0]
+    assert edit[1] == {"GH_TOKEN": "tok"}
+    assert line == "#1016 on board, status Controller"
+    [add] = gh.calls_for("project item-add")
+    assert add[1] == {"GH_TOKEN": "tok"}
 
 
 def test_auto_add_to_do_is_moved_to_controller():
     gh = FakeGh()
-    gh.queue(
-        "graphql",
-        project_item_json([node("PVTI_a", identity().board.project_id, None)]),
-    )
-    gh.queue(
-        "graphql",
-        project_item_json([node("PVTI_a", identity().board.project_id, "To do")]),
-    )
-    gh.queue(
-        "graphql",
-        project_item_json([node("PVTI_a", identity().board.project_id, "Controller")]),
-    )
-    sleeps: list[float] = []
-    pi.ensure_on_board(gh, 1016, "u", "tok", sleep=sleeps.append)
-    edits = gh.calls_for("project item-edit")
-    assert len(edits) == 1
-    assert identity().board.status_options["Controller"] in edits[0][0]
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", None)]))
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", "To do")]))
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", "Controller")]))
+    pi.ensure_on_board(gh, 1016, "u", "tok", sleep=lambda _s: None)
+    [edit] = gh.calls_for("project item-edit")
+    assert "opt-controller" in edit[0]
 
 
 def test_the_status_is_polled_at_most_five_times():
     gh = FakeGh()
     for _ in range(6):
-        gh.queue(
-            "graphql",
-            project_item_json([node("PVTI_a", identity().board.project_id, None)]),
-        )
+        gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", None)]))
     sleeps: list[float] = []
     pi.ensure_on_board(gh, 1016, "u", "tok", sleep=sleeps.append)
-    queries = gh.calls_for("graphql")
-    assert len(queries) == 5 + 1  # 5 polls + 1 herlezing na de eerste item-edit
-    # 4 sleeps tussen de 5 polls, dan één sleep(3) na de item-edit vóór de herlezing.
+    assert len(gh.calls_for("graphql")) == 5 + 1  # 5 polls + 1 reread after the first item-edit
+    # 4 sleeps between the 5 polls, then one sleep(3) after the item-edit before the reread.
     assert sleeps == [3, 3, 3, 3, 3]
-    edits = gh.calls_for("project item-edit")
-    assert len(edits) == 1
-    assert edits[0][0] == (
+    [edit] = gh.calls_for("project item-edit")
+    assert edit[0] == (
         "project",
         "item-edit",
         "--id",
         "PVTI_a",
         "--project-id",
-        identity().board.project_id,
+        "PVT_other",
         "--field-id",
-        identity().board.status_field_id,
+        "FIELD_other",
         "--single-select-option-id",
-        identity().board.status_options["Controller"],
+        "opt-controller",
     )
 
 
 def test_a_late_auto_add_is_edited_again():
     gh = FakeGh()
     for _ in range(5):
-        gh.queue(
-            "graphql",
-            project_item_json([node("PVTI_a", identity().board.project_id, None)]),
-        )
-    gh.queue(
-        "graphql",
-        project_item_json([node("PVTI_a", identity().board.project_id, "To do")]),
-    )
-    sleeps: list[float] = []
-    pi.ensure_on_board(gh, 1016, "u", "tok", sleep=sleeps.append)
+        gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", None)]))
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", "To do")]))
+    pi.ensure_on_board(gh, 1016, "u", "tok", sleep=lambda _s: None)
     edits = gh.calls_for("project item-edit")
     assert len(edits) == 2
-    assert all(identity().board.status_options["Controller"] in e[0] for e in edits)
+    assert all("opt-controller" in e[0] for e in edits)
 
 
 def test_item_add_id_seeds_item_edit_when_the_status_read_never_finds_it():
-    """`project item-add --format json` levert de node-id synchroon; als de
-    GraphQL-statuslezing het item onverwacht nooit terugvindt (`nodes: []`) mag
-    `item-edit` niet met een lege `--id` draaien — hij valt terug op het zaad
-    uit `item-add`."""
+    """`project item-add --format json` gives the node id synchronously; when the status
+    read never finds the item, `item-edit` falls back on that seed, not an empty --id."""
     gh = FakeGh()
     gh.queue("project item-add", json.dumps({"id": "PVTI_seed"}))
     for _ in range(6):
-        gh.queue("graphql", project_item_json([]))  # nooit een node op ons project
-    sleeps: list[float] = []
-    line = pi.ensure_on_board(gh, 1016, "u", "tok", sleep=sleeps.append)
-    edits = gh.calls_for("project item-edit")
-    assert len(edits) == 1
-    assert "PVTI_seed" in edits[0][0]
-    assert line == "#1016 op board, Status Controller"
+        gh.queue("graphql", project_item_json([]))
+    line = pi.ensure_on_board(gh, 1016, "u", "tok", sleep=lambda _s: None)
+    [edit] = gh.calls_for("project item-edit")
+    assert "PVTI_seed" in edit[0]
+    assert line == "#1016 on board, status Controller"
 
 
 @pytest.mark.parametrize("status", ["Controller", "In progress", "On hold", "Done"])
 def test_a_handed_over_item_is_not_touched(status):
     gh = FakeGh()
-    gh.queue(
-        "graphql",
-        project_item_json([node("PVTI_a", identity().board.project_id, status)]),
-    )
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", status)]))
     sleeps: list[float] = []
     pi.ensure_on_board(gh, 1016, "u", "tok", sleep=sleeps.append)
     assert not gh.calls_for("project item-edit")
     assert not sleeps
 
 
-def test_prcov_issues_finds_src_from_its_own_path(tmp_path):
+def test_no_controller_option_keeps_to_do(lighthouse_toml):
+    lighthouse_toml(BOARD_TOML.replace('"Controller" = "opt-controller"\n', ""))
+    gh = FakeGh()
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", "To do")]))
+    sleeps: list[float] = []
+    line = pi.ensure_on_board(gh, 1016, "u", "tok", sleep=sleeps.append)
+    assert len(gh.calls_for("project item-add")) == 1
+    assert not gh.calls_for("project item-edit")
+    assert not sleeps
+    assert line.startswith("#1016 on board, status To do")
+    assert "board: status Controller skipped — no such status option" in line
+
+
+def test_the_board_comes_from_the_config():
+    assert pi.board() is not None
+    assert pi.board().project_id == "PVT_other"
+
+
+def test_no_board_section_means_no_board(lighthouse_toml):
+    lighthouse_toml('[project]\nlanguage = "en"\n\n[forge]\nkind = "github"\nrepo = "Other/repo"\n')
+    assert pi.board() is None
+
+
+def test_prcov_issues_finds_lighthouse_lib_from_its_own_path(tmp_path):
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     proc = subprocess.run(
-        [sys.executable, str(PAD)],
+        [sys.executable, str(PY_SCRIPTS / "quality" / "prcov_issues.py")],
         cwd=tmp_path,
         env=env,
         capture_output=True,
@@ -348,71 +337,91 @@ def test_prcov_issues_finds_src_from_its_own_path(tmp_path):
     assert proc.returncode == 0, proc.stderr
 
 
-def test_the_handoff_is_what_the_controller_starts():
+def test_handoff_parses_with_protocol():
     body = pi.handoff_comment(1234, 1016, 85)
-    kop = parse_kop(body)
-    assert kop is not None
-    handoff = parse_handoff(kop)
-    assert (handoff.issue, handoff.worktree, handoff.branch, handoff.wanneer) == (
-        1234,
-        pi.HOOFDCHECKOUT,
-        "main",
-        "nu",
-    )
-    assert beoordeel_commando(handoff.volgende, 1234) == ("start", "")
+    handoff = protocol.parse_handoff(protocol.parse_header(body))
+    assert handoff.issue == 1234
+    assert handoff.worktree == "/srv/checkout"
+    assert handoff.branch == "main"
+    assert handoff.anchor == "#1234"
+    assert handoff.next == "/lighthouse-start-issue 1234"
+    assert handoff.when == "now"
+    for old in ("volgende:", "wanneer:", "anker:"):
+        assert old not in body
+
+
+def test_handoff_branch_follows_default_branch(lighthouse_toml):
+    lighthouse_toml(BOARD_TOML.replace('repo = "Other/repo"', 'repo = "Other/repo"\ndefault_branch = "trunk"'))
+    handoff = protocol.parse_handoff(protocol.parse_header(pi.handoff_comment(5, 6, 85)))
+    assert handoff.branch == "trunk"
+
+
+def test_handoff_heading_follows_language(lighthouse_toml):
+    lighthouse_toml(BOARD_TOML.replace('language = "en"', 'language = "nl"'))
+    body = pi.handoff_comment(1234, 1016, 85)
+    assert body.startswith("🤖 Handoff\n")
+    header = protocol.parse_header(body)
+    assert header.kind == "handoff"
+    assert {"issue", "worktree", "branch", "anchor", "next", "when"} <= set(header.fields)
+
+
+def test_worktree_from_env_or_main_checkout(tmp_path, monkeypatch):
+    main = tmp_path / "main"
+    init_repo(main)
+    linked = tmp_path / "linked"
+    git(main, "worktree", "add", "-q", str(linked), "-b", "side")
+    monkeypatch.setenv("LIGHTHOUSE_HANDOFF_WORKTREE", "/elsewhere/checkout")
+    assert pi.handoff_worktree() == "/elsewhere/checkout"
+    monkeypatch.delenv("LIGHTHOUSE_HANDOFF_WORKTREE")
+    monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(linked))
+    assert pi.handoff_worktree() == str(main.resolve())
 
 
 def test_an_existing_handoff_is_not_posted_twice():
     gh = FakeGh()
-    # `--jq '.[].body | split("\n")[0]'` geeft per comment zijn eerste regel; de
-    # tweede comment hier is dus zelf een `🤖 Handoff`-comment.
-    gh.queue("comments", "some earlier comment\n" + KOP + " Handoff")
-    posted = pi.ensure_handoff(gh, 12, 1016, 85)
-    assert posted is False
+    gh.queue("comments", comments("some earlier comment", pi.handoff_comment(12, 1016, 85)))
+    assert pi.ensure_handoff(gh, 12, 1016, 85) is False
+    assert not gh.calls_for("issue comment")
+
+
+def test_dedupe_sees_legacy_handoff():
+    gh = FakeGh()
+    gh.queue("comments", comments("some earlier comment", LEGACY_HANDOFF))
+    assert pi.ensure_handoff(gh, 12, 1016, 85) is False
     assert not gh.calls_for("issue comment")
 
 
 def test_a_missing_handoff_is_posted():
     gh = FakeGh()
-    gh.queue("comments", "some earlier comment")
-    posted = pi.ensure_handoff(gh, 12, 1016, 85)
-    assert posted is True
-    comments = gh.calls_for("issue comment")
-    assert len(comments) == 1
-    assert comments[0][1] is None  # geen board-token op een issue-call
-    assert comments[0][2] == pi.handoff_comment(12, 1016, 85)
-    read = gh.calls_for("comments")
-    assert len(read) == 1
-    assert "--paginate" in read[0][0]
+    gh.queue("comments", comments("some earlier comment"))
+    assert pi.ensure_handoff(gh, 12, 1016, 85) is True
+    [comment] = gh.calls_for("issue comment")
+    assert comment[1] is None  # no board token on an issue call
+    assert comment[2] == pi.handoff_comment(12, 1016, 85)
+    [read] = gh.calls_for("comments")
+    assert "--paginate" in read[0]
+    assert "repos/Other/repo/issues/12/comments" in read[0]
 
 
-def test_a_handoff_with_extra_text_on_the_kop_line_still_counts():
-    """`🤖 Handoff · iets` telt mee — de check is `startswith`, geen exacte match."""
+def test_a_handoff_with_extra_text_on_the_heading_line_still_counts():
+    """`🤖 Handoff · something` counts: the protocol reads the kind before the `·`."""
     gh = FakeGh()
-    gh.queue("comments", "some earlier comment\n" + KOP + " Handoff · replay")
-    posted = pi.ensure_handoff(gh, 12, 1016, 85)
-    assert posted is False
-    assert not gh.calls_for("issue comment")
+    gh.queue("comments", comments("🤖 Handoff · replay\nissue: #12\n"))
+    assert pi.ensure_handoff(gh, 12, 1016, 85) is False
 
 
 def test_a_quoted_handoff_line_mid_comment_does_not_count():
-    """Een comment die `🤖 Handoff` ergens citeert, maar er niet mee *begint*,
-    telt niet: `split("\\n")[0]` geeft alleen de eigen eerste regel van die
-    comment terug, en dat is hier de quote-intro, niet het kopje zelf."""
+    """A comment that quotes `🤖 Handoff` but does not start with it does not count."""
     gh = FakeGh()
-    gh.queue("comments", "Zag dit langskomen, ter info — quote:")
-    posted = pi.ensure_handoff(gh, 12, 1016, 85)
-    assert posted is True
+    gh.queue("comments", comments("Saw this pass by — quote:\n> 🤖 Handoff\n> issue: #12"))
+    assert pi.ensure_handoff(gh, 12, 1016, 85) is True
     assert len(gh.calls_for("issue comment")) == 1
 
 
 def test_the_handoff_comes_before_the_status():
     gh = FakeGh()
     gh.queue("comments", "")
-    gh.queue(
-        "graphql",
-        project_item_json([node("PVTI_a", identity().board.project_id, "To do")]),
-    )
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", "To do")]))
     pi.ensure_handoff(gh, 12, 1016, 85)
     pi.ensure_on_board(gh, 12, "u", "tok", sleep=lambda _seconds: None)
     names = [gh.key(c[0]) for c in gh.calls]
@@ -424,12 +433,8 @@ def test_board_calls_carry_the_board_token_and_issue_calls_do_not():
     gh.queue("issue list", json.dumps([]))
     gh.queue("issue create", "https://github.com/x/y/issues/55")
     gh.queue("comments", "")
-    gh.queue(
-        "graphql",
-        project_item_json([node("PVTI_a", identity().board.project_id, "To do")]),
-    )
-    result = _result({"src/a.py": [1]})
-    pi.ensure_issue(gh, 1016, result, 85, None)
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", "To do")]))
+    pi.ensure_issue(gh, 1016, _result({"src/a.py": [1]}), 85, None)
     pi.ensure_handoff(gh, 55, 1016, 85)
     pi.ensure_on_board(gh, 55, "u", "tok", sleep=lambda _seconds: None)
     for group in ("issue list", "issue create", "issue comment"):
@@ -440,79 +445,74 @@ def test_board_calls_carry_the_board_token_and_issue_calls_do_not():
             assert call[1] == {"GH_TOKEN": "tok"}
 
 
-def test_the_watermark_asks_main_and_success():
+def test_board_calls_use_the_repo_from_the_config():
+    gh = FakeGh()
+    for _ in range(5):
+        gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", None)]))
+    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", "Controller")]))
+    pi.ensure_on_board(gh, 1016, "https://github.com/Other/repo/issues/55", "tok", sleep=lambda _: None)
+    [(graphql, _, _), *_] = gh.calls_for("graphql")
+    assert "owner=Other" in graphql
+    assert "name=repo" in graphql
+    [(add, _, _)] = gh.calls_for("project item-add")
+    assert add[:5] == ("project", "item-add", "7", "--owner", "Other")
+    [(edit, _, _), *_] = gh.calls_for("project item-edit")
+    assert "PVT_other" in edit and "FIELD_other" in edit and "opt-controller" in edit
+
+
+def test_the_watermark_asks_the_workflow_branch_and_success(lighthouse_toml):
+    lighthouse_toml(BOARD_TOML + '\n[python]\nnightly_workflow = "nightly.yml"\n')
     gh = FakeGh()
     gh.queue("run list", json.dumps([{"headSha": "deadbeef"}]))
-    sha = pi.last_success_sha(gh)
-    assert sha == "deadbeef"
+    assert pi.last_success_sha(gh, "nightly.yml") == "deadbeef"
     args = gh.calls[0][0]
-    assert "--branch" in args
-    assert "main" in args
-    assert "--status" in args
-    assert "success" in args
-    assert "--event" in args
-    assert "schedule" in args
+    for flag, value in (("--workflow", "nightly.yml"), ("--branch", "main"), ("--status", "success"), ("--event", "schedule")):
+        assert args[args.index(flag) + 1] == value
 
 
 def test_no_successful_run_gives_no_watermark():
     gh = FakeGh()
     gh.queue("run list", "[]")
-    assert pi.last_success_sha(gh) is None
+    assert pi.last_success_sha(gh, "nightly.yml") is None
+
+
+def test_the_workflow_comes_from_the_config(lighthouse_toml):
+    assert pi.nightly_workflow() is None
+    lighthouse_toml(BOARD_TOML + '\n[python]\nnightly_workflow = "nightly.yml"\n')
+    assert pi.nightly_workflow() == "nightly.yml"
+
+
+def test_the_board_token_env():
+    assert pi.BOARD_TOKEN_ENV == "LIGHTHOUSE_BOARD_TOKEN"
 
 
 def test_run_gh_passes_a_timeout(monkeypatch):
-    """Zelfde grens als `scripts/board_start.py`: een hangende `gh` mag de
-    nightly niet vasthouden."""
-    gevangen: dict[str, object] = {}
+    """A hanging `gh` must not hold the nightly."""
+    seen: dict[str, object] = {}
 
-    def nep_run(cmd, **kwargs):
-        gevangen.update(kwargs)
+    def fake_run(cmd, **kwargs):
+        seen.update(kwargs)
         return subprocess.CompletedProcess(cmd, 0, stdout="ok", stderr="")
 
-    monkeypatch.setattr(pi.subprocess, "run", nep_run)
+    monkeypatch.setattr(pi.subprocess, "run", fake_run)
     assert pi.run_gh(["issue", "list"]) == "ok"
-    assert gevangen.get("timeout") == 60
+    assert seen.get("timeout") == 60
 
 
 def test_run_gh_keeps_stderr_in_the_error_message(monkeypatch):
-    """Review-ronde 1, bevinding 5: een naïeve `print(fout)` in de nightly-log
-    moet de tekst van `gh` zelf tonen, niet alleen "returned non-zero exit
-    status N"."""
+    def fake_run(cmd, **kwargs):
+        raise subprocess.CalledProcessError(1, cmd, output="", stderr="gh: issue not found")
 
-    def nep_run(cmd, **kwargs):
-        raise subprocess.CalledProcessError(
-            1, cmd, output="", stderr="gh: issue not found"
-        )
-
-    monkeypatch.setattr(pi.subprocess, "run", nep_run)
-    with pytest.raises(subprocess.CalledProcessError) as fout:
+    monkeypatch.setattr(pi.subprocess, "run", fake_run)
+    with pytest.raises(subprocess.CalledProcessError) as error:
         pi.run_gh(["issue", "view", "999"])
-    assert "gh: issue not found" in str(fout.value)
+    assert "gh: issue not found" in str(error.value)
 
 
-def test_andere_repo_stuurt_eigen_owner_naam_en_board(other_identity):
-    gh = FakeGh()
-    for _ in range(5):
-        gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", None)]))
-    gh.queue("graphql", project_item_json([node("PVTI_a", "PVT_other", "Controller")]))
-    pi.ensure_on_board(
-        gh, 1016, "https://github.com/Other/repo/issues/55", "tok", sleep=lambda _: None
-    )
-    [(graphql, _, _), *_] = gh.calls_for("graphql")
-    assert "owner=Other" in graphql
-    assert "name=repo" in graphql
-    assert not any("personal_ai_agent" in a for a in graphql)
-    [(add, _, _)] = gh.calls_for("project item-add")
-    assert add[:5] == ("project", "item-add", "7", "--owner", "Other")
-    [(edit, _, _), *_] = gh.calls_for("project item-edit")
-    assert "PVT_other" in edit
-    assert "FIELD_other" in edit
-    assert "opt-controller" in edit
+def test_output_is_english():
+    from tests.pack.python.test_ratchet import _messages
 
-
-def test_andere_repo_leest_comments_van_eigen_repo(other_identity):
-    gh = FakeGh()
-    gh.queue("comments", "")
-    pi.ensure_handoff(gh, 12, 1016, 85)
-    [(args, _, _)] = gh.calls_for("comments")
-    assert "repos/Other/repo/issues/12/comments" in args
+    for name in ("prcov.py", "prcov_issues.py"):
+        for word in (" de ", " het ", " een ", " geen ", " op board", "Status ", "faalde"):
+            hits = [t for t in _messages(_SCRIPTS / "quality" / name) if word in f" {t} "]
+            assert not hits, (name, word, hits[:3])

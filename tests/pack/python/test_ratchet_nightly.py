@@ -1,8 +1,35 @@
-# --- nightly (#1016 taak 6): cmd_nightly ---------------------------------------
+"""The nightly arm of the ratchet: `cmd_nightly` with prcov and prcov_issues.
 
-from quality import prcov_issues
+From the source repository's `test_quality_ratchet.py` (the nightly part). The board
+comes from `lighthouse.toml` (`BOARD_TOML`) instead of the source repository's
+controller; new are the cases without a workflow, without a board and with other
+source directories.
+"""
 
-from src.controller.identity import identity
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from tests.pack.python.conftest import BOARD_TOML
+
+_SCRIPTS = Path(__file__).resolve().parents[3] / "pack" / "python" / "scripts"
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
+
+from quality import prcov_issues, ratchet
+
+NO_BOARD_TOML = BOARD_TOML[: BOARD_TOML.index("[forge.board]")]
+
+
+@pytest.fixture(autouse=True)
+def _board(lighthouse_toml, monkeypatch):
+    monkeypatch.setenv("LIGHTHOUSE_HANDOFF_WORKTREE", "/srv/checkout")
+    monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
+    return lighthouse_toml
+
 
 _NIGHTLY_GIT_IDENTITY = {
     "GIT_AUTHOR_NAME": "Test",
@@ -13,9 +40,9 @@ _NIGHTLY_GIT_IDENTITY = {
 
 
 class _NightlyRepo:
-    """Minimale fixture-repo voor cmd_nightly — zelfde vorm als
-    tests/unit/test_quality_prcov.py::_Repo, hier lokaal zodat dit testbestand
-    geen afhankelijkheid krijgt van een ander testmodule."""
+    """Minimale fixture-repo voor cmd_nightly — zelfde vorm als `_Repo` in
+    test_prcov.py, hier lokaal zodat dit testbestand geen afhankelijkheid krijgt
+    van een ander testmodule."""
 
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -102,7 +129,7 @@ def write_report(root: Path, report: dict) -> Path:
 
 class _FakeGh:
     """Logt elke aanroep en geeft canned antwoorden terug — kleine, lokale
-    kopie van tests/unit/test_quality_prcov_issues.py::FakeGh. `queue` mag ook
+    kopie van `FakeGh` in test_prcov_issues.py. `queue` mag ook
     een Exception-instantie doorgeven, om een falende `gh`-aanroep te
     simuleren."""
 
@@ -147,7 +174,7 @@ class _FakeGh:
 def _board_item(item_id: str, status: str | None) -> str:
     node = {
         "id": item_id,
-        "project": {"id": identity().board.project_id},
+        "project": {"id": "PVT_other"},
         "fieldValueByName": {"name": status} if status else None,
     }
     return json.dumps(
@@ -392,7 +419,7 @@ def test_nightly_a_refused_board_write_names_the_token_and_keeps_going(
     nightly_repo, monkeypatch, capsys
 ):
     """Token aanwezig, maar de gh-aanroep van ensure_on_board zelf faalt (het
-    token mag bijvoorbeeld niet schrijven). De melding moet PAIA_BOARD_TOKEN
+    token mag bijvoorbeeld niet schrijven). De melding moet BOARD_TOKEN_ENV
     met naam noemen — anders wijst niets naar de oorzaak — en de volgende PR
     moet nog steeds verwerkt worden."""
     monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
@@ -461,3 +488,75 @@ def test_nightly_dry_run_mutates_nothing(nightly_repo, monkeypatch):
         "een --dry-run mag geen enkele gh-aanroep doen die iets wijzigt — hier "
         "helemaal geen, want since is expliciet gegeven"
     )
+
+
+def _one_pr_below(nightly_repo, files=None) -> Path:
+    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
+    nightly_repo.commit(files or {"src/a.py": "X = 0\nY = 1\nA = 2\nB = 3\n"}, subject="Iets (#11)")
+    return write_report(nightly_repo.root, nightly_report(95.0, **{"src/a.py": _lines([2], [3, 4])}))
+
+
+def test_nightly_without_workflow_is_loud(nightly_repo, monkeypatch, capsys):
+    """No `python.nightly_workflow`: no watermark, and the run says so."""
+    monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
+    report_path = _one_pr_below(nightly_repo)
+    gh = _FakeGh()
+    _queue_happy_remediation(gh, "https://github.com/x/y/issues/507", "PVTI_f")
+    rc = ratchet.cmd_nightly(nightly_repo.root, str(report_path), None, None, False, gh=gh)
+    captured = capsys.readouterr()
+    assert rc == 0, captured.err
+    assert "nightly: no python.nightly_workflow; judging the merges of the last 24 hours" in captured.err
+    assert not gh.calls_for("run list")
+    assert "ratchet: PR #11" in captured.out
+
+
+def test_nightly_without_a_successful_run_says_so(nightly_repo, lighthouse_toml, monkeypatch, capsys):
+    lighthouse_toml(BOARD_TOML + '\n[python]\nnightly_workflow = "nightly.yml"\n')
+    monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
+    report_path = _one_pr_below(nightly_repo)
+    gh = _FakeGh()
+    gh.queue("run list", "[]")
+    _queue_happy_remediation(gh, "https://github.com/x/y/issues/508", "PVTI_g")
+    rc = ratchet.cmd_nightly(nightly_repo.root, str(report_path), None, None, False, gh=gh)
+    captured = capsys.readouterr()
+    assert rc == 0, captured.err
+    [run_list] = gh.calls_for("run list")
+    assert "nightly.yml" in run_list[0]
+    assert "no successful run of nightly.yml" in captured.err
+    assert "judging the merges of the last 24 hours" in captured.err
+
+
+def test_no_board_still_files_issue(nightly_repo, lighthouse_toml, monkeypatch, capsys):
+    """Without `[forge.board]`: issue and handoff, no board call, no token needed, green."""
+    lighthouse_toml(NO_BOARD_TOML)
+    monkeypatch.delenv(prcov_issues.BOARD_TOKEN_ENV, raising=False)
+    report_path = _one_pr_below(nightly_repo)
+    gh = _FakeGh()
+    gh.queue("issue list", "[]")
+    gh.queue("issue create", "https://github.com/x/y/issues/509")
+    gh.queue("comments", "")
+    rc = ratchet.cmd_nightly(nightly_repo.root, str(report_path), nightly_repo.initial_sha, None, False, gh=gh)
+    captured = capsys.readouterr()
+    assert rc == 0, captured.err
+    assert len(gh.calls_for("issue create")) == 1
+    assert len(gh.calls_for("issue comment")) == 1
+    assert not gh.calls_for("project item-add")
+    assert not gh.calls_for("graphql")
+    assert "board: skipped — no [forge.board] configured" in captured.out
+
+
+def test_nightly_follows_source_dirs(nightly_repo, lighthouse_toml, monkeypatch, capsys):
+    lighthouse_toml(BOARD_TOML + '\n[python]\nsource_dirs = ["lib"]\n')
+    monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
+    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
+    nightly_repo.commit({"src/a.py": "X = 0\nY = 1\n", "lib/m.py": "A = 1\nB = 2\n"}, subject="Twee (#11)")
+    report_path = write_report(
+        nightly_repo.root,
+        nightly_report(95.0, **{"src/a.py": _lines([], [2]), "lib/m.py": _lines([1, 2], [])}),
+    )
+    gh = _FakeGh()
+    rc = ratchet.cmd_nightly(nightly_repo.root, str(report_path), nightly_repo.initial_sha, None, False, gh=gh)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ratchet: PR #11 100.0% (2/2)" in out
+    assert gh.calls == []

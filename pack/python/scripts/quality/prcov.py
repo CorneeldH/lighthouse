@@ -1,11 +1,10 @@
-"""Wijs elke `src/`-regel op `HEAD` toe aan de squash-PR die hem schreef.
+"""Wijs elke regel onder `python.source_dirs` op `HEAD` toe aan de squash-PR die
+hem schreef.
 
-Voedt de nightly-arm van `ratchet.py` (taak 6, #1016): één `coverage.json` van
-de volledige suite, per-PR diff-coverage via `git blame` in plaats van een
-diff tegen één merge-base. Het rekenwerk zelf komt uit `diffcov.diff_coverage`
-— deze module levert alleen de toewijzing (welke regel hoort bij welke PR).
-
-Ontwerp: docs/developer/planning/specs/2026-09-26-ci-doorlooptijd-design.md
+Voedt de nightly-arm van `ratchet.py`: één `coverage.json` van de volledige
+suite, per-PR diff-coverage via `git blame` in plaats van een diff tegen één
+merge-base. Het rekenwerk zelf komt uit `diffcov.diff_coverage` — deze module
+levert alleen de toewijzing (welke regel hoort bij welke PR).
 """
 
 from __future__ import annotations
@@ -63,7 +62,7 @@ def _git_process(root: Path, args: list[str]) -> subprocess.CompletedProcess[str
 def _run_git(root: Path, args: list[str]) -> str:
     proc = _git_process(root, args)
     if proc.returncode != 0:
-        raise GitCommandError(f"`git {' '.join(args)}` faalde:\n{proc.stderr}")
+        raise GitCommandError(f"`git {' '.join(args)}` failed:\n{proc.stderr}")
     return proc.stdout
 
 
@@ -118,15 +117,17 @@ def blame(root: Path, path: str) -> dict[str, list[int]]:
     return result
 
 
-def _changed_python_files(root: Path, sha: str) -> list[str]:
-    """`.py`-paden onder `src/` die deze commit raakte (aangemaakt, gewijzigd
-    of verwijderd) — of hij nog op `HEAD` bestaat, checkt de aanroeper."""
-    output = _run_git(root, ["show", "--name-only", "--format=", sha, "--", "src/"])
+def _changed_python_files(root: Path, sha: str, source_dirs: Sequence[str]) -> list[str]:
+    """`.py`-paden onder `source_dirs` die deze commit raakte (aangemaakt,
+    gewijzigd of verwijderd) — of hij nog op `HEAD` bestaat, checkt de aanroeper."""
+    if not source_dirs:
+        return []
+    output = _run_git(root, ["show", "--name-only", "--format=", sha, "--", *source_dirs])
     return [line for line in output.splitlines() if line.strip().endswith(".py")]
 
 
 def attribute(
-    root: Path, commits: Sequence[SquashCommit]
+    root: Path, commits: Sequence[SquashCommit], source_dirs: Sequence[str] = ("src",)
 ) -> dict[int, dict[str, list[int]]]:
     """PR → {pad: regels}, via `git blame` op elk pad dat een commit raakte.
 
@@ -141,7 +142,7 @@ def attribute(
     result: dict[int, dict[str, list[int]]] = {commit.pr: {} for commit in commits}
     blame_cache: dict[str, dict[str, list[int]]] = {}
     for commit in commits:
-        for path in _changed_python_files(root, commit.sha):
+        for path in _changed_python_files(root, commit.sha, source_dirs):
             if not (root / path).exists():
                 continue
             if path not in blame_cache:

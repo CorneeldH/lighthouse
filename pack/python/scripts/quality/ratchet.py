@@ -142,7 +142,7 @@ def complexipy_pin(root: Path) -> str:
 
 
 def _ruff_findings(root: Path) -> list[dict]:
-    """De ruff-bevindingen (JSON) over src/ + tests/, of SystemExit als ruff niet draait.
+    """De ruff-bevindingen (JSON) over `python.lint_dirs`, of SystemExit als ruff niet draait.
 
     --ignore-noqa is niet optioneel: zonder die vlag onderdrukt één
     `# noqa: F401` de teller en is de gate met één comment te omzeilen (§3.2).
@@ -628,19 +628,18 @@ def _remediate_pr(
     run_url: str | None,
     dry_run: bool,
 ) -> bool:
-    """Issue, handoff en board voor één PR onder de drempel — stap 5 (#1016).
+    """Issue, handoff en board voor één PR onder de drempel — stap 5.
 
     Print zijn eigen regels. Geeft True terug als deze PR stap 5 laat falen
     (rc 1 in de aanroeper) — een ontbrekend of leeg board-token telt daarbij
     mee: een groene run zou anders het watermerk optillen (`last_success_sha`),
-    en dan reconcilieert de volgende nacht de board-stap nooit meer (review
-    ronde 1, bevinding 1; plan-tekst "de run wordt rood met een melding die
-    het token noemt").
+    en dan reconcilieert de volgende nacht de board-stap nooit meer.
+    Zonder `[forge.board]` is er geen board-stap en dus geen token nodig.
 
     Een fout uit `ensure_issue`/`ensure_handoff` gooit door naar de
     aanroeper, die hem generiek meldt. Alleen de `ensure_on_board`-fout wordt
     hier lokaal gevangen, zodat de melding het board-token met naam noemt
-    in plaats van alleen de rauwe gh-foutmelding (bevinding 4).
+    in plaats van alleen de rauwe gh-foutmelding.
     """
     if dry_run:
         print(f"ratchet: PR #{pr}: --dry-run, would update issue/handoff/board")
@@ -651,6 +650,9 @@ def _remediate_pr(
         return False
     _, issue_number, issue_url = action
     prcov_issues.ensure_handoff(gh, issue_number, pr, threshold)
+    if prcov_issues.board() is None:
+        print(f"ratchet: PR #{pr}: board: skipped — no [forge.board] configured")
+        return False
     token = os.environ.get(prcov_issues.BOARD_TOKEN_ENV, "")
     if not token:
         print(
@@ -678,6 +680,27 @@ def _remediate_pr(
     return False
 
 
+def _watermark(prcov_issues: ModuleType, gh: Gh) -> str | None:
+    """De `headSha` van de laatste geslaagde nightly, of `None` (dan de laatste 24
+    uur, met een melding op stderr: een stille terugval verbergt een kapotte
+    configuratie)."""
+    workflow = prcov_issues.nightly_workflow()
+    if workflow is None:
+        print(
+            "nightly: no python.nightly_workflow; judging the merges of the last 24 hours",
+            file=sys.stderr,
+        )
+        return None
+    sha = prcov_issues.last_success_sha(gh, workflow)
+    if sha is None:
+        print(
+            f"nightly: no successful run of {workflow} on the default branch; "
+            "judging the merges of the last 24 hours",
+            file=sys.stderr,
+        )
+    return sha
+
+
 def cmd_nightly(
     root: Path,
     report: str,
@@ -686,12 +709,13 @@ def cmd_nightly(
     dry_run: bool,
     gh: Gh | None = None,
 ) -> int:
-    """Nightly-arm (#1016): diff-coverage per PR sinds het watermerk, plus de
-    globale dekkingsvloer op hetzelfde rapport.
+    """Nightly-arm: diff-coverage per PR sinds het watermerk, plus de globale
+    dekkingsvloer op hetzelfde rapport.
 
-    `prcov`/`prcov_issues` komen hier binnen, niet bovenaan de module: zo
-    blijft `ratchet.py ruff` — dat alleen `scripts/quality/*.py` kopieert,
-    zonder `src/controller/` — draaien (zie de moduledocstring).
+    Het watermerk is de laatste geslaagde run van `python.nightly_workflow`. Zonder
+    die sleutel, of zonder geslaagde run, beoordeelt de nightly de merges van de
+    laatste 24 uur — en zegt dat. `prcov`/`prcov_issues` komen hier binnen, niet
+    bovenaan de module: de andere subcommando's hebben ze niet nodig.
     """
     from quality import prcov, prcov_issues
 
@@ -714,19 +738,20 @@ def cmd_nightly(
         watermark = since
     else:
         try:
-            watermark = prcov_issues.last_success_sha(gh)
+            watermark = _watermark(prcov_issues, gh)
         except (
             subprocess.CalledProcessError,
             subprocess.TimeoutExpired,
             OSError,
             ValueError,
             KeyError,
+            config.ConfigError,
         ) as exc:
             print(f"ratchet: the watermark cannot be determined: {exc}", file=sys.stderr)
             return 1
     try:
         commits = prcov.select_commits(root, watermark)
-        attributed = prcov.attribute(root, commits)
+        attributed = prcov.attribute(root, commits, _dirs("python.source_dirs"))
     except prcov.GitCommandError as exc:
         print(f"ratchet: {exc}", file=sys.stderr)
         return 1
@@ -742,7 +767,7 @@ def cmd_nightly(
         # één dict comprehension, dus één ontbrekende rapport-entry
         # (`CoverageReportError`) zou de hele nacht laten crashen — geen
         # issues voor de andere PR's, geen vloercontrole, watermerk blijft
-        # steken (M1, #1016-review).
+        # steken.
         try:
             result = diffcov.diff_coverage(paths, data, read_source, baseline.exclude)
         except diffcov.CoverageReportError as exc:
@@ -762,6 +787,7 @@ def cmd_nightly(
             OSError,
             ValueError,
             KeyError,
+            config.ConfigError,
         ) as exc:
             print(f"ratchet: PR #{pr}: {exc}", file=sys.stderr)
             step5_failed = True

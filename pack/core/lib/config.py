@@ -101,6 +101,8 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "python.source_dirs": _STRS,
         "python.lint_dirs": _STRS,
         "python.coverage_command": _STR,
+        "python.nightly_workflow": _STR,
+        "python.coverage_issue_labels": _STRS,
     }
 )
 
@@ -135,6 +137,7 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
         "python.source_dirs": ("src",),
         "python.lint_dirs": ("src", "tests"),
         "python.coverage_command": "uv run pytest -q",
+        "python.coverage_issue_labels": (),
     }
 )
 

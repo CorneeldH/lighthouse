@@ -1,7 +1,8 @@
-"""Regels toewijzen aan hun squash-PR: `pr_number`, `select_commits`, `blame`,
+"""Lines assigned to their squash PR: `pr_number`, `select_commits`, `blame`,
 `attribute`, `per_pr`.
 
-Ontwerp: docs/developer/planning/specs/2026-09-26-ci-doorlooptijd-design.md
+From the source repository's `test_quality_prcov.py`; new are the directories from
+`python.source_dirs` and the English error message.
 """
 
 import subprocess
@@ -11,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-# scripts/ is geen geïnstalleerd pakket; zelfde vorm als test_quality_ratchet.py:14.
-_SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+# The scripts of pack/python are no installed package.
+_SCRIPTS = Path(__file__).resolve().parents[3] / "pack" / "python" / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
@@ -254,3 +255,19 @@ def test_a_file_deleted_since_is_skipped(repo):
 
     assert "src/c.py" not in result[11]
     assert "src/c.py" not in result[12]
+
+
+def test_source_dirs_in_prcov(repo):
+    """`attribute` follows `python.source_dirs`: lines outside them belong to no PR."""
+    repo.commit({"lib/m.py": "A = 1\n", "src/a.py": "X = 0\nY = 1\nZ = 2\n"}, subject="Two dirs (#11)")
+    commits = prcov.select_commits(repo.root, None)
+    assert prcov.attribute(repo.root, commits) == {11: {"src/a.py": [3]}}
+    assert prcov.attribute(repo.root, commits, ("lib",)) == {11: {"lib/m.py": [1]}}
+    assert prcov.attribute(repo.root, commits, ("src", "lib")) == {
+        11: {"lib/m.py": [1], "src/a.py": [3]}
+    }
+
+
+def test_a_git_failure_is_english(repo):
+    with pytest.raises(prcov.GitCommandError, match="failed"):
+        prcov.blame(repo.root, "src/missing.py")
