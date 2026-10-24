@@ -10,7 +10,7 @@ managed block at the end, which `lighthouse init` writes; never repeat one of th
 ## Rules
 
 - **Language.** Instructions (this file, skills, agents, hook messages) are in English.
-  Artefacts (issues, PRs, specs, plans, commit messages) are in Dutch (`[project] language`).
+  `[project] language` is `nl`: artefacts are Dutch, specs and plans included.
 - **Worktrees.** Branch `issue-<nr>-<slug>` or `fix-<slug>`. No worktree for read-only work,
   or after an explicit "on main" from the user. The cwd drifts back to the main checkout, so
   prefix every shell command with `cd <worktree>` or use `git -C <worktree>`.
@@ -21,9 +21,9 @@ managed block at the end, which `lighthouse init` writes; never repeat one of th
   absolute path: the IDE resolves chat links against the main checkout.
 - **Planning documents.** Specs in `docs/developer/planning/specs/`, plans in
   `docs/developer/planning/plans/`.
-- **Dogfood.** Lighthouse runs its own `pack/core`. A change under `pack/` also runs
-  `go run ./cmd/lighthouse init --upgrade` and commits the installed copy; CI requires
-  `No changes.`
+- **Dogfood.** Lighthouse runs its own `pack/core`. A change under `pack/`, or under
+  `internal/` that changes what `init` writes, also runs `go run ./cmd/lighthouse init --upgrade`
+  and commits the installed copy; CI requires `No changes.`
 
 ## Outside Claude Code
 
