@@ -147,7 +147,7 @@ The second case is no lockfile refresh but an SDK migration: a new React Native,
 churn, rebuilding the dev client. Write an issue for it with `/lighthouse-write-issue`. Give it the
 area label of the apps when the project has an area prefix: read it with
 `python3 .lighthouse/lib/lighthouse_lib/config.py labels.area_prefix` (rc 1: no prefix, leave the
-label out). Use the `upgrading-expo` skill, if present. Do not smuggle the upgrade into this fix.
+label out). Use the `expo-upgrade` skill, if present. Do not smuggle the upgrade into this fix.
 
 ## Known exceptions
 

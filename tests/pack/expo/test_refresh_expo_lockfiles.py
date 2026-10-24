@@ -40,9 +40,9 @@ def test_finds_apps_itself():
 
 def test_optional_refs_guarded():
     text = _text()
-    for ref in ("dependabot.yml", "upgrading-expo", ".github/workflows"):
+    for ref in ("dependabot.yml", "expo-upgrade", ".github/workflows"):
         assert ref in text, ref
-    for ref in ("apps.yml", "dependabot.yml", "upgrading-expo", ".github/workflows"):
+    for ref in ("apps.yml", "dependabot.yml", "expo-upgrade", ".github/workflows"):
         for p in _paragraphs():
             if ref in p:
                 assert "if present" in p, f"{ref} without 'if present':\n{p}"
