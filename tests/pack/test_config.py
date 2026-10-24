@@ -703,3 +703,52 @@ def test_runs_as_file(tmp_path):
         check=False,
     )
     assert (result.returncode, result.stdout) == (0, "Acme/widgets\n"), result.stderr
+
+
+# --- the keys of pack/python (plan M0 (c), ontwerpkeuze 11 and 12) ----------------
+
+
+@pytest.mark.parametrize(
+    ("key", "out"),
+    [
+        ("python.source_dirs", "src\n"),
+        ("python.lint_dirs", "src\ntests\n"),
+        ("python.coverage_command", "uv run pytest -q\n"),
+        ("python.coverage_issue_labels", ""),
+    ],
+)
+def test_python_defaults(cfg_env, capsys, key, out):
+    assert main([key]) == 0
+    assert capsys.readouterr().out == out
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'source_dirs = "src"',
+        "lint_dirs = [1]",
+        'coverage_command = ["uv"]',
+        "nightly_workflow = 1",
+        'coverage_issue_labels = "x"',
+    ],
+)
+def test_python_wrong_type_is_rc_2(tmp_path, monkeypatch, capsys, line):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + f"\n[python]\n{line}\n")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main([f"python.{line.split()[0]}"]) == 2
+
+
+def test_nightly_workflow_has_no_default(cfg_env):
+    """Not set is rc 1: the nightly then judges the last 24 hours and says so."""
+    assert main(["python.nightly_workflow"]) == 1
+
+
+def test_empty_test_command_is_the_opt_out(tmp_path, monkeypatch, capsys):
+    """`[test_gate] command = ""` turns the test gate off (ontwerpkeuze 4 of M0 (c)):
+    rc 0 with an empty value, not the rc 2 of another empty string."""
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + '\n[test_gate]\ncommand = ""\n')
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main(["test_gate.command"]) == 0
+    assert capsys.readouterr().out == "\n"

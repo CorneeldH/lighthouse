@@ -515,6 +515,50 @@ func TestInitProposesRealExpo(t *testing.T) {
 	}
 }
 
+func TestInitProposesRealPython(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "pyproject.toml", "[project]\nname = \"x\"\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, python (found pyproject.toml)\n") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
+	}
+	want := "[test_gate]\ncommand = \"uv run pytest -q\"\nunchecked_exit_codes = [3, 4, 5]\n"
+	if got := read(t, root, "lighthouse.toml"); !strings.Contains(got, want) {
+		t.Fatalf("lighthouse.toml = %q", got)
+	}
+	for _, rel := range []string{
+		".claude/hooks/lighthouse/ruff-format.sh",
+		".claude/skills/lighthouse-python-writing/SKILL.md",
+		".lighthouse/scripts/quality/ratchet.py",
+	} {
+		if !exists(root, rel) {
+			t.Fatalf("%s not installed", rel)
+		}
+	}
+	if !strings.Contains(read(t, root, "AGENTS.md"), "/lighthouse-python-writing") {
+		t.Fatal("instruction block of python missing in AGENTS.md")
+	}
+}
+
+// TestEmptyCommandStaysOff: `command = ""` is the opt-out of the test gate, and
+// --upgrade does not put the default back (ontwerpkeuze 4).
+func TestEmptyCommandStaysOff(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "pyproject.toml", "[project]\nname = \"x\"\n")
+	real := func(o *Options) { o.Packs = nil }
+	if r := run(t, root, "", all(yes, real)); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s", r.code, r.err)
+	}
+	toml := strings.Replace(read(t, root, "lighthouse.toml"), "command = \"uv run pytest -q\"", "command = \"\"", 1)
+	write(t, root, "lighthouse.toml", toml)
+	if r := run(t, root, "", all(upgrade, real)); r.code != 0 || r.out != "No changes.\n" {
+		t.Fatalf("upgrade: rc %d out %q err %q", r.code, r.out, r.err)
+	}
+	if got := read(t, root, "lighthouse.toml"); !strings.Contains(got, "[test_gate]\ncommand = \"\"\n") {
+		t.Fatalf("lighthouse.toml = %q", got)
+	}
+}
+
 func TestNewFileDiffHasNoPhantomLine(t *testing.T) {
 	root := newRepo(t)
 	r := run(t, root, "", yes)

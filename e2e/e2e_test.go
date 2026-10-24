@@ -2,7 +2,9 @@
 
 // Package e2e proves the DoD of M0 (a) on a fresh repository: `lighthouse init --yes`
 // installs main-commit-guard, the command registered in .claude/settings.json blocks a
-// commit on main, and `lighthouse init --upgrade` right after gives an empty diff.
+// commit on main, and `lighthouse init --upgrade` right after gives an empty diff. For
+// M0 (c) it proves the same for pack/python: in a repository with a pyproject.toml the
+// registered pre-commit-tests blocks a commit with a red test.
 package e2e
 
 import (
@@ -88,6 +90,12 @@ func run(t *testing.T, dir, bin string, args ...string) string {
 // guardCommand reads the registered command from the merged settings, not the script path.
 func guardCommand(t *testing.T, repo string) string {
 	t.Helper()
+	return bashHookCommand(t, repo, "main-commit-guard")
+}
+
+// bashHookCommand reads the one command under PreToolUse/Bash whose text names name.
+func bashHookCommand(t *testing.T, repo, name string) string {
+	t.Helper()
 	data, err := os.ReadFile(filepath.Join(repo, ".claude", "settings.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -109,13 +117,13 @@ func guardCommand(t *testing.T, repo string) string {
 			continue
 		}
 		for _, h := range g.Hooks {
-			if strings.Contains(h.Command, "main-commit-guard") {
+			if strings.Contains(h.Command, name) {
 				found = append(found, h.Command)
 			}
 		}
 	}
 	if len(found) != 1 {
-		t.Fatalf("main-commit-guard registrations under PreToolUse/Bash: %v", found)
+		t.Fatalf("%s registrations under PreToolUse/Bash: %v", name, found)
 	}
 	return found[0]
 }
@@ -194,5 +202,113 @@ func TestFreshRepoBlocksCommitOnMain(t *testing.T) {
 	out := run(t, repo, bin, "init", "--upgrade")
 	if out != "No changes.\n" || !maps.Equal(before, snapshot(t, repo)) {
 		t.Fatalf("upgrade not empty:\n%s", out)
+	}
+}
+
+// runGate runs the registered pre-commit-tests like runHook, with host.toml next to the
+// repo (never ~/.config, whose gate_slice would wrap the run in systemd-run), and gives
+// stdout too: a passed gate reports there.
+func runGate(t *testing.T, repo, command string) (int, string, string) {
+	t.Helper()
+	payload, _ := json.Marshal(map[string]any{
+		"tool_name":  "Bash",
+		"cwd":        repo,
+		"tool_input": map[string]string{"command": "git commit -m x"},
+	})
+	cmd := exec.Command("bash", "-c", command)
+	cmd.Dir = repo
+	cmd.Env = append(cleanEnv(), "CLAUDE_PROJECT_DIR="+repo,
+		"LIGHTHOUSE_HOST_TOML="+filepath.Join(filepath.Dir(repo), "host.toml"))
+	cmd.Stdin = bytes.NewReader(payload)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	if exit, ok := err.(*exec.ExitError); ok {
+		return exit.ExitCode(), stdout.String(), stderr.String()
+	}
+	if err != nil {
+		t.Fatalf("hook did not run: %v", err)
+	}
+	return 0, stdout.String(), stderr.String()
+}
+
+func writeFile(t *testing.T, repo, rel, content string) {
+	t.Helper()
+	p := filepath.Join(repo, rel)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func needUV(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("uv"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatal("uv not on PATH; CI must install it before the e2e tests")
+		}
+		t.Skip("uv not on PATH (local run): the default [test_gate] command of pack/python is `uv run pytest -q`")
+	}
+}
+
+// pythonRepo is a fresh repository with pyproject.toml, after `init --yes`, on a
+// feature branch.
+func pythonRepo(t *testing.T, bin, pyproject string) string {
+	t.Helper()
+	repo := freshRepo(t)
+	writeFile(t, repo, "pyproject.toml", pyproject)
+	git(t, repo, "add", "pyproject.toml")
+	git(t, repo, "commit", "-qm", "pyproject")
+	if out := run(t, repo, bin, "init", "--yes"); !strings.HasPrefix(out, "Packages: core, python (found pyproject.toml)\n") {
+		t.Fatalf("init:\n%s", out)
+	}
+	git(t, repo, "checkout", "-q", "-b", "issue-1-x")
+	return repo
+}
+
+const pyprojectHead = "[project]\nname = \"e2e\"\nversion = \"0\"\nrequires-python = \">=3.9\"\n"
+
+func TestRedTestBlocksCommit(t *testing.T) {
+	needUV(t)
+	bin := buildLighthouse(t)
+	repo := pythonRepo(t, bin, pyprojectHead+"\n[dependency-groups]\ndev = [\"pytest\"]\n")
+	writeFile(t, repo, "tests/test_x.py", "def test_x():\n    assert 1 == 2\n")
+	cmd := bashHookCommand(t, repo, "pre-commit-tests")
+
+	code, _, stderr := runGate(t, repo, cmd)
+	if code != 2 || !strings.Contains(stderr, "pre-commit-tests: tests failed") {
+		t.Fatalf("red test: rc %d\n%s", code, stderr)
+	}
+
+	// Another size than the red file: a rewrite in the same second with the same size
+	// would leave the stale .pyc of the red run valid.
+	writeFile(t, repo, "tests/test_x.py", "def test_x():\n    assert 1 + 1 == 2\n")
+	if code, stdout, stderr := runGate(t, repo, cmd); code != 0 {
+		t.Fatalf("green test: rc %d\n%s\n%s", code, stdout, stderr)
+	}
+}
+
+func TestDefaultCommandWithoutPytest(t *testing.T) {
+	needUV(t)
+	bin := buildLighthouse(t)
+	repo := pythonRepo(t, bin, pyprojectHead)
+	cmd := bashHookCommand(t, repo, "pre-commit-tests")
+
+	code, _, stderr := runGate(t, repo, cmd)
+	if code != 2 || !strings.Contains(stderr, "[test_gate] command") || !strings.Contains(stderr, "lighthouse.toml") || !strings.Contains(stderr, `command = ""`) {
+		t.Fatalf("without pytest: rc %d\n%s", code, stderr)
+	}
+
+	toml, err := os.ReadFile(filepath.Join(repo, "lighthouse.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := strings.Replace(string(toml), `command = "uv run pytest -q"`, `command = ""`, 1)
+	writeFile(t, repo, "lighthouse.toml", off)
+	code, stdout, stderr := runGate(t, repo, cmd)
+	if code != 0 || !strings.Contains(stdout, "no test command configured, nothing was tested") {
+		t.Fatalf("command = \"\": rc %d\n%s\n%s", code, stdout, stderr)
 	}
 }

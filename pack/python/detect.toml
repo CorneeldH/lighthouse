@@ -1,0 +1,4 @@
+# init proposes pack/python when the repository root has a pyproject.toml that git
+# tracks (plan M0 (c), ontwerpkeuze 3). A pyproject.toml in a subdirectory does not
+# count.
+files = ["pyproject.toml"]
