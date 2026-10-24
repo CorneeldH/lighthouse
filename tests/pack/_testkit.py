@@ -72,6 +72,23 @@ def init_repo(path: Path, branch: str = "main") -> None:
     git(path, "commit", "-qm", "init")
 
 
+# De `origin` van een forge-worktree en van zijn hoofdcheckout in #36.
+ORIGIN = "https://github.com/Acme/widgets.git"
+
+
+def forge_worktree(project: Path, base: Path, origin: str = ORIGIN) -> Path:
+    """Een worktree van een aparte bare clone van `project`, zoals forge hem neerzet (#36).
+
+    Een andere `--git-common-dir` dan `project`; `origin` van de clone is `origin`.
+    """
+    clone = base / "clone.git"
+    git(base, "clone", "-q", "--bare", str(project), str(clone))
+    git(clone, "remote", "set-url", "origin", origin)
+    worktree = base / "work"
+    git(clone, "worktree", "add", "-q", str(worktree), "-b", "work")
+    return worktree
+
+
 def past_this_second() -> None:
     """Wacht tot de volgende hele seconde.
 

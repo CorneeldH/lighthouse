@@ -35,7 +35,7 @@ from typing import NamedTuple
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lighthouse_lib import config, headings
+from lighthouse_lib import config, headings, repo_identity
 from lighthouse_lib.git_invocations import (
     Step,
     Unparseable,
@@ -584,7 +584,18 @@ def in_scope(pc: PrCreate, project_dir: str) -> tuple[str, str]:
         return "blokkeren", f"repo of {pad} cannot be determined ({fout})"
     if dir_ == eigen:
         return "toetsen", ""
-    return "overslaan", "skipped — outside this repo"
+    # Een andere common dir: een worktree van een aparte clone (forge) met
+    # dezelfde `origin` is toch deze repo (#36).
+    timeout = _budget(GIT_TIMEOUT_S)
+    if timeout <= 0:
+        return "blokkeren", "COULD NOT CHECK: deadline reached"
+    try:
+        zelfde, reden = repo_identity.same_origin(project_dir, pad, timeout=timeout)
+    except repo_identity.OriginError as exc:
+        return "blokkeren", f"origin of {pad} cannot be determined ({exc})"
+    if zelfde:
+        return "toetsen", ""
+    return "overslaan", f"skipped — outside this repo (git-common-dir {dir_} vs {eigen}; {reden})"
 
 
 BLOKKADE = (

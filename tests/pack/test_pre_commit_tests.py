@@ -23,7 +23,9 @@ from tests.pack._testkit import (
     CORE,
     INSTALLED_HOOKS,
     MINIMAL_TOML,
+    ORIGIN,
     bash_payload,
+    forge_worktree,
     git,
     init_repo,
     run_hook,
@@ -388,6 +390,34 @@ def test_gate_skips_foreign_repo_visibly(gate: Gate) -> None:
     assert not gate.mark.exists()
     assert "skipped — other project" in result.stdout
     assert "skipped — other project" in _context(result.stdout)
+
+
+def test_gate_tests_forge_worktree_of_same_repo(gate: Gate) -> None:
+    """Een worktree van een aparte clone met dezelfde `origin` is dit project (#36)."""
+    git(gate.project, "remote", "add", "origin", ORIGIN)
+    work = forge_worktree(gate.project, gate.tmp)
+
+    result = gate.run(f"git -C {work} commit -m x", gate.tmp)
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(work.resolve())]
+    assert "other project" not in result.stdout
+
+
+def test_gate_names_common_dirs_and_origins_when_skipping(gate: Gate) -> None:
+    git(gate.project, "remote", "add", "origin", ORIGIN)
+    work = forge_worktree(gate.project, gate.tmp, "https://github.com/Acme/gadgets.git")
+
+    result = gate.run(f"git -C {work} commit -m x", gate.tmp)
+
+    assert result.returncode == 0, result.stderr
+    assert not gate.mark.exists()
+    common = (gate.tmp / "clone.git").resolve()
+    ref = (gate.project / ".git").resolve()
+    assert (
+        f"{work.resolve()} skipped — other project (git-common-dir {common} vs {ref};"
+        f" origin https://github.com/Acme/gadgets.git vs {ORIGIN})"
+    ) in _context(result.stdout)
 
 
 def test_gate_silent_outside_any_repo(gate: Gate) -> None:
