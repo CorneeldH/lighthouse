@@ -3,3 +3,5 @@
 jq = ["ruff-format", "ty-check"]
 uv = ["ruff-format", "ty-check", "quality/ratchet.py", "pre-commit-tests ([test_gate] command)"]
 gh = ["quality/ratchet.py nightly"]
+python3 = ["python-writing"]
+tomllib = ["python-writing"]

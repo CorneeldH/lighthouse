@@ -1,0 +1,7 @@
+# Tool -> the units in this package that need it. `lighthouse init` reports a
+# missing tool with these names; it does not stop on it. The skill checks node and
+# npm itself.
+git = ["refresh-expo-lockfiles"]
+python3 = ["refresh-expo-lockfiles"]
+superpowers = ["refresh-expo-lockfiles"]
+tomllib = ["refresh-expo-lockfiles"]

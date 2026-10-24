@@ -197,6 +197,10 @@ path = "pack/expo/detect.toml"
 new = true
 
 [[file]]
+path = "pack/expo/requires.toml"
+new = true
+
+[[file]]
 path = "pack/core/skills/route-issue/SKILL.md"
 source_path = [".claude/skills/paia-route-issue/SKILL.md", ".agents/skills/paia-route-issue/SKILL.md"]
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

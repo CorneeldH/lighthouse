@@ -1,4 +1,5 @@
-"""Contract test for the skills and agents of `pack/core` (plan task 22, Review Focus 5).
+"""Contract test for the skills of every package and the agents of `pack/core` (plan task
+22, Review Focus 5; plan M0 (c), ontwerpkeuze 10).
 
 A translation error makes a skill point at something that does not exist: a script, a
 lib module, a hook, a config key, a heading or another skill. Nothing at runtime catches
@@ -9,6 +10,10 @@ A skill names a heading as `heading:<key>` (ontwerpkeuze 19) and a config key as
 argument of `config.py` (ontwerpkeuze 6 and 7). Steps that depend on something that stays
 in paia (backlog-stand, board-sweep, the controller, the release flow, the pre-push chain)
 run only "if present" and otherwise report "skipped" (ontwerpkeuze 16).
+
+A skill may name what its own package or `pack/core` installs. A file or skill of another
+language package is there only when that package was chosen, so the paragraph that names it
+says "if present" (Kruisverwijzingen).
 """
 
 from __future__ import annotations
@@ -20,9 +25,8 @@ from pathlib import Path
 import pytest
 
 from lighthouse_lib import config
-from tests.pack._testkit import CORE
+from tests.pack._testkit import CORE, PACKS
 
-SKILLS = CORE / "skills"
 AGENTS = CORE / "agents"
 TEXT_SUFFIXES = {".md", ".sh", ".json", ".txt"}
 
@@ -46,36 +50,50 @@ ALLOWED_EXTERNAL = {
     "superpowers:writing-skills",
 }
 
-# Core skills of this PR that are not written yet, so another skill may already link to
+# Skills that are not written yet, so another skill may already link to
 # them. A skill leaves this set in the commit that adds it (test_planned_skills_absent);
 # the set is empty when PR 4 is done.
 PLANNED: set[str] = set()
 
-# An installed path in a skill -> where it lives in pack/core.
+# An installed path in a skill -> where it lives in a package directory.
 _PATH_REFS = (
-    (re.compile(r"\.lighthouse/scripts/([\w./-]*\w)"), lambda m: CORE / "scripts" / m[1]),
+    (re.compile(r"\.lighthouse/scripts/([\w./-]*\w)"), lambda m, pack: pack / "scripts" / m[1]),
     (
         re.compile(r"\.lighthouse/lib/lighthouse_lib/(\w+)\.py"),
-        lambda m: CORE / "lib" / f"{m[1]}.py",
+        lambda m, pack: pack / "lib" / f"{m[1]}.py",
     ),
-    (re.compile(r"\.claude/hooks/lighthouse/([\w.-]+)"), lambda m: CORE / "hooks" / m[1]),
-    (re.compile(r"\.claude/agents/lighthouse-([\w-]+)\.md"), lambda m: AGENTS / f"{m[1]}.md"),
+    (re.compile(r"\.claude/hooks/lighthouse/([\w.-]+)"), lambda m, pack: pack / "hooks" / m[1]),
+    (
+        re.compile(r"\.claude/agents/lighthouse-([\w-]+)\.md"),
+        lambda m, pack: pack / "agents" / f"{m[1]}.md",
+    ),
     (
         re.compile(r"\.(?:claude|agents)/skills/lighthouse-([a-z0-9-]+)/([\w./-]*\w)"),
-        lambda m: _skill_file(m[1], m[2]),
+        lambda m, pack: _skill_file(pack / "skills" / m[1], m[2]),
     ),
 )
 
 
-def _skill_file(skill: str, rel: str) -> Path:
+def _skill_file(skill: Path, rel: str) -> Path:
     """A file of an installed skill: shared in the skill directory, or `SKILL.md` per variant."""
-    shared = SKILLS / skill / rel
+    shared = skill / rel
     if rel == "SKILL.md" and not shared.is_file():
-        return SKILLS / skill / "claude" / "SKILL.md"
+        return skill / "claude" / "SKILL.md"
     return shared
+
+
+def _pack_of(unit: Path) -> Path:
+    """The package directory a skill directory or an agent file belongs to."""
+    return PACKS / unit.relative_to(PACKS).parts[0]
+
+
+def _visible(unit: Path) -> tuple[Path, ...]:
+    """The packages whose files a unit may name without "if present": core and its own."""
+    return tuple(dict.fromkeys((CORE, _pack_of(unit))))
 _CONFIG_RE = re.compile(r"config\.py\s+(\"[^\"]+\"|'[^']+'|[^\s`\"')|;]+)")
 _HEADING_RE = re.compile(r"heading:([A-Za-z0-9_]+)")
-_LIGHTHOUSE_SKILL_RE = re.compile(r"(?<![\w./-])/lighthouse-([a-z0-9-]+)")
+# Not followed by `/`: `<git-common-dir>/lighthouse-tools/` is a path, not a skill.
+_LIGHTHOUSE_SKILL_RE = re.compile(r"(?<![\w./-])/lighthouse-([a-z0-9-]+)(?![a-z0-9/-])")
 # `/name` alone in backticks (optionally with arguments), or a namespaced `/ns:name`.
 _EXTERNAL_SKILL_RES = (
     re.compile(r"`/([a-z][a-z0-9-]*(?::[a-z0-9-]+)?)(?:\s[^`]*)?`"),
@@ -86,9 +104,9 @@ _GUARD_RE = re.compile(r"if present|skipped", re.I)
 
 
 def _skill_dirs() -> list[Path]:
-    if not SKILLS.is_dir():
-        return []
-    return sorted(p for p in SKILLS.iterdir() if p.is_dir())
+    """Every skill of every package, core first."""
+    dirs = sorted(p for p in PACKS.glob("*/skills/*") if p.is_dir())
+    return sorted(dirs, key=lambda p: _pack_of(p) != CORE)
 
 
 def _texts(unit: Path) -> dict[str, str]:
@@ -119,10 +137,18 @@ def _frontmatter_name(text: str) -> str | None:
     return None
 
 
-UNITS = [pytest.param(p, id=f"skill:{p.name}") for p in _skill_dirs()] + [
+def _id(skill: Path) -> str:
+    pack = _pack_of(skill).name
+    return skill.name if pack == "core" else f"{pack}/{skill.name}"
+
+
+UNITS = [pytest.param(p, id=f"skill:{_id(p)}") for p in _skill_dirs()] + [
     pytest.param(p, id=f"agent:{p.stem}") for p in sorted(AGENTS.glob("*.md"))
 ]
-SKILL_PARAMS = [pytest.param(p, id=p.name) for p in _skill_dirs()]
+SKILL_PARAMS = [pytest.param(p, id=_id(p)) for p in _skill_dirs()]
+# The paia flows below came with the core skills. In a language package "pre-push" or a
+# "release" are ordinary words (a pre-push gate, the pinned release of a tool).
+CORE_UNITS = [u for u in UNITS if _pack_of(u.values[0]) == CORE]
 
 
 def _unit_name(unit: Path) -> str:
@@ -145,14 +171,16 @@ def _guarded(para: str) -> bool:
 
 @pytest.mark.parametrize("unit", UNITS)
 def test_referenced_files_exist(unit):
-    """Every installed path a unit names exists in pack/core, unless the paragraph names a file
-    of another package (a language pack) "if present"."""
+    """Every installed path a unit names exists in pack/core or in its own package, unless the
+    paragraph names a file of another package (a language pack) "if present"."""
     missing = []
+    visible = _visible(unit)
     for rel, text in _texts(unit).items():
         for para in re.split(r"\n\s*\n", text):
             for regex, target in _PATH_REFS:
                 for m in regex.finditer(para):
-                    if not target(m).is_file() and not _guarded(para):
+                    found = any(target(m, pack).is_file() for pack in visible)
+                    if not found and not _guarded(para):
                         missing.append(f"{rel}: {m[0]}")
     assert not missing, "\n".join(missing)
 
@@ -184,7 +212,8 @@ def test_heading_keys_known(unit):
 
 @pytest.mark.parametrize("unit", UNITS)
 def test_skill_links_resolve(unit):
-    known = {p.name for p in _skill_dirs()} | PLANNED
+    visible = _visible(unit)
+    known = {p.name for p in _skill_dirs() if _pack_of(p) in visible} | PLANNED
     bad = []
     for rel, text in _texts(unit).items():
         for para in re.split(r"\n\s*\n", text):
@@ -217,7 +246,7 @@ def _paragraphs(text: str):
                 headings = [(lvl, h) for lvl, h in headings if lvl < level] + [(level, line)]
 
 
-@pytest.mark.parametrize("unit", UNITS)
+@pytest.mark.parametrize("unit", CORE_UNITS)
 def test_optional_steps_guarded(unit):
     """A paragraph that names something that stays in paia says "if present" or "skipped",
     itself or in a heading that encloses it (a whole section that applies only if present)."""
@@ -243,7 +272,7 @@ def test_variants_both_present(skill):
 
 
 def _install_skills(root: Path) -> None:
-    """Every core skill under `.claude/skills` and `.agents/skills`, as `init` lays them out."""
+    """Every skill under `.claude/skills` and `.agents/skills`, as `init` lays them out."""
     import shutil
 
     for skill in _skill_dirs():
@@ -259,7 +288,8 @@ def _install_skills(root: Path) -> None:
 def test_descriptions_pass_the_overlap_check(tmp_path):
     """Check 4 of check-instructions.sh fails two descriptions that share five trigger words
     unless one carries a bounding clause it recognises ("not for", "instead", …). The core
-    skills land together in every repo, so their descriptions must pass it."""
+    skills land together in every repo, and a language package adds its own, so all of them
+    together must pass it."""
     import os
     import subprocess
 
@@ -288,7 +318,8 @@ _TOOL_USES = {
     "superpowers": r"superpowers:",
     "gh": r"\bgh (pr|issue|api|project|run|repo|search|label|workflow)\b",
     "codex": r"(^|[\s`$(])codex (exec|review)\b|codex_usage",
-    "jq": r"\bjq\b",
+    # A call (`jq -r`, `| jq '.x'`), not a mention like "no `jq`".
+    "jq": r"\bjq\s+[-'\".]",
     "git": r"\bgit (-C|worktree|log|fetch|diff|status|rev-parse|branch|push|commit|grep|show"
     r"|merge-base|checkout|switch|ls-files|add)\b",
     "python3": r"\bpython3\b",
@@ -298,7 +329,9 @@ _TOOL_USES = {
 
 @pytest.mark.parametrize("skill", SKILL_PARAMS)
 def test_requires_names_the_skill_per_tool(skill):
-    requires = tomllib.loads((CORE / "requires.toml").read_text(encoding="utf-8"))
+    """The skill's own package names it: `init` reports the units of the chosen packages."""
+    path = _pack_of(skill) / "requires.toml"
+    requires = tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     text = "\n".join(_texts(skill).values())
     missing = [
         tool
