@@ -13,11 +13,11 @@
 ## Ontwerpkeuzes
 
 1. **Bron: `worktree_audit.py --issue <nr>`, geen GraphQL in de skill.** Drie redenen. (a) Unit-testbaar met gefakete invoer, net als de rest van het script. (b) Eén `collect` voor alle branches; N keer `--only` doet N keer de volledige `gh api --paginate` over alle PR's. (c) De skill houdt één commando en één regel om te lezen.
-2. **`Refs`-PR's via `CROSS_REFERENCED_EVENT`.** `closedByPullRequestsReferences` (de query van stap 0) kent alleen PR's met een sluitwoord. Een PR-body met `Refs #32` maakt op issue 32 een `CrossReferencedEvent` met de PR als `source`. De query vraagt beide en houdt alleen PR's met `merged: true` uit dezelfde repo (`repository.nameWithOwner == forge.repo`).
+2. **`Refs`-PR's via `CROSS_REFERENCED_EVENT`.** `closedByPullRequestsReferences` (de query van stap 0) kent alleen PR's met een sluitwoord. Een PR-body met `Refs #32` maakt op issue 32 een `CrossReferencedEvent` met de PR als `source`. Zo'n event ontstaat ook voor een PR die het issue alleen noemt ("zie #32"); die hoort er niet bij. De query vraagt beide en houdt alleen PR's met `merged: true` uit dezelfde repo (`repository.nameWithOwner == forge.repo`). Een cross-ref telt bovendien alleen als de PR-body `Refs #<nr>` bevat (regex `(?i)\brefs\s+#<nr>\b`, de vorm die `pr-create-gate` eist); een closing-node telt altijd.
 3. **"Gemergde PR" zit in het script.** De oude skillregel "at A or B the PR column of the row counts: only `#<pr> merged` goes on" wordt een regel van `--issue`: een branch waarvan de rij geen `pr_state == "merged"` heeft, krijgt `cleanup: no — no merged PR`, ook als de ladder `safe to remove` zegt. Zo geldt het voor elke ingang gelijk, en kan een lokale `issue-<nr>-`-branch zonder PR nooit weg.
 4. **Exitcode van `--issue`.** `0`: de PR-lookup lukte en elke branch kreeg een blok. `2`: de PR-lookup mislukte (`cleanup: no — PR lookup for issue #<nr> failed`). Dan ruimt de skill niets op, ook geen lokale `issue-<nr>-`-branch: de afwezigheid van een signaal is geen ja. Het verdict per branch staat in zijn blok, niet in de exitcode. Opruimbaar is dus: exit `0` én in het blok een regel `cleanup: yes`.
 5. **B7 ruimt op vóór de close-comment** (*besluit Corneel, 2026-10-24*, AC 4). Alleen in de rij "all criteria demonstrably done". De regels per branch gaan als bewijsregels mee in die comment. Bij een mislukte comment is er al opgeruimd, en dat mag: elke opgeruimde branch had een gemergde PR en een schoon verdict.
-6. **De paia-spiegel volgt via `lighthouse init`.** Paia draagt nog `paia-close-issue`. In de core-PR van M0 (d) ([plan](2026-10-18-m0d-overstap.md)) vervangt `lighthouse init` die kopie door `lighthouse-close-issue` uit `pack/core`. Daarmee komt deze wijziging mee, mits de tag die paia installeert na deze merge ligt.
+6. **De paia-spiegel volgt via `lighthouse init`.** Paia draagt nog `paia-close-issue`. In de core-PR van M0 (d) ([plan](2026-10-18-m0d-overstap.md)) vervangt `lighthouse init` die kopie door `lighthouse-close-issue` uit `pack/core`. Daarmee komt deze wijziging mee, mits de tag die paia installeert na deze merge ligt. `v0.1.0` en `v0.1.1` bestaan al en het M0 (d)-plan pint nu `@v0.1.0` (:26, :130). Daarom past taak 3 dat plan in deze PR aan: de core-PR installeert een tag die #32 bevat. De tag zelf zet Corneel.
 
 ## Global Constraints
 
@@ -26,7 +26,7 @@
 - Het script muteert niets. `READONLY_GIT_VERBS` blijft ongewijzigd. `gh` loopt alleen via `gh api`, nooit `gh pr list --json`.
 - Skilltekst in het Engels. Beide varianten (`claude/`, `agents/`) krijgen identieke wijzigingen: `test_variants_differ_in_the_instruction_file` staat precies één verschilregel toe.
 - Commitberichten in het Nederlands, Conventional Commits.
-- Dogfood: na elke wijziging onder `pack/` draai je `go run ./cmd/lighthouse init --upgrade` en commit je de geïnstalleerde kopie in dezelfde commit. Een tweede run zegt `No changes.`
+- Dogfood: na elke wijziging onder `pack/` draai je `go run ./cmd/lighthouse init --upgrade --yes` en commit je de geïnstalleerde kopie in dezelfde commit. Zonder `--yes` vraagt `init` om bevestiging op stdin, weigert bij lege stdin (exit 1) en schrijft niets (`internal/initcmd/initcmd.go:200`). Controle daarna: `go run ./cmd/lighthouse init --upgrade </dev/null` print precies `No changes.`
 - Testgate: `uv run pytest -q && go test ./...`.
 
 ## Review Focus
@@ -49,7 +49,7 @@
 **Interfaces:**
 - Produces:
   - `ISSUE_PRS_QUERY: str`, de GraphQL-tekst (hieronder)
-  - `parse_issue_pr_heads(payload: dict, slug: str) -> list[str] | None`: puur
+  - `parse_issue_pr_heads(payload: dict, slug: str, nr: int) -> list[str] | None`: puur
   - `run_gh_issue_pr_heads(slug: str | None, nr: int) -> list[str] | None`: `None` = lookup mislukt of geen `forge.repo`
   - `issue_branches(rows: list[Row], nr: int, pr_heads: list[str]) -> list[str]`: gesorteerd, zonder dubbelen
   - `render_issue(rows: list[Row], nr: int, pr_heads: list[str] | None, *, cwd: Path, alive: Callable[[int], bool] = pid_alive) -> str`
@@ -60,13 +60,14 @@ De query; `owner` en `name` komen uit `slug.split("/", 1)`:
 ```graphql
 query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){
   closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged repository{nameWithOwner}}}
-  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged repository{nameWithOwner}}}}}}}}}
+  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged body repository{nameWithOwner}}}}}}}}}
 ```
 
 Blokvorm van `render_issue`. Per branch een blok: de eerste regel is `branch: <branch>`, daarna de uitvoer van `render_only` voor die branch. Tussen twee blokken staat één lege regel. Elk blok bevat precies één regel die met `cleanup: ` begint. Zegt `render_only` `yes` terwijl de rij geen `pr_state == "merged"` heeft, dan vervang je de `cleanup: yes`-regel en de commando's eronder door `cleanup: no — no merged PR`. Geen branches: `cleanup: no — no branches found for issue #<nr>\n`. Als `pr_heads is None`: `cleanup: no — PR lookup for issue #<nr> failed\n`.
 
 - [ ] **Stap 1: Schrijf de falende tests** in `TestRenderIssue`. Gebruik de bestaande helpers `row(...)`, `never_alive` en `ELDERS = Path("/elders")`, en `WT = "/repo/.claude/worktrees/issue-9-x"`:
-  - `test_parse_keeps_merged_same_repo_heads`: een payload met een closing-node (`issue-9-x`, merged, `o/r`) en een cross-ref-node (`fix-y`, merged, `o/r`) geeft `["issue-9-x", "fix-y"]` (de volgorde zoals ze binnenkomen, zonder dubbelen).
+  - `test_parse_keeps_merged_same_repo_heads`: een payload met een closing-node (`issue-9-x`, merged, `o/r`) en een cross-ref-node (`fix-y`, merged, `o/r`, `body: "Refs #9 — deel 1"`) geeft bij `nr=9` `["issue-9-x", "fix-y"]` (de volgorde zoals ze binnenkomen, zonder dubbelen).
+  - `test_parse_cross_ref_needs_refs_line`: een gemergde cross-ref met `body: "zie #9"` levert niets op; `body: "Refs #93"` ook niet bij `nr=9`; `body: None` ook niet.
   - `test_parse_skips_unmerged_and_non_pr`: een node met `merged: false` en een cross-ref met `source: {}` (een issue) leveren niets op.
   - `test_parse_skips_other_repos`: een node met `nameWithOwner: "x/fork"` levert niets op, bij `slug="o/r"`.
   - `test_parse_null_issue_is_failure`: `{"data": {"repository": {"issue": None}}}` → `None`, en `{"errors": [...]}` → `None`.
@@ -78,6 +79,7 @@ Blokvorm van `render_issue`. Per branch een blok: de eerste regel is `branch: <b
   - `test_unknown_pr_head_is_reported`: `pr_heads=["gone"]` zonder rij geeft het blok `branch: gone` met `cleanup: no — branch gone not found`.
   - `test_failed_lookup_and_empty`: `render_issue(rows, 9, None, ...)` == `"cleanup: no — PR lookup for issue #9 failed\n"`; `render_issue([], 9, [], ...)` == `"cleanup: no — no branches found for issue #9\n"`.
   - `test_main_exit_2_on_failed_lookup` en `test_main_exit_0_with_blocks`: monkeypatch `audit.collect` en `audit.run_gh_issue_pr_heads` (en `audit.repo_slug` op `lambda: "o/r"`); `main(["--issue", "9"])` geeft 2 bij `None` en 0 bij `[]` met een gemergde `issue-9-x`-rij, en dan staat `cleanup: yes` in stdout.
+  - `test_run_gh_issue_pr_heads_argv`: monkeypatch `audit.subprocess.run` met een fake die de argv bewaart en een `CompletedProcess` teruggeeft. Assert dat de argv begint met `["gh", "api", "graphql"]` en `-f owner=o`, `-f name=r`, `-F nr=9` bevat (bij `slug="o/r"`, `nr=9`; `-F`, niet `-f`: `$nr` is een `Int!`). `None` bij `slug=None` (de fake wordt dan niet aangeroepen), bij rc 1, bij stdout `"niet-json"` en bij een fake die `subprocess.TimeoutExpired` raist.
   - In `test_runs_as_installed_file` (:1863) komt erbij: `"--issue" in result.stdout`.
 
 - [ ] **Stap 2: Draai ze, verwacht FAIL**
@@ -85,7 +87,7 @@ Blokvorm van `render_issue`. Per branch een blok: de eerste regel is `branch: <b
   Run: `uv run pytest -q tests/pack/test_worktree_audit.py -k "RenderIssue or runs_as_installed"`
   Expected: FAIL met `AttributeError: module 'worktree_audit' has no attribute 'parse_issue_pr_heads'`.
 
-- [ ] **Stap 3: Implementeer** de vijf namen uit *Interfaces*. `run_gh_issue_pr_heads` volgt `run_gh_pulls`: `gh api graphql -f owner=… -f name=… -F nr=<nr> -f query=<ISSUE_PRS_QUERY>`, `timeout=300`, en `None` bij een `OSError`/`SubprocessError`, rc ≠ 0 of een `JSONDecodeError`. Leg in de docstring uit waarom cross-references nodig zijn (ontwerpkeuze 2). `render_issue` roept per branch `render_only` aan; geen tweede ladder. Help-tekst van `--issue`: `all branches of an issue, one block each with \`cleanup: yes|no\` (exit 2 if the PR lookup fails), for lighthouse-close-issue`. In `main`: `pr_heads = run_gh_issue_pr_heads(repo_slug(), args.issue)` na `collect`; geef `2` terug als `pr_heads is None`, anders `0`.
+- [ ] **Stap 3: Implementeer** de vijf namen uit *Interfaces*. `run_gh_issue_pr_heads` volgt `run_gh_pulls`: `gh api graphql -f owner=… -f name=… -F nr=<nr> -f query=<ISSUE_PRS_QUERY>`, `timeout=300`, en `None` bij een `OSError`/`SubprocessError`, rc ≠ 0 of een `JSONDecodeError`. Leg in de docstring uit waarom cross-references nodig zijn en waarom alleen `Refs #<nr>` telt (ontwerpkeuze 2). Werk de moduledocstring bij (:34-44): de zin "na bevestiging" vervalt (close-issue voert de geleverde regels zonder vraag uit), en de gebruikslijst krijgt `python3 .lighthouse/scripts/worktree_audit.py --issue <nr>   # exit 2 = PR-lookup mislukt`. `render_issue` roept per branch `render_only` aan; geen tweede ladder. Help-tekst van `--issue`: `all branches of an issue, one block each with \`cleanup: yes|no\` (exit 2 if the PR lookup fails), for lighthouse-close-issue`. In `main`: `pr_heads = run_gh_issue_pr_heads(repo_slug(), args.issue)` na `collect`; geef `2` terug als `pr_heads is None`, anders `0`.
 
 - [ ] **Stap 4: Draai de tests, verwacht PASS**
 
@@ -95,11 +97,14 @@ Blokvorm van `render_issue`. Per branch een blok: de eerste regel is `branch: <b
 - [ ] **Stap 5: Dogfood en commit**
 
   ```bash
-  go run ./cmd/lighthouse init --upgrade
-  go run ./cmd/lighthouse init --upgrade   # verwacht: No changes.
+  go run ./cmd/lighthouse init --upgrade --yes
+  go run ./cmd/lighthouse init --upgrade </dev/null   # verwacht: precies No changes.
+  python3 .lighthouse/scripts/worktree_audit.py --issue 7; echo "exit=$?"
   git add pack/core/scripts/worktree_audit.py tests/pack/test_worktree_audit.py .lighthouse/
   git commit -m "feat(worktree-audit): --issue geeft per branch van een issue een opruimverdict"
   ```
+
+  De smoke-run tegen de echte repo (`gh` buiten de sandbox) moet `exit=0` geven, en elk blok precies één regel die met `cleanup: ` begint. Geeft hij `exit=2`, dan is de `gh api graphql`-aanroep stuk: niet committen, eerst `run_gh_issue_pr_heads` repareren.
 
 ### Taak 2: close-issue ruimt alles op, zonder vraag, ook headless
 
@@ -130,7 +135,7 @@ Blokvorm van `render_issue`. Per branch een blok: de eerste regel is `branch: <b
 
 - [ ] **Stap 3: Herschrijf de B7-rij** (:187), in beide varianten. De zin "The `cleanup:` line of *Clean up the worktree* goes along as an evidence line in that close comment; you do not clean up yourself." wordt: "Before that close comment, run *Clean up the worktree*; its result per branch goes along as evidence lines in the close comment."
 
-- [ ] **Stap 4: Herschrijf de sectie** `## Clean up the worktree — the last step` in beide varianten met deze inhoud. De heading blijft. Binnen de sectie komt geen `## `-heading: `_section` knipt daarop.
+- [ ] **Stap 4: Herschrijf de sectie** `## Clean up the worktree — the last step` in beide varianten met deze inhoud. De heading blijft. Binnen de sectie komt geen `## `-heading: `_section` knipt daarop. Een alinea die `controller` noemt, zegt in dezelfde alinea `if present`: de omsluitende heading draagt die guard niet (`test_optional_steps_guarded`, `tests/pack/test_skill_contracts.py:250`).
 
   - Inleiding: blijft (de ladder van `/lighthouse-worktree-audit`, geen tweede set regels).
   - **When.** Een tabel:
@@ -158,18 +163,18 @@ Blokvorm van `render_issue`. Per branch een blok: de eerste regel is `branch: <b
   - **Report.** Per branch één regel: `<branch>: cleanup: …`, en na `yes` daarachter `— removed` of `— git refused: <error line>`. Headless (B7) gaan diezelfde regels als bewijsregels in de close-comment. Er komt geen vraag, in geen enkele modus.
   - ✅/❌-lijst: "✅ only the lines `--issue` delivers, without a question" en de ❌-regel letterlijk zoals hij nu is.
 
-- [ ] **Stap 5: Werk de worktree-audit-skill bij** (`pack/core/skills/worktree-audit/SKILL.md:10-21`). Voeg aan het commandoblok de regel `python3 .lighthouse/scripts/worktree_audit.py --issue <nr>` toe, na `--only`. De alinea wordt: "`--only` and `--issue` are the views for `lighthouse-close-issue`: one branch, or every branch of an issue, each with a line `cleanup: yes` or `cleanup: no — <reason>`. That skill runs the delivered lines of every `yes` itself, without a question; this skill and the script still change nothing." Geen issuenummer met drie of meer cijfers erin (test :87).
+- [ ] **Stap 5: Werk de worktree-audit-skill bij** (`pack/core/skills/worktree-audit/SKILL.md:10-21`). Voeg aan het commandoblok de regel `python3 .lighthouse/scripts/worktree_audit.py --issue <nr>` toe, na `--only`. De alinea wordt: "`--only` and `--issue` are the views for `lighthouse-close-issue`: one branch, or every branch of an issue, each with a line `cleanup: yes` or `cleanup: no — <reason>`. `--only` exits 0 only at `yes`; `--issue` exits 2 when the PR lookup fails, and otherwise 0 with the verdict per block. That skill runs the delivered lines of every `yes` itself, without a question; this skill and the script still change nothing." Regel 10 "Five views" wordt "Six views". Geen issuenummer met drie of meer cijfers erin (test :87).
 
 - [ ] **Stap 6: Draai de tests, verwacht PASS**
 
-  Run: `uv run pytest -q tests/pack/test_close_issue_skill.py tests/pack/test_worktree_audit_skill.py`
-  Expected: alles groen, ook `test_variants_differ_in_the_instruction_file`.
+  Run: `uv run pytest -q tests/pack/test_close_issue_skill.py tests/pack/test_worktree_audit_skill.py tests/pack/test_skill_contracts.py`
+  Expected: alles groen, ook `test_variants_differ_in_the_instruction_file` en `test_optional_steps_guarded`.
 
 - [ ] **Stap 7: Dogfood, volledige gate, commit**
 
   ```bash
-  go run ./cmd/lighthouse init --upgrade
-  go run ./cmd/lighthouse init --upgrade   # verwacht: No changes.
+  go run ./cmd/lighthouse init --upgrade --yes
+  go run ./cmd/lighthouse init --upgrade </dev/null   # verwacht: precies No changes.
   uv run pytest -q && go test ./...
   git add pack/core/skills/close-issue pack/core/skills/worktree-audit tests/pack/test_close_issue_skill.py tests/pack/test_worktree_audit_skill.py .claude/skills .agents/skills .lighthouse/
   git commit -m "feat(close-issue): ruim alle branches van het issue op, zonder vraag en ook headless"
@@ -177,7 +182,15 @@ Blokvorm van `render_issue`. Per branch een blok: de eerste regel is `branch: <b
 
 ### Taak 3: de paia-spiegel en de PR
 
-**Files:** geen code. Dit gaat in de PR-body.
+**Files:**
+- Modify: `docs/developer/planning/plans/2026-10-18-m0d-overstap.md` (:26, :130)
 
-- [ ] **Stap 1: Meet de tagstand.** Run `git tag --list 'v*'` en `git -C /home/corneel/repositories/personal_ai_agent grep -n "lighthouse/cmd/lighthouse@" -- . ':!docs'`. Is `v0.1.0` nog niet gezet, dan neemt de tag deze merge mee en volgt de spiegel in de core-PR van M0 (d) (ontwerpkeuze 6). Is hij al gezet, dan is er een nieuwe tag nodig vóór die core-PR. Dat meld je in de PR-body; de tag zet Corneel.
-- [ ] **Stap 2: Schrijf de PR** met `/lighthouse-verify-pr`. AC 7 krijgt als bewijs de regel uit stap 1 en de verwijzing naar het M0 (d)-plan. Stelt de verifier dat AC 7 pas na de paia-overstap meetbaar is, dan wordt de body `Refs #32 — <reden>`, en niet `Closes`.
+- [ ] **Stap 1: Pin de core-PR van M0 (d) op een tag met #32.** `v0.1.0` en `v0.1.1` bestaan al (`git tag --list 'v*'`) en missen deze wijziging (ontwerpkeuze 6). In het M0 (d)-plan:
+  - :26: de besluitregel over `v0.1.0` blijft staan als geschiedenis. Voeg erna toe: "Sinds #32 installeert paia de eerste tag die #32 bevat (na `v0.1.1`), zodat `lighthouse-close-issue` met het opruimen van alle branches meekomt." Vervang in het `go install`-commando `@v0.1.0` door `@<tag met #32>`.
+  - :130 (rij `core`), kolom *Heeft nodig*: `tag \`v0.1.0\`` wordt `een tag met #32 (na \`v0.1.1\`)`.
+
+  ```bash
+  git add docs/developer/planning/plans/2026-10-18-m0d-overstap.md
+  git commit -m "docs(plan): core-PR van M0 (d) installeert een tag met #32"
+  ```
+- [ ] **Stap 2: Schrijf de PR** met `/lighthouse-verify-pr`. AC 7 krijgt als bewijs de commit uit stap 1 (de core-PR van M0 (d) vervangt `paia-close-issue` via `lighthouse init` door een tag met deze wijziging) en de melding dat Corneel die tag na de merge zet. Stelt de verifier dat AC 7 pas na de paia-overstap meetbaar is, dan wordt de body `Refs #32 — <reden>`, en niet `Closes`.
