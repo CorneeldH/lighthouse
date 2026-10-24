@@ -14,7 +14,15 @@ import time
 
 import pytest
 
-from tests.pack._testkit import INSTALLED_LIB, git, init_repo, load_hook_lib, tool_bin
+from tests.pack._testkit import (
+    INSTALLED_LIB,
+    ORIGIN,
+    forge_worktree,
+    git,
+    init_repo,
+    load_hook_lib,
+    tool_bin,
+)
 
 gate = load_hook_lib("pr_body_gate")
 
@@ -609,6 +617,25 @@ def test_scope_andere_git_repo(tmp_path, project):
     ander = tmp_path / "ander"
     init_repo(ander)
     assert gate.in_scope(_pc(str(ander)), str(project))[0] == "overslaan"
+
+
+def test_scope_forge_worktree_van_dezelfde_repo(tmp_path, project):
+    """Een worktree van een aparte clone met dezelfde `origin` is deze repo (#36)."""
+    git(project, "remote", "add", "origin", ORIGIN)
+    work = forge_worktree(project, tmp_path)
+    assert gate.in_scope(_pc(str(work)), str(project)) == ("toetsen", "")
+
+
+def test_scope_andere_origin_noemt_common_dirs_en_remotes(tmp_path, project):
+    git(project, "remote", "add", "origin", ORIGIN)
+    work = forge_worktree(project, tmp_path, "https://github.com/Acme/gadgets.git")
+    common = os.path.realpath(tmp_path / "clone.git")
+    ref = os.path.realpath(project / ".git")
+    assert gate.in_scope(_pc(str(work)), str(project)) == (
+        "overslaan",
+        f"skipped — outside this repo (git-common-dir {common} vs {ref};"
+        f" origin https://github.com/Acme/gadgets.git vs {ORIGIN})",
+    )
 
 
 def test_scope_onbekende_cwd_blokkeert(project):

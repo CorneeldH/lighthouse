@@ -27,6 +27,10 @@ path = "pack/core/lib/__init__.py"
 new = true
 
 [[file]]
+path = "pack/core/lib/repo_identity.py"
+new = true
+
+[[file]]
 path = "pack/core/lib/config.py"
 new = true
 

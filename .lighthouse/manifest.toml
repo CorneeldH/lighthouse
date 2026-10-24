@@ -204,7 +204,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/pre-commit-tests.sh"
 package = "core"
 version = "dev"
-sha256 = "7559d3a11e540c6bea849a1531694cf848f13eb52cfd46bf33f9b6e6d9d19964"
+sha256 = "eee1c73e3600f7cb390c215bf96780b3bf46e5672701e9c20387a7e08106454b"
 
 [[unit]]
 kind = "file"
@@ -510,7 +510,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "9531d7f438980d6997b226b3cfcd46a6f3497b822417b07f807bbc748d969851"
+sha256 = "a88bb5d08432c4efaa6e8f9f61a1fd860e2296f8bad9a403a66f692bc3275695"
 
 [[unit]]
 kind = "file"
@@ -580,7 +580,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/pr_body_gate.py"
 package = "core"
 version = "dev"
-sha256 = "4d4393d10760ebcc3e237712122c0c0c80bf4c9f29584a84165dd975db5255a4"
+sha256 = "14e73f2fab476c7661b0c1f0d72ac60ef56edfeccecb615ab71bc4b20786e069"
 
 [[unit]]
 kind = "file"
@@ -588,6 +588,13 @@ path = ".lighthouse/lib/lighthouse_lib/protocol.py"
 package = "core"
 version = "dev"
 sha256 = "a39aaf87a989199d4a11211c0fb3bfc78a07aed9e8c38f29be5720537b0ac793"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/repo_identity.py"
+package = "core"
+version = "dev"
+sha256 = "7a8d3602d48e30e1afd8254aacea9e7c8725ae72db26bb5357118c7dad891d7d"
 
 [[unit]]
 kind = "file"
