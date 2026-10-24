@@ -280,3 +280,29 @@ def test_descriptions_pass_the_overlap_check(tmp_path):
         check=False,
     )
     assert "overlap without a bounding clause" not in out.stdout, out.stdout
+
+
+# What a skill text does that needs a tool on the machine. `lighthouse init` reports a missing
+# tool by the units requires.toml names for it; a skill missing there goes unreported.
+_TOOL_USES = {
+    "superpowers": r"superpowers:",
+    "gh": r"\bgh (pr|issue|api|project|run|repo|search|label|workflow)\b",
+    "codex": r"(^|[\s`$(])codex (exec|review)\b|codex_usage",
+    "jq": r"\bjq\b",
+    "git": r"\bgit (-C|worktree|log|fetch|diff|status|rev-parse|branch|push|commit|grep|show"
+    r"|merge-base|checkout|switch|ls-files|add)\b",
+    "python3": r"\bpython3\b",
+    "tomllib": r"lighthouse_lib/config\.py|tomllib",
+}
+
+
+@pytest.mark.parametrize("skill", SKILL_PARAMS)
+def test_requires_names_the_skill_per_tool(skill):
+    requires = tomllib.loads((CORE / "requires.toml").read_text(encoding="utf-8"))
+    text = "\n".join(_texts(skill).values())
+    missing = [
+        tool
+        for tool, pattern in _TOOL_USES.items()
+        if re.search(pattern, text, re.M) and skill.name not in requires.get(tool, [])
+    ]
+    assert not missing, f"requires.toml lacks {skill.name} under {missing}"

@@ -20,3 +20,26 @@ def test_agents_md_names_the_guards_and_the_escape_hatch():
         ".claude/worktrees/",
     ):
         assert token in text, token
+
+
+CORE = ROOT / "pack" / "core"
+
+
+def test_core_block_word_budget():
+    """The core block lands in every repo's AGENTS.md, next to the repo's own rules: at most
+    250 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
+    notation, and one line per skill."""
+    text = (CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
+    assert len(text.split()) <= 250, len(text.split())
+    for token in (
+        "main-commit-guard",
+        ".claude/allow-main",
+        "worktree",
+        "squash",
+        "[project] language",
+        "heading:<key>",
+        ".lighthouse/headings.toml",
+    ):
+        assert token in text, token
+    for skill in sorted(p.name for p in (CORE / "skills").iterdir() if p.is_dir()):
+        assert f"`/lighthouse-{skill}`" in text, skill
