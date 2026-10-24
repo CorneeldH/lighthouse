@@ -51,10 +51,10 @@ class Baseline:
     min_diff_pct: int
     # De gemeten globale src-dekking, vastgezet als vloer. Anders dan
     # min_diff_pct (beleid per PR) is dit een stand: hij komt uit een meting en
-    # kruipt omhoog zodra nieuwe code de dekking optilt (#703).
+    # kruipt omhoog zodra nieuwe code de dekking optilt.
     min_total_pct: int
     exclude: tuple[str, ...]
-    # Het aantal functies met cognitieve complexiteit > 15 (complexipy, #1192).
+    # Het aantal functies met cognitieve complexiteit > 15 (complexipy).
     # Laatste veld, met default, zodat bestaande Baseline(...)-constructies
     # blijven werken; load() eist de sectie wél in het bestand.
     cognitive_over_15: int = 0

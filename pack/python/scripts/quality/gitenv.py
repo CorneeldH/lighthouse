@@ -1,8 +1,7 @@
 """Git-omgeving zonder repo-bindende variabelen.
 
-Verhuisd uit ratchet.py (#1016 taak 4): `prcov.py` heeft dezelfde schoonmaak
-nodig als de coverage-arm, en `ratchet.py` importeert 'm er nu op zijn beurt
-weer terug — één bron, twee aanroepers.
+`prcov.py` heeft dezelfde schoonmaak nodig als de coverage-arm van
+`ratchet.py` — één bron, twee aanroepers.
 """
 
 from __future__ import annotations
@@ -14,14 +13,11 @@ from collections.abc import Mapping
 # de cwd, dus met GIT_DIR gezet negeert zelfs `git -C /tmp/fixture rev-parse`
 # die -C en wijst naar de echte repo.
 #
-# Dat is hier geen theorie. git zet deze bij het aanroepen van een hook, en de
-# coverage-arm was het eerste in deze repo dat de volle pytest-suite ván
-# binnen een hook draaide. Zonder deze schoonmaak bouwt elke test die een
-# fixture-repo aanmaakt en `git` aanroept in de ECHTE repo:
-# `scripts/opencode-lane/lane/cli.py` doet `git add -A` + `git commit`, en dat
-# verving de branchtip door een fixture-commit die 702 bestanden uit
-# `.planning/` als verwijderd optekende. Twee pushes lang, allebei
-# teruggedraaid via de reflog.
+# Dat is geen theorie. git zet deze bij het aanroepen van een hook, en de
+# coverage-arm draait de volle pytest-suite ván binnen een hook. Zonder deze
+# schoonmaak bouwt elke test die een fixture-repo aanmaakt en `git add -A` +
+# `git commit` aanroept in de ECHTE repo, en vervangt hij de branchtip door een
+# fixture-commit.
 _GIT_SCOPING_VARS = (
     "GIT_DIR",
     "GIT_WORK_TREE",

@@ -1,13 +1,9 @@
 """Gedeeld rekenwerk voor diff-coverage: één implementatie, twee aanroepers.
 
-Gebruikt door scripts/quality/ratchet.py (drempel uit quality-baseline.toml) en
-door scripts/opencode-lane/lane/gates.py (die zijn eigen 100%-eis op toegevoegde
-src/-regels houdt). Wat gedeeld wordt is het rekenwerk, niet het oordeel.
-
-De diff-parser komt ongewijzigd uit lane/gates.py::_added_src_lines. Het oordeel
-eromheen kreeg bij de verhuizing drie correcties (§4.1 van het ontwerp): alleen
-`src/**/*.py`, een ontbrekende rapportregel is een fout in plaats van "alles
-gemist", en vervolgregels worden op hun statement teruggelegd.
+Gebruikt door `ratchet.py coverage` (drempel uit quality-baseline.toml) en door
+de nightly via `prcov.py`. Wat gedeeld wordt is het rekenwerk, niet het oordeel:
+alleen `.py`-bestanden, een ontbrekende rapportregel is een fout in plaats van
+"alles gemist", en vervolgregels worden op hun statement teruggelegd.
 """
 
 from __future__ import annotations
@@ -155,8 +151,8 @@ def diff_coverage(
 ) -> DiffCoverage:
     """Leg de gewijzigde regels tegen `coverage.json` en tel.
 
-    `read_source` is injecteerbaar omdat de opencode-lane zijn bestanden via een
-    Runner-seam leest en de ratel gewoon van schijf.
+    `read_source` is injecteerbaar, zodat een aanroeper zijn bestanden ergens
+    anders vandaan kan lezen dan van schijf.
 
     Een gewijzigd `.py`-bestand dat niet in het rapport staat is een **fout**:
     `--cov=src` noemt élke Python-module onder `src/`, ook een gloednieuwe die
