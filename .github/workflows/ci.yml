@@ -42,3 +42,6 @@ jobs:
       # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: go test -tags e2e ./e2e/ -v
+      # lighthouse runs its own pack/core: the installed copy must match pack/ exactly.
+      - name: installed pack/core matches pack/
+        run: test "$(go run ./cmd/lighthouse init --upgrade)" = "No changes."

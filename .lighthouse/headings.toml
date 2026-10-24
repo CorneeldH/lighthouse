@@ -1,0 +1,152 @@
+# The heading table (besluit 8): every heading that code or a skill reads as a
+# contract, with one variant per language. Writing uses `[project] language`;
+# reading accepts every variant. A skill names a heading as `heading:<key>`.
+# Read it with `python3 .lighthouse/lib/lighthouse_lib/headings.py <key>`.
+
+# Issues
+[acceptance_criteria]
+nl = "Acceptatiecriteria"
+en = "Acceptance criteria"
+
+# The kinds of a `🤖 <kind>` comment
+[kind_handoff]
+nl = "Handoff"
+en = "Handoff"
+
+[kind_started]
+nl = "Gestart"
+en = "Started"
+
+[kind_question]
+nl = "Vraag"
+en = "Question"
+
+[kind_resumed]
+nl = "Hervat"
+en = "Resumed"
+
+[kind_done]
+nl = "Klaar"
+en = "Done"
+
+[kind_returned]
+nl = "Teruggegeven"
+en = "Returned"
+
+[kind_rebased]
+nl = "Herbaseerd"
+en = "Rebased"
+
+# The fields of a question
+[question_where]
+nl = "Waar het staat"
+en = "Where it stands"
+
+[question_what]
+nl = "Wat er speelt"
+en = "What is going on"
+
+[question_label]
+nl = "Vraag"
+en = "Question"
+
+[question_close]
+nl = "**Max 1 comment als reactie.**"
+en = "**At most 1 comment in reply.**"
+
+[question_bundle_hint]
+nl = "Antwoord per vraag, bijvoorbeeld `1a, 2c`."
+en = "Answer per question, for example `1a, 2c`."
+
+[question_run_yourself]
+nl = "**Zelf draaien:**"
+en = "**Run it yourself:**"
+
+[question_recommended]
+nl = "*(aanbevolen)*"
+en = "*(recommended)*"
+
+[question_phase]
+nl = "fase"
+en = "phase"
+
+[question_task]
+nl = "taak"
+en = "task"
+
+# The visible line of an artefact comment
+[artefact_version]
+nl = "versie"
+en = "version"
+
+[artefact_part]
+nl = "deel"
+en = "part"
+
+[artefact_source]
+nl = "bron"
+en = "source"
+
+# start-issue and its scout
+[gate_line]
+nl = "Poort"
+en = "Gate"
+
+[scout_skipped]
+nl = "Scout: overgeslagen"
+en = "Scout: skipped"
+
+[impact_pack]
+nl = "IMPACT PACK"
+en = "IMPACT PACK"
+
+# The evidence of a PR
+[evidence_holds]
+nl = "klopt"
+en = "holds"
+
+[evidence_fails]
+nl = "klopt niet"
+en = "does not hold"
+
+[evidence_invalid]
+nl = "ongeldig"
+en = "invalid"
+
+[evidence_unmeasurable]
+nl = "niet meetbaar"
+en = "not measurable"
+
+[evidence_after_pr]
+nl = "na PR: "
+en = "after PR: "
+
+[evidence_after_pr_unmeasured]
+nl = "na PR, niet gemeten"
+en = "after PR, not measured"
+
+[evidence_table_head]
+nl = "| AC | Uitkomst | Detail |"
+en = "| AC | Outcome | Detail |"
+
+[evidence_closes_without_block]
+nl = "Closes zonder bewijsblok:"
+en = "Closes without evidence block:"
+
+# The adversarial reviews
+[open_after_review]
+nl = "## Open na review"
+en = "## Open after review"
+
+# Milestones
+[milestone_dod]
+nl = "Definition of Done"
+en = "Definition of Done"
+
+[milestone_no_gos]
+nl = "No-Gos"
+en = "No-Gos"
+
+[milestone_not_yet_decided]
+nl = "Nog niet vastgelegd"
+en = "Not yet decided"

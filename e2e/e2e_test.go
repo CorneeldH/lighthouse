@@ -4,7 +4,9 @@
 // installs main-commit-guard, the command registered in .claude/settings.json blocks a
 // commit on main, and `lighthouse init --upgrade` right after gives an empty diff. For
 // M0 (c) it proves the same for pack/python: in a repository with a pyproject.toml the
-// registered pre-commit-tests blocks a commit with a red test.
+// registered pre-commit-tests blocks a commit with a red test. For M0 (b) it proves that
+// a fresh repository gets all of pack/core: the skills in both mirrors and the test gate,
+// which lets a commit through, loudly, while no [test_gate] command is set.
 package e2e
 
 import (
@@ -202,6 +204,29 @@ func TestFreshRepoBlocksCommitOnMain(t *testing.T) {
 	out := run(t, repo, bin, "init", "--upgrade")
 	if out != "No changes.\n" || !maps.Equal(before, snapshot(t, repo)) {
 		t.Fatalf("upgrade not empty:\n%s", out)
+	}
+}
+
+func TestFreshRepoGetsFullCore(t *testing.T) {
+	bin := buildLighthouse(t)
+	repo := freshRepo(t)
+	if out := run(t, repo, bin, "init", "--yes"); !strings.HasPrefix(out, "Packages: core\n") {
+		t.Fatalf("init:\n%s", out)
+	}
+	for _, rel := range []string{
+		".claude/skills/lighthouse-start-issue/SKILL.md",
+		".agents/skills/lighthouse-start-issue/SKILL.md",
+		".claude/hooks/lighthouse/pre-commit-tests.sh",
+	} {
+		if _, err := os.Stat(filepath.Join(repo, rel)); err != nil {
+			t.Errorf("%s: %v", rel, err)
+		}
+	}
+
+	git(t, repo, "checkout", "-q", "-b", "issue-1-x")
+	code, stdout, stderr := runGate(t, repo, bashHookCommand(t, repo, "pre-commit-tests"))
+	if code != 0 || !strings.Contains(stdout, "nothing was tested") {
+		t.Fatalf("commit without [test_gate]: rc %d\n%s\n%s", code, stdout, stderr)
 	}
 }
 
