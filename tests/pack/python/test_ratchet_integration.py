@@ -1,108 +1,43 @@
-#!/usr/bin/env bash
-# Integration test voor de kwaliteitsratel (#562, #623, #806).
-#
-# Wat hier gepind wordt, en waarom:
-#   - Groen op een no-op. Een gate die op zijn eigen repo rood staat wordt
-#     binnen een week uitgezet; dit is de test die dat onmogelijk maakt.
-#   - Rood op een ingevoegde `except Exception: pass` (S110 stijgt) en op een
-#     kale `except:` (E722, nulregel). Dat is #562 AC 6 letterlijk.
-#   - Rood ook mét een `# noqa` voor precies die regel. Zonder dit geval is
-#     --ignore-noqa een bewering in het ontwerp en geen eigenschap.
-#   - Rood op een functie met cognitief 16-25: de teller `cognitive_over_15` uit
-#     [complexipy] stijgt (#1192), en een run laat geen complexipy-rommel achter.
-#   - Rood op een functie boven cyclomatisch 20 of cognitief 25, óók met een
-#     `# noqa: C901` resp. `# noqa: complexipy` achter de `def`: de twee harde
-#     grenzen kennen geen baseline en geen ontsnapping (#1192). Ook niet via een
-#     complexipy-exclude in pyproject.toml of (.)complexipy.toml, en niet via
-#     een hogere `max-complexity` onder [tool.ruff.lint.mccabe].
-#   - Determinisme: twee runs op dezelfde boom geven hetzelfde getal (#562 AC 2).
-#   - De provenance-tabel uit §6.1: meerdere refs, local_sha != HEAD, vuile
-#     working tree, untracked .py, ref-deletie.
-#   - Dat pre-push géén suite meer draait (#806). Een gate die de volle suite mét
-#     coverage draait was een exact duplicaat van de CI `test`-job op dezelfde
-#     machine; twee gelijktijdige pushes legden de Beelink om.
-set -u
+"""Integration test of the quality ratchet: the real ruff and complexipy on a fixture
+repository, through the installed `.lighthouse/scripts/quality/ratchet.py ruff`.
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-RATCHET_DIR="$REPO_ROOT/scripts/quality"
-HOOK="$REPO_ROOT/scripts/hooks/pre-push-quality.sh"
-ZERO="0000000000000000000000000000000000000000"
-REMOTE_URL="https://example.invalid/repo.git"
+The ratchet part of the source repository's `tests/integration/test_quality_ratchet.sh`
+(sections 1-5c), as pytest. Left out there: the provenance table and the pre-push cases
+(sections 6-8); they test the source repository's own `pre-push-quality.sh`.
 
-if ! command -v uv >/dev/null 2>&1; then
-  if [ -n "${CI:-}" ]; then
-    echo "FAIL: uv not on PATH; CI must install it before running this test"
-    exit 1
-  fi
-  echo "SKIP: uv not on PATH (local run)"
-  exit 0
-fi
+What is pinned, and why:
+  - Green on a no-op. A gate that is red on its own repository is switched off within a
+    week.
+  - Red on an inserted `except Exception: pass` (S110 rises) and on a bare `except:`
+    (E722, a zero rule).
+  - Red also with a `# noqa` for exactly that rule: --ignore-noqa is a property, not a
+    claim.
+  - Red on a function with cognitive 16-25: the counter `cognitive_over_15` rises, and a
+    run leaves no complexipy litter.
+  - Red on a function above cyclomatic 20 or cognitive 25, also with `# noqa: C901` or
+    `# noqa: complexipy`, a complexipy exclude, or a higher ruff `max-complexity`.
+  - Determinism: two runs on the same tree give the same number.
+"""
 
-failures=0
-OUT=""
+import os
+import shutil
+import subprocess
+from pathlib import Path
 
-check() { # name want(zero|nonzero) actual_rc
-  local name="$1" want="$2" rc="$3" ok=0
-  case "$want" in
-    zero) [ "$rc" -eq 0 ] && ok=1 ;;
-    nonzero) [ "$rc" -ne 0 ] && ok=1 ;;
-  esac
-  if [ "$ok" -eq 1 ]; then
-    echo "PASS  $name"
-  else
-    echo "FAIL  $name (rc=$rc, wanted $want)"
-    echo "--- output ---"; echo "$OUT"; echo "--------------"
-    failures=$((failures + 1))
-  fi
-}
+import pytest
 
-# check() alleen zegt "nonzero rc" — dat is ook waar als het script crasht
-# (rc=127, command not found). check_contains bindt een PASS aan een marker die
-# alleen de echte bevinding produceert.
-check_contains() { # name marker
-  case "$OUT" in
-    *"$2"*) echo "PASS  $1" ;;
-    *)
-      echo "FAIL  $1 (output did not mention '$2')"
-      echo "--- output ---"; echo "$OUT"; echo "--------------"
-      failures=$((failures + 1))
-      ;;
-  esac
-}
+from tests.pack._testkit import GIT_ENV, git, install_pack
 
-# Spiegelbeeld van check_contains, voor een arm die er niet meer hoort te zijn.
-# Alleen bruikbaar NAAST een positieve check (zie §7): de afwezigheid van een
-# signaal is op zichzelf geen bewijs — het script kan ook gecrasht zijn vóór het
-# punt waar de marker geproduceerd zou worden.
-check_not_contains() { # name marker
-  case "$OUT" in
-    *"$2"*)
-      echo "FAIL  $1 (output mentioned '$2')"
-      echo "--- output ---"; echo "$OUT"; echo "--------------"
-      failures=$((failures + 1))
-      ;;
-    *) echo "PASS  $1" ;;
-  esac
-}
+if shutil.which("uv") is None:
+    if os.environ.get("CI"):
+        pytest.fail("uv not on PATH; CI must install it before running this test", pytrace=False)
+    pytest.skip("uv not on PATH (local run); the ratchet needs uvx", allow_module_level=True)
 
-# --- fixture ------------------------------------------------------------------
-# Een miniatuurrepo met dezelfde vorm als deze: .ruff-version, .complexipy-version, een baseline, een
-# quality-pakket, src/ en tests/. De baseline staat op de stand van de fixture,
-# zodat een INGEVOEGDE overtreding de enige stijging is.
-make_fixture() { # -> print het pad
-  local dir
-  dir="$(mktemp -d)"
-  mkdir -p "$dir/scripts/quality" "$dir/scripts/hooks" "$dir/src" "$dir/tests"
-  cp "$RATCHET_DIR"/*.py "$dir/scripts/quality/"
-  cp "$HOOK" "$dir/scripts/hooks/"
-  cp "$REPO_ROOT/.ruff-version" "$dir/.ruff-version"
-  cp "$REPO_ROOT/.complexipy-version" "$dir/.complexipy-version"
-
-  cat > "$dir/pyproject.toml" <<'TOML'
+PYPROJECT = """\
 [project]
 name = "ratchet-fixture"
 version = "0"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 
 [tool.ruff.lint]
 extend-select = ["E722", "B006", "F403", "F811", "B023", "PT012", "PGH003", "PGH004",
@@ -110,9 +45,9 @@ extend-select = ["E722", "B006", "F403", "F811", "B023", "PT012", "PGH003", "PGH
 
 [tool.ruff.lint.flake8-pytest-style]
 raises-require-match-for = ["Exception", "BaseException"]
-TOML
+"""
 
-  cat > "$dir/quality-baseline.toml" <<'TOML'
+BASELINE = """\
 [ruff]
 C901   = 0
 TRY400 = 0
@@ -128,132 +63,23 @@ cognitive_over_15 = 0
 [coverage]
 min_diff_pct = 70
 min_total_pct = 0
-TOML
+"""
 
-  cat > "$dir/src/app.py" <<'PY'
-"""Schone module: geen enkele van de vijftien regels raakt hem."""
+APP = '''"""A clean module: none of the fifteen rules hits it."""
 
 
 def add(a: int, b: int) -> int:
     return a + b
-PY
-  cat > "$dir/tests/test_app.py" <<'PY'
-from src.app import add
+'''
+
+TEST_APP = """from src.app import add
 
 
 def test_add() -> None:
     assert add(1, 2) == 3
-PY
+"""
 
-  git -C "$dir" init -q -b main
-  git -C "$dir" config user.email test@example.com
-  git -C "$dir" config user.name Test
-  git -C "$dir" config commit.gpgsign false
-  git -C "$dir" add -A
-  git -C "$dir" commit -qm "schone fixture"
-  printf '%s' "$dir"
-}
-
-# Een run schrijft zijn complexipy-uitvoer en -cache naar een tijdelijke map
-# (Review Focus 3). Naast een positieve check van de run zelf: zonder dat de
-# ratel echt liep, zegt een lege status niets.
-check_no_litter() { # dir
-  local litter
-  litter="$(git -C "$1" status --porcelain --ignored | grep complexipy || true)"
-  if [ -z "$litter" ]; then
-    echo "PASS  de run laat geen complexipy-rommel achter in de werkboom"
-  else
-    echo "FAIL  de run laat complexipy-rommel achter in de werkboom"
-    echo "$litter"; failures=$((failures + 1))
-  fi
-}
-
-run_ratchet() { # dir -> zet OUT, geeft rc terug; toetst ook de werkboom
-  OUT="$( cd "$1" && python3 scripts/quality/ratchet.py ruff 2>&1 )"
-  local rc=$?
-  check_no_litter "$1"
-  return "$rc"
-}
-
-# --- 1. groen op een schone boom ----------------------------------------------
-FIX="$(make_fixture)"
-run_ratchet "$FIX"; check "een schone boom is groen" zero $?
-check_contains "de groene regel noemt ook complexipy" "complexipy ok (0 functies cognitief > 15)"
-if [ -e "$FIX/complexipy-results.json" ] || [ -e "$FIX/.complexipy_cache" ]; then
-  echo "FAIL  de ratel laat complexipy-rommel achter in de werkboom"
-  ls -a "$FIX"; failures=$((failures + 1))
-else
-  echo "PASS  de ratel laat geen complexipy-resultaten of -cache in de werkboom"
-fi
-
-# --- 2. determinisme (#562 AC 2) ----------------------------------------------
-run_ratchet "$FIX"; FIRST="$OUT"
-run_ratchet "$FIX"; SECOND="$OUT"
-if [ "$FIRST" = "$SECOND" ]; then
-  echo "PASS  twee runs op dezelfde boom geven hetzelfde getal"
-else
-  echo "FAIL  twee runs geven verschillende uitvoer"; failures=$((failures + 1))
-fi
-rm -rf "$FIX"
-
-# --- 3. een ingevoegde `except Exception: pass` laat S110 stijgen --------------
-FIX="$(make_fixture)"
-cat >> "$FIX/src/app.py" <<'PY'
-
-
-def swallow() -> None:
-    try:
-        add(1, 2)
-    except Exception:
-        pass
-PY
-run_ratchet "$FIX"; check "een nieuwe try-except-pass is rood" nonzero $?
-check_contains "de melding noemt S110 en de stijging" "S110: 0 -> 1"
-rm -rf "$FIX"
-
-# --- 4. een kale `except:` is een nulregel-hit ---------------------------------
-# Let op: `except:\n    raise` (kale except die meteen opnieuw opgooit) telt bij
-# ruff 0.16.4 NIET als E722 — ruff behandelt dat patroon als een no-op
-# (TRY203, niet in onze set) en zwijgt over E722 juist dán. Geverifieerd los van
-# deze fixture: `except: pass` triggert E722 wél, `except: raise` nooit, met en
-# zonder omringende functie. `pass` in de body is dus nodig om de bedoelde
-# nulregel-hit daadwerkelijk te produceren.
-FIX="$(make_fixture)"
-cat >> "$FIX/src/app.py" <<'PY'
-
-
-def bare() -> None:
-    try:
-        add(1, 2)
-    except:
-        pass
-PY
-run_ratchet "$FIX"; check "een kale except is rood" nonzero $?
-check_contains "de melding noemt E722 als nulregel" "E722"
-check_contains "een nulregel biedt geen bump" "geen bump"
-rm -rf "$FIX"
-
-# --- 5. onderdrukkingsbestendigheid: # noqa helpt niet ------------------------
-FIX="$(make_fixture)"
-cat >> "$FIX/src/app.py" <<'PY'
-
-
-def swallow() -> None:
-    try:
-        add(1, 2)
-    except Exception:  # noqa: S110
-        pass
-PY
-run_ratchet "$FIX"; check "een # noqa op de overtreding houdt de gate rood" nonzero $?
-check_contains "de noqa verlaagt de teller niet" "S110: 0 -> 1"
-rm -rf "$FIX"
-
-# --- 5b. een functie met cognitief 16-25 laat de teller stijgen (#1192) ---------
-# Zes geneste if-niveaus meten cognitief 21 (vijf geven 15, niet > 15). Het is de
-# teller en niet een harde grens: de functie blijft onder de 25.
-FIX="$(make_fixture)"
-cat >> "$FIX/src/app.py" <<'PY'
-
+NESTED_21 = """
 
 def nested(a: int, b: int, c: int, d: int, e: int, f: int) -> int:
     if a:
@@ -264,52 +90,11 @@ def nested(a: int, b: int, c: int, d: int, e: int, f: int) -> int:
                         if f:
                             return 1
     return 0
-PY
-run_ratchet "$FIX"; check "een functie met cognitief 21 is rood" nonzero $?
-check_contains "de melding noemt de stijgende teller" "cognitive_over_15: 0 -> 1"
-check_contains "de melding noemt de functie" "src/app.py::nested"
-rm -rf "$FIX"
+"""
 
-# --- 5c. de twee harde grenzen: een noqa helpt niet (#1192) ---------------------
-# 19 elif-takken plus de if zijn 20 beslissende takken: ruff 0.16.4 telt dan 21.
-# Meetbaar vooraf met `uvx ruff@0.16.4 check <bestand> --select C901 --config
-# lint.mccabe.max-complexity=20 --ignore-noqa`. Geen baseline-bump mogelijk.
-FIX="$(make_fixture)"
-{
-  printf '\n\ndef chain(x: int) -> int:  # noqa: C901\n'
-  printf '    if x == 0:\n        return 0\n'
-  for i in $(seq 1 19); do printf '    elif x == %s:\n        return %s\n' "$i" "$i"; done
-  printf '    return -1\n'
-} >> "$FIX/src/app.py"
-run_ratchet "$FIX"; check "een functie boven cyclomatisch 20 met # noqa: C901 is rood" nonzero $?
-check_contains "de melding noemt de cyclomatische score en de grens" "cyclomatisch 21 > 20"
-check_contains "de harde grens biedt geen bump" "geen bump"
-rm -rf "$FIX"
+NESTED_28 = """
 
-# Dezelfde keten, nu met max-complexity = 25 in pyproject.toml: ruff meldt C901
-# alleen boven die drempel, dus zonder de --config-pin van de ratel verdween 21.
-# De tellers staan op 1, zodat alleen de harde grens dit rood kan maken.
-FIX="$(make_fixture)"
-printf '\n[tool.ruff.lint.mccabe]\nmax-complexity = 25\n' >> "$FIX/pyproject.toml"
-sed -i -e 's/^C901   = 0/C901   = 1/' -e 's/^cognitive_over_15 = 0/cognitive_over_15 = 1/' \
-  "$FIX/quality-baseline.toml"
-git -C "$FIX" commit -qam "mccabe-drempel 25, tellers op 1"
-{
-  printf '\n\ndef chain(x: int) -> int:\n'
-  printf '    if x == 0:\n        return 0\n'
-  for i in $(seq 1 19); do printf '    elif x == %s:\n        return %s\n' "$i" "$i"; done
-  printf '    return -1\n'
-} >> "$FIX/src/app.py"
-run_ratchet "$FIX"; check "een hogere mccabe-drempel in pyproject houdt cyclomatisch 21 rood" nonzero $?
-check_contains "de melding noemt de cyclomatische score ondanks de drempel" "cyclomatisch 21 > 20"
-rm -rf "$FIX"
-
-# Zeven geneste if-niveaus meten cognitief 28, de bovengrens is 25.
-FIX="$(make_fixture)"
-cat >> "$FIX/src/app.py" <<'PY'
-
-
-def nested(a: int, b: int, c: int, d: int, e: int, f: int, g: int) -> int:  # noqa: complexipy
+def nested(a: int, b: int, c: int, d: int, e: int, f: int, g: int) -> int:{noqa}
     if a:
         if b:
             if c:
@@ -319,173 +104,164 @@ def nested(a: int, b: int, c: int, d: int, e: int, f: int, g: int) -> int:  # no
                             if g:
                                 return 1
     return 0
-PY
-run_ratchet "$FIX"; check "een functie boven cognitief 25 met # noqa: complexipy is rood" nonzero $?
-check_contains "de melding noemt de cognitieve score en de grens" "cognitief 28 > 25"
-check_contains "de melding noemt de functie" "src/app.py::nested"
-rm -rf "$FIX"
-
-# complexipy leest exclude-config uit zijn cwd, en --no-ignore stopt dat niet.
-# Een exclude in pyproject.toml of een (.)complexipy.toml over precies het
-# overtredende bestand mag de functie niet uit de harde grens halen (#1192).
-# Zonder die config is deze fixture identiek aan het geval hierboven.
-FIX="$(make_fixture)"
-printf '\n[tool.complexipy]\nexclude = ["app.py", "src/app.py"]\n' >> "$FIX/pyproject.toml"
-printf 'exclude = ["app.py", "src/app.py"]\n' > "$FIX/complexipy.toml"
-cp "$FIX/complexipy.toml" "$FIX/.complexipy.toml"
-git -C "$FIX" add -A && git -C "$FIX" commit -qm "complexipy-exclude"
-cat >> "$FIX/src/app.py" <<'PY'
+"""
 
 
-def nested(a: int, b: int, c: int, d: int, e: int, f: int, g: int) -> int:
-    if a:
-        if b:
-            if c:
-                if d:
-                    if e:
-                        if f:
-                            if g:
-                                return 1
-    return 0
-PY
-run_ratchet "$FIX"; check "een complexipy-exclude over het bestand houdt cognitief 28 rood" nonzero $?
-check_contains "de geëxcludeerde functie staat toch in de melding" "cognitief 28 > 25"
-rm -rf "$FIX"
-
-# --- 6. provenance (§6.1) ------------------------------------------------------
-run_hook() { # dir stdin -> zet OUT, geeft rc terug
-  OUT="$( printf '%s' "$2" | ( cd "$1" && bash scripts/hooks/pre-push-quality.sh origin "$REMOTE_URL" ) 2>&1 )"
-}
-
-FIX="$(make_fixture)"
-SHA="$(git -C "$FIX" rev-parse HEAD)"
-
-run_hook "$FIX" "refs/heads/main $SHA refs/heads/main $ZERO
-"
-check "de normale vorm (één ref, sha == HEAD, schone boom) is groen" zero $?
-
-run_hook "$FIX" "refs/heads/main $SHA refs/heads/main $ZERO
-refs/heads/other $SHA refs/heads/other $ZERO
-"
-check "meer dan één non-deletie-ref is rood" nonzero $?
-check_contains "de melding zegt waarom meerdere refs niet gaan" "meer dan één ref"
-
-run_hook "$FIX" "refs/heads/main $ZERO refs/heads/main $SHA
-"
-check "een ref-deletie wordt overgeslagen" zero $?
-
-OTHER="$(git -C "$FIX" rev-parse HEAD~0)"
-git -C "$FIX" commit -q --allow-empty -m "tweede commit"
-run_hook "$FIX" "refs/heads/main $OTHER refs/heads/main $ZERO
-"
-check "een gepushte sha die niet HEAD is, is rood" nonzero $?
-check_contains "de melding noemt beide sha's" "HEAD is"
-
-git -C "$FIX" reset -q --hard HEAD~1
-echo "# vuil" >> "$FIX/src/app.py"
-run_hook "$FIX" "refs/heads/main $SHA refs/heads/main $ZERO
-"
-check "een working tree die in src/ afwijkt is rood" nonzero $?
-check_contains "de melding noemt de afwijkende working tree" "wijkt af van"
-git -C "$FIX" checkout -q -- src/app.py
-
-# Bevinding 4: quality-baseline.toml bepaalt het oordeel, niet alleen src/ en
-# tests/. Een ongecommite bump zou de ruff-arm tegen opgehoogde getallen laten
-# meten terwijl de gepushte boom die bump niet draagt — provenance moet dat
-# ook op dit bestand toetsen, niet alleen op de gemeten code.
-echo "" >> "$FIX/quality-baseline.toml"
-run_hook "$FIX" "refs/heads/main $SHA refs/heads/main $ZERO
-"
-check "een working tree die in quality-baseline.toml afwijkt is rood" nonzero $?
-check_contains "de melding noemt quality-baseline.toml" "quality-baseline.toml"
-git -C "$FIX" checkout -q -- quality-baseline.toml
-
-touch "$FIX/rommel.txt"
-run_hook "$FIX" "refs/heads/main $SHA refs/heads/main $ZERO
-"
-check "ongerelateerde rommel buiten src/ en tests/ blokkeert niet" zero $?
-rm -f "$FIX/rommel.txt"
-
-touch "$FIX/src/nieuw.py"
-run_hook "$FIX" "refs/heads/main $SHA refs/heads/main $ZERO
-"
-check "een untracked .py onder src/ is rood" nonzero $?
-check_contains "de melding noemt het bestand" "src/nieuw.py"
-rm -f "$FIX/src/nieuw.py"
-
-# Lege stdin blijft rood — groen zou hier "niets te keuren" betekenen terwijl er
-# van alles de deur uit kan gaan. De melding noemt sinds die dag wél de oorzaak
-# die het vaakst klopt: git laat refs die hij zelf al afwees (non-fast-forward,
-# of niets te pushen) weg uit wat de hook op stdin krijgt. In de normale keten
-# vangt de dispatcher dit al af; deze aanroep gaat er rechtstreeks langs.
-run_hook "$FIX" ""
-check "lege stdin is rood" nonzero $?
-check_contains "de melding noemt nul ref-regels" "nul ref-regels op stdin"
-check_contains "de melding noemt git's eigen afwijzing als oorzaak" "git elke ref zelf al af"
-rm -rf "$FIX"
-
-# --- 7. pre-push draait geen suite meer (#806) --------------------------------
-# Hier hing tot #806 een coverage-arm: bij een src/- of tests/-wijziging draaide
-# de volle unit-suite mét coverage, ~3 minuten, het zwaarste dat de Beelink op
-# geheugen kent. Dat was een exact duplicaat van de CI `test`-job op dezelfde
-# machine (één self-hosted runner), en twee gelijktijdige pushes legden de host
-# om. De arm is eruit; CI beoordeelt de dekking op de PR. Wat hier gepind wordt
-# is dat hij niet stilletjes terugkomt.
-#
-# Het bewijs is positief, niet "de marker ontbreekt": deze fixture heeft geen
-# origin/main én geen tests/unit/-map, dus een teruggekeerde arm valt over wat
-# van die twee hij het eerst raakt — beide gegarandeerd rood. Wat de conclusie
-# draagt is de rc: die kan alleen 0 zijn omdat `ratchet.py ruff` het laatste
-# commando is. check_not_contains eronder zegt alleen wélke arm het was als het
-# toch misgaat; hij draagt de conclusie niet alleen.
-FIX="$(make_fixture)"
-echo "# losse notitie" > "$FIX/NOTES.md"
-git -C "$FIX" add NOTES.md
-git -C "$FIX" commit -qm "alleen een markdownbestand"
-SHA="$(git -C "$FIX" rev-parse HEAD)"
-run_hook "$FIX" "refs/heads/main $SHA refs/heads/main $ZERO
-"
-check "een push die src/ noch tests/ raakt is groen" zero $?
-
-cat >> "$FIX/src/app.py" <<'PY'
+def _chain(noqa: str = "") -> str:
+    """19 elif branches plus the if: ruff 0.16.4 counts cyclomatic 21."""
+    lines = [f"\n\ndef chain(x: int) -> int:{noqa}", "    if x == 0:", "        return 0"]
+    for i in range(1, 20):
+        lines += [f"    elif x == {i}:", f"        return {i}"]
+    lines.append("    return -1\n")
+    return "\n".join(lines)
 
 
-def touched() -> int:
-    return 1
-PY
-git -C "$FIX" add src/app.py
-git -C "$FIX" commit -qm "raakt src/"
-SHA="$(git -C "$FIX" rev-parse HEAD)"
-run_hook "$FIX" "refs/heads/main $SHA refs/heads/main $ZERO
-"
-check "een push die src/ WEL raakt is óók groen — er draait geen suite meer" zero $?
-check_not_contains "en de suite is aantoonbaar niet gestart" "de suite faalt"
-rm -rf "$FIX"
-
-# --- 8. de gate heeft geen basis-ref meer nodig -------------------------------
-# De merge-base tegen origin/main bestond alleen om de coverage-diff te kunnen
-# bepalen. Zonder die arm mag een repo die origin/main helemaal niet kent gewoon
-# groen pushen — vóór #806 was dat rood met "geen merge-base met origin/main".
-# Deze fixture zet dat ref bewust niet (net als §7 hierboven). Dit geval is
-# verder identiek aan het tweede geval van §7; zijn enige eigen waarde is de
-# string-pin op "geen merge-base" — bewust geen dubbeling om weg te gooien.
-FIX="$(make_fixture)"
-cat >> "$FIX/src/app.py" <<'PY'
+def _fixture(tmp_path: Path) -> Path:
+    """A miniature repository with core and python installed, the pins, a baseline at
+    the level of the fixture, `src/` and `tests/`: an INSERTED violation is the only rise."""
+    root = tmp_path / "fixture"
+    install_pack("python", root)
+    (root / ".ruff-version").write_text("0.16.4\n")
+    (root / ".complexipy-version").write_text("8.0.1\n")
+    (root / "pyproject.toml").write_text(PYPROJECT)
+    (root / "quality-baseline.toml").write_text(BASELINE)
+    (root / "src").mkdir()
+    (root / "tests").mkdir()
+    (root / "src" / "app.py").write_text(APP)
+    (root / "tests" / "test_app.py").write_text(TEST_APP)
+    git(root, "init", "-q", "-b", "main")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "clean fixture")
+    return root
 
 
-def also_touched() -> int:
-    return 2
-PY
-git -C "$FIX" add src/app.py
-git -C "$FIX" commit -qm "raakt src/, zonder origin/main"
-SHA="$(git -C "$FIX" rev-parse HEAD)"
-run_hook "$FIX" "refs/heads/main $SHA refs/heads/main $ZERO
-"
-check "een src/-push zonder origin/main is groen" zero $?
-check_not_contains "en noemt geen merge-base meer" "geen merge-base"
-rm -rf "$FIX"
+def _ratchet(root: Path) -> subprocess.CompletedProcess:
+    result = subprocess.run(
+        ["python3", ".lighthouse/scripts/quality/ratchet.py", "ruff"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        env=dict(os.environ, **GIT_ENV, LIGHTHOUSE_REPO_ROOT=str(root)),
+        check=False,
+    )
+    # A run writes its complexipy output and cache to a temporary directory.
+    litter = subprocess.run(
+        ["git", "-C", str(root), "status", "--porcelain", "--ignored"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert "complexipy" not in litter, litter
+    return result
 
-if [ "$failures" -eq 0 ]; then
-  echo "OK"; exit 0
-fi
-echo "FAIL ($failures failing check(s))"; exit 1
+
+def _append(root: Path, text: str) -> None:
+    with (root / "src" / "app.py").open("a") as f:
+        f.write(text)
+
+
+@pytest.fixture
+def fixture(tmp_path) -> Path:
+    return _fixture(tmp_path)
+
+
+def test_a_clean_tree_is_green_and_deterministic(fixture):
+    first = _ratchet(fixture)
+    assert first.returncode == 0, first.stdout + first.stderr
+    assert "complexipy ok (0 functions cognitive > 15)" in first.stdout
+    assert not (fixture / "complexipy-results.json").exists()
+    assert not (fixture / ".complexipy_cache").exists()
+    second = _ratchet(fixture)
+    assert (first.stdout, first.stderr) == (second.stdout, second.stderr)
+
+
+def test_a_new_try_except_pass_is_red(fixture):
+    _append(fixture, "\n\ndef swallow() -> None:\n    try:\n        add(1, 2)\n    except Exception:\n        pass\n")
+    result = _ratchet(fixture)
+    assert result.returncode != 0
+    assert "S110: 0 -> 1" in result.stderr
+
+
+def test_a_bare_except_is_a_zero_rule_hit(fixture):
+    # `except:\n    raise` does not count as E722 in ruff 0.16.4; `pass` in the body does.
+    _append(fixture, "\n\ndef bare() -> None:\n    try:\n        add(1, 2)\n    except:\n        pass\n")
+    result = _ratchet(fixture)
+    assert result.returncode != 0
+    assert "E722" in result.stderr
+    assert "no bump" in result.stderr
+
+
+def test_a_noqa_does_not_lower_the_counter(fixture):
+    _append(
+        fixture,
+        "\n\ndef swallow() -> None:\n    try:\n        add(1, 2)\n    except Exception:  # noqa: S110\n        pass\n",
+    )
+    result = _ratchet(fixture)
+    assert result.returncode != 0
+    assert "S110: 0 -> 1" in result.stderr
+
+
+def test_cognitive_21_raises_the_counter(fixture):
+    _append(fixture, NESTED_21)
+    result = _ratchet(fixture)
+    assert result.returncode != 0
+    assert "cognitive_over_15: 0 -> 1" in result.stderr
+    assert "src/app.py::nested" in result.stderr
+
+
+def test_cyclomatic_21_with_noqa_is_red(fixture):
+    _append(fixture, _chain("  # noqa: C901"))
+    result = _ratchet(fixture)
+    assert result.returncode != 0
+    assert "cyclomatic 21 > 20" in result.stderr
+    assert "no bump" in result.stderr
+
+
+def test_a_higher_mccabe_threshold_keeps_cyclomatic_21_red(fixture):
+    with (fixture / "pyproject.toml").open("a") as f:
+        f.write("\n[tool.ruff.lint.mccabe]\nmax-complexity = 25\n")
+    baseline = (fixture / "quality-baseline.toml").read_text()
+    baseline = baseline.replace("C901   = 0", "C901   = 1").replace(
+        "cognitive_over_15 = 0", "cognitive_over_15 = 1"
+    )
+    (fixture / "quality-baseline.toml").write_text(baseline)
+    git(fixture, "commit", "-qam", "mccabe threshold 25, counters at 1")
+    _append(fixture, _chain())
+    result = _ratchet(fixture)
+    assert result.returncode != 0
+    assert "cyclomatic 21 > 20" in result.stderr
+
+
+def test_cognitive_28_with_noqa_is_red(fixture):
+    _append(fixture, NESTED_28.format(noqa="  # noqa: complexipy"))
+    result = _ratchet(fixture)
+    assert result.returncode != 0
+    assert "cognitive 28 > 25" in result.stderr
+    assert "src/app.py::nested" in result.stderr
+
+
+def test_a_complexipy_exclude_keeps_cognitive_28_red(fixture):
+    with (fixture / "pyproject.toml").open("a") as f:
+        f.write('\n[tool.complexipy]\nexclude = ["app.py", "src/app.py"]\n')
+    (fixture / "complexipy.toml").write_text('exclude = ["app.py", "src/app.py"]\n')
+    shutil.copyfile(fixture / "complexipy.toml", fixture / ".complexipy.toml")
+    git(fixture, "add", "-A")
+    git(fixture, "commit", "-qm", "complexipy exclude")
+    _append(fixture, NESTED_28.format(noqa=""))
+    result = _ratchet(fixture)
+    assert result.returncode != 0
+    assert "cognitive 28 > 25" in result.stderr
+
+
+def test_lint_dirs_from_config(fixture):
+    """A violation outside python.lint_dirs is not counted; inside it is."""
+    (fixture / "lib").mkdir()
+    (fixture / "lib" / "m.py").write_text(
+        "def swallow() -> None:\n    try:\n        pass\n    except Exception:\n        pass\n"
+    )
+    assert _ratchet(fixture).returncode == 0
+    with (fixture / "lighthouse.toml").open("a") as f:
+        f.write('\n[python]\nlint_dirs = ["src", "tests", "lib"]\n')
+    result = _ratchet(fixture)
+    assert result.returncode != 0
+    assert "S110: 0 -> 1" in result.stderr

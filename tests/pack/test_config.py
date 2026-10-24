@@ -713,6 +713,7 @@ def test_runs_as_file(tmp_path):
     [
         ("python.source_dirs", "src\n"),
         ("python.lint_dirs", "src\ntests\n"),
+        ("python.coverage_command", "uv run pytest -q\n"),
     ],
 )
 def test_python_defaults(cfg_env, capsys, key, out):
@@ -720,7 +721,9 @@ def test_python_defaults(cfg_env, capsys, key, out):
     assert capsys.readouterr().out == out
 
 
-@pytest.mark.parametrize("line", ['source_dirs = "src"', "lint_dirs = [1]"])
+@pytest.mark.parametrize(
+    "line", ['source_dirs = "src"', "lint_dirs = [1]", 'coverage_command = ["uv"]']
+)
 def test_python_wrong_type_is_rc_2(tmp_path, monkeypatch, capsys, line):
     path = tmp_path / "lighthouse.toml"
     path.write_text(_render(VALID) + f"\n[python]\n{line}\n")

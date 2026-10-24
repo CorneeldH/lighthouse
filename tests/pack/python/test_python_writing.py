@@ -16,8 +16,18 @@ CLAUDE = SKILL_DIR / "claude" / "SKILL.md"
 AGENTS = SKILL_DIR / "agents" / "SKILL.md"
 VARIANTS = (CLAUDE, AGENTS)
 
-# The section `ratchet.py` sends a developer to when a function is over a hard limit.
-COMPLEXITY_HEADING = "## Reaching a complexity limit: deepen, don't split"
+RATCHET = SKILL_DIR.parents[1] / "scripts" / "quality" / "ratchet.py"
+
+
+def _complexity_heading() -> str:
+    """The section `ratchet.py` sends a developer to when a function is over a hard
+    limit: the heading in `COMPLEXITY_SKILL`."""
+    match = re.search(r"COMPLEXITY_SKILL = \((.*?)\)", RATCHET.read_text(encoding="utf-8"), re.S)
+    assert match, "COMPLEXITY_SKILL not found in ratchet.py"
+    text = "".join(re.findall(r'"([^"]*)"', match.group(1)))
+    heading = re.search(r"`(## [^`]+)`", text)
+    assert heading, text
+    return heading.group(1)
 
 
 def _frontmatter(path: Path) -> str:
@@ -91,7 +101,7 @@ def test_ratchet_by_path():
 def test_complexity_heading_matches_ratchet():
     for path in VARIANTS:
         lines = path.read_text(encoding="utf-8").splitlines()
-        assert COMPLEXITY_HEADING in lines, path
+        assert _complexity_heading() in lines, path
 
 
 def test_ruff_pin_from_file():

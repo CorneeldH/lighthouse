@@ -100,6 +100,7 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "project.skill_prefix": _STR,
         "python.source_dirs": _STRS,
         "python.lint_dirs": _STRS,
+        "python.coverage_command": _STR,
     }
 )
 
@@ -133,6 +134,7 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
         "project.instructions_word_ceiling": 3000,
         "python.source_dirs": ("src",),
         "python.lint_dirs": ("src", "tests"),
+        "python.coverage_command": "uv run pytest -q",
     }
 )
 

@@ -223,3 +223,28 @@ new = true
 [[file]]
 path = "pack/python/requires.toml"
 new = true
+
+[[file]]
+path = "pack/python/scripts/quality/__init__.py"
+source_path = "scripts/quality/__init__.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/baseline.py"
+source_path = "scripts/quality/baseline.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/diffcov.py"
+source_path = "scripts/quality/diffcov.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/gitenv.py"
+source_path = "scripts/quality/gitenv.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/ratchet.py"
+source_path = "scripts/quality/ratchet.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

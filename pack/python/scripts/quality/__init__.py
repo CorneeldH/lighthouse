@@ -1,5 +1,4 @@
-"""Kwaliteitsratel: blokkeert groei van lint-schuld en ongeteste code, niet de bestaande stand.
+"""Quality ratchet: blocks growth of lint debt and untested code, not the existing level.
 
-Ontwerp: docs/developer/planning/specs/2026-08-23-kwaliteitsratel-design.md
-Gebruik: docs/developer/kwaliteitsratel.md
+Run it as `python3 .lighthouse/scripts/quality/ratchet.py`; see the docstring there.
 """

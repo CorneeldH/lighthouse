@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Kwaliteitsratel — telt ruff-regels en beoordeelt diff-coverage.
+"""Quality ratchet — counts ruff rules and complexity, and judges diff coverage.
 
-Aanroepvorm, overal letterlijk identiek (§2.2 van het ontwerp):
+Usage:
 
-    uv run python scripts/quality/ratchet.py ruff
-    uv run python scripts/quality/ratchet.py show
-    uv run python scripts/quality/ratchet.py coverage --base origin/main
-    uv run python scripts/quality/ratchet.py coverage --report coverage.json
-    uv run python scripts/quality/ratchet.py nightly --report coverage.json
-    uv run python scripts/quality/ratchet.py nightly --report coverage.json --since SHA --min-diff-pct 90 --dry-run
+    python3 .lighthouse/scripts/quality/ratchet.py ruff
+    python3 .lighthouse/scripts/quality/ratchet.py show
+    python3 .lighthouse/scripts/quality/ratchet.py tighten
+    python3 .lighthouse/scripts/quality/ratchet.py coverage [--base REF] [--report coverage.json]
+    python3 .lighthouse/scripts/quality/ratchet.py nightly --report coverage.json [--since SHA] [--min-diff-pct 90] [--dry-run]
 
-Geen console-script in pyproject.toml: een `ratchet`-executable zou een
-installatiestap eisen die een git-hook niet kan garanderen.
+The directories come from lighthouse.toml: python.lint_dirs (ruff, complexipy),
+python.source_dirs (coverage) and python.coverage_command (the suite). The base of
+`coverage` defaults to origin/<forge.default_branch>.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -33,6 +34,12 @@ from types import ModuleType
 _SCRIPTS = Path(__file__).resolve().parents[1]
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
+# `.lighthouse/lib` next to `.lighthouse/scripts` (ontwerpkeuze 6 van (b)).
+_LIB = Path(__file__).resolve().parents[2] / "lib"
+if _LIB.is_dir() and str(_LIB) not in sys.path:
+    sys.path.insert(0, str(_LIB))
+
+from lighthouse_lib import config
 
 from quality import diffcov
 from quality.baseline import (
@@ -66,6 +73,8 @@ COGNITIVE_COUNTER_THRESHOLD = 15
 # met een noqa-comment. Een score gelijk aan de grens is groen, strikt erboven rood.
 CYCLOMATIC_LIMIT = 20
 COGNITIVE_LIMIT = 25
+# De markering in de foutregel van een harde grens; `_failure_footer` herkent hem.
+HARD_LIMIT_MARK = "hard limit, no bump possible"
 
 # ruff draagt de cyclomatische score in het bericht van elke C901-bevinding:
 # `f` is too complex (22 > 10). ruff meldt alleen functies boven de drempel, dus
@@ -78,15 +87,27 @@ C901_NAME = re.compile(r"`([^`]+)`")
 
 
 def repo_root() -> Path:
-    proc = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise SystemExit("ratchet: geen git-repo gevonden vanaf de huidige map")
-    return Path(proc.stdout.strip())
+    """LIGHTHOUSE_REPO_ROOT, anders `git rev-parse --show-toplevel`."""
+    try:
+        return config.repo_root()
+    except config.ConfigError as exc:
+        raise SystemExit(f"ratchet: {exc}") from exc
+
+
+def setting(key: str) -> object:
+    """Een sleutel uit lighthouse.toml, met de default van de configlezer."""
+    try:
+        return config.lookup(config.load(config.config_path()), key)
+    except config.ConfigError as exc:
+        raise SystemExit(f"ratchet: {exc}") from exc
+    except KeyError as exc:
+        raise SystemExit(f"ratchet: {key} is not set in lighthouse.toml") from exc
+
+
+def _dirs(key: str) -> list[str]:
+    value = setting(key)
+    assert isinstance(value, list)  # de configlezer controleert het type
+    return [str(item) for item in value]
 
 
 def _read_pin(root: Path, name: str) -> str:
@@ -104,9 +125,9 @@ def _read_pin(root: Path, name: str) -> str:
     try:
         pin = (root / name).read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise SystemExit(f"ratchet: {name} onleesbaar: {exc}") from exc
+        raise SystemExit(f"ratchet: {name} is unreadable: {exc}") from exc
     if not re.fullmatch(r"\d+\.\d+\.\d+", pin):
-        raise SystemExit(f"ratchet: {name} bevat geen versie: {pin!r}")
+        raise SystemExit(f"ratchet: {name} holds no version: {pin!r}")
     return pin
 
 
@@ -145,22 +166,21 @@ def _ruff_findings(root: Path) -> list[dict]:
         ",".join(ALL_RULES),
         "--config",
         f"lint.mccabe.max-complexity={C901_THRESHOLD}",
-        "src/",
-        "tests/",
+        *_dirs("python.lint_dirs"),
     ]
     proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, check=False)
     # ruff geeft 0 (schoon) of 1 (bevindingen); al het andere is "de tool kon
     # niet draaien" en dat is rood, niet groen. Fail closed (§7).
     if proc.returncode not in (0, 1):
         raise SystemExit(
-            f"ratchet: ruff@{version} kon niet draaien (rc={proc.returncode}) — "
-            f"de pin resolvet niet.\n{proc.stderr}"
+            f"ratchet: ruff@{version} could not run (rc={proc.returncode}) — the pin "
+            f"does not resolve, or a directory in python.lint_dirs does not exist.\n{proc.stderr}"
         )
     try:
         return json.loads(proc.stdout or "[]")
     except ValueError as exc:
         raise SystemExit(
-            f"ratchet: ruff-uitvoer niet te lezen: {exc}\n{proc.stderr}"
+            f"ratchet: ruff output is unreadable: {exc}\n{proc.stderr}"
         ) from exc
 
 
@@ -182,8 +202,8 @@ def _c901_score(finding: dict, location: str) -> tuple[str, int]:
     match = C901_SCORE.search(message)
     if match is None:
         raise SystemExit(
-            f"ratchet: de C901-score is onleesbaar op {location}: {message!r} — "
-            "het berichtformaat van ruff is veranderd, pas C901_SCORE aan."
+            f"ratchet: the C901 score is unreadable at {location}: {message!r} — "
+            "ruff changed its message format; adjust C901_SCORE."
         )
     name = C901_NAME.search(message)
     return f"{location} {name.group(1) if name else '?'}", int(match.group(1))
@@ -221,8 +241,8 @@ def count_ruff(
     if invalid_syntax_files:
         names = "\n".join(f"  {name}" for name in sorted(set(invalid_syntax_files)))
         raise SystemExit(
-            "ratchet: ruff kon deze bestanden niet parsen (invalid-syntax) — de "
-            "telling erin is onbetrouwbaar, dus rood in plaats van stil groen:\n"
+            "ratchet: ruff could not parse these files (invalid-syntax) — the "
+            "count in them is unreliable, so red instead of silently green:\n"
             f"{names}"
         )
     return counts, where, cyclomatic
@@ -243,7 +263,7 @@ def _complexipy_entry(entry: object, version: str) -> tuple[str, int]:
         if isinstance(path, str) and isinstance(name, str) and type(score) is int:
             return f"{path}::{name}", score
     raise SystemExit(
-        f"ratchet: complexipy@{version} gaf een onleesbaar element: {entry!r}"
+        f"ratchet: complexipy@{version} gave an unreadable element: {entry!r}"
     )
 
 
@@ -258,10 +278,10 @@ def _complexipy_scores(output: Path, version: str) -> list[tuple[str, int]]:
         data = json.loads(output.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise SystemExit(
-            f"ratchet: complexipy@{version} schreef geen leesbare uitvoer: {exc}"
+            f"ratchet: complexipy@{version} wrote no readable output: {exc}"
         ) from exc
     if not isinstance(data, list):
-        raise SystemExit(f"ratchet: complexipy@{version} gaf geen lijst: {data!r:.200}")
+        raise SystemExit(f"ratchet: complexipy@{version} gave no list: {data!r:.200}")
     return [_complexipy_entry(entry, version) for entry in data]
 
 
@@ -290,8 +310,7 @@ def count_complexipy(root: Path) -> list[tuple[str, int]]:
         cmd = [
             "uvx",
             f"complexipy@{version}",
-            str(root / "src"),
-            str(root / "tests"),
+            *(str(root / d) for d in _dirs("python.lint_dirs")),
             "--no-ignore",
             "--plain",
             "--max-complexity-allowed",
@@ -308,13 +327,13 @@ def count_complexipy(root: Path) -> list[tuple[str, int]]:
         if failed:
             names = "\n".join(f"  {name}" for name in failed)
             raise SystemExit(
-                f"ratchet: complexipy@{version} kon deze bestanden niet verwerken — "
-                "de telling erin is onbetrouwbaar, dus rood in plaats van stil "
-                f"groen:\n{names}"
+                f"ratchet: complexipy@{version} could not process these files — "
+                "the count in them is unreliable, so red instead of silently "
+                f"green:\n{names}"
             )
         if proc.returncode != 0:
             raise SystemExit(
-                f"ratchet: complexipy@{version} kon niet draaien "
+                f"ratchet: complexipy@{version} could not run "
                 f"(rc={proc.returncode}).\n{proc.stderr}"
             )
         return [
@@ -350,11 +369,11 @@ def _hard_limit_failures(
     """Eén foutregel per functie boven de harde grens, hoogstens MAX_LOCATIONS."""
     over = _over_limit(scores, limit)
     lines = [
-        f"{axis} {score} > {limit}: {name} — harde grens, geen bump mogelijk"
+        f"{axis} {score} > {limit}: {name} — {HARD_LIMIT_MARK}"
         for name, score in over[:MAX_LOCATIONS]
     ]
     if len(over) > MAX_LOCATIONS:
-        lines.append(f"… en nog {len(over) - MAX_LOCATIONS}")
+        lines.append(f"… and {len(over) - MAX_LOCATIONS} more")
     return lines
 
 
@@ -369,12 +388,12 @@ def judge_complexity(
     cognitief 25; geen baseline, geen bump) en de teller `cognitive_over_15`,
     die niet mag stijgen.
     """
-    failures = _hard_limit_failures("cyclomatisch", cyclomatic, CYCLOMATIC_LIMIT)
-    failures += _hard_limit_failures("cognitief", cognitive, COGNITIVE_LIMIT)
+    failures = _hard_limit_failures("cyclomatic", cyclomatic, CYCLOMATIC_LIMIT)
+    failures += _hard_limit_failures("cognitive", cognitive, COGNITIVE_LIMIT)
     over = _over_threshold(cognitive)
     base = baseline.cognitive_over_15
     now = len(over)
-    where = {COMPLEXIPY_KEY: [f"{name} (cognitief {score})" for name, score in over]}
+    where = {COMPLEXIPY_KEY: [f"{name} (cognitive {score})" for name, score in over]}
     notes: list[str] = []
     if now > base:
         failures.append(
@@ -382,7 +401,7 @@ def judge_complexity(
             + _locations(where, COMPLEXIPY_KEY)
         )
     elif now < base:
-        notes.append(f"{COMPLEXIPY_KEY}: {base} -> {now}; de baseline kan omlaag")
+        notes.append(f"{COMPLEXIPY_KEY}: {base} -> {now}; the baseline can go down")
     return failures, notes
 
 
@@ -390,7 +409,7 @@ def _locations(where: dict[str, list[str]], rule: str) -> str:
     hits = where.get(rule, [])
     shown = "\n".join(f"    {hit}" for hit in hits[:MAX_LOCATIONS])
     if len(hits) > MAX_LOCATIONS:
-        shown += f"\n    … en nog {len(hits) - MAX_LOCATIONS}"
+        shown += f"\n    … and {len(hits) - MAX_LOCATIONS} more"
     return shown
 
 
@@ -403,7 +422,7 @@ def compare(
     for rule in ZERO_RULES:
         if counts.get(rule):
             failures.append(
-                f"{rule}: {counts[rule]} hit(s) op een nulregel — geen bump mogelijk\n"
+                f"{rule}: {counts[rule]} hit(s) on a zero rule — no bump possible\n"
                 + _locations(where, rule)
             )
     for rule in COUNTED_RULES:
@@ -416,22 +435,20 @@ def compare(
         elif now < base:
             # Zonder deze melding zakt de streep nooit en is de ratel
             # eenrichtingsverkeer dat vastroest op de openingsstand (§3.4).
-            notes.append(f"{rule}: {base} -> {now}; de baseline kan omlaag")
+            notes.append(f"{rule}: {base} -> {now}; the baseline can go down")
     return failures, notes
 
 
-# Dezelfde selectie als .claude/hooks/pre-commit-tests.sh en als ci.yml, zodat
-# "lokaal groen" en "CI groen" hetzelfde betekenen.
-COVERAGE_ARGV = [
-    "uv",
-    "run",
-    "pytest",
-    "tests/unit",
-    "-m",
-    "not slow and not hardware_audio",
-    "--cov=src",
-    "--cov-report=json:coverage.json",
-]
+def coverage_argv() -> list[str]:
+    """De suite met coverage: python.coverage_command, met de --cov-vlaggen uit
+    python.source_dirs erachter. Geen shell: het commando wordt met shlex gesplitst."""
+    command = setting("python.coverage_command")
+    assert isinstance(command, str)
+    return [
+        *shlex.split(command),
+        *(f"--cov={d}" for d in _dirs("python.source_dirs")),
+        "--cov-report=json:coverage.json",
+    ]
 
 
 def _git(root: Path, args: list[str]) -> str:
@@ -439,7 +456,7 @@ def _git(root: Path, args: list[str]) -> str:
         ["git", *args], cwd=root, capture_output=True, text=True, check=False
     )
     if proc.returncode != 0:
-        raise SystemExit(f"ratchet: `git {' '.join(args)}` faalde:\n{proc.stderr}")
+        raise SystemExit(f"ratchet: `git {' '.join(args)}` failed:\n{proc.stderr}")
     return proc.stdout
 
 
@@ -453,8 +470,8 @@ def _merge_base(root: Path, base_ref: str) -> str:
     )
     if proc.returncode != 0:
         raise SystemExit(
-            f"ratchet: geen merge-base tussen HEAD en {base_ref}. "
-            f"Draai `git fetch origin main` en probeer opnieuw.\n{proc.stderr}"
+            f"ratchet: no merge base between HEAD and {base_ref}. "
+            f"Fetch {base_ref} (git fetch) and try again.\n{proc.stderr}"
         )
     return proc.stdout.strip()
 
@@ -467,12 +484,12 @@ def judge_coverage(baseline: Baseline, result: diffcov.DiffCoverage) -> list[str
         return []
     lines = [
         (
-            f"diff-coverage {result.pct:.1f}% < {baseline.min_diff_pct}% "
-            f"({result.covered}/{result.total} gewijzigde statements gedekt)"
+            f"diff coverage {result.pct:.1f}% < {baseline.min_diff_pct}% "
+            f"({result.covered}/{result.total} changed statements covered)"
         )
     ]
     for path, numbers in sorted(result.uncovered.items()):
-        lines.append(f"  {path}: ongedekt op {', '.join(str(n) for n in numbers)}")
+        lines.append(f"  {path}: uncovered at {', '.join(str(n) for n in numbers)}")
     return lines
 
 
@@ -489,18 +506,17 @@ def _acquire_report(root: Path, report_arg: str | None) -> tuple[Path | None, in
         # Een coverage.json van een eerdere, gecrashte run zou stille groene
         # getallen geven op verouderde data. Weghalen vóór de run.
         report.unlink(missing_ok=True)
-        proc = subprocess.run(COVERAGE_ARGV, cwd=root, check=False, env=suite_env())
+        proc = subprocess.run(coverage_argv(), cwd=root, check=False, env=suite_env())
         if proc.returncode != 0:
             print(
-                "ratchet: de suite faalt — een groene ratel op een rode suite is "
-                "een leugen.",
+                "ratchet: the suite fails — a green ratchet on a red suite is a lie.",
                 file=sys.stderr,
             )
             return None, proc.returncode
         if not report.exists():
             print(
-                "ratchet: pytest gaf 0 maar er is geen coverage.json; het rapport "
-                "is niet geschreven.",
+                "ratchet: the suite returned 0 but there is no coverage.json; the "
+                "report was not written.",
                 file=sys.stderr,
             )
             return None, 1
@@ -510,7 +526,7 @@ def _acquire_report(root: Path, report_arg: str | None) -> tuple[Path | None, in
     if not report.is_absolute():
         report = root / report
     if not report.exists():
-        print(f"ratchet: {report} ontbreekt", file=sys.stderr)
+        print(f"ratchet: {report} is missing", file=sys.stderr)
         return None, 1
     return report, 0
 
@@ -526,8 +542,8 @@ def judge_total(baseline: Baseline, total_pct: float) -> list[str]:
     if total_pct >= baseline.min_total_pct:
         return []
     return [
-        f"globale src-dekking {total_pct:.2f}% < {baseline.min_total_pct}% — "
-        "de vloer is een gemeten stand, geen streefgetal; hij mag niet zakken"
+        f"total coverage {total_pct:.2f}% < {baseline.min_total_pct}% — "
+        "the floor is a measured level, not a target; it may not drop"
     ]
 
 
@@ -535,7 +551,10 @@ def cmd_coverage(root: Path, base_ref: str, report_arg: str | None) -> int:
     baseline = load(root / BASELINE_NAME, root)
     merge_base = _merge_base(root, base_ref)
     added = diffcov.added_lines(
-        _git(root, ["diff", "--unified=0", f"{merge_base}..HEAD", "--", "src/"])
+        _git(
+            root,
+            ["diff", "--unified=0", f"{merge_base}..HEAD", "--", *_dirs("python.source_dirs")],
+        )
     )
 
     report, rc = _acquire_report(root, report_arg)
@@ -545,7 +564,7 @@ def cmd_coverage(root: Path, base_ref: str, report_arg: str | None) -> int:
     try:
         data = json.loads(report.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        print(f"ratchet: {report} is onleesbaar: {exc}", file=sys.stderr)
+        print(f"ratchet: {report} is unreadable: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -566,19 +585,19 @@ def cmd_coverage(root: Path, base_ref: str, report_arg: str | None) -> int:
         for line in failures:
             print(f"ratchet: {line}", file=sys.stderr)
         print(
-            "\nSchrijf een test die deze regels raakt. Kan de code hier echt niet "
-            "draaien, gebruik dan `# pragma: no cover` met een reden, per blok.",
+            "\nWrite a test that hits these lines. If the code really cannot run "
+            "here, use `# pragma: no cover` with a reason, per block.",
             file=sys.stderr,
         )
         return 1
-    print(f"ratchet: globale src-dekking {total_pct:.2f}% >= {baseline.min_total_pct}%")
+    print(f"ratchet: total coverage {total_pct:.2f}% >= {baseline.min_total_pct}%")
     if result.total == 0:
         print(
-            "ratchet: geen uitvoerbare gewijzigde regels — coverage niet van toepassing"
+            "ratchet: no executable changed lines — coverage does not apply"
         )
         return 0
     print(
-        f"ratchet: diff-coverage {result.pct:.1f}% >= {baseline.min_diff_pct}% "
+        f"ratchet: diff coverage {result.pct:.1f}% >= {baseline.min_diff_pct}% "
         f"({result.covered}/{result.total})"
     )
     return 0
@@ -596,7 +615,7 @@ def _run_url() -> str | None:
 
 def _pr_report_line(pr: int, result: diffcov.DiffCoverage) -> str:
     if result.total == 0:
-        return f"ratchet: PR #{pr} geen uitvoerbare src/-regels"
+        return f"ratchet: PR #{pr} no executable source lines"
     return f"ratchet: PR #{pr} {result.pct:.1f}% ({result.covered}/{result.total})"
 
 
@@ -620,23 +639,23 @@ def _remediate_pr(
 
     Een fout uit `ensure_issue`/`ensure_handoff` gooit door naar de
     aanroeper, die hem generiek meldt. Alleen de `ensure_on_board`-fout wordt
-    hier lokaal gevangen, zodat de melding `PAIA_BOARD_TOKEN` met naam noemt
+    hier lokaal gevangen, zodat de melding het board-token met naam noemt
     in plaats van alleen de rauwe gh-foutmelding (bevinding 4).
     """
     if dry_run:
-        print(f"ratchet: PR #{pr}: --dry-run, zou issue/handoff/board bijwerken")
+        print(f"ratchet: PR #{pr}: --dry-run, would update issue/handoff/board")
         return False
     action = prcov_issues.ensure_issue(gh, pr, result, threshold, run_url)
     if action is None:
-        print(f"ratchet: PR #{pr}: al afgehandeld (gesloten issue)")
+        print(f"ratchet: PR #{pr}: already handled (closed issue)")
         return False
     _, issue_number, issue_url = action
     prcov_issues.ensure_handoff(gh, issue_number, pr, threshold)
     token = os.environ.get(prcov_issues.BOARD_TOKEN_ENV, "")
     if not token:
         print(
-            f"ratchet: PR #{pr}: {prcov_issues.BOARD_TOKEN_ENV} ontbreekt of is leeg "
-            "— geen board-aanroep, issue en handoff staan er wel",
+            f"ratchet: PR #{pr}: {prcov_issues.BOARD_TOKEN_ENV} is missing or empty "
+            "— no board call; the issue and the handoff are there",
             file=sys.stderr,
         )
         return True
@@ -650,8 +669,8 @@ def _remediate_pr(
         KeyError,
     ) as exc:
         print(
-            f"ratchet: PR #{pr}: board-stap faalde "
-            f"({prcov_issues.BOARD_TOKEN_ENV} mag niet schrijven?): {exc}",
+            f"ratchet: PR #{pr}: the board step failed "
+            f"(may {prcov_issues.BOARD_TOKEN_ENV} not write?): {exc}",
             file=sys.stderr,
         )
         return True
@@ -688,7 +707,7 @@ def cmd_nightly(
     try:
         data = json.loads(report_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
-        print(f"ratchet: {report_path} is onleesbaar: {exc}", file=sys.stderr)
+        print(f"ratchet: {report_path} is unreadable: {exc}", file=sys.stderr)
         return 1
 
     if since is not None:
@@ -703,7 +722,7 @@ def cmd_nightly(
             ValueError,
             KeyError,
         ) as exc:
-            print(f"ratchet: watermerk niet te bepalen: {exc}", file=sys.stderr)
+            print(f"ratchet: the watermark cannot be determined: {exc}", file=sys.stderr)
             return 1
     try:
         commits = prcov.select_commits(root, watermark)
@@ -867,10 +886,10 @@ def cmd_tighten(root: Path) -> int:
         # Fail closed: bij een rode gate is de stand geen "nieuwe streep" maar
         # een probleem. Het bestand aanraken zou de stijging wegpoetsen.
         print(
-            "ratchet: de gate staat rood (gestegen: "
-            f"{risen or '-'}, nulregelhits: {zero_hits or '-'}, "
-            f"boven een harde grens: {hard_hits}) — "
-            "eerst oplossen, dan pas verlagen.",
+            "ratchet: the gate is red (risen: "
+            f"{risen or '-'}, zero-rule hits: {zero_hits or '-'}, "
+            f"above a hard limit: {hard_hits}) — "
+            "fix that first, then lower.",
             file=sys.stderr,
         )
         return 1
@@ -881,10 +900,10 @@ def cmd_tighten(root: Path) -> int:
     total_pct: float | None = None
     report = root / "coverage.json"
     if not report.exists():
-        proc = subprocess.run(COVERAGE_ARGV, cwd=root, check=False, env=suite_env())
+        proc = subprocess.run(coverage_argv(), cwd=root, check=False, env=suite_env())
         if proc.returncode != 0:
             print(
-                "ratchet: de suite faalt — de dekkingsvloer blijft ongemoeid.",
+                "ratchet: the suite fails — the coverage floor stays as it is.",
                 file=sys.stderr,
             )
             return proc.returncode
@@ -896,16 +915,16 @@ def cmd_tighten(root: Path) -> int:
                 ]
             )
         except (OSError, ValueError, KeyError, TypeError) as exc:
-            print(f"ratchet: coverage.json onbruikbaar: {exc}", file=sys.stderr)
+            print(f"ratchet: coverage.json is unusable: {exc}", file=sys.stderr)
             return 1
 
     text = path.read_text(encoding="utf-8")
     new_text, changes = rewrite_baseline(text, counts, total_pct, cognitive)
     if not changes:
-        print("ratchet: niets aan te scherpen — de baseline staat op de meting.")
+        print("ratchet: nothing to tighten — the baseline is at the measurement.")
         return 0
     path.write_text(new_text, encoding="utf-8")
-    print("ratchet: baseline aangescherpt:")
+    print("ratchet: baseline tightened:")
     for change in changes:
         print(f"  {change}")
     return 0
@@ -923,10 +942,9 @@ def _report_failures(heading: str, failures: list[str]) -> None:
 # Een stijgende teller (`S110: 0 -> 1`, `cognitive_over_15: 107 -> 108`) is de
 # enige fout die een bump kan oplossen; een nulregel of harde grens niet.
 BUMPABLE_FAILURE = re.compile(r"^\w+: \d+ -> \d+")
-HARD_LIMIT_MARK = "harde grens, geen bump mogelijk"
 COMPLEXITY_SKILL = (
-    ".claude/skills/paia-python-schrijven/SKILL.md, sectie "
-    "`## Een complexiteitsgrens halen: verdiepen, niet opknippen`"
+    ".claude/skills/lighthouse-python-writing/SKILL.md, section "
+    "`## Reaching a complexity limit: deepen, don't split`"
 )
 
 
@@ -939,18 +957,18 @@ def _failure_footer(failures: list[str]) -> str:
     parts: list[str] = []
     if any(BUMPABLE_FAILURE.match(failure) for failure in failures):
         parts.append(
-            f"Los het op in de code, of pas {BASELINE_NAME} aan in dezelfde wijziging "
-            "als je de stijging van een teller bewust accepteert."
+            f"Fix it in the code, or adjust {BASELINE_NAME} in the same change "
+            "if you accept the rise of a counter on purpose."
         )
     if any(HARD_LIMIT_MARK in failure for failure in failures):
         parts.append(
-            "Een functie boven een harde complexiteitsgrens moet in de code omlaag; "
-            f"een bump bestaat daar niet. Hoe: {COMPLEXITY_SKILL}."
+            "A function above a hard complexity limit must come down in the code; "
+            f"there is no bump there. How: {COMPLEXITY_SKILL}."
         )
     if not parts:
-        parts.append("Los het op in de code: een nulregel kent geen bump.")
+        parts.append("Fix it in the code: a zero rule has no bump.")
     parts.append(
-        "Een `# noqa` helpt hier niet: de ratel telt met --ignore-noqa en --no-ignore."
+        "A `# noqa` does not help here: the ratchet counts with --ignore-noqa and --no-ignore."
     )
     return " ".join(parts)
 
@@ -965,9 +983,9 @@ def cmd_ruff(root: Path) -> int:
     )
     for note in notes + complexity_notes:
         print(f"ratchet: {note}")
-    _report_failures("de ruff-tellers stijgen.", failures)
+    _report_failures("the ruff counters rise.", failures)
     _report_failures(
-        "complexiteit boven de grens of de teller stijgt.", complexity_failures
+        "complexity above the limit or the counter rises.", complexity_failures
     )
     if failures or complexity_failures:
         print(file=sys.stderr)
@@ -975,8 +993,8 @@ def cmd_ruff(root: Path) -> int:
         return 1
     total = sum(counts[rule] for rule in COUNTED_RULES)
     print(
-        f"ratchet: ruff ok ({total} hits op de tellers, geen stijging, nulregels schoon); "
-        f"complexipy ok ({len(_over_threshold(cognitive))} functies cognitief > "
+        f"ratchet: ruff ok ({total} hits on the counters, no rise, zero rules clean); "
+        f"complexipy ok ({len(_over_threshold(cognitive))} functions cognitive > "
         f"{COGNITIVE_COUNTER_THRESHOLD})"
     )
     return 0
@@ -988,7 +1006,7 @@ def cmd_show(root: Path) -> int:
     for rule in COUNTED_RULES:
         print(f"{rule:<6} = {counts[rule]}")
     print()
-    print("# nulregels — horen NIET in de baseline, moeten 0 zijn:")
+    print("# zero rules — do NOT belong in the baseline, must be 0:")
     for rule in ZERO_RULES:
         print(f"# {rule:<6} = {counts[rule]}")
     print()
@@ -1000,44 +1018,44 @@ def cmd_show(root: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ratchet", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("ruff", help="tel de vijftien regels en vergelijk met de baseline")
-    sub.add_parser("show", help="print de huidige tellers zonder te oordelen")
+    sub.add_parser("ruff", help="count the fifteen rules and compare with the baseline")
+    sub.add_parser("show", help="print the current counters without judging")
     sub.add_parser(
         "tighten",
-        help="zet quality-baseline.toml op de gemeten stand (ruff omlaag, dekkingsvloer omhoog)",
+        help="set quality-baseline.toml to the measured level (ruff down, coverage floor up)",
     )
-    coverage = sub.add_parser("coverage", help="beoordeel diff-coverage")
+    coverage = sub.add_parser("coverage", help="judge diff coverage")
     coverage.add_argument(
         "--base",
-        default="origin/main",
-        help="ref waartegen de merge-base wordt bepaald (default: origin/main)",
+        default=None,
+        help="ref the merge base is taken against (default: origin/<forge.default_branch>)",
     )
     coverage.add_argument(
         "--report",
         default=None,
-        help="bestaand coverage.json consumeren in plaats van de suite te draaien",
+        help="read an existing coverage.json instead of running the suite",
     )
     nightly = sub.add_parser(
-        "nightly", help="oordeel diff-coverage per PR sinds het watermerk (#1016)"
+        "nightly", help="judge diff coverage per PR since the watermark"
     )
     nightly.add_argument(
-        "--report", required=True, help="coverage.json van de volledige suite"
+        "--report", required=True, help="coverage.json of the full suite"
     )
     nightly.add_argument(
         "--since",
         default=None,
-        help="watermerk-SHA; standaard de laatste geslaagde nightly-run",
+        help="watermark SHA; by default the last successful nightly run",
     )
     nightly.add_argument(
         "--min-diff-pct",
         type=int,
         default=None,
-        help="drempel-override in procent (default: baseline.min_diff_pct)",
+        help="threshold override in percent (default: baseline.min_diff_pct)",
     )
     nightly.add_argument(
         "--dry-run",
         action="store_true",
-        help="alleen melden wat er zou gebeuren, geen gh-mutaties",
+        help="only report what would happen, no gh mutations",
     )
     args = parser.parse_args(argv)
 
@@ -1048,7 +1066,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "tighten":
             return cmd_tighten(root)
         if args.command == "coverage":
-            return cmd_coverage(root, args.base, args.report)
+            base = args.base or f"origin/{setting('forge.default_branch')}"
+            return cmd_coverage(root, base, args.report)
         if args.command == "nightly":
             return cmd_nightly(
                 root, args.report, args.since, args.min_diff_pct, args.dry_run

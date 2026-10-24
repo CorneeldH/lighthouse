@@ -1,10 +1,18 @@
-"""De kwaliteitsratel: baselinevalidatie, de comparator en het diff-coverage-rekenwerk.
+"""The quality ratchet: baseline validation, the comparator and the diff-coverage
+arithmetic.
 
-Ontwerp: docs/developer/planning/specs/2026-08-23-kwaliteitsratel-design.md
+From the source repository's `test_quality_ratchet.py:1-1198`; the nightly cases are in
+`test_ratchet_nightly.py`. Left out there: `test_the_selected_rules_match_pyproject`,
+`test_the_repo_baseline_loads_and_matches_the_rules` and
+`test_the_baseline_has_no_zero_rules` (they read the source repository's own
+`pyproject.toml` and `quality-baseline.toml`). The tests that read its tree use a
+fixture repository (`ROOT`) here.
 """
 
+import atexit
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-# scripts/ is geen geïnstalleerd pakket; zelfde vorm als tests/unit/lane/conftest.py.
-_SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+# The scripts of pack/python are no installed package; `quality` imports from here.
+_SCRIPTS = Path(__file__).resolve().parents[3] / "pack" / "python" / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
@@ -21,7 +29,13 @@ from quality import (
     baseline as bl,
 )
 
-ROOT = Path(__file__).resolve().parents[2]
+# A fixture repository with the files the source repository's tests read from its own
+# tree: the two pins and the directory the exclude in GOOD points at.
+ROOT = Path(tempfile.mkdtemp(prefix="ratchet-root-"))
+atexit.register(shutil.rmtree, ROOT, True)
+(ROOT / "src" / "generated").mkdir(parents=True)
+(ROOT / ".ruff-version").write_text("0.16.4\n", encoding="utf-8")
+(ROOT / ".complexipy-version").write_text("8.0.1\n", encoding="utf-8")
 
 GOOD = """\
 [complexipy]
@@ -39,7 +53,7 @@ S112   = 0
 [coverage]
 min_diff_pct = 70
 min_total_pct = 64
-exclude = ["src/web/pages/"]
+exclude = ["src/generated/"]
 """
 
 
@@ -54,7 +68,7 @@ def test_a_valid_baseline_loads(tmp_path):
     assert result.counts["C901"] == 64
     assert result.counts["S112"] == 0
     assert result.min_diff_pct == 70
-    assert result.exclude == ("src/web/pages/",)
+    assert result.exclude == ("src/generated/",)
     assert result.cognitive_over_15 == 149
 
 
@@ -83,12 +97,12 @@ def test_the_complexipy_counter_rejects_unknown_keys_bools_and_negatives(
 
 
 def test_a_missing_file_is_an_error(tmp_path):
-    with pytest.raises(bl.BaselineError, match="ontbreekt"):
-        bl.load(tmp_path / "afwezig.toml", ROOT)
+    with pytest.raises(bl.BaselineError, match="is missing"):
+        bl.load(tmp_path / "absent.toml", ROOT)
 
 
 def test_broken_toml_is_an_error(tmp_path):
-    with pytest.raises(bl.BaselineError, match="onleesbaar"):
+    with pytest.raises(bl.BaselineError, match="is unreadable"):
         bl.load(write(tmp_path, "[ruff\nC901 = 1\n"), ROOT)
 
 
@@ -120,7 +134,7 @@ def test_a_float_count_is_an_error(tmp_path):
 
 def test_a_negative_count_is_an_error(tmp_path):
     text = GOOD.replace("C901   = 64", "C901   = -1")
-    with pytest.raises(bl.BaselineError, match="negatief"):
+    with pytest.raises(bl.BaselineError, match="negative"):
         bl.load(write(tmp_path, text), ROOT)
 
 
@@ -145,8 +159,8 @@ def test_a_threshold_out_of_range_is_an_error(tmp_path):
 
 def test_an_exclude_pointing_nowhere_is_an_error(tmp_path):
     """Een uitsluiting die naar niets wijst doet stil niets — dat is de gevaarlijke vorm."""
-    text = GOOD.replace('"src/web/pages/"', '"src/bestaat_niet/"')
-    with pytest.raises(bl.BaselineError, match="bestaat_niet"):
+    text = GOOD.replace('"src/generated/"', '"src/does_not_exist/"')
+    with pytest.raises(bl.BaselineError, match="does_not_exist"):
         bl.load(write(tmp_path, text), ROOT)
 
 
@@ -177,7 +191,7 @@ def test_the_ruff_pin_is_read_from_one_file():
 
 def test_a_garbled_pin_is_an_error(tmp_path):
     (tmp_path / ".ruff-version").write_text("latest\n", encoding="utf-8")
-    with pytest.raises(SystemExit, match="versie"):
+    with pytest.raises(SystemExit, match="holds no version"):
         ratchet.ruff_pin(tmp_path)
 
 
@@ -194,26 +208,21 @@ def test_the_complexipy_pin_has_exactly_one_source():
     assert re.fullmatch(r"\d+\.\d+\.\d+", pin), pin
     assert ratchet.complexipy_pin(ROOT) == pin
 
-    source = (ROOT / "scripts" / "quality" / "ratchet.py").read_text(encoding="utf-8")
+    source = (_SCRIPTS / "quality" / "ratchet.py").read_text(encoding="utf-8")
     assert ".complexipy-version" in source
-    assert f"complexipy@{pin}" not in source
+    assert not re.search(r"complexipy@\d", source)
 
-    needle = f"complexipy@{pin}"
-    suffixes = {".py", ".sh", ".yml"}
-    for tree in ("scripts", ".github", ".claude/hooks"):
-        for path in (ROOT / tree).rglob("*"):
-            if path.suffix not in suffixes or not path.is_file():
-                continue
-            if "__pycache__" in path.parts:
-                continue
-            assert needle not in path.read_text(encoding="utf-8"), (
-                f"{path} heeft de complexipy-versie hardcoded naast .complexipy-version"
-            )
+    for path in (_SCRIPTS.parent).rglob("*"):
+        if path.suffix not in {".py", ".sh"} or "__pycache__" in path.parts:
+            continue
+        assert not re.search(r"complexipy@\d", path.read_text(encoding="utf-8")), (
+            f"{path} hardcodes the complexipy version next to .complexipy-version"
+        )
 
 
 def test_a_garbled_complexipy_pin_is_an_error(tmp_path):
     (tmp_path / ".complexipy-version").write_text("latest\n", encoding="utf-8")
-    with pytest.raises(SystemExit, match="versie"):
+    with pytest.raises(SystemExit, match="holds no version"):
         ratchet.complexipy_pin(tmp_path)
 
 
@@ -390,7 +399,7 @@ def test_judge_complexity_suggests_lowering_on_a_drop():
     assert failures == []
     assert len(notes) == 1
     assert "cognitive_over_15: 5 -> 3" in notes[0]
-    assert "kan omlaag" in notes[0]
+    assert "can go down" in notes[0]
 
 
 def _stub_measurements(monkeypatch, *, cognitive_scores, cyclomatic_scores=()):
@@ -406,7 +415,7 @@ def _repo_with_baseline(tmp_path: Path, cognitive_over_15: int) -> Path:
     text = GOOD.replace(
         "cognitive_over_15 = 149", f"cognitive_over_15 = {cognitive_over_15}"
     )
-    text = text.replace('exclude = ["src/web/pages/"]\n', "")
+    text = text.replace('exclude = ["src/generated/"]\n', "")
     write(tmp_path, text)
     return tmp_path
 
@@ -416,7 +425,7 @@ def test_cmd_ruff_names_both_counters_when_green(tmp_path, monkeypatch, capsys):
     root = _repo_with_baseline(tmp_path, 1)
     assert ratchet.cmd_ruff(root) == 0
     out = capsys.readouterr().out
-    assert "complexipy ok (1 functies cognitief > 15)" in out
+    assert "complexipy ok (1 functions cognitive > 15)" in out
     assert "ruff ok (" in out
 
 
@@ -427,9 +436,9 @@ def test_cmd_ruff_is_red_with_its_own_heading_when_the_counter_rises(
     root = _repo_with_baseline(tmp_path, 0)
     assert ratchet.cmd_ruff(root) == 1
     err = capsys.readouterr().err
-    assert "complexiteit boven de grens of de teller stijgt." in err
+    assert "complexity above the limit or the counter rises." in err
     assert "cognitive_over_15: 0 -> 1" in err
-    assert "de ruff-tellers stijgen." not in err
+    assert "the ruff counters rise." not in err
 
 
 def test_cmd_tighten_refuses_when_the_cognitive_counter_rose(
@@ -457,7 +466,7 @@ def test_judge_complexity_flags_a_function_above_cyclomatic_20():
     assert len(failures) == 1
     assert "src/a.py:3:1 f" in failures[0]
     assert "21 > 20" in failures[0]
-    assert "geen bump" in failures[0]
+    assert "no bump" in failures[0]
     exact = [("src/a.py:3:1 f", 20)]
     assert ratchet.judge_complexity(_cognitive_baseline(0), exact, []) == ([], [])
 
@@ -468,7 +477,7 @@ def test_judge_complexity_flags_a_function_above_cognitive_25():
     assert len(failures) == 1
     assert "src/a.py::f" in failures[0]
     assert "26 > 25" in failures[0]
-    assert "geen bump" in failures[0]
+    assert "no bump" in failures[0]
     exact = [("src/a.py::f", 25)]
     assert ratchet.judge_complexity(_cognitive_baseline(1), [], exact) == ([], [])
 
@@ -477,7 +486,7 @@ def test_judge_complexity_caps_the_hard_limit_lines_per_axis():
     over = [(f"src/a.py:{n}:1 f{n}", 30) for n in range(ratchet.MAX_LOCATIONS + 3)]
     failures, _ = ratchet.judge_complexity(_cognitive_baseline(0), over, [])
     assert len(failures) == ratchet.MAX_LOCATIONS + 1
-    assert failures[-1] == "… en nog 3"
+    assert failures[-1] == "… and 3 more"
 
 
 def _fake_ruff(monkeypatch, tmp_path, findings):
@@ -530,7 +539,7 @@ def test_ruff_runs_pinned_with_the_mccabe_threshold_fixed_at_10(tmp_path, monkey
     assert "--ignore-noqa" in argv
     assert argv[argv.index("--select") + 1] == ",".join(ratchet.ALL_RULES)
     assert argv[argv.index("--config") + 1] == "lint.mccabe.max-complexity=10"
-    assert argv[-2:] == ["src/", "tests/"]
+    assert argv[-2:] == ["src", "tests"]
 
 
 def test_count_ruff_is_red_when_a_c901_message_has_no_score(tmp_path, monkeypatch):
@@ -552,9 +561,9 @@ def test_cmd_ruff_is_red_on_a_hard_limit_hit_with_its_own_heading(
     root = _repo_with_baseline(tmp_path, 1)
     assert ratchet.cmd_ruff(root) == 1
     err = capsys.readouterr().err
-    assert "complexiteit boven de grens of de teller stijgt." in err
-    assert "cyclomatisch 21 > 20" in err
-    assert "cognitief 26 > 25" in err
+    assert "complexity above the limit or the counter rises." in err
+    assert "cyclomatic 21 > 20" in err
+    assert "cognitive 26 > 25" in err
 
 
 def test_cmd_ruff_footer_on_only_a_hard_limit_hit_gives_no_bump_advice(
@@ -564,12 +573,12 @@ def test_cmd_ruff_footer_on_only_a_hard_limit_hit_gives_no_bump_advice(
     root = _repo_with_baseline(tmp_path, 1)
     assert ratchet.cmd_ruff(root) == 1
     err = capsys.readouterr().err
-    assert "cognitief 26 > 25" in err
-    assert "quality-baseline.toml aan" not in err
-    assert "bewust accepteert" not in err
-    assert "moet in de code omlaag" in err
-    assert "## Een complexiteitsgrens halen: verdiepen, niet opknippen" in err
-    assert ".claude/skills/paia-python-schrijven/SKILL.md" in err
+    assert "cognitive 26 > 25" in err
+    assert "adjust quality-baseline.toml" not in err
+    assert "on purpose" not in err
+    assert "must come down in the code" in err
+    assert "## Reaching a complexity limit: deepen, don't split" in err
+    assert ".claude/skills/lighthouse-python-writing/SKILL.md" in err
 
 
 def test_cmd_ruff_footer_on_a_rising_counter_gives_bump_advice(
@@ -579,28 +588,28 @@ def test_cmd_ruff_footer_on_a_rising_counter_gives_bump_advice(
     root = _repo_with_baseline(tmp_path, 0)
     assert ratchet.cmd_ruff(root) == 1
     err = capsys.readouterr().err
-    assert "pas quality-baseline.toml aan" in err
-    assert "bewust accepteert" in err
-    assert "moet in de code omlaag" not in err
+    assert "adjust quality-baseline.toml" in err
+    assert "on purpose" in err
+    assert "must come down in the code" not in err
 
 
 def test_the_footer_names_both_routes_when_a_counter_and_a_hard_limit_fail():
     footer = ratchet._failure_footer(
         [
             "S110: 0 -> 1 (+1)\n    src/a.py:3:1",
-            "cyclomatisch 21 > 20: src/a.py:3:1 f — harde grens, geen bump mogelijk",
+            "cyclomatic 21 > 20: src/a.py:3:1 f — hard limit, no bump possible",
         ]
     )
-    assert "bewust accepteert" in footer
-    assert "moet in de code omlaag" in footer
+    assert "on purpose" in footer
+    assert "must come down in the code" in footer
 
 
 def test_the_footer_on_only_a_zero_rule_hit_gives_no_bump_advice():
     footer = ratchet._failure_footer(
-        ["E722: 1 hit(s) op een nulregel — geen bump mogelijk\n    src/a.py:3:1"]
+        ["E722: 1 hit(s) on a zero rule — no bump possible\n    src/a.py:3:1"]
     )
-    assert "bewust accepteert" not in footer
-    assert "nulregel kent geen bump" in footer
+    assert "on purpose" not in footer
+    assert "a zero rule has no bump" in footer
 
 
 def test_tighten_refuses_while_a_function_is_above_a_hard_limit(
@@ -610,7 +619,7 @@ def test_tighten_refuses_while_a_function_is_above_a_hard_limit(
     root = _repo_with_baseline(tmp_path, 1)
     before = (root / "quality-baseline.toml").read_bytes()
     assert ratchet.cmd_tighten(root) == 1
-    assert "boven een harde grens: 1" in capsys.readouterr().err
+    assert "above a hard limit: 1" in capsys.readouterr().err
     assert (root / "quality-baseline.toml").read_bytes() == before
 
 
@@ -639,26 +648,6 @@ def test_an_invalid_syntax_finding_makes_the_arm_red(tmp_path, monkeypatch):
     )
     with pytest.raises(SystemExit, match="invalid-syntax"):
         ratchet.count_ruff(tmp_path)
-
-
-def test_the_selected_rules_match_pyproject():
-    """De vijftien geratelde regels zitten allemaal in de config-selectie —
-    geen deelverzameling ervan, en geen gelijkheid.
-
-    Gelijkheid zou nieuwe, niet-geratelde rapportageregels in extend-select
-    verbieden totdat iemand ook de ratel-tuples aanpast, en dat druist in
-    tegen de projectregel "zet nieuwe regels in de config, niet automatisch
-    in de hook" (CLAUDE.md). Lopen de vijftien uít elkaar met de config
-    (een regel die de ratel telt maar pyproject niet selecteert), dan telt
-    de gate iets anders dan de IDE, de edit-hook en een handmatige
-    `uv run ruff check` laten zien — dát moet wél blijven kloppen.
-    """
-    import tomllib
-
-    data = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    selected = set(data["tool"]["ruff"]["lint"]["extend-select"])
-    assert set(ratchet.ALL_RULES) <= selected
-    assert len(ratchet.ALL_RULES) == 15
 
 
 def test_compare_flags_a_rising_counter():
@@ -714,22 +703,7 @@ def test_compare_flags_a_zero_rule_hit_without_a_bump_option():
     failures, _ = ratchet.compare(
         base, counts, {"E722": ["src/a.py:9:5", "src/b.py:2:1"]}
     )
-    assert any("E722" in f and "geen bump" in f for f in failures)
-
-
-def test_the_repo_baseline_loads_and_matches_the_rules():
-    """De baseline in de repowortel moet zelf door de validatie komen."""
-    result = bl.load(ROOT / "quality-baseline.toml", ROOT)
-    assert set(result.counts) == set(bl.COUNTED_RULES)
-    assert result.min_diff_pct == 85
-
-
-def test_the_baseline_has_no_zero_rules():
-    text = (ROOT / "quality-baseline.toml").read_text(encoding="utf-8")
-    for rule in bl.ZERO_RULES:
-        assert f"\n{rule}" not in text, (
-            f"{rule} is een nulregel en hoort niet in de baseline"
-        )
+    assert any("E722" in f and "no bump" in f for f in failures)
 
 
 from quality import diffcov
@@ -857,10 +831,10 @@ def test_a_non_python_file_is_ignored():
 
 def test_an_excluded_prefix_falls_out_of_both_numerator_and_denominator():
     result = diffcov.diff_coverage(
-        {"src/web/pages/x.py": [11]},
+        {"src/generated/x.py": [11]},
         {"files": {}},
         read_source=read,
-        exclude=("src/web/pages/",),
+        exclude=("src/generated/",),
     )
     assert result.total == 0
 
@@ -999,14 +973,14 @@ def test_the_coverage_suite_is_spawned_with_the_cleaned_env(monkeypatch, tmp_pat
     def fake_run(argv, **kwargs):
         seen["argv"] = argv
         seen["env"] = kwargs.get("env")
-        raise SystemExit("gestopt na de spawn")
+        raise SystemExit("stopped after the spawn")
 
     monkeypatch.setenv("GIT_DIR", "/repo/.git")
     monkeypatch.setattr(ratchet.subprocess, "run", fake_run)
     with pytest.raises(SystemExit):
         ratchet._acquire_report(tmp_path, None)
 
-    assert seen["argv"] == ratchet.COVERAGE_ARGV
+    assert seen["argv"] == ratchet.coverage_argv()
     assert seen["env"] is not None, "de suite erft de hook-omgeving ongefilterd"
     assert "GIT_DIR" not in seen["env"]
 
@@ -1196,466 +1170,154 @@ def test_tighten_does_both_axes_in_one_pass():
     assert "F401   = 1" in text and "min_total_pct = 70" in text
 
 
-# --- nightly (#1016 taak 6): cmd_nightly ---------------------------------------
+# --- lighthouse: the directories, the command and the base from the config -------
 
-from quality import prcov_issues
-
-from src.controller.identity import identity
-
-_NIGHTLY_GIT_IDENTITY = {
-    "GIT_AUTHOR_NAME": "Test",
-    "GIT_AUTHOR_EMAIL": "test@example.invalid",
-    "GIT_COMMITTER_NAME": "Test",
-    "GIT_COMMITTER_EMAIL": "test@example.invalid",
-}
+from tests.pack._testkit import MINIMAL_TOML
 
 
-class _NightlyRepo:
-    """Minimale fixture-repo voor cmd_nightly — zelfde vorm als
-    tests/unit/test_quality_prcov.py::_Repo, hier lokaal zodat dit testbestand
-    geen afhankelijkheid krijgt van een ander testmodule."""
-
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.initial_sha = ""
-
-    def _run(self, args: list[str], env: dict[str, str] | None = None) -> str:
-        from quality.gitenv import suite_env
-
-        full_env = suite_env() | _NIGHTLY_GIT_IDENTITY | (env or {})
-        proc = subprocess.run(
-            ["git", *args],
-            cwd=self.root,
-            capture_output=True,
-            text=True,
-            env=full_env,
-            check=False,
-        )
-        assert proc.returncode == 0, proc.stderr
-        return proc.stdout
-
-    def init(self) -> None:
-        self._run(["init", "-q", "-b", "main"])
-
-    def commit(self, files: dict[str, str], *, subject: str) -> str:
-        for rel, content in files.items():
-            path = self.root / rel
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
-        self._run(["add", "-A"])
-        self._run(["commit", "-q", "-m", subject])
-        return self._run(["rev-parse", "HEAD"]).strip()
-
-    def head(self) -> str:
-        return self._run(["rev-parse", "HEAD"]).strip()
+def _config(tmp_path: Path, monkeypatch, extra: str) -> None:
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(MINIMAL_TOML + extra, encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
 
 
-@pytest.fixture
-def nightly_repo(tmp_path) -> _NightlyRepo:
-    r = _NightlyRepo(tmp_path)
-    r.init()
-    r.initial_sha = r.commit({"src/a.py": "X = 0\n"}, subject="initial")
-    return r
+DIRS = '\n[python]\nsource_dirs = ["lib"]\nlint_dirs = ["lib", "t"]\n'
 
 
-def nightly_baseline_text(min_diff_pct: int = 85, min_total_pct: int = 0) -> str:
-    return f"""\
-[ruff]
-C901   = 0
-TRY400 = 0
-F401   = 0
-F841   = 0
-S110   = 0
-PT011  = 0
-S112   = 0
+def test_dirs_from_config(tmp_path, monkeypatch):
+    _config(tmp_path, monkeypatch, DIRS)
+    root = _complexipy_root(tmp_path)
+    (root / ".ruff-version").write_text("0.16.4\n", encoding="utf-8")
+    seen: list[list[str]] = []
 
-[complexipy]
-cognitive_over_15 = 0
+    def fake_run(argv, **kwargs):
+        seen.append(list(argv))
+        if "--output" in argv:
+            Path(argv[argv.index("--output") + 1]).write_text("[]", encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
 
-[coverage]
-min_diff_pct = {min_diff_pct}
-min_total_pct = {min_total_pct}
-"""
+    monkeypatch.setattr(ratchet.subprocess, "run", fake_run)
+    ratchet.count_ruff(root)
+    ratchet.count_complexipy(root)
+    ruff, complexipy = seen
+    assert ruff[-2:] == ["lib", "t"]
+    assert str(root / "lib") in complexipy and str(root / "t") in complexipy
+    assert str(root / "src") not in complexipy
+    argv = ratchet.coverage_argv()
+    assert "--cov=lib" in argv and "--cov=src" not in argv
 
 
-def write_nightly_baseline(root: Path, **kwargs) -> None:
-    (root / "quality-baseline.toml").write_text(
-        nightly_baseline_text(**kwargs), encoding="utf-8"
+def test_coverage_argv_default():
+    assert ratchet.coverage_argv() == [
+        "uv",
+        "run",
+        "pytest",
+        "-q",
+        "--cov=src",
+        "--cov-report=json:coverage.json",
+    ]
+
+
+def test_coverage_command_from_config(tmp_path, monkeypatch):
+    _config(
+        tmp_path,
+        monkeypatch,
+        DIRS + "coverage_command = \"uv run pytest tests/unit -m 'not slow'\"\n",
     )
+    assert ratchet.coverage_argv() == [
+        "uv",
+        "run",
+        "pytest",
+        "tests/unit",
+        "-m",
+        "not slow",
+        "--cov=lib",
+        "--cov-report=json:coverage.json",
+    ]
 
 
-def nightly_report(total_pct: float, **files: dict[str, list[int]]) -> dict:
-    return {"totals": {"percent_covered": total_pct}, "files": files}
+def test_coverage_diff_follows_source_dirs(tmp_path, monkeypatch):
+    _config(tmp_path, monkeypatch, DIRS)
+    root = _repo_with_baseline(tmp_path, 0)
+    seen: dict = {}
+
+    def fake_git(_root, args):
+        seen["args"] = args
+        raise SystemExit("stopped after the diff")
+
+    monkeypatch.setattr(ratchet, "_merge_base", lambda _root, _ref: "abc")
+    monkeypatch.setattr(ratchet, "_git", fake_git)
+    with pytest.raises(SystemExit):
+        ratchet.cmd_coverage(root, "origin/main", None)
+    assert seen["args"] == ["diff", "--unified=0", "abc..HEAD", "--", "lib"]
 
 
-def _lines(executed_lines: list[int], missing_lines: list[int]) -> dict:
-    return {"executed_lines": executed_lines, "missing_lines": missing_lines}
-
-
-def write_report(root: Path, report: dict) -> Path:
-    path = root / "coverage.json"
-    path.write_text(json.dumps(report), encoding="utf-8")
-    return path
-
-
-class _FakeGh:
-    """Logt elke aanroep en geeft canned antwoorden terug — kleine, lokale
-    kopie van tests/unit/test_quality_prcov_issues.py::FakeGh. `queue` mag ook
-    een Exception-instantie doorgeven, om een falende `gh`-aanroep te
-    simuleren."""
-
-    def __init__(self) -> None:
-        self.calls: list[tuple[tuple[str, ...], dict[str, str] | None, str | None]] = []
-        self._responses: dict[str, list] = {}
-
-    def queue(self, key: str, *responses: object) -> None:
-        self._responses.setdefault(key, []).extend(responses)
-
-    @staticmethod
-    def key(args: tuple[str, ...]) -> str:
-        if args[0] == "api" and len(args) > 1 and args[1] == "graphql":
-            return "graphql"
-        if args[0] == "api":
-            return "comments"
-        return f"{args[0]} {args[1]}"
-
-    def __call__(
-        self,
-        args,
-        env: dict[str, str] | None = None,
-        input: str | None = None,
-    ) -> str:
-        args = tuple(args)
-        self.calls.append((args, dict(env) if env else None, input))
-        k = self.key(args)
-        queue = self._responses.get(k)
-        if not queue:
-            return ""
-        item = queue[0] if len(queue) == 1 else queue.pop(0)
-        if isinstance(item, BaseException):
-            raise item
-        return item
-
-    def calls_for(
-        self, group: str
-    ) -> list[tuple[tuple[str, ...], dict | None, str | None]]:
-        return [c for c in self.calls if self.key(c[0]) == group]
-
-
-def _board_item(item_id: str, status: str | None) -> str:
-    node = {
-        "id": item_id,
-        "project": {"id": identity().board.project_id},
-        "fieldValueByName": {"name": status} if status else None,
-    }
-    return json.dumps(
-        {"data": {"repository": {"issue": {"projectItems": {"nodes": [node]}}}}}
+@pytest.mark.parametrize(
+    ("extra", "base"),
+    [("", "origin/main"), ('default_branch = "trunk"\n', "origin/trunk")],
+)
+def test_base_follows_default_branch(tmp_path, monkeypatch, extra, base):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(MINIMAL_TOML + extra, encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    seen: dict = {}
+    monkeypatch.setattr(ratchet, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        ratchet, "cmd_coverage", lambda root, ref, report: seen.setdefault("ref", ref) and 0
     )
+    ratchet.main(["coverage"])
+    assert seen["ref"] == base
 
 
-def _queue_happy_remediation(gh: _FakeGh, issue_url: str, item_id: str) -> None:
-    """Alle vier stappen (issue, handoff, board) slagen in één keer."""
-    gh.queue("issue list", "[]")
-    gh.queue("issue create", issue_url)
-    gh.queue("comments", "")
-    gh.queue("project item-add", json.dumps({"id": item_id}))
-    gh.queue("graphql", _board_item(item_id, "Controller"))
-
-
-def test_nightly_floor_below_is_red(nightly_repo):
-    """totals.percent_covered onder min_total_pct, geen PR's sinds since → rc 1."""
-    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=90)
-    report_path = write_report(nightly_repo.root, nightly_report(50.0))
-
-    gh = _FakeGh()
-    rc = ratchet.cmd_nightly(
-        nightly_repo.root,
-        str(report_path),
-        nightly_repo.initial_sha,
-        None,
-        False,
-        gh=gh,
+def test_an_explicit_base_wins(tmp_path, monkeypatch):
+    seen: dict = {}
+    monkeypatch.setattr(ratchet, "repo_root", lambda: tmp_path)
+    monkeypatch.setattr(
+        ratchet, "cmd_coverage", lambda root, ref, report: seen.setdefault("ref", ref) and 0
     )
-
-    assert rc == 1
-    assert gh.calls == [], (
-        "geen commits sinds since — er is niets om gh voor aan te roepen"
-    )
+    ratchet.main(["coverage", "--base", "upstream/dev"])
+    assert seen["ref"] == "upstream/dev"
 
 
-def test_nightly_opens_an_issue_below_the_threshold(nightly_repo, monkeypatch, capsys):
-    monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
-    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
-    nightly_repo.commit(
-        {"src/a.py": "X = 0\nY = 1\nA = 2\nB = 3\n"}, subject="Voeg iets toe (#11)"
-    )
-    report_path = write_report(
-        nightly_repo.root,
-        nightly_report(95.0, **{"src/a.py": _lines([2], [3, 4])}),
-    )
-
-    gh = _FakeGh()
-    _queue_happy_remediation(gh, "https://github.com/x/y/issues/501", "PVTI_a")
-
-    rc = ratchet.cmd_nightly(
-        nightly_repo.root,
-        str(report_path),
-        nightly_repo.initial_sha,
-        None,
-        False,
-        gh=gh,
-    )
-
-    assert rc == 0
-    assert len(gh.calls_for("issue create")) == 1
-    assert len(gh.calls_for("issue comment")) == 1
-    assert len(gh.calls_for("project item-add")) == 1
-    out = capsys.readouterr().out
-    assert "ratchet: PR #11 33.3% (1/3)" in out
+def test_a_broken_config_is_red(tmp_path, monkeypatch):
+    _config(tmp_path, monkeypatch, '\n[python]\nsource_dirs = "src"\n')
+    with pytest.raises(SystemExit, match="ratchet: .*python.source_dirs"):
+        ratchet.coverage_argv()
 
 
-def test_nightly_min_diff_pct_override_beats_the_baseline(nightly_repo, monkeypatch):
-    """Baseline op 85: 90% is groen. Override naar 100: dezelfde 90% is rood."""
-    monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
-    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
-    content = "X = 0\n" + "\n".join(f"L{i} = {i}" for i in range(10)) + "\n"
-    nightly_repo.commit({"src/a.py": content}, subject="Tien regels (#11)")
-    report_path = write_report(
-        nightly_repo.root,
-        nightly_report(95.0, **{"src/a.py": _lines(list(range(2, 11)), [11])}),
-    )
-
-    without_override = ratchet.cmd_nightly(
-        nightly_repo.root,
-        str(report_path),
-        nightly_repo.initial_sha,
-        None,
-        False,
-        gh=_FakeGh(),
-    )
-    assert without_override == 0
-
-    gh = _FakeGh()
-    _queue_happy_remediation(gh, "https://github.com/x/y/issues/502", "PVTI_b")
-    with_override = ratchet.cmd_nightly(
-        nightly_repo.root,
-        str(report_path),
-        nightly_repo.initial_sha,
-        100,
-        False,
-        gh=gh,
-    )
-
-    assert with_override == 0
-    assert len(gh.calls_for("issue create")) == 1
+def test_complexity_skill_path():
+    path, _, rest = ratchet.COMPLEXITY_SKILL.partition(", section ")
+    assert path == ".claude/skills/lighthouse-python-writing/SKILL.md"
+    heading = rest.strip("`")
+    skill = _SCRIPTS.parent / "skills" / "python-writing" / "claude" / "SKILL.md"
+    assert heading in skill.read_text(encoding="utf-8").splitlines()
 
 
-def test_nightly_keeps_going_after_one_pr_fails_and_ends_red(
-    nightly_repo, monkeypatch, capsys
-):
-    monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
-    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
-    nightly_repo.commit(
-        {"src/a.py": "X = 0\nY = 1\nA = 2\nB = 3\n"}, subject="Eerste (#11)"
-    )
-    nightly_repo.commit({"src/b.py": "Y = 0\nW = 1\n"}, subject="Tweede (#12)")
-    report_path = write_report(
-        nightly_repo.root,
-        nightly_report(
-            95.0,
-            **{
-                "src/a.py": _lines([2], [3, 4]),
-                "src/b.py": _lines([], [2]),
-            },
-        ),
-    )
+def _messages(path: Path) -> list[str]:
+    """Every string literal in `path` except docstrings, which stay Dutch (ontwerpkeuze 3
+    van (b))."""
+    import ast
 
-    gh = _FakeGh()
-    gh.queue(
-        "issue list",
-        subprocess.CalledProcessError(1, ["gh"], output="", stderr="gh: boom"),
-        "[]",
-    )
-    _queue_happy_remediation(gh, "https://github.com/x/y/issues/503", "PVTI_c")
-    # _queue_happy_remediation queuet zelf ook "issue list"; de eerste (falende)
-    # entry hierboven staat er dus voor.
-
-    rc = ratchet.cmd_nightly(
-        nightly_repo.root,
-        str(report_path),
-        nightly_repo.initial_sha,
-        None,
-        False,
-        gh=gh,
-    )
-
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert "ratchet: PR #11" in captured.out
-    assert "ratchet: PR #12" in captured.out
-    assert "PR #11:" in captured.err
-    assert len(gh.calls_for("issue create")) == 1  # alleen PR #12 kwam er doorheen
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                docstrings.add(id(first.value))
+    return [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+    ]
 
 
-def test_nightly_keeps_going_after_a_pr_with_an_unreadable_report_entry(
-    nightly_repo, monkeypatch, capsys
-):
-    """M1: `src/missing.py` ontbreekt uit het coverage-rapport (report en diff
-    komen niet uit dezelfde run) — `diffcov.diff_coverage` gooit
-    `CoverageReportError` voor die ene PR. `cmd_nightly` moet die vangen,
-    doorgaan met de volgende PR (die zijn issue alsnog krijgt) én de
-    vloercontrole nog uitvoeren, in plaats van de hele nacht ongevangen te
-    laten crashen (geen issues, geen vloercontrole, watermerk blijft steken)."""
-    monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
-    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
-    nightly_repo.commit({"src/missing.py": "X = 0\nY = 1\n"}, subject="Kapot (#11)")
-    nightly_repo.commit(
-        {"src/a.py": "X = 0\nY = 1\nA = 2\nB = 3\n"}, subject="Gezond (#12)"
-    )
-    # src/missing.py ontbreekt bewust uit "files" — alsof het rapport uit een
-    # andere run komt dan de diff.
-    report_path = write_report(
-        nightly_repo.root,
-        nightly_report(95.0, **{"src/a.py": _lines([2], [3, 4])}),
-    )
-
-    gh = _FakeGh()
-    _queue_happy_remediation(gh, "https://github.com/x/y/issues/504", "PVTI_d")
-
-    rc = ratchet.cmd_nightly(
-        nightly_repo.root,
-        str(report_path),
-        nightly_repo.initial_sha,
-        None,
-        False,
-        gh=gh,
-    )
-
-    captured = capsys.readouterr()
-    assert rc == 1
-    assert "PR #11:" in captured.err
-    assert "no report entry" in captured.err
-    assert "ratchet: PR #12" in captured.out
-    assert len(gh.calls_for("issue create")) == 1  # PR #12 kwam er alsnog doorheen
-
-
-@pytest.mark.parametrize("token", [None, ""])
-def test_nightly_without_board_token_creates_the_issue_and_is_red(
-    nightly_repo, monkeypatch, token, capsys
-):
-    if token is None:
-        monkeypatch.delenv(prcov_issues.BOARD_TOKEN_ENV, raising=False)
-    else:
-        monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, token)
-    # Vloer groen (min_total_pct=0): de rode rc moet hier zuiver van het
-    # ontbrekende token komen, niet van de vloer — anders bewijst deze test
-    # niets over de token-tak zelf (review ronde 1, bevinding 1). Een
-    # ontbrekend token is wél degelijk fataal: een groene run zou het
-    # watermerk optillen en de volgende nacht reconcilieert de board-stap dan
-    # nooit meer.
-    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
-    nightly_repo.commit(
-        {"src/a.py": "X = 0\nY = 1\nA = 2\nB = 3\n"}, subject="Iets (#11)"
-    )
-    report_path = write_report(
-        nightly_repo.root,
-        nightly_report(95.0, **{"src/a.py": _lines([2], [3, 4])}),
-    )
-
-    gh = _FakeGh()
-    gh.queue("issue list", "[]")
-    gh.queue("issue create", "https://github.com/x/y/issues/504")
-    gh.queue("comments", "")
-
-    rc = ratchet.cmd_nightly(
-        nightly_repo.root,
-        str(report_path),
-        nightly_repo.initial_sha,
-        None,
-        False,
-        gh=gh,
-    )
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert prcov_issues.BOARD_TOKEN_ENV in captured.err
-    assert len(gh.calls_for("issue create")) == 1
-    assert len(gh.calls_for("issue comment")) == 1
-    assert not gh.calls_for("project item-add")
-    assert not gh.calls_for("graphql")
-    assert not gh.calls_for("project item-edit")
-
-
-def test_nightly_a_refused_board_write_names_the_token_and_keeps_going(
-    nightly_repo, monkeypatch, capsys
-):
-    """Token aanwezig, maar de gh-aanroep van ensure_on_board zelf faalt (het
-    token mag bijvoorbeeld niet schrijven). De melding moet PAIA_BOARD_TOKEN
-    met naam noemen — anders wijst niets naar de oorzaak — en de volgende PR
-    moet nog steeds verwerkt worden."""
-    monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
-    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
-    nightly_repo.commit(
-        {"src/a.py": "X = 0\nY = 1\nA = 2\nB = 3\n"}, subject="Eerste (#11)"
-    )
-    nightly_repo.commit({"src/b.py": "Y = 0\nW = 1\n"}, subject="Tweede (#12)")
-    report_path = write_report(
-        nightly_repo.root,
-        nightly_report(
-            95.0,
-            **{
-                "src/a.py": _lines([2], [3, 4]),
-                "src/b.py": _lines([], [2]),
-            },
-        ),
-    )
-
-    gh = _FakeGh()
-    gh.queue("issue list", "[]")
-    gh.queue("issue create", "https://github.com/x/y/issues/505")
-    gh.queue("comments", "")
-    gh.queue("project item-add", json.dumps({"id": "PVTI_d"}))
-    gh.queue(
-        "graphql",
-        subprocess.CalledProcessError(1, ["gh"], output="", stderr="HTTP 403"),
-    )
-    _queue_happy_remediation(gh, "https://github.com/x/y/issues/506", "PVTI_e")
-
-    rc = ratchet.cmd_nightly(
-        nightly_repo.root,
-        str(report_path),
-        nightly_repo.initial_sha,
-        None,
-        False,
-        gh=gh,
-    )
-    captured = capsys.readouterr()
-
-    assert rc == 1
-    assert "PR #11" in captured.err
-    assert prcov_issues.BOARD_TOKEN_ENV in captured.err
-    assert "ratchet: PR #12" in captured.out
-    assert len(gh.calls_for("issue create")) == 2  # beide PR's kwamen er doorheen
-
-
-def test_nightly_dry_run_mutates_nothing(nightly_repo, monkeypatch):
-    monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
-    write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
-    nightly_repo.commit(
-        {"src/a.py": "X = 0\nY = 1\nA = 2\nB = 3\n"}, subject="Iets (#11)"
-    )
-    report_path = write_report(
-        nightly_repo.root,
-        nightly_report(95.0, **{"src/a.py": _lines([2], [3, 4])}),
-    )
-
-    gh = _FakeGh()
-    rc = ratchet.cmd_nightly(
-        nightly_repo.root, str(report_path), nightly_repo.initial_sha, None, True, gh=gh
-    )
-
-    assert rc == 0
-    assert gh.calls == [], (
-        "een --dry-run mag geen enkele gh-aanroep doen die iets wijzigt — hier "
-        "helemaal geen, want since is expliciet gegeven"
-    )
+@pytest.mark.parametrize("name", ["ratchet.py", "baseline.py", "diffcov.py"])
+def test_output_is_english(name):
+    """Every message and help text a person or a skill reads is English (V4)."""
+    strings = _messages(_SCRIPTS / "quality" / name)
+    for word in (" de ", " het ", " een ", " geen ", " niet ", " zou ", " ontbreekt", " onleesbaar"):
+        hits = [t for t in strings if word in f" {t} "]
+        assert not hits, (word, hits[:3])

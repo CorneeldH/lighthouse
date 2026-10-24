@@ -65,20 +65,20 @@ def load(path: Path, repo_root: Path) -> Baseline:
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
-        raise BaselineError(f"{path} ontbreekt") from exc
+        raise BaselineError(f"{path} is missing") from exc
     except OSError as exc:
-        raise BaselineError(f"{path} is onleesbaar: {exc}") from exc
+        raise BaselineError(f"{path} is unreadable: {exc}") from exc
     try:
         raw = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
-        raise BaselineError(f"{path} is onleesbaar: {exc}") from exc
+        raise BaselineError(f"{path} is unreadable: {exc}") from exc
 
     unknown = sorted(set(raw) - {"ruff", "coverage", "complexipy"})
     if unknown:
-        raise BaselineError(f"onbekende secties in {path.name}: {unknown}")
+        raise BaselineError(f"unknown sections in {path.name}: {unknown}")
     for section in ("ruff", "coverage", "complexipy"):
         if section not in raw:
-            raise BaselineError(f"sectie [{section}] ontbreekt in {path.name}")
+            raise BaselineError(f"section [{section}] is missing in {path.name}")
 
     coverage = _coverage_section(raw["coverage"])
     return Baseline(
@@ -92,14 +92,14 @@ def load(path: Path, repo_root: Path) -> Baseline:
 
 def _counts(section: object) -> dict[str, int]:
     if not isinstance(section, dict):
-        raise BaselineError("[ruff] is geen tabel")
+        raise BaselineError("[ruff] is not a table")
     keys = set(section)
 
     baselined_zero = sorted(keys & set(ZERO_RULES))
     if baselined_zero:
         raise BaselineError(
-            f"nulregels horen niet in de baseline: {baselined_zero} — "
-            "nul is een grens, geen stand, en er is dus geen bump mogelijk"
+            f"zero rules do not belong in the baseline: {baselined_zero} — "
+            "zero is a limit, not a level, so there is no bump possible"
         )
     # extra vóór missing: bij een tikfout (C902 i.p.v. C901) moet de melding
     # zowel de onbekende naam als de verwachte naam noemen. Zou missing eerst
@@ -108,11 +108,11 @@ def _counts(section: object) -> dict[str, int]:
     extra = sorted(keys - set(COUNTED_RULES))
     if extra:
         raise BaselineError(
-            f"[ruff] noemt onbekende regels: {extra} — verwacht exact {list(COUNTED_RULES)}"
+            f"[ruff] names unknown rules: {extra} — expected exactly {list(COUNTED_RULES)}"
         )
     missing = sorted(set(COUNTED_RULES) - keys)
     if missing:
-        raise BaselineError(f"[ruff] mist telregels: {missing}")
+        raise BaselineError(f"[ruff] lacks counter rules: {missing}")
 
     counts: dict[str, int] = {}
     for rule in COUNTED_RULES:
@@ -120,9 +120,9 @@ def _counts(section: object) -> dict[str, int]:
         # type() en niet isinstance(): bool erft van int, dus `C901 = true` zou
         # een isinstance-check passeren en daarna als teller 1 gaan gelden.
         if type(value) is not int:
-            raise BaselineError(f"{rule} is geen geheel getal: {value!r}")
+            raise BaselineError(f"{rule} is not an integer: {value!r}")
         if value < 0:
-            raise BaselineError(f"{rule} is negatief: {value}")
+            raise BaselineError(f"{rule} is negative: {value}")
         counts[rule] = value
     return counts
 
@@ -134,30 +134,30 @@ def _complexipy_counter(section: object) -> int:
     uitgeschakelde teller zijn.
     """
     if not isinstance(section, dict):
-        raise BaselineError("[complexipy] is geen tabel")
+        raise BaselineError("[complexipy] is not a table")
     extra = sorted(set(section) - {COMPLEXIPY_KEY})
     if extra:
         raise BaselineError(
-            f"[complexipy] noemt onbekende sleutels: {extra} — verwacht exact "
+            f"[complexipy] names unknown keys: {extra} — expected exactly "
             f"[{COMPLEXIPY_KEY!r}]"
         )
     if COMPLEXIPY_KEY not in section:
-        raise BaselineError(f"[complexipy] mist {COMPLEXIPY_KEY}")
+        raise BaselineError(f"[complexipy] lacks {COMPLEXIPY_KEY}")
     value = section[COMPLEXIPY_KEY]
     # type() en niet isinstance(): bool erft van int.
     if type(value) is not int:
-        raise BaselineError(f"{COMPLEXIPY_KEY} is geen geheel getal: {value!r}")
+        raise BaselineError(f"{COMPLEXIPY_KEY} is not an integer: {value!r}")
     if value < 0:
-        raise BaselineError(f"{COMPLEXIPY_KEY} is negatief: {value}")
+        raise BaselineError(f"{COMPLEXIPY_KEY} is negative: {value}")
     return value
 
 
 def _coverage_section(section: object) -> dict:
     if not isinstance(section, dict):
-        raise BaselineError("[coverage] is geen tabel")
+        raise BaselineError("[coverage] is not a table")
     unknown = sorted(set(section) - {"min_diff_pct", "min_total_pct", "exclude"})
     if unknown:
-        raise BaselineError(f"onbekende sleutels in [coverage]: {unknown}")
+        raise BaselineError(f"unknown keys in [coverage]: {unknown}")
     return section
 
 
@@ -169,24 +169,24 @@ def _percentage(section: dict, key: str) -> int:
     hebben.
     """
     if key not in section:
-        raise BaselineError(f"coverage.{key} ontbreekt")
+        raise BaselineError(f"coverage.{key} is missing")
     value = section[key]
     # type() en niet isinstance(): bool erft van int.
     if type(value) is not int:
-        raise BaselineError(f"coverage.{key} is geen geheel getal: {value!r}")
+        raise BaselineError(f"coverage.{key} is not an integer: {value!r}")
     if not 0 <= value <= 100:
-        raise BaselineError(f"coverage.{key} ligt buiten [0, 100]: {value}")
+        raise BaselineError(f"coverage.{key} is outside [0, 100]: {value}")
     return value
 
 
 def _exclude(section: dict, repo_root: Path) -> tuple[str, ...]:
     value = section.get("exclude", [])
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise BaselineError(f"coverage.exclude is geen lijst strings: {value!r}")
+        raise BaselineError(f"coverage.exclude is not a list of strings: {value!r}")
     for prefix in value:
         if not (repo_root / prefix).exists():
             raise BaselineError(
-                f"coverage.exclude wijst naar niets: {prefix} — een uitsluiting "
-                "die nergens op slaat doet stil niets"
+                f"coverage.exclude points to nothing: {prefix} — an exclusion "
+                "that matches nothing silently does nothing"
             )
     return tuple(value)
