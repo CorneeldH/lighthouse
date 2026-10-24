@@ -248,6 +248,19 @@ def test_failure_names_the_command_and_the_opt_out(gate: Gate) -> None:
     assert 'command = ""' in result.stderr
 
 
+def test_unchecked_exit_code_names_the_command_and_the_opt_out(gate: Gate) -> None:
+    # pytest zonder tests geeft 5: de waarschijnlijkste eerste blokkade in een
+    # nieuw Python-project. Ook die wijst naar de sleutel en de opt-out.
+    gate.configure(TEST_GATE + "unchecked_exit_codes = [3, 4, 5]\n")
+
+    result = gate.run("git commit -m x", gate.project, UV_EXIT="5")
+
+    assert result.returncode == 2, result.stdout
+    assert "exit code 5" in result.stderr
+    assert "[test_gate] command" in result.stderr
+    assert 'command = ""' in result.stderr
+
+
 def test_command_not_found_names_the_command(gate: Gate) -> None:
     gate.configure('[test_gate]\ncommand = "no-such-tool-xyz"\n')
 

@@ -595,6 +595,7 @@ while IFS= read -r ROOT; do
         echo "$HOOK_NAME: COULD NOT CHECK — the test command stopped with exit code $STATUS, listed in test_gate.unchecked_exit_codes: nothing was tested."
         echo ""
         echo "Root: $ROOT. Not being able to test is not a green light."
+        echo "$COMMAND_HINT"
         echo ""
         echo "$TEST_OUTPUT"
       } >&2
