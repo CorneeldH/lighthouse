@@ -188,3 +188,12 @@ def test_variants_differ_in_the_instruction_file():
     assert [line for line in claude.splitlines() if line not in agents.splitlines()] == [
         "- [ ] Documentation updated (README, CLAUDE.md, etc.)"
     ]
+
+
+def test_milestone_close_keeps_the_title_form():
+    """The form of a milestone title is project content (`project.milestone_prefix`, the file
+    under `[paths] labels`): closing copies the title and appends ` - DONE`, no fixed form."""
+    for body in skill():
+        step = _section(body, "### Step 3. Close the milestone")
+        assert "title='<title> - DONE'" in step
+        assert "<area>: <name>" not in step

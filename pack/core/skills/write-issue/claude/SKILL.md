@@ -156,7 +156,7 @@ gh api "repos/$R/milestones?state=open&per_page=100" \
   --jq '.[] | "\(.title)\t\(.open_issues) open\n\(.description)\n---"'
 ```
 
-Start with the milestones whose prefix matches the area of the issue, but look at the rest too.
+Start with the milestones whose name matches the area of the issue, but look at the rest too.
 The question is **thematic**: does this issue help solve the problem from the milestone's
 *Problem / Opportunity*, and does it bring its `### heading:milestone_dod` closer? An issue that
 only falls in the same domain does not belong yet.
@@ -300,10 +300,16 @@ Empty output = good. An axis without a prefix (rc 1) is not checked.
 **The milestone description *is* the pitch.** There is no separate parent issue and no
 `Milestone: ` prefix in issue titles.
 
-- **Naming**: `<area>: <descriptive name>`. A prefix yes (the milestone dropdown is one flat
-  list; sorting alphabetically gives the axis grouping for free), a number no (an area never
-  ends, so `infra-04` says nothing about progress).
-- **On closing**: the title becomes `<area>: <name> - DONE` and `state=closed` in the same PATCH.
+- **Naming**: `<project.milestone_prefix> <name>`, for example `LH M0 — Package` or
+  `WEB infra: security hygiene of the standing state`. The repo prefix goes in the title, because
+  a project board over several repos slices on milestone or on repo, never on both. Read it with
+  `P=$(python3 .lighthouse/lib/lighthouse_lib/config.py project.milestone_prefix)`; rc 1 means no
+  prefix: the title gets none, and the report says
+  `milestone prefix: none — no [project] milestone_prefix set`. The form after the prefix
+  (`M<n> — …` or `<area>: …`) is project content and lives in the file under `[paths] labels`.
+- **Size**: the plan of a milestone splits it into at least about five issues. Fewer, and the
+  work is one issue, or it belongs in another milestone.
+- **On closing**: the title becomes `<title> - DONE` and `state=closed` in the same PATCH.
   See `lighthouse-close-issue`.
 - **Description**: the pitch from "Pitch (Shape Up)" below, with its seven headings in that
   order. The ID of a milestone is its number in the URL. If the project has tenets
@@ -320,7 +326,7 @@ Creating goes through the REST API; `gh` has no `milestone create`:
 ```bash
 R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh api --method POST "repos/$R/milestones" \
-  -f title='<area>: <name>' -F description=@<file>
+  -f title="${P:+$P }<name>" -F description=@<file>
 ```
 
 Write the pitch with your write tool to a temporary file first; never the pitch itself as a

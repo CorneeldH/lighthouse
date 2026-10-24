@@ -595,7 +595,7 @@ R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh api "repos/$R/milestones/<nr>" -q '.title'
 # close + rename (copy the title exactly, then " - DONE" after it)
 gh api --method PATCH "repos/$R/milestones/<nr>" \
-  -f state=closed -f title='<area>: <name> - DONE'
+  -f state=closed -f title='<title> - DONE'
 ```
 
 If the title already ends on ` - DONE`, leave it (no second suffix).

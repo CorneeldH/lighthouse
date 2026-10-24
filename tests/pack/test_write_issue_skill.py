@@ -131,3 +131,20 @@ def test_skill_is_english_and_detached():
         assert not re.search(r"#\d{3,}", body)
         for gone in ("Beelink", "uv run", "docs/developer/"):
             assert gone not in body, gone
+
+
+def test_write_issue_milestone_prefix_from_config():
+    """A milestone title carries the repo prefix from `project.milestone_prefix`: a project board
+    over several repos slices on milestone or on repo, never on both. Without the key there is no
+    prefix, and the skill says so. The form after the prefix is project content."""
+    for body in skill():
+        section = _between(body, "## Milestones", "## The board")
+        flat = " ".join(section.split())
+        assert f"P=$({CONFIG} project.milestone_prefix)" in section
+        assert "milestone prefix: none — no [project] milestone_prefix set" in flat
+        assert "`<project.milestone_prefix> <name>`" in flat
+        assert "[paths] labels" in flat  # the form after the prefix
+        assert "at least about five issues" in flat
+        assert "a milestone without DoD text in its description does not exist" in flat
+        assert "gatekeeper" in flat
+        assert "<area>: <descriptive name>" not in flat

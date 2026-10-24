@@ -570,6 +570,7 @@ def test_defaults_are_not_shared(tmp_path):
         ("paths.labels", True),
         ("ci.bot_login", True),
         ("project.skill_prefix", True),
+        ("project.milestone_prefix", True),
         ("paths.label_taxonomy", False),
         ("test_gate.slice", False),
         ("host.other", False),
