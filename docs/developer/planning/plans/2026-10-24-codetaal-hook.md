@@ -87,6 +87,11 @@ Bash-writes draait.
 - Maak: `pack/core/lib/code_language.py` (alleen de herkenning in deze taak)
 - Maak: `pack/core/lib/code_language_nl_function.txt`, `pack/core/lib/code_language_nl_content.txt`
   (één woord per regel, kleine letters, `#`-regels zijn commentaar)
+- Wijzig: `internal/packs/core_test.go` — elk bestand onder `pack/core/lib/` is een geïnstalleerde
+  unit, en `TestCorePack` pint de lijst (`core_test.go:30-115`). Voeg
+  `.lighthouse/lib/lighthouse_lib/code_language.py`, `code_language_nl_content.txt` en
+  `code_language_nl_function.txt` (onder dezelfde map) toe op hun alfabetische plek; anders blokkeert
+  de testpoort de commit van deze taak.
 - Test: `tests/pack/test_code_language.py`
 
 **Interfaces:**
@@ -112,16 +117,19 @@ Bash-writes draait.
   - `test_english_corpus_has_no_dutch_words`: elk commentaarwoord en elke naam in de Go-bestanden
     onder `internal/` en `cmd/` (ruw: alle woorden van elke regel na `//`, en alle identifiers via
     `re.findall(r"[A-Za-z_][A-Za-z0-9_]*", line)`) geeft `is_dutch_text`/`is_dutch_name` False.
-    Faalt dit, dan staat er een Engels woord in een lijst: haal het eruit.
+    Faalt dit, dan staat er een woord in een lijst dat ook in Engelse code voorkomt: haal het eruit.
 - [ ] **Stap 2:** `uv run pytest -q tests/pack/test_code_language.py` → FAIL.
 - [ ] **Stap 3:** implementeer de vijf functies en vul de lijsten. Functiewoorden: lidwoorden,
-  voornaamwoorden, voorzetsels, voegwoorden, hulpwerkwoorden (start: `het`, `een`, `niet`, `geen`,
-  `wordt`, `worden`, `zijn`, `voor`, `naar`, `maar`, `ook`, `nog`, `dus`, `als`, `dat`, `deze`, `dit`,
-  `wel`, `zo`, `bij`, `uit`, `tot`, `om`, `te`, `er`, `kan`, `moet`, `mag`, `heeft`, `hebben`). Inhoudswoorden:
-  woorden die in de huidige Nederlandse code onder `pack/` vaak voorkomen (start: `bestand`,
-  `bestanden`, `regel`, `regels`, `naam`, `lees`, `schrijf`, `gevonden`, `besluit`, `kop`, `taak`,
-  `bron`, `uitvoer`, `invoer`, `melding`, `oordeel`, `wortel`, `tak`, `controleer`, `controleren`,
-  `fout`, `leeg`, `alsnog`). Elke toevoeging moet `test_english_corpus_has_no_dutch_words` overleven.
+  voornaamwoorden, voorzetsels, voegwoorden, hulpwerkwoorden (start: `de`, `het`, `een`, `niet`,
+  `geen`, `wordt`, `worden`, `zijn`, `voor`, `naar`, `maar`, `ook`, `nog`, `dus`, `als`, `dat`,
+  `deze`, `dit`, `wel`, `zo`, `bij`, `uit`, `tot`, `om`, `te`, `er`, `kan`, `moet`, `mag`, `heeft`,
+  `hebben`). Inhoudswoorden: woorden die in de huidige Nederlandse code onder `pack/` vaak voorkomen
+  (start: `bestand`, `bestanden`, `regel`, `regels`, `naam`, `lees`, `schrijf`, `gevonden`, `kop`,
+  `taak`, `bron`, `uitvoer`, `invoer`, `melding`, `oordeel`, `wortel`, `tak`, `controleer`,
+  `controleren`, `fout`, `leeg`, `alsnog`). **Niet** `besluit`: Engels commentaar in lighthouse citeert
+  besluiten als `(spec, besluit 4)` (`internal/initcmd/initcmd.go:5`, `pack/core/lib/config.py:51`), en
+  dat blijft zo na de vertaalslag. Elke toevoeging moet `test_english_corpus_has_no_dutch_words`
+  overleven.
 - [ ] **Stap 4:** dezelfde run → PASS.
 - [ ] **Stap 5: commit** `feat(pack): herkenning van Nederlandse tekst en namen (#26)`.
 
@@ -187,7 +195,7 @@ Bash-writes draait.
   - go: `test_go_line_and_block_comment` (`// lees het bestand`, `/* niet\n gelezen */` als één
     blok); `test_go_comment_in_string` (aandachtspunt 3: `"http://x"`, `` `// niet` ``, `'/'` →
     geen vondst); `test_go_names` (`package bestanden`, `func leesBestand(regel string)`,
-    `func (r *T) Controleer()`, `type Besluit struct { Naam string }`, `var fout error`,
+    `func (r *T) Controleer()`, `type Melding struct { Naam string }`, `var fout error`,
     `const Leeg = 0`, `gevonden := 1`, gegroepeerd `var ( bron int )` → vondsten); `test_go_marker`;
     `test_go_english_clean`: alle `.go` onder `internal/` en `cmd/` → geen vondst.
 - [ ] **Stap 2:** run → FAIL.
@@ -221,7 +229,9 @@ Bash-writes draait.
     is, `UnicodeDecodeError`, en wat de scanner gooit.
   - `main(argv: list[str]) -> int` — `code_language.py <abs-path> <root>`: rc 0 zonder uitvoer bij
     geen vondsten; rc 1 met de volledige melding (formaat in *Algemene randvoorwaarden*) op stdout;
-    rc 2 met de reden op stderr bij `CannotCheck`.
+    rc 2 met de reden op stderr bij `CannotCheck` én bij elke andere exception (een `OSError` bij
+    het lezen, een `RecursionError` in `ast`, ...): een crash mag nooit als rc 1 = vondsten lezen
+    (besluit 18).
 
 - [ ] **Stap 1: schrijf de falende tests** (met `tmp_path` als root, een `lighthouse.toml` met
   `MINIMAL_TOML` uit `tests/pack/_testkit.py` plus `code_language = "en"` onder `[project]`):
@@ -239,10 +249,15 @@ Bash-writes draait.
     commentaar waarom dat blok Engels is.
   - `test_main_output`: rc 1, stdout begint met `code-language: <pad> is not English`, een regel
     `<pad>:<n>: comment: …`, en bij 25 vondsten precies 20 vondstregels plus `… and 5 more`; rc 2
-    met reden op stderr bij een `CannotCheck`; rc 0 en lege stdout bij een schoon bestand.
+    met reden op stderr bij een `CannotCheck`; rc 2 met reden op stderr als `check_file` een
+    onverwachte exception gooit (monkeypatch); rc 0 en lege stdout bij een schoon bestand.
 - [ ] **Stap 2:** run → FAIL.
 - [ ] **Stap 3:** implementeer `EXTENSIONS`, `check_file` en `main` (plus `if __name__ == "__main__":
-  sys.exit(main(sys.argv[1:]))`). De uitlegregel na de vondsten:
+  sys.exit(main(sys.argv[1:]))`). Vul daarna de woordenlijsten van taak 2 aan tot
+  `test_dutch_corpus_found` groen is: de startlijsten missen nog Nederlandse blokken in de fixture
+  (bijvoorbeeld `# De map van de gates, onder de repo-root.` en `# GATES kent de extensie`). Elke
+  toevoeging moet `test_english_corpus_has_no_dutch_words` overleven. `ENGLISH_BLOCKS` is alleen voor
+  blokken die echt Engels zijn, nooit om een gemist Nederlands blok weg te zetten. De uitlegregel na de vondsten:
   `The whole file must be English. A line that is deliberately not English gets "lighthouse: allow-language".`
   Import van `config` zoals de andere CLI-modules in de lib dat doen wanneer ze als script draaien
   (kijk naar `md_links.py` en `bash_writes.py`).
@@ -255,9 +270,16 @@ Bash-writes draait.
 - Maak: `pack/core/hooks/code-language.sh` (uitvoerbaar)
 - Wijzig: `pack/core/hooks/hooks.json` (PostToolUse, matcher `Edit|Write`, timeout 15, na
   `worktree-linkcheck.sh` in dezelfde `hooks`-lijst)
-- Wijzig: `tests/pack/test_hooks_minimal_config.py:122-130` (voeg `"code-language.sh"` toe)
-- Wijzig: `internal/packs/core_test.go` (voeg `.claude/hooks/lighthouse/code-language.sh`,
-  `.lighthouse/lib/lighthouse_lib/code_language.py` en de twee `.txt` toe, op hun alfabetische plek)
+- Wijzig: `tests/pack/test_hooks_minimal_config.py`: voeg `"code-language.sh"` toe aan de set op
+  regels 122-130, **en** geef `_payload` (regels 52-77) een tak voor `code-language.sh`: een
+  Edit-payload van een `.py`-bestand in de worktree (zoals de tak van `worktree-linkcheck.sh`); met
+  `MINIMAL_TOML` (geen `code_language`) verwacht de test exit 0. Zonder die tak gooit `_payload`
+  `AssertionError("no payload for ...")`.
+- Wijzig: `internal/packs/core_test.go`: voeg `.claude/hooks/lighthouse/code-language.sh` toe op zijn
+  alfabetische plek, en zet de hooktelling op regel 116 van `kinds[KindHook] != 8` naar `!= 9`. De
+  lib-bestanden staan er sinds taak 2 al in.
+- Wijzig: `pack/core/requires.toml`: `code-language` onder `git`, `jq`, `python3` en `tomllib`;
+  `lighthouse_lib.code_language` onder `python3` en `tomllib`.
 - Test: `tests/pack/test_code_language_hook.py`
 
 **Interfaces:**
@@ -278,6 +300,10 @@ Bash-writes draait.
     `test_hook_cannot_check_syntax_error`: exit 2, eerste regel begint met
     `code-language: COULD NOT CHECK — `.
   - `test_hook_missing_file` → exit 0.
+  - `test_hook_exempt_skips`: `code_language_exempt = ["tests/fixtures/*"]`, Nederlands bestand onder
+    `tests/fixtures/` met een relatief `file_path` → exit 0.
+  - `test_hook_manifest_skips`: Nederlands bestand op een pad uit `.lighthouse/manifest.toml` → exit 0.
+  - `test_hook_marker_skips`: Nederlands commentaar met `lighthouse: allow-language` → exit 0.
 - [ ] **Stap 2:** `uv run pytest -q tests/pack/test_code_language_hook.py` → FAIL.
 - [ ] **Stap 3:** schrijf de wrapper naar het model van `worktree-linkcheck.sh`: kopcommentaar (doel,
   matcher, niet fail-open, besluit 18), `cannot_check`, tooling-check (`jq`, `git`, `python3`),
@@ -285,7 +311,8 @@ Bash-writes draait.
   bestand exit 0, git-root (`not a git repository` → exit 0), `LIB_ROOT` zoals daar, CLI aanroepen:
   rc 0 → exit 0; rc 1 → stdout naar stderr, exit 2; elke andere rc → `cannot_check` met de stderr
   van de CLI. Registreer in `hooks.json`.
-- [ ] **Stap 3b:** zet de nieuwe namen in `test_hooks_minimal_config.py` en `core_test.go`.
+- [ ] **Stap 3b:** werk `test_hooks_minimal_config.py` (set én `_payload`-tak), `core_test.go`
+  (pad én telling 9) en `requires.toml` bij, zoals onder *Bestanden*.
 - [ ] **Stap 4:** `uv run pytest -q tests/pack/test_code_language_hook.py tests/pack/test_hooks_minimal_config.py && go test ./internal/...` → PASS.
 - [ ] **Stap 5: commit** `feat(pack): hook voor de taal van code bij Edit en Write (#26)`.
 
@@ -294,7 +321,10 @@ Bash-writes draait.
 **Bestanden:**
 - Wijzig: `pack/core/lib/bash_writes.py` (`GATES`, `GATE_PACKS`, `gate_path`, `run_gate`, `_dispatch`,
   en de drie plekken die `in GATES` testen: `seed_root`, de pool in `_pool`, `_dispatch`)
-- Test: `tests/pack/test_bash_writes.py` (regels 39, 46-54, 1254-1261 aanpassen),
+- Test: `tests/pack/test_bash_writes.py` (regels 39, 46-54, 1254-1261 aanpassen, plus elke plek die
+  `run_gate` vervangt of aanroept: de nep-gates op 877, 965-967, 987-989, 1025, 1088 en 1145-1147
+  krijgen de signatuur `(root, rel, gate, deadline)`; de directe aanroepen op 1270 en 1278 krijgen
+  een gate-argument; controleer met `grep -n run_gate tests/pack/*.py` dat er geen over is),
   `tests/pack/test_bash_write_gates.py`
 
 **Interfaces:**
@@ -318,11 +348,20 @@ Bash-writes draait.
     en niet in `seen`; zijn alle gates `ok`/`finding`/`missing`, dan staat het in `seen`.
   - `test_dispatch_signature_after_rewriting_gate`: de signatuur in `seen` is die van ná de laatste
     gate uit `_SIGN_AFTER_GATE` die draaide, anders die van vóór de eerste gate.
+  - `test_deadline_makes_progress_over_many_files` (regel ~863): de deadline blijft **per bestand**
+    gecontroleerd, niet per gate. Een bestand waarvan de eerste gate begon, krijgt al zijn gates
+    (elke `run_gate` is zelf door `deadline` begrensd: een gate na de deadline geeft `unchecked`).
+    Een controle per gate zou in deze test elke post alleen de eerste gate van `a.sh` laten draaien,
+    `a.sh` bleef `unchecked` in `pending`, en de dispatch kwam nooit verder. `fake_gate` legt
+    `(rel, gate)` vast; verwacht `judged == [("a.sh", "shellcheck.sh"), ("a.sh", "code-language.sh"),
+    ("b.sh", "shellcheck.sh"), ("b.sh", "code-language.sh"), ("c.sh", "shellcheck.sh"),
+    ("c.sh", "code-language.sh")]` en ongewijzigd `codes == [2, 2, 2, 0]`.
   - `test_bash_write_gates.py`: een Bash-write van een `.go`-bestand met Nederlands commentaar in
     een repo met `code_language = "en"` blokkeert met `(code-language.sh)` in de uitvoer; zonder de
     sleutel geen blokkade.
 - [ ] **Stap 2:** `uv run pytest -q tests/pack/test_bash_writes.py tests/pack/test_bash_write_gates.py` → FAIL.
-- [ ] **Stap 3:** implementeer. In `_dispatch` per bestand een lus over `GATES[ext]`: elke gate
+- [ ] **Stap 3:** implementeer. In `_dispatch` blijft de deadlinecontrole per bestand (boven de
+  gatelus); per bestand een lus over `GATES[ext]`: elke gate
   `run_gate` + `_report_verdict`; `_STOPPED` stopt de dispatch zoals nu; het gecombineerde oordeel is
   `"unchecked"` als één gate dat gaf, anders het oordeel van de laatste gate; daarna één
   `_record_verdict`. Een gate die mist (besluit 19) meldt per bestand en blokkeert niet, zoals nu.
@@ -338,9 +377,10 @@ Bash-writes draait.
   De vertaalslag die hem aanzet, zet `tests/pack/fixtures/code_language/*` in
   `code_language_exempt`: die fixture is bewust Nederlands.
 
-- [ ] **Stap 1:** `go run ./cmd/lighthouse init --upgrade` → de nieuwe hook, lib-bestanden en
-  registratie verschijnen.
-- [ ] **Stap 2:** `go run ./cmd/lighthouse init --upgrade` nog eens → `No changes.`
+- [ ] **Stap 1:** `go run ./cmd/lighthouse init --upgrade --yes` → de nieuwe hook, lib-bestanden en
+  registratie verschijnen. Zonder `--yes` vraagt `init` om bevestiging en weigert hij bij een lege
+  stdin (exit 1, niets geschreven; `internal/initcmd/initcmd.go:200`).
+- [ ] **Stap 2:** `go run ./cmd/lighthouse init --upgrade` nog eens, zonder `--yes` → `No changes.`
 - [ ] **Stap 3:** `uv run pytest -q && go test ./...` → alles groen.
 - [ ] **Stap 4:** controleer dat de hook in lighthouse uit staat:
   `echo '{"tool_input":{"file_path":"pack/core/lib/bash_writes.py"},"cwd":"'"$PWD"'"}' | .claude/hooks/lighthouse/code-language.sh; echo $?` → `0`, geen uitvoer.
