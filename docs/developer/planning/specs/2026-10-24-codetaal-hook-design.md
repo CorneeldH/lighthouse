@@ -39,7 +39,7 @@ Dat aanzetten hoort bij de vertaalslag, niet bij dit issue.
 - **Een model of externe detector.** De hook draait bij elke write: een modelaanroep is te traag,
   kost geld en werkt niet offline. Een betere detector (bijvoorbeeld
   [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev) of een lokaal alternatief)
-  is een vervolg-issue.
+  is een vervolg-issue: #37.
 - **Een codetaal anders dan Engels.** De hook kent alleen het doel `en`.
 - **Lighthouse zelf aanzetten.** Zie *Aanleiding en doel*.
 
