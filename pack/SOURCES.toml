@@ -195,3 +195,13 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 [[file]]
 path = "pack/expo/detect.toml"
 new = true
+
+[[file]]
+path = "pack/python/skills/python-writing/claude/SKILL.md"
+source_path = ".claude/skills/paia-python-schrijven/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/skills/python-writing/agents/SKILL.md"
+source_path = ".agents/skills/paia-python-schrijven/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

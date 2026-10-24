@@ -1,68 +1,156 @@
-PYTHON_SKILL = REPO / ".claude" / "skills" / "paia-python-schrijven" / "SKILL.md"
+"""The skill `python-writing` of `pack/python`: a KPI table whose every row is a
+command, the measurement rules, and no path or pin that only the source repository has.
+
+From the source repository's `test_instructielagen.py:430-497`. Left out there: the
+`binding`/`origin` frontmatter (the source repository's own instruction-layer check),
+the pointer in its AGENTS.md and the ruff pin read from its own `.ruff-version`.
+"""
+
+import re
+from pathlib import Path
+
+from lighthouse_lib import config
+
+SKILL_DIR = Path(__file__).resolve().parents[3] / "pack" / "python" / "skills" / "python-writing"
+CLAUDE = SKILL_DIR / "claude" / "SKILL.md"
+AGENTS = SKILL_DIR / "agents" / "SKILL.md"
+VARIANTS = (CLAUDE, AGENTS)
+
+# The section `ratchet.py` sends a developer to when a function is over a hard limit.
+COMPLEXITY_HEADING = "## Reaching a complexity limit: deepen, don't split"
 
 
-def test_python_skill_frontmatter_carries_binding_and_origin():
-    """binding/origin — de twee velden waar een beslissing aan hangt.
-
-    `upstream` hoort er hier NIET bij: `origin: own` heeft geen bron om naar te
-    wijzen, en sinds #686 hoort een sleutel zonder waarde onder `metadata:` weg
-    te blijven in plaats van leeg te staan.
-    """
-    front = _frontmatter(PYTHON_SKILL)
-    assert "name: paia-python-schrijven" in front
-    assert "binding: hard" in front, "er zijn twee hook-tegenhangers, dus hard geldt"
-    assert "origin: own" in front
-    assert "upstream:" not in front, "origin: own draagt geen upstream-sleutel"
+def _frontmatter(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("---\n"), f"{path} has no frontmatter"
+    return text.split("---\n", 2)[1]
 
 
-def test_python_skill_description_has_a_negative_boundary():
-    """Descriptions staan permanent in context en het model kiest op gelijkenis."""
-    front = _frontmatter(PYTHON_SKILL)
-    assert "LET OP" in front
-    assert "paia-shell-gates" in front, "de grens naar shell ontbreekt"
-
-
-def test_python_skill_kpi_rows_all_carry_a_command():
-    """Geen commando → geen KPI → schrappen. Elke tabelrij draagt een commando."""
-    lines = PYTHON_SKILL.read_text(encoding="utf-8").splitlines()
+def _kpi_rows(path: Path) -> list[str]:
+    lines = path.read_text(encoding="utf-8").splitlines()
     start = next(i for i, line in enumerate(lines) if line.startswith("| Norm |"))
     rows = []
     for line in lines[start + 2 :]:
         if not line.startswith("|"):
             break
         rows.append(line)
-    assert len(rows) >= 4, f"KPI-tabel heeft maar {len(rows)} rijen"
-    for row in rows:
-        assert "`" in row.split("|")[2], f"KPI-rij zonder meetcommando: {row}"
+    return rows
 
 
-def test_instructies_no_longer_carry_the_moved_python_prose():
-    """De verhuizing is pas af als de bron leeg is — anders staat de norm twee keer."""
-    text = _geladen()
-    moved = [
-        "100.76.126.126, een lokaal interface hier",
-        "NEVER run full suite manually",
-        "Het oordeel hangt af van wélke extras er gesynct zijn",
-    ]
-    for fragment in moved:
-        assert fragment not in text, f"nog niet verhuisd: {fragment!r}"
+def test_frontmatter_name():
+    for path in VARIANTS:
+        assert "name: lighthouse-python-writing\n" in _frontmatter(path), path
 
 
-def test_agents_md_points_at_the_new_artefacts():
-    """Een pointer moet blijven staan, anders laadt de skill nooit."""
-    text = AGENTS_MD.read_text(encoding="utf-8")
-    assert "paia-python-schrijven" in text
-    assert ".claude/rules/python.md" in text
+def test_description_has_a_negative_boundary():
+    """Descriptions stay in context, and the model picks by likeness."""
+    for path in VARIANTS:
+        front = _frontmatter(path)
+        assert "NOT for" in front, path
+        assert "lighthouse-shell-gates" in front, f"{path}: the boundary to shell is missing"
 
 
-def test_python_skill_pins_match_their_source_of_truth():
-    """Een KPI met een verlopen pin meet iets anders dan de gate."""
-    text = PYTHON_SKILL.read_text(encoding="utf-8")
-    ruff_pin = (REPO / ".ruff-version").read_text(encoding="utf-8").strip()
-    assert f"ruff@{ruff_pin}" in text
-    assert "ty@0.0.72" in text
+def test_kpi_rows_all_carry_a_command():
+    """No command, no KPI. Every table row carries one."""
+    for path in VARIANTS:
+        rows = _kpi_rows(path)
+        assert len(rows) >= 4, f"{path}: KPI table has only {len(rows)} rows"
+        for row in rows:
+            assert "`" in row.split("|")[2], f"KPI row without a command: {row}"
 
 
-# --- paia-wait-what (#745) --------------------------------------------------
-# De norm *Uitleg is de uitzondering* verhuisde van root CLAUDE.md naar een
-# /-only skill. Getoetst wordt precies wat een latere hand kan terugdraaien
+def test_kpi_commands_from_config():
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        assert "config.py test_gate.command" in text, path
+        assert "config.py python.source_dirs" in text, path
+        assert "config.py python.lint_dirs" in text, path
+        assert "src/" not in text, path
+        assert "tests/unit" not in text, path
+
+
+def test_config_keys_known():
+    """Every `config.py <key>` the skill runs is a key the config reader knows."""
+    for path in VARIANTS:
+        keys = re.findall(r"config\.py ([a-z_][a-z_.]*)", path.read_text(encoding="utf-8"))
+        assert keys, path
+        for key in keys:
+            assert config.is_known_key(key), f"{path}: unknown config key {key}"
+
+
+def test_ratchet_by_path():
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        assert "python3 .lighthouse/scripts/quality/ratchet.py coverage" in text, path
+        assert "python3 .lighthouse/scripts/quality/ratchet.py ruff" in text, path
+        assert "scripts/quality/ratchet.py" not in text.replace(
+            ".lighthouse/scripts/quality/ratchet.py", ""
+        ), f"{path}: ratchet.py outside .lighthouse/scripts/"
+
+
+def test_complexity_heading_matches_ratchet():
+    for path in VARIANTS:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        assert COMPLEXITY_HEADING in lines, path
+
+
+def test_ruff_pin_from_file():
+    """The ruff pin is the project's `.ruff-version`, as in the gate; never a literal."""
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        assert 'uvx ruff@"$(cat .ruff-version)"' in text, path
+        assert not re.search(r"ruff@\d", text), f"{path}: a literal ruff pin"
+
+
+def test_hooks_by_installed_path():
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        assert ".claude/hooks/lighthouse/ruff-format.sh" in text, path
+        assert ".claude/hooks/lighthouse/ty-check.sh" in text, path
+        assert ".claude/hooks/ruff-format.sh" not in text, path
+
+
+def test_hooks_are_not_fail_open():
+    """`ruff-format` blocks when it could not check (besluit 18); the skill says so."""
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        assert "fail-open" not in text, path
+        assert "COULD NOT CHECK" in text, path
+
+
+def test_rules_file_if_present():
+    for path in VARIANTS:
+        for p in re.split(r"\n\s*\n", path.read_text(encoding="utf-8")):
+            if ".claude/rules/python.md" in p:
+                assert "if present" in p, f"{path}: rules file without 'if present':\n{p}"
+        assert "](../../rules/" not in path.read_text(encoding="utf-8"), path
+
+
+def test_variants_keep_their_difference():
+    """Only the OpenCode variant says the hooks do not run there."""
+    claude, agents = CLAUDE.read_text(encoding="utf-8"), AGENTS.read_text(encoding="utf-8")
+    assert "OpenCode" not in claude
+    assert "OpenCode does not run these hooks" in agents
+    assert "In OpenCode the enforcing hooks do not run" in _frontmatter(AGENTS)
+
+
+def test_skill_links_are_lighthouse_or_external():
+    for path in VARIANTS:
+        for link in re.findall(r"(?<![\w.])/([a-z][\w-]*)", path.read_text(encoding="utf-8")):
+            assert not link.startswith("paia-"), link
+
+
+def test_english():
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8").lower()
+        for word in (" het ", " niet ", " een ", " wordt ", " dat ", " je "):
+            assert word not in text, f"{path}: {word!r}"
+
+
+def test_no_source_measurements():
+    """Issue numbers, dates, counts and the source repository's own paths stay out."""
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        for literal in ("2026-08", "#562", "#806", "#1016", "pyannote", "rumps", "apps/", "vendor/"):
+            assert literal not in text, f"{path}: {literal}"
+        assert not re.search(r"#\d{3,}", text), f"{path}: an issue number"

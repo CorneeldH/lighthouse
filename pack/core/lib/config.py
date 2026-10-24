@@ -98,6 +98,8 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "worktree_audit.protected_paths": _STRS,
         "project.instructions_word_ceiling": _INT,
         "project.skill_prefix": _STR,
+        "python.source_dirs": _STRS,
+        "python.lint_dirs": _STRS,
     }
 )
 
@@ -129,6 +131,8 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
         "worktree_audit.protected_refs": (),
         "worktree_audit.protected_paths": (),
         "project.instructions_word_ceiling": 3000,
+        "python.source_dirs": ("src",),
+        "python.lint_dirs": ("src", "tests"),
     }
 )
 

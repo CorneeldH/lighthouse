@@ -703,3 +703,26 @@ def test_runs_as_file(tmp_path):
         check=False,
     )
     assert (result.returncode, result.stdout) == (0, "Acme/widgets\n"), result.stderr
+
+
+# --- the keys of pack/python (plan M0 (c), ontwerpkeuze 11 and 12) ----------------
+
+
+@pytest.mark.parametrize(
+    ("key", "out"),
+    [
+        ("python.source_dirs", "src\n"),
+        ("python.lint_dirs", "src\ntests\n"),
+    ],
+)
+def test_python_defaults(cfg_env, capsys, key, out):
+    assert main([key]) == 0
+    assert capsys.readouterr().out == out
+
+
+@pytest.mark.parametrize("line", ['source_dirs = "src"', "lint_dirs = [1]"])
+def test_python_wrong_type_is_rc_2(tmp_path, monkeypatch, capsys, line):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + f"\n[python]\n{line}\n")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main([f"python.{line.split()[0]}"]) == 2
