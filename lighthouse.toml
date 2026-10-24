@@ -1,0 +1,9 @@
+[project]
+language = "nl"
+
+[forge]
+kind = "github"
+repo = "CorneeldH/lighthouse"
+
+[test_gate]
+command = "uv run pytest -q && go test ./..."
