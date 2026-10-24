@@ -98,6 +98,7 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "worktree_audit.protected_paths": _STRS,
         "project.instructions_word_ceiling": _INT,
         "project.skill_prefix": _STR,
+        "project.milestone_prefix": _STR,
         "python.source_dirs": _STRS,
         "python.lint_dirs": _STRS,
         "python.coverage_command": _STR,

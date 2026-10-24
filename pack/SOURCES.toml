@@ -197,6 +197,156 @@ path = "pack/expo/detect.toml"
 new = true
 
 [[file]]
+path = "pack/core/skills/route-issue/SKILL.md"
+source_path = [".claude/skills/paia-route-issue/SKILL.md", ".agents/skills/paia-route-issue/SKILL.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/start-issue/claude/SKILL.md"
+source_path = ".claude/skills/paia-start-issue/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/start-issue/agents/SKILL.md"
+source_path = ".agents/skills/paia-start-issue/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/handoff/SKILL.md"
+source_path = [".claude/skills/paia-handoff/SKILL.md", ".agents/skills/paia-handoff/SKILL.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/verify-pr/SKILL.md"
+source_path = [".claude/skills/paia-verify-pr/SKILL.md", ".agents/skills/paia-verify-pr/SKILL.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/fix-pr/claude/SKILL.md"
+source_path = ".claude/skills/paia-fix-pr/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/fix-pr/agents/SKILL.md"
+source_path = ".agents/skills/paia-fix-pr/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/close-issue/claude/SKILL.md"
+source_path = ".claude/skills/paia-close-issue/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/close-issue/agents/SKILL.md"
+source_path = ".agents/skills/paia-close-issue/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/claude/SKILL.md"
+source_path = ".claude/skills/paia-spec-adversarial-review/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/agents/SKILL.md"
+source_path = ".agents/skills/paia-spec-adversarial-review/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/findings.schema.json"
+source_path = [".claude/skills/paia-spec-adversarial-review/findings.schema.json", ".agents/skills/paia-spec-adversarial-review/findings.schema.json"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/verification.schema.json"
+source_path = [".claude/skills/paia-spec-adversarial-review/verification.schema.json", ".agents/skills/paia-spec-adversarial-review/verification.schema.json"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/reviewer-prompt.md"
+source_path = [".claude/skills/paia-spec-adversarial-review/reviewer-prompt.md", ".agents/skills/paia-spec-adversarial-review/reviewer-prompt.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/verifier-prompt.md"
+source_path = [".claude/skills/paia-spec-adversarial-review/verifier-prompt.md", ".agents/skills/paia-spec-adversarial-review/verifier-prompt.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/review.sh"
+source_path = [".claude/skills/paia-spec-adversarial-review/review.sh", ".agents/skills/paia-spec-adversarial-review/review.sh"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/spec-adversarial-review/verify.sh"
+source_path = [".claude/skills/paia-spec-adversarial-review/verify.sh", ".agents/skills/paia-spec-adversarial-review/verify.sh"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/permissions.json"
+source_path = ".claude/settings.json"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/plan-adversarial-review/claude/SKILL.md"
+source_path = ".claude/skills/paia-plan-adversarial-review/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/plan-adversarial-review/agents/SKILL.md"
+source_path = ".agents/skills/paia-plan-adversarial-review/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/plan-adversarial-review/findings.schema.json"
+source_path = [".claude/skills/paia-plan-adversarial-review/findings.schema.json", ".agents/skills/paia-plan-adversarial-review/findings.schema.json"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/plan-adversarial-review/verification.schema.json"
+source_path = [".claude/skills/paia-plan-adversarial-review/verification.schema.json", ".agents/skills/paia-plan-adversarial-review/verification.schema.json"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/plan-adversarial-review/reviewer-prompt.md"
+source_path = [".claude/skills/paia-plan-adversarial-review/reviewer-prompt.md", ".agents/skills/paia-plan-adversarial-review/reviewer-prompt.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/plan-adversarial-review/verifier-prompt.md"
+source_path = [".claude/skills/paia-plan-adversarial-review/verifier-prompt.md", ".agents/skills/paia-plan-adversarial-review/verifier-prompt.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/plan-adversarial-review/review.sh"
+source_path = [".claude/skills/paia-plan-adversarial-review/review.sh", ".agents/skills/paia-plan-adversarial-review/review.sh"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/plan-adversarial-review/verify.sh"
+source_path = [".claude/skills/paia-plan-adversarial-review/verify.sh", ".agents/skills/paia-plan-adversarial-review/verify.sh"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/worktree-audit/SKILL.md"
+source_path = [".claude/skills/paia-worktree-audit/SKILL.md", ".agents/skills/paia-worktree-audit/SKILL.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/instrument/SKILL.md"
+source_path = [".claude/skills/paia-instrumenteren/SKILL.md", ".agents/skills/paia-instrumenteren/SKILL.md"]
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/write-issue/claude/SKILL.md"
+source_path = ".claude/skills/paia-write-issue/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/write-issue/agents/SKILL.md"
+source_path = ".agents/skills/paia-write-issue/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
 path = "pack/python/skills/python-writing/claude/SKILL.md"
 source_path = ".claude/skills/paia-python-schrijven/SKILL.md"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

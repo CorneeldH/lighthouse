@@ -28,6 +28,29 @@ func TestCorePack(t *testing.T) {
 	}
 	sort.Strings(files)
 	want := []string{
+		".agents/skills/lighthouse-close-issue/SKILL.md",
+		".agents/skills/lighthouse-fix-pr/SKILL.md",
+		".agents/skills/lighthouse-handoff/SKILL.md",
+		".agents/skills/lighthouse-instrument/SKILL.md",
+		".agents/skills/lighthouse-plan-adversarial-review/SKILL.md",
+		".agents/skills/lighthouse-plan-adversarial-review/findings.schema.json",
+		".agents/skills/lighthouse-plan-adversarial-review/review.sh",
+		".agents/skills/lighthouse-plan-adversarial-review/reviewer-prompt.md",
+		".agents/skills/lighthouse-plan-adversarial-review/verification.schema.json",
+		".agents/skills/lighthouse-plan-adversarial-review/verifier-prompt.md",
+		".agents/skills/lighthouse-plan-adversarial-review/verify.sh",
+		".agents/skills/lighthouse-route-issue/SKILL.md",
+		".agents/skills/lighthouse-spec-adversarial-review/SKILL.md",
+		".agents/skills/lighthouse-spec-adversarial-review/findings.schema.json",
+		".agents/skills/lighthouse-spec-adversarial-review/review.sh",
+		".agents/skills/lighthouse-spec-adversarial-review/reviewer-prompt.md",
+		".agents/skills/lighthouse-spec-adversarial-review/verification.schema.json",
+		".agents/skills/lighthouse-spec-adversarial-review/verifier-prompt.md",
+		".agents/skills/lighthouse-spec-adversarial-review/verify.sh",
+		".agents/skills/lighthouse-start-issue/SKILL.md",
+		".agents/skills/lighthouse-verify-pr/SKILL.md",
+		".agents/skills/lighthouse-worktree-audit/SKILL.md",
+		".agents/skills/lighthouse-write-issue/SKILL.md",
 		".claude/agents/lighthouse-issue-impact-scout.md",
 		".claude/agents/lighthouse-spec-adversary.md",
 		".claude/hooks/lighthouse/bash-write-gates.sh",
@@ -36,6 +59,29 @@ func TestCorePack(t *testing.T) {
 		".claude/hooks/lighthouse/pre-commit-tests.sh",
 		".claude/hooks/lighthouse/worktree-guard.sh",
 		".claude/hooks/lighthouse/worktree-linkcheck.sh",
+		".claude/skills/lighthouse-close-issue/SKILL.md",
+		".claude/skills/lighthouse-fix-pr/SKILL.md",
+		".claude/skills/lighthouse-handoff/SKILL.md",
+		".claude/skills/lighthouse-instrument/SKILL.md",
+		".claude/skills/lighthouse-plan-adversarial-review/SKILL.md",
+		".claude/skills/lighthouse-plan-adversarial-review/findings.schema.json",
+		".claude/skills/lighthouse-plan-adversarial-review/review.sh",
+		".claude/skills/lighthouse-plan-adversarial-review/reviewer-prompt.md",
+		".claude/skills/lighthouse-plan-adversarial-review/verification.schema.json",
+		".claude/skills/lighthouse-plan-adversarial-review/verifier-prompt.md",
+		".claude/skills/lighthouse-plan-adversarial-review/verify.sh",
+		".claude/skills/lighthouse-route-issue/SKILL.md",
+		".claude/skills/lighthouse-spec-adversarial-review/SKILL.md",
+		".claude/skills/lighthouse-spec-adversarial-review/findings.schema.json",
+		".claude/skills/lighthouse-spec-adversarial-review/review.sh",
+		".claude/skills/lighthouse-spec-adversarial-review/reviewer-prompt.md",
+		".claude/skills/lighthouse-spec-adversarial-review/verification.schema.json",
+		".claude/skills/lighthouse-spec-adversarial-review/verifier-prompt.md",
+		".claude/skills/lighthouse-spec-adversarial-review/verify.sh",
+		".claude/skills/lighthouse-start-issue/SKILL.md",
+		".claude/skills/lighthouse-verify-pr/SKILL.md",
+		".claude/skills/lighthouse-worktree-audit/SKILL.md",
+		".claude/skills/lighthouse-write-issue/SKILL.md",
 		".github/pull_request_template.md",
 		".github/workflows/lighthouse-unblock-dependents.yml",
 		".lighthouse/headings.toml",
@@ -74,7 +120,7 @@ func TestCorePack(t *testing.T) {
 	for _, r := range p.Requires {
 		tools = append(tools, r.Tool)
 	}
-	if strings.Join(tools, ",") != "codex,gh,git,jq,python3,tomllib" {
+	if strings.Join(tools, ",") != "codex,gh,git,jq,python3,superpowers,tomllib" {
 		t.Fatalf("tools = %v", tools)
 	}
 }
