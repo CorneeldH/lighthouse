@@ -4,8 +4,6 @@ One instruction file for every harness: Claude Code (through `@AGENTS.md` in `CL
 Codex and OpenCode. `CLAUDE.md` adds only what exists in Claude Code alone; never duplicate a
 rule between the two.
 
-## Rules
-
 The rules below are lighthouse's own. The chain rules every lighthouse repo shares are in the
 managed block at the end, which `lighthouse init` writes; never repeat one of them here.
 

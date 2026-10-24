@@ -103,3 +103,9 @@ def test_project_part_keeps_the_lighthouse_rules():
     ):
         assert token in part, token
     assert "## Bootstrap" not in part
+
+
+def test_agents_md_headings_are_unique():
+    """A heading twice splits one section in two, and a reader cannot tell which is meant."""
+    headings = [line for line in AGENTS.read_text(encoding="utf-8").splitlines() if line.startswith("#")]
+    assert len(headings) == len(set(headings)), headings
