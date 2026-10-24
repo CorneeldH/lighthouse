@@ -116,7 +116,7 @@ Bash-writes draait.
     `map_path` → False.
   - `test_english_corpus_has_no_dutch_words`: elk commentaarwoord en elke naam in de Go-bestanden
     onder `internal/` en `cmd/` (ruw: haal eerst per regel de stringliterals weg met
-    `re.sub(r'"(?:\\.|[^"\\])*"|`[^`]*`|\'(?:\\.|[^\'\\])*\'', "", line)`; daarna alle woorden na
+    `` re.sub(r'"(?:\\.|[^"\\])*"|`[^`]*`|\'(?:\\.|[^\'\\])*\'', "", line) ``; daarna alle woorden na
     `//`, en alle identifiers via `re.findall(r"[A-Za-z_][A-Za-z0-9_]*", line)`) geeft
     `is_dutch_text`/`is_dutch_name` False. Strings zijn data (spec, *Non-goals*): zonder die stap
     levert de SHA-256 in `internal/manifest/manifest_test.go:109` (`…140de5dae…`) via `split_name`
