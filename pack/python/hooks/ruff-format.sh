@@ -1,16 +1,37 @@
 #!/bin/bash
 # PostToolUse hook: auto-run ruff format + check --fix on edited Python files.
 # Matcher: Edit|Write — runs after every file edit.
-# Pass 1 (format + --fix) is non-blocking. Pass 2 blocks (exit 2) on the eight
-# BLOCKING_RULES below — repo-wide zero, so they can't false-positive on
-# legacy code.
+# Pass 1 (format + --fix) is non-blocking and silent. Pass 2 blocks (exit 2) on
+# the eight BLOCKING_RULES below — repo-wide zero, so they can't false-positive
+# on legacy code.
+#
+# NOT fail-open: without jq, with a payload that is not JSON, without uvx and
+# ruff, or with a ruff that does not start, nothing was checked; a silent exit 0
+# would read as "the file is clean". Every such exit is exit 2 with
+# `ruff-format: COULD NOT CHECK — <reason>` on the first line (the token
+# bash_writes.classify reads, besluit 18). No file path, another extension or a
+# file that does not exist leave nothing to check: exit 0.
 
-if ! command -v jq &>/dev/null; then
-  exit 0
+HOOK_NAME="ruff-format"
+
+cannot_check() {
+  {
+    echo "$HOOK_NAME: COULD NOT CHECK — $1"
+    echo ""
+    echo "This hook formats the Python file and blocks on the blocking ruff rules."
+    echo "Nothing was checked; that is not a green light."
+  } >&2
+  exit 2
+}
+
+if ! command -v jq >/dev/null 2>&1; then
+  cannot_check "jq is missing."
 fi
 
 INPUT=$(cat)
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+if ! FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null); then
+  cannot_check "the payload is not valid JSON."
+fi
 
 if [ -z "$FILE_PATH" ]; then
   exit 0
@@ -26,67 +47,54 @@ if [ ! -f "$FILE_PATH" ]; then
   exit 0
 fi
 
-# De ruff-versie staat op één plek: .ruff-version in de repowortel. De ratel
-# (scripts/quality/ratchet.py) leest hetzelfde bestand, en CI leest het
-# transitief via de ratel. Ongepind was prima zolang ruff alleen autofixte;
-# zodra dezelfde ruff ook telt, verschuift een release de getallen.
-#
-# Lukt het niet (hook draait buiten een repo, bestand weg), dan valt hij terug
-# op ongepind in plaats van te stoppen: dit is een autofixer en die hoort
-# fail-open te zijn.
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+# The ruff version lives in one place: .ruff-version in the repository root. The
+# ratchet (.lighthouse/scripts/quality/ratchet.py) reads the same file. Without
+# that file the hook runs ruff unpinned: pinning is a project choice.
+ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 RUFF_VERSION=""
 if [ -n "$ROOT" ] && [ -f "$ROOT/.ruff-version" ]; then
   RUFF_VERSION="$(tr -d '[:space:]' < "$ROOT/.ruff-version")"
 fi
 
 # Prefer uvx ruff (not in project venv), fall back to ruff
-if command -v uvx &>/dev/null; then
+if command -v uvx >/dev/null 2>&1; then
   if [ -n "$RUFF_VERSION" ]; then
     RUFF="uvx ruff@$RUFF_VERSION"
   else
     RUFF="uvx ruff"
   fi
-elif command -v ruff &>/dev/null; then
+elif command -v ruff >/dev/null 2>&1; then
   RUFF="ruff"
 else
-  exit 0
+  cannot_check "neither uvx nor ruff is on the PATH."
 fi
 
-# Hooks fail open: a broken environment (offline, unfetchable ruff, no cache)
-# must never read as "the code is wrong". `uvx ruff check` returns the same
-# exit 1 for "found violations" and for "could not resolve the tool" — the
-# exit code alone can't tell them apart. Probe separately: if the tool can't
-# even start, skip silently rather than blame the code.
-if ! $RUFF --version >/dev/null 2>&1; then
-  exit 0
+# `uvx ruff check` returns the same exit 1 for "found violations" and for
+# "could not resolve the tool" — the exit code alone can't tell them apart.
+# Probe separately: a tool that can't even start is not a verdict on the code.
+if ! PROBE=$($RUFF --version 2>&1); then
+  cannot_check "$RUFF does not start (offline, or the pin does not resolve): $(printf '%s' "$PROBE" | head -n 3)"
 fi
 
-# Pass 1 — best effort, stil. Brede default-selectie (ruff 0.16 selecteert veel
-# meer dan E4/E7/E9/F): format + alles wat autofixbaar is.
-$RUFF format "$FILE_PATH" 2>/dev/null || true
-$RUFF check --fix "$FILE_PATH" 2>/dev/null || true
+# Pass 1 — best effort, silent: format + everything autofixable. Its output goes
+# nowhere, so the first line of this hook is always its own.
+$RUFF format "$FILE_PATH" >/dev/null 2>&1 || true
+$RUFF check --fix "$FILE_PATH" >/dev/null 2>&1 || true
 
-# Pass 2 — blokkerend, op de acht regels die repo-breed op nul staan (gemeten
-# 2026-08-22 op src/ + tests/). Bewust NIET de volle selectie: die telt 1487
-# hits, waarvan 1154 niet autofixbaar, dus elke edit in een bestaand bestand
-# zou blokkeren. Deze acht kunnen niet vals-positief zijn op legacy code, en
-# PGH003/PGH004 sluiten precies de ontsnappingsroute af (kale `# type: ignore`
-# / kale `# noqa` in plaats van de fout oplossen).
+# Pass 2 — blocking, on rules that are at zero repository-wide. On purpose NOT
+# the full selection: a project with legacy hits would see every edit in an
+# existing file blocked. These eight cannot be false positives on legacy code,
+# and PGH003/PGH004 close exactly the escape route (a bare `# type: ignore` /
+# bare `# noqa` instead of fixing the error).
 #
-# Deze lijst staat OOK in pyproject.toml onder [tool.ruff.lint] extend-select,
-# zodat een handmatige `uv run ruff check` en de IDE dezelfde regels zien.
-# Blijf hem hier expliciet noemen: #562 zette er zeven TELLENDE regels bij (160
-# bestaande hits) en een kale `$RUFF check` zou dan opeens blokkeren op legacy-
-# schuld in elk bestand dat je aanraakt. De gelinte set en de blokkerende set
-# zijn met opzet twee verschillende sets.
-# tests/unit/test_quality_hooks.py::test_blocking_rules_are_selected_in_pyproject
-# bewaakt dat deze set een deelverzameling van de config blijft.
+# Keep naming the list here explicitly, also when pyproject.toml selects more:
+# the linted set and the blocking set are two different sets on purpose. The KPI
+# row of the python-writing skill names the same eight.
 BLOCKING_RULES="E722,B006,F403,F811,B023,PT012,PGH003,PGH004"
 
 if ! out=$($RUFF check --select "$BLOCKING_RULES" "$FILE_PATH" 2>&1); then
-  echo "Lint-gate: los dit op in de code — versoepel geen regel en plak er geen" >&2
-  echo "# noqa / # type: ignore overheen. Wil je een regel echt uit, vraag het." >&2
+  echo "$HOOK_NAME: fix this in the code — do not relax a rule and do not paste a" >&2
+  echo "# noqa / # type: ignore over it. If you really want a rule off, ask." >&2
   echo "" >&2
   echo "$out" >&2
   exit 2
