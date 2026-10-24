@@ -164,8 +164,44 @@ def test_entry_c_exit_4_writes_a_comment_file():
 def test_cleanup_reads_the_audit_token():
     for body in skill():
         cleanup = _section(body, "## Clean up the worktree")
-        assert "python3 .lighthouse/scripts/worktree_audit.py --only <branch>" in cleanup
+        assert "python3 .lighthouse/scripts/worktree_audit.py --issue <nr>" in cleanup
         assert "`cleanup: yes`" in cleanup and "`cleanup: no — <reason>`" in cleanup
+
+
+def test_cleanup_asks_no_question():
+    for body in skill():
+        cleanup = _section(body, "## Clean up the worktree")
+        assert "AskUserQuestion" not in cleanup
+        assert "after confirmation" not in cleanup
+
+
+def test_cleanup_runs_headless_too():
+    for body in skill():
+        assert "never clean up" not in body
+        assert "you do not clean up yourself" not in body
+
+
+def test_cleanup_keeps_the_forbidden_lines():
+    for body in skill():
+        cleanup = _section(body, "## Clean up the worktree")
+        assert "❌ `--force`, `git worktree unlock` or `git push origin --delete`" in cleanup
+
+
+def test_cleanup_goes_on_after_a_refusal():
+    for body in skill():
+        assert "go on with the next branch" in _section(body, "## Clean up the worktree")
+
+
+def test_cleanup_shows_evidence_per_branch():
+    for body in skill():
+        cleanup = _section(body, "## Clean up the worktree")
+        assert "git -C <main checkout> branch --list <branch>" in cleanup
+        assert "git -C <main checkout> worktree list" in cleanup
+
+
+def test_cleanup_never_removes_own_cwd():
+    for body in skill():
+        assert "own cwd" in _section(body, "## Clean up the worktree")
 
 
 def test_commit_urls_from_forge_repo():
