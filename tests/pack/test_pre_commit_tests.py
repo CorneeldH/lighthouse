@@ -223,6 +223,42 @@ def test_no_command_is_loud_and_allows(gate: Gate) -> None:
     assert not gate.mark.exists()
 
 
+def test_empty_command_is_off(gate: Gate) -> None:
+    # `command = ""` is de opt-out (ontwerpkeuze 4 van M0 (c)): zelfde melding als
+    # zonder sleutel, want `--upgrade` zet een weggehaalde sleutel terug.
+    gate.configure('[test_gate]\ncommand = ""\n')
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    message = "pre-commit-tests: no test command configured, nothing was tested"
+    assert message in json.loads(result.stdout)["systemMessage"]
+    assert not gate.mark.exists()
+
+
+def test_failure_names_the_command_and_the_opt_out(gate: Gate) -> None:
+    # Een default-commando dat in dit project niet past (geen pytest) faalt;
+    # de melding wijst naar de sleutel en naar de opt-out.
+    result = gate.run("git commit -m x", gate.project, UV_EXIT="2")
+
+    assert result.returncode == 2, result.stdout
+    assert "tests failed" in result.stderr
+    assert "[test_gate] command" in result.stderr
+    assert str(gate.toml) in result.stderr
+    assert 'command = ""' in result.stderr
+
+
+def test_command_not_found_names_the_command(gate: Gate) -> None:
+    gate.configure('[test_gate]\ncommand = "no-such-tool-xyz"\n')
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "could not start" in result.stderr
+    assert "[test_gate] command" in result.stderr
+    assert 'command = ""' in result.stderr
+
+
 def test_broken_config_blocks(gate: Gate) -> None:
     gate.toml.write_text("[test_gate\n", encoding="utf-8")
 

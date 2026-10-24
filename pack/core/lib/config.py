@@ -141,6 +141,10 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
     }
 )
 
+# Keys whose empty value is a setting: `[test_gate] command = ""` turns the test gate
+# off, and `--upgrade` leaves it so (ontwerpkeuze 4 of M0 (c)).
+_MAY_BE_EMPTY = ("test_gate.command",)
+
 _BASE_KEYS = (
     "forge.kind",
     "forge.repo",
@@ -331,7 +335,7 @@ def _check_schema(data: Mapping[str, Any], path: Path) -> None:
         value = data[table][name]
         if not _check_type(value, kind):
             raise ConfigError(f"{path}: key {key} must be of type {kind}")
-        if kind == _STR and not value:
+        if kind == _STR and not value and key not in _MAY_BE_EMPTY:
             raise ConfigError(f"{path}: key {key} is empty")
 
 

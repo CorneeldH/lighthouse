@@ -297,11 +297,18 @@ read_config() {
   block "the configuration cannot be read ($1): $(cat "$ERR_FILE" 2>/dev/null)"
 }
 
-if ! read_config test_gate.command; then
+# Not set, or `command = ""` (the opt-out, which `--upgrade` leaves alone): the
+# same note, nothing was tested.
+if ! read_config test_gate.command || [ -z "$CONFIG_VALUE" ]; then
   add_message "$HOOK_NAME: no test command configured, nothing was tested"
   emit_message_and_exit
 fi
 COMMAND="$CONFIG_VALUE"
+# Where the command comes from, and how to turn it off: a default command that does
+# not fit this project (no pytest) must not leave the agent guessing.
+# The same path as `config_path()` with the LIGHTHOUSE_REPO_ROOT of read_config.
+CONFIG_FILE="${LIGHTHOUSE_TOML:-$LIB_ROOT/lighthouse.toml}"
+COMMAND_HINT="The command is [test_gate] command in $CONFIG_FILE: $COMMAND. Set command = \"\" there to turn the test gate off."
 read_config test_gate.deadline_seconds
 DEADLINE_SECONDS="$CONFIG_VALUE"
 read_config test_gate.slots
@@ -547,6 +554,7 @@ while IFS= read -r ROOT; do
       echo "$HOOK_NAME: COULD NOT CHECK — the test command could not start (command not found?)."
       echo ""
       echo "Root: $ROOT. Not being able to test is not a green light."
+      echo "$COMMAND_HINT"
       echo ""
       echo "$TEST_OUTPUT"
     } >&2
@@ -596,6 +604,7 @@ while IFS= read -r ROOT; do
   if [ "$STATUS" -ne 0 ]; then
     {
       echo "$HOOK_NAME: tests failed. Fix the failing tests before committing."
+      echo "$COMMAND_HINT"
       echo ""
       echo "$TEST_OUTPUT"
     } >&2
