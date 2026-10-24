@@ -188,3 +188,20 @@ def test_bash_write_through_gate(tmp_path):
     assert "== bad.py (ruff-format.sh) ==" in out.stderr
     assert "E722" in out.stderr
     assert "no python gate installed" not in out.stderr + context(out)
+
+
+def test_ruff_unchecked_on_a_broken_config(tmp_path):
+    """ruff exit 2 (a broken `[tool.ruff]`) is no finding: the code was not checked."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "pyproject.toml").write_text('[tool.ruff]\nline-length = "x"\n')
+    result = _run(_file(tmp_path, "clean.py", CLEAN_PY), tmp_path, {"LIGHTHOUSE_REPO_ROOT": str(tmp_path)})
+    assert result.returncode == 2, result.stdout
+    assert result.stderr.startswith(UNCHECKED + "ruff exited 2"), result.stderr
+    assert "fix this in the code" not in result.stderr
+    assert bash_writes.classify(2, result.stderr.encode()) == "unchecked"
+
+
+def test_ruff_unchecked_on_an_empty_payload(tmp_path):
+    result = _run("", tmp_path)
+    assert result.returncode == 2, result.stdout
+    assert result.stderr.startswith(UNCHECKED + "the payload is empty"), result.stderr

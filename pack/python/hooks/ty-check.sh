@@ -102,7 +102,14 @@ fi
 # `--color never` pins the format the code recognition below anchors on. Color
 # puts an ANSI escape before `error[`, and then the line anchor no longer
 # matches.
-if ! OUT=$(uvx "ty@$TY_VERSION" check --color never --python "$VENV" "${DIRS[@]}" 2>&1); then
+# ty exits 1 on diagnostics and 2 when it could not check (an invalid [tool.ty], a
+# bad argument): only 1 is a verdict on the code.
+OUT=$(uvx "ty@$TY_VERSION" check --color never --python "$VENV" "${DIRS[@]}" 2>&1)
+TY_RC=$?
+if [ "$TY_RC" -ne 0 ] && [ "$TY_RC" -ne 1 ]; then
+  cannot_check "ty exited $TY_RC (an invalid [tool.ty] in pyproject.toml or ty.toml?): $(printf '%s' "$OUT" | head -5 | tr '\n' ' ')"
+fi
+if [ "$TY_RC" -eq 1 ]; then
   # Which rule codes came out? ty puts them at the line start as
   # `error[<code>]:` or `warning[<code>]:`. Empty = a failure without
   # diagnostics; that falls through to the plain block.

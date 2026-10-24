@@ -221,3 +221,12 @@ def test_every_hook_script_is_registered():
     registered = (PACK / "hooks/hooks.json").read_text()
     for script in sorted((PACK / "hooks").glob("*.sh")):
         assert f"/hooks/{script.name}" in registered, f"{script.name} is in no hook"
+
+
+def test_ty_unchecked_on_a_broken_tool_config(tmp_path):
+    """ty exit 2 (an invalid `[tool.ty]`) is no type error: a message, not a block."""
+    root = _fake_repo(tmp_path)
+    (root / "src" / "fine.py").write_text("X: int = 1\n")
+    (root / "pyproject.toml").write_text('[project]\nname = "x"\n\n[tool.ty.rules]\nnot-a-rule = 3\n')
+    message = _message(_run(root))
+    assert message.startswith("ty-check: COULD NOT CHECK — ty exited 2"), message
