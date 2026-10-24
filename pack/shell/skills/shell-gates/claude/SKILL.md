@@ -49,7 +49,7 @@ Run each row from the repository root.
 |---|---|---|
 | Gate shell is clean down to `style` | `bash .lighthouse/scripts/shellcheck-repo.sh` | rc 0 |
 | All shell in the repo is clean on `error`+`warning` | `git ls-files -z --cached --others --exclude-standard '*.sh' '*.bash' \| xargs -0 bash .lighthouse/scripts/shellcheck-repo.sh --severity warning --` | rc 0 |
-| No gate shell falls outside git | `for d in $(python3 .lighthouse/lib/lighthouse_lib/config.py shell.strict_dirs); do find "$d" -name '*.sh' 2>/dev/null; done \| git check-ignore --stdin` | rc 1 |
+| No gate shell falls outside git | `dirs=$(python3 .lighthouse/lib/lighthouse_lib/config.py shell.strict_dirs) && printf '%s\n' "$dirs" \| while IFS= read -r d; do [ -n "$d" ] && find "$d" \( -name '*.sh' -o -name '*.bash' \) 2>/dev/null; done \| git check-ignore --stdin` | rc 1 |
 
 `shellcheck-repo.sh` without files checks the strict set, at `style`; finding no file
 there is rc 2, not green. Without shellcheck it is rc 4: nothing was checked.

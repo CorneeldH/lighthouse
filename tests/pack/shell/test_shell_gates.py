@@ -153,3 +153,57 @@ def test_detect_rule():
     text = (SHELL / "detect.toml").read_text(encoding="utf-8")
     assert re.search(r'^files = \["\*\*/\*\.sh", "\*\*/\*\.bash"\]$', text, re.M), text
 
+
+
+def _kpi_fixture(tmp_path: Path) -> tuple[Path, dict]:
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    install_pack("shell", repo)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "install")
+    return repo, {"LIGHTHOUSE_REPO_ROOT": str(repo)}
+
+
+def _run_kpi(repo: Path, command: str, env: dict) -> int:
+    return subprocess.run(
+        ["bash", "-c", command], cwd=repo, env=dict(os.environ, **GIT_ENV, **env), capture_output=True, check=False
+    ).returncode
+
+
+def test_kpi_rows_go_red(tmp_path, pinned_shellcheck):
+    """Each row misses its target once the thing it measures is broken."""
+    (strict, _), (all_shell, _), (ignored, _) = _kpi_rows(_text("claude"))
+    repo, env = _kpi_fixture(tmp_path)
+    env["SHELLCHECK_BIN"] = pinned_shellcheck
+    style_only = '#!/usr/bin/env bash\nv="a b"\necho "$v" | sed \'s/a/c/\'\n'
+    warning = '#!/usr/bin/env bash\nf() {\n  local x=1\n  echo "hoi"\n}\nf\n'
+    (repo / ".claude" / "hooks" / "style.sh").write_text(style_only, encoding="utf-8")
+    assert _run_kpi(repo, strict, env) != 0
+    (repo / "tools").mkdir()
+    (repo / "tools" / "warn.bash").write_text(warning, encoding="utf-8")
+    assert _run_kpi(repo, all_shell, env) != 0
+    (repo / ".gitignore").write_text("lib/\n", encoding="utf-8")
+    (repo / ".claude" / "hooks" / "lib").mkdir()
+    (repo / ".claude" / "hooks" / "lib" / "a.bash").write_text("#!/bin/bash\n", encoding="utf-8")
+    assert _run_kpi(repo, ignored, env) != 1
+
+
+def test_kpi_gitignore_row_is_not_green_on_broken_config(tmp_path):
+    (_, _), (_, _), (ignored, _) = _kpi_rows(_text("claude"))
+    repo, env = _kpi_fixture(tmp_path)
+    toml = tmp_path / "broken.toml"
+    toml.write_text('[project]\nlanguage = "en"\n\n[shell]\nstrict_dirs = ".claude/hooks"\n', encoding="utf-8")
+    env["LIGHTHOUSE_TOML"] = str(toml)
+    assert _run_kpi(repo, ignored, env) != 1
+
+
+def test_kpi_gitignore_row_handles_a_space(tmp_path):
+    (_, _), (_, _), (ignored, _) = _kpi_rows(_text("claude"))
+    repo, env = _kpi_fixture(tmp_path)
+    toml = tmp_path / "space.toml"
+    toml.write_text('[project]\nlanguage = "en"\n\n[shell]\nstrict_dirs = ["my hooks"]\n', encoding="utf-8")
+    env["LIGHTHOUSE_TOML"] = str(toml)
+    (repo / ".gitignore").write_text("lib/\n", encoding="utf-8")
+    (repo / "my hooks" / "lib").mkdir(parents=True)
+    (repo / "my hooks" / "lib" / "a.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+    assert _run_kpi(repo, ignored, env) == 0
