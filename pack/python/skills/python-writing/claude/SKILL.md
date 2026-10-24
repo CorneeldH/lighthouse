@@ -39,6 +39,11 @@ Row 4 is not a required step before the PR. When the repository runs the nightly
 its counterpart for when you want to know beforehand whether you will pass. The base is
 `origin/<forge.default_branch>`.
 
+The ratchet reads three project files: `quality-baseline.toml` (the counters and the coverage
+floors), `.ruff-version` and `.complexipy-version` (the pins). `lighthouse init` does not write
+them. Without them the repository does not use the ratchet, and `ratchet.py` stops with
+`… is missing`: skip row 4 and the ratchet commands then.
+
 ### Why row 1 is scoped
 
 The naive form — `ruff check` on the changed files, target 0 — fails as soon as the project lints

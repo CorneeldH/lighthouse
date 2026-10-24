@@ -164,3 +164,12 @@ def test_no_source_measurements():
         for literal in ("2026-08", "#562", "#806", "#1016", "pyannote", "rumps", "apps/", "vendor/"):
             assert literal not in text, f"{path}: {literal}"
         assert not re.search(r"#\d{3,}", text), f"{path}: an issue number"
+
+
+def test_the_ratchet_names_its_project_files():
+    """Without these three files the ratchet stops; the skill says so, so an agent in a
+    fresh repository does not chase a missing baseline."""
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        for name in ("quality-baseline.toml", ".ruff-version", ".complexipy-version"):
+            assert name in text, f"{path}: {name}"
