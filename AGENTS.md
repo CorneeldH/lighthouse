@@ -55,4 +55,5 @@ Skills:
 - `/lighthouse-plan-adversarial-review`: a plan reviewed by another model family.
 - `/lighthouse-worktree-audit`: which worktrees and branches can go.
 - `/lighthouse-instrument`: on which layer a new instruction belongs.
+- `/lighthouse-testing`: tests that fail when behaviour breaks.
 <!-- lighthouse:end core -->
