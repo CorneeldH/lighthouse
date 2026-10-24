@@ -17,6 +17,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tests.pack._testkit import (
     GIT_ENV,
     INSTALL_ROOT,
@@ -402,3 +404,32 @@ def test_bash_write_through_gate(tmp_path, pinned_shellcheck):
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
     assert "no shell gate installed" not in out.stderr + out.stdout
+
+
+# --- a shellcheck that fails is no finding ----------------------------------
+
+
+def _crashing_shellcheck(tmp_path: Path, rc: int) -> str:
+    stub = tmp_path / f"shellcheck-rc{rc}"
+    stub.write_text(f"#!/usr/bin/env bash\necho boom >&2\nexit {rc}\n")
+    stub.chmod(0o755)
+    return str(stub)
+
+
+@pytest.mark.parametrize("rc", [2, 3, 4, 126])
+def test_repo_script_shellcheck_failure_is_rc_4(tmp_path, rc):
+    """shellcheck's own rc 2-4 (a file it could not read, bad options) or a crash is
+    "not checked", not "findings"."""
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    result = _run_repo_script(tmp_path / "repo", "--", str(target), SHELLCHECK_BIN=_crashing_shellcheck(tmp_path, rc))
+    assert result.returncode == 4, result.stderr
+    assert f"shellcheck exited with rc={rc}" in result.stderr
+    assert "boom" in result.stderr
+
+
+def test_hook_shellcheck_failure_is_unchecked(tmp_path):
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    result = _run_shellcheck_hook(target, SHELLCHECK_BIN=_crashing_shellcheck(tmp_path, 3))
+    assert result.returncode == 2, result.stdout
+    assert _first_line(result).startswith("shellcheck: COULD NOT CHECK — "), result.stderr
+    assert bw.classify(result.returncode, result.stderr.encode()) == "unchecked"

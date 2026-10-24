@@ -10,7 +10,7 @@
 #   0  gecontroleerd, niets gevonden
 #   1  gecontroleerd, wel bevindingen
 #   2  verkeerd aangeroepen
-#   4  NIET gecontroleerd (shellcheck ontbreekt) - geen groen, geen rood
+#   4  NIET gecontroleerd (shellcheck ontbreekt of faalt) - geen groen, geen rood
 #
 # Drie uitkomsten, niet twee. "Kon niet kijken" is geen "niets gevonden".
 set -uo pipefail
@@ -84,5 +84,12 @@ fi
 # -x: volg `source`/`.` naar het gesourcete bestand. Zonder dit meldt shellcheck
 # SC1091 ("not following") op elk script dat lib/ laadt — een bevinding over de
 # controle zelf in plaats van over de code.
-"$SHELLCHECK" -x -S "$severity" "${files[@]}" || exit 1
-exit 0
+# De rc van shellcheck zelf: 0 schoon, 1 bevindingen. Elke andere rc (2 een bestand dat
+# hij niet kon lezen, 3 en 4 verkeerde opties, of een crash) is niet gecontroleerd.
+"$SHELLCHECK" -x -S "$severity" "${files[@]}"
+rc=$?
+case "$rc" in
+  0|1) exit "$rc" ;;
+esac
+echo "shellcheck-repo: shellcheck exited with rc=$rc, so nothing was checked" >&2
+exit "$SHELLCHECK_UNAVAILABLE"
