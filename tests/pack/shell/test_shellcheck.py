@@ -246,9 +246,12 @@ def test_cache_dir_is_lighthouse_tools(tmp_path):
     repo = _fresh_repo(tmp_path)
     git(repo, "commit", "-q", "--allow-empty", "-m", "init")
     git(repo, "worktree", "add", "-q", str(tmp_path / "wt"))
+    (repo / "sub" / "deep").mkdir(parents=True)
+    (tmp_path / "wt" / "sub").mkdir()
     stub_dir = tmp_path / "bin"
     stub_dir.mkdir()
-    for where in (repo, tmp_path / "wt"):
+    # From a subdirectory too: there git prints the common dir relative to the cwd.
+    for where in (repo, repo / "sub" / "deep", tmp_path / "wt", tmp_path / "wt" / "sub"):
         result = _resolve_shellcheck(where, stub_dir, "_sc_tool_dir")
         assert result.returncode == 0, result.stderr
         assert Path(result.stdout.strip()).resolve() == (repo / ".git" / "lighthouse-tools").resolve()

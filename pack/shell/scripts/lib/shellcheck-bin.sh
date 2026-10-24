@@ -28,12 +28,14 @@ _sc_platform() {
 }
 
 _sc_tool_dir() {
-  local common root
-  root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 1
+  local common
+  git rev-parse --show-toplevel >/dev/null 2>&1 || return 1
   common="$(git rev-parse --git-common-dir 2>/dev/null)" || return 1
+  # Een relatief antwoord is relatief aan de cwd, niet aan de toplevel: vanuit
+  # een submap is het `../../.git`.
   case "$common" in
     /*) ;;
-    *) common="$root/$common" ;;
+    *) common="$PWD/$common" ;;
   esac
   # Een cache, een download, gedeeld over worktrees omdat --git-common-dir naar
   # de hoofd-.git wijst.
