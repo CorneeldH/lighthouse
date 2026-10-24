@@ -39,4 +39,6 @@ jobs:
         with:
           version: v2.15.0
       - run: go test ./...
+      # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: go test -tags e2e ./e2e/ -v
