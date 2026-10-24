@@ -32,8 +32,8 @@ DIT SCRIPT MUTEERT NIETS
 Geen delete, geen unlock, geen kill, geen schrijven naar `.port-registry`. Het
 levert commando's; de mens plakt. `run_git` weigert een niet-lezende git-verb, dus
 die norm zit in het uitvoerpad en niet alleen in de documentatie. Ook `--only`
-muteert niets: lighthouse-close-issue voert de geleverde regels uit, na
-bevestiging — niet dit script.
+muteert niets: lighthouse-close-issue voert de geleverde regels uit, zonder
+vraag — niet dit script.
 
 Gebruik:
     python3 .lighthouse/scripts/worktree_audit.py            # --cleanup (default)
@@ -41,6 +41,7 @@ Gebruik:
     python3 .lighthouse/scripts/worktree_audit.py --origin
     python3 .lighthouse/scripts/worktree_audit.py --kpi
     python3 .lighthouse/scripts/worktree_audit.py --only <branch>   # exit 0 = opruimbaar
+    python3 .lighthouse/scripts/worktree_audit.py --issue <nr>   # exit 2 = PR-lookup mislukt
 
 De default branch komt uit `[forge] default_branch`, de extra beschermde refs en paden uit
 `[worktree_audit]`, de repo voor de PR-lookup uit `[forge] repo`. Output is English;
@@ -807,6 +808,97 @@ def repo_slug() -> str | None:
     return apply_config()
 
 
+ISSUE_PRS_QUERY = """query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){
+  closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged repository{nameWithOwner}}}
+  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged body repository{nameWithOwner}}}}}}}}}"""
+
+
+def parse_issue_pr_heads(payload: dict, slug: str, nr: int) -> list[str] | None:
+    """De headbranches van de gemergde PR's van issue `nr`, in binnenkomvolgorde.
+
+    Twee bronnen. `closedByPullRequestsReferences` kent alleen PR's met een
+    sluitwoord; een PR met `Refs #<nr>` staat daar niet in. Die maakt op het issue
+    wel een `CrossReferencedEvent` met de PR als `source`. Zo'n event ontstaat ook
+    voor een PR die het issue alleen noemt ("zie #<nr>"), en die hoort er niet bij:
+    een cross-ref telt alleen als de PR-body `Refs #<nr>` bevat (de vorm die
+    `pr-create-gate` eist). Een closing-node telt altijd. Beide moeten `merged`
+    zijn en uit dezelfde repo komen.
+
+    None = de lookup is mislukt (GraphQL-`errors`, of `issue: null` bij een
+    verkeerd nummer): dat is geen "geen PR's".
+    """
+    if not isinstance(payload, dict) or payload.get("errors"):
+        return None
+    try:
+        issue = payload["data"]["repository"]["issue"]
+    except (KeyError, TypeError):
+        return None
+    if not isinstance(issue, dict):
+        return None
+    refs = re.compile(rf"(?i)\brefs\s+#{nr}\b")
+    heads: list[str] = []
+
+    def take(node: object, *, needs_refs: bool) -> None:
+        if not isinstance(node, dict) or not node.get("merged"):
+            return
+        head = node.get("headRefName")
+        repo = (node.get("repository") or {}).get("nameWithOwner")
+        if not head or repo != slug:
+            return
+        if needs_refs and not refs.search(node.get("body") or ""):
+            return
+        if head not in heads:
+            heads.append(head)
+
+    closing = (issue.get("closedByPullRequestsReferences") or {}).get("nodes") or []
+    for node in closing:
+        take(node, needs_refs=False)
+    timeline = (issue.get("timelineItems") or {}).get("nodes") or []
+    for item in timeline:
+        take((item or {}).get("source"), needs_refs=True)
+    return heads
+
+
+def run_gh_issue_pr_heads(slug: str | None, nr: int) -> list[str] | None:
+    """`gh api graphql` voor `parse_issue_pr_heads`; None = lookup mislukt.
+
+    Zonder `forge.repo` is er geen lookup: ook dat is None. `-F nr=` en niet `-f`:
+    `$nr` is een `Int!`.
+    """
+    if slug is None:
+        return None
+    owner, _, name = slug.partition("/")
+    try:
+        proc = subprocess.run(
+            [
+                "gh",
+                "api",
+                "graphql",
+                "-f",
+                f"owner={owner}",
+                "-f",
+                f"name={name}",
+                "-F",
+                f"nr={nr}",
+                "-f",
+                f"query={ISSUE_PRS_QUERY}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=300,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    return parse_issue_pr_heads(payload, slug, nr)
+
+
 def _tip_shape(target: str, repo_root: Path) -> tuple[float | None, bool | None]:
     """Committijd (epoch) en "heeft de tip een ouder" in één git-aanroep.
 
@@ -1327,6 +1419,51 @@ def render_only(
     return "\n".join(lines) + "\n", True
 
 
+def issue_branches(rows: list[Row], nr: int, pr_heads: list[str]) -> list[str]:
+    """Branches van issue `nr`: PR-heads plus rijen met prefix `issue-<nr>-`.
+
+    Het streepje hoort bij de prefix: `issue-3-` mag `issue-32-x` niet pakken.
+    Gesorteerd, zonder dubbelen.
+    """
+    prefix = f"issue-{nr}-"
+    found = {r.name for r in rows if r.name.startswith(prefix)}
+    return sorted(found | set(pr_heads))
+
+
+def render_issue(
+    rows: list[Row],
+    nr: int,
+    pr_heads: list[str] | None,
+    *,
+    cwd: Path,
+    alive: Callable[[int], bool] = pid_alive,
+) -> str:
+    """Per branch van issue `nr` een blok: `branch: <b>` plus de `render_only`-uitvoer.
+
+    Geen tweede ladder: `render_only` beslist. Eén aanvulling: een branch waarvan
+    de rij geen gemergde PR heeft, is nooit opruimbaar, ook als de ladder "safe to
+    remove" zegt (een lokale `issue-<nr>-`-branch zonder PR). `pr_heads is None`
+    betekent dat de PR-lookup mislukte; dan is er geen enkel signaal, en geen
+    signaal is geen ja.
+    """
+    if pr_heads is None:
+        return f"cleanup: no — PR lookup for issue #{nr} failed\n"
+    branches = issue_branches(rows, nr, pr_heads)
+    if not branches:
+        return f"cleanup: no — no branches found for issue #{nr}\n"
+    blocks: list[str] = []
+    for branch in branches:
+        text, ok = render_only(rows, branch, cwd=cwd, alive=alive)
+        match = [r for r in rows if r.name == branch]
+        if ok and not (len(match) == 1 and match[0].pr_state == "merged"):
+            # Alles vanaf `cleanup: yes` (ook de commando's eronder) vervalt.
+            lines = text.splitlines()
+            head = lines[: lines.index("cleanup: yes")]
+            text = "\n".join(head + ["cleanup: no — no merged PR"]) + "\n"
+        blocks.append(f"branch: {branch}\n{text}")
+    return "\n".join(blocks)
+
+
 def render_kpi(rows: list[Row], *, alive: Callable[[int], bool] = pid_alive) -> str:
     pairs = _judged(rows, alive)
     # Minor 6: de hoofdcheckout heeft ook `worktree` gezet, maar de skill
@@ -1363,6 +1500,13 @@ def main(argv: list[str] | None = None) -> int:
         metavar="BRANCH",
         help="one branch + `cleanup: yes|no` (exit 0 only on yes), for lighthouse-close-issue",
     )
+    view.add_argument(
+        "--issue",
+        type=int,
+        metavar="NR",
+        help="all branches of an issue, one block each with `cleanup: yes|no` "
+        "(exit 2 if the PR lookup fails), for lighthouse-close-issue",
+    )
     parser.add_argument(
         "--repo",
         type=Path,
@@ -1376,6 +1520,12 @@ def main(argv: list[str] | None = None) -> int:
         text, ok = render_only(rows, args.only, cwd=Path.cwd().resolve())
         print(text, end="")
         return 0 if ok else 1
+    if args.issue is not None:
+        pr_heads = run_gh_issue_pr_heads(repo_slug(), args.issue)
+        print(
+            render_issue(rows, args.issue, pr_heads, cwd=Path.cwd().resolve()), end=""
+        )
+        return 2 if pr_heads is None else 0
     if args.sessions:
         print(render_sessions(rows), end="")
     elif args.origin:
