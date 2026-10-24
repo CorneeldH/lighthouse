@@ -345,3 +345,78 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/skills/write-issue/agents/SKILL.md"
 source_path = ".agents/skills/paia-write-issue/SKILL.md"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/skills/python-writing/claude/SKILL.md"
+source_path = ".claude/skills/paia-python-schrijven/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/skills/python-writing/agents/SKILL.md"
+source_path = ".agents/skills/paia-python-schrijven/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/hooks/ruff-format.sh"
+source_path = ".claude/hooks/ruff-format.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/hooks/ty-check.sh"
+source_path = ".claude/hooks/ty-check.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/hooks/hooks.json"
+new = true
+
+[[file]]
+path = "pack/python/requires.toml"
+new = true
+
+[[file]]
+path = "pack/python/scripts/quality/__init__.py"
+source_path = "scripts/quality/__init__.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/baseline.py"
+source_path = "scripts/quality/baseline.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/diffcov.py"
+source_path = "scripts/quality/diffcov.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/gitenv.py"
+source_path = "scripts/quality/gitenv.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/prcov.py"
+source_path = "scripts/quality/prcov.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/scripts/quality/prcov_issues.py"
+source_path = "scripts/quality/prcov_issues.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/python/detect.toml"
+new = true
+
+[[file]]
+path = "pack/python/lighthouse.toml.fragment"
+new = true
+
+[[file]]
+path = "pack/python/instructions/AGENTS.md"
+new = true
+
+[[file]]
+path = "pack/python/scripts/quality/ratchet.py"
+source_path = "scripts/quality/ratchet.py"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

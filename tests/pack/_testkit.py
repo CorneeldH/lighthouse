@@ -145,15 +145,9 @@ _INSTALL_DIRS = {
 MINIMAL_TOML = '[project]\nlanguage = "en"\n\n[forge]\nkind = "github"\nrepo = "Acme/widgets"\n'
 
 
-def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
-    """Copy `pack/core` into `root` the way `lighthouse init` lays it out, with a
-    `lighthouse.toml` unless `toml` is None or one is there, and return the path of
-    the installed main-commit-guard."""
-    if toml is not None and not (root / "lighthouse.toml").exists():
-        root.mkdir(parents=True, exist_ok=True)
-        (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
+def _install_dirs(pack_dir: Path, root: Path) -> None:
     for name, target in _INSTALL_DIRS.items():
-        source_dir = CORE / name
+        source_dir = pack_dir / name
         if not source_dir.is_dir():
             continue
         for source in sorted(source_dir.rglob("*")):
@@ -165,11 +159,29 @@ def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
             # Like `internal/packs`: executable when the file starts with "#!".
             if source.read_bytes().startswith(b"#!"):
                 dest.chmod(0o755)
+
+
+def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
+    """Copy `pack/core` into `root` the way `lighthouse init` lays it out, with a
+    `lighthouse.toml` unless `toml` is None or one is there, and return the path of
+    the installed main-commit-guard."""
+    if toml is not None and not (root / "lighthouse.toml").exists():
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
+    _install_dirs(CORE, root)
     headings = CORE / "headings.toml"
     if headings.is_file():
         (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(headings, root / ".lighthouse" / "headings.toml")
     return root / _INSTALL_DIRS["hooks"] / "main-commit-guard.sh"
+
+
+def install_pack(name: str, root: Path, toml: str | None = MINIMAL_TOML) -> Path:
+    """Install `pack/core` plus `pack/<name>` into `root`, as `install_core` does,
+    and return the installed hook directory."""
+    install_core(root, toml)
+    _install_dirs(CORE.parent / name, root)
+    return root / _INSTALL_DIRS["hooks"]
 
 
 # One installation for the whole session; the conftest points LIGHTHOUSE_REPO_ROOT at it.

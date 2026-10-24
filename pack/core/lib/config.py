@@ -99,6 +99,11 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "project.instructions_word_ceiling": _INT,
         "project.skill_prefix": _STR,
         "project.milestone_prefix": _STR,
+        "python.source_dirs": _STRS,
+        "python.lint_dirs": _STRS,
+        "python.coverage_command": _STR,
+        "python.nightly_workflow": _STR,
+        "python.coverage_issue_labels": _STRS,
     }
 )
 
@@ -130,8 +135,16 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
         "worktree_audit.protected_refs": (),
         "worktree_audit.protected_paths": (),
         "project.instructions_word_ceiling": 3000,
+        "python.source_dirs": ("src",),
+        "python.lint_dirs": ("src", "tests"),
+        "python.coverage_command": "uv run pytest -q",
+        "python.coverage_issue_labels": (),
     }
 )
+
+# Keys whose empty value is a setting: `[test_gate] command = ""` turns the test gate
+# off, and `--upgrade` leaves it so (ontwerpkeuze 4 of M0 (c)).
+_MAY_BE_EMPTY = ("test_gate.command",)
 
 _BASE_KEYS = (
     "forge.kind",
@@ -323,7 +336,7 @@ def _check_schema(data: Mapping[str, Any], path: Path) -> None:
         value = data[table][name]
         if not _check_type(value, kind):
             raise ConfigError(f"{path}: key {key} must be of type {kind}")
-        if kind == _STR and not value:
+        if kind == _STR and not value and key not in _MAY_BE_EMPTY:
             raise ConfigError(f"{path}: key {key} is empty")
 
 
