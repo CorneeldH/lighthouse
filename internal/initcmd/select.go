@@ -63,11 +63,15 @@ func loadAll(fsys fs.FS, version string) (map[string]packs.Pack, error) {
 }
 
 // lsFiles lists the files git tracks or would track (not ignored) that one of specs
-// names, read with glob semantics.
+// names, read with glob semantics. Files lighthouse installed do not count: the shell
+// hooks of core would otherwise make every repo a shell repo.
 func lsFiles(root string, specs []string) ([]string, error) {
 	args := []string{"-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--"}
 	for _, s := range specs {
 		args = append(args, ":(glob)"+s)
+	}
+	for _, g := range packs.InstalledGlobs() {
+		args = append(args, ":(exclude,glob)"+g)
 	}
 	var stderr bytes.Buffer
 	cmd := exec.Command("git", args...)
