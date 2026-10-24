@@ -1,181 +1,165 @@
 ---
-name: paia-shell-gates
-description: Use when writing or changing shell that guards something — hooks in .claude/hooks/ or scripts/hooks/, pre-push/CI gate scripts, and the integration tests that assert on them. Carries the norm "de afwezigheid van een signaal is geen negatief resultaat" plus a KPI table with commands that run in this repo. In OpenCode the enforcing hook does not run — run the KPI commands by hand. LET OP — gaat het om gewone Python of pytest, dan is dit niet de skill; gaat het om het opzetten van een nieuwe workflow-YAML, gebruik dan scripts/hooks/workflow-audit.sh.
-metadata:
-  binding: hard
-  origin: own
-  domain: factory
+name: lighthouse-shell-gates
+description: Use when writing or changing shell that guards something — hooks in .claude/hooks/, pre-commit, pre-push or CI gate scripts, and the tests that assert on them. Carries the norm "the absence of a signal is treated as a negative result" plus a KPI table with commands that run in this repo. In OpenCode the enforcing hook does not run; run the KPI commands by hand. NOTE — for plain Python or pytest this is not the skill; for workflow YAML neither.
 ---
 
-# Shell die iets bewaakt
+# Shell that guards something
 
-## Domein
+## Domain
 
-Shell waarvan een ander mens of een andere agent de exitcode gelooft: de hooks in
-`.claude/hooks/`, de gate-scripts in `scripts/hooks/`, en de integratietests in
-`tests/integration/` die daarop asserteren. Gewone hulpscripts in `scripts/` vallen er
-half onder — daar geldt alleen de warning-lat, zie KPI-rij 2.
+Shell whose exit code another person or another agent believes: the hooks in
+`.claude/hooks/`, the gate scripts, and the tests that assert on them. Which directories
+count as gate shell is set in `lighthouse.toml` under `[shell] strict_dirs` (default
+`.claude/hooks`); ask with `python3 .lighthouse/lib/lighthouse_lib/config.py shell.strict_dirs`.
+Ordinary helper scripts fall half under it: only the warning bar applies there, see KPI
+row 2.
 
-Buiten scope: Python (`ruff`/`ty` hebben hun eigen hooks), workflow-YAML
-(`scripts/hooks/workflow-audit.sh`).
+Out of scope: Python and workflow YAML.
 
-## De norm
+## The norm
 
-**De afwezigheid van een signaal wordt behandeld als een negatief resultaat.**
+**The absence of a signal is treated as a negative result.**
 
-"Niets gevonden" en "kon niet kijken" komen er allebei uit als groen. Dat is één
-foutklasse, en in #609/#610 leverde hij zes defecten op die géén van de bestaande
-controles achteraf ving — pytest groen, gate-test groen, code zag er goed uit.
+"Nothing found" and "could not look" both come out as green. That is one class of
+defect, and these six cases of it slipped past every existing check: tests green, gate
+test green, the code looked fine.
 
-| # | Wat er stond | Wat het deed |
+| # | What was written | What it did |
 |---|---|---|
-| 1 | `check "... is blocked" nonzero "$?"` | `PASS` terwijl het script niet bestond (rc=127 is ook nonzero) |
-| 2 | `die()` binnen `$( )` | sha256-mismatch printte de fout en exitte alsnog **0**; liet `-shellcheck ""` achter, wat actionlint leest als "integratie uit" |
-| 3 | hook-shim met `$(git rev-parse --show-toplevel)/scripts/...` | `.git/` is gedeeld over worktrees; vanaf elke andere branch rc=127 |
-| 4 | `git diff ... 2>/dev/null \| grep -q` | falende diff → lege output → "geen wijziging" → push ongeaudit door |
-| 5 | testfixture zonder `origin` | de check "brand-new branch" raakte nooit het merge-base-pad dat hij toetste |
-| 6 | `--online` zonder token | logde `(online)`, draaide stil offline, rc=0 |
+| 1 | `check "... is blocked" nonzero "$?"` | `PASS` while the script did not exist (rc=127 is nonzero too) |
+| 2 | `die()` inside `$( )` | a sha256 mismatch printed the error and still exited **0**; it left `-shellcheck ""` behind, which actionlint reads as "integration off" |
+| 3 | a hook shim with `$(git rev-parse --show-toplevel)/scripts/...` | `.git/` is shared across worktrees; from any other branch rc=127 |
+| 4 | `git diff ... 2>/dev/null \| grep -q` | a failing diff gives empty output, read as "no change", and the push went through unaudited |
+| 5 | a test fixture without `origin` | the "brand-new branch" check never reached the merge-base path it was testing |
+| 6 | `--online` without a token | logged `(online)`, silently ran offline, rc=0 |
 
-Vier van de zes zaten in het **plan**, niet in de uitvoering. Een review-lane achteraf is
-dus niet de plek waar dit opgelost hoort te worden; deze skill is de plek vooraf, de
-shellcheck-hook de plek erna.
+Four of the six were in the **plan**, not in the execution. A review lane afterwards is
+therefore not where this gets solved; this skill is the place before, the shellcheck hook
+the place after.
 
-**Drie uitkomsten, niet twee.** Elk gate-script hier geeft terug: 0 = gecontroleerd en
-schoon, 1 = gecontroleerd en bevindingen, 4 = **niet gecontroleerd**. Die derde is een
-geldig antwoord en mag nooit als geslaagd gepresenteerd worden.
+**Three outcomes, not two.** Every gate script here returns: 0 = checked and clean, 1 =
+checked with findings, 4 = **not checked**. The third is a valid answer and may never be
+presented as a pass.
 
 ## KPIs
 
-Elke rij is op deze repo gedraaid; de kolom "gemeten" is de uitkomst op
-2026-08-23, worktree `issue-650-shellcheck-gate`.
+Run each row from the repository root.
 
-| Norm | Meetcommando | Doel | Gemeten |
-|---|---|---|---|
-| Gate-shell is schoon tot en met `style` | `bash scripts/hooks/shellcheck-repo.sh` | rc 0 | rc 0 (15 bestanden) |
-| Alle shell in de repo is schoon op `error`+`warning` | `git ls-files --cached --others --exclude-standard '*.sh' \| xargs bash scripts/hooks/shellcheck-repo.sh --severity warning --` | rc 0 | rc 0 (63 bestanden) |
-| De gate stond één keer rood om de juiste reden | `uv run pytest tests/unit/test_quality_hooks.py -k "shellcheck or gate_assert or registered or gitignored"` | alles groen | 13 passed |
-| Geen gate-shell valt buiten git | `git check-ignore $(git ls-files --cached --others --exclude-standard -- 'scripts/hooks/*.sh' 'tests/integration/*.sh' '.claude/hooks/*.sh')` | rc 1 | rc 1 |
+| Norm | Command | Target |
+|---|---|---|
+| Gate shell is clean down to `style` | `bash .lighthouse/scripts/shellcheck-repo.sh` | rc 0 |
+| All shell in the repo is clean on `error`+`warning` | `git ls-files -z --cached --others --exclude-standard '*.sh' '*.bash' \| xargs -0 bash .lighthouse/scripts/shellcheck-repo.sh --severity warning --` | rc 0 |
+| No gate shell falls outside git | `for d in $(python3 .lighthouse/lib/lighthouse_lib/config.py shell.strict_dirs); do find "$d" -name '*.sh' 2>/dev/null; done \| git check-ignore --stdin` | rc 1 |
 
-De derde rij is de belangrijkste en de minst vanzelfsprekende: hij bevat
-`test_shellcheck_hook_blocks_a_deliberately_broken_script` en
-`test_shellcheck_hook_fails_loud_when_the_tool_is_missing`. Beide zijn met een mutatie
-getoetst — mechanisme slopen, test moet vallen, herstellen. Een test die groen blijft na
-die mutatie meet niets.
+`shellcheck-repo.sh` without files checks the strict set, at `style`; finding no file
+there is rc 2, not green. Without shellcheck it is rc 4: nothing was checked.
 
-### Twee rijen die zijn geschrapt
+The row this table cannot carry is the most important one: the tests of your own gates
+went red once for the right reason. A test that stays green after you break the mechanism
+it guards measures nothing. See the first non-negotiable.
 
-Bewust vermeld, want een KPI-tabel die doet alsof ze de hele foutklasse dekt, is zelf een
-instantie van die foutklasse.
+### Two rows that were dropped
 
-- **"Geen ongemotiveerde foutonderdrukking: 0 treffers op `2>/dev/null`."** Gemeten: 36
-  treffers in de drie gate-mappen, 25 na het wegfilteren van `|| true`- en
-  `command -v`-vormen. Vrijwel allemaal onschuldig (versieprobes waarbij de `grep`
-  erachter de eigenlijke assertie is, globs). De gevaarlijke variant — defect 4 — is met
-  grep niet van de onschuldige te onderscheiden; het verschil is semantisch: *neemt een
-  lege uitkomst de toegeeflijke tak?* Geschrapt als KPI, staat hieronder als
-  non-negotiable.
-- **"Elke blokkerende assertie toetst óók de uitvoer."** Gemeten: 12 kale
-  `check ... nonzero`-regels in `tests/integration/`, waarvan 3 terecht (een negatieve
-  `grep` waar er geen uitvoer ís). Te ruisgevoelig. In plaats van de KPI is de oorzaak
-  mechanisch weggenomen: `tests/integration/lib/gate-assert.sh` telt rc 126 en 127 niet
-  meer als bevinding, dus defect 1 kan niet meer optreden. Dat is sterker dan een teller.
+Mentioned on purpose, because a KPI table that pretends to cover the whole class of
+defect is itself an instance of that class.
+
+- **"No unmotivated error suppression: 0 hits on `2>/dev/null`."** Nearly all hits are
+  harmless (version probes where the `grep` behind them is the real assertion, globs).
+  The dangerous variant, defect 4, cannot be told apart from the harmless one with grep;
+  the difference is semantic: *does an empty result take the lenient branch?* Dropped as
+  a KPI, kept below as a non-negotiable.
+- **"Every blocking assertion also checks the output."** Too noisy: a negative `grep`
+  rightly has no output. Remove the cause instead: an assertion helper that does not count
+  rc 126 and 127 as a finding makes defect 1 impossible. That is stronger than a counter.
 
 ## Non-negotiable
 
-Deze drie zijn niet greppable. Ze staan hier los van de KPI-tabel omdat er geen
-meetcommando voor bestaat — niet omdat ze minder gelden.
+These three cannot be grepped. They stand apart from the KPI table because no command
+measures them, not because they count for less.
 
-- **Een gate is niet af tot je hem één keer om de juiste reden rood hebt zien staan.**
-  Breek het ding onder test, kijk of de assertie valt, herstel. Dit is wat defect 2 en 6
-  boven water haalde. ✅ mutatie draaien en de FAIL laten zien · ❌ "de test zou nu moeten
-  slagen".
-- **Onderscheid "gecontroleerd en niets gevonden" van "kon niet controleren".** Elke
-  exitcode die je negeert, elke lege output waaruit je een conclusie trekt. ✅ `rc=4` en
-  een aparte tak · ❌ `2>/dev/null | grep -q` waarvan de lege uitkomst "geen wijziging"
-  betekent.
-- **Een test die een codepad noemt, moet dat pad ook raken.** Defect 5 was groen en
-  toetste niets. ✅ de fixture zo bouwen dat het pad aantoonbaar geraakt wordt (een marker
-  in de uitvoer) · ❌ vertrouwen op de naam van de test.
+- **A gate is not done until you have seen it red once for the right reason.** Break the
+  thing under test, watch the assertion fail, restore it. This is what surfaced defects 2
+  and 6. ✅ run the mutation and show the FAIL · ❌ "the test should pass now".
+- **Tell "checked and found nothing" apart from "could not check".** Every exit code you
+  ignore, every empty output you draw a conclusion from. ✅ `rc=4` and a separate branch ·
+  ❌ `2>/dev/null | grep -q` whose empty result means "no change".
+- **A test that names a code path must also reach that path.** Defect 5 was green and
+  tested nothing. ✅ build the fixture so the path is provably reached (a marker in the
+  output) · ❌ trusting the name of the test.
 
-## De pairing
+## The pairing
 
-| Helft | Draagt | Wanneer |
+| Half | Carries | When |
 |---|---|---|
-| deze skill | de norm, de zes defecten, de meetcommando's | terwijl je schrijft |
-| `.claude/hooks/shellcheck.sh` | shellcheck op elk bewerkt `*.sh`, blokkerend | direct na de edit |
+| this skill | the norm, the six defects, the commands | while you write |
+| `.claude/hooks/lighthouse/shellcheck.sh` | shellcheck on every edited `*.sh` and `*.bash`, blocking | right after the edit |
 
-> **OpenCode draait die hook niet.** Claude Code-hooks vuren hier niet, dus de
-> afdwingende helft ontbreekt en deze skill draagt hem alleen als norm. Draai na elke
-> wijziging aan een shellscript met de hand:
-> `bash scripts/hooks/shellcheck-repo.sh --severity warning -- <bestand>`, en voor iets
-> in `scripts/hooks/`, `tests/integration/` of `.claude/hooks/` zonder `--severity`
-> (dan geldt de strengere lat). Dat is een bewuste asymmetrie, geen omissie: niet
-> "herstellen" door de hookverwijzing te schrappen.
+The hook is deliberately **not fail-open**. Skipping silently is itself the defect the
+gate exists to prevent: shellcheck is pinned, sha256-verified and lives in the shared tool
+cache, so "I could not look" is a defect and not a normal state. A missing tool means
+exit 2 with the reason, never exit 0. Its first line is then
+`shellcheck: COULD NOT CHECK — <reason>`.
 
-De hook is met opzet **niet fail-open**, anders dan `ruff-format.sh` en `ty-check.sh`.
-Daar mag "de omgeving is stuk" niet lezen als "de code is fout". Hier is stil overslaan
-zélf de fout die de gate moet voorkomen: shellcheck is gepind, sha256-geverifieerd en
-staat in de gedeelde toolcache, dus "ik kon niet kijken" is een defect en geen normale
-toestand. Ontbrekende tool ⇒ exit 2 met de reden, nooit exit 0.
+> **OpenCode does not run that hook.** Claude Code hooks do not fire there, so the
+> enforcing half is missing and this skill carries it only as a norm. After every change
+> to a shell script, run by hand:
+> `bash .lighthouse/scripts/shellcheck-repo.sh --severity warning -- <file>`, and for a
+> file in one of the strict directories
+> (`python3 .lighthouse/lib/lighthouse_lib/config.py shell.strict_dirs`) without
+> `--severity` (then the stricter bar applies). That is a deliberate asymmetry, not an
+> omission: do not "fix" it by deleting the reference to the hook.
 
-Twee blokkeerdrempels, met opzet twee verschillende sets (zelfde redenering als
-`BLOCKING_RULES` in `ruff-format.sh`): gate-mappen tot en met `style`, de rest op
-`error`+`warning`. De 26 info- en 31 style-bevindingen in de overige scripts zouden
-anders elke edit blokkeren op schuld die niets met de wijziging te maken heeft.
+Two blocking bars, deliberately two different sets: the strict directories down to
+`style`, the rest on `error`+`warning`. Info and style findings in the other scripts
+would otherwise block every edit on debt that has nothing to do with the change.
 
-## Bekende valkuilen
+The pin and its download live in `.lighthouse/scripts/lib/shellcheck-bin.sh`. The order
+is `SHELLCHECK_BIN`, the pinned binary in `<git-common-dir>/lighthouse-tools/`, a pinned
+shellcheck on `PATH`, a download of the pinned release, and only then a different version
+on `PATH`, with a notice. A different version is no equal alternative to the pin: an older
+shellcheck does not know today's disable codes, so the same tree goes red on one machine
+and green on another.
 
-- **Een commentaarregel die begint met `# shellcheck ` is een directive.**
-  `# shellcheck is GPL-3.0. ...` levert SC1072/SC1073 op. Zet er iets vóór
-  (`# Licentie: shellcheck ...`). Stond zo in `workflow-audit.sh` en meteen daarna in de
-  eerste versie van `lib/shellcheck-bin.sh`.
-- **`# shellcheck source=...` hoort direct boven de `.`-regel.** Staat er
-  `set -a; . "$f"; set +a` op één regel, dan slaat de directive op `set -a` en vuurt
-  SC1090 alsnog. Splits de regel.
-- **`git ls-files` ziet alleen getrackte bestanden.** Een gloednieuwe hook valt daar
-  buiten en de gate meldt groen over een set waar hij niet in zat. Altijd
-  `--cached --others --exclude-standard`.
-- **En dat is nog niet genoeg als het pad zélf genegeerd is.** De standaard-Python
-  `.gitignore` bevat een onaangelijnde `lib/`, die elke map met die naam matcht —
-  `scripts/hooks/lib/` en `tests/integration/lib/` vielen zo stil buiten git. Vandaar
-  KPI-rij 4.
-- **`$(git rev-parse --show-toplevel)` vanuit `.git/` wijst naar de verkeerde boom.**
-  `.git/` is gedeeld over worktrees (defect 3). Gebruik `$CLAUDE_PROJECT_DIR`, of leid af
-  van het pad dat je binnenkreeg.
-- **`die()` binnen `$( )` doodt de subshell, niet het script.** `X="$(f)" || exit "$?"`,
-  en controleer daarna of `X` niet leeg is.
+## Known pitfalls
 
-## macOS: drie GNU-aannames die CI per constructie niet vangt
+- **A comment line that starts with `# shellcheck ` is a directive.**
+  `# shellcheck is GPL-3.0. ...` gives SC1072/SC1073. Put something in front of it
+  (`# License: shellcheck ...`).
+- **`# shellcheck source=...` belongs directly above the `.` line.** With
+  `set -a; . "$f"; set +a` on one line, the directive applies to `set -a` and SC1090
+  fires anyway. Split the line.
+- **`git ls-files` sees only tracked files.** A brand-new hook falls outside it and the
+  gate reports green over a set it was not in. Always `--cached --others --exclude-standard`.
+- **And that is not enough when the path itself is ignored.** The standard Python
+  `.gitignore` contains an unanchored `lib/`, which matches every directory with that name,
+  so a `hooks/lib/` silently falls outside git. Hence KPI row 3.
+- **`$(git rev-parse --show-toplevel)` from inside `.git/` points at the wrong tree.**
+  `.git/` is shared across worktrees (defect 3). Use `$CLAUDE_PROJECT_DIR`, or derive it
+  from the path you received.
+- **`die()` inside `$( )` kills the subshell, not the script.** `X="$(f)" || exit "$?"`,
+  and then check that `X` is not empty.
 
-De runner is Linux (bash 5, GNU coreutils, gawk), de Mac niet (bash **3.2.57**, BSD
-realpath, BSD awk). Een hook kan dus repo-breed groen zijn en op de Mac stuk staan —
-zo landde #741 met vier kapotte hooks en 13 rode tests die alleen op darwin vielen.
-Er is geen macOS-runner; deze drie zijn de hele bekende verzameling, dus kijk ze
-met de hand na.
+## macOS: three GNU assumptions CI does not catch by construction
 
-- **`realpath -m` bestaat alleen in GNU coreutils.** BSD antwoordt
-  `realpath: illegal option -- m`, en `X=$(realpath -m "$p") || exit 0` maakt daar
-  stil fail-open van — defect 4, in de hook die het gat moest dichten. Gebruik de
-  `canon_path()`-helper uit `vault-write-guard.sh` (`realpath -m`, anders
-  `python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))'`). De vlag is
-  niet te missen: het doelpad van een `Write` hoeft nog niet te bestaan.
-- **Geen `VAR=$(cat <<'EOF' … EOF\n)`.** Bash 3.2 leest een heredoc binnen een
-  command substitution als shell, niet als heredoc; elke backtick in de body — en
-  een ingebedde Python-parser staat vol `` `git commit` `` in zijn docstrings — wordt
-  dan zélf een substitutie. Resultaat: `unexpected EOF while looking for matching \``.
-  In een PreToolUse-hook is dat fataal: hij parset niet en blokkeert daarmee **elk**
-  Bash-commando in de sessie. Schrijf `IFS= read -r -d '' VAR <<'EOF' || true`.
-- **`awk -v` slikt geen newline.** BSD awk stopt met `awk: newline in string`. Geef
-  een meerregelige waarde via de omgeving door (`FOO="$bar" awk 'BEGIN { x =
-  ENVIRON["FOO"] }'`) en normaliseer hem met `tr '\n' ' '` — een `index(s, " " w " ")`
-  vindt een woord aan het regeleinde anders sowieso nooit.
+A Linux runner has bash 5, GNU coreutils and gawk; a Mac has bash **3.2.57**, BSD realpath
+and BSD awk. A hook can be green everywhere in CI and broken on the Mac. Without a macOS
+runner, check these three by hand.
 
-Toets, op de Mac zelf: `bash -n <script>` (bash 3.2 is `/bin/bash`) plus de
-bijbehorende testmodule. Groen op de runner zegt hier niets.
+- **`realpath -m` exists only in GNU coreutils.** BSD answers
+  `realpath: illegal option -- m`, and `X=$(realpath -m "$p") || exit 0` turns that into a
+  silent fail-open: defect 4, in the hook that was meant to close the gap. Use a helper
+  that tries `realpath -m` and otherwise
+  `python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))'`. The flag matters:
+  the target path of a `Write` need not exist yet.
+- **No `VAR=$(cat <<'EOF' … EOF\n)`.** Bash 3.2 reads a heredoc inside a command
+  substitution as shell, not as a heredoc; every backtick in the body becomes a
+  substitution itself. Result: `unexpected EOF while looking for matching \``. In a
+  PreToolUse hook that is fatal: it does not parse and so blocks **every** Bash command in
+  the session. Write `IFS= read -r -d '' VAR <<'EOF' || true`.
+- **`awk -v` does not take a newline.** BSD awk stops with `awk: newline in string`. Pass
+  a multi-line value through the environment (`FOO="$bar" awk 'BEGIN { x =
+  ENVIRON["FOO"] }'`) and normalise it with `tr '\n' ' '`; an `index(s, " " w " ")` never
+  finds a word at the end of a line otherwise.
 
-## Herkomst
-
-Eigen materiaal. De vorm (KPI-tabel + non-negotiables) komt van de CEDA-skills in
-`cedanl/ceda-workshop-starter`; het ontwerp staat in
-`docs/developer/planning/specs/2026-08-23-shellcheck-gate-design.md` en
-`docs/developer/planning/specs/2026-08-22-instructielagen-rules-skills-hooks-design.md`.
+Check on the Mac itself: `bash -n <script>` (bash 3.2 is `/bin/bash`) plus the matching
+tests. Green on the runner says nothing here.
