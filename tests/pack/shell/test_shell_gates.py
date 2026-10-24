@@ -207,3 +207,24 @@ def test_kpi_gitignore_row_handles_a_space(tmp_path):
     (repo / "my hooks" / "lib").mkdir(parents=True)
     (repo / "my hooks" / "lib" / "a.sh").write_text("#!/bin/bash\n", encoding="utf-8")
     assert _run_kpi(repo, ignored, env) == 0
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_outcomes_match_the_hook(variant):
+    """The script has three exit codes; the hook says the same with exit 2 and the
+    first line of decision 18. The skill names both, and claims 0/1/4 only for the script."""
+    para = next(p for p in _paragraphs(_text(variant)) if p.startswith("**Three outcomes, not two.**"))
+    assert "Every gate script here returns" not in para
+    assert "`shellcheck-repo.sh`" in para
+    assert "exit 2" in para
+    assert "COULD NOT CHECK" in para
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_root_advice_matches_the_hook(variant):
+    """The hook says `$CLAUDE_PROJECT_DIR` is the wrong tree for a worktree edit; the
+    skill must not advise it."""
+    para = next(p for p in _paragraphs(_text(variant)) if "points at the wrong tree" in p)
+    assert "Use `$CLAUDE_PROJECT_DIR`" not in para
+    assert "`LIGHTHOUSE_REPO_ROOT`" in para
+    assert "path you received" in para

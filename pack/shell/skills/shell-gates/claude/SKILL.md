@@ -37,9 +37,11 @@ Four of the six were in the **plan**, not in the execution. A review lane afterw
 therefore not where this gets solved; this skill is the place before, the shellcheck hook
 the place after.
 
-**Three outcomes, not two.** Every gate script here returns: 0 = checked and clean, 1 =
-checked with findings, 4 = **not checked**. The third is a valid answer and may never be
-presented as a pass.
+**Three outcomes, not two.** `shellcheck-repo.sh` returns 0 = checked and clean, 1 =
+checked with findings, 4 = **not checked**. A hook has only exit 0 and exit 2, so it tells
+the last two apart on its first line: a finding starts with `<gate>:` and its message,
+"not checked" with `<gate>: COULD NOT CHECK — <reason>`. "Not checked" is a valid answer
+and may never be presented as a pass.
 
 ## KPIs
 
@@ -125,8 +127,9 @@ and green on another.
   `.gitignore` contains an unanchored `lib/`, which matches every directory with that name,
   so a `hooks/lib/` silently falls outside git. Hence KPI row 3.
 - **`$(git rev-parse --show-toplevel)` from inside `.git/` points at the wrong tree.**
-  `.git/` is shared across worktrees (defect 3). Use `$CLAUDE_PROJECT_DIR`, or derive it
-  from the path you received.
+  `.git/` is shared across worktrees (defect 3). Use `LIGHTHOUSE_REPO_ROOT`, or derive
+  the root from the path you received. Not `$CLAUDE_PROJECT_DIR`: it points at the main
+  checkout, so an edit in a worktree would be checked against another branch.
 - **`die()` inside `$( )` kills the subshell, not the script.** `X="$(f)" || exit "$?"`,
   and then check that `X` is not empty.
 
