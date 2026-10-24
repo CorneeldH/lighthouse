@@ -6,7 +6,7 @@ description: 'Audits worktrees, local and remote branches, PR state and sessions
 # Worktree Audit Skill
 
 One join over `git worktree list`, `git branch` (local + remote), the PR state per head branch
-and the sessions on disk, with a verdict per row. Five views on the same set of rows.
+and the sessions on disk, with a verdict per row. Six views on the same set of rows.
 
 ```bash
 python3 .lighthouse/scripts/worktree_audit.py            # --cleanup (default)
@@ -14,11 +14,14 @@ python3 .lighthouse/scripts/worktree_audit.py --sessions
 python3 .lighthouse/scripts/worktree_audit.py --origin
 python3 .lighthouse/scripts/worktree_audit.py --kpi
 python3 .lighthouse/scripts/worktree_audit.py --only <branch>
+python3 .lighthouse/scripts/worktree_audit.py --issue <nr>
 ```
 
-`--only` is the view for `lighthouse-close-issue`: one row plus a line `cleanup: yes` or
-`cleanup: no — <reason>`, exit 0 only at `yes`. That skill runs the delivered lines after
-confirmation; this skill and the script still change nothing.
+`--only` and `--issue` are the views for `lighthouse-close-issue`: one branch, or every branch of
+an issue, each with a line `cleanup: yes` or `cleanup: no — <reason>`. `--only` exits 0 only at
+`yes`; `--issue` exits 2 when the PR lookup fails, and otherwise 0 with the verdict per block.
+That skill runs the delivered lines of every `yes` itself, without a question; this skill and the
+script still change nothing.
 
 The repo and the default branch come from `lighthouse.toml` (`forge.repo`,
 `forge.default_branch`).

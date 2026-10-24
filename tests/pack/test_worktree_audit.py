@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import importlib.util
+import json
 import re
 import sys
 from pathlib import Path
@@ -1425,6 +1426,205 @@ class TestRenderOnly:
         assert "cleanup: yes" in capsys.readouterr().out
 
 
+class TestRenderIssue:
+    """#32: `--issue <nr>` geeft per branch van een issue een blok met `cleanup:`."""
+
+    WT = "/repo/.claude/worktrees/issue-9-x"
+    ELDERS = Path("/elders")
+
+    @staticmethod
+    def _payload(closing=(), cross=()):
+        return {
+            "data": {
+                "repository": {
+                    "issue": {
+                        "closedByPullRequestsReferences": {"nodes": list(closing)},
+                        "timelineItems": {"nodes": [{"source": s} for s in cross]},
+                    }
+                }
+            }
+        }
+
+    @staticmethod
+    def _pr(head, *, merged=True, repo="o/r", body=None, cross_repo=False):
+        node = {
+            "headRefName": head,
+            "merged": merged,
+            "isCrossRepository": cross_repo,
+            "repository": {"nameWithOwner": repo},
+        }
+        if body is not None:
+            node["body"] = body
+        return node
+
+    def test_parse_keeps_merged_same_repo_heads(self):
+        payload = self._payload(
+            closing=[self._pr("issue-9-x")],
+            cross=[self._pr("fix-y", body="Refs #9 — deel 1")],
+        )
+        assert audit.parse_issue_pr_heads(payload, "o/r", 9) == ["issue-9-x", "fix-y"]
+
+    def test_parse_cross_ref_needs_refs_line(self):
+        for body in ("zie #9", "Refs #93", None):
+            payload = self._payload(cross=[self._pr("fix-y", body=body)])
+            assert audit.parse_issue_pr_heads(payload, "o/r", 9) == []
+
+    def test_parse_cross_ref_refs_in_comment_does_not_count(self):
+        body = "<!-- Refs #9 — voorbeeld uit het template -->\nzie #9"
+        payload = self._payload(cross=[self._pr("fix-y", body=body)])
+        assert audit.parse_issue_pr_heads(payload, "o/r", 9) == []
+
+    def test_parse_cross_ref_refs_without_reason_counts(self):
+        payload = self._payload(cross=[self._pr("fix-y", body="Refs #9")])
+        assert audit.parse_issue_pr_heads(payload, "o/r", 9) == ["fix-y"]
+
+    def test_parse_skips_cross_repository_prs(self):
+        payload = self._payload(
+            closing=[self._pr("patch-1", cross_repo=True)],
+            cross=[self._pr("patch-2", cross_repo=True, body="Refs #9")],
+        )
+        assert audit.parse_issue_pr_heads(payload, "o/r", 9) == []
+
+    def test_parse_skips_unmerged_and_non_pr(self):
+        payload = self._payload(
+            closing=[self._pr("issue-9-x", merged=False)],
+            cross=[{}, self._pr("fix-y", merged=False, body="Refs #9")],
+        )
+        assert audit.parse_issue_pr_heads(payload, "o/r", 9) == []
+
+    def test_parse_skips_other_repos(self):
+        payload = self._payload(
+            closing=[self._pr("issue-9-x", repo="x/fork")],
+            cross=[self._pr("fix-y", repo="x/fork", body="Refs #9")],
+        )
+        assert audit.parse_issue_pr_heads(payload, "o/r", 9) == []
+
+    def test_parse_null_issue_is_failure(self):
+        null_issue = {"data": {"repository": {"issue": None}}}
+        assert audit.parse_issue_pr_heads(null_issue, "o/r", 9) is None
+        errors = {"errors": [{"message": "x"}]}
+        assert audit.parse_issue_pr_heads(errors, "o/r", 9) is None
+
+    def test_prefix_needs_the_dash(self):
+        rows = [row("issue-3-a"), row("issue-32-b")]
+        assert audit.issue_branches(rows, 3, []) == ["issue-3-a"]
+
+    def test_pr_head_and_prefix_dedupe(self):
+        got = audit.issue_branches([row("issue-9-x")], 9, ["issue-9-x", "fix-y"])
+        assert got == ["fix-y", "issue-9-x"]
+
+    def test_two_merged_branches_both_yes(self):
+        rows = [
+            row("issue-9-x", worktree=self.WT, pr_number=1, pr_state="merged"),
+            row("issue-9-y", pr_number=2, pr_state="merged"),
+        ]
+        out = audit.render_issue(rows, 9, [], cwd=self.ELDERS, alive=never_alive)
+        assert out.index("branch: issue-9-x") < out.index("branch: issue-9-y")
+        assert out.splitlines().count("cleanup: yes") == 2
+        remove = out.index(f'git worktree remove "{self.WT}"')
+        assert remove < out.index("git branch -D issue-9-x")
+
+    def test_local_branch_without_merged_pr_is_no(self, monkeypatch):
+        out = audit.render_issue(
+            [row("issue-9-x", pr_number=1, pr_state="open")],
+            9,
+            [],
+            cwd=self.ELDERS,
+            alive=never_alive,
+        )
+        assert "cleanup: no — " in out
+        assert not any(line.startswith("git ") for line in out.splitlines())
+
+        monkeypatch.setattr(
+            audit,
+            "render_only",
+            lambda *a, **k: ("cleanup: yes\ngit branch -D issue-9-x\n", True),
+        )
+        out = audit.render_issue(
+            [row("issue-9-x", pr_state=None)], 9, [], cwd=self.ELDERS, alive=never_alive
+        )
+        assert "cleanup: no — no merged PR" in out
+        assert "git branch -D" not in out
+        assert "cleanup: yes" not in out
+
+    def test_own_cwd_blocks_only_its_branch(self):
+        rows = [
+            row("issue-9-x", worktree=self.WT, pr_number=1, pr_state="merged"),
+            row(
+                "issue-9-y",
+                worktree="/repo/.claude/worktrees/issue-9-y",
+                pr_number=2,
+                pr_state="merged",
+            ),
+        ]
+        out = audit.render_issue(
+            rows, 9, [], cwd=Path(self.WT) / "src", alive=never_alive
+        )
+        first, second = out.split("branch: issue-9-y")
+        assert f"own cwd is in {self.WT}" in first
+        assert "cleanup: yes" in second
+
+    def test_unknown_pr_head_is_reported(self):
+        out = audit.render_issue([], 9, ["gone"], cwd=self.ELDERS, alive=never_alive)
+        assert "branch: gone" in out
+        assert "cleanup: no — branch gone not found" in out
+
+    def test_failed_lookup_and_empty(self):
+        rows = [row("issue-9-x")]
+        failed = audit.render_issue(rows, 9, None, cwd=self.ELDERS, alive=never_alive)
+        assert failed == "cleanup: no — PR lookup for issue #9 failed\n"
+        empty = audit.render_issue([], 9, [], cwd=self.ELDERS, alive=never_alive)
+        assert empty == "cleanup: no — no branches found for issue #9\n"
+
+    def test_main_exit_2_on_failed_lookup(self, monkeypatch, capsys):
+        monkeypatch.setattr(audit, "collect", lambda repo=None: [])
+        monkeypatch.setattr(audit, "repo_slug", lambda: "o/r")
+        monkeypatch.setattr(audit, "run_gh_issue_pr_heads", lambda slug, nr: None)
+        assert audit.main(["--issue", "9"]) == 2
+        assert "PR lookup for issue #9 failed" in capsys.readouterr().out
+
+    def test_main_exit_0_with_blocks(self, monkeypatch, capsys):
+        merged = row("issue-9-x", worktree=self.WT, pr_number=1, pr_state="merged")
+        monkeypatch.setattr(audit, "collect", lambda repo=None: [merged])
+        monkeypatch.setattr(audit, "repo_slug", lambda: "o/r")
+        monkeypatch.setattr(audit, "run_gh_issue_pr_heads", lambda slug, nr: [])
+        assert audit.main(["--issue", "9"]) == 0
+        assert "cleanup: yes" in capsys.readouterr().out
+
+    def test_run_gh_issue_pr_heads_argv(self, monkeypatch):
+        import subprocess
+
+        seen: list[list[str]] = []
+
+        def make(result):
+            def fake(argv, **kwargs):
+                seen.append(argv)
+                if isinstance(result, Exception):
+                    raise result
+                return subprocess.CompletedProcess(argv, result[0], result[1], "")
+
+            return fake
+
+        ok = json.dumps(self._payload())
+        monkeypatch.setattr(audit.subprocess, "run", make((0, ok)))
+        assert audit.run_gh_issue_pr_heads("o/r", 9) == []
+        argv = seen[0]
+        assert argv[:3] == ["gh", "api", "graphql"]
+        for pair in (("-f", "owner=o"), ("-f", "name=r"), ("-F", "nr=9")):
+            assert any(argv[i : i + 2] == list(pair) for i in range(len(argv) - 1))
+
+        seen.clear()
+        assert audit.run_gh_issue_pr_heads(None, 9) is None
+        assert seen == []
+        for result in (
+            (1, ""),
+            (0, "niet-json"),
+            subprocess.TimeoutExpired(["gh"], 1),
+        ):
+            monkeypatch.setattr(audit.subprocess, "run", make(result))
+            assert audit.run_gh_issue_pr_heads("o/r", 9) is None
+
+
 class TestCollectFailsLoudOnGitFailure:
     """Minor 4 — `run_git(...) or ""` verstopte een mislukte git-call als een
     lege, schone wereld: dan vuurt de rang-3-vuile-tree-guard voor niets meer.
@@ -1868,3 +2068,4 @@ def test_runs_as_installed_file(tmp_path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert "cleanup: yes|no" in result.stdout
+    assert "--issue" in result.stdout

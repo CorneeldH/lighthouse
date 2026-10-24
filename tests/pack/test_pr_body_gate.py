@@ -160,6 +160,16 @@ def test_refs_in_commentaar_telt_niet():
     assert gate.refs_issues("<!-- Refs #7 — voorbeeld uit het template -->") == []
 
 
+def test_refs_targets_zonder_redenvereiste():
+    assert gate.refs_targets("Refs #7") == [7]
+    assert gate.refs_targets("Refs #7 — kort\nRefs #8 — iets\nRefs #7") == [7, 8, 7]
+
+
+def test_refs_targets_negeert_commentaar_en_andere_nummers():
+    assert gate.refs_targets("<!-- Refs #7 — x -->\nzie #7") == []
+    assert gate.refs_targets("Refs #77") == [77]
+
+
 def test_no_issue():
     assert gate.no_issue("No issue: alleen een typo in docs")
 
