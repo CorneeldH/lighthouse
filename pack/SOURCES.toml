@@ -335,3 +335,13 @@ source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 path = "pack/core/skills/instrument/SKILL.md"
 source_path = [".claude/skills/paia-instrumenteren/SKILL.md", ".agents/skills/paia-instrumenteren/SKILL.md"]
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/write-issue/claude/SKILL.md"
+source_path = ".claude/skills/paia-write-issue/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/core/skills/write-issue/agents/SKILL.md"
+source_path = ".agents/skills/paia-write-issue/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"

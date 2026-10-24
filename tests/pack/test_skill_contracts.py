@@ -49,9 +49,7 @@ ALLOWED_EXTERNAL = {
 # Core skills of this PR that are not written yet, so another skill may already link to
 # them. A skill leaves this set in the commit that adds it (test_planned_skills_absent);
 # the set is empty when PR 4 is done.
-PLANNED = {
-    "write-issue",
-}
+PLANNED: set[str] = set()
 
 # An installed path in a skill -> where it lives in pack/core.
 _PATH_REFS = (

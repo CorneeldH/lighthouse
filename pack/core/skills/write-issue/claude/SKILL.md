@@ -1,540 +1,496 @@
 ---
-name: paia-write-issue
-description: Writing and maintaining GitHub issues for CorneeldH/personal_ai_agent. Use when creating new issues, editing issue titles/bodies, or cleaning up issue metadata in this repo. Distinct from write-issue (cedanl). LET OP — een PR-body volgt .github/pull_request_template.md, niet deze skill.
-metadata:
-  domain: factory
+name: lighthouse-write-issue
+description: 'Writing and maintaining GitHub issues and milestones of this repo. Use when creating new issues, editing issue titles or bodies, setting a block between issues, or cleaning up issue metadata. NOTE — not for a PR body: that follows .github/pull_request_template.md and lighthouse-verify-pr.'
 ---
 
 # Writing and maintaining GitHub issues
 
-Standards for issues in the `CorneeldH/personal_ai_agent` repository. Pull requests follow
-[`.github/pull_request_template.md`](../../../.github/pull_request_template.md).
+Standards for the issues of this repository. Pull requests follow
+`.github/pull_request_template.md` (`lighthouse-verify-pr`). Issues and milestones are artefacts:
+write them in the project language (`python3 .lighthouse/lib/lighthouse_lib/config.py project.language`).
+Headings that code or a skill reads are written as `heading:<key>`: write the variant that
+`python3 .lighthouse/lib/lighthouse_lib/headings.py <key>` prints.
 
-Ontwerp erachter: [`docs/developer/planning/specs/2026-08-02-issue-taxonomie-design.md`](../../../docs/developer/planning/specs/2026-08-02-issue-taxonomie-design.md)
-(area, milestone, board) en [`2026-08-03-blokkade-as-en-skill-sync-design.md`](../../../docs/developer/planning/specs/2026-08-03-blokkade-as-en-skill-sync-design.md)
-(blokkade-as).
+## Tool: use `gh api`, not `gh issue list --json`
 
-## Gereedschap: gebruik `gh api`, niet `gh issue list --json`
-
-`gh issue list --json` loopt stuk onder de rtk-proxy:
+`gh issue list --json` breaks under some proxies:
 
 ```
 Failed to parse gh issue list output / expected value at line 1 column 1
 ```
 
-Gebruik voor alles wat je moet uitlezen
-`R=$(uv run python -m src.controller.identity repo) && gh api "repos/$R/issues?..."`.
-`gh issue create` en `gh issue edit` werken wél gewoon.
+For everything you have to read, use
+`R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues?..."`.
+`gh issue create` and `gh issue edit` do work as usual.
 
-Tweede val: **een onbekend `--label`-filter wordt stil genegeerd** in plaats van te falen. Je krijgt
-dan het volledige, ongefilterde resultaat terug en telt dus onzin. Verifieer een labelnaam met
-`gh label list` voordat je erop filtert.
+Second trap: **an unknown `--label` filter is silently ignored** instead of failing. You then get
+the full, unfiltered result back and count nonsense. Verify a label name with `gh label list`
+before you filter on it.
 
 ## Workflow
 
-Bij `/paia-write-issue [beschrijving]`:
+At `/lighthouse-write-issue [description]`:
 
-### 0. Bestaat dit al?
+### 0. Does this exist already?
 
-Vraag dit vóór je een template kiest: een dubbel issue kost later een sluitactie. Het is een
-gerichte zoekopdracht op dít onderwerp, geen bulkscan. Kies 1-2 kerntermen uit de beschrijving
-(functie, bestand, configsleutel, onderwerp) en draai dit met
-`dangerouslyDisableSandbox: true` (`gh` heeft netwerk nodig).
+Ask this before you choose a template: a duplicate issue costs a closing action later. It is a
+targeted search on *this* topic, no bulk scan. Choose 1-2 key terms from the description
+(function, file, config key, topic) and run this with `dangerouslyDisableSandbox: true` (`gh`
+needs network).
 
-Zoek in issues, open én gesloten, begrensd tot vijf:
+Search in issues, open and closed, bounded to five:
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
-T='<kernterm>'
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+T='<key term>'
 gh api -X GET search/issues -f q="repo:$R is:issue $T" \
   --jq '.items[:5][] | "#\(.number) \(.state) \(.title)"'
 ```
 
-Kijk daarna in codebase en docs, of het werk daar al staat:
+Then look in the codebase and docs, whether the work is already there:
 
 ```bash
-git fetch origin main || echo 'FETCH FAALDE: origin/main kan verouderd zijn'
-git grep -l '<kernterm>' origin/main -- src scripts deploy .claude docs
+B=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.default_branch) || exit 2
+git fetch origin "$B" || echo 'FETCH FAILED: origin/'"$B"' may be stale'
+git grep -l '<key term>' "origin/$B" -- .
 ```
 
-`git grep` geeft exit 1 bij nul treffers; pas exit ≥ 2 (bijv. 128) is een fout. Precisie gaat voor
-recall: alleen een treffer die hetzelfde werk aantoonbaar dekt telt. "Lijkt erop" is geen treffer.
+`git grep` gives exit 1 at zero hits; only exit ≥ 2 (e.g. 128) is an error. Precision goes
+before recall: only a hit that demonstrably covers the same work counts. "Looks like it" is no
+hit.
 
-- Geen dekkende treffer: meld precies één regel `dubbel? nee — gezocht op <termen>`, ook zonder
-  enige treffer, nooit stilte. Door naar stap 1, zonder vraag. Staat `FETCH FAALDE` in de
-  output, dan is de codebase-blik op een mogelijk verouderde `origin/main` gedaan: meld dan
-  `dubbel? niet meetbaar — fetch faalde` in plaats van `nee`, en ga door naar stap 1.
-- Wél een dekkende treffer: meld hem en laat de gebruiker kiezen (`AskUserQuestion` in Claude Code,
-  anders een vraag in chat) uit **niet aanmaken** · **aanvullen** op het bestaande issue (comment
-  of bodywijziging via `gh api`) · **toch aanmaken**, met de reden in de body
-  (`Verschilt van #<nr>: …`).
+- No covering hit: report exactly one line `duplicate? no — searched on <terms>`, also without
+  any hit, never silence. On to step 1, without a question. If `FETCH FAILED` is in the output,
+  the codebase look was done on a possibly stale `origin/$B`: then report
+  `duplicate? not measurable — fetch failed` instead of `no`, and go on to step 1.
+- A covering hit: report it and let the user choose (`AskUserQuestion` in Claude Code, otherwise
+  a question in chat) from **do not create** · **add to** the existing issue (a comment or a body
+  change through `gh api`) · **create anyway**, with the reason in the body
+  (`Differs from #<nr>: …`).
 
-Deze stap rapporteert alleen: ze sluit niets en zet geen label.
+This step only reports: it closes nothing and sets no label.
 
-### 1. Kies het template
+### 1. Choose the template
 
-Twee templates, gekozen op inhoud. Er is **geen** GitHub issue-type: `CorneeldH` is een persoonlijk
-account, issue-types zijn een org-feature (`.type` is `null` op elk issue, `/issues/types` geeft 404).
-Probeer geen `issueTypeId` te zetten.
+Two templates, chosen on content. Do not try to set a GitHub issue type (`issueTypeId`): issue
+types are an organisation feature, and on a personal account `.type` is `null` on every issue.
 
 | Input | Template |
 |---|---|
-| Kapot gedrag, reproduceerbaar | Bug |
-| Al het andere | Task |
+| Broken behaviour, reproducible | Bug |
+| Everything else | Task |
 
-Een **pitch** is geen issue-vorm. Grotere brokken werk worden een milestone; de pitch staat in de
-milestone-beschrijving (zie "Milestones").
+A **pitch** is no issue form. Larger chunks of work become a milestone; the pitch stands in the
+milestone description (see "Milestones").
 
-### 2. Formatteer de body
+### 2. Format the body
 
-Gebruik het template uit "Issue Templates". Neem de input van de user als basis en vul aan met context
-uit de codebase waar nodig.
+Use the template from "Issue Templates". Take the user's input as the base and add context from
+the codebase where needed.
 
-### 3. Zet de verplichte assen
+### 3. Set the labels
 
-Elk issue draagt **drie assen**, in deze volgorde te bepalen. Het cijferprefix is de leesvolgorde in
-de labellijst.
-
-| As | Cardinaliteit | Vraag |
-|---|---|---|
-| `1-loc:*` | precies 1 | Waar pak je het op? |
-| `2-area:*` | precies 1 | Waar hoort het bij? |
-| `3-*` | 0 of 1 | Waarom kan dit nu niet doorlopen? |
-
-Daarnaast optioneel domeinlabels (`bug`, `security`, `hardware`, `architecture`, `notes`, `ceda`,
-`wbso`, `money`, …). Die as is vrij.
-
-#### 3a. `1-loc:` — waar pak je het op
-
-| Label | Kleur | Wanneer |
-|---|---|---|
-| `1-loc:mac` | `0a3069` (donker) | iOS/Mac device-laag |
-| `1-loc:beelink` | `2563eb` (midden) | Beelink-server: config, services, hardware |
-| `1-loc:container` | `93c5fd` (licht) | app/dashboard, research, overig — **default** |
-
-Bij impact op meerdere plekken: **kies de laagste, meest fundamentele.** Raakt het alles of de
-Mac-laag → `1-loc:mac`. Raakt het Beelink én de app → `1-loc:beelink`. Alleen container → `1-loc:container`.
-
-De kleuren vormen een blauw-ramp: donkerder = lager en fundamenteler.
-
-#### 3b. `2-area:` — waar hoort het bij
-
-| Area | Vuistregel |
-|---|---|
-| `2-area:intake` | welke inhoud komt binnen en wordt een Document — óók verbatim doorgegeven aan een tweede bak |
-| `2-area:nexus` | verwerken, linken, terugvinden |
-| `2-area:flow` | eruit én **veredeld**: pulse, update, publish — samengesteld, gecontroleerd, omgevormd |
-| `2-area:infra` | waar draait het en blijft het draaien — hardware + config |
-| `2-area:models` | inferentie en agent-uitvoering |
-| `2-area:clients` | de apps en interfaces waarmee de gebruiker het bedient |
-| `2-area:product` | productisering, licenties, geld |
-| `2-area:meta` | de repo zelf: docs, CI, planning, en lint en typecheck hier op nul houden |
-| `2-area:lighthouse` | het werkmodel van de agents: controller, review-keten, hooks, keten-skills, usage-venster |
-
-Precies één. Passen er twee, kies het zwaartepunt — met twee labels telt het issue in twee as-views
-en is de as niet meer te auditen.
-
-Grens lighthouse/meta: **heeft een onbemande run het nodig om te starten of vertrouwd te
-worden?** Zo ja, dan `lighthouse`: het vak *Kern* en het gereedschap van *Taalpakket*
-(ruff- en ty-gates, kwaliteitsratel, shellcheck-gate). Zo nee, dan `meta` (docs,
-CI-workflows, de schuld hier wegwerken, planning) of het vak *Project* (board-model en
-vault-skills, in hun inhoudelijke area). Host-units blijven `infra`. Tot de verhuizing loopt
-lighthouse-werk in deze repo; het label bestaat vanaf het vervolgissue van #1361 (#1378).
-Bestaat het label nog niet (`gh label list --search 2-area:lighthouse`), gebruik dan
-`2-area:meta`.
-
-Grens intake/infra: **inhoud van de stroom** versus **config van de machine**. Een dienst draaiend en
-gehard krijgen is `infra`; "bron X landt als Document" is `intake`.
-
-Grens intake/flow: **kopieert het, of maakt het iets nieuws?** `flow` is niet "naar buiten" maar
-*veredeld* naar buiten — inhoud die uit meerdere bronnen komt, gecombineerd, geauditeerd of
-gevalideerd is, en een vorm krijgt die het in de vault nooit had. Verbatim distributie van bestaand
-materiaal naar een ander publiek is géén flow: dat is dezelfde inhoud die een tweede intake-bassin
-in stroomt, en dus `intake`.
-
-| Kopieert → `intake` | Maakt iets nieuws → `flow` |
-|---|---|
-| #548 CEDA-repo vullen met verbatim transcript + verslag + prompt | #323 vault → publieke site + syndicatie |
-| Transcripten automatisch naar deelnemers sturen (ruw materiaal) | #123 draft JSON → CEDA-mailbox draft (opgesteld bericht, geen doorgegeven bestand) |
-| Een bestaand Document in een tweede bak zetten | #203 proactieve agent via Teams/telefoon (bepaalt zélf wát het meldt) |
-
-Het conceptuele ongemak hoort erbij: "intake" suggereert *naar mij toe*, terwijl #548 bij CEDA naar
-binnen gaat. De as klopt, de naam dekt hem net niet. Dat is bewust, geen slordigheid — label #548
-niet terug naar `flow`.
-
-#### 3c. `3-` — de blokkade
-
-Een `3-`-label markeert **wat de eerstvolgende stap blokkeert**, niet wat ergens in het issue
-voorkomt. Het is een toestand, geen eigenschap: het komt erop zodra het werk de mens-stap bereikt en
-gaat er weer af.
-
-De test: **kan ik dit gewoon tegen de agent zeggen?** Zo ja → geen label, ongeacht hoeveel werk het is.
-Geen label betekent oppakbaar; dat is de ready-queue.
-
-Hoogstens één. Gelden er twee, dan wint de **laagste rang** — je kunt niet aansluiten wat nog niet
-geleverd is, en niet beoordelen wat nog niet gebouwd is.
-
-| Rang | Label | Kleur | Bindt wanneer |
-|---|---|---|---|
-| 1 | `3-needs-shaping` | `FBCA04` | Wat/waarom nog niet scherp. Alles erna is prematuur |
-| 2 | `3-needs-decision` | `FBCA04` | Eén keuze van Corneel blokkeert, de rest is helder |
-| 3 | `3-blocked-issue` | `D93F0B` | Wacht op een ander issue in deze repo |
-| 4 | `3-blocked-external` | `D93F0B` | Wacht op derde partij, API, vendor, levering |
-| 5 | `3-needs-hands` | `FBCA04` | Hij moet instellen, invoeren, aansluiten, aanschaffen |
-| 6 | `3-needs-testing` | `FBCA04` | Bouw staat; hij moet oordelen of het doet wat bedoeld is |
-
-Amber = de bal ligt bij Corneel. Rood = de bal ligt buiten.
-
-Grens hands/testing: hands is **instellen, invoeren, aansluiten**; testing is **verifiëren dat iets
-werkt zoals bedoeld**. De technische test heeft de agent al gedaan; wat overblijft is menselijk
-oordeel. `3-needs-testing` kan nooit vóór een implementatie staan en is dus ook het "bijna
-klaar"-signaal.
-
-Niet te verwarren met board-Status `On hold`: dat is *bewust geparkeerd*, een `3-`-label is *er zit
-iets in de weg*. Een issue kan tegelijk geparkeerd én ongeshaped zijn.
-
-`3-blocked-issue` gaat nooit mee in `gh issue create`: het leunt op de `blocked_by`-relatie, en die
-komt eerst. Zie 3e.
-
-#### 3d. Milestone — past het thematisch in een lopend blok?
-
-Haal de open milestones op, met beschrijving:
+The label taxonomy of the project lives in one file, not in this skill:
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels
+```
+
+rc 0: read that file and follow it — which axes exist, which labels each axis has, the
+boundaries between them. rc 1 (not set): only the `[labels]` keys and the GitHub default labels
+(`bug`, `enhancement`, `documentation`, …) apply. rc 2: stop, the configuration is broken.
+
+#### 3a. Location axis
+
+`python3 .lighthouse/lib/lighthouse_lib/config.py labels.location_prefix`. rc 0: every issue
+carries exactly one label with that prefix; the taxonomy file says which ones and when. rc 1: the
+project has no location axis, skip this step.
+
+#### 3b. Area axis
+
+`python3 .lighthouse/lib/lighthouse_lib/config.py labels.area_prefix`. rc 0: every issue carries
+exactly one label with that prefix. If two fit, choose the centre of gravity — with two labels the
+issue counts in two axis views and the axis can no longer be audited. rc 1: no area axis.
+
+#### 3c. The block
+
+A blocking label marks **what blocks the next step**, not what occurs somewhere in the issue. It
+is a state, no property: it goes on as soon as the work reaches the human step and comes off
+again.
+
+The test: **can I just say this to the agent?** If so → no label, however much work it is. No
+label means it can be picked up; that is the ready queue.
+
+At most one. If two apply, the **lowest rank** wins — you cannot connect what has not been
+delivered yet, and not judge what has not been built yet. The names come from `[labels]`
+(`python3 .lighthouse/lib/lighthouse_lib/config.py labels.<key>`):
+
+| Rank | Key | Binds when |
+|---|---|---|
+| 1 | `labels.needs_shaping` | What/why not sharp yet. Everything after it is premature |
+| 2 | `labels.needs_decision` | One choice of the user blocks, the rest is clear |
+| 3 | `labels.blocked_issue` | Waits on another issue in this repo |
+| 4 | `labels.blocked_external` | Waits on a third party, API, vendor, delivery |
+| 5 | `labels.needs_hands` | The user has to set up, enter, connect, buy |
+| 6 | `labels.needs_testing` | The build stands; the user has to judge whether it does what was meant |
+
+The boundary hands/testing: hands is **setting up, entering, connecting**; testing is
+**verifying that something works as meant**. The technical test the agent has done already; what
+remains is human judgement. `labels.needs_testing` can never stand before an implementation and
+is so also the "almost done" signal.
+
+Not to be confused with a board Status `On hold` (only if a board is configured): that is
+*parked on purpose*, a blocking label is *something is in the way*. An issue can be parked and
+unshaped at the same time.
+
+`labels.blocked_issue` never goes along in `gh issue create`: it leans on the `blocked_by`
+relation, and that comes first. See 3e.
+
+#### 3d. Milestone — does it fit thematically in a running block?
+
+Fetch the open milestones, with description:
+
+```bash
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh api "repos/$R/milestones?state=open&per_page=100" \
   --jq '.[] | "\(.title)\t\(.open_issues) open\n\(.description)\n---"'
 ```
 
-Begin bij de milestones met dezelfde area-prefix als het `2-area:`-label, maar kijk ook naar de
-rest. De vraag is **thematisch**: helpt dit issue het probleem uit `### Problem / Opportunity` op
-te lossen, en brengt het de `### Definition of Done` dichterbij? Een issue dat alleen in hetzelfde domein valt,
-hoort er nog niet bij.
+Start with the milestones whose prefix matches the area of the issue, but look at the rest too.
+The question is **thematic**: does this issue help solve the problem from the milestone's
+*Problem / Opportunity*, and does it bring its `### heading:milestone_dod` closer? An issue that
+only falls in the same domain does not belong yet.
 
-Wees kritisch. Geen milestone is de default, geen noodgreep:
+Be critical. No milestone is the default, no emergency measure:
 
-- Raakt het issue de DoD niet, dan hoort het er niet bij, ook al valt het in dezelfde area.
-- Valt het onder de `### No-Gos`, dan hoort het er niet bij.
-- Rekt het de appetite op, dan hoort het er niet bij. Een blok groeit niet stil.
-- Passen er twee milestones, of is het een randgeval, leg het dan met één zin motivatie aan
-  Corneel voor. Kies niet zelf.
+- If the issue does not touch the DoD, it does not belong, even if it falls in the same area.
+- If it falls under the `### heading:milestone_no_gos`, it does not belong.
+- If it stretches the appetite, it does not belong. A block does not grow silently.
+- If two milestones fit, or it is an edge case, put it to the user with one sentence of
+  motivation. Do not choose yourself.
 
-Past het niet: laat `--milestone` in stap 4 weg. Het issue gaat naar de backlog. Noem in stap 5
-altijd de uitkomst: welke milestone en waarom, of "backlog" met de dichtstbijzijnde milestone en
-waarom die niet paste.
+If it does not fit: leave `--milestone` out in step 4. The issue goes to the backlog. Always name
+the outcome in step 5: which milestone and why, or "backlog" with the closest milestone and why
+it did not fit.
 
-#### 3e. Blokkade leggen
+#### 3e. Set a block
 
-Wacht het issue op een ander issue in deze repo, dan leunt `3-blocked-issue` op de GitHub-relatie
-`blocked_by`. De relatie komt **vóór** het label, zodat een halve mislukking nooit een label zonder
-relatie achterlaat. Dit draait ná stap 4; voor een bestaand issue dat een blokkade krijgt vervalt
-stap 1 hieronder.
+If the issue waits on another issue in this repo, the blocked-issue label leans on the GitHub
+relation `blocked_by`. The relation comes **before** the label, so that a half failure never
+leaves a label without a relation. This runs after step 4; for an existing issue that gets a
+block, step 1 below drops.
 
-De invariant, per open issue:
+The invariant, per open issue (label names from `[labels]`):
 
-| Label | open `blocked_by` | Oordeel |
+| Label | open `blocked_by` | Verdict |
 |---|---|---|
-| `3-blocked-issue` | ≥ 1 | **klopt** |
-| `3-blocked-issue` | 0, wel gesloten relaties | **vervallen**: label eraf |
-| `3-blocked-issue` | geen relatie | **ongekoppeld**: relatie leggen, of label eraf |
-| `3-needs-shaping` of `3-needs-decision` | ≥ 1 | **klopt**: het lagere label wint, de relatie wacht |
-| geen `3-`-label, of een label met hogere rang dan `3-blocked-issue` | ≥ 1 | **label ontbreekt**: `3-blocked-issue` erop (het hogere label eraf) |
-| geen of ander label | 0 | **klopt**, buiten deze invariant |
+| `labels.blocked_issue` | ≥ 1 | **holds** |
+| `labels.blocked_issue` | 0, but closed relations | **lapsed**: label off |
+| `labels.blocked_issue` | no relation | **unlinked**: set the relation, or label off |
+| `labels.needs_shaping` or `labels.needs_decision` | ≥ 1 | **holds**: the lower label wins, the relation waits |
+| no blocking label, or one with a higher rank than `labels.blocked_issue` | ≥ 1 | **label missing**: `labels.blocked_issue` on (the higher label off) |
+| no label or another one | 0 | **holds**, outside this invariant |
 
-`3-blocked-external` valt erbuiten: die wacht op iets buiten de repo. Herstel: label eraf is
-`gh issue edit <nr> --remove-label 3-blocked-issue`, relatie leggen is stap 2 hieronder.
+`labels.blocked_external` falls outside it: it waits on something outside the repo. Repair:
+label off is `gh issue edit <nr> --remove-label "$BLOCKED"`, setting the relation is step 2 below.
 
-Een `blocked_by`-relatie tussen twee Controller-issues is ook hun stapelvolgorde (stacking-light,
-#1099): de controller laat het geblokkeerde issue spec en plan doen en stapelt de uitvoering op de
-groene PR van de voorganger. De invariant en de stappen hieronder blijven gelijk.
+A `blocked_by` relation between two issues the controller runs (only if present) is also their
+stacking order: the controller lets the blocked issue do spec and plan and stacks the execution
+on the green PR of its predecessor. The invariant and the steps below stay the same.
 
-1. **Aanmaken zonder `3-blocked-issue`** (stap 4). Noteer vooraf de starttijd met
-   `date -u +%Y-%m-%dT%H:%M:%SZ` en neem de letterlijke ISO-waarde op in je antwoord: een
-   shellvariabele (`START=...`) overleeft geen nieuwe Bash-call, dus de zoekcall bij een mislukte
-   create (faalpuntentabel hieronder) gebruikt die letterlijke tekst, nooit `$START`. Het nummer
-   `<nr>` komt uit de URL.
-2. **Relatie leggen.** `issue_id` is het numerieke id van de blocker, niet zijn issuenummer:
+1. **Create without the blocked-issue label** (step 4). Note the start time beforehand with
+   `date -u +%Y-%m-%dT%H:%M:%SZ` and put the literal ISO value in your answer: a shell variable
+   (`START=...`) does not survive a new Bash call, so the search call after a failed create (the
+   failure table below) uses that literal text, never `$START`. The number `<nr>` comes from the
+   URL.
+2. **Set the relation.** `issue_id` is the numeric id of the blocker, not its issue number:
 
    ```bash
-   R=$(uv run python -m src.controller.identity repo) || exit 2
+   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
    ID=$(gh api "repos/$R/issues/<blocker-nr>" --jq .id)
    gh api -X POST "repos/$R/issues/<nr>/dependencies/blocked_by" -F issue_id="$ID"
    ```
 
-3. **Verifiëren met de lijst, niet uit de summary**: `issue_dependencies_summary` loopt één write
-   achter en meldt een geslaagde POST dan als mislukt. De blocker moet hier staan:
+3. **Verify with the list, not from the summary**: `issue_dependencies_summary` runs one write
+   behind and then reports a successful POST as failed. The blocker must be here:
 
    ```bash
-   R=$(uv run python -m src.controller.identity repo) || exit 2
+   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
    gh api "repos/$R/issues/<nr>/dependencies/blocked_by" --jq '.[].number'
    ```
 
-4. **Pas dan het label.** Staat er al `3-needs-shaping` of `3-needs-decision`, dan wint dat label
-   en komt `3-blocked-issue` er niet op. Een `3-`-label met hogere rang gaat er in dezelfde edit af
-   (`--remove-label <label>`):
+4. **Only then the label.** If `labels.needs_shaping` or `labels.needs_decision` is on already,
+   that label wins and the blocked-issue label does not go on. A blocking label with a higher
+   rank comes off in the same edit (`--remove-label <label>`):
 
    ```bash
-   gh issue edit <nr> --add-label 3-blocked-issue
+   BLOCKED=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_issue) || exit 2
+   gh issue edit <nr> --add-label "$BLOCKED"
    ```
 
-5. **Eindcontrole**: de lijst uit stap 3 én
-   `R=$(uv run python -m src.controller.identity repo) && gh api "repos/$R/issues/<nr>" --jq '[.labels[].name]'`. Pas als
-   relatie en winnend `3-`-label er samen staan, meld je succes.
+5. **Final check**: the list from step 3 and
+   `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues/<nr>" --jq '[.labels[].name]'`.
+   Only when relation and winning blocking label stand there together, report success.
 
-Bij elke fout leid je de toestand nooit af uit welke stap faalde: je leest hem uit en meldt wat er
-wérkelijk staat, met het commando dat de invariant herstelt. Nooit een relatie weghalen ter
-compensatie; een relatie zonder label vangt de sweep als **label ontbreekt**.
+At every error you never derive the state from which step failed: you read it and report what
+*really* stands, with the command that repairs the invariant. Never remove a relation to
+compensate; a relation without a label is caught by the sweep as **label missing**.
 
-| Faalpunt | Uitlezen | Melding |
+| Failure point | Read | Report |
 |---|---|---|
-| `gh issue create` faalt of geeft geen URL | `R=$(uv run python -m src.controller.identity repo) && T='<titel>' && gh api "search/issues?q=repo:$R+in:title+\"$T\""` | precies één treffer met `created_at` ná de genoteerde starttijd (de letterlijke ISO-waarde uit stap 1, niet `$START`) én dezelfde body: ga door met dat nummer. Geen treffer: fout, stop. Meer dan één, een oudere, een andere body, of de zoekcall faalt: **onbekend** + de zoekcall, stop vóór elke mutatie. Nooit blind opnieuw aanmaken |
-| POST faalt | de lijst uit stap 3 | relatie staat: door naar het label. Staat niet: één retry, dan "#N staat zonder relatie en zonder label" + het POST-commando |
-| verificatie mist de blocker | idem | zoals hierboven; de summary telt niet |
-| label zetten faalt | het labelcommando uit stap 5 | label staat: door. Staat niet: "relatie staat, label ontbreekt" + `gh issue edit <nr> --add-label 3-blocked-issue` |
-| eindcontrole wijkt af, of een GET faalt | — | de werkelijke toestand, of **onbekend** met het uitleescommando. Nooit succes |
+| `gh issue create` fails or gives no URL | `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && T='<title>' && gh api "search/issues?q=repo:$R+in:title+\"$T\""` | exactly one hit with `created_at` after the noted start time (the literal ISO value from step 1, not `$START`) and the same body: go on with that number. No hit: error, stop. More than one, an older one, another body, or the search call fails: **unknown** + the search call, stop before every mutation. Never create again blindly |
+| POST fails | the list from step 3 | the relation stands: on to the label. It does not: one retry, then "#N stands without relation and without label" + the POST command |
+| the verification misses the blocker | the same | as above; the summary does not count |
+| setting the label fails | the label command from step 5 | the label stands: go on. It does not: "relation stands, label missing" + `gh issue edit <nr> --add-label "$BLOCKED"` |
+| the final check differs, or a GET fails | — | the real state, or **unknown** with the read command. Never success |
 
-### 4. Maak de issue aan
+### 4. Create the issue
 
-`--label` bevat altijd minimaal een `1-loc:` en een `2-area:`.
+`--label` always carries one label per axis the project has (3a, 3b).
 
 ```bash
 gh issue create \
-  --title "<titel>" \
-  --label "1-loc:container,2-area:nexus" \
+  --title "<title>" \
+  --label "<location label>,<area label>" \
   --milestone "<milestone>" \
   --body "$(cat <<'EOF'
-<geformatteerde body>
+<formatted body>
 EOF
 )"
 ```
 
-Het board vult zichzelf: `Auto-add to project` pakt elk open issue op en zet Status op `To do`. Je
-hoeft niets aan het board toe te voegen.
+If the project has a board with auto-add, it fills itself; otherwise add the issue by hand.
 
-Faalt dit commando of geeft het geen URL: ga naar 3e, faalpuntentabel, rij `gh issue create faalt
-of geeft geen URL`.
+If this command fails or gives no URL: go to 3e, the failure table, row `gh issue create fails or
+gives no URL`.
 
-### 5. Rapporteer het resultaat
+### 5. Report the result
 
-Toon de issue-URL die `gh issue create` teruggeeft, plus de milestone-uitkomst uit stap 3d.
-Wacht het issue op een ander issue: voer eerst 3e stap 2–5 uit en rapporteer de eindcontrole (of
-**onbekend**), niet alleen de URL.
+Show the issue URL `gh issue create` returns, plus the milestone outcome from step 3d. If the
+issue waits on another issue: first run 3e steps 2–5 and report the final check (or
+**unknown**), not only the URL.
 
-### 6. Controleer de invarianten
+### 6. Check the invariants
 
-Na bulkwerk aan labels:
+After bulk work on labels, with the prefixes from 3a and 3b and the blocking labels from 3c:
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+LOC=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.location_prefix)
+AREA=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.area_prefix)
+BLK=$({ python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_shaping
+  python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_decision
+  python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_issue
+  python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_external
+  python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_hands
+  python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_testing; } | jq -R . | jq -sc .)
 gh api "repos/$R/issues?state=open&per_page=100" --paginate \
-  --jq '.[] | select(.pull_request|not) |
+  --jq --arg loc "$LOC" --arg area "$AREA" --argjson blk "$BLK" '.[] | select(.pull_request|not) |
     {n:.number,
-     loc:[.labels[].name|select(startswith("1-loc"))]|length,
-     area:[.labels[].name|select(startswith("2-area"))]|length,
-     blk:[.labels[].name|select(startswith("3-"))]|length} |
-    select(.loc != 1 or .area != 1 or .blk > 1)'
+     loc:[.labels[].name|select($loc != "" and startswith($loc))]|length,
+     area:[.labels[].name|select($area != "" and startswith($area))]|length,
+     blk:[.labels[].name|select(. as $l | $blk | index($l))]|length} |
+    select(($loc != "" and .loc != 1) or ($area != "" and .area != 1) or .blk > 1)'
 ```
 
-Lege uitvoer = goed.
+Empty output = good. An axis without a prefix (rc 1) is not checked.
 
 ## Milestones
 
-**De milestone-beschrijving ís de pitch.** Er is geen apart parent-issue en geen `Milestone: `-prefix
-in issue-titels; die constructie is afgeschaft.
+**The milestone description *is* the pitch.** There is no separate parent issue and no
+`Milestone: ` prefix in issue titles.
 
-- **Naamgeving**: `<area>: <beschrijvende naam>`, bijvoorbeeld `infra: Beelink-monitoring afronden`.
-  Prefix wel (de milestone-dropdown is één platte lijst; alfabetisch sorteren geeft de as-groepering
-  gratis), cijfer niet (een area eindigt nooit, dus `infra-04` zegt niets over voortgang).
-- **Bij sluiten**: titel wordt `<area>: <naam> - DONE` en `state=closed` in dezelfde PATCH. Het
-  board onderscheidt open en gesloten milestones niet; het achtervoegsel doet dat wel. Zie de
-  `paia-close-issue`-skill, sectie "Milestone sluiten".
-- **Beschrijving**: de pitch uit "Pitch (Shape Up)" hieronder, met zijn zeven kopjes in die volgorde.
-  De ID van een milestone is zijn nummer in de URL.
-  De pitch noemt onder *Problem / Opportunity* de crux van de hoofd-area, zie
-  [`docs/developer/tenets.md`](../../../docs/developer/tenets.md) (*Koppeling*).
-- **Harde regel**: *een milestone zonder DoD-tekst in de beschrijving bestaat niet.* Zonder die regel
-  groeien blokken weer uit tot eeuwige bakken.
-- De beschrijving is tegelijk de **poortwachter**. Hoort een nieuwe task op grond van DoD en no-gos
-  niet in het blok, dan gaat die naar de backlog (`To do`, geen milestone) — niet alsnog erin.
-- De bestaande `2.x`-nummerreeks blijft historie en wordt niet hernoemd.
+- **Naming**: `<area>: <descriptive name>`. A prefix yes (the milestone dropdown is one flat
+  list; sorting alphabetically gives the axis grouping for free), a number no (an area never
+  ends, so `infra-04` says nothing about progress).
+- **On closing**: the title becomes `<area>: <name> - DONE` and `state=closed` in the same PATCH.
+  See `lighthouse-close-issue`.
+- **Description**: the pitch from "Pitch (Shape Up)" below, with its seven headings in that
+  order. The ID of a milestone is its number in the URL. If the project has tenets
+  (`python3 .lighthouse/lib/lighthouse_lib/config.py paths.tenets`, only if present), the pitch
+  names the crux of its main area under *Problem / Opportunity*.
+- **Hard rule**: *a milestone without DoD text in its description does not exist.* Without that
+  rule blocks grow into eternal bins again.
+- The description is at the same time the **gatekeeper**. If a new task does not belong in the
+  block on the ground of DoD and no-gos, it goes to the backlog (no milestone) — not into it after
+  all.
 
-Aanmaken gaat via de REST-API; `gh` heeft geen `milestone create`:
+Creating goes through the REST API; `gh` has no `milestone create`:
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh api --method POST "repos/$R/milestones" \
-  -f title='infra: <naam>' -f description="$(cat <<'EOF'
-<pitch volgens het template "Pitch (Shape Up)">
-EOF
-)"
+  -f title='<area>: <name>' -F description=@<file>
 ```
 
-Sub-issues blijven bestaan, maar alleen waar één taak natuurlijk uiteenvalt in deelstappen — niet als
-structuurlaag boven de milestone. Koppelen gaat via de REST-API; `sub_issue_id` is de database-`id`
-van het child, niet het nummer:
+Write the pitch with your write tool to a temporary file first; never the pitch itself as a
+shell argument: backticks and `$` are executed then.
+
+Sub-issues stay, but only where one task naturally falls apart into sub-steps — not as a layer of
+structure above the milestone. Linking goes through the REST API; `sub_issue_id` is the database
+`id` of the child, not the number:
 
 ```bash
-R=$(uv run python -m src.controller.identity repo) || exit 2
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 CHILD_DBID=$(gh api "repos/$R/issues/<child-nr>" --jq '.id')
 gh api --method POST "repos/$R/issues/<parent-nr>/sub_issues" -F sub_issue_id="$CHILD_DBID"
 ```
 
-Verifieer met
-`R=$(uv run python -m src.controller.identity repo) && gh api "repos/$R/issues/<parent-nr>/sub_issues" --jq '.[].number'`.
+Verify with
+`R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues/<parent-nr>/sub_issues" --jq '.[].number'`.
 
-## Het board
+## The board (only if configured)
 
-Eén GitHub Projects v2-board, met Status `To do` · `On hold` · `In progress` · `Controller` ·
-`Done`. Labels en milestones zijn de bron van waarheid over wát een issue is; het board toont
-ze. De Status is de enige plek waar het board zelf iets betekent: `Controller` draagt een
-issue over aan de controller, die de keten spec → plan → uitvoering → groene PR dan zelf
-loopt (`scripts/controller_tick.sh`, overzicht via `/paia-controller`). Mergen blijft bij
-jou; na de merge van een `Refs`-PR toetst de controller het issue zelf opnieuw
-(nacontrole, #1247). Verder sluit je met de hand via `/paia-close-issue`.
+A GitHub Projects v2 board exists for this skill only when `lighthouse.toml` has a
+`[forge.board]` table. If one of the `forge.board.*` keys below gives rc 1, there is no board:
+report `board: skipped — no [forge.board] configured` and set nothing. Labels and milestones are
+the source of truth about *what* an issue is; the board shows them. The Status is the one place
+where the board itself means something; the status names are in `[forge.board.status_options]`.
+A `Controller` status (only if present) hands an issue over to the controller.
 
-Noem het in documentatie en skills consequent **"het board"**, nooit "project" — anders botst het met
-het omgangstaalgebruik van "project".
+Call it consistently **"the board"** in documentation and skills, never "project" — otherwise it
+clashes with the everyday use of "project".
 
-Het board heeft ook een veld **Priority**: `P0` · `P1` · `P2`, geen waarde = achteraan. De
-controller kiest op Priority en dan op het laagste issuenummer. Zetten gaat in de board-UI, of zo
-(de ids staan in `lighthouse.toml`, `[forge.board]`, en komen uit `src.controller.identity`):
+The board can also have a field **Priority** (`P0` · `P1` · `P2`, no value = at the back).
+Setting it goes in the board UI, or like this:
 
 ```bash
-P=$(uv run python -m src.controller.identity project-id) || exit 2
-F=$(uv run python -m src.controller.identity priority-field-id) || exit 2
-S=$(uv run python -m src.controller.identity priority-option <P0|P1|P2>) || exit 2
+P=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_id) || exit $?
+F=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.priority_field_id) || exit $?
+S=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.priority_options.<P0|P1|P2>) || exit $?
 gh project item-edit --id <item-id> --project-id "$P" --field-id "$F" --single-select-option-id "$S"
 ```
 
-Een item-id lees je met
-`N=$(uv run python -m src.controller.identity project-number) && O=$(uv run python -m src.controller.identity owner) && gh project item-list "$N" --owner "$O" --format json --jq '.items[] | select(.content.number==<nr>) | .id'`.
+An item id you read with
+`N=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_number) && O=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.owner) && gh project item-list "$N" --owner "$O" --format json --jq '.items[] | select(.content.number==<nr>) | .id'`.
 
-`On hold` is de plek voor bewust geparkeerd werk. Er is geen `on-hold`-label. Zetten gaat in de
-board-UI, of via `gh project item-edit` (vereist `project`-scope plus project-, item-, field- en
-optie-id); er is geen `gh issue`-vlag voor.
+`On hold` is the place for work parked on purpose; there is no on-hold label. Setting it goes in
+the board UI, or through `gh project item-edit` (requires the `project` scope plus project, item,
+field and option id); there is no `gh issue` flag for it.
 
 ## Acceptance Criteria vs Definition of Done
 
 | Aspect | Acceptance Criteria (AC) | Definition of Done (DoD) |
 |--------|--------------------------|--------------------------|
-| **Scope** | Per item uniek | Universeel voor ALLE items |
-| **Vraag** | "Wanneer is DEZE taak klaar?" | "Welke kwaliteitsstandaarden gelden voor ALLES?" |
-| **Voorbeelden** | User kan inloggen, Error bij fout wachtwoord | Code reviewed, Tests passing, Docs updated |
+| **Scope** | Unique per item | Universal for ALL items |
+| **Question** | "When is THIS task done?" | "Which quality standards hold for EVERYTHING?" |
+| **Examples** | User can log in, error at a wrong password | Code reviewed, tests passing, docs updated |
 
-AC = WAT deze specifieke taak moet doen. DoD = HOE we kwaliteit borgen.
+AC = WHAT this specific task must do. DoD = HOW we secure quality.
 
 ## Issue Templates
 
-**BELANGRIJK**: elk template heeft vaste secties. Meng ze niet.
+**IMPORTANT**: every template has fixed sections. Do not mix them. Write the plain headings in
+the project language; a `heading:<key>` heading in the variant `headings.py <key>` prints.
 
 ### Bug
 
 ```markdown
-### Beschrijving
+### Description
 
-**Wat gaat er mis?**
+**What goes wrong?**
 ...
 
-**Stappen om te reproduceren:**
+**Steps to reproduce:**
 1. ...
 
-**Screenshots / Logs (optioneel):**
+**Screenshots / Logs (optional):**
 ...
 ```
 
 ### Task
 
 ```markdown
-### Beschrijving
+### Description
 
-Wat moet er gedaan worden?
+What has to be done?
 
-### Acceptatiecriteria
+### heading:acceptance_criteria
 
-Specifieke voorwaarden waaraan DEZE taak moet voldoen:
+Specific conditions THIS task must meet:
 - [ ] ...
 - [ ] ...
 
 ### Definition of Done
 
-Standaard kwaliteitseisen (vink af wat van toepassing is):
-- [ ] Code reviewed door teamlid
-- [ ] Tests geschreven en passing
-- [ ] Documentatie bijgewerkt
-- [ ] Geen bekende bugs
+Standard quality demands (tick what applies):
+- [ ] Code reviewed
+- [ ] Tests written and passing
+- [ ] Documentation updated
+- [ ] No known bugs
 ```
 
-### Pitch (Shape Up) — voor de milestone-beschrijving
+### Pitch (Shape Up) — for the milestone description
 
-Dit is **geen issue-template**. Gebruik het voor de beschrijving van een nieuwe milestone.
+This is **no issue template**. Use it for the description of a new milestone.
 
 ```markdown
 ### Problem / Opportunity
 
-Wat is het echte probleem? Voor wie? Evidence, voorbeelden, context.
+What is the real problem? For whom? Evidence, examples, context.
 
 ### Appetite (timebox)
 
-Kies uit: Small (1-2 dagen) | Medium (3-4 dagen) | Large (5-6 dagen)
+Choose from: Small (1-2 days) | Medium (3-4 days) | Large (5-6 days)
 
 ### Solution
 
-High-level aanpak, misschien enkele key elements.
+High-level approach, maybe a few key elements.
 
 ### Risks / Rabbit holes
 
-Welke valkuilen moeten we vermijden?
+Which pitfalls must we avoid?
 
-### Definition of Done
+### heading:milestone_dod
 
-Wanneer is dit blok af? Verplicht — zonder DoD bestaat de milestone niet.
+When is this block done? Required — without a DoD the milestone does not exist.
 
-### No-Gos
+### heading:milestone_no_gos
 
-Wat doen we expliciet NIET in deze versie?
+What do we explicitly NOT do in this version?
 
-### Nog niet vastgelegd
+### heading:milestone_not_yet_decided
 
-Open vragen die binnen het blok vallen maar nog niet scherp zijn. Eén bullet per vraag. Geen?
-Schrijf "Geen.".
+Open questions that fall inside the block but are not sharp yet. One bullet per question. None?
+Write "None.".
 ```
 
-**Nog niet vastgelegd** — drie punten:
-- **Wat erin hoort**, afgezet tegen DoD (wanneer af) en No-Gos (wat niet): een vraag hier hoort wél
-  bij het blok, alleen het HOE ligt nog niet vast. Dupliceer daarom geen DoD-punt of no-go.
-- **Uitstroom**: zodra een vraag scherp genoeg is voor acceptatiecriteria wordt hij een eigen issue
-  in deze milestone via `/paia-write-issue`, en de bullet wordt `→ #<nr>`. Een bullet zonder
-  `→ #<nr>` is open. Dat eigen issue mag het huidige issue zijn, als zijn spec de vraag
-  beantwoordde. Bijwerken: schrijf de héle pitch, alleen die bullet gewijzigd, met je schrijftool
-  (niet via `echo` of een heredoc) naar een tijdelijk bestand, en stuur dat bestand mee:
-  `R=$(uv run python -m src.controller.identity repo) && gh api -X PATCH "repos/$R/milestones/<n>" -F description=@<bestand>`.
-  Nooit de pitch zelf als shell-argument: backticks en `$` worden dan uitgevoerd.
-- **Timebox**: de fog krijgt geen eigen timebox. Past het antwoord niet in de appetite,
-  dan wordt het een no-go of een volgende milestone. Geen label en geen issue boven de milestone.
+**heading:milestone_not_yet_decided** — three points:
+- **What belongs in it**, set against the DoD (when done) and the No-Gos (what not): a question
+  here does belong to the block, only the HOW is not settled. So do not duplicate a DoD point or
+  a no-go.
+- **Outflow**: as soon as a question is sharp enough for acceptance criteria it becomes an issue
+  of its own in this milestone through `/lighthouse-write-issue`, and the bullet becomes
+  `→ #<nr>`. A bullet without `→ #<nr>` is open. That issue may be the current issue, if its spec
+  answered the question. Updating: write the *whole* pitch, only that bullet changed, with your
+  write tool (not through `echo` or a heredoc) to a temporary file, and send that file along:
+  `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api -X PATCH "repos/$R/milestones/<n>" -F description=@<file>`.
+  Never the pitch itself as a shell argument: backticks and `$` are executed then.
+- **Timebox**: the fog gets no timebox of its own. If the answer does not fit in the appetite, it
+  becomes a no-go or a next milestone. No label and no issue above the milestone.
 
-**LET OP**: gebruik geen "Acceptatiecriteria" in een pitch — dat hoort bij Tasks.
+**NOTE**: use no acceptance criteria in a pitch — they belong to Tasks.
 
 ## Title Standards
 
-- Wees specifiek en beschrijvend
+- Be specific and descriptive
 - Sentence case
-- Geen prefixes als `[FEATURE]` of `[BUG]` — daar zijn labels voor. Ook geen `Milestone: `-prefix.
+- No prefixes like `[FEATURE]` or `[BUG]` — labels are for that. Also no `Milestone: ` prefix.
 
 ### Good titles
 
 - `Add real-time streaming transcription during meetings`
-- `Fix MacWhisper database connection timeout`
-- `Verbeter journal skill met automatische linking`
+- `Fix database connection timeout on resume`
 
 ### Bad titles
 
-- `Bug` (vaag)
-- `Fix thing` (vaag)
-- `NEW FEATURE` (vaag, all caps)
+- `Bug` (vague)
+- `Fix thing` (vague)
+- `NEW FEATURE` (vague, all caps)
 
 ## Important
 
 - Never include "Generated with Claude Code" in issues unless directly relevant
 - Link related issues using `#issue-number` syntax
-- Provide context — explain the "why" not just the "what"
-- Gebruik `@username` voor validatie en sparring partners in pitches
+- Provide context — explain the "why", not just the "what"
+- Use `@username` for validation and sparring partners in pitches
