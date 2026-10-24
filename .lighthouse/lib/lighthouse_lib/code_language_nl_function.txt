@@ -2,7 +2,8 @@
 # verbs. One lower-case word per line. Never add a word that is also English or common in
 # English code (map, pad, is, in, op, van, over, met, door, die, ...); the corpus test in
 # tests/pack/test_code_language.py checks this against the Go sources.
-de
+# Also excluded, as English abbreviations in names and comments (dat_file, mag_sq, tot_len,
+# de_dup, TE, ...): de, te, er, dat, mag, tot.
 het
 een
 niet
@@ -17,19 +18,14 @@ ook
 nog
 dus
 als
-dat
 deze
 dit
 wel
 zo
 bij
 uit
-tot
 om
-te
-er
 kan
 moet
-mag
 heeft
 hebben

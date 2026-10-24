@@ -531,7 +531,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language_nl_function.txt"
 package = "core"
 version = "dev"
-sha256 = "fe05d9909d0ff6c1bec03cf86b6f47d993a6ae7031692f0fe925d255dccc6fcb"
+sha256 = "34a3ae75d240dc3663a630a2c0729e47d4f2ba8d88ad6733ff8f0fd8112976a0"
 
 [[unit]]
 kind = "file"

@@ -11,6 +11,7 @@ REPO = Path(__file__).resolve().parents[2]
 BANNED = [
     "die", "met", "door", "over", "van", "map", "pad",
     "is", "in", "op", "been", "had", "was", "hem",
+    "de", "te", "er", "dat", "mag", "tot",  # English abbreviations in names and comments
 ]  # fmt: skip
 
 
