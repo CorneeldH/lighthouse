@@ -1,0 +1,5 @@
+# init proposes pack/shell when git tracks (or would track) a shell script anywhere
+# (plan M0 (c), ontwerpkeuze 3). The shellcheck gate works per file and needs no
+# project command, so every shell script counts.
+
+files = ["**/*.sh", "**/*.bash"]

@@ -155,6 +155,19 @@ var installDirs = []string{HookDir, ".lighthouse/lib/lighthouse_lib/", ".lightho
 // skillDirs are the two harness directories a skill lands in (spec, Indeling).
 var skillDirs = []string{".claude/skills/lighthouse-", ".agents/skills/lighthouse-"}
 
+// InstalledGlobs are git glob pathspecs for every place lighthouse installs files into.
+// A file there came from a package, so it says nothing about the project.
+func InstalledGlobs() []string {
+	var globs []string
+	for _, dir := range installDirs {
+		globs = append(globs, dir+"**")
+	}
+	for _, dir := range skillDirs {
+		globs = append(globs, dir+"*/**")
+	}
+	return globs
+}
+
 // IsInstallPath reports whether p is a path lighthouse may own for a unit of kind:
 // a clean relative path under a lighthouse directory, AGENTS.md for a block, and
 // .claude/settings.json for a hook. A manifest is committed and may be edited in a

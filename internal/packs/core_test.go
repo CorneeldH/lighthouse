@@ -120,6 +120,20 @@ func TestLanguagePacks(t *testing.T) {
 			hooks:    2,
 			fragment: "test_gate",
 		},
+		{
+			name: "shell",
+			files: []string{
+				".agents/skills/lighthouse-shell-gates/SKILL.md",
+				".claude/hooks/lighthouse/shellcheck.sh",
+				".claude/skills/lighthouse-shell-gates/SKILL.md",
+				".lighthouse/scripts/lib/shellcheck-bin.sh",
+				".lighthouse/scripts/shellcheck-repo.sh",
+			},
+			detect: true,
+			tools:  "curl,git,jq,python3,sha256sum,tar,tomllib,xz",
+			blocks: 1,
+			hooks:  1,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

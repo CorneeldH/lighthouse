@@ -270,3 +270,44 @@ new = true
 path = "pack/python/scripts/quality/ratchet.py"
 source_path = "scripts/quality/ratchet.py"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/shell/hooks/shellcheck.sh"
+source_path = ".claude/hooks/shellcheck.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/shell/hooks/hooks.json"
+new = true
+
+[[file]]
+path = "pack/shell/scripts/shellcheck-repo.sh"
+source_path = "scripts/hooks/shellcheck-repo.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/shell/scripts/lib/shellcheck-bin.sh"
+source_path = "scripts/hooks/lib/shellcheck-bin.sh"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/shell/requires.toml"
+new = true
+
+[[file]]
+path = "pack/shell/skills/shell-gates/claude/SKILL.md"
+source_path = ".claude/skills/paia-shell-gates/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/shell/skills/shell-gates/agents/SKILL.md"
+source_path = ".agents/skills/paia-shell-gates/SKILL.md"
+source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+
+[[file]]
+path = "pack/shell/detect.toml"
+new = true
+
+[[file]]
+path = "pack/shell/instructions/AGENTS.md"
+new = true

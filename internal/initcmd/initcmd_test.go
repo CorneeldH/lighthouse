@@ -559,6 +559,26 @@ func TestEmptyCommandStaysOff(t *testing.T) {
 	}
 }
 
+func TestInitProposesRealShell(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "x.sh", "#!/bin/sh\necho x\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, shell (found x.sh)\n") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
+	}
+	for _, f := range []string{
+		".claude/hooks/lighthouse/shellcheck.sh",
+		".lighthouse/scripts/shellcheck-repo.sh",
+		".lighthouse/scripts/lib/shellcheck-bin.sh",
+		".claude/skills/lighthouse-shell-gates/SKILL.md",
+		".agents/skills/lighthouse-shell-gates/SKILL.md",
+	} {
+		if !exists(root, f) {
+			t.Fatalf("%s not installed", f)
+		}
+	}
+}
+
 func TestNewFileDiffHasNoPhantomLine(t *testing.T) {
 	root := newRepo(t)
 	r := run(t, root, "", yes)
