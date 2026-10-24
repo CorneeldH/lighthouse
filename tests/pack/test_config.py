@@ -480,6 +480,7 @@ def test_host_check_missing_is_rc_2(tmp_path, monkeypatch, capsys):
         ("labels.blocked_issue", "blocked-issue"),
         ("project.instructions_word_ceiling", "3000"),
         ("project.language", "en"),
+        ("shell.strict_dirs", ".claude/hooks"),
     ],
 )
 def test_defaults_for_absent_keys(cfg_env, capsys, key, value):
@@ -513,6 +514,7 @@ def test_keys_without_default_are_rc_1(cfg_env, capsys, key):
         ("ci", "runs_on = 1"),
         ("paths", 'labels = ""'),
         ("project", "instructions_word_ceiling = 3.5"),
+        ("shell", 'strict_dirs = ".claude/hooks"'),
     ],
 )
 def test_wrong_type_is_rc_2(tmp_path, monkeypatch, capsys, table, line):

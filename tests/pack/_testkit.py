@@ -24,7 +24,8 @@ import time
 import types
 from pathlib import Path
 
-CORE = Path(__file__).resolve().parents[2] / "pack" / "core"
+PACKS = Path(__file__).resolve().parents[2] / "pack"
+CORE = PACKS / "core"
 LIB = CORE / "lib"
 
 GIT_ENV = {

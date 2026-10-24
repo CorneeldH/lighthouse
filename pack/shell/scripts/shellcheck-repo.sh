@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Draai shellcheck op de shell van deze repo, of op de bestanden die je meegeeft.
 #
-# Zonder argumenten draait hij de *gate-set*: de shell die zelf poorten bewaakt
-# (scripts/hooks/, tests/integration/, .claude/hooks/). Die set staat op nul
-# bevindingen op de laagste ernst (style) - dat is KPI-rij 1 van de skill
-# paia-shell-gates.
+# Zonder argumenten draait hij de *strenge set*: de shell in `shell.strict_dirs`
+# uit lighthouse.toml (default `.claude/hooks`), de shell die zelf poorten
+# bewaakt. Die set staat op nul bevindingen op de laagste ernst (style) - dat is
+# KPI-rij 1 van de skill shell-gates.
 #
 # Exitcodes, en dit is het hele punt van dit script:
 #   0  gecontroleerd, niets gevonden
@@ -12,8 +12,7 @@
 #   2  verkeerd aangeroepen
 #   4  NIET gecontroleerd (shellcheck ontbreekt) - geen groen, geen rood
 #
-# Drie uitkomsten, niet twee. "Kon niet kijken" is geen "niets gevonden": zie
-# docs/developer/planning/specs/2026-08-23-shellcheck-gate-design.md en #650.
+# Drie uitkomsten, niet twee. "Kon niet kijken" is geen "niets gevonden".
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,13 +20,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/shellcheck-bin.sh
 . "$HERE/lib/shellcheck-bin.sh"
 
-# De drie mappen die poorten bewaken. Hier is de lat het hoogst, want een fout
-# in een gate is stiller dan een fout in gewone code: hij meldt groen.
-GATE_DIRS=(scripts/hooks tests/integration .claude/hooks)
-
 usage() {
   echo "usage: $0 [--severity error|warning|info|style] [file ...]" >&2
-  echo "  zonder bestanden: de gate-set ($(IFS=' '; echo "${GATE_DIRS[*]}"))" >&2
+  echo "  without files: the strict set (shell.strict_dirs in lighthouse.toml)" >&2
 }
 
 severity=style
@@ -53,20 +48,35 @@ SHELLCHECK="$(resolve_shellcheck)" || exit "$SHELLCHECK_UNAVAILABLE"
 
 if [ "${#files[@]}" -eq 0 ]; then
   REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
-    echo "shellcheck-repo: niet in een git-repo en geen bestanden meegegeven" >&2
+    echo "shellcheck-repo: not in a git repository and no files given" >&2
     exit 2
   }
   cd "$REPO_ROOT" || exit 2
+  # De mappen waar de lat het hoogst ligt, want een fout in een gate is stiller
+  # dan een fout in gewone code: hij meldt groen.
+  LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$REPO_ROOT}"
+  if ! dirs_out="$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/config.py" shell.strict_dirs 2>&1)"; then
+    echo "shellcheck-repo: shell.strict_dirs could not be read: $dirs_out" >&2
+    exit "$SHELLCHECK_UNAVAILABLE"
+  fi
+  specs=()
+  while IFS= read -r dir; do
+    [ -n "$dir" ] && specs+=("${dir%/}/*.sh")
+  done <<EOF
+$dirs_out
+EOF
   # git ls-files in plaats van een glob: geen lege expansie die als letterlijke
   # bestandsnaam doorgegeven wordt, en recursief in submappen.
   # --others --exclude-standard is niet optioneel: zonder die twee ziet de gate
   # een gloednieuwe, nog niet getrackte hook helemaal niet en meldt hij groen
   # over een set waar het nieuwe bestand niet in zat.
-  while IFS= read -r f; do
-    files+=("$f")
-  done < <(git ls-files --cached --others --exclude-standard -- "${GATE_DIRS[@]/%//*.sh}")
+  if [ "${#specs[@]}" -gt 0 ]; then
+    while IFS= read -r f; do
+      files+=("$f")
+    done < <(git ls-files --cached --others --exclude-standard -- "${specs[@]}")
+  fi
   if [ "${#files[@]}" -eq 0 ]; then
-    echo "shellcheck-repo: geen .sh in de gate-set gevonden - dit is geen groen" >&2
+    echo "shellcheck-repo: no .sh found in the strict set - this is not green" >&2
     exit 2
   fi
 fi

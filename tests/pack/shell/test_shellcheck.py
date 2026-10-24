@@ -1,47 +1,97 @@
-# --- shellcheck-gate (#650) ---------------------------------------------------
-#
-# De hook is met opzet NIET fail-open, anders dan de ruff- en ty-hooks: stil
-# overslaan is hier de fout die de gate moet voorkomen.
+"""pack/shell: the shellcheck gate, `shellcheck-repo.sh` and `shellcheck-bin.sh`, as installed.
 
-SHELLCHECK_HOOK = HOOKS / "shellcheck.sh"
-REPO = Path(__file__).resolve().parents[2]
-SHELLCHECK_LIB = REPO / "scripts" / "hooks" / "lib" / "shellcheck-bin.sh"
-WORKFLOW_AUDIT = REPO / "scripts" / "hooks" / "workflow-audit.sh"
-GATE_ASSERT = REPO / "tests" / "integration" / "lib" / "gate-assert.sh"
+The hook is bash and reads its input as JSON on stdin. These tests run it as a
+subprocess against a real temporary file, so the contract (exit code + stderr)
+is what gets tested.
+
+Uit paia's `test_quality_hooks.py:518-828`. Weg, want ze lezen paia's eigen boom:
+`test_shellcheck_pin_matches_workflow_audit`, `test_shellcheck_gate_set_is_clean`,
+`test_every_hook_script_is_registered_in_settings`, `test_no_gate_shell_is_gitignored`
+en de twee `gate-assert.sh`-tests (`tests/integration/lib/` blijft in paia).
+"""
+
+import json
+import os
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+from tests.pack._testkit import (
+    GIT_ENV,
+    INSTALL_ROOT,
+    git,
+    init_repo,
+    install_pack,
+    load_hook_lib,
+)
+from tests.pack.shell.conftest import SHELL_HOOKS, SHELL_SCRIPTS, SHELLCHECK_LIB
+
+# The gate is the hook in pack/shell; it does not shellcheck itself, it runs
+# shellcheck-repo.sh. Both come from the installation (conftest).
+SHELLCHECK_HOOK = SHELL_HOOKS / "shellcheck.sh"
+REPO_SCRIPT = SHELL_SCRIPTS / "shellcheck-repo.sh"
+
+bw = load_hook_lib("bash_writes")
 
 CLEAN_SH = '#!/usr/bin/env bash\nset -euo pipefail\necho "hallo"\n'
-# SC2034: `x` wordt nooit gebruikt. Warning-ernst, dus blokkeert overal.
+# SC2034: `x` is never used. Warning severity, so it blocks everywhere.
 BROKEN_SH = '#!/usr/bin/env bash\nf() {\n  local x=1\n  echo "hoi"\n}\nf\n'
-# SC2001: alleen style-ernst, dus blokkeert alleen in de gate-mappen.
+# SC2001: style severity only, so it blocks only in the strict directories.
 STYLE_ONLY_SH = '#!/usr/bin/env bash\nv="a b"\necho "$v" | sed \'s/a/c/\'\n'
 
 
-def _run_shellcheck_hook(target: Path, **env_extra) -> subprocess.CompletedProcess:
-    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(REPO), **env_extra)
+def _run_shellcheck_hook(
+    target: Path, cwd: Path | None = None, **env_extra
+) -> subprocess.CompletedProcess:
+    env = dict(os.environ, **env_extra)
     return subprocess.run(
         [str(SHELLCHECK_HOOK)],
         input=json.dumps({"tool_input": {"file_path": str(target)}}),
         capture_output=True,
         text=True,
+        cwd=str(cwd or target.parent),
         env=env,
         check=False,
     )
 
 
-def test_shellcheck_hook_passes_clean_script(tmp_path):
-    target = tmp_path / "clean.sh"
-    target.write_text(CLEAN_SH)
-    result = _run_shellcheck_hook(target)
+def _repo_file(tmp_path: Path, rel: str, text: str) -> Path:
+    """`text` at `rel` in a fresh git repo under `tmp_path`."""
+    repo = tmp_path / "repo"
+    if not (repo / ".git").exists():
+        init_repo(repo)
+    target = repo / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8")
+    return target
+
+
+def _toml(tmp_path: Path, body: str) -> str:
+    path = tmp_path / "lighthouse.toml"
+    path.write_text('[project]\nlanguage = "en"\n\n' + body, encoding="utf-8")
+    return str(path)
+
+
+def _first_line(result: subprocess.CompletedProcess) -> str:
+    return (result.stderr.splitlines() or [""])[0]
+
+
+def test_shellcheck_hook_passes_clean_script(tmp_path, pinned_shellcheck):
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    result = _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck)
     assert result.returncode == 0, result.stderr
 
 
-def test_shellcheck_hook_blocks_a_deliberately_broken_script(tmp_path):
-    """Het bewijs dat de gate bijt: rood om de juiste reden, met de SC-code erbij."""
-    target = tmp_path / "broken.sh"
-    target.write_text(BROKEN_SH)
-    result = _run_shellcheck_hook(target)
+def test_shellcheck_hook_blocks_a_deliberately_broken_script(tmp_path, pinned_shellcheck):
+    """The proof that the gate bites: red for the right reason, with the SC code,
+    and a finding for `bash_writes.classify`."""
+    target = _repo_file(tmp_path, "broken.sh", BROKEN_SH)
+    result = _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck)
     assert result.returncode == 2, result.stdout
     assert "SC2034" in result.stderr
+    assert _first_line(result).startswith("shellcheck: fix this in the code")
+    assert bw.classify(result.returncode, result.stderr.encode()) == "finding"
 
 
 def test_shellcheck_hook_ignores_non_shell(tmp_path):
@@ -50,53 +100,105 @@ def test_shellcheck_hook_ignores_non_shell(tmp_path):
     assert _run_shellcheck_hook(target).returncode == 0
 
 
-def test_shellcheck_hook_lets_style_pass_outside_the_gate_dirs(tmp_path):
-    """De blokkerende set is niet de gelinte set: buiten de gates telt warning."""
-    target = tmp_path / "styleonly.sh"
-    target.write_text(STYLE_ONLY_SH)
-    assert _run_shellcheck_hook(target).returncode == 0
+def test_shellcheck_hook_lets_style_pass_outside_the_strict_dirs(tmp_path, pinned_shellcheck):
+    """The blocking set is not the linted set: outside the strict dirs, warning counts."""
+    target = _repo_file(tmp_path, "styleonly.sh", STYLE_ONLY_SH)
+    assert _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck).returncode == 0
 
 
-def test_shellcheck_hook_blocks_style_inside_the_gate_dirs(tmp_path):
-    """In gate-shell is de lat hoger: daar staat de set op nul tot en met style."""
-    target = tmp_path / "repo" / ".claude" / "hooks" / "styleonly.sh"
-    target.parent.mkdir(parents=True)
-    target.write_text(STYLE_ONLY_SH)
-    result = _run_shellcheck_hook(target)
+def test_strict_default_covers_lighthouse_hooks(tmp_path, pinned_shellcheck):
+    """The default `shell.strict_dirs` is `.claude/hooks`, and a pathspec on it
+    reaches `.claude/hooks/lighthouse/` too."""
+    target = _repo_file(tmp_path, ".claude/hooks/lighthouse/styleonly.sh", STYLE_ONLY_SH)
+    result = _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck)
     assert result.returncode == 2, result.stdout
     assert "SC2001" in result.stderr
 
 
-def test_shellcheck_hook_fails_loud_when_the_tool_is_missing(tmp_path):
-    """Het hele punt van #650: geen tool is geen groen.
-
-    De ruff-hook is hier bewust fail-open; deze niet. Een exit 0 zou "schoon"
-    melden over een bestand waar niets naar gekeken heeft.
-    """
-    target = tmp_path / "clean.sh"
-    target.write_text(CLEAN_SH)
-    result = _run_shellcheck_hook(target, SHELLCHECK_BIN="/nergens/shellcheck")
+def test_strict_dirs_from_config(tmp_path, pinned_shellcheck):
+    """`strict_dirs = ["ops"]`: style blocks in `ops/`, and warning is the bar outside it,
+    also in `.claude/hooks/`."""
+    toml = _toml(tmp_path, '[shell]\nstrict_dirs = ["ops"]\n')
+    inside = _repo_file(tmp_path, "ops/styleonly.sh", STYLE_ONLY_SH)
+    outside = _repo_file(tmp_path, ".claude/hooks/styleonly.sh", STYLE_ONLY_SH)
+    env = {"SHELLCHECK_BIN": pinned_shellcheck, "LIGHTHOUSE_TOML": toml}
+    result = _run_shellcheck_hook(inside, **env)
     assert result.returncode == 2, result.stdout
-    assert "NIET gecontroleerd" in result.stderr
+    assert "SC2001" in result.stderr
+    assert _run_shellcheck_hook(outside, **env).returncode == 0
 
 
-def test_shellcheck_pin_matches_workflow_audit():
-    """De pin staat op twee plekken; lopen ze uiteen, dan meet de hook iets
-    anders dan de CI-lane."""
-    lib = re.search(r"^SHELLCHECK_PIN=(\S+)", SHELLCHECK_LIB.read_text(), re.MULTILINE)
-    audit = re.search(
-        r"^SHELLCHECK_VERSION=(\S+)", WORKFLOW_AUDIT.read_text(), re.MULTILINE
+def test_strict_dirs_does_not_match_a_prefix(tmp_path, pinned_shellcheck):
+    """`ops` is a directory, not a prefix: `opsx/` is outside it."""
+    toml = _toml(tmp_path, '[shell]\nstrict_dirs = ["ops"]\n')
+    target = _repo_file(tmp_path, "opsx/styleonly.sh", STYLE_ONLY_SH)
+    result = _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck, LIGHTHOUSE_TOML=toml)
+    assert result.returncode == 0, result.stderr
+
+
+def test_broken_config_is_unchecked(tmp_path):
+    toml = _toml(tmp_path, '[shell]\nstrict_dirs = "ops"\n')
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    result = _run_shellcheck_hook(target, LIGHTHOUSE_TOML=toml)
+    assert result.returncode == 2, result.stdout
+    assert _first_line(result).startswith("shellcheck: COULD NOT CHECK — "), result.stderr
+
+
+def test_shellcheck_hook_fails_loud_when_the_tool_is_missing(tmp_path):
+    """No tool is not green. An exit 0 would report "clean" about a file nobody looked at."""
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    result = _run_shellcheck_hook(target, SHELLCHECK_BIN="/nowhere/shellcheck")
+    assert result.returncode == 2, result.stdout
+    assert _first_line(result).startswith("shellcheck: COULD NOT CHECK — "), result.stderr
+    assert bw.classify(result.returncode, result.stderr.encode()) == "unchecked"
+
+
+def test_unchecked_first_line(tmp_path):
+    """Only core installed: no `shellcheck-repo.sh` under the lighthouse root."""
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    result = _run_shellcheck_hook(target, LIGHTHOUSE_REPO_ROOT=str(INSTALL_ROOT))
+    assert result.returncode == 2, result.stdout
+    assert _first_line(result).startswith("shellcheck: COULD NOT CHECK — "), result.stderr
+    assert ".lighthouse/scripts/shellcheck-repo.sh" in result.stderr
+    assert bw.classify(result.returncode, result.stderr.encode()) == "unchecked"
+
+
+def test_script_found_in_the_file_root_without_env(tmp_path, pinned_shellcheck):
+    """Without `LIGHTHOUSE_REPO_ROOT`, the root is the git root of the edited file:
+    an edit in a worktree is checked with that worktree's script."""
+    target = _repo_file(tmp_path, "broken.sh", BROKEN_SH)
+    install_pack("shell", tmp_path / "repo")
+    env = dict(os.environ, SHELLCHECK_BIN=pinned_shellcheck)
+    env.pop("LIGHTHOUSE_REPO_ROOT")
+    hook = tmp_path / "repo" / ".claude" / "hooks" / "lighthouse" / "shellcheck.sh"
+    result = subprocess.run(
+        [str(hook)],
+        input=json.dumps({"tool_input": {"file_path": str(target)}}),
+        capture_output=True,
+        text=True,
+        cwd=str(tmp_path),
+        env=env,
+        check=False,
     )
-    assert lib and audit, (lib, audit)
-    assert lib.group(1) == audit.group(1)
+    assert result.returncode == 2, result.stderr
+    assert "SC2034" in result.stderr
 
 
 def _shellcheck_pin() -> str:
-    match = re.search(
-        r"^SHELLCHECK_PIN=(\S+)", SHELLCHECK_LIB.read_text(), re.MULTILINE
-    )
-    assert match, "SHELLCHECK_PIN niet gevonden in de lib"
+    match = re.search(r"^SHELLCHECK_PIN=(\S+)", SHELLCHECK_LIB.read_text(), re.MULTILINE)
+    assert match, "SHELLCHECK_PIN not found in the lib"
     return match.group(1)
+
+
+def test_pin_and_hashes_unchanged():
+    lib = SHELLCHECK_LIB.read_text()
+    assert _shellcheck_pin() == "0.11.0"
+    for sha in (
+        "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198",
+        "12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588",
+        "56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79",
+    ):
+        assert sha in lib
 
 
 def _fake_shellcheck(path: Path, version: str) -> None:
@@ -112,12 +214,18 @@ def _fake_shellcheck(path: Path, version: str) -> None:
     path.chmod(0o755)
 
 
-def _resolve_shellcheck(repo: Path, stub_dir: Path) -> subprocess.CompletedProcess:
-    """Draai resolve_shellcheck in `repo`, met `stub_dir` vooraan PATH."""
+def _failing_curl(stub_dir: Path) -> None:
+    curl = stub_dir / "curl"
+    curl.write_text("#!/usr/bin/env bash\nexit 1\n")
+    curl.chmod(0o755)
+
+
+def _resolve_shellcheck(repo: Path, stub_dir: Path, fn: str = "resolve_shellcheck") -> subprocess.CompletedProcess:
+    """Run `fn` from the lib in `repo`, with `stub_dir` first on PATH."""
     env = dict(os.environ, PATH=f"{stub_dir}{os.pathsep}{os.environ['PATH']}")
     env.pop("SHELLCHECK_BIN", None)
     return subprocess.run(
-        ["bash", "-c", f'. "{SHELLCHECK_LIB}"\nresolve_shellcheck\n'],
+        ["bash", "-c", f'. "{SHELLCHECK_LIB}"\n{fn}\n'],
         capture_output=True,
         text=True,
         cwd=str(repo),
@@ -133,15 +241,27 @@ def _fresh_repo(tmp_path: Path) -> Path:
     return repo
 
 
+def test_cache_dir_is_lighthouse_tools(tmp_path):
+    """One cache per clone, shared by its worktrees: `<git-common-dir>/lighthouse-tools`."""
+    repo = _fresh_repo(tmp_path)
+    git(repo, "commit", "-q", "--allow-empty", "-m", "init")
+    git(repo, "worktree", "add", "-q", str(tmp_path / "wt"))
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    for where in (repo, tmp_path / "wt"):
+        result = _resolve_shellcheck(where, stub_dir, "_sc_tool_dir")
+        assert result.returncode == 0, result.stderr
+        assert Path(result.stdout.strip()).resolve() == (repo / ".git" / "lighthouse-tools").resolve()
+
+
 def test_resolve_prefers_the_pinned_cache_over_a_divergent_path_version(tmp_path):
-    """De gate-set staat op nul bevindingen ONDER DE PIN. ubuntu-latest heeft
-    shellcheck 0.9.0 voorgeïnstalleerd, en die meldt SC2317 op precies de
-    trap-cleanup die 0.11.0 via `disable=SC2329` onderdrukt. Een afwijkende
-    PATH-versie mag de pin dus nooit verdringen: dezelfde boom gaf anders rood
-    op de ene runner en groen op de andere.
+    """The strict set is clean UNDER THE PIN. ubuntu-latest has shellcheck 0.9.0
+    preinstalled, and that reports SC2317 on exactly the trap cleanup 0.11.0
+    suppresses via `disable=SC2329`. A divergent PATH version must never push the
+    pin aside: the same tree would be red on one runner and green on the other.
     """
     repo = _fresh_repo(tmp_path)
-    cache = repo / ".git" / "workflow-audit-tools"
+    cache = repo / ".git" / "lighthouse-tools"
     cache.mkdir(parents=True)
     _fake_shellcheck(cache / "shellcheck", _shellcheck_pin())
     stub_dir = tmp_path / "bin"
@@ -154,7 +274,7 @@ def test_resolve_prefers_the_pinned_cache_over_a_divergent_path_version(tmp_path
 
 
 def test_resolve_uses_a_pinned_path_version_without_downloading(tmp_path):
-    """Staat de pin zélf op PATH, dan is dat het antwoord — geen download."""
+    """When the pin itself is on PATH, that is the answer: no download."""
     repo = _fresh_repo(tmp_path)
     stub_dir = tmp_path / "bin"
     stub_dir.mkdir()
@@ -166,146 +286,116 @@ def test_resolve_uses_a_pinned_path_version_without_downloading(tmp_path):
     assert result.stderr == "", result.stderr
 
 
-def test_resolve_falls_back_to_a_divergent_path_version_when_the_pin_is_unreachable(
-    tmp_path,
-):
-    """Offline met alleen een oude shellcheck: kijken met de verkeerde versie is
-    beter dan niet kijken — maar dan mét melding, want de uitkomst is niet die
-    van de gate. `curl` is hier een stub die faalt: unit-tests gaan niet het net op.
+def test_resolve_falls_back_to_a_divergent_path_version_when_the_pin_is_unreachable(tmp_path):
+    """Offline with only an old shellcheck: looking with the wrong version beats not
+    looking, but with a notice, because the outcome is not the gate's. `curl` is a
+    stub that fails: unit tests do not go on the network.
     """
     repo = _fresh_repo(tmp_path)
     stub_dir = tmp_path / "bin"
     stub_dir.mkdir()
     _fake_shellcheck(stub_dir / "shellcheck", "0.9.0")
-    curl = stub_dir / "curl"
-    curl.write_text("#!/usr/bin/env bash\nexit 1\n")
-    curl.chmod(0o755)
+    _failing_curl(stub_dir)
 
     result = _resolve_shellcheck(repo, stub_dir)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == str(stub_dir / "shellcheck"), result.stdout
-    assert "wijkt af van de pin" in result.stderr, result.stderr
+    assert "differs from the pin" in result.stderr, result.stderr
 
 
-def test_shellcheck_gate_set_is_clean():
-    """KPI-rij 1 van de skill paia-shell-gates, als test."""
-    result = subprocess.run(
-        ["bash", str(REPO / "scripts" / "hooks" / "shellcheck-repo.sh")],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO),
-        check=False,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
+def test_divergent_version_notice_reaches_the_session(tmp_path):
+    """A clean result from a divergent version is no silent pass: the hook passes the
+    notice on as a `systemMessage`."""
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    _fake_shellcheck(stub_dir / "shellcheck", "0.9.0")
+    _failing_curl(stub_dir)
+    path = f"{stub_dir}{os.pathsep}{os.environ['PATH']}"
+    result = _run_shellcheck_hook(target, PATH=path)
+    assert result.returncode == 0, result.stderr
+    message = json.loads(result.stdout)["systemMessage"]
+    assert message.startswith("shellcheck: ")
+    assert "differs from the pin" in message
 
 
-def _run_gate_assert(rc: int, want: str) -> subprocess.CompletedProcess:
-    script = f'. "{GATE_ASSERT}"\ncheck "proef" {want} {rc}\nexit "$failures"\n'
-    return subprocess.run(
-        ["bash", "-c", script], capture_output=True, text=True, check=False
-    )
+def test_shellcheck_hook_reads_the_path_without_jq(tmp_path, pinned_shellcheck):
+    """The hook runs on EVERY Edit/Write. Without jq it must not block the whole
+    session on a .py or .md edit; python3 is the second parser.
 
-
-def test_gate_assert_rejects_command_not_found_as_a_finding():
-    """Defect 1 van #610: `nonzero` slikte rc=127, dus een ontbrekend script
-    telde als een geslaagde blokkade."""
-    for rc in (126, 127):
-        result = _run_gate_assert(rc, "nonzero")
-        assert result.returncode != 0, result.stdout
-        assert "FAIL" in result.stdout
-
-
-def test_gate_assert_still_accepts_a_real_nonzero():
-    result = _run_gate_assert(1, "nonzero")
-    assert result.returncode == 0, result.stdout
-    assert "PASS" in result.stdout
-
-
-def test_every_hook_script_is_registered_in_settings():
-    """De pairing-regel op zijn smalst: een hook die nergens geregistreerd staat,
-    draait niet en meldt dus niets — precies de stille nul uit #650.
-
-    `statusline.sh` (#669) is uitgezonderd: het is geen PreToolUse/PostToolUse/Stop-
-    hook maar een statusLine-renderer, en die wordt niet onder `hooks` in dít
-    repo-bestand geregistreerd maar als `statusLine` in het gebruikersbestand
-    `~/.claude/settings.json` (Task 8 van
-    docs/developer/planning/plans/2026-08-23-usage-window-fase1.md). Deze test kan
-    dat gebruikersbestand niet lezen, dus zou voor `statusline.sh` per ontwerp nooit
-    kunnen slagen.
+    Removing jq cannot be done by cutting its directory from PATH: bash lives there
+    too. So a PATH of symlinks only, with everything except jq.
     """
-    settings = json.loads((REPO / ".claude" / "settings.json").read_text())
-    registered = json.dumps(settings["hooks"])
-    exempt = {"statusline.sh"}
-    for script in sorted(HOOKS.glob("*.sh")):
-        if script.name in exempt:
-            continue
-        assert script.name in registered, f"{script.name} staat in geen enkele hook"
-
-
-def test_no_gate_shell_is_gitignored():
-    """Een genegeerd bestand valt buiten elke `git ls-files`-gate en wordt nooit
-    gecommit — de gate meldt dan groen over een set waar het niet in zat.
-    Gevonden op scripts/hooks/lib/ en tests/integration/lib/: het onaangelijnde
-    `lib/` uit de standaard-Python-.gitignore matchte elke map met die naam.
-    """
-    targets = [
-        str(p.relative_to(REPO))
-        for d in (".claude/hooks", "scripts/hooks", "tests/integration")
-        for p in (REPO / d).rglob("*.sh")
-    ]
-    assert targets
-    result = subprocess.run(
-        ["git", "check-ignore", *targets],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO),
-        check=False,
-    )
-    assert result.returncode == 1, f"genegeerd: {result.stdout}"
-
-
-def test_shellcheck_hook_reads_the_path_without_jq(tmp_path):
-    """De hook draait op ELKE Edit/Write. Zonder jq mag hij niet de hele sessie
-    blokkeren op een .py- of .md-edit; python3 is de tweede parser.
-
-    jq weghalen kan niet door zijn map uit PATH te knippen — daar staat ook bash.
-    Daarom een PATH die alleen uit symlinks bestaat, met alles erin behalve jq.
-    """
-    target = tmp_path / "broken.sh"
-    target.write_text(BROKEN_SH)
+    target = _repo_file(tmp_path, "broken.sh", BROKEN_SH)
     shim = tmp_path / "bin"
     shim.mkdir()
-    needed = [
-        "env",
-        "bash",
-        "python3",
-        "git",
-        "dirname",
-        "sed",
-        "grep",
-        "cut",
-        "uname",
-        "mktemp",
-        "sha256sum",
-        "curl",
-        # mkdir en xz horen bij het downloadpad van resolve_shellcheck: op een
-        # koude toolcache pakt die de gepinde release uit met `tar -xJf`, en tar
-        # roept daarvoor xz aan. Zonder deze twee faalt de hook in deze shim met
-        # "mkdir: command not found" in plaats van met de SC2034 waar de test op
-        # kijkt.
-        "mkdir",
-        "xz",
-        "tar",
-        "rm",
-        "chmod",
-        "cat",
-    ]
+    needed = ["env", "bash", "python3", "git", "dirname", "sed", "grep", "cut", "uname", "cat", "mktemp", "rm"]
     for name in needed:
         found = shutil.which(name)
         assert found, name
         (shim / name).symlink_to(found)
     assert shutil.which("jq", path=str(shim)) is None
 
-    result = _run_shellcheck_hook(target, PATH=str(shim))
+    result = _run_shellcheck_hook(target, PATH=str(shim), SHELLCHECK_BIN=pinned_shellcheck)
     assert result.returncode == 2, result.stdout + result.stderr
     assert "SC2034" in result.stderr
+
+
+# --- shellcheck-repo.sh -------------------------------------------------------
+
+
+def _run_repo_script(repo: Path, *args: str, **env_extra) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["bash", str(REPO_SCRIPT), *args],
+        capture_output=True,
+        text=True,
+        cwd=str(repo),
+        env=dict(os.environ, **GIT_ENV, **env_extra),
+        check=False,
+    )
+
+
+def test_repo_script_strict_set_from_config(tmp_path, pinned_shellcheck):
+    """Without files, the script checks `shell.strict_dirs`, at style, with new files too."""
+    toml = _toml(tmp_path, '[shell]\nstrict_dirs = ["ops"]\n')
+    _repo_file(tmp_path, "ops/clean.sh", CLEAN_SH)
+    _repo_file(tmp_path, "elsewhere/styleonly.sh", STYLE_ONLY_SH)
+    repo = tmp_path / "repo"
+    env = {"SHELLCHECK_BIN": pinned_shellcheck, "LIGHTHOUSE_TOML": toml}
+    assert _run_repo_script(repo, **env).returncode == 0
+    _repo_file(tmp_path, "ops/sub/styleonly.sh", STYLE_ONLY_SH)
+    result = _run_repo_script(repo, **env)
+    assert result.returncode == 1, result.stderr
+    assert "SC2001" in result.stdout
+
+
+def test_repo_script_empty_strict_set_is_not_green(tmp_path, pinned_shellcheck):
+    toml = _toml(tmp_path, "[shell]\nstrict_dirs = []\n")
+    _repo_file(tmp_path, "ops/clean.sh", CLEAN_SH)
+    result = _run_repo_script(tmp_path / "repo", SHELLCHECK_BIN=pinned_shellcheck, LIGHTHOUSE_TOML=toml)
+    assert result.returncode == 2
+    assert "this is not green" in result.stderr
+
+
+def test_repo_script_unchecked_is_rc_4(tmp_path):
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    result = _run_repo_script(tmp_path / "repo", "--", str(target), SHELLCHECK_BIN="/nowhere/shellcheck")
+    assert result.returncode == 4
+    assert "is not executable" in result.stderr
+
+
+# --- through bash-write-gates.sh ---------------------------------------------
+
+
+def test_bash_write_through_gate(tmp_path, pinned_shellcheck):
+    """With core and shell installed, a Bash write of a broken `.sh` is a finding via
+    `bash-write-gates post`, not `no shell gate installed`."""
+    from tests.pack.test_bash_write_gates import BROKEN_SH as GATES_BROKEN_SH
+    from tests.pack.test_bash_write_gates import _Session, heredoc
+
+    session = _Session(tmp_path, shellcheck=pinned_shellcheck, language_gates=False)
+    install_pack("shell", session.root)
+    out = session.call(heredoc("x.sh", GATES_BROKEN_SH))
+    assert out.returncode == 2, (out.stdout, out.stderr)
+    assert "SC2034" in out.stderr
+    assert "no shell gate installed" not in out.stderr + out.stdout

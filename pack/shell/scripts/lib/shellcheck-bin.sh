@@ -3,18 +3,16 @@
 #
 # Bestaansreden: de shellcheck-gate mag nooit stil overslaan. Een hook die zijn
 # tool niet vindt en dan exit 0 doet, meldt "schoon" terwijl hij niets gekeken
-# heeft — precies de foutklasse uit #650. Daarom geeft resolve_shellcheck() drie
+# heeft. Daarom geeft resolve_shellcheck() drie
 # uitkomsten terug, niet twee: gevonden (rc 0, pad op stdout), of niet te
 # gebruiken (rc 4, reden op stderr). rc 1 is voorbehouden aan "bevindingen".
 #
-# Licentie: shellcheck is GPL-3.0 — toegestaan onder de copyleft-regel in
-# CLAUDE.md als ongewijzigde losse binary achter een CLI-grens, dev-only: nooit
-# mee in een productimage, nooit code of regels eruit overnemen.
+# Licentie: shellcheck is GPL-3.0. Het wordt gebruikt als ongewijzigde losse
+# binary achter een CLI-grens, dev-only: nooit mee in een productimage, nooit
+# code of regels eruit overnemen.
 
-# Gepind. Deze waarde staat OOK in scripts/hooks/workflow-audit.sh; die twee
-# mogen niet uiteenlopen, want dan meet de hook iets anders dan de CI-lane.
-# tests/unit/test_quality_hooks.py::test_shellcheck_pin_matches_workflow_audit
-# bewaakt dat.
+# Gepind. Een repo die shellcheck ook in CI draait, pint daar dezelfde versie,
+# anders meet de hook iets anders dan de CI-lane.
 SHELLCHECK_PIN=0.11.0
 
 # Exitcode voor "kon niet controleren". Bewust geen 0 en geen 1.
@@ -37,9 +35,9 @@ _sc_tool_dir() {
     /*) ;;
     *) common="$root/$common" ;;
   esac
-  # Zelfde map als workflow-audit.sh: een cache, een download, gedeeld over
-  # worktrees omdat --git-common-dir naar de hoofd-.git wijst.
-  echo "$common/workflow-audit-tools"
+  # Een cache, een download, gedeeld over worktrees omdat --git-common-dir naar
+  # de hoofd-.git wijst.
+  echo "$common/lighthouse-tools"
 }
 
 _sc_is_pinned() { # bin
@@ -49,7 +47,7 @@ _sc_is_pinned() { # bin
 _sc_download() { # tool_dir -> pad op stdout, of rc != 0
   local tool_dir="$1" plat url sha tmp got bin="$1/shellcheck"
   plat="$(_sc_platform)" || {
-    echo "shellcheck: geen release voor $(uname -s)/$(uname -m)" >&2
+    echo "shellcheck: no release for $(uname -s)/$(uname -m)" >&2
     return 1
   }
   case "$plat" in
@@ -60,20 +58,20 @@ _sc_download() { # tool_dir -> pad op stdout, of rc != 0
   tmp="$(mktemp -d)" || return 1
   if ! curl -fsSL -o "$tmp/s.txz" \
        "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_PIN}/${url}"; then
-    echo "shellcheck: download mislukt (offline?)" >&2
+    echo "shellcheck: download failed (offline?)" >&2
     rm -rf "$tmp"
     return 1
   fi
   got="$(sha256sum "$tmp/s.txz" | cut -d' ' -f1)"
   if [ "$got" != "$sha" ]; then
-    echo "shellcheck: sha256 klopt niet (kreeg $got, wilde $sha)" >&2
+    echo "shellcheck: sha256 mismatch (got $got, wanted $sha)" >&2
     rm -rf "$tmp"
     return 1
   fi
   mkdir -p "$tool_dir"
   if ! tar -xJf "$tmp/s.txz" -C "$tool_dir" --strip-components=1 \
         "shellcheck-v${SHELLCHECK_PIN}/shellcheck"; then
-    echo "shellcheck: uitpakken mislukt" >&2
+    echo "shellcheck: unpacking failed" >&2
     rm -rf "$tmp"
     return 1
   fi
@@ -107,7 +105,7 @@ resolve_shellcheck() {
       echo "$SHELLCHECK_BIN"
       return 0
     fi
-    echo "shellcheck: SHELLCHECK_BIN=$SHELLCHECK_BIN is niet uitvoerbaar" >&2
+    echo "shellcheck: SHELLCHECK_BIN=$SHELLCHECK_BIN is not executable" >&2
     return "$SHELLCHECK_UNAVAILABLE"
   fi
 
@@ -138,11 +136,11 @@ resolve_shellcheck() {
   # De pin was niet te halen. Een afwijkende versie is dan nog altijd beter dan
   # blind zijn, maar de melding moet erbij: de uitkomst is niet die van de gate.
   if [ -n "$path_bin" ]; then
-    echo "shellcheck: PATH-versie ${path_version:-onbekend} wijkt af van de pin $SHELLCHECK_PIN en de pin was niet op te halen" >&2
+    echo "shellcheck: PATH version ${path_version:-unknown} differs from the pin $SHELLCHECK_PIN, and the pin could not be fetched" >&2
     echo "$path_bin"
     return 0
   fi
 
-  echo "shellcheck: niet gevonden en niet op te halen - er is dus NIET gecontroleerd." >&2
+  echo "shellcheck: not found and could not be fetched, so nothing was checked." >&2
   return "$SHELLCHECK_UNAVAILABLE"
 }
