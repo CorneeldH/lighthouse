@@ -514,6 +514,27 @@ sha256 = "9531d7f438980d6997b226b3cfcd46a6f3497b822417b07f807bbc748d969851"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language.py"
+package = "core"
+version = "dev"
+sha256 = "8b96a9c527df9fe42d254639ddeec497280a1b8e4817ec1f7eaa6da94031b360"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language_nl_content.txt"
+package = "core"
+version = "dev"
+sha256 = "63b1164ccf171d88cec35738abf698578843820196d4a9ed8a7d66f978598852"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language_nl_function.txt"
+package = "core"
+version = "dev"
+sha256 = "fe05d9909d0ff6c1bec03cf86b6f47d993a6ae7031692f0fe925d255dccc6fcb"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
