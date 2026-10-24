@@ -115,8 +115,12 @@ Bash-writes draait.
   - `test_dutch_name`: `lees_bestand`, `gevondenRegels` → True; `read_file`, `foundLines`,
     `map_path` → False.
   - `test_english_corpus_has_no_dutch_words`: elk commentaarwoord en elke naam in de Go-bestanden
-    onder `internal/` en `cmd/` (ruw: alle woorden van elke regel na `//`, en alle identifiers via
-    `re.findall(r"[A-Za-z_][A-Za-z0-9_]*", line)`) geeft `is_dutch_text`/`is_dutch_name` False.
+    onder `internal/` en `cmd/` (ruw: haal eerst per regel de stringliterals weg met
+    `re.sub(r'"(?:\\.|[^"\\])*"|`[^`]*`|\'(?:\\.|[^\'\\])*\'', "", line)`; daarna alle woorden na
+    `//`, en alle identifiers via `re.findall(r"[A-Za-z_][A-Za-z0-9_]*", line)`) geeft
+    `is_dutch_text`/`is_dutch_name` False. Strings zijn data (spec, *Non-goals*): zonder die stap
+    levert de SHA-256 in `internal/manifest/manifest_test.go:109` (`…140de5dae…`) via `split_name`
+    het deel `de` op.
     Faalt dit, dan staat er een woord in een lijst dat ook in Engelse code voorkomt: haal het eruit.
 - [ ] **Stap 2:** `uv run pytest -q tests/pack/test_code_language.py` → FAIL.
 - [ ] **Stap 3:** implementeer de vijf functies en vul de lijsten. Functiewoorden: lidwoorden,
