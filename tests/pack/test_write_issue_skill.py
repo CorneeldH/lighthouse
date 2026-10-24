@@ -148,3 +148,55 @@ def test_write_issue_milestone_prefix_from_config():
         assert "a milestone without DoD text in its description does not exist" in flat
         assert "gatekeeper" in flat
         assert "<area>: <descriptive name>" not in flat
+
+
+def _bash_block(section: str) -> str:
+    return re.search(r"```bash\n(.*?)```", section, re.S)[1]
+
+
+# `gh` as it answers flags it does not know: `gh api --jq` takes one expression, no `--arg`.
+_STRICT_GH = """#!/bin/sh
+[ "$1" = api ] && [ "$3" = --paginate ] && [ $# -eq 3 ] || { echo "unknown flag: $3" >&2; exit 1; }
+cat "$GH_PAGE"
+"""
+
+
+def test_invariant_check_runs_against_gh(tmp_path):
+    """Step 6 runs as written: two blocking labels on one issue is reported, a clean one not."""
+    from tests.pack._testkit import MINIMAL_TOML, install_core, tool_bin
+
+    install_core(tmp_path, MINIMAL_TOML + '\n[labels]\nlocation_prefix = "loc-"\narea_prefix = "area-"\n')
+    page = tmp_path / "page.json"
+    page.write_text(
+        '[{"number": 1, "labels": [{"name": "loc-a"}, {"name": "area-b"},'
+        ' {"name": "needs-shaping"}, {"name": "needs-decision"}]},'
+        ' {"number": 2, "labels": [{"name": "loc-a"}, {"name": "area-b"}]}]',
+        encoding="utf-8",
+    )
+    path = tool_bin(tmp_path / "bin", ("python3", "jq", "sh", "cat"), stubs={"gh": _STRICT_GH})
+    script = _bash_block(_between(skill()[0], "### 6. Check the invariants", "## Milestones"))
+    import subprocess
+
+    out = subprocess.run(
+        ["/bin/bash", "-c", script],
+        cwd=tmp_path,
+        env={"PATH": str(path), "GH_PAGE": str(page), "LIGHTHOUSE_REPO_ROOT": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert out.returncode == 0, out.stderr
+    assert [line for line in out.stdout.splitlines() if line] == [
+        '{"n":1,"loc":1,"area":1,"blk":2}'
+    ]
+
+
+def test_milestone_create_reads_its_own_prefix():
+    """Shell variables do not survive between tool calls: the create block reads the prefix
+    itself, under a name no other block reuses, and reports a missing one."""
+    for body in skill():
+        block = _bash_block(body[body.index("Creating goes through the REST API") :])
+        assert f"MP=$({CONFIG} project.milestone_prefix)" in block
+        assert "milestone prefix: none — no [project] milestone_prefix set" in block
+        assert '-f title="${MP:+$MP }<name>"' in block
+        assert "${P:+" not in body

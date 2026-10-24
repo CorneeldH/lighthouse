@@ -725,8 +725,9 @@ Only with an areas folder: `python3 .lighthouse/lib/lighthouse_lib/config.py pat
 report `areas: skipped — no paths.areas` and stop here).
 
 If you closed a milestone in this repo, update the *near goal* in `<paths.areas>/<area>.md`, with
-`<area>` the title prefix of the milestone: the closed milestone out, new open milestones of that
-area that do not end on `ON-HOLD` or `DONE` in. This does not belong in the release PR (if
+`<area>` the part before `:` after `project.milestone_prefix` in the milestone title: the
+closed milestone out, new open milestones of that area that do not end on `ON-HOLD` or `DONE`
+in. This does not belong in the release PR (if
 present): the release flow branches from `origin/<default branch>` and stages only `CHANGELOG.md`
 and `publiccode.yml`. Take a worktree and branch of your own from `origin/<default branch>`:
 

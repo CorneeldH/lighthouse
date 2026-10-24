@@ -284,8 +284,8 @@ BLK=$({ python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_shaping
   python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_external
   python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_hands
   python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_testing; } | jq -R . | jq -sc .)
-gh api "repos/$R/issues?state=open&per_page=100" --paginate \
-  --jq --arg loc "$LOC" --arg area "$AREA" --argjson blk "$BLK" '.[] | select(.pull_request|not) |
+gh api "repos/$R/issues?state=open&per_page=100" --paginate |
+  jq -c --arg loc "$LOC" --arg area "$AREA" --argjson blk "$BLK" '.[] | select(.pull_request|not) |
     {n:.number,
      loc:[.labels[].name|select($loc != "" and startswith($loc))]|length,
      area:[.labels[].name|select($area != "" and startswith($area))]|length,
@@ -303,7 +303,7 @@ Empty output = good. An axis without a prefix (rc 1) is not checked.
 - **Naming**: `<project.milestone_prefix> <name>`, for example `LH M0 — Package` or
   `WEB infra: security hygiene of the standing state`. The repo prefix goes in the title, because
   a project board over several repos slices on milestone or on repo, never on both. Read it with
-  `P=$(python3 .lighthouse/lib/lighthouse_lib/config.py project.milestone_prefix)`; rc 1 means no
+  `MP=$(python3 .lighthouse/lib/lighthouse_lib/config.py project.milestone_prefix)`; rc 1 means no
   prefix: the title gets none, and the report says
   `milestone prefix: none — no [project] milestone_prefix set`. The form after the prefix
   (`M<n> — …` or `<area>: …`) is project content and lives in the file under `[paths] labels`.
@@ -325,8 +325,11 @@ Creating goes through the REST API; `gh` has no `milestone create`:
 
 ```bash
 R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+MP=$(python3 .lighthouse/lib/lighthouse_lib/config.py project.milestone_prefix); rc=$?
+[ "$rc" -eq 1 ] && echo "milestone prefix: none — no [project] milestone_prefix set"
+[ "$rc" -ge 2 ] && exit 2
 gh api --method POST "repos/$R/milestones" \
-  -f title="${P:+$P }<name>" -F description=@<file>
+  -f title="${MP:+$MP }<name>" -F description=@<file>
 ```
 
 Write the pitch with your write tool to a temporary file first; never the pitch itself as a

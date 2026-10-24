@@ -6,7 +6,7 @@
 - Every change goes through a PR and is squash-merged. `/lighthouse-verify-pr` writes the PR body; `pr-create-gate` checks it.
 - The test gate: `pre-commit-tests` runs `[test_gate] command` before every commit. Never bypass it with `--no-verify`.
 - Artefacts (issues, PRs, comments, commit messages) are written in `[project] language`.
-- A skill names a contract heading as `heading:<key>`: the key in `.lighthouse/headings.toml`, written in the variant for `[project] language`.
+- A skill names a contract heading as `heading:<key>`: the key in `.lighthouse/headings.toml`. Write the text `python3 .lighthouse/lib/lighthouse_lib/headings.py <key>` prints, never the literal `heading:<key>`; reading accepts every language variant.
 
 Skills:
 

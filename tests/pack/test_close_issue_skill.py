@@ -197,3 +197,13 @@ def test_milestone_close_keeps_the_title_form():
         step = _section(body, "### Step 3. Close the milestone")
         assert "title='<title> - DONE'" in step
         assert "<area>: <name>" not in step
+
+
+def test_area_of_a_milestone_after_the_prefix():
+    """Since `project.milestone_prefix`, the first word of a milestone title is the repo prefix:
+    the area is the part before `:` after that prefix."""
+    for body in skill():
+        step = _section(body, "### Step 5. Update the near goal of the area")
+        flat = " ".join(step.split())
+        assert "the title prefix of the milestone" not in flat
+        assert "the part before `:` after `project.milestone_prefix`" in flat

@@ -43,3 +43,12 @@ def test_core_block_word_budget():
         assert token in text, token
     for skill in sorted(p.name for p in (CORE / "skills").iterdir() if p.is_dir()):
         assert f"`/lighthouse-{skill}`" in text, skill
+
+
+def test_core_block_says_how_to_read_a_heading():
+    """Ontwerpkeuze 19: the block explains `heading:<key>` once — the command that prints the
+    heading, and that reading accepts every language variant."""
+    text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
+    assert "python3 .lighthouse/lib/lighthouse_lib/headings.py <key>" in text
+    assert "never the literal `heading:<key>`" in text
+    assert "reading accepts every language variant" in text
