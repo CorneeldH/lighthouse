@@ -524,7 +524,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "a88bb5d08432c4efaa6e8f9f61a1fd860e2296f8bad9a403a66f692bc3275695"
+sha256 = "a164001ff69bee4e610a4b9e6518f70c93ac8d4915fe50fb5af6e6a92f4ffbfd"
 
 [[unit]]
 kind = "file"

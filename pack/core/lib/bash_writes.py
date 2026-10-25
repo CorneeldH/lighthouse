@@ -47,6 +47,7 @@ GATES: dict[str, str] = {
     ".sh": "shellcheck.sh",
     ".bash": "shellcheck.sh",
     ".py": "ruff-format.sh",
+    ".go": "gofmt.sh",
     ".md": "worktree-linkcheck.sh",
     ".markdown": "worktree-linkcheck.sh",
 }
@@ -55,6 +56,7 @@ GATES: dict[str, str] = {
 GATE_PACKS: dict[str, str] = {
     "shellcheck.sh": "shell",
     "ruff-format.sh": "python",
+    "gofmt.sh": "go",
     "worktree-linkcheck.sh": "core",
 }
 
@@ -804,10 +806,10 @@ _CANNOT = "COULD NOT CHECK"
 _POST_DEADLINE_S = 90.0
 _GATE_GRACE_S = 10.0
 
-# ruff-format.sh herschrijft het bestand zelf: zijn oordeel geldt de versie
+# ruff-format.sh en gofmt.sh herschrijven het bestand zelf: zijn oordeel geldt de versie
 # van ná de gate. De andere gates lezen alleen: hun oordeel geldt de versie
 # van vlak vóór de gate, zodat een schrijfactie tijdens de gate nieuw blijft.
-_SIGN_AFTER_GATE = frozenset({"ruff-format.sh"})
+_SIGN_AFTER_GATE = frozenset({"ruff-format.sh", "gofmt.sh"})
 
 # `run_until` gooit `Interrupted` als de post zelf een doorgestuurd signaal
 # kreeg (de hooktimeout, een Ctrl-C): de gate werd afgebroken, en de post zelf
