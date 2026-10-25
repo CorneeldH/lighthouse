@@ -804,3 +804,23 @@ def test_empty_test_command_is_the_opt_out(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
     assert main(["test_gate.command"]) == 0
     assert capsys.readouterr().out == "\n"
+
+
+def test_code_language_llm_keys(tmp_path):
+    body = (
+        '\n[code_language_llm]\nurl = "http://h/v1"\nmodels = ["a", "b"]\n'
+        'key_env = "K"\nenv_file = "/e"\n'
+    )
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + body)
+    cfg = load(path)
+    assert lookup(cfg, "code_language_llm.url") == "http://h/v1"
+    assert lookup(cfg, "code_language_llm.models") == ["a", "b"]
+    assert lookup(cfg, "code_language_llm.key_env") == "K"
+    assert lookup(cfg, "code_language_llm.env_file") == "/e"
+    path.write_text(_render(VALID) + '\n[code_language_llm]\nmodels = "x"\n')
+    with pytest.raises(ConfigError, match="code_language_llm.models"):
+        load(path)
+    path.write_text("code_language_llm = 1\n" + _render(VALID))
+    with pytest.raises(ConfigError, match="code_language_llm"):
+        load(path)

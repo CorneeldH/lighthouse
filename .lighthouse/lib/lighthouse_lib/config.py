@@ -109,6 +109,10 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "project.code_language": _STR,
         "project.code_language_exempt": _STRS,
         "project.code_language_paths": _STRS,
+        "code_language_llm.url": _STR,
+        "code_language_llm.models": _STRS,
+        "code_language_llm.key_env": _STR,
+        "code_language_llm.env_file": _STR,
     }
 )
 

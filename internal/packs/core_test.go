@@ -95,6 +95,7 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/code_language_freq.tsv.gz",
 		".lighthouse/lib/lighthouse_lib/code_language_freq_NOTICE.txt",
 		".lighthouse/lib/lighthouse_lib/code_language_jargon.txt",
+		".lighthouse/lib/lighthouse_lib/code_language_llm.py",
 		".lighthouse/lib/lighthouse_lib/code_language_score.py",
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
