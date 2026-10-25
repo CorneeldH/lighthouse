@@ -14,6 +14,8 @@ doorloopt dezelfde vier stappen, maar slaat elke stap over die al gedaan is
 Het board is optioneel (besluit 16): zonder `[forge.board]` komen alleen het
 issue en de handoff. Zonder statusoptie `Controller` blijft het item op `To do`.
 Repo, taal, board en default branch komen uit `lighthouse.toml`.
+De tekst van issue en handoff is Engels, ook bij `[project] language = "nl"`;
+alleen de kop volgt de projecttaal (besluit 7 van de M0-pakketspec).
 """
 
 from __future__ import annotations
