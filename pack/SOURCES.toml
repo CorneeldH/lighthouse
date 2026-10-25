@@ -31,6 +31,10 @@ path = "pack/core/lib/repo_identity.py"
 new = true
 
 [[file]]
+path = "pack/core/lib/turn_roots.py"
+new = true
+
+[[file]]
 path = "pack/core/lib/config.py"
 new = true
 

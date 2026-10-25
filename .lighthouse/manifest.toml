@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "2f4f6b9b738133fa18adb4f575cda553f61741e594ac14cf3b861782e866dcfb"
+sha256 = "56a414bd57810865c3b988838bf6e6d0689bf6fe1144a10e642d4fc8b5392d39"
 
 [[unit]]
 kind = "file"
@@ -211,7 +211,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/go-check.sh"
 package = "go"
 version = "dev"
-sha256 = "78827316734269a65ae284912ff0e030c44bec0560d3d2de55a87a0d6ae32ee0"
+sha256 = "c0031327e2b1ca8d3e65657a08b08815111d8066ac0b7529d5935b12a46bc391"
 
 [[unit]]
 kind = "file"
@@ -394,7 +394,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "c99e991e8fa6dc0c1dff62a5048a4c173a04224ca4918064f59909100e2fdec1"
+sha256 = "52ea58d67be3185efb0f99cd62a2bee19cfb3e1a45ce2dc2a65b9310fabd593a"
 
 [[unit]]
 kind = "file"
@@ -689,6 +689,13 @@ path = ".lighthouse/lib/lighthouse_lib/repo_identity.py"
 package = "core"
 version = "dev"
 sha256 = "7a8d3602d48e30e1afd8254aacea9e7c8725ae72db26bb5357118c7dad891d7d"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/turn_roots.py"
+package = "core"
+version = "dev"
+sha256 = "ec9bf70cfe7957c3eba00e4c8dc56a1ce27235f8a258613a1d92f732d0270268"
 
 [[unit]]
 kind = "file"

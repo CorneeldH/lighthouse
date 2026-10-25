@@ -13,24 +13,38 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import install_pack, tool_bin
+from tests.pack._testkit import (
+    git,
+    install_pack,
+    prompt_entry,
+    result_entry,
+    stop_payload,
+    tool_bin,
+    tool_entry,
+    write_transcript,
+)
 from tests.pack.go.conftest import GO_HOOKS
 
 HOOK = GO_HOOKS / "go-check.sh"
 UNCHECKED = "go-check: COULD NOT CHECK — "
 NOT_CHECKED = "go-check: not checked — no go.mod in the repository root"
-BLOCK = "go-check: golangci-lint finds problems."
-TOOLS = ("bash", "jq", "git", "cat", "tr", "head", "sed")
+TOOLS = ("bash", "jq", "git", "cat", "tr", "head", "sed", "python3", "mktemp", "rm")
 GO_STUB = """#!/bin/bash
 echo "go $*" >> "$STUB_LOG"
 exit 0
 """
+# With STUB_FAIL_IN set, `run` finds STUB_RUN_OUT only in that directory.
 LINT_STUB = """#!/bin/bash
-echo "$*" >> "$STUB_LOG"
+echo "$* @ $PWD" >> "$STUB_LOG"
 case "$1" in
   version) echo "${STUB_VERSION:-2.15.0}" ;;
   config) exit ${STUB_VERIFY_RC:-0} ;;
-  run) echo "$STUB_RUN_OUT"; exit ${STUB_RUN_RC:-0} ;;
+  run)
+    if [ -n "$STUB_FAIL_IN" ]; then
+      [ "$PWD" = "$STUB_FAIL_IN" ] || exit 0
+      echo "$STUB_RUN_OUT"; exit 1
+    fi
+    echo "$STUB_RUN_OUT"; exit ${STUB_RUN_RC:-0} ;;
 esac
 """
 VET_FINDING = "a.go:3:2: printf: fmt.Printf format %d has arg s of wrong type string (govet)"
@@ -65,7 +79,9 @@ def _run(
     root: Path, env: dict | None = None, payload: dict | str | None = None
 ) -> subprocess.CompletedProcess:
     if payload is None:
-        payload = {"stop_hook_active": False, "cwd": str(root)}
+        # A turn without tool calls: the hook falls back to the payload `cwd`.
+        transcript = write_transcript(root.parent / "transcript.jsonl", [prompt_entry(root)])
+        payload = stop_payload(root, transcript)
     return subprocess.run(
         [str(HOOK)],
         input=payload if isinstance(payload, str) else json.dumps(payload),
@@ -105,7 +121,7 @@ def test_finding_blocks(tmp_path, out):
     result = _run(_repo(tmp_path), env)
     assert result.returncode == 2, result.stdout
     lines = result.stderr.splitlines()
-    assert lines[0] == BLOCK
+    assert lines[0] == f"go-check: golangci-lint finds problems in {os.path.realpath(tmp_path / 'repo')}."
     assert lines[1] == (
         "Fix them in the code — do not add a //nolint over a finding. "
         "If you really want a linter off, ask."
@@ -181,7 +197,7 @@ def test_stop_hook_active_passes(tmp_path):
     assert not Path(env["STUB_LOG"]).exists()
 
 
-@pytest.mark.parametrize("tool", ["go", "golangci-lint", "jq", "git"])
+@pytest.mark.parametrize("tool", ["go", "golangci-lint", "jq", "git", "python3"])
 def test_missing_tool_could_not_check(tmp_path, tool):
     stubs = {"go": GO_STUB, "golangci-lint": LINT_STUB}
     bin_dir = tool_bin(tmp_path / "bin", TOOLS, drop=tool, stubs=stubs)
@@ -190,6 +206,79 @@ def test_missing_tool_could_not_check(tmp_path, tool):
     message = _message(_run(_repo(tmp_path), {"PATH": str(bin_dir), "STUB_LOG": str(tmp_path / "l")}))
     assert message.startswith(UNCHECKED)
     assert tool in message
+
+
+def _worktree(tmp_path: Path) -> tuple[Path, Path]:
+    """A main checkout with a committed go.mod, and a worktree of it."""
+    root = _repo(tmp_path)
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "init")
+    wt = root / ".claude" / "worktrees" / "wt"
+    git(root, "worktree", "add", "-q", str(wt), "-b", "wt")
+    return root, wt
+
+
+def _edit_turn(tmp_path: Path, root: Path, edited: Path) -> dict:
+    """The payload of a turn that edited a file in `edited`, from a session whose cwd is `root`."""
+    transcript = write_transcript(
+        tmp_path / "transcript.jsonl",
+        [
+            prompt_entry(root),
+            tool_entry("Edit", {"file_path": str(edited / "a.go")}, root),
+            result_entry(root),
+        ],
+    )
+    return stop_payload(root, transcript)
+
+
+def _runs(env: dict) -> list[str]:
+    return [line for line in _log(env).splitlines() if line.startswith("run ")]
+
+
+def test_a_finding_in_the_edited_worktree_blocks_with_the_cwd_on_main(tmp_path):
+    root, wt = _worktree(tmp_path)
+    env = _env(tmp_path, STUB_FAIL_IN=os.path.realpath(wt), STUB_RUN_OUT=LINT_FINDING)
+    result = _run(root, env, _edit_turn(tmp_path, root, wt))
+    assert result.returncode == 2, result.stdout
+    assert result.stderr.splitlines()[0] == (
+        f"go-check: golangci-lint finds problems in {os.path.realpath(wt)}."
+    )
+    assert LINT_FINDING in result.stderr
+    assert _runs(env) == [f"run ./... @ {os.path.realpath(wt)}"]
+
+
+def test_a_finding_in_an_untouched_worktree_does_not_block(tmp_path):
+    root, wt = _worktree(tmp_path)
+    env = _env(tmp_path, STUB_FAIL_IN=os.path.realpath(wt), STUB_RUN_OUT=LINT_FINDING)
+    result = _run(root, env, _edit_turn(tmp_path, root, root))
+    assert (result.returncode, result.stdout) == (0, ""), result.stderr
+    assert _runs(env) == [f"run ./... @ {os.path.realpath(root)}"]
+
+
+def test_every_checkout_of_the_turn_is_linted(tmp_path):
+    """A Bash call from main into the worktree names both; the finding in the second blocks."""
+    root, wt = _worktree(tmp_path)
+    env = _env(tmp_path, STUB_FAIL_IN=os.path.realpath(wt), STUB_RUN_OUT=LINT_FINDING)
+    transcript = write_transcript(
+        tmp_path / "transcript.jsonl",
+        [prompt_entry(root), tool_entry("Bash", {"command": f"git -C {wt} commit -qm x"}, root)],
+    )
+    result = _run(root, env, stop_payload(root, transcript))
+    assert result.returncode == 2, result.stdout
+    assert LINT_FINDING in result.stderr
+    assert _runs(env) == [
+        f"run ./... @ {os.path.realpath(root)}",
+        f"run ./... @ {os.path.realpath(wt)}",
+    ]
+
+
+def test_without_a_transcript_could_not_check(tmp_path):
+    env = _env(tmp_path, STUB_RUN_RC="1", STUB_RUN_OUT=LINT_FINDING)
+    root = _repo(tmp_path)
+    message = _message(_run(root, env, {"stop_hook_active": False, "cwd": str(root)}))
+    assert message.startswith(UNCHECKED)
+    assert "transcript_path" in message
+    assert _runs(env) == []
 
 
 def test_registered_on_stop():

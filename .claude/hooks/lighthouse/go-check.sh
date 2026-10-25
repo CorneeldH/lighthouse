@@ -11,6 +11,10 @@
 # Runs on every Stop, not only after a Go edit: Go work may already be committed
 # in the turn, and then no edit is left to hook on.
 #
+# Lints every checkout the turn wrote in (turn_roots.py, #54), not the `cwd` of
+# the payload: that is the shell's directory at Stop, and a session in the main
+# checkout that edits a worktree stops there.
+#
 # No separate `go vet`: `govet` is in the default linter set of golangci-lint, and
 # a stand-alone vet does not read `.golangci.yml`, so it would also ignore
 # `issues.new-from-rev`.
@@ -18,17 +22,14 @@
 # A build that fails blocks too: golangci-lint exits 1 for it, the same code as for
 # a finding, and it is mostly code that does not compile.
 #
-# Could not check (no jq, git, go or golangci-lint, a pin that does not match, a
-# configuration that does not verify, a golangci-lint that could not lint): exit 0
-# with a systemMessage `go-check: COULD NOT CHECK — <reason>`. Blocking there would
-# keep the session from stopping; staying silent would read as "lint-clean".
+# Could not check (no jq, git, python3, go or golangci-lint, a pin that does not
+# match, a configuration that does not verify, a golangci-lint that could not lint,
+# a turn whose checkout cannot be determined): exit 0 with a systemMessage
+# `go-check: COULD NOT CHECK — <reason>`. Blocking there would keep the session
+# from stopping; staying silent would read as "lint-clean".
 # `go` is required but never called here: golangci-lint needs it to load packages.
-# A repository without a root go.mod reports `not checked` and exits 0, before the
+# A checkout without a root go.mod reports `not checked` and exits 0, before the
 # go and golangci-lint check, so it never blocks and is never silently green.
-#
-# Limit: the `cd` follows the `cwd` of the Stop payload, so work in a worktree from
-# a session in the main checkout checks the wrong tree, as `ty-check` does. The fix
-# for both is #54.
 
 HOOK_NAME="go-check"
 
@@ -47,7 +48,7 @@ cannot_check() {
   report "$HOOK_NAME: COULD NOT CHECK — $1 Nothing was linted; that is not a green light."
 }
 
-for tool in jq git; do
+for tool in jq git python3; do
   command -v "$tool" >/dev/null 2>&1 || cannot_check "$tool is missing."
 done
 
@@ -62,60 +63,95 @@ if [ "$ACTIVE" = "true" ]; then
   exit 0
 fi
 
-# Worktree-aware, as in pre-commit-tests.sh: lint the checkout the work happened
-# in, not necessarily the main one.
-CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
-[ -z "$CWD" ] && CWD="$CLAUDE_PROJECT_DIR"
-cd "$CWD" 2>/dev/null || cd "$CLAUDE_PROJECT_DIR" 2>/dev/null || cannot_check "the directory $CWD does not exist."
+# The lib lives in the lighthouse lib of this repo. Found through
+# LIGHTHOUSE_REPO_ROOT or git, never from this file's own path.
+LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
 
-ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-if [ -z "$ROOT" ] || ! cd "$ROOT"; then
-  cannot_check "not inside a git repository ($CWD)."
+# The checkouts this turn wrote in, one per line (#54).
+if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/turn_roots.py" 2>&1); then
+  # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
+  cannot_check "the checkout of this turn cannot be determined: $(printf '%s' "$ROOTS" | tr '\n"\134' '   ')"
 fi
 
-if [ ! -f "$ROOT/go.mod" ]; then
-  report "$HOOK_NAME: not checked — no go.mod in the repository root (go-check lints only a root module)."
-fi
+# One checkout, in a subshell: `report` and `cannot_check` end only that one.
+check_root() (
+  ROOT="$1"
+  cd "$ROOT" 2>/dev/null || cannot_check "the checkout $ROOT does not exist."
 
-for tool in go golangci-lint; do
-  command -v "$tool" >/dev/null 2>&1 || cannot_check "$tool is missing."
-done
-
-# The pin, when there is one: a golangci-lint of another version lints by other
-# rules. `version --short` prints it without the leading v.
-if [ -f "$ROOT/.golangci-version" ]; then
-  WANT=$(tr -d '[:space:]' <"$ROOT/.golangci-version")
-  WANT="${WANT#v}"
-  HAVE=$(golangci-lint version --short 2>/dev/null | tr -d '[:space:]')
-  HAVE="${HAVE#v}"
-  if [ "$HAVE" != "$WANT" ]; then
-    cannot_check "golangci-lint $HAVE runs; .golangci-version pins $WANT."
+  if [ ! -f "$ROOT/go.mod" ]; then
+    report "$HOOK_NAME: not checked — no go.mod in the repository root $ROOT (go-check lints only a root module)."
   fi
-fi
 
-# `config verify`: 0 = valid, 6 = no configuration file (lint with the defaults),
-# anything else = a configuration that cannot be read.
-VERIFY=$(golangci-lint config verify 2>&1)
-VERIFY_RC=$?
-if [ "$VERIFY_RC" -ne 0 ] && [ "$VERIFY_RC" -ne 6 ]; then
-  # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
-  cannot_check "the golangci-lint configuration does not verify (exit $VERIFY_RC): $(printf '%s' "$VERIFY" | head -3 | tr '\n"\134' '   ')"
-fi
+  for tool in go golangci-lint; do
+    command -v "$tool" >/dev/null 2>&1 || cannot_check "$tool is missing."
+  done
 
-# `run` exits 1 on findings (a vet finding and a build that fails included); any
-# other non-zero code means it could not lint.
-OUT=$(golangci-lint run ./... 2>&1)
-RC=$?
-if [ "$RC" -ne 0 ] && [ "$RC" -ne 1 ]; then
-  # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
-  cannot_check "golangci-lint exited $RC: $(printf '%s' "$OUT" | head -3 | tr '\n"\134' '   ')"
-fi
-if [ "$RC" -eq 1 ]; then
-  echo "$HOOK_NAME: golangci-lint finds problems." >&2
-  echo "Fix them in the code — do not add a //nolint over a finding. If you really want a linter off, ask." >&2
-  echo "" >&2
-  echo "$OUT" >&2
+  # The pin, when there is one: a golangci-lint of another version lints by other
+  # rules. `version --short` prints it without the leading v.
+  if [ -f "$ROOT/.golangci-version" ]; then
+    WANT=$(tr -d '[:space:]' <"$ROOT/.golangci-version")
+    WANT="${WANT#v}"
+    HAVE=$(golangci-lint version --short 2>/dev/null | tr -d '[:space:]')
+    HAVE="${HAVE#v}"
+    if [ "$HAVE" != "$WANT" ]; then
+      cannot_check "golangci-lint $HAVE runs; .golangci-version in $ROOT pins $WANT."
+    fi
+  fi
+
+  # `config verify`: 0 = valid, 6 = no configuration file (lint with the defaults),
+  # anything else = a configuration that cannot be read.
+  VERIFY=$(golangci-lint config verify 2>&1)
+  VERIFY_RC=$?
+  if [ "$VERIFY_RC" -ne 0 ] && [ "$VERIFY_RC" -ne 6 ]; then
+    # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
+    cannot_check "the golangci-lint configuration in $ROOT does not verify (exit $VERIFY_RC): $(printf '%s' "$VERIFY" | head -3 | tr '\n"\134' '   ')"
+  fi
+
+  # `run` exits 1 on findings (a vet finding and a build that fails included); any
+  # other non-zero code means it could not lint.
+  OUT=$(golangci-lint run ./... 2>&1)
+  RC=$?
+  if [ "$RC" -ne 0 ] && [ "$RC" -ne 1 ]; then
+    # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
+    cannot_check "golangci-lint exited $RC in $ROOT: $(printf '%s' "$OUT" | head -3 | tr '\n"\134' '   ')"
+  fi
+  if [ "$RC" -eq 1 ]; then
+    echo "$HOOK_NAME: golangci-lint finds problems in $ROOT." >&2
+    echo "Fix them in the code — do not add a //nolint over a finding. If you really want a linter off, ask." >&2
+    echo "" >&2
+    echo "$OUT" >&2
+    exit 2
+  fi
+  exit 0
+)
+
+# Every checkout gets its check. A finding in one blocks; a message from another
+# still reaches the reader.
+ERRS=$(mktemp) || cannot_check "mktemp failed."
+trap 'rm -f "$ERRS"' EXIT
+MESSAGES=""
+BLOCKED=0
+while IFS= read -r root; do
+  [ -n "$root" ] || continue
+  MSG=$(check_root "$root" 2>>"$ERRS")
+  RC=$?
+  if [ "$RC" -eq 2 ]; then
+    BLOCKED=1
+  elif [ "$RC" -ne 0 ]; then
+    MSG=$(jq -cn --arg m "$HOOK_NAME: COULD NOT CHECK — the check of $root ended with exit $RC." '{systemMessage: $m}')
+  fi
+  if [ -n "$MSG" ]; then
+    MESSAGES="${MESSAGES:+$MESSAGES
+}$(printf '%s' "$MSG" | jq -r '.systemMessage')"
+  fi
+done <<EOF
+$ROOTS
+EOF
+
+if [ "$BLOCKED" -eq 1 ]; then
+  cat "$ERRS" >&2
+  [ -n "$MESSAGES" ] && printf '\n%s\n' "$MESSAGES" >&2
   exit 2
 fi
-
+[ -n "$MESSAGES" ] && report "$MESSAGES"
 exit 0

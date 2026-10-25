@@ -141,12 +141,14 @@ source file is open.
 
 `gofmt.sh` formats the file in place and blocks (exit 2) only on a file that does not parse.
 `go-check.sh` blocks on a finding, and on a build that fails: `golangci-lint` reports both the
-same way. When a hook cannot check — `gofmt.sh` needs `jq` and `gofmt`; `go-check.sh` needs `jq`,
-`git`, `go` and `golangci-lint`, at the version in `.golangci-version` — it says so with
-`COULD NOT CHECK` instead of passing silently. `gofmt.sh` then blocks: an unchecked file must not
-read as a clean one. `go-check.sh` runs at `Stop`, where blocking would keep the session from
-stopping, so it reports it as a message. A repository without a root `go.mod` gets `not checked`
-from `go-check`: Go only in a subdirectory is never linted at Stop.
+same way. It lints every checkout the turn wrote in, read from the transcript: a worktree you
+edit from a session in the main checkout is linted, not the main checkout. When a hook cannot
+check — `gofmt.sh` needs `jq` and `gofmt`; `go-check.sh` needs `jq`, `git`, `python3`, `go` and
+`golangci-lint`, at the version in `.golangci-version`, and a transcript that names the turn's
+checkout — it says so with `COULD NOT CHECK` instead of passing silently. `gofmt.sh` then blocks:
+an unchecked file must not read as a clean one. `go-check.sh` runs at `Stop`, where blocking would
+keep the session from stopping, so it reports it as a message. A repository without a root
+`go.mod` gets `not checked` from `go-check`: Go only in a subdirectory is never linted at Stop.
 
 > **OpenCode does not run these hooks.** Claude Code hooks do not fire here, and
 > `.claude/rules/go.md` (if present) is not loaded by itself, so both the enforcement and the

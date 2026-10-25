@@ -105,6 +105,61 @@ def bash_payload(cmd: str, cwd: Path) -> dict:
     return {"tool_name": "Bash", "cwd": str(cwd), "tool_input": {"command": cmd}}
 
 
+# A Claude Code transcript, as far as `turn_roots.py` (#54) reads it: one JSON
+# object per line, a prompt as a `user` entry with text, a tool call as an
+# `assistant` entry with a `tool_use` block.
+PROMPT_TS = "2026-10-25T10:00:00.000Z"
+
+
+def prompt_entry(cwd: Path, ts: str = PROMPT_TS) -> dict:
+    return {
+        "type": "user",
+        "timestamp": ts,
+        "cwd": str(cwd),
+        "message": {"role": "user", "content": "go"},
+    }
+
+
+def tool_entry(name: str, tool_input: dict, cwd: Path, ts: str = "2026-10-25T10:00:01.000Z") -> dict:
+    return {
+        "type": "assistant",
+        "timestamp": ts,
+        "cwd": str(cwd),
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": "toolu_1", "name": name, "input": tool_input}],
+        },
+    }
+
+
+def result_entry(cwd: Path, ts: str = "2026-10-25T10:00:02.000Z") -> dict:
+    return {
+        "type": "user",
+        "timestamp": ts,
+        "cwd": str(cwd),
+        "message": {
+            "role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}],
+        },
+    }
+
+
+def write_transcript(path: Path, entries: list[dict]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(e) + "\n" for e in entries), encoding="utf-8")
+    return path
+
+
+def stop_payload(cwd: Path, transcript: Path, active: bool = False) -> dict:
+    return {
+        "session_id": "s1",
+        "transcript_path": str(transcript),
+        "cwd": str(cwd),
+        "hook_event_name": "Stop",
+        "stop_hook_active": active,
+    }
+
+
 def tool_bin(
     path: Path,
     tools: tuple[str, ...],
