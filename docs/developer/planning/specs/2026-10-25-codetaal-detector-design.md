@@ -87,8 +87,8 @@ detector vond dat als enige "vals alarm" in Go, en het is echt Nederlands.
 
 De zeven valse alarmen van de frequentiedetector zijn allemaal namen: `gids`, `opname` (twee keer),
 `getint`, `anno`, `arg_vals`, `SCHEMA`. Elk taalmodel noemde `gids`, `opname` en `anno` ook
-niet-Engels. Wat de frequentiedetector mist: samenstellingen die ook in Engelse delen te splitsen
-zijn (`werkboom`), en blokken met veel code en alleen korte Nederlandse woorden
+niet-Engels. Wat de frequentiedetector in deze eerste meting miste: samenstellingen die ook in Engelse delen te
+splitsen zijn (`werkboom`; na de spec-review gevangen door besluit 2), en blokken met veel code en alleen korte Nederlandse woorden
 (`` `%gd` van `git reflog` is … met `--date` ``). Op die gevallen scoorden de taalmodellen goed.
 
 Algemene taaldetectoren (lingua, fastText) zijn goed op proza maar slecht op namen van één of twee
@@ -99,23 +99,24 @@ woorden. Daarom zijn ze geen kandidaat voor laag 1.
 | # | Besluit | Reden |
 |---|---|---|
 | 1 | **Laag 1** vergelijkt per woord hoe vaak het in het Engels en in het Nederlands voorkomt (zipf-frequentie). Een eenheid is een vondst als de som van (NL − EN) over de woorden boven een drempel komt. Vervangt de twee woordenlijsten van #26; besluit 6 van #26 vervalt | Meting: 237/246 tegen 195/246, met 7 valse alarmen op 9483 |
-| 2 | Een woord dat in geen van beide talen voorkomt, wordt gesplitst. Lukt dat in Nederlandse delen van minstens drie letters, en niet in Engelse, dan telt het als Nederlands | Vangt `schrijfpoorten`, `padpatronen`, en laat `maxsize` en `asctime` met rust |
+| 2 | Een woord dat in geen van beide talen voorkomt, wordt gesplitst. Lukt dat in delen van minstens drie letters die elk Nederlands leunen (zipf NL ≥ 2,5 en NL > EN), dan telt het als Nederlands, ook als er een Engelse splitsing bestaat. *(own choice after spec review, r1-f2)* | Vangt `schrijfpoorten`, `padpatronen` en `werkboom` (`werk` en `boom` leunen allebei Nederlands). `maxsize`, `worktree` en `dataclass` hebben geen splitsing in Nederlands-leunende delen. Gemeten: 240/246 Nederlands gevonden, en geen extra valse alarmen |
 | 3 | In proza tellen woorden vanaf twee letters mee, in namen pas vanaf vier | Korte functiewoorden (`de`, `van`, `een`) dragen proza. In namen zijn korte delen meestal afkortingen (`val`, `typ`, `ver`) |
-| 4 | De frequenties staan als gebundeld databestand in de lib van core, afgeleid van [wordfreq](https://github.com/rspeer/wordfreq) (Engels en Nederlands, zipf ≥ 1,5, ongeveer 280.000 woorden, 1,3 MB gzip). Laden met alleen de standaardbibliotheek. *Mijn keuze* | Geen pip-afhankelijkheid: de hook draait met kale `python3`, zoals in #26 besluit 9. De data valt onder CC BY-SA 4.0: het bestand houdt die licentie, met naamsvermelding in `LICENSES/` |
+| 4 | De frequenties staan als gebundeld databestand in de lib van core, afgeleid van [wordfreq](https://github.com/rspeer/wordfreq) (Engels en Nederlands, zipf ≥ 1,5, ongeveer 280.000 woorden, 1,3 MB gzip). Laden met alleen de standaardbibliotheek. Naast het databestand staat een licentie- en naamsvermeldingsbestand dat mee installeert, en `LICENSES/` noemt het ook. Het generatiescript laat woorden uit `ci/literal-denylist.txt` weg. *Mijn keuze; vermelding en denylist: own choice after spec review, r1-f6, r1-f8* | Geen pip-afhankelijkheid: de hook draait met kale `python3`, zoals in #26 besluit 9. De data valt onder CC BY-SA 4.0, en `lighthouse init` kopieert het bestand naar elke consumer-repo: de vermelding moet dus mee. wordfreq bevat `paia`, `wbso` en `corneel`, en die breken `ci/literal-grep.sh` |
 | 5 | Een kleine **jargonlijst** met woorden die in code Engels zijn maar in de data Nederlands lijken (`gids`, `opname`, `getint`, `anno`, `vals`, `schema`, ...). Een woord daarop telt als Engels | De zeven valse alarmen uit de meting. Ze zijn deterministisch en klein, dus een lijst is goedkoper dan een model |
-| 6 | **Twijfel** is een eenheid met een score tussen nul en de drempel, of met een woord van minstens zeven letters dat in geen van beide talen voorkomt en niet te splitsen is. Alleen twijfelgevallen gaan naar laag 2 | Het model krijgt alleen werk waar laag 1 niet zeker is. Dat houdt de aanroep klein en snel |
-| 7 | **Laag 2** is een keten van schakels in `lighthouse.toml`. Elke schakel is een OpenAI-compatibele chat-endpoint: `url`, `model`, `key_env` (de naam van een omgevingsvariabele) en optioneel `env_file` (een bestand met `NAAM=waarde`-regels, buiten de repo). De hook probeert de schakels op volgorde, en de eerste die een geldig antwoord geeft, telt | Dekt de LiteLLM-gateway (haiku, lokale qwen), een gratis API en elke andere OpenAI-compatibele dienst. Geen geheim in de config |
+| 6 | **Twijfel** is een eenheid die onder de drempel blijft, maar een woord bevat dat sterk Nederlands leunt (NL − EN ≥ 2 en NL ≥ 3). Alleen twijfelgevallen gaan naar laag 2. *(own choice after spec review, r1-f1, r1-f2)* | Gemeten: 0 twijfelgevallen in de Python-standaardbibliotheek, en 29 op 9483 Engelse eenheden. Die 29 zitten allemaal in lighthouse zelf, en zijn echt Nederlands (`besluit`, `Versiemarker`). Aan Nederlandse kant: `legacy_processed_lijst_weg` (`lijst`). Een bredere definitie (elk onbekend woord, scores tussen nul en de drempel) gaf twijfel in 19 van de 20 stdlib-modules, en dan draait laag 2 bij bijna elke write |
+| 7 | **Laag 2** staat in één tabel `[code_language_llm]` met platte sleutels, zoals `SCHEMA` die al kent: `url` (de basis-URL van een OpenAI-compatibele API, inclusief `/v1`; de hook plakt er `/chat/completions` achter), `models` (lijst, de keten in volgorde), `key_env` (de naam van een omgevingsvariabele) en optioneel `env_file` (een bestand met `NAAM=waarde`-regels; `~` wordt uitgeklapt, en een relatief pad is een `ConfigError`). De hook probeert de modellen op volgorde, en het eerste geldige antwoord telt. *(own choice after spec review, r1-f3, r1-f10)* | Eén endpoint met een keten van modellen dekt de LiteLLM-gateway, die zelf naar haiku, lokale qwen of een gratis API routeert. Een lijst tabellen past niet in `SCHEMA` (`config.py:332-335`). Geen geheim in de config |
 | 8 | Eén aanroep per bestand, met alle twijfelgevallen genummerd in één prompt, en een JSON-antwoord per nummer (`EN` of `NOT-EN`). Een antwoord dat niet te lezen is, telt als falen van die schakel | Meting: één batch van 20 kost 1,5 s, ongeveer evenveel als één losse vraag |
-| 9 | Time-out: 4 s per schakel, en 8 s voor laag 2 in totaal. Faalt de hele keten, dan schrijft de hook dat met tijdstip in de datamap (`lighthouse_lib.datadir`). De volgende 60 s slaat elke hookaanroep laag 2 over en meldt dat, zonder opnieuw te wachten. *Mijn keuze* | De hook heeft 15 s (`hooks.json`). De lokale modellen gaven soms een time-out van meer dan 60 s: de time-out moet strak zijn. Eén Bash-call die elf bestanden schrijft, zou anders elf keer 8 s wachten en de deadline van 90 s van `bash-write-gates` overschrijden. Dan wordt alles `unchecked` en blokkeert het, en dat is precies het anti-goal. De pauze werkt per hookaanroep, dus `bash_writes.py` hoeft geen gedeelde staat te krijgen |
+| 9 | Time-out: 4 s per model en 8 s voor laag 2 in totaal, als **harde wandkloktijd**: de aanroep draait in een thread of subproces dat bij de deadline wordt losgelaten, zodat ook DNS of een druppelend antwoord de grens niet passeert. Faalt de hele keten, dan schrijft de hook dat met tijdstip in een markeerbestand onder `$XDG_RUNTIME_DIR` (of `/tmp`), zoals `bash_writes.py` zijn staat bewaart. De volgende 60 s slaat elke hookaanroep laag 2 over en meldt dat. Is het markeerbestand niet te lezen of te schrijven, dan negeert de hook het; dat wordt nooit `COULD NOT CHECK`. *(Mijn keuze; wandklok en markeerbestand: own choice after spec review, r1-f5, r1-f9)* | De hook heeft 15 s (`hooks.json`). Een time-out van `urllib` begrenst alleen socketoperaties. De lokale modellen gaven soms een time-out van meer dan 60 s |
 | 10 | Laag 2 voegt alleen vondsten toe. `NOT-EN` maakt van een twijfelgeval een vondst, `EN` laat het vallen. Een vondst van laag 1 gaat nooit naar laag 2 | Anti-goal: een model praat geen vondst weg. Laag 1 blijft voorspelbaar en testbaar |
 | 11 | Faalt de hele keten (geen netwerk, time-out, fout, onleesbaar antwoord), dan blokkeert de hook niet op dat falen. Hij geeft het oordeel van laag 1, plus een **zichtbare melding**: dat laag 2 niet antwoordde (met de reden per schakel) en welke twijfelgevallen daardoor niet gecontroleerd zijn. De melding gaat naar de gebruiker (`systemMessage`) en naar de agent (`additionalContext`). Vondsten van laag 1 blokkeren zoals altijd. *Mijn keuze* (beide) | Besluit 18: niet stil. En niet blokkeren: een trage Beelink mag de agent niet stilleggen. De agent ziet zo de twijfelgevallen, en kan ze zelf nalopen |
 | 12 | Zonder ketenconfig doet laag 2 niets en zegt de hook daar niets over | Zoals besluit 4 van #26: uit is een instelling, geen twijfel. Een consumer-repo zonder gateway krijgt anders bij elke write een melding |
-| 13 | **Bereik**: `[project] code_language_paths`, een lijst globs. Binnen die globs is elk bestand in scope: de bestandsnaam altijd, en ook de mapnamen tussen het vaste begin van de glob en het bestand (bij `pack/**` en `pack/core/skills/<naam>/SKILL.md`: `core`, `skills` en `<naam>`), de inhoud van codebestanden zoals in #26, Markdown als proza, en van andere bestanden alleen de naam. Buiten de globs geldt #26: codebestanden op extensie, met hun bestandsnaam. `code_language_exempt` en het manifest (besluit 11 van #26) slaan nog steeds over | In lighthouse moet alles onder `pack/`, `internal/` en `cmd/` Engels zijn, ook skills. `docs/` en artefacten blijven Nederlands. Een consumer-repo zonder de sleutel werkt zoals nu |
+| 13 | **Bereik**: `[project] code_language_paths`, een lijst globs. Binnen die globs is elk bestand in scope: de bestandsnaam altijd, en ook de mapnamen tussen het vaste begin van de glob en het bestand (bij `pack/**` en `pack/core/skills/<naam>/SKILL.md`: `core`, `skills` en `<naam>`), de inhoud van codebestanden zoals in #26, Markdown als proza, en van andere bestanden alleen de naam. Buiten de globs geldt #26: codebestanden op extensie, met hun bestandsnaam. `code_language_exempt` en het manifest (besluit 11 van #26) slaan nog steeds over. `code_language` blijft de aan-schakelaar: zonder die sleutel doet `code_language_paths` niets. *(aan-schakelaar: own choice after spec review, r1-f11)* | In lighthouse moet alles onder `pack/`, `internal/` en `cmd/` Engels zijn, ook skills. `docs/` en artefacten blijven Nederlands. Een consumer-repo zonder de sleutel werkt zoals nu |
 | 14 | Markdown als proza: alinea's, koppen, lijsten en tabelcellen, plus de waarden in de frontmatter. Codeblokken, inline code, URL's en linkdoelen tellen niet mee. *Mijn keuze* | De `description` in de frontmatter van een skill is een instructie, en hoort dus Engels te zijn. Code en paden zijn geen taal |
 | 15 | De markering `lighthouse: allow-language` werkt ook in Markdown, als HTML-commentaar aan het eind van een regel | Dezelfde uitzondering als besluit 8c van #26 |
 | 16 | Een regel in het beheerde instructieblok van core (`pack/core/instructions/AGENTS.md`): met `[project] code_language` gezet zijn namen, commentaar, docstrings en bestandsnamen Engels, en ook alles onder `code_language_paths`; artefacten blijven in `[project] language`. De laag bevestigt de bouwer met `/lighthouse-instrument` | De skillkant van "skill en hook": de agent moet het weten vóór de write, niet pas bij de blokkade |
 | 17 | Lighthouse zet in dit issue `code_language` en `code_language_paths` niet aan | Mergevolgorde: main mag niet rood. Aanzetten hoort bij de vertaalslag |
 | 18 | Bash-writes van niet-codebestanden binnen het bereik (`.md`, `.toml`, een `mv`) controleert de hook in dit issue niet. Edit en Write wel. *Mijn keuze* | Dat vraagt dat `bash_writes.py` per repo de config leest, in een pre met een time-out van 5 s, en dat is een flinke verbouwing. Skills ontstaan bijna altijd via Edit en Write. Het vangnet is de test over heel lighthouse uit #58, die bij de test gate draait |
+| 19 | Via `bash-write-gates` draait laag 2 niet. De twijfelgevallen komen dan in de niet-blokkerende melding van besluit 11, met de reden "layer 2 skipped under bash-write-gates". Hoe de gate dat weet (een omgevingsvariabele die `bash_writes.py` zet), kiest de bouwer. *(own choice after spec review, r1-f1)* | `bash-write-gates` draait de gates per bestand achter elkaar, met één deadline van 90 s (`bash_writes.py:807-810`). Een Bash-call die veel bestanden schrijft, zou anders per bestand op laag 2 wachten, en dan wordt alles `unchecked` en blokkeert het |
 
 ## Opbouw
 
@@ -126,18 +127,19 @@ woorden. Daarom zijn ze geen kandidaat voor laag 1.
 2. Laat de woorden vallen die korter zijn dan de grens van besluit 3, of die op de jargonlijst staan.
 3. Per woord: de score is `nl − en`, met de zipf-frequenties uit het databestand. Komt het woord in
    geen van beide voor, dan volgt besluit 2: een Nederlandse splitsing telt als een vaste positieve
-   score, anders telt het woord als nul en is het een kandidaat voor twijfel.
-4. Is de som groter dan de drempel, dan is het een vondst. Ligt de som boven nul maar niet boven de
-   drempel, of is er een twijfelwoord (besluit 6), dan is het een twijfelgeval.
+   score, anders telt het woord als nul.
+4. Is de som groter dan de drempel, dan is het een vondst. Blijft de som eronder, maar is er een
+   woord dat sterk Nederlands leunt (besluit 6), dan is het een twijfelgeval. Anders is het schoon.
 
-De drempel, de vaste score voor een samenstelling en de grens voor twijfel kiest de bouwer. Ze
+De drempel en de vaste score voor een samenstelling kiest de bouwer. Ze
 moeten de meetdoelen onder *Bewijs* halen. Uitgangspunt uit de meting: drempel 1, samenstelling 3,
 splitsing met delen van zipf ≥ 2,5 voor Nederlands en ≥ 2,0 voor Engels.
 
 ### Laag 2 per bestand
 
-Na laag 1 over het hele bestand: zijn er twijfelgevallen en is er een keten, dan één aanroep per
-schakel volgens besluit 7 tot en met 9. De prompt noemt per geval wat het is (naam, commentaar,
+Na laag 1 over het hele bestand: zijn er twijfelgevallen, is er een `[code_language_llm]` en draait
+de hook niet via `bash-write-gates` (besluit 19), dan één aanroep per model volgens besluit 7 tot en
+met 9. De prompt noemt per geval wat het is (naam, commentaar,
 bestandsnaam), en zegt dat afkortingen en codejargon Engels zijn.
 
 ### Wat de hook meldt
@@ -159,40 +161,53 @@ de gebruiker (zoals `worktree-guard.sh`) en als `additionalContext` naar de agen
 hoe, kiest de bouwer (zie *Aan de bouwer*).
 
 `COULD NOT CHECK` blijft gelden voor wat #26 al noemt, en daarnaast voor een databestand dat
-ontbreekt of niet te lezen is, en voor een ketenconfig die er wel is maar niet klopt (een schakel
-zonder `url` of `model`, een `env_file` die niet bestaat). Een sleutel die in de omgeving ontbreekt,
-is falen van die schakel (besluit 11), geen `COULD NOT CHECK`.
+ontbreekt of niet te lezen is, en voor een `[code_language_llm]` die er wel is maar niet klopt (geen
+`url` of lege `models`, een relatief of niet-bestaand `env_file`). Een sleutel die in de omgeving en
+het `env_file` ontbreekt, is falen van laag 2 (besluit 11), geen `COULD NOT CHECK`.
 
 ### Config
 
 - `project.code_language_paths` (`list[str]`, globs zoals bij `code_language_exempt`), zonder
   default.
-- Een tabel voor de keten, bijvoorbeeld `[[code_language_llm]]` met `url`, `model`, `key_env`,
-  `env_file`. Naam en vorm kiest de bouwer, binnen besluit 7, en ze komen in `SCHEMA` van
-  `pack/core/lib/config.py`.
+- `code_language_llm.url` (`str`), `code_language_llm.models` (`list[str]`),
+  `code_language_llm.key_env` (`str`) en `code_language_llm.env_file` (`str`), in `SCHEMA` van
+  `pack/core/lib/config.py` (besluit 7). Voorbeeld:
+
+  ```toml
+  [code_language_llm]
+  url = "http://<gateway-host>:8099/v1"
+  models = ["anthropic-haiku-4-5", "local-qwen3.6-35b-a3b"]
+  key_env = "LITELLM_MASTER_KEY"
+  env_file = "~/.config/litellm/env"
+  ```
 
 ### Waar het landt
 
 - Laag 1 en 2 in de lib-module van #26 (`code_language.py`), of in een nieuwe module ernaast. De
   bouwer kiest.
 - Het databestand en de jargonlijst naast de module, in `pack/core/lib/`. De woordenlijsten van #26
-  gaan weg, met hun vermelding in `internal/packs/core_test.go` en `.lighthouse/manifest.toml`.
+  gaan weg, met hun vermelding in `internal/packs/core_test.go`, `pack/SOURCES.toml` en
+  `.lighthouse/manifest.toml`. De nieuwe bestanden komen in dezelfde drie. *(SOURCES.toml: own choice after spec review, r1-f7)*
 - Een script dat het databestand opnieuw maakt uit wordfreq, buiten `pack/`, zodat het niet bij
   consumers landt. Het script draait met `uv run --with wordfreq`, en hoeft niet in de test gate.
-- De naamsvermelding in `LICENSES/`.
+- Het licentie- en naamsvermeldingsbestand naast het databestand (besluit 4), en een vermelding in
+  `LICENSES/`.
 - Dogfood: `go run ./cmd/lighthouse init --upgrade`, en het geïnstalleerde resultaat gecommit.
 
 ## Bewijs
 
-- **Geen vals alarm op Engels.** Een test draait laag 1 over Engelse code die er altijd is: de
-  modules uit de meting in de standaardbibliotheek van de Python die de test draait
-  (`sysconfig.get_paths()["stdlib"]`), de Go-code onder `internal/` en `cmd/` waar die Engels is, de
-  skills onder `pack/**/*.md`, en `pack/core/lib/config.py`. Doel: nul vondsten. Bekend Nederlands
+- **Geen vals alarm op Engels.** Een test draait laag 1 over een vast Engels corpus: een selectie
+  uit de stdlib-modules van de *Bijlage*, als fixture onder `tests/pack/fixtures/code_language/`
+  met de PSF-licentievermelding, plus de Go-code onder `internal/` en `cmd/`, de skills onder
+  `pack/**/*.md` en `pack/core/lib/config.py`. Doel: nul vondsten, en nul twijfelgevallen in de
+  stdlib-fixture. *(fixture in plaats van de stdlib van de draaiende Python: own choice after spec
+  review, r1-f4; de modules verschillen per Python-versie, en `pyproject.toml` staat 3.11 toe)* Bekend Nederlands
   in Go (`ontwerpkeuze`, `besluit`) staat met reden in een lijst in de test, zoals `ENGLISH_BLOCKS`
   in #26, totdat de vertaalslag het weghaalt. De modules staan in de *Bijlage*.
 - **Vangt Nederlands.** De fixture `bash_writes_nl.py`: elk Nederlands blok wordt gevonden, en
   `UNDETECTABLE_BLOCKS` wordt kleiner of leeg. De Nederlandse namen uit de *Bijlage*: minstens 48 van
-  de 51 zijn een vondst, en de rest is een twijfelgeval. De Engelse tegenhangers uit de *Bijlage*
+  de 51 zijn een vondst. De rest staat met reden in de test (gemeten: `legacy_processed_lijst_weg` is
+  twijfel; `verzamelbump_container_images` en `codetaal_hook` worden gemist). De Engelse tegenhangers uit de *Bijlage*
   geven geen vondst. De specs telden mee in de meting, maar zijn geen testdoel: ze veranderen.
 - **Laag 2** met een nep-endpoint in de test (een lokale HTTP-server):
   - `NOT-EN` geeft een vondst, met de laag in de melding;
@@ -202,8 +217,9 @@ is falen van die schakel (besluit 11), geen `COULD NOT CHECK`.
   - de tweede schakel wordt geprobeerd als de eerste faalt;
   - een vondst van laag 1 gaat nooit naar het endpoint;
   - zonder ketenconfig gaat er geen aanroep uit en komt er geen melding.
-- **Binnen de time-out.** Een nep-endpoint dat nooit antwoordt: de hook eindigt binnen 10 s, direct
-  en via `bash-write-gates`.
+- **Binnen de time-out.** Een nep-endpoint dat nooit antwoordt, één dat druppelend antwoordt, en een
+  host die niet resolvet: de hook eindigt telkens binnen 10 s. Via `bash-write-gates` gaat er geen
+  aanroep uit (besluit 19), en staan de twijfelgevallen in de melding.
 - **Bereik.** Een `.md` en een `.toml` binnen `code_language_paths` met een Nederlandse naam of
   alinea geven een vondst. Dezelfde bestanden erbuiten geven niets. Een `.py` erbuiten wordt
   gecontroleerd zoals in #26.
