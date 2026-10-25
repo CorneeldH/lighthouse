@@ -3,7 +3,8 @@
 Every word gets `(nl - en) / 10` from `code_language_freq.tsv.gz` (word frequencies
 from wordfreq, zipf x 10). A unit is a finding when the sum of its words is above
 `THRESHOLD`. A word in neither language counts as Dutch when it splits into Dutch
-words (`dutch_split`). Standard library only.
+words (`dutch_split`) or is the Dutch participle of an English verb (`dutch_participle`).
+Standard library only.
 """
 
 from __future__ import annotations
@@ -111,11 +112,25 @@ def dutch_split(word: str) -> bool:
     return splits(word)
 
 
+def dutch_participle(word: str) -> bool:
+    """True when `word` is `ge` + an English past form in `-ed` ("geparsed", "gemerged").
+
+    Dutch builds the participle of a loan verb with `ge-`; the rest must be a listed word
+    that leans English, so a mere `ge` start ("getout") does not count.
+    """
+    if not word.startswith("ge"):
+        return False
+    rest = word[2:]
+    entry = frequencies().get(rest)
+    return entry is not None and rest.endswith("ed") and entry[0] > entry[1]
+
+
 def word_score(word: str) -> float:
-    """`(nl - en) / 10`; a word in neither list scores `COMPOUND_SCORE` if it is a Dutch compound."""
+    """`(nl - en) / 10`; a word in neither list scores `COMPOUND_SCORE` if it is a Dutch
+    compound or a Dutch participle of an English verb."""
     entry = frequencies().get(word)
     if entry is None:
-        return COMPOUND_SCORE if dutch_split(word) else 0.0
+        return COMPOUND_SCORE if dutch_split(word) or dutch_participle(word) else 0.0
     en, nl = entry
     return (nl - en) / 10
 

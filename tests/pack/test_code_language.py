@@ -307,9 +307,7 @@ ENGLISH_BLOCKS: dict[int, str] = {
     35: "English: explains the sys.path line below it",
 }
 # Dutch blocks layer 1 cannot catch at all. Not a way to hide a missed block.
-UNDETECTABLE_BLOCKS: dict[int, str] = {
-    462: "only 'geparsed', a Dutch word that is in neither list and does not split",
-}
+UNDETECTABLE_BLOCKS: dict[int, str] = {}
 # Dutch blocks layer 1 only doubts: a doubt is not a finding, layer 2 decides.
 DOUBT_BLOCKS: dict[int, str] = {}
 

@@ -86,6 +86,17 @@ def test_dutch_split(table):
     assert not score.dutch_split("abcdef")
 
 
+def test_dutch_participle_of_english_verb(table):
+    """`ge` + an English past form in `-ed` is a Dutch participle of a loan verb."""
+    table({"parsed": (24, 0), "tout": (30, 10), "bloated": (20, 25)})
+    assert score.word_score("geparsed") == 3.0
+    assert score.judge_text("`git reflog`, geparsed.") == "finding"
+    assert score.word_score("getout") == 0.0  # rest is English but no `-ed` form
+    assert score.word_score("gebloated") == 0.0  # rest does not lean English
+    assert score.word_score("gefrobbed") == 0.0  # rest is in neither list
+    assert score.word_score("parsed") == -2.4  # a listed word keeps its own score
+
+
 def test_dutch_split_long_letter_run(table):
     """A long run of letters is not split: no RecursionError, and it scores 0."""
     table({"werk": (30, 50)})
