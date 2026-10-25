@@ -1,0 +1,8 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "num_turns": 0,
+  "result": "Current session: 7% used · resets Sep 6, 7:29pm (Europe/Amsterdam)\nCurrent week (all models): 49% used · resets Sep 10, 4:59pm (Europe/Amsterdam)",
+  "total_cost_usd": 0
+}
