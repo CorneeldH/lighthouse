@@ -123,11 +123,21 @@ woorden. Daarom zijn ze geen kandidaat voor laag 1.
 ### Laag 1 per eenheid
 
 1. Splits de eenheid in woorden. Proza: letterreeksen, kleine letters. Namen: `split_name` van #26.
-   Voor proza gaan inline code (tussen backticks) en URL's eerst weg.
+   Voor proza gaan inline code (tussen backticks) en URL's eerst weg. Proza wordt daarnaast per zin
+   beoordeeld: een zin eindigt bij `.`, `!` of `?` gevolgd door witruimte. Een punt in een token
+   (`config.py`, `1.2`) heeft geen witruimte erna, en `e.g.` en `i.e.` sluiten geen zin af. In een
+   commentaarblok is elke regel ook een grens, omdat commentaar vaak zonder punt eindigt; een
+   docstring en een Markdown-alinea breken midden in een zin af en splitsen daar niet. Stappen 2
+   tot en met 4 gelden voor de hele eenheid en voor elke zin apart: is de eenheid of een van haar
+   zinnen een vondst, dan is de eenheid een vondst, zodat één Nederlandse zin niet verdunt in het
+   Engels eromheen. De vondst staat op de eerste regel van de eenheid. Namen veranderen niet.
+   *(besluit van de gebruiker na de PR-review)*
 2. Laat de woorden vallen die korter zijn dan de grens van besluit 3, of die op de jargonlijst staan.
 3. Per woord: de score is `nl − en`, met de zipf-frequenties uit het databestand. Komt het woord in
-   geen van beide voor, dan volgt besluit 2: een Nederlandse splitsing telt als een vaste positieve
-   score, anders telt het woord als nul.
+   geen van beide voor, dan volgt besluit 2: een Nederlandse splitsing (`dutch_split`) telt als een
+   vaste positieve score. Hetzelfde geldt voor een Nederlands voltooid deelwoord van een Engels
+   werkwoord (`dutch_participle`: `ge` plus een Engelse vorm op `-ed` die Engels leunt, zoals
+   `geparsed`). Anders telt het woord als nul.
 4. Is de som groter dan de drempel, dan is het een vondst. Blijft de som eronder, maar is er een
    woord dat sterk Nederlands leunt (besluit 6), dan is het een twijfelgeval. Anders is het schoon.
 
@@ -180,6 +190,9 @@ het `env_file` ontbreekt, is falen van laag 2 (besluit 11), geen `COULD NOT CHEC
   key_env = "LITELLM_MASTER_KEY"
   env_file = "~/.config/litellm/env"
   ```
+
+  `[code_language_llm]` komt uit de `lighthouse.toml` van de sessierepo (de repo van waaruit de
+  hook draait), niet uit die van de repo van het bestand. *(na de eindreview)*
 
 ### Waar het landt
 
