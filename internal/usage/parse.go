@@ -97,11 +97,15 @@ func parseReset(text string, now time.Time, loc *time.Location) (time.Time, erro
 	if !ok {
 		return time.Time{}, fmt.Errorf("unknown month in reset time %q", text)
 	}
+	// The regex guarantees digits, so the Atoi errors cannot occur.
 	day, _ := strconv.Atoi(m[2])
 	hour, _ := strconv.Atoi(m[3])
 	minute := 0
 	if m[4] != "" {
 		minute, _ = strconv.Atoi(m[4])
+	}
+	if hour < 1 || hour > 12 || minute > 59 {
+		return time.Time{}, fmt.Errorf("clock out of range in reset time %q", text)
 	}
 	hour %= 12
 	if strings.EqualFold(m[5], "pm") {

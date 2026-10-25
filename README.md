@@ -12,7 +12,7 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 
 ## Usage window
 
-`lighthouse usage refresh` en `lighthouse usage tick` meten de Claude-gebruiksvensters: [usage-venster](docs/usage-venster.md) (in Dutch).
+`lighthouse usage refresh` and `lighthouse usage tick` measure the Claude usage windows: [usage-venster](docs/usage-venster.md) (in Dutch).
 
 ## License
 

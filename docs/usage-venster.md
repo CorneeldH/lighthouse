@@ -1,7 +1,7 @@
 # Claude-gebruiksvenster
 
 `lighthouse usage` meet hoeveel van het Claude-sessievenster en het weekvenster al verbruikt is.
-De meting staat in een cachebestand en, boven een drempel, in een alarmbestand dat de shell-guard
+De meting staat in een cachebestand en, op of boven een drempel, in een alarmbestand dat de shell-guard
 leest.
 
 ## Commando's
@@ -9,12 +9,16 @@ leest.
 - `lighthouse usage refresh [--force]`: meet nu. Zonder `--force` blijft een cache die jonger is
   dan `cache_ttl_seconds` staan en start `claude` niet.
 - `lighthouse usage tick`: ruimt een verlopen alarm op en ververst alleen als er een
-  `claude`-proces draait (`pgrep -x claude`). Bedoeld voor een timer.
+  `claude`-proces draait (`pgrep -x claude`). Bedoeld voor een timer. Alleen exitcode 1 van `pgrep` betekent "geen proces"; ontbreekt `pgrep`
+  of eindigt het met 2 of 3, dan ververst `tick` toch.
 
 Beide eindigen altijd met exitcode 0. Bij succes staat er één regel op stdout:
-`usage: refreshed`, `fresh`, `busy` of `idle`. Bij een fout staat er één regel
+`usage: refreshed`, `fresh`, `busy` of `idle`. `busy` betekent dat een andere verversing de lock
+houdt; deze aanroep meet dan niet. Bij een fout staat er één regel
 `usage: failed: <fout>` op stderr en blijft de oude cache staan. Een kapotte `host.toml` geeft
 `usage: config: <fout>` op stderr; de meting gaat door met de standaardwaarden.
+Een sleutel met het verkeerde type (`halt_pct_session = "85"`) telt als een TOML-fout: alle
+standaardwaarden plus dezelfde `usage: config:`-regel.
 
 ## Paden
 
@@ -24,7 +28,7 @@ ook een relatieve. Zonder beide eindigt het commando met `usage: failed: ...`.
 | Pad | Inhoud |
 |---|---|
 | `usage-window.json` | de cache van de laatste meting |
-| `usage-window.alarm` | het alarm, alleen aanwezig boven een drempel |
+| `usage-window.alarm` | het alarm, alleen aanwezig op of boven een drempel |
 | `usage-window.lock` | lock die gelijktijdige verversingen uitsluit |
 | `usage-refresh/` | werkmap van de `claude`-aanroep |
 
@@ -41,10 +45,10 @@ venster 99 14:30 2026-09-06T12:30:00Z
 week 96 do_16:59 2026-09-10T14:59:00Z
 ```
 
-- `soort` is `venster` (de sessie) of `week`. Staan beide boven hun drempel, dan komt alleen
+- `soort` is `venster` (de sessie) of `week`. Staan beide op of boven hun drempel, dan komt alleen
   `venster`.
 - Spaties in `reset_local` worden `_`. Een lege `reset_local` of `reset_at` wordt `?`.
-- Het bestand verdwijnt zodra geen venster meer boven zijn drempel zit, of als `reset_at`
+- Het bestand verdwijnt zodra geen venster meer op of boven zijn drempel zit, of als `reset_at`
   verstreken is (dat ruimt `tick` op).
 
 ## Cacheschema

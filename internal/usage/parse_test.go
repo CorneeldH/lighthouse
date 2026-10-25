@@ -97,6 +97,9 @@ func TestParseRejects(t *testing.T) {
 		{"is_error", []byte(isError)},
 		{"session reset is junk", envelope(`Current session: 99% used · soon` + week)},
 		{"reset day does not exist", envelope(`Current session: 99% used · resets Sep 31, 5pm (Europe/Amsterdam)` + week)},
+		{"reset minute out of range", envelope(`Current session: 99% used · resets Sep 6, 2:99pm (Europe/Amsterdam)` + week)},
+		{"reset hour above 12", envelope(`Current session: 99% used · resets Sep 6, 13pm (Europe/Amsterdam)` + week)},
+		{"reset hour zero", envelope(`Current session: 99% used · resets Sep 6, 0am (Europe/Amsterdam)` + week)},
 		{"reset month unknown", envelope(`Current session: 99% used · resets Foo 6, 5pm (Europe/Amsterdam)` + week)},
 	}
 	for _, c := range cases {

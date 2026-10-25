@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,8 @@ const (
 )
 
 const refreshTimeout = 60 * time.Second // deadline of the context RunUsage receives
+const maxStderr = 200                   // bytes of the claude stderr line kept in an error
+const pgrepTimeout = 5 * time.Second    // a hanging pgrep counts as "cannot measure"
 const waitDelay = 5 * time.Second       // cmd.WaitDelay: a grandchild holding stdout does not block Output after the kill
 
 // Meter measures the usage windows and keeps the cache and the alarm file.
@@ -38,13 +41,11 @@ type Meter struct {
 // NewMeter returns a Meter on the real clock, time.Local, the claude CLI and pgrep.
 func NewMeter(p Paths, c Config) Meter {
 	return Meter{
-		Paths:  p,
-		Config: c,
-		Now:    time.Now,
-		Loc:    time.Local,
-		RunUsage: func(ctx context.Context, workdir string) ([]byte, error) {
-			return usageCommand(ctx, workdir).Output()
-		},
+		Paths:         p,
+		Config:        c,
+		Now:           time.Now,
+		Loc:           time.Local,
+		RunUsage:      runUsage,
 		ClaudeRunning: func() bool { return claudeRunning(pgrep) },
 	}
 }
@@ -123,6 +124,24 @@ func usageCommand(ctx context.Context, workdir string) *exec.Cmd {
 	return cmd
 }
 
+// runUsage runs the usage command. A failed exit carries the first line of
+// stderr in the error, so "not logged in" shows instead of "exit status 1".
+func runUsage(ctx context.Context, workdir string) ([]byte, error) {
+	out, err := usageCommand(ctx, workdir).Output()
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		line, _, _ := strings.Cut(strings.TrimSpace(string(exitErr.Stderr)), "\n")
+		line = strings.TrimSpace(line)
+		if len(line) > maxStderr {
+			line = line[:maxStderr]
+		}
+		if line != "" {
+			err = fmt.Errorf("%w: %s", err, line)
+		}
+	}
+	return out, err
+}
+
 // claudeRunning reads the pgrep result. Only exit code 1 means no claude
 // process: a failure to measure (no pgrep, exit 2 or 3) is not a "no".
 func claudeRunning(pgrep func() (exitCode int, err error)) bool {
@@ -133,13 +152,13 @@ func claudeRunning(pgrep func() (exitCode int, err error)) bool {
 // pgrep runs `pgrep -x claude` and returns its exit code. An error means
 // pgrep did not run to an exit code.
 func pgrep() (int, error) {
-	err := exec.Command("pgrep", "-x", "claude").Run()
+	ctx, cancel := context.WithTimeout(context.Background(), pgrepTimeout)
+	defer cancel()
+	err := exec.CommandContext(ctx, "pgrep", "-x", "claude").Run()
 	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	// A killed pgrep also yields an ExitError, but its code is -1: not a "no".
+	if errors.As(err, &exitErr) && ctx.Err() == nil {
 		return exitErr.ExitCode(), nil
 	}
-	if err != nil {
-		return 0, err
-	}
-	return 0, nil
+	return 0, err
 }

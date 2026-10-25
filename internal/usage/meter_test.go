@@ -341,8 +341,39 @@ func TestUsageCommandTimeout(t *testing.T) {
 	if err == nil {
 		t.Fatal("Output: want error after the deadline, got nil")
 	}
-	if d := time.Since(start); d > 10*time.Second {
+	d := time.Since(start)
+	if ctx.Err() != context.DeadlineExceeded {
+		t.Errorf("ctx.Err() = %v, want DeadlineExceeded: the command failed before the deadline", ctx.Err())
+	}
+	if d < 150*time.Millisecond {
+		t.Errorf("Output returned after %v, want it to run until the 200ms deadline", d)
+	}
+	if d > 10*time.Second {
 		t.Errorf("Output returned after %v, want within 10s", d)
+	}
+}
+
+func TestRunUsageStderr(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a /bin/sh script")
+	}
+	bin := t.TempDir()
+	script := "#!/bin/sh\necho 'Not logged in' >&2\necho second >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	_, err := runUsage(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("runUsage: want error, got nil")
+	}
+	if got := err.Error(); got != "exit status 1: Not logged in" {
+		t.Errorf("error = %q, want %q", got, "exit status 1: Not logged in")
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Error("error no longer wraps *exec.ExitError")
 	}
 }
 
