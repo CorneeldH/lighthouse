@@ -254,6 +254,41 @@ def test_language_nl(tmp_path):
     assert load(path).language == "nl"
 
 
+def test_code_language_en_is_read(tmp_path):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + '\n[project]\ncode_language = "en"\n')
+    assert lookup(load(path), "project.code_language") == "en"
+
+
+def test_code_language_absent_is_keyerror(tmp_path):
+    with pytest.raises(KeyError):
+        lookup(load(_write(tmp_path, VALID)), "project.code_language")
+
+
+def test_code_language_other_value_is_config_error(tmp_path):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + '\n[project]\ncode_language = "nl"\n')
+    with pytest.raises(ConfigError, match="project.code_language") as exc:
+        load(path)
+    assert "en" in str(exc.value)
+
+
+def test_code_language_exempt_is_list_of_str(tmp_path):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(
+        _render(VALID) + '\n[project]\ncode_language_exempt = ["tests/fixtures/*"]\n'
+    )
+    cfg = load(path)
+    assert lookup(cfg, "project.code_language_exempt") == ["tests/fixtures/*"]
+
+
+def test_code_language_exempt_not_a_list_is_config_error(tmp_path):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + '\n[project]\ncode_language_exempt = "x"\n')
+    with pytest.raises(ConfigError, match="project.code_language_exempt"):
+        load(path)
+
+
 def test_lookup_walks_raw_and_derived_keys(tmp_path):
     cfg = load(_write(tmp_path, VALID))
     assert lookup(cfg, "forge.kind") == "github"

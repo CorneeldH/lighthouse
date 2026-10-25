@@ -44,12 +44,16 @@ from lighthouse_lib.deadline import Interrupted, run_until
 # De map van de gates, onder de repo-root.
 HOOK_DIR = Path(".claude/hooks/lighthouse")
 
-GATES: dict[str, str] = {
-    ".sh": "shellcheck.sh",
-    ".bash": "shellcheck.sh",
-    ".py": "ruff-format.sh",
-    ".md": "worktree-linkcheck.sh",
-    ".markdown": "worktree-linkcheck.sh",
+# The gates of each extension, in the order they run. A rewriting gate
+# (`_SIGN_AFTER_GATE`) always comes before `code-language.sh`, so that one
+# reads the version after `ruff format`.
+GATES: dict[str, tuple[str, ...]] = {
+    ".sh": ("shellcheck.sh", "code-language.sh"),
+    ".bash": ("shellcheck.sh", "code-language.sh"),
+    ".py": ("ruff-format.sh", "code-language.sh"),
+    ".go": ("code-language.sh",),
+    ".md": ("worktree-linkcheck.sh",),
+    ".markdown": ("worktree-linkcheck.sh",),
 }
 
 # Het pakket dat elke gate levert; ontbreekt de gate, dan noemt de melding het.
@@ -57,13 +61,14 @@ GATE_PACKS: dict[str, str] = {
     "shellcheck.sh": "shell",
     "ruff-format.sh": "python",
     "worktree-linkcheck.sh": "core",
+    "code-language.sh": "core",
 }
 
 
-def gate_path(root: str, ext: str) -> Path | None:
-    """De gate van extensie `ext` onder `root`; `None` als de extensie geen gate heeft."""
-    gate = GATES.get(ext)
-    return None if gate is None else Path(root) / HOOK_DIR / gate
+def gate_path(root: str, gate: str) -> Path:
+    """The path of `gate` under `root`."""
+    return Path(root) / HOOK_DIR / gate
+
 
 # Fallback-tokenizer voor een Unparseable commando (open quote): geen echte
 # shell-parse meer mogelijk, dus een ruwe woordsplitsing op wat sowieso nooit
@@ -805,9 +810,10 @@ _CANNOT = "COULD NOT CHECK"
 _POST_DEADLINE_S = 90.0
 _GATE_GRACE_S = 10.0
 
-# ruff-format.sh herschrijft het bestand zelf: zijn oordeel geldt de versie
-# van ná de gate. De andere gates lezen alleen: hun oordeel geldt de versie
-# van vlak vóór de gate, zodat een schrijfactie tijdens de gate nieuw blijft.
+# ruff-format.sh rewrites the file itself: the file's verdict holds for the
+# version after the last such gate that ran. The other gates only read: without
+# a rewriting gate the verdict holds for the version from just before the first
+# gate, so a write during a gate stays new.
 _SIGN_AFTER_GATE = frozenset({"ruff-format.sh"})
 
 # `run_until` gooit `Interrupted` als de post zelf een doorgestuurd signaal
@@ -855,18 +861,16 @@ def classify(rc: int, output: bytes) -> str:
     return "finding"
 
 
-def run_gate(root: str, rel: str, deadline: float) -> tuple[str, bytes]:
-    """Draai de gate van `rel` met een nagemaakte Edit-achtige payload.
+def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, bytes]:
+    """Run `gate` on `rel` with a mock Edit-like payload.
 
     Payload `{"tool_name":"Bash","cwd":root,"tool_input":{"file_path":<abs>}}`,
-    proces-cwd = `root`: `ruff-format.sh` zoekt zijn `.ruff-version` vanuit de
-    proces-cwd, niet via de payload. Geeft `(classify(rc, uitvoer), uitvoer)`,
-    of `(_STOPPED, uitvoer)` als een doorgestuurd signaal de gate afbrak, of
-    `(_MISSING, melding)` als de gate niet onder de repo-root staat.
+    process cwd = `root`: `ruff-format.sh` looks for its `.ruff-version` from
+    the process cwd, not through the payload. Returns `(classify(rc, output),
+    output)`, or `(_STOPPED, output)` when a forwarded signal stopped the gate,
+    or `(_MISSING, message)` when the gate is not under the repo root.
     """
-    gate = GATES[os.path.splitext(rel)[1]]
-    path = gate_path(str(config.repo_root()), os.path.splitext(rel)[1])
-    assert path is not None  # GATES kent de extensie
+    path = gate_path(str(config.repo_root()), gate)
     if not path.is_file():
         return _MISSING, f"no {GATE_PACKS[gate]} gate installed".encode()
     payload = {
@@ -1288,7 +1292,10 @@ def _record_verdict(
     verdict: str,
     sig: Signature | None,
 ) -> None:
-    """Na één gate, onder de lock: de claim weg; bij een echt oordeel uit `pending` en in `seen`."""
+    """After all gates of a file, under the lock: drop the claim.
+
+    On a real verdict, also out of `pending` and into `seen`.
+    """
     with locked_ledger(state) as ledger:
         if ledger.unreadable:
             return
@@ -1399,23 +1406,30 @@ def _dispatch(
     dispatch: de rest is `KON NIET CONTROLEREN`, net als na de deadline.
     """
     for index, (view, rel) in enumerate(claimed):
+        # Per file, not per gate: a file whose first gate started gets all of
+        # its gates (each `run_gate` is bounded by `deadline` itself), so every
+        # post judges at least one whole file.
         if _now() >= deadline:
             _cannot_left(outcome, "deadline passed", claimed[index:])
             return
         path = os.path.join(view.root, rel)
-        gate = GATES[os.path.splitext(rel)[1]]
-        before = signature(path)
+        sig = before = signature(path)
         if before is None:
             _vanished(state, key, view, rel, outcome, deadline=deadline)
             continue
-        verdict, output = run_gate(view.root, rel, deadline)
-        if verdict == _STOPPED:
-            _record_verdict(state, key, view, rel, "unchecked", None)
-            _cannot_left(outcome, "signal received", claimed[index:])
-            return
-        sig = signature(path) if gate in _SIGN_AFTER_GATE else before
-        _record_verdict(state, key, view, rel, verdict, sig)
-        _report_verdict(outcome, path if absolute else rel, gate, verdict, output)
+        combined = "ok"
+        for gate in GATES[os.path.splitext(rel)[1]]:
+            verdict, output = run_gate(view.root, rel, gate, deadline)
+            if verdict == _STOPPED:
+                _record_verdict(state, key, view, rel, "unchecked", None)
+                _cannot_left(outcome, "signal received", claimed[index:])
+                return
+            if gate in _SIGN_AFTER_GATE and verdict != _MISSING:
+                sig = signature(path)
+            if combined != "unchecked":
+                combined = verdict
+            _report_verdict(outcome, path if absolute else rel, gate, verdict, output)
+        _record_verdict(state, key, view, rel, combined, sig)
 
 
 def _marker_roots(marker: dict | None) -> set[str]:

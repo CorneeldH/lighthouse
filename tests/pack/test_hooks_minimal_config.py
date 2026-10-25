@@ -62,6 +62,11 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         doc = worktree / "doc.md"
         doc.write_text("# doc\n\nSee [the readme](README.md).\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
+    if name == "code-language.sh":
+        # Without `code_language` in MINIMAL_TOML the hook is off: exit 0.
+        code = worktree / "mod.py"
+        code.write_text("x = 1\n", encoding="utf-8")
+        return _edit_payload(event, code, worktree)
     if name == "main-commit-guard.sh":
         # Een commit op een featurebranch: de guard leest forge.default_branch.
         cmd = "git commit -m x"
@@ -127,6 +132,7 @@ def test_every_registration_has_a_payload() -> None:
         "pr-create-gate.sh",
         "worktree-guard.sh",
         "worktree-linkcheck.sh",
+        "code-language.sh",
     }
 
 
