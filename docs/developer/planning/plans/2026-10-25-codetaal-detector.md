@@ -360,8 +360,9 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
       `pack/a.md` met Nederlands geeft `.findings == []` en `.doubts == []`.
     - `test_out_of_scope_does_not_load_data`: `monkeypatch.setattr(cl.code_language_score,
       "frequencies", boom)` → `check_file` op `docs/a.toml` geeft `.findings == []` en
-      `.doubts == []` zonder fout; dezelfde patch op `pack/a.toml` binnen het bereik roept `boom`
-      wel aan (zodat de test de goede module raakt).
+      `.doubts == []` zonder fout; dezelfde patch op `pack/notulen.toml` binnen het bereik roept
+      `boom` wel aan (de stam `notulen` haalt `NAME_MIN`, dus de tabel moet erbij), zodat de test
+      de goede module raakt.
     - `test_report_names_path`: een vondst `directory` geeft in `main` dezelfde uitlegregel als een
       modulenaam ("rename the file", `code_language_exempt`).
   - `tests/pack/test_code_language_corpus.py`: `test_pack_markdown_english`: `cl.scan_markdown` over
