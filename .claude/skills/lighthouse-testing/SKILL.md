@@ -1,6 +1,6 @@
 ---
 name: lighthouse-testing
-description: 'Use when writing, changing, fixing or reviewing a test, a mock, a fake or an assert; when adjusting a test after a red run; and when planning a test strategy, before any file is open. Carries what a good test is: the production change that should make it fail, the classification sentence before the first edit, and the mutation check before reporting done. Triggers on the work, not on the language. Use it alongside superpowers:test-driven-development, which carries when to write the test. NOTE — not for the tooling of one language: that is lighthouse-python-writing or lighthouse-shell-gates, if present.'
+description: 'Use when writing, changing, fixing or reviewing a test, a mock, a fake or an assert; when adjusting a test after a red run; and when planning a test strategy, before any file is open. Carries what a good test is: the production change that should make it fail, the classification sentence before the first edit, and the mutation check before reporting done. Triggers on the work, not on the language. Use it alongside superpowers:test-driven-development, which carries when to write the test. NOTE — not for the tooling of one language: that is lighthouse-python-writing, lighthouse-go-writing or lighthouse-shell-gates, if present.'
 metadata:
   lighthouse: "core@dev"
   binding: default

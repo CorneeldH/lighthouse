@@ -144,6 +144,17 @@ if grep -q '^except:' "$f"; then
 fi
 exit 0
 """
+GOFMT_STUB = r"""#!/bin/bash
+f=$(jq -r '.tool_input.file_path')
+[ -f "$f" ] || exit 0
+if grep -q 'fmt.Println(' "$f"; then
+  echo "gofmt: $f does not parse — fix the syntax." >&2
+  echo "$f:2:8: expected ')'" >&2
+  exit 2
+fi
+exit 0
+"""
+BROKEN_GO = 'package main\nfunc main() { fmt.Println( }\n'
 # Schoon, en exact even lang als BROKEN_SH: `"x$x"` telt net zoveel tekens als
 # `"hoi"`, dus een `cp -p` eroverheen verandert de grootte niet.
 CLEAN_SAME_SIZE_SH = '#!/usr/bin/env bash\nf() {\n  local x=1\n  echo "x$x"\n}\nf\n'
@@ -294,6 +305,18 @@ def test_bad_sh_via_heredoc(session):
     assert "SC2034" in out.stderr
     assert "SC2034" in context(out)
     assert "== x.sh (shellcheck.sh) ==" in out.stderr
+
+
+def test_bad_go_via_heredoc(tmp_path):
+    session = _Session(tmp_path)
+    hooks = session.root / ".claude" / "hooks" / "lighthouse"
+    (hooks / "gofmt.sh").write_text(GOFMT_STUB, encoding="utf-8")
+    (hooks / "gofmt.sh").chmod(0o755)
+    out = session.call(heredoc("x.go", BROKEN_GO))
+    assert out.returncode == 2, (out.stdout, out.stderr)
+    assert "== x.go (gofmt.sh) ==" in out.stderr
+    assert "x.go:2:8: expected ')'" in out.stderr
+    assert "COULD NOT CHECK" not in out.stderr
 
 
 def test_clean_sh_via_heredoc(session):
@@ -1169,6 +1192,9 @@ DUTCH_GO = "package main\n\n// lees het bestand en geef de regels terug\nfunc ma
 @pytest.mark.parametrize("with_key", [True, False])
 def test_go_write_is_checked_for_code_language(tmp_path, with_key):
     s = _Session(tmp_path)
+    hooks = s.root / ".claude" / "hooks" / "lighthouse"
+    (hooks / "gofmt.sh").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (hooks / "gofmt.sh").chmod(0o755)
     toml = MINIMAL_TOML
     if with_key:
         toml = toml.replace('language = "en"\n', 'language = "en"\ncode_language = "en"\n')

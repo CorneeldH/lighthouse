@@ -45,12 +45,12 @@ HOOK_DIR = Path(".claude/hooks/lighthouse")
 
 # The gates of each extension, in the order they run. A rewriting gate
 # (`_SIGN_AFTER_GATE`) always comes before `code-language.sh`, so that one
-# reads the version after `ruff format`.
+# reads the version after `ruff format` or `gofmt`.
 GATES: dict[str, tuple[str, ...]] = {
     ".sh": ("shellcheck.sh", "code-language.sh"),
     ".bash": ("shellcheck.sh", "code-language.sh"),
     ".py": ("ruff-format.sh", "code-language.sh"),
-    ".go": ("code-language.sh",),
+    ".go": ("gofmt.sh", "code-language.sh"),
     ".md": ("worktree-linkcheck.sh",),
     ".markdown": ("worktree-linkcheck.sh",),
 }
@@ -59,6 +59,7 @@ GATES: dict[str, tuple[str, ...]] = {
 GATE_PACKS: dict[str, str] = {
     "shellcheck.sh": "shell",
     "ruff-format.sh": "python",
+    "gofmt.sh": "go",
     "worktree-linkcheck.sh": "core",
     "code-language.sh": "core",
 }
@@ -809,11 +810,11 @@ _CANNOT = "COULD NOT CHECK"
 _POST_DEADLINE_S = 90.0
 _GATE_GRACE_S = 10.0
 
-# ruff-format.sh rewrites the file itself: the file's verdict holds for the
-# version after the last such gate that ran. The other gates only read: without
-# a rewriting gate the verdict holds for the version from just before the first
-# gate, so a write during a gate stays new.
-_SIGN_AFTER_GATE = frozenset({"ruff-format.sh"})
+# ruff-format.sh and gofmt.sh rewrite the file themselves: the file's verdict
+# holds for the version after the last such gate that ran. The other gates only
+# read: without a rewriting gate the verdict holds for the version from just
+# before the first gate, so a write during a gate stays new.
+_SIGN_AFTER_GATE = frozenset({"ruff-format.sh", "gofmt.sh"})
 
 # `run_until` gooit `Interrupted` als de post zelf een doorgestuurd signaal
 # kreeg (de hooktimeout, een Ctrl-C): de gate werd afgebroken, en de post zelf

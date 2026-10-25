@@ -1,7 +1,7 @@
 # Managed by lighthouse init. Do not edit by hand.
 
 version = "dev"
-packages = ["core"]
+packages = ["core", "go"]
 
 [[unit]]
 kind = "file"
@@ -16,6 +16,13 @@ path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
 sha256 = "63f4ec696461057e589db076dc51b8aa615e2216a6928656f0745ec0897dcfeb"
+
+[[unit]]
+kind = "file"
+path = ".agents/skills/lighthouse-go-writing/SKILL.md"
+package = "go"
+version = "dev"
+sha256 = "2f4f6b9b738133fa18adb4f575cda553f61741e594ac14cf3b861782e866dcfb"
 
 [[unit]]
 kind = "file"
@@ -148,7 +155,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-testing/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "01535870668cf63241a857e9aa25278628cc410af29f62766d39f837103e284d"
+sha256 = "7ceb45fc666b363afbcee8dfd7217f10b53193d10d1d4cba3c71b1cc8ba203ce"
 
 [[unit]]
 kind = "file"
@@ -198,6 +205,20 @@ path = ".claude/hooks/lighthouse/code-language.sh"
 package = "core"
 version = "dev"
 sha256 = "6839a48301c9656a8408ed4c9fe5734b84a7ecbd474fd4f8df249f66a2055525"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/go-check.sh"
+package = "go"
+version = "dev"
+sha256 = "78827316734269a65ae284912ff0e030c44bec0560d3d2de55a87a0d6ae32ee0"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/gofmt.sh"
+package = "go"
+version = "dev"
+sha256 = "6e98c06daf062328834f30f9311d0bdfd1de466443887f7ea7b2de756d3aac58"
 
 [[unit]]
 kind = "file"
@@ -293,6 +314,14 @@ sha256 = "7e38798e1e7d8cc2fb84d78584b79c546eb8b4e0927d2354a4495788850b4494"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
+id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/gofmt.sh"
+package = "go"
+version = "dev"
+sha256 = "ff3c89e45d2d5e30209df05ebc9e64e07404a8345ff92f29cec19fbb8bfa9545"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
 id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/worktree-linkcheck.sh"
 package = "core"
 version = "dev"
@@ -339,6 +368,14 @@ version = "dev"
 sha256 = "318cbe0098c261d6215894e81a707a31571fdb3461e3b2034da59956f19728d5"
 
 [[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/go-check.sh"
+package = "go"
+version = "dev"
+sha256 = "d70113249444d0ac609bca958ed3a9c9dd7eeeda3746b78eb5c4337e19995802"
+
+[[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
@@ -351,6 +388,13 @@ path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
 sha256 = "3faf5ad9a6ea5511d1167f5e5fb2ebe547d18ab0809e2870e1896459f0814cde"
+
+[[unit]]
+kind = "file"
+path = ".claude/skills/lighthouse-go-writing/SKILL.md"
+package = "go"
+version = "dev"
+sha256 = "c99e991e8fa6dc0c1dff62a5048a4c173a04224ca4918064f59909100e2fdec1"
 
 [[unit]]
 kind = "file"
@@ -483,7 +527,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-testing/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "01535870668cf63241a857e9aa25278628cc410af29f62766d39f837103e284d"
+sha256 = "7ceb45fc666b363afbcee8dfd7217f10b53193d10d1d4cba3c71b1cc8ba203ce"
 
 [[unit]]
 kind = "file"
@@ -539,7 +583,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "baca25eb9f711c462689856f82cb1d80099194ba24d6e1cff15ad099d64492d3"
+sha256 = "fdc2c415b605b64e188b67d1bfe635232326d559ab5536076433596354225478"
 
 [[unit]]
 kind = "file"
@@ -723,3 +767,11 @@ id = "core"
 package = "core"
 version = "dev"
 sha256 = "854d29ebd8adf71d629b035eda64be4d4174bc95ada8f190cb89dfe08469fef9"
+
+[[unit]]
+kind = "block"
+path = "AGENTS.md"
+id = "go"
+package = "go"
+version = "dev"
+sha256 = "8db9b5baa5c57ef5a0d77ec1e07d0be43162c92a24bac8538072b61935bb7571"
