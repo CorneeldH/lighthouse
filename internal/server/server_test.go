@@ -23,6 +23,7 @@ func testSite() fs.FS {
 func get(h http.Handler, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.URL.Path = path
+	req.Host = "127.0.0.1" // New refuses any other Host
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec

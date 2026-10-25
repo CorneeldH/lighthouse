@@ -18,7 +18,7 @@ type healthOutput struct {
 	}
 }
 
-// New returns the handler: the JSON API under /api/ and site as SPA elsewhere.
+// New returns the handler: the JSON API under /api/ and site as SPA elsewhere, behind the Host check.
 func New(site fs.FS) http.Handler {
 	mux := http.NewServeMux()
 	cfg := huma.DefaultConfig("lighthouse", version.String())
@@ -36,5 +36,5 @@ func New(site fs.FS) http.Handler {
 
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spa(site))
-	return mux
+	return hostGuard(mux)
 }
