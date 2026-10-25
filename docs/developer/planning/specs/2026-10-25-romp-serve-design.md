@@ -180,8 +180,22 @@ Geen authenticatie, bewust. Wie op de tailnet zit, kan via `tailscale serve` all
 kan. In M1 is de API alleen-lezen. In M2 gaat lighthouse runs starten; ook dan komt er volgens
 het besluit geen authenticatie, dus elk apparaat op de tailnet kan dan een run starten. Dat is
 het verschil met kenn-forge, dat om die reden `require_auth = true` draagt. De bind blijft
-loopback, zodat niets buiten de host en de tailnet de server ziet. Wie het besluit later
+loopback, zodat geen ander apparaat buiten de tailnet de server ziet. Wie het besluit later
 heroverweegt: de plek is vóór de eerste schrijvende endpoint.
+
+Loopback alleen houdt een browser op de host niet tegen: een website kan met DNS rebinding zijn
+eigen naam naar `127.0.0.1` laten wijzen en dan de antwoorden van de server lezen. Daarom
+controleert de handler de `Host`-header op elk pad, API en webpagina (*besluit na de
+eindreview*):
+
+- toegestaan: een IP-literal (`127.0.0.1`, `[::1]`, een tailnet-IP), `localhost`, en elke naam
+  die eindigt op `.ts.net`. `tailscale serve` geeft de inkomende `Host` ongewijzigd door
+  (`<machine>.<tailnet>.ts.net`). Een rebinding-aanval gebruikt altijd een naam van de
+  aanvaller, nooit een IP-literal;
+- elke andere `Host`: 403, zonder body van de API of de webpagina.
+
+Cross-site POST's (CSRF) vallen hier niet onder; die horen bij de eerste schrijvende endpoint
+in M2.
 
 ## Teststrategie
 
