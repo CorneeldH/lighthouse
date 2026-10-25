@@ -574,7 +574,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language_llm.py"
 package = "core"
 version = "dev"
-sha256 = "464f8259897c424da3c115b5be16597c31d5d7951e0e51b525bc181fc92ac0ed"
+sha256 = "48084637902d5131040ab6e7f18dc47d091e5ec062d7ba96c99714700a37ebde"
 
 [[unit]]
 kind = "file"

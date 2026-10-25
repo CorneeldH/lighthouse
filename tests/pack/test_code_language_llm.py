@@ -202,7 +202,44 @@ def test_unusable_marker_is_ignored(tmp_path):
 
 
 def test_default_state_dir(monkeypatch):
+    monkeypatch.setattr(llm.os, "getuid", lambda: 4242)
     monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/1")
-    assert llm.default_state_dir() == Path("/run/user/1/lighthouse-code-language")
+    assert llm.default_state_dir() == Path("/run/user/1/lighthouse-code-language-4242")
     monkeypatch.delenv("XDG_RUNTIME_DIR")
-    assert llm.default_state_dir() == Path("/tmp/lighthouse-code-language")
+    assert llm.default_state_dir() == Path("/tmp/lighthouse-code-language-4242")
+
+
+def test_new_state_dir_is_private(tmp_path):
+    state = tmp_path / "state"
+    with FakeEndpoint(modes={"m1": "http500"}) as fake:
+        llm.ask(_chain(fake.url), ITEMS, state_dir=state)
+    assert state.stat().st_mode & 0o777 == 0o700
+    (marker,) = state.glob("layer2-failed-*")
+    assert marker.stat().st_mode & 0o777 == 0o600
+
+
+def test_symlinked_marker_is_not_followed(tmp_path):
+    """Another user's symlink in the state dir must not truncate the victim's file (R8)."""
+    state = tmp_path / "state"
+    state.mkdir(mode=0o700)
+    victim = tmp_path / "victim"
+    victim.write_text("precious")
+    with FakeEndpoint(modes={"m1": "http500"}) as fake:
+        llm._marker(state, fake.url).symlink_to(victim)
+        reply = llm.ask(_chain(fake.url), ITEMS, state_dir=state)
+    assert reply.failures == ["m1: HTTP 500"]
+    assert victim.read_text() == "precious"
+
+
+def test_shared_state_dir_is_not_used(tmp_path):
+    """A group- or world-writable state dir is neither read nor written (R8)."""
+    state = tmp_path / "state"
+    state.mkdir()
+    state.chmod(0o777)
+    with FakeEndpoint(modes={"m1": "http500"}) as fake:
+        llm.ask(_chain(fake.url), ITEMS, state_dir=state)
+        assert list(state.iterdir()) == []
+        llm._marker(state, fake.url).write_text(str(time.time()))
+        again = llm.ask(_chain(fake.url), ITEMS, state_dir=state)
+    assert again.failures == ["m1: HTTP 500"]
+    assert len(fake.requests) == 2

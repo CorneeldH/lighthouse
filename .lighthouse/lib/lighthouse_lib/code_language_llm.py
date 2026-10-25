@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
 import threading
 import time
@@ -104,26 +105,55 @@ def parse_answer(content: str, n: int) -> list[bool]:
 
 
 def default_state_dir() -> Path:
-    return Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "lighthouse-code-language"
+    """Per user: the uid is in the name, because `/tmp` is shared."""
+    base = os.environ.get("XDG_RUNTIME_DIR") or "/tmp"
+    return Path(base) / f"lighthouse-code-language-{os.getuid()}"
 
 
 def _marker(state_dir: Path, url: str) -> Path:
     return state_dir / f"layer2-failed-{hashlib.sha1(url.encode()).hexdigest()[:12]}"
 
 
+def _private(state_dir: Path) -> bool:
+    """True when `state_dir` is a real directory of this user that nobody else can write."""
+    try:
+        info = os.lstat(state_dir)
+    except OSError:
+        return False
+    return (
+        stat.S_ISDIR(info.st_mode)
+        and info.st_uid == os.getuid()
+        and not info.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+    )
+
+
 def _quiet_for(state_dir: Path, url: str) -> float | None:
     """Seconds since the chain failed, when that is within `QUIET_S`; else None."""
+    if not _private(state_dir):
+        return None
     try:
-        age = time.time() - float(_marker(state_dir, url).read_text().strip())
+        fd = os.open(_marker(state_dir, url), os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd) as marker:
+            age = time.time() - float(marker.read().strip())
     except (OSError, ValueError):
         return None
     return age if 0 <= age < QUIET_S else None
 
 
 def _mark_failed(state_dir: Path, url: str) -> None:
+    """Never follows a symlink and never writes into a directory others can write."""
     try:
-        state_dir.mkdir(parents=True, exist_ok=True)
-        _marker(state_dir, url).write_text(str(time.time()))
+        state_dir.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            state_dir.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
+        if not _private(state_dir):
+            return
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+        fd = os.open(_marker(state_dir, url), flags, 0o600)
+        with os.fdopen(fd, "w") as marker:
+            marker.write(str(time.time()))
     except (OSError, ValueError):
         pass
 
