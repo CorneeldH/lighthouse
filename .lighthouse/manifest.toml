@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "de0bdfbb5e63757e9b2af301850650766f79e92fe2e5cf0856a67e2179be308c"
+sha256 = "2f4f6b9b738133fa18adb4f575cda553f61741e594ac14cf3b861782e866dcfb"
 
 [[unit]]
 kind = "file"
@@ -379,7 +379,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "41be82c3d39a1ed157799ea651b709d6e896934098e68c3b333785f5ef363101"
+sha256 = "c99e991e8fa6dc0c1dff62a5048a4c173a04224ca4918064f59909100e2fdec1"
 
 [[unit]]
 kind = "file"

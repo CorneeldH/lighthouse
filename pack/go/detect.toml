@@ -1,3 +1,3 @@
 # init proposes pack/go when the repository root has a go.mod that git tracks
-# (plan M0 (c), ontwerpkeuze 3). A go.mod in a subdirectory does not count.
+# (spec 2026-10-25-pack-go-design.md, issue #40). A go.mod in a subdirectory does not count.
 files = ["go.mod"]

@@ -13,8 +13,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from lighthouse_lib import bash_writes
+
 from tests.pack._testkit import tool_bin
 from tests.pack.go.conftest import GO_HOOKS
 

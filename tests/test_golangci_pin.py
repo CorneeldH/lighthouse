@@ -11,7 +11,7 @@ def test_pin_matches_ci():
     pin = (ROOT / ".golangci-version").read_text(encoding="utf-8").strip()
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     step = re.search(
-        r"uses: golangci/golangci-lint-action@\S+.*?\n\s+with:\n\s+version: (\S+)", ci, re.S
+        r"uses: golangci/golangci-lint-action@\S+.*?\n\s+with:\n\s+version: (\S+)", ci, re.DOTALL
     )
     assert step, "no golangci-lint-action step with a version in ci.yml"
     assert pin == step.group(1)
