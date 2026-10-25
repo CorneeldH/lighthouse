@@ -517,14 +517,14 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language.py"
 package = "core"
 version = "dev"
-sha256 = "1026b9fc60db6161b54272a937971d4805a6c0f14acf9403fba15f507170f984"
+sha256 = "54e6647036966d92643c6030852d0c9b8dd1ee5a524ebe7bbca4f4bc4b2dc16e"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language_nl_content.txt"
 package = "core"
 version = "dev"
-sha256 = "63b1164ccf171d88cec35738abf698578843820196d4a9ed8a7d66f978598852"
+sha256 = "225593c7b44a84c0f2c8c232c0956ff063acc5f4ee047fb2e4a847112ea03402"
 
 [[unit]]
 kind = "file"

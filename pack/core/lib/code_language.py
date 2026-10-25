@@ -14,11 +14,22 @@ Both lists skip words that are also English or common in English code, such as `
 from __future__ import annotations
 
 import ast
+import fnmatch
 import io
 import re
+import sys
 import tokenize
+import tomllib
+from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
+
+# Run as a file on its path: put `.lighthouse/lib` first, so `lighthouse_lib`
+# imports from this installation.
+if not __package__:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from lighthouse_lib import config
 
 
 def _read_list(filename: str) -> frozenset[str]:
@@ -114,7 +125,8 @@ def scan_python(source: str) -> list[Finding]:
     try:
         tree = ast.parse(source)
         found = _comment_findings(source)
-    except (tokenize.TokenError, SyntaxError) as error:  # IndentationError is a SyntaxError
+    except (tokenize.TokenError, SyntaxError, ValueError) as error:
+        # IndentationError is a SyntaxError; Python 3.11 raises ValueError on a NUL byte.
         raise CannotCheck(f"cannot parse Python: {error}") from error
     lines = source.splitlines()
 
@@ -378,3 +390,98 @@ def scan_go(source: str) -> list[Finding]:
     code, blocks = _scan_go_text(source)
     found = _dutch_blocks(blocks) + _name_findings(_go_names(code), source.splitlines())
     return sorted(found, key=lambda f: f.line)
+
+
+# --- checking a file ---
+
+EXTENSIONS: dict[str, Callable[[str], list[Finding]]] = {
+    ".py": scan_python,
+    ".sh": scan_shell,
+    ".bash": scan_shell,
+    ".go": scan_go,
+}
+
+_MAX_LINES = 20
+_TEXT_LIMIT = 60
+
+
+def _managed_paths(root: Path) -> set[str]:
+    manifest = root / ".lighthouse" / "manifest.toml"
+    if not manifest.is_file():
+        return set()
+    try:
+        data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+        return {unit["path"] for unit in data.get("unit", [])}
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError, KeyError, TypeError) as error:
+        raise CannotCheck(f"cannot read {manifest}: {error}") from error
+
+
+def check_file(path: Path, root: Path) -> list[Finding]:
+    """Dutch comments, docstrings and names in the file at `path` (absolute) in repo `root`.
+
+    Empty when the file is not checked: another extension, no `lighthouse.toml`, no
+    `code_language`, an exempt glob or a file `lighthouse init` manages.
+    """
+    scan = EXTENSIONS.get(path.suffix)
+    toml = root / "lighthouse.toml"
+    if scan is None or not toml.is_file():
+        return []
+    try:
+        cfg = config.load(toml)
+        try:
+            config.lookup(cfg, "project.code_language")
+        except KeyError:
+            return []
+        try:
+            exempt = config.lookup(cfg, "project.code_language_exempt")
+        except KeyError:
+            exempt = []
+    except config.ConfigError as error:
+        raise CannotCheck(str(error)) from error
+    relative = path.relative_to(root).as_posix()
+    if any(fnmatch.fnmatchcase(relative, glob) for glob in exempt):
+        return []
+    if relative in _managed_paths(root):
+        return []
+    try:
+        source = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        raise CannotCheck(f"{path} is not valid UTF-8: {error}") from error
+    found = scan(source)
+    if _name_findings([(1, path.stem)], []):
+        found = sorted([*found, Finding(1, "name", path.stem)], key=lambda f: f.line)
+    return found
+
+
+def _report(path: Path, found: list[Finding]) -> str:
+    lines = [f"code-language: {path} is not English"]
+    for finding in found[:_MAX_LINES]:
+        text = finding.text
+        if finding.kind != "name" and len(text) > _TEXT_LIMIT:
+            text = text[:_TEXT_LIMIT]
+        lines.append(f"{path}:{finding.line}: {finding.kind}: {text}")
+    if len(found) > _MAX_LINES:
+        lines.append(f"… and {len(found) - _MAX_LINES} more")
+    lines.append(
+        "The whole file must be English. A line that is deliberately not English "
+        f'gets "{MARKER}".'
+    )
+    return "\n".join(lines)
+
+
+def main(argv: list[str]) -> int:
+    """`code_language.py <abs-path> <root>`: 0 clean, 1 findings on stdout, 2 could not check."""
+    try:
+        path, root = Path(argv[0]), Path(argv[1])
+        found = check_file(path, root)
+    except Exception as error:  # a crash must never read as findings (rc 1)
+        print(f"code-language: COULD NOT CHECK — {error}", file=sys.stderr)
+        return 2
+    if not found:
+        return 0
+    print(_report(path, found))
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
