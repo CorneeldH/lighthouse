@@ -58,10 +58,10 @@ Indeling naar het model van `pack/python` ([`internal/packs/packs.go`](../../../
 | `pack/go/skills/go-writing/claude/SKILL.md` | de skill, `name: lighthouse-go-writing` |
 | `pack/go/skills/go-writing/agents/SKILL.md` | dezelfde skill met de OpenCode-alinea's, zoals python-writing |
 | `pack/go/instructions/AGENTS.md` | het blok `## Lighthouse: go` |
-| `pack/go/hooks/hooks.json` | `gofmt.sh` op PostToolUse `Edit\|Write`, `go-check.sh` op `Stop` |
+| `pack/go/hooks/hooks.json` | `gofmt.sh` op PostToolUse `Edit\|Write` (timeout 15 s), `go-check.sh` op `Stop` (timeout 120 s) *(eigen keuze na spec-review, r1-f8)* |
 | `pack/go/hooks/gofmt.sh` | zie *Hooks* |
 | `pack/go/hooks/go-check.sh` | zie *Hooks* |
-| `pack/go/requires.toml` | `go`, `gofmt`, `golangci-lint`, `jq`, `git` → de units die ze nodig hebben |
+| `pack/go/requires.toml` | `go`, `gofmt`, `golangci-lint`, `jq`, `git`, `python3`, `tomllib` → de units die ze nodig hebben (KPI-rij 6 draait `python3 …/config.py`) |
 
 Elk nieuw bestand krijgt een `new = true`-regel in [`pack/SOURCES.toml`](../../../../pack/SOURCES.toml).
 
@@ -82,7 +82,7 @@ Kort, zoals dat van python:
 ## Lighthouse: go
 
 - Go code follows `/lighthouse-go-writing`.
-- Two gates check it: `gofmt` after every edit (it formats, and blocks only on a file that does not parse), `go-check` when the session stops (`go vet` and `golangci-lint`; it blocks on a finding).
+- Two gates check it: `gofmt` after every edit (it formats, and blocks only on a file that does not parse), `go-check` when the session stops (`golangci-lint`, `govet` included; it blocks on a finding).
 ```
 
 ## De skill `lighthouse-go-writing`
@@ -159,7 +159,7 @@ outside the repository.` De agents-variant voegt de OpenCode-zin toe.
    | this skill | procedure, KPI table, measurement rules | while planning and writing |
    | `lighthouse-testing` | test norms and the class table | for every test, before the first edit |
    | `.claude/hooks/lighthouse/gofmt.sh` | formatting, per edit | right after the edit |
-   | `.claude/hooks/lighthouse/go-check.sh` | `go vet` and `golangci-lint`, once per turn | at `Stop` |
+   | `.claude/hooks/lighthouse/go-check.sh` | `golangci-lint` (`govet` included), once per turn | at `Stop` |
 
    De agents-variant zegt, als python-writing, dat OpenCode de hooks niet draait en noemt de
    commando's die je dan zelf draait.
@@ -170,8 +170,10 @@ outside the repository.` De agents-variant voegt de OpenCode-zin toe.
    `go`-directive; een `toolchain`-directive met `GOTOOLCHAIN=auto` kan een andere Go draaien dan
    je denkt. Erbij: build tags (lighthouse's `e2e`) vallen buiten `go vet ./...` en
    `go test ./...`; `golangci-lint` neemt ze mee via `.golangci.yml`. Een repo met lintschuld zet
-   `issues.new-from-rev` in zijn eigen `.golangci.yml`; dan meten de hook en de KPI-rij alleen
-   nieuwe bevindingen, zonder dat lighthouse daar config voor nodig heeft.
+   `issues.new-from-rev` in zijn eigen `.golangci.yml`; dan meten de hook en de KPI-rij
+   `golangci-lint run ./...` alleen nieuwe bevindingen, zonder dat lighthouse daar config voor
+   nodig heeft. De KPI-rij `go vet ./...` leest `.golangci.yml` niet en meet de oude vet-schuld
+   mee; meld die rij dan met dat voorbehoud.
 
 ## Hooks
 
@@ -180,37 +182,49 @@ niets gecontroleerd is, nooit stil groen.
 
 **`gofmt.sh`** (PostToolUse `Edit|Write`):
 
-- leest `tool_input.file_path`; geen pad, geen `*.go` of geen bestaand bestand: exit 0;
-- zonder `jq`, met een payload die geen JSON is, of zonder `gofmt`: exit 2 met
+- zonder `jq` of met een payload die geen JSON is: exit 2 met
   `gofmt: COULD NOT CHECK — <reason>`;
+- leest `tool_input.file_path`; geen pad, geen `*.go` of geen bestaand bestand: exit 0;
+- pas daarna, voor een bestaand `.go`-bestand: zonder `gofmt` exit 2 met
+  `gofmt: COULD NOT CHECK — <reason>`. Zo blokkeert een machine zonder Go geen edit van een
+  `.md`-bestand, zoals `ruff-format.sh` *(eigen keuze na spec-review, r1-f6)*;
 - `gofmt -w <file>`, stil;
 - faalt `gofmt` omdat het bestand niet parset: exit 2 met de parsefout. Een `.go`-bestand dat
   niet parset is na de edit altijd fout, ook halverwege een wijziging.
 
 **`go-check.sh`** (Stop, matcher `""`):
 
-- de `stop_hook_active`-guard en de worktree-bewuste `cd` van `ty-check.sh`;
+- de `stop_hook_active`-guard en de worktree-bewuste `cd` van `ty-check.sh`. Die `cd` volgt de
+  `cwd` uit de Stop-payload. Is dat de hoofdcheckout terwijl het werk in een worktree gebeurde,
+  dan controleert de hook de verkeerde boom. Die beperking deelt hij met `ty-check`; de KPI-rijen
+  bij *Reporting done* zijn de vangrails. Beide hooks samen repareren is #54
+  *(besloten na spec-review, r1-f3)*;
 - draait bij elke `Stop`, ook als er geen `.go`-bestand gewijzigd is. Een check "gewijzigd
   ten opzichte van `HEAD`" mist Go-werk dat in dezelfde beurt al gecommit is, en de test-gate bij
   commit draait geen vet en geen lint. Gemeten kost de check in lighthouse 0,3 s;
 - zonder `jq`, `git`, `go` of `golangci-lint`: exit 0 met een `systemMessage`
   `go-check: COULD NOT CHECK — <reason>`, zoals `ty-check`; blokkeren bij `Stop` zou de sessie
-  vasthouden;
+  vasthouden. `golangci-lint` heeft `go` nodig om packages te laden;
 - de pin van `golangci-lint` staat in `.golangci-version` in de repo-root, als `ruff-format.sh`
   met `.ruff-version`. Zonder dat bestand draait de hook ongepind: pinnen is een projectkeuze.
   Geeft `golangci-lint version` een andere versie dan de pin: `COULD NOT CHECK` met beide
-  versies, want andere versies vinden andere dingen dan CI. De hook downloadt niets; dat zou
+  versies, want andere versies vinden andere dingen dan CI. De vergelijking: de pin zonder
+  witruimte en zonder voorloop-`v` tegen `golangci-lint version --short`, dat `2.15.0` print
+  (gemeten, zonder `v`); `v2.15.0` en `2.15.0` zijn dus gelijk. Een test pint precies dat geval. De hook downloadt niets; dat zou
   netwerk vragen en `Stop` traag maken. Lighthouse krijgt `.golangci-version` met `v2.15.0`,
   dezelfde versie als `ci.yml`. Een test pint dat beide gelijk zijn;
-- `go vet ./...`, dan `golangci-lint run ./...`; een bevinding: exit 2 met de output, zodat de
-  agent het in dezelfde beurt herstelt. Een build die faalt blokkeert net zo: gemeten geven
-  `go vet` en `golangci-lint run` er dezelfde exitcode 1 voor als voor een bevinding, en een
-  ontbrekende module ziet er in de uitvoer van `go vet` uit als een bevinding. Een build die
-  faalt is bovendien bijna altijd code van de agent die niet compileert; met `COULD NOT CHECK`
-  zou de agent zijn beurt beëindigen op kapotte code. De `stop_hook_active`-guard voorkomt een
-  lus als de oorzaak buiten de code ligt. Een exitcode die "kon niet linten" betekent (een
-  kapotte config, een golangci-lint die zelf faalt) geeft `COULD NOT CHECK` in plaats van een
-  oordeel over de code.
+- alleen `golangci-lint run ./...`, geen aparte `go vet ./...`. `govet` zit in de set
+  `standard` en in de standaardset zonder config (gemeten met `golangci-lint linters`), dus een
+  vet-bevinding blokkeert nog steeds. Een aparte `go vet` leest `.golangci.yml` niet: een repo
+  met vet-schuld zou dan ook met `issues.new-from-rev` op oude bevindingen blokkeren
+  *(besloten na spec-review, r1-f2)*. Een bevinding: exit 2 met de output, zodat de agent het in
+  dezelfde beurt herstelt. Een build die faalt blokkeert net zo: gemeten geeft
+  `golangci-lint run` er dezelfde exitcode 1 voor als voor een bevinding (een `typecheck`-issue),
+  ook voor een ontbrekende module. Een build die faalt is bovendien bijna altijd code van de
+  agent die niet compileert; met `COULD NOT CHECK` zou de agent zijn beurt beëindigen op kapotte
+  code. De `stop_hook_active`-guard voorkomt een lus als de oorzaak buiten de code ligt. Een
+  exitcode die "kon niet linten" betekent (een kapotte config, een golangci-lint die zelf faalt)
+  geeft `COULD NOT CHECK` in plaats van een oordeel over de code.
 
 **Bash-write-gate.** `GATES[".go"] = "gofmt.sh"` en `GATE_PACKS["gofmt.sh"] = "go"` in
 [`pack/core/lib/bash_writes.py`](../../../../pack/core/lib/bash_writes.py). Zo draait `gofmt.sh`
@@ -226,7 +240,8 @@ noemt `lighthouse-go-writing` naast python-writing en shell-gates, "if present".
 
 ## Dogfood
 
-Lighthouse installeert het pakket bij zichzelf: `go run ./cmd/lighthouse init --upgrade --pack go`.
+Lighthouse installeert het pakket bij zichzelf: `go run ./cmd/lighthouse init --upgrade --pack go --yes`
+(zonder `--yes` vraagt `init` om bevestiging en schrijft hij in een niet-interactieve shell niets).
 Dat zet `go` in `.lighthouse/manifest.toml`, schrijft de skills naar `.claude/skills/` en
 `.agents/skills/`, de hooks naar `.claude/hooks/lighthouse/`, de registratie in
 `.claude/settings.json` en het blok in `AGENTS.md`. De geïnstalleerde kopie wordt gecommit; CI
@@ -241,15 +256,15 @@ commit op, niet pas later.
 
 - `tests/pack/go/test_go_writing.py`, naar het model van
   [`tests/pack/python/test_python_writing.py`](../../../../tests/pack/python/test_python_writing.py):
-  frontmatter; elke KPI-rij draagt een commando; `go test -shuffle=on` is de testrij en `-count=1`
-  is geen standaard; de verwijzing naar `lighthouse-testing` en de classificatiezin; de Go-vorm
+  frontmatter; elke KPI-rij draagt een commando; de testrij is `go test -race -shuffle=on ./...`
+  en `-count=1` is geen standaard; de verwijzing naar `lighthouse-testing` en de classificatiezin; de Go-vorm
   van de normen; *Reporting done*; de varianten verschillen alleen in de OpenCode-alinea's;
   Engels.
 - `tests/pack/go/test_go_pack.py`, naar `test_python_pack.py`: detectie op `go.mod`, geen
   fragment.
 - Hooktests die de scripts draaien tegen een `tmp_path` (klasse `hook/gate`): `gofmt.sh` met een
   bestand dat geformatteerd wordt, een dat niet parset, een niet-`.go`-bestand en zonder `gofmt`
-  op het `PATH`; `go-check.sh` met een bevinding, een schone run, een "kon niet linten"-exitcode,
+  op het `PATH`; `go-check.sh` met een bevinding, een build die faalt, een schone run, een "kon niet linten"-exitcode,
   een pin die niet klopt, een ontbrekende tool en `stop_hook_active`. De tests zetten **stubs**
   voor `go`, `gofmt` en `golangci-lint` op het `PATH`: wat de hook beslist, is hoe hij
   exitcodes en output vertaalt naar blokkeren of doorlaten, en dat test je met gecontroleerde
@@ -261,7 +276,7 @@ commit op, niet pas later.
 - `.lighthouse/scripts/check-instructions.sh` blijft groen; let op check 4 (overlap tussen
   python-writing, go-writing en testing).
 
-Verificatie: `uv run pytest -q && go test ./...` (de test-gate), `go test -tags e2e ./e2e/`,
+Verificatie: `uv run pytest -q && go test -shuffle=on ./...` (de test-gate na de dogfood), `go test -tags e2e ./e2e/`,
 `.lighthouse/scripts/check-instructions.sh`, en na de dogfood `go run ./cmd/lighthouse init --upgrade`
 met `No changes.`.
 
@@ -280,7 +295,7 @@ Niet door de gebruiker besloten, wel door mij gemaakt:
 
 - detectie op `go.mod` in de root;
 - geen fragment, vanwege de mergeregel;
-- `gofmt` per edit, `vet` en lint bij `Stop`, `go-check` bij elke `Stop`;
+- `gofmt` per edit, lint (met `govet`) bij `Stop`, `go-check` bij elke `Stop`;
 - de pin van `golangci-lint` in `.golangci-version`, een afwijkende versie geeft
   `COULD NOT CHECK`;
 - stubs in de hooktests, geen wijziging aan `ci.yml`;
