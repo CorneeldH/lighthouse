@@ -6,6 +6,14 @@
 # `[project] code_language_paths`. Blocking: exit 2 + stderr. bash-write-gates calls this same script for files a Bash
 # call wrote.
 #
+# Layer 2 (#37): with `[code_language_llm]` the checker asks a chain of models
+# about the doubtful units. When that chain gives no verdict, the checker
+# prints a notice without findings (rc 0): it goes to the user
+# (`systemMessage`) and to the agent (`additionalContext`) and never blocks.
+# Under bash-write-gates (LIGHTHOUSE_UNDER_BASH_GATES set) layer 2 does not run
+# and the notice goes to stdout as plain text, `code-language: NOTICE — ` first;
+# bash_writes.py passes it on.
+#
 # Norm and rationale: docs/developer/planning/specs/2026-10-24-codetaal-hook-design.md.
 # This hook checks the written file afterwards. Dutch
 # comments, docstrings and names are the findings; string literals are not
@@ -95,7 +103,17 @@ trap 'rm -f "$STDERR_FILE"' EXIT
 OUTPUT=$(python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/code_language.py" "$ABS" "$ROOT" 2>"$STDERR_FILE")
 RC=$?
 case "$RC" in
-  0) exit 0 ;;
+  0)
+    if [ -n "$OUTPUT" ]; then
+      if [ -n "${LIGHTHOUSE_UNDER_BASH_GATES:-}" ]; then
+        printf '%s\n' "$OUTPUT"
+      else
+        jq -cn --arg m "$OUTPUT" \
+          '{systemMessage: $m, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}'
+      fi
+    fi
+    exit 0
+    ;;
   1)
     # Only the checker's own report is a finding; any other exit 1 is a crash
     # (an import error, a missing word list) and nothing was checked.

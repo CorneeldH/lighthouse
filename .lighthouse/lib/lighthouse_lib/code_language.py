@@ -4,7 +4,8 @@
 Detection only: callers decide where to look (comments, docstrings, names). The
 judgement per name or block is layer 1: `code_language_score` compares how often each
 word occurs in English and in Dutch. A unit is a finding, a doubt (not a finding; a
-later layer may look at it) or clean.
+later layer may look at it) or clean. Layer 2 (`code_language_llm`, `resolve`) asks a
+chain of models about the doubts only; it can add findings, never remove one.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 import ast
 import fnmatch
 import io
+import os
 import re
 import sys
 import tokenize
@@ -25,11 +27,15 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lighthouse_lib import config
+from lighthouse_lib import code_language_llm
 from lighthouse_lib import code_language_score
 from lighthouse_lib.code_language_score import split_name
 
 
 MARKER = "lighthouse: allow-language"
+
+# Set by bash_writes.run_gate for every gate it runs: layer 2 is skipped there (besluit 19).
+UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_GATES"
 
 
 class Finding(NamedTuple):
@@ -44,6 +50,7 @@ class Finding(NamedTuple):
 class Inspection(NamedTuple):
     findings: list[Finding]
     doubts: list[Finding]
+    chain: code_language_llm.Chain | None = None  # `[code_language_llm]`; None when absent
 
 
 class CannotCheck(Exception):
@@ -598,6 +605,8 @@ def check_file(path: Path, root: Path) -> Inspection:
             paths = config.lookup(cfg, "project.code_language_paths")
         except KeyError:
             pass
+        # Read for every checked file, doubts or not: a wrong table is COULD NOT CHECK at once.
+        chain = code_language_llm.chain_from(cfg)
     except config.ConfigError as error:
         raise CannotCheck(str(error)) from error
     relative = path.relative_to(root).as_posix()
@@ -627,16 +636,63 @@ def check_file(path: Path, root: Path) -> Inspection:
     return Inspection(
         [f for f in found if not f.doubt],
         [f for f in found if f.doubt],
+        chain,
     )
+
+
+def _line(path: Path, finding: Finding) -> str:
+    """`<path>:<line>: <kind>: <text>`, a block cut to `_TEXT_LIMIT` characters."""
+    text = finding.text
+    if finding.kind != "name" and len(text) > _TEXT_LIMIT:
+        text = text[:_TEXT_LIMIT]
+    return f"{path}:{finding.line}: {finding.kind}: {text}"
+
+
+def _notice(path: Path, doubts: list[Finding], reasons: str, *, prefix: str = "") -> str:
+    """The notice of besluit 11: layer 2 gave no verdict, so these doubts stay unchecked."""
+    lines = [
+        f"code-language: {prefix}layer 2 did not answer ({reasons}); "
+        f"{len(doubts)} doubtful units not checked:"
+    ]
+    lines += [_line(path, doubt) for doubt in doubts]
+    return "\n".join(lines)
+
+
+def resolve(
+    inspection: Inspection, path: Path, *, under_gates: bool, state_dir: Path
+) -> tuple[list[Finding], str | None]:
+    """All findings (layer 1, plus each doubt layer 2 calls NOT-EN) and the notice, or None.
+
+    No doubts or no chain: layer 1 alone, silently (besluit 12). Under bash-write-gates
+    layer 2 does not run and the doubts go into a `NOTICE` (besluit 19). Layer 2 only
+    hears the doubts, never a layer 1 finding (besluit 10).
+    """
+    found = list(inspection.findings)
+    doubts = inspection.doubts
+    if not doubts or inspection.chain is None:
+        return found, None
+    if under_gates:
+        reason = "layer 2 skipped under bash-write-gates"
+        return found, _notice(path, doubts, reason, prefix="NOTICE — ")
+    reply = code_language_llm.ask(
+        inspection.chain, [(d.kind, d.unit or d.text) for d in doubts], state_dir=state_dir
+    )
+    if reply.not_english is None:
+        return found, _notice(path, doubts, "; ".join(reply.failures))
+    layer = f"layer 2 ({reply.model})"
+    found += [
+        d._replace(layer=layer, doubt=False)
+        for d, not_english in zip(doubts, reply.not_english)
+        if not_english
+    ]
+    found.sort(key=lambda f: f.line)
+    return found, None
 
 
 def _report(path: Path, found: list[Finding]) -> str:
     lines = [f"code-language: {path} is not English"]
     for finding in found[:_MAX_LINES]:
-        text = finding.text
-        if finding.kind != "name" and len(text) > _TEXT_LIMIT:
-            text = text[:_TEXT_LIMIT]
-        lines.append(f"{path}:{finding.line}: {finding.kind}: {text} [{finding.layer}]")
+        lines.append(f"{_line(path, finding)} [{finding.layer}]")
     if len(found) > _MAX_LINES:
         lines.append(f"… and {len(found) - _MAX_LINES} more")
     lines.append(
@@ -659,17 +715,30 @@ def _report(path: Path, found: list[Finding]) -> str:
 
 
 def main(argv: list[str]) -> int:
-    """`code_language.py <abs-path> <root>`: 0 clean, 1 findings on stdout, 2 could not check."""
+    """`code_language.py <abs-path> <root>`.
+
+    rc 0 with empty stdout: clean. rc 0 with stdout: only a notice. rc 1: findings on
+    stdout, the notice below them when there is one. rc 2: could not check.
+    """
     try:
         path, root = Path(argv[0]), Path(argv[1])
-        found = check_file(path, root).findings
+        found, notice = resolve(
+            check_file(path, root),
+            path,
+            under_gates=bool(os.environ.get(UNDER_GATES_ENV)),
+            state_dir=code_language_llm.default_state_dir(),
+        )
     except Exception as error:  # a crash must never read as findings (rc 1)
         print(f"code-language: COULD NOT CHECK — {error}", file=sys.stderr)
         return 2
-    if not found:
-        return 0
-    print(_report(path, found))
-    return 1
+    if found:
+        print(_report(path, found))
+        if notice:
+            print(f"\n{notice}")
+        return 1
+    if notice:
+        print(notice)
+    return 0
 
 
 if __name__ == "__main__":

@@ -55,6 +55,10 @@ GATES: dict[str, tuple[str, ...]] = {
     ".markdown": ("worktree-linkcheck.sh",),
 }
 
+# Set for every gate `run_gate` runs; `code_language.UNDER_GATES_ENV` reads it and
+# then skips layer 2 (#37, besluit 19).
+UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_GATES"
+
 # Het pakket dat elke gate levert; ontbreekt de gate, dan noemt de melding het.
 GATE_PACKS: dict[str, str] = {
     "shellcheck.sh": "shell",
@@ -803,6 +807,9 @@ def run_pre(payload: dict) -> int:
 
 _PREFIX = "bash-write-gates:"
 _CANNOT = "COULD NOT CHECK"
+# A gate with rc 0 whose FIRST output line holds this token has a notice for the user and
+# the agent (#37, besluit 19); any other output of a gate with rc 0 is dropped.
+_NOTICE = "NOTICE"
 
 # Spec *Dispatch*: één deadline van 90 s na de start van post, 10 s grace per
 # gate — samen ruim binnen de hooktimeout van 120 s.
@@ -865,7 +872,8 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
 
     Payload `{"tool_name":"Bash","cwd":root,"tool_input":{"file_path":<abs>}}`,
     process cwd = `root`: `ruff-format.sh` looks for its `.ruff-version` from
-    the process cwd, not through the payload. Returns `(classify(rc, output),
+    the process cwd, not through the payload. The gate gets `UNDER_GATES_ENV`
+    set in its environment. Returns `(classify(rc, output),
     output)`, or `(_STOPPED, output)` when a forwarded signal stopped the gate,
     or `(_MISSING, message)` when the gate is not under the repo root.
     """
@@ -886,6 +894,7 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
             stdin_bytes=json.dumps(payload).encode("utf-8"),
             capture=True,
             raise_on_signal=True,
+            env={**os.environ, UNDER_GATES_ENV: "1"},
         )
     except Interrupted as stopped:
         return _STOPPED, stopped.output
@@ -910,19 +919,24 @@ class _Outcome:
 
     Spec *Uitvoer*, plus het besluit uit het plan: bij exit 2 de bundel naar
     stderr én als `additionalContext` naar stdout; bij exit 0 alleen dat
-    laatste, en zonder iets te melden een lege stdout.
+    laatste, en zonder iets te melden een lege stdout. A part noted with
+    `notice=True` also goes to the user, as a top-level `systemMessage`, at exit
+    0 and at exit 2 (#37, besluit 11 and 19).
     """
 
     def __init__(self) -> None:
         self.parts: list[str] = []
+        self.notices: list[str] = []
         self.blocking = False
 
     def block(self, text: str) -> None:
         self.parts.append(text)
         self.blocking = True
 
-    def note(self, text: str) -> None:
+    def note(self, text: str, notice: bool = False) -> None:
         self.parts.append(text)
+        if notice:
+            self.notices.append(text)
 
     def cannot(self, what: str) -> None:
         self.block(f"{_PREFIX} {_CANNOT}: {what}")
@@ -931,12 +945,14 @@ class _Outcome:
         if not self.parts:
             return 0, "", ""
         text = _printable("\n\n".join(self.parts))
-        context = {
+        context: dict[str, object] = {
             "hookSpecificOutput": {
                 "hookEventName": event,
                 "additionalContext": text,
             }
         }
+        if self.notices:
+            context["systemMessage"] = _printable("\n\n".join(self.notices))
         stdout = json.dumps(context) + "\n"
         if self.blocking:
             return 2, stdout, text + "\n"
@@ -1329,6 +1345,9 @@ def _report_verdict(
     dan één wortel dekt — twee wortels kunnen hetzelfde relatieve pad hebben.
     """
     if verdict == "ok":
+        text = output.decode(errors="replace").rstrip("\n")
+        if _NOTICE in text.split("\n", 1)[0]:
+            outcome.note(f"== {label} ({gate}) ==\n{text}", notice=True)
         return
     if verdict == _MISSING:
         outcome.note(f"{_PREFIX} {label} not checked — {output.decode()}")

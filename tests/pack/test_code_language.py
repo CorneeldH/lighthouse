@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.pack._fake_llm import FakeEndpoint
 from tests.pack._testkit import MINIMAL_TOML, load_hook_lib
 
 cl = load_hook_lib("code_language")
@@ -534,3 +535,153 @@ def test_report_names_path(tmp_path, capsys):
     assert f"{path}:1: directory: bestanden [layer 1]" in out
     assert "rename the file" in out[-1]
     assert "code_language_exempt" in out[-1]
+
+
+# --- layer 2 in the checker (#37, besluit 10-12, 19) ---
+
+LAYER1_LINE = "lees_bestand = 1\n"
+DOUBT_LINE = "legacy_processed_lijst_weg = 2\n"
+KEY_ENV = "LLM_TEST_KEY"
+
+
+def _llm_repo(tmp_path, url, key_env=KEY_ENV):
+    table = f'\n[code_language_llm]\nurl = "{url}"\nmodels = ["m1"]\nkey_env = "{key_env}"\n'
+    root = _repo(tmp_path)
+    with (root / "lighthouse.toml").open("a", encoding="utf-8") as toml:
+        toml.write(table)
+    return root
+
+
+@pytest.fixture
+def llm_key(monkeypatch):
+    monkeypatch.setenv(KEY_ENV, "sekrit")
+
+
+def _resolve(root, path, tmp_path, under_gates=False):
+    return cl.resolve(
+        cl.check_file(path, root), path, under_gates=under_gates, state_dir=tmp_path / "state"
+    )
+
+
+def _lines_layers(found):
+    return [(f.line, f.layer) for f in found]
+
+
+def test_not_en_becomes_finding(tmp_path, llm_key):
+    with FakeEndpoint(verdict="NOT-EN") as fake:
+        root = _llm_repo(tmp_path, fake.url)
+        path = _write(root, "a.py", LAYER1_LINE + DOUBT_LINE)
+        found, notice = _resolve(root, path, tmp_path)
+    assert _lines_layers(found) == [(1, "layer 1"), (2, "layer 2 (m1)")]
+    assert notice is None
+    prompt = fake.requests[0]["messages"][0]["content"]
+    assert "legacy_processed_lijst_weg" in prompt
+    assert "lees_bestand" not in prompt
+
+
+def test_en_drops_doubt(tmp_path, llm_key):
+    with FakeEndpoint(verdict="EN") as fake:
+        root = _llm_repo(tmp_path, fake.url)
+        path = _write(root, "a.py", LAYER1_LINE + DOUBT_LINE)
+        found, notice = _resolve(root, path, tmp_path)
+    assert _lines_layers(found) == [(1, "layer 1")]
+    assert notice is None
+    assert len(fake.requests) == 1
+
+
+def test_layer1_only_no_call(tmp_path, llm_key):
+    with FakeEndpoint() as fake:
+        root = _llm_repo(tmp_path, fake.url)
+        path = _write(root, "a.py", LAYER1_LINE)
+        found, notice = _resolve(root, path, tmp_path)
+    assert _lines_layers(found) == [(1, "layer 1")]
+    assert notice is None
+    assert fake.requests == []
+
+
+def test_no_chain_is_silent(tmp_path, monkeypatch):
+    root = _repo(tmp_path)
+    path = _write(root, "a.py", LAYER1_LINE + DOUBT_LINE)
+    asked = []
+    monkeypatch.setattr(cl.code_language_llm, "ask", lambda *a, **k: asked.append(a))
+    found, notice = _resolve(root, path, tmp_path)
+    assert _lines_layers(found) == [(1, "layer 1")]
+    assert notice is None
+    assert asked == []
+
+
+@pytest.mark.parametrize(
+    ("mode", "key", "reason"),
+    [
+        ("http500", True, "m1: HTTP 500"),
+        ("garbage", True, "m1: unreadable answer"),
+        ("answer", False, "key: "),
+    ],
+)
+def test_failed_chain_notice(tmp_path, monkeypatch, mode, key, reason):
+    if key:
+        monkeypatch.setenv(KEY_ENV, "sekrit")
+    else:
+        monkeypatch.delenv(KEY_ENV, raising=False)
+    with FakeEndpoint(default=mode) as fake:
+        root = _llm_repo(tmp_path, fake.url)
+        path = _write(root, "a.py", LAYER1_LINE + DOUBT_LINE)
+        found, notice = _resolve(root, path, tmp_path)
+    assert _lines_layers(found) == [(1, "layer 1")]
+    head, doubt_line = notice.split("\n")
+    assert doubt_line == f"{path}:2: name: legacy_processed_lijst_weg"
+    if key:
+        assert notice == (
+            f"code-language: layer 2 did not answer ({reason}); 1 doubtful units not checked:\n"
+            f"{path}:2: name: legacy_processed_lijst_weg"
+        )
+    else:
+        assert head.startswith("code-language: layer 2 did not answer (key: ")
+        assert head.endswith("); 1 doubtful units not checked:")
+        assert fake.requests == []
+
+
+def test_under_gates_skips(tmp_path, llm_key):
+    with FakeEndpoint() as fake:
+        root = _llm_repo(tmp_path, fake.url)
+        path = _write(root, "a.py", LAYER1_LINE + DOUBT_LINE)
+        found, notice = _resolve(root, path, tmp_path, under_gates=True)
+    assert fake.requests == []
+    assert _lines_layers(found) == [(1, "layer 1")]
+    assert notice == (
+        "code-language: NOTICE — layer 2 did not answer (layer 2 skipped under "
+        "bash-write-gates); 1 doubtful units not checked:\n"
+        f"{path}:2: name: legacy_processed_lijst_weg"
+    )
+
+
+def test_notice_truncates_long_text(tmp_path, monkeypatch):
+    root = _llm_repo(tmp_path, "http://unused.invalid/v1")
+    path = _write(root, "a.py")
+    long = cl.Finding(3, "comment", "x" * 70, doubt=True, unit="x" * 70)
+    inspection = cl.Inspection([], [long], cl.code_language_llm.Chain("u", ("m1",), None, None))
+    _found, notice = cl.resolve(inspection, path, under_gates=True, state_dir=tmp_path)
+    assert notice.split("\n")[1] == f"{path}:3: comment: {'x' * 60}"
+
+
+def test_bad_chain_is_cannot_check(tmp_path):
+    root = _repo(tmp_path)
+    with (root / "lighthouse.toml").open("a", encoding="utf-8") as toml:
+        toml.write('\n[code_language_llm]\nurl = "http://h/v1"\nmodels = []\n')
+    for content in (LAYER1_LINE + DOUBT_LINE, "x = 1\n"):
+        with pytest.raises(cl.CannotCheck):
+            cl.check_file(_write(root, "a.py", content), root)
+
+
+def test_main_notice_contract(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv(cl.UNDER_GATES_ENV, "1")
+    root = _llm_repo(tmp_path, "http://unused.invalid/v1")
+    path = _write(root, "a.py", DOUBT_LINE)
+    assert cl.main([str(path), str(root)]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("code-language: NOTICE — layer 2 did not answer")
+    path = _write(root, "b.py", LAYER1_LINE + DOUBT_LINE)
+    assert cl.main([str(path), str(root)]) == 1
+    out = capsys.readouterr().out
+    assert out.startswith(f"code-language: {path} is not English")
+    assert "\ncode-language: NOTICE — layer 2 did not answer" in out

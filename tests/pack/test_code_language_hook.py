@@ -9,8 +9,12 @@ is tested and not a reimplementation of it.
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
+import pytest
+
+from tests.pack._fake_llm import FakeEndpoint
 from tests.pack._testkit import GIT_ENV, INSTALLED_HOOKS, MINIMAL_TOML, git
 
 HOOK = INSTALLED_HOOKS / "code-language.sh"
@@ -188,3 +192,75 @@ def test_hook_toml_out_of_scope(tmp_path):
     result = _run(str(_write(root, "docs/notulen.toml", "x = 1\n")), root)
     assert result.returncode == 0
     assert result.stderr == ""
+
+
+# --- layer 2 (#37): the notice, the deadline, and the Bash path ---
+
+LAYER1_LINE = "lees_bestand = 1\n"
+DOUBT_LINE = "legacy_processed_lijst_weg = 2\n"
+
+
+def _llm_repo(tmp_path: Path, url: str) -> Path:
+    table = f'\n[code_language_llm]\nurl = "{url}"\nmodels = ["m1"]\nkey_env = "LLM_TEST_KEY"\n'
+    return _repo(tmp_path / "r", ON_TOML + table)
+
+
+def _llm_env(tmp_path: Path, **extra: str) -> dict[str, str]:
+    xdg = tmp_path / "xdg"
+    xdg.mkdir(exist_ok=True)
+    return {"XDG_RUNTIME_DIR": str(xdg), "LLM_TEST_KEY": "sekrit", **extra}
+
+
+def _notice_json(stdout: str) -> tuple[str, str]:
+    data = json.loads(stdout)
+    specific = data["hookSpecificOutput"]
+    assert specific["hookEventName"] == "PostToolUse"
+    return data["systemMessage"], specific["additionalContext"]
+
+
+def test_hook_notice_without_findings(tmp_path):
+    with FakeEndpoint(default="http500") as fake:
+        root = _llm_repo(tmp_path, fake.url)
+        result = _run(str(_write(root, "a.py", DOUBT_LINE)), root, env=_llm_env(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    system, context = _notice_json(result.stdout)
+    assert "legacy_processed_lijst_weg" in system
+    assert "legacy_processed_lijst_weg" in context
+    assert "layer 2 did not answer (m1: HTTP 500)" in system
+
+
+def test_hook_notice_with_findings(tmp_path):
+    with FakeEndpoint(default="http500") as fake:
+        root = _llm_repo(tmp_path, fake.url)
+        file = _write(root, "a.py", LAYER1_LINE + DOUBT_LINE)
+        result = _run(str(file), root, env=_llm_env(tmp_path))
+    assert result.returncode == 2
+    assert f"{file}:1: name: lees_bestand [layer 1]" in result.stderr
+    assert "layer 2 did not answer" in result.stderr
+    assert f"{file}:2: name: legacy_processed_lijst_weg" in result.stderr
+
+
+@pytest.mark.parametrize("mode", ["silent", "drip", "http://lighthouse-test.invalid/v1"])
+def test_hook_ends_within_deadline(tmp_path, mode):
+    with FakeEndpoint(default=mode if not mode.startswith("http") else "answer") as fake:
+        root = _llm_repo(tmp_path, mode if mode.startswith("http") else fake.url)
+        file = _write(root, "a.py", DOUBT_LINE)
+        start = time.monotonic()
+        result = _run(str(file), root, env=_llm_env(tmp_path))
+        elapsed = time.monotonic() - start
+    assert elapsed < 10, elapsed
+    assert result.returncode == 0, result.stderr
+    system, _context = _notice_json(result.stdout)
+    assert "layer 2 did not answer (m1: " in system
+
+
+def test_hook_under_gates(tmp_path):
+    with FakeEndpoint() as fake:
+        root = _llm_repo(tmp_path, fake.url)
+        env = _llm_env(tmp_path, LIGHTHOUSE_UNDER_BASH_GATES="1")
+        result = _run(str(_write(root, "a.py", DOUBT_LINE)), root, env=env)
+    assert fake.requests == []
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("code-language: NOTICE — ")
+    assert "legacy_processed_lijst_weg" in result.stdout

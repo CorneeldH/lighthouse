@@ -197,7 +197,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/code-language.sh"
 package = "core"
 version = "dev"
-sha256 = "01843343eadbccdac0cf7e17b1927b90c0950561ff0268e19ffcb7b173e20b4e"
+sha256 = "0eed1755dfe91becb592baa5a9a86216674cd77d1b970497a7500777c2450246"
 
 [[unit]]
 kind = "file"
@@ -539,14 +539,14 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "baca25eb9f711c462689856f82cb1d80099194ba24d6e1cff15ad099d64492d3"
+sha256 = "f60a6fdf656b4411b10776b11afedfdc6f475aa195e1f58e411b53b86aa01ef4"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language.py"
 package = "core"
 version = "dev"
-sha256 = "c25a7d42badbda23e65dd36767a4ad278a0e9c6bb0545dddacd471e35a5770a2"
+sha256 = "c153383e5df864cad39226b316a2b33f7252a1b0e397968cb9cb25eac20fbb6d"
 
 [[unit]]
 kind = "file"
@@ -602,7 +602,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/deadline.py"
 package = "core"
 version = "dev"
-sha256 = "65937fd24b125331228522941d9dab7f5b3e4615b9dcc8be6ba3b0421e99540e"
+sha256 = "0f67cbead7d5656ac782dc3b0010528fe71b82b0d8d01d38575693081751689f"
 
 [[unit]]
 kind = "file"
