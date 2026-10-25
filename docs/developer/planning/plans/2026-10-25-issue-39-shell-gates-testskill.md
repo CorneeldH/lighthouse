@@ -27,8 +27,12 @@ sectie *The Python form of lighthouse-testing*, pairing-rij) en de tests in
   description toe. De frontmatter-description verandert niet.
 - De classificatiezin letterlijk zoals in `lighthouse-testing` (*Classify first*), dus Brits:
   `This is a <class> change; the likely regression surface is <observable behaviour>.` Het issue
-  schrijft `behavior`; de skill volgt de testskill, zodat een agent één zin leert. Noem die
-  afwijking in de PR-evidence.
+  schrijft `behavior`; de skill volgt de testskill, zodat een agent één zin leert. De spec
+  (*De classificatiezin en de klassentabel*) is daarop rechtgezet. Noem de afwijking van het
+  issue-AC in de PR-evidence.
+- Buiten Claude Code (Codex, OpenCode) draait de pre-commit-hook niet: draai dan vóór élke commit
+  de volledige gate `uv run pytest -q && go test ./...` (`[test_gate] command`), naast de
+  gerichte runs in de taken.
 - Geen eigen klassentabel in shell-gates: alleen een verwijzing naar *Classify first*.
 - Nieuwe tekst bevat geen van de strings die `test_no_paia_references` verbiedt (o.a. `paia`,
   `ceda`, `ruff-format`, `gate-assert`, `2026-08-`), geen Nederlandse woorden uit `test_english`,
@@ -69,6 +73,7 @@ def test_points_to_the_testing_skill(variant):
     domain = _text(variant).split("## Domain", 1)[1].split("\n## ", 1)[0]
     assert "lighthouse-testing" in domain
     assert "*Classify first*" in domain
+    assert "Before the first edit" in domain
     assert CLASSIFICATION in domain
 ```
 
@@ -124,7 +129,7 @@ def test_shell_form_of_the_testing_norms(variant):
     section = text.split("## The shell form of lighthouse-testing", 1)[1].split("\n## ", 1)[0]
     for phrase in (
         "temporary directory",
-        "exit code",
+        "the exit code and the output",
         "never read or grep the source",
         "one input that must block and one that must pass",
     ):
@@ -197,6 +202,10 @@ Expected: 2 failed (`assert 0 == 1`).
 Run: `uv run pytest -q && go test ./...` → groen.
 Run: `go run ./cmd/lighthouse init --upgrade` → `No changes.`
 Run: `bash .lighthouse/scripts/check-instructions.sh` → rc 0.
+Deze repo installeert alleen `core`, dus check 4 ziet shell-gates hier niet; het bewijs voor het
+AC over check 4 is `test_descriptions_pass_the_overlap_check`
+(`tests/pack/test_skill_contracts.py`), die elke pack-skill installeert en in de volledige gate
+meedraait. Noem die test in de PR-evidence naast de rc 0.
 
 - [ ] **Stap 5: Commit**
 
@@ -207,5 +216,8 @@ git commit -m "feat(shell): pairing van shell-gates noemt lighthouse-testing (#3
 
 - [ ] **Stap 6: Mutatiecheck** (`lighthouse-testing`), op de schone tree na de commit: zet in
   één variant `behaviour` → `behavior` en haal de pairing-rij weg; draai
-  `uv run pytest -q tests/pack/shell`; verwacht rood op `test_points_to_the_testing_skill` en
-  `test_pairing_names_the_testing_skill`. Herstel met `git checkout -- pack/shell/skills/shell-gates`.
+  `uv run pytest -q tests/pack/shell`; verwacht rood op `test_points_to_the_testing_skill`,
+  `test_pairing_names_the_testing_skill` en `test_variants_keep_their_difference` (alleen één
+  variant is gemuteerd). Herstel met `git checkout -- pack/shell/skills/shell-gates`. Tweede
+  mutatie: haal in béide varianten `and the output` weg; verwacht rood op
+  `test_shell_form_of_the_testing_norms`. Herstel weer met `git checkout`.
