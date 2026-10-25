@@ -107,3 +107,44 @@ func TestOpenTwiceIsLocked(t *testing.T) {
 		t.Errorf("Close third: %v", err)
 	}
 }
+
+func TestOpenPutsFilesAtThePath(t *testing.T) {
+	for _, name := range []string{"plain", "with space", "with?query", "with#hash", "with%41pct"} {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), name)
+			path := filepath.Join(dir, "l.db")
+			s, err := Open(context.Background(), path)
+			if err != nil {
+				t.Fatalf("Open: %v", err)
+			}
+			defer func() { _ = s.Close() }()
+			for _, f := range []string{path, path + ".lock"} {
+				if _, err := os.Stat(f); err != nil {
+					t.Errorf("expected file: %v", err)
+				}
+			}
+			entries, err := os.ReadDir(filepath.Dir(dir))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 {
+				t.Errorf("parent holds %d entries, want only %q", len(entries), name)
+			}
+		})
+	}
+}
+
+func TestOpenRelativePath(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	s, err := Open(context.Background(), filepath.Join("sub", "l.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	for _, f := range []string{"l.db", "l.db.lock"} {
+		if _, err := os.Stat(filepath.Join(dir, "sub", f)); err != nil {
+			t.Errorf("expected file: %v", err)
+		}
+	}
+}

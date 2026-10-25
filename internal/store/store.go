@@ -34,6 +34,8 @@ func DefaultPath() (string, error) {
 }
 
 // dsn builds the connection string; the pragmas apply to every connection.
+// path must be absolute: the file: URI form is built from a URL, which
+// escapes ?, # and % so SQLite opens exactly path.
 func dsn(path string) string {
 	q := url.Values{"_pragma": {
 		"journal_mode(WAL)",
@@ -41,13 +43,17 @@ func dsn(path string) string {
 		"foreign_keys(ON)",
 		"synchronous(NORMAL)",
 	}}
-	return "file:" + path + "?" + q.Encode()
+	return (&url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}).String()
 }
 
 // Open takes the single-server lock and opens the database at path,
 // creating its directory (0700) when missing. A second Open on the same
 // path fails with a *LockedError until the first Store is closed.
 func Open(ctx context.Context, path string) (*Store, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve database path: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)
 	}
