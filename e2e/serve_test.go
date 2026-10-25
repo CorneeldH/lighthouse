@@ -1,0 +1,164 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"bufio"
+	"bytes"
+	"errors"
+	"net"
+	"net/http"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+)
+
+type serveProc struct {
+	cmd  *exec.Cmd
+	addr string
+	done chan error
+}
+
+// startServe starts `lighthouse serve` and returns once it printed its start line. The
+// child is killed at cleanup, so a red test leaves no server behind.
+func startServe(t *testing.T, bin string, args ...string) *serveProc {
+	t.Helper()
+	p := startRaw(t, bin, args...)
+	lines := make(chan string, 1)
+	go func() {
+		sc := bufio.NewScanner(p.pipe)
+		for sc.Scan() {
+			if _, rest, ok := strings.Cut(sc.Text(), "listening on "); ok {
+				lines <- rest
+				break
+			}
+		}
+		for sc.Scan() { // drain so the child never blocks on a full pipe
+		}
+	}()
+	select {
+	case addr := <-lines:
+		p.addr = addr
+	case err := <-p.done:
+		t.Fatalf("serve exited before listening: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("no start line within 10s")
+	}
+	return p.serveProc
+}
+
+type rawProc struct {
+	*serveProc
+	pipe interface{ Read([]byte) (int, error) }
+}
+
+func startRaw(t *testing.T, bin string, args ...string) *rawProc {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
+	cmd.Env = cleanEnv()
+	pipe, err := cmd.StderrPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	p := &serveProc{cmd: cmd, done: make(chan error, 1)}
+	go func() { p.done <- cmd.Wait() }()
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+	return &rawProc{serveProc: p, pipe: pipe}
+}
+
+func health(t *testing.T, addr string) {
+	t.Helper()
+	c := http.Client{Timeout: 5 * time.Second}
+	resp, err := c.Get("http://" + addr + "/api/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("health = %d, want 200", resp.StatusCode)
+	}
+}
+
+func exitCode(t *testing.T, done <-chan error) int {
+	t.Helper()
+	select {
+	case err := <-done:
+		if err == nil {
+			return 0
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			return ee.ExitCode()
+		}
+		t.Fatal(err)
+	case <-time.After(15 * time.Second):
+		t.Fatal("process did not exit within 15s")
+	}
+	return -1
+}
+
+func TestServeSignals(t *testing.T) {
+	bin := buildLighthouse(t)
+	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGINT} {
+		t.Run(sig.String(), func(t *testing.T) {
+			p := startServe(t, bin, "serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"))
+			health(t, p.addr)
+			if err := p.cmd.Process.Signal(sig); err != nil {
+				t.Fatal(err)
+			}
+			if code := exitCode(t, p.done); code != 0 {
+				t.Fatalf("exit code = %d, want 0", code)
+			}
+		})
+	}
+}
+
+func TestServeSecondInstanceRefused(t *testing.T) {
+	bin := buildLighthouse(t)
+	db := filepath.Join(t.TempDir(), "l.db")
+	first := startServe(t, bin, "serve", "--addr", "127.0.0.1:0", "--db", db)
+
+	cmd := exec.Command(bin, "serve", "--addr", "127.0.0.1:0", "--db", db)
+	cmd.Env = cleanEnv()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	done := make(chan error, 1)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+	go func() { done <- cmd.Wait() }()
+	if code := exitCode(t, done); code != 1 {
+		t.Fatalf("second instance exit code = %d, want 1; stderr: %s", code, stderr.String())
+	}
+	for _, want := range []string{"another lighthouse serve holds", "l.db.lock"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("stderr lacks %q: %s", want, stderr.String())
+		}
+	}
+	health(t, first.addr)
+}
+
+func TestServePortInUse(t *testing.T) {
+	bin := buildLighthouse(t)
+	db := filepath.Join(t.TempDir(), "l.db")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	failing := startRaw(t, bin, "serve", "--addr", ln.Addr().String(), "--db", db)
+	if code := exitCode(t, failing.done); code != 1 {
+		t.Fatalf("exit code = %d, want 1", code)
+	}
+
+	p := startServe(t, bin, "serve", "--addr", "127.0.0.1:0", "--db", db)
+	health(t, p.addr)
+}
