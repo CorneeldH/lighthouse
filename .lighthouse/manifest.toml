@@ -546,7 +546,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language.py"
 package = "core"
 version = "dev"
-sha256 = "d088f74fe92faa505776ff1a2211661277e395dcc6999b39243f00a391166cba"
+sha256 = "d986eb81c85469fdfba6f991c4ae8243f6d25d3cbc77b2214919bd995e5b8958"
 
 [[unit]]
 kind = "file"
@@ -564,6 +564,13 @@ sha256 = "e94cdf3880fedb22b3f3aef9794e7910664c762626f2f4ec088a3cc8684cb6fb"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language_jargon.txt"
+package = "core"
+version = "dev"
+sha256 = "7615c2234e679155fd755ad7eb61cd7bcafcffff5b51f433f45127b3dfc2f589"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language_nl_content.txt"
 package = "core"
 version = "dev"
@@ -575,6 +582,13 @@ path = ".lighthouse/lib/lighthouse_lib/code_language_nl_function.txt"
 package = "core"
 version = "dev"
 sha256 = "34a3ae75d240dc3663a630a2c0729e47d4f2ba8d88ad6733ff8f0fd8112976a0"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language_score.py"
+package = "core"
+version = "dev"
+sha256 = "6d9ae88520e4ea3dd1af263a5f43bfdfc42f66f8b6e04f7a4d8228fc7a7d5a22"
 
 [[unit]]
 kind = "file"

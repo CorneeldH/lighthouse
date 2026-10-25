@@ -29,6 +29,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lighthouse_lib import config
+from lighthouse_lib.code_language_score import split_name, words
 
 
 def _read_list(filename: str) -> frozenset[str]:
@@ -40,20 +41,6 @@ def _read_list(filename: str) -> frozenset[str]:
 FUNCTION_WORDS = _read_list("code_language_nl_function.txt")
 CONTENT_WORDS = _read_list("code_language_nl_content.txt")
 _ALL_WORDS = FUNCTION_WORDS | CONTENT_WORDS
-
-# An acronym run ("HTTP" in "HTTPServer") or a capitalised or lower-case word.
-_NAME_PART = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
-_WORD = re.compile(r"[^\W\d_]+")
-
-
-def split_name(name: str) -> list[str]:
-    """Split an identifier on `_`, digits and case changes; lower-case, no empty parts."""
-    return [part.lower() for part in _NAME_PART.findall(name)]
-
-
-def words(text: str) -> list[str]:
-    """The words of `text`: runs of letters (accents included), lower-case."""
-    return _WORD.findall(text.lower())
 
 
 def is_dutch_text(text: str) -> bool:
