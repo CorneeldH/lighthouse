@@ -26,10 +26,10 @@ sectie *The Python form of lighthouse-testing*, pairing-rij) en de tests in
   `test_variants_keep_their_difference` laat alleen de OpenCode-noot en de OpenCode-zin in de
   description toe. De frontmatter-description verandert niet.
 - De classificatiezin letterlijk zoals in `lighthouse-testing` (*Classify first*), dus Brits:
-  `This is a <class> change; the likely regression surface is <observable behaviour>.` Het issue
-  schrijft `behavior`; de skill volgt de testskill, zodat een agent één zin leert. De spec
-  (*De classificatiezin en de klassentabel*) is daarop rechtgezet. Noem de afwijking van het
-  issue-AC in de PR-evidence.
+  `This is a <class> change; the likely regression surface is <observable behaviour>.` De skill volgt
+  de testskill, zodat een agent één zin leert. Issue #39 (AC2) en de spec (*De classificatiezin
+  en de klassentabel*) zijn daarop rechtgezet: issue, spec, plan en `lighthouse-testing` dragen
+  dezelfde letterlijke zin.
 - Buiten Claude Code (Codex, OpenCode) draait de pre-commit-hook niet: draai dan vóór élke commit
   de volledige gate `uv run pytest -q && go test ./...` (`[test_gate] command`), naast de
   gerichte runs in de taken.
