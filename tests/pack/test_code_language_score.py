@@ -137,3 +137,23 @@ def test_missing_data_is_data_error(monkeypatch):
     finally:
         monkeypatch.undo()
         score.frequencies.cache_clear()
+
+
+def test_corrupt_data_is_data_error(monkeypatch, tmp_path):
+    import gzip
+    import zlib
+
+    rows = "".join(f"w{i}\t{i % 70}\t{i % 50}\n" for i in range(3000))
+    body = bytearray(gzip.compress(rows.encode()))
+    body[20] ^= 0xFF  # one corrupted byte early in the deflate stream
+    with pytest.raises(zlib.error):  # guards the fixture: it must trigger zlib.error
+        gzip.decompress(bytes(body))
+    (tmp_path / "bad.tsv.gz").write_bytes(bytes(body))
+    monkeypatch.setattr(score, "_data_path", lambda filename: tmp_path / "bad.tsv.gz")
+    score.frequencies.cache_clear()
+    try:
+        with pytest.raises(score.DataError):
+            score.frequencies()
+    finally:
+        monkeypatch.undo()
+        score.frequencies.cache_clear()

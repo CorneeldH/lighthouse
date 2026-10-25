@@ -12,6 +12,7 @@ from __future__ import annotations
 import functools
 import gzip
 import re
+import zlib
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -61,8 +62,8 @@ def frequencies() -> Mapping[str, tuple[int, int]]:
             for line in handle:
                 word, en, nl = line.rstrip("\n").split("\t")
                 table[word] = (int(en), int(nl))
-    except (OSError, EOFError, UnicodeDecodeError, ValueError) as error:
-        # gzip.BadGzipFile is an OSError.
+    except (OSError, EOFError, UnicodeDecodeError, ValueError, zlib.error) as error:
+        # gzip.BadGzipFile is an OSError; a corrupt deflate stream raises zlib.error.
         raise DataError(f"cannot read {path.name}: {error}") from error
     return table
 
