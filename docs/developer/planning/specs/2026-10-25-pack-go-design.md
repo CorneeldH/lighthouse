@@ -203,9 +203,14 @@ niets gecontroleerd is, nooit stil groen.
   netwerk vragen en `Stop` traag maken. Lighthouse krijgt `.golangci-version` met `v2.15.0`,
   dezelfde versie als `ci.yml`. Een test pint dat beide gelijk zijn;
 - `go vet ./...`, dan `golangci-lint run ./...`; een bevinding: exit 2 met de output, zodat de
-  agent het in dezelfde beurt herstelt. Een exitcode die "kon niet linten" betekent (geen
-  bevinding, maar een kapotte config of een build die faalt) geeft `COULD NOT CHECK` in plaats
-  van een oordeel over de code.
+  agent het in dezelfde beurt herstelt. Een build die faalt blokkeert net zo: gemeten geven
+  `go vet` en `golangci-lint run` er dezelfde exitcode 1 voor als voor een bevinding, en een
+  ontbrekende module ziet er in de uitvoer van `go vet` uit als een bevinding. Een build die
+  faalt is bovendien bijna altijd code van de agent die niet compileert; met `COULD NOT CHECK`
+  zou de agent zijn beurt beëindigen op kapotte code. De `stop_hook_active`-guard voorkomt een
+  lus als de oorzaak buiten de code ligt. Een exitcode die "kon niet linten" betekent (een
+  kapotte config, een golangci-lint die zelf faalt) geeft `COULD NOT CHECK` in plaats van een
+  oordeel over de code.
 
 **Bash-write-gate.** `GATES[".go"] = "gofmt.sh"` en `GATE_PACKS["gofmt.sh"] = "go"` in
 [`pack/core/lib/bash_writes.py`](../../../../pack/core/lib/bash_writes.py). Zo draait `gofmt.sh`
