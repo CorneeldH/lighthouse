@@ -475,6 +475,10 @@ path = "pack/shell/instructions/AGENTS.md"
 new = true
 
 [[file]]
+path = "pack/go/hooks/go-check.sh"
+new = true
+
+[[file]]
 path = "pack/go/hooks/gofmt.sh"
 new = true
 
