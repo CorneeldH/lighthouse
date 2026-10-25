@@ -58,6 +58,9 @@ func Open(ctx context.Context, path string) (*Store, error) {
 	db, err := sql.Open("sqlite", dsn(path))
 	if err == nil {
 		err = db.PingContext(ctx)
+		if err == nil {
+			err = migrate(ctx, db, migrationFS)
+		}
 		if err != nil {
 			_ = db.Close()
 		}
