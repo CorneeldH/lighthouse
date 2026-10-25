@@ -391,3 +391,146 @@ def test_main_output(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(cl, "check_file", boom)
     assert cl.main([str(path), str(root)]) == 2
     assert "deep" in capsys.readouterr().err
+
+
+# --- Markdown ---
+
+NL_DOC = """---
+description: Lees het bestand en geef de regels terug.
+---
+
+# Het bestand lezen
+
+Dit is niet goed en het
+bestand is niet gevonden.
+
+- Lees het bestand en geef de regels terug.
+
+| name | explanation |
+| --- | --- |
+| a | niet gevonden |
+"""
+EN_DOC = """---
+description: Read the file and return the lines.
+---
+
+# Reading the file
+
+This is not good and the
+file was not found.
+
+- Read the file and return the lines.
+
+| name | explanation |
+| --- | --- |
+| a | not found |
+"""
+
+
+def _prose(source):
+    return [(f.line, f.kind) for f in cl.scan_markdown(source)]
+
+
+def test_markdown_units():
+    assert _prose(NL_DOC) == [(2, "prose"), (5, "prose"), (7, "prose"), (10, "prose"), (14, "prose")]
+    assert cl.scan_markdown(EN_DOC) == []
+
+
+def test_markdown_folded_frontmatter():
+    source = "---\ndescription: >\n  Lees het bestand en\n  geef de regels terug.\n---\n"
+    assert _prose(source) == [(2, "prose")]
+
+
+def test_markdown_code_is_not_language():
+    source = (
+        "```\nlees_bestand = 1\n```\n\n"
+        "~~~\nlees_bestand = 1\n~~~\n\n"
+        "Intro line:\n\n"
+        "    controleer_poort(invoer)\n\n"
+        "Call `lees_bestand` in this sentence and read [the file](docs/lees-bestand.md).\n\n"
+        "See https://example.com/lees-het-bestand-en-geef-de-regels-terug for details.\n"
+    )
+    assert cl.scan_markdown(source) == []
+
+
+def test_markdown_marker():
+    assert cl.scan_markdown("Dit is niet goed. <!-- lighthouse: allow-language -->\n") == []
+
+
+# --- scope ---
+
+
+def test_scope_dirs():
+    assert cl.scope_dirs("pack/core/skills/x/SKILL.md", ["pack/**"]) == ["core", "skills", "x"]
+    assert cl.scope_dirs("pack/core/skills/x/SKILL.md", ["pack/core/skills/*/SKILL.md"]) == ["x"]
+    assert cl.scope_dirs("docs/a.md", ["pack/**"]) is None
+    assert cl.scope_dirs("pack/notulen.md", ["pack/**"]) == []
+    assert cl.scope_dirs("docs/x.md", ["docs/x.md"]) == []
+
+
+def test_scope_dirs_union_in_path_order():
+    globs = ["pack/core/**", "pack/**"]
+    assert cl.scope_dirs("pack/core/a/b.md", globs) == ["core", "a"]
+    assert cl.scope_dirs("pack/core/a/b.md", ["pack/**", "pack/core/**"]) == ["core", "a"]
+
+
+SCOPED = 'code_language_paths = ["pack/**"]\n'
+PARAGRAPH = "Dit is niet goed en het bestand is niet gevonden.\n"
+
+
+def test_scope_markdown_and_toml(tmp_path):
+    root = _repo(tmp_path, SCOPED)
+    found = cl.check_file(_write(root, "pack/a.md", PARAGRAPH), root).findings
+    assert [(f.line, f.kind) for f in found] == [(1, "prose")]
+    found = cl.check_file(_write(root, "pack/notulen.toml", 'a = "niet goed"\n'), root).findings
+    assert [(f.kind, f.text) for f in found] == [("name", "notulen")]
+    found = cl.check_file(_write(root, "pack/bestanden/a.toml", "x = 1\n"), root).findings
+    assert [(f.line, f.kind, f.text) for f in found] == [(1, "directory", "bestanden")]
+    assert cl.check_file(_write(root, "docs/a.md", PARAGRAPH), root).findings == []
+    assert cl.check_file(_write(root, "docs/notulen.toml", "x = 1\n"), root).findings == []
+    found = cl.check_file(_write(root, "docs/lees_bestand.py", "x = 1\n"), root).findings
+    assert [(f.kind, f.text) for f in found] == [("name", "lees_bestand")]
+
+
+def test_scope_binary_only_name(tmp_path):
+    root = _repo(tmp_path, SCOPED)
+    found = cl.check_file(_write_bytes(root, "pack/plaatje.png", b"\xff\xd8"), root).findings
+    assert [(f.kind, f.text) for f in found] == [("name", "plaatje")]
+    assert cl.check_file(_write_bytes(root, "pack/logo.png", b"\xff\xd8"), root).findings == []
+
+
+def _write_bytes(root, relative, content):
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
+def test_scope_off_without_code_language(tmp_path):
+    toml = MINIMAL_TOML.replace('language = "en"\n', f'language = "en"\n{SCOPED}')
+    (tmp_path / "lighthouse.toml").write_text(toml, encoding="utf-8")
+    inspection = cl.check_file(_write(tmp_path, "pack/a.md", PARAGRAPH), tmp_path)
+    assert inspection.findings == [] and inspection.doubts == []
+
+
+def test_out_of_scope_does_not_load_data(tmp_path, monkeypatch):
+    root = _repo(tmp_path, SCOPED)
+
+    def boom():
+        raise AssertionError("frequencies loaded")
+
+    monkeypatch.setattr(cl.code_language_score, "frequencies", boom)
+    inspection = cl.check_file(_write(root, "docs/a.toml", "x = 1\n"), root)
+    assert inspection.findings == [] and inspection.doubts == []
+    with pytest.raises(AssertionError, match="frequencies loaded"):
+        cl.check_file(_write(root, "pack/notulen.toml", "x = 1\n"), root)
+
+
+def test_report_names_path(tmp_path, capsys):
+    root = _repo(tmp_path, SCOPED)
+    path = _write(root, "pack/bestanden/a.toml", "x = 1\n")
+    assert cl.main([str(path), str(root)]) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert f"{path}:1: directory: bestanden [layer 1]" in out
+    assert "rename the file" in out[-1]
+    assert "code_language_exempt" in out[-1]

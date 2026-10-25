@@ -34,7 +34,7 @@ MARKER = "lighthouse: allow-language"
 
 class Finding(NamedTuple):
     line: int
-    kind: str  # "comment", "docstring" or "name"
+    kind: str  # "comment", "docstring", "prose", "name" or "directory"
     text: str  # the name, or the first line of the block
     layer: str = "layer 1"
     doubt: bool = False  # true: a doubt, not a finding
@@ -376,6 +376,132 @@ def scan_go(source: str) -> list[Finding]:
     return sorted(found, key=lambda f: f.line)
 
 
+# --- Markdown ---
+
+_FENCE = re.compile(r"^\s*(```|~~~)")
+_HEADING = re.compile(r"^#{1,6}[ \t]")
+_LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])[ \t]+(.*)")
+_TABLE_SEPARATOR = re.compile(r"^[\s|:-]+$")
+_FRONT_KEY = re.compile(r"^([\w-]+):[ \t]*(.*)$")
+_FOLDED = {"", ">", "|", ">-", "|-"}
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_AUTOLINK = re.compile(r"<https?://[^>]*>")
+_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_HTML_TAG = re.compile(r"</?[A-Za-z][^>]*>")
+
+
+def _prose_unit(lines: list[tuple[int, str]]) -> Finding | None:
+    """A finding or doubt for one unit of `(line, text)`; marked lines do not count."""
+    kept = [(number, text) for number, text in lines if MARKER not in text]
+    text = " ".join(text.strip() for _, text in kept)
+    text = _HTML_COMMENT.sub(" ", text)
+    text = _AUTOLINK.sub(" ", text)
+    text = _IMAGE.sub(r"\1", text)
+    text = _LINK.sub(r"\1", text)
+    text = _HTML_TAG.sub(" ", text).strip()
+    if not kept or not text:
+        return None
+    verdict = code_language_score.judge_text(text)
+    if verdict == "clean":
+        return None
+    return Finding(kept[0][0], "prose", text, doubt=verdict == "doubt", unit=text)
+
+
+def _frontmatter_units(lines: list[str]) -> tuple[list[list[tuple[int, str]]], int]:
+    """Units of the frontmatter and the index of the first body line."""
+    if not lines or lines[0].strip() != "---":
+        return [], 0
+    units: list[list[tuple[int, str]]] = []
+    for index in range(1, len(lines)):
+        line, number = lines[index], index + 1
+        if line.strip() == "---":
+            return units, index + 1
+        if not line.strip():
+            continue
+        key = _FRONT_KEY.match(line)
+        if line[0] in " \t" and units:
+            units[-1].append((number, line))
+        elif key:
+            value = key[2].strip().strip("\"'")
+            units.append([] if key[2].strip() in _FOLDED else [(number, value)])
+            if key[2].strip() in _FOLDED:
+                units[-1].append((number, ""))
+        elif line.lstrip().startswith("- "):
+            units.append([(number, line.lstrip()[2:].strip().strip("\"'"))])
+        elif units:
+            units[-1].append((number, line))
+    return units, len(lines)  # never closed: all of it was frontmatter
+
+
+def scan_markdown(source: str) -> list[Finding]:
+    """Findings and doubts for the prose of Markdown `source`, by line.
+
+    A line scanner, not a parser. Code (fenced or indented blocks, inline code), link
+    targets, URLs and HTML are not language. Frontmatter values, headings, list items,
+    table cells and paragraphs are the units.
+    """
+    lines = source.splitlines()
+    units, start = _frontmatter_units(lines)
+    paragraph: list[tuple[int, str]] = []
+    fence = ""
+    in_list = False
+    in_code = False
+    previous_blank = True
+
+    def flush() -> None:
+        nonlocal paragraph
+        if paragraph:
+            units.append(paragraph)
+        paragraph = []
+
+    for index in range(start, len(lines)):
+        line, number = lines[index], index + 1
+        blank = not line.strip()
+        if fence:
+            if line.strip().startswith(fence):
+                fence = ""
+            continue
+        if in_code:
+            if blank or line[0] in " \t":
+                continue
+            in_code = False
+        opening = _FENCE.match(line)
+        if opening:
+            flush()
+            fence = opening[1]
+            continue
+        if blank:
+            flush()
+            previous_blank = True
+            continue
+        if previous_blank and not in_list and (line.startswith("    ") or line[0] == "\t"):
+            in_code = True
+            continue
+        previous_blank = False
+        item = _LIST_ITEM.match(line)
+        if _HEADING.match(line):
+            flush()
+            units.append([(number, line.lstrip("#"))])
+            in_list = False
+        elif item:
+            flush()
+            paragraph = [(number, item[1])]
+            in_list = True
+        elif line.lstrip().startswith("|"):
+            flush()
+            if not _TABLE_SEPARATOR.match(line):
+                cells = line.strip().strip("|").split("|")
+                units += [[(number, cell)] for cell in cells if cell.strip()]
+        else:
+            if not (line[0] in " \t" and in_list):
+                in_list = False
+            paragraph.append((number, line))
+    flush()
+    found = [unit for unit in map(_prose_unit, units) if unit]
+    return sorted(found, key=lambda f: f.line)
+
+
 # --- checking a file ---
 
 EXTENSIONS: dict[str, Callable[[str], list[Finding]]] = {
@@ -384,6 +510,8 @@ EXTENSIONS: dict[str, Callable[[str], list[Finding]]] = {
     ".bash": scan_shell,
     ".go": scan_go,
 }
+
+MARKDOWN_EXTENSIONS = (".md", ".markdown")
 
 _MAX_LINES = 20
 _TEXT_LIMIT = 60
@@ -402,16 +530,58 @@ def _managed_paths(root: Path) -> set[str]:
         raise CannotCheck(f"cannot read {manifest}: {error}") from error
 
 
+def _fixed_start(glob: str) -> list[str]:
+    """The segments of `glob` before the first wildcard; with none, all but the file name."""
+    segments = glob.split("/")
+    for index, segment in enumerate(segments):
+        if any(char in segment for char in "*?["):
+            return segments[:index]
+    return segments[:-1]
+
+
+def scope_dirs(relative: str, globs: list[str]) -> list[str] | None:
+    """The directory names of `relative` that a glob in `globs` lets through.
+
+    `None` when no glob covers the path. Otherwise the directories between the fixed
+    start of each covering glob and the file, as a union in path order. The fixed start
+    is the project's own layout and is not judged.
+    """
+    parts = relative.split("/")[:-1]
+    positions: set[int] = set()
+    covered = False
+    for glob in globs:
+        if fnmatch.fnmatchcase(relative, glob):
+            covered = True
+            positions.update(range(len(_fixed_start(glob)), len(parts)))
+    if not covered:
+        return None
+    names: list[str] = []
+    for position in sorted(positions):
+        if parts[position] not in names:
+            names.append(parts[position])
+    return names
+
+
+def _directory_findings(names: list[str]) -> list[Finding]:
+    found = []
+    for name in names:
+        verdict = code_language_score.judge_name(name)
+        if verdict != "clean":
+            found.append(Finding(1, "directory", name, doubt=verdict == "doubt"))
+    return found
+
+
 def check_file(path: Path, root: Path) -> Inspection:
     """Findings and doubts for the file at `path` (absolute) in repo `root`.
 
-    Both empty when the file is not checked: another extension, no `lighthouse.toml`, no
-    `code_language`, an exempt glob or a file `lighthouse init` manages.
+    Both empty when the file is not checked: no `lighthouse.toml`, no `code_language`,
+    an exempt glob, a file `lighthouse init` manages, or a file that is neither code nor
+    inside `code_language_paths`. A code file is read as code, a Markdown file inside the
+    scope as prose; any other file inside the scope counts by name only.
     """
     nothing = Inspection([], [])
-    scan = EXTENSIONS.get(path.suffix)
     toml = root / "lighthouse.toml"
-    if scan is None or not toml.is_file():
+    if not toml.is_file():
         return nothing
     try:
         cfg = config.load(toml)
@@ -419,26 +589,41 @@ def check_file(path: Path, root: Path) -> Inspection:
             config.lookup(cfg, "project.code_language")
         except KeyError:
             return nothing
+        exempt, paths = [], []
         try:
             exempt = config.lookup(cfg, "project.code_language_exempt")
         except KeyError:
-            exempt = []
+            pass
+        try:
+            paths = config.lookup(cfg, "project.code_language_paths")
+        except KeyError:
+            pass
     except config.ConfigError as error:
         raise CannotCheck(str(error)) from error
     relative = path.relative_to(root).as_posix()
+    scan = EXTENSIONS.get(path.suffix)
+    dirs = scope_dirs(relative, paths)
+    if scan is None and dirs is None:
+        return nothing
     if any(fnmatch.fnmatchcase(relative, glob) for glob in exempt):
         return nothing
     if relative in _managed_paths(root):
         return nothing
+    if scan is None and path.suffix in MARKDOWN_EXTENSIONS:
+        scan = scan_markdown
+    found: list[Finding] = []
     try:
-        source = path.read_text(encoding="utf-8-sig")  # a BOM is not content
-    except UnicodeDecodeError as error:
-        raise CannotCheck(f"{path} is not valid UTF-8: {error}") from error
-    try:
-        found = scan(source)
-        found = sorted([*found, *_name_findings([(1, path.stem)], [])], key=lambda f: f.line)
+        if scan is not None:
+            try:
+                source = path.read_text(encoding="utf-8-sig")  # a BOM is not content
+            except UnicodeDecodeError as error:
+                raise CannotCheck(f"{path} is not valid UTF-8: {error}") from error
+            found += scan(source)
+        found += _directory_findings(dirs or [])
+        found += _name_findings([(1, path.stem)], [])
     except code_language_score.DataError as error:
         raise CannotCheck(str(error)) from error
+    found.sort(key=lambda f: f.line)
     return Inspection(
         [f for f in found if not f.doubt],
         [f for f in found if f.doubt],
@@ -463,6 +648,13 @@ def _report(path: Path, found: list[Finding]) -> str:
             f"The module name '{path.stem}' is not English either; the marker cannot clear it: "
             "rename the file or add it to `code_language_exempt`."
         )
+    for finding in found:
+        if finding.kind == "directory":
+            lines.append(
+                f"The directory name '{finding.text}' is not English either; the marker cannot "
+                "clear it: rename the file or its directory, or add the file to "
+                "`code_language_exempt`."
+            )
     return "\n".join(lines)
 
 

@@ -197,7 +197,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/code-language.sh"
 package = "core"
 version = "dev"
-sha256 = "6839a48301c9656a8408ed4c9fe5734b84a7ecbd474fd4f8df249f66a2055525"
+sha256 = "01843343eadbccdac0cf7e17b1927b90c0950561ff0268e19ffcb7b173e20b4e"
 
 [[unit]]
 kind = "file"
@@ -546,7 +546,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language.py"
 package = "core"
 version = "dev"
-sha256 = "5c24d5bbc00e56f5270fbc797fe8f3e3620a42d449d8e879f7f9073f4de8128d"
+sha256 = "c25a7d42badbda23e65dd36767a4ad278a0e9c6bb0545dddacd471e35a5770a2"
 
 [[unit]]
 kind = "file"
@@ -581,7 +581,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
-sha256 = "4ae034bb9fe7da93fc453945ff522314534b41139d592fc0b0f8d28ae30b0c8f"
+sha256 = "e11d5b45c0b35752d2c36481eca1cf406d7ce8ee6e14e60514b7d8e0c5569918"
 
 [[unit]]
 kind = "file"

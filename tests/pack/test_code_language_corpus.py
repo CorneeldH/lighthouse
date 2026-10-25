@@ -86,3 +86,15 @@ def test_known_dutch_still_occurs():
     paths = [*_go_files(), REPO / "pack" / "core" / "lib" / "config.py", *_hook_files()]
     used = set().union(*(set(cl.code_language_score.words(p.read_text(encoding="utf-8"))) for p in paths))
     assert {word for word in KNOWN_DUTCH if word not in used} == set()
+
+
+def test_pack_markdown_english():
+    files = sorted((REPO / "pack").rglob("*.md"))
+    assert files
+    found = [
+        f"{path.relative_to(REPO)}:{f.line}: {f.text}"
+        for path in files
+        for f in cl.scan_markdown(path.read_text(encoding="utf-8"))
+        if not f.doubt  # a doubt ("OOM", "no-op") is not a finding; layer 2 decides
+    ]
+    assert not found, "\n".join(found)

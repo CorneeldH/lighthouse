@@ -1,8 +1,9 @@
 #!/bin/bash
 # lighthouse: core@dev
 # PostToolUse hook: code must be written in English (#26).
-# Matcher: Edit|Write, filters itself on .py, .sh, .bash and .go. Blocking:
-# exit 2 + stderr. bash-write-gates calls this same script for files a Bash
+# Matcher: Edit|Write; it does not filter on extension. The checker decides:
+# .py, .sh, .bash and .go files are always read, anything else only inside
+# `[project] code_language_paths`. Blocking: exit 2 + stderr. bash-write-gates calls this same script for files a Bash
 # call wrote.
 #
 # Norm and rationale: docs/developer/planning/specs/2026-10-24-codetaal-hook-design.md.
@@ -58,11 +59,6 @@ fi
 if [ -z "$FILE_PATH" ]; then
   exit 0
 fi
-
-case "$FILE_PATH" in
-  *.py|*.sh|*.bash|*.go) ;;
-  *) exit 0 ;;
-esac
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 case "$FILE_PATH" in

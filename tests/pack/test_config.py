@@ -289,6 +289,20 @@ def test_code_language_exempt_not_a_list_is_config_error(tmp_path):
         load(path)
 
 
+def test_code_language_paths_is_list_of_str(tmp_path):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + '\n[project]\ncode_language_paths = ["pack/**"]\n')
+    assert lookup(load(path), "project.code_language_paths") == ["pack/**"]
+    path.write_text(_render(VALID) + '\n[project]\ncode_language_paths = "pack"\n')
+    with pytest.raises(ConfigError, match="project.code_language_paths"):
+        load(path)
+
+
+def test_code_language_paths_has_no_default(tmp_path):
+    with pytest.raises(KeyError):
+        lookup(load(_write(tmp_path, VALID)), "project.code_language_paths")
+
+
 def test_lookup_walks_raw_and_derived_keys(tmp_path):
     cfg = load(_write(tmp_path, VALID))
     assert lookup(cfg, "forge.kind") == "github"

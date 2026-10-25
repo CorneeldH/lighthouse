@@ -168,3 +168,23 @@ def test_hook_broken_import_is_never_an_empty_block(tmp_path):
     assert result.stderr.splitlines()[0].startswith(COULD_NOT)
     assert "exit 1" in result.stderr
     assert "boom at import" in result.stderr
+
+
+SCOPED_TOML = ON_TOML.replace(
+    'code_language = "en"\n', 'code_language = "en"\ncode_language_paths = ["pack/**"]\n'
+)
+
+
+def test_hook_markdown_in_scope(tmp_path):
+    root = _repo(tmp_path / "r", SCOPED_TOML)
+    file = _write(root, "pack/a.md", "Dit is niet goed en het bestand is niet gevonden.\n")
+    result = _run(str(file), root)
+    assert result.returncode == 2
+    assert f"{file}:1: prose:" in result.stderr
+
+
+def test_hook_toml_out_of_scope(tmp_path):
+    root = _repo(tmp_path / "r", SCOPED_TOML)
+    result = _run(str(_write(root, "docs/notulen.toml", "x = 1\n")), root)
+    assert result.returncode == 0
+    assert result.stderr == ""

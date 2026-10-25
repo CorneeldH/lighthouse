@@ -107,6 +107,7 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "shell.strict_dirs": _STRS,
         "project.code_language": _STR,
         "project.code_language_exempt": _STRS,
+        "project.code_language_paths": _STRS,
     }
 )
 
