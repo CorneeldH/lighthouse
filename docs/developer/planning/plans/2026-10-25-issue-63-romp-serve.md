@@ -116,7 +116,11 @@ git commit -m "ci: go test met -race en een build zonder cgo (#63)"
 - Produces:
   - `func DefaultPath() (string, error)`
   - `type Store struct { DB *sql.DB; … }` met `func Open(ctx context.Context, path string) (*Store, error)` en `func (s *Store) Close() error`
-  - `var ErrLocked = errors.New(…)`; `Open` geeft `fmt.Errorf("another lighthouse serve holds %s: %w", lockPath, ErrLocked)`, zodat `cli.Execute` `lighthouse: another lighthouse serve holds <db>.lock: …` print. Kies de sentinel-tekst zo dat de regel leesbaar blijft (bijvoorbeeld `database locked`).
+  - `var ErrLocked = errors.New("database locked")` en `type LockedError struct{ Path string }`
+    met `Error()` = `"another lighthouse serve holds " + Path` en `Is(target error) bool` dat
+    `target == ErrLocked` geeft. `Open` geeft `&LockedError{Path: lockPath}`, zodat
+    `cli.Execute` precies de spec-melding `lighthouse: another lighthouse serve holds <db>.lock`
+    print (spec §1), zonder achtervoegsel.
 
 - [ ] **Step 1: Schrijf de falende tests**
 
@@ -125,11 +129,11 @@ git commit -m "ci: go test met -race en een build zonder cgo (#63)"
   `XDG_STATE_HOME=""`, `HOME=/h` → `/h/.local/state/lighthouse/lighthouse.db`.
 - `TestOpenSetsPragmas`: `Open` op `filepath.Join(t.TempDir(), "My State", "l.db")` (map bestaat
   niet, met spatie). Haal met `s.DB.Conn(ctx)` twee aparte verbindingen tegelijk op; op elk:
-  `PRAGMA journal_mode` = `"wal"`, `PRAGMA busy_timeout` = `5000`, `PRAGMA foreign_keys` = `1`.
-  Daarna: de map heeft mode `0o700`.
+  `PRAGMA journal_mode` = `"wal"`, `PRAGMA busy_timeout` = `5000`, `PRAGMA foreign_keys` = `1`,
+  `PRAGMA synchronous` = `1` (NORMAL). Daarna: de map heeft mode `0o700`.
 - `TestOpenTwiceIsLocked`: tweede `Open` op hetzelfde pad terwijl de eerste open is →
-  `errors.Is(err, ErrLocked)` en `strings.Contains(err.Error(), path+".lock")`. Na `Close` van de
-  eerste slaagt een derde `Open`.
+  `errors.Is(err, ErrLocked)` en `err.Error()` = `"another lighthouse serve holds " + path +
+  ".lock"` (exact). Na `Close` van de eerste slaagt een derde `Open`.
 
 - [ ] **Step 2: Draai ze en zie ze falen**
 
@@ -140,7 +144,7 @@ Expected: FAIL, build error (package bestaat niet).
 
 `DefaultPath` met `os.Getenv("XDG_STATE_HOME")` + `filepath.IsAbs`, anders `os.UserHomeDir()`.
 `Open`: `os.MkdirAll(dir, 0o700)`, dan het slot (`lock.go`: `os.OpenFile(path+".lock",
-O_CREATE|O_RDWR, 0o600)` + `syscall.Flock(fd, LOCK_EX|LOCK_NB)`; `EWOULDBLOCK` → `ErrLocked`),
+O_CREATE|O_RDWR, 0o600)` + `syscall.Flock(fd, LOCK_EX|LOCK_NB)`; `EWOULDBLOCK` → `*LockedError`),
 dan `sql.Open("sqlite", dsn)` en `PingContext`. Bouw de DSN met `file:` + het pad en de vier
 `_pragma=`-parameters; zorg dat een spatie in het pad werkt (de test bewijst het). `Close`
 sluit eerst de DB, dan het slotbestand. `go get modernc.org/sqlite@latest`, `go mod tidy`.
@@ -172,8 +176,8 @@ git commit -m "feat(store): SQLite in WAL met busy_timeout en één-server-slot 
 
 - [ ] **Step 1: Schrijf de falende tests**
 
-- `TestMigrateTwice`: `Open` op een tempdir-pad, lees `SELECT type, name, sql FROM sqlite_master
-  ORDER BY name` en `PRAGMA user_version`; `Close`; `Open` opnieuw (migreert weer), lees
+- `TestMigrateTwice`: `Open` op een tempdir-pad, lees `SELECT type, name, coalesce(sql, '') FROM
+  sqlite_master ORDER BY name` (de autoindex van `meta` heeft `sql` NULL) en `PRAGMA user_version`; `Close`; `Open` opnieuw (migreert weer), lees
   opnieuw. Gelijk; `user_version` = `1`; `meta` bestaat, `runs` niet; `SELECT value FROM meta
   WHERE key='created_at'` geeft precies één rij, ook na de tweede open.
 - `TestMigrationNumbering`, tabel met `fstest.MapFS` op een kale `sql.Open` (geen `Open`):
@@ -236,14 +240,19 @@ Alle tests via `httptest.NewRecorder` tegen `server.New(fstest.MapFS{"index.html
 
 | Request | Status | Body / header |
 |---|---|---|
-| `GET /api/health` | 200 | JSON-veld `version` = `version.String()` (in tests `"dev"`) |
+| `GET /api/health` | 200 | JSON-object met precies één veld, `version` = `version.String()` (in tests `"dev"`) |
 | `GET /api/openapi.json` | 200 | geparste JSON heeft `paths["/api/health"]` |
 | `GET /api/onbekend` | 404 | body bevat niet `placeholder` |
 | `GET /` | 200 | `placeholder` |
 | `GET /runs/42` | 200 | `placeholder` |
 | `GET /assets/app.js` | 200 | `js` |
 | `GET /assets/` | 200 | `placeholder` (geen listing) |
-| `GET /../../etc/passwd` (zet `req.URL.Path` direct) | 200 of 404 | nooit iets anders dan `placeholder` of leeg |
+| `GET /../../etc/passwd` (zet `req.URL.Path` direct) | 200, 301, 307 of 404 | bij 301/307: `Location` begint met `/` en bevat geen `..`; bij 200: `placeholder` |
+
+`http.ServeMux` canoniseert een pad met `..` met een redirect vóór de handler; die rij bewijst
+dus alleen dat de mux niets buiten de site serveert. Daarom ook `TestSPAEscapes`, rechtstreeks
+tegen `spa(site)` (zelfde `MapFS`, test in package `server`): `req.URL.Path` =
+`/../../etc/passwd`, `/assets/../../etc/passwd` en `/assets/` → 200 en body `placeholder`.
 
 Plus `TestEmbeddedSiteHasIndex`: `fs.ReadFile(web.FS(), "index.html")` slaagt.
 
@@ -259,7 +268,8 @@ Expected: FAIL, build error.
 - `index.html`: één regel tekst met "lighthouse", geen externe bronnen.
 - `server.New`: `mux := http.NewServeMux()`; `cfg := huma.DefaultConfig("lighthouse",
   version.String())` met `OpenAPIPath = "/api/openapi"`, `DocsPath = "/api/docs"`,
-  `SchemasPath = "/api/schemas"`; `api := humago.New(mux, cfg)`; `huma.Get(api, "/api/health",
+  `SchemasPath = "/api/schemas"` en `CreateHooks = nil` (anders zet Huma een veld `$schema` in
+  elke body, en spec §4 schrijft `{"version": …}` voor); `api := humago.New(mux, cfg)`; `huma.Get(api, "/api/health",
   …)` met `OperationID: "get-health"` en output `struct{ Body struct{ Version string
   \`json:"version"\` } }`. Daarna `mux.Handle("/api/", http.NotFoundHandler())` (de specifieke
   Huma-patronen winnen) en `mux.Handle("/", spa(site))`.
@@ -366,7 +376,7 @@ waarom `StateDirectory` (de `226/NAMESPACE`-val), en de installatieregels. Geen 
 
 - [ ] **Step 2: Verifieer de unit**
 
-Run: `systemd-analyze --user verify deploy/systemd/lighthouse.service`
+Run: `XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" systemd-analyze --user verify deploy/systemd/lighthouse.service`
 Expected: geen uitvoer, rc 0. Klaagt hij alleen dat `%h/go/bin/lighthouse` ontbreekt, draai dan
 eerst `go install ./cmd/lighthouse`.
 
@@ -379,13 +389,25 @@ reboot, nooit `tailscale funnel`, geen authenticatie dus de tailnet is de grens 
 *Beveiliging*), de eenmalige voorwaarden, en hoe je het uitzet (`tailscale serve
 --https=<port> off`).
 
-Run: `bash -n deploy/tailscale-serve.sh && shellcheck deploy/tailscale-serve.sh && bash deploy/tailscale-serve.sh abc; echo rc=$?`
-Expected: geen shellcheck-bevinding; de laatste regel `rc=2`.
+`shellcheck` staat niet op het `PATH`; gebruik de gepinde binary via de resolver van de repo.
+Maak het script uitvoerbaar en controleer het apart:
+
+```bash
+chmod +x deploy/tailscale-serve.sh
+bash -n deploy/tailscale-serve.sh
+sc="$(source pack/shell/scripts/lib/shellcheck-bin.sh && resolve_shellcheck)" && "$sc" deploy/tailscale-serve.sh; echo "shellcheck rc=$?"
+deploy/tailscale-serve.sh abc; echo "rc=$?"
+```
+
+Expected: `shellcheck rc=0`; de laatste regel `rc=2`. Geeft de resolver rc 4 (kon niet
+controleren), stop en meld het: sla de lint nooit stil over.
 
 - [ ] **Step 4: Schrijf `docs/install.md` en de README**
 
 `docs/install.md` (Engels), in deze volgorde: vereisten (Linux met systemd, Go, optioneel
-Tailscale); `go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest`; de unit kopiëren
+Tailscale); `go install github.com/CorneeldH/lighthouse/cmd/lighthouse@main` (niet `@latest`:
+dat is de nieuwste tag, en v0.1.5 heeft nog geen `serve`; zeg dat `@latest` pas werkt na een
+release met `serve`) of `go install ./cmd/lighthouse` vanuit een checkout; de unit kopiëren
 naar `~/.config/systemd/user/` en het `ExecStart`-pad aanpassen als de binary elders staat;
 `systemctl --user daemon-reload`; `systemctl --user enable --now lighthouse.service`;
 `loginctl enable-linger "$USER"`; controleren met `curl -s http://127.0.0.1:8127/api/health`;
@@ -402,7 +424,8 @@ server via `serve`), en een sectie *Running the server* met een relatieve link n
 Run: `uv run pytest -q` (o.a. `test_instruction_files.py`) en controleer dat elke relatieve
 link in `docs/install.md` en `README.md` naar een bestaand bestand wijst (de
 `worktree-linkcheck`-hook blokkeert anders al bij de write).
-Expected: groen.
+Run ook: `git add deploy/tailscale-serve.sh && git ls-files -s deploy/tailscale-serve.sh`
+Expected: groen, en de modus is `100755`.
 
 - [ ] **Step 6: Commit**
 
@@ -432,10 +455,20 @@ uitkomst en de omgeving (linux/amd64, tags, `-race`, `GOWORK`).
 
 - [ ] **Step 2: Rooktest met de echte binary**
 
-Run: `go run ./cmd/lighthouse serve --addr 127.0.0.1:0 --db "$(mktemp -d)/l.db"` in de
-achtergrond; `curl -s http://<adres>/api/health`, `curl -s http://<adres>/api/openapi.json | head -c 200`,
-`curl -s http://<adres>/iets`; daarna `kill -TERM` en de exitcode.
-Expected: `{"…version":"dev"…}`, een OpenAPI-document, de placeholder, exit 0.
+Niet met `go run`: dat stuurt SIGTERM niet door naar de server, die dan als wees blijft
+draaien. Bouw eerst een binary en signaleer die rechtstreeks:
+
+```bash
+tmp="$(mktemp -d)"
+go build -o "$tmp/lighthouse" ./cmd/lighthouse
+"$tmp/lighthouse" serve --addr 127.0.0.1:0 --db "$tmp/l.db" 2>"$tmp/err" &
+pid=$!
+```
+
+Lees het adres uit `$tmp/err` (regel `lighthouse: listening on <adres>`); dan
+`curl -s http://<adres>/api/health`, `curl -s http://<adres>/api/openapi.json | head -c 200`,
+`curl -s http://<adres>/iets`; daarna `kill -TERM "$pid"; wait "$pid"; echo "exit=$?"`.
+Expected: `{"version":"dev"}`, een OpenAPI-document, de placeholder, `exit=0`.
 
 Installeren als dienst op de host is geen stap van dit plan: de gebruiker doet dat met de hand
 volgens `docs/install.md`.
