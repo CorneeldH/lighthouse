@@ -1,0 +1,14 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "is_error": false,
+  "duration_ms": 792,
+  "duration_api_ms": 0,
+  "num_turns": 0,
+  "result": "You are currently using your subscription to power your Claude Code usage\n\nCurrent session: 0% used\nCurrent week (all models): 61% used · resets Oct 15, 5pm (Europe/Amsterdam)\nCurrent week (Fable): 0% used · resets Oct 15, 5pm (Europe/Amsterdam)\n\nWhat's contributing to your limits usage?\nApproximate, based on local sessions on this machine — does not include other devices or claude.ai. Behaviors are independent characteristics, not a breakdown.\n\nLast 24h · 6283 requests · 133 sessions\n  84% of your usage was while 4+ sessions ran in parallel\n  68% of your usage came from subagent-heavy sessions\n  35% of your usage was at >150k context\n  Top skills: /superpowers:writing-plans 5%, /superpowers:subagent-driven-development 5%, /lighthouse-verify-pr 4%, /lighthouse-write-issue 3%, /lighthouse-close-issue 3%, /lighthouse-handoff 3%, /superpowers:systematic-debugging 2%, /superpowers:receiving-code-review 2%, +8 more\n  Top subagents: general-purpose 12%, superpowers:subagent-driven-development 5%, lighthouse-plan-adversarial-review 5%, lighthouse-spec-adversarial-review 3%, lighthouse-verify-pr 1%, superpowers:receiving-code-review 1%, lighthouse-write-issue 1%, lighthouse-route-issue 1%\n  Top plugins: superpowers 23%, caveman 1%\n\nLast 7d · 18405 requests · 389 sessions\n  72% of your usage was while 4+ sessions ran in parallel\n  71% of your usage came from subagent-heavy sessions\n  34% of your usage was at >150k context\n  Top skills: /superpowers:subagent-driven-development 5%, /superpowers:writing-plans 4%, /lighthouse-verify-pr 3%, /lighthouse-handoff 3%, /lighthouse-close-issue 3%, /lighthouse-write-issue 3%, /superpowers:test-driven-development 2%, /superpowers:systematic-debugging 2%, +10 more\n  Top subagents: general-purpose 14%, superpowers:subagent-driven-development 6%, lighthouse-plan-adversarial-review 5%, lighthouse-spec-adversarial-review 2%, superpowers:receiving-code-review 1%, lighthouse-route-issue 1%\n  Top plugins: superpowers 26%",
+  "total_cost_usd": 0,
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0
+  }
+}
