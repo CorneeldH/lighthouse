@@ -10,6 +10,10 @@ Pre-M0: no code yet. Roadmap: the milestones of this repository.
 
 The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/personal_ai_agent/blob/main/docs/developer/planning/specs/2026-10-09-lighthouse-scope-design.md) (in Dutch).
 
+## Usage window
+
+`lighthouse usage refresh` en `lighthouse usage tick` meten de Claude-gebruiksvensters: [usage-venster](docs/usage-venster.md) (in Dutch).
+
 ## License
 
 [FSL-1.1-ALv2](LICENSE) — the Functional Source License with an Apache-2.0 future
