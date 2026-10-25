@@ -254,3 +254,10 @@ def test_shell_form_of_the_testing_norms(variant):
         "one input that must block and one that must pass",
     ):
         assert phrase in section, phrase
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_pairing_names_the_testing_skill(variant):
+    pairing = _text(variant).split("## The pairing", 1)[1].split("\n## ", 1)[0]
+    rows = [line for line in pairing.splitlines() if line.startswith("| `lighthouse-testing` |")]
+    assert len(rows) == 1

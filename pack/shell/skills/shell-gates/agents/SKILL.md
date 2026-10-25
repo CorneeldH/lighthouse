@@ -117,6 +117,7 @@ The norm is in `lighthouse-testing`; this is its form for a gate or a hook.
 | Half | Carries | When |
 |---|---|---|
 | this skill | the norm, the six defects, the commands | while you write |
+| `lighthouse-testing` | the test norms and the class table | for every test, and before the first edit |
 | `.claude/hooks/lighthouse/shellcheck.sh` | shellcheck on every edited `*.sh` and `*.bash`, blocking | right after the edit |
 
 The hook is deliberately **not fail-open**. Skipping silently is itself the defect the
