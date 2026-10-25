@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -55,6 +56,39 @@ func TestBudgetWarnsOverCeilingAndStillWrites(t *testing.T) {
 	}
 }
 
+// Red when the warning guard is gone or fires at the ceiling itself (> turned into >=).
+func TestBudgetNoWarningAtCeiling(t *testing.T) {
+	measure := newRepo(t)
+	if r := run(t, measure, "y\n", ceiling("3000")); r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	total := wc(t, measure, "AGENTS.md") + wc(t, measure, "CLAUDE.md")
+	root := newRepo(t)
+	r := run(t, root, "y\n", ceiling(strconv.Itoa(total)))
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	want := fmt.Sprintf("becomes %d, ceiling %d\n", total, total)
+	if !strings.Contains(r.out, want) {
+		t.Fatalf("want %q in stdout:\n%s", want, r.out)
+	}
+	if strings.Contains(r.err, "over the ceiling") {
+		t.Fatalf("warning at the ceiling:\n%s", r.err)
+	}
+}
+
+// Red when a missing ceiling key is skipped silently or read as 0.
+func TestBudgetNotMeasurableWithoutCeiling(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "y\n", stubLookup(map[string]string{}))
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "instruction blocks: budget not measurable: project.instructions_word_ceiling is not set") {
+		t.Fatalf("stderr:\n%s", r.err)
+	}
+}
+
 // Red when the line is printed without a change to CLAUDE.md or AGENTS.md.
 func TestBudgetSilentWhenInstructionsUnchanged(t *testing.T) {
 	root := newRepo(t)
@@ -98,8 +132,14 @@ func TestBudgetNotMeasurableWithoutClaudeMD(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := run(t, root, "", all(yes, ceiling("3000")))
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s", r.code, r.err)
+	}
 	if !strings.Contains(r.err, "budget not measurable: CLAUDE.md does not exist") {
 		t.Fatalf("stderr:\n%s", r.err)
+	}
+	if exists(root, "CLAUDE.md") {
+		t.Fatal("CLAUDE.md was created")
 	}
 }
 
@@ -124,7 +164,7 @@ func TestBudgetCeilingNotANumber(t *testing.T) {
 }
 
 // Red when the delta is the words after without subtraction, "before" comes from new
-// instead of old, the sign is missing, CLAUDE.md is left out of the total, or nothing is
+// instead of old, CLAUDE.md is left out of the total, or nothing is
 // reported on --upgrade.
 func TestBudgetUpgradeReportsBlockDelta(t *testing.T) {
 	root := newRepo(t)

@@ -37,6 +37,9 @@ func fileWords(plan map[string]*planned, rel string, after bool, count func([]by
 
 // instructionWords counts what check 10 counts: CLAUDE.md, plus AGENTS.md when it
 // exists, before or after the run. @AGENTS.md is not expanded.
+// Known gap: when CLAUDE.md is a symlink to AGENTS.md the two are separate plan keys, so
+// init counts old+new where check 10 counts new+new; the total is off by the delta. The
+// "does not import AGENTS.md" warning fires in that setup.
 func instructionWords(plan map[string]*planned, after bool, count func([]byte) (int, error)) (label string, words int, err error) {
 	if c := plan[claudeMDPath]; c != nil && c.unreadable != nil {
 		return "", 0, fmt.Errorf("CLAUDE.md is not readable: %w", c.unreadable)
@@ -70,6 +73,8 @@ func reportBudget(o Options, plan map[string]*planned, lookup packs.Lookup) {
 		notMeasurable(fmt.Errorf("CLAUDE.md is not readable: %w", c.unreadable))
 		return
 	}
+	// A missing CLAUDE.md without instruction changes stays silent on purpose: the budget
+	// does not move, and check 10 itself skips loudly when CLAUDE.md is missing.
 	if !plan[claudeMDPath].changesOrNil() && !plan[agentsMDPath].changesOrNil() {
 		return
 	}
