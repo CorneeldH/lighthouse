@@ -18,12 +18,19 @@ go install github.com/CorneeldH/lighthouse/cmd/lighthouse@main
 Use `@main`, not `@latest`: `@latest` resolves to the newest tag, and v0.1.5 has no `serve`.
 `@latest` only works after a release that contains `serve`.
 
-From a checkout, `go install ./cmd/lighthouse` does the same. Both put the binary in
-`~/go/bin`.
+Both `go install` forms put the binary in `~/go/bin`. `go install` does not leave a checkout.
+The steps below use files from the repository, so clone it and run them from the clone:
+
+```bash
+git clone https://github.com/CorneeldH/lighthouse.git
+cd lighthouse
+```
+
+In the clone, `go install ./cmd/lighthouse` installs the same binary.
 
 ## Run it as a user service
 
-Copy the unit, [lighthouse.service](../deploy/systemd/lighthouse.service), into your user
+From the clone, copy the unit, [lighthouse.service](../deploy/systemd/lighthouse.service), into your user
 unit directory. If the binary is not at `~/go/bin/lighthouse`, edit the `ExecStart` path.
 
 ```bash
@@ -60,7 +67,8 @@ One-time prerequisites:
 sudo tailscale set --operator="$USER"
 ```
 
-Also enable HTTPS certificates in the tailnet admin console.
+Also enable HTTPS certificates in the tailnet admin console. Then run the script from the
+clone:
 
 ```bash
 deploy/tailscale-serve.sh
