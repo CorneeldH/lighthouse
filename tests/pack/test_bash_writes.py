@@ -36,7 +36,7 @@ def gate_root(tmp_path, monkeypatch):
     root = tmp_path / "lighthouse-root"
     hooks = root / ".claude" / "hooks" / "lighthouse"
     hooks.mkdir(parents=True)
-    for gate in set(bw.GATES.values()):
+    for gate in {g for gates in bw.GATES.values() for g in gates}:
         (hooks / gate).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         (hooks / gate).chmod(0o755)
     monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(root))
@@ -47,11 +47,20 @@ def gate_root(tmp_path, monkeypatch):
 
 
 def test_gates_maps_known_extensions():
-    assert bw.GATES[".sh"] == "shellcheck.sh"
-    assert bw.GATES[".bash"] == "shellcheck.sh"
-    assert bw.GATES[".py"] == "ruff-format.sh"
-    assert bw.GATES[".md"] == "worktree-linkcheck.sh"
-    assert bw.GATES[".markdown"] == "worktree-linkcheck.sh"
+    assert bw.GATES[".sh"] == ("shellcheck.sh", "code-language.sh")
+    assert bw.GATES[".bash"] == ("shellcheck.sh", "code-language.sh")
+    assert bw.GATES[".py"] == ("ruff-format.sh", "code-language.sh")
+    assert bw.GATES[".go"] == ("code-language.sh",)
+    assert bw.GATES[".md"] == ("worktree-linkcheck.sh",)
+    assert bw.GATES[".markdown"] == ("worktree-linkcheck.sh",)
+
+
+def test_rewriting_gate_runs_before_code_language():
+    # code-language.sh must read the version after `ruff format`.
+    for gates in bw.GATES.values():
+        if "code-language.sh" in gates:
+            last = gates.index("code-language.sh")
+            assert not set(gates[last + 1 :]) & bw._SIGN_AFTER_GATE
 
 
 # --- git() / GitError -----------------------------------------------------
@@ -870,18 +879,19 @@ def test_deadline_makes_progress_over_many_files(tmp_path, monkeypatch):
     monkeypatch.delenv("LIGHTHOUSE_BASH_GATES_DEADLINE", raising=False)
     monkeypatch.delenv("LIGHTHOUSE_BASH_GATES_START_NS", raising=False)
 
-    judged: list[str] = []
+    judged: list[tuple[str, str]] = []
     fired = {"flag": False}
     start = time.time()
 
-    def fake_gate(root, rel, deadline):
-        judged.append(rel)
+    def fake_gate(root, rel, gate, deadline):
+        judged.append((rel, gate))
         fired["flag"] = True
         return "finding", f"SC2034 {rel}".encode()
 
     def fake_now():
-        # Vóór de eerste gate van deze post: nog tijd. Erna: ver voorbij de
-        # deadline. Zo laat elke post precies één gate toe.
+        # Before the first gate of this post: time left. After it: far past the
+        # deadline. The deadline is checked per file, so each post judges
+        # exactly one file, with all of its gates.
         return start + 10**6 if fired["flag"] else start
 
     monkeypatch.setattr(bw, "run_gate", fake_gate)
@@ -907,7 +917,14 @@ def test_deadline_makes_progress_over_many_files(tmp_path, monkeypatch):
             assert bw.run_pre(payload(n)) == 0
         results.append(bw.run_post(payload(n)))
 
-    assert judged == ["a.sh", "b.sh", "c.sh"]
+    assert judged == [
+        ("a.sh", "shellcheck.sh"),
+        ("a.sh", "code-language.sh"),
+        ("b.sh", "shellcheck.sh"),
+        ("b.sh", "code-language.sh"),
+        ("c.sh", "shellcheck.sh"),
+        ("c.sh", "code-language.sh"),
+    ]
     codes = [code for code, _out, _err in results]
     assert codes == [2, 2, 2, 0], results
     first_err = results[0][2]
@@ -963,7 +980,7 @@ def test_non_utf8_name_is_unchecked_not_dispatched(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bw,
         "run_gate",
-        lambda root, rel, deadline: dispatched.append(rel) or ("ok", b""),
+        lambda root, rel, gate, deadline: dispatched.append(rel) or ("ok", b""),
     )
     assert bw.run_pre(_payload(repo, 0)) == 0
     _write_bad_name(repo)
@@ -985,7 +1002,7 @@ def test_non_utf8_name_from_a_commit_stays_pending(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bw,
         "run_gate",
-        lambda root, rel, deadline: dispatched.append(rel) or ("ok", b""),
+        lambda root, rel, gate, deadline: dispatched.append(rel) or ("ok", b""),
     )
     assert bw.run_pre(_payload(repo, 0)) == 0
     _write_bad_name(repo)
@@ -1022,7 +1039,7 @@ def test_missed_deadline_advances_head_and_keeps_pending(tmp_path, monkeypatch):
     # git-leesacties (`time.time`) houden hun volle 90 s, dus bron 2 loopt echt.
     repo = _post_env(tmp_path, monkeypatch)
     verdicts = {"x.sh": ("finding", b"SC2034 x.sh")}
-    monkeypatch.setattr(bw, "run_gate", lambda root, rel, deadline: verdicts[rel])
+    monkeypatch.setattr(bw, "run_gate", lambda root, rel, gate, deadline: verdicts[rel])
     assert bw.run_pre(_payload(repo, 0)) == 0
     (repo / "x.sh").write_text("echo kapot\n", encoding="utf-8")
     git(repo, "add", "x.sh")
@@ -1085,7 +1102,7 @@ def test_pending_rename_source_is_not_unchecked(tmp_path, monkeypatch):
     # a.sh komt via een gemiste deadline in `pending`, en wordt daarna gestaged
     # hernoemd: de bron is verwijderd, niet `COULD NOT CHECK`.
     repo = _post_env(tmp_path, monkeypatch)
-    monkeypatch.setattr(bw, "run_gate", lambda root, rel, deadline: ("ok", b""))
+    monkeypatch.setattr(bw, "run_gate", lambda root, rel, gate, deadline: ("ok", b""))
     assert bw.run_pre(_payload(repo, 0)) == 0
     (repo / "a.sh").write_text("echo a\n", encoding="utf-8")
     git(repo, "add", "a.sh")
@@ -1143,7 +1160,7 @@ def test_vanished_candidate_is_not_dispatched_and_not_ok(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bw,
         "run_gate",
-        lambda root, rel, deadline: dispatched.append(rel) or ("ok", b""),
+        lambda root, rel, gate, deadline: dispatched.append(rel) or ("ok", b""),
     )
     code, out, err = bw.run_post(_payload(repo, 0))
     assert dispatched == []
@@ -1194,7 +1211,7 @@ def test_gate_exit_128_plus_n_does_not_stop_the_dispatch(tmp_path, monkeypatch, 
 
     monkeypatch.setattr(bw, "run_until", exits)
     code, out, err = bw.run_post(_payload(repo, 0))
-    assert started == ["a.sh", "b.sh", "c.sh"]
+    assert started == ["a.sh", "a.sh", "b.sh", "b.sh", "c.sh", "c.sh"]
     assert code == 2, (out, err)
     assert "COULD NOT CHECK" in err
     assert "signal" not in err
@@ -1250,15 +1267,15 @@ def test_gate_packs_name_every_gate():
         "shellcheck.sh": "shell",
         "ruff-format.sh": "python",
         "worktree-linkcheck.sh": "core",
+        "code-language.sh": "core",
     }
-    assert set(bw.GATE_PACKS) == set(bw.GATES.values())
+    assert set(bw.GATE_PACKS) == {g for gates in bw.GATES.values() for g in gates}
 
 
 def test_hook_dir_from_repo_root(gate_root):
     hooks = gate_root / ".claude" / "hooks" / "lighthouse"
-    assert bw.gate_path(str(gate_root), ".sh") == hooks / "shellcheck.sh"
-    assert bw.gate_path(str(gate_root), ".md") == hooks / "worktree-linkcheck.sh"
-    assert bw.gate_path(str(gate_root), ".txt") is None
+    assert bw.gate_path(str(gate_root), "shellcheck.sh") == hooks / "shellcheck.sh"
+    assert bw.gate_path(str(gate_root), "code-language.sh") == hooks / "code-language.sh"
 
 
 def test_run_gate_finds_the_gate_under_the_repo_root(tmp_path, gate_root):
@@ -1267,7 +1284,7 @@ def test_run_gate_finds_the_gate_under_the_repo_root(tmp_path, gate_root):
     repo = tmp_path / "repo"
     init_repo(repo)
     (repo / "a.sh").write_text("echo a\n", encoding="utf-8")
-    verdict, output = bw.run_gate(str(repo), "a.sh", time.time() + 10)
+    verdict, output = bw.run_gate(str(repo), "a.sh", "shellcheck.sh", time.time() + 10)
     assert (verdict, output) == ("finding", b"stub-ran\n")
 
 
@@ -1275,7 +1292,7 @@ def test_missing_language_pack_is_reported_not_blocked(tmp_path, monkeypatch, ga
     for gate in ("ruff-format.sh", "shellcheck.sh"):
         (gate_root / ".claude" / "hooks" / "lighthouse" / gate).unlink()
     repo = _post_env(tmp_path, monkeypatch)
-    assert bw.run_gate(str(repo), "a.py", time.time() + 10) == (
+    assert bw.run_gate(str(repo), "a.py", "ruff-format.sh", time.time() + 10) == (
         "missing",
         b"no python gate installed",
     )
@@ -1289,3 +1306,93 @@ def test_missing_language_pack_is_reported_not_blocked(tmp_path, monkeypatch, ga
     # Eén melding per wijziging: de volgende call meldt ongewijzigde bestanden niet opnieuw.
     assert bw.run_pre(_payload(repo, 1)) == 0
     assert bw.run_post(_payload(repo, 1)) == (0, "", "")
+
+
+# --- dispatch: several gates per extension (#26) -----------------------------
+
+
+def test_dispatch_runs_every_gate_in_order(tmp_path, monkeypatch):
+    repo = _post_env(tmp_path, monkeypatch)
+    monkeypatch.setitem(bw.GATES, ".sh", ("first.sh", "second.sh"))
+    ran: list[tuple[str, str]] = []
+
+    def fake_gate(root, rel, gate, deadline):
+        ran.append((rel, gate))
+        return "finding", f"{gate} says no".encode()
+
+    monkeypatch.setattr(bw, "run_gate", fake_gate)
+    _dirty_calls(repo, monkeypatch, ["x.sh"])
+    code, out, err = bw.run_post(_payload(repo, 0))
+    assert ran == [("x.sh", "first.sh"), ("x.sh", "second.sh")]
+    assert code == 2, (out, err)
+    first = err.index("== x.sh (first.sh) ==\nfirst.sh says no")
+    second = err.index("== x.sh (second.sh) ==\nsecond.sh says no")
+    assert first < second
+
+
+@pytest.mark.parametrize(
+    ("verdicts", "judged"),
+    [
+        (("unchecked", "ok"), False),
+        (("ok", "unchecked"), False),
+        (("finding", "unchecked"), False),
+        (("ok", "ok"), True),
+        (("ok", "finding"), True),
+        (("missing", "ok"), True),
+        (("finding", "missing"), True),
+    ],
+)
+def test_dispatch_combined_verdict(tmp_path, monkeypatch, verdicts, judged):
+    # x.sh comes from a commit (source 2), so it is in `pending` until it has a
+    # real verdict from every gate.
+    repo = _post_env(tmp_path, monkeypatch)
+    monkeypatch.setitem(bw.GATES, ".sh", ("first.sh", "second.sh"))
+    by_gate = dict(zip(("first.sh", "second.sh"), verdicts, strict=True))
+    monkeypatch.setattr(
+        bw, "run_gate", lambda root, rel, gate, deadline: (by_gate[gate], b"")
+    )
+    assert bw.run_pre(_payload(repo, 0)) == 0
+    (repo / "x.sh").write_text("echo x\n", encoding="utf-8")
+    git(repo, "add", "x.sh")
+    git(repo, "commit", "-qm", "x")
+    bw.run_post(_payload(repo, 0))
+    record = _ledger_root(tmp_path, repo)
+    if judged:
+        assert record["pending"] == []
+        assert "x.sh" in record["seen"]
+    else:
+        assert record["pending"] == ["x.sh"]
+        assert "x.sh" not in record["seen"]
+    assert record["claims"] == {}
+
+
+@pytest.mark.parametrize(
+    ("gates", "signed_after"),
+    [
+        # The rewriting gate's verdict holds for the version it wrote; a write
+        # during the read-only gate after it stays new.
+        (("ruff-format.sh", "code-language.sh"), "ruff-format.sh"),
+        # No rewriting gate: the version from just before the first gate.
+        (("shellcheck.sh", "code-language.sh"), None),
+    ],
+)
+def test_dispatch_signature_after_rewriting_gate(tmp_path, monkeypatch, gates, signed_after):
+    repo = _post_env(tmp_path, monkeypatch)
+    monkeypatch.setitem(bw.GATES, ".sh", gates)
+    path = repo / "x.sh"
+    sigs: dict[str, list[int]] = {}
+
+    def rewriting_gate(root, rel, gate, deadline):
+        # Every gate writes the file (a growing size, so each version has its
+        # own signature), as ruff format does, or a concurrent write would.
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(f"# {gate}\n")
+        sigs[gate] = list(bw.signature(str(path)))
+        return "ok", b""
+
+    monkeypatch.setattr(bw, "run_gate", rewriting_gate)
+    _dirty_calls(repo, monkeypatch, ["x.sh"])
+    before = list(bw.signature(str(path)))
+    assert bw.run_post(_payload(repo, 0)) == (0, "", "")
+    seen = _ledger_root(tmp_path, repo)["seen"]["x.sh"]
+    assert seen == (sigs[signed_after] if signed_after else before)
