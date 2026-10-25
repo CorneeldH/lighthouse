@@ -86,6 +86,16 @@ def test_dutch_split(table):
     assert not score.dutch_split("abcdef")
 
 
+def test_dutch_split_long_letter_run(table):
+    """A long run of letters is not split: no RecursionError, and it scores 0."""
+    table({"werk": (30, 50)})
+    assert score.dutch_split("werk" * 10)  # 40 letters, a long compound still splits
+    run = "werk" * 500 + "qxq"
+    assert not score.dutch_split(run)
+    assert score.word_score(run) == 0.0
+    assert score.judge_name(run) == "clean"
+
+
 def test_prose_drops_inline_code_and_urls(table):
     table({"see": (60, 10), "at": (60, 10)})
     assert score.judge_text("see `lees_bestand` at https://x.nl/van") == "clean"

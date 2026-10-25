@@ -25,6 +25,7 @@ PART_NL_FLOOR = 2.5  # zipf NL a part of a compound needs
 DOUBT_LEAN = 2.0  # zipf NL - EN of a word that makes a unit doubtful
 DOUBT_NL = 3.0  # zipf NL of a word that makes a unit doubtful
 NAME_MIN = 4  # shortest word counted in a name
+SPLIT_MAX = 40  # longest word `dutch_split` tries; a longer run of letters is not a compound
 TEXT_MIN = 2  # shortest word counted in prose
 
 # An acronym run ("HTTP" in "HTTPServer") or a capitalised or lower-case word.
@@ -88,7 +89,13 @@ def _is_dutch_part(part: str, table: Mapping[str, tuple[int, int]]) -> bool:
 
 
 def dutch_split(word: str) -> bool:
-    """True when `word` splits into two or more Dutch words, even if an English split exists."""
+    """True when `word` splits into two or more Dutch words, even if an English split exists.
+
+    A word longer than `SPLIT_MAX` letters is never split: that bounds the recursion depth
+    and the work per word.
+    """
+    if len(word) > SPLIT_MAX:
+        return False
     table = frequencies()
     memo: dict[str, bool] = {}
 

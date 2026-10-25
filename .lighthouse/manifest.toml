@@ -581,7 +581,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language_score.py"
 package = "core"
 version = "dev"
-sha256 = "79a8dcc1b8e984ef9cbf6c39921ba1ab352b828a1c2c318fcff9b15c6d2257ee"
+sha256 = "2d52762cceab8fb7aa82077649ec08e039771877c0fab55a7784a48a9c78f519"
 
 [[unit]]
 kind = "file"
