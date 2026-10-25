@@ -20,7 +20,6 @@ import io
 import re
 import sys
 import tokenize
-import tomllib
 from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
@@ -407,6 +406,8 @@ _TEXT_LIMIT = 60
 
 
 def _managed_paths(root: Path) -> set[str]:
+    import tomllib  # lazily, like config._read_toml: Python < 3.11 must still import this module
+
     manifest = root / ".lighthouse" / "manifest.toml"
     if not manifest.is_file():
         return set()
@@ -445,7 +446,7 @@ def check_file(path: Path, root: Path) -> list[Finding]:
     if relative in _managed_paths(root):
         return []
     try:
-        source = path.read_text(encoding="utf-8")
+        source = path.read_text(encoding="utf-8-sig")  # a BOM is not content
     except UnicodeDecodeError as error:
         raise CannotCheck(f"{path} is not valid UTF-8: {error}") from error
     found = scan(source)
@@ -467,6 +468,11 @@ def _report(path: Path, found: list[Finding]) -> str:
         "The whole file must be English. A line that is deliberately not English "
         f'gets "{MARKER}".'
     )
+    if any(f.line == 1 and f.kind == "name" and f.text == path.stem for f in found):
+        lines.append(
+            f"The module name '{path.stem}' is not English either; the marker cannot clear it: "
+            "rename the file or add it to `code_language_exempt`."
+        )
     return "\n".join(lines)
 
 

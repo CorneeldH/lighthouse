@@ -183,14 +183,14 @@ kind = "file"
 path = ".claude/hooks/lighthouse/bash-write-gates.sh"
 package = "core"
 version = "dev"
-sha256 = "3e9152b8114ec9c594e08f185f8f0113986753cc00d3739cbc3f2e5d7835d3c1"
+sha256 = "757789773e4f8a3517eb8b59ecad78c24ffbc9a2f5cd5a60deac63a6a45cd7f3"
 
 [[unit]]
 kind = "file"
 path = ".claude/hooks/lighthouse/code-language.sh"
 package = "core"
 version = "dev"
-sha256 = "d645349078985043c721b5ce91571d104084fccac79674a12ee5754013ca4f90"
+sha256 = "6839a48301c9656a8408ed4c9fe5734b84a7ecbd474fd4f8df249f66a2055525"
 
 [[unit]]
 kind = "file"
@@ -532,14 +532,14 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language.py"
 package = "core"
 version = "dev"
-sha256 = "54e6647036966d92643c6030852d0c9b8dd1ee5a524ebe7bbca4f4bc4b2dc16e"
+sha256 = "d088f74fe92faa505776ff1a2211661277e395dcc6999b39243f00a391166cba"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language_nl_content.txt"
 package = "core"
 version = "dev"
-sha256 = "225593c7b44a84c0f2c8c232c0956ff063acc5f4ee047fb2e4a847112ea03402"
+sha256 = "1ee803135fa38ca1a89b74938150849cda436b5b6c0d25ec8a1e310ea3f7ec8f"
 
 [[unit]]
 kind = "file"

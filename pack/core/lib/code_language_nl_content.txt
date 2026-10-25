@@ -21,11 +21,9 @@ wortel
 tak
 controleer
 controleren
-fout
 leeg
 alsnog
 onder
-kent
 bestaande
 voorouder
 geparsed

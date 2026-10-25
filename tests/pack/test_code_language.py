@@ -15,6 +15,7 @@ BANNED = [
     "die", "met", "door", "over", "van", "map", "pad",
     "is", "in", "op", "been", "had", "was", "hem",
     "de", "te", "er", "dat", "mag", "tot",  # English abbreviations in names and comments
+    "fout", "kent",  # "file out" and "Kent Beck"
 ]  # fmt: skip
 
 
@@ -60,7 +61,7 @@ def test_english_corpus_has_no_dutch_words():
                     hits.append(f"{path}:{number}: comment: {comment.strip()}")
             else:
                 code = line
-            for name in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", line):
+            for name in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", code):
                 if cl.is_dutch_name(name):
                     hits.append(f"{path}:{number}: name: {name}")
     assert not hits, "\n".join(hits[:20])
@@ -187,7 +188,7 @@ def test_go_names():
         "func leesBestand(regel string) {}\n"
         "func (r *T) Controleer() {}\n"
         "type Melding struct { Naam string }\n"
-        "var fout error\n"
+        "var leeg error\n"
         "const Leeg = 0\n"
         "gevonden := 1\n"
         "var (\n"
@@ -202,7 +203,7 @@ def test_go_names():
         (3, "Controleer"),
         (4, "Melding"),
         (4, "Naam"),
-        (5, "fout"),
+        (5, "leeg"),
         (6, "Leeg"),
         (7, "gevonden"),
         (9, "bron"),
@@ -313,6 +314,22 @@ def test_python_nul_byte_is_cannot_check():
         cl.scan_python("x = 1\x00\n")
 
 
+def test_check_bom_is_not_content(tmp_path):
+    root = _repo(tmp_path)
+    path = root / "a.py"
+    path.write_bytes(b"\xef\xbb\xbf# read the file\nx = 1\n")
+    assert cl.check_file(path, root) == []
+    path.write_bytes(b"\xef\xbb\xbf# lees het bestand\nx = 1\n")
+    assert [f.kind for f in cl.check_file(path, root)] == ["comment"]
+
+
+def test_shell_english_corpus():
+    hooks = sorted((REPO / "pack" / "core" / "hooks").glob("*.sh"))
+    assert hooks
+    for path in hooks:
+        assert cl.scan_shell(path.read_text(encoding="utf-8")) == [], path
+
+
 def test_check_module_name(tmp_path):
     root = _repo(tmp_path)
     found = cl.check_file(_write(root, "lees_bestand.py", "x = 1\n"), root)
@@ -349,6 +366,12 @@ def _blocks(source):
 def test_dutch_corpus_found():
     source = FIXTURE.read_text(encoding="utf-8")
     found = {f.line for f in cl.scan_python(source) if f.kind in ("comment", "docstring")}
+    lines = source.splitlines()
+    for number in (*ENGLISH_BLOCKS, *UNDETECTABLE_BLOCKS):
+        assert number not in found, f"line {number} is now found: remove it from the lists"
+    block_lines = _blocks(source)
+    for number in (*ENGLISH_BLOCKS, *UNDETECTABLE_BLOCKS):
+        assert number in block_lines, f"line {number} is no block start: {lines[number - 1]!r}"
     missed = {
         number: kind
         for number, kind in _blocks(source).items()
@@ -357,6 +380,20 @@ def test_dutch_corpus_found():
     assert not missed, "\n".join(
         f"{n}: {k}: {source.splitlines()[n - 1].strip()}" for n, k in sorted(missed.items())
     )
+
+
+def test_report_explains_module_name_finding(tmp_path, capsys):
+    root = _repo(tmp_path)
+    path = _write(root, "lees_bestand.py", "x = 1\n")
+    assert cl.main([str(path), str(root)]) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[-2].startswith("The whole file must be English.")
+    assert "rename the file" in out[-1]
+    assert "code_language_exempt" in out[-1]
+
+    path = _write(root, "b.py")
+    assert cl.main([str(path), str(root)]) == 1
+    assert "rename the file" not in capsys.readouterr().out
 
 
 def test_main_output(tmp_path, capsys, monkeypatch):

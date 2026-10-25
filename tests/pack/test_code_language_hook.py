@@ -34,7 +34,9 @@ def _write(root: Path, rel: str, text: str = DUTCH) -> Path:
     return path
 
 
-def _run(file_path: str, cwd: Path, raw: str | None = None) -> subprocess.CompletedProcess:
+def _run(
+    file_path: str, cwd: Path, raw: str | None = None, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
     payload = raw if raw is not None else json.dumps(
         {"tool_name": "Edit", "cwd": str(cwd), "tool_input": {"file_path": file_path}}
     )
@@ -44,7 +46,7 @@ def _run(file_path: str, cwd: Path, raw: str | None = None) -> subprocess.Comple
         capture_output=True,
         text=True,
         cwd=str(cwd),
-        env=dict(os.environ, **GIT_ENV),
+        env=dict(os.environ, **GIT_ENV, **(env or {})),
         check=False,
     )
 
@@ -143,3 +145,26 @@ def test_hook_marker_skips(tmp_path):
     text = "# lees het bestand en geef de regels terug  lighthouse: allow-language\nx = 1\n"
     result = _run(str(_write(root, "a.py", text)), root)
     assert result.returncode == 0
+
+
+def test_hook_cannot_check_without_tomllib(tmp_path):
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "tomllib.py").write_text("raise ImportError('no tomllib')\n", encoding="utf-8")
+    root = _repo(tmp_path / "r")
+    result = _run(str(_write(root, "a.py")), root, env={"PYTHONPATH": str(shadow)})
+    assert result.returncode == 2
+    assert result.stderr.splitlines()[0].startswith(COULD_NOT)
+    assert "python3 >= 3.11" in result.stderr.splitlines()[0]
+
+
+def test_hook_broken_import_is_never_an_empty_block(tmp_path):
+    shadow = tmp_path / "shadow"
+    shadow.mkdir()
+    (shadow / "fnmatch.py").write_text("raise RuntimeError('boom at import')\n", encoding="utf-8")
+    root = _repo(tmp_path / "r")
+    result = _run(str(_write(root, "a.py")), root, env={"PYTHONPATH": str(shadow)})
+    assert result.returncode == 2
+    assert result.stderr.splitlines()[0].startswith(COULD_NOT)
+    assert "exit 1" in result.stderr
+    assert "boom at import" in result.stderr

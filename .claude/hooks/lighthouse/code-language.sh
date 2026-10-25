@@ -5,8 +5,8 @@
 # exit 2 + stderr. bash-write-gates calls this same script for files a Bash
 # call wrote.
 #
-# Counterpart: the AGENTS.md rule on the language of code carries norm and
-# rationale up front; this hook checks the written file afterwards. Dutch
+# Norm and rationale: docs/developer/planning/specs/2026-10-24-codetaal-hook-design.md.
+# This hook checks the written file afterwards. Dutch
 # comments, docstrings and names are the findings; string literals are not
 # read. A line that is deliberately not English gets `lighthouse: allow-language`.
 #
@@ -101,8 +101,15 @@ RC=$?
 case "$RC" in
   0) exit 0 ;;
   1)
-    printf '%s\n' "$OUTPUT" >&2
-    exit 2
+    # Only the checker's own report is a finding; any other exit 1 is a crash
+    # (an import error, a missing word list) and nothing was checked.
+    case "$OUTPUT" in
+      "code-language: "*)
+        printf '%s\n' "$OUTPUT" >&2
+        exit 2
+        ;;
+    esac
+    cannot_check "the language checker failed (exit 1)." "$(cat "$STDERR_FILE")"
     ;;
   *)
     DETAIL=$(cat "$STDERR_FILE")
