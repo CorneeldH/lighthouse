@@ -275,7 +275,11 @@ Expected: FAIL, build error.
   Huma-patronen winnen) en `mux.Handle("/", spa(site))`.
 - `spa.go`: `spa(site fs.FS) http.Handler` — `path.Clean` van het pad zonder leidende `/`;
   bestaat dat als **bestand** in `site`, serveer het met `http.ServeFileFS`; anders
-  `index.html`. Een map of een fout telt als "bestaat niet".
+  `index.html`. Een map of een fout telt als "bestaat niet". De terugval naar `index.html` gaat
+  **niet** via `ServeFileFS`: die weigert elk `r.URL.Path` met `..` met 400 `invalid URL path`
+  (`net/http/fs.go`, `containsDotDot`), en `TestSPAEscapes` eist 200. Lees `index.html` met
+  `fs.ReadFile` en serveer het met `w.Header().Set("Content-Type", "text/html; charset=utf-8")`
+  plus `http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(b))`.
 
 - [ ] **Step 4: Draai de tests**
 
