@@ -129,14 +129,7 @@ def scan_python(source: str) -> list[Finding]:
             continue
         found.append(Finding(node.body[0].lineno, "docstring", doc.splitlines()[0]))
 
-    seen = set()
-    for line, name in _name_nodes(tree):
-        if (line, name) in seen:
-            continue
-        seen.add((line, name))
-        marked = 0 < line <= len(lines) and MARKER in lines[line - 1]
-        if not marked and is_dutch_name(name):
-            found.append(Finding(line, "name", name))
+    found += _name_findings(list(_name_nodes(tree)), lines)
     return sorted(found, key=lambda f: f.line)
 
 

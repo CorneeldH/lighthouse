@@ -517,7 +517,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language.py"
 package = "core"
 version = "dev"
-sha256 = "7330b2c0777cebae0668477c58ea2c15a4984a3f5cc97a05acb1a62a6687dbfd"
+sha256 = "1026b9fc60db6161b54272a937971d4805a6c0f14acf9403fba15f507170f984"
 
 [[unit]]
 kind = "file"
