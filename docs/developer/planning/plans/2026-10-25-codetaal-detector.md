@@ -85,7 +85,8 @@ alleen voor de lijst geïnstalleerde bestanden.
 - Levert: het bestand `code_language_freq.tsv.gz`: gzip van UTF-8-regels `woord\ten\tnl\n`,
   gesorteerd op woord, `en` en `nl` als gehele getallen (zipf × 10, afgerond; `0` = komt niet voor).
 - Levert in het script: `denied_patterns(path: Path) -> list[str]`, `keep(word: str, patterns:
-  list[str]) -> bool`, `encode(rows: list[tuple[str, int, int]]) -> bytes`, `main() -> int`.
+  list[str]) -> bool`, `encode(rows: list[tuple[str, int, int]], level: int = 9) -> bytes`,
+  `main() -> int`.
 
 - [ ] **Stap 1: schrijf de falende tests** in `tests/test_gen_code_language_freq.py`; laad het
   script met `importlib.util.spec_from_file_location` (geen package). Het script importeert wordfreq
@@ -102,11 +103,13 @@ alleen voor de lijst geïnstalleerde bestanden.
 - [ ] **Stap 3: schrijf `tools/gen_code_language_freq.py`.** Rijen: de unie van
   `wordfreq.iter_wordlist("en")` en `iter_wordlist("nl")`, alleen woorden die volledig uit letters
   bestaan (`re.fullmatch(r"[^\W\d_]+", w)`), kleine letters, `round(zipf_frequency(w, lang) * 10)`
-  per taal, bewaard als `max(en, nl) >= 15`, en `keep` tegen `ci/literal-denylist.txt`.
-  `encode`: `gzip.compress(data, compresslevel=9, mtime=0)`. `main` schrijft
-  `pack/core/lib/code_language_freq.tsv.gz` en faalt (rc 1, met het patroon in de melding) als een
-  patroon als bytes in `data.lower()` van het gzip-bestand zelf staat: `ci/literal-grep.sh` leest het
-  binaire bestand ook. De moduledocstring noemt het commando uit stap 4 en de wordfreq-versie.
+  per taal, bewaard als de ongeronde `max(zipf_en, zipf_nl) >= 1.5` (filter vóór het afronden), en
+  `keep` tegen `ci/literal-denylist.txt`.
+  `encode(rows, level=9)`: `gzip.compress(data, compresslevel=level, mtime=0)`. `main` probeert
+  `level` 9, 8, 7, 6 op volgorde en schrijft de eerste uitvoer waarin geen patroon als bytes in
+  `uitvoer.lower()` staat (`ci/literal-grep.sh` leest het binaire bestand ook) naar
+  `pack/core/lib/code_language_freq.tsv.gz`; geeft geen enkel niveau schone bytes, dan rc 1 met het
+  patroon in de melding. De moduledocstring noemt het commando uit stap 4 en de wordfreq-versie.
 - [ ] **Stap 4: genereer.** `uv run --with wordfreq==3.1.1 python tools/gen_code_language_freq.py`
   → rc 0; `zcat pack/core/lib/code_language_freq.tsv.gz | wc -l` geeft ongeveer 280.000; het bestand
   is ongeveer 1,3 MB.
@@ -117,7 +120,8 @@ alleen voor de lijst geïnstalleerde bestanden.
   denylist weg); daaronder letterlijk de sectie met bronvermeldingen van de data uit de README van
   wordfreq 3.1.1. `LICENSES/CC-BY-SA-4.0.txt`:
   `curl -fsSL https://raw.githubusercontent.com/spdx/license-list-data/main/text/CC-BY-SA-4.0.txt`;
-  de eerste regel begint met `Attribution-ShareAlike 4.0 International`.
+  de eerste regel bevat `Attribution-ShareAlike 4.0 International` (op 2026-10-25:
+  `Creative Commons Attribution-ShareAlike 4.0 International`). De tekst wordt niet aangepast.
 - [ ] **Stap 6: registreer.** In `pack/SOURCES.toml` twee `[[file]]`-items met `new = true` voor het
   databestand en de vermelding, met een commentaarregel erboven die naar
   `tools/gen_code_language_freq.py` en wordfreq verwijst. In `internal/packs/core_test.go` de twee
@@ -238,6 +242,11 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
     door elkaar, gesorteerd op regel.
   - `check_file(path: Path, root: Path) -> Inspection`.
   - `split_name` blijft importeerbaar uit `code_language` (alias van die in `code_language_score`).
+  - `code_language` importeert de module zelf (`from lighthouse_lib import code_language_score`) en
+    roept `code_language_score.judge_name(...)` enzovoort aan, geen losse namen: een test vervangt
+    zo een functie op `cl.code_language_score`. Dat is een ander moduleobject dan
+    `load_hook_lib("code_language_score")` (`tests/pack/_testkit.py:136-149`), dus tests van
+    `code_language` patchen altijd `cl.code_language_score`.
   - Weg: `is_dutch_text`, `is_dutch_name`, `FUNCTION_WORDS`, `CONTENT_WORDS`.
 
 - [ ] **Stap 1: fixture.** Kopieer uit de stdlib van de Python in `.venv` (3.13) naar
@@ -255,11 +264,20 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
     `KNOWN_DUTCH = {"ontwerpkeuze": "Dutch in Go until #58 translates it", "ontwerpkeuzes": ...,
     "besluit": ...}`; elk woord in `KNOWN_DUTCH` hoort bij minstens één vondst, zodat de lijst krimpt
     als #58 het weghaalt.
-  - `test_config_py_english`: `cl.scan_python` over `pack/core/lib/config.py` geeft geen vondst.
+  - `test_config_py_english`: `cl.scan_python` over `pack/core/lib/config.py` geeft geen vondst
+    buiten `KNOWN_DUTCH` (twijfelgevallen tellen niet).
+  - `test_hooks_english`: idem met `cl.scan_shell` over `pack/core/hooks/*.sh`.
   In `tests/pack/test_code_language.py`:
   - vervang `test_banned_words_absent`, `test_dutch_text`, `test_dutch_name` en
     `test_english_corpus_has_no_dutch_words` door niets: taak 2 en de corpustests dekken ze.
     `BANNED` verdwijnt.
+  - verhuis `test_python_english_clean` (config.py), `test_go_english_clean` en
+    `test_shell_english_corpus` (`pack/core/hooks/*.sh`) naar de corpustests: ze eisen nu `== []` op
+    de scan, maar de scan geeft ook twijfelgevallen, en lighthouse heeft echt Nederlands
+    (`besluit` in `pack/core/lib/config.py:51` en in de kopcommentaar van de hooks, `ontwerpkeuze`
+    in Go). `test_go_english_clean` gaat op in `test_go_english`; `test_config_py_english` en een
+    nieuwe `test_hooks_english` (zelfde vorm, over `pack/core/hooks/*.sh` met `scan_shell`) tellen
+    alleen vondsten (`not f.doubt`), en hun vondsten moeten ook in `KNOWN_DUTCH` vallen.
   - `test_python_comment_block`: blok `# first line\n# dit is niet goed` → vondst op regel 2 met
     tekst `first line` (het blok telt als geheel).
   - `test_doubt_is_not_a_finding`: `legacy_processed_lijst_weg = 1\n` →
@@ -267,11 +285,15 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
     ["legacy_processed_lijst_weg"]`.
   - `test_finding_layer`: elke vondst uit `check_file` heeft `layer == "layer 1"`, en
     `_report` zet ` [layer 1]` achter de regel: `out[1] == f"{path}:1: comment: dit is niet goed [layer 1]"`.
-  - `test_missing_data_is_cannot_check`: `monkeypatch.setattr(score_module, "FREQ_FILE", "nope")`
-    plus `cache_clear()` → `pytest.raises(cl.CannotCheck)` uit `check_file`.
+  - `test_missing_data_is_cannot_check`: `monkeypatch.setattr(cl.code_language_score, "FREQ_FILE",
+    "nope")` plus `cl.code_language_score.frequencies.cache_clear()` (ook in de teardown) →
+    `pytest.raises(cl.CannotCheck)` uit `check_file`.
   - bestaande `check_file`-tests: vergelijk `.findings` in plaats van de lijst zelf.
-  - `test_dutch_corpus_found` blijft; `UNDETECTABLE_BLOCKS` wordt kleiner of leeg: de test eist al
-    dat een gevonden regel uit de lijst gaat.
+  - `test_dutch_corpus_found`: `found` telt alleen vondsten (`not f.doubt`); een blok dat alleen
+    twijfel is, staat in een nieuwe lijst `DOUBT_BLOCKS: dict[int, str]` met reden, met dezelfde
+    controles als `UNDETECTABLE_BLOCKS` (staat het blok niet meer als twijfel, dan gaat het uit de
+    lijst). `UNDETECTABLE_BLOCKS` wordt kleiner of leeg: de test eist al dat een gevonden regel uit
+    de lijst gaat.
 - [ ] **Stap 3:** `uv run pytest -q tests/pack/test_code_language.py tests/pack/test_code_language_corpus.py`
   → FAIL.
 - [ ] **Stap 4: implementeer.** `_dutch_blocks` wordt `_judge_blocks`: de tekst van de niet-gemarkeerde
@@ -280,9 +302,9 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
   `_name_findings` gebruikt `judge_name`. `check_file` splitst de scan in `findings` en `doubts`; de
   bestandsnaam gaat via dezelfde weg. `DataError` wordt `CannotCheck`. `_report` zet
   ` [<layer>]` achter elke regel en meldt alleen `findings`; `main` geeft `check_file(...).findings`
-  aan `_report`. Een vals alarm uit de corpustests is
-  Engels jargon: zet het op de jargonlijst (taak 2), niet in de test; echt Nederlands in Go komt in
-  `KNOWN_DUTCH`.
+  aan `_report`. Een vals alarm uit de corpustests is Engels jargon: zet het op de jargonlijst
+  (taak 2), niet in de test. Echt Nederlands (`besluit`, `ontwerpkeuze` en wat nog meer opduikt in
+  lighthouse zelf) gaat nooit op de jargonlijst, maar in `KNOWN_DUTCH`, met reden.
 - [ ] **Stap 5:** dezelfde pytest-run → PASS; daarna `uv run pytest -q tests/pack/` → PASS (de
   hooktests van #26 blijven ongewijzigd groen).
 - [ ] **Stap 6:** verwijder de twee woordenlijsten met hun items, `init --upgrade`,
@@ -318,7 +340,8 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
     - `test_markdown_folded_frontmatter`: `description: >` met twee ingesprongen regels is één
       eenheid, op de regel van `description`.
     - `test_markdown_code_is_not_language` *(aandachtspunt 1)*: een fenced blok (```` ``` ```` en
-      `~~~`) met `lees_bestand = 1`, inline `` `lees_bestand` `` in een Engelse zin, een link
+      `~~~`) met `lees_bestand = 1`, een ingesprongen codeblok (vier spaties na een lege regel, niet
+      in een lijst) met `controleer_poort(invoer)`, inline `` `lees_bestand` `` in een Engelse zin, een link
       `[the file](docs/lees-bestand.md)` en een kale URL met Nederlandse woorden → `[]`.
     - `test_markdown_marker`: `Dit is niet goed. <!-- lighthouse: allow-language -->` → `[]`.
   - Bereik:
@@ -329,13 +352,16 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
     - `test_scope_markdown_and_toml` (met `code_language_paths = ["pack/**"]`): `pack/a.md` met een
       Nederlandse alinea → vondst `prose`; `pack/notulen.toml` met Nederlandse inhoud → precies één
       vondst, `name` `notulen`; `pack/bestanden/a.toml` → vondst `directory` `bestanden`;
-      `docs/a.md` en `docs/notulen.toml` → `[]`; `docs/lees_bestand.py` → vondst `name`, zoals #26.
+      `docs/a.md` en `docs/notulen.toml` → `.findings == []`; `docs/lees_bestand.py` → vondst
+      `name`, zoals #26.
     - `test_scope_binary_only_name` *(aandachtspunt 2)*: `pack/plaatje.png` met bytes `b"\xff\xd8"`
-      → één vondst `name` `plaatje`, geen `CannotCheck`; `pack/logo.png` → `[]`.
+      → één vondst `name` `plaatje`, geen `CannotCheck`; `pack/logo.png` → `.findings == []`.
     - `test_scope_off_without_code_language`: `code_language_paths` zonder `code_language` →
-      `pack/a.md` met Nederlands geeft `[]`.
-    - `test_out_of_scope_does_not_load_data`: `monkeypatch.setattr(score, "frequencies", boom)` →
-      `check_file` op `docs/a.toml` geeft `[]` zonder fout.
+      `pack/a.md` met Nederlands geeft `.findings == []` en `.doubts == []`.
+    - `test_out_of_scope_does_not_load_data`: `monkeypatch.setattr(cl.code_language_score,
+      "frequencies", boom)` → `check_file` op `docs/a.toml` geeft `.findings == []` en
+      `.doubts == []` zonder fout; dezelfde patch op `pack/a.toml` binnen het bereik roept `boom`
+      wel aan (zodat de test de goede module raakt).
     - `test_report_names_path`: een vondst `directory` geeft in `main` dezelfde uitlegregel als een
       modulenaam ("rename the file", `code_language_exempt`).
   - `tests/pack/test_code_language_corpus.py`: `test_pack_markdown_english`: `cl.scan_markdown` over
@@ -348,7 +374,9 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
 - [ ] **Stap 4: `scan_markdown`.** Een regelscanner, geen parser. Frontmatter (bestand begint met
   `---`): per regel `sleutel: waarde` de waarde zonder aanhalingstekens (`>`, `|`, `>-`, `|-` en
   leeg openen een gevouwen waarde), `- x` de `x`, een ingesprongen regel zonder sleutel hoort bij de
-  vorige eenheid. Daarna: fenced blokken (```` ``` ```` en `~~~`, tot hetzelfde hek) vallen weg; een
+  vorige eenheid. Daarna: fenced blokken (```` ``` ```` en `~~~`, tot hetzelfde hek) vallen weg,
+  en een ingesprongen codeblok ook (regels met vier spaties of een tab vooraan, na een lege regel en
+  niet als vervolg van een lijstitem, tot de eerste niet-ingesprongen regel); een
   kop (`#{1,6} `) is één eenheid; een lijstitem (`[-*+]` of `\d+[.)]`) begint een eenheid; een
   tabelrij (begint met `|`) geeft per cel een eenheid, scheidingsrijen (`^[\s|:-]+$`) vallen weg;
   andere regels horen bij de lopende alinea; een lege regel sluit af. Een regel met `MARKER` valt uit
@@ -374,7 +402,8 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
 **Bestanden:**
 - Maak: `pack/core/lib/code_language_llm.py`, `tests/pack/_fake_llm.py`
 - Wijzig: `pack/core/lib/config.py` (`SCHEMA`), `pack/core/requires.toml`
-  (`lighthouse_lib.code_language_llm` in `python3`), `pack/SOURCES.toml`,
+  (`lighthouse_lib.code_language_llm` in `python3` en `tomllib`: het importeert `config`),
+  `pack/SOURCES.toml`,
   `internal/packs/core_test.go`
 - Test: `tests/pack/test_code_language_llm.py`, `tests/pack/test_config.py`
 
@@ -383,10 +412,12 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
 - Levert in `code_language_llm`:
   - `Chain(NamedTuple)`: `url: str`, `models: tuple[str, ...]`, `key_env: str | None`,
     `env_file: Path | None`.
-  - `chain_from(cfg: config.Config) -> Chain | None`: `None` zonder enige
-    `code_language_llm.*`-sleutel; `ConfigError` zonder `url`, met lege `models`, of met een
-    `env_file` dat na `expanduser` relatief is of niet bestaat. Zonder `key_env` gaat er geen
-    `Authorization`-kop mee.
+  - `chain_from(cfg: config.Config) -> Chain | None`: `None` alleen als de tabel
+    `code_language_llm` ontbreekt (`"code_language_llm" not in cfg.raw`); een aanwezige tabel, ook
+    een lege, zonder `url`, met ontbrekende of lege `models`, of met een `env_file` dat na
+    `expanduser` relatief is of niet bestaat → `ConfigError` (spec *Wat de hook meldt*). Zonder
+    `key_env` gaat er geen `Authorization`-kop mee: *eigen keuze* (de spec noemt `key_env` niet bij
+    `COULD NOT CHECK`; een gratis endpoint zonder sleutel blijft zo bruikbaar).
   - `Reply(NamedTuple)`: `not_english: list[bool] | None` (per item, `None` als de keten faalde),
     `model: str | None`, `failures: list[str]` (`"<model>: <reden>"`, of `"key: <reden>"`,
     of `"skipped: <reden>"`).
@@ -407,8 +438,9 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
     `models = "x"` → `ConfigError`; `code_language_llm = 1` → `ConfigError`).
   - `tests/pack/test_code_language_llm.py` (`llm = load_hook_lib("code_language_llm")`):
     - `test_chain_from`: zonder tabel `None`; volledig voorbeeld uit spec *Config* met een bestaand
-      `env_file` onder `tmp_path` → `Chain` met `~` uitgeklapt; zonder `url`, met `models = []`, met
-      `env_file = "rel/env"` en met een niet-bestaand absoluut pad → elk `ConfigError`.
+      `env_file` onder `tmp_path` → `Chain` met `~` uitgeklapt; een lege `[code_language_llm]`,
+      zonder `url`, met `models = []`, met `env_file = "rel/env"` en met een niet-bestaand absoluut
+      pad → elk `ConfigError`.
     - `test_prompt_and_parse`: `build_prompt([("name", "a"), ("comment", "x\ny")])` bevat de regels
       `1. name: a` en `2. comment: x y`, zegt dat afkortingen en codejargon Engels zijn, en vraagt
       JSON met `EN` of `NOT-EN`. `parse_answer('{"1":"EN","2":"NOT-EN"}', 2) == [False, True]`;
@@ -517,8 +549,11 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
     - `test_run_gate_sets_under_gates_env`: stub-gate `echo "$LIGHTHOUSE_UNDER_BASH_GATES"` →
       output `b"1\n"`, en `"LIGHTHOUSE_UNDER_BASH_GATES" not in os.environ` daarna.
     - `test_notice_on_rc0_is_passed_on`: `fake_gate` geeft `("ok", b"code-language: NOTICE — x\na.py:2: name: y")`
-      → `run_post` exit 0, lege stderr, en `additionalContext` bevat `== x.py (code-language.sh) ==`
-      en `NOTICE — x`.
+      → `run_post` exit 0, lege stderr, en zowel `additionalContext` als `systemMessage` in de
+      stdout-JSON bevatten `== x.py (code-language.sh) ==` en `NOTICE — x` (besluit 11: gebruiker
+      én agent).
+    - `test_plain_note_has_no_system_message`: een gewone `outcome.note` (de melding van een
+      ontbrekend taalpakket) geeft nog steeds alleen `additionalContext`, geen `systemMessage`.
     - `test_chatter_on_rc0_stays_silent`: `("ok", b"formatted 1 file")` → `run_post` geeft
       `(0, "", "")`.
     - `test_under_gates_env_matches`: `bw.UNDER_GATES_ENV == cl.UNDER_GATES_ENV`.
@@ -536,8 +571,11 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
   daarna exit 0. Rc 1 blijft stderr + exit 2.
 - [ ] **Stap 5: Bash-pad.** `run_until` geeft `env` door aan `subprocess.Popen`. `run_gate` geeft
   `env={**os.environ, UNDER_GATES_ENV: "1"}` mee. `_report_verdict`: bij `verdict == "ok"` en
-  `_NOTICE = "NOTICE"` in de eerste uitvoerregel → `outcome.note("== <label> (<gate>) ==\n" + tekst)`;
-  anders blijft `ok` stil. `classify` verandert niet.
+  `_NOTICE = "NOTICE"` in de eerste uitvoerregel → `outcome.note("== <label> (<gate>) ==\n" + tekst,
+  notice=True)`; anders blijft `ok` stil. `_Outcome.note(text, notice: bool = False)` onthoudt de
+  notice-delen, en `render` zet die delen bij exit 0 én exit 2 ook in een topniveau-`systemMessage`
+  naast `hookSpecificOutput`, zodat de gebruiker ze ziet (besluit 11, via `outcome.note` van
+  besluit 19). `classify` verandert niet.
 - [ ] **Stap 6:** de vier testbestanden → PASS; `uv run pytest -q` → PASS.
 - [ ] **Stap 7:** `init --upgrade`; commit (`feat(core): laag 2 in de hook, zichtbaar bij falen,
   overgeslagen onder bash-write-gates (#37)`).
@@ -552,9 +590,13 @@ git commit -m "feat(core): woordfrequenties EN/NL uit wordfreq als databestand (
 - Consumeert: niets uit eerdere taken behalve de sleutelnamen `code_language` en
   `code_language_paths`.
 
-- [ ] **Stap 1: laag bevestigen.** Draai `/lighthouse-instrument` met de regel van besluit 16 en
-  noteer de uitkomst in het commitbericht. Wijst het een andere laag aan dan het beheerde blok van
-  core, stop en leg het voor aan de gebruiker.
+- [ ] **Stap 1: laag bevestigen.** `/lighthouse-instrument` heeft `disable-model-invocation: true`
+  (`pack/core/skills/instrument/SKILL.md:4`): de uitvoerder kan het niet aanroepen. Lees in plaats
+  daarvan `.claude/skills/lighthouse-instrument/SKILL.md` en loop de beslisprocedure voor de laag
+  zelf door met de regel van besluit 16, zonder stappen die het netwerk gebruiken (`npx skills
+  find`). Zet de redenering in twee à drie zinnen in het commitbericht, met de vermelding dat de
+  skill gelezen en niet gedraaid is. Wijst de procedure een andere laag aan dan het beheerde blok
+  van core, stop en leg het voor aan de gebruiker.
 - [ ] **Stap 2: schrijf de falende test.** In `test_core_block_word_budget`: tokens
   `"[project] code_language"` en `"code_language_paths"` erbij; het budget gaat van 260 naar 290
   woorden, en de docstring noemt de regel voor de taal van code (het blok staat nu op 255).
