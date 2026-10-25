@@ -56,13 +56,16 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 cd "$CWD" 2>/dev/null || cd "$CLAUDE_PROJECT_DIR" 2>/dev/null || cannot_check "the directory $CWD does not exist."
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-[ -n "$ROOT" ] && cd "$ROOT" || cannot_check "not inside a git repository ($CWD)."
+if [ -z "$ROOT" ] || ! cd "$ROOT"; then
+  cannot_check "not inside a git repository ($CWD)."
+fi
 
 # The lib lives in the lighthouse lib of this repo. Found through
 # LIGHTHOUSE_REPO_ROOT or git, never from this file's own path.
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
 if ! DIRS_RAW=$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/config.py" python.source_dirs 2>&1); then
-  cannot_check "the configuration cannot be read (python.source_dirs): $(printf '%s' "$DIRS_RAW" | tr '\n"\\' "   ")."
+  # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
+  cannot_check "the configuration cannot be read (python.source_dirs): $(printf '%s' "$DIRS_RAW" | tr '\n"\134' "   ")."
 fi
 
 # An empty list turns the check off.
