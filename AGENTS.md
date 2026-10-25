@@ -40,6 +40,7 @@ branch yourself before a commit, and run `[test_gate] command` from `lighthouse.
 - Every change goes through a PR and is squash-merged. `/lighthouse-verify-pr` writes the PR body; `pr-create-gate` checks it.
 - The test gate: `pre-commit-tests` runs `[test_gate] command` before every commit. Never bypass it with `--no-verify`.
 - Artefacts (issues, PRs, comments, commit messages) are written in `[project] language`.
+- With `[project] code_language` set, names, comments, docstrings and file names are English, and so is everything under `code_language_paths`; artefacts stay in `[project] language`.
 - Finish what you are already authorised to do; never end on an offer to do it ("ready to push if you want" is not done).
 - `heading:<key>` in a skill names a contract heading in `.lighthouse/headings.toml`. Write what `python3 .lighthouse/lib/lighthouse_lib/headings.py <key>` prints, never the literal `heading:<key>`; reading accepts every language variant.
 

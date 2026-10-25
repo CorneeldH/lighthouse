@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Mapping
 
 TIMEOUT_EXIT = 124
 NOT_FOUND_EXIT = 127
@@ -110,6 +111,7 @@ def _start(
     cwd: str | None,
     stdin: object,
     out: object,
+    env: Mapping[str, str] | None = None,
 ) -> subprocess.Popen | None:
     """Start `argv` in een eigen sessie; None (plus één regel stderr) als het er niet is."""
     kwargs: dict[str, object] = {}
@@ -118,7 +120,7 @@ def _start(
         kwargs["stderr"] = subprocess.STDOUT
     try:
         return subprocess.Popen(
-            argv, start_new_session=True, cwd=cwd, stdin=stdin, **kwargs
+            argv, start_new_session=True, cwd=cwd, stdin=stdin, env=env, **kwargs
         )
     except FileNotFoundError:
         sys.stderr.write(f"deadline.py: command not found: {argv[0]}\n")
@@ -140,6 +142,7 @@ def run_until(
     stdin_bytes: bytes | None = None,
     capture: bool = False,
     raise_on_signal: bool = False,
+    env: Mapping[str, str] | None = None,
 ) -> int | tuple[int, bytes]:
     """Draai `argv` tot `deadline` (epoch-seconden); exitcode of TIMEOUT_EXIT.
 
@@ -167,6 +170,9 @@ def run_until(
     melding gaat in dat geval alleen naar stderr van dit proces, niet in de
     buffer). Zonder `capture` blijft het returntype een kale `int`.
 
+    `env` is the child's whole environment; with None it inherits the parent's,
+    as before.
+
     `raise_on_signal=True` gooit bij een doorgestuurd signaal `Interrupted`
     (ná het stoppen van de groep) in plaats van 128 + signaalnummer terug te
     geven: dat getal kan het kind ook zelf als exitcode hebben.
@@ -186,7 +192,7 @@ def run_until(
         forwarder = _Forwarder()
         previous = {sig: signal.signal(sig, forwarder) for sig in FORWARDED}
         try:
-            proc = _start(argv, cwd, stdin_file, out_file)
+            proc = _start(argv, cwd, stdin_file, out_file, env)
             if proc is None:
                 return (NOT_FOUND_EXIT, b"") if capture else NOT_FOUND_EXIT
             signum = None
