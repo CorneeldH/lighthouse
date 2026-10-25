@@ -145,7 +145,7 @@
   - `TestNewState`: de `Windows` van `usage_full` met `now` 2026-09-05T12:00Z en Amsterdam → `State{Schema: 1, GeneratedAt: "2026-09-05T12:00:00Z", Session: {99, "2026-09-06T12:30:00Z", "14:30"}, Week: {48, "2026-09-10T14:59:00Z", "do 16:59"}}`; een sessie zonder reset → `{0, "", ""}`.
   - `TestStateRoundTrip`: `WriteState` en dan `ReadState` geeft dezelfde `State` en `generated_at` als `time.Time`; daarna staat er naast het bestand geen `.tmp` meer in `t.TempDir()`.
   - `TestReadStateRejects`: afwezig bestand, `{`, `{"schema":2,…}`, `generated_at` `"gisteren"` → alle vier `ok == false`.
-  - `TestWriteAtomicKeepsOldOnFailure`: doelmap read-only (`os.Chmod(dir, 0o500)`; `t.Skip` als `os.Getuid() == 0`) → fout, het oude bestand onveranderd.
+  - `TestWriteAtomicKeepsOldOnFailure`: doelmap read-only (`os.Chmod(dir, 0o500)` met `t.Cleanup(func() { os.Chmod(dir, 0o700) })`, anders faalt het opruimen van `t.TempDir()`; `t.Skip` als `os.Getuid() == 0`) → fout, het oude bestand onveranderd.
 
 - [ ] **Stap 2: Draai ze en zie ze falen**
 
@@ -239,6 +239,7 @@
     - `halt_pct_session = 70` → `{70, 95, 300s}`
     - `cache_ttl_seconds = 0` → `{85, 95, 0}` (elke refresh ververst)
     - `halt_pct_session = 0`, `halt_pct_week = 101`, `cache_ttl_seconds = -1` → `DefaultConfig()`
+    - `halt_pct_session = 70`, `halt_pct_week = 101` → `{70, 95, 300s}` (terugval per sleutel, niet voor de hele tabel)
     - `[usage` (parsefout) → `DefaultConfig()` en een fout
   - De bestaande tests van `internal/initcmd` blijven groen.
 
@@ -280,28 +281,33 @@
   func (m Meter) Refresh(force bool) (Outcome, error)
   func (m Meter) Tick() (Outcome, error)
 
+  const refreshTimeout = 60 * time.Second // deadline of the context RunUsage receives
+  const waitDelay = 5 * time.Second       // cmd.WaitDelay: a grandchild holding stdout does not block Output after the kill
+
   func tryLock(path string) (unlock func(), held bool, err error)
   func usageCommand(ctx context.Context, workdir string) *exec.Cmd
   func claudeRunning(pgrep func() (exitCode int, err error)) bool
   ```
 
 - [ ] **Stap 1: Schrijf de falende tests** — `m := Meter{Paths: Paths{Dir: t.TempDir()}, Config: DefaultConfig(), Now: fixed, Loc: amsterdam, RunUsage: fake, ClaudeRunning: …}`, de fake telt aanroepen en geeft een fixture terug.
-  - `TestRefreshWritesCacheAndAlarm`: fixture `usage_full` → `Refreshed`, cache gelijk aan `NewState(...)`, alarm `"venster 99 14:30 2026-09-06T12:30:00Z\n"`, `RunUsage` kreeg `Paths.Workdir()` en die map bestaat.
+  - `TestRefreshWritesCacheAndAlarm`: fixture `usage_full` → `Refreshed`, cache gelijk aan `NewState(...)`, alarm `"venster 99 14:30 2026-09-06T12:30:00Z\n"`, `RunUsage` kreeg `Paths.Workdir()` en die map bestaat. De fake controleert ook de context: `ctx.Deadline()` bestaat en `time.Until(deadline)` ligt tussen 55 s en `refreshTimeout`.
+  - `TestRefreshCreatesDir`: `Paths{Dir: filepath.Join(t.TempDir(), "new", "lighthouse")}` (de map bestaat nog niet, zoals bij de eerste run op een schone host) → `Refreshed`, cache geschreven.
   - `TestRefreshRemovesAlarmBelowThreshold`: bestaand alarm, fixture `usage_no_model` → alarm weg.
   - `TestRefreshTTL`: cache met `generated_at` 299 s oud → `Fresh`, 0 aanroepen; 300 s oud → `Refreshed`; 10 s oud met `force` → `Refreshed`.
   - `TestRefreshCorruptCacheRefreshes`: cache `{` → `Refreshed`.
-  - `TestRefreshKeepsOldCache`, tabel: `RunUsage` geeft een fout; geeft `usage_missing_week`; geeft `not json` → telkens `Failed`, cache- en alarmbestand byte voor byte ongewijzigd.
+  - `TestRefreshKeepsOldCache`, tabel: `RunUsage` geeft een fout; geeft `usage_missing_week`; geeft `not json`; geeft `usage_full` terwijl op `Paths.Alarm()` een niet-lege map staat (het alarm schrijven faalt) → telkens `Failed`, cachebestand byte voor byte ongewijzigd; in de eerste drie gevallen ook het alarmbestand.
   - `TestRefreshBusy`: houd `tryLock(Paths.Lock())` vast in de test → `Busy`, 0 aanroepen.
   - `TestTick`, tabel: `ClaudeRunning` false → `Idle`, 0 aanroepen; true → `Refreshed`; verlopen alarm met `ClaudeRunning` false → alarm toch weg (opruimen vóór de poort).
-  - `TestUsageCommand`: `Args == []string{"claude", "-p", "/usage", "--output-format", "json"}`, `Dir == workdir`, `Env` bevat `LIGHTHOUSE_USAGE_REFRESH=1` en de `PATH` van de test.
+  - `TestUsageCommand`: `Args == []string{"claude", "-p", "/usage", "--output-format", "json"}`, `Dir == workdir`, `Env` bevat `LIGHTHOUSE_USAGE_REFRESH=1` en de `PATH` van de test, `WaitDelay == waitDelay`.
+  - `TestUsageCommandTimeout` (niet parallel, `t.Setenv("PATH", …)`): een tijdelijke map op `PATH` met een uitvoerbaar `claude`-script `#!/bin/sh` + `sleep 30` (de `sleep` houdt stdout open na de kill van de shell); `usageCommand` met een context van 200 ms, dan `Output()` → een fout, binnen 10 s terug. Faalt zonder `CommandContext` (30 s) en zonder `WaitDelay` (wacht op `sleep`).
   - `TestClaudeRunning`, tabel: `(0, nil)` → true; `(1, nil)` → false; `(2, nil)` → true; `(3, nil)` → true; `(0, exec.ErrNotFound)` → true.
 
 - [ ] **Stap 2: Draai ze en zie ze falen** — `go test ./internal/usage/ -run 'TestRefresh|TestTick|TestUsageCommand|TestClaudeRunning' -v` — Expected: FAIL, `undefined: Meter`
 
 - [ ] **Stap 3: Implementeer**
-  - `Refresh`: lock eerst (niet gekregen → `Busy`), dan de TTL op `ReadState` (niet ok → verversen), dan `RunUsage` met een context van 60 s, `Parse`, `WriteState`, `WriteAlarm`. Elke fout → `Failed` met die fout; een panic komt er niet uit (`defer recover` die `Failed` geeft).
+  - `Refresh`: eerst `os.MkdirAll(Paths.Workdir(), 0o755)` (maakt ook `Paths.Dir`, waar de lock in staat; fout → `Failed`), dan de lock (niet gekregen → `Busy`), dan de TTL op `ReadState` (niet ok → verversen), dan `RunUsage` met `context.WithTimeout(…, refreshTimeout)`, `Parse`, `WriteAlarm`, `WriteState`. Het alarm vóór de cache: faalt het alarm, dan is de cache nog niet aangeraakt; faalt daarna `WriteState`, dan laat `writeAtomic` de oude cache staan. Elke fout → `Failed` met die fout; een panic komt er niet uit (`defer recover` die `Failed` geeft).
   - `Tick`: `PruneAlarm` (een fout daarvan stopt de tick niet), dan `ClaudeRunning`, dan `Refresh(false)`.
-  - `usageCommand`: `exec.CommandContext`, `Dir`, `Env = append(os.Environ(), "LIGHTHOUSE_USAGE_REFRESH=1")`. De echte `RunUsage`: `MkdirAll(workdir)`, `cmd.Output()`.
+  - `usageCommand`: `exec.CommandContext`, `Dir`, `Env = append(os.Environ(), "LIGHTHOUSE_USAGE_REFRESH=1")`, `WaitDelay = waitDelay`. De echte `RunUsage`: `cmd.Output()`.
   - De echte `pgrep`: `exec.Command("pgrep", "-x", "claude").Run()`; een `*exec.ExitError` geeft zijn `ExitCode()` en `nil`, elke andere fout gaat als fout door.
   - `tryLock` (flock): `os.OpenFile(path, O_CREATE|O_RDWR, 0o644)`, `syscall.Flock(fd, LOCK_EX|LOCK_NB)`; `EWOULDBLOCK` → `held == false`, geen fout. `lock_other.go`: `nil, false, errors.New("usage: file lock not supported on this platform")`.
 
@@ -328,7 +334,7 @@
   - `TestUsageRefreshExitsZeroWithoutHome` (`internal/cli`): `t.Setenv("HOME", "")`, `t.Setenv("XDG_CACHE_HOME", "")`, `NewRoot(...).SetArgs([]string{"usage", "refresh"})` → `Execute()` geeft `nil`, stderr bevat `usage: failed:`.
   - `TestUsageHelp`: `usage refresh --help` noemt `--force`.
   - `TestUsageRefreshE2E` (`e2e`): een tijdelijke map op `PATH` met een uitvoerbaar `claude`-script dat `pwd` en `$LIGHTHOUSE_USAGE_REFRESH` naar een bestand schrijft en `testdata`-fixture `usage_full.json` print; `XDG_CACHE_HOME` en `LIGHTHOUSE_HOST_TOML` op tijdelijke paden; `TZ=Europe/Amsterdam`. Draai `usage refresh` → exit 0; `<xdg>/lighthouse/usage-window.json` heeft `session.pct == 99`; het alarm begint met `venster 99 `; het script zag cwd `<xdg>/lighthouse/usage-refresh` en `LIGHTHOUSE_USAGE_REFRESH=1`. Tweede `usage refresh` → het script draaide niet nog eens (TTL). Daarna een script dat met 1 eindigt en `usage refresh --force` → exit 0, cache ongewijzigd.
-  - `TestUsageTickWithoutClaude` (`e2e`): `PATH` met een `pgrep`-script dat met 1 eindigt en een `claude`-script dat een markeerbestand maakt → `usage tick` exit 0, geen markeerbestand.
+  - `TestUsageTickWithoutClaude` (`e2e`): `XDG_CACHE_HOME` en `LIGHTHOUSE_HOST_TOML` op tijdelijke paden (zoals hierboven; anders ruimt de tick het echte alarm van de ontwikkelaar op), `PATH` met een `pgrep`-script dat met 1 eindigt en een `claude`-script dat een markeerbestand maakt → `usage tick` exit 0, geen markeerbestand.
 
 - [ ] **Stap 2: Draai ze en zie ze falen** — `go test ./internal/cli/ -run TestUsage -v && go test -tags e2e ./e2e/ -run TestUsage -v` — Expected: FAIL, `unknown command "usage"`
 
@@ -355,7 +361,7 @@
 
 - [ ] **Stap 2: Echte meting** — `go run ./cmd/lighthouse usage refresh --force` met een echte `claude` op `PATH`; toon `usage-window.json`. Lukt de aanroep niet, meld dat dan in de PR (de fixtures bewijzen de parser, niet de echte CLI).
 
-- [ ] **Stap 3: PR** via `/lighthouse-verify-pr` (`Closes #64`). Geen `init --upgrade`: er verandert niets onder `pack/` en niets aan wat `init` schrijft.
+- [ ] **Stap 3: PR** via `/lighthouse-verify-pr` (`Closes #64`). De PR-body noemt de lezing van de AC bij `pgrep`: exitcode 2 en 3 ("kon niet zoeken") tellen als "pgrep er niet", dus de tick ververst; de bron in paia telt ze als "nee". Geen `init --upgrade`: er verandert niets onder `pack/` en niets aan wat `init` schrijft.
 
 ## Buiten dit plan
 
