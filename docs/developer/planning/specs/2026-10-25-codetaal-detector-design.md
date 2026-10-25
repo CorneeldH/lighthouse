@@ -116,7 +116,7 @@ woorden. Daarom zijn ze geen kandidaat voor laag 1.
 | 16 | Een regel in het beheerde instructieblok van core (`pack/core/instructions/AGENTS.md`): met `[project] code_language` gezet zijn namen, commentaar, docstrings en bestandsnamen Engels, en ook alles onder `code_language_paths`; artefacten blijven in `[project] language`. De laag bevestigt de bouwer met `/lighthouse-instrument` | De skillkant van "skill en hook": de agent moet het weten vóór de write, niet pas bij de blokkade |
 | 17 | Lighthouse zet in dit issue `code_language` en `code_language_paths` niet aan | Mergevolgorde: main mag niet rood. Aanzetten hoort bij de vertaalslag |
 | 18 | Bash-writes van niet-codebestanden binnen het bereik (`.md`, `.toml`, een `mv`) controleert de hook in dit issue niet. Edit en Write wel. *Mijn keuze* | Dat vraagt dat `bash_writes.py` per repo de config leest, in een pre met een time-out van 5 s, en dat is een flinke verbouwing. Skills ontstaan bijna altijd via Edit en Write. Het vangnet is de test over heel lighthouse uit #58, die bij de test gate draait |
-| 19 | Via `bash-write-gates` draait laag 2 niet. De twijfelgevallen komen dan in de niet-blokkerende melding van besluit 11, met de reden "layer 2 skipped under bash-write-gates". Hoe de gate dat weet (een omgevingsvariabele die `bash_writes.py` zet), kiest de bouwer. *(own choice after spec review, r1-f1)* | `bash-write-gates` draait de gates per bestand achter elkaar, met één deadline van 90 s (`bash_writes.py:807-810`). Een Bash-call die veel bestanden schrijft, zou anders per bestand op laag 2 wachten, en dan wordt alles `unchecked` en blokkeert het |
+| 19 | Via `bash-write-gates` draait laag 2 niet. De twijfelgevallen komen dan in de niet-blokkerende melding van besluit 11, met de reden "layer 2 skipped under bash-write-gates". `bash_writes.py` zet daarvoor een omgevingsvariabele voor de gates, en geeft de uitvoer van een gate met rc 0 door als `outcome.note` wanneer de eerste regel het token `NOTICE` bevat, zoals `classify` alleen de eerste regel op `COULD NOT CHECK` leest. Nu gooit `_report_verdict` die uitvoer weg (`bash_writes.py:1331-1332`). *(own choice after spec review, r1-f1, r2-f1)* | `bash-write-gates` draait de gates per bestand achter elkaar, met één deadline van 90 s (`bash_writes.py:807-810`). Een Bash-call die veel bestanden schrijft, zou anders per bestand op laag 2 wachten, en dan wordt alles `unchecked` en blokkeert het |
 
 ## Opbouw
 
@@ -157,8 +157,8 @@ code-language: layer 2 did not answer (<schakel>: <reden>; …); <n> doubtful un
 
 Is er geen vondst, dan blijft de exit 0 en gaat de melding als niet-blokkerende `systemMessage` naar
 de gebruiker (zoals `worktree-guard.sh`) en als `additionalContext` naar de agent (zoals
-`pr-create-gate.sh`). Via `bash-write-gates` moet dezelfde melding zichtbaar worden;
-hoe, kiest de bouwer (zie *Aan de bouwer*).
+`pr-create-gate.sh`). Via `bash-write-gates` schrijft de gate de melding op stdout met
+`code-language: NOTICE — …` als eerste regel, en geeft `bash_writes.py` die door (besluit 19).
 
 `COULD NOT CHECK` blijft gelden voor wat #26 al noemt, en daarnaast voor een databestand dat
 ontbreekt of niet te lezen is, en voor een `[code_language_llm]` die er wel is maar niet klopt (geen
@@ -190,6 +190,8 @@ het `env_file` ontbreekt, is falen van laag 2 (besluit 11), geen `COULD NOT CHEC
   `.lighthouse/manifest.toml`. De nieuwe bestanden komen in dezelfde drie. *(SOURCES.toml: own choice after spec review, r1-f7)*
 - Een script dat het databestand opnieuw maakt uit wordfreq, buiten `pack/`, zodat het niet bij
   consumers landt. Het script draait met `uv run --with wordfreq`, en hoeft niet in de test gate.
+- In `pack/core/lib/bash_writes.py`: de omgevingsvariabele voor de gates en het doorgeven van een
+  `NOTICE`-uitvoer bij rc 0 (besluit 19), met tests op het Bash-pad.
 - Het licentie- en naamsvermeldingsbestand naast het databestand (besluit 4), en een vermelding in
   `LICENSES/`.
 - Dogfood: `go run ./cmd/lighthouse init --upgrade`, en het geïnstalleerde resultaat gecommit.
@@ -229,10 +231,7 @@ het `env_file` ontbreekt, is falen van laag 2 (besluit 11), geen `COULD NOT CHEC
 
 Vrij te kiezen: de module-indeling, de vorm van het databestand (zolang het met de stdlib laadt en
 de koude start onder 0,5 s blijft), de exacte drempels binnen de meetdoelen, de inhoud van de
-jargonlijst, de naam van de ketentabel, en de prompt. Ook vrij: hoe de melding van besluit 11 via
-`bash-write-gates` zichtbaar wordt, bijvoorbeeld als regel in de uitvoer van de post of als eigen
-oordeel naast `ok`, `finding` en `unchecked`. Eén voorwaarde: hij blijft niet stil en blokkeert
-niet.
+jargonlijst en de prompt.
 
 Niet vrij: de besluiten hierboven, dat laag 2 alleen toevoegt, en dat de hook zonder pip-pakket
 draait.
