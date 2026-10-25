@@ -41,8 +41,9 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
 ## Review Focus
 
 1. **Een repo zonder `go.mod` in de root** (het pakket handmatig met `--pack go` toegevoegd, of
-   Go in een submap): `go-check.sh` zegt niets en blokkeert niet, in plaats van elke beurt op
-   `go: go.mod file not found` te blokkeren. → test in Task 2.
+   Go in een submap): `go-check.sh` blokkeert niet, in plaats van elke beurt op
+   `go: go.mod file not found` te blokkeren, en meldt `not checked` in plaats van stil groen,
+   zoals `ty-check` zonder bronmap. → test in Task 2.
 2. **Geen `.golangci.yml` in de repo**: `config verify` geeft 6; dat is geen fout, de hook lint
    met de standaardset. → test in Task 2.
 3. **Een pinbestand met `v` en een newline** (`v2.15.0\n`) tegen `version --short` zonder `v`:
@@ -101,7 +102,7 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
   | `test_other_extension_passes` | `a.py` | rc 0, `STUB_LOG` bestaat niet |
   | `test_missing_file_passes` | pad dat niet bestaat | rc 0 |
   | `test_no_path_passes` | `{"tool_input": {}}` | rc 0 |
-  | `test_classify_reads_the_parse_error_as_a_finding` | de echte `gofmt` (geen stub) op een `x.go` met `package m\n\nfunc F( {\n` | rc 2, `bash_writes.classify(2, result.stderr.encode()) == "finding"`, als `test_ruff_format.py:96-103` |
+  | `test_classify_reads_the_parse_error_as_a_finding` | de echte `gofmt` (geen stub) op een `x.go` met `package m\n\nfunc F( {\n` | rc 2, `bash_writes.classify(2, result.stderr.encode()) == "finding"`, als `test_ruff_format.py:96-103`; `pytest.mark.skipif(shutil.which("gofmt") is None)`, want de Python-lane van CI heeft geen `setup-go` |
   | `test_without_gofmt_could_not_check` | bestaand `a.go`, `tool_bin(..., drop="gofmt")` zonder stub, `PATH` = alleen die map (als `test_ty_check.py:176`) | rc 2, eerste regel begint met `gofmt: COULD NOT CHECK — ` |
   | `test_without_gofmt_other_extension_passes` | bestaand `a.md`, `drop="gofmt"`, `PATH` = alleen die map | rc 0, stderr leeg |
   | `test_without_jq_could_not_check` | `drop="jq"`, `PATH` = alleen die map | idem |
@@ -152,8 +153,8 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
   | `test_pin_matches_with_v_and_newline` | `.golangci-version` = `v2.15.0\n`, `STUB_VERSION=2.15.0` | rc 0, stdout leeg |
   | `test_pin_mismatch_could_not_check` | pin `v2.15.0`, `STUB_VERSION=2.11.4` | systemMessage met `2.11.4` en `2.15.0`; `run` niet aangeroepen |
   | `test_no_pin_runs_unpinned` | geen `.golangci-version`, `STUB_VERSION=9.9.9` | rc 0, stdout leeg |
-  | `test_no_go_mod_says_nothing` | repo zonder `go.mod` | rc 0, stdout leeg, `STUB_LOG` bestaat niet |
-  | `test_no_go_mod_without_golangci_lint_says_nothing` | repo zonder `go.mod`, `tool_bin(drop="golangci-lint")`, `PATH` = alleen die map | rc 0, stdout leeg |
+  | `test_no_go_mod_reports_not_checked` | repo zonder `go.mod` | rc 0, systemMessage begint met `go-check: not checked — no go.mod in the repository root`, `STUB_LOG` bestaat niet |
+  | `test_no_go_mod_without_golangci_lint_reports_not_checked` | repo zonder `go.mod`, `tool_bin(drop="golangci-lint")`, `PATH` = alleen die map | rc 0, dezelfde systemMessage (niet `COULD NOT CHECK` over de tool) |
   | `test_stop_hook_active_passes` | `stop_hook_active: true`, `STUB_RUN_RC=1` | rc 0, `STUB_LOG` bestaat niet |
   | `test_missing_tool_could_not_check` | parametrize over `go`, `golangci-lint`, `jq`, `git` met `tool_bin(drop=…)`, geen stub voor de gedropte tool, `PATH` = alleen die map (als `test_ty_check.py:176`) | systemMessage begint met `go-check: COULD NOT CHECK — `, met de toolnaam (voor `jq` de handgebouwde JSON, als `ty-check.sh`) |
   | `test_registered_on_stop` | `hooks.json` | `Stop` → matcher `""` → `${CLAUDE_PLUGIN_ROOT}/hooks/go-check.sh`, timeout 120 |
@@ -162,8 +163,9 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
 - [ ] **Step 3: Schrijf `pack/go/hooks/go-check.sh`** naar de vorm van `pack/python/hooks/ty-check.sh`
   (`report`, `cannot_check`, `stop_hook_active`-guard, worktree-bewuste `cd` naar de git-root).
   De toolcheck splitst: vóór het lezen van de payload alleen `jq` en `git`; na de `cd` geen
-  `$ROOT/go.mod` → exit 0, stil; pas dan `go` en `golangci-lint` → `cannot_check` met de
-  toolnaam. Zo zegt een repo zonder Go-module niets, ook zonder Go-tooling. Daarna: pin uit `$ROOT/.golangci-version`
+  `$ROOT/go.mod` → `report "go-check: not checked — no go.mod in the repository root (go-check lints only a root module)."`
+  en exit 0, zoals `ty-check.sh:79`; pas dan `go` en `golangci-lint` → `cannot_check` met de
+  toolnaam. Zo blokkeert een repo zonder Go-module niet, ook zonder Go-tooling, en is hij nooit stil groen. Daarna: pin uit `$ROOT/.golangci-version`
   (`tr -d '[:space:]'`, voorloop-`v` weg) tegen `golangci-lint version --short` → mismatch is
   `cannot_check "golangci-lint <have> runs; .golangci-version pins <want>."`;
   `golangci-lint config verify` rc ∉ {0, 6} → `cannot_check` met de eerste drie regels;
@@ -348,7 +350,10 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
   - `go run ./cmd/lighthouse init --upgrade </dev/null` — `No changes.`;
   - de KPI-rijen van de skill in lighthouse: `git ls-files -z '*.go' | xargs -0r gofmt -l`
     (leeg), `go mod tidy -diff` (leeg), `go vet ./...`, `golangci-lint run ./...`,
-    `go test -race -shuffle=on ./...` (alle rc 0).
+    `go test -race -shuffle=on ./...` (alle rc 0);
+  - de geïnstalleerde hook tegen de echte `golangci-lint`:
+    `echo "{\"stop_hook_active\":false,\"cwd\":\"$PWD\"}" | .claude/hooks/lighthouse/go-check.sh`
+    — rc 0, stdout leeg.
 - [ ] **Step 5: Commit** `feat(go): lighthouse draait pack/go (#40)`.
 
 ---
