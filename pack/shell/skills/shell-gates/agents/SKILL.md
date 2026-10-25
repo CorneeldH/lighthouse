@@ -16,6 +16,14 @@ row 2.
 
 Out of scope: Python and workflow YAML.
 
+What a good test is lives in `lighthouse-testing`; this file gives only its shell form
+(below). Before the first edit, write the classification sentence from that skill in the chat;
+the classes and their minimal checks are in its section *Classify first*:
+
+```text
+This is a <class> change; the likely regression surface is <observable behaviour>.
+```
+
 ## The norm
 
 **The absence of a signal is treated as a negative result.**
@@ -89,11 +97,27 @@ measures them, not because they count for less.
   tested nothing. ✅ build the fixture so the path is provably reached (a marker in the
   output) · ❌ trusting the name of the test.
 
+## The shell form of lighthouse-testing
+
+The norm is in `lighthouse-testing`; this is its form for a gate or a hook.
+
+- **Run the script, against controlled input.** Build a temporary directory (`mktemp -d`, or
+  pytest `tmp_path`) holding exactly the fixture that reaches the path under test. Never point
+  the script at the real repo or at `$HOME`.
+- **Assert the exit code and the output.** Both: the exit code alone lets defect 1 through
+  (rc 127 is nonzero too), and the first line's prefix tells a finding from `COULD NOT CHECK`.
+- **Run it, never read or grep the source.** A test that greps the script stays green when
+  the mechanism breaks.
+- **Per gate, one input that must block and one that must pass.** This is the minimal check
+  of the `hook/gate` class. With only the blocking input, a gate that blocks everything
+  still passes.
+
 ## The pairing
 
 | Half | Carries | When |
 |---|---|---|
 | this skill | the norm, the six defects, the commands | while you write |
+| `lighthouse-testing` | the test norms and the class table | for every test, and before the first edit |
 | `.claude/hooks/lighthouse/shellcheck.sh` | shellcheck on every edited `*.sh` and `*.bash`, blocking | right after the edit |
 
 The hook is deliberately **not fail-open**. Skipping silently is itself the defect the
