@@ -19,7 +19,10 @@ import (
 type serveProc struct {
 	cmd  *exec.Cmd
 	addr string
-	done chan error
+	done chan error // receives cmd.Wait's result after stderr reached EOF
+	// stderr holds everything the child wrote; read it only after done fired.
+	stderr  *bytes.Buffer
+	started chan string // the address from the "listening on" line
 }
 
 // startServe starts `lighthouse serve` and returns once it printed its start line. The
@@ -27,35 +30,20 @@ type serveProc struct {
 func startServe(t *testing.T, bin string, args ...string) *serveProc {
 	t.Helper()
 	p := startRaw(t, bin, args...)
-	lines := make(chan string, 1)
-	go func() {
-		sc := bufio.NewScanner(p.pipe)
-		for sc.Scan() {
-			if _, rest, ok := strings.Cut(sc.Text(), "listening on "); ok {
-				lines <- rest
-				break
-			}
-		}
-		for sc.Scan() { // drain so the child never blocks on a full pipe
-		}
-	}()
 	select {
-	case addr := <-lines:
+	case addr := <-p.started:
 		p.addr = addr
 	case err := <-p.done:
 		t.Fatalf("serve exited before listening: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("no start line within 10s")
 	}
-	return p.serveProc
+	return p
 }
 
-type rawProc struct {
-	*serveProc
-	pipe interface{ Read([]byte) (int, error) }
-}
-
-func startRaw(t *testing.T, bin string, args ...string) *rawProc {
+// startRaw starts the binary and collects its stderr. A reader reads the pipe to EOF
+// before it calls Wait, as the os/exec contract requires.
+func startRaw(t *testing.T, bin string, args ...string) *serveProc {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = cleanEnv()
@@ -66,10 +54,26 @@ func startRaw(t *testing.T, bin string, args ...string) *rawProc {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	p := &serveProc{cmd: cmd, done: make(chan error, 1)}
-	go func() { p.done <- cmd.Wait() }()
+	p := &serveProc{
+		cmd:     cmd,
+		done:    make(chan error, 1),
+		stderr:  &bytes.Buffer{},
+		started: make(chan string, 1),
+	}
+	go func() {
+		sc := bufio.NewScanner(pipe)
+		announced := false
+		for sc.Scan() {
+			p.stderr.WriteString(sc.Text() + "\n")
+			if _, rest, ok := strings.Cut(sc.Text(), "listening on "); ok && !announced {
+				announced = true
+				p.started <- rest
+			}
+		}
+		p.done <- cmd.Wait()
+	}()
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
-	return &rawProc{serveProc: p, pipe: pipe}
+	return p
 }
 
 func health(t *testing.T, addr string) {
@@ -156,7 +160,10 @@ func TestServePortInUse(t *testing.T) {
 
 	failing := startRaw(t, bin, "serve", "--addr", ln.Addr().String(), "--db", db)
 	if code := exitCode(t, failing.done); code != 1 {
-		t.Fatalf("exit code = %d, want 1", code)
+		t.Fatalf("exit code = %d, want 1; stderr: %s", code, failing.stderr.String())
+	}
+	if !strings.Contains(failing.stderr.String(), "address already in use") {
+		t.Errorf("stderr lacks the net.Listen error: %s", failing.stderr.String())
 	}
 
 	p := startServe(t, bin, "serve", "--addr", "127.0.0.1:0", "--db", db)
