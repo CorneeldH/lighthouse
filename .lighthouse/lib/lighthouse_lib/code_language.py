@@ -80,6 +80,11 @@ def _comment_findings(source: str) -> list[Finding]:
             blocks[-1].append((line, text))
         else:
             blocks.append([(line, text)])
+    return _dutch_blocks(blocks)
+
+
+def _dutch_blocks(blocks: list[list[tuple[int, str]]]) -> list[Finding]:
+    """A finding on the first line of each comment block with Dutch text outside marked lines."""
     found = []
     for block in blocks:
         kept = [(line, text) for line, text in block if MARKER not in text]
@@ -132,4 +137,252 @@ def scan_python(source: str) -> list[Finding]:
         marked = 0 < line <= len(lines) and MARKER in lines[line - 1]
         if not marked and is_dutch_name(name):
             found.append(Finding(line, "name", name))
+    return sorted(found, key=lambda f: f.line)
+
+
+_IDENT = r"[A-Za-z_]\w*"
+_IDENT_LIST = rf"{_IDENT}(?:[ \t]*,[ \t]*{_IDENT})*"
+
+
+def _name_findings(
+    names: list[tuple[int, str]], source_lines: list[str]
+) -> list[Finding]:
+    """Findings for Dutch names; one per name per line, none on a marked line."""
+    found = []
+    seen = set()
+    for line, name in names:
+        if (line, name) in seen:
+            continue
+        seen.add((line, name))
+        marked = 0 < line <= len(source_lines) and MARKER in source_lines[line - 1]
+        if not marked and is_dutch_name(name):
+            found.append(Finding(line, "name", name))
+    return found
+
+
+def _line_of(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
+
+
+# --- shell ---
+
+_HEREDOC = re.compile(rf"<<(-?)[ \t]*(?:'([^']*)'|\"([^\"]*)\"|({_IDENT}))")
+_SHELL_FUNCTION = re.compile(rf"^[ \t]*function[ \t]+({_IDENT})", re.MULTILINE)
+_SHELL_FUNCTION_PARENS = re.compile(rf"^[ \t]*({_IDENT})[ \t]*\([ \t]*\)", re.MULTILINE)
+_SHELL_ASSIGN = re.compile(rf"(?:^|[;&|(])[ \t]*({_IDENT})\+?=", re.MULTILINE)
+_SHELL_DECLARE = re.compile(r"^[ \t]*(?:local|export|readonly|declare|typeset)\b", re.MULTILINE)
+_SHELL_DECLARED = re.compile(rf"[ \t]+(?:-\S+|({_IDENT})(?=[ \t=\n]|$))(?:=\S*)?")
+
+
+def _scan_shell_text(source: str) -> tuple[list[str], list[list[tuple[int, str]]]]:
+    """Code lines with strings, comments and heredoc bodies blanked, plus comment blocks."""
+    code_lines: list[str] = []
+    blocks: list[list[tuple[int, str]]] = []
+    last_comment = -1
+    quote = ""
+    heredoc: tuple[str, bool] | None = None
+    pending: list[tuple[str, bool]] = []
+    for number, line in enumerate(source.splitlines(), 1):
+        if heredoc:
+            body = line.rstrip("\r")
+            if (body.lstrip("\t") if heredoc[1] else body) == heredoc[0]:
+                heredoc = pending.pop(0) if pending else None
+            code_lines.append("")
+            continue
+        out = []
+        i = 0
+        while i < len(line):
+            char = line[i]
+            if quote:
+                if char == "\\" and quote == '"':
+                    i += 1
+                elif char == quote:
+                    quote = ""
+                    out.append(char)
+            elif char == "\\":
+                i += 1
+            elif char in "'\"":
+                quote = char
+                out.append(char)
+            elif char == "#" and (i == 0 or line[i - 1] in " \t;&|("):
+                if not (number == 1 and line.startswith("#!")):
+                    text = line[i + 1 :].strip()
+                    if last_comment == number - 1 and blocks:
+                        blocks[-1].append((number, text))
+                    else:
+                        blocks.append([(number, text)])
+                    last_comment = number
+                break
+            elif line.startswith("<<", i) and "((" not in line[:i]:
+                match = _HEREDOC.match(line, i)
+                if match and not line.startswith("<<<", i):
+                    delimiter = match[2] or match[3] or match[4]
+                    pending.append((delimiter, bool(match[1])))
+                    i = match.end() - 1
+                out.append(char)
+            else:
+                out.append(char)
+            i += 1
+        code_lines.append("".join(out))
+        if pending and not quote:
+            heredoc = pending.pop(0)
+    return code_lines, blocks
+
+
+def scan_shell(source: str) -> list[Finding]:
+    """Dutch comments and names in shell `source`, sorted by line.
+
+    A heuristic reader, not a parser: it skips quoted strings and heredoc bodies and
+    looks for function names and assigned variables.
+    """
+    code_lines, blocks = _scan_shell_text(source)
+    code = "\n".join(code_lines)
+    names = []
+    for pattern in (_SHELL_FUNCTION, _SHELL_FUNCTION_PARENS, _SHELL_ASSIGN):
+        names += [(_line_of(code, m.start(1)), m[1]) for m in pattern.finditer(code)]
+    for declare in _SHELL_DECLARE.finditer(code):
+        position = declare.end()
+        while match := _SHELL_DECLARED.match(code, position):
+            position = match.end()
+            if match[1]:
+                names.append((_line_of(code, match.start(1)), match[1]))
+    found = _dutch_blocks(blocks) + _name_findings(names, source.splitlines())
+    return sorted(found, key=lambda f: f.line)
+
+
+# --- Go ---
+
+_GO_PACKAGE = re.compile(rf"^[ \t]*package[ \t]+({_IDENT})", re.MULTILINE)
+_GO_FUNC_NAMED = re.compile(
+    rf"^[ \t]*func[ \t]+(?:\(([^)]*)\)[ \t]*)?({_IDENT})[ \t]*(?:\[[^\]]*\][ \t]*)?\(([^)]*)\)",
+    re.MULTILINE,
+)
+_GO_FUNC_PARAMS = re.compile(r"\bfunc[ \t]*\(([^)]*)\)")
+_GO_DECLARATION = re.compile(rf"^[ \t]*(?:var|const|type)[ \t]+({_IDENT_LIST})", re.MULTILINE)
+_GO_GROUP = re.compile(r"^[ \t]*(?:var|const|type)[ \t]*\(", re.MULTILINE)
+_GO_DEFINE = re.compile(rf"(?<![\w.])({_IDENT_LIST})[ \t]*:=")
+_GO_STRUCT = re.compile(r"\bstruct[ \t]*\{")
+_GO_FIELD = re.compile(rf"^[ \t]*({_IDENT_LIST})[ \t]+\S")
+
+
+def _scan_go_text(source: str) -> tuple[str, list[list[tuple[int, str]]]]:
+    """Source with comments, strings and runes blanked (same offsets), plus comment blocks."""
+    out = list(source)
+    blocks: list[list[tuple[int, str]]] = []
+    last_line_comment = -1  # line of the last `//` comment, when it ended the last block
+    line = 1
+    i = 0
+    size = len(source)
+
+    def blank(start: int, end: int) -> None:
+        for k in range(start, end):
+            if out[k] != "\n":
+                out[k] = " "
+
+    while i < size:
+        char = source[i]
+        if char == "\n":
+            line += 1
+        elif source.startswith("//", i):
+            end = source.find("\n", i)
+            end = size if end < 0 else end
+            text = source[i + 2 : end].strip()
+            if last_line_comment == line - 1 and blocks:
+                blocks[-1].append((line, text))
+            else:
+                blocks.append([(line, text)])
+            last_line_comment = line
+            blank(i, end)
+            i = end
+            continue
+        elif source.startswith("/*", i):
+            end = source.find("*/", i + 2)
+            end = size if end < 0 else end + 2
+            body = source[i + 2 : max(i + 2, end - 2)]
+            parts = [part.strip().lstrip("*").strip() for part in body.split("\n")]
+            blocks.append([(line + n, part) for n, part in enumerate(parts)])
+            last_line_comment = -1
+            line += source.count("\n", i, end)
+            blank(i, end)
+            i = end
+            continue
+        elif char in "\"'`":
+            end = i + 1
+            while end < size and source[end] != char:
+                if source[end] == "\n" and char != "`":
+                    break
+                end += 2 if source[end] == "\\" and char != "`" else 1
+            end = min(end + 1, size)
+            blank(i + 1, end - 1)
+            line += source.count("\n", i, end)
+            i = end
+            continue
+        i += 1
+    return "".join(out), blocks
+
+
+def _go_param_names(group: str, start: int, code: str) -> list[tuple[int, str]]:
+    """Parameter names in the text of one parameter list that begins at offset `start`."""
+    pieces = [(m.start(), m[0].split()) for m in re.finditer(r"[^,]+", group)]
+    if not any(len(tokens) > 1 for _, tokens in pieces):
+        return []  # only types, no names
+    return [
+        (_line_of(code, start + offset + group[offset:].find(tokens[0])), tokens[0])
+        for offset, tokens in pieces
+        if tokens and re.fullmatch(_IDENT, tokens[0])
+    ]
+
+
+def _go_names(code: str) -> list[tuple[int, str]]:
+    names: list[tuple[int, str]] = []
+
+    def add_list(match: re.Match[str], group: int = 1) -> None:
+        for name in re.finditer(_IDENT, match[group]):
+            names.append((_line_of(code, match.start(group) + name.start()), name[0]))
+
+    for match in _GO_PACKAGE.finditer(code):
+        add_list(match)
+    for match in _GO_FUNC_NAMED.finditer(code):
+        names.append((_line_of(code, match.start(2)), match[2]))
+        if match[1] is not None:
+            names += _go_param_names(match[1], match.start(1), code)
+        names += _go_param_names(match[3], match.start(3), code)
+    for match in _GO_FUNC_PARAMS.finditer(code):
+        names += _go_param_names(match[1], match.start(1), code)
+    for match in _GO_DECLARATION.finditer(code):
+        add_list(match)
+    for match in _GO_DEFINE.finditer(code):
+        add_list(match)
+    for group in _GO_GROUP.finditer(code):
+        depth, end = 1, group.end()
+        while end < len(code) and depth:
+            depth += {"(": 1, ")": -1}.get(code[end], 0)
+            end += 1
+        for entry in re.finditer(rf"^[ \t]*({_IDENT_LIST})", code[group.end() : end], re.MULTILINE):
+            base = group.end() + entry.start(1)
+            for name in re.finditer(_IDENT, entry[1]):
+                names.append((_line_of(code, base + name.start()), name[0]))
+    for struct in _GO_STRUCT.finditer(code):
+        depth, end = 1, struct.end()
+        while end < len(code) and depth:
+            depth += {"{": 1, "}": -1}.get(code[end], 0)
+            end += 1
+        body = code[struct.end() : end - 1]
+        for field in re.finditer(r"[^\n;]+", body):
+            match = _GO_FIELD.match(field[0])
+            if match:
+                base = struct.end() + field.start() + match.start(1)
+                for name in re.finditer(_IDENT, match[1]):
+                    names.append((_line_of(code, base + name.start()), name[0]))
+    return names
+
+
+def scan_go(source: str) -> list[Finding]:
+    """Dutch comments and names in Go `source`, sorted by line.
+
+    A heuristic reader, not a parser: it blanks comments, strings, raw strings and runes
+    first, then looks for the declaration forms of Go.
+    """
+    code, blocks = _scan_go_text(source)
+    found = _dutch_blocks(blocks) + _name_findings(_go_names(code), source.splitlines())
     return sorted(found, key=lambda f: f.line)

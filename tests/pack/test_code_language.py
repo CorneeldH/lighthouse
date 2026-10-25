@@ -110,3 +110,120 @@ def test_python_syntax_error_is_cannot_check():
 def test_python_english_clean():
     source = (REPO / "pack" / "core" / "lib" / "config.py").read_text(encoding="utf-8")
     assert cl.scan_python(source) == []
+
+
+def _shell(source):
+    return [(f.line, f.kind, f.text) for f in cl.scan_shell(source)]
+
+
+def test_shell_comment():
+    assert _shell("echo hi\n# lees het bestand\n") == [(2, "comment", "lees het bestand")]
+
+
+def test_shell_shebang_skipped():
+    assert _shell("#!/usr/bin/env bash\n# read the file\n") == []
+
+
+def test_shell_hash_in_string_and_param():
+    source = 'echo "# het bestand"\necho \'# het bestand\'\nn=${#lines}\necho $#\n'
+    assert _shell(source) == []
+
+
+def test_shell_heredoc_is_data():
+    source = "cat <<EOF\n# het bestand\nEOF\n"
+    assert _shell(source) == []
+    assert _shell("cat <<-'EOF'\n\t# het bestand\n\tEOF\n") == []
+    assert _shell("cat <<EOF\n# het bestand\nEOF\n# het bestand\n") == [
+        (4, "comment", "het bestand")
+    ]
+
+
+def test_shell_names():
+    source = (
+        "lees_bestand() {\n"
+        "  local bestand\n"
+        "  regels=3\n"
+        "}\n"
+        "function controleer {\n"
+        "  export NAAM_BESTAND=x\n"
+        "}\n"
+    )
+    assert _shell(source) == [
+        (1, "name", "lees_bestand"),
+        (2, "name", "bestand"),
+        (3, "name", "regels"),
+        (5, "name", "controleer"),
+        (6, "name", "NAAM_BESTAND"),
+    ]
+
+
+def test_shell_use_site_is_not_a_finding():
+    assert _shell('echo "$regels" lees_bestand\n') == []
+
+
+def test_shell_marker():
+    assert _shell("# niet goed  lighthouse: allow-language\n") == []
+    assert _shell("regels=3  # lighthouse: allow-language\n") == []
+
+
+def _go(source):
+    return [(f.line, f.kind, f.text) for f in cl.scan_go(source)]
+
+
+def test_go_line_and_block_comment():
+    assert _go("// lees het bestand\nx := 1\n") == [(1, "comment", "lees het bestand")]
+    assert _go("/* niet\n gelezen */\nx := 1\n") == [(1, "comment", "niet")]
+
+
+def test_go_comment_in_string():
+    source = 'a := "http://x"\nb := `// niet het bestand`\nc := \'/\'\nd := "/* het bestand"\n'
+    assert _go(source) == []
+
+
+def test_go_names():
+    source = (
+        "package bestanden\n"
+        "func leesBestand(regel string) {}\n"
+        "func (r *T) Controleer() {}\n"
+        "type Melding struct { Naam string }\n"
+        "var fout error\n"
+        "const Leeg = 0\n"
+        "gevonden := 1\n"
+        "var (\n"
+        "\tbron int\n"
+        ")\n"
+    )
+    found = {(f.line, f.text) for f in cl.scan_go(source)}
+    assert found >= {
+        (1, "bestanden"),
+        (2, "leesBestand"),
+        (2, "regel"),
+        (3, "Controleer"),
+        (4, "Melding"),
+        (4, "Naam"),
+        (5, "fout"),
+        (6, "Leeg"),
+        (7, "gevonden"),
+        (9, "bron"),
+    }
+    assert all(f.kind == "name" for f in cl.scan_go(source))
+
+
+def test_go_multiline_params_and_fields():
+    source = "func f(\n\tregel string,\n\ta, b int,\n) {}\ntype T struct {\n\tNaam string\n}\n"
+    assert {(f.line, f.text) for f in cl.scan_go(source)} == {
+        (2, "regel"),
+        (6, "Naam"),
+    }
+
+
+def test_go_marker():
+    assert _go("// niet goed  lighthouse: allow-language\n") == []
+    assert _go("gevonden := 1 // lighthouse: allow-language\n") == []
+
+
+def test_go_english_clean():
+    files = [*(REPO / "internal").rglob("*.go"), *(REPO / "cmd").rglob("*.go")]
+    assert files
+    for path in files:
+        assert cl.scan_go(path.read_text(encoding="utf-8")) == [], path
