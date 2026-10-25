@@ -228,3 +228,15 @@ def test_root_advice_matches_the_hook(variant):
     assert "Use `$CLAUDE_PROJECT_DIR`" not in para
     assert "`LIGHTHOUSE_REPO_ROOT`" in para
     assert "path you received" in para
+
+
+CLASSIFICATION = "This is a <class> change; the likely regression surface is <observable behaviour>."
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_points_to_the_testing_skill(variant):
+    domain = _text(variant).split("## Domain", 1)[1].split("\n## ", 1)[0]
+    assert "lighthouse-testing" in domain
+    assert "*Classify first*" in domain
+    assert "Before the first edit" in domain
+    assert CLASSIFICATION in domain

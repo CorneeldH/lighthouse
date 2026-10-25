@@ -16,6 +16,14 @@ row 2.
 
 Out of scope: Python and workflow YAML.
 
+What a good test is lives in `lighthouse-testing`; this file gives only its shell form
+(below). Before the first edit, write the classification sentence from that skill in the chat;
+the classes and their minimal checks are in its section *Classify first*:
+
+```text
+This is a <class> change; the likely regression surface is <observable behaviour>.
+```
+
 ## The norm
 
 **The absence of a signal is treated as a negative result.**
