@@ -133,6 +133,39 @@ def test_prose():
     assert score.judge_text("Read the file and return its lines.") == "clean"
 
 
+ENGLISH_PROSE = (
+    "This function reads the configuration file from disk and returns all of its lines "
+    "as a list of strings. It raises an error when the file does not exist or cannot be read. "
+)
+
+
+def test_dutch_sentence_in_english_prose():
+    """One Dutch sentence makes the unit a finding, however much English surrounds it."""
+    assert score.judge_text(ENGLISH_PROSE + "Dit is een tijdelijke oplossing.") == "finding"
+    assert score.judge_text("Read the file. Return its lines! Is it empty? Then stop.") == "clean"
+
+
+def test_prose_judged_per_sentence(table):
+    table({"alpha": (10, 25), "beta": (40, 10)})  # alpha +1.5, beta -3.0
+    assert score.judge_text("beta beta alpha") == "clean"  # one sentence: -4.5
+    assert score.judge_text("beta beta. alpha") == "finding"
+    assert score.judge_text("beta beta! alpha?") == "finding"
+    assert score.judge_text("beta beta? alpha.") == "finding"
+
+
+def test_whole_unit_still_counts(table):
+    """Sentences each under the threshold still make a unit above it a finding."""
+    table({"gamma": (10, 18)})  # +0.8 per sentence, 1.6 together
+    assert score.judge_text("gamma. gamma.") == "finding"
+
+
+def test_period_inside_a_token_is_no_boundary(table):
+    table({"alpha": (10, 25), "beta": (40, 10)})
+    assert score.judge_text("beta beta in config.alpha") == "clean"
+    assert score.judge_text("beta beta e.g. alpha") == "clean"
+    assert score.judge_text("beta beta i.e. alpha") == "clean"
+
+
 def test_dutch_names_found():
     assert len(DUTCH_NAMES) == 51
     for name in DUTCH_NAMES:

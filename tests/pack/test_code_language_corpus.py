@@ -81,8 +81,9 @@ def test_hooks_english():
 
 def test_known_dutch_still_occurs():
     """Over all three corpora together: `besluit` lives in config.py and the hook headers,
-    `ontwerpkeuze` in Go. Read from the source text: layer 1 only doubts `besluit` inside
-    English prose and does not see `ontwerpkeuze` there at all."""
+    `ontwerpkeuze` in Go. Read from the source text, not from the findings: per sentence
+    layer 1 finds `ontwerpkeuze` on a comment line of its own, but it only doubts `besluit`
+    inside an English sentence and does not see `ontwerpkeuzes` at all."""
     paths = [*_go_files(), REPO / "pack" / "core" / "lib" / "config.py", *_hook_files()]
     used = set().union(*(set(cl.code_language_score.words(p.read_text(encoding="utf-8"))) for p in paths))
     assert {word for word in KNOWN_DUTCH if word not in used} == set()

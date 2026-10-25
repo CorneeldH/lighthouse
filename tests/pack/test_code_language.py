@@ -27,6 +27,18 @@ def test_python_comment_block():
     assert _kinds(source) == [(2, "comment", "first line")]
 
 
+def test_python_dutch_comment_line_in_english_block():
+    """A comment line is a boundary: no full stop is needed before the Dutch line."""
+    source = (
+        "# Read the configuration file from disk and return all of its lines\n"
+        "# Raise an error when the file does not exist or cannot be read\n"
+        "# dit werkt niet\n"
+        "x = 1\n"
+    )
+    found = cl.scan_python(source)
+    assert [(f.line, f.kind, f.doubt) for f in found] == [(1, "comment", False)]
+
+
 def test_python_docstring():
     source = 'def f():\n    """Lees het bestand."""\n    return 1\n'
     assert _kinds(source) == [(2, "docstring", "Lees het bestand.")]
@@ -433,6 +445,16 @@ def _prose(source):
 def test_markdown_units():
     assert _prose(NL_DOC) == [(2, "prose"), (5, "prose"), (7, "prose"), (10, "prose"), (14, "prose")]
     assert cl.scan_markdown(EN_DOC) == []
+
+
+def test_markdown_dutch_sentence_in_english_paragraph():
+    source = (
+        "This function reads the configuration file from disk and returns all of its lines\n"
+        "as a list of strings. It raises an error when the file does not exist or cannot\n"
+        "be read. Dit is een tijdelijke oplossing. The caller handles the error.\n"
+    )
+    found = cl.scan_markdown(source)
+    assert [(f.line, f.kind, f.doubt) for f in found] == [(1, "prose", False)]
 
 
 def test_markdown_folded_frontmatter():

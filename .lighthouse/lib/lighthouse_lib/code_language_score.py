@@ -3,9 +3,10 @@
 
 Every word gets `(nl - en) / 10` from `code_language_freq.tsv.gz` (word frequencies
 from wordfreq, zipf x 10). A unit is a finding when the sum of its words is above
-`THRESHOLD`. A word in neither language counts as Dutch when it splits into Dutch
-words (`dutch_split`) or is the Dutch participle of an English verb (`dutch_participle`).
-Standard library only.
+`THRESHOLD`. Prose is also judged per sentence, so one Dutch sentence is not diluted
+by English around it. A word in neither language counts as Dutch when it splits into
+Dutch words (`dutch_split`) or is the Dutch participle of an English verb
+(`dutch_participle`). Standard library only.
 """
 
 from __future__ import annotations
@@ -34,6 +35,11 @@ TEXT_MIN = 2  # shortest word counted in prose
 _NAME_PART = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+")
 _WORD = re.compile(r"[^\W\d_]+")
 _PROSE_NOISE = re.compile(r"`[^`]*`|https?://\S+")
+# A sentence ends at `.`, `!` or `?` before whitespace; not in "e.g." or "i.e.", and a
+# period inside a token ("config.py", "1.2") has no whitespace after it.
+_SENTENCE_END = r"(?<=[.!?])(?<!\.[^\W\d_]\.)\s+"
+_SENTENCE = re.compile(_SENTENCE_END)
+_SENTENCE_OR_LINE = re.compile(_SENTENCE_END + r"|\n")
 
 
 class DataError(Exception):
@@ -136,13 +142,18 @@ def word_score(word: str) -> float:
     return (nl - en) / 10
 
 
-def _judge(candidates: list[str], minimum: int) -> str:
+def _judge(candidates: list[str], minimum: int, sentences: tuple[list[str], ...] = ()) -> str:
+    """The words of a unit, and of each of its sentences: one sum above `THRESHOLD` is enough."""
     skip = jargon()
-    counted = [w for w in candidates if len(w) >= minimum and w not in skip]
-    if sum(word_score(w) for w in counted) > THRESHOLD:
+
+    def counted(group: list[str]) -> list[str]:
+        return [w for w in group if len(w) >= minimum and w not in skip]
+
+    if any(sum(map(word_score, counted(g))) > THRESHOLD for g in (candidates, *sentences)):
         return "finding"
+    counted_words = counted(candidates)
     table = frequencies()
-    for w in counted:
+    for w in counted_words:
         if w in table:
             en, nl = table[w]
             if (nl - en) / 10 >= DOUBT_LEAN and nl / 10 >= DOUBT_NL:
@@ -155,6 +166,13 @@ def judge_name(name: str) -> str:
     return _judge(split_name(name), NAME_MIN)
 
 
-def judge_text(text: str) -> str:
-    """`"finding"`, `"doubt"` or `"clean"` for prose; inline code and URLs do not count."""
-    return _judge(words(_PROSE_NOISE.sub(" ", text)), TEXT_MIN)
+def judge_text(text: str, *, line_breaks: bool = False) -> str:
+    """`"finding"`, `"doubt"` or `"clean"` for prose; inline code and URLs do not count.
+
+    The text as a whole and each of its sentences can make a finding. With `line_breaks`
+    every line is a boundary too: the lines of a comment block, not wrapped prose.
+    """
+    text = _PROSE_NOISE.sub(" ", text)
+    parts = (_SENTENCE_OR_LINE if line_breaks else _SENTENCE).split(text)
+    sentences = tuple(words(part) for part in parts) if len(parts) > 1 else ()
+    return _judge(words(text), TEXT_MIN, sentences)

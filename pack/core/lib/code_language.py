@@ -70,11 +70,14 @@ def _comment_findings(source: str) -> list[Finding]:
 
 
 def _judge_blocks(blocks: list[list[tuple[int, str]]]) -> list[Finding]:
-    """A finding or doubt on the first line of each comment block, judged outside marked lines."""
+    """A finding or doubt on the first line of each comment block, judged outside marked lines.
+
+    Every comment line is a sentence boundary: comments often end without a full stop.
+    """
     found = []
     for block in blocks:
         unit = "\n".join(text for _, text in block if MARKER not in text)
-        verdict = code_language_score.judge_text(unit)
+        verdict = code_language_score.judge_text(unit, line_breaks=True)
         if verdict != "clean":
             found.append(
                 Finding(block[0][0], "comment", block[0][1], doubt=verdict == "doubt", unit=unit)
