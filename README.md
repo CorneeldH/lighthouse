@@ -4,7 +4,7 @@ Agentic lighthouse: the development chain from issue to green pull request, buil
 
 ## Status
 
-Pre-M0: no code yet. Roadmap: the milestones of this repository.
+Early development: the skill and hook packages install through `lighthouse init`, and the server runs with `lighthouse serve`. Roadmap: the milestones of this repository.
 
 ## Design
 
@@ -13,6 +13,10 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 ## Usage window
 
 `lighthouse usage refresh` and `lighthouse usage tick` measure the Claude usage windows: [usage-venster](docs/usage-venster.md) (in Dutch).
+
+## Running the server
+
+`lighthouse serve` starts the API and web UI on `127.0.0.1:8127`. Install it as a systemd user service: [install](docs/install.md).
 
 ## License
 

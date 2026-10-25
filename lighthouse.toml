@@ -6,4 +6,4 @@ kind = "github"
 repo = "CorneeldH/lighthouse"
 
 [test_gate]
-command = "uv run pytest -q && go test -shuffle=on ./..."
+command = "uv run pytest -q && go test -race -shuffle=on ./..."

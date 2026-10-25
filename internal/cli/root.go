@@ -27,7 +27,7 @@ func Execute() int {
 func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "lighthouse",
-		Short:         "Install and upgrade the lighthouse packages in a repository",
+		Short:         "Install the lighthouse packages and run the lighthouse server",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
@@ -36,6 +36,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.SetErr(errOut)
 	root.AddCommand(newInitCommand())
 	root.AddCommand(newUsageCommand())
+	root.AddCommand(newServeCommand())
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version of this binary",
