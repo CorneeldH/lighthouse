@@ -55,6 +55,7 @@ func TestCorePack(t *testing.T) {
 		".claude/agents/lighthouse-issue-impact-scout.md",
 		".claude/agents/lighthouse-spec-adversary.md",
 		".claude/hooks/lighthouse/bash-write-gates.sh",
+		".claude/hooks/lighthouse/code-language.sh",
 		".claude/hooks/lighthouse/main-commit-guard.sh",
 		".claude/hooks/lighthouse/pr-create-gate.sh",
 		".claude/hooks/lighthouse/pre-commit-tests.sh",
@@ -90,6 +91,9 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/__init__.py",
 		".lighthouse/lib/lighthouse_lib/artefacts.py",
 		".lighthouse/lib/lighthouse_lib/bash_writes.py",
+		".lighthouse/lib/lighthouse_lib/code_language.py",
+		".lighthouse/lib/lighthouse_lib/code_language_nl_content.txt",
+		".lighthouse/lib/lighthouse_lib/code_language_nl_function.txt",
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/deadline.py",
@@ -116,7 +120,7 @@ func TestCorePack(t *testing.T) {
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
 	}
-	if kinds[KindBlock] != 1 || kinds[KindHook] != 8 {
+	if kinds[KindBlock] != 1 || kinds[KindHook] != 9 {
 		t.Fatalf("kinds = %v", kinds)
 	}
 	var tools []string

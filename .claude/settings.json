@@ -48,6 +48,11 @@
           },
           {
             "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/code-language.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/gofmt.sh",
             "timeout": 15
           }

@@ -26,6 +26,7 @@ from tests.pack._testkit import (
     CORE,
     GIT_ENV,
     INSTALLED_HOOKS,
+    MINIMAL_TOML,
     git,
     init_repo,
     install_core,
@@ -1181,3 +1182,30 @@ def test_hooks_registered_pre_post_and_failure() -> None:
         ]
         assert [h["timeout"] for h in entries] == [timeout], (event, entries)
     assert os.access(INSTALLED_HOOKS / "bash-write-gates.sh", os.X_OK)
+
+
+# --- code-language.sh after the gates of an extension (#26) -------------------
+
+DUTCH_GO = "package main\n\n// lees het bestand en geef de regels terug\nfunc main() {}\n"
+
+
+@pytest.mark.parametrize("with_key", [True, False])
+def test_go_write_is_checked_for_code_language(tmp_path, with_key):
+    s = _Session(tmp_path)
+    hooks = s.root / ".claude" / "hooks" / "lighthouse"
+    (hooks / "gofmt.sh").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (hooks / "gofmt.sh").chmod(0o755)
+    toml = MINIMAL_TOML
+    if with_key:
+        toml = toml.replace('language = "en"\n', 'language = "en"\ncode_language = "en"\n')
+    (s.repo / "lighthouse.toml").write_text(toml, encoding="utf-8")
+    git(s.repo, "add", "lighthouse.toml")
+    git(s.repo, "commit", "-qm", "config")
+    out = s.call(heredoc("main.go", DUTCH_GO))
+    if with_key:
+        assert out.returncode == 2, (out.stdout, out.stderr)
+        assert "== main.go (code-language.sh) ==" in out.stderr
+        assert "/main.go is not English" in out.stderr
+    else:
+        assert out.returncode == 0, (out.stdout, out.stderr)
+        assert out.stdout == ""

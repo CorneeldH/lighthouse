@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Pre/PostToolUse hook on matcher Bash: the Edit|Write gates (shellcheck.sh,
-# ruff-format.sh, worktree-linkcheck.sh) also see what a Bash call writes
-# (#871). Thin wrapper; the logic is in lighthouse_lib/bash_writes.py.
+# ruff-format.sh, code-language.sh for .py, .sh, .bash and .go, and
+# worktree-linkcheck.sh) also see what a Bash call writes (#871). Thin wrapper; the logic is in
+# lighthouse_lib/bash_writes.py.
 #
 # Counterpart: the norms of the gates carry their own counterparts up front
 # (the shell and python packages, the link rule in AGENTS.md). This hook checks

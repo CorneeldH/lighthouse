@@ -296,11 +296,11 @@ Elke pakket-PR volgt deze stappen. De taak noemt alleen wat bijzonder is.
 
 Het deel dat pas op `main` kan (ontwerpkeuze 10). Valt er iets te repareren, dan in een tweede PR onder hetzelfde issue.
 
-- [ ] **Stap 1:** Op de Beelink: `systemctl --user stop controller-tick.timer`. Controleer: `systemctl --user is-active controller-tick.service` geeft `inactive` (geen tick halverwege).
+- [ ] **Stap 1:** Op de Beelink: `systemctl --user stop controller-wachter.timer controller-tick.timer`. De wachter stoot elke 3 minuten de tick aan, de timer alleen elk uur; stop dus beide. Controleer: `systemctl --user is-active controller-tick.service` geeft `inactive` (geen tick halverwege).
 - [ ] **Stap 2:** Squash-merge de core-PR. Werk de hoofdcheckout bij (`git -C <paia> pull --ff-only`). Daar moet `lighthouse init --upgrade` exact `No changes.` geven.
 - [ ] **Stap 3:** Verhuis de reviewrecords (ontwerpkeuze 9): `mkdir -p ~/.local/share/lighthouse/review-records && mv ~/.local/share/lekmeting-keten/{plan-review,spec-review} ~/.local/share/lighthouse/review-records/`. Controleer: `python3 scripts/review_pair.py tally` telt evenveel records als vóór de verhuizing.
 - [ ] **Stap 4:** Eén handmatige tick: `systemctl --user start controller-tick.service`. Controleer met `/paia-controller` dat geen issue `skill not installed` of `commando niet toegestaan` kreeg, tenzij het in een worktree van vóór de merge staat; rebase die (Review Focus 1).
-- [ ] **Stap 5:** `systemctl --user start controller-tick.timer`.
+- [ ] **Stap 5:** `systemctl --user start controller-wachter.timer controller-tick.timer`.
 
 ## PR's expo, python, shell (paia)
 

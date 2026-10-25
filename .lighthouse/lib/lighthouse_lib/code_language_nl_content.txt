@@ -1,0 +1,34 @@
+# Dutch content words (#26): words common in Dutch code. One lower-case word per line.
+# Never add a word that is also English or common in English code; the corpus test in
+# tests/pack/test_code_language.py checks this against the Go sources. Not `besluit`:
+# English comments cite decisions as "(spec, besluit 4)".
+bestand
+bestanden
+regel
+regels
+naam
+lees
+schrijf
+gevonden
+kop
+taak
+bron
+uitvoer
+invoer
+melding
+oordeel
+wortel
+tak
+controleer
+controleren
+leeg
+alsnog
+onder
+bestaande
+voorouder
+geparsed
+atomisch
+naad
+binnen
+samen
+ruim

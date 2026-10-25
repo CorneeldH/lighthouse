@@ -7,12 +7,12 @@
 [[file]]
 path = "pack/core/hooks/main-commit-guard.sh"
 source_path = ".claude/hooks/main-commit-guard.sh"
-source_sha = "231f6e84fa709dd37c4fc8578453907a8a6efdf6"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/lib/git_invocations.py"
 source_path = ".claude/hooks/lib/git_invocations.py"
-source_sha = "231f6e84fa709dd37c4fc8578453907a8a6efdf6"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/hooks/hooks.json"
@@ -54,147 +54,147 @@ new = true
 [[file]]
 path = "pack/core/lib/deadline.py"
 source_path = ".claude/hooks/lib/deadline.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/lib/gate_slot.py"
 source_path = ".claude/hooks/lib/gate_slot.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/lib/md_links.py"
 source_path = ".claude/hooks/lib/md_links.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/lib/no_verify.py"
 source_path = ".claude/hooks/lib/no_verify.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/lib/evidence.py"
 source_path = ".claude/hooks/lib/evidence.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/lib/pr_body_gate.py"
 source_path = ".claude/hooks/lib/pr_body_gate.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/lib/bash_writes.py"
 source_path = ".claude/hooks/lib/bash_writes.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/hooks/worktree-guard.sh"
 source_path = ".claude/hooks/worktree-guard.sh"
-source_sha = "231f6e84fa709dd37c4fc8578453907a8a6efdf6"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/hooks/worktree-linkcheck.sh"
 source_path = ".claude/hooks/worktree-linkcheck.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/hooks/pr-create-gate.sh"
 source_path = ".claude/hooks/pr-create-gate.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/hooks/bash-write-gates.sh"
 source_path = ".claude/hooks/bash-write-gates.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/hooks/pre-commit-tests.sh"
 source_path = ".claude/hooks/pre-commit-tests.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/lib/protocol.py"
 source_path = "src/controller/comments.py"
-source_sha = "5a35ac3e9c80e010461896699b3d1f87fc520978"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/lib/artefacts.py"
 source_path = "src/controller/artefacten.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/post_artefact.py"
 source_path = "scripts/post_artefact.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/board_start.py"
 source_path = "scripts/board_start.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/plan_review_record.py"
 source_path = "scripts/plan_review_record.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/review_pair.py"
 source_path = "scripts/review_pair.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/codex_usage.py"
 source_path = "scripts/codex_usage.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/measure_start_issue_kpi.py"
 source_path = "scripts/measure_start_issue_kpi.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/measure_fix_pr_kpi.py"
 source_path = "scripts/measure_fix_pr_kpi.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/worktree_audit.py"
 source_path = "scripts/worktree_audit.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/unblock_dependents.py"
 source_path = "scripts/unblock_dependents.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/workflows/unblock-dependents.yml"
 source_path = ".github/workflows/unblock-dependents.yml"
-source_sha = "5a35ac3e9c80e010461896699b3d1f87fc520978"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/scripts/check-instructions.sh"
 source_path = "scripts/hooks/check-instructies.sh"
-source_sha = "5a35ac3e9c80e010461896699b3d1f87fc520978"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/templates/pull_request_template.md"
 source_path = ".github/pull_request_template.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/agents/issue-impact-scout.md"
 source_path = ".claude/agents/issue-impact-scout.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/agents/spec-adversary.md"
 source_path = ".claude/agents/spec-adversary.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/expo/skills/refresh-expo-lockfiles/SKILL.md"
 source_path = [".claude/skills/paia-refresh-expo-lockfiles/SKILL.md", ".agents/skills/paia-refresh-expo-lockfiles/SKILL.md"]
-source_sha = "5a35ac3e9c80e010461896699b3d1f87fc520978"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/expo/detect.toml"
@@ -207,142 +207,142 @@ new = true
 [[file]]
 path = "pack/core/skills/route-issue/SKILL.md"
 source_path = [".claude/skills/paia-route-issue/SKILL.md", ".agents/skills/paia-route-issue/SKILL.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/start-issue/claude/SKILL.md"
 source_path = ".claude/skills/paia-start-issue/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/start-issue/agents/SKILL.md"
 source_path = ".agents/skills/paia-start-issue/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/handoff/SKILL.md"
 source_path = [".claude/skills/paia-handoff/SKILL.md", ".agents/skills/paia-handoff/SKILL.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/verify-pr/SKILL.md"
 source_path = [".claude/skills/paia-verify-pr/SKILL.md", ".agents/skills/paia-verify-pr/SKILL.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/fix-pr/claude/SKILL.md"
 source_path = ".claude/skills/paia-fix-pr/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/fix-pr/agents/SKILL.md"
 source_path = ".agents/skills/paia-fix-pr/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/close-issue/claude/SKILL.md"
 source_path = ".claude/skills/paia-close-issue/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/close-issue/agents/SKILL.md"
 source_path = ".agents/skills/paia-close-issue/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/spec-adversarial-review/claude/SKILL.md"
 source_path = ".claude/skills/paia-spec-adversarial-review/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/spec-adversarial-review/agents/SKILL.md"
 source_path = ".agents/skills/paia-spec-adversarial-review/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/spec-adversarial-review/findings.schema.json"
 source_path = [".claude/skills/paia-spec-adversarial-review/findings.schema.json", ".agents/skills/paia-spec-adversarial-review/findings.schema.json"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/spec-adversarial-review/verification.schema.json"
 source_path = [".claude/skills/paia-spec-adversarial-review/verification.schema.json", ".agents/skills/paia-spec-adversarial-review/verification.schema.json"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/spec-adversarial-review/reviewer-prompt.md"
 source_path = [".claude/skills/paia-spec-adversarial-review/reviewer-prompt.md", ".agents/skills/paia-spec-adversarial-review/reviewer-prompt.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/spec-adversarial-review/verifier-prompt.md"
 source_path = [".claude/skills/paia-spec-adversarial-review/verifier-prompt.md", ".agents/skills/paia-spec-adversarial-review/verifier-prompt.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/spec-adversarial-review/review.sh"
 source_path = [".claude/skills/paia-spec-adversarial-review/review.sh", ".agents/skills/paia-spec-adversarial-review/review.sh"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/spec-adversarial-review/verify.sh"
 source_path = [".claude/skills/paia-spec-adversarial-review/verify.sh", ".agents/skills/paia-spec-adversarial-review/verify.sh"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/permissions.json"
 source_path = ".claude/settings.json"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/core/skills/plan-adversarial-review/claude/SKILL.md"
 source_path = ".claude/skills/paia-plan-adversarial-review/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/plan-adversarial-review/agents/SKILL.md"
 source_path = ".agents/skills/paia-plan-adversarial-review/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/plan-adversarial-review/findings.schema.json"
 source_path = [".claude/skills/paia-plan-adversarial-review/findings.schema.json", ".agents/skills/paia-plan-adversarial-review/findings.schema.json"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/plan-adversarial-review/verification.schema.json"
 source_path = [".claude/skills/paia-plan-adversarial-review/verification.schema.json", ".agents/skills/paia-plan-adversarial-review/verification.schema.json"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/plan-adversarial-review/reviewer-prompt.md"
 source_path = [".claude/skills/paia-plan-adversarial-review/reviewer-prompt.md", ".agents/skills/paia-plan-adversarial-review/reviewer-prompt.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/plan-adversarial-review/verifier-prompt.md"
 source_path = [".claude/skills/paia-plan-adversarial-review/verifier-prompt.md", ".agents/skills/paia-plan-adversarial-review/verifier-prompt.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/plan-adversarial-review/review.sh"
 source_path = [".claude/skills/paia-plan-adversarial-review/review.sh", ".agents/skills/paia-plan-adversarial-review/review.sh"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/plan-adversarial-review/verify.sh"
 source_path = [".claude/skills/paia-plan-adversarial-review/verify.sh", ".agents/skills/paia-plan-adversarial-review/verify.sh"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/worktree-audit/SKILL.md"
 source_path = [".claude/skills/paia-worktree-audit/SKILL.md", ".agents/skills/paia-worktree-audit/SKILL.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/instrument/SKILL.md"
 source_path = [".claude/skills/paia-instrumenteren/SKILL.md", ".agents/skills/paia-instrumenteren/SKILL.md"]
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/testing/SKILL.md"
@@ -351,32 +351,32 @@ new = true
 [[file]]
 path = "pack/core/skills/write-issue/claude/SKILL.md"
 source_path = ".claude/skills/paia-write-issue/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/write-issue/agents/SKILL.md"
 source_path = ".agents/skills/paia-write-issue/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/python/skills/python-writing/claude/SKILL.md"
 source_path = ".claude/skills/paia-python-schrijven/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/skills/python-writing/agents/SKILL.md"
 source_path = ".agents/skills/paia-python-schrijven/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/hooks/ruff-format.sh"
 source_path = ".claude/hooks/ruff-format.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/hooks/ty-check.sh"
 source_path = ".claude/hooks/ty-check.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/hooks/hooks.json"
@@ -389,32 +389,32 @@ new = true
 [[file]]
 path = "pack/python/scripts/quality/__init__.py"
 source_path = "scripts/quality/__init__.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/baseline.py"
 source_path = "scripts/quality/baseline.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/diffcov.py"
 source_path = "scripts/quality/diffcov.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/gitenv.py"
 source_path = "scripts/quality/gitenv.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/prcov.py"
 source_path = "scripts/quality/prcov.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/prcov_issues.py"
 source_path = "scripts/quality/prcov_issues.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/detect.toml"
@@ -431,7 +431,7 @@ new = true
 [[file]]
 path = "pack/python/scripts/quality/ratchet.py"
 source_path = "scripts/quality/ratchet.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/shell/hooks/shellcheck.sh"
@@ -459,12 +459,12 @@ new = true
 [[file]]
 path = "pack/shell/skills/shell-gates/claude/SKILL.md"
 source_path = ".claude/skills/paia-shell-gates/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/shell/skills/shell-gates/agents/SKILL.md"
 source_path = ".agents/skills/paia-shell-gates/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/shell/detect.toml"
@@ -472,6 +472,22 @@ new = true
 
 [[file]]
 path = "pack/shell/instructions/AGENTS.md"
+new = true
+
+[[file]]
+path = "pack/core/lib/code_language.py"
+new = true
+
+[[file]]
+path = "pack/core/lib/code_language_nl_content.txt"
+new = true
+
+[[file]]
+path = "pack/core/lib/code_language_nl_function.txt"
+new = true
+
+[[file]]
+path = "pack/core/hooks/code-language.sh"
 new = true
 
 [[file]]

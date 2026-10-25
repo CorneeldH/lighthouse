@@ -69,7 +69,9 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 cd "$CWD" 2>/dev/null || cd "$CLAUDE_PROJECT_DIR" 2>/dev/null || cannot_check "the directory $CWD does not exist."
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
-[ -n "$ROOT" ] && cd "$ROOT" || cannot_check "not inside a git repository ($CWD)."
+if [ -z "$ROOT" ] || ! cd "$ROOT"; then
+  cannot_check "not inside a git repository ($CWD)."
+fi
 
 if [ ! -f "$ROOT/go.mod" ]; then
   report "$HOOK_NAME: not checked — no go.mod in the repository root (go-check lints only a root module)."
@@ -96,7 +98,8 @@ fi
 VERIFY=$(golangci-lint config verify 2>&1)
 VERIFY_RC=$?
 if [ "$VERIFY_RC" -ne 0 ] && [ "$VERIFY_RC" -ne 6 ]; then
-  cannot_check "the golangci-lint configuration does not verify (exit $VERIFY_RC): $(printf '%s' "$VERIFY" | head -3 | tr '\n"\\' '   ')"
+  # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
+  cannot_check "the golangci-lint configuration does not verify (exit $VERIFY_RC): $(printf '%s' "$VERIFY" | head -3 | tr '\n"\134' '   ')"
 fi
 
 # `run` exits 1 on findings (a vet finding and a build that fails included); any
@@ -104,7 +107,8 @@ fi
 OUT=$(golangci-lint run ./... 2>&1)
 RC=$?
 if [ "$RC" -ne 0 ] && [ "$RC" -ne 1 ]; then
-  cannot_check "golangci-lint exited $RC: $(printf '%s' "$OUT" | head -3 | tr '\n"\\' '   ')"
+  # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
+  cannot_check "golangci-lint exited $RC: $(printf '%s' "$OUT" | head -3 | tr '\n"\134' '   ')"
 fi
 if [ "$RC" -eq 1 ]; then
   echo "$HOOK_NAME: golangci-lint finds problems." >&2
