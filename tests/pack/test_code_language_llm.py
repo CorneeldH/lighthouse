@@ -85,6 +85,15 @@ def test_answer_used(tmp_path):
     assert len(fake.requests) == 1
 
 
+def test_max_tokens_leaves_room_to_reason(tmp_path):
+    """A reasoning model spends tokens before its answer; the wall clock bounds the cost."""
+    many = [("name", f"unit{i}") for i in range(100)]
+    with FakeEndpoint() as fake:
+        llm.ask(_chain(fake.url), ITEMS, state_dir=tmp_path)
+        llm.ask(_chain(fake.url), many, state_dir=tmp_path)
+    assert [r["max_tokens"] for r in fake.requests] == [512, 1220]
+
+
 def test_key_from_env_file(tmp_path, monkeypatch):
     monkeypatch.delenv("LLM_TEST_KEY")
     env = tmp_path / "env"

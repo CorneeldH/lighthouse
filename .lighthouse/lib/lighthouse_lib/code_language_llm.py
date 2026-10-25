@@ -32,6 +32,7 @@ from lighthouse_lib import config
 PER_MODEL_S = 4.0
 TOTAL_S = 8.0
 QUIET_S = 60.0
+MAX_TOKENS_FLOOR = 512
 
 
 class Chain(NamedTuple):
@@ -192,7 +193,9 @@ def _call(chain: Chain, model: str, prompt: str, n: int, key: str | None, timeou
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0,
-        "max_tokens": 20 + 12 * n,
+        # A floor for reasoning models, which spend tokens before the answer; the wall
+        # clock, not this number, bounds the cost.
+        "max_tokens": max(MAX_TOKENS_FLOOR, 20 + 12 * n),
     }
     headers = {"Content-Type": "application/json"}
     if key:
