@@ -622,8 +622,6 @@ def check_file(path: Path, root: Path, session_toml: Path | None = None) -> Insp
             pass
     except config.ConfigError as error:
         raise CannotCheck(str(error)) from error
-    # Read for every checked file, doubts or not: a wrong table is COULD NOT CHECK at once.
-    chain = _session_chain(session_toml)
     relative = path.relative_to(root).as_posix()
     scan = EXTENSIONS.get(path.suffix)
     dirs = scope_dirs(relative, paths)
@@ -633,6 +631,9 @@ def check_file(path: Path, root: Path, session_toml: Path | None = None) -> Insp
         return nothing
     if relative in _managed_paths(root):
         return nothing
+    # Read for every checked file, doubts or not: a wrong table is COULD NOT CHECK at once,
+    # and only then: a file that is not checked never trips over the session's table.
+    chain = _session_chain(session_toml)
     if scan is None and path.suffix in MARKDOWN_EXTENSIONS:
         scan = scan_markdown
     found: list[Finding] = []

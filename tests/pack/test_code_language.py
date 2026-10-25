@@ -701,6 +701,20 @@ def test_bad_chain_is_cannot_check(tmp_path):
             cl.check_file(_write(root, "a.py", content), root, session)
 
 
+def test_bad_chain_spares_unchecked_files(tmp_path):
+    """A wrong table blocks only files that are checked, never a doc or an exempt file (R9)."""
+    root = _repo(tmp_path, 'code_language_exempt = ["vendor/**"]\n')
+    session = _session_toml(
+        tmp_path, '\n[code_language_llm]\nurl = "http://h/v1"\nmodels = ["m1"]\n'
+        'env_file = "/nonexistent/lighthouse-test.env"\n'
+    )
+    for relative in ("docs/notes.md", "notes.toml", "vendor/lees.py"):
+        inspection = cl.check_file(_write(root, relative), root, session)
+        assert (inspection.findings, inspection.doubts) == ([], [])
+    with pytest.raises(cl.CannotCheck, match="env_file does not exist"):
+        cl.check_file(_write(root, "a.py", "x = 1\n"), root, session)
+
+
 def test_main_notice_contract(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv(cl.UNDER_GATES_ENV, "1")
     root = _llm_repo(tmp_path, "http://unused.invalid/v1")
