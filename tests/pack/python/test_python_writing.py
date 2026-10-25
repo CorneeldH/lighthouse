@@ -186,6 +186,7 @@ def test_points_to_the_testing_skill():
     for path in VARIANTS:
         text = path.read_text(encoding="utf-8")
         assert "lighthouse-testing" in text, path
+        assert "<observable behaviour>." in text, f"{path}: the classification sentence"
         assert "This is a <class> change" in text, f"{path}: the classification sentence"
 
 

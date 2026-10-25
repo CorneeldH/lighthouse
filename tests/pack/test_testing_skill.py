@@ -26,7 +26,7 @@ def test_contract_tests_are_a_kind_of_their_own():
     assert "lasting invariant" in SKILL
 
 def test_classification_sentence_and_classes():
-    assert "This is a <class> change; the likely regression surface is <observable behavior>." in SKILL
+    assert "This is a <class> change; the likely regression surface is <observable behaviour>." in SKILL
     for c in CLASSES:
         assert f"`{c}`" in SKILL, c
 
@@ -40,7 +40,7 @@ def test_english():
         assert word not in text, word
 
 def _section(heading):
-    return SKILL.split(heading, 1)[1].split("\n## ", 1)[0]
+    return " ".join(SKILL.split(heading, 1)[1].split("\n## ", 1)[0].split())
 
 def test_inspiration_says_where_the_classification_sentence_comes_from():
     inspiration = _section("## Inspiration")
@@ -52,3 +52,18 @@ def test_red_flags_catch_hidden_tautologies():
     for phrase in ("helper, loop or builder", "equal by construction", "only fails by crashing",
                    "line by line", "only for coverage"):
         assert phrase in flags, phrase
+
+def test_core_question_says_where_the_answer_goes():
+    assert "in the chat" in _section("## The core question")
+
+def test_classification_sentence_place_is_said_once():
+    assert _section("## Classify first").lower().count("before the first edit") == 1
+
+def test_called_mock_is_fine_when_the_call_is_the_contract():
+    assert "unless the call itself is the contract" in _section("## Red flags")
+
+def test_hook_messages_are_asserted_from_a_run():
+    assert "from the output of a run" in _section("## Contract tests and code tests")
+
+def test_description_makes_tdd_a_companion():
+    assert "alongside superpowers:test-driven-development" in FRONT

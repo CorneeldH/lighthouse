@@ -46,7 +46,7 @@ branch yourself before a commit, and run `[test_gate] command` from `lighthouse.
 Skills:
 
 - `/lighthouse-start-issue`: pick up an issue.
-- `/lighthouse-route-issue`: read-only triage.
+- `/lighthouse-route-issue`: read-only triage, one route per issue.
 - `/lighthouse-write-issue`: write or edit issues and milestones.
 - `/lighthouse-verify-pr`: check the acceptance criteria, write the PR body.
 - `/lighthouse-fix-pr`: make a red or conflicting PR green.
@@ -55,6 +55,6 @@ Skills:
 - `/lighthouse-spec-adversarial-review`: a spec reviewed by another model family.
 - `/lighthouse-plan-adversarial-review`: a plan reviewed by another model family.
 - `/lighthouse-worktree-audit`: which worktrees and branches can go.
-- `/lighthouse-instrument`: where a new instruction belongs.
+- `/lighthouse-instrument`: on which layer a new instruction belongs.
 - `/lighthouse-testing`: tests that fail when behaviour breaks.
 <!-- lighthouse:end core -->
