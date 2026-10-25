@@ -159,6 +159,26 @@ func TestBudgetUpgradeReportsBlockDelta(t *testing.T) {
 	}
 }
 
+// Red when reportBudget returns early on an unchanged plan before looking at an
+// unreadable CLAUDE.md, or is only called in the branch with changes.
+func TestBudgetUnreadableClaudeMDWithoutChanges(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	if err := os.Remove(filepath.Join(root, "CLAUDE.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(root, "CLAUDE.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := run(t, root, "", all(upgrade, ceiling("3000")))
+	if r.code != 0 || r.out != "No changes.\n" {
+		t.Fatalf("rc %d, out %q\n%s", r.code, r.out, r.err)
+	}
+	if n := strings.Count(r.err, "instruction blocks: budget not measurable: CLAUDE.md is not readable:"); n != 1 {
+		t.Fatalf("line printed %d times:\n%s", n, r.err)
+	}
+}
+
 // Red when buildPlan returns the read error (rc 1, nothing written) or skips silently.
 func TestBudgetNotMeasurableWithUnreadableClaudeMD(t *testing.T) {
 	root := newRepo(t)

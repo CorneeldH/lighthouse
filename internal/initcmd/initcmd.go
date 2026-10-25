@@ -200,6 +200,7 @@ func execute(o Options) error {
 	in := bufio.NewReader(o.In)
 	if len(paths) == 0 {
 		_, _ = fmt.Fprintln(o.Out, "No changes.")
+		reportBudget(o, plan, lookup)
 	} else {
 		for _, p := range paths {
 			printDiff(o.Out, p, plan[p])

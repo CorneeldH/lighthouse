@@ -62,11 +62,16 @@ func instructionWords(plan map[string]*planned, after bool, count func([]byte) (
 // instruction files end up against the ceiling. It stays silent when neither file
 // changes, and it never stops init: over the ceiling is a warning.
 func reportBudget(o Options, plan map[string]*planned, lookup packs.Lookup) {
-	if !plan[claudeMDPath].changesOrNil() && !plan[agentsMDPath].changesOrNil() {
-		return
-	}
 	notMeasurable := func(reason any) {
 		_, _ = fmt.Fprintf(o.Err, "instruction blocks: budget not measurable: %v\n", reason)
+	}
+	// Never silent about an unreadable CLAUDE.md, also when nothing else changes.
+	if c := plan[claudeMDPath]; c != nil && c.unreadable != nil {
+		notMeasurable(fmt.Errorf("CLAUDE.md is not readable: %w", c.unreadable))
+		return
+	}
+	if !plan[claudeMDPath].changesOrNil() && !plan[agentsMDPath].changesOrNil() {
+		return
 	}
 	if _, _, err := instructionWords(plan, false, o.CountWords); err != nil {
 		notMeasurable(err)
