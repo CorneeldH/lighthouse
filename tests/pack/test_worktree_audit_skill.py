@@ -30,7 +30,7 @@ def _paragraphs(text: str) -> list[str]:
 
 
 def test_every_view_runs_the_installed_script():
-    for view in ("", " --sessions", " --origin", " --kpi", " --only <branch>"):
+    for view in ("", " --sessions", " --origin", " --kpi", " --only <branch>", " --issue <nr>"):
         assert f"python3 .lighthouse/scripts/worktree_audit.py{view}" in SKILL, view
     assert "uv run" not in SKILL
     assert "scripts/worktree_audit.py" not in SKILL.replace(".lighthouse/scripts/worktree_audit.py", "")

@@ -173,3 +173,49 @@ def test_the_ratchet_names_its_project_files():
         text = path.read_text(encoding="utf-8")
         for name in ("quality-baseline.toml", ".ruff-version", ".complexipy-version"):
             assert name in text, f"{path}: {name}"
+
+
+def test_description_triggers_on_planning():
+    for path in VARIANTS:
+        front = _frontmatter(path)
+        for word in ("refactor", "merging modules", "test strategy"):
+            assert word in front, f"{path}: {word}"
+
+
+def test_points_to_the_testing_skill():
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        assert "lighthouse-testing" in text, path
+        assert "<observable behaviour>." in text, f"{path}: the classification sentence"
+        assert "This is a <class> change" in text, f"{path}: the classification sentence"
+
+
+def test_python_form_of_the_testing_norms():
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        assert "## The Python form of lighthouse-testing" in text, path
+        for tool in ("pytest.mark.parametrize", "create_autospec", "tmp_path", "subprocess.run"):
+            assert tool in text, f"{path}: {tool}"
+
+
+def test_reporting_done_runs_every_kpi_row():
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        assert "## Reporting done" in text, path
+        section = text.split("## Reporting done", 1)[1].split("\n## ", 1)[0]
+        for word in ("command", "outcome", "extras", "not measurable"):
+            assert word in section, f"{path}: {word}"
+
+
+def test_pairing_names_the_testing_skill():
+    for path in VARIANTS:
+        pairing = path.read_text(encoding="utf-8").split("## The pairing", 1)[1].split("\n## ", 1)[0]
+        assert "lighthouse-testing" in pairing, path
+
+
+def test_reporting_done_matches_the_optional_row_4():
+    for path in VARIANTS:
+        text = path.read_text(encoding="utf-8")
+        section = text.split("## Reporting done", 1)[1].split("\n## ", 1)[0]
+        assert "rows 1 to 3" in section, path
+        assert "not only the one you think you touched" not in section, path

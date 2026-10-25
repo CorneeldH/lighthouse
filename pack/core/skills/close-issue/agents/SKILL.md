@@ -57,7 +57,8 @@ Entry A is the `## Workflow` below, unchanged. Entry B is an **extra step up fro
 the evidence entry A takes from context, and then goes through the same steps 4 to 6. There is no
 faster route to `gh issue close` — B makes the verification heavier, not lighter. Entry C never
 closes: the issue is already closed, C confirms it or reopens it. Every entry ends at
-*Clean up the worktree — the last step*; that says when cleaning up is and is not allowed.
+*Clean up the worktree — the last step*, except B7, which runs it before its close comment; that
+says when cleaning up is and is not allowed.
 
 ## Entry B — close check without session context
 
@@ -184,7 +185,7 @@ per AC that is not `demonstrably done` a line *what is missing*.
 
 | Verdict over all AC | Outcome |
 |---|---|
-| all criteria `demonstrably done` | steps 4–6 of entry A. For the DoD the merge counts as review; a DoD line that is not measurable from here goes into the close comment as such and does not block. `gh issue close` knows no file flag (only `-c, --comment string`): first post the close comment with the evidence lines through `gh issue comment <nr> --body-file <file>` (from the `mktemp -d` directory) and then close with `gh issue close <nr> --reason completed`. If the comment fails, do not close. The `cleanup:` line of *Clean up the worktree* goes along as an evidence line in that close comment; you do not clean up yourself. |
+| all criteria `demonstrably done` | steps 4–6 of entry A. For the DoD the merge counts as review; a DoD line that is not measurable from here goes into the close comment as such and does not block. `gh issue close` knows no file flag (only `-c, --comment string`): first post the close comment with the evidence lines through `gh issue comment <nr> --body-file <file>` (from the `mktemp -d` directory) and then close with `gh issue close <nr> --reason completed`. If the comment fails, do not close. Before that close comment, run *Clean up the worktree*; its result per branch goes along as evidence lines in the close comment. |
 | otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not shorten through `lighthouse-write-issue`, do not touch the board (the controller sets `In progress`), no question, no `/lighthouse-handoff`. End after the comment. |
 
 **Reports.** Every report that step 0, 4 or 6 addresses to the user (e.g. "DoD not met → report",
@@ -444,51 +445,54 @@ second set of rules here.
 | Entry | Clean up? |
 |---|---|
 | C, exit `0` in C3 | yes, the main moment: the PR is merged and C measures in a throwaway worktree |
-| A or B, PR of the head branch merged | yes |
-| A or B, PR open or no PR | no — no proposal, also not at a ✅ without a PR |
-| C with reopening, `COULD NOT CHECK` or `closed without a closing PR` | no |
-| B7 (controller run, if present) | never — see *Headless* below |
+| A or B (not B7), after the close | yes |
+| B7, all criteria `demonstrably done` | yes, before the close comment |
+| C with reopening, `COULD NOT CHECK` or `closed without a closing PR`; A, B or B7 without a close | no |
 
-**Branch.** Entry C: the head branch of the closing PR from C1 (`<pr>`). B7: that of the merged
-`Refs` PR after which the controller (if present) started this run. Entries A and B:
-the branch of the issue's worktree (`issue-<nr>-<slug>`).
+**Branches.** All branches of the issue: the head branch of every merged PR that refers to it
+(`Closes` and `Refs`), plus every local branch `issue-<nr>-*`. The script finds them itself:
 
 ```bash
-gh pr view <pr> --json headRefName -q .headRefName
-python3 .lighthouse/scripts/worktree_audit.py --only <branch>; echo "exit=$?"
+python3 .lighthouse/scripts/worktree_audit.py --issue <nr>; echo "exit=$?"
 ```
 
 The script runs outside the sandbox (`dangerouslyDisableSandbox: true`): it calls `gh` for the PR
 status. Run it without `cd`, from the directory where the session started: the cwd test measures
-the cwd of the script, and Codex and OpenCode write no session file that sets `live`. At A or B
-the PR column of the row counts: only `#<pr> merged` goes on.
+the cwd of the script, and Codex and OpenCode write no session file that sets `live`. A branch
+without a merged PR gets `cleanup: no — no merged PR`.
 
-**Only exit `0` and a line `cleanup: yes` can be cleaned up.** Every other outcome is `no`:
-exit ≠ 0, no `cleanup:` line, a traceback, an empty output. The absence of a signal is no yes.
+**Verdict.** Only exit `0` plus, in a branch's block, a line `cleanup: yes` can be cleaned up.
+Every other outcome is `no`: exit ≠ 0 (exit `2`: the PR lookup failed, clean up nothing at all), a
+block without a `cleanup:` line, a traceback, an empty output. The absence of a signal is no yes.
 
-| Output | What now |
+| Block | What now |
 |---|---|
-| `cleanup: yes` + exit `0` | one proposal: the path and the branch from the lines below it, through `AskUserQuestion` (Claude Code) or a question in chat. After confirmation run those lines yourself, in that order, each as `git -C <main checkout> …` |
-| `cleanup: no — <reason>` | report the line literally; clean up nothing. The close has happened and stands |
+| `cleanup: yes` | run the lines below it (a block runs from its `branch:` line to the next blank line) yourself, in that order, each as `git -C <main checkout> …`. No question: the verdict is the safety check |
+| `cleanup: no — <reason>` | report the line literally with its branch; clean up nothing for that branch |
 | everything else | report `cleanup: no — audit gave no verdict` with the raw output; clean up nothing |
 
 `<main checkout>` is the first path from `git worktree list --porcelain`. If the harness refuses
 `-C` (a worktree-isolated Claude Code session), run the same lines without `-C`
-from your own cwd: it is the same repo, and `--only` already checked that that cwd is not in the
-worktree. After cleaning up show the evidence; the branch is in neither:
+from your own cwd: it is the same repo, and `--issue` already checked that that cwd is not in the
+worktree. The worktree that holds your own cwd is never cleaned up; its block says
+`own cwd is in …`.
+
+**Evidence.** After cleaning up, once `git -C <main checkout> worktree list` and per cleaned-up
+branch `git -C <main checkout> branch --list <branch>`. The branch is in neither:
 
 ```bash
 git -C <main checkout> worktree list
 git -C <main checkout> branch --list <branch>
 ```
 
-If git refuses a line (for example `contains modified or untracked files`), stop there and
-report the error line. Do not run the next line then.
+**Refusal.** If git refuses a line (for example `contains modified or untracked files`), report
+the error line, skip the rest of that branch's lines, and go on with the next branch.
 
-**Headless (B7, controller run, if present).** There is nobody to confirm: never clean up, no
-question. The `cleanup:` line goes as an evidence line into the close comment.
+**Report.** One line per branch: `<branch>: cleanup: …`, and after `yes` the suffix `— removed` or
+`— git refused: <error line>`. Headless (B7, controller run, if present) the same lines go as
+evidence lines into the close comment. There is no question, in any mode.
 
-- ✅ only the lines `--only` delivers, after confirmation
+- ✅ only the lines `--issue` delivers, without a question
 - ❌ `--force`, `git worktree unlock` or `git push origin --delete` — also not when git refuses
 
 ## Commit Reference Format

@@ -38,7 +38,7 @@ from typing import NamedTuple
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lighthouse_lib import config, git_invocations
+from lighthouse_lib import config, git_invocations, repo_identity
 from lighthouse_lib.deadline import Interrupted, run_until
 
 # De map van de gates, onder de repo-root.
@@ -199,7 +199,8 @@ def derive_roots(command: str, cwd: str) -> set[str]:
 def project_filter(
     roots: set[str], project_dir: str, *, deadline: float
 ) -> tuple[set[str], list[str]]:
-    """Beperk `roots` tot wortels met dezelfde `--git-common-dir` als `project_dir`.
+    """Beperk `roots` tot wortels met dezelfde `--git-common-dir` als `project_dir`,
+    of met dezelfde `origin` (`repo_identity.same_origin`, #36).
 
     Letterlijk `rev-parse --path-format=absolute --git-common-dir`, door
     `os.path.realpath` — zonder die vlag geeft de hoofdcheckout een relatief
@@ -229,6 +230,18 @@ def project_filter(
             errors.append(f"COULD NOT CHECK: {root} ({exc})")
             continue
         if common == ref_common:
+            kept.add(root)
+            continue
+        # Een worktree van een aparte clone (forge) met dezelfde `origin`
+        # hoort er ook bij (#36).
+        try:
+            same, _reason = repo_identity.same_origin(
+                project_dir, root, timeout=deadline - time.time()
+            )
+        except repo_identity.OriginError as exc:
+            errors.append(f"COULD NOT CHECK: {root} ({exc})")
+            continue
+        if same:
             kept.add(root)
     return kept, errors
 

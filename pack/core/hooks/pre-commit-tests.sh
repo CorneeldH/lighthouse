@@ -16,8 +16,9 @@
 # with `git -C <path>` is seen, and the tree that is committed is the tree that
 # is tested — not the `.cwd` of the payload and not $CLAUDE_PROJECT_DIR. Only
 # repos of this project (same `--git-common-dir` as $CLAUDE_PROJECT_DIR: the
-# main checkout plus every worktree) are tested; another repo is skipped
-# visibly.
+# main checkout plus every worktree; or the same `origin`: a worktree of a
+# separate clone, such as forge's, lighthouse_lib/repo_identity.py) are tested;
+# another repo is skipped visibly, with both common dirs and both origins.
 #
 # NOT fail-open: without tooling, with a command that cannot be parsed, a path
 # that cannot be resolved, a directory that does not exist yet, a git that
@@ -265,9 +266,16 @@ while IFS= read -r ROOT; do
   COMMON=$(common_dir "$ROOT") || exit 2
   if [ "$COMMON" = "$REF_COMMON" ]; then
     PROJECT_ROOTS="$PROJECT_ROOTS$ROOT"$'\n'
-  else
-    add_message "$HOOK_NAME: $ROOT skipped — other project"
+    continue
   fi
+  # Another common dir: a worktree of a separate clone (forge) with the same
+  # origin is still this project (#36).
+  ORIGIN_REASON=$(python3 "$LIB/repo_identity.py" "$REF_DIR" "$ROOT" 2>"$ERR_FILE")
+  case $? in
+    0) PROJECT_ROOTS="$PROJECT_ROOTS$ROOT"$'\n' ;;
+    1) add_message "$HOOK_NAME: $ROOT skipped — other project (git-common-dir $COMMON vs $REF_COMMON; $ORIGIN_REASON)" ;;
+    *) block "git could not read the origin of '$ROOT': $(cat "$ERR_FILE" 2>/dev/null)" ;;
+  esac
 done <<< "$ROOTS"
 
 # additionalContext reaches the model, systemMessage the user: a silent gate

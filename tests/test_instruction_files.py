@@ -27,10 +27,10 @@ CORE = ROOT / "pack" / "core"
 
 def test_core_block_word_budget():
     """The core block lands in every repo's AGENTS.md, next to the repo's own rules: at most
-    250 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
+    260 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
     notation, and one line per skill."""
     text = (CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
-    assert len(text.split()) <= 250, len(text.split())
+    assert len(text.split()) <= 260, len(text.split())
     for token in (
         "main-commit-guard",
         ".claude/allow-main",
@@ -39,6 +39,7 @@ def test_core_block_word_budget():
         "[project] language",
         "heading:<key>",
         ".lighthouse/headings.toml",
+        "on which layer a new instruction belongs",
     ):
         assert token in text, token
     for skill in sorted(p.name for p in (CORE / "skills").iterdir() if p.is_dir()):
@@ -52,6 +53,15 @@ def test_core_block_says_how_to_read_a_heading():
     assert "python3 .lighthouse/lib/lighthouse_lib/headings.py <key>" in text
     assert "never the literal `heading:<key>`" in text
     assert "reading accepts every language variant" in text
+
+
+def test_core_block_says_finish_what_is_authorised():
+    """#22: an agent does not hand back an action it already has permission for."""
+    text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
+    assert (
+        'Finish what you are already authorised to do; never end on an offer to do it '
+        '("ready to push if you want" is not done).'
+    ) in text
 
 
 BLOCK_BEGIN = "<!-- lighthouse:begin core -->"

@@ -1,6 +1,6 @@
 ---
 name: lighthouse-python-writing
-description: Use when writing or changing Python in this repository's source or test directories — modules, pytest tests, and the ruff/ty checks on them. Carries a KPI table whose every row is a command that runs in this repository, plus the measurement rules (a ty zero without its extras is not a zero). NOT for shell that guards something (use lighthouse-shell-gates if present), workflow YAML, or files outside the repository.
+description: Use when writing or changing Python in this repository's source or test directories — modules, pytest tests, and the ruff/ty checks on them — and when planning a refactor, merging modules or choosing a test strategy, before a file is open. Carries a KPI table whose every row is a command that runs in this repository, plus the measurement rules (a ty zero without its extras is not a zero). NOT for shell that guards something (use lighthouse-shell-gates if present), workflow YAML, or files outside the repository.
 ---
 
 # Writing Python in this repository
@@ -18,6 +18,14 @@ The project's **norms** for Python, such as no network in unit tests or patching
 live in `.claude/rules/python.md` if present. They live there and not here, so one place carries
 them. This file carries the procedure and the measurement, plus one norm that applies before the
 first file: *replace, don't layer* (below).
+
+What a good test is lives in `lighthouse-testing`; this file gives only its Python form
+(below). Before the first edit, write the classification sentence from that skill in the chat;
+the classes and their minimal checks are in its section *Classify first*:
+
+```text
+This is a <class> change; the likely regression surface is <observable behaviour>.
+```
 
 ## KPIs
 
@@ -83,6 +91,19 @@ These two are about the measurement, not about the file.
   imports a platform-only framework does not resolve on another platform. ✅ saying that module is
   not measurable here · ❌ presenting the repository-wide zero as if it covers that module.
 
+## Reporting done
+
+Before you say done, run rows 1 to 3, also those you think you did not touch; row 4 is optional
+(see above). Report per row, row 4 included:
+
+- the command, as it ran;
+- the outcome: passed, failed, or not measurable from here;
+- for row 2, the extras that were synced;
+- what was not measurable, and why. Row 4 without the ratchet's project files is not
+  measurable, not passed; row 4 left out by choice is reported as not run.
+
+A row left out of the report reads as passed. Leave none out.
+
 ## Merging or deepening: replace, don't layer
 
 When you merge shallow modules into one deeper interface, or pull logic behind an existing
@@ -98,6 +119,19 @@ Why here and not in a rule: the decision falls while planning ("we merge A and B
 or test file is open — when this skill loads and a rule does not yet. Why no KPI row: whether an
 old test covers the same behavior as a new one is semantic, like the patch row above; grep does not
 see the difference.
+
+## The Python form of lighthouse-testing
+
+The norm is in `lighthouse-testing`; these are the Python tools for it.
+
+- **Literal expectations.** `pytest.mark.parametrize` with a literal `expected` per case, never
+  one computed in the test.
+- **Specific fakes.** `create_autospec` or `spec=`, so a call with the wrong signature fails;
+  `assert_called_once_with` where the argument belongs to the contract.
+- **Never mock the subject.** A real `tmp_path`, `monkeypatch` and `capsys` instead of a mocked
+  collaborator for the filesystem, the environment or stdout.
+- **Shell scripts run, they are not read.** Run them with `subprocess.run` against a `tmp_path`
+  and assert stdout, the exit code and the files they write; never grep the source.
 
 ## Reaching a complexity limit: deepen, don't split
 
@@ -124,6 +158,7 @@ source file is open.
 | Half | Carries | When |
 |---|---|---|
 | this skill | the procedure, the KPI table, the measurement rules | while you write, also before the first file |
+| `lighthouse-testing` | the test norms and the class table | for every test, and before the first edit |
 | `.claude/rules/python.md` (if present) | the norms | as soon as Claude reads a source or test file |
 | `.claude/hooks/lighthouse/ruff-format.sh` | the blocking rules, per edit, exit 2 | right after the edit |
 | `.claude/hooks/lighthouse/ty-check.sh` | a signal on type-dirty source directories, once per turn | at `Stop` |

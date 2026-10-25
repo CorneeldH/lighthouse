@@ -20,6 +20,8 @@ import pytest
 
 from tests.pack._testkit import (
     GIT_ENV,
+    ORIGIN,
+    forge_worktree,
     git,
     init_repo,
     load_hook_lib,
@@ -427,6 +429,18 @@ def test_project_filter_drops_a_foreign_repo_and_flags_a_broken_one(tmp_path):
     assert errors[0].startswith(
         f"COULD NOT CHECK: {os.path.realpath(str(broken))}"
     )
+
+
+def test_project_filter_keeps_a_forge_worktree_of_the_same_repo(tmp_path):
+    """Een worktree van een aparte clone met dezelfde `origin` hoort erbij (#36)."""
+    main = tmp_path / "main"
+    init_repo(main)
+    git(main, "remote", "add", "origin", ORIGIN)
+    work = os.path.realpath(str(forge_worktree(main, tmp_path)))
+
+    kept, errors = bw.project_filter({work}, str(main), deadline=time.time() + 5)
+
+    assert (kept, errors) == ({work}, [])
 
 
 def test_project_filter_raises_when_project_dir_itself_is_broken(tmp_path):
