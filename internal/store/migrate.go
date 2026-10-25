@@ -78,6 +78,9 @@ func migrate(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&current); err != nil {
 		return fmt.Errorf("read user_version: %w", err)
 	}
+	if current < 0 {
+		return fmt.Errorf("database has invalid user_version %d; not a lighthouse database", current)
+	}
 	if current > len(list) {
 		return fmt.Errorf("%w: user_version %d, highest known %d", ErrSchemaTooNew, current, len(list))
 	}

@@ -174,3 +174,17 @@ func TestEmbeddedMigrationsNumbered(t *testing.T) {
 		t.Fatalf("embedded migrations: %v", err)
 	}
 }
+
+func TestNegativeUserVersion(t *testing.T) {
+	db := bareDB(t)
+	if _, err := db.Exec(`PRAGMA user_version = -1`); err != nil {
+		t.Fatalf("set user_version: %v", err)
+	}
+	err := migrate(context.Background(), db, migrationFS)
+	if err == nil || !strings.Contains(err.Error(), "-1") {
+		t.Fatalf("migrate error = %v, want an error naming -1", err)
+	}
+	if v := userVersion(t, db); v != -1 {
+		t.Errorf("user_version = %d, want -1", v)
+	}
+}
