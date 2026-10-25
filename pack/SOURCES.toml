@@ -479,14 +479,6 @@ path = "pack/core/lib/code_language.py"
 new = true
 
 [[file]]
-path = "pack/core/lib/code_language_nl_content.txt"
-new = true
-
-[[file]]
-path = "pack/core/lib/code_language_nl_function.txt"
-new = true
-
-[[file]]
 path = "pack/core/hooks/code-language.sh"
 new = true
 

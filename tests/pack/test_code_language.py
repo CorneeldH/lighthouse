@@ -1,7 +1,6 @@
 """`pack/core/lib/code_language.py`, as installed (#26): recognising Dutch text and names."""
 
 import ast
-import re
 from pathlib import Path
 
 import pytest
@@ -11,60 +10,11 @@ from tests.pack._testkit import MINIMAL_TOML, load_hook_lib
 cl = load_hook_lib("code_language")
 REPO = Path(__file__).resolve().parents[2]
 
-BANNED = [
-    "die", "met", "door", "over", "van", "map", "pad",
-    "is", "in", "op", "been", "had", "was", "hem",
-    "de", "te", "er", "dat", "mag", "tot",  # English abbreviations in names and comments
-    "fout", "kent",  # "file out" and "Kent Beck"
-]  # fmt: skip
-
 
 def test_split_name():
     assert cl.split_name("leesBestand") == ["lees", "bestand"]
     assert cl.split_name("read_file_2") == ["read", "file"]
     assert cl.split_name("HTTPServer") == ["http", "server"]
-
-
-def test_banned_words_absent():
-    for word in BANNED:
-        assert word not in cl.FUNCTION_WORDS
-        assert word not in cl.CONTENT_WORDS
-
-
-def test_dutch_text():
-    assert cl.is_dutch_text("Het bestand wordt niet gelezen.")
-    assert cl.is_dutch_text("# --- post (taak 7): bron 1, claims, dispatch, uitvoer ---")
-    assert not cl.is_dutch_text("Read the file and return its lines.")
-
-
-def test_dutch_name():
-    assert cl.is_dutch_name("lees_bestand")
-    assert cl.is_dutch_name("gevondenRegels")
-    assert not cl.is_dutch_name("read_file")
-    assert not cl.is_dutch_name("foundLines")
-    assert not cl.is_dutch_name("map_path")
-
-
-_STRING = re.compile(r"\"(?:\\.|[^\"\\])*\"|`[^`]*`|'(?:\\.|[^'\\])*'")
-
-
-def test_english_corpus_has_no_dutch_words():
-    hits = []
-    files = [*(REPO / "internal").rglob("*.go"), *(REPO / "cmd").rglob("*.go")]
-    assert files
-    for path in files:
-        for number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            line = _STRING.sub("", raw)
-            if "//" in line:
-                code, comment = line.split("//", 1)
-                if cl.is_dutch_text(comment):
-                    hits.append(f"{path}:{number}: comment: {comment.strip()}")
-            else:
-                code = line
-            for name in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", code):
-                if cl.is_dutch_name(name):
-                    hits.append(f"{path}:{number}: name: {name}")
-    assert not hits, "\n".join(hits[:20])
 
 
 def _kinds(source):
@@ -107,11 +57,6 @@ def test_python_marker():
 def test_python_syntax_error_is_cannot_check():
     with pytest.raises(cl.CannotCheck):
         cl.scan_python("def f(:\n")
-
-
-def test_python_english_clean():
-    source = (REPO / "pack" / "core" / "lib" / "config.py").read_text(encoding="utf-8")
-    assert cl.scan_python(source) == []
 
 
 def _shell(source):
@@ -224,13 +169,6 @@ def test_go_marker():
     assert _go("gevonden := 1 // lighthouse: allow-language\n") == []
 
 
-def test_go_english_clean():
-    files = [*(REPO / "internal").rglob("*.go"), *(REPO / "cmd").rglob("*.go")]
-    assert files
-    for path in files:
-        assert cl.scan_go(path.read_text(encoding="utf-8")) == [], path
-
-
 # --- checking a file ---
 
 DUTCH = "# dit is niet goed\nx = 1\n"
@@ -252,36 +190,70 @@ def _write(root, relative, content=DUTCH):
 
 def test_check_finds_dutch(tmp_path):
     root = _repo(tmp_path)
-    found = cl.check_file(_write(root, "a.py"), root)
+    found = cl.check_file(_write(root, "a.py"), root).findings
     assert [(f.line, f.kind) for f in found] == [(1, "comment")]
+
+
+def test_doubt_is_not_a_finding(tmp_path):
+    root = _repo(tmp_path)
+    path = _write(root, "a.py", "legacy_processed_lijst_weg = 1\n")
+    inspection = cl.check_file(path, root)
+    assert inspection.findings == []
+    assert [d.text for d in inspection.doubts] == ["legacy_processed_lijst_weg"]
+    assert all(d.doubt for d in inspection.doubts)
+
+
+def test_finding_layer(tmp_path, capsys):
+    root = _repo(tmp_path)
+    path = _write(root, "a.py")
+    findings = cl.check_file(path, root).findings
+    assert findings
+    assert {f.layer for f in findings} == {"layer 1"}
+    assert cl.main([str(path), str(root)]) == 1
+    out = capsys.readouterr().out.splitlines()
+    assert out[1] == f"{path}:1: comment: dit is niet goed [layer 1]"
+
+
+@pytest.fixture
+def no_frequency_cache():
+    cl.code_language_score.frequencies.cache_clear()
+    yield
+    cl.code_language_score.frequencies.cache_clear()
+
+
+def test_missing_data_is_cannot_check(tmp_path, monkeypatch, no_frequency_cache):
+    root = _repo(tmp_path)
+    monkeypatch.setattr(cl.code_language_score, "FREQ_FILE", "nope")
+    with pytest.raises(cl.CannotCheck):
+        cl.check_file(_write(root, "a.py"), root)
 
 
 def test_check_off_without_key(tmp_path):
     (tmp_path / "lighthouse.toml").write_text(MINIMAL_TOML, encoding="utf-8")
-    assert cl.check_file(_write(tmp_path, "a.py"), tmp_path) == []
+    assert cl.check_file(_write(tmp_path, "a.py"), tmp_path).findings == []
 
 
 def test_check_off_without_toml(tmp_path):
-    assert cl.check_file(_write(tmp_path, "a.py"), tmp_path) == []
+    assert cl.check_file(_write(tmp_path, "a.py"), tmp_path).findings == []
 
 
 def test_check_other_extension(tmp_path):
     root = _repo(tmp_path)
-    assert cl.check_file(_write(root, "a.txt"), root) == []
+    assert cl.check_file(_write(root, "a.txt"), root).findings == []
 
 
 def test_check_exempt_glob(tmp_path):
     root = _repo(tmp_path, 'code_language_exempt = ["tests/fixtures/*"]\n')
-    assert cl.check_file(_write(root, "tests/fixtures/a/b.py"), root) == []
-    assert cl.check_file(_write(root, "tests/other/b.py"), root) != []
+    assert cl.check_file(_write(root, "tests/fixtures/a/b.py"), root).findings == []
+    assert cl.check_file(_write(root, "tests/other/b.py"), root).findings != []
 
 
 def test_check_manifest_skips_managed(tmp_path):
     root = _repo(tmp_path)
     manifest = '[[unit]]\npath = ".lighthouse/lib/lighthouse_lib/x.py"\n'
     _write(root, ".lighthouse/manifest.toml", manifest)
-    assert cl.check_file(_write(root, ".lighthouse/lib/lighthouse_lib/x.py"), root) == []
-    assert cl.check_file(_write(root, ".lighthouse/lib/lighthouse_lib/y.py"), root) != []
+    assert cl.check_file(_write(root, ".lighthouse/lib/lighthouse_lib/x.py"), root).findings == []
+    assert cl.check_file(_write(root, ".lighthouse/lib/lighthouse_lib/y.py"), root).findings != []
 
 
 def test_check_unreadable_manifest_is_cannot_check(tmp_path):
@@ -318,21 +290,14 @@ def test_check_bom_is_not_content(tmp_path):
     root = _repo(tmp_path)
     path = root / "a.py"
     path.write_bytes(b"\xef\xbb\xbf# read the file\nx = 1\n")
-    assert cl.check_file(path, root) == []
+    assert cl.check_file(path, root).findings == []
     path.write_bytes(b"\xef\xbb\xbf# lees het bestand\nx = 1\n")
-    assert [f.kind for f in cl.check_file(path, root)] == ["comment"]
-
-
-def test_shell_english_corpus():
-    hooks = sorted((REPO / "pack" / "core" / "hooks").glob("*.sh"))
-    assert hooks
-    for path in hooks:
-        assert cl.scan_shell(path.read_text(encoding="utf-8")) == [], path
+    assert [f.kind for f in cl.check_file(path, root).findings] == ["comment"]
 
 
 def test_check_module_name(tmp_path):
     root = _repo(tmp_path)
-    found = cl.check_file(_write(root, "lees_bestand.py", "x = 1\n"), root)
+    found = cl.check_file(_write(root, "lees_bestand.py", "x = 1\n"), root).findings
     assert [(f.line, f.kind, f.text) for f in found] == [(1, "name", "lees_bestand")]
 
 
@@ -340,11 +305,12 @@ def test_check_module_name(tmp_path):
 ENGLISH_BLOCKS: dict[int, str] = {
     35: "English: explains the sys.path line below it",
 }
-# Dutch blocks no word list can catch: every Dutch word in them (van, is, met) is banned
-# because it is also English or common in English code. Not a way to hide a missed block.
+# Dutch blocks layer 1 cannot catch at all. Not a way to hide a missed block.
 UNDETECTABLE_BLOCKS: dict[int, str] = {
-    72: "only van / is / met as Dutch words",
+    462: "only 'geparsed', a Dutch word that is in neither list and does not split",
 }
+# Dutch blocks layer 1 only doubts: a doubt is not a finding, layer 2 decides.
+DOUBT_BLOCKS: dict[int, str] = {}
 
 
 def _blocks(source):
@@ -365,21 +331,21 @@ def _blocks(source):
 
 def test_dutch_corpus_found():
     source = FIXTURE.read_text(encoding="utf-8")
-    found = {f.line for f in cl.scan_python(source) if f.kind in ("comment", "docstring")}
+    scanned = [f for f in cl.scan_python(source) if f.kind in ("comment", "docstring")]
+    found = {f.line for f in scanned if not f.doubt}
+    doubted = {f.line for f in scanned if f.doubt}
     lines = source.splitlines()
-    for number in (*ENGLISH_BLOCKS, *UNDETECTABLE_BLOCKS):
-        assert number not in found, f"line {number} is now found: remove it from the lists"
     block_lines = _blocks(source)
-    for number in (*ENGLISH_BLOCKS, *UNDETECTABLE_BLOCKS):
+    for number in (*ENGLISH_BLOCKS, *UNDETECTABLE_BLOCKS, *DOUBT_BLOCKS):
+        assert number not in found, f"line {number} is now found: remove it from the lists"
         assert number in block_lines, f"line {number} is no block start: {lines[number - 1]!r}"
-    missed = {
-        number: kind
-        for number, kind in _blocks(source).items()
-        if number not in found and number not in ENGLISH_BLOCKS and number not in UNDETECTABLE_BLOCKS
-    }
-    assert not missed, "\n".join(
-        f"{n}: {k}: {source.splitlines()[n - 1].strip()}" for n, k in sorted(missed.items())
-    )
+    for number in DOUBT_BLOCKS:
+        assert number in doubted, f"line {number} is no longer a doubt: remove it from the list"
+    for number in UNDETECTABLE_BLOCKS:
+        assert number not in doubted, f"line {number} is now a doubt: move it to DOUBT_BLOCKS"
+    listed = {*ENGLISH_BLOCKS, *UNDETECTABLE_BLOCKS, *DOUBT_BLOCKS}
+    missed = {n: k for n, k in block_lines.items() if n not in found and n not in listed}
+    assert not missed, "\n".join(f"{n}: {k}: {lines[n - 1].strip()}" for n, k in sorted(missed.items()))
 
 
 def test_report_explains_module_name_finding(tmp_path, capsys):

@@ -5,3 +5,6 @@ getint
 anno
 vals
 schema
+tolist
+tolines
+toline

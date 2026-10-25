@@ -1,15 +1,10 @@
 # lighthouse: core@dev
-"""Recognise Dutch text and names in code (#26).
+"""Find Dutch text and names in code (#26, #37).
 
-Detection only: callers decide where to look (comments, docstrings, names). A word
-counts as Dutch when it is in one of two lists next to this module:
-
-- `code_language_nl_function.txt`: function words (articles, pronouns, prepositions,
-  conjunctions, auxiliary verbs);
-- `code_language_nl_content.txt`: content words common in Dutch code.
-
-Both lists skip words that are also English or common in English code, such as `map`,
-`pad` and `is`; one such word would flag a correct file.
+Detection only: callers decide where to look (comments, docstrings, names). The
+judgement per name or block is layer 1: `code_language_score` compares how often each
+word occurs in English and in Dutch. A unit is a finding, a doubt (not a finding; a
+later layer may look at it) or clean.
 """
 
 from __future__ import annotations
@@ -30,28 +25,8 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lighthouse_lib import config
-from lighthouse_lib.code_language_score import split_name, words
-
-
-def _read_list(filename: str) -> frozenset[str]:
-    lines = Path(__file__).with_name(filename).read_text(encoding="utf-8").splitlines()
-    entries = (line.strip().lower() for line in lines)
-    return frozenset(e for e in entries if e and not e.startswith("#"))
-
-
-FUNCTION_WORDS = _read_list("code_language_nl_function.txt")
-CONTENT_WORDS = _read_list("code_language_nl_content.txt")
-_ALL_WORDS = FUNCTION_WORDS | CONTENT_WORDS
-
-
-def is_dutch_text(text: str) -> bool:
-    """True when at least one word of `text` is in a Dutch word list."""
-    return any(word in _ALL_WORDS for word in words(text))
-
-
-def is_dutch_name(name: str) -> bool:
-    """True when at least one part of the identifier `name` is in a Dutch word list."""
-    return any(part in _ALL_WORDS for part in split_name(name))
+from lighthouse_lib import code_language_score
+from lighthouse_lib.code_language_score import split_name
 
 
 MARKER = "lighthouse: allow-language"
@@ -61,6 +36,14 @@ class Finding(NamedTuple):
     line: int
     kind: str  # "comment", "docstring" or "name"
     text: str  # the name, or the first line of the block
+    layer: str = "layer 1"
+    doubt: bool = False  # true: a doubt, not a finding
+    unit: str = ""  # the whole unit for a later layer; empty for a name
+
+
+class Inspection(NamedTuple):
+    findings: list[Finding]
+    doubts: list[Finding]
 
 
 class CannotCheck(Exception):
@@ -77,16 +60,19 @@ def _comment_findings(source: str) -> list[Finding]:
             blocks[-1].append((line, text))
         else:
             blocks.append([(line, text)])
-    return _dutch_blocks(blocks)
+    return _judge_blocks(blocks)
 
 
-def _dutch_blocks(blocks: list[list[tuple[int, str]]]) -> list[Finding]:
-    """A finding on the first line of each comment block with Dutch text outside marked lines."""
+def _judge_blocks(blocks: list[list[tuple[int, str]]]) -> list[Finding]:
+    """A finding or doubt on the first line of each comment block, judged outside marked lines."""
     found = []
     for block in blocks:
-        kept = [(line, text) for line, text in block if MARKER not in text]
-        if any(is_dutch_text(text) for _, text in kept):
-            found.append(Finding(block[0][0], "comment", block[0][1]))
+        unit = "\n".join(text for _, text in block if MARKER not in text)
+        verdict = code_language_score.judge_text(unit)
+        if verdict != "clean":
+            found.append(
+                Finding(block[0][0], "comment", block[0][1], doubt=verdict == "doubt", unit=unit)
+            )
     return found
 
 
@@ -108,7 +94,7 @@ def _name_nodes(tree: ast.AST):
 
 
 def scan_python(source: str) -> list[Finding]:
-    """Dutch comments, docstrings and names in Python `source`, sorted by line."""
+    """Findings and doubts for comments, docstrings and names in Python `source`, by line."""
     try:
         tree = ast.parse(source)
         found = _comment_findings(source)
@@ -123,9 +109,19 @@ def scan_python(source: str) -> list[Finding]:
         ):
             continue
         doc = ast.get_docstring(node)
-        if doc is None or MARKER in doc or not is_dutch_text(doc):
+        if doc is None or MARKER in doc:
             continue
-        found.append(Finding(node.body[0].lineno, "docstring", doc.splitlines()[0]))
+        verdict = code_language_score.judge_text(doc)
+        if verdict != "clean":
+            found.append(
+                Finding(
+                    node.body[0].lineno,
+                    "docstring",
+                    doc.splitlines()[0],
+                    doubt=verdict == "doubt",
+                    unit=doc,
+                )
+            )
 
     found += _name_findings(list(_name_nodes(tree)), lines)
     return sorted(found, key=lambda f: f.line)
@@ -138,7 +134,7 @@ _IDENT_LIST = rf"{_IDENT}(?:[ \t]*,[ \t]*{_IDENT})*"
 def _name_findings(
     names: list[tuple[int, str]], source_lines: list[str]
 ) -> list[Finding]:
-    """Findings for Dutch names; one per name per line, none on a marked line."""
+    """Findings and doubts for names; one per name per line, none on a marked line."""
     found = []
     seen = set()
     for line, name in names:
@@ -146,8 +142,9 @@ def _name_findings(
             continue
         seen.add((line, name))
         marked = 0 < line <= len(source_lines) and MARKER in source_lines[line - 1]
-        if not marked and is_dutch_name(name):
-            found.append(Finding(line, "name", name))
+        verdict = "clean" if marked else code_language_score.judge_name(name)
+        if verdict != "clean":
+            found.append(Finding(line, "name", name, doubt=verdict == "doubt"))
     return found
 
 
@@ -221,7 +218,7 @@ def _scan_shell_text(source: str) -> tuple[list[str], list[list[tuple[int, str]]
 
 
 def scan_shell(source: str) -> list[Finding]:
-    """Dutch comments and names in shell `source`, sorted by line.
+    """Findings and doubts for comments and names in shell `source`, by line.
 
     A heuristic reader, not a parser: it skips quoted strings and heredoc bodies and
     looks for function names and assigned variables.
@@ -237,7 +234,7 @@ def scan_shell(source: str) -> list[Finding]:
             position = match.end()
             if match[1]:
                 names.append((_line_of(code, match.start(1)), match[1]))
-    found = _dutch_blocks(blocks) + _name_findings(names, source.splitlines())
+    found = _judge_blocks(blocks) + _name_findings(names, source.splitlines())
     return sorted(found, key=lambda f: f.line)
 
 
@@ -369,13 +366,13 @@ def _go_names(code: str) -> list[tuple[int, str]]:
 
 
 def scan_go(source: str) -> list[Finding]:
-    """Dutch comments and names in Go `source`, sorted by line.
+    """Findings and doubts for comments and names in Go `source`, by line.
 
     A heuristic reader, not a parser: it blanks comments, strings, raw strings and runes
     first, then looks for the declaration forms of Go.
     """
     code, blocks = _scan_go_text(source)
-    found = _dutch_blocks(blocks) + _name_findings(_go_names(code), source.splitlines())
+    found = _judge_blocks(blocks) + _name_findings(_go_names(code), source.splitlines())
     return sorted(found, key=lambda f: f.line)
 
 
@@ -405,22 +402,23 @@ def _managed_paths(root: Path) -> set[str]:
         raise CannotCheck(f"cannot read {manifest}: {error}") from error
 
 
-def check_file(path: Path, root: Path) -> list[Finding]:
-    """Dutch comments, docstrings and names in the file at `path` (absolute) in repo `root`.
+def check_file(path: Path, root: Path) -> Inspection:
+    """Findings and doubts for the file at `path` (absolute) in repo `root`.
 
-    Empty when the file is not checked: another extension, no `lighthouse.toml`, no
+    Both empty when the file is not checked: another extension, no `lighthouse.toml`, no
     `code_language`, an exempt glob or a file `lighthouse init` manages.
     """
+    nothing = Inspection([], [])
     scan = EXTENSIONS.get(path.suffix)
     toml = root / "lighthouse.toml"
     if scan is None or not toml.is_file():
-        return []
+        return nothing
     try:
         cfg = config.load(toml)
         try:
             config.lookup(cfg, "project.code_language")
         except KeyError:
-            return []
+            return nothing
         try:
             exempt = config.lookup(cfg, "project.code_language_exempt")
         except KeyError:
@@ -429,17 +427,22 @@ def check_file(path: Path, root: Path) -> list[Finding]:
         raise CannotCheck(str(error)) from error
     relative = path.relative_to(root).as_posix()
     if any(fnmatch.fnmatchcase(relative, glob) for glob in exempt):
-        return []
+        return nothing
     if relative in _managed_paths(root):
-        return []
+        return nothing
     try:
         source = path.read_text(encoding="utf-8-sig")  # a BOM is not content
     except UnicodeDecodeError as error:
         raise CannotCheck(f"{path} is not valid UTF-8: {error}") from error
-    found = scan(source)
-    if _name_findings([(1, path.stem)], []):
-        found = sorted([*found, Finding(1, "name", path.stem)], key=lambda f: f.line)
-    return found
+    try:
+        found = scan(source)
+        found = sorted([*found, *_name_findings([(1, path.stem)], [])], key=lambda f: f.line)
+    except code_language_score.DataError as error:
+        raise CannotCheck(str(error)) from error
+    return Inspection(
+        [f for f in found if not f.doubt],
+        [f for f in found if f.doubt],
+    )
 
 
 def _report(path: Path, found: list[Finding]) -> str:
@@ -448,7 +451,7 @@ def _report(path: Path, found: list[Finding]) -> str:
         text = finding.text
         if finding.kind != "name" and len(text) > _TEXT_LIMIT:
             text = text[:_TEXT_LIMIT]
-        lines.append(f"{path}:{finding.line}: {finding.kind}: {text}")
+        lines.append(f"{path}:{finding.line}: {finding.kind}: {text} [{finding.layer}]")
     if len(found) > _MAX_LINES:
         lines.append(f"… and {len(found) - _MAX_LINES} more")
     lines.append(
@@ -467,7 +470,7 @@ def main(argv: list[str]) -> int:
     """`code_language.py <abs-path> <root>`: 0 clean, 1 findings on stdout, 2 could not check."""
     try:
         path, root = Path(argv[0]), Path(argv[1])
-        found = check_file(path, root)
+        found = check_file(path, root).findings
     except Exception as error:  # a crash must never read as findings (rc 1)
         print(f"code-language: COULD NOT CHECK — {error}", file=sys.stderr)
         return 2
