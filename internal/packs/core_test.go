@@ -150,6 +150,19 @@ func TestLanguagePacks(t *testing.T) {
 			tools:  "git,python3,superpowers,tomllib",
 		},
 		{
+			name: "go",
+			files: []string{
+				".agents/skills/lighthouse-go-writing/SKILL.md",
+				".claude/hooks/lighthouse/go-check.sh",
+				".claude/hooks/lighthouse/gofmt.sh",
+				".claude/skills/lighthouse-go-writing/SKILL.md",
+			},
+			detect: true,
+			tools:  "git,go,gofmt,golangci-lint,jq,python3,tomllib",
+			blocks: 1,
+			hooks:  2,
+		},
+		{
 			name: "python",
 			files: []string{
 				".agents/skills/lighthouse-python-writing/SKILL.md",

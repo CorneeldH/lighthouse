@@ -497,3 +497,11 @@ new = true
 [[file]]
 path = "pack/go/skills/go-writing/agents/SKILL.md"
 new = true
+
+[[file]]
+path = "pack/go/detect.toml"
+new = true
+
+[[file]]
+path = "pack/go/instructions/AGENTS.md"
+new = true
