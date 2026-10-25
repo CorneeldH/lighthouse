@@ -194,10 +194,11 @@ niets gecontroleerd is, nooit stil groen.
 
 **`go-check.sh`** (Stop, matcher `""`):
 
-- de `stop_hook_active`-guard en de worktree-bewuste `cd` van `ty-check.sh`. Die `cd` volgt de
-  `cwd` uit de Stop-payload. Is dat de hoofdcheckout terwijl het werk in een worktree gebeurde,
-  dan controleert de hook de verkeerde boom. Die beperking deelt hij met `ty-check`; de KPI-rijen
-  bij *Reporting done* zijn de vangrails. Beide hooks samen repareren is #54
+- de `stop_hook_active`-guard en de worktree-bewuste `cd` van `ty-check.sh`. Die `cd` volgde
+  eerst de `cwd` uit de Stop-payload: was dat de hoofdcheckout terwijl het werk in een worktree
+  gebeurde, dan controleerde de hook de verkeerde boom. Sinds #54 lint hij elke checkout waarin de
+  beurt schreef, gelezen uit het transcript (`turn_roots.py`), net als `ty-check`; kan hij die
+  niet bepalen, dan `COULD NOT CHECK`
   *(besloten na spec-review, r1-f3)*;
 - draait bij elke `Stop`, ook als er geen `.go`-bestand gewijzigd is. Een check "gewijzigd
   ten opzichte van `HEAD`" mist Go-werk dat in dezelfde beurt al gecommit is, en de test-gate bij

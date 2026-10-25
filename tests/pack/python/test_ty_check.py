@@ -17,14 +17,21 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import MINIMAL_TOML, install_pack, tool_bin
+from tests.pack._testkit import (
+    MINIMAL_TOML,
+    git,
+    install_pack,
+    prompt_entry,
+    result_entry,
+    stop_payload,
+    tool_bin,
+    tool_entry,
+    write_transcript,
+)
 
 PACK = Path(__file__).resolve().parents[3] / "pack" / "python"
 UNCHECKED = "ty-check: COULD NOT CHECK — "
-NO_DIR = (
-    "ty-check: not checked — no directory from python.source_dirs exists "
-    "(set it in lighthouse.toml; [] turns the check off)"
-)
+UNDETERMINED = UNCHECKED + "the checkout of this turn cannot be determined: "
 
 
 def _fake_repo(tmp_path: Path, python: str = "", src: bool = True, venv: bool = True) -> Path:
@@ -54,7 +61,9 @@ def _run(
     root: Path, payload: dict | str | None = None, env: dict | None = None
 ) -> subprocess.CompletedProcess:
     if payload is None:
-        payload = {"stop_hook_active": False, "cwd": str(root)}
+        # A turn without tool calls: the hook falls back to the payload `cwd`.
+        transcript = write_transcript(root.parent / "transcript.jsonl", [prompt_entry(root)])
+        payload = stop_payload(root, transcript)
     full_env = dict(os.environ, LIGHTHOUSE_REPO_ROOT=str(root), CLAUDE_PROJECT_DIR=str(root))
     full_env.update(env or {})
     return subprocess.run(
@@ -140,7 +149,10 @@ def test_ty_skips_a_dir_outside_source_dirs(tmp_path):
 
 def test_ty_no_source_dir_is_loud(tmp_path):
     root = _fake_repo(tmp_path, src=False)
-    assert _message(_run(root)) == NO_DIR
+    assert _message(_run(root)) == (
+        "ty-check: not checked — no directory from python.source_dirs exists in "
+        f"{os.path.realpath(root)} (set it in lighthouse.toml; [] turns the check off)"
+    )
 
 
 def test_ty_empty_source_dirs_is_silent(tmp_path):
@@ -171,7 +183,9 @@ def test_ty_unchecked_without_venv(tmp_path):
 def test_ty_unchecked_without_tool(tmp_path, tool):
     root = _fake_repo(tmp_path)
     bin_dir = tool_bin(
-        tmp_path / "bin", ("bash", "jq", "git", "uvx", "python3", "cat", "sort", "sed"), drop=tool
+        tmp_path / "bin",
+        ("bash", "jq", "git", "uvx", "python3", "cat", "sort", "sed", "mktemp", "rm"),
+        drop=tool,
     )
     message = _message(_run(root, env={"PATH": str(bin_dir)}))
     assert message.startswith(UNCHECKED + f"{tool} is missing"), message
@@ -191,9 +205,53 @@ def test_ty_unchecked_outside_a_repository(tmp_path):
     root = _fake_repo(tmp_path)
     outside = tmp_path / "outside"
     outside.mkdir()
-    payload = {"stop_hook_active": False, "cwd": str(outside)}
-    result = _run(root, payload, env={"CLAUDE_PROJECT_DIR": str(outside)})
-    assert _message(result).startswith(UNCHECKED + "not inside a git repository")
+    transcript = write_transcript(tmp_path / "transcript.jsonl", [prompt_entry(outside)])
+    result = _run(root, stop_payload(outside, transcript), env={"CLAUDE_PROJECT_DIR": str(outside)})
+    assert _message(result).startswith(UNDETERMINED + "not inside a git repository")
+
+
+def test_ty_unchecked_without_a_transcript(tmp_path):
+    root = _fake_repo(tmp_path)
+    (root / "src" / "bad.py").write_text('x: int = "not an int"\n')
+    message = _message(_run(root, {"stop_hook_active": False, "cwd": str(root)}))
+    assert message.startswith(UNDETERMINED + "the payload has no transcript_path"), message
+
+
+def _worktree(tmp_path: Path) -> tuple[Path, Path]:
+    """A main checkout with a clean, committed `src/`, and a worktree of it."""
+    root = _fake_repo(tmp_path)
+    (root / "src" / "fine.py").write_text('"""Docstring."""\n\n\nX: int = 1\n')
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "init")
+    wt = root / ".claude" / "worktrees" / "wt"
+    git(root, "worktree", "add", "-q", str(wt), "-b", "wt")
+    (wt / "src" / "bad.py").write_text('x: int = "not an int"\n')
+    return root, wt
+
+
+def _edit_turn(tmp_path: Path, root: Path, edited: Path) -> dict:
+    """The payload of a turn that edited `edited`, from a session whose cwd is `root`."""
+    transcript = write_transcript(
+        tmp_path / "transcript.jsonl",
+        [prompt_entry(root), tool_entry("Edit", {"file_path": str(edited)}, root), result_entry(root)],
+    )
+    return stop_payload(root, transcript)
+
+
+def test_ty_blocks_on_the_edited_worktree_with_the_cwd_on_main(tmp_path):
+    root, wt = _worktree(tmp_path)
+    result = _run(root, _edit_turn(tmp_path, root, wt / "src" / "bad.py"))
+    assert result.returncode == 2, result.stdout
+    assert result.stderr.splitlines()[0].startswith(
+        f"ty-check: ty finds errors in src of {os.path.realpath(wt)}."
+    ), result.stderr
+    assert "invalid-assignment" in result.stderr
+
+
+def test_ty_passes_when_the_turn_edited_only_the_clean_checkout(tmp_path):
+    root, _wt = _worktree(tmp_path)
+    result = _run(root, _edit_turn(tmp_path, root, root / "src" / "fine.py"))
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", ""), result.stderr
 
 
 def test_skill_uses_the_hook_pin():
