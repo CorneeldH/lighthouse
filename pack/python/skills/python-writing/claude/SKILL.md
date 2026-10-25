@@ -24,7 +24,7 @@ What a good test is lives in `lighthouse-testing`; this file gives only its Pyth
 the classes and their minimal checks are in its section *Classify first*:
 
 ```text
-This is a <class> change; the likely regression surface is <observable behavior>.
+This is a <class> change; the likely regression surface is <observable behaviour>.
 ```
 
 ## KPIs

@@ -1,6 +1,6 @@
 ---
 name: lighthouse-testing
-description: 'Use when writing, changing, fixing or reviewing a test, a mock, a fake or an assert; when adjusting a test after a red run; and when planning a test strategy, before any file is open. Carries what a good test is: the production change that should make it fail, the classification sentence before the first edit, and the mutation check before reporting done. Triggers on the work, not on the language. NOTE — not for the red-green loop itself (when to write the test): that is superpowers:test-driven-development; and not for the tooling of one language: that is lighthouse-python-writing or lighthouse-shell-gates, if present.'
+description: 'Use when writing, changing, fixing or reviewing a test, a mock, a fake or an assert; when adjusting a test after a red run; and when planning a test strategy, before any file is open. Carries what a good test is: the production change that should make it fail, the classification sentence before the first edit, and the mutation check before reporting done. Triggers on the work, not on the language. Use it alongside superpowers:test-driven-development, which carries when to write the test. NOTE — not for the tooling of one language: that is lighthouse-python-writing or lighthouse-shell-gates, if present.'
 metadata:
   binding: default
   origin: own
@@ -24,7 +24,7 @@ present.
 
 ## The core question
 
-Before every test, answer it in one sentence:
+Before every test, answer it in one sentence in the chat:
 
 > What production change should make this test fail?
 
@@ -60,9 +60,10 @@ If you cannot name that change, the test protects nothing. Redesign it before yo
 Two kinds of test, with different rules.
 
 - **Code tests** test the behaviour of code. Every check above applies.
-- **Contract tests on instruction text** (skills, agents, `AGENTS.md`, hook messages) read the
-  text and pin words. For an instruction file the text *is* the product, so reading it is no red
-  flag here. Do not "repair" such a test into a behaviour test.
+- **Contract tests on instruction text** (skills, agents, `AGENTS.md`) read the text and pin
+  words. For an instruction file the text *is* the product, so reading it is no red flag here.
+  Do not "repair" such a test into a behaviour test. A hook message is not instruction text:
+  it lives in a script, so assert it from the output of a run, never from the source.
 
 A prohibition in a contract test is fine when it guards a **lasting invariant** ("a skill names
 no issue numbers"). It is not fine when it only guards that something stays gone after a
@@ -70,14 +71,13 @@ migration: that is a negative-existence test, in a contract test too.
 
 ## Classify first
 
-Before the first edit, write one sentence in the chat:
+Before the first edit, write one sentence in the chat, not in the commit message or the PR body:
 
 ```text
-This is a <class> change; the likely regression surface is <observable behavior>.
+This is a <class> change; the likely regression surface is <observable behaviour>.
 ```
 
-The sentence goes in the chat, before the first edit; not in the commit message or the PR
-body. Pick the class from the table, and let its minimal check set the floor for the tests:
+Pick the class from the table, and let its minimal check set the floor for the tests:
 
 | Class | Regression question | Minimal check |
 |---|---|---|
@@ -108,7 +108,8 @@ not the mutation list.
 Each of these means: stop and redesign the test.
 
 - You cannot say which production change would make it fail.
-- It asserts that a mock was called, and nothing about the result.
+- It asserts that a mock was called, and nothing about the result, unless the call itself is the
+  contract.
 - The expected value comes out of the function under test, or out of a copy of its logic.
 - It passed on the first run, before the implementation existed.
 - You changed the expected value to make a red run green without deciding the change was meant.
