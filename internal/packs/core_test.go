@@ -92,6 +92,8 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/artefacts.py",
 		".lighthouse/lib/lighthouse_lib/bash_writes.py",
 		".lighthouse/lib/lighthouse_lib/code_language.py",
+		".lighthouse/lib/lighthouse_lib/code_language_freq.tsv.gz",
+		".lighthouse/lib/lighthouse_lib/code_language_freq_NOTICE.txt",
 		".lighthouse/lib/lighthouse_lib/code_language_nl_content.txt",
 		".lighthouse/lib/lighthouse_lib/code_language_nl_function.txt",
 		".lighthouse/lib/lighthouse_lib/config.py",

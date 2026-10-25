@@ -550,6 +550,20 @@ sha256 = "d088f74fe92faa505776ff1a2211661277e395dcc6999b39243f00a391166cba"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language_freq.tsv.gz"
+package = "core"
+version = "dev"
+sha256 = "dd0c3cbb67ee9930aebb829111b930d02d082d2de00f74132e328410f0ad3544"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language_freq_NOTICE.txt"
+package = "core"
+version = "dev"
+sha256 = "e94cdf3880fedb22b3f3aef9794e7910664c762626f2f4ec088a3cc8684cb6fb"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language_nl_content.txt"
 package = "core"
 version = "dev"
