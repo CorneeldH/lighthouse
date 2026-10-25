@@ -187,6 +187,13 @@ sha256 = "3e9152b8114ec9c594e08f185f8f0113986753cc00d3739cbc3f2e5d7835d3c1"
 
 [[unit]]
 kind = "file"
+path = ".claude/hooks/lighthouse/code-language.sh"
+package = "core"
+version = "dev"
+sha256 = "d645349078985043c721b5ce91571d104084fccac79674a12ee5754013ca4f90"
+
+[[unit]]
+kind = "file"
 path = ".claude/hooks/lighthouse/main-commit-guard.sh"
 package = "core"
 version = "dev"
@@ -267,6 +274,14 @@ id = "PostToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/bash-wri
 package = "core"
 version = "dev"
 sha256 = "8663afece384e716ea359077be6f936ce9114420d757a9f24512ccd34eaf6ded"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/code-language.sh"
+package = "core"
+version = "dev"
+sha256 = "7e38798e1e7d8cc2fb84d78584b79c546eb8b4e0927d2354a4495788850b4494"
 
 [[unit]]
 kind = "hook"
