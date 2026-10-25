@@ -205,3 +205,17 @@ def test_ruff_unchecked_on_an_empty_payload(tmp_path):
     result = _run("", tmp_path)
     assert result.returncode == 2, result.stdout
     assert result.stderr.startswith(UNCHECKED + "the payload is empty"), result.stderr
+
+
+def test_force_exclude_leaves_excluded_path_untouched(tmp_path):
+    """A path under `[tool.ruff] exclude` is left alone, also when named explicitly:
+    `.lighthouse/` is package code that `lighthouse init --upgrade` refuses once it
+    differs locally."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "pyproject.toml").write_text('[tool.ruff]\nexclude = ["vendored"]\n')
+    (tmp_path / "vendored").mkdir()
+    before = "x=1\n" + BARE_EXCEPT_PY
+    payload = _file(tmp_path, "vendored/x.py", before)
+    result = _run(payload, tmp_path, {"LIGHTHOUSE_REPO_ROOT": str(tmp_path)})
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "vendored/x.py").read_text() == before
