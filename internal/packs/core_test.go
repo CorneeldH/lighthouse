@@ -109,6 +109,7 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/pr_body_gate.py",
 		".lighthouse/lib/lighthouse_lib/protocol.py",
 		".lighthouse/lib/lighthouse_lib/repo_identity.py",
+		".lighthouse/lib/lighthouse_lib/turn_roots.py",
 		".lighthouse/scripts/board_start.py",
 		".lighthouse/scripts/check-instructions.sh",
 		".lighthouse/scripts/codex_usage.py",
@@ -155,6 +156,19 @@ func TestLanguagePacks(t *testing.T) {
 			},
 			detect: true,
 			tools:  "git,python3,superpowers,tomllib",
+		},
+		{
+			name: "go",
+			files: []string{
+				".agents/skills/lighthouse-go-writing/SKILL.md",
+				".claude/hooks/lighthouse/go-check.sh",
+				".claude/hooks/lighthouse/gofmt.sh",
+				".claude/skills/lighthouse-go-writing/SKILL.md",
+			},
+			detect: true,
+			tools:  "git,go,gofmt,golangci-lint,jq,python3,tomllib",
+			blocks: 1,
+			hooks:  2,
 		},
 		{
 			name: "python",

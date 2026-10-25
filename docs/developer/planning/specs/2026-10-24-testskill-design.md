@@ -107,7 +107,7 @@ een negative-existence test, ook in een contracttest.
 Vóór het editen schrijft de agent één zin:
 
 ```text
-This is a <class> change; the likely regression surface is <observable behavior>.
+This is a <class> change; the likely regression surface is <observable behaviour>.
 ```
 
 De klassen staan **centraal in deze skill**, taalneutraal, elk met een regressievraag en een

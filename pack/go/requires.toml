@@ -1,0 +1,9 @@
+# Tool -> the units in this package that need it. `lighthouse init` reports a
+# missing tool with these names; it does not stop on it.
+git = ["go-check", "go-writing"]
+go = ["go-check", "go-writing"]
+gofmt = ["gofmt", "go-writing"]
+golangci-lint = ["go-check", "go-writing"]
+jq = ["gofmt", "go-check"]
+python3 = ["go-check", "go-writing"]
+tomllib = ["go-writing"]

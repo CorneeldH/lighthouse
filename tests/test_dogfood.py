@@ -132,3 +132,33 @@ def test_allow_main_sentinel_is_not_ignored():
         check=False,
     )
     assert ignored.returncode == 1, "'.claude/allow-main' is git-ignored"
+
+
+def _registered_in(event: str, matcher: str | None, script: str) -> list[str]:
+    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    return [
+        hook["command"]
+        for block in settings["hooks"].get(event, [])
+        if matcher is None or block.get("matcher") == matcher
+        for hook in block["hooks"]
+        if script in hook["command"]
+    ]
+
+
+def test_go_hooks_registered():
+    """Fails when init stops registering the pack/go hooks under their events."""
+    assert len(_registered_in("PostToolUse", "Edit|Write", "gofmt.sh")) == 1
+    assert len(_registered_in("Stop", None, "go-check.sh")) == 1
+
+
+def test_test_gate_shuffles():
+    """Fails when the gate stops running Go tests in shuffled order."""
+    result = subprocess.run(
+        ["python3", "-m", "lighthouse_lib.config", "test_gate.command"],
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+        env=dict(os.environ, PYTHONPATH=str(ROOT / ".lighthouse" / "lib")),
+        check=False,
+    )
+    assert "go test -shuffle=on ./..." in result.stdout, result.stdout + result.stderr

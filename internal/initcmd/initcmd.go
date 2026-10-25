@@ -24,6 +24,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
 	"github.com/CorneeldH/lighthouse/internal/deps"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -81,7 +82,7 @@ func Run(o Options) int {
 		o.In = strings.NewReader("")
 	}
 	if o.HostTOML == "" {
-		o.HostTOML = defaultHostTOML()
+		o.HostTOML = hostconfig.Path()
 	}
 	if o.Hostname == nil {
 		o.Hostname = os.Hostname

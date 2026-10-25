@@ -16,6 +16,7 @@ def test_description_triggers_on_the_work_and_on_planning():
 def test_description_bounds_tdd_and_the_language_skill():
     assert "superpowers:test-driven-development" in FRONT
     assert "lighthouse-python-writing" in FRONT
+    assert "lighthouse-go-writing" in FRONT
 
 def test_core_question_and_mutation_check():
     assert "What production change should make this test fail?" in SKILL

@@ -12,6 +12,9 @@ Usage:
 The directories come from lighthouse.toml: python.lint_dirs (ruff, complexipy),
 python.source_dirs (coverage) and python.coverage_command (the suite). The base of
 `coverage` defaults to origin/<forge.default_branch>.
+
+Messages are English whatever `[project] language` says: script output stays
+literal English (decision 7 of the M0 package spec).
 """
 
 from __future__ import annotations

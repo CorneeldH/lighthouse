@@ -52,7 +52,7 @@ def test_gates_maps_known_extensions():
     assert bw.GATES[".sh"] == ("shellcheck.sh", "code-language.sh")
     assert bw.GATES[".bash"] == ("shellcheck.sh", "code-language.sh")
     assert bw.GATES[".py"] == ("ruff-format.sh", "code-language.sh")
-    assert bw.GATES[".go"] == ("code-language.sh",)
+    assert bw.GATES[".go"] == ("gofmt.sh", "code-language.sh")
     assert bw.GATES[".md"] == ("worktree-linkcheck.sh",)
     assert bw.GATES[".markdown"] == ("worktree-linkcheck.sh",)
 
@@ -1280,6 +1280,7 @@ def test_gate_packs_name_every_gate():
     assert bw.GATE_PACKS == {
         "shellcheck.sh": "shell",
         "ruff-format.sh": "python",
+        "gofmt.sh": "go",
         "worktree-linkcheck.sh": "core",
         "code-language.sh": "core",
     }
@@ -1290,6 +1291,10 @@ def test_hook_dir_from_repo_root(gate_root):
     hooks = gate_root / ".claude" / "hooks" / "lighthouse"
     assert bw.gate_path(str(gate_root), "shellcheck.sh") == hooks / "shellcheck.sh"
     assert bw.gate_path(str(gate_root), "code-language.sh") == hooks / "code-language.sh"
+
+
+def test_gofmt_signs_after_gate():
+    assert "gofmt.sh" in bw._SIGN_AFTER_GATE
 
 
 def test_run_gate_finds_the_gate_under_the_repo_root(tmp_path, gate_root):

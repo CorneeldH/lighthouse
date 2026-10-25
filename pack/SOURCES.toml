@@ -31,6 +31,10 @@ path = "pack/core/lib/repo_identity.py"
 new = true
 
 [[file]]
+path = "pack/core/lib/turn_roots.py"
+new = true
+
+[[file]]
 path = "pack/core/lib/config.py"
 new = true
 
@@ -292,7 +296,7 @@ source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 [[file]]
 path = "pack/core/permissions.json"
 source_path = ".claude/settings.json"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/core/skills/plan-adversarial-review/claude/SKILL.md"
@@ -361,22 +365,22 @@ source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 [[file]]
 path = "pack/python/skills/python-writing/claude/SKILL.md"
 source_path = ".claude/skills/paia-python-schrijven/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/skills/python-writing/agents/SKILL.md"
 source_path = ".agents/skills/paia-python-schrijven/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/hooks/ruff-format.sh"
 source_path = ".claude/hooks/ruff-format.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/hooks/ty-check.sh"
 source_path = ".claude/hooks/ty-check.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/hooks/hooks.json"
@@ -389,32 +393,32 @@ new = true
 [[file]]
 path = "pack/python/scripts/quality/__init__.py"
 source_path = "scripts/quality/__init__.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/baseline.py"
 source_path = "scripts/quality/baseline.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/diffcov.py"
 source_path = "scripts/quality/diffcov.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/gitenv.py"
 source_path = "scripts/quality/gitenv.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/prcov.py"
 source_path = "scripts/quality/prcov.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/scripts/quality/prcov_issues.py"
 source_path = "scripts/quality/prcov_issues.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/python/detect.toml"
@@ -431,7 +435,7 @@ new = true
 [[file]]
 path = "pack/python/scripts/quality/ratchet.py"
 source_path = "scripts/quality/ratchet.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/shell/hooks/shellcheck.sh"
@@ -459,12 +463,12 @@ new = true
 [[file]]
 path = "pack/shell/skills/shell-gates/claude/SKILL.md"
 source_path = ".claude/skills/paia-shell-gates/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/shell/skills/shell-gates/agents/SKILL.md"
 source_path = ".agents/skills/paia-shell-gates/SKILL.md"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
 path = "pack/shell/detect.toml"
@@ -502,4 +506,36 @@ new = true
 # Attribution for the file above (wordfreq 3.1.1).
 [[file]]
 path = "pack/core/lib/code_language_freq_NOTICE.txt"
+new = true
+
+[[file]]
+path = "pack/go/hooks/go-check.sh"
+new = true
+
+[[file]]
+path = "pack/go/hooks/gofmt.sh"
+new = true
+
+[[file]]
+path = "pack/go/hooks/hooks.json"
+new = true
+
+[[file]]
+path = "pack/go/requires.toml"
+new = true
+
+[[file]]
+path = "pack/go/skills/go-writing/claude/SKILL.md"
+new = true
+
+[[file]]
+path = "pack/go/skills/go-writing/agents/SKILL.md"
+new = true
+
+[[file]]
+path = "pack/go/detect.toml"
+new = true
+
+[[file]]
+path = "pack/go/instructions/AGENTS.md"
 new = true

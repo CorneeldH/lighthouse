@@ -10,29 +10,18 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 )
 
 // host.toml lives on the host, never in the repository (spec, init punt 3). init
 // proposes it when it is missing; it is not a unit and not in the manifest.
 
-const hostTOMLHome = ".config/lighthouse/host.toml"
-
-func defaultHostTOML() string {
-	if p := os.Getenv("LIGHTHOUSE_HOST_TOML"); p != "" {
-		return p
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(home, filepath.FromSlash(hostTOMLHome))
-}
-
 // hostLabel names path in a diff: ~/... for the default location.
 func hostLabel(path string) string {
 	if home, err := os.UserHomeDir(); err == nil {
-		if rel, err := filepath.Rel(home, path); err == nil && filepath.ToSlash(rel) == hostTOMLHome {
-			return "~/" + hostTOMLHome
+		if rel, err := filepath.Rel(home, path); err == nil && filepath.ToSlash(rel) == hostconfig.HomeRel {
+			return "~/" + hostconfig.HomeRel
 		}
 	}
 	return path
