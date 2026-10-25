@@ -30,6 +30,8 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
   bevindingen (ook een build die faalt); `golangci-lint config verify` 0 = geldig, 3 = ongeldig,
   6 = geen configbestand; `golangci-lint version --short` print `2.15.0` (zonder `v`);
   `go vet` 0 = schoon, 1 = bevinding of build die faalt; `gofmt -w` 0 = ok, 2 = parset niet.
+  Een build die faalt is dus niet van een bevinding te scheiden en blokkeert ook (spec,
+  *go-check.sh*); alleen een rc die "kon niet linten" betekent geeft `COULD NOT CHECK`.
 - Na een wijziging onder `pack/`: `go run ./cmd/lighthouse init --upgrade` en de geïnstalleerde
   kopie meecommitten (Task 7 doet de eerste installatie).
 - Test-gate vóór elke commit: `uv run pytest -q && go test ./...` (Task 7 voegt `-shuffle=on` toe).
@@ -61,8 +63,9 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
 | `tests/pack/go/test_gofmt.py`, `test_go_check.py` | hooktests met stubs | 1, 2 |
 | `pack/core/lib/bash_writes.py` | `.go` → `gofmt.sh` | 3 |
 | `pack/go/skills/go-writing/{claude,agents}/SKILL.md` | de skill | 4 |
+| `pack/go/requires.toml` | tools per eenheid (de skilltest leest hem) | 4 |
 | `tests/pack/go/test_go_writing.py` | contracttests op de skilltekst | 4 |
-| `pack/go/{detect.toml,requires.toml,instructions/AGENTS.md}` | detectie, tools, blok | 5 |
+| `pack/go/{detect.toml,instructions/AGENTS.md}` | detectie, blok | 5 |
 | `tests/pack/go/test_go_pack.py`, `internal/packs/core_test.go` | pakkettests | 5 |
 | `pack/core/skills/testing/SKILL.md`, `tests/pack/test_testing_skill.py` | verwijzing | 6 |
 | `.golangci-version`, `lighthouse.toml`, `tests/test_golangci_pin.py`, `tests/test_dogfood.py`, geïnstalleerde kopie | dogfood | 7 |
@@ -96,8 +99,9 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
   | `test_other_extension_passes` | `a.py` | rc 0, `STUB_LOG` bestaat niet |
   | `test_missing_file_passes` | pad dat niet bestaat | rc 0 |
   | `test_no_path_passes` | `{"tool_input": {}}` | rc 0 |
-  | `test_without_gofmt_could_not_check` | `tool_bin(..., drop="gofmt")` zonder stub | rc 2, eerste regel begint met `gofmt: COULD NOT CHECK — ` |
-  | `test_without_jq_could_not_check` | `drop="jq"` | idem |
+  | `test_classify_reads_the_parse_error_as_a_finding` | de echte `gofmt` (geen stub) op een `x.go` met `package m\n\nfunc F( {\n` | rc 2, `bash_writes.classify(2, result.stderr.encode()) == "finding"`, als `test_ruff_format.py:96-103` |
+  | `test_without_gofmt_could_not_check` | `tool_bin(..., drop="gofmt")` zonder stub, `PATH` = alleen die map (als `test_ty_check.py:176`) | rc 2, eerste regel begint met `gofmt: COULD NOT CHECK — ` |
+  | `test_without_jq_could_not_check` | `drop="jq"`, `PATH` = alleen die map | idem |
   | `test_empty_payload_could_not_check` | `""` | idem |
   | `test_invalid_json_could_not_check` | `"{"` | idem |
   | `test_registered_on_edit_write` | `pack/go/hooks/hooks.json` | `PostToolUse` → matcher `Edit\|Write` → command `${CLAUDE_PLUGIN_ROOT}/hooks/gofmt.sh`, timeout 15 |
@@ -135,6 +139,7 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
   |---|---|---|
   | `test_clean_passes` | alles 0 | rc 0, stdout leeg, `STUB_LOG` bevat `vet ./...` en `run ./...` |
   | `test_vet_finding_blocks` | `STUB_VET_RC=1`, `STUB_VET_OUT="a.go:3:2: fmt.Printf format %d has arg \"s\" of wrong type string"` | rc 2, eerste regel `go-check: go vet finds problems.`, de vet-regel in stderr, `run` niet aangeroepen |
+  | `test_build_failure_blocks` | `STUB_VET_RC=1`, `STUB_VET_OUT="vet: ./a.go:3:17: undefined: x"` | rc 2, eerste regel `go-check: go vet finds problems.`, geen `COULD NOT CHECK` (spec: een build die faalt blokkeert) |
   | `test_lint_finding_blocks` | `STUB_RUN_RC=1`, `STUB_RUN_OUT="a.go:5:22: Error return value of \`os.Remove\` is not checked (errcheck)"` | rc 2, eerste regel `go-check: golangci-lint finds problems.` |
   | `test_lint_failure_could_not_check` | `STUB_RUN_RC=3` | rc 0, systemMessage begint met `go-check: COULD NOT CHECK — ` |
   | `test_invalid_config_could_not_check` | `STUB_VERIFY_RC=3` | idem, `run` niet aangeroepen |
@@ -143,21 +148,25 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
   | `test_pin_mismatch_could_not_check` | pin `v2.15.0`, `STUB_VERSION=2.11.4` | systemMessage met `2.11.4` en `2.15.0`; `vet` niet aangeroepen |
   | `test_no_pin_runs_unpinned` | geen `.golangci-version`, `STUB_VERSION=9.9.9` | rc 0, stdout leeg |
   | `test_no_go_mod_says_nothing` | repo zonder `go.mod` | rc 0, stdout leeg, `STUB_LOG` bestaat niet |
+  | `test_no_go_mod_without_golangci_lint_says_nothing` | repo zonder `go.mod`, `tool_bin(drop="golangci-lint")`, `PATH` = alleen die map | rc 0, stdout leeg |
   | `test_stop_hook_active_passes` | `stop_hook_active: true`, `STUB_VET_RC=1` | rc 0, `STUB_LOG` bestaat niet |
-  | `test_missing_tool_could_not_check` | parametrize over `go`, `golangci-lint`, `jq`, `git` met `tool_bin(drop=…)` | systemMessage begint met `go-check: COULD NOT CHECK — `, met de toolnaam (voor `jq` de handgebouwde JSON, als `ty-check.sh`) |
+  | `test_missing_tool_could_not_check` | parametrize over `go`, `golangci-lint`, `jq`, `git` met `tool_bin(drop=…)`, geen stub voor de gedropte tool, `PATH` = alleen die map (als `test_ty_check.py:176`) | systemMessage begint met `go-check: COULD NOT CHECK — `, met de toolnaam (voor `jq` de handgebouwde JSON, als `ty-check.sh`) |
   | `test_registered_on_stop` | `hooks.json` | `Stop` → matcher `""` → `${CLAUDE_PLUGIN_ROOT}/hooks/go-check.sh`, timeout 120 |
 
 - [ ] **Step 2: Run** `uv run pytest -q tests/pack/go/test_go_check.py` — Expected: FAIL.
 - [ ] **Step 3: Schrijf `pack/go/hooks/go-check.sh`** naar de vorm van `pack/python/hooks/ty-check.sh`
-  (`report`, `cannot_check`, toolcheck, `stop_hook_active`-guard, worktree-bewuste `cd` naar de
-  git-root). Volgorde daarna: geen `$ROOT/go.mod` → exit 0; pin uit `$ROOT/.golangci-version`
+  (`report`, `cannot_check`, `stop_hook_active`-guard, worktree-bewuste `cd` naar de git-root).
+  De toolcheck splitst: vóór het lezen van de payload alleen `jq` en `git`; na de `cd` geen
+  `$ROOT/go.mod` → exit 0, stil; pas dan `go` en `golangci-lint` → `cannot_check` met de
+  toolnaam. Zo zegt een repo zonder Go-module niets, ook zonder Go-tooling. Daarna: pin uit `$ROOT/.golangci-version`
   (`tr -d '[:space:]'`, voorloop-`v` weg) tegen `golangci-lint version --short` → mismatch is
   `cannot_check "golangci-lint <have> runs; .golangci-version pins <want>."`; `go vet ./...`
-  rc ≠ 0 → blok; `golangci-lint config verify` rc ∉ {0, 6} → `cannot_check` met de eerste drie
+  rc ≠ 0 → blok (ook een build die faalt); `golangci-lint config verify` rc ∉ {0, 6} → `cannot_check` met de eerste drie
   regels; `golangci-lint run ./...` rc 1 → blok, rc ∉ {0, 1} → `cannot_check`. De blokmelding
   zegt op regel 2: `Fix them in the code — do not add a //nolint over a finding. If you really want a linter off, ask.`
   Kopcommentaar: waarom Stop en niet per edit (een package compileert halverwege een wijziging
-  vaak niet), en waarom elke Stop (Go-werk dat in de beurt al gecommit is). Stop-entry in
+  vaak niet), waarom elke Stop (Go-werk dat in de beurt al gecommit is), en waarom een build die
+  faalt blokkeert (zelfde rc als een bevinding; meestal code die niet compileert). Stop-entry in
   `hooks.json`, SOURCES-entry.
 - [ ] **Step 4: Run** `uv run pytest -q tests/pack/go/ tests/test_sources.py` — Expected: PASS.
 - [ ] **Step 5: Commit** `feat(go): go-check-hook met go vet en golangci-lint bij Stop (#40)`.
@@ -182,13 +191,16 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
 - [ ] **Step 2: Run** `uv run pytest -q tests/pack/test_bash_writes.py tests/pack/test_bash_write_gates.py` — Expected: FAIL.
 - [ ] **Step 3: Voeg de drie waarden toe** in `bash_writes.py`.
 - [ ] **Step 4: Run** dezelfde tests — Expected: PASS.
-- [ ] **Step 5: Run** `go run ./cmd/lighthouse init --upgrade --yes` en commit de geïnstalleerde
-  `.lighthouse/lib/lighthouse_lib/bash_writes.py` mee: `feat(core): Bash-write-gate voor .go-bestanden (#40)`.
+- [ ] **Step 5: Run** `go run ./cmd/lighthouse init --upgrade --yes` en commit alles wat het
+  schreef mee (de geïnstalleerde `.lighthouse/lib/lighthouse_lib/bash_writes.py` en de sha256
+  in `.lighthouse/manifest.toml`): `feat(core): Bash-write-gate voor .go-bestanden (#40)`.
 
 ### Task 4: De skill `lighthouse-go-writing`
 
 **Files:**
 - Create: `pack/go/skills/go-writing/claude/SKILL.md`, `pack/go/skills/go-writing/agents/SKILL.md`
+- Create: `pack/go/requires.toml` (hier, niet in Task 5: `test_requires_names_the_skill_per_tool`
+  in `tests/pack/test_skill_contracts.py:330-341` leest hem voor de nieuwe skill)
 - Create: `tests/pack/go/test_go_writing.py`
 - Modify: `pack/SOURCES.toml`
 
@@ -221,20 +233,27 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
     de agents-variant.
   - `test_english`: als `test_python_writing.py:153`.
 - [ ] **Step 2: Run** `uv run pytest -q tests/pack/go/test_go_writing.py` — Expected: FAIL.
-- [ ] **Step 3: Schrijf de claude-variant** volgens de spec, *De skill*, met
-  `superpowers:writing-skills` en `/lighthouse-instrument`. Description zoals de spec, met de
+- [ ] **Step 3: Schrijf `pack/go/requires.toml`** met het kopcommentaar van
+  `pack/python/requires.toml`: `git = ["go-check", "go-writing"]`, `go = ["go-check", "go-writing"]`,
+  `gofmt = ["gofmt", "go-writing"]`, `golangci-lint = ["go-check", "go-writing"]`,
+  `jq = ["gofmt", "go-check"]`, `python3 = ["go-writing"]`, `tomllib = ["go-writing"]`. `git`
+  noemt go-writing omdat de KPI-rij `git ls-files` het git-patroon van de contracttest
+  (`test_skill_contracts.py:322-323`) raakt.
+- [ ] **Step 4: Schrijf de claude-variant** volgens de spec, *De skill*, met
+  `superpowers:writing-skills` voor vorm en description. De laagkeuze (een eigen skill in
+  `pack/go`) staat al in de spec; `/lighthouse-instrument` draait hier niet. Description zoals de spec, met de
   triggers "writing or changing Go", `_test.go`, "planning a refactor … before a file is open".
   Kopieer naar de agents-variant en voeg de OpenCode-zin aan de description en de
   OpenCode-alinea's toe op de plekken waar python-writing ze heeft (na de KPI-toelichting en
   onder *The pairing*), met de handcommando's `gofmt -w <file>`, `go vet ./...`,
-  `golangci-lint run ./...`. SOURCES-entries.
-- [ ] **Step 4: Run** `uv run pytest -q tests/pack/go/ tests/pack/test_skill_contracts.py tests/test_sources.py` — Expected: PASS.
-- [ ] **Step 5: Commit** `feat(go): skill lighthouse-go-writing (#40)`.
+  `golangci-lint run ./...`. SOURCES-entries (beide SKILL.md's en `requires.toml`).
+- [ ] **Step 5: Run** `uv run pytest -q tests/pack/go/ tests/pack/test_skill_contracts.py tests/test_sources.py` — Expected: PASS.
+- [ ] **Step 6: Commit** `feat(go): skill lighthouse-go-writing (#40)`.
 
 ### Task 5: Detectie, tools en instructieblok
 
 **Files:**
-- Create: `pack/go/detect.toml`, `pack/go/requires.toml`, `pack/go/instructions/AGENTS.md`
+- Create: `pack/go/detect.toml`, `pack/go/instructions/AGENTS.md` (`requires.toml` komt uit Task 4)
 - Create: `tests/pack/go/test_go_pack.py`
 - Modify: `internal/packs/core_test.go:133-187` (rij `go`), `pack/SOURCES.toml`
 
@@ -266,11 +285,8 @@ testrij. De hooks zijn bash, getest als subprocess met stubs voor `go`, `gofmt` 
   },
   ```
 - [ ] **Step 2: Run** `uv run pytest -q tests/pack/go/test_go_pack.py && go test -shuffle=on ./internal/packs/` — Expected: FAIL.
-- [ ] **Step 3: Schrijf de drie bestanden.** `detect.toml` met het kopcommentaar van
-  `pack/python/detect.toml`, toegepast op `go.mod`. `requires.toml`: `git = ["go-check"]`,
-  `go = ["go-check", "go-writing"]`, `gofmt = ["gofmt", "go-writing"]`,
-  `golangci-lint = ["go-check", "go-writing"]`, `jq = ["gofmt", "go-check"]`,
-  `python3 = ["go-writing"]`, `tomllib = ["go-writing"]`. Het blok: de tekst uit de spec,
+- [ ] **Step 3: Schrijf de twee bestanden.** `detect.toml` met het kopcommentaar van
+  `pack/python/detect.toml`, toegepast op `go.mod`. Het blok: de tekst uit de spec,
   *Instructieblok*. SOURCES-entries.
 - [ ] **Step 4: Run** dezelfde commando's — Expected: PASS.
 - [ ] **Step 5: Commit** `feat(go): detectie, tools en instructieblok van pack/go (#40)`.
