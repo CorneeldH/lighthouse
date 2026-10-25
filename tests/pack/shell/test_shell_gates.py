@@ -240,3 +240,17 @@ def test_points_to_the_testing_skill(variant):
     assert "*Classify first*" in domain
     assert "Before the first edit" in domain
     assert CLASSIFICATION in domain
+
+
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_shell_form_of_the_testing_norms(variant):
+    text = _text(variant)
+    assert "## The shell form of lighthouse-testing" in text
+    section = text.split("## The shell form of lighthouse-testing", 1)[1].split("\n## ", 1)[0]
+    for phrase in (
+        "temporary directory",
+        "the exit code and the output",
+        "never read or grep the source",
+        "one input that must block and one that must pass",
+    ):
+        assert phrase in section, phrase

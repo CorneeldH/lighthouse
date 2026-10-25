@@ -97,6 +97,21 @@ measures them, not because they count for less.
   tested nothing. ✅ build the fixture so the path is provably reached (a marker in the
   output) · ❌ trusting the name of the test.
 
+## The shell form of lighthouse-testing
+
+The norm is in `lighthouse-testing`; this is its form for a gate or a hook.
+
+- **Run the script, against controlled input.** Build a temporary directory (`mktemp -d`, or
+  pytest `tmp_path`) holding exactly the fixture that reaches the path under test. Never point
+  the script at the real repo or at `$HOME`.
+- **Assert the exit code and the output.** Both: the exit code alone lets defect 1 through
+  (rc 127 is nonzero too), and the first line's prefix tells a finding from `COULD NOT CHECK`.
+- **Run it, never read or grep the source.** A test that greps the script stays green when
+  the mechanism breaks.
+- **Per gate, one input that must block and one that must pass.** This is the minimal check
+  of the `hook/gate` class. With only the blocking input, a gate that blocks everything
+  still passes.
+
 ## The pairing
 
 | Half | Carries | When |
