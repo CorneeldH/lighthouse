@@ -44,7 +44,7 @@ lighthouse-guard en houdt geen eigen usage-hook.
 - het venster van Codex (#65): dat stopt geen Claude-sessie;
 - de overstap in paia zelf (#1634);
 - blokkerende Stop-gates in andere pakketten (`go-check.sh` in `pack/go`, later `pack/python`)
-  laten zwijgen zolang er een geldig alarm ligt. Besloten: een eigen vervolgissue. Tot dan kunnen
+  laten zwijgen zolang er een geldig alarm ligt. Besloten: een eigen vervolgissue, #74. Tot dan kunnen
   bij een vol venster twee Stop-hooks tegelijk blokkeren, met tegenstrijdige redenen.
 
 ## Non-goals en anti-goals
