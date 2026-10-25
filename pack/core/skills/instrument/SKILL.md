@@ -220,7 +220,7 @@ Plus the project's own tests on its instruction layer, if it has any.
 |---|---:|---|
 | Rules without `paths:` | 0 | `.lighthouse/scripts/check-instructions.sh` (check 7) |
 | Skills with `binding: hard` without a registered hook | 0 | `.lighthouse/scripts/check-instructions.sh` (check 8) |
-| Words in `CLAUDE.md` + `AGENTS.md` | ≤ the ceiling (`python3 .lighthouse/lib/lighthouse_lib/config.py project.instructions_word_ceiling`, default 3000) | `.lighthouse/scripts/check-instructions.sh` (check 10) |
+| Words in `CLAUDE.md` + `AGENTS.md` | ≤ the ceiling (`python3 .lighthouse/lib/lighthouse_lib/config.py project.instructions_word_ceiling`, default 3000) | `.lighthouse/scripts/check-instructions.sh` (check 10); `lighthouse init` and `init --upgrade` report the budget before writing |
 | Ambient skill surface (characters name+description) | falling | `python3 scripts/measure_skill_surface.py --ambient .claude/skills` (only if present) |
 | Mirror break `.claude/skills` ↔ `.agents/skills` | 0 | `.lighthouse/scripts/check-instructions.sh` (check 3) |
 | Personal skills that shadow a project skill | 0 | `.lighthouse/scripts/check-instructions.sh` (check 5) |
