@@ -578,13 +578,29 @@ def _directory_findings(names: list[str]) -> list[Finding]:
     return found
 
 
-def check_file(path: Path, root: Path) -> Inspection:
+def _session_chain(session_toml: Path | None) -> code_language_llm.Chain | None:
+    """`[code_language_llm]` from the session repo's `lighthouse.toml`; None without one.
+
+    Never from the written file's repo: that repo would choose where the session's key
+    goes (`url`, `key_env`, `env_file`).
+    """
+    if session_toml is None or not session_toml.is_file():
+        return None
+    try:
+        return code_language_llm.chain_from(config.load(session_toml))
+    except config.ConfigError as error:
+        raise CannotCheck(str(error)) from error
+
+
+def check_file(path: Path, root: Path, session_toml: Path | None = None) -> Inspection:
     """Findings and doubts for the file at `path` (absolute) in repo `root`.
 
     Both empty when the file is not checked: no `lighthouse.toml`, no `code_language`,
     an exempt glob, a file `lighthouse init` manages, or a file that is neither code nor
     inside `code_language_paths`. A code file is read as code, a Markdown file inside the
-    scope as prose; any other file inside the scope counts by name only.
+    scope as prose; any other file inside the scope counts by name only. Scope, exemptions
+    and the on-switch come from `root`; the layer 2 chain only from `session_toml`, the
+    `lighthouse.toml` of the repo the hook runs for.
     """
     nothing = Inspection([], [])
     toml = root / "lighthouse.toml"
@@ -605,10 +621,10 @@ def check_file(path: Path, root: Path) -> Inspection:
             paths = config.lookup(cfg, "project.code_language_paths")
         except KeyError:
             pass
-        # Read for every checked file, doubts or not: a wrong table is COULD NOT CHECK at once.
-        chain = code_language_llm.chain_from(cfg)
     except config.ConfigError as error:
         raise CannotCheck(str(error)) from error
+    # Read for every checked file, doubts or not: a wrong table is COULD NOT CHECK at once.
+    chain = _session_chain(session_toml)
     relative = path.relative_to(root).as_posix()
     scan = EXTENSIONS.get(path.suffix)
     dirs = scope_dirs(relative, paths)
@@ -715,7 +731,7 @@ def _report(path: Path, found: list[Finding]) -> str:
 
 
 def main(argv: list[str]) -> int:
-    """`code_language.py <abs-path> <root>`.
+    """`code_language.py <abs-path> <root>`; the chain from `config.config_path()`.
 
     rc 0 with empty stdout: clean. rc 0 with stdout: only a notice. rc 1: findings on
     stdout, the notice below them when there is one. rc 2: could not check.
@@ -723,7 +739,7 @@ def main(argv: list[str]) -> int:
     try:
         path, root = Path(argv[0]), Path(argv[1])
         found, notice = resolve(
-            check_file(path, root),
+            check_file(path, root, config.config_path()),
             path,
             under_gates=bool(os.environ.get(UNDER_GATES_ENV)),
             state_dir=code_language_llm.default_state_dir(),

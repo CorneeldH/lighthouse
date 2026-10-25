@@ -200,15 +200,49 @@ LAYER1_LINE = "lees_bestand = 1\n"
 DOUBT_LINE = "legacy_processed_lijst_weg = 2\n"
 
 
+def _table(url: str) -> str:
+    return f'\n[code_language_llm]\nurl = "{url}"\nmodels = ["m1"]\nkey_env = "LLM_TEST_KEY"\n'
+
+
+def _session_toml(tmp_path: Path, table: str = "") -> Path:
+    """The session repo's `lighthouse.toml`, which the hook reads through `LIGHTHOUSE_TOML`."""
+    path = tmp_path / "session.toml"
+    path.write_text(MINIMAL_TOML + table, encoding="utf-8")
+    return path
+
+
 def _llm_repo(tmp_path: Path, url: str) -> Path:
-    table = f'\n[code_language_llm]\nurl = "{url}"\nmodels = ["m1"]\nkey_env = "LLM_TEST_KEY"\n'
-    return _repo(tmp_path / "r", ON_TOML + table)
+    """A repo with `code_language` on; the chain lives in the session's `lighthouse.toml`."""
+    _session_toml(tmp_path, _table(url))
+    return _repo(tmp_path / "r")
 
 
 def _llm_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     xdg = tmp_path / "xdg"
     xdg.mkdir(exist_ok=True)
-    return {"XDG_RUNTIME_DIR": str(xdg), "LLM_TEST_KEY": "sekrit", **extra}
+    return {
+        "XDG_RUNTIME_DIR": str(xdg),
+        "LLM_TEST_KEY": "sekrit",
+        "LIGHTHOUSE_TOML": str(tmp_path / "session.toml"),
+        **extra,
+    }
+
+
+def test_hook_foreign_chain_is_never_used(tmp_path):
+    """A repo the agent writes into cannot send the session's key anywhere (R7)."""
+    with FakeEndpoint() as foreign, FakeEndpoint() as own:
+        root = _repo(tmp_path / "r", ON_TOML + _table(foreign.url))
+        file = _write(root, "a.py", DOUBT_LINE)
+        _session_toml(tmp_path)
+        result = _run(str(file), root, env=_llm_env(tmp_path))
+        assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+        assert foreign.requests == []
+        _session_toml(tmp_path, _table(own.url))
+        result = _run(str(file), root, env=_llm_env(tmp_path))
+    assert foreign.requests == []
+    assert [h["Authorization"] for h in own.headers] == ["Bearer sekrit"]
+    assert result.returncode == 2
+    assert f"{file}:1: name: legacy_processed_lijst_weg [layer 2 (m1)]" in result.stderr
 
 
 def _notice_json(stdout: str) -> tuple[str, str]:

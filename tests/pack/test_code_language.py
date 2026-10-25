@@ -544,12 +544,22 @@ DOUBT_LINE = "legacy_processed_lijst_weg = 2\n"
 KEY_ENV = "LLM_TEST_KEY"
 
 
+def _table(url, key_env=KEY_ENV):
+    return f'\n[code_language_llm]\nurl = "{url}"\nmodels = ["m1"]\nkey_env = "{key_env}"\n'
+
+
+def _session_toml(tmp_path, table=""):
+    """The `lighthouse.toml` of the session's repo, the one the hook runs from."""
+    session = tmp_path / "session"
+    session.mkdir(exist_ok=True)
+    (session / "lighthouse.toml").write_text(MINIMAL_TOML + table, encoding="utf-8")
+    return session / "lighthouse.toml"
+
+
 def _llm_repo(tmp_path, url, key_env=KEY_ENV):
-    table = f'\n[code_language_llm]\nurl = "{url}"\nmodels = ["m1"]\nkey_env = "{key_env}"\n'
-    root = _repo(tmp_path)
-    with (root / "lighthouse.toml").open("a", encoding="utf-8") as toml:
-        toml.write(table)
-    return root
+    """A repo with `code_language` on; the chain lives in the session's `lighthouse.toml`."""
+    _session_toml(tmp_path, _table(url, key_env))
+    return _repo(tmp_path)
 
 
 @pytest.fixture
@@ -558,9 +568,8 @@ def llm_key(monkeypatch):
 
 
 def _resolve(root, path, tmp_path, under_gates=False):
-    return cl.resolve(
-        cl.check_file(path, root), path, under_gates=under_gates, state_dir=tmp_path / "state"
-    )
+    inspection = cl.check_file(path, root, tmp_path / "session" / "lighthouse.toml")
+    return cl.resolve(inspection, path, under_gates=under_gates, state_dir=tmp_path / "state")
 
 
 def _lines_layers(found):
@@ -597,6 +606,26 @@ def test_layer1_only_no_call(tmp_path, llm_key):
     assert _lines_layers(found) == [(1, "layer 1")]
     assert notice is None
     assert fake.requests == []
+
+
+def test_foreign_chain_is_never_used(tmp_path, llm_key):
+    """The written file's repo cannot choose where the session's key goes (R7)."""
+    with FakeEndpoint() as foreign, FakeEndpoint(verdict="EN") as own:
+        root = _repo(tmp_path, "")
+        with (root / "lighthouse.toml").open("a", encoding="utf-8") as toml:
+            toml.write(_table(foreign.url))
+        path = _write(root, "a.py", LAYER1_LINE + DOUBT_LINE)
+        _session_toml(tmp_path)
+        found, notice = _resolve(root, path, tmp_path)
+        assert (_lines_layers(found), notice) == ([(1, "layer 1")], None)
+        assert foreign.requests == []
+        _session_toml(tmp_path, _table(own.url))
+        found, notice = _resolve(root, path, tmp_path)
+    assert foreign.requests == []
+    assert len(own.requests) == 1
+    assert own.headers[0]["Authorization"] == "Bearer sekrit"
+    assert _lines_layers(found) == [(1, "layer 1")]
+    assert notice is None
 
 
 def test_no_chain_is_silent(tmp_path, monkeypatch):
@@ -666,16 +695,16 @@ def test_notice_truncates_long_text(tmp_path, monkeypatch):
 
 def test_bad_chain_is_cannot_check(tmp_path):
     root = _repo(tmp_path)
-    with (root / "lighthouse.toml").open("a", encoding="utf-8") as toml:
-        toml.write('\n[code_language_llm]\nurl = "http://h/v1"\nmodels = []\n')
+    session = _session_toml(tmp_path, '\n[code_language_llm]\nurl = "http://h/v1"\nmodels = []\n')
     for content in (LAYER1_LINE + DOUBT_LINE, "x = 1\n"):
         with pytest.raises(cl.CannotCheck):
-            cl.check_file(_write(root, "a.py", content), root)
+            cl.check_file(_write(root, "a.py", content), root, session)
 
 
 def test_main_notice_contract(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv(cl.UNDER_GATES_ENV, "1")
     root = _llm_repo(tmp_path, "http://unused.invalid/v1")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(tmp_path / "session" / "lighthouse.toml"))
     path = _write(root, "a.py", DOUBT_LINE)
     assert cl.main([str(path), str(root)]) == 0
     out = capsys.readouterr().out

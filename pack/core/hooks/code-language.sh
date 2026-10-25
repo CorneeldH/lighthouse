@@ -21,7 +21,8 @@
 # Off without `[project] code_language` in the lighthouse.toml of the git root
 # of the written file: the config is read from that root, not from the cwd, so
 # a file in another repo is judged by that repo. No git repository, or no
-# lighthouse.toml, is off as well.
+# lighthouse.toml, is off as well. Only `[code_language_llm]` is the
+# exception: it is read from the session's own repo (LIB_ROOT).
 #
 # NOT fail-open: without jq, git or python3, with a payload that is not JSON,
 # a path that cannot be resolved, a git that breaks, or a checker that fails
@@ -99,7 +100,10 @@ fi
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
 STDERR_FILE=$(mktemp) || cannot_check "cannot create a temporary file."
 trap 'rm -f "$STDERR_FILE"' EXIT
-OUTPUT=$(python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/code_language.py" "$ABS" "$ROOT" 2>"$STDERR_FILE")
+# The layer 2 chain comes from LIB_ROOT's lighthouse.toml (or LIGHTHOUSE_TOML),
+# never from ROOT: a repo the agent writes into must not choose where the
+# session's key goes.
+OUTPUT=$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/code_language.py" "$ABS" "$ROOT" 2>"$STDERR_FILE")
 RC=$?
 case "$RC" in
   0)
