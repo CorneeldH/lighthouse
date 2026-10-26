@@ -123,6 +123,8 @@ Anders dan `refresh` en `tick` schrijft dit commando niets: geen alarm, geen cac
 - **Claude** komt uit de cache van `usage refresh`. Een cache uit de toekomst geeft `age_s` 0.
 - **Codex** wordt door de server gemeten, zoals `usage codex`, en 300 s hergebruikt (een mislukte
   meting 60 s). Gelijktijdige verzoeken delen één app-server.
-- **Als service.** Met `ProtectHome=read-only` en een kale `PATH` vindt de service vaak geen `codex`
-  of kan hij die niet starten. Codex is dan alleen uit het sessielog te lezen, en die stand heeft
-  `lower_bound` `true`.
+- **Als service.** Onder de meegeleverde unit (`ProtectHome=read-only`) werkt `codex app-server`,
+  omdat de unit `ReadWritePaths=-%h/.codex -%h/.codex-specreview` heeft: de app-server bewaart zijn
+  sqlite-staat in de Codex-home en start niet als die alleen-lezen is. Ontbreekt die regel, of staat
+  `codex` niet in de `PATH` van de service, dan valt de server terug op het sessielog. Die stand heeft
+  `lower_bound` `true` en is vaak verouderd.

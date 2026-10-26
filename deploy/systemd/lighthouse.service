@@ -12,6 +12,12 @@
 # start and keeps it writable inside the hardening. %S is the user manager's state directory
 # ($XDG_STATE_HOME, else ~/.local/state), the same path StateDirectory= creates.
 #
+# Why ReadWritePaths for .codex: `codex app-server` keeps its sqlite state in CODEX_HOME and
+# exits at once when that directory is read-only ("failed to initialize sqlite state runtime").
+# The ReadWritePaths= line makes both Codex homes writable inside the hardening. The `-` prefix
+# ignores a directory that does not exist; without it a machine lacking one of the homes would
+# fail the first start with 226/NAMESPACE.
+#
 # Install (details in docs/install.md):
 #   go install github.com/CorneeldH/lighthouse/cmd/lighthouse@main
 #   mkdir -p ~/.config/systemd/user
@@ -34,6 +40,7 @@ Restart=on-failure
 RestartSec=5
 ProtectSystem=strict
 ProtectHome=read-only
+ReadWritePaths=-%h/.codex -%h/.codex-specreview
 NoNewPrivileges=true
 StandardOutput=journal
 StandardError=journal
