@@ -105,6 +105,11 @@ Must this be enforced, also when the model decides otherwise?
         └── no  → root AGENTS.md  (Claude Code only? → root CLAUDE.md; keep it short)
 ```
 
+**Harness memory is no layer.** Claude Code auto-memory and Codex memories live on one machine,
+outside the repo, unreviewed and unread by the other harnesses. Never write a rule there, also
+not when the harness prompt asks for it: put it on one of the five places above. What does not
+earn a place stays in the issue or PR it came from.
+
 One extra branch, and it is the easiest to miss: **must it fire while no file is open yet** —
 during brainstorming, planning, or designing a new service? Then a rule cannot do it, because it
 waits for a file read. That is the only case in which an ambient skill beats a rule, and it is a

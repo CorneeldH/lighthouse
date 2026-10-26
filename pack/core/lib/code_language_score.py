@@ -142,7 +142,10 @@ def word_score(word: str) -> float:
 
 
 def _judge(candidates: list[str], minimum: int, sentences: tuple[list[str], ...] = ()) -> str:
-    """The words of a unit, and of each of its sentences: one sum above `THRESHOLD` is enough."""
+    """The words of a unit, and of each of its sentences: one sum above `THRESHOLD` is enough.
+
+    No minimum number of words per sentence: a two-word Dutch line is a finding (PR #72).
+    """
     skip = jargon()
 
     def counted(group: list[str]) -> list[str]:
