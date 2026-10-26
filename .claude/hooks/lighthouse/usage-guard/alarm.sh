@@ -10,8 +10,8 @@
 # future. Anything else is no alarm. Nobody here removes it: only the meter writes
 # and prunes it.
 #
-# Works with and without `set -u`. Calls no `exit`, leaves `set -f` off, and forks
-# nothing when there is no alarm file.
+# Works with and without `set -u`. Calls no `exit`, turns `set -f` off after splitting
+# (callers must not rely on `set -f`), and forks nothing when there is no alarm file.
 
 USAGE_ALARM="${XDG_CACHE_HOME:-${HOME:-}/.cache}/lighthouse/usage-window.alarm"
 
