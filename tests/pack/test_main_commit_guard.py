@@ -1,8 +1,8 @@
-"""pack/core main-commit-guard.sh, as installed: blokkeert hij `git commit`/`git push` op `main`?
+"""pack/core main-commit-guard.sh, as installed: does it block `git commit`/`git push` on `main`?
 
-De hook is bash en leest zijn payload als JSON op stdin. Deze tests draaien hem
-als subprocess met echte tijdelijke paden, zodat het contract (exit code +
-stderr/stdout) getest wordt en niet een herimplementatie ervan.
+The hook is bash and reads its payload as JSON on stdin. These tests run it
+as a subprocess with real temporary paths, so that the contract (exit code +
+stderr/stdout) is tested and not a reimplementation of it.
 """
 
 import json
@@ -52,7 +52,7 @@ def _git(repo: Path, *args: str) -> None:
 
 
 def _init_repo(path: Path, branch: str = "main") -> None:
-    """Echte git-repo met één commit, zodat de hook echte plumbing ziet."""
+    """A real git repo with one commit, so that the hook sees real plumbing."""
     path.mkdir(parents=True, exist_ok=True)
     _git(path, "init", "-q", "-b", branch)
     (path / "README.md").write_text("# repo\n", encoding="utf-8")
@@ -88,7 +88,7 @@ def test_commit_guard_allows_commit_on_feature_branch(tmp_path):
 
 
 def test_commit_guard_blocks_commit_targeting_main_checkout_via_dash_c(tmp_path):
-    """De gedocumenteerde ontsnapping: worktree-cwd, `git -C <hoofdboom> commit`."""
+    """The documented escape: worktree cwd, `git -C <main-tree> commit`."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     wt = repo / ".claude" / "worktrees" / "issue-1-iets"
@@ -111,7 +111,7 @@ def test_commit_guard_follows_cd_in_a_chain(tmp_path):
 
 
 def test_commit_guard_blocks_push_to_main_from_feature_branch(tmp_path):
-    """`git push origin HEAD:main` omzeilt de branch-toets; de refspec niet."""
+    """`git push origin HEAD:main` bypasses the branch check; the refspec does not."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     _git(repo, "checkout", "-q", "-b", "issue-1-iets")
@@ -122,7 +122,7 @@ def test_commit_guard_blocks_push_to_main_from_feature_branch(tmp_path):
 
 
 def test_commit_guard_ignores_heredoc_content(tmp_path):
-    """De vals-positief van pre-commit-tests.sh mag hier niet optreden."""
+    """The false positive of pre-commit-tests.sh must not occur here."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     cmd = "cat > plan.md <<'XEOF'\ngit commit -m \"voorbeeld\"\ngit push origin main\nXEOF"
@@ -170,7 +170,7 @@ def test_commit_guard_fails_loud_without_tooling(tmp_path):
     assert "COULD NOT CHECK" in result.stderr
 
 
-# --- gereedschapskist voor de scherpere gevallen hieronder -------------------
+# --- toolkit for the sharper cases below -------------------
 
 _REAL_TOOLS = ("jq", "python3", "git", "cat", "mktemp", "rm", "sh")
 
@@ -178,10 +178,10 @@ _REAL_TOOLS = ("jq", "python3", "git", "cat", "mktemp", "rm", "sh")
 def _tool_bin(
     path: Path, *, drop: str = "", stubs: dict[str, str] | None = None
 ) -> Path:
-    """Een PATH-map met de echte tooling, op één na, plus eventuele stubs.
+    """A PATH directory with the real tooling, minus one, plus any stubs.
 
-    Zo is per limb van de preflight te toetsen dat juist díé limb luid faalt —
-    een lege PATH dekt ze alle drie tegelijk en dus geen enkele apart (M11).
+    That way each limb of the preflight can be tested to fail loudly, that very limb —
+    an empty PATH covers all three at once and so none separately (M11).
     """
     path.mkdir(parents=True, exist_ok=True)
     for tool in _REAL_TOOLS:
@@ -200,7 +200,7 @@ def _tool_bin(
 
 
 def test_commit_guard_fails_loud_without_jq(tmp_path):
-    """M11: de jq-limb apart, niet verstopt achter een lege PATH."""
+    """M11: the jq limb separately, not hidden behind an empty PATH."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -213,7 +213,7 @@ def test_commit_guard_fails_loud_without_jq(tmp_path):
 
     assert result.returncode == 2, result.stdout
     assert "COULD NOT CHECK" in result.stderr
-    # Juist deze limb: de preflight zelf, niet het vangnet erachter.
+    # Precisely this limb: the preflight itself, not the safety net behind it.
     assert "missing tooling" in result.stderr
     assert "jq" in result.stderr
 
@@ -237,7 +237,7 @@ def test_commit_guard_fails_loud_without_python3(tmp_path):
 
 
 def test_commit_guard_fails_loud_without_git(tmp_path):
-    """C3: zonder git kan de hook de branch niet zien — dat is geen groen licht."""
+    """C3: without git the hook cannot see the branch — that is no green light."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -255,14 +255,14 @@ def test_commit_guard_fails_loud_without_git(tmp_path):
 
 
 def test_commit_guard_blocks_when_rev_parse_breaks(tmp_path):
-    """C3/I8: een git die stukloopt is geen 'geen repo' — dus blokkeren.
+    """C3/I8: a git that breaks down is not a 'no repo' — so block.
 
-    De preflight is tevreden (git bestaat), de parser vond een commit, maar
-    `rev-parse` geeft een onbekende fout. Stil doorlaten zou hier het gat zijn.
+    The preflight is satisfied (git exists), the parser found a commit, but
+    `rev-parse` gives an unknown error. Silently letting it through would be the gap here.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
-    kapot = _tool_bin(
+    broken_git = _tool_bin(
         tmp_path / "kapotte-git",
         stubs={"git": "#!/bin/sh\necho 'fatal: kapot object store' >&2\nexit 1\n"},
     )
@@ -271,7 +271,7 @@ def test_commit_guard_blocks_when_rev_parse_breaks(tmp_path):
         COMMIT_GUARD,
         _bash('git commit -m "iets"', repo),
         cwd=repo,
-        env={"PATH": str(kapot)},
+        env={"PATH": str(broken_git)},
     )
 
     assert result.returncode == 2, result.stdout
@@ -279,7 +279,7 @@ def test_commit_guard_blocks_when_rev_parse_breaks(tmp_path):
 
 
 def test_commit_guard_passes_when_target_is_simply_not_a_repo(tmp_path):
-    """De tegenhanger van de vorige test: 'geen repo' is een echte uitkomst."""
+    """The counterpart of the previous test: 'no repo' is a real outcome."""
     los = tmp_path / "geen-repo"
     los.mkdir()
 
@@ -289,12 +289,12 @@ def test_commit_guard_passes_when_target_is_simply_not_a_repo(tmp_path):
 
 
 def test_commit_guard_blocks_when_the_parser_crashes(tmp_path):
-    """I8: een parser die niet met 0 of 3 eindigt mag geen stille pass worden."""
+    """I8: a parser that does not end with 0 or 3 must not become a silent pass."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     # Only the parser crashes; the config read before it uses the real python3.
     real = shutil.which("python3")
-    stuk = _tool_bin(
+    broken_parser = _tool_bin(
         tmp_path / "kapotte-python",
         stubs={
             "python3": "#!/bin/sh\ncase \"$1\" in *git_invocations.py) "
@@ -307,7 +307,7 @@ def test_commit_guard_blocks_when_the_parser_crashes(tmp_path):
         COMMIT_GUARD,
         _bash('git commit -m "iets"', repo),
         cwd=repo,
-        env={"PATH": str(stuk)},
+        env={"PATH": str(broken_parser)},
     )
 
     assert result.returncode == 2, result.stdout
@@ -316,7 +316,7 @@ def test_commit_guard_blocks_when_the_parser_crashes(tmp_path):
 
 
 def test_commit_guard_blocks_unparseable_command(tmp_path):
-    """I9: open quote = geen conclusie. Niet kunnen kijken is geen negatief resultaat."""
+    """I9: open quote = no conclusion. Not being able to look is no negative result."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -331,14 +331,14 @@ def test_commit_guard_blocks_unparseable_command(tmp_path):
 
 
 def test_commit_guard_passes_unparseable_input_without_a_commit(tmp_path):
-    """De tweestapsterugval: 'niet te parsen' is niet 'niet kunnen kijken'.
+    """The two-step fallback: 'cannot be parsed' is not 'cannot look'.
 
-    Staat er in de ruwe tekst nergens `git` mét `commit` of `push`, dan valt
-    hier niets te beschermen en niets te melden. Zonder die stap zette één
-    onbalans buiten elke repo álle volgende commando's op slot — een lockout
-    waar de norm niets voor terugkrijgt. Het tegenwicht staat in
-    test_commit_guard_blocks_unparseable_command: kán er een commit in zitten,
-    dan blokkeert het onverkort.
+    If the raw text contains nowhere `git` WITH `commit` or `push`, there is
+    nothing to protect and nothing to report here. Without that step, one
+    imbalance outside any repo locked up ALL following commands — a lockout
+    that gains the norm nothing. The counterweight is in
+    test_commit_guard_blocks_unparseable_command: if there CAN be a commit in it,
+    it blocks without exception.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -350,8 +350,8 @@ def test_commit_guard_passes_unparseable_input_without_a_commit(tmp_path):
         ("echo 'unbalanced", repo),
         ('ls -la "open', repo),
         ("awk '{print $1}", repo),
-        # Beide stappen apart: 'push' zonder `git` is geen push, en `git`
-        # zonder 'commit'/'push' is niets om te bewaken.
+        # Both steps separately: 'push' without `git` is no push, and `git`
+        # without 'commit'/'push' is nothing to guard.
         ("echo 'we push this door de brievenbus", repo),
         ("git status && echo 'unbalanced", repo),
     ):
@@ -360,16 +360,16 @@ def test_commit_guard_passes_unparseable_input_without_a_commit(tmp_path):
 
 
 def test_commit_guard_reads_ansi_c_quoting_with_an_escaped_apostrophe(tmp_path):
-    """F4: in `$'...'` sluit een backslash-escaped apostrof de string niet.
+    """F4: in `$'...'` a backslash-escaped apostrophe does not close the string.
 
-    De tokenizer las `$'it\\'s'` als een gewone quote, sloot hem op de escaped
-    apostrof en liet de laatste openstaan — 'niet te parsen', dus een blokkade.
+    The tokenizer read `$'it\\'s'` as an ordinary quote, closed it at the escaped
+    apostrophe and left the last one open — 'cannot be parsed', so a block.
 
-    De rc-0-gevallen alleen zouden ook groen blijven als de tokenizer nog
-    struikelt, want de tweestapsterugval vangt ze op (geen `git` in de tekst).
-    Wat de fix echt vastpint is het laatste geval: dáár moet er ná de
-    ANSI-C-string nog een commit gelezen worden, en die staat op een
-    feature-branch, dus doorlaten kan alleen als het commando écht geparsed is.
+    The rc-0 cases alone would also stay green if the tokenizer still
+    stumbles, because the two-step fallback catches them (no `git` in the text).
+    What the fix really pins down is the last case: THERE a commit has to be read
+    after the ANSI-C string, and it is on a feature branch, so
+    letting it through is possible only if the command is really parsed.
     """
     los = tmp_path / "geen-repo"
     los.mkdir()
@@ -387,7 +387,7 @@ def test_commit_guard_reads_ansi_c_quoting_with_an_escaped_apostrophe(tmp_path):
 
 
 def test_commit_guard_blocks_on_invalid_json_payload(tmp_path):
-    """Onleesbare payload: geen commando, dus ook geen toets — en dus geen pass."""
+    """Unreadable payload: no command, so no check either — and so no pass."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -405,7 +405,7 @@ def test_commit_guard_blocks_on_invalid_json_payload(tmp_path):
 
 
 def test_commit_guard_never_writes_to_stdout(tmp_path):
-    """Contract: blokkeren gaat via exit 2 + stderr, nooit via een systemMessage."""
+    """Contract: blocking goes via exit 2 + stderr, never via a systemMessage."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -415,11 +415,11 @@ def test_commit_guard_never_writes_to_stdout(tmp_path):
     assert result.stdout == ""
 
 
-# --- C1: newline is een commandoscheiding -----------------------------------
+# --- C1: newline is a command separator -----------------------------------
 
 
 def test_commit_guard_sees_a_commit_on_the_second_line(tmp_path):
-    """C1: Claude Code stuurt routinematig meerregelige Bash. Dominante vorm."""
+    """C1: Claude Code routinely sends multi-line Bash. Dominant form."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -431,7 +431,7 @@ def test_commit_guard_sees_a_commit_on_the_second_line(tmp_path):
 
 
 def test_commit_guard_sees_a_commit_after_a_non_git_line(tmp_path):
-    """Regel 1 begint met een niet-git-woord; dat mag regel 2 niet dekken."""
+    """Line 1 begins with a non-git word; that must not cover line 2."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -455,7 +455,7 @@ def test_commit_guard_sees_a_push_to_main_on_a_later_line(tmp_path):
 
 
 def test_commit_guard_follows_a_line_continuation(tmp_path):
-    """`git add -A && \\<newline>git commit` is één commando, geen twee halve."""
+    """`git add -A && \\<newline>git commit` is one command, not two halves."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -467,7 +467,7 @@ def test_commit_guard_follows_a_line_continuation(tmp_path):
 
 
 def test_commit_guard_stays_silent_on_a_harmless_multiline_command(tmp_path):
-    """Tegenwicht bij C1: meerregelig mag niet ineens alles blokkeren."""
+    """Counterweight to C1: multi-line must not suddenly block everything."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -478,11 +478,11 @@ def test_commit_guard_stays_silent_on_a_harmless_multiline_command(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-# --- C2: paden met ~ en variabelen ------------------------------------------
+# --- C2: paths with ~ and variables ------------------------------------------
 
 
 def test_commit_guard_expands_tilde_in_dash_c(tmp_path):
-    """C2: `~/repositories/personal_ai_agent` is precies hoe CLAUDE.md het spelt."""
+    """C2: `~/repositories/personal_ai_agent` is exactly how CLAUDE.md spells it."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     elders = tmp_path / "elders"
@@ -515,7 +515,7 @@ def test_commit_guard_expands_home_variable_in_cd(tmp_path):
 
 
 def test_commit_guard_blocks_when_a_path_variable_is_unknown(tmp_path):
-    """C2: een onbekende variabele mag niet stil naar iets onschuldigs resolven."""
+    """C2: an unknown variable must not silently resolve to something harmless."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     _git(repo, "checkout", "-q", "-b", "issue-1-iets")
@@ -529,7 +529,7 @@ def test_commit_guard_blocks_when_a_path_variable_is_unknown(tmp_path):
 
 
 def test_commit_guard_unresolvable_path_still_honours_the_sentinel(tmp_path):
-    """Het ontsnappingsluik moet ook werken als het pad niet te herleiden is."""
+    """The escape hatch must also work when the path cannot be traced."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     (repo / ".claude").mkdir(parents=True, exist_ok=True)
@@ -577,7 +577,7 @@ def test_commit_guard_looks_inside_subshells_and_substitutions(tmp_path):
         assert result.returncode == 2, f"{cmd!r} kwam er langs: {result.stdout}"
 
 
-# --- I6: pushvormen die op main landen --------------------------------------
+# --- I6: push forms that land on main --------------------------------------
 
 
 def test_commit_guard_blocks_push_all_when_a_local_main_exists(tmp_path):
@@ -591,7 +591,7 @@ def test_commit_guard_blocks_push_all_when_a_local_main_exists(tmp_path):
 
 
 def test_commit_guard_allows_push_all_without_a_local_main(tmp_path):
-    """Tegenwicht: zonder lokale main duwt `--all` niets naar main."""
+    """Counterweight: without a local main `--all` pushes nothing to main."""
     repo = tmp_path / "repo"
     _init_repo(repo, branch="issue-1-iets")
 
@@ -615,7 +615,7 @@ def test_commit_guard_blocks_forced_and_full_ref_pushes_to_main(tmp_path):
 
 
 def test_commit_guard_allows_a_push_to_a_main_prefixed_branch(tmp_path):
-    """`main-fix` is geen `main` — de refspec wordt echt uit elkaar gehaald."""
+    """`main-fix` is not `main` — the refspec really is taken apart."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     _git(repo, "checkout", "-q", "-b", "issue-1-iets")
@@ -629,7 +629,7 @@ def test_commit_guard_allows_a_push_to_a_main_prefixed_branch(tmp_path):
 
 
 def test_commit_guard_does_not_treat_a_shift_or_string_as_a_heredoc(tmp_path):
-    """I7: `<<` in een string of in `$(( ))` mag de rest niet wegslikken."""
+    """I7: `<<` in a string or in `$(( ))` must not swallow the rest."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -642,19 +642,19 @@ def test_commit_guard_does_not_treat_a_shift_or_string_as_a_heredoc(tmp_path):
 
 
 def test_commit_guard_matches_a_hyphenated_heredoc_delimiter(tmp_path):
-    """I7: `<<'EOF-1'` moet compleet gematcht worden, anders eindigt het nooit."""
+    """I7: `<<'EOF-1'` must be matched completely, otherwise it never ends."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     cmd = "cat > plan.md <<'EOF-1'\ngit commit -m voorbeeld\nEOF-1\ngit commit -m echt"
 
     result = _run(COMMIT_GUARD, _bash(cmd, repo), cwd=repo)
 
-    # De body is overgeslagen, de regel ná de terminator juist niet.
+    # The body is skipped, the line AFTER the terminator is not.
     assert result.returncode == 2, result.stdout
 
 
 def test_commit_guard_strips_a_heredoc_body_containing_an_operator(tmp_path):
-    """M10: pint het strippen zelf, niet het 'begint niet met git'-vangnet."""
+    """M10: pins the stripping itself, not the 'does not begin with git' safety net."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     cmd = "cat > plan.md <<'XEOF'\nblah && git commit -m voorbeeld\nXEOF"
@@ -674,15 +674,15 @@ def test_commit_guard_ignores_a_tab_stripped_heredoc(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-# --- N1/N2: `#`-commentaar --------------------------------------------------
+# --- N1/N2: `#` comments --------------------------------------------------
 
 
 def test_commit_guard_ignores_a_hash_comment(tmp_path):
-    """N1: een losse apostrof in een commentaar blokkeerde élk commando.
+    """N1: a stray apostrophe in a comment blocked EVERY command.
 
-    De tokenizer kende `#` niet, liep de regel af op zoek naar een sluitende
-    quote en riep 'niet te parsen' — buiten elke repo, zonder git in het
-    commando. Dat is de lockout die de I9-fix per ongeluk maakte.
+    The tokenizer did not know `#`, walked the line looking for a closing
+    quote and called 'cannot be parsed' — outside any repo, without git in the
+    command. That is the lockout that the I9 fix accidentally made.
     """
     los = tmp_path / "geen-repo"
     los.mkdir()
@@ -697,30 +697,30 @@ def test_commit_guard_ignores_a_hash_comment(tmp_path):
 
 
 def test_commit_guard_only_treats_a_hash_at_word_start_as_comment(tmp_path):
-    """Tegenwicht bij N1: niet élke `#` opent een commentaar.
+    """Counterweight to N1: not EVERY `#` opens a comment.
 
-    `foo#bar` en `$#` staan midden in een woord, `'a # b'` staat in een quote —
-    daar mag de hook niets wegknippen, anders verdwijnt er commando-tekst.
+    `foo#bar` and `$#` are in the middle of a word, `'a # b'` is in a quote —
+    the hook may cut nothing away there, otherwise command text disappears.
 
-    F1: de rc-0-helft hierónder ziet dat verschil NIET (die geeft 0 of de regel
-    nu afgekapt wordt of niet). Wat `word_start` echt vastpint is de rc-2-helft:
-    knipt een `#` midden in een woord de regel af, dan verdwijnt de commit
-    erachter in het weggegooide restant en gaat een commit op main er stil
-    langs. Dat is fail-open, dus dat is wat hier moet vastzitten.
+    F1: the rc-0 half BELOW does NOT see that difference (it gives 0 whether the line
+    is truncated or not). What `word_start` really pins down is the rc-2 half:
+    if a `#` in the middle of a word truncates the line, the commit behind it
+    disappears into the discarded remainder and a commit on main silently
+    slips past. That is fail-open, so that is what has to be pinned here.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
 
-    # In een quote of midden in een woord: geen commentaar, dus de commit
-    # erachter wordt gewoon gezien.
+    # In a quote or in the middle of a word: no comment, so the commit
+    # behind it is simply seen.
     for cmd in (
         'echo "a # b" && git commit -m x',
         "echo $# && git commit -m x",
         "echo foo#bar && git commit -m x",
         "curl https://x.dev/a#b && git commit -m x",
     ):
-        blokkeert = _run(COMMIT_GUARD, _bash(cmd, repo), cwd=repo)
-        assert blokkeert.returncode == 2, f"{cmd!r} kwam er langs: {blokkeert.stdout}"
+        blocked = _run(COMMIT_GUARD, _bash(cmd, repo), cwd=repo)
+        assert blocked.returncode == 2, f"{cmd!r} kwam er langs: {blocked.stdout}"
 
     _git(repo, "checkout", "-q", "-b", "issue-1-iets")
     for cmd in ("echo foo#bar", "set -- a b; echo $#", "echo 'a # b'"):
@@ -729,10 +729,10 @@ def test_commit_guard_only_treats_a_hash_at_word_start_as_comment(tmp_path):
 
 
 def test_commit_guard_does_not_arm_a_heredoc_from_a_comment(tmp_path):
-    """N2: dezelfde blinde vlek, andere kant op.
+    """N2: the same blind spot, the other way round.
 
-    `<<` in een commentaar armeerde de heredoc-overslag, waarna de commit op de
-    volgende regel als 'body' werd weggeslikt en main gewoon gehaald werd.
+    `<<` in a comment armed the heredoc skip, after which the commit on the
+    next line was swallowed as 'body' and main was simply reached.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -744,14 +744,14 @@ def test_commit_guard_does_not_arm_a_heredoc_from_a_comment(tmp_path):
     assert result.returncode == 2, result.stdout
 
 
-# --- N3: een sub-shell geeft zijn cwd niet door -----------------------------
+# --- N3: a sub-shell does not pass on its cwd -----------------------------
 
 
 def test_commit_guard_restores_the_directory_after_a_subshell(tmp_path):
-    """N3: `(cd elders)` en `$(cd elders)` gelden alleen bínnen de haakjes.
+    """N3: `(cd elsewhere)` and `$(cd elsewhere)` apply only INSIDE the brackets.
 
-    Bash herstelt de cwd, de hook niet — dus een doodgewone commit op de
-    feature-branch werd geblokkeerd omdat de `cd` was blijven hangen.
+    Bash restores the cwd, the hook did not — so an ordinary commit on the
+    feature branch was blocked because the `cd` had lingered.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -767,15 +767,15 @@ def test_commit_guard_restores_the_directory_after_a_subshell(tmp_path):
         assert result.returncode == 0, f"{cmd!r} werd geblokkeerd: {result.stderr}"
 
 
-# --- N4: een push-bestemming die niet te herleiden is -----------------------
+# --- N4: a push destination that cannot be traced -----------------------
 
 
 def test_commit_guard_blocks_an_unresolvable_push_destination(tmp_path):
-    """N4: `git push origin $BR` kán main zijn — en dat is niet te zien.
+    """N4: `git push origin $BR` MAY be main — and that cannot be seen.
 
-    Bewuste afruil van de planeigenaar: dit blokkeert ook een onschuldige
-    `git push origin "$BRANCH"`. De sentinel is het luik, niet een uitzondering
-    in de code.
+    Deliberate trade-off of the plan owner: this also blocks an innocent
+    `git push origin "$BRANCH"`. The sentinel is the hatch, not an exception
+    in the code.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -788,11 +788,11 @@ def test_commit_guard_blocks_an_unresolvable_push_destination(tmp_path):
 
 
 def test_commit_guard_ignores_an_unresolvable_remote(tmp_path):
-    """F2: het eerste positionele argument is de REMOTE, niet de bestemming.
+    """F2: the first positional argument is the REMOTE, not the destination.
 
-    `git push "$REMOTE" issue-1-iets` gaat aantoonbaar niet naar main — de
-    branch staat er letterlijk. Die toch blokkeren viel buiten de afruil van N4
-    en maakte van elke gescripte push een blokkade.
+    `git push "$REMOTE" issue-1-something` demonstrably does not go to main — the
+    branch is literally there. Blocking it anyway fell outside the trade-off of N4
+    and made a block of every scripted push.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -802,15 +802,15 @@ def test_commit_guard_ignores_an_unresolvable_remote(tmp_path):
         result = _run(COMMIT_GUARD, _bash(cmd, repo), cwd=repo)
         assert result.returncode == 0, f"{cmd!r} werd geblokkeerd: {result.stderr}"
 
-    # Tegenwicht: een onherleidbare BESTEMMING blijft blokkeren (N4), en een
-    # letterlijke main achter een onherleidbare remote net zo goed.
+    # Counterweight: an untraceable DESTINATION keeps blocking (N4), and a
+    # literal main behind an untraceable remote just as well.
     for cmd in ('git push origin "issue-$NR"', "git push $REMOTE main"):
         result = _run(COMMIT_GUARD, _bash(cmd, repo), cwd=repo)
         assert result.returncode == 2, f"{cmd!r} kwam er langs: {result.stdout}"
 
 
 def test_commit_guard_unresolvable_push_honours_the_sentinel(tmp_path):
-    """Het luik moet ook hier opengaan, anders is de afruil van N4 een val."""
+    """The hatch must open here too, otherwise the trade-off of N4 is a trap."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     _git(repo, "checkout", "-q", "-b", "issue-1-iets")
@@ -822,14 +822,14 @@ def test_commit_guard_unresolvable_push_honours_the_sentinel(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-# --- N5: de vierde preflight-limb -------------------------------------------
+# --- N5: the fourth preflight limb -------------------------------------------
 
 
 def test_commit_guard_fails_loud_without_cat(tmp_path):
-    """N5: `cat` leest de payload van stdin; zonder is er geen commando.
+    """N5: `cat` reads the payload from stdin; without it there is no command.
 
-    Dezelfde eis als bij jq/python3/git — anders pint niets deze limb en kan hij
-    stilletjes weg (I8 opnieuw).
+    The same requirement as for jq/python3/git — otherwise nothing pins this limb and it can
+    silently go away (I8 again).
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -847,13 +847,13 @@ def test_commit_guard_fails_loud_without_cat(tmp_path):
     assert "cat" in result.stderr
 
 
-# --- N6: cd die faalt, cd -, pushd/popd -------------------------------------
+# --- N6: cd that fails, cd -, pushd/popd -------------------------------------
 
 
 def test_commit_guard_stays_put_when_cd_cannot_succeed(tmp_path):
-    """N6: `cd <bestaat niet>` verplaatst bash niet — de hook nam het pad over.
+    """N6: `cd <does not exist>` does not move bash — the hook took over the path.
 
-    Zo landde `cd typo; git commit` op main zonder dat de hook het zag.
+    That way `cd typo; git commit` landed on main without the hook seeing it.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -868,68 +868,68 @@ def test_commit_guard_stays_put_when_cd_cannot_succeed(tmp_path):
 
 
 def test_commit_guard_passes_a_commit_in_a_directory_this_command_creates(tmp_path):
-    """F3: de motie die CLAUDE.md voorschrijft, blokkeerde zichzelf.
+    """F3: the incantation that CLAUDE.md prescribes blocked itself.
 
-    `git worktree add X && cd X && git commit` — X bestaat bij hook-tijd nog
-    niet. De hook bleef staan en erfde de branch van de OUDE map: main. Dat
-    kent een branch toe aan een plek waar bash niet is. Achter `&&` draait de
-    commit alleen als de map er wél kwam, en een map die BUITEN elke repo
-    ontstaat heeft geen branch die deze hook te beschermen heeft.
+    `git worktree add X && cd X && git commit` — X does not exist yet at hook time.
+    The hook stayed where it was and inherited the branch of the OLD directory: main. That
+    assigns a branch to a place where bash is not. After `&&` the
+    commit runs only if the directory DID come into being, and a directory that comes into being
+    OUTSIDE any repo has no branch that this hook has to protect.
 
-    De grens ligt bij die voorouder, niet bij 'bestaat nog niet': een verse map
-    ONDER een checkout erft diens branch wél. Zie
+    The boundary is at that ancestor, not at 'does not exist yet': a fresh directory
+    UNDER a checkout DOES inherit its branch. See
     test_commit_guard_blocks_a_commit_in_a_new_dir_inside_a_checkout.
 
-    Tegenwicht staat in test_commit_guard_stays_put_when_cd_cannot_succeed:
-    zonder `&&` draait de rest ook als de `cd` mislukte, en dan blokkeert het
-    nog steeds.
+    The counterweight is in test_commit_guard_stays_put_when_cd_cannot_succeed:
+    without `&&` the rest also runs if the `cd` failed, and then it
+    still blocks.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
     wt = tmp_path / "wt"
-    nieuw = tmp_path / "nieuw"
+    new_dir = tmp_path / "nieuw"
 
-    motie = _run(
+    incantation = _run(
         COMMIT_GUARD,
         _bash(f"git worktree add {wt} -b br2 && cd {wt} && git commit -m x", repo),
         cwd=repo,
     )
-    assert motie.returncode == 0, motie.stderr
+    assert incantation.returncode == 0, incantation.stderr
 
     verse_repo = _run(
         COMMIT_GUARD,
         _bash(
-            f"mkdir -p {nieuw} && cd {nieuw} && git init && git commit -m init", repo
+            f"mkdir -p {new_dir} && cd {new_dir} && git init && git commit -m init", repo
         ),
         cwd=repo,
     )
     assert verse_repo.returncode == 0, verse_repo.stderr
 
-    # De asymmetrie is bewust: een onherleidbaar `-C`-pad NOEMT een bestaande
-    # repo en blijft blokkeren. Harmoniseer die twee niet.
+    # The asymmetry is deliberate: an untraceable `-C` path NAMES an existing
+    # repo and keeps blocking. Do not harmonise those two.
     dash_c = _run(COMMIT_GUARD, _bash('git -C "$ELDERS" commit -m x', repo), cwd=repo)
     assert dash_c.returncode == 2, dash_c.stdout
     assert "COULD NOT CHECK" in dash_c.stderr
 
-    # En een `cd` naar een ONHERLEIDBAAR pad is iets anders dan een map die er
-    # nog niet is: van een variabele weten we niets, dus die blokkeert ook.
-    variabele = _run(
+    # And a `cd` to an UNTRACEABLE path is something other than a directory that does not
+    # exist yet: we know nothing about a variable, so that blocks too.
+    variable = _run(
         COMMIT_GUARD, _bash('cd "$ELDERS" && git commit -m x', repo), cwd=repo
     )
-    assert variabele.returncode == 2, variabele.stdout
-    assert "COULD NOT CHECK" in variabele.stderr
+    assert variable.returncode == 2, variable.stdout
+    assert "COULD NOT CHECK" in variable.stderr
 
 
 def test_commit_guard_blocks_a_commit_in_a_new_dir_inside_a_checkout(tmp_path):
-    """C1: 'de map bestaat nog niet' was een te ruime vrijbrief.
+    """C1: 'the directory does not exist yet' was too broad a free pass.
 
-    `mkdir -p sub && cd sub && git commit` commit écht op main — sub is een
-    submap van dezelfde checkout, met dezelfde branch. De vrijstelling kijkt
-    daarom naar de dichtstbijzijnde map die er wél is: ligt die in een repo,
-    dan geldt die repo. Alleen een voorouder buiten elke repo is vrij.
+    `mkdir -p sub && cd sub && git commit` really commits on main — sub is a
+    subdirectory of the same checkout, with the same branch. The exemption therefore looks at
+    the nearest directory that DOES exist: if that lies in a repo,
+    that repo applies. Only an ancestor outside any repo is free.
 
-    Rijen 5 en 6 volgen daaruit: nu de verse map een echt pad houdt in plaats
-    van 'onbekend', werken `cd ..` en `git -C ..` er weer relatief vanaf.
+    Rows 5 and 6 follow from that: now that the fresh directory keeps a real path instead of
+    'unknown', `cd ..` and `git -C ..` work relative to it again.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -939,23 +939,23 @@ def test_commit_guard_blocks_a_commit_in_a_new_dir_inside_a_checkout(tmp_path):
     )
     assert submap.returncode == 2, submap.stdout
 
-    terug = _run(
+    back = _run(
         COMMIT_GUARD,
         _bash("mkdir -p q3 && cd q3 && cd .. && git commit -m x", repo),
         cwd=repo,
     )
-    assert terug.returncode == 2, terug.stdout
+    assert back.returncode == 2, back.stdout
 
-    dash_c_terug = _run(
+    dash_c_back = _run(
         COMMIT_GUARD,
         _bash("mkdir -p q4 && cd q4 && git -C .. commit -m x", repo),
         cwd=repo,
     )
-    assert dash_c_terug.returncode == 2, dash_c_terug.stdout
+    assert dash_c_back.returncode == 2, dash_c_back.stdout
 
-    # Tegenwicht: een verse map BUITEN elke repo blijft vrij — dat is de
-    # voorgeschreven worktree-motie en die moet blijven werken.
-    buiten = _run(
+    # Counterweight: a fresh directory OUTSIDE any repo stays free — that is the
+    # prescribed worktree incantation and it must keep working.
+    outside = _run(
         COMMIT_GUARD,
         _bash(
             f"mkdir -p {tmp_path / 'los'} && cd {tmp_path / 'los'} && git commit -m x",
@@ -963,42 +963,42 @@ def test_commit_guard_blocks_a_commit_in_a_new_dir_inside_a_checkout(tmp_path):
         ),
         cwd=repo,
     )
-    assert buiten.returncode == 0, buiten.stderr
+    assert outside.returncode == 0, outside.stderr
 
 
 def test_commit_guard_blocks_a_push_to_main_from_a_dir_this_command_creates(tmp_path):
-    """C1: een LETTERLIJKE main-bestemming heeft geen mapkennis nodig.
+    """C1: a LITERAL main destination needs no directory knowledge.
 
-    `git worktree add X -b br && cd X && git push origin main` duwt naar main,
-    waar X ook ligt. De vrijstelling voor een verse map buiten elke repo mag
-    daar niet overheen; die geldt alleen als de bestemming niet main is.
+    `git worktree add X -b br && cd X && git push origin main` pushes to main,
+    wherever X lies. The exemption for a fresh directory outside any repo may not
+    override that; it applies only if the destination is not main.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
     wt = tmp_path / "wtq"
 
-    naar_main = _run(
+    to_main = _run(
         COMMIT_GUARD,
         _bash(f"git worktree add {wt} -b brq && cd {wt} && git push origin main", repo),
         cwd=repo,
     )
-    assert naar_main.returncode == 2, naar_main.stdout
+    assert to_main.returncode == 2, to_main.stdout
 
-    # Tegenwicht: dezelfde vorm met een gewone branch blijft vrij.
-    naar_branch = _run(
+    # Counterweight: the same form with an ordinary branch stays free.
+    to_branch = _run(
         COMMIT_GUARD,
         _bash(f"git worktree add {wt} -b brq && cd {wt} && git push origin brq", repo),
         cwd=repo,
     )
-    assert naar_branch.returncode == 0, naar_branch.stderr
+    assert to_branch.returncode == 0, to_branch.stderr
 
 
 def test_commit_guard_reads_ansi_c_quoting_while_scanning_for_heredocs(tmp_path):
-    """F4, tweede aanroepplek: scan_line, niet alleen split_segments.
+    """F4, second call site: scan_line, not only split_segments.
 
-    Zonder de `$'...'`-tak sluit de scanner de string op de ge-escapete
-    apostrof, leest `<<EOF` daarna als een echte heredoc-opener en slikt de
-    commit op de volgende regel op als heredoc-body.
+    Without the `$'...'` branch the scanner closes the string at the escaped
+    apostrophe, then reads `<<EOF` as a real heredoc opener and swallows the
+    commit on the next line as heredoc body.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -1013,11 +1013,11 @@ def test_commit_guard_reads_ansi_c_quoting_while_scanning_for_heredocs(tmp_path)
 
 
 def test_commit_guard_does_not_read_a_wrapped_subshell_as_a_function(tmp_path):
-    """F5-guard: `time (git commit -m x)` is geen functiedefinitie.
+    """F5 guard: `time (git commit -m x)` is no function definition.
 
-    Vorm en woordtelling kloppen wél — één woord vóór een `( ... )`-blok — dus
-    zonder de eis dat dat blok LEEG is (`()`, de haakjes van de definitie)
-    haalt de functie-isolatie de commit uit de wachtrij en ziet niemand hem.
+    Shape and word count DO match — one word before a `( ... )` block — so
+    without the requirement that this block is EMPTY (`()`, the brackets of the definition)
+    the function isolation takes the commit out of the queue and nobody sees it.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -1028,46 +1028,46 @@ def test_commit_guard_does_not_read_a_wrapped_subshell_as_a_function(tmp_path):
 
 
 def test_commit_guard_forgets_an_and_after_the_segment_that_used_it(tmp_path):
-    """F3-separator: `&&` geldt voor het EERSTVOLGENDE segment, niet verder.
+    """F3 separator: `&&` applies to the NEXT segment, not further.
 
-    Bij `... && cd <verse map>; git commit` staat er geen `&&` vóór de commit,
-    dus die draait ook als de `cd` mislukte — en dan staat bash nog in de oude
-    map. Blijft de `&&`-vlag van het vorige segment hangen, dan telt de commit
-    als 'in de verse map' en glipt hij door de vrijstelling.
+    With `... && cd <fresh dir>; git commit` there is no `&&` before the commit,
+    so it also runs if the `cd` failed — and then bash is still in the old
+    directory. If the `&&` flag of the previous segment lingers, the commit counts
+    as 'in the fresh directory' and slips through the exemption.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
-    buiten = tmp_path / "buiten"
+    outside = tmp_path / "buiten"
 
-    zonder_and = _run(
-        COMMIT_GUARD, _bash(f"echo hoi && cd {buiten}; git commit -m x", repo), cwd=repo
+    without_and = _run(
+        COMMIT_GUARD, _bash(f"echo hoi && cd {outside}; git commit -m x", repo), cwd=repo
     )
-    assert zonder_and.returncode == 2, zonder_and.stdout
+    assert without_and.returncode == 2, without_and.stdout
 
-    # Tegenwicht: mét `&&` vóór de commit blijft de vrijstelling gelden.
+    # Counterweight: WITH `&&` before the commit the exemption keeps applying.
     met_and = _run(
         COMMIT_GUARD,
-        _bash(f"echo hoi && cd {buiten} && git commit -m x", repo),
+        _bash(f"echo hoi && cd {outside} && git commit -m x", repo),
         cwd=repo,
     )
     assert met_and.returncode == 0, met_and.stderr
 
 
 def test_commit_guard_drops_the_new_dir_flag_on_a_following_cd(tmp_path):
-    """apply_cd wist de vlag: een tweede `cd` maakt de vorige verse map irrelevant.
+    """apply_cd clears the flag: a second `cd` makes the previous fresh directory irrelevant.
 
-    `mkdir -p n3 && cd n3 && cd "$ELDERS" && git commit` — bash staat na de
-    tweede `cd` op een plek die de hook niet kent, en dat is een blokkade. Blijft
-    de vlag van de eerste `cd` staan, dan erft die onbekende map de vrijstelling.
+    `mkdir -p n3 && cd n3 && cd "$ELSEWHERE" && git commit` — after the
+    second `cd` bash is in a place the hook does not know, and that is a block. If
+    the flag of the first `cd` stays, that unknown directory inherits the exemption.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
-    buiten = tmp_path / "buiten"
+    outside = tmp_path / "buiten"
 
     result = _run(
         COMMIT_GUARD,
         _bash(
-            f'mkdir -p {buiten} && cd {buiten} && cd "$ELDERS" && git commit -m x', repo
+            f'mkdir -p {outside} && cd {outside} && cd "$ELDERS" && git commit -m x', repo
         ),
         cwd=repo,
     )
@@ -1077,72 +1077,72 @@ def test_commit_guard_drops_the_new_dir_flag_on_a_following_cd(tmp_path):
 
 
 def test_commit_guard_does_not_follow_a_cd_in_a_function_body(tmp_path):
-    """F5: een functiebody draait pas bij een AANROEP.
+    """F5: a function body runs only at a CALL.
 
-    `foo() { cd <main-checkout>; }; git commit` verplaatst bash niet — bash
-    definieert alleen. De `cd` volgen alsof hij uitgevoerd werd, blokkeerde een
-    commit die gewoon in de worktree landt.
+    `foo() { cd <main-checkout>; }; git commit` does not move bash — bash
+    only defines. Following the `cd` as if it were executed blocked a
+    commit that simply lands in the worktree.
     """
-    hoofd = tmp_path / "hoofd"
-    _init_repo(hoofd)
+    main_repo = tmp_path / "hoofd"
+    _init_repo(main_repo)
     feat = tmp_path / "feat"
     _init_repo(feat)
     _git(feat, "checkout", "-q", "-b", "issue-1-iets")
 
-    definitie = _run(
+    definition = _run(
         COMMIT_GUARD,
-        _bash("foo() { cd %s; }; git commit -m x" % hoofd, feat),
+        _bash("foo() { cd %s; }; git commit -m x" % main_repo, feat),
         cwd=feat,
     )
-    assert definitie.returncode == 0, definitie.stderr
+    assert definition.returncode == 0, definition.stderr
 
-    # Tegenwicht: de commando's ín de body blijven zichtbaar. Alleen de
-    # mapstand wordt geïsoleerd — `f() { git commit; }; f` commit écht.
-    aanroep = _run(COMMIT_GUARD, _bash("f() { git commit -m x; }; f", hoofd), cwd=hoofd)
-    assert aanroep.returncode == 2, aanroep.stdout
+    # Counterweight: the commands INSIDE the body stay visible. Only the
+    # directory state is isolated — `f() { git commit; }; f` really commits.
+    call = _run(COMMIT_GUARD, _bash("f() { git commit -m x; }; f", main_repo), cwd=main_repo)
+    assert call.returncode == 2, call.stdout
 
 
 def test_commit_guard_follows_cd_dash_back(tmp_path):
-    """N6: `cd -` springt terug naar de vorige map."""
+    """N6: `cd -` jumps back to the previous directory."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     wt = repo / ".claude" / "worktrees" / "issue-1-iets"
     _git(repo, "worktree", "add", "-q", "-b", "issue-1-iets", str(wt))
 
-    heen_en_terug = _run(
+    there_and_back = _run(
         COMMIT_GUARD, _bash(f"cd {wt}\ncd -\ngit commit -m x", repo), cwd=repo
     )
-    assert heen_en_terug.returncode == 2, heen_en_terug.stdout
+    assert there_and_back.returncode == 2, there_and_back.stdout
 
-    # Tegenwicht: zonder terugsprong blijft de commit in de worktree.
-    blijft = _run(COMMIT_GUARD, _bash(f"cd {wt}\ngit commit -m x", repo), cwd=repo)
-    assert blijft.returncode == 0, blijft.stderr
+    # Counterweight: without a jump back the commit stays in the worktree.
+    stays = _run(COMMIT_GUARD, _bash(f"cd {wt}\ngit commit -m x", repo), cwd=repo)
+    assert stays.returncode == 0, stays.stderr
 
 
 def test_commit_guard_follows_pushd_and_popd(tmp_path):
-    """N6: `pushd` verplaatst net zo goed als `cd`, `popd` keert terug."""
+    """N6: `pushd` moves just as well as `cd`, `popd` returns."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     wt = repo / ".claude" / "worktrees" / "issue-1-iets"
     _git(repo, "worktree", "add", "-q", "-b", "issue-1-iets", str(wt))
 
-    heen = _run(COMMIT_GUARD, _bash(f"pushd {repo} && git commit -m x", wt), cwd=wt)
-    assert heen.returncode == 2, heen.stdout
+    there = _run(COMMIT_GUARD, _bash(f"pushd {repo} && git commit -m x", wt), cwd=wt)
+    assert there.returncode == 2, there.stdout
 
-    terug = _run(
+    back = _run(
         COMMIT_GUARD, _bash(f"pushd {repo} && popd && git commit -m x", wt), cwd=wt
     )
-    assert terug.returncode == 0, terug.stderr
+    assert back.returncode == 0, back.stderr
 
 
-# --- N7: wrappers mét argumenten --------------------------------------------
+# --- N7: wrappers with arguments --------------------------------------------
 
 
 def test_commit_guard_sees_through_wrappers_with_arguments(tmp_path):
-    """N7: de wrapperlijst kende alleen argumentloze vormen.
+    """N7: the wrapper list knew only argument-less forms.
 
-    `bash -c '<script>'` is de opvallendste: het commando zat in een string en
-    werd nooit als commando gelezen.
+    `bash -c '<script>'` is the most striking: the command was in a string and
+    was never read as a command.
     """
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -1161,7 +1161,7 @@ def test_commit_guard_sees_through_wrappers_with_arguments(tmp_path):
 
 
 def test_commit_guard_keeps_a_shell_c_script_in_its_own_directory(tmp_path):
-    """Tegenwicht bij N7: `bash -c 'cd elders'` verplaatst de ouder niet."""
+    """Counterweight to N7: `bash -c 'cd elsewhere'` does not move the parent."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     wt = repo / ".claude" / "worktrees" / "issue-1-iets"
@@ -1176,13 +1176,13 @@ def test_commit_guard_keeps_a_shell_c_script_in_its_own_directory(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-# --- N8: een tilde tussen quotes --------------------------------------------
+# --- N8: a tilde between quotes --------------------------------------------
 
 
 def test_commit_guard_does_not_expand_a_quoted_tilde(tmp_path):
-    """N8: `'~/repo'` is voor bash een relatief pad, geen thuismap.
+    """N8: `'~/repo'` is to bash a relative path, not a home directory.
 
-    Het tegenbeeld (`~/repo` zonder quotes) blijft expanderen — zie
+    The counter-image (`~/repo` without quotes) keeps expanding — see
     test_commit_guard_expands_tilde_in_dash_c.
     """
     repo = tmp_path / "repo"
@@ -1301,8 +1301,8 @@ def test_guard_reads_not_a_repo_under_other_locale(tmp_path):
 
 
 def test_guard_names_the_python_cause_without_tomllib(tmp_path):
-    # macOS' /usr/bin/python3 is 3.9: geen tomllib. Een tomllib die niet te
-    # importeren is, vooraan op PYTHONPATH, speelt die python na.
+    # macOS' /usr/bin/python3 is 3.9: no tomllib. A tomllib that cannot be
+    # imported, at the front of PYTHONPATH, imitates that python.
     shadow = tmp_path / "shadow"
     shadow.mkdir()
     (shadow / "tomllib.py").write_text("raise ImportError('no tomllib')\n", encoding="utf-8")

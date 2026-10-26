@@ -1,8 +1,8 @@
-"""De --no-verify-weigering van pack/core `pre-commit-tests.sh`, as installed.
+"""The --no-verify refusal of pack/core `pre-commit-tests.sh`, as installed.
 
-Uit paia's `test_quality_hooks.py`: de hook draait als subprocess met de JSON
-op stdin, zodat het contract (exit code + stderr) getest wordt en niet een
-herimplementatie ervan.
+From paia's `test_quality_hooks.py`: the hook runs as a subprocess with the JSON
+on stdin, so that the contract (exit code + stderr) is tested and not a
+reimplementation of it.
 """
 
 import json
@@ -63,7 +63,7 @@ def test_precommit_hook_ignores_non_commit_commands(tmp_path):
 
 
 def test_precommit_hook_ignores_no_verify_in_commit_message_text(tmp_path):
-    """De vlag als tekst in een quoted -m-boodschap is geen echte --no-verify."""
+    """The flag as text in a quoted -m message is not a real --no-verify."""
     result = _run(
         PRECOMMIT_HOOK,
         {
@@ -80,7 +80,7 @@ def test_precommit_hook_ignores_no_verify_in_commit_message_text(tmp_path):
 
 
 def test_precommit_hook_blocks_an_bundle(tmp_path):
-    """-a en -n gebundeld (git honoreert dit echt): -an moet net zo blokkeren als -n."""
+    """-a and -n bundled (git really honours this): -an must block just like -n."""
     result = _run(
         PRECOMMIT_HOOK,
         {"tool_input": {"command": 'git commit -an -m "x"'}, "cwd": str(tmp_path)},
@@ -101,7 +101,7 @@ def test_precommit_hook_blocks_na_bundle(tmp_path):
 
 
 def test_precommit_hook_blocks_anm_bundle(tmp_path):
-    """-n vóór de waarde-opeisende -m in dezelfde cluster: nog steeds een blokkade."""
+    """-n before the value-demanding -m in the same cluster: still a block."""
     result = _run(
         PRECOMMIT_HOOK,
         {"tool_input": {"command": 'git commit -anm "x"'}, "cwd": str(tmp_path)},
@@ -112,7 +112,7 @@ def test_precommit_hook_blocks_anm_bundle(tmp_path):
 
 
 def test_precommit_hook_allows_am_bundle(tmp_path):
-    """-am is -a + -m (waarde), geen -n erin — mag door."""
+    """-am is -a + -m (value), no -n in it — may pass."""
     result = _run(
         PRECOMMIT_HOOK,
         {"tool_input": {"command": 'git commit -am "x"'}, "cwd": str(tmp_path)},
@@ -124,7 +124,7 @@ def test_precommit_hook_allows_am_bundle(tmp_path):
 
 
 def test_precommit_hook_allows_apostrophe_idiom_in_message(tmp_path):
-    """De bash-apostrof-in-single-quote-truc mag geen ongepaarde quote achterlaten."""
+    """The bash apostrophe-in-single-quote trick must not leave an unpaired quote behind."""
     result = _run(
         PRECOMMIT_HOOK,
         {
@@ -157,7 +157,7 @@ def test_precommit_hook_allows_escaped_quotes_in_message(tmp_path):
 
 
 def test_precommit_hook_allows_no_verify_as_message_value(tmp_path):
-    """ "-n" als letterlijke -m-waarde is geen vlag."""
+    """ "-n" as a literal -m value is not a flag."""
     result = _run(
         PRECOMMIT_HOOK,
         {"tool_input": {"command": 'git commit -m "-n"'}, "cwd": str(tmp_path)},
@@ -169,10 +169,10 @@ def test_precommit_hook_allows_no_verify_as_message_value(tmp_path):
 
 
 def test_precommit_hook_allows_untracked_files_no_short_flag(tmp_path):
-    """-uno is --untracked-files=no; het scannen mag niet doorlopen tot de "n" in "no".
+    """-uno is --untracked-files=no; the scan must not continue to the "n" in "no".
 
-    Regressie voor issue #591 finding 2: -u/-S nemen een aan-de-letter-vastzittende
-    waarde, dus de cluster-scan moet stoppen zodra hij ze tegenkomt.
+    Regression for issue #591 finding 2: -u/-S take a value attached to the letter,
+    so the cluster scan must stop as soon as it meets them.
     """
     result = _run(
         PRECOMMIT_HOOK,
@@ -185,7 +185,7 @@ def test_precommit_hook_allows_untracked_files_no_short_flag(tmp_path):
 
 
 def test_precommit_hook_allows_gpg_sign_short_flag(tmp_path):
-    """-Sjohn is --gpg-sign=john; dezelfde attached-only-waarde als -u."""
+    """-Sjohn is --gpg-sign=john; the same attached-only value as -u."""
     result = _run(
         PRECOMMIT_HOOK,
         {"tool_input": {"command": 'git commit -Sjohn -m "x"'}, "cwd": str(tmp_path)},
@@ -197,7 +197,7 @@ def test_precommit_hook_allows_gpg_sign_short_flag(tmp_path):
 
 
 def test_precommit_hook_allows_no_verify_after_bare_separator(tmp_path):
-    """Na een losse -- is --no-verify een pad-argument, geen optie."""
+    """After a bare -- --no-verify is a path argument, not an option."""
     result = _run(
         PRECOMMIT_HOOK,
         {"tool_input": {"command": "git commit -- --no-verify"}, "cwd": str(tmp_path)},
@@ -217,7 +217,7 @@ def test_precommit_hook_allows_no_verify_after_bare_separator(tmp_path):
     ],
 )
 def test_precommit_hook_ignores_short_n_of_other_commands(tmp_path, command):
-    """Een `-n` van `grep`/`git log`/`head` in dezelfde opdracht is geen --no-verify (#1453)."""
+    """A `-n` of `grep`/`git log`/`head` in the same command is no --no-verify (#1453)."""
     result = _run(
         PRECOMMIT_HOOK,
         {"tool_input": {"command": command}, "cwd": str(tmp_path)},
@@ -238,7 +238,8 @@ def test_precommit_hook_ignores_short_n_of_other_commands(tmp_path, command):
     ],
 )
 def test_precommit_hook_still_blocks_no_verify_in_compound_command(tmp_path, command):
-    """De vlag op de commit-aanroep zelf blijft blokkeren, ook naast andere commando's (#1453)."""
+    """The flag on the commit invocation itself keeps blocking, also next to other
+    commands (#1453)."""
     result = _run(
         PRECOMMIT_HOOK,
         {"tool_input": {"command": command}, "cwd": str(tmp_path)},

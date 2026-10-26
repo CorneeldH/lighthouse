@@ -1,15 +1,15 @@
 """pack/core bash-write-gates.sh, as installed (#871).
 
-Eerst het niet-gekeken-contract van `worktree-linkcheck.sh`, de enige gate in
-`pack/core`: `COULD NOT CHECK` op de eerste regel (besluit 18). `_gate` voegt
-stdout+stderr samen, zoals de dispatcher de uitvoer leest.
+First the not-looked-at contract of `worktree-linkcheck.sh`, the only gate in
+`pack/core`: `COULD NOT CHECK` on the first line (decision 18). `_gate` merges
+stdout+stderr, the way the dispatcher reads the output.
 
-Dan de end-to-end-tests van `bash-write-gates.sh`: `_Session` installeert
-`pack/core` in een eigen lighthouse-root, met stubs voor `shellcheck.sh` en
-`ruff-format.sh` (die gates komen met `pack/shell` en `pack/python`), en draait
-pre, de Bash-call en post tegen een tmp-repo, via de echte wrapper. De stubs
-melden een vaste bevinding (`SC2034`, `E722`) en citeren daarna het bestand, zoals
-shellcheck en ruff bronregels citeren.
+Then the end-to-end tests of `bash-write-gates.sh`: `_Session` installs
+`pack/core` in a lighthouse root of its own, with stubs for `shellcheck.sh` and
+`ruff-format.sh` (those gates come with `pack/shell` and `pack/python`), and runs
+pre, the Bash call and post against a tmp repo, via the real wrapper. The stubs
+report a fixed finding (`SC2034`, `E722`) and then quote the file, the way
+shellcheck and ruff quote source lines.
 """
 
 import functools
@@ -35,12 +35,12 @@ from tests.pack._testkit import (
 )
 
 CLEAN_SH = '#!/usr/bin/env bash\nset -euo pipefail\necho "hallo"\n'
-# SC2034: `x` wordt nooit gebruikt. Warning-ernst, dus blokkeert overal.
+# SC2034: `x` is never used. Warning severity, so it blocks everywhere.
 BROKEN_SH = '#!/usr/bin/env bash\nf() {\n  local x=1\n  echo "hoi"\n}\nf\n'
 
 
 def sh(dir_: Path, text: str) -> Path:
-    """Schrijf `text` naar een `.sh`-bestand in `dir_` en geef het pad terug."""
+    """Write `text` to a `.sh` file in `dir_` and return the path."""
     path = dir_ / "script.sh"
     path.write_text(text, encoding="utf-8")
     return path
@@ -52,11 +52,11 @@ def _gate(
     cwd: Path,
     env: dict | None = None,
 ) -> subprocess.CompletedProcess:
-    """Draai `.claude/hooks/<name>` met de nagemaakte payload.
+    """Run `.claude/hooks/<name>` with the faked payload.
 
     Payload: `{"tool_name": "Bash", "cwd": <cwd>, "tool_input": {"file_path":
-    <absoluut pad>}}`, proces-cwd = `cwd`. stdout+stderr samengevoegd zodat de
-    eerste regel van de gecombineerde uitvoer te classificeren is.
+    <absolute path>}}`, process cwd = `cwd`. stdout+stderr merged so that the
+    first line of the combined output can be classified.
     """
     payload = {
         "tool_name": "Bash",
@@ -115,7 +115,7 @@ def test_linkcheck_finding_first_line(tmp_path):
     assert first.startswith("Linkcheck: markdown link")
 
 
-# --- bash-write-gates.sh: end-to-end (taak 7, bron 1) ---------------------
+# --- bash-write-gates.sh: end-to-end (task 7, source 1) ---------------------
 
 # Stubs for the gates of pack/shell and pack/python. Each reads the payload like
 # the real gate, reports one fixed finding and then cites the file. The shell
@@ -155,23 +155,23 @@ fi
 exit 0
 """
 BROKEN_GO = 'package main\nfunc main() { fmt.Println( }\n'
-# Schoon, en exact even lang als BROKEN_SH: `"x$x"` telt net zoveel tekens als
-# `"hoi"`, dus een `cp -p` eroverheen verandert de grootte niet.
+# Clean, and exactly as long as BROKEN_SH: `"x$x"` has as many characters as
+# `"hoi"`, so a `cp -p` over it does not change the size.
 CLEAN_SAME_SIZE_SH = '#!/usr/bin/env bash\nf() {\n  local x=1\n  echo "x$x"\n}\nf\n'
 BARE_EXCEPT_PY = "try:\n    pass\nexcept:\n    pass\n"
 
 
 def heredoc(name: str, text: str) -> str:
-    """Een Bash-commando dat `text` via een heredoc naar `name` schrijft."""
+    """A Bash command that writes `text` to `name` via a heredoc."""
     return f"cat > {name} <<'EOF'\n{text}EOF\n"
 
 
 class _Session:
-    """Eén Claude-sessie tegen een tmp-repo: pre, de Bash-call, post.
+    """One Claude session against a tmp repo: pre, the Bash call, post.
 
-    `env` is de testomgeving uit *Global Constraints*; pre, de Bash-call en
-    post krijgen hem allemaal, plus eventuele extra's van de test. Pre en post
-    lopen via de echte wrapper, direct gestart (niet via `bash`).
+    `env` is the test environment from *Global Constraints*; pre, the Bash call and
+    post all receive it, plus any extras from the test. Pre and post
+    run via the real wrapper, started directly (not via `bash`).
     """
 
     def __init__(
@@ -192,7 +192,7 @@ class _Session:
         self.wrapper = hooks / "bash-write-gates.sh"
         self.repo = tmp_path / "repo"
         if unborn:
-            # Alleen `git init`: HEAD wijst naar `main`, maar er is nog geen commit.
+            # Only `git init`: HEAD points to `main`, but there is no commit yet.
             self.repo.mkdir(parents=True)
             git(self.repo, "init", "-q", "-b", "main")
         else:
@@ -284,7 +284,7 @@ class _Session:
 
 
 def context(result: subprocess.CompletedProcess) -> str:
-    """`hookSpecificOutput.additionalContext` uit de stdout, of `""`."""
+    """`hookSpecificOutput.additionalContext` from the stdout, or `""`."""
     if not result.stdout.strip():
         return ""
     return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
@@ -346,7 +346,7 @@ def test_mv_keeps_old_mtime_but_is_checked(session, tmp_path):
     outside.mkdir()
     src = outside / "x.sh"
     src.write_text(BROKEN_SH, encoding="utf-8")
-    oud = time.mktime((2000, 1, 1, 0, 0, 0, 0, 0, -1))  # niet `touch -d`: GNU-only
+    oud = time.mktime((2000, 1, 1, 0, 0, 0, 0, 0, -1))  # not `touch -d`: GNU-only
     os.utime(src, (oud, oud))
     out = session.call(f"mv {src} x.sh")
     assert out.returncode == 2, (out.stdout, out.stderr)
@@ -375,7 +375,7 @@ def test_cp_p_over_dirty_same_size(session, tmp_path):
     target.write_text(CLEAN_SAME_SIZE_SH, encoding="utf-8")
     src = tmp_path / "broken-src.sh"
     src.write_text(BROKEN_SH, encoding="utf-8")
-    # Zelfde mtime én grootte als de nullijn: alleen ctime verraadt de copy.
+    # Same mtime AND size as the baseline: only ctime gives the copy away.
     subprocess.run(["touch", "-r", str(target), str(src)], check=True)
     time.sleep(0.05)
     assert session.call("true").returncode == 0
@@ -427,8 +427,8 @@ def test_wrapper_dispatcher_crash_is_loud(tmp_path):
 
 
 def test_wrapper_without_the_lib_is_loud(tmp_path):
-    # Zonder lib/bash_writes.py eindigt python3 met rc 2 — dat mag niet als
-    # een oordeel doorgaan. Pre blijft exit 0: die blokkeert anders de call.
+    # Without lib/bash_writes.py python3 ends with rc 2 — that must not pass as
+    # a verdict. Pre stays exit 0: it would otherwise block the call.
     s = _Session(tmp_path)
     wrapper = s.wrapper
     payload = s.payload("true", "toolu_nolib", s.repo, "PostToolUseFailure")
@@ -483,8 +483,8 @@ def test_real_verdict_with_the_phrase_in_the_file(session):
 
 def test_late_pre_does_not_baseline_the_write(session):
     t0 = time.time_ns()
-    # Een grove ctime-klok kan een fractie achterlopen op `time_ns`; zonder
-    # deze pauze kan het bestand een ctime net vóór t0 krijgen.
+    # A coarse ctime clock can lag a fraction behind `time_ns`; without
+    # this pause the file can get a ctime just before t0.
     time.sleep(0.05)
     (session.repo / "x.sh").write_text(BROKEN_SH, encoding="utf-8")
     out = session.call("true", env={"LIGHTHOUSE_BASH_GATES_START_NS": str(t0)})
@@ -566,10 +566,10 @@ def test_relative_write_from_a_subdir(session):
 
 @pytest.mark.parametrize("via", ["cwd", "path"])
 def test_call_outside_any_repo_is_silent(session, tmp_path, via):
-    # Een losse `.git/` zonder HEAD boven de cwd (op de Mac: `~/.git/` met
-    # alleen een toolcache) maakte van elke map onder `~` een wortel; git zei
-    # "not a git repository" en post blokkeerde met COULD NOT CHECK op een
-    # `ls` buiten elke repo, waar niets te bewaken valt.
+    # A bare `.git/` without HEAD above the cwd (on the Mac: `~/.git/` with
+    # only a tool cache) made a root of every directory under `~`; git said
+    # "not a git repository" and post blocked with COULD NOT CHECK on an
+    # `ls` outside any repo, where there is nothing to guard.
     home = tmp_path / "home"
     (home / ".git" / "workflow-audit-tools").mkdir(parents=True)
     sub = home / ".claude" / "skills"
@@ -583,17 +583,17 @@ def test_call_outside_any_repo_is_silent(session, tmp_path, via):
     assert out.stderr == ""
 
 
-# --- bron 2: wat in de call gecommit werd (taak 8) -----------------------
+# --- source 2: what was committed in the call (task 8) -----------------------
 
 
 def _commit_all(repo: Path, message: str) -> None:
-    """`git add -A && git commit` buiten elke Bash-call om (geen pre, geen post)."""
+    """`git add -A && git commit` outside any Bash call (no pre, no post)."""
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", message)
 
 
 def _ledger_record(s: _Session) -> dict:
-    """De ledgerregel van de tmp-repo, rechtstreeks uit `ledger.json`."""
+    """The ledger line of the tmp repo, straight from `ledger.json`."""
     ledger = json.loads((s.state / "ledger.json").read_text(encoding="utf-8"))
     return ledger[os.path.realpath(s.repo)]
 
@@ -632,7 +632,7 @@ def test_git_rm_and_git_mv_are_not_unchecked(session):
 
 
 def _python_session(tmp_path: Path) -> _Session:
-    """Een sessie voor `.py`-schrijfwerk (de ruff-stub)."""
+    """A session for `.py` writes (the ruff stub)."""
     return _Session(tmp_path)
 
 
@@ -698,7 +698,7 @@ def test_conflict_merge_checks_only_the_resolution(tmp_path, resolution, rc):
     assert "t.py" not in out.stderr
     assert _no_unchecked(out), (out.stdout, out.stderr)
     if rc:
-        # De combined diff noemt de conflictoplossing: c.md gaat door de gate.
+        # The combined diff names the conflict resolution: c.md goes through the gate.
         assert "== c.md (worktree-linkcheck.sh) ==" in out.stderr
 
 
@@ -718,8 +718,8 @@ def test_pending_path_survives_a_missed_deadline(session):
 
 
 def test_committed_path_missing_on_disk_is_unchecked(session):
-    # skip-worktree verbergt de verwijdering voor `git status`: in HEAD, niet op
-    # schijf, niet verwijderd in bron 1 — alle drie de gates zouden exit 0 geven.
+    # skip-worktree hides the deletion from `git status`: in HEAD, not on
+    # disk, not deleted in source 1 — all three gates would give exit 0.
     out = session.call(
         heredoc("x.sh", BROKEN_SH)
         + "git add x.sh && git commit -qm x"
@@ -736,8 +736,8 @@ def test_checkout_moves_head_without_checking(tmp_path):
     s = _python_session(tmp_path)
     repo = s.repo
     git(repo, "checkout", "-q", "-b", "side")
-    # Beide fout, en de .py ook ongeformatteerd: een dispatch zou hem
-    # herschrijven, dus byte-gelijk bewijst dat er niets draaide.
+    # Both wrong, and the .py also unformatted: a dispatch would
+    # rewrite it, so byte-equal proves that nothing ran.
     (repo / "t.py").write_text("x=1\n" + BARE_EXCEPT_PY, encoding="utf-8")
     (repo / "s.sh").write_text(BROKEN_SH, encoding="utf-8")
     _commit_all(repo, "side")
@@ -753,7 +753,7 @@ def test_checkout_moves_head_without_checking(tmp_path):
 
 
 def test_reset_soft_makes_it_dirty(session):
-    # Bron 1 vangt dit al (taak 7): na `reset --soft` staat x.sh vuil in de index.
+    # Source 1 already catches this (task 7): after `reset --soft` x.sh is dirty in the index.
     (session.repo / "x.sh").write_text(BROKEN_SH, encoding="utf-8")
     _commit_all(session.repo, "x")
     out = session.call("git reset -q --soft HEAD~1")
@@ -772,8 +772,8 @@ def test_first_commit_in_an_unborn_repo(tmp_path):
 
 
 def test_orphan_checkout_is_not_unchecked(session):
-    # HEAD wordt ongeboren terwijl de ledger een sha heeft: `git reflog` zou
-    # daar rc 128 geven, dus bron 2 moet hem niet eens aanroepen.
+    # HEAD becomes unborn while the ledger has a sha: `git reflog` would
+    # give rc 128 there, so source 2 must not even call it.
     out = session.call("git checkout -q --orphan wees")
     assert out.returncode == 0, (out.stdout, out.stderr)
     assert _no_unchecked(out), (out.stdout, out.stderr)
@@ -795,11 +795,11 @@ def test_commit_then_staged_mv_is_not_unchecked(session):
 
 
 def test_commit_then_switch_back_is_not_silent(session):
-    # HEAD eindigt weer op de ledger-`head`: de stop-wandeling ziet niets, de
-    # wandeling sinds de start van de call vindt de commit op `feat`. bad.sh
-    # staat dan niet op schijf en niet in HEAD, maar is niet verwijderd: niet
-    # te bekijken, dus luid. Terug op `feat` staat hij nog in `pending` en
-    # gaat hij alsnog door de gate.
+    # HEAD ends on the ledger `head` again: the stop walk sees nothing, the
+    # walk since the start of the call finds the commit on `feat`. bad.sh
+    # is then not on disk and not in HEAD, but not deleted: cannot
+    # be looked at, so loud. Back on `feat` it is still in `pending` and
+    # goes through the gate after all.
     assert session.call("true").returncode == 0
     out = session.call(
         "git switch -q -c feat && "
@@ -825,8 +825,8 @@ def test_commit_then_switch_back_is_not_silent(session):
     ids=["reset-hard", "amend-na-rm", "rebase-drop"],
 )
 def test_commit_then_discard_is_not_unchecked(session, discard):
-    # De call gooit zijn eigen commit weer weg: de reflog kent hem nog, maar
-    # geen ref bevat hem. bad.sh is dan niet elders gecommit maar weg.
+    # The call throws away its own commit again: the reflog still knows it, but
+    # no ref contains it. bad.sh is then not committed elsewhere but gone.
     assert session.call("true").returncode == 0
     out = session.call(
         heredoc("bad.sh", BROKEN_SH)
@@ -839,8 +839,8 @@ def test_commit_then_discard_is_not_unchecked(session, discard):
 
 
 def test_commit_then_ff_merge_back_is_still_checked(session):
-    # De stop-wandeling stopt bij de terugkeer naar `main` (sha == ledger-`head`)
-    # vóór de commit; de fast-forward brengt bad.sh toch op main.
+    # The stop walk stops at the return to `main` (sha == ledger `head`)
+    # before the commit; the fast-forward brings bad.sh onto main anyway.
     assert session.call("true").returncode == 0
     out = session.call(
         "git switch -q -c tmp && "
@@ -853,11 +853,11 @@ def test_commit_then_ff_merge_back_is_still_checked(session):
     assert "SC2034" in out.stderr
 
 
-# --- meerdere wortels en de terugval (taak 9) -----------------------------
+# --- multiple roots and the fallback (task 9) -----------------------------
 
 
 def _worktree(s: _Session, path: Path, *args: str) -> Path:
-    """`git worktree add` buiten elke Bash-call om; geeft het pad terug."""
+    """`git worktree add` outside any Bash call; returns the path."""
     git(s.repo, "worktree", "add", "-q", *args, str(path))
     return path
 
@@ -870,7 +870,7 @@ def _manual_call(
     cwd: Path | None = None,
     event: str = "PostToolUse",
 ) -> subprocess.CompletedProcess:
-    """Pre, de Bash-call, dan `between()`, dan post — met één `tool_use_id`."""
+    """Pre, the Bash call, then `between()`, then post — with one `tool_use_id`."""
     cwd = cwd or s.repo
     tool_use_id = f"toolu_{uuid.uuid4().hex[:12]}"
     pre = s.hook("pre", s.payload(cmd, tool_use_id, cwd, "PreToolUse"))
@@ -939,9 +939,9 @@ def test_worktree_add_then_commit_inside(session):
 
 
 def test_recreated_worktree_reflog_gap_still_walks_since_the_call(session):
-    # De ledger kent `wt` nog met de HEAD van de verwijderde worktree; de
-    # nieuwe worktree heeft een verse reflog zonder die sha (reflog-gat). De
-    # wandeling sinds de start van de call vindt de commit toch.
+    # The ledger still knows `wt` with the HEAD of the deleted worktree; the
+    # new worktree has a fresh reflog without that sha (reflog gap). The
+    # walk since the start of the call finds the commit anyway.
     first = session.call(
         "git worktree add -q wt -b b1 && cd wt && echo a > a.txt"
         " && git add a.txt && git commit -qm a"
@@ -974,8 +974,8 @@ def test_relative_path_into_a_gitignored_nested_worktree(session):
 
 def test_open_quote_with_an_absolute_path(session, tmp_path):
     wt2 = _worktree(session, tmp_path / "wt2")
-    # Bash zou deze hele regel weigeren (open quote): pre en post met de hand,
-    # de schrijfactie zelf via Python.
+    # Bash would refuse this whole line (open quote): pre and post by hand,
+    # the write itself via Python.
     cmd = f"cat > {wt2}/x.sh; echo 'open"
     tool_use_id = "toolu_open_quote"
     pre = session.hook(
@@ -1008,14 +1008,14 @@ def test_ledger_gone_before_post(session):
 
 
 def test_ledger_gone_commit_in_the_call_is_found(session):
-    # Bron 2 via reflogtijd: de commit valt meestal in dezelfde seconde als de
-    # start van pre — `since` rondt naar beneden af, anders viel hij weg.
+    # Source 2 via reflog time: the commit usually falls in the same second as the
+    # start of pre — `since` rounds down, otherwise it dropped out.
     cmd = heredoc("x.sh", BROKEN_SH) + "git add x.sh && git commit -qm x\n"
     out = _manual_call(session, cmd, lambda: _drop_ledger(session))
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
     assert "fallback" in context(out)
-    # De wortel staat weer in de ledger: de volgende call valt niet terug.
+    # The root is in the ledger again: the next call does not fall back.
     again = session.call("true")
     assert again.returncode == 0, (again.stdout, again.stderr)
     assert "fallback" not in context(again)
@@ -1057,10 +1057,10 @@ def test_unreadable_ledger_falls_back_and_is_replaced(session):
 
 
 def test_replaced_ledger_does_not_let_pre_baseline_an_unwalked_root(session, tmp_path):
-    # Reviewer-probe: wt2 staat in de ledger, krijgt buiten een call om (een
-    # achtergrondcommando) een fout bestand; de ledger gaat kapot; een call in
-    # alleen de hoofdrepo vervangt hem. De volgende pre mag wt2 dan niet
-    # seeden — anders wordt y.sh stil nullijn.
+    # Reviewer probe: wt2 is in the ledger, gets a wrong file outside a call (a
+    # background command); the ledger breaks; a call in
+    # only the main repo replaces it. The next pre must then not seed wt2
+    # — otherwise y.sh silently becomes baseline.
     wt2 = _worktree(session, tmp_path / "wt2")
     first = session.call(f"cd {wt2} && true")
     assert first.returncode == 0, (first.stdout, first.stderr)
@@ -1085,7 +1085,7 @@ def test_no_marker_and_no_ledger_skips_source_2_with_a_note(session):
     out = _manual_call(session, cmd, drop_both)
     assert out.returncode == 0, (out.stdout, out.stderr)
     assert "source 2 skipped" in context(out)
-    # Zonder marker bestond de wortel niet aantoonbaar vóór pre: geen terugvalmelding.
+    # Without a marker the root demonstrably did not exist before pre: no fallback notice.
     assert "fallback without ledger" not in context(out)
 
 
@@ -1135,12 +1135,12 @@ def test_outside_any_repo_is_silent(session, tmp_path):
     out = session.call(heredoc("x.sh", BROKEN_SH), cwd=plain, env=env)
     assert out.returncode == 0, (out.stdout, out.stderr)
     assert out.stdout == ""
-    # De shim zat echt op het pad: pre en post riepen git aan, geen enkele faalde.
+    # The shim really was on the path: pre and post called git, none of them failed.
     assert "rev-parse" in calls.read_text(encoding="utf-8")
     assert not log.exists(), log.read_text(encoding="utf-8")
 
 
-# --- lighthouse: zonder taalpakket (besluit 19) ------------------------------
+# --- lighthouse: without language pack (decision 19) ------------------------------
 
 
 def test_post_without_language_packs(tmp_path):
@@ -1165,7 +1165,7 @@ def test_pre_without_python_is_silent_post_is_loud(tmp_path):
 
 
 def test_hooks_registered_pre_post_and_failure() -> None:
-    """Pre vóór de Bash-call, post na een geslaagde én een mislukte call."""
+    """Pre before the Bash call, post after a successful AND a failed call."""
     registered = json.loads((CORE / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     want = {
         "PreToolUse": ("bash-write-gates.sh pre", 5),

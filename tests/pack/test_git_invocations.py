@@ -1,10 +1,10 @@
-"""`pack/core/lib/git_invocations.py` (#884): de gedeelde commitparser.
+"""`pack/core/lib/git_invocations.py` (#884): the shared commit parser.
 
-Verhuisd uit de `IFS= read -r -d '' PARSE <<'PYEOF'`-heredoc in
-main-commit-guard.sh. De bestaande dekking van dat gedrag staat in
-`test_instructie_hooks.py::test_commit_guard_*` (blackbox via de hook-CLI);
-deze tests toetsen de module direct — de eenheid die vanaf nu ook door de
-pre-commit test-gate (taak 2+) hergebruikt wordt.
+Moved out of the `IFS= read -r -d '' PARSE <<'PYEOF'` heredoc in
+main-commit-guard.sh. The existing coverage of that behaviour is in
+`test_instructie_hooks.py::test_commit_guard_*` (black box via the hook CLI);
+these tests exercise the module directly — the unit that from now on is also
+reused by the pre-commit test gate (task 2+).
 """
 
 import ast
@@ -70,10 +70,10 @@ def test_new_dir_inside_repo_uses_ancestor_by_default_and_marked_on_request(tmp_
 
 
 def test_repo_of_skips_a_dot_git_dir_without_head(tmp_path):
-    # Een losse `.git/` zonder HEAD (op de Mac: `~/.git/workflow-audit-tools/`,
-    # een verdwaalde toolcache) is voor git geen repo; zijn discovery loopt er
-    # voorbij. Telt `repo_of` hem wel, dan wordt elke map eronder een wortel
-    # waar git "not a git repository" op zegt.
+    # A bare `.git/` without HEAD (on the Mac: `~/.git/workflow-audit-tools/`,
+    # a stray tool cache) is not a repo to git; its discovery walks past
+    # it. If `repo_of` does count it, every directory under it becomes a root
+    # that git answers with "not a git repository".
     home = tmp_path / "home"
     (home / ".git" / "workflow-audit-tools").mkdir(parents=True)
     sub = home / ".claude" / "skills"
@@ -88,8 +88,8 @@ def test_repo_of_skips_a_dot_git_dir_without_head(tmp_path):
 
 
 def test_repo_of_keeps_a_gitfile_and_a_dot_git_with_a_broken_head(tmp_path):
-    # Het oordeel "kapot" blijft aan git: een worktree-gitfile naar een
-    # verdwenen gitdir, of een `.git/HEAD` met rommel, is wél een wortel.
+    # The judgement "broken" stays with git: a worktree gitfile pointing to a
+    # vanished gitdir, or a `.git/HEAD` with garbage, IS a root.
     wt = tmp_path / "wt"
     wt.mkdir()
     (wt / ".git").write_text("gitdir: /nergens/.git/worktrees/wt\n", encoding="utf-8")
@@ -106,11 +106,11 @@ def test_open_quote_raises(tmp_path):
         gi.find_invocations("git commit -m 'x", str(tmp_path))
 
 
-def test_import_reads_no_stdin():  # de import hierboven slaagde zonder stdin; pin het
+def test_import_reads_no_stdin():  # the import above succeeded without stdin; pin it
     assert callable(gi.main)
 
 
-# `dirs` is levend: lees hem tijdens de iteratie, niet na list().
+# `dirs` is live: read it during the iteration, not after list().
 def _trace(command, cwd):
     return [(s.words[s.idx], s.dirs["here"]) for s in gi.walk(command, cwd)]
 
@@ -169,7 +169,7 @@ def test_cli_contract(tmp_path):
 
 
 def _union_annotations(tree: ast.Module) -> list[int]:
-    """Regelnummers van `X | Y` in een annotatie (runtime-fout vóór Python 3.10)."""
+    """Line numbers of `X | Y` in an annotation (runtime error before Python 3.10)."""
     annotations: list[ast.expr] = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -193,12 +193,12 @@ def _union_annotations(tree: ast.Module) -> list[int]:
     "lib", sorted(LIB.glob("*.py")), ids=lambda p: p.name
 )
 def test_hook_lib_stays_importable_on_python_39(lib):
-    """Pin: de hooks draaien onder `python3` van de host — op macOS 3.9.6.
+    """Pin: the hooks run under the host's `python3` — on macOS 3.9.6.
 
-    Daar is `list[str] | None` in een annotatie een TypeError bij de import,
-    en dan eindigen main-commit-guard.sh en pre-commit-tests.sh op exit 2 voor
-    élk Bash-commando. Dus: syntaxis van 3.9, en `X | Y` in een annotatie
-    alleen onder `from __future__ import annotations`.
+    There `list[str] | None` in an annotation is a TypeError at import,
+    and then main-commit-guard.sh and pre-commit-tests.sh end in exit 2 for
+    EVERY Bash command. So: 3.9 syntax, and `X | Y` in an annotation
+    only under `from __future__ import annotations`.
     """
     source = lib.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(lib), feature_version=(3, 9))
@@ -216,7 +216,7 @@ def test_hook_lib_stays_importable_on_python_39(lib):
 
 
 def test_heredoc_body_with_commit_text_is_no_invocation(tmp_path):
-    """Tekst in een heredoc is nooit een aanroep (#1453, tweede deel)."""
+    """Text in a heredoc is never an invocation (#1453, second part)."""
     command = (
         "gh issue create --body \"$(cat <<'EOF'\nstap 1: git commit -m x\nEOF\n)\""
     )

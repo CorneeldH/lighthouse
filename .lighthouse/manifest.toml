@@ -636,7 +636,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "ac838375a54e5dc6d65d4061eb425813f41d87a13fc0dba863754309606e4539"
+sha256 = "2123884a7d46d311b1a7272673d623cc23c4ab1d6e4b477b7cab1c501a4869de"
 
 [[unit]]
 kind = "file"
@@ -720,7 +720,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/git_invocations.py"
 package = "core"
 version = "dev"
-sha256 = "6105b2b8e030746852776527b670a1ef04486696bb9723dcb7d0070c7bbf5b9d"
+sha256 = "d88849196c641a0b35d4cc9a2b03b2e24fb98d2572ad9bffc0bbcf0c0725b0c9"
 
 [[unit]]
 kind = "file"
@@ -741,7 +741,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/no_verify.py"
 package = "core"
 version = "dev"
-sha256 = "d7789032120233d2bd812939793050cd464184ad55418392822ac396791b96dd"
+sha256 = "ec57cd093f4af7f753f15a22b49547350f5a388694bd37befa3de207ce02b285"
 
 [[unit]]
 kind = "file"
