@@ -1,12 +1,12 @@
 """Unit tests for `.lighthouse/scripts/measure_fix_pr_kpi.py`, taken from paia.
 
-De KPI van #664 is één getal: hoeveel tool-calls zitten er tussen "fix 596" en de eerste handeling
-die de boom daadwerkelijk verandert. Dat getal is alleen iets waard als drie dingen kloppen, en
-precies die drie worden hier gepind:
+The KPI of #664 is one number: how many tool calls sit between "fix 596" and the first action
+that actually changes the tree. That number is only worth something if three things hold, and
+exactly those three are pinned here:
 
-- de promptherkenning is smal genoeg (een genoemd PR-nummer is geen fixverzoek);
-- "muterend" is breder dan Write/Edit — 6 van de 8 gemeten beurten muteerden via Bash;
-- de scope-rij ziet het geval waarvoor hij bestaat: de skill die doorloopt in close-issue.
+- the prompt recognition is narrow enough (a mentioned PR number is not a fix request);
+- "mutating" is broader than Write/Edit — 6 of the 8 measured turns mutated via Bash;
+- the scope row sees the case it exists for: the skill that runs on into close-issue.
 """
 
 from __future__ import annotations
@@ -54,11 +54,11 @@ def turn(prompt: str, *records: dict) -> object:
     return kpi.tx.Turn(prompt, tuple(records))
 
 
-# --- promptherkenning -------------------------------------------------------------------------
+# --- prompt recognition -----------------------------------------------------------------------
 
 
 def test_recognises_the_five_measured_prompt_forms() -> None:
-    """Precies de vormen die in de transcripten stonden. Zonder deze vijf meet het script niets."""
+    """Exactly the shapes that were in the transcripts. Without these five the script measures nothing."""
     assert kpi.fix_pr_number("fix pr 585") == 585
     assert kpi.fix_pr_number("fix 595") == 595
     assert kpi.fix_pr_number("627 pr heeft errors /debug") == 627
@@ -67,18 +67,18 @@ def test_recognises_the_five_measured_prompt_forms() -> None:
 
 
 def test_ignores_a_number_that_is_merely_mentioned() -> None:
-    """Een genoemd nummer is geen fixverzoek; anders telt elke PR-conversatie mee."""
+    """A mentioned number is not a fix request; otherwise every PR conversation counts."""
     assert kpi.fix_pr_number("ja werk bij pr 639 is gemerged") is None
     assert kpi.fix_pr_number("Merge PR #715 na groene checks") is None
     assert kpi.fix_pr_number("fix de typo in de eerste alinea") is None
 
 
-# --- muterend versus diagnostisch -------------------------------------------------------------
+# --- mutating versus diagnostic ---------------------------------------------------------------
 
 
 def test_bash_mutations_count_as_mutating() -> None:
-    """6 van de 8 gemeten beurten muteerden via Bash. Alleen Write/Edit tellen is per
-    constructie blind — dezelfde valkuil als `worktree-first` in de start-issue-meting."""
+    """6 of the 8 measured turns mutated via Bash. Counting only Write/Edit is blind by
+    construction — the same pitfall as `worktree-first` in the start-issue measurement."""
     assert kpi.is_mutating(
         "Bash", {"command": "git rebase origin/main 2>&1 | tail -20"}
     )
@@ -89,17 +89,17 @@ def test_bash_mutations_count_as_mutating() -> None:
 
 
 def test_git_branch_delete_rename_and_copy_count_as_mutating() -> None:
-    """Bevinding 1: `git branch -D` etc. zaten vóór de fix in DIAGNOSTIC_BASH_RE -- een
-    branch-delete gold dan als read-only inspectie en trok de diagnose-mediaan omhoog, precies
-    de kant die de moduledocstring uitsluit."""
+    """Finding 1: `git branch -D` etc. sat in DIAGNOSTIC_BASH_RE before the fix -- a
+    branch delete then counted as read-only inspection and pulled the diagnostic median up, exactly
+    the side the module docstring excludes."""
     assert kpi.is_mutating("Bash", {"command": "git branch -D feature"})
     assert kpi.is_mutating("Bash", {"command": "git branch -m old new"})
     assert kpi.is_mutating("Bash", {"command": "git branch --delete feature"})
 
 
 def test_reset_switch_and_stash_apply_count_as_mutating() -> None:
-    """Ontbraken in MUTATING_BASH_RE: alle drie veranderen de werkboom net zo hard als
-    `checkout` of `restore`, die er al wel in stonden."""
+    """Were missing from MUTATING_BASH_RE: all three change the worktree just as much as
+    `checkout` or `restore`, which were already in it."""
     assert kpi.is_mutating("Bash", {"command": "git reset --hard origin/main"})
     assert kpi.is_mutating("Bash", {"command": "git switch feature-branch"})
     assert kpi.is_mutating("Bash", {"command": "git stash pop"})
@@ -107,21 +107,21 @@ def test_reset_switch_and_stash_apply_count_as_mutating() -> None:
 
 
 def test_heredoc_recognises_quoted_and_dash_indented_delimiters() -> None:
-    """`<<\\s*'?(EOF|PY)` ving alleen die twee letterlijke namen. Een fix via `<<'PATCH'` of een
-    dash-ingesprongen `<<-EOF` (veelgebruikt in heredoc-Python binnen Bash) viel er stil doorheen
-    en telde als "geen mutatie"."""
+    """`<<\\s*'?(EOF|PY)` caught only those two literal names. A fix via `<<'PATCH'` or a
+    dash-indented `<<-EOF` (commonly used in heredoc Python inside Bash) silently slipped through
+    and counted as "no mutation"."""
     assert kpi.is_mutating("Bash", {"command": "python3 - <<'PATCH'\nprint(1)\nPATCH"})
     assert kpi.is_mutating("Bash", {"command": 'cat <<"SCRIPT"\necho hi\nSCRIPT'})
     assert kpi.is_mutating("Bash", {"command": "cat <<-EOF\nhi\nEOF"})
 
 
 def test_heredoc_regex_does_not_swallow_here_strings_or_bit_shifts() -> None:
-    """Regressie op de fix hierboven: `<<-?\\s*['\\"]?[A-Z_]...` matchte onder `re.IGNORECASE`
-    óók kleine letters, dus een here-string (`<<<`) en een bit-shift op kleine-letter-variabelen
-    telden stiekem als mutatie mee. Een valse mutatie stopt `count_leadin`/`count_diagnostics` te
-    vroeg en ONDERSCHAT dus allebei -- de kant die de moduledocstring juist uitsluit. De vaste
-    combinatie `(?!<)` plus `(?-i:...)` moet dit weer buiten MUTATING_BASH_RE houden, terwijl de
-    echte heredoc-vormen wel blijven matchen."""
+    """Regression on the fix above: `<<-?\\s*['\\"]?[A-Z_]...` also matched lower-case letters under `re.IGNORECASE`,
+    so a here-string (`<<<`) and a bit shift on lower-case variables
+    silently counted as a mutation. A false mutation stops `count_leadin`/`count_diagnostics` too
+    early and so UNDERCOUNTS both -- the side the module docstring excludes. The fixed
+    combination `(?!<)` plus `(?-i:...)` must keep this out of MUTATING_BASH_RE again, while the
+    real heredoc shapes keep matching."""
     assert not kpi.is_mutating("Bash", {"command": "cat <<< 'hello world'"})
     assert not kpi.is_mutating("Bash", {"command": "echo $((x << y))"})
     assert kpi.is_mutating("Bash", {"command": "python3 - <<'PATCH'\nprint(1)\nPATCH"})
@@ -136,9 +136,9 @@ def test_read_only_inspection_is_not_mutating() -> None:
 
 
 def test_read_only_branch_and_stash_forms_stay_out_of_mutating() -> None:
-    """De keerzijde van bevinding 1 en 2: de bredere regex mag leesvormen niet meesleuren.
-    `git branch --merged main` heeft geen vlag uit de delete/rename/copy-set en `git stash list`
-    verandert niets -- allebei moeten ze buiten MUTATING_BASH_RE blijven."""
+    """The flip side of findings 1 and 2: the broader regex must not drag in read forms.
+    `git branch --merged main` has no flag from the delete/rename/copy set and `git stash list`
+    changes nothing -- both must stay outside MUTATING_BASH_RE."""
     assert not kpi.is_mutating("Bash", {"command": "git branch -a"})
     assert not kpi.is_mutating("Bash", {"command": "git branch --merged main"})
     assert not kpi.is_mutating("Bash", {"command": "git stash list"})
@@ -152,10 +152,10 @@ def test_diagnostic_recognises_gh_and_git_reads() -> None:
 
 
 def test_diagnostic_covers_the_full_stay_diagnostic_set() -> None:
-    """Bevinding C: de vorige dekking was te dun om bevinding B (`git stash pop|apply` wél
-    muterend, maar geen companion in DIAGNOSTIC_BASH_RE) op te vangen. Deze test pint alle
-    leesvormen die na de twee regex-uitbreidingen diagnostisch moeten blijven, inclusief de
-    nieuwe `git stash list`/`show`."""
+    """Finding C: the previous coverage was too thin to catch finding B (`git stash pop|apply` is
+    mutating, but no companion in DIAGNOSTIC_BASH_RE). This test pins all
+    read forms that must stay diagnostic after the two regex extensions, including the
+    new `git stash list`/`show`."""
     assert kpi.is_diagnostic("Bash", {"command": "git branch -a"})
     assert kpi.is_diagnostic("Bash", {"command": "git branch --merged main"})
     assert kpi.is_diagnostic("Bash", {"command": "git branch --show-current"})
@@ -165,11 +165,11 @@ def test_diagnostic_covers_the_full_stay_diagnostic_set() -> None:
     assert kpi.is_diagnostic("Bash", {"command": "git stash show -p"})
 
 
-# --- telling per beurt ------------------------------------------------------------------------
+# --- count per turn ---------------------------------------------------------------------------
 
 
 def test_leadin_counts_calls_before_the_first_mutation_exclusive() -> None:
-    """Exclusief: de muterende call zelf is de fix, niet de aanloop ernaartoe."""
+    """Exclusive: the mutating call itself is the fix, not the lead-in to it."""
     t = turn(
         "fix pr 585",
         assistant(bash("gh pr view 585 --json state")),
@@ -180,7 +180,7 @@ def test_leadin_counts_calls_before_the_first_mutation_exclusive() -> None:
 
 
 def test_leadin_is_none_when_the_turn_never_mutates() -> None:
-    """PR 627 in de nulmeting: acht diagnosecalls en geen enkele mutatie."""
+    """PR 627 in the baseline measurement: eight diagnostic calls and no mutation at all."""
     t = turn("627 pr heeft errors", assistant(bash("gh pr checks 627")))
     assert kpi.count_leadin(t) is None
 
@@ -196,7 +196,7 @@ def test_diagnostics_are_counted_up_to_the_mutation() -> None:
 
 
 def test_scope_sees_the_skill_running_past_green() -> None:
-    """AC 7 als getal: de skill die doorloopt in close-issue is precies de overlap die niet mag."""
+    """AC 7 as a number: the skill that runs on into close-issue is exactly the overlap that is not allowed."""
     t = turn(
         "fix pr 585",
         assistant(skill(kpi.SKILL_NAME)),
@@ -204,10 +204,10 @@ def test_scope_sees_the_skill_running_past_green() -> None:
     )
     assert kpi.overruns_scope(t)
 
-    binnen = turn(
+    within = turn(
         "fix pr 585", assistant(skill(kpi.SKILL_NAME)), assistant(bash("git rebase"))
     )
-    assert not kpi.overruns_scope(binnen)
+    assert not kpi.overruns_scope(within)
 
 
 def test_skill_names_are_lighthouse() -> None:

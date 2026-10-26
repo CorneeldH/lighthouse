@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """Move a picked-up issue from board status `To do` or `On hold` to `In progress`.
 
-Aangeroepen door `start-issue` direct na de worktree-stap. Wie een geparkeerd issue
-bewust oppakt, heft de parkering op. `Controller` blijft staan omdat de controller daarop
-selecteert en zelf `start-issue` draait; `In progress` en `Done` blijven ook staan.
+Called by `start-issue` right after the worktree step. Whoever deliberately picks up a
+parked issue lifts the parking. `Controller` stays put because the controller selects on it
+and runs `start-issue` itself; `In progress` and `Done` stay put as well.
 
-Faalt nooit hard: altijd exit 0 en precies één regel die met `board: ` begint, zodat
-het oppakken van een issue er niet op blokkeert.
+Never fails hard: always exit 0 and exactly one line starting with `board: `, so that
+picking up an issue does not block on it.
 
-Modus `--reopen <nr>`: zet een heropend issue van `Done` terug op `In progress`.
-Hier is het omgekeerde bedoeld: fail-closed. Een andere startstatus, een issue buiten het
-board, een uitzondering of een teruggelezen status ≠ `In progress` geeft één regel
-`board: ERROR — <oorzaak>` en exit 1; zo meldt `close-issue` het board nooit stil als goed.
+Mode `--reopen <nr>`: move a reopened issue from `Done` back to `In progress`.
+Here the opposite is intended: fail-closed. Any other start status, an issue off the
+board, an exception or a read-back status ≠ `In progress` gives one line
+`board: ERROR — <cause>` and exit 1; this way `close-issue` never silently reports the board as fine.
 
-Zonder `[forge.board]` geven beide modi `board: skipped — no [forge.board] configured` en
-exit 0 (besluit 16, 24). Een kapotte config geeft in beide modi `board: ERROR — <oorzaak>`
-en exit 2.
+Without `[forge.board]` both modes give `board: skipped — no [forge.board] configured` and
+exit 0 (decision 16, 24). A broken config gives `board: ERROR — <cause>` in both modes
+and exit 2.
 
 USAGE
     board_start.py <nr>
@@ -36,7 +36,7 @@ if not __package__:
 
 from lighthouse_lib.config import Config, ConfigError, config_path, load
 
-# Owner en naam gaan als GraphQL-variabelen mee: de query kent de repo niet.
+# Owner and name go along as GraphQL variables: the query does not know the repo.
 QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
@@ -54,10 +54,10 @@ query($owner: String!, $name: String!, $number: Int!) {
   }
 }
 """
-OPPAKBAAR = ("To do", "On hold")
-OVERGESLAGEN = "board: skipped — no [forge.board] configured"
-# Wat `gh` en de GraphQL-parsing kunnen gooien; gedeeld door het standaardpad en --reopen.
-GH_FOUTEN = (
+PICKABLE = ("To do", "On hold")
+SKIPPED = "board: skipped — no [forge.board] configured"
+# What `gh` and the GraphQL parsing can raise; shared by the default path and --reopen.
+GH_ERRORS = (
     ConfigError,
     subprocess.CalledProcessError,
     subprocess.TimeoutExpired,
@@ -68,15 +68,15 @@ GH_FOUTEN = (
 )
 
 
-def foutnaam(fout: Exception) -> str:
-    """Typenaam, bij een `ConfigError` ook de melding (pad en sleutel), op één regel."""
-    if isinstance(fout, ConfigError):
-        return f"{type(fout).__name__}: {' '.join(str(fout).split())}"
-    return type(fout).__name__
+def error_name(error: Exception) -> str:
+    """Type name, for a `ConfigError` also the message (path and key), on one line."""
+    if isinstance(error, ConfigError):
+        return f"{type(error).__name__}: {' '.join(str(error).split())}"
+    return type(error).__name__
 
 
 def identity() -> Config:
-    """De config van de repo; een board zonder `forge.repo` is een configfout."""
+    """The repo's config; a board without `forge.repo` is a config error."""
     cfg = load(config_path())
     if cfg.board is not None and cfg.repo is None:
         raise ConfigError(f"{config_path()}: [forge.board] needs forge.repo")
@@ -93,8 +93,8 @@ def gh(*args: str) -> str:
     ).stdout
 
 
-def lees_item(nummer: int) -> tuple[str, str | None] | None:
-    """`(item_id, status)` van het issue op het board, of `None` als het er niet op staat."""
+def read_item(number: int) -> tuple[str, str | None] | None:
+    """`(item_id, status)` of the issue on the board, or `None` if it is not on it."""
     repo = identity()
     data = json.loads(
         gh(
@@ -107,18 +107,18 @@ def lees_item(nummer: int) -> tuple[str, str | None] | None:
             "-f",
             f"name={repo.name}",
             "-F",
-            f"number={nummer}",
+            f"number={number}",
         )
     )
     nodes = data["data"]["repository"]["issue"]["projectItems"]["nodes"]
     for node in nodes:
         if node["project"]["id"] == repo.board.project_id:
-            waarde = node.get("fieldValueByName") or {}
-            return str(node["id"]), waarde.get("name")
+            value = node.get("fieldValueByName") or {}
+            return str(node["id"]), value.get("name")
     return None
 
 
-def zet_in_progress(item_id: str) -> None:
+def set_in_progress(item_id: str) -> None:
     board = identity().board
     gh(
         "project",
@@ -134,45 +134,45 @@ def zet_in_progress(item_id: str) -> None:
     )
 
 
-def heropen(nummer: int) -> int:
-    """Zet `Done` op `In progress` en leest terug; elke afwijking is exit 1 (fail-closed)."""
+def reopen(number: int) -> int:
+    """Set `Done` to `In progress` and read back; any deviation is exit 1 (fail-closed)."""
     try:
-        item = lees_item(nummer)
+        item = read_item(number)
         if item is None:
-            print(f"board: ERROR — #{nummer} is not on the board")
+            print(f"board: ERROR — #{number} is not on the board")
             return 1
         item_id, status = item
         if status == "In progress":
-            print(f"board: #{nummer} is already In progress")
+            print(f"board: #{number} is already In progress")
             return 0
         if status != "Done":
             print(
-                f"board: ERROR — #{nummer} is "
+                f"board: ERROR — #{number} is "
                 f"{'at ' + status if status else 'without status'}, not at Done"
             )
             return 1
-        zet_in_progress(item_id)
-        teruggelezen = lees_item(nummer)
-    except GH_FOUTEN as fout:
-        print(f"board: ERROR — {foutnaam(fout)}")
+        set_in_progress(item_id)
+        read_back = read_item(number)
+    except GH_ERRORS as error:
+        print(f"board: ERROR — {error_name(error)}")
         return 1
-    na = teruggelezen[1] if teruggelezen else None
-    if na != "In progress":
-        print(f"board: ERROR — #{nummer} is at {na or 'no status'} after the edit")
+    after = read_back[1] if read_back else None
+    if after != "In progress":
+        print(f"board: ERROR — #{number} is at {after or 'no status'} after the edit")
         return 1
-    print(f"board: #{nummer} Done → In progress")
+    print(f"board: #{number} Done → In progress")
     return 0
 
 
-def _geen_board() -> int | None:
-    """`None` met een board; zonder board de melding en exit 0, bij een configfout exit 2."""
+def _no_board() -> int | None:
+    """`None` with a board; without a board the message and exit 0, with a config error exit 2."""
     try:
         cfg = identity()
-    except ConfigError as fout:
-        print(f"board: ERROR — {foutnaam(fout)}")
+    except ConfigError as error:
+        print(f"board: ERROR — {error_name(error)}")
         return 2
     if cfg.board is None:
-        print(OVERGESLAGEN)
+        print(SKIPPED)
         return 0
     return None
 
@@ -182,31 +182,31 @@ def main(argv: list[str]) -> int:
         if len(argv) != 2 or not argv[1].isdigit():
             print("board: usage: board_start.py --reopen <nr>")
             return 1
-        code = _geen_board()
-        return heropen(int(argv[1])) if code is None else code
+        code = _no_board()
+        return reopen(int(argv[1])) if code is None else code
     if len(argv) != 1 or not argv[0].isdigit():
         print("board: usage: board_start.py <nr>")
         return 0
-    code = _geen_board()
+    code = _no_board()
     if code is not None:
         return code
-    nummer = int(argv[0])
+    number = int(argv[0])
     try:
-        item = lees_item(nummer)
+        item = read_item(number)
         if item is None:
-            print(f"board: #{nummer} is not on the board")
+            print(f"board: #{number} is not on the board")
             return 0
         item_id, status = item
-        if status not in OPPAKBAAR:
+        if status not in PICKABLE:
             print(
-                f"board: #{nummer} stays {'at ' + status if status else 'without status'}"
+                f"board: #{number} stays {'at ' + status if status else 'without status'}"
             )
             return 0
-        zet_in_progress(item_id)
-    except GH_FOUTEN as fout:
-        print(f"board: skipped ({foutnaam(fout)})")
+        set_in_progress(item_id)
+    except GH_ERRORS as error:
+        print(f"board: skipped ({error_name(error)})")
         return 0
-    print(f"board: #{nummer} {status} → In progress")
+    print(f"board: #{number} {status} → In progress")
     return 0
 
 

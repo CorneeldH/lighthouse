@@ -1,8 +1,8 @@
-"""board_start: start-issue zet alleen To do op In progress.
+"""board_start: start-issue only moves To do to In progress.
 
-Uit paia's `test_board_start.py`; het script draait uit de geïnstalleerde indeling
-(`install_core`). Nieuw: het board is optioneel (besluit 16, 24), en een kapotte config
-is in beide modi een fout.
+From paia's `test_board_start.py`; the script runs from the installed layout
+(`install_core`). New: the board is optional (decision 16, 24), and a broken config
+is an error in both modes.
 """
 
 import importlib.util
@@ -40,18 +40,18 @@ status_field_id = "FIELD_test"
 Done = "opt-done"
 "On hold" = "opt-hold"
 """
-OVERGESLAGEN = "board: skipped — no [forge.board] configured"
+SKIPPED = "board: skipped — no [forge.board] configured"
 
 
 @pytest.fixture
 def config(tmp_path, monkeypatch):
-    def schrijf(body: str) -> Path:
-        pad = tmp_path / "lighthouse.toml"
-        pad.write_text(body, encoding="utf-8")
-        monkeypatch.setenv("LIGHTHOUSE_TOML", str(pad))
-        return pad
+    def write(body: str) -> Path:
+        path = tmp_path / "lighthouse.toml"
+        path.write_text(body, encoding="utf-8")
+        monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+        return path
 
-    return schrijf
+    return write
 
 
 @pytest.fixture(autouse=True)
@@ -83,9 +83,9 @@ class FakeGh:
         self.calls: list[tuple[str, ...]] = []
         self.nodes: list[dict] = []
         self.raise_on_api: Exception | None = None
-        # Opeenvolgende `api graphql`-reads spelen deze statussen af; leeg = `nodes`.
+        # Successive `api graphql` reads play back these statuses; empty = `nodes`.
         self.raise_on_edit: Exception | None = None
-        self.statussen: list[str | None] = []
+        self.statuses: list[str | None] = []
 
     def __call__(self, *args: str) -> str:
         self.calls.append(args)
@@ -93,8 +93,8 @@ class FakeGh:
             if self.raise_on_api is not None:
                 raise self.raise_on_api
             nodes = (
-                [node("PVTI_a", identity().board.project_id, self.statussen.pop(0))]
-                if self.statussen
+                [node("PVTI_a", identity().board.project_id, self.statuses.pop(0))]
+                if self.statuses
                 else self.nodes
             )
             return json.dumps(
@@ -116,7 +116,7 @@ def fake_gh(monkeypatch):
 
 
 @pytest.mark.parametrize("status", ["To do", "On hold"])
-def test_oppakbaar_wordt_in_progress(fake_gh, capsys, status):
+def test_pickable_becomes_in_progress(fake_gh, capsys, status):
     fake_gh.nodes = [node("PVTI_a", identity().board.project_id, status)]
     assert bs.main(["7"]) == 0
     edit = fake_gh.edits()
@@ -127,14 +127,14 @@ def test_oppakbaar_wordt_in_progress(fake_gh, capsys, status):
 
 
 @pytest.mark.parametrize("status", ["Controller", "In progress", "Done", None])
-def test_andere_status_blijft(fake_gh, capsys, status):
+def test_other_status_stays(fake_gh, capsys, status):
     fake_gh.nodes = [node("PVTI_a", identity().board.project_id, status)]
     assert bs.main(["7"]) == 0
     assert not fake_gh.edits()
     assert capsys.readouterr().out.startswith("board: #7 stays ")
 
 
-def test_alleen_item_op_eigen_board(fake_gh):
+def test_only_item_on_own_board(fake_gh):
     fake_gh.nodes = [
         node("PVTI_x", "PVT_ander", "To do"),
         node("PVTI_a", identity().board.project_id, "Controller"),
@@ -143,25 +143,25 @@ def test_alleen_item_op_eigen_board(fake_gh):
     assert not fake_gh.edits()
 
 
-def test_niet_op_board(fake_gh, capsys):
+def test_not_on_board(fake_gh, capsys):
     fake_gh.nodes = []
     assert bs.main(["7"]) == 0
     assert capsys.readouterr().out.strip() == "board: #7 is not on the board"
 
 
-def test_gh_faalt_blokkeert_niet(fake_gh, capsys):
+def test_gh_failure_does_not_block(fake_gh, capsys):
     fake_gh.raise_on_api = subprocess.CalledProcessError(1, ["gh"])
     assert bs.main(["7"]) == 0
     assert capsys.readouterr().out.strip() == "board: skipped (CalledProcessError)"
 
 
-def test_geen_argument(capsys):
+def test_no_argument(capsys):
     assert bs.main([]) == 0
     assert capsys.readouterr().out.strip() == "board: usage: board_start.py <nr>"
 
 
-def test_reopen_done_wordt_in_progress(fake_gh, capsys):
-    fake_gh.statussen = ["Done", "In progress"]
+def test_reopen_done_becomes_in_progress(fake_gh, capsys):
+    fake_gh.statuses = ["Done", "In progress"]
     assert bs.main(["--reopen", "7"]) == 0
     edits = fake_gh.edits()
     assert len(edits) == 1
@@ -170,44 +170,44 @@ def test_reopen_done_wordt_in_progress(fake_gh, capsys):
     assert capsys.readouterr().out.strip() == "board: #7 Done → In progress"
 
 
-def test_reopen_al_in_progress(fake_gh, capsys):
-    fake_gh.statussen = ["In progress"]
+def test_reopen_already_in_progress(fake_gh, capsys):
+    fake_gh.statuses = ["In progress"]
     assert bs.main(["--reopen", "7"]) == 0
     assert not fake_gh.edits()
     assert capsys.readouterr().out.strip() == "board: #7 is already In progress"
 
 
 @pytest.mark.parametrize("status", ["To do", "On hold", "Controller", None])
-def test_reopen_andere_status_faalt(fake_gh, capsys, status):
-    fake_gh.statussen = [status]
+def test_reopen_other_status_fails(fake_gh, capsys, status):
+    fake_gh.statuses = [status]
     assert bs.main(["--reopen", "7"]) == 1
     assert not fake_gh.edits()
-    uit = capsys.readouterr().out.strip()
-    assert uit.startswith("board: ERROR — ")
-    assert len(uit.splitlines()) == 1
+    out = capsys.readouterr().out.strip()
+    assert out.startswith("board: ERROR — ")
+    assert len(out.splitlines()) == 1
 
 
-def test_reopen_api_fout_faalt(fake_gh, capsys):
+def test_reopen_api_error_fails(fake_gh, capsys):
     fake_gh.raise_on_api = subprocess.CalledProcessError(1, ["gh"])
     assert bs.main(["--reopen", "7"]) == 1
     assert not fake_gh.edits()
     assert capsys.readouterr().out.startswith("board: ERROR — ")
 
 
-def test_reopen_edit_fout_faalt(fake_gh, capsys):
-    fake_gh.statussen = ["Done"]
+def test_reopen_edit_error_fails(fake_gh, capsys):
+    fake_gh.statuses = ["Done"]
     fake_gh.raise_on_edit = subprocess.TimeoutExpired(["gh"], 60)
     assert bs.main(["--reopen", "7"]) == 1
     assert capsys.readouterr().out.startswith("board: ERROR — ")
 
 
-def test_reopen_terugleesverschil_faalt(fake_gh, capsys):
-    fake_gh.statussen = ["Done", "Done"]
+def test_reopen_read_back_mismatch_fails(fake_gh, capsys):
+    fake_gh.statuses = ["Done", "Done"]
     assert bs.main(["--reopen", "7"]) == 1
     assert capsys.readouterr().out.startswith("board: ERROR — ")
 
 
-def test_reopen_niet_op_board(fake_gh, capsys):
+def test_reopen_not_on_board(fake_gh, capsys):
     fake_gh.nodes = []
     assert bs.main(["--reopen", "7"]) == 1
     assert not fake_gh.edits()
@@ -217,7 +217,7 @@ def test_reopen_niet_op_board(fake_gh, capsys):
 @pytest.mark.parametrize(
     "argv", [["--reopen"], ["--reopen", "x"], ["--reopen", "1", "2"]]
 )
-def test_reopen_ongeldig_argument(capsys, argv):
+def test_reopen_invalid_argument(capsys, argv):
     assert bs.main(argv) == 1
     assert (
         capsys.readouterr().out.strip()
@@ -230,7 +230,7 @@ def _graphql_args(fake_gh: FakeGh) -> tuple[str, ...]:
     return args
 
 
-def test_andere_repo_stuurt_eigen_owner_naam_en_board(config, fake_gh):
+def test_other_repo_sends_own_owner_name_and_board(config, fake_gh):
     config(
         BOARD.replace('"Owner/repo"', '"Other/repo"')
         .replace(PROJECT, "PVT_other")
@@ -249,44 +249,44 @@ def test_andere_repo_stuurt_eigen_owner_naam_en_board(config, fake_gh):
 
 
 @pytest.fixture
-def kapotte_config(config):
+def broken_config(config):
     return config("dit is geen toml [")
 
 
 @pytest.mark.parametrize("argv", [["7"], ["--reopen", "7"]])
-def test_broken_config_is_error(kapotte_config, fake_gh, capsys, argv):
+def test_broken_config_is_error(broken_config, fake_gh, capsys, argv):
     assert bs.main(argv) == 2
-    regels = capsys.readouterr().out.strip().splitlines()
-    assert len(regels) == 1
-    assert regels[0].startswith("board: ERROR — ConfigError: ")
-    assert str(kapotte_config) in regels[0]
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lines) == 1
+    assert lines[0].startswith("board: ERROR — ConfigError: ")
+    assert str(broken_config) in lines[0]
     assert fake_gh.calls == []
 
 
-def test_board_zonder_repo_is_een_fout(config, fake_gh, capsys):
+def test_board_without_repo_is_an_error(config, fake_gh, capsys):
     config(BOARD.replace('repo = "Owner/repo"\n', ""))
     assert bs.main(["7"]) == 2
-    uit = capsys.readouterr().out.strip()
-    assert uit.startswith("board: ERROR — ") and "forge.repo" in uit
+    out = capsys.readouterr().out.strip()
+    assert out.startswith("board: ERROR — ") and "forge.repo" in out
     assert fake_gh.calls == []
 
 
 def test_no_board_default_mode(config, fake_gh, capsys):
     config('[forge]\nrepo = "Owner/repo"\n')
     assert bs.main(["7"]) == 0
-    assert capsys.readouterr().out.strip() == OVERGESLAGEN
+    assert capsys.readouterr().out.strip() == SKIPPED
     assert fake_gh.calls == []
 
 
 def test_no_board_reopen(config, fake_gh, capsys):
     config('[project]\nlanguage = "en"\n')
     assert bs.main(["--reopen", "7"]) == 0
-    assert capsys.readouterr().out.strip() == OVERGESLAGEN
+    assert capsys.readouterr().out.strip() == SKIPPED
     assert fake_gh.calls == []
 
 
-def test_draait_als_geinstalleerd_bestand(config):
-    """Het geïnstalleerde script vindt `lighthouse_lib` naast zich, vanuit elke cwd."""
+def test_runs_as_installed_file(config):
+    """The installed script finds `lighthouse_lib` next to itself, from any cwd."""
     config('[forge]\nrepo = "Owner/repo"\n')
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "7"],
@@ -295,4 +295,4 @@ def test_draait_als_geinstalleerd_bestand(config):
         cwd="/",
         check=False,
     )
-    assert (result.returncode, result.stdout.strip()) == (0, OVERGESLAGEN), result.stderr
+    assert (result.returncode, result.stdout.strip()) == (0, SKIPPED), result.stderr

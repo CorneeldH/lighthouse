@@ -783,7 +783,7 @@ kind = "file"
 path = ".lighthouse/scripts/board_start.py"
 package = "core"
 version = "dev"
-sha256 = "a19872e615c6a050dd07af6d2978e474f1f7a8df0b906b0529374487eea3e449"
+sha256 = "1ac0063fa92c5b38fb9a7f43434e0a18a1a60ccc8addd6fd1d86bf19072d2150"
 
 [[unit]]
 kind = "file"
@@ -804,14 +804,14 @@ kind = "file"
 path = ".lighthouse/scripts/measure_fix_pr_kpi.py"
 package = "core"
 version = "dev"
-sha256 = "b1f89030748af2c2d5aac1e730adb872f62fdb702ce8d8636656f8f050d561d5"
+sha256 = "ca1fbe02169938a4348085d8681e98865cbdfe2f0a423b1effea7c8ec16fe2d8"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/scripts/measure_start_issue_kpi.py"
 package = "core"
 version = "dev"
-sha256 = "a16a765ad66649a4f46ecfbb233b10cb1209191b8eb82bc00028c69a594c27a1"
+sha256 = "6acf9cddc1d67a6060e5612d8fbcfd80af15a9690a86e61a7237211c403cdec5"
 
 [[unit]]
 kind = "file"
@@ -839,7 +839,7 @@ kind = "file"
 path = ".lighthouse/scripts/unblock_dependents.py"
 package = "core"
 version = "dev"
-sha256 = "cc60ba273ce396541e01b47eb20f2c578a2afd899c3b6fec137a318563b46318"
+sha256 = "188332aca3c8ac369560ae8df0341a049b6d911c1da4a6195297142d11693612"
 
 [[unit]]
 kind = "file"

@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
 # lighthouse: core@dev
-"""Zet issues vrij die op een zojuist gesloten issue wachtten, als de bot uit `[ci]`.
+"""Release issues that waited on a just-closed issue, as the bot from `[ci]`.
 
-De vrijgeef-lane (`.github/workflows/lighthouse-unblock-dependents.yml`) draait dit
-script bij elke `issues: closed`. Voor elk open issue dat het gesloten issue blokkeerde
-(`dependencies/blocking`) telt het de blockers die nog open staan. Staan er geen
-meer open en draagt het issue het label `[labels] blocked_issue`, dan verdwijnt dat label en krijgt
-het issue een comment. Het gesloten issue krijgt één comment terug met wat er
-vrijkwam en wat nog wacht.
+The release lane (`.github/workflows/lighthouse-unblock-dependents.yml`) runs this
+script on every `issues: closed`. For each open issue that the closed issue blocked
+(`dependencies/blocking`) it counts the blockers that are still open. If none
+are open any more and the issue carries the label `[labels] blocked_issue`, that label is removed and
+the issue gets a comment. The closed issue gets one comment back with what was
+released and what still waits.
 
-Normen, bindend voor elke wijziging aan dit bestand:
+Norms, binding for every change to this file:
 
-- **Alleen `completed` geeft vrij.** Een issue dat als `not_planned` of `duplicate`
-  dichtging heeft het werk niet gedaan; de blokkade blijft staan en een mens beslist.
-- **Alleen wat het label draagt.** Een afhankelijke zonder het blokkeerlabel wordt
-  niet gelezen, niet bewerkt en niet genoemd; een tweede run na een geslaagde
-  vrijgave post dus niets nieuws. Een die nog wacht, wordt wel opnieuw genoemd.
-- **Eerst de comments, dan het label.** Eerst de terugcomment op het gesloten issue,
-  dan per afhankelijke de comment en pas dan de DELETE. Faalt een comment, dan blijft
-  het label staan en vangt een herstart het; een 404 op de DELETE betekent "al weg".
-- **Niet gelezen is geen nul.** Faalt het lezen van de blockers van één issue, dan
-  blijft dat label staan en is de run rood; "kon niet lezen" telt nooit als vrij.
-- **Stdlib-only**, plus `lighthouse_lib` uit `.lighthouse/lib`: het script draait met
-  `uv run --no-project`, zonder `uv sync`.
+- **Only `completed` releases.** An issue that was closed as `not_planned` or `duplicate`
+  did not do the work; the block stays and a human decides.
+- **Only what carries the label.** A dependent without the blocking label is
+  not read, not edited and not mentioned; a second run after a successful
+  release therefore posts nothing new. One that still waits is mentioned again.
+- **Comments first, then the label.** First the reply comment on the closed issue,
+  then per dependent the comment and only then the DELETE. If a comment fails, the
+  label stays and a restart catches it; a 404 on the DELETE means "already gone".
+- **Not read is not zero.** If reading the blockers of one issue fails, that label
+  stays and the run is red; "could not read" never counts as released.
+- **Stdlib-only**, plus `lighthouse_lib` from `.lighthouse/lib`: the script runs with
+  `uv run --no-project`, without `uv sync`.
 
-Waarom een workflow en geen stap in `lighthouse-close-issue`: een sessie mag niet als
-de bot schrijven (het token bestaat alleen in Actions), en een issue sluit ook
-via een PR-merge of met de hand. De skill controleert achteraf.
+Why a workflow and not a step in `lighthouse-close-issue`: a session may not write as
+the bot (the token exists only in Actions), and an issue also closes
+via a PR merge or by hand. The skill checks afterwards.
 
 Output and comments are English; the reply on the closed issue starts with the fixed
 line `RELEASE_LINE`, which `close-issue` reads.
@@ -53,181 +53,181 @@ from lighthouse_lib.config import ConfigError  # noqa: E402
 
 Gh = Callable[[Sequence[str]], str]
 
-REPO_PAD = "repos/{owner}/{repo}"
+REPO_PATH = "repos/{owner}/{repo}"
 RELEASE_LINE = "Released lane after this close:"
 
 
 def blocked_label() -> str:
-    """Het blokkeerlabel uit `[labels] blocked_issue`, met de default van de configlezer."""
+    """The blocking label from `[labels] blocked_issue`, with the config reader's default."""
     return str(config.lookup(config.load(config.config_path()), "labels.blocked_issue"))
 
 
-class _GhFout(subprocess.CalledProcessError):
-    """Een `gh`-fout met de stderr in `str()`."""
+class _GhError(subprocess.CalledProcessError):
+    """A `gh` error with the stderr in `str()`."""
 
     def __str__(self) -> str:
-        basis = super().__str__()
+        base = super().__str__()
         stderr = (self.stderr or "").strip()
-        return f"{basis}\n{stderr}" if stderr else basis
+        return f"{base}\n{stderr}" if stderr else base
 
 
 def run_gh(args: Sequence[str]) -> str:
-    """`gh` met een time-out; standalone."""
+    """`gh` with a timeout; standalone."""
     try:
-        klaar = subprocess.run(
+        completed = subprocess.run(
             ["gh", *args],
             capture_output=True,
             text=True,
             timeout=60,
             check=True,
         )
-    except subprocess.CalledProcessError as fout:
-        raise _GhFout(fout.returncode, fout.cmd, fout.output, fout.stderr) from fout
-    except subprocess.TimeoutExpired as fout:
-        melding = f"gh {args[0]}: timed out after {fout.timeout:.0f} s"
-        raise _GhFout(-1, fout.cmd, None, melding) from fout
-    return klaar.stdout
+    except subprocess.CalledProcessError as error:
+        raise _GhError(error.returncode, error.cmd, error.output, error.stderr) from error
+    except subprocess.TimeoutExpired as error:
+        message = f"gh {args[0]}: timed out after {error.timeout:.0f} s"
+        raise _GhError(-1, error.cmd, None, message) from error
+    return completed.stdout
 
 
-def _foutregel(fout: Exception) -> str:
-    """De oorzaak in een regel: bij een `gh`-fout de stderr, niet de `Command [...]`-kop."""
-    if isinstance(fout, subprocess.CalledProcessError):
-        for regel in (fout.stderr or "").splitlines():
-            if regel.strip():
-                return regel.strip()
-    if isinstance(fout, KeyError):
-        return f"missing field {fout}"
-    return str(fout)
+def _error_line(error: Exception) -> str:
+    """The cause on one line: for a `gh` error the stderr, not the `Command [...]` header."""
+    if isinstance(error, subprocess.CalledProcessError):
+        for line in (error.stderr or "").splitlines():
+            if line.strip():
+                return line.strip()
+    if isinstance(error, KeyError):
+        return f"missing field {error}"
+    return str(error)
 
 
-def _api(gh: Gh, pad: str) -> Any:
-    return json.loads(gh(["api", f"{REPO_PAD}/{pad}"]))
+def _api(gh: Gh, path: str) -> Any:
+    return json.loads(gh(["api", f"{REPO_PATH}/{path}"]))
 
 
-def _lijst(gh: Gh, pad: str) -> list[dict[str, Any]]:
-    """Een dependency-lijst, of `TypeError` als `gh` iets anders dan een lijst geeft."""
-    lijst = _api(gh, f"{pad}?per_page=100")
-    if not isinstance(lijst, list):
-        raise TypeError(f"{pad} returned no JSON list ({type(lijst).__name__})")
-    return lijst
+def _get_list(gh: Gh, path: str) -> list[dict[str, Any]]:
+    """A dependency list, or `TypeError` if `gh` gives anything other than a list."""
+    items = _api(gh, f"{path}?per_page=100")
+    if not isinstance(items, list):
+        raise TypeError(f"{path} returned no JSON list ({type(items).__name__})")
+    return items
 
 
-def _comment(gh: Gh, nr: int, tekst: str) -> None:
-    gh(["api", "-X", "POST", f"{REPO_PAD}/issues/{nr}/comments", "-f", f"body={tekst}"])
+def _comment(gh: Gh, nr: int, text: str) -> None:
+    gh(["api", "-X", "POST", f"{REPO_PATH}/issues/{nr}/comments", "-f", f"body={text}"])
 
 
 def _labels(issue: dict[str, Any]) -> set[str]:
     return {label["name"] for label in issue["labels"]}
 
 
-def _verwijder_label(gh: Gh, nr: int, label: str) -> None:
-    """DELETE van het label; een 404 (tussendoor met de hand weggehaald) is geen fout."""
+def _remove_label(gh: Gh, nr: int, label: str) -> None:
+    """DELETE the label; a 404 (removed by hand in the meantime) is not an error."""
     try:
-        gh(["api", "-X", "DELETE", f"{REPO_PAD}/issues/{nr}/labels/{quote(label, safe='')}"])
-    except subprocess.CalledProcessError as fout:
-        if "HTTP 404" not in (fout.stderr or ""):
+        gh(["api", "-X", "DELETE", f"{REPO_PATH}/issues/{nr}/labels/{quote(label, safe='')}"])
+    except subprocess.CalledProcessError as error:
+        if "HTTP 404" not in (error.stderr or ""):
             raise
 
 
-_LEESFOUTEN = (subprocess.CalledProcessError, ValueError, KeyError, TypeError)
+_READ_ERRORS = (subprocess.CalledProcessError, ValueError, KeyError, TypeError)
 
 
-def _lees_afhankelijken(gh: Gh, nr: int) -> tuple[str | None, list[dict[str, Any]]]:
-    """(melding, open afhankelijken); een melding betekent: niets te doen, en waarom."""
+def _read_dependents(gh: Gh, nr: int) -> tuple[str | None, list[dict[str, Any]]]:
+    """(message, open dependents); a message means: nothing to do, and why."""
     issue = _api(gh, f"issues/{nr}")
     if issue["state"] != "closed":
         return f"#{nr} is open: nothing to release.", []
     if issue["state_reason"] != "completed":
-        reden = issue["state_reason"]
-        return f"#{nr} closed as `{reden}`: blocks stay.", []
-    blocking = _lijst(gh, f"issues/{nr}/dependencies/blocking")
-    afhankelijk = [i for i in blocking if i["state"] == "open"]
-    if not afhankelijk:
+        reason = issue["state_reason"]
+        return f"#{nr} closed as `{reason}`: blocks stay.", []
+    blocking = _get_list(gh, f"issues/{nr}/dependencies/blocking")
+    dependents = [i for i in blocking if i["state"] == "open"]
+    if not dependents:
         return f"#{nr} blocked no open issues.", []
-    return None, afhankelijk
+    return None, dependents
 
 
-def _oordeel(gh: Gh, dep: dict[str, Any], label: str) -> tuple[str, str]:
-    """(soort, tekst) voor één afhankelijke, zonder te schrijven: `vrij`, `wacht` of `al`."""
+def _judge(gh: Gh, dep: dict[str, Any], label: str) -> tuple[str, str]:
+    """(kind, text) for one dependent, without writing: `vrij`, `wacht` or `al`."""
     if label not in _labels(dep):
         return "al", f"does not carry `{label}`, nothing to do"
-    blockers = _lijst(gh, f"issues/{dep['number']}/dependencies/blocked_by")
+    blockers = _get_list(gh, f"issues/{dep['number']}/dependencies/blocked_by")
     open_blockers = [f"#{b['number']}" for b in blockers if b["state"] == "open"]
     if open_blockers:
         return "wacht", f"still waits for {', '.join(open_blockers)}"
     return "vrij", f"released, `{label}` comes off"
 
 
-def _oordeel_alle(
-    gh: Gh, afhankelijk: list[dict[str, Any]], regels: list[str], label: str
+def _judge_all(
+    gh: Gh, dependents: list[dict[str, Any]], lines: list[str], label: str
 ) -> tuple[int, list[int], list[str]]:
-    """Fase 1: (exitcode, vrij te geven nummers, regels voor de terugcomment).
+    """Phase 1: (exit code, numbers to release, lines for the reply comment).
 
-    Vult `regels` aan met één summaryregel per afhankelijke.
+    Appends one summary line per dependent to `lines`.
     """
     code = 0
-    vrij: list[int] = []
-    terug: list[str] = []
-    for dep in afhankelijk:
+    released: list[int] = []
+    reply_lines: list[str] = []
+    for dep in dependents:
         m = dep["number"]
         try:
-            soort, tekst = _oordeel(gh, dep, label)
-        except _LEESFOUTEN as fout:
+            kind, text = _judge(gh, dep, label)
+        except _READ_ERRORS as error:
             code = 1
-            regels.append(f"- #{m}: **Error:** {_foutregel(fout)}")
+            lines.append(f"- #{m}: **Error:** {_error_line(error)}")
             continue
-        regels.append(f"- #{m}: {tekst}")
-        if soort == "vrij":
-            vrij.append(m)
-            terug.append(f"- #{m} is released: `{label}` comes off")
-        elif soort == "wacht":
-            terug.append(f"- #{m} {tekst}")
-    return code, vrij, terug
+        lines.append(f"- #{m}: {text}")
+        if kind == "vrij":
+            released.append(m)
+            reply_lines.append(f"- #{m} is released: `{label}` comes off")
+        elif kind == "wacht":
+            reply_lines.append(f"- #{m} {text}")
+    return code, released, reply_lines
 
 
-def _geef_vrij(gh: Gh, nr: int, m: int, label: str) -> None:
+def _release(gh: Gh, nr: int, m: int, label: str) -> None:
     _comment(
         gh,
         m,
         f"Released: the last open blocker #{nr} is closed; "
         f"the release lane removes `{label}`.",
     )
-    _verwijder_label(gh, m, label)
+    _remove_label(gh, m, label)
 
 
 def run(gh: Gh, nr: int, *, label: str, dry_run: bool = False) -> tuple[int, list[str]]:
-    """Geef de afhankelijken van `nr` vrij; (exitcode, summaryregels).
+    """Release the dependents of `nr`; (exit code, summary lines).
 
-    Drie fasen: lezen, de terugcomment op `nr`, dan pas de afhankelijken. Faalt de
-    terugcomment, dan is er nog niets aangeraakt en doet een herstart alles opnieuw.
+    Three phases: read, the reply comment on `nr`, only then the dependents. If the
+    reply comment fails, nothing has been touched yet and a restart redoes everything.
     """
-    regels = [f"## Release lane for #{nr}", ""]
+    lines = [f"## Release lane for #{nr}", ""]
     try:
-        melding, afhankelijk = _lees_afhankelijken(gh, nr)
-    except _LEESFOUTEN as fout:
-        return 1, [*regels, f"**Error:** #{nr} not read: {_foutregel(fout)}"]
-    if melding is not None:
-        return 0, [*regels, melding]
+        message, dependents = _read_dependents(gh, nr)
+    except _READ_ERRORS as error:
+        return 1, [*lines, f"**Error:** #{nr} not read: {_error_line(error)}"]
+    if message is not None:
+        return 0, [*lines, message]
 
-    code, vrij, terug = _oordeel_alle(gh, afhankelijk, regels, label)
+    code, released, reply_lines = _judge_all(gh, dependents, lines, label)
     if dry_run:
-        return code, [*regels, "", "_dry-run: nothing written._"]
-    if not terug:
-        return code, regels
+        return code, [*lines, "", "_dry-run: nothing written._"]
+    if not reply_lines:
+        return code, lines
     try:
-        _comment(gh, nr, "\n".join([RELEASE_LINE, "", *terug]))
-    except _LEESFOUTEN as fout:
-        regels.append(
-            f"**Error:** comment on #{nr}: {_foutregel(fout)}; nothing touched"
+        _comment(gh, nr, "\n".join([RELEASE_LINE, "", *reply_lines]))
+    except _READ_ERRORS as error:
+        lines.append(
+            f"**Error:** comment on #{nr}: {_error_line(error)}; nothing touched"
         )
-        return 1, regels
-    for m in vrij:
+        return 1, lines
+    for m in released:
         try:
-            _geef_vrij(gh, nr, m, label)
-        except _LEESFOUTEN as fout:
+            _release(gh, nr, m, label)
+        except _READ_ERRORS as error:
             code = 1
-            regels.append(f"- #{m}: **Error:** {_foutregel(fout)}")
-    return code, regels
+            lines.append(f"- #{m}: **Error:** {_error_line(error)}")
+    return code, lines
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -244,13 +244,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ConfigError as exc:
         print(f"unblock-dependents: {exc}", file=sys.stderr)
         return 2
-    code, regels = run(run_gh, args.issue, label=label, dry_run=args.dry_run)
-    tekst = "\n".join(regels) + "\n"
-    sys.stdout.write(tekst)
+    code, lines = run(run_gh, args.issue, label=label, dry_run=args.dry_run)
+    text = "\n".join(lines) + "\n"
+    sys.stdout.write(text)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
-        with open(summary, "a", encoding="utf-8") as bestand:
-            bestand.write(tekst)
+        with open(summary, "a", encoding="utf-8") as file:
+            file.write(text)
     return code
 
 
