@@ -12,11 +12,15 @@ serves all your repositories from one SQLite database.
 ## Install the binary
 
 ```bash
-go install github.com/CorneeldH/lighthouse/cmd/lighthouse@main
+GOPRIVATE=github.com/CorneeldH go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
 ```
 
-Use `@main`, not `@latest`: `@latest` resolves to the newest tag, and v0.1.5 has no `serve`.
-`@latest` only works after a release that contains `serve`.
+`@latest` resolves to the newest tag; `serve` is in every tag from v0.1.6. The repository is
+private, so `GOPRIVATE` makes `go` fetch it with your git credentials instead of through
+`proxy.golang.org`, which cannot read it.
+
+A build from `main` or from a clone reports version `dev`, and `lighthouse init` writes that
+version into `.lighthouse/manifest.toml`. Install a tag for a repository you run `init` in.
 
 Both `go install` forms put the binary in `~/go/bin`. `go install` does not leave a checkout.
 The steps below use files from the repository, so clone it and run them from the clone:
