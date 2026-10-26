@@ -38,11 +38,12 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
+      - run: CGO_ENABLED=0 go build ./...
       # Same flags as the Go part of [test_gate] command; tests/test_ci_go_test_pin.py pins it.
-      - run: go test -shuffle=on ./...
+      - run: go test -race -shuffle=on ./...
       # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - run: go test -shuffle=on -tags e2e ./e2e/ -v
+      - run: go test -race -shuffle=on -tags e2e ./e2e/ -v
       # lighthouse runs its own pack/core: the installed copy must match pack/ exactly.
       # The diff goes to the log; stdin is empty, so init declines (exit 1) and writes
       # nothing. `|| true` keeps bash -e from ending the step before the diff is printed.

@@ -1,0 +1,43 @@
+# lighthouse — development chain server (systemd user unit)
+#
+# Runs `lighthouse serve`: the API and web UI of the development chain, one server per
+# machine, serving every repository from one SQLite database.
+#
+# Why loopback: `serve` binds 127.0.0.1:8127 by default and has no authentication. Only the
+# host itself (and the tailnet, through deploy/tailscale-serve.sh) may reach it.
+#
+# Why StateDirectory: under ProtectHome=read-only `serve` cannot create its state directory,
+# and a ReadWritePaths= to a directory that does not exist fails the first start with
+# 226/NAMESPACE. StateDirectory= makes systemd create the directory (mode 0700) before the
+# start and keeps it writable inside the hardening. %S is the user manager's state directory
+# ($XDG_STATE_HOME, else ~/.local/state), the same path StateDirectory= creates.
+#
+# Install (details in docs/install.md):
+#   go install github.com/CorneeldH/lighthouse/cmd/lighthouse@main
+#   mkdir -p ~/.config/systemd/user
+#   cp deploy/systemd/lighthouse.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now lighthouse.service
+#   loginctl enable-linger "$USER"
+#
+# %h/go/bin is where `go install` puts the binary; edit ExecStart if yours lives elsewhere.
+
+[Unit]
+Description=lighthouse — development chain server
+
+[Service]
+Type=exec
+ExecStart=%h/go/bin/lighthouse serve --db %S/lighthouse/lighthouse.db
+StateDirectory=lighthouse
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=5
+ProtectSystem=strict
+ProtectHome=read-only
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lighthouse
+
+[Install]
+WantedBy=default.target
