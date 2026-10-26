@@ -1,9 +1,9 @@
-"""End-to-end tests voor pack/core `pr-create-gate.sh`, as installed (#1091).
+"""End-to-end tests for pack/core `pr-create-gate.sh`, as installed (#1091).
 
-De hook draait als subprocess met een echte projectrepo in `tmp_path` als
-`CLAUDE_PROJECT_DIR`. Netwerkverbod: een stub-`gh` staat altijd vooraan op
-`PATH` (behalve in `test_gh_ontbreekt_laat_luid_door`, dat juist een PATH
-zonder `gh` nodig heeft), zodat geen enkele test de echte `gh` bereikt.
+The hook runs as a subprocess with a real project repo in `tmp_path` as
+`CLAUDE_PROJECT_DIR`. No network: a stub `gh` is always first on
+`PATH` (except in `test_gh_missing_passes_loudly`, which needs a PATH
+without `gh`), so no test reaches the real `gh`.
 """
 
 import json
@@ -34,7 +34,7 @@ HOOKS_JSON = CORE / "hooks" / "hooks.json"
 # `forge.repo` of the lighthouse.toml that install_core leaves behind.
 REPO = "Acme/widgets"
 
-# Nep-`gh`: print $GH_ISSUE_BODY voor het issue-endpoint, exit 1 met GH_FAIL.
+# Fake `gh`: prints $GH_ISSUE_BODY for the issue endpoint, exits 1 with GH_FAIL.
 FAKE_GH = (
     "#!/bin/sh\n"
     'if [ -n "$GH_FAIL" ]; then exit 1; fi\n'
@@ -48,7 +48,7 @@ BASE_TOOLS = ("jq", "python3", "git", "cat", "dirname", "bash")
 
 
 class Gate:
-    """Een tijdelijke projectrepo plus een stubmap met nep-`gh`."""
+    """A temporary project repo plus a stub directory with a fake `gh`."""
 
     def __init__(self, tmp_path: Path, project: Path) -> None:
         self.tmp = tmp_path
@@ -68,7 +68,7 @@ class Gate:
         cwd = self.project if cwd is None else cwd
         tail = os.environ["PATH"] if path is None else path
         full_env = {
-            # Stubmap altijd eerst, tenzij de test bewust zonder `gh` draait.
+            # Stub directory always first, unless the test deliberately runs without `gh`.
             "PATH": f"{self.stub}{os.pathsep}{tail}" if stub else tail,
             "CLAUDE_PROJECT_DIR": str(self.project),
             "GH_ISSUE_BODY": ISSUE_WITH_THREE_AC,
@@ -206,8 +206,8 @@ def test_without_tooling_blocks(gate: Gate, tmp_path: Path, drop: str) -> None:
 
 
 def test_parser_with_unexpected_rc_blocks(gate: Gate) -> None:
-    # Een lib die met een andere code dan 0/2/3 eindigt (traceback: rc 1) is
-    # geen groen licht. Een nep-python3 vooraan op PATH forceert dat.
+    # A lib that ends with a code other than 0/2/3 (traceback: rc 1) is
+    # no green light. A fake python3 first on PATH forces that.
     tool_bin(gate.stub, (), stubs={"python3": "#!/bin/sh\nexit 1\n"})
 
     result = gate.run("gh pr create --body 'Refs #5 — wacht op deploy op de Beelink'")
@@ -254,7 +254,7 @@ def test_hook_registered_and_executable() -> None:
 
 
 def run_hook_raw(gate: Gate):
-    """De hook met een payload die geen JSON is."""
+    """The hook with a payload that is not JSON."""
     return subprocess.run(
         [str(HOOK)],
         input="geen json {",

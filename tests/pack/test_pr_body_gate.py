@@ -1,9 +1,9 @@
-"""`pack/core/lib/pr_body_gate.py` (#1091): vormen, Evidence-tabel, AC-telling.
+"""`pack/core/lib/pr_body_gate.py` (#1091): forms, Evidence table, AC count.
 
-De lib is de pure logica onder `pr-create-gate.sh`: welke vorm (`Closes` met
-Evidence-blok, `Refs` met reden, `No issue`) de PR-body heeft, of de tabel
-klopt en of het aantal rijen het aantal AC van het issue dekt. Netwerkverbod:
-`fetch_ac_count` krijgt hier een stub-`gh` vooraan op `PATH`.
+The lib is the pure logic under `pr-create-gate.sh`: which form (`Closes` with
+an Evidence block, `Refs` with a reason, `No issue`) the PR body has, whether the
+table is right and whether the number of rows covers the number of AC of the
+issue. No network: `fetch_ac_count` gets a stub `gh` first on `PATH` here.
 """
 
 import io
@@ -38,7 +38,7 @@ ISSUE_WITH_THREE_AC = (
 
 
 def closes_body(nr: int, rows: list[tuple[str, str, str]]) -> str:
-    """Een body met `Closes #nr` en een Evidence-tabel met de gegeven rijen."""
+    """A body with `Closes #nr` and an Evidence table with the given rows."""
     table = "\n".join(f"| {ac} | {cmd} | {res} |" for ac, cmd, res in rows)
     return (
         f"## Related issues\n\nCloses #{nr}\n\n"
@@ -93,14 +93,14 @@ def other_identity(monkeypatch, tmp_path):
 
 
 def test_repo_comes_from_lighthouse_toml(other_identity):
-    """De repo komt uit `lighthouse.toml`, niet uit een literal (#1445), bij elke aanroep."""
+    """The repo comes from `lighthouse.toml`, not from a literal (#1445), on every call."""
     assert gate.repo() == "Other/repo"
     assert gate.closes_targets("Closes Other/repo#12") == [12]
     assert gate.closes_targets("Closes Acme/widgets#12") == []
 
 
 def test_without_forge_repo(tmp_path, monkeypatch):
-    """Zonder `forge.repo` telt alleen `#N`; de AC-telling meldt dat en de rest blijft toetsen."""
+    """Without `forge.repo` only `#N` counts; the AC count reports that and the rest is still checked."""
     toml = tmp_path / "lighthouse.toml"
     toml.write_text('[project]\nlanguage = "en"\n')
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(toml))
@@ -111,7 +111,7 @@ def test_without_forge_repo(tmp_path, monkeypatch):
 
 
 def test_missing_toml_fails_loud(tmp_path):
-    """Zonder toml faalt de lib luid bij een `gh pr create`; `pr-create-gate.sh` meldt dat als blokkade."""
+    """Without a toml the lib fails loudly on a `gh pr create`; `pr-create-gate.sh` reports that as a blocker."""
     lib = INSTALLED_LIB / "pr_body_gate.py"
     gone = tmp_path / "weg.toml"
     proc = subprocess.run(
@@ -186,7 +186,7 @@ def test_no_issue_too_short():
     assert not gate.no_issue("No issue: typo")
 
 
-# --- Evidence-tabel -------------------------------------------------------
+# --- Evidence table -------------------------------------------------------
 
 
 def test_evidence_valid():
@@ -385,7 +385,7 @@ def test_fetch_ac_count_no_ac_heading(monkeypatch, tmp_path):
 
 
 def test_fetch_ac_count_timeout(monkeypatch, tmp_path):
-    # Een FIFO zonder schrijver: `read` blokkeert zonder CPU te branden.
+    # A FIFO without a writer: `read` blocks without burning CPU.
     fifo = tmp_path / "blok"
     os.mkfifo(fifo)
     monkeypatch.setattr(gate, "AC_TIMEOUT_S", 0.3)
@@ -483,7 +483,7 @@ def test_repo_flag(tmp_path):
     [
         ("GH_REPO=x/y gh pr create --fill", "x/y"),
         ("env GH_REPO=x/y gh pr create --fill", "x/y"),
-        # gh: `-R` wint van `GH_REPO`.
+        # gh: `-R` beats `GH_REPO`.
         ("GH_REPO=x/y gh pr create -R Acme/widgets -F b", "Acme/widgets"),
     ],
 )
@@ -528,7 +528,7 @@ def test_scope_own_repo(tmp_path, project):
     git(project, "worktree", "add", "-q", str(wt), "-b", "feat")
     assert gate.in_scope(_pc(str(project)), str(project))[0] == "toetsen"
     assert gate.in_scope(_pc(str(wt)), str(project))[0] == "toetsen"
-    # Ook een nog niet bestaande submap telt als de repo van zijn voorouder.
+    # A subdirectory that does not exist yet also counts as the repo of its ancestor.
     assert gate.in_scope(_pc(str(wt / "nieuw")), str(project))[0] == "toetsen"
 
 
@@ -597,7 +597,7 @@ def test_scope_repo_query_and_anchor_drop_out(tmp_path, project, repo):
 
 
 def test_scope_non_literal_repo_blocks_also_outside_the_repo(tmp_path, project):
-    """`-R "$R"` vanuit een map buiten de repo: welke repo het wordt, zien we niet."""
+    """`-R "$R"` from a directory outside the repo: we cannot tell which repo it becomes."""
     outside = tmp_path / "buiten"
     outside.mkdir()
     [pc] = gate.find_pr_creates('gh pr create -R "$R" -F b.md', str(outside))
@@ -620,7 +620,7 @@ def test_scope_other_git_repo(tmp_path, project):
 
 
 def test_scope_forge_worktree_of_the_same_repo(tmp_path, project):
-    """Een worktree van een aparte clone met dezelfde `origin` is deze repo (#36)."""
+    """A worktree of a separate clone with the same `origin` is this repo (#36)."""
     git(project, "remote", "add", "origin", ORIGIN)
     work = forge_worktree(project, tmp_path)
     assert gate.in_scope(_pc(str(work)), str(project)) == ("toetsen", "")
@@ -643,7 +643,7 @@ def test_scope_unknown_cwd_blocks(project):
 
 
 def test_scope_other_git_error_blocks(tmp_path, project, monkeypatch):
-    # Een git die faalt zonder "not a git repository" is geen bewijs van "buiten".
+    # A git that fails without "not a git repository" is no proof of "outside".
     bin_dir = tool_bin(
         tmp_path / "bin", (), stubs={"git": "#!/bin/sh\necho kapot >&2\nexit 128\n"}
     )
@@ -743,7 +743,7 @@ def test_main_fallback_without_gh_notices_and_passes(
 
 @pytest.fixture(autouse=True)
 def _reset_deadline(monkeypatch):
-    """`main` zet de moduleglobal `_deadline`; zet hem na elke test terug op `None`."""
+    """`main` sets the module global `_deadline`; reset it to `None` after every test."""
     monkeypatch.setattr(gate, "_deadline", None)
 
 
@@ -764,7 +764,7 @@ def _three_closes(with_evidence: tuple[int, ...]) -> str:
 def test_main_deadline_bounds_slow_gh_fallback(
     project, monkeypatch, capsys, tmp_path
 ):
-    # Drie Closes-doelen, gh hangt: zonder totale deadline kost dit 3 x timeout.
+    # Three Closes targets, gh hangs: without a total deadline this costs 3 x timeout.
     monkeypatch.setattr(gate, "DEADLINE_S", 1)
     _slow_gh(monkeypatch, tmp_path)
     (project / "body.md").write_text(_three_closes((5, 6, 7)), encoding="utf-8")
@@ -781,8 +781,8 @@ def test_main_deadline_bounds_slow_gh_fallback(
 def test_main_deadline_keeps_blocker_of_earlier_target(
     project, monkeypatch, capsys, tmp_path
 ):
-    # #5 mist zijn Evidence-blok: dat blijft een blokkade, ook als de deadline
-    # verloopt tijdens de AC-fetch van #6 en #7.
+    # #5 lacks its Evidence block: that stays a blocker, even if the deadline
+    # expires during the AC fetch of #6 and #7.
     monkeypatch.setattr(gate, "DEADLINE_S", 1)
     _slow_gh(monkeypatch, tmp_path)
     (project / "body.md").write_text(_three_closes((6, 7)), encoding="utf-8")
@@ -796,7 +796,7 @@ def test_main_deadline_keeps_blocker_of_earlier_target(
 
 
 def test_main_deadline_git_blocks_loudly(project, monkeypatch, capsys, tmp_path):
-    # Een hangende git bij de scopetoets is geen bewijs van "binnen" of "buiten".
+    # A hanging git in the scope check is no proof of "inside" or "outside".
     monkeypatch.setattr(gate, "DEADLINE_S", 1)
     bin_dir = tool_bin(tmp_path / "bin", (), stubs={"git": "#!/bin/sh\nsleep 3\n"})
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
@@ -822,7 +822,7 @@ def test_fetch_ac_count_deadline_expired(monkeypatch):
 
 
 def test_cli_as_script(project, tmp_path):
-    # Zoals de hook hem aanroept: een eigen proces onder python3.
+    # As the hook calls it: a process of its own under python3.
     import subprocess
     import sys
 
@@ -843,7 +843,7 @@ def test_cli_as_script(project, tmp_path):
 
 @pytest.mark.parametrize("heading", ["### Acceptatiecriteria", "### Acceptance criteria"])
 def test_ac_heading_any_language(heading, tmp_path, monkeypatch):
-    """Een Nederlands issue in een Engelse repo telt zijn AC zoals een Engels issue."""
+    """A Dutch issue in an English repo counts its AC like an English issue."""
     toml = tmp_path / "lighthouse.toml"
     toml.write_text('[project]\nlanguage = "en"\n\n[forge]\nkind = "github"\nrepo = "Acme/widgets"\n')
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(toml))
@@ -862,9 +862,9 @@ def _git_speaks_german(where) -> bool:
 
 
 def test_not_a_git_repository_under_other_locale(tmp_path, project, monkeypatch):
-    """Onder een andere taal blijft een map buiten git `buiten deze repo` (inventaris §2.12).
+    """Under another language a directory outside git stays `outside this repo` (inventory §2.12).
 
-    Git levert geen Nederlandse vertaling; Duits laat dezelfde fout zien.
+    Git ships no Dutch translation; German shows the same error.
     """
     outside = tmp_path / "buiten"
     outside.mkdir()

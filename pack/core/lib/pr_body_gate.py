@@ -1,21 +1,21 @@
-"""Toets een `gh pr create`-body op een geldige vorm (#1091).
+"""Check a `gh pr create` body for a valid form (#1091).
 
-Pure logica onder de PreToolUse-hook `pr-create-gate.sh`; ontwerp:
+Pure logic under the PreToolUse hook `pr-create-gate.sh`; design:
 `docs/developer/planning/specs/2026-10-03-pr-verifieert-issue-design.md`,
-sectie 3. `evidence.py` (de runner die de Evidence-rijen uitvoert) en
-`pr-create-gate.sh` delen deze lib, zodat de vorm op één plek staat.
+section 3. `evidence.py` (the runner that executes the Evidence rows) and
+`pr-create-gate.sh` share this lib, so the form is defined in one place.
 
-Een body moet minstens één van drie vormen hebben (mengen mag):
+A body must have at least one of three forms (mixing is allowed):
 
-- `Closes #N` met een kop `### Evidence #N` en een tabel `AC | Command | Result`
-  met één rij per acceptatiecriterium van het issue;
-- `Refs #N — <reden>` (reden minstens `MIN_REDEN` tekens);
-- `No issue: <reden>` (idem).
+- `Closes #N` with a heading `### Evidence #N` and a table `AC | Command | Result`
+  with one row per acceptance criterion of the issue;
+- `Refs #N — <reason>` (reason at least `MIN_REASON` characters);
+- `No issue: <reason>` (same).
 
-Alleen stdlib: de hook draait onder de host-`python3`. De repo komt bij elke
-aanroep uit `lighthouse.toml` (`lighthouse_lib.config`); deugt die toml niet, dan
-faalt de toets luid met een `ConfigError`. Zonder `forge.repo` telt alleen `#N`,
-en meldt de AC-telling dat ze niet meetbaar is.
+Stdlib only: the hook runs under the host `python3`. The repo comes from
+`lighthouse.toml` (`lighthouse_lib.config`) on every call; if that toml is
+broken, the check fails loudly with a `ConfigError`. Without `forge.repo` only
+`#N` counts, and the AC count reports that it is not measurable.
 """
 
 from __future__ import annotations
@@ -46,10 +46,10 @@ from lighthouse_lib.git_invocations import (
 
 
 def repo() -> str | None:
-    """`forge.repo` uit `lighthouse.toml`, of `None` als hij er niet staat.
+    """`forge.repo` from `lighthouse.toml`, or `None` if it is not there.
 
-    Geen try/except: een `ConfigError` is de luide faal die `pr-create-gate.sh`
-    als blokkade meldt.
+    No try/except: a `ConfigError` is the loud failure that `pr-create-gate.sh`
+    reports as a blocker.
     """
     return config.load(config.config_path()).repo
 
@@ -58,7 +58,7 @@ CLOSE_WORDS = r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)"
 
 
 def _closes_re() -> re.Pattern[str]:
-    """Doel: #N, <repo>#N of de volledige issue-URL; zonder repo alleen #N."""
+    """Target: #N, <repo>#N or the full issue URL; without a repo only #N."""
     own_repo = repo()
     if own_repo is None:
         target = r"#(\d+)(?![\w/])"
@@ -69,8 +69,8 @@ def _closes_re() -> re.Pattern[str]:
         )
     return re.compile(rf"(?<![\w/]){CLOSE_WORDS}:?[ \t]+{target}", re.IGNORECASE)
 
-REFS_SEP = ("—", "-", ":")  # op dezelfde regel als `Refs #N`
-MIN_REASON = 10  # tekens, na strip(), voor Refs én No issue
+REFS_SEP = ("—", "-", ":")  # on the same line as `Refs #N`
+MIN_REASON = 10  # characters, after strip(), for Refs and No issue
 _REFS_RE = re.compile(r"(?<![\w/])Refs[ \t]+#(\d+)(?![\w/])(.*)", re.IGNORECASE)
 _NO_ISSUE_RE = re.compile(r"^[ \t]*No issue[ \t]*:(.*)$", re.IGNORECASE | re.MULTILINE)
 
@@ -81,7 +81,7 @@ _CELL_SPLIT_RE = re.compile(r"(?<!\\)\|")
 
 
 def _ac_heading_re() -> re.Pattern[str]:
-    """De AC-kop in elke taal van `headings.toml` (een issue kan een andere taal hebben)."""
+    """The AC heading in every language of `headings.toml` (an issue can have another language)."""
     return re.compile(
         rf"^#{{2,4}}[ \t]+{headings.any_of('acceptance_criteria')}[ \t]*$",
         re.IGNORECASE,
@@ -92,9 +92,9 @@ _HEADING_RE = re.compile(r"^#{1,6}[ \t]")
 _CHECKBOX_RE = re.compile(r"^[ \t]*[-*][ \t]+\[[ xX]\]")
 
 AC_TIMEOUT_S = 5
-# Totale deadline per `main`-aanroep over alle subprocess-calls (gh én git). Moet
-# onder de hook-timeout (15 s in .claude/settings.json) blijven: een command-hook
-# die verloopt laat de tool-call door, en dat zou fail-open zijn.
+# Total deadline per `main` call across all subprocess calls (gh and git). Must
+# stay under the hook timeout (15 s in .claude/settings.json): a command hook
+# that expires lets the tool call through, and that would be fail-open.
 DEADLINE_S = 12
 FALLBACK_NOTICE = (
     "pr-create-gate: AC count not measurable for #{nr} ({cause})"
@@ -103,7 +103,7 @@ FALLBACK_NOTICE = (
 
 
 class Row(NamedTuple):
-    """Eén datarij van het Evidence-blok; `command` is de ruwe cel, mét backticks."""
+    """One data row of the Evidence block; `command` is the raw cell, with backticks."""
 
     ac: str
     command: str
@@ -116,13 +116,13 @@ class Verdict(NamedTuple):
 
 
 def strip_comments(body: str) -> str:
-    """`\\r\\n` naar `\\n` (web-UI-bewerking), dan `<!-- … -->` eruit."""
+    """`\\r\\n` to `\\n` (web UI edit), then drop `<!-- … -->`."""
     body = body.replace("\r\n", "\n")
     return re.sub(r"<!--.*?-->", "", body, flags=re.DOTALL)
 
 
 def closes_targets(body: str) -> list[int]:
-    """Uniek, in volgorde van voorkomen, de issues waarvoor de body een sluitwoord heeft."""
+    """The issues for which the body has a closing word, unique, in order of appearance."""
     seen: list[int] = []
     for m in _closes_re().finditer(strip_comments(body)):
         nr = int(m.group(1))
@@ -132,7 +132,7 @@ def closes_targets(body: str) -> list[int]:
 
 
 def _parse_reason(rest: str) -> str:
-    """De reden achter een scheidingsteken, of "" zonder scheidingsteken."""
+    """The reason after a separator, or "" without a separator."""
     rest = rest.strip()
     if not rest.startswith(REFS_SEP):
         return ""
@@ -140,7 +140,7 @@ def _parse_reason(rest: str) -> str:
 
 
 def _all_refs(body: str) -> list[tuple[int, str]]:
-    """Elke `Refs #N` met zijn reden ("" als het scheidingsteken of de reden ontbreekt)."""
+    """Every `Refs #N` with its reason ("" if the separator or the reason is missing)."""
     return [
         (int(m.group(1)), _parse_reason(m.group(2)))
         for m in _REFS_RE.finditer(strip_comments(body))
@@ -148,16 +148,16 @@ def _all_refs(body: str) -> list[tuple[int, str]]:
 
 
 def refs_targets(body: str) -> list[int]:
-    """Elk issuenummer achter een `Refs #N` buiten commentaar, in volgorde, zonder reden-eis.
+    """Every issue number after a `Refs #N` outside comments, in order, with no reason required.
 
-    Anders dan `refs_issues` telt ook een `Refs #N` zonder (lange) reden: wie alleen
-    wil weten *of* een PR-body naar een issue verwijst, leest de gate-vorm zo.
+    Unlike `refs_issues`, a `Refs #N` without a (long) reason counts too: whoever only
+    wants to know *whether* a PR body refers to an issue reads the gate form this way.
     """
     return [nr for nr, _ in _all_refs(body)]
 
 
 def refs_issues(body: str) -> list[int]:
-    """Alleen de `Refs #N` met een reden van minstens `MIN_REDEN` tekens."""
+    """Only the `Refs #N` with a reason of at least `MIN_REASON` characters."""
     found: list[int] = []
     for nr, reason in _all_refs(body):
         if len(reason) >= MIN_REASON and nr not in found:
@@ -173,7 +173,7 @@ def no_issue(body: str) -> bool:
 
 
 def _cells(line: str) -> list[str]:
-    """Splits een tabelregel op niet-geëscapete `|`; de buitenste pipes vallen weg."""
+    """Split a table line on unescaped `|`; the outer pipes are dropped."""
     s = line.strip()
     s = s.removeprefix("|")
     if s.endswith("|") and not s.endswith("\\|"):
@@ -182,7 +182,7 @@ def _cells(line: str) -> list[str]:
 
 
 def _row(line: str, seq: int) -> Row | str:
-    """Eén datarij als `Row`, of de reden waarom hij ongeldig is."""
+    """One data row as `Row`, or the reason why it is invalid."""
     cells = _cells(line)
     if len(cells) != len(EVIDENCE_HEADER):
         return (
@@ -198,7 +198,7 @@ def _row(line: str, seq: int) -> Row | str:
 
 
 def evidence_rows(body: str, nr: int) -> list[Row] | str:
-    """De rijen van `### Evidence #nr`, of de reden waarom het blok niet klopt."""
+    """The rows of `### Evidence #nr`, or the reason why the block is wrong."""
     lines = strip_comments(body).split("\n")
     heading = re.compile(rf"^###[ \t]+Evidence[ \t]+#{nr}[ \t]*$")
     start = next((i for i, r in enumerate(lines) if heading.match(r)), None)
@@ -230,7 +230,7 @@ def evidence_rows(body: str, nr: int) -> list[Row] | str:
 
 
 def count_acs(issue_body: str) -> int | None:
-    """Aantal checkboxregels onder de AC-kop (`#{2,4}`, elke taal); `None` bij geen kop of nul."""
+    """Number of checkbox lines under the AC heading (`#{2,4}`, any language); `None` for no heading or zero."""
     lines = issue_body.replace("\r\n", "\n").split("\n")
     heading = _ac_heading_re()
     start = next((i for i, r in enumerate(lines) if heading.match(r)), None)
@@ -245,18 +245,18 @@ def count_acs(issue_body: str) -> int | None:
     return count or None
 
 
-_deadline: float | None = None  # `time.monotonic()`-moment; door `main` gezet
+_deadline: float | None = None  # `time.monotonic()` moment; set by `main`
 
 
-def _budget(own_repo: float) -> float:
-    """`min(eigen timeout, resterende deadline)`; `<= 0` betekent: het budget is op."""
+def _budget(own_timeout: float) -> float:
+    """`min(own timeout, remaining deadline)`; `<= 0` means: the budget is spent."""
     if _deadline is None:
-        return own_repo
-    return min(own_repo, _deadline - time.monotonic())
+        return own_timeout
+    return min(own_timeout, _deadline - time.monotonic())
 
 
 def fetch_ac_count(nr: int) -> tuple[int | None, str]:
-    """`(aantal, "")` of `(None, oorzaak)`; nooit een exception voor een gewone storing."""
+    """`(count, "")` or `(None, cause)`; never an exception for an ordinary failure."""
     timeout = _budget(AC_TIMEOUT_S)
     if timeout <= 0:
         return None, "deadline reached"
@@ -321,9 +321,9 @@ def check_body(
     return Verdict(blockers, notices)
 
 
-# --- gh pr create vinden, body-bron, scope ----------------------------------
+# --- finding gh pr create, body source, scope -------------------------------
 
-# Opties met een waarde (los of `=`); `--recover` neemt ook een waarde.
+# Options with a value (separate or `=`); `--recover` takes a value too.
 _VALUE_LONG = frozenset(
     {
         "--base", "--head", "--title", "--body", "--body-file", "--assignee",
@@ -334,7 +334,7 @@ _VALUE_LONG = frozenset(
 _VALUE_SHORT = frozenset(
     {"-B", "-H", "-t", "-b", "-F", "-a", "-l", "-m", "-p", "-r", "-R", "-T"}
 )
-# Vlaggen die geen toetsbare body opleveren (de PR-tekst komt dan van elders).
+# Flags that yield no checkable body (the PR text then comes from elsewhere).
 _NO_BODY_LONG = frozenset(
     {"--fill", "--fill-first", "--fill-verbose", "--web", "--editor"}
 )
@@ -344,12 +344,12 @@ NOT_A_REPO = "not a repo"
 
 
 class PrCreate(NamedTuple):
-    """Eén `gh pr create` (of `gh pr new`) met de stand van zijn eigen stap.
+    """One `gh pr create` (or `gh pr new`) with the state of its own step.
 
-    `cwd` is `step.dirs["here"]` op het moment van de stap (None = onbekend);
-    `body_file` is daar al tegen opgelost. `probleem` is een reden om te
-    blokkeren vóór elke inhoudstoets. `repo_probleem` blokkeert ongeacht de
-    cwd: bij een niet-letterlijke repo weten we niet of de PR hierheen gaat.
+    `cwd` is `step.dirs["here"]` at the moment of the step (None = unknown);
+    `body_file` is already resolved against it. `problem` is a reason to
+    block before any content check. `repo_problem` blocks regardless of the
+    cwd: with a non-literal repo we do not know whether the PR goes here.
     """
 
     cwd: str | None
@@ -360,11 +360,11 @@ class PrCreate(NamedTuple):
     repo_problem: str | None = None
 
 
-Option = tuple[str, bool, bool]  # (waarde, letterlijk, tilde)
+Option = tuple[str, bool, bool]  # (value, literal, tilde)
 
 
 def _option(step: Step, k: int) -> tuple[str | None, Option | None, list[str], int]:
-    """Het woord op `k` als optie: `(naam, waarde, geen-body-vlaggen, volgende k)`."""
+    """The word at `k` as an option: `(name, value, no-body flags, next k)`."""
     words, literal, tildes = step.words, step.literal, step.tildes
     w = words[k]
     if w.startswith("--"):
@@ -384,13 +384,13 @@ def _option(step: Step, k: int) -> tuple[str | None, Option | None, list[str], i
         name = w
     else:
         return None, None, [], k + 1
-    if k + 1 >= len(words):  # optie zonder waarde
+    if k + 1 >= len(words):  # option without a value
         return name, None, [], k + 1
     return name, (words[k + 1], literal[k + 1], tildes[k + 1]), [], k + 2
 
 
 def _options(step: Step) -> tuple[dict[str, Option], list[str]]:
-    """Optiewaarden per optienaam en de gevonden geen-body-vlaggen."""
+    """Option values per option name and the no-body flags found."""
     values: dict[str, Option] = {}
     flags: list[str] = []
     k = step.idx + 3
@@ -409,7 +409,7 @@ def _first_value(values: dict[str, Option], *names: str) -> Option | None:
 def _body_source(
     cwd: str | None, body_w: Option | None, file_w: Option | None, flags: list[str]
 ) -> tuple[str | None, str | None, str | None]:
-    """`(body, body_file, probleem)` volgens de body-bron-tabel van de spec."""
+    """`(body, body_file, problem)` per the body-source table of the spec."""
     if flags:
         return None, None, f"{flags[0]} gives no body to check"
     if body_w and file_w:
@@ -433,7 +433,7 @@ def _body_source(
 
 
 def _gh_repo_env(step: Step) -> Option | None:
-    """Een `GH_REPO=…` vóór `gh` (ook na `env`), als optiewaarde; de laatste wint."""
+    """A `GH_REPO=…` before `gh` (also after `env`), as an option value; the last one wins."""
     found = None
     for k in range(step.idx):
         name, equals, value = step.words[k].partition("=")
@@ -443,9 +443,9 @@ def _gh_repo_env(step: Step) -> Option | None:
 
 
 def _pr_create(step: Step) -> PrCreate:
-    cwd = step.dirs["here"]  # LIVE dict: nu kopiëren, voor de volgende next()
+    cwd = step.dirs["here"]  # LIVE dict: copy now, before the next next()
     values, flags = _options(step)
-    # gh: `--repo`/`-R` wint van `GH_REPO`.
+    # gh: `--repo`/`-R` beats `GH_REPO`.
     flag = _first_value(values, "--repo", "-R")
     repo_w = flag or _gh_repo_env(step)
     body, body_file, problem = _body_source(
@@ -455,8 +455,8 @@ def _pr_create(step: Step) -> PrCreate:
         flags,
     )
     if repo_w and not repo_w[1]:
-        # Gaat de PR naar deze repo of een andere? Dat zien we niet, ook niet
-        # aan de cwd: blokkeren, waar het commando ook draait.
+        # Does the PR go to this repo or another? We cannot tell, not even
+        # from the cwd: block, wherever the command runs.
         source = "--repo" if flag else "GH_REPO"
         return PrCreate(
             cwd,
@@ -470,7 +470,7 @@ def _pr_create(step: Step) -> PrCreate:
 
 
 def find_pr_creates(command: str, cwd: str | None) -> list[PrCreate]:
-    """Elke `gh pr create`/`gh pr new` in `command`; gooit `Unparseable` bij een open quote."""
+    """Every `gh pr create`/`gh pr new` in `command`; raises `Unparseable` on an open quote."""
     found: list[PrCreate] = []
     for step in walk(command, cwd):
         w = step.words
@@ -485,7 +485,7 @@ def find_pr_creates(command: str, cwd: str | None) -> list[PrCreate]:
 
 
 def _common_dir(path: str) -> tuple[str | None, str]:
-    """`(git-common-dir, "")`, `(None, GEEN_REPO)` of `(None, <git-fout>)`."""
+    """`(git-common-dir, "")`, `(None, NOT_A_REPO)` or `(None, <git error>)`."""
     timeout = _budget(GIT_TIMEOUT_S)
     if timeout <= 0:
         return None, "COULD NOT CHECK: deadline reached"
@@ -502,7 +502,7 @@ def _common_dir(path: str) -> tuple[str | None, str]:
             capture_output=True,
             text=True,
             timeout=timeout,
-            # De fouttekst wordt hieronder gematcht, en git vertaalt hem.
+            # The error text is matched below, and git translates it.
             env=dict(os.environ, LC_ALL="C"),
             check=False,
         )
@@ -516,23 +516,23 @@ def _common_dir(path: str) -> tuple[str | None, str]:
 
 
 def _normalize_repo(value: str) -> str | None:
-    """`owner/repo` (kleine letters) uit een `--repo`-waarde, of `None` als die vorm ontbreekt.
+    """`owner/repo` (lowercase) from a `--repo` value, or `None` if that form is missing.
 
-    gh accepteert `[HOST/]OWNER/REPO` en URL's (`https://…`, `ssh://git@…`, `git@host:o/r`),
-    met of zonder `.git` of een slot-`/`.
+    gh accepts `[HOST/]OWNER/REPO` and URLs (`https://…`, `ssh://git@…`, `git@host:o/r`),
+    with or without `.git` or a trailing `/`.
     """
-    rest = re.split(r"[?#]", value.strip(), maxsplit=1)[0]  # query en anker weg
-    schema = "://" in rest
+    rest = re.split(r"[?#]", value.strip(), maxsplit=1)[0]  # drop query and anchor
+    has_scheme = "://" in rest
     rest = rest.split("://", 1)[-1]
     user = "@" in rest.split("/", 1)[0]
     if user:
         rest = rest.split("@", 1)[-1]
-    has_host = schema or user
-    if user and not schema:
-        rest = rest.replace(":", "/", 1)  # scp-vorm `git@host:owner/repo`
-    elif schema:
+    has_host = has_scheme or user
+    if user and not has_scheme:
+        rest = rest.replace(":", "/", 1)  # scp form `git@host:owner/repo`
+    elif has_scheme:
         host, _, path = rest.partition("/")
-        rest = f"{host.split(':', 1)[0]}/{path}"  # poort weg
+        rest = f"{host.split(':', 1)[0]}/{path}"  # drop the port
     parts = [d for d in rest.split("/") if d]
     if len(parts) > 2:
         has_host = True
@@ -547,9 +547,9 @@ def _normalize_repo(value: str) -> str | None:
 
 
 def _scope_repo(repo_value: str) -> tuple[str, str]:
-    """Het scopebesluit voor een letterlijke repo (`--repo`/`-R` of `GH_REPO`).
+    """The scope decision for a literal repo (`--repo`/`-R` or `GH_REPO`).
 
-    Zonder `forge.repo` is niet te zien of het een andere repo is: dan toetsen.
+    Without `forge.repo` there is no telling whether it is another repo: then check.
     """
     normalized = _normalize_repo(repo_value)
     if normalized is None:
@@ -561,15 +561,15 @@ def _scope_repo(repo_value: str) -> tuple[str, str]:
 
 
 def in_scope(pc: PrCreate, project_dir: str) -> tuple[str, str]:
-    """`("toetsen"|"overslaan"|"blokkeren", reden)` voor deze `gh pr create`."""
+    """`("toetsen"|"overslaan"|"blokkeren", reason)` for this `gh pr create`."""
     if pc.repo_problem is not None:
         return "blokkeren", pc.repo_problem
     if pc.repo is not None:
         return _scope_repo(pc.repo)
     if pc.cwd is None:
         return "blokkeren", "working directory of `gh pr create` cannot be resolved"
-    # Een `cd` naar een map die het commando zelf nog aanmaakt: de dichtstbijzijnde
-    # bestaande voorouder bepaalt de repo.
+    # A `cd` to a directory that the command itself still creates: the nearest
+    # existing ancestor determines the repo.
     path = existing_ancestor(pc.cwd)
     if path is None:
         return "blokkeren", f"working directory {pc.cwd} cannot be resolved"
@@ -583,8 +583,8 @@ def in_scope(pc: PrCreate, project_dir: str) -> tuple[str, str]:
         return "blokkeren", f"repo of {path} cannot be determined ({error})"
     if dir_ == own_repo:
         return "toetsen", ""
-    # Een andere common dir: een worktree van een aparte clone (forge) met
-    # dezelfde `origin` is toch deze repo (#36).
+    # Another common dir: a worktree of a separate clone (forge) with the
+    # same `origin` is this repo after all (#36).
     timeout = _budget(GIT_TIMEOUT_S)
     if timeout <= 0:
         return "blokkeren", "COULD NOT CHECK: deadline reached"
@@ -620,7 +620,7 @@ def _forms(body: str, counts: dict[int, int | None]) -> str:
 
 
 def _check_create(pc: PrCreate) -> tuple[list[str], list[str]]:
-    """`(blokkades, regels voor stdout)` voor één in-scope `gh pr create`."""
+    """`(blockers, lines for stdout)` for one in-scope `gh pr create`."""
     if pc.problem:
         return [pc.problem], []
     body = pc.body
@@ -631,7 +631,7 @@ def _check_create(pc: PrCreate) -> tuple[list[str], list[str]]:
             return [f"body file {pc.body_file} does not exist"], []
         except OSError as e:
             return [f"body file {pc.body_file} cannot be read ({e.strerror})"], []
-    assert body is not None  # probleem is None => body of body_file is gezet
+    assert body is not None  # problem is None => body or body_file is set
     counts: dict[int, int | None] = {}
 
     def ac_text(nr: int) -> tuple[int | None, str]:
@@ -649,11 +649,11 @@ def _check_create(pc: PrCreate) -> tuple[list[str], list[str]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI: `pr_body_gate.py <cwd>`, commando op stdin.
+    """CLI: `pr_body_gate.py <cwd>`, command on stdin.
 
-    Exit 0 (stdout: doorlaatregels), 2 (stderr: blokkade), 3 (open quote).
-    Elke andere uitkomst, ook een exception, is voor de hook `COULD NOT CHECK`;
-    een configuratiefout geeft 1 met één regel op stderr.
+    Exit 0 (stdout: pass lines), 2 (stderr: blocker), 3 (open quote).
+    Any other outcome, an exception included, is `COULD NOT CHECK` for the hook;
+    a configuration error gives 1 with one line on stderr.
     """
     args = sys.argv[1:] if argv is None else argv
     if len(args) != 1:
