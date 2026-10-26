@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -137,10 +138,27 @@ func TestOpenAPI(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	var doc struct {
-		Paths map[string]any `json:"paths"`
+		Paths      map[string]any `json:"paths"`
+		Components struct {
+			Schemas map[string]struct {
+				Properties map[string]struct {
+					Type any   `json:"type"`
+					Enum []any `json:"enum"`
+				} `json:"properties"`
+			} `json:"schemas"`
+		} `json:"components"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
 		t.Fatalf("decode: %v", err)
+	}
+	window := doc.Components.Schemas["WindowReport"].Properties
+	if got := fmt.Sprint(window["state"].Enum); got != "[ok stale not_measurable]" {
+		t.Errorf("WindowReport.state enum = %s, want [ok stale not_measurable]", got)
+	}
+	for _, f := range []string{"pct", "age_s"} {
+		if got := fmt.Sprint(window[f].Type); got != "[integer null]" {
+			t.Errorf("WindowReport.%s type = %s, want [integer null]", f, got)
+		}
 	}
 	for _, p := range []string{"/api/health", "/api/usage"} {
 		if _, ok := doc.Paths[p]; !ok {

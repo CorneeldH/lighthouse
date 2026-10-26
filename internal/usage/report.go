@@ -23,7 +23,7 @@ const (
 
 // WindowReport is one window of one source.
 type WindowReport struct {
-	State      string `json:"state"`
+	State      string `json:"state" enum:"ok,stale,not_measurable"`
 	Pct        *int   `json:"pct"`      // null when not_measurable
 	ResetAt    string `json:"reset_at"` // "" without a reset
 	AgeS       *int   `json:"age_s"`    // null when not_measurable
