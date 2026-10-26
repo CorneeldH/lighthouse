@@ -89,7 +89,7 @@
   ```
   In deze taak probeert `Read` alleen de app-server per home; taak 2 voegt de terugval toe.
 
-- [ ] **Stap 1: Schrijf de falende tests** in `codex_test.go`. De nep-app-server is de testbinary zelf: `TestFakeAppServer` doet `t.Skip()` zonder `LIGHTHOUSE_FAKE_APP_SERVER`; met die variabele leest hij stdin regel voor regel, schrijft per bericht de `method` als regel naar `$FAKE_LOG` (en eenmalig `home=$CODEX_HOME`), antwoordt op id 1 met `{"id":1,"result":{}}` en op id 2 volgens de modus, en eindigt met `os.Exit(0)` bij EOF. Krijgt hij `account/rateLimitResetCredit/consume`, dan logt hij die en eindigt met `os.Exit(3)`. Helper `fakeReader(t, mode string, homes ...string) (CodexReader, logPath string)` met `Command` = `exec.CommandContext(ctx, os.Args[0], "-test.run=^TestFakeAppServer$")` en de env-variabelen; `Now` vast op 2026-09-28T22:00:00Z; `Timeout` 5 s.
+- [ ] **Stap 1: Schrijf de falende tests** in `codex_test.go`. De nep-app-server is de testbinary zelf: `TestFakeAppServer` doet `t.Skip()` zonder `LIGHTHOUSE_FAKE_APP_SERVER`; met die variabele doet hij in **elke** modus eerst `signal.Ignore(syscall.SIGTERM)`, zodat hij stdin tot EOF leegleest en elke regel logt die de client vóór het sluiten van de pipe schreef (anders racet een methode na het id-2-antwoord tegen de SIGTERM van `cmd.Cancel`). Dan leest hij stdin regel voor regel, schrijft per bericht de `method` als regel naar `$FAKE_LOG` (en eenmalig `home=$CODEX_HOME`), antwoordt op id 1 met `{"id":1,"result":{}}` en op id 2 volgens de modus, en eindigt met `os.Exit(0)` bij EOF. De fixture is meerregelig: de fake schrijft hem met `json.Compact` als één regel. Krijgt hij `account/rateLimitResetCredit/consume`, dan logt hij die en eindigt met `os.Exit(3)`. Helper `fakeReader(t, mode string, homes ...string) (CodexReader, logPath string)` met `Command` = `exec.CommandContext(ctx, os.Args[0], "-test.run=^TestFakeAppServer$")` en de env-variabelen; `Now` vast op 2026-09-28T22:00:00Z; `Timeout` 5 s.
   Modi en verwachtingen:
   - `TestCodexAppServerOK` (`ok`: antwoord id 2 = de fixture): Session `{55, "2026-09-28T23:23:29Z"}`, Week `{66, "2026-10-03T17:17:59Z"}`, Source `app-server`, AgeS 0, LowerBound false, GeneratedAt `2026-09-28T22:00:00Z`.
   - `TestCodexAppServerMethods` (`ok`): de log is exact `home=<home>\ninitialize\ninitialized\naccount/rateLimits/read\n`. Deze test faalt zodra er `consume` (of welke extra methode ook) binnenkomt.
@@ -97,7 +97,7 @@
   - `TestCodexAppServerFallsBackToRateLimits` (`flat`: fixture zonder `rateLimitsByLimitId`): zelfde stand.
   - `TestCodexAppServerFloatPct` (`float`: `usedPercent` 54.6): Session.Pct 54.
   - `TestCodexAppServerRejects`, tabel, elk een fout en `CodexState{}`: `error` (`{"id":2,"error":{"message":"x"}}`), `noresult` (`{"id":2}`), `eof` (stopt na id 1), `nowindow` (`secondary` ontbreekt), `nullreset` (`resetsAt: null`), `hang` (antwoordt niet op id 2; `Timeout` 300 ms, en `Read` keert terug binnen 3 s).
-  - `TestCodexAppServerStubborn` (`stubborn`: negeert SIGTERM met `signal.Ignore(syscall.SIGTERM)` en hangt; `Timeout` 300 ms): fout binnen 300 ms + 2 s + 1 s marge.
+  - `TestCodexAppServerStubborn` (`stubborn`: logt `pid=<os.Getpid()>`, antwoordt op id 1 en hangt daarna met `select {}`, ook na EOF; SIGTERM negeert hij zoals elke modus; `Timeout` 300 ms): fout binnen 300 ms + 2 s + 1 s marge, én daarna geeft `syscall.Kill(pid, 0)` `syscall.ESRCH` (de kill na `WaitDelay` en `cmd.Wait` hebben het proces opgeruimd; een implementatie zonder `Wait` laat een zombie of een levend proces achter en faalt hier).
   - `TestCodexReaderFirstHomeWins`: homes `a` (`ok`) en `b`; de log bevat alleen `home=a`.
   - `TestCodexReaderSecondHome`: home `a` met `eof`, home `b` met `ok` (modus per home via `FAKE_MODE_<base>` of een map in de helper): stand van `b`.
   - `TestNewCodexReaderNoHome`: `t.Setenv("HOME", "")` geeft een fout.
@@ -109,7 +109,7 @@
 
 - [ ] **Stap 3: Implementeer in `internal/usage/codex.go`**
 
-  `codexCommand(ctx, home)`: `exec.CommandContext(ctx, "codex", "app-server")`, `Env = append(os.Environ(), "CODEX_HOME="+home)`. `readAppServer(ctx, cmd, timeout) (json.RawMessage, error)`: zet zelf `cmd.Cancel` (SIGTERM via `cmd.Process.Signal(syscall.SIGTERM)`) en `cmd.WaitDelay = 2 * time.Second`, opent stdin- en stdout-pipes, leest stdout in een goroutine met `bufio.Reader.ReadBytes('\n')` (geen regellimiet) naar een kanaal, en wacht per antwoord met `select` op dat kanaal en `ctx.Done()`. De `ctx` van een home is `context.WithTimeout(parent, r.Timeout)`; de `defer` sluit stdin, roept `cancel()` aan en dan `cmd.Wait()`. Een regel die geen JSON-object is of een ander id draagt: overslaan. `error`-sleutel, ontbrekend of niet-object `result`, EOF en deadline: elk een fout met een eigen reden (de Engelse teksten uit `codex_usage.py`). `parseAppServer(result []byte, now time.Time) (CodexState, error)`: `rateLimitsByLimitId.codex`, anders `rateLimits`; `primary` → Session, `secondary` → Week; `usedPercent` en `resetsAt` als `float64`, beide verplicht. `Read` probeert de homes op volgorde en voegt de redenen samen als `<home>: <reden>; ...`.
+  `codexCommand(ctx, home)`: `exec.CommandContext(ctx, "codex", "app-server")`, `Env = append(os.Environ(), "CODEX_HOME="+home)`. `readAppServer(ctx, cmd, timeout) (json.RawMessage, error)`: zet zelf `cmd.Cancel` (SIGTERM via `cmd.Process.Signal(syscall.SIGTERM)`) en `cmd.WaitDelay = 2 * time.Second`, opent stdin- en stdout-pipes, leest stdout in een goroutine met `bufio.Reader.ReadBytes('\n')` (geen regellimiet) naar een kanaal, en wacht per antwoord met `select` op dat kanaal en `ctx.Done()`. De lezer stuurt met `select` op dat kanaal en een `done`-kanaal dat `readAppServer` bij terugkeer sluit, zodat hij na EOF of een pipefout niet eeuwig blokkeert (anders lekt `serve` één goroutine per meting). De `ctx` van een home is `context.WithTimeout(parent, r.Timeout)`; de `defer` sluit stdin, roept `cancel()` aan en dan `cmd.Wait()`. Een regel die geen JSON-object is of een ander id draagt: overslaan. `error`-sleutel, ontbrekend of niet-object `result`, EOF en deadline: elk een fout met een eigen reden (de Engelse teksten uit `codex_usage.py`). `parseAppServer(result []byte, now time.Time) (CodexState, error)`: `rateLimitsByLimitId.codex`, anders `rateLimits`; `primary` → Session, `secondary` → Week; `usedPercent` en `resetsAt` als `float64`, beide verplicht. `Read` probeert de homes op volgorde en voegt de redenen samen als `<home>: <reden>; ...`.
 
 - [ ] **Stap 4: Draai de tests en zie ze slagen**
 
@@ -186,7 +186,7 @@
 
 - [ ] **Stap 3: Implementeer**
 
-  Subcommando `codex` in `newUsageCommand` (`Short: "Print the Codex usage windows as JSON"`, `Args: cobra.NoArgs`), `RunE` geeft `printCodex(cmd.Context(), out, errOut, usage.ReadCodex)` terug. Pas `Short`/`Long` van de groep aan: hij meet nu Claude en Codex, en alleen `refresh` en `tick` eindigen altijd met 0. Docs: sectie "Codex" in `docs/usage-venster.md` (bron, homes, terugval, uitvoer, exit 1, schrijft niets) en `README.md:15` noemt `usage codex`.
+  Subcommando `codex` in `newUsageCommand` (`Short: "Print the Codex usage windows as JSON"`, `Args: cobra.NoArgs`), `RunE` geeft `printCodex(cmd.Context(), out, errOut, usage.ReadCodex)` terug. Pas `Short`/`Long` van de groep aan: hij meet nu Claude en Codex, en alleen `refresh` en `tick` eindigen altijd met 0. Docs: sectie "Codex" in `docs/usage-venster.md` (bron, homes, terugval, uitvoer, exit 1, schrijft niets, en dat de binary vast 20 s per home wacht en `[codex_usage] app_server_timeout_seconds` uit `lighthouse.toml` niet leest, anders dan `codex_usage.py`) en `README.md:15` noemt `usage codex`.
 
 - [ ] **Stap 4: Draai de tests en zie ze slagen**
 
@@ -272,8 +272,9 @@
 ### Taak 5: `GET /api/usage`
 
 **Files:**
-- Modify: `internal/server/server.go`, `internal/server/server_test.go`
+- Modify: `internal/server/server.go`, `internal/server/server_test.go`, `internal/server/host_test.go` (`New(testSite())` op regel 20 en 34)
 - Modify: `internal/cli/serve.go:67`
+- Modify: `e2e/serve_test.go`
 - Modify: `docs/usage-venster.md` (sectie "API": de vorm, de drie toestanden, de 900 s-grens, en dat de service met `ProtectHome=read-only` en een kale `PATH` vaak alleen het sessielog leest)
 
 **Interfaces:**
@@ -281,7 +282,8 @@
 - Produces: `func New(site fs.FS, report func(context.Context) usage.Report) http.Handler`.
 
 - [ ] **Stap 1: Schrijf de falende tests**
-  - Alle bestaande `New(testSite())` worden `New(testSite(), fakeReport)` met een vaste `Report`.
+  - Alle bestaande `New(testSite())`, in `server_test.go` én `host_test.go`, worden `New(testSite(), fakeReport)` met een vaste `Report`.
+  - In `e2e/serve_test.go`, `TestServeUsageE2E`: de echte bedrading in `serve.go`. `startRaw` krijgt een `env []string`-parameter (bestaande aanroepen geven `cleanEnv()` mee) en `startServe` geeft hem door. De test maakt een verse Claude-cache zoals `TestUsageRefreshE2E` (nep-`claude` met `usage_full.json` via `writeScript`, `usageEnv(t, xdg, binDir)`, `usage refresh`), start `serve` met diezelfde env plus `PATH=<binDir>:/usr/bin:/bin` en `HOME=<lege tempmap>` erachter (de laatste waarde in `cmd.Env` wint; `usageEnv` zet de echte `PATH` achter `binDir`, en daar kan een echte `codex` staan) en doet `GET /api/usage`. Verwacht: 200, `claude.session.state` `ok` met `claude.session.pct` 99, `codex.session.state` `not_measurable`. Een `serve.go` die `rep.Cache` niet zet of de verkeerde callback meegeeft, maakt Claude hier `not_measurable`.
   - `TestUsage`: `GET /api/usage` → 200; JSON heeft `claude.session.pct` 99 en `claude.session.state` `ok`, `codex.week.state` `not_measurable` en `codex.week.pct` aanwezig als `null` (decode in `map[string]any`, controleer `v, ok := m["pct"]; ok && v == nil`).
   - `TestRoutes`: rij `{"/api/usage", []int{200}, "", "placeholder"}`.
   - `TestOpenAPI`: `paths` bevat ook `/api/usage`.
@@ -303,6 +305,6 @@
 - [ ] **Stap 5: Commit**
 
   ```bash
-  git add internal/server/server.go internal/server/server_test.go internal/cli/serve.go docs/usage-venster.md
+  git add internal/server/server.go internal/server/server_test.go internal/server/host_test.go internal/cli/serve.go e2e/serve_test.go docs/usage-venster.md
   git commit -m "feat(server): GET /api/usage met de vensters van Claude en Codex (#65)"
   ```
