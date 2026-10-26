@@ -5,9 +5,11 @@ package e2e
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -27,9 +29,9 @@ type serveProc struct {
 
 // startServe starts `lighthouse serve` and returns once it printed its start line. The
 // child is killed at cleanup, so a red test leaves no server behind.
-func startServe(t *testing.T, bin string, args ...string) *serveProc {
+func startServe(t *testing.T, bin string, env []string, args ...string) *serveProc {
 	t.Helper()
-	p := startRaw(t, bin, args...)
+	p := startRaw(t, bin, env, args...)
 	select {
 	case addr := <-p.started:
 		p.addr = addr
@@ -43,10 +45,10 @@ func startServe(t *testing.T, bin string, args ...string) *serveProc {
 
 // startRaw starts the binary and collects its stderr. A reader reads the pipe to EOF
 // before it calls Wait, as the os/exec contract requires.
-func startRaw(t *testing.T, bin string, args ...string) *serveProc {
+func startRaw(t *testing.T, bin string, env []string, args ...string) *serveProc {
 	t.Helper()
 	cmd := exec.Command(bin, args...)
-	cmd.Env = cleanEnv()
+	cmd.Env = env
 	pipe, err := cmd.StderrPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -111,7 +113,7 @@ func TestServeSignals(t *testing.T) {
 	bin := buildLighthouse(t)
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGINT} {
 		t.Run(sig.String(), func(t *testing.T) {
-			p := startServe(t, bin, "serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"))
+			p := startServe(t, bin, cleanEnv(), "serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"))
 			health(t, p.addr)
 			if err := p.cmd.Process.Signal(sig); err != nil {
 				t.Fatal(err)
@@ -126,7 +128,7 @@ func TestServeSignals(t *testing.T) {
 func TestServeSecondInstanceRefused(t *testing.T) {
 	bin := buildLighthouse(t)
 	db := filepath.Join(t.TempDir(), "l.db")
-	first := startServe(t, bin, "serve", "--addr", "127.0.0.1:0", "--db", db)
+	first := startServe(t, bin, cleanEnv(), "serve", "--addr", "127.0.0.1:0", "--db", db)
 
 	cmd := exec.Command(bin, "serve", "--addr", "127.0.0.1:0", "--db", db)
 	cmd.Env = cleanEnv()
@@ -158,7 +160,7 @@ func TestServePortInUse(t *testing.T) {
 	}
 	defer func() { _ = ln.Close() }()
 
-	failing := startRaw(t, bin, "serve", "--addr", ln.Addr().String(), "--db", db)
+	failing := startRaw(t, bin, cleanEnv(), "serve", "--addr", ln.Addr().String(), "--db", db)
 	if code := exitCode(t, failing.done); code != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr: %s", code, failing.stderr.String())
 	}
@@ -166,6 +168,57 @@ func TestServePortInUse(t *testing.T) {
 		t.Errorf("stderr lacks the net.Listen error: %s", failing.stderr.String())
 	}
 
-	p := startServe(t, bin, "serve", "--addr", "127.0.0.1:0", "--db", db)
+	p := startServe(t, bin, cleanEnv(), "serve", "--addr", "127.0.0.1:0", "--db", db)
 	health(t, p.addr)
+}
+
+func TestServeUsageE2E(t *testing.T) {
+	bin := buildLighthouse(t)
+	fixture, err := filepath.Abs("../internal/usage/testdata/usage_full.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	xdg, binDir := t.TempDir(), t.TempDir()
+	writeScript(t, binDir, "claude", "cat '"+fixture+"'\n")
+	env := usageEnv(t, xdg, binDir)
+	runUsage(t, bin, env, "usage", "refresh")
+
+	// The last value wins in cmd.Env: a real codex on the developer's PATH or HOME must not run.
+	env = append(env,
+		"PATH="+binDir+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin",
+		"HOME="+t.TempDir(),
+	)
+	p := startServe(t, bin, env, "serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"))
+
+	c := http.Client{Timeout: 30 * time.Second}
+	resp, err := c.Get("http://" + p.addr + "/api/usage")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Claude struct {
+			Session struct {
+				State string `json:"state"`
+				Pct   *int   `json:"pct"`
+			} `json:"session"`
+		} `json:"claude"`
+		Codex struct {
+			Session struct {
+				State string `json:"state"`
+			} `json:"session"`
+		} `json:"codex"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if s := body.Claude.Session; s.State != "ok" || s.Pct == nil || *s.Pct != 99 {
+		t.Errorf("claude.session = %+v, want state ok, pct 99", s)
+	}
+	if got := body.Codex.Session.State; got != "not_measurable" {
+		t.Errorf("codex.session.state = %q, want not_measurable", got)
+	}
 }

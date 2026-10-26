@@ -16,6 +16,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/web"
 )
 
@@ -64,7 +65,11 @@ func serve(ctx context.Context, addr, dbPath string, errOut io.Writer) error {
 	}
 	_, _ = fmt.Fprintf(errOut, "lighthouse: listening on %s\n", ln.Addr())
 
-	srv := &http.Server{Handler: server.New(web.FS()), ReadHeaderTimeout: 10 * time.Second}
+	rep := &usage.Reporter{ReadCodex: usage.ReadCodex, Now: time.Now}
+	if paths, err := usage.DefaultPaths(); err == nil {
+		rep.Cache = paths.Cache()
+	}
+	srv := &http.Server{Handler: server.New(web.FS(), rep.Report), ReadHeaderTimeout: 10 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
