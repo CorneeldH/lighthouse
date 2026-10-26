@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -61,4 +63,31 @@ func TestReportRecoversPanic(t *testing.T) {
 	if out.Len() != 0 || errOut.String() != "usage: failed: kaboom\n" {
 		t.Errorf("stdout = %q, stderr = %q", out.String(), errOut.String())
 	}
+}
+
+// cli-output change; the regression surface is stdout JSON, the stderr line and the exit error.
+func TestPrintCodex(t *testing.T) {
+	t.Run("measured", func(t *testing.T) {
+		state := usage.CodexState{}
+		var out, errOut bytes.Buffer
+		err := printCodex(context.Background(), &out, &errOut, func(context.Context) (usage.CodexState, error) {
+			return state, nil
+		})
+		want, mErr := json.MarshalIndent(state, "", "  ")
+		if mErr != nil {
+			t.Fatal(mErr)
+		}
+		if err != nil || out.String() != string(want)+"\n" || errOut.Len() != 0 {
+			t.Errorf("err = %v, stdout = %q, stderr = %q", err, out.String(), errOut.String())
+		}
+	})
+	t.Run("not measurable", func(t *testing.T) {
+		var out, errOut bytes.Buffer
+		err := printCodex(context.Background(), &out, &errOut, func(context.Context) (usage.CodexState, error) {
+			return usage.CodexState{}, errors.New("codex not found")
+		})
+		if !errors.Is(err, errSilent) || out.Len() != 0 || errOut.String() != "not measurable: codex not found\n" {
+			t.Errorf("err = %v, stdout = %q, stderr = %q", err, out.String(), errOut.String())
+		}
+	})
 }

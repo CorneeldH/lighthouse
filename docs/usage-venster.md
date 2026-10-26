@@ -91,3 +91,23 @@ cache_ttl_seconds = 300
 
 Een waarde buiten het geldige bereik geeft voor die sleutel de standaardwaarde. Een bestand dat
 niet als TOML te lezen is, geeft alle standaardwaarden.
+
+## Codex
+
+`lighthouse usage codex` print de Codex-vensters (sessie en week) als JSON op stdout, met exitcode 0.
+Anders dan `refresh` en `tick` schrijft dit commando niets: geen alarm, geen cache en geen bestand in
+`${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse`.
+
+- **Bron.** `codex app-server`, met `CODEX_HOME` op een van de homes. De binary stuurt `initialize`,
+  `initialized` en `account/rateLimits/read`, en geen andere methode.
+- **Homes.** Eerst `$HOME/.codex`, dan `$HOME/.codex-specreview`. De eerste home met een leesbare
+  stand wint. Zonder `HOME` is Codex niet meetbaar.
+- **Terugval.** Falen alle homes, dan leest de binary het sessielog
+  (`<home>/sessions/**/rollout-*.jsonl`). De jongste regel over alle homes wint; die stand is een
+  ondergrens (`lower_bound` is `true`).
+- **Verouderd.** Een meting ouder dan 900 s geldt als verouderd, voor beide bronnen.
+- **Niet meetbaar.** Eén regel `not measurable: <reden>` op stderr, niets op stdout, exitcode 1.
+  Nooit een stand met 0%.
+- **Wachttijd.** De binary wacht vast 20 s per home. De sleutel
+  `[codex_usage] app_server_timeout_seconds` uit `lighthouse.toml` leest hij niet, anders dan
+  `codex_usage.py`.

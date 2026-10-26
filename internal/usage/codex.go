@@ -60,6 +60,15 @@ func NewCodexReader() (CodexReader, error) {
 	}, nil
 }
 
+// ReadCodex reads the Codex windows from the default homes.
+func ReadCodex(ctx context.Context) (CodexState, error) {
+	r, err := NewCodexReader()
+	if err != nil {
+		return CodexState{}, err
+	}
+	return r.Read(ctx)
+}
+
 func codexCommand(ctx context.Context, home string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "codex", "app-server")
 	cmd.Env = append(os.Environ(), "CODEX_HOME="+home)
