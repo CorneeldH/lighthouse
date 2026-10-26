@@ -12,6 +12,11 @@
 # start and keeps it writable inside the hardening. %S is the user manager's state directory
 # ($XDG_STATE_HOME, else ~/.local/state), the same path StateDirectory= creates.
 #
+# Why EnvironmentFile: the forge token (GH_TOKEN) and repository (LIGHTHOUSE_FORGE_REPO) live
+# in ~/.config/lighthouse/forge.env, outside the unit, because the token is a secret: keep the
+# file mode 0600. The leading dash lets the server start without the file; the forge
+# endpoints then answer 503 until it exists.
+#
 # Why ReadWritePaths for .codex: `codex app-server` keeps its sqlite state in CODEX_HOME and
 # exits at once when that directory is read-only ("failed to initialize sqlite state runtime").
 # The ReadWritePaths= line makes both Codex homes writable inside the hardening. The `-` prefix
@@ -33,6 +38,7 @@ Description=lighthouse — development chain server
 
 [Service]
 Type=exec
+EnvironmentFile=-%h/.config/lighthouse/forge.env
 ExecStart=%h/go/bin/lighthouse serve --db %S/lighthouse/lighthouse.db
 StateDirectory=lighthouse
 StateDirectoryMode=0700

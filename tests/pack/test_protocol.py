@@ -9,7 +9,9 @@ Most tests write with `[project] language = "nl"`, so the rendered text compares
 literally with the comments that already stand on issues; `TestLanguage` covers `en`.
 """
 
+import json
 import re
+from pathlib import Path
 from collections.abc import Sequence
 
 import pytest
@@ -912,3 +914,17 @@ class TestLanguage:
         monkeypatch.setenv("LIGHTHOUSE_HEADINGS", str(tmp_path / "missing.toml"))
         with pytest.raises(ConfigError):
             parse_header("🤖 Klaar\npr: x")
+
+
+def test_shared_header_fixture():
+    """The Go parser (`internal/protocol`) reads the same fixture."""
+    path = Path(__file__).parent / "fixtures/protocol/headers.json"
+    for case in json.loads(path.read_text(encoding="utf-8")):
+        header = parse_header(case["body"])
+        if case["kind"] is None:
+            assert header is None, case["name"]
+            continue
+        assert header is not None, case["name"]
+        assert header.kind == case["kind"], case["name"]
+        if "fields" in case:
+            assert dict(header.fields) == case["fields"], case["name"]

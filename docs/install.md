@@ -56,6 +56,41 @@ journalctl --user -u lighthouse
 The health endpoint answers `{"version":"…"}`. The log shows `lighthouse: listening on
 127.0.0.1:8127`.
 
+## Connect the forge
+
+`GET /api/questions` and `GET /api/returned` read the open questions and returned issues of
+one GitHub repository. Tell the server which repository and give it a token:
+
+- Repository: `--repo owner/name` on `lighthouse serve`, or `LIGHTHOUSE_FORGE_REPO=owner/name`.
+- Token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment. Create a fine-grained personal
+  access token for that repository with only the *Issues: read* permission. The server only
+  reads.
+
+Under systemd, put both in `~/.config/lighthouse/forge.env`, which the unit loads through
+`EnvironmentFile=`. The token is a secret, so keep the file private:
+
+```bash
+mkdir -p ~/.config/lighthouse
+install -m 0600 /dev/null ~/.config/lighthouse/forge.env
+cat > ~/.config/lighthouse/forge.env <<'EOF'
+LIGHTHOUSE_FORGE_REPO=owner/name
+GH_TOKEN=<your fine-grained token>
+EOF
+systemctl --user restart lighthouse.service
+```
+
+A unit you copied before this change lacks the `EnvironmentFile=` line. Copy the unit again,
+run `systemctl --user daemon-reload`, then restart the service.
+
+Check it:
+
+```bash
+curl -s http://127.0.0.1:8127/api/questions
+```
+
+A `503` means the repository or the token is not set. A `502` means GitHub could not be
+reached or answered with an error; the response body says which.
+
 ## Reach it from your tailnet
 
 [tailscale-serve.sh](../deploy/tailscale-serve.sh) exposes the local server over HTTPS on the
@@ -83,3 +118,7 @@ The server has no authentication, on purpose. The tailnet is the access boundary
 the tailnet can do everything the API can. The server binds loopback, so nothing outside the
 host and the tailnet sees it. Today the API is read-only; once lighthouse starts runs, any
 device on the tailnet can start one.
+
+`/api/questions` and `/api/returned` show the issue titles and question text of the configured
+repository, private ones too (read with the server's token), to every device that can reach
+the server.

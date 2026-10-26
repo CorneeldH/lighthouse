@@ -11,6 +11,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/version"
 	"github.com/CorneeldH/lighthouse/internal/web"
@@ -22,6 +24,13 @@ func testSite() fs.FS {
 		"assets/app.js": {Data: []byte("js")},
 	}
 }
+
+// stubSource yields no issues, so both lists are empty.
+type stubSource struct{}
+
+func (stubSource) OpenIssues(context.Context) ([]forge.Issue, error) { return nil, nil }
+
+func (stubSource) Comments(context.Context, int) ([]protocol.Comment, error) { return nil, nil }
 
 func intp(n int) *int { return &n }
 
@@ -47,7 +56,7 @@ func get(h http.Handler, path string) *httptest.ResponseRecorder {
 }
 
 func TestRoutes(t *testing.T) {
-	h := New(testSite(), fakeReport)
+	h := New(testSite(), fakeReport, stubSource{})
 	tests := []struct {
 		path    string
 		status  []int
@@ -94,7 +103,7 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	rec := get(New(testSite(), fakeReport), "/api/health")
+	rec := get(New(testSite(), fakeReport, stubSource{}), "/api/health")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -108,7 +117,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestUsage(t *testing.T) {
-	rec := get(New(testSite(), fakeReport), "/api/usage")
+	rec := get(New(testSite(), fakeReport, stubSource{}), "/api/usage")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -132,7 +141,7 @@ func TestUsage(t *testing.T) {
 }
 
 func TestOpenAPI(t *testing.T) {
-	h := New(testSite(), fakeReport)
+	h := New(testSite(), fakeReport, stubSource{})
 	rec := get(h, "/api/openapi.json")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
@@ -161,6 +170,11 @@ func TestOpenAPI(t *testing.T) {
 		}
 	}
 	for _, p := range []string{"/api/health", "/api/usage"} {
+		if _, ok := doc.Paths[p]; !ok {
+			t.Errorf("paths lack %s: %v", p, doc.Paths)
+		}
+	}
+	for _, p := range []string{"/api/questions", "/api/returned"} {
 		if _, ok := doc.Paths[p]; !ok {
 			t.Errorf("paths lack %s: %v", p, doc.Paths)
 		}
