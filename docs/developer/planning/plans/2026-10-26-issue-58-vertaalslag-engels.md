@@ -337,10 +337,11 @@ en wat Taak 1–10 nog liet staan), plus `tests/pack/test_code_language_corpus.p
 - [ ] **Stap 2b: Loop de twijfels na** — `python3 $S/measure.py <worktree> --doubts` toont ze
   (ca. 146). Per twijfel: echt Nederlands proza of een Nederlandse naam → vertalen. Een geciteerde
   titel van een Nederlands document (`(spec, Versiemarker en manifest)`, `(spec, Indeling)`,
-  `inventaris §3`) blijft als verwijzing staan, net als `besluit N` naar spec of plan. Engels dat de
-  detector twijfelachtig vindt → laten. Geen test op twijfels: daar zitten valse positieven in en
-  laag 2 beslist ze (spec van de detector). Noteer in het ledger hoeveel je vertaalde en hoeveel
-  bleven, met per soort de reden.
+  `inventaris §3`) blijft als verwijzing staan, net als `besluit N` naar spec of plan, maar draagt
+  op die regel de markering met reden (AC 1): `# lighthouse: allow-language — titel van een
+  Nederlandse spec-sectie` (in Go `//`). Engels dat de detector twijfelachtig vindt → laten. Geen test op twijfels: daar zitten valse positieven in en
+  laag 2 beslist ze (spec van de detector). Noteer in het ledger hoeveel je vertaalde, hoeveel een
+  markering kregen en hoeveel als Engels bleven, met per soort de reden.
 - [ ] **Stap 3: Haal de lijst weg** uit `tests/pack/test_code_language_corpus.py`: `KNOWN_DUTCH`,
   `_dutch_words`, `_unknown` en `test_known_dutch_still_occurs` gaan eruit;
   `test_go_english`, `test_config_py_english` en `test_hooks_english` asserten dan
