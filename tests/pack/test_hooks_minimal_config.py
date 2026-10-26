@@ -19,6 +19,7 @@ from tests.pack._testkit import (
     MINIMAL_TOML,
     bash_payload,
     git,
+    guard_env,
     init_repo,
     install_core,
 )
@@ -67,6 +68,14 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         code = worktree / "mod.py"
         code.write_text("x = 1\n", encoding="utf-8")
         return _edit_payload(event, code, worktree)
+    if name == "usage-guard.sh":
+        return {
+            "hook_event_name": event,
+            "session_id": "s1",
+            "cwd": str(worktree),
+            "tool_name": "Bash",
+            "tool_input": {"command": "ls"},
+        }
     if name == "main-commit-guard.sh":
         # Een commit op een featurebranch: de guard leest forge.default_branch.
         cmd = "git commit -m x"
@@ -99,15 +108,14 @@ def test_hooks_with_minimal_config(
     git(project, "worktree", "add", "-q", "-b", "feature", str(worktree))
     payload = _payload(event, script, worktree, project)
     name, *args = script.split()
-    env = dict(
-        os.environ,
+    env = guard_env(
+        tmp_path,
         LIGHTHOUSE_REPO_ROOT=str(root),
         CLAUDE_PROJECT_DIR=str(project),
         LIGHTHOUSE_HOST_TOML=str(tmp_path / "no-host.toml"),
         LIGHTHOUSE_GATE_SLOT_DIR=str(tmp_path / "slots"),
         XDG_RUNTIME_DIR=str(tmp_path),
     )
-    env.pop("LIGHTHOUSE_TOML", None)
 
     result = subprocess.run(
         [str(root / ".claude" / "hooks" / "lighthouse" / name), *args],
@@ -133,6 +141,7 @@ def test_every_registration_has_a_payload() -> None:
         "worktree-guard.sh",
         "worktree-linkcheck.sh",
         "code-language.sh",
+        "usage-guard.sh",
     }
 
 

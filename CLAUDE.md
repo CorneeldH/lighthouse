@@ -24,3 +24,6 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
   checkout on `main`.
 - `worktree-linkcheck.sh` — PostToolUse `Edit|Write`. Blocks a markdown link that is absolute
   or points nowhere.
+- `usage-guard.sh` — UserPromptSubmit, PostToolUse, SubagentStop and Stop. Reads only the alarm
+  of `lighthouse usage`: warns at a prompt, blocks once per window in `tool` and `stop`, once per
+  subagent in `subagent`, never fails red. See `docs/usage-guard.md`.

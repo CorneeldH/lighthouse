@@ -530,11 +530,31 @@ def test_host_check_missing_is_rc_2(tmp_path, monkeypatch, capsys):
         ("project.instructions_word_ceiling", "3000"),
         ("project.language", "en"),
         ("shell.strict_dirs", ".claude/hooks"),
+        ("usage_guard.resume", "false"),
+        ("usage_guard.controller", "false"),
     ],
 )
 def test_defaults_for_absent_keys(cfg_env, capsys, key, value):
     assert main([key]) == 0
     assert capsys.readouterr().out == value + "\n"
+
+
+def test_bool_key_set_true(tmp_path, monkeypatch, capsys):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + "\n[usage_guard]\nresume = true\n")
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main(["usage_guard.resume"]) == 0
+    assert capsys.readouterr().out == "true\n"
+
+
+@pytest.mark.parametrize("toml_value", ['"yes"', "1", "0"])
+def test_bool_key_rejects_non_bool(tmp_path, monkeypatch, capsys, toml_value):
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(_render(VALID) + f"\n[usage_guard]\nresume = {toml_value}\n")
+    with pytest.raises(ConfigError, match=r"usage_guard\.resume.*bool"):
+        load(path)
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    assert main(["usage_guard.resume"]) == 2
 
 
 def test_set_value_wins_over_default(tmp_path, monkeypatch, capsys):

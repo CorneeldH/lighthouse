@@ -29,7 +29,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "43538088beff246393ae681bfa73d90da1601fb2eaae481ac7de0559cbb83f0f"
+sha256 = "a344977aa9c17897c8bb671596b4573dbb51eea9a5a045a2f67442846c321543"
 
 [[unit]]
 kind = "file"
@@ -243,6 +243,27 @@ sha256 = "eee1c73e3600f7cb390c215bf96780b3bf46e5672701e9c20387a7e08106454b"
 
 [[unit]]
 kind = "file"
+path = ".claude/hooks/lighthouse/usage-guard.sh"
+package = "core"
+version = "dev"
+sha256 = "c8eb4740a092e1a30c14d8ca628e91fb1248678d0f1e3b2bf96771b055ac541e"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/usage-guard/controller.py"
+package = "core"
+version = "dev"
+sha256 = "356372ac0c800b5dbc40ff30c160d29cbbfb1297ac2dd973151ecbed65dcd386"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/usage-guard/resume.py"
+package = "core"
+version = "dev"
+sha256 = "abd948690ed28a3d33ceeade7801fa1b7e8cf16569329d36edb0b4a1f121b865"
+
+[[unit]]
+kind = "file"
 path = ".claude/hooks/lighthouse/worktree-guard.sh"
 package = "core"
 version = "dev"
@@ -330,6 +351,14 @@ sha256 = "37b3afc85333b347fe66dec3dd9cd89d573555f8f239df158f2b92bb3ff5a369"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
+id = "PostToolUse||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-guard.sh tool"
+package = "core"
+version = "dev"
+sha256 = "f6cb5ec9b9155e1c08c08644a21d158d136815d27f994176c336dcfbf2a7118d"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
 id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/bash-write-gates.sh pre"
 package = "core"
 version = "dev"
@@ -376,6 +405,30 @@ version = "dev"
 sha256 = "d70113249444d0ac609bca958ed3a9c9dd7eeeda3746b78eb5c4337e19995802"
 
 [[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-guard.sh stop"
+package = "core"
+version = "dev"
+sha256 = "2d9c2752b9257f43211bfb4eb2949452c3269c6a7796da77fa5d5e020d54d62f"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "SubagentStop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-guard.sh subagent"
+package = "core"
+version = "dev"
+sha256 = "d3f8391ef63de31dfa319303ba3d572b2dc0c542f6bc94760a324a82eb8dad58"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "UserPromptSubmit||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-guard.sh prompt"
+package = "core"
+version = "dev"
+sha256 = "0ac89ade5ac01c6b409f39f6d40888db2ceb92d1655b34efa07d9d710e882af6"
+
+[[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
@@ -401,7 +454,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "43538088beff246393ae681bfa73d90da1601fb2eaae481ac7de0559cbb83f0f"
+sha256 = "a344977aa9c17897c8bb671596b4573dbb51eea9a5a045a2f67442846c321543"
 
 [[unit]]
 kind = "file"
@@ -632,7 +685,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
-sha256 = "1a0151e05369ade81506bc6f16d68fd0b0c66783ffff8257c6099e06db089a1f"
+sha256 = "321664ad7b780c17506382dda26ab7b07e30942463027a0dcec543c28c790ab3"
 
 [[unit]]
 kind = "file"
@@ -717,6 +770,13 @@ path = ".lighthouse/lib/lighthouse_lib/turn_roots.py"
 package = "core"
 version = "dev"
 sha256 = "ec9bf70cfe7957c3eba00e4c8dc56a1ce27235f8a258613a1d92f732d0270268"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/usage_guard.py"
+package = "core"
+version = "dev"
+sha256 = "75841389fa94d949dda17df4c572a2094f49705dfb61b35f1f05cff8f24b335e"
 
 [[unit]]
 kind = "file"

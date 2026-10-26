@@ -1,6 +1,6 @@
 ---
 name: lighthouse-handoff
-description: Write the start command for the next session. Use at the end of a phase, or when the user asks for "a command for a new session", "how do I start this in a new window", "give me the command", "hand-off", or /lighthouse-handoff. Produces one copy-paste-ready block with worktree, branch, goal, relevant background information (or a reference to it) and the first step with the slash command that session starts with.
+description: Write the start command for the next session. Use at the end of a phase, or when the user asks for "a command for a new session", "how do I start this in a new window", "give me the command", "hand-off", or /lighthouse-handoff. With an absolute path ending in `.handoff.md` (`/lighthouse-handoff <path>`) it writes the block to that file as a pause, as the usage guard asks. Produces one copy-paste-ready block with worktree, branch, goal, relevant background information (or a reference to it) and the first step with the slash command that session starts with.
 metadata:
   lighthouse: "core@dev"
 ---
@@ -20,7 +20,28 @@ hand-off is the bridge between two windows.
 - A phase is done (plan written, PR open, spec ready) and the follow-up belongs in a clean context.
 - You are running into the context limit and the work is at a natural seam.
 
-Do not use in the middle of a task that can be finished in this window.
+Do not use in the middle of a task that can be finished in this window. The exception is the
+pause form below: a usage limit stops the session whatever the task.
+
+## Pause form: /lighthouse-handoff <path>
+
+The argument is an absolute path that ends in `.handoff.md`; the usage guard passes one when
+the usage window is full. This is a pause, not a phase transition. Without a path the skill
+works as described below.
+
+1. Build the block as in *Output format*. Add what is uncommitted (from `git status --short`),
+   the resume moment (when the session may continue: the reset time the guard names) and, if
+   you set a wake-up timer, its job ID.
+2. Write the block to the path with Bash: `mkdir -p` the directory, write a temporary file in
+   that same directory, then `mv` it onto the path, so a reader never sees half a file. The path
+   lies outside the repo, so the write can fall outside the sandbox; ask for the permission
+   that needs rather than choosing another path.
+3. Show the same block also in the chat.
+
+The pause form skips every side effect of a phase transition, also when
+`LIGHTHOUSE_CONTROLLER_RUN` is set: `post_artefact.py` is skipped (so no push), the
+*Controller mode* section is skipped (no `🤖` comment, no board status), there is no question
+to the user, and the `/clear` suggestion is skipped. Then stop.
 
 ## Workflow
 
