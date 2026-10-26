@@ -20,8 +20,8 @@ if str(_SCRIPTS) not in sys.path:
 from quality import prcov
 from quality.gitenv import suite_env
 
-# Vaste identiteit voor de fixture-commits — los van wie de suite draait, en
-# los van de echte git-config (die kan ontbreken in CI).
+# Fixed identity for the fixture commits — independent of who runs the suite, and
+# independent of the real git config (which may be missing in CI).
 _GIT_IDENTITY = {
     "GIT_AUTHOR_NAME": "Test",
     "GIT_AUTHOR_EMAIL": "test@example.invalid",
@@ -31,11 +31,11 @@ _GIT_IDENTITY = {
 
 
 class _Repo:
-    """Dunne wrapper om een fixture-repo op te bouwen met squash-achtige commits.
+    """Thin wrapper to build a fixture repo with squash-like commits.
 
-    Elke git-aanroep gaat via `suite_env()` + `cwd=root`: zonder die schoonmaak
-    schrijft een test die per ongeluk GIT_DIR uit de hook-omgeving erft in de
-    ECHTE repo (zie gitenv.py).
+    Every git call goes through `suite_env()` + `cwd=root`: without that cleanup
+    a test that accidentally inherits GIT_DIR from the hook environment writes in the
+    REAL repo (see gitenv.py).
     """
 
     def __init__(self, root: Path) -> None:
@@ -218,14 +218,14 @@ def test_a_watermark_outside_history_falls_back_to_24h(repo, capsys):
 
 
 def test_since_a_real_ancestor_excludes_it_and_everything_before(repo):
-    """De primaire tak van `select_commits` (`since..HEAD`) — alle andere tests
-    hier vallen terug op de 24u-fallback, dus zonder deze test heeft die tak
-    geen dekking.
+    """The primary branch of `select_commits` (`since..HEAD`) — all other tests
+    here fall back on the 24h fallback, so without this test that branch
+    has no coverage.
 
-    `since` is een echte voorouder-sha (de watermark van een geslaagde
-    nightly-run). #21 staat óp 3 dagen oud — buiten de 24u-fallback — maar wél
-    ná `since` in de geschiedenis: alleen het bereik mag beslissen, niet de
-    datum. `since` zelf (#20) en alles daarvóór (de initiële commit) vallen af.
+    `since` is a real ancestor sha (the watermark of a successful
+    nightly run). #21 is 3 days old — outside the 24h fallback — but
+    after `since` in the history: only the range may decide, not the
+    date. `since` itself (#20) and everything before it (the initial commit) drop out.
     """
     since_sha = repo.commit(
         {"src/a.py": "X = 0\nY = 1\nA = 2\n"}, subject="Watermark (#20)"
@@ -245,8 +245,8 @@ def test_since_a_real_ancestor_excludes_it_and_everything_before(repo):
     assert [c.pr for c in result] == [22, 21]
     assert [c.sha for c in result] == [recent_sha, old_but_newer_sha]
 
-    # Bewijs dat het bereik beslist, niet het datumvenster: de 24u-fallback
-    # zou #21 juist laten vallen, want zijn datum ligt >24u terug.
+    # Proof that the range decides, not the date window: the 24h fallback
+    # would drop #21, because its date is >24h back.
     fallback = prcov.select_commits(repo.root, None)
     assert 21 not in {c.pr for c in fallback}
 

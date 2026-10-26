@@ -1,9 +1,9 @@
-"""Gedeeld rekenwerk voor diff-coverage: één implementatie, twee aanroepers.
+"""Shared calculation for diff coverage: one implementation, two callers.
 
-Gebruikt door `ratchet.py coverage` (drempel uit quality-baseline.toml) en door
-de nightly via `prcov.py`. Wat gedeeld wordt is het rekenwerk, niet het oordeel:
-alleen `.py`-bestanden, een ontbrekende rapportregel is een fout in plaats van
-"alles gemist", en vervolgregels worden op hun statement teruggelegd.
+Used by `ratchet.py coverage` (threshold from quality-baseline.toml) and by
+the nightly via `prcov.py`. What is shared is the calculation, not the verdict:
+only `.py` files, a missing report line is an error instead of
+"everything missed", and continuation lines are mapped back to their statement.
 """
 
 from __future__ import annotations
@@ -16,20 +16,20 @@ from typing import Any
 
 _HUNK_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,\d+)? @@")
 
-# Velden waarin een samengesteld statement zijn eigen sub-statements draagt.
-# Ze bepalen waar de kop van dat statement ophoudt.
+# Fields in which a compound statement carries its own sub-statements.
+# They determine where the header of that statement ends.
 _BODY_FIELDS = ("body", "orelse", "finalbody", "handlers", "cases")
 
-# ExceptHandler en match_case zijn geen ast.stmt maar hebben wel een eigen
-# regelnummer dat coverage.py als statement rapporteert; zonder hen valt een
-# gewijzigde `except X:`- of `case ...:`-regel terug op de omsluitende kop
-# (`try`/`match`) en telt een nooit-uitgevoerde `case`-arm als gedekt zodra
-# een andere arm draait.
+# ExceptHandler and match_case are not an ast.stmt but do have their own
+# line number that coverage.py reports as a statement; without them a
+# changed `except X:` or `case ...:` line falls back to the enclosing header
+# (`try`/`match`) and a never-executed `case` arm counts as covered as soon as
+# another arm runs.
 _HEADER_NODES = (ast.stmt, ast.ExceptHandler, ast.match_case)
 
 
 class CoverageReportError(RuntimeError):
-    """Het rapport en de diff passen niet bij elkaar. Fail closed: rood."""
+    """The report and the diff do not match. Fail closed: red."""
 
 
 @dataclass(frozen=True)
@@ -43,12 +43,12 @@ class DiffCoverage:
 
     @property
     def pct(self) -> float:
-        """100.0 bij een lege noemer — geen deling door nul, en niets te oordelen."""
+        """100.0 for an empty denominator — no division by zero, and nothing to judge."""
         return 100.0 if self.total == 0 else 100.0 * self.covered / self.total
 
 
 def added_lines(diff: str) -> dict[str, list[int]]:
-    """{pad: [regelnummers in het nieuwe bestand]} uit een `--unified=0`-diff."""
+    """{path: [line numbers in the new file]} from a `--unified=0` diff."""
     added: dict[str, list[int]] = {}
     path = ""
     lineno = 0
@@ -66,17 +66,17 @@ def added_lines(diff: str) -> dict[str, list[int]]:
                 added.setdefault(path, []).append(lineno)
             lineno += 1
         elif line.startswith("-") or line.startswith("\\"):
-            continue  # verwijderde regel / "\ No newline" — geen nieuw regelnummer
+            continue  # removed line / "\ No newline" — no new line number
         elif line.startswith(" "):
-            lineno += 1  # contextregel (afwezig bij --unified=0, voor de zekerheid)
+            lineno += 1  # context line (absent with --unified=0, to be safe)
     return added
 
 
 def _lineno(node: ast.AST) -> int | None:
-    """Regelnummer van de kop van dit knooppunt.
+    """Line number of the header of this node.
 
-    match_case draagt zelf geen `lineno` (geen `_attributes`-regel in de
-    grammatica); zijn `pattern` — de `case ...`-uitdrukking — wel.
+    match_case carries no `lineno` itself (no `_attributes` line in the
+    grammar); its `pattern` — the `case ...` expression — does.
     """
     if isinstance(node, ast.match_case):
         return node.pattern.lineno
@@ -84,12 +84,12 @@ def _lineno(node: ast.AST) -> int | None:
 
 
 def _spans(tree: ast.AST) -> list[tuple[int, int]]:
-    """Per statement de regels die er écht bij horen.
+    """Per statement, the lines that really belong to it.
 
-    Voor een samengesteld statement (if/for/def/try/match/case/…) telt alléén
-    de kop: zijn body bestaat uit eigen statements met eigen regelnummers.
-    Zonder die inperking zou een leegregel middenin een functie op de
-    `def`-regel worden teruggelegd en die ten onrechte de noemer in trekken.
+    For a compound statement (if/for/def/try/match/case/…) only
+    the header counts: its body consists of its own statements with their own line numbers.
+    Without that restriction a blank line in the middle of a function would be mapped back to the
+    `def` line and wrongly pull it into the denominator.
     """
     spans: list[tuple[int, int]] = []
     for node in ast.walk(tree):
@@ -113,17 +113,17 @@ def _spans(tree: ast.AST) -> list[tuple[int, int]]:
 
 
 def statement_lines(source: str, lines: Iterable[int]) -> set[int]:
-    """Leg gewijzigde regelnummers terug op de regel waar hun statement begínt.
+    """Map changed line numbers back to the line where their statement begins.
 
-    Coverage.py rapporteert per *statement*, en dat is de regel waar het
-    statement begint. Een wijziging binnen een multiline-aanroep landt anders op
-    een nummer dat in geen van beide sets staat en zou stil uit de noemer vallen
-    — ongedekte code die de gate passeert. Dat is de verkeerde richting om fout
-    te gaan.
+    Coverage.py reports per *statement*, and that is the line where the
+    statement begins. A change inside a multiline call otherwise lands on
+    a number that is in neither set and would silently drop out of the denominator
+    — uncovered code that passes the gate. That is the wrong direction to
+    fail in.
 
-    Meerdere gewijzigde regels binnen hetzelfde statement leveren één nummer op,
-    niet drie. Regels die bij geen enkel statement horen (comments, leegregels,
-    regels tussen statements) vallen weg — die kún je niet dekken.
+    Several changed lines within the same statement yield one number,
+    not three. Lines that belong to no statement (comments, blank lines,
+    lines between statements) drop out — those you cannot cover.
     """
     try:
         tree = ast.parse(source)
@@ -149,24 +149,24 @@ def diff_coverage(
     read_source: Callable[[str], str],
     exclude: Sequence[str] = (),
 ) -> DiffCoverage:
-    """Leg de gewijzigde regels tegen `coverage.json` en tel.
+    """Lay the changed lines against `coverage.json` and count.
 
-    `read_source` is injecteerbaar, zodat een aanroeper zijn bestanden ergens
-    anders vandaan kan lezen dan van schijf.
+    `read_source` is injectable, so a caller can read its files from somewhere
+    other than disk.
 
-    Een gewijzigd `.py`-bestand dat niet in het rapport staat is een **fout**:
-    `--cov=src` noemt élke Python-module onder `src/`, ook een gloednieuwe die
-    geen enkele test importeert (geverifieerd op src/web/pages/nexus_page.py,
-    die op 0% in het rapport staat). Ontbreekt hij tóch, dan komen rapport en
-    diff niet uit dezelfde run en mag de gate niet "dus alles gemist" aannemen.
+    A changed `.py` file that is not in the report is an **error**:
+    `--cov=src` names every Python module under `src/`, even a brand-new one that
+    no test imports (verified on src/web/pages/nexus_page.py,
+    which is in the report at 0%). If it is missing anyway, report and
+    diff do not come from the same run and the gate must not assume "so everything missed".
     """
     files = report.get("files", {})
     total = 0
     uncovered: dict[str, list[int]] = {}
     for path, lines in sorted(added.items()):
-        # De gate doet geen uitspraak over niet-Python: er staan 13 getrackte
-        # niet-Python-bestanden onder src/ (de browserextensie, een Jinja-template,
-        # drie CLAUDE.md) en die kunnen per definitie niet in het rapport staan.
+        # The gate makes no statement about non-Python: there are 13 tracked
+        # non-Python files under src/ (the browser extension, a Jinja template,
+        # three CLAUDE.md) and by definition they cannot be in the report.
         if not path.endswith(".py"):
             continue
         if any(path.startswith(prefix) for prefix in exclude):
@@ -180,8 +180,8 @@ def diff_coverage(
         executed = set(entry.get("executed_lines", []))
         missing = set(entry.get("missing_lines", []))
         statements = statement_lines(read_source(path), lines)
-        # Wat in geen van beide sets staat is niet uitvoerbaar (leegregel,
-        # comment, `# pragma: no cover`) en valt uit de noemer.
+        # What is in neither set is not executable (blank line,
+        # comment, `# pragma: no cover`) and drops out of the denominator.
         relevant = sorted(s for s in statements if s in executed or s in missing)
         total += len(relevant)
         missed = [s for s in relevant if s in missing]

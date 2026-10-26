@@ -73,7 +73,7 @@ def test_a_valid_baseline_loads(tmp_path):
 
 
 def test_a_baseline_without_the_complexipy_section_is_an_error(tmp_path):
-    """Een ontbrekende sectie is een uitgeschakelde teller: fail closed."""
+    """A missing section is a disabled counter: fail closed."""
     text = GOOD.replace("[complexipy]\ncognitive_over_15 = 149\n\n", "")
     assert "complexipy" not in text
     with pytest.raises(bl.BaselineError, match="complexipy"):
@@ -113,7 +113,7 @@ def test_a_missing_counter_rule_is_an_error(tmp_path):
 
 
 def test_a_typo_in_a_rule_name_is_an_error(tmp_path):
-    """`C902 = 64` zou de teller voor C901 op nul zetten en die regel uitschakelen."""
+    """`C902 = 64` would set the counter for C901 to zero and disable that rule."""
     text = GOOD.replace("C901   = 64", "C902   = 64")
     with pytest.raises(bl.BaselineError) as exc:
         bl.load(write(tmp_path, text), ROOT)
@@ -139,7 +139,7 @@ def test_a_negative_count_is_an_error(tmp_path):
 
 
 def test_a_boolean_count_is_an_error(tmp_path):
-    """bool erft van int: `isinstance(True, int)` is True, dus dit moet op type()."""
+    """bool inherits from int: `isinstance(True, int)` is True, so this must use type()."""
     text = GOOD.replace("C901   = 64", "C901   = true")
     with pytest.raises(bl.BaselineError, match="C901"):
         bl.load(write(tmp_path, text), ROOT)
@@ -158,7 +158,7 @@ def test_a_threshold_out_of_range_is_an_error(tmp_path):
 
 
 def test_an_exclude_pointing_nowhere_is_an_error(tmp_path):
-    """Een uitsluiting die naar niets wijst doet stil niets — dat is de gevaarlijke vorm."""
+    """An exclusion that points to nothing silently does nothing — that is the dangerous form."""
     text = GOOD.replace('"src/generated/"', '"src/does_not_exist/"')
     with pytest.raises(bl.BaselineError, match="does_not_exist"):
         bl.load(write(tmp_path, text), ROOT)
@@ -195,14 +195,14 @@ def test_a_garbled_pin_is_an_error(tmp_path):
         ratchet.ruff_pin(tmp_path)
 
 
-# --- complexipy (#1192): de tweede meetbron ---------------------------------------
+# --- complexipy (#1192): the second measurement source ----------------------------
 
 
 def test_the_complexipy_pin_has_exactly_one_source():
-    """De complexipy-versie staat in .complexipy-version en nergens anders.
+    """The complexipy version is in .complexipy-version and nowhere else.
 
-    Dezelfde vorm als de ruff-pin: twee plekken is drift, en drift in een
-    teller is een rode CI op een PR die niets veranderde.
+    The same form as the ruff pin: two places is drift, and drift in a
+    counter is a red CI on a PR that changed nothing.
     """
     pin = (ROOT / ".complexipy-version").read_text(encoding="utf-8").strip()
     assert re.fullmatch(r"\d+\.\d+\.\d+", pin), pin
@@ -227,8 +227,8 @@ def test_a_garbled_complexipy_pin_is_an_error(tmp_path):
 
 
 class _FakeComplexipy:
-    """Een nep-`subprocess.run` die complexipy speelt: legt de aanroep vast en
-    schrijft de JSON naar het pad na `--output`, zoals de echte tool."""
+    """A fake `subprocess.run` that plays complexipy: records the call and
+    writes the JSON to the path after `--output`, like the real tool."""
 
     def __init__(self, entries=None, *, returncode=0, stdout="", stderr="", write=True):
         self.entries = [] if entries is None else entries
@@ -268,7 +268,7 @@ def _complexipy_root(tmp_path: Path) -> Path:
 def test_count_complexipy_runs_pinned_without_ignores_in_a_temp_dir(
     tmp_path, monkeypatch
 ):
-    """Review Focus 2 en 3: geen `# noqa`-ontsnapping, en geen rommel in de werkboom."""
+    """Review Focus 2 and 3: no `# noqa` escape, and no litter in the working tree."""
     root = _complexipy_root(tmp_path)
     fake = _FakeComplexipy([_entry("src/a.py", "f", 3)])
     monkeypatch.setattr(ratchet.subprocess, "run", fake)
@@ -287,10 +287,10 @@ def test_count_complexipy_runs_pinned_without_ignores_in_a_temp_dir(
 def test_count_complexipy_runs_outside_the_repo_so_its_config_cannot_exclude(
     tmp_path, monkeypatch
 ):
-    """complexipy leest `[tool.complexipy] exclude` uit zijn cwd, en --no-ignore
-    stopt dat niet: met de repo als cwd haalt één configregel een bestand stil uit
-    de teller én de harde grens. Daarom draait hij elders, met absolute paden, en
-    komen de paden relatief aan de repo terug."""
+    """complexipy reads `[tool.complexipy] exclude` from its cwd, and --no-ignore
+    does not stop that: with the repo as cwd one config line silently takes a file out of
+    the counter and the hard limit. That is why it runs elsewhere, with absolute paths, and
+    the paths come back relative to the repo."""
     root = _complexipy_root(tmp_path)
     fake = _FakeComplexipy(
         [_entry(str(root / "src" / "a.py"), "f", 30), _entry("/elders/b.py", "g", 1)]
@@ -307,7 +307,7 @@ def test_count_complexipy_runs_outside_the_repo_so_its_config_cannot_exclude(
 
 
 def test_count_complexipy_keeps_duplicate_names(tmp_path, monkeypatch):
-    """Review Focus 5: de teller telt regels uit de JSON, geen unieke namen."""
+    """Review Focus 5: the counter counts lines from the JSON, not unique names."""
     entries = [
         _entry("src/a.py", "C::run", 20),
         _entry("src/b.py", "C::run", 21),
@@ -325,8 +325,8 @@ def test_count_complexipy_keeps_duplicate_names(tmp_path, monkeypatch):
 
 
 def test_count_complexipy_is_red_when_a_file_failed(tmp_path, monkeypatch):
-    """Review Focus 1: een bestand dat complexipy niet kon lezen telt niet mee,
-    dus groen met minder functies zou een leugen zijn."""
+    """Review Focus 1: a file that complexipy could not read does not count,
+    so green with fewer functions would be a lie."""
     fake = _FakeComplexipy(
         [_entry("src/a.py", "f", 3)],
         returncode=1,
@@ -380,7 +380,7 @@ def _cognitive_baseline(cognitive_over_15: int) -> bl.Baseline:
 
 def test_judge_complexity_flags_a_rising_cognitive_counter():
     scores = [("src/a.py::f", 16), ("src/a.py::g", 25), ("src/b.py::h", 18)]
-    scores.append(("src/b.py::i", 15))  # precies 15 telt niet mee: strikt groter
+    scores.append(("src/b.py::i", 15))  # exactly 15 does not count: strictly greater
     failures, notes = ratchet.judge_complexity(_cognitive_baseline(2), [], scores)
     assert len(failures) == 1
     assert "cognitive_over_15: 2 -> 3" in failures[0]
@@ -403,7 +403,7 @@ def test_judge_complexity_suggests_lowering_on_a_drop():
 
 
 def _stub_measurements(monkeypatch, *, cognitive_scores, cyclomatic_scores=()):
-    """Zet beide meetbronnen vast; geen subprocess, dus ook geen netwerk."""
+    """Pin both measurement sources; no subprocess, so no network either."""
     counts = dict.fromkeys(ratchet.ALL_RULES, 0)
     where = {code: [] for code in ratchet.ALL_RULES}
     cyclomatic = list(cyclomatic_scores)
@@ -521,9 +521,9 @@ def test_count_ruff_reads_the_cyclomatic_score_from_the_message(tmp_path, monkey
 
 
 def test_ruff_runs_pinned_with_the_mccabe_threshold_fixed_at_10(tmp_path, monkeypatch):
-    """ruff meldt C901 alleen boven max-complexity. Zonder de --config-pin zou
-    `max-complexity = 25` in pyproject.toml cyclomatisch 21-25 verbergen voor de
-    harde grens."""
+    """ruff reports C901 only above max-complexity. Without the --config pin
+    `max-complexity = 25` in pyproject.toml would hide cyclomatic 21-25 from the
+    hard limit."""
     (tmp_path / ".ruff-version").write_text("0.16.4\n", encoding="utf-8")
     seen: dict = {}
 
@@ -543,8 +543,8 @@ def test_ruff_runs_pinned_with_the_mccabe_threshold_fixed_at_10(tmp_path, monkey
 
 
 def test_count_ruff_is_red_when_a_c901_message_has_no_score(tmp_path, monkeypatch):
-    """Review Focus 4: een ruff-bump die het bericht verandert, mag de harde
-    grens niet stil uitzetten."""
+    """Review Focus 4: a ruff bump that changes the message may not silently
+    switch off the hard limit."""
     _fake_ruff(monkeypatch, tmp_path, [_c901(tmp_path, "`f` is complex")])
     with pytest.raises(SystemExit, match="C901"):
         ratchet.count_ruff(tmp_path)
@@ -624,11 +624,11 @@ def test_tighten_refuses_while_a_function_is_above_a_hard_limit(
 
 
 def test_an_invalid_syntax_finding_makes_the_arm_red(tmp_path, monkeypatch):
-    """Ruff meldt een onparseerbaar bestand als eigen `code: invalid-syntax`
-    finding. Die zit niet in ALL_RULES, dus `if code not in counts: continue`
-    gooide 'm weg — en met hem elke échte hit in dat bestand, met een stil
-    groene arm tot gevolg. De arm kon dat bestand niet beoordelen en moet
-    daarom rood zijn, niet groen."""
+    """Ruff reports an unparseable file as its own `code: invalid-syntax`
+    finding. That is not in ALL_RULES, so `if code not in counts: continue`
+    threw it away — and with it every real hit in that file, with a silently
+    green arm as a result. The arm could not judge that file and must
+    therefore be red, not green."""
     (tmp_path / ".ruff-version").write_text("0.16.4\n", encoding="utf-8")
     findings = [
         {
@@ -677,7 +677,7 @@ def test_compare_is_green_on_an_equal_counter():
 
 
 def test_compare_suggests_lowering_the_baseline_on_a_drop():
-    """Zonder deze melding zakt de streep nooit en roest de ratel vast."""
+    """Without this message the line never drops and the ratchet rusts stuck."""
     base = bl.Baseline(
         counts={r: 5 for r in bl.COUNTED_RULES},
         min_diff_pct=70,
@@ -723,8 +723,8 @@ def handle(payload):
         return result
     return None
 '''
-# regel 5 = het Assign-statement, 6 en 7 vervolgregels, 9 comment, 10 leeg,
-# 11 = de if-kop, 12 = return, 13 = return
+# line 5 = the Assign statement, 6 and 7 continuation lines, 9 comment, 10 blank,
+# 11 = the if header, 12 = return, 13 = return
 
 
 def read(_path: str) -> str:
@@ -751,8 +751,8 @@ def test_added_lines_numbers_multiple_hunks():
 
 
 def test_a_continuation_line_maps_back_onto_its_statement():
-    """Zonder deze mapping valt een wijziging binnen een multiline-aanroep stil
-    uit de noemer — ongedekte code die de gate passeert."""
+    """Without this mapping a change inside a multiline call silently drops
+    out of the denominator — uncovered code that passes the gate."""
     assert diffcov.statement_lines(SOURCE, [7]) == {5}
 
 
@@ -761,7 +761,7 @@ def test_three_changed_lines_in_one_statement_count_once():
 
 
 def test_a_comment_or_blank_line_maps_to_nothing():
-    """Ze horen bij geen statement en kún je niet dekken."""
+    """They belong to no statement and you cannot cover them."""
     assert diffcov.statement_lines(SOURCE, [9, 10]) == set()
 
 
@@ -775,14 +775,14 @@ def handle(command):
         case _:
             return 3
 """
-# regel 2 = de match-kop, 3/5/7 = de case-koppen, 4/6/8 = hun bodies
+# line 2 = the match header, 3/5/7 = the case headers, 4/6/8 = their bodies
 
 
 def test_each_case_header_maps_to_its_own_line_not_the_match_line():
-    """Zonder match_case in _HEADER_NODES/_BODY_FIELDS valt de hele match/case
-    samen tot één span op de `match`-regel: coverage.py rapporteert `case`-
-    regels los, en de `match`-regel telt als uitgevoerd zodra één willekeurige
-    arm draait — dus een nooit-geraakte `case`-arm zou vals-groen zijn."""
+    """Without match_case in _HEADER_NODES/_BODY_FIELDS the whole match/case
+    collapses into one span on the `match` line: coverage.py reports `case`
+    lines separately, and the `match` line counts as executed as soon as any
+    arm runs — so a never-hit `case` arm would be falsely green."""
     assert diffcov.statement_lines(MATCH_SOURCE, [3]) == {3}
     assert diffcov.statement_lines(MATCH_SOURCE, [5]) == {5}
     assert diffcov.statement_lines(MATCH_SOURCE, [7]) == {7}
@@ -812,8 +812,8 @@ def test_a_covered_change_is_green():
 
 
 def test_a_missing_report_entry_is_an_error_not_all_missed():
-    """`scripts/opencode-lane/lane/gates.py` nam vroeger 'dus alles gemist' aan.
-    Op een 100%-gate viel dat niet op; op een drempel wel."""
+    """`scripts/opencode-lane/lane/gates.py` used to assume 'so everything missed'.
+    On a 100% gate that went unnoticed; on a threshold it did not."""
     with pytest.raises(
         diffcov.CoverageReportError, match="no report entry for src/a.py"
     ):
@@ -821,7 +821,7 @@ def test_a_missing_report_entry_is_an_error_not_all_missed():
 
 
 def test_a_non_python_file_is_ignored():
-    """De browserextensie kan per definitie niet in een Python-coverage.json staan."""
+    """The browser extension by definition cannot be in a Python coverage.json."""
     result = diffcov.diff_coverage(
         {"src/browser/extension/background.js": [3]}, {"files": {}}, read_source=read
     )
@@ -840,7 +840,7 @@ def test_an_excluded_prefix_falls_out_of_both_numerator_and_denominator():
 
 
 def test_a_pragma_no_cover_line_falls_out_of_the_denominator():
-    """coverage.py noemt zo'n regel in geen van beide sets; wij dus ook niet."""
+    """coverage.py names such a line in neither set; so neither do we."""
     result = diffcov.diff_coverage(
         {"src/a.py": [12]}, report_for(executed=[11], missing=[]), read_source=read
     )
@@ -877,7 +877,7 @@ def test_judge_is_green_above_the_threshold():
 
 
 def test_judge_is_red_below_the_threshold_and_names_the_lines():
-    """#623 AC 3: de ongedekte regelnummers per bestand, niet alleen het percentage."""
+    """#623 AC 3: the uncovered line numbers per file, not just the percentage."""
     base = bl.Baseline(
         counts=dict.fromkeys(bl.COUNTED_RULES, 0),
         min_diff_pct=70,
@@ -893,7 +893,7 @@ def test_judge_is_red_below_the_threshold_and_names_the_lines():
 
 
 def test_judge_is_green_on_an_exact_hit():
-    """70/100 mag er precies in; een drempel is een ondergrens, geen mesrand."""
+    """70/100 is allowed exactly; a threshold is a lower bound, not a knife edge."""
     base = bl.Baseline(
         counts=dict.fromkeys(bl.COUNTED_RULES, 0),
         min_diff_pct=70,
@@ -905,20 +905,20 @@ def test_judge_is_green_on_an_exact_hit():
 
 
 def test_judge_reads_the_threshold_from_the_baseline_not_a_hardcoded_70():
-    """Alle andere judge_coverage-tests gebruiken min_diff_pct=70 — dezelfde
-    waarde als de echte quality-baseline.toml. Een regressie die 70 hardcodeert
-    in judge_coverage in plaats van baseline.min_diff_pct te lezen, zou al die
-    tests laten slagen. Deze test zet de drempel op 50 en een percentage
-    daartussenin (60%), zodat het verdict alleen klopt als het echt de
-    baseline volgt."""
+    """All other judge_coverage tests use min_diff_pct=70 — the same
+    value as the real quality-baseline.toml. A regression that hardcodes 70
+    in judge_coverage instead of reading baseline.min_diff_pct would let all those
+    tests pass. This test sets the threshold at 50 and a percentage
+    in between (60%), so the verdict is only right if it really follows the
+    baseline."""
     base = bl.Baseline(
         counts=dict.fromkeys(bl.COUNTED_RULES, 0),
         min_diff_pct=50,
         min_total_pct=0,
         exclude=(),
     )
-    # 6/10 gedekt = 60%: boven de 50%-drempel van deze baseline, onder de
-    # hardcoded 70 die de andere tests niet zouden onderscheiden.
+    # 6/10 covered = 60%: above the 50% threshold of this baseline, below the
+    # hardcoded 70 that the other tests would not distinguish.
     result = diffcov.DiffCoverage(total=10, uncovered={"src/a.py": [1, 2, 3, 4]})
     assert ratchet.judge_coverage(base, result) == []
 
@@ -936,19 +936,19 @@ def test_judge_is_green_on_an_empty_denominator():
 
 
 def test_the_suite_env_drops_gits_repo_scoping_variables():
-    """`ratchet.py coverage` kan de suite van binnen een git-hook draaien.
+    """`ratchet.py coverage` can run the suite from inside a git hook.
 
-    git zet dan GIT_DIR c.s., en git leest die vóór de cwd: met GIT_DIR gezet
-    negeert zelfs `git -C /tmp/fixture` die -C. Elke test die een fixture-repo
-    bouwt en git aanroept werkt dan op de ECHTE repo. Concreet gebeurd:
-    scripts/opencode-lane/lane/cli.py doet `git add -A` + `git commit`, en dat
-    verving de branchtip door een fixture-commit die 702 bestanden uit
-    .planning/ als verwijderd optekende — twee pushes lang.
+    git then sets GIT_DIR et al., and git reads those before the cwd: with GIT_DIR set
+    even `git -C /tmp/fixture` ignores that -C. Every test that builds a fixture repo
+    and calls git then works on the REAL repo. This actually happened:
+    scripts/opencode-lane/lane/cli.py does `git add -A` + `git commit`, and that
+    replaced the branch tip with a fixture commit that recorded 702 files from
+    .planning/ as deleted — for two pushes.
 
-    De pre-push-arm die dit veroorzaakte is met #806 verdwenen. De schoonmaak
-    blijft: ratchet.py weet niet wie hem aanroept, en een handmatige aanroep met
-    GIT_DIR c.s. in de omgeving (vanuit een andere hook, of `git rebase -x`)
-    opent exact hetzelfde gat.
+    The pre-push arm that caused this disappeared with #806. The cleanup
+    stays: ratchet.py does not know who calls it, and a manual call with
+    GIT_DIR et al. in the environment (from another hook, or `git rebase -x`)
+    opens exactly the same hole.
     """
     hookish = {
         "PATH": "/usr/bin",
@@ -967,7 +967,7 @@ def test_the_suite_env_drops_gits_repo_scoping_variables():
 
 
 def test_the_coverage_suite_is_spawned_with_the_cleaned_env(monkeypatch, tmp_path):
-    """Niet alleen de helper bestaat — de aanroep gebruikt hem ook echt."""
+    """Not only does the helper exist — the call really uses it."""
     seen: dict[str, object] = {}
 
     def fake_run(argv, **kwargs):
@@ -985,7 +985,7 @@ def test_the_coverage_suite_is_spawned_with_the_cleaned_env(monkeypatch, tmp_pat
     assert "GIT_DIR" not in seen["env"]
 
 
-# --- de neerwaartse ratel (#703) ---------------------------------------------
+# --- the downward ratchet (#703) ---------------------------------------------
 
 BASELINE_WITH_COMMENTS = """\
 [ruff]
@@ -1026,17 +1026,17 @@ def test_lowering_rewrites_only_the_dropped_rule():
 
 
 def test_lowering_keeps_the_trailing_comment():
-    """De FP-schattingen zijn het enige geheugen van de steekproef; die mogen niet weg."""
+    """The FP estimates are the only memory of the sample; they must not go."""
     text, _ = ratchet.rewrite_baseline(BASELINE_WITH_COMMENTS, _counts(F841=6))
     assert "F841   = 6    # ~27% FP (n=11)" in text or "# ~27% FP (n=11)" in text
     assert text.count("# ~27% FP (n=11)") == 1
 
 
 def test_lowering_never_raises_a_counter():
-    """Een stijging is het werk van de gate, niet van de verlager.
+    """A rise is the work of the gate, not of the lowerer.
 
-    Zou dit getal wél omhoog gaan, dan schrijft de automatisering stilletjes een
-    bump die niemand heeft besloten — precies de bypass die er niet mag zijn.
+    If this number did go up, the automation would quietly write a
+    bump that nobody decided — exactly the bypass that must not exist.
     """
     text, changes = ratchet.rewrite_baseline(BASELINE_WITH_COMMENTS, _counts(S110=99))
     assert changes == []
@@ -1082,18 +1082,18 @@ def test_lowering_the_cognitive_counter_keeps_the_column_of_its_comment():
 
 
 def test_lowering_leaves_the_coverage_section_alone():
-    """min_diff_pct is beleid, geen meting — de verlager blijft eraf (#703)."""
+    """min_diff_pct is policy, not a measurement — the lowerer stays off it (#703)."""
     text, _ = ratchet.rewrite_baseline(BASELINE_WITH_COMMENTS, _counts(C901=1))
     assert "min_diff_pct = 70" in text
 
 
 def test_a_rewritten_baseline_still_loads():
-    """De uitvoer moet door de eigen validatie komen, anders is de PR onbruikbaar."""
+    """The output must pass its own validation, otherwise the PR is unusable."""
     text, _ = ratchet.rewrite_baseline(GOOD, dict.fromkeys(bl.COUNTED_RULES, 0))
     assert bl.load(write(Path(tempfile.mkdtemp()), text), ROOT).counts["C901"] == 0
 
 
-# --- de globale dekkingsvloer (#703) -----------------------------------------
+# --- the global coverage floor (#703) ----------------------------------------
 
 BASELINE_WITH_TOTAL = BASELINE_WITH_COMMENTS.replace(
     "min_diff_pct = 70\n", "min_diff_pct = 70\nmin_total_pct = 64\n"
@@ -1110,7 +1110,7 @@ def _bl(min_total_pct=64, min_diff_pct=70):
 
 
 def test_the_total_floor_is_required_in_the_file():
-    """Ontbreekt de sleutel, dan is er geen vloer — dat moet rood zijn, niet 0."""
+    """If the key is missing there is no floor — that must be red, not 0."""
     text = GOOD.replace("min_total_pct = 64\n", "")
     with pytest.raises(bl.BaselineError, match="min_total_pct"):
         bl.load(write(Path(tempfile.mkdtemp()), text), ROOT)
@@ -1146,7 +1146,7 @@ def test_tighten_raises_the_total_floor_when_coverage_rose():
 
 
 def test_tighten_never_lowers_the_total_floor():
-    """Een dip mag de vloer niet meeslepen; dan is het geen ratel meer."""
+    """A dip may not drag the floor along; then it is no longer a ratchet."""
     text, changes = ratchet.rewrite_baseline(
         BASELINE_WITH_TOTAL, _counts(), total_pct=50.0
     )
@@ -1155,7 +1155,7 @@ def test_tighten_never_lowers_the_total_floor():
 
 
 def test_tighten_ignores_a_rise_inside_the_same_whole_percent():
-    """64.7 -> 64.9 is ruis; een PR per week daarvoor is onleesbaar."""
+    """64.7 -> 64.9 is noise; a PR per week for that is unreadable."""
     _, changes = ratchet.rewrite_baseline(
         BASELINE_WITH_TOTAL, _counts(), total_pct=64.98
     )
@@ -1303,8 +1303,8 @@ def test_complexity_skill_path():
 
 
 def _messages(path: Path) -> list[str]:
-    """Every string literal in `path` except docstrings, which stay Dutch (ontwerpkeuze 3
-    van (b))."""
+    """Every string literal in `path` except docstrings, which are not output (design choice 3
+    of (b))."""
     import ast
 
     tree = ast.parse(path.read_text(encoding="utf-8"))

@@ -1,9 +1,9 @@
-"""Laden en valideren van quality-baseline.toml.
+"""Loading and validating quality-baseline.toml.
 
-Streng met opzet. Een syntactisch geldige TOML met een tikfout erin is
-gevaarlijker dan een kapotte: hij laadt, en de gate meet stilletjes iets anders
-dan bedoeld. `C902 = 64` in plaats van `C901` zou de teller voor C901 op nul
-zetten en die regel de facto uitschakelen.
+Strict on purpose. A syntactically valid TOML with a typo in it is
+more dangerous than a broken one: it loads, and the gate silently measures something other
+than intended. `C902 = 64` instead of `C901` would set the counter for C901 to zero
+and effectively disable that rule.
 """
 
 from __future__ import annotations
@@ -12,8 +12,8 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-# De acht nulregels. Ze staan in pyproject.toml [tool.ruff.lint] extend-select en
-# horen NIET in de baseline: nul is een grens, geen stand.
+# The eight zero rules. They are in pyproject.toml [tool.ruff.lint] extend-select and
+# do NOT belong in the baseline: zero is a limit, not a level.
 ZERO_RULES: tuple[str, ...] = (
     "E722",
     "B006",
@@ -25,8 +25,8 @@ ZERO_RULES: tuple[str, ...] = (
     "PGH004",
 )
 
-# De zeven tellers. [ruff] moet er exact deze zeven bevatten — geen meer, geen
-# minder, want een ontbrekende sleutel is een uitgeschakelde regel.
+# The seven counters. [ruff] must contain exactly these seven — no more, no
+# fewer, because a missing key is a disabled rule.
 COUNTED_RULES: tuple[str, ...] = (
     "C901",
     "TRY400",
@@ -37,31 +37,31 @@ COUNTED_RULES: tuple[str, ...] = (
     "PT011",
 )
 
-# De ene teller in [complexipy]: het aantal functies boven cognitief 15.
+# The one counter in [complexipy]: the number of functions above cognitive 15.
 COMPLEXIPY_KEY = "cognitive_over_15"
 
 
 class BaselineError(ValueError):
-    """De baseline is onbruikbaar. Fail closed: de gate gaat rood."""
+    """The baseline is unusable. Fail closed: the gate goes red."""
 
 
 @dataclass(frozen=True)
 class Baseline:
     counts: dict[str, int]
     min_diff_pct: int
-    # De gemeten globale src-dekking, vastgezet als vloer. Anders dan
-    # min_diff_pct (beleid per PR) is dit een stand: hij komt uit een meting en
-    # kruipt omhoog zodra nieuwe code de dekking optilt.
+    # The measured global src coverage, pinned as a floor. Unlike
+    # min_diff_pct (policy per PR) this is a level: it comes from a measurement and
+    # creeps up as soon as new code lifts the coverage.
     min_total_pct: int
     exclude: tuple[str, ...]
-    # Het aantal functies met cognitieve complexiteit > 15 (complexipy).
-    # Laatste veld, met default, zodat bestaande Baseline(...)-constructies
-    # blijven werken; load() eist de sectie wél in het bestand.
+    # The number of functions with cognitive complexity > 15 (complexipy).
+    # Last field, with a default, so existing Baseline(...) constructions
+    # keep working; load() does require the section in the file.
     cognitive_over_15: int = 0
 
 
 def load(path: Path, repo_root: Path) -> Baseline:
-    """Lees en valideer de baseline, of gooi BaselineError met de reden erin."""
+    """Read and validate the baseline, or raise BaselineError with the reason in it."""
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError as exc:
@@ -101,10 +101,10 @@ def _counts(section: object) -> dict[str, int]:
             f"zero rules do not belong in the baseline: {baselined_zero} — "
             "zero is a limit, not a level, so there is no bump possible"
         )
-    # extra vóór missing: bij een tikfout (C902 i.p.v. C901) moet de melding
-    # zowel de onbekende naam als de verwachte naam noemen. Zou missing eerst
-    # gecontroleerd worden, dan raakt het ontbrekende C901 gemeld zonder ooit
-    # te laten zien dat C902 de (foutieve) oorzaak is.
+    # extra before missing: on a typo (C902 instead of C901) the message must
+    # name both the unknown name and the expected name. If missing were checked
+    # first, the absent C901 would be reported without ever
+    # showing that C902 is the (wrong) cause.
     extra = sorted(keys - set(COUNTED_RULES))
     if extra:
         raise BaselineError(
@@ -117,8 +117,8 @@ def _counts(section: object) -> dict[str, int]:
     counts: dict[str, int] = {}
     for rule in COUNTED_RULES:
         value = section[rule]
-        # type() en niet isinstance(): bool erft van int, dus `C901 = true` zou
-        # een isinstance-check passeren en daarna als teller 1 gaan gelden.
+        # type() and not isinstance(): bool inherits from int, so `C901 = true` would
+        # pass an isinstance check and then count as counter 1.
         if type(value) is not int:
             raise BaselineError(f"{rule} is not an integer: {value!r}")
         if value < 0:
@@ -128,10 +128,10 @@ def _counts(section: object) -> dict[str, int]:
 
 
 def _complexipy_counter(section: object) -> int:
-    """De ene teller van [complexipy]: `cognitive_over_15`, een geheel getal >= 0.
+    """The one counter of [complexipy]: `cognitive_over_15`, an integer >= 0.
 
-    Verplicht, net als de ruff-tellers: een ontbrekende sleutel zou een
-    uitgeschakelde teller zijn.
+    Required, like the ruff counters: a missing key would be a
+    disabled counter.
     """
     if not isinstance(section, dict):
         raise BaselineError("[complexipy] is not a table")
@@ -144,7 +144,7 @@ def _complexipy_counter(section: object) -> int:
     if COMPLEXIPY_KEY not in section:
         raise BaselineError(f"[complexipy] lacks {COMPLEXIPY_KEY}")
     value = section[COMPLEXIPY_KEY]
-    # type() en niet isinstance(): bool erft van int.
+    # type() and not isinstance(): bool inherits from int.
     if type(value) is not int:
         raise BaselineError(f"{COMPLEXIPY_KEY} is not an integer: {value!r}")
     if value < 0:
@@ -162,16 +162,16 @@ def _coverage_section(section: object) -> dict:
 
 
 def _percentage(section: dict, key: str) -> int:
-    """Een verplicht geheel percentage in [0, 100].
+    """A required integer percentage in [0, 100].
 
-    Verplicht en niet defaulted: een ontbrekende sleutel zou een uitgeschakelde
-    vloer worden, en dat is precies de stille pass die deze gate nergens mag
-    hebben.
+    Required and not defaulted: a missing key would become a disabled
+    floor, and that is exactly the silent pass this gate must not have
+    anywhere.
     """
     if key not in section:
         raise BaselineError(f"coverage.{key} is missing")
     value = section[key]
-    # type() en niet isinstance(): bool erft van int.
+    # type() and not isinstance(): bool inherits from int.
     if type(value) is not int:
         raise BaselineError(f"coverage.{key} is not an integer: {value!r}")
     if not 0 <= value <= 100:

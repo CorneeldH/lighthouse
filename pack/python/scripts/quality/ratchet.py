@@ -31,12 +31,12 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from types import ModuleType
 
-# scripts/ is geen geïnstalleerd pakket. Zelf op sys.path zetten, zodat de
-# aanroepvorm hierboven werkt zonder PYTHONPATH van buiten.
+# scripts/ is not an installed package. Put it on sys.path ourselves, so the
+# invocation form above works without an outside PYTHONPATH.
 _SCRIPTS = Path(__file__).resolve().parents[1]
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
-# `.lighthouse/lib` next to `.lighthouse/scripts` (ontwerpkeuze 6 van (b)).
+# `.lighthouse/lib` next to `.lighthouse/scripts` (design choice 6 of (b)).
 _LIB = Path(__file__).resolve().parents[2] / "lib"
 if _LIB.is_dir() and str(_LIB) not in sys.path:
     sys.path.insert(0, str(_LIB))
@@ -56,39 +56,39 @@ from quality.gitenv import suite_env
 
 ALL_RULES: tuple[str, ...] = ZERO_RULES + COUNTED_RULES
 
-# Dezelfde signatuur als quality.prcov_issues.Gh, hier los gedefinieerd in
-# plaats van geïmporteerd — cmd_nightly importeert prcov_issues pas binnen
-# zichzelf, dus de andere subcommando's laden die module niet.
+# The same signature as quality.prcov_issues.Gh, defined separately here instead
+# of imported — cmd_nightly imports prcov_issues only inside itself,
+# so the other subcommands do not load that module.
 Gh = Callable[[Sequence[str], Mapping[str, str] | None, str | None], str]
 
-# Hoeveel locaties er per regel in de melding komen. Alle 64 C901-locaties
-# afdrukken maakt de melding onleesbaar; de eerste handvol wijst de weg.
+# How many locations go in the message per rule. Printing all 64 C901 locations
+# makes the message unreadable; the first handful shows the way.
 MAX_LOCATIONS = 20
 
 BASELINE_NAME = "quality-baseline.toml"
 
-# De teller telt functies met een cognitieve complexiteit strikt boven dit getal.
+# The counter counts functions with a cognitive complexity strictly above this number.
 COGNITIVE_COUNTER_THRESHOLD = 15
 
-# De twee harde grenzen per functie: geen baseline, geen bump, ook niet
-# met een noqa-comment. Een score gelijk aan de grens is groen, strikt erboven rood.
+# The two hard limits per function: no baseline, no bump, not even
+# with a noqa comment. A score equal to the limit is green, strictly above it red.
 CYCLOMATIC_LIMIT = 20
 COGNITIVE_LIMIT = 25
-# De markering in de foutregel van een harde grens; `_failure_footer` herkent hem.
+# The marker in the error line of a hard limit; `_failure_footer` recognises it.
 HARD_LIMIT_MARK = "hard limit, no bump possible"
 
-# ruff draagt de cyclomatische score in het bericht van elke C901-bevinding:
-# `f` is too complex (22 > 10). ruff meldt alleen functies boven de drempel, dus
-# de ratel pint die op 10 (`--config`, zie _ruff_findings): een hogere
-# max-complexity in pyproject.toml zou anders scores 21 en hoger tot die drempel
-# verbergen voor de harde grens, en de C901-teller iets anders laten tellen.
+# ruff carries the cyclomatic score in the message of every C901 finding:
+# `f` is too complex (22 > 10). ruff only reports functions above the threshold, so
+# the ratchet pins that at 10 (`--config`, see _ruff_findings): a higher
+# max-complexity in pyproject.toml would otherwise hide scores 21 and higher up to that threshold
+# from the hard limit, and make the C901 counter count something different.
 C901_THRESHOLD = 10
 C901_SCORE = re.compile(r"is too complex \((\d+) > \d+\)")
 C901_NAME = re.compile(r"`([^`]+)`")
 
 
 def repo_root() -> Path:
-    """LIGHTHOUSE_REPO_ROOT, anders `git rev-parse --show-toplevel`."""
+    """LIGHTHOUSE_REPO_ROOT, otherwise `git rev-parse --show-toplevel`."""
     try:
         return config.repo_root()
     except config.ConfigError as exc:
@@ -96,7 +96,7 @@ def repo_root() -> Path:
 
 
 def setting(key: str) -> object:
-    """Een sleutel uit lighthouse.toml, met de default van de configlezer."""
+    """A key from lighthouse.toml, with the default of the config reader."""
     try:
         return config.lookup(config.load(config.config_path()), key)
     except config.ConfigError as exc:
@@ -106,26 +106,26 @@ def setting(key: str) -> object:
 
 
 def _dirs(key: str) -> list[str]:
-    """De mappen onder `key`; een lege lijst stopt de ratel. Zonder paden zouden
-    ruff, complexipy en `git diff --` de hele repo nemen en pytest geen `--cov`."""
+    """The directories under `key`; an empty list stops the ratchet. Without paths
+    ruff, complexipy and `git diff --` would take the whole repo and pytest would get no `--cov`."""
     value = setting(key)
-    assert isinstance(value, list)  # de configlezer controleert het type
+    assert isinstance(value, list)  # the config reader checks the type
     if not value:
         raise SystemExit(f"ratchet: {key} is empty; the ratchet needs at least one directory")
     return [str(item) for item in value]
 
 
 def _read_pin(root: Path, name: str) -> str:
-    """Lees een versiepin uit een eigen bestand in de repowortel.
+    """Read a version pin from a file of its own in the repo root.
 
-    Eigen bestand en geen variabele in drie scripts: één plek betekent dat er
-    niets uit elkaar kán lopen. De hook ruff-format.sh leest hetzelfde
-    bestand; CI leest het transitief via deze module.
+    A file of its own and not a variable in three scripts: one place means nothing
+    can drift apart. The hook ruff-format.sh reads the same
+    file; CI reads it transitively via this module.
 
-    Ongepind was prima zolang ruff alleen autofixte. Zodra dezelfde ruff telt,
-    verschuift een release de getallen en maakt CI rood op een PR die niets
-    veranderde — hetzelfde probleem dat de workflow-audit oploste door zizmor,
-    actionlint en shellcheck te pinnen.
+    Unpinned was fine as long as ruff only autofixed. As soon as the same ruff counts,
+    a release shifts the numbers and turns CI red on a PR that changed nothing
+    — the same problem the workflow audit solved by pinning zizmor,
+    actionlint and shellcheck.
     """
     try:
         pin = (root / name).read_text(encoding="utf-8").strip()
@@ -137,26 +137,26 @@ def _read_pin(root: Path, name: str) -> str:
 
 
 def ruff_pin(root: Path) -> str:
-    """De ene bron van waarheid voor de ruff-versie: .ruff-version."""
+    """The one source of truth for the ruff version: .ruff-version."""
     return _read_pin(root, ".ruff-version")
 
 
 def complexipy_pin(root: Path) -> str:
-    """De ene bron van waarheid voor de complexipy-versie: .complexipy-version."""
+    """The one source of truth for the complexipy version: .complexipy-version."""
     return _read_pin(root, ".complexipy-version")
 
 
 def _ruff_findings(root: Path) -> list[dict]:
-    """De ruff-bevindingen (JSON) over `python.lint_dirs`, of SystemExit als ruff niet draait.
+    """The ruff findings (JSON) over `python.lint_dirs`, or SystemExit if ruff does not run.
 
-    --ignore-noqa is niet optioneel: zonder die vlag onderdrukt één
-    `# noqa: F401` de teller en is de gate met één comment te omzeilen.
+    --ignore-noqa is not optional: without that flag a single
+    `# noqa: F401` suppresses the counter and the gate can be bypassed with one comment.
 
-    Geen --isolated: de PT011-instelling uit pyproject.toml moet meedoen. Wel
-    een expliciete --select, zodat de getelde set exact deze vijftien blijft,
-    ook als extend-select later uitdijt. Om dezelfde reden staat de
-    mccabe-drempel vast via --config: wat C901 telt, en welke scores de harde
-    cyclomatische grens ziet, hangt dan niet van pyproject.toml af.
+    No --isolated: the PT011 setting from pyproject.toml must take part. But
+    an explicit --select, so the counted set stays exactly these fifteen,
+    even if extend-select grows later. For the same reason the
+    mccabe threshold is fixed via --config: what C901 counts, and which scores the hard
+    cyclomatic limit sees, then does not depend on pyproject.toml.
     """
     version = ruff_pin(root)
     cmd = [
@@ -173,8 +173,8 @@ def _ruff_findings(root: Path) -> list[dict]:
         *_dirs("python.lint_dirs"),
     ]
     proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, check=False)
-    # ruff geeft 0 (schoon) of 1 (bevindingen); al het andere is "de tool kon
-    # niet draaien" en dat is rood, niet groen. Fail closed.
+    # ruff gives 0 (clean) or 1 (findings); everything else is "the tool could
+    # not run" and that is red, not green. Fail closed.
     if proc.returncode not in (0, 1):
         raise SystemExit(
             f"ratchet: ruff@{version} could not run (rc={proc.returncode}) — the pin "
@@ -197,10 +197,10 @@ def _relative_name(finding: dict, root: Path) -> str:
 
 
 def _c901_score(finding: dict, location: str) -> tuple[str, int]:
-    """(`locatie functie`, score) uit het bericht van één C901-bevinding.
+    """(`location function`, score) from the message of one C901 finding.
 
-    Een bericht zonder leesbare score is rood: na een ruff-bump zou een stille
-    nul de harde cyclomatische grens uitzetten (fail closed).
+    A message without a readable score is red: after a ruff bump a silent
+    zero would switch off the hard cyclomatic limit (fail closed).
     """
     message = finding.get("message", "")
     match = C901_SCORE.search(message)
@@ -216,10 +216,10 @@ def _c901_score(finding: dict, location: str) -> tuple[str, int]:
 def count_ruff(
     root: Path,
 ) -> tuple[dict[str, int], dict[str, list[str]], list[tuple[str, int]]]:
-    """({code: aantal}, {code: [locaties]}, [(locatie functie, C901-score)]).
+    """({code: count}, {code: [locations]}, [(location function, C901 score)]).
 
-    Het derde element draagt de cyclomatische score per functie, voor de harde
-    grens in `judge_complexity`; de eerste twee voeden de tellers.
+    The third element carries the cyclomatic score per function, for the hard
+    limit in `judge_complexity`; the first two feed the counters.
     """
     counts = dict.fromkeys(ALL_RULES, 0)
     where: dict[str, list[str]] = {code: [] for code in ALL_RULES}
@@ -229,9 +229,9 @@ def count_ruff(
         code = finding.get("code")
         filename = _relative_name(finding, root)
         if code == "invalid-syntax":
-            # ruff kon dit bestand niet parsen: elke echte hit erin blijft
-            # ongeteld en de arm zou stil groen rapporteren — fail closed
-            # in plaats van "de baseline kan omlaag".
+            # ruff could not parse this file: every real hit in it stays
+            # uncounted and the arm would silently report green — fail closed
+            # instead of "the baseline can go down".
             invalid_syntax_files.append(filename)
             continue
         if code not in counts:
@@ -253,17 +253,17 @@ def count_ruff(
 
 
 def _failed_files(output: str) -> list[str]:
-    """De paden uit de `Failed to process <pad>`-regels van complexipy."""
+    """The paths from the `Failed to process <path>` lines of complexipy."""
     return sorted(set(re.findall(r"Failed to process (.+)", output)))
 
 
 def _complexipy_entry(entry: object, version: str) -> tuple[str, int]:
-    """(`pad::functie`, score) uit één element, of SystemExit bij een afwijkende vorm."""
+    """(`path::function`, score) from one element, or SystemExit on a deviating shape."""
     if isinstance(entry, dict):
         path = entry.get("path")
         name = entry.get("function_name")
         score = entry.get("complexity")
-        # type() en niet isinstance(): bool erft van int.
+        # type() and not isinstance(): bool inherits from int.
         if isinstance(path, str) and isinstance(name, str) and type(score) is int:
             return f"{path}::{name}", score
     raise SystemExit(
@@ -272,11 +272,11 @@ def _complexipy_entry(entry: object, version: str) -> tuple[str, int]:
 
 
 def _complexipy_scores(output: Path, version: str) -> list[tuple[str, int]]:
-    """(`pad::functie`, score) per functie uit het JSON-bestand van complexipy.
+    """(`path::function`, score) per function from the JSON file of complexipy.
 
-    Een element zonder pad, naam of gehele score is rood: een stil overgeslagen
-    functie zou de teller kunstmatig laag houden. Dubbele namen blijven staan;
-    de teller telt regels, geen unieke namen.
+    An element without a path, name or integer score is red: a silently skipped
+    function would keep the counter artificially low. Duplicate names stay;
+    the counter counts lines, not unique names.
     """
     try:
         data = json.loads(output.read_text(encoding="utf-8"))
@@ -290,23 +290,23 @@ def _complexipy_scores(output: Path, version: str) -> list[tuple[str, int]]:
 
 
 def count_complexipy(root: Path) -> list[tuple[str, int]]:
-    """Per functie (`pad::functie`, cognitieve score) over `python.lint_dirs`.
+    """Per function (`path::function`, cognitive score) over `python.lint_dirs`.
 
-    --no-ignore is niet optioneel, om dezelfde reden als --ignore-noqa bij ruff:
-    één `# noqa: complexipy` achter een `def` zou de functie uit de telling
-    halen. Uitvoer en cache gaan naar een tijdelijke map, zodat de werkboom
-    schoon blijft en een oude cache de telling niet kan beïnvloeden.
+    --no-ignore is not optional, for the same reason as --ignore-noqa with ruff:
+    a single `# noqa: complexipy` after a `def` would take the function out of the
+    count. Output and cache go to a temporary directory, so the working tree
+    stays clean and an old cache cannot influence the count.
 
-    De drempel staat op een miljoen: complexipy geeft rc 1 bij een functie boven
-    die drempel én bij een bestand dat hij niet kon verwerken, en alleen het
-    tweede mag hier rood geven. Dat tweede zou stil minder functies tellen, dus
-    het is fail closed en niet "de baseline kan omlaag".
+    The threshold is set at a million: complexipy gives rc 1 for a function above
+    that threshold and for a file it could not process, and only the
+    second may turn red here. That second would silently count fewer functions, so
+    it is fail closed and not "the baseline can go down".
 
-    De cwd is de tijdelijke map, niet de repo: complexipy leest `[tool.complexipy]
-    exclude` uit pyproject.toml, of een (.)complexipy.toml, uit zijn cwd, en
-    --no-ignore stopt dat niet. Eén configregel zou anders bestanden stil uit de
-    teller en de harde grens halen. De mappen gaan er absoluut in, de paden
-    in de uitvoer komen relatief terug; .gitignore blijft gewoon gelden.
+    The cwd is the temporary directory, not the repo: complexipy reads `[tool.complexipy]
+    exclude` from pyproject.toml, or a (.)complexipy.toml, from its cwd, and
+    --no-ignore does not stop that. One config line would otherwise silently take files out of the
+    counter and the hard limit. The directories go in absolute, the paths
+    in the output come back relative; .gitignore still applies as usual.
     """
     version = complexipy_pin(root)
     with tempfile.TemporaryDirectory(prefix="ratchet-complexipy-") as tmp:
@@ -347,7 +347,7 @@ def count_complexipy(root: Path) -> list[tuple[str, int]]:
 
 
 def _relative_to_root(name: str, root: Path) -> str:
-    """`pad::functie` met het pad relatief aan de repo, zoals bij ruff."""
+    """`path::function` with the path relative to the repo, as with ruff."""
     path, sep, function = name.partition("::")
     try:
         path = str(Path(path).relative_to(root))
@@ -357,12 +357,12 @@ def _relative_to_root(name: str, root: Path) -> str:
 
 
 def _over_threshold(scores: list[tuple[str, int]]) -> list[tuple[str, int]]:
-    """De functies met een score strikt boven COGNITIVE_COUNTER_THRESHOLD, hoogste eerst."""
+    """The functions with a score strictly above COGNITIVE_COUNTER_THRESHOLD, highest first."""
     return _over_limit(scores, COGNITIVE_COUNTER_THRESHOLD)
 
 
 def _over_limit(scores: list[tuple[str, int]], limit: int) -> list[tuple[str, int]]:
-    """De functies met een score strikt boven `limit`, hoogste eerst."""
+    """The functions with a score strictly above `limit`, highest first."""
     over = [item for item in scores if item[1] > limit]
     return sorted(over, key=lambda item: (-item[1], item[0]))
 
@@ -370,7 +370,7 @@ def _over_limit(scores: list[tuple[str, int]], limit: int) -> list[tuple[str, in
 def _hard_limit_failures(
     axis: str, scores: list[tuple[str, int]], limit: int
 ) -> list[str]:
-    """Eén foutregel per functie boven de harde grens, hoogstens MAX_LOCATIONS."""
+    """One error line per function above the hard limit, at most MAX_LOCATIONS."""
     over = _over_limit(scores, limit)
     lines = [
         f"{axis} {score} > {limit}: {name} — {HARD_LIMIT_MARK}"
@@ -386,11 +386,11 @@ def judge_complexity(
     cyclomatic: list[tuple[str, int]],
     cognitive: list[tuple[str, int]],
 ) -> tuple[list[str], list[str]]:
-    """(fouten, meldingen) voor de complexiteit. Een lege fouten-lijst is groen.
+    """(failures, notes) for the complexity. An empty failures list is green.
 
-    Drie oordelen: de twee harde grenzen per functie (cyclomatisch 20,
-    cognitief 25; geen baseline, geen bump) en de teller `cognitive_over_15`,
-    die niet mag stijgen.
+    Three verdicts: the two hard limits per function (cyclomatic 20,
+    cognitive 25; no baseline, no bump) and the counter `cognitive_over_15`,
+    which may not rise.
     """
     failures = _hard_limit_failures("cyclomatic", cyclomatic, CYCLOMATIC_LIMIT)
     failures += _hard_limit_failures("cognitive", cognitive, COGNITIVE_LIMIT)
@@ -420,7 +420,7 @@ def _locations(where: dict[str, list[str]], rule: str) -> str:
 def compare(
     baseline: Baseline, counts: dict[str, int], where: dict[str, list[str]]
 ) -> tuple[list[str], list[str]]:
-    """(fouten, meldingen). Een lege fouten-lijst is groen."""
+    """(failures, notes). An empty failures list is green."""
     failures: list[str] = []
     notes: list[str] = []
     for rule in ZERO_RULES:
@@ -437,15 +437,15 @@ def compare(
                 f"{rule}: {base} -> {now} (+{now - base})\n" + _locations(where, rule)
             )
         elif now < base:
-            # Zonder deze melding zakt de streep nooit en is de ratel
-            # eenrichtingsverkeer dat vastroest op de openingsstand.
+            # Without this message the line never drops and the ratchet is
+            # one-way traffic that rusts stuck at the opening level.
             notes.append(f"{rule}: {base} -> {now}; the baseline can go down")
     return failures, notes
 
 
 def coverage_argv() -> list[str]:
-    """De suite met coverage: python.coverage_command, met de --cov-vlaggen uit
-    python.source_dirs erachter. Geen shell: het commando wordt met shlex gesplitst."""
+    """The suite with coverage: python.coverage_command, with the --cov flags from
+    python.source_dirs after it. No shell: the command is split with shlex."""
     command = setting("python.coverage_command")
     assert isinstance(command, str)
     return [
@@ -481,7 +481,7 @@ def _merge_base(root: Path, base_ref: str) -> str:
 
 
 def judge_coverage(baseline: Baseline, result: diffcov.DiffCoverage) -> list[str]:
-    """Lege lijst is groen. De melding noemt de ongedekte regels, niet alleen %."""
+    """Empty list is green. The message names the uncovered lines, not just the %."""
     if result.total == 0:
         return []
     if result.pct >= baseline.min_diff_pct:
@@ -498,17 +498,17 @@ def judge_coverage(baseline: Baseline, result: diffcov.DiffCoverage) -> list[str
 
 
 def _acquire_report(root: Path, report_arg: str | None) -> tuple[Path | None, int]:
-    """(pad, 0) bij succes; (None, rc) als de aanroeper meteen moet stoppen met rc.
+    """(path, 0) on success; (None, rc) if the caller must stop at once with rc.
 
-    Puur uitgetrokken uit cmd_coverage om diens complexiteit onder de C901-limiet
-    te krijgen — zelfde twee vormen, zelfde meldingen, geen gedragswijziging:
-    zonder --report draait de suite en levert een vers rapport, mét --report
-    wordt een bestaand rapport gelezen.
+    Pulled out purely of cmd_coverage to get its complexity under the C901 limit
+    — same two forms, same messages, no behaviour change:
+    without --report the suite runs and yields a fresh report, with --report
+    an existing report is read.
     """
     if report_arg is None:
         report = root / "coverage.json"
-        # Een coverage.json van een eerdere, gecrashte run zou stille groene
-        # getallen geven op verouderde data. Weghalen vóór de run.
+        # A coverage.json from an earlier, crashed run would give silent green
+        # numbers on stale data. Remove it before the run.
         report.unlink(missing_ok=True)
         proc = subprocess.run(coverage_argv(), cwd=root, check=False, env=suite_env())
         if proc.returncode != 0:
@@ -536,12 +536,12 @@ def _acquire_report(root: Path, report_arg: str | None) -> tuple[Path | None, in
 
 
 def judge_total(baseline: Baseline, total_pct: float) -> list[str]:
-    """Lege lijst is groen. De globale src-dekking mag niet onder de vloer zakken.
+    """Empty list is green. The global src coverage may not drop below the floor.
 
-    Anders dan de diff-drempel is dit een vastgezette meting: hij staat op wat
-    de repo haalde toen de gate aanging en kruipt omhoog zodra nieuwe code de
-    dekking optilt. De prijs is bekend en geaccepteerd: een groot
-    goed-getest bestand verwijderen laat het gemiddelde zakken en is dan rood.
+    Unlike the diff threshold this is a pinned measurement: it stands at what
+    the repo reached when the gate went on and creeps up as soon as new code lifts the
+    coverage. The price is known and accepted: removing a large
+    well-tested file lets the average drop and is then red.
     """
     if total_pct >= baseline.min_total_pct:
         return []
@@ -608,7 +608,7 @@ def cmd_coverage(root: Path, base_ref: str, report_arg: str | None) -> int:
 
 
 def _run_url() -> str | None:
-    """De permalink naar deze Actions-run, of None buiten Actions."""
+    """The permalink to this Actions run, or None outside Actions."""
     server = os.environ.get("GITHUB_SERVER_URL")
     repo = os.environ.get("GITHUB_REPOSITORY")
     run_id = os.environ.get("GITHUB_RUN_ID")
@@ -632,18 +632,18 @@ def _remediate_pr(
     run_url: str | None,
     dry_run: bool,
 ) -> bool:
-    """Issue, handoff en board voor één PR onder de drempel — stap 5.
+    """Issue, handoff and board for one PR below the threshold — step 5.
 
-    Print zijn eigen regels. Geeft True terug als deze PR stap 5 laat falen
-    (rc 1 in de aanroeper) — een ontbrekend of leeg board-token telt daarbij
-    mee: een groene run zou anders het watermerk optillen (`last_success_sha`),
-    en dan reconcilieert de volgende nacht de board-stap nooit meer.
-    Zonder `[forge.board]` is er geen board-stap en dus geen token nodig.
+    Prints its own lines. Returns True if this PR makes step 5 fail
+    (rc 1 in the caller) — a missing or empty board token counts
+    here: a green run would otherwise lift the watermark (`last_success_sha`),
+    and then the next night never reconciles the board step again.
+    Without `[forge.board]` there is no board step and so no token needed.
 
-    Een fout uit `ensure_issue`/`ensure_handoff` gooit door naar de
-    aanroeper, die hem generiek meldt. Alleen de `ensure_on_board`-fout wordt
-    hier lokaal gevangen, zodat de melding het board-token met naam noemt
-    in plaats van alleen de rauwe gh-foutmelding.
+    An error from `ensure_issue`/`ensure_handoff` is thrown on to the
+    caller, which reports it generically. Only the `ensure_on_board` error is
+    caught locally here, so the message names the board token
+    instead of only the raw gh error message.
     """
     if dry_run:
         print(f"ratchet: PR #{pr}: --dry-run, would update issue/handoff/board")
@@ -685,9 +685,9 @@ def _remediate_pr(
 
 
 def _watermark(prcov_issues: ModuleType, gh: Gh) -> str | None:
-    """De `headSha` van de laatste geslaagde nightly, of `None` (dan de laatste 24
-    uur, met een melding op stderr: een stille terugval verbergt een kapotte
-    configuratie)."""
+    """The `headSha` of the last successful nightly, or `None` (then the last 24
+    hours, with a message on stderr: a silent fallback hides a broken
+    configuration)."""
     workflow = prcov_issues.nightly_workflow()
     if workflow is None:
         print(
@@ -713,13 +713,13 @@ def cmd_nightly(
     dry_run: bool,
     gh: Gh | None = None,
 ) -> int:
-    """Nightly-arm: diff-coverage per PR sinds het watermerk, plus de globale
-    dekkingsvloer op hetzelfde rapport.
+    """Nightly arm: diff coverage per PR since the watermark, plus the global
+    coverage floor on the same report.
 
-    Het watermerk is de laatste geslaagde run van `python.nightly_workflow`. Zonder
-    die sleutel, of zonder geslaagde run, beoordeelt de nightly de merges van de
-    laatste 24 uur — en zegt dat. `prcov`/`prcov_issues` komen hier binnen, niet
-    bovenaan de module: de andere subcommando's hebben ze niet nodig.
+    The watermark is the last successful run of `python.nightly_workflow`. Without
+    that key, or without a successful run, the nightly judges the merges of the
+    last 24 hours — and says so. `prcov`/`prcov_issues` are imported here, not
+    at the top of the module: the other subcommands do not need them.
     """
     from quality import prcov, prcov_issues
 
@@ -767,11 +767,11 @@ def cmd_nightly(
 
     step5_failed = False
     for pr, paths in sorted(attributed.items()):
-        # Per PR, niet in één keer via `prcov.per_pr`: dat bouwt alle PR's in
-        # één dict comprehension, dus één ontbrekende rapport-entry
-        # (`CoverageReportError`) zou de hele nacht laten crashen — geen
-        # issues voor de andere PR's, geen vloercontrole, watermerk blijft
-        # steken.
+        # Per PR, not all at once via `prcov.per_pr`: that builds all PRs in
+        # one dict comprehension, so a single missing report entry
+        # (`CoverageReportError`) would crash the whole night — no
+        # issues for the other PRs, no floor check, watermark stays
+        # stuck.
         try:
             result = diffcov.diff_coverage(paths, data, read_source, baseline.exclude)
         except diffcov.CoverageReportError as exc:
@@ -808,13 +808,13 @@ def cmd_nightly(
 
 
 def _fit_width(measured: int, width: int) -> str:
-    """Het nieuwe getal krijgt de breedte van het oude, zodat een comment
-    erachter op zijn kolom blijft staan."""
+    """The new number gets the width of the old one, so a comment
+    after it stays in its column."""
     return f"{measured:<{width}}" if len(str(measured)) < width else str(measured)
 
 
 def _lower_cognitive_counter(lines: list[str], measured: int) -> list[str]:
-    """Verlaag `cognitive_over_15 = N` in `lines` (op zijn plaats); nooit omhoog."""
+    """Lower `cognitive_over_15 = N` in `lines` (in place); never up."""
     for index, line in enumerate(lines):
         match = re.match(
             rf"^(?P<key>{COMPLEXIPY_KEY})(?P<pad>\s*=\s*)(?P<value>\d+)", line
@@ -837,16 +837,16 @@ def rewrite_baseline(
     total_pct: float | None = None,
     cognitive_over_15: int | None = None,
 ) -> tuple[str, list[str]]:
-    """(nieuwe tekst, ["RULE: oud -> nieuw"]). Verlaagt alleen, nooit omhoog.
+    """(new text, ["RULE: old -> new"]). Only lowers, never up.
 
-    Regelgewijs met een regex en niet via een TOML-writer, omdat de comments
-    achter de getallen het enige geheugen van de FP-steekproef zijn. tomllib
-    kan alleen lezen, en een writer erbij halen zou die comments weggooien.
+    Line by line with a regex and not via a TOML writer, because the comments
+    after the numbers are the only memory of the FP sample. tomllib
+    can only read, and bringing in a writer would throw those comments away.
 
-    Omhoog schrijven is expliciet uitgesloten. Een stijging hoort rood te zijn
-    in de gate; zou de verlager hem wegschrijven, dan legt de automatisering
-    stil een bump vast die niemand besloten heeft — precies de bypass die dit
-    ontwerp nergens wil hebben.
+    Writing upward is explicitly excluded. A rise should be red
+    in the gate; if the lowerer wrote it away, the automation would silently
+    commit a bump that nobody decided — exactly the bypass this
+    design wants nowhere.
     """
     changes: list[str] = []
     lines = text.splitlines(keepends=True)
@@ -870,8 +870,8 @@ def rewrite_baseline(
         changes += _lower_cognitive_counter(lines, cognitive_over_15)
 
     if total_pct is not None:
-        # Naar beneden afkappen, niet afronden: 64.98 blijft 64. Zonder die
-        # demping opent de wekelijkse job een PR voor elke tiende procent ruis.
+        # Truncate downward, do not round: 64.98 stays 64. Without that
+        # damping the weekly job opens a PR for every tenth of a percent of noise.
         measured_floor = int(total_pct)
         for index, line in enumerate(lines):
             match = re.match(
@@ -881,8 +881,8 @@ def rewrite_baseline(
                 continue
             current = int(match.group("value"))
             if measured_floor <= current:
-                # Nooit omlaag. Een dip mag de vloer niet meeslepen, anders is
-                # het geen ratel meer maar een thermometer.
+                # Never down. A dip may not drag the floor along, otherwise it is
+                # no longer a ratchet but a thermometer.
                 break
             start, end = match.span("value")
             lines[index] = line[:start] + str(measured_floor) + line[end:]
@@ -893,11 +893,11 @@ def rewrite_baseline(
 
 
 def cmd_tighten(root: Path) -> int:
-    """Zet de baseline op de gemeten stand: ruff omlaag, de dekkingsvloer omhoog.
+    """Set the baseline to the measured level: ruff down, the coverage floor up.
 
-    Schrijft het bestand; de PR eromheen is het werk van de workflow. Zo blijft
-    de verlaging zichtbaar en reviewbaar in een diff — de ratel past zichzelf
-    nooit stilzwijgend aan.
+    Writes the file; the PR around it is the work of the workflow. That way
+    the lowering stays visible and reviewable in a diff — the ratchet never
+    adjusts itself silently.
     """
     path = root / BASELINE_NAME
     baseline = load(path, root)
@@ -913,8 +913,8 @@ def cmd_tighten(root: Path) -> int:
         _over_limit(cognitive_scores, COGNITIVE_LIMIT)
     )
     if risen or zero_hits or hard_hits:
-        # Fail closed: bij een rode gate is de stand geen "nieuwe streep" maar
-        # een probleem. Het bestand aanraken zou de stijging wegpoetsen.
+        # Fail closed: with a red gate the level is no "new line" but
+        # a problem. Touching the file would polish the rise away.
         print(
             "ratchet: the gate is red (risen: "
             f"{risen or '-'}, zero-rule hits: {zero_hits or '-'}, "
@@ -924,9 +924,9 @@ def cmd_tighten(root: Path) -> int:
         )
         return 1
 
-    # De globale dekking komt uit dezelfde suite-run die de coverage-arm ook
-    # gebruikt. Ontbreekt het rapport, dan verschuift alleen de ruff-as; een
-    # ontbrekende meting mag de vloer niet raken.
+    # The global coverage comes from the same suite run the coverage arm also
+    # uses. If the report is missing, only the ruff axis shifts; a
+    # missing measurement may not touch the floor.
     total_pct: float | None = None
     report = root / "coverage.json"
     if not report.exists():
@@ -969,8 +969,8 @@ def _report_failures(heading: str, failures: list[str]) -> None:
         print(f"  {failure}", file=sys.stderr)
 
 
-# Een stijgende teller (`S110: 0 -> 1`, `cognitive_over_15: 107 -> 108`) is de
-# enige fout die een bump kan oplossen; een nulregel of harde grens niet.
+# A rising counter (`S110: 0 -> 1`, `cognitive_over_15: 107 -> 108`) is the
+# only failure a bump can solve; a zero rule or hard limit is not.
 BUMPABLE_FAILURE = re.compile(r"^\w+: \d+ -> \d+")
 COMPLEXITY_SKILL = (
     ".claude/skills/lighthouse-python-writing/SKILL.md, section "
@@ -979,10 +979,10 @@ COMPLEXITY_SKILL = (
 
 
 def _failure_footer(failures: list[str]) -> str:
-    """De slotregel bij rood: bump-advies alleen als een stijgende teller faalt.
+    """The closing line on red: bump advice only if a rising counter fails.
 
-    Een functie boven een harde grens moet in de code omlaag; het bump-advies
-    zou daar de verkeerde weg wijzen.
+    A function above a hard limit must come down in the code; the bump advice
+    would point the wrong way there.
     """
     parts: list[str] = []
     if any(BUMPABLE_FAILURE.match(failure) for failure in failures):
