@@ -49,6 +49,10 @@ source_path = ".claude/hooks/usage-guard.sh"
 source_sha = "5e1165861bf6f13385e6c5c390e20c95cf2cadc0"
 
 [[file]]
+path = "pack/core/hooks/usage-guard/controller.py"
+new = true
+
+[[file]]
 path = "pack/core/hooks/usage-guard/resume.py"
 new = true
 
