@@ -65,8 +65,8 @@
 
 - [ ] **Stap 1: Schrijf de falende tests** in `tests/pack/test_config.py`:
   - in de parametrize van `test_defaults_for_absent_keys`: `("usage_guard.resume", "false")` en `("usage_guard.controller", "false")`;
-  - `test_bool_key_set_true`: `VALID` plus `[usage_guard] resume = true` (via `_with(("usage_guard", "resume"), True)`) → `main(["usage_guard.resume"]) == 0`, stdout `"true\n"`;
-  - `test_bool_key_rejects_non_bool`, parametrize over `"yes"`, `1`, `0`: `load` geeft `ConfigError` met `usage_guard.resume` en `bool` in de tekst; `main([...]) == 2`.
+  - `test_bool_key_set_true`: schrijf de TOML-tekst zelf, `_render(VALID) + "\n[usage_guard]\nresume = true\n"`, naar `tmp_path / "lighthouse.toml"` en zet `LIGHTHOUSE_TOML` → `main(["usage_guard.resume"]) == 0`, stdout `"true\n"`. Niet via `_with`: dat loopt via `_without` (`node[part]`, `KeyError` op een tabel die `VALID` niet heeft), en `_scalar` schrijft een bool als `True`;
+  - `test_bool_key_rejects_non_bool`, parametrize over de TOML-waarden `'"yes"'`, `1`, `0` (op dezelfde manier als tekst geschreven): `load` geeft `ConfigError` met `usage_guard.resume` en `bool` in de tekst; `main([...]) == 2`.
 
 - [ ] **Stap 2: Draai ze en zie ze falen**
 
@@ -144,7 +144,7 @@
   `python3 usage_guard.py <stand> --hooks <dir> [--alarm KIND PCT LOCAL AT] [--pause UNTIL FLAG]`.
   Een module heeft `speak(ctx: Context, stand: str) -> dict`; `controller` ook `pause(ctx: Context) -> dict`.
 
-- [ ] **Stap 1: Schrijf de falende tests** in `tests/pack/test_usage_guard_lib.py` (import via `from lighthouse_lib import usage_guard as ug`; `monkeypatch.setenv` voor `XDG_STATE_HOME`, `XDG_DATA_HOME` naar `tmp_path`; `NOW = datetime(2026, 9, 6, 11, 58, tzinfo=timezone.utc)`; `ALARM = ug.Alarm("venster", 92, "14:30", "2026-09-06T12:30:00Z")`; een helper `ctx(stand, payload: dict | str, **over)` rond `build_context`):
+- [ ] **Stap 1: Schrijf de falende tests** in `tests/pack/test_usage_guard_lib.py` (import via `from lighthouse_lib import usage_guard as ug`; een autouse-fixture die `LIGHTHOUSE_CONTROLLER_RUN`, `LIGHTHOUSE_CONTROLLER_STATE`, `LIGHTHOUSE_USAGE_REFRESH` en `LIGHTHOUSE_TOML` met `monkeypatch.delenv(…, raising=False)` weghaalt, want `build_context` leest de run-id uit de env en een controller-run die dit plan uitvoert erft hem; daarna `monkeypatch.setenv` voor `XDG_STATE_HOME`, `XDG_DATA_HOME` naar `tmp_path`; de run-id-tests zetten `LIGHTHOUSE_CONTROLLER_RUN` zelf; `NOW = datetime(2026, 9, 6, 11, 58, tzinfo=timezone.utc)`; `ALARM = ug.Alarm("venster", 92, "14:30", "2026-09-06T12:30:00Z")`; een helper `ctx(stand, payload: dict | str, **over)` rond `build_context`):
   - `test_alarm_key_forms`: `venster-2026-09-06T12:30:00Z.tool.s1.done`; zonder `session_id` `venster-2026-09-06T12:30:00Z.tool.done`; met `run_id` `R` `….tool.s1.R.done`; stand `subagent` met `agent_id` `a1` en `run_id` `R` → `….subagent.s1.a1.done`. Allemaal onder `state_dir()`.
   - `test_pause_key`: `pause_until` `2026-10-03T21:00:00+02:00`, `run_id` `R` → `state_dir() / "pause-2026-10-03T21:00:00+02:00.R.done"`.
   - `test_unsafe_ids_count_as_absent` (Review Focus 1): `session_id` `../x`, `a/b`, `"s" * 129` → `ctx.session_id == ""`; zo ook `agent_id`.
@@ -154,6 +154,7 @@
   - `test_tool_blocks_once_per_window`: eerste `decide` in `tool` → `output["decision"] == "block"`, reden bevat `"commit"` en `f"/lighthouse-handoff {handoff_path(c)}"`; tweede → `output is None`; een andere `session_id` → weer een block.
   - `test_tool_with_agent_id_is_subagent`: `tool` met `agent_id` `a1` → reden van `subagent_speak` (bevat `"main thread"`, niet `"/lighthouse-handoff"`, niet `"CronCreate"`); `alarm_key(c, "subagent")` bestaat, `alarm_key(c, "tool")` niet.
   - `test_stop`: met `stop_hook_active: true` → `None`; zonder → block met `"/lighthouse-handoff"`, `key_after == alarm_key(c, "stop")`, en dat bestand bestaat nog niet.
+  - `test_stop_once_per_window`: eerste `stop` → block; maak `key_after` aan (zoals `main` doet); tweede `stop` → `Decision(None, None)`. Een `tool`-sleutel van dezelfde sessie laat `stop` niet zwijgen.
   - `test_stop_prunes_old_keys`: een `.done` met `os.utime` 15 dagen terug en een van 13 dagen → na `decide` in `stop` alleen de oude weg.
   - `test_failing_module_releases_key`: `hooks_dir = tmp_path / "hooks"` met `usage-guard/resume.py` = `def speak(ctx, stand): raise RuntimeError("x")`; `options = lambda: ug.Options(True, False)` → `output is None`, `alarm_key(c, "tool")` bestaat niet.
   - `test_module_output_is_the_only_output`: dezelfde map met `speak` dat `{"decision": "block", "reason": "R"}` teruggeeft → `output == {"decision": "block", "reason": "R"}`.
@@ -168,15 +169,15 @@
   Expected: FAIL, `cannot import name 'usage_guard'`
 
 - [ ] **Stap 3: Implementeer `pack/core/lib/usage_guard.py`.** Bovenaan dezelfde `sys.path`-regel als `config.py`, zodat het als bestand draait. `decide` in deze volgorde:
-  1. Pauze: `stand == "tool"`, `run_id`, `pause_until`, geen `agent_id`, `options().controller`, en `pause_key` ontbreekt of heeft een kleinere mtime dan `pause_flag` → `load_module(…, "controller").pause(ctx)`, daarna `pause_key` openen met `"w"` (zet ook de mtime) en klaar. Een uitzondering in de module: stderr-regel, door naar 2. De lib schrijft de pauzesleutel, niet de module: alle sleutels horen bij de beslisser *(keuze van het plan; de spec laat de module schrijven)*.
+  1. Pauze: `stand == "tool"`, `run_id`, `pause_until`, geen `agent_id`, `options().controller`, en `pause_key` ontbreekt of heeft een kleinere mtime dan `pause_flag` → eerst `state_dir().mkdir(parents=True, exist_ok=True)` (faalt dat: stderr-regel, door naar 2, de module draait niet), dan `load_module(…, "controller").pause(ctx)`, daarna `pause_key` openen met `"w"` (zet ook de mtime) en klaar. Een uitzondering in de module: stderr-regel, door naar 2. De lib schrijft de pauzesleutel, niet de module: alle sleutels horen bij de beslisser *(keuze van het plan; de spec laat de module schrijven)*.
   2. Geen `alarm` → `Decision(None, None)`.
-  3. `stand = effective_stand(ctx)`; `stop` met `stop_hook_active` → `None`.
-  4. `tool`/`subagent`: claim `alarm_key` met `os.open(…, O_CREAT | O_EXCL | O_WRONLY)` na `mkdir(parents=True)`. `FileExistsError` → `None`; elke andere `OSError` → stderr-regel en `None`.
+  3. `stand = effective_stand(ctx)`; `stop` met `stop_hook_active` → `None`; `stop` met een bestaande `alarm_key(ctx, "stop")` → `None`.
+  4. `tool`/`subagent`: `state_dir().mkdir(parents=True, exist_ok=True)`, dan claim `alarm_key` met `os.open(…, O_CREAT | O_EXCL | O_WRONLY)`. Alleen een `FileExistsError` van die `os.open` → `None` (al geclaimd); elke andere `OSError`, ook van de `mkdir` → stderr-regel en `None`.
   5. Spreker: `subagent` → `subagent_speak`; `run_id` en `options().controller` → module `controller`; `options().resume` → module `resume`; anders `base_speak`. `options` hooguit één keer aanroepen (cache).
   6. Uitzondering in de spreker → claim weer weg (`unlink`, `missing_ok`), stderr-regel, `None`.
   7. `stop` → oude sleutels (> 14 dagen) best-effort weg, `key_after = alarm_key(ctx, "stop")`.
 
-  `main`: argparse zoals in *Interfaces*, `build_context` met `datetime.now(timezone.utc)`, `decide`, print `json.dumps(output)`, daarna `key_after` aanmaken (best-effort). Alles in één `try`; elke uitzondering → één stderr-regel, rc 0. Redenen: de vaste ankers uit de tests; verder vrije Engelse tekst binnen de stappen van de spec (tool: commit het werk-in-uitvoering, handoff, meld waar het werk staat, geen nieuwe stap en geen subagent; stop: commit niets meer, handoff met wat er ongecommit staat, hervattingsmoment, stop).
+  `main`: argparse zoals in *Interfaces*, `build_context` met `datetime.now(timezone.utc)`, `decide`, print `json.dumps(output)`, daarna `key_after` aanmaken (best-effort). Alles in één `try`; elke uitzondering → één stderr-regel, rc 0. Het bestand eindigt zoals `config.py`: onder `if __name__ == "__main__":` delegeren naar `importlib.import_module("lighthouse_lib.usage_guard").main()`, zodat lib en modules dezelfde `Context`-klasse delen. Redenen: de vaste ankers uit de tests; verder vrije Engelse tekst binnen de stappen van de spec (tool: commit het werk-in-uitvoering, handoff, meld waar het werk staat, geen nieuwe stap en geen subagent; stop: commit niets meer, handoff met wat er ongecommit staat, hervattingsmoment, stop).
 
 - [ ] **Stap 4: Draai de tests en zie ze slagen** (dezelfde run) — Expected: PASS. Daarna `uv run pytest -q tests/test_sources.py && go test ./internal/packs/` — Expected: PASS
 
@@ -209,7 +210,7 @@
   - `test_refresh_is_detached` (Review Focus 2): stub `lighthouse` = `sleep 2; printf '%s|%s' "$*" "${LIGHTHOUSE_USAGE_REFRESH:-}" > <spoor>`, plus een geldig alarm; `prompt` keert terug binnen 1,5 s, `additionalContext` bevat `s1.handoff.md`; binnen 5 s staat in het spoor `usage refresh|1`.
   - `test_refresh_without_lighthouse`: geen `lighthouse` op `PATH`, `prompt` → rc 0, stderr `""`.
   - `test_usage_refresh_env_silences`, elke stand, geldig alarm, `LIGHTHOUSE_USAGE_REFRESH=1`, stub `lighthouse` die zonder `sleep` meteen een spoor schrijft → stdout `""` en na 1 s geen spoor.
-  - `test_once_per_window`: tweede `tool` → `""`; `subagent` blokkeert daarna nog wel (eigen sleutel); `stop` met `stop_hook_active: true` → `""`; tweede `stop` zonder → `""`; `session_id` `s2` in `tool` → block.
+  - `test_once_per_window`: eerste `tool` → block, tweede `tool` → `""`; `subagent` blokkeert daarna nog wel (eigen sleutel); `stop` met `stop_hook_active: true` → `""`; eerste `stop` zonder → block, tweede `stop` → `""`; `session_id` `s2` in `tool` → block.
   - `test_no_table_no_marker`: na een `tool`-block bestaat `<XDG_DATA_HOME>/lighthouse/resume` niet.
   - `test_missing_python`: `PATH` = `tool_bin(tmp_path / "bin", ("date", "git", "cat"))` (zonder `python3`), de hook via `[shutil.which("bash"), hook, "tool"]`, geldig alarm → rc 0, stdout `""`, stderr begint met `usage-guard: `.
   - `test_unknown_stand`: `usage-guard.sh nonsense` → rc 0, geen uitvoer.
@@ -231,7 +232,7 @@
   6. Alarm: geen symlink; `IFS= read -r LINE`; `set -f`, splitsen, `set +f`; precies vier velden, soort, pct en het `reset_at`-patroon (`[[ =~ ]]`); epoch via `date -u -d`, anders `date -j -u -f '%Y-%m-%dT%H:%M:%SZ'`; in de toekomst → `ALARM_ARGS=(--alarm KIND PCT LOCAL AT)` met `_` → spatie in `LOCAL`.
   7. Geen `PAUSE_UNTIL` en geen geldig alarm → `exit 0`, stdin ongelezen.
   8. `LIB_ROOT` zoals `bash-write-gates.sh` (`LIGHTHOUSE_REPO_ROOT`, anders `git -C <hookmap> rev-parse --show-toplevel`), `export LIGHTHOUSE_REPO_ROOT`. Ontbreekt `python3` of de lib: één regel `usage-guard: COULD NOT CHECK — <wat>; the alarm is valid` op stderr, `exit 0`.
-  9. `python3 "$LIB" "$STAND" --hooks "${BASH_SOURCE[0]%/*}" …` met stdin van de hook; daarna altijd `exit 0`.
+  9. `python3 "$LIB" "$STAND" --hooks "${BASH_SOURCE[0]%/*}" …` met stdin van de hook; daarna altijd `exit 0`. Bouw de argumenten met `set -- …` (of `${ARR[@]+"${ARR[@]}"}`), niet met een kale `"${ALARM_ARGS[@]}"`: een lege array geeft onder `set -u` in bash < 4.4 `unbound variable` (pauze zonder alarm).
 
   Daarna `hooks.json`, `requires.toml`, `SOURCES.toml`, `core_test.go` en de `_testkit`-helpers volgens *Files* en *Interfaces*.
 
@@ -334,7 +335,7 @@
   Run: `uv run pytest -q tests/pack/test_skills_issue_flow.py -k "pause_form or guard_names"`
   Expected: FAIL op de eerste ontbrekende frase
 
-- [ ] **Stap 3: Schrijf de sectie** `## Pause form: /lighthouse-handoff <path>` tussen *When to Use* en *Workflow*, in het Engels, met de inhoud van spec *Handoff naar een bestand*: absoluut pad op `.handoff.md`; hetzelfde blok naar dat pad via Bash (`mkdir -p`, tmp-bestand in dezelfde map, `mv`), en ook in de chat; het pad ligt buiten de repo en kan buiten de sandbox vallen; het blok krijgt erbij wat er ongecommit staat, het hervattingsmoment en de job-ID van een wekker; het slaat over: `post_artefact.py` (dus no push), *Controller mode* (geen `🤖`-comment, geen boardstatus), no question to the user en de `/clear`-tip, ook als `LIGHTHOUSE_CONTROLLER_RUN` gezet is. Pas de description in de frontmatter aan met de padvorm. Houd de zin "Do not use in the middle of a task" kloppend: de padvorm is de uitzondering.
+- [ ] **Stap 3: Schrijf de sectie** `## Pause form: /lighthouse-handoff <path>` tussen *When to Use* en *Workflow*, in het Engels, met de inhoud van spec *Handoff naar een bestand*: absoluut pad op `.handoff.md`; hetzelfde blok naar dat pad via Bash (`mkdir -p`, tmp-bestand in dezelfde map, `mv`), en ook in de chat; het pad ligt buiten de repo en kan buiten de sandbox vallen; het blok krijgt erbij wat er ongecommit staat, het hervattingsmoment en de job-ID van een wekker; het slaat over: `post_artefact.py` (dus no push), *Controller mode* (geen `🤖`-comment, geen boardstatus), no question to the user en de `/clear`-tip, ook als `LIGHTHOUSE_CONTROLLER_RUN` gezet is. Pas de description in de frontmatter aan met de padvorm. Houd de zin "Do not use in the middle of a task" kloppend: de padvorm is de uitzondering. Twee bestaande contracttests sturen de tekst: `test_optional_steps_guarded` (`tests/pack/test_skill_contracts.py`) eist in elke alinea die `controller` noemt de woorden `if present` of `skipped`, dus schrijf "is skipped" en niet alleen "skips"; `test_handoff_post_artefact_is_in_step_3` zoekt de eerste `.lighthouse/scripts/post_artefact.py`, dus noem in deze sectie alleen de kale naam `post_artefact.py`.
 
 - [ ] **Stap 4: Draai de tests en zie ze slagen**
 
@@ -356,8 +357,8 @@
 
 - [ ] **Stap 3: Dogfood**
 
-  Run: `go run ./cmd/lighthouse init --upgrade </dev/null`, daarna `git status --short`
-  Expected: de installatiekopie verandert; `.claude/settings.json` krijgt vier registraties. Daarna nog eens `go run ./cmd/lighthouse init --upgrade </dev/null` → `No changes.`
+  Run: `go run ./cmd/lighthouse init --upgrade --yes`, daarna `git status --short`. Zonder `--yes` vraagt `init` om bevestiging en weigert het op een lege stdin (`internal/initcmd/initcmd.go:201`).
+  Expected: de installatiekopie verandert; `.claude/settings.json` krijgt vier registraties. Daarna de controle zoals CI: `go run ./cmd/lighthouse init --upgrade </dev/null` → `No changes.`
 
 - [ ] **Stap 4: Volledige verificatie**
 
