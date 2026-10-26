@@ -16,12 +16,10 @@ from typing import Optional
 
 from lighthouse_lib.usage_guard import (
     Context,
-    block,
+    base_speak,
     handoff_path,
     marker,
-    prompt_note,
     write_marker,
-    _headline,
 )
 
 WAKE_DELAY = timedelta(minutes=2)
@@ -35,43 +33,30 @@ def wake_cron(reset_at: str, tz: Optional[tzinfo] = None) -> str:
 
 
 def _wake_step(ctx: Context) -> str:
+    """A clause for `base_speak(wake=...)`."""
     assert ctx.alarm is not None
     cron = wake_cron(ctx.alarm.reset_at)
     return (
-        f'Schedule one wake-up with CronCreate: cron "{cron}", recurring false, prompt = '
-        "the first step from the handoff. If you already set a wake-up in this window, "
-        "check with CronList and take over that job ID instead of setting a second one."
+        f'schedule one wake-up with CronCreate (cron "{cron}", recurring false, prompt = '
+        "the first step from the handoff); if you already set a wake-up in this window, "
+        "check with CronList and take over that job ID instead of setting a second one"
     )
 
 
 def speak(ctx: Context, stand: str) -> dict:
     """`stand` is prompt, tool or stop."""
     assert ctx.alarm is not None
-    venster = ctx.alarm.kind == "venster"
-    head = _headline(ctx)
-    handoff = f"`/lighthouse-handoff {handoff_path(ctx)}`"
-    wake = f" {_wake_step(ctx)}" if venster else ""
-    job = " Name the wake-up's job ID in the handoff." if venster else ""
-
-    if stand == "prompt":
-        return prompt_note(
-            f"{head} Wrap up: finish only the current step, commit the work in progress,"
-            f"{wake} run {handoff}, and do not start a new step.{job}"
-        )
-
-    if stand == "stop":
-        reason = (
-            f"{head} Commit nothing more.{wake} Run {handoff} and note in it what is "
-            f"uncommitted and when to resume (after {ctx.alarm.reset_local}).{job} Then stop."
+    if ctx.alarm.kind == "venster":
+        output = base_speak(
+            ctx,
+            stand,
+            wake=_wake_step(ctx),
+            note="Name the wake-up's job ID in the handoff.",
         )
     else:
-        reason = (
-            f"{head} Before anything else: commit the work in progress,{wake} run "
-            f"{handoff}, and report where the work stands (worktree, branch, what is "
-            f"still open).{job} Do not start a new step and do not dispatch a subagent."
-        )
+        output = base_speak(ctx, stand)
 
-    if ctx.session_id:
+    if stand != "prompt" and ctx.session_id:
         fields = marker(
             ctx,
             session_id=ctx.session_id,
@@ -80,4 +65,4 @@ def speak(ctx: Context, stand: str) -> dict:
             source=stand,
         )
         write_marker(dict(fields, handoff_path=str(handoff_path(ctx))))
-    return block(reason)
+    return output

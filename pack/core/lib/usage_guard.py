@@ -213,37 +213,45 @@ def prompt_note(text: str) -> dict:
     }
 
 
-def _headline(ctx: Context) -> str:
+def headline(ctx: Context) -> str:
     alarm = ctx.alarm
     assert alarm is not None
     label = KIND_LABEL.get(alarm.kind, alarm.kind)
     return f"Usage is at {alarm.pct}% of the {label}, which resets at {alarm.reset_local}."
 
 
-def base_speak(ctx: Context, stand: str) -> dict:
-    """The base reasons for `prompt`, `tool` and `stop`."""
+def base_speak(ctx: Context, stand: str, *, wake: str = "", note: str = "") -> dict:
+    """The base reasons for `prompt`, `tool` and `stop`.
+
+    A module adds to them without restating them: `wake` is a lowercase clause for a
+    step before the handoff ("schedule ..."), `note` a sentence after the handoff step.
+    """
     handoff = f"`/lighthouse-handoff {handoff_path(ctx)}`"
-    head = _headline(ctx)
+    head = headline(ctx)
+    tail = f" {note}" if note else ""
     if stand == "prompt":
+        step = f"{wake}, " if wake else ""
         return prompt_note(
             f"{head} Wrap up: finish only the current step, commit the work in progress, "
-            f"run {handoff}, and do not start a new step."
+            f"{step}run {handoff}, and do not start a new step.{tail}"
         )
     if stand == "stop":
+        step = f"{wake[0].upper()}{wake[1:]}. " if wake else ""
         return block(
-            f"{head} Commit nothing more. Run {handoff} and note in it what is uncommitted "
-            f"and when to resume (after {ctx.alarm.reset_local}). Then stop."
+            f"{head} Commit nothing more. {step}Run {handoff} and note in it what is "
+            f"uncommitted and when to resume (after {ctx.alarm.reset_local}).{tail} Then stop."
         )
+    step = f"{wake}, " if wake else ""
     return block(
-        f"{head} Before anything else: commit the work in progress, run {handoff}, and "
-        "report where the work stands (worktree, branch, what is still open). "
-        "Do not start a new step and do not dispatch a subagent."
+        f"{head} Before anything else: commit the work in progress, {step}run {handoff}, "
+        "and report where the work stands (worktree, branch, what is still open)."
+        f"{tail} Do not start a new step and do not dispatch a subagent."
     )
 
 
 def subagent_speak(ctx: Context) -> dict:
     return block(
-        f"{_headline(ctx)} Stop now and report to the main thread what you did and what "
+        f"{headline(ctx)} Stop now and report to the main thread what you did and what "
         "is still open. Do not commit, do not schedule a wake-up and do not write a "
         "handoff: the main thread wraps up the session."
     )
