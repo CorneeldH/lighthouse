@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -270,9 +269,7 @@ func TestCodexAppServerStubborn(t *testing.T) {
 	if pid == 0 {
 		t.Fatalf("no pid in log %q", raw)
 	}
-	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
-		t.Errorf("kill(pid, 0) = %v, want ESRCH: child left behind", err)
-	}
+	requireProcessGone(t, pid)
 }
 
 func TestCodexReaderFirstHomeWins(t *testing.T) {
