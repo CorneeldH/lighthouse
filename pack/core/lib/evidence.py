@@ -1,25 +1,25 @@
-"""Evidence-allowlist en runner voor de PR-nacontrole (#1091).
+"""Evidence allowlist and runner for the PR recheck (#1091).
 
-Een PR-body is onbetrouwbare tekst. Deze lib voert een Evidence-rij (de
-Command-cel van `### Evidence #N`, zie `pr_body_gate.py`) daarom alleen uit als
-het argv er letterlijk in de allowlist past: geen shell (nooit `shell=True`),
-geen operatoren, geen schrijfopties, geen opties die een ander programma
-starten. Wat niet past draait nooit; de rij is dan `ongeldig`.
+A PR body is untrusted text. This lib therefore runs an Evidence row (the
+Command cell of `### Evidence #N`, see `pr_body_gate.py`) only when its argv
+fits the allowlist literally: no shell (never `shell=True`), no operators, no
+write options, no options that start another program. What does not fit never
+runs; the row is then `invalid`.
 
-De allowlist uitbreiden is een wijziging van deze lib én van de tabel in
-`/lighthouse-verify-pr`, nooit iets wat een PR-body kan. Ontwerp:
+Extending the allowlist is a change of this lib *and* of the table in
+`/lighthouse-verify-pr`, never something a PR body can do. Design:
 `docs/developer/planning/specs/2026-10-03-pr-verifieert-issue-design.md`,
-sectie 2 (allowlist) en 4 (vergelijkregel).
+section 2 (allowlist) and 4 (comparison rule).
 
-CLI (taak 6 en 7 roepen hem aan):
+CLI (tasks 6 and 7 call it):
 
-    evidence.py check '<Command-cel>'
-    evidence.py run --issue N --body-file PAD --cwd MAP [--before-pr]
+    evidence.py check '<Command cell>'
+    evidence.py run --issue N --body-file PATH --cwd DIR [--before-pr]
 
-De uitkomsten en de tabelkop staan in `headings.toml` en volgen `[project]
-language`; het pytest-pad komt uit `[test_gate] evidence_test_dir`.
+The outcomes and the table head are in `headings.toml` and follow `[project]
+language`; the pytest path comes from `[test_gate] evidence_test_dir`.
 
-Alleen stdlib: draait onder de host-`python3`.
+Stdlib only: runs under the host `python3`.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ if not __package__:
 from lighthouse_lib import config, headings
 from lighthouse_lib.pr_body_gate import Row, evidence_rows
 
-# Opties zonder waarde, per commando; "VAL" = opties die één waarde slikken (los of met '=').
+# Options without a value, per command; "VAL" = options that take one value (separate or with '=').
 GREP_FLAGS = {
     "-F", "-E", "-G", "-i", "-n", "-c", "-l", "-L", "-q", "-r", "-R", "-w", "-x",
     "-o", "-s", "-h", "-H", "-v",
@@ -63,23 +63,23 @@ GIT_GREP_VAL = {"-e"}
 LS_FLAGS = {"-l", "-a", "-A", "-1", "-d", "-R", "-h"}
 WC_FLAGS = {"-l", "-w", "-c", "-m"}
 CAT_FLAGS = {"-n"}
-# test: alle argumenten zijn een expressie; geen ervan schrijft of voert uit.
+# test: all arguments are one expression; none of them writes or executes.
 GIT_LOG_FLAGS = {"--oneline", "--stat", "--name-only", "--"}
 GIT_LOG_VAL = {
     "-n",
     "--format",
     "--pretty",
     "--grep",
-}  # -n alleen met een getal; -n5 mag ook
-GIT_LOG_ALLEEN_GELIJK = {"--format", "--pretty"}
+}  # -n only with a number; -n5 is allowed too
+GIT_LOG_EQUALS_ONLY = {"--format", "--pretty"}
 GIT_SUBS = {"log", "show", "ls-files", "grep"}
-PYTEST_FLAGS = {"-q", "-v"}  # paden: normpath begint met `[test_gate] evidence_test_dir`
-GH_API_VAL = {"--jq", "-q"}  # graphql: plus precies één -f query=…
+PYTEST_FLAGS = {"-q", "-v"}  # paths: normpath starts with `[test_gate] evidence_test_dir`
+GH_API_VAL = {"--jq", "-q"}  # graphql: plus exactly one -f query=…
 GH_VIEW_FLAGS = {"--comments", "-c"}
 GH_VIEW_VAL = {"--json", "--jq", "-q", "--repo", "-R"}
 
-PUNCTUATIE = set("();<>|&")
-# De uitkomsten zijn sleutels van `headings.toml`; de tekst volgt `[project] language`.
+PUNCTUATION = set("();<>|&")
+# The outcomes are keys of `headings.toml`; the text follows `[project] language`.
 HOLDS = "evidence_holds"
 FAILS = "evidence_fails"
 INVALID = "evidence_invalid"
@@ -87,11 +87,11 @@ UNMEASURABLE = "evidence_unmeasurable"
 AFTER_PR_UNMEASURED = "evidence_after_pr_unmeasured"
 OUTCOMES = (HOLDS, FAILS, INVALID, UNMEASURABLE, AFTER_PR_UNMEASURED)
 GH_PROBE_TIMEOUT_S = 10
-MAX_UITVOER = 4 * 1024 * 1024  # bytes, stdout en stderr samen
-_LEESBLOK = 65536
-# gojq (`gh --jq`) kan de omgeving en stdin lezen; een Evidence-rij heeft dat nooit nodig.
-_JQ_VERBODEN_RE = re.compile(r"\benv\b|\$ENV|\binputs?\b")
-_REF_VERBODEN = ("..", "@{", "~", "^")
+MAX_OUTPUT = 4 * 1024 * 1024  # bytes, stdout and stderr together
+_READ_CHUNK = 65536
+# gojq (`gh --jq`) can read the environment and stdin; an Evidence row never needs that.
+_JQ_FORBIDDEN_RE = re.compile(r"\benv\b|\$ENV|\binputs?\b")
+_REF_FORBIDDEN = ("..", "@{", "~", "^")
 _SUB_ENV = {
     "GIT_PAGER": "cat",
     "PAGER": "cat",
@@ -102,7 +102,7 @@ _SUB_ENV = {
 
 
 def split_command(cell: str) -> list[str] | str:
-    """De Command-cel als argv, of de reden waarom hij geen kaal argv is."""
+    """The Command cell as argv, or the reason why it is not a bare argv."""
     s = cell.strip()
     if len(s) >= 2 and s.startswith("`") and s.endswith("`"):
         s = s[1:-1]
@@ -116,10 +116,10 @@ def split_command(cell: str) -> list[str] | str:
     lexer.commenters = ""
     try:
         argv = list(lexer)
-    except ValueError as fout:
-        return f"the command cannot be split ({fout})"
+    except ValueError as error:
+        return f"the command cannot be split ({error})"
     for token in argv:
-        if token and set(token) <= PUNCTUATIE:
+        if token and set(token) <= PUNCTUATION:
             return f"shell operator `{token}` is not allowed"
     if not argv:
         return "empty command"
@@ -127,7 +127,7 @@ def split_command(cell: str) -> list[str] | str:
 
 
 class _Parsed:
-    """Uitkomst van `_parse`: positionele args, args na `--` en (optie, waarde)-paren."""
+    """Result of `_parse`: positional args, args after `--` and (option, value) pairs."""
 
     def __init__(self) -> None:
         self.pos: list[str] = []
@@ -135,75 +135,75 @@ class _Parsed:
         self.vals: list[tuple[str, str]] = []
 
 
-def _waarde(
-    args: list[str], i: int, naam: str, rest: str, *, vast: bool
+def _value(
+    args: list[str], i: int, name: str, rest: str, *, attached: bool
 ) -> tuple[str, int] | str:
-    """De waarde van optie `naam`; `(waarde, nieuwe index)` of een reden.
+    """The value of option `name`; `(value, new index)` or a reason.
 
-    `vast`: de waarde zit aan de optie vast (`--naam=rest`, `-nrest`). Dan is
-    dat de hele waarde, ook als `rest` leeg is: git, GNU grep en pflag lezen
-    `--naam=` als een lege waarde en parsen het volgende woord als een nieuwe
-    optie. Zouden wij dat woord als waarde slikken, dan glipt `--output=x`
-    erlangs. Een lege waarde is daarom geweigerd, net als een korte waarde die
-    met `=` begint (`-q=x`: pflag strippen de `=`, getopt niet).
+    `attached`: the value is attached to the option (`--name=rest`, `-nrest`).
+    Then that is the whole value, even when `rest` is empty: git, GNU grep and
+    pflag read `--name=` as an empty value and parse the next word as a new
+    option. If we swallowed that word as the value, `--output=x` would slip
+    past. An empty value is therefore refused, as is a short value that starts
+    with `=` (`-q=x`: pflag strips the `=`, getopt does not).
     """
-    if vast:
+    if attached:
         if not rest:
-            return f"`{naam}=` with an empty value is not allowed"
-        if not naam.startswith("--") and rest.startswith("="):
-            return f"`{naam}{rest}`: a value that starts with `=` is not allowed"
+            return f"`{name}=` with an empty value is not allowed"
+        if not name.startswith("--") and rest.startswith("="):
+            return f"`{name}{rest}`: a value that starts with `=` is not allowed"
         return rest, i
     if i >= len(args):
-        return f"`{naam}` lacks a value"
+        return f"`{name}` lacks a value"
     if not args[i]:
-        return f"`{naam}` with an empty value is not allowed"
+        return f"`{name}` with an empty value is not allowed"
     return args[i], i + 1
 
 
-def _parse_lang(
-    args: list[str], i: int, flags: set[str], val: set[str], uit: _Parsed
+def _parse_long(
+    args: list[str], i: int, flags: set[str], val: set[str], out: _Parsed
 ) -> int | str:
-    """Eén `--lang`-woord (`args[i-1]`); geeft de nieuwe index of een reden."""
+    """One `--long` word (`args[i-1]`); returns the new index or a reason."""
     tok = args[i - 1]
-    naam, gelijk, waarde = tok.partition("=")
-    if naam not in val:
+    name, equals, value = tok.partition("=")
+    if name not in val:
         return i if tok in flags else f"option `{tok}` is not in the allowlist"
-    gekregen = _waarde(args, i, naam, waarde, vast=bool(gelijk))
-    if isinstance(gekregen, str):
-        return gekregen
-    uit.vals.append((naam, gekregen[0]))
-    return gekregen[1]
+    got = _value(args, i, name, value, attached=bool(equals))
+    if isinstance(got, str):
+        return got
+    out.vals.append((name, got[0]))
+    return got[1]
 
 
-def _parse_kort(
-    args: list[str], i: int, flags: set[str], val: set[str], uit: _Parsed
+def _parse_short(
+    args: list[str], i: int, flags: set[str], val: set[str], out: _Parsed
 ) -> int | str:
-    """Eén kort cluster (`-nF`, `-n5`, `-efoo`; `args[i-1]`); de nieuwe index of een reden."""
+    """One short cluster (`-nF`, `-n5`, `-efoo`; `args[i-1]`); the new index or a reason."""
     tok = args[i - 1]
     for pos, letter in enumerate(tok[1:], start=1):
-        kort = f"-{letter}"
-        if kort in val:
-            aan = tok[pos + 1 :]
-            gekregen = _waarde(args, i, kort, aan, vast=bool(aan))
-            if isinstance(gekregen, str):
-                return gekregen
-            uit.vals.append((kort, gekregen[0]))
-            return gekregen[1]
-        if kort not in flags:
-            return f"option `{kort}` (in `{tok}`) is not in the allowlist"
+        short_opt = f"-{letter}"
+        if short_opt in val:
+            glued = tok[pos + 1 :]
+            got = _value(args, i, short_opt, glued, attached=bool(glued))
+            if isinstance(got, str):
+                return got
+            out.vals.append((short_opt, got[0]))
+            return got[1]
+        if short_opt not in flags:
+            return f"option `{short_opt}` (in `{tok}`) is not in the allowlist"
     return i
 
 
 def _parse(
     args: list[str], flags: set[str], val: set[str], *, dd_ok: bool = False
 ) -> _Parsed | str:
-    """Splits `args` in vlaggen, waarde-opties en positionele args; een reden bij al het andere.
+    """Split `args` into flags, value options and positional args; a reason for anything else.
 
-    Een woord dat met `-` begint en niet op de lijsten staat is geweigerd. Korte
-    clusters (`-nF`) mogen als elke letter in `flags` staat; een waarde-letter
-    (`-n5`, `-efoo`) slikt de rest van het woord, of anders het volgende woord.
+    A word that starts with `-` and is on neither list is refused. Short
+    clusters (`-nF`) are allowed when every letter is in `flags`; a value letter
+    (`-n5`, `-efoo`) swallows the rest of the word, or else the next word.
     """
-    uit = _Parsed()
+    out = _Parsed()
     i = 0
     while i < len(args):
         tok = args[i]
@@ -211,39 +211,39 @@ def _parse(
         if tok == "--":
             if not dd_ok:
                 return "`--` is not allowed here"
-            uit.after = args[i:]
-            return uit
+            out.after = args[i:]
+            return out
         if tok == "-" or not tok.startswith("-"):
-            uit.pos.append(tok)
+            out.pos.append(tok)
             continue
         if tok in flags:
             continue
-        stap = (_parse_lang if tok.startswith("--") else _parse_kort)(
-            args, i, flags, val, uit
+        step = (_parse_long if tok.startswith("--") else _parse_short)(
+            args, i, flags, val, out
         )
-        if isinstance(stap, str):
-            return stap
-        i = stap
-    return uit
+        if isinstance(step, str):
+            return step
+        i = step
+    return out
 
 
-def _jq_reden(vals: list[tuple[str, str]]) -> str | None:
-    for naam, waarde in vals:
-        if naam in {"--jq", "-q"} and _JQ_VERBODEN_RE.search(waarde):
-            return f"`{naam}` expression reads the environment or input"
+def _jq_reason(vals: list[tuple[str, str]]) -> str | None:
+    for name, value in vals:
+        if name in {"--jq", "-q"} and _JQ_FORBIDDEN_RE.search(value):
+            return f"`{name}` expression reads the environment or input"
     return None
 
 
-def _ref_reden(args: list[str]) -> str | None:
+def _ref_reason(args: list[str]) -> str | None:
     for a in args:
-        if any(t in a for t in _REF_VERBODEN):
+        if any(t in a for t in _REF_FORBIDDEN):
             return f"`{a}` is branch-relative (`..`, `@{{`, `~`, `^`)"
     return None
 
 
 def _check_grep(args: list[str]) -> str | None:
-    geparsed = _parse(args, GREP_FLAGS, GREP_VAL, dd_ok=True)
-    return geparsed if isinstance(geparsed, str) else None
+    parsed = _parse(args, GREP_FLAGS, GREP_VAL, dd_ok=True)
+    return parsed if isinstance(parsed, str) else None
 
 
 def _check_git(args: list[str]) -> str | None:
@@ -251,53 +251,53 @@ def _check_git(args: list[str]) -> str | None:
         return "git: only log, show, ls-files and grep, without global options"
     sub, rest = args[0], args[1:]
     if sub == "grep":
-        geparsed = _parse(rest, GIT_GREP_FLAGS, GIT_GREP_VAL, dd_ok=True)
-        if isinstance(geparsed, str):
-            return geparsed
-        heeft_e = any(naam == "-e" for naam, _ in geparsed.vals)
-        # Het eerste positionele woord zonder `-e` is het patroon, geen ref.
-        return _ref_reden(geparsed.pos[0 if heeft_e else 1 :] + geparsed.after)
-    # Zonder `=` leest git `--pretty` als losse vlag en `--format` als fout: het
-    # volgende woord is dan een optie, geen waarde. Alleen de `=`-vorm is eenduidig.
-    kaal = next((a for a in rest if a in GIT_LOG_ALLEEN_GELIJK), None)
-    if kaal is not None:
-        return f"`{kaal}` only as `{kaal}=<value>`"
-    geparsed = _parse(rest, GIT_LOG_FLAGS, GIT_LOG_VAL, dd_ok=True)
-    if isinstance(geparsed, str):
-        return geparsed
-    for naam, waarde in geparsed.vals:
-        if naam == "-n" and not waarde.isdigit():
+        parsed = _parse(rest, GIT_GREP_FLAGS, GIT_GREP_VAL, dd_ok=True)
+        if isinstance(parsed, str):
+            return parsed
+        has_e = any(name == "-e" for name, _ in parsed.vals)
+        # The first positional word without `-e` is the pattern, not a ref.
+        return _ref_reason(parsed.pos[0 if has_e else 1 :] + parsed.after)
+    # Without `=`, git reads `--pretty` as a bare flag and `--format` as an error: the
+    # next word is then an option, not a value. Only the `=` form is unambiguous.
+    bare = next((a for a in rest if a in GIT_LOG_EQUALS_ONLY), None)
+    if bare is not None:
+        return f"`{bare}` only as `{bare}=<value>`"
+    parsed = _parse(rest, GIT_LOG_FLAGS, GIT_LOG_VAL, dd_ok=True)
+    if isinstance(parsed, str):
+        return parsed
+    for name, value in parsed.vals:
+        if name == "-n" and not value.isdigit():
             return "`-n` accepts only a number"
-        if naam in {"--format", "--pretty"} and "%G" in waarde:
-            return f"`{naam}` with `%G` starts gpg"
-    return _ref_reden(geparsed.pos + geparsed.after)
+        if name in {"--format", "--pretty"} and "%G" in value:
+            return f"`{name}` with `%G` starts gpg"
+    return _ref_reason(parsed.pos + parsed.after)
 
 
 def _check_pytest(args: list[str]) -> str | None:
     if args[:2] != ["run", "pytest"]:
         return "uv: only `uv run pytest`, without options between `run` and `pytest`"
-    geparsed = _parse(args[2:], PYTEST_FLAGS, set())
-    if isinstance(geparsed, str):
-        return geparsed
-    if not geparsed.pos:
+    parsed = _parse(args[2:], PYTEST_FLAGS, set())
+    if isinstance(parsed, str):
+        return parsed
+    if not parsed.pos:
         return "uv run pytest without a path would run the whole suite"
     test_dir = _pytest_dir()
-    for tok in geparsed.pos:
-        pad = posixpath.normpath(tok.split("::", 1)[0])
-        if not pad.startswith(test_dir):
+    for tok in parsed.pos:
+        path = posixpath.normpath(tok.split("::", 1)[0])
+        if not path.startswith(test_dir):
             return f"path `{tok}` is not under `{test_dir}`"
     return None
 
 
 def _pytest_dir() -> str:
-    """`[test_gate] evidence_test_dir` als `map/`; een `ConfigError` gaat omhoog."""
-    waarde = config.lookup(config.load(config.config_path()), "test_gate.evidence_test_dir")
-    return posixpath.normpath(str(waarde)) + "/"
+    """`[test_gate] evidence_test_dir` as `dir/`; a `ConfigError` propagates."""
+    value = config.lookup(config.load(config.config_path()), "test_gate.evidence_test_dir")
+    return posixpath.normpath(str(value)) + "/"
 
 
-def _graphql_veld(args: list[str]) -> tuple[list[str], str] | str:
-    """Haal het ene `-f query=…` uit `args`; `(rest, veld)` of een reden."""
-    velden: list[str] = []
+def _graphql_field(args: list[str]) -> tuple[list[str], str] | str:
+    """Take the one `-f query=…` out of `args`; `(rest, field)` or a reason."""
+    fields: list[str] = []
     rest: list[str] = []
     i = 0
     while i < len(args):
@@ -305,52 +305,52 @@ def _graphql_veld(args: list[str]) -> tuple[list[str], str] | str:
             rest.append(args[i])
             i += 1
         elif i + 1 < len(args):
-            velden.append(args[i + 1])
+            fields.append(args[i + 1])
             i += 2
         else:
             return "`-f` lacks a value"
-    if len(velden) != 1:
+    if len(fields) != 1:
         return "gh api graphql: exactly one `-f query=…`"
-    if not velden[0].startswith("query="):
+    if not fields[0].startswith("query="):
         return "gh api graphql: the `-f` value must start with `query=`"
-    if "mutation" in velden[0].lower():
+    if "mutation" in fields[0].lower():
         return "gh api graphql: a mutation is not allowed"
-    return rest, velden[0]
+    return rest, fields[0]
 
 
 def _check_gh_api(args: list[str]) -> str | None:
-    # `-f` is alleen voor graphql; zonder `graphql` weigert `_parse` het.
+    # `-f` is for graphql only; without `graphql`, `_parse` refuses it.'
     graphql = "graphql" in args
     if graphql:
-        veld = _graphql_veld(args)
-        if isinstance(veld, str):
-            return veld
-        args = veld[0]
-    geparsed = _parse(args, set(), GH_API_VAL)
-    if isinstance(geparsed, str):
-        return geparsed
-    if len(geparsed.pos) != 1:
+        field = _graphql_field(args)
+        if isinstance(field, str):
+            return field
+        args = field[0]
+    parsed = _parse(args, set(), GH_API_VAL)
+    if isinstance(parsed, str):
+        return parsed
+    if len(parsed.pos) != 1:
         return "gh api: exactly one path or `graphql`"
-    pad = geparsed.pos[0]
-    if graphql and pad != "graphql":
+    path = parsed.pos[0]
+    if graphql and path != "graphql":
         return "gh api graphql: `graphql` must be the only path"
-    if "://" in pad or pad.startswith("//"):
+    if "://" in path or path.startswith("//"):
         return "gh api: a path only, not a URL"
-    return _jq_reden(geparsed.vals)
+    return _jq_reason(parsed.vals)
 
 
 def _check_gh_view(args: list[str]) -> str | None:
-    geparsed = _parse(args, GH_VIEW_FLAGS, GH_VIEW_VAL)
-    if isinstance(geparsed, str):
-        return geparsed
-    # Zonder nummer leest gh de branch van de cwd. Ingang C meet in een detached
-    # worktree op `origin/main`: daar is geen branch, en de rij faalt na de merge.
-    if len(geparsed.pos) != 1:
+    parsed = _parse(args, GH_VIEW_FLAGS, GH_VIEW_VAL)
+    if isinstance(parsed, str):
+        return parsed
+    # Without a number, gh reads the branch of the cwd. Entry C measures in a detached
+    # worktree on `origin/main`: there is no branch there, and the row fails after the merge.
+    if len(parsed.pos) != 1:
         return "gh view: exactly one issue or PR number (or github.com URL)"
-    for tok in geparsed.pos:
+    for tok in parsed.pos:
         if "://" in tok and not tok.startswith("https://github.com/"):
             return "gh view: a github.com URL only"
-    return _jq_reden(geparsed.vals)
+    return _jq_reason(parsed.vals)
 
 
 def _check_gh(args: list[str]) -> str | None:
@@ -362,57 +362,57 @@ def _check_gh(args: list[str]) -> str | None:
 
 
 def check(argv: list[str]) -> str | None:
-    """`None` = toegestaan, anders de reden. `argv[0]` is de kale naam, geen pad of toewijzing."""
+    """`None` = allowed, otherwise the reason. `argv[0]` is the bare name, no path or assignment."""
     if not argv:
         return "empty command"
-    naam, args = argv[0], argv[1:]
-    if naam == "grep":
+    name, args = argv[0], argv[1:]
+    if name == "grep":
         return _check_grep(args)
-    if naam == "git":
+    if name == "git":
         return _check_git(args)
-    if naam == "ls":
-        return _flags_alleen(args, LS_FLAGS)
-    if naam == "wc":
-        return _flags_alleen(args, WC_FLAGS)
-    if naam == "cat":
-        return _flags_alleen(args, CAT_FLAGS)
-    if naam == "test":
+    if name == "ls":
+        return _flags_only(args, LS_FLAGS)
+    if name == "wc":
+        return _flags_only(args, WC_FLAGS)
+    if name == "cat":
+        return _flags_only(args, CAT_FLAGS)
+    if name == "test":
         return None
-    if naam == "uv":
+    if name == "uv":
         return _check_pytest(args)
-    if naam == "gh":
+    if name == "gh":
         return _check_gh(args)
-    return f"`{naam}` is not in the allowlist"
+    return f"`{name}` is not in the allowlist"
 
 
-def _flags_alleen(args: list[str], flags: set[str]) -> str | None:
-    geparsed = _parse(args, flags, set())
-    return geparsed if isinstance(geparsed, str) else None
+def _flags_only(args: list[str], flags: set[str]) -> str | None:
+    parsed = _parse(args, flags, set())
+    return parsed if isinstance(parsed, str) else None
 
 
-def _strip_backticks(cel: str) -> str:
-    s = cel.strip()
+def _strip_backticks(cell: str) -> str:
+    s = cell.strip()
     if len(s) >= 2 and s.startswith("`") and s.endswith("`"):
         s = s[1:-1]
     return s
 
 
 def expected(result: str) -> tuple[str, bool]:
-    """De Result-cel genormaliseerd: `(verwacht fragment, was_na_pr)`.
+    """The Result cell normalised: `(expected fragment, was_after_pr)`.
 
-    Het voorvoegsel `na PR: ` telt in elke taal van `headings.toml`.
+    The prefix `na PR: ` counts in every language of `headings.toml`.
     """
     s = _strip_backticks(result).replace("\\|", "|")
-    for na_pr in headings.variants("evidence_after_pr"):
-        if s.startswith(na_pr):
-            return s[len(na_pr) :], True
+    for after_pr in headings.variants("evidence_after_pr"):
+        if s.startswith(after_pr):
+            return s[len(after_pr) :], True
     return s, False
 
 
 def outcome_of(cell: str) -> str | None:
-    """De uitkomst die een tabelcel noemt, in elke taal; `None` als de cel er geen is.
+    """The outcome a table cell names, in any language; `None` when the cell names none.
 
-    De hele cel beslist: `klopt` is een voorvoegsel van `klopt niet`.
+    The whole cell decides: `klopt` is a prefix of `klopt niet`.
     """
     for key in OUTCOMES:
         if re.fullmatch(rf"\s*{headings.any_of(key)}\s*", cell):
@@ -421,7 +421,7 @@ def outcome_of(cell: str) -> str | None:
 
 
 def _stop(proc: subprocess.Popen[bytes]) -> None:
-    """Dood het proces en zijn procesgroep (`uv run pytest` start kinderen) en ruim op."""
+    """Kill the process and its process group (`uv run pytest` starts children) and clean up."""
     try:
         os.killpg(proc.pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
@@ -431,13 +431,13 @@ def _stop(proc: subprocess.Popen[bytes]) -> None:
         proc.stdout.close()
 
 
-def _draai(argv: list[str], cwd: str, timeout: int) -> tuple[int, str] | str:
-    """Draai `argv` (geen shell) met een tijds- en een uitvoergrens.
+def _run_capped(argv: list[str], cwd: str, timeout: int) -> tuple[int, str] | str:
+    """Run `argv` (no shell) with a time limit and an output limit.
 
-    Stdout en stderr gaan door één pipe, die we in blokken lezen: `cat /dev/zero`
-    mag de host niet volschrijven. Geeft `(returncode, uitvoer)`, of een reden
-    (`niet meetbaar`) bij te veel uitvoer; `TimeoutExpired` bij een verlopen
-    deadline.
+    Stdout and stderr go through one pipe, which we read in chunks: `cat /dev/zero`
+    must not fill up the host. Returns `(returncode, output)`, or a reason
+    (`not measurable`) on too much output; `TimeoutExpired` when the deadline
+    passes.
     """
     proc = subprocess.Popen(
         argv,
@@ -454,79 +454,79 @@ def _draai(argv: list[str], cwd: str, timeout: int) -> tuple[int, str] | str:
     try:
         fd = proc.stdout.fileno()
         while True:
-            over = deadline - time.monotonic()
-            if over <= 0:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise subprocess.TimeoutExpired(argv, timeout)
-            if not select.select([fd], [], [], over)[0]:
+            if not select.select([fd], [], [], remaining)[0]:
                 continue
-            blok = os.read(fd, _LEESBLOK)
-            if not blok:
+            chunk = os.read(fd, _READ_CHUNK)
+            if not chunk:
                 break
-            buf += blok
-            if len(buf) > MAX_UITVOER:
-                return f"output larger than {MAX_UITVOER} bytes"
+            buf += chunk
+            if len(buf) > MAX_OUTPUT:
+                return f"output larger than {MAX_OUTPUT} bytes"
         proc.wait(timeout=max(deadline - time.monotonic(), 0.001))
     finally:
         _stop(proc)
     return proc.returncode, buf.decode("utf-8", errors="replace")
 
 
-def _draai_of_reden(argv: list[str], cwd: str, timeout: int) -> tuple[int, str] | str:
-    """`_draai`, maar elke reden om niet te kunnen meten komt terug als tekst."""
+def _run_or_reason(argv: list[str], cwd: str, timeout: int) -> tuple[int, str] | str:
+    """`_run_capped`, but every reason for not being able to measure comes back as text."""
     try:
-        return _draai(argv, cwd, timeout)
-    except FileNotFoundError as fout:
-        return f"not found: {fout.filename or argv[0]}"
+        return _run_capped(argv, cwd, timeout)
+    except FileNotFoundError as error:
+        return f"not found: {error.filename or argv[0]}"
     except subprocess.TimeoutExpired:
         return f"timeout after {timeout} s"
-    except OSError as fout:
-        return f"not executable: {fout}"
+    except OSError as error:
+        return f"not executable: {error}"
 
 
-def _rij_argv(row: Row) -> list[str] | str:
-    """Het argv van een geldige rij, of de reden waarom de rij `ongeldig` is.
+def _row_argv(row: Row) -> list[str] | str:
+    """The argv of a valid row, or the reason why the row is `invalid`.
 
-    Eén toets voor vóór en na de PR: een rij die ingang C `ongeldig` noemt
-    (buiten de allowlist, of een lege verwachting zoals `na PR: `), mag onder
-    `--before-pr` niet als `na PR, niet gemeten` doorgaan.
+    One check for before and after the PR: a row that entry C calls `invalid`
+    (outside the allowlist, or an empty expectation such as `na PR: `) must not
+    pass as `after PR, not measured` under `--before-pr`.
     """
     argv = split_command(row.command)
     if isinstance(argv, str):
         return argv
-    reden = check(argv)
-    if reden is None and not expected(row.result)[0]:
-        reden = "empty Result cell"
-    return argv if reden is None else reden
+    reason = check(argv)
+    if reason is None and not expected(row.result)[0]:
+        reason = "empty Result cell"
+    return argv if reason is None else reason
 
 
 def run_row(row: Row, cwd: str, gh_ok: bool, timeout: int = 300) -> tuple[str, str]:
-    """Voer één Evidence-rij uit; `(uitkomst, detail)`.
+    """Run one Evidence row; `(outcome, detail)`.
 
-    Uitkomst is `HOLDS`, `FAILS`, `INVALID` (buiten de allowlist, draait
-    niet) of `UNMEASURABLE` (binary weg, timeout, `gh` onbereikbaar): een
-    sleutel van `headings.toml`.
+    The outcome is `HOLDS`, `FAILS`, `INVALID` (outside the allowlist, does not
+    run) or `UNMEASURABLE` (binary missing, timeout, `gh` unreachable): a key
+    of `headings.toml`.
     """
-    argv = _rij_argv(row)
+    argv = _row_argv(row)
     if isinstance(argv, str):
         return INVALID, f"Evidence outside the allowlist: {argv}"
     fragment, _ = expected(row.result)
     if argv[0] == "gh" and not gh_ok:
         return UNMEASURABLE, "gh not reachable"
-    gelezen = _draai_of_reden(argv, cwd, timeout)
-    if isinstance(gelezen, str):
-        return UNMEASURABLE, gelezen
-    returncode, uitvoer = gelezen
-    delen: list[str] = []
+    outcome_read = _run_or_reason(argv, cwd, timeout)
+    if isinstance(outcome_read, str):
+        return UNMEASURABLE, outcome_read
+    returncode, output = outcome_read
+    parts: list[str] = []
     if returncode != 0:
-        delen.append(f"exit code {returncode}")
-    if fragment not in uitvoer:
-        delen.append(f"missing from output: {fragment!r}")
-    if delen:
-        return FAILS, "; ".join(delen)
+        parts.append(f"exit code {returncode}")
+    if fragment not in output:
+        parts.append(f"missing from output: {fragment!r}")
+    if parts:
+        return FAILS, "; ".join(parts)
     return HOLDS, f"exit code 0, `{fragment}` found"
 
 
-def _gh_bereikbaar() -> bool:
+def _gh_reachable() -> bool:
     try:
         proc = subprocess.run(
             ["gh", "api", "rate_limit", "--jq", ".rate.remaining"],
@@ -542,66 +542,66 @@ def _gh_bereikbaar() -> bool:
     return proc.returncode == 0
 
 
-def _cel(tekst: str) -> str:
-    return " ".join(tekst.split()).replace("|", "\\|")
+def _cell(text: str) -> str:
+    return " ".join(text.split()).replace("|", "\\|")
 
 
-def _draait_gh(row: Row, voor_pr: bool) -> bool:
-    """Telt deze rij mee voor de `gh`-probe: geldig, een `gh`-rij en niet overgeslagen."""
-    argv = _rij_argv(row)
+def _runs_gh(row: Row, before_pr: bool) -> bool:
+    """Does this row count for the `gh` probe: valid, a `gh` row and not skipped."""
+    argv = _row_argv(row)
     if isinstance(argv, str) or argv[0] != "gh":
         return False
-    return not (voor_pr and expected(row.result)[1])
+    return not (before_pr and expected(row.result)[1])
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
     try:
         with open(args.body_file, encoding="utf-8") as f:
             body = f.read()
-    except OSError as fout:
-        print(f"COULD NOT CHECK: body file unreadable ({fout})")
+    except OSError as error:
+        print(f"COULD NOT CHECK: body file unreadable ({error})")
         return 3
     if not os.path.isdir(args.cwd):
         print(f"COULD NOT CHECK: --cwd {args.cwd} is not a directory")
         return 3
-    taal = config.load(config.config_path()).language
-    rijen = evidence_rows(body, args.issue)
-    if isinstance(rijen, str):
-        print(f"{headings.heading('evidence_closes_without_block', taal)} {rijen}")
+    language = config.load(config.config_path()).language
+    rows = evidence_rows(body, args.issue)
+    if isinstance(rows, str):
+        print(f"{headings.heading('evidence_closes_without_block', language)} {rows}")
         return 2
-    gh_ok = any(_draait_gh(r, args.before_pr) for r in rijen) and _gh_bereikbaar()
-    resultaten: list[tuple[Row, str, str]] = []
-    for rij in rijen:
-        if args.before_pr and expected(rij.result)[1]:
-            argv = _rij_argv(rij)
+    gh_ok = any(_runs_gh(r, args.before_pr) for r in rows) and _gh_reachable()
+    results: list[tuple[Row, str, str]] = []
+    for row in rows:
+        if args.before_pr and expected(row.result)[1]:
+            argv = _row_argv(row)
             if isinstance(argv, str):
-                resultaten.append(
-                    (rij, INVALID, f"Evidence outside the allowlist: {argv}")
+                results.append(
+                    (row, INVALID, f"Evidence outside the allowlist: {argv}")
                 )
             else:
-                resultaten.append((rij, AFTER_PR_UNMEASURED, "runs only after the PR"))
+                results.append((row, AFTER_PR_UNMEASURED, "runs only after the PR"))
             continue
-        uitkomst, detail = run_row(rij, args.cwd, gh_ok)
-        resultaten.append((rij, uitkomst, detail))
-    print(headings.heading("evidence_table_head", taal))
+        outcome, detail = run_row(row, args.cwd, gh_ok)
+        results.append((row, outcome, detail))
+    print(headings.heading("evidence_table_head", language))
     print("|---|---|---|")
-    for rij, uitkomst, detail in resultaten:
-        tekst = headings.heading(uitkomst, taal)
-        print(f"| {_cel(rij.ac)} | {tekst} | {_cel(detail)} |")
-    uitkomsten = {u for _, u, _ in resultaten}
-    if uitkomsten & {FAILS, INVALID}:
+    for row, outcome, detail in results:
+        text = headings.heading(outcome, language)
+        print(f"| {_cell(row.ac)} | {text} | {_cell(detail)} |")
+    outcomes = {u for _, u, _ in results}
+    if outcomes & {FAILS, INVALID}:
         return 1
-    if UNMEASURABLE in uitkomsten:
+    if UNMEASURABLE in outcomes:
         return 4
     return 0
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
     argv = split_command(args.cell)
-    reden = argv if isinstance(argv, str) else check(argv)
-    if reden is None:
+    reason = argv if isinstance(argv, str) else check(argv)
+    if reason is None:
         return 0
-    print(reden)
+    print(reason)
     return 1
 
 

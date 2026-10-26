@@ -706,7 +706,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/evidence.py"
 package = "core"
 version = "dev"
-sha256 = "d4506b0311155c2cc4644ee2de670ddfbd6d5b27542f47edc534a439f0b190e7"
+sha256 = "88bf1a46f867a4ea3a0738a0d749c096f80d49d513e28efcae16e534bd03d1da"
 
 [[unit]]
 kind = "file"
