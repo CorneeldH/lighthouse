@@ -17,7 +17,7 @@ func getWithHost(h http.Handler, host, path string) *httptest.ResponseRecorder {
 }
 
 func TestHostAllowed(t *testing.T) {
-	h := New(testSite())
+	h := New(testSite(), fakeReport)
 	for _, host := range []string{
 		"127.0.0.1:8127", "localhost:8127", "LOCALHOST", "[::1]:8127", "[::1]",
 		"100.64.0.1", "box.tail1234.ts.net", "box.tail1234.ts.net.", "BOX.Tail1234.TS.NET:443",
@@ -31,7 +31,7 @@ func TestHostAllowed(t *testing.T) {
 }
 
 func TestHostRefused(t *testing.T) {
-	h := New(testSite())
+	h := New(testSite(), fakeReport)
 	for _, host := range []string{
 		"evil.example.com", "127.0.0.1.evil.com", "localhost.evil.com",
 		"ts.net", "evilts.net", "ts.net.evil.com", "", "evil.example.com:8127",

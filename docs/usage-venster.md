@@ -111,3 +111,18 @@ Anders dan `refresh` en `tick` schrijft dit commando niets: geen alarm, geen cac
 - **Wachttijd.** De binary wacht vast 20 s per home. De sleutel
   `[codex_usage] app_server_timeout_seconds` uit `lighthouse.toml` leest hij niet, anders dan
   `codex_usage.py`.
+
+## API
+
+`lighthouse serve` biedt `GET /api/usage`. Het antwoord heeft de vorm
+`{"claude": {"session": W, "week": W}, "codex": {"session": W, "week": W}}`, met voor elk venster `W`:
+`state`, `pct`, `reset_at`, `age_s`, `lower_bound` en (alleen bij een reden) `reason`.
+
+- **Toestanden.** `ok` (recente meting), `stale` (meting ouder dan 900 s; de grens is `> 900`, niet
+  `>=`) en `not_measurable`. Bij `not_measurable` zijn `pct` en `age_s` JSON `null`, nooit 0.
+- **Claude** komt uit de cache van `usage refresh`. Een cache uit de toekomst geeft `age_s` 0.
+- **Codex** wordt door de server gemeten, zoals `usage codex`, en 300 s hergebruikt (een mislukte
+  meting 60 s). Gelijktijdige verzoeken delen één app-server.
+- **Als service.** Met `ProtectHome=read-only` en een kale `PATH` vindt de service vaak geen `codex`
+  of kan hij die niet starten. Codex is dan alleen uit het sessielog te lezen, en die stand heeft
+  `lower_bound` `true`.
