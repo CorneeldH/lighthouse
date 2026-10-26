@@ -36,7 +36,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-instrument/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "edf53913a5b8b4424005d6aa1c13d441b87a17e37a7be61a64e0ef7af0056d19"
+sha256 = "0a9269e4a114a9408ee54282cbcceb9ffa0f9cb91def7c19ba606cddbdbb03d9"
 
 [[unit]]
 kind = "file"
@@ -176,7 +176,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "ddb7703437580398e66e5806ca687d9c4b426e785937cca7f3221bd3edb2798a"
+sha256 = "8a6966688fe55d57fff71c6f5cbf62a44d457712be6836a97e2855f9bdcda4ae"
 
 [[unit]]
 kind = "file"
@@ -408,7 +408,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-instrument/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "edf53913a5b8b4424005d6aa1c13d441b87a17e37a7be61a64e0ef7af0056d19"
+sha256 = "0a9269e4a114a9408ee54282cbcceb9ffa0f9cb91def7c19ba606cddbdbb03d9"
 
 [[unit]]
 kind = "file"
@@ -548,7 +548,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "6149d7a986baf106a8c430ac955a6662467f657796a384b5560fb9702b7a133e"
+sha256 = "969d6dcfa3bc9da0d098c607532c8039677d6c2b7a80b0218a0d13152caed3ce"
 
 [[unit]]
 kind = "file"
