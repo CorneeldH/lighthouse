@@ -7,9 +7,30 @@ serves all your repositories from one SQLite database.
 
 - Linux with systemd (user units). macOS is not supported.
 - Go, to install the binary.
+- Node 22 with npm, to build the web UI. `web/.nvmrc` holds the exact version.
 - Optional: Tailscale, to reach the server from other devices on your tailnet.
 
 ## Install the binary
+
+Clone the repository. The steps below run from the clone.
+
+```bash
+git clone https://github.com/CorneeldH/lighthouse.git
+cd lighthouse
+```
+
+Build the web UI, then install the binary. The build writes the UI into
+`internal/web/dist`, and `go install` embeds it.
+
+```bash
+cd web && npm ci && npm run build && cd ..
+go install ./cmd/lighthouse
+```
+
+`go install` puts the binary in `~/go/bin`.
+
+A build from a clone reports version `dev`, and `lighthouse init` writes that version into
+`.lighthouse/manifest.toml`. For a repository you run `init` in, install a tag instead:
 
 ```bash
 GOPRIVATE=github.com/CorneeldH go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
@@ -17,20 +38,8 @@ GOPRIVATE=github.com/CorneeldH go install github.com/CorneeldH/lighthouse/cmd/li
 
 `@latest` resolves to the newest tag; `serve` is in every tag from v0.1.6. The repository is
 private, so `GOPRIVATE` makes `go` fetch it with your git credentials instead of through
-`proxy.golang.org`, which cannot read it.
-
-A build from `main` or from a clone reports version `dev`, and `lighthouse init` writes that
-version into `.lighthouse/manifest.toml`. Install a tag for a repository you run `init` in.
-
-Both `go install` forms put the binary in `~/go/bin`. `go install` does not leave a checkout.
-The steps below use files from the repository, so clone it and run them from the clone:
-
-```bash
-git clone https://github.com/CorneeldH/lighthouse.git
-cd lighthouse
-```
-
-In the clone, `go install ./cmd/lighthouse` installs the same binary.
+`proxy.golang.org`, which cannot read it. That binary serves only a placeholder page:
+`go install` does not build the web UI. Release binaries with the UI follow in #78.
 
 ## Run it as a user service
 
@@ -54,11 +63,14 @@ The server listens on `127.0.0.1:8127` and stores its database in
 
 ```bash
 curl -s http://127.0.0.1:8127/api/health
+curl -s http://127.0.0.1:8127/ | grep lighthouse-ui
 journalctl --user -u lighthouse
 ```
 
-The health endpoint answers `{"version":"…"}`. The log shows `lighthouse: listening on
-127.0.0.1:8127`.
+The health endpoint answers `{"version":"…"}`. The page answers with
+`<meta name="lighthouse-ui" content="spa" />`: the binary carries the built web UI.
+`content="placeholder"` means the UI was not built before `go install`. The log shows
+`lighthouse: listening on 127.0.0.1:8127`.
 
 ## Connect the forge
 
