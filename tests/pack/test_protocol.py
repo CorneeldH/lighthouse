@@ -926,5 +926,5 @@ def test_shared_header_fixture():
             continue
         assert header is not None, case["name"]
         assert header.kind == case["kind"], case["name"]
-        for key, value in case.get("fields", {}).items():
-            assert header.fields[key] == value, case["name"]
+        if "fields" in case:
+            assert dict(header.fields) == case["fields"], case["name"]

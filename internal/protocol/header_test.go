@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"testing"
 )
@@ -41,10 +42,8 @@ func TestParseHeaderSharedFixture(t *testing.T) {
 			if string(header.Kind) != *c.Kind {
 				t.Fatalf("kind = %q, want %q", header.Kind, *c.Kind)
 			}
-			for key, want := range c.Fields {
-				if got := header.Fields[key]; got != want {
-					t.Errorf("field %q = %q, want %q", key, got, want)
-				}
+			if c.Fields != nil && !maps.Equal(header.Fields, c.Fields) {
+				t.Errorf("fields = %v, want %v", header.Fields, c.Fields)
 			}
 		})
 	}

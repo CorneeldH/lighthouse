@@ -20,6 +20,7 @@ func TestClassify(t *testing.T) {
 		{"artefact after question", []c{{Body: "🤖 Vraag"}, {Body: "<!-- lighthouse:plan -->\nplan"}}, StateQuestion},
 		{"legacy artefact after question", []c{{Body: "🤖 Vraag"}, {Body: "<!-- paia:plan -->"}}, StateQuestion},
 		{"rebased after question", []c{{Body: "🤖 Vraag"}, {Body: "🤖 Herbaseerd"}}, StateQuestion},
+		{"second question after answered first", []c{{Body: "🤖 Vraag"}, {Body: "1a"}, {Body: "🤖 Vraag"}}, StateQuestion},
 		{"returned", []c{{Body: "🤖 Teruggegeven\nreden: x"}}, StateReturned},
 		{"returned then started", []c{{Body: "🤖 Teruggegeven"}, {Body: "🤖 Gestart"}}, StateOther},
 		{"unreadable header after question", []c{{Body: "🤖 Vraag"}, {Body: "🤖 Onbekend"}}, StateQuestion},

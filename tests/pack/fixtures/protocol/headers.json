@@ -10,12 +10,7 @@
     "kind": "question"
   },
   {
-    "name": "nl-handoff",
-    "body": "🤖 Handoff",
-    "kind": "handoff"
-  },
-  {
-    "name": "en-handoff",
+    "name": "handoff",
     "body": "🤖 Handoff",
     "kind": "handoff"
   },
@@ -28,16 +23,6 @@
     "name": "en-started",
     "body": "🤖 Started",
     "kind": "started"
-  },
-  {
-    "name": "nl-question",
-    "body": "🤖 Vraag",
-    "kind": "question"
-  },
-  {
-    "name": "en-question",
-    "body": "🤖 Question",
-    "kind": "question"
   },
   {
     "name": "nl-resumed",
@@ -89,7 +74,7 @@
   },
   {
     "name": "returned-en",
-    "body": "🤖 Returned\nreason: x\nsession: 0b8f6a52-3c1d-4e7a-9b21-5d4c8e1f7a30\n\nvrije tekst: y",
+    "body": "🤖 Returned\nreason: x\nsession: 0b8f6a52-3c1d-4e7a-9b21-5d4c8e1f7a30\n\nnote: y",
     "kind": "returned",
     "fields": {
       "reason": "x",
