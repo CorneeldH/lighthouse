@@ -105,7 +105,13 @@ Anders dan `refresh` en `tick` schrijft dit commando niets: geen alarm, geen cac
 - **Terugval.** Falen alle homes, dan leest de binary het sessielog
   (`<home>/sessions/**/rollout-*.jsonl`). De jongste regel over alle homes wint; die stand is een
   ondergrens (`lower_bound` is `true`).
-- **Verouderd.** Een meting ouder dan 900 s geldt als verouderd, voor beide bronnen.
+- **Verouderd.** De uitvoer van dit commando heeft geen toestandsveld; je leest de leeftijd af aan
+  `age_s`. Alleen `GET /api/usage` kent de toestand `stale` (meting ouder dan 900 s, voor beide
+  bronnen).
+- **Uitvoer.** Een JSON-object met `source` (`app-server` of `rollout-log`), `generated_at` (UTC),
+  `age_s` (leeftijd van de meting op `generated_at`), `source_file` (alleen bij `rollout-log`),
+  `lower_bound`, en `session` en `week`, elk met `pct` en `reset_at` (UTC). `reset_credits`, dat
+  `codex_usage.py read` wel uitvoert, staat niet in deze uitvoer.
 - **Niet meetbaar.** Eén regel `not measurable: <reden>` op stderr, niets op stdout, exitcode 1.
   Nooit een stand met 0%.
 - **Wachttijd.** De binary wacht vast 20 s per home. De sleutel
