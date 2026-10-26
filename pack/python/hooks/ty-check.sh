@@ -18,6 +18,10 @@
 # determined): exit 0 with a systemMessage `ty-check: COULD NOT CHECK — <reason>`
 # (ontwerpkeuze 13). Blocking there would keep the session from stopping; staying
 # silent would read as "type-clean".
+# While the usage alarm is up (#74) the gate says `not checked` and exits 0: the
+# usage guard has the session wrap up, and fixing a diagnostic costs budget that is
+# no longer there. Without `usage-guard/alarm.sh` next to this file (no pack/core)
+# there is no alarm to read and the check runs as before.
 # `python.source_dirs = []` turns the check off, without a message.
 
 # The pin of ty. The python-writing skill names the same version.
@@ -52,6 +56,17 @@ fi
 # a failing check would loop forever.
 if [ "$ACTIVE" = "true" ]; then
   exit 0
+fi
+
+# The usage alarm (#74): the rules live in usage-guard/alarm.sh, installed by
+# pack/core next to this file. A missing helper or an invalid alarm checks as usual.
+case "${BASH_SOURCE[0]}" in
+  */*) HOOKS_DIR="${BASH_SOURCE[0]%/*}" ;;
+  *) HOOKS_DIR="." ;;
+esac
+# shellcheck source=/dev/null
+if [ -f "$HOOKS_DIR/usage-guard/alarm.sh" ] && . "$HOOKS_DIR/usage-guard/alarm.sh" && usage_alarm_valid; then
+  report "$HOOK_NAME: not checked — the usage alarm is up until $USAGE_ALARM_LOCAL; the usage guard wraps up this session."
 fi
 
 # The lib lives in the lighthouse lib of this repo. Found through
