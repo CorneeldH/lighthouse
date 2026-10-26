@@ -57,6 +57,7 @@ LANGUAGES = ("nl", "en")
 _REPO = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 
 _STR, _INT, _STRS, _INTS = "str", "int", "list[str]", "list[int]"
+_BOOL = "bool"
 
 # The keys beyond `[forge]`, `[forge.board]` and `[project] language`, with their
 # type. Each one is checked when present.
@@ -107,6 +108,8 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "shell.strict_dirs": _STRS,
         "project.code_language": _STR,
         "project.code_language_exempt": _STRS,
+        "usage_guard.resume": _BOOL,
+        "usage_guard.controller": _BOOL,
     }
 )
 
@@ -143,6 +146,8 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
         "python.coverage_command": "uv run pytest -q",
         "python.coverage_issue_labels": (),
         "shell.strict_dirs": (".claude/hooks",),
+        "usage_guard.resume": False,
+        "usage_guard.controller": False,
     }
 )
 
@@ -324,6 +329,8 @@ def _check_type(value: Any, kind: str) -> bool:
         return isinstance(value, str)
     if kind == _INT:
         return is_int(value)
+    if kind == _BOOL:
+        return isinstance(value, bool)
     if kind == _STRS:
         return isinstance(value, list) and all(isinstance(v, str) and v for v in value)
     return isinstance(value, list) and all(is_int(v) for v in value)
