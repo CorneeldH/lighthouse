@@ -21,7 +21,10 @@ De detector met `code_language = "en"`, paden `pack/**`, `internal/**`, `cmd/**`
 `tools/**` en uitzondering `tests/pack/fixtures/code_language/**`:
 
 - **2137 vondsten in 65 bestanden**: 480 commentaar, 711 docstring, 946 namen. 137 twijfels
-  (geen vondst; laag 2 beslist, buiten deze PR).
+  (geen vondst; Taak 11 loopt ze na en vertaalt wat echt Nederlands is).
+- **Main liep door** naar e09d962 (#81, #83). Dat voegt 1 vondst toe (`pack/core/lib/usage_guard.py`)
+  en 9 twijfels; de getallen van `_testkit.py` (7) en `test_hooks_minimal_config.py` (8) blijven.
+  `e2e/` geeft 0. Taak 0 rebaset de branch daarop; daarna is het totaal 2138.
 - Per map: `tests/pack` 1052, `pack/core` 922, `pack/python` 139, `pack/shell` 22,
   `internal/initcmd` 2. `cmd/`, `tools/` en `.lighthouse/` (beheerde kopieën) 0.
 - Daarnaast staat `besluit N` en `ontwerpkeuze N` in commentaar dat de detector alleen als twijfel
@@ -39,9 +42,14 @@ De detector met `code_language = "en"`, paden `pack/**`, `internal/**`, `cmd/**`
   (`.lighthouse/lib/`, `.lighthouse/scripts/`, `.claude/hooks/lighthouse/`, `.claude/skills/`,
   `.agents/skills/`). Elke taak die `pack/` raakt draait `go run ./cmd/lighthouse init --upgrade`
   en commit de geïnstalleerde kopie in dezelfde commit.
-- **Een naam hernoemen = alle verwijzingen mee.** Na elke hernoeming:
-  `git grep -nw '<oude naam>' -- pack internal cmd tests tools .github` geeft nul treffers buiten
-  `docs/` (docs blijven Nederlands en historisch; niet aanpassen).
+- **Een naam hernoemen = alle verwijzingen mee, per symbool.** Na elke hernoeming verwijst niets
+  meer naar de oude *definitie*: geen import, geen gekwalificeerd attribuut (`mod.oude_naam`),
+  geen keyword-argument, geen `monkeypatch.setattr`/`getattr`-string, geen aanroep uit een hook of
+  ander script. Zoek met `git grep -nw '<oude naam>' -- pack internal cmd tests tools .github` en
+  beoordeel elke treffer. Niet meetellen, niet aanpassen: een gelijknamige lokale variabele in een
+  ander bestand of andere scope (die vertaalt de taak van dat bestand), een stringliteral (blijft
+  byte-gelijk, bijv. `"reden"` in `protocol._LEGACY_KEYS`), de vrijgestelde fixture onder
+  `tests/pack/fixtures/code_language/`, en `docs/` (Nederlands en historisch).
 - **`besluit N` wordt `decision N`, `ontwerpkeuze N` wordt `design choice N`**; de verwijzing naar
   spec of plan blijft staan.
 - **Een Engelse naam die de detector toch als Nederlands ziet** (bijv. `_AUTOLINK`, `_killpg`):
@@ -67,8 +75,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-root = Path(sys.argv[1]).resolve()
-prefixes = tuple(sys.argv[2:]) or ("pack/", "internal/", "cmd/", "tests/", "tools/")
+args = sys.argv[1:]
+show_doubts = "--doubts" in args
+args = [a for a in args if a != "--doubts"]
+root = Path(args[0]).resolve()
+prefixes = tuple(args[1:]) or ("pack/", "internal/", "cmd/", "tests/", "tools/")
 sys.path.insert(0, str(root / ".lighthouse/lib"))
 from lighthouse_lib import code_language as cl, config  # noqa: E402
 
@@ -83,19 +94,24 @@ files = subprocess.run(["git", "-C", root, "ls-files"], capture_output=True, tex
 total = 0
 for rel in files:
     if rel.startswith(prefixes) and (root / rel).is_file():
-        for f in cl.check_file(root / rel, root).findings:
+        result = cl.check_file(root / rel, root)
+        for f in result.findings:
             total += 1
             print(f"{rel}:{f.line}: {f.kind}: {f.text[:100]}")
+        for f in result.doubts if show_doubts else []:
+            print(f"{rel}:{f.line}: doubt {f.kind}: {f.text[:100]}")
 print("total", total)
 ```
 
-Draai met `python3 $S/measure.py <worktree> <pad> [<pad> ...]`. Let op: het laadt de detector uit
-`.lighthouse/lib`, de geïnstalleerde kopie; dat is de stand van `origin/main` tot Taak 11.
+Draai met `python3 $S/measure.py <worktree> [--doubts] <pad> [<pad> ...]`. Een pad is een prefix
+vanaf de repo-root (`pack/python/scripts/quality/ratchet.py`, niet `ratchet.py`). `total` telt
+alleen vondsten; `--doubts` toont de twijfels erbij. Let op: het laadt de detector uit
+`.lighthouse/lib`, de geïnstalleerde kopie; die verandert tot Taak 11 alleen in namen en commentaar.
 
 **`$S/literals.py`** — bewijst dat geen stringliteral in een Python-bestand veranderde:
 
 ```python
-"""Exit 1 when the non-docstring string constants of a .py file differ from origin/main."""
+"""Exit 1 when the non-docstring string constants of a .py file differ from the branch base."""
 import ast
 import collections
 import subprocess
@@ -116,9 +132,12 @@ def strings(source: str) -> collections.Counter:
     )
 
 
+base = subprocess.run(
+    ["git", "merge-base", "HEAD", "origin/main"], capture_output=True, text=True, check=True
+).stdout.strip()
 bad = 0
 for path in sys.argv[1:]:
-    old = subprocess.run(["git", "show", f"origin/main:{path}"], capture_output=True, text=True).stdout
+    old = subprocess.run(["git", "show", f"{base}:{path}"], capture_output=True, text=True).stdout
     with open(path, encoding="utf-8") as f:
         new = f.read()
     if strings(old) != strings(new):
@@ -131,6 +150,24 @@ sys.exit(bad)
 Draai vanuit de worktree: `python3 $S/literals.py <bestand.py> ...`. Een hernoemde parameter die
 als `monkeypatch.setattr(mod, "<naam>", …)` of `getattr(x, "<naam>")` in een test staat, verschijnt
 hier als verschil: dat is dan een bewuste, verklaarbare wijziging, die je in de commit noemt.
+Hetzelfde geldt voor de argumentnamen van `pytest.mark.parametrize` (bijv.
+`("s", "w", "besluit", "venster")` in `test_codex_usage.py`): dat zijn namen in een literal; hernoem
+ze samen met de parameters van de testfunctie.
+De basis is de merge-base met `origin/main`, niet de bewegende `origin/main` zelf: wat main na de
+rebase van Taak 0 nog verandert, telt dan niet als jouw verschil.
+
+## Taak 0: rebase op `origin/main`
+
+De branch staat op 786176a; `origin/main` is verder (e09d962 bij het schrijven).
+
+- [ ] **Stap 1:** `git -C <worktree> fetch origin && git -C <worktree> rebase origin/main`. Er is
+  alleen de plancommit, dus geen conflict verwacht.
+- [ ] **Stap 2:** `python3 $S/measure.py <worktree>` geeft `total 2138` (of meer als main nog
+  verder liep). Een vondst in een bestand dat in geen taak staat: zet het bestand in de taak van
+  zijn module (zoals `usage_guard.py` in Taak 5) en noteer het in het ledger.
+- [ ] **Stap 3:** `uv run pytest -q` los draaien (venv aanmaken) vóór de eerste commit; de test
+  gate duurt ~3 min.
+- Geen commit: de rebase verandert alleen de basis.
 
 ## Werkwijze per vertaaltaak (Taak 1 t/m 10)
 
@@ -156,6 +193,8 @@ Elke vertaaltaak heeft dezelfde vijf stappen; per taak staan alleen de bestanden
 - Veel namen (`GIT_LOG_ALLEEN_GELIJK`, `MAX_UITVOER`, `_draai`, `_gh_bereikbaar`, `uitkomst`).
   Check per hernoemde module-naam ook `pack/core/lib/pr_body_gate.py` en `pack/core/scripts/` op
   aanroepers.
+- `evidence.py:609` geeft de eerste regel van de moduledocstring aan argparse: de `--help`-tekst
+  wordt Engels. Bedoelde wijziging; noem hem in de commit.
 - [ ] Stap 1–5 van de werkwijze.
 
 ### Taak 2: `pr_body_gate`
@@ -199,7 +238,8 @@ Elke vertaaltaak heeft dezelfde vijf stappen; per taak staan alleen de bestanden
 `pack/core/lib/code_language.py` (1), `tests/pack/_testkit.py` (7), `tests/pack/test_deadline.py` (9),
 `tests/pack/test_md_links.py` (2), `tests/pack/test_gate_slot.py` (4),
 `tests/pack/test_worktree_linkcheck.py` (12), `tests/pack/test_worktree_guard.py` (2),
-`tests/pack/test_hooks_minimal_config.py` (8). Verwacht 72.
+`tests/pack/test_hooks_minimal_config.py` (8), `pack/core/lib/usage_guard.py` (1, sinds #83).
+Verwacht 73.
 
 - `code_language.py:397` (`_AUTOLINK`) en `deadline.py:88` (`_killpg`) zijn Engelse namen die de
   detector als Nederlands ziet: kies een andere Engelse naam of zet de markering met reden.
@@ -227,6 +267,8 @@ Elke vertaaltaak heeft dezelfde vijf stappen; per taak staan alleen de bestanden
 - `plan_review_record.py:63-64` noemt JSON-sleutels (`bestand`, `besluit`, `reden`, `drempels`) in
   een docstring: dat zijn sleutels van bestaande records op schijf; ze blijven in de literals staan
   en de vertaalde docstring noemt ze letterlijk tussen backticks.
+- `post_artefact.py:284` geeft de eerste docstringregel aan argparse: `--help` wordt Engels.
+  Bedoelde wijziging; noem hem in de commit.
 - [ ] Stap 1–5 van de werkwijze.
 
 ### Taak 8: board, KPI-metingen en blokkades
@@ -244,13 +286,16 @@ Elke vertaaltaak heeft dezelfde vijf stappen; per taak staan alleen de bestanden
 
 ### Taak 9: pakket python
 
-**Bestanden:** `pack/python/scripts/quality/ratchet.py` (51), `prcov_issues.py` (45),
-`baseline.py` (14), `diffcov.py` (14), `prcov.py` (11), `gitenv.py` (3),
-`pack/python/hooks/ty-check.sh` (1), `tests/pack/python/test_ratchet.py` (40),
+**Bestanden:** `pack/python/scripts/quality/ratchet.py` (51),
+`pack/python/scripts/quality/prcov_issues.py` (45), `pack/python/scripts/quality/baseline.py` (14),
+`pack/python/scripts/quality/diffcov.py` (14), `pack/python/scripts/quality/prcov.py` (11),
+`pack/python/scripts/quality/gitenv.py` (3), `pack/python/hooks/ty-check.sh` (1), `tests/pack/python/test_ratchet.py` (40),
 `tests/pack/python/test_ratchet_nightly.py` (12), `tests/pack/python/test_prcov.py` (4).
 Verwacht 195.
 
 - `prcov_issues.py:309` noemt sleutels die de controller leest: literals, blijven.
+- `ratchet.py:1049` geeft de hele moduledocstring aan argparse: `--help` wordt Engels. Bedoelde
+  wijziging; noem hem in de commit.
 - [ ] Stap 1–5 van de werkwijze.
 
 ### Taak 10: pakket shell
@@ -262,29 +307,46 @@ Verwacht 195.
   je in beide bestanden tegelijk. Een omgevingsvariabele die van buiten komt, blijft.
 - [ ] Stap 1–5 van de werkwijze.
 
-### Taak 11: `besluit` en `ontwerpkeuze`, en de oude lijst weg
+### Taak 11: `besluit` en `ontwerpkeuze`, de twijfels, en de oude lijst weg
 
 Deze woorden geven bijna nooit een vondst (alleen twijfel), dus `measure.py` is hier niet de
-meetlat; `git grep` is dat wel.
+meetlat; `git grep` is dat wel. De grep (hieronder `GREP`):
 
-**Bestanden:** de treffers van
-`git grep -nwiE 'ontwerpkeuzes?|besluit' -- pack internal cmd tests '*.go' '*.py' '*.sh'`
+```bash
+git grep -nwiE 'ontwerpkeuzes?|besluit' -- ':(glob)pack/**/*.py' ':(glob)pack/**/*.sh' \
+  ':(glob)pack/**/*.go' ':(glob)internal/**/*.go' ':(glob)cmd/**/*.go' ':(glob)tests/**/*.py' \
+  ':!tests/pack/fixtures/code_language'
+```
+
+Alleen codebestanden onder de bron: geen geïnstalleerde kopie, geen skill-markdown, geen
+`headings.toml` (Nederlandse kopvarianten zijn literals), geen vrijgestelde fixture.
+
+**Bestanden:** de treffers van `GREP`
 (nu o.a. `internal/initcmd/{initcmd,select,workflows,workspace,initcmd_test}.go`,
 `internal/packs/{packs,packs_test}.go`, `internal/projectconfig/projectconfig.go`,
 `internal/version/version.go`, `internal/reconcile/reconcile.go`, `pack/pack.go`, de hookkoppen
 in `pack/core/hooks/` en `pack/python/hooks/ruff-format.sh`, `pack/core/lib/{config,artefacts,protocol,headings,datadir,code_language}.py`,
 en wat Taak 1–10 nog liet staan), plus `tests/pack/test_code_language_corpus.py`.
 
-- [ ] **Stap 1: Meet rood** — de `git grep` hierboven geeft treffers.
+- [ ] **Stap 1: Meet rood** — `GREP` geeft treffers.
 - [ ] **Stap 2: Vertaal** `besluit N` → `decision N`, `ontwerpkeuze N` → `design choice N`
-  (`Besluit` aan het begin van een zin → `Decision`). Stringliterals met die woorden
-  (bijv. `"besluit"` als JSON-sleutel in `plan_review_record.py`) blijven staan; de `git grep`
-  telt die ene categorie niet mee.
+  (`Besluit` aan het begin van een zin → `Decision`). Blijven staan: stringliterals met die
+  woorden die uitvoer of data zijn (bij het schrijven: geen in de bron), en de backticked recordsleutels in
+  de docstring van `pack/core/scripts/plan_review_record.py` (`` `besluit` ``,
+  `` `besluit: "onleesbaar"` ``, zie Taak 7): die noemen sleutels op schijf.
+- [ ] **Stap 2b: Loop de twijfels na** — `python3 $S/measure.py <worktree> --doubts` toont ze
+  (ca. 146). Per twijfel: echt Nederlands proza of een Nederlandse naam → vertalen. Een geciteerde
+  titel van een Nederlands document (`(spec, Versiemarker en manifest)`, `(spec, Indeling)`,
+  `inventaris §3`) blijft als verwijzing staan, net als `besluit N` naar spec of plan. Engels dat de
+  detector twijfelachtig vindt → laten. Geen test op twijfels: daar zitten valse positieven in en
+  laag 2 beslist ze (spec van de detector). Noteer in het ledger hoeveel je vertaalde en hoeveel
+  bleven, met per soort de reden.
 - [ ] **Stap 3: Haal de lijst weg** uit `tests/pack/test_code_language_corpus.py`: `KNOWN_DUTCH`,
   `_dutch_words`, `_unknown` en `test_known_dutch_still_occurs` gaan eruit;
   `test_go_english`, `test_config_py_english` en `test_hooks_english` asserten dan
   `[f for f in findings if not f.doubt] == []`.
-- [ ] **Stap 4: Meet groen** — de `git grep` geeft alleen nog stringliterals; test gate groen;
+- [ ] **Stap 4: Meet groen** — `GREP` geeft alleen nog de toegestane rest uit stap 2
+  (stringliterals en de recordsleutels in `plan_review_record.py`); test gate groen;
   `init --upgrade` en de kopie meestagen.
 - [ ] **Stap 5: Commit** — `refactor: decision en design choice in plaats van besluit en ontwerpkeuze (#58)`.
 
