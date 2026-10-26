@@ -242,7 +242,7 @@ De indeler en het gate-script krijgen eigen tests (pytest, tabelgedreven):
 
 - alleen `web/x.tsx` → alleen `web`;
 - alleen `internal/a.go` → `go` en `python`;
-- `web/openapi.json` → `web`, `go` en `python`;
+- `web/openapi.json` → `web` en `go` (geen `python`: het pad valt onder `web/`, zie de tabel in §6);
 - `docs/x.md` → `go` en `python`;
 - `.github/workflows/ci.yml` → `web`, `go` en `python`;
 - `web` geraakt zonder `web/node_modules` → `COULD NOT CHECK`, met `npm ci` in de melding;

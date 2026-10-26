@@ -94,8 +94,9 @@ module github.com/CorneeldH/lighthouse/web
 go 1.26.4
 ```
 
-  Run: `go list ./... | grep -c '^github.com/CorneeldH/lighthouse/web'` → `0`, en
-  `go list ./internal/web` → exit 0.
+  Run: `! go list ./... | grep -q '^github.com/CorneeldH/lighthouse/web'` → exit 0 (geen
+  treffer), en `go list ./internal/web` → exit 0. Geen `grep -c`: die geeft bij nul treffers
+  exit 1.
 
 - [ ] **Step 2: Schrijf de falende tests** in `internal/web/web_test.go`:
   - `TestChooseBuilt`: `fstest.MapFS{"dist/index.html": "spa", "placeholder/index.html": "ph"}`;
@@ -190,8 +191,10 @@ web/node_modules/
   `@tailwindcss/vite`, en shadcn via `npx shadcn@<gepinde versie> init`, gevolgd door `add card`
   (schrijft `components.json`, `src/lib/utils.ts` en `src/components/ui/card.tsx`). `index.html`
   heeft `<div id="root">` en het merkteken `content="spa"`. `App.tsx` toont voorlopig een `Card`
-  met de titel `lighthouse`, zodat de Tailwind- en shadcn-keten in de build zit. Werk de
-  `go.mod` uit Task 1 niet weg.
+  met de titel `lighthouse`, zodat de Tailwind- en shadcn-keten in de build zit. `web/` is niet
+  leeg (`go.mod` uit Task 1, `openapi.json` uit Task 2): scaffold Vite in een tijdelijke map in de
+  scratchpad en kopieer de bestanden naar `web/`. Kies nooit "remove existing files"; `go.mod` en
+  `openapi.json` blijven staan.
 
 - [ ] **Step 2: Run** in `web/`: `npm ci && npm run lint && npm run typecheck && npm run build`
   → alle vier exit 0.
@@ -203,7 +206,7 @@ web/node_modules/
   dat vóór je verder gaat.
 
 - [ ] **Step 4: Run:** `go test -race -shuffle=on ./... && golangci-lint run ./...` → PASS en
-  `0 issues`, ook nu `web/node_modules` bestaat. `go list ./... | grep -c node_modules` → `0`.
+  `0 issues`, ook nu `web/node_modules` bestaat. `! go list ./... | grep -q node_modules` → exit 0.
 
 - [ ] **Step 5: `docs/install.md`.** Requirements: Node 22 (de versie in `web/.nvmrc`) met npm.
   "Install the binary" wordt: eerst clonen, dan `cd web && npm ci && npm run build && cd ..`, dan
@@ -282,7 +285,8 @@ web/node_modules/
     - `web`: een pad begint met `web/`, of is `.github/workflows/ci.yml`, `ci/domains.py` of
       `lighthouse.toml`. `lighthouse.toml` staat erbij omdat daar het gate-commando staat.
     - `go`: een pad begint niet met `web/`, of is `web/openapi.json` of `web/go.mod`.
-    - `python`: een pad begint niet met `web/`.
+    - `python`: een pad begint niet met `web/`. Ook `web/openapi.json` en `web/go.mod` niet:
+      geen pytest leest onder `web/` (de spec, §6 en de testlijst, is hierop rechtgezet).
   - `CHECKS: dict[str, list[list[str]]]`:
     - `web`: `npm run --silent lint`, `npm run --silent typecheck`, `npm test`, gedraaid in
       `<root>/web`;
@@ -290,8 +294,9 @@ web/node_modules/
     - `go`: `["go", "test", "-race", "-shuffle=on", "./..."]`.
   - `api_drift(web: Path, gen: list[str] = ["npm", "run", "--silent", "gen"]) -> int`: maakt een
     momentopname van `web/src/api` (relatieve paden en bytes), draait `gen` en vergelijkt. Geeft
-    `0` als niets veranderde. Anders `1`, met `gate: web/src/api was stale; npm run gen
-    regenerated it — stage the result`. Hij vergelijkt met de worktree, niet met de index: een
+    `gen` een exitcode die niet 0 is, dan geeft hij die terug, met `gate: npm run gen failed`,
+    zonder te vergelijken. Anders `0` als niets veranderde, en `1` bij een verschil, met
+    `gate: web/src/api was stale; npm run gen regenerated it — stage the result`. Hij vergelijkt met de worktree, niet met de index: een
     ververste client die nog niet gestaged is, geldt als bij.
   - `changed_paths(root: Path) -> list[str]`: de vereniging van `git diff --cached --name-only
     --no-renames -z`, `git diff --name-only --no-renames -z` en `git ls-files --others
@@ -318,13 +323,15 @@ Gedrag van `gate`, in deze volgorde:
 
 - [ ] **Step 1: Schrijf de falende tests** in `tests/test_domains.py`. Eén fixture, `repo`, maakt
   in `tmp_path` een git-repo met een eerste commit (`internal/a.go`, `web/x.tsx`, `README.md`).
+  Elke git-aanroep krijgt een eigen identiteit via `GIT_AUTHOR_*`/`GIT_COMMITTER_*` in `env`,
+  zoals `GIT_ENV` in `tests/pack/_testkit.py`: een CI-runner heeft geen globale `user.name`.
   Tabeltest `test_classify` (geparametriseerd):
 
 | paden | domeinen |
 |---|---|
 | `web/src/x.tsx` | `{"web"}` |
 | `internal/a.go` | `{"go", "python"}` |
-| `web/openapi.json` | `{"web", "go", "python"}` |
+| `web/openapi.json` | `{"web", "go"}` |
 | `web/go.mod` | `{"web", "go"}` |
 | `docs/x.md` | `{"go", "python"}` |
 | `.github/workflows/ci.yml` | `{"web", "go", "python"}` |
@@ -334,14 +341,19 @@ Gedrag van `gate`, in deze volgorde:
 | (leeg) | `set()` |
 
   Gate-tests. Ze roepen `gate(repo, checks=…, drift=lambda web: 0)` aan met nepchecks
-  (`["sh", "-c", "exit 7"]`, of `["sh", "-c", "touch <marker>"]` om te zien dat iets draaide):
+  (`["sh", "-c", "exit 7"]`, of `["sh", "-c", "touch <marker>"]` om te zien dat iets draaide).
+  Een fixture `web_ready` maakt `web/node_modules/` aan en monkeypatcht `shutil.which` zodat
+  `node` en `npm` een pad geven. Elke test die `web` raakt en verwacht dat een check draait,
+  gebruikt hem; anders geeft de preflight (gedrag 3) `3` vóór er iets draait. Alleen de twee
+  `web_without`-tests gebruiken hem niet.
   - `test_gate_untracked_file_counts`: een nieuw `internal/new.go`, niet gestaged → de go-check
     draait.
   - `test_gate_unstaged_change_counts`: `internal/a.go` gewijzigd, niet gestaged → de go-check
     draait.
-  - `test_gate_rename_across_border_runs_go`: `git mv internal/a.go web/a.go` → de go-check draait.
-  - `test_gate_quoted_path_is_web`: een nieuw `web/café ü.tsx`, met `web/node_modules/` als map
-    → de web-check draait.
+  - `test_gate_rename_across_border_runs_go` (met `web_ready`): `git mv internal/a.go web/a.go`
+    → de go-check draait.
+  - `test_gate_quoted_path_is_web` (met `web_ready`): een nieuw `web/café ü.tsx` → de web-check
+    draait.
   - `test_gate_nothing_changed`: een schone repo → `0`, de uitvoer bevat `nothing to check`, en er
     draaide geen check.
   - `test_gate_reports_skipped`: alleen `web/x.tsx` gewijzigd →
@@ -354,7 +366,8 @@ Gedrag van `gate`, in deze volgorde:
     marker ontbreekt.
   - `test_gate_missing_command`: python-check `["lighthouse-no-such-cmd"]` → `3`, met `not found`.
   - `test_api_drift`: een `web/src/api/a.ts`; `gen` als `sh -c` die het bestand gelijk laat → `0`.
-    `gen` die het wijzigt → `1`. `gen` die `b.ts` toevoegt → `1`.
+    `gen` die het wijzigt → `1`. `gen` die `b.ts` toevoegt → `1`. `gen` als `exit 5` die niets
+    wijzigt → `5`, met `npm run gen failed`.
   - `test_classify_cli_github_output`: `main(["classify", "--github-output", f])` met stdin
     `b"web/x.tsx\0docs/y.md\0"` → het bestand bevat `web=true`, `go=true` en `python=true`.
 
@@ -390,7 +403,10 @@ unchecked_exit_codes = [3]
 - [ ] **Step 7: Run:** `uv run pytest -q` → PASS. Draai `python3 ci/domains.py gate` uit de
   worktree-root met de wijzigingen van deze task. Verwacht: drie geraakte domeinen, want
   `ci/domains.py` en `lighthouse.toml` raken `web`. Dan web-checks, pytest en `go test`, en als
-  laatste regel `gate: passed — web, python, go`.
+  laatste regel `gate: passed — web, python, go`. Meet de duur (`time`) en vergelijk met
+  `python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.deadline_seconds` (standaard 270).
+  Ligt hij boven 80 % daarvan, zet dan `deadline_seconds = 280` onder `[test_gate]` (het maximum
+  van de hook); ligt hij erboven, meld dat als open punt.
 
 - [ ] **Step 8: Commit:** `feat(ci): indeler per domein, en een test-gate die alleen geraakte checks draait (#68)`.
   Deze commit gaat al door de nieuwe gate.
@@ -444,13 +460,20 @@ Vorm van `ci.yml` (alleen `on: pull_request`, geen `paths:`):
   - `test_binary_builds_after_web`: in `binary` staat `web` in `needs`, en de `if` bevat
     `!cancelled()`, `outputs.go == 'true'` en `needs.web.result != 'failure'`. De job draait
     `CGO_ENABLED=0 go build ./cmd/lighthouse` en `ci/spa-smoke.sh`.
-  - `test_actions_pinned_by_sha`: elke `uses:` eindigt op `@<40 hex>`.
+  - `test_actions_pinned_by_sha`: elke `uses:` matcht `@[0-9a-f]{40}(\s|$)`; de bestaande
+    regels dragen een `# vX.Y.Z`-commentaar achter de SHA.
+  - `test_smoke_script_executable`: `git ls-files -s ci/spa-smoke.sh` begint met `100755`.
 
 - [ ] **Step 2: Run:** `uv run pytest tests/test_ci_domains_pin.py -q` → FAIL.
 
-- [ ] **Step 3: Schrijf `ci.yml` en `ci/spa-smoke.sh`.** Zoek de SHA's van `actions/setup-node`,
-  `actions/upload-artifact` en `actions/download-artifact` op met `gh api`, bij de nieuwste
-  release-tag. Werk de kopregel van `ci.yml` bij: die noemt nu twee lanes.
+- [ ] **Step 3: Schrijf `ci.yml` en `ci/spa-smoke.sh`.** De SHA's zijn opgezocht op 2026-10-26
+  (nieuwste release-tag; geen `gh` nodig):
+  - `actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0`
+  - `actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2`
+  - `actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2`
+
+  `chmod +x ci/spa-smoke.sh` en stage hem, zodat git hem als `100755` volgt. Werk de kopregel van
+  `ci.yml` bij: die noemt nu twee lanes.
 
 - [ ] **Step 4: Run:** `uv run pytest -q` → PASS, `tests/test_ci_go_test_pin.py` inbegrepen. Als
   `actionlint` er is: `actionlint .github/workflows/ci.yml` → geen bevindingen.
@@ -471,9 +494,13 @@ Vorm van `ci.yml` (alleen `on: pull_request`, geen `paths:`):
 
 - [ ] `go run ./cmd/lighthouse init --upgrade </dev/null` → als laatste regel `No changes.`
   (#68 raakt `pack/` niet).
-- [ ] De KPI-tabel van `/lighthouse-go-writing`, per rij met de omgeving.
-- [ ] Een verse worktree zonder `web/node_modules` (`git worktree add` in de scratchpad, op deze
-  branch): `CGO_ENABLED=0 go build ./... && go test ./... && golangci-lint run ./...` → groen.
+- [ ] De KPI-tabel van `/lighthouse-go-writing`, per rij met de omgeving. Rij 6 (de test-gate)
+  zegt op een schone boom `nothing to check` en bewijst dan niets: meld hem met die uitvoerregel,
+  en draai als eigen bewijs `cd web && npm run lint && npm run typecheck && npm test` en
+  `uv run pytest -q`.
+- [ ] Een verse worktree zonder `web/node_modules`
+  (`git worktree add --detach <scratch>/fresh HEAD`; de branch zelf staat hier al uit):
+  `CGO_ENABLED=0 go build ./... && go test ./... && golangci-lint run ./...` → groen.
   Daarna de worktree weghalen.
 - [ ] De CI-run op de PR: alle vijf jobs groen. De log van `binary` toont de smoke-regel. Dat
   bewijs gaat in de Evidence-tabel van `/lighthouse-verify-pr`.
