@@ -59,28 +59,28 @@ CLOSE_WORDS = r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)"
 
 def _closes_re() -> re.Pattern[str]:
     """Doel: #N, <repo>#N of de volledige issue-URL; zonder repo alleen #N."""
-    eigen = repo()
-    if eigen is None:
-        doel = r"#(\d+)(?![\w/])"
+    own_repo = repo()
+    if own_repo is None:
+        target = r"#(\d+)(?![\w/])"
     else:
-        doel = (
-            rf"(?:https://github\.com/{re.escape(eigen)}/issues/"
-            rf"|{re.escape(eigen)}#|#)(\d+)(?![\w/])"
+        target = (
+            rf"(?:https://github\.com/{re.escape(own_repo)}/issues/"
+            rf"|{re.escape(own_repo)}#|#)(\d+)(?![\w/])"
         )
-    return re.compile(rf"(?<![\w/]){CLOSE_WORDS}:?[ \t]+{doel}", re.IGNORECASE)
+    return re.compile(rf"(?<![\w/]){CLOSE_WORDS}:?[ \t]+{target}", re.IGNORECASE)
 
 REFS_SEP = ("—", "-", ":")  # op dezelfde regel als `Refs #N`
-MIN_REDEN = 10  # tekens, na strip(), voor Refs én No issue
+MIN_REASON = 10  # tekens, na strip(), voor Refs én No issue
 _REFS_RE = re.compile(r"(?<![\w/])Refs[ \t]+#(\d+)(?![\w/])(.*)", re.IGNORECASE)
 _NO_ISSUE_RE = re.compile(r"^[ \t]*No issue[ \t]*:(.*)$", re.IGNORECASE | re.MULTILINE)
 
 EVIDENCE_HEADER = ("AC", "Command", "Result")
-_SCHEIDING_CEL_RE = re.compile(r"^:?-+:?$")
-_CEL_SPLIT_RE = re.compile(r"(?<!\\)\|")
+_SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
+_CELL_SPLIT_RE = re.compile(r"(?<!\\)\|")
 
 
 
-def _ac_kop_re() -> re.Pattern[str]:
+def _ac_heading_re() -> re.Pattern[str]:
     """De AC-kop in elke taal van `headings.toml` (een issue kan een andere taal hebben)."""
     return re.compile(
         rf"^#{{2,4}}[ \t]+{headings.any_of('acceptance_criteria')}[ \t]*$",
@@ -88,7 +88,7 @@ def _ac_kop_re() -> re.Pattern[str]:
     )
 
 
-_KOP_RE = re.compile(r"^#{1,6}[ \t]")
+_HEADING_RE = re.compile(r"^#{1,6}[ \t]")
 _CHECKBOX_RE = re.compile(r"^[ \t]*[-*][ \t]+\[[ xX]\]")
 
 AC_TIMEOUT_S = 5
@@ -96,8 +96,8 @@ AC_TIMEOUT_S = 5
 # onder de hook-timeout (15 s in .claude/settings.json) blijven: een command-hook
 # die verloopt laat de tool-call door, en dat zou fail-open zijn.
 DEADLINE_S = 12
-TERUGVAL = (
-    "pr-create-gate: AC count not measurable for #{nr} ({oorzaak})"
+FALLBACK_NOTICE = (
+    "pr-create-gate: AC count not measurable for #{nr} ({cause})"
     " — structure checked only"
 )
 
@@ -111,8 +111,8 @@ class Row(NamedTuple):
 
 
 class Verdict(NamedTuple):
-    blokkades: list[str]
-    meldingen: list[str]
+    blockers: list[str]
+    notices: list[str]
 
 
 def strip_comments(body: str) -> str:
@@ -123,15 +123,15 @@ def strip_comments(body: str) -> str:
 
 def closes_targets(body: str) -> list[int]:
     """Uniek, in volgorde van voorkomen, de issues waarvoor de body een sluitwoord heeft."""
-    gezien: list[int] = []
+    seen: list[int] = []
     for m in _closes_re().finditer(strip_comments(body)):
         nr = int(m.group(1))
-        if nr not in gezien:
-            gezien.append(nr)
-    return gezien
+        if nr not in seen:
+            seen.append(nr)
+    return seen
 
 
-def _reden(rest: str) -> str:
+def _parse_reason(rest: str) -> str:
     """De reden achter een scheidingsteken, of "" zonder scheidingsteken."""
     rest = rest.strip()
     if not rest.startswith(REFS_SEP):
@@ -139,10 +139,10 @@ def _reden(rest: str) -> str:
     return rest[1:].strip()
 
 
-def _refs_alle(body: str) -> list[tuple[int, str]]:
+def _all_refs(body: str) -> list[tuple[int, str]]:
     """Elke `Refs #N` met zijn reden ("" als het scheidingsteken of de reden ontbreekt)."""
     return [
-        (int(m.group(1)), _reden(m.group(2)))
+        (int(m.group(1)), _parse_reason(m.group(2)))
         for m in _REFS_RE.finditer(strip_comments(body))
     ]
 
@@ -153,106 +153,106 @@ def refs_targets(body: str) -> list[int]:
     Anders dan `refs_issues` telt ook een `Refs #N` zonder (lange) reden: wie alleen
     wil weten *of* een PR-body naar een issue verwijst, leest de gate-vorm zo.
     """
-    return [nr for nr, _ in _refs_alle(body)]
+    return [nr for nr, _ in _all_refs(body)]
 
 
 def refs_issues(body: str) -> list[int]:
     """Alleen de `Refs #N` met een reden van minstens `MIN_REDEN` tekens."""
-    uit: list[int] = []
-    for nr, reden in _refs_alle(body):
-        if len(reden) >= MIN_REDEN and nr not in uit:
-            uit.append(nr)
-    return uit
+    found: list[int] = []
+    for nr, reason in _all_refs(body):
+        if len(reason) >= MIN_REASON and nr not in found:
+            found.append(nr)
+    return found
 
 
 def no_issue(body: str) -> bool:
     return any(
-        len(m.group(1).strip()) >= MIN_REDEN
+        len(m.group(1).strip()) >= MIN_REASON
         for m in _NO_ISSUE_RE.finditer(strip_comments(body))
     )
 
 
-def _cellen(regel: str) -> list[str]:
+def _cells(line: str) -> list[str]:
     """Splits een tabelregel op niet-geëscapete `|`; de buitenste pipes vallen weg."""
-    s = regel.strip()
+    s = line.strip()
     s = s.removeprefix("|")
     if s.endswith("|") and not s.endswith("\\|"):
         s = s[:-1]
-    return [c.strip() for c in _CEL_SPLIT_RE.split(s)]
+    return [c.strip() for c in _CELL_SPLIT_RE.split(s)]
 
 
-def _rij(regel: str, volgnr: int) -> Row | str:
+def _row(line: str, seq: int) -> Row | str:
     """Eén datarij als `Row`, of de reden waarom hij ongeldig is."""
-    cellen = _cellen(regel)
-    if len(cellen) != len(EVIDENCE_HEADER):
+    cells = _cells(line)
+    if len(cells) != len(EVIDENCE_HEADER):
         return (
-            f"row {volgnr} has {len(cellen)} cells, expected {len(EVIDENCE_HEADER)}"
+            f"row {seq} has {len(cells)} cells, expected {len(EVIDENCE_HEADER)}"
             " (write a `|` in a cell as `\\|`)"
         )
-    if not all(cellen):
-        return f"row {volgnr} has an empty cell"
-    ac, command, result = cellen
+    if not all(cells):
+        return f"row {seq} has an empty cell"
+    ac, command, result = cells
     if len(command) < 3 or not (command.startswith("`") and command.endswith("`")):
-        return f"the Command cell of row {volgnr} must be in backticks"
+        return f"the Command cell of row {seq} must be in backticks"
     return Row(ac, command, result)
 
 
 def evidence_rows(body: str, nr: int) -> list[Row] | str:
     """De rijen van `### Evidence #nr`, of de reden waarom het blok niet klopt."""
-    regels = strip_comments(body).split("\n")
-    kop = re.compile(rf"^###[ \t]+Evidence[ \t]+#{nr}[ \t]*$")
-    start = next((i for i, r in enumerate(regels) if kop.match(r)), None)
+    lines = strip_comments(body).split("\n")
+    heading = re.compile(rf"^###[ \t]+Evidence[ \t]+#{nr}[ \t]*$")
+    start = next((i for i, r in enumerate(lines) if heading.match(r)), None)
     if start is None:
         return f"heading `### Evidence #{nr}` is missing"
 
     i = start + 1
-    while i < len(regels) and not regels[i].strip():
+    while i < len(lines) and not lines[i].strip():
         i += 1
-    if i >= len(regels) or not regels[i].strip().startswith("|"):
+    if i >= len(lines) or not lines[i].strip().startswith("|"):
         return f"no table under `### Evidence #{nr}`"
-    if tuple(_cellen(regels[i])) != EVIDENCE_HEADER:
+    if tuple(_cells(lines[i])) != EVIDENCE_HEADER:
         return f"the table header must be `| {' | '.join(EVIDENCE_HEADER)} |`"
     i += 1
-    if i >= len(regels) or not all(
-        _SCHEIDING_CEL_RE.match(c) for c in _cellen(regels[i])
+    if i >= len(lines) or not all(
+        _SEPARATOR_CELL_RE.match(c) for c in _cells(lines[i])
     ):
         return "the separator line `|---|---|---|` under the table header is missing"
 
-    rijen: list[Row] = []
-    for regel in regels[i + 1 :]:
-        if not regel.strip().startswith("|"):
+    rows: list[Row] = []
+    for line in lines[i + 1 :]:
+        if not line.strip().startswith("|"):
             break
-        rij = _rij(regel, len(rijen) + 1)
-        if isinstance(rij, str):
-            return rij
-        rijen.append(rij)
-    return rijen or "the Evidence block has no data row"
+        row = _row(line, len(rows) + 1)
+        if isinstance(row, str):
+            return row
+        rows.append(row)
+    return rows or "the Evidence block has no data row"
 
 
 def count_acs(issue_body: str) -> int | None:
     """Aantal checkboxregels onder de AC-kop (`#{2,4}`, elke taal); `None` bij geen kop of nul."""
-    regels = issue_body.replace("\r\n", "\n").split("\n")
-    kop = _ac_kop_re()
-    start = next((i for i, r in enumerate(regels) if kop.match(r)), None)
+    lines = issue_body.replace("\r\n", "\n").split("\n")
+    heading = _ac_heading_re()
+    start = next((i for i, r in enumerate(lines) if heading.match(r)), None)
     if start is None:
         return None
-    aantal = 0
-    for regel in regels[start + 1 :]:
-        if _KOP_RE.match(regel):
+    count = 0
+    for line in lines[start + 1 :]:
+        if _HEADING_RE.match(line):
             break
-        if _CHECKBOX_RE.match(regel):
-            aantal += 1
-    return aantal or None
+        if _CHECKBOX_RE.match(line):
+            count += 1
+    return count or None
 
 
 _deadline: float | None = None  # `time.monotonic()`-moment; door `main` gezet
 
 
-def _budget(eigen: float) -> float:
+def _budget(own_repo: float) -> float:
     """`min(eigen timeout, resterende deadline)`; `<= 0` betekent: het budget is op."""
     if _deadline is None:
-        return eigen
-    return min(eigen, _deadline - time.monotonic())
+        return own_repo
+    return min(own_repo, _deadline - time.monotonic())
 
 
 def fetch_ac_count(nr: int) -> tuple[int | None, str]:
@@ -260,12 +260,12 @@ def fetch_ac_count(nr: int) -> tuple[int | None, str]:
     timeout = _budget(AC_TIMEOUT_S)
     if timeout <= 0:
         return None, "deadline reached"
-    eigen = repo()
-    if eigen is None:
+    own_repo = repo()
+    if own_repo is None:
         return None, "no forge.repo in lighthouse.toml"
     try:
         proc = subprocess.run(
-            ["gh", "api", f"repos/{eigen}/issues/{nr}", "--jq", ".body"],
+            ["gh", "api", f"repos/{own_repo}/issues/{nr}", "--jq", ".body"],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -279,68 +279,68 @@ def fetch_ac_count(nr: int) -> tuple[int | None, str]:
         return None, f"timeout after {AC_TIMEOUT_S:g} s"
     if proc.returncode != 0:
         return None, f"gh api failed (rc {proc.returncode})"
-    aantal = count_acs(proc.stdout)
-    if aantal is None:
+    count = count_acs(proc.stdout)
+    if count is None:
         return None, "no acceptance criteria heading"
-    return aantal, ""
+    return count, ""
 
 
 def check_body(
     body: str,
     ac_count: Callable[[int], tuple[int | None, str]] = fetch_ac_count,
 ) -> Verdict:
-    blokkades: list[str] = []
-    meldingen: list[str] = []
+    blockers: list[str] = []
+    notices: list[str] = []
 
-    doelen = closes_targets(body)
-    for nr in doelen:
-        rijen = evidence_rows(body, nr)
-        if isinstance(rijen, str):
-            blokkades.append(f"Closes #{nr}: {rijen}")
+    targets = closes_targets(body)
+    for nr in targets:
+        rows = evidence_rows(body, nr)
+        if isinstance(rows, str):
+            blockers.append(f"Closes #{nr}: {rows}")
             continue
-        aantal, oorzaak = ac_count(nr)
-        if aantal is None:
-            meldingen.append(TERUGVAL.format(nr=nr, oorzaak=oorzaak))
-        elif aantal != len(rijen):
-            blokkades.append(
-                f"Closes #{nr}: the issue has {aantal} acceptance criteria,"
-                f" the Evidence block {len(rijen)} rows — one row per AC"
+        count, cause = ac_count(nr)
+        if count is None:
+            notices.append(FALLBACK_NOTICE.format(nr=nr, cause=cause))
+        elif count != len(rows):
+            blockers.append(
+                f"Closes #{nr}: the issue has {count} acceptance criteria,"
+                f" the Evidence block {len(rows)} rows — one row per AC"
             )
 
-    if not (doelen or refs_issues(body) or no_issue(body)):
+    if not (targets or refs_issues(body) or no_issue(body)):
         hint = ""
-        if _refs_alle(body):
+        if _all_refs(body):
             hint = (
-                f" `Refs #N` lacks a reason of at least {MIN_REDEN} characters"
+                f" `Refs #N` lacks a reason of at least {MIN_REASON} characters"
                 f" (`Refs #N — <reason>`; separator {', '.join(REFS_SEP)})."
             )
-        blokkades.append(
+        blockers.append(
             "no valid form in the PR body: `Closes #N` with `### Evidence #N`,"
             " `Refs #N — <reason>` or `No issue: <reason>`." + hint
         )
-    return Verdict(blokkades, meldingen)
+    return Verdict(blockers, notices)
 
 
 # --- gh pr create vinden, body-bron, scope ----------------------------------
 
 # Opties met een waarde (los of `=`); `--recover` neemt ook een waarde.
-_WAARDE_LANG = frozenset(
+_VALUE_LONG = frozenset(
     {
         "--base", "--head", "--title", "--body", "--body-file", "--assignee",
         "--label", "--milestone", "--project", "--reviewer", "--repo",
         "--template", "--recover",
     }
 )  # fmt: skip
-_WAARDE_KORT = frozenset(
+_VALUE_SHORT = frozenset(
     {"-B", "-H", "-t", "-b", "-F", "-a", "-l", "-m", "-p", "-r", "-R", "-T"}
 )
 # Vlaggen die geen toetsbare body opleveren (de PR-tekst komt dan van elders).
-_GEEN_BODY_LANG = frozenset(
+_NO_BODY_LONG = frozenset(
     {"--fill", "--fill-first", "--fill-verbose", "--web", "--editor"}
 )
-_GEEN_BODY_KORT = frozenset("fwe")
+_NO_BODY_SHORT = frozenset("fwe")
 GIT_TIMEOUT_S = 10
-GEEN_REPO = "not a repo"
+NOT_A_REPO = "not a repo"
 
 
 class PrCreate(NamedTuple):
@@ -356,122 +356,122 @@ class PrCreate(NamedTuple):
     repo: str | None
     body: str | None
     body_file: str | None
-    probleem: str | None
-    repo_probleem: str | None = None
+    problem: str | None
+    repo_problem: str | None = None
 
 
-Optie = tuple[str, bool, bool]  # (waarde, letterlijk, tilde)
+Option = tuple[str, bool, bool]  # (waarde, letterlijk, tilde)
 
 
-def _optie(step: Step, k: int) -> tuple[str | None, Optie | None, list[str], int]:
+def _option(step: Step, k: int) -> tuple[str | None, Option | None, list[str], int]:
     """Het woord op `k` als optie: `(naam, waarde, geen-body-vlaggen, volgende k)`."""
     words, literal, tildes = step.words, step.literal, step.tildes
     w = words[k]
     if w.startswith("--"):
-        kop, eq, rest = w.partition("=")
-        if kop in _WAARDE_LANG and eq:
-            return kop, (rest, literal[k], False), [], k + 1
-        if kop in _WAARDE_LANG:
-            naam = kop
+        heading, eq, rest = w.partition("=")
+        if heading in _VALUE_LONG and eq:
+            return heading, (rest, literal[k], False), [], k + 1
+        if heading in _VALUE_LONG:
+            name = heading
         else:
-            return None, None, [w] if w in _GEEN_BODY_LANG else [], k + 1
+            return None, None, [w] if w in _NO_BODY_LONG else [], k + 1
     elif w.startswith("-") and len(w) > 1:
-        if w[:2] in _WAARDE_KORT and w not in _WAARDE_KORT:  # `-Fbody.md`, `-F=body.md`
+        if w[:2] in _VALUE_SHORT and w not in _VALUE_SHORT:  # `-Fbody.md`, `-F=body.md`
             return w[:2], (w[2:].removeprefix("="), literal[k], False), [], k + 1
-        if w not in _WAARDE_KORT:
-            vlaggen = [f"-{c}" for c in w[1:]] if set(w[1:]) <= _GEEN_BODY_KORT else []
-            return None, None, vlaggen, k + 1
-        naam = w
+        if w not in _VALUE_SHORT:
+            flags = [f"-{c}" for c in w[1:]] if set(w[1:]) <= _NO_BODY_SHORT else []
+            return None, None, flags, k + 1
+        name = w
     else:
         return None, None, [], k + 1
     if k + 1 >= len(words):  # optie zonder waarde
-        return naam, None, [], k + 1
-    return naam, (words[k + 1], literal[k + 1], tildes[k + 1]), [], k + 2
+        return name, None, [], k + 1
+    return name, (words[k + 1], literal[k + 1], tildes[k + 1]), [], k + 2
 
 
-def _opties(step: Step) -> tuple[dict[str, Optie], list[str]]:
+def _options(step: Step) -> tuple[dict[str, Option], list[str]]:
     """Optiewaarden per optienaam en de gevonden geen-body-vlaggen."""
-    waarden: dict[str, Optie] = {}
-    vlaggen: list[str] = []
+    values: dict[str, Option] = {}
+    flags: list[str] = []
     k = step.idx + 3
     while k < len(step.words) and step.words[k] != "--":
-        naam, waarde, nieuw, k = _optie(step, k)
-        vlaggen.extend(nieuw)
-        if naam is not None and waarde is not None:
-            waarden[naam] = waarde
-    return waarden, vlaggen
+        name, value, new_flags, k = _option(step, k)
+        flags.extend(new_flags)
+        if name is not None and value is not None:
+            values[name] = value
+    return values, flags
 
 
-def _waarde(waarden: dict[str, Optie], *namen: str) -> Optie | None:
-    return next((waarden[n] for n in namen if n in waarden), None)
+def _first_value(values: dict[str, Option], *names: str) -> Option | None:
+    return next((values[n] for n in names if n in values), None)
 
 
-def _body_bron(
-    cwd: str | None, body_w: Optie | None, file_w: Optie | None, vlaggen: list[str]
+def _body_source(
+    cwd: str | None, body_w: Option | None, file_w: Option | None, flags: list[str]
 ) -> tuple[str | None, str | None, str | None]:
     """`(body, body_file, probleem)` volgens de body-bron-tabel van de spec."""
-    if vlaggen:
-        return None, None, f"{vlaggen[0]} gives no body to check"
+    if flags:
+        return None, None, f"{flags[0]} gives no body to check"
     if body_w and file_w:
         return None, None, "choose one body source"
-    bron = file_w or body_w
-    if bron is None:
+    source = file_w or body_w
+    if source is None:
         return None, None, "no body"
-    waarde, lit, til = bron
-    if file_w and waarde == "-":
+    value, lit, til = source
+    if file_w and value == "-":
         return None, None, "a body via stdin cannot be checked"
     if not lit:
         return None, None, "non-literal body — use --body-file"
     if not file_w:
-        return waarde, None, None
-    pad = resolve(waarde, lit, til)
-    if pad is not None and os.path.isabs(pad):
-        return None, os.path.normpath(pad), None
-    if pad is None or cwd is None:
+        return value, None, None
+    path = resolve(value, lit, til)
+    if path is not None and os.path.isabs(path):
+        return None, os.path.normpath(path), None
+    if path is None or cwd is None:
         return None, None, "path of the body file cannot be resolved"
-    return None, os.path.normpath(os.path.join(cwd, pad)), None
+    return None, os.path.normpath(os.path.join(cwd, path)), None
 
 
-def _gh_repo_env(step: Step) -> Optie | None:
+def _gh_repo_env(step: Step) -> Option | None:
     """Een `GH_REPO=…` vóór `gh` (ook na `env`), als optiewaarde; de laatste wint."""
-    gevonden = None
+    found = None
     for k in range(step.idx):
-        naam, gelijk, waarde = step.words[k].partition("=")
-        if naam == "GH_REPO" and gelijk:
-            gevonden = (waarde, step.literal[k], False)
-    return gevonden
+        name, equals, value = step.words[k].partition("=")
+        if name == "GH_REPO" and equals:
+            found = (value, step.literal[k], False)
+    return found
 
 
 def _pr_create(step: Step) -> PrCreate:
     cwd = step.dirs["here"]  # LIVE dict: nu kopiëren, voor de volgende next()
-    waarden, vlaggen = _opties(step)
+    values, flags = _options(step)
     # gh: `--repo`/`-R` wint van `GH_REPO`.
-    vlag = _waarde(waarden, "--repo", "-R")
-    repo_w = vlag or _gh_repo_env(step)
-    body, body_file, probleem = _body_bron(
+    flag = _first_value(values, "--repo", "-R")
+    repo_w = flag or _gh_repo_env(step)
+    body, body_file, problem = _body_source(
         cwd,
-        _waarde(waarden, "--body", "-b"),
-        _waarde(waarden, "--body-file", "-F"),
-        vlaggen,
+        _first_value(values, "--body", "-b"),
+        _first_value(values, "--body-file", "-F"),
+        flags,
     )
     if repo_w and not repo_w[1]:
         # Gaat de PR naar deze repo of een andere? Dat zien we niet, ook niet
         # aan de cwd: blokkeren, waar het commando ook draait.
-        bron = "--repo" if vlag else "GH_REPO"
+        source = "--repo" if flag else "GH_REPO"
         return PrCreate(
             cwd,
             None,
             body,
             body_file,
-            probleem,
-            f"non-literal {bron} — spell the repo out",
+            problem,
+            f"non-literal {source} — spell the repo out",
         )
-    return PrCreate(cwd, repo_w[0] if repo_w else None, body, body_file, probleem)
+    return PrCreate(cwd, repo_w[0] if repo_w else None, body, body_file, problem)
 
 
 def find_pr_creates(command: str, cwd: str | None) -> list[PrCreate]:
     """Elke `gh pr create`/`gh pr new` in `command`; gooit `Unparseable` bij een open quote."""
-    uit: list[PrCreate] = []
+    found: list[PrCreate] = []
     for step in walk(command, cwd):
         w = step.words
         if (
@@ -480,11 +480,11 @@ def find_pr_creates(command: str, cwd: str | None) -> list[PrCreate]:
             and w[step.idx + 1] == "pr"
             and w[step.idx + 2] in ("create", "new")
         ):
-            uit.append(_pr_create(step))
-    return uit
+            found.append(_pr_create(step))
+    return found
 
 
-def _common_dir(pad: str) -> tuple[str | None, str]:
+def _common_dir(path: str) -> tuple[str | None, str]:
     """`(git-common-dir, "")`, `(None, GEEN_REPO)` of `(None, <git-fout>)`."""
     timeout = _budget(GIT_TIMEOUT_S)
     if timeout <= 0:
@@ -494,7 +494,7 @@ def _common_dir(pad: str) -> tuple[str | None, str]:
             [
                 "git",
                 "-C",
-                pad,
+                path,
                 "rev-parse",
                 "--path-format=absolute",
                 "--git-common-dir",
@@ -511,77 +511,77 @@ def _common_dir(pad: str) -> tuple[str | None, str]:
     if proc.returncode == 0:
         return os.path.realpath(proc.stdout.strip()), ""
     if "not a git repository" in proc.stderr:
-        return None, GEEN_REPO
+        return None, NOT_A_REPO
     return None, f"git failed (rc {proc.returncode}): {proc.stderr.strip()}"
 
 
-def _normaliseer_repo(waarde: str) -> str | None:
+def _normalize_repo(value: str) -> str | None:
     """`owner/repo` (kleine letters) uit een `--repo`-waarde, of `None` als die vorm ontbreekt.
 
     gh accepteert `[HOST/]OWNER/REPO` en URL's (`https://…`, `ssh://git@…`, `git@host:o/r`),
     met of zonder `.git` of een slot-`/`.
     """
-    rest = re.split(r"[?#]", waarde.strip(), maxsplit=1)[0]  # query en anker weg
+    rest = re.split(r"[?#]", value.strip(), maxsplit=1)[0]  # query en anker weg
     schema = "://" in rest
     rest = rest.split("://", 1)[-1]
-    gebruiker = "@" in rest.split("/", 1)[0]
-    if gebruiker:
+    user = "@" in rest.split("/", 1)[0]
+    if user:
         rest = rest.split("@", 1)[-1]
-    heeft_host = schema or gebruiker
-    if gebruiker and not schema:
+    has_host = schema or user
+    if user and not schema:
         rest = rest.replace(":", "/", 1)  # scp-vorm `git@host:owner/repo`
     elif schema:
-        host, _, pad = rest.partition("/")
-        rest = f"{host.split(':', 1)[0]}/{pad}"  # poort weg
-    delen = [d for d in rest.split("/") if d]
-    if len(delen) > 2:
-        heeft_host = True
-    if heeft_host:
-        delen = delen[1:]
-    if len(delen) < 2:
+        host, _, path = rest.partition("/")
+        rest = f"{host.split(':', 1)[0]}/{path}"  # poort weg
+    parts = [d for d in rest.split("/") if d]
+    if len(parts) > 2:
+        has_host = True
+    if has_host:
+        parts = parts[1:]
+    if len(parts) < 2:
         return None
-    owner, naam = delen[0], delen[1].removesuffix(".git")
-    if not owner or not naam:
+    owner, name = parts[0], parts[1].removesuffix(".git")
+    if not owner or not name:
         return None
-    return f"{owner}/{naam}".casefold()
+    return f"{owner}/{name}".casefold()
 
 
-def _scope_repo(repo_waarde: str) -> tuple[str, str]:
+def _scope_repo(repo_value: str) -> tuple[str, str]:
     """Het scopebesluit voor een letterlijke repo (`--repo`/`-R` of `GH_REPO`).
 
     Zonder `forge.repo` is niet te zien of het een andere repo is: dan toetsen.
     """
-    genormaliseerd = _normaliseer_repo(repo_waarde)
-    if genormaliseerd is None:
-        return "blokkeren", f"--repo {repo_waarde!r} does not have the form [HOST/]OWNER/REPO"
-    eigen = repo()
-    if eigen is None or genormaliseerd == eigen.casefold():
+    normalized = _normalize_repo(repo_value)
+    if normalized is None:
+        return "blokkeren", f"--repo {repo_value!r} does not have the form [HOST/]OWNER/REPO"
+    own_repo = repo()
+    if own_repo is None or normalized == own_repo.casefold():
         return "toetsen", ""
-    return "overslaan", f"skipped — other repo {repo_waarde}"
+    return "overslaan", f"skipped — other repo {repo_value}"
 
 
 def in_scope(pc: PrCreate, project_dir: str) -> tuple[str, str]:
     """`("toetsen"|"overslaan"|"blokkeren", reden)` voor deze `gh pr create`."""
-    if pc.repo_probleem is not None:
-        return "blokkeren", pc.repo_probleem
+    if pc.repo_problem is not None:
+        return "blokkeren", pc.repo_problem
     if pc.repo is not None:
         return _scope_repo(pc.repo)
     if pc.cwd is None:
         return "blokkeren", "working directory of `gh pr create` cannot be resolved"
     # Een `cd` naar een map die het commando zelf nog aanmaakt: de dichtstbijzijnde
     # bestaande voorouder bepaalt de repo.
-    pad = existing_ancestor(pc.cwd)
-    if pad is None:
+    path = existing_ancestor(pc.cwd)
+    if path is None:
         return "blokkeren", f"working directory {pc.cwd} cannot be resolved"
-    eigen, fout = _common_dir(project_dir)
-    if eigen is None:
-        return "blokkeren", f"repo of the project cannot be determined ({fout})"
-    dir_, fout = _common_dir(pad)
+    own_repo, error = _common_dir(project_dir)
+    if own_repo is None:
+        return "blokkeren", f"repo of the project cannot be determined ({error})"
+    dir_, error = _common_dir(path)
     if dir_ is None:
-        if fout == GEEN_REPO:
+        if error == NOT_A_REPO:
             return "overslaan", "skipped — outside this repo"
-        return "blokkeren", f"repo of {pad} cannot be determined ({fout})"
-    if dir_ == eigen:
+        return "blokkeren", f"repo of {path} cannot be determined ({error})"
+    if dir_ == own_repo:
         return "toetsen", ""
     # Een andere common dir: een worktree van een aparte clone (forge) met
     # dezelfde `origin` is toch deze repo (#36).
@@ -589,40 +589,40 @@ def in_scope(pc: PrCreate, project_dir: str) -> tuple[str, str]:
     if timeout <= 0:
         return "blokkeren", "COULD NOT CHECK: deadline reached"
     try:
-        zelfde, reden = repo_identity.same_origin(project_dir, pad, timeout=timeout)
+        same, reason = repo_identity.same_origin(project_dir, path, timeout=timeout)
     except repo_identity.OriginError as exc:
-        return "blokkeren", f"origin of {pad} cannot be determined ({exc})"
-    if zelfde:
+        return "blokkeren", f"origin of {path} cannot be determined ({exc})"
+    if same:
         return "toetsen", ""
-    return "overslaan", f"skipped — outside this repo (git-common-dir {dir_} vs {eigen}; {reden})"
+    return "overslaan", f"skipped — outside this repo (git-common-dir {dir_} vs {own_repo}; {reason})"
 
 
-BLOKKADE = (
-    "pr-create-gate: BLOCKED — {reden}\n\n"
+BLOCKED_MESSAGE = (
+    "pr-create-gate: BLOCKED — {reason}\n\n"
     "Write the body with /lighthouse-verify-pr <nr> and pass it with --body-file <path>.\n"
     "Forms: `Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>`,"
     " `No issue: <reason>`.\n"
 )
 
 
-def _vormen(body: str, tellingen: dict[int, int | None]) -> str:
-    vormen = []
+def _forms(body: str, counts: dict[int, int | None]) -> str:
+    forms = []
     for nr in closes_targets(body):
-        rijen = evidence_rows(body, nr)
-        n_rijen = len(rijen) if isinstance(rijen, list) else 0
-        aantal = tellingen.get(nr)
-        telling = f"{aantal} AC, " if aantal is not None else "AC not counted, "
-        vormen.append(f"Closes #{nr} ({telling}{n_rijen} rows)")
-    vormen.extend(f"Refs #{nr}" for nr in refs_issues(body))
+        rows = evidence_rows(body, nr)
+        n_rows = len(rows) if isinstance(rows, list) else 0
+        count = counts.get(nr)
+        ac_text = f"{count} AC, " if count is not None else "AC not counted, "
+        forms.append(f"Closes #{nr} ({ac_text}{n_rows} rows)")
+    forms.extend(f"Refs #{nr}" for nr in refs_issues(body))
     if no_issue(body):
-        vormen.append("No issue")
-    return ", ".join(vormen)
+        forms.append("No issue")
+    return ", ".join(forms)
 
 
-def _toets(pc: PrCreate) -> tuple[list[str], list[str]]:
+def _check_create(pc: PrCreate) -> tuple[list[str], list[str]]:
     """`(blokkades, regels voor stdout)` voor één in-scope `gh pr create`."""
-    if pc.probleem:
-        return [pc.probleem], []
+    if pc.problem:
+        return [pc.problem], []
     body = pc.body
     if pc.body_file is not None:
         try:
@@ -632,19 +632,19 @@ def _toets(pc: PrCreate) -> tuple[list[str], list[str]]:
         except OSError as e:
             return [f"body file {pc.body_file} cannot be read ({e.strerror})"], []
     assert body is not None  # probleem is None => body of body_file is gezet
-    tellingen: dict[int, int | None] = {}
+    counts: dict[int, int | None] = {}
 
-    def telling(nr: int) -> tuple[int | None, str]:
-        resultaat = fetch_ac_count(nr)
-        tellingen[nr] = resultaat[0]
-        return resultaat
+    def ac_text(nr: int) -> tuple[int | None, str]:
+        result = fetch_ac_count(nr)
+        counts[nr] = result[0]
+        return result
 
-    verdict = check_body(body, telling)
-    if verdict.blokkades:
-        return verdict.blokkades, []
+    verdict = check_body(body, ac_text)
+    if verdict.blockers:
+        return verdict.blockers, []
     return [], [
-        f"pr-create-gate: body checked — {_vormen(body, tellingen)}",
-        *verdict.meldingen,
+        f"pr-create-gate: body checked — {_forms(body, counts)}",
+        *verdict.notices,
     ]
 
 
@@ -676,23 +676,23 @@ def _main(cwd: str | None) -> int:
     except Unparseable:
         return 3
 
-    blokkades: list[str] = []
-    regels: list[str] = []
+    blockers: list[str] = []
+    lines: list[str] = []
     for pc in creates:
-        besluit, reden = in_scope(pc, project)
-        if besluit == "overslaan":
-            regels.append(f"pr-create-gate: {reden}")
-        elif besluit == "blokkeren":
-            blokkades.append(reden)
+        decision, reason = in_scope(pc, project)
+        if decision == "overslaan":
+            lines.append(f"pr-create-gate: {reason}")
+        elif decision == "blokkeren":
+            blockers.append(reason)
         else:
-            b, r = _toets(pc)
-            blokkades.extend(b)
-            regels.extend(r)
-    if blokkades:
-        sys.stderr.write(BLOKKADE.format(reden="; ".join(blokkades)))
+            b, r = _check_create(pc)
+            blockers.extend(b)
+            lines.extend(r)
+    if blockers:
+        sys.stderr.write(BLOCKED_MESSAGE.format(reason="; ".join(blockers)))
         return 2
-    for regel in regels:
-        print(regel)
+    for line in lines:
+        print(line)
     return 0
 
 
