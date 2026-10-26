@@ -243,3 +243,56 @@ func TestOnlyGET(t *testing.T) {
 	}
 	// The fake transport fails the test on any method other than GET.
 }
+
+func TestNextPageOnOtherHostIsRefused(t *testing.T) {
+	evil := "https://evil.example/repositories/1/issues?page=2"
+	methods := map[string]func(c *Client) (any, error){
+		"OpenIssues": func(c *Client) (any, error) { return c.OpenIssues(context.Background()) },
+		"Comments":   func(c *Client) (any, error) { return c.Comments(context.Background(), 7) },
+	}
+	for name, call := range methods {
+		t.Run(name, func(t *testing.T) {
+			c, ft := newTestClient(t, map[string]fakeResponse{
+				issuesURL1:   {status: 200, body: `[` + issuesJSON(1, 1) + `]`, link: nextLink(evil)},
+				commentsURL1: {status: 200, body: `[]`, link: nextLink(evil)},
+			})
+			got, err := call(c)
+			if err == nil {
+				t.Fatal("err = nil, want an error for a next page on another host")
+			}
+			if s, ok := got.([]Issue); ok && s != nil {
+				t.Fatalf("issues = %v, want nil", s)
+			}
+			for _, r := range ft.requests {
+				if r.URL.Host == "evil.example" {
+					t.Fatalf("request sent to %s", r.URL)
+				}
+			}
+		})
+	}
+}
+
+func TestNextPageOnSameHostWithOtherPathIsFollowed(t *testing.T) {
+	next := "https://api.github.com/repositories/42/issues?state=open&per_page=100&page=2"
+	c, _ := newTestClient(t, map[string]fakeResponse{
+		issuesURL1: {status: 200, body: `[` + issuesJSON(1, 1) + `]`, link: nextLink(next)},
+		next:       {status: 200, body: `[` + issuesJSON(2, 1) + `]`},
+	})
+	got, err := c.OpenIssues(context.Background())
+	if err != nil || len(got) != 2 {
+		t.Fatalf("got %v, %v; want 2 issues", got, err)
+	}
+}
+
+func TestErrorIncludesGitHubMessage(t *testing.T) {
+	c, _ := newTestClient(t, map[string]fakeResponse{
+		issuesURL1: {status: 401, body: `{"message":"Bad credentials"}`},
+	})
+	_, err := c.OpenIssues(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "Bad credentials") {
+		t.Fatalf("err = %v, want it to contain Bad credentials", err)
+	}
+	if strings.Contains(err.Error(), "secret-token") {
+		t.Fatalf("err leaks the token: %v", err)
+	}
+}

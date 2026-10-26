@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -123,12 +125,50 @@ func (c *Client) get(ctx context.Context, url string, into any) (string, error) 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return "", fmt.Errorf("forge GET %s: status %d", url, resp.StatusCode)
+		return "", statusError(url, resp)
 	}
 	if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
 		return "", fmt.Errorf("forge GET %s: decode: %w", url, err)
 	}
-	return nextPage(resp.Header.Get("Link")), nil
+	next := nextPage(resp.Header.Get("Link"))
+	if err := c.sameOrigin(next); err != nil {
+		return "", err
+	}
+	return next, nil
+}
+
+// statusError describes a non-2xx response, with GitHub's own message when the body has one.
+// It never includes the token.
+func statusError(url string, resp *http.Response) error {
+	var body struct {
+		Message string `json:"message"`
+	}
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if json.Unmarshal(data, &body) == nil && body.Message != "" {
+		return fmt.Errorf("forge GET %s: status %d: %s", url, resp.StatusCode, body.Message)
+	}
+	return fmt.Errorf("forge GET %s: status %d", url, resp.StatusCode)
+}
+
+// sameOrigin refuses a next-page URL whose scheme or host differs from BaseURL, so the
+// token never goes to another host. Only scheme and host count: GitHub's Link URLs use
+// /repositories/<id>/..., not /repos/owner/name/....
+func (c *Client) sameOrigin(next string) error {
+	if next == "" {
+		return nil
+	}
+	base, err := neturl.Parse(c.BaseURL)
+	if err != nil {
+		return fmt.Errorf("forge base URL: %w", err)
+	}
+	u, err := neturl.Parse(next)
+	if err != nil {
+		return fmt.Errorf("forge next page %q: %w", next, err)
+	}
+	if u.Scheme != base.Scheme || u.Host != base.Host {
+		return fmt.Errorf("forge next page %s: not on %s://%s", next, base.Scheme, base.Host)
+	}
+	return nil
 }
 
 // nextPage returns the rel="next" URL of a Link header, or "".

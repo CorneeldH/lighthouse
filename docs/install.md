@@ -79,6 +79,9 @@ EOF
 systemctl --user restart lighthouse.service
 ```
 
+A unit you copied before this change lacks the `EnvironmentFile=` line. Copy the unit again,
+run `systemctl --user daemon-reload`, then restart the service.
+
 Check it:
 
 ```bash
@@ -86,7 +89,7 @@ curl -s http://127.0.0.1:8127/api/questions
 ```
 
 A `503` means the repository or the token is not set. A `502` means GitHub could not be
-reached or answered with an error; the log says which.
+reached or answered with an error; the response body says which.
 
 ## Reach it from your tailnet
 
@@ -115,3 +118,6 @@ The server has no authentication, on purpose. The tailnet is the access boundary
 the tailnet can do everything the API can. The server binds loopback, so nothing outside the
 host and the tailnet sees it. Today the API is read-only; once lighthouse starts runs, any
 device on the tailnet can start one.
+`/api/questions` and `/api/returned` show the issue titles and question text of the configured
+repository, private ones too (read with the server's token), to every device that can reach
+the server.
