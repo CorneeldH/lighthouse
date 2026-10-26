@@ -8,10 +8,10 @@ text cannot override anything.
 
 Writers use the English keys and the heading in `[project] language` (`headings.toml`).
 Readers accept every heading variant and the keys and values of the comments that
-already stand on issues (`_LEGACY_KEYS`, `_LEGACY_VALUES`, `LEGACY_MARKERS`, besluit
+already stand on issues (`_LEGACY_KEYS`, `_LEGACY_VALUES`, `LEGACY_MARKERS`, decision
 15 and 21). The kinds and the keys of a header are protocol tokens, not prose.
 
-Controller policy stays with the caller (besluit 25): which commands may start, what
+Controller policy stays with the caller (decision 25): which commands may start, what
 counts as an answer, the check of `lane`, and the prose of a `🤖 Done`.
 
 The syntax stays within Python 3.9, like the rest of the lib.
@@ -34,7 +34,7 @@ from lighthouse_lib.config import config_path, load, lookup
 
 ROBOT = "🤖"
 # The marker of an artefact comment (`artefacts.py`). Readers accept the legacy one
-# until M2 (besluit 15).
+# until M2 (decision 15).
 MARKER = "<!-- lighthouse:"
 LEGACY_MARKERS = ("<!-- paia:",)
 # The canonical kinds; the heading of kind `x` is `kind_x` in `headings.toml`.
@@ -43,7 +43,7 @@ KINDS = ("handoff", "started", "question", "resumed", "done", "returned", "rebas
 LETTERS = "abcdef"
 MAX_QUESTIONS = 4
 
-# The keys of a header as they stand in comments from before the move (besluit 21).
+# The keys of a header as they stand in comments from before the move (decision 21).
 _LEGACY_KEYS = {
     "volgende": "next",
     "wanneer": "when",

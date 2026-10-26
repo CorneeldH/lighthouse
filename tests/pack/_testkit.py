@@ -2,15 +2,15 @@
 copy of the installed layout so the hooks run from where `lighthouse init` puts
 them.
 
-Gedeelde helpers voor de hook-tests (taak 1 t/m 5 van #884/#886).
+Shared helpers for the hook tests (tasks 1 to 5 of #884/#886).
 
-Overgenomen uit `test_instructie_hooks.py` (de private `_run`, `_git`,
-`_init_repo`, `_bash`, `_tool_bin` van vóór deze taak) zodat
-`test_git_invocations.py` en latere taken (`test_pre_commit_gate.py`,
-`test_md_links.py`, `test_hook_deadline.py`) dezelfde plumbing gebruiken in
-plaats van hem te herimplementeren. `test_instructie_hooks.py` zelf blijft
-ongewijzigd — dit bestand refactort geen bestaande tests, het geeft nieuwe
-tests dezelfde bouwstenen.
+Taken over from `test_instructie_hooks.py` (the private `_run`, `_git`,
+`_init_repo`, `_bash`, `_tool_bin` from before this task) so that
+`test_git_invocations.py` and later tasks (`test_pre_commit_gate.py`,
+`test_md_links.py`, `test_hook_deadline.py`) use the same plumbing instead of
+reimplementing it. `test_instructie_hooks.py` itself stays unchanged: this
+file refactors no existing tests, it gives new tests the same building
+blocks.
 """
 
 import atexit
@@ -66,7 +66,7 @@ def git(repo: Path, *args: str) -> None:
 
 
 def init_repo(path: Path, branch: str = "main") -> None:
-    """Echte git-repo met één commit, zodat de hook echte plumbing ziet."""
+    """A real git repo with one commit, so the hook sees real plumbing."""
     path.mkdir(parents=True, exist_ok=True)
     git(path, "init", "-q", "-b", branch)
     (path / "README.md").write_text("# repo\n", encoding="utf-8")
@@ -74,14 +74,14 @@ def init_repo(path: Path, branch: str = "main") -> None:
     git(path, "commit", "-qm", "init")
 
 
-# De `origin` van een forge-worktree en van zijn hoofdcheckout in #36.
+# The `origin` of a forge worktree and of its main checkout in #36.
 ORIGIN = "https://github.com/Acme/widgets.git"
 
 
 def forge_worktree(project: Path, base: Path, origin: str = ORIGIN) -> Path:
-    """Een worktree van een aparte bare clone van `project`, zoals forge hem neerzet (#36).
+    """A worktree of a separate bare clone of `project`, the way forge sets it up (#36).
 
-    Een andere `--git-common-dir` dan `project`; `origin` van de clone is `origin`.
+    A different `--git-common-dir` than `project`; the clone's `origin` is `origin`.
     """
     clone = base / "clone.git"
     git(base, "clone", "-q", "--bare", str(project), str(clone))
@@ -92,13 +92,13 @@ def forge_worktree(project: Path, base: Path, origin: str = ORIGIN) -> Path:
 
 
 def past_this_second() -> None:
-    """Wacht tot de volgende hele seconde.
+    """Wait until the next whole second.
 
-    Bron 2 van bash-write-gates wandelt ook de reflog sinds de start van pre,
-    naar beneden afgerond op hele seconden: een setup-commit (bv. die van
-    `init_repo`) uit dezelfde seconde telt dan mee (bewust overcontroleren).
-    Een test die wil dat een setup-commit buiten de call valt, wacht eerst de
-    seconde uit.
+    Source 2 of bash-write-gates also walks the reflog since the start of pre,
+    rounded down to whole seconds: a setup commit (e.g. that of `init_repo`)
+    from the same second then counts too (deliberate over-checking). A test
+    that wants a setup commit to fall outside the call first waits out the
+    second.
     """
     time.sleep(1.02 - time.time() % 1.0)
 
@@ -169,10 +169,11 @@ def tool_bin(
     drop: str = "",
     stubs: dict[str, str] | None = None,
 ) -> Path:
-    """Een PATH-map met de echte tooling, op één na, plus eventuele stubs.
+    """A PATH directory with the real tooling, minus one, plus any stubs.
 
-    Zo is per limb van de preflight te toetsen dat juist díé limb luid faalt —
-    een lege PATH dekt ze alle drie tegelijk en dus geen enkele apart (M11).
+    That way each limb of the preflight can be tested to fail loudly on exactly
+    that limb: an empty PATH covers all three at once and so none separately
+    (M11).
     """
     path.mkdir(parents=True, exist_ok=True)
     for tool in tools:
@@ -316,12 +317,12 @@ exec "$real" $utc "$@"
 
 
 def load_hook_lib(name: str) -> types.ModuleType:
-    """Laad `pack/core/lib/<name>.py` als module, zonder hem uit te voeren.
+    """Load `pack/core/lib/<name>.py` as a module, without running it.
 
-    `importlib.util.spec_from_file_location` geeft de module een eigen naam
-    (niet `__main__`), dus een `if __name__ == "__main__":`-blok in het
-    geladen bestand draait niet mee — de module leest bij het importeren dus
-    geen stdin en heeft geen argv nodig.
+    `importlib.util.spec_from_file_location` gives the module a name of its
+    own (not `__main__`), so an `if __name__ == "__main__":` block in the
+    loaded file does not run: the module reads no stdin on import and needs
+    no argv.
     """
     path = LIB / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)

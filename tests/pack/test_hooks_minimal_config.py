@@ -1,8 +1,8 @@
-"""Elke hook uit `hooks.json` onder een `lighthouse.toml` met alleen `[project]` en `[forge]`.
+"""Every hook from `hooks.json` under a `lighthouse.toml` with only `[project]` and `[forge]`.
 
-Ontwerpkeuze 8: `pack/core` werkt in een repo zonder de optionele sleutels.
-Per registratie draait de geïnstalleerde hook met de payload die hem raakt, in
-een featurebranch-worktree: geen blokkade, geen `Traceback`.
+Design choice 8: `pack/core` works in a repo without the optional keys.
+Per registration the installed hook runs with the payload that touches it, in
+a feature-branch worktree: no block, no `Traceback`.
 """
 
 import json
@@ -51,11 +51,11 @@ def _edit_payload(event: str, path: Path, cwd: Path) -> dict:
 
 
 def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
-    """De payload die deze hook echt raakt, tot en met zijn configlezing."""
+    """The payload that really touches this hook, up to and including its config read."""
     name = script.split()[0]
     if name == "worktree-guard.sh":
-        # Een write in de hoofdcheckout op main: pas daar leest de guard
-        # forge.default_branch, en waarschuwt hij (zonder te blokkeren).
+        # A write in the main checkout on main: only there does the guard read
+        # forge.default_branch, and warn (without blocking).
         doc = project / "doc.md"
         doc.write_text("# doc\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
@@ -77,7 +77,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
             "tool_input": {"command": "ls"},
         }
     if name == "main-commit-guard.sh":
-        # Een commit op een featurebranch: de guard leest forge.default_branch.
+        # A commit on a feature branch: the guard reads forge.default_branch.
         cmd = "git commit -m x"
     elif name == "pre-commit-tests.sh":
         cmd = "git commit -m x"
@@ -147,8 +147,8 @@ def test_every_registration_has_a_payload() -> None:
 
 
 PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
-# Per PreToolUse-Bash-hook: het commando dat hij bewaakt. `bash-write-gates.sh
-# pre` blokkeert nooit (een PreToolUse-exit 2 blokkeert de call zelf).
+# Per PreToolUse-Bash hook: the command it guards. `bash-write-gates.sh
+# pre` never blocks (a PreToolUse exit 2 blocks the call itself).
 GUARDED = {
     "main-commit-guard.sh": "git commit -m x",
     "pre-commit-tests.sh": "git commit -m x",
@@ -157,7 +157,7 @@ GUARDED = {
 
 
 def _without_lib(tmp_path: Path, script: str, cmd: str) -> subprocess.CompletedProcess:
-    """De hook uit een installatie waarvan `.lighthouse/lib` ontbreekt."""
+    """The hook from an installation whose `.lighthouse/lib` is missing."""
     root = tmp_path / "lighthouse"
     install_core(root, toml=MINIMAL_TOML)
     shutil.rmtree(root / ".lighthouse" / "lib")
@@ -177,8 +177,8 @@ def _without_lib(tmp_path: Path, script: str, cmd: str) -> subprocess.CompletedP
 
 @pytest.mark.parametrize("script", PRE_BASH)
 def test_without_lib_a_plain_command_passes(tmp_path: Path, script: str) -> None:
-    # Een gitignore met `lib/` laat `.lighthouse/lib/` weg bij een clone: dat
-    # mag niet elk Bash-commando op slot zetten.
+    # A gitignore with `lib/` leaves `.lighthouse/lib/` out of a clone: that
+    # must not lock up every Bash command.
     result = _without_lib(tmp_path, script, "ls")
 
     assert result.returncode == 0, (result.stdout, result.stderr)
@@ -199,8 +199,8 @@ def test_guarded_covers_every_blocking_bash_hook() -> None:
 
 
 def test_hooks_that_read_config_require_tomllib() -> None:
-    # config.py heeft tomllib nodig (Python 3.11+); `lighthouse init` meldt een
-    # ontbrekende tool alleen voor de eenheden die requires.toml noemt.
+    # config.py needs tomllib (Python 3.11+); `lighthouse init` reports a
+    # missing tool only for the units that requires.toml names.
     requires = tomllib.loads((CORE / "requires.toml").read_text(encoding="utf-8"))
     readers = {
         hook.stem

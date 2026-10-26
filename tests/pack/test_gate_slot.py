@@ -1,8 +1,8 @@
-"""Tests voor `pack/core/lib/gate_slot.py`, as installed, de slot-semafoor van de test-gate (#1184).
+"""Tests for `pack/core/lib/gate_slot.py`, as installed, the slot semaphore of the test gate (#1184).
 
-Een tweede `os.open` op hetzelfde pad is een eigen open file description en botst dus
-met een `flock` op de eerste, ook binnen één proces. Zo houdt de test een slot "bezet"
-zonder tweede proces.
+A second `os.open` on the same path is its own open file description and so clashes
+with a `flock` on the first, even within one process. That way the test keeps a slot
+"taken" without a second process.
 """
 
 import contextlib
@@ -29,7 +29,7 @@ def _open(path: Path) -> int:
 
 @pytest.fixture
 def slots(tmp_path: Path) -> Iterator[tuple[int, int]]:
-    """Twee lockbestanden, geopend zoals de bash van de hook ze opent."""
+    """Two lock files, opened the way the hook's bash opens them."""
     fds = (_open(tmp_path / "slot-1"), _open(tmp_path / "slot-2"))
     yield fds
     for fd in fds:
@@ -38,7 +38,7 @@ def slots(tmp_path: Path) -> Iterator[tuple[int, int]]:
 
 
 def _hold(path: Path) -> int:
-    """Pak het slot op `path` via een eigen open file description."""
+    """Take the slot at `path` through its own open file description."""
     fd = _open(path)
     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     return fd
@@ -103,7 +103,7 @@ def test_cli_prints_the_slot_and_the_lock_outlives_the_process(
 
     assert result.returncode == 0
     assert result.stdout == "1\n"
-    # Het kind is weg; de flock hoort bij de open file description van dít proces.
+    # The child is gone; the flock belongs to the open file description of THIS process.
     probe = _open(tmp_path / "slot-1")
     try:
         with pytest.raises(BlockingIOError):

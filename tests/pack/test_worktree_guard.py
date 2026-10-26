@@ -66,12 +66,13 @@ def test_worktree_guard_silent_inside_worktree(tmp_path):
 
 
 def test_worktree_guard_silent_for_worktree_branch_literally_named_main(tmp_path):
-    """Isoleert de worktree-detectieguard (GIT_DIR != GIT_COMMON) van de
-    branchcheck. Elke andere worktree-test hangt aan een fixture waarvan de
-    default branch `main` heet en de worktree-branch `issue-1-iets` — dus de
-    branchcheck alleen levert daar al stilte, ook als de worktree-detectie
-    kapot is. Hier heet de default branch `trunk` en de worktree-branch zelf
-    `main`: alleen de worktree-detectieguard kan hier nog stilte opleveren."""
+    """Isolates the worktree-detection guard (GIT_DIR != GIT_COMMON) from the
+    branch check. Every other worktree test hangs on a fixture whose default
+    branch is called `main` and whose worktree branch is `issue-1-iets`, so
+    the branch check alone already yields silence there, even if the worktree
+    detection is broken. Here the default branch is called `trunk` and the
+    worktree branch itself `main`: only the worktree-detection guard can still
+    yield silence here."""
     repo = tmp_path / "repo"
     _init_repo(repo, branch="trunk")
     wt = repo / ".claude" / "worktrees" / "main"
@@ -113,7 +114,7 @@ def test_worktree_guard_silent_on_feature_branch_in_main_checkout(tmp_path):
 def test_worktree_guard_warns_when_cwd_is_worktree_but_target_is_main_checkout(
     tmp_path,
 ):
-    """De gedocumenteerde ontsnapping: worktree-cwd, absoluut pad in de hoofdboom."""
+    """The documented escape: worktree cwd, absolute path in the main tree."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     wt = repo / ".claude" / "worktrees" / "issue-1-iets"
@@ -229,7 +230,7 @@ def test_worktree_guard_warns_when_the_path_cannot_be_resolved(tmp_path):
     assert str(repo / "x.py") in message
 
 
-# --- no silent exits (inventaris §6) and the default branch (besluit 23) -----
+# --- no silent exits (inventory §6) and the default branch (decision 23) -----
 
 
 def _write_in(repo: Path) -> dict:
