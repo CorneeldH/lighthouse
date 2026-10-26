@@ -17,11 +17,13 @@ import atexit
 import importlib.util
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import tempfile
 import time
 import types
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 PACKS = Path(__file__).resolve().parents[2] / "pack"
@@ -186,6 +188,131 @@ def tool_bin(
         stub.write_text(script, encoding="utf-8")
         stub.chmod(0o755)
     return path
+
+
+def trace_bin(path: Path, trace: Path, tools: tuple[str, ...]) -> Path:
+    """A PATH directory of stubs that append their name to `trace`, then run the
+    real tool (looked up now, on the current PATH) when there is one.
+
+    With only this directory on PATH, an empty `trace` proves the script forked
+    none of `tools`.
+    """
+    stubs = {}
+    for tool in tools:
+        real = shutil.which(tool)
+        run = f'exec {shlex.quote(real)} "$@"\n' if real else "exit 0\n"
+        log = f"printf '%s\\n' {tool} >> {shlex.quote(str(trace))}\n"
+        stubs[tool] = f"#!/bin/bash\n{log}{run}"
+    return tool_bin(path, (), stubs=stubs)
+
+
+# The usage guard (#66): every test that runs it uses `guard_env`, so a test run
+# inside a session with a full window never writes real keys, markers or refreshes.
+_GUARD_ENV_DROP = (
+    "LIGHTHOUSE_CONTROLLER_RUN",
+    "LIGHTHOUSE_CONTROLLER_STATE",
+    "LIGHTHOUSE_USAGE_REFRESH",
+    "LIGHTHOUSE_TOML",
+)
+
+
+def _path_without_lighthouse(shadow: Path) -> str:
+    """PATH with every directory that holds a `lighthouse` replaced by a copy of
+    symlinks without it, so the other tools there stay reachable."""
+    dirs = []
+    for i, entry in enumerate(os.environ.get("PATH", "").split(os.pathsep)):
+        directory = Path(entry)
+        if not os.access(directory / "lighthouse", os.X_OK):
+            dirs.append(entry)
+            continue
+        copy = shadow / str(i)
+        copy.mkdir(parents=True, exist_ok=True)
+        for item in directory.iterdir():
+            link = copy / item.name
+            if item.name != "lighthouse" and not link.is_symlink():
+                link.symlink_to(item)
+        dirs.append(str(copy))
+    return os.pathsep.join(dirs)
+
+
+def guard_env(tmp_path: Path, **extra: str) -> dict[str, str]:
+    """`os.environ` with HOME and the XDG dirs under `tmp_path`, the controller and
+    refresh variables and LIGHTHOUSE_TOML removed, no real `lighthouse` on PATH and
+    TZ=UTC; `extra` goes on top."""
+    env = dict(os.environ)
+    for name in _GUARD_ENV_DROP:
+        env.pop(name, None)
+    home = tmp_path / "home"
+    home.mkdir(parents=True, exist_ok=True)
+    env.update(
+        HOME=str(home),
+        XDG_CACHE_HOME=str(home / ".cache"),
+        XDG_STATE_HOME=str(home / ".local" / "state"),
+        XDG_DATA_HOME=str(home / ".local" / "share"),
+        PATH=_path_without_lighthouse(tmp_path / "path-shadow"),
+        TZ="UTC",
+    )
+    env.update(extra)
+    return env
+
+
+def alarm_line(
+    kind: str = "venster",
+    pct: int = 92,
+    local: str = "14:30",
+    delta: timedelta = timedelta(hours=1),
+) -> str:
+    """`<kind> <pct> <local> <reset_at>` without a newline; reset_at = now + delta, UTC."""
+    at = (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"{kind} {pct} {local} {at}"
+
+
+def write_alarm(env: dict, line: str) -> Path:
+    """Write `line` plus a newline as the alarm the guard of `env` reads."""
+    path = Path(env["XDG_CACHE_HOME"]) / "lighthouse" / "usage-window.alarm"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(line + "\n", encoding="utf-8")
+    return path
+
+
+def run_guard(
+    root: Path, stand: str, payload: dict | str, env: dict
+) -> subprocess.CompletedProcess:
+    """Run the installed `usage-guard.sh <stand>` of `root` with `payload` on stdin."""
+    return subprocess.run(
+        [str(root / _INSTALL_DIRS["hooks"] / "usage-guard.sh"), stand],
+        input=payload if isinstance(payload, str) else json.dumps(payload),
+        capture_output=True,
+        text=True,
+        cwd=str(root),
+        env=dict(env, LIGHTHOUSE_REPO_ROOT=str(root)),
+        check=False,
+        timeout=30,
+    )
+
+
+# A BSD `date` on top of the real GNU one: `-d` is rejected, and
+# `-j [-u] -f FMT VALUE [+OUT]` parses VALUE (the format itself is not checked).
+BSD_DATE_STUB = f"""#!/bin/bash
+real={shutil.which("date")}
+utc=""
+value=""
+parse=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -d) echo "date: illegal option -- d" >&2; exit 1 ;;
+    -j) parse=1 ;;
+    -u) utc=-u ;;
+    -f) shift; shift; value="$1" ;;
+    *) break ;;
+  esac
+  shift
+done
+if [ -n "$parse" ]; then
+  exec "$real" $utc -d "$value" "$@"
+fi
+exec "$real" $utc "$@"
+"""
 
 
 def load_hook_lib(name: str) -> types.ModuleType:
