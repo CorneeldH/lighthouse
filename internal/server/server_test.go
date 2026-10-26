@@ -194,6 +194,19 @@ func TestSPAEscapes(t *testing.T) {
 	}
 }
 
+func TestUnbuiltSiteServesPlaceholder(t *testing.T) {
+	h := New(web.Choose(fstest.MapFS{
+		"dist/.gitkeep":          {},
+		"placeholder/index.html": {Data: []byte("<p>placeholder</p>")},
+	}))
+	for _, path := range []string{"/", "/runs/42"} {
+		rec := get(h, path)
+		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "placeholder") {
+			t.Errorf("%s: status %d body %q", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestEmbeddedSiteHasIndex(t *testing.T) {
 	if _, err := fs.ReadFile(web.FS(), "index.html"); err != nil {
 		t.Fatal(err)

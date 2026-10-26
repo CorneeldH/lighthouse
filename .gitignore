@@ -9,3 +9,8 @@ __pycache__/
 
 # Go
 /lighthouse
+
+# Frontend: dependencies, and the Vite build (only the .gitkeep is tracked)
+web/node_modules/
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
