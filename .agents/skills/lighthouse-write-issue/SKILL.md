@@ -297,6 +297,16 @@ gh api "repos/$R/issues?state=open&per_page=100" --paginate |
 
 Empty output = good. An axis without a prefix (rc 1) is not checked.
 
+## A defect in an external tool
+
+When the fault lies in someone else's tool (an MCP server, a vendored skill, a library), the
+issue goes into this repo, never upstream. Title: `<tool>: <problem>, upstream melden` in the
+project language. The body carries the code path or the observed error
+with its version or commit, a decision point "do we report this upstream, from which account,
+with which proposal", and the upstream text as a quoted draft in the upstream repo's language.
+Acceptance criteria: the decision is taken; if yes, the upstream link is a comment here; if no,
+the reason and the local workaround are. Post upstream only when the user asks for that post.
+
 ## Milestones
 
 **The milestone description *is* the pitch.** There is no separate parent issue and no

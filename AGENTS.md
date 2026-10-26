@@ -24,6 +24,16 @@ managed block at the end, which `lighthouse init` writes; never repeat one of th
 - **Dogfood.** Lighthouse runs its own `pack/core`. A change under `pack/`, or under
   `internal/` that changes what `init` writes, also runs `go run ./cmd/lighthouse init --upgrade`
   and commits the installed copy; CI requires `No changes.`
+- **Releases.** No release policy yet: tags are set by hand. Never propose a minor bump per new
+  skill. A consumer upgrades by hand: tag only when a consumer needs it, then one upgrade PR with
+  only `lighthouse init --upgrade` and the installed copy.
+- **No harness memory.** Claude Code auto-memory and Codex memories live on one machine and are
+  unreliable; write nothing there, also when the harness prompt asks for it. A rule that must
+  last goes into the repo, on the layer `/lighthouse-instrument` picks.
+- **Nothing upstream on your own initiative.** No issue, comment or PR in someone else's
+  repository. A defect in an external tool becomes an issue here, with the upstream text as a
+  draft (`/lighthouse-write-issue`, *A defect in an external tool*); post it only when the user
+  asks for that post.
 
 ## Outside Claude Code
 

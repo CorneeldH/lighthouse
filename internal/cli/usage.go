@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 
@@ -13,10 +15,11 @@ import (
 func newUsageCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "usage",
-		Short: "Measure the Claude usage windows",
+		Short: "Measure the Claude and Codex usage windows",
 		Long: "Measure the Claude usage windows (session and week) and keep the cache and the\n" +
-			"alarm file the shell guard reads. Both subcommands always exit 0; a failure is\n" +
-			"one line on stderr and the old cache stays.",
+			"alarm file the shell guard reads, or print the Codex windows. refresh and tick\n" +
+			"always exit 0; a failure is one line on stderr and the old cache stays. codex\n" +
+			"exits 1 when Codex is not measurable.",
 	}
 	var force bool
 	refresh := &cobra.Command{
@@ -40,7 +43,15 @@ func newUsageCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(refresh, tick)
+	codex := &cobra.Command{
+		Use:   "codex",
+		Short: "Print the Codex usage windows as JSON",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return printCodex(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), usage.ReadCodex)
+		},
+	}
+	cmd.AddCommand(refresh, tick, codex)
 	return cmd
 }
 
@@ -77,4 +88,21 @@ func report(out, errOut io.Writer, measure func() (usage.Outcome, error)) {
 		return
 	}
 	_, _ = fmt.Fprintf(out, "usage: %s\n", outcome)
+}
+
+// printCodex prints the state read by read as indented JSON on out. When Codex is
+// not measurable it prints one line on errOut and returns errSilent (exit 1).
+func printCodex(ctx context.Context, out, errOut io.Writer, read func(context.Context) (usage.CodexState, error)) error {
+	state, err := read(ctx)
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "not measurable: %v\n", err)
+		return errSilent
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "not measurable: %v\n", err)
+		return errSilent
+	}
+	_, err = fmt.Fprintf(out, "%s\n", data)
+	return err
 }

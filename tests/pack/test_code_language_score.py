@@ -145,6 +145,16 @@ def test_dutch_sentence_in_english_prose():
     assert score.judge_text("Read the file. Return its lines! Is it empty? Then stop.") == "clean"
 
 
+def test_short_dutch_line_is_a_finding():
+    """No word-count floor per sentence: a two-word Dutch line is a finding (#37, PR #72).
+
+    A floor of three words was rejected; cut false alarms through the jargon list instead.
+    """
+    for line in ("Werkt niet", "Nog doen"):
+        assert score.judge_text(line) == "finding", line
+    assert score.judge_text(ENGLISH_PROSE + "\nWerkt niet", line_breaks=True) == "finding"
+
+
 def test_prose_judged_per_sentence(table):
     table({"alpha": (10, 25), "beta": (40, 10)})  # alpha +1.5, beta -3.0
     assert score.judge_text("beta beta alpha") == "clean"  # one sentence: -4.5

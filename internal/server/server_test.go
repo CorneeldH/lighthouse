@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/version"
 	"github.com/CorneeldH/lighthouse/internal/web"
 )
@@ -30,6 +32,20 @@ func (stubSource) OpenIssues(context.Context) ([]forge.Issue, error) { return ni
 
 func (stubSource) Comments(context.Context, int) ([]protocol.Comment, error) { return nil, nil }
 
+func intp(n int) *int { return &n }
+
+// fakeReport is a fixed report: Claude measured, Codex not.
+func fakeReport(context.Context) usage.Report {
+	notMeasurable := usage.WindowReport{State: usage.StateNotMeasurable, Reason: "no codex"}
+	return usage.Report{
+		Claude: usage.SourceReport{
+			Session: usage.WindowReport{State: usage.StateOK, Pct: intp(99), AgeS: intp(5)},
+			Week:    usage.WindowReport{State: usage.StateStale, Pct: intp(48), AgeS: intp(1000)},
+		},
+		Codex: usage.SourceReport{Session: notMeasurable, Week: notMeasurable},
+	}
+}
+
 func get(h http.Handler, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.URL.Path = path
@@ -40,7 +56,7 @@ func get(h http.Handler, path string) *httptest.ResponseRecorder {
 }
 
 func TestRoutes(t *testing.T) {
-	h := New(testSite(), stubSource{})
+	h := New(testSite(), fakeReport, stubSource{})
 	tests := []struct {
 		path    string
 		status  []int
@@ -52,6 +68,7 @@ func TestRoutes(t *testing.T) {
 		{"/runs/42", []int{200}, "placeholder", ""},
 		{"/assets/app.js", []int{200}, "js", "placeholder"},
 		{"/assets/", []int{200}, "placeholder", ""},
+		{"/api/usage", []int{200}, "", "placeholder"},
 		{"/api/docs", []int{200}, "", "placeholder"},
 		{"/../../etc/passwd", []int{200, 301, 307, 404}, "", ""},
 	}
@@ -86,7 +103,7 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	rec := get(New(testSite(), stubSource{}), "/api/health")
+	rec := get(New(testSite(), fakeReport, stubSource{}), "/api/health")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -99,20 +116,63 @@ func TestHealth(t *testing.T) {
 	}
 }
 
+func TestUsage(t *testing.T) {
+	rec := get(New(testSite(), fakeReport, stubSource{}), "/api/usage")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	var body map[string]map[string]map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	cs := body["claude"]["session"]
+	if cs["state"] != "ok" || cs["pct"] != float64(99) {
+		t.Errorf("claude.session = %v, want state ok, pct 99", cs)
+	}
+	cw := body["codex"]["week"]
+	if cw["state"] != "not_measurable" {
+		t.Errorf("codex.week.state = %v", cw["state"])
+	}
+	for _, k := range []string{"pct", "age_s"} {
+		if v, ok := cw[k]; !ok || v != nil {
+			t.Errorf("codex.week.%s = %v (present %v), want present null", k, v, ok)
+		}
+	}
+}
+
 func TestOpenAPI(t *testing.T) {
-	h := New(testSite(), stubSource{})
+	h := New(testSite(), fakeReport, stubSource{})
 	rec := get(h, "/api/openapi.json")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	var doc struct {
-		Paths map[string]any `json:"paths"`
+		Paths      map[string]any `json:"paths"`
+		Components struct {
+			Schemas map[string]struct {
+				Properties map[string]struct {
+					Type any   `json:"type"`
+					Enum []any `json:"enum"`
+				} `json:"properties"`
+			} `json:"schemas"`
+		} `json:"components"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if _, ok := doc.Paths["/api/health"]; !ok {
-		t.Errorf("paths lack /api/health: %v", doc.Paths)
+	window := doc.Components.Schemas["WindowReport"].Properties
+	if got := fmt.Sprint(window["state"].Enum); got != "[ok stale not_measurable]" {
+		t.Errorf("WindowReport.state enum = %s, want [ok stale not_measurable]", got)
+	}
+	for _, f := range []string{"pct", "age_s"} {
+		if got := fmt.Sprint(window[f].Type); got != "[integer null]" {
+			t.Errorf("WindowReport.%s type = %s, want [integer null]", f, got)
+		}
+	}
+	for _, p := range []string{"/api/health", "/api/usage"} {
+		if _, ok := doc.Paths[p]; !ok {
+			t.Errorf("paths lack %s: %v", p, doc.Paths)
+		}
 	}
 	for _, p := range []string{"/api/questions", "/api/returned"} {
 		if _, ok := doc.Paths[p]; !ok {

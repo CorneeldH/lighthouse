@@ -5,6 +5,7 @@ package e2e
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -111,5 +112,83 @@ func TestUsageTickWithoutClaude(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Error("claude ran although pgrep found no claude process")
+	}
+}
+
+func TestUsageCodexE2E(t *testing.T) {
+	bin := buildLighthouse(t)
+	raw, err := os.ReadFile("../internal/usage/testdata/codex/app_server_response.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, raw); err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	fixture, methods := filepath.Join(work, "response.json"), filepath.Join(work, "methods")
+	if err := os.WriteFile(fixture, compact.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binDir, xdg := t.TempDir(), t.TempDir()
+	writeScript(t, binDir, "codex", "while read -r line; do\n"+
+		"  m=$(printf '%s' \"$line\" | sed -n 's/.*\"method\":\"\\([^\"]*\\)\".*/\\1/p')\n"+
+		"  echo \"$m\" >> '"+methods+"'\n"+
+		"  case \"$m\" in\n"+
+		"    initialize) echo '{\"id\":1,\"result\":{}}' ;;\n"+
+		"    account/rateLimits/read) printf '{\"id\":2,\"result\":%s}\\n' \"$(cat '"+fixture+"')\" ;;\n"+
+		"  esac\n"+
+		"done\n")
+	alarmPath := filepath.Join(xdg, "lighthouse", "usage-window.alarm")
+	alarm := []byte("week 96 do_16:59 2026-09-10T14:59:00Z\n")
+	if err := os.MkdirAll(filepath.Dir(alarmPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(alarmPath, alarm, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := append(usageEnv(t, xdg, binDir), "HOME="+t.TempDir())
+
+	stdout, _ := runUsage(t, bin, env, "usage", "codex")
+	if !strings.Contains(stdout, `"pct": 55`) {
+		t.Errorf("stdout lacks %q:\n%s", `"pct": 55`, stdout)
+	}
+	log, err := os.ReadFile(methods)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(log), "consume") {
+		t.Errorf("app-server was asked to consume:\n%s", log)
+	}
+	if got, _ := os.ReadFile(alarmPath); !bytes.Equal(got, alarm) {
+		t.Errorf("alarm changed: %q", got)
+	}
+	entries, err := os.ReadDir(filepath.Dir(alarmPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "usage-window.alarm" {
+		t.Errorf("cache dir holds %d entries, want only the alarm", len(entries))
+	}
+}
+
+func TestUsageCodexNotMeasurableE2E(t *testing.T) {
+	bin := buildLighthouse(t)
+	binDir := t.TempDir()
+	env := append(usageEnv(t, t.TempDir(), binDir),
+		"HOME="+t.TempDir(),
+		"PATH="+binDir+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin",
+	)
+	cmd := exec.Command(bin, "usage", "codex")
+	cmd.Env = env
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Fatalf("err = %v, want exit 1", err)
+	}
+	if stdout.Len() != 0 || !strings.HasPrefix(stderr.String(), "not measurable: ") {
+		t.Errorf("stdout = %q, stderr = %q", stdout.String(), stderr.String())
 	}
 }

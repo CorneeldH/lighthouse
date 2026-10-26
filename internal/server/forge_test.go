@@ -48,7 +48,7 @@ func decode(t *testing.T, body []byte) map[string]json.RawMessage {
 }
 
 func TestQuestionsEndpoint(t *testing.T) {
-	rec := get(New(testSite(), populated()), "/api/questions")
+	rec := get(New(testSite(), fakeReport, populated()), "/api/questions")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -74,7 +74,7 @@ func TestQuestionsEndpoint(t *testing.T) {
 }
 
 func TestReturnedEndpoint(t *testing.T) {
-	rec := get(New(testSite(), populated()), "/api/returned")
+	rec := get(New(testSite(), fakeReport, populated()), "/api/returned")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -100,7 +100,7 @@ var listRoutes = []struct{ path, key string }{{"/api/questions", "questions"}, {
 
 func TestEmptyListIsArray(t *testing.T) {
 	for _, route := range listRoutes {
-		rec := get(New(testSite(), stubSource{}), route.path)
+		rec := get(New(testSite(), fakeReport, stubSource{}), route.path)
 		if rec.Code != 200 {
 			t.Fatalf("%s: status = %d", route.path, rec.Code)
 		}
@@ -121,7 +121,7 @@ func TestEndpointForgeDown(t *testing.T) {
 func assertEndpointError(t *testing.T, err error, status int) {
 	t.Helper()
 	for _, route := range listRoutes {
-		rec := get(New(testSite(), fakeSource{err: err}), route.path)
+		rec := get(New(testSite(), fakeReport, fakeSource{err: err}), route.path)
 		if rec.Code != status {
 			t.Fatalf("%s: status = %d, want %d, body %s", route.path, rec.Code, status, rec.Body)
 		}

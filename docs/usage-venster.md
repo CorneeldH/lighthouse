@@ -91,3 +91,46 @@ cache_ttl_seconds = 300
 
 Een waarde buiten het geldige bereik geeft voor die sleutel de standaardwaarde. Een bestand dat
 niet als TOML te lezen is, geeft alle standaardwaarden.
+
+## Codex
+
+`lighthouse usage codex` print de Codex-vensters (sessie en week) als JSON op stdout, met exitcode 0.
+Anders dan `refresh` en `tick` schrijft dit commando niets: geen alarm, geen cache en geen bestand in
+`${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse`.
+
+- **Bron.** `codex app-server`, met `CODEX_HOME` op een van de homes. De binary stuurt `initialize`,
+  `initialized` en `account/rateLimits/read`, en geen andere methode.
+- **Homes.** Eerst `$HOME/.codex`, dan `$HOME/.codex-specreview`. De eerste home met een leesbare
+  stand wint. Zonder `HOME` is Codex niet meetbaar.
+- **Terugval.** Falen alle homes, dan leest de binary het sessielog
+  (`<home>/sessions/**/rollout-*.jsonl`). De jongste regel over alle homes wint; die stand is een
+  ondergrens (`lower_bound` is `true`).
+- **Verouderd.** De uitvoer van dit commando heeft geen toestandsveld; je leest de leeftijd af aan
+  `age_s`. Alleen `GET /api/usage` kent de toestand `stale` (meting ouder dan 900 s, voor beide
+  bronnen).
+- **Uitvoer.** Een JSON-object met `source` (`app-server` of `rollout-log`), `generated_at` (UTC),
+  `age_s` (leeftijd van de meting op `generated_at`), `source_file` (alleen bij `rollout-log`),
+  `lower_bound`, en `session` en `week`, elk met `pct` en `reset_at` (UTC). `reset_credits`, dat
+  `codex_usage.py read` wel uitvoert, staat niet in deze uitvoer.
+- **Niet meetbaar.** Eén regel `not measurable: <reden>` op stderr, niets op stdout, exitcode 1.
+  Nooit een stand met 0%.
+- **Wachttijd.** De binary wacht vast 20 s per home. De sleutel
+  `[codex_usage] app_server_timeout_seconds` uit `lighthouse.toml` leest hij niet, anders dan
+  `codex_usage.py`.
+
+## API
+
+`lighthouse serve` biedt `GET /api/usage`. Het antwoord heeft de vorm
+`{"claude": {"session": W, "week": W}, "codex": {"session": W, "week": W}}`, met voor elk venster `W`:
+`state`, `pct`, `reset_at`, `age_s`, `lower_bound` en (alleen bij een reden) `reason`.
+
+- **Toestanden.** `ok` (recente meting), `stale` (meting ouder dan 900 s; de grens is `> 900`, niet
+  `>=`) en `not_measurable`. Bij `not_measurable` zijn `pct` en `age_s` JSON `null`, nooit 0.
+- **Claude** komt uit de cache van `usage refresh`. Een cache uit de toekomst geeft `age_s` 0.
+- **Codex** wordt door de server gemeten, zoals `usage codex`, en 300 s hergebruikt (een mislukte
+  meting 60 s). Gelijktijdige verzoeken delen één app-server.
+- **Als service.** Onder de meegeleverde unit (`ProtectHome=read-only`) werkt `codex app-server`,
+  omdat de unit `ReadWritePaths=-%h/.codex -%h/.codex-specreview` heeft: de app-server bewaart zijn
+  sqlite-staat in de Codex-home en start niet als die alleen-lezen is. Ontbreekt die regel, of staat
+  `codex` niet in de `PATH` van de service, dan valt de server terug op het sessielog. Die stand heeft
+  `lower_bound` `true` en is vaak verouderd.

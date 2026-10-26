@@ -10,8 +10,11 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/version"
 )
+
+type usageOutput struct{ Body usage.Report }
 
 type healthOutput struct {
 	Body struct {
@@ -20,7 +23,7 @@ type healthOutput struct {
 }
 
 // New returns the handler: the JSON API under /api/ and site as SPA elsewhere, behind the Host check.
-func New(site fs.FS, src overview.Source) http.Handler {
+func New(site fs.FS, report func(context.Context) usage.Report, src overview.Source) http.Handler {
 	mux := http.NewServeMux()
 	cfg := huma.DefaultConfig("lighthouse", version.String())
 	cfg.OpenAPIPath = "/api/openapi"
@@ -34,6 +37,10 @@ func New(site fs.FS, src overview.Source) http.Handler {
 		out.Body.Version = version.String()
 		return out, nil
 	}, func(op *huma.Operation) { op.OperationID = "get-health" })
+
+	huma.Get(api, "/api/usage", func(ctx context.Context, _ *struct{}) (*usageOutput, error) {
+		return &usageOutput{Body: report(ctx)}, nil
+	}, func(op *huma.Operation) { op.OperationID = "get-usage" })
 
 	registerForge(api, src)
 
