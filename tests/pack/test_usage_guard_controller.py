@@ -203,10 +203,13 @@ def test_pause_parks_once(tmp_path: Path) -> None:
 
     assert _run(root, env, "tool", payload).stdout == ""
 
+    fields["created_at"] = "2000-01-01T00:00:00Z"
+    (_resume(env) / "s1.json").write_text(json.dumps(fields), encoding="utf-8")
     flag = Path(env["LIGHTHOUSE_CONTROLLER_STATE"]) / "PAUSE"
     later = flag.stat().st_mtime + 10
     os.utime(flag, (later, later))
     assert _is_controller_reason(_reason(_run(root, env, "tool", payload)))
+    assert _marker(env)["created_at"] != "2000-01-01T00:00:00Z"  # refreshed
 
 
 def test_pause_bsd_date(tmp_path: Path) -> None:
@@ -306,3 +309,53 @@ def test_pause_only_in_tool(tmp_path: Path, stand: str) -> None:
 
     assert result.stdout == ""
     assert _keys(env) == []
+
+
+def test_pause_then_alarm_keeps_the_later_pause_end(tmp_path: Path) -> None:
+    flag_text = _flag_text(timedelta(hours=3))
+    root, env = _setup(tmp_path, flag=flag_text, alarm=alarm_line())
+    payload = _payload(tmp_path, "tool")
+
+    assert flag_text[11:16] in _reason(_run(root, env, "tool", payload))
+    second = _run(root, env, "tool", payload)  # the alarm path, a pause marker exists
+
+    assert f"resumes this session after {flag_text[11:16]}." in _reason(second)
+    for stand in ("tool", "stop"):
+        if stand == "stop":
+            result = _run(root, env, "stop", _payload(tmp_path, "stop"))
+            assert f"resumes this session after {flag_text[11:16]}." in _reason(result)
+        fields = _marker(env)
+        assert fields["window"] == "pause"
+        assert fields["pause"] is True
+        assert fields["reset_at"] == flag_text
+        assert fields["controller"] is True
+
+
+def test_alarm_then_earlier_pause_keeps_the_alarm_end(tmp_path: Path) -> None:
+    line = alarm_line(delta=timedelta(hours=3))
+    root, env = _setup(tmp_path, alarm=line)
+    payload = _payload(tmp_path, "tool")
+    _run(root, env, "tool", payload)
+    assert _marker(env)["window"] == "venster"
+
+    flag_text = _flag_text(timedelta(hours=1))
+    (Path(env["LIGHTHOUSE_CONTROLLER_STATE"]) / "PAUSE").write_text(flag_text + "\n")
+    result = _run(root, env, "tool", payload)
+
+    fields = _marker(env)
+    assert fields["window"] == "venster"
+    assert fields["reset_at"] == line.split()[3]
+    assert "pause" not in fields
+    assert fields["controller"] is True
+    at = datetime.strptime(line.split()[3], "%Y-%m-%dT%H:%M:%SZ")
+    assert f"resumes this session after {at.strftime('%H:%M')}." in _reason(result)  # TZ=UTC
+
+
+def test_unreadable_marker_is_overwritten(tmp_path: Path) -> None:
+    root, env = _setup(tmp_path, alarm=alarm_line())
+    _resume(env).mkdir(parents=True)
+    (_resume(env) / "s1.json").write_text("not json", encoding="utf-8")
+
+    _run(root, env, "tool", _payload(tmp_path, "tool"))
+
+    assert _marker(env)["window"] == "venster"

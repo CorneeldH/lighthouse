@@ -88,7 +88,7 @@ Voor een gewone sessie, en voor een controller-run met `controller = false`:
   prompt = de eerste stap uit de handoff. Staat er al een wekker in dit venster, dan zegt de reden
   die via `CronList` over te nemen in plaats van een tweede te zetten.
 - **Handoff.** De reden noemt `/lighthouse-handoff` met het handoff-pad als argument en vraagt
-  de job-ID van de wekker erin te noteren.
+  de job-ID van de wekker erin te noteren (bij `venster`).
 
 ### Controller (`controller = true`)
 
@@ -176,6 +176,11 @@ marker met `"window": "pause"` en `"pause": true`, en blokkeert ze: commit het w
 stop, de controller hervat na `<tot>`. De pauzetoets gaat vóór de alarmtoets. Een ongeldige vlag
 (stap 1 tot en met 3) valt door naar het alarmpad; faalt stap 4 of 5, of staat `controller` uit,
 dan valt de guard met dezelfde payload door naar het alarmpad.
+
+Gelden een geldige vlag en een geldig alarm tegelijk, dan blijft er één marker per sessie: de
+module voegt samen met de bestaande marker en het latere hervatmoment (`reset_at`) wint, met
+zijn `window` en zijn `pause`-veld. `cwd`, `created_at` en `source` volgen de laatste schrijver.
+De reden noemt het winnende hervatmoment. Een onleesbare of ongeldige marker wordt overschreven.
 
 ## Omgevingsvariabelen
 

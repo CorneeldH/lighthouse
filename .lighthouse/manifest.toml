@@ -253,7 +253,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/usage-guard/controller.py"
 package = "core"
 version = "dev"
-sha256 = "54f7d72447ea9374f93d7df93647cce4bf35a02ff6b41e8f1197c0b4c160998d"
+sha256 = "356372ac0c800b5dbc40ff30c160d29cbbfb1297ac2dd973151ecbed65dcd386"
 
 [[unit]]
 kind = "file"
