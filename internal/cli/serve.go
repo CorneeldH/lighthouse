@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/web"
@@ -64,7 +65,7 @@ func serve(ctx context.Context, addr, dbPath string, errOut io.Writer) error {
 	}
 	_, _ = fmt.Fprintf(errOut, "lighthouse: listening on %s\n", ln.Addr())
 
-	srv := &http.Server{Handler: server.New(web.FS()), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: server.New(web.FS(), forge.New("", "")), ReadHeaderTimeout: 10 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 

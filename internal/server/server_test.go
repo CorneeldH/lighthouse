@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io/fs"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/version"
 	"github.com/CorneeldH/lighthouse/internal/web"
 )
@@ -20,6 +23,13 @@ func testSite() fs.FS {
 	}
 }
 
+// stubSource yields no issues, so both lists are empty.
+type stubSource struct{}
+
+func (stubSource) OpenIssues(context.Context) ([]forge.Issue, error) { return nil, nil }
+
+func (stubSource) Comments(context.Context, int) ([]protocol.Comment, error) { return nil, nil }
+
 func get(h http.Handler, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.URL.Path = path
@@ -30,7 +40,7 @@ func get(h http.Handler, path string) *httptest.ResponseRecorder {
 }
 
 func TestRoutes(t *testing.T) {
-	h := New(testSite())
+	h := New(testSite(), stubSource{})
 	tests := []struct {
 		path    string
 		status  []int
@@ -76,7 +86,7 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	rec := get(New(testSite()), "/api/health")
+	rec := get(New(testSite(), stubSource{}), "/api/health")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -90,7 +100,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestOpenAPI(t *testing.T) {
-	h := New(testSite())
+	h := New(testSite(), stubSource{})
 	rec := get(h, "/api/openapi.json")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
@@ -103,6 +113,11 @@ func TestOpenAPI(t *testing.T) {
 	}
 	if _, ok := doc.Paths["/api/health"]; !ok {
 		t.Errorf("paths lack /api/health: %v", doc.Paths)
+	}
+	for _, p := range []string{"/api/questions", "/api/returned"} {
+		if _, ok := doc.Paths[p]; !ok {
+			t.Errorf("paths lack %s: %v", p, doc.Paths)
+		}
 	}
 	if rec := get(h, "/api/openapi.yaml"); rec.Code != 200 {
 		t.Errorf("openapi.yaml status = %d", rec.Code)
