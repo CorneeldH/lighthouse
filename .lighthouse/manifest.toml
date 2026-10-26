@@ -36,7 +36,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-instrument/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "3be5acf219e4241aaaf44b0c104543c5be026ddb89dc867bf270300438bfd995"
+sha256 = "0a9269e4a114a9408ee54282cbcceb9ffa0f9cb91def7c19ba606cddbdbb03d9"
 
 [[unit]]
 kind = "file"
@@ -176,7 +176,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "ddb7703437580398e66e5806ca687d9c4b426e785937cca7f3221bd3edb2798a"
+sha256 = "8a6966688fe55d57fff71c6f5cbf62a44d457712be6836a97e2855f9bdcda4ae"
 
 [[unit]]
 kind = "file"
@@ -204,7 +204,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/code-language.sh"
 package = "core"
 version = "dev"
-sha256 = "6839a48301c9656a8408ed4c9fe5734b84a7ecbd474fd4f8df249f66a2055525"
+sha256 = "7cf45b2e2f3312ddfd74d6b07915980d41ee187c598cb3185d6e8e5319bed3c3"
 
 [[unit]]
 kind = "file"
@@ -461,7 +461,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-instrument/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "3be5acf219e4241aaaf44b0c104543c5be026ddb89dc867bf270300438bfd995"
+sha256 = "0a9269e4a114a9408ee54282cbcceb9ffa0f9cb91def7c19ba606cddbdbb03d9"
 
 [[unit]]
 kind = "file"
@@ -601,7 +601,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "6149d7a986baf106a8c430ac955a6662467f657796a384b5560fb9702b7a133e"
+sha256 = "969d6dcfa3bc9da0d098c607532c8039677d6c2b7a80b0218a0d13152caed3ce"
 
 [[unit]]
 kind = "file"
@@ -636,35 +636,56 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "fdc2c415b605b64e188b67d1bfe635232326d559ab5536076433596354225478"
+sha256 = "ac838375a54e5dc6d65d4061eb425813f41d87a13fc0dba863754309606e4539"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/code_language.py"
 package = "core"
 version = "dev"
-sha256 = "d088f74fe92faa505776ff1a2211661277e395dcc6999b39243f00a391166cba"
+sha256 = "88a0b4becf2876a70c9f7c57dc0fa938c5f11ff9088ab216e4463d5ef9ff8e42"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_nl_content.txt"
+path = ".lighthouse/lib/lighthouse_lib/code_language_freq.tsv.gz"
 package = "core"
 version = "dev"
-sha256 = "1ee803135fa38ca1a89b74938150849cda436b5b6c0d25ec8a1e310ea3f7ec8f"
+sha256 = "dd0c3cbb67ee9930aebb829111b930d02d082d2de00f74132e328410f0ad3544"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_nl_function.txt"
+path = ".lighthouse/lib/lighthouse_lib/code_language_freq_NOTICE.txt"
 package = "core"
 version = "dev"
-sha256 = "34a3ae75d240dc3663a630a2c0729e47d4f2ba8d88ad6733ff8f0fd8112976a0"
+sha256 = "e94cdf3880fedb22b3f3aef9794e7910664c762626f2f4ec088a3cc8684cb6fb"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language_jargon.txt"
+package = "core"
+version = "dev"
+sha256 = "d5e390fdd0e06aa03467b883ee1694c64369855c7c6acd1d7e9afbd2abc76a12"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language_llm.py"
+package = "core"
+version = "dev"
+sha256 = "05b9398644fca4d93e90f2dc1dbb928e82358ba8fc7afab09a309106ee34581b"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/code_language_score.py"
+package = "core"
+version = "dev"
+sha256 = "be0ebea84ffdaa86c739ff5805477902ea7bbe6505f3b2ae44a62d471d2ae6cd"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
-sha256 = "b4c5c4667a023e54af8cdb9c13ffbf1ebce22019fcf4f5f585cd816fe5927d5b"
+sha256 = "321664ad7b780c17506382dda26ab7b07e30942463027a0dcec543c28c790ab3"
 
 [[unit]]
 kind = "file"
@@ -678,7 +699,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/deadline.py"
 package = "core"
 version = "dev"
-sha256 = "65937fd24b125331228522941d9dab7f5b3e4615b9dcc8be6ba3b0421e99540e"
+sha256 = "0f67cbead7d5656ac782dc3b0010528fe71b82b0d8d01d38575693081751689f"
 
 [[unit]]
 kind = "file"
@@ -833,7 +854,7 @@ path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "854d29ebd8adf71d629b035eda64be4d4174bc95ada8f190cb89dfe08469fef9"
+sha256 = "7034e20138a1df44f45a6f71bd41b22382f5bb4510d4755c0783ab3b36e8fef3"
 
 [[unit]]
 kind = "block"

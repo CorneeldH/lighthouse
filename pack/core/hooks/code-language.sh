@@ -1,8 +1,17 @@
 #!/bin/bash
 # PostToolUse hook: code must be written in English (#26).
-# Matcher: Edit|Write, filters itself on .py, .sh, .bash and .go. Blocking:
-# exit 2 + stderr. bash-write-gates calls this same script for files a Bash
+# Matcher: Edit|Write; it does not filter on extension. The checker decides:
+# .py, .sh, .bash and .go files are always read, anything else only inside
+# `[project] code_language_paths`. Blocking: exit 2 + stderr. bash-write-gates calls this same script for files a Bash
 # call wrote.
+#
+# Layer 2 (#37): with `[code_language_llm]` the checker asks a chain of models
+# about the doubtful units. When that chain gives no verdict, the checker
+# prints a notice without findings (rc 0): it goes to the user
+# (`systemMessage`) and to the agent (`additionalContext`) and never blocks.
+# Under bash-write-gates (LIGHTHOUSE_UNDER_BASH_GATES set) layer 2 does not run
+# and the notice goes to stdout as plain text, `code-language: NOTICE — ` first;
+# bash_writes.py passes it on.
 #
 # Norm and rationale: docs/developer/planning/specs/2026-10-24-codetaal-hook-design.md.
 # This hook checks the written file afterwards. Dutch
@@ -12,7 +21,8 @@
 # Off without `[project] code_language` in the lighthouse.toml of the git root
 # of the written file: the config is read from that root, not from the cwd, so
 # a file in another repo is judged by that repo. No git repository, or no
-# lighthouse.toml, is off as well.
+# lighthouse.toml, is off as well. Only `[code_language_llm]` is the
+# exception: it is read from the session's own repo (LIB_ROOT).
 #
 # NOT fail-open: without jq, git or python3, with a payload that is not JSON,
 # a path that cannot be resolved, a git that breaks, or a checker that fails
@@ -58,11 +68,6 @@ if [ -z "$FILE_PATH" ]; then
   exit 0
 fi
 
-case "$FILE_PATH" in
-  *.py|*.sh|*.bash|*.go) ;;
-  *) exit 0 ;;
-esac
-
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 case "$FILE_PATH" in
   /*) ABS="$FILE_PATH" ;;
@@ -95,10 +100,23 @@ fi
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
 STDERR_FILE=$(mktemp) || cannot_check "cannot create a temporary file."
 trap 'rm -f "$STDERR_FILE"' EXIT
-OUTPUT=$(python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/code_language.py" "$ABS" "$ROOT" 2>"$STDERR_FILE")
+# The layer 2 chain comes from LIB_ROOT's lighthouse.toml (or LIGHTHOUSE_TOML),
+# never from ROOT: a repo the agent writes into must not choose where the
+# session's key goes.
+OUTPUT=$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/code_language.py" "$ABS" "$ROOT" 2>"$STDERR_FILE")
 RC=$?
 case "$RC" in
-  0) exit 0 ;;
+  0)
+    if [ -n "$OUTPUT" ]; then
+      if [ -n "${LIGHTHOUSE_UNDER_BASH_GATES:-}" ]; then
+        printf '%s\n' "$OUTPUT"
+      else
+        jq -cn --arg m "$OUTPUT" \
+          '{systemMessage: $m, hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}'
+      fi
+    fi
+    exit 0
+    ;;
   1)
     # Only the checker's own report is a finding; any other exit 1 is a crash
     # (an import error, a missing word list) and nothing was checked.

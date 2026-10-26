@@ -262,3 +262,13 @@ def test_raise_on_signal_passes_a_child_exit_of_128_plus_n_through(rc):
         raise_on_signal=True,
     )
     assert got == rc
+
+
+def test_run_until_env():
+    """`env` is the child's whole environment; this process's own stays as it was."""
+    assert "X" not in os.environ
+    got = dl.run_until(
+        time.time() + 30, ["sh", "-c", "echo $X"], env={**os.environ, "X": "y"}, capture=True
+    )
+    assert got == (0, b"y\n")
+    assert "X" not in os.environ

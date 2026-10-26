@@ -25,6 +25,12 @@ def test_ci_runs_gate_go_command():
     assert _gate_go_command() in _ci_go_commands()
 
 
+def test_ci_builds_without_cgo():
+    """Fails when CI stops proving the binary builds without cgo."""
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert re.search(r"^\s*- run: CGO_ENABLED=0 go build \./\.\.\.\s*$", ci, re.MULTILINE)
+
+
 def test_every_ci_go_test_has_gate_flags():
     """Fails when a `go test` step in CI, the e2e step included, drops a flag of the gate."""
     flags = [token for token in _gate_go_command().split() if token.startswith("-")]

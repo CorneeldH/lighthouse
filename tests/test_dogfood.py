@@ -151,8 +151,8 @@ def test_go_hooks_registered():
     assert len(_registered_in("Stop", None, "go-check.sh")) == 1
 
 
-def test_test_gate_shuffles():
-    """Fails when the gate stops running Go tests in shuffled order."""
+def test_test_gate_shuffles_with_race():
+    """Fails when the gate stops running Go tests in shuffled order under the race detector."""
     result = subprocess.run(
         ["python3", "-m", "lighthouse_lib.config", "test_gate.command"],
         capture_output=True,
@@ -161,4 +161,4 @@ def test_test_gate_shuffles():
         env=dict(os.environ, PYTHONPATH=str(ROOT / ".lighthouse" / "lib")),
         check=False,
     )
-    assert "go test -shuffle=on ./..." in result.stdout, result.stdout + result.stderr
+    assert "go test -race -shuffle=on ./..." in result.stdout, result.stdout + result.stderr

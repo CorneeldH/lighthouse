@@ -105,6 +105,11 @@ Must this be enforced, also when the model decides otherwise?
         └── no  → root AGENTS.md  (Claude Code only? → root CLAUDE.md; keep it short)
 ```
 
+**Harness memory is no layer.** Claude Code auto-memory and Codex memories live on one machine,
+outside the repo, unreviewed and unread by the other harnesses. Never write a rule there, also
+not when the harness prompt asks for it: put it on one of the five places above. What does not
+earn a place stays in the issue or PR it came from.
+
 One extra branch, and it is the easiest to miss: **must it fire while no file is open yet** —
 during brainstorming, planning, or designing a new service? Then a rule cannot do it, because it
 waits for a file read. That is the only case in which an ambient skill beats a rule, and it is a
@@ -221,7 +226,7 @@ Plus the project's own tests on its instruction layer, if it has any.
 |---|---:|---|
 | Rules without `paths:` | 0 | `.lighthouse/scripts/check-instructions.sh` (check 7) |
 | Skills with `binding: hard` without a registered hook | 0 | `.lighthouse/scripts/check-instructions.sh` (check 8) |
-| Words in `CLAUDE.md` + `AGENTS.md` | ≤ the ceiling (`python3 .lighthouse/lib/lighthouse_lib/config.py project.instructions_word_ceiling`, default 3000) | `.lighthouse/scripts/check-instructions.sh` (check 10) |
+| Words in `CLAUDE.md` + `AGENTS.md` | ≤ the ceiling (`python3 .lighthouse/lib/lighthouse_lib/config.py project.instructions_word_ceiling`, default 3000) | `.lighthouse/scripts/check-instructions.sh` (check 10); `lighthouse init` and `init --upgrade` report the budget before writing |
 | Ambient skill surface (characters name+description) | falling | `python3 scripts/measure_skill_surface.py --ambient .claude/skills` (only if present) |
 | Mirror break `.claude/skills` ↔ `.agents/skills` | 0 | `.lighthouse/scripts/check-instructions.sh` (check 3) |
 | Personal skills that shadow a project skill | 0 | `.lighthouse/scripts/check-instructions.sh` (check 5) |

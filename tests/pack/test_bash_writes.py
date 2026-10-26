@@ -1415,3 +1415,86 @@ def test_dispatch_signature_after_rewriting_gate(tmp_path, monkeypatch, gates, s
     assert bw.run_post(_payload(repo, 0)) == (0, "", "")
     seen = _ledger_root(tmp_path, repo)["seen"]["x.sh"]
     assert seen == (sigs[signed_after] if signed_after else before)
+
+
+# --- the code-language notice on the Bash path (#37, besluit 19) -------------
+
+
+def test_run_gate_sets_under_gates_env(tmp_path, monkeypatch, gate_root):
+    monkeypatch.delenv("LIGHTHOUSE_UNDER_BASH_GATES", raising=False)
+    gate = gate_root / ".claude" / "hooks" / "lighthouse" / "code-language.sh"
+    gate.write_text('#!/bin/sh\necho "$LIGHTHOUSE_UNDER_BASH_GATES"\n', encoding="utf-8")
+    repo = tmp_path / "repo"
+    init_repo(repo)
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    assert bw.run_gate(str(repo), "a.py", "code-language.sh", time.time() + 10) == ("ok", b"1\n")
+    assert "LIGHTHOUSE_UNDER_BASH_GATES" not in os.environ
+
+
+def _gate_output(monkeypatch, output: bytes) -> None:
+    """`code-language.sh` ends with rc 0 and `output`; every other gate is silent."""
+    monkeypatch.setattr(
+        bw,
+        "run_gate",
+        lambda root, rel, gate, deadline: ("ok", output if gate == "code-language.sh" else b""),
+    )
+
+
+def test_notice_on_rc0_is_passed_on(tmp_path, monkeypatch):
+    repo = _post_env(tmp_path, monkeypatch)
+    _gate_output(monkeypatch, b"code-language: NOTICE \xe2\x80\x94 x\na.py:2: name: y")
+    _dirty_calls(repo, monkeypatch, ["x.py"])
+    code, out, err = bw.run_post(_payload(repo, 0))
+    assert (code, err) == (0, "")
+    data = json.loads(out)
+    for text in (data["hookSpecificOutput"]["additionalContext"], data["systemMessage"]):
+        assert "== x.py (code-language.sh) ==\ncode-language: NOTICE — x\na.py:2: name: y" in text
+
+
+def test_notice_beside_a_block_also_reaches_the_user(tmp_path, monkeypatch):
+    repo = _post_env(tmp_path, monkeypatch)
+    verdicts = {
+        "a.py": ("ok", b"code-language: NOTICE \xe2\x80\x94 x"),
+        "b.sh": ("finding", b"SC2034 b.sh"),
+    }
+    monkeypatch.setattr(
+        bw,
+        "run_gate",
+        lambda root, rel, gate, deadline: verdicts[rel] if gate == "code-language.sh" else ("ok", b""),
+    )
+    _dirty_calls(repo, monkeypatch, ["a.py", "b.sh"])
+    code, out, err = bw.run_post(_payload(repo, 0))
+    assert code == 2
+    data = json.loads(out)
+    assert "NOTICE — x" in data["systemMessage"]
+    assert "SC2034" not in data["systemMessage"]
+    assert "SC2034" in err and "NOTICE — x" in err
+
+
+def test_plain_note_has_no_system_message(tmp_path, monkeypatch):
+    repo = _post_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        bw,
+        "run_gate",
+        lambda root, rel, gate, deadline: (bw._MISSING, b"no python gate installed")
+        if gate == "ruff-format.sh"
+        else ("ok", b""),
+    )
+    _dirty_calls(repo, monkeypatch, ["a.py"])
+    code, out, _err = bw.run_post(_payload(repo, 0))
+    assert code == 0
+    data = json.loads(out)
+    assert "a.py not checked — no python gate installed" in data["hookSpecificOutput"]["additionalContext"]
+    assert "systemMessage" not in data
+
+
+def test_chatter_on_rc0_stays_silent(tmp_path, monkeypatch):
+    repo = _post_env(tmp_path, monkeypatch)
+    _gate_output(monkeypatch, b"formatted 1 file")
+    _dirty_calls(repo, monkeypatch, ["x.py"])
+    assert bw.run_post(_payload(repo, 0)) == (0, "", "")
+
+
+def test_under_gates_env_matches():
+    cl = load_hook_lib("code_language")
+    assert bw.UNDER_GATES_ENV == cl.UNDER_GATES_ENV == "LIGHTHOUSE_UNDER_BASH_GATES"

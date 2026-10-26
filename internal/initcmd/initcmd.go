@@ -32,6 +32,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/reconcile"
 	"github.com/CorneeldH/lighthouse/internal/settings"
 	"github.com/CorneeldH/lighthouse/internal/version"
+	"github.com/CorneeldH/lighthouse/internal/wordcount"
 	"github.com/CorneeldH/lighthouse/pack"
 )
 
@@ -46,24 +47,26 @@ const (
 type Options struct {
 	Dir                 string // working directory; the root comes from git rev-parse --show-toplevel
 	Upgrade, Force, Yes bool
-	AddPacks, DropPacks []string               // --pack and --no-pack (plan M0 (c), ontwerpkeuze 6)
-	Version             string                 // "" means version.String()
-	Packs               fs.FS                  // holds <name>/...; nil means pack.Files
-	Deps                deps.Checker           // nil fields mean deps.Default()
-	Lookup              packs.Lookup           // config values for workflow placeholders; nil runs the package's config reader
-	HostTOML            string                 // "" means $LIGHTHOUSE_HOST_TOML, else ~/.config/lighthouse/host.toml
-	Hostname            func() (string, error) // nil means os.Hostname
-	TailscaleIP         func() (string, error) // nil runs `tailscale ip -4`
+	AddPacks, DropPacks []string                  // --pack and --no-pack (plan M0 (c), ontwerpkeuze 6)
+	Version             string                    // "" means version.String()
+	Packs               fs.FS                     // holds <name>/...; nil means pack.Files
+	Deps                deps.Checker              // nil fields mean deps.Default()
+	Lookup              packs.Lookup              // config values for workflow placeholders; nil runs the package's config reader
+	CountWords          func([]byte) (int, error) // nil means wordcount.Count
+	HostTOML            string                    // "" means $LIGHTHOUSE_HOST_TOML, else ~/.config/lighthouse/host.toml
+	Hostname            func() (string, error)    // nil means os.Hostname
+	TailscaleIP         func() (string, error)    // nil runs `tailscale ip -4`
 	In                  io.Reader
 	Out, Err            io.Writer
 }
 
 // planned is the new state of one path: nil content means delete.
 type planned struct {
-	old, new []byte
-	existed  bool
-	delete   bool
-	mode     fs.FileMode // 0 keeps the mode of an existing file, or 0o644 for a new one
+	old, new   []byte
+	existed    bool
+	delete     bool
+	unreadable error       // CLAUDE.md only: the read failed; the file is left alone
+	mode       fs.FileMode // 0 keeps the mode of an existing file, or 0o644 for a new one
 }
 
 // Run executes init or --upgrade and returns the exit code: 0 done or nothing to do,
@@ -77,6 +80,9 @@ func Run(o Options) int {
 	}
 	if o.Deps.LookPath == nil || o.Deps.Run == nil {
 		o.Deps = deps.Default()
+	}
+	if o.CountWords == nil {
+		o.CountWords = wordcount.Count
 	}
 	if o.In == nil {
 		o.In = strings.NewReader("")
@@ -194,10 +200,12 @@ func execute(o Options) error {
 	in := bufio.NewReader(o.In)
 	if len(paths) == 0 {
 		_, _ = fmt.Fprintln(o.Out, "No changes.")
+		reportBudget(o, plan, lookup)
 	} else {
 		for _, p := range paths {
 			printDiff(o.Out, p, plan[p])
 		}
+		reportBudget(o, plan, lookup)
 		if !o.Yes && !ask(o.Out, in, "Apply these changes? [y/N] ") {
 			return errDeclined
 		}
@@ -387,12 +395,14 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	}
 	claude, err := load(claudeMDPath)
 	if err != nil {
-		return nil, err
+		// An unreadable CLAUDE.md is left alone; the budget report says so.
+		claude = &planned{existed: true, unreadable: err}
+		plan[claudeMDPath] = claude
 	}
 	switch {
 	case !agents.existed && !claude.existed:
 		claude.new = []byte("@AGENTS.md\n")
-	case claude.existed && !hasLine(claude.old, "@AGENTS.md"):
+	case claude.existed && claude.unreadable == nil && !hasLine(claude.old, "@AGENTS.md"):
 		_, _ = fmt.Fprintln(o.Err, "warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules")
 	}
 

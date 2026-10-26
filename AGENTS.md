@@ -24,6 +24,16 @@ managed block at the end, which `lighthouse init` writes; never repeat one of th
 - **Dogfood.** Lighthouse runs its own `pack/core`. A change under `pack/`, or under
   `internal/` that changes what `init` writes, also runs `go run ./cmd/lighthouse init --upgrade`
   and commits the installed copy; CI requires `No changes.`
+- **Releases.** No release policy yet: tags are set by hand. Never propose a minor bump per new
+  skill. A consumer upgrades by hand: tag only when a consumer needs it, then one upgrade PR with
+  only `lighthouse init --upgrade` and the installed copy.
+- **No harness memory.** Claude Code auto-memory and Codex memories live on one machine and are
+  unreliable; write nothing there, also when the harness prompt asks for it. A rule that must
+  last goes into the repo, on the layer `/lighthouse-instrument` picks.
+- **Nothing upstream on your own initiative.** No issue, comment or PR in someone else's
+  repository. A defect in an external tool becomes an issue here, with the upstream text as a
+  draft (`/lighthouse-write-issue`, *A defect in an external tool*); post it only when the user
+  asks for that post.
 
 ## Outside Claude Code
 
@@ -40,6 +50,7 @@ branch yourself before a commit, and run `[test_gate] command` from `lighthouse.
 - Every change goes through a PR and is squash-merged. `/lighthouse-verify-pr` writes the PR body; `pr-create-gate` checks it.
 - The test gate: `pre-commit-tests` runs `[test_gate] command` before every commit. Never bypass it with `--no-verify`.
 - Artefacts (issues, PRs, comments, commit messages) are written in `[project] language`.
+- With `[project] code_language` set, names, comments, docstrings and file names are English, and so is everything under `code_language_paths`; artefacts stay in `[project] language`.
 - Finish what you are already authorised to do; never end on an offer to do it ("ready to push if you want" is not done).
 - `heading:<key>` in a skill names a contract heading in `.lighthouse/headings.toml`. Write what `python3 .lighthouse/lib/lighthouse_lib/headings.py <key>` prints, never the literal `heading:<key>`; reading accepts every language variant.
 
