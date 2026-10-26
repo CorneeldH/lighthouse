@@ -57,7 +57,7 @@ if [ -n "$RUN_ID" ] && [ "$STAND" = "tool" ]; then
   FLAG="${LIGHTHOUSE_CONTROLLER_STATE:-${XDG_STATE_HOME:-${HOME:-}/.local/state}/lighthouse/controller}/PAUSE"
   if [ -f "$FLAG" ] && [ ! -L "$FLAG" ]; then
     UNTIL=""
-    { IFS= read -r UNTIL; } <"$FLAG" 2>/dev/null || true
+    { IFS= read -r UNTIL; } 2>/dev/null <"$FLAG" || true
     case "$UNTIL" in
       "" | *[!0-9T:+Z-]*) UNTIL="" ;;
       *T*[+-]* | *T*Z) ;;
@@ -98,7 +98,7 @@ fi
 KIND=""
 if [ -f "$ALARM" ] && [ ! -L "$ALARM" ]; then
   LINE=""
-  { IFS= read -r LINE; } <"$ALARM" 2>/dev/null || true
+  { IFS= read -r LINE; } 2>/dev/null <"$ALARM" || true
   set -f
   # shellcheck disable=SC2086 # split into fields on purpose, globbing is off
   set -- $LINE

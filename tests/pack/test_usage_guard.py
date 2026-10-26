@@ -6,6 +6,7 @@ refresh variables, no real `lighthouse` on PATH.
 """
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -80,12 +81,15 @@ ALARMS = {
     "kind dag": lambda env: write_alarm(env, alarm_line(kind="dag")),
     "pct 9x": lambda env: write_alarm(env, alarm_line().replace(" 92 ", " 9x ")),
     "symlink": _symlink_alarm,
+    "unreadable": lambda env: write_alarm(env, alarm_line()).chmod(0o000),
 }
 
 
 @pytest.mark.parametrize("case", ALARMS)
 @pytest.mark.parametrize("stand", STANDS)
 def test_alarm_cases(tmp_path: Path, stand: str, case: str) -> None:
+    if case == "unreadable" and os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 file")
     root = tmp_path / "root"
     install_core(root)
     env = guard_env(tmp_path)
@@ -100,6 +104,27 @@ def test_alarm_cases(tmp_path: Path, stand: str, case: str) -> None:
     if case == VALID:
         assert "92%" in result.stdout
         assert "Tue 14:30" in result.stdout
+
+
+def test_unreadable_pause_flag_is_silent(tmp_path: Path) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 file")
+    root = tmp_path / "root"
+    install_core(root)
+    state = tmp_path / "ctl"
+    state.mkdir()
+    flag = state / "PAUSE"
+    flag.write_text("2099-01-01T00:00:00+02:00\n", encoding="utf-8")
+    flag.chmod(0o000)
+    env = guard_env(
+        tmp_path, LIGHTHOUSE_CONTROLLER_RUN=RUN, LIGHTHOUSE_CONTROLLER_STATE=str(state)
+    )
+
+    result = run_guard(root, "tool", _payload(tmp_path, "tool"), env)
+
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
 
 
 def test_alarm_fields_are_not_globbed(tmp_path: Path) -> None:
@@ -193,11 +218,13 @@ def test_refresh_is_detached(tmp_path: Path) -> None:
     # The payload still reached the lib: the handoff path carries the session id.
     context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "s1.handoff.md" in context
+    # `> trace` creates the file before printf writes: poll for the content.
     deadline = time.monotonic() + 5
-    while not trace.exists() and time.monotonic() < deadline:
+    seen = ""
+    while seen != "usage refresh|1" and time.monotonic() < deadline:
         time.sleep(0.05)
-    time.sleep(0.1)  # the stub writes in one printf; give it time to land
-    assert trace.read_text(encoding="utf-8") == "usage refresh|1"
+        seen = trace.read_text(encoding="utf-8") if trace.exists() else ""
+    assert seen == "usage refresh|1"
 
 
 def test_refresh_only_at_prompt(tmp_path: Path) -> None:
