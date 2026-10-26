@@ -320,6 +320,13 @@ def _alarm_repo(tmp_path: Path, line: str | None = None) -> tuple[Path, dict]:
     return root, env
 
 
+def test_disabled_check_stays_silent_during_a_usage_alarm(tmp_path):
+    root = _fake_repo(tmp_path, "source_dirs = []", src=False, venv=False)
+    write_alarm({"XDG_CACHE_HOME": str(tmp_path / "xdg-cache")}, alarm_line())
+    result = _run(root, env={"XDG_CACHE_HOME": str(tmp_path / "xdg-cache")})
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
 def test_valid_usage_alarm_skips_the_check(tmp_path):
     root, env = _alarm_repo(tmp_path, alarm_line(local="14_30"))
     result = _run(root, env=env)
