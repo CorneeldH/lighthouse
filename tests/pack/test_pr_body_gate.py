@@ -144,7 +144,7 @@ def test_strip_comments_crlf_and_comment():
     assert gate.strip_comments("a\r\n<!-- x\r\ny -->b") == "a\nb"
 
 
-# --- Refs en No issue -----------------------------------------------------
+# --- Refs and No issue ----------------------------------------------------
 
 
 def test_refs_with_reason():
@@ -249,7 +249,7 @@ def test_evidence_too_many_cells():
     )
 
 
-# --- AC-telling -----------------------------------------------------------
+# --- AC count -------------------------------------------------------------
 
 
 def test_count_acs_counts_checkboxes():
@@ -395,7 +395,7 @@ def test_fetch_ac_count_timeout(monkeypatch, tmp_path):
     assert gate.fetch_ac_count(5) == (None, "timeout after 0.3 s")
 
 
-# --- gh pr create vinden, body-bron, scope -----------------------------------
+# --- finding gh pr create, body source, scope -----------------------------
 
 
 def test_finds_create_and_new(tmp_path):
