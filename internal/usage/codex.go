@@ -77,10 +77,15 @@ func (r CodexReader) Read(ctx context.Context) (CodexState, error) {
 		}
 		reasons = append(reasons, home+": "+err.Error())
 	}
-	if len(reasons) == 0 {
-		return CodexState{}, errors.New("no Codex home to read")
+	state, err := readRollout(r.Homes, r.Now())
+	if err == nil {
+		return state, nil
 	}
-	return CodexState{}, errors.New(strings.Join(reasons, "; "))
+	appServer := "no Codex home to read"
+	if len(reasons) > 0 {
+		appServer = strings.Join(reasons, "; ")
+	}
+	return CodexState{}, fmt.Errorf("app-server: %s; rollout-log: %w", appServer, err)
 }
 
 func (r CodexReader) readHome(parent context.Context, home string) (CodexState, error) {

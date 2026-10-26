@@ -300,7 +300,7 @@ func TestCodexReaderAllHomesFail(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	want := "a: app-server returned an answer without result; b: app-server returned an answer without result"
+	want := "app-server: a: app-server returned an answer without result; b: app-server returned an answer without result; rollout-log: no usable rate_limits line in the session logs"
 	if err.Error() != want {
 		t.Errorf("error = %q, want %q", err, want)
 	}
