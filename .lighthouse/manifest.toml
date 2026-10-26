@@ -797,7 +797,7 @@ kind = "file"
 path = ".lighthouse/scripts/codex_usage.py"
 package = "core"
 version = "dev"
-sha256 = "7d364ece2019626c4e14ed075c3f5cf9db33b87d7f6af781485cbfd25b31ebe8"
+sha256 = "91087d8f2e2c2961a565a6a25bec048204bfed5564575ec44ebe67b6a57aec4c"
 
 [[unit]]
 kind = "file"
@@ -846,7 +846,7 @@ kind = "file"
 path = ".lighthouse/scripts/worktree_audit.py"
 package = "core"
 version = "dev"
-sha256 = "0cf8cd1deb55da95fe4d3b1d4dbfca4aa916688b365cec5443f8a03e0ab7efd6"
+sha256 = "1538ce1f342ae9d54381bfbcf539f29ef31b61b0a949d844c7d2f3a4803b8a97"
 
 [[unit]]
 kind = "block"

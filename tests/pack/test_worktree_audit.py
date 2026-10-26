@@ -1,12 +1,12 @@
 """Unit tests for `.lighthouse/scripts/worktree_audit.py`, taken from paia.
 
-De ladder beslist of iets "safe to remove" heet. Test 2 is niet bijvangst: een
-opruimscript zonder bewaakte protect-lijst is gevaarlijker dan handwerk. De 78
-lokale `entire/*`-checkpointrefs en `worktrees/.port-registry` hebben geen PR en
-zijn niet in `main` gemerged — elke regel van de vorm "weg als geen merged PR"
-wist ze.
+The ladder decides whether something is called "safe to remove". Test 2 is not a
+by-catch: a cleanup script without a guarded protect list is more dangerous than
+manual work. The 78 local `entire/*` checkpoint refs and `worktrees/.port-registry`
+have no PR and are not merged into `main` — every rule of the form "gone if no
+merged PR" wipes them.
 
-Alles draait op gefakete collector-output: geen netwerk, geen `gh`, geen echte
+Everything runs on faked collector output: no network, no `gh`, no real
 repo.
 """
 
@@ -27,12 +27,12 @@ SCRIPT = INSTALL_ROOT / ".lighthouse" / "scripts" / "worktree_audit.py"
 _SPEC = importlib.util.spec_from_file_location("worktree_audit", SCRIPT)
 assert _SPEC and _SPEC.loader
 audit = importlib.util.module_from_spec(_SPEC)
-# Registreren VOOR exec_module. `from __future__ import annotations` maakt elke
-# annotatie een string, en @dataclass resolvet die via
-# `sys.modules.get(cls.__module__).__dict__`. Staat de module daar niet, dan is
-# dat None en crasht de klassedefinitie op AttributeError — bij collectie al.
-# tests/unit/test_deploy_drift_sweep.py komt hier niet mee in aanraking: die
-# laadt een NamedTuple, geen dataclass.
+# Register BEFORE exec_module. `from __future__ import annotations` makes every
+# annotation a string, and @dataclass resolves it via
+# `sys.modules.get(cls.__module__).__dict__`. If the module is not there, that
+# is None and the class definition crashes on AttributeError — at collection already.
+# tests/unit/test_deploy_drift_sweep.py does not touch this: it
+# loads a NamedTuple, not a dataclass.
 sys.modules[_SPEC.name] = audit
 _SPEC.loader.exec_module(audit)
 
@@ -53,7 +53,7 @@ def _paia_protection(tmp_path, monkeypatch):
 
 
 def row(name: str, **kwargs: object) -> object:
-    """Een Row met veilige defaults; elke test zet alleen wat hij bedoelt."""
+    """A Row with safe defaults; every test sets only what it means."""
     defaults: dict[str, object] = {
         "local": True,
         "remote": True,
@@ -75,15 +75,15 @@ def always_alive(pid: int) -> bool:
 
 
 class TestSquashMergedBranchIsSafe:
-    """Test 1 — AC 3: merge-detectie via PR-headbranch, niet via --merged.
+    """Test 1 — AC 3: merge detection via PR head branch, not via --merged.
 
-    De REST-kant (merged_at, niet state) zit in TestParsePulls in taak 2:
-    parse_pulls bestaat hier nog niet."""
+    The REST side (merged_at, not state) is in TestParsePulls in task 2:
+    parse_pulls does not exist here yet."""
 
     def test_merged_pr_is_safe_even_though_commits_are_not_in_main(self):
-        # Squash-merge: de originele commits zitten niet in main's historie, dus
-        # `git branch --merged` zou hier "niet gemerged" zeggen. De Row draagt
-        # bewust geen merged-into-main veld.
+        # Squash-merge: the original commits are not in main's history, so
+        # `git branch --merged` would say "not merged" here. The Row deliberately
+        # carries no merged-into-main field.
         verdict = audit.judge(
             row("worktree-issue-713-osor-artefacten", pr_number=721, pr_state="merged"),
             alive=never_alive,
@@ -92,14 +92,14 @@ class TestSquashMergedBranchIsSafe:
         assert verdict.safe is True
 
     def test_row_has_no_merged_into_main_field(self):
-        # De ladder mag nooit op een "zit het in main"-veld kunnen leunen.
+        # The ladder must never be able to lean on a "is it in main" field.
         names = {f.name for f in dataclasses.fields(audit.Row)}
         assert "merged_into_main" not in names
         assert {"pr_state", "pr_number"} <= names
 
 
 class TestProtectListBites:
-    """Test 2 — de protect-lijst. Rood maken door entire/* uit PROTECTED_REFS te halen."""
+    """Test 2 — the protect list. Make it red by removing entire/* from PROTECTED_REFS."""
 
     def test_entire_checkpoint_ref_is_never_safe(self):
         verdict = audit.judge(
@@ -110,7 +110,7 @@ class TestProtectListBites:
         assert verdict.safe is False
 
     def test_entire_session_ref_without_pr_is_never_safe(self):
-        # Zonder de protect-lijst zou dit rang 8 zijn: geen PR, niets uniek.
+        # Without the protect list this would be rank 8: no PR, nothing unique.
         verdict = audit.judge(
             row(
                 "entire/9b8f294-400008", pr_number=None, pr_state=None, unique_files=()
@@ -124,8 +124,8 @@ class TestProtectListBites:
         assert audit.judge(row("main"), alive=never_alive).rank == 1
 
     def test_full_ref_form_is_protected_too(self):
-        # `%(refname:short)` levert vandaag "entire/…", maar een latere parser
-        # die ooit de volle ref doorgeeft mag de guard niet stilletjes missen.
+        # `%(refname:short)` delivers "entire/…" today, but a later parser
+        # that ever passes the full ref must not silently miss the guard.
         verdict = audit.judge(
             row(
                 "refs/heads/entire/checkpoints/v1",
@@ -167,7 +167,7 @@ class TestProtectListBites:
 
 
 class TestDirtyAndUnpushedNeverSafe:
-    """Test 3 — AC 4: vuile tree of ongepushte commits krijgt nooit "safe to remove"."""
+    """Test 3 — AC 4: a dirty tree or unpushed commits never get "safe to remove"."""
 
     def test_dirty_tree_beats_merged_pr(self):
         verdict = audit.judge(
@@ -184,7 +184,7 @@ class TestDirtyAndUnpushedNeverSafe:
         assert verdict.safe is False
 
     def test_unpushed_commits_beat_merged_pr(self):
-        # Het #544-geval: gemerged én toch werk dat nergens anders bestaat.
+        # The #544 case: merged AND yet work that exists nowhere else.
         verdict = audit.judge(
             row("feat-544", unpushed=2, pr_number=544, pr_state="merged"),
             alive=never_alive,
@@ -217,7 +217,7 @@ class TestDirtyAndUnpushedNeverSafe:
 
 
 class TestLockHandling:
-    """Test 4 — AC 5: gelockte worktrees worden gerapporteerd, nooit ontgrendeld."""
+    """Test 4 — AC 5: locked worktrees are reported, never unlocked."""
 
     def test_live_lock_pid_blocks(self):
         verdict = audit.judge(
@@ -278,12 +278,12 @@ class TestLockHandling:
         ],
     )
     def test_assert_readonly_refuses_a_mutating_verb(self, argv):
-        # Ontgrendelen, verwijderen en pushen doet de skill nooit. De weigering
-        # zit in het uitvoerpad zelf, niet in een afspraak. Elke argv is een
-        # eigen parameter zodat een falende regel de boosdoener bij naam noemt.
-        # `--merged` hoort hier ook bij: squash-merge maakt `git branch --merged`
-        # een leugen, dus de enige betrouwbare toets is de PR-headbranch — die
-        # vlag mag de allowlist niet doorlaten, ook al is hij lezend.
+        # The skill never unlocks, removes or pushes. The refusal
+        # sits in the execution path itself, not in an agreement. Every argv is a
+        # parameter of its own so that a failing line names the culprit.
+        # `--merged` belongs here too: squash-merge makes `git branch --merged`
+        # a lie, so the only reliable check is the PR head branch — that
+        # flag must not pass the allowlist, even though it is a reading one.
         with pytest.raises(ValueError, match="read-only"):
             audit._assert_readonly(argv)
 
@@ -301,35 +301,35 @@ class TestLockHandling:
         ],
     )
     def test_assert_readonly_accepts_the_real_read_only_calls(self, argv):
-        # De allowlist mag de eigen productiecode niet blokkeren. Alle acht
-        # argv's die latere taken daadwerkelijk gebruiken, in één parametrize —
-        # geen echte shell-out nodig om dat te bewijzen: `_assert_readonly`
-        # raakt `subprocess` nooit.
+        # The allowlist must not block the own production code. All eight
+        # argvs that later tasks actually use, in one parametrize —
+        # no real shell-out needed to prove that: `_assert_readonly`
+        # never touches `subprocess`.
         try:
             audit._assert_readonly(argv)
         except ValueError:
             pytest.fail(f"_assert_readonly weigerde een legitiem argv: {argv}")
 
 
-# Vorm van een door `claude remote-control --spawn worktree` gemaakte worktree, gemeten
-# in spike R1 (deploy/beelink/remote-surfaces-verification.md, sectie R1).
+# Shape of a worktree made by `claude remote-control --spawn worktree`, measured
+# in spike R1 (deploy/beelink/remote-surfaces-verification.md, section R1).
 RC_BRANCH = "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg"
 RC_PATH = (
     "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/"
     "bridge-cse_013SdshNAm9nZXnDCpDXZdRg"
 )
-# De lock-reden die de sessie-server zet (R1-lock). De pid erin is van de SERVER, niet
-# van de sessie — `_lock_state` mag die dus nooit als sessiesignaal lezen.
+# The lock reason that the session server sets (R1 lock). The pid in it is the SERVER's, not
+# the session's — so `_lock_state` must never read that as a session signal.
 RC_LOCK_REASON = "claude agent bridge-cse_013SdshNAm9nZXnDCpDXZdRg"
 
 
 class TestSessionServerWorktree:
-    """#963: worktrees van de sessie-server krijgen nooit een PR.
+    """#963: worktrees of the session server never get a PR.
 
-    Levend zolang een sessie ze als cwd heeft; daarna opruimbaar zonder eigen commits,
-    nakijken met eigen commits. Hun lock (`claude agent bridge-…`) draagt de pid van de
-    server, niet van de sessie (spike R1) — die pid bewijst dus niets over of er nu
-    iemand werkt.
+    Alive as long as a session has them as cwd; after that cleanable without own commits,
+    to be checked with own commits. Their lock (`claude agent bridge-…`) carries the pid of
+    the server, not of the session (spike R1) — so that pid proves nothing about whether
+    someone is working now.
     """
 
     def _rc_row(self, **kwargs: object) -> object:
@@ -355,9 +355,9 @@ class TestSessionServerWorktree:
         assert verdict.rank == 2
 
     def test_a_non_bridge_lock_still_wins_with_its_own_text(self):
-        # De server-lock-uitzondering geldt alleen voor "claude agent bridge-…"; een
-        # gewone sessielock (bv. van `claude remote-control --spawn session`) blijft
-        # gewoon winnen met zijn eigen pid in de tekst.
+        # The server-lock exception only applies to "claude agent bridge-…"; an
+        # ordinary session lock (e.g. from `claude remote-control --spawn session`) just
+        # keeps winning with its own pid in the text.
         verdict = audit.judge(
             self._rc_row(
                 live=True,
@@ -371,9 +371,9 @@ class TestSessionServerWorktree:
         assert "pid 4242" in verdict.text
 
     def test_bridge_lock_with_a_live_server_pid_and_ended_session_is_safe(self):
-        # Gemeten in R1: de server-pid blijft weken levend na het archiveren van de
-        # sessie. Zonder de server-lock-uitzondering zou dit rang 2 blijven, voor
-        # altijd — de worktree zou nooit opruimbaar heten.
+        # Measured in R1: the server pid stays alive for weeks after archiving the
+        # session. Without the server-lock exception this would stay rank 2, for
+        # ever — the worktree would never be called cleanable.
         verdict = audit.judge(
             self._rc_row(
                 live=False, locked=True, lock_pid=272877, lock_reason=RC_LOCK_REASON
@@ -393,21 +393,21 @@ class TestSessionServerWorktree:
         )
         assert verdict.rank == 2
         assert verdict.text == "running session"
-        # Reviewer minor: de server-lock-aantekening moet zichtbaar blijven, ook
-        # als de live-sessie-trede het verdict overneemt van `_lock_state`.
+        # Reviewer minor: the server-lock note must stay visible, even
+        # if the live-session step takes over the verdict from `_lock_state`.
         assert "server-lock" in verdict.modifiers
 
     def test_cleanup_keeps_a_server_locked_row_out_of_the_command_blocks(self):
-        # Eindreview F1: rang 8 ✅ klopt inhoudelijk, maar de worktree is nog gelockt
-        # door de sessie-server — git weigert `worktree remove` (exit 128) en
-        # `branch -D` (exit 1). Geen plakbaar commando dus, wél een eigen sectie.
+        # Final review F1: rank 8 ✅ is right on content, but the worktree is still locked
+        # by the session server — git refuses `worktree remove` (exit 128) and
+        # `branch -D` (exit 1). So no pasteable command, but its own section.
         rows = [
             self._rc_row(
                 live=False, locked=True, lock_pid=272877, lock_reason=RC_LOCK_REASON
             )
         ]
         out = audit.render_cleanup(rows, alive=always_alive)
-        assert "✅ safe to remove [server-lock]" in out  # het oordeel blijft staan
+        assert "✅ safe to remove [server-lock]" in out  # the verdict stays
         assert "git worktree remove" not in out
         assert "git branch -D" not in out
         assert "Locked by the session server" in out
@@ -440,7 +440,7 @@ class TestSessionServerWorktree:
 
 
 class TestLadderOrderItself:
-    """Test 5 — de volgorde is de veiligheid."""
+    """Test 5 — the order is the safety."""
 
     def test_rank_three_wins_over_rank_six(self):
         verdict = audit.judge(
@@ -497,9 +497,9 @@ class TestLadderOrderItself:
         assert verdict.safe is True
 
     def test_no_pr_without_own_commits_is_named_empty(self):
-        # Een branch die nooit iets committe heeft ook "niets uniek" — maar dan
-        # omdat er niets is, niet omdat het werk in main landde. Zo las
-        # issue-941 (aangemaakt, nooit gecommit) als "inhoud in main".
+        # A branch that never committed anything also has "nothing unique" — but then
+        # because there is nothing, not because the work landed in main. That is how
+        # issue-941 (created, never committed) read as "content in main".
         verdict = audit.judge(
             row(
                 "issue-941-spike",
@@ -529,9 +529,9 @@ class TestLadderOrderItself:
         assert verdict.text == "safe to remove"
 
     def test_failed_content_check_blocks_instead_of_reading_as_clean(self):
-        # unique_files=None betekent "de inhoudstoets is mislukt", niet "niets
-        # uniek". Zonder dit onderscheid zou een gefaalde `run_git` op rang 8
-        # "safe to remove" lezen.
+        # unique_files=None means "the content check failed", not "nothing
+        # unique". Without this distinction a failed `run_git` would read as "safe to remove"
+        # at rank 8.
         verdict = audit.judge(
             row("oud-experiment", pr_number=None, pr_state=None, unique_files=None),
             alive=never_alive,
@@ -540,8 +540,8 @@ class TestLadderOrderItself:
         assert verdict.safe is False
 
     def test_failed_pr_lookup_blocks_instead_of_reading_as_clean(self):
-        # pr_lookup_ok=False betekent "de gh-call zelf faalde", dus pr_state is
-        # geen informatie — niet "geen PR gevonden".
+        # pr_lookup_ok=False means "the gh call itself failed", so pr_state is
+        # no information — not "no PR found".
         verdict = audit.judge(
             row(
                 "oud-experiment",
@@ -556,10 +556,10 @@ class TestLadderOrderItself:
         assert verdict.safe is False
 
     def test_merged_pr_still_wins_over_a_failed_content_check(self):
-        # Pint de volgorde in `_branch_verdict`: de twee rang-7-blokken staan
-        # bewust ná de `merged`-toets, dus een gemergede PR wint nog steeds van
-        # een mislukte inhoudstoets — de PR-status is het sterkere signaal.
-        # Verplaats de rang-7-blokken boven de `merged`-toets en deze test faalt.
+        # Pins the order in `_branch_verdict`: the two rank-7 blocks are
+        # deliberately AFTER the `merged` check, so a merged PR still wins over
+        # a failed content check — the PR state is the stronger signal.
+        # Move the rank-7 blocks above the `merged` check and this test fails.
         verdict = audit.judge(
             row("feat-merged", pr_number=700, pr_state="merged", unique_files=None),
             alive=never_alive,
@@ -569,10 +569,10 @@ class TestLadderOrderItself:
 
 
 class TestDetachedWorktreeVsOrphanDir:
-    """Minor 7 — beide renderen rang 9 ("handmatig"), maar git kent de
-    losgekoppelde worktree wél (hij staat in `worktree list`) en de wees-map
-    niet. De wees-map is degene die iemand per ongeluk `rm -rf`'t — de tekst
-    moet dat onderscheid dragen."""
+    """Minor 7 — both render rank 9 ("manual"), but git does know the
+    detached worktree (it is in `worktree list`) and not the orphan dir.
+    The orphan dir is the one someone `rm -rf`s by accident — the text
+    must carry that distinction."""
 
     def test_detached_worktree_and_orphan_dir_get_different_text(self):
         detached = audit.Row(
@@ -598,7 +598,7 @@ class TestDetachedWorktreeVsOrphanDir:
 
 
 class TestVerdictRender:
-    """Test 6 — Verdict.render() is de enige plek waar modifiers in output landen."""
+    """Test 6 — Verdict.render() is the only place where modifiers land in output."""
 
     def test_render_without_modifiers(self):
         verdict = audit.Verdict(6, "✅", "safe to remove")
@@ -649,8 +649,8 @@ class TestParseWorktrees:
         assert infos[2].lock_pid is None
 
     def test_bridge_lock_reason_is_captured_verbatim(self):
-        # #963: de reden na `locked ` is wat `_lock_state` toetst op het
-        # "claude agent bridge-"-prefix van de sessie-server (spike R1).
+        # #963: the reason after `locked ` is what `_lock_state` tests for the
+        # "claude agent bridge-" prefix of the session server (spike R1).
         porcelain = (
             "worktree /repo/.claude/worktrees/bridge-cse_X\n"
             "HEAD deadbeef\n"
@@ -679,9 +679,9 @@ class TestParseBranches:
 
 class TestParsePulls:
     def test_rest_payload_with_merged_at_counts_as_merged(self):
-        # De REST-val: `state` is hier "closed", niet "merged". Deze test hoort
-        # bij de squash-detectie van AC 3, maar kan pas draaien zodra
-        # parse_pulls bestaat — vandaar hier en niet in taak 1.
+        # The REST trap: `state` is "closed" here, not "merged". This test belongs
+        # with the squash detection of AC 3, but can only run once
+        # parse_pulls exists — hence here and not in task 1.
         pulls = audit.parse_pulls(
             [
                 {
@@ -695,9 +695,9 @@ class TestParsePulls:
         assert pulls["worktree-issue-713-osor-artefacten"].state == "merged"
 
     def test_highest_number_wins_within_the_same_state(self):
-        # De tiebreak binnen dezelfde staat. Zonder de `-number`-term in de
-        # sorteersleutel wint de eerst geziene PR en blijft alles groen — dus
-        # moet er een geval zijn waarin de staten gelijk zijn.
+        # The tiebreak within the same state. Without the `-number` term in the
+        # sort key the first seen PR wins and everything stays green — so there
+        # must be a case in which the states are equal.
         pulls = audit.parse_pulls(
             [
                 {
@@ -779,9 +779,9 @@ class TestParsePortRegistry:
 
 
 class TestProbeBranchRef:
-    """Critical 1 — de kale naam uit `parse_branches(remote=True)` is voor een
-    remote-only branch geen resolvebare ref (de `origin/`-prefix is al
-    gestript). `probe_branch` moet meten tegen `ref`, niet tegen `name`."""
+    """Critical 1 — the bare name from `parse_branches(remote=True)` is for a
+    remote-only branch not a resolvable ref (the `origin/` prefix is already
+    stripped). `probe_branch` must measure against `ref`, not against `name`."""
 
     def test_ref_is_used_never_the_bare_name(self, monkeypatch):
         calls: list[list[str]] = []
@@ -823,7 +823,7 @@ class TestProbeBranchRef:
             "feat-merged", None, Path("/repo"), ref="feat-merged", skip_content=True
         )
 
-        # None, nooit (): een lege tuple zou beweren dat er gemeten is.
+        # None, never (): an empty tuple would claim that it was measured.
         assert probe.unique_files is None
         assert probe.own_commits is None
         assert not any(c[0] == "diff" for c in calls)
@@ -868,7 +868,7 @@ class TestParseSessions:
                     "cwd": "/repo/.claude/worktrees/issue-625",
                     "startedAt": 1787583127360,
                 },
-                {"pid": 999, "cwd": "/repo"},  # geen sessionId: overslaan
+                {"pid": 999, "cwd": "/repo"},  # no sessionId: skip
             ]
         )
         assert set(sessions) == {"/repo/.claude/worktrees/issue-625"}
@@ -965,7 +965,7 @@ class TestBuildRows:
         row_ = next(r for r in self._rows() if r.name == "feat-a")
         assert row_.session_id == "aef024ab-8bef-4939-bba3-24b4e36ea94c"
         assert row_.live is True
-        # De laatste-sessie-kolom komt altijd uit de jsonl-mtime (AC 7).
+        # The last-session column always comes from the jsonl mtime (AC 7).
         assert row_.last_session == 1_700_000.0
 
     def test_dead_session_pid_is_not_live(self):
@@ -988,10 +988,10 @@ class TestBuildRows:
     def test_port_block_lands_on_the_matching_branch_not_on_an_unrelated_one(
         self,
     ):
-        # Important 2: zonder een branch waarvan de naam op een
-        # registry-sleutel matcht (het bestaande "700" in `ports` matcht
-        # alleen het PR-nummer van feat-a, nooit een branchnaam) draait het
-        # hit-pad van `_port_for` nooit.
+        # Important 2: without a branch whose name matches a
+        # registry key (the existing "700" in `ports` only matches the
+        # PR number of feat-a, never a branch name) the
+        # hit path of `_port_for` never runs.
         rows = self._rows(
             local_branches=[
                 "main",
@@ -1029,17 +1029,17 @@ class TestBuildRows:
         assert row_.own_commits == 0
 
     def test_failed_pr_lookup_lands_on_every_branch_row(self):
-        # Orphan- en detached-rijen hebben geen PR-lookup — alleen een
-        # branchrij (local of remote) draagt `pr_lookup_ok`.
+        # Orphan and detached rows have no PR lookup — only a
+        # branch row (local or remote) carries `pr_lookup_ok`.
         rows = self._rows(pr_lookup_ok=False)
         branch_rows = [r for r in rows if r.local or r.remote]
         assert branch_rows
         assert all(r.pr_lookup_ok is False for r in branch_rows)
 
     def test_detached_head_worktree_gets_its_own_row(self):
-        # Minor 6: een worktree zonder branchregel is geen wees (git kent
-        # hem) en staat niet in local/remote — zonder een eigen rij
-        # verdwijnt hij spoorloos uit de tabel.
+        # Minor 6: a worktree without a branch line is no orphan (git knows
+        # it) and is not in local/remote — without a row of its own
+        # it vanishes without a trace from the table.
         rows = self._rows(
             worktrees=[
                 audit.WorktreeInfo("/repo", "main", False, None),
@@ -1120,9 +1120,9 @@ class TestRenderers:
         assert "git branch -D feat-lokaal" in out
 
     def test_cleanup_emits_worktree_remove_before_branch_delete(self):
-        """Belangrijk 1/3: een gepaste worktree-rij moet met `git worktree
-        remove` vóór `git branch -D` in het commandoblok staan — anders
-        weigert git de branch-delete halverwege een paste."""
+        """Important 1/3: a pasted worktree row must be in the command block with `git worktree
+        remove` before `git branch -D` — otherwise git refuses the branch delete
+        halfway through a paste."""
         rows = [
             row(
                 "feat-wt",
@@ -1134,13 +1134,13 @@ class TestRenderers:
         out = audit.render_cleanup(rows, alive=never_alive)
         assert 'git worktree remove "/repo/.claude/worktrees/feat-wt"' in out
         assert out.index("git worktree remove") < out.index("git branch -D feat-wt")
-        # Minor 5: in een eigen ```bash-fence, net als de andere blokken.
+        # Minor 5: in a ```bash fence of its own, like the other blocks.
         assert "```bash\ngit worktree remove" in out
 
     def test_cleanup_fallback_when_nothing_is_safe(self):
-        """Belangrijk 3: de fallback-tekst bij een verdictloze rij is
-        ongetest gebleven; dit pint hem, en dat er geen enkel commando
-        (van geen van de drie soorten) toch verschijnt."""
+        """Important 3: the fallback text for a verdictless row has
+        remained untested; this pins it, and that no command at all
+        (of none of the three kinds) appears anyway."""
         rows = [row("feat-open", pr_number=1, pr_state="open")]
         out = audit.render_cleanup(rows, alive=never_alive)
         assert "Nothing with verdict ✅ — no commands." in out
@@ -1149,10 +1149,10 @@ class TestRenderers:
         assert "git worktree remove" not in out
 
     def test_cleanup_excludes_stale_locked_row_from_every_command_block(self):
-        """Belangrijk 1: een stale lock (dode pid) laat de rij doorzakken
-        naar rang 6/8 — maar de worktree is nog steeds gelockt en git weigert
-        `worktree remove`/`branch -D` erop. Zo'n rij mag in geen van de drie
-        commandoblokken staan, alleen in de eigen sectie."""
+        """Important 1: a stale lock (dead pid) lets the row fall through
+        to rank 6/8 — but the worktree is still locked and git refuses
+        `worktree remove`/`branch -D` on it. Such a row must be in none of the three
+        command blocks, only in its own section."""
         rows = [
             row(
                 "issue-624",
@@ -1164,7 +1164,7 @@ class TestRenderers:
             ),
         ]
         out = audit.render_cleanup(rows, alive=never_alive)
-        assert "| issue-624 |" in out  # blijft in de tabel staan
+        assert "| issue-624 |" in out  # stays in the table
         assert "git worktree remove" not in out
         assert "git branch -D" not in out
         assert "git push origin --delete" not in out
@@ -1176,9 +1176,9 @@ class TestRenderers:
         assert "lock-pid 472155" in out
 
     def test_cleanup_never_offers_an_unlock_command(self):
-        # Aanvullend op test_cleanup_never_emits_unlock_or_kill: specifiek de
-        # nieuwe verweesde-lock-sectie mag ook nooit `git worktree unlock`
-        # aanbieden — naam noemen mag, ontgrendelen nooit.
+        # In addition to test_cleanup_never_emits_unlock_or_kill: specifically the
+        # new orphaned-lock section must also never offer `git worktree unlock` —
+        # naming it is allowed, unlocking never.
         rows = [
             row(
                 "issue-624",
@@ -1193,10 +1193,10 @@ class TestRenderers:
         assert "unlock" not in out
 
     def test_cleanup_lists_port_blocks_after_the_command_blocks(self):
-        """Belangrijk 2: `port_block` werd gemeten en getest maar nooit
-        getoond. Een rij met een poortblok moet zichtbaar zijn, met de
-        expliciete waarschuwing dat het houdende proces hier niet wordt
-        opgezocht (#438)."""
+        """Important 2: `port_block` was measured and tested but never
+        shown. A row with a port block must be visible, with the
+        explicit warning that the holding process is not looked up here
+        (#438)."""
         rows = [
             row("issue-700-poort", pr_number=1, pr_state="open", port_block="20700"),
         ]
@@ -1228,7 +1228,7 @@ class TestRenderers:
         assert "claude --resume" not in out
 
     def test_sessions_view_marks_dead_sessions_as_dood(self):
-        """Minor 7: de dode tak van de LIVE/dood-render was nooit geasserteerd."""
+        """Minor 7: the dead branch of the LIVE/dead render was never asserted."""
         rows = [
             row(
                 "feat-b",
@@ -1243,8 +1243,8 @@ class TestRenderers:
         assert "LIVE" not in out
 
     def test_sessions_view_sorts_newest_last_session_first(self):
-        """Belangrijk 2: pint de sort — omdraaien of weglaten van
-        `pairs.sort(...)` liet alle 8 renderer-tests groen."""
+        """Important 2: pins the sort — reversing or omitting
+        `pairs.sort(...)` left all 8 renderer tests green."""
         rows = [
             row("feat-old", session_id="oldsession", last_session=1_000.0),
             row("feat-new", session_id="newsession", last_session=2_000.0),
@@ -1253,8 +1253,8 @@ class TestRenderers:
         assert out.index("newsession") < out.index("oldsession")
 
     def test_sessions_view_puts_live_session_first_without_timestamp(self):
-        """Minor 6: een live sessie zonder transcript (last_session=None)
-        mag niet onder een oude dode sessie wegzakken."""
+        """Minor 6: a live session without a transcript (last_session=None)
+        must not sink below an old dead session."""
         rows = [
             row(
                 "feat-dead",
@@ -1278,25 +1278,25 @@ class TestRenderers:
         cleanup_out = audit.render_cleanup(rows, alive=never_alive)
         assert "feat-merged-2" in origin_out
         assert "worktrees" not in origin_out
-        # lokaal-only heeft remote=False: hoort niet in de origin-view (die
-        # is remote-only), maar wel gewoon in de volle cleanup-view.
+        # local-only has remote=False: does not belong in the origin view (which
+        # is remote-only), but does belong in the full cleanup view.
         assert "lokaal-only" not in origin_out
         assert "lokaal-only" in cleanup_out
 
     def test_kpi_is_one_line_with_four_numbers(self):
         out = audit.render_kpi(self._mixed_rows(), alive=never_alive).strip()
         assert out.count("\n") == 0
-        # Minor 6: alleen feat-dirty telt mee — main's worktree is de
-        # hoofdcheckout ("/repo"), niet een map onder `.claude/worktrees/`.
+        # Minor 6: only feat-dirty counts — main's worktree is the
+        # main checkout ("/repo"), not a directory under `.claude/worktrees/`.
         assert "worktrees=1" in out
-        assert "safe=3" in out  # feat-merged + feat-merged-2 + lokaal-only
-        assert "remote_branches=5" in out  # de wees-rij en lokaal-only zijn niet remote
+        assert "safe=3" in out  # feat-merged + feat-merged-2 + local-only
+        assert "remote_branches=5" in out  # the orphan row and local-only are not remote
         assert "warn=0" in out
 
     def test_kpi_worktrees_counts_only_paths_under_claude_worktrees(self):
-        """Minor 6: het label zegt "Worktrees onder `.claude/worktrees/`" —
-        de hoofdcheckout mag niet meetellen, ook al draagt hij ook een
-        `worktree`-veld."""
+        """Minor 6: the label says "Worktrees under `.claude/worktrees/`" —
+        the main checkout must not count, even though it also carries a
+        `worktree` field."""
         rows = [
             row("main", worktree="/repo"),
             row(
@@ -1317,10 +1317,10 @@ class TestRenderers:
 
 
 class TestRenderOnly:
-    """#1422: de view voor paia-close-issue — één branch, één opruimen-regel.
+    """#1422: the view for paia-close-issue — one branch, one cleanup line.
 
-    De skill leest alleen `cleanup: yes` plus exit 0 als toestemming om voor
-    te stellen; elke andere uitkomst is nee."""
+    The skill reads only `cleanup: yes` plus exit 0 as permission to
+    propose; every other outcome is no."""
 
     WT = "/repo/.claude/worktrees/issue-9-x"
     ELDERS = Path("/elders")
@@ -1334,7 +1334,7 @@ class TestRenderOnly:
         defaults.update(kwargs)
         return row("issue-9-x", **defaults)
 
-    def test_merged_worktree_is_opruimbaar_in_volgorde(self):
+    def test_merged_worktree_is_cleanable_in_order(self):
         out, ok = audit.render_only(
             [self._merged()], "issue-9-x", cwd=self.ELDERS, alive=never_alive
         )
@@ -1345,7 +1345,7 @@ class TestRenderOnly:
         assert remove < delete
         assert "push origin --delete" not in out
 
-    def test_open_pr_is_niet_opruimbaar(self):
+    def test_open_pr_is_not_cleanable(self):
         out, ok = audit.render_only(
             [self._merged(pr_state="open")],
             "issue-9-x",
@@ -1356,21 +1356,21 @@ class TestRenderOnly:
         assert any(line.startswith("cleanup: no — ") for line in out.splitlines())
         assert "git " not in out
 
-    def test_dirty_tree_is_niet_opruimbaar(self):
+    def test_dirty_tree_is_not_cleanable(self):
         out, ok = audit.render_only(
             [self._merged(dirty=True)], "issue-9-x", cwd=self.ELDERS, alive=never_alive
         )
         assert ok is False
         assert "git " not in out
 
-    def test_onbekende_branch(self):
+    def test_unknown_branch(self):
         out, ok = audit.render_only(
             [self._merged()], "weg", cwd=self.ELDERS, alive=never_alive
         )
         assert ok is False
         assert "cleanup: no — branch weg not found" in out
 
-    def test_server_lock_is_niet_opruimbaar(self):
+    def test_server_lock_is_not_cleanable(self):
         locked = self._merged(locked=True, lock_reason="claude agent bridge-x")
         out, ok = audit.render_only(
             [locked], "issue-9-x", cwd=self.ELDERS, alive=never_alive
@@ -1379,7 +1379,7 @@ class TestRenderOnly:
         assert "(locked)" in out
         assert "git " not in out
 
-    def test_eigen_cwd_in_submap(self):
+    def test_own_cwd_in_subdirectory(self):
         out, ok = audit.render_only(
             [self._merged()],
             "issue-9-x",
@@ -1390,7 +1390,7 @@ class TestRenderOnly:
         assert f"own cwd is in {self.WT}" in out
         assert "git " not in out
 
-    def test_alleen_lokale_branch(self):
+    def test_local_only_branch(self):
         out, ok = audit.render_only(
             [row("issue-9-x", remote=False)],
             "issue-9-x",
@@ -1401,10 +1401,10 @@ class TestRenderOnly:
         assert "git branch -D issue-9-x" in out
         assert "worktree remove" not in out
 
-    def test_dubbele_naam_is_niet_opruimbaar(self):
-        # build_rows geeft een losgekoppelde worktree de mapnaam als naam; die
-        # kan gelijk zijn aan een branch. match[0] zou dan de branchrij nemen
-        # en een lopende sessie in de worktree missen.
+    def test_duplicate_name_is_not_cleanable(self):
+        # build_rows gives a detached worktree the directory name as name; that
+        # can be equal to a branch. match[0] would then take the branch row
+        # and miss a running session in the worktree.
         branch = row("issue-9-x", remote=False)
         detached = row(
             "issue-9-x", local=False, remote=False, worktree=self.WT, live=True
@@ -1427,7 +1427,7 @@ class TestRenderOnly:
 
 
 class TestRenderIssue:
-    """#32: `--issue <nr>` geeft per branch van een issue een blok met `cleanup:`."""
+    """#32: `--issue <nr>` gives per branch of an issue a block with `cleanup:`."""
 
     WT = "/repo/.claude/worktrees/issue-9-x"
     ELDERS = Path("/elders")
@@ -1626,10 +1626,10 @@ class TestRenderIssue:
 
 
 class TestCollectFailsLoudOnGitFailure:
-    """Minor 4 — `run_git(...) or ""` verstopte een mislukte git-call als een
-    lege, schone wereld: dan vuurt de rang-3-vuile-tree-guard voor niets meer.
-    Een tool die de repo niet kan lezen moet dat zeggen (SystemExit met de
-    naam van het mislukte commando), niet leeg en "clean" ogen."""
+    """Minor 4 — `run_git(...) or ""` hid a failed git call as an
+    empty, clean world: then the rank-3 dirty-tree guard no longer fires.
+    A tool that cannot read the repo must say so (SystemExit with the
+    name of the failed command), not look empty and "clean"."""
 
     def test_worktree_list_failure_is_reported_by_name(self, monkeypatch):
         def fake_run_git(args, *, cwd=None):
@@ -1669,17 +1669,17 @@ class TestCollectFailsLoudOnGitFailure:
 
 
 class TestSquashArtefactDoesNotMaskContent:
-    """Rang 4 mat "commits die nergens op een remote staan". Bij een squash-merge
-    is dat per constructie de hele branchhistorie: GitHub gooit de losse commits
-    weg en zet één nieuwe commit op main. Op deze repo maakte dat 9 van de 14
-    ⚠️-rijen vals — en omdat rang 4 bóven de inhoudstoets staat, werden die
-    branches nooit op inhoud gemeten.
+    """Rank 4 measured "commits that are on no remote". With a squash-merge
+    that is by construction the whole branch history: GitHub throws the separate commits
+    away and puts one new commit on main. On this repo that made 9 of the 14
+    ⚠️ rows false — and because rank 4 is ABOVE the content check, those
+    branches were never measured on content.
 
-    De maat wordt daarom: is er een commit ná de merge? Zo nee, dan is de
-    ongepushte telling het artefact en niet het signaal.
+    The measure therefore becomes: is there a commit AFTER the merge? If not, the
+    unpushed count is the artefact and not the signal.
     """
 
-    MERGED = 1_754_040_000.0  # merge-moment van de PR
+    MERGED = 1_754_040_000.0  # merge moment of the PR
 
     def test_tip_before_merge_is_the_squash_artefact_not_unpushed_work(self):
         verdict = audit.judge(
@@ -1698,7 +1698,7 @@ class TestSquashArtefactDoesNotMaskContent:
         assert "squash-merge" in verdict.modifiers
 
     def test_commit_after_the_merge_still_blocks(self):
-        # Het #544-geval blijft staan: ná de merge doorgecommit is echt werk.
+        # The #544 case stays: committing AFTER the merge is real work.
         verdict = audit.judge(
             row(
                 "feat-544",
@@ -1714,7 +1714,7 @@ class TestSquashArtefactDoesNotMaskContent:
         assert verdict.safe is False
 
     def test_missing_merge_timestamp_keeps_the_block(self):
-        # Onbekend is nooit schoon — dezelfde norm als bij de inhoudstoets.
+        # Unknown is never clean — the same norm as with the content check.
         verdict = audit.judge(
             row(
                 "feat-544",
@@ -1745,8 +1745,8 @@ class TestSquashArtefactDoesNotMaskContent:
         assert verdict.safe is False
 
     def test_open_pr_is_never_excused_by_timestamps(self):
-        # Alleen een gemergede PR kan het artefact verklaren. Bij een open PR
-        # betekent een ongepushte commit nog steeds ongepusht.
+        # Only a merged PR can explain the artefact. With an open PR
+        # an unpushed commit still means unpushed.
         verdict = audit.judge(
             row(
                 "feat-open",
@@ -1762,7 +1762,7 @@ class TestSquashArtefactDoesNotMaskContent:
         assert verdict.safe is False
 
     def test_dirty_tree_still_beats_the_squash_excuse(self):
-        # Rang 3 blijft boven rang 4; ongecommit werk wint van elke verklaring.
+        # Rank 3 stays above rank 4; uncommitted work wins over any explanation.
         verdict = audit.judge(
             row(
                 "feat-vuil",
@@ -1781,15 +1781,15 @@ class TestSquashArtefactDoesNotMaskContent:
 
 
 class TestOrphanRootedBranchIsNamedNotGuessed:
-    """Testlekkage kwam binnen als "N local commits — check", precies zoals
-    echt ongepusht werk. `tests/integration/test_pre_push_checkpoint_scan.sh`
-    documenteert de oorzaak: als `mktemp -d` faalt (sandbox), landen zijn
-    `git checkout --orphan`-fixtures in de ECHTE repo. Zo ontstonden
-    `branch-dirty` en `branch-allowlisted`.
+    """Test leakage came in as "N local commits — check", exactly like
+    really unpushed work. `tests/integration/test_pre_push_checkpoint_scan.sh`
+    documents the cause: if `mktemp -d` fails (sandbox), its
+    `git checkout --orphan` fixtures land in the REAL repo. That is how
+    `branch-dirty` and `branch-allowlisted` came about.
 
-    De handtekening is scherp: één commit die zijn eigen root is. Pre-rewrite
-    branches als `v2.1-mac-thin-client` hebben óók een losse historie maar wel
-    ouders, dus die vallen er niet onder.
+    The signature is sharp: one commit that is its own root. Pre-rewrite
+    branches such as `v2.1-mac-thin-client` also have a separate history but do have
+    parents, so they do not fall under it.
     """
 
     def test_parentless_local_branch_is_named_as_leakage(self):
@@ -1809,8 +1809,8 @@ class TestOrphanRootedBranchIsNamedNotGuessed:
         assert "test leakage" in verdict.text
 
     def test_leakage_is_never_safe(self):
-        # Het blijft handwerk. Een heuristiek mag nooit zelf "safe to remove" zeggen —
-        # dat is precies de non-negotiable van deze skill.
+        # It stays manual work. A heuristic must never say "safe to remove" by itself —
+        # that is exactly the non-negotiable of this skill.
         verdict = audit.judge(
             row("branch-dirty", local=True, remote=False, unpushed=1, root_commit=True),
             alive=never_alive,
@@ -1833,7 +1833,7 @@ class TestOrphanRootedBranchIsNamedNotGuessed:
         assert "27" in verdict.text
 
     def test_a_pushed_orphan_branch_is_not_leakage(self):
-        # Op origin gepusht is geen ongelukje meer — dan is het bedoeld werk.
+        # Pushed to origin is no accident any more — then it is intended work.
         verdict = audit.judge(
             row("gh-pages", local=True, remote=True, unpushed=1, root_commit=True),
             alive=never_alive,
@@ -1864,14 +1864,14 @@ class TestOrphanRootedBranchIsNamedNotGuessed:
 
 
 class TestEpochParsing:
-    """De tijdzoneval die de squash-toets zou omkeren."""
+    """The time zone trap that would flip the squash check."""
 
     def test_github_utc_iso_becomes_epoch(self):
         assert audit._epoch("2026-08-02T08:08:31Z") == 1_785_658_111.0
 
     def test_a_local_offset_is_honoured_not_ignored(self):
-        # 08:24+02:00 is 06:24Z — VÓÓR 08:08Z, niet erna. Precies andersom dan
-        # een tekstvergelijking leest.
+        # 08:24+02:00 is 06:24Z — BEFORE 08:08Z, not after. Exactly the other way round than
+        # a text comparison reads.
         assert audit._epoch("2026-08-02T08:24:00+02:00") < audit._epoch(
             "2026-08-02T08:08:31Z"
         )
@@ -1884,7 +1884,7 @@ class TestEpochParsing:
 
 
 class TestTipShape:
-    """`rev-list -1 --timestamp --parents` levert `<epoch> <sha> [<parent>...]`."""
+    """`rev-list -1 --timestamp --parents` delivers `<epoch> <sha> [<parent>...]`."""
 
     def _stub(self, monkeypatch, output):
         monkeypatch.setattr(audit, "run_git", lambda *a, **k: output)
@@ -1940,7 +1940,7 @@ class TestPullInfoCarriesMergedAt:
         assert pulls["spike"].merged_at is None
 
 
-def test_repo_slug_leest_lighthouse_en_geen_origin(tmp_path, monkeypatch) -> None:
+def test_repo_slug_reads_lighthouse_and_not_origin(tmp_path, monkeypatch) -> None:
     config = tmp_path / "other.toml"
     config.write_text('[forge]\nkind = "github"\nrepo = "Other/repo"\n', encoding="utf-8")
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
