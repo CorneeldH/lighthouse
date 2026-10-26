@@ -239,6 +239,18 @@ def test_controller_module_speaks_in_a_run(tmp_path):
     assert decide(other, tmp_path, ug.Options(True, False)).output == {"from": "resume"}
 
 
+def test_module_may_define_a_dataclass(tmp_path):
+    write_module(tmp_path, "resume", (
+        "from __future__ import annotations\n"
+        "from dataclasses import dataclass\n\n"
+        "@dataclass(frozen=True)\n"
+        "class Step:\n    text: str\n\n"
+        "def speak(ctx, stand):\n    return {'decision': 'block', 'reason': Step('D').text}\n"
+    ))
+    c = ctx("tool", {"session_id": "s1"})
+    assert decide(c, tmp_path, ug.Options(True, False)).output == {"decision": "block", "reason": "D"}
+
+
 def test_subagent_never_loads_a_module(tmp_path):
     write_module(tmp_path, "resume", FAILING)
     write_module(tmp_path, "controller", FAILING)
@@ -342,6 +354,16 @@ def test_pause_needs_option_tool_and_main_thread(tmp_path):
 
 def test_failing_pause_falls_through_to_alarm(tmp_path, capsys):
     write_module(tmp_path, "controller", "def pause(ctx):\n    raise RuntimeError('x')\n"
+                 "def speak(ctx, stand):\n    return {'decision': 'block', 'reason': 'A'}\n")
+    c = pause_ctx(tmp_path, alarm=ALARM)
+    assert decide(c, tmp_path, ug.Options(False, True)).output == {"decision": "block", "reason": "A"}
+    assert not ug.pause_key(c).exists()
+    assert capsys.readouterr().err.startswith("usage-guard: ")
+
+
+@pytest.mark.parametrize("ret", ["['x']", "None", "{'x': object()}"])
+def test_bad_pause_output_falls_through_to_alarm(tmp_path, capsys, ret):
+    write_module(tmp_path, "controller", f"def pause(ctx):\n    return {ret}\n"
                  "def speak(ctx, stand):\n    return {'decision': 'block', 'reason': 'A'}\n")
     c = pause_ctx(tmp_path, alarm=ALARM)
     assert decide(c, tmp_path, ug.Options(False, True)).output == {"decision": "block", "reason": "A"}

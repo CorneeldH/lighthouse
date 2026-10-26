@@ -269,8 +269,22 @@ def load_module(hooks_dir: Path, name: str) -> ModuleType:
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Registered before it runs: `dataclasses` looks the module up in `sys.modules`.
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(spec.name, None)
+        raise
     return module
+
+
+def _checked(output: object) -> dict:
+    """The one JSON object a speaker returns; anything else counts as a failure."""
+    if not isinstance(output, dict):
+        raise TypeError(f"speaker returned {type(output).__name__}, not a dict")
+    json.dumps(output)  # what main prints; a TypeError here counts as a failure
+    return output
 
 
 def _pause_due(ctx: Context) -> bool:
@@ -322,7 +336,7 @@ def decide(ctx: Context, hooks_dir: Path, options: Callable[[], Options]) -> Dec
             _warn(f"pause: cannot write keys in {state_dir()}: {exc}")
         else:
             try:
-                output = load_module(hooks_dir, "controller").pause(ctx)
+                output = _checked(load_module(hooks_dir, "controller").pause(ctx))
                 with open(pause_key(ctx), "w"):
                     pass
                 return Decision(output, None)
@@ -374,9 +388,7 @@ def decide(ctx: Context, hooks_dir: Path, options: Callable[[], Options]) -> Dec
             output = load_module(hooks_dir, "resume").speak(ctx, stand)
         else:
             output = base_speak(ctx, stand)
-        if not isinstance(output, dict):
-            raise TypeError(f"speaker returned {type(output).__name__}, not a dict")
-        json.dumps(output)  # what main prints; a TypeError here counts as a failure
+        output = _checked(output)
     except Exception as exc:
         if claimed is not None:
             try:
