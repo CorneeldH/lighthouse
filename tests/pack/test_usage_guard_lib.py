@@ -269,6 +269,30 @@ def test_unwritable_state_dir_is_silent(tmp_path, monkeypatch, capsys):
             assert err.count("\n") == 1
 
 
+def test_unwritable_state_dir_silences_stop(tmp_path, monkeypatch, capsys):
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    monkeypatch.setenv("XDG_STATE_HOME", str(blocker))
+    assert decide(ctx("stop", {"session_id": "s1"}), tmp_path) == ug.Decision(None, None)
+    err = capsys.readouterr().err
+    assert err.startswith("usage-guard: ")
+    assert err.count("\n") == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    ["def speak(ctx, stand):\n    return {'x': object()}\n",
+     "def speak(ctx, stand):\n    return ['block']\n",
+     "def speak(ctx, stand):\n    return None\n"],
+)
+def test_bad_module_output_releases_key(tmp_path, capsys, body):
+    write_module(tmp_path, "resume", body)
+    c = ctx("tool", {"session_id": "s1"})
+    assert decide(c, tmp_path, ug.Options(True, False)) == ug.Decision(None, None)
+    assert not ug.alarm_key(c, "tool").exists()
+    assert capsys.readouterr().err.startswith("usage-guard: ")
+
+
 @pytest.mark.parametrize("stand", ["prompt", "tool", "subagent", "stop"])
 def test_no_alarm_no_pause(tmp_path, stand):
     c = ctx(stand, {"session_id": "s1", "agent_id": "a1"}, alarm=None, run_id=RUN)

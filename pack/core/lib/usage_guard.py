@@ -335,8 +335,15 @@ def decide(ctx: Context, hooks_dir: Path, options: Callable[[], Options]) -> Dec
 
     # 3. Stop speaks once per window, and never within a stop hook.
     stand = effective_stand(ctx)
-    if stand == "stop" and (ctx.stop_hook_active or alarm_key(ctx, "stop").exists()):
-        return SILENT
+    if stand == "stop":
+        if ctx.stop_hook_active or alarm_key(ctx, "stop").exists():
+            return SILENT
+        # Without a key dir the stop key never lands: stop would block every turn.
+        try:
+            state_dir().mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            _warn(f"cannot write keys in {state_dir()}: {exc}")
+            return SILENT
 
     # 4. Claim the key before speaking; a parallel call of the same session spoke.
     claimed: Optional[Path] = None
@@ -367,6 +374,9 @@ def decide(ctx: Context, hooks_dir: Path, options: Callable[[], Options]) -> Dec
             output = load_module(hooks_dir, "resume").speak(ctx, stand)
         else:
             output = base_speak(ctx, stand)
+        if not isinstance(output, dict):
+            raise TypeError(f"speaker returned {type(output).__name__}, not a dict")
+        json.dumps(output)  # what main prints; a TypeError here counts as a failure
     except Exception as exc:
         if claimed is not None:
             try:
