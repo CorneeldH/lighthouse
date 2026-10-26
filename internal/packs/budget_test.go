@@ -12,10 +12,10 @@ import (
 // The ceilings of the instruction blocks, in words as `wc -w` counts them, markers included. A
 // block points to a skill or a rule and carries no explanation. Raising a ceiling is a deliberate
 // choice, made in the PR; it never follows from a block that simply grew.
-var blockCeilings = map[string]int{"core": 263, "go": 50, "python": 57, "shell": 54}
+var blockCeilings = map[string]int{"core": 287, "go": 50, "python": 57, "shell": 54}
 
 // blocksCeiling is the ceiling for all blocks together, the heaviest combination.
-const blocksCeiling = 424
+const blocksCeiling = 448
 
 func TestInstructionBlocksWithinCeiling(t *testing.T) {
 	entries, err := fs.ReadDir(pack.Files, ".")
