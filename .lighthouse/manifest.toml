@@ -790,7 +790,7 @@ kind = "file"
 path = ".lighthouse/scripts/check-instructions.sh"
 package = "core"
 version = "dev"
-sha256 = "8f4b9eb9c916e5f802a4b48a84cf4623a4c4f0aabad7333e90dbacb32151e949"
+sha256 = "d1e6d9e187455876572bc7d9fa39253de95e72d4861e42eb6b329e1c9c68a5ab"
 
 [[unit]]
 kind = "file"

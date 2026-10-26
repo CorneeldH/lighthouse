@@ -48,7 +48,7 @@ def test_bounding_clause_matches_check_4():
     """The form the skill prescribes must be one check 4 (`has_exclusion_clause`) accepts."""
     clause = re.search(r"Form: `([^`]+)`", SKILL)
     assert clause, "no Form: line for the bounding clause"
-    words = re.search(r'for woord in (.*?); do', SCRIPT, re.DOTALL).group(1)
+    words = re.search(r'for word in (.*?); do', SCRIPT, re.DOTALL).group(1)
     accepted = re.findall(r'"([^"]+)"', words)
     assert any(w in clause.group(1).lower() for w in accepted), (clause.group(1), accepted)
 
