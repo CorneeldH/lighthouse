@@ -91,7 +91,7 @@
 
 - [ ] **Stap 4: Implementeer `ParseHeader` in `header.go`.** De varianten laadt een `sync.OnceValue` uit `pack.Files` (`core/headings.toml`, decode in `map[string]map[string]string`, alleen sleutels `kind_<soort>`); een onleesbaar embedded bestand is een programmeerfout: `panic`. Splits op `\n` na `strings.ReplaceAll(body, "\r\n", "\n")`. Witruimte na de variant: `unicode.IsSpace`. De legacy-tabellen als twee package-level maps, letterlijk overgenomen uit `protocol.py`.
 
-- [ ] **Stap 5:** Draai `go test ./internal/protocol/ -run 'ParseHeader|Variants'` en de Python-test uit stap 2. Verwacht: beide PASS. Mutatiecheck (lighthouse-testing): haal de langste-eerst-sortering weg of de grensregel na de variant, en zie `prefix-only` falen.
+- [ ] **Stap 5:** Draai `go test ./internal/protocol/ -run 'ParseHeader|Variants'` en de Python-test uit stap 2. Verwacht: beide PASS. Mutatiecheck (lighthouse-testing): haal de grensregel na de variant weg en zie `prefix-only` falen. De langste-eerst-sortering heeft geen mutatiecheck: in `core/headings.toml` is geen variant een voorvoegsel van een andere, dus weghalen verandert geen uitkomst.
 
 - [ ] **Stap 6: Commit** — `feat(protocol): Go-parser van de 🤖-kop met gedeelde fixture`
 
@@ -155,9 +155,11 @@
   ```
   ~~~~
 
+  Plus een tweede geval in `TestQuestionText`: dezelfde invoer met `\r\n` als regeleinde geeft dezelfde uitvoer (`_vraagtekst` splitst met `splitlines`).
+
 - [ ] **Stap 2:** `go test ./internal/protocol/ -run 'Classify|QuestionText'`. Verwacht: FAIL (ongedefinieerd).
 
-- [ ] **Stap 3: Implementeer.** `Classify` volgt `_laatste` + `staat_van`: loop over de comments; een geparste kop met soort `rebased` sla je over; een andere geparste kop wordt de laatste en leegt `after`; een comment zonder geparste kop gaat in `after` als er al een laatste is. Daarna: vraag → `StateQuestion` tenzij een comment in `after` `Rockets == 0 && IsAnswer(body)` heeft; teruggegeven → `StateReturned`; anders `StateOther`. `QuestionText` gebruikt het fence-patroon `^(`{3,})bash$` van `FENCE_OPEN`; de sluitregel is de fence zelf.
+- [ ] **Stap 3: Implementeer.** `Classify` volgt `_laatste` + `staat_van`: loop over de comments; een geparste kop met soort `rebased` sla je over; een andere geparste kop wordt de laatste en leegt `after`; een comment zonder geparste kop gaat in `after` als er al een laatste is. Daarna: vraag → `StateQuestion` tenzij een comment in `after` `Rockets == 0 && IsAnswer(body)` heeft; teruggegeven → `StateReturned`; anders `StateOther`. `QuestionText` normaliseert eerst `\r\n` naar `\n`, net als `ParseHeader`, en gebruikt het fence-patroon `^(`{3,})bash$` van `FENCE_OPEN`; de sluitregel is de fence zelf.
 
 - [ ] **Stap 4:** `go test ./internal/protocol/`. Verwacht: PASS. Mutatiecheck: laat `Rockets == 0` weg en zie "antwoord met raket" falen; laat de `rebased`-skip weg en zie "herbaseerd na de vraag" falen.
 
@@ -228,9 +230,10 @@
 **Files:**
 - Create: `internal/server/forge.go`, `internal/server/forge_test.go`
 - Modify: `internal/server/server.go:22` (signatuur `New`), `internal/server/server_test.go`, `internal/server/host_test.go` (aanroepen van `New`)
+- Modify: `internal/cli/serve.go:67` (de enige productie-aanroep van `New`; tijdelijk `server.New(web.FS(), forge.New("", ""))`, zodat de test-gate bij de commit compileert; taak 6 vervangt dit)
 
 **Interfaces:**
-- Consumes: `overview.Source`, `overview.Build`, `overview.Question`, `overview.Returned`, `forge.ErrNotConfigured`.
+- Consumes: `overview.Source`, `overview.Build`, `overview.Question`, `overview.Returned`, `forge.ErrNotConfigured`, `forge.New` (alleen in `serve.go`).
 - Produces: `func New(site fs.FS, src overview.Source) http.Handler`. Routes `GET /api/questions` (operation `get-questions`, body `{"questions": [...]}`) en `GET /api/returned` (operation `get-returned`, body `{"returned": [...]}`).
 
 - [ ] **Stap 1: Tests** in `forge_test.go`, met de `get`-helper uit `server_test.go` en een nep-`Source`:
@@ -244,7 +247,7 @@
 
 - [ ] **Stap 3: Implementeer.** `New` registreert de twee routes via een functie in `forge.go`; elke handler roept `overview.Build` aan. Foutvertaling in één helper: `errors.Is(err, forge.ErrNotConfigured)` → `huma.Error503ServiceUnavailable(err.Error())`, anders `huma.Error502BadGateway(err.Error())`.
 
-- [ ] **Stap 4:** `go test -race ./internal/server/`. Verwacht: PASS. Mutatiecheck: geef bij een fout `200` met een lege lijst en zie beide fouttests falen.
+- [ ] **Stap 4:** Pas `internal/cli/serve.go:67` aan zoals onder *Files*. Draai `go build ./... && go vet ./... && go test -race ./internal/server/ ./internal/cli/`. Verwacht: PASS. Mutatiecheck: geef bij een fout `200` met een lege lijst en zie beide fouttests falen.
 
 - [ ] **Stap 5: Commit** — `feat(server): GET /api/questions en /api/returned`
 
@@ -281,6 +284,6 @@
 
 Geen code; dit bewijs gaat in de PR (laatste acceptatiecriterium).
 
-- [ ] **Stap 1:** Start `GH_TOKEN=$(gh auth token) go run ./cmd/lighthouse serve --repo CorneeldH/personal_ai_agent --addr 127.0.0.1:8128 --db <scratchpad>/l.db`.
-- [ ] **Stap 2:** In dezelfde minuut: `curl -s 127.0.0.1:8128/api/questions | jq`, `curl -s 127.0.0.1:8128/api/returned | jq`, en in de paia-checkout het overzicht (`scripts/controller_state.py overzicht --input <bundle>` op een verse bundel; zie de USAGE van dat script en van `controller_gather.py`).
-- [ ] **Stap 3:** Zet de drie uitvoeren naast elkaar in de PR-body, met de tijd. Elk verschil krijgt één regel uitleg. Te verwachten: paia toont alleen issues uit zijn bundel (board en controller), lighthouse elk open issue met een `🤖`-kop; meer issues bij lighthouse is dan geen fout, een ontbrekend issue wel.
+- [ ] **Stap 1:** Start op de achtergrond (de server stopt niet vanzelf): `GH_TOKEN=$(gh auth token) go run ./cmd/lighthouse serve --repo CorneeldH/personal_ai_agent --addr 127.0.0.1:8128 --db <scratchpad>/l.db`. `gh` buiten de sandbox; een leeg token geeft in stap 2 een 503 en daarmee een falende `jq -e`.
+- [ ] **Stap 2:** Zo dicht mogelijk na elkaar, met begin- en eindtijd per opname: `curl -s --fail-with-body 127.0.0.1:8128/api/questions | jq -e '.questions | type == "array"' >/dev/null` en daarna dezelfde `curl … | jq` voor de uitvoer; idem voor `/api/returned` met `.returned`. Faalt `curl` of `jq -e`, dan is er geen bewijs: stop en meld de fout, plak nooit een foutantwoord. Daarna in de paia-checkout het overzicht (`scripts/controller_gather.py bundle --zonder-usage` voor een verse bundel, dan `scripts/controller_state.py overzicht --input <bundle>`; zie de USAGE van beide scripts).
+- [ ] **Stap 3:** Zet de drie uitvoeren naast elkaar in de PR-body, met de tijden. Elk verschil krijgt één regel uitleg. Te verwachten: paia toont alleen issues uit zijn bundel (board en controller), lighthouse elk open issue met een `🤖`-kop; meer issues bij lighthouse is dan geen fout, een ontbrekend issue wel.
