@@ -405,6 +405,49 @@ def test_handoff_post_artefact_is_in_step_3():
         )
 
 
+def test_handoff_pause_form():
+    for body in skill("handoff"):
+        flat = " ".join(body.split())
+        for phrase in (
+            "## Pause form: /lighthouse-handoff <path>",
+            "an absolute path that ends in `.handoff.md`",
+            "mkdir -p",
+            "mv",
+            "outside the sandbox",
+            "also in the chat",
+            "what is uncommitted",
+            "the resume moment",
+            "job ID",
+            "Without a path the skill works as described below.",
+        ):
+            assert phrase in flat, phrase
+
+
+def test_handoff_pause_form_skips_phase_side_effects():
+    for body in skill("handoff"):
+        assert body.index("## Pause form") < body.index("## Workflow")
+        section = body[body.index("## Pause form") : body.index("## Workflow")]
+        flat = " ".join(section.split())
+        for phrase in (
+            "post_artefact.py",
+            "no push",
+            "Controller mode",
+            "no question to the user",
+            "/clear",
+            "LIGHTHOUSE_CONTROLLER_RUN",
+        ):
+            assert phrase in flat, phrase
+
+
+def test_guard_names_the_pause_form():
+    lib = (CORE / "lib/usage_guard.py").read_text(encoding="utf-8")
+    resume = (CORE / "hooks/usage-guard/resume.py").read_text(encoding="utf-8")
+    assert "/lighthouse-handoff " in lib
+    # resume.py builds on base_speak (refactor 00c4090), so its reasons carry the same call
+    assert "base_speak(" in resume
+    assert ".handoff.md" in lib
+
+
 def test_handoff_knows_lane_native():
     for body in skill("handoff"):
         assert "lane: native" in body
