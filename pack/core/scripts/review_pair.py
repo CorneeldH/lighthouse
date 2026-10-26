@@ -1,33 +1,33 @@
 """The paired round-1 shadow run of the adversarial plan and spec review.
 
-In ronde 1 draait naast Codex een schaduwreviewer uit dezelfde modelfamilie, op
-dezelfde SHA en met dezelfde prompt. De hoofdthread beslist blind op een A/B-tabel;
-pas `merge` ontblindt. Twee subcommando's, aangeroepen door de operator van
-`plan-adversarial-review` of `spec-adversarial-review`:
+In round 1 a shadow reviewer from the same model family runs alongside Codex, on
+the same SHA and with the same prompt. The main thread decides blind on an A/B table;
+only `merge` unblinds. Two subcommands, called by the operator of
+`plan-adversarial-review` or `spec-adversarial-review`:
 
     review_pair.py blind <ATTEMPT_DIR>
-        Controleert eerst dat de werkboom sinds `start` niet veranderd is (`HEAD` is
-        `reviewed_sha` uit `attempt.json`, `git status --porcelain` leeg), dan dat
-        `round-1.codex.json` en `round-1.fallback.json` kloppen met het
-        `findings.schema.json` van de skill voor `kind`. Lost één keer uit wie A is
-        (`pair.json`, daarna hergebruikt) en schrijft en print `round-1.blind.md`:
-        de bevindingen van beide als `A-f<i>`/`B-f<i>`, zonder bron.
+        First checks that the work tree has not changed since `start` (`HEAD` is
+        `reviewed_sha` from `attempt.json`, `git status --porcelain` empty), then that
+        `round-1.codex.json` and `round-1.fallback.json` match the
+        `findings.schema.json` of the skill for `kind`. Draws once who is A
+        (`pair.json`, reused afterwards) and writes and prints `round-1.blind.md`:
+        the findings of both as `A-f<i>`/`B-f<i>`, without source.
 
     review_pair.py merge <ATTEMPT_DIR>
-        Leest `pair.json`, de twee ruwe bestanden en de blinde beslissingen
+        Reads `pair.json`, the two raw files and the blind decisions
         `round-1.blind-decisions.json` (`[{"finding_id", "also"?, "decision",
-        "reason"}]`), en schrijft de canonieke `round-1.json` met
-        `round-1.decisions.json` en `round-1.sources.json`: de sidecars die
-        `plan_review_record.py write` meeneemt naar het record. Print de ontblinde
-        tabel.
+        "reason"}]`), and writes the canonical `round-1.json` with
+        `round-1.decisions.json` and `round-1.sources.json`: the sidecars that
+        `plan_review_record.py write` takes along to the record. Prints the unblinded
+        table.
 
-Exit: 0 ok | 2 verkeerd gebruik | 4 `SHADOW-PAIR FAILED: <reden>`
-— een gewijzigde werkboom, een ontbrekend of ongeldig bestand, of blinde
-beslissingen die niet kloppen. Bij 4 schrijft het subcommando geen uitvoerbestand.
-De review gaat dan door zonder paar: de review is het product, het paar
-meetmateriaal.
+Exit: 0 ok | 2 wrong usage | 4 `SHADOW-PAIR FAILED: <reason>`
+— a changed work tree, a missing or invalid file, or blind
+decisions that do not match. On 4 the subcommand writes no output file.
+The review then carries on without a pair: the review is the product, the pair
+measurement material.
 
-De telling (`tally`) blijft bij de bronrepo: geen skill roept hem aan.
+The tally (`tally`) stays with the source repo: no skill calls it.
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ from typing import Any
 
 
 def _record_module() -> Any:
-    """`plan_review_record` laden als buurbestand, zonder `sys.path` te buigen."""
+    """Load `plan_review_record` as a neighbouring file, without bending `sys.path`."""
     path = pathlib.Path(__file__).resolve().parent / "plan_review_record.py"
     spec = importlib.util.spec_from_file_location("plan_review_record", path)
     assert spec and spec.loader
@@ -66,11 +66,11 @@ MERGE_HEADER = "| ID | Source | Sev | Decision | Reason |\n|----|--------|-----|
 
 
 class PairError(ValueError):
-    """Een paar dat niet klopt; `main` maakt er exit 4 van."""
+    """A pair that does not match; `main` turns it into exit 4."""
 
 
 def _tree_state(root: pathlib.Path | None = None) -> tuple[str, bool]:
-    """`HEAD` en of de werkboom schoon is; ongevolgde bestanden tellen mee."""
+    """`HEAD` and whether the work tree is clean; untracked files count."""
     root = _rec.repo_root() if root is None else root
     head = _rec._git(root, "rev-parse", "HEAD").strip()
     status = _rec._git(root, "status", "--porcelain", "--untracked-files=normal")
@@ -78,12 +78,12 @@ def _tree_state(root: pathlib.Path | None = None) -> tuple[str, bool]:
 
 
 def _coin() -> bool:
-    """Waar = Codex is A."""
+    """True = Codex is A."""
     return secrets.randbelow(2) == 1
 
 
 def _cell(text: str) -> str:
-    """Eén tabelcel: een pipe of regeleinde uit reviewertekst verschuift geen kolom."""
+    """One table cell: a pipe or line break from reviewer text does not shift a column."""
     return (
         text.replace("\\", "\\\\")
         .replace("|", "\\|")
@@ -94,11 +94,11 @@ def _cell(text: str) -> str:
 
 
 def _violations(obj: object, node: dict) -> list[str]:
-    """Wat aan `obj` niet klopt met één objectknoop van het schema, zonder `jsonschema`.
+    """What is wrong with `obj` against one object node of the schema, without `jsonschema`.
 
-    Alleen wat de findings-schema's gebruiken: `required`, `additionalProperties:
-    false`, per property `type` en `enum`, en bij een array één niveau `items.type`.
-    Veldnamen komen uit het schema.
+    Only what the findings schemas use: `required`, `additionalProperties:
+    false`, per property `type` and `enum`, and for an array one level of `items.type`.
+    Field names come from the schema.
     """
     if not isinstance(obj, dict):
         return [f"no object but {type(obj).__name__}"]
@@ -163,7 +163,7 @@ def _check_tree(meta: dict) -> None:
 
 
 def _pair(attempt_dir: pathlib.Path) -> dict[str, str]:
-    """De koppeling uit `pair.json`; nooit opnieuw geloot."""
+    """The pairing from `pair.json`; never redrawn."""
     path = attempt_dir / "pair.json"
     if not path.is_file():
         raise PairError("pair.json is missing: run `blind` first")
@@ -184,7 +184,7 @@ def _ensure_pair(attempt_dir: pathlib.Path) -> dict[str, str]:
 
 
 def _blind_index(pair: dict[str, str], raws: dict[str, dict]) -> dict[str, tuple]:
-    """Blind ID → (reviewer, positie vanaf 1, bevinding), in volgorde A dan B."""
+    """Blind ID → (reviewer, position from 1, finding), in order A then B."""
     return {
         f"{letter}-f{i}": (pair[letter], i, finding)
         for letter in ("A", "B")
@@ -234,7 +234,7 @@ def _load_blind_decisions(attempt_dir: pathlib.Path) -> list[dict]:
 
 
 def _covered(row: dict, index: dict[str, tuple]) -> list[str]:
-    """De blinde ID's die één beslissing dekt; `also` wijst naar de andere letter."""
+    """The blind IDs that one decision covers; `also` points to the other letter."""
     fid, also = row.get("finding_id"), row.get("also")
     ids = [i for i in (fid, also) if i is not None]
     if fid is None or any(i not in index for i in ids):
@@ -256,7 +256,7 @@ def _check_decision(row: dict, severity: str, kind: str) -> None:
 
 
 def _groups(rows: list[dict], index: dict[str, tuple], kind: str) -> list[dict]:
-    """Eén groep per samengevoegde bevinding, in de volgorde van `round-1.json`."""
+    """One group per merged finding, in the order of `round-1.json`."""
     seen: set[str] = set()
     groups = []
     for row in rows:
@@ -281,7 +281,7 @@ def _groups(rows: list[dict], index: dict[str, tuple], kind: str) -> list[dict]:
 
 
 def _merge_order(group: dict) -> tuple[int, int]:
-    """Eerst Codex in eigen volgorde, dan fallback zonder Codex-partner."""
+    """First Codex in its own order, then fallback without a Codex partner."""
     if "codex" in group["by_source"]:
         return 0, group["by_source"]["codex"][0]
     return 1, group["by_source"]["fallback"][0]
@@ -351,8 +351,8 @@ def merge(attempt_dir: pathlib.Path) -> str:
         }
         for s, g in zip(sources, groups, strict=True)
     ]
-    # Eerst alles bouwen, dan schrijven: faalt `_merged_round`, dan blijft er geen
-    # sidecar achter die `plan_review_record.py write` voor een paar aanziet.
+    # Build everything first, then write: if `_merged_round` fails, no sidecar is
+    # left behind that `plan_review_record.py write` would mistake for a pair.
     merged = _merged_round(raws, groups)
     _write_json(attempt_dir / "round-1.decisions.json", decisions)
     _write_json(attempt_dir / "round-1.sources.json", sources)

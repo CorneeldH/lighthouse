@@ -2,21 +2,22 @@
 # lighthouse: core@dev
 """Post a committed spec or plan file as a version chain of issue comments.
 
-Stappen (spec *scripts/post_artefact.py*):
-    1. pad oplossen, git-toplevel bepalen, soort uit de map (`paths.specs` of `paths.plans`)
-    2. het bestand moet gecommit en schoon zijn
-    3. de commit moet op GitHub staan (zo nodig pushen, behalve op `forge.default_branch`,
-       HEAD of met open PR)
-    4. de bestaande comments lezen en de huidige complete versie bepalen
-    5. zelfde hash en een nog bereikbare commit: ongewijzigd, niets posten
-    6. splitsen, alle delen renderen, dan in volgorde posten
-    7. faalt deel k, dan melden hoeveel delen er wel staan
-    8. succesregel op stdout
+Steps (spec *scripts/post_artefact.py*):
+    1. resolve the path, find the git toplevel, take the kind from the directory
+       (`paths.specs` or `paths.plans`)
+    2. the file must be committed and clean
+    3. the commit must be on GitHub (push if needed, except on `forge.default_branch`,
+       HEAD or with an open PR)
+    4. read the existing comments and find the current complete version
+    5. same hash and a commit that is still reachable: unchanged, post nothing
+    6. split, render all parts, then post them in order
+    7. if part k fails, report how many parts did get posted
+    8. success line on stdout
 
 USAGE
-    post_artefact.py <issue-nr> <bestand>
+    post_artefact.py <issue-nr> <file>
 
-Exit-codes: 0 gepost of ongewijzigd, 1 elke `artefact:`-fout (op stderr), 2 gebruiksfout.
+Exit codes: 0 posted or unchanged, 1 every `artefact:` error (on stderr), 2 usage error.
 """
 
 from __future__ import annotations
@@ -45,77 +46,77 @@ from lighthouse_lib.config import ConfigError, config_path, load, lookup
 from lighthouse_lib.protocol import Comment
 
 
-class ArtefactFout(Exception):
-    """`str(fout)` is de volledige `artefact:`-regel."""
+class ArtefactError(Exception):
+    """`str(err)` is the full `artefact:` line."""
 
 
-def _config_fout(fout: ConfigError) -> ArtefactFout:
-    return ArtefactFout(f"artefact: config: {' '.join(str(fout).split())}")
+def _config_error(err: ConfigError) -> ArtefactError:
+    return ArtefactError(f"artefact: config: {' '.join(str(err).split())}")
 
 
-def _instelling(sleutel: str) -> str:
-    """Een sleutel uit `lighthouse.toml`, met zijn default."""
+def _setting(key: str) -> str:
+    """A key from `lighthouse.toml`, with its default."""
     try:
-        return str(lookup(load(config_path()), sleutel))
-    except ConfigError as fout:
-        raise _config_fout(fout) from fout
+        return str(lookup(load(config_path()), key))
+    except ConfigError as err:
+        raise _config_error(err) from err
 
 
 def _repo() -> str:
-    """`forge.repo`; een `ArtefactFout` als hij ontbreekt of de config kapot is."""
+    """`forge.repo`; an `ArtefactError` if it is missing or the config is broken."""
     try:
         repo = load(config_path()).repo
-    except ConfigError as fout:
-        raise _config_fout(fout) from fout
+    except ConfigError as err:
+        raise _config_error(err) from err
     if repo is None:
-        raise ArtefactFout(f"artefact: forge.repo is not set in {config_path()}")
+        raise ArtefactError(f"artefact: forge.repo is not set in {config_path()}")
     return repo
 
 
-def _mappen() -> dict[str, str]:
-    """Map van het bestand (vanaf de git-root) naar de soort, met één `/` erachter."""
+def _dirs() -> dict[str, str]:
+    """Directory of the file (from the git root) to its kind, with a single trailing `/`."""
     return {
-        _instelling("paths.specs").strip("/") + "/": "spec",
-        _instelling("paths.plans").strip("/") + "/": "plan",
+        _setting("paths.specs").strip("/") + "/": "spec",
+        _setting("paths.plans").strip("/") + "/": "plan",
     }
 
 
-class RunFout(Exception):
-    """git of gh gaf geen 0 (of duurde te lang); het bericht draagt de stderr."""
+class RunError(Exception):
+    """git or gh did not return 0 (or took too long); the message carries the stderr."""
 
 
-def _draai(commando: list[str], invoer: str | None = None) -> str:
-    # 300 s, niet 60: `git push` draait de hele pre-push-keten.
+def _run(command: list[str], stdin_text: str | None = None) -> str:
+    # 300 s, not 60: `git push` runs the whole pre-push chain.
     try:
         return subprocess.run(
-            commando,
-            input=invoer,
+            command,
+            input=stdin_text,
             capture_output=True,
             text=True,
             timeout=300,
             check=True,
         ).stdout.strip()
-    except subprocess.CalledProcessError as fout:
-        # De staart: pre-push-hooks printen eerst hun `ok`-regels, de echte fout staat achteraan.
-        raise RunFout((fout.stderr or "").strip()[-300:]) from fout
-    except subprocess.TimeoutExpired as fout:
-        raise RunFout(f"timed out after {fout.timeout:.0f} s") from fout
+    except subprocess.CalledProcessError as err:
+        # The tail: pre-push hooks print their `ok` lines first, the real error comes last.
+        raise RunError((err.stderr or "").strip()[-300:]) from err
+    except subprocess.TimeoutExpired as err:
+        raise RunError(f"timed out after {err.timeout:.0f} s") from err
 
 
 def git(cwd: Path, *args: str) -> str:
-    return _draai(["git", "-C", str(cwd), *args])
+    return _run(["git", "-C", str(cwd), *args])
 
 
-def gh(*args: str, invoer: str | None = None) -> str:
-    return _draai(["gh", *args], invoer)
+def gh(*args: str, stdin_text: str | None = None) -> str:
+    return _run(["gh", *args], stdin_text)
 
 
-def commit_bekend(sha: str) -> bool:
-    """Staat `sha` op GitHub? Alleen een 404/422 van gh telt als nee; elke andere fout stijgt."""
+def commit_known(sha: str) -> bool:
+    """Is `sha` on GitHub? Only a 404/422 from gh counts as no; every other error propagates."""
     try:
         gh("api", f"repos/{_repo()}/commits/{sha}", "--jq", ".sha")
-    except RunFout as fout:
-        if "HTTP 404" in str(fout) or "HTTP 422" in str(fout):
+    except RunError as err:
+        if "HTTP 404" in str(err) or "HTTP 422" in str(err):
             return False
         raise
     return True
@@ -141,157 +142,157 @@ def open_pr(branch: str) -> bool:
     )
 
 
-def lees_comments(nr: int) -> list[Comment]:
-    uit = gh(
+def read_comments(nr: int) -> list[Comment]:
+    out = gh(
         "api",
         "--paginate",
         f"repos/{_repo()}/issues/{nr}/comments?per_page=100",
         "--jq",
         ".[] | {id, body, created_at, html_url}",
     )
-    return [Comment.from_gh(json.loads(regel)) for regel in uit.splitlines() if regel]
+    return [Comment.from_gh(json.loads(line)) for line in out.splitlines() if line]
 
 
 def post_comment(nr: int, body: str) -> tuple[int, str]:
-    uit = gh(
+    out = gh(
         "api",
         f"repos/{_repo()}/issues/{nr}/comments",
         "--input",
         "-",
         "--jq",
         "{id, html_url}",
-        invoer=json.dumps({"body": body}),
+        stdin_text=json.dumps({"body": body}),
     )
-    data = json.loads(uit)
+    data = json.loads(out)
     return int(data["id"]), str(data["html_url"])
 
 
-def _bepaal_bestand(pad_arg: str) -> tuple[Path, str, str]:
-    """(git-root, pad t.o.v. die root, soort) van `pad_arg`."""
-    pad = Path(pad_arg).resolve()
-    if not pad.is_file():
-        raise ArtefactFout(f"artefact: {pad_arg} does not exist")
+def _resolve_file(path_arg: str) -> tuple[Path, str, str]:
+    """(git root, path relative to that root, kind) of `path_arg`."""
+    path = Path(path_arg).resolve()
+    if not path.is_file():
+        raise ArtefactError(f"artefact: {path_arg} does not exist")
     try:
-        top = Path(git(pad.parent, "rev-parse", "--show-toplevel"))
-    except RunFout as fout:
-        raise ArtefactFout(f"artefact: {pad_arg} is not in a git repository") from fout
-    bestand = pad.relative_to(top).as_posix()
-    for prefix, soort in _mappen().items():
-        if bestand.startswith(prefix):
-            return top, bestand, soort
-    raise ArtefactFout(f"artefact: {bestand} is no spec or plan")
+        top = Path(git(path.parent, "rev-parse", "--show-toplevel"))
+    except RunError as err:
+        raise ArtefactError(f"artefact: {path_arg} is not in a git repository") from err
+    file = path.relative_to(top).as_posix()
+    for prefix, kind in _dirs().items():
+        if file.startswith(prefix):
+            return top, file, kind
+    raise ArtefactError(f"artefact: {file} is no spec or plan")
 
 
-def _gecommitte_sha(top: Path, bestand: str) -> str:
-    """De laatste commit van `bestand`; fout als het bestand gewijzigd of niet getrackt is."""
-    if git(top, "status", "--porcelain", "--", bestand):
-        raise ArtefactFout(f"artefact: {bestand} not committed")
-    sha = git(top, "log", "-1", "--format=%H", "--", bestand)
+def _committed_sha(top: Path, file: str) -> str:
+    """The last commit of `file`; an error if the file is modified or untracked."""
+    if git(top, "status", "--porcelain", "--", file):
+        raise ArtefactError(f"artefact: {file} not committed")
+    sha = git(top, "log", "-1", "--format=%H", "--", file)
     if not sha:
-        raise ArtefactFout(f"artefact: {bestand} not committed")
+        raise ArtefactError(f"artefact: {file} not committed")
     return sha
 
 
-def _commit_bekend_of_gh_fout(sha: str) -> bool:
+def _commit_known_or_gh_error(sha: str) -> bool:
     try:
-        return commit_bekend(sha)
-    except RunFout as fout:
-        raise ArtefactFout(f"artefact: gh failed: {fout}") from fout
+        return commit_known(sha)
+    except RunError as err:
+        raise ArtefactError(f"artefact: gh failed: {err}") from err
 
 
-def _zorg_dat_commit_op_github_staat(top: Path, sha: str) -> None:
-    if _commit_bekend_of_gh_fout(sha):
+def _ensure_commit_on_github(top: Path, sha: str) -> None:
+    if _commit_known_or_gh_error(sha):
         return
     branch = git(top, "rev-parse", "--abbrev-ref", "HEAD")
     try:
-        heeft_pr = open_pr(branch)
-    except RunFout as fout:
-        raise ArtefactFout(f"artefact: gh failed: {fout}") from fout
-    # Een force-push naar de default branch, een losse HEAD of een branch met open PR is
-    # nooit aan ons.
-    if branch in (_instelling("forge.default_branch"), "HEAD") or heeft_pr:
-        raise ArtefactFout(f"artefact: commit {sha[:7]} not on GitHub")
+        has_pr = open_pr(branch)
+    except RunError as err:
+        raise ArtefactError(f"artefact: gh failed: {err}") from err
+    # A force-push to the default branch, a detached HEAD or a branch with an open PR is
+    # never ours to do.
+    if branch in (_setting("forge.default_branch"), "HEAD") or has_pr:
+        raise ArtefactError(f"artefact: commit {sha[:7]} not on GitHub")
     try:
         git(top, "push", "-u", "--force-with-lease", "origin", "HEAD")
-    except RunFout as fout:
-        raise ArtefactFout(f"artefact: push of {branch} failed: {fout}") from fout
+    except RunError as err:
+        raise ArtefactError(f"artefact: push of {branch} failed: {err}") from err
 
 
-def _is_ongewijzigd(huidig: list[Comment], hash_: str) -> Meta | None:
-    """De meta van de huidige versie als die dezelfde inhoud en een bereikbare commit heeft."""
-    meta = parse_meta(huidig[0].body) if huidig else None
+def _unchanged_meta(latest: list[Comment], hash_: str) -> Meta | None:
+    """The meta of the current version if it has the same content and a reachable commit."""
+    meta = parse_meta(latest[0].body) if latest else None
     if (
         meta is not None
         and meta.hash == hash_
-        and _commit_bekend_of_gh_fout(meta.commit)
+        and _commit_known_or_gh_error(meta.commit)
     ):
         return meta
     return None
 
 
-def _post_delen(nr: int, bodies: list[str]) -> list[str]:
-    """Post de delen in volgorde; geeft de url's. Faalt deel k, dan een `ArtefactFout`."""
+def _post_parts(nr: int, bodies: list[str]) -> list[str]:
+    """Post the parts in order; return the urls. If part k fails, an `ArtefactError`."""
     urls: list[str] = []
     for k, body in enumerate(bodies, start=1):
         try:
             urls.append(post_comment(nr, body)[1])
-        except RunFout as fout:
-            raise ArtefactFout(
-                f"artefact: part {k}/{len(bodies)} not posted ({k - 1} were): {fout}"
-            ) from fout
+        except RunError as err:
+            raise ArtefactError(
+                f"artefact: part {k}/{len(bodies)} not posted ({k - 1} were): {err}"
+            ) from err
     return urls
 
 
-def _post_artefact(nr: int, pad_arg: str) -> str:
+def _post_artefact(nr: int, path_arg: str) -> str:
     _repo()
-    top, bestand, soort = _bepaal_bestand(pad_arg)
+    top, file, kind = _resolve_file(path_arg)
     try:
-        sha = _gecommitte_sha(top, bestand)
-        _zorg_dat_commit_op_github_staat(top, sha)
-    except RunFout as fout:
-        raise ArtefactFout(f"artefact: git failed: {fout}") from fout
+        sha = _committed_sha(top, file)
+        _ensure_commit_on_github(top, sha)
+    except RunError as err:
+        raise ArtefactError(f"artefact: git failed: {err}") from err
 
     try:
-        comments = lees_comments(nr)
-    except RunFout as fout:
-        raise ArtefactFout(f"artefact: gh failed: {fout}") from fout
-    huidig = current(comments, soort, bestand)
+        comments = read_comments(nr)
+    except RunError as err:
+        raise ArtefactError(f"artefact: gh failed: {err}") from err
+    latest = current(comments, kind, file)
 
-    data = (top / bestand).read_bytes()
+    data = (top / file).read_bytes()
     hash_ = hash_of(data)
-    if meta := _is_ongewijzigd(huidig, hash_):
-        return f"artefact: {soort} unchanged (version {meta.version})"
+    if meta := _unchanged_meta(latest, hash_):
+        return f"artefact: {kind} unchanged (version {meta.version})"
 
-    versie = next_version(comments, soort, bestand)
-    vervangt = huidig[0].url if huidig else None
-    delen = split(data.decode("utf-8"))
+    version = next_version(comments, kind, file)
+    replaces = latest[0].url if latest else None
+    parts = split(data.decode("utf-8"))
     try:
-        # Eerst alles renderen: bij een weigering staat er niets half gepost.
+        # Render everything first: on a refusal nothing is left half posted.
         bodies = [
             render(
-                Meta(soort, versie, k, len(delen), bestand, sha, hash_, vervangt), deel
+                Meta(kind, version, k, len(parts), file, sha, hash_, replaces), part
             )
-            for k, deel in enumerate(delen, start=1)
+            for k, part in enumerate(parts, start=1)
         ]
-    except ConfigError as fout:
-        raise _config_fout(fout) from fout
-    except ValueError as fout:
-        raise ArtefactFout(f"artefact: metadata unusable: {fout}") from fout
-    urls = _post_delen(nr, bodies)
-    return f"artefact: {soort} version {versie} posted, {len(delen)} parts → {urls[0]}"
+    except ConfigError as err:
+        raise _config_error(err) from err
+    except ValueError as err:
+        raise ArtefactError(f"artefact: metadata unusable: {err}") from err
+    urls = _post_parts(nr, bodies)
+    return f"artefact: {kind} version {version} posted, {len(parts)} parts → {urls[0]}"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("nr", type=int, help="issue number")
-    parser.add_argument("bestand", metavar="file", help="spec or plan file")
+    parser.add_argument("file", help="spec or plan file")
     args = parser.parse_args(argv)
     try:
-        regel = _post_artefact(args.nr, args.bestand)
-    except ArtefactFout as fout:
-        print(fout, file=sys.stderr)
+        line = _post_artefact(args.nr, args.file)
+    except ArtefactError as err:
+        print(err, file=sys.stderr)
         return 1
-    print(regel)
+    print(line)
     return 0
 
 

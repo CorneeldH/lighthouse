@@ -818,21 +818,21 @@ kind = "file"
 path = ".lighthouse/scripts/plan_review_record.py"
 package = "core"
 version = "dev"
-sha256 = "cd4bb328f8661c2554d661148155ada1dfca41a3684efc71382bfb18aded49f6"
+sha256 = "6da63c80239a303b8a0b4716ed963d130ecd84f5f5589a8543f14cab395c643c"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/scripts/post_artefact.py"
 package = "core"
 version = "dev"
-sha256 = "dfcfc0f7836cd2c778e12abcd02680b9897b50f11dc26ac75485b51f3cba700e"
+sha256 = "872ab4821a4063f7234b4d6000ae6c607c2e5f8a51afc560d81651c92f445903"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/scripts/review_pair.py"
 package = "core"
 version = "dev"
-sha256 = "a0c553f0f4388bd794fd920b8ba28e64f123ec1bb268983539f310e813c863b0"
+sha256 = "4d8082e1690d3d81f1f15895b630478f1bbf050518f863f9f44168aeb641c448"
 
 [[unit]]
 kind = "file"

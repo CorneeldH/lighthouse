@@ -1,16 +1,16 @@
-"""Tests voor scripts/review_pair.py — de gepaarde ronde-1-schaduwrun (#988).
+"""Tests for scripts/review_pair.py — the paired round-1 shadow run (#988).
 
-Plan: docs/developer/planning/plans/2026-09-27-codex-fallback-meting.md, Taak 3–4.
-Getoetst: `blind` (A/B-tabel zonder bron, idempotente loting, werkboomcheck,
-schemacheck met de stdlib, escaping), `merge` (ontblinden, dubbelen samenvoegen,
-de canonieke `round-1.json` plus de twee sidecars, en de validatie van de blinde
-beslissingen). Geen netwerk: `_coin` en `_tree_state` zijn gepatcht, behalve in de
-ene test die `_tree_state` tegen een wegwerp-repo draait. De uitknop `status` is weg
-sinds het besluit van 2026-10-04 (#988).
+Plan: docs/developer/planning/plans/2026-09-27-codex-fallback-meting.md, Task 3–4.
+Tested: `blind` (A/B table without source, idempotent draw, work-tree check,
+schema check with the stdlib, escaping), `merge` (unblinding, merging duplicates,
+the canonical `round-1.json` plus the two sidecars, and the validation of the blind
+decisions). No network: `_coin` and `_tree_state` are patched, except in the
+one test that runs `_tree_state` against a throwaway repo. The `status` switch is gone
+since the decision of 2026-10-04 (#988).
 
-In lighthouse: het script draait uit de geïnstalleerde indeling (`install_core`);
-`tally` en zijn tests blijven in paia. De findings-schema's komen uit `fixtures/`
-(letterlijk uit paia) tot de review-skills in de pack staan.
+In lighthouse: the script runs from the installed layout (`install_core`);
+`tally` and its tests stay in paia. The findings schemas come from `fixtures/`
+(verbatim from paia) until the review skills are in the pack.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ SPEC_SCHEMA = FIXTURES / "spec-findings.schema.json"
 
 @pytest.fixture(autouse=True)
 def root(tmp_path, monkeypatch) -> pathlib.Path:
-    """Een repo-wortel met de findings-schema's waar `DEFAULT_SKILL_DIRS` ze zoekt."""
+    """A repo root with the findings schemas where `DEFAULT_SKILL_DIRS` looks for them."""
     root = tmp_path / "root"
     for kind, schema in (("plan", PLAN_SCHEMA), ("spec", SPEC_SCHEMA)):
         skill = root / rec.DEFAULT_SKILL_DIRS[kind]
@@ -278,7 +278,7 @@ def test_merge_folds_a_duplicate_into_one_finding(attempt, capsys):
     assert merged["could_not_verify"] == ["gedeeld", "alleen c", "alleen f"]
     assert [d["finding_id"] for d in decisions] == ["r1-f1", "r1-f2", "r1-f3"]
     assert [d["decision"] for d in decisions] == ["accept", "minor_no", "accept"]
-    # De sidecars passen op de lezers in plan_review_record (Taak 2).
+    # The sidecars fit the readers in plan_review_record (Task 2).
     assert set(rec._decisions(attempt, 1, 3, "plan")) == {"r1-f1", "r1-f2", "r1-f3"}
     assert rec._sources(attempt, 3)["r1-f1"]["source"] == "both"
     rows = [line for line in out.splitlines() if line.startswith("| r1-f")]
@@ -504,7 +504,7 @@ def test_usage_error_exits_2():
 
 
 def test_outside_a_repo_is_exit_4_not_a_traceback(attempt, capsys, monkeypatch, tmp_path):
-    """Zonder repo-wortel faalt de run als SHADOW-PAIR FAILED (exit 4), niet met een traceback."""
+    """Without a repo root the run fails as SHADOW-PAIR FAILED (exit 4), not with a traceback."""
     monkeypatch.delenv("LIGHTHOUSE_REPO_ROOT")
     monkeypatch.chdir(tmp_path)
     assert rp.main(["blind", str(attempt)]) == 4
