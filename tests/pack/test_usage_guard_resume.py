@@ -22,7 +22,8 @@ EVENTS = {"prompt": "UserPromptSubmit", "tool": "PostToolUse", "stop": "Stop"}
 
 
 def _load():
-    # The lib is on sys.path through the conftest; register for dataclasses like load_module.
+    # The lib is on sys.path through the conftest. Not registered in sys.modules: resume.py
+    # defines no dataclass, so nothing looks it up there.
     path = CORE / "hooks" / "usage-guard" / "resume.py"
     spec = importlib.util.spec_from_file_location("usage_guard_resume_test", path)
     module = importlib.util.module_from_spec(spec)
