@@ -211,7 +211,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/go-check.sh"
 package = "go"
 version = "dev"
-sha256 = "c0031327e2b1ca8d3e65657a08b08815111d8066ac0b7529d5935b12a46bc391"
+sha256 = "1af3f1aef220742c82372a06511771fa42789974830fbe810bf269e5ff6ad2b3"
 
 [[unit]]
 kind = "file"
@@ -246,7 +246,14 @@ kind = "file"
 path = ".claude/hooks/lighthouse/usage-guard.sh"
 package = "core"
 version = "dev"
-sha256 = "c8eb4740a092e1a30c14d8ca628e91fb1248678d0f1e3b2bf96771b055ac541e"
+sha256 = "7340f50e3ac373f3692388b207ed3dc5ae39032fa155abbc7e64900e266ac565"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/usage-guard/alarm.sh"
+package = "core"
+version = "dev"
+sha256 = "c9394566709baee72457de0a959ceb5988e7d890589a0573b414048776c51545"
 
 [[unit]]
 kind = "file"

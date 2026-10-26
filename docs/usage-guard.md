@@ -28,7 +28,8 @@ van een meting) doet elke stand niets.
   cijfers bevat en `reset_at` de vorm `2006-01-02T15:04:05Z` heeft en in de toekomst ligt. Een
   vijfde veld, een `\r` aan het eind, een `?` als `reset_at`, een verlopen tijd of een onleesbaar
   bestand telt als geen alarm. De guard verwijdert het alarm nooit: alleen de meter schrijft en
-  ruimt. `_` in `reset_local` wordt een spatie.
+  ruimt. `_` in `reset_local` wordt een spatie. Deze regels staan in `usage-guard/alarm.sh`
+  (`USAGE_ALARM`, `usage_alarm_valid`), die de guard en de blokkerende Stop-gates sourcen.
 - **Tijd.** `reset_at` wordt epoch via GNU `date -d`, en anders via BSD `date -j -u -f`. Faalt
   beide, dan telt het alarm niet.
 - **Snelle pad.** In `tool` en `subagent` is het pad zonder alarm één `[ -f ]`, zonder fork en
@@ -202,4 +203,23 @@ het posten van het artefact, de controller-modus, elke vraag en de `/clear`-tip 
 
 - Er is geen poller in lighthouse in M1: het afhandelen van markers en het hervatten van een
   geparkeerde run is een taak van de controller.
-- Andere blokkerende Stop-hooks (`go-check.sh`) zwijgen niet bij een alarm; zie #74.
+
+### Andere Stop-gates
+
+`go-check.sh` (pakket `go`) en `ty-check.sh` (pakket `python`) blokkeren een `Stop` niet zolang er
+een geldig alarm is. Ze melden `go-check: not checked — the usage alarm is up until <reset_local>;
+the usage guard wraps up this session.` (`ty-check: …` voor ty) als `systemMessage` en eindigen met
+exit 0. Een `systemMessage` gaat naar de gebruiker en is geen opdracht aan de agent: "stil" uit #74
+betekent dat de gate niets afdwingt, niet dat hij niets zegt.
+
+- **Waarom.** Een blokkerende gate naast de guard geeft de agent twee tegenstrijdige opdrachten:
+  rond af en stop, en herstel eerst de bevinding. Dat kost bovendien budget dat er niet meer is.
+- **Volgorde.** De alarmcheck staat ná de `stop_hook_active`-exit: een herhaalde `Stop` zwijgt
+  al stil en krijgt geen tweede melding.
+- **Zonder helper.** De gate leest de regels uit `usage-guard/alarm.sh` naast zichzelf. Staat die
+  er niet (het pakket zonder `pack/core`), dan gedraagt de gate zich als altijd en blokkeert hij.
+- **Wat niet telt.** Een verlopen of onleesbaar alarm (symlink, drie velden) telt als geen
+  alarm: de gate blokkeert gewoon.
+- **Een nieuwe blokkerende Stop-gate** in een pakket volgt hetzelfde patroon: na
+  `stop_hook_active` de helper sourcen als hij er is, bij `usage_alarm_valid` een
+  `systemMessage` en exit 0.
