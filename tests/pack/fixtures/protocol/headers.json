@@ -1,0 +1,145 @@
+[
+  {
+    "name": "nl-question",
+    "body": "🤖 Vraag · fase plan",
+    "kind": "question"
+  },
+  {
+    "name": "en-question",
+    "body": "🤖 Question",
+    "kind": "question"
+  },
+  {
+    "name": "nl-handoff",
+    "body": "🤖 Handoff",
+    "kind": "handoff"
+  },
+  {
+    "name": "en-handoff",
+    "body": "🤖 Handoff",
+    "kind": "handoff"
+  },
+  {
+    "name": "nl-started",
+    "body": "🤖 Gestart",
+    "kind": "started"
+  },
+  {
+    "name": "en-started",
+    "body": "🤖 Started",
+    "kind": "started"
+  },
+  {
+    "name": "nl-question",
+    "body": "🤖 Vraag",
+    "kind": "question"
+  },
+  {
+    "name": "en-question",
+    "body": "🤖 Question",
+    "kind": "question"
+  },
+  {
+    "name": "nl-resumed",
+    "body": "🤖 Hervat",
+    "kind": "resumed"
+  },
+  {
+    "name": "en-resumed",
+    "body": "🤖 Resumed",
+    "kind": "resumed"
+  },
+  {
+    "name": "nl-done",
+    "body": "🤖 Klaar",
+    "kind": "done"
+  },
+  {
+    "name": "en-done",
+    "body": "🤖 Done",
+    "kind": "done"
+  },
+  {
+    "name": "nl-returned",
+    "body": "🤖 Teruggegeven",
+    "kind": "returned"
+  },
+  {
+    "name": "en-returned",
+    "body": "🤖 Returned",
+    "kind": "returned"
+  },
+  {
+    "name": "nl-rebased",
+    "body": "🤖 Herbaseerd",
+    "kind": "rebased"
+  },
+  {
+    "name": "en-rebased",
+    "body": "🤖 Rebased",
+    "kind": "rebased"
+  },
+  {
+    "name": "returned-legacy-key",
+    "body": "🤖 Teruggegeven\nreden: geen worktree",
+    "kind": "returned",
+    "fields": {
+      "reason": "geen worktree"
+    }
+  },
+  {
+    "name": "returned-en",
+    "body": "🤖 Returned\nreason: x\nsession: 0b8f6a52-3c1d-4e7a-9b21-5d4c8e1f7a30\n\nvrije tekst: y",
+    "kind": "returned",
+    "fields": {
+      "reason": "x",
+      "session": "0b8f6a52-3c1d-4e7a-9b21-5d4c8e1f7a30"
+    }
+  },
+  {
+    "name": "legacy-value",
+    "body": "🤖 Handoff\nwanneer: nacht",
+    "kind": "handoff",
+    "fields": {
+      "when": "night"
+    }
+  },
+  {
+    "name": "crlf",
+    "body": "🤖 Teruggegeven\r\nreden: x\r\n",
+    "kind": "returned",
+    "fields": {
+      "reason": "x"
+    }
+  },
+  {
+    "name": "tab-after-kind",
+    "body": "🤖 Klaar\tpr",
+    "kind": "done"
+  },
+  {
+    "name": "prefix-only",
+    "body": "🤖 Klaarheid",
+    "kind": null
+  },
+  {
+    "name": "no-space",
+    "body": "🤖Vraag",
+    "kind": null
+  },
+  {
+    "name": "not-first-line",
+    "body": "tekst\n🤖 Vraag",
+    "kind": null
+  },
+  {
+    "name": "leading-blank",
+    "body": "\n  \n🤖 Gestart",
+    "kind": "started"
+  },
+  {
+    "name": "human",
+    "body": "ja, doe 1a",
+    "kind": null
+  }
+]
