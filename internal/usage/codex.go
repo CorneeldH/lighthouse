@@ -227,13 +227,18 @@ type appServerLimits struct {
 func parseAppServer(result []byte, now time.Time) (CodexState, error) {
 	var res struct {
 		RateLimits          *appServerLimits           `json:"rateLimits"`
-		RateLimitsByLimitID map[string]appServerLimits `json:"rateLimitsByLimitId"`
+		RateLimitsByLimitID map[string]json.RawMessage `json:"rateLimitsByLimitId"`
 	}
 	if err := json.Unmarshal(result, &res); err != nil {
 		return CodexState{}, fmt.Errorf("app-server answer unreadable: %w", err)
 	}
 	limits := res.RateLimits
-	if l, ok := res.RateLimitsByLimitID["codex"]; ok {
+	// Only the codex entry is parsed; an odd shape under another id is not our concern.
+	if raw, ok := res.RateLimitsByLimitID["codex"]; ok && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		var l appServerLimits
+		if err := json.Unmarshal(raw, &l); err != nil {
+			return CodexState{}, fmt.Errorf("app-server answer unreadable: %w", err)
+		}
 		limits = &l
 	}
 	if limits == nil {

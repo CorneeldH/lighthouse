@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -324,5 +325,34 @@ func TestNewCodexReaderHomes(t *testing.T) {
 	}
 	if r.Timeout != 20*time.Second {
 		t.Errorf("Timeout = %v, want 20s", r.Timeout)
+	}
+}
+
+// This is a pure-logic change; the likely regression surface is which limits
+// block parseAppServer reads, and whether one odd entry fails the reading.
+func TestParseAppServerLimitSelection(t *testing.T) {
+	limits := func(session, week int) string {
+		return fmt.Sprintf(`{"primary":{"usedPercent":%d,"resetsAt":1790000000},"secondary":{"usedPercent":%d,"resetsAt":1790600000}}`, session, week)
+	}
+	cases := []struct {
+		name        string
+		result      string
+		wantSession int
+		wantWeek    int
+	}{
+		{"odd extra id is ignored", `{"rateLimitsByLimitId":{"other":"odd","codex":` + limits(11, 22) + `}}`, 11, 22},
+		{"null codex falls back to rateLimits", `{"rateLimits":` + limits(33, 44) + `,"rateLimitsByLimitId":{"codex":null}}`, 33, 44},
+		{"codex wins over rateLimits", `{"rateLimits":` + limits(1, 2) + `,"rateLimitsByLimitId":{"codex":` + limits(55, 66) + `}}`, 55, 66},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseAppServer([]byte(tc.result), codexFixedNow)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Session.Pct != tc.wantSession || got.Week.Pct != tc.wantWeek {
+				t.Errorf("pct = %d/%d, want %d/%d", got.Session.Pct, got.Week.Pct, tc.wantSession, tc.wantWeek)
+			}
+		})
 	}
 }
