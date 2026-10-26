@@ -60,6 +60,7 @@ func TestCorePack(t *testing.T) {
 		".claude/hooks/lighthouse/pr-create-gate.sh",
 		".claude/hooks/lighthouse/pre-commit-tests.sh",
 		".claude/hooks/lighthouse/usage-guard.sh",
+		".claude/hooks/lighthouse/usage-guard/resume.py",
 		".claude/hooks/lighthouse/worktree-guard.sh",
 		".claude/hooks/lighthouse/worktree-linkcheck.sh",
 		".claude/skills/lighthouse-close-issue/SKILL.md",
