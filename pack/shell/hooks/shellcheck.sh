@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
-# PostToolUse hook: shellcheck op elk bewerkt shellscript.
-# Matcher: Edit|Write. Tegenhanger van de skill shell-gates.
+# PostToolUse hook: shellcheck on every edited shell script.
+# Matcher: Edit|Write. Counterpart of the shell-gates skill.
 #
-# Waarom deze hook NIET fail-open is: stil overslaan is hier zelf de fout die de
-# hook moet voorkomen. shellcheck is gepind, sha256-geverifieerd en staat in de
-# gedeelde toolcache, dus "ik kon niet kijken" is een defect en geen normale
-# toestand. Ontbrekende tool = luid falen (exit 2, eerste regel
-# `shellcheck: COULD NOT CHECK — …`), nooit exit 0.
+# Why this hook is NOT fail-open: skipping silently is itself the error the
+# hook must prevent. shellcheck is pinned, sha256-verified and lives in the
+# shared tool cache, so "I could not look" is a defect and not a normal
+# state. Missing tool = fail loudly (exit 2, first line
+# `shellcheck: COULD NOT CHECK — …`), never exit 0.
 #
-# Twee blokkeerdrempels, met opzet twee verschillende sets:
-#   - de mappen in `shell.strict_dirs` (default `.claude/hooks`): alles, tot en
-#     met style.
-#   - alle overige .sh: error + warning. Info- en style-bevindingen in de rest
-#     van een repo zouden elke edit blokkeren op schuld die niets met de
-#     wijziging te maken heeft.
+# Two blocking thresholds, deliberately two different sets:
+#   - the directories in `shell.strict_dirs` (default `.claude/hooks`): everything,
+#     down to style.
+#   - all other .sh: error + warning. Info and style findings in the rest
+#     of a repo would block every edit on debt that has nothing to do with
+#     the change.
 set -uo pipefail
 
-fail() { # reden...
+fail() { # reason...
   echo "shellcheck: COULD NOT CHECK — $*" >&2
   exit 2
 }
 
 INPUT=$(cat)
 
-# Twee parsers, want deze hook draait op ELKE Edit/Write - ook op .py en .md.
-# Luid falen omdat jq ontbreekt zou dan de hele sessie blokkeren op iets dat
-# niets met shell te maken heeft. Zelf JSON uit elkaar peuteren met grep is de
-# andere kant van dezelfde fout, dus: jq, anders python3, en pas als beide
-# ontbreken luid falen.
+# Two parsers, because this hook runs on EVERY Edit/Write - also on .py and .md.
+# Failing loudly because jq is missing would then block the whole session on
+# something that has nothing to do with shell. Picking JSON apart with grep
+# yourself is the other side of the same error, so: jq, else python3, and only
+# when both are missing fail loudly.
 if command -v jq >/dev/null 2>&1; then
   FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')
 elif command -v python3 >/dev/null 2>&1; then
@@ -37,7 +37,7 @@ else
   fail "neither jq nor python3 is present, so the edited path cannot be read."
 fi
 
-# Geen pad in de payload: deze tool-call raakte geen bestand. Niets te doen.
+# No path in the payload: this tool call touched no file. Nothing to do.
 [ -n "$FILE_PATH" ] || exit 0
 
 case "$FILE_PATH" in
@@ -45,13 +45,13 @@ case "$FILE_PATH" in
   *) exit 0 ;;
 esac
 
-# Verwijderd of hernoemd tussen edit en hook: niets om te controleren.
+# Deleted or renamed between the edit and the hook: nothing to check.
 [ -f "$FILE_PATH" ] || exit 0
 
-# De lighthouse-root: LIGHTHOUSE_REPO_ROOT, anders de boom van het BEWERKTE
-# bestand, en pas daarna die van de hook. $CLAUDE_PROJECT_DIR wijst naar de
-# hoofdcheckout, en een edit in een worktree zou dan met het script van een
-# andere branch gecontroleerd worden.
+# The lighthouse root: LIGHTHOUSE_REPO_ROOT, else the tree of the EDITED
+# file, and only then that of the hook. $CLAUDE_PROJECT_DIR points to the
+# main checkout, and an edit in a worktree would then be checked with the
+# script of another branch.
 FILE_DIR="$(dirname "$FILE_PATH")"
 FILE_ROOT="$(git -C "$FILE_DIR" rev-parse --show-toplevel 2>/dev/null)" || FILE_ROOT=""
 candidates=()
@@ -78,8 +78,8 @@ if [ -z "$ROOT" ]; then
 fi
 SCRIPT="$ROOT/.lighthouse/scripts/shellcheck-repo.sh"
 
-# De strenge mappen zijn repo-relatief: vergelijk het pad binnen de git-boom van
-# het bestand, anders binnen de lighthouse-root.
+# The strict directories are repo-relative: compare the path within the git tree
+# of the file, else within the lighthouse root.
 if ! STRICT_DIRS=$(LIGHTHOUSE_REPO_ROOT="$ROOT" python3 "$ROOT/.lighthouse/lib/lighthouse_lib/config.py" shell.strict_dirs 2>&1); then
   fail "shell.strict_dirs could not be read: ${STRICT_DIRS:-no message}"
 fi
@@ -104,7 +104,7 @@ done <<EOF
 $STRICT_DIRS
 EOF
 
-# stderr apart: een afwijkende shellcheck-versie meldt zich daar, ook bij rc 0.
+# stderr separately: a deviating shellcheck version reports itself there, also at rc 0.
 ERR_FILE="$(mktemp)" || fail "mktemp failed."
 out=$("$SCRIPT" --severity "$severity" -- "$FILE_PATH" 2>"$ERR_FILE")
 rc=$?
@@ -113,7 +113,7 @@ rm -f "$ERR_FILE"
 
 case "$rc" in
   0)
-    # Schoon, maar mogelijk met een andere versie dan de pin: niet stil.
+    # Clean, but possibly with a different version than the pin: not silent.
     if [ -n "$err" ]; then
       msg="shellcheck: $err"
       if command -v jq >/dev/null 2>&1; then

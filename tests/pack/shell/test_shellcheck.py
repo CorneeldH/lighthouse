@@ -4,10 +4,10 @@ The hook is bash and reads its input as JSON on stdin. These tests run it as a
 subprocess against a real temporary file, so the contract (exit code + stderr)
 is what gets tested.
 
-Uit paia's `test_quality_hooks.py:518-828`. Weg, want ze lezen paia's eigen boom:
+From paia's `test_quality_hooks.py:518-828`. Left out, because they read paia's own tree:
 `test_shellcheck_pin_matches_workflow_audit`, `test_shellcheck_gate_set_is_clean`,
 `test_every_hook_script_is_registered_in_settings`, `test_no_gate_shell_is_gitignored`
-en de twee `gate-assert.sh`-tests (`tests/integration/lib/` blijft in paia).
+and the two `gate-assert.sh` tests (`tests/integration/lib/` stays in paia).
 """
 
 import json

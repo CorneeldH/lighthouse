@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Gedeelde shellcheck-provisioning. Wordt ge-*sourced*, niet uitgevoerd.
+# Shared shellcheck provisioning. Is *sourced*, not executed.
 #
-# Bestaansreden: de shellcheck-gate mag nooit stil overslaan. Een hook die zijn
-# tool niet vindt en dan exit 0 doet, meldt "schoon" terwijl hij niets gekeken
-# heeft. Daarom geeft resolve_shellcheck() drie
-# uitkomsten terug, niet twee: gevonden (rc 0, pad op stdout), of niet te
-# gebruiken (rc 4, reden op stderr). rc 1 is voorbehouden aan "bevindingen".
+# Reason for existing: the shellcheck gate must never skip silently. A hook that
+# does not find its tool and then does exit 0 reports "clean" while it has
+# looked at nothing. Therefore resolve_shellcheck() returns three
+# outcomes, not two: found (rc 0, path on stdout), or not usable
+# (rc 4, reason on stderr). rc 1 is reserved for "findings".
 #
-# Licentie: shellcheck is GPL-3.0. Het wordt gebruikt als ongewijzigde losse
-# binary achter een CLI-grens, dev-only: nooit mee in een productimage, nooit
-# code of regels eruit overnemen.
+# License: shellcheck is GPL-3.0. It is used as an unmodified separate
+# binary behind a CLI boundary, dev-only: never shipped in a product image, never
+# copy code or rules from it.
 
-# Gepind. Een repo die shellcheck ook in CI draait, pint daar dezelfde versie,
-# anders meet de hook iets anders dan de CI-lane.
+# Pinned. A repo that also runs shellcheck in CI pins the same version there,
+# otherwise the hook measures something other than the CI lane.
 SHELLCHECK_PIN=0.11.0
 
-# Exitcode voor "kon niet controleren". Bewust geen 0 en geen 1.
+# Exit code for "could not check". Deliberately neither 0 nor 1.
 SHELLCHECK_UNAVAILABLE=4
 
 _sc_platform() {
@@ -31,14 +31,14 @@ _sc_tool_dir() {
   local common
   git rev-parse --show-toplevel >/dev/null 2>&1 || return 1
   common="$(git rev-parse --git-common-dir 2>/dev/null)" || return 1
-  # Een relatief antwoord is relatief aan de cwd, niet aan de toplevel: vanuit
-  # een submap is het `../../.git`.
+  # A relative answer is relative to the cwd, not to the toplevel: from
+  # a subdirectory it is `../../.git`.
   case "$common" in
     /*) ;;
     *) common="$PWD/$common" ;;
   esac
-  # Een cache, een download, gedeeld over worktrees omdat --git-common-dir naar
-  # de hoofd-.git wijst.
+  # One cache, one download, shared across worktrees because --git-common-dir
+  # points to the main .git.
   echo "$common/lighthouse-tools"
 }
 
@@ -46,13 +46,13 @@ _sc_is_pinned() { # bin
   [ -x "$1" ] && "$1" --version 2>/dev/null | grep -qx "version: $SHELLCHECK_PIN"
 }
 
-_sc_download() { # tool_dir -> pad op stdout, of rc != 0
-  local tool_dir="$1" plat url sha tmp got bin="$1/shellcheck"
-  plat="$(_sc_platform)" || {
+_sc_download() { # tool_dir -> path on stdout, or rc != 0
+  local tool_dir="$1" platform url sha tmp got bin="$1/shellcheck"
+  platform="$(_sc_platform)" || {
     echo "shellcheck: no release for $(uname -s)/$(uname -m)" >&2
     return 1
   }
-  case "$plat" in
+  case "$platform" in
     linux/x86_64)  url="shellcheck-v${SHELLCHECK_PIN}.linux.x86_64.tar.xz";   sha=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198 ;;
     linux/aarch64) url="shellcheck-v${SHELLCHECK_PIN}.linux.aarch64.tar.xz";  sha=12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588 ;;
     darwin/arm64)  url="shellcheck-v${SHELLCHECK_PIN}.darwin.aarch64.tar.xz"; sha=56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79 ;;
@@ -82,23 +82,23 @@ _sc_download() { # tool_dir -> pad op stdout, of rc != 0
   echo "$bin"
 }
 
-# Print het pad naar een bruikbare shellcheck op stdout en geeft 0 terug, of
-# print de reden op stderr en geeft $SHELLCHECK_UNAVAILABLE terug.
+# Print the path to a usable shellcheck on stdout and return 0, or
+# print the reason on stderr and return $SHELLCHECK_UNAVAILABLE.
 #
-# Volgorde: expliciete override -> de gepinde binary in de gedeelde toolcache ->
-# een *gepind* exemplaar op PATH -> download van de gepinde release -> als
-# laatste redmiddel een afwijkende versie op PATH, met een melding.
+# Order: explicit override -> the pinned binary in the shared tool cache ->
+# a *pinned* copy on PATH -> download of the pinned release -> as a
+# last resort a deviating version on PATH, with a message.
 #
-# Waarom de pin vóór PATH gaat, en niet andersom: de gate-set staat op nul
-# bevindingen ONDER DE PIN, en een oudere shellcheck kent de disable-codes van
-# vandaag niet. 0.9.0 — de versie die op ubuntu-latest voorgeïnstalleerd staat —
-# meldt SC2317 op precies de trap-cleanup die 0.11.0 via `disable=SC2329`
-# onderdrukt: dezelfde boom, twee uitkomsten, afhankelijk van wat er toevallig
-# op de runner staat. Een afwijkende versie is dus geen gelijkwaardig
-# alternatief voor de pin, hooguit beter dan helemaal niet kijken.
+# Why the pin goes before PATH, and not the other way round: the gate set stands at zero
+# findings UNDER THE PIN, and an older shellcheck does not know today's
+# disable codes. 0.9.0 — the version preinstalled on ubuntu-latest —
+# reports SC2317 on exactly the trap cleanup that 0.11.0 suppresses via `disable=SC2329`:
+# the same tree, two outcomes, depending on what happens to be
+# on the runner. A deviating version is therefore not an equivalent
+# alternative to the pin, at best better than not looking at all.
 #
-# Let op bij het herschrijven van deze comments: een regel die begint met
-# "# shellcheck " leest shellcheck als een directive en levert SC1072/SC1073 op.
+# Take care when rewriting these comments: a line that starts with
+# "# shellcheck " is read by shellcheck as a directive and yields SC1072/SC1073.
 resolve_shellcheck() {
   local bin tool_dir path_bin path_version
 
@@ -135,8 +135,8 @@ resolve_shellcheck() {
     return 0
   fi
 
-  # De pin was niet te halen. Een afwijkende versie is dan nog altijd beter dan
-  # blind zijn, maar de melding moet erbij: de uitkomst is niet die van de gate.
+  # The pin could not be fetched. A deviating version is then still better than
+  # being blind, but the message must come with it: the outcome is not that of the gate.
   if [ -n "$path_bin" ]; then
     echo "shellcheck: PATH version ${path_version:-unknown} differs from the pin $SHELLCHECK_PIN, and the pin could not be fetched" >&2
     echo "$path_bin"
