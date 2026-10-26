@@ -360,3 +360,44 @@ def test_no_paia_in_guard_files() -> None:
     )
 
     assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_guard_without_alarm_helper_cannot_check(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    install_core(root)
+    (root / ".claude/hooks/lighthouse/usage-guard/alarm.sh").unlink()
+    env = guard_env(tmp_path)
+    write_alarm(env, alarm_line())
+    result = run_guard(root, "stop", {}, env)
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == "usage-guard: COULD NOT CHECK — usage-guard/alarm.sh is missing\n"
+
+
+def test_guard_without_alarm_helper_and_without_alarm_is_silent(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    install_core(root)
+    (root / ".claude/hooks/lighthouse/usage-guard/alarm.sh").unlink()
+    result = run_guard(root, "tool", {}, guard_env(tmp_path))
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def _helper_fields(env: dict) -> str:
+    script = (
+        f"set -u; . {CORE}/hooks/usage-guard/alarm.sh; usage_alarm_valid; rc=$?; "
+        'echo "$rc $USAGE_ALARM_KIND|$USAGE_ALARM_PCT|$USAGE_ALARM_LOCAL|$USAGE_ALARM_AT"'
+    )
+    result = subprocess.run(
+        ["bash", "-c", script], capture_output=True, text=True, env=env, check=False
+    )
+    assert result.stderr == ""
+    return result.stdout.strip()
+
+
+def test_alarm_helper_fields_under_set_u(tmp_path: Path) -> None:
+    env = guard_env(tmp_path)
+    assert _helper_fields(env) == "1 |||"
+    line = alarm_line(local="14_30")
+    write_alarm(env, line)
+    at = line.split()[3]
+    assert _helper_fields(env) == f"0 venster|92|14 30|{at}"
