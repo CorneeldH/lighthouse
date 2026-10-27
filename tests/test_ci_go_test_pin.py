@@ -38,3 +38,11 @@ def test_every_ci_go_test_has_gate_flags():
     assert len(runs) == 2, runs
     for run in runs:
         assert all(flag in run.split() for flag in flags), run
+
+
+def test_ci_cross_builds_release_targets():
+    """Fails when CI stops building the non-linux release targets, so a platform-only break
+    would first show up at the release."""
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    for target in ("GOOS=windows GOARCH=amd64", "GOOS=darwin GOARCH=arm64"):
+        assert re.search(rf"^\s*- run: {target} CGO_ENABLED=0 go build \./\.\.\.\s*$", ci, re.MULTILINE), target
