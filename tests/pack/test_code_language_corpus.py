@@ -75,12 +75,12 @@ def test_lighthouse_code_english():
     assert cl.config.lookup(cfg, "project.code_language") == "en"
     assert {"pack/**", "internal/**", "cmd/**"} <= set(cl.config.lookup(cfg, "project.code_language_paths"))
     files = subprocess.run(
-        ["git", "-C", REPO, "ls-files"], capture_output=True, text=True, check=True
-    ).stdout.split()
+        ["git", "-C", REPO, "ls-files", "-z"], capture_output=True, text=True, check=True
+    ).stdout.split("\0")
     found = [
         f"{rel}:{f.line}: {f.kind}: {f.text}"
         for rel in files
-        if (REPO / rel).is_file()
+        if rel and (REPO / rel).is_file()
         for f in cl.check_file(REPO / rel, REPO).findings
     ]
     assert not found, "\n".join(found)

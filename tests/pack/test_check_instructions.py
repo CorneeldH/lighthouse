@@ -396,10 +396,7 @@ def test_bounding_clause_makes_overlap_acceptable(tmp_path):
 
 
 def test_scope_word_without_other_skill_does_not_count_as_clause(tmp_path):
-    """A widening phrase enlarges the trigger instead -- no free pass.
-
-    lighthouse: allow-language — the test description below is a deliberate Dutch example.
-    """
+    """A widening phrase enlarges the trigger instead -- no free pass."""
     claude, agents, _ = _tree(tmp_path)
     _skill(claude, "paia-issue-een", description=BROAD)
     _skill(agents, "paia-issue-een", description=BROAD)

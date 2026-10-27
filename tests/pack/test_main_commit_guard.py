@@ -1281,7 +1281,7 @@ def test_guard_with_broken_config_blocks_a_commit_but_not_a_plain_command(tmp_pa
 
 
 def test_guard_reads_not_a_repo_under_other_locale(tmp_path):
-    """Git under another language still means 'not a repo' (inventaris §2.12). lighthouse: allow-language — reference to a Dutch inventory section"""
+    """Git under another language still means 'not a repo' (inventory §2.12)."""
     repo = tmp_path / "repo"
     _init_repo(repo, branch="issue-1-x")
     outside = tmp_path / "outside"

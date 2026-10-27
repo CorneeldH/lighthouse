@@ -6,7 +6,7 @@ verifies the fixes), the budget fallback at exit 6, the paired round 1 (Codex an
 blind) and the Opus dispatch in Claude Code, the round limit that records the open points and
 carries on instead of asking, and the controller run that runs only if present (design choice 16).
 The `agents` variant lacks the controller run, the paired round 1 and the Opus dispatch, and
-records a review from inside Codex as `codex_same_family` (inventaris §8).
+records a review from inside Codex as `codex_same_family` (inventory §8).
 
 From paia's `test_adversarial_review_skills.py`, `test_review_pair_skills.py`,
 `test_review_round_limit_instructies.py`, `test_controller_vanaf_spec_instructies.py` and
@@ -244,7 +244,7 @@ def test_claude_skills_pair_and_verify_on_opus(name):
 
 @pytest.mark.parametrize("name", NAMES)
 def test_variants_keep_their_difference(name):
-    """Inventaris §8: the `agents` variant lacks the controller run, the paired round 1 and  # lighthouse: allow-language — reference to a Dutch inventory section
+    """Inventaris §8: the `agents` variant lacks the controller run, the paired round 1 and  #
     the Opus dispatch, and records a review from inside Codex as `codex_same_family`."""
     claude, agents = skill(name, "claude"), skill(name, "agents")
     for only_claude in ("## Controller run", "Round 1: Codex and Opus", "## Opus dispatch"):

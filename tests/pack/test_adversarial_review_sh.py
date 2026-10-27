@@ -520,7 +520,7 @@ def test_production_path_calls_codex_usage_budget(root, sandbox):
 
 
 def test_repo_root_from_lighthouse_repo_root(root, sandbox):
-    """`LIGHTHOUSE_REPO_ROOT` wins over the git root of the cwd (inventaris §3). lighthouse: allow-language — reference to a Dutch inventory section"""
+    """`LIGHTHOUSE_REPO_ROOT` wins over the git root of the cwd (inventory §3)."""
     del sandbox["env"]["LIGHTHOUSE_CODEX_BUDGET_CMD"]
     other = sandbox["tmp"] / "other"
     (other / "docs").mkdir(parents=True)

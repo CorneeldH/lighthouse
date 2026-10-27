@@ -46,7 +46,7 @@ FRAGMENT = (FIXTURES / "rollout-fragment.jsonl").read_text().splitlines()
 
 
 def write_rollout(home: Path, day: str, name: str, lines: list[str]) -> Path:
-    """Write `regels` as a session log in `home/sessions/2026/09/<dag>/<naam>`."""
+    """Write `lines` as a session log in `home/sessions/2026/09/<day>/<name>`."""
     path = home / "sessions" / "2026" / "09" / day / name
     path.parent.mkdir(parents=True)
     path.write_text("\n".join(lines) + "\n")
@@ -315,7 +315,7 @@ class TestRollout:
 
 
 class TestReadUsage:
-    """`lees_stand`: the app-server per home, then the session log; and the `read`
+    """`read_usage`: the app-server per home, then the session log; and the `read`
     subcommand."""
 
     def _patch(self, monkeypatch, *, per_home, rollout=None):

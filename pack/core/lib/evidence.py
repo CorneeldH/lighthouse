@@ -319,7 +319,7 @@ def _graphql_field(args: list[str]) -> tuple[list[str], str] | str:
 
 
 def _check_gh_api(args: list[str]) -> str | None:
-    # `-f` is for graphql only; without `graphql`, `_parse` refuses it.'
+    # `-f` is for graphql only; without `graphql`, `_parse` refuses it.
     graphql = "graphql" in args
     if graphql:
         field = _graphql_field(args)
