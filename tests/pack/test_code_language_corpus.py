@@ -1,5 +1,6 @@
 """Layer 1 over real code (#37): the stdlib stays clean, lighthouse's own code is English."""
 
+import subprocess
 from pathlib import Path
 
 from tests.pack._testkit import load_hook_lib
@@ -64,5 +65,22 @@ def test_pack_markdown_english():
         for path in files
         for f in cl.scan_markdown(path.read_text(encoding="utf-8"))
         if not f.doubt  # a doubt ("OOM", "no-op") is not a finding; layer 2 decides
+    ]
+    assert not found, "\n".join(found)
+
+
+def test_lighthouse_code_english():
+    """The whole repo, as the hook sees it: lighthouse.toml decides scope and exemptions."""
+    cfg = cl.config.load(REPO / "lighthouse.toml")
+    assert cl.config.lookup(cfg, "project.code_language") == "en"
+    assert {"pack/**", "internal/**", "cmd/**"} <= set(cl.config.lookup(cfg, "project.code_language_paths"))
+    files = subprocess.run(
+        ["git", "-C", REPO, "ls-files"], capture_output=True, text=True, check=True
+    ).stdout.split()
+    found = [
+        f"{rel}:{f.line}: {f.kind}: {f.text}"
+        for rel in files
+        if (REPO / rel).is_file()
+        for f in cl.check_file(REPO / rel, REPO).findings
     ]
     assert not found, "\n".join(found)

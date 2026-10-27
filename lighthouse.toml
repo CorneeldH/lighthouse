@@ -1,5 +1,8 @@
 [project]
 language = "nl"
+code_language = "en"
+code_language_paths = ["pack/**", "internal/**", "cmd/**", "tests/**", "tools/**"]
+code_language_exempt = ["tests/pack/fixtures/code_language/**"]
 
 [forge]
 kind = "github"
