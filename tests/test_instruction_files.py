@@ -96,7 +96,7 @@ def test_project_part_does_not_repeat_the_core_block():
         "git worktree add",
         "blocks `git commit`",
         "touch .claude/allow-main",
-        "pre-commit-tests",
+        "commit-tests",
         "--no-verify",
         "uv run pytest",
     ):

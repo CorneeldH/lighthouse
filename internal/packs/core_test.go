@@ -56,9 +56,9 @@ func TestCorePack(t *testing.T) {
 		".claude/agents/lighthouse-spec-adversary.md",
 		".claude/hooks/lighthouse/bash-write-gates.sh",
 		".claude/hooks/lighthouse/code-language.sh",
+		".claude/hooks/lighthouse/commit-tests.sh",
 		".claude/hooks/lighthouse/main-commit-guard.sh",
 		".claude/hooks/lighthouse/pr-create-gate.sh",
-		".claude/hooks/lighthouse/pre-commit-tests.sh",
 		".claude/hooks/lighthouse/usage-guard.sh",
 		".claude/hooks/lighthouse/usage-guard/alarm.sh",
 		".claude/hooks/lighthouse/usage-guard/controller.py",
@@ -101,6 +101,7 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/code_language_jargon.txt",
 		".lighthouse/lib/lighthouse_lib/code_language_llm.py",
 		".lighthouse/lib/lighthouse_lib/code_language_score.py",
+		".lighthouse/lib/lighthouse_lib/commit_base.py",
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/deadline.py",
@@ -129,7 +130,7 @@ func TestCorePack(t *testing.T) {
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
 	}
-	if kinds[KindBlock] != 1 || kinds[KindHook] != 13 {
+	if kinds[KindBlock] != 1 || kinds[KindHook] != 15 {
 		t.Fatalf("kinds = %v", kinds)
 	}
 	var tools []string
@@ -169,6 +170,7 @@ func TestLanguagePacks(t *testing.T) {
 				".claude/hooks/lighthouse/go-check.sh",
 				".claude/hooks/lighthouse/gofmt.sh",
 				".claude/skills/lighthouse-go-writing/SKILL.md",
+				".lighthouse/scripts/gate_go.py",
 			},
 			detect: true,
 			tools:  "git,go,gofmt,golangci-lint,jq,python3,tomllib",
@@ -182,6 +184,7 @@ func TestLanguagePacks(t *testing.T) {
 				".claude/hooks/lighthouse/ruff-format.sh",
 				".claude/hooks/lighthouse/ty-check.sh",
 				".claude/skills/lighthouse-python-writing/SKILL.md",
+				".lighthouse/scripts/gate_python.py",
 				".lighthouse/scripts/quality/__init__.py",
 				".lighthouse/scripts/quality/baseline.py",
 				".lighthouse/scripts/quality/diffcov.py",

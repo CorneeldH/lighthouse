@@ -17,7 +17,7 @@
 # the AGENTS.md rule "Links: file relative, chat absolute" has no hook: it is
 # about prose in a chat answer, not about a file this hook sees.
 #
-# Deliberately no project filter, unlike pre-commit-tests.sh (#1014): that gate
+# Deliberately no project filter, unlike commit-tests.sh (#1014): that gate
 # filters because it runs the suite of this repo. This hook checks a file
 # against the root of its own repo; its verdict holds in every repo, and a
 # filter let a dead link pass silently there. A directory outside every git

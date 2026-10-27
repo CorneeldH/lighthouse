@@ -134,10 +134,12 @@ Goes to `## Verification` and does not decide between `Closes`/`Refs` ("code rev
 be true before the merge). Exception: if the tests are not green, the skill makes no PR and
 reports that.
 
-The evidence for that in Claude Code is the last outcome of the commit gate
-(`.claude/hooks/lighthouse/pre-commit-tests.sh` runs the test command at every `git commit` on the
-committed tree): name it in `## Verification` and do not run the full suite again by hand. Only
-Outside Claude Code (OpenCode, Codex) do you run it yourself, with the command from
+In Claude Code the commit gate (`.claude/hooks/lighthouse/commit-tests.sh` runs the test command
+after every `git commit`, on the files of that commit) proves only the files of each commit, not the
+suite. The suite evidence is CI on the PR: write `suite: CI` in `## Verification`, and do not run the
+full suite by hand. A red or `COULD NOT CHECK` outcome of the gate on this branch that no later
+commit fixed means the tests are not green. Only Outside Claude Code (OpenCode, Codex) do you run
+the suite yourself, with the command from
 `python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command` (rc 1: no test command
 configured; say so in `## Verification`).
 

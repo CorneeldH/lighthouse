@@ -79,6 +79,13 @@ def test_kpi_commands_from_config():
         assert "tests/unit" not in text, path
 
 
+
+def test_selector_unchecked_exit_code():
+    """The selector's "could not check" exit 3 goes into `unchecked_exit_codes` (#80)."""
+    for path in VARIANTS:
+        text = " ".join(path.read_text(encoding="utf-8").split())
+        assert "list 3 in `[test_gate] unchecked_exit_codes`" in text, path
+
 def test_config_keys_known():
     """Every `config.py <key>` the skill runs is a key the config reader knows."""
     for path in VARIANTS:

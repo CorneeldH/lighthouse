@@ -122,7 +122,7 @@ def test_commit_guard_blocks_push_to_main_from_feature_branch(tmp_path):
 
 
 def test_commit_guard_ignores_heredoc_content(tmp_path):
-    """The false positive of pre-commit-tests.sh must not occur here."""
+    """The false positive of commit-tests.sh must not occur here."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     cmd = "cat > plan.md <<'XEOF'\ngit commit -m \"voorbeeld\"\ngit push origin main\nXEOF"

@@ -11,7 +11,6 @@ import os
 import subprocess
 from pathlib import Path
 
-from tests._domains import load
 from tests.pack._testkit import bash_payload, git, init_repo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,8 +151,8 @@ def test_go_hooks_registered():
     assert len(_registered_in("Stop", None, "go-check.sh")) == 1
 
 
-def test_test_gate_shuffles_with_race():
-    """Fails when the gate stops running Go tests in shuffled order under the race detector."""
+def test_test_gate_uses_selectors():
+    """Fails when the gate stops choosing its Go packages and pytest files from the commit."""
     result = subprocess.run(
         ["python3", "-m", "lighthouse_lib.config", "test_gate.command"],
         capture_output=True,
@@ -162,5 +161,8 @@ def test_test_gate_shuffles_with_race():
         env=dict(os.environ, PYTHONPATH=str(ROOT / ".lighthouse" / "lib")),
         check=False,
     )
-    assert result.stdout.strip() == "python3 ci/domains.py gate", result.stdout + result.stderr
-    assert " ".join(load().CHECKS["go"][0]) == "go test -race -shuffle=on ./..."
+    assert result.stdout.strip() == (
+        "python3 .lighthouse/scripts/gate_go.py -- go test -race"
+        " && python3 pack/python/scripts/gate_python.py -- uv run pytest -q"
+        " && python3 ci/domains.py gate"
+    ), result.stdout + result.stderr
