@@ -1,0 +1,64 @@
+# Without a CLA every outside merge is irreversible: what comes in is only a licence under
+# the repository's own terms, no right to sublicense or relicense. This lane is the one
+# thing that stops that. See CLA.md and CONTRIBUTING.md.
+name: CLA
+
+on:
+  pull_request:
+    branches: [main]
+
+# No `paths-ignore`: a pull request outside such a filter would reach main uncovered.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cla-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cla:
+    # ubuntu-latest, and this may NEVER become self-hosted. Once the repository is public,
+    # a fork pull request runs arbitrary code here. This lane runs on every fork pull
+    # request on purpose — that is its whole point.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      # The default ref of a `pull_request` run is `refs/pull/N/merge`: GitHub's merge of
+      # the pull request head onto the base tip. That commit itself is not measured — it
+      # carries `GitHub <noreply@github.com>` as author — but its two parents are exactly
+      # `base.sha` and `head.sha`, and with `fetch-depth: 0` both are local with history.
+      # The step below therefore measures the range `base.sha..head.sha`, which leaves the
+      # merge commit out by definition.
+      #
+      # Why not `ref: head.sha` plus a separate `git fetch` of the base branch:
+      # `persist-credentials: false` removes the checkout credential from `.git/config`,
+      # so such a later fetch is anonymous and fails on a private repository. Passing two
+      # SHAs costs no credential at all.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Bare python3: no uv, no sync, no dependency install on fork code. Hence the
+      # stdlib-only rule for the script.
+      #
+      # NOTE — this gate is not tamper-proof, and cannot be: the script and this workflow
+      # both come from the pull request head. A fork pull request can hollow out
+      # `tools/check_cla.py` in the same diff, or delete this file so the lane never runs.
+      # Two branch-protection settings belong with it, neither enforceable from the
+      # repository content:
+      #   1. required review — catches a hollowed-out script;
+      #   2. `CLA` as a required status check — catches a deleted workflow file, because a
+      #      required check that never reports blocks the merge.
+      # The register is a review surface too: every address in `owner.emails` or `bots`
+      # gives coverage without a signature. `check_append_only` stops those lists from
+      # growing in a pull request, but not someone taking over an existing address.
+      - name: Check the CLA
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/check_cla.py --base "$BASE_SHA" --head "$HEAD_SHA"

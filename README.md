@@ -18,6 +18,12 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 
 `lighthouse serve` starts the API and web UI on `127.0.0.1:8127`. Install it as a systemd user service: [install](docs/install.md).
 
+## Contributing
+
+Bugs and questions go in an issue; pull requests need a signed [CLA](CLA.md). See
+[CONTRIBUTING.md](CONTRIBUTING.md). Report a vulnerability privately, as described in
+[SECURITY.md](SECURITY.md).
+
 ## License
 
 [FSL-1.1-ALv2](LICENSE) — the Functional Source License with an Apache-2.0 future
