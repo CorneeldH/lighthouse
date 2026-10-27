@@ -21,6 +21,16 @@ export default defineConfig([
     },
   },
   {
+    // Playwright runs these in Node; its fixtures call use(), which is not a React hook.
+    files: ['e2e/**/*.ts', 'playwright.config.ts'],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+    },
+  },
+  {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['**/*.test.{ts,tsx}'],
     rules: {

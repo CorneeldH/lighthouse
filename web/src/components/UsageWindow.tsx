@@ -12,7 +12,11 @@ export function UsageWindow({ label, window: w, now }: UsageWindowProps): JSX.El
   const hasBar = (w.state === 'ok' || w.state === 'stale') && w.pct !== null
   const reset = formatReset(w.reset_at, now)
   return (
-    <div className={w.state === 'stale' ? 'space-y-1 opacity-60' : 'space-y-1'}>
+    <div
+      role="group"
+      aria-label={label}
+      className={w.state === 'stale' ? 'space-y-1 opacity-60' : 'space-y-1'}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">{label}</span>
         {hasBar && (

@@ -17,7 +17,7 @@ export function Panel({ title, updatedAt, error, loading, children }: PanelProps
   const now = useNow()
   const hasError = error !== null && error !== undefined
   return (
-    <Card>
+    <Card role="region" aria-label={title}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
         {updatedAt > 0 && (

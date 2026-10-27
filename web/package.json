@@ -13,7 +13,8 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "gen": "orval --config ./orval.config.ts",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/react": "16.3.3",
     "@types/node": "22.20.5",
