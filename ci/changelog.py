@@ -8,11 +8,20 @@ entry. The release workflow merges the fragments into CHANGELOG.md; see docs/rel
   at least one fragment added in `base...head` and refuses any fragment that does not parse.
   Exit 0 is ok, 1 is a verdict (no new fragment, or a broken one), 2 is COULD NOT CHECK (git
   failed).
+- The release workflow runs `python3 ci/changelog.py release --event "$EVENT" --bump "$BUMP"`:
+  it decides the bump from the open fragments, writes the section into CHANGELOG.md, removes
+  the fragments and prints the new tag (nothing when there is nothing to release). Exit 0 is
+  ok, 1 is a verdict (ReleaseError, FragmentError), 2 is COULD NOT CHECK (no release tag, or
+  git failed).
+- `python3 ci/changelog.py notes <tag>` prints the CHANGELOG.md section of a tag; exit 1 when
+  there is none.
 
 Stdlib only, Python 3.11.
 """
 
 import argparse
+import datetime
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -26,6 +35,14 @@ FRAGMENT_DIR = "changelog.d"
 
 class FragmentError(Exception):
     """A fragment that cannot be used. The message starts with its path."""
+
+
+class ReleaseError(Exception):
+    """A release that must not happen (exit 1)."""
+
+
+class TagError(Exception):
+    """No usable release tag (exit 2)."""
 
 
 @dataclass(frozen=True)
@@ -90,11 +107,153 @@ def added_fragments(root: Path, base: str, head: str) -> list[str]:
              "-z", f"{base}...{head}", "--", f"{FRAGMENT_DIR}/"],
             check=True, capture_output=True,
         ).stdout.decode("utf-8")
-    except (OSError, subprocess.CalledProcessError) as err:
+    except (OSError, UnicodeDecodeError, subprocess.CalledProcessError) as err:
         detail = err.stderr.decode("utf-8", "replace").strip() if isinstance(
             err, subprocess.CalledProcessError) else str(err)
         raise RuntimeError(f"git diff {base}...{head} failed: {detail}") from err
     return [p for p in out.split("\0") if p and Path(p).name != MARKER]
+
+
+BUMPS = ("patch", "minor", "major")
+TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
+GROUPS = tuple((t, t.capitalize()) for t in ("added", "changed", "fixed", "removed"))
+
+
+def decide_bump(fragments: list[Fragment], event: str, forced: str = "auto") -> str | None:
+    """The bump for the open fragments, or None when there is nothing to release.
+
+    `push` releases only when a `fixed` is open (patch, or minor next to another type);
+    `schedule` and `workflow_dispatch` release anything releasable. A forced bump below
+    what `schedule` would pick, or without a releasable fragment, is refused."""
+    types = {f.type for f in fragments if f.type in RELEASABLE}
+    if not types:
+        if forced != "auto":
+            raise ReleaseError("nothing to release: no releasable fragment for the forced bump")
+        return None
+    natural = "patch" if types == {"fixed"} else "minor"
+    if forced != "auto":
+        if BUMPS.index(forced) < BUMPS.index(natural):
+            raise ReleaseError(f"forced bump {forced} is lower than the {natural} the fragments need")
+        return forced
+    if event == "push" and "fixed" not in types:
+        return None
+    return natural
+
+
+def latest_tag(tags: list[str]) -> str:
+    """The highest `vX.Y.Z` tag by semver. Prereleases and other tags are ignored."""
+    found = [(tuple(int(n) for n in m.groups()), tag) for tag in tags if (m := TAG_RE.match(tag))]
+    if not found:
+        raise TagError("no vX.Y.Z release tag found (a checkout without tags?)")
+    return max(found)[1]
+
+
+def next_version(tag: str, bump: str) -> str:
+    match = TAG_RE.match(tag)
+    if not match or bump not in BUMPS:
+        raise ValueError(f"cannot bump {tag!r} by {bump!r}")
+    major, minor, patch = (int(n) for n in match.groups())
+    if bump == "major":
+        return f"v{major + 1}.0.0"
+    if bump == "minor":
+        return f"v{major}.{minor + 1}.0"
+    return f"v{major}.{minor}.{patch + 1}"
+
+
+def render_section(version: str, date: str, fragments: list[Fragment]) -> str:
+    """A CHANGELOG.md section: groups in a fixed order, `internal` never."""
+    blocks = [f"## [{version}] - {date}"]
+    for typ, title in GROUPS:
+        items = ["- " + f.text.replace("\n", "\n  ") for f in fragments if f.type == typ]
+        if items:
+            blocks.append(f"### {title}\n\n" + "\n".join(items))
+    return "\n\n".join(blocks) + "\n"
+
+
+def insert_section(changelog: str, section: str) -> str:
+    """Put `section` above the first `## ` line, or at the end when there is none."""
+    lines = changelog.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.startswith("## "):
+            return "".join(lines[:i]) + section + "\n" + "".join(lines[i:])
+    if changelog and not changelog.endswith("\n"):
+        changelog += "\n"
+    return changelog + ("\n" if changelog else "") + section
+
+
+def extract_section(changelog: str, tag: str) -> str | None:
+    """The body under `## [<tag>] - ...` up to the next `## ` line, stripped; None if absent."""
+    prefix = f"## [{tag}] - "
+    body: list[str] | None = None
+    for line in changelog.splitlines():
+        if body is None:
+            if line.startswith(prefix):
+                body = []
+        elif line.startswith("## "):
+            break
+        else:
+            body.append(line)
+    return None if body is None else "\n".join(body).strip()
+
+
+def release(root: Path, event: str, forced: str, date: str, tags: list[str]) -> str | None:
+    """Write the section for the open fragments into CHANGELOG.md and remove them.
+
+    Returns the new tag, or None when nothing is released (the tree is left alone). The order
+    is fixed: tag, fragments and bump, then CHANGELOG.md, so a repo without tags always fails
+    with TagError."""
+    current = latest_tag(tags)
+    fragments = read_fragments(root / FRAGMENT_DIR)
+    bump = decide_bump(fragments, event, forced)
+    if bump is None:
+        return None
+    path = root / "CHANGELOG.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as err:
+        raise ReleaseError(f"{path}: cannot read: {err}") from err
+    version = next_version(current, bump)
+    path.write_text(insert_section(text, render_section(version, date, fragments)), encoding="utf-8")
+    for fragment in fragments:
+        fragment.path.unlink()
+    return version
+
+
+def _release(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "tag", "--list", "v*"],
+            check=True, capture_output=True, text=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as err:
+        detail = err.stderr.strip() if isinstance(err, subprocess.CalledProcessError) else str(err)
+        print(f"COULD NOT CHECK: git tag failed: {detail}", file=sys.stderr)
+        return 2
+    try:
+        tag = release(root, args.event, args.bump, args.date, out.split())
+    except TagError as err:
+        print(f"COULD NOT CHECK: {err}", file=sys.stderr)
+        return 2
+    except (ReleaseError, FragmentError) as err:
+        print(f"{err}", file=sys.stderr)
+        return 1
+    print(tag or "")
+    return 0
+
+
+def _notes(args: argparse.Namespace) -> int:
+    path = Path(args.root) / "CHANGELOG.md"
+    try:
+        body = extract_section(path.read_text(encoding="utf-8"), args.tag)
+    except OSError as err:
+        print(f"{path}: cannot read: {err}", file=sys.stderr)
+        return 1
+    if body is None:
+        print(f"no section for {args.tag} in {path}", file=sys.stderr)
+        return 1
+    print(body)
+    return 0
 
 
 def _check(args: argparse.Namespace) -> int:
@@ -127,6 +286,16 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--head", required=True)
     check.add_argument("--root", default=".")
     check.set_defaults(func=_check)
+    rel = sub.add_parser("release", help="write CHANGELOG.md from the fragments, print the new tag")
+    rel.add_argument("--event", required=True, choices=("push", "schedule", "workflow_dispatch"))
+    rel.add_argument("--bump", default="auto", choices=("auto", *BUMPS))
+    rel.add_argument("--date", default=datetime.date.today().isoformat())
+    rel.add_argument("--root", default=".")
+    rel.set_defaults(func=_release)
+    notes = sub.add_parser("notes", help="print the CHANGELOG.md section of a tag")
+    notes.add_argument("tag")
+    notes.add_argument("--root", default=".")
+    notes.set_defaults(func=_notes)
     args = parser.parse_args(argv)
     return args.func(args)
 
