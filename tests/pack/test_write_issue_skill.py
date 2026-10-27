@@ -78,6 +78,31 @@ def test_write_issue_searches_duplicates_before_the_template():
         assert "gh issue list --json" not in step0 and "wontfix" not in step0
 
 
+def test_existing_issue_has_its_own_path():
+    """Updating an issue names which steps drop and which hold, instead of leaving the agent to
+    guess from a workflow written for a new issue."""
+    for body in skill():
+        section = _between(body, "## An existing issue", "## A defect in an external tool")
+        flat = " ".join(section.split())
+        for step in ("0.", "1.", "2.", "4."):
+            assert re.search(rf"\| {re.escape(step)} [^|]*\| drops", flat), step
+        for step in ("3c.", "3e."):
+            assert re.search(rf"\| {re.escape(step)} [^|]*\| holds", flat), step
+        assert 'gh api -X PATCH "repos/$R/issues/<nr>"' in section
+        assert "-F body=@<file>" in section  # never the body as a shell argument
+        assert "gh issue create" in flat  # named as what never runs
+
+
+def test_existing_issue_lapsed_block_path():
+    """A lapsed blocking label comes off; a move to another one is a single edit, after the
+    relation when the new label is the blocked-issue label."""
+    for body in skill():
+        section = _between(body, "## An existing issue", "## A defect in an external tool")
+        assert '--remove-label "$OLD" --add-label "$NEW"' in section
+        assert section.index("3e steps 2–3") < section.index('--add-label "$NEW"')
+        assert "3e step 5" in section  # final check, never success from the command alone
+
+
 def test_pitch_has_section_not_yet_decided():
     for body in skill():
         pitch = _between(body, "### Pitch (Shape Up)", "## Title Standards")

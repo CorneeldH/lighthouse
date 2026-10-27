@@ -4,7 +4,7 @@ Agentic lighthouse: the development chain from issue to green pull request, buil
 
 ## Status
 
-Early development: the skill and hook packages install through `lighthouse init`, and the server runs with `lighthouse serve`. Roadmap: the milestones of this repository.
+Usable without the controller: `lighthouse init` installs the skill and hook packages into your repository, with worktrees, a test gate before every commit, PR bodies with evidence and, with `codex`, adversarial reviews. Start with [Getting started](docs/getting-started.md). The server, `lighthouse serve`, is in early development. Roadmap: the milestones of this repository.
 
 ## Design
 
