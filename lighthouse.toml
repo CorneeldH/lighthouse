@@ -9,7 +9,8 @@ kind = "github"
 repo = "CorneeldH/lighthouse"
 
 [test_gate]
-# ci/domains.py runs only the checks of the domains a change touches (see the script).
-command = "python3 ci/domains.py gate"
+# gate_go.py and gate_python.py choose the Go packages and pytest files of the commit;
+# ci/domains.py runs the web checks when the commit touches web (see the scripts).
+command = "python3 .lighthouse/scripts/gate_go.py -- go test -race && python3 pack/python/scripts/gate_python.py -- uv run pytest -q && python3 ci/domains.py gate"
 # 3: ci/domains.py could not check (no node, no web/node_modules, a command not found).
 unchecked_exit_codes = [3]

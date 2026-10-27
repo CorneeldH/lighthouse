@@ -50,8 +50,8 @@ def markers(tmp_path: Path) -> Path:
 
 
 def _touching(markers: Path) -> dict[str, list[list[str]]]:
-    """One check per domain that leaves a marker named after the domain."""
-    return {d: [["sh", "-c", f"touch '{markers / d}'"]] for d in ("web", "python", "go")}
+    """The web check leaves a marker named after the domain."""
+    return {"web": [["sh", "-c", f"touch '{markers / 'web'}'"]]}
 
 
 def _ran(markers: Path) -> set[str]:
@@ -81,22 +81,27 @@ def test_classify(paths, expected):
     assert domains.classify(paths) == expected
 
 
-def test_gate_untracked_file_counts(repo, markers):
+def test_checks_hold_only_web():
+    assert set(domains.CHECKS) == {"web"}
+
+
+def test_gate_untracked_non_web_file_skips(repo, markers, capsys):
     (repo / "internal" / "new.go").write_text("package a\n", encoding="utf-8")
     assert domains.gate(repo, checks=_touching(markers), drift=_no_drift) == 0
-    assert _ran(markers) == {"python", "go"}
+    assert "gate: skipped — the commit touches no web path" in capsys.readouterr().out
+    assert _ran(markers) == set()
 
 
-def test_gate_unstaged_change_counts(repo, markers):
-    (repo / "internal" / "a.go").write_text("package b\n", encoding="utf-8")
+def test_gate_unstaged_web_change_counts(repo, markers, web_ready):
+    (repo / "web" / "x.tsx").write_text("export const x = 1\n", encoding="utf-8")
     assert domains.gate(repo, checks=_touching(markers), drift=_no_drift) == 0
-    assert _ran(markers) == {"python", "go"}
+    assert _ran(markers) == {"web"}
 
 
-def test_gate_rename_across_border_runs_go(repo, markers, web_ready):
+def test_gate_rename_into_web_runs_web(repo, markers, web_ready):
     git(repo, "mv", "internal/a.go", "web/a.go")
     assert domains.gate(repo, checks=_touching(markers), drift=_no_drift) == 0
-    assert _ran(markers) == {"web", "python", "go"}
+    assert _ran(markers) == {"web"}
 
 
 def test_gate_quoted_path_is_web(repo, markers, web_ready):
@@ -111,14 +116,24 @@ def test_gate_nothing_changed(repo, markers, capsys):
     assert _ran(markers) == set()
 
 
-def test_gate_reports_skipped(repo, markers, web_ready, capsys):
+def test_gate_reads_files_from_env(repo, markers, tmp_path, monkeypatch, capsys):
+    # The worktree holds a web change, but the commit's list names only a Go file.
     (repo / "web" / "x.tsx").write_text("export const x = 1\n", encoding="utf-8")
+    listing = tmp_path / "run-1.files"
+    listing.write_text("internal/x.go\n", encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_GATE_FILES", str(listing))
     assert domains.gate(repo, checks=_touching(markers), drift=_no_drift) == 0
-    lines = capsys.readouterr().out.splitlines()
-    assert "gate: go skipped — no path in the domain" in lines
-    assert "gate: python skipped — no path in the domain" in lines
-    assert "gate: web skipped — no path in the domain" not in lines
-    assert lines[-1] == "gate: passed — web"
+    assert "gate: skipped — the commit touches no web path" in capsys.readouterr().out
+    assert _ran(markers) == set()
+
+
+def test_gate_runs_only_web(repo, markers, web_ready, tmp_path, monkeypatch, capsys):
+    listing = tmp_path / "run-1.files"
+    listing.write_text("web/src/a.ts\ninternal/x.go\n", encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_GATE_FILES", str(listing))
+    assert domains.gate(repo, checks=_touching(markers), drift=_no_drift) == 0
+    assert _ran(markers) == {"web"}
+    assert capsys.readouterr().out.splitlines()[-1] == "gate: passed — web"
 
 
 def test_gate_web_without_node_modules(repo, markers, monkeypatch, capsys):
@@ -146,21 +161,17 @@ def test_gate_web_without_node(repo, markers, monkeypatch, capsys):
     assert _ran(markers) == set()
 
 
-def test_gate_stops_at_first_failure(repo, markers, capsys):
-    (repo / "internal" / "a.go").write_text("package b\n", encoding="utf-8")
-    checks = {
-        "web": [],
-        "python": [["sh", "-c", "exit 7"]],
-        "go": [["sh", "-c", f"touch '{markers / 'go'}'"]],
-    }
+def test_gate_stops_at_first_failure(repo, markers, web_ready, capsys):
+    (repo / "web" / "x.tsx").write_text("export const x = 1\n", encoding="utf-8")
+    checks = {"web": [["sh", "-c", "exit 7"], ["sh", "-c", f"touch '{markers / 'web'}'"]]}
     assert domains.gate(repo, checks=checks, drift=_no_drift) == 7
     assert _ran(markers) == set()
     assert "gate: passed" not in capsys.readouterr().out
 
 
-def test_gate_missing_command(repo, markers, capsys):
-    (repo / "internal" / "a.go").write_text("package b\n", encoding="utf-8")
-    checks = {"web": [], "python": [["lighthouse-no-such-cmd"]], "go": []}
+def test_gate_missing_command(repo, markers, web_ready, capsys):
+    (repo / "web" / "x.tsx").write_text("export const x = 1\n", encoding="utf-8")
+    checks = {"web": [["lighthouse-no-such-cmd"]]}
     assert domains.gate(repo, checks=checks, drift=_no_drift) == 3
     out = capsys.readouterr().out
     assert "gate: COULD NOT CHECK — lighthouse-no-such-cmd not found" in out
@@ -177,15 +188,6 @@ def test_gate_drift_runs_first_and_stops_web(repo, markers, web_ready):
     assert domains.gate(repo, checks=_touching(markers), drift=drift) == 1
     assert seen == [repo / "web"]
     assert _ran(markers) == set()
-
-
-def test_gate_passed_lists_touched_domains_in_order(repo, markers, web_ready, capsys):
-    (repo / "web" / "x.tsx").write_text("export const x = 1\n", encoding="utf-8")
-    (repo / "internal" / "a.go").write_text("package b\n", encoding="utf-8")
-    assert domains.gate(repo, checks=_touching(markers), drift=_no_drift) == 0
-    out = capsys.readouterr().out.splitlines()
-    assert out[-1] == "gate: passed — web, python, go"
-    assert f"gate: python — sh -c touch '{markers / 'python'}'" in out
 
 
 def test_api_drift(tmp_path, capsys):
