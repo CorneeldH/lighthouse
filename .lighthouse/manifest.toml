@@ -834,7 +834,7 @@ kind = "file"
 path = ".lighthouse/scripts/gate_go.py"
 package = "go"
 version = "dev"
-sha256 = "8e606068373f27abc8001c0946440312d40303c90e5d8a78790b6dcbaa7868e2"
+sha256 = "7981e8d4f579844ca7951704cf7d5d76a4b4bb915e15aeb89f7c1d8f93048445"
 
 [[unit]]
 kind = "file"

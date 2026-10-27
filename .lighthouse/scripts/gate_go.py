@@ -45,7 +45,7 @@ def packages_for(files: list[str], listing: list[dict], root: Path) -> list[str]
 
 
 def _belongs(path: Path, pkg: dict) -> bool:
-    directory = Path(pkg["Dir"])
+    directory = Path(pkg["Dir"]).resolve()
     try:
         rel = path.relative_to(directory)
     except ValueError:

@@ -156,3 +156,22 @@ def test_cli_without_separator_is_rc_2():
     done = run_cli(Path.cwd(), None, "echo")
     assert done.returncode == 2
     assert "usage" in done.stderr
+
+
+def test_cli_symlinked_cwd_still_selects_package(module, tmp_path_factory):
+    link = tmp_path_factory.mktemp("links") / "link"
+    link.symlink_to(module, target_is_directory=True)
+    files = module / "files.txt"
+    files.write_text("a/a.go\n")
+    env_pwd = str(link)
+    env = {**os.environ, "LIGHTHOUSE_GATE_FILES": str(files), "PWD": env_pwd}
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "--", "echo"],
+        cwd=link,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0
+    assert "gate-go: example.com/m/a" in done.stdout
