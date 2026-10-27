@@ -1,0 +1,16 @@
+name: Question
+description: Ask how something in lighthouse works or how to use it.
+labels: []
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What you want to know, and what you already tried or read.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Your setup if it matters — `lighthouse version`, operating system, harness.

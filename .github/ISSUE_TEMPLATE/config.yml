@@ -1,0 +1,7 @@
+# Blank issues stay on: the issues the development chain writes itself (through
+# /lighthouse-write-issue) follow their own format and never use these templates.
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/CorneeldH/lighthouse/blob/main/SECURITY.md
+    about: Report a vulnerability privately, never in a public issue.
