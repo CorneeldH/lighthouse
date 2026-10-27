@@ -689,6 +689,13 @@ sha256 = "be0ebea84ffdaa86c739ff5805477902ea7bbe6505f3b2ae44a62d471d2ae6cd"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/commit_base.py"
+package = "core"
+version = "dev"
+sha256 = "81cc034d5e207f7248557c6fa5e728990d357f56f31f3fc533adfef36228c433"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"

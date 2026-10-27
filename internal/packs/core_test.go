@@ -101,6 +101,7 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/code_language_jargon.txt",
 		".lighthouse/lib/lighthouse_lib/code_language_llm.py",
 		".lighthouse/lib/lighthouse_lib/code_language_score.py",
+		".lighthouse/lib/lighthouse_lib/commit_base.py",
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/deadline.py",

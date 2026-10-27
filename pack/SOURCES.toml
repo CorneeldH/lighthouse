@@ -113,6 +113,10 @@ source_path = ".claude/hooks/lib/bash_writes.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
+path = "pack/core/lib/commit_base.py"
+new = true
+
+[[file]]
 path = "pack/core/hooks/worktree-guard.sh"
 source_path = ".claude/hooks/worktree-guard.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
