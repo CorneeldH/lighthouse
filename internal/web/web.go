@@ -1,4 +1,4 @@
-// Package web embeds the built single-page app.
+// Package web embeds the built single-page app, or a placeholder when it is not built.
 package web
 
 import (
@@ -6,14 +6,25 @@ import (
 	"io/fs"
 )
 
-//go:embed dist
-var dist embed.FS
+// all: keeps dist/.gitkeep embeddable while dist holds nothing else.
+//
+//go:embed all:dist placeholder
+var embedded embed.FS
 
-// FS returns the embedded site rooted at dist.
-func FS() fs.FS {
-	site, err := fs.Sub(dist, "dist")
+// Choose returns dist when root holds a built app (dist/index.html), else placeholder.
+func Choose(root fs.FS) fs.FS {
+	dir := "placeholder"
+	if _, err := fs.Stat(root, "dist/index.html"); err == nil {
+		dir = "dist"
+	}
+	site, err := fs.Sub(root, dir)
 	if err != nil {
-		panic("web: embedded dist directory missing: " + err.Error())
+		panic("web: " + dir + " directory missing: " + err.Error())
 	}
 	return site
+}
+
+// FS returns the embedded site: the built app, or the placeholder.
+func FS() fs.FS {
+	return Choose(embedded)
 }
