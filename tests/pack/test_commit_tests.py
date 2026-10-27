@@ -70,6 +70,13 @@ FAKE_UV = (
     "      ;;\n"
     "  esac\n"
     "done\n"
+    # The contract of `post` (#80): what the command saw of base, head and files.
+    "{\n"
+    '  echo "BASE=$LIGHTHOUSE_GATE_BASE"\n'
+    '  echo "HEAD=$LIGHTHOUSE_GATE_HEAD"\n'
+    '  echo "FILES=$LIGHTHOUSE_GATE_FILES"\n'
+    '  [ -z "$LIGHTHOUSE_GATE_FILES" ] || cat "$LIGHTHOUSE_GATE_FILES"\n'
+    '} >> "$UV_MARK.env"\n'
     'echo "3 passed in 0.01s"\n'
     "exit ${UV_EXIT:-0}\n"
 )
@@ -129,6 +136,7 @@ class Gate:
         path: str | None = None,
         background: bool = False,
         mode: tuple[str, ...] = ("pre",),
+        event: str | None = None,
         **env: str,
     ):
         tail = os.environ["PATH"] if path is None else path
@@ -151,7 +159,19 @@ class Gate:
         payload = dict(bash_payload(cmd, cwd), session_id=SESSION)
         if background:
             payload["tool_input"]["run_in_background"] = True
+        if event is not None:
+            payload["hook_event_name"] = event
         return run_hook(HOOK, payload, cwd, full_env, args=mode)
+
+    def post(self, cmd: str, cwd: Path, event: str = "PostToolUse", **env: str):
+        """`post` for the same Bash call as an earlier `pre` (same command, same marker)."""
+        return self.run(cmd, cwd, mode=("post",), event=event, **env)
+
+    def seen(self) -> tuple[dict[str, str], str]:
+        """What the fake `uv` saw: BASE, HEAD and FILES, plus the content of FILES."""
+        lines = Path(f"{self.mark}.env").read_text(encoding="utf-8").splitlines(keepends=True)
+        names = dict(line.rstrip("\n").split("=", 1) for line in lines[:3])
+        return names, "".join(lines[3:])
 
     def markers(self) -> list[Path]:
         """The `record` markers of this session."""
@@ -1378,3 +1398,230 @@ def test_hooks_json_registers_pre_and_post() -> None:
             "${CLAUDE_PLUGIN_ROOT}/hooks/commit-tests.sh post"
         ], event
         assert post[0]["timeout"] == 300, event
+
+
+# --- `post` (#80): test what the commit touched, after the commit ---
+
+FIX_HINT = "commit-tests: tests failed on the commit you just made. Fix them in a new commit."
+
+
+def _head(repo: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _commit(repo: Path, *paths: str) -> None:
+    for rel in paths:
+        target = repo / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(f"{rel}\n", encoding="utf-8")
+        git(repo, "add", rel)
+    git(repo, "commit", "-qm", "c")
+
+
+def _pre_on_feature(gate: Gate) -> str:
+    """`pre` on a feature branch: records the HEAD, which it returns."""
+    git(gate.project, "checkout", "-q", "-b", "issue-1-x")
+    base = _head(gate.project)
+    result = gate.run("git commit -m x", gate.project)
+    assert result.returncode == 0, result.stderr
+    assert not gate.mark.exists()
+    return base
+
+
+def test_post_runs_command_with_commit_files(gate: Gate) -> None:
+    base = _pre_on_feature(gate)
+    _commit(gate.project, "a.py", "b/c.sh")
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+    names, files = gate.seen()
+    assert names["BASE"] == base
+    assert names["HEAD"] == _head(gate.project)
+    assert files == "a.py\nb/c.sh\n"
+    # Beside LIGHTHOUSE_GATE_TMP, not in it: `pytest --basetemp` empties that directory.
+    basetemp = Path(f"{gate.mark}.bt").read_text(encoding="utf-8").strip()
+    assert names["FILES"] == f"{basetemp}.files"
+    output = json.loads(result.stdout)
+    assert output["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert "3 passed" in output["hookSpecificOutput"]["additionalContext"]
+    assert gate.markers() == []
+
+
+def test_post_red_is_exit_2_with_fix_hint(gate: Gate) -> None:
+    _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+
+    result = gate.post("git commit -m x", gate.project, UV_EXIT="1")
+
+    assert result.returncode == 2, result.stdout
+    assert result.stderr.startswith(FIX_HINT + "\n"), result.stderr
+    assert "3 passed" in result.stderr
+
+
+def test_post_silent_when_head_did_not_move(gate: Gate) -> None:
+    _pre_on_feature(gate)
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    assert result.stderr == ""
+    assert not gate.mark.exists()
+    assert gate.markers() == []
+
+
+def test_post_without_record_reads_no_config(gate: Gate) -> None:
+    # No marker: nothing to test, so no configuration, slot or brake — a broken
+    # lighthouse.toml does not block a call `pre` did not record.
+    gate.toml.write_text("[test_gate\n", encoding="utf-8")
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
+    assert not gate.mark.exists()
+    assert not gate.slot_dir.exists()
+
+
+def test_post_tests_commit_when_call_failed(gate: Gate) -> None:
+    _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+
+    result = gate.post("git commit -m x", gate.project, event="PostToolUseFailure")
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+    output = json.loads(result.stdout)["hookSpecificOutput"]
+    assert output["hookEventName"] == "PostToolUseFailure"
+    assert "3 passed" in output["additionalContext"]
+
+
+def test_post_two_commits_in_one_call(gate: Gate) -> None:
+    base = _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+    _commit(gate.project, "b.py")
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    names, files = gate.seen()
+    assert names["BASE"] == base
+    assert names["HEAD"] == _head(gate.project)
+    assert files == "a.py\nb.py\n"
+
+
+def test_post_unchecked_exit_code_blocks(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "unchecked_exit_codes = [5]\n")
+    _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+
+    result = gate.post("git commit -m x", gate.project, UV_EXIT="5")
+
+    assert result.returncode == 2, result.stdout
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
+    assert "exit code 5" in result.stderr
+    assert "tests failed" not in result.stderr
+
+
+def test_post_deadline_still_applies(gate: Gate) -> None:
+    _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+
+    result = gate.post("git commit -m x", gate.project, UV_EXIT="124")
+
+    assert result.returncode == 2, result.stdout
+    assert "deadline of 270 s" in result.stderr
+    assert "COULD NOT CHECK" in result.stderr
+
+
+def test_post_unreadable_record_blocks(gate: Gate) -> None:
+    _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+    gate.markers()[0].write_text("not json", encoding="utf-8")
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_post_files_failure_blocks(gate: Gate) -> None:
+    _pre_on_feature(gate)
+    # A base git does not know: `files` cannot diff it.
+    marker = gate.markers()[0]
+    marker.write_text(
+        json.dumps({"heads": {str(gate.project.resolve()): "0" * 40}}), encoding="utf-8"
+    )
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
+    assert not gate.mark.exists()
+
+
+SELECTOR_UV = (
+    "#!/bin/sh\n"
+    'pwd >> "$UV_MARK"\n'
+    "echo 'gate-go: skipped — x'\n"
+    "echo ok\n"
+    "echo 'gate: skipped — y'\n"
+    "echo\n"
+)
+
+
+def test_post_green_shows_every_selector_line(gate: Gate) -> None:
+    gate.add_stub("uv", SELECTOR_UV)
+    _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    root = gate.project.resolve()
+    lines = _context(result.stdout).splitlines()
+    assert lines[-2:] == [
+        f"commit-tests: {root} — gate-go: skipped — x",
+        f"commit-tests: {root} — gate: skipped — y",
+    ]
+    assert f"{root} — ok" not in _context(result.stdout)
+
+
+def test_pre_green_shows_every_selector_line(gate: Gate) -> None:
+    gate.add_stub("uv", SELECTOR_UV)
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    root = gate.project.resolve()
+    lines = _context(result.stdout).splitlines()
+    assert lines[-2:] == [
+        f"commit-tests: {root} — gate-go: skipped — x",
+        f"commit-tests: {root} — gate: skipped — y",
+    ]
+    assert f"{root} — ok" not in _context(result.stdout)
+
+
+def test_pre_runs_without_gate_files(gate: Gate) -> None:
+    # `pre` on the default branch tests everything: no selector list, also when an
+    # outer gate run (this suite inside a real gate) leaves the variables behind.
+    result = gate.run(
+        "git commit -m x",
+        gate.project,
+        LIGHTHOUSE_GATE_BASE="b",
+        LIGHTHOUSE_GATE_HEAD="h",
+        LIGHTHOUSE_GATE_FILES=str(gate.tmp / "outer.files"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    names, files = gate.seen()
+    assert names == {"BASE": "", "HEAD": "", "FILES": ""}
+    assert files == ""

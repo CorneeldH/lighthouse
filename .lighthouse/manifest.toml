@@ -211,7 +211,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/commit-tests.sh"
 package = "core"
 version = "dev"
-sha256 = "af2dc2cecc1cfcd38152e77372ce58ad17e66b64964f385b9ecb8c3d5367c0cd"
+sha256 = "42a58339fa85bea879e29dd244101cc4d198133372d7c0d1aa018a7234f1d30d"
 
 [[unit]]
 kind = "file"

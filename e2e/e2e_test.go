@@ -99,6 +99,12 @@ func guardCommand(t *testing.T, repo string) string {
 // bashHookCommand reads the one command under PreToolUse/Bash whose text names name.
 func bashHookCommand(t *testing.T, repo, name string) string {
 	t.Helper()
+	return eventHookCommand(t, repo, "PreToolUse", name)
+}
+
+// eventHookCommand reads the one command under event/Bash whose text names name.
+func eventHookCommand(t *testing.T, repo, event, name string) string {
+	t.Helper()
 	data, err := os.ReadFile(filepath.Join(repo, ".claude", "settings.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +121,7 @@ func bashHookCommand(t *testing.T, repo, name string) string {
 		t.Fatal(err)
 	}
 	var found []string
-	for _, g := range s.Hooks["PreToolUse"] {
+	for _, g := range s.Hooks[event] {
 		if g.Matcher != "Bash" {
 			continue
 		}
@@ -126,7 +132,7 @@ func bashHookCommand(t *testing.T, repo, name string) string {
 		}
 	}
 	if len(found) != 1 {
-		t.Fatalf("%s registrations under PreToolUse/Bash: %v", name, found)
+		t.Fatalf("%s registrations under %s/Bash: %v", name, event, found)
 	}
 	return found[0]
 }
@@ -236,15 +242,26 @@ func TestFreshRepoGetsFullCore(t *testing.T) {
 // stdout too: a passed gate reports there.
 func runGate(t *testing.T, repo, command string) (int, string, string) {
 	t.Helper()
+	return runGateEvent(t, repo, command, "PreToolUse")
+}
+
+// runGateEvent is runGate for hook event event, with the markers of `pre` in the
+// test's own temporary directory (XDG_RUNTIME_DIR next to the repo, like host.toml), so
+// `post` of the same call finds them and no run touches the real state dir.
+func runGateEvent(t *testing.T, repo, command, event string) (int, string, string) {
+	t.Helper()
 	payload, _ := json.Marshal(map[string]any{
-		"tool_name":  "Bash",
-		"cwd":        repo,
-		"tool_input": map[string]string{"command": "git commit -m x"},
+		"session_id":      "e2e",
+		"hook_event_name": event,
+		"tool_name":       "Bash",
+		"cwd":             repo,
+		"tool_input":      map[string]string{"command": "git commit -m x"},
 	})
 	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = repo
 	cmd.Env = append(cleanEnv(), "CLAUDE_PROJECT_DIR="+repo,
-		"LIGHTHOUSE_HOST_TOML="+filepath.Join(filepath.Dir(repo), "host.toml"))
+		"LIGHTHOUSE_HOST_TOML="+filepath.Join(filepath.Dir(repo), "host.toml"),
+		"XDG_RUNTIME_DIR="+filepath.Dir(repo))
 	cmd.Stdin = bytes.NewReader(payload)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -312,6 +329,28 @@ func TestRedTestBlocksCommit(t *testing.T) {
 	writeFile(t, repo, "tests/test_x.py", "def test_x():\n    assert 1 + 1 == 2\n")
 	if code, stdout, stderr := runGate(t, repo, cmd); code != 0 {
 		t.Fatalf("green test: rc %d\n%s\n%s", code, stdout, stderr)
+	}
+}
+
+// TestRedCommitComesBackAfter: on a feature branch `pre` only records, the commit
+// lands, and `post` brings the red test back to the agent.
+func TestRedCommitComesBackAfter(t *testing.T) {
+	needUV(t)
+	bin := buildLighthouse(t)
+	repo := pythonRepo(t, bin, pyprojectHead+"\n[dependency-groups]\ndev = [\"pytest\"]\n")
+	git(t, repo, "checkout", "-q", "-b", "issue-1-x")
+	writeFile(t, repo, "tests/test_x.py", "def test_x():\n    assert 1 == 2\n")
+
+	if code, stdout, stderr := runGate(t, repo, bashHookCommand(t, repo, "commit-tests.sh pre")); code != 0 {
+		t.Fatalf("pre on a feature branch: rc %d\n%s\n%s", code, stdout, stderr)
+	}
+	git(t, repo, "add", "-A")
+	git(t, repo, "commit", "-qm", "red")
+
+	post := eventHookCommand(t, repo, "PostToolUse", "commit-tests.sh post")
+	code, _, stderr := runGateEvent(t, repo, post, "PostToolUse")
+	if code != 2 || !strings.Contains(stderr, "commit-tests: tests failed on the commit you just made") {
+		t.Fatalf("post after a red commit: rc %d\n%s", code, stderr)
 	}
 }
 

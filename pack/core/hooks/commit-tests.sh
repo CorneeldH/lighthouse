@@ -10,8 +10,10 @@
 # up front only for a commit to the default branch (`forge.default_branch`, the
 # branch main-commit-guard.sh protects), and for every other root of this
 # project records the HEAD before the commit (lighthouse_lib/commit_base.py);
-# `post` tests what the commit touched. Until `post` is built it passes
-# silently.
+# `post` tests what the commit touched: per recorded root whose HEAD moved, it
+# runs the command with LIGHTHOUSE_GATE_BASE, LIGHTHOUSE_GATE_HEAD and
+# LIGHTHOUSE_GATE_FILES (the changed paths, one per line). Red is exit 2 after
+# the commit: the commit stays, the fix comes in a new one.
 #
 # Counterpart: the test gate in the instruction block carries the norm up
 # front; this hook enforces it at the moment of the commit.
@@ -88,10 +90,7 @@ HOOK_NAME="commit-tests"
 MODE="${1:-}"
 case "$MODE" in
   pre) ;;
-  post)
-    # Built in the next step of #80; until then `post` passes silently.
-    exit 0
-    ;;
+  post) ;;
   *)
     {
       echo "$HOOK_NAME: COULD NOT CHECK — unknown mode, expected pre or post"
@@ -103,6 +102,8 @@ case "$MODE" in
 esac
 
 UNRESOLVED="<unknown>"
+# A summary line of a selector (#80): `gate-<name>:` or `gate:`.
+SELECTOR_LINE='^gate(-[A-Za-z0-9_.-]+)?:'
 NEW_DIR="<new>"
 # Hook timeout in hooks.json (300) minus the grace of deadline.py (10) minus a
 # margin: above this the hook timeout fires first, and that is fail-open.
@@ -177,114 +178,6 @@ ERR_FILE=$(mktemp 2>/dev/null) || ERR_FILE="${TMPDIR:-/tmp}/commit-tests.$$"
 BT=""
 trap 'rm -f "$ERR_FILE"; [ -z "$BT" ] || rm -rf "$BT"' EXIT
 
-FINDINGS=$(printf '%s' "$CMD" | python3 "$LIB/git_invocations.py" --report-new-dirs "$CWD" 2>"$ERR_FILE")
-STATUS=$?
-
-if [ "$STATUS" -eq 3 ]; then
-  # The guard's two-step rule, here on `git` and `commit` (push is not this
-  # hook's business): without them in the raw text there is nothing to test,
-  # and one stray apostrophe locks nothing up.
-  case "$CMD" in
-    *git*) ;;
-    *) exit 0 ;;
-  esac
-  case "$CMD" in
-    *commit*) ;;
-    *) exit 0 ;;
-  esac
-  block "the command cannot be parsed (open quote). Split the command."
-fi
-if [ "$STATUS" -ne 0 ]; then
-  {
-    echo "$HOOK_NAME: COULD NOT CHECK — the command parser failed."
-    echo ""
-    cat "$ERR_FILE" 2>/dev/null
-  } >&2
-  exit 2
-fi
-
-COMMITS=""
-while IFS=$'\t' read -r ACTION TARGET TO_MAIN RAW; do
-  if [ "$ACTION" = "commit" ]; then
-    COMMITS="$COMMITS$ACTION"$'\t'"$TARGET"$'\t'"$TO_MAIN"$'\t'"$RAW"$'\n'
-  fi
-done <<< "$FINDINGS"
-if [ -z "$COMMITS" ]; then
-  exit 0
-fi
-
-printf '%s' "$CMD" | python3 "$LIB/no_verify.py" 2>"$ERR_FILE"
-STATUS=$?
-if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 2 ]; then
-  {
-    echo "$HOOK_NAME: COULD NOT CHECK — the --no-verify check failed."
-    echo ""
-    cat "$ERR_FILE" 2>/dev/null
-  } >&2
-  exit 2
-fi
-if [ "$STATUS" -eq 2 ]; then
-  echo "$HOOK_NAME: --no-verify is not allowed in this repo." >&2
-  echo "" >&2
-  echo "The test gate is a Claude Code PreToolUse hook, not a git hook, so the" >&2
-  echo "flag skips nothing today — but it will as soon as git hooks are added." >&2
-  echo "If something fails: fix it. If it really has to be skipped, ask." >&2
-  exit 2
-fi
-
-# The repo root per commit. Unique roots, separated by a newline.
-ROOTS=""
-while IFS=$'\t' read -r ACTION TARGET TO_MAIN RAW; do
-  [ -n "$ACTION" ] || continue
-  if [ "$TARGET" = "$UNRESOLVED" ]; then
-    block "the path '$RAW' cannot be resolved. Spell the path out."
-  fi
-  if [ "$TARGET" = "$NEW_DIR" ]; then
-    block "'$RAW' does not exist yet. Commit in a separate call, once the directory exists."
-  fi
-
-  # LC_ALL=C: git translates the text matched below.
-  ROOT=$(LC_ALL=C git -C "$TARGET" rev-parse --show-toplevel 2>"$ERR_FILE") || ROOT=""
-  GIT_MESSAGE=$(cat "$ERR_FILE" 2>/dev/null)
-  if [ -z "$ROOT" ]; then
-    # '$TARGET is not a repo' is a real outcome: nothing to test. A git that
-    # breaks (dubious ownership, broken installation) is not.
-    case "$GIT_MESSAGE" in
-      *"not a git repository"*|*"Not a git repository"*|*"No such file or directory"*|*"cannot change to"*)
-        continue
-        ;;
-      *)
-        block "git could not read '$TARGET': ${GIT_MESSAGE:-no message}."
-        ;;
-    esac
-  fi
-
-  case $'\n'"$ROOTS" in
-    *$'\n'"$ROOT"$'\n'*) ;;
-    *) ROOTS="$ROOTS$ROOT"$'\n' ;;
-  esac
-done <<< "$COMMITS"
-
-if [ -z "$ROOTS" ]; then
-  exit 0
-fi
-
-# `--git-common-dir`, absolute; the same error contract for reference and target.
-common_dir() {
-  local dir="$1" out message
-  out=$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>"$ERR_FILE") || out=""
-  message=$(cat "$ERR_FILE" 2>/dev/null)
-  if [ -z "$out" ]; then
-    block "git could not determine the common git dir of '$dir': ${message:-no message}."
-  fi
-  printf '%s' "$out"
-}
-
-REF_DIR="${CLAUDE_PROJECT_DIR:-$LIB_ROOT}"
-# In a command substitution `block` only ends the subshell; the empty output
-# catches that, and the message is on stderr by then.
-REF_COMMON=$(common_dir "$REF_DIR") || exit 2
-
 MSG=""
 add_message() {
   if [ -n "$MSG" ]; then
@@ -293,24 +186,6 @@ add_message() {
     MSG="$1"
   fi
 }
-
-PROJECT_ROOTS=""
-while IFS= read -r ROOT; do
-  [ -n "$ROOT" ] || continue
-  COMMON=$(common_dir "$ROOT") || exit 2
-  if [ "$COMMON" = "$REF_COMMON" ]; then
-    PROJECT_ROOTS="$PROJECT_ROOTS$ROOT"$'\n'
-    continue
-  fi
-  # Another common dir: a worktree of a separate clone (forge) with the same
-  # origin is still this project (#36).
-  ORIGIN_REASON=$(python3 "$LIB/repo_identity.py" "$REF_DIR" "$ROOT" 2>"$ERR_FILE")
-  case $? in
-    0) PROJECT_ROOTS="$PROJECT_ROOTS$ROOT"$'\n' ;;
-    1) add_message "$HOOK_NAME: $ROOT skipped — other project (git-common-dir $COMMON vs $REF_COMMON; $ORIGIN_REASON)" ;;
-    *) block "git could not read the origin of '$ROOT': $(cat "$ERR_FILE" 2>/dev/null)" ;;
-  esac
-done <<< "$ROOTS"
 
 # additionalContext reaches the model, systemMessage the user: a silent gate
 # must not look like a satisfied gate. $1: the hook event the JSON answers
@@ -321,12 +196,6 @@ emit_message_and_exit() {
   fi
   exit 0
 }
-
-# No project root (only another project): nothing to test or record, so no
-# configuration, no slot and no wait.
-if [ -z "$PROJECT_ROOTS" ]; then
-  emit_message_and_exit PreToolUse
-fi
 
 # One key from lighthouse.toml or host.toml into CONFIG_VALUE. Returns 0 (set)
 # or 1 (not set); a configuration that cannot be read blocks. Called directly,
@@ -373,12 +242,22 @@ delta() {
   printf '%s' "$d"
 }
 
-# The gate itself, on the roots in $1 (one per line), answering hook event $2:
-# the configuration, the slot, the memory brake, then the test command per
-# root. Ends the hook: exit 2 on a red or unchecked run, otherwise
+# The gate itself, on the roots in $1, answering hook event $2: the
+# configuration, the slot, the memory brake, then the test command per root.
+# One root per line: `root` (pre) or `root<TAB>base<TAB>head` (post), and only
+# a row with a base gives the command LIGHTHOUSE_GATE_BASE, _HEAD and _FILES.
+# Ends the hook: exit 2 on a red or unchecked run, otherwise
 # emit_message_and_exit.
 run_gate_roots() {
-  local roots="$1" event="$2"
+  local roots="$1" event="$2" fail_line
+  if [ "$MODE" = "post" ]; then
+    fail_line="$HOOK_NAME: tests failed on the commit you just made. Fix them in a new commit."
+  else
+    fail_line="$HOOK_NAME: tests failed. Fix the failing tests before committing."
+  fi
+  # Not inherited from an outer gate run (a test suite of a hook inside a real
+  # gate): without a row of its own the command tests everything.
+  unset LIGHTHOUSE_GATE_BASE LIGHTHOUSE_GATE_HEAD LIGHTHOUSE_GATE_FILES
 
   # Not set, or `command = ""` (the opt-out, which `--upgrade` leaves alone): the
   # same note, nothing was tested.
@@ -535,13 +414,24 @@ run_gate_roots() {
   EVENTS="${LIGHTHOUSE_GATE_CGROUP_ROOT:-/sys/fs/cgroup/user.slice/user-$UID.slice/user@$UID.service}/$SLICE/memory.events"
 
   RUN=0
-  while IFS= read -r ROOT; do
+  while IFS=$'\t' read -r ROOT GATE_BASE GATE_HEAD; do
     [ -n "$ROOT" ] || continue
     # An empty LIGHTHOUSE_GATE_TMP per run.
     RUN=$((RUN + 1))
     GATE_TMP="$BT/run-$RUN"
     if ! mkdir "$GATE_TMP" 2>"$ERR_FILE"; then
       block "no gate tmp dir for $ROOT: $(cat "$ERR_FILE" 2>/dev/null)"
+    fi
+    # The files of the commit, beside GATE_TMP and not in it: `pytest
+    # --basetemp` empties that directory, and a selector later in the command
+    # must still read the list.
+    GATE_FILES=""
+    if [ -n "$GATE_BASE" ]; then
+      [ -n "$GATE_HEAD" ] || block "the recorded row for $ROOT has no new HEAD."
+      GATE_FILES="$BT/run-$RUN.files"
+      if ! python3 "$LIB/commit_base.py" files "$ROOT" "$GATE_BASE" "$GATE_HEAD" "$GATE_FILES" 2>"$ERR_FILE"; then
+        block "could not list the files of the commit in $ROOT: $(cat "$ERR_FILE" 2>/dev/null)"
+      fi
     fi
     OOM_DELTA=0
     HIGH_DELTA=0
@@ -550,7 +440,13 @@ run_gate_roots() {
       HIGH_BEFORE=$(event_count high)
     fi
     # "$BASH": the interpreter of this hook, not whatever `bash` PATH holds.
-    TEST_OUTPUT=$(cd "$ROOT" && LIGHTHOUSE_GATE_TMP="$GATE_TMP" python3 "$LIB/deadline.py" "$DEADLINE" -- \
+    # The exports stay in the subshell of the command substitution.
+    TEST_OUTPUT=$(cd "$ROOT" \
+      && if [ -n "$GATE_FILES" ]; then
+        export LIGHTHOUSE_GATE_BASE="$GATE_BASE" LIGHTHOUSE_GATE_HEAD="$GATE_HEAD" \
+          LIGHTHOUSE_GATE_FILES="$GATE_FILES"
+      fi \
+      && LIGHTHOUSE_GATE_TMP="$GATE_TMP" python3 "$LIB/deadline.py" "$DEADLINE" -- \
       ${WRAP[@]+"${WRAP[@]}"} "$BASH" -c "$COMMAND" 2>&1)
     STATUS=$?
     if [ -z "$REM_REASON" ]; then
@@ -654,22 +550,180 @@ run_gate_roots() {
     esac
     if [ "$STATUS" -ne 0 ]; then
       {
-        echo "$HOOK_NAME: tests failed. Fix the failing tests before committing."
+        echo "$fail_line"
         echo "$COMMAND_HINT"
         echo ""
         echo "$TEST_OUTPUT"
       } >&2
       exit 2
     fi
+    # The summary lines of the selectors (`gate-<name>:` or `gate:`), in order,
+    # so a `gate-go: skipped — …` stays visible when more runs after it; without
+    # one, the last non-empty line.
     LAST=""
+    SUMMARY=0
     while IFS= read -r LINE; do
-      [ -n "${LINE//[[:space:]]/}" ] && LAST="$LINE"
+      [ -n "${LINE//[[:space:]]/}" ] || continue
+      LAST="$LINE"
+      if [[ "$LINE" =~ $SELECTOR_LINE ]]; then
+        add_message "$HOOK_NAME: $ROOT — $LINE"
+        SUMMARY=1
+      fi
     done <<< "$TEST_OUTPUT"
-    add_message "$HOOK_NAME: $ROOT — $LAST"
+    [ "$SUMMARY" -eq 1 ] || add_message "$HOOK_NAME: $ROOT — $LAST"
   done <<< "$roots"
 
   emit_message_and_exit "$event"
 }
+
+# `post`: the roots whose HEAD moved since `pre` recorded it. No row (nothing
+# recorded, or nothing committed): silent, before configuration, slot or brake.
+# `moved` reads and removes the record, so a repeated `post` tests nothing.
+if [ "$MODE" = "post" ]; then
+  if ! ROWS=$(printf '%s' "$INPUT" | python3 "$LIB/commit_base.py" moved 2>"$ERR_FILE"); then
+    block "could not read the recorded HEAD: $(cat "$ERR_FILE" 2>/dev/null)"
+  fi
+  if [ -z "$ROWS" ]; then
+    exit 0
+  fi
+  # PostToolUseFailure too: `git commit -m x && false` fails the call, but the
+  # commit is there.
+  EVENT=$(printf '%s' "$INPUT" | jq -r '.hook_event_name // empty')
+  [ "$EVENT" = "PostToolUseFailure" ] || EVENT="PostToolUse"
+  run_gate_roots "$ROWS"$'\n' "$EVENT"
+fi
+
+FINDINGS=$(printf '%s' "$CMD" | python3 "$LIB/git_invocations.py" --report-new-dirs "$CWD" 2>"$ERR_FILE")
+STATUS=$?
+
+if [ "$STATUS" -eq 3 ]; then
+  # The guard's two-step rule, here on `git` and `commit` (push is not this
+  # hook's business): without them in the raw text there is nothing to test,
+  # and one stray apostrophe locks nothing up.
+  case "$CMD" in
+    *git*) ;;
+    *) exit 0 ;;
+  esac
+  case "$CMD" in
+    *commit*) ;;
+    *) exit 0 ;;
+  esac
+  block "the command cannot be parsed (open quote). Split the command."
+fi
+if [ "$STATUS" -ne 0 ]; then
+  {
+    echo "$HOOK_NAME: COULD NOT CHECK — the command parser failed."
+    echo ""
+    cat "$ERR_FILE" 2>/dev/null
+  } >&2
+  exit 2
+fi
+
+COMMITS=""
+while IFS=$'\t' read -r ACTION TARGET TO_MAIN RAW; do
+  if [ "$ACTION" = "commit" ]; then
+    COMMITS="$COMMITS$ACTION"$'\t'"$TARGET"$'\t'"$TO_MAIN"$'\t'"$RAW"$'\n'
+  fi
+done <<< "$FINDINGS"
+if [ -z "$COMMITS" ]; then
+  exit 0
+fi
+
+printf '%s' "$CMD" | python3 "$LIB/no_verify.py" 2>"$ERR_FILE"
+STATUS=$?
+if [ "$STATUS" -ne 0 ] && [ "$STATUS" -ne 2 ]; then
+  {
+    echo "$HOOK_NAME: COULD NOT CHECK — the --no-verify check failed."
+    echo ""
+    cat "$ERR_FILE" 2>/dev/null
+  } >&2
+  exit 2
+fi
+if [ "$STATUS" -eq 2 ]; then
+  echo "$HOOK_NAME: --no-verify is not allowed in this repo." >&2
+  echo "" >&2
+  echo "The test gate is a Claude Code PreToolUse hook, not a git hook, so the" >&2
+  echo "flag skips nothing today — but it will as soon as git hooks are added." >&2
+  echo "If something fails: fix it. If it really has to be skipped, ask." >&2
+  exit 2
+fi
+
+# The repo root per commit. Unique roots, separated by a newline.
+ROOTS=""
+while IFS=$'\t' read -r ACTION TARGET TO_MAIN RAW; do
+  [ -n "$ACTION" ] || continue
+  if [ "$TARGET" = "$UNRESOLVED" ]; then
+    block "the path '$RAW' cannot be resolved. Spell the path out."
+  fi
+  if [ "$TARGET" = "$NEW_DIR" ]; then
+    block "'$RAW' does not exist yet. Commit in a separate call, once the directory exists."
+  fi
+
+  # LC_ALL=C: git translates the text matched below.
+  ROOT=$(LC_ALL=C git -C "$TARGET" rev-parse --show-toplevel 2>"$ERR_FILE") || ROOT=""
+  GIT_MESSAGE=$(cat "$ERR_FILE" 2>/dev/null)
+  if [ -z "$ROOT" ]; then
+    # '$TARGET is not a repo' is a real outcome: nothing to test. A git that
+    # breaks (dubious ownership, broken installation) is not.
+    case "$GIT_MESSAGE" in
+      *"not a git repository"*|*"Not a git repository"*|*"No such file or directory"*|*"cannot change to"*)
+        continue
+        ;;
+      *)
+        block "git could not read '$TARGET': ${GIT_MESSAGE:-no message}."
+        ;;
+    esac
+  fi
+
+  case $'\n'"$ROOTS" in
+    *$'\n'"$ROOT"$'\n'*) ;;
+    *) ROOTS="$ROOTS$ROOT"$'\n' ;;
+  esac
+done <<< "$COMMITS"
+
+if [ -z "$ROOTS" ]; then
+  exit 0
+fi
+
+# `--git-common-dir`, absolute; the same error contract for reference and target.
+common_dir() {
+  local dir="$1" out message
+  out=$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>"$ERR_FILE") || out=""
+  message=$(cat "$ERR_FILE" 2>/dev/null)
+  if [ -z "$out" ]; then
+    block "git could not determine the common git dir of '$dir': ${message:-no message}."
+  fi
+  printf '%s' "$out"
+}
+
+REF_DIR="${CLAUDE_PROJECT_DIR:-$LIB_ROOT}"
+# In a command substitution `block` only ends the subshell; the empty output
+# catches that, and the message is on stderr by then.
+REF_COMMON=$(common_dir "$REF_DIR") || exit 2
+
+PROJECT_ROOTS=""
+while IFS= read -r ROOT; do
+  [ -n "$ROOT" ] || continue
+  COMMON=$(common_dir "$ROOT") || exit 2
+  if [ "$COMMON" = "$REF_COMMON" ]; then
+    PROJECT_ROOTS="$PROJECT_ROOTS$ROOT"$'\n'
+    continue
+  fi
+  # Another common dir: a worktree of a separate clone (forge) with the same
+  # origin is still this project (#36).
+  ORIGIN_REASON=$(python3 "$LIB/repo_identity.py" "$REF_DIR" "$ROOT" 2>"$ERR_FILE")
+  case $? in
+    0) PROJECT_ROOTS="$PROJECT_ROOTS$ROOT"$'\n' ;;
+    1) add_message "$HOOK_NAME: $ROOT skipped — other project (git-common-dir $COMMON vs $REF_COMMON; $ORIGIN_REASON)" ;;
+    *) block "git could not read the origin of '$ROOT': $(cat "$ERR_FILE" 2>/dev/null)" ;;
+  esac
+done <<< "$ROOTS"
+
+# No project root (only another project): nothing to test or record, so no
+# configuration, no slot and no wait.
+if [ -z "$PROJECT_ROOTS" ]; then
+  emit_message_and_exit PreToolUse
+fi
 
 # Which roots go to the default branch: the branch main-commit-guard.sh
 # protects. `TO_MAIN` of git_invocations.py is always `no` for a commit and does
