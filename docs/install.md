@@ -41,6 +41,8 @@ private, so `GOPRIVATE` makes `go` fetch it with your git credentials instead of
 `proxy.golang.org`, which cannot read it. That binary serves only a placeholder page:
 `go install` does not build the web UI. Release binaries with the UI follow in #78.
 
+Both installs write `~/go/bin/lighthouse`, so the last one wins: the tag install replaces a UI build from a clone, and the systemd unit then serves the placeholder page.
+
 ## Run it as a user service
 
 From the clone, copy the unit, [lighthouse.service](../deploy/systemd/lighthouse.service), into your user
