@@ -1,4 +1,4 @@
-"""`lighthouse_lib.datadir`: where the review records live (besluit 27).
+"""`lighthouse_lib.datadir`: where the review records live (decision 27).
 
 The behaviour follows `data_dir()` from the source repository's measurement
 experiment: an override wins, the directory is created, and a directory inside a

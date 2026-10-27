@@ -65,7 +65,7 @@ def test_wake_cron() -> None:
     assert resume.wake_cron("2026-12-31T23:59:00Z", timezone.utc) == "1 0 1 1 *"
 
 
-def test_tool_venster_writes_marker(tmp_path: Path) -> None:
+def test_tool_window_writes_marker(tmp_path: Path) -> None:
     line = alarm_line()
     at = line.split()[3]
     result, resume = _run(tmp_path, "tool", line)

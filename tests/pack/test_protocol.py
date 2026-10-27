@@ -1,4 +1,4 @@
-"""`lighthouse_lib.protocol`: the `🤖 <kind>` comments on an issue (besluit 15, 21, 25).
+"""`lighthouse_lib.protocol`: the `🤖 <kind>` comments on an issue (decision 15, 21, 25).
 
 Taken over from the source repository's `test_controller_comments.py`. Dropped there,
 because they test controller policy that stays in the source repository (plan, taak

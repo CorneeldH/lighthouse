@@ -3,7 +3,7 @@
 The skill describes what `.lighthouse/scripts/worktree_audit.py` prints, so its table header,
 its KPI fields and the `--only` token must be the ones the script really writes. What stays in
 paia (the opencode lane with its port registry, board-sweep) is named only if present
-(ontwerpkeuze 16), and the protect list comes from `[worktree_audit]` in `lighthouse.toml`.
+(design choice 16), and the protect list comes from `[worktree_audit]` in `lighthouse.toml`.
 """
 
 from __future__ import annotations

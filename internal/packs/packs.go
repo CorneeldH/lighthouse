@@ -1,7 +1,7 @@
 // Package packs turns a package directory into units: the files, the managed block in
 // AGENTS.md and the hook registrations that `lighthouse init` installs.
 //
-// The package layout follows a Claude Code plugin (spec, besluit 5):
+// The package layout follows a Claude Code plugin (spec, decision 5):
 //
 //	hooks/hooks.json        hook registrations (plugin format); not copied
 //	hooks/<rel>             .claude/hooks/lighthouse/<rel>
@@ -13,7 +13,7 @@
 //	skills/<name>/claude/SKILL.md, skills/<name>/agents/SKILL.md
 //	                        the SKILL.md of one harness only, when the two differ
 //	instructions/AGENTS.md  the package's managed block in AGENTS.md
-//	headings.toml           .lighthouse/headings.toml (spec, besluit 8)
+//	headings.toml           .lighthouse/headings.toml (spec, decision 8)
 //	templates/pull_request_template.md
 //	                        .github/pull_request_template.md
 //	workflows/<name>.yml    .github/workflows/lighthouse-<name>.yml; init fills its
@@ -44,7 +44,7 @@ import (
 // Kind is the kind of a unit.
 type Kind string
 
-// The kinds of unit (spec, Versiemarker en manifest). A permission is one rule in
+// The kinds of unit (spec, Versiemarker en manifest). A permission is one rule in // lighthouse: allow-language — title of a Dutch spec section
 // permissions.allow of .claude/settings.json; its ID and content are the rule.
 const (
 	KindFile       Kind = "file"
@@ -96,7 +96,7 @@ type Contains struct {
 
 // Detect is the rule of detect.toml: a package fits a repository when one of Files
 // names a file git tracks or would track, or when a Contains rule matches. Each entry
-// is a git pathspec read with glob semantics (plan M0 (c), ontwerpkeuze 3).
+// is a git pathspec read with glob semantics (plan M0 (c), design choice 3).
 type Detect struct {
 	Files    []string   `toml:"files"`
 	Contains []Contains `toml:"contains"`
@@ -142,7 +142,7 @@ func IsLighthouseCommand(command string) bool {
 }
 
 // IsLighthouseRule reports whether a permissions.allow rule is lighthouse's: it points
-// into .claude/skills/lighthouse-* or HookDir (spec, besluit 22). Every other rule is
+// into .claude/skills/lighthouse-* or HookDir (spec, decision 22). Every other rule is
 // the project's, whatever the manifest says.
 func IsLighthouseRule(rule string) bool {
 	return strings.Contains(rule, skillDirs[0]) || strings.Contains(rule, HookDir)
@@ -152,7 +152,7 @@ func IsLighthouseRule(rule string) bool {
 // .claude/agents/lighthouse-<name>.md directly.
 var installDirs = []string{HookDir, ".lighthouse/lib/lighthouse_lib/", ".lighthouse/scripts/"}
 
-// skillDirs are the two harness directories a skill lands in (spec, Indeling).
+// skillDirs are the two harness directories a skill lands in (spec, Indeling). // lighthouse: allow-language — title of a Dutch spec section
 var skillDirs = []string{".claude/skills/lighthouse-", ".agents/skills/lighthouse-"}
 
 // InstalledGlobs are git glob pathspecs for every place lighthouse installs files into.

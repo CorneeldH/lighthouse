@@ -541,7 +541,7 @@ func TestInitProposesRealPython(t *testing.T) {
 }
 
 // TestEmptyCommandStaysOff: `command = ""` is the opt-out of the test gate, and
-// --upgrade does not put the default back (ontwerpkeuze 4).
+// --upgrade does not put the default back (design choice 4).
 func TestEmptyCommandStaysOff(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "pyproject.toml", "[project]\nname = \"x\"\n")
@@ -989,7 +989,7 @@ func TestDefaultLookupIgnoresPythonEnv(t *testing.T) {
 	}
 }
 
-// Besluit 22: a rule that points into a lighthouse directory is lighthouse's, also
+// Decision 22: a rule that points into a lighthouse directory is lighthouse's, also
 // when the project already had it. It replaces the fix for finding 4 of PR 1.
 func TestPatternRuleIsLighthouseOwned(t *testing.T) {
 	root := newRepo(t)
@@ -1008,7 +1008,7 @@ func TestPatternRuleIsLighthouseOwned(t *testing.T) {
 	}
 }
 
-// Besluit 22: a manifest is committed and may be edited in a PR. A rule outside the
+// Decision 22: a manifest is committed and may be edited in a PR. A rule outside the
 // pattern stays the project's, whatever the manifest says.
 func TestTamperedManifestKeepsProjectRule(t *testing.T) {
 	root := newRepo(t)

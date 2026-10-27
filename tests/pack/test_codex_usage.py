@@ -232,7 +232,7 @@ class TestReadAppServer:
     def test_error_is_not_measurable(self, fake_codex, tmp_path, mode):
         fake_codex(mode)
         with pytest.raises(cu.NotMeasurable):
-            # "kapot" gives a result that only fails in parse_app_server.
+            # "kapot" gives a result that only fails in parse_app_server.  # lighthouse: allow-language — quotes the Dutch word the test feeds in
             cu.parse_app_server(cu.read_app_server(tmp_path, timeout=10), now=NOW_SPEC)
 
     def test_timeout(self, fake_codex, tmp_path):
@@ -481,7 +481,7 @@ def test_fmt_ts_normalises_to_utc():
     assert cu.fmt_ts(plus2) == "2026-09-28T21:00:00Z"
 
 
-RESET_S = "2026-09-28T23:00:00Z"  # after NU_SPEC
+RESET_S = "2026-09-28T23:00:00Z"  # after NOW_SPEC
 RESET_W = "2026-10-02T08:00:00Z"
 CREDITS_NONE = {"available": 0, "expires": []}
 
@@ -495,7 +495,7 @@ def reading(
     reset_w: str = RESET_W,
     credits: dict | None = CREDITS_NONE,
 ) -> dict:
-    """A reading in the output form; by default the resets lie after `NU_SPEC`."""
+    """A reading in the output form; by default the resets lie after `NOW_SPEC`."""
     return {
         "source": "rollout-log" if lower_bound else "app-server",
         "generated_at": "2026-09-28T19:25:46Z",

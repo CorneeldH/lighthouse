@@ -54,7 +54,7 @@ def test_names_both_new_verdicts():
 
 
 def test_verify_pr_evidence_by_path():
-    """The evidence CLI runs as a file on its installed path (ontwerpkeuze 6)."""
+    """The evidence CLI runs as a file on its installed path (design choice 6)."""
     assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py check" in TEXT
     assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py run" in TEXT
     assert ".claude/hooks/lib/" not in TEXT

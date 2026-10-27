@@ -1,6 +1,6 @@
 // Package reconcile decides, per unit, what `lighthouse init` does with it: compare the
 // desired content (the package), the current content (the repo) and the hash recorded
-// in the manifest. A local change never disappears silently (spec, besluit 4).
+// in the manifest. A local change never disappears silently (spec, decision 4).
 package reconcile
 
 import (

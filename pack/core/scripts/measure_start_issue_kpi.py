@@ -131,7 +131,7 @@ LEGACY_DOC_DIRS = (_LEGACY_ROOT + "specs/", _LEGACY_ROOT + "plans/")
 
 # Dutch prompts "pak 610 op", "begin aan issue 526", "kijk naar 623", "ga verder met #663"; in English  # lighthouse: allow-language — the Dutch example prompts match the Dutch regex branches below
 # "pick up 610", "pick 610 up", "start on issue 526", "work on #663", "look at 623".
-# Deliberately narrow: a prompt that only MENTIONS a number ("wat staat er in 610?") is not a pickup.
+# Deliberately narrow: a prompt that only MENTIONS a number ("wat staat er in 610?") is not a pickup.  # lighthouse: allow-language — quotes a Dutch example prompt
 PICKUP_RE = re.compile(
     r"""
       (?:pak|pik)\s+(?:issue\s*)?\#?(?P<a>\d{2,4})\s+op

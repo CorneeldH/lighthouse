@@ -1,7 +1,7 @@
 """`lighthouse_lib.config`: the config reader for hooks, scripts and skills.
 
 The cases for `[forge]`, `[forge.board]` and `host.toml` follow the identity and
-host readers of the source repository. The difference (besluit 16): the board is
+host readers of the source repository. The difference (decision 16): the board is
 optional, and the status option `Controller` is required only with `[controller]`.
 """
 
@@ -513,7 +513,7 @@ def test_host_check_missing_is_rc_2(tmp_path, monkeypatch, capsys):
     assert main(["host-check"]) == 2
 
 
-# --- defaults, types and the optional [forge] (taak 6) ---------------------------
+# --- defaults, types and the optional [forge] (task 6) ---------------------------
 
 
 @pytest.mark.parametrize(
@@ -777,7 +777,7 @@ def test_runs_as_file(tmp_path):
     assert (result.returncode, result.stdout) == (0, "Acme/widgets\n"), result.stderr
 
 
-# --- the keys of pack/python (plan M0 (c), ontwerpkeuze 11 and 12) ----------------
+# --- the keys of pack/python (plan M0 (c), design choice 11 and 12) ----------------
 
 
 @pytest.mark.parametrize(
@@ -817,7 +817,7 @@ def test_nightly_workflow_has_no_default(cfg_env):
 
 
 def test_empty_test_command_is_the_opt_out(tmp_path, monkeypatch, capsys):
-    """`[test_gate] command = ""` turns the test gate off (ontwerpkeuze 4 of M0 (c)):
+    """`[test_gate] command = ""` turns the test gate off (design choice 4 of M0 (c)):
     rc 0 with an empty value, not the rc 2 of another empty string."""
     path = tmp_path / "lighthouse.toml"
     path.write_text(_render(VALID) + '\n[test_gate]\ncommand = ""\n')

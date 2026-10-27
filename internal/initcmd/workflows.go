@@ -20,7 +20,7 @@ import (
 var errNoPython = errors.New("python3 is not available")
 
 // fillWorkflows fills the @@<key>@@ placeholders of every workflow unit (plan M0 (b),
-// ontwerpkeuze 13). A workflow that cannot be filled (a key not set, no python3, a
+// design choice 13). A workflow that cannot be filled (a key not set, no python3, a
 // config that cannot be read) is reported, never fatal: a new one is left out, and one
 // that installed returns stays as it is, so a passing problem never deletes it.
 // installed returns the content on disk of a workflow the manifest lists.

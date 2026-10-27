@@ -1,6 +1,6 @@
 // Package version reports the version of the lighthouse binary.
 //
-// The version of every package is the version of the binary (spec, besluit 2).
+// The version of every package is the version of the binary (spec, decision 2).
 // A local build has no tag; it reports "dev".
 package version
 

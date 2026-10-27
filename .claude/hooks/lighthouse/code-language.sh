@@ -30,7 +30,7 @@
 # (a file with a syntax error, bad config, not UTF-8), nothing was checked; a
 # silent exit 0 would read as "the code is English". Every such exit is exit 2
 # with `code-language: COULD NOT CHECK — <reason>` on the first line (the token
-# bash_writes.classify reads, besluit 18).
+# bash_writes.classify reads, decision 18).
 
 cannot_check() {
   {

@@ -154,7 +154,7 @@ def _resolved_path(word: str, literal: bool, tilde: bool, base: str) -> str | No
 
 
 def derive_roots(command: str, cwd: str) -> set[str]:
-    """The root rules from the spec (Datastroom, *Wortels*).
+    """The root rules from the spec (Datastroom, *Wortels*).  # lighthouse: allow-language — title of a Dutch spec section
 
     Sources: the payload `cwd`; per `Step` of `git_invocations.walk` the
     directory state `dirs["here"]`; for the verb `git` the `git_target`; every

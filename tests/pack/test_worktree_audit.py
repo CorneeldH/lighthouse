@@ -1227,7 +1227,7 @@ class TestRenderers:
         out = audit.render_sessions([row("feat-a")], alive=never_alive)
         assert "claude --resume" not in out
 
-    def test_sessions_view_marks_dead_sessions_as_dood(self):
+    def test_sessions_view_marks_dead_sessions_as_dead(self):
         """Minor 7: the dead branch of the LIVE/dead render was never asserted."""
         rows = [
             row(

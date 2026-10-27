@@ -1,4 +1,4 @@
-"""`lighthouse_lib.artefacts`: the metadata of artefact comments (besluit 15, 21).
+"""`lighthouse_lib.artefacts`: the metadata of artefact comments (decision 15, 21).
 
 Taken over from the source repository's `test_controller_artefacten.py`. The test on
 that repository's own plan file now splits a plan of lighthouse itself.

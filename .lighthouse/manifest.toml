@@ -197,14 +197,14 @@ kind = "file"
 path = ".claude/hooks/lighthouse/bash-write-gates.sh"
 package = "core"
 version = "dev"
-sha256 = "757789773e4f8a3517eb8b59ecad78c24ffbc9a2f5cd5a60deac63a6a45cd7f3"
+sha256 = "27c05d811152d5de8a87c75d0e4f9393c2bbd73186e4ea962fb0f19e67d628b1"
 
 [[unit]]
 kind = "file"
 path = ".claude/hooks/lighthouse/code-language.sh"
 package = "core"
 version = "dev"
-sha256 = "7cf45b2e2f3312ddfd74d6b07915980d41ee187c598cb3185d6e8e5319bed3c3"
+sha256 = "8f12f7082054037b062214366cb9e700668009d2a9a665a8a59a5e79d45fb2f5"
 
 [[unit]]
 kind = "file"
@@ -239,7 +239,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/pre-commit-tests.sh"
 package = "core"
 version = "dev"
-sha256 = "eee1c73e3600f7cb390c215bf96780b3bf46e5672701e9c20387a7e08106454b"
+sha256 = "08b62ba15a1865e4e2e0d6a14a103590daaffb679d8c7dcda37078c0682a9a34"
 
 [[unit]]
 kind = "file"
@@ -274,7 +274,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/worktree-linkcheck.sh"
 package = "core"
 version = "dev"
-sha256 = "1862bd60350317c3085e67e6cbef7f7fe5311faf8e6a8379331256c9db126d27"
+sha256 = "5eaae857dc506872e1d4edaa470e1debd1967ddefb841604be010e63ff4398a8"
 
 [[unit]]
 kind = "permission"
@@ -629,14 +629,14 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/artefacts.py"
 package = "core"
 version = "dev"
-sha256 = "ba681a2fc029146cbf80a77f9dba42f277ee8b3626b80c3ae3a9d5976829e881"
+sha256 = "efc4ab647dd4651ea496fd584f76ec63b126552aa03ec0abeef36a73c944bbdb"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "2123884a7d46d311b1a7272673d623cc23c4ab1d6e4b477b7cab1c501a4869de"
+sha256 = "6c72a62d0cb256b2a34257b06c591d8fcf3dd71061f9ce6708764c454a041e9a"
 
 [[unit]]
 kind = "file"
@@ -685,14 +685,14 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
-sha256 = "321664ad7b780c17506382dda26ab7b07e30942463027a0dcec543c28c790ab3"
+sha256 = "372f5063c597917f53402994f4dee9846dbd797cfc531a9cb050a35e3581c18e"
 
 [[unit]]
 kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/datadir.py"
 package = "core"
 version = "dev"
-sha256 = "3a37abeb8c93695f580214f5facc9200be518f3a16cdae0c3041b3bb2b0d88a6"
+sha256 = "0026a6fdd41692e374daa4233ca50108f9c70a51f6fd4e1f92a66de0593e60a5"
 
 [[unit]]
 kind = "file"
@@ -727,7 +727,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/headings.py"
 package = "core"
 version = "dev"
-sha256 = "eb974129f14aa4f1424bf1edba7e96c339b8db7b01d107c32636e15b5c18af99"
+sha256 = "d91b117b414a6c4a9d486c89a914a07d02a6f70351c35b46633996616a590772"
 
 [[unit]]
 kind = "file"
@@ -811,7 +811,7 @@ kind = "file"
 path = ".lighthouse/scripts/measure_start_issue_kpi.py"
 package = "core"
 version = "dev"
-sha256 = "6acf9cddc1d67a6060e5612d8fbcfd80af15a9690a86e61a7237211c403cdec5"
+sha256 = "f065b5f10e5d13691c1a1458ddf3d37a475edbd73f1baf62f60052ec8ed84f48"
 
 [[unit]]
 kind = "file"

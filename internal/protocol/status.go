@@ -51,7 +51,7 @@ func IsAnswer(body string) bool {
 	return true
 }
 
-// Classify reads the comments, oldest first, like staat_van: the last parsed header wins,
+// Classify reads the comments, oldest first, like staat_van: the last parsed header wins, // lighthouse: allow-language — staat_van is the name of the paia function this ports
 // a rebased note is skipped, and a question stays open unless a later comment without a
 // rocket reaction answers it.
 func Classify(comments []Comment) Status {

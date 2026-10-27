@@ -121,7 +121,7 @@ def test_hooks_by_installed_path():
 
 
 def test_hooks_are_not_fail_open():
-    """`ruff-format` blocks when it could not check (besluit 18); the skill says so."""
+    """`ruff-format` blocks when it could not check (decision 18); the skill says so."""
     for path in VARIANTS:
         text = path.read_text(encoding="utf-8")
         assert "fail-open" not in text, path

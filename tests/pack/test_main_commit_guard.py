@@ -219,7 +219,7 @@ def test_commit_guard_fails_loud_without_jq(tmp_path):
 
 
 def test_commit_guard_fails_loud_without_python3(tmp_path):
-    """M11: de python3-limb apart."""
+    """M11: the python3 limb on its own."""
     repo = tmp_path / "repo"
     _init_repo(repo)
 
@@ -1281,7 +1281,7 @@ def test_guard_with_broken_config_blocks_a_commit_but_not_a_plain_command(tmp_pa
 
 
 def test_guard_reads_not_a_repo_under_other_locale(tmp_path):
-    """Git under another language still means 'not a repo' (inventaris §2.12)."""
+    """Git under another language still means 'not a repo' (inventaris §2.12). lighthouse: allow-language — reference to a Dutch inventory section"""
     repo = tmp_path / "repo"
     _init_repo(repo, branch="issue-1-x")
     outside = tmp_path / "outside"

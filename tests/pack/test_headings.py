@@ -1,4 +1,4 @@
-"""`lighthouse_lib.headings`: the heading table `headings.toml` (besluit 8).
+"""`lighthouse_lib.headings`: the heading table `headings.toml` (decision 8).
 
 A heading that code or a skill reads as a contract has one variant per language.
 Writing uses `[project] language`; reading accepts every variant.
@@ -18,7 +18,7 @@ from tests.pack._testkit import CORE, INSTALL_ROOT, init_repo
 
 TABLE = CORE / "headings.toml"
 
-# The `nl` values, literally as the source repository writes them (plan, taak 7).
+# The `nl` values, literally as the source repository writes them (plan, task 7).
 NL = {
     "acceptance_criteria": "Acceptatiecriteria",
     "kind_handoff": "Handoff",
@@ -57,7 +57,7 @@ NL = {
     "milestone_not_yet_decided": "Nog niet vastgelegd",
 }
 
-# The same word in another role (plan, taak 7).
+# The same word in another role (plan, task 7).
 ALLOWED_SHARED = {frozenset({"question_label", "kind_question"})}
 
 

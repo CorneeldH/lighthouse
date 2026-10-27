@@ -9,7 +9,7 @@
 # ruff, or with a ruff that does not start, nothing was checked; a silent exit 0
 # would read as "the file is clean". Every such exit is exit 2 with
 # `ruff-format: COULD NOT CHECK — <reason>` on the first line (the token
-# bash_writes.classify reads, besluit 18). No file path, another extension or a
+# bash_writes.classify reads, decision 18). No file path, another extension or a
 # file that does not exist leave nothing to check: exit 0.
 
 HOOK_NAME="ruff-format"

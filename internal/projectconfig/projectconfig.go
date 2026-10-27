@@ -170,7 +170,7 @@ var (
 )
 
 // ParseFragment reads the lighthouse.toml.fragment of a package (plan M0 (c),
-// ontwerpkeuze 4): `[table]` header lines and one-line `key = value` lines, plus
+// design choice 4): `[table]` header lines and one-line `key = value` lines, plus
 // comments and blank lines, which are dropped. Each value is kept as it is written, so
 // AppendMissing can insert it without rewriting it. Every error names the line.
 func ParseFragment(data []byte) ([]Table, error) {

@@ -18,7 +18,7 @@ import (
 )
 
 // maxContainsSize is the largest file a [[contains]] rule reads; a bigger one does not
-// count (plan M0 (c), ontwerpkeuze 3).
+// count (plan M0 (c), design choice 3).
 const maxContainsSize = 1 << 20
 
 // choice is a chosen package and why: "found <file>", "--pack", or "" for core and for
@@ -139,7 +139,7 @@ func first(s []string) string {
 	return s[0]
 }
 
-// choosePacks decides which packages this run installs (plan M0 (c), ontwerpkeuzes 5
+// choosePacks decides which packages this run installs (plan M0 (c), design choices 5
 // and 6): on init core plus every package that fits, on --upgrade the manifest's
 // packages; then --pack adds and --no-pack drops. The result has core first, then the
 // rest in alphabetical order. notes are for stderr.
