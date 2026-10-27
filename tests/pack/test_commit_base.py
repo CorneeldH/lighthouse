@@ -81,6 +81,20 @@ def test_moved_without_marker_is_empty():
     assert cb.moved(payload()) == []
 
 
+
+def test_moved_does_not_create_the_state_dir(runtime_dir):
+    # `post` runs after every Bash call: only `record` makes the state dir.
+    assert cb.moved(payload()) == []
+    assert not (runtime_dir / "lighthouse-commit-tests").exists()
+
+
+def test_moved_with_read_only_runtime_dir_is_empty(runtime_dir):
+    runtime_dir.chmod(0o500)
+    try:
+        assert cb.moved(payload()) == []
+    finally:
+        runtime_dir.chmod(0o700)
+
 def test_unborn_base_is_empty_tree(tmp_path):
     root = tmp_path / "fresh"
     root.mkdir()

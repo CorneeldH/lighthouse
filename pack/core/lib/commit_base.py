@@ -39,19 +39,24 @@ class Moved(NamedTuple):
     head: str
 
 
-def state_dir(session_id: str) -> Path:
-    """`${XDG_RUNTIME_DIR:-/tmp}/lighthouse-commit-tests/<session_id>/`, mode `0700`."""
+def state_dir(session_id: str, create: bool = True) -> Path:
+    """`${XDG_RUNTIME_DIR:-/tmp}/lighthouse-commit-tests/<session_id>/`, mode `0700`.
+
+    With `create=False` only the path: `moved` runs after every Bash call and must not
+    fail on a state dir it cannot make.
+    """
     if "/" in session_id or session_id == "..":
         raise ValueError(f"invalid session_id: {session_id!r}")
     base = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "lighthouse-commit-tests"
     path = base / session_id
-    path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(path, 0o700)
+    if create:
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path, 0o700)
     return path
 
 
-def _marker(payload: dict) -> Path:
-    state = state_dir(str(payload.get("session_id", "")))
+def _marker(payload: dict, create: bool = True) -> Path:
+    state = state_dir(str(payload.get("session_id", "")), create=create)
     return state / f"{bash_writes.marker_key(payload)}.json"
 
 
@@ -66,7 +71,7 @@ def record(payload: dict, roots: list[str]) -> None:
 
 def moved(payload: dict) -> list[Moved]:
     """Read and delete the marker; the roots whose HEAD is now another commit."""
-    marker = _marker(payload)
+    marker = _marker(payload, create=False)
     try:
         data = json.loads(marker.read_text(encoding="utf-8"))
     except FileNotFoundError:

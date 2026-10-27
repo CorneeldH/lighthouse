@@ -1641,6 +1641,44 @@ def test_post_block_without_rows_does_not_advise_another_commit(gate: Gate) -> N
     assert "does contain a 'git commit'" not in result.stderr
 
 
+
+def test_post_without_commit_is_silent_with_read_only_state_dir(gate: Gate) -> None:
+    runtime = gate.tmp / "runtime"
+    runtime.mkdir(mode=0o500)
+
+    result = gate.post("ls", gate.project, XDG_RUNTIME_DIR=str(runtime))
+
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def _unreadable_state_dir(gate: Gate) -> Path:
+    state = gate.tmp / "lighthouse-commit-tests" / SESSION
+    state.mkdir(parents=True)
+    state.chmod(0)
+    return state
+
+
+def test_post_without_commit_is_silent_with_unreadable_state_dir(gate: Gate) -> None:
+    state = _unreadable_state_dir(gate)
+    try:
+        result = gate.post("ls", gate.project)
+    finally:
+        state.chmod(0o700)
+
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_post_commit_with_unreadable_state_dir_blocks(gate: Gate) -> None:
+    # Not fail-open: a call with a commit whose record cannot be read is not green.
+    state = _unreadable_state_dir(gate)
+    try:
+        result = gate.post("git commit -m x", gate.project)
+    finally:
+        state.chmod(0o700)
+
+    assert result.returncode == 2, result.stdout
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
+
 def test_pre_busy_slots_still_advise_to_retry(gate: Gate) -> None:
     fds = hold_slots(gate, "slot-1", "slot-2")
     try:

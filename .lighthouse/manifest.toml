@@ -211,7 +211,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/commit-tests.sh"
 package = "core"
 version = "dev"
-sha256 = "b12e8eed2828551a26125ff05fb54e48c2003a2825668a4d0f04f7fe7462c9ea"
+sha256 = "267b4ff014a1cf4bf9817e35cd8716445d239ebcbb5b250d8536f454908f5339"
 
 [[unit]]
 kind = "file"
@@ -708,7 +708,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/commit_base.py"
 package = "core"
 version = "dev"
-sha256 = "81cc034d5e207f7248557c6fa5e728990d357f56f31f3fc533adfef36228c433"
+sha256 = "2d90e4005f5500a3aff420eebcda57bcfe163dea5d3c19cd28b2f944b63a3255"
 
 [[unit]]
 kind = "file"

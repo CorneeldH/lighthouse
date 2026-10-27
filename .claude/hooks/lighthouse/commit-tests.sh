@@ -642,6 +642,17 @@ run_gate_roots() {
 # `moved` reads and removes the record, so a repeated `post` tests nothing.
 if [ "$MODE" = "post" ]; then
   if ! ROWS=$(printf '%s' "$INPUT" | python3 "$LIB/commit_base.py" moved 2>"$ERR_FILE"); then
+    # The two-step rule: without `git` and `commit` in the raw text `pre` recorded
+    # nothing, so a state dir that cannot be read does not block every Bash call.
+    # Only on this failure path: `git "com"mit` lacks the word but is a commit.
+    case "$CMD" in
+      *git*) ;;
+      *) exit 0 ;;
+    esac
+    case "$CMD" in
+      *commit*) ;;
+      *) exit 0 ;;
+    esac
     block "could not read the recorded HEAD: $(cat "$ERR_FILE" 2>/dev/null)"
   fi
   if [ -z "$ROWS" ]; then
