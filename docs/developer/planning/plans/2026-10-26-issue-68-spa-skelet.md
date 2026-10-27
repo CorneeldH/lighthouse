@@ -142,7 +142,7 @@ web/node_modules/
 - Create: `internal/server/openapi_snapshot_test.go`, `web/openapi.json`
 
 **Interfaces:**
-- Consumes: `New(site fs.FS) http.Handler`, `get(h, path)` en `testSite()` uit `server_test.go`.
+- Consumes: `New(site fs.FS, report func(context.Context) usage.Report, src overview.Source) http.Handler` (sinds #65 en #67 op main), `get(h, path)`, `testSite()`, `fakeReport` en `stubSource{}` uit `server_test.go`.
 - Produces: `web/openapi.json`, het 3.1-document met `info.version` op `"dev"`, ingesprongen met
   twee spaties, sleutels gesorteerd, met een afsluitende newline. Verversen:
   `go test ./internal/server -run TestOpenAPISnapshot -update`.
