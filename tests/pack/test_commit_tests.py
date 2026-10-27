@@ -1568,6 +1568,91 @@ def test_post_files_failure_blocks(gate: Gate) -> None:
     assert not gate.mark.exists()
 
 
+
+# After the commit, "try the commit again" gives "nothing to commit": HEAD does not
+# move and `post` stays silent, so the agent would read the silence as green.
+RETRY = "commit again"
+
+
+def _rerun_line(stderr: str) -> str:
+    """The pasteable re-run line `post` prints for an untested commit."""
+    lines = [line.strip() for line in stderr.splitlines() if line.strip().startswith("cd ")]
+    assert len(lines) == 1, stderr
+    return lines[0]
+
+
+def _run_rerun_line(gate: Gate, line: str) -> subprocess.CompletedProcess:
+    Path(f"{gate.mark}.env").unlink(missing_ok=True)
+    env = dict(os.environ, PATH=f"{gate.stub}{os.pathsep}{os.environ['PATH']}", UV_MARK=str(gate.mark))
+    for name in ("LIGHTHOUSE_GATE_BASE", "LIGHTHOUSE_GATE_HEAD", "LIGHTHOUSE_GATE_FILES"):
+        env.pop(name, None)
+    return subprocess.run(
+        ["bash", "-c", line], cwd=gate.tmp, env=env, capture_output=True, text=True, check=False
+    )
+
+
+def test_post_could_not_check_names_the_commit_and_the_rerun(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "unchecked_exit_codes = [5]\n")
+    base = _pre_on_feature(gate)
+    _commit(gate.project, "a.py", "b/c.sh")
+    head = _head(gate.project)
+
+    result = gate.post("git commit -m x", gate.project, UV_EXIT="5")
+
+    assert result.returncode == 2, result.stdout
+    assert "COULD NOT CHECK" in result.stderr
+    assert RETRY not in result.stderr.lower()
+    assert f"{base}..{head} in {gate.project.resolve()}" in result.stderr
+    # The line re-runs the gate command on exactly the files of that commit.
+    rerun = _run_rerun_line(gate, _rerun_line(result.stderr))
+    assert rerun.returncode == 0, rerun.stderr
+    names, files = gate.seen()
+    assert (names["BASE"], names["HEAD"]) == (base, head)
+    assert files == "a.py\nb/c.sh\n"
+
+
+def test_post_busy_slots_do_not_advise_another_commit(gate: Gate) -> None:
+    base = _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+    head = _head(gate.project)
+    fds = hold_slots(gate, "slot-1", "slot-2")
+    try:
+        result = gate.post("git commit -m x", gate.project)
+    finally:
+        release(fds)
+
+    assert result.returncode == 2, result.stdout
+    assert "all gate slots busy" in result.stderr
+    assert "Try the commit again" not in result.stderr
+    assert f"{base}..{head} in {gate.project.resolve()}" in result.stderr
+    assert f"LIGHTHOUSE_GATE_BASE={base}" in _rerun_line(result.stderr)
+
+
+def test_post_block_without_rows_does_not_advise_another_commit(gate: Gate) -> None:
+    _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+    gate.markers()[0].write_text("not json", encoding="utf-8")
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "may be untested" in result.stderr
+    assert "Do not repeat the commit" in result.stderr
+    assert "does contain a 'git commit'" not in result.stderr
+
+
+def test_pre_busy_slots_still_advise_to_retry(gate: Gate) -> None:
+    fds = hold_slots(gate, "slot-1", "slot-2")
+    try:
+        result = gate.run("git commit -m x", gate.project)
+    finally:
+        release(fds)
+
+    assert result.returncode == 2, result.stdout
+    assert "Try the commit again shortly." in result.stderr
+    assert "LIGHTHOUSE_GATE_BASE=" not in result.stderr
+
+
 SELECTOR_UV = (
     "#!/bin/sh\n"
     'pwd >> "$UV_MARK"\n'

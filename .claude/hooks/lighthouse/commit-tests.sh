@@ -147,12 +147,58 @@ fi
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 [ -n "$CWD" ] || CWD="$PWD"
 
+# `post` only: the rows (`root<TAB>base<TAB>head`) of the commits of this call,
+# and how many of them already passed.
+POST_ROWS=""
+ROWS_DONE=0
+
+# $1 single-quoted for bash, so a pasted line runs it unchanged.
+shell_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+# `post` only, printed under a COULD NOT CHECK: the commit is already there, and
+# repeating it gives "nothing to commit" — HEAD does not move and `post` stays
+# silent, which reads as green. So name every commit not tested yet and the
+# line that tests it by hand. Prints nothing in `pre`.
+post_untested() {
+  [ "$MODE" = "post" ] || return 0
+  local n=0 root base head command
+  echo ""
+  if [ -z "$POST_ROWS" ]; then
+    echo "A commit of this call may be untested. Do not repeat the commit to retry:"
+    echo "that gives 'nothing to commit' and tests nothing. Check 'git log', then run"
+    echo "[test_gate] command by hand on the files of that commit."
+    return 0
+  fi
+  if [ -n "${COMMAND:-}" ]; then
+    command=$(shell_quote "$COMMAND")
+  else
+    command="'<[test_gate] command>'"
+  fi
+  echo "The commit is made but not tested. Do not repeat the commit to retry: that"
+  echo "gives 'nothing to commit' and tests nothing. Test it by hand instead:"
+  while IFS=$'\t' read -r root base head; do
+    [ -n "$root" ] || continue
+    n=$((n + 1))
+    [ "$n" -gt "$ROWS_DONE" ] || continue
+    echo ""
+    echo "  Untested: $base..$head in $root"
+    echo "  cd $(shell_quote "$root") && f=\$(mktemp) && t=\$(mktemp -d) && git -c core.quotePath=false diff --name-only --no-renames $base $head > \"\$f\" && LIGHTHOUSE_GATE_BASE=$base LIGHTHOUSE_GATE_HEAD=$head LIGHTHOUSE_GATE_FILES=\"\$f\" LIGHTHOUSE_GATE_TMP=\"\$t\" bash -c $command"
+  done <<< "$POST_ROWS"
+}
+
 block() {
   {
     echo "$HOOK_NAME: COULD NOT CHECK — $1"
     echo ""
-    echo "This command does contain a 'git commit'. 'Could not test' is not a"
-    echo "green light, so this does not pass silently."
+    if [ "$MODE" = "post" ]; then
+      echo "'Could not test' is not a green light."
+      post_untested
+    else
+      echo "This command does contain a 'git commit'. 'Could not test' is not a"
+      echo "green light, so this does not pass silently."
+    fi
   } >&2
   exit 2
 }
@@ -216,6 +262,7 @@ slot_failed() {
     echo ""
     echo "Without a slot this run would go unchecked beside the other gates."
     echo "Not being able to test is not a green light."
+    post_untested
   } >&2
   exit 2
 }
@@ -334,8 +381,13 @@ run_gate_roots() {
     {
       echo "$HOOK_NAME: COULD NOT CHECK — all gate slots busy after $SLOT_WAIT s (slots: $SLOTS)"
       echo ""
-      echo "Other gates are running already. Try the commit again shortly."
-      echo "Not being able to test is not a green light."
+      if [ "$MODE" = "post" ]; then
+        echo "Other gates are running already. Not being able to test is not a green light."
+        post_untested
+      else
+        echo "Other gates are running already. Try the commit again shortly."
+        echo "Not being able to test is not a green light."
+      fi
     } >&2
     exit 2
   fi
@@ -362,6 +414,7 @@ run_gate_roots() {
       echo "$HOOK_NAME: COULD NOT CHECK — no gate tmp dir: $(cat "$ERR_FILE" 2>/dev/null)"
       echo ""
       echo "Not being able to test is not a green light."
+      post_untested
     } >&2
     exit 2
   fi
@@ -463,6 +516,7 @@ run_gate_roots() {
         echo "$HOOK_NAME: COULD NOT CHECK — gate throttled (oom-kill in $SLICE during this run)."
         echo ""
         echo "Root: $ROOT. Not being able to test is not a green light."
+        post_untested
         echo ""
         echo "$TEST_OUTPUT"
       } >&2
@@ -476,6 +530,7 @@ run_gate_roots() {
         echo "$HOOK_NAME: COULD NOT CHECK — systemd-run did not start."
         echo ""
         echo "Root: $ROOT. Not being able to test is not a green light."
+        post_untested
         echo ""
         echo "$TEST_OUTPUT"
       } >&2
@@ -489,6 +544,7 @@ run_gate_roots() {
         fi
         echo ""
         echo "Root: $ROOT. An aborted run is not a green light."
+        post_untested
         echo ""
         echo "$TEST_OUTPUT"
       } >&2
@@ -502,6 +558,7 @@ run_gate_roots() {
         echo ""
         echo "Root: $ROOT. Not being able to test is not a green light."
         echo "$COMMAND_HINT"
+        post_untested
         echo ""
         echo "$TEST_OUTPUT"
       } >&2
@@ -527,6 +584,7 @@ run_gate_roots() {
         echo "$HOOK_NAME: COULD NOT CHECK — gate killed by signal $SIGNAL_NR ($KILL_HINT)."
         echo ""
         echo "Root: $ROOT. Not being able to test is not a green light."
+        post_untested
         echo ""
         echo "$TEST_OUTPUT"
       } >&2
@@ -543,6 +601,7 @@ run_gate_roots() {
           echo ""
           echo "Root: $ROOT. Not being able to test is not a green light."
           echo "$COMMAND_HINT"
+          post_untested
           echo ""
           echo "$TEST_OUTPUT"
         } >&2
@@ -572,6 +631,7 @@ run_gate_roots() {
       fi
     done <<< "$TEST_OUTPUT"
     [ "$SUMMARY" -eq 1 ] || add_message "$HOOK_NAME: $ROOT — $LAST"
+    ROWS_DONE=$((ROWS_DONE + 1))
   done <<< "$roots"
 
   emit_message_and_exit "$event"
@@ -587,6 +647,7 @@ if [ "$MODE" = "post" ]; then
   if [ -z "$ROWS" ]; then
     exit 0
   fi
+  POST_ROWS="$ROWS"
   # PostToolUseFailure too: `git commit -m x && false` fails the call, but the
   # commit is there.
   EVENT=$(printf '%s' "$INPUT" | jq -r '.hook_event_name // empty')
