@@ -27,7 +27,8 @@ in één blik welke issues op hem wachten en hoeveel venster er nog is.
 2. verversen zonder herladen, en een knop die alles nu ververst;
 3. een naad in `lighthouse serve` voor de basis-URL van de forge;
 4. een Playwright-test die de gebouwde binary start tegen nep-data, in CI;
-5. een screenshot tegen CorneeldH/personal_ai_agent, in de PR en in `README.md`.
+5. een screenshot tegen CorneeldH/lighthouse, in de PR en in `README.md` (zie §9: niet tegen
+   personal_ai_agent, want lighthouse is publiek).
 
 **Buiten scope:**
 
@@ -198,7 +199,7 @@ draaiende `lighthouse serve`. De agent mag serve starten met het token van de ei
 (besluit gebruiker):
 
 ```bash
-GH_TOKEN=$(gh auth token) lighthouse serve --repo CorneeldH/personal_ai_agent
+GH_TOKEN=$(gh auth token) lighthouse serve --repo CorneeldH/lighthouse
 ```
 
 Het script draait niet in CI en heeft zelf geen token nodig; het opent alleen de pagina.
@@ -211,9 +212,10 @@ Het screenshot blijft in de repo (besluit gebruiker):
   het bestand op de commit-SHA (`https://github.com/CorneeldH/lighthouse/blob/<sha>/docs/images/ui-m1.png?raw=true`).
   `gh` kan geen afbeelding uploaden, en een relatieve link werkt niet in een PR-body.
 
-Het screenshot toont titels en vragen van issues uit personal_ai_agent. Beide repo's zijn privé.
-Gaat lighthouse ooit publiek (#78), dan moet dit screenshot eerst door een versie tegen nep-data
-vervangen worden.
+Het screenshot toont titels en vragen van issues uit CorneeldH/lighthouse zelf (besluit
+gebruiker, 2026-10-27). lighthouse is publiek en personal_ai_agent privé; een screenshot tegen
+personal_ai_agent in de README en de PR zou titels en vragen uit een privé-repo publiceren. De
+UI werkt per `--repo` gelijk, dus het bewijs tegen lighthouse dekt dezelfde code.
 
 ## Teststrategie
 
