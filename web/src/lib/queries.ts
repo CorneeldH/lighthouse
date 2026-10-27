@@ -16,6 +16,7 @@ export function useQuestions() {
     queryKey: queryKeys.questions,
     queryFn: ({ signal }) => fetchQuestions(signal),
     refetchInterval: FORGE_INTERVAL_MS,
+    staleTime: FORGE_INTERVAL_MS,
   })
 }
 
@@ -24,6 +25,7 @@ export function useReturned() {
     queryKey: queryKeys.returned,
     queryFn: ({ signal }) => fetchReturned(signal),
     refetchInterval: FORGE_INTERVAL_MS,
+    staleTime: FORGE_INTERVAL_MS,
   })
 }
 
@@ -32,6 +34,7 @@ export function useUsage() {
     queryKey: queryKeys.usage,
     queryFn: ({ signal }) => fetchUsage(signal),
     refetchInterval: USAGE_INTERVAL_MS,
+    staleTime: USAGE_INTERVAL_MS,
   })
 }
 
