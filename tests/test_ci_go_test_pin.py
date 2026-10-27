@@ -1,18 +1,18 @@
 """The Go tests in CI and the Go part of the test gate must run with the same flags."""
 
 import re
-import tomllib
 from pathlib import Path
+
+from tests._domains import load
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def _gate_go_command():
-    gate = tomllib.loads((ROOT / "lighthouse.toml").read_text(encoding="utf-8"))
-    parts = [part.strip() for part in gate["test_gate"]["command"].split("&&")]
-    go = [part for part in parts if part.startswith("go test")]
-    assert len(go) == 1, f"no single `go test` in [test_gate] command: {parts}"
-    return go[0]
+    checks = [check for runs in load().CHECKS.values() for check in runs]
+    go = [check for check in checks if check[:2] == ["go", "test"]]
+    assert len(go) == 1, f"no single `go test` in the checks of ci/domains.py: {checks}"
+    return " ".join(go[0])
 
 
 def _ci_go_commands():
