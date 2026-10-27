@@ -84,10 +84,18 @@ def test_binary_builds_after_web():
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert len(uses) == 14, uses
+    assert len(uses) == 15, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)
+
+
+def test_changelog_job_runs_on_every_pr():
+    """Fails when the fragment check starts depending on the domains of the change."""
+    job = _jobs()["changelog"]
+    assert "needs:" not in job and "if:" not in job
+    for needle in ("runs-on: ubuntu-latest", "fetch-depth: 0", "python3 ci/changelog.py check --base \"$BASE\" --head \"$HEAD\""):
+        assert needle in job, needle
 
 
 def test_smoke_script_executable():
