@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "56a414bd57810865c3b988838bf6e6d0689bf6fe1144a10e642d4fc8b5392d39"
+sha256 = "1b92f3ece0bb318e8e99729b0112a14a7d2700c98c791b4e27e61002f1aae470"
 
 [[unit]]
 kind = "file"
@@ -211,7 +211,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/go-check.sh"
 package = "go"
 version = "dev"
-sha256 = "c0031327e2b1ca8d3e65657a08b08815111d8066ac0b7529d5935b12a46bc391"
+sha256 = "1af3f1aef220742c82372a06511771fa42789974830fbe810bf269e5ff6ad2b3"
 
 [[unit]]
 kind = "file"
@@ -246,7 +246,14 @@ kind = "file"
 path = ".claude/hooks/lighthouse/usage-guard.sh"
 package = "core"
 version = "dev"
-sha256 = "c8eb4740a092e1a30c14d8ca628e91fb1248678d0f1e3b2bf96771b055ac541e"
+sha256 = "7340f50e3ac373f3692388b207ed3dc5ae39032fa155abbc7e64900e266ac565"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/usage-guard/alarm.sh"
+package = "core"
+version = "dev"
+sha256 = "189246310f396010e3d3745c30edf157f34739efc8f407ec951effa086974bcd"
 
 [[unit]]
 kind = "file"
@@ -447,7 +454,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "52ea58d67be3185efb0f99cd62a2bee19cfb3e1a45ce2dc2a65b9310fabd593a"
+sha256 = "1747fe8a071bdee5c71213fbbbb33d2e3c6c96cdd30d001546d143191ff04721"
 
 [[unit]]
 kind = "file"
@@ -862,4 +869,4 @@ path = "AGENTS.md"
 id = "go"
 package = "go"
 version = "dev"
-sha256 = "8db9b5baa5c57ef5a0d77ec1e07d0be43162c92a24bac8538072b61935bb7571"
+sha256 = "5d2b19c92dc98b501cefd36171d52640b47386d6872608a6ed1e1861af56ade6"

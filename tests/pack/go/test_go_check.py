@@ -9,11 +9,14 @@ The hook is bash. These tests run it as a subprocess in a real git repository wi
 import json
 import os
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 
 from tests.pack._testkit import (
+    CORE,
+    alarm_line,
     git,
     install_pack,
     prompt_entry,
@@ -21,6 +24,7 @@ from tests.pack._testkit import (
     stop_payload,
     tool_bin,
     tool_entry,
+    write_alarm,
     write_transcript,
 )
 from tests.pack.go.conftest import GO_HOOKS
@@ -76,19 +80,28 @@ def _env(tmp_path: Path, **extra: str) -> dict:
 
 
 def _run(
-    root: Path, env: dict | None = None, payload: dict | str | None = None
+    root: Path,
+    env: dict | None = None,
+    payload: dict | str | None = None,
+    hook: Path = HOOK,
 ) -> subprocess.CompletedProcess:
     if payload is None:
         # A turn without tool calls: the hook falls back to the payload `cwd`.
         transcript = write_transcript(root.parent / "transcript.jsonl", [prompt_entry(root)])
         payload = stop_payload(root, transcript)
     return subprocess.run(
-        [str(HOOK)],
+        [str(hook)],
         input=payload if isinstance(payload, str) else json.dumps(payload),
         capture_output=True,
         text=True,
         cwd=str(root),
-        env=dict(os.environ, CLAUDE_PROJECT_DIR=str(root), **(env or {})),
+        env={
+            **os.environ,
+            "CLAUDE_PROJECT_DIR": str(root),
+            # Never the real alarm of the machine running the tests.
+            "XDG_CACHE_HOME": str(root.parent / "xdg-cache"),
+            **(env or {}),
+        },
         check=False,
     )
 
@@ -291,3 +304,67 @@ def test_registered_on_stop():
         for h in block["hooks"]
     ]
     assert entries == [("", "${CLAUDE_PLUGIN_ROOT}/hooks/go-check.sh", 120)]
+
+
+def _alarm_env(tmp_path: Path, line: str | None = None) -> dict:
+    env = _env(
+        tmp_path,
+        STUB_RUN_OUT=LINT_FINDING,
+        STUB_RUN_RC="1",
+        XDG_CACHE_HOME=str(tmp_path / "xdg-cache"),
+    )
+    if line is not None:
+        write_alarm(env, line)
+    return env
+
+
+def test_valid_usage_alarm_skips_the_lint(tmp_path):
+    env = _alarm_env(tmp_path, alarm_line(local="14_30"))
+    result = _run(_repo(tmp_path), env)
+    assert _message(result) == (
+        "go-check: not checked — the usage alarm is up until 14 30; "
+        "the usage guard wraps up this session."
+    )
+    assert not any(line.startswith("run") for line in _log(env).splitlines())
+
+
+def test_no_usage_alarm_still_blocks(tmp_path):
+    result = _run(_repo(tmp_path), _alarm_env(tmp_path))
+    assert result.returncode == 2
+    assert LINT_FINDING in result.stderr
+
+
+def test_expired_usage_alarm_still_blocks(tmp_path):
+    env = _alarm_env(tmp_path, alarm_line(delta=timedelta(hours=-1)))
+    assert _run(_repo(tmp_path), env).returncode == 2
+
+
+@pytest.mark.parametrize("kind", ["three_fields", "symlink"])
+def test_unreadable_usage_alarm_still_blocks(tmp_path, kind):
+    env = _alarm_env(tmp_path)
+    if kind == "three_fields":
+        write_alarm(env, "venster 92 14:30")
+    else:
+        target = tmp_path / "real.alarm"
+        target.write_text(alarm_line() + "\n")
+        link = Path(env["XDG_CACHE_HOME"]) / "lighthouse" / "usage-window.alarm"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(target)
+    assert _run(_repo(tmp_path), env).returncode == 2
+
+
+def test_without_core_a_valid_alarm_still_blocks(tmp_path):
+    env = _alarm_env(tmp_path, alarm_line())
+    source = CORE.parent / "go" / "hooks" / "go-check.sh"
+    result = _run(_repo(tmp_path), env, hook=source)
+    assert result.returncode == 2
+    assert LINT_FINDING in result.stderr
+
+
+def test_stop_hook_active_with_alarm_is_silent(tmp_path):
+    root = _repo(tmp_path)
+    transcript = write_transcript(tmp_path / "transcript.jsonl", [prompt_entry(root)])
+    payload = dict(stop_payload(root, transcript), stop_hook_active=True)
+    result = _run(root, _alarm_env(tmp_path, alarm_line()), payload)
+    assert result.returncode == 0
+    assert result.stdout == ""

@@ -95,29 +95,26 @@ if [ -z "$PAUSE_UNTIL" ]; then
   [ -f "$ALARM" ] || exit 0
 fi
 
-# 6. The alarm: exactly four fields, a strict reset_at, in the future.
+# 6. The alarm: the rules live in usage-guard/alarm.sh. The fast path above
+# loads nothing; the helper is sourced only once a flag or alarm file exists.
+case "${BASH_SOURCE[0]}" in
+  */*) HOOKS_DIR="${BASH_SOURCE[0]%/*}" ;;
+  *) HOOKS_DIR="." ;;
+esac
+if [ -f "$HOOKS_DIR/usage-guard/alarm.sh" ]; then
+  # shellcheck source-path=SCRIPTDIR
+  # shellcheck source=usage-guard/alarm.sh
+  . "$HOOKS_DIR/usage-guard/alarm.sh"
+else
+  printf 'usage-guard: COULD NOT CHECK — usage-guard/alarm.sh is missing\n' >&2
+  exit 0
+fi
 KIND=""
-if [ -f "$ALARM" ] && [ ! -L "$ALARM" ]; then
-  LINE=""
-  { IFS= read -r LINE; } 2>/dev/null <"$ALARM" || true
-  set -f
-  # shellcheck disable=SC2086 # split into fields on purpose, globbing is off
-  set -- $LINE
-  set +f
-  AT_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
-  if [ $# -eq 4 ] && { [ "$1" = "venster" ] || [ "$1" = "week" ]; } &&
-    [[ "$2" =~ ^[0-9]+$ ]] && [[ "$4" =~ $AT_RE ]]; then
-    AT_EPOCH="$(date -u -d "$4" +%s 2>/dev/null)" ||
-      AT_EPOCH="$(date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$4" +%s 2>/dev/null)" ||
-      AT_EPOCH=""
-    NOW="$(date +%s)"
-    if [[ "$AT_EPOCH" =~ ^[0-9]+$ ]] && [ "$AT_EPOCH" -gt "$NOW" ]; then
-      KIND="$1"
-      PCT="$2"
-      LOCAL="${3//_/ }"
-      AT="$4"
-    fi
-  fi
+if usage_alarm_valid; then
+  KIND="$USAGE_ALARM_KIND"
+  PCT="$USAGE_ALARM_PCT"
+  LOCAL="$USAGE_ALARM_LOCAL"
+  AT="$USAGE_ALARM_AT"
 fi
 
 # 7. Neither a pause nor an alarm: done, stdin unread.
@@ -125,10 +122,6 @@ fi
 
 # 8. The lib lives in the lighthouse lib of this repo. Found through
 # LIGHTHOUSE_REPO_ROOT or git, like bash-write-gates.sh.
-case "${BASH_SOURCE[0]}" in
-  */*) HOOKS_DIR="${BASH_SOURCE[0]%/*}" ;;
-  *) HOOKS_DIR="." ;;
-esac
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$HOOKS_DIR" rev-parse --show-toplevel 2>/dev/null)}"
 LIB="$LIB_ROOT/.lighthouse/lib/lighthouse_lib/usage_guard.py"
 export LIGHTHOUSE_REPO_ROOT="$LIB_ROOT"

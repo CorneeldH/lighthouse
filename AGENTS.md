@@ -74,5 +74,5 @@ Skills:
 ## Lighthouse: go
 
 - Go code follows `/lighthouse-go-writing`.
-- Two gates check it: `gofmt` after every edit (it formats, and blocks only on a file that does not parse), `go-check` when the session stops (`golangci-lint`, `govet` included; it blocks on a finding).
+- Two gates check it: `gofmt` after every edit (formats; blocks only on an unparsable file), `go-check` at Stop (`golangci-lint`, `govet` included; blocks on a finding, not during a usage alarm).
 <!-- lighthouse:end go -->

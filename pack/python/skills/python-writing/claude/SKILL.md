@@ -166,7 +166,8 @@ source file is open.
 When a hook cannot check — no `jq`, no `uvx` or `ruff`, a broken environment — it says so with
 `COULD NOT CHECK` instead of passing silently. `ruff-format` then blocks (exit 2): an unchecked
 file must not read as a clean one. `ty-check` runs at `Stop`, where blocking would keep the
-session from stopping, so it reports it as a message.
+session from stopping, so it reports it as a message. While a valid usage alarm is up it does not
+check at all (see `docs/usage-guard.md`, *Andere Stop-gates*).
 
 ## Known pitfalls
 

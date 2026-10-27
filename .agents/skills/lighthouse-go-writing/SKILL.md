@@ -140,7 +140,8 @@ source file is open.
 | `.claude/hooks/lighthouse/go-check.sh` | `golangci-lint` (`govet` included), once per turn | at `Stop` |
 
 `gofmt.sh` formats the file in place and blocks (exit 2) only on a file that does not parse.
-`go-check.sh` blocks on a finding, and on a build that fails: `golangci-lint` reports both the
+`go-check.sh` blocks on a finding, and on a build that fails, except while a valid usage alarm is
+up (see `docs/usage-guard.md`, *Andere Stop-gates*): `golangci-lint` reports both the
 same way. It lints every checkout the turn wrote in, read from the transcript: a worktree you
 edit from a session in the main checkout is linted, not the main checkout. When a hook cannot
 check — `gofmt.sh` needs `jq` and `gofmt`; `go-check.sh` needs `jq`, `git`, `python3`, `go` and
