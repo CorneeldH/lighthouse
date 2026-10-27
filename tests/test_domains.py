@@ -121,8 +121,10 @@ def test_gate_reports_skipped(repo, markers, web_ready, capsys):
     assert lines[-1] == "gate: passed — web"
 
 
-def test_gate_web_without_node_modules(repo, markers, capsys):
+def test_gate_web_without_node_modules(repo, markers, monkeypatch, capsys):
     (repo / "web" / "x.tsx").write_text("export const x = 1\n", encoding="utf-8")
+    # node and npm present, so only the missing web/node_modules can stop the gate.
+    monkeypatch.setattr(shutil, "which", lambda name, *a, **k: f"/fake/bin/{name}")
     assert domains.gate(repo, checks=_touching(markers), drift=_no_drift) == 3
     out = capsys.readouterr().out
     assert "COULD NOT CHECK" in out
