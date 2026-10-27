@@ -20,8 +20,10 @@ alleen de configuratie, het document en de toestand op GitHub.
 
 Dit plan legt vast wat het issue open liet:
 
-- **Geen locatie-as.** Alles is code in één repo. `labels.location_prefix` blijft weg; de
-  invariantencheck slaat de as dan over.
+- **Geen locatie-as.** lighthouse is software: alles is op te pakken in de code van deze repo.
+  De locatie-as van personal_ai_agent bestaat omdat die repo software én configuratie van
+  machines is (Mac, Beelink); dat is de uitzondering, niet de regel. `labels.location_prefix`
+  blijft weg; de invariantencheck slaat de as dan over.
 - **Blokkade-as met `3-`-prefix**, zes labels, namen en kleuren als in personal_ai_agent.
   `blocked-issue` en `needs-decision` worden hernoemd, de andere vier zijn nieuw.
 - **De GitHub-standaardlabels blijven** (`bug`, `enhancement`, `documentation`, …) als vrije
@@ -75,7 +77,9 @@ Dit plan legt vast wat het issue open liet:
   - Kop `# Labeltaxonomie`, één alinea: `lighthouse-write-issue` leest dit bestand via
     `[paths] labels`; de skill kent zelf geen labels.
   - Tabel met twee assen: `2-area:*` precies 1 (*Waar hoort het bij?*), `3-*` 0 of 1 (*Waarom kan
-    dit nu niet doorlopen?*). Eén zin: er is geen `1-loc:`-as, alles is code in één repo. Eén
+    dit nu niet doorlopen?*). Eén zin: er is geen `1-loc:`-as, want lighthouse is software en
+    alles is op te pakken in de code; een locatie-as hoort bij een repo die ook machines
+    configureert. Eén
     zin: de GitHub-standaardlabels (`bug`, `enhancement`, `documentation`) zijn een vrije as.
   - Sectie `## 2-area: — waar hoort het bij`, tabel Area · Kleur · Vuistregel:
 
