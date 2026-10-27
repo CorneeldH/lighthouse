@@ -11,6 +11,7 @@ import os
 import subprocess
 from pathlib import Path
 
+from tests._domains import load
 from tests.pack._testkit import bash_payload, git, init_repo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -161,4 +162,5 @@ def test_test_gate_shuffles_with_race():
         env=dict(os.environ, PYTHONPATH=str(ROOT / ".lighthouse" / "lib")),
         check=False,
     )
-    assert "go test -race -shuffle=on ./..." in result.stdout, result.stdout + result.stderr
+    assert result.stdout.strip() == "python3 ci/domains.py gate", result.stdout + result.stderr
+    assert " ".join(load().CHECKS["go"][0]) == "go test -race -shuffle=on ./..."
