@@ -46,7 +46,7 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&dbPath, "db", "", "path of the SQLite database (default: the lighthouse data directory)")
 	cmd.Flags().StringVar(&repo, "repo", os.Getenv("LIGHTHOUSE_FORGE_REPO"),
 		"GitHub repository to read questions and returned issues from, as owner/name (default: $LIGHTHOUSE_FORGE_REPO); the token comes from GH_TOKEN or GITHUB_TOKEN")
-	cmd.Flags().StringVar(&forgeURL, "forge-url", envOr("LIGHTHOUSE_FORGE_URL", "https://api.github.com"),
+	cmd.Flags().StringVar(&forgeURL, "forge-url", envOr("LIGHTHOUSE_FORGE_URL", forge.DefaultBaseURL),
 		"GitHub API base URL (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); the token is sent there")
 	return cmd
 }
