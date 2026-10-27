@@ -19,7 +19,7 @@ is the one step that cannot be skipped.
 
 lighthouse is built with lighthouse. The maintainer's own work runs through the
 development chain it ships: an issue, a git worktree on its own branch, a spec or plan
-when the *how* is open, a test gate before every commit, and a pull request whose body
+when the *how* is open, a test gate after every commit, and a pull request whose body
 proves each acceptance criterion. The rules for the coding agents doing that work live in
 [AGENTS.md](AGENTS.md) and [CLAUDE.md](CLAUDE.md), and the issues the chain writes itself
 follow `/lighthouse-write-issue`, not the issue templates.

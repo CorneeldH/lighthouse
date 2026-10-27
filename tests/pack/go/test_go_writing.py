@@ -114,6 +114,17 @@ def test_selector_unchecked_exit_code():
         text = " ".join(path.read_text(encoding="utf-8").split())
         assert "list 3 in `[test_gate] unchecked_exit_codes`" in text, path
 
+
+def test_gate_command_uses_the_selector_without_shuffle():
+    """The gate leaves out `-shuffle=on`: it turns off Go's test cache. CI keeps it (#80)."""
+    for path in VARIANTS:
+        text = " ".join(path.read_text(encoding="utf-8").split())
+        assert (
+            '`[test_gate] command = "python3 .lighthouse/scripts/gate_go.py -- go test -race"`'
+            in text
+        ), path
+        assert 'command = "go test -shuffle=on' not in text, path
+
 def test_kpi_rows():
     for path in VARIANTS:
         rows = "\n".join(_kpi_rows(path))

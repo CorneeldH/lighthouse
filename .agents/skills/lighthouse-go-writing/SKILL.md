@@ -54,7 +54,8 @@ A red run comes back to you: fix it in a new commit. The selector exits 3 when i
 check (no `go`, a list it cannot read, a failing `go list`, a command that cannot start): list 3
 in `[test_gate] unchecked_exit_codes`. When `config.py test_gate.command` gives rc 1 or an empty
 line, the repository has no test gate: set one in `lighthouse.toml`, for a
-Go repository `[test_gate] command = "go test -shuffle=on ./..."`.
+Go repository `[test_gate] command = "python3 .lighthouse/scripts/gate_go.py -- go test -race"`.
+The gate leaves out `-shuffle=on`: that turns off Go's test cache. CI keeps it.
 
 Note: the test gate runs only in Claude Code. In OpenCode nothing local runs the suite before a
 commit or push — run `bash -c "$(python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command)"`
