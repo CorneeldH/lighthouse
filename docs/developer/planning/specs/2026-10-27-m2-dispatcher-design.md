@@ -291,7 +291,12 @@ r1-f1)*:
 
 - Een trigger met een rij waarvan de uitkomst niet `start_failed` is, start nooit opnieuw.
 - Een trigger met één `start_failed`-rij krijgt één tweede poging. Dat geldt voor een launch die
-  forge niet aannam en voor een startfout uit *Afloop* (#34).
+  forge niet aannam en voor een startfout uit *Afloop* (#34). Decide zoekt die triggers in
+  `runs`, niet op het issue: de eerste poging zette al 🚀 op het antwoord en postte al 🤖 Gestart
+  of Hervat, dus de regels Antwoorden en Handoffs zien de trigger niet meer. Zo'n trigger start
+  als `attempt = 2` met dezelfde opdracht, ongeacht 🚀 of een 🤖 Gestart of Hervat; de regels
+  Antwoorden en Handoffs slaan een trigger met een rij in `runs` over *(eigen keuze na
+  spec-review, r2-f1)*.
 - Een tweede `start_failed` sluit de trigger: 🤖 Teruggegeven met de reden van die poging.
 - Een onzekere spawn is geen `start_failed`: de rij blijft open tot de afloop beslist
   (*Launch*).
@@ -399,8 +404,13 @@ in paia. Vóór de eerste lighthouse-tick landt in paia één PR (*Overstap*, st
 - De devcontainer mount de statemap van lighthouse: de drager en de run-instructies alleen
   lezen, de runmap (voor de `Notification`-hook) schrijfbaar, plus het pad van de pauzevlag.
   De resume-map is al gemount.
+- De devcontainer mount de `lighthouse`-binary van de host alleen-lezen op een vast pad op
+  `PATH`; de run-instructies roepen `lighthouse ask` daar aan. Zonder binary is er geen
+  `lighthouse ask` in de werkplek *(eigen keuze na spec-review, r2-f2)*.
 - De devcontainer krijgt Go (besluit in het gesprek), zodat de issues van lighthouse op het
   Software-profiel draaien.
+- De Python-controller krijgt een eigen stop op nieuwe starts, los van de pauzevlag: hij start
+  dan niets nieuws, maar hervat wel na een antwoord of een usage-reset (*Overstap*, stap 3).
 
 Een eigen starter in lighthouse, met eigen forge-targets, komt in M3: een tweede gebruiker heeft
 geen paia.
@@ -529,14 +539,17 @@ De tick hervat ze via de markers.
 
 ### 13. Overstap
 
-0. In paia: de PR uit *Launch* (dubbele drager in `forge_agent.sh`, mounts en Go in de
-   devcontainer). Zonder die PR start lighthouse geen agent.
+0. In paia: de PR uit *Launch* (dubbele drager in `forge_agent.sh`, mounts, de
+   `lighthouse`-binary en Go in de devcontainer, de stop op nieuwe starts). Zonder die PR start lighthouse geen agent.
 1. Lighthouse draait `tick` naast de Python-controller, alleen voor lighthouse zelf
    (Software-profiel). De Python-controller bedient lighthouse niet.
 2. De end-to-end-proef uit de DoD, op lighthouse: handoff, start, vraag, antwoord, hervat,
    groene PR, en een geforceerde usage-pauze met twee runs.
-3. paia loopt leeg: de pauzevlag staat, en er wordt gewacht tot geen paia-issue meer een open,
-   geparkeerde of vragende run van de Python-controller heeft. Anders geeft de wezenregel elke
+3. paia loopt leeg: de stop op nieuwe starts uit stap 0 staat aan, niet de pauzevlag. De
+   pauzevlag zou lopende runs parkeren en hervatten blokkeren, zodat het leeglopen nooit klaar
+   komt (r2-f3). Er wordt gewacht tot geen paia-issue meer een open, geparkeerde of vragende run
+   van de Python-controller heeft; een open Vraag beantwoordt de gebruiker of geeft hij zelf
+   terug. Anders geeft de wezenregel elke
    lopende paia-run terug als "runstaat kwijt" *(eigen keuze na spec-review, r1-f13)*. paia
    krijgt `[usage_guard] controller = true` al; `[controller]` breidt uit met `profile`.
 4. paia gaat over: `controller-tick.timer` roept `lighthouse tick` aan, `forge_agent.sh` leest de
