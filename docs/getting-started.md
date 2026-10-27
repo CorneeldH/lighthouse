@@ -30,3 +30,95 @@ commit, PR bodies with evidence and adversarial reviews.
 | `xz` | shell | unpacking that download | As for `curl`. |
 
 `init` reports a missing tool as `missing dependency: <tool> (needed by: …)` and goes on.
+
+## Install
+
+Prebuilt release binaries are not published yet. Until they are, install with Go. The
+repository is private, so `GOPRIVATE` makes `go` fetch it with your git credentials instead of
+through `proxy.golang.org`, which cannot read it:
+
+```bash
+GOPRIVATE=github.com/CorneeldH go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
+```
+
+`@latest` resolves to the newest tag; put a tag such as `@v0.1.6` there to pin one. The binary
+lands in `~/go/bin`, so make sure that is on your `PATH`.
+
+Install a tag, not `main`. A build from `main` or from a clone reports version `dev`, and
+`lighthouse init` writes that version into `.lighthouse/manifest.toml`.
+
+## Run lighthouse init
+
+In the root of your own repository:
+
+```bash
+cd path/to/your-repo
+lighthouse init
+```
+
+`init` names the packages it picked, prints a diff per file it would write, and asks
+`Apply these changes? [y/N]`. Nothing is written until you answer `y`. It reports a missing tool
+and goes on (see [Requirements](#requirements)).
+
+- `lighthouse init --yes` approves every change without asking, for CI or an agent. Without a
+  terminal the question reads empty stdin, which counts as no: nothing is written and `init`
+  exits 1.
+- `lighthouse init --upgrade` replaces what an earlier `init` installed. A second `init`
+  without `--upgrade` refuses. A unit you changed locally is refused too, unless you add
+  `--force`.
+- `lighthouse init --pack python` adds a package, `lighthouse init --no-pack shell` leaves one
+  out. Both work later with `--upgrade`, and both repeat.
+
+What `init` writes, all of it on the diff first:
+
+- `.claude/skills/lighthouse-<name>/` and `.agents/skills/lighthouse-<name>/`: the skills, for
+  Claude Code and for Codex and OpenCode.
+- `.claude/agents/lighthouse-<name>.md`: the agents the skills dispatch.
+- `.claude/hooks/lighthouse/`: the hooks, registered in `.claude/settings.json` next to your own
+  entries, with the permissions they need.
+- `.lighthouse/lib/lighthouse_lib/` and `.lighthouse/scripts/`: the helpers of the hooks and
+  skills; `.lighthouse/headings.toml`: the headings the skills write and read.
+- `.lighthouse/manifest.toml`: what was installed, at which version.
+- `AGENTS.md`: a managed block per package with the chain rules. Your own text stays.
+  `CLAUDE.md` gets `@AGENTS.md` when neither file exists yet.
+- `.github/pull_request_template.md` and `.github/workflows/lighthouse-<name>.yml`.
+- `lighthouse.toml`: the keys that are missing, see below. Existing keys stay as they are.
+
+The first `init` on a machine also offers to write `~/.config/lighthouse/host.toml`.
+
+## Configure lighthouse.toml
+
+`init` proposes `[project] language`, and `[forge]` from your `origin` remote when it is on
+GitHub. Check it, and set your test gate:
+
+```toml
+[project]
+language = "en"
+
+[forge]
+kind = "github"
+repo = "your-name/your-repo"
+
+[test_gate]
+command = "<your test command>"
+```
+
+| Key | What it does |
+|---|---|
+| `project.language` | The language of your artefacts: issues, PRs, comments, commit messages. `nl` or `en`; default `en`. |
+| `project.code_language` | Set it to `en` to keep names, comments and file names in English while artefacts follow `project.language`. |
+| `project.code_language_paths` | The globs that `project.code_language` covers. |
+| `forge.kind` | `github`, the only forge so far. |
+| `forge.repo` | `owner/name` of the repository on GitHub. |
+| `forge.default_branch` | The branch nothing lands on directly; default `main`. |
+| `test_gate.command` | What `pre-commit-tests` runs before every commit. An empty `command = ""` turns the gate off. The `python` package sets `uv run pytest -q`. |
+| `paths.specs`, `paths.plans` | Where specs and plans go; default `docs/developer/planning/specs` and `docs/developer/planning/plans`. |
+| `forge.board` | Optional: a GitHub Project board the skills move issues on. |
+
+`[forge.board]` is not in the example. When you add it, it needs `project_number`, `project_id`,
+`status_field_id`, and `status_options` with an option ID for each of `To do`, `In progress`,
+`Done` and `On hold`.
+
+Every other key, with its type and default, is in `SCHEMA` and `DEFAULTS` of
+`.lighthouse/lib/lighthouse_lib/config.py`. A key with a wrong type or value is an error that
+names the file and the key.

@@ -1,6 +1,8 @@
 """docs/getting-started.md stays in step with the repo: tools, install, init, config, chain."""
 
+import os
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -59,3 +61,43 @@ def test_requirements_say_what_falls_away():
     rows = table_rows(section("Requirements"))
     empty = [row[0] for row in rows if not row[-1].strip()]
     assert not empty, f"no 'Without it' text for {empty}"
+
+
+def test_install_uses_module_path():
+    module = (ROOT / "go.mod").read_text(encoding="utf-8").splitlines()[0].split()[1]
+    text = section("Install")
+    assert f"go install {module}/cmd/lighthouse@" in text
+    assert "GOPRIVATE=" in text
+
+
+def test_init_prompt_matches_the_binary():
+    src = (ROOT / "internal/initcmd/initcmd.go").read_text(encoding="utf-8")
+    prompt = re.search(r'ask\(o\.Out, in, "([^"]+)"\)', src).group(1).strip()
+    assert prompt in section("Run lighthouse init")
+
+
+def init_flags() -> set[str]:
+    src = (ROOT / "internal/cli/init.go").read_text(encoding="utf-8")
+    return set(re.findall(r'Var\(&o\.\w+, "([\w-]+)"', src))
+
+
+def test_init_flags_exist():
+    used = set(re.findall(r"lighthouse init[^\n`]*?--([\w-]+)", GUIDE.read_text(encoding="utf-8")))
+    assert {"yes", "upgrade"} <= used
+    assert used <= init_flags(), f"guide names unknown init flags {sorted(used - init_flags())}"
+
+
+def test_config_example_loads(tmp_path):
+    block = re.search(r"```toml\n(.*?)```", section("Configure lighthouse.toml"), re.S).group(1)
+    (tmp_path / "lighthouse.toml").write_text(block, encoding="utf-8")
+    env = {**os.environ, "LIGHTHOUSE_REPO_ROOT": str(tmp_path)}
+    for key, want in [("project.language", "en"), ("forge.kind", "github")]:
+        out = subprocess.run(
+            ["python3", str(ROOT / ".lighthouse/lib/lighthouse_lib/config.py"), key],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip() == want
