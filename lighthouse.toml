@@ -6,4 +6,7 @@ kind = "github"
 repo = "CorneeldH/lighthouse"
 
 [test_gate]
-command = "uv run pytest -q && go test -race -shuffle=on ./..."
+# ci/domains.py runs only the checks of the domains a change touches (see the script).
+command = "python3 ci/domains.py gate"
+# 3: ci/domains.py could not check (no node, no web/node_modules, a command not found).
+unchecked_exit_codes = [3]
