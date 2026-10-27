@@ -1583,7 +1583,8 @@ def _rerun_line(stderr: str) -> str:
 
 def _run_rerun_line(gate: Gate, line: str) -> subprocess.CompletedProcess:
     Path(f"{gate.mark}.env").unlink(missing_ok=True)
-    env = dict(os.environ, PATH=f"{gate.stub}{os.pathsep}{os.environ['PATH']}", UV_MARK=str(gate.mark))
+    path = f"{gate.stub}{os.pathsep}{os.environ['PATH']}"
+    env = dict(os.environ, PATH=path, UV_MARK=str(gate.mark))
     for name in ("LIGHTHOUSE_GATE_BASE", "LIGHTHOUSE_GATE_HEAD", "LIGHTHOUSE_GATE_FILES"):
         env.pop(name, None)
     return subprocess.run(
