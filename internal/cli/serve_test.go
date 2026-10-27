@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -39,7 +41,7 @@ func TestServeDefaults(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"127.0.0.1:8127", "--db", "--repo", "owner/name"} {
+	for _, want := range []string{"127.0.0.1:8127", "--db", "--repo", "owner/name", "--forge-url", "https://api.github.com"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("serve --help lacks %q:\n%s", want, out.String())
 		}
@@ -130,5 +132,86 @@ func TestServeForgeNotConfigured(t *testing.T) {
 	}
 	if err := stop(); err != nil {
 		t.Fatalf("serve = %v, want nil", err)
+	}
+}
+
+func TestNewForgeTrimsSlash(t *testing.T) {
+	getenv := func(k string) string {
+		if k == "GH_TOKEN" {
+			return "tok"
+		}
+		return ""
+	}
+	c := newForge("o/r", "http://x/", getenv)
+	if c.BaseURL != "http://x" {
+		t.Errorf("BaseURL = %q, want http://x", c.BaseURL)
+	}
+	if c.Token != "tok" || c.Repo != "o/r" {
+		t.Errorf("Token = %q, Repo = %q, want tok and o/r", c.Token, c.Repo)
+	}
+}
+
+func TestServeForgeURL(t *testing.T) {
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/o/r/issues":
+			_, _ = io.WriteString(w, `[{"number":7,"title":"T","html_url":"https://h/7","comments":1}]`)
+		case "/repos/o/r/issues/7/comments":
+			_, _ = io.WriteString(w, `[{"body":"🤖 Vraag\n\nA of B?","created_at":"2026-10-27T10:00:00Z","html_url":"https://h/7#c1","reactions":{"rocket":0}}]`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fake.Close()
+
+	t.Setenv("GH_TOKEN", "t")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errOut := &syncBuf{}
+	root := NewRoot(strings.NewReader(""), io.Discard, errOut)
+	root.SetArgs([]string{"serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"),
+		"--repo", "o/r", "--forge-url", fake.URL + "/"})
+	done := make(chan error, 1)
+	go func() { done <- root.ExecuteContext(ctx) }()
+
+	const marker = "lighthouse: listening on "
+	var addr string
+	deadline := time.Now().Add(5 * time.Second)
+	for addr == "" {
+		if _, rest, ok := strings.Cut(errOut.String(), marker); ok && strings.Contains(rest, "\n") {
+			addr = strings.TrimSpace(rest)
+		} else if time.Now().After(deadline) {
+			t.Fatalf("no start line within 5s; stderr: %q", errOut.String())
+		} else {
+			select {
+			case err := <-done:
+				t.Fatalf("serve returned early: %v", err)
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+
+	resp, err := http.Get("http://" + addr + "/api/questions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("questions = %d, want 200: %s", resp.StatusCode, body)
+	}
+	for _, want := range []string{`"number":7`, "A of B?"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("body lacks %q: %s", want, body)
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("serve = %v, want nil", err)
+		}
+	case <-time.After(11 * time.Second):
+		t.Fatal("serve did not stop within 11s")
 	}
 }
