@@ -244,7 +244,7 @@ def test_claude_skills_pair_and_verify_on_opus(name):
 
 @pytest.mark.parametrize("name", NAMES)
 def test_variants_keep_their_difference(name):
-    """Inventaris §8: the `agents` variant lacks the controller run, the paired round 1 and  #
+    """Inventory §8: the `agents` variant lacks the controller run, the paired round 1 and
     the Opus dispatch, and records a review from inside Codex as `codex_same_family`."""
     claude, agents = skill(name, "claude"), skill(name, "agents")
     for only_claude in ("## Controller run", "Round 1: Codex and Opus", "## Opus dispatch"):
