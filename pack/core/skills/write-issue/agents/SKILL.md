@@ -116,7 +116,7 @@ issue counts in two axis views and the axis can no longer be audited. rc 1: no a
 
 A blocking label marks **what blocks the next step**, not what occurs somewhere in the issue. It
 is a state, no property: it goes on as soon as the work reaches the human step and comes off
-again.
+again (see "An existing issue").
 
 The test: **can I just say this to the agent?** If so → no label, however much work it is. No
 label means it can be picked up; that is the ready queue.
@@ -178,7 +178,7 @@ it did not fit.
 If the issue waits on another issue in this repo, the blocked-issue label leans on the GitHub
 relation `blocked_by`. The relation comes **before** the label, so that a half failure never
 leaves a label without a relation. This runs after step 4; for an existing issue that gets a
-block, step 1 below drops.
+block, step 1 below drops (see "An existing issue").
 
 The invariant, per open issue (label names from `[labels]`):
 
@@ -294,6 +294,57 @@ gh api "repos/$R/issues?state=open&per_page=100" --paginate |
 ```
 
 Empty output = good. An axis without a prefix (rc 1) is not checked.
+
+## An existing issue
+
+Updating an issue that already exists (title, body, labels, a block) runs only part of the
+workflow above. Do not guess which part:
+
+| Step | For an existing issue |
+|---|---|
+| 0. Does this exist already? | drops: the issue is the one that exists |
+| 1. Choose the template | drops: the template stands |
+| 2. Format the body | drops as a rewrite; a body change goes through the PATCH below |
+| 3a., 3b. Axes | only when the axis label is missing or wrong |
+| 3c. The block | holds: at most one blocking label, the lowest rank wins |
+| 3d. Milestone | only when the change moves the issue to another theme |
+| 3e. Set a block | holds, without its step 1: the issue exists already |
+| 4. Create the issue | drops: never `gh issue create` |
+| 5. Report the result | the final state as read, not the command that was sent |
+
+**Title and body** go through `gh api`. Read the current body first
+(`R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues/<nr>" --jq .body`),
+write the *whole* new body with your write tool to a temporary file, and send that file along;
+never the body itself as a shell argument, because backticks and `$` are executed then:
+
+```bash
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+gh api -X PATCH "repos/$R/issues/<nr>" -f title='<title>' -F body=@<file>
+```
+
+Leave out `-f title=…` or `-F body=…` for the field that does not change.
+
+**A blocking label that no longer holds.** A blocking label is a state (3c): it comes off as soon
+as what it names is done. Read first what stands: the labels, and for `labels.blocked_issue` the
+`blocked_by` list from 3e step 3. Then one of two paths:
+
+- **Nothing blocks any more**: label off, nothing on.
+  `OLD=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<old key>) && gh issue edit <nr> --remove-label "$OLD"`.
+  For `labels.blocked_issue` only when the 3e invariant says **lapsed** or **unlinked**: with an
+  open blocker the label holds.
+- **Another label takes over** (a decision is taken, but now the issue waits on another one):
+  choose the new label with the rank from 3c. If it is `labels.blocked_issue`, set the relation
+  first with 3e steps 2–3. Then the move in one edit, so the issue never stands for a moment
+  without a blocking label (the ready queue) or with two:
+
+  ```bash
+  OLD=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<old key>) || exit 2
+  NEW=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<new key>) || exit 2
+  gh issue edit <nr> --remove-label "$OLD" --add-label "$NEW"
+  ```
+
+Close with 3e step 5 as the final check, also when no relation is involved; on a failure the
+failure table of 3e applies. Report what stands, never success from the command alone.
 
 ## A defect in an external tool
 
