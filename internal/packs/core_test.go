@@ -184,6 +184,7 @@ func TestLanguagePacks(t *testing.T) {
 				".claude/hooks/lighthouse/ruff-format.sh",
 				".claude/hooks/lighthouse/ty-check.sh",
 				".claude/skills/lighthouse-python-writing/SKILL.md",
+				".lighthouse/scripts/gate_python.py",
 				".lighthouse/scripts/quality/__init__.py",
 				".lighthouse/scripts/quality/baseline.py",
 				".lighthouse/scripts/quality/diffcov.py",

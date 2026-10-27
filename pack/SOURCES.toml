@@ -417,6 +417,10 @@ path = "pack/python/requires.toml"
 new = true
 
 [[file]]
+path = "pack/python/scripts/gate_python.py"
+new = true
+
+[[file]]
 path = "pack/python/scripts/quality/__init__.py"
 source_path = "scripts/quality/__init__.py"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
