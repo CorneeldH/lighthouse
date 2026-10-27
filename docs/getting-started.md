@@ -4,7 +4,7 @@ Lighthouse is a set of skills, hooks and instructions that `lighthouse init` ins
 repository, so that an AI coding agent works in the same chain from issue to merged PR every
 time. It is for a developer with a GitHub repository and Claude Code. Without the controller
 (`lighthouse serve`, early development) you already get worktrees, a test gate before every
-commit, PR bodies with evidence and adversarial reviews.
+commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 
 ## Requirements
 
@@ -15,16 +15,16 @@ commit, PR bodies with evidence and adversarial reviews.
 |---|---|---|---|
 | Claude Code | all | running the skills and the hooks | The hooks do not run. Codex and OpenCode read `AGENTS.md`, but nothing enforces it: run the test gate yourself. |
 | Python 3.11+ (`python3`, `tomllib`) | all | every hook, the helper scripts of the skills, reading `lighthouse.toml` | The core hooks report `COULD NOT CHECK`, and the blocking ones block: no commit passes `main-commit-guard` or `pre-commit-tests`. |
-| `git` | core, expo, go, shell | worktrees, the commit guards, every skill | Nothing works: the guards report `COULD NOT CHECK` and block. |
+| `git` | core, expo, go, shell | worktrees, the commit guards, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-guard` only warns. |
 | `jq` | core, go, python, shell | reading the payload of a hook | The hooks report `COULD NOT CHECK`; `main-commit-guard`, `pre-commit-tests`, `pr-create-gate` and `worktree-linkcheck` block. |
 | `gh` | core, python | reading and writing issues and PRs | The issue and PR skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. |
 | `superpowers` (Claude Code plugin) | core, expo | the steps the skills hand off: worktrees, brainstorming, plans, debugging | The skills cannot hand off; `/lighthouse-start-issue` loses its worktree, spec and plan steps. |
 | `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-spec-adversarial-review` and `/lighthouse-plan-adversarial-review` stop with `CODEX_MISSING`. |
-| `uv` | python | `ruff-format`, `ty-check`, the test gate `uv run pytest -q` | `ty-check` reports `COULD NOT CHECK`; `ruff-format` falls back to `ruff` on the `PATH`, else blocks with `COULD NOT CHECK`. The test gate fails red and blocks the commit. |
+| `uv` | python | `ruff-format`, `ty-check`, the test gate `uv run pytest -q` | `ty-check` reports `COULD NOT CHECK`; `ruff-format` falls back to `ruff` on the `PATH`, else blocks with `COULD NOT CHECK`. The test gate `uv run pytest -q` cannot start: `pre-commit-tests` reports `COULD NOT CHECK` and blocks the commit. |
 | `go` | go | `go-check` | `go-check` reports `COULD NOT CHECK` at Stop; nothing was linted. |
 | `gofmt` | go | `gofmt` after every edit | `gofmt` blocks with `COULD NOT CHECK`. |
 | `golangci-lint` | go | `go-check` | `go-check` reports `COULD NOT CHECK` at Stop; nothing was linted. |
-| `curl` | shell | the first download of the pinned `shellcheck` | No download: `shellcheck` blocks with `COULD NOT CHECK` on every shell script you edit. |
+| `curl` | shell | the first download of the pinned `shellcheck` | No download. Without a `shellcheck` on your `PATH`, the `shellcheck` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
 | `sha256sum` | shell | verifying that download | As for `curl`. |
 | `tar` | shell | unpacking that download | As for `curl`. |
 | `xz` | shell | unpacking that download | As for `curl`. |
@@ -33,9 +33,10 @@ commit, PR bodies with evidence and adversarial reviews.
 
 ## Install
 
-Prebuilt release binaries are not published yet. Until they are, install with Go. The
-repository is private, so `GOPRIVATE` makes `go` fetch it with your git credentials instead of
-through `proxy.golang.org`, which cannot read it:
+Prebuilt release binaries are not published yet. Until they are, install with Go. `GOPRIVATE`
+makes `go` fetch the module straight from GitHub with your git credentials instead of through
+`proxy.golang.org`. That keeps the command working if the repository is private to you; on a
+public repository it changes nothing:
 
 ```bash
 GOPRIVATE=github.com/CorneeldH go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
@@ -64,8 +65,8 @@ and goes on (see [Requirements](#requirements)).
   terminal the question reads empty stdin, which counts as no: nothing is written and `init`
   exits 1.
 - `lighthouse init --upgrade` replaces what an earlier `init` installed. A second `init`
-  without `--upgrade` refuses. A unit you changed locally is refused too, unless you add
-  `--force`.
+  without `--upgrade` refuses. A unit you changed locally makes the whole run refuse, and nothing
+  is written, unless you add `--force`.
 - `lighthouse init --pack python` adds a package, `lighthouse init --no-pack shell` leaves one
   out. Both work later with `--upgrade`, and both repeat.
 
@@ -79,17 +80,24 @@ What `init` writes, all of it on the diff first:
 - `.lighthouse/lib/lighthouse_lib/` and `.lighthouse/scripts/`: the helpers of the hooks and
   skills; `.lighthouse/headings.toml`: the headings the skills write and read.
 - `.lighthouse/manifest.toml`: what was installed, at which version.
-- `AGENTS.md`: a managed block per package with the chain rules. Your own text stays.
-  `CLAUDE.md` gets `@AGENTS.md` when neither file exists yet.
+- `AGENTS.md`: a managed block with the chain rules, one per package that has rules. Your own
+  text stays. `CLAUDE.md` gets the line `@AGENTS.md` only when neither file exists yet. Claude
+  Code reads the rules through that line: if you already have a `CLAUDE.md`, or only an
+  `AGENTS.md`, add `@AGENTS.md` to `CLAUDE.md` yourself.
 - `.github/pull_request_template.md` and `.github/workflows/lighthouse-<name>.yml`.
 - `lighthouse.toml`: the keys that are missing, see below. Existing keys stay as they are.
 
-The first `init` on a machine also offers to write `~/.config/lighthouse/host.toml`.
+On a machine with Tailscale, the first `init` also offers to write
+`~/.config/lighthouse/host.toml`; `--yes` writes it without asking. Without Tailscale you see
+`warning: host.toml not proposed: tailscale ip unavailable; skills that check the host will
+report it`.
 
 ## Configure lighthouse.toml
 
 `init` proposes `[project] language`, and `[forge]` from your `origin` remote when it is on
-GitHub. Check it, and set your test gate:
+GitHub. Only the `python` package proposes a test gate. Until you set `[test_gate] command`,
+`pre-commit-tests` passes every commit with `no test command configured, nothing was tested`.
+Check the file, and set your test gate:
 
 ```toml
 [project]

@@ -82,7 +82,8 @@ def init_flags() -> set[str]:
 
 
 def test_init_flags_exist():
-    used = set(re.findall(r"lighthouse init[^\n`]*?--([\w-]+)", GUIDE.read_text(encoding="utf-8")))
+    spans = re.findall(r"`([^`]*)`", section("Run lighthouse init"))
+    used = {flag for span in spans for flag in re.findall(r"--(\w[\w-]*)", span)}
     assert {"yes", "upgrade"} <= used
     assert used <= init_flags(), f"guide names unknown init flags {sorted(used - init_flags())}"
 
