@@ -1,13 +1,13 @@
-"""Tests voor scripts/plan_review_record.py — het meetrecord van de plan-review (#972).
+"""Tests for scripts/plan_review_record.py — the measurement record of the plan review (#972).
 
 Spec: docs/developer/planning/specs/2026-09-25-plan-adversarial-review-design.md,
-sectie 5. Getoetst: de attempt-map, de inhoud van record.json, de host-check
-(gesimuleerd) en een schrijffout (gesimuleerd): alleen de stagingmap blijft, een
-luide melding, exit 4.
+section 5. Tested: the attempt directory, the content of record.json, the host check
+(simulated) and a write error (simulated): only the staging directory stays, a
+loud message, exit 4.
 
-In lighthouse: het script draait uit de geïnstalleerde indeling (`install_core`), de
-wereld zet `LIGHTHOUSE_REPO_ROOT`, `LIGHTHOUSE_DATA` en een `lighthouse.toml` met
-`language = "nl"` (de teksten hieronder blijven zo die van paia).
+In lighthouse: the script runs from the installed layout (`install_core`), the
+world sets `LIGHTHOUSE_REPO_ROOT`, `LIGHTHOUSE_DATA` and a `lighthouse.toml` with
+`language = "nl"` (so the texts below stay those of paia).
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ _SPEC = importlib.util.spec_from_file_location("plan_review_record", SCRIPT)
 assert _SPEC and _SPEC.loader
 rec = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(rec)
-# De fixture `world` stubt `host_refusal`; de host-tests hieronder zetten de echte terug.
-ECHTE_HOST_REFUSAL = rec.host_refusal
+# The fixture `world` stubs `host_refusal`; the host tests below put the real one back.
+REAL_HOST_REFUSAL = rec.host_refusal
 
 PLAN = "docs/developer/planning/plans/2026-09-25-voorbeeld.md"
 SPEC = "docs/developer/planning/specs/2026-09-25-voorbeeld-design.md"
@@ -48,7 +48,7 @@ def _git(repo: pathlib.Path, *args: str) -> str:
 
 @pytest.fixture(autouse=True)
 def config(tmp_path, monkeypatch) -> pathlib.Path:
-    """Een `lighthouse.toml` met `language = "nl"` buiten de repo, en de koppentabel."""
+    """A `lighthouse.toml` with `language = "nl"` outside the repo, and the headings table."""
     toml = tmp_path / "lighthouse.toml"
     toml.write_text('[project]\nlanguage = "nl"\n')
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(toml))
@@ -58,7 +58,7 @@ def config(tmp_path, monkeypatch) -> pathlib.Path:
 
 @pytest.fixture
 def world(tmp_path, monkeypatch):
-    """Wegwerp-repo met plan en spec gecommit, TMPDIR en datamap buiten de repo."""
+    """Throwaway repo with plan and spec committed, TMPDIR and data directory outside the repo."""
     repo = tmp_path / "repo"
     for rel, text in ((PLAN, "# plan v1\n"), (SPEC, "# spec\n")):
         (repo / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -127,8 +127,8 @@ def test_start_reserves_a_fresh_attempt_dir(world, capsys):
     meta = json.loads((first / "attempt.json").read_text())
     assert meta["reviewed_sha"] == _git(world["repo"], "rev-parse", "HEAD")
     assert meta["chain_key"] == "2026-09-25-voorbeeld"
-    # Op de Beelink staat de attempt meteen in de datamap, ook als `write` nooit
-    # draait: de nieuwste attempt is gezaghebbend (spec sectie 5).
+    # On the Beelink the attempt is in the data directory at once, even if `write` never
+    # runs: the newest attempt is authoritative (spec section 5).
     chain = world["tmp"] / "data" / "plan-review" / "2026-09-25-voorbeeld"
     for attempt in (first, second):
         reserved = chain / f".{attempt.name}.tmp" / "attempt.json"
@@ -206,7 +206,7 @@ def test_write_produces_the_record(world, capsys):
     assert r["round_kinds"] == ["review", "verify"]
     assert (
         r["verifier_prompt_sha256"] is None
-    )  # de fixture heeft geen verifier-prompt.md
+    )  # the fixture has no verifier-prompt.md
     assert r["verification_schema_sha256"] is None
     assert [(f["finding_id"], f["decision"]) for f in r["findings"]] == [
         ("r1-f1", "accept"),
@@ -304,11 +304,11 @@ def test_off_beelink_writes_nothing_and_says_so(world, capsys, monkeypatch):
 
 
 def test_write_unknown_host_returns_3_and_says_so(world, capsys, monkeypatch):
-    def onbekend(path=None):
+    def unknown(path=None):
         raise rec.HostError("host onbekend: geen host.toml (/x)")
 
-    monkeypatch.setattr(rec, "host_refusal", ECHTE_HOST_REFUSAL)
-    monkeypatch.setattr(rec, "recognize", onbekend)
+    monkeypatch.setattr(rec, "host_refusal", REAL_HOST_REFUSAL)
+    monkeypatch.setattr(rec, "recognize", unknown)
     attempt = _start(capsys)
     _round(attempt, 1, [])
     code = rec.main(
@@ -329,23 +329,23 @@ def test_write_unknown_host_returns_3_and_says_so(world, capsys, monkeypatch):
 
 
 def test_host_refusal_unknown_host(monkeypatch):
-    def onbekend(path=None):
+    def unknown(path=None):
         raise rec.HostError("host onbekend: geen host.toml (/x)")
 
-    monkeypatch.setattr(rec, "recognize", onbekend)
-    tekst = rec.host_refusal("plan")
-    assert tekst is not None
-    assert "PLAN-REVIEW NOT RECORDED" in tekst
-    assert "host onbekend: geen host.toml (/x)" in tekst
-    assert "niet op de Beelink" not in tekst
+    monkeypatch.setattr(rec, "recognize", unknown)
+    text = rec.host_refusal("plan")
+    assert text is not None
+    assert "PLAN-REVIEW NOT RECORDED" in text
+    assert "host onbekend: geen host.toml (/x)" in text
+    assert "niet op de Beelink" not in text
 
 
 def test_host_refusal_other_host(monkeypatch):
     monkeypatch.setattr(rec, "recognize", lambda path=None: None)
-    tekst = rec.host_refusal("spec")
-    assert tekst is not None
-    assert "not on the host from host.toml" in tekst
-    assert "falls outside the measurement" in tekst
+    text = rec.host_refusal("spec")
+    assert text is not None
+    assert "not on the host from host.toml" in text
+    assert "falls outside the measurement" in text
 
 
 def test_host_refusal_recognized(monkeypatch):
@@ -406,8 +406,8 @@ def test_unknown_decision_is_a_validation_error(world, capsys):
 
 
 def test_missing_decision_blocks_a_converged_record(world, capsys):
-    """Zonder sidecar voor de laatste ronde zou het record `decision: null`
-    opslaan als geldige meetdata; alleen `aborted` mag dat."""
+    """Without a sidecar for the last round the record would store `decision: null`
+    as valid measurement data; only `aborted` may do that."""
     attempt = _start(capsys)
     _round(attempt, 1, ["MAJOR"])
     code = rec.main(
@@ -427,8 +427,8 @@ def test_missing_decision_blocks_a_converged_record(world, capsys):
 
 
 def test_converged_with_an_open_major_is_a_validation_error(world, capsys):
-    """Een MAJOR uit de laatste ronde die `accept` kreeg, is gefixt maar niet meer
-    gereviewd: dat is open, dus geen `converged` (skill-stap 8)."""
+    """A MAJOR from the last round that got `accept` is fixed but no longer
+    reviewed: that is open, so not `converged` (skill step 8)."""
     attempt = _start(capsys)
     _round(attempt, 1, ["MAJOR"])
     (attempt / "round-1.decisions.json").write_text(
@@ -451,7 +451,7 @@ def test_converged_with_an_open_major_is_a_validation_error(world, capsys):
 
 
 @pytest.mark.parametrize(
-    ("rows", "melding"),
+    ("rows", "notice"),
     [
         (
             [
@@ -470,7 +470,7 @@ def test_converged_with_an_open_major_is_a_validation_error(world, capsys):
     ],
     ids=["dubbel", "onbekend-id"],
 )
-def test_bad_finding_id_is_a_validation_error(world, capsys, rows, melding):
+def test_bad_finding_id_is_a_validation_error(world, capsys, rows, notice):
     attempt = _start(capsys)
     _round(attempt, 1, ["MAJOR"])
     (attempt / "round-1.decisions.json").write_text(json.dumps(rows))
@@ -487,7 +487,7 @@ def test_bad_finding_id_is_a_validation_error(world, capsys, rows, melding):
         ]
     )
     assert code == 4
-    assert melding in capsys.readouterr().err
+    assert notice in capsys.readouterr().err
 
 
 def test_existing_attempt_is_never_overwritten(world, capsys):
@@ -510,8 +510,8 @@ def test_existing_attempt_is_never_overwritten(world, capsys):
 
 
 def test_malformed_decisions_sidecar_is_a_validation_error(world, capsys):
-    """Een sidecar die geen lijst van objecten is (hier: één los object) mag geen
-    traceback geven — `main` moet exit 4 met PLAN-REVIEW-RECORD FAILED blijven."""
+    """A sidecar that is not a list of objects (here: one bare object) must not give a
+    traceback — `main` must stay exit 4 with PLAN-REVIEW-RECORD FAILED."""
     attempt = _start(capsys)
     _round(attempt, 1, ["MAJOR"])
     (attempt / "round-1.decisions.json").write_text(json.dumps({"finding_id": "r1-f1"}))
@@ -534,8 +534,8 @@ def test_malformed_decisions_sidecar_is_a_validation_error(world, capsys):
 
 
 def test_non_contiguous_rounds_is_a_validation_error(world, capsys):
-    """`round-2.json` ontbreekt: alleen ronde 1 en 3 staan er. Dat mag niet stil
-    als `rounds: 2` in het record belanden."""
+    """`round-2.json` is missing: only rounds 1 and 3 are there. That must not end up
+    silently as `rounds: 2` in the record."""
     attempt = _start(capsys)
     _round(attempt, 1, [])
     _round(attempt, 3, [])
@@ -588,8 +588,8 @@ def test_verifier_prompt_is_hashed_when_present(world, capsys):
 
 
 def test_fix_incomplete_in_the_last_verification_blocks_converged(world, capsys):
-    """Ronde 2 vindt dat de fix van r1-f1 niet klopt; de operator accepteert en
-    fixt, maar niemand verifieerde die fix: open, dus geen `converged`."""
+    """Round 2 finds that the fix of r1-f1 is wrong; the operator accepts and
+    fixes, but nobody verified that fix: open, so not `converged`."""
     attempt = _start(capsys)
     _round(attempt, 1, ["MAJOR"])
     (attempt / "round-1.decisions.json").write_text(
@@ -767,7 +767,7 @@ def test_spec_kind_accept_on_last_round_major_stays_open(world, capsys):
 
 
 def _three_rounds(attempt: pathlib.Path, last_decision: str) -> None:
-    """Drie rondes met telkens één MAJOR; alleen de laatste beslissing varieert."""
+    """Three rounds with one MAJOR each; only the last decision varies."""
     for n in (1, 2, 3):
         _round(attempt, n, ["MAJOR"], verified=[] if n > 1 else None)
         decision = last_decision if n == 3 else "accept"
@@ -1120,9 +1120,9 @@ def test_spec_kind_final_hash_follows_a_committed_fix(world, capsys):
     assert r["final_sha"] == final_sha
 
 
-def _budget(attempt, naam, doc_of_tekst):
-    tekst = doc_of_tekst if isinstance(doc_of_tekst, str) else json.dumps(doc_of_tekst)
-    (attempt / naam).write_text(tekst)
+def _budget(attempt, name, doc_or_text):
+    text = doc_or_text if isinstance(doc_or_text, str) else json.dumps(doc_or_text)
+    (attempt / name).write_text(text)
 
 
 FALLBACK = {
@@ -1135,7 +1135,7 @@ FALLBACK = {
     "source": "app-server",
     "thresholds": {"session": 90, "week": 95},
 }
-SYNTHESE = {
+SYNTHETIC = {
     "decision": "not_measurable",
     "reason": "budgetcheck faalde: exit 1",
     **dict.fromkeys(
@@ -1155,9 +1155,9 @@ def test_budget_checks_in_v4_record(world, capsys):
     attempt = _start(capsys)
     _round(attempt, 1, [])
     _budget(attempt, "round-1.codex.json.budget.json", FALLBACK)
-    _budget(attempt, "round-1.json.budget.json", SYNTHESE)
+    _budget(attempt, "round-1.json.budget.json", SYNTHETIC)
     _budget(attempt, "round-2.json.budget.json", "geen json")
-    _budget(attempt, "round-3.json.budget.json", [])  # geldige JSON, geen object
+    _budget(attempt, "round-3.json.budget.json", [])  # valid JSON, not an object
     _round(attempt, 2, [], verified=[])
     _round(attempt, 3, [], verified=[])
     code = rec.main(
@@ -1194,16 +1194,16 @@ def test_budget_checks_in_v4_record(world, capsys):
         "unreadable",
         "unreadable",
     ]
-    for naam in (
+    for name in (
         "round-1.codex.json.budget.json",
         "round-1.json.budget.json",
         "round-2.json.budget.json",
         "round-3.json.budget.json",
     ):
-        assert (out / naam).is_file()
+        assert (out / name).is_file()
 
 
-def test_zonder_budget_bestanden_lege_lijst(world, capsys):
+def test_without_budget_files_empty_list(world, capsys):
     attempt = _start(capsys)
     _round(attempt, 1, [])
     code = rec.main(
@@ -1225,7 +1225,7 @@ def test_zonder_budget_bestanden_lege_lijst(world, capsys):
     assert r["budget_checks"] == []
 
 
-def test_onvolledig_budget_bestand_wordt_null(world, capsys):
+def test_incomplete_budget_file_becomes_null(world, capsys):
     attempt = _start(capsys)
     _round(attempt, 1, [])
     _budget(attempt, "round-1.json.budget.json", {"decision": "codex"})
@@ -1277,7 +1277,7 @@ def _row(fid: str, decision: str, reason: str = "x") -> dict:
 
 
 def _round3_with_sidecar(attempt: pathlib.Path) -> pathlib.Path:
-    """Rondes 1-3; ronde 3 heeft MAJOR, BLOCKER, MINOR met drie soorten beslissing."""
+    """Rounds 1-3; round 3 has MAJOR, BLOCKER, MINOR with three kinds of decision."""
     _round(attempt, 1, ["MAJOR"])
     _round(attempt, 2, ["MAJOR"], verified=[])
     _round(attempt, 3, ["MAJOR", "BLOCKER", "MINOR"], verified=[])
@@ -1302,7 +1302,7 @@ def _accept(attempt: pathlib.Path, doc: pathlib.Path) -> int:
     return rec.main(["accept-open", str(attempt), "--doc", str(doc)])
 
 
-def test_accepteer_open_rewrites_the_last_sidecar(world, capsys, tmp_path):
+def test_accept_open_rewrites_the_last_sidecar(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     sidecar = _round3_with_sidecar(attempt)
@@ -1319,7 +1319,7 @@ def test_accepteer_open_rewrites_the_last_sidecar(world, capsys, tmp_path):
     assert doc.read_text() == "# Plan\n\nTekst.\n\n" + out
 
 
-def test_accepteer_open_fills_a_missing_row(world, capsys, tmp_path):
+def test_accept_open_fills_a_missing_row(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _round(attempt, 3, ["MAJOR"])
@@ -1334,7 +1334,7 @@ def test_accepteer_open_fills_a_missing_row(world, capsys, tmp_path):
     ]
 
 
-def test_accepteer_open_without_a_sidecar_file_creates_the_rows(
+def test_accept_open_without_a_sidecar_file_creates_the_rows(
     world, capsys, tmp_path
 ):
     attempt = _start(capsys)
@@ -1348,7 +1348,7 @@ def test_accepteer_open_without_a_sidecar_file_creates_the_rows(
     ]
 
 
-def test_accepteer_open_keeps_same_as_and_appends_missing_rows(world, capsys, tmp_path):
+def test_accept_open_keeps_same_as_and_appends_missing_rows(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _round(attempt, 1, ["MAJOR", "MAJOR", "MAJOR"])
@@ -1368,7 +1368,7 @@ def test_accepteer_open_keeps_same_as_and_appends_missing_rows(world, capsys, tm
     assert rows[1]["decision"] == "reject"
 
 
-def test_accepteer_open_is_idempotent(world, capsys, tmp_path):
+def test_accept_open_is_idempotent(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     sidecar = _round3_with_sidecar(attempt)
@@ -1380,7 +1380,7 @@ def test_accepteer_open_is_idempotent(world, capsys, tmp_path):
     assert sidecar.read_bytes() == first_bytes
 
 
-def test_accepteer_open_doc_upsert_is_idempotent(world, capsys, tmp_path):
+def test_accept_open_doc_upsert_is_idempotent(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _round3_with_sidecar(attempt)
@@ -1391,31 +1391,31 @@ def test_accepteer_open_doc_upsert_is_idempotent(world, capsys, tmp_path):
     assert first.count("## Open na review") == 1
 
 
-def test_accepteer_open_doc_ignores_a_fenced_heading(world, capsys, tmp_path):
+def test_accept_open_doc_ignores_a_fenced_heading(world, capsys, tmp_path):
     attempt = _start(capsys)
-    voorbeeld = "## Iets\n\n```markdown\n## Open na review\n\n- oud voorbeeld\n```\n"
-    doc = _doc(tmp_path, voorbeeld)
+    example = "## Iets\n\n```markdown\n## Open na review\n\n- oud voorbeeld\n```\n"
+    doc = _doc(tmp_path, example)
     _round3_with_sidecar(attempt)
     assert _accept(attempt, doc) == 0
     block = capsys.readouterr().out
-    assert doc.read_text() == voorbeeld + "\n" + block
+    assert doc.read_text() == example + "\n" + block
     assert _accept(attempt, doc) == 0
-    assert doc.read_text() == voorbeeld + "\n" + block
+    assert doc.read_text() == example + "\n" + block
 
 
-def test_open_sectie_only_matches_the_last_section_outside_fences():
+def test_open_section_only_matches_the_last_section_outside_fences():
     block = "## Open na review\n\n- x\n"
     prefix = "# T\n\n## A\n\n"
-    assert rec.open_sectie(prefix + block) == (len(prefix), len(prefix + block))
-    assert rec.open_sectie("## Open na review\n\n- x\n\n## Daarna\n\ny\n") is None
-    assert rec.open_sectie("# T\n\n~~~\n## Open na review\n~~~\n") is None
-    assert rec.open_sectie("# T\n\n```\n## Open na review\n") is None
-    assert rec.open_sectie("# T\n\n### Open na review\n") is None
-    assert rec.open_sectie("# T\n\n## Open na review extra\n") is None
-    assert rec.open_sectie("# T\n") is None
+    assert rec.open_section(prefix + block) == (len(prefix), len(prefix + block))
+    assert rec.open_section("## Open na review\n\n- x\n\n## Daarna\n\ny\n") is None
+    assert rec.open_section("# T\n\n~~~\n## Open na review\n~~~\n") is None
+    assert rec.open_section("# T\n\n```\n## Open na review\n") is None
+    assert rec.open_section("# T\n\n### Open na review\n") is None
+    assert rec.open_section("# T\n\n## Open na review extra\n") is None
+    assert rec.open_section("# T\n") is None
 
 
-def test_accepteer_open_doc_without_trailing_newline_gets_one_blank_line(
+def test_accept_open_doc_without_trailing_newline_gets_one_blank_line(
     world, capsys, tmp_path
 ):
     attempt = _start(capsys)
@@ -1425,7 +1425,7 @@ def test_accepteer_open_doc_without_trailing_newline_gets_one_blank_line(
     assert doc.read_text() == "# Plan\n\n" + capsys.readouterr().out
 
 
-def test_accepteer_open_neutralises_closing_keywords(world, capsys, tmp_path):
+def test_accept_open_neutralises_closing_keywords(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _round_raw(
@@ -1452,7 +1452,7 @@ def test_accepteer_open_neutralises_closing_keywords(world, capsys, tmp_path):
     assert not re.search(r"(?i)\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\s+#\d", out)
 
 
-def test_accepteer_open_without_open_points_exits_2(world, capsys, tmp_path):
+def test_accept_open_without_open_points_exits_2(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _round(attempt, 1, ["MAJOR"])
@@ -1466,7 +1466,7 @@ def test_accepteer_open_without_open_points_exits_2(world, capsys, tmp_path):
     assert doc.read_text() == "# Plan\n\nTekst.\n"
 
 
-def test_accepteer_open_round_json_without_severity_exits_4(world, capsys, tmp_path):
+def test_accept_open_round_json_without_severity_exits_4(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _round_raw(attempt, 1, [{"cat": "code", "plan_section": "Taak 1", "problem": "p"}])
@@ -1479,7 +1479,7 @@ def test_accepteer_open_round_json_without_severity_exits_4(world, capsys, tmp_p
     assert doc.read_text() == "# Plan\n\nTekst.\n"
 
 
-def test_accepteer_open_spec_kind_uses_spec_section(world, capsys, tmp_path):
+def test_accept_open_spec_kind_uses_spec_section(world, capsys, tmp_path):
     assert rec.main(["start", "--kind", "spec", SPEC]) == 0
     attempt = pathlib.Path(capsys.readouterr().out.strip())
     doc = _doc(tmp_path)
@@ -1498,7 +1498,7 @@ def test_accepteer_open_spec_kind_uses_spec_section(world, capsys, tmp_path):
     assert "r1-f1" not in out
 
 
-def test_accepteer_open_section_falls_back_to_a_question_mark(world, capsys, tmp_path):
+def test_accept_open_section_falls_back_to_a_question_mark(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _round_raw(attempt, 1, [{"severity": "BLOCKER", "cat": "x", "problem": "p"}])
@@ -1506,7 +1506,7 @@ def test_accepteer_open_section_falls_back_to_a_question_mark(world, capsys, tmp
     assert "- **r1-f1** (BLOCKER, ?): p" in capsys.readouterr().out
 
 
-def test_accepteer_open_malformed_sidecar_exits_4(world, capsys, tmp_path):
+def test_accept_open_malformed_sidecar_exits_4(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _round(attempt, 1, ["MAJOR"])
@@ -1518,7 +1518,7 @@ def test_accepteer_open_malformed_sidecar_exits_4(world, capsys, tmp_path):
     assert doc.read_text() == "# Plan\n\nTekst.\n"
 
 
-def test_accepteer_open_missing_doc_exits_4_and_leaves_the_sidecar(
+def test_accept_open_missing_doc_exits_4_and_leaves_the_sidecar(
     world, capsys, tmp_path
 ):
     attempt = _start(capsys)
@@ -1529,7 +1529,7 @@ def test_accepteer_open_missing_doc_exits_4_and_leaves_the_sidecar(
     assert not (attempt / "round-1.decisions.json").exists()
 
 
-def test_accepteer_open_runs_off_the_beelink(world, capsys, tmp_path, monkeypatch):
+def test_accept_open_runs_off_the_beelink(world, capsys, tmp_path, monkeypatch):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _round(attempt, 1, ["MAJOR"])
@@ -1539,14 +1539,14 @@ def test_accepteer_open_runs_off_the_beelink(world, capsys, tmp_path, monkeypatc
     assert _accept(attempt, doc) == 0
 
 
-def test_accepteer_open_requires_doc(world, capsys):
+def test_accept_open_requires_doc(world, capsys):
     attempt = _start(capsys)
     with pytest.raises(SystemExit) as exc:
         rec.main(["accept-open", str(attempt)])
     assert exc.value.code == 2
 
 
-def test_accepteer_open_then_write_round_limit_succeeds(world, capsys, tmp_path):
+def test_accept_open_then_write_round_limit_succeeds(world, capsys, tmp_path):
     attempt = _start(capsys)
     doc = _doc(tmp_path)
     _three_rounds(attempt, "accept")
@@ -1564,21 +1564,21 @@ def test_accepteer_open_then_write_round_limit_succeeds(world, capsys, tmp_path)
 
 
 # --- pr-open-points (#1352) --------------------------------------------------
-BLOK = "## Open na review\n\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n"
+BLOCK = "## Open na review\n\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n"
 
 
-def _schrijf(pad: pathlib.Path, tekst: str) -> pathlib.Path:
+def _write(pad: pathlib.Path, text: str) -> pathlib.Path:
     pad.parent.mkdir(parents=True, exist_ok=True)
-    pad.write_text(tekst)
+    pad.write_text(text)
     return pad
 
 
 def _pr_open(repo: pathlib.Path, *docs: pathlib.Path) -> int:
-    return rec._pr_open_punten(list(docs), repo)
+    return rec._run_pr_open_points(list(docs), repo)
 
 
-def test_pr_open_punten_copies_the_block(tmp_path, capsys):
-    plan = _schrijf(tmp_path / "plan.md", "# Plan\n\ntekst\n\n" + BLOK)
+def test_pr_open_points_copies_the_block(tmp_path, capsys):
+    plan = _write(tmp_path / "plan.md", "# Plan\n\ntekst\n\n" + BLOCK)
     assert _pr_open(tmp_path, plan) == 0
     out = capsys.readouterr().out
     assert out.startswith("## Open review points\n\nFrom plan.md:\n- **r3-f1**")
@@ -1586,51 +1586,51 @@ def test_pr_open_punten_copies_the_block(tmp_path, capsys):
     assert "## Open na review" not in out
 
 
-def test_pr_open_punten_ignores_a_fenced_heading(tmp_path, capsys):
-    doc = _schrijf(tmp_path / "plan.md", f"# Plan\n\n```markdown\n{BLOK}```\n")
+def test_pr_open_points_ignores_a_fenced_heading(tmp_path, capsys):
+    doc = _write(tmp_path / "plan.md", f"# Plan\n\n```markdown\n{BLOCK}```\n")
     assert _pr_open(tmp_path, doc) == 0
     assert capsys.readouterr().out == ""
 
 
-def test_pr_open_punten_several_docs_and_missing_path(tmp_path, capsys):
-    spec = _schrijf(tmp_path / "spec.md", "# Spec\n\n" + BLOK)
-    plan = _schrijf(tmp_path / "plan.md", "# Plan\n\n" + BLOK)
+def test_pr_open_points_several_docs_and_missing_path(tmp_path, capsys):
+    spec = _write(tmp_path / "spec.md", "# Spec\n\n" + BLOCK)
+    plan = _write(tmp_path / "plan.md", "# Plan\n\n" + BLOCK)
     assert _pr_open(tmp_path, spec, tmp_path / "weg.md", plan) == 0
     out = capsys.readouterr().out
     assert out.index("From spec.md:") < out.index("From plan.md:")
     assert out.count("From ") == 2
 
 
-def test_pr_open_punten_without_blocks_is_empty(tmp_path, capsys):
-    a = _schrijf(tmp_path / "a.md", "# A\n")
-    b = _schrijf(tmp_path / "b.md", "# B\n\n## Iets\n\n- punt\n")
+def test_pr_open_points_without_blocks_is_empty(tmp_path, capsys):
+    a = _write(tmp_path / "a.md", "# A\n")
+    b = _write(tmp_path / "b.md", "# B\n\n## Iets\n\n- punt\n")
     assert _pr_open(tmp_path, a, b) == 0
     assert capsys.readouterr().out == ""
 
 
-def test_pr_open_punten_undecodable_file_is_exit_4(tmp_path, capsys):
-    binair = tmp_path / "plaatje.png"
-    binair.write_bytes(b"\x89PNG\xff\xfe")
-    assert _pr_open(tmp_path, binair) == 4
+def test_pr_open_points_undecodable_file_is_exit_4(tmp_path, capsys):
+    binary = tmp_path / "plaatje.png"
+    binary.write_bytes(b"\x89PNG\xff\xfe")
+    assert _pr_open(tmp_path, binary) == 4
     assert "PR-OPEN-POINTS FAILED" in capsys.readouterr().err
 
 
-def test_pr_open_punten_directory_is_exit_4(tmp_path, capsys):
+def test_pr_open_points_directory_is_exit_4(tmp_path, capsys):
     assert _pr_open(tmp_path, tmp_path) == 4
     assert "PR-OPEN-POINTS FAILED" in capsys.readouterr().err
 
 
-def test_pr_open_punten_cli_runs_without_beelink(monkeypatch, capsys, tmp_path):
+def test_pr_open_points_cli_runs_without_beelink(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(
         rec, "host_refusal", lambda kind: f"{kind.upper()}-REVIEW NOT RECORDED: test"
     )
-    pad = _schrijf(tmp_path / "plan.md", "# Plan\n\n## Iets\n\n- punt\n")
+    pad = _write(tmp_path / "plan.md", "# Plan\n\n## Iets\n\n- punt\n")
     assert rec.main(["pr-open-points", str(pad), str(tmp_path / "weg.md")]) == 0
     assert capsys.readouterr().out == ""
 
 
 @pytest.mark.parametrize(
-    "spec_regel",
+    "spec_line",
     [
         "**Spec:** [ontwerp](../specs/x.md)",
         "**Spec:** `/home/u/repo/.claude/worktrees/w/docs/developer/planning/specs/x.md`",
@@ -1638,31 +1638,31 @@ def test_pr_open_punten_cli_runs_without_beelink(monkeypatch, capsys, tmp_path):
         "**Spec:** `docs/developer/planning/specs/x.md`",
     ],
 )
-def test_pr_open_punten_follows_the_spec_line(tmp_path, capsys, spec_regel):
-    plan = _schrijf(
-        tmp_path / "docs/developer/planning/plans/p.md", f"# P\n\n{spec_regel}\n"
+def test_pr_open_points_follows_the_spec_line(tmp_path, capsys, spec_line):
+    plan = _write(
+        tmp_path / "docs/developer/planning/plans/p.md", f"# P\n\n{spec_line}\n"
     )
-    _schrijf(tmp_path / "docs/developer/planning/specs/x.md", "# S\n\n" + BLOK)
+    _write(tmp_path / "docs/developer/planning/specs/x.md", "# S\n\n" + BLOCK)
     assert _pr_open(tmp_path, plan) == 0
     out = capsys.readouterr().out
     assert out.count("From docs/developer/planning/specs/x.md:") == 1
 
 
-def test_pr_open_punten_spec_follows_its_plan_and_dedups(tmp_path, capsys):
-    plan = _schrijf(
+def test_pr_open_points_spec_follows_its_plan_and_dedups(tmp_path, capsys):
+    plan = _write(
         tmp_path / "docs/developer/planning/plans/p.md",
-        "**Spec:** [s](../specs/x.md)\n\n" + BLOK,
+        "**Spec:** [s](../specs/x.md)\n\n" + BLOCK,
     )
-    spec = _schrijf(tmp_path / "docs/developer/planning/specs/x.md", "# S\n\n" + BLOK)
-    other = _schrijf(tmp_path / "o.md", "# O\n\n" + BLOK)
+    spec = _write(tmp_path / "docs/developer/planning/specs/x.md", "# S\n\n" + BLOCK)
+    other = _write(tmp_path / "o.md", "# O\n\n" + BLOCK)
     assert _pr_open(tmp_path, plan, other, spec) == 0
     out = capsys.readouterr().out
     assert out.count("From docs/developer/planning/specs/x.md:") == 1
     assert out.index("plans/p.md:") < out.index("specs/x.md:") < out.index("From o.md:")
 
 
-def test_pr_open_punten_missing_spec_is_skipped(tmp_path, capsys):
-    plan = _schrijf(
+def test_pr_open_points_missing_spec_is_skipped(tmp_path, capsys):
+    plan = _write(
         tmp_path / "docs/developer/planning/plans/p.md",
         "**Spec:** `docs/developer/planning/specs/weg.md`\n",
     )
@@ -1670,11 +1670,11 @@ def test_pr_open_punten_missing_spec_is_skipped(tmp_path, capsys):
     assert capsys.readouterr().out == ""
 
 
-# --- lighthouse: datamap, skillmappen, taal ---------------------------------
+# --- lighthouse: data directory, skill directories, language ----------------
 
 
 def test_data_dir_from_env(world, capsys, monkeypatch):
-    """`LIGHTHOUSE_DATA` wint; zonder override onder `lighthouse/review-records/`."""
+    """`LIGHTHOUSE_DATA` wins; without an override under `lighthouse/review-records/`."""
     attempt = _start(capsys)
     chain = world["tmp"] / "data" / "plan-review" / "2026-09-25-voorbeeld"
     assert (chain / f".{attempt.name}.tmp" / "attempt.json").is_file()
@@ -1704,17 +1704,17 @@ def test_skill_dirs_are_lighthouse():
 
 
 @pytest.mark.parametrize(
-    ("language", "kop", "zin"),
+    ("language", "heading", "sentence"),
     [
         ("nl", "## Open na review", "Ronde 3 haalde de rondegrens"),
         ("en", "## Open after review", "Round 3 reached the round limit"),
     ],
 )
-def test_open_after_review_heading_follows_language(config, language, kop, zin):
+def test_open_after_review_heading_follows_language(config, language, heading, sentence):
     config.write_text(f'[project]\nlanguage = "{language}"\n')
     point = {"finding_id": "r3-f1", "severity": "MAJOR", "section": "§1", "problem": "p"}
     block = rec.render_open(3, [point])
-    assert block.startswith(f"{kop}\n\n{zin}")
+    assert block.startswith(f"{heading}\n\n{sentence}")
     assert "- **r3-f1** (MAJOR, §1): p" in block
-    # `open_sectie` vindt het blok in elke taal terug.
-    assert rec.open_sectie(f"# Plan\n\n{block}") is not None
+    # `open_section` finds the block again in every language.
+    assert rec.open_section(f"# Plan\n\n{block}") is not None

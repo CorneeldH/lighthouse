@@ -8,7 +8,7 @@ and not a reimplementation of it.
 From the source repository's `test_quality_hooks.py:54-163`. Left out there:
 `test_blocking_rules_are_selected_in_pyproject` and `test_pgh_rules_are_selected`
 (they read the source repository's own `pyproject.toml`). The fail-open test is turned
-around: an unresolvable ruff is COULD NOT CHECK now (ontwerpkeuze 13).
+around: an unresolvable ruff is COULD NOT CHECK now (design choice 13).
 """
 
 import json

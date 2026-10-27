@@ -1,50 +1,48 @@
 #!/usr/bin/env python3
-"""worktree-audit: één join over worktrees, PR-status, branches en sessies.
+"""worktree-audit: one join over worktrees, PR state, branches and sessions.
 
-WAAROM DIT BESTAAT
-------------------
-Opruimen en terugvinden zijn twee vragen met dezelfde join eronder. Gemeten op
-2026-08-24: 12 worktrees, 94 remote branches waarvan 83 met een gemergede PR, en
-7 gelockte worktrees. Het is in twee weken twee keer met de hand gedaan en loopt
-elke keer weer op.
+WHY THIS EXISTS
+---------------
+Cleaning up and finding things back are two questions with the same join underneath.
+Measured on 2026-08-24: 12 worktrees, 94 remote branches of which 83 with a merged PR,
+and 7 locked worktrees. It was done by hand twice in two weeks and goes wrong every
+time.
 
-Vier dingen die `git worktree prune` niet afvangt:
+Four things that `git worktree prune` does not catch:
 
-  1. Squash-merge maakt `git branch --merged` een leugen — de originele commits
-     zitten niet in main's historie. Een PR-lookup op de headbranch is de enige
-     betrouwbare test.
-  2. Ongepushte commits: werk dat nergens anders bestaat. `--not --remotes`, niet
-     een vergelijking met main. Let op: bij een squash-merge telt die vlag per
-     constructie de HELE historie, want de originele commits bereiken nooit een
-     remote. Rang 4 corrigeert dat met het merge-moment (`_squash_artefact`).
-  3. Fixture-branches uit een mislukte testrun: één commit die zijn eigen root
-     is, lokaal, zonder PR. Zie `_is_test_leakage`.
-  4. Gelockte worktrees: melden, niet forceren.
+  1. Squash-merge makes `git branch --merged` a lie — the original commits are not
+     in main's history. A PR lookup on the head branch is the only reliable test.
+  2. Unpushed commits: work that exists nowhere else. `--not --remotes`, not a
+     comparison with main. Note: with a squash-merge that flag counts the WHOLE
+     history by construction, because the original commits never reach a remote.
+     Rank 4 corrects that with the merge moment (`_squash_artefact`).
+  3. Fixture branches from a failed test run: one commit that is its own root,
+     local, without a PR. See `_is_test_leakage`.
+  4. Locked worktrees: report, do not force.
 
-DE RIJ IS EEN BRANCH, NIET EEN WORKTREE
----------------------------------------
-83 van de 94 opruimbare dingen op origin hebben geen worktree; een
-worktree-centrisch model kan die niet dragen zonder tweede tabel. Omgekeerd hangt
-een worktree altijd aan een branch. Dus `worktree` en `port_block` zijn nullable.
+THE ROW IS A BRANCH, NOT A WORKTREE
+-----------------------------------
+83 of the 94 cleanable things on origin have no worktree; a worktree-centric model
+cannot carry those without a second table. Conversely, a worktree always hangs on a
+branch. So `worktree` and `port_block` are nullable.
 
-DIT SCRIPT MUTEERT NIETS
-------------------------
-Geen delete, geen unlock, geen kill, geen schrijven naar `.port-registry`. Het
-levert commando's; de mens plakt. `run_git` weigert een niet-lezende git-verb, dus
-die norm zit in het uitvoerpad en niet alleen in de documentatie. Ook `--only`
-muteert niets: lighthouse-close-issue voert de geleverde regels uit, zonder
-vraag — niet dit script.
+THIS SCRIPT MUTATES NOTHING
+---------------------------
+No delete, no unlock, no kill, no writing to `.port-registry`. It delivers commands;
+the human pastes. `run_git` refuses a non-reading git verb, so that norm sits in the
+execution path and not only in the documentation. `--only` mutates nothing either:
+lighthouse-close-issue runs the delivered lines, without asking — not this script.
 
-Gebruik:
+Usage:
     python3 .lighthouse/scripts/worktree_audit.py            # --cleanup (default)
     python3 .lighthouse/scripts/worktree_audit.py --sessions
     python3 .lighthouse/scripts/worktree_audit.py --origin
     python3 .lighthouse/scripts/worktree_audit.py --kpi
-    python3 .lighthouse/scripts/worktree_audit.py --only <branch>   # exit 0 = opruimbaar
-    python3 .lighthouse/scripts/worktree_audit.py --issue <nr>   # exit 2 = PR-lookup mislukt
+    python3 .lighthouse/scripts/worktree_audit.py --only <branch>   # exit 0 = cleanable
+    python3 .lighthouse/scripts/worktree_audit.py --issue <nr>   # exit 2 = PR lookup failed
 
-De default branch komt uit `[forge] default_branch`, de extra beschermde refs en paden uit
-`[worktree_audit]`, de repo voor de PR-lookup uit `[forge] repo`. Output is English;
+The default branch comes from `[forge] default_branch`, the extra protected refs and paths
+from `[worktree_audit]`, the repo for the PR lookup from `[forge] repo`. Output is English;
 `--only` ends on the fixed token `cleanup: yes` or `cleanup: no — <reason>`; `--issue`
 prints one such block per branch of the issue, each ending on that token.
 """
@@ -70,24 +68,24 @@ from lighthouse_lib import config  # noqa: E402
 from lighthouse_lib.config import ConfigError  # noqa: E402
 from lighthouse_lib.pr_body_gate import refs_targets  # noqa: E402
 
-# --- protect-lijst ---------------------------------------------------------
-# De default branch is altijd beschermd; een instelling die je kunt vergeten in
-# te vullen is geen bescherming. Daarbovenop komen de refs en paden die alleen
-# dit project kent, uit `[worktree_audit] protected_refs` en `protected_paths`
-# (bijvoorbeeld checkpointrefs als `entire/*` of een poortregistratie als
-# `.port-registry`): zulke dingen hebben geen PR, zijn niet gemerged, en worden
-# niet gemist tot iets stukgaat. `apply_config` vult ze; tot dan gelden de
-# defaults.
+# --- protect list ----------------------------------------------------------
+# The default branch is always protected; a setting that you can forget to fill
+# in is no protection. On top of that come the refs and paths that only this
+# project knows, from `[worktree_audit] protected_refs` and `protected_paths`
+# (for example checkpoint refs such as `entire/*` or a port registration such as
+# `.port-registry`): such things have no PR, are not merged, and are not missed
+# until something breaks. `apply_config` fills them; until then the defaults
+# apply.
 DEFAULT_BRANCH = "main"
 PROTECTED_REFS: tuple[str, ...] = (DEFAULT_BRANCH,)
 PROTECTED_PATHS: tuple[str, ...] = ()
 
 
 def apply_config() -> str | None:
-    """Lees de beschermde refs en paden en de default branch uit `lighthouse.toml`;
-    geef de repo (`forge.repo`) terug, of None als die niet gezet is.
+    """Read the protected refs and paths and the default branch from `lighthouse.toml`;
+    return the repo (`forge.repo`), or None if it is not set.
 
-    De origin-remote is geen bron voor de repo."""
+    The origin remote is no source for the repo."""
     global DEFAULT_BRANCH, PROTECTED_REFS, PROTECTED_PATHS
     cfg = config.load(config.config_path())
     DEFAULT_BRANCH = str(config.lookup(cfg, "forge.default_branch"))
@@ -104,8 +102,8 @@ def apply_config() -> str | None:
 
 @dataclass(frozen=True)
 class Row:
-    """Eén regel van de audit. De sleutel is een branchnaam, of — bij een
-    wees-map — de mapnaam onder `.claude/worktrees/`."""
+    """One line of the audit. The key is a branch name, or — for an orphan
+    dir — the directory name under `.claude/worktrees/`."""
 
     name: str
     local: bool
@@ -113,29 +111,29 @@ class Row:
     worktree: str | None = None
     locked: bool = False
     lock_pid: int | None = None
-    # De tekst na `locked `, of None bij een kale `locked` (#963). De
-    # sessie-server van Remote Control zet een reden die begint met
-    # "claude agent bridge-"; `_lock_state` toetst daarop.
+    # The text after `locked `, or None for a bare `locked` (#963). The
+    # Remote Control session server sets a reason that starts with
+    # "claude agent bridge-"; `_lock_state` tests on that.
     lock_reason: str | None = None
     dirty: bool | None = None
     unpushed: int | None = None
     pr_number: int | None = None
     pr_state: str | None = None  # "open" | "merged" | "closed" | None
-    # Epoch-seconden. Bewust epoch en niet ISO: `merged_at` komt van GitHub in
-    # UTC ("Z") en de commitdatum van git met een lokale offset. Die twee als
-    # string vergelijken leest 08:24+02:00 als later dan 08:08Z, en dat is
-    # precies andersom. Epoch kent geen offset.
+    # Epoch seconds. Deliberately epoch and not ISO: `merged_at` comes from GitHub in
+    # UTC ("Z") and the commit date from git with a local offset. Comparing those two
+    # as strings reads 08:24+02:00 as later than 08:08Z, and that is exactly the
+    # other way round. Epoch has no offset.
     pr_merged_at: float | None = None
     tip_committed_at: float | None = None
-    # None = niet gemeten. True = de tip-commit heeft geen ouder.
+    # None = not measured. True = the tip commit has no parent.
     root_commit: bool | None = None
-    # False = de PR-lookup zelf is mislukt, dus pr_state draagt geen informatie.
+    # False = the PR lookup itself failed, so pr_state carries no information.
     pr_lookup_ok: bool = True
-    # None = de inhoudstoets is niet gelukt. Niet hetzelfde als (): dat is
-    # "gemeten, niets uniek". Onbekend mag nooit als schoon lezen.
+    # None = the content check did not succeed. Not the same as (): that is
+    # "measured, nothing unique". Unknown must never read as clean.
     unique_files: tuple[str, ...] | None = None
-    # Commits die niet in main zitten (`main..<ref>`). 0 = de branch is nooit
-    # verder gekomen dan main; dan is "niets uniek" leegte, geen geland werk.
+    # Commits that are not in main (`main..<ref>`). 0 = the branch never got
+    # further than main; then "nothing unique" is emptiness, not landed work.
     own_commits: int | None = None
     last_session: float | None = None
     session_id: str | None = None
@@ -154,7 +152,7 @@ class Verdict:
 
     @property
     def safe(self) -> bool:
-        """Alleen rang 6 en 8 zijn "safe to remove". Alles daarboven blokkeert."""
+        """Only rank 6 and 8 are "safe to remove". Everything above blocks."""
         return self.rank in (6, 8)
 
     def render(self) -> str:
@@ -167,9 +165,8 @@ def pid_alive(pid: int) -> bool:
 
 
 def is_protected(row: Row) -> bool:
-    # `refs/heads/` strippen voordat we matchen: een latere parser die de volle
-    # ref levert (in plaats van `%(refname:short)`) mag de guard niet stilletjes
-    # ontwapenen.
+    # Strip `refs/heads/` before matching: a later parser that delivers the full
+    # ref (instead of `%(refname:short)`) must not silently disarm the guard.
     short_name = row.name.removeprefix("refs/heads/")
     if any(fnmatch.fnmatch(short_name, pattern) for pattern in PROTECTED_REFS):
         return True
@@ -186,21 +183,22 @@ _SERVER_LOCK_PREFIX = "claude agent bridge-"
 def _lock_state(
     row: Row, alive: Callable[[int], bool]
 ) -> tuple[Verdict | None, tuple[str, ...]]:
-    """Rang 2, plus de modifier die een stale lock — of een server-lock —
-    achterlaat.
+    """Rank 2, plus the modifier that a stale lock — or a server lock —
+    leaves behind.
 
-    Een lock met een dode pid is geen blokkade maar een aantekening: de rij zakt
-    door naar de volgende rang en draagt "stale lock" mee. Ontgrendelen doet
-    dit script nooit. Een lock zonder pid blokkeert wel — onbekend is niet dood.
+    A lock with a dead pid is no blockade but a note: the row falls through to the
+    next rank and carries "stale lock" along. This script never unlocks. A lock
+    without a pid does block — unknown is not dead.
 
-    Een lock waarvan de reden begint met "claude agent bridge-" is gezet door de
-    sessie-server van Remote Control (#963), niet door een sessie zelf. Een spike
-    mat: die pid is
-    van de SERVER en blijft weken levend, ook lang nadat de sessie is gearchiveerd
-    — hij bewijst dus niets over of er nu iemand werkt. Zo'n lock blokkeert daarom
-    nooit op zichzelf (geen "stale lock" ernaast, ongeacht of de pid leeft):
-    de rij zakt door naar de gewone ladder, met "server-lock" als aantekening. Of
-    er nu wél iemand werkt, beslist de aparte `row.live`-trede in `judge`.
+    A lock whose reason starts with "claude agent bridge-" was set by the
+    Remote Control session server (#963), not by a session itself. A spike
+    measured: that pid is
+    the SERVER's and stays alive for weeks, long after the session is archived
+    — so it proves nothing about whether someone is working now. Such a lock
+    therefore never blocks on its own (no "stale lock" next to it, whether or not
+    the pid is alive): the row falls through to the normal ladder, with "server-lock"
+    as a note. Whether someone IS working now is decided by the separate `row.live`
+    step in `judge`.
     """
     if not row.locked:
         return None, ()
@@ -214,18 +212,18 @@ def _lock_state(
 
 
 def _branch_verdict(row: Row, mods: tuple[str, ...]) -> Verdict:
-    """Rang 5-8: de PR-toets en daarna de inhoudstoets.
+    """Rank 5-8: the PR check and then the content check.
 
-    Alleen voor een rij die een branch heeft. Een wees-map komt hier niet langs —
-    zonder die grens zou hij op rang 8 "safe to remove" heten.
+    Only for a row that has a branch. An orphan dir does not pass here —
+    without that boundary it would be called "safe to remove" at rank 8.
     """
     if row.pr_state == "open":
         return Verdict(5, "⏸️", f"PR #{row.pr_number} open", mods)
     if row.pr_state == "merged":
         return Verdict(6, "✅", "safe to remove", mods)
-    # Onbekend is nooit schoon. Een gemergede PR is het sterkere signaal en
-    # bereikt rang 6 hierboven ook als de inhoudstoets faalde; alleen wat
-    # anders naar 7/8 zou zakken wordt hier geblokkeerd.
+    # Unknown is never clean. A merged PR is the stronger signal and reaches
+    # rank 6 above even if the content check failed; only what would
+    # otherwise fall to 7/8 is blocked here.
     if not row.pr_lookup_ok:
         return Verdict(7, "⚠️", "PR status unknown — check", mods)
     if row.unique_files is None:
@@ -233,27 +231,27 @@ def _branch_verdict(row: Row, mods: tuple[str, ...]) -> Verdict:
     if row.unique_files:
         n = len(row.unique_files)
         return Verdict(7, "⚠️", f"unique work — review ({n} files)", mods)
-    # Zelfde rang, andere reden: een branch zonder eigen commits heeft niets
-    # uniek omdat er niets ís. "safe to remove" zou lezen als "het werk landde in
-    # main" — zo leek issue-941, aangemaakt en nooit gecommit.
+    # Same rank, other reason: a branch without own commits has nothing
+    # unique because there is nothing. "safe to remove" would read as "the work landed
+    # in main" — that is how issue-941 looked, created and never committed.
     if row.own_commits == 0:
         return Verdict(8, "✅", "empty — no own commits", mods)
     return Verdict(8, "✅", "safe to remove", mods)
 
 
 def _squash_artefact(row: Row) -> bool:
-    """Verklaart een ongepushte telling die alleen de squash-merge weerspiegelt.
+    """Explains an unpushed count that only reflects the squash-merge.
 
-    `git rev-list --count <b> --not --remotes` beantwoordt "hoeveel commits van
-    deze branch staan nergens op een remote". Bij een squash-merge is dat de
-    HELE historie: GitHub gooit de losse commits weg en zet één nieuwe commit op
-    main, dus de originelen bereiken nooit een remote. Op deze repo maakte dat 9
-    van de 14 ⚠️-rijen vals, en omdat rang 4 boven de inhoudstoets staat werden
-    die branches nooit op inhoud gemeten.
+    `git rev-list --count <b> --not --remotes` answers "how many commits of this
+    branch are on no remote". With a squash-merge that is the WHOLE history:
+    GitHub throws the separate commits away and puts one new commit on main, so
+    the originals never reach a remote. On this repo that made 9 of the 14
+    ⚠️ rows false, and because rank 4 is above the content check those branches
+    were never measured on content.
 
-    De vervangende maat is "is er ná de merge nog doorgecommit". Zo nee, dan
-    landde alles in de squash-commit. Zo ja — of weten we het niet — dan blijft
-    rang 4 staan; dat is het #544-geval, en onbekend is hier nooit schoon.
+    The replacement measure is "was there more committing after the merge". If not,
+    everything landed in the squash commit. If so — or if we do not know — rank 4
+    stays; that is the #544 case, and unknown is never clean here.
     """
     if row.pr_state != "merged":
         return False
@@ -263,18 +261,18 @@ def _squash_artefact(row: Row) -> bool:
 
 
 def _is_test_leakage(row: Row) -> bool:
-    """Een branch met één commit die zijn eigen root is, lokaal, zonder PR.
+    """A branch with one commit that is its own root, local, without a PR.
 
-    Dat is de handtekening van `git checkout --orphan` in de verkeerde repo.
-    `tests/integration/test_pre_push_checkpoint_scan.sh` beschrijft het
-    mechanisme: faalt `mktemp -d` (een gesandboxte shell), dan landen zijn
-    fixture-branches in de ECHTE repo. Zo ontstonden `branch-dirty` en
-    `branch-allowlisted`.
+    That is the signature of `git checkout --orphan` in the wrong repo.
+    `tests/integration/test_pre_push_checkpoint_scan.sh` describes the
+    mechanism: if `mktemp -d` fails (a sandboxed shell), its fixture branches
+    land in the REAL repo. That is how `branch-dirty` and
+    `branch-allowlisted` came about.
 
-    De toets is bewust smal. Een pre-rewrite branch als `v2.1-mac-thin-client`
-    heeft óók een losse historie maar wél ouders; die mag niet meegesleept
-    worden. En het verdict blijft rang 4: dit benoemt de vermoedelijke oorzaak,
-    het geeft nooit zelf toestemming om te verwijderen.
+    The check is deliberately narrow. A pre-rewrite branch such as `v2.1-mac-thin-client`
+    also has a separate history but does have parents; it must not be dragged
+    along. And the verdict stays rank 4: this names the probable cause,
+    it never gives permission to delete by itself.
     """
     return bool(
         row.root_commit
@@ -288,11 +286,11 @@ def _is_test_leakage(row: Row) -> bool:
 def _unpushed_verdict(
     row: Row, mods: tuple[str, ...]
 ) -> tuple[Verdict | None, tuple[str, ...]]:
-    """Rang 4, of `mods` aangevuld met "squash-merge" als het artefact is.
+    """Rank 4, or `mods` extended with "squash-merge" if it is the artefact.
 
-    Losgetrokken uit `judge` om zijn cyclomatische complexiteit onder de
-    ruff-drempel (C901) te houden na de rang-2-trede van #963; het gedrag is
-    ongewijzigd.
+    Pulled out of `judge` to keep its cyclomatic complexity under the
+    ruff threshold (C901) after the rank-2 step of #963; the behaviour is
+    unchanged.
     """
     if row.local and row.unpushed is None:
         return Verdict(4, "⚠️", "unpushed commits unknown — check", mods), mods
@@ -315,16 +313,16 @@ def _unpushed_verdict(
 
 
 def judge(row: Row, *, alive: Callable[[int], bool] = pid_alive) -> Verdict:
-    """De ladder: eerste treffer wint, veiligheid bovenaan.
+    """The ladder: first hit wins, safety on top.
 
-    Rang 3 en 4 staan boven rang 6 — een gemergede branch met ongepushte commits
-    krijgt nooit plat "safe to remove". Dat is het #544-geval en de reden dat rang 4
-    niet met rang 6 is samengevoegd.
+    Rank 3 and 4 are above rank 6 — a merged branch with unpushed commits
+    never gets a flat "safe to remove". That is the #544 case and the reason rank 4
+    was not merged with rank 6.
 
-    Rang 2 dekt twee dingen: een lock met een levende of onbekende pid, en een
-    lopende sessie met de worktree als cwd (#963) — ongeacht wie de worktree
-    aanmaakte. Een server-lock (`claude agent bridge-…`, zie `_lock_state`)
-    blokkeert op zichzelf niet; alleen deze `row.live`-trede beslist dan nog.
+    Rank 2 covers two things: a lock with a live or unknown pid, and a
+    running session with the worktree as cwd (#963) — regardless of who created
+    the worktree. A server lock (`claude agent bridge-…`, see `_lock_state`)
+    does not block on its own; only this `row.live` step then decides.
     """
     if is_protected(row):
         return Verdict(1, "🔒", "never touch")
@@ -333,11 +331,12 @@ def judge(row: Row, *, alive: Callable[[int], bool] = pid_alive) -> Verdict:
     if lock is not None:
         return lock
 
-    # Een lopende sessie met deze worktree als cwd (#963). De sessie-server van
-    # Remote Control maakt worktrees die nooit een PR krijgen; zonder deze trede
-    # heet een schone, lege worktree van een lópende sessie rang 8 "safe to remove".
-    # Het signaal is "hier werkt nu iemand", ongeacht wie de worktree aanmaakte —
-    # en dus ook los van of `_lock_state` hierboven een server-lock doorliet.
+    # A running session with this worktree as cwd (#963). The Remote Control
+    # session server makes worktrees that never get a PR; without this step
+    # a clean, empty worktree of a RUNNING session is called rank 8 "safe to remove".
+    # The signal is "someone is working here now", regardless of who created the
+    # worktree — and so also independent of whether `_lock_state` above let a
+    # server lock through.
     if row.live:
         return Verdict(2, "⛔", "running session", mods)
 
@@ -352,23 +351,23 @@ def judge(row: Row, *, alive: Callable[[int], bool] = pid_alive) -> Verdict:
     if row.local or row.remote:
         return _branch_verdict(row, mods)
 
-    # Minor 7: git kent een losgekoppelde worktree (hij staat in `worktree
-    # list`) maar kent een wees-map niet — en de wees-map is degene die iemand
-    # per ongeluk `rm -rf`'t. Beide renderen rang 9, maar niet dezelfde tekst.
+    # Minor 7: git knows a detached worktree (it is in `worktree
+    # list`) but does not know an orphan dir — and the orphan dir is the one someone
+    # `rm -rf`s by accident. Both render rank 9, but not the same text.
     if row.worktree is not None:
         return Verdict(9, "❓", "detached worktree — manual", mods)
-    # Rang 9 wordt overruled door rang 1 zodra de map een `.port-registry` bevat.
-    # Zonder die overrule zou `.claude/worktrees/worktrees/` als wees worden
-    # gemeld, en een wees-melding is de eerste stap naar een `rm -rf`.
+    # Rank 9 is overruled by rank 1 as soon as the dir contains a `.port-registry`.
+    # Without that overrule `.claude/worktrees/worktrees/` would be reported as an
+    # orphan, and an orphan report is the first step towards an `rm -rf`.
     return Verdict(9, "❓", "orphan — manual", mods)
 
 
-# Alleen-lezen git-verbs. De weigering hieronder is geen documentatie maar een
-# poort: dit script muteert niets, ook niet als een latere wijziging dat per
-# ongeluk probeert. Precies de verbs die dit script uitgeeft — geen "kan later
-# nog van pas komen"-entries: een allowlist die meer toelaat dan nodig is, is
-# geen allowlist meer, en toevoegen aan een aanroep moet een bewuste daad
-# blijven (Minor 5).
+# Read-only git verbs. The refusal below is no documentation but a
+# gate: this script mutates nothing, not even if a later change tries to do so
+# by accident. Exactly the verbs this script issues — no "may come in handy
+# later" entries: an allowlist that allows more than needed is no
+# allowlist any more, and adding to a call must stay a deliberate act
+# (Minor 5).
 READONLY_GIT_VERBS: frozenset[str] = frozenset(
     {
         "worktree",
@@ -380,17 +379,17 @@ READONLY_GIT_VERBS: frozenset[str] = frozenset(
         "remote",
     }
 )
-# `branch` staat alleen alleen-lezen vlaggen toe. Een denylist kende ooit
-# `d/delete/m/move/c/copy` en liet `-f`, `--force` en `-u`/`--set-upstream`
-# gewoon door — die verplaatsen of herschrijven een ref. Een allowlist kan dat
-# per constructie niet: alleen wat hier staat komt door.
+# `branch` only allows read-only flags. A denylist once knew
+# `d/delete/m/move/c/copy` and just let `-f`, `--force` and `-u`/`--set-upstream`
+# through — those move or rewrite a ref. An allowlist cannot do that
+# by construction: only what is listed here gets through.
 #
-# `--list`, `--contains`, `--merged` en `--no-merged` staan hier bewust niet:
-# elk vereist een bare positional (een patroon, een commit) en die wordt
-# hieronder sowieso al geweigerd, dus ze waren dode entries. `--merged` is
-# daarnaast geen oversight maar een projectregel — squash-merge maakt
-# `git branch --merged` een leugen (zie moduledoc); merge-detectie loopt via
-# de PR-headbranch, nooit via deze vlag.
+# `--list`, `--contains`, `--merged` and `--no-merged` are deliberately not here:
+# each requires a bare positional (a pattern, a commit) and that is refused
+# below anyway, so they were dead entries. `--merged` is
+# also no oversight but a project rule — squash-merge makes
+# `git branch --merged` a lie (see module doc); merge detection runs via
+# the PR head branch, never via this flag.
 _READONLY_BRANCH_FLAGS: frozenset[str] = frozenset(
     {
         "-a",
@@ -403,14 +402,14 @@ _READONLY_BRANCH_FLAGS: frozenset[str] = frozenset(
         "--show-current",
     }
 )
-# `worktree` staat alleen `list` toe. Een denylist met mutatie-subverbs kan een
-# toekomstig git-subcommando niet kennen; een allowlist hoeft niets te kennen.
+# `worktree` only allows `list`. A denylist with mutation subverbs cannot know a
+# future git subcommand; an allowlist does not need to know anything.
 _READONLY_WORKTREE_SUBVERBS: frozenset[str] = frozenset({"list"})
 
 
 def _assert_readonly(args: list[str]) -> None:
-    """De vier allowlist-toetsen. Los van `run_git` zodat een unit-test de
-    poort kan bevragen zonder ooit `subprocess.run` te raken."""
+    """The four allowlist checks. Separate from `run_git` so that a unit test can
+    query the gate without ever touching `subprocess.run`."""
     verb = args[0] if args else ""
     if verb not in READONLY_GIT_VERBS:
         raise ValueError(f"git {verb}: read-only commands only")
@@ -430,10 +429,10 @@ def _assert_readonly(args: list[str]) -> None:
 
 
 def run_git(args: list[str], *, cwd: str | Path | None = None) -> str | None:
-    """Draai een alleen-lezen git-commando. Geeft None als het faalde.
+    """Run a read-only git command. Returns None if it failed.
 
-    None is een derde uitkomst naast geslaagd en leeg: de aanroeper moet hem
-    conservatief afhandelen (onbekende staat blokkeert, hij heet nooit "schoon").
+    None is a third outcome next to succeeded and empty: the caller must handle it
+    conservatively (an unknown state blocks, it is never called "clean").
     """
     _assert_readonly(args)
     try:
@@ -465,8 +464,8 @@ _LOCK_PID = re.compile(r"\(pid (\d+)")
 def parse_worktrees(porcelain: str) -> list[WorktreeInfo]:
     """Parse `git worktree list --porcelain`.
 
-    Blokken zijn gescheiden door een lege regel. `locked` kan kaal voorkomen of
-    met reden; de Claude-lock draagt de pid in die reden.
+    Blocks are separated by an empty line. `locked` can occur bare or
+    with a reason; the Claude lock carries the pid in that reason.
     """
     out: list[WorktreeInfo] = []
     path: str | None = None
@@ -513,16 +512,16 @@ def parse_branches(text: str, *, remote: bool = False) -> list[str]:
 
 
 def _epoch(stamp: object) -> float | None:
-    """GitHub-ISO ("2026-08-02T08:08:31Z") naar epoch-seconden.
+    """GitHub ISO ("2026-08-02T08:08:31Z") to epoch seconds.
 
-    `fromisoformat` slikt de "Z" zelf sinds 3.11; een handmatige vervanging naar
-    "+00:00" is dood gewicht (FURB162).
+    `fromisoformat` swallows the "Z" itself since 3.11; a manual replacement to
+    "+00:00" is dead weight (FURB162).
 
-    Alleen epoch verlaat deze functie. Een ISO-string uit GitHub staat in UTC en
-    een commitdatum uit git draagt een lokale offset; die twee als tekst
-    vergelijken leest "08:24+02:00" als later dan "08:08Z" terwijl het twee uur
-    eerder is. Dat is geen theoretische val — het gaf een volle tabel valse
-    "COMMIT NA MERGE"-regels voordat deze functie bestond.
+    Only epoch leaves this function. An ISO string from GitHub is in UTC and
+    a commit date from git carries a local offset; comparing those two as text
+    reads "08:24+02:00" as later than "08:08Z" while it is two hours
+    earlier. That is no theoretical trap — it gave a full table of false
+    "COMMIT AFTER MERGE" lines before this function existed.
     """
     if not isinstance(stamp, str) or not stamp:
         return None
@@ -536,22 +535,22 @@ def _epoch(stamp: object) -> float | None:
 class PullInfo:
     number: int
     state: str  # "open" | "merged" | "closed"
-    # Epoch-seconden, of None als de PR niet gemerged is of GitHub geen
-    # bruikbare `merged_at` gaf. Zie Row.pr_merged_at voor waarom epoch.
+    # Epoch seconds, or None if the PR is not merged or GitHub gave no
+    # usable `merged_at`. See Row.pr_merged_at for why epoch.
     merged_at: float | None = None
 
 
-# Een headbranch kan meerdere PR's dragen. Open weegt het zwaarst (rang 5 pauzeert),
-# daarna gemerged, daarna dicht-zonder-merge; binnen dezelfde staat wint de hoogste
-# PR-nummer.
+# A head branch can carry several PRs. Open weighs the heaviest (rank 5 pauses),
+# then merged, then closed-without-merge; within the same state the highest
+# PR number wins.
 _PR_RANK = {"open": 0, "merged": 1, "closed": 2}
 
 
 def parse_pulls(payload: Iterable[dict]) -> dict[str, PullInfo]:
-    """Join-sleutel is de headbranch.
+    """The join key is the head branch.
 
-    De REST-val: `state` kent hier alleen "open" en "closed". Gemerged herken je
-    aan `merged_at`, niet aan `state`.
+    The REST trap: `state` only knows "open" and "closed" here. You recognise merged
+    by `merged_at`, not by `state`.
     """
     best: dict[str, PullInfo] = {}
     for pull in payload:
@@ -570,7 +569,7 @@ def parse_pulls(payload: Iterable[dict]) -> dict[str, PullInfo]:
 
 
 def parse_port_registry(text: str) -> dict[str, str]:
-    """`<sleutel>=<poort>` per regel; de sleutel is een issuenummer."""
+    """`<key>=<port>` per line; the key is an issue number."""
     ports: dict[str, str] = {}
     for line in text.splitlines():
         key, sep, value = line.partition("=")
@@ -587,7 +586,7 @@ class SessionInfo:
 
 
 def parse_sessions(records: Iterable[dict]) -> dict[str, SessionInfo]:
-    """`~/.claude/sessions/*.json` bevat blijkens meting alleen LOPENDE sessies."""
+    """`~/.claude/sessions/*.json` contains only RUNNING sessions, as measured."""
     out: dict[str, SessionInfo] = {}
     for record in records:
         cwd = record.get("cwd")
@@ -600,23 +599,23 @@ def parse_sessions(records: Iterable[dict]) -> dict[str, SessionInfo]:
 
 
 def encode_project_dir(path: str) -> str:
-    """Pad → mapnaam onder `~/.claude/projects/`: `/`, `_` en `.` worden `-`."""
+    """Path → directory name under `~/.claude/projects/`: `/`, `_` and `.` become `-`."""
     return re.sub(r"[/_.]", "-", path)
 
 
 def latest_transcript(
     projects_root: Path, worktree_path: str
 ) -> tuple[float, str] | None:
-    """(mtime, sessionId) van het nieuwste transcript voor dit pad, of None.
+    """(mtime, sessionId) of the newest transcript for this path, or None.
 
-    AC 7: afgesloten sessies komen hiervandaan, niet uit `~/.claude/sessions/`.
+    AC 7: closed sessions come from here, not from `~/.claude/sessions/`.
     """
     directory = projects_root / encode_project_dir(worktree_path)
     newest: tuple[float, str] | None = None
-    # Geen try om de glob heen: `Path.glob` slikt zowel een ontbrekende als een
-    # onleesbare map en geeft dan gewoon een lege lijst (gemeten op 3.12). Een
-    # except eromheen is dode code, en dode defensie leest als dekking die er
-    # niet is. De stat per bestand kan wél racen — die guard blijft.
+    # No try around the glob: `Path.glob` swallows both a missing and an
+    # unreadable directory and then just gives an empty list (measured on 3.12). An
+    # except around it is dead code, and dead defence reads as coverage that is
+    # not there. The stat per file CAN race — that guard stays.
     for entry in directory.glob("*.jsonl"):
         try:
             mtime = entry.stat().st_mtime
@@ -629,7 +628,7 @@ def latest_transcript(
 
 @dataclass(frozen=True)
 class BranchProbe:
-    """Per-branch metingen. None betekent "niet gemeten", nooit "schoon"."""
+    """Per-branch measurements. None means "not measured", never "clean"."""
 
     dirty: bool | None = None
     unpushed: int | None = None
@@ -641,7 +640,7 @@ class BranchProbe:
 
 @dataclass(frozen=True)
 class OrphanDir:
-    """Een map onder `.claude/worktrees/` die niet in `git worktree list` staat."""
+    """A directory under `.claude/worktrees/` that is not in `git worktree list`."""
 
     name: str
     path: str
@@ -652,7 +651,7 @@ _DIGITS = re.compile(r"\d+")
 
 
 def _port_for(name: str, ports: dict[str, str]) -> str | None:
-    """Het poortblok is per issuenummer geregistreerd; match op cijfers in de naam."""
+    """The port block is registered per issue number; match on digits in the name."""
     for chunk in _DIGITS.findall(name):
         if chunk in ports:
             return ports[chunk]
@@ -674,7 +673,7 @@ def build_rows(
     pr_lookup_ok: bool = True,
     alive: Callable[[int], bool] = pid_alive,
 ) -> list[Row]:
-    """De join. Zuiver: geen subprocess, geen filesystem."""
+    """The join. Pure: no subprocess, no filesystem."""
     worktree_by_branch = {w.branch: w for w in worktrees if w.branch}
     local = set(local_branches)
     remote = set(remote_branches)
@@ -716,10 +715,10 @@ def build_rows(
             )
         )
 
-    # Minor 6: een worktree zonder branchregel (detached HEAD) staat niet in
-    # `local`/`remote` én is geen wees — git kent hem gewoon via
-    # `worktree list`. Zonder een eigen rij verdwijnt hij spoorloos uit de
-    # tabel, en dat is dezelfde defectklasse als een gat in de protect-lijst.
+    # Minor 6: a worktree without a branch line (detached HEAD) is not in
+    # `local`/`remote` AND is no orphan — git just knows it via
+    # `worktree list`. Without a row of its own it vanishes without a trace from the
+    # table, and that is the same defect class as a hole in the protect list.
     for worktree in worktrees:
         if worktree.branch is not None:
             continue
@@ -765,12 +764,12 @@ WORKTREE_DIRNAME = ".claude/worktrees"
 
 
 def run_gh_pulls(slug: str | None) -> list[dict] | None:
-    """`gh api` — nooit `gh pr list --json`: dat breekt onder de rtk-proxy.
+    """`gh api` — never `gh pr list --json`: that breaks under the rtk proxy.
 
-    None betekent "de lookup is mislukt", niet "deze repo heeft geen PR's". Dat
-    verschil draagt `Row.pr_lookup_ok`; zonder dat onderscheid leest een kapotte
-    `gh` als "geen enkele branch heeft een PR" en zakt alles naar rang 7/8. Zonder
-    `forge.repo` is er geen lookup: ook dat is None.
+    None means "the lookup failed", not "this repo has no PRs". That
+    difference is carried by `Row.pr_lookup_ok`; without that distinction a broken
+    `gh` reads as "no branch has a PR" and everything falls to rank 7/8. Without
+    `forge.repo` there is no lookup: that too is None.
     """
     if slug is None:
         return None
@@ -806,7 +805,7 @@ def run_gh_pulls(slug: str | None) -> list[dict] | None:
 
 
 def repo_slug() -> str | None:
-    """De repo uit `lighthouse.toml`; de origin-remote is geen bron."""
+    """The repo from `lighthouse.toml`; the origin remote is no source."""
     return apply_config()
 
 
@@ -816,21 +815,21 @@ ISSUE_PRS_QUERY = """query($owner:String!,$name:String!,$nr:Int!){repository(own
 
 
 def parse_issue_pr_heads(payload: dict, slug: str, nr: int) -> list[str] | None:
-    """De headbranches van de gemergde PR's van issue `nr`, in binnenkomvolgorde.
+    """The head branches of the merged PRs of issue `nr`, in order of arrival.
 
-    Twee bronnen. `closedByPullRequestsReferences` kent alleen PR's met een
-    sluitwoord; een PR met `Refs #<nr>` staat daar niet in. Die maakt op het issue
-    wel een `CrossReferencedEvent` met de PR als `source`. Zo'n event ontstaat ook
-    voor een PR die het issue alleen noemt ("zie #<nr>"), en die hoort er niet bij:
-    een cross-ref telt alleen als `refs_targets` (de lezer van `pr-create-gate`:
-    buiten HTML-commentaar, zonder reden-eis) `<nr>` in de PR-body vindt. Een
-    closing-node telt altijd. Beide moeten `merged` zijn en uit dezelfde repo komen:
-    `repository` van een PR is de *basis*-repo, dus een fork-PR naar `slug` slaagt
-    daarop; `isCrossRepository` sluit die uit (een forkbranch als `patch-1` mag niet
-    met een lokale branch van dezelfde naam verward worden).
+    Two sources. `closedByPullRequestsReferences` only knows PRs with a
+    closing word; a PR with `Refs #<nr>` is not in it. That does make a
+    `CrossReferencedEvent` on the issue with the PR as `source`. Such an event also arises
+    for a PR that only mentions the issue ("see #<nr>"), and that does not belong:
+    a cross-ref only counts if `refs_targets` (the reader of `pr-create-gate`:
+    outside HTML comments, without a reason requirement) finds `<nr>` in the PR body. A
+    closing node always counts. Both must be `merged` and come from the same repo:
+    `repository` of a PR is the *base* repo, so a fork PR to `slug` passes
+    on that; `isCrossRepository` excludes it (a fork branch such as `patch-1` must not
+    be confused with a local branch of the same name).
 
-    None = de lookup is mislukt (GraphQL-`errors`, of `issue: null` bij een
-    verkeerd nummer): dat is geen "geen PR's".
+    None = the lookup failed (GraphQL `errors`, or `issue: null` for a
+    wrong number): that is not "no PRs".
     """
     if not isinstance(payload, dict) or payload.get("errors"):
         return None
@@ -864,10 +863,10 @@ def parse_issue_pr_heads(payload: dict, slug: str, nr: int) -> list[str] | None:
 
 
 def run_gh_issue_pr_heads(slug: str | None, nr: int) -> list[str] | None:
-    """`gh api graphql` voor `parse_issue_pr_heads`; None = lookup mislukt.
+    """`gh api graphql` for `parse_issue_pr_heads`; None = lookup failed.
 
-    Zonder `forge.repo` is er geen lookup: ook dat is None. `-F nr=` en niet `-f`:
-    `$nr` is een `Int!`.
+    Without `forge.repo` there is no lookup: that too is None. `-F nr=` and not `-f`:
+    `$nr` is an `Int!`.
     """
     if slug is None:
         return None
@@ -904,17 +903,17 @@ def run_gh_issue_pr_heads(slug: str | None, nr: int) -> list[str] | None:
 
 
 def _tip_shape(target: str, repo_root: Path) -> tuple[float | None, bool | None]:
-    """Committijd (epoch) en "heeft de tip een ouder" in één git-aanroep.
+    """Commit time (epoch) and "does the tip have a parent" in one git call.
 
-    `git rev-list -1 --timestamp --parents <ref>` levert
-    `<epoch> <sha> [<parent> ...]`. Twee velden betekent: geen ouder, dus de
-    tip is zijn eigen root — de handtekening van `git checkout --orphan`.
+    `git rev-list -1 --timestamp --parents <ref>` delivers
+    `<epoch> <sha> [<parent> ...]`. Two fields means: no parent, so the
+    tip is its own root — the signature of `git checkout --orphan`.
 
-    `--timestamp` geeft epoch en dus geen tijdzone. Dat is de reden dat hier
-    geen `log --format=%cI` staat: die draagt een offset, en `log` zou boven
-    dat alles de alleen-lezen allowlist moeten oprekken.
+    `--timestamp` gives epoch and thus no time zone. That is the reason there is
+    no `log --format=%cI` here: it carries an offset, and on top of that `log` would have
+    to stretch the read-only allowlist.
 
-    Faalt de aanroep, dan blijft alles None — niet gemeten is nooit schoon.
+    If the call fails, everything stays None — not measured is never clean.
     """
     out = run_git(["rev-list", "-1", "--timestamp", "--parents", target], cwd=repo_root)
     if not out or not out.strip():
@@ -933,18 +932,18 @@ def probe_branch(
     ref: str | None = None,
     skip_content: bool = False,
 ) -> BranchProbe:
-    """Meet de drie dingen die prune niet afvangt.
+    """Measure the three things that prune does not catch.
 
-    `--not --remotes` is het verschil tussen "bestaat nergens anders"
-    (dataverlies) en "niet gemerged" (normaal voor een squash-lane).
+    `--not --remotes` is the difference between "exists nowhere else"
+    (data loss) and "not merged" (normal for a squash lane).
 
-    `ref` is de ref waartegen git meet. `name` is de rijsleutel, en voor een
-    remote-only branch is dat niet hetzelfde: `parse_branches(remote=True)`
-    strip de `origin/`-prefix, dus de kale naam is dan geen resolvebare ref
-    meer. Zonder `ref` sterft git op "ambiguous argument" en wordt dat via
-    `run_git` een `None` — "niet gemeten" — voor 93 van de 101 remote
-    branches op deze repo. `target = ref or name` houdt oude aanroepers
-    (lokale branch, `ref` niet meegegeven) werkend.
+    `ref` is the ref that git measures against. `name` is the row key, and for a
+    remote-only branch that is not the same: `parse_branches(remote=True)`
+    strips the `origin/` prefix, so the bare name is then no resolvable ref
+    any more. Without `ref` git dies on "ambiguous argument" and that becomes via
+    `run_git` a `None` — "not measured" — for 93 of the 101 remote
+    branches on this repo. `target = ref or name` keeps old callers
+    (local branch, `ref` not passed) working.
     """
     target = ref or name
 
@@ -962,12 +961,12 @@ def probe_branch(
 
     tip_at, root = _tip_shape(target, repo_root)
 
-    # skip_content=True: de PR is al gemerged, dus rang 6 wint sowieso van
-    # rang 7/8 en `unique_files` wordt nooit geraadpleegd — een diff plus een
-    # `cat-file -e` per gewijzigd bestand is dan pure verspilling (~106
-    # branches × meerdere git-calls op deze repo). `None` blijft staan voor
-    # "niet gemeten, en niet nodig"; het mag hier nooit `()` worden, want dat
-    # zou een meting claimen die nooit heeft plaatsgevonden.
+    # skip_content=True: the PR is already merged, so rank 6 wins over
+    # rank 7/8 anyway and `unique_files` is never consulted — a diff plus a
+    # `cat-file -e` per changed file is then pure waste (~106
+    # branches × several git calls on this repo). `None` stays for
+    # "not measured, and not needed"; it must never become `()` here, because that
+    # would claim a measurement that never took place.
     unique: tuple[str, ...] | None = None
     own: int | None = None
     if not skip_content:
@@ -1009,8 +1008,8 @@ def _probe_all_branches(
     pulls: dict[str, PullInfo],
     root: Path,
 ) -> dict[str, BranchProbe]:
-    """Bouwt de probe per branch: de juiste `ref` (Kritiek 1) en `skip_content`
-    voor een al gemergede PR (Minor 5)."""
+    """Builds the probe per branch: the right `ref` (Critical 1) and `skip_content`
+    for an already merged PR (Minor 5)."""
     local_set = set(local)
     result: dict[str, BranchProbe] = {}
     for name in sorted(local_set | set(remote)):
@@ -1028,10 +1027,10 @@ def _probe_all_branches(
 
 
 def find_orphans(repo_root: Path, worktrees: list[WorktreeInfo]) -> list[OrphanDir]:
-    """Mappen onder `.claude/worktrees/` die git niet kent.
+    """Directories under `.claude/worktrees/` that git does not know.
 
-    Wezen uit de devcontainer: hun `.git` wijst naar `/workspaces/...`, dus
-    `git worktree prune` raakt ze niet en alleen dit verschil vindt ze.
+    Orphans from the devcontainer: their `.git` points to `/workspaces/...`, so
+    `git worktree prune` does not touch them and only this difference finds them.
     """
     known = {w.path for w in worktrees}
     base = repo_root / WORKTREE_DIRNAME
@@ -1052,13 +1051,13 @@ def find_orphans(repo_root: Path, worktrees: list[WorktreeInfo]) -> list[OrphanD
 
 
 def _load_sessions(sessions_dir: Path) -> dict[str, SessionInfo]:
-    """Leest `~/.claude/sessions/*.json`.
+    """Reads `~/.claude/sessions/*.json`.
 
-    Geen try om de glob heen: `Path.glob` geeft een lege lijst voor zowel een
-    ontbrekende als een onleesbare map (gemeten op 3.12, zie ook
-    `latest_transcript`) — een except eromheen is dode code en dode defensie
-    leest als dekking die er niet is. De try per bestand blijft: `read_text`
-    / `json.loads` kan wél echt falen.
+    No try around the glob: `Path.glob` gives an empty list for both a
+    missing and an unreadable directory (measured on 3.12, see also
+    `latest_transcript`) — an except around it is dead code and dead defence
+    reads as coverage that is not there. The try per file stays: `read_text`
+    / `json.loads` CAN really fail.
     """
     records: list[dict] = []
     for path in sorted(sessions_dir.glob("*.json")):
@@ -1070,11 +1069,11 @@ def _load_sessions(sessions_dir: Path) -> dict[str, SessionInfo]:
 
 
 def _detached_dirty(worktrees: list[WorktreeInfo]) -> dict[str, bool | None]:
-    """Tree-status per detached-HEAD worktree (Minor 6).
+    """Tree status per detached-HEAD worktree (Minor 6).
 
-    Zo'n worktree heeft geen branch en dus geen `probe_branch`-resultaat; hij
-    landt anders altijd op rang 3 (dirty is nooit `False`) in plaats van
-    rang 3 bij een echt vuile tree en rang 9 ("wees") bij een schone.
+    Such a worktree has no branch and thus no `probe_branch` result; it
+    would otherwise always land on rank 3 (dirty is never `False`) instead of
+    rank 3 for a really dirty tree and rank 9 ("orphan") for a clean one.
     """
     result: dict[str, bool | None] = {}
     for worktree in worktrees:
@@ -1086,20 +1085,20 @@ def _detached_dirty(worktrees: list[WorktreeInfo]) -> dict[str, bool | None]:
 
 
 def collect(repo_root: Path | None = None) -> list[Row]:
-    # Minor 4: `or ""` verstopte een mislukte git-call als een lege, schone
-    # wereld — en dan vuurt de rang-3-vuile-tree-guard voor niets meer. Een
-    # tool die de repo niet kan lezen moet dat zeggen, niet een leeg antwoord
-    # geven dat op "niets te doen" lijkt.
+    # Minor 4: `or ""` hid a failed git call as an empty, clean
+    # world — and then the rank-3 dirty-tree guard no longer fires. A
+    # tool that cannot read the repo must say so, not give an empty answer
+    # that looks like "nothing to do".
     porcelain = run_git(["worktree", "list", "--porcelain"])
     if porcelain is None:
         raise SystemExit(
             "git worktree list --porcelain failed — cannot read the repo."
         )
     worktrees = parse_worktrees(porcelain)
-    # `git worktree list --porcelain` zet de hoofd-worktree altijd als eerste
-    # blok: entry 0 is de hoofdcheckout, en dat is waar de wees-scan en de
-    # branch-listing tegen moeten draaien — ook wanneer dit script vanuit een
-    # linked worktree wordt aangeroepen.
+    # `git worktree list --porcelain` always puts the main worktree as the first
+    # block: entry 0 is the main checkout, and that is what the orphan scan and the
+    # branch listing must run against — also when this script is called from a
+    # linked worktree.
     root = repo_root or (Path(worktrees[0].path) if worktrees else Path.cwd())
 
     local_raw = run_git(["branch", "--format=%(refname:short)"], cwd=root)
@@ -1118,8 +1117,8 @@ def collect(repo_root: Path | None = None) -> list[Row]:
     try:
         slug = repo_slug()
     except ConfigError as exc:
-        # rc 2, niet de rc 1 van SystemExit(<tekst>): onder `--only` betekent rc 1 al
-        # "niet op te ruimen".
+        # rc 2, not the rc 1 of SystemExit(<text>): under `--only` rc 1 already means
+        # "not cleanable".
         print(f"worktree-audit: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
     if slug is None:
@@ -1179,8 +1178,8 @@ TABLE_RULE = "|---|---|---|---|---|---|---|---|"
 
 
 def _fmt_time(stamp: float | None) -> str:
-    """Lokale tijd, tz-bewust opgebouwd: een naïeve fromtimestamp trekt ruff's
-    DTZ006, en DTZ zit in de gelinte set."""
+    """Local time, built tz-aware: a naive fromtimestamp triggers ruff's
+    DTZ006, and DTZ is in the linted set."""
     if stamp is None:
         return "—"
     moment = datetime.datetime.fromtimestamp(stamp, tz=datetime.UTC).astimezone()
@@ -1204,22 +1203,22 @@ def _judged(rows: list[Row], alive: Callable[[int], bool]) -> list[tuple[Row, Ve
     return [(r, judge(r, alive=alive)) for r in rows]
 
 
-# Modifiers van een rij die nog gelockt is: git weigert `worktree remove` en
-# `branch -D` erop, dus nooit in de plaklijsten.
+# Modifiers of a row that is still locked: git refuses `worktree remove` and
+# `branch -D` on it, so never in the paste lists.
 _LOCKED_MODIFIERS = frozenset({"stale lock", "server-lock"})
 
 
 def _safe_lists(
     pairs: list[tuple[Row, Verdict]],
 ) -> tuple[list[str], list[str], list[str]]:
-    """De drie plaklijsten. Belangrijk 1: een rij met een stale lock is nog
-    steeds gelockt — git weigert `worktree remove`/`branch -D` erop, dus zo'n
-    rij wordt hier uitgesloten, ook al is haar verdict "safe to remove". De rij
-    blijft wél in de tabel staan; alleen de plakbare commando's slaan hem over.
+    """The three paste lists. Important 1: a row with a stale lock is still
+    locked — git refuses `worktree remove`/`branch -D` on it, so such a
+    row is excluded here, even though its verdict is "safe to remove". The row
+    does stay in the table; only the pasteable commands skip it.
 
-    Hetzelfde geldt voor een server-lock (#963, eindreview F1): het oordeel
-    "safe to remove" klopt inhoudelijk, maar de lock van de sessie-server staat er
-    nog, dus git weigert net zo goed. Die rijen krijgen hun eigen sectie.
+    The same holds for a server lock (#963, final review F1): the verdict
+    "safe to remove" is right on content, but the lock of the session server is still
+    there, so git refuses just as well. Those rows get their own section.
     """
     eligible = [
         (r, v)
@@ -1236,10 +1235,10 @@ def _render_command_blocks(
     safe_worktrees: list[str], safe_local: list[str], safe_remote: list[str]
 ) -> list[str]:
     lines = ["Commands — read the table first; this script runs nothing.", ""]
-    # Plakvolgorde, niet willekeurig: een branch die in een worktree is
-    # uitgecheckt kan git niet verwijderen ("Cannot delete branch … checked
-    # out at …"), dus worktree remove moet vóór branch -D. De omgekeerde
-    # volgorde breekt een top-naar-onder paste halverwege.
+    # Paste order, not arbitrary: a branch that is checked out in a worktree
+    # cannot be deleted by git ("Cannot delete branch … checked
+    # out at …"), so worktree remove must come before branch -D. The reverse
+    # order breaks a top-to-bottom paste halfway.
     if safe_worktrees:
         lines.append("```bash")
         lines += [f'git worktree remove "{path}"' for path in safe_worktrees]
@@ -1258,9 +1257,9 @@ def _render_command_blocks(
 
 
 def _render_stale_locked_section(pairs: list[tuple[Row, Verdict]]) -> list[str]:
-    """Belangrijk 1: de rijen die `_safe_lists` bewust wegliet — een verweesde
-    lock is informatie, geen toestemming. Nooit `git worktree unlock`
-    aanbieden: ontgrendelen doet dit script nooit, ook niet als suggestie.
+    """Important 1: the rows that `_safe_lists` deliberately left out — an orphaned
+    lock is information, not permission. Never offer `git worktree unlock`:
+    this script never unlocks, not even as a suggestion.
     """
     stale = [(r, v) for r, v in pairs if v.safe and "stale lock" in v.modifiers]
     if not stale:
@@ -1277,10 +1276,10 @@ def _render_stale_locked_section(pairs: list[tuple[Row, Verdict]]) -> list[str]:
 
 
 def _render_server_locked_section(pairs: list[tuple[Row, Verdict]]) -> list[str]:
-    """Eindreview F1 (#963): de rijen die `_safe_lists` wegliet omdat de
-    sessie-server ze nog gelockt houdt. De sessie is voorbij (anders was het
-    rang 2), maar de server-pid blijft weken levend (spike R1). Net als bij de
-    stale lock: melden, nooit een ontgrendelcommando aanbieden.
+    """Final review F1 (#963): the rows that `_safe_lists` left out because the
+    session server still keeps them locked. The session is over (otherwise it would be
+    rank 2), but the server pid stays alive for weeks (spike R1). As with the
+    stale lock: report, never offer an unlock command.
     """
     held = [(r, v) for r, v in pairs if v.safe and "server-lock" in v.modifiers]
     if not held:
@@ -1302,10 +1301,10 @@ def _render_server_locked_section(pairs: list[tuple[Row, Verdict]]) -> list[str]
 
 
 def _render_port_blocks_section(rows: list[Row]) -> list[str]:
-    """Belangrijk 2: `port_block` werd gemeten en getest, maar nooit getoond.
-    Dit is alleen de registratie uit `.port-registry` — welk proces de poort
-    daadwerkelijk vasthoudt, wordt hier niet opgezocht (dat is #438); een lege
-    lijst betekent dus niet "er draait niets".
+    """Important 2: `port_block` was measured and tested, but never shown.
+    This is only the registration from `.port-registry` — which process
+    actually holds the port is not looked up here (that is #438); an empty
+    list therefore does not mean "nothing runs".
     """
     ported = sorted((r for r in rows if r.port_block is not None), key=lambda r: r.name)
     if not ported:
@@ -1343,9 +1342,9 @@ def render_sessions(
     rows: list[Row], *, alive: Callable[[int], bool] = pid_alive
 ) -> str:
     pairs = [(r, v) for r, v in _judged(rows, alive) if r.session_id]
-    # Live sessies eerst, ook zonder transcript (last_session=None): een live
-    # sessie zonder .jsonl-bestand is relevanter dan een dode sessie van
-    # lang geleden, en mag niet onderaan wegzakken op een ontbrekende tijd.
+    # Live sessions first, also without a transcript (last_session=None): a live
+    # session without a .jsonl file is more relevant than a dead session from
+    # long ago, and must not sink to the bottom on a missing time.
     pairs.sort(key=lambda p: (p[0].live, p[0].last_session or 0.0), reverse=True)
     lines = [
         "| last session | live? | worktree | resume | verdict |",
@@ -1373,21 +1372,21 @@ def render_only(
     cwd: Path,
     alive: Callable[[int], bool] = pid_alive,
 ) -> tuple[str, bool]:
-    """De view voor lighthouse-close-issue: één rij plus `cleanup: yes|no`.
+    """The view for lighthouse-close-issue: one row plus `cleanup: yes|no`.
 
-    Opruimbaar = verdict "safe to remove", niet gelockt, en de eigen cwd staat niet
-    in de worktree — git weigert de eerste twee, en de derde zaagt de tak af
-    waar de sessie op zit. Bij `yes` volgen hoogstens twee commando's, in
-    plakvolgorde; nooit `push origin --delete`: de remote branch is de zaak van
-    de merge, niet van het sluiten. Dit script voert ze niet uit.
+    Cleanable = verdict "safe to remove", not locked, and the own cwd is not
+    in the worktree — git refuses the first two, and the third saws off the branch
+    the session sits on. On `yes` at most two commands follow, in
+    paste order; never `push origin --delete`: the remote branch is the business of
+    the merge, not of closing. This script does not run them.
     """
     match = [r for r in rows if r.name == branch]
     if not match:
         return f"cleanup: no — branch {branch} not found\n", False
     if len(match) > 1:
-        # Een losgekoppelde worktree of wees-map draagt zijn mapnaam als naam,
-        # en die kan gelijk zijn aan de branch. Kiezen zou de andere rij — met
-        # misschien een lopende sessie — stil overslaan.
+        # A detached worktree or orphan dir carries its directory name as name,
+        # and that can be equal to the branch. Choosing would silently skip the other
+        # row — with perhaps a running session.
         pairs = _judged(match, alive)
         lines = [TABLE_HEADER, TABLE_RULE]
         lines += [_row_line(r, v) for r, v in pairs]
@@ -1424,10 +1423,10 @@ def render_only(
 
 
 def issue_branches(rows: list[Row], nr: int, pr_heads: list[str]) -> list[str]:
-    """Branches van issue `nr`: PR-heads plus rijen met prefix `issue-<nr>-`.
+    """Branches of issue `nr`: PR heads plus rows with prefix `issue-<nr>-`.
 
-    Het streepje hoort bij de prefix: `issue-3-` mag `issue-32-x` niet pakken.
-    Gesorteerd, zonder dubbelen.
+    The dash belongs to the prefix: `issue-3-` must not match `issue-32-x`.
+    Sorted, without duplicates.
     """
     prefix = f"issue-{nr}-"
     found = {r.name for r in rows if r.name.startswith(prefix)}
@@ -1442,13 +1441,13 @@ def render_issue(
     cwd: Path,
     alive: Callable[[int], bool] = pid_alive,
 ) -> str:
-    """Per branch van issue `nr` een blok: `branch: <b>` plus de `render_only`-uitvoer.
+    """A block per branch of issue `nr`: `branch: <b>` plus the `render_only` output.
 
-    Geen tweede ladder: `render_only` beslist. Eén aanvulling: een branch waarvan
-    de rij geen gemergde PR heeft, is nooit opruimbaar, ook als de ladder "safe to
-    remove" zegt (een lokale `issue-<nr>-`-branch zonder PR). `pr_heads is None`
-    betekent dat de PR-lookup mislukte; dan is er geen enkel signaal, en geen
-    signaal is geen ja.
+    No second ladder: `render_only` decides. One addition: a branch whose
+    row has no merged PR is never cleanable, even if the ladder says "safe to
+    remove" (a local `issue-<nr>-` branch without a PR). `pr_heads is None`
+    means the PR lookup failed; then there is no signal at all, and no
+    signal is not a yes.
     """
     if pr_heads is None:
         return f"cleanup: no — PR lookup for issue #{nr} failed\n"
@@ -1460,7 +1459,7 @@ def render_issue(
         text, ok = render_only(rows, branch, cwd=cwd, alive=alive)
         match = [r for r in rows if r.name == branch]
         if ok and not (len(match) == 1 and match[0].pr_state == "merged"):
-            # Alles vanaf `cleanup: yes` (ook de commando's eronder) vervalt.
+            # Everything from `cleanup: yes` on (also the commands below it) is dropped.
             lines = text.splitlines()
             head = lines[: lines.index("cleanup: yes")]
             text = "\n".join(head + ["cleanup: no — no merged PR"]) + "\n"
@@ -1470,9 +1469,9 @@ def render_issue(
 
 def render_kpi(rows: list[Row], *, alive: Callable[[int], bool] = pid_alive) -> str:
     pairs = _judged(rows, alive)
-    # Minor 6: de hoofdcheckout heeft ook `worktree` gezet, maar de skill
-    # labelt dit getal "Worktrees onder `.claude/worktrees/`" — dus telt
-    # alleen mee wat daar ook echt onder staat.
+    # Minor 6: the main checkout has `worktree` set too, but the skill
+    # labels this number "Worktrees under `.claude/worktrees/`" — so only
+    # what really sits under it counts.
     worktrees = sum(
         1 for r, _ in pairs if r.worktree and WORKTREE_DIRNAME in r.worktree
     )

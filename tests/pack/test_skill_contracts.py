@@ -1,15 +1,15 @@
 """Contract test for the skills of every package and the agents of `pack/core` (plan task
-22, Review Focus 5; plan M0 (c), ontwerpkeuze 10).
+22, Review Focus 5; plan M0 (c), design choice 10).
 
 A translation error makes a skill point at something that does not exist: a script, a
 lib module, a hook, a config key, a heading or another skill. Nothing at runtime catches
 that before a user runs the skill, so every reference is checked here, per skill and per
 agent.
 
-A skill names a heading as `heading:<key>` (ontwerpkeuze 19) and a config key as the
-argument of `config.py` (ontwerpkeuze 6 and 7). Steps that depend on something that stays
+A skill names a heading as `heading:<key>` (design choice 19) and a config key as the
+argument of `config.py` (design choice 6 and 7). Steps that depend on something that stays
 in paia (backlog-stand, board-sweep, the controller, the release flow, the pre-push chain)
-run only "if present" and otherwise report "skipped" (ontwerpkeuze 16).
+run only "if present" and otherwise report "skipped" (design choice 16).
 
 A skill may name what its own package or `pack/core` installs. A file or skill of another
 language package is there only when that package was chosen, so the paragraph that names it

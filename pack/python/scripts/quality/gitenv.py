@@ -1,7 +1,7 @@
-"""Git-omgeving zonder repo-bindende variabelen.
+"""Git environment without repo-binding variables.
 
-`prcov.py` heeft dezelfde schoonmaak nodig als de coverage-arm van
-`ratchet.py` — één bron, twee aanroepers.
+`prcov.py` needs the same cleanup as the coverage arm of
+`ratchet.py` — one source, two callers.
 """
 
 from __future__ import annotations
@@ -9,15 +9,15 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 
-# Variabelen waarmee git een proces aan één repo vastklinkt. git leest ze vóór
-# de cwd, dus met GIT_DIR gezet negeert zelfs `git -C /tmp/fixture rev-parse`
-# die -C en wijst naar de echte repo.
+# Variables with which git pins a process to one repo. git reads them before
+# the cwd, so with GIT_DIR set even `git -C /tmp/fixture rev-parse` ignores
+# that -C and points at the real repo.
 #
-# Dat is geen theorie. git zet deze bij het aanroepen van een hook, en de
-# coverage-arm draait de volle pytest-suite ván binnen een hook. Zonder deze
-# schoonmaak bouwt elke test die een fixture-repo aanmaakt en `git add -A` +
-# `git commit` aanroept in de ECHTE repo, en vervangt hij de branchtip door een
-# fixture-commit.
+# That is not theory. git sets these when it calls a hook, and the
+# coverage arm runs the full pytest suite from inside a hook. Without this
+# cleanup every test that creates a fixture repo and calls `git add -A` +
+# `git commit` builds in the REAL repo, and replaces the branch tip with a
+# fixture commit.
 _GIT_SCOPING_VARS = (
     "GIT_DIR",
     "GIT_WORK_TREE",
@@ -32,10 +32,10 @@ _GIT_SCOPING_VARS = (
 
 
 def suite_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
-    """De omgeving voor een git-subprocess, zonder git's repo-bindende variabelen.
+    """The environment for a git subprocess, without git's repo-binding variables.
 
-    `environ` is injecteerbaar zodat een test het hook-geval kan nabootsen
-    zonder os.environ te muteren.
+    `environ` is injectable so a test can imitate the hook case
+    without mutating os.environ.
     """
     source = os.environ if environ is None else environ
     return {k: v for k, v in source.items() if k not in _GIT_SCOPING_VARS}

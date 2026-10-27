@@ -1,7 +1,7 @@
-"""Unit tests for the release lane (`.lighthouse/scripts/unblock_dependents.py`), from paia: welke afhankelijken komen vrij, en wat wordt er geschreven.
+"""Unit tests for the release lane (`.lighthouse/scripts/unblock_dependents.py`), from paia: which dependents are released, and what is written.
 
-`run` draait tegen een `FakeGh` die `gh` vervangt. Geen netwerk en geen echte `gh`.
-De fixtures volgen de gemeten vorm van `gh api .../dependencies/blocked_by` (#1354).
+`run` runs against a `FakeGh` that replaces `gh`. No network and no real `gh`.
+The fixtures follow the measured shape of `gh api .../dependencies/blocked_by` (#1354).
 """
 
 from __future__ import annotations
@@ -43,65 +43,65 @@ def _issue(
 
 
 class FakeGh:
-    """Leest uit `reads` (pad zonder `?per_page`), noteert elke schrijfactie in `writes`."""
+    """Reads from `reads` (path without `?per_page`), records every write in `writes`."""
 
-    def __init__(self, reads: dict[str, Any], faalt: set[str] = frozenset()) -> None:
+    def __init__(self, reads: dict[str, Any], fails: set[str] = frozenset()) -> None:
         self.reads = reads
-        self.faalt = faalt
+        self.fails = fails
         self.writes: list[tuple[str, ...]] = []
 
     def __call__(self, args: Sequence[str]) -> str:
-        pad = next(a for a in args if a.startswith(R))
-        if pad in self.faalt:
+        path = next(a for a in args if a.startswith(R))
+        if path in self.fails:
             raise subprocess.CalledProcessError(
                 1, ["gh", *args], stderr="HTTP 403: nee\n"
             )
         if "-X" in args:
             self.writes.append(tuple(args))
             return "{}"
-        return json.dumps(self.reads[pad.split("?")[0]])
+        return json.dumps(self.reads[path.split("?")[0]])
 
 
-def _wereld(gesloten: dict, afhankelijk: list[dict], blockers: dict[int, list[dict]]):
-    nr = gesloten["number"]
+def _world(closed_issue: dict, dependents: list[dict], blockers: dict[int, list[dict]]):
+    nr = closed_issue["number"]
     reads: dict[str, Any] = {
-        f"{R}/issues/{nr}": gesloten,
-        f"{R}/issues/{nr}/dependencies/blocking": afhankelijk,
+        f"{R}/issues/{nr}": closed_issue,
+        f"{R}/issues/{nr}/dependencies/blocking": dependents,
     }
-    for m, lijst in blockers.items():
-        reads[f"{R}/issues/{m}/dependencies/blocked_by"] = lijst
+    for m, items in blockers.items():
+        reads[f"{R}/issues/{m}/dependencies/blocked_by"] = items
     return reads
 
 
 def _comments(gh: FakeGh) -> dict[int, str]:
-    uit = {}
+    out = {}
     for w in gh.writes:
         if w[2] == "POST":
             nr = int(w[3].split("/")[-2])
-            uit[nr] = w[5].removeprefix("body=")
-    return uit
+            out[nr] = w[5].removeprefix("body=")
+    return out
 
 
-def test_laatste_blocker_dicht_geeft_vrij_met_comments() -> None:
+def test_last_blocker_closed_releases_with_comments() -> None:
     gh = FakeGh(
-        _wereld(
+        _world(
             _issue(1, "closed"),
             [_issue(2, labels=["2-area:x", LABEL])],
             {2: [_issue(1, "closed")]},
         )
     )
-    code, regels = ud.run(gh, 1, label=LABEL)
+    code, lines = ud.run(gh, 1, label=LABEL)
     assert code == 0
     assert ("api", "-X", "DELETE", f"{R}/issues/2/labels/{LABEL}") in gh.writes
     comments = _comments(gh)
     assert "#1" in comments[2] and LABEL in comments[2]
     assert "#2 is released" in comments[1]
-    assert any("#2: released" in r for r in regels)
+    assert any("#2: released" in r for r in lines)
 
 
-def test_nog_een_open_blocker_houdt_het_label_en_meldt_het_terug() -> None:
+def test_another_open_blocker_keeps_the_label_and_reports_back() -> None:
     gh = FakeGh(
-        _wereld(
+        _world(
             _issue(1, "closed"),
             [_issue(2, labels=[LABEL])],
             {2: [_issue(1, "closed"), _issue(7)]},
@@ -115,55 +115,55 @@ def test_nog_een_open_blocker_houdt_het_label_en_meldt_het_terug() -> None:
     }
 
 
-def test_zonder_label_niet_gelezen_en_geen_schrijfactie() -> None:
-    """Geen blocked_by in de wereld: een read zou KeyError geven. Een herstart is dus stil."""
-    gh = FakeGh(_wereld(_issue(1, "closed"), [_issue(2)], {}))
-    code, regels = ud.run(gh, 1, label=LABEL)
+def test_without_label_not_read_and_no_write() -> None:
+    """No blocked_by in the world: a read would give KeyError. A restart is therefore silent."""
+    gh = FakeGh(_world(_issue(1, "closed"), [_issue(2)], {}))
+    code, lines = ud.run(gh, 1, label=LABEL)
     assert code == 0
     assert gh.writes == []
-    assert any("does not carry" in r for r in regels)
+    assert any("does not carry" in r for r in lines)
 
 
-def test_eerst_comment_dan_label() -> None:
+def test_comment_first_then_label() -> None:
     gh = FakeGh(
-        _wereld(
+        _world(
             _issue(1, "closed"),
             [_issue(2, labels=[LABEL])],
             {2: [_issue(1, "closed")]},
         )
     )
     ud.run(gh, 1, label=LABEL)
-    volgorde = [(w[2], w[3].split("/issues/")[1].split("/")[0]) for w in gh.writes]
-    assert volgorde == [("POST", "1"), ("POST", "2"), ("DELETE", "2")]
+    order = [(w[2], w[3].split("/issues/")[1].split("/")[0]) for w in gh.writes]
+    assert order == [("POST", "1"), ("POST", "2"), ("DELETE", "2")]
 
 
-def test_falende_terugcomment_raakt_niets_aan_en_herstart_herhaalt_alles() -> None:
-    reads = _wereld(
+def test_failing_reply_comment_touches_nothing_and_restart_repeats_everything() -> None:
+    reads = _world(
         _issue(1, "closed"), [_issue(2, labels=[LABEL])], {2: [_issue(1, "closed")]}
     )
-    gh = FakeGh(reads, faalt={f"{R}/issues/1/comments"})
-    code, regels = ud.run(gh, 1, label=LABEL)
+    gh = FakeGh(reads, fails={f"{R}/issues/1/comments"})
+    code, lines = ud.run(gh, 1, label=LABEL)
     assert code == 1
     assert gh.writes == []
-    assert regels[-1].endswith("nothing touched")
-    herstart = FakeGh(reads)
-    assert ud.run(herstart, 1, label=LABEL)[0] == 0
-    assert set(_comments(herstart)) == {1, 2}
+    assert lines[-1].endswith("nothing touched")
+    restart = FakeGh(reads)
+    assert ud.run(restart, 1, label=LABEL)[0] == 0
+    assert set(_comments(restart)) == {1, 2}
 
 
-def test_falende_comment_laat_het_label_staan() -> None:
-    reads = _wereld(
+def test_failing_comment_leaves_the_label() -> None:
+    reads = _world(
         _issue(1, "closed"), [_issue(2, labels=[LABEL])], {2: [_issue(1, "closed")]}
     )
-    gh = FakeGh(reads, faalt={f"{R}/issues/2/comments"})
-    code, regels = ud.run(gh, 1, label=LABEL)
+    gh = FakeGh(reads, fails={f"{R}/issues/2/comments"})
+    code, lines = ud.run(gh, 1, label=LABEL)
     assert code == 1
     assert not any(w[2] == "DELETE" for w in gh.writes)
-    assert any("#2: **Error:**" in r for r in regels)
+    assert any("#2: **Error:**" in r for r in lines)
 
 
-def test_label_404_is_al_weg() -> None:
-    reads = _wereld(
+def test_label_404_is_already_gone() -> None:
+    reads = _world(
         _issue(1, "closed"), [_issue(2, labels=[LABEL])], {2: [_issue(1, "closed")]}
     )
 
@@ -176,22 +176,22 @@ def test_label_404_is_al_weg() -> None:
             return super().__call__(args)
 
     gh = Gh404(reads)
-    code, regels = ud.run(gh, 1, label=LABEL)
+    code, lines = ud.run(gh, 1, label=LABEL)
     assert code == 0
-    assert any("#2: released" in r for r in regels)
+    assert any("#2: released" in r for r in lines)
 
 
-@pytest.mark.parametrize("reden", ["not_planned", "duplicate"])
-def test_niet_completed_geeft_niets_vrij(reden: str) -> None:
-    gh = FakeGh(_wereld(_issue(1, "closed", state_reason=reden), [], {}))
-    code, regels = ud.run(gh, 1, label=LABEL)
+@pytest.mark.parametrize("reason", ["not_planned", "duplicate"])
+def test_not_completed_releases_nothing(reason: str) -> None:
+    gh = FakeGh(_world(_issue(1, "closed", state_reason=reason), [], {}))
+    code, lines = ud.run(gh, 1, label=LABEL)
     assert code == 0
     assert gh.writes == []
-    assert reden in regels[-1]
+    assert reason in lines[-1]
 
 
-def test_open_issue_geeft_niets_vrij() -> None:
-    gh = FakeGh(_wereld(_issue(1), [], {}))
+def test_open_issue_releases_nothing() -> None:
+    gh = FakeGh(_world(_issue(1), [], {}))
     assert ud.run(gh, 1, label=LABEL) == (
         0,
         ["## Release lane for #1", "", "#1 is open: nothing to release."],
@@ -199,55 +199,55 @@ def test_open_issue_geeft_niets_vrij() -> None:
     assert gh.writes == []
 
 
-def test_gesloten_afhankelijke_telt_niet_mee() -> None:
+def test_closed_dependent_does_not_count() -> None:
     gh = FakeGh(
-        _wereld(_issue(1, "closed"), [_issue(2, "closed", labels=[LABEL])], {})
+        _world(_issue(1, "closed"), [_issue(2, "closed", labels=[LABEL])], {})
     )
-    code, regels = ud.run(gh, 1, label=LABEL)
+    code, lines = ud.run(gh, 1, label=LABEL)
     assert code == 0
     assert gh.writes == []
-    assert regels[-1] == "#1 blocked no open issues."
+    assert lines[-1] == "#1 blocked no open issues."
 
 
-def test_onleesbare_blockers_is_rood_en_laat_het_label_staan() -> None:
-    reads = _wereld(
+def test_unreadable_blockers_is_red_and_leaves_the_label() -> None:
+    reads = _world(
         _issue(1, "closed"),
         [_issue(2, labels=[LABEL]), _issue(3, labels=[LABEL])],
         {3: [_issue(1, "closed")]},
     )
-    gh = FakeGh(reads, faalt={f"{R}/issues/2/dependencies/blocked_by?per_page=100"})
-    code, regels = ud.run(gh, 1, label=LABEL)
+    gh = FakeGh(reads, fails={f"{R}/issues/2/dependencies/blocked_by?per_page=100"})
+    code, lines = ud.run(gh, 1, label=LABEL)
     assert code == 1
     assert ("api", "-X", "DELETE", f"{R}/issues/2/labels/{LABEL}") not in gh.writes
     assert ("api", "-X", "DELETE", f"{R}/issues/3/labels/{LABEL}") in gh.writes
-    assert any("#2: **Error:** HTTP 403: nee" in r for r in regels)
+    assert any("#2: **Error:** HTTP 403: nee" in r for r in lines)
 
 
-def test_gesloten_issue_onleesbaar_is_rood() -> None:
-    gh = FakeGh({}, faalt={f"{R}/issues/1"})
-    code, regels = ud.run(gh, 1, label=LABEL)
+def test_closed_issue_unreadable_is_red() -> None:
+    gh = FakeGh({}, fails={f"{R}/issues/1"})
+    code, lines = ud.run(gh, 1, label=LABEL)
     assert code == 1
-    assert regels[-1] == "**Error:** #1 not read: HTTP 403: nee"
+    assert lines[-1] == "**Error:** #1 not read: HTTP 403: nee"
 
 
-def test_dry_run_schrijft_niets() -> None:
+def test_dry_run_writes_nothing() -> None:
     gh = FakeGh(
-        _wereld(
+        _world(
             _issue(1, "closed"),
             [_issue(2, labels=[LABEL])],
             {2: [_issue(1, "closed")]},
         )
     )
-    code, regels = ud.run(gh, 1, label=LABEL, dry_run=True)
+    code, lines = ud.run(gh, 1, label=LABEL, dry_run=True)
     assert code == 0
     assert gh.writes == []
-    assert regels[-1] == "_dry-run: nothing written._"
+    assert lines[-1] == "_dry-run: nothing written._"
 
 
 def test_release_line_token() -> None:
     """`close-issue` reads the reply on the closed issue by this fixed line."""
     gh = FakeGh(
-        _wereld(_issue(1, "closed"), [_issue(2, labels=[LABEL])], {2: [_issue(1, "closed")]})
+        _world(_issue(1, "closed"), [_issue(2, labels=[LABEL])], {2: [_issue(1, "closed")]})
     )
     ud.run(gh, 1, label=LABEL)
     assert _comments(gh)[1].splitlines()[0] == "Released lane after this close:"
@@ -259,7 +259,7 @@ def test_blocked_label_from_config(tmp_path, monkeypatch) -> None:
     config.write_text('[labels]\nblocked_issue = "x"\n', encoding="utf-8")
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
     assert ud.blocked_label() == "x"
-    gh = FakeGh(_wereld(_issue(1, "closed"), [_issue(2, labels=["x"])], {2: [_issue(1, "closed")]}))
+    gh = FakeGh(_world(_issue(1, "closed"), [_issue(2, labels=["x"])], {2: [_issue(1, "closed")]}))
     monkeypatch.setattr(ud, "run_gh", gh)
     assert ud.main(["--issue", "1"]) == 0
     assert ("api", "-X", "DELETE", f"{R}/issues/2/labels/x") in gh.writes
@@ -294,7 +294,7 @@ def test_label_with_a_space_is_url_encoded(tmp_path, monkeypatch) -> None:
     config.write_text('[labels]\nblocked_issue = "blocked / issue"\n', encoding="utf-8")
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(config))
     label = "blocked / issue"
-    gh = FakeGh(_wereld(_issue(1, "closed"), [_issue(2, labels=[label])], {2: [_issue(1, "closed")]}))
+    gh = FakeGh(_world(_issue(1, "closed"), [_issue(2, labels=[label])], {2: [_issue(1, "closed")]}))
     monkeypatch.setattr(ud, "run_gh", gh)
     assert ud.main(["--issue", "1"]) == 0
     assert ("api", "-X", "DELETE", f"{R}/issues/2/labels/blocked%20%2F%20issue") in gh.writes

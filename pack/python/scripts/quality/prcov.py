@@ -1,10 +1,10 @@
-"""Wijs elke regel onder `python.source_dirs` op `HEAD` toe aan de squash-PR die
-hem schreef.
+"""Assign every line under `python.source_dirs` on `HEAD` to the squash PR that
+wrote it.
 
-Voedt de nightly-arm van `ratchet.py`: één `coverage.json` van de volledige
-suite, per-PR diff-coverage via `git blame` in plaats van een diff tegen één
-merge-base. Het rekenwerk zelf komt uit `diffcov.diff_coverage` — deze module
-levert alleen de toewijzing (welke regel hoort bij welke PR).
+Feeds the nightly arm of `ratchet.py`: one `coverage.json` of the full
+suite, per-PR diff coverage via `git blame` instead of a diff against one
+merge-base. The calculation itself comes from `diffcov.diff_coverage` — this module
+only supplies the assignment (which line belongs to which PR).
 """
 
 from __future__ import annotations
@@ -20,21 +20,21 @@ from typing import Any
 from quality import diffcov
 from quality.gitenv import suite_env
 
-# De laatste `(#N)` aan het eind van de titel — wat GitHub bij squash-mergen
-# aanplakt. Een eerdere ref middenin de titel (issue-move, cherry-pick) telt
-# niet mee; alleen $ aan het eind onderscheidt "(#12) staat vooraan" (geen
-# match) van "... (#1009)" (wel).
+# The last `(#N)` at the end of the title — what GitHub appends on squash merge.
+# An earlier ref in the middle of the title (issue move, cherry-pick) does not
+# count; only $ at the end distinguishes "(#12) is at the front" (no
+# match) from "... (#1009)" (match).
 _PR_RE = re.compile(r"\(#(\d+)\)\s*$")
 
-# Kopregel van `git blame --porcelain`: <40 hex sha> <orig-regel> <final-regel>
-# [<aantal regels in de groep>]. Elke bronregel draagt zo'n kop, ook als hij
-# niet de eerste van zijn groep is — dan alleen zonder de extra info-regels
-# erachter. `final` is het regelnummer op HEAD.
+# Header line of `git blame --porcelain`: <40 hex sha> <orig-line> <final-line>
+# [<number of lines in the group>]. Every source line carries such a header, even if it
+# is not the first of its group — then only without the extra info lines
+# after it. `final` is the line number on HEAD.
 _BLAME_HEADER_RE = re.compile(r"^([0-9a-f]{40}) \d+ (\d+)")
 
 
 class GitCommandError(RuntimeError):
-    """Een git-aanroep in deze module faalde. Fail closed."""
+    """A git call in this module failed. Fail closed."""
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ class SquashCommit:
 
 
 def pr_number(subject: str) -> int | None:
-    """Het PR-nummer uit de **laatste** `(#N)` aan het eind van de titel."""
+    """The PR number from the **last** `(#N)` at the end of the title."""
     match = _PR_RE.search(subject)
     return int(match.group(1)) if match else None
 
@@ -73,22 +73,22 @@ def _is_ancestor(root: Path, since: str) -> bool:
 
 
 def select_commits(root: Path, since: str | None) -> list[SquashCommit]:
-    """Squash-commits op `HEAD` sinds `since`, elk met een PR-nummer.
+    """Squash commits on `HEAD` since `since`, each with a PR number.
 
-    `since..HEAD` via `--first-parent` (de mainline, geen feature-commits die
-    een squash-merge toch al wegschudt). Ontbreekt `since`, of is hij geen
-    voorouder van `HEAD` (`git merge-base --is-ancestor`) — een verse repo,
-    een force-push, een watermark die buiten de geschiedenis viel — dan valt
-    de selectie terug op de laatste 24 uur in plaats van een range die faalt
-    of stil de hele historie meeneemt. Commits zonder `(#N)` in de titel
-    (geen squash-merge, een losse fix) vallen weg.
+    `since..HEAD` via `--first-parent` (the mainline, no feature commits that
+    a squash merge already shakes off). If `since` is missing, or is not an
+    ancestor of `HEAD` (`git merge-base --is-ancestor`) — a fresh repo,
+    a force-push, a watermark that fell outside the history — the
+    selection falls back to the last 24 hours instead of a range that fails
+    or silently takes in the whole history. Commits without `(#N)` in the title
+    (no squash merge, a loose fix) drop out.
     """
     if since is not None and _is_ancestor(root, since):
         args = ["log", "--first-parent", "--format=%H%x1f%s", f"{since}..HEAD"]
     else:
         if since is not None:
-            # Niet stil: een shallow clone of herschreven geschiedenis valt hier
-            # anders elke nacht terug, en dan ook nog met een verkeerde blame.
+            # Not silent: a shallow clone or rewritten history would otherwise fall
+            # back here every night, and then also with a wrong blame.
             print(
                 f"nightly: {since} is not an ancestor of HEAD (shallow clone or "
                 "rewritten history?); judging the merges of the last 24 hours",
@@ -114,7 +114,7 @@ def select_commits(root: Path, since: str | None) -> list[SquashCommit]:
 
 
 def blame(root: Path, path: str) -> dict[str, list[int]]:
-    """sha → regelnummers op `HEAD`, uit `git blame --porcelain HEAD -- path`."""
+    """sha → line numbers on `HEAD`, from `git blame --porcelain HEAD -- path`."""
     output = _run_git(root, ["blame", "--porcelain", "HEAD", "--", path])
     result: dict[str, list[int]] = {}
     for line in output.splitlines():
@@ -127,8 +127,8 @@ def blame(root: Path, path: str) -> dict[str, list[int]]:
 
 
 def _changed_python_files(root: Path, sha: str, source_dirs: Sequence[str]) -> list[str]:
-    """`.py`-paden onder `source_dirs` die deze commit raakte (aangemaakt,
-    gewijzigd of verwijderd) — of hij nog op `HEAD` bestaat, checkt de aanroeper."""
+    """`.py` paths under `source_dirs` that this commit touched (created,
+    changed or removed) — whether it still exists on `HEAD` is for the caller to check."""
     if not source_dirs:
         return []
     output = _run_git(root, ["show", "--name-only", "--format=", sha, "--", *source_dirs])
@@ -138,15 +138,15 @@ def _changed_python_files(root: Path, sha: str, source_dirs: Sequence[str]) -> l
 def attribute(
     root: Path, commits: Sequence[SquashCommit], source_dirs: Sequence[str] = ("src",)
 ) -> dict[int, dict[str, list[int]]]:
-    """PR → {pad: regels}, via `git blame` op elk pad dat een commit raakte.
+    """PR → {path: lines}, via `git blame` on every path a commit touched.
 
-    `blame` draait op `HEAD` en dus per pad maar één keer, niet per commit:
-    het resultaat wijst elke regel toe aan wie hem het laatst schreef, dus
-    een latere commit die een regel herschrijft neemt hem daar automatisch
-    over van een eerdere — er is geen apart "overwrite"-geval nodig. Een pad
-    dat een latere commit weer verwijderde staat niet meer op `HEAD` en
-    levert stil geen entry op, geen exceptie. Elke PR uit `commits` staat in
-    de uitkomst, ook zonder een geraakt pad.
+    `blame` runs on `HEAD` and so only once per path, not per commit:
+    the result assigns every line to whoever wrote it last, so
+    a later commit that rewrites a line automatically takes it over
+    from an earlier one — no separate "overwrite" case is needed. A path
+    that a later commit removed again is no longer on `HEAD` and
+    silently yields no entry, no exception. Every PR from `commits` is in
+    the result, even without a touched path.
     """
     result: dict[int, dict[str, list[int]]] = {commit.pr: {} for commit in commits}
     blame_cache: dict[str, dict[str, list[int]]] = {}
@@ -168,7 +168,7 @@ def per_pr(
     read_source: Callable[[str], str],
     exclude: Sequence[str] = (),
 ) -> dict[int, diffcov.DiffCoverage]:
-    """Dekking per PR uit hetzelfde rapport — geen aparte suite-run per PR."""
+    """Coverage per PR from the same report — no separate suite run per PR."""
     return {
         pr: diffcov.diff_coverage(paths, report, read_source, exclude)
         for pr, paths in attributed.items()

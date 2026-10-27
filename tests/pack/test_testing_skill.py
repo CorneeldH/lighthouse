@@ -7,7 +7,7 @@ CLASSES = ("pure-logic", "io/filesystem", "cli-output", "hook/gate", "config", "
 def test_frontmatter():
     assert "name: lighthouse-testing\n" in FRONT
     assert "origin: own" in FRONT and 'source: "#22"' in FRONT
-    assert "disable-model-invocation" not in FRONT  # model-invoked, triggert op werk
+    assert "disable-model-invocation" not in FRONT  # model-invoked, triggers on the work
 
 def test_description_triggers_on_the_work_and_on_planning():
     for word in ("writing", "fixing", "reviewing", "mock", "test strategy"):

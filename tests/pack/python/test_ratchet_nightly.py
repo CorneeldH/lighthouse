@@ -40,9 +40,9 @@ _NIGHTLY_GIT_IDENTITY = {
 
 
 class _NightlyRepo:
-    """Minimale fixture-repo voor cmd_nightly — zelfde vorm als `_Repo` in
-    test_prcov.py, hier lokaal zodat dit testbestand geen afhankelijkheid krijgt
-    van een ander testmodule."""
+    """Minimal fixture repo for cmd_nightly — same form as `_Repo` in
+    test_prcov.py, local here so this test file gets no dependency
+    on another test module."""
 
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -128,10 +128,9 @@ def write_report(root: Path, report: dict) -> Path:
 
 
 class _FakeGh:
-    """Logt elke aanroep en geeft canned antwoorden terug — kleine, lokale
-    kopie van `FakeGh` in test_prcov_issues.py. `queue` mag ook
-    een Exception-instantie doorgeven, om een falende `gh`-aanroep te
-    simuleren."""
+    """Logs every call and returns canned answers — a small, local
+    copy of `FakeGh` in test_prcov_issues.py. `queue` may also
+    pass an Exception instance, to simulate a failing `gh` call."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[str, ...], dict[str, str] | None, str | None]] = []
@@ -183,7 +182,7 @@ def _board_item(item_id: str, status: str | None) -> str:
 
 
 def _queue_happy_remediation(gh: _FakeGh, issue_url: str, item_id: str) -> None:
-    """Alle vier stappen (issue, handoff, board) slagen in één keer."""
+    """All four steps (issue, handoff, board) succeed in one go."""
     gh.queue("issue list", "[]")
     gh.queue("issue create", issue_url)
     gh.queue("comments", "")
@@ -192,7 +191,7 @@ def _queue_happy_remediation(gh: _FakeGh, issue_url: str, item_id: str) -> None:
 
 
 def test_nightly_floor_below_is_red(nightly_repo):
-    """totals.percent_covered onder min_total_pct, geen PR's sinds since → rc 1."""
+    """totals.percent_covered below min_total_pct, no PRs since `since` → rc 1."""
     write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=90)
     report_path = write_report(nightly_repo.root, nightly_report(50.0))
 
@@ -244,7 +243,7 @@ def test_nightly_opens_an_issue_below_the_threshold(nightly_repo, monkeypatch, c
 
 
 def test_nightly_min_diff_pct_override_beats_the_baseline(nightly_repo, monkeypatch):
-    """Baseline op 85: 90% is groen. Override naar 100: dezelfde 90% is rood."""
+    """Baseline at 85: 90% is green. Override to 100: the same 90% is red."""
     monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
     write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
     content = "X = 0\n" + "\n".join(f"L{i} = {i}" for i in range(10)) + "\n"
@@ -306,8 +305,8 @@ def test_nightly_keeps_going_after_one_pr_fails_and_ends_red(
         "[]",
     )
     _queue_happy_remediation(gh, "https://github.com/x/y/issues/503", "PVTI_c")
-    # _queue_happy_remediation queuet zelf ook "issue list"; de eerste (falende)
-    # entry hierboven staat er dus voor.
+    # _queue_happy_remediation itself also queues "issue list"; the first (failing)
+    # entry above therefore comes before it.
 
     rc = ratchet.cmd_nightly(
         nightly_repo.root,
@@ -323,26 +322,26 @@ def test_nightly_keeps_going_after_one_pr_fails_and_ends_red(
     assert "ratchet: PR #11" in captured.out
     assert "ratchet: PR #12" in captured.out
     assert "PR #11:" in captured.err
-    assert len(gh.calls_for("issue create")) == 1  # alleen PR #12 kwam er doorheen
+    assert len(gh.calls_for("issue create")) == 1  # only PR #12 got through
 
 
 def test_nightly_keeps_going_after_a_pr_with_an_unreadable_report_entry(
     nightly_repo, monkeypatch, capsys
 ):
-    """M1: `src/missing.py` ontbreekt uit het coverage-rapport (report en diff
-    komen niet uit dezelfde run) — `diffcov.diff_coverage` gooit
-    `CoverageReportError` voor die ene PR. `cmd_nightly` moet die vangen,
-    doorgaan met de volgende PR (die zijn issue alsnog krijgt) én de
-    vloercontrole nog uitvoeren, in plaats van de hele nacht ongevangen te
-    laten crashen (geen issues, geen vloercontrole, watermerk blijft steken)."""
+    """M1: `src/missing.py` is missing from the coverage report (report and diff
+    do not come from the same run) — `diffcov.diff_coverage` raises
+    `CoverageReportError` for that one PR. `cmd_nightly` must catch it,
+    carry on with the next PR (which still gets its issue) and also run the
+    floor check, instead of letting the whole night crash uncaught
+    (no issues, no floor check, watermark stays stuck)."""
     monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
     write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
     nightly_repo.commit({"src/missing.py": "X = 0\nY = 1\n"}, subject="Kapot (#11)")
     nightly_repo.commit(
         {"src/a.py": "X = 0\nY = 1\nA = 2\nB = 3\n"}, subject="Gezond (#12)"
     )
-    # src/missing.py ontbreekt bewust uit "files" — alsof het rapport uit een
-    # andere run komt dan de diff.
+    # src/missing.py is deliberately missing from "files" — as if the report comes from a
+    # different run than the diff.
     report_path = write_report(
         nightly_repo.root,
         nightly_report(95.0, **{"src/a.py": _lines([2], [3, 4])}),
@@ -365,7 +364,7 @@ def test_nightly_keeps_going_after_a_pr_with_an_unreadable_report_entry(
     assert "PR #11:" in captured.err
     assert "no report entry" in captured.err
     assert "ratchet: PR #12" in captured.out
-    assert len(gh.calls_for("issue create")) == 1  # PR #12 kwam er alsnog doorheen
+    assert len(gh.calls_for("issue create")) == 1  # PR #12 got through after all
 
 
 @pytest.mark.parametrize("token", [None, ""])
@@ -376,12 +375,12 @@ def test_nightly_without_board_token_creates_the_issue_and_is_red(
         monkeypatch.delenv(prcov_issues.BOARD_TOKEN_ENV, raising=False)
     else:
         monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, token)
-    # Vloer groen (min_total_pct=0): de rode rc moet hier zuiver van het
-    # ontbrekende token komen, niet van de vloer — anders bewijst deze test
-    # niets over de token-tak zelf (review ronde 1, bevinding 1). Een
-    # ontbrekend token is wél degelijk fataal: een groene run zou het
-    # watermerk optillen en de volgende nacht reconcilieert de board-stap dan
-    # nooit meer.
+    # Floor green (min_total_pct=0): the red rc here must come purely from the
+    # missing token, not from the floor — otherwise this test proves
+    # nothing about the token branch itself (review round 1, finding 1). A
+    # missing token is indeed fatal: a green run would lift the
+    # watermark and the next night the board step would then never
+    # reconcile again.
     write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
     nightly_repo.commit(
         {"src/a.py": "X = 0\nY = 1\nA = 2\nB = 3\n"}, subject="Iets (#11)"
@@ -418,10 +417,10 @@ def test_nightly_without_board_token_creates_the_issue_and_is_red(
 def test_nightly_a_refused_board_write_names_the_token_and_keeps_going(
     nightly_repo, monkeypatch, capsys
 ):
-    """Token aanwezig, maar de gh-aanroep van ensure_on_board zelf faalt (het
-    token mag bijvoorbeeld niet schrijven). De melding moet BOARD_TOKEN_ENV
-    met naam noemen — anders wijst niets naar de oorzaak — en de volgende PR
-    moet nog steeds verwerkt worden."""
+    """Token present, but the gh call of ensure_on_board itself fails (the
+    token may not write, for example). The message must name BOARD_TOKEN_ENV
+    — otherwise nothing points to the cause — and the next PR
+    must still be processed."""
     monkeypatch.setenv(prcov_issues.BOARD_TOKEN_ENV, "tok")
     write_nightly_baseline(nightly_repo.root, min_diff_pct=85, min_total_pct=0)
     nightly_repo.commit(
@@ -464,7 +463,7 @@ def test_nightly_a_refused_board_write_names_the_token_and_keeps_going(
     assert "PR #11" in captured.err
     assert prcov_issues.BOARD_TOKEN_ENV in captured.err
     assert "ratchet: PR #12" in captured.out
-    assert len(gh.calls_for("issue create")) == 2  # beide PR's kwamen er doorheen
+    assert len(gh.calls_for("issue create")) == 2  # both PRs got through
 
 
 def test_nightly_dry_run_mutates_nothing(nightly_repo, monkeypatch):

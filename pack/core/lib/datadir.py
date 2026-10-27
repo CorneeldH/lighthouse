@@ -1,4 +1,4 @@
-"""Where the review records live (besluit 27).
+"""Where the review records live (decision 27).
 
 `LIGHTHOUSE_DATA` wins; otherwise `${XDG_DATA_HOME:-~/.local/share}/lighthouse/
 review-records/`. The records carry session content and must never land in a

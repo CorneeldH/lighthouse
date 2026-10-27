@@ -49,7 +49,7 @@ def test_core_block_word_budget():
 
 
 def test_core_block_says_how_to_read_a_heading():
-    """Ontwerpkeuze 19: the block explains `heading:<key>` once — the command that prints the
+    """Design choice 19: the block explains `heading:<key>` once — the command that prints the
     heading, and that reading accepts every language variant."""
     text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
     assert "python3 .lighthouse/lib/lighthouse_lib/headings.py <key>" in text

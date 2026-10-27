@@ -1,10 +1,11 @@
-"""`pack/core/lib/md_links.py`, as installed (#886): gedeelde linkextractie voor markdown.
+"""`pack/core/lib/md_links.py`, as installed (#886): shared link extraction for markdown.
 
-Eén module voor de norm "links in bestanden zijn relatief en wijzen naar een
-bestaand doel; absolute links zijn een probleem". Gebruikt door de herschreven
-`worktree-linkcheck.sh` (taak 5, via de CLI) en door de docs-linktests (taak 6,
-via `strip_code`, `relative_links` en `absolute_links`) — die laatste vervangt
-de eigen `_strip_code_fences` in `test_docs_planning.py` door deze module.
+One module for the norm "links in files are relative and point to an existing
+target; absolute links are a problem". Used by the rewritten
+`worktree-linkcheck.sh` (task 5, through the CLI) and by the docs link tests
+(task 6, through `strip_code`, `relative_links` and `absolute_links`); the
+latter replaces its own `_strip_code_fences` in `test_docs_planning.py` with
+this module.
 """
 
 import os
@@ -16,7 +17,7 @@ import pytest
 from tests.pack._testkit import INSTALLED_LIB, load_hook_lib
 
 ml = load_hook_lib("md_links")
-FENCE = "`" * 3  # letterlijk drie backticks in dit plan breekt de oude linkhook
+FENCE = "`" * 3  # a literal three backticks in this plan breaks the old link hook
 
 
 def test_strip_code_removes_both_fence_styles_and_inline_code():

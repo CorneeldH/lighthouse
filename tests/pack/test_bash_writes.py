@@ -1,12 +1,12 @@
-"""Leeslaag en staat van `pack/core/lib/bash_writes.py` (#871, taak 5+6).
+"""Read layer and state of `pack/core/lib/bash_writes.py` (#871, task 5+6).
 
-Taak 5: wortels, git-records (porcelain, diff-tree, reflog) en welke commits
-een post moet controleren. Taak 6: handtekeningen, de sessiemap, de
-gelockte ledger, het zaaien van een wortel, markers en `run_pre`. Zie
+Task 5: roots, git records (porcelain, diff-tree, reflog) and which commits
+a post has to check. Task 6: signatures, the session directory, the
+locked ledger, seeding a root, markers and `run_pre`. See
 `docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
-secties *Datastroom*, *Staat*, *Lock* en *pre*, en de bijbehorende
-task-briefs onder `.superpowers/sdd/2026-09-26-bash-write-gates/`. Dispatch
-en `post` komen in taak 7.
+the sections on data flow, state, lock and pre, and the accompanying
+task briefs under `.superpowers/sdd/2026-09-26-bash-write-gates/`. Dispatch
+and `post` come in task 7.
 """
 
 import json
@@ -34,7 +34,7 @@ E = bw.ReflogEntry
 
 @pytest.fixture(autouse=True)
 def gate_root(tmp_path, monkeypatch):
-    """Een lighthouse-root met een stub voor elke gate, zodat `run_gate` er een vindt."""
+    """A lighthouse root with a stub for every gate, so that `run_gate` finds one."""
     root = tmp_path / "lighthouse-root"
     hooks = root / ".claude" / "hooks" / "lighthouse"
     hooks.mkdir(parents=True)
@@ -92,9 +92,9 @@ def test_git_raises_giterror_on_timeout(tmp_path, monkeypatch):
 
 
 def test_porcelain_reports_the_old_path_of_a_rename_as_removed():
-    # De bron van een rename is weg (nettofilter: verwijderd, niet ongecontroleerd);
-    # de bron van een copy bestaat nog en wordt overgeslagen. Geen van beide is
-    # ooit kandidaat.
+    # The source of a rename is gone (net filter: deleted, not unchecked);
+    # the source of a copy still exists and is skipped. Neither is
+    # ever a candidate.
     assert bw.parse_porcelain(
         b" M a.py\0R  new.sh\0old.sh\0C  cp.sh\0src.sh\0 D gone.sh\0?? sp ace.sh\0"
     ) == (
@@ -134,8 +134,8 @@ def test_reflog_stops_at_the_ledger_head_and_reports_a_checkout():
 
 
 def test_reflog_empty_subject_does_not_hide_a_later_movement():
-    # De eerste entry van een nieuwe worktree heeft een leeg subject: die mag
-    # de melding van een echte beweging erachter niet onderdrukken.
+    # The first entry of a new worktree has an empty subject: it must not
+    # suppress the notice of a real movement behind it.
     e = [
         E("c3", 30, "commit: y"),
         E("e2", 20, ""),
@@ -159,9 +159,9 @@ def test_reflog_without_the_ledger_head_is_skipped_with_a_note():
 
 
 def test_reflog_with_a_start_time_also_walks_past_a_return_to_the_stop():
-    # Commit op `feat`, dan terug naar main: de nieuwste entry heeft al de
-    # sha van de ledger-`head`, de stop-wandeling ziet niets. De wandeling
-    # sinds de start vindt c3 wel; checkout-regels tellen niet mee.
+    # Commit on `feat`, then back to main: the newest entry already has the
+    # sha of the ledger `head`, the stop walk sees nothing. The walk
+    # since the start does find c3; checkout lines do not count.
     e = [
         E("b2", 30, "checkout: moving from feat to main"),
         E("c3", 30, "commit: x"),
@@ -174,9 +174,9 @@ def test_reflog_with_a_start_time_also_walks_past_a_return_to_the_stop():
 
 def test_reflog_with_a_start_time_dedups_and_survives_a_gap():
     e = [E("c3", 30, "commit: c"), E("b2", 20, "commit: b"), E("a1", 5, "commit: a")]
-    # c3 zit in beide wandelingen: één keer.
+    # c3 is in both walks: once.
     assert bw.commits_to_check(e, "b2", 10) == ([("c3", False), ("b2", False)], [])
-    # Reflog-gat: de melding blijft, de wandeling sinds de start loopt toch.
+    # Reflog gap: the notice stays, the walk since the start runs anyway.
     shas, notes = bw.commits_to_check(e, "gone", 10)
     assert shas == [("c3", False), ("b2", False)]
     assert len(notes) == 1 and "gone" in notes[0]
@@ -220,9 +220,9 @@ def test_parse_reflog_reads_the_epoch_from_gd():
 
 
 def test_parse_reflog_keeps_exotic_control_chars_in_the_subject():
-    # `str.splitlines()` breekt ook op \x1c-\x1e, \x0c, \x85, U+2028/2029 — een
-    # subject met zo'n teken mag het record niet uiteenrafelen. `.split("\n")`
-    # wel.
+    # `str.splitlines()` also breaks on \x1c-\x1e, \x0c, \x85, U+2028/2029 — a
+    # subject with such a character must not unravel the record. `.split("\n")`
+    # does not.
     subject = "a\x1cb   c\x0cd"
     text = f"aaa\x1fHEAD@{{5}}\x1f{subject}\n"
     assert bw.parse_reflog(text) == [E("aaa", 5, subject)]
@@ -290,8 +290,8 @@ def test_diff_commit_on_a_real_conflict_merge_names_only_the_resolution(tmp_path
     git(repo, "add", "c.txt")
     git(repo, "commit", "-qm", "main work")
 
-    # Bewuste conflictmerge: de testkit-`git()` gebruikt `check=True` en zou
-    # hier stuklopen op de niet-nul exit van een echt conflict.
+    # Deliberate conflict merge: the testkit `git()` uses `check=True` and would
+    # break here on the non-zero exit of a real conflict.
     subprocess.run(
         ["git", "-C", str(repo), "merge", "-q", "--no-ff", "side"],
         env=dict(os.environ, **GIT_ENV),
@@ -351,13 +351,13 @@ def test_derive_roots_on_an_open_quote_still_finds_an_absolute_path(tmp_path):
     assert os.path.realpath(str(b)) in roots
 
 
-# Regressie: `Step.dirs` is de LEVENDE mapstand van `walk` (buiten een
-# sub-shell delen alle Steps hetzelfde dict-object). Een `list(walk(...))`
-# die pas ná afloop `step.dirs["here"]` leest, ziet voor elke Step de
-# EINDstand van de hele wandeling — hier steeds `other` — in plaats van de
-# stand op het moment van die Step. Elke test eindigt daarom met een `cd`
-# naar een map buiten alle repo's, zodat een niet-per-Step-lezende
-# implementatie de eerdere wortel kwijtraakt.
+# Regression: `Step.dirs` is the LIVE directory state of `walk` (outside a
+# sub-shell all Steps share the same dict object). A `list(walk(...))`
+# that reads `step.dirs["here"]` only afterwards sees for every Step the
+# FINAL state of the whole walk — here always `other` — instead of the
+# state at the moment of that Step. Every test therefore ends with a `cd`
+# to a directory outside all repos, so that an implementation that does not
+# read per Step loses the earlier root.
 
 
 def test_derive_roots_reads_the_dir_state_per_step_for_cd(tmp_path):
@@ -432,7 +432,7 @@ def test_project_filter_drops_a_foreign_repo_and_flags_a_broken_one(tmp_path):
 
 
 def test_project_filter_keeps_a_forge_worktree_of_the_same_repo(tmp_path):
-    """Een worktree van een aparte clone met dezelfde `origin` hoort erbij (#36)."""
+    """A worktree of a separate clone with the same `origin` belongs too (#36)."""
     main = tmp_path / "main"
     init_repo(main)
     git(main, "remote", "add", "origin", ORIGIN)
@@ -614,8 +614,8 @@ def test_locked_ledger_does_not_write_back_an_unreadable_ledger(tmp_path):
 
     with bw.locked_ledger(state) as ledger:
         assert ledger.unreadable is True
-        # Een aanroeper die niets aan `unreadable` doet, mag de kapotte
-        # ledger niet stilzwijgend vervangen door alleen `roots` te vullen.
+        # A caller that does nothing about `unreadable` must not silently replace the broken
+        # ledger by filling only `roots`.
         ledger.roots["/r"] = {"seen": {}, "head": "x", "pending": [], "claims": {}}
 
     assert ledger_path.read_bytes() == original
@@ -746,8 +746,8 @@ def test_run_pre_returns_zero_without_a_project_dir(tmp_path, monkeypatch):
         "tool_input": {"command": "echo hi"},
     }
     assert bw.run_pre(payload) == 0
-    # Zonder `CLAUDE_PROJECT_DIR` keert `_run_pre` terug vóór `state_dir`
-    # ooit wordt aangeroepen: er is geen sessiemap, dus ook geen marker.
+    # Without `CLAUDE_PROJECT_DIR` `_run_pre` returns before `state_dir`
+    # is ever called: there is no session directory, so no marker either.
     assert not (xdg / "lighthouse-bash-gates" / "s").exists()
 
 
@@ -767,8 +767,8 @@ def test_run_pre_returns_zero_on_a_broken_repo(tmp_path, monkeypatch):
         "tool_input": {"command": "echo hi > x.sh"},
     }
     assert bw.run_pre(payload) == 0
-    # `project_filter` gooit een `GitError` op de kapotte `project_dir` zelf,
-    # vóórdat `_run_pre` `state_dir` aanroept: geen sessiemap, geen marker.
+    # `project_filter` raises a `GitError` on the broken `project_dir` itself,
+    # before `_run_pre` calls `state_dir`: no session directory, no marker.
     assert not (xdg / "lighthouse-bash-gates" / "sess-broken").exists()
 
 
@@ -793,9 +793,9 @@ def test_run_pre_does_not_overwrite_an_unreadable_ledger(tmp_path, monkeypatch):
     }
     assert bw.run_pre(payload) == 0
 
-    # De kapotte bytes blijven ongewijzigd: pre mag `dirty.sh` niet ongezien
-    # baseline maken door de ledger stilzwijgend te vervangen — dat is
-    # precies wat `post`'s "Ledger onleesbaar"-terugval (taak 7) moet zien.
+    # The broken bytes stay unchanged: pre must not make `dirty.sh` unseen
+    # baseline by silently replacing the ledger — that is
+    # exactly what the "Ledger onleesbaar" fallback of `post` (task 7) has to see.
     assert ledger_path.read_bytes() == original
     with bw.locked_ledger(state) as ledger:
         assert ledger.unreadable is True
@@ -803,9 +803,9 @@ def test_run_pre_does_not_overwrite_an_unreadable_ledger(tmp_path, monkeypatch):
 
 
 def test_run_pre_does_not_seed_past_a_replaced_ledger(tmp_path, monkeypatch):
-    # `ledger.reset`: post verving ooit een onleesbare ledger. Een wortel die
-    # daarin ontbreekt, kan eerdere sessie-writes hebben; pre mag hem niet
-    # als nullijn seeden, post valt voor hem terug.
+    # `ledger.reset`: post once replaced an unreadable ledger. A root that is
+    # missing from it may have earlier session writes; pre must not seed it
+    # as baseline, post falls back for it.
     repo = tmp_path / "repo"
     init_repo(repo)
     (repo / "dirty.sh").write_text("echo dirty\n", encoding="utf-8")
@@ -855,14 +855,14 @@ def test_run_pre_seeds_a_fresh_root_and_writes_a_marker(tmp_path, monkeypatch):
     assert isinstance(marker["start_ns"], int)
 
 
-# --- classify (taak 7) ---------------------------------------------------
+# --- classify (task 7) ---------------------------------------------------
 
 
 @pytest.mark.parametrize(
     ("rc", "output", "verdict"),
     [
         (0, b"", "ok"),
-        # Eén token voor elke gate, alleen op de eerste regel.
+        # One token for every gate, only on the first line.
         (
             2,
             b"shellcheck-gate: COULD NOT CHECK \xe2\x80\x94 shellcheck-repo.sh gave rc=4\n",
@@ -871,7 +871,7 @@ def test_run_pre_seeds_a_fresh_root_and_writes_a_marker(tmp_path, monkeypatch):
         (2, b"ruff-format: COULD NOT CHECK \xe2\x80\x94 ruff is missing\n", "unchecked"),
         (2, b"Linkcheck: COULD NOT CHECK \xe2\x80\x94 jq\n", "unchecked"),
         (2, b"Linkcheck: markdown-link bestaat niet: x.md\n", "finding"),
-        # ruff-format.sh: pass 1 staat vóór `Lint-gate:`, nooit een unchecked-vorm.
+        # ruff-format.sh: pass 1 comes before `Lint-gate:`, never an unchecked form.
         (2, b"1 file left unchanged\nLint-gate: los dit op\n", "finding"),
         (124, b"shellcheck-gate: halverwege afgebroken\n", "unchecked"),
         (1, b"Linkcheck: markdown-link bestaat niet: x.md\n", "unchecked"),
@@ -881,7 +881,7 @@ def test_classify(rc, output, verdict):
     assert bw.classify(rc, output) == verdict
 
 
-# --- run_post (taak 7) ---------------------------------------------------
+# --- run_post (task 7) ---------------------------------------------------
 
 
 def test_deadline_makes_progress_over_many_files(tmp_path, monkeypatch):
@@ -947,7 +947,7 @@ def test_deadline_makes_progress_over_many_files(tmp_path, monkeypatch):
     assert results[3][1:] == ("", "")
 
 
-# --- run_post bron 2 (taak 8) ---------------------------------------------
+# --- run_post source 2 (task 8) ---------------------------------------------
 
 BAD_NAME = os.fsdecode(b"bad\xff.sh")
 
@@ -978,7 +978,7 @@ def _payload(repo, n: int) -> dict:
 def _write_bad_name(repo) -> None:
     try:
         (repo / BAD_NAME).write_text("echo hoi\n", encoding="utf-8")
-    except OSError as exc:  # APFS weigert niet-UTF-8-namen (EILSEQ)
+    except OSError as exc:  # APFS refuses non-UTF-8 names (EILSEQ)
         pytest.skip(f"bestandssysteem weigert een niet-UTF-8-naam: {exc}")
 
 
@@ -1049,8 +1049,8 @@ def test_failing_diff_tree_in_a_born_repo_is_unchecked(tmp_path, monkeypatch):
 
 
 def test_missed_deadline_advances_head_and_keeps_pending(tmp_path, monkeypatch):
-    # Alleen de klok van de dispatch springt voorbij de deadline; de
-    # git-leesacties (`time.time`) houden hun volle 90 s, dus bron 2 loopt echt.
+    # Only the clock of the dispatch jumps past the deadline; the
+    # git read actions (`time.time`) keep their full 90 s, so source 2 really runs.
     repo = _post_env(tmp_path, monkeypatch)
     verdicts = {"x.sh": ("finding", b"SC2034 x.sh")}
     monkeypatch.setattr(bw, "run_gate", lambda root, rel, gate, deadline: verdicts[rel])
@@ -1100,7 +1100,7 @@ def test_advance_is_a_compare_and_swap_on_head():
     record = {"seen": {}, "head": "H0", "pending": [], "claims": {}}
     bw._advance(record, _pool("H0", "H1"))
     assert record["head"] == "H1"
-    # Een parallelle post schoof al door naar H2: deze post (begon op H0) verliest.
+    # A parallel post already moved on to H2: this post (began at H0) loses.
     record["head"] = "H2"
     bw._advance(record, _pool("H0", "H1"))
     assert record["head"] == "H2"
@@ -1113,8 +1113,8 @@ def test_advance_merges_pending_and_keeps_what_another_post_added():
 
 
 def test_pending_rename_source_is_not_unchecked(tmp_path, monkeypatch):
-    # a.sh komt via een gemiste deadline in `pending`, en wordt daarna gestaged
-    # hernoemd: de bron is verwijderd, niet `COULD NOT CHECK`.
+    # a.sh gets into `pending` through a missed deadline, and is then staged
+    # renamed: the source is deleted, not `COULD NOT CHECK`.
     repo = _post_env(tmp_path, monkeypatch)
     monkeypatch.setattr(bw, "run_gate", lambda root, rel, gate, deadline: ("ok", b""))
     assert bw.run_pre(_payload(repo, 0)) == 0
@@ -1142,19 +1142,19 @@ def test_pending_rename_source_is_not_unchecked(tmp_path, monkeypatch):
     assert _ledger_root(tmp_path, repo)["pending"] == []
 
 
-# --- dispatch: verdwenen kandidaat, signaal; pre: marker vóór het zaaien ----
+# --- dispatch: vanished candidate, signal; pre: marker before the seeding ----
 
 
 def _dirty_calls(repo, monkeypatch, names):
-    """Pre, dan `names` vuil schrijven: de volgende post heeft ze als kandidaat."""
+    """Pre, then write `names` dirty: the next post has them as a candidate."""
     assert bw.run_pre(_payload(repo, 0)) == 0
     for name in names:
         (repo / name).write_text("echo hoi\n", encoding="utf-8")
 
 
 def test_vanished_candidate_is_not_dispatched_and_not_ok(tmp_path, monkeypatch):
-    # x.sh staat in HEAD en verdwijnt tussen pool en gate: de gate zou `[ -f ]`
-    # zien falen en exit 0 geven. Dat is geen oordeel.
+    # x.sh is in HEAD and vanishes between pool and gate: the gate would see `[ -f ]`
+    # fail and give exit 0. That is no verdict.
     repo = _post_env(tmp_path, monkeypatch)
     (repo / "x.sh").write_text("echo a\n", encoding="utf-8")
     git(repo, "add", "x.sh")
@@ -1180,7 +1180,7 @@ def test_vanished_candidate_is_not_dispatched_and_not_ok(tmp_path, monkeypatch):
     assert dispatched == []
     assert code == 2, (out, err)
     assert "COULD NOT CHECK" in err and "x.sh" in err
-    # y.sh stond nooit in HEAD: verwijderd, geen melding.
+    # y.sh was never in HEAD: deleted, no notice.
     assert "y.sh" not in err
     record = _ledger_root(tmp_path, repo)
     assert "x.sh" not in record["seen"]
@@ -1211,9 +1211,9 @@ def test_signal_during_a_gate_stops_the_dispatch_loudly(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("rc", [129, 130, 143])
 def test_gate_exit_128_plus_n_does_not_stop_the_dispatch(tmp_path, monkeypatch, rc):
-    # De gate eindigt zelf met 128 + n (bv. een gekilde shellcheck onder
-    # `set -e`); de post kreeg geen signaal. Dat is een gewone niet-oordeel-
-    # exit voor dat ene bestand: de overige kandidaten gaan wel door de gate.
+    # The gate itself ends with 128 + n (e.g. a killed shellcheck under
+    # `set -e`); the post received no signal. That is an ordinary non-verdict
+    # exit for that one file: the other candidates do go through the gate.
     repo = _post_env(tmp_path, monkeypatch)
     _dirty_calls(repo, monkeypatch, ["a.sh", "b.sh", "c.sh"])
     started: list[str] = []
@@ -1232,8 +1232,8 @@ def test_gate_exit_128_plus_n_does_not_stop_the_dispatch(tmp_path, monkeypatch, 
 
 
 def test_pre_writes_the_marker_before_seeding(tmp_path, monkeypatch):
-    # Pre wordt op zijn timeout van 5 s gekild tijdens het zaaien: de marker
-    # (met de starttijd voor bron 2) moet er dan al staan.
+    # Pre is killed at its 5 s timeout during the seeding: the marker
+    # (with the start time for source 2) must already be there then.
     repo = _post_env(tmp_path, monkeypatch)
 
     def killed_seed(root, start_ns, *, deadline):
@@ -1267,11 +1267,11 @@ def test_pre_stops_seeding_at_its_deadline(tmp_path, monkeypatch):
     assert bw.read_marker(bw.state_dir("sess-utf8"), bw.marker_key(payload))
 
 
-# --- lighthouse: één token, ontbrekende taalpakketten (besluit 18, 19) --------
+# --- lighthouse: one token, missing language packs (decision 18, 19) --------
 
 
 def test_classify_first_line_only():
-    """Een bevinding die op een latere regel `COULD NOT CHECK` citeert, blijft een bevinding."""
+    """A finding that quotes `COULD NOT CHECK` on a later line stays a finding."""
     output = b"SC2034: x appears unused\necho 'COULD NOT CHECK'\n"
     assert bw.classify(2, output) == "finding"
 
@@ -1322,7 +1322,7 @@ def test_missing_language_pack_is_reported_not_blocked(tmp_path, monkeypatch, ga
     context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
     assert "a.py not checked — no python gate installed" in context
     assert "b.sh not checked — no shell gate installed" in context
-    # Eén melding per wijziging: de volgende call meldt ongewijzigde bestanden niet opnieuw.
+    # One notice per change: the next call does not report unchanged files again.
     assert bw.run_pre(_payload(repo, 1)) == 0
     assert bw.run_post(_payload(repo, 1)) == (0, "", "")
 
@@ -1417,7 +1417,7 @@ def test_dispatch_signature_after_rewriting_gate(tmp_path, monkeypatch, gates, s
     assert seen == (sigs[signed_after] if signed_after else before)
 
 
-# --- the code-language notice on the Bash path (#37, besluit 19) -------------
+# --- the code-language notice on the Bash path (#37, decision 19) -------------
 
 
 def test_run_gate_sets_under_gates_env(tmp_path, monkeypatch, gate_root):

@@ -1,21 +1,21 @@
-"""Issue, handoff en board per PR: één per PR onder de drempel.
+"""Issue, handoff and board per PR: one per PR below the threshold.
 
-Voedt de nightly-arm van `ratchet.py`: voor elke PR met te lage diff-coverage
-opent (of herstelt) deze module een GitHub-issue, plakt de `🤖 Handoff`-comment
-van het comment-protocol (`lighthouse_lib.protocol`), en zet het issue op het
-board met status `Controller`. Een issue doorloopt vier stappen, in deze
-volgorde: (1) `issue create` met de labels uit `python.coverage_issue_labels`,
-(2) de handoff-comment, (3) op het board, (4) status `Controller`. De comment
-staat vóór de status: de controller kijkt alleen naar issues op `Controller`,
-dus zo ziet hij het issue nooit zonder handoff. Een issue van een eerdere nacht
-doorloopt dezelfde vier stappen, maar slaat elke stap over die al gedaan is
-(reconcile, geen tweede issue, geen dubbele comment).
+Feeds the nightly arm of `ratchet.py`: for every PR with too low diff coverage
+this module opens (or repairs) a GitHub issue, pastes the `🤖 Handoff` comment
+of the comment protocol (`lighthouse_lib.protocol`), and puts the issue on the
+board with status `Controller`. An issue goes through four steps, in this
+order: (1) `issue create` with the labels from `python.coverage_issue_labels`,
+(2) the handoff comment, (3) on the board, (4) status `Controller`. The comment
+comes before the status: the controller only looks at issues on `Controller`,
+so it never sees the issue without a handoff. An issue from an earlier night
+goes through the same four steps, but skips every step that is already done
+(reconcile, no second issue, no duplicate comment).
 
-Het board is optioneel (besluit 16): zonder `[forge.board]` komen alleen het
-issue en de handoff. Zonder statusoptie `Controller` blijft het item op `To do`.
-Repo, taal, board en default branch komen uit `lighthouse.toml`.
-De tekst van issue en handoff is Engels, ook bij `[project] language = "nl"`;
-alleen de kop volgt de projecttaal (besluit 7 van de M0-pakketspec).
+The board is optional (decision 16): without `[forge.board]` only the
+issue and the handoff come. Without a status option `Controller` the item stays on `To do`.
+Repo, language, board and default branch come from `lighthouse.toml`.
+The text of issue and handoff is English, also with `[project] language = "nl"`;
+only the heading follows the project language (decision 7 of the M0 package spec).
 """
 
 from __future__ import annotations
@@ -28,9 +28,9 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-# `quality.diffcov` heeft de map scripts/ op sys.path nodig (één map boven deze),
-# `lighthouse_lib` de map lib/ ernaast: geïnstalleerd `.lighthouse/scripts/quality/`
-# naast `.lighthouse/lib/` (ontwerpkeuze 6 van (b), voor een script in een submap).
+# `quality.diffcov` needs the scripts/ directory on sys.path (one directory above this one),
+# `lighthouse_lib` the lib/ directory beside it: installed `.lighthouse/scripts/quality/`
+# next to `.lighthouse/lib/` (design choice 6 of (b), for a script in a subdirectory).
 _SCRIPTS = Path(__file__).resolve().parents[1]
 _LIB = Path(__file__).resolve().parents[2] / "lib"
 for _path in (_SCRIPTS, _LIB):
@@ -43,20 +43,20 @@ from quality.diffcov import DiffCoverage
 Gh = Callable[[Sequence[str], Mapping[str, str] | None, str | None], str]
 
 BOARD_TOKEN_ENV = "LIGHTHOUSE_BOARD_TOKEN"
-# De worktree in de handoff is een pad op de host waar de controller draait, niet
-# op de runner: de nightly zet hem in deze env. Zonder env de hoofdcheckout van de
-# repo waarin het script draait.
+# The worktree in the handoff is a path on the host where the controller runs, not
+# on the runner: the nightly sets it in this env. Without the env, the main checkout of the
+# repo in which the script runs.
 HANDOFF_WORKTREE_ENV = "LIGHTHOUSE_HANDOFF_WORKTREE"
 START_COMMAND = "/lighthouse-start-issue"
 
-# Status `None` (nog geen item) of `"To do"` (Auto-add zette hem daar net) —
-# in beide gevallen heeft de controller of de gebruiker het issue nog niet
-# overgenomen. Elke andere status (`Controller`, `In progress`, `On hold`,
-# `Done`) blijft staan.
-NIET_OVERGEDRAGEN = (None, "To do")
+# Status `None` (no item yet) or `"To do"` (Auto-add just put it there) —
+# in both cases the controller or the user has not yet taken over the
+# issue. Every other status (`Controller`, `In progress`, `On hold`,
+# `Done`) stays.
+NOT_TAKEN_OVER = (None, "To do")
 
 def _config() -> config.Config:
-    """`lighthouse.toml`, bij elke aanroep opnieuw gelezen; `forge.repo` is verplicht."""
+    """`lighthouse.toml`, re-read on every call; `forge.repo` is required."""
     cfg = config.load(config.config_path())
     if cfg.repo is None:
         raise config.ConfigError(f"{config.config_path()}: forge.repo is not set")
@@ -68,7 +68,7 @@ def _setting(key: str) -> object:
 
 
 def board() -> config.Board | None:
-    """Het board uit `[forge.board]`, of `None` als de repo er geen heeft."""
+    """The board from `[forge.board]`, or `None` if the repo has none."""
     return _config().board
 
 
@@ -82,7 +82,7 @@ def labels() -> list[str]:
 
 
 def nightly_workflow() -> str | None:
-    """De workflow van het watermerk (`python.nightly_workflow`), of `None`."""
+    """The workflow of the watermark (`python.nightly_workflow`), or `None`."""
     try:
         return str(_setting("python.nightly_workflow"))
     except KeyError:
@@ -90,8 +90,8 @@ def nightly_workflow() -> str | None:
 
 
 def handoff_worktree() -> str:
-    """De worktree in de handoff: `LIGHTHOUSE_HANDOFF_WORKTREE`, anders de map boven
-    de gedeelde `.git` van deze repo (de hoofdcheckout, ook vanuit een worktree)."""
+    """The worktree in the handoff: `LIGHTHOUSE_HANDOFF_WORKTREE`, otherwise the directory above
+    the shared `.git` of this repo (the main checkout, also from a worktree)."""
     override = os.environ.get(HANDOFF_WORKTREE_ENV)
     if override:
         return override
@@ -110,7 +110,7 @@ def handoff_worktree() -> str:
     return str(Path(proc.stdout.strip()).parent)
 
 
-# Owner en naam gaan als GraphQL-variabelen mee: de query kent de repo niet.
+# Owner and name go along as GraphQL variables: the query does not know the repo.
 _STATUS_QUERY = """
 query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
@@ -130,10 +130,10 @@ query($owner: String!, $name: String!, $number: Int!) {
 """
 
 
-class _GhFout(subprocess.CalledProcessError):
-    """Een `CalledProcessError` (`isinstance` blijft kloppen), maar met de stderr
-    van `gh` in `str(fout)` — anders toont een naïeve `print(fout)` in de
-    nightly-log alleen "returned non-zero exit status N", niet wat `gh` zelf zei."""
+class _GhError(subprocess.CalledProcessError):
+    """A `CalledProcessError` (`isinstance` stays correct), but with the stderr
+    of `gh` in `str(error)` — otherwise a naive `print(error)` in the
+    nightly log shows only "returned non-zero exit status N", not what `gh` itself said."""
 
     def __str__(self) -> str:
         basis = super().__str__()
@@ -146,11 +146,11 @@ def run_gh(
     env: Mapping[str, str] | None = None,
     input: str | None = None,
 ) -> str:
-    """De echte `Gh`: roept `gh` aan, met `env` boven op de bestaande omgeving.
+    """The real `Gh`: calls `gh`, with `env` on top of the existing environment.
 
-    `timeout=60`: een hangende `gh`-aanroep mag
-    de nightly niet vasthouden. Bij rc ≠ 0 een `subprocess.CalledProcessError`
-    (via `_GhFout`, zie daar) — nooit stil doorlopen op een fout van `gh`.
+    `timeout=60`: a hanging `gh` call must not
+    hold up the nightly. On rc ≠ 0 a `subprocess.CalledProcessError`
+    (via `_GhError`, see there) — never silently carry on past an error from `gh`.
     """
     full_env = {**os.environ, **env} if env else None
     try:
@@ -163,8 +163,8 @@ def run_gh(
             timeout=60,
             check=True,
         )
-    except subprocess.CalledProcessError as fout:
-        raise _GhFout(fout.returncode, fout.cmd, fout.output, fout.stderr) from fout
+    except subprocess.CalledProcessError as error:
+        raise _GhError(error.returncode, error.cmd, error.output, error.stderr) from error
     return proc.stdout
 
 
@@ -173,24 +173,24 @@ def title(pr: int, pct: float, threshold: int) -> str:
 
 
 def ranges(lines: Sequence[int]) -> str:
-    """`[3, 4, 5, 9]` → `"3-5, 9"` — samenhangende regelnummers als bereik."""
+    """`[3, 4, 5, 9]` → `"3-5, 9"` — consecutive line numbers as a range."""
     ordered = sorted(set(lines))
     if not ordered:
         return ""
-    stukken: list[str] = []
-    start = vorige = ordered[0]
-    for regel in ordered[1:]:
-        if regel == vorige + 1:
-            vorige = regel
+    parts: list[str] = []
+    start = previous = ordered[0]
+    for number in ordered[1:]:
+        if number == previous + 1:
+            previous = number
             continue
-        stukken.append(str(start) if start == vorige else f"{start}-{vorige}")
-        start = vorige = regel
-    stukken.append(str(start) if start == vorige else f"{start}-{vorige}")
-    return ", ".join(stukken)
+        parts.append(str(start) if start == previous else f"{start}-{previous}")
+        start = previous = number
+    parts.append(str(start) if start == previous else f"{start}-{previous}")
+    return ", ".join(parts)
 
 
 def body(pr: int, result: DiffCoverage, threshold: int, run_url: str | None) -> str:
-    regels = [
+    lines = [
         (
             f"PR #{pr} is on `{default_branch()}` with {result.pct:.1f}% diff coverage on the lines "
             f"it still owns, below the {threshold}% floor in `quality-baseline.toml`."
@@ -198,25 +198,25 @@ def body(pr: int, result: DiffCoverage, threshold: int, run_url: str | None) -> 
         "",
         "Uncovered lines:",
     ]
-    for pad in sorted(result.uncovered):
-        regels.append(f"- `{pad}`: {ranges(result.uncovered[pad])}")
-    regels.append("")
+    for path in sorted(result.uncovered):
+        lines.append(f"- `{path}`: {ranges(result.uncovered[path])}")
+    lines.append("")
     if run_url:
-        regels.append(f"Found by the nightly run: {run_url}")
-    regels.append(
+        lines.append(f"Found by the nightly run: {run_url}")
+    lines.append(
         "Cover these lines with a test, or mark code that cannot run with "
         "`# pragma: no cover` and a reason."
     )
-    return "\n".join(regels)
+    return "\n".join(lines)
 
 
 def last_success_sha(gh: Gh, workflow: str) -> str | None:
-    """`headSha` van de laatste geslaagde run van `workflow` op de default branch,
-    of `None`.
+    """`headSha` of the last successful run of `workflow` on the default branch,
+    or `None`.
 
-    `--event schedule` sluit een `workflow_dispatch` uit: een handmatige run met
-    `since=`/een lage `min_diff_pct` is anders ook `success` en verschuift het
-    watermerk, waarna PR's die ertussen liggen nooit beoordeeld worden.
+    `--event schedule` excludes a `workflow_dispatch`: a manual run with
+    `since=`/a low `min_diff_pct` is otherwise also `success` and shifts the
+    watermark, after which PRs in between are never judged.
     """
     output = gh(
         [
@@ -247,12 +247,12 @@ def last_success_sha(gh: Gh, workflow: str) -> str | None:
 def ensure_issue(
     gh: Gh, pr: int, result: DiffCoverage, threshold: int, run_url: str | None
 ) -> tuple[str, int, str] | None:
-    """Stap 1: zoek, reconcile of maak het issue voor deze PR.
+    """Step 1: find, reconcile or create the issue for this PR.
 
-    `(actie, nummer, url)` met actie `"created"` of `"reconciled"`; `None` als
-    er alleen een gesloten issue voor deze PR bestaat (al afgehandeld). Open
-    wint van gesloten. Reconcile voegt alleen ontbrekende labels toe, nooit
-    een tweede issue.
+    `(action, number, url)` with action `"created"` or `"reconciled"`; `None` if
+    only a closed issue exists for this PR (already handled). Open
+    beats closed. Reconcile only adds missing labels, never
+    a second issue.
     """
     wanted = labels()
     prefix = f"Diff-coverage #{pr} "
@@ -270,43 +270,43 @@ def ensure_issue(
         None,
         None,
     )
-    kandidaten = json.loads(output)
-    matches = [c for c in kandidaten if str(c.get("title", "")).startswith(prefix)]
+    candidates = json.loads(output)
+    matches = [c for c in candidates if str(c.get("title", "")).startswith(prefix)]
     open_matches = [c for c in matches if str(c.get("state", "")).upper() == "OPEN"]
     if open_matches:
         issue = open_matches[0]
-        nummer = int(issue["number"])
+        number = int(issue["number"])
         url = str(issue["url"])
-        aanwezig = {label["name"] for label in issue.get("labels", [])}
-        ontbreekt = [label for label in wanted if label not in aanwezig]
-        if ontbreekt:
-            edit_args = ["issue", "edit", str(nummer)]
-            for label in ontbreekt:
+        present = {label["name"] for label in issue.get("labels", [])}
+        missing = [label for label in wanted if label not in present]
+        if missing:
+            edit_args = ["issue", "edit", str(number)]
+            for label in missing:
                 edit_args += ["--add-label", label]
             gh(edit_args, None, None)
-        return ("reconciled", nummer, url)
+        return ("reconciled", number, url)
     if matches:
-        return None  # alleen gesloten — al afgehandeld
-    nieuwe_titel = title(pr, result.pct, threshold)
-    nieuwe_body = body(pr, result, threshold, run_url)
+        return None  # only closed — already handled
+    new_title = title(pr, result.pct, threshold)
+    new_body = body(pr, result, threshold, run_url)
     create_args = [
         "issue",
         "create",
         "--title",
-        nieuwe_titel,
+        new_title,
         "--body",
-        nieuwe_body,
+        new_body,
     ]
     for label in wanted:
         create_args += ["--label", label]
     url = gh(create_args, None, None).strip()
-    nummer = int(url.rstrip("/").rsplit("/", 1)[-1])
-    return ("created", nummer, url)
+    number = int(url.rstrip("/").rsplit("/", 1)[-1])
+    return ("created", number, url)
 
 
 def handoff_comment(issue_number: int, pr: int, threshold: int) -> str:
-    """De `🤖 Handoff`-comment van het protocol: de kop in `[project] language`, de
-    sleutels in het Engels (besluit 21), zodat de controller hem parseert en start."""
+    """The `🤖 Handoff` comment of the protocol: the heading in `[project] language`, the
+    keys in English (decision 21), so the controller parses and starts it."""
     cfg = _config()
     worktree = handoff_worktree()
     branch = str(config.lookup(cfg, "forge.default_branch"))
@@ -332,14 +332,14 @@ def handoff_comment(issue_number: int, pr: int, threshold: int) -> str:
 
 
 def ensure_handoff(gh: Gh, issue_number: int, pr: int, threshold: int) -> bool:
-    """Stap 2: plak de handoff-comment, tenzij hij er al staat.
+    """Step 2: paste the handoff comment, unless it is already there.
 
-    `--jq '.[].body | @json'` geeft per comment één regel: zijn hele body als
-    JSON-string. `protocol.parse_header` leest daarvan de eerste regel, dus een
-    comment die begint met `🤖 Handoff · …` telt mee, en ook een handoff van vóór
-    de verhuizing (`volgende:`, `wanneer:`), maar een comment die het kopje ergens
-    halverwege citeert telt niet. `--paginate`: een issue met veel comments geeft
-    anders alleen de eerste pagina terug.
+    `--jq '.[].body | @json'` gives one line per comment: its whole body as a
+    JSON string. `protocol.parse_header` reads the first line of that, so a
+    comment that starts with `🤖 Handoff · …` counts, and so does a handoff from before
+    the move (`volgende:`, `wanneer:`), but a comment that quotes the heading somewhere
+    in the middle does not. `--paginate`: an issue with many comments otherwise returns
+    only the first page.
     """
     output = gh(
         [
@@ -352,10 +352,10 @@ def ensure_handoff(gh: Gh, issue_number: int, pr: int, threshold: int) -> bool:
         None,
         None,
     )
-    for regel in output.splitlines():
-        if not regel.strip():
+    for line in output.splitlines():
+        if not line.strip():
             continue
-        header = protocol.parse_header(str(json.loads(regel)))
+        header = protocol.parse_header(str(json.loads(line)))
         if header is not None and header.kind == "handoff":
             return False
     gh(
@@ -366,10 +366,10 @@ def ensure_handoff(gh: Gh, issue_number: int, pr: int, threshold: int) -> bool:
     return True
 
 
-def _lees_status(
+def _read_status(
     gh: Gh, token: str, issue_number: int
 ) -> tuple[str, str | None] | None:
-    """`(item_id, status)` van dit issue op óns board, of `None` als het er niet op staat."""
+    """`(item_id, status)` of this issue on our board, or `None` if it is not on it."""
     repo = _config()
     assert repo.board is not None
     output = gh(
@@ -392,12 +392,12 @@ def _lees_status(
     nodes = data["data"]["repository"]["issue"]["projectItems"]["nodes"]
     for node in nodes:
         if node["project"]["id"] == repo.board.project_id:
-            waarde = node.get("fieldValueByName") or {}
-            return str(node["id"]), waarde.get("name")
+            value = node.get("fieldValueByName") or {}
+            return str(node["id"]), value.get("name")
     return None
 
 
-def _zet_controller(gh: Gh, token: str, item_id: str, board: config.Board) -> None:
+def _set_controller(gh: Gh, token: str, item_id: str, board: config.Board) -> None:
     gh(
         [
             "project",
@@ -416,14 +416,14 @@ def _zet_controller(gh: Gh, token: str, item_id: str, board: config.Board) -> No
     )
 
 
-def _item_id_uit_add(output: str) -> str:
-    """`id` uit `project item-add --format json`, of `""` als het antwoord leeg
-    of onleesbaar is.
+def _item_id_from_add(output: str) -> str:
+    """`id` from `project item-add --format json`, or `""` if the answer is empty
+    or unreadable.
 
-    Zaadwaarde voor `item_id`: de GraphQL-statuslezing hierna overschrijft hem
-    zodra ze zelf een node op ons project vindt. Zonder dit zaad draait een
-    `item-edit` met een lege `--id` als die lezing het item onverwacht niet
-    terugvindt — `project item-add` levert dezelfde node-id, alleen synchroon.
+    Seed value for `item_id`: the GraphQL status read after this overwrites it
+    as soon as it finds a node on our project itself. Without this seed an
+    `item-edit` runs with an empty `--id` if that read unexpectedly does not
+    find the item — `project item-add` returns the same node id, only synchronously.
     """
     try:
         data = json.loads(output)
@@ -439,24 +439,24 @@ def ensure_on_board(
     token: str,
     sleep: Callable[[float], None] = time.sleep,
 ) -> str:
-    """Stap 3 en 4: op het board, en status `Controller` als niemand het al overnam.
+    """Steps 3 and 4: on the board, and status `Controller` if nobody has taken it over yet.
 
-    Auto-add zet een nieuw item asynchroon op `To do`; een `item-edit` vóór die
-    stap wordt overschreven. Daarom eerst herlezen zolang de Status `None` is
-    (hoogstens 5 keer, met `sleep(3)` ertussen). Staat hij daarna in
-    `NIET_OVERGEDRAGEN`, dan naar `Controller`, daarna `sleep(3)` en één keer
-    opnieuw lezen: staat hij dan op `To do` (een late Auto-add), dan nog één
-    `item-edit`. Elke andere status blijft staan.
+    Auto-add puts a new item on `To do` asynchronously; an `item-edit` before that
+    step is overwritten. So first re-read as long as the Status is `None`
+    (at most 5 times, with `sleep(3)` in between). If it is then in
+    `NOT_TAKEN_OVER`, go to `Controller`, then `sleep(3)` and read once
+    more: if it is then on `To do` (a late Auto-add), one more
+    `item-edit`. Every other status stays.
 
-    Zonder `[forge.board]` geen enkele board-aanroep; zonder statusoptie
-    `Controller` wel op het board, maar de status blijft staan. Beide gevallen
-    staan in de teruggegeven regel, geen van beide is een fout.
+    Without `[forge.board]` no board call at all; without a status option
+    `Controller` it does go on the board, but the status stays. Both cases
+    are in the returned line, neither is an error.
     """
     repo = _config()
     if repo.board is None:
         return "board: skipped — no [forge.board] configured"
     env = {"GH_TOKEN": token}
-    toegevoegd = gh(
+    added = gh(
         [
             "project",
             "item-add",
@@ -471,36 +471,36 @@ def ensure_on_board(
         env,
         None,
     )
-    item_id = _item_id_uit_add(toegevoegd)
+    item_id = _item_id_from_add(added)
 
     status: str | None = None
-    for poging in range(5):
-        gevonden = _lees_status(gh, token, issue_number)
-        if gevonden is not None:
-            gevonden_id, status = gevonden
-            if gevonden_id:
-                item_id = gevonden_id
+    for attempt in range(5):
+        found = _read_status(gh, token, issue_number)
+        if found is not None:
+            found_id, status = found
+            if found_id:
+                item_id = found_id
         if status is not None:
             break
-        if poging < 4:
+        if attempt < 4:
             sleep(3)
 
-    if status in NIET_OVERGEDRAGEN and config.CONTROLLER_STATUS_OPTION not in repo.board.status_options:
+    if status in NOT_TAKEN_OVER and config.CONTROLLER_STATUS_OPTION not in repo.board.status_options:
         return (
             f"#{issue_number} on board, status {status or 'none'}; "
             "board: status Controller skipped — no such status option"
         )
-    if status in NIET_OVERGEDRAGEN:
-        _zet_controller(gh, token, item_id, repo.board)
+    if status in NOT_TAKEN_OVER:
+        _set_controller(gh, token, item_id, repo.board)
         status = "Controller"
         sleep(3)
-        gevonden = _lees_status(gh, token, issue_number)
-        if gevonden is not None:
-            gevonden_id, status = gevonden
-            if gevonden_id:
-                item_id = gevonden_id
+        found = _read_status(gh, token, issue_number)
+        if found is not None:
+            found_id, status = found
+            if found_id:
+                item_id = found_id
         if status == "To do":
-            _zet_controller(gh, token, item_id, repo.board)
+            _set_controller(gh, token, item_id, repo.board)
             status = "Controller"
 
     return f"#{issue_number} on board, status {status}"

@@ -4,7 +4,7 @@ The skill decides on which layer a new instruction belongs and validates with
 `.lighthouse/scripts/check-instructions.sh`. That script carries only the generic checks of
 the source (1, 2, 3, 4, 5, 7, 8, 10, 11); the skill names no project-own check (6, 9, 12, 13).
 The skill prefix and the word ceiling come from `[project]`; the surface measurement stays in
-paia and runs only if present (ontwerpkeuze 16).
+paia and runs only if present (design choice 16).
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def test_bounding_clause_matches_check_4():
     """The form the skill prescribes must be one check 4 (`has_exclusion_clause`) accepts."""
     clause = re.search(r"Form: `([^`]+)`", SKILL)
     assert clause, "no Form: line for the bounding clause"
-    words = re.search(r'for woord in (.*?); do', SCRIPT, re.DOTALL).group(1)
+    words = re.search(r'for word in (.*?); do', SCRIPT, re.DOTALL).group(1)
     accepted = re.findall(r'"([^"]+)"', words)
     assert any(w in clause.group(1).lower() for w in accepted), (clause.group(1), accepted)
 

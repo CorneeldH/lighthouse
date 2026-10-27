@@ -16,7 +16,7 @@
 # Could not check (no jq or uvx, no repository, no venv, a ty that does not
 # start, a configuration that cannot be read, a turn whose checkout cannot be
 # determined): exit 0 with a systemMessage `ty-check: COULD NOT CHECK — <reason>`
-# (ontwerpkeuze 13). Blocking there would keep the session from stopping; staying
+# (design choice 13). Blocking there would keep the session from stopping; staying
 # silent would read as "type-clean".
 # `python.source_dirs = []` turns the check off, without a message.
 

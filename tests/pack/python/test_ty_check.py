@@ -1,6 +1,6 @@
 """The Stop hook `ty-check.sh` of `pack/python`: it runs `ty` on the directories in
 `python.source_dirs`, blocks once per turn on diagnostics, and says so — without
-blocking — when it could not check (ontwerpkeuze 13).
+blocking — when it could not check (design choice 13).
 
 From the source repository's `test_quality_hooks.py:166-292` and 741-759. Left out
 there: `test_ty_pin_matches_hook` (the source repository's `pyproject.toml`) and

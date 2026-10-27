@@ -1,19 +1,19 @@
-"""`bash-write-gates` (#871): wortels, git-records, reflog, de per-sessie
-ledger, `pre`, en `post` met de dispatch naar de bestaande gates.
+"""`bash-write-gates` (#871): roots, git records, reflog, the per-session
+ledger, `pre`, and `post` with the dispatch to the existing gates.
 
-Zie `docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
-secties *Datastroom* (Wortels, post bron 1/2), *Staat*, *Lock*, *pre*, *post*,
-*De pool*, *Dispatch*, *Uitvoer* en *Foutafhandeling* voor de semantiek.
-Aangeroepen als `python3 bash_writes.py pre|post` met de hookpayload op
-stdin, via de wrapper `.claude/hooks/lighthouse/bash-write-gates.sh`. De gates
-staan in `<repo-root>/.claude/hooks/lighthouse/` (`config.repo_root()`); een gate
-die er niet staat, omdat zijn taalpakket ontbreekt, meldt post per bestand
-zonder te blokkeren (besluit 19).
+See `docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
+the sections on data flow (roots, post source 1/2), state, lock, pre, post,
+the pool, dispatch, output and error handling for the semantics.
+Called as `python3 bash_writes.py pre|post` with the hook payload on
+stdin, via the wrapper `.claude/hooks/lighthouse/bash-write-gates.sh`. The gates
+live in `<repo-root>/.claude/hooks/lighthouse/` (`config.repo_root()`); a gate
+that is not there, because its language pack is missing, is reported by post per file
+without blocking (decision 19).
 
-Twee omgevingsvariabelen zijn test-only naden: `LIGHTHOUSE_BASH_GATES_DEADLINE`
-(seconden, override van de post-deadline, default 90, gelezen door
-`run_post`) en `LIGHTHOUSE_BASH_GATES_START_NS` (override van de pre-starttijd, in
-nanoseconden, gelezen door `run_pre`).
+Two environment variables are test-only seams: `LIGHTHOUSE_BASH_GATES_DEADLINE`
+(seconds, override of the post deadline, default 90, read by
+`run_post`) and `LIGHTHOUSE_BASH_GATES_START_NS` (override of the pre start time, in
+nanoseconds, read by `run_pre`).
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ if not __package__:
 from lighthouse_lib import config, git_invocations, repo_identity
 from lighthouse_lib.deadline import Interrupted, run_until
 
-# De map van de gates, onder de repo-root.
+# The directory of the gates, under the repo root.
 HOOK_DIR = Path(".claude/hooks/lighthouse")
 
 # The gates of each extension, in the order they run. A rewriting gate
@@ -56,10 +56,10 @@ GATES: dict[str, tuple[str, ...]] = {
 }
 
 # Set for every gate `run_gate` runs; `code_language.UNDER_GATES_ENV` reads it and
-# then skips layer 2 (#37, besluit 19).
+# then skips layer 2 (#37, decision 19).
 UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_GATES"
 
-# Het pakket dat elke gate levert; ontbreekt de gate, dan noemt de melding het.
+# The package that each gate supplies; if the gate is missing, the notice names it.
 GATE_PACKS: dict[str, str] = {
     "shellcheck.sh": "shell",
     "ruff-format.sh": "python",
@@ -74,34 +74,34 @@ def gate_path(root: str, gate: str) -> Path:
     return Path(root) / HOOK_DIR / gate
 
 
-# Fallback-tokenizer voor een Unparseable commando (open quote): geen echte
-# shell-parse meer mogelijk, dus een ruwe woordsplitsing op wat sowieso nooit
-# een pad-teken is.
+# Fallback tokenizer for an Unparseable command (open quote): no real
+# shell parse is possible any more, so a rough word split on whatever is never
+# a path character anyway.
 _TOKEN_RE = re.compile(r"[^\s'\"=;&|<>()]+")
 
-# `%gd` van `git reflog --format=...%gd...` is `HEAD@{<epoch>}` met
+# `%gd` of `git reflog --format=...%gd...` is `HEAD@{<epoch>}` with
 # `--date=unix`.
 _EPOCH_RE = re.compile(r"HEAD@\{(\d+)\}")
 
-# Sentinel in de sessiemap: post verving ooit een onleesbare ledger. Zolang
-# hij er is, seedt pre geen ontbrekende wortels (zie `Ledger`, `_run_pre`).
+# Sentinel in the session directory: post once replaced an unreadable ledger. As long as
+# it is there, pre seeds no missing roots (see `Ledger`, `_run_pre`).
 _RESET_NAME = "ledger.reset"
 
-# Markers ouder dan dit worden door `prune_markers` opgeruimd (spec: 3600 s).
+# Markers older than this are cleaned up by `prune_markers` (spec: 3600 s).
 _MARKER_MAX_AGE_S = 3600.0
 
-# Pre-timeout is 5s (spec); de deadline voor de git-reads erbinnen laat marge
-# voor het schrijven van de marker zelf.
+# Pre timeout is 5s (spec); the deadline for the git reads within it leaves room
+# for writing the marker itself.
 _PRE_DEADLINE_S = 4.0
 
 
 class GitError(Exception):
-    """Een git-leesactie faalde: niet-nul exit, timeout, of het proces start niet.
+    """A git read action failed: non-zero exit, timeout, or the process does not start.
 
-    `returncode` is `None` bij een timeout of een `OSError` (het proces is
-    dan nooit geëindigd met een exitcode); de exception-boodschap is de
-    stderr-tekst van git, of de vaste tekst `git read past the deadline`
-    bij een timeout.
+    `returncode` is `None` on a timeout or an `OSError` (the process then never
+    ended with an exit code); the exception message is the
+    stderr text of git, or the fixed text `git read past the deadline`
+    on a timeout.
     """
 
     def __init__(self, root: str, returncode: int | None, message: str) -> None:
@@ -111,12 +111,12 @@ class GitError(Exception):
 
 
 def git(root: str, *args: str, deadline: float) -> bytes:
-    """`git --no-optional-locks -C root <args>`, stdout als bytes.
+    """`git --no-optional-locks -C root <args>`, stdout as bytes.
 
-    Elke niet-nul exit, `TimeoutExpired` of `OSError` wordt een `GitError`.
-    De timeout van het onderliggende `subprocess.run` is wat er van
-    `deadline` nog rest, met een bodem van 0.1s zodat een al verstreken
-    deadline niet als een negatieve of nul-timeout bij `subprocess` belandt.
+    Every non-zero exit, `TimeoutExpired` or `OSError` becomes a `GitError`.
+    The timeout of the underlying `subprocess.run` is whatever remains of
+    `deadline`, with a floor of 0.1s so that an already elapsed
+    deadline does not reach `subprocess` as a negative or zero timeout.
     """
     argv = ["git", "--no-optional-locks", "-C", root, *args]
     timeout = max(0.1, deadline - time.time())
@@ -133,7 +133,7 @@ def git(root: str, *args: str, deadline: float) -> bytes:
 
 
 def _root_of(path: str | None) -> str | None:
-    """Repowortel van `path`: dichtstbijzijnde bestaande voorouder, dan `repo_of`."""
+    """Repo root of `path`: nearest existing ancestor, then `repo_of`."""
     if path is None:
         return None
     ancestor = git_invocations.existing_ancestor(path)
@@ -143,7 +143,7 @@ def _root_of(path: str | None) -> str | None:
 
 
 def _resolved_path(word: str, literal: bool, tilde: bool, base: str) -> str | None:
-    """`resolve(word, ...)`, dan absoluut maken tegen `base` als dat nog niet zo is."""
+    """`resolve(word, ...)`, then make absolute against `base` if it is not yet."""
     resolved = git_invocations.resolve(word, literal, tilde)
     if resolved is None:
         return None
@@ -153,23 +153,23 @@ def _resolved_path(word: str, literal: bool, tilde: bool, base: str) -> str | No
 
 
 def derive_roots(command: str, cwd: str) -> set[str]:
-    """De wortelregels uit de spec (Datastroom, *Wortels*).
+    """The root rules from the spec (Datastroom, *Wortels*).  # lighthouse: allow-language — title of a Dutch spec section
 
-    Bronnen: de payload-`cwd`; per `Step` van `git_invocations.walk` de
-    mapstand `dirs["here"]`; bij het werkwoord `git` het `git_target`; elk
-    woord met een `/` of een `~`-begin, herleid tegen de mapstand van dat
-    moment (of `cwd` zonder mapstand). Bij een `Unparseable` commando (open
-    quote) valt dit terug op de cwd plus een ruwe tokenisering van het hele
-    commando, tegen dezelfde padregel. Elke wortel gaat door
-    `os.path.realpath`. Niet gefilterd op project — dat doet `project_filter`.
+    Sources: the payload `cwd`; per `Step` of `git_invocations.walk` the
+    directory state `dirs["here"]`; for the verb `git` the `git_target`; every
+    word with a `/` or starting with `~`, resolved against the directory state of that
+    moment (or `cwd` without a directory state). For an `Unparseable` command (open
+    quote) this falls back to the cwd plus a rough tokenisation of the whole
+    command, against the same path rule. Every root goes through
+    `os.path.realpath`. Not filtered by project — `project_filter` does that.
 
-    `step.dirs` is de LEVENDE mapstand van `walk` (zie `git_invocations.Step`):
-    buiten een sub-shell delen alle Steps hetzelfde dict-object, dat na elke
-    `yield` verder muteert zodra de consument om de volgende Step vraagt. Elke
-    Step moet dus VERWERKT worden binnen deze `for`-lus, vóórdat de lus zelf
-    naar de volgende Step doorschuift — niet via `list(walk(...))` en dan pas
-    lezen, want dan zien alle niet door een sub-shell gescheiden Steps de
-    EINDstand van de hele wandeling in plaats van hun eigen moment.
+    `step.dirs` is the LIVE directory state of `walk` (see `git_invocations.Step`):
+    outside a sub-shell all Steps share the same dict object, which mutates
+    further after each `yield` as soon as the consumer asks for the next Step. Each
+    Step must therefore be PROCESSED inside this `for` loop, before the loop itself
+    moves on to the next Step — not via `list(walk(...))` and only then
+    reading, because then all Steps not separated by a sub-shell see the
+    FINAL state of the whole walk instead of their own moment.
     """
     roots: set[str] = set()
 
@@ -203,15 +203,15 @@ def derive_roots(command: str, cwd: str) -> set[str]:
 def project_filter(
     roots: set[str], project_dir: str, *, deadline: float
 ) -> tuple[set[str], list[str]]:
-    """Beperk `roots` tot wortels met dezelfde `--git-common-dir` als `project_dir`,
-    of met dezelfde `origin` (`repo_identity.same_origin`, #36).
+    """Limit `roots` to roots with the same `--git-common-dir` as `project_dir`,
+    or with the same `origin` (`repo_identity.same_origin`, #36).
 
-    Letterlijk `rev-parse --path-format=absolute --git-common-dir`, door
-    `os.path.realpath` — zonder die vlag geeft de hoofdcheckout een relatief
-    `.git` en een gelinkte worktree een absoluut pad, en zou de worktree
-    onterecht wegvallen (`pre-commit-tests.sh:182`). Een wortel waarvan die
-    aanroep faalt komt als foutregel terug, niet als `GitError`; faalt het
-    voor `project_dir` zelf, dan gooit deze functie wel door.
+    Literally `rev-parse --path-format=absolute --git-common-dir`, passed through
+    `os.path.realpath` — without that flag the main checkout gives a relative
+    `.git` and a linked worktree an absolute path, and the worktree would
+    wrongly drop out (`pre-commit-tests.sh:182`). A root for which that
+    call fails comes back as an error line, not as a `GitError`; if it fails
+    for `project_dir` itself, this function does raise.
     """
 
     def common_dir(root: str) -> str:
@@ -236,8 +236,8 @@ def project_filter(
         if common == ref_common:
             kept.add(root)
             continue
-        # Een worktree van een aparte clone (forge) met dezelfde `origin`
-        # hoort er ook bij (#36).
+        # A worktree of a separate clone (forge) with the same `origin`
+        # belongs too (#36).
         try:
             same, _reason = repo_identity.same_origin(
                 project_dir, root, timeout=deadline - time.time()
@@ -251,14 +251,14 @@ def project_filter(
 
 
 def head_of(root: str, *, deadline: float) -> str:
-    """De huidige `HEAD`-sha, of `"unborn"` in een repo zonder commits.
+    """The current `HEAD` sha, or `"unborn"` in a repo without commits.
 
-    `rev-parse --verify -q HEAD` slaagt normaal met de sha. Faalt hij met
-    exact returncode 1, dan is dat een lege repo: `symbolic-ref -q HEAD`
-    bevestigt dat er wel een branch-naam is (alleen nog geen commit) en het
-    resultaat is `"unborn"`. Elke andere `GitError` — een andere returncode,
-    `None` (timeout/OSError), of een falende `symbolic-ref` — wordt
-    doorgegooid: dat is een kapotte `.git`, geen lege repo.
+    `rev-parse --verify -q HEAD` normally succeeds with the sha. If it fails with
+    exactly returncode 1, that is an empty repo: `symbolic-ref -q HEAD`
+    confirms that there is a branch name (just no commit yet) and the
+    result is `"unborn"`. Every other `GitError` — another returncode,
+    `None` (timeout/OSError), or a failing `symbolic-ref` — is
+    re-raised: that is a broken `.git`, not an empty repo.
     """
     try:
         out = git(root, "rev-parse", "--verify", "-q", "HEAD", deadline=deadline)
@@ -271,17 +271,17 @@ def head_of(root: str, *, deadline: float) -> str:
 
 
 def parse_porcelain(data: bytes) -> tuple[set[str], set[str]]:
-    """`git status --porcelain -z -uall`-uitvoer naar `(gewijzigd, verwijderd)`.
+    """`git status --porcelain -z -uall` output to `(changed, deleted)`.
 
-    Recordgrammatica: `XY pad\\0`, bij een `R`/`C` in X of Y gevolgd door nog
-    één veld met het oude pad. Een `D` in X of Y betekent verwijderd. Het oude
-    pad van een `R` telt als verwijderd: het staat nog in HEAD maar niet meer
-    op schijf, en het nettofilter van post zou het anders als `KON NIET
-    CONTROLEREN` melden in plaats van laten afvallen. Het oude pad van een
-    `C` (copy) bestaat nog en wordt overgeslagen. Geen van beide is ooit
-    kandidaat. Paden komen via `os.fsdecode`, nooit `.decode()` of
-    `splitlines()`: een bestandsnaam met een newline of niet-ASCII-bytes mag
-    niet uiteenvallen.
+    Record grammar: `XY path\\0`, for an `R`/`C` in X or Y followed by one more
+    field with the old path. A `D` in X or Y means deleted. The old
+    path of an `R` counts as deleted: it is still in HEAD but no longer
+    on disk, and the net filter of post would otherwise report it as `COULD NOT
+    CHECK` instead of letting it drop out. The old path of a
+    `C` (copy) still exists and is skipped. Neither is ever a
+    candidate. Paths come through `os.fsdecode`, never `.decode()` or
+    `splitlines()`: a filename with a newline or non-ASCII bytes must not
+    fall apart.
     """
     changed: set[str] = set()
     removed: set[str] = set()
@@ -306,12 +306,12 @@ def parse_porcelain(data: bytes) -> tuple[set[str], set[str]]:
 
 
 def parse_diff_tree(data: bytes) -> tuple[set[str], set[str]]:
-    """`diff-tree --name-status -z`-uitvoer naar `(gewijzigd, verwijderd)`.
+    """`diff-tree --name-status -z` output to `(changed, deleted)`.
 
-    Records zijn `status\\0pad\\0`-paren (met `--no-renames` is er geen
-    apart oud-pad-veld). Bij een combined diff (`-c`, een merge) staat er
-    één statusletter per ouder in hetzelfde veld (`"MM"`); een `D` ergens
-    daarin betekent verwijderd.
+    Records are `status\\0path\\0` pairs (with `--no-renames` there is no
+    separate old-path field). With a combined diff (`-c`, a merge) there is
+    one status letter per parent in the same field (`"MM"`); a `D` anywhere
+    in it means deleted.
     """
     changed: set[str] = set()
     removed: set[str] = set()
@@ -332,7 +332,7 @@ def parse_diff_tree(data: bytes) -> tuple[set[str], set[str]]:
 
 
 class ReflogEntry(NamedTuple):
-    """Eén regel van `git reflog --format='%H%x1f%gd%x1f%gs'`."""
+    """One line of `git reflog --format='%H%x1f%gd%x1f%gs'`."""
 
     sha: str
     epoch: int
@@ -340,17 +340,17 @@ class ReflogEntry(NamedTuple):
 
 
 def parse_reflog(text: str) -> list[ReflogEntry]:
-    """`%H\\x1f%gd\\x1f%gs`-regels naar `ReflogEntry`'s, nieuwste eerst.
+    """`%H\\x1f%gd\\x1f%gs` lines to `ReflogEntry`s, newest first.
 
-    De epoch komt uit `%gd` (`HEAD@{<epoch>}` met `--date=unix`), niet uit
-    een los datumveld: dat is precies wat `%gd` al bevat.
+    The epoch comes from `%gd` (`HEAD@{<epoch>}` with `--date=unix`), not from
+    a separate date field: that is exactly what `%gd` already contains.
 
-    Splitst op `"\\n"`, nooit `.splitlines()`: die laatste breekt ook op
-    `\\x1c`–`\\x1e`, `\\x0c`, `\\x85`, U+2028 en U+2029, en git bewaart die
-    letterlijk in `%gs` als het commit-subject ze bevat. Zo'n regelfragment
-    mist dan zijn `\\x1f`-scheidingstekens en de unpack hieronder crasht met
-    een kale `ValueError` in plaats van dat de aanroeper het als een
-    `GitError` (`KON NIET CONTROLEREN`) kan behandelen.
+    Splits on `"\\n"`, never `.splitlines()`: the latter also breaks on
+    `\\x1c`–`\\x1e`, `\\x0c`, `\\x85`, U+2028 and U+2029, and git keeps those
+    literally in `%gs` if the commit subject contains them. Such a line fragment
+    then lacks its `\\x1f` separators and the unpack below crashes with
+    a bare `ValueError` instead of the caller being able to treat it as a
+    `GitError` (`COULD NOT CHECK`).
     """
     entries: list[ReflogEntry] = []
     for line in text.split("\n"):
@@ -370,11 +370,11 @@ def _is_merge_commit(subject: str) -> bool:
 def _commits_until_stop(
     entries: list[ReflogEntry], stop: str
 ) -> tuple[list[tuple[str, bool]], list[str]]:
-    """`stop`-tak van `commits_to_check`: loop tot de entry met `sha == stop`.
+    """`stop` branch of `commits_to_check`: walk to the entry with `sha == stop`.
 
-    Een entry met een leeg subject (de eerste entry van een nieuwe worktree)
-    is geen beweging: hij zet geen melding en blokkeert de melding van een
-    latere echte beweging niet.
+    An entry with an empty subject (the first entry of a new worktree)
+    is no movement: it sets no notice and does not block the notice of a
+    later real movement.
     """
     collected: list[tuple[str, bool]] = []
     moved_subject: str | None = None
@@ -396,7 +396,7 @@ def _commits_until_stop(
 def _commits_from_unborn(
     entries: list[ReflogEntry],
 ) -> tuple[list[tuple[str, bool]], list[str]]:
-    """`stop == "unborn"`-tak: alle commit-entries, geen gat-melding mogelijk."""
+    """`stop == "unborn"` branch: all commit entries, no gap notice possible."""
     collected = [
         (entry.sha, _is_merge_commit(entry.subject))
         for entry in entries
@@ -408,11 +408,11 @@ def _commits_from_unborn(
 def _commits_since(
     entries: list[ReflogEntry], since: int | None
 ) -> tuple[list[tuple[str, bool]], list[str]]:
-    """`stop is None`-tak: terugval op reflogtijd, commit-entries met epoch `>= since`.
+    """`stop is None` branch: fall back to reflog time, commit entries with epoch `>= since`.
 
-    `since` is in hele epoch-SECONDEN, zoals de reflog-epoch van
-    `--date=unix`; de aanroeper rondt de pre-starttijd (nanoseconden) naar
-    BENEDEN af — naar boven zou een commit uit dezelfde seconde laten vallen.
+    `since` is in whole epoch SECONDS, like the reflog epoch of
+    `--date=unix`; the caller rounds the pre start time (nanoseconds) DOWN —
+    rounding up would drop a commit from the same second.
     """
     collected: list[tuple[str, bool]] = []
     for entry in entries:
@@ -426,29 +426,29 @@ def _commits_since(
 def commits_to_check(
     entries: list[ReflogEntry], stop: str | None, since: int | None
 ) -> tuple[list[tuple[str, bool]], list[str]]:
-    """Welke reflog-commits horen bij deze wandeling: `([(sha, is_merge)], meldingen)`.
+    """Which reflog commits belong to this walk: `([(sha, is_merge)], notices)`.
 
-    - `stop` gezet (niet `"unborn"`): loop tot de eerste entry met
-      `sha == stop`. Entries met een subject dat met `commit` begint gaan
-      mee; is er ook een entry die geen commit is (`checkout`, `pull`, …),
-      dan één melding voor de eerste zo'n beweging. Komt `stop` nooit voor
-      in `entries`, dan is dat een reflog-gat: lege lijst plus melding.
-    - `stop == "unborn"`: alle commit-entries tellen mee, geen gat-melding
-      mogelijk — er was nog geen eerdere HEAD om naar te zoeken.
-    - `stop is None`: terugval op reflogtijd. Commit-entries tellen mee
-      zolang hun epoch `>= since` (nieuwste eerst, dus dit stopt zodra de
-      tijdgrens gepasseerd is). `since` is in hele epoch-seconden, naar
-      beneden afgerond van de pre-starttijd (`start_ns // 10**9`).
+    - `stop` set (not `"unborn"`): walk to the first entry with
+      `sha == stop`. Entries with a subject that begins with `commit` are
+      included; if there is also an entry that is not a commit (`checkout`, `pull`, …),
+      then one notice for the first such movement. If `stop` never occurs
+      in `entries`, that is a reflog gap: empty list plus notice.
+    - `stop == "unborn"`: all commit entries count, no gap notice
+      possible — there was no earlier HEAD yet to look for.
+    - `stop is None`: fall back to reflog time. Commit entries count
+      as long as their epoch is `>= since` (newest first, so this stops as soon as the
+      time limit is passed). `since` is in whole epoch seconds, rounded
+      down from the pre start time (`start_ns // 10**9`).
 
-    Met `stop` gezet (niet `"unborn"`) ÉN een `since` is het resultaat de
-    vereniging van beide wandelingen, ontdubbeld op sha (stop-wandeling
-    eerst). De stop-wandeling alleen is blind zodra de call HEAD terugbrengt
-    naar, of langs, de ledger-sha: `switch -c x; commit; switch main` begint
-    de reflog al met die sha, en een `merge --ff-only` terug stopt vóór de
-    commit. Ook een reflog-gat (verse worktree op een oud pad) houdt zo zijn
-    melding, maar niet langer zijn blinde vlek. Alleen commit-entries tellen,
-    dus een checkout of pull levert nog steeds niets op. Beide wandelingen
-    zijn een prefix van `entries`, dus de vereniging blijft nieuwste-eerst.
+    With `stop` set (not `"unborn"`) AND a `since` the result is the
+    union of both walks, deduplicated on sha (stop walk
+    first). The stop walk alone is blind as soon as the call brings HEAD back
+    to, or past, the ledger sha: `switch -c x; commit; switch main` already begins
+    the reflog with that sha, and a `merge --ff-only` back stops before the
+    commit. A reflog gap (fresh worktree on an old path) also keeps its
+    notice that way, but no longer its blind spot. Only commit entries count,
+    so a checkout or pull still yields nothing. Both walks
+    are a prefix of `entries`, so the union stays newest-first.
 
     `is_merge` is `subject.startswith("commit (merge)")`.
     """
@@ -469,7 +469,7 @@ def commits_to_check(
 
 
 def read_reflog(root: str, *, deadline: float) -> list[ReflogEntry]:
-    """`git reflog --date=unix --format='%H%x1f%gd%x1f%gs'`, geparsed."""
+    """`git reflog --date=unix --format='%H%x1f%gd%x1f%gs'`, parsed."""
     data = git(
         root,
         "reflog",
@@ -483,12 +483,12 @@ def read_reflog(root: str, *, deadline: float) -> list[ReflogEntry]:
 def diff_commit(
     root: str, sha: str, is_merge: bool, *, deadline: float
 ) -> tuple[set[str], set[str]]:
-    """Wat `sha` wijzigde: `(gewijzigd, verwijderd)`, repo-relatief.
+    """What `sha` changed: `(changed, deleted)`, repo-relative.
 
-    Een gewone commit gebruikt `--root` (zodat een root-commit ook een diff
-    geeft); een merge gebruikt de combined diff (`-c`), die alleen paden
-    noemt die van ELKE ouder verschillen — conflictoplossingen, niet wat de
-    andere tak binnenbracht.
+    An ordinary commit uses `--root` (so that a root commit also gives a diff);
+    a merge uses the combined diff (`-c`), which names only paths
+    that differ from EVERY parent — conflict resolutions, not what the
+    other branch brought in.
     """
     args = [
         "diff-tree",
@@ -504,13 +504,13 @@ def diff_commit(
     return parse_diff_tree(data)
 
 
-# --- Staat (taak 6): handtekeningen, sessiemap, ledger, marker, pre --------
+# --- State (task 6): signatures, session directory, ledger, marker, pre --------
 
 Signature = tuple[int, int, int, int]
 
 
 def signature(path: str) -> Signature | None:
-    """`(st_mtime_ns, st_ctime_ns, st_ino, st_size)` van `path`, `None` als hij er niet is."""
+    """`(st_mtime_ns, st_ctime_ns, st_ino, st_size)` of `path`, `None` if it is not there."""
     try:
         st = os.stat(path)
     except OSError:
@@ -519,14 +519,14 @@ def signature(path: str) -> Signature | None:
 
 
 def state_dir(session_id: str) -> Path:
-    """`${XDG_RUNTIME_DIR:-/tmp}/lighthouse-bash-gates/<session_id>/`, aangemaakt met modus `0700`.
+    """`${XDG_RUNTIME_DIR:-/tmp}/lighthouse-bash-gates/<session_id>/`, created with mode `0700`.
 
-    Een `session_id` met een `/` of gelijk aan `..` zou de statusmap kunnen
-    ontsnappen; die wordt geweigerd. `mkdir(..., parents=True)` maakt
-    ontbrekende oudermappen (`lighthouse-bash-gates/` zelf) met de standaardmodus
-    aan — alleen de sessiemap zelf moet `0700` zijn, en die modus wordt na
-    het aanmaken nog eens expliciet gezet: een `umask` kan de modus van
-    `mkdir` zelf beïnvloeden.
+    A `session_id` with a `/` or equal to `..` could escape the state
+    directory; that is refused. `mkdir(..., parents=True)` creates
+    missing parent directories (`lighthouse-bash-gates/` itself) with the default
+    mode — only the session directory itself must be `0700`, and that mode is set
+    once more explicitly after creation: a `umask` can influence the mode of
+    `mkdir` itself.
     """
     if "/" in session_id or session_id == "..":
         raise ValueError(f"invalid session_id: {session_id!r}")
@@ -538,11 +538,11 @@ def state_dir(session_id: str) -> Path:
 
 
 def marker_key(payload: dict) -> str:
-    """`tool_use_id`, anders `session_id + "-" + sha256(tool_input.command)[:16]`.
+    """`tool_use_id`, otherwise `session_id + "-" + sha256(tool_input.command)[:16]`.
 
-    Een `/` in het resultaat zou de markernaam buiten de statusmap laten
-    vallen (`<state>/<key>.json`); die wordt vervangen, verder wordt de
-    sleutel niet gesaneerd.
+    A `/` in the result would make the marker name fall outside the state directory
+    (`<state>/<key>.json`); that is replaced, the key is otherwise not
+    sanitised.
     """
     tool_use_id = payload.get("tool_use_id")
     if tool_use_id:
@@ -555,21 +555,21 @@ def marker_key(payload: dict) -> str:
 
 
 class Ledger:
-    """Eén sessie-ledger: `roots` (pad → wortelregel) plus `unreadable`.
+    """One session ledger: `roots` (path → root rule) plus `unreadable`.
 
-    `unreadable` is `True` als `ledger.json` er wél was maar geen geldige
-    JSON bevatte of niet de vorm `{wortel: {...}}` had — een lege maar
-    bruikbare ledger, met een signaal voor de aanroeper dat er iets kapot
-    was. `locked_ledger` schrijft nooit terug zolang `unreadable` bij het
-    verlaten nog `True` is (zie daar): een aanroeper die de kapotte ledger
-    bewust wil vervangen, zet `unreadable = False` vóórdat de `with` sluit.
+    `unreadable` is `True` if `ledger.json` WAS there but contained no valid
+    JSON or did not have the form `{root: {...}}` — an empty but usable
+    ledger, with a signal for the caller that something was
+    broken. `locked_ledger` never writes back as long as `unreadable` is still `True`
+    on leaving (see there): a caller that deliberately wants to replace the
+    broken ledger sets `unreadable = False` before the `with` closes.
 
-    Wie dat doet (alleen post, in `_claim`), maakt ook de sentinel
-    `<state>/ledger.reset` aan: de verse ledger kent alleen de wortels die
-    die post wandelde, en een wortel die ontbreekt kan eerdere sessie-writes
-    hebben. Zolang de sentinel bestaat (de rest van de sessie) seedt pre geen
-    ontbrekende wortel; post valt er dan één keer voor terug en neemt hem op.
-    Eén keer overcontroleren per wortel, nooit blind.
+    Whoever does that (only post, in `_claim`) also creates the sentinel
+    `<state>/ledger.reset`: the fresh ledger knows only the roots that
+    that post walked, and a root that is missing may have had earlier session writes.
+    As long as the sentinel exists (the rest of the session) pre seeds no
+    missing root; post then falls back for one and adds it.
+    Overchecking once per root, never blind.
     """
 
     def __init__(
@@ -594,7 +594,7 @@ def _read_ledger(path: Path) -> Ledger:
 
 
 def _atomic_write_json(directory: Path, target: Path, data: object) -> None:
-    """Schrijf `data` als JSON naar `target`, atomisch via een tempfile + `os.replace`."""
+    """Write `data` as JSON to `target`, atomically via a tempfile + `os.replace`."""
     fd, tmp_name = tempfile.mkstemp(dir=str(directory), prefix=".tmp-", suffix=".json")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -608,24 +608,24 @@ def _atomic_write_json(directory: Path, target: Path, data: object) -> None:
 
 @contextlib.contextmanager
 def locked_ledger(state: Path) -> Iterator[Ledger]:
-    """Lees/schrijf `ledger.json` onder een exclusieve `flock` op `ledger.lock`.
+    """Read/write `ledger.json` under an exclusive `flock` on `ledger.lock`.
 
-    De lock omvat alleen het lezen, de body van de `with` en het
-    terugschrijven — nooit een gate: pre (timeout 5s) mag niet op een
-    lopende post wachten. Het terugschrijven gebeurt atomisch (tempfile in
-    dezelfde map, dan `os.replace`) en alleen als de body zonder exception
-    eindigt ÉN `ledger.unreadable` op dat moment `False` is; raakt de body
-    een exception, of bleef `unreadable` `True`, dan blijft `ledger.json`
-    ongewijzigd.
+    The lock covers only the read, the body of the `with` and the
+    write-back — never a gate: pre (timeout 5s) must not wait for a
+    running post. The write-back happens atomically (tempfile in
+    the same directory, then `os.replace`) and only if the body
+    ends without an exception AND `ledger.unreadable` is `False` at that moment; if the body
+    raises an exception, or `unreadable` stayed `True`, `ledger.json`
+    stays unchanged.
 
-    Dat tweede is bewust: een kapotte `ledger.json` mag pre niet stilzwijgend
-    vervangen door een verse, lege ledger — dan verliest de spec's
-    "Ledger onleesbaar"-terugval (bron 1 zonder `seen`-filter, plus melding)
-    zijn signaal, en wat deze sessie al eerder schreef wordt ongezien
-    baseline. Wil een aanroeper de kapotte ledger toch bewust vervangen (de
-    latere `post`-terugval doet dat), dan zet die `ledger.unreadable = False`
-    binnen de `with` vóór het einde van de body, en maakt onder dezelfde
-    lock de sentinel `ledger.reset` aan (zie `Ledger`).
+    The second is deliberate: pre must not silently replace a broken `ledger.json`
+    with a fresh, empty ledger — then the spec's
+    "Ledger onleesbaar" fallback (source 1 without `seen` filter, plus notice)
+    loses its signal, and what this session already wrote earlier becomes unseen
+    baseline. If a caller does want to replace the broken ledger deliberately (the
+    later `post` fallback does that), it sets `ledger.unreadable = False`
+    inside the `with` before the end of the body, and creates the sentinel `ledger.reset`
+    under the same lock (see `Ledger`).
     """
     state = Path(state)
     lock_path = state / "ledger.lock"
@@ -640,9 +640,9 @@ def locked_ledger(state: Path) -> Iterator[Ledger]:
                 yield ledger
                 clean_exit = True
             finally:
-                # Alleen terugschrijven bij een schone yield ÉN een leesbare
-                # ledger: een `except`/`else` hier zou alleen maar re-raisen
-                # (TRY203), dus de vlag draagt het onderscheid.
+                # Write back only on a clean yield AND a readable
+                # ledger: an `except`/`else` here would only re-raise
+                # (TRY203), so the flag carries the distinction.
                 if clean_exit and not ledger.unreadable:
                     _atomic_write_json(state, ledger_path, ledger.roots)
         finally:
@@ -652,14 +652,14 @@ def locked_ledger(state: Path) -> Iterator[Ledger]:
 
 
 def seed_root(root: str, start_ns: int, *, deadline: float) -> dict:
-    """De nullijn voor `root`: al vuile gate-bestanden van vóór `start_ns`, plus `head`.
+    """The baseline for `root`: gate files already dirty from before `start_ns`, plus `head`.
 
-    Bron is `git status --porcelain -z -uall`, beperkt tot paden met een
-    gate-extensie (`GATES`) die nog bestaan én waarvan `ctime_ns < start_ns`
-    — een pad dat op of na de starttijd van pre is aangeraakt, kan al door
-    het commando zelf geschreven zijn (liep pre uit, dan draait het commando
-    al) en hoort niet in de nullijn. Verwijderde paden (`D` in
-    `parse_porcelain`) komen niet in `changed` terecht en dus nooit in
+    Source is `git status --porcelain -z -uall`, limited to paths with a
+    gate extension (`GATES`) that still exist AND whose `ctime_ns < start_ns`
+    — a path touched at or after the start time of pre may already have been written by
+    the command itself (if pre overran, the command
+    is already running) and does not belong in the baseline. Deleted paths (`D` in
+    `parse_porcelain`) do not end up in `changed` and so never in
     `seen`.
     """
     data = git(root, "status", "--porcelain", "-z", "-uall", deadline=deadline)
@@ -681,14 +681,14 @@ def seed_root(root: str, start_ns: int, *, deadline: float) -> dict:
 
 
 def write_marker(state: Path, key: str, start_ns: int, roots: list[str]) -> None:
-    """`<state>/<key>.json` <- `{"start_ns": start_ns, "roots": roots}`, atomisch."""
+    """`<state>/<key>.json` <- `{"start_ns": start_ns, "roots": roots}`, atomically."""
     state = Path(state)
     target = state / f"{key}.json"
     _atomic_write_json(state, target, {"start_ns": start_ns, "roots": list(roots)})
 
 
 def read_marker(state: Path, key: str) -> dict | None:
-    """De marker van `key`, of `None` als hij ontbreekt of geen geldige JSON-dict is."""
+    """The marker of `key`, or `None` if it is missing or not a valid JSON dict."""
     path = Path(state) / f"{key}.json"
     try:
         raw = path.read_text(encoding="utf-8")
@@ -702,9 +702,9 @@ def read_marker(state: Path, key: str) -> dict | None:
 
 
 def prune_markers(state: Path, now: float) -> None:
-    """Verwijder markerbestanden ouder dan een uur.
+    """Remove marker files older than an hour.
 
-    `ledger.json`, `ledger.lock` en de sentinel `ledger.reset` blijven.
+    `ledger.json`, `ledger.lock` and the sentinel `ledger.reset` stay.
     """
     state = Path(state)
     try:
@@ -727,7 +727,7 @@ def prune_markers(state: Path, now: float) -> None:
 
 
 def _run_pre(payload: dict) -> None:
-    """De werkelijke stappen van `run_pre`; exceptions gaan ongevangen naar de aanroeper."""
+    """The actual steps of `run_pre`; exceptions go uncaught to the caller."""
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
     if not project_dir:
         return
@@ -742,27 +742,27 @@ def _run_pre(payload: dict) -> None:
 
     state = state_dir(payload.get("session_id", ""))
 
-    # De marker eerst: wordt pre op zijn timeout van 5 s gekild tijdens het
-    # zaaien, dan heeft post nog steeds de wortels en de starttijd (`since`,
-    # de ondergrens van bron 2). Zaaien stopt bij de pre-deadline; een wortel
-    # zonder seed valt in post terug, overcontroleren maar nooit blind.
+    # The marker first: if pre is killed at its 5 s timeout during
+    # seeding, post still has the roots and the start time (`since`,
+    # the lower bound of source 2). Seeding stops at the pre deadline; a root
+    # without a seed falls back in post, overchecking but never blind.
     write_marker(state, marker_key(payload), start_ns, sorted(kept))
 
-    # Best-effort blik zonder lock: bespaart een git-status-aanroep per al
-    # bekende wortel. Een onleesbare ledger seedt pre helemaal niet — dat is
-    # de terugval van `post` (bron 1 zonder `seen`-filter), en een seed nu
-    # zou zijn resultaat toch nooit weggeschreven zien (`locked_ledger`
-    # schrijft niet terug zolang `unreadable` blijft staan), dus de
-    # git-status-aanroepen zijn dan pure verspilling van de pre-deadline. De
-    # echte "nog niet aanwezig?"-beslissing valt onder de lock, vlak vóór het
-    # inschrijven — dat dekt ook de race waarin de ledger tússen deze blik en
-    # die lock alsnog kapotgaat.
+    # Best-effort peek without a lock: saves a git status call per already
+    # known root. An unreadable ledger is not seeded by pre at all — that is
+    # the fallback of `post` (source 1 without `seen` filter), and a seed now
+    # would never see its result written away anyway (`locked_ledger`
+    # does not write back as long as `unreadable` stays set), so the
+    # git status calls are then a pure waste of the pre deadline. The
+    # real "not present yet?" decision falls under the lock, right before
+    # registering — that also covers the race in which the ledger breaks
+    # between this peek and that lock after all.
     #
-    # Staat de sentinel `ledger.reset` er (post verving een onleesbare
-    # ledger), dan seedt pre niets: een ontbrekende wortel kan eerdere
-    # sessie-writes hebben, en een seed zou die tot nullijn maken. Post valt
-    # voor zo'n wortel terug (hij staat wel in de marker). Ook onder de lock
-    # opnieuw gecheckt: post maakt de sentinel onder diezelfde lock aan.
+    # If the sentinel `ledger.reset` is there (post replaced an unreadable
+    # ledger), pre seeds nothing: a missing root may have had earlier
+    # session writes, and a seed would make those the baseline. Post falls back
+    # for such a root (it IS in the marker). Checked again under the lock
+    # too: post creates the sentinel under that same lock.
     reset = state / _RESET_NAME
     peek = _read_ledger(state / "ledger.json")
     if not peek.unreadable and not reset.exists():
@@ -774,7 +774,7 @@ def _run_pre(payload: dict) -> None:
                 continue
             try:
                 record = seed_root(root, start_ns, deadline=deadline)
-            except Exception:  # noqa: BLE001, S112 -- een falende seed slaat post over, niet pre
+            except Exception:  # noqa: BLE001, S112 -- a failing seed skips post, not pre
                 continue
             with locked_ledger(state) as ledger:
                 if root not in ledger.roots and not reset.exists():
@@ -784,36 +784,36 @@ def _run_pre(payload: dict) -> None:
 
 
 def run_pre(payload: dict) -> int:
-    """PreToolUse-stap: schrijf de marker, zaai nieuwe wortels, ruim oude markers op.
+    """PreToolUse step: write the marker, seed new roots, clean up old markers.
 
-    De marker komt vóór het zaaien, en het zaaien stopt bij de pre-deadline:
-    een pre die op zijn timeout sneuvelt laat post zo nooit zonder `since`.
+    The marker comes before the seeding, and the seeding stops at the pre deadline:
+    a pre that dies on its timeout never leaves post without `since`.
 
-    Geen zaaien bij een onleesbare ledger, en ook niet zolang de sentinel
-    `ledger.reset` bestaat (post verving de ledger; zie `Ledger`). De marker
-    wordt dan wél geschreven: daarmee valt post voor zo'n wortel terug.
+    No seeding with an unreadable ledger, and not as long as the sentinel
+    `ledger.reset` exists (post replaced the ledger; see `Ledger`). The marker
+    IS written then: that makes post fall back for such a root.
 
-    Altijd `0` — een PreToolUse exit 2 blokkeert de Bash-call zelf, en een
-    kapotte seed- of markerstap mag geen werk tegenhouden (post merkt het
-    gat op). Elke exceptie wordt daarom ingeslikt.
+    Always `0` — a PreToolUse exit 2 blocks the Bash call itself, and a
+    broken seed or marker step must not hold up any work (post notices the
+    gap). Every exception is therefore swallowed.
     """
     try:
         _run_pre(payload)
-    except Exception:  # noqa: BLE001, S110 -- pre mag nooit de Bash-call blokkeren
+    except Exception:  # noqa: BLE001, S110 -- pre must never block the Bash call
         pass
     return 0
 
 
-# --- post (taak 7): bron 1, claims, dispatch, uitvoer ------------------------
+# --- post (task 7): source 1, claims, dispatch, output ------------------------
 
 _PREFIX = "bash-write-gates:"
 _CANNOT = "COULD NOT CHECK"
 # A gate with rc 0 whose FIRST output line holds this token has a notice for the user and
-# the agent (#37, besluit 19); any other output of a gate with rc 0 is dropped.
+# the agent (#37, decision 19); any other output of a gate with rc 0 is dropped.
 _NOTICE = "NOTICE"
 
-# Spec *Dispatch*: één deadline van 90 s na de start van post, 10 s grace per
-# gate — samen ruim binnen de hooktimeout van 120 s.
+# Spec *Dispatch*: one deadline of 90 s after the start of post, 10 s grace per
+# gate — together well within the hook timeout of 120 s.
 _POST_DEADLINE_S = 90.0
 _GATE_GRACE_S = 10.0
 
@@ -823,24 +823,24 @@ _GATE_GRACE_S = 10.0
 # before the first gate, so a write during a gate stays new.
 _SIGN_AFTER_GATE = frozenset({"ruff-format.sh", "gofmt.sh"})
 
-# `run_until` gooit `Interrupted` als de post zelf een doorgestuurd signaal
-# kreeg (de hooktimeout, een Ctrl-C): de gate werd afgebroken, en de post zelf
-# is aan het stoppen. `run_gate` meldt dat als dit oordeel. Een gate die zelf
-# met 128 + n eindigt, is geen signaal maar een gewone niet-oordeel-exit.
+# `run_until` raises `Interrupted` if post itself received a forwarded signal
+# (the hook timeout, a Ctrl-C): the gate was aborted, and post itself
+# is stopping. `run_gate` reports that as this verdict. A gate that itself
+# ends with 128 + n is not a signal but an ordinary non-verdict exit.
 _STOPPED = "stopped"
 
-# `run_gate`: de gate staat er niet, want zijn taalpakket ontbreekt (besluit 19).
-# Geen blokkade, wel een melding per bestand; het bestand telt daarna als gezien.
+# `run_gate`: the gate is not there, because its language pack is missing (decision 19).
+# No block, but a notice per file; the file counts as seen afterwards.
 _MISSING = "missing"
 
 
 def _now() -> float:
-    """De klok van `run_post`; een module-functie zodat een test hem kan vervangen."""
+    """The clock of `run_post`; a module function so that a test can replace it."""
     return time.time()
 
 
 def _post_deadline_s() -> float:
-    """`LIGHTHOUSE_BASH_GATES_DEADLINE` (test-only naad) of de default van 90 s."""
+    """`LIGHTHOUSE_BASH_GATES_DEADLINE` (test-only seam) or the default of 90 s."""
     raw = os.environ.get("LIGHTHOUSE_BASH_GATES_DEADLINE")
     try:
         return float(raw) if raw else _POST_DEADLINE_S
@@ -849,14 +849,14 @@ def _post_deadline_s() -> float:
 
 
 def classify(rc: int, output: bytes) -> str:
-    """Het oordeel van een gate: `"ok"`, `"finding"` of `"unchecked"`.
+    """The verdict of a gate: `"ok"`, `"finding"` or `"unchecked"`.
 
-    rc 0 is ok. rc 2 is een bevinding, tenzij de EERSTE uitvoerregel het
-    token `COULD NOT CHECK` bevat: de niet-gekeken-vorm van elke gate
-    (`<gate>: COULD NOT CHECK — <reden>`, besluit 18). Alleen de eerste regel:
-    shellcheck en ruff citeren bronregels, dus een bestand dat dat token zelf
-    bevat mag geen echt oordeel ongedaan maken. Elke andere rc (deadline 124,
-    ontbrekend 127, een crash) is unchecked.
+    rc 0 is ok. rc 2 is a finding, unless the FIRST output line contains the
+    token `COULD NOT CHECK`: the not-looked-at form of every gate
+    (`<gate>: COULD NOT CHECK — <reason>`, decision 18). Only the first line:
+    shellcheck and ruff quote source lines, so a file that itself contains that token
+    may not undo a real verdict. Every other rc (deadline 124,
+    missing 127, a crash) is unchecked.
     """
     if rc == 0:
         return "ok"
@@ -903,10 +903,10 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
 
 
 def _printable(text: str) -> str:
-    """`text` zonder surrogaten: een niet-UTF-8-bestandsnaam (`os.fsdecode`) als `\\xNN`.
+    """`text` without surrogates: a non-UTF-8 filename (`os.fsdecode`) as `\\xNN`.
 
-    Anders crasht het wegschrijven naar stdout/stderr op een
-    `UnicodeEncodeError`, en dan is de melding weg.
+    Otherwise writing to stdout/stderr crashes on a
+    `UnicodeEncodeError`, and then the notice is gone.
     """
     try:
         raw = text.encode("utf-8", "surrogateescape")
@@ -916,13 +916,13 @@ def _printable(text: str) -> str:
 
 
 class _Outcome:
-    """Wat post meldt: blokkerende delen (exit 2) en meldingen (exit 0).
+    """What post reports: blocking parts (exit 2) and notices (exit 0).
 
-    Spec *Uitvoer*, plus het besluit uit het plan: bij exit 2 de bundel naar
-    stderr én als `additionalContext` naar stdout; bij exit 0 alleen dat
-    laatste, en zonder iets te melden een lege stdout. A part noted with
+    Spec *Uitvoer*, plus the decision from the plan: at exit 2 the bundle goes to
+    stderr AND as `additionalContext` to stdout; at exit 0 only the
+    latter, and with nothing to report an empty stdout. A part noted with
     `notice=True` also goes to the user, as a top-level `systemMessage`, at exit
-    0 and at exit 2 (#37, besluit 11 and 19).
+    0 and at exit 2 (#37, decision 11 and 19).
     """
 
     def __init__(self) -> None:
@@ -961,19 +961,19 @@ class _Outcome:
 
 
 class _RootView(NamedTuple):
-    """Wat post vóór de pool van één wortel weet.
+    """What post knows before the pool of one root.
 
-    `fallback` is `True` als de ledger geen bruikbare regel voor de wortel
-    had (afwezig, kapot, of de hele ledger onleesbaar): dan is `seen` leeg —
-    alles wat vuil is, is kandidaat, overcontroleren mag, blind zijn niet.
-    `head` is de nu gelezen HEAD: het eindpunt van de wandeling van bron 2,
-    de nieuwe ledger-`head` (compare-and-swap) en waarmee post een
-    terugvalwortel inschrijft. `start_head` is de ledger-`head` waarmee deze
-    post begon (`None` zonder bruikbare ledgerregel), `pending` de
-    `pending`-lijst van toen. `since` is de pre-starttijd uit de marker in
-    hele epoch-seconden (naar beneden afgerond), of `None` zonder marker: de
-    ondergrens van bron 2 in de terugval, en naast `start_head` de tweede
-    wandeling die een terugkeer naar de ledger-sha of een reflog-gat dekt.
+    `fallback` is `True` if the ledger had no usable line for the root
+    (absent, broken, or the whole ledger unreadable): then `seen` is empty —
+    everything that is dirty is a candidate, overchecking is allowed, being blind is not.
+    `head` is the HEAD as read now: the end point of the walk of source 2,
+    the new ledger `head` (compare-and-swap) and what post registers a
+    fallback root with. `start_head` is the ledger `head` with which this
+    post began (`None` without a usable ledger line), `pending` the
+    `pending` list from then. `since` is the pre start time from the marker in
+    whole epoch seconds (rounded down), or `None` without a marker: the
+    lower bound of source 2 in the fallback, and next to `start_head` the second
+    walk that covers a return to the ledger sha or a reflog gap.
     """
 
     root: str
@@ -986,7 +986,7 @@ class _RootView(NamedTuple):
 
 
 def _valid_record(record: object) -> dict | None:
-    """`record` als hij de vorm van een ledgerregel heeft, anders `None` (= afwezig)."""
+    """`record` if it has the form of a ledger line, otherwise `None` (= absent)."""
     if not isinstance(record, dict) or not isinstance(record.get("seen"), dict):
         return None
     if not isinstance(record.setdefault("claims", {}), dict):
@@ -999,13 +999,13 @@ def _valid_record(record: object) -> dict | None:
 def _root_view(
     ledger: Ledger, root: str, since: int | None, *, deadline: float
 ) -> _RootView:
-    """`seen`, `head` en `pending` van `root` uit de ledger, plus HEAD nu.
+    """`seen`, `head` and `pending` of `root` from the ledger, plus HEAD now.
 
-    De ene plek die bepaalt wat post per wortel al weet. Zonder bruikbare
-    ledgerregel is het de terugval: `seen` leeg, en bron 2 wandelt vanaf
-    `since` (de pre-starttijd uit de marker). Mét ledgerregel gaat `since`
-    ook mee: bron 2 wandelt dan tot de ledger-`head` én sinds de start (zie
-    `commits_to_check`). Gooit `GitError` als HEAD niet te lezen is.
+    The one place that decides what post already knows per root. Without a usable
+    ledger line it is the fallback: `seen` empty, and source 2 walks from
+    `since` (the pre start time from the marker). WITH a ledger line `since`
+    goes along too: source 2 then walks to the ledger `head` AND since the start (see
+    `commits_to_check`). Raises `GitError` if HEAD cannot be read.
     """
     head = head_of(root, deadline=deadline)
     record = None if ledger.unreadable else _valid_record(ledger.roots.get(root))
@@ -1031,13 +1031,13 @@ _NO_START_NOTE = (
 
 
 class _Committed(NamedTuple):
-    """Bron 2 van één wortel.
+    """Source 2 of one root.
 
-    `paths`: alles wat een gewandelde commit wijzigde. `stranded`: per pad de
-    nieuwste gewandelde commit die het wijzigde, tenzij een nog nieuwere het
-    verwijderde — staat zo'n pad niet op schijf en niet in HEAD, dan is het
-    niet weg maar alleen elders gecommit (`switch -c x; commit; switch main`).
-    `notes`: de meldingen van de wandeling.
+    `paths`: everything a walked commit changed. `stranded`: per path the
+    newest walked commit that changed it, unless a still newer one
+    deleted it — if such a path is neither on disk nor in HEAD, it is
+    not gone but only committed elsewhere (`switch -c x; commit; switch main`).
+    `notes`: the notices of the walk.
     """
 
     paths: set[str]
@@ -1046,20 +1046,20 @@ class _Committed(NamedTuple):
 
 
 def _committed_paths(view: _RootView, *, deadline: float) -> _Committed:
-    """Bron 2: wat in de call gecommit werd (zie `_Committed`).
+    """Source 2: what was committed in the call (see `_Committed`).
 
-    Wandelt de reflog van de nu gelezen HEAD terug tot de ledger-`head` en,
-    met een marker, ook tot de pre-starttijd (de vereniging, zie
-    `commits_to_check`); in de terugval (geen ledger-`head`) alleen tot die
-    starttijd. Zonder marker én zonder ledger-`head` is er geen ondergrens
-    en wordt bron 2 met een melding overgeslagen. `HEAD == ledger-head` is
-    alleen zonder marker een kortsluiting: mét marker kan de call langs een
-    andere tak gecommit en teruggekeerd zijn. Alleen commit-entries tellen,
-    per entry `diff_commit` (een merge via de combined diff). Verwijderde
-    paden vallen af; een pad dat een latere commit weghaalde valt pas in het
-    nettofilter af. Een ongeboren HEAD levert niets en is geen fout — en
-    `git reflog` mag daar niet eens draaien (rc 128). Gooit `GitError` als
-    reflog of diff-tree faalt.
+    Walks the reflog of the HEAD as read now back to the ledger `head` and,
+    with a marker, also to the pre start time (the union, see
+    `commits_to_check`); in the fallback (no ledger `head`) only to that
+    start time. Without a marker AND without a ledger `head` there is no lower bound
+    and source 2 is skipped with a notice. `HEAD == ledger-head` is
+    a short-circuit only without a marker: WITH a marker the call may have committed
+    along another branch and returned. Only commit entries count,
+    per entry `diff_commit` (a merge via the combined diff). Deleted
+    paths drop out; a path that a later commit removed drops out only in the
+    net filter. An unborn HEAD yields nothing and is not an error — and
+    `git reflog` may not even run there (rc 128). Raises `GitError` if
+    reflog or diff-tree fails.
     """
     stop = view.start_head
     if view.head == "unborn":
@@ -1071,7 +1071,7 @@ def _committed_paths(view: _RootView, *, deadline: float) -> _Committed:
     entries = read_reflog(view.root, deadline=deadline)
     commits, notes = commits_to_check(entries, stop, view.since)
     committed: set[str] = set()
-    # Nieuwste eerst: de eerste commit die een pad noemt, bepaalt zijn lot.
+    # Newest first: the first commit that names a path determines its fate.
     fate: dict[str, str | None] = {}
     for sha, is_merge in commits:
         changed, deleted = diff_commit(view.root, sha, is_merge, deadline=deadline)
@@ -1085,12 +1085,12 @@ def _committed_paths(view: _RootView, *, deadline: float) -> _Committed:
 
 
 def _in_head(root: str, head: str, paths: list[str], *, deadline: float) -> set[str]:
-    """Welke van `paths` in de boom van `head` staan (`git cat-file -e <head>:<pad>`).
+    """Which of `paths` are in the tree of `head` (`git cat-file -e <head>:<path>`).
 
-    Tegen de gelezen sha, niet tegen `HEAD`: dezelfde boom als waar bron 2
-    eindigde. Een ontbrekend pad geeft rc 128, net als een kapotte repo; maar
-    HEAD is net gelezen, dus elke exit telt als "niet in HEAD". Alleen een
-    timeout of een git die niet start (`returncode is None`) gooit door.
+    Against the sha as read, not against `HEAD`: the same tree as where source 2
+    ended. A missing path gives rc 128, just like a broken repo; but
+    HEAD was just read, so every exit counts as "not in HEAD". Only a
+    timeout or a git that does not start (`returncode is None`) raises.
     """
     if head == "unborn":
         return set()
@@ -1107,11 +1107,11 @@ def _in_head(root: str, head: str, paths: list[str], *, deadline: float) -> set[
 
 
 def _in_a_ref(root: str, shas: set[str], *, deadline: float) -> set[str]:
-    """Welke van `shas` een ref nog bevat (`git for-each-ref --contains <sha>`).
+    """Which of `shas` a ref still contains (`git for-each-ref --contains <sha>`).
 
-    Een commit die alleen de reflog nog kent, is bewust weggegooid (`reset
-    --hard`, `--amend`, een rebase die hem dropt): zijn paden staan niet
-    elders, ze zijn weg. Gooit `GitError` als for-each-ref faalt.
+    A commit that only the reflog still knows was deliberately thrown away (`reset
+    --hard`, `--amend`, a rebase that drops it): its paths are not
+    elsewhere, they are gone. Raises `GitError` if for-each-ref fails.
     """
     kept: set[str] = set()
     for sha in shas:
@@ -1130,7 +1130,7 @@ def _in_a_ref(root: str, shas: set[str], *, deadline: float) -> set[str]:
 
 
 def _is_utf8(rel: str) -> bool:
-    """Is het pad geldige UTF-8? De gates lezen het via jq, dat er U+FFFD van maakt."""
+    """Is the path valid UTF-8? The gates read it via jq, which turns it into U+FFFD."""
     try:
         os.fsencode(rel).decode("utf-8")
     except UnicodeDecodeError:
@@ -1139,13 +1139,13 @@ def _is_utf8(rel: str) -> bool:
 
 
 class _Pool(NamedTuple):
-    """De pool van één wortel, na het nettofilter en `seen`.
+    """The pool of one root, after the net filter and `seen`.
 
-    `candidates` gaan naar de dispatch; `unchecked` zijn `(pad, reden)` voor
-    paden waarnaar niet te kijken valt (in HEAD maar niet op schijf, alleen
-    elders gecommit, of geen geldige UTF-8); `keep` zijn de bron-2- en `pending`-paden zonder oordeel
-    (die blijven in `pending`); `settled` zijn paden die uit `pending` mogen
-    (verwijderd, of al zo in `seen`). `notes` zijn de meldingen van bron 2.
+    `candidates` go to the dispatch; `unchecked` are `(path, reason)` for
+    paths that cannot be looked at (in HEAD but not on disk, only
+    committed elsewhere, or not valid UTF-8); `keep` are the source 2 and `pending`
+    paths without a verdict (they stay in `pending`); `settled` are paths that may leave `pending`
+    (deleted, or already so in `seen`). `notes` are the notices of source 2.
     """
 
     view: _RootView
@@ -1157,19 +1157,19 @@ class _Pool(NamedTuple):
 
 
 def _root_pool(view: _RootView, *, deadline: float) -> _Pool:
-    """Bron 1, bron 2 en `pending`, op extensie en netto gefilterd, gesorteerd.
+    """Source 1, source 2 and `pending`, filtered on extension and net, sorted.
 
-    `git status --porcelain -z -uall` is repo-relatief, ook als de Bash-call
-    vanuit een submap schreef. Netto: een pad dat niet op schijf en niet in
-    HEAD staat is verwijderd en valt af, net als een pad dat bron 1 als
-    verwijderd noemt; staat het wél in HEAD, dan is het `unchecked`. Een
-    uitzondering op "verwijderd": een pad dat deze wandeling gecommit zag en
-    dat geen latere gewandelde commit verwijderde (`_Committed.stranded`)
-    staat alleen elders, bv. op de tak waar de call vandaan terugkeerde — ook
-    `unchecked`, met de commit erbij. Maar alleen als een ref die commit nog
-    bevat (`_in_a_ref`): kent alleen de reflog hem, dan gooide de call hem weg
-    en is het pad gewoon verwijderd. Gooit `GitError` als status, reflog,
-    diff-tree of for-each-ref faalt.
+    `git status --porcelain -z -uall` is repo-relative, even if the Bash call
+    wrote from a subdirectory. Net: a path that is neither on disk nor in
+    HEAD is deleted and drops out, just like a path that source 1 names as
+    deleted; if it IS in HEAD, it is `unchecked`. An
+    exception to "deleted": a path that this walk saw committed and
+    that no later walked commit deleted (`_Committed.stranded`)
+    exists only elsewhere, e.g. on the branch the call returned from — also
+    `unchecked`, with the commit attached. But only if a ref still
+    contains that commit (`_in_a_ref`): if only the reflog knows it, the call threw it away
+    and the path is simply deleted. Raises `GitError` if status, reflog,
+    diff-tree or for-each-ref fails.
     """
     data = git(view.root, "status", "--porcelain", "-z", "-uall", deadline=deadline)
     dirty, removed = parse_porcelain(data)
@@ -1212,10 +1212,10 @@ def _root_pool(view: _RootView, *, deadline: float) -> _Pool:
 
 
 def _record_for(ledger: Ledger, view: _RootView) -> dict:
-    """De ledgerregel van `view.root`; ontbreekt hij, dan hier ingeschreven.
+    """The ledger line of `view.root`; if it is missing, registered here.
 
-    Een terugvalwortel (of een regel die intussen verdween) krijgt een
-    verse regel met de nu gelezen HEAD.
+    A fallback root (or a line that disappeared in the meantime) gets a
+    fresh line with the HEAD as read now.
     """
     record = _valid_record(ledger.roots.get(view.root))
     if record is None:
@@ -1225,12 +1225,12 @@ def _record_for(ledger: Ledger, view: _RootView) -> dict:
 
 
 def _advance(record: dict, pool: _Pool) -> None:
-    """Compare-and-swap op `head`, dan `pending` bijwerken (onder de lock).
+    """Compare-and-swap on `head`, then update `pending` (under the lock).
 
-    `head` wordt de gelezen HEAD alleen als de ledger nog de waarde heeft
-    waarmee deze post begon: een parallelle post die al verder was, wint.
-    `pending` krijgt de bron-2-paden zonder oordeel; wat intussen door een
-    andere post is toegevoegd, blijft staan.
+    `head` becomes the HEAD as read only if the ledger still has the value
+    with which this post began: a parallel post that was already further wins.
+    `pending` gets the source 2 paths without a verdict; whatever was added in the meantime by
+    another post stays.
     """
     view = pool.view
     if record.get("head") == view.start_head:
@@ -1240,10 +1240,10 @@ def _advance(record: dict, pool: _Pool) -> None:
 
 
 def _claimed_by_other(holder: object, key: str, now: float) -> bool:
-    """Draagt `holder` een levende claim van een andere post?
+    """Does `holder` carry a live claim of another post?
 
-    Een claim ouder dan deadline plus grace telt als afwezig: die post is
-    afgebroken zonder op te ruimen. Een misvormde claim telt ook als afwezig.
+    A claim older than deadline plus grace counts as absent: that post was
+    aborted without cleaning up. A malformed claim also counts as absent.
     """
     if not isinstance(holder, list) or len(holder) != 2:
         return False
@@ -1256,15 +1256,15 @@ def _claimed_by_other(holder: object, key: str, now: float) -> bool:
 def _claim(
     state: Path, key: str, pools: list[_Pool]
 ) -> tuple[list[tuple[_RootView, str]], bool]:
-    """Onder de lock: per wortel `_advance`, dan claimen wat nog niemand controleert.
+    """Under the lock: per root `_advance`, then claim what nobody is checking yet.
 
-    Een kandidaat die inmiddels met de huidige handtekening in `seen` staat
-    valt af (en uit `pending`: hij heeft zijn oordeel). Een onleesbare ledger
-    wordt hier bewust vervangen door een verse, met alleen de wortels die
-    deze post wandelde (elk met de gewandelde HEAD): anders valt elke
-    volgende post opnieuw terug. Onder dezelfde lock komt de sentinel
-    `ledger.reset` (zie `Ledger`), zodat pre de wortels die hier ontbreken
-    niet seedt. Geeft `(geclaimd, vervangen)`.
+    A candidate that is meanwhile in `seen` with the current signature
+    drops out (and out of `pending`: it has its verdict). An unreadable ledger
+    is deliberately replaced here by a fresh one, with only the roots that
+    this post walked (each with the walked HEAD): otherwise every
+    following post falls back again. Under the same lock comes the sentinel
+    `ledger.reset` (see `Ledger`), so that pre does not seed the roots that are
+    missing here. Returns `(claimed, replaced)`.
     """
     now = _now()
     claimed: list[tuple[_RootView, str]] = []
@@ -1325,7 +1325,7 @@ def _record_verdict(
 
 
 def _release_claims(state: Path, key: str) -> None:
-    """Verwijder elke claim die nog `key` draagt: een claim bestaat alleen tijdens de gate."""
+    """Remove every claim that still carries `key`: a claim exists only during the gate."""
     with locked_ledger(state) as ledger:
         if ledger.unreadable:
             return
@@ -1340,10 +1340,10 @@ def _release_claims(state: Path, key: str) -> None:
 def _report_verdict(
     outcome: _Outcome, label: str, gate: str, verdict: str, output: bytes
 ) -> None:
-    """Eén gate in de bundel: `== <label> (<gate>) ==` plus zijn uitvoer.
+    """One gate in the bundle: `== <label> (<gate>) ==` plus its output.
 
-    `label` is het repo-relatieve pad, of het absolute pad als de post meer
-    dan één wortel dekt — twee wortels kunnen hetzelfde relatieve pad hebben.
+    `label` is the repo-relative path, or the absolute path if the post covers more
+    than one root — two roots can have the same relative path.
     """
     if verdict == "ok":
         text = output.decode(errors="replace").rstrip("\n")
@@ -1365,7 +1365,7 @@ def _report_verdict(
 def _cannot_left(
     outcome: _Outcome, why: str, left: list[tuple[_RootView, str]]
 ) -> None:
-    """Eén `KON NIET CONTROLEREN` met `why` en elk resterend absoluut pad."""
+    """One `COULD NOT CHECK` with `why` and every remaining absolute path."""
     outcome.cannot(
         f"{why}, not checked:\n"
         + "\n".join(f"  {os.path.join(v.root, r)}" for v, r in left)
@@ -1381,12 +1381,12 @@ def _vanished(
     *,
     deadline: float,
 ) -> None:
-    """Een geclaimde kandidaat staat niet meer op schijf: geen gate, geen oordeel.
+    """A claimed candidate is no longer on disk: no gate, no verdict.
 
-    Het nettofilter van de pool, nu op het moment van de gate: staat het pad
-    in HEAD, dan is het `KON NIET CONTROLEREN` en blijft het in `pending`;
-    anders is het verwijderd en valt het af (ook uit `pending`). Is HEAD
-    niet te lezen, dan telt het als "in HEAD": luid, nooit stil.
+    The net filter of the pool, now at the moment of the gate: if the path is
+    in HEAD, it is `COULD NOT CHECK` and stays in `pending`;
+    otherwise it is deleted and drops out (also from `pending`). If HEAD
+    cannot be read, it counts as "in HEAD": loud, never silent.
     """
     try:
         in_head = bool(_in_head(view.root, view.head, [rel], deadline=deadline))
@@ -1412,17 +1412,17 @@ def _dispatch(
     *,
     absolute: bool,
 ) -> None:
-    """Sequentieel, buiten de lock, in gesorteerde volgorde, tot de deadline.
+    """Sequential, outside the lock, in sorted order, until the deadline.
 
-    Gesorteerd plus direct `seen` bijwerken betekent: ook met veel vuile
-    bestanden en een krappe deadline boekt elke post voortgang, en de
-    volgende post gaat verder waar deze stopte. Met `absolute` (de post
-    dekt meer dan één wortel) noemt de bundelheader het absolute pad.
+    Sorted plus updating `seen` immediately means: even with many dirty
+    files and a tight deadline every post makes progress, and the
+    next post continues where this one stopped. With `absolute` (the post
+    covers more than one root) the bundle header names the absolute path.
 
-    Een kandidaat die tussen pool en gate verdween gaat niet naar de gate:
-    die zou `[ -f ]` zien falen en exit 0 geven, en dat is geen oordeel (zie
-    `_vanished`). Breekt een doorgestuurd signaal een gate af, dan stopt de
-    dispatch: de rest is `KON NIET CONTROLEREN`, net als na de deadline.
+    A candidate that vanished between pool and gate does not go to the gate:
+    it would see `[ -f ]` fail and give exit 0, and that is no verdict (see
+    `_vanished`). If a forwarded signal aborts a gate, the dispatch stops:
+    the rest is `COULD NOT CHECK`, just as after the deadline.
     """
     for index, (view, rel) in enumerate(claimed):
         # Per file, not per gate: a file whose first gate started gets all of
@@ -1452,18 +1452,18 @@ def _dispatch(
 
 
 def _marker_roots(marker: dict | None) -> set[str]:
-    """De wortels die pre afleidde; leeg zonder (bruikbare) marker."""
+    """The roots that pre derived; empty without a (usable) marker."""
     if marker is None or not isinstance(marker.get("roots"), list):
         return set()
     return {r for r in marker["roots"] if isinstance(r, str)}
 
 
 def _marker_since(marker: dict | None) -> int | None:
-    """De pre-starttijd uit de marker in hele epoch-seconden, naar beneden afgerond.
+    """The pre start time from the marker in whole epoch seconds, rounded down.
 
-    De reflog-epoch (`--date=unix`) is in hele seconden; naar boven afronden
-    zou een commit uit dezelfde seconde als pre laten vallen. `None` zonder
-    marker of zonder geldige `start_ns`.
+    The reflog epoch (`--date=unix`) is in whole seconds; rounding up
+    would drop a commit from the same second as pre. `None` without a
+    marker or without a valid `start_ns`.
     """
     start_ns = marker.get("start_ns") if marker is not None else None
     if isinstance(start_ns, bool) or not isinstance(start_ns, int):
@@ -1478,13 +1478,13 @@ def _post_roots(
     deadline: float,
     outcome: _Outcome,
 ) -> tuple[list[str], list[str]]:
-    """`(bestaande wortels, verdwenen wortels)`, beide gesorteerd.
+    """`(existing roots, vanished roots)`, both sorted.
 
-    Marker-wortels ∪ de projectwortels uit de post-payload: de post-`cwd` kan
-    verschoven zijn en een wortel waarin gecommit en daarna weggegaan werd,
-    mag niet wegvallen. Een wortel die niet meer bestaat (een verwijderde
-    worktree) is niet meer te controleren en komt apart terug, zodat post
-    hem kan noemen. Gooit `GitError` als `project_dir` zelf niet te lezen is.
+    Marker roots ∪ the project roots from the post payload: the post `cwd` may have
+    shifted and a root in which a commit was made and then left
+    must not drop out. A root that no longer exists (a deleted
+    worktree) can no longer be checked and comes back separately, so that post
+    can name it. Raises `GitError` if `project_dir` itself cannot be read.
     """
     roots = set(marker_roots)
     tool_input = payload.get("tool_input")
@@ -1519,7 +1519,7 @@ def _post_in_state(
         outcome.cannot(f"{project_dir} ({exc})")
         return
     for root in gone:
-        # Exit 0: de bestanden zijn met de wortel mee verdwenen.
+        # Exit 0: the files vanished along with the root.
         outcome.note(f"{_PREFIX} {root} no longer exists; not checked")
 
     ledger = _read_ledger(state / "ledger.json")
@@ -1546,12 +1546,12 @@ def _root_pools(
     deadline: float,
     outcome: _Outcome,
 ) -> list[_Pool]:
-    """De pool per wortel, met de meldingen en de niet-te-bekijken paden.
+    """The pool per root, with the notices and the paths that cannot be looked at.
 
-    Een terugvalwortel (geen bruikbare ledgerregel) krijgt alleen een
-    melding als hij in de marker staat — dan bestond hij al vóór pre. Een
-    wortel die tijdens de call ontstond (`git worktree add`, `git init`)
-    valt stil terug.
+    A fallback root (no usable ledger line) gets a notice
+    only if it is in the marker — then it already existed before pre. A
+    root that came into being during the call (`git worktree add`, `git init`)
+    falls back silently.
     """
     pools: list[_Pool] = []
     for root in roots:
@@ -1588,28 +1588,28 @@ def _post(payload: dict, outcome: _Outcome) -> None:
 
 
 def run_post(payload: dict) -> tuple[int, str, str]:
-    """PostToolUse(Failure)-stap: `(exitcode, stdout, stderr)`.
+    """PostToolUse(Failure) step: `(exitcode, stdout, stderr)`.
 
-    Bron 1 (vuil) per wortel, gefilterd op `seen`, claimen, gesorteerd
-    dispatchen tot de deadline, bundelen. Claims die nog de sleutel van deze
-    post dragen gaan weg vóór hij terugkeert — normaal, na de deadline of via
-    een exceptie — en de marker wordt opgeruimd. Een onverwachte exceptie is
-    `KON NIET CONTROLEREN` met exit 2, nooit een traceback met exit 1.
+    Source 1 (dirty) per root, filtered on `seen`, claim, dispatch
+    sorted until the deadline, bundle. Claims that still carry the key of this
+    post go away before it returns — normally, after the deadline or via
+    an exception — and the marker is cleaned up. An unexpected exception is
+    `COULD NOT CHECK` with exit 2, never a traceback with exit 1.
     """
     event = payload.get("hook_event_name") or "PostToolUse"
     outcome = _Outcome()
     try:
         _post(payload, outcome)
-    except Exception as exc:  # noqa: BLE001 -- post faalt luid, nooit met een traceback
+    except Exception as exc:  # noqa: BLE001 -- post fails loudly, never with a traceback
         outcome.cannot(f"internal error in the dispatcher ({type(exc).__name__}: {exc})")
     return outcome.render(str(event))
 
 
 def main(argv: list[str]) -> int:
-    """`bash_writes.py pre|post`, hookpayload op stdin.
+    """`bash_writes.py pre|post`, hook payload on stdin.
 
-    `pre` geeft altijd 0. `post` schrijft zijn uitvoer zelf weg; een payload
-    die geen JSON-object is, is `KON NIET CONTROLEREN` met exit 2.
+    `pre` always returns 0. `post` writes its output itself; a payload
+    that is not a JSON object is `COULD NOT CHECK` with exit 2.
     """
     mode = argv[0] if argv else ""
     if mode not in ("pre", "post"):

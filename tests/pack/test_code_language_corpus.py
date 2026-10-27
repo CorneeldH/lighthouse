@@ -1,5 +1,6 @@
 """Layer 1 over real code (#37): the stdlib stays clean, lighthouse's own code is English."""
 
+import subprocess
 from pathlib import Path
 
 from tests.pack._testkit import load_hook_lib
@@ -7,14 +8,6 @@ from tests.pack._testkit import load_hook_lib
 cl = load_hook_lib("code_language")
 REPO = Path(__file__).resolve().parents[2]
 STDLIB = REPO / "tests" / "pack" / "fixtures" / "code_language" / "stdlib"
-
-# Real Dutch in lighthouse itself, word -> why it stays. A word that no longer occurs in
-# any finding fails `test_known_dutch_still_occurs`, so the list shrinks with the code.
-KNOWN_DUTCH = {
-    "ontwerpkeuze": "Dutch in Go until #58 translates it",
-    "ontwerpkeuzes": "Dutch in Go until #58 translates it",
-    "besluit": "Dutch in config.py and in hook header comments until #58 translates it",
-}
 
 
 def _go_files():
@@ -45,21 +38,6 @@ def _hook_findings():
     return _scan(cl.scan_shell, _hook_files())
 
 
-def _dutch_words(finding):
-    """The lower-case words a finding spans: its name parts, or the words of its unit."""
-    if finding.kind == "name":
-        return set(cl.split_name(finding.text))
-    return set(cl.code_language_score.words(finding.unit or finding.text))
-
-
-def _unknown(findings):
-    return [
-        f"{f.line}: {f.kind}: {f.text}"
-        for f in findings
-        if not f.doubt and not _dutch_words(f) & KNOWN_DUTCH.keys()
-    ]
-
-
 def test_stdlib_fixture_clean():
     files = sorted(STDLIB.glob("*.py"))
     assert len(files) == 10
@@ -68,25 +46,15 @@ def test_stdlib_fixture_clean():
 
 
 def test_go_english():
-    assert _unknown(_go_findings()) == []
+    assert [f for f in _go_findings() if not f.doubt] == []
 
 
 def test_config_py_english():
-    assert _unknown(_config_findings()) == []
+    assert [f for f in _config_findings() if not f.doubt] == []
 
 
 def test_hooks_english():
-    assert _unknown(_hook_findings()) == []
-
-
-def test_known_dutch_still_occurs():
-    """Over all three corpora together: `besluit` lives in config.py and the hook headers,
-    `ontwerpkeuze` in Go. Read from the source text, not from the findings: per sentence
-    layer 1 finds `ontwerpkeuze` on a comment line of its own, but it only doubts `besluit`
-    inside an English sentence and does not see `ontwerpkeuzes` at all."""
-    paths = [*_go_files(), REPO / "pack" / "core" / "lib" / "config.py", *_hook_files()]
-    used = set().union(*(set(cl.code_language_score.words(p.read_text(encoding="utf-8"))) for p in paths))
-    assert {word for word in KNOWN_DUTCH if word not in used} == set()
+    assert [f for f in _hook_findings() if not f.doubt] == []
 
 
 def test_pack_markdown_english():
@@ -97,5 +65,22 @@ def test_pack_markdown_english():
         for path in files
         for f in cl.scan_markdown(path.read_text(encoding="utf-8"))
         if not f.doubt  # a doubt ("OOM", "no-op") is not a finding; layer 2 decides
+    ]
+    assert not found, "\n".join(found)
+
+
+def test_lighthouse_code_english():
+    """The whole repo, as the hook sees it: lighthouse.toml decides scope and exemptions."""
+    cfg = cl.config.load(REPO / "lighthouse.toml")
+    assert cl.config.lookup(cfg, "project.code_language") == "en"
+    assert {"pack/**", "internal/**", "cmd/**"} <= set(cl.config.lookup(cfg, "project.code_language_paths"))
+    files = subprocess.run(
+        ["git", "-C", REPO, "ls-files", "-z"], capture_output=True, text=True, check=True
+    ).stdout.split("\0")
+    found = [
+        f"{rel}:{f.line}: {f.kind}: {f.text}"
+        for rel in files
+        if rel and (REPO / rel).is_file()
+        for f in cl.check_file(REPO / rel, REPO).findings
     ]
     assert not found, "\n".join(found)

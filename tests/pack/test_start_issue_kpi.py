@@ -1,13 +1,13 @@
 """Unit tests for `.lighthouse/scripts/measure_start_issue_kpi.py`, taken from paia.
 
-De KPI van #663 is één getal: hoeveel tool-calls zitten er tussen "pak 610 op" en de eerste
-handeling die ergens heen leidt. Dat getal is alleen iets waard als de weg ernaartoe klopt, dus
-deze tests pinnen de vier plekken waar een stille fout de uitkomst kantelt:
+The KPI of #663 is one number: how many tool calls sit between "pak 610 op" and the first
+action that leads somewhere. That number is only worth something if the road to it is right, so
+these tests pin the four places where a silent error tips the outcome:
 
-- een tool_result is geen nieuwe mensprompt (anders is elke lead-in 0);
-- subagent- en harness-records tellen niet mee (anders telt andermans werk mee);
-- de telling loopt door over opeenvolgende assistant-berichten (anders stopt hij bij het eerste);
-- de route-call zelf telt NIET mee (exclusief), want de nulmeting kent een minimum van 0.
+- a tool_result is not a new human prompt (otherwise every lead-in is 0);
+- subagent and harness records do not count (otherwise someone else's work counts);
+- the count continues over consecutive assistant messages (otherwise it stops at the first);
+- the route call itself does NOT count (exclusive), because the baseline has a minimum of 0.
 """
 
 from __future__ import annotations
@@ -25,11 +25,11 @@ SCRIPT = INSTALL_ROOT / ".lighthouse" / "scripts" / "measure_start_issue_kpi.py"
 _SPEC = importlib.util.spec_from_file_location("measure_start_issue_kpi", SCRIPT)
 assert _SPEC and _SPEC.loader
 kpi = importlib.util.module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = kpi  # dataclasses zoekt de module op via __module__
+sys.modules[_SPEC.name] = kpi  # dataclasses looks the module up via __module__
 _SPEC.loader.exec_module(kpi)
 
 
-# --- fixturebouwers ---------------------------------------------------------------------------
+# --- fixture builders -------------------------------------------------------------------------
 
 
 def user(text: str, **extra: object) -> dict:
@@ -43,7 +43,7 @@ def user(text: str, **extra: object) -> dict:
 
 
 def tool_result() -> dict:
-    """Een tool-retour: zelfde `type: user`, maar geen mensprompt."""
+    """A tool return: same `type: user`, but no human prompt."""
     return {
         "type": "user",
         "isSidechain": False,
@@ -78,7 +78,7 @@ def write_session(directory, records) -> None:
     path.write_text("\n".join(json.dumps(r) for r in records), encoding="utf-8")
 
 
-# --- herkenning van de pickup-prompt ----------------------------------------------------------
+# --- recognition of the pickup prompt ---------------------------------------------------------
 
 
 def test_pickup_patterns_are_recognised() -> None:
@@ -92,7 +92,7 @@ def test_pickup_patterns_are_recognised() -> None:
 
 
 def test_non_pickup_prompts_are_not_counted() -> None:
-    """De nulmeting telt alleen prompts die het werk aan een issue STARTEN."""
+    """The baseline counts only prompts that START the work on an issue."""
     assert kpi.pickup_issue_number("wat staat er in issue 610?") is None
     assert kpi.pickup_issue_number("sluit 610") is None
     assert kpi.pickup_issue_number("schrijf een issue over de gateway") is None
@@ -100,15 +100,15 @@ def test_non_pickup_prompts_are_not_counted() -> None:
 
 
 def test_a_prompt_that_already_names_the_route() -> None:
-    """Het cohort dat de mediaan van 1 haalt: de gebruiker routeerde met de hand."""
+    """The cohort that reaches the median of 1: the user routed by hand."""
     assert kpi.names_a_skill("pak 610 op /superpowers:writing-plans")
     assert kpi.names_a_skill("pak 610 op, gebruik /close-issue")
     assert not kpi.names_a_skill("pak 610 op")
-    # Een absoluut pad is geen slash-commando.
+    # An absolute path is not a slash command.
     assert not kpi.names_a_skill("kijk in /home/corneel/repositories voor 610")
 
 
-# --- beurtsegmentatie -------------------------------------------------------------------------
+# --- turn segmentation ------------------------------------------------------------------------
 
 
 def test_a_tool_result_does_not_start_a_new_turn() -> None:
@@ -135,7 +135,7 @@ def test_sidechain_and_meta_records_are_ignored() -> None:
     assert kpi.count_leadin(turns[0]) == 0, "de subagent-Bash telt niet mee"
 
 
-# --- de lead-in-telling -----------------------------------------------------------------------
+# --- the lead-in count ------------------------------------------------------------------------
 
 
 def test_skill_as_first_call_is_zero() -> None:
@@ -159,8 +159,8 @@ def test_counting_continues_across_consecutive_assistant_messages() -> None:
 
 
 def test_the_route_call_itself_is_not_counted() -> None:
-    """Exclusief tellen. De nulmeting kent een minimum van 0, en het doel <= 2 is 'twee
-    gh-api-calls en dan pas de Skill' — inclusief tellen zou beide verschuiven."""
+    """Count exclusively. The baseline has a minimum of 0, and the target <= 2 is 'two
+    gh-api calls and only then the Skill' — counting inclusively would shift both."""
     turn = next(
         kpi.iter_turns(
             [user("pak 610 op"), assistant(bash(), ("Skill", {"skill": "x"}))]
@@ -175,8 +175,8 @@ def test_a_turn_without_any_route_returns_none() -> None:
 
 
 def test_own_skill_load_is_skipped_but_not_counted() -> None:
-    """De skill die zichzelf ambient laadt, is de eerste tool_use van de beurt maar geen
-    route-call en geen aanloop — meetellen zou de metric per constructie laten slagen."""
+    """The skill that loads itself ambiently is the first tool_use of the turn but no
+    route call and no lead-in — counting it would make the metric succeed by construction."""
     self_load = ("Skill", {"skill": kpi.SKILL_NAME})
     records = [
         user("pak 610 op"),
@@ -210,8 +210,8 @@ def _route_split_records() -> list[dict]:
 
 
 def test_route_skill_is_skipped_like_the_start_skill() -> None:
-    """Na de split (#1115) komt de poortmelding pas na Skill{lighthouse-route-issue}; die call is
-    het routeren zelf, geen route en geen aanloop."""
+    """After the split (#1115) the gate announcement comes only after Skill{lighthouse-route-issue}; that call is
+    the routing itself, no route and no lead-in."""
     turn = _gate_turn(*_route_split_records())
     assert kpi.announced_gate(turn) == 4
     assert kpi.count_leadin(turn) == 0
@@ -219,8 +219,8 @@ def test_route_skill_is_skipped_like_the_start_skill() -> None:
 
 
 def test_measure_gate_counts_a_gate_reported_after_the_route_skill(tmp_path) -> None:
-    """Zonder de uitsluiting van lighthouse-route-issue telt elke pickup ná de split als
-    'niet gemeld': de melding staat pas na die Skill-call."""
+    """Without the exclusion of lighthouse-route-issue every pickup after the split counts as
+    'not reported': the announcement comes only after that Skill call."""
     write_session(tmp_path, [user("pak 610 op"), *_route_split_records()])
 
     result = kpi.measure_gate(tmp_path, None)
@@ -229,8 +229,8 @@ def test_measure_gate_counts_a_gate_reported_after_the_route_skill(tmp_path) -> 
 
 
 def test_scout_call_is_skipped_but_not_counted() -> None:
-    """De verplichte scoutcall op 4b/4c is de voorverkenning zelf, geen aanloop ernaartoe —
-    zelfde argument als de ambient Skill-call hierboven (issue #927 fix 2)."""
+    """The mandatory scout call on 4b/4c is the pre-exploration itself, not the lead-in to it —
+    same argument as the ambient Skill call above (issue #927 fix 2)."""
     scout_call = ("Agent", {"subagent_type": kpi.SCOUT_AGENT, "prompt": "..."})
     records = [
         user("pak 610 op"),
@@ -264,8 +264,8 @@ def test_first_write_path_and_worktree_check() -> None:
 
 
 def test_a_turn_without_write_tools_has_no_write_path() -> None:
-    """Bash-schrijfacties (`sed -i`, heredoc) zijn per constructie onzichtbaar — de grens van
-    deze KPI, expliciet vastgepind zodat niemand hem later voor volledig aanziet."""
+    """Bash writes (`sed -i`, heredoc) are invisible by construction — the limit of
+    this KPI, pinned explicitly so nobody later mistakes it for complete."""
     turn = next(
         kpi.iter_turns([user("pak 610 op"), assistant(bash("sed -i s/a/b/ x.md"))])
     )
@@ -288,7 +288,7 @@ def test_mistrigger_needs_a_loaded_skill_without_an_issue_number() -> None:
     assert kpi.has_issue_number(next(kpi.iter_turns(fine)).prompt)
 
 
-# --- poortmelding -----------------------------------------------------------------------------
+# --- gate announcement ------------------------------------------------------------------------
 
 
 def _gate_turn(*records: dict) -> object:
@@ -316,8 +316,8 @@ def test_gate_text_may_sit_in_an_earlier_message() -> None:
 
 
 def test_text_after_the_route_call_does_not_count() -> None:
-    """De melding hoort vóór het doorroeren. Achteraf is het een verantwoording, geen routering —
-    en zonder deze grens telt elke latere vermelding van het woord mee."""
+    """The announcement belongs before the routing. Afterwards it is an account, not a routing —
+    and without this boundary every later mention of the word counts."""
     turn = _gate_turn(
         assistant(("Skill", {"skill": "superpowers:writing-plans"})),
         assistant(bash(), text="dit was Poort 4"),
@@ -326,8 +326,8 @@ def test_text_after_the_route_call_does_not_count() -> None:
 
 
 def test_a_stopping_gate_needs_no_route_call() -> None:
-    """Poort 0 stopt: er komt geen `Skill`/`Write` meer. Zonder route-call is er geen grens en
-    telt de hele beurt, anders zou de enige poort die niets doet nooit gemeten worden."""
+    """Gate 0 stops: no more `Skill`/`Write` follows. Without a route call there is no boundary and
+    the whole turn counts, otherwise the one gate that does nothing would never be measured."""
     turn = _gate_turn(
         assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant(bash()),
@@ -350,8 +350,8 @@ def test_only_zero_through_four_are_gates() -> None:
 
 
 def test_measure_gate_splits_reported_unreported_and_skill_less(tmp_path) -> None:
-    """De noemer is smal: een pickup zonder de skill is een andere faalmodus (rij 1 en 3) en
-    hoort niet in dit percentage."""
+    """The denominator is narrow: a pickup without the skill is a different failure mode (rows 1 and 3) and
+    does not belong in this percentage."""
     import json
 
     records = [
@@ -494,13 +494,13 @@ def test_runtime_comes_from_the_timestamp_pair(tmp_path) -> None:
         scout_result(stamp="2026-09-11T10:01:30Z"),
     ]
     write_session(tmp_path, records)
-    looptijd = kpi.measure_scout(tmp_path, None)["runtime_seconds"]
-    assert looptijd["median"] == 90.0
-    assert looptijd["n"] == 1
+    runtime = kpi.measure_scout(tmp_path, None)["runtime_seconds"]
+    assert runtime["median"] == 90.0
+    assert runtime["n"] == 1
 
 
 def test_a_call_without_a_result_has_no_runtime(tmp_path) -> None:
-    """Een afgebroken run mag de mediaan niet naar nul trekken."""
+    """An aborted run must not pull the median down to zero."""
     records = [
         user("pak 616 op"),
         assistant(("Skill", {"skill": kpi.SKILL_NAME})),
@@ -513,9 +513,9 @@ def test_a_call_without_a_result_has_no_runtime(tmp_path) -> None:
 
 
 def test_a_bare_gate_four_without_subletter_is_unknown_not_mistrigger(tmp_path) -> None:
-    """Een kale `Poort 4` (zonder subletter) is onbekend, geen mis-trigger — de gate-formatfout
-    die zonder deze fix een correcte 4b/4c-run als mistrigger telde en het teken van de metriek
-    omkeerde (issue #927 fix 1). Zo'n beurt telt nergens in mee, ook niet in de noemer."""
+    """A bare `Poort 4` (without sub-letter) is unknown, not a mis-trigger — the gate format error
+    that without this fix counted a correct 4b/4c run as a mistrigger and flipped the sign of the metric
+    (issue #927 fix 1). Such a turn counts nowhere, not even in the denominator."""
     records = [
         user("pak 617 op"),
         assistant(("Skill", {"skill": kpi.SKILL_NAME})),
@@ -530,9 +530,9 @@ def test_a_bare_gate_four_without_subletter_is_unknown_not_mistrigger(tmp_path) 
 
 
 def test_tool_calls_come_from_the_agent_result(tmp_path) -> None:
-    """Zevende veld: looptijd zegt niets over hoe breed er gezocht is, `totalToolUseCount` wel.
-    De smoke-run op #912 deed er 15 — géén overschrijding van `maxTurns: 12`, want dat plafond
-    telt beurten en één beurt draagt meerdere parallelle calls."""
+    """Seventh field: runtime says nothing about how widely it searched, `totalToolUseCount` does.
+    The smoke run on #912 made 15 — NOT an overrun of `maxTurns: 12`, because that ceiling
+    counts turns and one turn carries several parallel calls."""
     records = [
         user("pak 618 op"),
         assistant(("Skill", {"skill": kpi.SKILL_NAME})),
@@ -545,7 +545,7 @@ def test_tool_calls_come_from_the_agent_result(tmp_path) -> None:
 
 
 def test_a_result_without_tool_stats_is_not_counted_as_zero(tmp_path) -> None:
-    """Een oudere of afgebroken run mist het veld; nul tool-calls zou de mediaan vervalsen."""
+    """An older or aborted run lacks the field; zero tool calls would falsify the median."""
     records = [
         user("pak 619 op"),
         assistant(("Skill", {"skill": kpi.SKILL_NAME})),
@@ -559,8 +559,8 @@ def test_a_result_without_tool_stats_is_not_counted_as_zero(tmp_path) -> None:
 
 
 def test_a_run_over_the_search_budget_is_counted(tmp_path) -> None:
-    """Het budget uit de persona staat daar als zoekactiegrens; hier wordt het meetbaar. Zonder deze
-    teller is de prompt-norm decoratie — `maxTurns` telt beurten en ziet hem niet."""
+    """The budget from the persona is there as a search-action limit; here it becomes measurable. Without this
+    counter the prompt norm is decoration — `maxTurns` counts turns and does not see it."""
     records = [
         user("pak 620 op"),
         assistant(("Skill", {"skill": kpi.SKILL_NAME})),
@@ -583,12 +583,12 @@ def test_a_run_on_the_budget_is_not_over_it(tmp_path) -> None:
     assert kpi.measure_scout(tmp_path, None)["over_budget"] == 0
 
 
-# --- pilot #937: drie meetgaten ---------------------------------------------------------------
+# --- pilot #937: three measurement gaps -------------------------------------------------------
 
 
 def test_worktree_sessions_are_read_next_to_the_main_directory(tmp_path) -> None:
-    """Een sessie die in een worktree start, landt in `<map>--claude-worktrees-<naam>/`, niet in
-    de hoofdmap. Zonder die sibling-mappen zag `scout` 0 van de ~35 echte runs (#937)."""
+    """A session that starts in a worktree lands in `<dir>--claude-worktrees-<name>/`, not in
+    the main directory. Without those sibling directories `scout` saw 0 of the ~35 real runs (#937)."""
     main = tmp_path / "-home-x-repo"
     sibling = tmp_path / "-home-x-repo--claude-worktrees-issue-610-iets"
     stranger = tmp_path / "-home-x-repo-ander"
@@ -607,8 +607,8 @@ def test_worktree_sessions_are_read_next_to_the_main_directory(tmp_path) -> None
 
 
 def test_the_worktree_skill_is_not_the_route_boundary() -> None:
-    """Stap 3 van de skill zet de worktree vóór de route, dus `using-git-worktrees` is altijd
-    de eerste Skill-call na de ambient load. Als grens slikte hij elke poortmelding daarna."""
+    """Step 3 of the skill puts the worktree before the route, so `using-git-worktrees` is always
+    the first Skill call after the ambient load. As a boundary it would swallow every gate announcement after it."""
     turn = _gate_turn(
         assistant(("Skill", {"skill": kpi.SKILL_NAME})),
         assistant(("Skill", {"skill": "superpowers:using-git-worktrees"})),
@@ -622,8 +622,8 @@ def test_the_worktree_skill_is_not_the_route_boundary() -> None:
 
 
 def test_a_scout_call_after_a_silent_route_is_unknown_not_mistrigger(tmp_path) -> None:
-    """Geen poortmelding is geen bewijs voor poort 0/1/2/4a. Zo'n run is onbekend — zelfde
-    regel als de kale `Poort 4` — maar wordt wel geteld, anders verdwijnt hij uit beeld."""
+    """No gate announcement is no evidence for gate 0/1/2/4a. Such a run is unknown — same
+    rule as the bare `Poort 4` — but it is counted, otherwise it disappears from view."""
     records = [
         user("pak 618 op"),
         assistant(("Skill", {"skill": kpi.SKILL_NAME})),
@@ -638,9 +638,9 @@ def test_a_scout_call_after_a_silent_route_is_unknown_not_mistrigger(tmp_path) -
 
 
 def test_an_async_launch_or_rejection_is_not_a_finished_run(tmp_path) -> None:
-    """Een scout op de achtergrond retourneert meteen `status: async_launched`; een afgewezen
-    call retourneert een string. Beide zijn geen afgeronde run: hun 1-10 s trok de mediaan
-    van de looptijd omlaag (#937). De trigger telt wel — de skill vuurde hem."""
+    """A scout in the background returns immediately `status: async_launched`; a rejected
+    call returns a string. Neither is a finished run: their 1-10 s pulled the runtime
+    median down (#937). The trigger does count — the skill fired it."""
     launched = scout_result(uid="s1", stamp="2026-09-11T10:00:02Z")
     launched["toolUseResult"] = {"isAsync": True, "status": "async_launched"}
     rejected = scout_result(uid="s2", stamp="2026-09-11T11:00:10Z")

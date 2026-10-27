@@ -1,61 +1,61 @@
 #!/usr/bin/env python3
 # lighthouse: core@dev
-"""KPI-meting voor de skill lighthouse-start-issue.
+"""KPI measurement for the skill lighthouse-start-issue.
 
-WAT DIT MEET
-------------
-De skill moet de routering doen die nu op de gebruiker neerkomt. De nulmeting liet zien dat de
-spreiding vrijwel volledig verklaard wordt door of de gebruiker de route met de hand meegaf:
+WHAT THIS MEASURES
+------------------
+The skill must do the routing that now falls to the user. The baseline measurement showed that the
+spread is almost entirely explained by whether the user passed the route along by hand:
 
-    prompt noemt zelf al een skill   n=7    mediaan  1 tool-call lead-in
-    prompt noemt geen skill          n=11   mediaan 14 tool-calls lead-in
+    prompt itself already names a skill   n=7    median  1 tool call lead-in
+    prompt names no skill                 n=11   median 14 tool calls lead-in
 
-Beide cijfers zijn wat dit script zelf produceert (`leadin`, cohorten "routed" en "unrouted"),
-niet de handmatige telling uit het ontwerp — die kwam op n=9 respectievelijk n=12 / mediaan 11 uit.
+Both figures are what this script itself produces (`leadin`, cohorts "routed" and "unrouted"),
+not the manual count from the design — that came to n=9 and n=12 / median 11 respectively.
 
-Het doel <= 2 is dus geen willekeurig getal maar wat een handgerouteerde prompt al haalt.
+The target <= 2 is therefore not an arbitrary number but what a hand-routed prompt already achieves.
 
-MEETOPZET
----------
-Bron: de sessie-jsonl's die toch al op schijf staan. Geen synthetische testgevallen, geen
-eval-harness — dat is expliciet een no-go van milestone #42. Dit script evalueert de skill, het
-is geen onderdeel van wat de skill doet.
+MEASUREMENT SETUP
+-----------------
+Source: the session jsonl files that are on disk anyway. No synthetic test cases, no
+eval harness — that is explicitly a no-go of milestone #42. This script evaluates the skill, it
+is not part of what the skill does.
 
-Een beurt loopt van een mensprompt tot de volgende mensprompt. De lead-in is het aantal
-tool_use-blokken VOOR het eerste blok uit ROUTE_TOOLS; die route-call zelf telt niet mee.
-Exclusief, want de gemeten nulmeting kent een minimum van 0.
+A turn runs from a human prompt to the next human prompt. The lead-in is the number of
+tool_use blocks BEFORE the first block from ROUTE_TOOLS; that route call itself does not count.
+Exclusive, because the measured baseline has a minimum of 0.
 
-WAT DIT NIET KAN
-----------------
-`worktree-first` ziet alleen het file_path-argument van Write/Edit. Een bestand dat via een
-heredoc of `sed -i` in een Bash-call ontstaat, is onzichtbaar. Het Bash-commando parseren om er
-een pad uit te raden geeft stille valse tellingen; de grens is daarom expliciet en staat ook in
-de uitvoer. Een score van 100% betekent "van de zichtbare schrijfacties", niet "van alle".
+WHAT THIS CANNOT DO
+-------------------
+`worktree-first` sees only the file_path argument of Write/Edit. A file that comes into existence via a
+heredoc or `sed -i` in a Bash call is invisible. Parsing the Bash command to guess a path
+from it gives silent false counts; the limit is therefore explicit and is also in
+the output. A score of 100% means "of the visible writes", not "of all".
 
-`mistrigger` telt alleen de ene richting: de skill laadde terwijl er geen issuenummer in de prompt
-stond. De omgekeerde fout — een pickup waarbij de skill NIET laadde — wordt hier niet gemeten;
-die wordt indirect zichtbaar in rij 1, want zo'n beurt houdt de oude mediaan.
+`mistrigger` counts only one direction: the skill loaded while there was no issue number in the prompt.
+The reverse error — a pickup where the skill did NOT load — is not measured here;
+it becomes visible indirectly in row 1, because such a turn keeps the old median.
 
-`leadin` slaat de `Skill`-call van lighthouse-start-issue zelf over (noch aanloop, noch route-call):
-de skill is ambient, dus bij een pickup is `Skill{skill: "lighthouse-start-issue"}` vaak de EERSTE
-tool_use van de beurt, vóór er ook maar iets gerouteerd is. Meetellen als route-call zou de
-metric per constructie laten slagen (lead-in 0, ongeacht of de routering daadwerkelijk verbeterde).
-Dit raakt de nulmeting hierboven niet: die stamt van vóór het bestaan van de skill, dus geen
-nulmetingbeurt bevat deze call. `Skill{skill: "lighthouse-route-issue"}` wordt op dezelfde grond
-overgeslagen: sinds de split (#1115) roept start-issue die aan voor de poorten, en de melding
-komt pas ná die call.
+`leadin` skips the `Skill` call of lighthouse-start-issue itself (neither lead-in nor route call):
+the skill is ambient, so on a pickup `Skill{skill: "lighthouse-start-issue"}` is often the FIRST
+tool_use of the turn, before anything at all has been routed. Counting it as a route call would make the
+metric succeed by construction (lead-in 0, regardless of whether the routing actually improved).
+This does not affect the baseline above: it dates from before the skill existed, so no
+baseline turn contains this call. `Skill{skill: "lighthouse-route-issue"}` is skipped
+on the same ground: since the split (#1115) start-issue calls it for the gates, and the announcement
+comes only after that call.
 
-Dezelfde uitsluiting geldt voor de verplichte scoutcall op 4b/4c
-(`Agent{subagent_type: issue-impact-scout}`, issue #927): die call is de voorverkenning zelf,
-niet de aanloop ernaartoe. Zonder deze uitsluiting krijgt elke correcte 4b/4c-pickup +1 op deze
-rij, en leest dat als een routingregressie terwijl de routering niet trager werd.
+The same exclusion applies to the mandatory scout call on 4b/4c
+(`Agent{subagent_type: issue-impact-scout}`, issue #927): that call is the pre-exploration itself,
+not the lead-in to it. Without this exclusion every correct 4b/4c pickup gets +1 on this
+row, and that reads as a routing regression while the routing did not get slower.
 
-`gate` telt of de skill de gekozen triage-poort meldde. Hij kan niet zien of die poort de JUISTE
-was — dat is een oordeel, geen patroon. Wat hij wel levert is de verdeling, en die maakt de
-omgekeerde vraag beantwoordbaar: blijven poort 1 en 2 op nul, dan is de poortenreeks dood hout.
+`gate` counts whether the skill announced the chosen triage gate. It cannot see whether that gate was the RIGHT
+one — that is a judgement, not a pattern. What it does deliver is the distribution, and that makes the
+reverse question answerable: if gates 1 and 2 stay at zero, the gate sequence is dead wood.
 
-Gebruik:
-    python3 .lighthouse/scripts/measure_start_issue_kpi.py           # de hele tabel
+Usage:
+    python3 .lighthouse/scripts/measure_start_issue_kpi.py           # the whole table
     python3 .lighthouse/scripts/measure_start_issue_kpi.py leadin --since 2026-08-24
 
 Output keys are fixed English tokens.
@@ -91,23 +91,23 @@ def default_transcript_dir() -> Path:
 
 
 SKILL_NAME = "lighthouse-start-issue"
-# Sinds #1115 staan de poorten in een eigen read-only skill die start-issue aanroept. Die call is
-# het routeren zelf, net als de ambient start-skill: `count_leadin` en `text_before_route` slaan
-# beide over. `measure_gate` en de andere noemers blijven op SKILL_NAME filteren.
+# Since #1115 the gates live in a read-only skill of their own that start-issue calls. That call is
+# the routing itself, like the ambient start skill: `count_leadin` and `text_before_route` both skip
+# it. `measure_gate` and the other denominators keep filtering on SKILL_NAME.
 ROUTE_SKILL_NAME = "lighthouse-route-issue"
 ROUTING_SKILLS = frozenset({SKILL_NAME, ROUTE_SKILL_NAME})
 
-# Stap 3 van de skill zet de worktree vóór de route; deze Skill-call staat dus altijd vóór de
-# poortmelding. Alleen `text_before_route` slaat hem over (#937) — `count_leadin` niet, want
-# rij 1 telt per definitie tot de eerste Skill-call, en dat houdt de nulmeting vergelijkbaar.
+# Step 3 of the skill puts the worktree before the route; this Skill call is therefore always before the
+# gate announcement. Only `text_before_route` skips it (#937) — `count_leadin` does not, because
+# row 1 counts by definition up to the first Skill call, and that keeps the baseline comparable.
 WORKTREE_SKILL_NAME = "superpowers:using-git-worktrees"
 
-# Een sessie die in een worktree start, landt in een sibling-map van de hoofdmap:
-# `<hoofdmap>--claude-worktrees-<naam>/`. `session_files` leest die mee (#937).
+# A session that starts in a worktree lands in a sibling directory of the main directory:
+# `<main dir>--claude-worktrees-<name>/`. `session_files` reads that one too (#937).
 WORKTREE_DIR_INFIX = "--claude-worktrees-"
 
-# De vier handelingen die tellen als "er is een route gekozen". Precies deze vier, omdat de
-# nulmeting ze gebruikte; uitbreiden maakt de nameting onvergelijkbaar met de nulmeting.
+# The four actions that count as "a route has been chosen". Exactly these four, because the
+# baseline measurement used them; extending them makes the follow-up measurement incomparable with the baseline.
 ROUTE_TOOLS = frozenset({"Skill", "Write", "Edit", "AskUserQuestion"})
 WRITE_TOOLS = frozenset({"Write", "Edit"})
 
@@ -115,24 +115,24 @@ WORKTREE_MARKER = ".claude/worktrees/"
 
 
 def correct_doc_dirs() -> tuple[str, ...]:
-    """De spec- en planmap van het project (`[paths] specs`, `plans`), elk met een `/`."""
+    """The project's spec and plan directories (`[paths] specs`, `plans`), each with a `/`."""
     cfg = config.load(config.config_path())
     return tuple(
         str(config.lookup(cfg, key)).rstrip("/") + "/" for key in ("paths.specs", "paths.plans")
     )
 
 
-# De defaultmappen van Superpowers, waar een spec of plan landt als niemand de conventie volgt.
+# Superpowers' default directories, where a spec or plan lands if nobody follows the convention.
 _LEGACY_ROOT = "docs/" + "superpowers/"
 LEGACY_DOC_DIRS = (_LEGACY_ROOT + "specs/", _LEGACY_ROOT + "plans/")
 
-# `paths` telt toegevoegde bestanden over de git-historie; zonder ondergrens telt hij dus ook de
-# periode waarin de conventie nog niet bestond. Er is geen vaste ondergrens: geef de dag waarop
-# het project de conventie invoerde mee met --since.
+# `paths` counts added files over the git history; without a lower bound it therefore also counts the
+# period in which the convention did not exist yet. There is no fixed lower bound: pass the day on which
+# the project introduced the convention with --since.
 
-# "pak 610 op", "begin aan issue 526", "kijk naar 623", "ga verder met #663"; in English
+# Dutch prompts "pak 610 op", "begin aan issue 526", "kijk naar 623", "ga verder met #663"; in English  # lighthouse: allow-language — the Dutch example prompts match the Dutch regex branches below
 # "pick up 610", "pick 610 up", "start on issue 526", "work on #663", "look at 623".
-# Bewust smal: een prompt die een nummer alleen NOEMT ("wat staat er in 610?") is geen pickup.
+# Deliberately narrow: a prompt that only MENTIONS a number ("wat staat er in 610?") is not a pickup.  # lighthouse: allow-language — quotes a Dutch example prompt
 PICKUP_RE = re.compile(
     r"""
       (?:pak|pik)\s+(?:issue\s*)?\#?(?P<a>\d{2,4})\s+op
@@ -148,12 +148,12 @@ PICKUP_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-# Een slash-commando, maar geen absoluut pad: `/usr/local/...` wordt door de negatieve
-# lookahead op '/' uitgesloten.
+# A slash command, but not an absolute path: `/usr/local/...` is excluded by the negative
+# lookahead on '/'.
 SLASH_SKILL_RE = re.compile(r"(?<![\w/])/([a-z][a-z0-9-]*(?::[a-z0-9-]+)?)(?![\w/])")
 
-# Ruim: elk getal van 2-4 cijfers, met of zonder '#'. Conservatief de goede kant op — een ruime
-# match levert MINDER gerapporteerde mis-triggers, dus dit getal overdrijft het probleem nooit.
+# Broad: any number of 2-4 digits, with or without '#'. Conservative in the right direction — a broad
+# match yields FEWER reported mis-triggers, so this number never exaggerates the problem.
 ISSUE_NUMBER_RE = re.compile(r"(?<![\w.])#?\d{2,4}(?![\w.])")
 
 
@@ -164,11 +164,11 @@ def _flexible(key: str) -> str:
     ) + ")"
 
 
-# De vaste vorm waarin de skill zijn triage-uitkomst meldt: `Poort 2: systematic-debugging`
-# (`heading:gate_line`, elke taal). Vijf poorten (0 t/m 4); een hoger cijfer is per definitie
-# geen poortmelding. Poort 4 draagt verplicht een subletter (`Poort 4b: writing-plans`); zonder
-# `[abc]?` valt er tussen `4` en `b` geen woordgrens en telt precies de voorgeschreven vorm als
-# "niet gemeld".
+# The fixed form in which the skill announces its triage outcome: `Poort 2: systematic-debugging`
+# (`heading:gate_line`, any language). Five gates (0 through 4); a higher digit is by definition
+# not a gate announcement. Gate 4 carries a mandatory sub-letter (`Poort 4b: writing-plans`); without
+# `[abc]?` there is no word boundary between `4` and `b` and exactly the prescribed form counts as
+# "not reported".
 @functools.cache
 def gate_re() -> re.Pattern[str]:
     return re.compile(rf"\b{_flexible('gate_line')}\s*(?P<gate>[0-4])[abc]?\b")
@@ -176,10 +176,10 @@ def gate_re() -> re.Pattern[str]:
 
 SCOUT_AGENT = "lighthouse-issue-impact-scout"
 
-# De trigger wordt structureel gelezen uit het Agent-blok (`_scout_calls`), niet uit deze regex:
-# de meldregel `Scout: issue-impact-scout` uit SKILL.md wordt door niets in dit script gemeten.
-# `scout_skip_re` hieronder wordt wél gebruikt — dat contract is `heading:scout_skipped` in
-# `.lighthouse/headings.toml`, dezelfde kop die de skill schrijft.
+# The trigger is read structurally from the Agent block (`_scout_calls`), not from this regex:
+# the announcement line `Scout: issue-impact-scout` from SKILL.md is measured by nothing in this script.
+# `scout_skip_re` below IS used — that contract is `heading:scout_skipped` in
+# `.lighthouse/headings.toml`, the same heading the skill writes.
 @functools.cache
 def scout_skip_re() -> re.Pattern[str]:
     return re.compile(
@@ -187,14 +187,14 @@ def scout_skip_re() -> re.Pattern[str]:
     )
 
 
-# Een reden van één teken (of alleen een punt) is geen reden. Twintig tekens is geen diepe
-# waarheid; het is de ondergrens waaronder "duidelijk." en "simpel." niet meer doorglippen.
+# A reason of one character (or just a full stop) is no reason. Twenty characters is no deep
+# truth; it is the lower bound below which "duidelijk." and "simpel." no longer slip through.
 SCOUT_MIN_REASON = 20
 
-# Het zoekbudget uit de persona (`.claude/agents/lighthouse-issue-impact-scout.md`, norm
-# "hoogstens 35 zoekacties"). Het staat hier omdat `maxTurns` iets anders begrenst — beurten,
-# niet calls — en een grens die niemand telt is decoratie. tests/pack/test_issue_impact_scout.py
-# pint dat dit getal en de persona hetzelfde zeggen.
+# The search budget from the persona (`.claude/agents/lighthouse-issue-impact-scout.md`, norm
+# "at most 35 search actions"). It is here because `maxTurns` bounds something else — turns,
+# not calls — and a limit nobody counts is decoration. tests/pack/test_issue_impact_scout.py
+# pins that this number and the persona say the same.
 SCOUT_TOOL_CALL_BUDGET = 35
 
 SCOUT_GATES = frozenset({"4b", "4c"})
@@ -207,17 +207,17 @@ def gate_suffix_re() -> re.Pattern[str]:
 
 @dataclass(frozen=True)
 class Turn:
-    """Een mensprompt en alles wat erop volgde tot de volgende mensprompt."""
+    """A human prompt and everything that followed it up to the next human prompt."""
 
     prompt: str
     records: tuple[dict, ...]
 
 
-# --- recordherkenning -------------------------------------------------------------------------
+# --- record recognition -----------------------------------------------------------------------
 
 
 def prompt_text(record: dict) -> str:
-    """De tekstblokken van een record, samengevoegd. Lege string als er geen tekst in zit."""
+    """The text blocks of a record, joined. Empty string if there is no text in it."""
     content = record.get("message", {}).get("content")
     if isinstance(content, str):
         return content
@@ -231,11 +231,11 @@ def prompt_text(record: dict) -> str:
 
 
 def is_user_prompt(record: dict) -> bool:
-    """Een echte mensprompt.
+    """A real human prompt.
 
-    Drie uitsluitingen die er allemaal toe doen: een tool_result heeft dezelfde `type: user`
-    (zonder deze check is elke lead-in 0), `isSidechain` is subagent-verkeer, en `isMeta` zijn
-    harness-injecties zoals hook-context.
+    Three exclusions that all matter: a tool_result has the same `type: user`
+    (without this check every lead-in is 0), `isSidechain` is subagent traffic, and `isMeta` are
+    harness injections such as hook context.
     """
     if record.get("type") != "user":
         return False
@@ -247,7 +247,7 @@ def is_user_prompt(record: dict) -> bool:
 
 
 def tool_uses(record: dict) -> list[tuple[str, dict]]:
-    """De (naam, input)-paren van elk tool_use-blok in een assistant-record."""
+    """The (name, input) pairs of every tool_use block in an assistant record."""
     if record.get("type") != "assistant" or record.get("isSidechain"):
         return []
     content = record.get("message", {}).get("content")
@@ -281,7 +281,7 @@ def iter_turns(records: Iterable[dict]) -> Iterator[Turn]:
         yield Turn(prompt, tuple(buffer))
 
 
-# --- prompt-classificatie ---------------------------------------------------------------------
+# --- prompt classification --------------------------------------------------------------------
 
 
 def pickup_issue_number(text: str) -> int | None:
@@ -299,21 +299,21 @@ def has_issue_number(text: str) -> bool:
     return bool(ISSUE_NUMBER_RE.search(text))
 
 
-# --- metingen per beurt -----------------------------------------------------------------------
+# --- measurements per turn --------------------------------------------------------------------
 
 
 def count_leadin(turn: Turn) -> int | None:
-    """Tool-calls vóór de eerste route-call, of None als er geen route gekozen werd."""
+    """Tool calls before the first route call, or None if no route was chosen."""
     seen = 0
     for record in turn.records:
         for name, payload in tool_uses(record):
             if name == "Skill" and payload.get("skill") in ROUTING_SKILLS:
-                # De skill die zichzelf ambient laadt, en de poortskill die hij aanroept, zijn
-                # het routeren zelf: geen aanloop ervoor én geen route-call om te tellen.
+                # The skill that loads itself ambiently, and the gate skill it calls, are
+                # the routing itself: no lead-in for it and no route call to count.
                 continue
             if name == "Agent" and payload.get("subagent_type") == SCOUT_AGENT:
-                # Zelfde argument: de verplichte scoutcall op 4b/4c is de voorverkenning zelf,
-                # geen aanloop ernaartoe (zie de moduledocstring hierboven, issue #927 fix 2).
+                # Same argument: the mandatory scout call on 4b/4c is the pre-exploration itself,
+                # not the lead-in to it (see the module docstring above, issue #927 fix 2).
                 continue
             if name in ROUTE_TOOLS:
                 return seen
@@ -336,16 +336,16 @@ def is_worktree_path(path: str) -> bool:
 
 
 def text_before_route(turn: Turn) -> str:
-    """Assistant-tekst tot en met het bericht waarin de eerste route-call zit.
+    """Assistant text up to and including the message that contains the first route call.
 
-    De poortmelding hoort vóór het doorroeren te staan. Tekst en tool_use kunnen in hetzelfde
-    assistant-bericht zitten — de tekstblokken staan er dan vóór — dus de grens ligt op het
-    tool_use-blok zelf, niet op het bericht. De ambient `Skill{skill: lighthouse-start-issue}` wordt
-    overgeslagen op dezelfde grond als in `count_leadin`: die call ís het laden van de skill, niet
-    het routeren erna. `Skill{skill: lighthouse-route-issue}` evenzo: die call ís het routeren, en de
-    poortmelding volgt er pas op. `Skill{skill: superpowers:using-git-worktrees}` ook: stap 3 zet
-    de worktree vóór de route, dus als grens slikte hij elke poortmelding (#937). Vindt de skill geen route (poort 0 stopt), dan is er geen grens en telt de
-    hele beurt.
+    The gate announcement belongs before the routing. Text and tool_use can sit in the same
+    assistant message — the text blocks come before it — so the boundary lies on the
+    tool_use block itself, not on the message. The ambient `Skill{skill: lighthouse-start-issue}` is
+    skipped on the same ground as in `count_leadin`: that call IS the loading of the skill, not
+    the routing after it. `Skill{skill: lighthouse-route-issue}` likewise: that call IS the routing, and the
+    gate announcement only follows it. `Skill{skill: superpowers:using-git-worktrees}` too: step 3 puts
+    the worktree before the route, so as a boundary it would swallow every gate announcement (#937). If the skill finds no route (gate 0 stops), there is no boundary and the
+    whole turn counts.
     """
     parts: list[str] = []
     for record in turn.records:
@@ -372,7 +372,7 @@ def text_before_route(turn: Turn) -> str:
 
 
 def announced_gate(turn: Turn) -> int | None:
-    """Het poortnummer dat de skill meldde, of None als hij stil routeerde."""
+    """The gate number the skill announced, or None if it routed silently."""
     match = gate_re().search(text_before_route(turn))
     return int(match.group("gate")) if match else None
 
@@ -386,11 +386,11 @@ def loaded_skills(turn: Turn) -> list[str]:
     ]
 
 
-# --- inlezen ----------------------------------------------------------------------------------
+# --- reading in -------------------------------------------------------------------------------
 
 
 def read_session(path: Path) -> list[dict]:
-    """Eén sessiebestand. Kapotte regels worden overgeslagen, niet gerepareerd."""
+    """One session file. Broken lines are skipped, not repaired."""
     records: list[dict] = []
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = line.strip()
@@ -404,11 +404,11 @@ def read_session(path: Path) -> list[dict]:
 
 
 def session_files(directory: Path) -> list[Path]:
-    """De sessiebestanden van de hoofdmap plus die van elke worktree-sibling.
+    """The session files of the main directory plus those of every worktree sibling.
 
-    Zonder de siblings mist elke meting de sessies die in een worktree begonnen — controller-runs
-    en vensters die na een handoff in de worktree openen. De scout-rij zag daardoor 0 van ruim
-    dertig echte runs (#937).
+    Without the siblings every measurement misses the sessions that began in a worktree — controller runs
+    and windows that open in the worktree after a handoff. The scout row therefore saw 0 of well over
+    thirty real runs (#937).
     """
     siblings = directory.parent.glob(f"{directory.name}{WORKTREE_DIR_INFIX}*")
     return sorted(
@@ -425,7 +425,7 @@ def _after(record: dict, since: str | None) -> bool:
 
 
 def iter_pickup_turns(directory: Path, since: str | None) -> Iterator[tuple[Turn, int]]:
-    """Elke beurt die met een pickup-prompt begint, met het issuenummer erbij."""
+    """Every turn that begins with a pickup prompt, with the issue number."""
     for path in session_files(directory):
         records = [r for r in read_session(path) if _after(r, since)]
         for turn in iter_turns(records):
@@ -434,7 +434,7 @@ def iter_pickup_turns(directory: Path, since: str | None) -> Iterator[tuple[Turn
                 yield turn, number
 
 
-# --- de vijf rijen ----------------------------------------------------------------------------
+# --- the five rows ----------------------------------------------------------------------------
 
 
 def measure_leadin(directory: Path, since: str | None) -> dict[str, object]:
@@ -476,19 +476,19 @@ def measure_worktree_first(directory: Path, since: str | None) -> dict[str, obje
             inside += 1
         else:
             outside += 1
-    zichtbaar = inside + outside
+    visible = inside + outside
     return {
         "in_worktree": inside,
         "outside_worktree": outside,
         "no_visible_write": invisible,
-        "share": round(inside / zichtbaar, 3) if zichtbaar else None,
+        "share": round(inside / visible, 3) if visible else None,
         "note": "Write/Edit only; Bash writes are invisible",
     }
 
 
 def measure_mistrigger(directory: Path, since: str | None) -> dict[str, object]:
     loaded = mistriggered = 0
-    voorbeelden: list[str] = []
+    examples: list[str] = []
     for path in session_files(directory):
         records = [r for r in read_session(path) if _after(r, since)]
         for turn in iter_turns(records):
@@ -497,49 +497,49 @@ def measure_mistrigger(directory: Path, since: str | None) -> dict[str, object]:
             loaded += 1
             if not has_issue_number(turn.prompt):
                 mistriggered += 1
-                voorbeelden.append(turn.prompt[:120])
+                examples.append(turn.prompt[:120])
     return {
         "loaded": loaded,
         "without_issue_number": mistriggered,
-        "examples": voorbeelden[:5],
+        "examples": examples[:5],
     }
 
 
 def measure_gate(directory: Path, since: str | None) -> dict[str, object]:
-    """Meldde de skill welke poort hij nam?
+    """Did the skill announce which gate it took?
 
-    Noemer is bewust smal: alleen pickups waarin de skill daadwerkelijk laadde. Een pickup zonder
-    skill is de fout die `leadin` en `mistrigger` meten; die hier meetellen zou twee verschillende
-    faalmodi in één percentage persen.
+    The denominator is deliberately narrow: only pickups in which the skill actually loaded. A pickup without
+    the skill is the error that `leadin` and `mistrigger` measure; counting it here would squeeze two different
+    failure modes into one percentage.
 
-    De verdeling is bijvangst, geen doel: hij laat zien of poort 1 en 2 überhaupt vuren. Blijven ze
-    op nul terwijl er wel bug- en recept-issues langskwamen, dan is de poortenreeks dood hout.
+    The distribution is a by-catch, not a goal: it shows whether gates 1 and 2 fire at all. If they stay
+    at zero while bug and recipe issues did come by, the gate sequence is dead wood.
     """
-    gemeld = niet_gemeld = zonder_skill = 0
-    verdeling: dict[str, int] = {}
+    reported = not_reported = without_skill = 0
+    distribution: dict[str, int] = {}
     for turn, _ in iter_pickup_turns(directory, since):
         if SKILL_NAME not in loaded_skills(turn):
-            zonder_skill += 1
+            without_skill += 1
             continue
         gate = announced_gate(turn)
         if gate is None:
-            niet_gemeld += 1
+            not_reported += 1
             continue
-        gemeld += 1
+        reported += 1
         key = f"gate_{gate}"
-        verdeling[key] = verdeling.get(key, 0) + 1
-    totaal = gemeld + niet_gemeld
+        distribution[key] = distribution.get(key, 0) + 1
+    total = reported + not_reported
     return {
-        "reported": gemeld,
-        "not_reported": niet_gemeld,
-        "share": round(gemeld / totaal, 3) if totaal else None,
-        "distribution": dict(sorted(verdeling.items())),
-        "pickup_without_skill": zonder_skill,
+        "reported": reported,
+        "not_reported": not_reported,
+        "share": round(reported / total, 3) if total else None,
+        "distribution": dict(sorted(distribution.items())),
+        "pickup_without_skill": without_skill,
     }
 
 
 def _scout_calls(turn: Turn) -> list[tuple[dict, dict | None]]:
-    """Elke Agent-call naar de scout, met het bijbehorende tool_result of None."""
+    """Every Agent call to the scout, with the matching tool_result or None."""
     calls: list[tuple[str, dict]] = []
     for record in turn.records:
         for block in _content_blocks(record):
@@ -570,12 +570,12 @@ def _seconds_between(start: dict, end: dict) -> float | None:
 
 
 def _tool_use_count(end: dict) -> int | None:
-    """Hoeveel tool-calls de scoutrun deed, uit `toolUseResult.totalToolUseCount`.
+    """How many tool calls the scout run made, from `toolUseResult.totalToolUseCount`.
 
-    Dit is de meetbare proxy voor het budget. Let op de semantiek: `maxTurns` in de
-    agentfrontmatter begrenst **beurten** (tool-use-round-trips), en één beurt kan meerdere
-    parallelle calls dragen. Een run met meer tool-calls dan `maxTurns` is dus geen
-    overschrijding; het getal zegt hoe breed er gezocht is, niet of een plafond raakte.
+    This is the measurable proxy for the budget. Mind the semantics: `maxTurns` in the
+    agent frontmatter bounds **turns** (tool-use round trips), and one turn can carry several
+    parallel calls. A run with more tool calls than `maxTurns` is therefore not an
+    overrun; the number says how widely it searched, not whether a ceiling was hit.
     """
     result = end.get("toolUseResult")
     if not isinstance(result, dict):
@@ -585,11 +585,11 @@ def _tool_use_count(end: dict) -> int | None:
 
 
 def _finished(end: dict) -> bool:
-    """Is dit retour het einde van een run?
+    """Is this return the end of a run?
 
-    Niet bij een achtergrondstart (`status: async_launched`, retour na een paar seconden terwijl
-    de run nog loopt) en niet bij een afgewezen call (`toolUseResult` is dan een string). Beide
-    trokken de looptijdmediaan omlaag (#937).
+    Not for a background start (`status: async_launched`, return after a few seconds while
+    the run is still going) and not for a rejected call (`toolUseResult` is then a string). Both
+    pulled the runtime median down (#937).
     """
     result = end.get("toolUseResult")
     if isinstance(result, str):
@@ -598,23 +598,23 @@ def _finished(end: dict) -> bool:
 
 
 def _run_stats(calls: list[tuple[dict, dict | None]]) -> tuple[list[float], list[int]]:
-    """Looptijd en tool-call-aantal per afgeronde scoutcall; een call zonder retour telt niet."""
-    seconden: list[float] = []
-    aantallen: list[int] = []
+    """Runtime and tool-call count per finished scout call; a call without a return does not count."""
+    seconds: list[float] = []
+    counts: list[int] = []
     for start, end in calls:
         if end is None or not _finished(end):
             continue
-        duur = _seconds_between(start, end)
-        if duur is not None:
-            seconden.append(duur)
-        aantal = _tool_use_count(end)
-        if aantal is not None:
-            aantallen.append(aantal)
-    return seconden, aantallen
+        duration = _seconds_between(start, end)
+        if duration is not None:
+            seconds.append(duration)
+        count = _tool_use_count(end)
+        if count is not None:
+            counts.append(count)
+    return seconds, counts
 
 
 def announced_subgate(turn: Turn) -> str | None:
-    """`4b` of `4c` als de skill de subletter meldde, anders alleen het cijfer als string."""
+    """`4b` or `4c` if the skill announced the sub-letter, otherwise only the digit as a string."""
     match = gate_suffix_re().search(text_before_route(turn))
     if not match:
         return None
@@ -622,32 +622,32 @@ def announced_subgate(turn: Turn) -> str | None:
 
 
 def measure_scout(directory: Path, since: str | None) -> dict[str, object]:
-    """Vuurde de scout waar hij hoort, en zweeg hij nergens?
+    """Did the scout fire where it should, and was it silent nowhere?
 
-    Noemer is smal, net als bij `gate`: alleen pickups waarin de skill laadde én de gemelde
-    poort `4b` of `4c` was. Een pickup zonder skill of zonder gemelde poort is de fout die
-    `leadin` en `gate` al meten.
+    The denominator is narrow, as with `gate`: only pickups in which the skill loaded and the announced
+    gate was `4b` or `4c`. A pickup without the skill or without an announced gate is the error that
+    `leadin` and `gate` already measure.
 
-    `mistrigger` staat bewust buiten die noemer: een scoutcall op poort 0, 1, 2 of 4a is geen
-    slechte 4b/4c-run, het is een andere fout, en twee faalmodi in één percentage persen maakt
-    beide onleesbaar.
+    `mistrigger` is deliberately outside that denominator: a scout call on gate 0, 1, 2 or 4a is not a
+    bad 4b/4c run, it is a different error, and squeezing two failure modes into one percentage makes
+    both unreadable.
 
-    `tool_calls` en `over_budget` meten het zoekbudget uit de persona
-    (`SCOUT_TOOL_CALL_BUDGET`), niet `maxTurns`: dat plafond telt beurten, en één beurt draagt
-    meerdere parallelle calls. Een run boven het budget is dus een overschrijding van de
-    prompt-norm, geen runtimefout.
+    `tool_calls` and `over_budget` measure the search budget from the persona
+    (`SCOUT_TOOL_CALL_BUDGET`), not `maxTurns`: that ceiling counts turns, and one turn carries
+    several parallel calls. A run over the budget is therefore an overrun of the
+    prompt norm, not a runtime error.
 
-    Een gemelde poort `4` zonder subletter is **onbekend**, geen mis-trigger: SKILL.md eiste tot
-    issue #927 geen subletter bij poort 4, dus zo'n melding kan een correcte 4b/4c-run zijn die
-    alleen het cijfer meldde. Zo'n beurt telt niet als mistrigger en niet in de
-    noemer (`totaal`) van deze rij. Poort 0/1/2/4a blijven ondubbelzinnig en dus ongemoeid.
+    An announced gate `4` without a sub-letter is **unknown**, not a mis-trigger: until issue #927
+    SKILL.md did not require a sub-letter for gate 4, so such an announcement can be a correct 4b/4c run that
+    announced only the digit. Such a turn does not count as a mistrigger and not in the
+    denominator (`total`) of this row. Gate 0/1/2/4a stay unambiguous and are therefore left alone.
 
-    Hetzelfde geldt voor een scoutcall zonder enige poortmelding: stil routeren is geen bewijs
-    voor poort 0/1/2/4a (#937). Die runs tellen in `gate_unknown`, zodat ze zichtbaar blijven
-    zonder de noemer of `mistrigger` te vervuilen; de poortfout zelf meet rij `gate`.
+    The same holds for a scout call without any gate announcement: routing silently is no evidence
+    for gate 0/1/2/4a (#937). Those runs count in `gate_unknown`, so they stay visible
+    without polluting the denominator or `mistrigger`; the gate error itself is measured by row `gate`.
     """
-    getriggerd = met_reden = stil = mistrigger = onbekend = 0
-    looptijden: list[float] = []
+    triggered = with_reason = silent = mistrigger = unknown = 0
+    runtimes: list[float] = []
     tool_calls: list[int] = []
     for turn, _ in iter_pickup_turns(directory, since):
         if SKILL_NAME not in loaded_skills(turn):
@@ -655,32 +655,32 @@ def measure_scout(directory: Path, since: str | None) -> dict[str, object]:
         calls = _scout_calls(turn)
         subgate = announced_subgate(turn)
         if subgate is None or subgate == "4":
-            onbekend += 1 if calls else 0
+            unknown += 1 if calls else 0
             continue
         if subgate not in SCOUT_GATES:
             mistrigger += len(calls)
             continue
-        seconden, aantallen = _run_stats(calls)
-        looptijden += seconden
-        tool_calls += aantallen
+        seconds, counts = _run_stats(calls)
+        runtimes += seconds
+        tool_calls += counts
         if calls:
-            getriggerd += 1
+            triggered += 1
             continue
         skip = scout_skip_re().search(text_before_route(turn))
-        reden = skip.group("reden").strip(" .") if skip else ""
-        if len(reden) >= SCOUT_MIN_REASON:
-            met_reden += 1
+        reason = skip.group("reden").strip(" .") if skip else ""
+        if len(reason) >= SCOUT_MIN_REASON:
+            with_reason += 1
         else:
-            stil += 1
-    totaal = getriggerd + met_reden + stil
+            silent += 1
+    total = triggered + with_reason + silent
     return {
-        "triggered": getriggerd,
-        "skipped_with_reason": met_reden,
-        "silent": stil,
+        "triggered": triggered,
+        "skipped_with_reason": with_reason,
+        "silent": silent,
         "mistrigger": mistrigger,
-        "gate_unknown": onbekend,
-        "share": round((getriggerd + met_reden) / totaal, 3) if totaal else None,
-        "runtime_seconds": _summary_float(looptijden),
+        "gate_unknown": unknown,
+        "share": round((triggered + with_reason) / total, 3) if total else None,
+        "runtime_seconds": _summary_float(runtimes),
         "tool_calls": _summary_int(tool_calls),
         "over_budget": sum(1 for n in tool_calls if n > SCOUT_TOOL_CALL_BUDGET),
     }
@@ -707,11 +707,11 @@ def _summary_float(values: list[float]) -> dict[str, object]:
 
 
 def measure_paths(since: str | None) -> dict[str, object]:
-    """Leest git, geen transcripten: waar landden nieuwe spec- en planbestanden?
+    """Reads git, not transcripts: where did new spec and plan files land?
 
-    Zonder --since telt de hele historie, ook de periode waarin de conventie nog niet bestond;
-    een target van 100% is dan per constructie onhaalbaar. Geef daarom de dag mee waarop de
-    conventie begon; `since` in de uitvoer noemt altijd welk venster geteld is.
+    Without --since the whole history counts, including the period in which the convention did not exist yet;
+    a target of 100% is then unreachable by construction. Therefore pass the day on which the
+    convention began; `since` in the output always names which window was counted.
     """
     argv = [
         "git",

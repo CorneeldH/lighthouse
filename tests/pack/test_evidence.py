@@ -1,8 +1,8 @@
-"""`pack/core/lib/evidence.py` (#1091): argv-allowlist en runner voor Evidence-rijen.
+"""`pack/core/lib/evidence.py` (#1091): argv allowlist and runner for Evidence rows.
 
-Een PR-body is onbetrouwbare tekst: wat buiten de allowlist valt draait nooit,
-en er is geen shell. Netwerkverbod: elke test die `gh` kan bereiken zet een
-stub-`gh` vooraan op `PATH`; er draait nergens een echte `uv`.
+A PR body is untrusted text: what falls outside the allowlist never runs,
+and there is no shell. Network ban: every test that can reach `gh` puts a
+stub `gh` first on `PATH`; no real `uv` runs anywhere.
 """
 
 import os
@@ -67,7 +67,7 @@ REFUSED = [
     "rm -rf x",
     "python3 -c 1",
     "bash -c ls",
-    # Aanvullend: elke weigering uit de brief die de lijst hierboven niet raakt.
+    # Additional: every refusal from the brief that the list above does not cover.
     "uv run pytest -q",
     "uv run pytest -- tests/unit/a.py",
     "uv run pytest @args tests/unit/a.py",
@@ -94,7 +94,7 @@ REFUSED = [
     "gh pr create",
     "gh issue close 5",
     "gh issue view 5 -- x",
-    # Een lege `--opt=` slikt het volgende woord niet: dat is een nieuwe optie.
+    # An empty `--opt=` does not swallow the next word: that is a new option.
     "git log --format= --output=/tmp/pwn",
     "git show --pretty= --output=/tmp/pwn HEAD",
     "git log --format= origin/main...HEAD",
@@ -103,7 +103,7 @@ REFUSED = [
     "gh pr view 5 --json= --web",
     "gh issue view 5 --repo= -w",
     "git log --grep= --format=%G?",
-    # Zelfde patroon, andere vormen: kaal `--pretty`, lege of `=`-beginnende korte waarde.
+    # Same pattern, other forms: bare `--pretty`, an empty or `=`-leading short value.
     "git log --pretty --output=/tmp/pwn",
     "git log --format %H --output=/tmp/pwn",
     "git log -n= --output=/tmp/pwn",
@@ -112,8 +112,8 @@ REFUSED = [
     "grep -e '' f",
     "gh api repos/x/y -q= -XDELETE",
     "gh pr view 5 -R= -w",
-    # Zonder nummer leest gh de branch van de cwd; in de detached worktree van ingang C
-    # is die er niet, en de rij faalt na de merge zonder dat er iets mis is.
+    # Without a number, gh reads the branch of the cwd; in the detached worktree of entry C
+    # there is none, and the row fails after the merge with nothing wrong.
     "gh pr view",
     "gh pr view --json number --jq .number",
     "gh issue view --json body",
@@ -121,12 +121,12 @@ REFUSED = [
 
 
 @pytest.mark.parametrize("cmd", ALLOWED)
-def test_toegestaan(cmd):
+def test_allowed(cmd):
     assert ev.check(ev.split_command(f"`{cmd}`")) is None
 
 
 @pytest.mark.parametrize("cmd", REFUSED)
-def test_geweigerd(cmd):
+def test_refused(cmd):
     argv = ev.split_command(f"`{cmd}`")
     assert isinstance(argv, str) or ev.check(argv) is not None
 
@@ -142,16 +142,16 @@ def test_geweigerd(cmd):
         "grep 'open f",
     ],
 )
-def test_shell_operatoren_geweigerd(cmd):
+def test_shell_operators_refused(cmd):
     assert isinstance(ev.split_command(f"`{cmd}`"), str)
 
 
 @pytest.mark.parametrize("cmd", ["gh pr view --json number", "gh issue view -c"])
-def test_gh_view_zonder_nummer_noemt_de_reden(cmd):
+def test_gh_view_without_number_names_the_reason(cmd):
     assert "exactly one" in ev.check(ev.split_command(f"`{cmd}`"))
 
 
-def test_backtick_in_rest_geweigerd():
+def test_backtick_in_rest_refused():
     assert isinstance(ev.split_command("`echo `id``"), str)
 
 
@@ -164,7 +164,7 @@ def test_markdown_pipe_escape_bare_is_pipe():
 
 
 @pytest.mark.parametrize(
-    ("cel", "verwacht"),
+    ("cell", "expected"),
     [
         ("`passed`", ("passed", False)),
         ("passed", ("passed", False)),
@@ -174,37 +174,37 @@ def test_markdown_pipe_escape_bare_is_pipe():
         ("`a\\|b`", ("a|b", False)),
     ],
 )
-def test_expected_normaliseert(cel, verwacht):
-    assert ev.expected(cel) == verwacht
+def test_expected_normalises(cell, expected):
+    assert ev.expected(cell) == expected
 
 
 # --- run_row -----------------------------------------------------------------
 
 
-def test_run_row_klopt(tmp_path):
+def test_run_row_holds(tmp_path):
     (tmp_path / "f").write_text("hallo wereld\n")
     out = ev.run_row(Row("1", "`grep -F hallo f`", "wereld"), str(tmp_path), True)
     assert out[0] == ev.HOLDS
 
 
-def test_run_row_substring_ontbreekt(tmp_path):
+def test_run_row_substring_missing(tmp_path):
     (tmp_path / "f").write_text("hallo wereld\n")
-    uitkomst, detail = ev.run_row(
+    outcome, detail = ev.run_row(
         Row("1", "`grep -F hallo f`", "nope"), str(tmp_path), True
     )
-    assert uitkomst == ev.FAILS
+    assert outcome == ev.FAILS
     assert "nope" in detail
 
 
-def test_run_row_exitcode(tmp_path):
-    uitkomst, detail = ev.run_row(
+def test_run_row_exit_code(tmp_path):
+    outcome, detail = ev.run_row(
         Row("1", "`test -f bestaatniet`", "x"), str(tmp_path), True
     )
-    assert uitkomst == ev.FAILS
+    assert outcome == ev.FAILS
     assert "1" in detail
 
 
-def test_run_row_na_pr_voorvoegsel(tmp_path):
+def test_run_row_after_pr_prefix(tmp_path):
     (tmp_path / "f").write_text("hallo wereld\n")
     out = ev.run_row(
         Row("1", "`grep -F hallo f`", "na PR: wereld"), str(tmp_path), True
@@ -212,59 +212,59 @@ def test_run_row_na_pr_voorvoegsel(tmp_path):
     assert out[0] == ev.HOLDS
 
 
-def test_run_row_result_met_backticks(tmp_path):
+def test_run_row_result_with_backticks(tmp_path):
     (tmp_path / "f").write_text("hallo wereld\n")
     out = ev.run_row(Row("1", "`grep -F hallo f`", "`wereld`"), str(tmp_path), True)
     assert out[0] == ev.HOLDS
 
 
-def test_run_row_lege_verwachting_is_ongeldig(tmp_path):
+def test_run_row_empty_expectation_is_invalid(tmp_path):
     out = ev.run_row(Row("1", "`ls`", "``"), str(tmp_path), True)
     assert out[0] == ev.INVALID
 
 
-def test_run_row_buiten_allowlist_draait_niet(tmp_path):
+def test_run_row_outside_allowlist_does_not_run(tmp_path):
     out = ev.run_row(Row("1", "`git show --output=x HEAD`", "x"), str(tmp_path), True)
     assert out[0] == ev.INVALID and not (tmp_path / "x").exists()
     assert "Evidence outside the allowlist" in out[1]
 
 
-def test_run_row_gh_niet_bereikbaar(tmp_path):
+def test_run_row_gh_not_reachable(tmp_path):
     out = ev.run_row(Row("1", "`gh pr view 1`", "x"), str(tmp_path), False)
     assert out[0] == ev.UNMEASURABLE
 
 
-def test_run_row_binary_ontbreekt(tmp_path, monkeypatch):
+def test_run_row_binary_missing(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", str(tmp_path))
     out = ev.run_row(Row("1", "`grep -F a f`", "a"), str(tmp_path), True)
     assert out[0] == ev.UNMEASURABLE
 
 
 def test_run_row_timeout(tmp_path):
-    # Een deadline van 0 s is al verlopen vóór de eerste lees: deterministisch.
+    # A deadline of 0 s has already passed before the first read: deterministic.
     out = ev.run_row(Row("1", "`ls`", "x"), str(tmp_path), True, timeout=0)
     assert out[0] == ev.UNMEASURABLE
     assert "timeout" in out[1]
 
 
 @pytest.mark.parametrize("cmd", ["cat /dev/zero", "cat zeros"])
-def test_run_row_uitvoer_begrensd(tmp_path, cmd):
+def test_run_row_output_capped(tmp_path, cmd):
     (tmp_path / "zeros").symlink_to("/dev/zero")
     t0 = time.monotonic()
-    uitkomst, detail = ev.run_row(Row("1", f"`{cmd}`", "x"), str(tmp_path), True)
+    outcome, detail = ev.run_row(Row("1", f"`{cmd}`", "x"), str(tmp_path), True)
     assert time.monotonic() - t0 < 20
-    assert uitkomst == ev.UNMEASURABLE
+    assert outcome == ev.UNMEASURABLE
     assert "output larger than" in detail
 
 
-def test_run_row_uitvoer_cap_kleiner(tmp_path, monkeypatch):
-    monkeypatch.setattr(ev, "MAX_UITVOER", 10)
+def test_run_row_output_cap_smaller(tmp_path, monkeypatch):
+    monkeypatch.setattr(ev, "MAX_OUTPUT", 10)
     (tmp_path / "f").write_text("een hele lange regel van meer dan tien bytes\n")
     out = ev.run_row(Row("1", "`cat f`", "regel"), str(tmp_path), True)
     assert out[0] == ev.UNMEASURABLE
 
 
-def test_run_row_uitvoer_onder_cap_klopt(tmp_path):
+def test_run_row_output_under_cap_holds(tmp_path):
     (tmp_path / "f").write_text("hallo wereld\n")
     assert ev.run_row(Row("1", "`cat f`", "wereld"), str(tmp_path), True)[0] == ev.HOLDS
 
@@ -272,16 +272,16 @@ def test_run_row_uitvoer_onder_cap_klopt(tmp_path):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "git log -n1 --format= --output={pad}",
-        "git show --pretty= --output={pad} HEAD",
-        "git log --pretty --output={pad}",
+        "git log -n1 --format= --output={path}",
+        "git show --pretty= --output={path} HEAD",
+        "git log --pretty --output={path}",
     ],
 )
-def test_run_row_lege_optie_schrijft_niets(tmp_path, cmd):
+def test_run_row_empty_option_writes_nothing(tmp_path, cmd):
     git(tmp_path, "init", "-q")
     git(tmp_path, "commit", "-q", "--allow-empty", "-m", "x")
     pwn = tmp_path / "pwn"
-    out = ev.run_row(Row("1", f"`{cmd.format(pad=pwn)}`", "x"), str(tmp_path), True)
+    out = ev.run_row(Row("1", f"`{cmd.format(path=pwn)}`", "x"), str(tmp_path), True)
     assert out[0] == ev.INVALID
     assert not pwn.exists()
 
@@ -321,8 +321,8 @@ def _cli(tmp_path, *args, gh_out="y", with_stub=True):
 
 
 def _body(nr, rows):
-    tabel = "\n".join(f"| {ac} | {cmd} | {res} |" for ac, cmd, res in rows)
-    return f"Closes #{nr}\n\n### Evidence #{nr}\n\n| AC | Command | Result |\n|---|---|---|\n{tabel}\n"
+    table = "\n".join(f"| {ac} | {cmd} | {res} |" for ac, cmd, res in rows)
+    return f"Closes #{nr}\n\n### Evidence #{nr}\n\n| AC | Command | Result |\n|---|---|---|\n{table}\n"
 
 
 def _run(tmp_path, rows, *extra, nr=5, gh_out="y"):
@@ -349,7 +349,7 @@ NA_PR_ROWS = [
 ]
 
 
-def test_cli_run_voor_pr_slaat_na_pr_over(tmp_path):
+def test_cli_run_before_pr_skips_after_pr(tmp_path):
     proc, marker = _run(tmp_path, NA_PR_ROWS, "--before-pr")
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert "| AC | Outcome | Detail |" in proc.stdout
@@ -357,27 +357,27 @@ def test_cli_run_voor_pr_slaat_na_pr_over(tmp_path):
     assert not marker.exists()
 
 
-def test_cli_run_zonder_voor_pr_draait_na_pr(tmp_path):
+def test_cli_run_without_before_pr_runs_after_pr(tmp_path):
     proc, marker = _run(tmp_path, NA_PR_ROWS, gh_out="y")
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert marker.exists()
     assert "does not hold" in proc.stdout
 
 
-def test_cli_run_zonder_voor_pr_klopt(tmp_path):
+def test_cli_run_without_before_pr_holds(tmp_path):
     proc, _ = _run(tmp_path, NA_PR_ROWS, gh_out="x")
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
-def test_cli_run_voor_pr_na_pr_buiten_allowlist_is_ongeldig(tmp_path):
+def test_cli_run_before_pr_after_pr_outside_allowlist_is_invalid(tmp_path):
     rows = [("1. een", "`rm -rf x`", "na PR: x")]
     proc, _ = _run(tmp_path, rows, "--before-pr")
     assert proc.returncode == 1
     assert "invalid" in proc.stdout
 
 
-def test_cli_run_voor_pr_lege_na_pr_result_is_ongeldig(tmp_path):
-    """Een lege `na PR: ` is in ingang C `ongeldig`; vóór de PR dus ook al."""
+def test_cli_run_before_pr_empty_after_pr_result_is_invalid(tmp_path):
+    """An empty `na PR: ` is `invalid` in entry C; so before the PR too."""
     rows = [("1. een", "`grep -F hallo f`", "`na PR: `")]
     proc, _ = _run(tmp_path, rows, "--before-pr")
     assert proc.returncode == 1, proc.stdout + proc.stderr
@@ -386,7 +386,7 @@ def test_cli_run_voor_pr_lege_na_pr_result_is_ongeldig(tmp_path):
     assert "after PR, not measured" not in proc.stdout
 
 
-def test_cli_run_gh_niet_bereikbaar_is_exit_4(tmp_path):
+def test_cli_run_gh_not_reachable_is_exit_4(tmp_path):
     (tmp_path / "f").write_text("x\n")
     body = tmp_path / "body.md"
     body.write_text(_body(5, [("1. een", "`gh pr view 1`", "x")]))
@@ -413,7 +413,7 @@ def test_cli_run_gh_niet_bereikbaar_is_exit_4(tmp_path):
     assert "not measurable" in proc.stdout
 
 
-def test_cli_run_geen_tabel(tmp_path):
+def test_cli_run_no_table(tmp_path):
     body = tmp_path / "body.md"
     body.write_text("Closes #5\n\ngeen bewijs\n")
     proc, marker = _cli(
@@ -439,13 +439,13 @@ def test_cli_run_mix(tmp_path):
     assert "| holds |" in proc.stdout
 
 
-def test_cli_run_detail_breekt_de_tabel_niet(tmp_path):
+def test_cli_run_detail_does_not_break_the_table(tmp_path):
     rows = [("1. een", "`grep -F hallo f`", "a\\|b")]
     proc, _ = _run(tmp_path, rows)
     assert proc.returncode == 1
-    for regel in proc.stdout.splitlines():
-        if regel.startswith("|") and "---" not in regel:
-            assert len(regel.replace("\\|", "").split("|")) == 5  # leeg, 3 cellen, leeg
+    for line in proc.stdout.splitlines():
+        if line.startswith("|") and "---" not in line:
+            assert len(line.replace("\\|", "").split("|")) == 5  # empty, 3 cells, empty
 
 
 def test_cli_check():

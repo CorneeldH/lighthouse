@@ -1,7 +1,7 @@
-"""`pack/core/lib/repo_identity.py` (#36): is een boom een checkout van deze repo?
+"""`pack/core/lib/repo_identity.py` (#36): is a tree a checkout of this repo?
 
-Dezelfde `--git-common-dir` vergelijken de gates zelf; deze lib vergelijkt de
-`origin`, voor een worktree van een aparte clone (forge) van dezelfde repo.
+The gates themselves compare the same `--git-common-dir`; this lib compares the
+`origin`, for a worktree of a separate clone (forge) of the same repo.
 """
 
 import os
@@ -32,16 +32,16 @@ ri = load_hook_lib("repo_identity")
         "git@github.com:Acme/widgets.git",
     ],
 )
-def test_remote_key_normaliseert_dezelfde_repo(url):
+def test_remote_key_normalises_the_same_repo(url):
     assert ri.remote_key(url) == "github.com/acme/widgets"
 
 
 @pytest.mark.parametrize("url", ["/srv/git/widgets.git", "file:///srv/git/widgets.git", "", "https://github.com"])
-def test_remote_key_zonder_host_en_pad_is_none(url):
+def test_remote_key_without_host_and_path_is_none(url):
     assert ri.remote_key(url) is None
 
 
-def test_remote_key_houdt_de_host():
+def test_remote_key_keeps_the_host():
     assert ri.remote_key("https://gitlab.com/Acme/widgets") != ri.remote_key(ORIGIN)
 
 
@@ -58,24 +58,24 @@ def test_same_origin_forge_worktree(tmp_path, project):
     assert ri.same_origin(str(project), str(work), timeout=5) == (True, "")
 
 
-def test_same_origin_andere_repo_noemt_beide_remotes(tmp_path, project):
+def test_same_origin_other_repo_names_both_remotes(tmp_path, project):
     work = forge_worktree(project, tmp_path, "https://github.com/Acme/gadgets.git")
     same, reason = ri.same_origin(str(project), str(work), timeout=5)
     assert not same
     assert reason == "origin https://github.com/Acme/gadgets.git vs git@github.com:Acme/widgets.git"
 
 
-def test_same_origin_zonder_origin(tmp_path, project):
-    ander = tmp_path / "ander"
-    init_repo(ander)
-    assert ri.same_origin(str(project), str(ander), timeout=5) == (
+def test_same_origin_without_origin(tmp_path, project):
+    other = tmp_path / "ander"
+    init_repo(other)
+    assert ri.same_origin(str(project), str(other), timeout=5) == (
         False,
         "origin none vs git@github.com:Acme/widgets.git",
     )
 
 
-def test_same_origin_twee_lokale_paden_zijn_niet_dezelfde_repo(tmp_path):
-    """Een lokaal pad zegt niets over de upstream: precisie boven recall."""
+def test_same_origin_two_local_paths_are_not_the_same_repo(tmp_path):
+    """A local path says nothing about the upstream: precision over recall."""
     a, b = tmp_path / "a", tmp_path / "b"
     init_repo(a)
     init_repo(b)
@@ -84,7 +84,7 @@ def test_same_origin_twee_lokale_paden_zijn_niet_dezelfde_repo(tmp_path):
     assert ri.same_origin(str(a), str(b), timeout=5)[0] is False
 
 
-def test_same_origin_kapotte_repo_gooit(tmp_path, project):
+def test_same_origin_broken_repo_raises(tmp_path, project):
     broken = tmp_path / "broken"
     init_repo(broken)
     (broken / ".git" / "config").write_text("[kapot\n", encoding="utf-8")
@@ -104,19 +104,19 @@ def _cli(*args):
 
 def test_cli_exitcodes(tmp_path, project):
     work = forge_worktree(project, tmp_path)
-    ander = tmp_path / "ander"
-    init_repo(ander)
+    other = tmp_path / "ander"
+    init_repo(other)
 
     same = _cli(str(project), str(work))
     assert (same.returncode, same.stdout) == (0, "")
 
-    other = _cli(str(project), str(ander))
+    other = _cli(str(project), str(other))
     assert other.returncode == 1
     assert other.stdout == "origin none vs git@github.com:Acme/widgets.git\n"
 
     broken = tmp_path / "broken"
     init_repo(broken)
     (broken / ".git" / "config").write_text("[kapot\n", encoding="utf-8")
-    fout = _cli(str(project), str(broken))
-    assert fout.returncode == 2
-    assert fout.stderr.strip()
+    error = _cli(str(project), str(broken))
+    assert error.returncode == 2
+    assert error.stderr.strip()

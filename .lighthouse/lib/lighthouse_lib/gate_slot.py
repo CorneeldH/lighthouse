@@ -1,24 +1,24 @@
 # lighthouse: core@dev
-"""Pak één van de gate-slots met `flock`; het slot overleeft dit proces.
+"""Take one of the gate slots with `flock`; the slot outlives this process.
 
-De test-gate laat hoogstens twee suites tegelijk draaien (#1184). De bash van de
-hook opent de lockbestanden als fd 8 en 9; dit script erft die fd's, probeert ze
-in volgorde met `flock(LOCK_EX | LOCK_NB)` en print het 1-gebaseerde nummer van
-het eerste slot dat lukt. Zijn ze allemaal bezet, dan probeert het elke
-`interval` seconden opnieuw tot het wachtplafond, en eindigt dan met
-`SLOT_BUSY_EXIT`.
+The test gate lets at most two suites run at once (#1184). The hook's bash
+opens the lock files as fd 8 and 9; this script inherits those fds, tries them
+in order with `flock(LOCK_EX | LOCK_NB)` and prints the 1-based number of the
+first slot that succeeds. If all are taken, it retries every `interval`
+seconds until the wait ceiling, and then ends with `SLOT_BUSY_EXIT`.
 
-Waarom Python en geen `flock(1)`: macOS levert dat commando niet mee, en de hook
-draait daar ook.
+Why Python and not `flock(1)`: macOS does not ship that command, and the hook
+runs there too.
 
-Waarom het slot blijft staan: een `flock` hoort bij de *open file description*,
-niet bij het proces. Die description is dezelfde als die van de bash die de fd
-opende. Eindigt dit script, dan blijft de lock dus staan zolang de bash (en
-`deadline.py`, dat de fd erft) hem openhoudt; pas als die beide weg zijn, gaat
-het slot vrij. De hook sluit zelf de fd van het slot dat hij niet kreeg.
+Why the slot stays held: a `flock` belongs to the *open file description*, not
+to the process. That description is the same one as that of the bash that
+opened the fd. When this script ends, the lock therefore stays held as long as
+the bash (and `deadline.py`, which inherits the fd) keeps it open; only when
+both are gone does the slot go free. The hook itself closes the fd of the slot
+it did not get.
 """
 
-# `X | None` in annotaties: de hooks draaien ook onder python3 3.9 (macOS).
+# `X | None` in annotations: the hooks also run under python3 3.9 (macOS).
 from __future__ import annotations
 
 import argparse
@@ -30,12 +30,12 @@ SLOT_BUSY_EXIT = 75
 
 
 def acquire(fds: list[int], wait: float, interval: float = 1.0) -> int | None:
-    """Pak het eerste vrije slot; geef de 1-gebaseerde index, of None na `wait` seconden.
+    """Take the first free slot; return its 1-based index, or None after `wait` seconds.
 
-    De eerste ronde is direct; daarna slaapt het `interval` tussen de rondes tot
-    `time.monotonic()` voorbij start + `wait` is. `BlockingIOError` betekent
-    "bezet"; elke andere `OSError` (bv. een gesloten fd) gaat omhoog, want dan is
-    er niet getest of het slot vrij was.
+    The first round is immediate; after that it sleeps `interval` between rounds
+    until `time.monotonic()` is past start + `wait`. `BlockingIOError` means
+    "taken"; every other `OSError` (e.g. a closed fd) propagates, because then
+    it was not tested whether the slot was free.
     """
     deadline = time.monotonic() + wait
     while True:

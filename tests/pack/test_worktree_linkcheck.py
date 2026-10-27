@@ -1,9 +1,9 @@
-"""pack/core worktree-linkcheck.sh, as installed (#886): blokkeert hij een dode of
-absolute markdown-link, en zegt hij het als hij niet kon kijken?
+"""pack/core worktree-linkcheck.sh, as installed (#886): does it block a dead or
+absolute markdown link, and does it say so when it could not look?
 
-De hook is bash en leest zijn payload als JSON op stdin. Deze tests draaien hem
-als subprocess met echte tijdelijke paden, zodat het contract (exit code +
-stderr) getest wordt en niet een herimplementatie ervan.
+The hook is bash and reads its payload as JSON on stdin. These tests run it
+as a subprocess with real temporary paths, so the contract (exit code +
+stderr) is tested and not a reimplementation of it.
 """
 
 import json
@@ -51,7 +51,7 @@ def _git(repo: Path, *args: str) -> None:
 
 
 def _init_repo(path: Path, branch: str = "main") -> None:
-    """Echte git-repo met één commit, zodat de hook echte plumbing ziet."""
+    """A real git repo with one commit, so the hook sees real plumbing."""
     path.mkdir(parents=True, exist_ok=True)
     _git(path, "init", "-q", "-b", branch)
     (path / "README.md").write_text("# repo\n", encoding="utf-8")
@@ -75,9 +75,9 @@ def _repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def test_linkcheck_allows_link_to_branch_only_spec(tmp_path):
-    """AC 2 (#886): een relatieve link naar een bestand dat alleen op deze
-    branch bestaat is geen probleem meer — de norm is relatief-en-bestaand,
-    niet "bestaat ook op main"."""
+    """AC 2 (#886): a relative link to a file that exists only on this
+    branch is no longer a problem: the norm is relative-and-existing,
+    not "also exists on main"."""
     _repo, wt = _repo_with_worktree(tmp_path)
     (wt / "docs" / "specs").mkdir()
     (wt / "docs" / "specs" / "x.md").write_text("# x\n", encoding="utf-8")
@@ -96,7 +96,7 @@ def test_linkcheck_allows_link_to_branch_only_spec(tmp_path):
 
 
 def test_linkcheck_allows_link_to_file_on_main(tmp_path):
-    """Groen — en aantoonbaar groen omdat er gekeken is, niet omdat hij afhaakte."""
+    """Green, and demonstrably green because it looked, not because it bailed out."""
     _repo, wt = _repo_with_worktree(tmp_path)
     note = wt / "docs" / "note.md"
     note.write_text("Zie [bestaat](bestaat.md).\n", encoding="utf-8")
@@ -109,8 +109,8 @@ def test_linkcheck_allows_link_to_file_on_main(tmp_path):
     )
 
     assert result.returncode == 0, result.stderr
-    # De marker bewijst dat de toets-tak geraakt is. Zonder deze assertie is
-    # "rc 0" niet te onderscheiden van een vroege exit.
+    # The marker proves the checking branch was hit. Without this assertion
+    # "rc 0" cannot be told apart from an early exit.
     assert "linkcheck: checking in" in result.stderr
 
 
@@ -132,8 +132,8 @@ def test_linkcheck_ignores_urls_and_anchors(tmp_path):
 
 
 def test_linkcheck_blocks_absolute_link(tmp_path):
-    """Een absoluut pad is altijd een probleem: dood op de gerenderde site en
-    zodra de worktree weg is — ongeacht of het doel bestaat."""
+    """An absolute path is always a problem: dead on the rendered site and
+    as soon as the worktree is gone, whether or not the target exists."""
     _repo, wt = _repo_with_worktree(tmp_path)
     note = wt / "docs" / "note.md"
     note.write_text("Zie [x](/home/iemand/x.md).\n", encoding="utf-8")
@@ -198,8 +198,8 @@ def test_linkcheck_ignores_link_in_tilde_fence(tmp_path):
 
 
 def test_linkcheck_skips_target_outside_repo(tmp_path):
-    """Een relatief doel dat buiten de repo (`ROOT`) valt is niet dit
-    hookprobleem — `md_links.py` slaat het over, ongeacht bestaan."""
+    """A relative target that falls outside the repo (`ROOT`) is not this
+    hook's problem: `md_links.py` skips it, whether it exists or not."""
     _repo, wt = _repo_with_worktree(tmp_path)
     note = wt / "docs" / "note.md"
     note.write_text("Zie [buiten](../../../../buiten-de-repo.md).\n", encoding="utf-8")
@@ -214,8 +214,8 @@ def test_linkcheck_skips_target_outside_repo(tmp_path):
 
 
 def test_linkcheck_checks_main_checkout_too(tmp_path):
-    """De hoofdcheckout is geen uitzondering meer: een dode relatieve link
-    daar blokkeert net zo hard als in een worktree."""
+    """The main checkout is no longer an exception: a dead relative link
+    there blocks just as hard as in a worktree."""
     repo = tmp_path / "repo"
     _init_repo(repo)
     (repo / "docs").mkdir()
@@ -237,9 +237,9 @@ def test_linkcheck_checks_main_checkout_too(tmp_path):
 
 
 def test_linkcheck_checks_other_project_too(tmp_path):
-    """#1014: geen projectfilter, anders dan de testgate. Een .md in een andere
-    repo wordt getoetst tegen de wortel van zíjn repo, ook als
-    CLAUDE_PROJECT_DIR elders wijst."""
+    """#1014: no project filter, unlike the test gate. A .md in another
+    repo is tested against the root of ITS repo, even if
+    CLAUDE_PROJECT_DIR points elsewhere."""
     project = tmp_path / "project"
     _init_repo(project)
     _repo, wt = _repo_with_worktree(tmp_path)
@@ -259,7 +259,7 @@ def test_linkcheck_checks_other_project_too(tmp_path):
 
 
 def test_linkcheck_checks_own_project(tmp_path):
-    """#1014, het tweede geval: CLAUDE_PROJECT_DIR is de repo van het bestand."""
+    """#1014, the second case: CLAUDE_PROJECT_DIR is the repo of the file."""
     repo, wt = _repo_with_worktree(tmp_path)
     note = wt / "docs" / "note.md"
     note.write_text("Zie [weg](weg.md).\n", encoding="utf-8")
@@ -294,7 +294,7 @@ def test_linkcheck_ignores_non_markdown(tmp_path):
 
 
 def test_linkcheck_fails_loud_without_tooling(tmp_path):
-    """Blokkerende hook: ontbrekende tooling is 'niet gekeken', geen groen licht."""
+    """Blocking hook: missing tooling is 'did not look', not a green light."""
     _repo, wt = _repo_with_worktree(tmp_path)
     note = wt / "docs" / "note.md"
     note.write_text("Zie [bestaat](bestaat.md).\n", encoding="utf-8")
@@ -313,8 +313,8 @@ def test_linkcheck_fails_loud_without_tooling(tmp_path):
 
 
 def test_linkcheck_fails_loud_when_parser_crashes(tmp_path):
-    """Blokkerende hook: de python-linkparser die op zijn bek gaat (hier: het
-    doelbestand is onleesbaar) is evenmin een groen licht als ontbrekende
+    """Blocking hook: the python link parser crashing (here: the target
+    file is unreadable) is no more a green light than missing
     tooling."""
     _repo, wt = _repo_with_worktree(tmp_path)
     note = wt / "docs" / "note.md"
@@ -340,7 +340,7 @@ def test_linkcheck_fails_loud_when_parser_crashes(tmp_path):
 
 
 
-# --- no silent exits (inventaris §6) ---------------------------------------
+# --- no silent exits (inventory §6) ---------------------------------------
 
 _TOOLS = ("jq", "git", "python3", "cat", "dirname", "realpath")
 

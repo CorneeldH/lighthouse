@@ -8,7 +8,7 @@
 # Counterpart: the norms of the gates carry their own counterparts up front
 # (the shell and python packages, the link rule in AGENTS.md). This hook checks
 # afterwards what a Bash call wrote. A gate whose package is not installed is
-# reported per file, without blocking (besluit 19).
+# reported per file, without blocking (decision 19).
 #
 #   bash-write-gates.sh pre   PreToolUse: baseline and marker. Always exit 0 - a
 #                             PreToolUse exit 2 blocks the Bash call itself.

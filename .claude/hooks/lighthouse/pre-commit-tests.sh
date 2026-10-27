@@ -10,7 +10,7 @@
 # `bash -c "$COMMAND"` in the root of the tree being committed, with
 # LIGHTHOUSE_GATE_TMP set to an empty directory (for example for
 # `--basetemp="$LIGHTHOUSE_GATE_TMP"`). Without a command the commit passes
-# with a note: nothing was tested, and the hook says so (besluit 20).
+# with a note: nothing was tested, and the hook says so (decision 20).
 #
 # The commit detection is that of main-commit-guard.sh
 # (lighthouse_lib/git_invocations.py): a commit after `cd`, `;`, `|`, `&&` or

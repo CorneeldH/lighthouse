@@ -2,7 +2,7 @@
 
 What lives only in skill text: step 0 waits for the merge, entry C runs only the evidence runner
 on a fresh default branch and reopens fail-closed, the released issues are checked against the
-lane `lighthouse-unblock-dependents.yml` (besluit 29), and what stays in paia (the release flow,
+lane `lighthouse-unblock-dependents.yml` (decision 29), and what stays in paia (the release flow,
 backlog-stand, the controller) runs only if present. Both variants are checked on content.
 
 From paia's `test_issue_skills_contract.py` (the close-issue part).
@@ -42,7 +42,7 @@ def test_close_issue_reports_released_issues():
 
 
 def test_close_issue_finds_lighthouse_workflow():
-    """Besluit 29: the lane is installed as lighthouse-unblock-dependents.yml, and the skill
+    """Decision 29: the lane is installed as lighthouse-unblock-dependents.yml, and the skill
     looks for its run under that name."""
     for body in skill():
         assert "--workflow lighthouse-unblock-dependents.yml" in body
@@ -85,7 +85,7 @@ def test_entry_c_reopens_fail_closed():
 
 
 def test_close_issue_board_skip():
-    """Without `[forge.board]` board_start says `board: skipped` (rc 0, besluit 24): that is
+    """Without `[forge.board]` board_start says `board: skipped` (rc 0, decision 24): that is
     no failure and is never reported as one."""
     for body in skill():
         c = _entry_c(body)

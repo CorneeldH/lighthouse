@@ -1,17 +1,17 @@
-"""Parser voor `git commit`/`git push` binnen een willekeurig shell-commando.
+"""Parser for `git commit`/`git push` inside an arbitrary shell command.
 
-Verhuisd uit een `IFS= read -r -d '' PARSE <<'PYEOF'`-heredoc in
-main-commit-guard.sh (#884): die vorm bestond alleen om bash 3.2 (macOS) niet
-te laten struikelen over een heredoc BINNEN een command substitution. Als los
-bestand is die reden vervallen en kan de parser gewoon los getest worden.
+Moved out of an `IFS= read -r -d '' PARSE <<'PYEOF'` heredoc in
+main-commit-guard.sh (#884): that form existed only so bash 3.2 (macOS) would
+not trip over a heredoc INSIDE a command substitution. As a separate file that
+reason is gone and the parser can simply be tested on its own.
 
-Gebruikt door main-commit-guard.sh (PreToolUse-hook die `git commit`/`git
-push` op `main` blokkeert) en, via dezelfde `find_invocations`, door de
-pre-commit test-gate.
+Used by main-commit-guard.sh (the PreToolUse hook that blocks `git commit`/`git
+push` on `main`) and, through the same `find_invocations`, by the pre-commit
+test gate.
 """
 
-# De hooks draaien onder `python3` van de host (macOS: 3.9.6); zonder deze
-# import is `list[str] | None` in `main` een TypeError bij de import.
+# The hooks run under the host's `python3` (macOS: 3.9.6); without this
+# import, `list[str] | None` in `main` is a TypeError at import time.
 from __future__ import annotations
 
 import os
@@ -22,21 +22,21 @@ from typing import NamedTuple
 UNRESOLVED = "<unknown>"
 NEW_DIR = "<new>"
 
-# Grenspalen van een sub-shell in de segmentenlijst. Identiteit telt, niet
-# inhoud: flush_segment() maakt altijd een verse lijst, dus verwarring kan niet.
+# Boundary markers of a sub-shell in the segment list. Identity counts, not
+# content: flush_segment() always makes a fresh list, so they cannot be confused.
 SUB_ENTER = ["<enter-subshell>"]
 SUB_LEAVE = ["<leave-subshell>"]
 
-# Scheidingsteken `&&`: wat erna komt draait ALLEEN als het vorige slaagde.
-# Bij `;`, `|`, `||` en een newline draait het volgende hoe dan ook. Dat
-# verschil weegt bij een `cd` naar een map die er nog niet is (F3).
+# Separator `&&`: what follows runs ONLY if the previous one succeeded.
+# After `;`, `|`, `||` and a newline the next one runs regardless. That
+# difference matters for a `cd` to a directory that does not exist yet (F3).
 AND_SEP = ["<and-sep>"]
 MARKERS = (SUB_ENTER, SUB_LEAVE, AND_SEP)
 
-# Woorden die vóór het eigenlijke commando mogen staan zonder het te zijn.
-# Per wrapper: (opties die een lósse waarde slikken, aantal positionele
-# argumenten vóór het commando). `timeout 5 git commit` heeft er zo één —
-# alleen het wrapperwoord overslaan liet die commit erdoor (N7).
+# Words that may come before the actual command without being it.
+# Per wrapper: (options that swallow a SEPARATE value, number of positional
+# arguments before the command). `timeout 5 git commit` has one that way —
+# skipping only the wrapper word let that commit through (N7).
 WRAPPERS = {
     "sudo": ({"-u", "-g", "-p", "-C", "--user", "--group", "--prompt"}, 0),
     "doas": ({"-u", "-C"}, 0),
@@ -54,8 +54,8 @@ WRAPPERS = {
         0,
     ),
 }
-# Schillen die een commando als string meekrijgen: `bash -c <script>`. Dat
-# script is een echt commando en wordt apart geparsed.
+# Shells that receive a command as a string: `bash -c <script>`. That
+# script is a real command and is parsed separately.
 SHELL_WRAPPERS = {"bash", "sh", "zsh", "dash", "ksh"}
 SKIP_WORDS = {
     "{",
@@ -86,11 +86,11 @@ PATH_OPTIONS = {"-C", "--git-dir", "--work-tree"}
 
 
 class Unparseable(Exception):
-    """Open quote: er valt geen conclusie te trekken over dit commando."""
+    """Open quote: no conclusion can be drawn about this command."""
 
 
 def read_delimiter(line, j):
-    """Lees de heredoc-delimiter vanaf positie j. Geeft (delimiter, nieuwe j)."""
+    """Read the heredoc delimiter from position j. Returns (delimiter, new j)."""
     n = len(line)
     out = []
     while j < n:
@@ -118,11 +118,11 @@ def read_delimiter(line, j):
 
 
 def skip_ansi_c(text, j):
-    """Lees een `$'...'`-string vanaf j, de positie ná de openingsquote.
+    """Read a `$'...'` string from j, the position AFTER the opening quote.
 
-    Geeft (inhoud, index ná de sluitquote, gesloten). Binnen ANSI-C quoting
-    escapet een backslash het volgende teken, óók een apostrof — dat is precies
-    het verschil met een gewone single quote.
+    Returns (content, index after the closing quote, closed). Inside ANSI-C quoting
+    a backslash escapes the next character, an apostrophe too — that is exactly
+    the difference with an ordinary single quote.
     """
     out = []
     n = len(text)
@@ -139,7 +139,7 @@ def skip_ansi_c(text, j):
 
 
 def quoted_step(line, i, sq, dq):
-    """Eén stap binnen `'...'` of `"..."`. Geeft (i, sq, dq)."""
+    """One step inside `'...'` or `"..."`. Returns (i, sq, dq)."""
     c = line[i]
     if sq:
         if c == "'":
@@ -153,11 +153,11 @@ def quoted_step(line, i, sq, dq):
 
 
 def heredoc_operator(line, i, arith):
-    """Lees een `<<` vanaf i. Geeft (i, word_start, delimiter), "" zonder delimiter."""
+    """Read a `<<` from i. Returns (i, word_start, delimiter), "" without a delimiter."""
     if line.startswith("<<<", i):
         return i + 3, True, ""
     if arith > 0:
-        # `$((1 << 2))` is een bitshift, geen heredoc.
+        # `$((1 << 2))` is a bit shift, not a heredoc.
         return i + 2, False, ""
     n = len(line)
     j = i + 2
@@ -170,7 +170,7 @@ def heredoc_operator(line, i, arith):
 
 
 def unquoted_step(line, i, arith):
-    """Eén stap buiten quotes. Geeft (i, arith, sq, dq, word_start)."""
+    """One step outside quotes. Returns (i, arith, sq, dq, word_start)."""
     c = line[i]
     if c == "\\":
         return i + 2, arith, False, False, False
@@ -181,10 +181,10 @@ def unquoted_step(line, i, arith):
     if c == "$" and line.startswith("((", i + 1):
         return i + 3, arith + 1, False, False, False
     if c == "$" and line.startswith("'", i + 1):
-        # ANSI-C quoting: in `$'...'` sluit een backslash-escaped apostrof
-        # de string NIET. Zonder deze tak las de scanner `$'it\'s'` als een
-        # gewone quote, sloot hem op de escaped apostrof en liet de laatste
-        # openstaan (F4).
+        # ANSI-C quoting: in `$'...'` a backslash-escaped apostrophe does NOT
+        # close the string. Without this branch the scanner read `$'it\'s'` as an
+        # ordinary quote, closed it at the escaped apostrophe and left the last one
+        # open (F4).
         return skip_ansi_c(line, i + 2)[1], arith, False, False, False
     if arith > 0 and line.startswith("))", i):
         return i + 2, arith - 1, False, False, False
@@ -192,15 +192,15 @@ def unquoted_step(line, i, arith):
 
 
 def scan_line(line, sq, dq):
-    """Heredoc-operatoren in redirectiepositie plus het begin van `#`-commentaar.
+    """Heredoc operators in redirection position plus the start of a `#` comment.
 
-    Geeft (delimiters, sq, dq, snijpunt). Het snijpunt is de index waar een
-    commentaar begint, of len(line). Bash begint een commentaar alleen bij een
-    `#` aan het BEGIN van een woord en buiten quotes: `foo#bar`, `$#` en
-    `'a # b'` zijn dus geen commentaar. Dat onderscheid is precies waarom dit
-    hier hoort en niet in een losse regex: zonder quote-stand is het niet te
-    zien, en één losse apostrof in een commentaar blokkeerde anders élk
-    commando (N1) of slikte een `<<` in een commentaar de rest op (N2).
+    Returns (delimiters, sq, dq, cut point). The cut point is the index where a
+    comment begins, or len(line). Bash starts a comment only at a `#` at the START
+    of a word and outside quotes: `foo#bar`, `$#` and `'a # b'` are therefore no
+    comment. That distinction is exactly why this belongs here and not in a
+    separate regex: without the quote state it cannot be seen, and one stray
+    apostrophe in a comment would otherwise block EVERY command (N1) or a `<<` in
+    a comment would swallow the rest (N2).
     """
     delimiters = []
     arith = 0
@@ -222,17 +222,17 @@ def scan_line(line, sq, dq):
 
 
 def strip_heredocs(command):
-    """Heredoc-bodies en `#`-commentaar eruit.
+    """Heredoc bodies and `#` comments removed.
 
-    Een voorbeeldcommando IN een heredoc is geen commando — dit is precies waar
-    pre-commit-tests.sh op struikelt. De delimiter wordt echt geparsed (ook
-    `<<-`, `<<'EOF-1'`, `<<"EOF"`), en `<<` telt alleen als heredoc wanneer het
-    in redirectiepositie staat — niet in een string, niet in `$(( ))`, niet in
-    een commentaar.
+    An example command INSIDE a heredoc is no command — this is exactly where
+    pre-commit-tests.sh trips. The delimiter is really parsed (also
+    `<<-`, `<<'EOF-1'`, `<<"EOF"`), and `<<` counts as a heredoc only when it is
+    in redirection position — not in a string, not in `$(( ))`, not in a
+    comment.
 
-    Het commentaar sneuvelt hier omdat scan_line de quote-stand toch al
-    bijhoudt: één scanner, twee klussen. Wat overblijft gaat schoon de
-    tokenizer in, zodat een apostrof in een commentaar daar niets meer opent.
+    The comment goes here because scan_line already tracks the quote state:
+    one scanner, two jobs. What remains goes cleanly into the tokenizer, so an
+    apostrophe in a comment no longer opens anything there.
     """
     kept = []
     queue = []
@@ -249,10 +249,10 @@ def strip_heredocs(command):
 
 
 class Splitter:
-    """Toestandsmachine achter split_segments.
+    """State machine behind split_segments.
 
-    Per stap één teken, of één geheel stuk: een quote, een escape, `&&`, een
-    `<>`-reeks of een `$(`-opening.
+    One character per step, or one whole piece: a quote, an escape, `&&`, a
+    `<>` sequence or a `$(` opener.
     """
 
     def __init__(self, text):
@@ -298,13 +298,13 @@ class Splitter:
         current, buf, dirty, started, tilde = self.outer.pop()
         self.current = current
         if substitution:
-            # De uitkomst van een substitutie is niet te herleiden.
+            # The outcome of a substitution cannot be traced.
             self.buf = buf + ["$"]
             self.dirty = True
             self.started = True
             self.tilde = False
         else:
-            # `( )` is een groep, geen woord: het omliggende woord blijft heel.
+            # `( )` is a group, not a word: the surrounding word stays whole.
             self.buf = buf
             self.dirty = dirty
             self.started = started
@@ -312,7 +312,7 @@ class Splitter:
         self.stack.pop()
 
     def dq_char(self, i):
-        """Eén teken binnen `"..."`. Geeft de nieuwe i."""
+        """One character inside `"..."`. Returns the new i."""
         text, n, c = self.text, self.n, self.text[i]
         if c == "\\" and i + 1 < n and text[i + 1] in '$`"\\\n':
             if text[i + 1] != "\n":
@@ -335,15 +335,15 @@ class Splitter:
         return i + 1
 
     def quote_char(self, i):
-        """`$'`, `'`, `"` of `\\` op i. Geeft de nieuwe i, of None."""
+        """`$'`, `'`, `"` or `\\` at i. Returns the new i, or None."""
         text, n, c = self.text, self.n, self.text[i]
         if c == "$" and i + 1 < n and text[i + 1] == "'":
             body, i, closed = skip_ansi_c(text, i + 2)
             if not closed:
                 raise Unparseable()
-            # De escapes worden hier niet uitgerold (`\n` blijft `n`), dus het
-            # woord geldt als niet-letterlijk: goed genoeg om een pad te
-            # herkennen, te onzeker om er een bestemming op te baseren.
+            # The escapes are not expanded here (`\n` stays `n`), so the
+            # word counts as non-literal: good enough to recognise a path,
+            # too uncertain to base a destination on.
             self.buf.append(body)
             self.dirty = True
             self.started = True
@@ -361,7 +361,7 @@ class Splitter:
             return i + 1
         if c == "\\":
             if i + 1 < n and text[i + 1] == "\n":
-                # Regelvoortzetting: de twee regels zijn één commando.
+                # Line continuation: the two lines are one command.
                 return i + 2
             if i + 1 < n:
                 self.buf.append(text[i + 1])
@@ -371,7 +371,7 @@ class Splitter:
         return None
 
     def subshell_char(self, i, top):
-        """`$(`, `)`, backtick of `(` op i. Geeft de nieuwe i, of None."""
+        """`$(`, `)`, backtick or `(` at i. Returns the new i, or None."""
         text, n, c = self.text, self.n, self.text[i]
         if c == "$" and i + 1 < n and text[i + 1] == "(":
             self.enter_sub("sub")
@@ -392,7 +392,7 @@ class Splitter:
         return None
 
     def separator_char(self, i):
-        """Witruimte, `&&`, een segmentgrens of `<>` op i. Geeft de nieuwe i, of None."""
+        """Whitespace, `&&`, a segment boundary or `<>` at i. Returns the new i, or None."""
         text, n, c = self.text, self.n, self.text[i]
         if c in " \t\r":
             self.flush_word()
@@ -414,7 +414,7 @@ class Splitter:
         return None
 
     def word_char(self, i):
-        """Een gewoon woordteken op i. Geeft de nieuwe i."""
+        """An ordinary word character at i. Returns the new i."""
         c = self.text[i]
         if c in "$*?":
             self.dirty = True
@@ -447,33 +447,33 @@ class Splitter:
 
 
 def split_segments(text):
-    """Splits in commandosegmenten. Per woord onthouden we hoe het ontstond.
+    """Split into command segments. Per word we remember how it came to be.
 
-    Een nieuw segment begint bij een newline, `;`, `&`, `|`, een sub-shell `(`,
-    een command substitution `$(` of een backtick — precies de plekken waar een
-    nieuw commando begint. Redirecties splitsen alleen het woord.
+    A new segment begins at a newline, `;`, `&`, `|`, a sub-shell `(`,
+    a command substitution `$(` or a backtick — exactly the places where a
+    new command begins. Redirections only split the word.
 
-    Een substitutie levert twee dingen op, en dat is bewust: de inhoud wordt als
-    eigen segment onderzocht (`echo "$(git commit ...)"` commit écht), en het
-    omliggende woord wordt als niet-herleidbaar gemarkeerd (`git -C "$(pwd)"`
-    kan niet stil op de cwd terugvallen).
+    A substitution yields two things, and that is deliberate: its content is
+    examined as a segment of its own (`echo "$(git commit ...)"` really commits),
+    and the surrounding word is marked as untraceable (`git -C "$(pwd)"`
+    cannot silently fall back to the cwd).
 
-    Rond elke sub-shell — `( )`, `$( )`, backticks — komen SUB_ENTER/SUB_LEAVE
-    in de lijst. Bash geeft de cwd van een sub-shell niet terug aan de ouder;
-    zonder die haakjes bleef een `cd` erbinnen hangen en blokkeerde de hook een
-    volstrekt legitieme commit erna (N3).
+    SUB_ENTER/SUB_LEAVE go into the list around every sub-shell — `( )`, `$( )`,
+    backticks. Bash does not hand the cwd of a sub-shell back to the parent;
+    without those brackets a `cd` inside would linger and the hook would block a
+    perfectly legitimate commit after it (N3).
 
-    Per woord komt er een tripel (tekst, letterlijk, tilde): `tilde` zegt of het
-    woord met een ONgequote `~` begon, want alleen dan expandeert bash hem.
+    Per word there is a triple (text, literal, tilde): `tilde` says whether the
+    word began with an UNquoted `~`, because only then does bash expand it.
     """
     return Splitter(text).run()
 
 
 def resolve(word, literal, tilde):
-    """Herleid een padwoord. None = niet met zekerheid te herleiden.
+    """Resolve a path word. None = cannot be resolved with certainty.
 
-    De tilde expandeert alleen als hij ONgequote was: `'~/repo'` is voor bash
-    een gewoon relatief pad dat met een tilde begint (N8).
+    The tilde expands only if it was UNquoted: `'~/repo'` is to bash
+    an ordinary relative path that starts with a tilde (N8).
     """
     text = word if literal else os.path.expandvars(word)
     if tilde:
@@ -497,7 +497,7 @@ def is_assignment(word):
 
 
 def command_start(words):
-    """Sla toewijzingen, wrappers en shell-sleutelwoorden over."""
+    """Skip assignments, wrappers and shell keywords."""
     idx = 0
     moved = True
     while moved and idx < len(words):
@@ -532,17 +532,17 @@ def refspec_target(arg):
 
 
 def push_destination(words, literal, default_branch="main"):
-    """Bestemming van een push: yes (`default_branch`), all (alle branches), no,
+    """Destination of a push: yes (`default_branch`), all (all branches), no,
     unresolved.
 
-    `unresolved` is de vierde uitkomst en hij blokkeert. `git push origin $BR`
-    kán main zijn en de hook kan het niet zien; stil doorlaten zou hier hetzelfde
-    gat zijn dat een onherleidbaar `-C`-pad al niet mag maken (N4).
+    `unresolved` is the fourth outcome and it blocks. `git push origin $BR`
+    may be main and the hook cannot see it; silently letting it through would be
+    the same gap that an untraceable `-C` path may not make (N4).
 
-    Het EERSTE positionele argument is de remote, niet de bestemming. Een
-    onherleidbare remote zegt niets over waar de push heen gaat: bij
-    `git push "$REMOTE" issue-1-iets` is de branch gewoon bekend en niet main.
-    Die mee laten tellen maakte van een bekende bestemming een blokkade (F2).
+    The FIRST positional argument is the remote, not the destination. An
+    untraceable remote says nothing about where the push goes: with
+    `git push "$REMOTE" issue-1-something` the branch is simply known and is not main.
+    Letting that count turned a known destination into a block (F2).
     """
     result = "no"
     positional = 0
@@ -565,7 +565,7 @@ def push_destination(words, literal, default_branch="main"):
 
 
 def existing_ancestor(path):
-    """De dichtstbijzijnde map die NU bestaat, vanaf `path` omhoog. None = geen."""
+    """The nearest directory that exists NOW, going up from `path`. None = none."""
     current = path
     while True:
         if os.path.isdir(current):
@@ -577,19 +577,19 @@ def existing_ancestor(path):
 
 
 def repo_of(path):
-    """Repowortel waarin `path` ligt, of None.
+    """Repo root that `path` lies in, or None.
 
-    Zonder git aan te roepen: omhoog lopen tot er een `.git` staat. Een worktree
-    heeft daar een bestand in plaats van een map, dus `exists` en niet `isdir`.
-    De uitkomst hoeft niet exact te zijn — hij bepaalt alleen of het pad aan git
-    wordt voorgelegd; git zelf velt daarna het echte oordeel.
+    Without calling git: walk up until a `.git` is found. A worktree
+    has a file there instead of a directory, hence `exists` and not `isdir`.
+    The outcome need not be exact — it only decides whether the path is put
+    to git; git itself then passes the real judgement.
 
-    Eén ding slaat git zelf al over, en wij dus ook: een `.git`-MAP zonder
-    `HEAD`. Dat is geen (kapotte) repo maar een verdwaalde map — op de Mac
-    `~/.git/workflow-audit-tools/` — en git's discovery loopt erlangs omhoog.
-    Telde hij hier mee, dan werd elke map onder `~` een wortel waar git "not a
-    git repository" op zegt. Een `.git/HEAD` met rommel blijft wél een wortel:
-    dat is een repo die git kapot verklaart, en dat oordeel hoort luid.
+    One thing git already skips, and so do we: a `.git` DIRECTORY without
+    `HEAD`. That is not a (broken) repo but a stray directory — on the Mac
+    `~/.git/workflow-audit-tools/` — and git's discovery walks past it.
+    If it counted here, every directory under `~` would become a root that git
+    answers with "not a git repository". A `.git/HEAD` with garbage still IS a
+    root: that is a repo that git declares broken, and that judgement must be loud.
     """
     current = path
     while True:
@@ -603,7 +603,7 @@ def repo_of(path):
 
 
 def new_dirs(cwd):
-    """Mapstand van de shell: waar we staan, waar we vandaan komen, de stack."""
+    """Directory state of the shell: where we are, where we came from, the stack."""
     return {
         "here": cwd,
         "raw": cwd,
@@ -623,10 +623,10 @@ def apply_cd(dirs, here, raw):
 
 
 def stack_move(verb, words, args, dirs):
-    """`popd`, `cd -` en `pushd`; True als de verplaatsing daarmee af is.
+    """`popd`, `cd -` and `pushd`; True if the move is done with that.
 
-    Bij `pushd` mét argument zet hij alleen `(here, raw)` op de stack en geeft
-    hij False: de eigenlijke verplaatsing doet `cd_to`.
+    With `pushd` WITH an argument it only puts `(here, raw)` on the stack and returns
+    False: the actual move is done by `cd_to`.
     """
     if verb == "popd":
         if dirs["stack"]:
@@ -639,12 +639,12 @@ def stack_move(verb, words, args, dirs):
         if dirs["old_set"]:
             apply_cd(dirs, dirs["old"], dirs["old_raw"])
         else:
-            # De OLDPWD van vóór dit commando kennen we niet.
+            # We do not know the OLDPWD from before this command.
             apply_cd(dirs, None, "cd -")
         return True
     if verb == "pushd":
         if not args:
-            # `pushd` zonder argument wisselt de bovenste twee: niet te volgen.
+            # `pushd` without an argument swaps the top two: cannot be followed.
             apply_cd(dirs, None, "pushd")
             return True
         dirs["stack"].append((dirs["here"], dirs["raw"]))
@@ -652,7 +652,7 @@ def stack_move(verb, words, args, dirs):
 
 
 def cd_to(word, literal, tilde, dirs):
-    """Verplaats naar `word`: oplossen, samenvoegen met `here`, en de verse map."""
+    """Move to `word`: resolve, join with `here`, and the fresh directory."""
     target = resolve(word, literal, tilde)
     if target is None:
         apply_cd(dirs, None, word)
@@ -665,17 +665,17 @@ def cd_to(word, literal, tilde, dirs):
         dirs["raw"] = word
         return
     if not os.path.isdir(target):
-        # De map bestaat NU niet, en dat heeft twee tegengestelde uitkomsten.
-        # Ofwel het commando maakt hem zelf aan — `mkdir -p X && cd X`,
-        # `git worktree add X && cd X`, de motie die AGENTS.md voorschrijft —
-        # en bash staat straks in die verse map. Ofwel de `cd` mislukt en bash
-        # blijft staan. Bij `&&` draait wat volgt alleen in het eerste geval:
-        # we rekenen dan verder mét dit nog niet bestaande pad, zodat een `cd ..`
-        # of `git -C ..` erna gewoon klopt. Welke repo het is, beslist settle_target()
-        # via de dichtstbijzijnde bestaande voorouder (C1) — een verse map ONDER
-        # een checkout is diezelfde checkout, met diezelfde branch. Bij `;`
-        # draait de rest hoe dan ook hier; settle_new_dir() zet dan de oude map
-        # terug, want daar staat bash dan echt.
+        # The directory does NOT exist now, and that has two opposite outcomes.
+        # Either the command creates it itself — `mkdir -p X && cd X`,
+        # `git worktree add X && cd X`, the incantation that AGENTS.md prescribes —
+        # and bash will soon be in that fresh directory. Or the `cd` fails and bash
+        # stays where it is. After `&&` what follows runs only in the first case:
+        # we then keep calculating WITH this not yet existing path, so that a `cd ..`
+        # or `git -C ..` after it simply comes out right. Which repo it is, is decided by
+        # settle_target() via the nearest existing ancestor (C1) — a fresh directory
+        # UNDER a checkout is that same checkout, with that same branch. After `;`
+        # the rest runs here regardless; settle_new_dir() then puts the old directory
+        # back, because that is where bash really is.
         stale = (dirs["here"], dirs["raw"])
         apply_cd(dirs, target, target)
         dirs["new_dir"], dirs["stale"] = True, stale
@@ -684,11 +684,11 @@ def cd_to(word, literal, tilde, dirs):
 
 
 def change_dir(verb, words, literal, tildes, idx, dirs):
-    """Volg `cd`, `pushd` en `popd` zoals bash ze uitvoert.
+    """Follow `cd`, `pushd` and `popd` the way bash executes them.
 
-    Drie dingen die de vorige versie miste (N6): een `cd` naar een pad dat niet
-    bestaat verplaatst bash niet, `cd -` springt terug naar de vorige map, en
-    `pushd`/`popd` verplaatsen net zo goed als `cd`.
+    Three things the previous version missed (N6): a `cd` to a path that does not
+    exist does not move bash, `cd -` jumps back to the previous directory, and
+    `pushd`/`popd` move just as well as `cd`.
     """
     args = [
         k
@@ -705,7 +705,7 @@ def change_dir(verb, words, literal, tildes, idx, dirs):
 
 
 def shell_script(words, literal, idx):
-    """De letterlijke `-c`-string van een schil, of None."""
+    """The literal `-c` string of a shell, or None."""
     j = idx + 1
     while j < len(words):
         word = words[j]
@@ -721,14 +721,14 @@ def shell_script(words, literal, idx):
 
 
 def is_name(word):
-    """Ziet dit woord eruit als een functienaam?"""
+    """Does this word look like a function name?"""
     if not word or word[0].isdigit():
         return False
     return all(ch.isalnum() or ch in "_-." for ch in word)
 
 
 def body_end(queue):
-    """Index net ná het `{ ... }`-blok waarmee een functiebody begint."""
+    """Index just AFTER the `{ ... }` block with which a function body begins."""
     depth = 0
     for k, item in enumerate(queue):
         if any(item is marker for marker in MARKERS):
@@ -744,13 +744,13 @@ def body_end(queue):
 
 
 def function_body(words, queue):
-    """Is dit een `foo() { ... }`-definitie? Zo ja: isoleer de body.
+    """Is this a `foo() { ... }` definition? If so: isolate the body.
 
-    De body draait pas bij een AANROEP, dus een `cd` erin verplaatst de
-    aanroeper niet — die volgen alsof hij uitgevoerd werd, blokkeerde een
-    volstrekt legitieme commit erna (F5). De commando's in de body blijven wél
-    zichtbaar, want `f() { git commit -m x; }; f` commit écht; alleen de
-    mapstand wordt geïsoleerd, precies zoals bij een sub-shell.
+    The body runs only at a CALL, so a `cd` in it does not move the
+    caller — following it as if it were executed blocked a perfectly
+    legitimate commit after it (F5). The commands in the body DO stay
+    visible, because `f() { git commit -m x; }; f` really commits; only the
+    directory state is isolated, exactly as with a sub-shell.
     """
     if not (len(queue) >= 3 and queue[0] is SUB_ENTER and queue[2] is SUB_LEAVE):
         return False
@@ -770,13 +770,13 @@ Invocation = tuple[str, str, str, str]
 
 
 class Step(NamedTuple):
-    """Eén segment tijdens de `walk`, met de mapstand die op dat moment geldt.
+    """One segment during the `walk`, with the directory state that holds at that moment.
 
-    `idx` is `command_start(words)`: het woord waar het eigenlijke commando
-    begint. `dirs` is de LEVENDE mapstand — hetzelfde dict-object dat `walk`
-    intern bijhoudt, niet een kopie. Een consument die de stand van dít
-    segment wil bewaren, kopieert zelf wat hij nodig heeft vóórdat hij de
-    generator verder vraagt.
+    `idx` is `command_start(words)`: the word where the actual command
+    begins. `dirs` is the LIVE directory state — the same dict object that `walk`
+    keeps internally, not a copy. A consumer that wants to keep the state of THIS
+    segment copies what it needs itself before it asks the generator
+    to continue.
     """
 
     words: list[str]
@@ -787,7 +787,7 @@ class Step(NamedTuple):
 
 
 def segment_columns(segment):
-    """De drie kolommen van een segment: `(words, literal, tildes)`."""
+    """The three columns of a segment: `(words, literal, tildes)`."""
     words = [w for w, _, _ in segment]
     literal = [lit for _, lit, _ in segment]
     tildes = [til for _, _, til in segment]
@@ -795,7 +795,7 @@ def segment_columns(segment):
 
 
 class WalkState:
-    """De staat die `walk` van segment naar segment meedraagt."""
+    """The state that `walk` carries from segment to segment."""
 
     def __init__(self, queue, cwd):
         self.queue = queue
@@ -804,7 +804,7 @@ class WalkState:
         self.after_and = False
 
     def take_marker(self, segment):
-        """Verwerk `AND_SEP`/`SUB_ENTER`/`SUB_LEAVE`; True als het een marker was."""
+        """Handle `AND_SEP`/`SUB_ENTER`/`SUB_LEAVE`; True if it was a marker."""
         if segment is AND_SEP:
             self.after_and = True
             return True
@@ -818,45 +818,45 @@ class WalkState:
         return False
 
     def settle_new_dir(self):
-        """Val terug op de oude map als er geen `&&` voor een verse map stond."""
+        """Fall back to the old directory if no `&&` preceded a fresh directory."""
         if self.dirs["new_dir"] and not self.after_and:
-            # Geen `&&` ervoor: dit draait ook als die `cd` mislukte, en dan
-            # staat bash nog gewoon in de oude map. Zie cd_to.
+            # No `&&` before it: this also runs if that `cd` failed, and then
+            # bash is still in the old directory. See cd_to.
             self.dirs["here"], self.dirs["raw"] = self.dirs["stale"]
             self.dirs["new_dir"] = False
         self.after_and = False
 
     def apply_effect(self, words, literal, tildes, idx):
-        """Pas het effect toe van een `cd`/`pushd`/`popd` of een schil (`bash -c`)."""
+        """Apply the effect of a `cd`/`pushd`/`popd` or a shell (`bash -c`)."""
         verb = basename(words[idx])
         if verb in ("cd", "pushd", "popd"):
             change_dir(verb, words, literal, tildes, idx, self.dirs)
         elif verb in SHELL_WRAPPERS:
             script = shell_script(words, literal, idx)
             if script is not None:
-                # Een eigen schil met een eigen cwd: haakjes eromheen.
+                # A shell of its own with a cwd of its own: brackets around it.
                 inner = split_segments(strip_heredocs(script))
                 self.queue[:0] = [SUB_ENTER] + inner + [SUB_LEAVE]
 
 
 def walk(command: str, cwd: str) -> Iterator[Step]:
-    """Loop door elk commandosegment van `command`, uitgevoerd vanuit `cwd`.
+    """Walk every command segment of `command`, executed from `cwd`.
 
-    Yield één `Step` per niet-leeg segment met `idx < len(words)` dat geen
-    functiedefinitie is — óók voor `cd`/`pushd`/`popd` en een schil
-    (`bash -c`). Pas NADAT de consument de generator verder vraagt (de
-    volgende `next()`), past `walk` het effect van dát segment toe: een
-    `cd`/`pushd`/`popd` verplaatst `dirs`, en een schil met een letterlijke
-    `-c`-string recurseert erin. Zo ziet de consument de mapstand zoals die
-    gold TOEN het segment draaide, niet erna.
+    Yield one `Step` per non-empty segment with `idx < len(words)` that is not a
+    function definition — also for `cd`/`pushd`/`popd` and a shell
+    (`bash -c`). Only AFTER the consumer asks the generator to continue (the
+    next `next()`) does `walk` apply the effect of THAT segment: a
+    `cd`/`pushd`/`popd` moves `dirs`, and a shell with a literal
+    `-c` string recurses into it. That way the consumer sees the directory state as it
+    was WHEN the segment ran, not after.
 
-    Sub-shell opslaan/herstellen (`SUB_ENTER`/`SUB_LEAVE`), de `&&`-terugval
-    bij een `cd` naar een verse map, en het isoleren van een functiebody
-    zitten allemaal hier — dat is precies de staat die per segment moet
-    kloppen.
+    Saving/restoring sub-shells (`SUB_ENTER`/`SUB_LEAVE`), the `&&` fallback
+    for a `cd` to a fresh directory, and isolating a function body
+    all live here — that is exactly the state that has to be right
+    per segment.
 
-    Gooit `Unparseable` bij een open quote (zie split_segments), bij de
-    EERSTE `next()`: `split_segments` draait pas zodra de generator start.
+    Raises `Unparseable` on an open quote (see split_segments), at the
+    FIRST `next()`: `split_segments` runs only once the generator starts.
     """
     state = WalkState(split_segments(strip_heredocs(command)), cwd)
     while state.queue:
@@ -879,12 +879,12 @@ def walk(command: str, cwd: str) -> Iterator[Step]:
 
 
 def git_target(step: Step) -> tuple[str | None, str, bool, int]:
-    """De globale-optielus van `git`: `-C`, `--git-dir`, `--work-tree`.
+    """The global-option loop of `git`: `-C`, `--git-dir`, `--work-tree`.
 
-    `step.idx` wijst op het woord `git`. Geeft (target, target_raw,
-    from_new_dir, action_idx) — `action_idx` is het woord ná de laatste
-    globale optie, dus `action_idx == len(step.words)` als er geen
-    subcommando volgt.
+    `step.idx` points at the word `git`. Returns (target, target_raw,
+    from_new_dir, action_idx) — `action_idx` is the word after the last
+    global option, so `action_idx == len(step.words)` if no
+    subcommand follows.
     """
     words, literal, tildes, idx, dirs = (
         step.words,
@@ -924,37 +924,37 @@ def git_target(step: Step) -> tuple[str | None, str, bool, int]:
 
 
 def settle_target(target, from_new_dir, action, to_main, report_new_dirs):
-    """Los een niet-bestaande doelmap op; geeft `(target, keep)`.
+    """Resolve a target directory that does not exist; returns `(target, keep)`.
 
-    `keep=False` betekent: deze aanroep valt buiten de bescherming en wordt
-    overgeslagen.
+    `keep=False` means: this invocation falls outside the protection and is
+    skipped.
     """
     if target is not None and not os.path.isdir(target):
-        # Deze map bestaat bij hook-tijd niet. Dat maakt hem nog geen
-        # niemandsland: loop omhoog naar de dichtstbijzijnde map die er wél
-        # is. Ligt die in een repo, dan is de verse map een submap van
-        # diezelfde repo, met diezelfde branch — `mkdir -p sub && cd sub &&
-        # git commit` landt gewoon op main, en dat blokkeert dus (C1).
-        # Alleen een voorouder die in geen enkele repo ligt (`/tmp/wt` →
-        # `/tmp`) is echt onbeschermbaar.
+        # This directory does not exist at hook time. That does not make it
+        # no-man's-land: walk up to the nearest directory that DOES exist.
+        # If that one lies in a repo, the fresh directory is a subdirectory of
+        # that same repo, with that same branch — `mkdir -p sub && cd sub &&
+        # git commit` simply lands on main, and so that blocks (C1).
+        # Only an ancestor that lies in no repo at all (`/tmp/wt` →
+        # `/tmp`) is truly unprotectable.
         ancestor = existing_ancestor(target)
         if ancestor is None or repo_of(ancestor) is None:
             target, from_new_dir = None, True
         elif report_new_dirs and action == "commit":
-            # Idem bewust alleen voor `commit`: zie de docstring van
+            # Likewise deliberately only for `commit`: see the docstring of
             # find_invocations.
             target = NEW_DIR
         else:
             target = ancestor
     if target is None and from_new_dir and to_main != "yes":
-        # De map ontstaat pas tijdens dit commando en ligt in geen enkele
-        # repo: er valt hier geen branch te beschermen, en dit houdt de
-        # voorgeschreven `git worktree add … && cd … && git commit`-motie
-        # werkend. Een push met een LETTERLIJKE main-bestemming heeft die
-        # mapkennis niet nodig en telt daarom altijd mee.
-        # Bewuste asymmetrie met een onherleidbaar `-C`-pad: dát pad NOEMT
-        # een bestaande repo die we niet konden herleiden, en daar blijft
-        # 'niet kunnen kijken' een blokkade. Harmoniseer die twee niet (F3).
+        # The directory comes into being only during this command and lies in no
+        # repo: there is no branch to protect here, and this keeps the prescribed
+        # `git worktree add … && cd … && git commit` incantation
+        # working. A push with a LITERAL main destination does not need that
+        # directory knowledge and therefore always counts.
+        # Deliberate asymmetry with an untraceable `-C` path: THAT path NAMES
+        # an existing repo that we could not trace, and there
+        # 'could not look' stays a block. Do not harmonise those two (F3).
         if report_new_dirs and action == "commit":
             target = NEW_DIR
         else:
@@ -969,20 +969,21 @@ def find_invocations(
     report_new_dirs: bool = False,
     default_branch: str = "main",
 ) -> list[Invocation]:
-    """Vind git commit/push-aanroepen in `command`, uitgevoerd vanuit `cwd`.
+    """Find git commit/push invocations in `command`, executed from `cwd`.
 
-    Geeft een lijst met (actie, map-of-marker, naar-main, ruw-pad)-tupels.
-    Gooit Unparseable bij een open quote (zie split_segments).
+    Returns a list of (action, directory-or-marker, to-main, raw-path) tuples.
+    Raises Unparseable on an open quote (see split_segments).
 
-    `report_new_dirs=True` verandert het gedrag alleen voor `action == "commit"`,
-    op precies de twee plekken waar een verse map anders stilzwijgend werd
-    opgelost: een bestaande voorouder binnen een repo (`target = ancestor`) en
-    een verse map buiten elke repo (die anders `continue` deed). Beide leveren
-    dan `NEW_DIR` als map, in plaats van de voorouder resp. helemaal niets.
-    Voor `push` verandert er niets: een push met een LETTERLIJKE
-    main-bestemming (`to_main == "yes"`) heeft die mapkennis toch al niet
-    nodig, en een push zonder is hier nooit de reden dat iets doorgelaten
-    wordt.
+    `report_new_dirs=True` changes the behaviour only for `action == "commit"`,
+    in exactly the two places where a fresh directory was otherwise silently
+    resolved: an existing ancestor inside a repo (`target = ancestor`) and
+    a fresh directory outside every repo (which otherwise did `continue`). Both then
+    yield `NEW_DIR` as directory, instead of the ancestor or nothing at all
+    respectively.
+    For `push` nothing changes: a push with a LITERAL
+    main destination (`to_main == "yes"`) does not need that directory knowledge
+    anyway, and a push without one is never the reason here that something is
+    let through.
     """
     found: list[Invocation] = []
     for step in walk(command, cwd):
@@ -1000,8 +1001,8 @@ def find_invocations(
             continue
 
         literal = step.literal
-        # Een push met een expliciete main-bestemming telt ook als hij vanaf een
-        # feature-branch gebeurt: `git push origin HEAD:main`, `+main`, `--all`.
+        # A push with an explicit main destination counts even when it happens from a
+        # feature branch: `git push origin HEAD:main`, `+main`, `--all`.
         if action == "push":
             to_main = push_destination(
                 words[idx + 1 :], literal[idx + 1 :], default_branch
@@ -1020,12 +1021,12 @@ def find_invocations(
 
 def main(argv: list[str] | None = None) -> int:
     """CLI: `git_invocations.py [--report-new-dirs] [--default-branch B] <cwd>`,
-    commando op stdin. `B` is de beschermde branch (default `main`).
+    command on stdin. `B` is the protected branch (default `main`).
 
-    Print per gevonden invocation één tab-gescheiden regel op stdout
-    (`<actie>\\t<map-of-marker>\\t<naar-main>\\t<ruwe-tekst>`). Geeft 0, of 3
-    bij een open quote (Unparseable) — dezelfde twee uitkomsten als de oude
-    heredoc-aanroep in main-commit-guard.sh.
+    Print one tab-separated line per invocation found on stdout
+    (`<action>\\t<directory-or-marker>\\t<to-main>\\t<raw-text>`). Returns 0, or 3
+    on an open quote (Unparseable) — the same two outcomes as the old
+    heredoc call in main-commit-guard.sh.
     """
     args = sys.argv[1:] if argv is None else argv
     report_new_dirs = False

@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Draai shellcheck op de shell van deze repo, of op de bestanden die je meegeeft.
+# Run shellcheck on the shell of this repo, or on the files you pass.
 #
-# Zonder argumenten draait hij de *strenge set*: de shell in `shell.strict_dirs`
-# uit lighthouse.toml (default `.claude/hooks`), de shell die zelf poorten
-# bewaakt. Die set staat op nul bevindingen op de laagste ernst (style) - dat is
-# KPI-rij 1 van de skill shell-gates.
+# Without arguments it runs the *strict set*: the shell in `shell.strict_dirs`
+# from lighthouse.toml (default `.claude/hooks`), the shell that itself guards
+# gates. That set stands at zero findings at the lowest severity (style) - that is
+# KPI row 1 of the shell-gates skill.
 #
-# Exitcodes, en dit is het hele punt van dit script:
-#   0  gecontroleerd, niets gevonden
-#   1  gecontroleerd, wel bevindingen
-#   2  verkeerd aangeroepen
-#   4  NIET gecontroleerd (shellcheck ontbreekt of faalt) - geen groen, geen rood
+# Exit codes, and this is the whole point of this script:
+#   0  checked, nothing found
+#   1  checked, findings
+#   2  called wrongly
+#   4  NOT checked (shellcheck is missing or fails) - neither green nor red
 #
-# Drie uitkomsten, niet twee. "Kon niet kijken" is geen "niets gevonden".
+# Three outcomes, not two. "Could not look" is not "found nothing".
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,8 +52,8 @@ if [ "${#files[@]}" -eq 0 ]; then
     exit 2
   }
   cd "$REPO_ROOT" || exit 2
-  # De mappen waar de lat het hoogst ligt, want een fout in een gate is stiller
-  # dan een fout in gewone code: hij meldt groen.
+  # The directories where the bar is highest, because a bug in a gate is quieter
+  # than a bug in ordinary code: it reports green.
   LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$REPO_ROOT}"
   if ! dirs_out="$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/config.py" shell.strict_dirs 2>&1)"; then
     echo "shellcheck-repo: shell.strict_dirs could not be read: $dirs_out" >&2
@@ -65,11 +65,11 @@ if [ "${#files[@]}" -eq 0 ]; then
   done <<EOF
 $dirs_out
 EOF
-  # git ls-files in plaats van een glob: geen lege expansie die als letterlijke
-  # bestandsnaam doorgegeven wordt, en recursief in submappen.
-  # --others --exclude-standard is niet optioneel: zonder die twee ziet de gate
-  # een gloednieuwe, nog niet getrackte hook helemaal niet en meldt hij groen
-  # over een set waar het nieuwe bestand niet in zat.
+  # git ls-files instead of a glob: no empty expansion that gets passed on as a literal
+  # file name, and recursive into subdirectories.
+  # --others --exclude-standard is not optional: without those two the gate
+  # does not see a brand-new, not yet tracked hook at all and reports green
+  # about a set that the new file was not in.
   if [ "${#specs[@]}" -gt 0 ]; then
     while IFS= read -r f; do
       files+=("$f")
@@ -81,11 +81,11 @@ EOF
   fi
 fi
 
-# -x: volg `source`/`.` naar het gesourcete bestand. Zonder dit meldt shellcheck
-# SC1091 ("not following") op elk script dat lib/ laadt — een bevinding over de
-# controle zelf in plaats van over de code.
-# De rc van shellcheck zelf: 0 schoon, 1 bevindingen. Elke andere rc (2 een bestand dat
-# hij niet kon lezen, 3 en 4 verkeerde opties, of een crash) is niet gecontroleerd.
+# -x: follow `source`/`.` into the sourced file. Without it shellcheck reports
+# SC1091 ("not following") on every script that loads lib/ — a finding about the
+# check itself instead of about the code.
+# The rc of shellcheck itself: 0 clean, 1 findings. Any other rc (2 a file that
+# it could not read, 3 and 4 wrong options, or a crash) is not checked.
 "$SHELLCHECK" -x -S "$severity" "${files[@]}"
 rc=$?
 case "$rc" in

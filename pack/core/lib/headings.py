@@ -1,4 +1,4 @@
-"""The heading table `.lighthouse/headings.toml` (besluit 8).
+"""The heading table `.lighthouse/headings.toml` (decision 8).
 
 Every heading that code or a skill reads as a contract has one variant per
 language. Writing uses `[project] language` (`heading`); reading accepts every

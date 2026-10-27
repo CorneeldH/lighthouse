@@ -557,7 +557,7 @@ def test_report_names_path(tmp_path, capsys):
     assert "code_language_exempt" in out[-1]
 
 
-# --- layer 2 in the checker (#37, besluit 10-12, 19) ---
+# --- layer 2 in the checker (#37, decision 10-12, 19) ---
 
 LAYER1_LINE = "lees_bestand = 1\n"
 DOUBT_LINE = "legacy_processed_lijst_weg = 2\n"

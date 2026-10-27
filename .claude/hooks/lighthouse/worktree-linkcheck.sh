@@ -28,7 +28,7 @@
 # a path that cannot be resolved, a git that breaks, or a link parser that
 # fails, nothing was checked; a silent exit 0 would read as "all links are
 # fine". Every such exit is exit 2 with `Linkcheck: COULD NOT CHECK — <reason>`
-# on the first line (the token bash_writes.classify reads, besluit 18).
+# on the first line (the token bash_writes.classify reads, decision 18).
 
 cannot_check() {
   {

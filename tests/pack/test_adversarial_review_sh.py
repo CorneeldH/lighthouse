@@ -432,7 +432,7 @@ def test_spec_verify_wrapper_sends_verifier_prompt_and_schema(root, sandbox):
 
 
 def test_runners_are_allowlisted():
-    """The allowlist rules come with the package (besluit 14), not from a hand edit."""
+    """The allowlist rules come with the package (decision 14), not from a hand edit."""
     allow = json.loads((CORE / "permissions.json").read_text())["allow"]
     for skill, script in SCRIPTS:
         assert f"Bash(.claude/skills/{skill}/{script}:*)" in allow
@@ -520,7 +520,7 @@ def test_production_path_calls_codex_usage_budget(root, sandbox):
 
 
 def test_repo_root_from_lighthouse_repo_root(root, sandbox):
-    """`LIGHTHOUSE_REPO_ROOT` wins over the git root of the cwd (inventaris §3)."""
+    """`LIGHTHOUSE_REPO_ROOT` wins over the git root of the cwd (inventory §3)."""
     del sandbox["env"]["LIGHTHOUSE_CODEX_BUDGET_CMD"]
     other = sandbox["tmp"] / "other"
     (other / "docs").mkdir(parents=True)

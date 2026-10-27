@@ -1,9 +1,9 @@
-"""`pack/core/lib/deadline.py`, as installed (#884): commando's afkappen op een epoch-deadline.
+"""`pack/core/lib/deadline.py`, as installed (#884): cutting off commands at an epoch deadline.
 
-De pre-commit test-gate (taak 3) draait de pytest-suite via dit script zodat de gate
-zélf eindigt vóór de PreToolUse-hooktimeout, in plaats van te vertrouwen op het
-fail-open gedrag van Claude Code bij een timeout. Deze tests toetsen de module
-direct — geen subagent, geen echte git-commit nodig.
+The pre-commit test gate (task 3) runs the pytest suite through this script so that the
+gate itself ends before the PreToolUse hook timeout, instead of relying on the
+fail-open behaviour of Claude Code on a timeout. These tests exercise the module
+directly: no subagent, no real git commit needed.
 """
 
 import os
@@ -20,7 +20,7 @@ dl = load_hook_lib("deadline")
 
 
 def _gone_within(pid: int, seconds: float) -> bool:
-    """Poll tot `pid` weg is (ProcessLookupError) of de tijd om is."""
+    """Poll until `pid` is gone (ProcessLookupError) or time is up."""
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         try:
@@ -32,7 +32,7 @@ def _gone_within(pid: int, seconds: float) -> bool:
 
 
 def _pid_within(pidfile, seconds: float) -> int | None:
-    """Poll tot `pidfile` een pid bevat, of de tijd om is."""
+    """Poll until `pidfile` holds a pid, or time is up."""
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         text = pidfile.read_text() if pidfile.exists() else ""
@@ -54,7 +54,7 @@ def test_expired_deadline_returns_124_and_kills_the_group(tmp_path):
     )
     assert rc == dl.TIMEOUT_EXIT and time.monotonic() - start < 10
     pid = int(pidfile.read_text())
-    # kleine lus tot het kind weg is; na 5 s is het een faal
+    # small loop until the child is gone; after 5 s it is a failure
     assert _gone_within(pid, 5.0)
 
 
@@ -116,9 +116,9 @@ def test_cli_usage_error_variants_exit_2(argv):
     "signum", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP], ids=lambda s: s.name
 )
 def test_signal_to_deadline_kills_the_group(tmp_path, signum):
-    """Wordt de hook zelf gekild, dan mag de suite niet als wees doorlopen.
+    """If the hook itself is killed, the suite must not keep running as an orphan.
 
-    Het kind draait in een eigen sessie en krijgt het signaal dus niet vanzelf.
+    The child runs in its own session and so does not get the signal by itself.
     """
     pidfile = tmp_path / "pid"
     proc = subprocess.Popen(
@@ -175,10 +175,10 @@ def test_cli_missing_command_exits_127_with_one_line():
 
 
 def test_timeout_survives_child_vanishing_before_the_kill(monkeypatch):
-    """Is het kind net na de timeout al weg, dan geen ProcessLookupError-crash.
+    """If the child is already gone just after the timeout, no ProcessLookupError crash.
 
-    Nagebootst: elke procesgroep-opvraag faalt alsof het kind al weg is. De
-    pgid is bij `start_new_session` gewoon de pid; opvragen is niet nodig.
+    Simulated: every process-group lookup fails as if the child were already
+    gone. With `start_new_session` the pgid is simply the pid; no lookup is needed.
     """
 
     def gone(_pid: int) -> int:
@@ -229,16 +229,16 @@ def test_default_call_still_returns_a_bare_int():
 
 
 def test_capture_on_missing_command_returns_not_found_and_empty_bytes():
-    """Zoals de docstring belooft: de melding gaat alleen naar stderr, niet in de buffer."""
+    """As the docstring promises: the message goes only to stderr, not into the buffer."""
     rc, out = dl.run_until(time.time() + 30, ["lighthouse-does-not-exist-xyz"], capture=True)
     assert rc == dl.NOT_FOUND_EXIT and out == b""
 
 
 def test_raise_on_signal_raises_interrupted_with_the_output():
-    """Met `raise_on_signal` meldt een doorgestuurd signaal zich als uitzondering.
+    """With `raise_on_signal` a forwarded signal reports itself as an exception.
 
-    Het kind stuurt SIGTERM naar zijn ouder (dit proces): de forwarder staat
-    dan al, dus het signaal breekt het wachten af in plaats van pytest.
+    The child sends SIGTERM to its parent (this process): the forwarder is
+    already in place, so the signal aborts the wait instead of pytest.
     """
     with pytest.raises(dl.Interrupted) as caught:
         dl.run_until(
@@ -254,7 +254,7 @@ def test_raise_on_signal_raises_interrupted_with_the_output():
 
 @pytest.mark.parametrize("rc", [129, 130, 143])
 def test_raise_on_signal_passes_a_child_exit_of_128_plus_n_through(rc):
-    """Een kind dat zelf met 128+n eindigt is geen doorgestuurd signaal."""
+    """A child that itself ends with 128+n is not a forwarded signal."""
     got, _out = dl.run_until(
         time.time() + 30,
         ["sh", "-c", f"exit {rc}"],

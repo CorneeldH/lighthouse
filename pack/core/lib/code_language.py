@@ -33,7 +33,7 @@ from lighthouse_lib.code_language_score import split_name
 
 MARKER = "lighthouse: allow-language"
 
-# Set by bash_writes.run_gate for every gate it runs: layer 2 is skipped there (besluit 19).
+# Set by bash_writes.run_gate for every gate it runs: layer 2 is skipped there (decision 19).
 UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_GATES"
 
 
@@ -394,7 +394,7 @@ _TABLE_SEPARATOR = re.compile(r"^[\s|:-]+$")
 _FRONT_KEY = re.compile(r"^([\w-]+):[ \t]*(.*)$")
 _FOLDED = {"", ">", "|", ">-", "|-"}
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-_AUTOLINK = re.compile(r"<https?://[^>]*>")
+_URL_IN_ANGLES = re.compile(r"<https?://[^>]*>")
 _IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
 _LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
 _HTML_TAG = re.compile(r"</?[A-Za-z][^>]*>")
@@ -405,7 +405,7 @@ def _prose_unit(lines: list[tuple[int, str]]) -> Finding | None:
     kept = [(number, text) for number, text in lines if MARKER not in text]
     text = " ".join(text.strip() for _, text in kept)
     text = _HTML_COMMENT.sub(" ", text)
-    text = _AUTOLINK.sub(" ", text)
+    text = _URL_IN_ANGLES.sub(" ", text)
     text = _IMAGE.sub(r"\1", text)
     text = _LINK.sub(r"\1", text)
     text = _HTML_TAG.sub(" ", text).strip()
@@ -668,7 +668,7 @@ def _line(path: Path, finding: Finding) -> str:
 
 
 def _notice(path: Path, doubts: list[Finding], reasons: str, *, prefix: str = "") -> str:
-    """The notice of besluit 11: layer 2 gave no verdict, so these doubts stay unchecked."""
+    """The notice of decision 11: layer 2 gave no verdict, so these doubts stay unchecked."""
     lines = [
         f"code-language: {prefix}layer 2 did not answer ({reasons}); "
         f"{len(doubts)} doubtful units not checked:"
@@ -682,9 +682,9 @@ def resolve(
 ) -> tuple[list[Finding], str | None]:
     """All findings (layer 1, plus each doubt layer 2 calls NOT-EN) and the notice, or None.
 
-    No doubts or no chain: layer 1 alone, silently (besluit 12). Under bash-write-gates
-    layer 2 does not run and the doubts go into a `NOTICE` (besluit 19). Layer 2 only
-    hears the doubts, never a layer 1 finding (besluit 10).
+    No doubts or no chain: layer 1 alone, silently (decision 12). Under bash-write-gates
+    layer 2 does not run and the doubts go into a `NOTICE` (decision 19). Layer 2 only
+    hears the doubts, never a layer 1 finding (decision 10).
     """
     found = list(inspection.findings)
     doubts = inspection.doubts

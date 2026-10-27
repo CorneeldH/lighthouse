@@ -1,4 +1,4 @@
-// Package pack carries the lighthouse packages inside the binary (spec, besluit 2).
+// Package pack carries the lighthouse packages inside the binary (spec, decision 2).
 package pack
 
 import "embed"

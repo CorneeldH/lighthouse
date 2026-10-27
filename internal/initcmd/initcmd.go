@@ -2,7 +2,7 @@
 // packages, decide per unit against the manifest, show a diff per file, ask, write.
 //
 // Nothing is written without approval or --yes. A locally changed unit refuses the
-// whole run unless --force is given (spec, besluit 4).
+// whole run unless --force is given (spec, decision 4).
 package initcmd
 
 import (
@@ -47,7 +47,7 @@ const (
 type Options struct {
 	Dir                 string // working directory; the root comes from git rev-parse --show-toplevel
 	Upgrade, Force, Yes bool
-	AddPacks, DropPacks []string                  // --pack and --no-pack (plan M0 (c), ontwerpkeuze 6)
+	AddPacks, DropPacks []string                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	Version             string                    // "" means version.String()
 	Packs               fs.FS                     // holds <name>/...; nil means pack.Files
 	Deps                deps.Checker              // nil fields mean deps.Default()
@@ -220,7 +220,7 @@ func execute(o Options) error {
 	return offerHost(o, in)
 }
 
-// reportPacks says which packages this run installs (plan M0 (c), ontwerpkeuze 7): on
+// reportPacks says which packages this run installs (plan M0 (c), design choice 7): on
 // init one line before the diff; on --upgrade only what is added or removed, so an
 // upgrade without changes still prints exactly "No changes.".
 func reportPacks(o Options, all map[string]packs.Pack, chosen []choice, m manifest.Manifest, initialized bool, notes []string) {
@@ -347,7 +347,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 				allowWant = append(allowWant, c.Key.ID)
 			case c.Desired == nil && (c.Action == reconcile.Remove || o.Force) && packs.IsLighthouseRule(c.Key.ID):
 				// A rule outside the pattern is the project's, even when a
-				// (hand-edited) manifest names it (besluit 22).
+				// (hand-edited) manifest names it (decision 22).
 				allowDrop = append(allowDrop, c.Key.ID)
 			}
 		}
@@ -415,7 +415,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		return nil, err
 	}
 	// Every pack rule points into a lighthouse directory (packs.Load checks it), so
-	// it is lighthouse's, also when the project already had it (besluit 22).
+	// it is lighthouse's, also when the project already had it (decision 22).
 	nm := manifest.Manifest{Version: o.Version, Packages: names}
 	for _, u := range desired {
 		nm.Units = append(nm.Units, manifest.Entry{
@@ -448,7 +448,7 @@ func hasLine(b []byte, line string) bool {
 }
 
 // configTables are the tables lighthouse.toml should have: the core tables, then the
-// fragments of the chosen packages in their order (plan M0 (c), ontwerpkeuze 4).
+// fragments of the chosen packages in their order (plan M0 (c), design choice 4).
 func configTables(root string, chosen []packs.Pack) ([]projectconfig.Table, bool, error) {
 	repo, haveRepo := "", false
 	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {

@@ -1,19 +1,19 @@
-"""Eén linkextractie voor markdown (#886): de norm en de plumbing samen.
+"""One link extraction for markdown (#886): the norm and the plumbing together.
 
-Norm: een link in een bestand is relatief en wijst naar een bestaand doel;
-een absolute link is altijd een probleem (zie AGENTS.md, regel "Links:
-bestand relatief, chat absoluut").
+Norm: a link in a file is relative and points to an existing target;
+an absolute link is always a problem (see AGENTS.md, rule "Links:
+file relative, chat absolute").
 
-Verhuisd/samengevoegd uit twee eerdere, licht verschillende implementaties:
-- de `_strip_code_fences`/`iter_relative_links`-helpers in
-  `tests/unit/test_docs_planning.py` (fence- en inline-code-logica);
-- de Python-heredoc in `worktree-linkcheck.sh` (linkregex, anker/schema/
-  absoluut-filter, padresolutie tegen `root`).
+Moved/merged from two earlier, slightly different implementations:
+- the `_strip_code_fences`/`iter_relative_links` helpers in
+  `tests/unit/test_docs_planning.py` (fence and inline-code logic);
+- the Python heredoc in `worktree-linkcheck.sh` (link regex, anchor/scheme/
+  absolute filter, path resolution against `root`).
 
-Gebruikt door `worktree-linkcheck.sh` (taak 5, via de CLI hieronder) en door
-de docs-linktests (taak 6, via `strip_code`, `relative_links` en
-`absolute_links`) — zodat die norm niet langer op twee plekken los
-onderhouden wordt.
+Used by `worktree-linkcheck.sh` (task 5, through the CLI below) and by the
+docs link tests (task 6, through `strip_code`, `relative_links` and
+`absolute_links`), so that norm is no longer maintained separately in two
+places.
 """
 
 from __future__ import annotations
@@ -24,17 +24,17 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
-# Drie backticks/tildes als runtime-string, nooit als letterlijke tekst in dit
-# bestand — de oude linkhook blokkeert een Edit/Write met drie backticks op
-# één regel.
+# Three backticks/tildes as a runtime string, never as literal text in this
+# file: the old link hook blocks an Edit/Write with three backticks on one
+# line.
 FENCE = "`" * 3
 TILDE_FENCE = "~" * 3
 _FENCE = re.compile(r"^\s*(" + re.escape(FENCE) + "|" + re.escape(TILDE_FENCE) + ")")
-# Inline code-span: `...`. Een pad tussen backticks is documentatie, geen link.
+# Inline code span: `...`. A path between backticks is documentation, not a link.
 _INLINE_CODE = re.compile(r"`[^`\n]*`")
 
-# Een link volgt CommonMark (#1014): de destination mag tussen hoekhaken staan
-# (dan met spaties) en de titel heeft drie vormen: "..", '..' en (..).
+# A link follows CommonMark (#1014): the destination may sit between angle
+# brackets (then with spaces) and the title has three forms: "..", '..' and (..).
 LINK = re.compile(
     r"\[[^\]]*\]\("
     r"(?:<(?P<angle>[^<>\n]*)>|(?P<bare>[^)\s<][^)\s]*))"
@@ -45,17 +45,18 @@ _SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 
 def link_target(match: re.Match[str]) -> str:
-    """Het pad van één `LINK`-treffer, zonder eventuele hoekhaken."""
+    """The path of one `LINK` match, without any angle brackets."""
     angle = match.group("angle")
     return angle if angle is not None else match.group("bare")
 
 
 def strip_code(text: str) -> str:
-    """Verwijder gefencede blokken (drie backticks of drie tildes) en inline code.
+    """Remove fenced blocks (three backticks or three tildes) and inline code.
 
-    Fences togglen per regel: een regel die, na witruimte, met het fence-teken
-    begint schakelt de status om en telt zelf niet mee. Een fence-teken
-    MIDDEN in een regel (bijv. in een string-literal) toggelt niets.
+    Fences toggle per line: a line that, after whitespace, begins with the
+    fence character flips the state and does not count itself. A fence
+    character in the MIDDLE of a line (e.g. in a string literal) toggles
+    nothing.
     """
     out = []
     inside = False
@@ -69,11 +70,11 @@ def strip_code(text: str) -> str:
 
 
 def relative_links(text: str) -> list[str]:
-    """Doelen van relatieve markdown-links, buiten code, ontdubbeld op volgorde.
+    """Targets of relative markdown links, outside code, deduplicated in order.
 
-    Sluit uit: een kaal anker (`#kop`), een doel dat met `/` begint (absoluut)
-    en een doel met een schema (`https:`, `mailto:`, `obsidian:`, ...). Een
-    anker op een verder relatief doel (`b.md#kop`) wordt afgeknipt tot `b.md`.
+    Excludes: a bare anchor (`#kop`), a target that begins with `/` (absolute)
+    and a target with a scheme (`https:`, `mailto:`, `obsidian:`, ...). An
+    anchor on an otherwise relative target (`b.md#kop`) is cut off to `b.md`.
     """
     seen: set[str] = set()
     out: list[str] = []
@@ -92,7 +93,7 @@ def relative_links(text: str) -> list[str]:
 
 
 def absolute_links(text: str) -> list[str]:
-    """Doelen van markdown-links die met `/` beginnen, buiten code."""
+    """Targets of markdown links that begin with `/`, outside code."""
     return [
         link_target(match)
         for match in LINK.finditer(strip_code(text))
@@ -101,14 +102,15 @@ def absolute_links(text: str) -> list[str]:
 
 
 def find_problems(md_path: Path, root: Path) -> list[tuple[str, str]]:
-    """Problemen in `md_path`: dode relatieve links en elke absolute link.
+    """Problems in `md_path`: dead relative links and every absolute link.
 
-    Een relatief doel wordt, na URL-decoding, opgelost tegen `md_path.parent`
-    en getoetst op bestaan (bestand of map). Valt het resultaat buiten `root`,
-    dan slaat deze functie het over — dat is geen probleem van dit document.
-    Een absoluut doel is altijd een probleem, ongeacht bestaan.
+    A relative target is, after URL decoding, resolved against
+    `md_path.parent` and tested for existence (file or directory). If the
+    result falls outside `root`, this function skips it: that is no problem of
+    this document. An absolute target is always a problem, whether it exists
+    or not.
 
-    Een `OSError` bij het lezen van `md_path` gaat door naar de aanroeper.
+    An `OSError` while reading `md_path` goes through to the caller.
     """
     text = md_path.read_text(encoding="utf-8")
     problems: list[tuple[str, str]] = []
@@ -130,9 +132,9 @@ def find_problems(md_path: Path, root: Path) -> list[tuple[str, str]]:
 def main(argv: list[str] | None = None) -> int:
     """CLI: `md_links.py <md_path> <root>`.
 
-    Print per gevonden probleem één tab-gescheiden regel (`<soort>\\t<doel>`)
-    op stdout en geeft 0. Bij een `OSError` (bijv. onleesbaar bestand) gaat de
-    melding naar stderr en is de exitcode 1.
+    Prints one tab-separated line per problem found (`<kind>\\t<target>`) on
+    stdout and returns 0. On an `OSError` (e.g. an unreadable file) the
+    message goes to stderr and the exit code is 1.
     """
     args = sys.argv[1:] if argv is None else argv
     md_path, root = Path(args[0]), Path(args[1])

@@ -1,75 +1,75 @@
 # lighthouse: core@dev
 """Attempt directory and measurement record of the adversarial plan and spec review.
 
-Twee soorten (`kind`, `"plan"` of `"spec"`) delen één schrijfpad en één
-recordformaat: alleen de documentsleutel (`plan`/`spec`) en de bijbehorende
-hash-velden (`plan_sha256_*`/`spec_sha256_*`) volgen `kind`. Vier subcommando's,
-aangeroepen door de operator van `plan-adversarial-review` of
+Two kinds (`kind`, `"plan"` or `"spec"`) share one write path and one
+record format: only the document key (`plan`/`spec`) and the matching
+hash fields (`plan_sha256_*`/`spec_sha256_*`) follow `kind`. Four subcommands,
+called by the operator of `plan-adversarial-review` or
 `spec-adversarial-review`:
 
     plan_review_record.py start [--kind plan|spec] <DOC>
-        Reserveert de ephemere attempt-map
-        `${TMPDIR:-/tmp}/<kind>-review/<chain-key>/<attempt>/` en legt de commit
-        vast die ronde 1 leest. Print het pad. Het document moet gecommit zijn.
-        Op de host uit host.toml staat de attempt meteen ook als `.<attempt>.tmp/` in de
-        datamap: de nieuwste attempt is gezaghebbend, ook als `write` nooit draait.
+        Reserves the ephemeral attempt directory
+        `${TMPDIR:-/tmp}/<kind>-review/<chain-key>/<attempt>/` and records the commit
+        that round 1 reads. Prints the path. The document must be committed.
+        On the host from host.toml the attempt also appears at once as `.<attempt>.tmp/` in
+        the data directory: the newest attempt is authoritative, even if `write` never runs.
 
     plan_review_record.py write <ATTEMPT_DIR> --outcome ... --review-mode ... [...]
-        Schrijft de ronde-JSON's, hun decisions-sidecars en één `record.json` naar
-        `<datamap>/<kind>-review/<chain-key>/<attempt>/`, via een stagingmap en één
-        rename. `kind` komt uit `attempt.json` (ontbreekt het, dan is het `plan`).
-        Alleen op de host uit host.toml; elders geen record en een luide melding.
+        Writes the round JSONs, their decisions sidecars and one `record.json` to
+        `<data-dir>/<kind>-review/<chain-key>/<attempt>/`, through a staging directory
+        and one rename. `kind` comes from `attempt.json` (if it is missing, it is `plan`).
+        Only on the host from host.toml; elsewhere no record and a loud message.
 
-    plan_review_record.py accept-open <ATTEMPT_DIR> --doc <DOCPAD>
-        Zet bij de rondegrens elk nog open BLOCKER/MAJOR van de laatste ronde op
-        `accepted_open` in `round-<laatste>.decisions.json` en zet een blok
-        `heading:open_after_review` achteraan in `<DOCPAD>` (vervangt een bestaand blok;
-        elke variant telt). Print het blok, in `[project] language`. Draait op elke host.
-        Exit 0 ok | 2 geen open punt | 4 lees-, parse- of schrijffout
-        (`ACCEPT-OPEN FAILED`). Een fout vóór het
-        schrijven laat sidecar en document onaangeroerd; faalt het schrijven van het
-        document ná de sidecar, dan is de sidecar al herschreven: opnieuw draaien herstelt dat.
+    plan_review_record.py accept-open <ATTEMPT_DIR> --doc <DOCPATH>
+        At the round limit, sets every still-open BLOCKER/MAJOR of the last round to
+        `accepted_open` in `round-<last>.decisions.json` and appends a block
+        `heading:open_after_review` to `<DOCPATH>` (replaces an existing block;
+        every variant counts). Prints the block, in `[project] language`. Runs on any host.
+        Exit 0 ok | 2 no open point | 4 read, parse or write error
+        (`ACCEPT-OPEN FAILED`). An error before
+        writing leaves sidecar and document untouched; if writing the
+        document fails after the sidecar, the sidecar is already rewritten: running again repairs that.
 
-    plan_review_record.py pr-open-points <DOCPAD>...
-        Print voor de PR-body de blokken `heading:open_after_review` van de documenten
-        (en van de specs die de `**Spec:**`-regel van een plan noemt) onder `## Open
-        review points`; geen blok, dan niets. Een ontbrekend pad wordt overgeslagen.
-        Draait op elke host. Exit 0 ok | 4 andere lees- of configfout
+    plan_review_record.py pr-open-points <DOCPATH>...
+        Prints for the PR body the `heading:open_after_review` blocks of the documents
+        (and of the specs that the `**Spec:**` line of a plan names) under `## Open
+        review points`; no block, then nothing. A missing path is skipped.
+        Runs on any host. Exit 0 ok | 4 other read or config error
         (`PR-OPEN-POINTS FAILED`).
 
-`<chain-key>` is `PurePosixPath(docpad).stem`. De datamap komt uit
-`datadir.data_dir()` (besluit 27), die een map binnen een git-werkboom weigert. De
-spec- en planmappen komen uit `paths.specs` en `paths.plans`.
+`<chain-key>` is `PurePosixPath(docpath).stem`. The data directory comes from
+`datadir.data_dir()` (decision 27), which refuses a directory inside a git worktree. The
+spec and plan directories come from `paths.specs` and `paths.plans`.
 
-Exit: 0 ok | 2 verkeerd gebruik | 3 niet de host uit host.toml, of host onbekend/niet
-meetbaar: geen record |
-4 schrijf- of validatiefout (alleen de stagingmap blijft staan). De skill gaat bij
-3 en 4 door met de handoff: de review is het product, het record meetmateriaal.
+Exit: 0 ok | 2 wrong usage | 3 not the host from host.toml, or host unknown/not
+measurable: no record |
+4 write or validation error (only the staging directory stays). On 3 and 4 the
+skill carries on with the handoff: the review is the product, the record measurement material.
 
-Vanaf #1066 is ronde 1 een review en is elke volgende ronde een verificatie
-(`verify.sh`, herkenbaar aan de top-level sleutel `verified` in de ronde-JSON).
-`round_kinds` legt dat per ronde vast voor de meting; `schema_version: 1`-records
-hebben het veld niet en zijn allemaal reviewrondes.
+Since #1066 round 1 is a review and every following round is a verification
+(`verify.sh`, recognisable by the top-level key `verified` in the round JSON).
+`round_kinds` records that per round for the measurement; `schema_version: 1` records
+do not have the field and are all review rounds.
 
-`schema_version` gaat met #988 van `2` naar `3`: dat voegt `kind` toe aan het
-record, en voor ronde 1 `paired`/`shadow` plus per bevinding `source` en
-`severity_by_source` — of, en met welk model, `review_pair.py merge` (buiten dit
-bestand) een gepaarde schaduwrun tegen Codex zag. v1- en v2-records missen die
-velden: een lezer behandelt een ontbrekende `kind` als `plan` en ontbrekende
-paarvelden als ongepaard.
+`schema_version` goes from `2` to `3` with #988: that adds `kind` to the
+record, and for round 1 `paired`/`shadow` plus per finding `source` and
+`severity_by_source` — whether, and with which model, `review_pair.py merge` (outside this
+file) saw a paired shadow run against Codex. v1 and v2 records lack those
+fields: a reader treats a missing `kind` as `plan` and missing
+pair fields as unpaired.
 
-`schema_version` gaat met #1093 van `3` naar `4`: `budget_checks` is een lijst met
-per `round-<n>*.budget.json` (de budgetcheck die de runner vóór elke ronde doet,
-ook `round-1.codex.json.budget.json` van de gepaarde ronde 1) één entry met
-`round`, `bestand`, `besluit`, `reden`, `session_pct`, `week_pct`, `bron` en
-`drempels`; een bestand dat geen JSON-object is wordt `besluit: "onleesbaar"`
-met de rest `None`. De bestanden zelf worden naast het record bewaard. Een lezer
-behandelt een ontbrekende `budget_checks` als "geen check gedaan" (v1-v3).
+`schema_version` goes from `3` to `4` with #1093: `budget_checks` is a list with
+per `round-<n>*.budget.json` (the budget check the runner does before each round,
+also `round-1.codex.json.budget.json` of the paired round 1) one entry with
+`round`, `bestand`, `besluit`, `reden`, `session_pct`, `week_pct`, `bron` and
+`drempels`; a file that is not a JSON object becomes `besluit: "onleesbaar"`
+with the rest `None`. The files themselves are kept next to the record. A reader
+treats a missing `budget_checks` as "no check done" (v1-v3).
 
-`schema_version` gaat bij de verhuizing naar lighthouse van `4` naar `5`: de velden
-van een `budget_checks`-entry volgen de Engelse budget-JSON van `codex_usage.py`
+`schema_version` goes from `4` to `5` with the move to lighthouse: the fields
+of a `budget_checks` entry follow the English budget JSON of `codex_usage.py`
 (`round`, `file`, `decision`, `reason`, `session_pct`, `week_pct`, `source`,
-`thresholds`), en een onleesbaar bestand wordt `decision: "unreadable"`.
+`thresholds`), and an unreadable file becomes `decision: "unreadable"`.
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ from lighthouse_lib.config import (
 )
 from lighthouse_lib.datadir import data_dir
 
-# Een onbekende of niet meetbare host is een configfout van `host.toml`.
+# An unknown or unmeasurable host is a config error of `host.toml`.
 HostError = ConfigError
 
 KINDS = ("plan", "spec")
@@ -119,18 +119,18 @@ DECISIONS_BY_KIND = {
     "plan": ("accept", "reject", "spec", "accepted_open", "minor_yes", "minor_no"),
     "spec": ("accept", "reject", "defer", "accepted_open", "minor_yes", "minor_no"),
 }
-# "Terecht": plan-review accept/spec, spec-review accept/defer (Taak 4).
+# "Justified": plan review accept/spec, spec review accept/defer (Task 4).
 JUSTIFIED_BY_KIND = {"plan": ("accept", "spec"), "spec": ("accept", "defer")}
-# Beslissingen die een BLOCKER/MAJOR-bevinding sluiten (build_record.still_open).
+# Decisions that close a BLOCKER/MAJOR finding (build_record.still_open).
 CLOSED_BY_KIND = {"plan": ("reject",), "spec": ("reject", "defer")}
 ROUND_FILE = re.compile(r"^round-(\d+)\.json$")
 BUDGET_FILE = re.compile(r"^round-(\d+)\..+\.budget\.json$")
-# De velden van de budget-JSON van `codex_usage.py budget` die het record bewaart.
+# The fields of the budget JSON of `codex_usage.py budget` that the record keeps.
 BUDGET_FIELDS = ("decision", "reason", "session_pct", "week_pct", "source", "thresholds")
 SOURCES = ("codex", "fallback", "both")
 SEVERITIES = ("BLOCKER", "MAJOR", "MINOR")
-# Bestanden van het gepaarde ronde-1-experiment (#988, `review_pair.py`); `write`
-# neemt ze mee naar de recordmap als ze bestaan, ronde 1 is de enige paarronde.
+# Files of the paired round-1 experiment (#988, `review_pair.py`); `write`
+# takes them along to the record directory if they exist, round 1 is the only pair round.
 PAIR_FILES = (
     "pair.json",
     "round-1.codex.json",
@@ -141,9 +141,9 @@ PAIR_FILES = (
 
 
 def recognize() -> Host | None:
-    """De host uit `host.toml` als dit die machine is, anders `None`.
+    """The host from `host.toml` if this is that machine, otherwise `None`.
 
-    `HostError` als `host.toml` ontbreekt of kapot is, of het adres niet meetbaar is.
+    `HostError` if `host.toml` is missing or broken, or the address is not measurable.
     """
     host = load_host(host_path())
     return host if is_local(host.tailscale_ip) else None
@@ -173,15 +173,15 @@ def chain_key(plan: str) -> str:
 
 
 def host_refusal(kind: str) -> str | None:
-    """`None` op de herkende host (host.toml), anders de stderr-regel die de meting weigert."""
+    """`None` on the recognised host (host.toml), otherwise the stderr line that refuses the measurement."""
     try:
         if recognize() is not None:
             return None
-        oorzaak = "not on the host from host.toml"
+        cause = "not on the host from host.toml"
     except HostError as exc:
-        oorzaak = str(exc)
+        cause = str(exc)
     return (
-        f"{kind.upper()}-REVIEW NOT RECORDED: {oorzaak} — this chain falls outside "
+        f"{kind.upper()}-REVIEW NOT RECORDED: {cause} — this chain falls outside "
         "the measurement. The review itself is valid; carry on."
     )
 
@@ -189,7 +189,7 @@ def host_refusal(kind: str) -> str | None:
 def start(
     doc: str, repo: pathlib.Path, tmp_root: pathlib.Path, kind: str = "plan"
 ) -> pathlib.Path:
-    """Reserveer een nieuwe attempt-map; atomisch via `mkdir`, nooit hergebruikt."""
+    """Reserve a new attempt directory; atomic via `mkdir`, never reused."""
     if not (repo / doc).is_file():
         raise ValueError(f"{kind} not found under the repository root: {repo / doc}")
     if _git(repo, "status", "--porcelain", "--", doc).strip():
@@ -220,7 +220,7 @@ def start(
 
 
 def _meta(attempt_dir: pathlib.Path) -> dict:
-    """Lees `attempt.json`; ontbreekt `kind` (v1/v2-attempt), dan is het `plan`."""
+    """Read `attempt.json`; if `kind` is missing (v1/v2 attempt), it is `plan`."""
     meta = json.loads((attempt_dir / "attempt.json").read_text())
     meta.setdefault("kind", "plan")
     return meta
@@ -233,12 +233,12 @@ def _staging(
 
 
 def reserve(attempt_dir: pathlib.Path) -> None:
-    """Zet de nieuwe attempt meteen in de datamap (spec sectie 5).
+    """Put the new attempt in the data directory at once (spec section 5).
 
-    Per keten is de nieuwste attempt überhaupt gezaghebbend, ook zonder record.
-    Zonder deze reservering zou een review die nooit bij `write` komt onzichtbaar
-    zijn, en telde een oudere attempt ten onrechte. Een mislukte reservering
-    blokkeert de review niet: `write` maakt de map dan alsnog.
+    Per chain the newest attempt is authoritative anyway, even without a record.
+    Without this reservation a review that never reaches `write` would be invisible,
+    and an older attempt would wrongly count. A failed reservation
+    does not block the review: `write` then creates the directory after all.
     """
     try:
         meta = _meta(attempt_dir)
@@ -249,8 +249,8 @@ def reserve(attempt_dir: pathlib.Path) -> None:
         )
         return
     kind = meta["kind"]
-    if (reden := host_refusal(kind)) is not None:
-        print(reden, file=sys.stderr)
+    if (reason := host_refusal(kind)) is not None:
+        print(reason, file=sys.stderr)
         return
     try:
         staging = _staging(data_dir(), kind, meta["chain_key"], meta["attempt"])
@@ -274,7 +274,7 @@ def _rounds(attempt_dir: pathlib.Path) -> dict[int, pathlib.Path]:
 
 
 def _budget_checks(attempt_dir: pathlib.Path) -> list[dict]:
-    """Eén entry per budget-bestand van de runner; onleesbaar of geen object -> `unreadable`."""
+    """One entry per budget file of the runner; unreadable or not an object -> `unreadable`."""
     checks = []
     for p in attempt_dir.iterdir():
         m = BUDGET_FILE.match(p.name)
@@ -299,15 +299,15 @@ def _budget_checks(attempt_dir: pathlib.Path) -> list[dict]:
 def _decisions(
     attempt_dir: pathlib.Path, n: int, n_findings: int, kind: str
 ) -> dict[str, dict]:
-    """De beslissingen van ronde `n`, per `finding_id`; elk ID bestaat en staat er één keer."""
+    """The decisions of round `n`, per `finding_id`; every ID exists and occurs once."""
     sidecar = attempt_dir / f"round-{n}.decisions.json"
     if not sidecar.is_file():
         return {}
     valid = {f"r{n}-f{i}" for i in range(1, n_findings + 1)}
     parsed = json.loads(sidecar.read_text())
     if not isinstance(parsed, list):
-        # TRY004: bewust ValueError, geen TypeError — main() vangt alleen
-        # ValueError/OSError/... af voor exit 4 (PLAN-REVIEW-RECORD FAILED).
+        # TRY004: deliberately ValueError, not TypeError — main() only catches
+        # ValueError/OSError/... for exit 4 (PLAN-REVIEW-RECORD FAILED).
         raise ValueError(  # noqa: TRY004
             f"{sidecar.name}: expected a list, got {type(parsed).__name__}"
         )
@@ -333,12 +333,12 @@ def _decisions(
 
 
 def _sources(attempt_dir: pathlib.Path, n_findings: int) -> dict[str, dict] | None:
-    """De bron per ronde-1-bevinding uit `round-1.sources.json`, `None` zonder paar.
+    """The source per round-1 finding from `round-1.sources.json`, `None` without a pair.
 
-    `review_pair.py merge` (Taak 3) schrijft de sidecar; ontbreekt hij, dan was
-    ronde 1 geen paar (Codex-limiet, of gewoon geen gepaarde run) en levert deze
-    functie niets. `blind_ids` staat op elke rij maar is hier meetmateriaal voor
-    Taak 3/4, niet iets wat dit record zelf gebruikt.
+    `review_pair.py merge` (Task 3) writes the sidecar; if it is missing, round 1
+    was not a pair (Codex limit, or simply no paired run) and this function
+    returns nothing. `blind_ids` is on every row but is measurement material here for
+    Task 3/4, not something this record uses itself.
     """
     sidecar = attempt_dir / "round-1.sources.json"
     if not sidecar.is_file():
@@ -386,10 +386,10 @@ def _sources(attempt_dir: pathlib.Path, n_findings: int) -> dict[str, dict] | No
 def _build_findings(
     attempt_dir: pathlib.Path, rounds: dict[int, pathlib.Path], kind: str
 ) -> tuple[list[dict], list[str], dict[str, dict] | None]:
-    """Alle bevindingen over alle rondes, plus `round_kinds` en de ronde-1-bron.
+    """All findings over all rounds, plus `round_kinds` and the round-1 source.
 
-    `sources` is `None` zonder `round-1.sources.json` (geen paar); alleen ronde-1-
-    bevindingen krijgen dan een niet-`None` `source`/`severity_by_source`.
+    `sources` is `None` without `round-1.sources.json` (no pair); only round-1
+    findings then get a non-`None` `source`/`severity_by_source`.
     """
     findings = []
     round_kinds = []
@@ -424,7 +424,7 @@ def _build_findings(
 def _check_shadow_model(
     sources: dict[str, dict] | None, shadow_model: str | None
 ) -> None:
-    """`--shadow-model` gaat exact samen met een gepaarde ronde 1, nooit los."""
+    """`--shadow-model` goes exactly with a paired round 1, never alone."""
     if sources is not None and not shadow_model:
         raise ValueError(
             "--shadow-model is required: round-1.sources.json exists "
@@ -593,7 +593,7 @@ def write(
     data_root: pathlib.Path,
     issue_body: pathlib.Path | None,
 ) -> pathlib.Path:
-    """Vul de stagingmap van `reserve`, record.json als laatste, dan één rename."""
+    """Fill the staging directory of `reserve`, record.json last, then one rename."""
     kind = record["kind"]
     final = data_root / f"{kind}-review" / record["chain_key"] / record["attempt"]
     staging = _staging(data_root, kind, record["chain_key"], record["attempt"])
@@ -618,7 +618,7 @@ def write(
     return final
 
 
-# De tekst onder de kop van het blok, per `[project] language`.
+# The text under the heading of the block, per `[project] language`.
 OPEN_TEXT = {
     "nl": (
         "Ronde {n} haalde de rondegrens met deze punten open. "
@@ -638,7 +638,7 @@ FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 
 
 def open_points(attempt_dir: pathlib.Path) -> list[dict]:
-    """De BLOCKER/MAJOR van de laatste ronde zonder sluitende beslissing, in ID-volgorde."""
+    """The BLOCKER/MAJOR of the last round without a closing decision, in ID order."""
     kind = _meta(attempt_dir)["kind"]
     rounds = _rounds(attempt_dir)
     if not rounds:
@@ -667,7 +667,7 @@ def open_points(attempt_dir: pathlib.Path) -> list[dict]:
 
 
 def _accepted_rows(attempt_dir: pathlib.Path) -> tuple[int, list[dict], list[dict]]:
-    """Plan van `accept_open` zonder te schrijven: (ronde, nieuwe sidecar-regels, open punten erna)."""
+    """Plan of `accept_open` without writing: (round, new sidecar rows, open points after)."""
     points = open_points(attempt_dir)
     last = max(_rounds(attempt_dir))
     sidecar = attempt_dir / f"round-{last}.decisions.json"
@@ -699,7 +699,7 @@ def _write_sidecar(attempt_dir: pathlib.Path, n: int, rows: list[dict]) -> None:
 
 
 def accept_open(attempt_dir: pathlib.Path) -> tuple[int, list[dict]]:
-    """Herschrijf de sidecar van de laatste ronde: elk open punt wordt `accepted_open`."""
+    """Rewrite the sidecar of the last round: every open point becomes `accepted_open`."""
     last, rows, points = _accepted_rows(attempt_dir)
     if points:
         _write_sidecar(attempt_dir, last, rows)
@@ -707,8 +707,8 @@ def accept_open(attempt_dir: pathlib.Path) -> tuple[int, list[dict]]:
 
 
 def render_open(n_round: int, points: list[dict], language: str | None = None) -> str:
-    """Het markdownblok `heading:open_after_review` in `language` (default `[project]
-    language`); sluitwoorden met `#N` zijn geneutraliseerd."""
+    """The markdown block `heading:open_after_review` in `language` (default `[project]
+    language`); closing words with `#N` are neutralised."""
     if language is None:
         language = load(config_path()).language
     first, second = OPEN_TEXT[language]
@@ -727,12 +727,12 @@ def render_open(n_round: int, points: list[dict], language: str | None = None) -
     return "\n".join(lines) + "\n"
 
 
-def open_sectie(text: str) -> tuple[int, int] | None:
-    """De span van het blok `heading:open_after_review` (elke variant), als het de laatste
-    `## `-sectie is.
+def open_section(text: str) -> tuple[int, int] | None:
+    """The span of the block `heading:open_after_review` (every variant), if it is the last
+    `## ` section.
 
-    Regels binnen een code fence (``` of ~~~) tellen niet als kop. De span loopt van
-    de kop tot het einde van `text`.
+    Lines inside a code fence (``` or ~~~) do not count as a heading. The span runs from
+    the heading to the end of `text`.
     """
     fence: str | None = None
     last_heading: tuple[int, str] | None = None
@@ -753,24 +753,24 @@ def open_sectie(text: str) -> tuple[int, int] | None:
 
 
 def _with_open_block(text: str, block: str) -> str:
-    span = open_sectie(text)
+    span = open_section(text)
     if span is not None:
         return text[: span[0]] + block
     return text.rstrip() + "\n\n" + block if text.strip() else block
 
 
 def upsert_open_block(doc: pathlib.Path, block: str) -> None:
-    """Vervang het bestaande blok in `doc`, of plak het met één lege regel erachter."""
+    """Replace the existing block in `doc`, or append it with one blank line before it."""
     doc.write_text(_with_open_block(doc.read_text(), block))
 
 
 def _plans_dir() -> str:
-    """`paths.plans`, met één `/` erachter."""
+    """`paths.plans`, with a single trailing `/`."""
     return str(lookup(load(config_path()), "paths.plans")).strip("/") + "/"
 
 
 def _spec_path() -> re.Pattern[str]:
-    """Een pad onder `paths.specs` naar een `.md`-bestand."""
+    """A path under `paths.specs` to a `.md` file."""
     specs = str(lookup(load(config_path()), "paths.specs")).strip("/")
     return re.compile(re.escape(specs) + r"/[^\s)\]>`'\"#]+\.md")
 
@@ -779,15 +779,15 @@ SPEC_LINK = re.compile(r"\]\((?!https?:)([^)\s]+\.md)\)")
 
 
 def _spec_docs(plan: pathlib.Path, text: str, repo: pathlib.Path) -> list[pathlib.Path]:
-    """De specs die de `**Spec:**`-regel van een plan noemt en die onder `repo` bestaan."""
-    regel = next((r for r in text.splitlines() if r.startswith("**Spec:**")), "")
-    kandidaten = [repo / m for m in _spec_path().findall(regel)]
-    kandidaten += [plan.parent / m for m in SPEC_LINK.findall(regel)]
+    """The specs that the `**Spec:**` line of a plan names and that exist under `repo`."""
+    spec_line = next((r for r in text.splitlines() if r.startswith("**Spec:**")), "")
+    candidates = [repo / m for m in _spec_path().findall(spec_line)]
+    candidates += [plan.parent / m for m in SPEC_LINK.findall(spec_line)]
     found: list[pathlib.Path] = []
-    for pad in kandidaten:
-        pad = pad.resolve()
-        if pad.is_relative_to(repo.resolve()) and pad.exists() and pad not in found:
-            found.append(pad)
+    for path in candidates:
+        path = path.resolve()
+        if path.is_relative_to(repo.resolve()) and path.exists() and path not in found:
+            found.append(path)
     return found
 
 
@@ -798,37 +798,37 @@ def _rel(doc: pathlib.Path, repo: pathlib.Path) -> str:
         return str(doc)
 
 
-def pr_open_punten(docs: list[pathlib.Path], repo: pathlib.Path) -> str:
-    """De blokken `heading:open_after_review` van `docs` (en van de specs van hun plannen)
-    voor de PR-body.
+def pr_open_points(docs: list[pathlib.Path], repo: pathlib.Path) -> str:
+    """The blocks `heading:open_after_review` of `docs` (and of the specs of their plans)
+    for the PR body.
 
-    Een ontbrekend document wordt overgeslagen; een andere `OSError`, een
-    `UnicodeDecodeError` (geen tekstbestand) of een `ConfigError` stijgt op.
-    Geen blok: lege string.
+    A missing document is skipped; any other `OSError`, a
+    `UnicodeDecodeError` (not a text file) or a `ConfigError` propagates.
+    No block: empty string.
     """
     plans_dir = _plans_dir()
-    secties: list[str] = []
-    gezien: set[pathlib.Path] = set()
+    sections: list[str] = []
+    seen: set[pathlib.Path] = set()
     queue = list(docs)
     while queue:
         doc = queue.pop(0)
-        sleutel = doc.resolve()
-        if sleutel in gezien:
+        key = doc.resolve()
+        if key in seen:
             continue
-        gezien.add(sleutel)
+        seen.add(key)
         try:
             text = doc.read_text()
         except FileNotFoundError:
             continue
-        span = open_sectie(text)
+        span = open_section(text)
         if span is not None:
             bullets = [r for r in text[span[0] :].splitlines() if r.startswith("- ")]
-            secties.append("\n".join([f"From {_rel(doc, repo)}:", *bullets]))
+            sections.append("\n".join([f"From {_rel(doc, repo)}:", *bullets]))
         if _rel(doc, repo).startswith(plans_dir):
             queue[:0] = _spec_docs(doc, text, repo)
-    if not secties:
+    if not sections:
         return ""
-    return "## Open review points\n\n" + "\n\n".join(secties) + "\n"
+    return "## Open review points\n\n" + "\n\n".join(sections) + "\n"
 
 
 def _parse(argv: list[str] | None) -> argparse.Namespace:
@@ -863,8 +863,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     return args
 
 
-def _accepteer_open(attempt_dir: pathlib.Path, doc: pathlib.Path) -> int:
-    """Eerst lezen en renderen, dan de sidecar, dan het document; een fout ervoor schrijft niets."""
+def _run_accept_open(attempt_dir: pathlib.Path, doc: pathlib.Path) -> int:
+    """First read and render, then the sidecar, then the document; an error before that writes nothing."""
     try:
         last, rows, points = _accepted_rows(attempt_dir)
         if not points:
@@ -884,13 +884,13 @@ def _accepteer_open(attempt_dir: pathlib.Path, doc: pathlib.Path) -> int:
     return 0
 
 
-def _pr_open_punten(docs: list[pathlib.Path], repo: pathlib.Path) -> int:
+def _run_pr_open_points(docs: list[pathlib.Path], repo: pathlib.Path) -> int:
     try:
-        sectie = pr_open_punten(docs, repo)
+        section = pr_open_points(docs, repo)
     except (OSError, UnicodeDecodeError, ConfigError) as exc:
         print(f"PR-OPEN-POINTS FAILED: {exc}", file=sys.stderr)
         return 4
-    sys.stdout.write(sectie)
+    sys.stdout.write(section)
     return 0
 
 
@@ -906,11 +906,11 @@ def _start_attempt(args: argparse.Namespace, repo: pathlib.Path) -> int:
     return 0
 
 
-def _documentcommando(args: argparse.Namespace, repo: pathlib.Path) -> int:
-    """De subcommando's die alleen documenten lezen of schrijven: elke host, geen host-check."""
+def _document_command(args: argparse.Namespace, repo: pathlib.Path) -> int:
+    """The subcommands that only read or write documents: any host, no host check."""
     if args.cmd == "accept-open":
-        return _accepteer_open(args.attempt_dir, args.doc)
-    return _pr_open_punten(args.docs, repo)
+        return _run_accept_open(args.attempt_dir, args.doc)
+    return _run_pr_open_points(args.docs, repo)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -925,7 +925,7 @@ def main(argv: list[str] | None = None) -> int:
         return _start_attempt(args, repo)
 
     if args.cmd in ("accept-open", "pr-open-points"):
-        return _documentcommando(args, repo)
+        return _document_command(args, repo)
 
     try:
         kind = _meta(args.attempt_dir).get("kind", "plan")
@@ -944,8 +944,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    if (reden := host_refusal(kind)) is not None:
-        print(reden, file=sys.stderr)
+    if (reason := host_refusal(kind)) is not None:
+        print(reason, file=sys.stderr)
         return 3
 
     try:

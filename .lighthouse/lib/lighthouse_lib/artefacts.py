@@ -4,7 +4,7 @@
 A spec or plan stands as a version comment on its issue. Line 1 is an HTML comment
 with JSON metadata (`<!-- lighthouse: {...} -->`), then a visible `<sub>` line, a
 blank line and the content. Readers accept the legacy marker and the legacy keys
-until M2 (besluit 15 and 21); writers use the new ones. Apart from `render`, which
+until M2 (decision 15 and 21); writers use the new ones. Apart from `render`, which
 reads the config for the source link and the language, this module does no I/O.
 
 The syntax stays within Python 3.9, like the rest of the lib.

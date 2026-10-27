@@ -370,7 +370,7 @@ func TestLoadPermissions(t *testing.T) {
 	}
 }
 
-// Besluit 22: a pack rule must point into a lighthouse directory, or init could not
+// Decision 22: a pack rule must point into a lighthouse directory, or init could not
 // tell it from a project rule.
 func TestLoadRefusesRuleOutsidePattern(t *testing.T) {
 	m := basePack()

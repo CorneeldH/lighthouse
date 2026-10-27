@@ -1,10 +1,10 @@
-"""End-to-end tests voor pack/core `pre-commit-tests.sh`, as installed (#884).
+"""End-to-end tests for pack/core `pre-commit-tests.sh`, as installed (#884).
 
-De hook draait als subprocess, met echte git-repo's in `tmp_path` en een
-nep-`uv` vooraan op `PATH`. Het testcommando komt uit `[test_gate] command`
-(via `LIGHTHOUSE_TOML`), de slice uit `[host] gate_slice` (via
-`LIGHTHOUSE_HOST_TOML`). Veiligheid: elke test zet `CLAUDE_PROJECT_DIR` op een
-tijdelijke repo en zet de stubmap met de nep-`uv` als eerste op `PATH`.
+The hook runs as a subprocess, with real git repos in `tmp_path` and a
+fake `uv` at the front of `PATH`. The test command comes from `[test_gate] command`
+(via `LIGHTHOUSE_TOML`), the slice from `[host] gate_slice` (via
+`LIGHTHOUSE_HOST_TOML`). Safety: every test sets `CLAUDE_PROJECT_DIR` to a
+temporary repo and puts the stub directory with the fake `uv` first on `PATH`.
 """
 
 import fcntl
@@ -37,8 +37,8 @@ HOOKS_JSON = CORE / "hooks" / "hooks.json"
 REAL_GIT = shutil.which("git")
 REAL_PYTHON3 = shutil.which("python3")
 
-# Het testcommando van een project zoals paia het zou zetten; de nep-`uv`
-# noteert zijn argumenten. `slot_wait_seconds = 1`: geen test wacht 180 s.
+# The test command of a project the way paia would set it; the fake `uv`
+# records its arguments. `slot_wait_seconds = 1`: no test waits 180 s.
 TEST_GATE = (
     "[test_gate]\n"
     "command = 'uv run pytest -q --basetemp=\"$LIGHTHOUSE_GATE_TMP\"'\n"
@@ -47,9 +47,9 @@ TEST_GATE = (
 HOST = '[host]\nname = "h"\ntailscale_ip = "100.64.0.1"\ngate_slice = "x.slice"\n'
 HOST_WITHOUT_SLICE = '[host]\nname = "h"\ntailscale_ip = "100.64.0.1"\n'
 
-# Nep-`uv`: noteert waar hij draaide, geeft een pytest-achtige slotregel en
-# de exitcode uit UV_EXIT. Met UV_SLOW_SECOND slaapt de tweede aanroep eerst,
-# zodat een gedeelde deadline bij de tweede wortel verloopt.
+# Fake `uv`: records where it ran, gives a pytest-like closing line and
+# the exit code from UV_EXIT. With UV_SLOW_SECOND the second invocation sleeps first,
+# so that a shared deadline expires at the second root.
 FAKE_UV = (
     "#!/bin/sh\n"
     'if [ -n "$UV_SLOW_SECOND" ] && [ -s "$UV_MARK" ]; then\n'
@@ -58,8 +58,8 @@ FAKE_UV = (
     "fi\n"
     'pwd >> "$UV_MARK"\n'
     'printf \'%s\\n\' "$*" >> "$UV_MARK.args"\n'
-    # --basetemp: noteer de map en laat er iets in achter, zodat een test kan
-    # zien dat de hook hem opruimt.
+    # --basetemp: record the directory and leave something in it, so that a test can
+    # see that the hook cleans it up.
     'for a in "$@"; do\n'
     '  case "$a" in\n'
     "    --basetemp=*)\n"
@@ -73,10 +73,10 @@ FAKE_UV = (
     "exit ${UV_EXIT:-0}\n"
 )
 
-# Doorgeef-stubs: de rem (Taak 3) is op de Mac en in de devcontainer niet
-# aanwezig; zo hangt geen gate-test af van wat de host heeft.
+# Pass-through stubs: the brake (Task 3) is not present on the Mac and in the devcontainer;
+# that way no gate test depends on what the host has.
 FAKE_SYSTEMCTL = '#!/bin/sh\necho "Failed to connect to bus" >&2\nexit 1\n'
-# Schuift alles tot en met de eerste `--` weg en voert de rest uit.
+# Drops everything up to and including the first `--` and runs the rest.
 _PASS_THROUGH = (
     'while [ "$#" -gt 0 ]; do\n'
     '  if [ "$1" = "--" ]; then shift; break; fi\n'
@@ -89,7 +89,7 @@ FAKE_CHOOM = '#!/bin/sh\necho "$*" >> "$UV_MARK.choom"\n' + _PASS_THROUGH
 
 
 class Gate:
-    """Een tijdelijke projectrepo plus een stubmap met nep-`uv`."""
+    """A temporary project repo plus a stub directory with a fake `uv`."""
 
     def __init__(self, tmp_path: Path, project: Path) -> None:
         self.tmp = tmp_path
@@ -115,7 +115,7 @@ class Gate:
         self.host.write_text(HOST, encoding="utf-8")
 
     def configure(self, test_gate: str) -> None:
-        """`lighthouse.toml`: de minimale config plus dit `[test_gate]`-blok."""
+        """`lighthouse.toml`: the minimal config plus this `[test_gate]` block."""
         self.toml.write_text(MINIMAL_TOML + "\n" + test_gate, encoding="utf-8")
 
     def add_stub(self, name: str, script: str) -> None:
@@ -124,14 +124,14 @@ class Gate:
     def run(self, cmd: str, cwd: Path, path: str | None = None, **env: str):
         tail = os.environ["PATH"] if path is None else path
         full_env = {
-            # Stubmap altijd eerst: zo bereikt geen enkele test de echte `uv`.
+            # Stub directory always first: that way no test reaches the real `uv`.
             "PATH": f"{self.stub}{os.pathsep}{tail}",
             "CLAUDE_PROJECT_DIR": str(self.project),
             "UV_MARK": str(self.mark),
             "LIGHTHOUSE_TOML": str(self.toml),
             "LIGHTHOUSE_HOST_TOML": str(self.host),
-            # Elke gate-test draait zelf binnen een echte gate die een echt
-            # slot houdt: zonder eigen lockmap blokkeert de suite zichzelf.
+            # Every gate test itself runs inside a real gate that holds a real
+            # slot: without a lock directory of its own the suite blocks itself.
             "LIGHTHOUSE_GATE_SLOT_DIR": str(self.slot_dir),
             "LIGHTHOUSE_GATE_CGROUP_ROOT": str(self.cgroup),
             **env,
@@ -190,7 +190,7 @@ def test_gate_runs_the_configured_command(gate: Gate) -> None:
     assert result.returncode == 0, result.stderr
     lines = gate.args()
     assert len(lines) == 1
-    # `bash -c` vult $LIGHTHOUSE_GATE_TMP in; de rest staat er letterlijk.
+    # `bash -c` fills in $LIGHTHOUSE_GATE_TMP; the rest is there literally.
     assert lines[0].startswith("run pytest -q --basetemp=/")
     assert "$LIGHTHOUSE_GATE_TMP" not in lines[0]
 
@@ -226,8 +226,8 @@ def test_no_command_is_loud_and_allows(gate: Gate) -> None:
 
 
 def test_empty_command_is_off(gate: Gate) -> None:
-    # `command = ""` is de opt-out (ontwerpkeuze 4 van M0 (c)): zelfde melding als
-    # zonder sleutel, want `--upgrade` zet een weggehaalde sleutel terug.
+    # `command = ""` is the opt-out (design choice 4 of M0 (c)): same notice as
+    # without the key, because `--upgrade` puts a removed key back.
     gate.configure('[test_gate]\ncommand = ""\n')
 
     result = gate.run("git commit -m x", gate.project)
@@ -239,8 +239,8 @@ def test_empty_command_is_off(gate: Gate) -> None:
 
 
 def test_failure_names_the_command_and_the_opt_out(gate: Gate) -> None:
-    # Een default-commando dat in dit project niet past (geen pytest) faalt;
-    # de melding wijst naar de sleutel en naar de opt-out.
+    # A default command that does not fit this project (no pytest) fails;
+    # the notice points to the key and to the opt-out.
     result = gate.run("git commit -m x", gate.project, UV_EXIT="2")
 
     assert result.returncode == 2, result.stdout
@@ -251,8 +251,8 @@ def test_failure_names_the_command_and_the_opt_out(gate: Gate) -> None:
 
 
 def test_unchecked_exit_code_names_the_command_and_the_opt_out(gate: Gate) -> None:
-    # pytest zonder tests geeft 5: de waarschijnlijkste eerste blokkade in een
-    # nieuw Python-project. Ook die wijst naar de sleutel en de opt-out.
+    # pytest without tests gives 5: the most likely first block in a
+    # new Python project. That one also points to the key and the opt-out.
     gate.configure(TEST_GATE + "unchecked_exit_codes = [3, 4, 5]\n")
 
     result = gate.run("git commit -m x", gate.project, UV_EXIT="5")
@@ -307,8 +307,8 @@ def test_deadline_from_config(gate: Gate) -> None:
 
 @pytest.mark.parametrize("seconds", [0, 281])
 def test_deadline_outside_the_hook_timeout_blocks(gate: Gate, seconds: int) -> None:
-    # De hook-timeout is 300 s, de grace van deadline.py 10 s: een deadline
-    # boven 280 s laat de timeout eerst verlopen, en een timeout is fail-open.
+    # The hook timeout is 300 s, the grace of deadline.py 10 s: a deadline
+    # above 280 s lets the timeout expire first, and a timeout is fail-open.
     gate.configure(TEST_GATE + f"deadline_seconds = {seconds}\n")
 
     result = gate.run("git commit -m x", gate.project)
@@ -326,7 +326,7 @@ def test_gate_removes_its_basetemp(gate: Gate) -> None:
     recorded = Path(f"{gate.mark}.bt").read_text(encoding="utf-8").splitlines()
     assert len(recorded) == 1
     assert recorded[0]
-    # De nep-uv liet een bestand in de map achter; de hook ruimt hem op.
+    # The fake uv left a file in the directory; the hook cleans it up.
     assert not Path(recorded[0]).exists()
 
 
@@ -343,8 +343,8 @@ def test_unchecked_exit_code(gate: Gate) -> None:
 
 @pytest.mark.parametrize("exit_code", ["3", "5"])
 def test_unchecked_exit_codes_keep_the_output(gate: Gate, exit_code: str) -> None:
-    # Bij paia: pytest 3 (interne fout), 4 (gebruiksfout), 5 (niets
-    # verzameld). Dat blokkeert, maar heet geen falende test.
+    # At paia: pytest 3 (internal error), 4 (usage error), 5 (nothing
+    # collected). That blocks, but is not called a failing test.
     gate.configure(TEST_GATE + "unchecked_exit_codes = [3, 4, 5]\n")
 
     result = gate.run("git commit -m x", gate.project, UV_EXIT=exit_code)
@@ -393,7 +393,7 @@ def test_gate_skips_foreign_repo_visibly(gate: Gate) -> None:
 
 
 def test_gate_tests_forge_worktree_of_same_repo(gate: Gate) -> None:
-    """Een worktree van een aparte clone met dezelfde `origin` is dit project (#36)."""
+    """A worktree of a separate clone with the same `origin` is this project (#36)."""
     git(gate.project, "remote", "add", "origin", ORIGIN)
     work = forge_worktree(gate.project, gate.tmp)
 
@@ -538,7 +538,7 @@ def test_gate_loud_when_common_dir_fails_for_reference(gate: Gate) -> None:
 def test_gate_loud_without_cat(gate: Gate) -> None:
     bin_dir = tool_bin(gate.tmp / "bin", ("jq", "python3", "git", "cat"), drop="cat")
 
-    # De stubmap blijft vooraan (Gate.run zet hem vóór `path`).
+    # The stub directory stays at the front (Gate.run puts it before `path`).
     result = gate.run("git commit -m x", gate.project, path=str(bin_dir))
 
     assert result.returncode == 2, result.stdout
@@ -548,9 +548,9 @@ def test_gate_loud_without_cat(gate: Gate) -> None:
 
 
 def test_gate_loud_without_uv(gate: Gate) -> None:
-    # Geen `uv` te vinden: dan is er niet getest, en dat is iets anders dan
-    # "tests failed". Geen nep-`uv` in de stubmap, en ook de rest van PATH
-    # heeft er geen: zo kan deze test nooit de echte suite starten.
+    # No `uv` to be found: then nothing was tested, and that is something other than
+    # "tests failed". No fake `uv` in the stub directory, and the rest of PATH
+    # has none either: that way this test can never start the real suite.
     (gate.stub / "uv").unlink()
     bin_dir = tool_bin(
         gate.tmp / "bin",
@@ -591,12 +591,12 @@ def test_gate_runs_once_per_root(gate: Gate) -> None:
 def test_gate_uses_one_deadline_for_two_roots(gate: Gate) -> None:
     second = gate.tmp / "X2"
     _worktree(gate.project, second, "x2")
-    # Nep-`date`: de deadline (nu + 270) valt zo ~5 s na nu. De eerste wortel
-    # haalt dat ruim, ook op een drukke runner; de tweede slaapt 8 s en loopt
-    # dus over dezelfde deadline.
-    # Elke aanroep komt in DATE_LOG: precies één aanroep bewijst dat de
-    # deadline gedeeld is — een per wortel herberekende deadline zou hier ook
-    # verlopen, dus rc 2 alleen onderscheidt die twee niet.
+    # Fake `date`: the deadline (now + 270) thus falls ~5 s after now. The first root
+    # makes that easily, even on a busy runner; the second sleeps 8 s and so
+    # runs over the same deadline.
+    # Every invocation goes into DATE_LOG: exactly one invocation proves that the
+    # deadline is shared — a deadline recalculated per root would expire here too,
+    # so rc 2 alone does not distinguish those two.
     date_log = gate.tmp / "date-log"
     gate.add_stub(
         "date",
@@ -642,7 +642,7 @@ def test_hook_timeout_exceeds_deadline() -> None:
 
 
 def hold_slots(gate: Gate, *names: str) -> list[int]:
-    """Neem de genoemde slots over, als een andere gate dat zou doen."""
+    """Take over the named slots, as another gate would."""
     gate.slot_dir.mkdir(parents=True, exist_ok=True)
     fds: list[int] = []
     for name in names:
@@ -754,8 +754,8 @@ def test_gate_blocks_when_a_lock_file_cannot_be_opened(gate: Gate) -> None:
 
 
 def test_gate_blocks_when_gate_slot_breaks(gate: Gate) -> None:
-    # Een python3 die alleen voor gate_slot.py met exit 2 stopt, zonder
-    # slotnummer; config, parser en no_verify draaien gewoon.
+    # A python3 that stops with exit 2 only for gate_slot.py, without a
+    # slot number; config, parser and no_verify run as normal.
     gate.add_stub(
         "python3",
         "#!/bin/sh\n"
@@ -789,8 +789,8 @@ def test_foreign_commit_takes_no_slot(gate: Gate) -> None:
 
 
 def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
-    # Nep-`date`: de deadline valt 8 s na nu. Nep-`uv` noteert dat hij draait
-    # en slaapt dan lang; zo leeft `deadline.py` tot die deadline.
+    # Fake `date`: the deadline falls 8 s after now. Fake `uv` records that it runs
+    # and then sleeps long; that way `deadline.py` lives until that deadline.
     gate.add_stub("date", "#!/bin/sh\necho $(( $(/bin/date +%s) - 262 ))\n")
     gate.add_stub("uv", '#!/bin/sh\npwd >> "$UV_MARK"\nsleep 30\n')
     tmpdir = gate.tmp / "tmpdir"
@@ -825,8 +825,8 @@ def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
             assert time.monotonic() - start < 15, "nep-uv startte niet"
             time.sleep(0.05)
 
-        # De hook (bash) sneuvelt terwijl pytest loopt: deadline.py houdt het
-        # slot vast tot de deadline plus zijn grace van 10 s.
+        # The hook (bash) dies while pytest runs: deadline.py holds the
+        # slot until the deadline plus its grace of 10 s.
         os.kill(hook.pid, signal.SIGKILL)
         hook.wait()
         slot = gate.slot_dir / "slot-1"
@@ -845,9 +845,9 @@ BRACE_FD = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}[<>]")
 
 
 def test_hook_has_no_bash4_fd_variables() -> None:
-    # Bash 3.2 (macOS /bin/bash) kent `exec {var}>>` niet: de hook zou daar op
-    # die regel sterven met een exit die geen 2 is, en de commit gaat ongetest
-    # door. Eerst bewijzen dat het patroon de vorm vindt.
+    # Bash 3.2 (macOS /bin/bash) does not know `exec {var}>>`: the hook would die there on
+    # that line with an exit that is not 2, and the commit goes through untested.
+    # First prove that the pattern finds the form.
     assert BRACE_FD.search("exec {S1}>>f") is not None
 
     hits = [
@@ -859,10 +859,10 @@ def test_hook_has_no_bash4_fd_variables() -> None:
     assert hits == []
 
 
-# --- De rem (#1184, Taak 3) ---------------------------------------------------
+# --- The brake (#1184, Task 3) ---------------------------------------------------
 
-# systemd meldt de eigenschappen niet in de volgorde van de `-p`-argumenten;
-# de stub draait ze bewust om.
+# systemd does not report the properties in the order of the `-p` arguments;
+# the stub deliberately reverses them.
 REM_ON_SYSTEMCTL = (
     "#!/bin/sh\n"
     'printf "MemoryMax=9663676416\\nFragmentPath=/x/x.slice\\n"\n'
@@ -874,7 +874,7 @@ SIGNAL_NOTICE = "gate killed by signal 9 (systemd-oomd in x.slice?)"
 
 
 def rem_on(gate: Gate) -> None:
-    """Een `systemctl` waarvoor `x.slice` geïnstalleerd is en een plafond heeft."""
+    """A `systemctl` for which `x.slice` is installed and has a ceiling."""
     gate.add_stub("systemctl", REM_ON_SYSTEMCTL)
 
 
@@ -883,14 +883,14 @@ def events_file(gate: Gate) -> Path:
 
 
 def events(gate: Gate, text: str) -> None:
-    """De tellers van `x.slice` vóór de run."""
+    """The counters of `x.slice` before the run."""
     path = events_file(gate)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text + "\n", encoding="utf-8")
 
 
 def uv_writing(gate: Gate, text: str, exit_code: int) -> None:
-    """Een nep-`uv` die `memory.events` tijdens de run herschrijft."""
+    """A fake `uv` that rewrites `memory.events` during the run."""
     after = gate.tmp / "events-after"
     after.write_text(text + "\n", encoding="utf-8")
     target = events_file(gate)
@@ -982,7 +982,7 @@ def test_gate_reports_a_failing_systemctl(gate: Gate) -> None:
 def test_gate_reports_a_missing_choom(gate: Gate) -> None:
     rem_on(gate)
     (gate.stub / "choom").unlink()
-    # Zonder /usr/bin, dus zonder de echte `choom` van de host.
+    # Without /usr/bin, so without the real `choom` of the host.
     bin_dir = tool_bin(
         gate.tmp / "bin",
         ("jq", "python3", "git", "cat", "dirname", "mktemp", "rm", "date", "mkdir"),
@@ -1120,8 +1120,8 @@ def test_gate_reports_a_signal_kill(gate: Gate, code: str) -> None:
 
 
 def test_signal_kill_without_the_rem_names_the_reason_not_the_slice(gate: Gate) -> None:
-    # Zonder rem (hier: de standaardstub, `systemctl --user` faalt) is er geen
-    # gates.slice en dus ook geen systemd-oomd in die slice.
+    # Without the brake (here: the default stub, `systemctl --user` fails) there is no
+    # gates.slice and so no systemd-oomd in that slice either.
     result = gate.run("git commit -m x", gate.project, UV_EXIT="137")
 
     assert result.returncode == 2, result.stdout
@@ -1137,8 +1137,8 @@ def test_signal_kill_without_the_rem_names_the_reason_not_the_slice(gate: Gate) 
     not Path(f"/run/user/{os.getuid()}").is_dir(), reason="geen /run/user"
 )
 def test_gate_finds_the_user_bus_without_xdg(gate: Gate) -> None:
-    # VS Code-`claude` in de logind-scope heeft geen XDG_RUNTIME_DIR; zonder
-    # bus faalt `systemctl --user` en valt de rem stil uit.
+    # VS Code `claude` in the logind scope has no XDG_RUNTIME_DIR; without a
+    # bus `systemctl --user` fails and the brake silently drops out.
     gate.add_stub(
         "systemctl",
         "#!/bin/sh\n"
@@ -1160,8 +1160,8 @@ def test_gate_finds_the_user_bus_without_xdg(gate: Gate) -> None:
 
 
 def test_slot_wait_is_capped_by_the_deadline(gate: Gate) -> None:
-    # Een wachttijd langer dan de hook-timeout (300 s) liet de commit na de
-    # timeout ongetest door; de wachttijd telt mee in de deadline.
+    # A wait longer than the hook timeout (300 s) let the commit through untested after the
+    # timeout; the wait counts towards the deadline.
     gate.configure(
         TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 100000")
         + "deadline_seconds = 2\n"

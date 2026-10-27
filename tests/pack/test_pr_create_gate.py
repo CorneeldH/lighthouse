@@ -1,9 +1,9 @@
-"""End-to-end tests voor pack/core `pr-create-gate.sh`, as installed (#1091).
+"""End-to-end tests for pack/core `pr-create-gate.sh`, as installed (#1091).
 
-De hook draait als subprocess met een echte projectrepo in `tmp_path` als
-`CLAUDE_PROJECT_DIR`. Netwerkverbod: een stub-`gh` staat altijd vooraan op
-`PATH` (behalve in `test_gh_ontbreekt_laat_luid_door`, dat juist een PATH
-zonder `gh` nodig heeft), zodat geen enkele test de echte `gh` bereikt.
+The hook runs as a subprocess with a real project repo in `tmp_path` as
+`CLAUDE_PROJECT_DIR`. No network: a stub `gh` is always first on
+`PATH` (except in `test_gh_missing_passes_loudly`, which needs a PATH
+without `gh`), so no test reaches the real `gh`.
 """
 
 import json
@@ -22,7 +22,7 @@ from tests.pack._testkit import (
     tool_bin,
 )
 from tests.pack.test_pr_body_gate import (
-    ISSUE_MET_DRIE_AC,
+    ISSUE_WITH_THREE_AC,
     ROWS1,
     ROWS2,
     ROWS3,
@@ -34,7 +34,7 @@ HOOKS_JSON = CORE / "hooks" / "hooks.json"
 # `forge.repo` of the lighthouse.toml that install_core leaves behind.
 REPO = "Acme/widgets"
 
-# Nep-`gh`: print $GH_ISSUE_BODY voor het issue-endpoint, exit 1 met GH_FAIL.
+# Fake `gh`: prints $GH_ISSUE_BODY for the issue endpoint, exits 1 with GH_FAIL.
 FAKE_GH = (
     "#!/bin/sh\n"
     'if [ -n "$GH_FAIL" ]; then exit 1; fi\n'
@@ -44,11 +44,11 @@ FAKE_GH = (
     "fi\n"
     "exit 1\n"
 )
-BASIS_TOOLS = ("jq", "python3", "git", "cat", "dirname", "bash")
+BASE_TOOLS = ("jq", "python3", "git", "cat", "dirname", "bash")
 
 
 class Gate:
-    """Een tijdelijke projectrepo plus een stubmap met nep-`gh`."""
+    """A temporary project repo plus a stub directory with a fake `gh`."""
 
     def __init__(self, tmp_path: Path, project: Path) -> None:
         self.tmp = tmp_path
@@ -68,10 +68,10 @@ class Gate:
         cwd = self.project if cwd is None else cwd
         tail = os.environ["PATH"] if path is None else path
         full_env = {
-            # Stubmap altijd eerst, tenzij de test bewust zonder `gh` draait.
+            # Stub directory always first, unless the test deliberately runs without `gh`.
             "PATH": f"{self.stub}{os.pathsep}{tail}" if stub else tail,
             "CLAUDE_PROJECT_DIR": str(self.project),
-            "GH_ISSUE_BODY": ISSUE_MET_DRIE_AC,
+            "GH_ISSUE_BODY": ISSUE_WITH_THREE_AC,
             **env,
         }
         return run_hook(HOOK, bash_payload(cmd, cwd), cwd, full_env)
@@ -82,12 +82,12 @@ def gate(tmp_path: Path) -> Gate:
     return Gate(tmp_path, tmp_path / "X")
 
 
-def _rijen(n: int) -> str:
+def _body_with_rows(n: int) -> str:
     return closes_body(5, [ROWS1, ROWS2, ROWS3][n - 1])
 
 
-def test_geldige_closes_gaat_door(gate: Gate) -> None:
-    (gate.project / "body.md").write_text(_rijen(3), encoding="utf-8")
+def test_valid_closes_passes(gate: Gate) -> None:
+    (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
 
     result = gate.run("gh pr create --title t --body-file body.md")
 
@@ -98,62 +98,62 @@ def test_geldige_closes_gaat_door(gate: Gate) -> None:
     assert out["hookSpecificOutput"]["additionalContext"] == out["systemMessage"]
 
 
-def test_geldige_refs_gaat_door(gate: Gate) -> None:
+def test_valid_refs_passes(gate: Gate) -> None:
     result = gate.run("gh pr create --body 'Refs #5 — wacht op deploy op de Beelink'")
 
     assert result.returncode == 0, result.stderr
     assert "body checked" in json.loads(result.stdout)["systemMessage"]
 
 
-def test_geen_vorm_blokkeert(gate: Gate) -> None:
+def test_no_form_blocks(gate: Gate) -> None:
     result = gate.run("gh pr create --body 'zie titel'")
 
     assert result.returncode == 2, result.stdout
     assert "/lighthouse-verify-pr" in result.stderr
 
 
-def test_cd_prefix_leest_relatief(gate: Gate) -> None:
+def test_cd_prefix_reads_relative(gate: Gate) -> None:
     sub = gate.project / "sub"
     sub.mkdir()
     cmd = "cd sub && gh pr create -F body.md"
 
-    zonder = gate.run(cmd)
-    assert zonder.returncode == 2, zonder.stdout
+    without = gate.run(cmd)
+    assert without.returncode == 2, without.stdout
 
-    (sub / "body.md").write_text(_rijen(3), encoding="utf-8")
-    met = gate.run(cmd)
-    assert met.returncode == 0, met.stderr
+    (sub / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
+    with_file = gate.run(cmd)
+    assert with_file.returncode == 0, with_file.stderr
 
 
-def test_gh_pr_new_wordt_getoetst(gate: Gate) -> None:
+def test_gh_pr_new_is_checked(gate: Gate) -> None:
     result = gate.run("gh pr new --body 'zie titel'")
 
     assert result.returncode == 2, result.stdout
 
 
-def test_andere_repo_overgeslagen(gate: Gate) -> None:
+def test_other_repo_skipped(gate: Gate) -> None:
     result = gate.run("gh pr create -R other/repo --body 'zie titel'")
 
     assert result.returncode == 0, result.stderr
     assert "other repo" in json.loads(result.stdout)["systemMessage"]
 
 
-def test_buiten_repo_met_R_getoetst(gate: Gate, tmp_path: Path) -> None:
-    buiten = tmp_path / "buiten"
-    buiten.mkdir()
+def test_outside_repo_with_R_is_checked(gate: Gate, tmp_path: Path) -> None:
+    outside = tmp_path / "buiten"
+    outside.mkdir()
 
-    result = gate.run(f"gh pr create -R {REPO} --body 'zie titel'", cwd=buiten)
+    result = gate.run(f"gh pr create -R {REPO} --body 'zie titel'", cwd=outside)
 
     assert result.returncode == 2, result.stdout
 
 
-def test_onparseerbaar_zonder_gh_pr_door(gate: Gate) -> None:
+def test_unparseable_without_gh_pr_passes(gate: Gate) -> None:
     result = gate.run("echo 'x")
 
     assert result.returncode == 0, result.stderr
 
 
-def test_onparseerbaar_met_gh_pr_blokkeert(gate: Gate) -> None:
+def test_unparseable_with_gh_pr_blocks(gate: Gate) -> None:
     result = gate.run("gh pr create --body 'x")
 
     assert result.returncode == 2, result.stdout
@@ -161,8 +161,8 @@ def test_onparseerbaar_met_gh_pr_blokkeert(gate: Gate) -> None:
     assert "open quote" in result.stderr
 
 
-def test_ac_telling_wijkt_af_blokkeert(gate: Gate) -> None:
-    (gate.project / "body.md").write_text(_rijen(2), encoding="utf-8")
+def test_ac_count_differs_blocks(gate: Gate) -> None:
+    (gate.project / "body.md").write_text(_body_with_rows(2), encoding="utf-8")
 
     result = gate.run("gh pr create -F body.md")
 
@@ -170,23 +170,23 @@ def test_ac_telling_wijkt_af_blokkeert(gate: Gate) -> None:
     assert "3" in result.stderr and "2" in result.stderr
 
 
-def test_gh_faalt_laat_luid_door(gate: Gate) -> None:
-    (gate.project / "body.md").write_text(_rijen(3), encoding="utf-8")
+def test_gh_fails_passes_loudly(gate: Gate) -> None:
+    (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
 
     result = gate.run("gh pr create -F body.md", GH_FAIL="1")
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
-    melding = "AC count not measurable for #5"
-    assert melding in out["systemMessage"]
-    assert melding in out["hookSpecificOutput"]["additionalContext"]
+    notice = "AC count not measurable for #5"
+    assert notice in out["systemMessage"]
+    assert notice in out["hookSpecificOutput"]["additionalContext"]
 
 
-def test_gh_ontbreekt_laat_luid_door(gate: Gate, tmp_path: Path) -> None:
-    (gate.project / "body.md").write_text(_rijen(3), encoding="utf-8")
-    zonder_gh = tool_bin(tmp_path / "zonder_gh", BASIS_TOOLS)
+def test_gh_missing_passes_loudly(gate: Gate, tmp_path: Path) -> None:
+    (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
+    no_gh = tool_bin(tmp_path / "zonder_gh", BASE_TOOLS)
 
-    result = gate.run("gh pr create -F body.md", path=str(zonder_gh), stub=False)
+    result = gate.run("gh pr create -F body.md", path=str(no_gh), stub=False)
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
@@ -195,19 +195,19 @@ def test_gh_ontbreekt_laat_luid_door(gate: Gate, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("drop", ["jq", "python3"])
-def test_zonder_tooling_blokkeert(gate: Gate, tmp_path: Path, drop: str) -> None:
-    kaal = tool_bin(tmp_path / "kaal", BASIS_TOOLS, drop=drop)
+def test_without_tooling_blocks(gate: Gate, tmp_path: Path, drop: str) -> None:
+    bare = tool_bin(tmp_path / "kaal", BASE_TOOLS, drop=drop)
 
-    result = gate.run("gh pr create --body 'zie titel'", path=str(kaal), stub=False)
+    result = gate.run("gh pr create --body 'zie titel'", path=str(bare), stub=False)
 
     assert result.returncode == 2, result.stdout
     assert "COULD NOT CHECK" in result.stderr
     assert drop in result.stderr
 
 
-def test_parser_met_onverwachte_rc_blokkeert(gate: Gate) -> None:
-    # Een lib die met een andere code dan 0/2/3 eindigt (traceback: rc 1) is
-    # geen groen licht. Een nep-python3 vooraan op PATH forceert dat.
+def test_parser_with_unexpected_rc_blocks(gate: Gate) -> None:
+    # A lib that ends with a code other than 0/2/3 (traceback: rc 1) is
+    # no green light. A fake python3 first on PATH forces that.
     tool_bin(gate.stub, (), stubs={"python3": "#!/bin/sh\nexit 1\n"})
 
     result = gate.run("gh pr create --body 'Refs #5 — wacht op deploy op de Beelink'")
@@ -217,21 +217,21 @@ def test_parser_met_onverwachte_rc_blokkeert(gate: Gate) -> None:
     assert "the body parser failed (rc 1)" in result.stderr
 
 
-def test_ongeldige_payload_blokkeert(gate: Gate) -> None:
+def test_invalid_payload_blocks(gate: Gate) -> None:
     result = run_hook_raw(gate)
 
     assert result.returncode == 2
     assert "COULD NOT CHECK" in result.stderr
 
 
-def test_leeg_commando_stil(gate: Gate) -> None:
+def test_empty_command_silent(gate: Gate) -> None:
     result = gate.run("")
 
     assert result.returncode == 0
     assert result.stdout == ""
 
 
-def test_geen_gh_pr_create_stil(gate: Gate) -> None:
+def test_no_gh_pr_create_silent(gate: Gate) -> None:
     result = gate.run("git status")
 
     assert result.returncode == 0, result.stderr
@@ -254,7 +254,7 @@ def test_hook_registered_and_executable() -> None:
 
 
 def run_hook_raw(gate: Gate):
-    """De hook met een payload die geen JSON is."""
+    """The hook with a payload that is not JSON."""
     return subprocess.run(
         [str(HOOK)],
         input="geen json {",

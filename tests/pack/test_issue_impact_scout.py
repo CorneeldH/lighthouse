@@ -1,11 +1,11 @@
-"""Contracttest op de agents van `pack/core`: de persona issue-impact-scout en spec-adversary.
+"""Contract test on the agents of `pack/core`: the persona issue-impact-scout and spec-adversary.
 
-De bronspec van de scout legt twee dingen vast die geen enkele runtime afdwingt: de
-toolallowlist (D-5 — zonder Bash is de read-only claim pas waar) en de acht verplichte
-secties van het IMPACT PACK. Een vormeis zonder test is een wens, dus staan ze hier.
+The scout's source spec fixes two things that no runtime enforces: the
+tool allowlist (D-5 — without Bash the read-only claim is only true then) and the eight mandatory
+sections of the IMPACT PACK. A form requirement without a test is a wish, so they live here.
 
-De aanroep vanuit `lighthouse-start-issue` (de meldregels, poort 4b/4c, de overdracht)
-hoort bij die skill en wordt daar getest (taak 24).
+The call from `lighthouse-start-issue` (the announcement lines, gate 4b/4c, the handover)
+belongs to that skill and is tested there (task 24).
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ REQUIRED_SECTIONS = (
 
 
 def frontmatter(text: str) -> dict[str, str]:
-    """De YAML-kop als platte dict. Geen yaml-dependency: dit zijn key: value-regels."""
+    """The YAML header as a flat dict. No yaml dependency: these are key: value lines."""
     match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
     assert match, "bestand mist een frontmatterblok"
     fields: dict[str, str] = {}
@@ -49,8 +49,8 @@ def test_the_agent_file_exists() -> None:
 
 
 def test_frontmatter_pins_name_and_model() -> None:
-    """`init` legt hem neer als `.claude/agents/lighthouse-issue-impact-scout.md`; de
-    naam is wat `subagent_type` noemt en wat de reviewmeting telt."""
+    """`init` puts it down as `.claude/agents/lighthouse-issue-impact-scout.md`; the
+    name is what `subagent_type` names and what the review measurement counts."""
     fields = frontmatter(AGENT.read_text(encoding="utf-8"))
     assert fields["name"] == "lighthouse-issue-impact-scout"
     assert fields["model"] == "sonnet", (
@@ -66,7 +66,7 @@ def test_name_is_what_the_kpi_counts() -> None:
 
 
 def test_toolallowlist_is_read_only() -> None:
-    """D-5: Bash is niet werkelijk read-only te begrenzen, dus staat hij er niet in."""
+    """D-5: Bash cannot really be bounded to read-only, so it is not in the list."""
     fields = frontmatter(AGENT.read_text(encoding="utf-8"))
     tools = {t.strip() for t in fields["tools"].split(",")}
     assert tools == {"Read", "Grep", "Glob"}, f"toolallowlist is {sorted(tools)}"
@@ -80,7 +80,7 @@ def test_description_bounds_the_use_to_start_issue() -> None:
 
 
 def test_pack_sections_follow_the_contract_order() -> None:
-    """Het pack is een vast contract; volgorde is onderdeel daarvan."""
+    """The pack is a fixed contract; order is part of it."""
     body = AGENT.read_text(encoding="utf-8")
     start = body.index("```text\nIMPACT PACK")
     block = body[start : body.index("\n```", start + 1)]
@@ -89,15 +89,15 @@ def test_pack_sections_follow_the_contract_order() -> None:
 
 
 def test_impact_pack_heading_is_the_headings_value() -> None:
-    """De kop komt uit `headings.toml` (`impact_pack`); hij is in elke taal gelijk,
-    dus de persona mag hem letterlijk noemen."""
+    """The heading comes from `headings.toml` (`impact_pack`); it is the same in every language,
+    so the persona may name it literally."""
     table = tomllib.loads((CORE / "headings.toml").read_text(encoding="utf-8"))
     assert set(table["impact_pack"].values()) == {"IMPACT PACK"}
 
 
 def test_prompt_demands_the_caller_search() -> None:
-    """De scout miste aanroepers in CLI-modules, bridges en deploy-units, en tellers die
-    een map opsommen. De zoektocht en een niet-kale lege uitkomst zijn verplicht."""
+    """The scout missed callers in CLI modules, bridges and deploy units, and counters that
+    enumerate a directory. The search and a non-bare empty outcome are mandatory."""
     body = AGENT.read_text(encoding="utf-8").lower()
     for marker in (
         "callers and counters — mandatory",
@@ -111,7 +111,7 @@ def test_prompt_demands_the_caller_search() -> None:
 
 
 def test_the_caller_search_comes_before_the_analogy() -> None:
-    """Op de budgetgrens moeten analogie en regels het kosten, niet de aanroepers."""
+    """At the budget limit the analogy and rules must pay for it, not the callers."""
     body = AGENT.read_text(encoding="utf-8").lower()
     assert body.index("callers and counters — mandatory") < body.index(
         "that is your analogy"
@@ -125,23 +125,23 @@ def test_prompt_carries_every_output_section() -> None:
 
 
 def test_prompt_demands_the_pack_is_the_whole_answer() -> None:
-    """Een smoke-run begon met `… Now composing the pack.` vóór de regel `IMPACT PACK`.
-    Het pack blijft in de context van de ontvanger staan, dus zulke aanloop leest hij mee."""
+    """A smoke run began with `… Now composing the pack.` before the line `IMPACT PACK`.
+    The pack stays in the recipient's context, so it reads such a preamble along."""
     body = AGENT.read_text(encoding="utf-8").lower()
     assert "your first character is the `i` of `impact pack`" in body
     assert "no preamble" in body and "no reasoning" in body
 
 
 def test_prompt_binds_a_line_number_to_what_was_actually_read() -> None:
-    """Een run citeerde een rule op 23-36 voor een norm op 35-48. Het pad was goed, het
-    bereik fout — en het bereik is wat dit pack verkoopt."""
+    """A run cited a rule at 23-36 for a norm at 35-48. The path was right, the
+    range wrong — and the range is what this pack sells."""
     body = AGENT.read_text(encoding="utf-8").lower()
     assert "actually read" in body
     assert "file name without lines" in body
 
 
 def test_prompt_forbids_designing_and_planning() -> None:
-    """Niet-doel uit de spec: de scout levert feiten, geen ontwerp of taakvolgorde."""
+    """Non-goal from the spec: the scout delivers facts, no design or task order."""
     body = AGENT.read_text(encoding="utf-8").lower()
     assert "no design" in body
     assert "no plan" in body
@@ -151,7 +151,7 @@ def test_prompt_forbids_designing_and_planning() -> None:
 
 
 def test_prompt_names_no_source_repo_layout() -> None:
-    """Paden als `src/web/bridges/` waren de mappen van de bronrepo, niet van elk project."""
+    """Paths like `src/web/bridges/` were the directories of the source repo, not of every project."""
     body = AGENT.read_text(encoding="utf-8")
     for path in ("src/cli/", "src/web/", "services.py", "-m src."):
         assert path not in body, path
@@ -168,10 +168,10 @@ def _kpi():
 
 
 def test_prompt_caps_the_number_of_searches() -> None:
-    """`maxTurns` begrenst beurten, niet zoekacties (één beurt draagt meerdere parallelle calls),
-    dus staat de calls-grens in de prompt zelf. Het getal moet gelijk zijn aan het budget dat
-    `measure_start_issue_kpi.py` telt, anders meet de KPI een andere norm dan de agent
-    gedraagt."""
+    """`maxTurns` bounds turns, not search actions (one turn carries several parallel calls),
+    so the calls limit is in the prompt itself. The number must equal the budget that
+    `measure_start_issue_kpi.py` counts, otherwise the KPI measures a different norm than the agent
+    follows."""
     body = AGENT.read_text(encoding="utf-8").lower()
     assert f"at most {_kpi().SCOUT_TOOL_CALL_BUDGET} searches" in body
 
@@ -209,8 +209,8 @@ def test_adversary_output_contract_is_unchanged() -> None:
 
 
 def test_adversary_reads_the_budget_json_contract() -> None:
-    """`$OUT.budget.json` is de uitvoer van `codex_usage.py budget`: de reden heet
-    `reason`, het tijdstip `reset_at` (taak 17)."""
+    """`$OUT.budget.json` is the output of `codex_usage.py budget`: the reason is called
+    `reason`, the time `reset_at` (task 17)."""
     body = ADVERSARY.read_text(encoding="utf-8")
     line = next(line for line in body.splitlines() if "CODEX_BUDGET" in line and "|" in line)
     assert "`reason`" in line and "`reset_at`" in line, line

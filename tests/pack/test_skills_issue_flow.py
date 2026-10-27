@@ -116,7 +116,7 @@ def test_route_issue_sends_an_open_fog_question_to_4c():
 
 
 def test_route_issue_reads_labels_from_config():
-    """The labels come from `[labels]` (besluit 28), never as paia's literal names."""
+    """The labels come from `[labels]` (decision 28), never as paia's literal names."""
     for body in skill("route-issue"):
         for key in (
             "blocked_issue",
@@ -137,7 +137,7 @@ def test_route_issue_reads_the_repo_from_config():
 
 
 def test_route_issue_guards_what_stays_in_paia():
-    """backlog-stand and board-sweep stay in paia: named only "if present" (ontwerpkeuze 16)."""
+    """backlog-stand and board-sweep stay in paia: named only "if present" (design choice 16)."""
     for body in skill("route-issue"):
         for name in ("backlog-stand", "board-sweep"):
             for para in re.split(r"\n\s*\n", body):
@@ -222,7 +222,7 @@ def test_start_issue_reads_axes_from_config():
 
 
 def test_start_issue_skips_board_without_config():
-    """Without `[forge.board]` the board step reports and goes on (besluit 16, 24)."""
+    """Without `[forge.board]` the board step reports and goes on (decision 16, 24)."""
     for body in skill("start-issue"):
         step3 = _step(body, "### 3.", "### 4.")
         assert "python3 .lighthouse/scripts/board_start.py <nr>" in step3

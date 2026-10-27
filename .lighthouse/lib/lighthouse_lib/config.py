@@ -49,7 +49,7 @@ if not __package__:
 
 # The statuses the skills name; the board maps each to an option ID.
 REQUIRED_STATUS_OPTIONS = ("To do", "In progress", "Done", "On hold")
-# Required only when the repo has a `[controller]` table (besluit 16).
+# Required only when the repo has a `[controller]` table (decision 16).
 CONTROLLER_STATUS_OPTION = "Controller"
 LANGUAGES = ("nl", "en")
 
@@ -158,7 +158,7 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
 )
 
 # Keys whose empty value is a setting: `[test_gate] command = ""` turns the test gate
-# off, and `--upgrade` leaves it so (ontwerpkeuze 4 of M0 (c)).
+# off, and `--upgrade` leaves it so (design choice 4 of M0 (c)).
 _MAY_BE_EMPTY = ("test_gate.command",)
 
 _BASE_KEYS = (

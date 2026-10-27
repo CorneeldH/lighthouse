@@ -1,13 +1,13 @@
-"""Draai een commando tot een absolute epoch-deadline, kill de procesgroep bij afloop.
+"""Run a command until an absolute epoch deadline, then kill the process group.
 
-Een PreToolUse-hook die zijn eigen timeout haalt, is fail-open per de Claude Code
-documentatie — Claude ziet dan geen fout, alleen stilte, en de test-gate (taak 3)
-zou onopgemerkt overgeslagen worden. Door de gate zélf op een deadline te laten
-eindigen (ruim binnen de hooktimeout) en het hele kind incl. subprocessen hard te
-killen, faalt de gate luid in plaats van stil weg te vallen.
+A PreToolUse hook that hits its own timeout is fail-open per the Claude Code
+documentation: Claude sees no error, only silence, and the test gate (task 3)
+would be skipped unnoticed. By having the gate itself end on a deadline (well
+within the hook timeout) and hard-killing the whole child, subprocesses
+included, the gate fails loudly instead of dropping out silently.
 """
 
-# `X | None` in annotaties: de hooks draaien ook onder python3 3.9 (macOS).
+# `X | None` in annotations: the hooks also run under python3 3.9 (macOS).
 from __future__ import annotations
 
 import contextlib
@@ -22,15 +22,15 @@ from collections.abc import Mapping
 TIMEOUT_EXIT = 124
 NOT_FOUND_EXIT = 127
 
-# Signalen waarmee de hook zelf gestopt kan worden. Het kind draait in een eigen
-# sessie en krijgt ze dus niet vanzelf: zonder doorgeven liep de suite als wees door.
+# Signals that can stop the hook itself. The child runs in its own session and so
+# does not get them by itself: without forwarding, the suite kept running as an orphan.
 FORWARDED = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
 
 USAGE = "usage: deadline.py <epoch-seconds> -- <cmd> [args...]"
 
 
 class _Stopped(Exception):
-    """Een doorgestuurd signaal onderbreekt het wachten op het kind."""
+    """A forwarded signal interrupts the wait for the child."""
 
     def __init__(self, signum: int) -> None:
         super().__init__(signum)
@@ -38,11 +38,11 @@ class _Stopped(Exception):
 
 
 class Interrupted(Exception):
-    """`run_until(..., raise_on_signal=True)`: een doorgestuurd signaal stopte het kind.
+    """`run_until(..., raise_on_signal=True)`: a forwarded signal stopped the child.
 
-    `signum` is het signaal, `output` wat het kind tot dan toe schreef (`b""`
-    zonder `capture`). Zo is "dit proces kreeg een signaal" te onderscheiden
-    van een kind dat zelf met 128 + n eindigde.
+    `signum` is the signal, `output` what the child wrote up to then (`b""`
+    without `capture`). That way "this process got a signal" can be told apart
+    from a child that itself ended with 128 + n.
     """
 
     def __init__(self, signum: int, output: bytes) -> None:
@@ -52,11 +52,11 @@ class Interrupted(Exception):
 
 
 class _Forwarder:
-    """Signaalhandler voor FORWARDED zolang `run_until` loopt.
+    """Signal handler for FORWARDED while `run_until` runs.
 
-    Het eerste signaal onderbreekt het wachten (`_Stopped`); daarbuiten, o.a.
-    midden in Popen, wordt het alleen genoteerd, zodat er nooit een kind
-    zonder beheer ontstaat. Een tweede signaal slaat de grace over: SIGKILL.
+    The first signal interrupts the wait (`_Stopped`); outside it, e.g. in the
+    middle of Popen, it is only noted, so a child is never left unmanaged.
+    A second signal skips the grace: SIGKILL.
     """
 
     def __init__(self) -> None:
@@ -67,14 +67,14 @@ class _Forwarder:
     def __call__(self, signum: int, _frame: object) -> None:
         if self.signum is not None:
             if self.proc is not None:
-                _killpg(self.proc.pid, signal.SIGKILL)
+                _kill_group(self.proc.pid, signal.SIGKILL)
             return
         self.signum = signum
         if self.waiting:
             raise _Stopped(signum)
 
     def wait(self, proc: subprocess.Popen, timeout: float) -> int:
-        """`proc.wait(timeout)`, of `_Stopped` bij een (al eerder) ontvangen signaal."""
+        """`proc.wait(timeout)`, or `_Stopped` on a signal received (earlier too)."""
         self.proc = proc
         self.waiting = True
         try:
@@ -85,7 +85,7 @@ class _Forwarder:
             self.waiting = False
 
 
-def _killpg(pgid: int, sig: int) -> None:
+def _kill_group(pgid: int, sig: int) -> None:
     try:
         os.killpg(pgid, sig)
     except ProcessLookupError:
@@ -93,15 +93,15 @@ def _killpg(pgid: int, sig: int) -> None:
 
 
 def _stop_group(proc: subprocess.Popen, grace: float) -> None:
-    """SIGTERM naar de procesgroep, `grace` seconden wachten, dan SIGKILL."""
-    # start_new_session maakt het kind sessie- én groepsleider: pid == pgid.
-    # Geen os.getpgid: dat faalt als het kind net na de timeout al weg is.
+    """SIGTERM to the process group, wait `grace` seconds, then SIGKILL."""
+    # start_new_session makes the child session and group leader: pid == pgid.
+    # No os.getpgid: it fails if the child is already gone just after the timeout.
     pgid = proc.pid
-    _killpg(pgid, signal.SIGTERM)
+    _kill_group(pgid, signal.SIGTERM)
     try:
         proc.wait(timeout=grace)
     except subprocess.TimeoutExpired:
-        _killpg(pgid, signal.SIGKILL)
+        _kill_group(pgid, signal.SIGKILL)
         proc.wait()
 
 
@@ -112,7 +112,7 @@ def _start(
     out: object,
     env: Mapping[str, str] | None = None,
 ) -> subprocess.Popen | None:
-    """Start `argv` in een eigen sessie; None (plus één regel stderr) als het er niet is."""
+    """Start `argv` in its own session; None (plus one line of stderr) if it does not exist."""
     kwargs: dict[str, object] = {}
     if out is not None:
         kwargs["stdout"] = out
@@ -127,7 +127,7 @@ def _start(
 
 
 def _read_captured(out: object) -> bytes:
-    """Lees alles terug uit de gedeelde tempfile, ongeacht waar de schrijfpositie staat."""
+    """Read everything back from the shared tempfile, wherever the write position is."""
     out.seek(0)
     return out.read()
 
@@ -143,38 +143,38 @@ def run_until(
     raise_on_signal: bool = False,
     env: Mapping[str, str] | None = None,
 ) -> int | tuple[int, bytes]:
-    """Draai `argv` tot `deadline` (epoch-seconden); exitcode of TIMEOUT_EXIT.
+    """Run `argv` until `deadline` (epoch seconds); exit code or TIMEOUT_EXIT.
 
-    Een deadline die al verstreken is start het commando niet en geeft direct
-    TIMEOUT_EXIT (met `capture=True`: `(TIMEOUT_EXIT, b"")`, het commando is
-    nooit gestart). Zonder `capture` erven stdout/stderr van de ouder, exact
-    het gedrag van vóór deze parameters. Bij verlopen deadline eerst SIGTERM
-    naar de hele procesgroep, dan `grace` seconden wachten, daarna SIGKILL.
-    Een ontbrekend commando geeft NOT_FOUND_EXIT met één regel op stderr,
-    geen traceback: 'niet kunnen starten' is iets anders dan 'tests falen'.
-    Krijgt dit proces SIGTERM/SIGINT/SIGHUP, dan stopt het de groep op
-    dezelfde manier en geeft 128 + signaalnummer; een tweede signaal tijdens
-    het opruimen slaat de grace over en killt direct.
+    A deadline that has already passed does not start the command and returns
+    TIMEOUT_EXIT at once (with `capture=True`: `(TIMEOUT_EXIT, b"")`, the
+    command was never started). Without `capture`, stdout/stderr are inherited
+    from the parent, exactly the behaviour from before these parameters. When
+    the deadline passes, first SIGTERM to the whole process group, then wait
+    `grace` seconds, then SIGKILL. A missing command returns NOT_FOUND_EXIT
+    with one line on stderr, no traceback: 'could not start' is something
+    other than 'tests fail'. If this process gets SIGTERM/SIGINT/SIGHUP, it
+    stops the group the same way and returns 128 + signal number; a second
+    signal during the cleanup skips the grace and kills at once.
 
-    `cwd` geeft de werkmap van het kind mee (anders erft het die van de
-    ouder). `stdin_bytes`, indien gezet, gaat via een `tempfile.TemporaryFile`
-    (geseekt naar 0) naar het kind i.p.v. een pipe — bij None erft het kind
-    stdin van de ouder, zoals voorheen.
+    `cwd` passes the child's working directory (otherwise it inherits the
+    parent's). `stdin_bytes`, if set, goes to the child through a
+    `tempfile.TemporaryFile` (seeked to 0) instead of a pipe; with None the
+    child inherits the parent's stdin, as before.
 
-    `capture=True` laat stdout én stderr van het kind naar één gedeelde
-    `tempfile.TemporaryFile` schrijven (nooit een pipe: die loopt bij ~64 KiB
-    vol terwijl de ouder op het kind wacht) en geeft `(exitcode, output)`
-    terug, teruggelezen ná afloop — ook bij TIMEOUT_EXIT (wat er tot dan toe
-    geschreven was) en bij NOT_FOUND_EXIT (dan `b""`; de ontbrekend-commando-
-    melding gaat in dat geval alleen naar stderr van dit proces, niet in de
-    buffer). Zonder `capture` blijft het returntype een kale `int`.
+    `capture=True` makes the child's stdout and stderr both write to one shared
+    `tempfile.TemporaryFile` (never a pipe: it fills up at ~64 KiB while the
+    parent waits on the child) and returns `(exitcode, output)`, read back
+    after it ends, also on TIMEOUT_EXIT (what had been written up to then) and
+    on NOT_FOUND_EXIT (then `b""`; the missing-command message goes only to
+    this process's stderr in that case, not into the buffer). Without
+    `capture` the return type stays a plain `int`.
 
     `env` is the child's whole environment; with None it inherits the parent's,
     as before.
 
-    `raise_on_signal=True` gooit bij een doorgestuurd signaal `Interrupted`
-    (ná het stoppen van de groep) in plaats van 128 + signaalnummer terug te
-    geven: dat getal kan het kind ook zelf als exitcode hebben.
+    `raise_on_signal=True` raises `Interrupted` on a forwarded signal (after
+    stopping the group) instead of returning 128 + signal number: the child
+    can have that number as its own exit code too.
     """
     remaining = deadline - time.time()
     if remaining <= 0:

@@ -64,10 +64,10 @@ class Alarm:
 
 @dataclass(frozen=True)
 class Context:
-    stand: str  # as the hook was called: prompt | tool | subagent | stop
+    stand: str  # the mode the hook was called in: prompt | tool | subagent | stop
     alarm: Optional[Alarm]  # None without a valid alarm
     session_id: str  # "" when absent or not SAFE_ID
-    agent_id: str  # idem
+    agent_id: str  # same
     cwd: str  # payload cwd, else os.getcwd()
     run_id: str  # "" outside a controller run
     pause_until: str  # "" without a valid pause flag
