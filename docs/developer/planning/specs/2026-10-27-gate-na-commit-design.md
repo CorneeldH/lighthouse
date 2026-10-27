@@ -125,7 +125,7 @@ De hook draait `bash -c "$COMMAND"` in de root, met naast `LIGHTHOUSE_GATE_TMP`:
 |---|---|
 | `LIGHTHOUSE_GATE_BASE` | de basis-commit (of de lege boom) |
 | `LIGHTHOUSE_GATE_HEAD` | de nieuwe `HEAD` |
-| `LIGHTHOUSE_GATE_FILES` | pad naar een bestand in `LIGHTHOUSE_GATE_TMP` met de gewijzigde paden, één per regel, relatief aan de root |
+| `LIGHTHOUSE_GATE_FILES` | pad naar een bestand naast `LIGHTHOUSE_GATE_TMP` (niet erin: `pytest --basetemp` leegt die map) met de gewijzigde paden, één per regel, relatief aan de root |
 
 Een commando dat de variabelen negeert, test zoals nu, alleen dan na de commit. Zo blijft een
 project zonder selector werken: paia's huidige commando draait na de upgrade gewoon de hele
