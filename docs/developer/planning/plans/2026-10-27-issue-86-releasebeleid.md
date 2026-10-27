@@ -19,6 +19,7 @@
 - Doelen exact: `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64`, `windows/amd64`; bestandsnamen `lighthouse_<os>_<arch>`, `.exe` voor Windows; plus `SHA256SUMS`. `CGO_ENABLED=0`, `-trimpath`.
 - Versiecontrole: `lighthouse_linux_amd64 version` moet exact `lighthouse <tag>` geven.
 - Cron: maandag 06:00 UTC (`0 6 * * 1`).
+- Elke stappenjob (alles behalve een `uses:`-job) heeft `runs-on: ubuntu-latest`.
 - Acties op SHA met `# vX.Y.Z`-commentaar; hergebruik de SHA's uit `ci.yml` (checkout v7.0.1, setup-go v7.0.0, upload-artifact v7.0.2, download-artifact v8.0.2). `persist-credentials: false`, behalve in de ene job die pusht. `timeout-minutes` op elke job.
 - Nooit `${{ }}` met invoer of fragmenttekst in een `run:`-script; altijd via `env:`.
 - `tests/test_ci_go_test_pin.py` en `tests/test_golangci_pin.py` pinnen regels in `ci.yml`: precies twee `- run: go test …`-regels, de `CGO_ENABLED=0 go build ./...`-regel, de golangci-versie. Die blijven.
@@ -43,6 +44,11 @@
 5. **Notes voor een tag zonder sectie.** `notes v0.2.0` zonder sectie in `CHANGELOG.md`: exit 1, en `build.yml` faalt voor een gewone tag; alleen een prerelease-tag (met `-`) krijgt de vaste regel. Test in taak 3 (script), pin in taak 4 (workflow).
 
 ---
+
+### Taak 0: voorbereiding
+
+- [ ] **Stap 1: main erin** — `git fetch origin && git merge --no-edit origin/main` (geen rebase: de branch is gepusht). Sinds het plan kwam o.a. 193f6a7 (#87, `docs/getting-started.md`); taak 6 leunt daarop.
+- [ ] **Stap 2: web-afhankelijkheden** — `(cd web && npm ci)`. Taak 1 en 2 wijzigen `.github/workflows/ci.yml`, dat in `_WEB_TOO` van `ci/domains.py` staat: zonder `web/node_modules` geeft de testgate exit 3 en blokkeert `pre-commit-tests` de commit met `COULD NOT CHECK`.
 
 ### Taak 1: Windows bouwt, en CI bouwt Windows en macOS
 
@@ -134,7 +140,7 @@ def test_read_fragments_refuses_other_files(tmp_path): ...     # notes.txt -> Fr
 def test_check_requires_an_added_fragment(git_repo): ...       # alleen code gewijzigd -> exit 1, "no new fragment"
 def test_check_ignores_modified_fragment(git_repo): ...        # bestaand fragment gewijzigd -> exit 1
 def test_check_counts_renamed_fragment(git_repo): ...          # git mv a.md b.md -> exit 0
-def test_check_ignores_added_marker(git_repo): ...             # alleen .lighthouse nieuw -> exit 1
+def test_check_ignores_added_marker(tmp_path): ...             # eigen repo: commit 1 zonder changelog.d/, commit 2 voegt alleen .lighthouse toe -> exit 1
 def test_check_refuses_bad_fragment_anywhere(git_repo): ...    # nieuw goed fragment + oud kapot fragment -> exit 1
 def test_check_passes(git_repo): ...                           # exit 0
 def test_check_bad_base_cannot_check(git_repo): ...            # --base deadbeef -> exit 2, "COULD NOT CHECK"
@@ -154,7 +160,7 @@ def test_check_bad_base_cannot_check(git_repo): ...            # --base deadbeef
 This directory holds one changelog fragment per change; the release workflow merges them into CHANGELOG.md. See docs/releasing.md.
 ```
 
-In `ci.yml` een job `changelog` (geen `needs`, geen `if`), `timeout-minutes: 5`, checkout met `fetch-depth: 0` en `persist-credentials: false`, en één stap met `env: BASE/HEAD` uit `github.event.pull_request.{base,head}.sha` (zoals de `changes`-job) en `run: python3 ci/changelog.py check --base "$BASE" --head "$HEAD"`. Commentaar boven de job: elke PR draagt een fragment, ook buiten de domeinen, zie `docs/releasing.md`.
+In `ci.yml` een job `changelog` (geen `needs`, geen `if`), `runs-on: ubuntu-latest`, `timeout-minutes: 5`, checkout met `fetch-depth: 0` en `persist-credentials: false`, en één stap met `env: BASE/HEAD` uit `github.event.pull_request.{base,head}.sha` (zoals de `changes`-job) en `run: python3 ci/changelog.py check --base "$BASE" --head "$HEAD"`. Commentaar boven de job: elke PR draagt een fragment, ook buiten de domeinen, zie `docs/releasing.md`.
 
 In `tests/test_ci_domains_pin.py`: `len(uses) == 14` wordt `15`, en:
 
@@ -163,7 +169,7 @@ def test_changelog_job_runs_on_every_pr():
     """Fails when the fragment check starts depending on the domains of the change."""
     job = _jobs()["changelog"]
     assert "needs:" not in job and "if:" not in job
-    for needle in ("fetch-depth: 0", "python3 ci/changelog.py check --base \"$BASE\" --head \"$HEAD\""):
+    for needle in ("runs-on: ubuntu-latest", "fetch-depth: 0", "python3 ci/changelog.py check --base \"$BASE\" --head \"$HEAD\""):
         assert needle in job, needle
 ```
 
@@ -175,7 +181,6 @@ def test_changelog_job_runs_on_every_pr():
 
 **Bestanden:**
 - Wijzig: `ci/changelog.py`, `tests/test_changelog.py`
-- Nieuw: `CHANGELOG.md`
 
 **Interfaces:**
 - Consumeert: `Fragment`, `read_fragments`, `RELEASABLE`, `MARKER` uit taak 2.
@@ -187,7 +192,7 @@ def test_changelog_job_runs_on_every_pr():
   - `render_section(version: str, date: str, fragments: list[Fragment]) -> str`
   - `insert_section(changelog: str, section: str) -> str` — vóór de eerste regel die met `## ` begint; geen zo'n regel: achteraan
   - `extract_section(changelog: str, tag: str) -> str | None` — de body onder `## [<tag>] - …` tot de volgende `## `-regel, `strip()`
-  - `release(root: Path, event: str, forced: str, date: str, tags: list[str]) -> str | None` — schrijft `CHANGELOG.md`, verwijdert alle gelezen fragmenten (ook `internal`, nooit `MARKER`), geeft de nieuwe tag; `None` = niets gedaan, tree ongemoeid; ontbrekende `CHANGELOG.md`: `ReleaseError` (taak 6 schrijft hem)
+  - `release(root: Path, event: str, forced: str, date: str, tags: list[str]) -> str | None` — schrijft `CHANGELOG.md`, verwijdert alle gelezen fragmenten (ook `internal`, nooit `MARKER`), geeft de nieuwe tag; `None` = niets gedaan, tree ongemoeid; ontbrekende `CHANGELOG.md`: `ReleaseError` (taak 6 schrijft hem). Volgorde, vast: eerst `latest_tag(tags)`, dan fragmenten lezen en `decide_bump`, dan `CHANGELOG.md` lezen; zo geeft een repo zonder tags altijd exit 2
   - CLI `release --event <e> [--bump auto] [--date YYYY-MM-DD] [--root .]`: tags uit `git tag --list 'v*'`; schrijft de tag op stdout (leeg bij `None`); exit 0, 1 `ReleaseError`/`FragmentError`, 2 `TagError`/git-fout
   - CLI `notes <tag> [--root .]`: sectie op stdout, exit 0; geen sectie: exit 1
 
@@ -239,7 +244,7 @@ def test_release_writes_changelog_and_removes_fragments(tmp_path): ...
     # CHANGELOG.md bevat "## [v0.2.0] - 2026-10-27"; changelog.d/ bevat alleen .lighthouse
 def test_release_nothing_leaves_tree_untouched(tmp_path): ...  # alleen added op push -> None, bytes ongewijzigd
 def test_release_without_changelog_refuses(tmp_path): ...  # fixed, geen CHANGELOG.md -> ReleaseError, fragment blijft
-def test_cli_release_without_tags_exits_2(git_repo, capsys): ...
+def test_cli_release_without_tags_exits_2(tmp_path, capsys): ...  # eigen repo zonder tags, met CHANGELOG.md en een fixed-fragment -> exit 2
 def test_cli_notes_missing_section_exits_1(tmp_path): ...
 ```
 
@@ -263,7 +268,7 @@ def test_cli_notes_missing_section_exits_1(tmp_path): ...
 `release.yml`:
 - `on`: `push: branches: [main]`; `schedule: - cron: "0 6 * * 1"`; `workflow_dispatch` met `bump` (`type: choice`, `auto|patch|minor|major`, default `auto`).
 - `permissions: contents: read` bovenaan; `concurrency: group: release-${{ github.event_name }}`, `cancel-in-progress: false`.
-- Job `release` (`contents: write`, `timeout-minutes: 10`, output `tag`): checkout `ref: main`, `fetch-depth: 0`, `persist-credentials: true` met commentaar waarom (de enige job die pusht). `env: EVENT: ${{ github.event_name }}`, `BUMP: ${{ inputs.bump || 'auto' }}`. Gitidentiteit `github-actions[bot]` / `41898283+github-actions[bot]@users.noreply.github.com`. Script met `set -euo pipefail`, deze volgorde:
+- Job `release` (`runs-on: ubuntu-latest`, `contents: write`, `timeout-minutes: 10`, output `tag`): checkout `ref: main`, `fetch-depth: 0`, `persist-credentials: true` met commentaar waarom (de enige job die pusht). `env: EVENT: ${{ github.event_name }}`, `BUMP: ${{ inputs.bump || 'auto' }}`. Gitidentiteit `github-actions[bot]` / `41898283+github-actions[bot]@users.noreply.github.com`. Script met `set -euo pipefail`, deze volgorde:
 
 ```bash
 for attempt in 1 2 3; do
@@ -303,6 +308,7 @@ def test_build_targets_and_flags(): ...          # de vijf goos/goarch-paren, "-
 def test_build_checks_version_and_clean_tree(): ...    # 'test "$out" = "lighthouse $TAG"', "git status --porcelain"
 def test_publish_uses_notes_file_and_clobber(): ...    # "ci/changelog.py notes", "--notes-file", "--clobber", "SHA256SUMS"
 def test_no_inputs_in_run_scripts(): ...          # geen "${{ inputs." en geen "${{ github.ref_name" binnen een run:-blok
+def test_every_step_job_has_a_runner(): ...       # beide bestanden: elke job met steps: heeft "runs-on: ubuntu-latest"; release.build (uses:) niet
 ```
 
 - [ ] **Stap 2: rood zien** — `uv run pytest tests/test_release_workflows_pin.py -q` → FAIL (bestanden ontbreken).
@@ -329,7 +335,8 @@ Run (proef van de versiecontrole, buiten de checkout): `d=$(mktemp -d) && git wo
 
 Inhoud van de sectie `## Changelog fragment (if present)`, in het Engels, één tot drie korte alinea's; elke alinea met het woord `release` bevat letterlijk `if present`:
 - Only if present: `changelog.d/.lighthouse` in the repository root. Otherwise skip this section.
-- Write one fragment per change before `gh pr create`, commit it on the branch and push: `changelog.d/<branch>.md`, a `/` in the branch name becomes `-`; a second change in the same PR, or a name already taken, gets the first free `-<n>` from 2.
+- First look at what the branch already adds: `git diff --name-only --diff-filter=A origin/<default branch>...HEAD -- changelog.d/`. Every change it carries that already has a fragment gets no new one; a re-run of the skill (after a `pr-create-gate` block, say) writes nothing twice.
+- For each change without one, write a fragment before `gh pr create`, commit it on the branch and push: `changelog.d/<branch>.md`, a `/` in the branch name becomes `-`; the branch's next fragment, or a name held by an open fragment of another branch, gets the first free `-<n>` from 2.
 - The format block (front matter `type:` en één tot drie zinnen), de vijf typen met één regel elk; `internal` voor wat een gebruiker niet merkt (docs voor ontwikkelaars, tests, CI) en niet in de notes komt.
 - Pick the type from the diff and the AC; write the text in English for a user, whatever `[project] language` is.
 
@@ -339,6 +346,7 @@ Inhoud van de sectie `## Changelog fragment (if present)`, in het Engels, één 
 def test_changelog_fragment_is_opt_in_and_english():
     section = _section(TEXT, "## Changelog fragment")
     for needle in ("if present", "changelog.d/.lighthouse", "changelog.d/<branch>.md", "-<n>",
+                   "--diff-filter=A", "writes nothing twice",
                    "added", "changed", "fixed", "removed", "internal", "English", "before `gh pr create`"):
         assert needle in section, needle
 ```
@@ -357,8 +365,8 @@ def test_changelog_fragment_is_opt_in_and_english():
 
 **Bestanden:**
 - Nieuw: `docs/releasing.md`, `CHANGELOG.md` (hier en niet in taak 3: zijn link naar `docs/releasing.md` moet bestaan, anders blokkeert `worktree-linkcheck`)
-- Wijzig: `AGENTS.md` (regel *Releases*), `docs/install.md`, `CONTRIBUTING.md`
-- Test: `tests/test_instruction_files.py`
+- Wijzig: `AGENTS.md` (regel *Releases*), `docs/install.md`, `docs/getting-started.md` (sectie *Install*, van #87, via taak 0), `CONTRIBUTING.md`
+- Test: `tests/test_instruction_files.py`, `tests/test_getting_started.py`
 
 `docs/releasing.md`, Engels, secties in deze volgorde: *Versions* (de tabel uit besluit 1, met wat "user-visible" is: de binary en alles wat `init` schrijft; een breaking change onder 0.x is een minor), *When a release happens* (merge met alleen `fixed` → patch; maandag 06:00 UTC → minor; dispatch, ook major; nooit een tag met de hand), *Changelog fragments* (vorm, typen, naam, de CI-check, `internal`), *The release commit* (de bot-uitzondering op "nothing lands on `main` directly"; bij een ruleset krijgt de bot een bypass), *Recovering a failed release* (atomaire push: dispatch `bump: auto` opnieuw; mislukte build: `workflow_dispatch` van `build.yml` met de tag, die `--clobber` uploadt of de release aanmaakt), *Upgrading* (binary downloaden, `lighthouse init --upgrade` in elke repo, de geïnstalleerde kopie via een PR).
 
@@ -372,9 +380,21 @@ def test_project_part_points_at_the_release_policy():
     assert "docs/releasing.md" in part and "changelog.d/" in part
 ```
 
-- [ ] **Stap 2: rood zien** — `uv run pytest tests/test_instruction_files.py -q` → FAIL.
+In `tests/test_getting_started.py` wordt `test_install_uses_module_path` (pint nu `"GOPRIVATE=" in text`):
 
-- [ ] **Stap 3: schrijven**
+```python
+def test_install_offers_binary_then_go():
+    """The binary route comes first; the Go route stays, without the private-repo detour."""
+    module = (ROOT / "go.mod").read_text(encoding="utf-8").splitlines()[0].split()[1]
+    text = section("Install")
+    assert "releases/latest/download/lighthouse_linux_amd64" in text and "SHA256SUMS" in text
+    assert f"go install {module}/cmd/lighthouse@" in text
+    assert "GOPRIVATE" not in text and "not published yet" not in text
+```
+
+- [ ] **Stap 2: rood zien** — `uv run pytest tests/test_instruction_files.py tests/test_getting_started.py -q` → FAIL.
+
+- [ ] **Stap 3: schrijven**, in deze volgorde (een link moet bij het schrijven al een doel hebben, anders blokkeert `worktree-linkcheck`): eerst `docs/releasing.md`, dan de rest.
 
 - `AGENTS.md`: de regel *Releases* wordt precies één bullet: "**Releases.** The release workflow tags and publishes, never a hand-set tag: see `docs/releasing.md`. Every PR adds a fragment to `changelog.d/`." — met `docs/releasing.md` als relatieve markdown-link.
 - `CHANGELOG.md`, exact (de twee verwijzingen als markdown-links: Keep a Changelog naar `https://keepachangelog.com/en/1.1.0/`, de tweede relatief naar `docs/releasing.md`):
@@ -391,9 +411,10 @@ def test_project_part_points_at_the_release_policy():
   v0.1.0–v0.1.6: internal pre-releases.
   ```
 - `docs/install.md` (lees eerst de versie van main, #68 veranderde hem): nieuwe sectie `## Download a release binary` vóór de Go-route, met `curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_amd64` en `…/SHA256SUMS`, `sha256sum --check --ignore-missing SHA256SUMS`, `chmod +x`, en waar je hem neerzet; de vijf bestandsnamen. *Requirements*: macOS niet ondersteund geldt alleen voor `lighthouse serve` (systemd); de CLI draait op macOS, de hooks zijn daar niet getest (`date -d` in `usage-guard.sh` is GNU); Windows: binary bestaat, hooks vragen WSL. "Go, to install the binary" wordt optioneel. De `GOPRIVATE`-tekst en "The repository is private" vervallen.
+- `docs/getting-started.md`, sectie *Install*: de binary-route eerst (zelfde `curl`/`SHA256SUMS`/`chmod +x` als `docs/install.md`, of een korte versie met een link daarheen), dan `go install …@latest` zonder `GOPRIVATE`; "Prebuilt release binaries are not published yet" en de private-repo-uitleg vervallen. De alinea over een tag in plaats van `main` blijft.
 - `CONTRIBUTING.md`, onder *Sending a pull request*: één bullet dat elke PR een fragment in `changelog.d/` toevoegt, met een relatieve link naar de sectie *Changelog fragments* van `docs/releasing.md`.
 
-- [ ] **Stap 4: groen zien** — `uv run pytest tests/test_instruction_files.py tests/pack/test_md_links.py -q` → PASS.
+- [ ] **Stap 4: groen zien** — `uv run pytest tests/test_instruction_files.py tests/test_getting_started.py tests/pack/test_md_links.py -q` → PASS.
 
 - [ ] **Stap 5: commit** — `docs(release): releasebeleid, installatie van een binary, regel in AGENTS.md (#86)`
 
@@ -409,23 +430,29 @@ Exact (vier fragmenten, de check en `release` slikken ze):
 | `issue-86-releasebeleid.md` | `added` | Every GitHub release now carries prebuilt binaries for Linux, macOS and Windows (amd64 and arm64 where available) with a `SHA256SUMS` file, so you can install lighthouse without Go. |
 | `issue-86-releasebeleid-2.md` | `added` | Releases are automatic: a merged fix ships as a patch release, everything else in the weekly minor release; the policy is in `docs/releasing.md`. `/lighthouse-verify-pr` writes a changelog fragment in repositories that opt in with `changelog.d/.lighthouse`. |
 | `issue-86-releasebeleid-3.md` | `fixed` | lighthouse builds on Windows again; `lighthouse serve` reports that its database lock is not supported there. |
-| `issue-86-releasebeleid-4.md` | `changed` | Since v0.1.6: lighthouse's own code is in English and a code-language hook checks it, blocking Stop gates stay quiet while a valid usage alarm is set, the web UI is a single-page app embedded in the binary, and the repository has contribution guidelines and a CLA check. |
+| `issue-86-releasebeleid-4.md` | `changed` | Since v0.1.6: lighthouse's own code is in English and a code-language hook checks it, blocking Stop gates stay quiet while a valid usage alarm is set, the repository has a getting-started guide, contribution guidelines and a CLA check, and work started on a web UI (release binaries still serve a placeholder page). |
 
-Controleer vóór het schrijven met `git log --oneline v0.1.6..origin/main` of de laatste rij nog volledig is; voeg een merge van na vandaag toe.
+Controleer vóór het schrijven met `git log --oneline v0.1.6..origin/main` of de laatste rij nog volledig is; voeg een merge van na vandaag toe. Geen belofte over de SPA in de binary: `build.yml` draait geen `npm`-build (#78).
 
-- [ ] **Stap 1: schrijven, dan proeven**
+- [ ] **Stap 1: schrijven en committen** — `docs(changelog): fragmenten voor #86`. Eerst committen: `check` en de droogloop lezen alleen gecommitte staat.
+
+- [ ] **Stap 2: proeven**
 
 Run: `python3 ci/changelog.py check --base origin/main --head HEAD` → exit 0.
 Run (in een wegwerpkopie): `d=$(mktemp -d) && git worktree add -q --detach "$d/wt" HEAD && python3 ci/changelog.py release --event push --root "$d/wt"; git -C "$d/wt" diff --stat; git worktree remove --force "$d/wt"` → `v0.2.0`, `CHANGELOG.md` gewijzigd, vier fragmenten weg, `.lighthouse` blijft. (`release` leest de tags uit `--root`; de worktree deelt ze.)
 
-- [ ] **Stap 2: commit** — `docs(changelog): fragmenten voor #86`
+### Taak 8: bewijs vóór de merge, en de PR
 
-### Taak 8: bewijs vóór en na de merge
+Corneel gaf op 2026-10-27 akkoord voor de uitgaande stappen van deze taak: branch pushen, `v0.2.0-rc.1` pushen en met prerelease weer verwijderen, de PR maken. Mergen doet hij zelf.
 
-Uitgaande stappen (tag pushen, release aanmaken en verwijderen, PR) vragen bevestiging van Corneel, tenzij de sessie daar al toestemming voor heeft.
-
+- [ ] **Stap 0: preflight op de bot-push (read-only)** — `gh api repos/CorneeldH/lighthouse/rulesets --jq length` → `0`; `gh api repos/CorneeldH/lighthouse/branches/main/protection` → HTTP 404 `Branch not protected`; `gh api repos/CorneeldH/lighthouse/actions/permissions/workflow --jq .default_workflow_permissions` → `read` (een job mag dan zelf `contents: write` vragen). Gemeten op 2026-10-27 met precies deze uitkomsten. Wijkt een uitkomst af (ruleset of protection op `main`): stop vóór de PR en meld het; de bot heeft dan een bypass nodig (spec, besluit 6), en dat is Corneels instelling.
 - [ ] **Stap 1: push** — `git push -u origin issue-86-releasebeleid`; CI groen, ook de job `changelog`.
 - [ ] **Stap 2: prerelease als bewijs voor AC 2 en 3** — `git tag v0.2.0-rc.1 && git push origin v0.2.0-rc.1`. Wacht op `build.yml`. Verwacht: prerelease `v0.2.0-rc.1` met vijf binaries en `SHA256SUMS`, de stap met `lighthouse $TAG` groen. Controleer zelf: `gh release view v0.2.0-rc.1 --json assets --jq '.assets[].name'` (zes namen) en download `lighthouse_linux_amd64`, `sha256sum --check --ignore-missing SHA256SUMS`, `./lighthouse_linux_amd64 version` → `lighthouse v0.2.0-rc.1`. Noteer de run-URL voor de PR.
 - [ ] **Stap 3: opruimen** — `gh release delete v0.2.0-rc.1 --cleanup-tag --yes && git tag -d v0.2.0-rc.1`.
-- [ ] **Stap 4: PR** — `/lighthouse-verify-pr 86`. AC 2 en 3: de run-URL uit stap 2 is geen allowlist-commando; schrijf ze als `after merge` als er geen herhaalbaar commando is (het bewijs dan in `## Verification`), en AC 5 is `after merge`: het wordt `Refs #86 — <reden>`, of `Closes` als elk AC een geldige rij heeft. Verify-pr bepaalt dat, niet dit plan.
-- [ ] **Stap 5: na de merge (AC 5)** — release-run groen; `gh release view v0.2.0 --json assets --jq '.assets[].name'` → vijf binaries en `SHA256SUMS`; `curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/download/v0.2.0/lighthouse_linux_amd64` zonder login → exit 0; `chmod +x` en `version` → `lighthouse v0.2.0`. Mislukt de build: herstel volgens `docs/releasing.md` (dispatch `build.yml` met `tag: v0.2.0`). Daarna `/lighthouse-close-issue 86`.
+- [ ] **Stap 4: PR** — `/lighthouse-verify-pr 86`. AC 2 en 3: de run-URL uit stap 2 is geen allowlist-commando; schrijf ze als `after merge` als er geen herhaalbaar commando is (het bewijs dan in `## Verification`), en AC 5 is `after merge`: het wordt `Refs #86 — <reden>`, of `Closes` als elk AC een geldige rij heeft. Verify-pr bepaalt dat, niet dit plan. De vier fragmenten uit taak 7 dekken alle wijzigingen; verify-pr schrijft er geen bij (taak 5).
+- [ ] **Stap 5: overdracht** — de uitvoering stopt hier. `/lighthouse-handoff` met taak 9 als eerste stap; die start pas na de merge door Corneel.
+
+### Taak 9: na de merge (AC 5)
+
+- [ ] **Stap 1: is hij gemerged?** — `gh pr view <nr> --json state --jq .state` → `MERGED`. Anders: stop, niets te doen.
+- [ ] **Stap 2: release controleren** — release-run groen; `gh release view v0.2.0 --json assets --jq '.assets[].name'` → vijf binaries en `SHA256SUMS`; `curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/download/v0.2.0/lighthouse_linux_amd64` zonder login → exit 0; `chmod +x` en `version` → `lighthouse v0.2.0`. Mislukt de build: herstel volgens `docs/releasing.md` (dispatch `build.yml` met `tag: v0.2.0`). Daarna `/lighthouse-close-issue 86`.
