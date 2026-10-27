@@ -1,0 +1,32 @@
+{
+  "$comment": "The signature register. A signature is a commit that adds an entry to `signatures`; see CLA.md section 11. Guarded by tools/check_cla.py and .github/workflows/cla.yml.",
+  "cla_revisions": ["2026-08-24"],
+  "current_cla_revision": "2026-08-24",
+  "owner": {
+    "name": "Corneel den Hartogh",
+    "github_login": "CorneeldH",
+    "emails": [
+      "corneeldenhartogh@gmail.com",
+      "6919390+CorneeldH@users.noreply.github.com"
+    ],
+    "note": "The rights holder; does not sign his own CLA. Two git identities: the plain address and GitHub's private commit address. Every address here gives coverage without a signature, so it must be one the owner demonstrably holds — a placeholder on a reserved domain (example.com, RFC 2606) could be taken over by anyone with one `git config user.email`."
+  },
+  "bots": [
+    {
+      "login": "dependabot[bot]",
+      "email": "49699333+dependabot[bot]@users.noreply.github.com",
+      "note": "Dependency bumps; no copyrightable work of a third party."
+    },
+    {
+      "login": "github-actions[bot]",
+      "email": "41898282+github-actions[bot]@users.noreply.github.com",
+      "note": "Commits from workflows in this repository."
+    },
+    {
+      "login": "claude-co-author-trailer",
+      "email": "noreply@anthropic.com",
+      "note": "The `Co-Authored-By:` trailer of Claude Code commits. No mailbox and no rights holder; the work is the committer's."
+    }
+  ],
+  "signatures": []
+}
