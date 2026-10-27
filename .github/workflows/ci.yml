@@ -1,5 +1,6 @@
-# CI for lighthouse: the Go lane (golangci-lint, go test) and the Python lane for the
-# hooks, helpers and scripts.
+# CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
+# finds a changed path in it, and a `binary` job that builds the Go binary with the real SPA
+# embedded and smoke-tests it.
 name: ci
 
 on:
@@ -13,7 +14,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.domains.outputs.web }}
+      go: ${{ steps.domains.outputs.go }}
+      python: ${{ steps.domains.outputs.python }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: domains
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: git diff -z --name-only --no-renames "$BASE...$HEAD" | python3 ci/domains.py classify --github-output "$GITHUB_OUTPUT"
+
   python:
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -26,6 +47,8 @@ jobs:
       - run: ci/literal-grep.sh
 
   go:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -52,3 +75,59 @@ jobs:
           out=$(go run ./cmd/lighthouse init --upgrade </dev/null) || true
           printf '%s\n' "$out"
           test "$out" = "No changes."
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      # The generated client must match web/openapi.json; `git status` also catches a new file.
+      - run: npm run gen && git status --porcelain -- src/api && test -z "$(git status --porcelain -- src/api)"
+      - run: npm run build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-dist
+          path: internal/web/dist
+
+  # The binary with the real SPA embedded. Runs when web or go changed, also when web was
+  # skipped; a failed web job blocks it.
+  binary:
+    needs: [changes, web]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.go == 'true') && needs.web.result != 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - if: needs.web.result == 'success'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-dist
+          path: internal/web/dist
+      - if: needs.web.result != 'success'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+      - if: needs.web.result != 'success'
+        working-directory: web
+        run: npm ci && npm run build
+      - run: CGO_ENABLED=0 go build ./cmd/lighthouse
+      - run: ci/spa-smoke.sh ./lighthouse
