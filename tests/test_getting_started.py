@@ -101,3 +101,24 @@ def test_config_example_loads(tmp_path):
         )
         assert out.returncode == 0, out.stderr
         assert out.stdout.strip() == want
+
+
+CHAIN = ["/lighthouse-write-issue", "/lighthouse-start-issue", "/lighthouse-verify-pr"]
+
+
+def test_first_issue_walks_the_chain_in_order():
+    text = section("Your first issue")
+    found = [re.search(rf"{re.escape(cmd)}(?![\w-])", text) for cmd in CHAIN]
+    assert None not in found, f"missing from the chain: {[c for c, m in zip(CHAIN, found) if not m]}"
+    positions = [m.start() for m in found]
+    assert positions == sorted(positions)
+
+
+def test_first_issue_names_only_existing_skills():
+    named = set(re.findall(r"/lighthouse-([\w-]+)", section("Your first issue")))
+    skills = {p.name for p in (ROOT / "pack").glob("*/skills/*")}
+    assert named <= skills, f"unknown skills {sorted(named - skills)}"
+
+
+def test_readme_links_the_guide():
+    assert "](docs/getting-started.md)" in (ROOT / "README.md").read_text(encoding="utf-8")

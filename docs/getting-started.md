@@ -122,3 +122,29 @@ command = "<your test command>"
 Every other key, with its type and default, is in `SCHEMA` and `DEFAULTS` of
 `.lighthouse/lib/lighthouse_lib/config.py`. A key with a wrong type or value is an error that
 names the file and the key.
+
+## Your first issue
+
+The chain runs from an issue to a merged PR. Each step names what you type, what you see, and
+which hook can step in. Run the skills in Claude Code, in your repository.
+
+1. **Write the issue.** Type `/lighthouse-write-issue` and describe the change. You get an issue
+   on GitHub with acceptance criteria, in `project.language`.
+2. **Start on it.** Type `/lighthouse-start-issue <nr>`. You see a worktree under
+   `.claude/worktrees/` on a branch `issue-<nr>-<slug>`, and one route line:
+   `#<nr> Gate <n>[a|b|c]: <route> — <reason>`. Gate `4a` builds directly. Gate `4b` writes a
+   plan first and gate `4c` a spec first; both end in a handoff, a start command for a fresh
+   session.
+3. **Build in the worktree.** `pre-commit-tests` runs your `[test_gate] command` before every
+   `git commit`; a red run blocks the commit. `main-commit-guard` blocks a commit or push on
+   `main`, also through `git -C <path>` or a preceding `cd`. `worktree-guard` warns when you
+   write into the main checkout on `main`.
+4. **Open the PR.** Type `/lighthouse-verify-pr`. It checks each acceptance criterion on the
+   branch and writes the PR body with an evidence table. `pr-create-gate` blocks a
+   `gh pr create` whose body lacks `Closes #N` with evidence, `Refs #N — <reason>` or
+   `No issue: <reason>`.
+5. **After the merge.** Type `/lighthouse-close-issue <nr>`. A `Closes #N` PR closed the issue on
+   merge; the skill checks the evidence and reopens the issue when it does not hold.
+
+The hooks run only in Claude Code. In Codex and OpenCode the skills and `AGENTS.md` are there,
+but no hook is: check the branch yourself before a commit, and run your `[test_gate] command`.
