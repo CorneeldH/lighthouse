@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,7 +29,7 @@ const (
 )
 
 func newServeCommand() *cobra.Command {
-	var addr, dbPath, repo string
+	var addr, dbPath, repo, forgeURL string
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the lighthouse server",
@@ -38,14 +39,31 @@ func newServeCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			return serve(ctx, addr, dbPath, forge.New(repo, githubToken(os.Getenv)), cmd.ErrOrStderr())
+			return serve(ctx, addr, dbPath, newForge(repo, forgeURL, os.Getenv), cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
 	cmd.Flags().StringVar(&dbPath, "db", "", "path of the SQLite database (default: the lighthouse data directory)")
 	cmd.Flags().StringVar(&repo, "repo", os.Getenv("LIGHTHOUSE_FORGE_REPO"),
 		"GitHub repository to read questions and returned issues from, as owner/name (default: $LIGHTHOUSE_FORGE_REPO); the token comes from GH_TOKEN or GITHUB_TOKEN")
+	cmd.Flags().StringVar(&forgeURL, "forge-url", envOr("LIGHTHOUSE_FORGE_URL", forge.DefaultBaseURL),
+		"GitHub API base URL (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); the token is sent there")
 	return cmd
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+// newForge builds the GitHub client for repo against baseURL (trailing slashes dropped), with
+// the token from the environment.
+func newForge(repo, baseURL string, getenv func(string) string) *forge.Client {
+	c := forge.New(repo, githubToken(getenv))
+	c.BaseURL = strings.TrimRight(baseURL, "/")
+	return c
 }
 
 // githubToken returns GH_TOKEN, else GITHUB_TOKEN, else "".

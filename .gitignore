@@ -10,7 +10,9 @@ __pycache__/
 # Go
 /lighthouse
 
-# Frontend: dependencies, and the Vite build (only the .gitkeep is tracked)
+# Frontend: dependencies, Playwright output, and the Vite build (only the .gitkeep is tracked)
 web/node_modules/
+web/test-results/
+web/playwright-report/
 /internal/web/dist/*
 !/internal/web/dist/.gitkeep

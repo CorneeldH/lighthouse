@@ -32,12 +32,15 @@ type Client struct {
 	HTTP                 *http.Client
 }
 
+// DefaultBaseURL is the GitHub API root.
+const DefaultBaseURL = "https://api.github.com"
+
 // New returns a client for repo ("owner/name") with the given token.
 func New(repo, token string) *Client {
 	return &Client{
 		Repo:    repo,
 		Token:   token,
-		BaseURL: "https://api.github.com",
+		BaseURL: DefaultBaseURL,
 		HTTP:    &http.Client{Timeout: 30 * time.Second},
 	}
 }

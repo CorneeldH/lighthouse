@@ -4,7 +4,7 @@ Agentic lighthouse: the development chain from issue to green pull request, buil
 
 ## Status
 
-Early development: the skill and hook packages install through `lighthouse init`, and the server runs with `lighthouse serve`. Roadmap: the milestones of this repository.
+Usable without the controller: `lighthouse init` installs the skill and hook packages into your repository, with worktrees, a test gate before every commit, PR bodies with evidence and, with `codex`, adversarial reviews. Start with [Getting started](docs/getting-started.md). The server, `lighthouse serve`, is in early development. Roadmap: the milestones of this repository.
 
 ## Design
 
@@ -17,6 +17,10 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 ## Running the server
 
 `lighthouse serve` starts the API and web UI on `127.0.0.1:8127`. Install it as a systemd user service: [install](docs/install.md).
+
+The page shows the Claude and Codex usage windows, the open questions and the returned issues of one GitHub repository.
+
+![lighthouse UI](docs/images/ui-m1.png)
 
 ## Contributing
 

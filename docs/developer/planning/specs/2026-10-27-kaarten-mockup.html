@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Startgids-kaart</title>
+<style>body{margin:0;padding:24px 32px 48px;background:#f6f6f7;color:#111;font-family:system-ui,sans-serif}.subtitle{color:#555;max-width:900px}code{font-size:.92em}</style>
+</head>
+<body>
+<!-- Schets uit de brainstorm van #87 (v3). Vorm, geen bron voor inhoud. -->
+<h2>A, v3: handoff op de sprongen omhoog, en de taalpakketten erbij</h2>
+<p class="subtitle">Elke sprong terug naar boven is een overgang naar een nieuwe sessie: daar hoort een handoff. Een <b>volle</b> badge staat in lighthouse al zo. Een <b>gestippelde</b> badge hoort er wel, zoals in paia, maar lighthouse doet het nog niet. Ontwerp is daarom gesplitst in spec en plan: zeven kolommen.</p>
+
+<style>
+.lhwrap{font-family:system-ui,sans-serif}
+.routes{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.routes button{border:1px solid #888;background:transparent;color:inherit;border-radius:999px;padding:6px 12px;font:600 12px system-ui;cursor:pointer}
+.routes button.on{background:#f4d74b;color:#000;border-color:#f4d74b}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;margin:6px 0 10px;opacity:.9}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:4px;display:inline-block}
+.lhmap{position:relative;width:100%;aspect-ratio:1200/640;background:#14213d;border-radius:20px;overflow:hidden}
+.lhmap svg{position:absolute;inset:0;width:100%;height:100%}
+.lchip{position:absolute;transform:translate(-50%,-50%);width:12.6%;padding:5px 7px;border-radius:999px;font-size:10.5px;font-weight:600;border:0;cursor:pointer;text-align:left;display:flex;gap:5px;align-items:center;white-space:nowrap;overflow:hidden;transition:opacity .2s, box-shadow .2s}
+.lchip i{font-style:normal;flex:0 0 17px;height:17px;border-radius:50%;display:grid;place-items:center;font-size:10px;background:rgba(0,0,0,.18)}
+.lchip.lh{background:#3d68ec;color:#fff}
+.lchip.sp{background:#00af81;color:#fff}
+.lchip.hk{background:#dd784b;color:#000;border-radius:8px}
+.lchip.gh{background:#d4d4d8;color:#000}
+.lchip.dim{opacity:.2}
+.lchip.cur{box-shadow:0 0 0 3px #f4d74b,0 0 16px #f4d74b}
+.ho{position:absolute;transform:translate(-50%,-50%);font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap;cursor:pointer;border:0;transition:opacity .2s}
+.ho.now{background:#fff;color:#14213d}
+.ho.todo{background:#14213d;color:#fff;border:1.5px dashed #fff}
+.ho.dim{opacity:.15}
+.colh2{position:absolute;top:2%;transform:translateX(-50%);color:#cfd8ff;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-align:center;text-transform:uppercase;white-space:nowrap}
+.colh2 em{display:block;font-style:normal;font-weight:400;letter-spacing:0;text-transform:none;opacity:.7}
+.band{position:absolute;left:1.5%;right:1.5%;bottom:2%;height:8%;border-radius:12px;background:rgba(255,255,255,.05);color:#cfd8ff;font-size:11px;padding:6px 10px}
+.det{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.box{border-radius:16px;padding:16px 18px;border:1px solid rgba(127,127,127,.3)}
+.det h4,.packs h4{margin:0 0 4px;font-size:16px}
+.k{font-size:11px;text-transform:uppercase;letter-spacing:.08em;opacity:.65;font-weight:700}
+.det dl{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13px;margin:10px 0 0}
+.det dt{opacity:.65}
+.det dd{margin:0}
+.packs{margin-top:22px}
+.packs .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:10px}
+.packs .box{padding:14px}
+.packs ul{margin:8px 0 0;padding-left:16px;font-size:12.5px;line-height:1.5}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;margin-right:4px}
+.tag.lh{background:#3d68ec;color:#fff}.tag.hk{background:#dd784b;color:#000}.tag.gh{background:#d4d4d8;color:#000}
+</style>
+
+<div class="lhwrap">
+<div class="legend">
+  <span><b class="sw" style="background:#3d68ec"></b>lighthouse-skill</span>
+  <span><b class="sw" style="background:#00af81"></b>Superpowers-skill</span>
+  <span><b class="sw" style="background:#dd784b"></b>hook</span>
+  <span><b class="sw" style="background:#d4d4d8"></b>GitHub</span>
+  <span><b style="background:#fff;color:#14213d;padding:1px 6px;border-radius:999px;font-size:10px">↻ handoff</b> nu al · <b style="border:1.5px dashed currentColor;padding:1px 6px;border-radius:999px;font-size:10px">↻ handoff</b> nog niet</span>
+  <span>⌨ jij · ↪ andere skill · ⚡ tool-call · ⚙ GitHub-event</span>
+</div>
+<div class="routes" id="routes"></div>
+<div class="lhmap" id="lhmap"><svg id="lhsvg" viewBox="0 0 1200 640" preserveAspectRatio="none"></svg>
+  <div class="band"><b>Altijd aan</b> · <span style="opacity:.8">usage-guard ⚡ waarschuwt en pauzeert bij je limiet, en vraagt dan zelf om een handoff · instrument ⌨ kiest waar een nieuwe regel hoort · worktree-audit ⌨ ruimt worktrees op</span></div>
+</div>
+<div class="det" id="det">
+  <div class="box"><div class="k">niveau 3</div><h4>Klik een chip of een handoff</h4><p style="margin:0;font-size:14px;opacity:.8">Wat het doet, wanneer het start, wie het levert, en wat je mist zonder.</p></div>
+</div>
+
+<div class="packs">
+  <h3 style="margin:0">Pakketten: wat <code>init</code> erbij zet, en wanneer</h3>
+  <p class="subtitle" style="margin:4px 0 0">Core komt altijd mee. Een taalpakket stelt <code>init</code> voor als het jouw repo herkent; jij zegt ja of nee.</p>
+  <div class="grid">
+    <div class="box"><div class="k">altijd</div><h4>core</h4><ul>
+      <li><span class="tag lh">12 skills</span> de keten hierboven</li>
+      <li><span class="tag lh">2 agents</span> impact-scout, spec-adversary</li>
+      <li><span class="tag hk">8 hooks</span> guards, test gate, PR-gate, usage-guard</li>
+      <li><span class="tag gh">GitHub</span> PR-template, unblock-dependents</li></ul></div>
+    <div class="box"><div class="k">als er een go.mod in de root staat</div><h4>go</h4><ul>
+      <li><span class="tag lh">go-writing</span> normen, KPI's, teststrategie</li>
+      <li><span class="tag hk">gofmt</span> na elke edit</li>
+      <li><span class="tag hk">go-check</span> golangci-lint bij het stoppen van de sessie</li></ul></div>
+    <div class="box"><div class="k">als er een pyproject.toml in de root staat</div><h4>python</h4><ul>
+      <li><span class="tag lh">python-writing</span> normen voor Python</li>
+      <li><span class="tag hk">ruff-format</span> na elke edit</li>
+      <li><span class="tag hk">ty-check</span> types bij het stoppen</li>
+      <li>zet <code>uv run pytest -q</code> als test gate</li></ul></div>
+    <div class="box"><div class="k">als git een .sh of .bash bijhoudt</div><h4>shell</h4><ul>
+      <li><span class="tag lh">shell-gates</span> normen voor scripts die iets bewaken</li>
+      <li><span class="tag hk">shellcheck</span> na elke edit</li></ul></div>
+    <div class="box"><div class="k">als package.json "expo" noemt</div><h4>expo</h4><ul>
+      <li><span class="tag lh">refresh-expo-lockfiles</span> lockfiles verversen</li></ul></div>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+const W=1200,H=640;
+const COLS=[[90,"1 · Issue","what needs doing"],[260,"2 · Pick up","branch & route"],[430,"3 · Spec","what & why"],[600,"4 · Plan","how, step by step"],[770,"5 · Build","code & commits"],[940,"6 · PR","evidence & review"],[1110,"7 · Close","done"]];
+const N={
+ wi:[0,110,"lh","⌨","write-issue","Writes an issue with acceptance criteria, labels and a milestone. Checks for duplicates first.","/lighthouse-write-issue, or \"write an issue for…\"","Issues without testable criteria; verify-pr has nothing to check."],
+ gi:[0,200,"gh","⚙","GitHub issue","The issue is the single source of what 'done' means.","—","—"],
+ si:[1,110,"lh","⌨","start-issue","Reads the issue, checks if it is already done, makes a worktree, asks route-issue for the route.","\"pick up 87\"","You start editing on main; the guard blocks the commit later."],
+ ri:[1,190,"lh","↪","route-issue","Picks one route: known recipe, bug, small job, plan, or spec first.","called by start-issue","You guess how much design an issue needs."],
+ wt:[1,270,"sp","↪","using-git-worktrees","Creates the worktree on branch issue-<nr>-<slug>.","called by start-issue","—"],
+ sc:[1,350,"lh","↪","impact-scout","Read-only agent: files, tests and rules the issue touches.","start-issue, routes 4b/4c","Spec and plan each explore the code again."],
+ bs:[2,110,"sp","↪","brainstorming","Asks what you want, lays out approaches, writes the spec.","route 4c","—"],
+ sr:[2,200,"lh","⌨","spec-adversarial-review","Codex reviews the spec, read-only. Ends in a handoff.","/lighthouse-spec-adversarial-review","Optional: needs codex."],
+ wp:[3,110,"sp","↪","writing-plans","Turns spec or issue into a step-by-step plan.","routes 4b/4c","—"],
+ pr_:[3,200,"lh","⌨","plan-adversarial-review","Codex checks the plan can be executed. Ends in a handoff.","/lighthouse-plan-adversarial-review","Optional: needs codex."],
+ ex:[4,110,"sp","⌨","executing-plans / SDD","Executes the plan, inline or with subagents.","the handoff's start command","—"],
+ db:[4,180,"sp","↪","systematic-debugging","Root cause before fix.","route 2 (bug)","—"],
+ td:[4,250,"sp","↪","test-driven-development","Red, green, refactor.","during execution","—"],
+ ts:[4,320,"lh","↪","testing + language skill","What a good test is; per language the norms (see the packs below).","on writing a test or code","Tests that pass even when behaviour breaks."],
+ mg:[4,390,"hk","⚡","main-commit-guard","Blocks a commit or push on main. worktree-guard warns earlier, at the write.","git commit / push","Work lands on main without a PR."],
+ pt:[4,460,"hk","⚡","pre-commit-tests","Runs your [test_gate] command before every commit; red blocks.","every git commit","Red commits; CI finds it later."],
+ bw:[4,530,"hk","⚡","write gates · linkcheck","Formatters and checks on what was written; dead markdown links block.","after every Edit/Write/Bash","—"],
+ vp:[5,110,"lh","⌨","verify-pr","Checks every acceptance criterion and writes the PR body with evidence.","\"make a PR\"","PR bodies without evidence; the gate blocks."],
+ pg:[5,190,"hk","⚡","pr-create-gate","Blocks gh pr create without Closes #N + evidence, Refs or No issue.","gh pr create","—"],
+ ci:[5,270,"gh","⚙","PR + CI","PR template from lighthouse; your CI runs.","push","—"],
+ fp:[5,350,"lh","⌨","fix-pr","Makes a red or conflicting PR green.","\"PR 12 is red\"","—"],
+ rc:[5,430,"sp","↪","receiving-code-review","Weighs review findings before changing code.","called by fix-pr","—"],
+ cl:[6,110,"lh","⌨","close-issue","After the merge: checks the evidence held, closes or reopens.","/lighthouse-close-issue","Issues closed on hope."],
+ ub:[6,200,"gh","⚙","unblock-dependents","Workflow: when an issue closes, the issues it blocked lose their block.","issue closed","Blocked issues stay blocked by hand."],
+};
+// handoff on an upward jump between two nodes: [from,to,now?]
+const HO=[["gi","si",false],["sc","bs",false],["sr","wp",true],["sc","wp",false],["pr_","ex",true],["ri","ex",false],["ri","db",false],["pt","vp",false],["ci","cl",false]];
+const ROUTES={
+ "Spec first (4c)":["wi","gi","si","ri","wt","sc","bs","sr","wp","pr_","ex","td","pt","vp","pg","ci","cl","ub"],
+ "Plan (4b)":["wi","gi","si","ri","wt","sc","wp","pr_","ex","pt","vp","pg","ci","cl"],
+ "Small job (4a)":["wi","gi","si","ri","ex","ts","pt","vp","pg","ci","cl"],
+ "Bug (2)":["wi","gi","si","ri","db","td","pt","vp","pg","ci","cl"],
+ "Red PR":["ci","fp","rc","ci"],
+};
+const map=document.getElementById('lhmap'),svg=document.getElementById('lhsvg'),NS='http://www.w3.org/2000/svg';
+const mk=(t,a)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);svg.appendChild(e);return e;};
+COLS.forEach(([x,h,e])=>{mk('rect',{x:x-80,y:52,width:160,height:520,rx:16,fill:'rgba(255,255,255,.05)'});const d=document.createElement('div');d.className='colh2';d.style.left=(x/W*100)+'%';d.innerHTML=h+'<em>'+e+'</em>';map.appendChild(d);});
+const P=k=>({x:COLS[N[k][0]][0],y:N[k][1]});
+function seg(a,b){if(Math.abs(a.x-b.x)<5)return ` C ${a.x+55} ${a.y}, ${b.x+55} ${b.y}, ${b.x} ${b.y}`;const m=(a.x+b.x)/2;return ` C ${m} ${a.y}, ${m} ${b.y}, ${b.x} ${b.y}`;}
+function curve(ks){let d='M'+P(ks[0]).x+' '+P(ks[0]).y;for(let i=1;i<ks.length;i++)d+=seg(P(ks[i-1]),P(ks[i]));return d;}
+const paths={};Object.entries(ROUTES).forEach(([r,ks])=>paths[r]=mk('path',{d:curve(ks),fill:'none',stroke:'rgba(255,255,255,.15)','stroke-width':1.3}));
+const chips={};
+Object.entries(N).forEach(([k,n])=>{const b=document.createElement('button');b.className='lchip '+n[2];const p=P(k);b.style.left=(p.x/W*100)+'%';b.style.top=(p.y/H*100)+'%';b.innerHTML='<i>'+n[3]+'</i>'+n[4];b.onclick=()=>show(k);map.appendChild(b);chips[k]=b;});
+const hos=HO.map(([a,b,now])=>{const pa=P(a),pb=P(b);const e=document.createElement('button');e.className='ho '+(now?'now':'todo');e.textContent='↻ handoff';e.style.left=((pa.x+pb.x)/2/W*100)+'%';e.style.top=((pa.y+pb.y)/2/H*100)+'%';e.dataset.a=a;e.dataset.b=b;
+ e.onclick=()=>{document.getElementById('det').innerHTML=`<div class="box"><div class="k">overgang · ${COLS[N[a][0]][1]} → ${COLS[N[b][0]][1]}</div><h4>↻ handoff</h4><p style="margin:0;font-size:14px">De sessie stopt hier. <b>lighthouse-handoff</b> schrijft één blok om te plakken in een nieuw venster: worktree, branch, doel, de achtergrond, en het eerste commando. Zo begint de volgende fase met een schone context.</p></div>
+ <div class="box"><div class="k">Status</div><dl><dt>Nu</dt><dd>${now?'lighthouse doet dit al op deze overgang':'nog niet: de skill stopt hier zonder handoff (paia doet het wel)'}</dd><dt>Start</dt><dd>aan het einde van de fase, of als usage-guard je limiet ziet</dd><dt>Zonder</dt><dd>De volgende sessie raadt de context, of jij legt hem opnieuw uit.</dd></dl></div>`;};
+ map.appendChild(e);return e;});
+const who={lh:'lighthouse · pack/core of een taalpakket',sp:'Superpowers-plugin',hk:'lighthouse-hook in .claude/hooks/lighthouse/',gh:'GitHub (lighthouse levert template of workflow)'};
+function show(k){const n=N[k];Object.values(chips).forEach(c=>c.classList.remove('cur'));chips[k].classList.add('cur');
+ document.getElementById('det').innerHTML=`<div class="box"><div class="k">${COLS[n[0]][1]} · ${n[3]}</div><h4>${n[4]}</h4><p style="margin:0;font-size:14px">${n[5]}</p></div>
+ <div class="box"><div class="k">Hoe werkt dit?</div><dl><dt>Start</dt><dd>${n[6]}</dd><dt>Geleverd door</dt><dd>${who[n[2]]}</dd><dt>Zonder</dt><dd>${n[7]}</dd></dl></div>`;}
+const rb=document.getElementById('routes');
+Object.keys(ROUTES).forEach((r,i)=>{const b=document.createElement('button');b.textContent=r;b.onclick=()=>sel(r,b);rb.appendChild(b);if(!i)setTimeout(()=>sel(r,b));});
+function sel(r,btn){rb.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===btn));const ks=ROUTES[r],used=new Set(ks);
+ const pairs=new Set();for(let i=1;i<ks.length;i++)pairs.add(ks[i-1]+'>'+ks[i]);
+ Object.entries(paths).forEach(([id,p])=>{const on=id===r;p.setAttribute('stroke',on?'#f4d74b':'rgba(255,255,255,.1)');p.setAttribute('stroke-width',on?3:1.1);});
+ Object.entries(chips).forEach(([k,c])=>c.classList.toggle('dim',!used.has(k)));
+ hos.forEach(h=>h.classList.toggle('dim',!pairs.has(h.dataset.a+'>'+h.dataset.b)));}
+})();
+</script>
+</body>
+</html>
