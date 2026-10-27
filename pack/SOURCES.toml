@@ -137,7 +137,7 @@ source_path = ".claude/hooks/bash-write-gates.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/hooks/pre-commit-tests.sh"
+path = "pack/core/hooks/commit-tests.sh"
 source_path = ".claude/hooks/pre-commit-tests.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 

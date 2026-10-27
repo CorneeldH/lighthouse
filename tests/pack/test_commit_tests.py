@@ -1,4 +1,4 @@
-"""End-to-end tests for pack/core `pre-commit-tests.sh`, as installed (#884).
+"""End-to-end tests for pack/core `commit-tests.sh pre`, as installed (#884, #80).
 
 The hook runs as a subprocess, with real git repos in `tmp_path` and a
 fake `uv` at the front of `PATH`. The test command comes from `[test_gate] command`
@@ -32,10 +32,11 @@ from tests.pack._testkit import (
     tool_bin,
 )
 
-HOOK = INSTALLED_HOOKS / "pre-commit-tests.sh"
+HOOK = INSTALLED_HOOKS / "commit-tests.sh"
 HOOKS_JSON = CORE / "hooks" / "hooks.json"
 REAL_GIT = shutil.which("git")
 REAL_PYTHON3 = shutil.which("python3")
+SESSION = "s1"
 
 # The test command of a project the way paia would set it; the fake `uv`
 # records its arguments. `slot_wait_seconds = 1`: no test waits 180 s.
@@ -121,9 +122,20 @@ class Gate:
     def add_stub(self, name: str, script: str) -> None:
         tool_bin(self.stub, (), stubs={name: script})
 
-    def run(self, cmd: str, cwd: Path, path: str | None = None, **env: str):
+    def run(
+        self,
+        cmd: str,
+        cwd: Path,
+        path: str | None = None,
+        background: bool = False,
+        mode: tuple[str, ...] = ("pre",),
+        **env: str,
+    ):
         tail = os.environ["PATH"] if path is None else path
         full_env = {
+            # The markers of `record` land under this test's own tmp dir, not in the
+            # real state dir shared with every other test. Overridable through `env`.
+            "XDG_RUNTIME_DIR": str(self.tmp),
             # Stub directory always first: that way no test reaches the real `uv`.
             "PATH": f"{self.stub}{os.pathsep}{tail}",
             "CLAUDE_PROJECT_DIR": str(self.project),
@@ -136,7 +148,15 @@ class Gate:
             "LIGHTHOUSE_GATE_CGROUP_ROOT": str(self.cgroup),
             **env,
         }
-        return run_hook(HOOK, bash_payload(cmd, cwd), cwd, full_env)
+        payload = dict(bash_payload(cmd, cwd), session_id=SESSION)
+        if background:
+            payload["tool_input"]["run_in_background"] = True
+        return run_hook(HOOK, payload, cwd, full_env, args=mode)
+
+    def markers(self) -> list[Path]:
+        """The `record` markers of this session."""
+        state = self.tmp / "lighthouse-commit-tests" / SESSION
+        return sorted(state.glob("*.json")) if state.is_dir() else []
 
     def marks(self) -> list[str]:
         if not self.mark.exists():
@@ -161,6 +181,12 @@ def _context(stdout: str) -> str:
 
 def _worktree(repo: Path, path: Path, branch: str) -> None:
     git(repo, "worktree", "add", "-q", "-b", branch, str(path))
+
+
+def _worktree_on_default(repo: Path, path: Path) -> None:
+    """A second worktree on `main` too (`--force`): `pre` tests only a commit to the
+    default branch, and a test of the loop needs two roots that it tests."""
+    git(repo, "worktree", "add", "-q", "--force", str(path), "main")
 
 
 def test_gate_tests_the_tree_after_cd(gate: Gate) -> None:
@@ -219,7 +245,7 @@ def test_no_command_is_loud_and_allows(gate: Gate) -> None:
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
-    message = "pre-commit-tests: no test command configured, nothing was tested"
+    message = "commit-tests: no test command configured, nothing was tested"
     assert message in out["systemMessage"]
     assert message in out["hookSpecificOutput"]["additionalContext"]
     assert not gate.mark.exists()
@@ -233,7 +259,7 @@ def test_empty_command_is_off(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 0, result.stderr
-    message = "pre-commit-tests: no test command configured, nothing was tested"
+    message = "commit-tests: no test command configured, nothing was tested"
     assert message in json.loads(result.stdout)["systemMessage"]
     assert not gate.mark.exists()
 
@@ -280,7 +306,7 @@ def test_broken_config_blocks(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
     assert str(gate.toml) in result.stderr
     assert not gate.mark.exists()
 
@@ -291,7 +317,7 @@ def test_broken_host_toml_blocks(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
     assert str(gate.host) in result.stderr
     assert not gate.mark.exists()
 
@@ -336,7 +362,7 @@ def test_unchecked_exit_code(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
     assert "exit code 5" in result.stderr
     assert "tests failed" not in result.stderr
 
@@ -350,7 +376,7 @@ def test_unchecked_exit_codes_keep_the_output(gate: Gate, exit_code: str) -> Non
     result = gate.run("git commit -m x", gate.project, UV_EXIT=exit_code)
 
     assert result.returncode == 2, result.stdout
-    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
     assert f"exit code {exit_code}" in result.stderr
     assert "tests failed" not in result.stderr
     assert "3 passed" in result.stderr
@@ -396,6 +422,8 @@ def test_gate_tests_forge_worktree_of_same_repo(gate: Gate) -> None:
     """A worktree of a separate clone with the same `origin` is this project (#36)."""
     git(gate.project, "remote", "add", "origin", ORIGIN)
     work = forge_worktree(gate.project, gate.tmp)
+    # On the default branch: `pre` only tests a commit there.
+    git(work, "switch", "-q", "main")
 
     result = gate.run(f"git -C {work} commit -m x", gate.tmp)
 
@@ -560,7 +588,7 @@ def test_gate_loud_without_uv(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project, path=str(bin_dir))
 
     assert result.returncode == 2, result.stdout
-    assert "pre-commit-tests: COULD NOT CHECK" in result.stderr
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
     assert "uv" in result.stderr
     assert "tests failed" not in result.stderr
     assert not gate.mark.exists()
@@ -590,7 +618,7 @@ def test_gate_runs_once_per_root(gate: Gate) -> None:
 
 def test_gate_uses_one_deadline_for_two_roots(gate: Gate) -> None:
     second = gate.tmp / "X2"
-    _worktree(gate.project, second, "x2")
+    _worktree_on_default(gate.project, second)
     # Fake `date`: the deadline (now + 270) thus falls ~5 s after now. The first root
     # makes that easily, even on a busy runner; the second sleeps 8 s and so
     # runs over the same deadline.
@@ -632,7 +660,7 @@ def test_hook_timeout_exceeds_deadline() -> None:
         for block in registered["hooks"]["PreToolUse"]
         if block.get("matcher") == "Bash"
         for hook in block["hooks"]
-        if "pre-commit-tests.sh" in hook["command"]
+        if hook["command"].endswith("commit-tests.sh pre")
     ]
 
     assert len(entries) == 1
@@ -809,7 +837,7 @@ def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
     payload = json.dumps(bash_payload("git commit -m x", gate.project))
     start = time.monotonic()
     hook = subprocess.Popen(
-        [str(HOOK)],
+        [str(HOOK), "pre"],
         stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -934,7 +962,7 @@ def test_without_gate_slice_no_wrap(gate: Gate, host: str) -> None:
     assert result.returncode == 0, result.stderr
     assert gate.marks() == [str(gate.project.resolve())]
     assert (
-        "pre-commit-tests: no gate_slice in host.toml, tests run without memory brake"
+        "commit-tests: no gate_slice in host.toml, tests run without memory brake"
         in _context(result.stdout)
     )
     assert not Path(f"{gate.mark}.wrap").exists()
@@ -1003,7 +1031,7 @@ def test_gate_reports_oom_kill_in_the_slice(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "pre-commit-tests: COULD NOT CHECK — " + OOM_NOTICE in result.stderr
+    assert "commit-tests: COULD NOT CHECK — " + OOM_NOTICE in result.stderr
     assert "Root:" in result.stderr
     assert "3 passed" in result.stderr
     assert "tests failed" not in result.stderr
@@ -1054,7 +1082,7 @@ def test_gate_reports_systemd_run_that_did_not_start(gate: Gate) -> None:
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "pre-commit-tests: COULD NOT CHECK — systemd-run did not start" in result.stderr
+    assert "commit-tests: COULD NOT CHECK — systemd-run did not start" in result.stderr
     assert "Failed to start transient scope unit: x" in result.stderr
     assert "tests failed" not in result.stderr
     assert not gate.mark.exists()
@@ -1077,7 +1105,7 @@ def test_gate_reports_systemd_run_without_a_bus(gate: Gate, bus_error: str) -> N
     result = gate.run("git commit -m x", gate.project)
 
     assert result.returncode == 2, result.stdout
-    assert "pre-commit-tests: COULD NOT CHECK — systemd-run did not start" in result.stderr
+    assert "commit-tests: COULD NOT CHECK — systemd-run did not start" in result.stderr
     assert bus_error in result.stderr
     assert "tests failed" not in result.stderr
     assert not gate.mark.exists()
@@ -1115,7 +1143,7 @@ def test_gate_reports_a_signal_kill(gate: Gate, code: str) -> None:
     result = gate.run("git commit -m x", gate.project, UV_EXIT=code)
 
     assert result.returncode == 2, result.stdout
-    assert "pre-commit-tests: COULD NOT CHECK — " + SIGNAL_NOTICE in result.stderr
+    assert "commit-tests: COULD NOT CHECK — " + SIGNAL_NOTICE in result.stderr
     assert "tests failed" not in result.stderr
 
 
@@ -1126,7 +1154,7 @@ def test_signal_kill_without_the_rem_names_the_reason_not_the_slice(gate: Gate) 
 
     assert result.returncode == 2, result.stdout
     assert (
-        "pre-commit-tests: COULD NOT CHECK — gate killed by signal 9 "
+        "commit-tests: COULD NOT CHECK — gate killed by signal 9 "
         "(memory brake not available: systemctl --user failed)." in result.stderr
     )
     assert "systemd-oomd" not in result.stderr
@@ -1178,3 +1206,175 @@ def test_slot_wait_is_capped_by_the_deadline(gate: Gate) -> None:
     assert "all gate slots busy" in result.stderr
     assert elapsed < 10
     assert not gate.mark.exists()
+
+
+# --- `pre` per branch (#80): test a commit to the default branch, record the rest ---
+
+
+def test_pre_records_instead_of_testing_on_feature_branch(gate: Gate) -> None:
+    git(gate.project, "checkout", "-q", "-b", "issue-1-x")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    assert not gate.mark.exists()
+    markers = gate.markers()
+    assert len(markers) == 1
+    heads = json.loads(markers[0].read_text(encoding="utf-8"))["heads"]
+    assert list(heads) == [str(gate.project.resolve())]
+
+
+def test_pre_tests_before_commit_to_main(gate: Gate) -> None:
+    # `allow-main` lets a commit on main through the guard; it does not skip the tests.
+    (gate.project / ".claude").mkdir()
+    (gate.project / ".claude" / "allow-main").touch()
+
+    result = gate.run("git commit -m x", gate.project, UV_EXIT="1")
+
+    assert result.returncode == 2, result.stdout
+    assert "commit-tests: tests failed" in result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+    assert gate.markers() == []
+
+
+def test_pre_tests_on_configured_default_branch(gate: Gate) -> None:
+    gate.toml.write_text(
+        MINIMAL_TOML + 'default_branch = "trunk"\n\n' + TEST_GATE, encoding="utf-8"
+    )
+    git(gate.project, "branch", "-m", "main", "trunk")
+
+    on_trunk = gate.run("git commit -m x", gate.project)
+
+    assert on_trunk.returncode == 0, on_trunk.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+    assert gate.markers() == []
+
+    gate.mark.unlink()
+    git(gate.project, "checkout", "-q", "-b", "main")
+    on_main = gate.run("git commit -m x", gate.project)
+
+    assert on_main.returncode == 0, on_main.stderr
+    assert not gate.mark.exists()
+    assert len(gate.markers()) == 1
+
+
+def test_pre_detached_head_is_not_the_default_branch(gate: Gate) -> None:
+    git(gate.project, "checkout", "-q", "--detach")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    assert not gate.mark.exists()
+    assert len(gate.markers()) == 1
+
+
+def test_pre_unreadable_branch_blocks(gate: Gate) -> None:
+    gate.add_stub(
+        "git",
+        "#!/bin/sh\n"
+        'case "$*" in\n'
+        '  *"branch --show-current"*) echo "fatal: kapot" >&2; exit 128 ;;\n'
+        "esac\n"
+        f'exec "{REAL_GIT}" "$@"\n',
+    )
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
+    assert "kapot" in result.stderr
+    assert not gate.mark.exists()
+    assert gate.markers() == []
+
+
+def test_pre_unreadable_default_branch_blocks(gate: Gate) -> None:
+    gate.toml.write_text(
+        MINIMAL_TOML + "default_branch = 3\n\n" + TEST_GATE, encoding="utf-8"
+    )
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "commit-tests: COULD NOT CHECK" in result.stderr
+    assert "forge.default_branch" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_pre_background_commit_is_reported(gate: Gate) -> None:
+    git(gate.project, "checkout", "-q", "-b", "issue-1-x")
+
+    result = gate.run("git commit -m x", gate.project, background=True)
+
+    assert result.returncode == 0, result.stderr
+    message = (
+        f"commit-tests: {gate.project.resolve()} — commit in a background call is not"
+        " tested; commit in the foreground."
+    )
+    assert json.loads(result.stdout)["systemMessage"] == message
+    assert _context(result.stdout) == message
+    assert not gate.mark.exists()
+    assert gate.markers() == []
+
+
+def test_pre_record_failure_blocks(gate: Gate) -> None:
+    git(gate.project, "checkout", "-q", "-b", "issue-1-x")
+    # A file where the state dir must go: `record` cannot write its marker.
+    blocker = gate.tmp / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project, XDG_RUNTIME_DIR=str(blocker))
+
+    assert result.returncode == 2, result.stdout
+    assert "commit-tests: COULD NOT CHECK — could not record HEAD: " in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_pre_tests_main_and_records_feature_in_one_call(gate: Gate) -> None:
+    feature = gate.tmp / "F"
+    _worktree(gate.project, feature, "issue-1-x")
+
+    result = gate.run(
+        f"git commit -m a && git -C {feature} commit -m b", gate.project
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+    markers = gate.markers()
+    assert len(markers) == 1
+    heads = json.loads(markers[0].read_text(encoding="utf-8"))["heads"]
+    assert list(heads) == [str(feature.resolve())]
+
+
+@pytest.mark.parametrize("mode", [(), ("bogus",)], ids=["missing", "unknown"])
+def test_unknown_mode_blocks(gate: Gate, mode: tuple[str, ...]) -> None:
+    result = gate.run("git commit -m x", gate.project, mode=mode)
+
+    assert result.returncode == 2, result.stdout
+    assert (
+        "commit-tests: COULD NOT CHECK — unknown mode, expected pre or post"
+        in result.stderr
+    )
+    assert not gate.mark.exists()
+
+
+def test_hooks_json_registers_pre_and_post() -> None:
+    registered = json.loads(HOOKS_JSON.read_text(encoding="utf-8"))["hooks"]
+
+    def entries(event: str) -> list[dict]:
+        return [
+            hook
+            for block in registered[event]
+            if block.get("matcher") == "Bash"
+            for hook in block["hooks"]
+            if "commit-tests.sh" in hook["command"]
+        ]
+
+    pre = entries("PreToolUse")
+    assert [h["command"] for h in pre] == ["${CLAUDE_PLUGIN_ROOT}/hooks/commit-tests.sh pre"]
+    assert pre[0]["timeout"] == 300
+    for event in ("PostToolUse", "PostToolUseFailure"):
+        post = entries(event)
+        assert [h["command"] for h in post] == [
+            "${CLAUDE_PLUGIN_ROOT}/hooks/commit-tests.sh post"
+        ], event
+        assert post[0]["timeout"] == 300, event

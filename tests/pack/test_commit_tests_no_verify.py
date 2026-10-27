@@ -1,4 +1,4 @@
-"""The --no-verify refusal of pack/core `pre-commit-tests.sh`, as installed.
+"""The --no-verify refusal of pack/core `commit-tests.sh pre`, as installed.
 
 From paia's `test_quality_hooks.py`: the hook runs as a subprocess with the JSON
 on stdin, so that the contract (exit code + stderr) is tested and not a
@@ -16,7 +16,7 @@ from tests.pack._testkit import INSTALLED_HOOKS
 
 def _run(hook: Path, payload: dict, cwd: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [str(hook)],
+        [str(hook), "pre"],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
@@ -25,7 +25,7 @@ def _run(hook: Path, payload: dict, cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
-PRECOMMIT_HOOK = INSTALLED_HOOKS / "pre-commit-tests.sh"
+PRECOMMIT_HOOK = INSTALLED_HOOKS / "commit-tests.sh"
 
 
 def test_precommit_hook_blocks_no_verify(tmp_path):

@@ -135,7 +135,7 @@ be true before the merge). Exception: if the tests are not green, the skill make
 reports that.
 
 The evidence for that in Claude Code is the last outcome of the commit gate
-(`.claude/hooks/lighthouse/pre-commit-tests.sh` runs the test command at every `git commit` on the
+(`.claude/hooks/lighthouse/commit-tests.sh` runs the test command at every `git commit` on the
 committed tree): name it in `## Verification` and do not run the full suite again by hand. Only
 Outside Claude Code (OpenCode, Codex) do you run it yourself, with the command from
 `python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command` (rc 1: no test command

@@ -43,9 +43,10 @@ def run_hook(
     payload: dict,
     cwd: Path,
     env: dict | None = None,
+    args: tuple[str, ...] = (),
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [str(hook)],
+        [str(hook), *args],
         input=json.dumps(payload),
         capture_output=True,
         text=True,

@@ -15,7 +15,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "63f4ec696461057e589db076dc51b8aa615e2216a6928656f0745ec0897dcfeb"
+sha256 = "212cbc820d3ada78ece2433d25e1c54266b385097dd544201c3edb89a2022f8c"
 
 [[unit]]
 kind = "file"
@@ -162,7 +162,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-verify-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "2f315e82f4ac160d7e1d33a40b2da928f733a64accd8b309c595ca0486f8fe8a"
+sha256 = "7d41f4d81484831a05b6fe5061324c85b4ad20bb5058888328670afb293c0b2f"
 
 [[unit]]
 kind = "file"
@@ -208,6 +208,13 @@ sha256 = "8f12f7082054037b062214366cb9e700668009d2a9a665a8a59a5e79d45fb2f5"
 
 [[unit]]
 kind = "file"
+path = ".claude/hooks/lighthouse/commit-tests.sh"
+package = "core"
+version = "dev"
+sha256 = "af2dc2cecc1cfcd38152e77372ce58ad17e66b64964f385b9ecb8c3d5367c0cd"
+
+[[unit]]
+kind = "file"
 path = ".claude/hooks/lighthouse/go-check.sh"
 package = "go"
 version = "dev"
@@ -233,13 +240,6 @@ path = ".claude/hooks/lighthouse/pr-create-gate.sh"
 package = "core"
 version = "dev"
 sha256 = "94f662bd524f1d13c38b62224811b063050c00bcb8598cc54b54e6880fa3c211"
-
-[[unit]]
-kind = "file"
-path = ".claude/hooks/lighthouse/pre-commit-tests.sh"
-package = "core"
-version = "dev"
-sha256 = "08b62ba15a1865e4e2e0d6a14a103590daaffb679d8c7dcda37078c0682a9a34"
 
 [[unit]]
 kind = "file"
@@ -281,7 +281,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/worktree-linkcheck.sh"
 package = "core"
 version = "dev"
-sha256 = "5eaae857dc506872e1d4edaa470e1debd1967ddefb841604be010e63ff4398a8"
+sha256 = "10b9362dc64f99a3d1adcbeec0e27034967ffe9727f69c5ef6e30c46344ac1c1"
 
 [[unit]]
 kind = "permission"
@@ -326,10 +326,26 @@ sha256 = "8663afece384e716ea359077be6f936ce9114420d757a9f24512ccd34eaf6ded"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
+id = "PostToolUseFailure|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/commit-tests.sh post"
+package = "core"
+version = "dev"
+sha256 = "57a20b21e0ab76c46544b7b46562dff254e91c8b478a873498a6973c70599ef0"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
 id = "PostToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/bash-write-gates.sh post"
 package = "core"
 version = "dev"
 sha256 = "8663afece384e716ea359077be6f936ce9114420d757a9f24512ccd34eaf6ded"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PostToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/commit-tests.sh post"
+package = "core"
+version = "dev"
+sha256 = "57a20b21e0ab76c46544b7b46562dff254e91c8b478a873498a6973c70599ef0"
 
 [[unit]]
 kind = "hook"
@@ -374,6 +390,14 @@ sha256 = "563a5c7dae6c080cd28088f58aa2f24b3284dba37df995df515ecda7dff09356"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
+id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/commit-tests.sh pre"
+package = "core"
+version = "dev"
+sha256 = "417fdca6d9c5a07c5d8472f01051091b582f70a10dd92e7c19c2c478b900a3f7"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
 id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/main-commit-guard.sh"
 package = "core"
 version = "dev"
@@ -386,14 +410,6 @@ id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/pr-create
 package = "core"
 version = "dev"
 sha256 = "40f6017a438a83b00d6940e010d43dae72fe12eb7996b232e99779afa4a069a0"
-
-[[unit]]
-kind = "hook"
-path = ".claude/settings.json"
-id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/pre-commit-tests.sh"
-package = "core"
-version = "dev"
-sha256 = "7e026b6db6ab4ee9a1a642700121e3ffcdd2c806672a4ba123a92ae0534ded28"
 
 [[unit]]
 kind = "hook"
@@ -447,7 +463,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "3faf5ad9a6ea5511d1167f5e5fb2ebe547d18ab0809e2870e1896459f0814cde"
+sha256 = "2572ae302559c11f22514c1b1dbb71a8da7a36e1b5bc6c846756f0fdc24ee79c"
 
 [[unit]]
 kind = "file"
@@ -594,7 +610,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-verify-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "2f315e82f4ac160d7e1d33a40b2da928f733a64accd8b309c595ca0486f8fe8a"
+sha256 = "7d41f4d81484831a05b6fe5061324c85b4ad20bb5058888328670afb293c0b2f"
 
 [[unit]]
 kind = "file"
@@ -643,7 +659,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "6c72a62d0cb256b2a34257b06c591d8fcf3dd71061f9ce6708764c454a041e9a"
+sha256 = "1342039be950a66cfa8edb037eaec61f2e9a4557784018d3e6beb66db0df6dde"
 
 [[unit]]
 kind = "file"
@@ -734,7 +750,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/git_invocations.py"
 package = "core"
 version = "dev"
-sha256 = "d88849196c641a0b35d4cc9a2b03b2e24fb98d2572ad9bffc0bbcf0c0725b0c9"
+sha256 = "76bc6df60dbc43c33c6cccea7dd9ddcd16022e923b9aeced1811db39fc9e4537"
 
 [[unit]]
 kind = "file"
@@ -755,7 +771,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/no_verify.py"
 package = "core"
 version = "dev"
-sha256 = "ec57cd093f4af7f753f15a22b49547350f5a388694bd37befa3de207ce02b285"
+sha256 = "4139b296725819d9c718fad7ff995e1193da24507617f405bf17b27fe81b6fed"
 
 [[unit]]
 kind = "file"
@@ -776,7 +792,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/repo_identity.py"
 package = "core"
 version = "dev"
-sha256 = "7a8d3602d48e30e1afd8254aacea9e7c8725ae72db26bb5357118c7dad891d7d"
+sha256 = "b63e263809417cbe89da63c3fe851a46c312b6a29dbac3894d83ba40c0f030ac"
 
 [[unit]]
 kind = "file"
