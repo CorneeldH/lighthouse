@@ -39,7 +39,9 @@ Every row is a command that runs in this repository.
 | Diff coverage on your new source lines | `python3 .lighthouse/scripts/quality/ratchet.py coverage` (optional, when in doubt) | ≥ 90% |
 
 Without a `.ruff-version`, drop the pin: `uvx ruff check …`. Row 3 is the command the test gate
-runs before every commit; when `config.py test_gate.command` gives rc 1 or an empty line, the
+runs after every commit, on the files of that commit;
+`python3 .lighthouse/scripts/gate_python.py -- uv run pytest -q` picks the tests of the commit. A red
+run comes back to you: fix it in a new commit. When `config.py test_gate.command` gives rc 1 or an empty line, the
 project has none (`command = ""` turns the gate off).
 
 Row 4 is not a required step before the PR. When the repository runs the nightly ratchet

@@ -14,8 +14,9 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
 
 - `main-commit-guard.sh` — PreToolUse `Bash`. Blocks (exit 2) a commit or push on `main`,
   also through `git -C <path>` and a preceding `cd`.
-- `pre-commit-tests.sh` — PreToolUse `Bash`. Runs `[test_gate] command` before every
-  `git commit`; a red run blocks.
+- `commit-tests.sh` — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. `pre` blocks
+  `--no-verify` and tests a commit to `main` before it; `post` runs `[test_gate] command` on the
+  files of the commit and reports red.
 - `bash-write-gates.sh` — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. Runs the
   write gates on what a Bash call wrote.
 - `pr-create-gate.sh` — PreToolUse `Bash`. Blocks a `gh pr create` whose body lacks

@@ -48,7 +48,9 @@ would wait on stdin. Row 2 needs Go 1.23 or later; on an older Go it is not meas
 `-shuffle=on` never comes from the test cache, so `(cached)` does not appear there. Use
 `-count=1` only in a run without shuffle, when you suspect a stale cached result.
 
-Row 6 is the command the test gate runs before every commit. When `config.py test_gate.command`
+Row 6 is the command the test gate runs after every commit. The gate runs it on the files of that
+commit; `python3 .lighthouse/scripts/gate_go.py -- go test -race` picks the packages of the commit.
+A red run comes back to you: fix it in a new commit. When `config.py test_gate.command`
 gives rc 1 or an empty line, the repository has no test gate: set one in `lighthouse.toml`, for a
 Go repository `[test_gate] command = "go test -shuffle=on ./..."`.
 
