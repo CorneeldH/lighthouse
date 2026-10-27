@@ -46,6 +46,8 @@ def test_changes_job_classifies():
     changes = _jobs()["changes"]
     for needle in ("fetch-depth: 0", "--no-renames", " -z ", "ci/domains.py classify"):
         assert needle in changes, needle
+    # A step line of its own (not the comment): without it `git diff | classify` has no pipefail.
+    assert re.search(r"^        shell: bash\s*$", changes, re.MULTILINE)
 
 
 def test_web_job_runs_every_check():
@@ -81,8 +83,8 @@ def test_binary_builds_after_web():
 
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
-    uses = re.findall(r"^\s*- uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert uses
+    uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
+    assert len(uses) == 14, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)

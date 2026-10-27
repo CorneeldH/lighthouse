@@ -27,6 +27,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: domains
+        # `shell: bash` runs with -o pipefail: a failed `git diff` must not look like an empty diff.
+        shell: bash
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
