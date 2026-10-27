@@ -67,6 +67,26 @@ func TestGithubToken(t *testing.T) {
 	}
 }
 
+// waitListening waits for the serve start line and returns the address it names.
+func waitListening(t *testing.T, errOut *syncBuf, done <-chan error) string {
+	t.Helper()
+	const marker = "lighthouse: listening on "
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, rest, ok := strings.Cut(errOut.String(), marker); ok && strings.Contains(rest, "\n") {
+			return strings.TrimSpace(rest)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no start line within 5s; stderr: %q", errOut.String())
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("serve returned early: %v", err)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
 // startServe runs serve on a free port and returns its address and a stop func that
 // cancels and waits for the result.
 func startServe(t *testing.T) (addr string, stop func() error) {
@@ -79,21 +99,7 @@ func startServe(t *testing.T) (addr string, stop func() error) {
 		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), forge.New("", ""), errOut)
 	}()
 
-	const marker = "lighthouse: listening on "
-	deadline := time.Now().Add(5 * time.Second)
-	for addr == "" {
-		if _, rest, ok := strings.Cut(errOut.String(), marker); ok && strings.Contains(rest, "\n") {
-			addr = strings.TrimSpace(rest)
-		} else if time.Now().After(deadline) {
-			t.Fatalf("no start line within 5s; stderr: %q", errOut.String())
-		} else {
-			select {
-			case err := <-done:
-				t.Fatalf("serve returned early: %v", err)
-			case <-time.After(10 * time.Millisecond):
-			}
-		}
-	}
+	addr = waitListening(t, errOut, done)
 	return addr, func() error {
 		cancel()
 		select {
@@ -174,22 +180,7 @@ func TestServeForgeURL(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- root.ExecuteContext(ctx) }()
 
-	const marker = "lighthouse: listening on "
-	var addr string
-	deadline := time.Now().Add(5 * time.Second)
-	for addr == "" {
-		if _, rest, ok := strings.Cut(errOut.String(), marker); ok && strings.Contains(rest, "\n") {
-			addr = strings.TrimSpace(rest)
-		} else if time.Now().After(deadline) {
-			t.Fatalf("no start line within 5s; stderr: %q", errOut.String())
-		} else {
-			select {
-			case err := <-done:
-				t.Fatalf("serve returned early: %v", err)
-			case <-time.After(10 * time.Millisecond):
-			}
-		}
-	}
+	addr := waitListening(t, errOut, done)
 
 	resp, err := http.Get("http://" + addr + "/api/questions")
 	if err != nil {
