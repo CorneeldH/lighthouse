@@ -143,19 +143,69 @@ def test_cli_returns_rc_of_command(module):
     assert run_cli(module, files, "--", "false").returncode == 1
 
 
-def test_cli_go_list_failure_passes_stderr_and_rc(module):
+# Exit 3 is "nothing was tested" (COULD NOT CHECK): a project lists it in
+# `unchecked_exit_codes`. Exit 2 cannot go there, pytest uses it.
+UNCHECKED = "gate-go: COULD NOT CHECK — "
+
+
+def test_cli_go_list_failure_keeps_stderr_and_is_rc_3(module):
+    # go list cannot list the module: no package was mapped, so nothing was tested.
     (module / "a" / "a.go").write_text("package a\nimport (\n")
     files = module / "files.txt"
     files.write_text("a/a.go\n")
     done = run_cli(module, files, "--", "echo")
-    assert done.returncode != 0
-    assert done.stderr
+    assert done.returncode == 3
+    assert UNCHECKED + "go list failed" in done.stderr
+    assert "a.go" in done.stderr
+    assert "gate-go: example.com" not in done.stdout
 
 
-def test_cli_without_separator_is_rc_2():
-    done = run_cli(Path.cwd(), None, "echo")
-    assert done.returncode == 2
-    assert "usage" in done.stderr
+@pytest.mark.parametrize("args", [("echo",), ("--",), ()])
+def test_cli_usage_error_is_rc_3(args):
+    done = run_cli(Path.cwd(), None, *args)
+    assert done.returncode == 3, done.stderr
+    assert UNCHECKED + "usage: gate_go.py -- CMD..." in done.stderr
+
+
+def test_cli_missing_files_list_is_rc_3(module):
+    done = run_cli(module, module / "nope.txt", "--", "echo")
+    assert done.returncode == 3
+    assert UNCHECKED + "cannot read the changed files" in done.stderr
+
+
+def test_cli_missing_go_is_rc_3(tmp_path):
+    files = tmp_path / "files.txt"
+    files.write_text("a/a.go\n")
+    empty = tmp_path / "bin"
+    empty.mkdir()
+    env = {k: v for k, v in os.environ.items() if k != "LIGHTHOUSE_GATE_FILES"}
+    env.update(LIGHTHOUSE_GATE_FILES=str(files), PATH=str(empty))
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "--", "echo"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 3
+    assert UNCHECKED + "go not on PATH" in done.stderr
+    assert "changed files" not in done.stderr
+
+
+def test_cli_command_that_cannot_start_is_rc_3(module):
+    files = module / "files.txt"
+    files.write_text("a/a.go\n")
+    done = run_cli(module, files, "--", "lighthouse-no-such-cmd")
+    assert done.returncode == 3
+    assert UNCHECKED + "lighthouse-no-such-cmd cannot start" in done.stderr
+    assert "Traceback" not in done.stderr
+
+
+def test_cli_command_that_cannot_start_without_files_is_rc_3(tmp_path):
+    done = run_cli(tmp_path, None, "--", "lighthouse-no-such-cmd")
+    assert done.returncode == 3
+    assert UNCHECKED + "lighthouse-no-such-cmd cannot start" in done.stderr
 
 
 def test_cli_symlinked_cwd_still_selects_package(module, tmp_path_factory):

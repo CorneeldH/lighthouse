@@ -149,16 +149,39 @@ def test_cli_returns_rc_of_command(tree):
     assert run_cli(tree, files, "--", "false").returncode == 1
 
 
-def test_cli_missing_files_list_is_rc_2(tree):
+# Exit 3 is "nothing was tested" (COULD NOT CHECK): a project lists it in
+# `unchecked_exit_codes`. Exit 2 cannot go there, pytest uses it.
+UNCHECKED = "gate-python: COULD NOT CHECK — "
+
+
+def test_cli_missing_files_list_is_rc_3(tree):
     done = run_cli(tree, tree / "nope.txt", "--", "echo")
-    assert done.returncode == 2
-    assert "gate-python" in done.stderr
+    assert done.returncode == 3
+    assert UNCHECKED + "cannot read the changed files" in done.stderr
 
 
-def test_cli_without_separator_is_rc_2(tree):
-    done = run_cli(tree, None, "echo")
-    assert done.returncode == 2
-    assert "usage" in done.stderr
+@pytest.mark.parametrize(
+    "args", [("echo",), ("--",), ("--tests", "--", "echo"), ("--bogus", "x", "--", "echo")]
+)
+def test_cli_usage_error_is_rc_3(tree, args):
+    done = run_cli(tree, None, *args)
+    assert done.returncode == 3, done.stderr
+    assert UNCHECKED + "usage: gate_python.py" in done.stderr
+
+
+def test_cli_command_that_cannot_start_is_rc_3(tree):
+    files = tree / "files.txt"
+    files.write_text("lib/deadline.py\n")
+    done = run_cli(tree, files, "--", "lighthouse-no-such-cmd")
+    assert done.returncode == 3
+    assert UNCHECKED + "lighthouse-no-such-cmd cannot start" in done.stderr
+    assert "Traceback" not in done.stderr
+
+
+def test_cli_command_that_cannot_start_without_files_is_rc_3(tree):
+    done = run_cli(tree, None, "--", "lighthouse-no-such-cmd")
+    assert done.returncode == 3
+    assert UNCHECKED + "lighthouse-no-such-cmd cannot start" in done.stderr
 
 
 def test_cli_symlinked_cwd_still_selects_tests(tree, tmp_path_factory):

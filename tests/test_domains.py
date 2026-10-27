@@ -127,6 +127,14 @@ def test_gate_reads_files_from_env(repo, markers, tmp_path, monkeypatch, capsys)
     assert _ran(markers) == set()
 
 
+
+def test_gate_unreadable_files_list_is_unchecked(repo, markers, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LIGHTHOUSE_GATE_FILES", str(tmp_path / "nope.files"))
+    assert domains.gate(repo, checks=_touching(markers), drift=_no_drift) == domains.UNCHECKED
+    out = capsys.readouterr().out
+    assert "gate: COULD NOT CHECK — cannot read the changed files" in out
+    assert _ran(markers) == set()
+
 def test_gate_runs_only_web(repo, markers, web_ready, tmp_path, monkeypatch, capsys):
     listing = tmp_path / "run-1.files"
     listing.write_text("web/src/a.ts\ninternal/x.go\n", encoding="utf-8")

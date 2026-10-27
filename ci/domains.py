@@ -7,9 +7,9 @@ Two users share the rules in `classify`:
   in the root of the tree being committed, after `gate_go.py` and `gate_python.py`, which
   cover Go and Python. It reads the paths of the commit from the file `LIGHTHOUSE_GATE_FILES`
   names (one path per line) or, when that is unset, from git (staged, unstaged and untracked),
-  and runs the web checks only when a path touches `web`. Exit 3 means COULD NOT CHECK (no
-  node, no web/node_modules, a command not found); lighthouse.toml lists it in
-  `unchecked_exit_codes`.
+  and runs the web checks only when a path touches `web`. Exit 3 means COULD NOT CHECK (a
+  list that cannot be read, no node, no web/node_modules, a command not found);
+  lighthouse.toml lists it in `unchecked_exit_codes`.
 - CI runs `python3 ci/domains.py classify --github-output "$GITHUB_OUTPUT"` with the
   NUL-separated paths of the change on stdin, and gets `web=`, `python=` and `go=` as job
   outputs.
@@ -124,7 +124,11 @@ def gate(
     """Run the web checks when the commit touches web; stop at the first failure."""
     listing = os.environ.get("LIGHTHOUSE_GATE_FILES")
     if listing:
-        text = Path(listing).read_text(encoding="utf-8", errors="surrogateescape")
+        try:
+            text = Path(listing).read_text(encoding="utf-8", errors="surrogateescape")
+        except OSError as exc:
+            _say(f"COULD NOT CHECK — cannot read the changed files: {exc}")
+            return UNCHECKED
         paths = [line for line in text.splitlines() if line]
     else:
         paths = changed_paths(root)

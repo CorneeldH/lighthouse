@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "4c7ee58b504f735973b193019c5110063b2493d8548b7148a06c2f7e0e4cf219"
+sha256 = "587dc115288419c56d9550fbb8b038d6f7149188b46749853c1c49a1601fbcc5"
 
 [[unit]]
 kind = "file"
@@ -470,7 +470,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "c50beec0058fc44ea801bb18f2674e682ea0510aed768fba3db2d617536720dc"
+sha256 = "27c90e047342308b0514ebb7414335e890e3a4669bbfec48c5aadbacafa0d169"
 
 [[unit]]
 kind = "file"
@@ -834,7 +834,7 @@ kind = "file"
 path = ".lighthouse/scripts/gate_go.py"
 package = "go"
 version = "dev"
-sha256 = "7981e8d4f579844ca7951704cf7d5d76a4b4bb915e15aeb89f7c1d8f93048445"
+sha256 = "6734ce86dc19931582d19867fd39dcadb0a6dd1d88c3eaed8ddbe2cad09d706b"
 
 [[unit]]
 kind = "file"
