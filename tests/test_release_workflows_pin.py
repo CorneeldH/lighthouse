@@ -129,6 +129,7 @@ def test_build_checks_version_and_clean_tree():
     build = _jobs(BUILD)["build"]
     assert 'test "$out" = "lighthouse $TAG"' in build
     assert "git status --porcelain" in build
+    assert build.index("git status --porcelain") < build.index("go build")
 
 
 def test_publish_uses_notes_file_and_clobber():
@@ -143,15 +144,19 @@ def test_publish_uses_notes_file_and_clobber():
         "Pre-release build of $TAG for testing; not a release.",
     ):
         assert needle in publish, needle
+    # A normal tag without a section must fail; only the prerelease branch writes the fixed line.
+    assert re.search(
+        r'if \[ "\$PRERELEASE" = true \]; then\s*\n\s*echo "Pre-release build of \$TAG[^\n]*\n'
+        r'\s*else\s*\n\s*echo "publish: no CHANGELOG\.md section for \$TAG" >&2; exit 1\s*\n\s*fi',
+        publish,
+    )
 
 
 def test_no_inputs_in_run_scripts():
     """Fails when input or the ref name is interpolated into a run script instead of env."""
     for path in (RELEASE, BUILD):
         for block in _run_blocks(_text(path)):
-            assert "${{ inputs." not in block, path.name
-            assert "${{ github.ref_name" not in block, path.name
-            assert "${{ needs." not in block, path.name
+            assert "${{" not in block, (path.name, block)
 
 
 def test_every_step_job_has_a_runner():
@@ -164,3 +169,12 @@ def test_every_step_job_has_a_runner():
             else:
                 assert "runs-on" not in job, (path.name, name)
     assert "uses: ./.github/workflows/build.yml" in _jobs(RELEASE)["build"]
+
+
+def test_release_recovers_a_push_that_landed():
+    """Fails when a push error after a server-side landing drops the tag and skips the build."""
+    release = _jobs(RELEASE)["release"]
+    check = 'git ls-remote --exit-code --tags origin "refs/tags/$tag"'
+    assert check in release
+    assert release.index(check) < release.index('git tag -d "$tag"')
+    assert "sleep $((attempt * 5))" in release
