@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { newQueryClient } from '@/lib/queries'
 import { QuestionList } from './QuestionList'
@@ -41,6 +41,7 @@ describe('QuestionList', () => {
     renderWithClient(<QuestionList />)
 
     expect(await screen.findByText('#7')).toBeTruthy()
+    expect(within(screen.getByRole('region', { name: 'Open questions' })).getByText('updated < 1 min ago')).toBeTruthy()
     expect(screen.getByText('#9')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'First' }).getAttribute('href')).toBe('https://x/7')
     expect(screen.getByRole('link', { name: 'Second' }).getAttribute('href')).toBe('https://x/9')
@@ -88,6 +89,7 @@ describe('QuestionList', () => {
 
     expect(screen.getByText('#7')).toBeTruthy()
     expect((await screen.findByRole('alert')).textContent).toMatch(/^Forge unreachable: /)
+    expect(within(screen.getByRole('region', { name: 'Open questions' })).getByText('updated < 1 min ago')).toBeTruthy()
   })
 })
 
