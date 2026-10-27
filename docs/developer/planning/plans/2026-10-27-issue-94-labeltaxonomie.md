@@ -106,10 +106,19 @@ Dit plan legt vast wat het issue open liet:
       `server` (#69).
   - Sectie `## 3- — de blokkade`: de toets (*kan ik dit gewoon tegen de agent zeggen?*), hoogstens
     één, laagste rang wint, en de tabel Rang · Label · Kleur · Bindt wanneer, letterlijk de zes
-    rijen uit personal_ai_agent (`3-needs-shaping` `FBCA04` … `3-needs-testing` `FBCA04`;
-    `3-blocked-issue` en `3-blocked-external` `D93F0B`). Amber = de bal ligt bij Corneel, rood
-    = buiten. `3-blocked-issue` gaat nooit mee in `gh issue create`; de `blocked_by`-relatie komt
-    eerst.
+    rijen uit personal_ai_agent (`docs/developer/labels.md`, sectie 3c):
+
+    | Rang | Label | Kleur | Bindt wanneer |
+    |---|---|---|---|
+    | 1 | `3-needs-shaping` | `FBCA04` | Wat/waarom nog niet scherp. Alles erna is prematuur |
+    | 2 | `3-needs-decision` | `FBCA04` | Eén keuze van Corneel blokkeert, de rest is helder |
+    | 3 | `3-blocked-issue` | `D93F0B` | Wacht op een ander issue in deze repo |
+    | 4 | `3-blocked-external` | `D93F0B` | Wacht op derde partij, API, vendor, levering |
+    | 5 | `3-needs-hands` | `FBCA04` | Hij moet instellen, invoeren, aansluiten, aanschaffen |
+    | 6 | `3-needs-testing` | `FBCA04` | Bouw staat; hij moet oordelen of het doet wat bedoeld is |
+
+    Amber = de bal ligt bij Corneel, rood = buiten. `3-blocked-issue` gaat nooit mee in
+    `gh issue create`; de `blocked_by`-relatie komt eerst.
 
 - [ ] **Stap 2: voeg toe aan `lighthouse.toml`, na `[forge]`**
 
@@ -136,20 +145,33 @@ Dit plan legt vast wat het issue open liet:
   Verwacht: `2-area:`, `3-blocked-issue`, `3-needs-testing`, `docs/developer/labels.md`, dan
   `config: labels.location_prefix is not set` en `rc=1`.
 
-- [ ] **Stap 4: commit**
+- [ ] **Stap 4: installeer de web-afhankelijkheden**
+
+  `ci/domains.py:29` telt `lighthouse.toml` als web-pad; zonder `web/node_modules` blokkeert de
+  test-gate met `COULD NOT CHECK`. Draai zonder sandbox (netwerk):
+  ```bash
+  cd web && npm ci
+  ```
+
+- [ ] **Stap 5: commit**
 
   ```bash
   git add docs/developer/labels.md lighthouse.toml
   git commit -m "docs(labels): labeltaxonomie met area- en blokkade-as (#94)"
   ```
-  De test-gate draait bij de commit; rood blokkeert.
+  De test-gate draait bij de commit de web-, go- en python-checks; rood blokkeert.
 
 ### Taak 2: labels in de repo
 
 Geen bestanden. Voer uit **na** taak 1 en vlak voor de PR (reviewfocus 1).
 
-- [ ] **Stap 1: hernoem de twee bestaande blokkadelabels**
+- [ ] **Stap 1: nulmeting, dan hernoem de twee bestaande blokkadelabels**
 
+  Direct vóór het hernoemen; noteer het getal (`VOOR`):
+  ```bash
+  gh api "repos/CorneeldH/lighthouse/issues?state=open&labels=blocked-issue&per_page=100" --jq 'length'
+  ```
+  Dan:
   ```bash
   gh label edit blocked-issue --name 3-blocked-issue --color D93F0B
   gh label edit needs-decision --name 3-needs-decision --color FBCA04
@@ -168,7 +190,7 @@ Geen bestanden. Voer uit **na** taak 1 en vlak voor de PR (reviewfocus 1).
   gh api "repos/CorneeldH/lighthouse/issues?state=open&labels=3-blocked-issue&per_page=100" --jq 'length'
   ```
   Verwacht: veertien regels, kleuren gelijk aan taak 1 (hoofdletterongevoelig). Tweede opdracht:
-  hetzelfde aantal als `blocked-issue` vóór het hernoemen (11 bij het schrijven van dit plan).
+  gelijk aan `VOOR` uit stap 1.
 
 ### Taak 3: area-label op elk open issue
 
@@ -176,14 +198,14 @@ Geen bestanden. Na taak 2.
 
 - [ ] **Stap 1: zet de labels**
 
-  `gh issue edit <nr> --add-label <area>`, één aanroep per issue. Indeling, getoetst tegen de 29
-  open issues op 2026-10-27:
+  `gh issue edit <nr> --add-label <area>`, één aanroep per issue. Indeling, getoetst tegen de 27
+  open issues op 2026-10-27 (#106 en #69 zijn inmiddels gesloten):
 
   | Area | Issues |
   |---|---|
-  | `2-area:core` | #106, #80 |
+  | `2-area:core` | #80 |
   | `2-area:init` | #95, #91, #47, #46, #19 |
-  | `2-area:server` | #69, #44 |
+  | `2-area:server` | #44 |
   | `2-area:dispatcher` | #85, #77, #73, #56, #35, #34, #31 |
   | `2-area:product` | #104, #103, #102, #101, #100, #99, #93, #90, #89, #88, #86, #78 |
   | `2-area:meta` | #94 |
@@ -193,12 +215,28 @@ Geen bestanden. Na taak 2.
 - [ ] **Stap 2: draai de invariantencheck van `lighthouse-write-issue` (stap 6)**
 
   Het blok uit `.claude/skills/lighthouse-write-issue/SKILL.md`, sectie *6. Check the
-  invariants*, letterlijk.
-  Verwacht: lege uitvoer. Elke regel is een issue zonder of met twee area-labels, of met meer dan
-  één blokkadelabel: herstel en draai opnieuw.
+  invariants*, letterlijk, maar met `set -o pipefail` ervoor en `echo "rc=$?"` erna (een
+  `gh api`-fout geeft anders lege uitvoer met rc 0).
+  Verwacht: `rc=0`, stdout leeg. Op stderr staat precies één verwachte regel,
+  `config: labels.location_prefix is not set`: er is geen locatie-as, dus die as wordt
+  overgeslagen. Elke stdout-regel is een issue zonder of met twee area-labels, of met meer dan
+  één blokkadelabel: herstel en draai opnieuw. `rc` ≠ 0: de GitHub-read faalde, draai opnieuw.
 
-- [ ] **Stap 3: PR**
+- [ ] **Stap 3: push en PR**
 
-  `/lighthouse-verify-pr` schrijft de body (`Closes #94`, één bewijsrij per AC: het bestand, de
+  ```bash
+  git push -u origin HEAD
+  ```
+  Dan schrijft `/lighthouse-verify-pr` de body (`Closes #94`, één bewijsrij per AC: het bestand, de
   `config.py`-uitvoer uit taak 1 stap 3, de labellijst uit taak 2 stap 3, de lege uitvoer uit
-  stap 2). Merge direct na groen (reviewfocus 1).
+  stap 2).
+
+- [ ] **Stap 4: merge**
+
+  Na groen: draai stap 2 opnieuw (een issue kan tijdens de CI-wachttijd zijn geopend), herstel
+  tot de uitvoer leeg is, en merge direct (reviewfocus 1). Daarna:
+  ```bash
+  git -C /home/corneel/repositories/lighthouse pull --ff-only
+  ```
+  Andere worktrees lezen tot een rebase nog `blocked-issue`; een `--remove-label blocked-issue`
+  daar faalt luid (het label bestaat niet meer).
