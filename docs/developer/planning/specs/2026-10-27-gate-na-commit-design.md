@@ -67,7 +67,7 @@ nuttig binnen een selector die veel Python-tests kiest; dat is aan de bouwer.
    over als de beurt geen pad in hun domein raakte, en melden dat. Dit is het oude criterium van
    #80 en blijft staan.
 5. **`pack/node`** met de frontendchecks van #68 en een selector volgens hetzelfde contract. Het
-   lokale script van #68 verdwijnt. Dit is het oude criterium van #80 en blijft staan. #68 is
+   gate-deel van het lokale script van #68 (`ci/domains.py gate`) verdwijnt. Dit is het oude criterium van #80 en blijft staan. #68 is
    bijna klaar; de bouwer begint met 1 tot en met 4.
 6. **De overstap van deze repo**: `[test_gate] command` gebruikt de selectors, en
    `go run ./cmd/lighthouse init --upgrade` geeft `No changes.`
@@ -75,7 +75,7 @@ nuttig binnen een selector die veel Python-tests kiest; dat is aan de bouwer.
    every commit" in `pack/core/instructions/AGENTS.md`, de lijst *Hooks* in `CLAUDE.md`, en de
    verwijzingen in de skills `fix-pr`, `verify-pr`, `go-writing` en `python-writing`.
 
-Buiten scope: CI. `ci.yml` blijft het geheel testen.
+Buiten scope: CI. `ci.yml` blijft elk geraakt domein helemaal testen (zie *Verhouding tot #68*).
 
 ## De hook
 
@@ -185,6 +185,35 @@ uit als #68 er is.
 Voor deze repo wordt het commando ongeveer
 `<go-selector> -race && <python-selector> -q`. Of de selectors na elkaar draaien of
 allebei draaien en de uitkomst combineren, is aan de bouwer *(zie onder)*.
+
+## Verhouding tot #68 (PR 105)
+
+PR 105 (open op 2026-10-27, branch `issue-68-spa-skelet`) zet in deze repo
+`[test_gate] command = "python3 ci/domains.py gate"`. `ci/domains.py` deelt de gewijzigde paden in
+drie domeinen in (`web`, `python`, `go`) en draait per geraakt domein het hele domein:
+
+- **python:** `uv run pytest -q`
+- **go:** `go test -race -shuffle=on ./...`
+- **web:** `npm run lint`, `typecheck` en `test`, plus een API-driftcheck (`npm run gen` en
+  vergelijken met de worktree)
+
+Dat is selectie per domein, vóór de commit, op staged, unstaged en untracked paden. Elk pad buiten
+`web/` raakt zowel `python` als `go`, dus een commit zonder frontend kost na PR 105 nog steeds
+ruim drie minuten.
+
+Wat #80 ermee doet:
+
+- **`ci/domains.py gate` verdwijnt.** Het commando van deze repo wordt de selectors van de
+  pakketten. `unchecked_exit_codes = [3]` (geen node, geen `web/node_modules`) gaat mee naar de
+  node-selector.
+- **`ci/domains.py classify` blijft.** CI gebruikt het als filter per job in `ci.yml`. Besluit
+  "CI test het geheel" betekent daarom: CI test elk geraakt domein helemaal. #80 verandert niets
+  aan CI. Waar `ci/domains.py` na #80 woont, is aan de bouwer.
+- **De node-selector neemt de webchecks over**, inclusief de API-driftcheck en de paden buiten
+  `web/` die ze raken (`_WEB_TOO`, `_GO_TOO`). Binnen de webchecks kan `vitest related <files>`
+  de tests kiezen; lint en typecheck blijven hele-domeinchecks. Dat is aan de bouwer.
+- **Volgorde:** #80 bouwt na de merge van PR 105, of rebaset erop. `tests/test_ci_domains_pin.py`
+  en `tests/test_domains.py` uit PR 105 gaan mee met wat er van `ci/domains.py` overblijft.
 
 ## Aan de bouwer
 
