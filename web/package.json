@@ -14,7 +14,8 @@
     "test": "vitest run",
     "gen": "orval --config ./orval.config.ts",
     "preview": "vite preview",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "screenshot": "node e2e/screenshot.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
