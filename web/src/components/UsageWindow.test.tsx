@@ -19,6 +19,8 @@ describe('UsageWindow', () => {
     expect(screen.getByText(/resets 14:30/)).toBeTruthy()
     expect(screen.getByText(/measured 2 min ago/)).toBeTruthy()
     expect(screen.queryByText(/stale/)).toBeNull()
+    expect(screen.getAllByRole('progressbar')).toHaveLength(1)
+    expect(screen.getByRole('progressbar', { name: 'Claude session' }).getAttribute('aria-valuenow')).toBe('42')
     expect(screen.queryByText('not measurable')).toBeNull()
   })
 
@@ -33,6 +35,7 @@ describe('UsageWindow', () => {
     )
     expect(screen.getByText('80%')).toBeTruthy()
     expect(screen.getByText('stale · 1 h')).toBeTruthy()
+    expect(screen.getAllByRole('progressbar')).toHaveLength(1)
   })
 
   it('shows a not-measurable window without a percentage', () => {
@@ -46,6 +49,7 @@ describe('UsageWindow', () => {
     expect(screen.getByText('not measurable')).toBeTruthy()
     expect(screen.getByText('no Claude usage cache')).toBeTruthy()
     expect(container.textContent).not.toMatch(/%/)
+    expect(screen.queryByRole('progressbar')).toBeNull()
   })
 
   it('marks a lower bound', () => {
