@@ -2,10 +2,12 @@
 # Smoke test for a lighthouse binary with the real SPA embedded.
 # Usage: ci/spa-smoke.sh <binary>
 # Starts `<binary> serve` on a free port, waits up to 10 s for /api/health, then requires that
-# `/` carries the SPA marker and that the first /assets/*.js of that page answers 200.
+# `/` carries the SPA marker and that the first /assets/*.js of that page answers 200 with a JavaScript content type.
+# On any failure the server log goes to stderr.
 set -euo pipefail
 
 fail() {
+  [ -z "${tmp:-}" ] || [ ! -f "$tmp/serve.log" ] || cat "$tmp/serve.log" >&2
   echo "spa-smoke: $*" >&2
   exit 1
 }
@@ -41,7 +43,6 @@ for _ in $(seq 1 100); do
   sleep 0.1
 done
 if [ -z "$up" ]; then
-  cat "$tmp/serve.log" >&2
   fail "server did not answer /api/health within 10 s"
 fi
 
@@ -53,7 +54,11 @@ esac
 
 asset=$(printf '%s' "$page" | grep -oE '/assets/[^"]+\.js' | head -n 1 || true)
 [ -n "$asset" ] || fail "page / references no /assets/*.js"
-code=$(curl -sS -o /dev/null -w '%{http_code}' "$base$asset") || fail "GET $asset failed"
-[ "$code" = 200 ] || fail "GET $asset answered $code, want 200"
+# The SPA fallback answers an unknown path with 200 text/html, so the status alone proves nothing.
+res=$(curl -sS -o /dev/null -w '%{http_code} %{content_type}' "$base$asset") || fail "GET $asset failed"
+case $res in
+  '200 text/javascript'*) ;;
+  *) fail "GET $asset answered '$res', want '200 text/javascript'" ;;
+esac
 
 echo "spa-smoke: ok ($asset)"
