@@ -84,6 +84,172 @@
           "version"
         ],
         "type": "object"
+      },
+      "Question": {
+        "additionalProperties": false,
+        "properties": {
+          "answer_url": {
+            "type": "string"
+          },
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "question": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "title",
+          "url",
+          "question",
+          "answer_url"
+        ],
+        "type": "object"
+      },
+      "QuestionsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "type": "object"
+      },
+      "Report": {
+        "additionalProperties": false,
+        "properties": {
+          "claude": {
+            "$ref": "#/components/schemas/SourceReport"
+          },
+          "codex": {
+            "$ref": "#/components/schemas/SourceReport"
+          }
+        },
+        "required": [
+          "claude",
+          "codex"
+        ],
+        "type": "object"
+      },
+      "Returned": {
+        "additionalProperties": false,
+        "properties": {
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "title",
+          "url",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "ReturnedOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "returned": {
+            "items": {
+              "$ref": "#/components/schemas/Returned"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "returned"
+        ],
+        "type": "object"
+      },
+      "SourceReport": {
+        "additionalProperties": false,
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/WindowReport"
+          },
+          "week": {
+            "$ref": "#/components/schemas/WindowReport"
+          }
+        },
+        "required": [
+          "session",
+          "week"
+        ],
+        "type": "object"
+      },
+      "WindowReport": {
+        "additionalProperties": false,
+        "properties": {
+          "age_s": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lower_bound": {
+            "type": "boolean"
+          },
+          "pct": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reset_at": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "stale",
+              "not_measurable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "pct",
+          "reset_at",
+          "age_s",
+          "lower_bound"
+        ],
+        "type": "object"
       }
     }
   },
@@ -119,6 +285,90 @@
           }
         },
         "summary": "Get API health"
+      }
+    },
+    "/api/questions": {
+      "get": {
+        "operationId": "get-questions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get API questions"
+      }
+    },
+    "/api/returned": {
+      "get": {
+        "operationId": "get-returned",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnedOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get API returned"
+      }
+    },
+    "/api/usage": {
+      "get": {
+        "operationId": "get-usage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get API usage"
       }
     }
   }

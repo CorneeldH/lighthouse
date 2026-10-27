@@ -35,6 +35,61 @@ export interface HealthOutputBody {
   version: string;
 }
 
+export interface Question {
+  answer_url: string;
+  number: number;
+  question: string;
+  title: string;
+  url: string;
+}
+
+export interface QuestionsOutputBody {
+  /** @nullable */
+  questions: Question[] | null;
+}
+
+export type WindowReportState = typeof WindowReportState[keyof typeof WindowReportState];
+
+
+export const WindowReportState = {
+  ok: 'ok',
+  stale: 'stale',
+  not_measurable: 'not_measurable',
+} as const;
+
+export interface WindowReport {
+  /** @nullable */
+  age_s: number | null;
+  lower_bound: boolean;
+  /** @nullable */
+  pct: number | null;
+  reason?: string;
+  reset_at: string;
+  state: WindowReportState;
+}
+
+export interface SourceReport {
+  session: WindowReport;
+  week: WindowReport;
+}
+
+export interface Report {
+  claude: SourceReport;
+  codex: SourceReport;
+}
+
+export interface Returned {
+  number: number;
+  reason: string;
+  title: string;
+  url: string;
+}
+
+export interface ReturnedOutputBody {
+  /** @nullable */
+  returned: Returned[] | null;
+}
+
 export type HTTPStatusCode1xx = 100 | 101 | 102 | 103;
 export type HTTPStatusCode2xx = 200 | 201 | 202 | 203 | 204 | 205 | 206 | 207;
 export type HTTPStatusCode3xx = 300 | 301 | 302 | 303 | 304 | 305 | 307 | 308;
@@ -88,4 +143,154 @@ export const getHealth = async ( options?: RequestInit): Promise<getHealthRespon
 
   const data: getHealthResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as getHealthResponse
+}
+
+
+
+export type getQuestionsResponse200 = {
+  data: QuestionsOutputBody
+  status: 200
+}
+
+export type getQuestionsResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getQuestionsResponseSuccess = (getQuestionsResponse200) & {
+  headers: Headers;
+};
+export type getQuestionsResponseError = (getQuestionsResponseDefault) & {
+  headers: Headers;
+};
+
+export type getQuestionsResponse = (getQuestionsResponseSuccess | getQuestionsResponseError)
+
+export const getGetQuestionsUrl = () => {
+
+
+
+
+  return `/api/questions`
+}
+
+/**
+ * @summary Get API questions
+ */
+export const getQuestions = async ( options?: RequestInit): Promise<getQuestionsResponse> => {
+
+  const res = await fetch(getGetQuestionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getQuestionsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getQuestionsResponse
+}
+
+
+
+export type getReturnedResponse200 = {
+  data: ReturnedOutputBody
+  status: 200
+}
+
+export type getReturnedResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getReturnedResponseSuccess = (getReturnedResponse200) & {
+  headers: Headers;
+};
+export type getReturnedResponseError = (getReturnedResponseDefault) & {
+  headers: Headers;
+};
+
+export type getReturnedResponse = (getReturnedResponseSuccess | getReturnedResponseError)
+
+export const getGetReturnedUrl = () => {
+
+
+
+
+  return `/api/returned`
+}
+
+/**
+ * @summary Get API returned
+ */
+export const getReturned = async ( options?: RequestInit): Promise<getReturnedResponse> => {
+
+  const res = await fetch(getGetReturnedUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getReturnedResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getReturnedResponse
+}
+
+
+
+export type getUsageResponse200 = {
+  data: Report
+  status: 200
+}
+
+export type getUsageResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getUsageResponseSuccess = (getUsageResponse200) & {
+  headers: Headers;
+};
+export type getUsageResponseError = (getUsageResponseDefault) & {
+  headers: Headers;
+};
+
+export type getUsageResponse = (getUsageResponseSuccess | getUsageResponseError)
+
+export const getGetUsageUrl = () => {
+
+
+
+
+  return `/api/usage`
+}
+
+/**
+ * @summary Get API usage
+ */
+export const getUsage = async ( options?: RequestInit): Promise<getUsageResponse> => {
+
+  const res = await fetch(getGetUsageUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getUsageResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getUsageResponse
 }
