@@ -831,6 +831,13 @@ sha256 = "91087d8f2e2c2961a565a6a25bec048204bfed5564575ec44ebe67b6a57aec4c"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/scripts/gate_go.py"
+package = "go"
+version = "dev"
+sha256 = "8e606068373f27abc8001c0946440312d40303c90e5d8a78790b6dcbaa7868e2"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/scripts/measure_fix_pr_kpi.py"
 package = "core"
 version = "dev"

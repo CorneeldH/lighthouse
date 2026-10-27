@@ -170,6 +170,7 @@ func TestLanguagePacks(t *testing.T) {
 				".claude/hooks/lighthouse/go-check.sh",
 				".claude/hooks/lighthouse/gofmt.sh",
 				".claude/skills/lighthouse-go-writing/SKILL.md",
+				".lighthouse/scripts/gate_go.py",
 			},
 			detect: true,
 			tools:  "git,go,gofmt,golangci-lint,jq,python3,tomllib",
