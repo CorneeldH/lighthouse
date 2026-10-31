@@ -344,6 +344,179 @@ func TestUpgradeRemovesDroppedUnit(t *testing.T) {
 	}
 }
 
+func TestUpgradeRemovesEmptiedDirs(t *testing.T) {
+	withOld := func(o *Options) {
+		m := testPacks()
+		m["core/skills/old/SKILL.md"] = file("---\nname: lighthouse-old\n---\nbody\n")
+		m["core/hooks/old/helper.py"] = file("x = 1\n")
+		o.Packs = m
+	}
+	cases := map[string]struct {
+		before func(t *testing.T, root string)
+		check  func(t *testing.T, root string)
+	}{
+		"skill_dir": {
+			check: func(t *testing.T, root string) {
+				for _, rel := range []string{".claude/skills/lighthouse-old", ".agents/skills/lighthouse-old"} {
+					if exists(root, rel) {
+						t.Errorf("%s still there", rel)
+					}
+				}
+				if !exists(root, ".claude/skills") {
+					t.Error(".claude/skills was removed")
+				}
+			},
+		},
+		"hook_subdir": {
+			check: func(t *testing.T, root string) {
+				if exists(root, ".claude/hooks/lighthouse/old") {
+					t.Error("hooks/lighthouse/old still there")
+				}
+				if !exists(root, ".claude/hooks/lighthouse/g.sh") {
+					t.Error("g.sh gone")
+				}
+			},
+		},
+		"keeps_sibling": {
+			before: func(t *testing.T, root string) {
+				write(t, root, ".claude/skills/lighthouse-old/notes.txt", "mine\n")
+			},
+			check: func(t *testing.T, root string) {
+				if !exists(root, ".claude/skills/lighthouse-old/notes.txt") {
+					t.Error("sibling file removed")
+				}
+				if exists(root, ".claude/skills/lighthouse-old/SKILL.md") {
+					t.Error("SKILL.md still there")
+				}
+			},
+		},
+		"keeps_preexisting_empty": {
+			before: func(t *testing.T, root string) {
+				if err := os.MkdirAll(filepath.Join(root, ".claude/skills/empty-own"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+			check: func(t *testing.T, root string) {
+				if !exists(root, ".claude/skills/empty-own") {
+					t.Error("preexisting empty dir removed")
+				}
+			},
+		},
+		"outside_roots": {
+			check: func(t *testing.T, root string) {
+				if !exists(root, ".lighthouse/lib/lighthouse_lib") {
+					t.Error("lighthouse_lib removed")
+				}
+			},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := newRepo(t)
+			if r := run(t, root, "", func(o *Options) { yes(o); withOld(o) }); r.code != 0 {
+				t.Fatalf("init: rc %d\n%s%s", r.code, r.out, r.err)
+			}
+			if tc.before != nil {
+				tc.before(t, root)
+			}
+			r := run(t, root, "", func(o *Options) {
+				upgrade(o)
+				yes(o)
+				p := testPacks()
+				if name == "outside_roots" {
+					delete(p, "core/lib/a.py")
+				}
+				o.Packs = p
+			})
+			if r.code != 0 {
+				t.Fatalf("upgrade: rc %d\n%s%s", r.code, r.out, r.err)
+			}
+			tc.check(t, root)
+		})
+	}
+}
+
+func TestUpgradeRenamesUnits(t *testing.T) {
+	packsWith := func(skill, hook string) func(*Options) {
+		return func(o *Options) {
+			m := testPacks()
+			delete(m, "core/hooks/g.sh")
+			m["core/hooks/hooks.json"] = file(strings.ReplaceAll(hooksJSON, "g.sh", hook))
+			m["core/hooks/"+hook] = file("#!/bin/bash\necho " + hook + "\n")
+			m["core/skills/"+skill+"/SKILL.md"] = file("---\nname: lighthouse-" + skill + "\n---\nbody\n")
+			o.Packs = m
+		}
+	}
+	oldPacks, newPacks := packsWith("old", "old-guard.sh"), packsWith("new", "new-gate.sh")
+	setup := func(t *testing.T) string {
+		root := newRepo(t)
+		if r := run(t, root, "", func(o *Options) { yes(o); oldPacks(o) }); r.code != 0 {
+			t.Fatalf("init: rc %d\n%s%s", r.code, r.out, r.err)
+		}
+		return root
+	}
+	upgradeNew := func(t *testing.T, root string, force bool) result {
+		return run(t, root, "", func(o *Options) { upgrade(o); yes(o); o.Force = force; newPacks(o) })
+	}
+
+	t.Run("untouched", func(t *testing.T) {
+		root := setup(t)
+		if r := upgradeNew(t, root, false); r.code != 0 {
+			t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+		}
+		for _, top := range []string{".claude", ".agents"} {
+			err := filepath.WalkDir(filepath.Join(root, top), func(p string, _ fs.DirEntry, err error) error {
+				if rel, _ := filepath.Rel(root, p); err == nil && strings.Contains(rel, "old") {
+					t.Errorf("leftover %s", rel)
+				}
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if strings.Contains(read(t, root, ".lighthouse/manifest.toml"), "old") {
+			t.Error("manifest still names old")
+		}
+		s := read(t, root, ".claude/settings.json")
+		if strings.Contains(s, "old-guard.sh") || !strings.Contains(s, "new-gate.sh") {
+			t.Errorf("settings:\n%s", s)
+		}
+	})
+
+	t.Run("edited_refused", func(t *testing.T) {
+		root := setup(t)
+		hook := ".claude/hooks/lighthouse/old-guard.sh"
+		write(t, root, hook, read(t, root, hook)+"echo mine\n")
+		before := snapshot(t, root)
+		r := upgradeNew(t, root, false)
+		if r.code != 1 || !strings.Contains(r.out+r.err, "--force") {
+			t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+		}
+		if !sameSnapshot(before, snapshot(t, root)) {
+			t.Error("refused run changed files")
+		}
+		if exists(root, ".claude/hooks/lighthouse/new-gate.sh") {
+			t.Error("new-gate.sh written")
+		}
+	})
+
+	t.Run("edited_forced", func(t *testing.T) {
+		root := setup(t)
+		hook := ".claude/hooks/lighthouse/old-guard.sh"
+		write(t, root, hook, read(t, root, hook)+"echo mine\n")
+		if r := upgradeNew(t, root, true); r.code != 0 {
+			t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+		}
+		if exists(root, hook) || !exists(root, ".claude/hooks/lighthouse/new-gate.sh") {
+			t.Error("old hook not replaced by new")
+		}
+		if s := read(t, root, ".claude/settings.json"); strings.Contains(s, "old-guard.sh") || !strings.Contains(s, "new-gate.sh") {
+			t.Errorf("settings:\n%s", s)
+		}
+	})
+}
+
 const projectSettings = `{
   "permissions": {
     "allow": ["Bash(ls)"]

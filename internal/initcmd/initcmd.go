@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -588,7 +589,7 @@ func apply(root, rel string, p *planned) error {
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
-		return nil
+		return removeEmptyParents(root, rel)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -604,6 +605,43 @@ func apply(root, rel string, p *planned) error {
 		return err
 	}
 	return os.Chmod(path, mode)
+}
+
+// installRoots are the directories init installs units under. They stay when they empty.
+var installRoots = []string{".claude/skills", ".agents/skills", ".claude/agents", ".claude/hooks/lighthouse"}
+
+// removeEmptyParents removes the directories that removing rel left empty, from its parent
+// upward. It stops at the first directory with an entry in it and at the install root, which
+// stays. A rel outside every install root is left alone.
+func removeEmptyParents(root, rel string) error {
+	rel = filepath.ToSlash(rel)
+	var stop string
+	for _, r := range installRoots {
+		if strings.HasPrefix(rel, r+"/") {
+			stop = r
+			break
+		}
+	}
+	if stop == "" {
+		return nil
+	}
+	for dir := path.Dir(rel); dir != stop && dir != "." && dir != "/"; dir = path.Dir(dir) {
+		abs := filepath.Join(root, filepath.FromSlash(dir))
+		entries, err := os.ReadDir(abs)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if len(entries) > 0 {
+			return nil
+		}
+		if err := os.Remove(abs); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // warnMissingScripts reports each hook command that runs a script under the project
