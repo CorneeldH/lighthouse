@@ -411,7 +411,7 @@ export function renderFlowMap(root, data, detail) {
             ...(chip.command
               ? [
                   ["Event", chip.events.join(" and ")],
-                  ["Matcher", chip.matcher || "none: every call"],
+                  ["Matcher", chip.matcher || (chip.trigger === "event" ? "none: this event has no matcher" : "none: every call")],
                   ["Command", chip.command],
                   ["What it does", chip.effects.map((e) => EFFECTS[e]).join("; ")],
                 ]
