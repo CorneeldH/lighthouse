@@ -1,4 +1,4 @@
-"""The download on docs/site/install.html: platform.js picks the install tab the visitor sees first,
+"""The download on docs/site/install.html: platform.js picks the install block the visitor sees first,
 the release label falls back to text when the API gives nothing usable, and every install block
 names a built asset and checks it before the binary is used."""
 
