@@ -15,7 +15,7 @@ FIXTURE = ROOT / "tests" / "fixtures" / "site" / "map.json"
 REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/"
 
 KINDS = {"lighthouse", "superpowers", "hook", "github"}
-TRIGGERS = {"you", "skill", "tool", "github"}
+TRIGGERS = {"you", "skill", "description", "tool", "github"}
 STATUSES = {"works", "planned", "idea"}
 REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "how", "when", "without", "status"]
 
@@ -50,26 +50,6 @@ def missing_parts(chain: dict) -> list[str]:
 
 def chips_by_id(chain: dict) -> dict[str, dict]:
     return {c["id"]: c for c in chain["chips"]}
-
-
-def phase_index(chain: dict) -> dict[str, int]:
-    return {p["id"]: i for i, p in enumerate(chain["phases"])}
-
-
-def jumps(chain: dict) -> set[tuple[str, str]]:
-    """Consecutive route pairs (a, b) that go to a later phase and to a higher row."""
-    chips, phases = chips_by_id(chain), phase_index(chain)
-    found = set()
-    for route in chain["routes"]:
-        for a, b in zip(route["chips"], route["chips"][1:]):
-            ca, cb = chips[a], chips[b]
-            if phases[cb["phase"]] > phases[ca["phase"]] and cb["row"] < ca["row"]:
-                found.add((a, b))
-    return found
-
-
-def handoff_pairs(chain: dict) -> set[tuple[str, str]]:
-    return {(h["from"], h["to"]) for h in chain["handoffs"]}
 
 
 def data_maps() -> list[Path]:
@@ -157,12 +137,31 @@ def route_problems(chain: dict) -> list[str]:
     ]
 
 
-def jump_problems(chain: dict) -> list[str]:
-    return [f"jump without handoff: {p}" for p in sorted(jumps(chain) - handoff_pairs(chain))]
+def handoff_problems(chain: dict) -> list[str]:
+    """A handoff names two chips that a route passes in that order, within a phase or across."""
+    problems = []
+    for h in chain["handoffs"]:
+        on = [r for r in chain["routes"] if h["from"] in r["chips"] and h["to"] in r["chips"]]
+        if not any(r["chips"].index(h["from"]) < r["chips"].index(h["to"]) for r in on):
+            problems.append(f"handoff on no route: ('{h['from']}', '{h['to']}')")
+    return problems
 
 
-def stray_handoff_problems(chain: dict) -> list[str]:
-    return [f"handoff on no upward route step: {p}" for p in sorted(handoff_pairs(chain) - jumps(chain))]
+def coverage_problems(chain: dict) -> list[str]:
+    """Every chip outside the Always on band is on a route; every example is on its own route."""
+    on_route = {chip_id for route in chain["routes"] for chip_id in route["chips"]}
+    problems = [
+        f"{chip['id']}: on no route"
+        for chip in chain["chips"]
+        if chip["phase"] != "always" and chip["id"] not in on_route
+    ]
+    problems += [
+        f"route {route['id']}: example {chip_id} is not on the route"
+        for route in chain["routes"]
+        for chip_id in route.get("examples", [])
+        if chip_id not in route["chips"]
+    ]
+    return problems
 
 
 @pytest.mark.parametrize("path", MAPS)
@@ -186,13 +185,13 @@ def test_routes_name_existing_chips(path):
 
 
 @pytest.mark.parametrize("path", MAPS)
-def test_every_upward_jump_has_a_handoff(path):
-    assert jump_problems(load_map(path)) == []
+def test_every_handoff_sits_on_a_route(path):
+    assert handoff_problems(load_map(path)) == []
 
 
 @pytest.mark.parametrize("path", MAPS)
-def test_every_handoff_sits_on_a_route_step(path):
-    assert stray_handoff_problems(load_map(path)) == []
+def test_every_chip_is_on_a_route(path):
+    assert coverage_problems(load_map(path)) == []
 
 
 def test_fixture_planned_without_issue_is_flagged():
@@ -215,17 +214,19 @@ def test_fixture_source_pointing_nowhere_is_flagged():
     assert source_problems(chain) == [f"write-issue: {REPO_BLOB}pack/core/skills/no-such-skill does not exist"]
 
 
-def test_fixture_jump_without_handoff_is_flagged():
+def test_fixture_handoff_against_the_route_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
-    chain["handoffs"] = []
-    assert jump_problems(chain) == ["jump without handoff: ('main-commit-guard', 'planned-issue')"]
+    chain["handoffs"].append({"from": "planned-issue", "to": "write-issue", "status": "works"})
+    assert handoff_problems(chain) == ["handoff on no route: ('planned-issue', 'write-issue')"]
 
 
-def test_fixture_stray_handoff_is_flagged():
+def test_fixture_chip_off_every_route_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
-    chain["handoffs"].append({"from": "write-issue", "to": "main-commit-guard", "status": "works"})
-    assert stray_handoff_problems(chain) == [
-        "handoff on no upward route step: ('write-issue', 'main-commit-guard')"
+    chain["routes"][0]["chips"].remove("an-idea")
+    chain["routes"][0]["examples"] = ["an-idea"]
+    assert coverage_problems(chain) == [
+        "an-idea: on no route",
+        "route x: example an-idea is not on the route",
     ]
 
 
@@ -278,5 +279,6 @@ def test_works_handoffs_are_after_the_reviews():
 
 def test_chain_routes_are_the_known_ones():
     routes = {r["id"]: r for r in load("chain.json")["routes"]}
-    assert set(routes) == {"1", "2", "4a", "4b", "4c", "red-pr"}
-    assert "refresh-expo-lockfiles" in routes["1"]["note"]
+    assert set(routes) == {"1", "2", "4a", "4b", "4c", "no-issue", "red-pr"}
+    assert routes["1"]["examples"] == ["refresh-expo-lockfiles"]
+    assert routes["no-issue"]["chips"][0] == "worktree-guard"

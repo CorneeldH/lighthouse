@@ -593,6 +593,20 @@ button:focus-visible {
   font-size: 14px;
 }
 
+.box p.summary {
+  font-size: 13px;
+}
+
+.box ul.steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+}
+
+.box ul.steps li + li {
+  margin-top: 6px;
+}
+
 .box p.aside {
   margin-top: 8px;
   font-size: 13px;

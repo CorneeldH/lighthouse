@@ -49,7 +49,7 @@
   ],
   "routes": [
     {
-      "id": "x", "label": "Fixture route", "note": "One upward jump.",
+      "id": "x", "label": "Fixture route", "note": "A route with a handoff.",
       "chips": ["write-issue", "main-commit-guard", "planned-issue", "planned-milestone", "an-idea"]
     }
   ]

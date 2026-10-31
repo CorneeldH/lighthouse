@@ -46,8 +46,13 @@
       "kind": "lighthouse",
       "trigger": "you",
       "label": "write-issue",
-      "what": "A lighthouse skill that writes and maintains the GitHub issues and milestones of the repo. It gives every issue a fixed template, one label per axis the project defines and at most one blocking label. The result is an issue the rest of the chain can pick up, route, verify and close.",
-      "how": "It first searches open and closed issues and the default branch for the same work and reports one duplicate line. It then picks the Bug or Task template, sets the labels from the taxonomy that lighthouse.toml points to, checks whether the issue fits an open milestone and creates it with gh issue create. For a block it sets the GitHub blocked_by relation first, verifies it through the API and only then adds the blocked-issue label. It reports the state it reads back, not the command it sent.",
+      "what": "Writes and maintains GitHub issues and milestones of the repo.",
+      "how": [
+        "It first searches open and closed issues and the default branch for the same work and reports one duplicate line.",
+        "It then picks the Bug or Task template, sets the labels from the taxonomy that lighthouse.toml points to, checks whether the issue fits an open milestone and creates it with gh issue create.",
+        "For a block it sets the GitHub blocked_by relation first, verifies it through the API and only then adds the blocked-issue label.",
+        "It reports the state it reads back, not the command it sent."
+      ],
       "when": "When you create an issue, edit a title or body, set a block between issues or clean up issue metadata.",
       "without": "Issues come out in whatever shape the session picks, and the block between issues is set by hand.",
       "status": "works",
@@ -60,11 +65,35 @@
       "kind": "github",
       "trigger": "github",
       "label": "github-issue",
-      "what": "The GitHub issue itself: the unit of work the rest of the chain starts from. A task issue carries a description, acceptance criteria as checkboxes and a definition of done. Those criteria are what the chain proves before the issue closes.",
-      "how": "write-issue creates it from a Bug or Task template, with labels per axis, at most one blocking label, an optional milestone and blocked_by relations to other issues. start-issue and route-issue read it through gh api and choose a route from its labels and body. verify-pr turns each acceptance criterion into an Evidence row in the PR body, and close-issue runs those rows again after the merge. When it closes as completed, the unblock-dependents workflow releases the issues that waited on it.",
+      "what": "The GitHub issue itself: the unit of work the rest of the chain starts from.",
+      "how": [
+        "write-issue creates it from a Bug or Task template, with labels per axis, at most one blocking label, an optional milestone and blocked_by relations to other issues.",
+        "start-issue and route-issue read it through gh api and choose a route from its labels and body.",
+        "verify-pr turns each acceptance criterion into an Evidence row in the PR body, and close-issue runs those rows again after the merge.",
+        "When it closes as completed, the unblock-dependents workflow releases the issues that waited on it."
+      ],
       "when": "Whenever work is tracked as an issue.",
       "without": "There is no issue to pick up, verify against or close.",
       "status": "works"
+    },
+    {
+      "id": "worktree-guard",
+      "phase": "pickup",
+      "row": 0,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "worktree-guard",
+      "what": "Warns, and never blocks, at a write into the main checkout on main.",
+      "how": [
+        "It runs on PreToolUse for Edit and Write and checks the target file path, not the working directory.",
+        "It compares the git dir with the common git dir to tell a linked worktree from the main checkout, and reads the protected branch from lighthouse.toml.",
+        "On a match it returns a systemMessage with the git worktree add command; when it cannot check, the message says COULD NOT CHECK.",
+        "It always exits 0."
+      ],
+      "when": "Before each Edit or Write.",
+      "without": "A write into the main checkout on main passes without a warning.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-guard.sh"
     },
     {
       "id": "start-issue",
@@ -73,8 +102,13 @@
       "kind": "lighthouse",
       "trigger": "you",
       "label": "start-issue",
-      "what": "A lighthouse skill that starts work on an existing GitHub issue. It reads the issue, sets up a worktree and gets one route from route-issue. The result is an isolated branch and a chosen next skill before any file is written.",
-      "how": "It reads the issue and its comments with gh api and reports the three label axes: location, area and blocking label. One search on the default branch checks whether the work is already done; if it likely is, it stops and offers close-issue. It then creates the worktree on branch issue-<nr>-<slug> through using-git-worktrees, moves the board item to In progress and copies the route line from route-issue literally. It then runs that route, and at gates 4b and 4c it calls the impact scout first.",
+      "what": "Starts work on a GitHub issue: sets up the worktree, then picks the route.",
+      "how": [
+        "It reads the issue and its comments with gh api and reports the three label axes: location, area and blocking label.",
+        "One search on the default branch checks whether the work is already done; if it likely is, it stops and offers close-issue.",
+        "It then creates the worktree on branch issue-<nr>-<slug> through using-git-worktrees, moves the board item to In progress and copies the route line from route-issue literally.",
+        "It then runs that route, and at gates 4b and 4c it calls the impact scout first."
+      ],
       "when": "When you say 'pick up 610' or 'start on issue 526'.",
       "without": "You pick the route and set up the worktree by hand.",
       "status": "works",
@@ -87,8 +121,13 @@
       "kind": "superpowers",
       "trigger": "skill",
       "label": "using-git-worktrees",
-      "what": "A superpowers skill that makes sure work happens in an isolated workspace. It prefers the harness's own worktree tool and falls back to git worktree add. The result is a worktree on its own branch with a clean test baseline, so the main checkout stays untouched.",
-      "how": "It first checks whether the session is already in a linked worktree by comparing the git dir with the common git dir, and then creates nothing. Otherwise it uses a native tool such as EnterWorktree, or runs git worktree add in a project-local directory after it has verified that the directory is ignored by git. It then runs the project setup, such as npm install or go mod download, and the test suite. It reports the worktree path and the test result, and asks what to do when the baseline tests fail.",
+      "what": "Makes sure the work happens in an isolated workspace, through native tools or a git worktree.",
+      "how": [
+        "It first checks whether the session is already in a linked worktree by comparing the git dir with the common git dir, and then creates nothing.",
+        "Otherwise it uses a native tool such as EnterWorktree, or runs git worktree add in a project-local directory after it has verified that the directory is ignored by git.",
+        "It then runs the project setup, such as npm install or go mod download, and the test suite.",
+        "It reports the worktree path and the test result, and asks what to do when the baseline tests fail."
+      ],
       "when": "Before feature work that needs isolation from the current workspace.",
       "without": "Work lands in the main checkout.",
       "status": "works"
@@ -100,8 +139,13 @@
       "kind": "lighthouse",
       "trigger": "skill",
       "label": "route-issue",
-      "what": "A read-only lighthouse skill that triages an issue through five gates: blocker, known recipe, bug, instruction layer and design depth. The first gate that hits decides, and it prints one line with the gate number, the route and the reason. It gives start-issue a route that can be traced back to a gate afterwards.",
-      "how": "Gate 0 stops on a blocked label or an open blocked_by relation and reads the blocker from that relation. Gate 1 matches the issue against the skill descriptions already in context, gate 2 sends a bug to systematic-debugging, and gate 3 names the instruction layer and file and falls through. Gate 4 picks c for brainstorming, b for writing-plans or a for direct execution, depending on whether the acceptance criteria settle the HOW. It writes nothing, sets up no worktree and never runs the route itself.",
+      "what": "Read-only triage of an issue through five gates (blocker, known recipe, bug, instruction layer, design depth); the first hit wins and it prints one line with the route.",
+      "how": [
+        "Gate 0 stops on a blocked label or an open blocked_by relation and reads the blocker from that relation.",
+        "Gate 1 matches the issue against the skill descriptions already in context, gate 2 sends a bug to systematic-debugging, and gate 3 names the instruction layer and file and falls through.",
+        "Gate 4 picks c for brainstorming, b for writing-plans or a for direct execution, depending on whether the acceptance criteria settle the HOW.",
+        "It writes nothing, sets up no worktree and never runs the route itself."
+      ],
       "when": "When you ask which route an issue takes, and when start-issue calls it.",
       "without": "The route of an issue is a guess, not a gate result.",
       "status": "works",
@@ -114,36 +158,32 @@
       "kind": "lighthouse",
       "trigger": "skill",
       "label": "issue-impact-scout",
-      "what": "A narrow, read-only lighthouse agent that scouts the codebase and returns one IMPACT PACK of facts and evidence. It spares the design or planning skill a broad exploration of its own. It chooses no design and proposes no plan.",
-      "how": "It receives the issue body, the acceptance criteria, the milestone sections, the route and the absolute worktree path, and reads only inside that path with Read, Grep and Glob. It turns the criteria into search terms and finds the affected components, their callers and the tests that count them, the nearest existing pattern, the rules that apply and the test command. It stops at 35 searches and returns fixed sections in which every fact carries a file:line reference and every gap is marked UNKNOWN. If the scout fails, start-issue continues the route without the pack.",
+      "what": "A narrow, read-only agent that scouts the codebase and returns one IMPACT PACK of facts and evidence.",
+      "how": [
+        "It receives the issue body, the acceptance criteria, the milestone sections, the route and the absolute worktree path, and reads only inside that path with Read, Grep and Glob.",
+        "It turns the criteria into search terms and finds the affected components, their callers and the tests that count them, the nearest existing pattern, the rules that apply and the test command.",
+        "It stops at 35 searches and returns fixed sections in which every fact carries a file:line reference and every gap is marked UNKNOWN.",
+        "If the scout fails, start-issue continues the route without the pack."
+      ],
       "when": "Before a design or planning phase, called by start-issue at gate 4b and 4c once the worktree exists.",
       "without": "The design or plan starts without a fact sheet of what the issue touches.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/agents/issue-impact-scout.md"
     },
     {
-      "id": "worktree-guard",
-      "phase": "pickup",
-      "row": 5,
-      "kind": "hook",
-      "trigger": "tool",
-      "label": "worktree-guard",
-      "what": "A lighthouse hook that warns when a file is written into the main checkout while it is on the default branch. It gives an early signal at the first edit, before the commit. It never blocks, because read-only work and an explicit 'on main' from the user are legitimate.",
-      "how": "It runs on PreToolUse for Edit and Write and checks the target file path, not the working directory. It compares the git dir with the common git dir to tell a linked worktree from the main checkout, and reads the protected branch from lighthouse.toml. On a match it returns a systemMessage with the git worktree add command; when it cannot check, the message says COULD NOT CHECK. It always exits 0.",
-      "when": "Before each Edit or Write.",
-      "without": "A write into the main checkout on main passes without a warning.",
-      "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-guard.sh"
-    },
-    {
       "id": "brainstorming",
       "phase": "spec",
-      "row": 4,
+      "row": 0,
       "kind": "superpowers",
       "trigger": "skill",
       "label": "brainstorming",
-      "what": "A superpowers skill that works out intent, requirements and design with the user before any code is written. It finds out what the user wants and why, so later decisions match that intent. The result is an approved design document that writing-plans builds on.",
-      "how": "It first reads the project and any context the user pointed at, then asks one question per message and plays back each part it understands. Once the intent is clear, it lays out two or three approaches with their trade-offs and lets the user pick one. It writes a short or a full design document, for a project after a builder check by a fresh subagent, and gets the user's approval. A hard gate forbids any implementation before that approval, and the next step is writing-plans.",
+      "what": "Works out intent, requirements and design before any code is written.",
+      "how": [
+        "It first reads the project and any context the user pointed at, then asks one question per message and plays back each part it understands.",
+        "Once the intent is clear, it lays out two or three approaches with their trade-offs and lets the user pick one.",
+        "It writes a short or a full design document, for a project after a builder check by a fresh subagent, and gets the user's approval.",
+        "A hard gate forbids any implementation before that approval, and the next step is writing-plans."
+      ],
       "when": "Before creative work such as a new feature, component or behaviour change.",
       "without": "Code starts from a guess about what is wanted.",
       "status": "works"
@@ -151,12 +191,17 @@
     {
       "id": "worktree-linkcheck",
       "phase": "spec",
-      "row": 5,
+      "row": 1,
       "kind": "hook",
       "trigger": "tool",
       "label": "worktree-linkcheck",
-      "what": "A lighthouse hook that blocks a markdown link that is absolute or points nowhere. An absolute link is dead on the rendered site and as soon as the worktree is gone. It keeps every link in a .md file relative and resolvable.",
-      "how": "It runs on PostToolUse for Edit and Write and checks only .md and .markdown files. It finds the git root of the written file, and md_links.py resolves each relative link against the directory of that file. A dead or absolute link blocks with exit 2 and a list of the bad targets. When jq, git or python3 is missing, or the parser fails, it blocks with COULD NOT CHECK.",
+      "what": "Blocks a markdown link that is absolute or points nowhere.",
+      "how": [
+        "It runs on PostToolUse for Edit and Write and checks only .md and .markdown files.",
+        "It finds the git root of the written file, and md_links.py resolves each relative link against the directory of that file.",
+        "A dead or absolute link blocks with exit 2 and a list of the bad targets.",
+        "When jq, git or python3 is missing, or the parser fails, it blocks with COULD NOT CHECK."
+      ],
       "when": "After each Edit or Write.",
       "without": "A broken or absolute link in a .md file is committed.",
       "status": "works",
@@ -165,12 +210,17 @@
     {
       "id": "spec-adversarial-review",
       "phase": "spec",
-      "row": 6,
+      "row": 2,
       "kind": "lighthouse",
       "trigger": "you",
       "label": "spec-adversarial-review",
-      "what": "A lighthouse skill that has a committed spec reviewed against the real code by an agent of another model family. Round 1 is a review; later rounds only verify the fixes. It catches where the spec does not match the repo before a plan is built on it.",
-      "how": "Round 1 runs Codex in a read-only sandbox with a clean CODEX_HOME next to an Opus subagent, and the session decides blind on the merged table. Per finding it decides accept, reject with a reason, or defer to the plan, following receiving-code-review, and only accepted findings change the spec. Rounds 2 and 3 run on Opus and only check whether the accepted fixes hold; the review ends as converged, round_limit or aborted. It records the outcome with plan_review_record.py and ends with a handoff to writing-plans.",
+      "what": "The skill that runs the whole review of a spec: it starts each round, decides per finding and changes the spec; another model family does the reviewing.",
+      "how": [
+        "Round 1 runs Codex in a read-only sandbox with a clean CODEX_HOME next to an Opus subagent, and the session decides blind on the merged table.",
+        "Per finding it decides accept, reject with a reason, or defer to the plan, following receiving-code-review, and only accepted findings change the spec.",
+        "Rounds 2 and 3 run on Opus and only check whether the accepted fixes hold; the review ends as converged, round_limit or aborted.",
+        "It records the outcome with plan_review_record.py and ends with a handoff to writing-plans."
+      ],
       "when": "After writing a spec and before writing-plans.",
       "without": "The spec is only checked by the model that wrote it.",
       "status": "works",
@@ -179,26 +229,36 @@
     {
       "id": "spec-adversary",
       "phase": "spec",
-      "row": 7,
+      "row": 3,
       "kind": "lighthouse",
       "trigger": "skill",
       "label": "spec-adversary",
-      "what": "A lighthouse agent that drives one adversarial review round through an external Codex process of another model family. It keeps the long raw review out of the calling session's context. It returns a compact findings table and never reviews or edits the document itself.",
-      "how": "It runs review.sh once with the document, the round number, the output path, the prior review and optional context paths. The script runs codex exec in a read-only sandbox with a JSON output schema and writes the raw review to the output path. The agent gives each finding an ID by its position, sorts by severity and prints every field verbatim, with status, top 3, verdict and unverified items; on a non-zero exit it returns the code and does not review by itself. The two review skills now call it only to retry a round 1 whose paired run failed.",
+      "what": "The agent that runs one review round through Codex and hands back only the findings table; the review skills use it to retry a failed round 1.",
+      "how": [
+        "It runs review.sh once with the document, the round number, the output path, the prior review and optional context paths.",
+        "The script runs codex exec in a read-only sandbox with a JSON output schema and writes the raw review to the output path.",
+        "The agent gives each finding an ID by its position, sorts by severity and prints every field verbatim, with status, top 3, verdict and unverified items; on a non-zero exit it returns the code and does not review by itself.",
+        "The two review skills now call it only to retry a round 1 whose paired run failed."
+      ],
       "when": "When spec-adversarial-review or plan-adversarial-review retries a round 1 whose paired run failed.",
-      "without": "The two review skills have no reviewer to run.",
+      "without": "A round 1 whose paired run failed has no single-reviewer retry.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/agents/spec-adversary.md"
     },
     {
       "id": "writing-plans",
       "phase": "plan",
-      "row": 4,
+      "row": 0,
       "kind": "superpowers",
       "trigger": "skill",
       "label": "writing-plans",
-      "what": "A superpowers skill that turns a spec or requirements into an implementation plan of small tasks. The plan is written for an engineer who knows neither the codebase nor the spec. It records the decisions the implementer cannot make alone: files, signatures, values and tests.",
-      "how": "It maps the files first, then splits the work into tasks that each carry their own test cycle and end in a testable result. Each task names its files and interfaces and has steps to write the failing test, run it, implement, run it again and commit. The plan opens with goal, architecture, spec path, global constraints and a review focus, and the skill checks the plan against the spec itself. In lighthouse the plan is saved under the plans path from lighthouse.toml and committed, and the handoff then offers plan review before execution.",
+      "what": "Turns a spec or requirements into a plan of steps.",
+      "how": [
+        "It maps the files first, then splits the work into tasks that each carry their own test cycle and end in a testable result.",
+        "Each task names its files and interfaces and has steps to write the failing test, run it, implement, run it again and commit.",
+        "The plan opens with goal, architecture, spec path, global constraints and a review focus, and the skill checks the plan against the spec itself.",
+        "In lighthouse the plan is saved under the plans path from lighthouse.toml and committed, and the handoff then offers plan review before execution."
+      ],
       "when": "For a multi-step task, before touching code.",
       "without": "Code starts without a plan of steps.",
       "status": "works"
@@ -206,12 +266,17 @@
     {
       "id": "plan-adversarial-review",
       "phase": "plan",
-      "row": 5,
+      "row": 1,
       "kind": "lighthouse",
       "trigger": "you",
       "label": "plan-adversarial-review",
-      "what": "A lighthouse skill that has a committed implementation plan reviewed against the spec and the repo by an agent of another model family. Round 1 checks whether the plan can be executed; later rounds only verify the fixes. It catches plan errors before subagent-driven development turns them into rulings the user only sees at the PR.",
-      "how": "It takes the spec from the Spec line of the plan, or fetches the issue body when the issue is the spec. Round 1 runs Codex and an Opus subagent side by side on the same commit, and the session decides blind per finding with accept, reject or spec; it asks the user only when a fix would contradict the spec. Findings fall into seven categories, such as spec_mismatch, dependency_order and repo_falsehood. Fixes are committed after each round, Opus verifies them in rounds 2 and 3, and the outcome converged or round_limit hands off to subagent-driven development.",
+      "what": "Has an implementation plan reviewed by an agent of another model family against the spec and the repo; round 1 checks executability, later rounds only verify the fixes.",
+      "how": [
+        "It takes the spec from the Spec line of the plan, or fetches the issue body when the issue is the spec.",
+        "Round 1 runs Codex and an Opus subagent side by side on the same commit, and the session decides blind per finding with accept, reject or spec; it asks the user only when a fix would contradict the spec.",
+        "Findings fall into seven categories, such as spec_mismatch, dependency_order and repo_falsehood.",
+        "Fixes are committed after each round, Opus verifies them in rounds 2 and 3, and the outcome converged or round_limit hands off to subagent-driven development."
+      ],
       "when": "After committing a plan and before subagent-driven development.",
       "without": "The plan is only checked by the model that wrote it.",
       "status": "works",
@@ -224,34 +289,31 @@
       "kind": "superpowers",
       "trigger": "you",
       "label": "executing-plans / SDD",
-      "what": "Two superpowers skills that execute an implementation plan task by task. executing-plans runs every task in the current session; subagent-driven development (SDD) gives each task to a fresh implementer subagent with a reviewer after it. Both end with a whole-branch review and hand on to finishing-a-development-branch.",
-      "how": "Both work in a worktree and keep a ledger file per plan, so a session that loses its context resumes at the first unfinished task. Per task, executing-plans works the steps with TDD and commits, while SDD dispatches an implementer and then a task reviewer for spec compliance and code quality. Conflicts and ambiguities become recorded rulings in the ledger instead of questions; only a destructive or security-sensitive action, a side effect outside the worktree such as a push, or a broken plan stops the run. At the end a fresh reviewer on the most capable model checks the whole branch, followed by one fix pass.",
+      "what": "Executes an implementation plan, either in the current session or task by task with subagents (SDD).",
+      "how": [
+        "Both work in a worktree and keep a ledger file per plan, so a session that loses its context resumes at the first unfinished task.",
+        "Per task, executing-plans works the steps with TDD and commits, while SDD dispatches an implementer and then a task reviewer for spec compliance and code quality.",
+        "Conflicts and ambiguities become recorded rulings in the ledger instead of questions; only a destructive or security-sensitive action, a side effect outside the worktree such as a push, or a broken plan stops the run.",
+        "At the end a fresh reviewer on the most capable model checks the whole branch, followed by one fix pass."
+      ],
       "when": "When a plan is ready and you choose how to run it.",
       "without": "The plan is carried out without a defined execution method.",
       "status": "works"
     },
     {
-      "id": "test-driven-development",
-      "phase": "build",
-      "row": 1,
-      "kind": "superpowers",
-      "trigger": "skill",
-      "label": "test-driven-development",
-      "what": "A superpowers skill that writes the test before the implementation code. A test you watched fail shows that it tests the right thing. The result is code in which every behaviour has a test that failed first.",
-      "how": "It runs the red-green-refactor cycle: write one minimal test for one behaviour, run it and confirm that it fails for the expected reason. Then it writes the minimal code that makes the test pass, runs the tests until all are green, and cleans up while they stay green. Code written before its test is deleted and written again from the test. lighthouse-testing adds what that test must assert.",
-      "when": "When implementing a feature or a bugfix.",
-      "without": "Tests are written after the code, if at all.",
-      "status": "works"
-    },
-    {
       "id": "go-writing",
       "phase": "build",
-      "row": 2,
+      "row": 1,
       "kind": "lighthouse",
-      "trigger": "skill",
+      "trigger": "description",
       "label": "go-writing",
-      "what": "A lighthouse skill with the rules and a KPI table of commands for Go in the repo: gofmt, go mod tidy, go vet, golangci-lint, race tests and the test gate. It also applies while planning a refactor or a test strategy, before a file is open. It makes a report of done name each check, its outcome and the environment it ran in.",
-      "how": "Before the first edit it asks for the classification sentence from lighthouse-testing. Before done, every KPI row is run and reported as passed, failed or not measurable from here, with GOOS, build tags, -race and GOWORK named. It carries the norms replace, don't layer for merged packages and deepen, don't split at a complexity limit, plus the Go form of the testing norms. Two hooks enforce part of it: gofmt.sh after each edit and go-check.sh with golangci-lint at Stop.",
+      "what": "Rules and a KPI table of commands (gofmt, vet, golangci-lint, race) for writing Go in the repo.",
+      "how": [
+        "Before the first edit it asks for the classification sentence from lighthouse-testing.",
+        "Before done, every KPI row is run and reported as passed, failed or not measurable from here, with GOOS, build tags, -race and GOWORK named.",
+        "It carries the norms replace, don't layer for merged packages and deepen, don't split at a complexity limit, plus the Go form of the testing norms.",
+        "Two hooks enforce part of it: gofmt.sh after each edit and go-check.sh with golangci-lint at Stop."
+      ],
       "when": "When writing or changing Go, and when planning a Go refactor or test strategy.",
       "without": "Go code is written without the repo's checks in view.",
       "status": "works",
@@ -260,29 +322,57 @@
     {
       "id": "systematic-debugging",
       "phase": "build",
-      "row": 3,
+      "row": 2,
       "kind": "superpowers",
       "trigger": "skill",
       "label": "systematic-debugging",
-      "what": "A superpowers skill that finds the root cause of a bug before any fix is proposed. A fix for a symptom leaves the cause in place. The result is one fix at the source, backed by a failing test.",
-      "how": "Phase 1 reads the errors, reproduces the problem, checks recent changes and traces the bad value back to where it starts. Phase 2 compares the broken code with working examples, and phase 3 tests one hypothesis at a time with the smallest possible change. Phase 4 writes a failing test, makes one fix and verifies it. After three failed fixes it stops and questions the architecture with the user.",
+      "what": "Finds the cause of a bug before a fix is proposed.",
+      "how": [
+        "Phase 1 reads the errors, reproduces the problem, checks recent changes and traces the bad value back to where it starts.",
+        "Phase 2 compares the broken code with working examples, and phase 3 tests one hypothesis at a time with the smallest possible change.",
+        "Phase 4 writes a failing test, makes one fix and verifies it.",
+        "After three failed fixes it stops and questions the architecture with the user."
+      ],
       "when": "On any bug, test failure or unexpected behaviour.",
       "without": "Fixes are tried before the cause is known.",
       "status": "works"
     },
     {
-      "id": "testing",
+      "id": "test-driven-development",
+      "phase": "build",
+      "row": 3,
+      "kind": "superpowers",
+      "trigger": "skill",
+      "label": "test-driven-development",
+      "what": "Writes the test before the implementation code.",
+      "how": [
+        "It runs the red-green-refactor cycle: write one minimal test for one behaviour, run it and confirm that it fails for the expected reason.",
+        "Then it writes the minimal code that makes the test pass, runs the tests until all are green, and cleans up while they stay green.",
+        "Code written before its test is deleted and written again from the test.",
+        "lighthouse-testing adds what that test must assert."
+      ],
+      "when": "When implementing a feature or a bugfix.",
+      "without": "Tests are written after the code, if at all.",
+      "status": "works"
+    },
+    {
+      "id": "shell-gates",
       "phase": "build",
       "row": 4,
       "kind": "lighthouse",
-      "trigger": "skill",
-      "label": "testing",
-      "what": "A lighthouse skill that carries what a good test is, for every language. Its core question is which production change should make the test fail. It keeps out tests that pass today and would still pass after the bug.",
-      "how": "Before the first edit it asks for one classification sentence that names the change class, such as pure-logic, cli-output or hook/gate, and the regression surface; each class sets a minimal check. While writing it applies required checks, such as asserting an observable effect, specific fakes and no mirror assertions, and lists red flags that mean the test needs a redesign. Before done it asks for a mutation check: for every realistic mutation of the production code, at least one test must fail. Contract tests on instruction text follow their own rules, and the language skills add the tooling.",
-      "when": "When writing, changing, fixing or reviewing a test, mock, fake or assert.",
-      "without": "A test can pass without ever being able to fail.",
+      "trigger": "description",
+      "label": "shell-gates",
+      "what": "The norm 'the absence of a signal is treated as a negative result', plus a KPI table of commands for shell that guards something.",
+      "how": [
+        "It lists six real defects in which could not look came out green, and requires three outcomes: checked and clean, checked with findings, and COULD NOT CHECK.",
+        "Its KPI table runs shellcheck-repo.sh on the strict directories and on all shell in the repo, and checks that no gate script falls outside git.",
+        "A gate is not done until its test has been seen red once for the right reason, with one input that must block and one that must pass.",
+        "The shellcheck.sh hook blocks after every edit of a .sh or .bash file."
+      ],
+      "when": "When writing or changing hooks, pre-commit, pre-push or CI gate scripts, and the tests on them.",
+      "without": "A gate script can pass because it could not check.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/testing"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/skills/shell-gates"
     },
     {
       "id": "refresh-expo-lockfiles",
@@ -291,8 +381,13 @@
       "kind": "lighthouse",
       "trigger": "you",
       "label": "refresh-expo-lockfiles",
-      "what": "A lighthouse skill that refreshes the dependencies of the Expo apps so the expo-doctor check in CI goes green again. It catches up with the patch versions of the pinned Expo SDK and never upgrades the SDK major. The result is one commit per app that changes only package.json and package-lock.json.",
-      "how": "In a worktree it finds the apps by their package.json and package-lock.json, then runs npm ci and npx expo-doctor per app to record the drift. It repairs with npx expo install --fix followed by npm dedupe, never npm update, and verifies with expo-doctor and npm test --if-present. It checks that every version bump in the diff stays within the same major before it commits. When the expected version is a higher SDK major, it stops and writes an issue for the upgrade through write-issue instead.",
+      "what": "Refreshes the dependencies of the Expo apps so the CI check goes green again; stays on the pinned SDK and never upgrades it.",
+      "how": [
+        "In a worktree it finds the apps by their package.json and package-lock.json, then runs npm ci and npx expo-doctor per app to record the drift.",
+        "It repairs with npx expo install --fix followed by npm dedupe, never npm update, and verifies with expo-doctor and npm test --if-present.",
+        "It checks that every version bump in the diff stays within the same major before it commits.",
+        "When the expected version is a higher SDK major, it stops and writes an issue for the upgrade through write-issue instead."
+      ],
       "when": "When npx expo-doctor fails on package versions, or patch-level Expo drift blocks an unrelated PR.",
       "without": "The Expo lockfiles are refreshed by hand.",
       "status": "works",
@@ -303,28 +398,38 @@
       "phase": "build",
       "row": 6,
       "kind": "lighthouse",
-      "trigger": "skill",
+      "trigger": "description",
       "label": "python-writing",
-      "what": "A lighthouse skill with the rules and a KPI table of commands for Python in the repo's source and test directories: the blocking ruff rules, ty, the test gate and optional diff coverage. It also applies while planning a refactor or a test strategy, before a file is open. It makes a report of done name each check, its outcome and the extras that were synced.",
-      "how": "Before the first edit it asks for the classification sentence from lighthouse-testing. Before done, rows 1 to 3 are run and reported as passed, failed or not measurable from here, because a ty zero without its extras is not a zero. It carries the norms replace, don't layer and deepen, don't split, with the complexity limits, plus the Python form of the testing norms. Two hooks enforce part of it: ruff-format.sh blocks on the blocking rules after each edit, and ty-check.sh reports type errors at Stop.",
+      "what": "Rules and a KPI table of commands (ruff, ty, pytest) for writing Python in the repo's source and test directories.",
+      "how": [
+        "Before the first edit it asks for the classification sentence from lighthouse-testing.",
+        "Before done, rows 1 to 3 are run and reported as passed, failed or not measurable from here, because a ty zero without its extras is not a zero.",
+        "It carries the norms replace, don't layer and deepen, don't split, with the complexity limits, plus the Python form of the testing norms.",
+        "Two hooks enforce part of it: ruff-format.sh blocks on the blocking rules after each edit, and ty-check.sh reports type errors at Stop."
+      ],
       "when": "When writing or changing Python, and when planning a Python refactor or test strategy.",
       "without": "Python code is written without the repo's checks in view.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/skills/python-writing"
     },
     {
-      "id": "shell-gates",
+      "id": "testing",
       "phase": "build",
       "row": 7,
       "kind": "lighthouse",
-      "trigger": "skill",
-      "label": "shell-gates",
-      "what": "A lighthouse skill for shell that guards something: hooks, pre-commit, pre-push and CI gate scripts, and the tests on them. Its norm is that the absence of a signal is treated as a negative result. It keeps a gate from passing because it could not look.",
-      "how": "It lists six real defects in which could not look came out green, and requires three outcomes: checked and clean, checked with findings, and COULD NOT CHECK. Its KPI table runs shellcheck-repo.sh on the strict directories and on all shell in the repo, and checks that no gate script falls outside git. A gate is not done until its test has been seen red once for the right reason, with one input that must block and one that must pass. The shellcheck.sh hook blocks after every edit of a .sh or .bash file.",
-      "when": "When writing or changing hooks, pre-commit, pre-push or CI gate scripts, and the tests on them.",
-      "without": "A gate script can pass because it could not check.",
+      "trigger": "description",
+      "label": "testing",
+      "what": "Carries what a good test is: the production change that should make it fail, the classification sentence before the first edit and the mutation check before reporting done.",
+      "how": [
+        "Before the first edit it asks for one classification sentence that names the change class, such as pure-logic, cli-output or hook/gate, and the regression surface; each class sets a minimal check.",
+        "While writing it applies required checks, such as asserting an observable effect, specific fakes and no mirror assertions, and lists red flags that mean the test needs a redesign.",
+        "Before done it asks for a mutation check: for every realistic mutation of the production code, at least one test must fail.",
+        "Contract tests on instruction text follow their own rules, and the language skills add the tooling."
+      ],
+      "when": "When writing, changing, fixing or reviewing a test, mock, fake or assert.",
+      "without": "A test can pass without ever being able to fail.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/skills/shell-gates"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/testing"
     },
     {
       "id": "code-language",
@@ -333,8 +438,13 @@
       "kind": "hook",
       "trigger": "tool",
       "label": "code-language",
-      "what": "A lighthouse hook that checks that code is written in English when [project] code_language is set. Dutch comments, docstrings and names are findings; string literals are not read. It keeps code in English while the artefacts follow the project language.",
-      "how": "It runs on PostToolUse for Edit and Write, and bash-write-gates calls it for files a Bash call wrote. It always reads .py, .sh, .bash and .go files and reads other files only inside [project] code_language_paths, with the config taken from the git root of the written file. A finding blocks with exit 2, and a line marked lighthouse: allow-language is allowed. With [code_language_llm] set, it asks a chain of models about doubtful units, and when that chain gives no verdict it prints a notice that never blocks.",
+      "what": "Checks that code is written in English: Dutch comments, docstrings and names are findings; string literals are not read. Blocks with exit 2.",
+      "how": [
+        "It runs on PostToolUse for Edit and Write, and bash-write-gates calls it for files a Bash call wrote.",
+        "It always reads .py, .sh, .bash and .go files and reads other files only inside [project] code_language_paths, with the config taken from the git root of the written file.",
+        "A finding blocks with exit 2, and a line marked lighthouse: allow-language is allowed.",
+        "With [code_language_llm] set, it asks a chain of models about doubtful units, and when that chain gives no verdict it prints a notice that never blocks."
+      ],
       "when": "After each Edit or Write, when [project] code_language is set.",
       "without": "Code comments and names drift into the wrong language.",
       "status": "works",
@@ -347,8 +457,13 @@
       "kind": "hook",
       "trigger": "tool",
       "label": "bash-write-gates",
-      "what": "A lighthouse hook that runs the write gates on the files a Bash call wrote. A file written through a heredoc or sed -i would otherwise skip the checks that Edit and Write get. The result is the same verdict for a file, whichever tool wrote it.",
-      "how": "The pre mode runs on PreToolUse for Bash, records a baseline and always exits 0. The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shellcheck.sh, ruff-format.sh, code-language.sh or worktree-linkcheck.sh. A finding blocks with exit 2, and a gate whose pack is not installed is reported per file without blocking. When python3 or the dispatcher fails, it blocks with COULD NOT CHECK.",
+      "what": "Runs the write gates on what a Bash call wrote.",
+      "how": [
+        "The pre mode runs on PreToolUse for Bash, records a baseline and always exits 0.",
+        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shellcheck.sh, ruff-format.sh, code-language.sh or worktree-linkcheck.sh.",
+        "A finding blocks with exit 2, and a gate whose pack is not installed is reported per file without blocking.",
+        "When python3 or the dispatcher fails, it blocks with COULD NOT CHECK."
+      ],
       "when": "Before and after each Bash call, and after a failed one.",
       "without": "A file written through Bash skips the gates that Edit and Write get.",
       "status": "works",
@@ -361,8 +476,13 @@
       "kind": "hook",
       "trigger": "tool",
       "label": "main-commit-guard",
-      "what": "A lighthouse hook that blocks a commit or a push on the default branch, also through git -C <path> and a preceding cd. It is the branch protection that a free private GitHub repo does not give. It makes every change reach main through a branch and a PR.",
-      "how": "It runs on PreToolUse for Bash, parses the command with the lighthouse lib and resolves which repo and branch each git commit or git push targets. It blocks with exit 2 when that repo is on the default branch from lighthouse.toml, or when a push targets that branch explicitly, and lists the ways out. A file .claude/allow-main in the repo root lets a commit through on purpose. When it cannot see where a commit goes, it blocks with COULD NOT CHECK.",
+      "what": "Blocks a commit or push on main, also through git -C <path> and a preceding cd.",
+      "how": [
+        "It runs on PreToolUse for Bash, parses the command with the lighthouse lib and resolves which repo and branch each git commit or git push targets.",
+        "It blocks with exit 2 when that repo is on the default branch from lighthouse.toml, or when a push targets that branch explicitly, and lists the ways out.",
+        "A file .claude/allow-main in the repo root lets a commit through on purpose.",
+        "When it cannot see where a commit goes, it blocks with COULD NOT CHECK."
+      ],
       "when": "Before each Bash call.",
       "without": "A commit or push on main goes through.",
       "status": "works",
@@ -375,8 +495,13 @@
       "kind": "hook",
       "trigger": "tool",
       "label": "commit-tests",
-      "what": "A lighthouse hook that runs the project's tests on what each commit touched. It keeps a red commit from going unnoticed and keeps git commit --no-verify out. A red result comes back to the session, and the fix goes into a new commit.",
-      "how": "The pre mode runs on PreToolUse for Bash: it blocks --no-verify, runs the tests up front for a commit to the default branch and records HEAD for every other repo of the project. The post mode runs on PostToolUse and PostToolUseFailure for Bash and, for every root whose HEAD moved, runs [test_gate] command from lighthouse.toml with the changed files in LIGHTHOUSE_GATE_FILES. A red run gives exit 2 after the commit, and the commit stays. It enforces its own deadline, takes one of a limited number of slots so sessions do not overload the host, and blocks with COULD NOT CHECK when it cannot test.",
+      "what": "Blocks --no-verify and tests a commit to main before it; after a commit it runs [test_gate] command on the files of the commit and reports red.",
+      "how": [
+        "The pre mode runs on PreToolUse for Bash: it blocks --no-verify, runs the tests up front for a commit to the default branch and records HEAD for every other repo of the project.",
+        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and, for every root whose HEAD moved, runs [test_gate] command from lighthouse.toml with the changed files in LIGHTHOUSE_GATE_FILES.",
+        "A red run gives exit 2 after the commit, and the commit stays.",
+        "It enforces its own deadline, takes one of a limited number of slots so sessions do not overload the host, and blocks with COULD NOT CHECK when it cannot test."
+      ],
       "when": "Before and after each Bash call, and after a failed one.",
       "without": "Red tests on a commit go unnoticed.",
       "status": "works",
@@ -389,8 +514,13 @@
       "kind": "lighthouse",
       "trigger": "you",
       "label": "verify-pr",
-      "what": "A lighthouse skill that checks each acceptance criterion of the issue on the branch and writes the PR body itself. The body carries Closes #N with an Evidence table, Refs #N with a reason, or No issue with a reason. It makes a PR state whether it finishes its issue, without asking a question.",
-      "how": "It reads the issue with gh api and looks for evidence per criterion in the branch diff, in commands it runs and in files it opens. Every Evidence row is one allowlisted command with a stable output fragment, checked with evidence.py check and run together with evidence.py run before the PR. All criteria proven gives Closes #N; an open criterion gives Refs #N with what is still needed. It adds a changelog fragment when the repo uses them, writes the body from the PR template to a file and runs gh pr create with --body-file.",
+      "what": "Verifies each acceptance criterion of the issue on the branch and writes the PR body: Closes #N with an Evidence table, Refs #N, or No issue.",
+      "how": [
+        "It reads the issue with gh api and looks for evidence per criterion in the branch diff, in commands it runs and in files it opens.",
+        "Every Evidence row is one allowlisted command with a stable output fragment, checked with evidence.py check and run together with evidence.py run before the PR.",
+        "All criteria proven gives Closes #N; an open criterion gives Refs #N with what is still needed.",
+        "It adds a changelog fragment when the repo uses them, writes the body from the PR template to a file and runs gh pr create with --body-file."
+      ],
       "when": "Before every gh pr create.",
       "without": "The PR body is written without checking the acceptance criteria.",
       "status": "works",
@@ -403,8 +533,13 @@
       "kind": "hook",
       "trigger": "tool",
       "label": "pr-create-gate",
-      "what": "A lighthouse hook that blocks a gh pr create whose body lacks Closes #N with evidence, Refs #N with a reason or No issue with a reason. It makes every PR traceable to an issue, or say why there is none. It enforces the form that verify-pr writes.",
-      "how": "It runs on PreToolUse for Bash and finds each gh pr create or gh pr new in the command. pr_body_gate.py checks the body from a literal value or a --body-file, and for Closes #N it fetches the issue and requires one Evidence row per acceptance criterion. A wrong form, a wrong row count or a body built with command substitution, --fill or --web blocks with exit 2. When it cannot count the criteria it lets the PR through with the note AC count not measurable; when it cannot parse the command it blocks with COULD NOT CHECK.",
+      "what": "Blocks a gh pr create whose body lacks Closes #N with evidence, Refs #N with a reason or No issue with a reason.",
+      "how": [
+        "It runs on PreToolUse for Bash and finds each gh pr create or gh pr new in the command.",
+        "pr_body_gate.py checks the body from a literal value or a --body-file, and for Closes #N it fetches the issue and requires one Evidence row per acceptance criterion.",
+        "A wrong form, a wrong row count or a body built with command substitution, --fill or --web blocks with exit 2.",
+        "When it cannot count the criteria it lets the PR through with the note AC count not measurable; when it cannot parse the command it blocks with COULD NOT CHECK."
+      ],
       "when": "Before each Bash call.",
       "without": "A PR opens without a traceable issue or evidence.",
       "status": "works",
@@ -417,8 +552,13 @@
       "kind": "github",
       "trigger": "github",
       "label": "pr-and-ci",
-      "what": "The pull request on GitHub and the CI checks that run on it. Every change reaches main through a PR that is squash-merged. The PR body, built on the repo's PR template, links the change to its issue and its evidence.",
-      "how": "The template has sections for what and why, changes, related issues, open review points, before and after, and verification, and verify-pr writes the related issues part. In lighthouse's own repo the ci workflow runs on every pull request: a changelog fragment check, a job per changed domain for Python, Go and web, and a binary build with smoke and end-to-end tests. The Go job also checks that the installed pack/core matches pack/, and a CLA workflow runs on every PR to main. fix-pr repairs a red PR, and after the merge close-issue checks the evidence again.",
+      "what": "The pull request, built on the repo's PR template, and the CI checks that run on it.",
+      "how": [
+        "The template has sections for what and why, changes, related issues, open review points, before and after, and verification, and verify-pr writes the related issues part.",
+        "In lighthouse's own repo the ci workflow runs on every pull request: a changelog fragment check, a job per changed domain for Python, Go and web, and a binary build with smoke and end-to-end tests.",
+        "The Go job also checks that the installed pack/core matches pack/, and a CLA workflow runs on every PR to main.",
+        "fix-pr repairs a red PR, and after the merge close-issue checks the evidence again."
+      ],
       "when": "When the PR is opened and on each push to it.",
       "without": "Nothing checks the change before it merges.",
       "status": "works",
@@ -431,8 +571,13 @@
       "kind": "lighthouse",
       "trigger": "you",
       "label": "fix-pr",
-      "what": "A lighthouse skill that makes a red or conflicting PR green, or processes an unprocessed roborev review comment. It works in the worktree of the PR's head branch and stops when the PR is green. It replaces a long run-up of exploring calls with one fixed diagnosis.",
-      "how": "It opens with one read-only Bash call that shows the PR state, the checks, the worktree of the head branch, the error lines of the failed runs and any roborev comment. It then reuses or creates a worktree on the head branch, never a new branch from main, and reproduces the failing gate locally before it pushes. It pushes once when the fix is done and reports as soon as the checks are green and the PR is mergeable, without merging or closing the issue. For a roborev review it handles each finding through receiving-code-review and always posts one comment with a roborev-verwerkt marker.",
+      "what": "Makes a red or conflicting PR green, or processes an unprocessed roborev review comment; works in the worktree of the head branch and stops when the PR is green.",
+      "how": [
+        "It opens with one read-only Bash call that shows the PR state, the checks, the worktree of the head branch, the error lines of the failed runs and any roborev comment.",
+        "It then reuses or creates a worktree on the head branch, never a new branch from main, and reproduces the failing gate locally before it pushes.",
+        "It pushes once when the fix is done and reports as soon as the checks are green and the PR is mergeable, without merging or closing the issue.",
+        "For a roborev review it handles each finding through receiving-code-review and always posts one comment with a roborev-verwerkt marker."
+      ],
       "when": "When a PR is red, has merge conflicts or carries an unprocessed review comment.",
       "without": "A red PR is fixed without a fixed diagnosis first.",
       "status": "works",
@@ -445,8 +590,13 @@
       "kind": "superpowers",
       "trigger": "skill",
       "label": "receiving-code-review",
-      "what": "A superpowers skill that checks review feedback technically before it is implemented. Feedback can be wrong for this codebase, and agreeing without checking carries the error into the code. The result is a fix or a reasoned pushback per item.",
-      "how": "It reads all the feedback, restates each item, checks it against the codebase and judges whether it is sound for this codebase. An unclear item stops all implementation until it is clarified. A suggestion that breaks existing behaviour, lacks context or adds an unused feature gets pushback with a technical reason. It implements the accepted items one at a time, blocking issues first, and tests each one.",
+      "what": "Checks review feedback technically before implementing it; no blind agreement.",
+      "how": [
+        "It reads all the feedback, restates each item, checks it against the codebase and judges whether it is sound for this codebase.",
+        "An unclear item stops all implementation until it is clarified.",
+        "A suggestion that breaks existing behaviour, lacks context or adds an unused feature gets pushback with a technical reason.",
+        "It implements the accepted items one at a time, blocking issues first, and tests each one."
+      ],
       "when": "When review feedback arrives, especially if it is unclear or questionable.",
       "without": "Review suggestions are applied without checking them.",
       "status": "works"
@@ -458,8 +608,13 @@
       "kind": "lighthouse",
       "trigger": "you",
       "label": "close-issue",
-      "what": "A lighthouse skill that closes an issue only after it has verified the acceptance criteria and the definition of done, with full commit URLs in the close comment. After a Closes PR merges, it checks the evidence of that PR again and reopens the issue if it does not hold. It keeps an issue from closing on an assumption or on unrelated work.",
-      "how": "It first queries whether the issue is open and whether a Closes PR refers to it, and stops to wait for the merge when that PR is still open. Entry A uses the work of the session itself; entry B digs up evidence from git log, merged PRs and the files, and shows a table per criterion before any close. Entry C runs the Evidence table of the closing PR with evidence.py in a throwaway worktree on a fresh default branch, and reopens the issue on a failing row. It ends by cleaning up the worktrees and branches of the issue with worktree_audit.py, and closes the milestone when it becomes empty and its definition of done holds.",
+      "what": "Closes an issue after verifying the acceptance criteria and the definition of done, and links commits with full URLs; after a Closes PR merges it checks the evidence and reopens the issue if it does not hold.",
+      "how": [
+        "It first queries whether the issue is open and whether a Closes PR refers to it, and stops to wait for the merge when that PR is still open.",
+        "Entry A uses the work of the session itself; entry B digs up evidence from git log, merged PRs and the files, and shows a table per criterion before any close.",
+        "Entry C runs the Evidence table of the closing PR with evidence.py in a throwaway worktree on a fresh default branch, and reopens the issue on a failing row.",
+        "It ends by cleaning up the worktrees and branches of the issue with worktree_audit.py, and closes the milestone when it becomes empty and its definition of done holds."
+      ],
       "when": "After the merge of a Closes PR, or when you ask to close an issue.",
       "without": "An issue closes without evidence and without a check afterwards.",
       "status": "works",
@@ -472,8 +627,13 @@
       "kind": "github",
       "trigger": "github",
       "label": "unblock-dependents",
-      "what": "A GitHub Actions workflow that releases the issues that waited on a closed issue. When an issue closes as completed, it removes the blocked label from every open issue that waited on it and has no other open blocker, with a comment on each. Blocked work returns to the ready queue without anyone removing labels by hand.",
-      "how": "It runs on the issues closed event, and only for state_reason completed; workflow_dispatch with an issue number is the fallback for a missed or red run. It takes a GitHub App token and runs unblock_dependents.py, which reads only the dependencies/blocking and dependencies/blocked_by relations of the closed issue. It comments on each released issue and once on the closed issue. lighthouse init installs the workflow only when the [ci] bot keys are set in lighthouse.toml.",
+      "what": "When an issue closes as completed, removes the blocked label from every open issue that waited on it and has no other open blocker, with a comment on each.",
+      "how": [
+        "It runs on the issues closed event, and only for state_reason completed; workflow_dispatch with an issue number is the fallback for a missed or red run.",
+        "It takes a GitHub App token and runs unblock_dependents.py, which reads only the dependencies/blocking and dependencies/blocked_by relations of the closed issue.",
+        "It comments on each released issue and once on the closed issue.",
+        "lighthouse init installs the workflow only when the [ci] bot keys are set in lighthouse.toml."
+      ],
       "when": "On the closing of an issue.",
       "without": "Issues blocked on the closed issue stay blocked until someone removes the label.",
       "status": "works",
@@ -486,8 +646,13 @@
       "kind": "hook",
       "trigger": "tool",
       "label": "usage-guard",
-      "what": "A lighthouse hook that reads the alarm of lighthouse usage and makes the session wrap up before it runs into the usage limit. It warns at a prompt, blocks once per window at tool calls and at Stop, and once per subagent. It never fails red, because a guard that cannot check must not stop the work.",
-      "how": "On UserPromptSubmit it starts a detached lighthouse usage refresh and, with an alarm, adds a note to the context. On PostToolUse and SubagentStop the check without an alarm costs one file test. With a valid alarm the tool mode blocks once per window and asks to commit the work in progress, write a handoff and start no new step, and the stop mode asks to write the handoff and stop. The subagent mode asks the subagent to stop and report to the main thread, and every mode exits 0.",
+      "what": "Reads the alarm of lighthouse usage: warns at a prompt, blocks once per window in tool and stop, once per subagent in subagent; never fails red.",
+      "how": [
+        "On UserPromptSubmit it starts a detached lighthouse usage refresh and, with an alarm, adds a note to the context.",
+        "On PostToolUse and SubagentStop the check without an alarm costs one file test.",
+        "With a valid alarm the tool mode blocks once per window and asks to commit the work in progress, write a handoff and start no new step, and the stop mode asks to write the handoff and stop.",
+        "The subagent mode asks the subagent to stop and report to the main thread, and every mode exits 0."
+      ],
       "when": "At a prompt, after tool calls, at a subagent stop and at Stop.",
       "without": "The session runs into the usage limit without warning.",
       "status": "works",
@@ -500,8 +665,13 @@
       "kind": "lighthouse",
       "trigger": "you",
       "label": "instrument",
-      "what": "A lighthouse skill that decides on which layer a new instruction belongs: AGENTS.md or CLAUDE.md, a path-scoped rule, a skill or a hook. It enforces the pairing rule that no hook ships without a skill or rule that carries the norm. The result is one layer, one file and one validation command.",
-      "how": "It first searches for an existing external skill and vets its licence before adoption. A provenance gate then asks where the content comes from, and writes nothing when the only source is general model knowledge. A decision tree picks the layer: what must be enforced becomes a hook, what hangs on a path becomes a rule with paths:, a procedure becomes a skill, and the rest goes to AGENTS.md. It sets metadata fields such as binding, origin and source, leaves the writing itself to writing-skills and validates with check-instructions.sh.",
+      "what": "Decides on which layer a new instruction belongs (CLAUDE.md or AGENTS.md, a path-scoped rule, a skill or a hook) and enforces the pairing rule: no hook without a counterpart.",
+      "how": [
+        "It first searches for an existing external skill and vets its licence before adoption.",
+        "A provenance gate then asks where the content comes from, and writes nothing when the only source is general model knowledge.",
+        "A decision tree picks the layer: what must be enforced becomes a hook, what hangs on a path becomes a rule with paths:, a procedure becomes a skill, and the rest goes to AGENTS.md.",
+        "It sets metadata fields such as binding, origin and source, leaves the writing itself to writing-skills and validates with check-instructions.sh."
+      ],
       "when": "When a new instruction needs a home.",
       "without": "A new rule lands on whatever layer comes to mind.",
       "status": "works",
@@ -514,8 +684,13 @@
       "kind": "lighthouse",
       "trigger": "you",
       "label": "worktree-audit",
-      "what": "A lighthouse skill that audits worktrees, local and remote branches, PR state and sessions in one table with a verdict per row. It shows which worktrees and branches can go and where work was left off. It reports and prints commands, and changes nothing itself.",
-      "how": "It runs worktree_audit.py, which joins git worktree list, the local and remote branches, the PR state per head branch and the sessions on disk. Each row goes down a verdict ladder in which the first hit wins, from protected, active session, dirty tree and unpushed commits to open PR and merged PR. It relies on the PR lookup instead of git branch --merged, because a squash merge hides the original commits. The user pastes the printed cleanup commands, and the script refuses every git verb that does not only read.",
+      "what": "Audits worktrees, local and remote branches, PR state and sessions in one table with a verdict per row; reports and changes nothing itself.",
+      "how": [
+        "It runs worktree_audit.py, which joins git worktree list, the local and remote branches, the PR state per head branch and the sessions on disk.",
+        "Each row goes down a verdict ladder in which the first hit wins, from protected, active session, dirty tree and unpushed commits to open PR and merged PR.",
+        "It relies on the PR lookup instead of git branch --merged, because a squash merge hides the original commits.",
+        "The user pastes the printed cleanup commands, and the script refuses every git verb that does not only read."
+      ],
       "when": "When you ask which worktrees or branches can go, or where you left off.",
       "without": "Stale worktrees and branches pile up unseen.",
       "status": "works",
@@ -523,8 +698,13 @@
     }
   ],
   "handoff": {
-    "what": "A lighthouse skill that writes one copy-paste-ready block with worktree, branch, goal, context, state and the first step, for a fresh session to start from. It bridges two windows so that each phase of the work runs in a clean context. With a path ending in .handoff.md it writes the block to that file as a pause, as the usage guard asks.",
-    "how": "It reads the worktree path, the branch, git status and the last commits, and picks one anchor: a plan, a spec, an issue or a PR. For a spec or plan anchor with a known issue, it posts the artefact on the issue with post_artefact.py. It picks the first step from a routing table, such as plan review for an unreviewed plan or fix-pr for a red PR, and that line always starts with a slash command. It prints the block, reads it back to check for that slash command and suggests /clear.",
+    "what": "Writes one copy-paste-ready block with worktree, branch, goal, background and the first step, for a fresh session to start from.",
+    "how": [
+      "It reads the worktree path, the branch, git status and the last commits, and picks one anchor: a plan, a spec, an issue or a PR.",
+      "For a spec or plan anchor with a known issue, it posts the artefact on the issue with post_artefact.py.",
+      "It picks the first step from a routing table, such as plan review for an unreviewed plan or fix-pr for a red PR, and that line always starts with a slash command.",
+      "It prints the block, reads it back to check for that slash command and suggests /clear."
+    ],
     "when": "At the end of a phase, or when you ask for a command for a new session.",
     "without": "The next session starts without knowing where the work stands.",
     "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/handoff"
@@ -557,7 +737,10 @@
     {
       "id": "4c",
       "label": "Spec first (4c)",
-      "note": "worktree-linkcheck is one example of a hook on the way: it checks the links of every markdown file an Edit or Write touches, here the spec.",
+      "examples": [
+        "worktree-linkcheck",
+        "spec-adversary"
+      ],
       "chips": [
         "write-issue",
         "github-issue",
@@ -568,6 +751,7 @@
         "brainstorming",
         "worktree-linkcheck",
         "spec-adversarial-review",
+        "spec-adversary",
         "writing-plans",
         "plan-adversarial-review",
         "executing-plans",
@@ -583,6 +767,9 @@
     {
       "id": "4b",
       "label": "Plan (4b)",
+      "examples": [
+        "go-writing"
+      ],
       "chips": [
         "write-issue",
         "github-issue",
@@ -593,6 +780,7 @@
         "writing-plans",
         "plan-adversarial-review",
         "executing-plans",
+        "go-writing",
         "test-driven-development",
         "commit-tests",
         "verify-pr",
@@ -605,13 +793,20 @@
     {
       "id": "4a",
       "label": "Small job (4a)",
-      "note": "code-language, bash-write-gates and main-commit-guard are examples: a hook fires on the tool call it watches, on every route.",
+      "note": "The session writes the code itself; no skill runs the build.",
+      "examples": [
+        "python-writing",
+        "code-language",
+        "bash-write-gates",
+        "main-commit-guard"
+      ],
       "chips": [
         "write-issue",
         "github-issue",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
+        "python-writing",
         "testing",
         "code-language",
         "bash-write-gates",
@@ -626,6 +821,9 @@
     {
       "id": "2",
       "label": "Bug (2)",
+      "examples": [
+        "shell-gates"
+      ],
       "chips": [
         "write-issue",
         "github-issue",
@@ -634,6 +832,7 @@
         "route-issue",
         "systematic-debugging",
         "test-driven-development",
+        "shell-gates",
         "commit-tests",
         "verify-pr",
         "pr-create-gate",
@@ -644,7 +843,10 @@
     {
       "id": "1",
       "label": "Known recipe (1)",
-      "note": "The skill whose description matches the issue does the work and closes it; refresh-expo-lockfiles is one example.",
+      "note": "The skill whose description matches the issue does the work and closes it.",
+      "examples": [
+        "refresh-expo-lockfiles"
+      ],
       "chips": [
         "write-issue",
         "github-issue",
@@ -657,6 +859,20 @@
         "pr-create-gate",
         "pr-and-ci",
         "close-issue"
+      ]
+    },
+    {
+      "id": "no-issue",
+      "label": "No issue",
+      "note": "Work without an issue, such as a conversation: worktree-guard warns at the first write on main, the work moves to a worktree, and verify-pr writes No issue with a reason.",
+      "chips": [
+        "worktree-guard",
+        "using-git-worktrees",
+        "main-commit-guard",
+        "commit-tests",
+        "verify-pr",
+        "pr-create-gate",
+        "pr-and-ci"
       ]
     },
     {
