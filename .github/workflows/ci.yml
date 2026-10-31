@@ -1,6 +1,7 @@
 # CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
-# finds a changed path in it, and a `binary` job that builds the Go binary with the real SPA
-# embedded and smoke-tests it.
+# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`. A
+# `binary` job builds the SPA itself, embeds it in the Go binary and smoke-tests it, next to web
+# instead of after it.
 name: ci
 
 on:
@@ -65,6 +66,11 @@ jobs:
       - run: uv run pytest -q -n auto
       - run: ci/literal-grep.sh
 
+  # Split per the measurements in #131 (issuecomment-6541734664, -6541786347): setup 13 s,
+  # lint 30 s, builds 49 s (linux, windows, darwin), race compile 42 s, tests 34 s. `go` holds
+  # lint, builds and pack-match (≈92 s); `go-test` holds the race tests (≈92 s). The e2e tests
+  # build cmd/lighthouse themselves, 27 s cold: next to the race tests they took 44 s and made
+  # that job 143 s, so they run in `go-e2e`.
   go:
     needs: changes
     if: needs.changes.outputs.go == 'true'
@@ -84,11 +90,6 @@ jobs:
       # The release also ships windows and darwin: a platform-only break shows up here.
       - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
       - run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...
-      # Same flags as the Go part of [test_gate] command; tests/test_ci_go_test_pin.py pins it.
-      - run: go test -race -shuffle=on ./...
-      # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - run: go test -race -shuffle=on -tags e2e ./e2e/ -v
       # lighthouse runs its own pack/core: the installed copy must match pack/ exactly.
       # The diff goes to the log; stdin is empty, so init declines (exit 1) and writes
       # nothing. `|| true` keeps bash -e from ending the step before the diff is printed.
@@ -97,6 +98,37 @@ jobs:
           out=$(go run ./cmd/lighthouse init --upgrade </dev/null) || true
           printf '%s\n' "$out"
           test "$out" = "No changes."
+
+  go-test:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Same flags as the Go part of [test_gate] command; tests/test_ci_go_test_pin.py pins it.
+      - run: go test -race -shuffle=on ./...
+
+  go-e2e:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: go test -race -shuffle=on -tags e2e ./e2e/ -v
 
   web:
     needs: changes
@@ -113,6 +145,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
@@ -120,16 +154,12 @@ jobs:
       # The generated client must match web/openapi.json; `git status` also catches a new file.
       - run: npm run gen && git status --porcelain -- src/api && test -z "$(git status --porcelain -- src/api)"
       - run: npm run build
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: web-dist
-          path: internal/web/dist
 
-  # The binary with the real SPA embedded. Runs when web or go changed, also when web was
-  # skipped; a failed web job blocks it.
+  # The binary with the real SPA embedded. Runs when web or go changed; it builds the SPA
+  # itself, so it starts next to web instead of waiting for it.
   binary:
-    needs: [changes, web]
-    if: ${{ !cancelled() && needs.changes.result == 'success' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.go == 'true') && needs.web.result != 'failure' }}
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -139,18 +169,14 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - if: needs.web.result == 'success'
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: web-dist
-          path: internal/web/dist
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
       - working-directory: web
         run: npm ci
-      - if: needs.web.result != 'success'
-        working-directory: web
+      - working-directory: web
         run: npm run build
       - run: CGO_ENABLED=0 go build ./cmd/lighthouse
       - run: ci/spa-smoke.sh ./lighthouse
