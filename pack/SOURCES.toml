@@ -573,3 +573,15 @@ new = true
 [[file]]
 path = "pack/go/instructions/AGENTS.md"
 new = true
+
+[[file]]
+path = "pack/node/scripts/gate_node.py"
+new = true
+
+[[file]]
+path = "pack/node/requires.toml"
+new = true
+
+[[file]]
+path = "pack/node/detect.toml"
+new = true

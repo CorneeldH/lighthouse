@@ -507,7 +507,7 @@ func TestInitProposesRealExpo(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "apps/a/package.json", "{\"dependencies\": {\"expo\": \"~1.0.0\"}}\n")
 	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
-	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, expo (found apps/a/package.json)\n") {
+	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, expo (found apps/a/package.json), node (found apps/a/package.json)\n") {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
 	if !exists(root, ".claude/skills/lighthouse-refresh-expo-lockfiles/SKILL.md") || !exists(root, ".agents/skills/lighthouse-refresh-expo-lockfiles/SKILL.md") {

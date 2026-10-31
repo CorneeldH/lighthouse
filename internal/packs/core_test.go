@@ -178,6 +178,12 @@ func TestLanguagePacks(t *testing.T) {
 			hooks:  2,
 		},
 		{
+			name:   "node",
+			files:  []string{".lighthouse/scripts/gate_node.py"},
+			detect: true,
+			tools:  "node,npm,python3",
+		},
+		{
 			name: "python",
 			files: []string{
 				".agents/skills/lighthouse-python-writing/SKILL.md",

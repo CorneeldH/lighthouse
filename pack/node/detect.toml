@@ -1,0 +1,3 @@
+# init proposes pack/node when git tracks a package.json anywhere: the web checks live in
+# the directory that holds it, not necessarily in the repository root.
+files = ["**/package.json"]

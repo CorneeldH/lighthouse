@@ -43,7 +43,8 @@ def registered(name: str) -> dict[str, set[tuple[str, str]]]:
 
 
 def test_every_pack_is_listed():
-    on_disk = {p.parent.name for p in PACK.glob("*/skills")}
+    """Every pack is on the map, also one without a skill."""
+    on_disk = {p.name for p in PACK.iterdir() if p.is_dir()}
     assert {p["name"] for p in packs()} == on_disk
 
 
@@ -62,10 +63,15 @@ def test_detect_matches_detect_toml():
         assert entry["detect"] == expected, entry["name"]
 
 
+def skills_of(base) -> list[str]:
+    skills = base / "skills"
+    return sorted(p.name for p in skills.iterdir()) if skills.is_dir() else []
+
+
 def test_skills_agents_workflows_match():
     for entry in packs():
         base = PACK / entry["name"]
-        assert entry["skills"] == sorted(p.name for p in (base / "skills").iterdir()), entry["name"]
+        assert entry["skills"] == skills_of(base), entry["name"]
         assert entry["agents"] == sorted(p.stem for p in (base / "agents").glob("*.md")), entry["name"]
         assert entry["workflows"] == sorted(p.stem for p in (base / "workflows").glob("*")), entry["name"]
 
