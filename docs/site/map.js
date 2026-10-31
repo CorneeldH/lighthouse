@@ -42,6 +42,7 @@ const HEAD = 64; // height of the column heads, in px
 const ROW = 46; // height of one row of chips, in px
 const SVG_NS = "http://www.w3.org/2000/svg";
 const THEME_KEY = "lighthouse-theme";
+const drawers = new WeakMap(); // detail element -> its drawer
 
 /** Fetches and parses a JSON file; throws when the request fails. */
 export async function loadJson(url) {
@@ -292,6 +293,62 @@ function labels(ids, byId, none) {
 }
 
 /**
+ * The drawer on `detail`, one per element however often it is asked for: the first call makes
+ * it (tabindex and one Escape listener), later calls return the same object and so the same
+ * state. `show(node, boxes, focus, onClose)` marks `node` as current, fills `detail` with a
+ * Close button and `boxes`, opens it and focuses it when `focus`. `close()` shuts it, hands the
+ * focus back to `node` and calls the `onClose` of the last `show`.
+ */
+export function drawerFor(detail) {
+  const known = drawers.get(detail);
+  if (known) {
+    return known;
+  }
+  let current = null;
+  let onClose = null;
+  const close = () => {
+    if (!detail.classList.contains("open")) {
+      return;
+    }
+    detail.classList.remove("open");
+    if (current) {
+      current.classList.remove("current");
+      current.focus();
+      current = null;
+    }
+    if (onClose) {
+      onClose();
+    }
+  };
+  const show = (node, boxes, focus = true, closed = null) => {
+    if (current) {
+      current.classList.remove("current");
+    }
+    current = node;
+    node.classList.add("current");
+    onClose = closed;
+    const shut = el("button", "detail-close", "Close");
+    shut.type = "button";
+    shut.setAttribute("aria-label", "Close details");
+    shut.addEventListener("click", close);
+    detail.replaceChildren(shut, ...boxes);
+    detail.classList.add("open");
+    if (focus) {
+      detail.focus();
+    }
+  };
+  detail.tabIndex = -1;
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      close();
+    }
+  });
+  const drawer = { show, close };
+  drawers.set(detail, drawer);
+  return drawer;
+}
+
+/**
  * Renders a flow map into `root`: route buttons with the note of the chosen route, columns of
  * chips, the "Always on" band and the handoff badges. A click on a chip or badge opens `detail`
  * as a drawer from the right; Escape or its close button shuts it.
@@ -320,46 +377,9 @@ export function renderFlowMap(root, data, detail) {
 
   const chipButtons = [];
   const badges = [];
-  let current = null;
   let chosen = null;
   let reshow = null;
-  const mark = (node) => {
-    if (current) {
-      current.classList.remove("current");
-    }
-    current = node;
-    node.classList.add("current");
-  };
-
-  const close = () => {
-    if (!detail.classList.contains("open")) {
-      return;
-    }
-    detail.classList.remove("open");
-    if (current) {
-      current.classList.remove("current");
-      current.focus();
-      current = null;
-    }
-    reshow = null;
-  };
-  const open = (boxes, focus = true) => {
-    const shut = el("button", "detail-close", "Close");
-    shut.type = "button";
-    shut.setAttribute("aria-label", "Close details");
-    shut.addEventListener("click", close);
-    detail.replaceChildren(shut, ...boxes);
-    detail.classList.add("open");
-    if (focus) {
-      detail.focus();
-    }
-  };
-  detail.tabIndex = -1;
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      close();
-    }
-  });
+  const drawer = drawerFor(detail);
 
   /** Where `chip` sits on the routes: which ones, and its neighbours on the chosen one. */
   const routeFacts = (chip) => {
@@ -389,12 +409,12 @@ export function renderFlowMap(root, data, detail) {
   };
 
   const showChip = (chip, button, focus = true) => {
-    mark(button);
     // Another route changes the neighbours in "In the chain", so a route click redraws it.
     reshow = () => showChip(chip, button, false);
     const glyph = glyphOf(chip);
     const kind = form(chip);
-    open(
+    drawer.show(
+      button,
       [
         box(
           `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${GLYPHS[chip.trigger] || "?"} ${TRIGGERS[chip.trigger] || chip.trigger}`,
@@ -425,16 +445,18 @@ export function renderFlowMap(root, data, detail) {
         ...definition(chip.source),
       ],
       focus,
+      () => {
+        reshow = null;
+      },
     );
   };
 
   const showHandoff = (handoff, button) => {
-    mark(button);
     const from = byId.get(handoff.from);
     const to = byId.get(handoff.to);
     const about = data.handoff || {};
     reshow = null;
-    open([
+    drawer.show(button, [
       box(
         `handoff · ${phaseLabel.get(from.phase)} → ${phaseLabel.get(to.phase)}`,
         "↻ handoff",
