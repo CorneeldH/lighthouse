@@ -186,7 +186,8 @@ explicitly — not silently.
 
 Deliberately *not* adopted from the CEDA schema: `type`, `subtype`, `scope`, `activation`,
 `execution`, `verifies`, `id`, `version`. They can be derived from the location of the file or
-from the frontmatter Claude Code already knows, and a derived field kept up by hand drifts.
+from the frontmatter Claude Code already knows, and a derived field kept up by hand drifts. `type` stays away in particular: the name carries the kind of the unit (see the
+name shapes in step 6), so a field would only repeat it.
 
 That argument does *not* hold for provenance: it cannot be derived from anything, and that is why
 `source` is the one field adopted after all.
@@ -209,6 +210,23 @@ Demands that come on top:
   model chooses on similarity. Form: `NOTE — not for X: use Y instead`. Two demands at once: a
   scope word as a separate word (`not for`, `instead`), *and* another skill by name. Check 4
   tests this as soon as two descriptions share five trigger words.
+- **The name shape follows the kind of unit.** The prefix goes in front; the shape after it:
+
+  | Form | Name | Why |
+  |---|---|---|
+  | workflow skill (the session *does* the task) | verb + object: `write-issue`, `review-spec` | a steps sequence or decision logic reads as an action |
+  | standard (quality bar plus our preference and style, loaded next to another task) | `<topic>-standard`: `go-standard`, `test-standard` | the name says it is a yardstick, not a task |
+  | hook, gate (registered on `PreToolUse`, `Stop` or `SubagentStop` and exits 2: the action does not get through) | `<object>-gate`: `main-commit-gate` | the name warns that it can stop the action |
+  | hook, check (reports or warns afterwards, with or without exit 2: the action has happened) | `<object>-check`: `md-link-check` | the name promises no prevention |
+  | agent | `<object>-<occupation>`: `issue-impact-scout` | an agent is a profession, named like one |
+
+  A hook script with several modes is named after its strongest: if one mode can stop the
+  action, it is a gate (`commit-test-gate`: pre blocks, post reports, so a gate). Check 14 reads only
+  the lighthouse hooks in `.claude/settings.json` (commands under `.claude/hooks/lighthouse/`):
+  `-gate` or `-check` at the end, a gate on a blocking event, a check not on `Stop` or
+  `SubagentStop`. For a project's own hooks the convention is advice. Whether a `-check` on
+  `PreToolUse` never blocks, and whether a workflow skill starts with a verb, no script can
+  measure; that stays prose.
 - **Both variants, `.claude/skills/` and `.agents/skills/`**, in the same reviewed change. Check 3
   catches a missing name, check 11 a content difference that is not recorded.
 

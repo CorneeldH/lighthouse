@@ -80,3 +80,15 @@ def test_skill_is_english():
     lower = SKILL.lower()
     for word in (" je ", " het ", " niet ", " geen ", " een ", " wordt "):
         assert word not in lower, word
+
+
+def _step(n: int) -> str:
+    return SKILL.split(f"## Step {n} ")[1].split("\n## ")[0]
+
+
+def test_naming_convention_per_form():
+    step6 = _step(6)
+    for form in ("verb + object", "-standard", "-gate", "-check", "occupation"):
+        assert form in step6, form
+    assert "check 14" in step6.lower()
+    assert "the name carries" in _step(5)
