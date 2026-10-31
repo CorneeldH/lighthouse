@@ -176,3 +176,36 @@ func TestNewSessionID(t *testing.T) {
 		}
 	}
 }
+
+func TestOpenListsOnlyOpenRunsOfRepo(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	nine, err := Take(ctx, db, claim("o/r", 9, "start:9"))
+	if err != nil {
+		t.Fatalf("Take 9: %v", err)
+	}
+	three := claim("o/r", 3, "start:3")
+	if _, err := Take(ctx, db, three); err != nil {
+		t.Fatalf("Take 3: %v", err)
+	}
+	if _, err := Take(ctx, db, claim("o/x", 5, "start:5")); err != nil {
+		t.Fatalf("Take 5: %v", err)
+	}
+	if err := Release(ctx, db, nine.ID, Done, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	open, err := Open(ctx, db, "o/r")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if len(open) != 1 || open[0].Issue != 3 {
+		t.Fatalf("Open = %+v, want only issue 3", open)
+	}
+	got := open[0]
+	if !got.StartedAt.Equal(three.Now) || got.StartedAt.Location() != time.UTC {
+		t.Errorf("StartedAt = %v, want %v in UTC", got.StartedAt, three.Now)
+	}
+	if got.TriggerKey != "start:3" || got.SessionID != three.SessionID {
+		t.Errorf("TriggerKey, SessionID = %q, %q; want %q, %q", got.TriggerKey, got.SessionID, "start:3", three.SessionID)
+	}
+}

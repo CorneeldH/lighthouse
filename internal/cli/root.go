@@ -38,6 +38,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newUsageCommand())
 	root.AddCommand(newServeCommand())
 	root.AddCommand(newTickCommand())
+	root.AddCommand(newGatherCommand())
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version of this binary",
