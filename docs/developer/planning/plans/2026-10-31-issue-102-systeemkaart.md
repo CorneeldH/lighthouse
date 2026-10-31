@@ -30,10 +30,11 @@ K3 (#101) valt buiten dit plan; hij hergebruikt later `renderPlanMap`.
 - De plattegrond en de tijdlijn gebruiken **niet** de klassen `.map` en `.chip`. Ze delen met de
   stroomkaart alleen de kleurtokens (`--lighthouse`, `--idea`, `--border`, …) en de `kind-*`- en
   `status-*`-klassen (spec §6, *Eigen klassen*).
-- Nergens op de pagina staat `M<n>`. Een milestone heet naar zijn `title` uit de data:
-  `Pakket`, `Romp en zicht`, `Dispatcher`, `Tweede omgeving`, `SDP-tenant als werkplek`,
-  `Product: eerste versie voor anderen`, `Kaarten: lighthouse in beeld`. `plannedMark` blijft
-  zoals hij is.
+- Geen `M<n>` in de naam van een groep of in een markering. Een milestone heet naar zijn `title`
+  uit de data: `Pakket`, `Romp en zicht`, `Dispatcher`, `Tweede omgeving`,
+  `SURF Research Cloud als werkplek`, `Product: eerste versie voor anderen`,
+  `Kaarten: lighthouse in beeld`. Issuetitels blijven letterlijk zoals GitHub ze noemt, ook
+  `M0 (a0): …` (spec §3, r1-f5). `plannedMark` blijft zoals hij is.
 - Statussen letterlijk `works`, `planned`, `idea`; het label letterlijk `not in first release`.
 - Een `source` is `https://github.com/CorneeldH/lighthouse/blob/main/<pad>` (`REPO_BLOB` in
   `tests/test_site_chain.py`). Een issuelink is `https://github.com/CorneeldH/lighthouse/issues/<n>`.
@@ -51,11 +52,13 @@ K3 (#101) valt buiten dit plan; hij hergebruikt later `renderPlanMap`.
 
 AC 1 van #102: "Corneel keurt die met een comment in dit issue, en pas daarna wordt hij gebouwd."
 
-- [ ] **Stap 1:** `gh issue view 102 --comments`. Staat er geen comment van Corneel die de schets of
-  de spec goedkeurt, stop dan hier en meld dat. Bouw niets.
+- [ ] **Stap 1:** `gh issue view 102 --comments`. Een goedkeuring is een comment **zonder** de
+  marker `<!-- lighthouse:` (die markeert een gespiegelde spec of plan, ook onder de naam
+  CorneeldH) die de schets of de spec uitdrukkelijk goedkeurt. Staat die er niet, stop dan hier en
+  meld dat. Bouw niets.
 - [ ] **Stap 2:** Met de goedkeuring: pas de AC van #102 aan met `/lighthouse-write-issue` (spec §3,
   *Afwijking van de issue*). In *Now* zijn de onderdelen de chips; de milestones liggen als groepen
-  in *Over time*, niet als gebieden op de kaart.
+  in *Over time*, niet als gebieden op de kaart. Zegt de AC dat al, dan vervalt deze stap.
 
 ## Review-focus
 
@@ -297,29 +300,32 @@ def test_milestones_in_their_order_without_numbers():
     milestones = load_system(SYSTEM)["milestones"]
     assert [(m["number"], m["title"], m["state"]) for m in milestones] == [
         (1, "Pakket", "closed"), (2, "Romp en zicht", "closed"), (3, "Dispatcher", "open"),
-        (4, "Tweede omgeving", "open"), (5, "SDP-tenant als werkplek", "open"),
+        (4, "Tweede omgeving", "open"), (5, "SURF Research Cloud als werkplek", "open"),
         (6, "Product: eerste versie voor anderen", "open"), (7, "Kaarten: lighthouse in beeld", "open"),
     ]
 ```
 
-De `state` van een milestone volgt GitHub op het moment van bouwen; wijkt hij af van de lijst,
-pas dan de lijst aan en noem het in de PR-body.
+`title` en `state` van een milestone volgen GitHub op het moment van bouwen (spec §3); wijkt een
+van beide af van de lijst, pas dan de lijst aan en noem het in de PR-body.
 
 - [ ] **Stap 2:** `uv run pytest -q tests/test_site_system.py`. Verwacht: FAIL,
   `docs/site/data/system.json` bestaat niet.
 
 - [ ] **Stap 3: Haal milestones en issues op**
 
+Bewaar de uitvoer in de scratchpad; stap 5 vergelijkt ermee.
+
 ```bash
 gh api 'repos/CorneeldH/lighthouse/milestones?state=all&per_page=50' \
-  --jq '.[] | {number, title, state}'
+  --jq '[.[] | {number, title, state}]' > <scratchpad>/milestones.json
 gh api --paginate 'repos/CorneeldH/lighthouse/issues?state=all&per_page=100' \
   --jq '.[] | select(.pull_request == null and .milestone != null)
-        | {issue: .number, title, milestone: .milestone.number, state, state_reason}'
+        | {issue: .number, title, milestone: .milestone.number, state, state_reason}' \
+  | jq -s . > <scratchpad>/issues.json
 ```
 
 Bij het schrijven van dit plan: milestones 1–7, 47 issues met een milestone, geen enkele gesloten
-als *not planned*.
+als *not planned*; milestone 5 heet `M4 — SURF Research Cloud als werkplek`.
 
 - [ ] **Stap 4: Schrijf `docs/site/data/system.json`**
 
@@ -337,7 +343,16 @@ als *not planned*.
 - [ ] **Stap 5:** `uv run pytest -q tests/test_site_system.py tests/test_site_chain.py`. Verwacht:
   PASS. Faalt een check op de echte data, verbeter de data, niet de check.
 
-- [ ] **Stap 6: Commit**
+- [ ] **Stap 6: Vergelijk de data met de API-uitvoer (wegwerp, niet committen)**
+
+Een Python-oneliner of scratchpadscript leest `<scratchpad>/issues.json` en
+`docs/site/data/system.json` en vergelijkt de verzameling `(issue, title, milestone, status)`
+exact, met `status` afgeleid als in stap 4 (open → `planned`, gesloten met `completed` →
+`works`, de rest valt weg). Hetzelfde voor `(number, title, state)` van de milestones, met de
+titel ontdaan van `M<n> — ` en ` - DONE`. Verwacht: geen verschil. Een verschil verbeter je in de
+data.
+
+- [ ] **Stap 7: Commit**
 
 ```bash
 git add docs/site/data/system.json tests/test_site_system.py
@@ -360,16 +375,18 @@ git commit -m "feat(site): momentopname van onderdelen, milestones en issues (#1
   //      close(): void }
   ```
 
-  `show` haalt `.current` van het vorige vak, zet het op `node`, vult `detail` met de knop
-  "Close" (`aria-label` "Close details") en `boxes`, opent, en focust `detail` als `focus`.
-  `close` doet niets als de lade dicht is; anders sluit hij, haalt `.current` weg, geeft de focus
-  terug aan `node` en roept de `onClose` van de laatste `show` aan. Eén `keydown`-listener voor
-  Escape per `detail`, bewaard in een `WeakMap`.
+  Bij de eerste vraag voor een `detail` zet `drawerFor` eenmalig `detail.tabIndex = -1` en één
+  `keydown`-listener voor Escape; die staat in een `WeakMap` per `detail`. `show` haalt
+  `.current` van het vorige vak, zet het op `node`, vult `detail` met de knop "Close"
+  (`aria-label` "Close details") en `boxes`, opent, en focust `detail` als `focus`. `close` doet
+  niets als de lade dicht is; anders sluit hij, haalt `.current` weg, geeft de focus terug aan
+  `node` en roept de `onClose` van de laatste `show` aan.
 
 - [ ] **Stap 1: Implementeer `drawerFor` en laat `renderFlowMap` hem gebruiken**
 
-`showChip` geeft `() => { reshow = null; }` mee als `onClose`; de rest van `renderFlowMap` blijft
-gelijk. Geen gedragswijziging op de ketenkaart.
+De regel `detail.tabIndex = -1` (`map.js:336`) verhuist mee naar `drawerFor`. `showChip` geeft
+`() => { reshow = null; }` mee als `onClose`; de rest van `renderFlowMap` blijft gelijk. Geen
+gedragswijziging op de ketenkaart.
 
 - [ ] **Stap 2:** `uv run pytest -q tests/test_site_*.py`. Verwacht: PASS.
 
@@ -377,7 +394,8 @@ gelijk. Geen gedragswijziging op de ketenkaart.
 
 `python3 -m http.server --directory docs/site 8099` op de achtergrond; open
 `http://localhost:8099/chain.html` headless (patroon van taak 6, stap 1). Klik een chip: de lade
-toont zijn label en precies één chip heeft `.current`. Kies een andere route: de lade tekent
+toont zijn label, `document.activeElement` is de lade, en precies één chip heeft `.current`.
+Kies een andere route: de lade tekent
 opnieuw. Escape: de lade sluit en de focus staat op de chip. Kies daarna een route: de lade blijft
 dicht.
 
@@ -420,7 +438,8 @@ In `tests/test_site_system.py`:
 ```python
 def test_page_shows_the_snapshot():
     assert 'id="snapshot"' in (SITE / "system.html").read_text(encoding="utf-8")
-    assert "snapshot" in (SITE / "system.js").read_text(encoding="utf-8")
+    script = (SITE / "system.js").read_text(encoding="utf-8")
+    assert ".snapshot" in script and "Snapshot of" in script
 ```
 
 - [ ] **Stap 2:** `uv run pytest -q tests/test_site_pages.py tests/test_site_system.py`. Verwacht:
@@ -464,7 +483,9 @@ succes; dezelfde `catch`.
   `root.offsetParent === null`. Een `ResizeObserver` op `root` roept `redraw` aan.
 - `map.css`: een blok `/* System map */`. Works vol met `--lighthouse`, planned grijs gearceerd
   (`repeating-linear-gradient` op `--idea`) met een gestippelde rand, de lijnen dun (1px) in
-  `--muted`, `.plan-lines line.planned` met `stroke-dasharray`. Bij `max-width: 700px` één kolom.
+  `--muted`, `.plan-lines line.planned` met `stroke-dasharray`. `.plan-part.current` krijgt
+  dezelfde zichtbare markering als `.chip.current` (`box-shadow` met `--accent-soft`). Bij
+  `max-width: 700px` één kolom.
 
 - [ ] **Stap 5: Zet de tegel van #102 in `index.html` om**
 
@@ -510,14 +531,16 @@ git commit -m "feat(site): systeemkaart met de stand Now (#102)"
 In `system.html` een `div.stand-switch` (`role="group"`, `aria-label="View"`) met twee knoppen
 `Now` en `Over time` (`aria-pressed`), boven `#plan-map`. `#timeline` start met `hidden`. In
 `system.js`: een klik sluit eerst de lade (`drawerFor(detail).close()`), zet `hidden` en
-`aria-pressed`, en roept bij *Now* `plan.redraw()` aan. `renderTimeline` draait direct na
+`aria-pressed`, zet de focus op de ingedrukte schakelknop (`close` gaf hem aan een vak dat nu
+verborgen is), en roept bij *Now* `plan.redraw()` aan. `renderTimeline` draait direct na
 `renderPlanMap`.
 
 - [ ] **Stap 3: Stijl in `map.css`**
 
 `.stand-switch` naar het patroon van `.routes button[aria-pressed]`. `.timeline-group` als `.box`,
 `.plan-chip` als pil met dezelfde `status-*`-kleuren als `.plan-part`, `.plan-chip.dim` met
-`opacity: 0.25`, `.timeline-empty` grijs gearceerd.
+`opacity: 0.25`, `.plan-chip.current` met dezelfde markering als `.plan-part.current`,
+`.timeline-empty` grijs gearceerd.
 
 - [ ] **Stap 4:** `uv run pytest -q tests/test_site_*.py`. Verwacht: PASS.
 
@@ -545,13 +568,17 @@ assert die niet klopt. Op `http://localhost:8099/system.html`, breedte 1280:
 
 - `#snapshot` toont `Snapshot of <snapshot uit de data>`; de `serve-hint` is verborgen.
 - *Now*: 13 knoppen `.plan-part`, geen `button button`, geen knop met `data-id="environments"`.
-- De tekst van de pagina matcht nergens `/\bM\d\b/`; de knop van `controller` toont `Dispatcher`.
+- Geen `.plan-mark`, geen `h2` van een `.timeline-group` en geen optie van het filter matcht
+  `/\bM\d\b/`; de knop van `controller` toont `Dispatcher`. Issuetitels tellen niet mee
+  (randvoorwaarden).
 - Twee lijnen; de lijn "starts sessions" heeft `planned`. Elk uiteinde ligt binnen 2px op de rand
   van zijn vak (`getBoundingClientRect`).
-- Klik `binary`: de lade toont de issues van `binary` én van zijn onderdelen; precies één element
-  heeft `.current`. Klik *Over time*: de lade is dicht en geen element heeft `.current`.
+- Klik `binary`: de lade toont de issues van `binary` én van zijn onderdelen,
+  `document.activeElement` is de lade, en precies één element heeft `.current`, met een
+  `box-shadow` (`getComputedStyle`) die niet `none` is. Klik *Over time*: de lade is dicht, geen
+  element heeft `.current`, en de focus staat op de knop *Over time*.
 - *Over time*: zeven groepen met de titels van `test_milestones_in_their_order_without_numbers`, in
-  die volgorde; de telling van elke groep klopt met de data; "SDP-tenant als werkplek" toont
+  die volgorde; de telling van elke groep klopt met de data; "SURF Research Cloud als werkplek" toont
   `no issues yet`. Filter op `repo`: precies de issues van `repo`, `chain` en `guardrails` zijn
   niet gedimd.
 - Klik een issue, druk Escape: de lade sluit en `document.activeElement` is die issueknop.

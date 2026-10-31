@@ -52,7 +52,10 @@ twee verhoudingen (lagen, schillen). De schetsen staan niet in de repo; de keuze
   time*, maar dan als groepen per milestone in plaats van een raster.
 - **Geen milestonenummers.** Een groep in *Over time* heet naar de titel van de milestone, zonder
   het voorvoegsel `M<n> — `: "Pakket", "Romp en zicht", "Dispatcher", "Tweede omgeving",
-  "SDP-tenant als werkplek", "Product: eerste versie voor anderen", "Kaarten: lighthouse in beeld".
+  "SURF Research Cloud als werkplek", "Product: eerste versie voor anderen", "Kaarten: lighthouse in beeld".
+  De titels volgen GitHub op het moment van bouwen; milestone 5 heette eerst "SDP-tenant als
+  werkplek" *(verduidelijking na planreview, r1-f4)*. Issuetitels blijven letterlijk, ook als ze
+  een `M<n>` noemen: de regel geldt voor de namen van groepen en markeringen *(r1-f5)*.
 - **De stad met een weg (schets C) is voor later**, als film van hoe lighthouse groeide.
 - **De standen zijn gekoppeld.** Klik een onderdeel in *Now*: de lade toont de issues van dat
   onderdeel. *Over time* kan filteren op één onderdeel.
@@ -83,7 +86,7 @@ schets.
 | `environments` | Environments | — (rij) | `works` | — |
 | `env-now` | Environment today | environments | `works`, not in first release | `deploy/` |
 | `env-second` | Second environment | environments | `planned`, milestone "Tweede omgeving" | — |
-| `env-sdp` | SDP workspace | environments | `planned`, milestone "SDP-tenant als werkplek" | — |
+| `env-sdp` | Research Cloud workspace | environments | `planned`, milestone "SURF Research Cloud als werkplek" | — |
 | `docs` | Docs and site | — (los) | `works` | `docs/` |
 
 - Een onderdeel zonder `works` tekent grijs gearceerd, zoals in de schets.
@@ -181,7 +184,7 @@ want die eisen fases, rijen en routes. Het plattegrondformaat is ook bedoeld voo
   *(keuze na specreview, r1-f5)*.
 - **Weergave *Over time***: een tweede functie in `map.js` over dezelfde data. Eén groep per
   milestone, met de titel, de telling (`3/17`) en de issues als chips. Een filter op onderdeel
-  dimt de rest. Een milestone zonder issues ("SDP-tenant als werkplek") toont een grijs vak met
+  dimt de rest. Een milestone zonder issues ("SURF Research Cloud als werkplek") toont een grijs vak met
   "no issues yet".
 - **De lade**: dezelfde lade als op de ketenkaart. Bij een onderdeel: wat, wanneer, zonder, status,
   bron en de lijst van zijn issues. Bij een issue: titel, status, milestone en een link naar het
