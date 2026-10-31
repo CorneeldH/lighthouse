@@ -141,9 +141,22 @@
       "status": "works"
     },
     {
-      "id": "spec-adversarial-review",
+      "id": "worktree-linkcheck",
       "phase": "spec",
       "row": 5,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "worktree-linkcheck",
+      "what": "Blocks a markdown link that is absolute or points nowhere.",
+      "when": "After each Edit or Write.",
+      "without": "A broken or absolute link in a .md file is committed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-linkcheck.sh"
+    },
+    {
+      "id": "spec-adversarial-review",
+      "phase": "spec",
+      "row": 6,
       "kind": "lighthouse",
       "trigger": "you",
       "label": "spec-adversarial-review",
@@ -156,7 +169,7 @@
     {
       "id": "spec-adversary",
       "phase": "spec",
-      "row": 6,
+      "row": 7,
       "kind": "lighthouse",
       "trigger": "skill",
       "label": "spec-adversary",
@@ -293,9 +306,35 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/skills/shell-gates"
     },
     {
-      "id": "main-commit-guard",
+      "id": "code-language",
       "phase": "build",
       "row": 8,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "code-language",
+      "what": "Checks that code is written in English: Dutch comments, docstrings and names are findings; string literals are not read. Blocks with exit 2.",
+      "when": "After each Edit or Write, when [project] code_language is set.",
+      "without": "Code comments and names drift into the wrong language.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language.sh"
+    },
+    {
+      "id": "bash-write-gates",
+      "phase": "build",
+      "row": 9,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "bash-write-gates",
+      "what": "Runs the write gates on what a Bash call wrote.",
+      "when": "Before and after each Bash call, and after a failed one.",
+      "without": "A file written through Bash skips the gates that Edit and Write get.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-gates.sh"
+    },
+    {
+      "id": "main-commit-guard",
+      "phase": "build",
+      "row": 10,
       "kind": "hook",
       "trigger": "tool",
       "label": "main-commit-guard",
@@ -308,7 +347,7 @@
     {
       "id": "commit-tests",
       "phase": "build",
-      "row": 9,
+      "row": 11,
       "kind": "hook",
       "trigger": "tool",
       "label": "commit-tests",
@@ -317,45 +356,6 @@
       "without": "Red tests on a commit go unnoticed.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-tests.sh"
-    },
-    {
-      "id": "bash-write-gates",
-      "phase": "build",
-      "row": 10,
-      "kind": "hook",
-      "trigger": "tool",
-      "label": "bash-write-gates",
-      "what": "Runs the write gates on what a Bash call wrote.",
-      "when": "Before and after each Bash call, and after a failed one.",
-      "without": "A file written through Bash skips the gates that Edit and Write get.",
-      "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-gates.sh"
-    },
-    {
-      "id": "worktree-linkcheck",
-      "phase": "build",
-      "row": 11,
-      "kind": "hook",
-      "trigger": "tool",
-      "label": "worktree-linkcheck",
-      "what": "Blocks a markdown link that is absolute or points nowhere.",
-      "when": "After each Edit or Write.",
-      "without": "A broken or absolute link in a .md file is committed.",
-      "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-linkcheck.sh"
-    },
-    {
-      "id": "code-language",
-      "phase": "build",
-      "row": 12,
-      "kind": "hook",
-      "trigger": "tool",
-      "label": "code-language",
-      "what": "Checks that code is written in English: Dutch comments, docstrings and names are findings; string literals are not read. Blocks with exit 2.",
-      "when": "After each Edit or Write, when [project] code_language is set.",
-      "without": "Code comments and names drift into the wrong language.",
-      "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language.sh"
     },
     {
       "id": "verify-pr",
@@ -521,6 +521,7 @@
     {
       "id": "4c",
       "label": "Spec first (4c)",
+      "note": "worktree-linkcheck is one example of a hook on the way: it checks the links of every markdown file an Edit or Write touches, here the spec.",
       "chips": [
         "write-issue",
         "github-issue",
@@ -529,6 +530,7 @@
         "route-issue",
         "issue-impact-scout",
         "brainstorming",
+        "worktree-linkcheck",
         "spec-adversarial-review",
         "writing-plans",
         "plan-adversarial-review",
@@ -567,6 +569,7 @@
     {
       "id": "4a",
       "label": "Small job (4a)",
+      "note": "code-language, bash-write-gates and main-commit-guard are examples: a hook fires on the tool call it watches, on every route.",
       "chips": [
         "write-issue",
         "github-issue",
@@ -574,6 +577,9 @@
         "using-git-worktrees",
         "route-issue",
         "testing",
+        "code-language",
+        "bash-write-gates",
+        "main-commit-guard",
         "commit-tests",
         "verify-pr",
         "pr-create-gate",
