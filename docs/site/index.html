@@ -3,18 +3,153 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lighthouse maps</title>
+<title>Lighthouse</title>
 <link rel="stylesheet" href="map.css">
 <script type="module" src="index.js"></script>
 </head>
 <body>
 <header class="page-head">
   <div>
-    <h1>Lighthouse maps</h1>
-    <p class="subtitle">Six maps that show how lighthouse works. Pick one.</p>
+    <h1>Lighthouse</h1>
+    <p class="subtitle">Skills, hooks and gates that keep your AI coding agent on one chain, from
+    issue to merged pull request.</p>
   </div>
   <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
 </header>
+
+<section id="download" class="download" aria-labelledby="download-title">
+  <h2 id="download-title">Install</h2>
+  <p id="release-version">latest release</p>
+  <p class="download-lead">Paste one block into a terminal. It checks the binary against
+  <code>SHA256SUMS</code> before it puts it in <code>~/.local/bin</code>, without
+  <code>sudo</code>.</p>
+  <p id="platform-note" hidden></p>
+
+  <div class="platform" data-platform="linux-amd64">
+    <h3>Linux x86-64</h3>
+<pre><code>cd "$(mktemp -d)" &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_amd64 &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &amp;&amp;
+sha256sum --check --ignore-missing SHA256SUMS &amp;&amp;
+chmod +x lighthouse_linux_amd64 &amp;&amp;
+mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_linux_amd64 ~/.local/bin/lighthouse &amp;&amp;
+~/.local/bin/lighthouse version</code></pre>
+    <p class="path-hint">Not on your <code>PATH</code> yet? Add
+    <code>export PATH="$HOME/.local/bin:$PATH"</code> to <code>~/.bashrc</code>.</p>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_amd64">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> and <code>chmod +x</code> it yourself.</p>
+  </div>
+
+  <div class="platform" data-platform="linux-arm64">
+    <h3>Linux ARM</h3>
+<pre><code>cd "$(mktemp -d)" &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_arm64 &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &amp;&amp;
+sha256sum --check --ignore-missing SHA256SUMS &amp;&amp;
+chmod +x lighthouse_linux_arm64 &amp;&amp;
+mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_linux_arm64 ~/.local/bin/lighthouse &amp;&amp;
+~/.local/bin/lighthouse version</code></pre>
+    <p class="path-hint">Not on your <code>PATH</code> yet? Add
+    <code>export PATH="$HOME/.local/bin:$PATH"</code> to <code>~/.bashrc</code>.</p>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_arm64">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> and <code>chmod +x</code> it yourself.</p>
+  </div>
+
+  <div class="platform" data-platform="darwin-arm64">
+    <h3>macOS Apple silicon</h3>
+<pre><code>cd "$(mktemp -d)" &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_darwin_arm64 &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &amp;&amp;
+shasum -a 256 -c --ignore-missing SHA256SUMS &amp;&amp;
+chmod +x lighthouse_darwin_arm64 &amp;&amp;
+mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_darwin_arm64 ~/.local/bin/lighthouse &amp;&amp;
+~/.local/bin/lighthouse version</code></pre>
+    <p class="path-hint">Not on your <code>PATH</code> yet? Add
+    <code>export PATH="$HOME/.local/bin:$PATH"</code> to <code>~/.zshrc</code>.</p>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_darwin_arm64">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> and <code>chmod +x</code> it yourself.</p>
+  </div>
+
+  <div class="platform" data-platform="darwin-amd64">
+    <h3>macOS Intel</h3>
+<pre><code>cd "$(mktemp -d)" &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_darwin_amd64 &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &amp;&amp;
+shasum -a 256 -c --ignore-missing SHA256SUMS &amp;&amp;
+chmod +x lighthouse_darwin_amd64 &amp;&amp;
+mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_darwin_amd64 ~/.local/bin/lighthouse &amp;&amp;
+~/.local/bin/lighthouse version</code></pre>
+    <p class="path-hint">Not on your <code>PATH</code> yet? Add
+    <code>export PATH="$HOME/.local/bin:$PATH"</code> to <code>~/.zshrc</code>.</p>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_darwin_amd64">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> and <code>chmod +x</code> it yourself.</p>
+  </div>
+
+  <div class="platform" data-platform="windows-amd64">
+    <h3>Windows</h3>
+    <p class="platform-intro">The hooks need WSL: inside WSL, use the Linux tab. The Windows
+    binary runs the CLI only. In PowerShell:</p>
+<pre><code>&amp; {
+  $ErrorActionPreference = "Stop"
+  $ProgressPreference = "SilentlyContinue"
+  $base = "https://github.com/CorneeldH/lighthouse/releases/latest/download"
+  Invoke-WebRequest -UseBasicParsing "$base/lighthouse_windows_amd64.exe" -OutFile lighthouse.exe
+  Invoke-WebRequest -UseBasicParsing "$base/SHA256SUMS" -OutFile SHA256SUMS
+  $want = ((Select-String -Path SHA256SUMS -Pattern "lighthouse_windows_amd64.exe").Line -split "\s+")[0]
+  $have = (Get-FileHash -Algorithm SHA256 lighthouse.exe).Hash.ToLower()
+  if ($have -ne $want) { Remove-Item lighthouse.exe; throw "Checksum mismatch: lighthouse.exe removed" }
+  .\lighthouse.exe version
+}</code></pre>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_windows_amd64.exe">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> yourself.</p>
+  </div>
+
+  <p class="next-step">Next: run <code>lighthouse init</code> in your repository, as the
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#run-lighthouse-init">getting-started guide</a>
+  shows.</p>
+</section>
+
+<section id="what" class="what" aria-labelledby="what-title">
+  <h2 id="what-title">What it does</h2>
+  <div class="features">
+    <div class="feature">
+      <h3>Hooks that stop a wrong step</h3>
+      <p>A commit or push on <code>main</code> is blocked, and so is a markdown link that points
+      nowhere. A hook that cannot check says so instead of passing.</p>
+    </div>
+    <div class="feature">
+      <h3>A test gate at every commit</h3>
+      <p>Each commit runs the test command of your repository on the files it touches. Red is
+      fixed in a new commit, never skipped.</p>
+    </div>
+    <div class="feature">
+      <h3>Skills from issue to pull request</h3>
+      <p>Skills pick up an issue, choose how much process it needs, and carry it through a
+      worktree, a spec and a plan to a branch.</p>
+    </div>
+    <div class="feature">
+      <h3>A pull request with evidence</h3>
+      <p>The pull request body checks every acceptance criterion of the issue, with evidence
+      per criterion, before the pull request is opened.</p>
+    </div>
+  </div>
+</section>
+
+<section id="who" class="who" aria-labelledby="who-title">
+  <h2 id="who-title">Who it is for</h2>
+  <p>A developer with a GitHub repository and Claude Code. Codex and OpenCode read
+  <code>AGENTS.md</code> too, but the hooks do not run there.</p>
+  <h3>Requirements</h3>
+  <ul>
+    <li>Claude Code, Python 3.11+, <code>git</code>, <code>jq</code>, <code>gh</code> and the
+    Superpowers plugin; <code>codex</code> is optional, for reviews by another model family.</li>
+    <li>Linux is tested. On macOS the CLI runs; the hooks are not tested yet
+    (<a href="https://github.com/CorneeldH/lighthouse/issues/90">#90</a>). On Windows, use
+    WSL.</li>
+  </ul>
+  <p>The <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#requirements">full
+  table</a> names every tool and what happens without it.</p>
+</section>
 
 <details class="why" id="why">
   <summary>Why lighthouse?</summary>
@@ -46,7 +181,6 @@
   factory</a></p>
 </details>
 
-<!-- #89 puts the download above this section. -->
 <section id="maps" class="tiles" aria-label="Maps">
   <a class="tile kind-lighthouse status-works" href="chain.html">
     <p class="kicker">Map 1</p>
@@ -63,11 +197,11 @@
     <h2>Your repo after init</h2>
     <p>What <code>init</code> writes, and where.</p>
   </div>
-  <div class="tile status-planned">
-    <p class="kicker">Map 4 · planned · #102</p>
+  <a class="tile kind-lighthouse status-works" href="system.html">
+    <p class="kicker">Map 4</p>
     <h2>The system and the roadmap</h2>
     <p>How the parts fit, and what comes next.</p>
-  </div>
+  </a>
   <div class="tile status-planned">
     <p class="kicker">Map 5 · planned · #103</p>
     <h2>Per harness</h2>
@@ -79,5 +213,12 @@
     <p>The keys of <code>lighthouse.toml</code> and what they connect.</p>
   </div>
 </section>
+
+<footer class="links">
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md">Getting started</a>
+  <a href="https://github.com/CorneeldH/lighthouse/issues/88">Agent guide (coming, #88)</a>
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/LICENSE">License</a>
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/CHANGELOG.md">Changelog</a>
+</footer>
 </body>
 </html>
