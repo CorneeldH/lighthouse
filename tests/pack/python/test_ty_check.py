@@ -222,6 +222,19 @@ def test_ty_checks_a_python_path(tmp_path, rel):
     assert "invalid-assignment" in result.stderr
 
 
+@pytest.mark.parametrize(
+    ("source_dir", "rel"),
+    [("./src/", "src/pkg/a.py"), ("src/pkg", "src/pkg/a.py"), ("./src/pkg/", "src/pkg/a.py")],
+)
+def test_ty_normalizes_a_source_dir_entry(tmp_path, source_dir, rel):
+    root = _fake_repo(tmp_path, f'source_dirs = ["{source_dir}"]')
+    (root / "src" / "pkg").mkdir()
+    (root / "src" / "pkg" / "bad.py").write_text('x: int = "not an int"\n')
+    result = _run(root, _turn(tmp_path, root, rel, committed=True))
+    assert result.returncode == 2, result.stdout
+    assert "invalid-assignment" in result.stderr
+
+
 def test_ty_dot_source_dir_matches_the_root(tmp_path):
     root = _fake_repo(tmp_path, 'source_dirs = ["."]')
     (root / "bad.py").write_text('x: int = "not an int"\n')
