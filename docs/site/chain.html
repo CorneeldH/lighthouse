@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The chain</title>
+<link rel="stylesheet" href="map.css">
+<script type="module" src="chain.js"></script>
+</head>
+<body>
+<header class="page-head">
+  <div>
+    <h1 id="title">The chain</h1>
+    <p id="subtitle" class="subtitle">From an idea to a closed issue, and what joins in at each step.</p>
+  </div>
+  <a class="back-link" href="index.html">All maps</a>
+  <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
+</header>
+
+<p id="serve-hint" class="serve-hint">This map reads its data with <code>fetch</code>, which a
+browser blocks for a page opened straight from disk. From the root of the repository, run
+<code>python3 -m http.server --directory docs/site</code> and open
+<code>http://localhost:8000/chain.html</code>.</p>
+
+<section class="legend" aria-label="Legend">
+  <ul aria-label="Who provides it">
+    <li><span class="swatch kind-lighthouse"></span>lighthouse</li>
+    <li><span class="swatch kind-superpowers"></span>Superpowers</li>
+    <li><span class="swatch kind-hook"></span>hook</li>
+    <li><span class="swatch kind-github"></span>GitHub</li>
+  </ul>
+  <ul aria-label="How it starts">
+    <li>⌨ you ask for it</li>
+    <li>↪ another skill calls it</li>
+    <li>⚡ a tool call</li>
+    <li>⚙ a GitHub event</li>
+  </ul>
+  <ul aria-label="Status">
+    <li><span class="sample kind-lighthouse status-works">works</span> on main and running</li>
+    <li><span class="sample kind-lighthouse status-planned">planned · #nr</span> has an issue or milestone</li>
+    <li><span class="sample status-idea">idea</span> no issue yet</li>
+    <li><span class="sample kind-lighthouse status-works">not in first release</span> runs on main, not for users yet</li>
+  </ul>
+  <ul aria-label="Handoffs">
+    <li><span class="handoff status-works">↻ handoff</span> lighthouse does it already</li>
+    <li><span class="handoff status-planned">↻ handoff</span> planned</li>
+  </ul>
+</section>
+
+<div id="chain-map"></div>
+
+<section id="detail" class="detail" aria-live="polite" aria-label="Details"></section>
+
+<section id="packs" class="cards">
+  <h2>Packs: what <code>init</code> adds, and when</h2>
+  <p class="subtitle">Core always comes along. <code>init</code> proposes a language pack when it
+  recognises your repository; you say yes or no.</p>
+  <div id="pack-grid" class="card-grid"></div>
+</section>
+</body>
+</html>

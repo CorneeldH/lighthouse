@@ -1,0 +1,51 @@
+{
+  "title": "Fixture map",
+  "subtitle": "A small map in the chain.json format, for the generic site checks.",
+  "phases": [
+    {"id": "one", "label": "One", "blurb": "first phase"},
+    {"id": "two", "label": "Two", "blurb": "second phase"},
+    {"id": "three", "label": "Three", "blurb": "third phase"}
+  ],
+  "chips": [
+    {
+      "id": "write-issue", "phase": "one", "row": 1, "kind": "lighthouse", "trigger": "you",
+      "label": "write-issue", "what": "A skill that exists.", "when": "When you type it.",
+      "without": "Nothing guards it.", "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/write-issue"
+    },
+    {
+      "id": "main-commit-guard", "phase": "one", "row": 2, "kind": "hook", "trigger": "tool",
+      "label": "main-commit-guard", "what": "A hook that exists.", "when": "On a commit.",
+      "without": "A commit lands on main.", "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-guard.sh"
+    },
+    {
+      "id": "planned-issue", "phase": "two", "row": 0, "kind": "superpowers", "trigger": "skill",
+      "label": "planned-issue", "what": "Planned, with an issue.", "when": "Later.",
+      "without": "Nothing.", "status": "planned", "issue": 123
+    },
+    {
+      "id": "planned-milestone", "phase": "two", "row": 1, "kind": "github", "trigger": "github",
+      "label": "planned-milestone", "what": "Planned, with a milestone.", "when": "Later.",
+      "without": "Nothing.", "status": "planned", "milestone": "M9"
+    },
+    {
+      "id": "an-idea", "phase": "three", "row": 2, "kind": "superpowers", "trigger": "you",
+      "label": "an-idea", "what": "Only an idea.", "when": "Maybe.",
+      "without": "Nothing.", "status": "idea", "not_in_first_release": true
+    }
+  ],
+  "handoff": {
+    "what": "A handoff that exists.", "when": "At the end.", "without": "Nothing.",
+    "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/handoff"
+  },
+  "handoffs": [
+    {"from": "main-commit-guard", "to": "planned-issue", "status": "planned", "milestone": "M9"}
+  ],
+  "routes": [
+    {
+      "id": "x", "label": "Fixture route", "note": "One upward jump.",
+      "chips": ["write-issue", "main-commit-guard", "planned-issue", "planned-milestone", "an-idea"]
+    }
+  ]
+}

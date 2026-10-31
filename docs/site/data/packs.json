@@ -1,0 +1,193 @@
+[
+  {
+    "name": "core",
+    "proposed_when": "always",
+    "detect": [],
+    "skills": [
+      "close-issue",
+      "fix-pr",
+      "handoff",
+      "instrument",
+      "plan-adversarial-review",
+      "route-issue",
+      "spec-adversarial-review",
+      "start-issue",
+      "testing",
+      "verify-pr",
+      "worktree-audit",
+      "write-issue"
+    ],
+    "agents": [
+      "issue-impact-scout",
+      "spec-adversary"
+    ],
+    "workflows": [
+      "unblock-dependents"
+    ],
+    "hooks": [
+      {
+        "name": "main-commit-guard",
+        "events": [
+          "PreToolUse"
+        ],
+        "when": "before every shell command"
+      },
+      {
+        "name": "commit-tests",
+        "events": [
+          "PreToolUse",
+          "PostToolUse",
+          "PostToolUseFailure"
+        ],
+        "when": "around every shell command"
+      },
+      {
+        "name": "bash-write-gates",
+        "events": [
+          "PreToolUse",
+          "PostToolUse",
+          "PostToolUseFailure"
+        ],
+        "when": "around every shell command"
+      },
+      {
+        "name": "pr-create-gate",
+        "events": [
+          "PreToolUse"
+        ],
+        "when": "before every shell command"
+      },
+      {
+        "name": "worktree-guard",
+        "events": [
+          "PreToolUse"
+        ],
+        "when": "before every edit"
+      },
+      {
+        "name": "worktree-linkcheck",
+        "events": [
+          "PostToolUse"
+        ],
+        "when": "after every edit"
+      },
+      {
+        "name": "code-language",
+        "events": [
+          "PostToolUse"
+        ],
+        "when": "after every edit"
+      },
+      {
+        "name": "usage-guard",
+        "events": [
+          "PostToolUse",
+          "Stop",
+          "SubagentStop",
+          "UserPromptSubmit"
+        ],
+        "when": "at every prompt, tool call, subagent stop and session stop"
+      }
+    ],
+    "extra": [
+      "the pull request template"
+    ]
+  },
+  {
+    "name": "go",
+    "proposed_when": "a go.mod in the repository root",
+    "detect": [
+      "go.mod"
+    ],
+    "skills": [
+      "go-writing"
+    ],
+    "agents": [],
+    "workflows": [],
+    "hooks": [
+      {
+        "name": "gofmt",
+        "events": [
+          "PostToolUse"
+        ],
+        "when": "after every edit"
+      },
+      {
+        "name": "go-check",
+        "events": [
+          "Stop"
+        ],
+        "when": "when the session stops"
+      }
+    ],
+    "extra": []
+  },
+  {
+    "name": "python",
+    "proposed_when": "a pyproject.toml in the repository root",
+    "detect": [
+      "pyproject.toml"
+    ],
+    "skills": [
+      "python-writing"
+    ],
+    "agents": [],
+    "workflows": [],
+    "hooks": [
+      {
+        "name": "ruff-format",
+        "events": [
+          "PostToolUse"
+        ],
+        "when": "after every edit"
+      },
+      {
+        "name": "ty-check",
+        "events": [
+          "Stop"
+        ],
+        "when": "when the session stops"
+      }
+    ],
+    "extra": [
+      "sets the test gate (uv run pytest -q)"
+    ]
+  },
+  {
+    "name": "shell",
+    "proposed_when": "git tracks a .sh or .bash file",
+    "detect": [
+      "**/*.sh",
+      "**/*.bash"
+    ],
+    "skills": [
+      "shell-gates"
+    ],
+    "agents": [],
+    "workflows": [],
+    "hooks": [
+      {
+        "name": "shellcheck",
+        "events": [
+          "PostToolUse"
+        ],
+        "when": "after every edit"
+      }
+    ],
+    "extra": []
+  },
+  {
+    "name": "expo",
+    "proposed_when": "a package.json that names expo",
+    "detect": [
+      "**/package.json"
+    ],
+    "skills": [
+      "refresh-expo-lockfiles"
+    ],
+    "agents": [],
+    "workflows": [],
+    "hooks": [],
+    "extra": []
+  }
+]

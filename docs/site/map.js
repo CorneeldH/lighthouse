@@ -1,0 +1,424 @@
+// Shared flow map of the lighthouse site: columns of chips, an "Always on" band, route buttons,
+// handoff badges and a detail panel. Data reaches the page only through textContent and
+// attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
+
+const GLYPHS = { you: "⌨", skill: "↪", tool: "⚡", github: "⚙" };
+const TRIGGERS = {
+  you: "you ask for it",
+  skill: "another skill calls it",
+  tool: "a tool call",
+  github: "a GitHub event",
+};
+const WIDTH = 1260; // virtual width of the map, equal to the min-width of .map in map.css
+const HEAD = 64; // height of the column heads, in px
+const ROW = 46; // height of one row of chips, in px
+const SVG_NS = "http://www.w3.org/2000/svg";
+const THEME_KEY = "lighthouse-theme";
+
+/** Fetches and parses a JSON file; throws when the request fails. */
+export async function loadJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`${url}: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+function readTheme() {
+  try {
+    const value = window.localStorage.getItem(THEME_KEY);
+    return value === "dark" || value === "light" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeTheme(value) {
+  try {
+    window.localStorage.setItem(THEME_KEY, value);
+  } catch {
+    // No storage (private window, blocked site data): the switch works, without memory.
+  }
+}
+
+/** Follows prefers-color-scheme; the button switches the theme and remembers the choice. */
+export function initTheme(button) {
+  const root = document.documentElement;
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)");
+  const stored = readTheme();
+  if (stored) {
+    root.dataset.theme = stored;
+  }
+  const current = () => root.dataset.theme || (prefersDark.matches ? "dark" : "light");
+  const label = () => {
+    button.textContent = current() === "dark" ? "Light theme" : "Dark theme";
+  };
+  label();
+  prefersDark.addEventListener("change", label);
+  button.addEventListener("click", () => {
+    const next = current() === "dark" ? "light" : "dark";
+    root.dataset.theme = next;
+    writeTheme(next);
+    label();
+  });
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) {
+    node.className = className;
+  }
+  if (text !== undefined) {
+    node.textContent = text;
+  }
+  return node;
+}
+
+/** "#<issue>" or the milestone of a planned item; empty otherwise. */
+function plannedMark(item) {
+  if (item.status !== "planned") {
+    return "";
+  }
+  if (item.issue) {
+    return `#${item.issue}`;
+  }
+  return item.milestone || "";
+}
+
+function statusText(item) {
+  let text = item.status;
+  const mark = plannedMark(item);
+  if (mark) {
+    text += `, ${mark}`;
+  } else if (item.status === "idea") {
+    text += ", no issue yet";
+  }
+  if (item.not_in_first_release) {
+    text += " · not in first release";
+  }
+  return text;
+}
+
+/** The pack and the part (skill, agent, hook, ...) a source URL under pack/ points to. */
+function sourceParts(source) {
+  const match = /\/blob\/main\/pack\/([^/]+)\/([^/]+)\//.exec(source || "");
+  return match ? { pack: match[1], part: match[2].replace(/s$/, "") } : null;
+}
+
+function provider(kind, source) {
+  const parts = sourceParts(source);
+  const pack = parts ? `pack ${parts.pack}` : "";
+  switch (kind) {
+    case "lighthouse":
+      return parts ? `lighthouse, ${parts.part} in ${pack}` : "lighthouse";
+    case "superpowers":
+      return "the Superpowers plugin";
+    case "hook":
+      return parts ? `a lighthouse hook in ${pack}` : "a lighthouse hook";
+    case "github":
+      return parts ? `GitHub, with the ${parts.part} from lighthouse ${pack}` : "GitHub";
+    default:
+      return kind;
+  }
+}
+
+function sourceLink(source) {
+  if (!source || !source.startsWith("https://")) {
+    return null;
+  }
+  const link = el("a", "", "Source");
+  link.href = source;
+  return link;
+}
+
+function facts(rows) {
+  const list = el("dl");
+  for (const [term, value] of rows) {
+    if (value === null || value === undefined || value === "") {
+      continue;
+    }
+    const dd = el("dd");
+    dd.append(value);
+    list.append(el("dt", "", term), dd);
+  }
+  return list;
+}
+
+function box(kicker, heading, ...body) {
+  const node = el("div", "box");
+  if (kicker) {
+    node.append(el("p", "kicker", kicker));
+  }
+  if (heading) {
+    node.append(el("h2", "", heading));
+  }
+  node.append(...body);
+  return node;
+}
+
+function placeholder(detail) {
+  detail.replaceChildren(
+    box(
+      "Details",
+      "Click a chip or a handoff",
+      el("p", "", "What it does, when it starts, who provides it, and what you miss without it."),
+    ),
+  );
+}
+
+function chipButton(chip, columns) {
+  const button = el("button", `chip kind-${chip.kind} status-${chip.status}`);
+  button.type = "button";
+  button.dataset.id = chip.id;
+  button.title = `${chip.label}: ${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status}`;
+  if (chip.phase !== "always") {
+    button.style.width = `calc(${100 / columns}% - 14px)`;
+  }
+  const glyph = el("span", "glyph", GLYPHS[chip.trigger] || "?");
+  glyph.setAttribute("aria-hidden", "true");
+  button.append(glyph, el("span", "label", chip.label));
+  button.append(el("span", "sr-only", ` (${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status})`));
+  const mark = plannedMark(chip);
+  if (mark) {
+    button.append(el("span", "mark", mark));
+  }
+  if (chip.not_in_first_release) {
+    button.append(el("span", "release", "not in first release"));
+  }
+  return button;
+}
+
+/** A curve through the points of a route, as in the mockup: a bulge within one column. */
+function routePath(points) {
+  if (!points.length) {
+    return "";
+  }
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    if (Math.abs(a.x - b.x) < 5) {
+      d += ` C ${a.x + 55} ${a.y}, ${b.x + 55} ${b.y}, ${b.x} ${b.y}`;
+    } else {
+      const m = (a.x + b.x) / 2;
+      d += ` C ${m} ${a.y}, ${m} ${b.y}, ${b.x} ${b.y}`;
+    }
+  }
+  return d;
+}
+
+/**
+ * Renders a flow map into `root`: route buttons with the note of the chosen route, columns of
+ * chips, the "Always on" band and the handoff badges. A click on a chip or badge fills `detail`.
+ */
+export function renderFlowMap(root, data, detail) {
+  const phases = data.phases || [];
+  const chips = data.chips || [];
+  const routes = data.routes || [];
+  const handoffs = data.handoffs || [];
+  const columnOf = new Map(phases.map((phase, i) => [phase.id, i]));
+  const phaseLabel = new Map(phases.map((phase) => [phase.id, phase.label]));
+  phaseLabel.set("always", "Always on");
+  const byId = new Map(chips.map((chip) => [chip.id, chip]));
+  const placed = chips
+    .filter((chip) => columnOf.has(chip.phase))
+    .sort((a, b) => columnOf.get(a.phase) - columnOf.get(b.phase) || a.row - b.row);
+  const always = chips.filter((chip) => chip.phase === "always").sort((a, b) => a.row - b.row);
+  const rows = Math.max(-1, ...placed.map((chip) => chip.row)) + 1;
+  const height = HEAD + rows * ROW;
+  const columnWidth = WIDTH / Math.max(phases.length, 1);
+  const point = (chip) => ({
+    x: (columnOf.get(chip.phase) + 0.5) * columnWidth,
+    y: HEAD + chip.row * ROW + ROW / 2,
+  });
+  const percent = (x) => `${(x / WIDTH) * 100}%`;
+
+  const chipButtons = [];
+  const badges = [];
+  let current = null;
+  const mark = (node) => {
+    if (current) {
+      current.classList.remove("current");
+    }
+    current = node;
+    node.classList.add("current");
+  };
+
+  const showChip = (chip, button) => {
+    mark(button);
+    const glyph = GLYPHS[chip.trigger] || "?";
+    detail.replaceChildren(
+      box(
+        `${phaseLabel.get(chip.phase) || chip.phase} · ${glyph} ${TRIGGERS[chip.trigger] || chip.trigger}`,
+        `${glyph} ${chip.label}`,
+        el("p", "", chip.what),
+      ),
+      box(
+        "How it works",
+        "",
+        facts([
+          ["When it starts", chip.when],
+          ["Who provides it", provider(chip.kind, chip.source)],
+          ["What you miss without", chip.without],
+          ["Status", statusText(chip)],
+          ["Source", sourceLink(chip.source)],
+        ]),
+      ),
+    );
+  };
+
+  const showHandoff = (handoff, button) => {
+    mark(button);
+    const from = byId.get(handoff.from);
+    const to = byId.get(handoff.to);
+    const about = data.handoff || {};
+    detail.replaceChildren(
+      box(
+        `handoff · ${phaseLabel.get(from.phase)} → ${phaseLabel.get(to.phase)}`,
+        "↻ handoff",
+        el("p", "", about.what || ""),
+        el("p", "aside", `Between ${from.label} and ${to.label}.`),
+      ),
+      box(
+        "How it works",
+        "",
+        facts([
+          ["When it starts", about.when],
+          ["Who provides it", provider("lighthouse", about.source)],
+          ["What you miss without", about.without],
+          ["Status", statusText(handoff)],
+          ["Source", sourceLink(about.source)],
+        ]),
+      ),
+    );
+  };
+
+  // Route buttons and the note of the chosen route.
+  const routeBar = el("div", "routes");
+  routeBar.setAttribute("role", "group");
+  routeBar.setAttribute("aria-label", "Routes");
+  const note = el("p", "route-note");
+  note.hidden = true;
+
+  // The map: column backgrounds, route curves, chips and badges.
+  const scroll = el("div", "map-scroll");
+  const map = el("div", "map");
+  const area = el("div", "map-area");
+  area.style.height = `${height}px`;
+  phases.forEach((phase, i) => {
+    const column = el("div", "column");
+    column.style.left = `calc(${percent(i * columnWidth)} + 6px)`;
+    column.style.width = `calc(${percent(columnWidth)} - 12px)`;
+    const head = el("div", "column-head", `${i + 1} · ${phase.label}`);
+    head.append(el("span", "", phase.blurb || ""));
+    column.append(head);
+    area.append(column);
+  });
+
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${WIDTH} ${height}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("aria-hidden", "true");
+  const paths = routes.map((route) => {
+    const path = document.createElementNS(SVG_NS, "path");
+    const points = route.chips
+      .map((id) => byId.get(id))
+      .filter((chip) => chip && columnOf.has(chip.phase))
+      .map(point);
+    path.setAttribute("d", routePath(points));
+    svg.append(path);
+    return path;
+  });
+  area.append(svg);
+
+  const badgeFor = (handoff) => {
+    const from = byId.get(handoff.from);
+    const to = byId.get(handoff.to);
+    if (!from || !to || !columnOf.has(from.phase) || !columnOf.has(to.phase)) {
+      return null;
+    }
+    const a = point(from);
+    const b = point(to);
+    // Halfway between the two chips; on a row of chips, half a row higher, between two rows.
+    let row = (from.row + to.row) / 2;
+    if (Number.isInteger(row)) {
+      row = row > 0 ? row - 0.5 : row + 0.5;
+    }
+    const tag = plannedMark(handoff);
+    const badge = el("button", `handoff status-${handoff.status}`, tag ? `↻ handoff · ${tag}` : "↻ handoff");
+    badge.type = "button";
+    badge.dataset.from = handoff.from;
+    badge.dataset.to = handoff.to;
+    badge.title = `handoff from ${from.label} to ${to.label}: ${statusText(handoff)}`;
+    badge.style.left = percent((a.x + b.x) / 2);
+    badge.style.top = `${HEAD + row * ROW + ROW / 2}px`;
+    badge.addEventListener("click", () => showHandoff(handoff, badge));
+    badges.push(badge);
+    return badge;
+  };
+
+  for (const chip of placed) {
+    const button = chipButton(chip, phases.length);
+    const p = point(chip);
+    button.style.left = percent(p.x);
+    button.style.top = `${p.y}px`;
+    button.addEventListener("click", () => showChip(chip, button));
+    chipButtons.push(button);
+    area.append(button);
+    // A badge follows the chip it leaves from, so Tab meets it in reading order.
+    for (const handoff of handoffs.filter((h) => h.from === chip.id)) {
+      const badge = badgeFor(handoff);
+      if (badge) {
+        area.append(badge);
+      }
+    }
+  }
+  map.append(area);
+
+  if (always.length) {
+    const band = el("div", "band");
+    band.append(el("p", "band-title", "Always on"));
+    for (const chip of always) {
+      const button = chipButton(chip, phases.length);
+      button.addEventListener("click", () => showChip(chip, button));
+      chipButtons.push(button);
+      band.append(button);
+    }
+    map.append(band);
+  }
+  scroll.append(map);
+
+  const routeButtons = routes.map((route, i) => {
+    const button = el("button", "", route.label);
+    button.type = "button";
+    button.setAttribute("aria-pressed", "false");
+    button.addEventListener("click", () => select(i));
+    routeBar.append(button);
+    return button;
+  });
+
+  function select(index) {
+    const route = routes[index];
+    const used = new Set(route.chips);
+    const pairs = new Set();
+    for (let i = 1; i < route.chips.length; i++) {
+      pairs.add(`${route.chips[i - 1]}>${route.chips[i]}`);
+    }
+    routeButtons.forEach((button, i) => button.setAttribute("aria-pressed", String(i === index)));
+    paths.forEach((path, i) => path.classList.toggle("on", i === index));
+    for (const button of chipButtons) {
+      button.classList.toggle("dim", !used.has(button.dataset.id));
+    }
+    for (const badge of badges) {
+      badge.classList.toggle("dim", !pairs.has(`${badge.dataset.from}>${badge.dataset.to}`));
+    }
+    note.textContent = route.note || "";
+    note.hidden = !route.note;
+  }
+
+  root.replaceChildren(routeBar, note, scroll);
+  placeholder(detail);
+  if (routes.length) {
+    select(0);
+  }
+}

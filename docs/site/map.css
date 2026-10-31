@@ -1,0 +1,650 @@
+/* Shared style of the lighthouse maps: tokens for light and dark, the flow map, the legend,
+   the detail panel and the cards below a map. */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f6f7;
+  --fg: #16181d;
+  --muted: #555b66;
+  --panel: #ffffff;
+  --border: #d3d6dc;
+  --map-bg: #e9ecf3;
+  --col-bg: rgba(20, 33, 61, 0.05);
+  --col-fg: #34405a;
+  --line: rgba(20, 33, 61, 0.14);
+  --accent: #b88a00;
+  --accent-soft: #f4d74b;
+  --focus: #1f4fd1;
+  --link: #1f4fd1;
+  --lighthouse: #2f5bd8;
+  --lighthouse-fg: #ffffff;
+  --superpowers: #087a5b;
+  --superpowers-fg: #ffffff;
+  --hook: #e07b4c;
+  --hook-fg: #16181d;
+  --github: #c9cbd1;
+  --github-fg: #16181d;
+  --idea: #5f6470;
+  --badge-bg: #14213d;
+  --badge-fg: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f1420;
+    --fg: #e8eaf0;
+    --muted: #a3a9b6;
+    --panel: #171d2b;
+    --border: #2d3548;
+    --map-bg: #14213d;
+    --col-bg: rgba(255, 255, 255, 0.05);
+    --col-fg: #cfd8ff;
+    --line: rgba(255, 255, 255, 0.14);
+    --accent: #f4d74b;
+    --accent-soft: #f4d74b;
+    --focus: #8fb0ff;
+    --link: #8fb0ff;
+    --lighthouse: #4169e1;
+    --lighthouse-fg: #ffffff;
+    --superpowers: #00a87c;
+    --superpowers-fg: #06140f;
+    --hook: #e58a5e;
+    --hook-fg: #16181d;
+    --github: #d4d4d8;
+    --github-fg: #16181d;
+    --idea: #9aa0ab;
+    --badge-bg: #ffffff;
+    --badge-fg: #14213d;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1420;
+  --fg: #e8eaf0;
+  --muted: #a3a9b6;
+  --panel: #171d2b;
+  --border: #2d3548;
+  --map-bg: #14213d;
+  --col-bg: rgba(255, 255, 255, 0.05);
+  --col-fg: #cfd8ff;
+  --line: rgba(255, 255, 255, 0.14);
+  --accent: #f4d74b;
+  --accent-soft: #f4d74b;
+  --focus: #8fb0ff;
+  --link: #8fb0ff;
+  --lighthouse: #4169e1;
+  --lighthouse-fg: #ffffff;
+  --superpowers: #00a87c;
+  --superpowers-fg: #06140f;
+  --hook: #e58a5e;
+  --hook-fg: #16181d;
+  --github: #d4d4d8;
+  --github-fg: #16181d;
+  --idea: #9aa0ab;
+  --badge-bg: #ffffff;
+  --badge-fg: #14213d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 24px 32px 48px;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, sans-serif;
+  line-height: 1.45;
+}
+
+a {
+  color: var(--link);
+}
+
+code {
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.page-head h1 {
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  margin: 0;
+  color: var(--muted);
+  max-width: 900px;
+}
+
+.theme-toggle {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.serve-hint {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  border: 1px dashed var(--accent);
+  border-radius: 12px;
+  background: var(--panel);
+  max-width: 900px;
+}
+
+/* Legend */
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 16px 0 6px;
+  font-size: 12.5px;
+}
+
+.legend ul {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+/* Kind colours, shared by chips, swatches and tags */
+
+.kind-lighthouse {
+  --kind: var(--lighthouse);
+  --kind-fg: var(--lighthouse-fg);
+}
+
+.kind-superpowers {
+  --kind: var(--superpowers);
+  --kind-fg: var(--superpowers-fg);
+}
+
+.kind-hook {
+  --kind: var(--hook);
+  --kind-fg: var(--hook-fg);
+}
+
+.kind-github {
+  --kind: var(--github);
+  --kind-fg: var(--github-fg);
+}
+
+.sample {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1.5px solid var(--kind);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sample.status-works {
+  background: var(--kind);
+  color: var(--kind-fg);
+}
+
+.sample.status-planned {
+  border-style: dashed;
+}
+
+.sample.status-idea {
+  border-style: dashed;
+  border-color: var(--idea);
+  color: var(--idea);
+}
+
+.swatch,
+.tag {
+  background: var(--kind);
+  color: var(--kind-fg);
+}
+
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  margin-right: 4px;
+}
+
+/* Routes */
+
+.routes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 4px;
+}
+
+.routes button {
+  border: 1px solid var(--muted);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.routes button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  color: #16181d;
+}
+
+.route-note {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+  max-width: 900px;
+}
+
+/* The map: only its own box scrolls on a narrow screen */
+
+.map-scroll {
+  overflow-x: auto;
+  border-radius: 20px;
+  margin-top: 8px;
+}
+
+.map {
+  position: relative;
+  min-width: 1260px;
+  background: var(--map-bg);
+  border-radius: 20px;
+  padding-bottom: 12px;
+}
+
+.map-area {
+  position: relative;
+}
+
+.map-area svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.map-area path {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+  transition: stroke 0.2s;
+}
+
+.map-area path.on {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.column {
+  position: absolute;
+  top: 8px;
+  bottom: 0;
+  border-radius: 16px;
+  background: var(--col-bg);
+}
+
+.column-head {
+  margin: 10px 6px 0;
+  text-align: center;
+  color: var(--col-fg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.column-head span {
+  display: block;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 0.8;
+}
+
+.chip {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 5px;
+  width: calc(100% / 7 - 14px);
+  padding: 4px 8px 4px 5px;
+  border: 1.5px solid var(--kind);
+  border-radius: 999px;
+  background: var(--kind);
+  color: var(--kind-fg);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  z-index: 1;
+  transition: opacity 0.2s, box-shadow 0.2s;
+}
+
+.band .chip {
+  position: static;
+  transform: none;
+  width: auto;
+}
+
+.chip.kind-hook {
+  border-radius: 8px;
+}
+
+.chip .glyph {
+  flex: 0 0 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.chip .label {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip .mark,
+.chip .release {
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.chip .release {
+  flex-basis: 100%;
+  padding-left: 23px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.chip.status-planned {
+  background: transparent;
+  color: var(--fg);
+  border-style: dashed;
+}
+
+.chip.status-idea {
+  background: transparent;
+  color: var(--idea);
+  border-style: dashed;
+  border-color: var(--idea);
+}
+
+.chip.status-planned .glyph,
+.chip.status-idea .glyph {
+  background: var(--col-bg);
+}
+
+.chip.dim {
+  opacity: 0.25;
+}
+
+.chip.current {
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--accent-soft);
+}
+
+.handoff {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  padding: 2px 8px;
+  border: 1.5px solid var(--badge-bg);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.handoff.status-works {
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+}
+
+.handoff.status-planned,
+.handoff.status-idea {
+  background: var(--map-bg);
+  color: var(--fg);
+  border-color: var(--fg);
+  border-style: dashed;
+}
+
+.handoff.dim {
+  opacity: 0.15;
+}
+
+.legend .handoff {
+  position: static;
+  transform: none;
+  cursor: default;
+}
+
+.band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 12px 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--col-bg);
+}
+
+.band-title {
+  margin: 0 6px 0 0;
+  color: var(--col-fg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Detail panel */
+
+.detail {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.box {
+  border-radius: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  min-width: 0;
+}
+
+.box h2,
+.box h3 {
+  margin: 0 0 4px;
+  font-size: 17px;
+}
+
+.kicker {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.box p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.box p.aside {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.detail dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 13.5px;
+}
+
+.detail dt {
+  color: var(--muted);
+}
+
+.detail dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Cards below a map */
+
+.cards {
+  margin-top: 28px;
+}
+
+.cards h2 {
+  margin: 0;
+}
+
+.cards .subtitle {
+  margin-top: 4px;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.card-grid ul {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 16px 16px 40px;
+  }
+}
+
+/* Entry page: one tile per map */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.tile {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.tile h2 {
+  margin: 2px 0 6px;
+  font-size: 18px;
+}
+
+.tile p {
+  margin: 0;
+}
+
+.tile .kicker {
+  margin-bottom: 4px;
+}
+
+a.tile:hover,
+a.tile:focus-visible {
+  border-color: var(--focus);
+}
+
+.tile.status-planned {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.back-link {
+  margin-left: auto;
+  padding: 6px 0;
+  color: var(--link);
+}
