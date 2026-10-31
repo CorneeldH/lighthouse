@@ -3,6 +3,7 @@ package dispatch
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -94,6 +95,31 @@ func TestWriteInstructionsRejectsSessionPath(t *testing.T) {
 	for _, session := range []string{"", ".", "..", "../x", "a/b"} {
 		if _, err := WriteInstructions(t.TempDir(), session, "stop"); err == nil {
 			t.Errorf("WriteInstructions(%q): want an error", session)
+		}
+	}
+}
+
+// run.md is the product here: these lines are what a run must read to act right.
+func TestRunInstructionsPinnedText(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("instructions", "run.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// run.md wraps lines; compare on single spaces.
+	text := strings.Join(strings.Fields(string(raw)), " ")
+	for _, want := range []string{
+		// spec §4 rule 5: the close check measures what landed, not the worktree branch.
+		"First run `git fetch origin` and measure the acceptance criteria against `origin/<default branch>`, not against the worktree branch.",
+		// a served repo cannot read lighthouse's docs; the binary describes its own flags.
+		"`lighthouse ask --help`",
+		// the hint covers every refusal before the post, not only a wrong shape.
+		"When it says `nothing posted`, nothing is on the issue: fix what the message names (the shape of the call, `LIGHTHOUSE_CONTROLLER_RUN`, `lighthouse.toml` or the GitHub token) and run it again.",
+		// the flag names the run uses must be the flags of `lighthouse ask`.
+		"--issue", "--phase", "--task", "--where", "--what", "--question", "--option", "--recommended",
+		"--command", "--dry-run",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("run.md lacks %q", want)
 		}
 	}
 }
