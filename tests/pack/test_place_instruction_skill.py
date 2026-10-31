@@ -2,7 +2,7 @@
 
 The skill decides on which layer a new instruction belongs and validates with
 `.lighthouse/scripts/check-instructions.sh`. That script carries only the generic checks of
-the source (1, 2, 3, 4, 5, 7, 8, 10, 11); the skill names no project-own check (6, 9, 12, 13).
+the source (1, 2, 3, 4, 5, 7, 8, 10, 11, 14); the skill names no project-own check (6, 9, 12, 13).
 The skill prefix and the word ceiling come from `[project]`; the surface measurement stays in
 paia and runs only if present (design choice 16).
 """
