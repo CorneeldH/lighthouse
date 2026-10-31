@@ -155,8 +155,8 @@ git commit -m "refactor(review): retry van ronde 1 inline in de reviewskills (#1
 - Delete: `pack/core/agents/spec-adversary.md`
 - Modify: `pack/core/requires.toml:6` (`"spec-adversary"` uit de `jq`-lijst),
   `pack/SOURCES.toml:219-222` (het `[[file]]`-blok van de agent)
-- Modify: `docs/site/data/chain.json:249-267` (node `spec-adversary` weg), `:780` (uit
-  `examples` van route `4c`; `worktree-linkcheck` blijft), `:793` (uit `chips` van route `4c`)
+- Modify: `docs/site/data/chain.json:249-267` (node `spec-adversary` weg), `:798` (uit
+  `examples` van route `4c`; `worktree-linkcheck` blijft), `:811` (uit `chips` van route `4c`)
 - Modify: `docs/site/data/packs.json:22` (uit `agents`)
 - Modify: `tests/pack/test_issue_impact_scout.py` (regel 1 docstring, `ADVERSARY` regel 21, de
   sectie `# --- spec-adversary ---` regel 179-215, `(AGENT, ADVERSARY)` in
