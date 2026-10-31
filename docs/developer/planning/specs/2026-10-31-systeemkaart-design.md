@@ -30,7 +30,9 @@ gepland staat. De kaart moet "leuk actief te houden" zijn (Corneel).
 
 **Anti-doelen**
 
-- Een kaart die iets als werkend toont wat niet werkt. Status `works` vraagt bewijs op `main`.
+- Een kaart die een onderdeel als werkend toont wat niet werkt. Status `works` bij een onderdeel
+  vraagt bewijs op `main`. Bij een issue betekent `works`: gesloten als *completed* (§5)
+  *(keuze na specreview, r1-f11)*.
 - Milestonenummers als betekenisdrager. "M2" zegt een nieuwkomer niets (Corneel).
 - Pijlen en versiering die de aandacht trekken. De lijnen tussen onderdelen zijn dun en rustig
   (Corneel: de pijlen van de schets waren "te goofy").
@@ -72,8 +74,8 @@ schets.
 | `binary` | Binary | — (schil) | `works` | `cmd/lighthouse` |
 | `installer` | Installer (`init`) | binary | `works` | `internal/initcmd` |
 | `usage-meter` | Usage meter (`usage`) | binary | `works` | `internal/usage` |
-| `dashboard` | Dashboard (`serve`) | binary | `works`, not in first release | `internal/server`, `internal/web` |
-| `controller` | Controller (`tick`) | binary | `works`, not in first release | `internal/cli/tick.go`, `internal/runs` |
+| `dashboard` | Dashboard (`serve`) | binary | `works`, not in first release | `internal/server` |
+| `controller` | Controller (`tick`) | binary | `planned`, milestone "Dispatcher", not in first release | `internal/cli/tick.go` |
 | `packs` | Packs (pakketten, meegedragen) | binary | `works` | `pack/` |
 | `repo` | Your repo | — (schil) | `works` | — |
 | `chain` | Skills chain (skills-keten) | repo | `works` | `pack/core/skills` |
@@ -85,15 +87,30 @@ schets.
 | `docs` | Docs and site | — (los) | `works` | `docs/` |
 
 - Een onderdeel zonder `works` tekent grijs gearceerd, zoals in de schets.
+- De controller is `planned`, niet `works`. `tick` bestaat op `main` als skelet: het controleert
+  de repo's in `[dispatch]`, maar haalt nog geen issues op en start nog geen sessie
+  ([`docs/tick.md`](../../../tick.md), "Tick haalt nog geen issues op"; #112, #114). De
+  `what` van de controller zegt dat in gewone taal (anti-doel §2, r1-f1).
+- Een onderdeel heeft één `source`. Bij twee kandidaten noemt de tabel het ingangspunt
+  *(keuze na specreview, r1-f10)*.
+- Een schil (`binary`, `repo`) is een onderdeel met eigen issues én een vak met onderdelen
+  erin. Op de kaart is een schil daarom een container met een eigen kopknop; de onderdelen zijn
+  broers van die knop, niet zijn kinderen. Geen knop in een knop *(keuze na specreview, r1-f6)*.
+- Een schil toont in de lade en in het filter van *Over time* ook de issues van de onderdelen erin
+  *(keuze na specreview, r1-f9)*.
 - `docs` is een keuze van Claude. Product en Kaarten hebben issues die in geen schil passen
   (startgids, website, kaarten). Zonder dit onderdeel zouden ze nergens horen.
 - De omgevingen zijn een rij onder de twee schillen: een groepsonderdeel `environments` zonder
-  eigen chip, zodat elke `parent` een bestaand onderdeel noemt (keuze van Claude).
+  eigen chip, zodat elke `parent` een bestaand onderdeel noemt (keuze van Claude). Het heeft ook
+  geen knop, dus er hangt nooit een issue aan `environments` (r1-f6).
 
 Twee lijnen, dun en met een kort label:
 
 - `installer` → `repo`: "installs" (de lijn eindigt aan de schil, keuze van Claude);
 - `controller` → `chain`: "starts sessions".
+
+Een lijn met een `planned` uiteinde tekent als planned: grijs en gestreept. Zo toont "starts
+sessions" wat komt, niet wat werkt *(keuze na specreview, r1-f1)*.
 
 ## 5. De data
 
@@ -109,8 +126,8 @@ want die eisen fases, rijen en routes. Het plattegrondformaat is ook bedoeld voo
   "parts": [
     {"id": "controller", "label": "Controller", "parent": "binary",
      "what": "…", "when": "…", "without": "…",
-     "status": "works", "not_in_first_release": true,
-     "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/runs"}
+     "status": "planned", "milestone": 3, "not_in_first_release": true,
+     "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/cli/tick.go"}
   ],
   "links": [{"from": "controller", "to": "chain", "label": "starts sessions"}],
   "milestones": [{"number": 3, "title": "Dispatcher", "state": "open"}],
@@ -144,19 +161,31 @@ want die eisen fases, rijen en routes. Het plattegrondformaat is ook bedoeld voo
 ## 6. De bouw
 
 - **Pagina**: `docs/site/system.html` en `docs/site/system.js`, naar het patroon van
-  `chain.html` en `chain.js`. De tegel van #102 in `index.html` linkt ernaar.
+  `chain.html` en `chain.js`. De tegel van #102 in `index.html` linkt ernaar en gaat over naar
+  de werkende vorm van de tegel van de ketenkaart. `test_index_lists_the_six_maps` eist dan
+  `system.html` en verwacht `#102` niet meer *(keuze na specreview, r1-f4)*.
 - **Weergave *Now***: een nieuwe `renderPlanMap(root, data, detail)` in `map.js`. De onderdelen
   zijn geneste HTML-vakken in een CSS-grid. Een `parent` nest een vak in zijn schil. Elk onderdeel
   is een knop, met de vorm van de chips van de ketenkaart. De lijnen staan in een SVG-laag erboven,
-  zoals de routes in `renderFlowMap`. Ze worden opnieuw berekend bij een resize. Op een smal scherm
-  vouwt het grid tot één kolom.
+  zoals de routes in `renderFlowMap`. Anders dan daar meet de plattegrond de vakken: de lijnen
+  worden opnieuw berekend uit een `ResizeObserver` op de *Now*-container en telkens als *Now*
+  zichtbaar wordt; terwijl *Now* verborgen is, meet hij niet *(keuze na specreview, r1-f7)*. Op
+  een smal scherm vouwt het grid tot één kolom.
+- **Eigen klassen.** De plattegrond gebruikt niet `.map` en `.chip` van de stroomkaart: `.map`
+  verbergt planned zonder roadmapschakelaar (`map.css`, "Planned and idea items show only with
+  the roadmap switch on"), `.chip` staat absoluut en `.map` heeft een `min-width` van 1260px. Beide
+  standen krijgen een eigen wortel- en onderdeelklasse (bijvoorbeeld `.plan`, `.plan-part`) en
+  delen alleen de kleurtokens en de `kind-*`- en `status-*`-kleuren
+  *(keuze na specreview, r1-f5)*.
 - **Weergave *Over time***: een tweede functie in `map.js` over dezelfde data. Eén groep per
   milestone, met de titel, de telling (`3/17`) en de issues als chips. Een filter op onderdeel
   dimt de rest. Een milestone zonder issues ("SDP-tenant als werkplek") toont een grijs vak met
   "no issues yet".
 - **De lade**: dezelfde lade als op de ketenkaart. Bij een onderdeel: wat, wanneer, zonder, status,
   bron en de lijst van zijn issues. Bij een issue: titel, status, milestone en een link naar het
-  issue op GitHub.
+  issue op GitHub. Openen, sluiten, de markering van het huidige vak en Escape zitten nu als
+  closures in `renderFlowMap`; die gaan naar één gedeelde helper in `map.js`, die de stroomkaart en
+  beide standen gebruiken *(keuze na specreview, r1-f8)*.
 - **De datum**: de pagina toont "Snapshot of <datum>" uit `snapshot`.
 - **De bestaande roadmapschakelaar** ("Show roadmap", #145) hoort bij de stroomkaart en komt niet
   op deze pagina. Hier zijn `planned` en grijs juist het punt.
@@ -171,11 +200,15 @@ Een nieuw bestand, `tests/test_site_system.py`, in het patroon van `tests/test_s
 1. **Planned heeft een anker** (AC van #102). Een onderdeel of issue met `status: planned` heeft
    een `issue` of `milestone`. Een fixture met een planned onderdeel zonder beide wordt rood.
 2. **Elke verwijzing bestaat.** Elke `parent`, elke `part` van een issue, elke `from` en `to` van
-   een lijn en elke `milestone` van een issue noemt iets wat in de data staat.
-3. **Vaste woorden.** `status` is `works`, `planned` of `idea`; een issue is nooit `idea`.
-4. **Bronnen bestaan.** Elke `source` onder de GitHub-URL wijst naar een pad dat bestaat (zoals
+   een lijn en elke `milestone` van een issue of onderdeel noemt iets wat in de data staat. Elk
+   issue heeft een `part` en een `milestone`, en geen issue hangt aan `environments`.
+3. **Uniek en zonder kringen.** `parts.id`, `milestones.number` en `issues.issue` zijn uniek, en de
+   `parent`-ketens bevatten geen kring. Fixtures met een dubbel id, een dubbel issue en een kring
+   worden rood (r1-f3).
+4. **Vaste woorden.** `status` is `works`, `planned` of `idea`; een issue is nooit `idea`.
+5. **Bronnen bestaan.** Elke `source` onder de GitHub-URL wijst naar een pad dat bestaat (zoals
    `source_problems`).
-5. **Datum.** `snapshot` is een ISO-datum en `system.js` leest het veld.
+6. **Datum.** `snapshot` is een ISO-datum en `system.js` leest het veld.
 
 De linktest in `tests/test_site_pages.py` dekt de nieuwe pagina vanzelf.
 
