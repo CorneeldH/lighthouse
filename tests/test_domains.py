@@ -269,6 +269,17 @@ def test_classify_cli_github_output(tmp_path, monkeypatch, capsys):
     assert "web=true" in capsys.readouterr().out.splitlines()
 
 
+def test_classify_cli_docs_only_pr_skips_go(monkeypatch, capsys):
+    """The paths of #127: docs, a changelog fragment and the denylist."""
+    paths = (
+        b"changelog.d/fix-labels-kleine-punten.md\0ci/literal-denylist.txt\0"
+        b"docs/developer/labels.md\0"
+    )
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(paths)))
+    assert domains.main(["classify"]) == 0
+    assert capsys.readouterr().out.splitlines() == ["web=false", "python=true", "go=false"]
+
+
 def test_classify_cli_false(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b"web/x.tsx\0")))
     assert domains.main(["classify"]) == 0
