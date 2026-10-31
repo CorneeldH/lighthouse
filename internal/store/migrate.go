@@ -66,6 +66,22 @@ func loadMigrations(fsys fs.FS) ([]migration, error) {
 	return list, nil
 }
 
+// checkVersion reads user_version and refuses a negative one and one above known,
+// without writing anything to the database.
+func checkVersion(ctx context.Context, db *sql.DB, known int) (int, error) {
+	var current int
+	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&current); err != nil {
+		return 0, fmt.Errorf("read user_version: %w", err)
+	}
+	if current < 0 {
+		return 0, fmt.Errorf("database has invalid user_version %d; not a lighthouse database", current)
+	}
+	if current > known {
+		return 0, fmt.Errorf("%w: user_version %d, highest known %d", ErrSchemaTooNew, current, known)
+	}
+	return current, nil
+}
+
 // migrate runs every migration above the database's user_version, each in
 // one transaction that also sets user_version. A database newer than the
 // highest known migration is refused untouched.
@@ -74,25 +90,24 @@ func migrate(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	if err != nil {
 		return err
 	}
-	var current int
-	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&current); err != nil {
-		return fmt.Errorf("read user_version: %w", err)
-	}
-	if current < 0 {
-		return fmt.Errorf("database has invalid user_version %d; not a lighthouse database", current)
-	}
-	if current > len(list) {
-		return fmt.Errorf("%w: user_version %d, highest known %d", ErrSchemaTooNew, current, len(list))
+	current, err := checkVersion(ctx, db, len(list))
+	if err != nil {
+		return err
 	}
 	for _, m := range list[current:] {
-		if err := apply(ctx, db, fsys, m); err != nil {
+		if err := apply(ctx, db, fsys, m, len(list)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func apply(ctx context.Context, db *sql.DB, fsys fs.FS, m migration) error {
+// apply runs migration m in one transaction. The transaction takes the
+// write lock at BEGIN (_txlock=immediate in the DSN), so the user_version
+// reread inside it is final: another process that migrated in the meantime
+// makes apply commit without running m. known is the number of migrations
+// this lighthouse knows.
+func apply(ctx context.Context, db *sql.DB, fsys fs.FS, m migration, known int) error {
 	body, err := fs.ReadFile(fsys, m.file)
 	if err != nil {
 		return fmt.Errorf("read migration %s: %w", m.file, err)
@@ -102,6 +117,19 @@ func apply(ctx context.Context, db *sql.DB, fsys fs.FS, m migration) error {
 		return fmt.Errorf("begin migration %s: %w", m.file, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	var current int
+	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&current); err != nil {
+		return fmt.Errorf("reread user_version before %s: %w", m.file, err)
+	}
+	if current > known {
+		return fmt.Errorf("%w: user_version %d, highest known %d", ErrSchemaTooNew, current, known)
+	}
+	if current >= m.number {
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit skipped migration %s: %w", m.file, err)
+		}
+		return nil
+	}
 	if _, err := tx.ExecContext(ctx, string(body)); err != nil {
 		return fmt.Errorf("run migration %s: %w", m.file, err)
 	}
