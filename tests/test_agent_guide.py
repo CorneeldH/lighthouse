@@ -4,7 +4,7 @@ import ast
 import re
 import tomllib
 
-from tests.test_getting_started import init_flags, required_tools
+from tests.test_getting_started import init_flags, required_tools, section
 from tests.test_site_chain import ROOT, SITE
 from tests.test_site_download import DOWNLOAD, INDEX, INSTALL, TABS
 from tests.test_site_pages import ElementById
@@ -161,3 +161,9 @@ def test_guide_is_linked():
         text = page.read_text(encoding="utf-8")
         assert 'href="agents/install.md"' in text, page.name
         assert "issues/88" not in text, page.name
+
+
+def test_getting_started_names_the_paste():
+    text = section("Install")
+    assert PASTE in text
+    assert "](https://corneeldh.github.io/lighthouse/agents/install.md)" in text
