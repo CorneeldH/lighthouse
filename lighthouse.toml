@@ -8,6 +8,24 @@ code_language_exempt = ["tests/pack/fixtures/code_language/**"]
 kind = "github"
 repo = "CorneeldH/lighthouse"
 
+[forge.board]
+project_number = 2
+project_id = "PVT_kwHOAGmU3s4Bnmdy"
+status_field_id = "PVTSSF_lAHOAGmU3s4BnmdyzhmKS68"
+priority_field_id = "PVTSSF_lAHOAGmU3s4BnmdyzhmKS9I"
+
+[forge.board.status_options]
+"To do" = "5995ef76"
+"In progress" = "5c4502d5"
+"Done" = "4a797cd3"
+"On hold" = "6a2f466b"
+"Controller" = "7c834c1d"
+
+[forge.board.priority_options]
+P0 = "e78d8910"
+P1 = "5866e321"
+P2 = "321d79fc"
+
 [test_gate]
 # gate_go.py and gate_python.py choose the Go packages and pytest files of the commit;
 # ci/domains.py runs the web checks when the commit touches web (see the scripts).
