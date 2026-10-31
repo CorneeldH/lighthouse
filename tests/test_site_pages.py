@@ -129,6 +129,8 @@ def test_index_lists_the_six_maps():
     for issue in ["#100", "#102"]:
         assert issue not in text, f"index.html still names {issue} as planned"
     assert 'id="maps"' in text
+    assert "<h2>The loop</h2>" in text and "<h2>The chain</h2>" not in text
+    assert ">the chain map<" not in text
 
 
 @pytest.mark.parametrize("page", MAP_PAGES)
@@ -140,5 +142,6 @@ def test_guide_links_to_the_maps():
     text = GUIDE.read_text(encoding="utf-8")
     section = text.split("## Your first issue", 1)[1].split("\n## ", 1)[0]
     assert "](site/chain.html)" in section
+    assert "[The loop](https://corneeldh.github.io/lighthouse/chain.html)" in section
     assert "](site/session.html)" in section
     assert SERVE_COMMAND in section

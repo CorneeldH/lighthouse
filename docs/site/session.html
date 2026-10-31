@@ -24,7 +24,7 @@ browser blocks for a page opened straight from disk. From the root of the reposi
 
 <details class="why">
   <summary>Wait, but why?</summary>
-  <p><strong>Two levels.</strong> <a href="chain.html">The chain</a> follows the work from an idea
+  <p><strong>Two levels.</strong> <a href="chain.html">The loop</a> follows the work from an idea
   to main, phase by phase, across sessions. This map zooms in on one session. It follows one turn
   from the prompt to the stop, and answers "why does it stop me now?": which skill loads before the
   model writes, and which hook steps in at each moment, on which tool, from which pack, and what it
@@ -42,7 +42,7 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   explain. When a hook blocks, its message goes back to the agent, which reads why and corrects
   its step. A skill and its hook often come as a pair. On this map, <code>go-writing</code> loads
   before the model writes Go, and <code>gofmt</code> and <code>go-check</code> check what it wrote.
-  On the chain, <code>/lighthouse-verify-pr</code> writes the PR body that
+  On the loop, <code>/lighthouse-verify-pr</code> writes the PR body that
   <code>pr-create-gate</code> checks.</p>
   <p class="aside">How hooks, skills and agents work in Claude Code:
   <a href="https://code.claude.com/docs/en/hooks-guide">the hooks guide</a>,

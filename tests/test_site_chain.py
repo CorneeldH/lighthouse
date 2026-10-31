@@ -5,6 +5,7 @@ chain.json only."""
 
 import copy
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -291,3 +292,12 @@ def test_chain_routes_are_the_known_ones():
     assert set(routes) == {"1", "2", "4a", "4b", "4c", "no-issue", "red-pr"}
     assert routes["1"]["examples"] == ["refresh-expo-lockfiles"]
     assert routes["no-issue"]["chips"][0] == "worktree-guard"
+
+
+def test_the_chain_map_is_called_the_loop():
+    assert load("chain.json")["title"] == "The loop"
+    html = (SITE / "chain.html").read_text(encoding="utf-8")
+    assert "<title>The loop</title>" in html
+    assert '<h1 id="title">The loop</h1>' in html
+    why = html.split('<details class="why">', 1)[1].split("</details>", 1)[0]
+    assert not re.search(r"\bchain\b", why, re.IGNORECASE)
