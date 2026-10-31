@@ -118,8 +118,9 @@ def test_page_lang_is_english():
 def test_index_lists_the_six_maps():
     links = relative_links(SITE / "index.html")
     assert "chain.html" in links
+    assert "guardrails.html" in links
     text = (SITE / "index.html").read_text(encoding="utf-8")
-    for issue in ["#100", "#101", "#102", "#103", "#104"]:
+    for issue in ["#101", "#102", "#103", "#104"]:
         assert issue in text, f"index.html does not name {issue}"
     assert 'id="maps"' in text
 
@@ -129,8 +130,9 @@ def test_map_pages_link_back_to_index(page):
     assert 'href="index.html"' in (SITE / page).read_text(encoding="utf-8")
 
 
-def test_guide_links_to_the_chain_map():
+def test_guide_links_to_the_maps():
     text = GUIDE.read_text(encoding="utf-8")
     section = text.split("## Your first issue", 1)[1].split("\n## ", 1)[0]
     assert "](site/chain.html)" in section
+    assert "](site/guardrails.html)" in section
     assert SERVE_COMMAND in section
