@@ -15,7 +15,7 @@ from tests.pack._testkit import CORE
 
 SKILL = (CORE / "skills" / "place-instruction" / "SKILL.md").read_text(encoding="utf-8")
 SCRIPT = (CORE / "scripts" / "check-instructions.sh").read_text(encoding="utf-8")
-GENERIC = {3, 4, 5, 7, 8, 10, 11}
+GENERIC = {3, 4, 5, 7, 8, 10, 11, 14}
 
 
 def test_instrument_lists_generic_checks_only():
