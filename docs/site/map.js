@@ -41,6 +41,8 @@ const WIDTH = 1260; // virtual width of the map, equal to the min-width of .map 
 const HEAD = 64; // height of the column heads, in px
 const ROW = 46; // height of one row of chips, in px
 const SVG_NS = "http://www.w3.org/2000/svg";
+const LINE_INSET = 24; // a line down runs this far, in px, inside the right side of its boxes
+const LINE_STAGGER = 16; // and each next link this much further left, so no two lines coincide
 const THEME_KEY = "lighthouse-theme";
 const ISSUE_URL = "https://github.com/CorneeldH/lighthouse/issues/";
 const drawers = new WeakMap(); // detail element -> its drawer
@@ -836,27 +838,38 @@ export function renderPlanMap(root, data, detail) {
         y: top + r.height / 2,
       };
     };
-    for (const { link, line, text } of drawn) {
+    drawn.forEach(({ link, line, text }, index) => {
       const a = measure(link.from);
       const b = measure(link.to);
       // Facing sides: left and right when the centres lie further apart across than down. The
-      // centres, not the gaps: a part low in a tall container still faces sideways.
+      // centres, not the gaps: a part low in a tall container still faces sideways. Across, the
+      // line runs between the middles of the facing sides, with its label centred on it.
+      // Down, as in one column where every box is full width, the middles would all share one x
+      // and the lines would run into each other. So a line down runs straight, at an x inside the
+      // horizontal overlap of both boxes, near its right side and staggered per link. Its label
+      // sits left of it, over the empty right end of the buttons, clear of their text.
+      const across = Math.abs(b.x - a.x) > Math.abs(b.y - a.y);
       let start;
       let end;
-      if (Math.abs(b.x - a.x) > Math.abs(b.y - a.y)) {
+      if (across) {
         start = { x: b.x > a.x ? a.right : a.left, y: a.y };
         end = { x: b.x > a.x ? b.left : b.right, y: b.y };
       } else {
-        start = { x: a.x, y: b.y > a.y ? a.bottom : a.top };
-        end = { x: b.x, y: b.y > a.y ? b.top : b.bottom };
+        const x = Math.max(
+          Math.max(a.left, b.left) + 8,
+          Math.min(a.right, b.right) - LINE_INSET - LINE_STAGGER * index,
+        );
+        start = { x, y: b.y > a.y ? a.bottom : a.top };
+        end = { x, y: b.y > a.y ? b.top : b.bottom };
       }
       line.setAttribute("x1", start.x);
       line.setAttribute("y1", start.y);
       line.setAttribute("x2", end.x);
       line.setAttribute("y2", end.y);
-      text.setAttribute("x", (start.x + end.x) / 2);
+      text.classList.toggle("beside", !across);
+      text.setAttribute("x", across ? (start.x + end.x) / 2 : start.x - 6);
       text.setAttribute("y", (start.y + end.y) / 2);
-    }
+    });
   }
 
   root.replaceChildren(

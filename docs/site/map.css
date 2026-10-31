@@ -1081,6 +1081,11 @@ a.tile:focus-visible {
   stroke-linejoin: round;
 }
 
+/* The label of a line down sits left of the line, not on it. */
+.plan-lines text.beside {
+  text-anchor: end;
+}
+
 .plan-issues {
   font-size: 13.5px;
 }
