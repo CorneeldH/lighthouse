@@ -231,7 +231,7 @@ func TestSetWorkplaceAndSession(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 	want := OpenRun{
-		ID: r.ID, Issue: 7, SessionID: c.SessionID, Profile: "dev", Branch: "issue-7-x",
+		ID: r.ID, Issue: 7, SessionID: c.SessionID, TriggerKey: "start:7", Profile: "dev", Branch: "issue-7-x",
 		WorkspaceID: "ws-1", WorkplaceSession: "key-1", StartedAt: c.Now,
 	}
 	if len(got) != 1 || got[0] != want {
