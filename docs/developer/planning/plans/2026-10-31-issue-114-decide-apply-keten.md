@@ -25,16 +25,17 @@
 - Commits volgen Conventional Commits, in het Nederlands, met één logische wijziging per commit. Een wijziging onder `pack/` draait ook `go run ./cmd/lighthouse init --upgrade` en commit de geïnstalleerde kopie (CI eist `No changes.`). Elke PR krijgt een fragment in `changelog.d/`.
 - Verificatie zoals CI: `go test -race -shuffle=on ./...`, `golangci-lint run` en `uv run pytest -q tests/pack/test_protocol.py`.
 
-**Besluit: de volgorde van een start.** Eerst `Prepare` en de bezet-toets, dan `runs.Take`, dan de 🤖 Gestart of Hervat, dan de 🚀 en als laatste `workplace.Launch`. De comment staat zo vóór de launch (spec §3 stap 5, "altijd eerst de comment"), en de rij staat vóór de comment, zodat de wezenregel hem nooit voor een wees aanziet. Mislukt de post, dan sluit apply de rij als `start_failed` met reden `post: <fout>`; er is dan niets gestart. Mislukt de 🚀, dan gaat de launch toch door; de herstelregel van decide zet de 🚀 de volgende tick. Een `NotAccepted` launch laat Gestart staan. *Dedup* start de trigger dan als `attempt = 2`, ongeacht 🚀 of Gestart. Dat is precies het geval dat de spec beschrijft.
+**Besluit: de volgorde van een start.** Eerst `Prepare` en de bezet-toets, dan `runs.Take`, dan de 🤖 Gestart of Hervat, dan de 🚀 en als laatste `workplace.Launch`. De comment staat zo vóór de launch (spec §3 stap 5, "altijd eerst de comment"), en de rij staat vóór de comment, zodat de wezenregel hem nooit voor een wees aanziet. Mislukt iets tussen `runs.Take` en `workplace.Launch` (het schrijven van de instructies of de post), dan sluit apply de rij als `start_failed` met reden `instructions: <fout>` of `post: <fout>`; er is dan niets gestart, en er blijft nooit een open rij zonder werkplek achter. Mislukt de 🚀, dan gaat de launch toch door; de herstelregel van decide zet de 🚀 de volgende tick. Een `NotAccepted` launch laat Gestart staan. *Dedup* start de trigger dan als `attempt = 2`, ongeacht 🚀 of Gestart. Dat is precies het geval dat de spec beschrijft.
 
 **Besluit: wat dit plan uit *Afloop* (§7) neemt.** Alleen wat de keten nodig heeft om rond te komen:
 
-- Een 🤖 Handoff van de run-sessie na de start sluit de rij als `handoff`.
-- Een 🤖 Vraag van de run-sessie sluit de rij als `question`.
-- Een groene PR met een sessie die niet `working` is, geeft eerst 🤖 Klaar en sluit dan de rij als `done`.
+- Een 🤖 Handoff op het issue na de start van de open rij sluit de rij als `handoff`. Een Handoff draagt geen sessievoet: `lighthouse-handoff` post alleen de kop, de velden en het blok (`pack/core/skills/handoff/SKILL.md`, stap 5). "Van deze sessie" (spec §7) is daarom: `CreatedAt` niet vóór `R.StartedAt`, op het issue van R. Er is hoogstens één open rij per issue. Zo deed paia het ook (`_handoff_na`).
+- Uitzondering: een Handoff waarvan `Judge` End maakt (`/lighthouse-close-issue`), sluit de rij niet. De run wacht dan op groen; de handoff-skill zegt dat zelf ("final handoff: the controller never starts this, it waits for green"). De rij blijft open tot de regel *groene PR* hem sluit. Zonder die uitzondering sluit de laatste fase van elke keten als `handoff` en komt er nooit een 🤖 Klaar (spec §3, scope punt 3).
+- Een 🤖 Vraag van de run-sessie sluit de rij als `question`. `lighthouse ask` zet de sessie in de voet.
+- Een groene PR met een sessie die `Done` is (spec §7: "de sessie is klaar"; `workplace.Done`), geeft eerst 🤖 Klaar en sluit dan de rij als `done`. `Waiting` en `Working` geven niets.
 - Een 🤖 Klaar van de run-sessie die al staat, sluit alleen de rij. Dat is de "volgende tick maakt de overgang af".
 
-Al het andere uit §7, ook `CheckOpen`, hoort in #115.
+Al het andere uit §7, ook `CheckOpen`, hoort in #115. Tot dan blijft een rij met een rode PR na een eind-Handoff open.
 
 **Besluit: teksten op het issue.** De redenen en de Klaar-tekst krijgen sleutels in `pack/core/headings.toml` (sectie `# Texts the dispatcher posts`), met `nl` en `en`. Zo vertaalt het posten de Engelse redenen uit #113 naar de projecttaal (`docs/workplace.md` belooft dat). De sleutels en de teksten:
 
@@ -55,8 +56,8 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
 
 ## Review Focus
 
-1. **Twee processen, één trigger.** De tick en `lighthouse run` beslissen tegelijk over hetzelfde antwoord. Verwacht: precies één hervatting en één 🤖 Hervat. De tweede `Take` geeft `ErrClaimed` of `ErrTriggerSpent`, en apply post dan niets. → Taak 7, `TestApplyClaimLostPostsNothing`.
-2. **Een Vraag of Handoff zonder sessie in de voet**, of met de sessie van een andere run. Verwacht: die sluit geen open rij, en een antwoord erop hervat niets. → Taak 5, fixture `settle-question-other-session`, en Taak 6, fixture `answer-question-without-session`.
+1. **Twee processen, één trigger.** De tick en `lighthouse run` beslissen tegelijk over hetzelfde antwoord. Verwacht: precies één hervatting en één 🤖 Hervat. De tweede `Take` geeft `ErrClaimed` of `ErrTriggerSpent`, en apply post dan niets. Een Gestart die `run` post terwijl de tick nog comments haalt, maakt geen wees. → Taak 7, `TestApplyClaimLostPostsNothing`, en Taak 8, `TestTickRunClaimsDuringGather`.
+2. **Een Vraag zonder sessie in de voet**, met de sessie van een andere run, of met een sessie die in geen `History`-rij staat. Verwacht: die sluit geen open rij, en een antwoord erop hervat niets. Een Handoff zonder voet van na de start sluit de rij wel. → Taak 5, fixtures `settle-question-other-session` en `settle-handoff`, en Taak 6, fixtures `answer-question-without-session` en `answer-question-unknown-session`.
 3. **Een Handoff met `issue: #12` op issue 13**, of een `next` met spaties, aanhalingstekens of `;`. Verwacht: Teruggegeven `commando niet toegestaan: …`, nooit een start. → Taak 4, `TestJudgeArgumentShapes`, en Taak 6, fixture `handoff-wrong-issue`.
 4. **Een nachtvenster over middernacht** (`21:00-08:00`) om 07:59, 08:00 en 20:59. Verwacht: binnen, buiten, buiten. → Taak 4, `TestInNight`.
 5. **`lighthouse ask` met een `--option` vóór de eerste `--question`**, met twee `--recommended` bij één vraag, of met een `--recommended` die wijst naar een optie die er niet is. Verwacht: een melding, niets gepost, exit 1. → Taak 10, `TestAskRejectsShape`.
@@ -70,9 +71,9 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
 | `pack/core/headings.toml`, `.lighthouse/headings.toml` (via `init --upgrade`) | Teksten op het issue |
 | `internal/protocol/header.go`, `heading.go` (nieuw), `handoff.go` (nieuw), `render.go` (nieuw), `question.go` (nieuw) (+ tests) | Sessie uit de voet, `Heading`, `ParseHandoff`, renderers, `ParseQuestion`, `AnswerPrompt` |
 | `tests/pack/fixtures/protocol/questions.json` (nieuw), `tests/pack/test_protocol.py` | Gedeelde fixture voor render en parse van een Vraag |
-| `internal/repoconfig/repoconfig.go` (+ test) | `Kind`, `Language` |
-| `internal/forge/board.go` (+ test) | `PR.URL`, `PR.MergedAt` |
-| `internal/runs/history.go` (nieuw, + test) | `History` |
+| `internal/repoconfig/repoconfig.go` (+ test) | `Kind`, `Language`, `DefaultBranch` |
+| `internal/forge/board.go` (+ test), `internal/forge/forgetest/server.go` | `PR.URL`, `PR.MergedAt`; de routes die de tests van Taak 8–10 nodig hebben |
+| `internal/runs/runs.go`, `internal/runs/history.go` (nieuw, + tests) | `Claim.Branch`, `History` |
 | `internal/dispatch/judge.go` (nieuw, + test) | Allowlist, oordeel, review-sprong, nachtvenster, slug |
 | `internal/dispatch/decide.go` (nieuw), `decide_test.go`, `testdata/decide/*.json` | De regels |
 | `internal/dispatch/apply.go` (nieuw, + test) | Acties uitvoeren |
@@ -140,11 +141,13 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
   type QuestionMeta struct { Issue int; Title, IssueURL, Session, Worktree, HandoffURL string }
   func RenderQuestion(m QuestionMeta, f QuestionFields, language string) string
   func ParseQuestion(body string) (QuestionFields, bool) // false: no 🤖 Question
+  func CleanFields(f QuestionFields) QuestionFields       // every text through clean, as RenderQuestion does: what ParseQuestion gives back
   func AnswerPrompt(question, answer string) string
   ```
+- `_clean` werkt maar één kant op: `<sub>` en ```` ``` ```` komen niet terug uit de parse. Daarom is de rondgang `ParseQuestion(RenderQuestion(m, f, l)) == CleanFields(f)`, niet `== f`.
 - `AnswerPrompt` is de Engelse versie van `antwoord_prompt`. Het laat de regels die met `<sub>` beginnen weg, en ook de regels die gelijk zijn aan een variant van `question_close` of `question_bundle_hint`. Daarna komt letterlijk:
   `"Your question stands on the issue like this; the controller added the option letters:\n\n" + posted + "\n\nThe user's answer:\n\n" + strings.TrimSpace(answer)`.
-- `questions.json` is een lijst van `{"name", "meta", "fields", "language", "body"}`. Beide talen lezen hem: `render(meta, fields, language) == body` en `parse(body) == fields`. Cases: één vraag met `commands` (`nl`), een bundel van twee vragen (`en`), een `task`, en een optie met backticks en `<sub>` (via `_clean`). Python roept `render_question` en `parse_question` aan.
+- `questions.json` is een lijst van `{"name", "meta", "fields", "language", "body", "parsed"?}`. Beide talen lezen hem: `render(meta, fields, language) == body` en `parse(body) == parsed`, waarbij `parsed` ontbreekt als het gelijk is aan `fields`. Go toetst ook `CleanFields(fields) == parsed`. Cases: één vraag met `commands` (`nl`), een bundel van twee vragen (`en`), een `task`, en een optie met backticks en `<sub>` (via `_clean`). Python roept `render_question` en `parse_question` aan.
 
 - [ ] **Step 1: Failing tests.**
   - `TestQuestionSharedFixture` (Go) en `test_question_shared_fixture` (Python) lezen `questions.json`.
@@ -160,13 +163,14 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
 ### Taak 3: Config, PR-velden en runhistorie
 
 **Files:**
-- Modify: `internal/repoconfig/repoconfig.go`, `internal/forge/board.go`, `internal/dispatch/testdata/snapshot.json`
+- Modify: `internal/repoconfig/repoconfig.go`, `internal/forge/board.go`, `internal/runs/runs.go`, `internal/dispatch/testdata/snapshot.json`
 - Create: `internal/runs/history.go`
-- Test: `internal/repoconfig/repoconfig_test.go`, `internal/forge/board_test.go`, `internal/runs/history_test.go`
+- Test: `internal/repoconfig/repoconfig_test.go`, `internal/forge/board_test.go`, `internal/runs/runs_test.go`, `internal/runs/history_test.go`
 
 **Interfaces:**
 - Produces:
-  - `repoconfig.Repo` krijgt `Kind string` (`[forge] kind`, standaard `"github"`) en `Language string` (`[project] language`, standaard `"en"`).
+  - `repoconfig.Repo` krijgt `Kind string` (`[forge] kind`, standaard `"github"`), `Language string` (`[project] language`, standaard `"en"`) en `DefaultBranch string` (`[forge] default_branch`, standaard `"main"`, zoals `config.py`).
+  - `runs.Claim` krijgt `Branch string`, en `Take` schrijft die in de kolom `branch`. Nu zet alleen `SetWorkplace` hem, na een geslaagde `Prepare`; een rij die vóór de launch sluit, heeft dan geen branch, en een tweede poging zou op `""` starten.
   - `forge.PR` krijgt `URL string \`json:"url"\`` en `MergedAt time.Time \`json:"merged_at"\``. `prFields` wordt `number state isDraft mergeable headRefOid headRefName mergedAt url statusCheckRollup { state }`. `SnapshotVersion` blijft `1`, want de velden zijn toegevoegd.
   - ```go
     type Row struct {
@@ -178,11 +182,12 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
     ```
 
 - [ ] **Step 1: Failing tests.**
-  - `TestLoadKindAndLanguage` leest de waarden en de standaarden.
+  - `TestLoadKindAndLanguage` leest de waarden en de standaarden, ook `DefaultBranch`.
+  - `TestTakeWritesBranch`: na `Take` met `Branch: "issue-7-x"` en `Release(StartFailed, …)` heeft de rij die branch.
   - `TestBoardItemsPRURLAndMergedAt`: de forgetest-server geeft `mergedAt` en `url` mee, en de items dragen ze.
   - `TestHistoryOpenAndClosed`: na `Take` en `Release(StartFailed, "x")` en een tweede `Take` geeft `History` twee rijen in id-volgorde. De eerste is `Open == false`, `Outcome == StartFailed`, `Reason == "x"`; de tweede is `Open == true` met `Attempt == 2`. Een rij van een andere repo ontbreekt.
 - [ ] **Step 2:** `go test ./internal/repoconfig ./internal/forge ./internal/runs` → FAIL.
-- [ ] **Step 3:** Implementeer de code. Werk `testdata/snapshot.json` en de GraphQL-antwoorden in `internal/forge/forgetest` bij.
+- [ ] **Step 3:** Implementeer de code. Werk `testdata/snapshot.json` en de GraphQL-antwoorden in `internal/forge/forgetest` bij. Pas elke aanroep van `runs.Claim` aan.
 - [ ] **Step 4:** `go test -race ./internal/repoconfig ./internal/forge/... ./internal/runs ./internal/dispatch` → PASS.
 - [ ] **Step 5:** Commit `feat(dispatch): taal, PR-merge en runhistorie voor decide`.
 
@@ -249,6 +254,7 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
       Snapshot   Snapshot
       Controller repoconfig.Controller
       Language   string
+      DefaultBranch string
       Installed  map[string]bool
       History    []runs.Row
       Stands     map[int64]workplace.Stand // per open run id; missing = not measurable
@@ -268,14 +274,14 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
   func Decide(in Input) []Action
   ```
 - De fixture `testdata/decide/<naam>.json` is `{"input": Input, "want": []Action}`. `TestDecideFixtures` leest elke file, vergelijkt `Decide(input)` met `want` via `reflect.DeepEqual` en print het verschil als JSON. Een lege map faalt.
-- Een 🤖-comment hoort **bij run R** als `Header.Session == R.SessionID` en `CreatedAt` niet vóór `R.StartedAt` ligt.
+- Een 🤖 Vraag of Klaar hoort **bij run R** als `Header.Session == R.SessionID` en `CreatedAt` niet vóór `R.StartedAt` ligt. Een 🤖 Handoff hoort bij R als hij op het issue van R staat en `CreatedAt` niet vóór `R.StartedAt` ligt; een Handoff draagt geen sessievoet (zie *Besluit: wat dit plan uit Afloop neemt*).
 - Regels van deze taak, per issue in deze volgorde:
   1. **Wees**: de laatste 🤖-comment (Rebased telt niet) is Started of Resumed, met een `Session` die in geen enkele `History`-rij staat → `return` met `reason_state_lost` en `SessionID` (voor de voet).
   2. **Afloop, per open rij R**:
      - een 🤖 Done van R → `close` met `done`;
-     - anders een 🤖 Handoff van R → `close` met `handoff`;
+     - anders een 🤖 Handoff van R waarvan `Judge(ReviewSkip(next))` niet End geeft (een onleesbare Handoff telt mee) → `close` met `handoff`;
      - anders een 🤖 Question van R → `close` met `question`;
-     - anders een groene PR in `Item.PRs` en `Stands[R.ID]` gemeten en niet `Working` → `done` (Klaar met `PRURL`, daarna sluiten als `done`; `RunID`, `SessionID`).
+     - anders een groene PR in `Item.PRs` en `Stands[R.ID] == workplace.Done` → `done` (Klaar met `PRURL`, daarna sluiten als `done`; `RunID`, `SessionID`). Dat geldt ook na een eind-Handoff van R.
   3. **Herstel**: per `History`-rij met trigger-sleutel `handoff:<id>` of `answer:<id>` waarvan die comment in de snapshot staat zonder `Rocket` → één `rocket` met `CommentID`.
 
   Een issue met een open rij die in deze tick niet sluit, krijgt geen startactie (Taak 6). Elke actie draagt `Language` van de repo.
@@ -284,10 +290,14 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
   - `orphan-started`: laatste 🤖 Gestart met sessie S, `History` leeg → `return` `reason_state_lost` met S.
   - `orphan-known-session`: S staat in een dichte rij → `[]`.
   - `orphan-after-returned`: Gestart en daarna Teruggegeven → `[]`.
-  - `settle-handoff`, `settle-question` en `settle-done-posted` → één `close` met de juiste uitkomst.
+  - `settle-handoff`, `settle-question` en `settle-done-posted` → één `close` met de juiste uitkomst. De Handoff in `settle-handoff` heeft de vorm die `lighthouse-handoff` post: kop, velden en blok, **zonder** voet.
+  - `settle-handoff-before-start`: een Handoff van vóór `StartedAt` → `[]`.
+  - `settle-handoff-end-waits`: Handoff `next: /lighthouse-close-issue 7` na de start, geen groene PR → `[]` (de rij blijft open).
+  - `settle-handoff-end-green-pr`: dezelfde Handoff, een groene PR en Stand `Done` → `done`.
   - `settle-question-other-session`: Vraag met een andere sessie → `[]`.
   - `settle-question-before-start`: Vraag van S, maar vóór `StartedAt` (een oudere run met dezelfde sessie) → `[]`.
-  - `settle-green-pr-done`: Stand `Waiting` → `done`.
+  - `settle-green-pr-done`: Stand `Done` → `done`.
+  - `settle-green-pr-waiting`: Stand `Waiting` → `[]`.
   - `settle-green-pr-working`: Stand `Working` → `[]`.
   - `settle-green-pr-unmeasured`: geen Stand → `[]`.
   - `settle-red-pr`: `Checks: FAILURE` → `[]`.
@@ -308,10 +318,10 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
 - Consumes: Taak 5.
 - Regels, na die van Taak 5. Alleen voor items met `Status == "Controller"` en `State == "OPEN"`, zonder open rij (of met een open rij die in deze tick sluit). Hoogstens één `start` of `resume` per issue, en de eerste regel die raakt, wint:
   1. **Tweede poging** (*Dedup*): een trigger-sleutel van het issue waarvan alle `History`-rijen `start_failed` zijn:
-     - één rij → dezelfde `Mode`, `Trigger`, `TriggerKey`, `Command`, `Prompt` en `Branch`, met `Attempt: 2` (`resume` behoudt `SessionID`, `start` laat hem leeg);
+     - één rij → dezelfde `Mode`, `Trigger`, `TriggerKey`, `Command`, `Prompt` en `Branch` (Taak 3 schrijft die bij `Take`), met `Attempt: 2` (`resume` behoudt `SessionID`, `start` laat hem leeg). Wat de rij niet bewaart, komt uit de trigger: `CommentID` is het id uit `handoff:<id>` of `answer:<id>`; bij `handoff:<id>` geven `ReviewSkip` en `Judge` op die Handoff opnieuw `Native` en `Skip`. Bij `start:` en `closecheck:` zijn ze leeg;
      - twee rijen, en nog geen 🤖 Returned van de sessie van de tweede rij → `return` met `reason_start_failed`, `ReasonArg` = de reden van de tweede rij en `SessionID` van die rij.
      Dit geldt ongeacht 🚀 of 🤖 Gestart.
-  2. **Antwoord** (§5): de laatste 🤖 is een Question met een `Session`, en het antwoord is de eerste comment erna die geen 🤖-kop en geen `Rocket` heeft en waarvoor `protocol.IsAnswer` geldt. Heeft `answer:<id>` geen rij → `resume` met `Trigger: "answer"`, `SessionID` = de sessie van de Vraag, `CommentID` = het antwoord, `Prompt` = `protocol.AnswerPrompt(vraag.Body, antwoord.Body)`, `Branch` en `Command` van de laatste `History`-rij met die sessie, en `Attempt: 1`. Een Vraag zonder sessie → niets.
+  2. **Antwoord** (§5): de laatste 🤖 is een Question met een `Session`, en het antwoord is de eerste comment erna die geen 🤖-kop en geen `Rocket` heeft en waarvoor `protocol.IsAnswer` geldt. Heeft `answer:<id>` geen rij → `resume` met `Trigger: "answer"`, `SessionID` = de sessie van de Vraag, `CommentID` = het antwoord, `Prompt` = `protocol.AnswerPrompt(vraag.Body, antwoord.Body)`, `Branch` en `Command` van de laatste `History`-rij met die sessie, en `Attempt: 1`. Een Vraag zonder sessie, of met een sessie die in geen `History`-rij staat (database kwijt, een sessie die lighthouse nooit startte) → niets.
   3. **Nacontrole** (§4 regel 5): een PR met `Closes == false`, `State == "MERGED"` en een 🤖 Started waarvan `CreatedAt` vóór `MergedAt` ligt. Heeft `closecheck:<pr>` geen rij → `start` met `Trigger: "closecheck"`, `Command: "/lighthouse-close-issue <N>"`, de prompt met het achtervoegsel, `Branch` = `HeadRef` van de PR, en `Attempt: 1`. Een gemergde PR met `Closes == true` → niets.
   4. **Nieuw issue**: geen enkele 🤖-comment, en `start:<N>` heeft geen rij → `start` met `Command: "/lighthouse-start-issue <N>"`, `Branch: "issue-<N>-" + Slug(title)` (zonder slug: `issue-<N>`), `Trigger: "handoff"` en `Attempt: 1`.
   5. **Handoff**: de laatste 🤖 is een Handoff zonder `Rocket`, en `handoff:<id>` heeft geen rij. Dan:
@@ -320,13 +330,14 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
      - anders `ReviewSkip`, dan `Judge`. End → niets; Brainstorm → `return` met `reason_needs_brainstorm`; Interactive → `return` met `reason_interactive`; Rejected → `return` met `reason_not_allowed`; SkillMissing → `return` met `reason_skill_missing`;
      - bij Start, en `When == "night"` terwijl `!InNight` → `defer` met `Reason: "night"`;
      - bij Start, en `Executing(command)` met een `BlockedBy` die `OPEN` is → `defer` met `Reason: "blocker"` (de blokkaderegel volgt in issue 7);
-     - anders `start` met `Trigger: "handoff"`, `CommentID` = de Handoff, `Branch` = `Handoff.Branch`, `Native`, `Skip` = de skip-sleutel en `Attempt: 1`.
+     - anders `start` met `Trigger: "handoff"`, `CommentID` = de Handoff, `Branch` = `Handoff.Branch`, `Native`, `Skip` = de skip-sleutel en `Attempt: 1`. Is `Handoff.Branch` leeg of gelijk aan `DefaultBranch` (een `/lighthouse-start-issue`-handoff draagt `branch: main`, `pack/core/skills/handoff/SKILL.md` stap 3), dan is `Branch` `issue-<N>-` + `Slug(title)`, zoals bij een nieuw issue.
 - **Volgorde** van de uitkomst: eerst alle acties zonder start of hervatting (op repo en issue), dan de `defer`'s, dan `start` en `resume`. Die laatste gaan op Priority (`P0 < P1 < P2 < ""`), dan op de tijd van de trigger (de `CreatedAt` van de Handoff of het antwoord, bij `start:`/`closecheck:` `ItemUpdatedAt`), dan op repo en issue.
 
 - [ ] **Step 1: Failing tests.** Fixtures:
   - `answer-resume`;
   - `answer-already-rocket` → `[]`;
   - `answer-question-without-session` → `[]`;
+  - `answer-question-unknown-session` (de sessie van de Vraag staat in geen `History`-rij) → `[]`;
   - `answer-row-exists` (de rij van `answer:<id>` bestaat al, dicht als `question`; het antwoord draagt een 🚀) → `[]`;
   - `closecheck-refs-merged` → `start` close-issue;
   - `closecheck-closes-merged` → `[]` (**AC 3**);
@@ -334,6 +345,7 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
   - `new-issue-start`;
   - `new-issue-on-hold` (Status On hold) → `[]`;
   - `handoff-start`;
+  - `handoff-start-issue-from-main` (`next: /lighthouse-start-issue 7`, `branch: main`) → `start` met `Branch: "issue-7-<slug>"`;
   - `handoff-native` (`executing-plans` met `lane: native` → `Native: true`);
   - `handoff-interactive` → precies `[return reason_interactive]` (**AC 4**: geen boardactie, het issue blijft in Controller);
   - `handoff-brainstorm`, `handoff-end` → `[]`;
@@ -345,6 +357,7 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
   - `dedup-row-not-failed`: de rij `handoff:<id>` is dicht als `done` en de Handoff draagt een 🚀 → `[]`. `dedup-row-not-failed-no-rocket`: dezelfde rij, de Handoff zonder 🚀 → alleen `rocket`, geen `start` (**AC 2a**);
   - `dedup-one-start-failed`: één rij `start_failed`; de Handoff draagt 🚀 en daarna staat een 🤖 Gestart van die rij → `start` met `Attempt: 2` (**AC 2b**);
   - `dedup-one-start-failed-resume` → `resume` met dezelfde `SessionID` en `Attempt: 2`;
+  - `dedup-one-start-failed-native`: de rij `handoff:<id>` is `start_failed`, en die Handoff draagt `lane: native` → `start` met `Attempt: 2`, `Native: true`, de branch van de rij en `CommentID` = id;
   - `dedup-two-start-failed` → precies één `return` met `reason_start_failed` (**AC 2c**);
   - `dedup-two-start-failed-returned` (die Teruggegeven staat er al) → `[]`;
   - `open-run-blocks-start` (open rij die niet sluit, plus een nieuwe Handoff) → `[]`;
@@ -381,8 +394,12 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
       NewSession func() string // runs.NewSessionID
       Log        io.Writer
   }
-  type Result struct { Deferred []string; Started int } // Deferred: "<repo>#<n>: <reason>"
-  func Apply(ctx context.Context, env Env, actions []Action) (Result, error) // runs every action; errors are joined, one failing action never stops the rest
+  type Result struct {
+      Deferred []string        // "<repo>#<n>: <reason>"
+      Failed   map[string]error // per repo: the joined errors of its actions; absent = no error
+      Started  int
+  }
+  func Apply(ctx context.Context, env Env, actions []Action) (Result, error) // runs every action in order; errors are joined (and kept per repo in Failed), one failing action never stops the rest
   ```
 - Per soort:
   - `return`: post `RenderReturned(text, SessionID, "", Language)` met `text = Heading(Reason) [+ ": " + ReasonArg]`.
@@ -393,13 +410,13 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
   - `start` en `resume`:
     1. `ws := Prepare(Branch)`;
     2. `Sessions(ws.ID)`, met `own` uit `runs.SessionKeys` en de open sessie-ids van het issue. Is `Busy` waar, dan komt er een deferral met `"workplace busy: " + BusyReason`;
-    3. `runs.Take`. `ErrClaimed` of `ErrTriggerSpent` → een logregel en verder niets;
-    4. `WriteInstructions`;
+    3. `runs.Take` met `Branch`. `ErrClaimed` of `ErrTriggerSpent` → een logregel en verder niets;
+    4. `WriteInstructions`. Mislukt dat, dan `runs.Release(StartFailed, "instructions: <fout>")` en stop;
     5. de comment: Started (`Start = now` in RFC3339, `Worktree = ws.Path`, `Branch`, `Skip` als `Heading(Skip)`, `Runner: "forge"`, `Workspace: ws.ID`), of `RenderResumed(SessionID, CommentID)`. Mislukt de post, dan `runs.Release(StartFailed, "post: <fout>")` en stop;
     6. `AddRocket(CommentID)` als `CommentID > 0`. Een fout komt alleen in het log;
     7. `workplace.Launch` met een `LaunchSpec` (`Prompt`, `Native`, `InstructionsFile`, `MCPConfig`, `Profile`, `Mode` en de sessie). `Accepted` of `Uncertain` telt in `Started`. `NotAccepted` laat alleen een logregel achter.
 - `run.md` is een Engelse port van `controller_forge_instructies.md`, met deze wijzigingen:
-  - `scripts/controller_vraag.py` wordt `lighthouse ask` met de Engelse vlaggen uit Taak 10, en het voorbeeld wordt herschreven;
+  - `scripts/controller_vraag.py` wordt `lighthouse ask` met de Engelse vlaggen uit Taak 10, en het voorbeeld wordt herschreven. Het voorbeeld geeft `--issue <N>` mee: de run kent N uit zijn prompt `(issue #<N>, controller-run)`;
   - `PAIA_CONTROLLER_RUN` wordt `LIGHTHOUSE_CONTROLLER_RUN`;
   - bij een post-fout geeft het commando exit 1, en bij een vorm-fout zegt het "nothing posted".
   
@@ -408,6 +425,8 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
 - [ ] **Step 1: Failing tests.** Elke test gebruikt een echte database (`store.OpenShared` op `t.TempDir()`), een fake `Poster` en een fake `Workplace` die zijn aanroepen opneemt.
   - `TestApplyStartOrder`: de volgorde van de aanroepen is Prepare, Sessions, CreateComment, AddRocket, Prepare, Spawn. De rij is open, en de Started-body draagt de sessie van de rij.
   - `TestApplyPostFailsReleases`: CreateComment faalt → de rij is dicht als `start_failed` met de reden `post: …`, en er is geen Spawn.
+  - `TestApplyInstructionsFailReleases`: `StateDir` is een bestand, geen map → de rij is dicht als `start_failed` met de reden `instructions: …`, en er is geen post en geen Spawn.
+  - `TestApplyFailedPerRepo`: een actie van repo A faalt en een van repo B slaagt → `Failed` heeft alleen A.
   - `TestApplyRocketFailsStillLaunches`.
   - `TestApplyBusyDefers`: een vreemde sessie die `working` is → er is geen rij, geen post en geen Spawn, en `Deferred` heeft één regel.
   - `TestApplyClaimLostPostsNothing`: er is al een open rij voor het issue → geen post en geen Spawn.
@@ -424,25 +443,31 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
 ### Taak 8: Decide en apply in de tick
 
 **Files:**
-- Modify: `internal/dispatch/gather.go`, `internal/cli/tick.go`, `internal/cli/gather.go`, `docs/tick.md`
-- Test: `internal/cli/tick_test.go`, `internal/dispatch/gather_test.go`
+- Modify: `internal/dispatch/gather.go`, `internal/dispatch/fingerprint.go`, `internal/cli/tick.go`, `internal/cli/gather.go`, `internal/forge/forgetest/server.go`, `docs/tick.md`
+- Test: `internal/cli/tick_test.go`, `internal/dispatch/gather_test.go`, `internal/dispatch/fingerprint_test.go`
 
 **Interfaces:**
 - Consumes: Taak 3 (`History`, `Kind`, `Language`), Taak 4 (`Installed`), Taak 5–7.
 - Produces:
-  - `dispatch.Prepare(ctx, c, repo, open []runs.OpenRun, branches map[int]string)`. `branches` is per issue de branch van de laatste `History`-rij. De PR's op die branch komen erbij, ook na een dichte run, zodat een gemergde `Refs`-PR zichtbaar blijft. Pas elke aanroep aan (`grep -rn 'dispatch.Prepare(' internal`).
+  - `dispatch.Prepare(ctx, c, repo, open []runs.OpenRun, branches map[int]string)`. `branches` is per issue de branch van de laatste `History`-rij. De PR's op die branch komen erbij, ook na een dichte run, zodat een gemergde `Refs`-PR zichtbaar blijft. Pas elke aanroep aan, ook die binnen het pakket (`grep -rn 'Prepare(ctx\|Prepare(context' internal`; `gather_test.go` roept `Prepare(` zonder prefix aan).
+  - De stand van de open runs hoort in de vingerafdruk (spec §3 stap 2). `Pre` krijgt `Stands map[int64]workplace.Stand`, `gatherRepo` meet ze vóór `Due` (via `Sessions`, zie hieronder), en `fpRun` krijgt `Stand`. Zonder dat wacht een 🤖 Klaar na `Working` → `Done` op de verouderde gather.
+  - `forgetest` krijgt de routes die de tests van Taak 8–10 nodig hebben: `POST /repos/{r}/issues/{n}/comments` (bewaard en bij de volgende `GET` teruggegeven), `POST …/comments/{id}/reactions`, `GET /repos/{r}/issues/{n}` en een instelbare foutstatus.
+  - **De volgorde van lezen.** `gatherRepo` leest `runs.History` (en de open rijen voor `Decide`) pas ná `Complete`. `lighthouse run` neemt geen `tick.lock`; zijn rij staat vóór zijn Gestart (*Besluit: de volgorde van een start*). Wie de Gestart in de comments ziet, ziet zo ook de rij, en de wezenregel ziet een verse run nooit voor een wees aan. De open rijen van de precheck blijven voor `Prepare` en de vingerafdruk.
   - `tickEnv` krijgt `Workplace func(repo repoconfig.Repo) workplace.Workplace` (nil → een `kennforge.Adapter` uit `cfg.Forge`, `cfg.Profiles`, `repo.Kind`, `repo.Slug`, `repo.Dir` en `repo.Controller.Profile`) en `StateDir string` ("" → `${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/dispatch`).
   - `gatherRepo` geeft `(in *dispatch.RepoInput, fp string, err error)` terug, met nil als de repo niet aan de beurt is. `Stands` komt uit `Sessions` per open rij met `WorkspaceID` en `WorkplaceSession`; de sessie met die key geeft de stand, en een fout laat de rij weg (niet meetbaar).
-  - `tick` verzamelt de inputs, roept één keer `Decide` aan over alle repo's, en dan `Apply`. Daarna bewaart hij de vingerafdruk alleen voor een repo zonder `Deferred` en zonder fout in `Apply` voor die repo. Dat is spec §3 stap 2.
+  - `tick` verzamelt de inputs, roept één keer `Decide` aan over alle repo's, en dan `Apply`. Daarna bewaart hij de vingerafdruk alleen voor een repo zonder `Deferred` en zonder `Result.Failed[repo]`. Dat is spec §3 stap 2.
 
 - [ ] **Step 1: Failing tests** in `tick_test.go`, met forgetest en een fake `Workplace`:
   - `TestTickStartsNewIssue`: een item in Controller zonder comments → één Started-comment op de server, één open rij, en de vingerafdruk is bewaard.
   - `TestTickDeferredKeepsFingerprint`: een Handoff met `when: night` buiten het venster → geen rij, en `LoadTickState` is leeg.
   - `TestTickSecondTickDoesNotRestart`: twee ticks na elkaar → één rij en één Started.
+  - `TestTickRunClaimsDuringGather`: de forgetest-server voegt bij het ophalen van de comments een rij in de database en een Gestart met die sessie toe (zoals een gelijktijdige `lighthouse run`) → geen 🤖 Teruggegeven `reason_state_lost`.
+  - `TestTickFailedRepoKeepsNoFingerprint`: twee repo's, de post van repo A geeft 500 → `LoadTickState` van A is leeg, die van B is bewaard.
+  - `TestFingerprintStands` (in `fingerprint_test.go`): dezelfde `Pre` met een andere `Stand` voor een open run geeft een andere vingerafdruk.
   - Pas de bestaande tests aan op de nieuwe uitvoer: de regel `gathered` blijft.
 - [ ] **Step 2:** `go test ./internal/cli -run Tick` → FAIL.
 - [ ] **Step 3:** Implementeer de code. Werk in `docs/tick.md` de alinea "Tick beslist nog niet…" bij tot stap 8 *Decide* en stap 9 *Apply*, met de volgorde van een start en het besluit over de vingerafdruk.
-- [ ] **Step 4:** `go test -race ./internal/cli ./internal/dispatch ./e2e/...` → PASS.
+- [ ] **Step 4:** `go test -race ./internal/cli ./internal/dispatch ./internal/forge/...` en `go test -race -tags e2e ./e2e/` → PASS. Zonder `-tags e2e` draait er in `e2e/` niets (elke file heeft `//go:build e2e`).
 - [ ] **Step 5:** Commit `feat(tick): decide en apply na de gather`.
 
 ### Taak 9: `lighthouse run <repo>#<issue>`
@@ -456,12 +481,14 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
 - Consumes: Taak 8 (`gatherRepo` zonder precheck: een functie `inputFor(ctx, env, db, cfg, repo, token, login) (dispatch.RepoInput, error)` die `gatherRepo` en `run` delen).
 - Produces: `lighthouse run <owner/name>#<n> [--db <pad>]`.
   - Het commando zoekt de repo in `[dispatch] repos` op `Slug`; niet gevonden → exit 1.
-  - Het neemt geen `tick.lock` en doet geen precheck. Het voert een volledige gather uit, dan `Decide`, en houdt alleen de acties met `Kind` `start` of `resume` en `Issue == n` over. Daarna volgt `Apply`.
+  - Het neemt geen `tick.lock` en doet geen precheck. Het voert een volledige gather uit, dan `Decide`, en houdt alleen de acties met `Issue == n` en `Kind` `close`, `defer`, `start` of `resume` over. `close` gaat mee, want een open rij die in deze tick sluit, zou de `Take` van de start anders laten mislukken. Daarna volgt `Apply`; de `defer` geeft de uitvoer `deferred`.
   - Uitvoer: `lighthouse: started <repo>#<n>`, `lighthouse: deferred <repo>#<n>: <reden>` of `lighthouse: nothing to start for <repo>#<n>`, alle drie met exit 0.
 
 - [ ] **Step 1: Failing tests:**
   - `TestRunStartsOnlyThatIssue`: twee nieuwe issues → één rij.
   - `TestRunLeavesReturnToTick`: een Handoff die Teruggegeven wordt → geen comment, en `nothing to start`.
+  - `TestRunNightDefers`: een Handoff met `when: night` buiten het venster → geen rij, en de uitvoer `lighthouse: deferred <repo>#<n>: night`.
+  - `TestRunClosesThenResumes`: een open rij met een eigen Vraag, en een antwoord erop → de rij sluit als `question`, en er volgt één `resume`.
   - `TestRunUnknownRepo` → exit 1.
   - `TestRunIgnoresTickLock`: met een bezet `tick.lock` start `run` toch.
 - [ ] **Step 2:** `go test ./internal/cli -run TestRun` → FAIL.
@@ -473,29 +500,29 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
 
 **Files:**
 - Create: `internal/cli/ask.go`, `docs/ask.md`
-- Modify: `internal/cli/root.go`, `internal/forge/github.go` (`Issue`)
+- Modify: `internal/cli/root.go`, `internal/forge/github.go` (`Issue`), `internal/forge/forgetest/server.go` (als Taak 8 een route nog mist)
 - Test: `internal/cli/ask_test.go`, `internal/forge/github_test.go`
 
 **Interfaces:**
-- Consumes: Taak 2 (`RenderQuestion`, `ParseQuestion`, `MaxQuestions`, `Letters`), `workplace.Carrier`.
+- Consumes: Taak 2 (`RenderQuestion`, `ParseQuestion`, `CleanFields`, `MaxQuestions`, `Letters`), Taak 3 (`repoconfig.Load`, `Language`).
 - Produces:
   - `func (c *Client) Issue(ctx context.Context, number int) (Issue, error)` voor `GET /repos/{repo}/issues/{n}`, met titel en `html_url`.
-  - `lighthouse ask --phase T [--task T] --where T --what T (--question T (--option T){2,6} --recommended <a-f>){1,4} [--command T]... [--dry-run]`.
-  - `--question`, `--option` en `--recommended` delen één `pflag.Value` die de paren `(vlag, waarde)` in command-line-volgorde opslaat.
+  - `lighthouse ask --issue N --phase T [--task T] --where T --what T (--question T (--option T){2,6} --recommended <a-f>){1,4} [--command T]... [--dry-run]`.
+  - `--question`, `--option` en `--recommended` hebben elk een eigen kleine `pflag.Value` (`Set` krijgt alleen de waarde, niet de vlagnaam). Alle drie voegen `(vlag, waarde)` toe aan één gedeelde slice, in command-line-volgorde.
   - De regels en meldingen van `controller_vraag.py` (`_groepeer`, `_bouw_vraag`, `_bouw_velden`) gelden, in het Engels: `"--option before the first --question"`, `"<n> questions, want 1 to 4"`, `"question <n>: <k> options, want 2 to 6"`, `"question <n>: an option is empty"`, `"question <n>: <k> times --recommended, want exactly one"`, `"question <n>: --recommended <x> points to no option"` en `"<field> is empty"`. Elke vormfout eindigt op `"; nothing posted"`.
-  - De sessie komt uit `LIGHTHOUSE_CONTROLLER_RUN` (een UUID). Repo en issue komen uit de drager in `$LIGHTHOUSE_STATE_DIR/carriers/*.json` met die `session_id`: geen of meer dan één → fout. Worktree = de cwd.
-  - De taal van het issue is `[project] language` uit `lighthouse.toml` in de cwd; zonder dat bestand is het `en`.
-  - De body is `RenderQuestion`. Vóór de post leest `ParseQuestion(body)` hem terug, en die uitkomst moet gelijk zijn aan de velden; anders volgt een fout en geen post. `--dry-run` print de body.
+  - De sessie komt uit `LIGHTHOUSE_CONTROLLER_RUN` (een UUID; ontbreekt of ongeldig → vormfout). Het issue komt uit `--issue` (verplicht, een positief getal). De repo en de taal komen uit `repoconfig.Load(cwd)`: `Slug` en `Language`. Zonder leesbare `lighthouse.toml` met `[forge] repo` → vormfout. Worktree = de cwd. De drager is geen bron: het target verbruikt hem vóór de agent draait (`docs/workplace.md`, *Het dragercontract*), en dit plan verandert dat contract niet.
+  - De body is `RenderQuestion`. Vóór de post leest `ParseQuestion(body)` hem terug, en die uitkomst moet gelijk zijn aan `CleanFields(velden)`; anders volgt een fout en geen post. `--dry-run` print de body.
   - Na de post staat de comment-URL op stdout. Een fout van `Issue` of `CreateComment` geeft exit 1 met `lighthouse ask: post failed: <fout>`.
   - Het commando opent nooit de database.
 
-- [ ] **Step 1: Failing tests** in `ask_test.go`, met forgetest, een drager in `t.TempDir()` en de omgeving via een `Getenv`-fake:
-  - `TestAskPostsBundle`: twee vragen → één comment, en `ParseQuestion` van de geposte body geeft beide vragen.
-  - `TestAskRejectsShape` is een tabel: vijf vragen; één optie; zeven opties; `--option` vóór `--question`; twee `--recommended`; `--recommended f` bij drie opties; een lege `--where`. Elke rij geeft een fout met `nothing posted`, en de server ziet nul POST's (**AC 5a**).
+- [ ] **Step 1: Failing tests** in `ask_test.go`, met forgetest, een `lighthouse.toml` in een `t.TempDir()` als cwd, **geen** drager, en de omgeving via een `Getenv`-fake:
+  - `TestAskPostsBundle`: twee vragen → één comment op het issue van `--issue`, en `ParseQuestion` van de geposte body geeft beide vragen. De body draagt de sessie in de voet.
+  - `TestAskCleansOption`: een optie met `<sub>` → één post, en de geposte optie is de gecleande tekst.
+  - `TestAskRejectsShape` is een tabel: vijf vragen; één optie; zeven opties; `--option` vóór `--question`; twee `--recommended`; `--recommended f` bij drie opties; een lege `--where`; geen `--issue`. Elke rij geeft een fout met `nothing posted`, en de server ziet nul POST's (**AC 5a**).
   - `TestAskPostFailsExit1`: de server geeft 500 → `Execute` geeft 1 (**AC 5b**).
-  - `TestAskNoCarrier`.
+  - `TestAskNoLighthouseToml`: een cwd zonder `lighthouse.toml` → vormfout, nul POST's.
   - `TestAskDryRunPostsNothing`.
-  - `TestAskOpensNoDatabase`: zet `XDG_STATE_HOME` op een lege `t.TempDir()`; na het commando bestaat `lighthouse/lighthouse.db` daar niet.
+  - `TestAskOpensNoDatabase`: `t.Setenv("XDG_STATE_HOME", t.TempDir())` (`store.DefaultPath` leest `os.Getenv`, niet de fake); na het commando bestaat `lighthouse/lighthouse.db` daar niet.
 - [ ] **Step 2:** `go test ./internal/cli -run TestAsk ./internal/forge -run TestIssue` → FAIL.
 - [ ] **Step 3:** Implementeer de code. `docs/ask.md` beschrijft de vlaggen, het voorbeeld uit `run.md` en de exitcodes, in het Nederlands. Zet in `run.md` een verwijzing naar dezelfde vlaggen.
 - [ ] **Step 4:** `go test -race ./internal/cli ./internal/forge/...` → PASS.
