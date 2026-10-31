@@ -3,6 +3,7 @@ package kennforge
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -195,5 +196,52 @@ func TestClientLongTimeoutHonoured(t *testing.T) {
 	defer srv.Close()
 	if err := New(srv.URL, tokenFile(t, "t")).do(context.Background(), "GET", "/x", nil, time.Second, nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestClientNilHTTPUsesSharedNoRedirectClient(t *testing.T) {
+	var auth string
+	var n atomic.Int32
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { n.Add(1) }))
+	defer second.Close()
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		http.Redirect(w, r, second.URL, http.StatusFound)
+	}))
+	defer first.Close()
+	c := &Client{URL: first.URL, TokenFile: tokenFile(t, "tok9")}
+	err := c.do(context.Background(), "GET", "/x", nil, 0, nil)
+	var se *StatusError
+	if !errors.As(err, &se) || se.Status != http.StatusFound {
+		t.Fatalf("err = %v", err)
+	}
+	if auth != "Bearer tok9" || n.Load() != 0 {
+		t.Fatalf("auth = %q, redirected = %d", auth, n.Load())
+	}
+	if c.HTTP != nil {
+		t.Fatal("do must not set HTTP")
+	}
+}
+
+func TestClientNilHTTPReusesConnection(t *testing.T) {
+	var conns atomic.Int32
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	srv.Config.ConnState = func(_ net.Conn, st http.ConnState) {
+		if st == http.StateNew {
+			conns.Add(1)
+		}
+	}
+	srv.Start()
+	defer srv.Close()
+	c := &Client{URL: srv.URL, TokenFile: tokenFile(t, "t")}
+	for range 3 {
+		if err := c.do(context.Background(), "GET", "/x", nil, 0, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if conns.Load() != 1 {
+		t.Fatalf("connections = %d, want 1 (a transport per request leaks idle connections)", conns.Load())
 	}
 }

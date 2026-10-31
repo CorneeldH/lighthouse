@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -29,19 +30,23 @@ type Client struct {
 // New returns a client without proxy and without redirect following. The deadline of a
 // request comes from its context, so Client.Timeout stays 0.
 func New(url, tokenFile string) *Client {
+	return &Client{URL: strings.TrimRight(url, "/"), TokenFile: tokenFile, HTTP: newHTTP()}
+}
+
+func newHTTP() *http.Client {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.Proxy = nil
-	return &Client{
-		URL:       strings.TrimRight(url, "/"),
-		TokenFile: tokenFile,
-		HTTP: &http.Client{
-			Transport: tr,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+	return &http.Client{
+		Transport: tr,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
 	}
 }
+
+// sharedHTTP serves a Client whose HTTP is nil: one transport for all of them, so idle
+// connections are reused and not leaked per request.
+var sharedHTTP = sync.OnceValue(newHTTP)
 
 // StatusError is a non-2xx answer below 500, a 3xx included.
 type StatusError struct {
@@ -89,7 +94,7 @@ func (c *Client) do(ctx context.Context, method, path string, body any, timeout 
 	}
 	hc := c.HTTP
 	if hc == nil {
-		hc = New(c.URL, c.TokenFile).HTTP
+		hc = sharedHTTP()
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
