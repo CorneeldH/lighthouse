@@ -165,8 +165,8 @@ type Candidate struct {
 // never removed on an unmeasurable check. A running run is never touched.
 //
 // The order: in the controller or an open run (nothing), the workspace path,
-// the sessions, a live foreign session (keep), stop the own sessions, dirty,
-// unpushed, remove.
+// the sessions (a workspace forge no longer knows counts as removed), a live
+// foreign session (keep), stop the own sessions, dirty, unpushed, remove.
 func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candidate, now time.Time) (removed bool, err error) {
 	if c.Workspace.ID == "" {
 		return false, errors.New("cleanup: candidate has no workspace id")
@@ -193,6 +193,16 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	}
 
 	sessions, err := w.Sessions(ctx, c.Workspace.ID)
+	if errors.Is(err, ErrGone) {
+		// Forge no longer knows the workspace: removed, as after a 404 on Remove.
+		if err := w.Discard(ctx, c.Workspace.ID); err != nil {
+			return keep("not measurable: discard: " + err.Error())
+		}
+		if err := ClearLeftover(ctx, db, c.Repo, c.Workspace.ID); err != nil {
+			return true, err
+		}
+		return true, nil
+	}
 	if err != nil {
 		return keep("not measurable: sessions: " + err.Error())
 	}

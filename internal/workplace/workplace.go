@@ -79,6 +79,8 @@ var (
 	ErrUncertain = errors.New("workplace: outcome uncertain")
 	// ErrDirty: the workspace holds uncommitted or unpushed work.
 	ErrDirty = errors.New("workplace: workspace is dirty")
+	// ErrGone: the forge no longer knows the workspace (a 404).
+	ErrGone = errors.New("workplace: workspace is gone")
 )
 
 // Runner runs one subprocess. err is non-nil only when the command could not

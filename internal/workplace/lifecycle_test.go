@@ -824,3 +824,21 @@ func TestCleanupForeignLiveNoStopOfOwn(t *testing.T) {
 		t.Errorf("reason = %q", got)
 	}
 }
+
+func TestCleanupGoneWorkspaceClearsLeftover(t *testing.T) {
+	db := openLeftoverDB(t)
+	if err := RecordLeftover(context.Background(), db, Leftover{Repo: lcRepo, Issue: 7, WorkspaceID: "w1", Reason: "old"}, lcNow); err != nil {
+		t.Fatal(err)
+	}
+	w := &fakeWP{sessionsErr: fmt.Errorf("read sessions: 404: %w", ErrGone)}
+	removed, err := Cleanup(context.Background(), db, w, noRunner(t), cand(7), lcNow)
+	if err != nil || !removed || w.stops != 0 || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, stops %d removes %d; want removed without stop or remove", removed, err, w.stops, w.removes)
+	}
+	if want := []string{"w1"}; !reflect.DeepEqual(w.discarded, want) {
+		t.Errorf("discarded = %v, want %v", w.discarded, want)
+	}
+	if got := leftoverReasons(t, db); len(got) != 0 {
+		t.Errorf("leftovers = %v, want none", got)
+	}
+}

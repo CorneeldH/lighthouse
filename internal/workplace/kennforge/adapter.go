@@ -334,7 +334,7 @@ func (a *Adapter) appeared(ctx context.Context, ws workplace.Workspace, l workpl
 	return workplace.Session{}, false, nil
 }
 
-// Sessions lists the agent sessions of a workspace.
+// Sessions lists the agent sessions of a workspace. A 404 is workplace.ErrGone.
 func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace.Session, error) {
 	var out struct {
 		Sessions *[]struct {
@@ -345,6 +345,10 @@ func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace
 		} `json:"sessions"`
 	}
 	if err := a.Client.do(ctx, http.MethodGet, wsPath(workspaceID)+"/agent-sessions", nil, 0, &out); err != nil {
+		var se *StatusError
+		if errors.As(err, &se) && se.Status == http.StatusNotFound {
+			return nil, fmt.Errorf("read sessions of %s: %v: %w", workspaceID, se, workplace.ErrGone)
+		}
 		return nil, fmt.Errorf("read sessions of %s: %w", workspaceID, err)
 	}
 	if out.Sessions == nil {

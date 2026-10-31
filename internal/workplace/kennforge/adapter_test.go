@@ -37,6 +37,8 @@ type fakeForge struct {
 	path     string
 	// sessions answers the agent-sessions reads, one entry per call; the last repeats.
 	sessions []string
+	// sessionsStatus, when set, answers the agent-sessions reads instead.
+	sessionsStatus int
 	// handoff answers the handoff POST.
 	handoffStatus int
 	handoffBody   string
@@ -116,6 +118,10 @@ func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "GET /api/v1/workspaces/ws1":
 		_, _ = fmt.Fprintf(w, `{"id":"ws1","status":%q,"worktree_path":%q}`, next(f.statuses, n), f.path)
 	case "GET /api/v1/workspaces/ws1/agent-sessions":
+		if f.sessionsStatus != 0 {
+			w.WriteHeader(f.sessionsStatus)
+			return
+		}
 		_, _ = w.Write([]byte(next(f.sessions, n)))
 	case "POST /api/v1/workspaces/ws1/runtime/agent-handoffs":
 		if f.onHandoff != nil {
@@ -598,6 +604,24 @@ func TestSessionsWithoutListUncertain(t *testing.T) {
 	f.sessions = []string{`{"other":1}`}
 	if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) {
 		t.Fatalf("err = %v, want ErrUncertain", err)
+	}
+}
+
+func TestSessions404Gone(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.sessionsStatus = 404
+	if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrGone) {
+		t.Fatalf("err = %v, want ErrGone", err)
+	}
+}
+
+func TestSessionsOtherStatusNotGone(t *testing.T) {
+	for _, status := range []int{403, 500} {
+		f, a := newFakeForge(t)
+		f.sessionsStatus = status
+		if _, err := a.Sessions(context.Background(), "ws1"); err == nil || errors.Is(err, workplace.ErrGone) {
+			t.Fatalf("%d: err = %v, want an error that is not ErrGone", status, err)
+		}
 	}
 }
 
