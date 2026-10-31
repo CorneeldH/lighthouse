@@ -94,3 +94,28 @@ func TestDecideKeysAreHeadings(t *testing.T) {
 		}
 	}
 }
+
+// A handoff branch reaches git as an argument: only a plain ref name passes.
+func TestValidBranch(t *testing.T) {
+	tests := []struct {
+		branch string
+		want   bool
+	}{
+		{"issue-7-bouw-de-keten", true},
+		{"feature/a.b_c-1", true},
+		{"", false},
+		{"-x", false},
+		{"--upload-pack=x", false},
+		{"a..b", false},
+		{"a b", false},
+		{"a;b", false},
+		{"$(x)", false},
+		{"a`b`", false},
+		{"a\nb", false},
+	}
+	for _, tt := range tests {
+		if got := validBranch(tt.branch); got != tt.want {
+			t.Errorf("validBranch(%q) = %v, want %v", tt.branch, got, tt.want)
+		}
+	}
+}

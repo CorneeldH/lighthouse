@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"cmp"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -524,8 +525,8 @@ func (c issueCtx) newIssue() (planned, bool) {
 }
 
 // handoff acts on the last turn when that is a Handoff without 🚀 whose trigger has no run:
-// it goes back when it does not read, names another issue or is not for a headless run;
-// waits for the night or an open blocker; else starts.
+// it goes back when it does not read, names another issue, is not for a headless run or
+// names a branch git must not see; waits for the night or an open blocker; else starts.
 func (c issueCtx) handoff() (planned, bool) {
 	p := lastTurn(c.hs)
 	if p == nil || p.Header.Kind != protocol.KindHandoff || p.Comment.Rocket {
@@ -555,6 +556,9 @@ func (c issueCtx) handoff() (planned, bool) {
 	case VerdictSkillMissing:
 		return c.returned("reason_skill_missing", j.Arg), true
 	}
+	if !validBranch(ho.Branch) {
+		return c.returned("reason_bad_handoff", "branch "+ho.Branch), true
+	}
 	if ho.When == "night" && !InNight(c.night, c.now) {
 		return c.deferred("night"), true
 	}
@@ -562,12 +566,21 @@ func (c issueCtx) handoff() (planned, bool) {
 		return c.deferred("blocker"), true
 	}
 	branch := ho.Branch
-	if branch == "" || branch == c.repo.DefaultBranch {
+	if branch == c.repo.DefaultBranch {
 		branch = c.issueBranch()
 	}
 	a := c.fresh(triggerHandoff, key, j.Command, branch)
 	a.CommentID, a.Native, a.Skip = p.Comment.ID, j.Native, skip
 	return c.planned(a, p.Time), true
+}
+
+// branchName is the shape of a handoff branch: the branch reaches git as an argument.
+var branchName = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+
+// validBranch reports whether branch is safe to pass to git: a plain ref name that does not
+// start with - (an option) and holds no .. (a range).
+func validBranch(branch string) bool {
+	return branchName.MatchString(branch) && !strings.HasPrefix(branch, "-") && !strings.Contains(branch, "..")
 }
 
 func (c issueCtx) blocked() bool {
