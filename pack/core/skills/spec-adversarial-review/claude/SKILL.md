@@ -210,9 +210,16 @@ cp <spec> <ATTEMPT>/round-<n>.snapshot.md
 ```
 
 **Only round 1 is a review**, and it is always paired (*Round 1: Codex and Opus*, below). Only
-the retry from the table there dispatches the `lighthouse-spec-adversary` agent without a pair,
-with `SPEC`, `ROUND` = `1`, `OUT` = `<ATTEMPT>/round-1.json`, `PRIOR` = `none`, `SKILL_DIR` =
-the directory of this file, and optionally `LEVEL`.
+the retry from the table there runs Codex alone. Do it yourself, as a Bash call with
+`run_in_background: true` and `dangerouslyDisableSandbox: true`, on one line, without `--context`:
+
+```bash
+.claude/skills/lighthouse-spec-adversarial-review/review.sh <spec> 1 <ATTEMPT>/round-1.json none [max] > <ATTEMPT>/round-1.retry.log 2>&1; echo "exit=$?"
+```
+
+Read only the exit code, never `round-1.retry.log`. On success make the `ID` table with the jq
+fragment from *Opus dispatch*, on `round-1.json`. For the exit codes see the exit table in the
+plan skill, step 5.
 
 **Round n ≥ 2 runs only if round n-1 had a BLOCKER/MAJOR with `accept`.** `defer` does not
 count. No fixes, no round. Build the fixes diff first:
@@ -256,14 +263,6 @@ instead of running. `lighthouse init` puts these rules in `.claude/settings.json
 ] } }
 ```
 
-Running by hand works too, without an agent — then the whole review does come into your
-context:
-
-```bash
-.claude/skills/lighthouse-spec-adversarial-review/review.sh \
-  <spec> 1 <ATTEMPT>/round-1.json
-```
-
 #### Round 1: Codex and Opus
 
 In round 1 Codex and an Opus reviewer run side by side; you decide blind. The mechanics are
@@ -272,7 +271,7 @@ and Opus*. Follow that: two background reviewers in one message, then
 `python3 .lighthouse/scripts/review_pair.py blind <ATTEMPT>` and decide on the A/B table
 (step 3), and for a failed pair the table there. You run `blind`, like `merge` and `write`, with
 `dangerouslyDisableSandbox: true`. Where that table says "plain step 5 (without a pair)", that
-is step 2 here: the `lighthouse-spec-adversary` without a pair. Only this differs here:
+is the retry in step 2 here. Only this differs here:
 
 - **Codex** (Bash, `run_in_background: true`, `dangerouslyDisableSandbox: true`), without
   `--context`:
@@ -282,8 +281,8 @@ is step 2 here: the `lighthouse-spec-adversary` without a pair. Only this differ
     none [max] > <ATTEMPT>/round-1.codex.log 2>&1; echo "exit=$?"
   ```
 
-  `[max]` is the `LEVEL` slot: leave it out, or write `max` if you want it, like `LEVEL` in the
-  plain dispatch. Then the record in step 5 gets `--level max`. A limit is in
+  `[max]` is the `LEVEL` slot: leave it out, or write `max` if you want it, like in the
+  retry in step 2. Then the record in step 5 gets `--level max`. A limit is in
   `<ATTEMPT>/round-1.codex.json.events`, not in `round-1.json.events`.
 
 - **Opus** is the subagent from *Opus dispatch* below, with

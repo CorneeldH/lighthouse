@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -27,7 +26,6 @@ from tests.pack._testkit import CORE
 SKILLS = CORE / "skills"
 NAMES = ("spec-adversarial-review", "plan-adversarial-review")
 VARIANTS = ("claude", "agents")
-ADVERSARY = CORE / "agents" / "spec-adversary.md"
 
 
 def skill(name: str, variant: str) -> str:
@@ -104,51 +102,24 @@ def test_agents_skills_stop_at_exit_6(name):
     assert "stop **before** the round" in skill(name, "agents")
 
 
-def test_spec_adversary_knows_exit_6_without_retry():
-    text = ADVERSARY.read_text(encoding="utf-8")
-    assert "| 6 | `CODEX_BUDGET`" in text
-    assert "no retry" in text
+@pytest.mark.parametrize("name", NAMES)
+@pytest.mark.parametrize("variant", VARIANTS)
+def test_no_skill_names_the_adversary(name, variant):
+    assert "spec-adversary" not in skill(name, variant)
 
 
-def _step2_jq(text: str) -> str:
-    block = text.split("```bash\n   jq -r --arg round \"$ROUND\" '", 1)[1]
-    return block.split("' \"$OUT\"", 1)[0]
+@pytest.mark.parametrize("name", NAMES)
+def test_retry_is_inline_codex(name):
+    text = flat(skill(name, "claude"))
+    assert f".claude/skills/lighthouse-{name}/review.sh" in text
+    assert "1 <ATTEMPT>/round-1.json none" in text
+    assert "> <ATTEMPT>/round-1.retry.log 2>&1; echo \"exit=$?\"" in text
+    assert "never `round-1.retry.log`" in text
 
 
-def test_spec_adversary_does_not_collapse_minors(tmp_path):
-    """Every ID the operator decides on is in view with its problem and fix."""
-    text = ADVERSARY.read_text(encoding="utf-8")
-    assert "Collapse MINORs" not in text
-    assert "One row per finding, MINORs included" in text
-
-    findings = [
-        {
-            "severity": "MINOR",
-            "spec_section": f"S{i}",
-            "problem": f"problem {i}",
-            "failure_scenario": f"fails {i}",
-            "evidence": f"a.md:{i}",
-            "proposed_fix": f"fix {i}",
-        }
-        for i in range(1, 6)
-    ]
-    findings.insert(2, {**findings[0], "severity": "MAJOR", "problem": "big"})
-    out = tmp_path / "round-1.json"
-    out.write_text(json.dumps({"findings": findings}))
-
-    rows = subprocess.run(
-        ["jq", "-r", "--arg", "round", "1", _step2_jq(text), str(out)],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.splitlines()
-
-    assert len(rows) == len(findings)
-    assert rows[0].startswith("| r1-f3 | MAJOR |")
-    for idx, finding in enumerate(findings, start=1):
-        (row,) = [r for r in rows if r.startswith(f"| r1-f{idx} |")]
-        assert f"| {finding['problem']} |" in row
-        assert f"| {finding['proposed_fix']} |" in row
+def test_retry_skips_exit_6():
+    text = flat(skill("plan-adversarial-review", "claude"))
+    assert "exit 6 is never retried" in text
 
 
 # --- spec gate -----------------------------------------------------------------------------------
