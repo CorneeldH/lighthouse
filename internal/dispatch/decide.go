@@ -390,7 +390,9 @@ func allStartFailed(rows []runs.Row) bool {
 }
 
 // secondAttempt starts row's trigger again with what the row keeps. The comment id comes
-// from the trigger key; a handoff trigger is judged again for Native and Skip.
+// from the trigger key. A handoff trigger is native when its command is the interactive one
+// (Judge starts that only on the native lane), even when the comment is gone; the skip key
+// comes from judging the comment again.
 func (c issueCtx) secondAttempt(row runs.Row) planned {
 	a := c.base
 	a.Kind, a.Mode = KindStart, row.Mode
@@ -399,29 +401,33 @@ func (c issueCtx) secondAttempt(row runs.Row) planned {
 	}
 	a.Trigger, a.TriggerKey, a.Attempt = row.Trigger, row.TriggerKey, 2
 	a.Command, a.Prompt, a.Branch = row.Command, row.Prompt, row.Branch
+	handoff := strings.HasPrefix(row.TriggerKey, triggerHandoff+":")
+	if handoff {
+		fields := strings.Fields(row.Command)
+		a.Native = len(fields) > 0 && fields[0] == cmdInteractive
+	}
 	at := c.it.ItemUpdatedAt
 	if id, ok := triggerComment(row.TriggerKey); ok {
 		a.CommentID = id
 		if com, found := c.comment(id); found {
 			at = parseTime(com.CreatedAt)
-			if strings.HasPrefix(row.TriggerKey, triggerHandoff+":") {
-				a.Native, a.Skip = c.handoffFlags(com)
+			if handoff {
+				a.Skip = c.handoffSkip(com)
 			}
 		}
 	}
 	return c.planned(a, at)
 }
 
-// handoffFlags judges the handoff in com again: Native and the skip key, or neither when it
-// does not read.
-func (c issueCtx) handoffFlags(com Comment) (bool, string) {
+// handoffSkip judges the handoff in com again for its skip key, "" when it does not read.
+func (c issueCtx) handoffSkip(com Comment) string {
 	h, _ := protocol.ParseHeader(com.Body)
 	ho, err := protocol.ParseHandoff(h)
 	if err != nil {
-		return false, ""
+		return ""
 	}
-	j, skip := judgeHandoff(c.repo, c.it.Issue, ho)
-	return j.Native, skip
+	_, skip := judgeHandoff(c.repo, c.it.Issue, ho)
+	return skip
 }
 
 // startFailed hands the issue back after the second failed start, unless a Returned of that
