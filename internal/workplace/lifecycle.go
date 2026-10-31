@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -163,6 +164,9 @@ type Candidate struct {
 // workspace it must keep, or cannot measure, is recorded as a leftover; it is
 // never removed on an unmeasurable check. A running run is never touched.
 func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candidate, now time.Time) (removed bool, err error) {
+	if c.Workspace.ID == "" {
+		return false, errors.New("cleanup: candidate has no workspace id")
+	}
 	if c.InController {
 		return false, nil
 	}
@@ -178,6 +182,10 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	keep := func(reason string) (bool, error) {
 		l := Leftover{Repo: c.Repo, Issue: c.Issue, WorkspaceID: c.Workspace.ID, Path: c.Workspace.Path, Reason: reason}
 		return false, RecordLeftover(ctx, db, l, now)
+	}
+	// git -C "" or a relative path would measure the working directory instead.
+	if !filepath.IsAbs(c.Workspace.Path) {
+		return keep("not measurable: no workspace path")
 	}
 
 	sessions, err := w.Sessions(ctx, c.Workspace.ID)

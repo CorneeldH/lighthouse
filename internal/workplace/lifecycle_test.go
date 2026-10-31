@@ -757,3 +757,42 @@ func TestCleanupDoneOwnSessionWithoutSessionIDRemoves(t *testing.T) {
 		t.Fatalf("Cleanup = %v, %v, stops %d", removed, err, w.stops)
 	}
 }
+
+// noRunner fails the test on any subprocess: git must not run in the cwd.
+func noRunner(t *testing.T) Runner {
+	return func(_ context.Context, _ time.Duration, name string, args ...string) (string, int, error) {
+		t.Errorf("unexpected command %s %v", name, args)
+		return "", -1, errors.New("unexpected command")
+	}
+}
+
+func TestCleanupWithoutWorkspaceIDErrors(t *testing.T) {
+	db := openLeftoverDB(t)
+	w := &fakeWP{}
+	c := cand(7)
+	c.Workspace.ID = ""
+	removed, err := Cleanup(context.Background(), db, w, noRunner(t), c, lcNow)
+	if err == nil || removed || w.stops != 0 || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, stops %d removes %d; want an error and nothing done", removed, err, w.stops, w.removes)
+	}
+	if got := leftoverReasons(t, db); len(got) != 0 {
+		t.Errorf("leftovers = %v, want none", got)
+	}
+}
+
+func TestCleanupWithoutAbsolutePathStays(t *testing.T) {
+	for _, path := range []string{"", "p/w1"} {
+		db := openLeftoverDB(t)
+		closedOwnRun(t, db, "k1")
+		w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: "sid-7", State: "idle"}}}
+		c := cand(7)
+		c.Workspace.Path = path
+		removed, err := Cleanup(context.Background(), db, w, noRunner(t), c, lcNow)
+		if err != nil || removed || w.stops != 0 || w.removes != 0 {
+			t.Fatalf("%q: Cleanup = %v, %v, stops %d removes %d", path, removed, err, w.stops, w.removes)
+		}
+		if got := leftoverReasons(t, db)["w1"]; got != "not measurable: no workspace path" {
+			t.Errorf("%q: reason = %q", path, got)
+		}
+	}
+}
