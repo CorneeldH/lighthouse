@@ -928,3 +928,5 @@ def test_shared_header_fixture():
         assert header.kind == case["kind"], case["name"]
         if "fields" in case:
             assert dict(header.fields) == case["fields"], case["name"]
+        if "session" in case:
+            assert (header.session or "") == case["session"], case["name"]

@@ -37,6 +37,47 @@ en = "Returned"
 nl = "Herbaseerd"
 en = "Rebased"
 
+# Texts the dispatcher posts
+[reason_needs_brainstorm]
+nl = "heeft brainstorm nodig"
+en = "needs a brainstorm"
+
+[reason_interactive]
+nl = "vraagt interactieve uitvoering"
+en = "asks for interactive execution"
+
+[reason_skill_missing]
+nl = "skill niet geïnstalleerd in de worktree"
+en = "skill not installed in the worktree"
+
+[reason_not_allowed]
+nl = "commando niet toegestaan"
+en = "command not allowed"
+
+[reason_bad_handoff]
+nl = "handoff onleesbaar"
+en = "handoff unreadable"
+
+[reason_state_lost]
+nl = "runstaat kwijt"
+en = "run state lost"
+
+[reason_start_failed]
+nl = "start mislukt"
+en = "start failed"
+
+[skip_spec_review]
+nl = "spec-review overgeslagen (config)"
+en = "spec review skipped (config)"
+
+[skip_plan_review]
+nl = "plan-review overgeslagen (config)"
+en = "plan review skipped (config)"
+
+[note_done]
+nl = "Checks groen, klaar voor review. Mergen blijft bij jou; na de merge toetst de controller het issue opnieuw als het nog open staat."
+en = "Checks green, ready for review. Merging stays with you; after the merge the controller checks the issue again if it is still open."
+
 # The fields of a question
 [question_where]
 nl = "Waar het staat"
