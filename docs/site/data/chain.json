@@ -8,9 +8,9 @@
       "blurb": "what needs doing"
     },
     {
-      "id": "pickup",
-      "label": "Pick up",
-      "blurb": "start the work"
+      "id": "orient",
+      "label": "Orient",
+      "blurb": "find out where the work stands"
     },
     {
       "id": "spec",
@@ -78,7 +78,7 @@
     },
     {
       "id": "worktree-guard",
-      "phase": "pickup",
+      "phase": "orient",
       "row": 0,
       "kind": "hook",
       "trigger": "tool",
@@ -97,7 +97,7 @@
     },
     {
       "id": "start-issue",
-      "phase": "pickup",
+      "phase": "orient",
       "row": 1,
       "kind": "lighthouse",
       "trigger": "you",
@@ -116,7 +116,7 @@
     },
     {
       "id": "using-git-worktrees",
-      "phase": "pickup",
+      "phase": "orient",
       "row": 2,
       "kind": "superpowers",
       "trigger": "skill",
@@ -134,7 +134,7 @@
     },
     {
       "id": "route-issue",
-      "phase": "pickup",
+      "phase": "orient",
       "row": 3,
       "kind": "lighthouse",
       "trigger": "skill",
@@ -153,7 +153,7 @@
     },
     {
       "id": "issue-impact-scout",
-      "phase": "pickup",
+      "phase": "orient",
       "row": 4,
       "kind": "lighthouse",
       "trigger": "skill",

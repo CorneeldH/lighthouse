@@ -244,7 +244,7 @@ def test_fixture_unknown_status_is_flagged():
 
 def test_phases_are_the_seven_of_the_chain():
     labels = [p["label"] for p in load("chain.json")["phases"]]
-    assert labels == ["Issue", "Pick up", "Spec", "Plan", "Build", "PR", "Close"]
+    assert labels == ["Issue", "Orient", "Spec", "Plan", "Build", "PR", "Close"]
 
 
 def test_always_on_band():
