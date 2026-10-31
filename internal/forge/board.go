@@ -45,7 +45,9 @@ type BoardItem struct {
 const prFields = `number state isDraft mergeable headRefOid headRefName statusCheckRollup { state }`
 
 // BoardQuery reads one page of 100 project items. Every nested connection asks pageInfo, so a
-// list longer than its first: n is an error instead of a silent cut.
+// list longer than its first: n is an error instead of a silent cut. GitHub prices a page by
+// the product of the nested limits; blockedBy and the closing PRs of a blocker dominate it,
+// so their limits stay small (measured: first: 50 × 10 cost 53 points per page).
 const BoardQuery = `query Board($project: ID!, $after: String) {
   node(id: $project) {
     ... on ProjectV2 {
@@ -64,12 +66,12 @@ const BoardQuery = `query Board($project: ID!, $after: String) {
             ... on Issue {
               number title state updatedAt
               repository { nameWithOwner }
-              blockedBy(first: 50) {
+              blockedBy(first: 10) {
                 pageInfo { hasNextPage }
                 nodes {
                   number state
                   repository { nameWithOwner }
-                  closedByPullRequestsReferences(first: 10, includeClosedPrs: true) {
+                  closedByPullRequestsReferences(first: 5, includeClosedPrs: true) {
                     pageInfo { hasNextPage }
                     nodes { merged }
                   }

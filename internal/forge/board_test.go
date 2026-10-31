@@ -192,6 +192,20 @@ func TestBoardItemsTruncatedNestedFails(t *testing.T) {
 	}
 }
 
+func TestBoardQueryKeepsBlockerNestingCheap(t *testing.T) {
+	// blockedBy × its closing PRs priced a page at 53 GraphQL points on a real board at
+	// first: 50 × 10; the precheck reads the board every tick. A longer list stays a
+	// truncation error (TestBoardItemsTruncatedNestedFails).
+	for _, want := range []string{
+		"blockedBy(first: 10) {",
+		"repository { nameWithOwner }\n                  closedByPullRequestsReferences(first: 5, includeClosedPrs: true) {",
+	} {
+		if !strings.Contains(BoardQuery, want) {
+			t.Errorf("BoardQuery lacks %q", want)
+		}
+	}
+}
+
 func TestBoardItemsNotAProjectFails(t *testing.T) {
 	// A project ID that names another kind of node gives {"node": {}} and no errors on GitHub;
 	// that must not read as an empty board.
