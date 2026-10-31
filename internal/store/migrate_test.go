@@ -77,16 +77,52 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 1 {
-		t.Errorf("user_version = %d, want 1", v2)
+	if v2 != 2 {
+		t.Errorf("user_version = %d, want 2", v2)
 	}
-	var hasMeta, hasRuns bool
-	for _, r := range schema2 {
-		hasMeta = hasMeta || (r.Type == "table" && r.Name == "meta")
-		hasRuns = hasRuns || r.Name == "runs"
+	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+	if err != nil {
+		t.Fatalf("list tables: %v", err)
 	}
-	if !hasMeta || hasRuns {
-		t.Errorf("meta present = %v, runs present = %v; want true, false", hasMeta, hasRuns)
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		tables = append(tables, name)
+	}
+	_ = rows.Close()
+	if want := []string{"action_failures", "meta", "runs", "tick_state"}; !reflect.DeepEqual(tables, want) {
+		t.Errorf("tables = %v, want %v", tables, want)
+	}
+	// column -> primary key position (0 = not part of the key)
+	wantCols := map[string]map[string]int{
+		"runs":            {"repo": 0, "issue": 0, "trigger_key": 0, "attempt": 0, "ended_at": 0, "outcome": 0},
+		"action_failures": {"action_key": 1},
+		"tick_state":      {"repo": 1, "kind": 2, "key": 3},
+	}
+	for table, want := range wantCols {
+		cols := map[string]int{}
+		info, err := s.DB.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+		if err != nil {
+			t.Fatalf("table_info %s: %v", table, err)
+		}
+		for info.Next() {
+			var cid, notnull, pk int
+			var name, typ string
+			var dflt sql.NullString
+			if err := info.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+				t.Fatalf("scan table_info: %v", err)
+			}
+			cols[name] = pk
+		}
+		_ = info.Close()
+		for col, pk := range want {
+			if got, ok := cols[col]; !ok || got != pk {
+				t.Errorf("%s.%s: present = %v, pk = %d; want pk %d", table, col, ok, got, pk)
+			}
+		}
 	}
 	var n int
 	if err := s.DB.QueryRow(`SELECT count(*) FROM meta WHERE key='created_at'`).Scan(&n); err != nil {
