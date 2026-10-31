@@ -80,6 +80,11 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
+      # Temporary measurement for #131: compile time with -race apart from test time.
+      - name: measure race compile (temporary, #131)
+        run: |
+          time go test -race -run '^$' ./...
+          time go test -race -tags e2e -run '^$' ./e2e/
       - run: CGO_ENABLED=0 go build ./...
       # The release also ships windows and darwin: a platform-only break shows up here.
       - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
