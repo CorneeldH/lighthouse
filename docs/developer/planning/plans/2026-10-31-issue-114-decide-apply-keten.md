@@ -360,7 +360,8 @@ Een reden met een argument wordt `<tekst>: <argument>`. Het argument is het comm
   - `dedup-one-start-failed-native`: de rij `handoff:<id>` is `start_failed`, en die Handoff draagt `lane: native` → `start` met `Attempt: 2`, `Native: true`, de branch van de rij en `CommentID` = id;
   - `dedup-two-start-failed` → precies één `return` met `reason_start_failed` (**AC 2c**);
   - `dedup-two-start-failed-returned` (die Teruggegeven staat er al) → `[]`;
-  - `open-run-blocks-start` (open rij die niet sluit, plus een nieuwe Handoff) → `[]`;
+  - `open-run-blocks-start`: een open rij die niet sluit, plus een Handoff zonder 🚀 en zonder rij van **vóór** `R.StartedAt` → `[]`. Die Handoff hoort niet bij R (Taak 5) en sluit hem dus niet, en de open rij houdt de start tegen;
+  - `settle-handoff-then-start`: een open rij en een Handoff van ná `R.StartedAt` (geen End) → `[close handoff, start]`; de Handoff sluit R en start in dezelfde tick;
   - `order-priority` (twee repo's: P1 oud, P0 nieuw, en een `return` → `return`, dan P0, dan P1).
 - [ ] **Step 2:** `go test ./internal/dispatch -run TestDecideFixtures` → FAIL.
 - [ ] **Step 3:** Implementeer de code.
