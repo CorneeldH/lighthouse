@@ -1,6 +1,14 @@
 import type { JSX } from 'react'
+import { ApiError } from '@/lib/api'
 import { useCleanup } from '@/lib/queries'
 import { Panel } from './Panel'
+
+function cleanupErrorText(err: unknown): string {
+  if (err instanceof ApiError) {
+    return `Cleanup list unavailable: ${err.detail === '' ? `HTTP ${err.status}` : err.detail}`
+  }
+  return 'Server unreachable'
+}
 
 export function CleanupList(): JSX.Element {
   const { data, error, isPending, dataUpdatedAt } = useCleanup()
@@ -9,6 +17,7 @@ export function CleanupList(): JSX.Element {
       title="Workspaces to clean up"
       updatedAt={dataUpdatedAt}
       error={error}
+      errorText={cleanupErrorText}
       loading={isPending && !error}
     >
       {data && data.length === 0 && <p>No workspaces to clean up</p>}

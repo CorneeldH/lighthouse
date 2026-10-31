@@ -145,4 +145,12 @@ describe('CleanupList', () => {
     renderWithClient(<CleanupList />)
     expect(await screen.findByText('No workspaces to clean up')).toBeTruthy()
   })
+
+  it('shows a neutral alert on a 500, not the forge text', async () => {
+    stubFetch(() => json({ detail: 'db closed' }, 500))
+    renderWithClient(<CleanupList />)
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe('Cleanup list unavailable: db closed')
+    expect(alert.textContent).not.toContain('Forge unreachable')
+  })
 })
