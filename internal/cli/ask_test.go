@@ -111,9 +111,10 @@ func TestAskCleansOption(t *testing.T) {
 		t.Fatalf("comments = %d, want 1", len(posted))
 	}
 	got, _ := protocol.ParseQuestion(posted[0])
-	want := protocol.CleanFields(protocol.QuestionFields{Questions: []protocol.Question{{Options: []protocol.Option{{Text: "kies <sub>dit</sub>"}}}}})
-	if got.Questions[0].Options[0].Text != want.Questions[0].Options[0].Text || strings.Contains(got.Questions[0].Options[0].Text, "<sub>") {
-		t.Errorf("posted option = %q, want the cleaned %q", got.Questions[0].Options[0].Text, want.Questions[0].Options[0].Text)
+	// An open <sub> would read as the start of the footer; only the opening tag is escaped.
+	const want = "kies &lt;sub&gt;dit</sub>"
+	if text := got.Questions[0].Options[0].Text; text != want {
+		t.Errorf("posted option = %q, want the cleaned %q", text, want)
 	}
 }
 
