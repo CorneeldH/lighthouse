@@ -139,11 +139,12 @@ func CheckOpen(ctx context.Context, db *sql.DB, w Workplace, repo string, lim Li
 }
 
 // findSession looks up the session of an uncertain start by its session_id. A
-// key that a row already holds is skipped: a resume run shares the session_id
-// of the earlier run, whose forge session may still be listed.
-func findSession(sessions []Session, sessionID string, taken map[string]bool) (key string, ok bool) {
+// session of a run that already holds its key (taken.Has) is skipped: a resume
+// run shares the session_id of the earlier run, whose forge session may still
+// be listed.
+func findSession(sessions []Session, sessionID string, taken Own) (key string, ok bool) {
 	for _, s := range sessions {
-		if s.SessionID == sessionID && !taken[s.Key] {
+		if s.SessionID == sessionID && !taken.Has(s) {
 			return s.Key, true
 		}
 	}
@@ -206,10 +207,11 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	if err != nil {
 		return keep("not measurable: sessions: " + err.Error())
 	}
-	own, err := runs.SessionKeys(ctx, db, c.Repo, c.Issue)
+	keys, err := runs.SessionKeys(ctx, db, c.Repo, c.Issue)
 	if err != nil {
 		return keep("not measurable: session keys: " + err.Error())
 	}
+	own := Own(keys)
 	if s, ok := ForeignLive(sessions, own); ok {
 		return keep("foreign session " + s.Key)
 	}
@@ -219,7 +221,7 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	// checks: an own agent that still works cannot commit after them.
 	var ids []string
 	for _, s := range sessions {
-		if !own[s.Key] {
+		if !own.Has(s) {
 			continue
 		}
 		if s.SessionID == "" {

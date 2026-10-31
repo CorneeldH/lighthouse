@@ -842,3 +842,82 @@ func TestCleanupGoneWorkspaceClearsLeftover(t *testing.T) {
 		t.Errorf("leftovers = %v, want none", got)
 	}
 }
+
+// A row closed with key kf whose forge session now reports another session_id:
+// the key was adopted wrongly and belongs to a foreign agent.
+func TestRecordedKeyWithOtherSessionIDIsForeign(t *testing.T) {
+	db := openLeftoverDB(t)
+	ctx := context.Background()
+	sid := closedOwnRun(t, db, "kf")
+	foreign := Session{Key: "kf", SessionID: "other-" + sid, State: "working", UpdatedAt: lcNow}
+	own, err := runs.SessionKeys(ctx, db, lcRepo, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := Busy([]Session{foreign}, own, nil, nil, lcNow, time.Hour); !ok || got.Key != "kf" {
+		t.Errorf("Busy = %v %v, want busy kf", got, ok)
+	}
+	if got, ok := ForeignLive([]Session{foreign}, own); !ok || got.Key != "kf" {
+		t.Errorf("ForeignLive = %v %v, want live kf", got, ok)
+	}
+	w := &fakeWP{sessions: []Session{foreign}}
+	removed, err := Cleanup(ctx, db, w, noRunner(t), cand(7), lcNow)
+	if err != nil || removed || w.stops != 0 || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, stops %d removes %d", removed, err, w.stops, w.removes)
+	}
+	if got := leftoverReasons(t, db)["w1"]; got != "foreign session kf" {
+		t.Errorf("reason = %q", got)
+	}
+}
+
+func TestRecordedKeyWithoutSessionIDIsOwn(t *testing.T) {
+	db := openLeftoverDB(t)
+	ctx := context.Background()
+	closedOwnRun(t, db, "kf")
+	s := Session{Key: "kf", State: "working", UpdatedAt: lcNow}
+	own, err := runs.SessionKeys(ctx, db, lcRepo, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := Busy([]Session{s}, own, nil, nil, lcNow, time.Hour); ok {
+		t.Errorf("Busy = %v, want not busy", got)
+	}
+	if got, ok := ForeignLive([]Session{s}, own); ok {
+		t.Errorf("ForeignLive = %v, want none", got)
+	}
+}
+
+// The taken-key skip follows the same rule as Busy: a key counts as taken only
+// while its forge session_id is empty or that of the row that recorded it.
+func TestFindSessionSkipsOnlyOwnKeys(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		session Session
+		taken   Own
+		wantKey string
+		wantOK  bool
+	}{
+		{"unrecorded", Session{Key: "k2", SessionID: "S"}, Own{"k1": "S"}, "k2", true},
+		{"recorded by a row with S", Session{Key: "k1", SessionID: "S"}, Own{"k1": "S"}, "", false},
+		{"recorded by a row with A, now S", Session{Key: "kx", SessionID: "S"}, Own{"kx": "A"}, "kx", true},
+	}
+	for _, c := range cases {
+		key, ok := findSession([]Session{c.session}, "S", c.taken)
+		if key != c.wantKey || ok != c.wantOK {
+			t.Errorf("%s: findSession = %q %v, want %q %v", c.name, key, ok, c.wantKey, c.wantOK)
+		}
+	}
+}
+
+// A done foreign session passes ForeignLive; the stop selection must still
+// leave it alone, also when its key was recorded on a row of the issue.
+func TestCleanupDoneForeignWithRecordedKeyNotStopped(t *testing.T) {
+	db := openLeftoverDB(t)
+	sid := closedOwnRun(t, db, "kf")
+	w := &fakeWP{sessions: []Session{{Key: "kf", SessionID: "other-" + sid, State: "done"}}}
+	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), cand(7), lcNow)
+	if err != nil || !removed || w.stops != 0 {
+		t.Fatalf("Cleanup = %v, %v, stops %d (%v); want removed without stop", removed, err, w.stops, w.stopped)
+	}
+}

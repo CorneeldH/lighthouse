@@ -5,28 +5,40 @@ import (
 	"time"
 )
 
+// Own maps the session key of each run of the issue to that run's session_id,
+// as runs.SessionKeys returns it.
+type Own map[string]string
+
+// Has reports whether s is a session of the issue's own runs: its key is
+// recorded, and its forge session_id is empty or that of the recording run.
+// Ownership goes by key because a resume run shares the session_id of the
+// earlier run. The session_id check catches a key adopted while its
+// session_id was still empty (a re-read after a spawn) that forge later fills
+// in with another agent's id: that session is foreign.
+func (o Own) Has(s Session) bool {
+	sid, ok := o[s.Key]
+	return ok && (s.SessionID == "" || s.SessionID == sid)
+}
+
 // Busy returns the first session in the list that makes the workplace busy.
 //
-// ownKeys holds the session keys of this issue's runs (runs.SessionKeys);
-// open holds the session ids of its open runs. Own is decided by key, not by
-// session_id: a resume run shares the session_id of the earlier run, so a late
-// agent of a resume that never got a key would otherwise pass for the earlier
-// run's session. activity is the last transcript event per session key,
-// measured by the caller; nil or a missing key falls back to UpdatedAt, which
-// is the forge state when nothing better is measurable.
+// own comes from runs.SessionKeys; open holds the session ids of the issue's
+// open runs. activity is the last transcript event per session key, measured
+// by the caller; nil or a missing key falls back to UpdatedAt, which is the
+// forge state when nothing better is measurable.
 //
 // A session of an open run is busy unless it is done; open is checked first.
-// A session whose key belongs to a run of the issue does not count. Any other
-// session is foreign: busy when it is working, or when it is waiting and its
-// last activity is unknown or younger than maxWait.
-func Busy(sessions []Session, ownKeys, open map[string]bool, activity map[string]time.Time, now time.Time, maxWait time.Duration) (Session, bool) {
+// A session that own.Has does not count. Any other session is foreign: busy
+// when it is working, or when it is waiting and its last activity is unknown
+// or younger than maxWait.
+func Busy(sessions []Session, own Own, open map[string]bool, activity map[string]time.Time, now time.Time, maxWait time.Duration) (Session, bool) {
 	for _, s := range sessions {
 		switch {
 		case open[s.SessionID]:
 			if s.Stand() != Done {
 				return s, true
 			}
-		case ownKeys[s.Key]:
+		case own.Has(s):
 			// A closed run of this issue: not a reason to wait.
 		default:
 			if foreignBusy(s, activity, now, maxWait) {
@@ -64,11 +76,11 @@ func BusyReason(s Session) string {
 	return fmt.Sprintf("workplace busy: session %s, %s since %s", s.Key, state, since)
 }
 
-// ForeignLive returns the first session whose key is not in ownKeys and that
-// is not done, also a quiet one: cleanup must not remove the workspace under it.
-func ForeignLive(sessions []Session, ownKeys map[string]bool) (Session, bool) {
+// ForeignLive returns the first session that own.Has rejects and that is not
+// done, also a quiet one: cleanup must not remove the workspace under it.
+func ForeignLive(sessions []Session, own Own) (Session, bool) {
 	for _, s := range sessions {
-		if !ownKeys[s.Key] && s.Stand() != Done {
+		if !own.Has(s) && s.Stand() != Done {
 			return s, true
 		}
 	}

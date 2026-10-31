@@ -286,9 +286,10 @@ func TestOpenOnlyRepo(t *testing.T) {
 func TestSessionKeys(t *testing.T) {
 	ctx := context.Background()
 	db := openDB(t)
-	run := func(issue int, key string, o Outcome, workplaceSession string) {
+	run := func(issue int, key string, o Outcome, workplaceSession string) string {
 		t.Helper()
-		r, err := Take(ctx, db, claim("owner/a", issue, key))
+		c := claim("owner/a", issue, key)
+		r, err := Take(ctx, db, c)
 		if err != nil {
 			t.Fatalf("Take %s: %v", key, err)
 		}
@@ -302,17 +303,18 @@ func TestSessionKeys(t *testing.T) {
 				t.Fatalf("Release: %v", err)
 			}
 		}
+		return c.SessionID
 	}
-	run(7, "a:1", Returned, "key-1")
+	s1 := run(7, "a:1", Returned, "key-1")
 	run(7, "b:1", StartFailed, "")
-	run(7, "c:1", StartFailed, "key-2")
+	s2 := run(7, "c:1", StartFailed, "key-2")
 	run(8, "d:1", Done, "key-other-issue")
-	run(7, "e:1", "", "key-open")
+	s3 := run(7, "e:1", "", "key-open")
 	got, err := SessionKeys(ctx, db, "owner/a", 7)
 	if err != nil {
 		t.Fatalf("SessionKeys: %v", err)
 	}
-	want := map[string]bool{"key-1": true, "key-2": true, "key-open": true}
+	want := map[string]string{"key-1": s1, "key-2": s2, "key-open": s3}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("SessionKeys = %v, want %v", got, want)
 	}
