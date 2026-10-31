@@ -310,3 +310,37 @@ func TestSetStatusPosts(t *testing.T) {
 		t.Fatalf("Count(SetStatus) = %d, want 1", srv.Count("SetStatus"))
 	}
 }
+
+func TestBoardItemsPRURLAndMergedAt(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.BoardNodes = []map[string]any{{
+		"id": "PVTI_1", "updatedAt": "2026-10-30T09:00:00Z",
+		"fieldValues": map[string]any{"nodes": []any{}},
+		"content": map[string]any{
+			"number": 7, "title": "t", "state": "OPEN", "updatedAt": "2026-10-30T10:00:00Z",
+			"repository": map[string]any{"nameWithOwner": "o/r"},
+			"closedByPullRequestsReferences": map[string]any{"nodes": []any{
+				map[string]any{"number": 13, "state": "MERGED", "isDraft": false, "mergeable": "UNKNOWN",
+					"headRefOid": "def", "headRefName": "issue-7-y", "statusCheckRollup": nil,
+					"mergedAt": "2026-10-30T12:00:00Z", "url": "https://github.com/o/r/pull/13"},
+				map[string]any{"number": 14, "state": "OPEN", "isDraft": false, "mergeable": "UNKNOWN",
+					"headRefOid": "ghi", "headRefName": "issue-7-z", "statusCheckRollup": nil,
+					"mergedAt": nil, "url": "https://github.com/o/r/pull/14"},
+			}},
+		},
+	}}
+	got, err := c.BoardItems(context.Background(), "PVT_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prs := got[0].ClosingPRs
+	if len(prs) != 2 {
+		t.Fatalf("PRs = %+v", prs)
+	}
+	if prs[0].URL != "https://github.com/o/r/pull/13" || !prs[0].MergedAt.Equal(time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)) {
+		t.Errorf("merged PR: %+v", prs[0])
+	}
+	if prs[1].URL != "https://github.com/o/r/pull/14" || !prs[1].MergedAt.IsZero() {
+		t.Errorf("open PR: %+v", prs[1])
+	}
+}

@@ -47,6 +47,7 @@ type Claim struct {
 	Command    string
 	Prompt     string
 	Profile    string
+	Branch     string // written at claim time, so a run that closes before launch still has it
 	Now        time.Time
 }
 
@@ -80,10 +81,10 @@ func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
 	attempt := failed + 1
 
 	res, err := tx.ExecContext(ctx, `INSERT INTO runs
-		(repo, issue, session_id, mode, trigger, trigger_key, attempt, command, prompt, profile, started_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(repo, issue, session_id, mode, trigger, trigger_key, attempt, command, prompt, profile, branch, started_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.Repo, c.Issue, c.SessionID, c.Mode, c.Trigger, c.TriggerKey, attempt,
-		c.Command, c.Prompt, c.Profile, stamp(c.Now))
+		c.Command, c.Prompt, c.Profile, c.Branch, stamp(c.Now))
 	if err != nil {
 		var se *sqlite.Error
 		if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
