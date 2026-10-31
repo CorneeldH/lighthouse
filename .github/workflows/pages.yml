@@ -1,6 +1,6 @@
 # Pages for lighthouse: publishes the static site in docs/site/ to GitHub Pages on every push to
 # main that touches it, and on demand. The repository's Pages source must be "GitHub Actions"
-# before the first deploy succeeds; the deploy step fails until then.
+# before the first deploy succeeds; the run fails until then (configure-pages fails first).
 name: pages
 
 on:
