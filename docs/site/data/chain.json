@@ -1,0 +1,631 @@
+{
+  "title": "The chain",
+  "subtitle": "From an idea to a closed issue, and what joins in at each step.",
+  "phases": [
+    {
+      "id": "issue",
+      "label": "Issue",
+      "blurb": "what needs doing"
+    },
+    {
+      "id": "pickup",
+      "label": "Pick up",
+      "blurb": "start the work"
+    },
+    {
+      "id": "spec",
+      "label": "Spec",
+      "blurb": "design before code"
+    },
+    {
+      "id": "plan",
+      "label": "Plan",
+      "blurb": "steps before code"
+    },
+    {
+      "id": "build",
+      "label": "Build",
+      "blurb": "write and check the code"
+    },
+    {
+      "id": "pr",
+      "label": "PR",
+      "blurb": "verify and open the pull request"
+    },
+    {
+      "id": "close",
+      "label": "Close",
+      "blurb": "close with evidence"
+    }
+  ],
+  "chips": [
+    {
+      "id": "write-issue",
+      "phase": "issue",
+      "row": 0,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "write-issue",
+      "what": "Writes and maintains GitHub issues and milestones of the repo.",
+      "when": "When you create an issue, edit a title or body, set a block between issues or clean up issue metadata.",
+      "without": "Issues come out in whatever shape the session picks, and the block between issues is set by hand.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/write-issue"
+    },
+    {
+      "id": "github-issue",
+      "phase": "issue",
+      "row": 1,
+      "kind": "github",
+      "trigger": "github",
+      "label": "github-issue",
+      "what": "The GitHub issue itself: the unit of work the rest of the chain starts from.",
+      "when": "Whenever work is tracked as an issue.",
+      "without": "There is no issue to pick up, verify against or close.",
+      "status": "works"
+    },
+    {
+      "id": "issue-impact-scout",
+      "phase": "pickup",
+      "row": 0,
+      "kind": "lighthouse",
+      "trigger": "skill",
+      "label": "issue-impact-scout",
+      "what": "A narrow, read-only agent that scouts the codebase and returns one IMPACT PACK of facts and evidence.",
+      "when": "Before a design or planning phase, called by start-issue at gate 4b and 4c once the worktree exists.",
+      "without": "The design or plan starts without a fact sheet of what the issue touches.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/agents/issue-impact-scout.md"
+    },
+    {
+      "id": "start-issue",
+      "phase": "pickup",
+      "row": 1,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "start-issue",
+      "what": "Starts work on a GitHub issue: picks the route and sets up the worktree.",
+      "when": "When you say 'pick up 610' or 'start on issue 526'.",
+      "without": "You pick the route and set up the worktree by hand.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/start-issue"
+    },
+    {
+      "id": "route-issue",
+      "phase": "pickup",
+      "row": 2,
+      "kind": "lighthouse",
+      "trigger": "skill",
+      "label": "route-issue",
+      "what": "Read-only triage of an issue through five gates (blocker, known recipe, bug, instruction layer, design depth); the first hit wins and it prints one line with the route.",
+      "when": "When you ask which route an issue takes, and when start-issue calls it.",
+      "without": "The route of an issue is a guess, not a gate result.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/route-issue"
+    },
+    {
+      "id": "using-git-worktrees",
+      "phase": "pickup",
+      "row": 3,
+      "kind": "superpowers",
+      "trigger": "skill",
+      "label": "using-git-worktrees",
+      "what": "Makes sure the work happens in an isolated workspace, through native tools or a git worktree.",
+      "when": "Before feature work that needs isolation from the current workspace.",
+      "without": "Work lands in the main checkout.",
+      "status": "works"
+    },
+    {
+      "id": "worktree-guard",
+      "phase": "pickup",
+      "row": 4,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "worktree-guard",
+      "what": "Warns, and never blocks, at a write into the main checkout on main.",
+      "when": "Before each Edit or Write.",
+      "without": "A write into the main checkout on main passes without a warning.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-guard.sh"
+    },
+    {
+      "id": "brainstorming",
+      "phase": "spec",
+      "row": 0,
+      "kind": "superpowers",
+      "trigger": "skill",
+      "label": "brainstorming",
+      "what": "Works out intent, requirements and design before any code is written.",
+      "when": "Before creative work such as a new feature, component or behaviour change.",
+      "without": "Code starts from a guess about what is wanted.",
+      "status": "works"
+    },
+    {
+      "id": "spec-adversarial-review",
+      "phase": "spec",
+      "row": 1,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "spec-adversarial-review",
+      "what": "Has a spec reviewed by an agent of another model family (Codex, read-only, clean context) against the repo; round 1 is a review, later rounds only verify the fixes.",
+      "when": "After writing a spec and before writing-plans.",
+      "without": "The spec is only checked by the model that wrote it.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/spec-adversarial-review"
+    },
+    {
+      "id": "spec-adversary",
+      "phase": "spec",
+      "row": 2,
+      "kind": "lighthouse",
+      "trigger": "skill",
+      "label": "spec-adversary",
+      "what": "Runs one adversarial review round through an external Codex session (read-only sandbox) and returns a compressed findings table.",
+      "when": "Called by spec-adversarial-review and plan-adversarial-review.",
+      "without": "The two review skills have no reviewer to run.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/agents/spec-adversary.md"
+    },
+    {
+      "id": "writing-plans",
+      "phase": "plan",
+      "row": 0,
+      "kind": "superpowers",
+      "trigger": "skill",
+      "label": "writing-plans",
+      "what": "Turns a spec or requirements into a plan of steps.",
+      "when": "For a multi-step task, before touching code.",
+      "without": "Code starts without a plan of steps.",
+      "status": "works"
+    },
+    {
+      "id": "plan-adversarial-review",
+      "phase": "plan",
+      "row": 1,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "plan-adversarial-review",
+      "what": "Has an implementation plan reviewed by an agent of another model family against the spec and the repo; round 1 checks executability, later rounds only verify the fixes.",
+      "when": "After committing a plan and before subagent-driven development.",
+      "without": "The plan is only checked by the model that wrote it.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/plan-adversarial-review"
+    },
+    {
+      "id": "executing-plans",
+      "phase": "build",
+      "row": 0,
+      "kind": "superpowers",
+      "trigger": "you",
+      "label": "executing-plans / SDD",
+      "what": "Executes an implementation plan, either in the current session or task by task with subagents (SDD).",
+      "when": "When a plan is ready and you choose how to run it.",
+      "without": "The plan is carried out without a defined execution method.",
+      "status": "works"
+    },
+    {
+      "id": "test-driven-development",
+      "phase": "build",
+      "row": 1,
+      "kind": "superpowers",
+      "trigger": "skill",
+      "label": "test-driven-development",
+      "what": "Writes the test before the implementation code.",
+      "when": "When implementing a feature or a bugfix.",
+      "without": "Tests are written after the code, if at all.",
+      "status": "works"
+    },
+    {
+      "id": "go-writing",
+      "phase": "build",
+      "row": 2,
+      "kind": "lighthouse",
+      "trigger": "skill",
+      "label": "go-writing",
+      "what": "Rules and a KPI table of commands (gofmt, vet, golangci-lint, race) for writing Go in the repo.",
+      "when": "When writing or changing Go, and when planning a Go refactor or test strategy.",
+      "without": "Go code is written without the repo's checks in view.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/skills/go-writing"
+    },
+    {
+      "id": "systematic-debugging",
+      "phase": "build",
+      "row": 3,
+      "kind": "superpowers",
+      "trigger": "skill",
+      "label": "systematic-debugging",
+      "what": "Finds the cause of a bug before a fix is proposed.",
+      "when": "On any bug, test failure or unexpected behaviour.",
+      "without": "Fixes are tried before the cause is known.",
+      "status": "works"
+    },
+    {
+      "id": "testing",
+      "phase": "build",
+      "row": 4,
+      "kind": "lighthouse",
+      "trigger": "skill",
+      "label": "testing",
+      "what": "Carries what a good test is: the production change that should make it fail, the classification sentence before the first edit and the mutation check before reporting done.",
+      "when": "When writing, changing, fixing or reviewing a test, mock, fake or assert.",
+      "without": "A test can pass without ever being able to fail.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/testing"
+    },
+    {
+      "id": "refresh-expo-lockfiles",
+      "phase": "build",
+      "row": 5,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "refresh-expo-lockfiles",
+      "what": "Refreshes the dependencies of the Expo apps so the CI check goes green again; stays on the pinned SDK and never upgrades it.",
+      "when": "When npx expo-doctor fails on package versions, or patch-level Expo drift blocks an unrelated PR.",
+      "without": "The Expo lockfiles are refreshed by hand.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/expo/skills/refresh-expo-lockfiles"
+    },
+    {
+      "id": "python-writing",
+      "phase": "build",
+      "row": 6,
+      "kind": "lighthouse",
+      "trigger": "skill",
+      "label": "python-writing",
+      "what": "Rules and a KPI table of commands (ruff, ty, pytest) for writing Python in the repo's source and test directories.",
+      "when": "When writing or changing Python, and when planning a Python refactor or test strategy.",
+      "without": "Python code is written without the repo's checks in view.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/skills/python-writing"
+    },
+    {
+      "id": "shell-gates",
+      "phase": "build",
+      "row": 7,
+      "kind": "lighthouse",
+      "trigger": "skill",
+      "label": "shell-gates",
+      "what": "The norm 'the absence of a signal is treated as a negative result', plus a KPI table of commands for shell that guards something.",
+      "when": "When writing or changing hooks, pre-commit, pre-push or CI gate scripts, and the tests on them.",
+      "without": "A gate script can pass because it could not check.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/skills/shell-gates"
+    },
+    {
+      "id": "main-commit-guard",
+      "phase": "build",
+      "row": 8,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "main-commit-guard",
+      "what": "Blocks a commit or push on main, also through git -C <path> and a preceding cd.",
+      "when": "Before each Bash call.",
+      "without": "A commit or push on main goes through.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-guard.sh"
+    },
+    {
+      "id": "commit-tests",
+      "phase": "build",
+      "row": 9,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "commit-tests",
+      "what": "Blocks --no-verify and tests a commit to main before it; after a commit it runs [test_gate] command on the files of the commit and reports red.",
+      "when": "Before and after each Bash call, and after a failed one.",
+      "without": "Red tests on a commit go unnoticed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-tests.sh"
+    },
+    {
+      "id": "bash-write-gates",
+      "phase": "build",
+      "row": 10,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "bash-write-gates",
+      "what": "Runs the write gates on what a Bash call wrote.",
+      "when": "Before and after each Bash call, and after a failed one.",
+      "without": "A file written through Bash skips the gates that Edit and Write get.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-gates.sh"
+    },
+    {
+      "id": "worktree-linkcheck",
+      "phase": "build",
+      "row": 11,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "worktree-linkcheck",
+      "what": "Blocks a markdown link that is absolute or points nowhere.",
+      "when": "After each Edit or Write.",
+      "without": "A broken or absolute link in a .md file is committed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-linkcheck.sh"
+    },
+    {
+      "id": "code-language",
+      "phase": "build",
+      "row": 12,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "code-language",
+      "what": "Checks that code is written in English: Dutch comments, docstrings and names are findings; string literals are not read. Blocks with exit 2.",
+      "when": "After each Edit or Write, when [project] code_language is set.",
+      "without": "Code comments and names drift into the wrong language.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language.sh"
+    },
+    {
+      "id": "verify-pr",
+      "phase": "pr",
+      "row": 0,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "verify-pr",
+      "what": "Verifies each acceptance criterion of the issue on the branch and writes the PR body: Closes #N with an Evidence table, Refs #N, or No issue.",
+      "when": "Before every gh pr create.",
+      "without": "The PR body is written without checking the acceptance criteria.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/verify-pr"
+    },
+    {
+      "id": "pr-create-gate",
+      "phase": "pr",
+      "row": 1,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "pr-create-gate",
+      "what": "Blocks a gh pr create whose body lacks Closes #N with evidence, Refs #N with a reason or No issue with a reason.",
+      "when": "Before each Bash call.",
+      "without": "A PR opens without a traceable issue or evidence.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/pr-create-gate.sh"
+    },
+    {
+      "id": "pr-and-ci",
+      "phase": "pr",
+      "row": 2,
+      "kind": "github",
+      "trigger": "github",
+      "label": "pr-and-ci",
+      "what": "The pull request, built on the repo's PR template, and the CI checks that run on it.",
+      "when": "When the PR is opened and on each push to it.",
+      "without": "Nothing checks the change before it merges.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/templates/pull_request_template.md"
+    },
+    {
+      "id": "fix-pr",
+      "phase": "pr",
+      "row": 3,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "fix-pr",
+      "what": "Makes a red or conflicting PR green, or processes an unprocessed roborev review comment; works in the worktree of the head branch and stops when the PR is green.",
+      "when": "When a PR is red, has merge conflicts or carries an unprocessed review comment.",
+      "without": "A red PR is fixed without a fixed diagnosis first.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/fix-pr"
+    },
+    {
+      "id": "receiving-code-review",
+      "phase": "pr",
+      "row": 4,
+      "kind": "superpowers",
+      "trigger": "skill",
+      "label": "receiving-code-review",
+      "what": "Checks review feedback technically before implementing it; no blind agreement.",
+      "when": "When review feedback arrives, especially if it is unclear or questionable.",
+      "without": "Review suggestions are applied without checking them.",
+      "status": "works"
+    },
+    {
+      "id": "close-issue",
+      "phase": "close",
+      "row": 0,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "close-issue",
+      "what": "Closes an issue after verifying the acceptance criteria and the definition of done, and links commits with full URLs; after a Closes PR merges it checks the evidence and reopens the issue if it does not hold.",
+      "when": "After the merge of a Closes PR, or when you ask to close an issue.",
+      "without": "An issue closes without evidence and without a check afterwards.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/close-issue"
+    },
+    {
+      "id": "unblock-dependents",
+      "phase": "close",
+      "row": 1,
+      "kind": "github",
+      "trigger": "github",
+      "label": "unblock-dependents",
+      "what": "When an issue closes as completed, removes the blocked label from every open issue that waited on it and has no other open blocker, with a comment on each.",
+      "when": "On the closing of an issue.",
+      "without": "Issues blocked on the closed issue stay blocked until someone removes the label.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/workflows/unblock-dependents.yml"
+    },
+    {
+      "id": "usage-guard",
+      "phase": "always",
+      "row": 0,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "usage-guard",
+      "what": "Reads the alarm of lighthouse usage: warns at a prompt, blocks once per window in tool and stop, once per subagent in subagent; never fails red.",
+      "when": "At a prompt, after tool calls, at a subagent stop and at Stop.",
+      "without": "The session runs into the usage limit without warning.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
+    },
+    {
+      "id": "instrument",
+      "phase": "always",
+      "row": 1,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "instrument",
+      "what": "Decides on which layer a new instruction belongs (CLAUDE.md or AGENTS.md, a path-scoped rule, a skill or a hook) and enforces the pairing rule: no hook without a counterpart.",
+      "when": "When a new instruction needs a home.",
+      "without": "A new rule lands on whatever layer comes to mind.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/instrument"
+    },
+    {
+      "id": "worktree-audit",
+      "phase": "always",
+      "row": 2,
+      "kind": "lighthouse",
+      "trigger": "you",
+      "label": "worktree-audit",
+      "what": "Audits worktrees, local and remote branches, PR state and sessions in one table with a verdict per row; reports and changes nothing itself.",
+      "when": "When you ask which worktrees or branches can go, or where you left off.",
+      "without": "Stale worktrees and branches pile up unseen.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/worktree-audit"
+    }
+  ],
+  "handoff": {
+    "what": "Writes one copy-paste-ready block with worktree, branch, goal, background and the first step, for a fresh session to start from.",
+    "when": "At the end of a phase, or when you ask for a command for a new session.",
+    "without": "The next session starts without knowing where the work stands.",
+    "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/handoff"
+  },
+  "handoffs": [
+    {
+      "from": "spec-adversarial-review",
+      "to": "writing-plans",
+      "status": "works"
+    },
+    {
+      "from": "plan-adversarial-review",
+      "to": "executing-plans",
+      "status": "works"
+    },
+    {
+      "from": "commit-tests",
+      "to": "verify-pr",
+      "status": "planned",
+      "milestone": "M2"
+    },
+    {
+      "from": "pr-and-ci",
+      "to": "close-issue",
+      "status": "planned",
+      "milestone": "M2"
+    }
+  ],
+  "routes": [
+    {
+      "id": "4c",
+      "label": "Spec first (4c)",
+      "chips": [
+        "write-issue",
+        "github-issue",
+        "start-issue",
+        "route-issue",
+        "using-git-worktrees",
+        "issue-impact-scout",
+        "brainstorming",
+        "spec-adversarial-review",
+        "writing-plans",
+        "plan-adversarial-review",
+        "executing-plans",
+        "test-driven-development",
+        "commit-tests",
+        "verify-pr",
+        "pr-create-gate",
+        "pr-and-ci",
+        "close-issue",
+        "unblock-dependents"
+      ]
+    },
+    {
+      "id": "4b",
+      "label": "Plan (4b)",
+      "chips": [
+        "write-issue",
+        "github-issue",
+        "start-issue",
+        "route-issue",
+        "using-git-worktrees",
+        "issue-impact-scout",
+        "writing-plans",
+        "plan-adversarial-review",
+        "executing-plans",
+        "test-driven-development",
+        "commit-tests",
+        "verify-pr",
+        "pr-create-gate",
+        "pr-and-ci",
+        "close-issue",
+        "unblock-dependents"
+      ]
+    },
+    {
+      "id": "4a",
+      "label": "Small job (4a)",
+      "chips": [
+        "write-issue",
+        "github-issue",
+        "start-issue",
+        "route-issue",
+        "using-git-worktrees",
+        "testing",
+        "commit-tests",
+        "verify-pr",
+        "pr-create-gate",
+        "pr-and-ci",
+        "close-issue"
+      ]
+    },
+    {
+      "id": "2",
+      "label": "Bug (2)",
+      "chips": [
+        "write-issue",
+        "github-issue",
+        "start-issue",
+        "route-issue",
+        "using-git-worktrees",
+        "systematic-debugging",
+        "test-driven-development",
+        "commit-tests",
+        "verify-pr",
+        "pr-create-gate",
+        "pr-and-ci",
+        "close-issue"
+      ]
+    },
+    {
+      "id": "1",
+      "label": "Known recipe (1)",
+      "note": "The skill whose description matches the issue does the work and closes it; refresh-expo-lockfiles is one example.",
+      "chips": [
+        "write-issue",
+        "github-issue",
+        "start-issue",
+        "route-issue",
+        "using-git-worktrees",
+        "refresh-expo-lockfiles",
+        "commit-tests",
+        "verify-pr",
+        "pr-create-gate",
+        "pr-and-ci",
+        "close-issue"
+      ]
+    },
+    {
+      "id": "red-pr",
+      "label": "Red PR",
+      "chips": [
+        "pr-and-ci",
+        "fix-pr",
+        "receiving-code-review",
+        "pr-and-ci"
+      ]
+    }
+  ]
+}
