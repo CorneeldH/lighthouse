@@ -13,7 +13,12 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    relatief pad met `tick: XDG_RUNTIME_DIR is not an absolute path: cannot take tick.lock`.
 2. **Token.** Vereist `GH_TOKEN` of `GITHUB_TOKEN`. Zonder stopt tick met
    `tick: no GitHub token: set GH_TOKEN or GITHUB_TOKEN`. Het token heeft de scopes `repo` en
-   `project` nodig: lighthouse leest en schrijft er comments, reacties en het board mee.
+   `project` nodig: lighthouse leest en schrijft er comments, reacties en het board mee. Gebruik een
+   classic token, of een fine-grained token dat elke repo dekt waarvan issues op het board staan:
+   een item dat het token niet mag lezen kan een GraphQL-fout geven, en die slaat de hele repo over. De
+   login van het token zelf heeft push-toegang tot de repo nodig (anders is de collaborator-permissie
+   niet te lezen) en een rol in `[dispatch] answer_permissions`: zonder die rol vallen ook de eigen
+   🤖-comments van lighthouse weg, zoals Gestart en Hervat.
 3. **Configuratie.** Leest `[dispatch]` uit `host.toml` (`$LIGHTHOUSE_HOST_TOML`, anders
    `~/.config/lighthouse/host.toml`). Een ongeldige waarde stopt tick met een fout die de sleutel noemt. Een
    onbekende sleutel onder `[dispatch]` (een typfout als `max_runtme`) stopt tick ook, met een fout die
@@ -45,7 +50,8 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    `lighthouse: gathered <repo>: <n> items (<reden>)` naar stderr; de reden is `first`, `changed`,
    `stale` of `boundary`. Een fout van GitHub (ook een GraphQL-fout in een antwoord met status 200)
    slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en bewaart niets, zodat de volgende
-   tick opnieuw kijkt.
+   tick opnieuw kijkt. Een issue met meer dan 10 voorgangers, of een voorganger met meer dan 5
+   sluitende PR's, slaat de repo ook luid over: zo'n lijst leest tick niet half.
 
 Tick beslist nog niet en start nog geen run: decide en apply volgen in #114.
 
