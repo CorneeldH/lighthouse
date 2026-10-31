@@ -15,6 +15,12 @@ ROOT = Path(__file__).resolve().parents[1]
 domains = load()
 
 
+@pytest.fixture(autouse=True)
+def _no_gate_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The test gate sets LIGHTHOUSE_GATE_FILES for its own commit; gate() must not read it here."""
+    monkeypatch.delenv("LIGHTHOUSE_GATE_FILES", raising=False)
+
+
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     """A git repo with one commit: internal/a.go, web/x.tsx and README.md."""
