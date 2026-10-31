@@ -769,6 +769,24 @@
       "from": "plan-adversarial-review",
       "to": "executing-plans",
       "status": "works"
+    },
+    {
+      "from": "commit-tests",
+      "to": "verify-pr",
+      "status": "planned",
+      "issue": 147
+    },
+    {
+      "from": "pr-and-ci",
+      "to": "fix-pr",
+      "status": "planned",
+      "issue": 119
+    },
+    {
+      "from": "pr-and-ci",
+      "to": "close-issue",
+      "status": "planned",
+      "issue": 147
     }
   ],
   "routes": [
