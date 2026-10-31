@@ -36,18 +36,22 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 ## Install
 
 Download the binary for your platform from the latest release and check it against
-`SHA256SUMS`. For Linux on amd64:
+`SHA256SUMS` before it lands in `~/.local/bin`. For Linux on amd64, paste this block in one go;
+it stops at the first step that fails:
 
 ```bash
-curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_amd64
-curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS
-sha256sum --check --ignore-missing SHA256SUMS
-chmod +x lighthouse_linux_amd64
-mkdir -p ~/go/bin && mv lighthouse_linux_amd64 ~/go/bin/lighthouse
+cd "$(mktemp -d)" &&
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_amd64 &&
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &&
+sha256sum --check --ignore-missing SHA256SUMS &&
+chmod +x lighthouse_linux_amd64 &&
+mkdir -p ~/.local/bin && mv lighthouse_linux_amd64 ~/.local/bin/lighthouse &&
+~/.local/bin/lighthouse version
 ```
 
-The other platforms and the details are in [install.md](install.md#download-a-release-binary).
-Or install with Go:
+Not on your `PATH` yet? Add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile. The
+other platforms are on the site, <https://corneeldh.github.io/lighthouse/#download>; the details
+are in [install.md](install.md#download-a-release-binary). Or install with Go:
 
 ```bash
 go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
