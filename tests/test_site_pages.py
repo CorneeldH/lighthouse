@@ -88,7 +88,10 @@ def test_site_links_resolve():
             assert target.is_file(), f"{path.name}: {link} points nowhere"
 
 
-@pytest.mark.parametrize("page", ["chain.html", "guardrails.html"])
+MAP_PAGES = ["chain.html", "guardrails.html", "system.html"]
+
+
+@pytest.mark.parametrize("page", MAP_PAGES)
 def test_pages_name_the_local_server_command(page):
     parser = ElementById("serve-hint")
     parser.feed((SITE / page).read_text(encoding="utf-8"))
@@ -119,13 +122,16 @@ def test_index_lists_the_six_maps():
     links = relative_links(SITE / "index.html")
     assert "chain.html" in links
     assert "guardrails.html" in links
+    assert "system.html" in links
     text = (SITE / "index.html").read_text(encoding="utf-8")
-    for issue in ["#101", "#102", "#103", "#104"]:
+    for issue in ["#101", "#103", "#104"]:
         assert issue in text, f"index.html does not name {issue}"
+    for issue in ["#100", "#102"]:
+        assert issue not in text, f"index.html still names {issue} as planned"
     assert 'id="maps"' in text
 
 
-@pytest.mark.parametrize("page", ["chain.html", "guardrails.html"])
+@pytest.mark.parametrize("page", MAP_PAGES)
 def test_map_pages_link_back_to_index(page):
     assert 'href="index.html"' in (SITE / page).read_text(encoding="utf-8")
 
