@@ -167,3 +167,23 @@ def test_getting_started_names_the_paste():
     text = section("Install")
     assert PASTE in text
     assert "](https://corneeldh.github.io/lighthouse/agents/install.md)" in text
+
+
+def test_check_reads_stdout_only():
+    """`--upgrade` prints notes on stderr on a healthy install; only stdout is `No changes.`."""
+    text = guide_section("Check")
+    assert "stdout" in text and "stderr" in text
+
+
+def test_upgrade_notes_are_named():
+    src = "".join(p.read_text(encoding="utf-8") for p in (ROOT / "internal/initcmd").glob("*.go"))
+    text = guide_section("When something fails")
+    for note in ["note: host.toml is missing", "fits this repository (found "]:
+        assert note in src, f"init no longer prints {note!r}"
+        assert note in text, f"When something fails lacks {note!r}"
+
+
+def test_packages_are_asked_after_the_dry_run():
+    """Choice 6 needs the `Packages: …` line, so the dry run comes before it."""
+    text = guide_section("Run lighthouse init")
+    assert text.index("</dev/null") < text.index("choice 6")

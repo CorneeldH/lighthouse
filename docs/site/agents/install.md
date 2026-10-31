@@ -65,7 +65,9 @@ Report what you found to the user in one block. Then go to the choices.
 
 ## Choices
 
-Ask these in order. Skip a choice that does not apply.
+Ask choices 1 to 5 and 8 now, in order, and skip one that does not apply. Choices 6 and 7 depend
+on what `init` proposes: ask them after the dry run, in step 2 of
+[Run lighthouse init](#run-lighthouse-init).
 
 | # | Choice | Options, recommended first | Notes |
 |---|---|---|---|
@@ -75,7 +77,7 @@ Ask these in order. Skip a choice that does not apply.
 | 4 | Codex for the adversarial reviews | yes, if the user has a subscription · no | Without `codex`, the two reviews stop with `CODEX_MISSING`. |
 | 5a | Language of issues, PRs and commits (`[project] language`) | `nl` or `en`: recommend the language the user speaks with you now, and `en` for any other language | These are the only two values; any other is an error. |
 | 5b | Code in English (`[project] code_language = "en"`) | yes · no | Ask only if 5a is `nl`. |
-| 6 | Packages | what `init` picks · a package added or left out | Read the `Packages: …` line of the dry run (step 2 of [Run lighthouse init](#run-lighthouse-init)). Ask once per change. Add with `--pack <name>`, leave out with `--no-pack <name>`. |
+| 6 | Packages | what `init` picks · a package added or left out | Read the `Packages: …` line of the dry run. Ask once per change. Add with `--pack <name>`, leave out with `--no-pack <name>`. |
 | 7 | Test gate (`[test_gate] command`) | a command you derive from the repository · another command · off (`command = ""`) | The `python` package proposes `uv run pytest -q`. Without a gate, every commit passes with `no test command configured, nothing was tested`. |
 | 8 | Board (`[forge.board]`) | no, not now · yes | On "yes", point the user to the board section of <https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#configure-lighthousetoml>. Do not fill in its four IDs yourself. |
 
@@ -156,9 +158,7 @@ Then run `lighthouse --help` and `lighthouse init --help`, and hold this guide t
 
 In the root of the repository:
 
-1. Build the command: `lighthouse init`, plus a `--pack <name>` or `--no-pack <name>` for every
-   change from choice 6.
-2. Dry run: run the command once with an empty stdin, without approval:
+1. Dry run: run `init` once with an empty stdin, without approval:
 
    ```bash
    lighthouse init </dev/null
@@ -167,7 +167,10 @@ In the root of the repository:
    `init` prints `Packages: …`, any `missing dependency: …` lines and a diff per file, then asks
    `Apply these changes? [y/N]`. The empty stdin counts as no: it prints
    `lighthouse init: nothing written`, writes nothing and exits 1. That is the expected result
-   here. If choice 6 changes the packages, run the dry run again with the new flags.
+   here.
+2. Ask choice 6 and choice 7 now. Build the command: `lighthouse init`, plus a `--pack <name>` or
+   `--no-pack <name>` for every change from choice 6. If there is one, run the dry run again with
+   those flags, for example `lighthouse init --no-pack shell </dev/null`.
 3. Show the diff to the user, or summarise it per file and offer the full diff. Ask for approval.
 4. After a yes, run the same command with one `y` on stdin:
 
@@ -175,7 +178,7 @@ In the root of the repository:
    printf 'y\n' | lighthouse init
    ```
 
-   Add the flags from step 1 after `init`. Do not approve with `--yes`. On a machine with
+   Add the flags from step 2 after `init`. Do not approve with `--yes`. On a machine with
    Tailscale, `init` asks a second question after the diff: `Write ~/.config/lighthouse/host.toml?
    [y/N]`. The dry run never reaches it, so the user has not seen it, and `--yes` would write
    `host.toml` without asking. With one `y`, the second question reads the end of stdin, and that
@@ -192,8 +195,14 @@ Run:
 lighthouse init --upgrade </dev/null
 ```
 
-The output must be exactly `No changes.`. If it shows a diff instead, show that diff to the user, ask again, and after a yes run
-`printf 'y\n' | lighthouse init --upgrade`. Repeat until the output is `No changes.`.
+Read stdout and stderr apart. Stdout must be exactly `No changes.`. Stderr can still carry notes
+on a healthy install: `missing dependency: …` for a tool the user skipped,
+`note: host.toml is missing …`, and `package <name> fits this repository …` for a package the
+user left out. They are not failures; see [When something fails](#when-something-fails).
+
+If stdout shows a diff instead, the empty stdin declines it: `init` prints
+`lighthouse init: nothing written` and exits 1. Show that diff to the user, ask again, and after a
+yes run `printf 'y\n' | lighthouse init --upgrade`. Repeat until stdout is `No changes.`.
 
 ## Final report
 
@@ -234,6 +243,11 @@ here.
   its `--pack <name>` and tell the user.
 - `lighthouse init: nothing written` after step 4: the `y` did not reach `init`. Check the pipe,
   and do not switch to `--yes`.
-- `lighthouse: unknown flag: --<name>`: the release lacks a flag from this guide. Stop and report it (see
-  [Ground rules](#ground-rules)).
+- `lighthouse: unknown flag: --<name>`: the release lacks a flag from this guide. Stop and report
+  it (see [Ground rules](#ground-rules)).
 - `warning: host.toml not proposed: …`: harmless for this guide. Mention it in the final report.
+- `note: host.toml is missing (…); skills that check the host will report it`, on `--upgrade`:
+  expected, because this guide leaves `host.toml` unwritten. Mention it in the final report.
+- `package <name> fits this repository (found …); add it with: lighthouse init --upgrade --pack <name>`,
+  on `--upgrade`: the user left this package out at choice 6. Do not add it; mention it in the
+  final report.
