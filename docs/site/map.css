@@ -1,5 +1,5 @@
 /* Shared style of the lighthouse maps: tokens for light and dark, the flow map, the legend,
-   the detail panel and the cards below a map. */
+   the detail drawer and the cards below a map. */
 
 :root,
 :root[data-theme="light"] {
@@ -15,6 +15,8 @@
   --line: rgba(20, 33, 61, 0.14);
   --accent: #b88a00;
   --accent-soft: #f4d74b;
+  --route: #f4d74b;
+  --route-casing: #14213d;
   --focus: #1f4fd1;
   --link: #1f4fd1;
   --lighthouse: #2f5bd8;
@@ -44,6 +46,8 @@
     --line: rgba(255, 255, 255, 0.14);
     --accent: #f4d74b;
     --accent-soft: #f4d74b;
+    --route: #f4d74b;
+    --route-casing: rgba(0, 0, 0, 0.45);
     --focus: #8fb0ff;
     --link: #8fb0ff;
     --lighthouse: #4169e1;
@@ -73,6 +77,8 @@
   --line: rgba(255, 255, 255, 0.14);
   --accent: #f4d74b;
   --accent-soft: #f4d74b;
+  --route: #f4d74b;
+  --route-casing: rgba(0, 0, 0, 0.45);
   --focus: #8fb0ff;
   --link: #8fb0ff;
   --lighthouse: #4169e1;
@@ -325,14 +331,23 @@ button:focus-visible {
 .map-area path {
   fill: none;
   stroke: var(--line);
-  stroke-width: 1.2;
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
   vector-effect: non-scaling-stroke;
   transition: stroke 0.2s;
 }
 
+/* The chosen route: solid yellow on a dark casing, so it reads on the light map too. */
 .map-area path.on {
-  stroke: var(--accent);
-  stroke-width: 3;
+  stroke: var(--route);
+  stroke-width: 3.5;
+  stroke-dasharray: none;
+}
+
+.map-area path.casing {
+  stroke: var(--route-casing);
+  stroke-width: 6.5;
+  stroke-dasharray: none;
 }
 
 .column {
@@ -507,13 +522,53 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
-/* Detail panel */
+/* Detail drawer: slides in from the right at a click on a chip or a handoff. */
+
+.map-hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
 
 .detail {
-  margin-top: 14px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  width: min(440px, 100vw);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-left: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.2s, visibility 0s 0.2s;
+}
+
+.detail.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.2s;
+}
+
+.detail-close {
+  align-self: flex-end;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--fg);
+  border-radius: 999px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.detail ul {
+  margin: 0;
+  padding-left: 18px;
 }
 
 .box {
