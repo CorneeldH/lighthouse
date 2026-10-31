@@ -45,7 +45,8 @@ const (
 	KindDefer  Kind = "defer"
 )
 
-// Action is one thing apply does. Reason and Skip are heading keys, never posted text.
+// Action is one thing apply does. Reason and Skip are heading keys, never posted text; only a
+// KindDefer carries a literal Reason (night or blocker), which apply reports without a lookup.
 type Action struct {
 	Kind       Kind         `json:"kind"`
 	Repo       string       `json:"repo"`
@@ -63,7 +64,7 @@ type Action struct {
 	Native     bool         `json:"native,omitempty"`
 	Skip       string       `json:"skip,omitempty"`       // a headings key
 	CommentID  int64        `json:"comment_id,omitempty"` // 🚀 target; for resume also the answer id of 🤖 Resumed
-	Reason     string       `json:"reason,omitempty"`     // a headings key
+	Reason     string       `json:"reason,omitempty"`     // a headings key; for KindDefer literal
 	ReasonArg  string       `json:"reason_arg,omitempty"` // the argument of Reason, literal
 	PRURL      string       `json:"pr_url,omitempty"`
 	Language   string       `json:"language,omitempty"`
