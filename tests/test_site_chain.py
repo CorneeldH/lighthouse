@@ -17,7 +17,7 @@ REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/"
 KINDS = {"lighthouse", "superpowers", "hook", "github"}
 TRIGGERS = {"you", "skill", "tool", "github"}
 STATUSES = {"works", "planned", "idea"}
-REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "when", "without", "status"]
+REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "how", "when", "without", "status"]
 
 
 def load(name: str) -> dict | list:
