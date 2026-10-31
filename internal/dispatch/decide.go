@@ -124,7 +124,7 @@ func headers(it Item) []parsed {
 
 // orphan returns a return with reason_state_lost when the last protocol comment (Rebased
 // does not count) is a Started or Resumed whose session no run in the history has: the
-// database lost the run.
+// database lost the run. A row without a session makes no session known.
 func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 	var last *parsed
 	for i := range hs {
@@ -136,7 +136,7 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 		return Action{}, false
 	}
 	for _, row := range history {
-		if row.SessionID == last.Header.Session {
+		if row.SessionID != "" && row.SessionID == last.Header.Session {
 			return Action{}, false
 		}
 	}
@@ -187,11 +187,12 @@ func settle(repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Ac
 	return Action{}, false
 }
 
-// endsChain reports whether a handoff names the end command: the run then waits for green
-// and the handoff does not close it. An unreadable handoff does not end the chain.
+// endsChain reports whether a handoff names the end command for issue: the run then waits
+// for green and the handoff does not close it. An unreadable handoff, or one for another
+// issue, does not end the chain.
 func endsChain(repo RepoInput, issue int, h protocol.Header) bool {
 	ho, err := protocol.ParseHandoff(h)
-	if err != nil {
+	if err != nil || ho.Issue != issue {
 		return false
 	}
 	command, _ := ReviewSkip(ho.Next, repo.Controller)
