@@ -770,7 +770,7 @@ a.tile:focus-visible {
   color: var(--muted);
 }
 
-/* Entry page: the download, what lighthouse does, who it is for, the footer links */
+/* Shared blocks: the install page (.download), the reasoning, what lighthouse does, who it is for */
 
 .download,
 .reason,
@@ -782,8 +782,7 @@ a.tile:focus-visible {
 
 .download h2,
 .reason h2,
-.what h2,
-.who h2 {
+.what h2 {
   margin: 0 0 8px;
   font-size: 22px;
 }
@@ -827,9 +826,6 @@ details.platform summary {
   cursor: pointer;
   font-size: 16px;
   font-weight: 700;
-}
-
-details.platform summary {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -860,7 +856,7 @@ details.platform summary:focus-visible {
   outline-offset: 2px;
 }
 
-.others-title {
+.download .others-title {
   margin: 20px 0 8px;
   color: var(--muted);
   font-size: 16px;
@@ -966,7 +962,6 @@ details.platform summary:focus-visible {
 .hero {
   position: relative;
   padding: 40px 0 24px;
-  max-width: 900px;
 }
 
 .hero h1 {

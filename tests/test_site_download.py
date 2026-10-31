@@ -202,3 +202,9 @@ def test_landing_page_puts_the_why_first():
     assert re.search(r'<details\b[^>]*\bid="who"', text)
     order = [text.index(f'id="{i}"') for i in ["download", "why", "what", "who", "maps"]]
     assert order == sorted(order)
+
+
+def test_old_download_link_redirects_to_the_install_page():
+    text = (SITE / "index.js").read_text(encoding="utf-8")
+    assert 'location.hash === "#download"' in text
+    assert 'location.replace("install.html")' in text
