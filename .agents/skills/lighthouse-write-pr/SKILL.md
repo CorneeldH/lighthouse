@@ -166,7 +166,7 @@ Goes to `## Verification` and does not decide between `Closes`/`Refs` ("code rev
 be true before the merge). Exception: if the tests are not green, the skill makes no PR and
 reports that.
 
-In Claude Code the commit gate (`.claude/hooks/lighthouse/commit-tests.sh` runs the test command
+In Claude Code the commit gate (`.claude/hooks/lighthouse/commit-test-gate.sh` runs the test command
 after every `git commit`, on the files of that commit) proves only the files of each commit, not the
 suite. The suite evidence is CI on the PR: write `suite: CI` in `## Verification`, and do not run the
 full suite by hand. A red or `COULD NOT CHECK` outcome of the gate on this branch that no later

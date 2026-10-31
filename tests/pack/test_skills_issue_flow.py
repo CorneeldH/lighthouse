@@ -441,7 +441,7 @@ def test_handoff_pause_form_skips_phase_side_effects():
 
 def test_guard_names_the_pause_form():
     lib = (CORE / "lib/usage_guard.py").read_text(encoding="utf-8")
-    resume = (CORE / "hooks/usage-guard/resume.py").read_text(encoding="utf-8")
+    resume = (CORE / "hooks/usage-gate/resume.py").read_text(encoding="utf-8")
     assert "/lighthouse-write-handoff " in lib
     # resume.py builds on base_speak (refactor 00c4090), so its reasons carry the same call
     assert "base_speak(" in resume

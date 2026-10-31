@@ -1,6 +1,6 @@
 """`pack/core/lib/no_verify.py`, as installed: the lib runs as a file on its path.
 
-The cases for the flag itself run against the commit-tests hook (`test_commit_tests_no_verify.py`).
+The cases for the flag itself run against the commit-test-gate hook (`test_commit_test_gate_no_verify.py`).
 """
 
 import subprocess

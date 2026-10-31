@@ -1,10 +1,10 @@
-"""The usage-guard decider: who speaks, once per window, when the usage alarm is up.
+"""The usage-gate decider: who speaks, once per window, when the usage alarm is up.
 
-The hook `usage-guard.sh` checks the alarm file and the pause flag in shell, and
+The hook `usage-gate.sh` checks the alarm file and the pause flag in shell, and
 calls this lib only when one of them is valid. The lib reads the hook payload into
 a `Context`, builds the paths and keys of the contract, claims the "once per
 window" key, and picks the speaker: the base reasons here, the subagent reason, or
-a module next to the hook (`usage-guard/resume.py`, `usage-guard/controller.py`)
+a module next to the hook (`usage-gate/resume.py`, `usage-gate/controller.py`)
 when its option in `[usage_guard]` is on. The guard decides whether to speak; a
 module supplies what is said and written. At most one JSON object reaches stdout,
 and the exit code is always 0: an error never blocks.
@@ -93,7 +93,7 @@ SILENT = Decision(None, None)
 
 def _warn(message: str) -> None:
     """One stderr line, also for a multi-line error (git's stderr, say)."""
-    print("usage-guard: " + " ".join(message.splitlines()), file=sys.stderr)
+    print("usage-gate: " + " ".join(message.splitlines()), file=sys.stderr)
 
 
 def _safe(value: object) -> str:
@@ -271,8 +271,8 @@ def read_options() -> Options:
 
 
 def load_module(hooks_dir: Path, name: str) -> ModuleType:
-    """Load `<hooks_dir>/usage-guard/<name>.py`."""
-    path = hooks_dir / "usage-guard" / f"{name}.py"
+    """Load `<hooks_dir>/usage-gate/<name>.py`."""
+    path = hooks_dir / "usage-gate" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(f"usage_guard_{name}", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"cannot load {path}")

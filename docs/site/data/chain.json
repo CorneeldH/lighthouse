@@ -116,12 +116,12 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/start-issue"
     },
     {
-      "id": "worktree-guard",
+      "id": "worktree-check",
       "phase": "orient",
       "row": 2,
       "kind": "hook",
       "trigger": "tool",
-      "label": "worktree-guard",
+      "label": "worktree-check",
       "what": "Warns, and never blocks, at a write into the main checkout on main.",
       "how": [
         "It runs on PreToolUse for Edit and Write and checks the target file path, not the working directory.",
@@ -132,7 +132,7 @@
       "when": "Before each Edit or Write.",
       "without": "A write into the main checkout on main passes without a warning.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-guard.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-check.sh"
     },
     {
       "id": "using-git-worktrees",
@@ -209,12 +209,12 @@
       "status": "works"
     },
     {
-      "id": "worktree-linkcheck",
+      "id": "md-link-check",
       "phase": "spec",
       "row": 1,
       "kind": "hook",
       "trigger": "tool",
-      "label": "worktree-linkcheck",
+      "label": "md-link-check",
       "what": "Blocks a markdown link that is absolute or points nowhere.",
       "how": [
         "It runs on PostToolUse for Edit and Write and checks only .md and .markdown files.",
@@ -225,7 +225,7 @@
       "when": "After each Edit or Write.",
       "without": "A broken or absolute link in a .md file is committed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-linkcheck.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/md-link-check.sh"
     },
     {
       "id": "review-spec",
@@ -313,7 +313,7 @@
         "Before the first edit it asks for the classification sentence from lighthouse-test-standard.",
         "Before done, every KPI row is run and reported as passed, failed or not measurable from here, with GOOS, build tags, -race and GOWORK named.",
         "It carries the norms replace, don't layer for merged packages and deepen, don't split at a complexity limit, plus the Go form of the testing norms.",
-        "Two hooks enforce part of it: gofmt.sh after each edit and go-check.sh with golangci-lint at Stop."
+        "Two hooks enforce part of it: gofmt-check.sh after each edit and go-lint-gate.sh with golangci-lint at Stop."
       ],
       "when": "When writing or changing Go, and when planning a Go refactor or test strategy.",
       "without": "Go code is written without the repo's checks in view.",
@@ -368,7 +368,7 @@
         "It lists six real defects in which could not look came out green, and requires three outcomes: checked and clean, checked with findings, and COULD NOT CHECK.",
         "Its KPI table runs shellcheck-repo.sh on the strict directories and on all shell in the repo, and checks that no gate script falls outside git.",
         "A gate is not done until its test has been seen red once for the right reason, with one input that must block and one that must pass.",
-        "The shellcheck.sh hook blocks after every edit of a .sh or .bash file."
+        "The shell-lint-check.sh hook blocks after every edit of a .sh or .bash file."
       ],
       "when": "When writing or changing hooks, pre-commit, pre-push or CI gate scripts, and the tests on them.",
       "without": "A gate script can pass because it could not check.",
@@ -406,7 +406,7 @@
         "Before the first edit it asks for the classification sentence from lighthouse-test-standard.",
         "Before done, rows 1 to 3 are run and reported as passed, failed or not measurable from here, because a ty zero without its extras is not a zero.",
         "It carries the norms replace, don't layer and deepen, don't split, with the complexity limits, plus the Python form of the testing norms.",
-        "Two hooks enforce part of it: ruff-format.sh blocks on the blocking rules after each edit, and ty-check.sh reports type errors at Stop."
+        "Two hooks enforce part of it: ruff-format-check.sh blocks on the blocking rules after each edit, and ty-gate.sh reports type errors at Stop."
       ],
       "when": "When writing or changing Python, and when planning a Python refactor or test strategy.",
       "without": "Python code is written without the repo's checks in view.",
@@ -433,15 +433,15 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/test-standard"
     },
     {
-      "id": "code-language",
+      "id": "code-language-check",
       "phase": "build",
       "row": 8,
       "kind": "hook",
       "trigger": "tool",
-      "label": "code-language",
+      "label": "code-language-check",
       "what": "Checks that code is written in English: Dutch comments, docstrings and names are findings; string literals are not read. Blocks with exit 2.",
       "how": [
-        "It runs on PostToolUse for Edit and Write, and bash-write-gates calls it for files a Bash call wrote.",
+        "It runs on PostToolUse for Edit and Write, and bash-write-check calls it for files a Bash call wrote.",
         "It always reads .py, .sh, .bash and .go files and reads other files only inside [project] code_language_paths, with the config taken from the git root of the written file.",
         "A finding blocks with exit 2, and a line marked lighthouse: allow-language is allowed.",
         "With [code_language_llm] set, it asks a chain of models about doubtful units, and when that chain gives no verdict it prints a notice that never blocks."
@@ -449,34 +449,34 @@
       "when": "After each Edit or Write, when [project] code_language is set.",
       "without": "Code comments and names drift into the wrong language.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language-check.sh"
     },
     {
-      "id": "bash-write-gates",
+      "id": "bash-write-check",
       "phase": "build",
       "row": 9,
       "kind": "hook",
       "trigger": "tool",
-      "label": "bash-write-gates",
-      "what": "Runs the write gates on what a Bash call wrote.",
+      "label": "bash-write-check",
+      "what": "Runs the write checks on what a Bash call wrote.",
       "how": [
         "The pre mode runs on PreToolUse for Bash, records a baseline and always exits 0.",
-        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shellcheck.sh, ruff-format.sh, code-language.sh or worktree-linkcheck.sh.",
+        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, ruff-format-check.sh, code-language-check.sh or md-link-check.sh.",
         "A finding blocks with exit 2, and a gate whose pack is not installed is reported per file without blocking.",
         "When python3 or the dispatcher fails, it blocks with COULD NOT CHECK."
       ],
       "when": "Before and after each Bash call, and after a failed one.",
       "without": "A file written through Bash skips the gates that Edit and Write get.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-gates.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-check.sh"
     },
     {
-      "id": "main-commit-guard",
+      "id": "main-commit-gate",
       "phase": "build",
       "row": 10,
       "kind": "hook",
       "trigger": "tool",
-      "label": "main-commit-guard",
+      "label": "main-commit-gate",
       "what": "Blocks a commit or push on main, also through git -C <path> and a preceding cd.",
       "how": [
         "It runs on PreToolUse for Bash, parses the command with the lighthouse lib and resolves which repo and branch each git commit or git push targets.",
@@ -487,15 +487,15 @@
       "when": "Before each Bash call.",
       "without": "A commit or push on main goes through.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-guard.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-gate.sh"
     },
     {
-      "id": "commit-tests",
+      "id": "commit-test-gate",
       "phase": "build",
       "row": 11,
       "kind": "hook",
       "trigger": "tool",
-      "label": "commit-tests",
+      "label": "commit-test-gate",
       "what": "Blocks --no-verify and tests a commit to main before it; after a commit it runs [test_gate] command on the files of the commit and reports red.",
       "how": [
         "The pre mode runs on PreToolUse for Bash: it blocks --no-verify, runs the tests up front for a commit to the default branch and records HEAD for every other repo of the project.",
@@ -506,7 +506,7 @@
       "when": "Before and after each Bash call, and after a failed one.",
       "without": "Red tests on a commit go unnoticed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-tests.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-test-gate.sh"
     },
     {
       "id": "write-pr",
@@ -695,7 +695,7 @@
       "status": "works"
     },
     {
-      "from": "commit-tests",
+      "from": "commit-test-gate",
       "to": "write-pr",
       "status": "planned",
       "issue": 147
@@ -718,7 +718,7 @@
       "id": "4c",
       "label": "Spec first (4c)",
       "examples": [
-        "worktree-linkcheck"
+        "md-link-check"
       ],
       "chips": [
         "write-issue",
@@ -729,13 +729,13 @@
         "route-issue",
         "issue-impact-scout",
         "brainstorming",
-        "worktree-linkcheck",
+        "md-link-check",
         "review-spec",
         "writing-plans",
         "review-plan",
         "executing-plans",
         "test-driven-development",
-        "commit-tests",
+        "commit-test-gate",
         "write-pr",
         "roborev",
         "pr-create-gate",
@@ -763,7 +763,7 @@
         "executing-plans",
         "go-standard",
         "test-driven-development",
-        "commit-tests",
+        "commit-test-gate",
         "write-pr",
         "roborev",
         "pr-create-gate",
@@ -778,9 +778,9 @@
       "note": "The session writes the code itself; no skill runs the build.",
       "examples": [
         "python-standard",
-        "code-language",
-        "bash-write-gates",
-        "main-commit-guard"
+        "code-language-check",
+        "bash-write-check",
+        "main-commit-gate"
       ],
       "chips": [
         "write-issue",
@@ -791,10 +791,10 @@
         "route-issue",
         "python-standard",
         "test-standard",
-        "code-language",
-        "bash-write-gates",
-        "main-commit-guard",
-        "commit-tests",
+        "code-language-check",
+        "bash-write-check",
+        "main-commit-gate",
+        "commit-test-gate",
         "write-pr",
         "roborev",
         "pr-create-gate",
@@ -818,7 +818,7 @@
         "systematic-debugging",
         "test-driven-development",
         "shell-standard",
-        "commit-tests",
+        "commit-test-gate",
         "write-pr",
         "roborev",
         "pr-create-gate",
@@ -841,7 +841,7 @@
         "using-git-worktrees",
         "route-issue",
         "refresh-expo-lockfiles",
-        "commit-tests",
+        "commit-test-gate",
         "write-pr",
         "roborev",
         "pr-create-gate",
@@ -852,12 +852,12 @@
     {
       "id": "no-issue",
       "label": "No issue",
-      "note": "Work without an issue, such as a conversation: worktree-guard warns at the first write on main, the work moves to a worktree, and write-pr writes No issue with a reason.",
+      "note": "Work without an issue, such as a conversation: worktree-check warns at the first write on main, the work moves to a worktree, and write-pr writes No issue with a reason.",
       "chips": [
-        "worktree-guard",
+        "worktree-check",
         "using-git-worktrees",
-        "main-commit-guard",
-        "commit-tests",
+        "main-commit-gate",
+        "commit-test-gate",
         "write-pr",
         "roborev",
         "pr-create-gate",

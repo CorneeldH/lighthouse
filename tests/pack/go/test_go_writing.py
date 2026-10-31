@@ -185,15 +185,15 @@ def test_names_the_environment():
             assert word in section, f"{path}: {word}"
 
 
-def test_pairing_go_check_row():
-    """`go-check.sh` runs only `golangci-lint run ./...`; `govet` is in its standard set, and
+def test_pairing_go_lint_gate_row():
+    """`go-lint-gate.sh` runs only `golangci-lint run ./...`; `govet` is in its standard set, and
     there is no separate `go vet` in the hook."""
     for path in VARIANTS:
         pairing = _section(path.read_text(encoding="utf-8"), "## The pairing")
         assert "lighthouse-test-standard" in pairing, path
-        assert ".claude/hooks/lighthouse/gofmt.sh" in pairing, path
+        assert ".claude/hooks/lighthouse/gofmt-check.sh" in pairing, path
         rows = [
-            line for line in pairing.splitlines() if line.startswith("|") and "go-check.sh" in line
+            line for line in pairing.splitlines() if line.startswith("|") and "go-lint-gate.sh" in line
         ]
         assert len(rows) == 1, f"{path}: {rows}"
         assert "golangci-lint" in rows[0], rows[0]

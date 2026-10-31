@@ -63,7 +63,7 @@ rules that still have existing hits, without anything being wrong with your chan
 
 **The linted set and the blocking set are two different sets.** `extend-select` in
 `pyproject.toml` is what ruff reports everywhere; `BLOCKING_RULES` in
-`.claude/hooks/lighthouse/ruff-format.sh` is the subset on which an edit fails hard — on purpose
+`.claude/hooks/lighthouse/ruff-format-check.sh` is the subset on which an edit fails hard — on purpose
 only rules that are at zero repository-wide, so legacy debt never becomes a block. The KPI row
 takes exactly that set, so skill and hook measure the same axis.
 
@@ -176,12 +176,12 @@ source file is open.
 | this skill | the procedure, the KPI table, the measurement rules | while you write, also before the first file |
 | `lighthouse-test-standard` | the test norms and the class table | for every test, and before the first edit |
 | `.claude/rules/python.md` (if present) | the norms | as soon as Claude reads a source or test file |
-| `.claude/hooks/lighthouse/ruff-format.sh` | the blocking rules, per edit, exit 2 | right after the edit |
-| `.claude/hooks/lighthouse/ty-check.sh` | a signal on type-dirty source directories, once per turn, where the turn touched a Python path | at `Stop` |
+| `.claude/hooks/lighthouse/ruff-format-check.sh` | the blocking rules, per edit, exit 2 | right after the edit |
+| `.claude/hooks/lighthouse/ty-gate.sh` | a signal on type-dirty source directories, once per turn, where the turn touched a Python path | at `Stop` |
 
 When a hook cannot check — no `jq`, no `uvx` or `ruff`, a broken environment — it says so with
-`COULD NOT CHECK` instead of passing silently. `ruff-format` then blocks (exit 2): an unchecked
-file must not read as a clean one. `ty-check` runs at `Stop`, where blocking would keep the
+`COULD NOT CHECK` instead of passing silently. `ruff-format-check` then blocks (exit 2): an unchecked
+file must not read as a clean one. `ty-gate` runs at `Stop`, where blocking would keep the
 session from stopping, so it reports it as a message. It checks only a checkout in which the turn
 touched a Python path (a `.py` or `.pyi` file in `python.source_dirs`, `pyproject.toml`, `ty.toml` or
 `uv.lock`: an edit, a Bash write or a commit in the turn); any other checkout gets `not checked`.

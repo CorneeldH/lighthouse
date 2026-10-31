@@ -70,7 +70,7 @@
         "Before the first edit it asks for the classification sentence from lighthouse-test-standard.",
         "Before done, every KPI row is run and reported as passed, failed or not measurable from here, with GOOS, build tags, -race and GOWORK named.",
         "It carries the norms replace, don't layer for merged packages and deepen, don't split at a complexity limit, plus the Go form of the testing norms.",
-        "Two hooks enforce part of it: gofmt.sh after each edit and go-check.sh with golangci-lint at Stop."
+        "Two hooks enforce part of it: gofmt-check.sh after each edit and go-lint-gate.sh with golangci-lint at Stop."
       ],
       "when": "When writing or changing Go, and when planning a Go refactor or test strategy.",
       "without": "Go code is written without the repo's checks in view.",
@@ -89,7 +89,7 @@
         "Before the first edit it asks for the classification sentence from lighthouse-test-standard.",
         "Before done, rows 1 to 3 are run and reported as passed, failed or not measurable from here, because a ty zero without its extras is not a zero.",
         "It carries the norms replace, don't layer and deepen, don't split, with the complexity limits, plus the Python form of the testing norms.",
-        "Two hooks enforce part of it: ruff-format.sh blocks on the blocking rules after each edit, and ty-check.sh reports type errors at Stop."
+        "Two hooks enforce part of it: ruff-format-check.sh blocks on the blocking rules after each edit, and ty-gate.sh reports type errors at Stop."
       ],
       "when": "When writing or changing Python, and when planning a Python refactor or test strategy.",
       "without": "Python code is written without the repo's checks in view.",
@@ -108,7 +108,7 @@
         "It lists six real defects in which could not look came out green, and requires three outcomes: checked and clean, checked with findings, and COULD NOT CHECK.",
         "Its KPI table runs shellcheck-repo.sh on the strict directories and on all shell in the repo, and checks that no gate script falls outside git.",
         "A gate is not done until its test has been seen red once for the right reason, with one input that must block and one that must pass.",
-        "The shellcheck.sh hook blocks after every edit of a .sh or .bash file."
+        "The shell-lint-check.sh hook blocks after every edit of a .sh or .bash file."
       ],
       "when": "When writing or changing hooks, pre-commit, pre-push or CI gate scripts, and the tests on them.",
       "without": "A gate script can pass because it could not check.",
@@ -116,7 +116,7 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/skills/shell-standard"
     },
     {
-      "id": "usage-guard-prompt",
+      "id": "usage-gate-prompt",
       "phase": "prompt",
       "row": 7,
       "kind": "hook",
@@ -125,11 +125,11 @@
         "UserPromptSubmit"
       ],
       "matcher": "",
-      "command": "usage-guard.sh prompt",
+      "command": "usage-gate.sh prompt",
       "effects": [
         "warns"
       ],
-      "label": "usage-guard prompt",
+      "label": "usage-gate prompt",
       "what": "Starts a refresh of the usage meter and, when the usage alarm is up, adds a note to the prompt.",
       "how": [
         "It runs on UserPromptSubmit and starts a detached `lighthouse usage refresh`.",
@@ -140,10 +140,10 @@
       "when": "When you submit a prompt.",
       "without": "The session runs into the limit without a warning, and the meter is not refreshed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
     },
     {
-      "id": "worktree-guard",
+      "id": "worktree-check",
       "phase": "pre-tool",
       "row": 0,
       "kind": "hook",
@@ -152,11 +152,11 @@
         "PreToolUse"
       ],
       "matcher": "Edit|Write",
-      "command": "worktree-guard.sh",
+      "command": "worktree-check.sh",
       "effects": [
         "warns"
       ],
-      "label": "worktree-guard",
+      "label": "worktree-check",
       "what": "Warns, and never blocks, at a write into the main checkout on main.",
       "how": [
         "It checks the target file path of the Edit or Write, not the working directory.",
@@ -167,10 +167,10 @@
       "when": "Before each Edit or Write.",
       "without": "A write into the main checkout on main passes without a warning.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-guard.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-check.sh"
     },
     {
-      "id": "main-commit-guard",
+      "id": "main-commit-gate",
       "phase": "pre-tool",
       "row": 1,
       "kind": "hook",
@@ -179,11 +179,11 @@
         "PreToolUse"
       ],
       "matcher": "Bash",
-      "command": "main-commit-guard.sh",
+      "command": "main-commit-gate.sh",
       "effects": [
         "blocks"
       ],
-      "label": "main-commit-guard",
+      "label": "main-commit-gate",
       "what": "Blocks git commit and git push on the default branch.",
       "how": [
         "It reads the default branch from `forge.default_branch` in lighthouse.toml, and uses main when it is not set.",
@@ -194,10 +194,10 @@
       "when": "Before each Bash call.",
       "without": "A commit or push lands directly on main.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-guard.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-gate.sh"
     },
     {
-      "id": "commit-tests-pre",
+      "id": "commit-test-gate-pre",
       "phase": "pre-tool",
       "row": 2,
       "kind": "hook",
@@ -206,11 +206,11 @@
         "PreToolUse"
       ],
       "matcher": "Bash",
-      "command": "commit-tests.sh pre",
+      "command": "commit-test-gate.sh pre",
       "effects": [
         "blocks"
       ],
-      "label": "commit-tests pre",
+      "label": "commit-test-gate pre",
       "what": "Blocks a commit with --no-verify and tests a commit to the default branch before it happens.",
       "how": [
         "It sees a commit after `cd`, `;`, `|`, `&&` or with `git -C <path>`, and tests the tree that is committed.",
@@ -221,7 +221,7 @@
       "when": "Before each Bash call.",
       "without": "A commit skips the gate with --no-verify, and a commit to main goes in untested.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-tests.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-test-gate.sh"
     },
     {
       "id": "pr-create-gate",
@@ -251,7 +251,7 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/pr-create-gate.sh"
     },
     {
-      "id": "bash-write-gates-pre",
+      "id": "bash-write-check-pre",
       "phase": "pre-tool",
       "row": 4,
       "kind": "hook",
@@ -260,11 +260,11 @@
         "PreToolUse"
       ],
       "matcher": "Bash",
-      "command": "bash-write-gates.sh pre",
+      "command": "bash-write-check.sh pre",
       "effects": [
         "records"
       ],
-      "label": "bash-write-gates pre",
+      "label": "bash-write-check pre",
       "what": "Records a baseline of the files before a Bash call, so post can see what the call wrote.",
       "how": [
         "It is a thin wrapper around lighthouse_lib/bash_writes.py.",
@@ -274,10 +274,10 @@
       "when": "Before each Bash call.",
       "without": "The post gate cannot tell which files a Bash call wrote.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-gates.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-check.sh"
     },
     {
-      "id": "worktree-linkcheck",
+      "id": "md-link-check",
       "phase": "post-tool",
       "row": 0,
       "kind": "hook",
@@ -286,11 +286,11 @@
         "PostToolUse"
       ],
       "matcher": "Edit|Write",
-      "command": "worktree-linkcheck.sh",
+      "command": "md-link-check.sh",
       "effects": [
         "blocks"
       ],
-      "label": "worktree-linkcheck",
+      "label": "md-link-check",
       "what": "Blocks a markdown link that is absolute or points nowhere.",
       "how": [
         "It checks only .md and .markdown files.",
@@ -301,10 +301,10 @@
       "when": "After each Edit or Write.",
       "without": "A broken or absolute link in a .md file is committed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-linkcheck.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/md-link-check.sh"
     },
     {
-      "id": "code-language",
+      "id": "code-language-check",
       "phase": "post-tool",
       "row": 1,
       "kind": "hook",
@@ -313,12 +313,12 @@
         "PostToolUse"
       ],
       "matcher": "Edit|Write",
-      "command": "code-language.sh",
+      "command": "code-language-check.sh",
       "effects": [
         "blocks",
         "warns"
       ],
-      "label": "code-language",
+      "label": "code-language-check",
       "what": "Blocks code whose names, comments or docstrings are not in English.",
       "how": [
         "It is on only with `[project] code_language` in the lighthouse.toml of the git root of the written file.",
@@ -329,10 +329,10 @@
       "when": "After each Edit or Write.",
       "without": "Dutch comments, docstrings and names land in code that must be English.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language-check.sh"
     },
     {
-      "id": "commit-tests-post",
+      "id": "commit-test-gate-post",
       "phase": "post-tool",
       "row": 2,
       "kind": "hook",
@@ -342,11 +342,11 @@
         "PostToolUseFailure"
       ],
       "matcher": "Bash",
-      "command": "commit-tests.sh post",
+      "command": "commit-test-gate.sh post",
       "effects": [
         "blocks"
       ],
-      "label": "commit-tests post",
+      "label": "commit-test-gate post",
       "what": "Tests what a commit touched with the test gate, and reports red.",
       "how": [
         "Per recorded root whose HEAD moved, it runs `[test_gate] command` from lighthouse.toml with the changed files in LIGHTHOUSE_GATE_FILES.",
@@ -357,10 +357,10 @@
       "when": "After each Bash call, also one that failed.",
       "without": "A commit with red tests goes unnoticed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-tests.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-test-gate.sh"
     },
     {
-      "id": "gofmt",
+      "id": "gofmt-check",
       "phase": "post-tool",
       "row": 3,
       "kind": "hook",
@@ -369,12 +369,12 @@
         "PostToolUse"
       ],
       "matcher": "Edit|Write",
-      "command": "gofmt.sh",
+      "command": "gofmt-check.sh",
       "effects": [
         "formats",
         "blocks"
       ],
-      "label": "gofmt",
+      "label": "gofmt-check",
       "what": "Runs gofmt -w on an edited Go file.",
       "how": [
         "Formatting is silent and does not block.",
@@ -385,10 +385,10 @@
       "when": "After each Edit or Write.",
       "without": "Go files are left unformatted, and a file that does not parse goes unnoticed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/hooks/gofmt.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/hooks/gofmt-check.sh"
     },
     {
-      "id": "bash-write-gates-post",
+      "id": "bash-write-check-post",
       "phase": "post-tool",
       "row": 4,
       "kind": "hook",
@@ -398,15 +398,15 @@
         "PostToolUseFailure"
       ],
       "matcher": "Bash",
-      "command": "bash-write-gates.sh post",
+      "command": "bash-write-check.sh post",
       "effects": [
         "blocks",
         "warns"
       ],
-      "label": "bash-write-gates post",
-      "what": "Runs the Edit and Write gates on the files a Bash call wrote.",
+      "label": "bash-write-check post",
+      "what": "Runs the Edit and Write checks on the files a Bash call wrote.",
       "how": [
-        "It compares against the baseline of pre and sends each dirty file through its gate: shellcheck, ruff-format, code-language for .py, .sh, .bash and .go files, and worktree-linkcheck.",
+        "It compares against the baseline of pre and sends each dirty file through its gate: shell-lint-check, ruff-format-check, code-language-check for .py, .sh, .bash and .go files, and md-link-check.",
         "A finding blocks with exit 2.",
         "A gate whose package is not installed is reported per file, without blocking.",
         "When it cannot check, it blocks with COULD NOT CHECK."
@@ -414,10 +414,10 @@
       "when": "After each Bash call, also one that failed.",
       "without": "What a Bash call writes skips the gates that an Edit or Write passes.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-gates.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-check.sh"
     },
     {
-      "id": "ruff-format",
+      "id": "ruff-format-check",
       "phase": "post-tool",
       "row": 5,
       "kind": "hook",
@@ -426,12 +426,12 @@
         "PostToolUse"
       ],
       "matcher": "Edit|Write",
-      "command": "ruff-format.sh",
+      "command": "ruff-format-check.sh",
       "effects": [
         "formats",
         "blocks"
       ],
-      "label": "ruff-format",
+      "label": "ruff-format-check",
       "what": "Runs ruff format and ruff check --fix on an edited Python file.",
       "how": [
         "Pass 1 formats and fixes, silently and without blocking.",
@@ -442,10 +442,10 @@
       "when": "After each Edit or Write.",
       "without": "Python files are left unformatted, and a blocking ruff rule goes unnoticed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/hooks/ruff-format.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/hooks/ruff-format-check.sh"
     },
     {
-      "id": "shellcheck",
+      "id": "shell-lint-check",
       "phase": "post-tool",
       "row": 6,
       "kind": "hook",
@@ -454,11 +454,11 @@
         "PostToolUse"
       ],
       "matcher": "Edit|Write",
-      "command": "shellcheck.sh",
+      "command": "shell-lint-check.sh",
       "effects": [
         "blocks"
       ],
-      "label": "shellcheck",
+      "label": "shell-lint-check",
       "what": "Runs shellcheck on an edited shell script.",
       "how": [
         "In the directories of `shell.strict_dirs` (default `.claude/hooks`) every finding blocks, down to style.",
@@ -469,10 +469,10 @@
       "when": "After each Edit or Write.",
       "without": "A shell script with a shellcheck finding is committed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/hooks/shellcheck.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/hooks/shell-lint-check.sh"
     },
     {
-      "id": "usage-guard-tool",
+      "id": "usage-gate-tool",
       "phase": "post-tool",
       "row": 7,
       "kind": "hook",
@@ -481,11 +481,11 @@
         "PostToolUse"
       ],
       "matcher": "",
-      "command": "usage-guard.sh tool",
+      "command": "usage-gate.sh tool",
       "effects": [
         "blocks"
       ],
-      "label": "usage-guard tool",
+      "label": "usage-gate tool",
       "what": "With the usage alarm up, blocks once per window so the session wraps up.",
       "how": [
         "It runs after every tool call; without an alarm the cost is one file test.",
@@ -496,10 +496,10 @@
       "when": "After each tool call.",
       "without": "The session runs into the limit instead of wrapping up.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
     },
     {
-      "id": "usage-guard-subagent",
+      "id": "usage-gate-subagent",
       "phase": "subagent-stop",
       "row": 7,
       "kind": "hook",
@@ -508,11 +508,11 @@
         "SubagentStop"
       ],
       "matcher": "",
-      "command": "usage-guard.sh subagent",
+      "command": "usage-gate.sh subagent",
       "effects": [
         "blocks"
       ],
-      "label": "usage-guard subagent",
+      "label": "usage-gate subagent",
       "what": "With the usage alarm up, blocks once per subagent so it wraps up.",
       "how": [
         "It runs when a subagent stops.",
@@ -523,10 +523,10 @@
       "when": "When a subagent stops.",
       "without": "A subagent runs into the limit instead of wrapping up.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
     },
     {
-      "id": "go-check",
+      "id": "go-lint-gate",
       "phase": "stop",
       "row": 3,
       "kind": "hook",
@@ -535,26 +535,26 @@
         "Stop"
       ],
       "matcher": "",
-      "command": "go-check.sh",
+      "command": "go-lint-gate.sh",
       "effects": [
         "blocks",
         "warns"
       ],
-      "label": "go-check",
+      "label": "go-lint-gate",
       "what": "Runs golangci-lint at the end of a turn that touched Go.",
       "how": [
         "It lints only a checkout in which the turn touched a Go path: an edit, a Bash write or a commit; the rest gets `not checked`.",
         "A finding, or a build that fails, blocks with exit 2 and sends the findings back to the model.",
         "While the usage alarm is up, it says `not checked` and exits 0.",
-        "When it cannot check, it exits 0 with a systemMessage `go-check: COULD NOT CHECK`, since blocking there would keep the session from stopping."
+        "When it cannot check, it exits 0 with a systemMessage `go-lint-gate: COULD NOT CHECK`, since blocking there would keep the session from stopping."
       ],
       "when": "At the end of each turn.",
       "without": "Lint findings in Go code are left for the next turn.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/hooks/go-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/hooks/go-lint-gate.sh"
     },
     {
-      "id": "ty-check",
+      "id": "ty-gate",
       "phase": "stop",
       "row": 5,
       "kind": "hook",
@@ -563,26 +563,26 @@
         "Stop"
       ],
       "matcher": "",
-      "command": "ty-check.sh",
+      "command": "ty-gate.sh",
       "effects": [
         "blocks",
         "warns"
       ],
-      "label": "ty-check",
+      "label": "ty-gate",
       "what": "Runs ty check on the Python source directories at the end of a turn that touched Python.",
       "how": [
         "It checks the directories in `python.source_dirs`, and only a checkout in which the turn touched a .py or .pyi file there, pyproject.toml, ty.toml or uv.lock.",
         "A diagnostic blocks with exit 2 and sends it back to the model.",
         "While the usage alarm is up, it says `not checked` and exits 0; `python.source_dirs = []` turns it off.",
-        "When it cannot check, it exits 0 with a systemMessage `ty-check: COULD NOT CHECK`."
+        "When it cannot check, it exits 0 with a systemMessage `ty-gate: COULD NOT CHECK`."
       ],
       "when": "At the end of each turn.",
       "without": "Type errors in Python code are left for the next turn.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/hooks/ty-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/hooks/ty-gate.sh"
     },
     {
-      "id": "usage-guard-stop",
+      "id": "usage-gate-stop",
       "phase": "stop",
       "row": 7,
       "kind": "hook",
@@ -591,11 +591,11 @@
         "Stop"
       ],
       "matcher": "",
-      "command": "usage-guard.sh stop",
+      "command": "usage-gate.sh stop",
       "effects": [
         "blocks"
       ],
-      "label": "usage-guard stop",
+      "label": "usage-gate stop",
       "what": "With the usage alarm up, blocks once per window at the end of a turn so the session wraps up.",
       "how": [
         "It runs on Stop.",
@@ -606,7 +606,7 @@
       "when": "At the end of each turn.",
       "without": "The session ends without wrapping up, and the next one runs into the limit.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
     }
   ],
   "handoffs": [],
@@ -618,33 +618,33 @@
         "go-standard",
         "python-standard",
         "shell-standard",
-        "bash-write-gates-pre",
-        "code-language",
-        "gofmt",
-        "ruff-format",
-        "shellcheck",
-        "bash-write-gates-post",
-        "go-check",
-        "ty-check"
+        "bash-write-check-pre",
+        "code-language-check",
+        "gofmt-check",
+        "ruff-format-check",
+        "shell-lint-check",
+        "bash-write-check-post",
+        "go-lint-gate",
+        "ty-gate"
       ]
     },
     {
       "id": "usage-limit",
       "label": "My limit is almost reached",
       "chips": [
-        "usage-guard-prompt",
-        "usage-guard-tool",
-        "usage-guard-subagent",
-        "usage-guard-stop"
+        "usage-gate-prompt",
+        "usage-gate-tool",
+        "usage-gate-subagent",
+        "usage-gate-stop"
       ]
     },
     {
       "id": "dead-link",
       "label": "I write a dead link",
       "chips": [
-        "bash-write-gates-pre",
-        "worktree-linkcheck",
-        "bash-write-gates-post"
+        "bash-write-check-pre",
+        "md-link-check",
+        "bash-write-check-post"
       ]
     },
     {
@@ -652,16 +652,16 @@
       "label": "I commit with red tests",
       "chips": [
         "test-standard",
-        "commit-tests-pre",
-        "commit-tests-post"
+        "commit-test-gate-pre",
+        "commit-test-gate-post"
       ]
     },
     {
       "id": "main-commit",
       "label": "I commit on main",
       "chips": [
-        "worktree-guard",
-        "main-commit-guard"
+        "worktree-check",
+        "main-commit-gate"
       ]
     },
     {

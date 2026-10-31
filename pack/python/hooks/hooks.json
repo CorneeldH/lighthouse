@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ruff-format.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ruff-format-check.sh",
             "timeout": 15
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ty-check.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/ty-gate.sh",
             "timeout": 60
           }
         ]

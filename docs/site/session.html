@@ -38,10 +38,10 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   <p><strong>A rule sets the norm, a hook steps in.</strong> Each hook is the counterpart of a rule
   in <code>AGENTS.md</code> or a skill. The rule carries the norm beforehand, so an agent that
   follows it rarely meets the hook. The hook steps in at the moment itself, with a warning or with a
-  hard line, as the headers of <code>main-commit-guard.sh</code> and <code>worktree-guard.sh</code>
+  hard line, as the headers of <code>main-commit-gate.sh</code> and <code>worktree-check.sh</code>
   explain. When a hook blocks, its message goes back to the agent, which reads why and corrects
   its step. A skill and its hook often come as a pair. On this map, <code>go-standard</code> loads
-  before the model writes Go, and <code>gofmt</code> and <code>go-check</code> check what it wrote.
+  before the model writes Go, and <code>gofmt-check</code> and <code>go-lint-gate</code> check what it wrote.
   On the chain, <code>/lighthouse-write-pr</code> writes the PR body that
   <code>pr-create-gate</code> checks.</p>
   <p class="aside">How hooks, skills and agents work in Claude Code:

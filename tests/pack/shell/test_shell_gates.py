@@ -48,7 +48,7 @@ def test_paths_are_the_installed_ones(variant):
     installed = {
         ".lighthouse/scripts/shellcheck-repo.sh": SHELL / "scripts" / "shellcheck-repo.sh",
         ".lighthouse/scripts/lib/shellcheck-bin.sh": SHELL / "scripts" / "lib" / "shellcheck-bin.sh",
-        ".claude/hooks/lighthouse/shellcheck.sh": SHELL / "hooks" / "shellcheck.sh",
+        ".claude/hooks/lighthouse/shell-lint-check.sh": SHELL / "hooks" / "shell-lint-check.sh",
     }
     for named, source in installed.items():
         assert named in text, named
@@ -89,7 +89,7 @@ def test_no_paia_references(variant):
         "#650",
         "#741",
         "test_quality_hooks",
-        "ruff-format",
+        "ruff-format-check",
         "BLOCKING_RULES",
     ):
         assert literal.lower() not in text.lower(), literal

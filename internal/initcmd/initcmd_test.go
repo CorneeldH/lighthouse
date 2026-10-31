@@ -27,7 +27,7 @@ func testPacks() fstest.MapFS {
 		"core/hooks/hooks.json":       file(hooksJSON),
 		"core/lib/a.py":               file("x = 1\n"),
 		"core/instructions/AGENTS.md": file("## core\n\n- rule\n"),
-		"core/requires.toml":          file("jq = [\"main-commit-guard\"]\n"),
+		"core/requires.toml":          file("jq = [\"main-commit-gate\"]\n"),
 	}
 }
 
@@ -645,7 +645,7 @@ func TestReportsMissingDeps(t *testing.T) {
 			Run: func(string, ...string) error { return nil },
 		}
 	})
-	if r.code != 0 || !strings.Contains(r.err, "missing dependency: jq (needed by: main-commit-guard)") || !exists(root, ".lighthouse/manifest.toml") {
+	if r.code != 0 || !strings.Contains(r.err, "missing dependency: jq (needed by: main-commit-gate)") || !exists(root, ".lighthouse/manifest.toml") {
 		t.Fatalf("rc %d err %q", r.code, r.err)
 	}
 }
@@ -714,7 +714,7 @@ func TestInitProposesRealPython(t *testing.T) {
 		t.Fatalf("lighthouse.toml = %q", got)
 	}
 	for _, rel := range []string{
-		".claude/hooks/lighthouse/ruff-format.sh",
+		".claude/hooks/lighthouse/ruff-format-check.sh",
 		".claude/skills/lighthouse-python-standard/SKILL.md",
 		".lighthouse/scripts/quality/ratchet.py",
 	} {
@@ -754,7 +754,7 @@ func TestInitProposesRealShell(t *testing.T) {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
 	for _, f := range []string{
-		".claude/hooks/lighthouse/shellcheck.sh",
+		".claude/hooks/lighthouse/shell-lint-check.sh",
 		".lighthouse/scripts/shellcheck-repo.sh",
 		".lighthouse/scripts/lib/shellcheck-bin.sh",
 		".claude/skills/lighthouse-shell-standard/SKILL.md",

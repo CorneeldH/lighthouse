@@ -302,7 +302,7 @@ whether gates 1 and 2 fire at all or are dead wood.
 - **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
   only on the branch must carry the full absolute worktree path: the IDE resolves chat links
   against the main checkout. In a `.md` file, relative instead;
-  `.claude/hooks/lighthouse/worktree-linkcheck.sh` blocks an absolute path there.
+  `.claude/hooks/lighthouse/md-link-check.sh` blocks an absolute path there.
 - **A milestone without DoD text does not exist.** If you come across one, report it — hanging
   the issue in it is a guess then.
 - **This skill sets exactly two transitions on the board: `To do` and `On hold` → `In progress`.**

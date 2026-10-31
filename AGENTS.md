@@ -36,18 +36,18 @@ managed block at the end, which `lighthouse init` writes; never repeat one of th
 
 ## Outside Claude Code
 
-Codex and OpenCode do not run the hooks in `.claude/settings.json`: no `main-commit-guard`, no
-`worktree-guard`, no test gate. The rules in this file are the only carrier there, so check the
+Codex and OpenCode do not run the hooks in `.claude/settings.json`: no `main-commit-gate`, no
+`worktree-check`, no test gate. The rules in this file are the only carrier there, so check the
 branch yourself before a commit, and run `[test_gate] command` from `lighthouse.toml`.
 
 <!-- lighthouse:begin core -->
 ## Lighthouse: core
 
-- Nothing lands directly on `main`. Work on a branch in a worktree; `main-commit-guard` blocks `git commit` and `git push` to `main`.
+- Nothing lands directly on `main`. Work on a branch in a worktree; `main-commit-gate` blocks `git commit` and `git push` to `main`.
 - Escape hatch, deliberately and once: `touch .claude/allow-main` in the repo root; remove it afterwards.
 - A worktree before the first write: `git worktree add .claude/worktrees/<name> -b <branch>`.
 - Every change goes through a PR and is squash-merged. `/lighthouse-write-pr` writes the PR body; `pr-create-gate` checks it.
-- Test gate: `commit-tests` runs `[test_gate] command` after each commit, on its files (default branch: before). Fix red in a new commit; never `--no-verify`.
+- Test gate: `commit-test-gate` runs `[test_gate] command` after each commit, on its files (default branch: before). Fix red in a new commit; never `--no-verify`.
 - Artefacts (issues, PRs, comments, commit messages) are written in `[project] language`.
 - With `[project] code_language` set, names, comments, docstrings, file names and everything under `code_language_paths` are English.
 - Finish what you are already authorised to do; never end on an offer to do it ("ready to push if you want" is not done).
@@ -73,5 +73,5 @@ Skills:
 ## Lighthouse: go
 
 - Go code follows `/lighthouse-go-standard`.
-- Two gates check it: `gofmt` after every edit (formats; blocks only on an unparsable file), `go-check` at Stop (`golangci-lint`, `govet` included; blocks on a finding, not during a usage alarm).
+- Two gates check it: `gofmt-check` after every edit (formats; blocks only on an unparsable file), `go-lint-gate` at Stop (`golangci-lint`, `govet` included; blocks on a finding, not during a usage alarm).
 <!-- lighthouse:end go -->

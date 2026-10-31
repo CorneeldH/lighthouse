@@ -25,14 +25,14 @@
     ],
     "hooks": [
       {
-        "name": "main-commit-guard",
+        "name": "main-commit-gate",
         "events": [
           "PreToolUse"
         ],
         "when": "before every shell command"
       },
       {
-        "name": "commit-tests",
+        "name": "commit-test-gate",
         "events": [
           "PreToolUse",
           "PostToolUse",
@@ -41,7 +41,7 @@
         "when": "around every shell command"
       },
       {
-        "name": "bash-write-gates",
+        "name": "bash-write-check",
         "events": [
           "PreToolUse",
           "PostToolUse",
@@ -57,28 +57,28 @@
         "when": "before every shell command"
       },
       {
-        "name": "worktree-guard",
+        "name": "worktree-check",
         "events": [
           "PreToolUse"
         ],
         "when": "before every edit"
       },
       {
-        "name": "worktree-linkcheck",
+        "name": "md-link-check",
         "events": [
           "PostToolUse"
         ],
         "when": "after every edit"
       },
       {
-        "name": "code-language",
+        "name": "code-language-check",
         "events": [
           "PostToolUse"
         ],
         "when": "after every edit"
       },
       {
-        "name": "usage-guard",
+        "name": "usage-gate",
         "events": [
           "PostToolUse",
           "Stop",
@@ -105,14 +105,14 @@
     "workflows": [],
     "hooks": [
       {
-        "name": "gofmt",
+        "name": "gofmt-check",
         "events": [
           "PostToolUse"
         ],
         "when": "after every edit"
       },
       {
-        "name": "go-check",
+        "name": "go-lint-gate",
         "events": [
           "Stop"
         ],
@@ -146,14 +146,14 @@
     "workflows": [],
     "hooks": [
       {
-        "name": "ruff-format",
+        "name": "ruff-format-check",
         "events": [
           "PostToolUse"
         ],
         "when": "after every edit"
       },
       {
-        "name": "ty-check",
+        "name": "ty-gate",
         "events": [
           "Stop"
         ],
@@ -178,7 +178,7 @@
     "workflows": [],
     "hooks": [
       {
-        "name": "shellcheck",
+        "name": "shell-lint-check",
         "events": [
           "PostToolUse"
         ],

@@ -1,10 +1,10 @@
 # Tool -> the units in this package that need it. `lighthouse init` reports a
 # missing tool with these names; it does not stop on it.
-curl = ["shellcheck (download of the pinned binary)"]
-git = ["shellcheck", "shellcheck-repo", "shell-standard"]
-jq = ["shellcheck"]
-python3 = ["shellcheck", "shellcheck-repo", "shell-standard"]
-sha256sum = ["shellcheck (download of the pinned binary)"]
-tar = ["shellcheck (download of the pinned binary)"]
-tomllib = ["shellcheck", "shellcheck-repo", "shell-standard"]
-xz = ["shellcheck (download of the pinned binary)"]
+curl = ["shell-lint-check (download of the pinned binary)"]
+git = ["shell-lint-check", "shellcheck-repo", "shell-standard"]
+jq = ["shell-lint-check"]
+python3 = ["shell-lint-check", "shellcheck-repo", "shell-standard"]
+sha256sum = ["shell-lint-check (download of the pinned binary)"]
+tar = ["shell-lint-check (download of the pinned binary)"]
+tomllib = ["shell-lint-check", "shellcheck-repo", "shell-standard"]
+xz = ["shell-lint-check (download of the pinned binary)"]

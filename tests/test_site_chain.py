@@ -209,7 +209,7 @@ def test_fixture_planned_without_issue_is_flagged():
 def test_fixture_planned_handoff_without_milestone_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
     del chain["handoffs"][0]["milestone"]
-    assert planned_problems(chain) == ["main-commit-guard->planned-issue: planned without issue or milestone"]
+    assert planned_problems(chain) == ["main-commit-gate->planned-issue: planned without issue or milestone"]
 
 
 def test_fixture_source_pointing_nowhere_is_flagged():
@@ -249,7 +249,7 @@ def test_fixture_unknown_status_is_flagged():
 def test_fixture_unknown_effect_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
     chain["chips"][1]["effects"] = ["shouts"]
-    assert vocabulary_problems(chain) == ["main-commit-guard: unknown effect"]
+    assert vocabulary_problems(chain) == ["main-commit-gate: unknown effect"]
 
 
 def test_phases_are_the_seven_of_the_chain():
@@ -290,4 +290,4 @@ def test_chain_routes_are_the_known_ones():
     routes = {r["id"]: r for r in load("chain.json")["routes"]}
     assert set(routes) == {"1", "2", "4a", "4b", "4c", "no-issue", "red-pr"}
     assert routes["1"]["examples"] == ["refresh-expo-lockfiles"]
-    assert routes["no-issue"]["chips"][0] == "worktree-guard"
+    assert routes["no-issue"]["chips"][0] == "worktree-check"

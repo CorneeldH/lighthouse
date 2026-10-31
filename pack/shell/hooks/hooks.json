@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/shellcheck.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/shell-lint-check.sh",
             "timeout": 60
           }
         ]

@@ -119,7 +119,7 @@ def _read_pin(root: Path, name: str) -> str:
     """Read a version pin from a file of its own in the repo root.
 
     A file of its own and not a variable in three scripts: one place means nothing
-    can drift apart. The hook ruff-format.sh reads the same
+    can drift apart. The hook ruff-format-check.sh reads the same
     file; CI reads it transitively via this module.
 
     Unpinned was fine as long as ruff only autofixed. As soon as the same ruff counts,

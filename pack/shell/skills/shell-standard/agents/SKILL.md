@@ -42,7 +42,7 @@ test green, the code looked fine.
 | 6 | `--online` without a token | logged `(online)`, silently ran offline, rc=0 |
 
 Four of the six were in the **plan**, not in the execution. A review lane afterwards is
-therefore not where this gets solved; this skill is the place before, the shellcheck hook
+therefore not where this gets solved; this skill is the place before, the shell-lint-check hook
 the place after.
 
 **Three outcomes, not two.** `shellcheck-repo.sh` returns 0 = checked and clean, 1 =
@@ -118,13 +118,13 @@ The norm is in `lighthouse-test-standard`; this is its form for a gate or a hook
 |---|---|---|
 | this skill | the norm, the six defects, the commands | while you write |
 | `lighthouse-test-standard` | the test norms and the class table | for every test, and before the first edit |
-| `.claude/hooks/lighthouse/shellcheck.sh` | shellcheck on every edited `*.sh` and `*.bash`, blocking | right after the edit |
+| `.claude/hooks/lighthouse/shell-lint-check.sh` | shellcheck on every edited `*.sh` and `*.bash`, blocking | right after the edit |
 
 The hook is deliberately **not fail-open**. Skipping silently is itself the defect the
 gate exists to prevent: shellcheck is pinned, sha256-verified and lives in the shared tool
 cache, so "I could not look" is a defect and not a normal state. A missing tool means
 exit 2 with the reason, never exit 0. Its first line is then
-`shellcheck: COULD NOT CHECK — <reason>`.
+`shell-lint-check: COULD NOT CHECK — <reason>`.
 
 > **OpenCode does not run that hook.** Claude Code hooks do not fire there, so the
 > enforcing half is missing and this skill carries it only as a norm. After every change

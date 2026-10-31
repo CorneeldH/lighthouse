@@ -5,7 +5,7 @@
 # The first two files reached lighthouse through the English bootstrap of M0 (a0).
 
 [[file]]
-path = "pack/core/hooks/main-commit-guard.sh"
+path = "pack/core/hooks/main-commit-gate.sh"
 source_path = ".claude/hooks/main-commit-guard.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
@@ -44,20 +44,20 @@ source_path = ".claude/hooks/usage-guard.sh"
 source_sha = "5e1165861bf6f13385e6c5c390e20c95cf2cadc0"
 
 [[file]]
-path = "pack/core/hooks/usage-guard.sh"
+path = "pack/core/hooks/usage-gate.sh"
 source_path = ".claude/hooks/usage-guard.sh"
 source_sha = "5e1165861bf6f13385e6c5c390e20c95cf2cadc0"
 
 [[file]]
-path = "pack/core/hooks/usage-guard/alarm.sh"
+path = "pack/core/hooks/usage-gate/alarm.sh"
 new = true
 
 [[file]]
-path = "pack/core/hooks/usage-guard/controller.py"
+path = "pack/core/hooks/usage-gate/controller.py"
 new = true
 
 [[file]]
-path = "pack/core/hooks/usage-guard/resume.py"
+path = "pack/core/hooks/usage-gate/resume.py"
 new = true
 
 [[file]]
@@ -117,12 +117,12 @@ path = "pack/core/lib/commit_base.py"
 new = true
 
 [[file]]
-path = "pack/core/hooks/worktree-guard.sh"
+path = "pack/core/hooks/worktree-check.sh"
 source_path = ".claude/hooks/worktree-guard.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/hooks/worktree-linkcheck.sh"
+path = "pack/core/hooks/md-link-check.sh"
 source_path = ".claude/hooks/worktree-linkcheck.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
@@ -132,12 +132,12 @@ source_path = ".claude/hooks/pr-create-gate.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/hooks/bash-write-gates.sh"
+path = "pack/core/hooks/bash-write-check.sh"
 source_path = ".claude/hooks/bash-write-gates.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/hooks/commit-tests.sh"
+path = "pack/core/hooks/commit-test-gate.sh"
 source_path = ".claude/hooks/pre-commit-tests.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
@@ -394,12 +394,12 @@ source_path = ".agents/skills/paia-python-schrijven/SKILL.md"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
-path = "pack/python/hooks/ruff-format.sh"
+path = "pack/python/hooks/ruff-format-check.sh"
 source_path = ".claude/hooks/ruff-format.sh"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
-path = "pack/python/hooks/ty-check.sh"
+path = "pack/python/hooks/ty-gate.sh"
 source_path = ".claude/hooks/ty-check.sh"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
@@ -463,7 +463,7 @@ source_path = "scripts/quality/ratchet.py"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
-path = "pack/shell/hooks/shellcheck.sh"
+path = "pack/shell/hooks/shell-lint-check.sh"
 source_path = ".claude/hooks/shellcheck.sh"
 source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 
@@ -508,7 +508,7 @@ path = "pack/core/lib/code_language.py"
 new = true
 
 [[file]]
-path = "pack/core/hooks/code-language.sh"
+path = "pack/core/hooks/code-language-check.sh"
 new = true
 
 [[file]]
@@ -534,11 +534,11 @@ path = "pack/core/lib/code_language_freq_NOTICE.txt"
 new = true
 
 [[file]]
-path = "pack/go/hooks/go-check.sh"
+path = "pack/go/hooks/go-lint-gate.sh"
 new = true
 
 [[file]]
-path = "pack/go/hooks/gofmt.sh"
+path = "pack/go/hooks/gofmt-check.sh"
 new = true
 
 [[file]]

@@ -53,22 +53,22 @@ def _edit_payload(event: str, path: Path, cwd: Path) -> dict:
 def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
     """The payload that really touches this hook, up to and including its config read."""
     name = script.split()[0]
-    if name == "worktree-guard.sh":
+    if name == "worktree-check.sh":
         # A write in the main checkout on main: only there does the guard read
         # forge.default_branch, and warn (without blocking).
         doc = project / "doc.md"
         doc.write_text("# doc\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
-    if name == "worktree-linkcheck.sh":
+    if name == "md-link-check.sh":
         doc = worktree / "doc.md"
         doc.write_text("# doc\n\nSee [the readme](README.md).\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
-    if name == "code-language.sh":
+    if name == "code-language-check.sh":
         # Without `code_language` in MINIMAL_TOML the hook is off: exit 0.
         code = worktree / "mod.py"
         code.write_text("x = 1\n", encoding="utf-8")
         return _edit_payload(event, code, worktree)
-    if name == "usage-guard.sh":
+    if name == "usage-gate.sh":
         return {
             "hook_event_name": event,
             "session_id": "s1",
@@ -76,14 +76,14 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
             "tool_name": "Bash",
             "tool_input": {"command": "ls"},
         }
-    if name == "main-commit-guard.sh":
+    if name == "main-commit-gate.sh":
         # A commit on a feature branch: the guard reads forge.default_branch.
         cmd = "git commit -m x"
-    elif name == "commit-tests.sh":
+    elif name == "commit-test-gate.sh":
         cmd = "git commit -m x"
     elif name == "pr-create-gate.sh":
         cmd = "gh pr create --body 'Refs #5 — waiting for the deploy'"
-    elif name == "bash-write-gates.sh":
+    elif name == "bash-write-check.sh":
         cmd = "echo x > a.md"
         if script.endswith(" post"):
             (worktree / "a.md").write_text("x\n", encoding="utf-8")
@@ -134,24 +134,24 @@ def test_hooks_with_minimal_config(
 
 def test_every_registration_has_a_payload() -> None:
     assert {s.split()[0] for _, _, s in REGISTRATIONS} == {
-        "main-commit-guard.sh",
-        "commit-tests.sh",
-        "bash-write-gates.sh",
+        "main-commit-gate.sh",
+        "commit-test-gate.sh",
+        "bash-write-check.sh",
         "pr-create-gate.sh",
-        "worktree-guard.sh",
-        "worktree-linkcheck.sh",
-        "code-language.sh",
-        "usage-guard.sh",
+        "worktree-check.sh",
+        "md-link-check.sh",
+        "code-language-check.sh",
+        "usage-gate.sh",
     }
 
 
 
 PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
-# Per PreToolUse-Bash hook: the command it guards. `bash-write-gates.sh
+# Per PreToolUse-Bash hook: the command it guards. `bash-write-check.sh
 # pre` never blocks (a PreToolUse exit 2 blocks the call itself).
 GUARDED = {
-    "main-commit-guard.sh": "git commit -m x",
-    "commit-tests.sh pre": "git commit -m x",
+    "main-commit-gate.sh": "git commit -m x",
+    "commit-test-gate.sh pre": "git commit -m x",
     "pr-create-gate.sh": "gh pr create --body x",
 }
 
@@ -194,7 +194,7 @@ def test_without_lib_the_guarded_command_blocks(tmp_path: Path, script: str) -> 
 
 
 def test_guarded_covers_every_blocking_bash_hook() -> None:
-    blocking = {s for s in PRE_BASH if s != "bash-write-gates.sh pre"}
+    blocking = {s for s in PRE_BASH if s != "bash-write-check.sh pre"}
     assert blocking == set(GUARDED)
 
 

@@ -1,6 +1,6 @@
 ---
 name: lighthouse-write-handoff
-description: Write the start command for the next session. Use at the end of a phase, or when the user asks for "a command for a new session", "how do I start this in a new window", "give me the command", "hand-off", or /lighthouse-write-handoff. With an absolute path ending in `.handoff.md` (`/lighthouse-write-handoff <path>`) it writes the block to that file as a pause, as the usage guard asks. Produces one copy-paste-ready block with worktree, branch, goal, relevant background information (or a reference to it) and the first step with the slash command that session starts with.
+description: Write the start command for the next session. Use at the end of a phase, or when the user asks for "a command for a new session", "how do I start this in a new window", "give me the command", "hand-off", or /lighthouse-write-handoff. With an absolute path ending in `.handoff.md` (`/lighthouse-write-handoff <path>`) it writes the block to that file as a pause, as the usage gate asks. Produces one copy-paste-ready block with worktree, branch, goal, relevant background information (or a reference to it) and the first step with the slash command that session starts with.
 metadata:
   lighthouse: "core@dev"
 ---
@@ -25,7 +25,7 @@ pause form below: a usage limit stops the session whatever the task.
 
 ## Pause form: /lighthouse-write-handoff <path>
 
-The argument is an absolute path that ends in `.handoff.md`; the usage guard passes one when
+The argument is an absolute path that ends in `.handoff.md`; the usage gate passes one when
 the usage window is full. This is a pause, not a phase transition. Without a path the skill
 works as described below.
 

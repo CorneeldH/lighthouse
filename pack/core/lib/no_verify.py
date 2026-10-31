@@ -1,7 +1,7 @@
 """Recognise `--no-verify` / `-n` in a `git commit` command.
 
 Moved out of a `$(cat <<'PYEOF'` heredoc in the test gate, now
-commit-tests.sh (#884): a heredoc inside a command substitution is exactly the bash 3.2 pitfall
+commit-test-gate.sh (#884): a heredoc inside a command substitution is exactly the bash 3.2 pitfall
 (macOS). As a separate file that is gone, and the check can be tested on its own.
 
 Preventive: the test gate is a Claude Code PreToolUse hook, not a git hook,

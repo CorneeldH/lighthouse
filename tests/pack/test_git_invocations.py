@@ -1,7 +1,7 @@
 """`pack/core/lib/git_invocations.py` (#884): the shared commit parser.
 
 Moved out of the `IFS= read -r -d '' PARSE <<'PYEOF'` heredoc in
-main-commit-guard.sh. The existing coverage of that behaviour is in
+main-commit-gate.sh. The existing coverage of that behaviour is in
 `test_instructie_hooks.py::test_commit_guard_*` (black box via the hook CLI);
 these tests exercise the module directly — the unit that from now on is also
 reused by the pre-commit test gate (task 2+).
@@ -196,7 +196,7 @@ def test_hook_lib_stays_importable_on_python_39(lib):
     """Pin: the hooks run under the host's `python3` — on macOS 3.9.6.
 
     There `list[str] | None` in an annotation is a TypeError at import,
-    and then main-commit-guard.sh and commit-tests.sh end in exit 2 for
+    and then main-commit-gate.sh and commit-test-gate.sh end in exit 2 for
     EVERY Bash command. So: 3.9 syntax, and `X | Y` in an annotation
     only under `from __future__ import annotations`.
     """

@@ -15,11 +15,11 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/write-issue"
     },
     {
-      "id": "main-commit-guard", "phase": "one", "row": 2, "kind": "hook", "trigger": "tool",
-      "label": "main-commit-guard", "what": "A hook that exists.", "how": "It works.",
+      "id": "main-commit-gate", "phase": "one", "row": 2, "kind": "hook", "trigger": "tool",
+      "label": "main-commit-gate", "what": "A hook that exists.", "how": "It works.",
       "when": "On a commit.",
       "without": "A commit lands on main.", "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-guard.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-gate.sh"
     },
     {
       "id": "planned-issue", "phase": "two", "row": 0, "kind": "superpowers", "trigger": "skill",
@@ -45,12 +45,12 @@
     "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/write-handoff"
   },
   "handoffs": [
-    {"from": "main-commit-guard", "to": "planned-issue", "status": "planned", "milestone": "M9"}
+    {"from": "main-commit-gate", "to": "planned-issue", "status": "planned", "milestone": "M9"}
   ],
   "routes": [
     {
       "id": "x", "label": "Fixture route", "note": "A route with a handoff.",
-      "chips": ["write-issue", "main-commit-guard", "planned-issue", "planned-milestone", "an-idea"]
+      "chips": ["write-issue", "main-commit-gate", "planned-issue", "planned-milestone", "an-idea"]
     }
   ]
 }

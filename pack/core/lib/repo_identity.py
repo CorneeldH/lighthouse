@@ -7,7 +7,7 @@ clone, for one) has another common dir. This lib settles that case on the
 is the same repo. A local path or `file://` remote says nothing about the
 upstream and never matches: precision before recall.
 
-Used by `commit-tests.sh` (as a script), `pr_body_gate.py` and
+Used by `commit-test-gate.sh` (as a script), `pr_body_gate.py` and
 `bash_writes.py`. Only stdlib: the hooks run under the host `python3`.
 
     python3 repo_identity.py <project_dir> <root>
