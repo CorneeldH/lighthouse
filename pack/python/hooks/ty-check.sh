@@ -9,9 +9,12 @@
 # several files are done, so per-edit feedback would burn turns on half-finished
 # state.
 #
-# Checks every checkout the turn wrote in (turn_roots.py, #54), not the `cwd` of
+# Looks at every checkout the turn wrote in (turn_roots.py, #54), not the `cwd` of
 # the payload: that is the shell's directory at Stop, and a session in the main
-# checkout that edits a worktree stops there.
+# checkout that edits a worktree stops there. It checks only a checkout in which
+# the turn touched a Python path: a `.py` or `.pyi` file in a source dir, or
+# pyproject.toml, ty.toml or uv.lock (an edit, a Bash write or a commit in the turn,
+# `turn_roots.py --match`, #80). The rest gets `not checked`.
 #
 # Could not check (no jq or uvx, no repository, no venv, a ty that does not
 # start, a configuration that cannot be read, a turn whose checkout cannot be
@@ -44,7 +47,8 @@ cannot_check() {
   report "$HOOK_NAME: COULD NOT CHECK — $1 Nothing was type-checked; that is not a green light."
 }
 
-for tool in jq uvx git python3; do
+# uvx is checked per checkout, after the skip: an untouched root needs none.
+for tool in jq git python3; do
   command -v "$tool" >/dev/null 2>&1 || cannot_check "$tool is missing."
 done
 
@@ -64,12 +68,6 @@ fi
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
 LIB="$LIB_ROOT/.lighthouse/lib/lighthouse_lib"
 
-# The checkouts this turn wrote in, one per line (#54).
-if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB/turn_roots.py" 2>&1); then
-  # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
-  cannot_check "the checkout of this turn cannot be determined: $(printf '%s' "$ROOTS" | tr '\n"\134' "   ")"
-fi
-
 if ! DIRS_RAW=$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB/config.py" python.source_dirs 2>&1); then
   # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
   cannot_check "the configuration cannot be read (python.source_dirs): $(printf '%s' "$DIRS_RAW" | tr '\n"\134' "   ")."
@@ -77,6 +75,29 @@ fi
 
 # An empty list turns the check off.
 [ -z "$DIRS_RAW" ] && exit 0
+
+# What makes a path a Python path (fnmatch on the path relative to the root; `*`
+# also matches `/`): `.py` and `.pyi` files in a source dir, and the project files.
+MATCH_ARGS=(--match pyproject.toml --match ty.toml --match uv.lock)
+while IFS= read -r dir; do
+  [ -n "$dir" ] || continue
+  dir="${dir#./}"
+  dir="${dir%/}"
+  if [ -z "$dir" ] || [ "$dir" = "." ]; then
+    MATCH_ARGS+=(--match '*.py' --match '*.pyi')
+  else
+    MATCH_ARGS+=(--match "$dir/*.py" --match "$dir/*.pyi")
+  fi
+done <<EOF
+$DIRS_RAW
+EOF
+
+# The checkouts this turn wrote in, one per line: `touched<TAB>root` or
+# `untouched<TAB>root` (#54, #80).
+if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB/turn_roots.py" "${MATCH_ARGS[@]}" 2>&1); then
+  # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
+  cannot_check "the checkout of this turn cannot be determined: $(printf '%s' "$ROOTS" | tr '\n"\134' "   ")"
+fi
 
 # The usage alarm (#74): the rules live in usage-guard/alarm.sh, installed by
 # pack/core next to this file. A missing helper or an invalid alarm checks as usual.
@@ -92,7 +113,14 @@ fi
 # One checkout, in a subshell: `report` and `cannot_check` end only that one.
 check_root() (
   ROOT="$1"
+  VERDICT="$2"
   cd "$ROOT" 2>/dev/null || cannot_check "the checkout $ROOT does not exist."
+
+  if [ "$VERDICT" = "untouched" ]; then
+    report "$HOOK_NAME: not checked — the turn touched no Python path in $ROOT."
+  fi
+
+  command -v uvx >/dev/null 2>&1 || cannot_check "uvx is missing."
 
   # The directories that exist; one per line in the config output.
   DIRS=()
@@ -180,9 +208,12 @@ ERRS=$(mktemp) || cannot_check "mktemp failed."
 trap 'rm -f "$ERRS"' EXIT
 MESSAGES=""
 BLOCKED=0
-while IFS= read -r root; do
-  [ -n "$root" ] || continue
-  MSG=$(check_root "$root" 2>>"$ERRS")
+TAB=$(printf '\t')
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  verdict="${line%%"$TAB"*}"
+  root="${line#*"$TAB"}"
+  MSG=$(check_root "$root" "$verdict" 2>>"$ERRS")
   RC=$?
   if [ "$RC" -eq 2 ]; then
     BLOCKED=1

@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -24,8 +25,10 @@ from tests.pack._testkit import (
     alarm_line,
     git,
     install_pack,
+    past_this_second,
     prompt_entry,
     result_entry,
+    stamp,
     stop_payload,
     tool_bin,
     tool_entry,
@@ -74,8 +77,11 @@ def _run(
     hook: Path | None = None,
 ) -> subprocess.CompletedProcess:
     if payload is None:
-        # A turn without tool calls: the hook falls back to the payload `cwd`.
-        transcript = write_transcript(root.parent / "transcript.jsonl", [prompt_entry(root)])
+        # A turn that edited a Python file in `src/`: that root is touched.
+        transcript = write_transcript(
+            root.parent / "transcript.jsonl",
+            [prompt_entry(root), tool_entry("Edit", {"file_path": str(root / "src" / "a.py")}, root)],
+        )
         payload = stop_payload(root, transcript)
     full_env = dict(
         os.environ,
@@ -105,6 +111,31 @@ def _message(result: subprocess.CompletedProcess) -> str:
 ONLY_IMPORT = (
     "import definitely_not_a_real_package_xyz\n\nprint(definitely_not_a_real_package_xyz)\n"
 )
+
+
+def _turn(tmp_path: Path, root: Path, edited: str, committed: bool = False) -> dict:
+    """A turn that started now and edited only `edited` in `root`.
+
+    With `committed` everything in `root` is committed first, in a second before the
+    turn, so nothing but the edit makes the root touched.
+    """
+    if committed:
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "init")
+    past_this_second()
+    transcript = write_transcript(
+        tmp_path / "transcript.jsonl",
+        [
+            prompt_entry(root, stamp(time.time())),
+            tool_entry("Edit", {"file_path": str(root / edited)}, root),
+            result_entry(root),
+        ],
+    )
+    return stop_payload(root, transcript)
+
+
+def _skip_message(root: Path) -> str:
+    return f"ty-check: not checked — the turn touched no Python path in {os.path.realpath(root)}."
 
 
 def test_ty_hook_exits_zero_when_stop_hook_already_active(tmp_path):
@@ -153,7 +184,7 @@ def test_ty_reads_source_dirs(tmp_path):
     root = _fake_repo(tmp_path, 'source_dirs = ["lib"]', src=False)
     (root / "lib").mkdir()
     (root / "lib" / "real_error.py").write_text('x: int = "not an int"\n')
-    result = _run(root)
+    result = _run(root, _turn(tmp_path, root, "lib/real_error.py"))
     assert result.returncode == 2, result.stdout
     assert "invalid-assignment" in result.stderr
     assert "lib" in result.stderr.splitlines()[0]
@@ -163,8 +194,74 @@ def test_ty_skips_a_dir_outside_source_dirs(tmp_path):
     root = _fake_repo(tmp_path, 'source_dirs = ["lib"]')
     (root / "lib").mkdir()
     (root / "src" / "real_error.py").write_text('x: int = "not an int"\n')
-    result = _run(root)
+    result = _run(root, _turn(tmp_path, root, "lib/a.py"))
     assert (result.returncode, result.stdout, result.stderr) == (0, "", ""), result.stderr
+
+
+def test_ty_skips_a_turn_without_python_paths(tmp_path):
+    root = _fake_repo(tmp_path)
+    (root / "README.md").write_text("hi\n")
+    result = _run(root, _turn(tmp_path, root, "README.md", committed=True))
+    assert _message(result) == _skip_message(root)
+
+
+def test_ty_skips_python_outside_source_dirs(tmp_path):
+    root = _fake_repo(tmp_path)
+    (root / "tests").mkdir()
+    (root / "tests" / "test_a.py").write_text('x: int = "not an int"\n')
+    result = _run(root, _turn(tmp_path, root, "tests/test_a.py", committed=True))
+    assert _message(result) == _skip_message(root)
+
+
+@pytest.mark.parametrize("rel", ["src/pkg/a.py", "src/a.pyi", "pyproject.toml", "uv.lock"])
+def test_ty_checks_a_python_path(tmp_path, rel):
+    root = _fake_repo(tmp_path)
+    (root / "src" / "bad.py").write_text('x: int = "not an int"\n')
+    result = _run(root, _turn(tmp_path, root, rel, committed=True))
+    assert result.returncode == 2, result.stdout
+    assert "invalid-assignment" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("source_dir", "rel"),
+    [("./src/", "src/pkg/a.py"), ("src/pkg", "src/pkg/a.py"), ("./src/pkg/", "src/pkg/a.py")],
+)
+def test_ty_normalizes_a_source_dir_entry(tmp_path, source_dir, rel):
+    root = _fake_repo(tmp_path, f'source_dirs = ["{source_dir}"]')
+    (root / "src" / "pkg").mkdir()
+    (root / "src" / "pkg" / "bad.py").write_text('x: int = "not an int"\n')
+    result = _run(root, _turn(tmp_path, root, rel, committed=True))
+    assert result.returncode == 2, result.stdout
+    assert "invalid-assignment" in result.stderr
+
+
+def test_ty_dot_source_dir_matches_the_root(tmp_path):
+    root = _fake_repo(tmp_path, 'source_dirs = ["."]')
+    (root / "bad.py").write_text('x: int = "not an int"\n')
+    result = _run(root, _turn(tmp_path, root, "bad.py", committed=True))
+    assert result.returncode == 2, result.stdout
+    assert "invalid-assignment" in result.stderr
+
+
+def test_ty_skipped_root_needs_no_venv(tmp_path):
+    root = _fake_repo(tmp_path, venv=False)
+    (root / "README.md").write_text("hi\n")
+    message = _message(_run(root, _turn(tmp_path, root, "README.md", committed=True)))
+    assert message == _skip_message(root)
+    assert "COULD NOT CHECK" not in message
+
+
+def test_ty_skipped_root_needs_no_uvx(tmp_path):
+    root = _fake_repo(tmp_path)
+    (root / "README.md").write_text("hi\n")
+    payload = _turn(tmp_path, root, "README.md", committed=True)
+    bin_dir = tool_bin(
+        tmp_path / "bin",
+        ("bash", "jq", "git", "python3", "cat", "sort", "sed", "mktemp", "rm", "tr", "head", "dirname"),
+    )
+    message = _message(_run(root, payload, env={"PATH": str(bin_dir)}))
+    assert message == _skip_message(root)
+    assert "COULD NOT CHECK" not in message
 
 
 def test_ty_no_source_dir_is_loud(tmp_path):

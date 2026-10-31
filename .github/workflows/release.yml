@@ -1,0 +1,79 @@
+# Release for lighthouse: decides the bump from changelog.d, writes CHANGELOG.md, commits, tags
+# and pushes both atomically, then calls build.yml for the tag. Runs on every push to main, on a
+# weekly cron (patch-only fragments wait for it) and by hand.
+name: release
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Force a bump level; auto derives it from the open fragments
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          # The only job that pushes: git needs the token in .git/config for the atomic push.
+          persist-credentials: true
+      - id: release
+        env:
+          EVENT: ${{ github.event_name }}
+          BUMP: ${{ inputs.bump || 'auto' }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch --force --tags origin main
+            git reset --hard origin/main
+            tag=$(python3 ci/changelog.py release --event "$EVENT" --bump "$BUMP")
+            if [ -z "$tag" ]; then echo "nothing to release"; exit 0; fi
+            git add -A CHANGELOG.md changelog.d
+            git commit -m "chore(release): $tag"
+            git tag -a "$tag" -m "$tag"
+            if git push --atomic origin HEAD:main "refs/tags/$tag"; then
+              echo "tag=$tag" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            # A push can land server-side and still return non-zero (network error): if our own
+            # tag object is on the remote, the release happened and build must still run. A
+            # rival run's tag of the same name is not ours: fetch again and start over.
+            if [ "$(git ls-remote origin "refs/tags/$tag" | cut -f1)" = "$(git rev-parse "refs/tags/$tag")" ]; then
+              echo "tag=$tag" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            git tag -d "$tag"
+            sleep $((attempt * 5))
+          done
+          echo "release: push refused three times; nothing landed" >&2; exit 1
+
+  # A tag pushed with GITHUB_TOKEN triggers no push workflow, so build.yml is called directly.
+  build:
+    needs: release
+    if: needs.release.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}

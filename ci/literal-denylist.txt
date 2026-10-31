@@ -32,7 +32,14 @@ e78d8910
 5866e321
 321d79fc
 
-# Labels of the source repository
+# Labels of the source repository and of this repository (docs/developer/labels.md). pack/
+# reads label names from [labels] in lighthouse.toml, never as a literal.
+2-area:core
+2-area:packs
+2-area:init
+2-area:server
+2-area:dispatcher
+2-area:usage
 3-needs-shaping
 3-blocked-external
 3-needs-hands

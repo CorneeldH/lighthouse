@@ -26,6 +26,18 @@ P0 = "e78d8910"
 P1 = "5866e321"
 P2 = "321d79fc"
 
+[labels]
+blocked_issue = "3-blocked-issue"
+blocked_external = "3-blocked-external"
+needs_shaping = "3-needs-shaping"
+needs_decision = "3-needs-decision"
+needs_hands = "3-needs-hands"
+needs_testing = "3-needs-testing"
+area_prefix = "2-area:"
+
+[paths]
+labels = "docs/developer/labels.md"
+
 [test_gate]
 # gate_go.py and gate_python.py choose the Go packages and pytest files of the commit;
 # ci/domains.py runs the web checks when the commit touches web (see the scripts).
