@@ -63,6 +63,37 @@ The three of B3 in `lighthouse-close-issue` (`demonstrably done`, `partly`, `not
 
 Mixing is allowed: `Closes #5` with Evidence #5 next to `Refs #6 — <reason>`.
 
+## Changelog fragment (if present)
+
+Only if present: `changelog.d/.lighthouse` in the repository root. Otherwise skip this section.
+The release workflow rolls each PR's fragment into `CHANGELOG.md`, so a PR that changes anything
+a user can notice adds one. First look at what the branch already adds:
+`git diff --name-only --diff-filter=A origin/<default branch>...HEAD -- changelog.d/`. A change
+that already has a fragment there gets no new one; a re-run of the skill (after a `pr-create-gate`
+block, say) writes nothing twice.
+
+For each change without a fragment, write one before `gh pr create`, commit it on the branch and
+push. The file is `changelog.d/<branch>.md`, a `/` in the branch name becoming `-`. For the
+branch's next fragment, or a name held by an open fragment of another branch, take the first free
+`-<n>` from 2 (`<branch>-2.md`, `<branch>-3.md`). The format is front matter with exactly one
+`type:` line between two `---` lines, then one to three sentences:
+
+```
+---
+type: fixed
+---
+`lighthouse init` no longer fails on a repository without a `docs/` directory.
+```
+
+- `added`: new behaviour a user can use.
+- `changed`: existing behaviour that works differently now.
+- `fixed`: a defect that no longer occurs.
+- `removed`: behaviour that is gone.
+- `internal`: what a user does not notice (developer docs, tests, CI); it stays out of the release notes.
+
+Pick the type from the diff and the AC. Write the text in English for a user, whatever
+`[project] language` is.
+
 ## Evidence rules
 
 Entry C runs every row again after the merge on `origin/<default branch>`, so every row must be
