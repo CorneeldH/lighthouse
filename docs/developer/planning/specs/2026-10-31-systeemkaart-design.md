@@ -165,8 +165,10 @@ want die eisen fases, rijen en routes. Het plattegrondformaat is ook bedoeld voo
   de werkende vorm van de tegel van de ketenkaart. `test_index_lists_the_six_maps` eist dan
   `system.html` en verwacht `#102` niet meer *(keuze na specreview, r1-f4)*.
 - **Weergave *Now***: een nieuwe `renderPlanMap(root, data, detail)` in `map.js`. De onderdelen
-  zijn geneste HTML-vakken in een CSS-grid. Een `parent` nest een vak in zijn schil. Elk onderdeel
-  is een knop, met de vorm van de chips van de ketenkaart. De lijnen staan in een SVG-laag erboven,
+  zijn geneste HTML-vakken in een CSS-grid. Een `parent` nest een vak in zijn schil. Een onderdeel
+  zonder kinderen is een knop, met de vorm van de chips van de ketenkaart. Een schil (`binary`,
+  `repo`) is een container zonder klik, met een kopknop die naast de knoppen van zijn onderdelen
+  staat, niet eromheen. `environments` is een container zonder knop (§4, r1-f6, r2-f1). De lijnen staan in een SVG-laag erboven,
   zoals de routes in `renderFlowMap`. Anders dan daar meet de plattegrond de vakken: de lijnen
   worden opnieuw berekend uit een `ResizeObserver` op de *Now*-container en telkens als *Now*
   zichtbaar wordt; terwijl *Now* verborgen is, meet hij niet *(keuze na specreview, r1-f7)*. Op
