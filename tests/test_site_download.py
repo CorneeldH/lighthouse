@@ -52,8 +52,7 @@ CASES = [
     ({"platform": "MacIntel", "userAgent": UA["mac"], "architecture": ""}, "darwin-arm64", "intel"),
     ({"platform": "macOS", "userAgent": UA["mac"], "architecture": "arm"}, "darwin-arm64", "intel"),
     ({"platform": "macOS", "userAgent": UA["mac"], "architecture": "x86"}, "darwin-amd64", None),
-    ({"platform": "Win32", "userAgent": UA["windows"], "architecture": ""}, "linux-amd64", "wsl"),
-    ({"platform": "Linux armv8l", "userAgent": UA["android"], "architecture": ""}, None, None),
+    ({"platform": "Win32", "userAgent": UA["windows"], "architecture": ""}, "linux-amd64", "wsl"),    ({"platform": "Linux armv8l", "userAgent": UA["android"], "architecture": ""}, None, None),
     ({"platform": "iPhone", "userAgent": UA["iphone"], "architecture": ""}, None, None),
     ({"platform": "", "userAgent": UA["other"], "architecture": ""}, None, None),
     ({"platform": "", "userAgent": "curl/8.9 (Darwin 24.0)", "architecture": ""}, None, None),
@@ -152,11 +151,24 @@ def test_checksum_comes_before_the_binary_is_used():
 def test_bash_blocks_stop_on_the_first_failure():
     for tab, block in install_blocks().items():
         if tab == "windows-amd64":
-            assert "throw" in block
+            # A paste that arrives line by line runs each finished line at once; inside one
+            # `& { }` block PowerShell waits for the closing brace, so `throw` stops the rest.
+            lines = [l.strip() for l in block.strip().splitlines() if l.strip()]
+            assert (lines[0], lines[-1]) == ("& {", "}"), tab
+            assert '$ErrorActionPreference = "Stop"' in block and "throw" in block, tab
             continue
         lines = [l.rstrip() for l in block.strip().splitlines() if l.strip()]
         assert all(l.endswith("&&") for l in lines[:-1]), tab
         assert lines[-1] == "~/.local/bin/lighthouse version", tab
+
+
+def test_windows_block_works_in_windows_powershell():
+    """Windows PowerShell 5.1, the default shell, needs -UseBasicParsing where the IE engine is
+    missing, and crawls through a download while it draws the progress bar."""
+    block = install_blocks()["windows-amd64"]
+    calls = re.findall(r"Invoke-WebRequest[^\n]*", block)
+    assert len(calls) == 2 and all("-UseBasicParsing" in c for c in calls)
+    assert '$ProgressPreference = "SilentlyContinue"' in block
 
 
 def test_page_works_without_js():
