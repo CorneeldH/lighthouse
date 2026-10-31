@@ -190,6 +190,34 @@ def test_match_an_edit_in_the_domain_is_touched(tmp_path, main, wt):
     assert _classify(main, main, entries, tmp_path, "*.go") == [f"touched\t{wt.resolve()}"]
 
 
+def _compact_summary(cwd: Path) -> dict:
+    # The shape Claude Code writes for an auto-compaction: a user entry with a string
+    # content and no isMeta.
+    return {
+        "type": "user",
+        "isCompactSummary": True,
+        "isVisibleInTranscriptOnly": True,
+        "timestamp": "2026-10-25T10:00:05.000Z",
+        "cwd": str(cwd),
+        "message": {"role": "user", "content": "This session is being continued from a previous conversation."},
+    }
+
+
+def test_match_a_compaction_summary_does_not_restart_the_turn(tmp_path, main, wt):
+    entries = [
+        prompt_entry(main),
+        _edit(wt / "a.go", main),
+        _compact_summary(main),
+        _edit(wt / "README.md", main),
+    ]
+    assert _classify(main, main, entries, tmp_path, "*.go") == [f"touched\t{wt.resolve()}"]
+
+
+def test_a_compaction_summary_keeps_the_roots_before_it(tmp_path, main, wt):
+    entries = [prompt_entry(main), _edit(wt / "a.go", main), _compact_summary(main), _edit(main / "b.go", main)]
+    assert sorted(_roots(main, main, entries, tmp_path)) == sorted([str(wt.resolve()), str(main.resolve())])
+
+
 def test_match_an_edit_outside_the_domain_is_untouched(tmp_path, main, wt):
     entries = [prompt_entry(main), _edit(wt / "README.md", main)]
     assert _classify(main, main, entries, tmp_path, "*.go") == [f"untouched\t{wt.resolve()}"]

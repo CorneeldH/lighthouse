@@ -14,8 +14,8 @@ The `cwd` follows the Bash tool's `cd`, and Claude Code resets it to the start
 directory after a `cd` outside the project. This lib reads the turn from
 `transcript_path` instead.
 
-The turn starts at the last prompt: a `user` entry that is not `isMeta` and
-carries text, not a `tool_result`. From there on, plus the entries since that
+The turn starts at the last prompt: a `user` entry that is not `isMeta` or an
+`isCompactSummary` and carries text, not a `tool_result`. From there on, plus the entries since that
 moment in the subagent transcripts under `<transcript without .jsonl>/subagents/`,
 it collects:
 
@@ -104,6 +104,10 @@ def _entries(path: Path) -> Iterator[dict]:
 
 def _is_prompt(entry: dict) -> bool:
     if entry.get("type") != "user" or entry.get("isMeta"):
+        return False
+    # An auto-compaction summary is a string-content user entry without isMeta; taking
+    # it for a prompt would restart the turn in the middle of it.
+    if entry.get("isCompactSummary"):
         return False
     content = (entry.get("message") or {}).get("content")
     if isinstance(content, str):
