@@ -8,14 +8,46 @@
 <script type="module" src="index.js"></script>
 </head>
 <body>
-<header class="page-head">
-  <div>
-    <h1>Lighthouse</h1>
-    <p class="subtitle">Skills, hooks and gates that keep your AI coding agent on one chain, from
-    issue to merged pull request.</p>
-  </div>
+<header class="hero">
   <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
+  <h1>Lighthouse</h1>
+  <p class="subtitle">Skills, hooks and gates that keep your AI coding agent on one chain, from
+  issue to merged pull request.</p>
+  <p class="hero-actions">
+    <a id="download" class="hero-button" href="install.html">Install lighthouse</a>
+    <a class="hero-link" href="#why">Why lighthouse?</a>
+  </p>
 </header>
+
+<section id="why" class="reason" aria-labelledby="why-title">
+  <h2 id="why-title">Why lighthouse?</h2>
+  <p><strong>Issues are the source of truth.</strong> Work starts and ends with a GitHub issue.
+  What the project is doing next lives outside any session or tool: in a place you can read,
+  link to and leave, so you never get locked into one system.</p>
+  <p><strong>Superpowers is the full set, and not every job needs all of it.</strong> The
+  Superpowers skills cover the whole path from a brainstorm to a finished branch. A small job
+  does not need a spec and a plan. <code>route-issue</code> picks how much of the set a job
+  needs: those are the routes on <a href="chain.html">the chain map</a>.</p>
+  <p><strong>Reviews where mistakes are cheapest.</strong> An agent of another model family
+  reviews the spec, the plan and the finished work. In practice this catches real errors before
+  they turn into code. Wes McKinney and Steve Yegge both stress these extra checks as what it
+  takes to run good software with agents.</p>
+  <p><strong>A factory around the skills.</strong> A skill is a strong part, but on its own it
+  knows nothing of the step before or after it. Many setups pick one skill or one framework and
+  stay inside it. Lighthouse connects the parts with handoffs, hooks and gates, and lets you
+  watch how they work together.</p>
+  <p><strong>Best practice that stays flexible.</strong> Superpowers and other skills are used,
+  adapted and updated as they improve. You follow good practice without being tied to one
+  version of it.</p>
+  <p><strong>Slower for the machine, faster for you.</strong> The checks cost agent time. They
+  save your time: less to review, and less to repair afterwards.</p>
+  <p class="aside">Further reading:
+  <a href="https://kenn.io/blog/agentic-engineering-aug-2026/">Wes McKinney, How Kenn is doing
+  Agentic Engineering</a> ·
+  <a href="https://blog.fsck.com/">the blog of Jesse Vincent, who makes Superpowers</a> ·
+  <a href="https://re-cinq.com/podcast/steve-yegge-software-factory">Steve Yegge on the software
+  factory</a></p>
+</section>
 
 <section id="what" class="what" aria-labelledby="what-title">
   <h2 id="what-title">What it does</h2>
@@ -43,8 +75,8 @@
   </div>
 </section>
 
-<section id="who" class="who" aria-labelledby="who-title">
-  <h2 id="who-title">Who it is for</h2>
+<details id="who" class="who">
+  <summary>Who it is for, and what it needs</summary>
   <p>A developer with a GitHub repository and Claude Code. Codex and OpenCode read
   <code>AGENTS.md</code> too, but the hooks do not run there.</p>
   <h3>Requirements</h3>
@@ -57,36 +89,6 @@
   </ul>
   <p>The <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#requirements">full
   table</a> names every tool and what happens without it.</p>
-</section>
-
-<details class="why" id="why">
-  <summary>Why lighthouse?</summary>
-  <p><strong>Issues are the source of truth.</strong> Work starts and ends with a GitHub issue.
-  What the project is doing next lives outside any session or tool: in a place you can read,
-  link to and leave, so you never get locked into one system.</p>
-  <p><strong>Superpowers is the full set, and not every job needs all of it.</strong> The
-  Superpowers skills cover the whole path from a brainstorm to a finished branch. A small job
-  does not need a spec and a plan. <code>route-issue</code> picks how much of the set a job
-  needs: those are the routes on <a href="chain.html">the chain map</a>.</p>
-  <p><strong>Reviews where mistakes are cheapest.</strong> An agent of another model family
-  reviews the spec, the plan and the finished work. In practice this catches real errors before
-  they turn into code. Wes McKinney and Steve Yegge both stress these extra checks as what it
-  takes to run good software with agents.</p>
-  <p><strong>A factory around the skills.</strong> A skill is a strong part, but on its own it
-  knows nothing of the step before or after it. Many setups pick one skill or one framework and
-  stay inside it. Lighthouse connects the parts with handoffs, hooks and gates, and lets you
-  watch how they work together.</p>
-  <p><strong>Best practice that stays flexible.</strong> Superpowers and other skills are used,
-  adapted and updated as they improve. You follow good practice without being tied to one
-  version of it.</p>
-  <p><strong>Slower for the machine, faster for you.</strong> The checks cost agent time. They
-  save your time: less to review, and less to repair afterwards.</p>
-  <p class="aside">Further reading:
-  <a href="https://kenn.io/blog/agentic-engineering-aug-2026/">Wes McKinney, How Kenn is doing
-  Agentic Engineering</a> ·
-  <a href="https://blog.fsck.com/">the blog of Jesse Vincent, who makes Superpowers</a> ·
-  <a href="https://re-cinq.com/podcast/steve-yegge-software-factory">Steve Yegge on the software
-  factory</a></p>
 </details>
 
 <section id="maps" class="tiles" aria-label="Maps">
@@ -123,6 +125,7 @@
 </section>
 
 <footer class="links">
+  <a href="install.html">Install</a>
   <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md">Getting started</a>
   <a href="https://github.com/CorneeldH/lighthouse/issues/88">Agent guide (coming, #88)</a>
   <a href="https://github.com/CorneeldH/lighthouse/blob/main/LICENSE">License</a>

@@ -773,6 +773,7 @@ a.tile:focus-visible {
 /* Entry page: the download, what lighthouse does, who it is for, the footer links */
 
 .download,
+.reason,
 .what,
 .who {
   margin: 20px 0 0;
@@ -780,6 +781,7 @@ a.tile:focus-visible {
 }
 
 .download h2,
+.reason h2,
 .what h2,
 .who h2 {
   margin: 0 0 8px;
@@ -957,4 +959,84 @@ details.platform summary:focus-visible {
   margin-left: auto;
   padding: 6px 0;
   color: var(--link);
+}
+
+/* Landing page: the hero, the reasoning, "Who it is for" folded */
+
+.hero {
+  position: relative;
+  padding: 40px 0 24px;
+  max-width: 900px;
+}
+
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: 48px;
+  line-height: 1.1;
+}
+
+.hero .theme-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.hero .subtitle {
+  font-size: 18px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin: 20px 0 0;
+}
+
+.hero-button {
+  display: inline-block;
+  padding: 10px 22px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--hook-fg);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.hero-button:hover {
+  filter: brightness(1.08);
+}
+
+.hero-button:focus-visible,
+.hero-link:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.reason p {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.reason p.aside {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+details.who {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+details.who summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+details.who summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }

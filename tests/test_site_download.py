@@ -192,3 +192,13 @@ def test_footer_links():
     for url in ["blob/main/docs/getting-started.md", "issues/88", "blob/main/LICENSE", "blob/main/CHANGELOG.md"]:
         assert f'href="{base}{url}"' in text, url
     assert "<title>Lighthouse</title>" in text
+
+
+def test_landing_page_puts_the_why_first():
+    text = INDEX.read_text(encoding="utf-8")
+    assert "<pre" not in text
+    assert re.search(r'<a\b[^>]*\bid="download"[^>]*\bhref="install.html"', text)
+    assert re.search(r'<section\b[^>]*\bid="why"', text)
+    assert re.search(r'<details\b[^>]*\bid="who"', text)
+    order = [text.index(f'id="{i}"') for i in ["download", "why", "what", "who", "maps"]]
+    assert order == sorted(order)
