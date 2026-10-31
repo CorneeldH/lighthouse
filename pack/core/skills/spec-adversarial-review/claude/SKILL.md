@@ -270,7 +270,7 @@ written once, in the plan skill: `lighthouse-plan-adversarial-review`, step 5, *
 and Opus*. Follow that: two background reviewers in one message, then
 `python3 .lighthouse/scripts/review_pair.py blind <ATTEMPT>` and decide on the A/B table
 (step 3), and for a failed pair the table there. You run `blind`, like `merge` and `write`, with
-`dangerouslyDisableSandbox: true`. Where that table says "plain step 5 (without a pair)", that
+`dangerouslyDisableSandbox: true`. Where that table says "run the retry from step 5 once", that
 is the retry in step 2 here. Only this differs here:
 
 - **Codex** (Bash, `run_in_background: true`, `dangerouslyDisableSandbox: true`), without
@@ -281,8 +281,8 @@ is the retry in step 2 here. Only this differs here:
     none [max] > <ATTEMPT>/round-1.codex.log 2>&1; echo "exit=$?"
   ```
 
-  `[max]` is the `LEVEL` slot: leave it out, or write `max` if you want it, like in the
-  retry in step 2. Then the record in step 5 gets `--level max`. A limit is in
+  `[max]` is the level slot: leave it out, or write `max` if you want it. Then the record in
+  step 5 gets `--level max`. A limit is in
   `<ATTEMPT>/round-1.codex.json.events`, not in `round-1.json.events`.
 
 - **Opus** is the subagent from *Opus dispatch* below, with

@@ -108,13 +108,36 @@ def test_no_skill_names_the_adversary(name, variant):
     assert "spec-adversary" not in skill(name, variant)
 
 
+RETRY_COMMANDS = {
+    "spec-adversarial-review": (
+        ".claude/skills/lighthouse-spec-adversarial-review/review.sh <spec> 1 "
+        "<ATTEMPT>/round-1.json none [max] > <ATTEMPT>/round-1.retry.log 2>&1; echo \"exit=$?\""
+    ),
+    "plan-adversarial-review": (
+        ".claude/skills/lighthouse-plan-adversarial-review/review.sh <plan> 1 "
+        "<ATTEMPT>/round-1.json none [max] --context <spec path> [--context <spec path 2>] "
+        "> <ATTEMPT>/round-1.retry.log 2>&1; echo \"exit=$?\""
+    ),
+}
+
+
 @pytest.mark.parametrize("name", NAMES)
 def test_retry_is_inline_codex(name):
     text = flat(skill(name, "claude"))
-    assert f".claude/skills/lighthouse-{name}/review.sh" in text
-    assert "1 <ATTEMPT>/round-1.json none" in text
-    assert "> <ATTEMPT>/round-1.retry.log 2>&1; echo \"exit=$?\"" in text
+    command = RETRY_COMMANDS[name]
+    assert text.count(command) == 1
+    paragraph = text[: text.index(command)]
+    paragraph = paragraph[paragraph.rindex("Only round 1 is a review") :]
+    assert "`run_in_background: true`" in paragraph
+    assert "`dangerouslyDisableSandbox: true`" in paragraph
     assert "never `round-1.retry.log`" in text
+
+
+def test_spec_skill_maps_the_plan_retry():
+    phrase = "run the retry from step 5 once"
+    assert f"| none; {phrase} |" in skill("plan-adversarial-review", "claude")
+    spec = flat(skill("spec-adversarial-review", "claude"))
+    assert f'Where that table says "{phrase}", that is the retry in step 2 here' in spec
 
 
 def test_retry_skips_exit_6():

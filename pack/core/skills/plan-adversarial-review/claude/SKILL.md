@@ -186,11 +186,10 @@ non-zero exit:
 | 3 | `CODEX_MISSING`: no codex in PATH |
 | 4 | `CODEX_UNAUTHENTICATED`: no `~/.codex/auth.json` |
 | 5 | `CODEX_FAILED`: the run failed or produced nothing. Read the reset time with `grep -o 'try again at [^"]*' <ATTEMPT>/round-1.json.events \| tail -1` |
-| 6 | `CODEX_BUDGET`: budget exhausted before the round; the reason and reset time are in `<ATTEMPT>/round-1.json.budget.json` |
+| 6 | `CODEX_BUDGET`: budget exhausted before the round; `reason` and `reset_at` are in `<ATTEMPT>/round-1.json.budget.json` |
 
-The retry is never repeated, and exit 6 is never retried: that is about the exit of the retry
-itself. After "Both fail" the retry always runs once, also when the Codex side of the pair gave
-exit 6. If the retry fails too, whatever the exit, stop with `--outcome aborted` and report both
+Never retry the retry: exit 6 is never retried, nor is any other exit. After "Both fail" the
+retry always runs once, also when the Codex side of the pair gave exit 6. If the retry fails too, whatever the exit, stop with `--outcome aborted` and report both
 errors. Never fall back to reviewing the plan yourself: that defeats the cross-family check.
 
 **Round n ≥ 2 runs only if round n-1 had a BLOCKER/MAJOR with `accept` or `spec`.**
@@ -239,8 +238,8 @@ answer dies with the session.
      none [max] --context <spec path> [--context <spec path 2>] > <ATTEMPT>/round-1.codex.log 2>&1; echo "exit=$?"
    ```
 
-   `[max]` is the `LEVEL` slot: leave it out, or write `max` if you want it, like in the retry above.
-   Then the record in step 9 gets `--level max`.
+   `[max]` is the level slot: leave it out, or write `max` if you want it, like in the retry
+   above. Then the record in step 9 gets `--level max`.
 
    No ID table for this run: it would show the findings, and then deciding is no longer blind. The
    redirect is required for the same reason. On success `review.sh` prints the number of
@@ -502,7 +501,7 @@ jq -r '.verified // empty | "VERIFIED: " + (if length == 0 then "none" else join
   record is wrong. Take the ID from the table.
 - **Writing decisions into the round JSON.** Makes it invalid against the schema; always the
   sidecar.
-- **Making `REVIEW_SH` absolute.** The allowlist matches on the repo-relative prefix; an
+- **Making the `review.sh` path absolute.** The allowlist matches on the repo-relative prefix; an
   absolute path makes the background round wait for an approval.
 - **Resuming an old attempt.** A new review is a new `start`; the measurement counts only the
   newest attempt per chain.

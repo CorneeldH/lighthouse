@@ -484,7 +484,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-plan-adversarial-review/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "6d3bafde848f673856bbbc84b418000da45fe0efa8c545b3ca403afd2bee3394"
+sha256 = "4f9dce723d2a7b9db33a3dee64cddd0189cb39ece2f638847918622d946543ff"
 
 [[unit]]
 kind = "file"
@@ -540,7 +540,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-spec-adversarial-review/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "bd624841bad1250f09116722e551cb4d991f2e01853a86ad9ec63f07f37482bb"
+sha256 = "874eede6a9fdd5e6a20ed2d748583da84271115ef4e63d819e072c20ae131de3"
 
 [[unit]]
 kind = "file"
