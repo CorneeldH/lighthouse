@@ -89,6 +89,10 @@ niet in git). Dit plan vervangt het plan voor de afgekeurde vorm (schillen plus 
   `tests/test_site_pages.py` noemt `session.html`. Wijkt één af: stop en meld welke.
 - [ ] **Stap 4:** `cd web && npm ci && cd ..`, dan `uv run pytest -q tests/test_site_*.py`.
   Verwacht: alles groen. Noteer het aantal.
+- [ ] **Stap 5:** `gh issue view 102 --json state -q .state`. De merge van PR #157 sloot #102,
+  maar de aangepaste AC staan nog open. Is hij `CLOSED`, heropen hem dan met
+  `/lighthouse-close-issue` (heropenen), met als reden: de AC zijn aangepast naar de nieuwe spec,
+  en PR #157 bouwde de afgekeurde vorm. Dan sluit `Closes #102` in taak 5 hem opnieuw, met bewijs.
 
 ---
 
@@ -249,7 +253,8 @@ def test_the_chain_map_is_called_the_loop():
   `"From an idea to a closed issue, over several sessions, and what joins in at each step."`.
   Zet dezelfde ondertitel in `chain.html`. In "Wait, but why" van `chain.html` wordt "The chain is
   the connections" "The loop is the connections", en "routes through the chain" "routes through
-  the loop". In `session.html` wordt `<a href="chain.html">The chain</a>` `The loop`, en "On the
+  the loop". In `index.html` wordt de linktekst "the chain map" in "Why lighthouse?" "The loop".
+  Breid de indextest uit: `">the chain map<" not in text`. In `session.html` wordt `<a href="chain.html">The chain</a>` `The loop`, en "On the
   chain" "On the loop". De tegel Map 1 in `index.html` krijgt `<h2>The loop</h2>` en de nieuwe
   ondertitel. In `docs/getting-started.md` wordt de zin: "To see it as a map, open
   [The loop](https://corneeldh.github.io/lighthouse/chain.html)." De zin "The chain runs from an
@@ -372,7 +377,8 @@ def test_standard_skills_follow_the_maps():
 - Modify (vervangen): `docs/site/data/system.json`, `docs/site/system.html`,
   `docs/site/system.js`, `tests/fixtures/site/system.json`, `tests/test_site_system.py`
 - Modify: `docs/site/map.js` (weg: `renderPlanMap`, `renderTimeline`, `issuesOf`,
-  `milestoneTitle`, `planStatus`, `issueLink`, `showPart`, `showIssue`, `ISSUE_URL`; erbij:
+  `milestoneTitle`, `planStatus`, `issueLink`, `showPart`, `showIssue`, `ISSUE_URL`,
+  `LINE_INSET`, `LINE_STAGGER`; erbij:
   `renderStory`), `docs/site/map.css` (weg: het blok "System map" en "Stand switch and timeline":
   `.snapshot`, `.plan*`, `.stand-switch`, `.timeline*`, `.plan-chip*`; erbij: `.story*`),
   `docs/site/index.html` (tegel Map 4, eventueel `#download`), `tests/test_site_pages.py`,
@@ -396,9 +402,9 @@ bouwer, binnen spec §3):
 | `install`, "Install once", `where` "your workstation" | `program` · `lighthouse` · `lighthouse`, note: één programma met de packs erin, te installeren met curl | `index.html#download` |
 | | `workflow-skill` · `superpowers` · `superpowers plugin`, note: extern, `init` controleert het | `#bring` |
 | | `you` · `you` · `You bring`, note: `Claude Code, git, gh, jq, python3` | `#bring` |
-| `init`, "lighthouse init", `command` "lighthouse init", `where` "your repo" | `workflow-skill` · `lighthouse` · `Skills`, note: workflow and standard | `reference.html#skills` |
-| | `agent` · `lighthouse` · `Agents` | `reference.html#agents` |
-| | `hook` · `hook` · `Hooks` | `reference.html#hooks` |
+| `init`, "lighthouse init", `command` "lighthouse init", `where` "your repo" | `workflow-skill` · `lighthouse` · `Skills`, note: `.claude/skills/`, `.agents/skills/` | `reference.html#skills` |
+| | `agent` · `lighthouse` · `Agents`, note: `.claude/agents/` | `reference.html#agents` |
+| | `hook` · `hook` · `Hooks`, note: `.claude/hooks/lighthouse/`, registered in `.claude/settings.json` | `reference.html#hooks` |
 | | `rules` · `lighthouse` · `Rules`, note: `AGENTS.md`, `CLAUDE.md` | `#rules` |
 | | `config` · `lighthouse` · `Config`, note: `lighthouse.toml`, `.lighthouse/` | `#config` |
 | | `github` · `github` · `.github/`, note: PR template, workflows | `reference.html#github` |
@@ -519,14 +525,23 @@ def test_fixture_dashboard_is_flagged():          # label "Dashboard (serve)" ->
 ### Taak 5: Changelog, headless check en volle gate
 
 **Files:**
-- Modify: `changelog.d/issue-102-systeemkaart.md`
+- Delete: `changelog.d/issue-102-systeemkaart.md`
+- Create: `changelog.d/issue-102-systeemkaart-drie-stappen.md`
 
 - [ ] **Stap 1: Changelog.** Het fragment van PR #157 is nog niet uitgebracht (het staat nog in
-  `changelog.d/`). Herschrijf het: `type: added`. Eén zin over `system.html` met de drie stappen,
-  één over `reference.html`, één over de tekenset per soort op elke kaart, en één over de
-  ketenkaart, die nu "The loop" heet. Geen woord over *Over time* of de roadmap.
+  `changelog.d/`), maar beschrijft de afgekeurde vorm. Verwijder het en schrijf een nieuw fragment
+  onder een nieuwe naam: de CI-job `changelog` telt alleen toegevoegde fragmenten
+  (`ci/changelog.py`, `--diff-filter=A --no-renames`). Het fragment krijgt `type: added`. Eén zin
+  over `system.html` met de drie stappen, één over `reference.html`, één over de tekenset per
+  soort op elke kaart, en één over de ketenkaart, die nu "The loop" heet. Geen woord over
+  *Over time* of de roadmap. Controleer met
+  `python3 ci/changelog.py check --base origin/main --head HEAD` (zoals de job `changelog` in
+  `.github/workflows/ci.yml`). Verwacht: exit 0.
 
-- [ ] **Stap 2: Headless check** (wegwerpscript in de scratchpad, niet committen). Serveer met
+- [ ] **Stap 2: Headless check** (wegwerpscript in de scratchpad, niet committen). Driver:
+  Playwright uit `web/node_modules` (na `npm ci` uit taak 0). Gebruik een CommonJS-script met
+  `const { chromium } = require("<worktree>/web/node_modules/@playwright/test")`: een ESM-import
+  vanuit de scratchpad vindt het pakket niet, en `NODE_PATH` werkt niet voor ESM. Serveer met
   `python3 -m http.server --directory docs/site`. Open `system.html`, `reference.html`,
   `chain.html` en `session.html` in headless Chromium, op 1280 px en op 390 px breed, licht en
   donker. Controleer:
