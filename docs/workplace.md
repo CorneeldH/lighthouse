@@ -124,9 +124,9 @@ een tweede poging.
 
 `CheckOpen` handelt de open runs met een workspace af:
 
-- Een run zonder sessiekey zoekt zijn `session_id` in de sessies. Een key die al op een rij van het
-  issue staat, telt niet: een resume-run deelt het `session_id` van de eerdere run, en diens sessie kan
-  nog in de lijst staan. Gevonden: de key wordt vastgelegd. Niet gevonden na `max_wait`: de run wordt
+- Een run zonder sessiekey zoekt zijn `session_id` in de sessies. Een sessie die al eigen is van een
+  rij van het issue (`own.Has`), telt niet: een resume-run deelt het `session_id` van de eerdere run, en
+  diens sessie kan nog in de lijst staan. Gevonden: de key wordt vastgelegd. Niet gevonden na `max_wait`: de run wordt
   teruggegeven met de reden `start uncertain: no session found`, en `Discard` wist de drager. Mislukt
   `Discard`, dan meldt `CheckOpen` die fout en geeft de run toch terug.
 - Een run ouder dan `max_runtime` wordt eerst gestopt (`Stop`) en dan teruggegeven met de reden
@@ -155,22 +155,36 @@ de gedeelde devcontainer, ook vreemde sessies.
 
 ## Eigen en vreemd
 
-Welke sessies van het issue zelf zijn, bepaalt de **forge-key**, niet het `session_id`:
-`runs.SessionKeys` geeft de `workplace_session` van elke rij van het issue (open en gesloten) waarin die
-gevuld is. De reden: een resume-run krijgt een nieuwe rij met hetzelfde `session_id` als de eerdere run.
+`runs.SessionKeys` geeft per rij van het issue (open en gesloten) met een `workplace_session` die key en
+het `session_id` van de rij. `workplace.Own.Has` beslist daarmee of een sessie **eigen** is. Daarvoor
+moeten twee dingen gelden:
+
+1. haar key staat op een rij van het issue;
+2. haar `session_id` bij forge is leeg, of gelijk aan het `session_id` van die rij.
+
+Elke andere sessie is **vreemd**. `Busy`, `ForeignLive`, de stopselectie van `Cleanup` en de zoektocht van
+`CheckOpen` gebruiken alle vier deze ene regel.
+
+Waarom de key: een resume-run krijgt een nieuwe rij met hetzelfde `session_id` als de eerdere run.
 Mislukt de start van zo'n resume zonder key, dan zou een late agent met dat `session_id` op het
-`session_id` als eigen gesloten sessie tellen: `Busy` zag dan geen bezetting (een tweede spawn) en
+`session_id` alleen als eigen gesloten sessie tellen: `Busy` zag dan geen bezetting (een tweede spawn) en
 `Cleanup` stopte haar. Op de key telt ze als vreemd.
+
+Waarom ook het `session_id`: de herlezing na een spawn neemt een nieuwe key zonder `session_id` aan en
+legt die vast. Was dat in werkelijkheid een vreemde agent die tussen de voorlezing en de herlezing
+startte, dan vult forge later haar eigen `session_id` in. Dat wijkt af van dat van de rij, dus telt ze
+vanaf dan als vreemd. Op de key alleen bleef ze voor altijd eigen, en `Cleanup` zou de hele unit met de
+vreemde agent erin stoppen.
 
 ## Bezet (#31)
 
-`workplace.Busy(sessions, ownKeys, open, activity, now, maxWait)` geeft de eerste sessie die de werkplek
-bezet maakt. `ownKeys` komt uit `runs.SessionKeys`; `open` bevat de `session_id`'s van de open runs.
+`workplace.Busy(sessions, own, open, activity, now, maxWait)` geeft de eerste sessie die de werkplek
+bezet maakt. `own` komt uit `runs.SessionKeys`; `open` bevat de `session_id`'s van de open runs.
 
 - Een sessie van een **open** run (op `session_id`, als eerste getoetst) is bezet zolang ze niet `done`
   is.
-- Een sessie waarvan de key in `ownKeys` staat, is een **gesloten eigen** sessie en telt niet: dat is
-  geen reden om te wachten.
+- Een sessie die eigen is (`own.Has`, zie hierboven), is een **gesloten eigen** sessie en telt niet: dat
+  is geen reden om te wachten.
 - Elke andere sessie is **vreemd** (ook een laat startende, zie hierboven): bezet als ze `working` is, of
   `waiting` en haar laatste activiteit onbekend of jonger dan `max_wait` is. De activiteit komt uit het
   transcript van de sessie en valt terug op `updated_at` van forge. `done` is nooit bezet.
@@ -178,8 +192,7 @@ bezet maakt. `ownKeys` komt uit `runs.SessionKeys`; `open` bevat de `session_id`
 `BusyReason` geeft de tekst voor de gebruiker; een lege state heet daar `unknown`. De reden bestaat omdat
 een tweede agent in dezelfde worktree het werk van de eerste stuk kan maken.
 
-`ForeignLive(sessions, ownKeys)` geeft de eerste sessie waarvan de key niet in `ownKeys` staat en die niet
-`done` is, ook een stille.
+`ForeignLive(sessions, own)` geeft de eerste sessie die niet eigen is en niet `done`, ook een stille.
 
 ## Opruimen (#85)
 
@@ -192,12 +205,13 @@ afgebroken. Daarna, in deze volgorde, en elke stap die de workspace moet laten s
 1. Het pad. Geen absoluut pad: `not measurable: no workspace path`, zonder `Stop` en zonder `Remove`.
    `git -C ""` of een relatief pad zou de werkmap van het proces meten.
 2. Sessies lezen. Kent forge de workspace niet meer (`ErrGone`, een 404), dan telt hij als verwijderd,
-   net als na een 404 op `Remove`: de drager wordt gewist en het achterblijver-record verdwijnt. Andere
-   fout: `not measurable: sessions: …`.
+   net als na een 404 op `Remove`: de drager wordt gewist en het achterblijver-record verdwijnt. Lukt het
+   wissen van de drager niet, dan blijft hij staan als `not measurable: discard: …`. Andere fout:
+   `not measurable: sessions: …`.
 3. Eigen keys lezen (`runs.SessionKeys`). Mislukt: `not measurable: session keys: …`.
 4. Een niet-`done` vreemde sessie (`ForeignLive`, ook een stille): `foreign session <key>`. Een
    vreemde sessie stopt lighthouse nooit; de workspace blijft onder haar staan.
-5. De eigen sessies stoppen (`Stop`, met hun `session_id`'s). `Stop` beëindigt de hele systemd-unit van
+5. De eigen sessies (`own.Has`) stoppen (`Stop`, met hun `session_id`'s). `Stop` beëindigt de hele systemd-unit van
    de worktree, dus dat gebeurt pas nadat stap 4 geen vreemde sessie vond. Het gebeurt vóór de git-checks:
    een eigen agent die nog werkt, kan na de check niets meer committen. Een eigen sessie zonder
    `session_id` die niet `done` is, is niet te stoppen: `not measurable: own session <key> has no
