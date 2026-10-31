@@ -1,6 +1,6 @@
 // The reference page: every skill, agent, hook and workflow per pack, from data/packs.json.
 
-import { fillLegend, initTheme, loadJson, renderReference } from "./map.js";
+import { fillLegend, initTheme, loadJson, renderReference } from "./map.js?v=3f3f67c5";
 
 initTheme(document.getElementById("theme-toggle"));
 fillLegend(document.querySelector("[data-sorts]"));

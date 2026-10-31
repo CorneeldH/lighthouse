@@ -1,4 +1,4 @@
-"""The download on docs/site/index.html: platform.js picks the install tab the visitor sees first,
+"""The download on docs/site/install.html: platform.js picks the install block the visitor sees first,
 the release label falls back to text when the API gives nothing usable, and every install block
 names a built asset and checks it before the binary is used."""
 
@@ -15,6 +15,7 @@ from tests.test_site_pages import ElementById
 
 PLATFORM_JS = SITE / "platform.js"
 INDEX = SITE / "index.html"
+INSTALL = SITE / "install.html"
 BUILD = ROOT / ".github" / "workflows" / "build.yml"
 DOWNLOAD = "https://github.com/CorneeldH/lighthouse/releases/latest/download/"
 TABS = ["linux-amd64", "linux-arm64", "darwin-arm64", "darwin-amd64", "windows-amd64"]
@@ -121,7 +122,7 @@ class InstallBlocks(HTMLParser):
 
 def install_blocks() -> dict[str, str]:
     parser = InstallBlocks()
-    parser.feed(INDEX.read_text(encoding="utf-8"))
+    parser.feed(INSTALL.read_text(encoding="utf-8"))
     return parser.blocks
 
 
@@ -132,7 +133,7 @@ def built_assets() -> set[str]:
 
 
 def test_site_assets_are_the_built_assets():
-    texts = [p.read_text(encoding="utf-8") for p in [INDEX, *SITE.glob("*.js")]]
+    texts = [p.read_text(encoding="utf-8") for p in [INDEX, INSTALL, *SITE.glob("*.js")]]
     named = {a for t in texts for a in re.findall(re.escape(DOWNLOAD) + r"([\w.]+)", t)}
     assert named == built_assets() | {"SHA256SUMS"}
 
@@ -173,9 +174,17 @@ def test_windows_block_works_in_windows_powershell():
     assert '$ProgressPreference = "SilentlyContinue"' in block
 
 
-def test_page_works_without_js():
-    text = INDEX.read_text(encoding="utf-8")
+def test_install_page_works_without_js():
+    text = INSTALL.read_text(encoding="utf-8")
     assert re.findall(r"<[^>]*\bhidden\b[^>]*>", text) == ['<p id="platform-note" hidden>']
+    panels = re.findall(r"<(\w+)([^>]*\bdata-platform=[^>]*)>", text)
+    assert [tag for tag, _ in panels] == ["details"] * len(TABS)
+    assert not [attrs for _, attrs in panels if re.search(r"\bopen\b", attrs)]
+    assert text.count("<summary>") == len(TABS)
+
+
+def test_install_page_title():
+    assert "<title>Install lighthouse</title>" in INSTALL.read_text(encoding="utf-8")
 
 
 def test_footer_links():
@@ -183,13 +192,29 @@ def test_footer_links():
     base = "https://github.com/CorneeldH/lighthouse/"
     for url in ["blob/main/docs/getting-started.md", "issues/88", "blob/main/LICENSE", "blob/main/CHANGELOG.md"]:
         assert f'href="{base}{url}"' in text, url
-    assert 'id="download"' in text and "<title>Lighthouse</title>" in text
+    assert "<title>Lighthouse</title>" in text
 
 
-def test_download_names_the_other_routes():
-    parser = ElementById("download")
-    parser.feed(INDEX.read_text(encoding="utf-8"))
-    assert parser.attrs is not None, 'index.html has no element with id="download"'
+def test_landing_page_puts_the_why_first():
+    text = INDEX.read_text(encoding="utf-8")
+    assert "<pre" not in text
+    assert re.search(r'<a\b[^>]*\bid="download"[^>]*\bhref="install.html"', text)
+    assert re.search(r'<section\b[^>]*\bid="why"', text)
+    assert re.search(r'<details\b[^>]*\bid="who"', text)
+    order = [text.index(f'id="{i}"') for i in ["download", "why", "what", "who", "maps"]]
+    assert order == sorted(order)
+
+
+def test_old_download_link_redirects_to_the_install_page():
+    text = (SITE / "index.js").read_text(encoding="utf-8")
+    assert 'location.hash === "#download"' in text
+    assert 'location.replace("install.html")' in text
+
+
+def test_install_page_names_the_other_routes():
+    parser = ElementById("install")
+    parser.feed(INSTALL.read_text(encoding="utf-8"))
+    assert parser.attrs is not None, 'install.html has no element with id="install"'
     text = " ".join(parser.text.split())
     assert "go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest" in text
     assert "clone" in text

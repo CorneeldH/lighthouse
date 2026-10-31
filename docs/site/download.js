@@ -1,11 +1,10 @@
-// The download on the entry page: tabs over the install blocks, the tab of the visitor's
-// platform opened, the release label from the GitHub API and a copy button. Without this script
-// every block stays visible; it writes text and attributes only, never HTML.
+// The download on the install page: the block of the visitor's platform opened and moved to the
+// top, the release label from the GitHub API and a copy button. Without this script every block
+// stays folded in; it writes text and attributes only, never HTML.
 
-import { choosePlatform, releaseLabel } from "./platform.js";
+import { choosePlatform, releaseLabel } from "./platform.js?v=3f3f67c5";
 
 const API = "https://api.github.com/repos/CorneeldH/lighthouse/releases/latest";
-const FALLBACK_TAB = "linux-amd64";
 
 export function initDownload(root) {
   if (!root) {
@@ -15,10 +14,10 @@ export function initDownload(root) {
   if (!panels.length) {
     return;
   }
-  const select = buildTabs(panels);
+  const select = buildSelect(root, panels);
   let touched = false;
   root.addEventListener("click", (event) => {
-    if (event.target.closest('[role="tab"], .platform-note-link')) {
+    if (event.target.closest("summary, .platform-note-link")) {
       touched = true;
     }
   });
@@ -30,7 +29,7 @@ export function initDownload(root) {
     architecture: "",
   };
   const apply = (choice) => {
-    select(choice.tab ?? FALLBACK_TAB, false);
+    select(choice.tab);
     showNote(note, choice.note, select);
   };
   apply(choosePlatform(info));
@@ -44,56 +43,26 @@ export function initDownload(root) {
   addCopyButtons(panels);
 }
 
-function buildTabs(panels) {
-  const list = document.createElement("div");
-  list.className = "platform-tabs";
-  list.setAttribute("role", "tablist");
-  list.setAttribute("aria-label", "Platform");
-  const tabs = panels.map((panel) => {
-    const name = panel.dataset.platform;
-    panel.id = `platform-${name}`;
-    panel.setAttribute("role", "tabpanel");
-    const tab = document.createElement("button");
-    tab.type = "button";
-    tab.id = `tab-${name}`;
-    tab.setAttribute("role", "tab");
-    tab.setAttribute("aria-controls", panel.id);
-    tab.dataset.platform = name;
-    tab.textContent = panel.querySelector("h3")?.textContent ?? name;
-    panel.setAttribute("aria-labelledby", tab.id);
-    list.append(tab);
-    return tab;
-  });
-  panels[0].before(list);
-
-  const select = (name, focus) => {
-    tabs.forEach((tab, i) => {
-      const on = tab.dataset.platform === name;
-      tab.setAttribute("aria-selected", String(on));
-      tab.tabIndex = on ? 0 : -1;
-      panels[i].hidden = !on;
-      if (on && focus) {
-        tab.focus();
-      }
-    });
-  };
-  list.addEventListener("click", (event) => {
-    const tab = event.target.closest('[role="tab"]');
-    if (tab) {
-      select(tab.dataset.platform, true);
-    }
-  });
-  list.addEventListener("keydown", (event) => {
-    const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
-    if (!step) {
+// select(name) opens that block and no other, and puts it first, then the "Other platforms"
+// heading, then the rest. An unknown or null name changes nothing.
+function buildSelect(root, panels) {
+  const others = document.createElement("h2");
+  others.className = "others-title";
+  others.textContent = "Other platforms";
+  return (name) => {
+    const target = panels.find((panel) => panel.dataset.platform === name);
+    if (!target) {
       return;
     }
-    const current = tabs.findIndex((tab) => tab.getAttribute("aria-selected") === "true");
-    const next = tabs[(current + step + tabs.length) % tabs.length];
-    select(next.dataset.platform, true);
-    event.preventDefault();
-  });
-  return select;
+    for (const panel of panels) {
+      panel.open = panel === target;
+    }
+    const first = root.querySelector(".platform[data-platform]");
+    if (first !== target) {
+      first.before(target);
+    }
+    target.after(others);
+  };
 }
 
 function showNote(note, kind, select) {
@@ -105,8 +74,8 @@ function showNote(note, kind, select) {
     const open = document.createElement("button");
     open.type = "button";
     open.className = "platform-note-link";
-    open.textContent = "Take the macOS Intel tab.";
-    open.addEventListener("click", () => select("darwin-amd64", true));
+    open.textContent = "Open the macOS Intel build.";
+    open.addEventListener("click", () => select("darwin-amd64"));
     note.append("Intel Mac? ", open);
   } else if (kind === "wsl") {
     note.textContent = "The hooks need WSL: run this inside WSL.";

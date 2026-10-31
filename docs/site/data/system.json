@@ -12,7 +12,7 @@
           "kind": "lighthouse",
           "label": "lighthouse",
           "note": "One program with the packs inside. Install it with curl.",
-          "href": "index.html#download"
+          "href": "install.html"
         },
         {
           "form": "workflow-skill",
