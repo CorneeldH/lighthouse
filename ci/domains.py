@@ -33,6 +33,15 @@ _WEB_TOO = frozenset({".github/workflows/ci.yml", "ci/domains.py", "lighthouse.t
 # Inside web/, but read by Go: the API snapshot test and the module that keeps `./...` out of
 # web/node_modules.
 _GO_TOO = frozenset({"web/openapi.json", "web/go.mod"})
+# Outside web/, but read by no Go build or test, so they leave out go (python stays: pytest reads
+# docs/, and ci/literal-grep.sh runs in that job). Every other unknown path still touches go.
+# Measured on main (c72662c, #130): go:embed reads only internal/web (dist, placeholder),
+# pack/*/* and internal/store/migrations; no .go file names docs/, changelog.d or ci/literal-
+# (tests/test_domains.py fails when one does); the Go and e2e tests read outside their own
+# package only tests/pack/fixtures/, internal/usage/testdata/ and temporary repos; the literal
+# lists are read only by ci/literal-grep.sh and tools/gen_code_language_freq.py.
+_NOT_GO_DIRS = ("docs/", "changelog.d/")
+_NOT_GO = frozenset({"ci/literal-denylist.txt", "ci/literal-allowlist.txt"})
 
 CHECKS: dict[str, list[list[str]]] = {
     "web": [
@@ -54,9 +63,10 @@ def classify(paths: Iterable[str]) -> set[str]:
     touched: set[str] = set()
     for path in paths:
         in_web = path.startswith("web/")
+        not_go = path.startswith(_NOT_GO_DIRS) or path in _NOT_GO
         if in_web or path in _WEB_TOO:
             touched.add("web")
-        if not in_web or path in _GO_TOO:
+        if (not in_web and not not_go) or path in _GO_TOO:
             touched.add("go")
         if not in_web:
             touched.add("python")

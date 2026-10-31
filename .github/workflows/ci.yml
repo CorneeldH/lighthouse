@@ -34,6 +34,20 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: git diff -z --name-only --no-renames "$BASE...$HEAD" | python3 ci/domains.py classify --github-output "$GITHUB_OUTPUT"
 
+  # Every PR carries a changelog fragment, also outside the domains; see docs/releasing.md.
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: python3 ci/changelog.py check --base "$BASE" --head "$HEAD"
+
   python:
     needs: changes
     if: needs.changes.outputs.python == 'true'
@@ -45,7 +59,10 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked
-      - run: uv run pytest -q
+      # `-n auto` (pytest-xdist): one worker per vCPU the runner has, 4 on ubuntu-latest for a
+      # public repo. A fixed count would oversubscribe a smaller runner. Locally, a plain
+      # `uv run pytest -q` stays serial.
+      - run: uv run pytest -q -n auto
       - run: ci/literal-grep.sh
 
   go:
@@ -64,6 +81,9 @@ jobs:
         with:
           version: v2.15.0
       - run: CGO_ENABLED=0 go build ./...
+      # The release also ships windows and darwin: a platform-only break shows up here.
+      - run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
+      - run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...
       # Same flags as the Go part of [test_gate] command; tests/test_ci_go_test_pin.py pins it.
       - run: go test -race -shuffle=on ./...
       # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
