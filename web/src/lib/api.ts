@@ -1,4 +1,6 @@
 import {
+  type Leftover,
+  getCleanup,
   getHealth,
   getQuestions,
   getReturned,
@@ -55,6 +57,11 @@ export async function fetchQuestions(signal?: AbortSignal): Promise<Question[]> 
 export async function fetchReturned(signal?: AbortSignal): Promise<Returned[]> {
   const res = await call(() => getReturned({ signal }))
   return (res.data as { returned: Returned[] | null }).returned ?? []
+}
+
+export async function fetchCleanup(signal?: AbortSignal): Promise<Leftover[]> {
+  const res = await call(() => getCleanup({ signal }))
+  return (res.data as { cleanup: Leftover[] | null }).cleanup ?? []
 }
 
 export async function fetchUsage(signal?: AbortSignal): Promise<Report> {

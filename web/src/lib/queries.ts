@@ -1,5 +1,5 @@
 import { QueryClient, useQuery } from '@tanstack/react-query'
-import { fetchQuestions, fetchReturned, fetchUsage, fetchVersion } from './api'
+import { fetchCleanup, fetchQuestions, fetchReturned, fetchUsage, fetchVersion } from './api'
 
 export const USAGE_INTERVAL_MS = 30_000
 export const FORGE_INTERVAL_MS = 300_000
@@ -7,6 +7,7 @@ export const FORGE_INTERVAL_MS = 300_000
 export const queryKeys = {
   questions: ['questions'],
   returned: ['returned'],
+  cleanup: ['cleanup'],
   usage: ['usage'],
   health: ['health'],
 } as const
@@ -24,6 +25,15 @@ export function useReturned() {
   return useQuery({
     queryKey: queryKeys.returned,
     queryFn: ({ signal }) => fetchReturned(signal),
+    refetchInterval: FORGE_INTERVAL_MS,
+    staleTime: FORGE_INTERVAL_MS,
+  })
+}
+
+export function useCleanup() {
+  return useQuery({
+    queryKey: queryKeys.cleanup,
+    queryFn: ({ signal }) => fetchCleanup(signal),
     refetchInterval: FORGE_INTERVAL_MS,
     staleTime: FORGE_INTERVAL_MS,
   })

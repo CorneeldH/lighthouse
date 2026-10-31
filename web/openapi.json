@@ -1,6 +1,24 @@
 {
   "components": {
     "schemas": {
+      "CleanupOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "cleanup": {
+            "items": {
+              "$ref": "#/components/schemas/Leftover"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "cleanup"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -82,6 +100,35 @@
         },
         "required": [
           "version"
+        ],
+        "type": "object"
+      },
+      "Leftover": {
+        "additionalProperties": false,
+        "properties": {
+          "issue": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "issue",
+          "workspace_id",
+          "path",
+          "reason"
         ],
         "type": "object"
       },
@@ -259,6 +306,34 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/cleanup": {
+      "get": {
+        "operationId": "get-cleanup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleanupOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get API cleanup"
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "get-health",

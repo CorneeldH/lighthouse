@@ -56,7 +56,7 @@ func get(h http.Handler, path string) *httptest.ResponseRecorder {
 }
 
 func TestRoutes(t *testing.T) {
-	h := New(testSite(), fakeReport, stubSource{})
+	h := New(testSite(), fakeReport, stubSource{}, noLeftovers)
 	tests := []struct {
 		path    string
 		status  []int
@@ -103,7 +103,7 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, stubSource{}), "/api/health")
+	rec := get(New(testSite(), fakeReport, stubSource{}, noLeftovers), "/api/health")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -117,7 +117,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestUsage(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, stubSource{}), "/api/usage")
+	rec := get(New(testSite(), fakeReport, stubSource{}, noLeftovers), "/api/usage")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -141,7 +141,7 @@ func TestUsage(t *testing.T) {
 }
 
 func TestOpenAPI(t *testing.T) {
-	h := New(testSite(), fakeReport, stubSource{})
+	h := New(testSite(), fakeReport, stubSource{}, noLeftovers)
 	rec := get(h, "/api/openapi.json")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
@@ -198,7 +198,7 @@ func TestUnbuiltSiteServesPlaceholder(t *testing.T) {
 	h := New(web.Choose(fstest.MapFS{
 		"dist/.gitkeep":          {},
 		"placeholder/index.html": {Data: []byte("<p>placeholder</p>")},
-	}), fakeReport, stubSource{})
+	}), fakeReport, stubSource{}, noLeftovers)
 	for _, path := range []string{"/", "/runs/42"} {
 		rec := get(h, path)
 		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "placeholder") {

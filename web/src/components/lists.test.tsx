@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { newQueryClient } from '@/lib/queries'
+import { CleanupList } from './CleanupList'
 import { QuestionList } from './QuestionList'
 import { ReturnedList } from './ReturnedList'
 
@@ -117,5 +118,31 @@ describe('ReturnedList', () => {
     expect((await screen.findByRole('alert')).textContent).toBe(
       'Forge not configured — set GH_TOKEN and --repo',
     )
+  })
+})
+
+describe('CleanupList', () => {
+  it('shows repo, issue, workspace id, path and reason', async () => {
+    stubFetch(() =>
+      json({
+        cleanup: [
+          { repo: 'o/r', issue: 7, workspace_id: 'ws-1', path: '/w/ws-1', reason: 'dirty worktree' },
+        ],
+      }),
+    )
+    renderWithClient(<CleanupList />)
+
+    expect(await screen.findByText('o/r#7')).toBeTruthy()
+    expect(screen.getByText('ws-1')).toBeTruthy()
+    const path = screen.getByText('/w/ws-1')
+    expect(path.tagName).toBe('CODE')
+    expect(screen.getByText('dirty worktree')).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Workspaces to clean up' })).toBeTruthy()
+  })
+
+  it('shows the empty text', async () => {
+    stubFetch(() => json({ cleanup: [] }))
+    renderWithClient(<CleanupList />)
+    expect(await screen.findByText('No workspaces to clean up')).toBeTruthy()
   })
 })
