@@ -482,6 +482,12 @@ button:focus-visible {
   box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--accent-soft);
 }
 
+/* The clicked part shows in full colour, also when the chosen route passes it by. */
+.chip.dim.current,
+.handoff.dim.current {
+  opacity: 1;
+}
+
 .handoff {
   position: absolute;
   transform: translate(-50%, -50%);

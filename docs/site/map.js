@@ -12,13 +12,11 @@ const TRIGGERS = {
   event: "a turn event",
   github: "a GitHub event",
 };
-// A trigger in the terms of the harness docs.
+// A trigger in the terms of the harness docs. A hook has none: its column already is its event.
 const STARTS = {
   you: "User-invoked",
   skill: "Invoked by another skill",
   description: "Model-invoked",
-  tool: "Hook event",
-  event: "Hook event",
   github: "GitHub event",
 };
 // What a hook does when it fires.
@@ -406,11 +404,10 @@ export function renderFlowMap(root, data, detail) {
           "",
           facts([
             ["What it is", FORMS[kind]],
-            ["When it starts", STARTS[chip.trigger] || chip.trigger],
+            ...(kind === "hook" ? [] : [["When it starts", STARTS[chip.trigger] || chip.trigger]]),
             ["Who provides it", provider(chip.kind, chip.source, kind)],
             ...(chip.command
               ? [
-                  ["Event", chip.events.join(" and ")],
                   ["Matcher", chip.matcher || (chip.trigger === "event" ? "none: this event has no matcher" : "none: every call")],
                   ["Command", chip.command],
                   ["What it does", chip.effects.map((e) => EFFECTS[e]).join("; ")],
