@@ -1,7 +1,7 @@
 # Managed by lighthouse init. Do not edit by hand.
 
 version = "dev"
-packages = ["core", "go"]
+packages = ["core", "go", "node"]
 
 [[unit]]
 kind = "file"
@@ -835,6 +835,13 @@ path = ".lighthouse/scripts/gate_go.py"
 package = "go"
 version = "dev"
 sha256 = "6734ce86dc19931582d19867fd39dcadb0a6dd1d88c3eaed8ddbe2cad09d706b"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/scripts/gate_node.py"
+package = "node"
+version = "dev"
+sha256 = "bbb0406c6a46dc12ee02b7d1347a7164b12f50606b99d36c0392d268d35492b6"
 
 [[unit]]
 kind = "file"
