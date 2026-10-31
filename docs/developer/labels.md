@@ -17,6 +17,13 @@ repo. Een locatie-as hoort bij een repo die ook machines configureert.
 Daarnaast zijn de GitHub-standaardlabels (`bug`, `enhancement`, `documentation`, …) een vrije
 as.
 
+Eén vrij label hoort bij deze repo: **`chain`** (kleur `F4D74B`). Het staat op een issue dat een
+stap, een handoff of een route van de keten toevoegt of verandert, zoals die op de ketenkaart
+(`docs/site/chain.html`) staat. Uitleg over de controller, of een verbetering binnen een
+bestaande stap, krijgt het niet. Elk open issue met `chain` staat als gepland item op de kaart,
+en elk gepland item noemt zo'n issue; `ci/chain_roadmap.py` en de workflow `chain-roadmap`
+controleren dat.
+
 ## 2-area: — waar hoort het bij
 
 | Area | Kleur | Vuistregel |

@@ -77,9 +77,29 @@
       "status": "works"
     },
     {
-      "id": "start-issue",
+      "id": "triage",
       "phase": "orient",
       "row": 0,
+      "kind": "lighthouse",
+      "form": "dispatcher",
+      "trigger": "github",
+      "label": "triage",
+      "what": "The dispatcher sorts incoming issues and answers a question with a clear recommendation itself.",
+      "how": [
+        "Triage sorts an incoming issue before any session picks it up.",
+        "When a controller run would ask a question that has a clear recommendation, auto_aanbevolen takes that recommendation instead of waiting.",
+        "Each answer it takes over is posted on the issue as a 🤖 comment, with the question and the chosen option.",
+        "The question categories it may answer are chosen from the controller telemetry of paia."
+      ],
+      "when": "When an issue comes in, and when a controller run reaches a question with a recommendation.",
+      "without": "Every incoming issue and every recommended answer waits for you.",
+      "status": "planned",
+      "issue": 120
+    },
+    {
+      "id": "start-issue",
+      "phase": "orient",
+      "row": 1,
       "kind": "lighthouse",
       "trigger": "you",
       "label": "start-issue",
@@ -98,7 +118,7 @@
     {
       "id": "worktree-guard",
       "phase": "orient",
-      "row": 1,
+      "row": 2,
       "kind": "hook",
       "trigger": "tool",
       "label": "worktree-guard",
@@ -117,7 +137,7 @@
     {
       "id": "using-git-worktrees",
       "phase": "orient",
-      "row": 2,
+      "row": 3,
       "kind": "superpowers",
       "trigger": "skill",
       "label": "using-git-worktrees",
@@ -135,7 +155,7 @@
     {
       "id": "route-issue",
       "phase": "orient",
-      "row": 3,
+      "row": 4,
       "kind": "lighthouse",
       "trigger": "skill",
       "label": "route-issue",
@@ -154,7 +174,7 @@
     {
       "id": "issue-impact-scout",
       "phase": "orient",
-      "row": 4,
+      "row": 5,
       "kind": "lighthouse",
       "trigger": "skill",
       "label": "issue-impact-scout",
@@ -527,9 +547,29 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/verify-pr"
     },
     {
-      "id": "pr-create-gate",
+      "id": "roborev",
       "phase": "pr",
       "row": 1,
+      "kind": "lighthouse",
+      "form": "tool",
+      "trigger": "skill",
+      "label": "roborev",
+      "what": "A review of the finished branch by roborev, run inside verify-pr before the PR opens.",
+      "how": [
+        "verify-pr runs the local roborev review before gh pr create, above a threshold of changed lines and with Codex budget.",
+        "The session fixes or rejects each finding with a reason, in one round.",
+        "After gh pr create the review and its table of decisions go on the PR as a comment with a roborev-verwerkt marker.",
+        "Without codex or budget it skips, with the reason in the PR body, and CI stays the safety net."
+      ],
+      "when": "Before every gh pr create above the threshold.",
+      "without": "The review at the end runs in CI only, after the PR is open, and costs a second CI run.",
+      "status": "planned",
+      "issue": 119
+    },
+    {
+      "id": "pr-create-gate",
+      "phase": "pr",
+      "row": 2,
       "kind": "hook",
       "trigger": "tool",
       "label": "pr-create-gate",
@@ -548,7 +588,7 @@
     {
       "id": "pr-and-ci",
       "phase": "pr",
-      "row": 2,
+      "row": 3,
       "kind": "github",
       "trigger": "github",
       "label": "pr-and-ci",
@@ -567,7 +607,7 @@
     {
       "id": "fix-pr",
       "phase": "pr",
-      "row": 3,
+      "row": 4,
       "kind": "lighthouse",
       "trigger": "you",
       "label": "fix-pr",
@@ -586,7 +626,7 @@
     {
       "id": "receiving-code-review",
       "phase": "pr",
-      "row": 4,
+      "row": 5,
       "kind": "superpowers",
       "trigger": "skill",
       "label": "receiving-code-review",
@@ -729,18 +769,6 @@
       "from": "plan-adversarial-review",
       "to": "executing-plans",
       "status": "works"
-    },
-    {
-      "from": "commit-tests",
-      "to": "verify-pr",
-      "status": "planned",
-      "milestone": "M2"
-    },
-    {
-      "from": "pr-and-ci",
-      "to": "close-issue",
-      "status": "planned",
-      "milestone": "M2"
     }
   ],
   "routes": [
@@ -754,6 +782,7 @@
       "chips": [
         "write-issue",
         "github-issue",
+        "triage",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
@@ -768,6 +797,7 @@
         "test-driven-development",
         "commit-tests",
         "verify-pr",
+        "roborev",
         "pr-create-gate",
         "pr-and-ci",
         "close-issue",
@@ -783,6 +813,7 @@
       "chips": [
         "write-issue",
         "github-issue",
+        "triage",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
@@ -794,6 +825,7 @@
         "test-driven-development",
         "commit-tests",
         "verify-pr",
+        "roborev",
         "pr-create-gate",
         "pr-and-ci",
         "close-issue",
@@ -813,6 +845,7 @@
       "chips": [
         "write-issue",
         "github-issue",
+        "triage",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
@@ -823,6 +856,7 @@
         "main-commit-guard",
         "commit-tests",
         "verify-pr",
+        "roborev",
         "pr-create-gate",
         "pr-and-ci",
         "close-issue"
@@ -837,6 +871,7 @@
       "chips": [
         "write-issue",
         "github-issue",
+        "triage",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
@@ -845,6 +880,7 @@
         "shell-gates",
         "commit-tests",
         "verify-pr",
+        "roborev",
         "pr-create-gate",
         "pr-and-ci",
         "close-issue"
@@ -860,12 +896,14 @@
       "chips": [
         "write-issue",
         "github-issue",
+        "triage",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
         "refresh-expo-lockfiles",
         "commit-tests",
         "verify-pr",
+        "roborev",
         "pr-create-gate",
         "pr-and-ci",
         "close-issue"
@@ -881,6 +919,7 @@
         "main-commit-guard",
         "commit-tests",
         "verify-pr",
+        "roborev",
         "pr-create-gate",
         "pr-and-ci"
       ]
