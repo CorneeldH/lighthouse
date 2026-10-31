@@ -97,6 +97,14 @@
       "run_id": 5,
       "outcome": "handoff",
       "language": "nl"
+    },
+    {
+      "kind": "return",
+      "repo": "o/r",
+      "issue": 7,
+      "reason": "reason_not_allowed",
+      "reason_arg": "/lighthouse-close-issue 8",
+      "language": "nl"
     }
   ]
 }

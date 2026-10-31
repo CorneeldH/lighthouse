@@ -1,0 +1,74 @@
+{
+  "input": {
+    "now": "2026-10-31T12:00:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/r",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 7,
+              "title": "Bouw de keten",
+              "state": "OPEN",
+              "item_id": "I7",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 63,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #7\nworktree: /home/u/r\nbranch: main\nanchor: 3f2a1bc\nnext: /lighthouse-start-issue 7\nwhen: now\n\n```\nWorktree: /home/u/r\nBranch: main\nDoel: de keten afmaken.\nEerste stap: /lighthouse-start-issue 7\n```",
+                  "created_at": "2026-10-31T11:00:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-63",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [],
+        "stands": {}
+      }
+    ]
+  },
+  "want": [
+    {
+      "kind": "start",
+      "repo": "o/r",
+      "issue": 7,
+      "trigger": "handoff",
+      "trigger_key": "handoff:63",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/lighthouse-start-issue 7",
+      "prompt": "/lighthouse-start-issue 7 (issue #7, controller-run)",
+      "branch": "issue-7-bouw-de-keten",
+      "comment_id": 63,
+      "language": "nl"
+    }
+  ]
+}

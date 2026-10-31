@@ -1,0 +1,68 @@
+{
+  "input": {
+    "now": "2026-10-31T12:00:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/r",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 7,
+              "title": "Bouw de keten",
+              "state": "OPEN",
+              "item_id": "I7",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": []
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [
+          {
+            "ID": 5,
+            "Issue": 7,
+            "SessionID": "11111111-2222-4333-8444-555555555555",
+            "Mode": "start",
+            "Trigger": "handoff",
+            "TriggerKey": "start:7",
+            "Attempt": 1,
+            "Command": "/lighthouse-start-issue 7",
+            "Prompt": "/lighthouse-start-issue 7 (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-31T10:00:00Z",
+            "Open": false,
+            "Outcome": "returned",
+            "Reason": ""
+          }
+        ],
+        "stands": {}
+      }
+    ]
+  },
+  "want": []
+}

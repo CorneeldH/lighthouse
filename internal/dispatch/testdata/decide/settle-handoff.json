@@ -89,6 +89,20 @@
       "run_id": 5,
       "outcome": "handoff",
       "language": "nl"
+    },
+    {
+      "kind": "start",
+      "repo": "o/r",
+      "issue": 7,
+      "trigger": "handoff",
+      "trigger_key": "handoff:63",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/lighthouse-spec-adversarial-review /home/u/r/docs/developer/planning/specs/2026-10-31-keten.md",
+      "prompt": "/lighthouse-spec-adversarial-review /home/u/r/docs/developer/planning/specs/2026-10-31-keten.md (issue #7, controller-run)",
+      "branch": "issue-7-bouw-de-keten",
+      "comment_id": 63,
+      "language": "nl"
     }
   ]
 }

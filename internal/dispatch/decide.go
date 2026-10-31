@@ -1,6 +1,8 @@
 package dispatch
 
 import (
+	"cmp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -68,33 +70,91 @@ type Action struct {
 }
 
 // Decide is the pure decision of one tick: per repo, per item, first the orphan rule, then
-// the settlement of the item's open runs, then the 🚀 repair.
+// the settlement of the item's open runs, then the 🚀 repair, then at most one start or
+// resume (next). The result is ordered: the actions without a start or resume by repo and
+// issue, then the defers, then the starts and resumes by priority, trigger time, repo and
+// issue.
 func Decide(in Input) []Action {
-	out := []Action{}
+	var ps []planned
 	for _, repo := range in.Repos {
 		for _, it := range repo.Snapshot.Items {
-			out = append(out, decideIssue(repo, it)...)
+			ps = append(ps, decideIssue(in, repo, it)...)
 		}
+	}
+	slices.SortStableFunc(ps, comparePlanned)
+	out := make([]Action, 0, len(ps))
+	for _, p := range ps {
+		out = append(out, p.Action)
 	}
 	return out
 }
 
-func decideIssue(repo RepoInput, it Item) []Action {
+// planned is an action with what orders it; priority and at count for a start or resume.
+type planned struct {
+	Action
+	priority int
+	at       time.Time
+}
+
+// group places an action in the output: 0 without a start or resume, 1 a defer, 2 a start
+// or resume.
+func (p planned) group() int {
+	switch p.Kind {
+	case KindStart, KindResume:
+		return 2
+	case KindDefer:
+		return 1
+	}
+	return 0
+}
+
+func comparePlanned(a, b planned) int {
+	if c := cmp.Compare(a.group(), b.group()); c != 0 {
+		return c
+	}
+	if a.group() == 2 {
+		if c := cmp.Compare(a.priority, b.priority); c != 0 {
+			return c
+		}
+		if c := a.at.Compare(b.at); c != 0 {
+			return c
+		}
+	}
+	return cmp.Or(strings.Compare(a.Repo, b.Repo), cmp.Compare(a.Issue, b.Issue))
+}
+
+// decideIssue gives the actions of one item. The start rules run only for an open issue in
+// Controller whose open runs all close in this tick, and not when the orphan rule hands the
+// issue back: a start next to that Returned would contradict it.
+func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	hs := headers(it)
 	base := Action{Repo: repo.Snapshot.Repo, Issue: it.Issue, Language: repo.Language}
-	var out []Action
-	if a, ok := orphan(repo.History, hs, base); ok {
-		out = append(out, a)
+	var out []planned
+	a, orphaned := orphan(repo.History, hs, base)
+	if orphaned {
+		out = append(out, planned{Action: a})
 	}
+	free := !orphaned
 	for _, row := range repo.History {
 		if !row.Open || row.Issue != it.Issue {
 			continue
 		}
-		if a, ok := settle(repo, it, row, hs, base); ok {
-			out = append(out, a)
+		a, closes := settle(repo, it, row, hs, base)
+		if closes {
+			out = append(out, planned{Action: a})
+		}
+		free = free && closes
+	}
+	for _, a := range repair(repo.History, it, base) {
+		out = append(out, planned{Action: a})
+	}
+	if free && it.Status == statusController && it.State == "OPEN" {
+		c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night}
+		if p, ok := c.next(); ok {
+			out = append(out, p)
 		}
 	}
-	return append(out, repair(repo.History, it, base)...)
+	return out
 }
 
 // parsed is a protocol comment with its header and its time.
@@ -113,13 +173,18 @@ func headers(it Item) []parsed {
 		if !ok {
 			continue
 		}
-		t, err := time.Parse(time.RFC3339, c.CreatedAt)
-		if err != nil {
-			t = time.Time{}
-		}
-		out = append(out, parsed{Comment: c, Header: h, Time: t})
+		out = append(out, parsed{Comment: c, Header: h, Time: parseTime(c.CreatedAt)})
 	}
 	return out
+}
+
+// parseTime reads an RFC 3339 time; an unreadable one is the zero time.
+func parseTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 // orphan returns a return with reason_state_lost when the last protocol comment (Rebased
@@ -148,7 +213,7 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 // settle decides whether the open run row ends in this tick. Only comments from row's start
 // on count; a Done or Question also needs row's session, a Handoff carries none. A Done
 // closes, then a Handoff that does not end the chain, then a Question; else a green PR with
-// a session that is Done gives the done action.
+// a session that is Done gives the done action. Every action it returns closes row.
 func settle(repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool) {
 	var done, question bool
 	var handoff *parsed
@@ -195,8 +260,15 @@ func endsChain(repo RepoInput, issue int, h protocol.Header) bool {
 	if err != nil || ho.Issue != issue {
 		return false
 	}
-	command, _ := ReviewSkip(ho.Next, repo.Controller)
-	return Judge(command, issue, ho.Lane, repo.Installed).Verdict == VerdictEnd
+	j, _ := judgeHandoff(repo, issue, ho)
+	return j.Verdict == VerdictEnd
+}
+
+// judgeHandoff skips a review the config turned off, then judges the next command of ho.
+// The second result is the skip key, "" when nothing is skipped.
+func judgeHandoff(repo RepoInput, issue int, ho protocol.Handoff) (Judgement, string) {
+	command, skip := ReviewSkip(ho.Next, repo.Controller)
+	return Judge(command, issue, ho.Lane, repo.Installed), skip
 }
 
 // greenPR returns the first PR that is open, not a draft, mergeable and with green checks.
@@ -243,4 +315,342 @@ func triggerComment(key string) (int64, bool) {
 		}
 	}
 	return 0, false
+}
+
+const (
+	statusController = "Controller"
+	cmdStartIssue    = "/lighthouse-start-issue"
+	modeStart        = "start"
+	modeResume       = "resume"
+	triggerHandoff   = "handoff"
+	triggerAnswer    = "answer"
+	triggerClose     = "closecheck"
+)
+
+// issueCtx is what the start rules of one item read.
+type issueCtx struct {
+	repo  RepoInput
+	it    Item
+	hs    []parsed
+	base  Action
+	now   time.Time
+	night string
+}
+
+// next returns the one start, resume, return or defer the item gets in this tick: the first
+// rule that gives an action wins.
+func (c issueCtx) next() (planned, bool) {
+	for _, rule := range []func() (planned, bool){c.retry, c.answer, c.closeCheck, c.newIssue, c.handoff} {
+		if p, ok := rule(); ok {
+			return p, true
+		}
+	}
+	return planned{}, false
+}
+
+// retry is the second attempt of a trigger key of the issue whose runs all failed to start,
+// whatever 🚀 or Started the issue shows. After one failure the trigger starts again from
+// its row; after two the issue goes back, once per session of the second row.
+func (c issueCtx) retry() (planned, bool) {
+	var keys []string
+	byKey := map[string][]runs.Row{}
+	for _, row := range c.repo.History {
+		if row.Issue != c.it.Issue {
+			continue
+		}
+		if _, seen := byKey[row.TriggerKey]; !seen {
+			keys = append(keys, row.TriggerKey)
+		}
+		byKey[row.TriggerKey] = append(byKey[row.TriggerKey], row)
+	}
+	for _, key := range keys {
+		rows := byKey[key]
+		if !allStartFailed(rows) {
+			continue
+		}
+		if len(rows) == 1 {
+			return c.secondAttempt(rows[0]), true
+		}
+		if a, ok := c.startFailed(rows[1]); ok {
+			return planned{Action: a}, true
+		}
+	}
+	return planned{}, false
+}
+
+func allStartFailed(rows []runs.Row) bool {
+	for _, row := range rows {
+		if row.Outcome != runs.StartFailed {
+			return false
+		}
+	}
+	return true
+}
+
+// secondAttempt starts row's trigger again with what the row keeps. The comment id comes
+// from the trigger key; a handoff trigger is judged again for Native and Skip.
+func (c issueCtx) secondAttempt(row runs.Row) planned {
+	a := c.base
+	a.Kind, a.Mode = KindStart, row.Mode
+	if row.Mode == modeResume {
+		a.Kind, a.SessionID = KindResume, row.SessionID
+	}
+	a.Trigger, a.TriggerKey, a.Attempt = row.Trigger, row.TriggerKey, 2
+	a.Command, a.Prompt, a.Branch = row.Command, row.Prompt, row.Branch
+	at := c.it.ItemUpdatedAt
+	if id, ok := triggerComment(row.TriggerKey); ok {
+		a.CommentID = id
+		if com, found := c.comment(id); found {
+			at = parseTime(com.CreatedAt)
+			if strings.HasPrefix(row.TriggerKey, triggerHandoff+":") {
+				a.Native, a.Skip = c.handoffFlags(com)
+			}
+		}
+	}
+	return c.planned(a, at)
+}
+
+// handoffFlags judges the handoff in com again: Native and the skip key, or neither when it
+// does not read.
+func (c issueCtx) handoffFlags(com Comment) (bool, string) {
+	h, _ := protocol.ParseHeader(com.Body)
+	ho, err := protocol.ParseHandoff(h)
+	if err != nil {
+		return false, ""
+	}
+	j, skip := judgeHandoff(c.repo, c.it.Issue, ho)
+	return j.Native, skip
+}
+
+// startFailed hands the issue back after the second failed start, unless a Returned of that
+// run's session already stands.
+func (c issueCtx) startFailed(row runs.Row) (Action, bool) {
+	for _, p := range c.hs {
+		if p.Header.Kind == protocol.KindReturned && p.Header.Session == row.SessionID {
+			return Action{}, false
+		}
+	}
+	a := c.base
+	a.Kind, a.Reason, a.ReasonArg, a.SessionID = KindReturn, "reason_start_failed", row.Reason, row.SessionID
+	return a, true
+}
+
+// answer resumes the session of the last turn when that is a Question with a session and an
+// answer follows it. A session no run in the history has resumes nothing.
+func (c issueCtx) answer() (planned, bool) {
+	q := lastTurn(c.hs)
+	if q == nil || q.Header.Kind != protocol.KindQuestion || q.Header.Session == "" {
+		return planned{}, false
+	}
+	ans, ok := c.answerTo(q.Comment.ID)
+	if !ok {
+		return planned{}, false
+	}
+	key := triggerAnswer + ":" + strconv.FormatInt(ans.ID, 10)
+	if c.spent(key) {
+		return planned{}, false
+	}
+	run, ok := lastRunOf(c.repo.History, q.Header.Session)
+	if !ok {
+		return planned{}, false
+	}
+	a := c.base
+	a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerAnswer, key, 1
+	a.SessionID, a.CommentID = q.Header.Session, ans.ID
+	a.Command, a.Branch = run.Command, run.Branch
+	a.Prompt = protocol.AnswerPrompt(q.Comment.Body, ans.Body)
+	return c.planned(a, parseTime(ans.CreatedAt)), true
+}
+
+// answerTo returns the first comment after the one with id that can answer it: no 🚀, no
+// protocol header, no artefact (protocol.IsAnswer).
+func (c issueCtx) answerTo(id int64) (Comment, bool) {
+	after := false
+	for _, com := range c.it.Comments {
+		if after && !com.Rocket && protocol.IsAnswer(com.Body) {
+			return com, true
+		}
+		after = after || com.ID == id
+	}
+	return Comment{}, false
+}
+
+// lastRunOf returns the last row of the history with session.
+func lastRunOf(history []runs.Row, session string) (runs.Row, bool) {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].SessionID == session {
+			return history[i], true
+		}
+	}
+	return runs.Row{}, false
+}
+
+// closeCheck starts the end command after a PR merged that does not close the issue, once
+// per PR, when the issue was under the controller (a Started) before the merge.
+func (c issueCtx) closeCheck() (planned, bool) {
+	for _, pr := range c.it.PRs {
+		if pr.Closes || pr.State != "MERGED" || !c.startedBefore(pr.MergedAt) {
+			continue
+		}
+		key := triggerClose + ":" + strconv.Itoa(pr.Number)
+		if c.spent(key) {
+			continue
+		}
+		a := c.fresh(triggerClose, key, cmdClose+" "+strconv.Itoa(c.it.Issue), pr.HeadRef)
+		return c.planned(a, c.it.ItemUpdatedAt), true
+	}
+	return planned{}, false
+}
+
+func (c issueCtx) startedBefore(t time.Time) bool {
+	for _, p := range c.hs {
+		if p.Header.Kind == protocol.KindStarted && p.Time.Before(t) {
+			return true
+		}
+	}
+	return false
+}
+
+// newIssue starts an issue without any protocol comment on its own branch.
+func (c issueCtx) newIssue() (planned, bool) {
+	key := "start:" + strconv.Itoa(c.it.Issue)
+	if len(c.hs) > 0 || c.spent(key) {
+		return planned{}, false
+	}
+	a := c.fresh(triggerHandoff, key, cmdStartIssue+" "+strconv.Itoa(c.it.Issue), c.issueBranch())
+	return c.planned(a, c.it.ItemUpdatedAt), true
+}
+
+// handoff acts on the last turn when that is a Handoff without 🚀 whose trigger has no run:
+// it goes back when it does not read, names another issue or is not for a headless run;
+// waits for the night or an open blocker; else starts.
+func (c issueCtx) handoff() (planned, bool) {
+	p := lastTurn(c.hs)
+	if p == nil || p.Header.Kind != protocol.KindHandoff || p.Comment.Rocket {
+		return planned{}, false
+	}
+	key := triggerHandoff + ":" + strconv.FormatInt(p.Comment.ID, 10)
+	if c.spent(key) {
+		return planned{}, false
+	}
+	ho, err := protocol.ParseHandoff(p.Header)
+	if err != nil {
+		return c.returned("reason_bad_handoff", err.Error()), true
+	}
+	if ho.Issue != c.it.Issue {
+		return c.returned("reason_not_allowed", ho.Next), true
+	}
+	j, skip := judgeHandoff(c.repo, c.it.Issue, ho)
+	switch j.Verdict {
+	case VerdictEnd:
+		return planned{}, false
+	case VerdictBrainstorm:
+		return c.returned("reason_needs_brainstorm", ""), true
+	case VerdictInteractive:
+		return c.returned("reason_interactive", ""), true
+	case VerdictRejected:
+		return c.returned("reason_not_allowed", j.Arg), true
+	case VerdictSkillMissing:
+		return c.returned("reason_skill_missing", j.Arg), true
+	}
+	if ho.When == "night" && !InNight(c.night, c.now) {
+		return c.deferred("night"), true
+	}
+	if Executing(j.Command) && c.blocked() {
+		return c.deferred("blocker"), true
+	}
+	branch := ho.Branch
+	if branch == "" || branch == c.repo.DefaultBranch {
+		branch = c.issueBranch()
+	}
+	a := c.fresh(triggerHandoff, key, j.Command, branch)
+	a.CommentID, a.Native, a.Skip = p.Comment.ID, j.Native, skip
+	return c.planned(a, p.Time), true
+}
+
+func (c issueCtx) blocked() bool {
+	for _, b := range c.it.BlockedBy {
+		if b.State == "OPEN" {
+			return true
+		}
+	}
+	return false
+}
+
+// lastTurn returns the last protocol comment that is a turn: a Rebased is a status note and
+// does not hide a Handoff or Question.
+func lastTurn(hs []parsed) *parsed {
+	for i := len(hs) - 1; i >= 0; i-- {
+		if hs[i].Header.Kind != protocol.KindRebased {
+			return &hs[i]
+		}
+	}
+	return nil
+}
+
+// spent reports whether a run of the repo already has this trigger key.
+func (c issueCtx) spent(key string) bool {
+	for _, row := range c.repo.History {
+		if row.TriggerKey == key {
+			return true
+		}
+	}
+	return false
+}
+
+func (c issueCtx) comment(id int64) (Comment, bool) {
+	for _, com := range c.it.Comments {
+		if com.ID == id {
+			return com, true
+		}
+	}
+	return Comment{}, false
+}
+
+// fresh is a first start of command on branch, with the controller-run prompt.
+func (c issueCtx) fresh(trigger, key, command, branch string) Action {
+	a := c.base
+	a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindStart, modeStart, trigger, key, 1
+	a.Command, a.Branch = command, branch
+	a.Prompt = command + " (issue #" + strconv.Itoa(c.it.Issue) + ", controller-run)"
+	return a
+}
+
+// issueBranch is issue-<N>-<slug of the title>, or issue-<N> when the title gives no slug.
+func (c issueCtx) issueBranch() string {
+	branch := "issue-" + strconv.Itoa(c.it.Issue)
+	if slug := Slug(c.it.Title); slug != "" {
+		branch += "-" + slug
+	}
+	return branch
+}
+
+func (c issueCtx) returned(reason, arg string) planned {
+	a := c.base
+	a.Kind, a.Reason, a.ReasonArg = KindReturn, reason, arg
+	return planned{Action: a}
+}
+
+func (c issueCtx) deferred(reason string) planned {
+	a := c.base
+	a.Kind, a.Reason = KindDefer, reason
+	return planned{Action: a}
+}
+
+// planned orders a start or resume by the item's priority and the time of its trigger.
+func (c issueCtx) planned(a Action, at time.Time) planned {
+	return planned{Action: a, priority: priorityRank(c.it.Priority), at: at}
+}
+
+// priorityRank orders P0, P1, P2, then no or an unknown priority.
+func priorityRank(priority string) int {
+	switch priority {
+	case "P0":
+		return 0
+	case "P1":
+		return 1
+	case "P2":
+		return 2
+	}
+	return 3
 }

@@ -1,0 +1,68 @@
+{
+  "input": {
+    "now": "2026-10-31T12:00:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/r",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 13,
+              "title": "Ander werk",
+              "state": "OPEN",
+              "item_id": "I13",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 63,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #12\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-12-ander\nanchor: 3f2a1bc\nnext: /lighthouse-fix-pr 40\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-12-ander\nDoel: de keten afmaken.\nEerste stap: /lighthouse-fix-pr 40\n```",
+                  "created_at": "2026-10-31T11:00:00Z",
+                  "url": "https://github.com/o/r/issues/13#issuecomment-63",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [],
+        "stands": {}
+      }
+    ]
+  },
+  "want": [
+    {
+      "kind": "return",
+      "repo": "o/r",
+      "issue": 13,
+      "reason": "reason_not_allowed",
+      "reason_arg": "/lighthouse-fix-pr 40",
+      "language": "nl"
+    }
+  ]
+}

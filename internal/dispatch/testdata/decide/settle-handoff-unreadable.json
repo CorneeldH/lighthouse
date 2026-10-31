@@ -89,6 +89,14 @@
       "run_id": 5,
       "outcome": "handoff",
       "language": "nl"
+    },
+    {
+      "kind": "return",
+      "repo": "o/r",
+      "issue": 7,
+      "reason": "reason_bad_handoff",
+      "reason_arg": "protocol: handoff: fields missing: when",
+      "language": "nl"
     }
   ]
 }
