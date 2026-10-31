@@ -280,6 +280,14 @@ func TestTickForgeErrorSkipsLoudlyAndKeepsState(t *testing.T) {
 		"graphql error": {func(s *forgetest.Server) { s.GraphQLErrors = []string{"Could not resolve to a node"} },
 			"Could not resolve to a node"},
 		"empty token login": {func(s *forgetest.Server) { s.Login = "" }, "token has no login"},
+		// after login(), inside Complete: the permission read of the comment's author fails
+		"permission 500": {func(s *forgetest.Server) {
+			s.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", nil))}
+			s.Comments = map[int][]map[string]any{7: {{"id": 1, "body": "Hoi",
+				"created_at": "2026-10-30T11:00:00Z", "html_url": "https://github.com/o/r/issues/7#issuecomment-1",
+				"user": map[string]any{"login": "owner"}}}}
+			s.RoleStatus = 500
+		}, "/repos/o/r/collaborators/owner/permission"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			good := repoDir(t, completeRepo)
