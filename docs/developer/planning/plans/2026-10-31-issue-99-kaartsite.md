@@ -223,6 +223,17 @@ buiten dit plan.
     `command` in `pack/<naam>/hooks/hooks.json` (`hooks/<stem>.sh`, argumenten weg); zonder
     `hooks.json` leeg. Core telt er 8. Per hook is `sorted(events)` gelijk aan de gesorteerde
     set events in `hooks.json` waaronder die stem voorkomt.
+  - `test_hook_when_follows_its_events`: de test legt een mapping `WHEN` vast van een
+    `frozenset` van `(event, matcher)`-paren (matcher `""` als hij ontbreekt) naar de
+    `when`-tekst uit de tabel in stap 3:
+    `{("PreToolUse", "Bash")}` → `before every shell command`;
+    `{("PreToolUse", "Bash"), ("PostToolUse", "Bash"), ("PostToolUseFailure", "Bash")}` →
+    `around every shell command`; `{("PreToolUse", "Edit|Write")}` → `before every edit`;
+    `{("PostToolUse", "Edit|Write")}` → `after every edit`; `{("Stop", "")}` →
+    `when the session stops`; `{("PostToolUse", ""), ("UserPromptSubmit", ""), ("SubagentStop", ""), ("Stop", "")}` →
+    `at every prompt, tool call, subagent stop and session stop`. Per hook in `packs.json` is
+    `when == WHEN[<de paren van die stem in hooks.json>]`; een stem met een onbekende set paren
+    faalt met die set in de melding.
 
   De aantallen op de pagina komen uit de lengte van deze lijsten (taak 3); daarmee dekt deze test
   ook de aantallen.
