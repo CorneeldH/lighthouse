@@ -18,9 +18,10 @@ type fakeResponse struct {
 	err    error
 }
 
-// fakeTransport answers from a URL map, counts requests and fails the test on any non-GET.
+// fakeTransport answers from a URL map and counts requests. With getOnly it fails the test on any non-GET.
 type fakeTransport struct {
 	t         *testing.T
+	getOnly   bool
 	mu        sync.Mutex
 	responses map[string]fakeResponse
 	requests  []*http.Request
@@ -30,7 +31,7 @@ func (f *fakeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.requests = append(f.requests, r)
-	if r.Method != http.MethodGet {
+	if f.getOnly && r.Method != http.MethodGet {
 		f.t.Errorf("method %s: forge client must only GET", r.Method)
 		return nil, fmt.Errorf("method %s not allowed", r.Method)
 	}
@@ -55,7 +56,7 @@ func (f *fakeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func newTestClient(t *testing.T, responses map[string]fakeResponse) (*Client, *fakeTransport) {
 	t.Helper()
-	ft := &fakeTransport{t: t, responses: responses}
+	ft := &fakeTransport{t: t, getOnly: true, responses: responses}
 	c := New("o/r", "secret-token")
 	c.HTTP = &http.Client{Transport: ft}
 	return c, ft
@@ -227,7 +228,7 @@ func TestErrorOnLaterPageDropsPartialList(t *testing.T) {
 	}
 }
 
-func TestOnlyGET(t *testing.T) {
+func TestReadsOnlyGET(t *testing.T) {
 	c, ft := newTestClient(t, map[string]fakeResponse{
 		issuesURL1:   {status: 200, body: `[]`},
 		commentsURL1: {status: 200, body: `[]`},

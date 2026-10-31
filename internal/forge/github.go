@@ -1,7 +1,8 @@
-// Package forge reads issues and comments from GitHub. It only ever issues GET requests.
+// Package forge reads and writes GitHub issues, comments, reactions and the Projects v2 board. It never merges.
 package forge
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,7 +27,7 @@ type Issue struct {
 	Comments int    // comment count from the list
 }
 
-// Client is a read-only GitHub REST client.
+// Client is a GitHub REST client.
 type Client struct {
 	Repo, Token, BaseURL string
 	HTTP                 *http.Client
@@ -68,7 +69,7 @@ func (c *Client) OpenIssues(ctx context.Context) ([]Issue, error) {
 	url := fmt.Sprintf("%s/repos/%s/issues?state=open&per_page=100", c.BaseURL, c.Repo)
 	for url != "" {
 		var page []item
-		next, err := c.get(ctx, url, &page)
+		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
 		if err != nil {
 			return nil, err
 		}
@@ -100,7 +101,7 @@ func (c *Client) Comments(ctx context.Context, number int) ([]protocol.Comment, 
 	url := fmt.Sprintf("%s/repos/%s/issues/%d/comments?per_page=100", c.BaseURL, c.Repo, number)
 	for url != "" {
 		var page []item
-		next, err := c.get(ctx, url, &page)
+		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
 		if err != nil {
 			return nil, err
 		}
@@ -112,26 +113,39 @@ func (c *Client) Comments(ctx context.Context, number int) ([]protocol.Comment, 
 	return out, nil
 }
 
-// get is the only place that makes a request. It decodes the JSON body into into and
-// returns the URL of the next page, or "" when there is none.
-func (c *Client) get(ctx context.Context, url string, into any) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+// do is the only place that makes a request. A non-nil body is sent as JSON; a non-nil into
+// receives the decoded JSON response. It returns the URL of the next page, or "" when there is none.
+func (c *Client) do(ctx context.Context, method, url string, body, into any) (string, error) {
+	var rd io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return "", fmt.Errorf("forge %s %s: encode: %w", method, url, err)
+		}
+		rd = bytes.NewReader(data)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, rd)
 	if err != nil {
 		return "", fmt.Errorf("forge request %s: %w", url, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("forge GET %s: %w", url, err)
+		return "", fmt.Errorf("forge %s %s: %w", method, url, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return "", statusError(url, resp)
+		return "", statusError(method, url, resp)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
-		return "", fmt.Errorf("forge GET %s: decode: %w", url, err)
+	if into != nil {
+		if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
+			return "", fmt.Errorf("forge %s %s: decode: %w", method, url, err)
+		}
 	}
 	next := nextPage(resp.Header.Get("Link"))
 	if err := c.sameOrigin(next); err != nil {
@@ -142,15 +156,15 @@ func (c *Client) get(ctx context.Context, url string, into any) (string, error) 
 
 // statusError describes a non-2xx response, with GitHub's own message when the body has one.
 // It never includes the token.
-func statusError(url string, resp *http.Response) error {
+func statusError(method, url string, resp *http.Response) error {
 	var body struct {
 		Message string `json:"message"`
 	}
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	if json.Unmarshal(data, &body) == nil && body.Message != "" {
-		return fmt.Errorf("forge GET %s: status %d: %s", url, resp.StatusCode, body.Message)
+		return fmt.Errorf("forge %s %s: status %d: %s", method, url, resp.StatusCode, body.Message)
 	}
-	return fmt.Errorf("forge GET %s: status %d", url, resp.StatusCode)
+	return fmt.Errorf("forge %s %s: status %d", method, url, resp.StatusCode)
 }
 
 // sameOrigin refuses a next-page URL whose scheme or host differs from BaseURL, so the

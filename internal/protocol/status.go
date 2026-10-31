@@ -7,6 +7,8 @@ import (
 
 // Comment is one issue comment as the forge returns it.
 type Comment struct {
+	ID                   int64
+	Author               string
 	Body, CreatedAt, URL string
 	Rockets              int
 }
