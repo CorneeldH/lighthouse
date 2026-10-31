@@ -77,6 +77,8 @@ func TestNewCarrierRejects(t *testing.T) {
 		"empty instr":        func(l *LaunchSpec) { l.InstructionsFile = "" },
 		"relative mcp":       func(l *LaunchSpec) { l.MCPConfig = "mcp.json" },
 		"NUL in prompt":      func(l *LaunchSpec) { l.Prompt = "a\x00b" },
+		"prompt is a flag":   func(l *LaunchSpec) { l.Prompt = "--help" },
+		"prompt dash":        func(l *LaunchSpec) { l.Prompt = "-p x" },
 	}
 	for name, mutate := range cases {
 		l := baseSpec()
@@ -84,6 +86,51 @@ func TestNewCarrierRejects(t *testing.T) {
 		if _, err := NewCarrier(l, "/state", testNow); err == nil {
 			t.Errorf("%s: want error", name)
 		}
+	}
+}
+
+func TestNewCarrierRejectsRelativeStateDir(t *testing.T) {
+	for _, dir := range []string{"", "state"} {
+		if _, err := NewCarrier(baseSpec(), dir, testNow); err == nil {
+			t.Errorf("state dir %q: want error", dir)
+		}
+	}
+}
+
+func TestNewCarrierAcceptsDashInsidePrompt(t *testing.T) {
+	l := baseSpec()
+	l.Prompt = "fix a-b --now"
+	c, err := NewCarrier(l, "/state", testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Args[len(c.Args)-1]; got != "fix a-b --now" {
+		t.Errorf("last arg = %q", got)
+	}
+}
+
+func TestWriteCarrierTightensExistingDir(t *testing.T) {
+	dir := t.TempDir()
+	carriers := filepath.Join(dir, "carriers")
+	if err := os.Mkdir(carriers, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(carriers, 0o755); err != nil { // past the umask
+		t.Fatal(err)
+	}
+	c, err := NewCarrier(baseSpec(), dir, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteCarrier(dir, "ws-1", c); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(carriers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o700 {
+		t.Errorf("dir mode %v, want 0700", fi.Mode().Perm())
 	}
 }
 

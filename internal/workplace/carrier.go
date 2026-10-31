@@ -51,6 +51,13 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 	if strings.ContainsRune(l.Prompt, 0) {
 		return Carrier{}, fmt.Errorf("carrier: prompt contains a NUL byte")
 	}
+	// The prompt is the last positional argument: claude would read "-x" as a flag.
+	if strings.HasPrefix(l.Prompt, "-") {
+		return Carrier{}, fmt.Errorf("carrier: prompt starts with %q", "-")
+	}
+	if !filepath.IsAbs(stateDir) {
+		return Carrier{}, fmt.Errorf("carrier: state dir %q is not absolute", stateDir)
+	}
 	args := []string{"--permission-mode", "auto", "--strict-mcp-config"}
 	if l.MCPConfig != "" {
 		args = append(args, "--mcp-config", l.MCPConfig)
@@ -101,6 +108,10 @@ func WriteCarrier(stateDir, workspaceID string, c Carrier) (string, error) {
 	path := CarrierPath(stateDir, workspaceID)
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	// MkdirAll leaves an existing directory as it is.
+	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", err
 	}
 	tmp, err := os.CreateTemp(dir, ".carrier-*.tmp")
