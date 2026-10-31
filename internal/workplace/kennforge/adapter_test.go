@@ -710,14 +710,43 @@ func TestSpawnTimeoutPrefersOwnSessionOverOtherNewKey(t *testing.T) {
 	}
 }
 
-func TestSpawnTimeoutOtherNewKeyAccepted(t *testing.T) {
+// We pass --session-id, so a new key with another session_id is provably not ours.
+func TestSpawnTimeoutOtherSessionIDNotTaken(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.handoffBlock = true
 	f.sessions = []string{sessionsJSON(), sessionsJSON(entry("other", "22222222-2222-4222-8222-222222222222"))}
 	a.spawnTimeout = 100 * time.Millisecond
 	s, err := a.Spawn(context.Background(), ws1, spec())
-	if err != nil || s.Key != "other" {
-		t.Fatalf("s = %+v, err = %v, want key other accepted", s, err)
+	if !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrNotAccepted) {
+		t.Fatalf("s = %+v, err = %v, want only ErrUncertain", s, err)
+	}
+	if n := f.count(handoffKey); n != 1 {
+		t.Errorf("POSTs = %d, want 1", n)
+	}
+	if !carrierExists(a) {
+		t.Error("carrier removed, want kept")
+	}
+}
+
+func TestSpawnTimeoutPrefersOwnSessionOverEmptySessionID(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.handoffBlock = true
+	f.sessions = []string{sessionsJSON(), sessionsJSON(entry("blank", ""), entry("mine", testSessionID))}
+	a.spawnTimeout = 100 * time.Millisecond
+	s, err := a.Spawn(context.Background(), ws1, spec())
+	if err != nil || s.Key != "mine" {
+		t.Fatalf("s = %+v, err = %v, want mine", s, err)
+	}
+}
+
+func TestSpawnTimeoutNewKeyWithoutSessionID(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.handoffBlock = true
+	f.sessions = []string{sessionsJSON(), sessionsJSON(entry("k1", ""))}
+	a.spawnTimeout = 100 * time.Millisecond
+	s, err := a.Spawn(context.Background(), ws1, spec())
+	if err != nil || s.Key != "k1" || s.SessionID != testSessionID {
+		t.Fatalf("s = %+v, err = %v, want k1 accepted", s, err)
 	}
 }
 
@@ -786,16 +815,24 @@ func TestSpawn3xxNotAccepted(t *testing.T) {
 	}
 }
 
-func TestSpawn5xxRereadFailsNotAccepted(t *testing.T) {
+// A failed re-read after a 5xx cannot tell whether an agent started: uncertain,
+// and the carrier stays for CheckOpen to settle.
+func TestSpawn5xxRereadFailsUncertain(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.handoffStatus = 503
 	f.sessions = []string{sessionsJSON(), `{"other":1}`}
 	_, err := a.Spawn(context.Background(), ws1, spec())
-	if !errors.Is(err, workplace.ErrNotAccepted) {
-		t.Fatalf("err = %v, want ErrNotAccepted", err)
+	if !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrNotAccepted) {
+		t.Fatalf("err = %v, want only ErrUncertain", err)
 	}
-	if carrierExists(a) {
-		t.Error("carrier kept, want removed")
+	if !strings.Contains(err.Error(), "503") {
+		t.Errorf("err = %v, want the 503 in it", err)
+	}
+	if n := f.count(handoffKey); n != 1 {
+		t.Errorf("POSTs = %d, want 1", n)
+	}
+	if !carrierExists(a) {
+		t.Error("carrier removed, want kept")
 	}
 }
 

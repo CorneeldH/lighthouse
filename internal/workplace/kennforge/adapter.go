@@ -226,6 +226,10 @@ func (a *Adapter) checkoutRemote(ctx context.Context, ws workplace.Workspace, re
 // Spawn starts the agent through a forge handoff. It has three outcomes: accepted
 // (a session), workplace.ErrNotAccepted (no agent runs, the carrier is gone) and
 // workplace.ErrUncertain (an agent may run, the carrier stays). It never sends a second POST.
+//
+// After a 5xx, a timeout, a broken connection or a 2xx without session.key it reads the
+// sessions once more and takes a new key of this run. After a 5xx, no such key is
+// ErrNotAccepted; a failed re-read is ErrUncertain.
 func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace.LaunchSpec) (workplace.Session, error) {
 	target, ok := a.Targets[l.Profile]
 	if !ok {
@@ -278,46 +282,56 @@ func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace
 	switch {
 	case isStatus && se.Status >= 500:
 		// The agent may have started before the 5xx: look once more.
-		if s, ok := a.appeared(ctx, ws, l, known, false); ok {
+		s, ok, rerr := a.appeared(ctx, ws, l, known)
+		if rerr != nil {
+			// Whether an agent started is not measurable: uncertain, never "not accepted".
+			// %v keeps the 5xx from matching ErrNotAccepted.
+			return workplace.Session{}, fmt.Errorf("%v; re-read sessions: %v: %w", err, rerr, workplace.ErrUncertain)
+		}
+		if ok {
 			return s, nil
 		}
 		return notAccepted(err)
 	case isStatus || errors.Is(err, workplace.ErrNotAccepted):
 		return notAccepted(err)
 	}
-	// Uncertain: a timeout or broken connection; an agent may be running.
-	if s, ok := a.appeared(ctx, ws, l, known, true); ok {
+	// Uncertain: a timeout, a broken connection or an answer without a key; an agent may
+	// be running.
+	s, ok, rerr := a.appeared(ctx, ws, l, known)
+	if rerr != nil {
+		return workplace.Session{}, fmt.Errorf("%w; re-read sessions: %v", err, rerr)
+	}
+	if ok {
 		return s, nil
 	}
 	return workplace.Session{}, err
 }
 
-// appeared reads the sessions once and looks for one that was not there before the POST.
-// With anyNew set, a new key of another run counts as well, but one of this run wins.
-func (a *Adapter) appeared(ctx context.Context, ws workplace.Workspace, l workplace.LaunchSpec, known map[string]bool, anyNew bool) (workplace.Session, bool) {
+// appeared reads the sessions once and looks for one that was not there before the POST
+// and is this run's: its session_id is ours (it wins), or still empty. A new key with
+// another session_id is provably not ours, since the carrier passes --session-id. A failed
+// read is an error, never "nothing appeared".
+func (a *Adapter) appeared(ctx context.Context, ws workplace.Workspace, l workplace.LaunchSpec, known map[string]bool) (workplace.Session, bool, error) {
 	after, err := a.Sessions(ctx, ws.ID)
 	if err != nil {
-		return workplace.Session{}, false
+		return workplace.Session{}, false, err
 	}
-	var fallback *workplace.Session
-	for i := range after {
-		s := after[i]
+	fallback := ""
+	for _, s := range after {
 		if known[s.Key] {
 			continue
 		}
 		if s.SessionID == l.SessionID {
-			return workplace.Session{Key: s.Key, WorkspaceID: ws.ID, SessionID: l.SessionID}, true
+			return workplace.Session{Key: s.Key, WorkspaceID: ws.ID, SessionID: l.SessionID}, true, nil
 		}
-		if s.SessionID == "" || anyNew {
-			if fallback == nil {
-				fallback = &s
-			}
+		if s.SessionID == "" && fallback == "" {
+			fallback = s.Key
 		}
 	}
-	if fallback != nil {
-		return workplace.Session{Key: fallback.Key, WorkspaceID: ws.ID, SessionID: l.SessionID}, true
+	if fallback != "" {
+		return workplace.Session{Key: fallback, WorkspaceID: ws.ID, SessionID: l.SessionID}, true, nil
 	}
-	return workplace.Session{}, false
+	return workplace.Session{}, false, nil
 }
 
 // Sessions lists the agent sessions of a workspace.
