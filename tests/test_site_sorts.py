@@ -47,11 +47,14 @@ def test_how_it_starts_legend_is_gone(page):
 
 def test_legends_name_known_sorts():
     known = set(run_map("Object.keys(m.SORTS)"))
-    for page in ["chain.html", "session.html"]:
-        found = re.findall(r'data-sorts="([^"]*)"', (SITE / page).read_text(encoding="utf-8"))
-        assert found, f"{page} has no data-sorts legend"
+    counts = {}
+    for path in sorted(SITE.glob("*.html")):
+        found = re.findall(r'data-sorts="([^"]*)"', path.read_text(encoding="utf-8"))
+        counts[path.name] = len(found)
         for names in found:
-            assert set(names.split()) <= known, f"{page}: unknown sort in {names!r}"
+            assert set(names.split()) <= known, f"{path.name}: unknown sort in {names!r}"
+    for page in ["chain.html", "session.html", "system.html", "reference.html"]:
+        assert counts.get(page), f"{page} has no data-sorts legend"
 
 
 def test_config_token_in_every_theme():
