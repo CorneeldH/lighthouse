@@ -14,6 +14,10 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 
 `lighthouse usage refresh` and `lighthouse usage tick` measure the Claude usage windows, and `lighthouse usage codex` prints the Codex windows as JSON: [usage-venster](docs/usage-venster.md) (in Dutch).
 
+## Dispatcher tick
+
+`lighthouse tick` is one dispatcher pass, started by a timer: it takes `tick.lock`, checks the GitHub token and the `[dispatch]` repos of `host.toml`, and skips loudly each repo that cannot be served. It does not start runs yet: [tick](docs/tick.md) (in Dutch).
+
 ## Running the server
 
 `lighthouse serve` starts the API and web UI on `127.0.0.1:8127`. Install it as a systemd user service: [install](docs/install.md).
