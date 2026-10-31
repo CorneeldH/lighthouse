@@ -1,6 +1,6 @@
 ---
 name: lighthouse-write-issue
-description: 'Writing and maintaining GitHub issues and milestones of this repo. Use when creating new issues, editing issue titles or bodies, setting a block between issues, or cleaning up issue metadata. NOTE — not for a PR body: that follows .github/pull_request_template.md and lighthouse-verify-pr.'
+description: 'Writing and maintaining GitHub issues and milestones of this repo. Use when creating new issues, editing issue titles or bodies, setting a block between issues, or cleaning up issue metadata. NOTE — not for a PR body: that follows .github/pull_request_template.md and lighthouse-write-pr.'
 metadata:
   lighthouse: "core@dev"
 ---
@@ -8,7 +8,7 @@ metadata:
 # Writing and maintaining GitHub issues
 
 Standards for the issues of this repository. Pull requests follow
-`.github/pull_request_template.md` (`lighthouse-verify-pr`). Issues and milestones are artefacts:
+`.github/pull_request_template.md` (`lighthouse-write-pr`). Issues and milestones are artefacts:
 write them in the project language (`python3 .lighthouse/lib/lighthouse_lib/config.py project.language`).
 Headings that code or a skill reads are written as `heading:<key>`: write the variant that
 `python3 .lighthouse/lib/lighthouse_lib/headings.py <key>` prints.

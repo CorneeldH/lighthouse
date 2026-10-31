@@ -49,19 +49,19 @@ def gate_root(tmp_path, monkeypatch):
 
 
 def test_gates_maps_known_extensions():
-    assert bw.GATES[".sh"] == ("shellcheck.sh", "code-language.sh")
-    assert bw.GATES[".bash"] == ("shellcheck.sh", "code-language.sh")
-    assert bw.GATES[".py"] == ("ruff-format.sh", "code-language.sh")
-    assert bw.GATES[".go"] == ("gofmt.sh", "code-language.sh")
-    assert bw.GATES[".md"] == ("worktree-linkcheck.sh",)
-    assert bw.GATES[".markdown"] == ("worktree-linkcheck.sh",)
+    assert bw.GATES[".sh"] == ("shell-lint-check.sh", "code-language-check.sh")
+    assert bw.GATES[".bash"] == ("shell-lint-check.sh", "code-language-check.sh")
+    assert bw.GATES[".py"] == ("ruff-format-check.sh", "code-language-check.sh")
+    assert bw.GATES[".go"] == ("gofmt-check.sh", "code-language-check.sh")
+    assert bw.GATES[".md"] == ("md-link-check.sh",)
+    assert bw.GATES[".markdown"] == ("md-link-check.sh",)
 
 
 def test_rewriting_gate_runs_before_code_language():
-    # code-language.sh must read the version after `ruff format`.
+    # code-language-check.sh must read the version after `ruff format`.
     for gates in bw.GATES.values():
-        if "code-language.sh" in gates:
-            last = gates.index("code-language.sh")
+        if "code-language-check.sh" in gates:
+            last = gates.index("code-language-check.sh")
             assert not set(gates[last + 1 :]) & bw._SIGN_AFTER_GATE
 
 
@@ -868,10 +868,10 @@ def test_run_pre_seeds_a_fresh_root_and_writes_a_marker(tmp_path, monkeypatch):
             b"shellcheck-gate: COULD NOT CHECK \xe2\x80\x94 shellcheck-repo.sh gave rc=4\n",
             "unchecked",
         ),
-        (2, b"ruff-format: COULD NOT CHECK \xe2\x80\x94 ruff is missing\n", "unchecked"),
+        (2, b"ruff-format-check: COULD NOT CHECK \xe2\x80\x94 ruff is missing\n", "unchecked"),
         (2, b"Linkcheck: COULD NOT CHECK \xe2\x80\x94 jq\n", "unchecked"),
         (2, b"Linkcheck: markdown-link bestaat niet: x.md\n", "finding"),
-        # ruff-format.sh: pass 1 comes before `Lint-gate:`, never an unchecked form.
+        # ruff-format-check.sh: pass 1 comes before `Lint-gate:`, never an unchecked form.
         (2, b"1 file left unchanged\nLint-gate: los dit op\n", "finding"),
         (124, b"shellcheck-gate: halverwege afgebroken\n", "unchecked"),
         (1, b"Linkcheck: markdown-link bestaat niet: x.md\n", "unchecked"),
@@ -932,12 +932,12 @@ def test_deadline_makes_progress_over_many_files(tmp_path, monkeypatch):
         results.append(bw.run_post(payload(n)))
 
     assert judged == [
-        ("a.sh", "shellcheck.sh"),
-        ("a.sh", "code-language.sh"),
-        ("b.sh", "shellcheck.sh"),
-        ("b.sh", "code-language.sh"),
-        ("c.sh", "shellcheck.sh"),
-        ("c.sh", "code-language.sh"),
+        ("a.sh", "shell-lint-check.sh"),
+        ("a.sh", "code-language-check.sh"),
+        ("b.sh", "shell-lint-check.sh"),
+        ("b.sh", "code-language-check.sh"),
+        ("c.sh", "shell-lint-check.sh"),
+        ("c.sh", "code-language-check.sh"),
     ]
     codes = [code for code, _out, _err in results]
     assert codes == [2, 2, 2, 0], results
@@ -1278,50 +1278,50 @@ def test_classify_first_line_only():
 
 def test_gate_packs_name_every_gate():
     assert bw.GATE_PACKS == {
-        "shellcheck.sh": "shell",
-        "ruff-format.sh": "python",
-        "gofmt.sh": "go",
-        "worktree-linkcheck.sh": "core",
-        "code-language.sh": "core",
+        "shell-lint-check.sh": "shell",
+        "ruff-format-check.sh": "python",
+        "gofmt-check.sh": "go",
+        "md-link-check.sh": "core",
+        "code-language-check.sh": "core",
     }
     assert set(bw.GATE_PACKS) == {g for gates in bw.GATES.values() for g in gates}
 
 
 def test_hook_dir_from_repo_root(gate_root):
     hooks = gate_root / ".claude" / "hooks" / "lighthouse"
-    assert bw.gate_path(str(gate_root), "shellcheck.sh") == hooks / "shellcheck.sh"
-    assert bw.gate_path(str(gate_root), "code-language.sh") == hooks / "code-language.sh"
+    assert bw.gate_path(str(gate_root), "shell-lint-check.sh") == hooks / "shell-lint-check.sh"
+    assert bw.gate_path(str(gate_root), "code-language-check.sh") == hooks / "code-language-check.sh"
 
 
 def test_gofmt_signs_after_gate():
-    assert "gofmt.sh" in bw._SIGN_AFTER_GATE
+    assert "gofmt-check.sh" in bw._SIGN_AFTER_GATE
 
 
 def test_run_gate_finds_the_gate_under_the_repo_root(tmp_path, gate_root):
     hooks = gate_root / ".claude" / "hooks" / "lighthouse"
-    (hooks / "shellcheck.sh").write_text("#!/bin/sh\necho stub-ran\nexit 2\n", encoding="utf-8")
+    (hooks / "shell-lint-check.sh").write_text("#!/bin/sh\necho stub-ran\nexit 2\n", encoding="utf-8")
     repo = tmp_path / "repo"
     init_repo(repo)
     (repo / "a.sh").write_text("echo a\n", encoding="utf-8")
-    verdict, output = bw.run_gate(str(repo), "a.sh", "shellcheck.sh", time.time() + 10)
+    verdict, output = bw.run_gate(str(repo), "a.sh", "shell-lint-check.sh", time.time() + 10)
     assert (verdict, output) == ("finding", b"stub-ran\n")
 
 
 def test_missing_language_pack_is_reported_not_blocked(tmp_path, monkeypatch, gate_root):
-    for gate in ("ruff-format.sh", "shellcheck.sh"):
+    for gate in ("ruff-format-check.sh", "shell-lint-check.sh"):
         (gate_root / ".claude" / "hooks" / "lighthouse" / gate).unlink()
     repo = _post_env(tmp_path, monkeypatch)
-    assert bw.run_gate(str(repo), "a.py", "ruff-format.sh", time.time() + 10) == (
+    assert bw.run_gate(str(repo), "a.py", "ruff-format-check.sh", time.time() + 10) == (
         "missing",
-        b"no python gate installed",
+        b"no python check installed",
     )
     _dirty_calls(repo, monkeypatch, ["a.py", "b.sh"])
     code, out, err = bw.run_post(_payload(repo, 0))
     assert code == 0, (out, err)
     assert err == ""
     context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
-    assert "a.py not checked — no python gate installed" in context
-    assert "b.sh not checked — no shell gate installed" in context
+    assert "a.py not checked — no python check installed" in context
+    assert "b.sh not checked — no shell check installed" in context
     # One notice per change: the next call does not report unchanged files again.
     assert bw.run_pre(_payload(repo, 1)) == 0
     assert bw.run_post(_payload(repo, 1)) == (0, "", "")
@@ -1390,9 +1390,9 @@ def test_dispatch_combined_verdict(tmp_path, monkeypatch, verdicts, judged):
     [
         # The rewriting gate's verdict holds for the version it wrote; a write
         # during the read-only gate after it stays new.
-        (("ruff-format.sh", "code-language.sh"), "ruff-format.sh"),
+        (("ruff-format-check.sh", "code-language-check.sh"), "ruff-format-check.sh"),
         # No rewriting gate: the version from just before the first gate.
-        (("shellcheck.sh", "code-language.sh"), None),
+        (("shell-lint-check.sh", "code-language-check.sh"), None),
     ],
 )
 def test_dispatch_signature_after_rewriting_gate(tmp_path, monkeypatch, gates, signed_after):
@@ -1421,46 +1421,46 @@ def test_dispatch_signature_after_rewriting_gate(tmp_path, monkeypatch, gates, s
 
 
 def test_run_gate_sets_under_gates_env(tmp_path, monkeypatch, gate_root):
-    monkeypatch.delenv("LIGHTHOUSE_UNDER_BASH_GATES", raising=False)
-    gate = gate_root / ".claude" / "hooks" / "lighthouse" / "code-language.sh"
-    gate.write_text('#!/bin/sh\necho "$LIGHTHOUSE_UNDER_BASH_GATES"\n', encoding="utf-8")
+    monkeypatch.delenv("LIGHTHOUSE_UNDER_BASH_WRITE_CHECK", raising=False)
+    gate = gate_root / ".claude" / "hooks" / "lighthouse" / "code-language-check.sh"
+    gate.write_text('#!/bin/sh\necho "$LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"\n', encoding="utf-8")
     repo = tmp_path / "repo"
     init_repo(repo)
     (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
-    assert bw.run_gate(str(repo), "a.py", "code-language.sh", time.time() + 10) == ("ok", b"1\n")
-    assert "LIGHTHOUSE_UNDER_BASH_GATES" not in os.environ
+    assert bw.run_gate(str(repo), "a.py", "code-language-check.sh", time.time() + 10) == ("ok", b"1\n")
+    assert "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK" not in os.environ
 
 
 def _gate_output(monkeypatch, output: bytes) -> None:
-    """`code-language.sh` ends with rc 0 and `output`; every other gate is silent."""
+    """`code-language-check.sh` ends with rc 0 and `output`; every other gate is silent."""
     monkeypatch.setattr(
         bw,
         "run_gate",
-        lambda root, rel, gate, deadline: ("ok", output if gate == "code-language.sh" else b""),
+        lambda root, rel, gate, deadline: ("ok", output if gate == "code-language-check.sh" else b""),
     )
 
 
 def test_notice_on_rc0_is_passed_on(tmp_path, monkeypatch):
     repo = _post_env(tmp_path, monkeypatch)
-    _gate_output(monkeypatch, b"code-language: NOTICE \xe2\x80\x94 x\na.py:2: name: y")
+    _gate_output(monkeypatch, b"code-language-check: NOTICE \xe2\x80\x94 x\na.py:2: name: y")
     _dirty_calls(repo, monkeypatch, ["x.py"])
     code, out, err = bw.run_post(_payload(repo, 0))
     assert (code, err) == (0, "")
     data = json.loads(out)
     for text in (data["hookSpecificOutput"]["additionalContext"], data["systemMessage"]):
-        assert "== x.py (code-language.sh) ==\ncode-language: NOTICE — x\na.py:2: name: y" in text
+        assert "== x.py (code-language-check.sh) ==\ncode-language-check: NOTICE — x\na.py:2: name: y" in text
 
 
 def test_notice_beside_a_block_also_reaches_the_user(tmp_path, monkeypatch):
     repo = _post_env(tmp_path, monkeypatch)
     verdicts = {
-        "a.py": ("ok", b"code-language: NOTICE \xe2\x80\x94 x"),
+        "a.py": ("ok", b"code-language-check: NOTICE \xe2\x80\x94 x"),
         "b.sh": ("finding", b"SC2034 b.sh"),
     }
     monkeypatch.setattr(
         bw,
         "run_gate",
-        lambda root, rel, gate, deadline: verdicts[rel] if gate == "code-language.sh" else ("ok", b""),
+        lambda root, rel, gate, deadline: verdicts[rel] if gate == "code-language-check.sh" else ("ok", b""),
     )
     _dirty_calls(repo, monkeypatch, ["a.py", "b.sh"])
     code, out, err = bw.run_post(_payload(repo, 0))
@@ -1476,15 +1476,15 @@ def test_plain_note_has_no_system_message(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bw,
         "run_gate",
-        lambda root, rel, gate, deadline: (bw._MISSING, b"no python gate installed")
-        if gate == "ruff-format.sh"
+        lambda root, rel, gate, deadline: (bw._MISSING, b"no python check installed")
+        if gate == "ruff-format-check.sh"
         else ("ok", b""),
     )
     _dirty_calls(repo, monkeypatch, ["a.py"])
     code, out, _err = bw.run_post(_payload(repo, 0))
     assert code == 0
     data = json.loads(out)
-    assert "a.py not checked — no python gate installed" in data["hookSpecificOutput"]["additionalContext"]
+    assert "a.py not checked — no python check installed" in data["hookSpecificOutput"]["additionalContext"]
     assert "systemMessage" not in data
 
 
@@ -1497,4 +1497,4 @@ def test_chatter_on_rc0_stays_silent(tmp_path, monkeypatch):
 
 def test_under_gates_env_matches():
     cl = load_hook_lib("code_language")
-    assert bw.UNDER_GATES_ENV == cl.UNDER_GATES_ENV == "LIGHTHOUSE_UNDER_BASH_GATES"
+    assert bw.UNDER_GATES_ENV == cl.UNDER_GATES_ENV == "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"

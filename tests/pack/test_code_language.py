@@ -379,7 +379,7 @@ def test_main_output(tmp_path, capsys, monkeypatch):
     path = _write(root, "a.py", many)
     assert cl.main([str(path), str(root)]) == 1
     out = capsys.readouterr().out.splitlines()
-    assert out[0] == f"code-language: {path} is not English"
+    assert out[0] == f"code-language-check: {path} is not English"
     assert out[1].startswith(f"{path}:1: comment: ")
     assert len([line for line in out if ": comment: " in line]) == 20
     assert out[-2] == "… and 5 more"
@@ -681,11 +681,11 @@ def test_failed_chain_notice(tmp_path, monkeypatch, mode, key, reason):
     assert doubt_line == f"{path}:2: name: legacy_processed_lijst_weg"
     if key:
         assert notice == (
-            f"code-language: layer 2 did not answer ({reason}); 1 doubtful units not checked:\n"
+            f"code-language-check: layer 2 did not answer ({reason}); 1 doubtful units not checked:\n"
             f"{path}:2: name: legacy_processed_lijst_weg"
         )
     else:
-        assert head.startswith("code-language: layer 2 did not answer (key: ")
+        assert head.startswith("code-language-check: layer 2 did not answer (key: ")
         assert head.endswith("); 1 doubtful units not checked:")
         assert fake.requests == []
 
@@ -698,8 +698,8 @@ def test_under_gates_skips(tmp_path, llm_key):
     assert fake.requests == []
     assert _lines_layers(found) == [(1, "layer 1")]
     assert notice == (
-        "code-language: NOTICE — layer 2 did not answer (layer 2 skipped under "
-        "bash-write-gates); 1 doubtful units not checked:\n"
+        "code-language-check: NOTICE — layer 2 did not answer (layer 2 skipped under "
+        "bash-write-check); 1 doubtful units not checked:\n"
         f"{path}:2: name: legacy_processed_lijst_weg"
     )
 
@@ -742,9 +742,9 @@ def test_main_notice_contract(tmp_path, capsys, monkeypatch):
     path = _write(root, "a.py", DOUBT_LINE)
     assert cl.main([str(path), str(root)]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("code-language: NOTICE — layer 2 did not answer")
+    assert out.startswith("code-language-check: NOTICE — layer 2 did not answer")
     path = _write(root, "b.py", LAYER1_LINE + DOUBT_LINE)
     assert cl.main([str(path), str(root)]) == 1
     out = capsys.readouterr().out
-    assert out.startswith(f"code-language: {path} is not English")
-    assert "\ncode-language: NOTICE — layer 2 did not answer" in out
+    assert out.startswith(f"code-language-check: {path} is not English")
+    assert "\ncode-language-check: NOTICE — layer 2 did not answer" in out

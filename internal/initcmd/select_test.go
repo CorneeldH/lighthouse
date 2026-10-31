@@ -23,9 +23,9 @@ func withPython(o *Options) {
 	m := o.Packs.(fstest.MapFS)
 	m["python/detect.toml"] = file("files = [\"pyproject.toml\", \"setup.py\", \"setup.cfg\"]\n")
 	m["python/lighthouse.toml.fragment"] = file("[test_gate]\ncommand = \"uv run pytest -q\"\nunchecked_exit_codes = [3, 4, 5]\n")
-	m["python/hooks/hooks.json"] = file(hookJSON("PostToolUse", "Edit|Write", "ruff-format.sh"))
-	m["python/hooks/ruff-format.sh"] = file("#!/bin/bash\necho ruff\n")
-	m["python/requires.toml"] = file("ruff = [\"ruff-format\"]\n")
+	m["python/hooks/hooks.json"] = file(hookJSON("PostToolUse", "Edit|Write", "ruff-format-check.sh"))
+	m["python/hooks/ruff-format-check.sh"] = file("#!/bin/bash\necho ruff\n")
+	m["python/requires.toml"] = file("ruff = [\"ruff-format-check\"]\n")
 	m["python/instructions/AGENTS.md"] = file("## python\n\n- rule\n")
 }
 
@@ -33,8 +33,8 @@ func withPython(o *Options) {
 func withShell(o *Options) {
 	m := o.Packs.(fstest.MapFS)
 	m["shell/detect.toml"] = file("files = [\"**/*.sh\", \"**/*.bash\"]\n")
-	m["shell/hooks/hooks.json"] = file(hookJSON("PostToolUse", "Edit|Write", "shellcheck.sh"))
-	m["shell/hooks/shellcheck.sh"] = file("#!/bin/bash\necho sc\n")
+	m["shell/hooks/hooks.json"] = file(hookJSON("PostToolUse", "Edit|Write", "shell-lint-check.sh"))
+	m["shell/hooks/shell-lint-check.sh"] = file("#!/bin/bash\necho sc\n")
 }
 
 func addPack(name string) func(*Options) {
@@ -110,7 +110,7 @@ func TestInitProposesPythonInPythonRepo(t *testing.T) {
 	if !strings.HasPrefix(r.out, "Packages: core, python (found pyproject.toml)\n") {
 		t.Fatalf("out:\n%s", r.out)
 	}
-	if !exists(root, ".claude/hooks/lighthouse/ruff-format.sh") || packages(t, root) != "core,python" {
+	if !exists(root, ".claude/hooks/lighthouse/ruff-format-check.sh") || packages(t, root) != "core,python" {
 		t.Fatalf("not installed; packages %s", packages(t, root))
 	}
 	if !strings.Contains(read(t, root, "AGENTS.md"), "<!-- lighthouse:begin python -->") {
@@ -144,7 +144,7 @@ func TestInitNoPackFlag(t *testing.T) {
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core\n") || packages(t, root) != "core" {
 		t.Fatalf("rc %d out:\n%s", r.code, r.out)
 	}
-	if exists(root, ".claude/hooks/lighthouse/ruff-format.sh") {
+	if exists(root, ".claude/hooks/lighthouse/ruff-format-check.sh") {
 		t.Fatal("python installed")
 	}
 }
@@ -197,7 +197,7 @@ func TestUpgradeAddsPack(t *testing.T) {
 	if r.code != 0 || !strings.HasPrefix(r.out, "Adding package python.\n") {
 		t.Fatalf("rc %d out:\n%s\nerr %s", r.code, r.out, r.err)
 	}
-	if !exists(root, ".claude/hooks/lighthouse/ruff-format.sh") || packages(t, root) != "core,python" {
+	if !exists(root, ".claude/hooks/lighthouse/ruff-format-check.sh") || packages(t, root) != "core,python" {
 		t.Fatalf("packages %s", packages(t, root))
 	}
 	if r := run(t, root, "", all(upgrade, withPython)); r.out != "No changes.\n" {
@@ -222,10 +222,10 @@ func TestUpgradeDropsPack(t *testing.T) {
 	if r.code != 0 || !strings.HasPrefix(r.out, "Removing package python.\n") {
 		t.Fatalf("rc %d out:\n%s\nerr %s", r.code, r.out, r.err)
 	}
-	if exists(root, ".claude/hooks/lighthouse/ruff-format.sh") || packages(t, root) != "core" {
+	if exists(root, ".claude/hooks/lighthouse/ruff-format-check.sh") || packages(t, root) != "core" {
 		t.Fatalf("still installed; packages %s", packages(t, root))
 	}
-	if strings.Contains(read(t, root, ".claude/settings.json"), "ruff-format.sh") || strings.Contains(read(t, root, "AGENTS.md"), "python") {
+	if strings.Contains(read(t, root, ".claude/settings.json"), "ruff-format-check.sh") || strings.Contains(read(t, root, "AGENTS.md"), "python") {
 		t.Fatalf("settings or AGENTS.md keep python:\n%s\n%s", read(t, root, ".claude/settings.json"), read(t, root, "AGENTS.md"))
 	}
 	if !strings.Contains(r.err, "lighthouse.toml: the keys package python added stay; remove them by hand if you no longer want them") {
@@ -238,13 +238,13 @@ func TestUpgradeDropsPack(t *testing.T) {
 
 func TestNoPackRefusesLocalEdit(t *testing.T) {
 	root := initWithPython(t)
-	write(t, root, ".claude/hooks/lighthouse/ruff-format.sh", "#!/bin/bash\necho mine\n")
+	write(t, root, ".claude/hooks/lighthouse/ruff-format-check.sh", "#!/bin/bash\necho mine\n")
 	r := run(t, root, "", all(upgrade, yes, withPython, dropPack("python")))
-	if r.code != 1 || !strings.Contains(r.out, "conflict:") || !exists(root, ".claude/hooks/lighthouse/ruff-format.sh") {
+	if r.code != 1 || !strings.Contains(r.out, "conflict:") || !exists(root, ".claude/hooks/lighthouse/ruff-format-check.sh") {
 		t.Fatalf("rc %d out:\n%s", r.code, r.out)
 	}
 	r = run(t, root, "", all(upgrade, yes, withPython, dropPack("python"), func(o *Options) { o.Force = true }))
-	if r.code != 0 || exists(root, ".claude/hooks/lighthouse/ruff-format.sh") {
+	if r.code != 0 || exists(root, ".claude/hooks/lighthouse/ruff-format-check.sh") {
 		t.Fatalf("force: rc %d\n%s", r.code, r.err)
 	}
 }
@@ -275,7 +275,7 @@ func TestPackOrderIsCoreThenAlphabetical(t *testing.T) {
 			cmds = append(cmds, h.Command)
 		}
 	}
-	if len(cmds) != 2 || !strings.HasSuffix(cmds[0], "ruff-format.sh") || !strings.HasSuffix(cmds[1], "shellcheck.sh") {
+	if len(cmds) != 2 || !strings.HasSuffix(cmds[0], "ruff-format-check.sh") || !strings.HasSuffix(cmds[1], "shell-lint-check.sh") {
 		t.Fatalf("PostToolUse commands %v", cmds)
 	}
 }
@@ -284,7 +284,7 @@ func TestRequiresMergedPerTool(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "pyproject.toml", "")
 	r := run(t, root, "", all(yes, withPython, func(o *Options) {
-		o.Packs.(fstest.MapFS)["python/requires.toml"] = file("jq = [\"ruff-format\"]\n")
+		o.Packs.(fstest.MapFS)["python/requires.toml"] = file("jq = [\"ruff-format-check\"]\n")
 		o.Deps = deps.Checker{
 			LookPath: func(name string) (string, error) {
 				if name == "jq" {
@@ -295,7 +295,7 @@ func TestRequiresMergedPerTool(t *testing.T) {
 			Run: func(string, ...string) error { return nil },
 		}
 	}))
-	if r.code != 0 || strings.Count(r.err, "missing dependency: jq") != 1 || !strings.Contains(r.err, "missing dependency: jq (needed by: main-commit-guard, ruff-format)") {
+	if r.code != 0 || strings.Count(r.err, "missing dependency: jq") != 1 || !strings.Contains(r.err, "missing dependency: jq (needed by: main-commit-gate, ruff-format-check)") {
 		t.Fatalf("rc %d err %q", r.code, r.err)
 	}
 }
@@ -358,7 +358,7 @@ func TestDetectIgnoresInstalledFiles(t *testing.T) {
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core\n") {
 		t.Fatalf("init: rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
-	if !exists(root, ".claude/hooks/lighthouse/main-commit-guard.sh") {
+	if !exists(root, ".claude/hooks/lighthouse/main-commit-gate.sh") {
 		t.Fatal("core hooks not installed")
 	}
 	r = run(t, root, "", all(upgrade, realPacks))

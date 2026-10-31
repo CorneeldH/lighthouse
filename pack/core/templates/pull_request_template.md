@@ -8,7 +8,7 @@
 
 ## Related issues
 
-<!-- Written by /lighthouse-verify-pr. One of three forms (mixing is allowed):
+<!-- Written by /lighthouse-write-pr. One of three forms (mixing is allowed):
      `Closes #123` + a `### Evidence #123` table with one row per acceptance criterion
        (| AC | Command | Result |), when every criterion is proven on this branch or can only be
        measured once the PR exists;
@@ -20,7 +20,7 @@
 
 ## Open review points
 
-<!-- Written by /lighthouse-verify-pr from `plan_review_record.py pr-open-points` when a spec or plan
+<!-- Written by /lighthouse-write-pr from `plan_review_record.py pr-open-points` when a spec or plan
      on this branch ends in an `Open after review` section (an adversarial review that hit its
      round limit). Delete this section otherwise. -->
 

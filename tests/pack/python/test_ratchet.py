@@ -578,7 +578,7 @@ def test_cmd_ruff_footer_on_only_a_hard_limit_hit_gives_no_bump_advice(
     assert "on purpose" not in err
     assert "must come down in the code" in err
     assert "## Reaching a complexity limit: deepen, don't split" in err
-    assert ".claude/skills/lighthouse-python-writing/SKILL.md" in err
+    assert ".claude/skills/lighthouse-python-standard/SKILL.md" in err
 
 
 def test_cmd_ruff_footer_on_a_rising_counter_gives_bump_advice(
@@ -1296,9 +1296,9 @@ def test_an_empty_dir_list_is_red(tmp_path, monkeypatch, key):
 
 def test_complexity_skill_path():
     path, _, rest = ratchet.COMPLEXITY_SKILL.partition(", section ")
-    assert path == ".claude/skills/lighthouse-python-writing/SKILL.md"
+    assert path == ".claude/skills/lighthouse-python-standard/SKILL.md"
     heading = rest.strip("`")
-    skill = _SCRIPTS.parent / "skills" / "python-writing" / "claude" / "SKILL.md"
+    skill = _SCRIPTS.parent / "skills" / "python-standard" / "claude" / "SKILL.md"
     assert heading in skill.read_text(encoding="utf-8").splitlines()
 
 

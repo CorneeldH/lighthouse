@@ -3,10 +3,11 @@
 The script runs as a subprocess against temporary trees, so the contract
 (exit code + stdout) is tested and not a reimplementation of it. It runs
 from its installed place (`_testkit.INSTALL_ROOT`), so it finds its config reader
-in `.lighthouse/lib` as in a project. Checks 1, 2, 3, 4, 5, 7, 8, 10 and
-11 carry their number from the source; 6, 9, 12 and 13 are project-specific and are not in here.
+in `.lighthouse/lib` as in a project. Checks 1, 2, 3, 4, 5, 7, 8, 10, 11 and
+14 carry their number from the source; 6, 9, 12 and 13 are project-specific and are not in here.
 """
 
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -1095,10 +1096,10 @@ def test_check_8_sees_hook_subdirs(tmp_path):
     repo = tmp_path / "repo"
     hooks = repo / ".claude" / "hooks" / "lighthouse"
     hooks.mkdir(parents=True)
-    (hooks / "streng.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    (hooks / "streng-check.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     (repo / ".claude" / "settings.json").write_text(
         '{"hooks":{"PostToolUse":[{"matcher":"Edit","hooks":[{"type":"command",'
-        '"command":"$CLAUDE_PROJECT_DIR/.claude/hooks/lighthouse/streng.sh"}]}]}}',
+        '"command":"$CLAUDE_PROJECT_DIR/.claude/hooks/lighthouse/streng-check.sh"}]}]}}',
         encoding="utf-8",
     )
     claude, agents, _ = _tree(tmp_path)
@@ -1107,7 +1108,7 @@ def test_check_8_sees_hook_subdirs(tmp_path):
             skill_root,
             "paia-streng",
             metadata=STRICT,
-            body="De afdwinging zit in `.claude/hooks/lighthouse/streng.sh`.\n",
+            body="De afdwinging zit in `.claude/hooks/lighthouse/streng-check.sh`.\n",
         )
     result = _run(tmp_path)
     assert result.returncode == 0, result.stdout
@@ -1266,3 +1267,93 @@ def test_final_line_counts_findings(tmp_path):
     result = _run(tmp_path)
     assert result.returncode == 1
     assert result.stdout.rstrip().endswith("finding(s).")
+
+
+def _lighthouse_settings(tmp_path: Path, hooks: dict[str, list[str]]) -> None:
+    """Write a `settings.json` with one lighthouse hook per name, on the given events."""
+    claude = tmp_path / "repo" / ".claude"
+    claude.mkdir(parents=True, exist_ok=True)
+    events: dict[str, list] = {}
+    for script, names in hooks.items():
+        for event in names:
+            events.setdefault(event, []).append(
+                {
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": f'"$CLAUDE_PROJECT_DIR"/.claude/hooks/lighthouse/{script} {event}',
+                        }
+                    ]
+                }
+            )
+    (claude / "settings.json").write_text(json.dumps({"hooks": events}), encoding="utf-8")
+
+
+def test_hook_names_ok(tmp_path):
+    _lighthouse_settings(
+        tmp_path,
+        {
+            "main-commit-gate.sh": ["PreToolUse"],
+            "md-link-check.sh": ["PostToolUse"],
+            "go-lint-gate.sh": ["Stop"],
+        },
+    )
+    result = _run(tmp_path)
+    assert result.returncode == 0, result.stdout
+    assert "every lighthouse hook is named" in result.stdout
+
+
+def test_hook_name_without_suffix_fails(tmp_path):
+    _lighthouse_settings(tmp_path, {"worktree-guard.sh": ["PreToolUse"]})
+    result = _run(tmp_path)
+    assert result.returncode == 1
+    assert "'worktree-guard' ends on neither -gate nor -check" in result.stdout
+
+
+def test_gate_only_after_the_fact_fails(tmp_path):
+    _lighthouse_settings(tmp_path, {"foo-gate.sh": ["PostToolUse"]})
+    result = _run(tmp_path)
+    assert result.returncode == 1
+    assert "'foo-gate' is a gate but" in result.stdout
+
+
+def test_check_on_stop_fails(tmp_path):
+    _lighthouse_settings(tmp_path, {"foo-check.sh": ["Stop"]})
+    result = _run(tmp_path)
+    assert result.returncode == 1
+    assert "'foo-check' is a check but" in result.stdout
+
+
+def test_hook_names_ignore_project_hooks(tmp_path):
+    _lighthouse_settings(tmp_path, {"main-commit-gate.sh": ["PreToolUse"]})
+    path = tmp_path / "repo" / ".claude" / "settings.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["hooks"]["PostToolUse"] = [
+        {
+            "hooks": [
+                {"type": "command", "command": '"$CLAUDE_PROJECT_DIR"/.claude/hooks/own.sh'},
+                {"type": "command", "command": "npx prettier --write"},
+            ]
+        }
+    ]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    result = _run(tmp_path)
+    assert result.returncode == 0, result.stdout
+    assert "every lighthouse hook is named" in result.stdout
+
+
+def test_hook_names_broken_settings_fails(tmp_path):
+    claude = tmp_path / "repo" / ".claude"
+    claude.mkdir(parents=True, exist_ok=True)
+    (claude / "settings.json").write_text("{not json", encoding="utf-8")
+    result = _run(tmp_path)
+    assert "hook-names:" in result.stdout
+    assert "is not valid JSON (or not an object)" in result.stdout
+    assert result.returncode == 1
+
+
+def test_hook_names_without_settings_skips(tmp_path):
+    (tmp_path / "repo").mkdir(parents=True, exist_ok=True)
+    result = _run(tmp_path)
+    assert result.returncode == 0, result.stdout
+    assert "SKIPPED  hook-names" in result.stdout

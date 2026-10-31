@@ -2,7 +2,7 @@
 
 One module for the norm "links in files are relative and point to an existing
 target; absolute links are a problem". Used by the rewritten
-`worktree-linkcheck.sh` (task 5, through the CLI) and by the docs link tests
+`md-link-check.sh` (task 5, through the CLI) and by the docs link tests
 (task 6, through `strip_code`, `relative_links` and `absolute_links`); the
 latter replaces its own `_strip_code_fences` in `test_docs_planning.py` with
 this module.

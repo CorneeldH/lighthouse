@@ -20,7 +20,7 @@ _spec.loader.exec_module(gate_python)
 @pytest.fixture
 def tree(tmp_path):
     for rel in (
-        "tests/pack/test_commit_tests.py",
+        "tests/pack/test_commit_test_gate.py",
         "tests/pack/test_deadline.py",
         "tests/pack/test_gate_python.py",
         "tests/pack/test_run_all.py",
@@ -43,8 +43,8 @@ def test_changed_test_file_selects_itself(tree):
 
 
 def test_hook_maps_to_test_with_underscores(tree):
-    files = ["pack/core/hooks/commit-tests.sh"]
-    assert select(tree, files) == ["tests/pack/test_commit_tests.py"]
+    files = ["pack/core/hooks/commit-test-gate.sh"]
+    assert select(tree, files) == ["tests/pack/test_commit_test_gate.py"]
 
 
 def test_lib_module_maps_to_test(tree):

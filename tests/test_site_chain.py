@@ -209,7 +209,7 @@ def test_fixture_planned_without_issue_is_flagged():
 def test_fixture_planned_handoff_without_milestone_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
     del chain["handoffs"][0]["milestone"]
-    assert planned_problems(chain) == ["main-commit-guard->planned-issue: planned without issue or milestone"]
+    assert planned_problems(chain) == ["main-commit-gate->planned-issue: planned without issue or milestone"]
 
 
 def test_fixture_source_pointing_nowhere_is_flagged():
@@ -249,7 +249,7 @@ def test_fixture_unknown_status_is_flagged():
 def test_fixture_unknown_effect_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
     chain["chips"][1]["effects"] = ["shouts"]
-    assert vocabulary_problems(chain) == ["main-commit-guard: unknown effect"]
+    assert vocabulary_problems(chain) == ["main-commit-gate: unknown effect"]
 
 
 def test_phases_are_the_seven_of_the_chain():
@@ -259,7 +259,7 @@ def test_phases_are_the_seven_of_the_chain():
 
 def test_every_pack_part_is_on_the_chain():
     # Tools outside the flow from idea to main; their place is the overview map (#102).
-    assert missing_parts(load("chain.json")) == ["pack/core/skills/instrument", "pack/core/skills/worktree-audit"]
+    assert missing_parts(load("chain.json")) == ["pack/core/skills/audit-worktrees", "pack/core/skills/place-instruction"]
 
 
 def test_coverage_flags_a_removed_skill():
@@ -273,13 +273,13 @@ def test_works_handoffs_follow_the_handoff_table():
     chips = chips_by_id(chain)
     works = {(h["from"], h["to"]) for h in chain["handoffs"] if h["status"] == "works"}
     assert works == {
-        ("brainstorming", "spec-adversarial-review"),
-        ("spec-adversarial-review", "writing-plans"),
-        ("writing-plans", "plan-adversarial-review"),
-        ("plan-adversarial-review", "executing-plans"),
+        ("brainstorming", "review-spec"),
+        ("review-spec", "writing-plans"),
+        ("writing-plans", "review-plan"),
+        ("review-plan", "executing-plans"),
     }
     # The handoff skill's routing table names the first step of each works handoff.
-    table = (ROOT / "pack" / "core" / "skills" / "handoff" / "SKILL.md").read_text(encoding="utf-8")
+    table = (ROOT / "pack" / "core" / "skills" / "write-handoff" / "SKILL.md").read_text(encoding="utf-8")
     for _, target in works:
         prefix = "lighthouse-" if chips[target]["kind"] == "lighthouse" else "superpowers:"
         assert f"`/{prefix}{target}" in table, target
@@ -290,4 +290,4 @@ def test_chain_routes_are_the_known_ones():
     routes = {r["id"]: r for r in load("chain.json")["routes"]}
     assert set(routes) == {"1", "2", "4a", "4b", "4c", "no-issue", "red-pr"}
     assert routes["1"]["examples"] == ["refresh-expo-lockfiles"]
-    assert routes["no-issue"]["chips"][0] == "worktree-guard"
+    assert routes["no-issue"]["chips"][0] == "worktree-check"
