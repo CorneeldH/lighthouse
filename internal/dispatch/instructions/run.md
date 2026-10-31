@@ -26,8 +26,9 @@ session for one phase of an issue. Most likely nobody is watching.
   it. Two to six times `--option`; `--recommended` is the letter (a-f) of the option you
   recommend; `--task` and `--command` are optional (`--command` may repeat). `--dry-run`
   prints the question without posting it. The command reads your session from
-  `LIGHTHOUSE_CONTROLLER_RUN` and prints the comment URL. When it says `nothing posted`, the
-  call has the wrong shape: correct it. When the post fails, it exits 1
+  `LIGHTHOUSE_CONTROLLER_RUN` and prints the comment URL. The flags are described in
+  `docs/ask.md` of the lighthouse repository. When it says `nothing posted`, the call has the
+  wrong shape: correct it. When the post fails, it exits 1
   (`lighthouse ask: post failed: …`) and nothing is on the issue: run the same call once more,
   and stop if it fails again.
 - If the user has to run something themselves (sudo, another host, an interactive login), put
