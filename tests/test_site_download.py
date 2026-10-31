@@ -189,8 +189,9 @@ def test_install_page_title():
 def test_footer_links():
     text = INDEX.read_text(encoding="utf-8")
     base = "https://github.com/CorneeldH/lighthouse/"
-    for url in ["blob/main/docs/getting-started.md", "issues/88", "blob/main/LICENSE", "blob/main/CHANGELOG.md"]:
+    for url in ["blob/main/docs/getting-started.md", "blob/main/LICENSE", "blob/main/CHANGELOG.md"]:
         assert f'href="{base}{url}"' in text, url
+    assert 'href="agents/install.md"' in text
     assert "<title>Lighthouse</title>" in text
 
 

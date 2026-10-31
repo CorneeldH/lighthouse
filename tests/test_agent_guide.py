@@ -6,7 +6,8 @@ import tomllib
 
 from tests.test_getting_started import init_flags, required_tools
 from tests.test_site_chain import ROOT, SITE
-from tests.test_site_download import DOWNLOAD, TABS
+from tests.test_site_download import DOWNLOAD, INDEX, INSTALL, TABS
+from tests.test_site_pages import ElementById
 
 GUIDE = SITE / "agents" / "install.md"
 PASTE = "Read https://corneeldh.github.io/lighthouse/agents/install.md and install lighthouse in this repo."
@@ -139,3 +140,24 @@ def test_final_report_fields():
     text = guide_section("Final report")
     for needle in ["lighthouse version", "init --upgrade", "/lighthouse-start-issue"]:
         assert needle in text, f"Final report lacks {needle!r}"
+
+
+def test_paste_block_on_install_page():
+    text = INSTALL.read_text(encoding="utf-8")
+    block = ElementById("agent")
+    block.feed(text)
+    assert block.attrs is not None, "install.html has no element with id=agent"
+    assert PASTE in block.text
+    assert text.index('id="agent"') < text.index("data-platform")
+
+
+def test_paste_block_has_copy_button():
+    js = (SITE / "download.js").read_text(encoding="utf-8")
+    assert re.search(r"addCopyButtons\(\[[^\]]*\.agent-prompt", js)
+
+
+def test_guide_is_linked():
+    for page in [INSTALL, INDEX]:
+        text = page.read_text(encoding="utf-8")
+        assert 'href="agents/install.md"' in text, page.name
+        assert "issues/88" not in text, page.name

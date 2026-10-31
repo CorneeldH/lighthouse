@@ -1,8 +1,9 @@
 // The download on the install page: the block of the visitor's platform opened and moved to the
-// top, the release label from the GitHub API and a copy button. Without this script every block
-// stays folded in; it writes text and attributes only, never HTML.
+// top, the release label from the GitHub API, and a copy button on each block and on the sentence
+// for agents. Without this script every block stays folded in; it writes text and attributes
+// only, never HTML.
 
-import { choosePlatform, releaseLabel } from "./platform.js?v=87b4b61c";
+import { choosePlatform, releaseLabel } from "./platform.js?v=d5f76863";
 
 const API = "https://api.github.com/repos/CorneeldH/lighthouse/releases/latest";
 
@@ -40,7 +41,7 @@ export function initDownload(root) {
   });
 
   showRelease(root.querySelector("#release-version"));
-  addCopyButtons(panels);
+  addCopyButtons([...panels, ...root.querySelectorAll(".agent-prompt")]);
 }
 
 // select(name) opens that block and no other, and puts it first, then the "Other platforms"
