@@ -30,7 +30,9 @@ install apart". Er is geen apart specbestand. De vorige versie staat in
 - Site-JS schrijft nooit HTML: geen `innerHTML`, `outerHTML`, `insertAdjacentHTML` of
   `document.write`. Alleen `textContent`, attributen, `createElement` en DOM-verplaatsingen.
 - De tekst van de vijf installblokken (`<pre><code>`, path-hint, file-line, Windows-intro)
-  verhuist letterlijk. De bestaande tests op checksum, `&&` en PowerShell blijven ongewijzigd
+  verhuist letterlijk, op één uitzondering na: de Windows-intro zegt nu `use the Linux tab`
+  (`index.html:90`); dat wordt `use the Linux x86-64 block`, want tabs bestaan niet meer.
+  De bestaande tests op checksum, `&&` en PowerShell blijven ongewijzigd
   groen.
 - De volgorde van de platformen in de HTML blijft `linux-amd64`, `linux-arm64`, `darwin-arm64`,
   `darwin-amd64`, `windows-amd64` (alfabetisch op OS). Zonder JS zijn ze alle vijf ingeklapt, dus
@@ -120,10 +122,15 @@ Verwacht: FAIL, `FileNotFoundError` op `install.html`.
 - `download.js`:
   - `buildTabs`, de toetsenbordnavigatie en `FALLBACK_TAB` vervallen.
   - Een interne `select(name: string | null)`: sluit alle panelen, opent `name`, zet dat paneel
-    vóór het eerste paneel, en zet direct erna één `<h2 class="others-title">Other platforms</h2>`
-    (eenmalig aangemaakt, met `textContent`). Bij `null` gebeurt niets (review focus 2).
+    vóór het paneel dat nú als eerste `.platform` in de DOM staat
+    (`root.querySelector(".platform[data-platform]")`, niet de statische `panels[0]`), en zet
+    direct erna één `<h2 class="others-title">Other platforms</h2>` (eenmalig aangemaakt, met
+    `textContent`). Bij `null` gebeurt niets (review focus 2). `select` loopt vaak twee keer: op
+    een x86-Mac eerst `darwin-arm64`, dan na `getHighEntropyValues` `darwin-amd64`
+    (`download.js:36-41`), en ook via de Intel-knop. Na elke aanroep staat het open paneel
+    bovenaan, dan de h2, dan de vier andere.
   - `touched` wordt `true` bij een klik op een `summary` of op `.platform-note-link`.
-  - `showNote`: de Intel-knop heet `Open the macOS Intel build.` en roept
+  - `showNote`: de Intel-knop heet `Open the macOS Intel build.` (nu `Take the macOS Intel tab.`) en roept
     `select("darwin-amd64")` aan. De WSL-tekst blijft.
   - `showRelease` en `addCopyButtons` blijven; de Copy-knop staat in het `<details>`, vóór de
     `<pre>`.
@@ -190,7 +197,8 @@ Verwacht: FAIL op de `<a … id="download"`-regex.
   inhoud van `#who`.
 - Kaarten en footer ongewijzigd; de footer krijgt vooraan `<a href="install.html">Install</a>`.
 - `index.js`: `initTheme`, en `if (location.hash === "#download") location.replace("install.html")`.
-  De code die `#why` openklapt vervalt, want `#why` is geen `<details>` meer.
+  De code die `#why` openklapt vervalt, want `#why` is geen `<details>` meer; dezelfde code klapt
+  nu `#who` open bij `location.hash === "#who"` (de `requirements`-link van `install.html`).
 - `map.css`: `.hero` (ruimte boven en onder, h1 groter dan nu), `.hero-button` (gevuld in
   `--accent`, tekst leesbaar in beide thema's, `:focus-visible` met `--focus`). De `.why`-regels
   gaan van een `<details>` naar een sectie met dezelfde breedte als `.what`.
@@ -287,26 +295,45 @@ def test_version_follows_the_assets_not_the_tokens(tmp_path):
     assert site_version(tmp_path) == changed
 ```
 
-Plus één test dat `asset_refs` op `chain.js` de import van `./map.js` vindt.
+Plus één test dat `asset_refs` op `chain.js` de import van `./map.js` vindt, en één die
+`asset_refs` controleert tegen de onafhankelijke extractor van `tests/test_site_pages.py`:
+
+```python
+def test_asset_refs_misses_no_local_asset():
+    for p in sorted(SITE.glob("*.html")) + sorted(SITE.glob("*.js")):
+        expected = {l for l in relative_links(p) if l.endswith((".js", ".css"))}
+        assert {r.split("?", 1)[0] for r in asset_refs(p)} == expected, p.name
+```
+
+(`from tests.test_site_pages import relative_links`.)
 
 - [ ] **Stap 2: Draai de tests en zie ze falen**
 
 Run: `uv run pytest -q tests/test_site_assets.py`
-Verwacht: FAIL; `index.html` verwijst naar `index.js` zonder `?v=`.
+Verwacht: FAIL bij de collection, `ModuleNotFoundError: No module named 'tests.site_version'`.
 
-- [ ] **Stap 3: Schrijf `tests/site_version.py` en zet de versies**
+- [ ] **Stap 3: Schrijf `tests/site_version.py`, nog zonder de versies te zetten**
+
+Schrijf `site_version`, `asset_refs`, `write` en de `__main__`-tak volgens *Interfaces*, maar
+draai `write()` nog niet.
+
+Run: `uv run pytest -q tests/test_site_assets.py`
+Verwacht: FAIL in `test_every_local_asset_carries_the_site_version` alleen (de onversiede
+verwijzingen, o.a. `('index.html', 'index.js')`); de andere tests PASS.
+
+- [ ] **Stap 4: Zet de versies**
 
 Run: `uv run python -m tests.site_version`
 Verwacht: de paden van alle `docs/site/*.html` en van `chain.js`, `guardrails.js`,
 `download.js`, `index.js` en `install.js`.
 
-- [ ] **Stap 4: Draai de volledige suite**
+- [ ] **Stap 5: Draai de volledige suite**
 
 Run: `uv run pytest -q -n auto`
 Verwacht: PASS. Let op `tests/test_site_pages.py` (links met `?v=` lossen op, omdat de query
 eraf gaat) en op elke test die een site-module via `node` importeert.
 
-- [ ] **Stap 5: Commit**
+- [ ] **Stap 6: Commit**
 
 ```bash
 git add tests/site_version.py tests/test_site_assets.py docs/site
@@ -319,25 +346,58 @@ rood. Zet die regel in de docstring van `tests/test_site_assets.py`.
 
 ### Taak 5: bewijs in de browser
 
-Geen commit; het bewijs gaat in de PR (acceptatiecriterium 7).
+Bewijs voor acceptatiecriterium 7. Vijf screenshots worden gecommit, zodat de PR-body en
+entry C van `/lighthouse-close-issue` ze na de merge terugvinden; de rest blijft in de
+scratch-map.
 
-- [ ] **Stap 1: Serveer de site**
+**Files:**
+- Create: `docs/images/issue-156/index-mac.png`, `index-linux.png`, `install-mac.png`,
+  `install-linux.png`, `install-nojs.png` (licht thema, viewport 1280×900, `fullPage: true`)
 
-Run: `python3 -m http.server 8765 --directory docs/site` (op de achtergrond)
+- [ ] **Stap 1: Zet Playwright klaar en serveer de site**
+
+In de worktree: `npm ci --prefix web` (`@playwright/test` 1.64.1 uit `web/package.json`;
+`web/node_modules` ontbreekt nu). Chromium staat in de cache `~/.cache/ms-playwright`; ontbreekt
+de build die 1.64.1 vraagt, dan `npx --prefix web playwright install chromium`.
+Run: `python3 -m http.server 8765 --directory docs/site` (op de achtergrond).
 
 - [ ] **Stap 2: Maak de screenshots met Playwright-Chromium**
 
-Gebruik een script in de scratch-map, niet in de repo. Leg vast:
+Schrijf in de scratch-map een CommonJS-script `site-shots.cjs` naar het patroon van
+`web/e2e/screenshot.mjs` (`const { chromium } = require('@playwright/test')`) en draai het met
+`NODE_PATH=web/node_modules node <scratch>/site-shots.cjs`. Het script faalt (exit 1) zodra één
+verwachting hieronder niet klopt. Leg vast:
 - `index.html` en `install.html` met Mac-UA
   (`Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15`) en
   met Linux-UA, in licht en donker (`colorScheme`);
+- `install.html` met Mac-UA en zonder `navigator.userAgentData` (een `addInitScript` dat het
+  weghaalt, zoals Safari; patroon van PR #153);
 - `install.html` met `javaScriptEnabled: false`;
 - `install.html` met iPhone-UA (review focus 2: niets open);
 - `index.html#download`, en daarna de `page.url()`: die moet op `install.html` eindigen.
 
-Verwacht: met Mac-UA staat `macOS Apple silicon` bovenaan en open, met een Copy-knop en de
-Intel-notitie. Zonder JS zijn alle vijf blokken dicht.
+Verwacht:
+- Mac-UA op deze x86-machine: `macOS Intel` bovenaan en open, zonder Intel-notitie, want
+  Chromium meldt `architecture` `x86` (`platform.js:180`, PR #153). Dit is juist gedrag; pas
+  `platform.js` of `download.js` er niet op aan.
+- Mac-UA zonder `userAgentData`: `macOS Apple silicon` bovenaan en open, met Copy-knop en de
+  Intel-notitie. Een klik op `Open the macOS Intel build.` zet `macOS Intel` open bovenaan, met
+  direct daaronder `Other platforms` en dan de vier andere, Apple silicon dicht.
+- Linux-UA: `Linux x86-64` bovenaan en open.
+- Zonder JS: alle vijf blokken dicht, in de HTML-volgorde.
 
-- [ ] **Stap 3: Voeg de screenshots en de URL-uitvoer toe aan de PR-body**
+Kopieer de vijf bestanden uit *Files* (licht, met JS behalve `install-nojs`; voor
+`install-mac.png` de shot zonder `userAgentData`) naar `docs/images/issue-156/`.
 
-Via `/lighthouse-verify-pr`.
+- [ ] **Stap 3: Commit de screenshots**
+
+```bash
+git add docs/images/issue-156
+git commit -m "docs(site): screenshots van landings- en installatiepagina (#156)"
+```
+
+- [ ] **Stap 4: Bewijs in de PR-body**
+
+Via `/lighthouse-verify-pr`: de Evidence-rij van criterium 7 is
+`ls docs/images/issue-156` met als Result `install-nojs.png`; de body toont de vijf
+afbeeldingen en noemt de uitvoer van `page.url()`.
