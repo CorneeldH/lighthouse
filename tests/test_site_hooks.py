@@ -1,4 +1,4 @@
-"""The guardrails map stays in step with pack/*/hooks/hooks.json: every hook entry is drawn on its
+"""The hooks map stays in step with pack/*/hooks/hooks.json: every hook entry is drawn on its
 event with its matcher and command, and nothing is drawn that hooks.json does not register."""
 
 import copy
@@ -7,7 +7,7 @@ from pathlib import Path
 
 from tests.test_site_chain import REPO_BLOB, ROOT, load
 
-# The column of guardrails.json that each hook event belongs in.
+# The column of the hooks map (docs/site/data/hooks.json) that each hook event belongs in.
 EVENT_PHASE = {
     "UserPromptSubmit": "prompt",
     "PreToolUse": "pre-tool",
@@ -90,17 +90,17 @@ def test_hook_entries_reads_every_pack(tmp_path):
 
 
 def test_every_hook_is_on_its_event():
-    assert hook_problems(load("guardrails.json"), ROOT / "pack") == []
+    assert hook_problems(load("hooks.json"), ROOT / "pack") == []
 
 
 def test_hook_problems_flags_a_removed_hook():
-    data = copy.deepcopy(load("guardrails.json"))
+    data = copy.deepcopy(load("hooks.json"))
     data["chips"] = [c for c in data["chips"] if c["id"] != "main-commit-guard"]
     assert hook_problems(data, ROOT / "pack") == ["not on the map: core PreToolUse Bash main-commit-guard.sh"]
 
 
 def test_hook_problems_flags_another_matcher():
-    data = copy.deepcopy(load("guardrails.json"))
+    data = copy.deepcopy(load("hooks.json"))
     chip(data, "worktree-guard")["matcher"] = "Bash"
     assert hook_problems(data, ROOT / "pack") == [
         "not in hooks.json: core PreToolUse Bash worktree-guard.sh",
@@ -109,37 +109,43 @@ def test_hook_problems_flags_another_matcher():
 
 
 def test_hook_problems_flags_another_column():
-    data = copy.deepcopy(load("guardrails.json"))
+    data = copy.deepcopy(load("hooks.json"))
     chip(data, "go-check")["phase"] = "subagent-stop"
     assert hook_problems(data, ROOT / "pack") == ["go-check: Stop belongs in column stop, not subagent-stop"]
 
 
 def test_hook_problems_flags_a_dropped_event():
-    data = copy.deepcopy(load("guardrails.json"))
+    data = copy.deepcopy(load("hooks.json"))
     chip(data, "commit-tests-post")["events"] = ["PostToolUse"]
     assert hook_problems(data, ROOT / "pack") == ["not on the map: core PostToolUseFailure Bash commit-tests.sh post"]
 
 
 def test_hook_problems_flags_a_source_of_another_script():
-    data = copy.deepcopy(load("guardrails.json"))
+    data = copy.deepcopy(load("hooks.json"))
     chip(data, "gofmt")["source"] = chip(data, "go-check")["source"]
     assert hook_problems(data, ROOT / "pack") == ["gofmt: source does not match go/hooks/gofmt.sh"]
 
 
 def test_hook_problems_flags_a_hook_chip_without_effects():
-    data = copy.deepcopy(load("guardrails.json"))
+    data = copy.deepcopy(load("hooks.json"))
     del chip(data, "gofmt")["effects"]
     assert hook_problems(data, ROOT / "pack") == ["gofmt: hook chip lacks events or effects"]
 
 
 def test_phases_are_the_hook_events():
-    labels = [p["label"] for p in load("guardrails.json")["phases"]]
-    assert labels == ["UserPromptSubmit", "PreToolUse", "The tool call",
-                      "PostToolUse / PostToolUseFailure", "SubagentStop", "Stop"]
+    # The column head is upper case, so an event name gets spaces: USERPROMPTSUBMIT does not read.
+    labels = [p["label"] for p in load("hooks.json")["phases"]]
+    assert labels == ["User prompt submit", "Pre tool use", "The tool call",
+                      "Post tool use / failure", "Subagent stop", "Stop"]
+
+
+def test_routes_light_up_the_most_hooks_first():
+    sizes = [len(r["chips"]) for r in load("hooks.json")["routes"]]
+    assert sizes == sorted(sizes, reverse=True)
 
 
 def test_routes_are_the_situations():
-    routes = {r["id"]: r["label"] for r in load("guardrails.json")["routes"]}
+    routes = {r["id"]: r["label"] for r in load("hooks.json")["routes"]}
     assert routes == {
         "main-commit": "I commit on main", "red-tests": "I commit with red tests",
         "pr-evidence": "I open a PR without evidence", "usage-limit": "My limit is almost reached",

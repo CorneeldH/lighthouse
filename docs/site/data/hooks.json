@@ -1,15 +1,15 @@
 {
-  "title": "The guardrails",
+  "title": "The hooks",
   "subtitle": "One turn in Claude Code, and which hook steps in when.",
   "phases": [
     {
       "id": "prompt",
-      "label": "UserPromptSubmit",
+      "label": "User prompt submit",
       "blurb": "you send a prompt"
     },
     {
       "id": "pre-tool",
-      "label": "PreToolUse",
+      "label": "Pre tool use",
       "blurb": "before a tool runs"
     },
     {
@@ -19,12 +19,12 @@
     },
     {
       "id": "post-tool",
-      "label": "PostToolUse / PostToolUseFailure",
+      "label": "Post tool use / failure",
       "blurb": "after a tool ran"
     },
     {
       "id": "subagent-stop",
-      "label": "SubagentStop",
+      "label": "Subagent stop",
       "blurb": "a subagent stops"
     },
     {
@@ -531,26 +531,17 @@
   "handoffs": [],
   "routes": [
     {
-      "id": "main-commit",
-      "label": "I commit on main",
+      "id": "write-gates",
+      "label": "I write code a gate rejects",
       "chips": [
-        "worktree-guard",
-        "main-commit-guard"
-      ]
-    },
-    {
-      "id": "red-tests",
-      "label": "I commit with red tests",
-      "chips": [
-        "commit-tests-pre",
-        "commit-tests-post"
-      ]
-    },
-    {
-      "id": "pr-evidence",
-      "label": "I open a PR without evidence",
-      "chips": [
-        "pr-create-gate"
+        "bash-write-gates-pre",
+        "code-language",
+        "gofmt",
+        "ruff-format",
+        "shellcheck",
+        "bash-write-gates-post",
+        "go-check",
+        "ty-check"
       ]
     },
     {
@@ -573,17 +564,26 @@
       ]
     },
     {
-      "id": "write-gates",
-      "label": "I write code a gate rejects",
+      "id": "main-commit",
+      "label": "I commit on main",
       "chips": [
-        "bash-write-gates-pre",
-        "code-language",
-        "gofmt",
-        "ruff-format",
-        "shellcheck",
-        "bash-write-gates-post",
-        "go-check",
-        "ty-check"
+        "worktree-guard",
+        "main-commit-guard"
+      ]
+    },
+    {
+      "id": "red-tests",
+      "label": "I commit with red tests",
+      "chips": [
+        "commit-tests-pre",
+        "commit-tests-post"
+      ]
+    },
+    {
+      "id": "pr-evidence",
+      "label": "I open a PR without evidence",
+      "chips": [
+        "pr-create-gate"
       ]
     }
   ]

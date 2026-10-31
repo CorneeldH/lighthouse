@@ -1,14 +1,14 @@
-// The guardrails page: the flow map from data/guardrails.json.
+// The hooks page: the flow map from data/hooks.json.
 
 import { initTheme, loadJson, renderFlowMap } from "./map.js";
 
 initTheme(document.getElementById("theme-toggle"));
 
 try {
-  const guardrails = await loadJson("data/guardrails.json");
-  document.getElementById("title").textContent = guardrails.title;
-  document.getElementById("subtitle").textContent = guardrails.subtitle;
-  renderFlowMap(document.getElementById("guardrails-map"), guardrails, document.getElementById("detail"));
+  const hooks = await loadJson("data/hooks.json");
+  document.getElementById("title").textContent = hooks.title;
+  document.getElementById("subtitle").textContent = hooks.subtitle;
+  renderFlowMap(document.getElementById("hooks-map"), hooks, document.getElementById("detail"));
   document.getElementById("serve-hint").hidden = true;
 } catch (error) {
   console.error(error);
