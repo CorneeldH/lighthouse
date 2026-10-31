@@ -50,6 +50,10 @@ type wireWorkspace struct {
 	Status      string `json:"status"`
 	WorktreeDir string `json:"worktree_path"`
 	GitHeadRef  string `json:"git_head_ref"`
+	Repo        struct {
+		Provider string `json:"provider"`
+		RepoPath string `json:"repo_path"`
+	} `json:"repo"`
 }
 
 // Prepare returns the ready workspace for branch: an existing one, or a new one.
@@ -62,6 +66,10 @@ func (a *Adapter) Prepare(ctx context.Context, branch string) (workplace.Workspa
 	}
 	id, created := "", false
 	for _, w := range list.Workspaces {
+		// Forge lists the workspaces of every repository; repo_path is lower case.
+		if w.Repo.Provider != a.Kind || !strings.EqualFold(w.Repo.RepoPath, a.Repo) {
+			continue
+		}
 		if w.GitHeadRef == branch || w.GitHeadRef == "refs/heads/"+branch {
 			id = w.ID
 			break
@@ -167,30 +175,38 @@ func (a *Adapter) followRemote(ctx context.Context, ws workplace.Workspace, crea
 		return a.checkoutRemote(ctx, ws, remote, want)
 	}
 	// A found workspace can hold work of an earlier run: never checkout -B over it.
-	_, code, err := a.git(ctx, ws.Path, "merge-base", "--is-ancestor", "HEAD", remote)
+	cur, err := a.gitOK(ctx, ws.Path, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return err
 	}
-	switch code {
-	case 0:
-		_, err := a.gitOK(ctx, ws.Path, "merge", "--ff-only", remote)
-		return err
-	case 1:
-		n, err := a.gitOK(ctx, ws.Path, "rev-list", "--count", "HEAD", "--not", "--remotes=origin")
+	if cur == ws.Branch {
+		_, code, err := a.git(ctx, ws.Path, "merge-base", "--is-ancestor", "HEAD", remote)
 		if err != nil {
 			return err
 		}
-		own, err := strconv.Atoi(n)
-		if err != nil {
-			return fmt.Errorf("git rev-list --count: unreadable answer %q", n)
+		switch code {
+		case 0:
+			_, err := a.gitOK(ctx, ws.Path, "merge", "--ff-only", remote)
+			return err
+		case 1:
+		default:
+			return fmt.Errorf("git merge-base --is-ancestor: exit code %d", code)
 		}
-		if own > 0 {
-			return nil
-		}
-		return a.checkoutRemote(ctx, ws, remote, want)
-	default:
-		return fmt.Errorf("git merge-base --is-ancestor: exit code %d", code)
 	}
+	// On another branch (main, say) a fast-forward would move that branch: only switch
+	// when HEAD holds nothing that is not on origin.
+	n, err := a.gitOK(ctx, ws.Path, "rev-list", "--count", "HEAD", "--not", "--remotes=origin")
+	if err != nil {
+		return err
+	}
+	own, err := strconv.Atoi(n)
+	if err != nil {
+		return fmt.Errorf("git rev-list --count: unreadable answer %q", n)
+	}
+	if own > 0 {
+		return nil
+	}
+	return a.checkoutRemote(ctx, ws, remote, want)
 }
 
 func (a *Adapter) checkoutRemote(ctx context.Context, ws workplace.Workspace, remote, want string) error {
@@ -217,15 +233,17 @@ func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace
 	}
 	c, err := workplace.NewCarrier(l, a.StateDir, time.Now())
 	if err != nil {
-		return workplace.Session{}, fmt.Errorf("%v: %w", err, workplace.ErrNotAccepted)
+		return workplace.Session{}, fmt.Errorf("%w: %w", err, workplace.ErrNotAccepted)
 	}
 	if _, err := workplace.WriteCarrier(a.StateDir, ws.ID, c); err != nil {
-		return workplace.Session{}, fmt.Errorf("write carrier: %v: %w", err, workplace.ErrNotAccepted)
+		return workplace.Session{}, fmt.Errorf("write carrier: %w: %w", err, workplace.ErrNotAccepted)
 	}
 	notAccepted := func(err error) (workplace.Session, error) {
-		_ = workplace.RemoveCarrier(a.StateDir, ws.ID)
 		if !errors.Is(err, workplace.ErrNotAccepted) {
 			err = fmt.Errorf("%v: %w", err, workplace.ErrNotAccepted)
+		}
+		if rmErr := workplace.RemoveCarrier(a.StateDir, ws.ID); rmErr != nil {
+			err = errors.Join(err, fmt.Errorf("remove carrier: %w", rmErr))
 		}
 		return workplace.Session{}, err
 	}

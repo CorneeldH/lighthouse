@@ -44,6 +44,8 @@ type fakeForge struct {
 	// deleteStatus answers the DELETE.
 	deleteStatus int
 	release      chan struct{}
+	// onHandoff runs when the handoff POST arrives.
+	onHandoff func()
 }
 
 func newFakeForge(t *testing.T) (*fakeForge, *Adapter) {
@@ -75,6 +77,18 @@ func (f *fakeForge) count(k string) int {
 	return f.counts[k]
 }
 
+func (f *fakeForge) total() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.counts)
+}
+
+func (f *fakeForge) body(k string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.bodies[k]
+}
+
 func next(list []string, n int) string {
 	if n >= len(list) {
 		return list[len(list)-1]
@@ -104,6 +118,9 @@ func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "GET /api/v1/workspaces/ws1/agent-sessions":
 		_, _ = w.Write([]byte(next(f.sessions, n)))
 	case "POST /api/v1/workspaces/ws1/runtime/agent-handoffs":
+		if f.onHandoff != nil {
+			f.onHandoff()
+		}
 		if f.handoffBlock {
 			select {
 			case <-r.Context().Done():
@@ -122,7 +139,7 @@ func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func listWith(ref string) string {
-	return fmt.Sprintf(`{"workspaces":[{"id":"ws1","git_head_ref":%q}]}`, ref)
+	return fmt.Sprintf(`{"workspaces":[{"id":"ws1","git_head_ref":%q,"repo":{"provider":"github","repo_path":"corneeldh/lighthouse"}}]}`, ref)
 }
 
 func TestPrepareFindsExisting(t *testing.T) {
@@ -166,7 +183,7 @@ func TestPrepareCreatesAndWaitsReady(t *testing.T) {
 	if n := f.count("POST /api/v1/repo/github/CorneeldH/lighthouse/workspaces"); n != 1 {
 		t.Errorf("create POSTs = %d, want 1", n)
 	}
-	if got := f.bodies["POST /api/v1/repo/github/CorneeldH/lighthouse/workspaces"]; got != `{"branch":"issue-1-x"}` {
+	if got := f.body("POST /api/v1/repo/github/CorneeldH/lighthouse/workspaces"); got != `{"branch":"issue-1-x"}` {
 		t.Errorf("create body = %s", got)
 	}
 	if n := f.count("sleep"); n != 2 {
@@ -384,7 +401,7 @@ func TestSpawnAccepted(t *testing.T) {
 	if n := f.count(handoffKey); n != 1 {
 		t.Errorf("POSTs = %d, want 1", n)
 	}
-	if got := f.bodies[handoffKey]; got != `{"message":"do the thing","target_key":"paia-software"}` {
+	if got := f.body(handoffKey); got != `{"message":"do the thing","target_key":"paia-software"}` {
 		t.Errorf("body = %s", got)
 	}
 	if !carrierExists(a) {
@@ -532,8 +549,8 @@ func TestSpawnUnknownProfile(t *testing.T) {
 	if !errors.Is(err, workplace.ErrNotAccepted) {
 		t.Fatalf("err = %v, want ErrNotAccepted", err)
 	}
-	if n := len(f.counts); n != 0 {
-		t.Errorf("requests = %v, want none", f.counts)
+	if n := f.total(); n != 0 {
+		t.Errorf("requests = %d, want none", n)
 	}
 }
 
@@ -545,8 +562,8 @@ func TestSpawnInvalidSpecNotAccepted(t *testing.T) {
 	if !errors.Is(err, workplace.ErrNotAccepted) {
 		t.Fatalf("err = %v, want ErrNotAccepted", err)
 	}
-	if n := len(f.counts); n != 0 {
-		t.Errorf("requests = %v, want none", f.counts)
+	if n := f.total(); n != 0 {
+		t.Errorf("requests = %d, want none", n)
 	}
 }
 
@@ -631,5 +648,101 @@ func TestSpawnTimeoutOtherNewKeyAccepted(t *testing.T) {
 	s, err := a.Spawn(context.Background(), ws1, spec())
 	if err != nil || s.Key != "other" {
 		t.Fatalf("s = %+v, err = %v, want key other accepted", s, err)
+	}
+}
+
+func TestPrepareSkipsWorkspaceOfOtherRepo(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.listBody = `{"workspaces":[
+		{"id":"other","git_head_ref":"refs/heads/issue-1-x","repo":{"provider":"github","repo_path":"corneeldh/personal_ai_agent"}},
+		{"id":"gl","git_head_ref":"refs/heads/issue-1-x","repo":{"provider":"gitlab","repo_path":"corneeldh/lighthouse"}}]}`
+	f.path = t.TempDir()
+	a.Run = func(context.Context, time.Duration, string, ...string) (string, int, error) { return "", 0, nil }
+	ws, err := a.Prepare(context.Background(), "issue-1-x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.ID != "ws1" {
+		t.Errorf("id = %s, want the created ws1", ws.ID)
+	}
+	if n := f.count("POST /api/v1/repo/github/CorneeldH/lighthouse/workspaces"); n != 1 {
+		t.Errorf("create POSTs = %d, want 1", n)
+	}
+}
+
+func TestPrepareFoundOnUnmovedMainDoesNotMoveMain(t *testing.T) {
+	w := newGitWorld(t)
+	b := w.pushBranch(t)
+	// The workspace sits on local main at m1, an ancestor of origin/issue-1-x.
+	a := gitAdapter(t, w.ws)
+	if _, err := a.Prepare(context.Background(), "issue-1-x"); err != nil {
+		t.Fatal(err)
+	}
+	if got := git(t, w.ws, "rev-parse", "--abbrev-ref", "HEAD"); got != "issue-1-x" {
+		t.Errorf("branch = %s, want issue-1-x", got)
+	}
+	if got := git(t, w.ws, "rev-parse", "HEAD"); got != b {
+		t.Errorf("HEAD = %s, want %s", got, b)
+	}
+	if got := git(t, w.ws, "rev-parse", "main"); got != w.m1 {
+		t.Errorf("main = %s, want unmoved %s", got, w.m1)
+	}
+}
+
+func TestSpawnSessionsReadFailsNotAccepted(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.sessions = []string{`{"other":1}`}
+	_, err := a.Spawn(context.Background(), ws1, spec())
+	if !errors.Is(err, workplace.ErrNotAccepted) {
+		t.Fatalf("err = %v, want ErrNotAccepted", err)
+	}
+	if n := f.count(handoffKey); n != 0 {
+		t.Errorf("POSTs = %d, want 0", n)
+	}
+	if carrierExists(a) {
+		t.Error("carrier kept, want removed")
+	}
+}
+
+func TestSpawn3xxNotAccepted(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.handoffStatus = 302
+	_, err := a.Spawn(context.Background(), ws1, spec())
+	if !errors.Is(err, workplace.ErrNotAccepted) {
+		t.Fatalf("err = %v, want ErrNotAccepted", err)
+	}
+	if carrierExists(a) {
+		t.Error("carrier kept, want removed")
+	}
+}
+
+func TestSpawn5xxRereadFailsNotAccepted(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.handoffStatus = 503
+	f.sessions = []string{sessionsJSON(), `{"other":1}`}
+	_, err := a.Spawn(context.Background(), ws1, spec())
+	if !errors.Is(err, workplace.ErrNotAccepted) {
+		t.Fatalf("err = %v, want ErrNotAccepted", err)
+	}
+	if carrierExists(a) {
+		t.Error("carrier kept, want removed")
+	}
+}
+
+func TestSpawnNotAcceptedReportsFailedCarrierRemoval(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	f, a := newFakeForge(t)
+	f.handoffStatus = 422
+	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "ws1"))
+	f.onHandoff = func() { _ = os.Chmod(dir, 0o500) }
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	_, err := a.Spawn(context.Background(), ws1, spec())
+	if !errors.Is(err, workplace.ErrNotAccepted) {
+		t.Fatalf("err = %v, want ErrNotAccepted", err)
+	}
+	if !errors.Is(err, os.ErrPermission) {
+		t.Errorf("err = %v, want the removal error joined", err)
 	}
 }
