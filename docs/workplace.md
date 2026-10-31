@@ -8,10 +8,12 @@ HTTP-adapter). Het ontwerp staat in de [dispatcher-spec](developer/planning/spec
 
 ## De interface
 
-`workplace.Workplace` heeft vijf methoden: `Prepare(branch)` geeft een klare workspace,
+`workplace.Workplace` heeft zes methoden: `Prepare(branch)` geeft een klare workspace,
 `Spawn(ws, launch)` start de agent en geeft zijn sessie, `Sessions(workspaceID)` leest de
-agentsessies, `Stop(workspaceID, sessionIDs)` beëindigt de processen en `Remove(workspaceID)` verwijdert
-de workspace. Elke subprocess-aanroep (git, systemctl, podman) loopt via een injecteerbare
+agentsessies, `Stop(workspaceID, sessionIDs)` beëindigt de processen, `Remove(workspaceID)` verwijdert
+de workspace en `Discard(workspaceID)` vergeet een start waarvan de agent nooit verscheen (de adapter
+wist dan de drager). Een workspace die forge niet meer kent (een 404 op de sessielijst) is
+`workplace.ErrGone`. Elke subprocess-aanroep (git, systemctl, podman) loopt via een injecteerbare
 `workplace.Runner`. Een onbekende exitcode of time-out is een fout, nooit een negatief signaal:
 onmeetbaar is niet "weg" en niet "schoon".
 
@@ -29,7 +31,8 @@ Daarna volgt de workspace `origin/<branch>`, als die branch bestaat:
   `checkout -B <branch> --track origin/<branch>`.
 - Een gevonden workspace kan werk van een eerdere run bevatten, dus nooit `checkout -B` eroverheen.
   Staat de workspace op de issue-branch, dan volgt alleen een fast-forward (`merge --ff-only`), en alleen
-  als `HEAD` een voorouder is van `origin/<branch>`.
+  als `HEAD` een voorouder is van `origin/<branch>`. Is `HEAD` geen voorouder, dan geldt de
+  rev-list-regel hieronder.
 - Staat de workspace op een andere branch (bijvoorbeeld `main`), dan geldt de rev-list-regel: pas als
   `HEAD` geen commit heeft die op geen enkele `origin`-ref staat, schakelt `Prepare` om. Een
   fast-forward zou daar die andere branch verplaatsen; lokale `main` gaat dus nooit mee.
@@ -39,9 +42,10 @@ Daarna volgt de workspace `origin/<branch>`, als die branch bestaat:
 `Spawn` schrijft vóór de handoff een drager: een JSON-bestand dat het forge-target leest om de agent te
 starten. Het contract:
 
-- **Pad:** `<statemap>/carriers/<workspace-id>.json`. Het workspace-id moet een veilige bestandsnaam zijn
-  (`[A-Za-z0-9][A-Za-z0-9._-]*`); anders weigert `Spawn`.
-- **Rechten:** mode `0600`, de map `0700`. Het bestand wordt atomair geschreven (tempbestand en rename).
+- **Pad:** `<statemap>/carriers/<workspace-id>.json`. De statemap is een absoluut pad. Het workspace-id
+  moet een veilige bestandsnaam zijn (`[A-Za-z0-9][A-Za-z0-9._-]*`); anders weigert `Spawn`.
+- **Rechten:** mode `0600`, de map `0700`, ook als de map al bestond met ruimere rechten. Het bestand
+  wordt atomair geschreven (tempbestand en rename).
 - **Velden:** `version` (nu `1`), `repo`, `issue`, `session_id` (een UUID v4 in kleine letters), `mode`
   (`start` of `resume`), `profile`, `args`, `env`, `created_at` (RFC 3339, UTC).
 - **`args`**, in deze volgorde:
@@ -51,13 +55,21 @@ starten. Het contract:
   4. `--append-system-prompt-file <pad>` (absoluut pad)
   5. `--session-id <uuid>` bij `start`, `--resume <uuid>` bij `resume`
   6. `--model sonnet`, alleen op de native lane
-  7. de prompt als laatste argument
+  7. de prompt als laatste argument. Hij mag niet met `-` beginnen (claude zou hem als vlag lezen) en
+     geen NUL-byte bevatten; anders weigert `Spawn`.
 - **`env`:** precies `LIGHTHOUSE_CONTROLLER_RUN` (de session-id van de run) en `LIGHTHOUSE_STATE_DIR`.
 - **Nooit een token.** De drager heeft er geen veld voor en `env` bevat er geen. Het forge-token blijft
   in `[dispatch.forge] token_file` en wordt per verzoek gelezen.
 - **Het target verbruikt de drager** en voert precies `args` uit, niets toevoegen of weglaten.
-  Verbruikt het target hem niet, dan blijft hij staan; lighthouse wist hem alleen bij een niet-aangenomen
-  spawn (zie hieronder) of als het zelf opruimt.
+  Verbruikt het target hem niet, dan blijft hij staan tot lighthouse hem wist. Lighthouse wist hem
+  precies in deze gevallen:
+  1. een niet-aangenomen spawn (`ErrNotAccepted`, zie hieronder);
+  2. `CheckOpen` geeft een run terug met `start uncertain: no session found` (`Discard`), zodat een laat
+     startend target niets meer start;
+  3. `Remove` na een geslaagde `DELETE` of een 404;
+  4. `Cleanup` ziet dat forge de workspace niet meer kent (`ErrGone`).
+
+  Na een onzekere spawn (`ErrUncertain`) blijft de drager staan: er kan een agent draaien.
 
 ## Spawn: drie uitkomsten
 
@@ -67,23 +79,34 @@ verstuurt nooit een tweede POST. Er zijn drie uitkomsten:
 1. **Aangenomen.** Het antwoord heeft een `session.key`. `Spawn` geeft de sessie terug.
 2. **Niet aangenomen** (`workplace.ErrNotAccepted`). Er draait geen agent en de drager is gewist. Dat
    geldt voor: geen target voor het profiel, een ongeldige drager, een mislukte schrijfactie, een
-   mislukte sessielezing vóór de POST, een 4xx of 3xx (een redirect wordt nooit gevolgd), en een 5xx
-   waarna geen nieuwe sessie verschijnt.
-3. **Onzeker** (`workplace.ErrUncertain`). Een time-out (30 s) of verbroken verbinding: er kan een agent
-   draaien. De drager blijft staan. Nooit een tweede spawn.
+   mislukte sessielezing vóór de POST, een token-bestand dat ontbreekt of leeg is, een verbinding die
+   niet tot stand komt (de dial faalt, er is niets verstuurd), een 4xx of 3xx (een redirect wordt nooit
+   gevolgd), en een 5xx waarna de herlezing slaagt en geen nieuwe sessie van deze run toont.
+3. **Onzeker** (`workplace.ErrUncertain`). Er kan een agent draaien. De drager blijft staan. Nooit een
+   tweede spawn. Dat geldt voor: een time-out (30 s), een verbinding die breekt nadat het verzoek
+   verstuurd is, een antwoord dat niet te lezen is of geen JSON is, een 2xx zonder `session.key`, en een
+   5xx waarna de herlezing mislukt.
+
+**De herlezing.** Na een 5xx en na elke onzekere uitkomst leest `Spawn` de sessies één keer opnieuw. Een
+sessie telt alleen als ze nieuw is (een key die vóór de POST niet bestond) en van deze run: met het
+`session_id` van de run (die wint), of nog zonder `session_id`. Een nieuwe key met een ander `session_id`
+is bewezen niet van ons, want de drager geeft `--session-id` mee. Vindt de herlezing zo'n sessie, dan is
+de spawn aangenomen. Zo niet:
+
+- na een 5xx met een geslaagde herlezing: niet aangenomen, en de adapter wist de drager, zodat een laat
+  startend target hem niet meer verbruikt;
+- na een 5xx met een mislukte herlezing: onzeker. Of er een agent startte, is niet te meten, en
+  onmeetbaar is nooit "niet aangenomen";
+- na een onzekere uitkomst: onzeker.
 
 **Het 5xx-besluit.** Spec §6 zegt dat een 5xx "niet aangenomen" is. Maar de agent kan gestart zijn vóór
-de 5xx. Daarom leest `Spawn` na een 5xx de sessies één keer opnieuw. Staat er een nieuwe sessie (een key
-die vóór de POST niet bestond) met het `session_id` van de run, of nog zonder `session_id`, dan is de
-spawn aangenomen. Anders is hij niet aangenomen en wist de adapter de drager, zodat een laat startend
-target hem niet meer verbruikt. Ook bij een time-out leest `Spawn` één keer opnieuw; daar telt elke nieuwe
-key, maar een sessie van deze run wint.
+de 5xx; daarom de herlezing.
 
 **Een laat startende agent.** Verschijnt de agent van een eerdere poging pas na de herlezing, dan is zijn
 rij al `start_failed` (of door `CheckOpen` teruggegeven als "start onzeker"), zonder
-`workplace_session`. `runs.SessionIDs` laat elke gesloten run zonder `workplace_session` weg, niet alleen
-`start_failed`. Zo'n sessie telt dus als **vreemd**: bezet zolang ze `working` is of binnen `max_wait`
-actief, en `ForeignLive` houdt de workspace staan. Het opruimen stopt haar nooit.
+`workplace_session`. Zijn key staat dus op geen enkele rij. Zo'n sessie telt als **vreemd**: bezet
+zolang ze `working` is of binnen `max_wait` actief, en `ForeignLive` houdt de workspace staan. Het
+opruimen stopt haar nooit.
 
 ## Launch en CheckOpen
 
@@ -101,8 +124,11 @@ een tweede poging.
 
 `CheckOpen` handelt de open runs met een workspace af:
 
-- Een run zonder sessiekey zoekt zijn `session_id` in de sessies. Gevonden: de key wordt vastgelegd.
-  Niet gevonden na `max_wait`: de run wordt teruggegeven met de reden `start uncertain: no session found`.
+- Een run zonder sessiekey zoekt zijn `session_id` in de sessies. Een key die al op een rij van het
+  issue staat, telt niet: een resume-run deelt het `session_id` van de eerdere run, en diens sessie kan
+  nog in de lijst staan. Gevonden: de key wordt vastgelegd. Niet gevonden na `max_wait`: de run wordt
+  teruggegeven met de reden `start uncertain: no session found`, en `Discard` wist de drager. Mislukt
+  `Discard`, dan meldt `CheckOpen` die fout en geeft de run toch terug.
 - Een run ouder dan `max_runtime` wordt eerst gestopt (`Stop`) en dan teruggegeven met de reden
   `timeout (max_runtime)`. Lukt `Stop` niet, dan blijft de run open.
 
@@ -127,41 +153,67 @@ wordt (een multibyte teken geeft er dus meer). Dan:
 `Stop` weigert een leeg sessie-id vóór elke aanroep: `pgrep -f ""` en `pkill -f ""` raken elk proces in
 de gedeelde devcontainer, ook vreemde sessies.
 
+## Eigen en vreemd
+
+Welke sessies van het issue zelf zijn, bepaalt de **forge-key**, niet het `session_id`:
+`runs.SessionKeys` geeft de `workplace_session` van elke rij van het issue (open en gesloten) waarin die
+gevuld is. De reden: een resume-run krijgt een nieuwe rij met hetzelfde `session_id` als de eerdere run.
+Mislukt de start van zo'n resume zonder key, dan zou een late agent met dat `session_id` op het
+`session_id` als eigen gesloten sessie tellen: `Busy` zag dan geen bezetting (een tweede spawn) en
+`Cleanup` stopte haar. Op de key telt ze als vreemd.
+
 ## Bezet (#31)
 
-`workplace.Busy(sessions, own, open, activity, now, maxWait)` geeft de eerste sessie die de werkplek
-bezet maakt:
+`workplace.Busy(sessions, ownKeys, open, activity, now, maxWait)` geeft de eerste sessie die de werkplek
+bezet maakt. `ownKeys` komt uit `runs.SessionKeys`; `open` bevat de `session_id`'s van de open runs.
 
-- Een sessie van een **open** run is bezet zolang ze niet `done` is.
-- Een sessie van een **gesloten eigen** run telt niet: dat is geen reden om te wachten.
-- Een **vreemde** sessie (ook een laat startende, zie hierboven) is bezet als ze `working` is, of
+- Een sessie van een **open** run (op `session_id`, als eerste getoetst) is bezet zolang ze niet `done`
+  is.
+- Een sessie waarvan de key in `ownKeys` staat, is een **gesloten eigen** sessie en telt niet: dat is
+  geen reden om te wachten.
+- Elke andere sessie is **vreemd** (ook een laat startende, zie hierboven): bezet als ze `working` is, of
   `waiting` en haar laatste activiteit onbekend of jonger dan `max_wait` is. De activiteit komt uit het
   transcript van de sessie en valt terug op `updated_at` van forge. `done` is nooit bezet.
 
-`BusyReason` geeft de tekst voor de gebruiker. De reden bestaat omdat een tweede agent in dezelfde
-worktree het werk van de eerste stuk kan maken.
+`BusyReason` geeft de tekst voor de gebruiker; een lege state heet daar `unknown`. De reden bestaat omdat
+een tweede agent in dezelfde worktree het werk van de eerste stuk kan maken.
+
+`ForeignLive(sessions, ownKeys)` geeft de eerste sessie waarvan de key niet in `ownKeys` staat en die niet
+`done` is, ook een stille.
 
 ## Opruimen (#85)
 
-`Cleanup(candidate)` verwijdert een workspace alleen als er niets mee verloren gaat. Het doet niets bij
+`Cleanup(candidate)` verwijdert een workspace alleen als er niets mee verloren gaat. Een kandidaat zonder
+workspace-id is een fout van de aanroeper: `Cleanup` geeft een fout en legt niets vast. Het doet niets bij
 een kandidaat die nog in de controller staat of waarvoor een run open is: een lopende run wordt nooit
 afgebroken. Daarna, in deze volgorde, en elke stap die de workspace moet laten staan is een
 **achterblijver** (`Leftover`, in `tick_state` met soort `cleanup`, per repo en workspace):
 
-1. Sessies lezen. Mislukt: `not measurable: sessions: …`.
-2. Eigen sessie-ids lezen (`runs.SessionIDs`). Mislukt: `not measurable: session ids: …`.
-3. Een niet-`done` vreemde sessie (`ForeignLive`, ook een stille): `foreign session <key>`. Een
+1. Het pad. Geen absoluut pad: `not measurable: no workspace path`, zonder `Stop` en zonder `Remove`.
+   `git -C ""` of een relatief pad zou de werkmap van het proces meten.
+2. Sessies lezen. Kent forge de workspace niet meer (`ErrGone`, een 404), dan telt hij als verwijderd,
+   net als na een 404 op `Remove`: de drager wordt gewist en het achterblijver-record verdwijnt. Andere
+   fout: `not measurable: sessions: …`.
+3. Eigen keys lezen (`runs.SessionKeys`). Mislukt: `not measurable: session keys: …`.
+4. Een niet-`done` vreemde sessie (`ForeignLive`, ook een stille): `foreign session <key>`. Een
    vreemde sessie stopt lighthouse nooit; de workspace blijft onder haar staan.
-4. Een vuile worktree: `uncommitted changes`. Onder git-status vallen ook untracked bestanden.
-5. Commits op geen enkele `origin`-ref: `unpushed commits`. Is `HEAD` gelijk aan de head-SHA van de
+5. De eigen sessies stoppen (`Stop`, met hun `session_id`'s). `Stop` beëindigt de hele systemd-unit van
+   de worktree, dus dat gebeurt pas nadat stap 4 geen vreemde sessie vond. Het gebeurt vóór de git-checks:
+   een eigen agent die nog werkt, kan na de check niets meer committen. Een eigen sessie zonder
+   `session_id` die niet `done` is, is niet te stoppen: `not measurable: own session <key> has no
+   session id`. Mislukt `Stop`: `not measurable: stop: …`.
+6. Een vuile worktree: `uncommitted changes`. Onder git-status vallen ook untracked bestanden.
+7. Commits op geen enkele `origin`-ref: `unpushed commits`. Is `HEAD` gelijk aan de head-SHA van de
    gemergede PR (`MergedHead`), dan telt dat niet: elke PR wordt squash-merged en GitHub verwijdert de
    branch, dus zonder deze uitzondering bleef elke afgeronde workspace staan.
-6. Een fout bij git: `not measurable: <fout>`. Een worktree die niet meetbaar is, is nooit "schoon".
-7. De sessies van eigen runs stoppen (`Stop`). Mislukt: `not measurable: stop: …`.
-8. `Remove`. Een 409 van forge is `forge refused: dirty worktree (409)`. Een andere fout wordt
+8. Een fout bij git: `not measurable: <fout>`. Een worktree die niet meetbaar is, is nooit "schoon".
+9. `Remove`. Een 409 van forge is `forge refused: dirty worktree (409)`. Een andere fout wordt
    `not measurable: remove: <fout>`, en `Cleanup` geeft die fout ook terug. Een 404 telt als al weg.
+   Na een geslaagde `DELETE` of een 404 wist de adapter de drager; lukt dat niet, dan is dat een fout van
+   `Remove`.
 
-Is de workspace verwijderd, dan verdwijnt ook zijn achterblijver-record.
+Een vuile of niet-gepushte workspace heeft dus zijn eigen sessies gestopt en blijft staan. Is de
+workspace verwijderd, dan verdwijnt ook zijn achterblijver-record.
 
 ## Wie roept dit aan
 
