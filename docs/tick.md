@@ -53,7 +53,7 @@ Tick beslist nog niet en start nog geen run: decide en apply volgen in #114.
 
 | Code | Wanneer |
 |---|---|
-| 0 | Alle repo's zijn bedienbaar, of een vorige tick draait nog |
+| 0 | Alle repo's zijn bedienbaar en hun precheck en gather lukten, of een vorige tick draait nog |
 | 1 | Minstens één repo overgeslagen (niet bedienbaar, of de gather mislukte), of een fout (geen `XDG_RUNTIME_DIR`, geen token, ongeldige `host.toml`, database niet te openen) |
 
 ## `lighthouse gather`
