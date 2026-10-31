@@ -43,6 +43,18 @@ Grensgevallen:
 - **dispatcher/server:** wat de controller doet is `dispatcher`; wat je ervan ziet in de SPA is
   `server` (#69).
 
+## Milestones
+
+`lighthouse-write-issue` leest hier de vorm van een milestonetitel. Deze repo heeft geen
+`[project] milestone_prefix`, dus de titel begint direct met de vorm:
+
+- **Fase van de roadmap:** `M<n> — <naam>`, bijvoorbeeld `M2 — Dispatcher`. Het cijfer zegt waar
+  de fase in de volgorde staat.
+- **Thema buiten de fasen:** `<Thema>: <naam>`, bijvoorbeeld `Product: eerste versie voor
+  anderen`.
+- **Bij sluiten:** de titel krijgt ` - DONE` erachter, in dezelfde PATCH als `state=closed`
+  (`M1 — Romp en zicht - DONE`).
+
 ## 3- — de blokkade
 
 Een `3-`-label markeert **wat de eerstvolgende stap blokkeert**, niet wat ergens in het issue
