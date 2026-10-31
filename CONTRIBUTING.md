@@ -42,6 +42,8 @@ pull request from outside does need is below.
   [`.golangci-version`](.golangci-version)).
 - A change under `pack/` also runs `go run ./cmd/lighthouse init --upgrade` and commits
   the installed copy; CI checks that the copy matches.
+- Every PR adds a fragment to `changelog.d/`; CI checks it. The format is in
+  [Changelog fragments](docs/releasing.md#changelog-fragments).
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat(scope): …`, `fix(scope): …`, `docs(scope): …`). Pull requests are
   squash-merged.

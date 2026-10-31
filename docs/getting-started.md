@@ -33,13 +33,22 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 
 ## Install
 
-Prebuilt release binaries are not published yet. Until they are, install with Go. `GOPRIVATE`
-makes `go` fetch the module straight from GitHub with your git credentials instead of through
-`proxy.golang.org`. That keeps the command working if the repository is private to you; on a
-public repository it changes nothing:
+Download the binary for your platform from the latest release and check it against
+`SHA256SUMS`. For Linux on amd64:
 
 ```bash
-GOPRIVATE=github.com/CorneeldH go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_amd64
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+chmod +x lighthouse_linux_amd64
+mkdir -p ~/go/bin && mv lighthouse_linux_amd64 ~/go/bin/lighthouse
+```
+
+The other platforms and the details are in [install.md](install.md#download-a-release-binary).
+Or install with Go:
+
+```bash
+go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
 ```
 
 `@latest` resolves to the newest tag; put a tag such as `@v0.1.6` there to pin one. The binary

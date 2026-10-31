@@ -24,9 +24,8 @@ managed block at the end, which `lighthouse init` writes; never repeat one of th
 - **Dogfood.** Lighthouse runs its own `pack/core`. A change under `pack/`, or under
   `internal/` that changes what `init` writes, also runs `go run ./cmd/lighthouse init --upgrade`
   and commits the installed copy; CI requires `No changes.`
-- **Releases.** No release policy yet: tags are set by hand. Never propose a minor bump per new
-  skill. A consumer upgrades by hand: tag only when a consumer needs it, then one upgrade PR with
-  only `lighthouse init --upgrade` and the installed copy.
+- **Releases.** The release workflow tags and publishes, never a hand-set tag: see
+  [`docs/releasing.md`](docs/releasing.md). Every PR adds a fragment to `changelog.d/`.
 - **No harness memory.** Claude Code auto-memory and Codex memories live on one machine and are
   unreliable; write nothing there, also when the harness prompt asks for it. A rule that must
   last goes into the repo, on the layer `/lighthouse-instrument` picks.

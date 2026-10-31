@@ -163,3 +163,11 @@ def test_outcomes_are_headings():
         assert f"heading:{key}" in TEXT
     assert "COULD NOT CHECK" in TEXT
     assert "klopt" not in TEXT and "KON NIET" not in TEXT
+
+
+def test_changelog_fragment_is_opt_in_and_english():
+    section = _section(TEXT, "## Changelog fragment")
+    for needle in ("if present", "changelog.d/.lighthouse", "changelog.d/<branch>.md", "-<n>",
+                   "--diff-filter=A", "writes nothing twice",
+                   "added", "changed", "fixed", "removed", "internal", "English", "before `gh pr create`"):
+        assert needle in section, needle
