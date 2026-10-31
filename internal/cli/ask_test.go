@@ -280,3 +280,31 @@ func TestAskRefusesUnreadableRoundTrip(t *testing.T) {
 		t.Errorf("%d POSTs, want none", len(srv.Posts))
 	}
 }
+
+// run.md points the run at `lighthouse ask --help`: every flag must say there what it takes.
+func TestAskHelpDescribesEveryFlag(t *testing.T) {
+	srv, env, _ := askFixture(t)
+	code, out, errOut := runAsk(env, "--help")
+	if code != 0 || errOut != "" {
+		t.Fatalf("exit %d, stderr %q", code, errOut)
+	}
+	for _, want := range []string{
+		"--issue int             the issue number <N> from the prompt (issue #<N>, controller-run); required",
+		"--phase string          the phase of the run; required",
+		"--task string           the task of the run; optional",
+		"--where string          where the run stands; required",
+		"--what string           what is going on; required",
+		"--question string       opens a question; 1 to 4 per call",
+		"--option string         an option of the last --question; 2 to 6 per question",
+		"--recommended string    the letter (a-f) of the recommended option of the last --question; exactly once per question",
+		"--command stringArray   a command the user has to run, put unchanged in the question; optional, repeatable",
+		"--dry-run               print the question instead of posting it",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help lacks %q:\n%s", want, out)
+		}
+	}
+	if len(srv.Posts) != 0 {
+		t.Errorf("%d POSTs, want none", len(srv.Posts))
+	}
+}

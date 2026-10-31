@@ -104,15 +104,19 @@ func newAskCommand(env askEnv) *cobra.Command {
 		},
 	}
 	fl := cmd.Flags()
-	fl.IntVar(&in.issue, "issue", 0, "number of the issue to post on")
-	fl.StringVar(&in.phase, "phase", "", "the phase of the run")
-	fl.StringVar(&in.task, "task", "", "the task of the run, optional")
-	fl.StringVar(&in.where, "where", "", "where the run stands")
-	fl.StringVar(&in.what, "what", "", "what is going on")
-	fl.StringArrayVar(&in.commands, "command", nil, "a command the user has to run, optional, repeatable")
+	fl.IntVar(&in.issue, "issue", 0, "the issue number <N> from the prompt (issue #<N>, controller-run); required")
+	fl.StringVar(&in.phase, "phase", "", "the phase of the run; required")
+	fl.StringVar(&in.task, "task", "", "the task of the run; optional")
+	fl.StringVar(&in.where, "where", "", "where the run stands; required")
+	fl.StringVar(&in.what, "what", "", "what is going on; required")
+	fl.StringArrayVar(&in.commands, "command", nil, "a command the user has to run, put unchanged in the question; optional, repeatable")
 	fl.BoolVar(&in.dryRun, "dry-run", false, "print the question instead of posting it")
-	for _, name := range []string{"question", "option", "recommended"} {
-		fl.Var(askFlag{name, &in.steps}, name, "see the command description")
+	for _, f := range []struct{ name, usage string }{
+		{"question", "opens a question; 1 to 4 per call"},
+		{"option", "an option of the last --question; 2 to 6 per question"},
+		{"recommended", "the letter (a-f) of the recommended option of the last --question; exactly once per question"},
+	} {
+		fl.Var(askFlag{f.name, &in.steps}, f.name, f.usage)
 	}
 	return cmd
 }

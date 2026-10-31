@@ -4,7 +4,8 @@
 uitvoer van de run niet meer: de run post één 🤖 Vraag en stopt, en de controller hervat de sessie
 met het antwoord. Het ontwerp staat in
 [de dispatcher-spec](developer/planning/specs/2026-10-27-m2-dispatcher-design.md). De run-instructies
-(`internal/dispatch/instructions/run.md`) verwijzen naar dit document.
+(`internal/dispatch/instructions/run.md`) verwijzen naar `lighthouse ask --help`, niet naar dit
+document: een bediende repo heeft de docs van lighthouse niet. De help beschrijft elke vlag.
 
 ## Wat ask doet
 
