@@ -91,3 +91,45 @@ func TestFingerprintIgnoresBlockersOutsideOnHold(t *testing.T) {
 		t.Error("blocker of a Controller item changed the fingerprint")
 	}
 }
+
+func TestFingerprintEveryInputCounts(t *testing.T) {
+	t0 := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	base := func() Pre {
+		return Pre{
+			Items: []Item{{
+				Issue: 1, Status: "Controller", Priority: "P1", ItemUpdatedAt: t0, IssueUpdatedAt: t0,
+				PRs: []forge.PR{{Number: 9, State: "OPEN", Checks: "PENDING"}},
+			}},
+			OpenRuns: []runs.OpenRun{{ID: 1, Issue: 1, StartedAt: t0}},
+		}
+	}
+	tests := []struct {
+		name   string
+		change func(*Pre)
+	}{
+		{"status", func(p *Pre) { p.Items[0].Status = "On hold" }},
+		{"priority", func(p *Pre) { p.Items[0].Priority = "P2" }},
+		{"item_updated_at", func(p *Pre) { p.Items[0].ItemUpdatedAt = t0.Add(time.Second) }},
+		{"issue_updated_at", func(p *Pre) { p.Items[0].IssueUpdatedAt = t0.Add(time.Second) }},
+		{"extra item", func(p *Pre) { p.Items = append(p.Items, Item{Issue: 2, Status: "Controller"}) }},
+		{"extra open run", func(p *Pre) { p.OpenRuns = append(p.OpenRuns, runs.OpenRun{ID: 2, Issue: 3, StartedAt: t0}) }},
+		{"removed open run", func(p *Pre) { p.OpenRuns = nil }},
+		{"open run id", func(p *Pre) { p.OpenRuns[0].ID = 2 }},
+		{"open run started_at", func(p *Pre) { p.OpenRuns[0].StartedAt = t0.Add(time.Second) }},
+		{"open run issue", func(p *Pre) { p.OpenRuns[0].Issue = 2 }},
+		{"pr state", func(p *Pre) { p.Items[0].PRs[0].State = "MERGED" }},
+		{"pr draft", func(p *Pre) { p.Items[0].PRs[0].Draft = true }},
+		{"pr mergeable", func(p *Pre) { p.Items[0].PRs[0].Mergeable = "CONFLICTING" }},
+		{"pr head_sha", func(p *Pre) { p.Items[0].PRs[0].HeadSHA = "abc" }},
+	}
+	want := Fingerprint(base())
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := base()
+			tc.change(&p)
+			if Fingerprint(p) == want {
+				t.Errorf("changing %s left the fingerprint unchanged", tc.name)
+			}
+		})
+	}
+}
