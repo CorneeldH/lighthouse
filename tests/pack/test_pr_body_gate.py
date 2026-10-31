@@ -663,7 +663,7 @@ def test_main_body_file_does_not_exist(project, monkeypatch, capsys):
     assert rc == 2
     assert str(project / "nope.md") in err
     assert "pr-create-gate: BLOCKED" in err
-    assert "/lighthouse-verify-pr" in err
+    assert "/lighthouse-write-pr" in err
 
 
 def test_main_no_gh_pr_create(project, monkeypatch, capsys):

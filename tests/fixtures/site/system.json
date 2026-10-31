@@ -1,0 +1,43 @@
+{
+  "title": "A system",
+  "subtitle": "Three steps with one item each.",
+  "steps": [
+    {
+      "id": "install",
+      "title": "Install once",
+      "where": "your workstation",
+      "items": [
+        { "form": "program", "kind": "lighthouse", "label": "lighthouse", "note": "one program", "href": "#bring" }
+      ]
+    },
+    {
+      "id": "init",
+      "title": "lighthouse init",
+      "command": "lighthouse init",
+      "where": "your repo",
+      "items": [
+        {
+          "form": "workflow-skill",
+          "kind": "lighthouse",
+          "label": "Skills",
+          "href": "https://github.com/CorneeldH/lighthouse/tree/main/pack/core/skills"
+        }
+      ]
+    },
+    {
+      "id": "loop",
+      "title": "Run the loop",
+      "items": [
+        { "form": "loop", "kind": "lighthouse", "label": "The loop", "href": "chain.html" }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "bring",
+      "title": "What you bring",
+      "text": ["init checks the tools."],
+      "groups": [{ "label": "Needed", "tools": ["git"] }]
+    }
+  ]
+}

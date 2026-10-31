@@ -1,9 +1,9 @@
 # Tool -> the units in this package that need it. `lighthouse init` reports a
 # missing tool with these names; it does not stop on it.
-git = ["go-check", "go-writing"]
-go = ["gate_go", "go-check", "go-writing"]
-gofmt = ["gofmt", "go-writing"]
-golangci-lint = ["go-check", "go-writing"]
-jq = ["gofmt", "go-check"]
-python3 = ["gate_go", "go-check", "go-writing"]
-tomllib = ["go-writing"]
+git = ["go-lint-gate", "go-standard"]
+go = ["gate_go", "go-lint-gate", "go-standard"]
+gofmt = ["gofmt-check", "go-standard"]
+golangci-lint = ["go-lint-gate", "go-standard"]
+jq = ["gofmt-check", "go-lint-gate"]
+python3 = ["gate_go", "go-lint-gate", "go-standard"]
+tomllib = ["go-standard"]

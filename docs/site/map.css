@@ -28,6 +28,10 @@
   --hook-fg: #16181d;
   --github: #c9cbd1;
   --github-fg: #16181d;
+  --config: #f4d74b;
+  --config-fg: #16181d;
+  --you: #ffffff;
+  --you-fg: #16181d;
   --idea: #5f6470;
   --badge-bg: #14213d;
   --badge-fg: #ffffff;
@@ -60,6 +64,10 @@
     --hook-fg: #16181d;
     --github: #d4d4d8;
     --github-fg: #16181d;
+    --config: #d9b92e;
+    --config-fg: #16181d;
+    --you: #222a3d;
+    --you-fg: #e8eaf0;
     --idea: #9aa0ab;
     --badge-bg: #ffffff;
     --badge-fg: #14213d;
@@ -92,6 +100,10 @@
   --hook-fg: #16181d;
   --github: #d4d4d8;
   --github-fg: #16181d;
+  --config: #d9b92e;
+  --config-fg: #16181d;
+  --you: #222a3d;
+  --you-fg: #e8eaf0;
   --idea: #9aa0ab;
   --badge-bg: #ffffff;
   --badge-fg: #14213d;
@@ -106,7 +118,7 @@ body {
   padding: 24px 32px 48px;
   background: var(--bg);
   color: var(--fg);
-  font-family: system-ui, sans-serif;
+  font-family: system-ui, sans-serif, "Noto Sans Symbols", "Segoe UI Symbol", "Apple Symbols";
   line-height: 1.45;
 }
 
@@ -236,6 +248,26 @@ button:focus-visible {
 .form-agent {
   --kind: var(--agent);
   --kind-fg: var(--agent-fg);
+}
+
+/* A you-brought part is a white box with a border; rules and config are yellow; the loop and a
+   session are dark, like a handoff badge. */
+.kind-you {
+  --kind: var(--you);
+  --kind-fg: var(--you-fg);
+  border: 1.5px solid var(--border);
+}
+
+.form-rules,
+.form-config {
+  --kind: var(--config);
+  --kind-fg: var(--config-fg);
+}
+
+.form-loop,
+.form-session {
+  --kind: var(--badge-bg);
+  --kind-fg: var(--badge-fg);
 }
 
 .sample {
@@ -403,12 +435,6 @@ button:focus-visible {
   transition: opacity 0.2s, box-shadow 0.2s;
 }
 
-.band .chip {
-  position: static;
-  transform: none;
-  width: auto;
-}
-
 .chip.kind-hook {
   border-radius: 8px;
 }
@@ -445,6 +471,17 @@ button:focus-visible {
   opacity: 0.85;
 }
 
+.chip .hook {
+  flex-basis: 100%;
+  padding-left: 23px;
+  font-size: 9.5px;
+  font-weight: 600;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chip.status-planned {
   background: transparent;
   color: var(--fg);
@@ -469,6 +506,12 @@ button:focus-visible {
 
 .chip.current {
   box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--accent-soft);
+}
+
+/* The clicked part shows in full colour, also when the chosen route passes it by. */
+.chip.dim.current,
+.handoff.dim.current {
+  opacity: 1;
 }
 
 .handoff {
@@ -547,26 +590,6 @@ button:focus-visible {
   position: static;
   transform: none;
   cursor: default;
-}
-
-.band {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 12px 0;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: var(--col-bg);
-}
-
-.band-title {
-  margin: 0 6px 0 0;
-  color: var(--col-fg);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 /* Detail drawer: slides in from the right at a click on a chip or a handoff. */
@@ -759,8 +782,475 @@ a.tile:focus-visible {
   color: var(--muted);
 }
 
+/* Shared blocks: the install page (.download), the reasoning, what lighthouse does, who it is for */
+
+.download,
+.reason,
+.what,
+.who {
+  margin: 20px 0 0;
+  max-width: 900px;
+}
+
+.download h2,
+.reason h2,
+.what h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+#release-version {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.download-lead,
+.other-routes,
+.next-step {
+  margin: 0 0 12px;
+}
+
+#platform-note {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-left: 4px solid var(--accent);
+  background: var(--panel);
+}
+
+details.platform {
+  margin: 0 0 12px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+details.platform[open] {
+  padding-bottom: 12px;
+}
+
+details.platform summary {
+  padding: 12px 0;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+}
+
+details.platform summary::-webkit-details-marker {
+  display: none;
+}
+
+details.platform summary::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+
+details.platform[open] summary::before {
+  transform: rotate(45deg);
+}
+
+details.platform summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.download .others-title {
+  margin: 20px 0 8px;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.platform pre {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.platform pre code {
+  overflow-wrap: normal;
+}
+
+.platform p {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.path-hint,
+.file-line {
+  color: var(--muted);
+}
+
+/* download.js adds the copy button; without it every block still works. */
+
+.copy-button {
+  display: block;
+  margin: 0 0 8px auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.platform-note-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--link);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.feature {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.feature h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.feature p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.who h3 {
+  margin: 12px 0 4px;
+  font-size: 16px;
+}
+
+.who ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 28px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
 .back-link {
   margin-left: auto;
   padding: 6px 0;
   color: var(--link);
+}
+
+/* Landing page: the hero, the reasoning, "Who it is for" folded */
+
+.hero {
+  position: relative;
+  padding: 40px 0 24px;
+}
+
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: 48px;
+  line-height: 1.1;
+}
+
+.hero .theme-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.hero .subtitle {
+  font-size: 18px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin: 20px 0 0;
+}
+
+.hero-button {
+  display: inline-block;
+  padding: 10px 22px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--hook-fg);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.hero-button:hover {
+  filter: brightness(1.08);
+}
+
+.hero-button:focus-visible,
+.hero-link:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.reason p {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.reason p.aside {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+details.who {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+details.who summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+details.who summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Reference page: one link per part of a pack, coloured by kind */
+
+.reference {
+  margin-top: 28px;
+}
+
+.reference h2 {
+  margin: 0 0 4px;
+}
+
+.reference p {
+  margin: 4px 0 0;
+  max-width: 70ch;
+}
+
+.reference-part {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.reference-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reference-link {
+  display: block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--kind);
+  color: var(--kind-fg);
+  font-size: 13px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.reference-link:hover,
+.reference-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* System page: three steps side by side, one column on a narrow screen, and the sections below. */
+
+.story {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.story-step .kicker {
+  margin: 0;
+}
+
+.story-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+/* The init step is a command: a terminal line that wraps rather than runs over the edge. */
+.story-command {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--map-bg);
+  color: var(--fg);
+  font-size: 15px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.story-where {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.story-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1.5px solid var(--kind);
+  border-radius: 10px;
+  background: var(--kind);
+  color: var(--kind-fg);
+  text-decoration: none;
+}
+
+/* What you bring is white on white: its border has to carry the box. */
+.story-item.kind-you {
+  border-color: var(--muted);
+}
+
+.story-item:hover .story-label {
+  text-decoration: underline;
+}
+
+.story-item:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.story-item .glyph {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.story-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.story-label {
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.story-note {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* An item outside the place of its step, such as host.toml on your workstation. */
+.story-apart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.story-section {
+  margin-top: 20px;
+  max-width: 900px;
+}
+
+.story-section p {
+  max-width: 75ch;
+}
+
+.story-section p + p {
+  margin-top: 8px;
+}
+
+.story-section dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+
+.story-section dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.story-section dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .story {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

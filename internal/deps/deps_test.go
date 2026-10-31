@@ -12,9 +12,9 @@ import (
 )
 
 var reqs = []packs.Requirement{
-	{Tool: "git", NeededBy: []string{"main-commit-guard"}},
-	{Tool: "jq", NeededBy: []string{"main-commit-guard"}},
-	{Tool: "python3", NeededBy: []string{"main-commit-guard", "lighthouse_lib.config"}},
+	{Tool: "git", NeededBy: []string{"main-commit-gate"}},
+	{Tool: "jq", NeededBy: []string{"main-commit-gate"}},
+	{Tool: "python3", NeededBy: []string{"main-commit-gate", "lighthouse_lib.config"}},
 	{Tool: "tomllib", NeededBy: []string{"lighthouse_lib.config"}},
 }
 
@@ -39,7 +39,7 @@ func checker(missing map[string]bool, runErr error, ran *[]string) Checker {
 func TestMissingTool(t *testing.T) {
 	var ran []string
 	got := checker(map[string]bool{"jq": true}, nil, &ran).Check(reqs)
-	if want := []Missing{{Tool: "jq", NeededBy: []string{"main-commit-guard"}}}; !reflect.DeepEqual(got, want) {
+	if want := []Missing{{Tool: "jq", NeededBy: []string{"main-commit-gate"}}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v", got)
 	}
 }

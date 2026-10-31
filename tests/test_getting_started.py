@@ -70,6 +70,9 @@ def test_install_offers_binary_then_go():
     assert "releases/latest/download/lighthouse_linux_amd64" in text and "SHA256SUMS" in text
     assert f"go install {module}/cmd/lighthouse@" in text
     assert "GOPRIVATE" not in text and "not published yet" not in text
+    assert "mv lighthouse_linux_amd64 ~/.local/bin/lighthouse" in text
+    assert "~/go/bin/lighthouse" not in text
+    assert "https://corneeldh.github.io/lighthouse/" in text
 
 
 def test_init_prompt_matches_the_binary():
@@ -106,7 +109,7 @@ def test_config_example_loads(tmp_path):
         assert out.stdout.strip() == want
 
 
-CHAIN = ["/lighthouse-write-issue", "/lighthouse-start-issue", "/lighthouse-verify-pr"]
+CHAIN = ["/lighthouse-write-issue", "/lighthouse-start-issue", "/lighthouse-write-pr"]
 
 
 def test_first_issue_walks_the_chain_in_order():

@@ -383,12 +383,12 @@ func TestLoadRefusesRuleOutsidePattern(t *testing.T) {
 
 func TestIsLighthouseRule(t *testing.T) {
 	for rule, want := range map[string]bool{
-		"Bash(.claude/skills/lighthouse-spec-adversarial-review/review.sh:*)": true,
-		"Bash(.claude/hooks/lighthouse/x.sh)":                                 true,
-		"Bash(make test)":                                                     false,
-		"Bash(.claude/skills/other/review.sh:*)":                              false,
-		"Bash(.agents/skills/lighthouse-x/review.sh:*)":                       false,
-		"Bash(.claude/hooks/x.sh)":                                            false,
+		"Bash(.claude/skills/lighthouse-review-spec/review.sh:*)": true,
+		"Bash(.claude/hooks/lighthouse/x.sh)":                     true,
+		"Bash(make test)":                                         false,
+		"Bash(.claude/skills/other/review.sh:*)":                  false,
+		"Bash(.agents/skills/lighthouse-x/review.sh:*)":           false,
+		"Bash(.claude/hooks/x.sh)":                                false,
 	} {
 		if got := IsLighthouseRule(rule); got != want {
 			t.Errorf("IsLighthouseRule(%q) = %v", rule, got)

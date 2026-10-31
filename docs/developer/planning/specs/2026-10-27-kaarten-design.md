@@ -10,7 +10,7 @@ De zes kaarten heten hieronder K1 t/m K6:
 | | Kaart | Issue |
 |---|---|---|
 | K1 | de keten, plus de site en de gedeelde component | #99 |
-| K2 | de vangrails | #100 |
+| K2 | binnen een sessie (eerst: de vangrails) | #100 |
 | K3 | je repo na `init` | #101 |
 | K4 | het systeem en de roadmap | #102 |
 | K5 | per harness | #103 |
@@ -114,8 +114,10 @@ Dit is de mockup. Zeven kolommen:
 6. PR
 7. Close
 
-Elk onderdeel staat in de fase waarin het meedoet. Onderaan loopt een band "Always on" met
-usage-guard, instrument en worktree-audit.
+Elk onderdeel staat in de fase waarin het meedoet. De band "Always on" met usage-guard,
+instrument en worktree-audit is na #100 vervallen (Corneel). De keten toont de stroom van idee
+naar main. usage-guard staat op K2. instrument en worktree-audit horen bij geen fase en krijgen
+een plek in het referentiedeel van K4.
 
 **Routes**: de uitgangen van `lighthouse-route-issue`, plus een rode PR:
 
@@ -150,23 +152,36 @@ De bron is `pack/*/detect.toml`, `pack/*/hooks/hooks.json` en `pack/*/skills/`. 
 rendert de tabel uit `docs/site/data/packs.json`. Test 7 uit §7 houdt hem bij, ook de aantallen
 (keuze van Claude).
 
-### K2 — De vangrails (stroom)
+### K2 — Binnen een sessie (stroom)
 
-Dit is de levensloop van één beurt. De kolommen zijn de hook-events van Claude Code:
+Na #100 heet K2 "Inside a session" (`session.html`), niet meer de vangrails (Corneel). De
+kaarten zijn twee abstractieniveaus:
+
+- K1 volgt het werk van idee naar main, fase na fase, over sessies heen.
+- K2 zoomt in op één sessie.
+
+Een losse referentie van alle onderdelen (skills, hooks, agents) hoort bij K4.
+
+Dit is de levensloop van één beurt. De kolommen zijn de momenten van een beurt in Claude Code:
 
 1. `UserPromptSubmit`
-2. `PreToolUse`
-3. de tool-call
-4. `PostToolUse` / `PostToolUseFailure`
-5. `SubagentStop`
-6. `Stop`
+2. een skill laadt: de schrijfskills (go-writing, python-writing, shell-gates, testing) laden op
+   hun beschrijving, voordat het model schrijft
+3. `PreToolUse`
+4. de tool-call
+5. `PostToolUse` / `PostToolUseFailure`
+6. `SubagentStop`
+7. `Stop`
+
+De koppen schrijven de eventnamen met spaties, omdat de kolomkop in hoofdletters staat.
 
 Elke hook staat op zijn event, met de matcher (`Bash`, `Edit|Write`, of alles). Elke hook toont
 ook zijn gedrag:
 
-- **blokkeert**, met exit 2;
+- **blokkeert**, met exit 2 (`usage-guard` met `{"decision": "block"}` en exit 0);
 - **waarschuwt**;
-- **formatteert**.
+- **formatteert**;
+- **legt vast** voor een latere hook (`bash-write-gates pre`, toegevoegd in #100).
 
 Routes zijn situaties, zoals:
 
@@ -174,7 +189,12 @@ Routes zijn situaties, zoals:
 - "ik commit met rode tests";
 - "ik maak een PR zonder bewijs";
 - "mijn limiet is bijna op";
-- "ik schrijf een dode link".
+- "ik schrijf een dode link";
+- "ik schrijf code die een gate weigert".
+
+De knoppen staan van de route met de meeste chips naar die met de minste. Een route over
+schrijven begint bij de skill die de norm vooraf geeft. Daarna volgt de hook die achteraf
+controleert.
 
 Zo beantwoordt de kaart "waarom houdt hij me nu tegen?". De bron is `pack/*/hooks/hooks.json`.
 De beschrijvingen staan in `CLAUDE.md` onder *Hooks*.
@@ -221,6 +241,10 @@ Lighthouse als geheel. De zones zijn:
 Waar de grens tussen de zones precies ligt, beslist de schets (§10). De milestones liggen er als
 gebieden over, M0–M5 en Product. De issues zijn de chips. De status
 uit §3 doet het werk: `works` voor wat gesloten en gemerged is, `planned` voor open issues.
+
+K4 krijgt ook een referentiedeel: elk onderdeel los, per pakket, zonder stroom (Corneel, na
+#100). Daar staan ook de onderdelen die op geen stroomkaart passen, zoals instrument en
+worktree-audit.
 
 Dit is de roadmap. Voor nu schrijf je de data met de hand, uit de milestones en issues op het
 moment van bouwen. Hij moet "leuk actief te houden" zijn (Corneel). Daarom krijgt de data per
@@ -314,7 +338,8 @@ test 4 bij #104.
 2. **Dekking.** Elke skill (`pack/*/skills/*`), elke agent (`pack/core/agents/*`), elke hook-command
    uit `pack/*/hooks/hooks.json` en elke workflow (`pack/core/workflows/*`) staat in de data van
    K1, K2 of K3. Omgekeerd verwijst elke chip van het soort lighthouse-skill, hook of workflow naar
-   iets wat bestaat.
+   iets wat bestaat. instrument en worktree-audit staan tot het referentiedeel van K4 op geen
+   kaart. De test noemt ze bij naam.
 3. **Hook-events.** Elke hook staat in K2 op het event en met de matcher die `hooks.json` noemt.
 4. **Configuratie.** Elke sleutel uit `SCHEMA` in `config.py` staat in K6, plus
    `project.language`, `forge.kind`, `forge.repo` en de sleutels van `forge.board`.

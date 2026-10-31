@@ -95,7 +95,7 @@ def forge_worktree(project: Path, base: Path, origin: str = ORIGIN) -> Path:
 def past_this_second() -> None:
     """Wait until the next whole second.
 
-    Source 2 of bash-write-gates also walks the reflog since the start of pre,
+    Source 2 of bash-write-check also walks the reflog since the start of pre,
     rounded down to whole seconds: a setup commit (e.g. that of `init_repo`)
     from the same second then counts too (deliberate over-checking). A test
     that wants a setup commit to fall outside the call first waits out the
@@ -214,7 +214,7 @@ def trace_bin(path: Path, trace: Path, tools: tuple[str, ...]) -> Path:
     return tool_bin(path, (), stubs=stubs)
 
 
-# The usage guard (#66): every test that runs it uses `guard_env`, so a test run
+# The usage gate (#66): every test that runs it uses `guard_env`, so a test run
 # inside a session with a full window never writes real keys, markers or refreshes.
 _GUARD_ENV_DROP = (
     "LIGHTHOUSE_CONTROLLER_RUN",
@@ -286,9 +286,9 @@ def write_alarm(env: dict, line: str) -> Path:
 def run_guard(
     root: Path, stand: str, payload: dict | str, env: dict
 ) -> subprocess.CompletedProcess:
-    """Run the installed `usage-guard.sh <stand>` of `root` with `payload` on stdin."""
+    """Run the installed `usage-gate.sh <stand>` of `root` with `payload` on stdin."""
     return subprocess.run(
-        [str(root / _INSTALL_DIRS["hooks"] / "usage-guard.sh"), stand],
+        [str(root / _INSTALL_DIRS["hooks"] / "usage-gate.sh"), stand],
         input=payload if isinstance(payload, str) else json.dumps(payload),
         capture_output=True,
         text=True,
@@ -372,7 +372,7 @@ def _install_dirs(pack_dir: Path, root: Path) -> None:
 def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
     """Copy `pack/core` into `root` the way `lighthouse init` lays it out, with a
     `lighthouse.toml` unless `toml` is None or one is there, and return the path of
-    the installed main-commit-guard."""
+    the installed main-commit-gate."""
     if toml is not None and not (root / "lighthouse.toml").exists():
         root.mkdir(parents=True, exist_ok=True)
         (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
@@ -381,7 +381,7 @@ def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
     if headings.is_file():
         (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(headings, root / ".lighthouse" / "headings.toml")
-    return root / _INSTALL_DIRS["hooks"] / "main-commit-guard.sh"
+    return root / _INSTALL_DIRS["hooks"] / "main-commit-gate.sh"
 
 
 def install_pack(name: str, root: Path, toml: str | None = MINIMAL_TOML) -> Path:

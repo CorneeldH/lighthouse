@@ -599,7 +599,7 @@ def in_scope(pc: PrCreate, project_dir: str) -> tuple[str, str]:
 
 BLOCKED_MESSAGE = (
     "pr-create-gate: BLOCKED — {reason}\n\n"
-    "Write the body with /lighthouse-verify-pr <nr> and pass it with --body-file <path>.\n"
+    "Write the body with /lighthouse-write-pr <nr> and pass it with --body-file <path>.\n"
     "Forms: `Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>`,"
     " `No issue: <reason>`.\n"
 )

@@ -1,0 +1,155 @@
+{
+  "title": "The system",
+  "subtitle": "What you have once lighthouse is installed, and what happens when you work.",
+  "steps": [
+    {
+      "id": "install",
+      "title": "Install once",
+      "where": "your workstation",
+      "items": [
+        {
+          "form": "program",
+          "kind": "lighthouse",
+          "label": "lighthouse",
+          "note": "One program with the packs inside. Install it with curl.",
+          "href": "install.html"
+        },
+        {
+          "form": "workflow-skill",
+          "kind": "superpowers",
+          "label": "superpowers plugin",
+          "note": "Not part of lighthouse. init checks that it is there.",
+          "href": "#bring"
+        },
+        {
+          "form": "you",
+          "kind": "you",
+          "label": "You bring",
+          "note": "Claude Code, git, gh, jq, python3",
+          "href": "#bring"
+        }
+      ]
+    },
+    {
+      "id": "init",
+      "title": "lighthouse init",
+      "command": "lighthouse init",
+      "where": "your repo",
+      "items": [
+        {
+          "form": "workflow-skill",
+          "kind": "lighthouse",
+          "label": "Skills",
+          "note": ".claude/skills/, .agents/skills/",
+          "href": "reference.html#skills"
+        },
+        {
+          "form": "agent",
+          "kind": "lighthouse",
+          "label": "Agents",
+          "note": ".claude/agents/",
+          "href": "reference.html#agents"
+        },
+        {
+          "form": "hook",
+          "kind": "hook",
+          "label": "Hooks",
+          "note": ".claude/hooks/lighthouse/, registered in .claude/settings.json",
+          "href": "reference.html#hooks"
+        },
+        {
+          "form": "rules",
+          "kind": "lighthouse",
+          "label": "Rules",
+          "note": "AGENTS.md, CLAUDE.md",
+          "href": "#rules"
+        },
+        {
+          "form": "config",
+          "kind": "lighthouse",
+          "label": "Config",
+          "note": "lighthouse.toml, .lighthouse/",
+          "href": "#config"
+        },
+        {
+          "form": "github",
+          "kind": "github",
+          "label": ".github/",
+          "note": "PR template, workflows",
+          "href": "reference.html#github"
+        },
+        {
+          "form": "config",
+          "kind": "lighthouse",
+          "label": "host.toml",
+          "note": "Only with Tailscale.",
+          "where": "on your workstation",
+          "href": "#config"
+        }
+      ]
+    },
+    {
+      "id": "loop",
+      "title": "Run the loop",
+      "items": [
+        {
+          "form": "loop",
+          "kind": "lighthouse",
+          "label": "The loop",
+          "note": "From an issue to a closed issue, over several sessions.",
+          "href": "chain.html"
+        },
+        {
+          "form": "session",
+          "kind": "lighthouse",
+          "label": "Inside a session",
+          "note": "Which skill loads, and which hook steps in.",
+          "href": "session.html"
+        },
+        {
+          "form": "github",
+          "kind": "github",
+          "label": "Keep track on GitHub",
+          "note": "Issues, milestones, labels, PRs, CI",
+          "href": "reference.html#github"
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "bring",
+      "title": "What you bring, and what lighthouse checks",
+      "text": [
+        "lighthouse installs none of these. lighthouse init checks every tool that the packs it installs need. When one is missing, it reports \"missing dependency: <tool> (needed by: …)\" and goes on. It does not check Claude Code.",
+        "A tool per language matters only with the pack for that language, which init proposes when it recognises your repository. codex is optional: it runs the reviews by another model family."
+      ],
+      "groups": [
+        { "label": "Needed", "tools": ["Claude Code", "git", "python3 3.11+", "jq", "superpowers"] },
+        { "label": "For GitHub", "tools": ["gh"] },
+        {
+          "label": "Per language",
+          "tools": ["uv", "go", "gofmt", "golangci-lint", "node", "npm", "curl", "sha256sum", "tar", "xz"]
+        },
+        { "label": "Optional", "tools": ["codex"] }
+      ]
+    },
+    {
+      "id": "rules",
+      "title": "Rules",
+      "text": [
+        "init writes a managed block into AGENTS.md: the rules every lighthouse repo shares, a part per pack. Your own text in the file stays as it is.",
+        "CLAUDE.md imports AGENTS.md with the line @AGENTS.md, so Claude Code reads the same rules as Codex and OpenCode. init adds that line only when neither file exists yet; otherwise you add it yourself."
+      ]
+    },
+    {
+      "id": "config",
+      "title": "Config",
+      "text": [
+        "lighthouse.toml, in the root of your repo, holds the settings of your project, such as the language of its issues and pull requests and the test command. That command runs on your workstation after every commit; CI runs on GitHub. init adds the keys that are missing and leaves the rest as it is.",
+        ".lighthouse/ holds the manifest of what init installed and at which version, the headings the skills write and read, and the helper code of the hooks and skills.",
+        "One file lands outside your repo: ~/.config/lighthouse/host.toml on your workstation. init offers it only on a machine with Tailscale."
+      ]
+    }
+  ]
+}

@@ -1,11 +1,11 @@
 """Parser for `git commit`/`git push` inside an arbitrary shell command.
 
 Moved out of an `IFS= read -r -d '' PARSE <<'PYEOF'` heredoc in
-main-commit-guard.sh (#884): that form existed only so bash 3.2 (macOS) would
+main-commit-gate.sh (#884): that form existed only so bash 3.2 (macOS) would
 not trip over a heredoc INSIDE a command substitution. As a separate file that
 reason is gone and the parser can simply be tested on its own.
 
-Used by main-commit-guard.sh (the PreToolUse hook that blocks `git commit`/`git
+Used by main-commit-gate.sh (the PreToolUse hook that blocks `git commit`/`git
 push` on `main`) and, through the same `find_invocations`, by the pre-commit
 test gate.
 """
@@ -225,7 +225,7 @@ def strip_heredocs(command):
     """Heredoc bodies and `#` comments removed.
 
     An example command INSIDE a heredoc is no command — this is exactly where
-    commit-tests.sh trips. The delimiter is really parsed (also
+    commit-test-gate.sh trips. The delimiter is really parsed (also
     `<<-`, `<<'EOF-1'`, `<<"EOF"`), and `<<` counts as a heredoc only when it is
     in redirection position — not in a string, not in `$(( ))`, not in a
     comment.
@@ -1026,7 +1026,7 @@ def main(argv: list[str] | None = None) -> int:
     Print one tab-separated line per invocation found on stdout
     (`<action>\\t<directory-or-marker>\\t<to-main>\\t<raw-text>`). Returns 0, or 3
     on an open quote (Unparseable) — the same two outcomes as the old
-    heredoc call in main-commit-guard.sh.
+    heredoc call in main-commit-gate.sh.
     """
     args = sys.argv[1:] if argv is None else argv
     report_new_dirs = False

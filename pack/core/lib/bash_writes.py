@@ -1,11 +1,11 @@
-"""`bash-write-gates` (#871): roots, git records, reflog, the per-session
+"""`bash-write-check` (#871): roots, git records, reflog, the per-session
 ledger, `pre`, and `post` with the dispatch to the existing gates.
 
 See `docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
 the sections on data flow (roots, post source 1/2), state, lock, pre, post,
 the pool, dispatch, output and error handling for the semantics.
 Called as `python3 bash_writes.py pre|post` with the hook payload on
-stdin, via the wrapper `.claude/hooks/lighthouse/bash-write-gates.sh`. The gates
+stdin, via the wrapper `.claude/hooks/lighthouse/bash-write-check.sh`. The gates
 live in `<repo-root>/.claude/hooks/lighthouse/` (`config.repo_root()`); a gate
 that is not there, because its language pack is missing, is reported by post per file
 without blocking (decision 19).
@@ -44,28 +44,28 @@ from lighthouse_lib.deadline import Interrupted, run_until
 HOOK_DIR = Path(".claude/hooks/lighthouse")
 
 # The gates of each extension, in the order they run. A rewriting gate
-# (`_SIGN_AFTER_GATE`) always comes before `code-language.sh`, so that one
+# (`_SIGN_AFTER_GATE`) always comes before `code-language-check.sh`, so that one
 # reads the version after `ruff format` or `gofmt`.
 GATES: dict[str, tuple[str, ...]] = {
-    ".sh": ("shellcheck.sh", "code-language.sh"),
-    ".bash": ("shellcheck.sh", "code-language.sh"),
-    ".py": ("ruff-format.sh", "code-language.sh"),
-    ".go": ("gofmt.sh", "code-language.sh"),
-    ".md": ("worktree-linkcheck.sh",),
-    ".markdown": ("worktree-linkcheck.sh",),
+    ".sh": ("shell-lint-check.sh", "code-language-check.sh"),
+    ".bash": ("shell-lint-check.sh", "code-language-check.sh"),
+    ".py": ("ruff-format-check.sh", "code-language-check.sh"),
+    ".go": ("gofmt-check.sh", "code-language-check.sh"),
+    ".md": ("md-link-check.sh",),
+    ".markdown": ("md-link-check.sh",),
 }
 
 # Set for every gate `run_gate` runs; `code_language.UNDER_GATES_ENV` reads it and
 # then skips layer 2 (#37, decision 19).
-UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_GATES"
+UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"
 
 # The package that each gate supplies; if the gate is missing, the notice names it.
 GATE_PACKS: dict[str, str] = {
-    "shellcheck.sh": "shell",
-    "ruff-format.sh": "python",
-    "gofmt.sh": "go",
-    "worktree-linkcheck.sh": "core",
-    "code-language.sh": "core",
+    "shell-lint-check.sh": "shell",
+    "ruff-format-check.sh": "python",
+    "gofmt-check.sh": "go",
+    "md-link-check.sh": "core",
+    "code-language-check.sh": "core",
 }
 
 
@@ -209,7 +209,7 @@ def project_filter(
     Literally `rev-parse --path-format=absolute --git-common-dir`, passed through
     `os.path.realpath` — without that flag the main checkout gives a relative
     `.git` and a linked worktree an absolute path, and the worktree would
-    wrongly drop out (`commit-tests.sh`). A root for which that
+    wrongly drop out (`commit-test-gate.sh`). A root for which that
     call fails comes back as an error line, not as a `GitError`; if it fails
     for `project_dir` itself, this function does raise.
     """
@@ -806,7 +806,7 @@ def run_pre(payload: dict) -> int:
 
 # --- post (task 7): source 1, claims, dispatch, output ------------------------
 
-_PREFIX = "bash-write-gates:"
+_PREFIX = "bash-write-check:"
 _CANNOT = "COULD NOT CHECK"
 # A gate with rc 0 whose FIRST output line holds this token has a notice for the user and
 # the agent (#37, decision 19); any other output of a gate with rc 0 is dropped.
@@ -817,11 +817,11 @@ _NOTICE = "NOTICE"
 _POST_DEADLINE_S = 90.0
 _GATE_GRACE_S = 10.0
 
-# ruff-format.sh and gofmt.sh rewrite the file themselves: the file's verdict
+# ruff-format-check.sh and gofmt-check.sh rewrite the file themselves: the file's verdict
 # holds for the version after the last such gate that ran. The other gates only
 # read: without a rewriting gate the verdict holds for the version from just
 # before the first gate, so a write during a gate stays new.
-_SIGN_AFTER_GATE = frozenset({"ruff-format.sh", "gofmt.sh"})
+_SIGN_AFTER_GATE = frozenset({"ruff-format-check.sh", "gofmt-check.sh"})
 
 # `run_until` raises `Interrupted` if post itself received a forwarded signal
 # (the hook timeout, a Ctrl-C): the gate was aborted, and post itself
@@ -872,7 +872,7 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
     """Run `gate` on `rel` with a mock Edit-like payload.
 
     Payload `{"tool_name":"Bash","cwd":root,"tool_input":{"file_path":<abs>}}`,
-    process cwd = `root`: `ruff-format.sh` looks for its `.ruff-version` from
+    process cwd = `root`: `ruff-format-check.sh` looks for its `.ruff-version` from
     the process cwd, not through the payload. The gate gets `UNDER_GATES_ENV`
     set in its environment. Returns `(classify(rc, output),
     output)`, or `(_STOPPED, output)` when a forwarded signal stopped the gate,
@@ -880,7 +880,7 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
     """
     path = gate_path(str(config.repo_root()), gate)
     if not path.is_file():
-        return _MISSING, f"no {GATE_PACKS[gate]} gate installed".encode()
+        return _MISSING, f"no {GATE_PACKS[gate]} check installed".encode()
     payload = {
         "tool_name": "Bash",
         "cwd": root,

@@ -6,6 +6,8 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
+import pytest
+
 from tests.test_site_chain import SITE
 
 GUIDE = SITE.parent / "getting-started.md"
@@ -86,10 +88,14 @@ def test_site_links_resolve():
             assert target.is_file(), f"{path.name}: {link} points nowhere"
 
 
-def test_pages_name_the_local_server_command():
+MAP_PAGES = ["chain.html", "session.html", "system.html", "reference.html"]
+
+
+@pytest.mark.parametrize("page", MAP_PAGES)
+def test_pages_name_the_local_server_command(page):
     parser = ElementById("serve-hint")
-    parser.feed((SITE / "chain.html").read_text(encoding="utf-8"))
-    assert parser.attrs is not None, 'chain.html has no element with id="serve-hint"'
+    parser.feed((SITE / page).read_text(encoding="utf-8"))
+    assert parser.attrs is not None, f'{page} has no element with id="serve-hint"'
     assert SERVE_COMMAND in " ".join(parser.text.split())
     assert "hidden" not in parser.attrs
     style = (parser.attrs.get("style") or "").replace(" ", "")
@@ -115,18 +121,29 @@ def test_page_lang_is_english():
 def test_index_lists_the_six_maps():
     links = relative_links(SITE / "index.html")
     assert "chain.html" in links
+    assert "session.html" in links
+    assert "system.html" in links
     text = (SITE / "index.html").read_text(encoding="utf-8")
-    for issue in ["#100", "#101", "#102", "#103", "#104"]:
+    for issue in ["#101", "#103", "#104"]:
         assert issue in text, f"index.html does not name {issue}"
+    for issue in ["#100", "#102"]:
+        assert issue not in text, f"index.html still names {issue} as planned"
     assert 'id="maps"' in text
+    assert "<h2>The loop</h2>" in text and "<h2>The chain</h2>" not in text
+    assert ">the chain map<" not in text
+    assert "<h2>The system</h2>" in text
+    assert "roadmap" not in text.lower()
 
 
-def test_chain_links_back_to_index():
-    assert 'href="index.html"' in (SITE / "chain.html").read_text(encoding="utf-8")
+@pytest.mark.parametrize("page", MAP_PAGES)
+def test_map_pages_link_back_to_index(page):
+    assert 'href="index.html"' in (SITE / page).read_text(encoding="utf-8")
 
 
-def test_guide_links_to_the_chain_map():
+def test_guide_links_to_the_maps():
     text = GUIDE.read_text(encoding="utf-8")
     section = text.split("## Your first issue", 1)[1].split("\n## ", 1)[0]
     assert "](site/chain.html)" in section
+    assert "[The loop](https://corneeldh.github.io/lighthouse/chain.html)" in section
+    assert "](site/session.html)" in section
     assert SERVE_COMMAND in section

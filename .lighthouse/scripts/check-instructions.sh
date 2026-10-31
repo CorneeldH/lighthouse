@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lighthouse: core@dev
 # The generic deterministic checks over the instruction layer of a repo:
-# 1, 2, 3, 4, 5, 7, 8, 10 and 11. The numbers come from the source; 6, 9, 12 and 13
+# 1, 2, 3, 4, 5, 7, 8, 10, 11 and 14. The numbers come from the source; 6, 9, 12 and 13
 # are project-specific and are not in here.
 #
 # Layer 2 of the gate spec (commit time): no network, no LLM, no state.
@@ -686,6 +686,85 @@ check_pairing() {
   return 0
 }
 
+# --- Check 14: hook names -----------------------------------------------------
+# A lighthouse hook is named after what it does. `-gate` can block, so it sits on
+# PreToolUse, Stop or SubagentStop; `-check` reports after the fact and never
+# sits on Stop or SubagentStop. Only commands that carry `.claude/hooks/lighthouse/`
+# count: a hook of the project itself, or `npx ...`, is not ours to name.
+# A broken or non-object settings.json makes the python part exit non-zero.
+check_hook_names() {
+  local settings="$ROOT/.claude/settings.json"
+  local out rc line found=0
+
+  if [ ! -f "$settings" ]; then
+    skip "hook-names: '$settings' does not exist, so hook names cannot be checked here"
+    return 0
+  fi
+  if [ "$HAVE_PYTHON3" -eq 0 ]; then
+    skip "hook-names: python3 is missing on this machine, so hook names cannot be checked here"
+    return 0
+  fi
+
+  out="$(python3 -c '
+import json, re, sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    data = json.load(f)
+hooks = data.get("hooks", {})
+if not isinstance(hooks, dict):
+    raise AttributeError
+path = re.compile(r"\.claude/hooks/lighthouse/(?:[A-Za-z0-9_-]+/)*([A-Za-z0-9_-]+)\.sh")
+events = {}
+
+
+def walk(node, event):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "command" and isinstance(value, str):
+                match = path.search(value)
+                if match:
+                    events.setdefault(match.group(1), set()).add(event)
+            else:
+                walk(value, event)
+    elif isinstance(node, list):
+        for item in node:
+            walk(item, event)
+
+
+for event, entries in hooks.items():
+    walk(entries, event)
+
+for name in sorted(events):
+    seen = events[name]
+    if name.endswith("-gate"):
+        if not seen & {"PreToolUse", "Stop", "SubagentStop"}:
+            print("gate " + name)
+    elif name.endswith("-check"):
+        if seen & {"Stop", "SubagentStop"}:
+            print("check " + name)
+    else:
+        print("suffix " + name)
+' "$settings" 2>/dev/null)"
+  rc=$?
+  if [ "$rc" -ne 0 ]; then
+    fail "hook-names: '$settings' is not valid JSON (or not an object)"
+    return 0
+  fi
+
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    found=1
+    case "$line" in
+      suffix\ *) fail "hook-names: '${line#* }' ends on neither -gate nor -check" ;;
+      gate\ *) fail "hook-names: '${line#* }' is a gate but no registration is on PreToolUse, Stop or SubagentStop" ;;
+      check\ *) fail "hook-names: '${line#* }' is a check but is registered on Stop or SubagentStop" ;;
+    esac
+  done <<<"$out"
+
+  [ "$found" -eq 0 ] && ok "every lighthouse hook is named after what it does"
+  return 0
+}
+
 # --- Check 10: size of CLAUDE.md + AGENTS.md --------------------------------
 # Without a counter the word count just creeps up again. CLAUDE.md is an
 # `@AGENTS.md` import plus the Claude remainder: counting only CLAUDE.md would be a
@@ -758,6 +837,7 @@ check_overlap
 check_shadow
 check_scoping
 check_pairing
+check_hook_names
 check_size
 
 if [ "$findings" -gt 0 ]; then

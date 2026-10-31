@@ -1,23 +1,44 @@
-// Shared flow map of the lighthouse site: columns of chips, an "Always on" band, route buttons,
-// handoff badges and a detail drawer. Data reaches the page only through textContent and
-// attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
+// Shared flow map of the lighthouse site: columns of chips, route buttons, handoff badges and a
+// detail drawer. SORTS is the one table of glyphs and labels, used by chips and legends. Data
+// reaches the page only through textContent and attributes, never as HTML, so a label such as
+// issue-<nr>-<slug> shows as written.
 
-const GLYPHS = { you: "⌨", skill: "↪", description: "◎", tool: "⚡", github: "⚙" };
-const AGENT_GLYPH = "◆"; // an agent keeps its own mark, whatever starts it
+/** The sorts of thing on the maps, each with one glyph and one label. The glyph says what a thing
+    is; what starts it is in the title, the drawer and the screen-reader text. */
+export const SORTS = {
+  program: { glyph: "⛯", label: "lighthouse, the program" },
+  "workflow-skill": { glyph: "↪", label: "Workflow skill" },
+  "standard-skill": { glyph: "✓", label: "Standard skill" },
+  agent: { glyph: "◆", label: "Agent" },
+  hook: { glyph: "⚡", label: "Hook" },
+  rules: { glyph: "§", label: "Rules" },
+  config: { glyph: "⚙", label: "Config" },
+  github: { glyph: "⑂", label: "GitHub" },
+  loop: { glyph: "∞", label: "The loop" },
+  session: { glyph: "❯", label: "A session" },
+  you: { glyph: "▣", label: "You bring it" },
+};
 const TRIGGERS = {
   you: "you invoke it",
   skill: "another skill invokes it",
   description: "its description matches the task",
   tool: "a tool call",
+  event: "a turn event",
   github: "a GitHub event",
 };
-// A trigger in the terms of the harness docs.
+// A trigger in the terms of the harness docs. A hook has none: its column already is its event.
 const STARTS = {
   you: "User-invoked",
   skill: "Invoked by another skill",
   description: "Model-invoked",
-  tool: "Hook event",
   github: "GitHub event",
+};
+// What a hook does when it fires.
+const EFFECTS = {
+  blocks: "blocks the step",
+  warns: "warns, does not block",
+  formats: "formats the file",
+  records: "records state for a later hook",
 };
 const FORMS = {
   skill: "Skill",
@@ -33,6 +54,9 @@ const HEAD = 64; // height of the column heads, in px
 const ROW = 46; // height of one row of chips, in px
 const SVG_NS = "http://www.w3.org/2000/svg";
 const THEME_KEY = "lighthouse-theme";
+const REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/";
+const REPO_TREE = "https://github.com/CorneeldH/lighthouse/tree/main/";
+const drawers = new WeakMap(); // detail element -> its drawer
 
 /** Fetches and parses a JSON file; throws when the request fails. */
 export async function loadJson(url) {
@@ -142,9 +166,158 @@ function form(chip) {
   return "github";
 }
 
-/** The mark on a chip: the agent mark for an agent, otherwise the mark of its trigger. */
-function glyphOf(chip) {
-  return form(chip) === "agent" ? AGENT_GLYPH : GLYPHS[chip.trigger] || "?";
+// A form of the flow maps that is no sort of its own: a GitHub Actions workflow is GitHub, an
+// external tool is something you bring, the dispatcher is the lighthouse program.
+const SORT_OF_FORM = { workflow: "github", tool: "you", dispatcher: "program" };
+
+/** The key of SORTS an item belongs to. */
+export function sortOf(item) {
+  const kind = form(item);
+  if (kind === "skill") {
+    return item.trigger === "description" ? "standard-skill" : "workflow-skill";
+  }
+  return SORT_OF_FORM[kind] || kind;
+}
+
+/** The mark on a chip: the glyph of its sort. */
+export function glyphOf(item) {
+  const sort = SORTS[sortOf(item)];
+  return sort ? sort.glyph : "?";
+}
+
+/** Fills a legend list with one item per sort named in its data-sorts, as "<glyph> <label>". */
+export function fillLegend(list) {
+  const items = list.dataset.sorts.split(/\s+/).filter(Boolean).map((name) => {
+    if (!SORTS[name]) {
+      throw new Error(`unknown sort in legend: ${name}`);
+    }
+    return el("li", "", `${SORTS[name].glyph} ${SORTS[name].label}`);
+  });
+  list.replaceChildren(...items);
+}
+
+// The colour kind of each sort on the reference page; an agent adds its own colour by form-agent.
+const KIND_OF_SORT = {
+  "workflow-skill": "lighthouse",
+  "standard-skill": "lighthouse",
+  agent: "lighthouse",
+  hook: "hook",
+  github: "github",
+};
+
+// Per part of a pack: the names it lists, the sort of each and the repo path of its place.
+const REFERENCE_PARTS = {
+  skills: (pack, name) => ({
+    sort: pack.standard_skills.includes(name) ? "standard-skill" : "workflow-skill",
+    href: `${REPO_TREE}pack/${pack.name}/skills/${name}`,
+  }),
+  agents: (pack, name) => ({ sort: "agent", href: `${REPO_BLOB}pack/${pack.name}/agents/${name}.md` }),
+  hooks: (pack, name) => ({ sort: "hook", href: `${REPO_BLOB}pack/${pack.name}/hooks/${name}.sh` }),
+  workflows: (pack, name) => ({
+    sort: "github",
+    href: `${REPO_BLOB}pack/${pack.name}/workflows/${name}.yml`,
+  }),
+};
+
+/** The parts of one kind per pack, in the order of packs.json: [{pack, items: [{name, sort, href}]}].
+    A pack without a part of that kind is left out. `part` is skills, agents, hooks or workflows. */
+export function referenceEntries(packs, part) {
+  const make = REFERENCE_PARTS[part];
+  if (!make) {
+    throw new Error(`unknown part: ${part}`);
+  }
+  return packs
+    .map((pack) => ({
+      pack: pack.name,
+      items: pack[part].map((entry) => {
+        const name = part === "hooks" ? entry.name : entry;
+        return { name, ...make(pack, name) };
+      }),
+    }))
+    .filter((entry) => entry.items.length > 0);
+}
+
+/** Per pack a heading and a list of links to the parts of one kind, each with its glyph. */
+export function renderReference(root, packs, part) {
+  const groups = referenceEntries(packs, part).map((entry) => {
+    const group = el("div", "reference-pack");
+    group.append(el("h3", "", entry.pack));
+    const list = el("ul", "reference-list");
+    for (const item of entry.items) {
+      const link = el("a", `reference-link kind-${KIND_OF_SORT[item.sort]} form-${item.sort}`);
+      link.href = item.href;
+      const glyph = el("span", "reference-glyph", SORTS[item.sort].glyph);
+      glyph.setAttribute("aria-hidden", "true");
+      link.append(glyph, ` ${item.name}`);
+      const row = el("li");
+      row.append(link);
+      list.append(row);
+    }
+    group.append(list);
+    return group;
+  });
+  root.replaceChildren(...groups);
+}
+
+/** One item of the system page: a link with the glyph of its sort, its label and its note. */
+function storyItem(item) {
+  const link = el("a", `story-item kind-${item.kind} form-${sortOf(item)}`);
+  link.href = item.href;
+  const glyph = el("span", "glyph", glyphOf(item));
+  glyph.setAttribute("aria-hidden", "true");
+  const text = el("span", "story-text");
+  text.append(el("span", "story-label", item.label));
+  if (item.note) {
+    text.append(el("span", "story-note", item.note));
+  }
+  link.append(glyph, text);
+  return link;
+}
+
+/**
+ * Renders the system page into `root`: the steps side by side, each with its number, its title
+ * (a command as a terminal line) and its items, an item with a `where` of its own apart at the
+ * bottom of its step. Below them every section as a box, its groups as a list of terms.
+ */
+export function renderStory(root, data) {
+  const story = el("ol", "story");
+  data.steps.forEach((step, index) => {
+    const node = el("li", "story-step");
+    node.append(el("p", "kicker", `Step ${index + 1}`));
+    const title = el("h2", "story-title");
+    if (step.command) {
+      title.append(el("code", "story-command", `$ ${step.command}`));
+    } else {
+      title.textContent = step.title;
+    }
+    node.append(title);
+    if (step.where) {
+      node.append(el("p", "story-where", step.where));
+    }
+    const list = el("ul", "story-items");
+    for (const item of step.items.filter((item) => !item.where)) {
+      const row = el("li");
+      row.append(storyItem(item));
+      list.append(row);
+    }
+    node.append(list);
+    for (const item of step.items.filter((item) => item.where)) {
+      const apart = el("div", "story-apart");
+      apart.append(el("p", "story-where", item.where), storyItem(item));
+      node.append(apart);
+    }
+    story.append(node);
+  });
+  const sections = data.sections.map((section) => {
+    const node = el("section", "box story-section");
+    node.id = section.id;
+    node.append(el("h2", "", section.title), ...section.text.map((text) => el("p", "", text)));
+    if (section.groups) {
+      node.append(facts(section.groups.map((group) => [group.label, group.tools.join(", ")])));
+    }
+    return node;
+  });
+  root.replaceChildren(story, ...sections);
 }
 
 /** `how` as a list of steps; a single string stays one paragraph. */
@@ -213,24 +386,34 @@ function box(kicker, heading, ...body) {
   return node;
 }
 
+/** matcher · pack · effects: the one line a hook chip carries. */
+function hookSummary(chip) {
+  const parts = sourceParts(chip.source);
+  return `${chip.matcher || "all"} · ${parts ? parts.pack : "?"} · ${chip.effects.join(" + ")}`;
+}
+
 function chipButton(chip, columns) {
   const button = el("button", `chip kind-${chip.kind} form-${form(chip)} status-${chip.status}`);
   button.type = "button";
   button.dataset.id = chip.id;
   button.title = `${chip.label}: ${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status}`;
-  if (chip.phase !== "always") {
-    button.style.width = `calc(${100 / columns}% - 14px)`;
-  }
+  button.style.width = `calc(${100 / columns}% - 14px)`;
   const glyph = el("span", "glyph", glyphOf(chip));
   glyph.setAttribute("aria-hidden", "true");
   button.append(glyph, el("span", "label", chip.label));
-  button.append(el("span", "sr-only", ` (${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status})`));
+  const hookLine = chip.command ? hookSummary(chip) : "";
+  button.append(
+    el("span", "sr-only", ` (${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status}${hookLine ? `, ${hookLine}` : ""})`),
+  );
   const mark = plannedMark(chip);
   if (mark) {
     button.append(el("span", "mark", mark));
   }
   if (chip.not_in_first_release) {
     button.append(el("span", "release", "not in first release"));
+  }
+  if (hookLine) {
+    button.append(el("span", "hook", hookLine));
   }
   return button;
 }
@@ -271,45 +454,19 @@ function labels(ids, byId, none) {
 }
 
 /**
- * Renders a flow map into `root`: route buttons with the note of the chosen route, columns of
- * chips, the "Always on" band and the handoff badges. A click on a chip or badge opens `detail`
- * as a drawer from the right; Escape or its close button shuts it.
+ * The drawer on `detail`, one per element however often it is asked for: the first call makes
+ * it (tabindex and one Escape listener), later calls return the same object and so the same
+ * state. `show(node, boxes, focus, onClose)` marks `node` as current, fills `detail` with a
+ * Close button and `boxes`, opens it and focuses it when `focus`. `close()` shuts it, hands the
+ * focus back to `node` and calls the `onClose` of the last `show`.
  */
-export function renderFlowMap(root, data, detail) {
-  const phases = data.phases || [];
-  const chips = data.chips || [];
-  const routes = data.routes || [];
-  const handoffs = data.handoffs || [];
-  const columnOf = new Map(phases.map((phase, i) => [phase.id, i]));
-  const phaseLabel = new Map(phases.map((phase) => [phase.id, phase.label]));
-  phaseLabel.set("always", "Always on");
-  const byId = new Map(chips.map((chip) => [chip.id, chip]));
-  const placed = chips
-    .filter((chip) => columnOf.has(chip.phase))
-    .sort((a, b) => columnOf.get(a.phase) - columnOf.get(b.phase) || a.row - b.row);
-  const always = chips.filter((chip) => chip.phase === "always").sort((a, b) => a.row - b.row);
-  const rows = Math.max(-1, ...placed.map((chip) => chip.row)) + 1;
-  const height = HEAD + rows * ROW;
-  const columnWidth = WIDTH / Math.max(phases.length, 1);
-  const point = (chip) => ({
-    x: (columnOf.get(chip.phase) + 0.5) * columnWidth,
-    y: HEAD + chip.row * ROW + ROW / 2,
-  });
-  const percent = (x) => `${(x / WIDTH) * 100}%`;
-
-  const chipButtons = [];
-  const badges = [];
+export function drawerFor(detail) {
+  const known = drawers.get(detail);
+  if (known) {
+    return known;
+  }
   let current = null;
-  let chosen = null;
-  let reshow = null;
-  const mark = (node) => {
-    if (current) {
-      current.classList.remove("current");
-    }
-    current = node;
-    node.classList.add("current");
-  };
-
+  let onClose = null;
   const close = () => {
     if (!detail.classList.contains("open")) {
       return;
@@ -320,9 +477,17 @@ export function renderFlowMap(root, data, detail) {
       current.focus();
       current = null;
     }
-    reshow = null;
+    if (onClose) {
+      onClose();
+    }
   };
-  const open = (boxes, focus = true) => {
+  const show = (node, boxes, focus = true, closed = null) => {
+    if (current) {
+      current.classList.remove("current");
+    }
+    current = node;
+    node.classList.add("current");
+    onClose = closed;
     const shut = el("button", "detail-close", "Close");
     shut.type = "button";
     shut.setAttribute("aria-label", "Close details");
@@ -339,6 +504,41 @@ export function renderFlowMap(root, data, detail) {
       close();
     }
   });
+  const drawer = { show, close };
+  drawers.set(detail, drawer);
+  return drawer;
+}
+
+/**
+ * Renders a flow map into `root`: route buttons with the note of the chosen route, columns of
+ * chips and the handoff badges. A click on a chip or badge opens `detail`
+ * as a drawer from the right; Escape or its close button shuts it.
+ */
+export function renderFlowMap(root, data, detail) {
+  const phases = data.phases || [];
+  const chips = data.chips || [];
+  const routes = data.routes || [];
+  const handoffs = data.handoffs || [];
+  const columnOf = new Map(phases.map((phase, i) => [phase.id, i]));
+  const phaseLabel = new Map(phases.map((phase) => [phase.id, phase.label]));
+  const byId = new Map(chips.map((chip) => [chip.id, chip]));
+  const placed = chips
+    .filter((chip) => columnOf.has(chip.phase))
+    .sort((a, b) => columnOf.get(a.phase) - columnOf.get(b.phase) || a.row - b.row);
+  const rows = Math.max(-1, ...placed.map((chip) => chip.row)) + 1;
+  const height = HEAD + rows * ROW;
+  const columnWidth = WIDTH / Math.max(phases.length, 1);
+  const point = (chip) => ({
+    x: (columnOf.get(chip.phase) + 0.5) * columnWidth,
+    y: HEAD + chip.row * ROW + ROW / 2,
+  });
+  const percent = (x) => `${(x / WIDTH) * 100}%`;
+
+  const chipButtons = [];
+  const badges = [];
+  let chosen = null;
+  let reshow = null;
+  const drawer = drawerFor(detail);
 
   /** Where `chip` sits on the routes: which ones, and its neighbours on the chosen one. */
   const routeFacts = (chip) => {
@@ -368,15 +568,15 @@ export function renderFlowMap(root, data, detail) {
   };
 
   const showChip = (chip, button, focus = true) => {
-    mark(button);
     // Another route changes the neighbours in "In the chain", so a route click redraws it.
     reshow = () => showChip(chip, button, false);
     const glyph = glyphOf(chip);
     const kind = form(chip);
-    open(
+    drawer.show(
+      button,
       [
         box(
-          `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${GLYPHS[chip.trigger] || "?"} ${TRIGGERS[chip.trigger] || chip.trigger}`,
+          `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${TRIGGERS[chip.trigger] || chip.trigger}`,
           `${glyph} ${chip.label}`,
           el("p", "summary", chip.what),
         ),
@@ -385,8 +585,15 @@ export function renderFlowMap(root, data, detail) {
           "",
           facts([
             ["What it is", FORMS[kind]],
-            ["When it starts", STARTS[chip.trigger] || chip.trigger],
+            ...(kind === "hook" ? [] : [["When it starts", STARTS[chip.trigger] || chip.trigger]]),
             ["Who provides it", provider(chip.kind, chip.source, kind)],
+            ...(chip.command
+              ? [
+                  ["Matcher", chip.matcher || (chip.trigger === "event" ? "none: this event has no matcher" : "none: every call")],
+                  ["Command", chip.command],
+                  ["What it does", chip.effects.map((e) => EFFECTS[e]).join("; ")],
+                ]
+              : []),
             ["What you miss without", chip.without],
             ["Status", statusText(chip)],
           ]),
@@ -396,16 +603,18 @@ export function renderFlowMap(root, data, detail) {
         ...definition(chip.source),
       ],
       focus,
+      () => {
+        reshow = null;
+      },
     );
   };
 
   const showHandoff = (handoff, button) => {
-    mark(button);
     const from = byId.get(handoff.from);
     const to = byId.get(handoff.to);
     const about = data.handoff || {};
     reshow = null;
-    open([
+    drawer.show(button, [
       box(
         `handoff · ${phaseLabel.get(from.phase)} → ${phaseLabel.get(to.phase)}`,
         "↻ handoff",
@@ -530,18 +739,6 @@ export function renderFlowMap(root, data, detail) {
     }
   }
   map.append(area);
-
-  if (always.length) {
-    const band = el("div", "band");
-    band.append(el("p", "band-title", "Always on"));
-    for (const chip of always) {
-      const button = chipButton(chip, phases.length);
-      button.addEventListener("click", () => showChip(chip, button));
-      chipButtons.push(button);
-      band.append(button);
-    }
-    map.append(band);
-  }
   scroll.append(map);
 
   const routeButtons = routes.map((route, i) => {
@@ -563,9 +760,7 @@ export function renderFlowMap(root, data, detail) {
     casing.setAttribute("d", paths[index].getAttribute("d"));
     svg.append(casing, paths[index]);
     for (const button of chipButtons) {
-      // Always-on chips take part in every route, so they never dim.
-      const always = byId.get(button.dataset.id)?.phase === "always";
-      button.classList.toggle("dim", !always && !used.has(button.dataset.id));
+      button.classList.toggle("dim", !used.has(button.dataset.id));
     }
     for (const badge of badges) {
       // Lit when the route passes both ends in order, also with an example step in between.

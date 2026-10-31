@@ -1,4 +1,4 @@
-"""The gate `gofmt.sh` of `pack/go`: it formats the edited `.go` file, blocks on a file
+"""The gate `gofmt-check.sh` of `pack/go`: it formats the edited `.go` file, blocks on a file
 that does not parse, and says so when it could not check.
 
 The hook is bash and reads its input as JSON on stdin. These tests run it as a
@@ -18,8 +18,8 @@ from lighthouse_lib import bash_writes
 from tests.pack._testkit import tool_bin
 from tests.pack.go.conftest import GO_HOOKS
 
-GOFMT_HOOK = GO_HOOKS / "gofmt.sh"
-UNCHECKED = "gofmt: COULD NOT CHECK — "
+GOFMT_HOOK = GO_HOOKS / "gofmt-check.sh"
+UNCHECKED = "gofmt-check: COULD NOT CHECK — "
 PARSE_ERROR = "x.go:2:8: expected ')', found 'EOF'"
 STUB = f"""#!/bin/bash
 echo "$@" > "$STUB_LOG"
@@ -78,7 +78,7 @@ def test_blocks_a_file_that_does_not_parse(tmp_path):
     path = payload["tool_input"]["file_path"]
     result = _run(payload, tmp_path, _stubbed(tmp_path, rc=2))
     assert result.returncode == 2, result.stdout
-    assert result.stderr.splitlines()[0] == f"gofmt: {path} does not parse — fix the syntax."
+    assert result.stderr.splitlines()[0] == f"gofmt-check: {path} does not parse — fix the syntax."
     assert PARSE_ERROR in result.stderr
 
 
@@ -102,7 +102,7 @@ def test_no_path_passes(tmp_path):
 def test_classify_reads_the_parse_error_as_a_finding(tmp_path):
     result = _run(_file(tmp_path, "x.go", "package m\n\nfunc F( {\n"), tmp_path)
     assert result.returncode == 2, result.stdout
-    assert result.stderr.startswith("gofmt: "), result.stderr
+    assert result.stderr.startswith("gofmt-check: "), result.stderr
     assert bash_writes.classify(2, result.stderr.encode()) == "finding"
 
 
@@ -148,5 +148,5 @@ def test_registered_on_edit_write():
         for h in block["hooks"]
     ]
     assert [(h["command"], h["timeout"]) for h in entries] == [
-        ("${CLAUDE_PLUGIN_ROOT}/hooks/gofmt.sh", 15)
+        ("${CLAUDE_PLUGIN_ROOT}/hooks/gofmt-check.sh", 15)
     ]

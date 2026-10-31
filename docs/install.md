@@ -6,7 +6,7 @@ serves all your repositories from one SQLite database.
 ## Requirements
 
 - Linux with systemd (user units) for `lighthouse serve`; macOS is not supported there. The CLI
-  runs on macOS, but the hooks are untested there (`usage-guard.sh` uses GNU `date -d`).
+  runs on macOS, but the hooks are untested there (`usage-gate.sh` uses GNU `date -d`).
   Windows has a binary, but the hooks need WSL.
 - Go, only to install with `go install` or to build from a clone.
 - Node 22 with npm, to build the web UI. `web/.nvmrc` holds the exact version.

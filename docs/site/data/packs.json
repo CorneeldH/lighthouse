@@ -4,36 +4,38 @@
     "proposed_when": "always",
     "detect": [],
     "skills": [
+      "audit-worktrees",
       "close-issue",
       "fix-pr",
-      "handoff",
-      "instrument",
-      "plan-adversarial-review",
+      "place-instruction",
+      "review-plan",
+      "review-spec",
       "route-issue",
-      "spec-adversarial-review",
       "start-issue",
-      "testing",
-      "verify-pr",
-      "worktree-audit",
-      "write-issue"
+      "test-standard",
+      "write-handoff",
+      "write-issue",
+      "write-pr"
+    ],
+    "standard_skills": [
+      "test-standard"
     ],
     "agents": [
-      "issue-impact-scout",
-      "spec-adversary"
+      "issue-impact-scout"
     ],
     "workflows": [
       "unblock-dependents"
     ],
     "hooks": [
       {
-        "name": "main-commit-guard",
+        "name": "main-commit-gate",
         "events": [
           "PreToolUse"
         ],
         "when": "before every shell command"
       },
       {
-        "name": "commit-tests",
+        "name": "commit-test-gate",
         "events": [
           "PreToolUse",
           "PostToolUse",
@@ -42,7 +44,7 @@
         "when": "around every shell command"
       },
       {
-        "name": "bash-write-gates",
+        "name": "bash-write-check",
         "events": [
           "PreToolUse",
           "PostToolUse",
@@ -58,28 +60,28 @@
         "when": "before every shell command"
       },
       {
-        "name": "worktree-guard",
+        "name": "worktree-check",
         "events": [
           "PreToolUse"
         ],
         "when": "before every edit"
       },
       {
-        "name": "worktree-linkcheck",
+        "name": "md-link-check",
         "events": [
           "PostToolUse"
         ],
         "when": "after every edit"
       },
       {
-        "name": "code-language",
+        "name": "code-language-check",
         "events": [
           "PostToolUse"
         ],
         "when": "after every edit"
       },
       {
-        "name": "usage-guard",
+        "name": "usage-gate",
         "events": [
           "PostToolUse",
           "Stop",
@@ -100,20 +102,23 @@
       "go.mod"
     ],
     "skills": [
-      "go-writing"
+      "go-standard"
+    ],
+    "standard_skills": [
+      "go-standard"
     ],
     "agents": [],
     "workflows": [],
     "hooks": [
       {
-        "name": "gofmt",
+        "name": "gofmt-check",
         "events": [
           "PostToolUse"
         ],
         "when": "after every edit"
       },
       {
-        "name": "go-check",
+        "name": "go-lint-gate",
         "events": [
           "Stop"
         ],
@@ -129,6 +134,7 @@
       "**/package.json"
     ],
     "skills": [],
+    "standard_skills": [],
     "agents": [],
     "workflows": [],
     "hooks": [],
@@ -141,20 +147,23 @@
       "pyproject.toml"
     ],
     "skills": [
-      "python-writing"
+      "python-standard"
+    ],
+    "standard_skills": [
+      "python-standard"
     ],
     "agents": [],
     "workflows": [],
     "hooks": [
       {
-        "name": "ruff-format",
+        "name": "ruff-format-check",
         "events": [
           "PostToolUse"
         ],
         "when": "after every edit"
       },
       {
-        "name": "ty-check",
+        "name": "ty-gate",
         "events": [
           "Stop"
         ],
@@ -173,13 +182,16 @@
       "**/*.bash"
     ],
     "skills": [
-      "shell-gates"
+      "shell-standard"
+    ],
+    "standard_skills": [
+      "shell-standard"
     ],
     "agents": [],
     "workflows": [],
     "hooks": [
       {
-        "name": "shellcheck",
+        "name": "shell-lint-check",
         "events": [
           "PostToolUse"
         ],
@@ -197,6 +209,7 @@
     "skills": [
       "refresh-expo-lockfiles"
     ],
+    "standard_skills": [],
     "agents": [],
     "workflows": [],
     "hooks": [],

@@ -1,4 +1,4 @@
-"""Contract test on the agents of `pack/core`: the persona issue-impact-scout and spec-adversary.
+"""Contract test on the agents of `pack/core`: the persona issue-impact-scout.
 
 The scout's source spec fixes two things that no runtime enforces: the
 tool allowlist (D-5 — without Bash the read-only claim is only true then) and the eight mandatory
@@ -18,7 +18,6 @@ import tomllib
 from tests.pack._testkit import CORE, INSTALL_ROOT
 
 AGENT = CORE / "agents" / "issue-impact-scout.md"
-ADVERSARY = CORE / "agents" / "spec-adversary.md"
 
 REQUIRED_SECTIONS = (
     "IMPACT PACK",
@@ -176,49 +175,12 @@ def test_prompt_caps_the_number_of_searches() -> None:
     assert f"at most {_kpi().SCOUT_TOOL_CALL_BUDGET} searches" in body
 
 
-# --- spec-adversary -----------------------------------------------------------
-
-
-def test_adversary_frontmatter() -> None:
-    fields = frontmatter(ADVERSARY.read_text(encoding="utf-8"))
-    assert fields["name"] == "lighthouse-spec-adversary"
-    assert fields["model"] == "sonnet"
-    assert {t.strip() for t in fields["tools"].split(",")} == {"Bash", "Read", "Grep", "Glob"}
-
-
-def test_adversary_names_the_lighthouse_review_skills() -> None:
-    body = ADVERSARY.read_text(encoding="utf-8")
-    assert "lighthouse-spec-adversarial-review" in body
-    assert "lighthouse-plan-adversarial-review" in body
-    assert ".claude/skills/lighthouse-plan-adversarial-review/review.sh" in body
-    assert not re.search(r"\b(?!lighthouse-)[a-z]+-(spec|plan)-adversarial-review", body)
-
-
-def test_adversary_output_contract_is_unchanged() -> None:
-    body = ADVERSARY.read_text(encoding="utf-8")
-    for token in (
-        "ROUND <n> | reviewer:",
-        "STATUS: <Blockers found | Majors only | Clean>",
-        "VERIFIED:",
-        "TOP3:",
-        "VERDICT: <one sentence>",
-        "UNVERIFIED:",
-        "r<ROUND>-f<index>",
-    ):
-        assert token in body, token
-
-
-def test_adversary_reads_the_budget_json_contract() -> None:
-    """`$OUT.budget.json` is the output of `codex_usage.py budget`: the reason is called
-    `reason`, the time `reset_at` (task 17)."""
-    body = ADVERSARY.read_text(encoding="utf-8")
-    line = next(line for line in body.splitlines() if "CODEX_BUDGET" in line and "|" in line)
-    assert "`reason`" in line and "`reset_at`" in line, line
-    assert "`reden`" not in body
+def test_only_the_scout_is_an_agent() -> None:
+    assert sorted(p.name for p in (CORE / "agents").iterdir()) == ["issue-impact-scout.md"]
 
 
 def test_agents_are_english_and_carry_no_source_issue_numbers() -> None:
-    for path in (AGENT, ADVERSARY):
+    for path in (AGENT,):
         body = path.read_text(encoding="utf-8")
         assert not re.search(r"\(#\d+\)", body), path.name
         for word in (" je ", " het ", " niet ", " geen ", " een "):
