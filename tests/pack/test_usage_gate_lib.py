@@ -3,7 +3,7 @@
 The lib reads the payload into a `Context`, builds the paths and keys, claims the
 "once per window" key, and picks the speaker: the base, the subagent reason, or a
 module (`resume`, `controller`). See the spec
-`docs/developer/planning/specs/2026-10-25-usage-gate-design.md`, sections
+`docs/developer/planning/specs/2026-10-25-usage-guard-design.md`, sections
 *De basis-guard*, *De modules* and *Contract*.
 """
 

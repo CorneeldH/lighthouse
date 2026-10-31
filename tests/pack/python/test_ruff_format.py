@@ -178,7 +178,7 @@ def test_registered_after_edit_and_write():
 
 def test_bash_write_through_gate(tmp_path):
     """With core and python installed, a Bash write of a `.py` with `except:` is a
-    finding via `bash-write-check post`, not `no python gate installed`."""
+    finding via `bash-write-check post`, not `no python check installed`."""
     from tests.pack.test_bash_write_check import _Session, context, heredoc
 
     s = _Session(tmp_path, language_gates=False)
@@ -187,7 +187,7 @@ def test_bash_write_through_gate(tmp_path):
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "== bad.py (ruff-format-check.sh) ==" in out.stderr
     assert "E722" in out.stderr
-    assert "no python gate installed" not in out.stderr + context(out)
+    assert "no python check installed" not in out.stderr + context(out)
 
 
 def test_ruff_unchecked_on_a_broken_config(tmp_path):

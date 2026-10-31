@@ -3,9 +3,9 @@
 Task 5: roots, git records (porcelain, diff-tree, reflog) and which commits
 a post has to check. Task 6: signatures, the session directory, the
 locked ledger, seeding a root, markers and `run_pre`. See
-`docs/developer/planning/specs/2026-09-26-bash-write-check-design.md`,
+`docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
 the sections on data flow, state, lock and pre, and the accompanying
-task briefs under `.superpowers/sdd/2026-09-26-bash-write-check/`. Dispatch
+task briefs under `.superpowers/sdd/2026-09-26-bash-write-gates/`. Dispatch
 and `post` come in task 7.
 """
 
@@ -1313,15 +1313,15 @@ def test_missing_language_pack_is_reported_not_blocked(tmp_path, monkeypatch, ga
     repo = _post_env(tmp_path, monkeypatch)
     assert bw.run_gate(str(repo), "a.py", "ruff-format-check.sh", time.time() + 10) == (
         "missing",
-        b"no python gate installed",
+        b"no python check installed",
     )
     _dirty_calls(repo, monkeypatch, ["a.py", "b.sh"])
     code, out, err = bw.run_post(_payload(repo, 0))
     assert code == 0, (out, err)
     assert err == ""
     context = json.loads(out)["hookSpecificOutput"]["additionalContext"]
-    assert "a.py not checked — no python gate installed" in context
-    assert "b.sh not checked — no shell gate installed" in context
+    assert "a.py not checked — no python check installed" in context
+    assert "b.sh not checked — no shell check installed" in context
     # One notice per change: the next call does not report unchanged files again.
     assert bw.run_pre(_payload(repo, 1)) == 0
     assert bw.run_post(_payload(repo, 1)) == (0, "", "")
@@ -1476,7 +1476,7 @@ def test_plain_note_has_no_system_message(tmp_path, monkeypatch):
     monkeypatch.setattr(
         bw,
         "run_gate",
-        lambda root, rel, gate, deadline: (bw._MISSING, b"no python gate installed")
+        lambda root, rel, gate, deadline: (bw._MISSING, b"no python check installed")
         if gate == "ruff-format-check.sh"
         else ("ok", b""),
     )
@@ -1484,7 +1484,7 @@ def test_plain_note_has_no_system_message(tmp_path, monkeypatch):
     code, out, _err = bw.run_post(_payload(repo, 0))
     assert code == 0
     data = json.loads(out)
-    assert "a.py not checked — no python gate installed" in data["hookSpecificOutput"]["additionalContext"]
+    assert "a.py not checked — no python check installed" in data["hookSpecificOutput"]["additionalContext"]
     assert "systemMessage" not in data
 
 

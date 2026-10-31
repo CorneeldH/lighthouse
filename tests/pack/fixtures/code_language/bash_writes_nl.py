@@ -1,7 +1,7 @@
 """`bash-write-check` (#871): wortels, git-records, reflog, de per-sessie
 ledger, `pre`, en `post` met de dispatch naar de bestaande gates.
 
-Zie `docs/developer/planning/specs/2026-09-26-bash-write-check-design.md`,
+Zie `docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
 secties *Datastroom* (Wortels, post bron 1/2), *Staat*, *Lock*, *pre*, *post*,
 *De pool*, *Dispatch*, *Uitvoer* en *Foutafhandeling* voor de semantiek.
 Aangeroepen als `python3 bash_writes.py pre|post` met de hookpayload op

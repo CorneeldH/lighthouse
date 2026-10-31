@@ -7,7 +7,7 @@ metadata:
   source: "#22"
 ---
 
-# Testing
+# Test Standard
 
 A test earns its place when it fails as soon as the behaviour it protects breaks. Everything
 else is a tautology: it passes today, and it would pass after the bug too.

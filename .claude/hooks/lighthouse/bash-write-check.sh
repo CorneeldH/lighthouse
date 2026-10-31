@@ -5,15 +5,15 @@
 # md-link-check.sh) also see what a Bash call writes (#871). Thin wrapper; the logic is in
 # lighthouse_lib/bash_writes.py.
 #
-# Counterpart: the norms of the gates carry their own counterparts up front
+# Counterpart: the norms of the checks carry their own counterparts up front
 # (the shell and python packages, the link rule in AGENTS.md). This hook checks
-# afterwards what a Bash call wrote. A gate whose package is not installed is
+# afterwards what a Bash call wrote. A check whose package is not installed is
 # reported per file, without blocking (decision 19).
 #
 #   bash-write-check.sh pre   PreToolUse: baseline and marker. Always exit 0 - a
 #                             PreToolUse exit 2 blocks the Bash call itself.
 #   bash-write-check.sh post  PostToolUse and PostToolUseFailure: dirty files
-#                             through their gate. Exit 0 or 2.
+#                             through their check. Exit 0 or 2.
 #
 # NOT fail-open: without python3, without bash_writes.py, or when the
 # dispatcher ends with anything but 0 or 2, nothing was checked. That is exit 2
@@ -26,7 +26,7 @@ MODE="${1:-}"
 
 # The lib lives in the lighthouse lib of this repo. Found through
 # LIGHTHOUSE_REPO_ROOT or git, never from this file's own path; bash_writes.py
-# looks for the gates under the same root.
+# looks for the checks under the same root.
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null)}"
 LIB="$LIB_ROOT/.lighthouse/lib/lighthouse_lib/bash_writes.py"
 export LIGHTHOUSE_REPO_ROOT="$LIB_ROOT"

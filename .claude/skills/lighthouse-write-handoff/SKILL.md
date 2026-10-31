@@ -5,7 +5,7 @@ metadata:
   lighthouse: "core@dev"
 ---
 
-# Handoff Skill
+# Write Handoff
 
 One block of text the user pastes into a fresh session, after which that session can go on
 without further explanation. No summary of what happened — that is in git and in the issue.

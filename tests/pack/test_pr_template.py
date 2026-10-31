@@ -17,11 +17,11 @@ def _text() -> str:
     return TEMPLATE.read_text(encoding="utf-8")
 
 
-def test_template_names_lighthouse_verify_pr() -> None:
+def test_template_names_lighthouse_write_pr() -> None:
     lines = _text().splitlines()
     named = [n for n, line in enumerate(lines, 1) if "/lighthouse-write-pr" in line]
     assert named == [11, 23], named
-    assert not re.search(r"/[a-z]+-verify-pr", _text().replace("/lighthouse-write-pr", ""))
+    assert not re.search(r"/[a-z]+-write-pr", _text().replace("/lighthouse-write-pr", ""))
 
 
 def test_template_is_hostless() -> None:

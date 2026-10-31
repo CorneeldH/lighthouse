@@ -12,9 +12,7 @@
 # problem). An absolute link is always a problem, whether it exists or not:
 # dead on the rendered site and as soon as the worktree is gone.
 #
-# The name `md-link-check.sh` stays, although the hook no longer checks
-# the worktree situation specifically: renaming only moves the registration
-# and check 8 of check-instructions.sh along, without gain. The chat half of
+# The name fits: the hook checks markdown links after a write. The chat half of
 # the AGENTS.md rule "Links: file relative, chat absolute" has no hook: it is
 # about prose in a chat answer, not about a file this hook sees.
 #

@@ -1147,8 +1147,8 @@ def test_post_without_language_packs(tmp_path):
     s = _Session(tmp_path, language_gates=False)
     out = s.call(heredoc("a.py", BARE_EXCEPT_PY) + heredoc("b.sh", BROKEN_SH))
     assert out.returncode == 0, (out.stdout, out.stderr)
-    assert "a.py not checked — no python gate installed" in context(out)
-    assert "b.sh not checked — no shell gate installed" in context(out)
+    assert "a.py not checked — no python check installed" in context(out)
+    assert "b.sh not checked — no shell check installed" in context(out)
 
 
 def test_pre_without_python_is_silent_post_is_loud(tmp_path):

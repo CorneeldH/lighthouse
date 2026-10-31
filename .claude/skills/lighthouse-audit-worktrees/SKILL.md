@@ -5,7 +5,7 @@ metadata:
   lighthouse: "core@dev"
 ---
 
-# Worktree Audit Skill
+# Audit Worktrees
 
 One join over `git worktree list`, `git branch` (local + remote), the PR state per head branch
 and the sessions on disk, with a verdict per row. Six views on the same set of rows.

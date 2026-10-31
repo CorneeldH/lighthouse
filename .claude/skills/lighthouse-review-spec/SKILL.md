@@ -5,7 +5,7 @@ metadata:
   lighthouse: "core@dev"
 ---
 
-# Spec Adversarial Review
+# Review Spec
 
 A second pair of eyes on a spec before a plan comes out of it. You stay the operator: the
 reviewer delivers findings, *you* decide what is real.

@@ -5,7 +5,7 @@ metadata:
   lighthouse: "core@dev"
 ---
 
-# Plan Adversarial Review
+# Review Plan
 
 A second pair of eyes on a plan before SDD executes it without you. You stay the operator: the
 reviewer delivers findings, *you* decide what is real; the user only where the spec is at

@@ -1,7 +1,7 @@
 """`bash-write-check` (#871): roots, git records, reflog, the per-session
 ledger, `pre`, and `post` with the dispatch to the existing gates.
 
-See `docs/developer/planning/specs/2026-09-26-bash-write-check-design.md`,
+See `docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
 the sections on data flow (roots, post source 1/2), state, lock, pre, post,
 the pool, dispatch, output and error handling for the semantics.
 Called as `python3 bash_writes.py pre|post` with the hook payload on
@@ -880,7 +880,7 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
     """
     path = gate_path(str(config.repo_root()), gate)
     if not path.is_file():
-        return _MISSING, f"no {GATE_PACKS[gate]} gate installed".encode()
+        return _MISSING, f"no {GATE_PACKS[gate]} check installed".encode()
     payload = {
         "tool_name": "Bash",
         "cwd": root,

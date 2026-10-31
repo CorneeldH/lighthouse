@@ -3,7 +3,7 @@ name: lighthouse-write-handoff
 description: Write the start command for the next session. Use at the end of a phase, or when the user asks for "a command for a new session", "how do I start this in a new window", "give me the command", "hand-off", or /lighthouse-write-handoff. With an absolute path ending in `.handoff.md` (`/lighthouse-write-handoff <path>`) it writes the block to that file as a pause, as the usage gate asks. Produces one copy-paste-ready block with worktree, branch, goal, relevant background information (or a reference to it) and the first step with the slash command that session starts with.
 ---
 
-# Handoff Skill
+# Write Handoff
 
 One block of text the user pastes into a fresh session, after which that session can go on
 without further explanation. No summary of what happened — that is in git and in the issue.
