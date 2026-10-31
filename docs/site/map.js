@@ -259,6 +259,67 @@ export function renderReference(root, packs, part) {
   root.replaceChildren(...groups);
 }
 
+/** One item of the system page: a link with the glyph of its sort, its label and its note. */
+function storyItem(item) {
+  const link = el("a", `story-item kind-${item.kind} form-${sortOf(item)}`);
+  link.href = item.href;
+  const glyph = el("span", "glyph", glyphOf(item));
+  glyph.setAttribute("aria-hidden", "true");
+  const text = el("span", "story-text");
+  text.append(el("span", "story-label", item.label));
+  if (item.note) {
+    text.append(el("span", "story-note", item.note));
+  }
+  link.append(glyph, text);
+  return link;
+}
+
+/**
+ * Renders the system page into `root`: the steps side by side, each with its number, its title
+ * (a command as a terminal line) and its items, an item with a `where` of its own apart at the
+ * bottom of its step. Below them every section as a box, its groups as a list of terms.
+ */
+export function renderStory(root, data) {
+  const story = el("ol", "story");
+  data.steps.forEach((step, index) => {
+    const node = el("li", "story-step");
+    node.append(el("p", "kicker", `Step ${index + 1}`));
+    const title = el("h2", "story-title");
+    if (step.command) {
+      title.append(el("code", "story-command", `$ ${step.command}`));
+    } else {
+      title.textContent = step.title;
+    }
+    node.append(title);
+    if (step.where) {
+      node.append(el("p", "story-where", step.where));
+    }
+    const list = el("ul", "story-items");
+    for (const item of step.items.filter((item) => !item.where)) {
+      const row = el("li");
+      row.append(storyItem(item));
+      list.append(row);
+    }
+    node.append(list);
+    for (const item of step.items.filter((item) => item.where)) {
+      const apart = el("div", "story-apart");
+      apart.append(el("p", "story-where", item.where), storyItem(item));
+      node.append(apart);
+    }
+    story.append(node);
+  });
+  const sections = data.sections.map((section) => {
+    const node = el("section", "box story-section");
+    node.id = section.id;
+    node.append(el("h2", "", section.title), ...section.text.map((text) => el("p", "", text)));
+    if (section.groups) {
+      node.append(facts(section.groups.map((group) => [group.label, group.tools.join(", ")])));
+    }
+    return node;
+  });
+  root.replaceChildren(story, ...sections);
+}
+
 /** `how` as a list of steps; a single string stays one paragraph. */
 function steps(how) {
   if (!Array.isArray(how)) {

@@ -11,6 +11,7 @@ from html.parser import HTMLParser
 import pytest
 
 from tests.test_site_chain import ROOT, SITE
+from tests.test_site_pages import ElementById
 
 PLATFORM_JS = SITE / "platform.js"
 INDEX = SITE / "index.html"
@@ -183,3 +184,12 @@ def test_footer_links():
     for url in ["blob/main/docs/getting-started.md", "issues/88", "blob/main/LICENSE", "blob/main/CHANGELOG.md"]:
         assert f'href="{base}{url}"' in text, url
     assert 'id="download"' in text and "<title>Lighthouse</title>" in text
+
+
+def test_download_names_the_other_routes():
+    parser = ElementById("download")
+    parser.feed(INDEX.read_text(encoding="utf-8"))
+    assert parser.attrs is not None, 'index.html has no element with id="download"'
+    text = " ".join(parser.text.split())
+    assert "go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest" in text
+    assert "clone" in text

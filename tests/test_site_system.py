@@ -1,340 +1,204 @@
-"""The system map in docs/site/data/system.json holds together: fixed words, existing references,
-unique ids, no planned part without an anchor, sources that exist. The checks are helpers that return
-problems, run over a small fixture and every system map in the data directory."""
+"""The system page in docs/site/data/system.json holds together: three steps in order, every item
+of a known sort and kind, every link resolving, and no word for what users do not get. The checks
+are helpers that return problems, run over a small fixture and over system.json itself."""
 
 import copy
-import datetime
 import json
 import re
 from pathlib import Path
 
 import pytest
 
-from tests.test_site_chain import REPO_BLOB, ROOT, SITE
+from tests._site_node import run_map
+from tests.test_site_chain import REPO_BLOB, REPO_TREE, ROOT, SITE
 
 FIXTURE = ROOT / "tests" / "fixtures" / "site" / "system.json"
 SYSTEM = SITE / "data" / "system.json"
-STATUSES = {"works", "planned", "idea"}
-PART_KEYS = ["id", "label", "status"]
-PART_TEXT_KEYS = ["what", "when", "without"]
-ISSUE_KEYS = ["issue", "title", "part", "status"]
-LINK_KEYS = ["from", "to", "label"]
-
 SYSTEMS = [pytest.param(FIXTURE, id="fixture"), pytest.param(SYSTEM, id="system.json")]
+
+KEYS = {"title", "subtitle", "steps", "sections"}
+STEPS = ["install", "init", "loop"]
+KINDS = {"lighthouse", "superpowers", "hook", "github", "you"}
+FORBIDDEN = re.compile(r"\b(serve|tick|dashboard|controller)\b", re.IGNORECASE)
+SORT_KEYS = set(run_map("Object.keys(m.SORTS)"))
 
 
 def load_system(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def word_problems(system: dict) -> list[str]:
+def items(system: dict) -> list[dict]:
+    return [item for step in system["steps"] for item in step["items"]]
+
+
+def shape_problems(system: dict) -> list[str]:
+    problems = [f"lacks key {key}" for key in sorted(KEYS - system.keys())]
+    problems += [f"unexpected key {key}" for key in sorted(system.keys() - KEYS)]
+    ids = [step["id"] for step in system.get("steps", [])]
+    if ids != STEPS:
+        problems.append(f"steps are {ids}, not {STEPS}")
+    return problems
+
+
+def sort_problems(system: dict, sorts: set[str]) -> list[str]:
     problems = []
-    for part in system["parts"]:
-        name = part.get("id")
-        keys = PART_KEYS + ([] if part.get("group") else PART_TEXT_KEYS)
-        problems += [f"{name}: lacks '{key}'" for key in keys if key not in part]
-        if "status" in part and part["status"] not in STATUSES:
-            problems.append(f"{name}: unknown status {part['status']}")
-    for issue in system["issues"]:
-        name = f"issue {issue.get('issue')}"
-        problems += [f"{name}: lacks '{key}'" for key in ISSUE_KEYS if key not in issue]
-        if "status" in issue and issue["status"] not in STATUSES:
-            problems.append(f"{name}: unknown status {issue['status']}")
-        if issue.get("status") == "idea":
-            problems.append(f"{name}: an issue is never idea")
-    for link in system["links"]:
-        name = f"link {link.get('from')}->{link.get('to')}"
-        problems += [f"{name}: lacks '{key}'" for key in LINK_KEYS if key not in link]
+    for item in items(system):
+        if item["form"] not in sorts:
+            problems.append(f"{item['label']}: unknown form {item['form']}")
+        if item["kind"] not in KINDS:
+            problems.append(f"{item['label']}: unknown kind {item['kind']}")
     return problems
 
 
-def reference_problems(system: dict) -> list[str]:
-    parts = {p["id"]: p for p in system["parts"]}
-    numbers = {m["number"] for m in system["milestones"]}
+def link_problems(system: dict) -> list[str]:
+    """A `#id` names a section; a repo URL names a path that exists; any other http(s) link is
+    external; the rest is `page[#id]` on the site, and the page has that id."""
+    sections = {section["id"] for section in system["sections"]}
     problems = []
-    for part in system["parts"]:
-        if "parent" in part and part["parent"] not in parts:
-            problems.append(f"part {part['id']}: unknown parent {part['parent']}")
-        if "milestone" in part and part["milestone"] not in numbers:
-            problems.append(f"part {part['id']}: unknown milestone {part['milestone']}")
-    for issue in system["issues"]:
-        name = f"issue {issue['issue']}"
-        if "milestone" not in issue:
-            problems.append(f"{name}: no milestone")
-        elif issue["milestone"] not in numbers:
-            problems.append(f"{name}: unknown milestone {issue['milestone']}")
-        if issue["part"] not in parts:
-            problems.append(f"{name}: unknown part {issue['part']}")
-        elif parts[issue["part"]].get("group"):
-            problems.append(f"{name}: hangs on group {issue['part']}")
-    for link in system["links"]:
-        name = f"link {link['from']}->{link['to']}"
-        problems += [f"{name}: unknown part {link[end]}" for end in ("from", "to") if link[end] not in parts]
+    for item in items(system):
+        label, href = item["label"], item.get("href")
+        if not href:
+            problems.append(f"{label}: no href")
+        elif href.startswith("#"):
+            if href[1:] not in sections:
+                problems.append(f"{label}: no section {href[1:]}")
+        elif href.startswith((REPO_BLOB, REPO_TREE)):
+            path = href[len(REPO_BLOB if href.startswith(REPO_BLOB) else REPO_TREE):]
+            if not (ROOT / path).exists():
+                problems.append(f"{label}: {path} does not exist")
+        elif href.startswith(("http:", "https:")):
+            problems.append(f"{label}: external link {href}")
+        else:
+            page, _, anchor = href.partition("#")
+            target = SITE / page
+            if not target.is_file():
+                problems.append(f"{label}: {page} points nowhere")
+            elif anchor and f'id="{anchor}"' not in target.read_text(encoding="utf-8"):
+                problems.append(f"{label}: {page} has no id {anchor}")
     return problems
 
 
-def uniqueness_problems(system: dict) -> list[str]:
-    problems, seen = [], set()
-    for part in system["parts"]:
-        if part["id"] in seen:
-            problems.append(f"part {part['id']}: duplicate id")
-        seen.add(part["id"])
-    seen = set()
-    for milestone in system["milestones"]:
-        if milestone["number"] in seen:
-            problems.append(f"milestone {milestone['number']}: duplicate number")
-        seen.add(milestone["number"])
-    seen = set()
-    for issue in system["issues"]:
-        if issue["issue"] in seen:
-            problems.append(f"issue {issue['issue']}: duplicate issue")
-        seen.add(issue["issue"])
-    parents = {p["id"]: p.get("parent") for p in system["parts"]}
-    for part in system["parts"]:
-        visited, current = set(), part["id"]
-        while current in parents:
-            if current in visited:
-                problems.append(f"part {part['id']}: parent cycle")
-                break
-            visited.add(current)
-            current = parents[current]
-    return problems
-
-
-def anchor_problems(system: dict) -> list[str]:
-    """A planned part names an issue or a milestone; an issue always has its own number."""
-    return [
-        f"{part['id']}: planned without issue or milestone"
-        for part in system["parts"]
-        if part["status"] == "planned" and "issue" not in part and "milestone" not in part
-    ]
-
-
-def part_source_problems(system: dict) -> list[str]:
-    problems = []
-    for part in system["parts"]:
-        source = part.get("source")
-        if source is None:
-            continue
-        if not source.startswith(REPO_BLOB):
-            problems.append(f"{part['id']}: source is not under REPO_BLOB")
-        elif not (ROOT / source[len(REPO_BLOB):]).exists():
-            problems.append(f"{part['id']}: {source} does not exist")
-    return problems
-
-
-def title_problems(system: dict) -> list[str]:
-    problems = []
-    for milestone in system["milestones"]:
-        title = milestone["title"]
-        numbered = re.match(r"M\d+ — ", title)
-        if numbered:
-            problems.append(f"milestone {milestone['number']}: title carries '{numbered.group()}'")
-        if title.endswith(" - DONE"):
-            problems.append(f"milestone {milestone['number']}: title carries ' - DONE'")
-    return problems
-
-
-def snapshot_problems(system: dict) -> list[str]:
-    snapshot = system.get("snapshot")
-    try:
-        datetime.date.fromisoformat(snapshot)
-    except (ValueError, TypeError):
-        return [f"snapshot is not an ISO date: {snapshot}"]
+def strings(value) -> list[str]:
+    """Every string value anywhere in `value`, depth first."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        value = list(value.values())
+    if isinstance(value, list):
+        return [text for part in value for text in strings(part)]
     return []
 
 
+def word_problems(system: dict) -> list[str]:
+    return [
+        f"{text}: names {match.group(1).lower()}"
+        for text in strings(system)
+        for match in FORBIDDEN.finditer(text)
+    ]
+
+
 @pytest.mark.parametrize("path", SYSTEMS)
-def test_parts_use_the_fixed_words(path):
+def test_three_steps_in_order(path):
+    assert shape_problems(load_system(path)) == []
+
+
+@pytest.mark.parametrize("path", SYSTEMS)
+def test_every_item_has_a_known_sort(path):
+    assert sort_problems(load_system(path), SORT_KEYS) == []
+
+
+@pytest.mark.parametrize("path", SYSTEMS)
+def test_every_link_resolves(path):
+    assert link_problems(load_system(path)) == []
+
+
+@pytest.mark.parametrize("path", SYSTEMS)
+def test_nothing_that_is_not_for_users(path):
     assert word_problems(load_system(path)) == []
 
 
-@pytest.mark.parametrize("path", SYSTEMS)
-def test_every_reference_exists(path):
-    assert reference_problems(load_system(path)) == []
+def test_init_step_is_the_command():
+    step = load_system(SYSTEM)["steps"][1]
+    assert step["command"] == "lighthouse init"
 
 
-@pytest.mark.parametrize("path", SYSTEMS)
-def test_ids_are_unique_and_parents_acyclic(path):
-    assert uniqueness_problems(load_system(path)) == []
+def test_bring_groups_in_order():
+    bring = next(s for s in load_system(SYSTEM)["sections"] if s["id"] == "bring")
+    assert [g["label"] for g in bring["groups"]] == ["Needed", "For GitHub", "Per language", "Optional"]
+    assert "superpowers" in bring["groups"][0]["tools"]
+    assert bring["groups"][3]["tools"] == ["codex"]
 
 
-@pytest.mark.parametrize("path", SYSTEMS)
-def test_planned_has_an_issue_or_milestone(path):
-    assert anchor_problems(load_system(path)) == []
+def fixture_item(step: int) -> tuple[dict, dict]:
+    """A copy of the fixture and the one item of its step `step`."""
+    system = copy.deepcopy(load_system(FIXTURE))
+    return system, system["steps"][step]["items"][0]
 
 
-@pytest.mark.parametrize("path", SYSTEMS)
-def test_every_source_exists(path):
-    assert part_source_problems(load_system(path)) == []
+def test_fixture_unknown_form_is_flagged():
+    system, item = fixture_item(0)
+    item["form"] = "widget"
+    assert sort_problems(system, SORT_KEYS) == ["lighthouse: unknown form widget"]
 
 
-@pytest.mark.parametrize("path", SYSTEMS)
-def test_milestone_titles_carry_no_number(path):
-    assert title_problems(load_system(path)) == []
+def test_fixture_unknown_kind_is_flagged():
+    system, item = fixture_item(0)
+    item["kind"] = "acme"
+    assert sort_problems(system, SORT_KEYS) == ["lighthouse: unknown kind acme"]
 
 
-@pytest.mark.parametrize("path", SYSTEMS)
-def test_snapshot_is_an_iso_date(path):
-    assert snapshot_problems(load_system(path)) == []
+def test_fixture_missing_step_is_flagged():
+    system = copy.deepcopy(load_system(FIXTURE))
+    system["steps"] = [step for step in system["steps"] if step["id"] != "loop"]
+    assert shape_problems(system) == ["steps are ['install', 'init'], not ['install', 'init', 'loop']"]
 
 
-PARTS = {  # id: (parent, status), in the order of spec §4
-    "binary": (None, "works"), "installer": ("binary", "works"),
-    "usage-meter": ("binary", "works"), "dashboard": ("binary", "works"),
-    "controller": ("binary", "planned"), "packs": ("binary", "works"),
-    "repo": (None, "works"), "chain": ("repo", "works"), "guardrails": ("repo", "works"),
-    "environments": (None, "works"), "env-now": ("environments", "works"),
-    "env-second": ("environments", "planned"), "env-sdp": ("environments", "planned"),
-    "docs": (None, "works"),
-}
+def test_fixture_chips_key_is_flagged():
+    system = copy.deepcopy(load_system(FIXTURE))
+    system["chips"] = []
+    assert shape_problems(system) == ["unexpected key chips"]
 
 
-def test_parts_are_the_fourteen_of_the_spec():
-    parts = load_system(SYSTEM)["parts"]
-    assert {p["id"]: (p.get("parent"), p["status"]) for p in parts} == PARTS
-    assert [p["id"] for p in parts] == list(PARTS)
-    assert {p["id"] for p in parts if p.get("not_in_first_release")} == {"dashboard", "controller", "env-now"}
-    assert {p["id"]: p["milestone"] for p in parts if "milestone" in p} == {"controller": 3, "env-second": 4, "env-sdp": 5}
-    assert {p["id"] for p in parts if p.get("group")} == {"environments"}
-    sources = {p["id"]: p["source"][len(REPO_BLOB):] for p in parts if "source" in p}
-    assert sources == {"binary": "cmd/lighthouse", "installer": "internal/initcmd",
-                       "usage-meter": "internal/usage", "dashboard": "internal/server",
-                       "controller": "internal/cli/tick.go", "packs": "pack",
-                       "chain": "pack/core/skills", "guardrails": "pack/core/hooks",
-                       "env-now": "deploy", "docs": "docs"}
+def test_fixture_page_pointing_nowhere_is_flagged():
+    system, item = fixture_item(2)
+    item["href"] = "nowhere.html"
+    assert link_problems(system) == ["The loop: nowhere.html points nowhere"]
 
 
-def test_links_are_the_two_of_the_spec():
-    links = load_system(SYSTEM)["links"]
-    assert {(l["from"], l["to"], l["label"]) for l in links} == {
-        ("installer", "repo", "installs"), ("controller", "chain", "starts sessions"),
-    }
+def test_fixture_anchor_pointing_nowhere_is_flagged():
+    system, item = fixture_item(2)
+    item["href"] = "chain.html#nope"
+    assert link_problems(system) == ["The loop: chain.html has no id nope"]
 
 
-def test_milestones_in_their_order_without_numbers():
-    milestones = load_system(SYSTEM)["milestones"]
-    assert [(m["number"], m["title"], m["state"]) for m in milestones] == [
-        (1, "Pakket", "closed"), (2, "Romp en zicht", "closed"), (3, "Dispatcher", "open"),
-        (4, "Tweede omgeving", "open"), (5, "SURF Research Cloud als werkplek", "open"),
-        (6, "Product: eerste versie voor anderen", "open"), (7, "Kaarten: lighthouse in beeld", "open"),
+def test_fixture_section_anchor_pointing_nowhere_is_flagged():
+    system, item = fixture_item(0)
+    item["href"] = "#nope"
+    assert link_problems(system) == ["lighthouse: no section nope"]
+
+
+def test_fixture_repo_path_pointing_nowhere_is_flagged():
+    system, item = fixture_item(1)
+    item["href"] = REPO_BLOB + "pack/core/nope"
+    assert link_problems(system) == ["Skills: pack/core/nope does not exist"]
+
+
+def test_fixture_external_link_is_flagged():
+    system, item = fixture_item(1)
+    item["href"] = "https://example.com/skills"
+    assert link_problems(system) == ["Skills: external link https://example.com/skills"]
+
+
+def test_fixture_item_without_href_is_flagged():
+    system, item = fixture_item(0)
+    del item["href"]
+    assert link_problems(system) == ["lighthouse: no href"]
+
+
+def test_fixture_dashboard_is_flagged():
+    system, item = fixture_item(0)
+    item["label"] = "Dashboard (serve)"
+    assert word_problems(system) == [
+        "Dashboard (serve): names dashboard",
+        "Dashboard (serve): names serve",
     ]
-
-
-def fixture_system() -> dict:
-    return copy.deepcopy(load_system(FIXTURE))
-
-
-def part_of(system: dict, part_id: str) -> dict:
-    return next(p for p in system["parts"] if p["id"] == part_id)
-
-
-def test_fixture_planned_part_without_milestone_is_flagged():
-    system = fixture_system()
-    del part_of(system, "planned-leaf")["milestone"]
-    assert anchor_problems(system) == ["planned-leaf: planned without issue or milestone"]
-
-
-def test_fixture_unknown_parent_is_flagged():
-    system = fixture_system()
-    part_of(system, "leaf")["parent"] = "ghost"
-    assert reference_problems(system) == ["part leaf: unknown parent ghost"]
-
-
-def test_fixture_issue_without_milestone_is_flagged():
-    system = fixture_system()
-    del system["issues"][0]["milestone"]
-    assert reference_problems(system) == ["issue 10: no milestone"]
-
-
-def test_fixture_issue_on_unknown_milestone_is_flagged():
-    system = fixture_system()
-    system["issues"][0]["milestone"] = 9
-    assert reference_problems(system) == ["issue 10: unknown milestone 9"]
-
-
-def test_fixture_part_on_unknown_milestone_is_flagged():
-    system = fixture_system()
-    part_of(system, "planned-leaf")["milestone"] = 9
-    assert reference_problems(system) == ["part planned-leaf: unknown milestone 9"]
-
-
-def test_fixture_issue_on_a_group_is_flagged():
-    system = fixture_system()
-    system["issues"][0]["part"] = "envs"
-    assert reference_problems(system) == ["issue 10: hangs on group envs"]
-
-
-def test_fixture_link_to_unknown_part_is_flagged():
-    system = fixture_system()
-    system["links"][0]["to"] = "ghost"
-    assert reference_problems(system) == ["link leaf->ghost: unknown part ghost"]
-
-
-def test_fixture_duplicate_id_is_flagged():
-    system = fixture_system()
-    system["parts"].append(copy.deepcopy(part_of(system, "env-a")))
-    assert uniqueness_problems(system) == ["part env-a: duplicate id"]
-
-
-def test_fixture_duplicate_issue_is_flagged():
-    system = fixture_system()
-    system["issues"].append(copy.deepcopy(system["issues"][0]))
-    assert uniqueness_problems(system) == ["issue 10: duplicate issue"]
-
-
-def test_fixture_duplicate_milestone_is_flagged():
-    system = fixture_system()
-    system["milestones"].append(copy.deepcopy(system["milestones"][0]))
-    assert uniqueness_problems(system) == ["milestone 1: duplicate number"]
-
-
-def test_fixture_parent_cycle_is_flagged():
-    system = fixture_system()
-    part_of(system, "shell")["parent"] = "leaf"
-    assert uniqueness_problems(system) == [
-        "part shell: parent cycle", "part leaf: parent cycle", "part planned-leaf: parent cycle",
-    ]
-
-
-def test_fixture_idea_issue_is_flagged():
-    system = fixture_system()
-    system["issues"][1]["status"] = "idea"
-    assert word_problems(system) == ["issue 11: an issue is never idea"]
-
-
-def test_fixture_unknown_status_is_flagged():
-    system = fixture_system()
-    part_of(system, "leaf")["status"] = "done"
-    assert word_problems(system) == ["leaf: unknown status done"]
-
-
-def test_fixture_part_without_what_is_flagged():
-    system = fixture_system()
-    del part_of(system, "leaf")["what"]
-    assert word_problems(system) == ["leaf: lacks 'what'"]
-
-
-def test_fixture_source_pointing_nowhere_is_flagged():
-    system = fixture_system()
-    part_of(system, "leaf")["source"] = REPO_BLOB + "pack/core/skills/no-such-skill"
-    assert part_source_problems(system) == [f"leaf: {REPO_BLOB}pack/core/skills/no-such-skill does not exist"]
-
-
-def test_fixture_numbered_milestone_title_is_flagged():
-    system = fixture_system()
-    system["milestones"][0]["title"] = "M0 — One"
-    system["milestones"][1]["title"] = "Two - DONE"
-    assert title_problems(system) == ["milestone 1: title carries 'M0 — '", "milestone 2: title carries ' - DONE'"]
-
-
-def test_fixture_snapshot_not_iso_is_flagged():
-    system = fixture_system()
-    system["snapshot"] = "31-10-2026"
-    assert snapshot_problems(system) == ["snapshot is not an ISO date: 31-10-2026"]
-
-
-def test_page_shows_the_snapshot():
-    assert 'id="snapshot"' in (SITE / "system.html").read_text(encoding="utf-8")
-    script = (SITE / "system.js").read_text(encoding="utf-8")
-    assert ".snapshot" in script and "Snapshot of" in script

@@ -104,6 +104,15 @@ mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_darwin_amd64 ~/.local/bin/lightho
     Check it against <code>SHA256SUMS</code> yourself.</p>
   </div>
 
+  <p class="other-routes">Or install with Go,
+  <code>go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest</code>, which puts the
+  binary in <code>~/go/bin</code>, or build it from a clone. A build from <code>main</code> or
+  from a clone reports version <code>dev</code>, and <code>lighthouse init</code> writes that
+  version into <code>.lighthouse/manifest.toml</code>, so install a tag for a repository you
+  work in. The
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#install">getting-started guide</a>
+  has the details.</p>
+
   <p class="next-step">Next: run <code>lighthouse init</code> in your repository, as the
   <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#run-lighthouse-init">getting-started guide</a>
   shows.</p>
@@ -199,8 +208,8 @@ mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_darwin_amd64 ~/.local/bin/lightho
   </div>
   <a class="tile kind-lighthouse status-works" href="system.html">
     <p class="kicker">Map 4</p>
-    <h2>The system and the roadmap</h2>
-    <p>How the parts fit, and what comes next.</p>
+    <h2>The system</h2>
+    <p>What you have once lighthouse is installed, and what happens when you work.</p>
   </a>
   <div class="tile status-planned">
     <p class="kicker">Map 5 · planned · #103</p>

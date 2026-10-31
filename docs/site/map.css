@@ -809,6 +809,7 @@ a.tile:focus-visible {
 }
 
 .download-lead,
+.other-routes,
 .next-step {
   margin: 0 0 12px;
 }
@@ -1261,4 +1262,163 @@ a.tile:focus-visible {
 .reference-link:hover,
 .reference-link:focus-visible {
   text-decoration: underline;
+}
+
+/* System page: three steps side by side, one column on a narrow screen, and the sections below. */
+
+.story {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.story-step .kicker {
+  margin: 0;
+}
+
+.story-title {
+  margin: 0;
+  font-size: 18px;
+}
+
+/* The init step is a command: a terminal line that wraps rather than runs over the edge. */
+.story-command {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--map-bg);
+  color: var(--fg);
+  font-size: 15px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.story-where {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.story-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1.5px solid var(--kind);
+  border-radius: 10px;
+  background: var(--kind);
+  color: var(--kind-fg);
+  text-decoration: none;
+}
+
+/* What you bring is white on white: its border has to carry the box. */
+.story-item.kind-you {
+  border-color: var(--muted);
+}
+
+.story-item:hover .story-label {
+  text-decoration: underline;
+}
+
+.story-item:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.story-item .glyph {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.story-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.story-label {
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.story-note {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* An item outside the place of its step, such as host.toml on your workstation. */
+.story-apart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.story-section {
+  margin-top: 20px;
+  max-width: 900px;
+}
+
+.story-section p {
+  max-width: 75ch;
+}
+
+.story-section p + p {
+  margin-top: 8px;
+}
+
+.story-section dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+
+.story-section dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.story-section dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .story {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

@@ -131,6 +131,8 @@ def test_index_lists_the_six_maps():
     assert 'id="maps"' in text
     assert "<h2>The loop</h2>" in text and "<h2>The chain</h2>" not in text
     assert ">the chain map<" not in text
+    assert "<h2>The system</h2>" in text
+    assert "roadmap" not in text.lower()
 
 
 @pytest.mark.parametrize("page", MAP_PAGES)

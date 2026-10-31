@@ -11,9 +11,7 @@
 <header class="page-head">
   <div>
     <h1 id="title">The system</h1>
-    <p id="subtitle" class="subtitle">What lighthouse is made of, what works today, and what comes
-    next.</p>
-    <p id="snapshot" class="snapshot"></p>
+    <p id="subtitle" class="subtitle">What you have once lighthouse is installed, and what happens when you work.</p>
   </div>
   <a class="back-link" href="index.html">All maps</a>
   <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
@@ -25,21 +23,9 @@ browser blocks for a page opened straight from disk. From the root of the reposi
 <code>http://localhost:8000/system.html</code>.</p>
 
 <section class="legend" aria-label="Legend">
-  <ul aria-label="Status">
-    <li><span class="swatch plan-swatch status-works"></span>works</li>
-    <li><span class="swatch plan-swatch status-planned"></span>planned</li>
-  </ul>
+  <ul aria-label="What it is" data-sorts="program workflow-skill agent hook rules config github loop session you"></ul>
 </section>
 
-<div class="stand-switch" role="group" aria-label="View">
-  <button type="button" id="switch-now" aria-pressed="true">Now</button>
-  <button type="button" id="switch-time" aria-pressed="false">Over time</button>
-</div>
-
-<div id="plan-map"></div>
-
-<div id="timeline" hidden></div>
-
-<aside id="detail" class="detail" aria-label="Details"></aside>
+<div id="story"></div>
 </body>
 </html>
