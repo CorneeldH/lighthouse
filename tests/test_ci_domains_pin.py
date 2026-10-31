@@ -77,25 +77,29 @@ def test_node_jobs_cache_npm():
         assert "cache-dependency-path: web/package-lock.json" in setup[0], name
 
 
-def test_binary_builds_after_web():
-    """Fails when the binary job stops waiting for web or stops building and smoking."""
+def test_binary_runs_without_web():
+    """Fails when binary waits for web again, or stops building the SPA, the binary or the smoke."""
     binary = _jobs()["binary"]
-    needs = re.search(r"^    needs: (.*)$", binary, re.MULTILINE)
-    assert needs and "web" in needs.group(1), needs
+    assert re.search(r"^    needs: changes\s*$", binary, re.MULTILINE)
+    assert "needs.web" not in binary
     for needle in (
-        "!cancelled()",
+        "outputs.web == 'true'",
         "outputs.go == 'true'",
-        "needs.web.result != 'failure'",
         "CGO_ENABLED=0 go build ./cmd/lighthouse",
         "ci/spa-smoke.sh",
     ):
         assert needle in binary, needle
+    steps = re.split(r"(?m)^      - ", binary)[1:]
+    build = [s for s in steps if re.search(r"run: npm run build\s*$", s, re.MULTILINE)]
+    assert len(build) == 1 and not re.search(r"^\s*if:", build[0], re.MULTILINE), build
+    assert binary.index("run: npm ci") < binary.index("run: npm run build") < binary.index("go build ./cmd/lighthouse")
+    assert "web-dist" not in _text()
 
 
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert len(uses) == 16, uses
+    assert len(uses) == 14, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)
