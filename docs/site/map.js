@@ -2,13 +2,14 @@
 // handoff badges and a detail drawer. Data reaches the page only through textContent and
 // attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
 
-const GLYPHS = { you: "⌨", skill: "↪", description: "◎", tool: "⚡", github: "⚙" };
+const GLYPHS = { you: "⌨", skill: "↪", description: "◎", tool: "⚡", event: "◷", github: "⚙" };
 const AGENT_GLYPH = "◆"; // an agent keeps its own mark, whatever starts it
 const TRIGGERS = {
   you: "you invoke it",
   skill: "another skill invokes it",
   description: "its description matches the task",
   tool: "a tool call",
+  event: "a turn event",
   github: "a GitHub event",
 };
 // A trigger in the terms of the harness docs.
@@ -17,7 +18,15 @@ const STARTS = {
   skill: "Invoked by another skill",
   description: "Model-invoked",
   tool: "Hook event",
+  event: "Hook event",
   github: "GitHub event",
+};
+// What a hook does when it fires.
+const EFFECTS = {
+  blocks: "blocks the step",
+  warns: "warns, does not block",
+  formats: "formats the file",
+  records: "records state for a later hook",
 };
 const FORMS = {
   skill: "Skill",
@@ -213,6 +222,12 @@ function box(kicker, heading, ...body) {
   return node;
 }
 
+/** matcher · pack · effects: the one line a hook chip carries. */
+function hookSummary(chip) {
+  const parts = sourceParts(chip.source);
+  return `${chip.matcher || "all"} · ${parts ? parts.pack : "?"} · ${chip.effects.join(" + ")}`;
+}
+
 function chipButton(chip, columns) {
   const button = el("button", `chip kind-${chip.kind} form-${form(chip)} status-${chip.status}`);
   button.type = "button";
@@ -224,13 +239,19 @@ function chipButton(chip, columns) {
   const glyph = el("span", "glyph", glyphOf(chip));
   glyph.setAttribute("aria-hidden", "true");
   button.append(glyph, el("span", "label", chip.label));
-  button.append(el("span", "sr-only", ` (${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status})`));
+  const hookLine = chip.command ? hookSummary(chip) : "";
+  button.append(
+    el("span", "sr-only", ` (${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status}${hookLine ? `, ${hookLine}` : ""})`),
+  );
   const mark = plannedMark(chip);
   if (mark) {
     button.append(el("span", "mark", mark));
   }
   if (chip.not_in_first_release) {
     button.append(el("span", "release", "not in first release"));
+  }
+  if (hookLine) {
+    button.append(el("span", "hook", hookLine));
   }
   return button;
 }
@@ -387,6 +408,14 @@ export function renderFlowMap(root, data, detail) {
             ["What it is", FORMS[kind]],
             ["When it starts", STARTS[chip.trigger] || chip.trigger],
             ["Who provides it", provider(chip.kind, chip.source, kind)],
+            ...(chip.command
+              ? [
+                  ["Event", chip.events.join(" and ")],
+                  ["Matcher", chip.matcher || "none: every call"],
+                  ["Command", chip.command],
+                  ["What it does", chip.effects.map((e) => EFFECTS[e]).join("; ")],
+                ]
+              : []),
             ["What you miss without", chip.without],
             ["Status", statusText(chip)],
           ]),

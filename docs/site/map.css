@@ -445,6 +445,17 @@ button:focus-visible {
   opacity: 0.85;
 }
 
+.chip .hook {
+  flex-basis: 100%;
+  padding-left: 23px;
+  font-size: 9.5px;
+  font-weight: 600;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chip.status-planned {
   background: transparent;
   color: var(--fg);

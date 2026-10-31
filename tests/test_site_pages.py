@@ -6,6 +6,8 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
+import pytest
+
 from tests.test_site_chain import SITE
 
 GUIDE = SITE.parent / "getting-started.md"
@@ -86,10 +88,11 @@ def test_site_links_resolve():
             assert target.is_file(), f"{path.name}: {link} points nowhere"
 
 
-def test_pages_name_the_local_server_command():
+@pytest.mark.parametrize("page", ["chain.html", "guardrails.html"])
+def test_pages_name_the_local_server_command(page):
     parser = ElementById("serve-hint")
-    parser.feed((SITE / "chain.html").read_text(encoding="utf-8"))
-    assert parser.attrs is not None, 'chain.html has no element with id="serve-hint"'
+    parser.feed((SITE / page).read_text(encoding="utf-8"))
+    assert parser.attrs is not None, f'{page} has no element with id="serve-hint"'
     assert SERVE_COMMAND in " ".join(parser.text.split())
     assert "hidden" not in parser.attrs
     style = (parser.attrs.get("style") or "").replace(" ", "")
@@ -121,8 +124,9 @@ def test_index_lists_the_six_maps():
     assert 'id="maps"' in text
 
 
-def test_chain_links_back_to_index():
-    assert 'href="index.html"' in (SITE / "chain.html").read_text(encoding="utf-8")
+@pytest.mark.parametrize("page", ["chain.html", "guardrails.html"])
+def test_map_pages_link_back_to_index(page):
+    assert 'href="index.html"' in (SITE / page).read_text(encoding="utf-8")
 
 
 def test_guide_links_to_the_chain_map():
