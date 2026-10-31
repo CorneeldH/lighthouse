@@ -1053,6 +1053,20 @@ func TestHostTOMLHasItsOwnQuestion(t *testing.T) {
 	}
 }
 
+func TestOneApprovalLineSkipsHostTOML(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "y\n", withTailscale("100.64.0.1"))
+	if r.code != 0 || !exists(root, ".lighthouse/manifest.toml") {
+		t.Fatalf("rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+	if !strings.Contains(r.out, "Write "+hostTOMLFor(t)+"? [y/N] ") {
+		t.Fatalf("out:\n%s", r.out)
+	}
+	if _, err := os.Stat(hostTOMLFor(t)); err == nil {
+		t.Fatal("host.toml written on EOF")
+	}
+}
+
 func TestUpgradeDoesNotProposeHostTOML(t *testing.T) {
 	root := newRepo(t)
 	initYes(t, root)
