@@ -35,7 +35,7 @@ De spec laat open "hoe de Stop-checks weten welke paden de beurt raakte" (*Aan d
 - De skip komt in `check_root` vóór elke andere check van die root: een overgeslagen root heeft geen `go`, `golangci-lint`, `uvx`, `go.mod`, `.venv` of bestaande `source_dirs` nodig.
 - Wat blijft zoals het is: de `stop_hook_active`-guard, het usage-alarm (#74), `COULD NOT CHECK` als `turn_roots.py` faalt, `python.source_dirs = []` zet `ty-check` stil uit.
 - `turn_roots.py` zonder `--match` geeft exact de uitvoer van nu (één root per regel).
-- Elke wijziging onder `pack/` draait `go run ./cmd/lighthouse init --upgrade` en commit de geïnstalleerde kopie in dezelfde commit. `pack/python` is in deze repo niet geïnstalleerd: test `ty-check.sh` via `tests/pack/python/`, niet via een geïnstalleerde kopie.
+- Elke wijziging onder `pack/` draait `go run ./cmd/lighthouse init --upgrade --yes` en commit alles wat dat schrijft in dezelfde commit: de geïnstalleerde kopie, `.lighthouse/manifest.toml` (sha256 per bestand) en beide skillvarianten (`.claude/skills/…` en `.agents/skills/…`). Zonder `--yes` vraagt `init` om bevestiging, leest de lege stdin en schrijft niets (`internal/initcmd/initcmd.go:209`). De controle daarna is `go run ./cmd/lighthouse init --upgrade </dev/null` met `No changes.` `pack/python` is in deze repo niet geïnstalleerd: test `ty-check.sh` via `tests/pack/python/`, niet via een geïnstalleerde kopie.
 - Geen nieuw pakketbestand: `pack/SOURCES.toml`, `requires.toml` en `internal/packs/core_test.go` veranderen niet.
 - De hooks van de lopende sessie komen uit de hoofdcheckout, niet uit deze worktree: test de nieuwe hooks via de testsuite.
 - Commits: Conventional Commits, Nederlands, één logische wijziging per commit.
@@ -121,9 +121,9 @@ def test_match_judges_each_root(tmp_path, main, wt):
 - [ ] **Step 2: Draai de tests en zie ze falen**
 
 Run: `uv run pytest tests/pack/test_turn_roots.py -q`
-Expected: de nieuwe tests FAIL (onbekende vlag `--match`, of geen `stamp` in `_testkit`); de bestaande PASS.
+Expected: het hele bestand faalt bij het verzamelen (`ImportError: cannot import name 'stamp'`). Voeg eerst alleen `stamp` aan `_testkit` toe en draai opnieuw: dan FAIL de nieuwe tests op de onbekende vlag `--match`, en de bestaande PASS.
 
-- [ ] **Step 3: Implementeer** in `pack/core/lib/turn_roots.py` de functies uit *Interfaces* en `stamp` in `_testkit`. `resolve` en `classify` delen de bepaling van de roots (één interne helper, die ook de entries en het startmoment teruggeeft); `resolve` houdt zijn signatuur. `main` leest `--match` met `argparse` (`action="append"`). Een pad uit `tool_paths` hoort bij een root als `os.path.relpath(pad, root)` niet met `..` begint. `changed_since` gebruikt één `deadline` voor alle git-calls; de reflogbasis volgt besluit 2 (`read_reflog` geeft de nieuwste entry eerst; lege reflog of `unborn`: geen reflogbron). Werk de docstring van de module bij: de derde bron, `--match` en besluit 3.
+- [ ] **Step 3: Implementeer** in `pack/core/lib/turn_roots.py` de functies uit *Interfaces* en `stamp` in `_testkit`. `resolve` en `classify` delen de bepaling van de roots (één interne helper, die ook de entries en het startmoment teruggeeft); `resolve` houdt zijn signatuur. `main` leest `--match` met `argparse` (`action="append"`). Een pad uit `tool_paths` hoort alleen bij zijn eigen checkout: `_root_of(pad) == root`, zoals `touched_roots` het al doet. Geen prefixtest op `relpath`: worktrees staan onder de hoofdcheckout (`.claude/worktrees/<naam>`), en `*.go` zou `.claude/worktrees/wt/a.go` ook voor de hoofdcheckout matchen. `changed_since` gebruikt één `deadline` voor alle git-calls; de reflogbasis volgt besluit 2 (`read_reflog` geeft de nieuwste entry eerst; lege reflog of `unborn`: geen reflogbron). Werk de docstring van de module bij: de derde bron, `--match` en besluit 3.
 
 - [ ] **Step 4: Draai de tests en zie ze slagen**
 
@@ -133,10 +133,14 @@ Expected: PASS (de hooks roepen `--match` nog niet aan).
 - [ ] **Step 5: Installeer en commit**
 
 ```bash
-go run ./cmd/lighthouse init --upgrade
-git add pack/core/lib/turn_roots.py .lighthouse/lib/lighthouse_lib/turn_roots.py tests/pack/_testkit.py tests/pack/test_turn_roots.py
+go run ./cmd/lighthouse init --upgrade --yes
+go run ./cmd/lighthouse init --upgrade </dev/null   # verwacht: "No changes."
+git add -A
+git status --porcelain   # alleen staged regels (eerste kolom gevuld), geen "??" of " M"
 git commit -m "feat(core): turn_roots --match zegt per root of de beurt een pad in een domein raakte"
 ```
+
+Verwacht in de commit: `pack/core/lib/turn_roots.py`, `.lighthouse/lib/lighthouse_lib/turn_roots.py`, `.lighthouse/manifest.toml`, `tests/pack/_testkit.py`, `tests/pack/test_turn_roots.py`.
 
 ---
 
@@ -181,7 +185,7 @@ def test_an_untouched_root_is_named_next_to_a_finding(tmp_path):
 - [ ] **Step 2: Draai de tests en zie ze falen**
 
 Run: `uv run pytest tests/pack/go/test_go_check.py -q`
-Expected: de vier nieuwe tests FAIL (de hook lint elke root).
+Expected: `test_a_turn_without_go_paths_skips_and_says_so`, `test_a_skipped_root_needs_no_go_tooling` en `test_an_untouched_root_is_named_next_to_a_finding` FAIL (de hook lint elke root). `test_a_go_path_lints` PASS al: dat is een regressiewacht tegen te veel overslaan, geen rode test.
 
 - [ ] **Step 3: Implementeer** in `go-check.sh`: roep `turn_roots.py` aan met `--match` per Go-patroon (één bash-array `GO_PATTERNS`), lees per regel `verdict<TAB>root`, en geef het oordeel als tweede argument aan `check_root`. De eerste regel van `check_root` na de `cd`: bij `untouched` `report` met de melding uit *Global Constraints*. Werk het kopcommentaar bij: de alinea "Runs on every Stop, not only after a Go edit" wordt: draait bij elke Stop, lint alleen een checkout waarin de beurt een Go-pad raakte (een edit, een Bash-write of een commit in de beurt; `turn_roots.py --match`), en meldt de rest. Werk de skilltekst en `AGENTS.md` bij zoals bij *Files*.
 
@@ -193,11 +197,14 @@ Expected: PASS
 - [ ] **Step 5: Installeer, controleer en commit**
 
 ```bash
-go run ./cmd/lighthouse init --upgrade
-go run ./cmd/lighthouse init --upgrade   # tweede keer: "No changes."
-git add pack/go tests/pack/go/test_go_check.py .claude/hooks/lighthouse/go-check.sh .claude/skills AGENTS.md
+go run ./cmd/lighthouse init --upgrade --yes
+go run ./cmd/lighthouse init --upgrade </dev/null   # verwacht: "No changes."
+git add -A
+git status --porcelain   # alleen staged regels, geen "??" of " M"
 git commit -m "feat(go): go-check slaat een checkout zonder Go-pad over en meldt dat"
 ```
+
+Verwacht in de commit, naast `pack/go/…` en de test: `.claude/hooks/lighthouse/go-check.sh`, `.claude/skills/lighthouse-go-writing/SKILL.md`, `.agents/skills/lighthouse-go-writing/SKILL.md`, `.lighthouse/manifest.toml` en `AGENTS.md` (managed block).
 
 ---
 
@@ -231,14 +238,19 @@ def test_ty_dot_source_dir_matches_the_root(tmp_path):
 
 def test_ty_skipped_root_needs_no_venv(tmp_path):
     # _fake_repo(tmp_path, venv=False), gecommit; Edit root/"README.md" -> de skipmelding, geen "COULD NOT CHECK"
+
+def test_ty_skipped_root_needs_no_uvx(tmp_path):
+    # PATH is alleen een tool_bin met bash, jq, git, python3 en de coreutils die de hook gebruikt,
+    # zonder uvx en zonder de echte PATH; gecommit; Edit root/"README.md"
+    # -> de skipmelding, geen "COULD NOT CHECK"
 ```
 
 - [ ] **Step 2: Draai de tests en zie ze falen**
 
 Run: `uv run pytest tests/pack/python/test_ty_check.py -q`
-Expected: de nieuwe skiptests FAIL.
+Expected: de skiptests (`test_ty_skips_*`, `test_ty_skipped_root_*`) FAIL. `test_ty_checks_a_python_path` en `test_ty_dot_source_dir_matches_the_root` PASS al: regressiewachten tegen te veel overslaan.
 
-- [ ] **Step 3: Implementeer** in `ty-check.sh`: lees `python.source_dirs` vóór `turn_roots.py` (de stille exit bij `[]` blijft vóór het alarm), bouw de patronen van besluit 6 en roep `turn_roots.py` aan met `--match` per patroon. Daarna zoals taak 2: `verdict<TAB>root` lezen, `untouched` meteen na de `cd` in `check_root` melden. Werk het kopcommentaar, de skilltekst en `AGENTS.md` bij.
+- [ ] **Step 3: Implementeer** in `ty-check.sh`: lees `python.source_dirs` vóór `turn_roots.py` (de stille exit bij `[]` blijft vóór het alarm), bouw de patronen van besluit 6 en roep `turn_roots.py` aan met `--match` per patroon. Daarna zoals taak 2: `verdict<TAB>root` lezen, `untouched` meteen na de `cd` in `check_root` melden. Haal `uvx` uit de globale toolcheck (`for tool in jq uvx git python3`, nu `ty-check.sh:47`) en check het in `check_root` na de skip, vóór de `.venv`-check; `jq`, `git` en `python3` blijven globaal (`turn_roots.py` en `config.py` hebben ze nodig). Werk het kopcommentaar, de skilltekst en `AGENTS.md` bij.
 
 - [ ] **Step 4: Draai de tests en zie ze slagen**
 
@@ -248,7 +260,7 @@ Expected: PASS
 - [ ] **Step 5: Controleer en commit**
 
 ```bash
-go run ./cmd/lighthouse init --upgrade   # pack/python is hier niet geïnstalleerd: "No changes."
+go run ./cmd/lighthouse init --upgrade </dev/null   # pack/python is hier niet geïnstalleerd: "No changes."
 git add pack/python tests/pack/python/test_ty_check.py
 git commit -m "feat(python): ty-check slaat een checkout zonder Python-pad over en meldt dat"
 ```
@@ -258,5 +270,5 @@ git commit -m "feat(python): ty-check slaat een checkout zonder Python-pad over 
 ### Afronding
 
 - [ ] `uv run pytest -q` en `go test -race ./...`: groen.
-- [ ] `go run ./cmd/lighthouse init --upgrade`: `No changes.`
+- [ ] `go run ./cmd/lighthouse init --upgrade </dev/null`: `No changes.`, en `git status --porcelain` leeg.
 - [ ] `/lighthouse-verify-pr`: PR-body met `Refs #80 — scope 4 van de spec; scope 5 (pack/node) volgt`.
