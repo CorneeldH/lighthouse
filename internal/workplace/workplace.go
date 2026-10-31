@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Workspace is one forge workspace.
@@ -88,30 +90,68 @@ var (
 // error.
 type Runner func(ctx context.Context, timeout time.Duration, name string, args ...string) (stdout string, code int, err error)
 
-// ExecRunner runs commands with os/exec.
+// ExecRunner runs commands with os/exec. An error it produces carries the
+// first 200 bytes of stderr. A non-zero exit is no error, so its stderr is not
+// passed on: the Runner contract has no place for it.
 func ExecRunner() Runner {
 	return func(ctx context.Context, timeout time.Duration, name string, args ...string) (string, int, error) {
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		var out bytes.Buffer
+		var stderr headBuffer
 		cmd := exec.CommandContext(ctx, name, args...)
 		cmd.Stdout = &out
+		cmd.Stderr = &stderr
 		// A grandchild that outlives the kill may hold the stdout pipe open.
 		cmd.WaitDelay = 2 * time.Second
 		err := cmd.Run()
 		if ctx.Err() != nil {
-			return out.String(), -1, ctx.Err()
+			return out.String(), -1, withStderr(ctx.Err(), stderr.String())
 		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			if exitErr.ExitCode() < 0 {
-				return out.String(), -1, fmt.Errorf("command ended without an exit code: %w", err)
+				return out.String(), -1, withStderr(fmt.Errorf("command ended without an exit code: %w", err), stderr.String())
 			}
 			return out.String(), exitErr.ExitCode(), nil
 		}
 		if err != nil {
-			return out.String(), -1, err
+			return out.String(), -1, withStderr(err, stderr.String())
 		}
 		return out.String(), 0, nil
 	}
+}
+
+const stderrLimit = 200
+
+func withStderr(err error, stderr string) error {
+	if s := clip(stderr, stderrLimit); s != "" {
+		return fmt.Errorf("%w (stderr: %s)", err, s)
+	}
+	return err
+}
+
+// headBuffer keeps the first bytes written to it and drops the rest, so a
+// chatty command cannot fill memory.
+type headBuffer struct{ b []byte }
+
+func (h *headBuffer) Write(p []byte) (int, error) {
+	if room := 4*stderrLimit - len(h.b); room > 0 {
+		h.b = append(h.b, p[:min(room, len(p))]...)
+	}
+	return len(p), nil
+}
+
+func (h *headBuffer) String() string { return string(h.b) }
+
+// clip trims s and cuts it to at most n bytes, never inside a UTF-8 character.
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }

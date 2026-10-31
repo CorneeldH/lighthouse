@@ -2,6 +2,8 @@ package workplace
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -58,5 +60,47 @@ func TestExecRunnerSignalKilledIsError(t *testing.T) {
 	_, code, err := ExecRunner()(context.Background(), 5*time.Second, "sh", "-c", "kill -9 $$")
 	if err == nil {
 		t.Errorf("killed by signal: want error, got code %d and no error", code)
+	}
+}
+
+func TestExecRunnerErrorCarriesStderr(t *testing.T) {
+	run := ExecRunner()
+	_, _, err := run(context.Background(), 5*time.Second, "sh", "-c", "echo boom >&2; kill -9 $$")
+	if err == nil || !strings.Contains(err.Error(), "stderr: boom") {
+		t.Errorf("signal: err = %v, want stderr boom in it", err)
+	}
+	_, _, err = run(context.Background(), 300*time.Millisecond, "sh", "-c", "echo late >&2; sleep 5")
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "stderr: late") {
+		t.Errorf("timeout: err = %v, want DeadlineExceeded with stderr late", err)
+	}
+	_, code, err := run(context.Background(), 5*time.Second, "sh", "-c", "echo fine >&2; exit 2")
+	if err != nil || code != 2 {
+		t.Errorf("non-zero exit: code=%d err=%v, want code 2 and no error", code, err)
+	}
+}
+
+func TestExecRunnerStderrIsClipped(t *testing.T) {
+	_, _, err := ExecRunner()(context.Background(), 5*time.Second, "sh", "-c", "printf '%0300d' 0 >&2; kill -9 $$")
+	if err == nil {
+		t.Fatal("want error")
+	}
+	if got := strings.Count(err.Error(), "0"); got != 200 {
+		t.Errorf("stderr zeros in error = %d, want 200: %v", got, err)
+	}
+}
+
+func TestClip(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ in, want string }{
+		{"  short \n", "short"},
+		{strings.Repeat("a", 200), strings.Repeat("a", 200)},
+		{strings.Repeat("a", 201), strings.Repeat("a", 200)},
+		// é is two bytes at 199-200: cutting at 200 would split it.
+		{strings.Repeat("a", 199) + "é" + "z", strings.Repeat("a", 199)},
+	}
+	for _, c := range cases {
+		if got := clip(c.in, 200); got != c.want {
+			t.Errorf("clip(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }
