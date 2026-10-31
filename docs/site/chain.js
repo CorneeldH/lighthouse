@@ -1,6 +1,6 @@
 // The chain page: the flow map from data/chain.json and the pack cards from data/packs.json.
 
-import { initTheme, loadJson, renderFlowMap } from "./map.js?v=16b7e1c1";
+import { initTheme, loadJson, renderFlowMap } from "./map.js?v=ce0ead53";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
