@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -835,5 +837,59 @@ func TestTickSessionStandRegathers(t *testing.T) {
 		if errOut.String() != step.want {
 			t.Errorf("tick at +%v: errOut = %q, want %q", step.after, errOut.String(), step.want)
 		}
+	}
+}
+
+// standsWorkplace answers Sessions from a fixed list per workspace, or with err.
+type standsWorkplace struct {
+	fakeWorkplace
+	sessions map[string][]workplace.Session
+	err      error
+}
+
+func (w *standsWorkplace) Sessions(_ context.Context, workspaceID string) ([]workplace.Session, error) {
+	return w.sessions[workspaceID], w.err
+}
+
+// Two sessions share a workspace: the stand is the one whose key the run recorded.
+func TestStandsPicksSessionByKey(t *testing.T) {
+	w := &standsWorkplace{sessions: map[string][]workplace.Session{"ws-1": {
+		{Key: "other", WorkspaceID: "ws-1", State: "done"},
+		{Key: "mine", WorkspaceID: "ws-1", State: "working"},
+	}}}
+	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
+	open := []runs.OpenRun{
+		{ID: 1, Issue: 7, WorkspaceID: "ws-1", WorkplaceSession: "mine"},
+		{ID: 2, Issue: 8, WorkspaceID: "ws-1", WorkplaceSession: "gone"},
+		{ID: 3, Issue: 9, WorkspaceID: "ws-1"}, // no session key yet
+	}
+	var errOut bytes.Buffer
+	got, err := stands(context.Background(), env, hostconfig.Dispatch{}, repoconfig.Repo{Slug: "o/r"}, open, &errOut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[int64]workplace.Stand{1: workplace.Working}; !reflect.DeepEqual(got, want) {
+		t.Errorf("stands = %v, want %v (run 1 by its key; a gone session and no key are not measurable)", got, want)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want nothing", errOut.String())
+	}
+}
+
+// A workplace that cannot list its sessions leaves the run without a stand, and says so.
+func TestStandsSessionsErrorIsLoud(t *testing.T) {
+	w := &standsWorkplace{err: errors.New("forge down")}
+	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
+	open := []runs.OpenRun{{ID: 1, Issue: 7, WorkspaceID: "ws-1", WorkplaceSession: "mine"}}
+	var errOut bytes.Buffer
+	got, err := stands(context.Background(), env, hostconfig.Dispatch{}, repoconfig.Repo{Slug: "o/r"}, open, &errOut)
+	if err != nil {
+		t.Fatalf("stands = %v, want no error: an unreadable stand is not measurable", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("stands = %v, want none", got)
+	}
+	if want := "lighthouse: stand o/r: forge down\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
 	}
 }

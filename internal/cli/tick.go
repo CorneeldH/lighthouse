@@ -237,6 +237,8 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		for slug, repo := range repos {
 			places[slug] = env.workplace(cfg, repo, dir)
 		}
+		// Apply's joined error is dropped on purpose: the same errors are in res.Failed, per
+		// repo, and that is what decides the apply lines and which fingerprints are saved.
 		res, _ = dispatch.Apply(ctx, dispatch.Env{
 			DB:        db,
 			Poster:    func(slug string) dispatch.Poster { return env.client(slug, token) },
@@ -296,7 +298,7 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 	if err != nil {
 		return nil, "", err
 	}
-	if pre.Stands, err = stands(ctx, env, cfg, repo, pre.OpenRuns); err != nil {
+	if pre.Stands, err = stands(ctx, env, cfg, repo, pre.OpenRuns, errOut); err != nil {
 		return nil, "", err
 	}
 	fp = dispatch.Fingerprint(pre)
@@ -337,8 +339,9 @@ func prepare(ctx context.Context, db *sql.DB, c *forge.Client, repo repoconfig.R
 
 // stands measures the session of each open run that has a workspace and a session key. A
 // run whose sessions cannot be read, or whose session is gone, has no stand: not measurable.
+// A read error also gets a stand line on errOut.
 func stands(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo repoconfig.Repo,
-	open []runs.OpenRun) (map[int64]workplace.Stand, error) {
+	open []runs.OpenRun, errOut io.Writer) (map[int64]workplace.Stand, error) {
 	out := map[int64]workplace.Stand{}
 	var w workplace.Workplace
 	for _, r := range open {
@@ -354,6 +357,7 @@ func stands(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo repo
 		}
 		sessions, err := w.Sessions(ctx, r.WorkspaceID)
 		if err != nil {
+			_, _ = fmt.Fprintf(errOut, "lighthouse: stand %s: %s\n", repo.Slug, oneLine(err))
 			continue
 		}
 		for _, s := range sessions {

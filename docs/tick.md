@@ -35,7 +35,8 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    daaruit een vingerafdruk: per item in Controller of On hold de Status, Priority en de `updatedAt`
    van item en issue, de voorgangers van een On hold-item, de PR's van een item met een open run, en
    de open runs zelf met de stand van hun forge-sessie (`working`, `waiting` of `done`; een sessie die
-   tick niet kan lezen telt als niet meetbaar). Een nieuwe comment telt mee via de `updatedAt` van het
+   tick niet kan lezen telt als niet meetbaar, en een fout bij het lezen schrijft
+   `lighthouse: stand <repo>: <fout>` naar stderr). Een nieuwe comment telt mee via de `updatedAt` van het
    issue; een sessie die klaar is via haar stand. Tick slaat de volledige gather
    alleen over als de vingerafdruk gelijk is aan de vorige, de vorige volledige gather jonger is dan
    30 minuten, en er sinds die gather geen tijdgrens viel. Tijdgrenzen zijn per open run
