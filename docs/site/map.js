@@ -712,7 +712,7 @@ function showPart(drawer, part, data, node) {
       list.append(item);
     }
   } else {
-    list = el("p", "", "No issues in a milestone yet.");
+    list = el("p", "", "No issues on this part yet.");
   }
   drawer.show(node, [
     box(parent ? `In ${parent.label}` : "", part.label, el("p", "summary", part.what)),
@@ -773,9 +773,8 @@ export function renderPlanMap(root, data, detail) {
       if (title) {
         button.append(el("span", "plan-mark", title));
       }
-    } else {
-      button.append(el("span", "sr-only", ` (${part.status})`));
     }
+    button.append(el("span", "sr-only", ` (${part.status})`));
     if (part.not_in_first_release) {
       button.append(el("span", "release", "not in first release"));
     }
@@ -919,6 +918,7 @@ export function renderTimeline(root, data, detail) {
     }
     for (const issue of issues) {
       const chip = el("button", `plan-chip status-${issue.status}`, `#${issue.issue} ${issue.title}`);
+      chip.append(el("span", "sr-only", ` (${issue.status})`));
       chip.type = "button";
       chip.addEventListener("click", () => showIssue(drawer, issue, data, chip));
       chips.push({ chip, issue });
