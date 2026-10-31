@@ -586,7 +586,10 @@ func unified(a, b []byte, from, to string) string {
 func apply(root, rel string, p *planned) error {
 	path := filepath.Join(root, filepath.FromSlash(rel))
 	if p.delete {
-		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := os.Remove(path); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
 			return err
 		}
 		return removeEmptyParents(root, rel)

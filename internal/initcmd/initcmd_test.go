@@ -436,6 +436,20 @@ func TestUpgradeRemovesEmptiedDirs(t *testing.T) {
 	}
 }
 
+// A file already gone is no removal: the empty directory it leaves is not ours to clean up.
+func TestApplyDeleteOfMissingFileKeepsDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".claude/skills/lighthouse-old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := apply(root, ".claude/skills/lighthouse-old/SKILL.md", &planned{delete: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(root, ".claude/skills/lighthouse-old") {
+		t.Error("dir of an already missing file was removed")
+	}
+}
+
 func TestUpgradeRenamesUnits(t *testing.T) {
 	packsWith := func(skill, hook string) func(*Options) {
 		return func(o *Options) {
