@@ -1,5 +1,5 @@
 // Shared flow map of the lighthouse site: columns of chips, an "Always on" band, route buttons,
-// handoff badges and a detail panel. Data reaches the page only through textContent and
+// handoff badges and a detail drawer. Data reaches the page only through textContent and
 // attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
 
 const GLYPHS = { you: "⌨", skill: "↪", tool: "⚡", github: "⚙" };
@@ -156,16 +156,6 @@ function box(kicker, heading, ...body) {
   return node;
 }
 
-function placeholder(detail) {
-  detail.replaceChildren(
-    box(
-      "Details",
-      "Click a chip or a handoff",
-      el("p", "", "What it does, when it starts, who provides it, and what you miss without it."),
-    ),
-  );
-}
-
 function chipButton(chip, columns) {
   const button = el("button", `chip kind-${chip.kind} status-${chip.status}`);
   button.type = "button";
@@ -207,9 +197,15 @@ function routePath(points) {
   return d;
 }
 
+/** The labels of `ids` as a comma-separated list, or `none` when there are none. */
+function labels(ids, byId, none) {
+  return ids.length ? ids.map((id) => byId.get(id)?.label || id).join(", ") : none;
+}
+
 /**
  * Renders a flow map into `root`: route buttons with the note of the chosen route, columns of
- * chips, the "Always on" band and the handoff badges. A click on a chip or badge fills `detail`.
+ * chips, the "Always on" band and the handoff badges. A click on a chip or badge opens `detail`
+ * as a drawer from the right; Escape or its close button shuts it.
  */
 export function renderFlowMap(root, data, detail) {
   const phases = data.phases || [];
@@ -236,6 +232,8 @@ export function renderFlowMap(root, data, detail) {
   const chipButtons = [];
   const badges = [];
   let current = null;
+  let chosen = null;
+  let reshow = null;
   const mark = (node) => {
     if (current) {
       current.classList.remove("current");
@@ -244,26 +242,87 @@ export function renderFlowMap(root, data, detail) {
     node.classList.add("current");
   };
 
-  const showChip = (chip, button) => {
+  const close = () => {
+    if (!detail.classList.contains("open")) {
+      return;
+    }
+    detail.classList.remove("open");
+    if (current) {
+      current.classList.remove("current");
+      current.focus();
+      current = null;
+    }
+    reshow = null;
+  };
+  const open = (boxes, focus = true) => {
+    const shut = el("button", "detail-close", "Close");
+    shut.type = "button";
+    shut.setAttribute("aria-label", "Close details");
+    shut.addEventListener("click", close);
+    detail.replaceChildren(shut, ...boxes);
+    detail.classList.add("open");
+    if (focus) {
+      detail.focus();
+    }
+  };
+  detail.tabIndex = -1;
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      close();
+    }
+  });
+
+  /** Where `chip` sits on the routes: which ones, and its neighbours on the chosen one. */
+  const routeFacts = (chip) => {
+    const on = routes.filter((route) => route.chips.includes(chip.id));
+    const names = on.map((route) => route.label).join(", ");
+    const rows = [["On routes", names || "none: it joins in on its own"]];
+    if (chosen && chosen.chips.includes(chip.id)) {
+      const before = new Set();
+      const after = new Set();
+      chosen.chips.forEach((id, i) => {
+        if (id !== chip.id) {
+          return;
+        }
+        if (i > 0) {
+          before.add(chosen.chips[i - 1]);
+        }
+        if (i < chosen.chips.length - 1) {
+          after.add(chosen.chips[i + 1]);
+        }
+      });
+      rows.push([`Before it on ${chosen.label}`, labels([...before], byId, "the route starts here")]);
+      rows.push([`After it on ${chosen.label}`, labels([...after], byId, "the route ends here")]);
+    }
+    return rows;
+  };
+
+  const showChip = (chip, button, focus = true) => {
     mark(button);
+    // Another route changes the neighbours in "In the chain", so a route click redraws it.
+    reshow = () => showChip(chip, button, false);
     const glyph = GLYPHS[chip.trigger] || "?";
-    detail.replaceChildren(
-      box(
-        `${phaseLabel.get(chip.phase) || chip.phase} · ${glyph} ${TRIGGERS[chip.trigger] || chip.trigger}`,
-        `${glyph} ${chip.label}`,
-        el("p", "", chip.what),
-      ),
-      box(
-        "How it works",
-        "",
-        facts([
-          ["When it starts", chip.when],
-          ["Who provides it", provider(chip.kind, chip.source)],
-          ["What you miss without", chip.without],
-          ["Status", statusText(chip)],
-          ["Source", sourceLink(chip.source)],
-        ]),
-      ),
+    open(
+      [
+        box(
+          `${phaseLabel.get(chip.phase) || chip.phase} · ${glyph} ${TRIGGERS[chip.trigger] || chip.trigger}`,
+          `${glyph} ${chip.label}`,
+          el("p", "", chip.what),
+        ),
+        box(
+          "How it works",
+          "",
+          facts([
+            ["When it starts", chip.when],
+            ["Who provides it", provider(chip.kind, chip.source)],
+            ["What you miss without", chip.without],
+            ["Status", statusText(chip)],
+            ["Source", sourceLink(chip.source)],
+          ]),
+        ),
+        box("In the chain", "", facts(routeFacts(chip))),
+      ],
+      focus,
     );
   };
 
@@ -272,7 +331,8 @@ export function renderFlowMap(root, data, detail) {
     const from = byId.get(handoff.from);
     const to = byId.get(handoff.to);
     const about = data.handoff || {};
-    detail.replaceChildren(
+    reshow = null;
+    open([
       box(
         `handoff · ${phaseLabel.get(from.phase)} → ${phaseLabel.get(to.phase)}`,
         "↻ handoff",
@@ -290,7 +350,7 @@ export function renderFlowMap(root, data, detail) {
           ["Source", sourceLink(about.source)],
         ]),
       ),
-    );
+    ]);
   };
 
   // Route buttons and the note of the chosen route.
@@ -299,6 +359,11 @@ export function renderFlowMap(root, data, detail) {
   routeBar.setAttribute("aria-label", "Routes");
   const note = el("p", "route-note");
   note.hidden = true;
+  const hint = el(
+    "p",
+    "map-hint",
+    "Click a chip or a handoff for what it does, when it starts and who provides it.",
+  );
 
   // The map: column backgrounds, route curves, chips and badges.
   const scroll = el("div", "map-scroll");
@@ -329,6 +394,9 @@ export function renderFlowMap(root, data, detail) {
     svg.append(path);
     return path;
   });
+  // Drawn under the chosen route only, so its yellow keeps an edge on a light map.
+  const casing = document.createElementNS(SVG_NS, "path");
+  casing.classList.add("casing");
   area.append(svg);
 
   const badgeFor = (handoff) => {
@@ -399,6 +467,7 @@ export function renderFlowMap(root, data, detail) {
 
   function select(index) {
     const route = routes[index];
+    chosen = route;
     const used = new Set(route.chips);
     const pairs = new Set();
     for (let i = 1; i < route.chips.length; i++) {
@@ -406,18 +475,25 @@ export function renderFlowMap(root, data, detail) {
     }
     routeButtons.forEach((button, i) => button.setAttribute("aria-pressed", String(i === index)));
     paths.forEach((path, i) => path.classList.toggle("on", i === index));
+    // The chosen route goes on top, so a route drawn later does not cross over it.
+    casing.setAttribute("d", paths[index].getAttribute("d"));
+    svg.append(casing, paths[index]);
     for (const button of chipButtons) {
-      button.classList.toggle("dim", !used.has(button.dataset.id));
+      // Always-on chips take part in every route, so they never dim.
+      const always = byId.get(button.dataset.id)?.phase === "always";
+      button.classList.toggle("dim", !always && !used.has(button.dataset.id));
     }
     for (const badge of badges) {
       badge.classList.toggle("dim", !pairs.has(`${badge.dataset.from}>${badge.dataset.to}`));
     }
     note.textContent = route.note || "";
     note.hidden = !route.note;
+    if (reshow) {
+      reshow();
+    }
   }
 
-  root.replaceChildren(routeBar, note, scroll);
-  placeholder(detail);
+  root.replaceChildren(routeBar, note, hint, scroll);
   if (routes.length) {
     select(0);
   }
