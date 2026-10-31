@@ -9,6 +9,7 @@ registration fails here, even when the script itself is fine.
 import json
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
 from tests.pack._testkit import bash_payload, git, init_repo
@@ -152,7 +153,7 @@ def test_go_hooks_registered():
 
 
 def test_test_gate_uses_selectors():
-    """Fails when the gate stops choosing its Go packages and pytest files from the commit."""
+    """Fails when the gate stops choosing its Go packages, pytest files and web checks from the commit."""
     result = subprocess.run(
         ["python3", "-m", "lighthouse_lib.config", "test_gate.command"],
         capture_output=True,
@@ -164,5 +165,21 @@ def test_test_gate_uses_selectors():
     assert result.stdout.strip() == (
         "python3 .lighthouse/scripts/gate_go.py -- go test -race"
         " && python3 pack/python/scripts/gate_python.py -- uv run pytest -q"
-        " && python3 ci/domains.py gate"
+        " && python3 .lighthouse/scripts/gate_node.py --dir web --also .github/workflows/ci.yml"
+        " --also lighthouse.toml --drift gen=src/api -- lint typecheck test"
     ), result.stdout + result.stderr
+
+
+def test_node_pack_installed():
+    """Fails when the node pack is not recorded in the manifest or its script drifts from the pack."""
+    manifest = tomllib.loads((ROOT / ".lighthouse" / "manifest.toml").read_text())
+    assert "node" in manifest["packages"]
+    # init stamps the installed copy with a "# lighthouse: node@<version>" line.
+    installed = [
+        line
+        for line in (ROOT / ".lighthouse" / "scripts" / "gate_node.py")
+        .read_text(encoding="utf-8")
+        .splitlines(True)
+        if not line.startswith("# lighthouse: node@")
+    ]
+    assert "".join(installed) == (ROOT / "pack" / "node" / "scripts" / "gate_node.py").read_text()

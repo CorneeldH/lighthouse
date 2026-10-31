@@ -22,7 +22,7 @@ as.
 | Area | Kleur | Vuistregel |
 |---|---|---|
 | `2-area:core` | `4C1D95` | `pack/core`: hooks, keten-skills, gates |
-| `2-area:packs` | `5B21B6` | taalpakketten (`pack/go`, `pack/python`, `pack/shell`, `pack/expo`) |
+| `2-area:packs` | `5B21B6` | taalpakketten (`pack/go`, `pack/python`, `pack/shell`, `pack/node`, `pack/expo`) |
 | `2-area:init` | `6D28D9` | `lighthouse init`, `--upgrade`, het manifest, het blok in `AGENTS.md`, en het weer verwijderen |
 | `2-area:server` | `7C3AED` | `lighthouse serve`, SQLite, de SPA, de forge-lezer |
 | `2-area:dispatcher` | `8B5CF6` | tick, decide, apply, werkplekken (M2), en kenn-forge als werkplek |

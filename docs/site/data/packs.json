@@ -123,6 +123,18 @@
     "extra": []
   },
   {
+    "name": "node",
+    "proposed_when": "a package.json that git tracks",
+    "detect": [
+      "**/package.json"
+    ],
+    "skills": [],
+    "agents": [],
+    "workflows": [],
+    "hooks": [],
+    "extra": []
+  },
+  {
     "name": "python",
     "proposed_when": "a pyproject.toml in the repository root",
     "detect": [

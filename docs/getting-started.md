@@ -9,7 +9,7 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 ## Requirements
 
 `lighthouse init` picks packages by what it finds in your repository: `core` always, and `go`,
-`python`, `shell` or `expo` when they apply. Each package names the tools it needs.
+`python`, `shell`, `node` or `expo` when they apply. Each package names the tools it needs.
 
 | Requirement | Package | Needed for | Without it |
 |---|---|---|---|
@@ -24,6 +24,8 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | `go` | go | `go-check` | `go-check` reports `COULD NOT CHECK` at Stop; nothing was linted. |
 | `gofmt` | go | `gofmt` after every edit | `gofmt` blocks with `COULD NOT CHECK`. |
 | `golangci-lint` | go | `go-check` | `go-check` reports `COULD NOT CHECK` at Stop; nothing was linted. |
+| `node` | node | the test gate `gate_node.py` | `gate_node.py` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested. |
+| `npm` | node | the web checks of `gate_node.py` (`npm run …`) | As for `node`. |
 | `curl` | shell | the first download of the pinned `shellcheck` | No download. Without a `shellcheck` on your `PATH`, the `shellcheck` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
 | `sha256sum` | shell | verifying that download | As for `curl`. |
 | `tar` | shell | unpacking that download | As for `curl`. |
