@@ -84,7 +84,7 @@ def test_binary_builds_after_web():
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert len(uses) == 15, uses
+    assert len(uses) == 16, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)
@@ -96,6 +96,24 @@ def test_changelog_job_runs_on_every_pr():
     assert "needs:" not in job and "if:" not in job
     for needle in ("runs-on: ubuntu-latest", "fetch-depth: 0", "python3 ci/changelog.py check --base \"$BASE\" --head \"$HEAD\""):
         assert needle in job, needle
+
+
+def test_binary_runs_playwright():
+    """Fails when binary stops running Playwright after the smoke, or Node/npm ci can be skipped."""
+    binary = _jobs()["binary"]
+    install = "npx playwright install --with-deps chromium"
+    assert install in binary
+    run = re.search(r"LIGHTHOUSE_BIN=\S+ npm run e2e", binary)
+    assert run, "no LIGHTHOUSE_BIN=... npm run e2e step"
+    assert binary.index("ci/spa-smoke.sh") < binary.index(install) < run.start()
+    # Cut the steps: each starts with a `      - ` line.
+    steps = re.split(r"(?m)^      - ", binary)[1:]
+    setup = [s for s in steps if "actions/setup-node" in s]
+    ci = [s for s in steps if re.search(r"run: npm ci\s*$", s, re.MULTILINE)]
+    assert len(setup) == 1 and len(ci) == 1, (setup, ci)
+    for step in setup + ci:
+        assert not re.search(r"^\s*(- )?if:", step, re.MULTILINE), step
+    assert binary.index("actions/setup-node") < binary.index("run: npm ci") < run.start()
 
 
 def test_smoke_script_executable():

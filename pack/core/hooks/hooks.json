@@ -11,7 +11,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-commit-tests.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-tests.sh pre",
             "timeout": 300
           },
           {
@@ -60,6 +60,11 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-gates.sh post",
             "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-tests.sh post",
+            "timeout": 300
           }
         ]
       },
@@ -81,6 +86,11 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-gates.sh post",
             "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-tests.sh post",
+            "timeout": 300
           }
         ]
       }

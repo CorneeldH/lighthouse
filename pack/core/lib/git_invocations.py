@@ -225,7 +225,7 @@ def strip_heredocs(command):
     """Heredoc bodies and `#` comments removed.
 
     An example command INSIDE a heredoc is no command — this is exactly where
-    pre-commit-tests.sh trips. The delimiter is really parsed (also
+    commit-tests.sh trips. The delimiter is really parsed (also
     `<<-`, `<<'EOF-1'`, `<<"EOF"`), and `<<` counts as a heredoc only when it is
     in redirection position — not in a string, not in `$(( ))`, not in a
     comment.

@@ -4,9 +4,10 @@
 // installs main-commit-guard, the command registered in .claude/settings.json blocks a
 // commit on main, and `lighthouse init --upgrade` right after gives an empty diff. For
 // M0 (c) it proves the same for pack/python: in a repository with a pyproject.toml the
-// registered pre-commit-tests blocks a commit with a red test. For M0 (b) it proves that
-// a fresh repository gets all of pack/core: the skills in both mirrors and the test gate,
-// which lets a commit through, loudly, while no [test_gate] command is set.
+// registered `commit-tests.sh pre` blocks a commit to the default branch with a red
+// test. For M0 (b) it proves that a fresh repository gets all of pack/core: the skills
+// in both mirrors and the test gate, which lets a commit through, loudly, while no
+// [test_gate] command is set.
 package e2e
 
 import (
@@ -98,6 +99,12 @@ func guardCommand(t *testing.T, repo string) string {
 // bashHookCommand reads the one command under PreToolUse/Bash whose text names name.
 func bashHookCommand(t *testing.T, repo, name string) string {
 	t.Helper()
+	return eventHookCommand(t, repo, "PreToolUse", name)
+}
+
+// eventHookCommand reads the one command under event/Bash whose text names name.
+func eventHookCommand(t *testing.T, repo, event, name string) string {
+	t.Helper()
 	data, err := os.ReadFile(filepath.Join(repo, ".claude", "settings.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +121,7 @@ func bashHookCommand(t *testing.T, repo, name string) string {
 		t.Fatal(err)
 	}
 	var found []string
-	for _, g := range s.Hooks["PreToolUse"] {
+	for _, g := range s.Hooks[event] {
 		if g.Matcher != "Bash" {
 			continue
 		}
@@ -125,7 +132,7 @@ func bashHookCommand(t *testing.T, repo, name string) string {
 		}
 	}
 	if len(found) != 1 {
-		t.Fatalf("%s registrations under PreToolUse/Bash: %v", name, found)
+		t.Fatalf("%s registrations under %s/Bash: %v", name, event, found)
 	}
 	return found[0]
 }
@@ -216,34 +223,45 @@ func TestFreshRepoGetsFullCore(t *testing.T) {
 	for _, rel := range []string{
 		".claude/skills/lighthouse-start-issue/SKILL.md",
 		".agents/skills/lighthouse-start-issue/SKILL.md",
-		".claude/hooks/lighthouse/pre-commit-tests.sh",
+		".claude/hooks/lighthouse/commit-tests.sh",
 	} {
 		if _, err := os.Stat(filepath.Join(repo, rel)); err != nil {
 			t.Errorf("%s: %v", rel, err)
 		}
 	}
 
-	git(t, repo, "checkout", "-q", "-b", "issue-1-x")
-	code, stdout, stderr := runGate(t, repo, bashHookCommand(t, repo, "pre-commit-tests"))
+	// On the default branch: only there does `pre` test before the commit.
+	code, stdout, stderr := runGate(t, repo, bashHookCommand(t, repo, "commit-tests.sh pre"))
 	if code != 0 || !strings.Contains(stdout, "nothing was tested") {
 		t.Fatalf("commit without [test_gate]: rc %d\n%s\n%s", code, stdout, stderr)
 	}
 }
 
-// runGate runs the registered pre-commit-tests like runHook, with host.toml next to the
+// runGate runs the registered `commit-tests.sh pre` like runHook, with host.toml next to the
 // repo (never ~/.config, whose gate_slice would wrap the run in systemd-run), and gives
 // stdout too: a passed gate reports there.
 func runGate(t *testing.T, repo, command string) (int, string, string) {
 	t.Helper()
+	return runGateEvent(t, repo, command, "PreToolUse")
+}
+
+// runGateEvent is runGate for hook event event, with the markers of `pre` in the
+// test's own temporary directory (XDG_RUNTIME_DIR next to the repo, like host.toml), so
+// `post` of the same call finds them and no run touches the real state dir.
+func runGateEvent(t *testing.T, repo, command, event string) (int, string, string) {
+	t.Helper()
 	payload, _ := json.Marshal(map[string]any{
-		"tool_name":  "Bash",
-		"cwd":        repo,
-		"tool_input": map[string]string{"command": "git commit -m x"},
+		"session_id":      "e2e",
+		"hook_event_name": event,
+		"tool_name":       "Bash",
+		"cwd":             repo,
+		"tool_input":      map[string]string{"command": "git commit -m x"},
 	})
 	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = repo
 	cmd.Env = append(cleanEnv(), "CLAUDE_PROJECT_DIR="+repo,
-		"LIGHTHOUSE_HOST_TOML="+filepath.Join(filepath.Dir(repo), "host.toml"))
+		"LIGHTHOUSE_HOST_TOML="+filepath.Join(filepath.Dir(repo), "host.toml"),
+		"XDG_RUNTIME_DIR="+filepath.Dir(repo))
 	cmd.Stdin = bytes.NewReader(payload)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -278,8 +296,8 @@ func needUV(t *testing.T) {
 	}
 }
 
-// pythonRepo is a fresh repository with pyproject.toml, after `init --yes`, on a
-// feature branch.
+// pythonRepo is a fresh repository with pyproject.toml, after `init --yes`, on the
+// default branch: only there does `commit-tests.sh pre` test before the commit.
 func pythonRepo(t *testing.T, bin, pyproject string) string {
 	t.Helper()
 	repo := freshRepo(t)
@@ -289,7 +307,6 @@ func pythonRepo(t *testing.T, bin, pyproject string) string {
 	if out := run(t, repo, bin, "init", "--yes"); !strings.HasPrefix(out, "Packages: core, python (found pyproject.toml)\n") {
 		t.Fatalf("init:\n%s", out)
 	}
-	git(t, repo, "checkout", "-q", "-b", "issue-1-x")
 	return repo
 }
 
@@ -300,10 +317,10 @@ func TestRedTestBlocksCommit(t *testing.T) {
 	bin := buildLighthouse(t)
 	repo := pythonRepo(t, bin, pyprojectHead+"\n[dependency-groups]\ndev = [\"pytest\"]\n")
 	writeFile(t, repo, "tests/test_x.py", "def test_x():\n    assert 1 == 2\n")
-	cmd := bashHookCommand(t, repo, "pre-commit-tests")
+	cmd := bashHookCommand(t, repo, "commit-tests.sh pre")
 
 	code, _, stderr := runGate(t, repo, cmd)
-	if code != 2 || !strings.Contains(stderr, "pre-commit-tests: tests failed") {
+	if code != 2 || !strings.Contains(stderr, "commit-tests: tests failed") {
 		t.Fatalf("red test: rc %d\n%s", code, stderr)
 	}
 
@@ -315,11 +332,33 @@ func TestRedTestBlocksCommit(t *testing.T) {
 	}
 }
 
+// TestRedCommitComesBackAfter: on a feature branch `pre` only records, the commit
+// lands, and `post` brings the red test back to the agent.
+func TestRedCommitComesBackAfter(t *testing.T) {
+	needUV(t)
+	bin := buildLighthouse(t)
+	repo := pythonRepo(t, bin, pyprojectHead+"\n[dependency-groups]\ndev = [\"pytest\"]\n")
+	git(t, repo, "checkout", "-q", "-b", "issue-1-x")
+	writeFile(t, repo, "tests/test_x.py", "def test_x():\n    assert 1 == 2\n")
+
+	if code, stdout, stderr := runGate(t, repo, bashHookCommand(t, repo, "commit-tests.sh pre")); code != 0 {
+		t.Fatalf("pre on a feature branch: rc %d\n%s\n%s", code, stdout, stderr)
+	}
+	git(t, repo, "add", "-A")
+	git(t, repo, "commit", "-qm", "red")
+
+	post := eventHookCommand(t, repo, "PostToolUse", "commit-tests.sh post")
+	code, _, stderr := runGateEvent(t, repo, post, "PostToolUse")
+	if code != 2 || !strings.Contains(stderr, "commit-tests: tests failed on the commit you just made") {
+		t.Fatalf("post after a red commit: rc %d\n%s", code, stderr)
+	}
+}
+
 func TestDefaultCommandWithoutPytest(t *testing.T) {
 	needUV(t)
 	bin := buildLighthouse(t)
 	repo := pythonRepo(t, bin, pyprojectHead)
-	cmd := bashHookCommand(t, repo, "pre-commit-tests")
+	cmd := bashHookCommand(t, repo, "commit-tests.sh pre")
 
 	code, _, stderr := runGate(t, repo, cmd)
 	if code != 2 || !strings.Contains(stderr, "[test_gate] command") || !strings.Contains(stderr, "lighthouse.toml") || !strings.Contains(stderr, `command = ""`) {

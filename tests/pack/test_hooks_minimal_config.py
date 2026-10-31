@@ -79,7 +79,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
     if name == "main-commit-guard.sh":
         # A commit on a feature branch: the guard reads forge.default_branch.
         cmd = "git commit -m x"
-    elif name == "pre-commit-tests.sh":
+    elif name == "commit-tests.sh":
         cmd = "git commit -m x"
     elif name == "pr-create-gate.sh":
         cmd = "gh pr create --body 'Refs #5 — waiting for the deploy'"
@@ -135,7 +135,7 @@ def test_hooks_with_minimal_config(
 def test_every_registration_has_a_payload() -> None:
     assert {s.split()[0] for _, _, s in REGISTRATIONS} == {
         "main-commit-guard.sh",
-        "pre-commit-tests.sh",
+        "commit-tests.sh",
         "bash-write-gates.sh",
         "pr-create-gate.sh",
         "worktree-guard.sh",
@@ -151,7 +151,7 @@ PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
 # pre` never blocks (a PreToolUse exit 2 blocks the call itself).
 GUARDED = {
     "main-commit-guard.sh": "git commit -m x",
-    "pre-commit-tests.sh": "git commit -m x",
+    "commit-tests.sh pre": "git commit -m x",
     "pr-create-gate.sh": "gh pr create --body x",
 }
 
@@ -194,7 +194,7 @@ def test_without_lib_the_guarded_command_blocks(tmp_path: Path, script: str) -> 
 
 
 def test_guarded_covers_every_blocking_bash_hook() -> None:
-    blocking = {s.split()[0] for s in PRE_BASH if s != "bash-write-gates.sh pre"}
+    blocking = {s for s in PRE_BASH if s != "bash-write-gates.sh pre"}
     assert blocking == set(GUARDED)
 
 

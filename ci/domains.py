@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Sort changed paths into domains (web, python, go) and run only the checks they touch.
+"""Sort changed paths into domains (web, python, go) and run the web checks when they apply.
 
 Two users share the rules in `classify`:
 
-- the pre-commit test gate (`[test_gate] command` in lighthouse.toml) runs
-  `python3 ci/domains.py gate` in the root of the tree being committed. It reads the changed
-  paths from git (staged, unstaged and untracked), skips every domain no path touches, and runs
-  the checks of the others in the order of `DOMAINS`. Exit 3 means COULD NOT CHECK (no node,
-  no web/node_modules, a command not found); lighthouse.toml lists it in
-  `unchecked_exit_codes`.
+- the test gate (`[test_gate] command` in lighthouse.toml) runs `python3 ci/domains.py gate`
+  in the root of the tree being committed, after `gate_go.py` and `gate_python.py`, which
+  cover Go and Python. It reads the paths of the commit from the file `LIGHTHOUSE_GATE_FILES`
+  names (one path per line) or, when that is unset, from git (staged, unstaged and untracked),
+  and runs the web checks only when a path touches `web`. Exit 3 means COULD NOT CHECK (a
+  list that cannot be read, no node, no web/node_modules, a command not found);
+  lighthouse.toml lists it in `unchecked_exit_codes`.
 - CI runs `python3 ci/domains.py classify --github-output "$GITHUB_OUTPUT"` with the
   NUL-separated paths of the change on stdin, and gets `web=`, `python=` and `go=` as job
   outputs.
@@ -17,6 +18,7 @@ Stdlib only, Python 3.11.
 """
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -38,8 +40,6 @@ CHECKS: dict[str, list[list[str]]] = {
         ["npm", "run", "--silent", "typecheck"],
         ["npm", "test"],
     ],
-    "python": [["uv", "run", "pytest", "-q"]],
-    "go": [["go", "test", "-race", "-shuffle=on", "./..."]],
 }
 
 UNCHECKED = 3
@@ -121,41 +121,45 @@ def gate(
     checks: dict[str, list[list[str]]] = CHECKS,
     drift: Callable[[Path], int] = api_drift,
 ) -> int:
-    """Run the checks of every domain the changed paths touch; stop at the first failure."""
-    paths = changed_paths(root)
+    """Run the web checks when the commit touches web; stop at the first failure."""
+    listing = os.environ.get("LIGHTHOUSE_GATE_FILES")
+    if listing:
+        try:
+            text = Path(listing).read_text(encoding="utf-8", errors="surrogateescape")
+        except OSError as exc:
+            _say(f"COULD NOT CHECK — cannot read the changed files: {exc}")
+            return UNCHECKED
+        paths = [line for line in text.splitlines() if line]
+    else:
+        paths = changed_paths(root)
     if not paths:
         _say("no changed paths — nothing to check")
         return 0
-    touched = [d for d in DOMAINS if d in classify(paths)]
-    for domain in DOMAINS:
-        if domain not in touched:
-            _say(f"{domain} skipped — no path in the domain")
+    if "web" not in classify(paths):
+        _say("skipped — the commit touches no web path")
+        return 0
 
-    if "web" in touched:
-        reason = _web_missing(root)
-        if reason is not None:
-            _say(f"COULD NOT CHECK — {reason}; fix: cd web && npm ci")
-            return UNCHECKED
+    reason = _web_missing(root)
+    if reason is not None:
+        _say(f"COULD NOT CHECK — {reason}; fix: cd web && npm ci")
+        return UNCHECKED
 
     web = root / "web"
-    for domain in touched:
-        cwd = web if domain == "web" else root
-        try:
-            if domain == "web":
-                _say("web — api drift (npm run --silent gen)")
-                status = drift(web)
-                if status != 0:
-                    return status
-            for command in checks[domain]:
-                _say(f"{domain} — {' '.join(command)}")
-                status = subprocess.run(command, cwd=cwd, check=False).returncode
-                if status != 0:
-                    return status
-        except FileNotFoundError as exc:
-            _say(f"COULD NOT CHECK — {exc.filename} not found")
-            return UNCHECKED
+    try:
+        _say("web — api drift (npm run --silent gen)")
+        status = drift(web)
+        if status != 0:
+            return status
+        for command in checks["web"]:
+            _say(f"web — {' '.join(command)}")
+            status = subprocess.run(command, cwd=web, check=False).returncode
+            if status != 0:
+                return status
+    except FileNotFoundError as exc:
+        _say(f"COULD NOT CHECK — {exc.filename} not found")
+        return UNCHECKED
 
-    _say(f"passed — {', '.join(touched)}")
+    _say("passed — web")
     return 0
 
 

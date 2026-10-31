@@ -209,7 +209,7 @@ def project_filter(
     Literally `rev-parse --path-format=absolute --git-common-dir`, passed through
     `os.path.realpath` — without that flag the main checkout gives a relative
     `.git` and a linked worktree an absolute path, and the worktree would
-    wrongly drop out (`pre-commit-tests.sh:182`). A root for which that
+    wrongly drop out (`commit-tests.sh`). A root for which that
     call fails comes back as an error line, not as a `GitError`; if it fails
     for `project_dir` itself, this function does raise.
     """

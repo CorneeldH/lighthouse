@@ -113,6 +113,10 @@ source_path = ".claude/hooks/lib/bash_writes.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
+path = "pack/core/lib/commit_base.py"
+new = true
+
+[[file]]
 path = "pack/core/hooks/worktree-guard.sh"
 source_path = ".claude/hooks/worktree-guard.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
@@ -133,7 +137,7 @@ source_path = ".claude/hooks/bash-write-gates.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/hooks/pre-commit-tests.sh"
+path = "pack/core/hooks/commit-tests.sh"
 source_path = ".claude/hooks/pre-commit-tests.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
@@ -413,6 +417,10 @@ path = "pack/python/requires.toml"
 new = true
 
 [[file]]
+path = "pack/python/scripts/gate_python.py"
+new = true
+
+[[file]]
 path = "pack/python/scripts/quality/__init__.py"
 source_path = "scripts/quality/__init__.py"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
@@ -540,6 +548,10 @@ new = true
 
 [[file]]
 path = "pack/go/hooks/hooks.json"
+new = true
+
+[[file]]
+path = "pack/go/scripts/gate_go.py"
 new = true
 
 [[file]]
