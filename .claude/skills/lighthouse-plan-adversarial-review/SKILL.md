@@ -168,17 +168,31 @@ date -u +%Y-%m-%dT%H:%M:%SZ
 Before *every* dispatch a snapshot of the plan: `cp <plan> <ATTEMPT>/round-<n>.snapshot.md`.
 
 **Only round 1 is a review**, and it is always paired: Codex and Opus side by side (*Round 1:
-Codex and Opus*, below). Only the retry from the table there dispatches the
-`lighthouse-spec-adversary` agent without a pair, with:
+Codex and Opus*, below). Only the retry from the table there runs Codex alone. Do it yourself, as
+a Bash call with `run_in_background: true` and `dangerouslyDisableSandbox: true`; the command
+stays on one line, and `review.sh` is called by exactly this repo-relative path, so the allowlist
+rule in `.claude/settings.json` (from `lighthouse init`) matches on that prefix:
 
-- `SPEC` = the plan (repo-relative)
-- `ROUND` = `1`, `OUT` = `<ATTEMPT>/round-1.json`
-- `PRIOR` = `none`
-- `SKILL_DIR` = `.claude/skills/lighthouse-spec-adversarial-review`
-- `REVIEW_SH` = `.claude/skills/lighthouse-plan-adversarial-review/review.sh`, exactly so: the
-  allowlist rule in `.claude/settings.json` (from `lighthouse init`) matches on that prefix
-- `CONTEXT` = the spec(s) from step 4
-- `LEVEL` only if you want `max`
+```bash
+.claude/skills/lighthouse-plan-adversarial-review/review.sh <plan> 1 <ATTEMPT>/round-1.json none [max] --context <spec path> [--context <spec path 2>] > <ATTEMPT>/round-1.retry.log 2>&1; echo "exit=$?"
+```
+
+`[max]` is the level slot: leave it out, or write `max` if you want it. The `--context` paths are
+the spec(s) from step 4. Read only the exit code, never `round-1.retry.log`. On success make the
+`ID` table with the jq fragment from *Opus dispatch*, on `round-1.json`, without a banner. On a
+non-zero exit:
+
+| exit | meaning |
+|---|---|
+| 2 | wrong arguments, the plan is not under the repo root, or a `--context` path does not exist |
+| 3 | `CODEX_MISSING`: no codex in PATH |
+| 4 | `CODEX_UNAUTHENTICATED`: no `~/.codex/auth.json` |
+| 5 | `CODEX_FAILED`: the run failed or produced nothing. Read the reset time with `grep -o 'try again at [^"]*' <ATTEMPT>/round-1.json.events \| tail -1` |
+| 6 | `CODEX_BUDGET`: budget exhausted before the round; `reason` and `reset_at` are in `<ATTEMPT>/round-1.json.budget.json` |
+
+Never retry the retry: exit 6 is never retried, nor is any other exit. After "Both fail" the
+retry always runs once, also when the Codex side of the pair gave exit 6. If the retry fails too, whatever the exit, stop with `--outcome aborted` and report both
+errors. Never fall back to reviewing the plan yourself: that defeats the cross-family check.
 
 **Round n ≥ 2 runs only if round n-1 had a BLOCKER/MAJOR with `accept` or `spec`.**
 No fixes, no round. Build the fixes diff first:
@@ -226,10 +240,10 @@ answer dies with the session.
      none [max] --context <spec path> [--context <spec path 2>] > <ATTEMPT>/round-1.codex.log 2>&1; echo "exit=$?"
    ```
 
-   `[max]` is the `LEVEL` slot: leave it out, or write `max` if you want it, like `LEVEL` above.
-   Then the record in step 9 gets `--level max`.
+   `[max]` is the level slot: leave it out, or write `max` if you want it, like in the retry
+   above. Then the record in step 9 gets `--level max`.
 
-   No `lighthouse-spec-adversary`: it returns a table, and then deciding is no longer blind. The
+   No ID table for this run: it would show the findings, and then deciding is no longer blind. The
    redirect is required for the same reason. On success `review.sh` prints the number of
    findings and the severity split (the `ok | reviewer: …` line). That count next to the A/B
    table betrays which letter Codex is. Read only the exit code, never `round-1.codex.log`.
@@ -263,7 +277,7 @@ round by exit 5 plus `grep -o 'try again at [^"]*' <ATTEMPT>/round-1.codex.json.
 | Codex exit 5 with a reset time | `mv <ATTEMPT>/round-1.fallback.json <ATTEMPT>/round-1.json` | `fallback --reviewer-model <reported model>` |
 | Codex fails otherwise (exit 2/3/4, or 5 without a reset time) | `mv <ATTEMPT>/round-1.fallback.json <ATTEMPT>/round-1.json` | `fallback --reviewer-model <reported model>` |
 | The Opus subagent fails or writes an invalid file | `mv <ATTEMPT>/round-1.codex.json <ATTEMPT>/round-1.json` | `codex` |
-| Both fail, or both raw files are invalid | none; run round 1 once more as a plain step 5 (without a pair) | following that retry; if it fails too, stop with `--outcome aborted` and report both errors |
+| Both fail, or both raw files are invalid | none; run the retry from step 5 once | following that retry; if it fails too, stop with `--outcome aborted` and report both errors |
 | `blind` gives exit 4 on a broken raw file | the other, valid file, as in the two rows above | the same |
 | `blind` gives exit 4 with `work tree changed since start or not clean` | `mv <ATTEMPT>/round-1.codex.json <ATTEMPT>/round-1.json`; the Opus output drops | `codex` |
 | `pair.json` or a raw file read before `merge` | `mv <ATTEMPT>/round-1.codex.json <ATTEMPT>/round-1.json`; the blind decisions drop, decide again on the r1 IDs | `codex` |
@@ -461,8 +475,8 @@ Dispatch a `general-purpose` subagent with `model: "opus"` and the text between
 lines `- <path>`, and `{{PRIOR_REVIEW_BLOCK}}` empty in round 1 and from round 2 on the paragraph
 that `review.sh` builds as `prior_block`, with `PRIOR` and its `.decisions.json` sidecar filled
 in. Instruct it to write the JSON answer following `findings.schema.json` or
-`verification.schema.json` to `OUT`. There is then no `lighthouse-spec-adversary` that makes the
-`ID` column; compute it yourself, **before** sorting. In a paired round 1 you skip this table
+`verification.schema.json` to `OUT`. Compute the
+`ID` column yourself, **before** sorting. In a paired round 1 you skip this table
 (step 5): `blind` makes the table.
 
 ```bash
@@ -489,7 +503,7 @@ jq -r '.verified // empty | "VERIFIED: " + (if length == 0 then "none" else join
   record is wrong. Take the ID from the table.
 - **Writing decisions into the round JSON.** Makes it invalid against the schema; always the
   sidecar.
-- **Making `REVIEW_SH` absolute.** The allowlist matches on the repo-relative prefix; an
+- **Making the `review.sh` path absolute.** The allowlist matches on the repo-relative prefix; an
   absolute path makes the background round wait for an approval.
 - **Resuming an old attempt.** A new review is a new `start`; the measurement counts only the
   newest attempt per chain.

@@ -18,8 +18,7 @@
       "write-issue"
     ],
     "agents": [
-      "issue-impact-scout",
-      "spec-adversary"
+      "issue-impact-scout"
     ],
     "workflows": [
       "unblock-dependents"

@@ -132,8 +132,7 @@ date -u +%Y-%m-%dT%H:%M:%SZ
 round 1 by default, and Opus verifies rounds 2 and 3. Here that subagent does not exist; every
 round runs through Codex, as below.
 
-The `lighthouse-spec-adversary` agent exists only in Claude Code (`.claude/agents/`). Here you
-call the runner yourself. Before *every* round a snapshot of the plan:
+Here you call the runner yourself. Before *every* round a snapshot of the plan:
 
 ```bash
 cp <plan> <ATTEMPT>/round-<n>.snapshot.md

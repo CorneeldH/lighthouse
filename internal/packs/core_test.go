@@ -53,7 +53,6 @@ func TestCorePack(t *testing.T) {
 		".agents/skills/lighthouse-worktree-audit/SKILL.md",
 		".agents/skills/lighthouse-write-issue/SKILL.md",
 		".claude/agents/lighthouse-issue-impact-scout.md",
-		".claude/agents/lighthouse-spec-adversary.md",
 		".claude/hooks/lighthouse/bash-write-gates.sh",
 		".claude/hooks/lighthouse/code-language.sh",
 		".claude/hooks/lighthouse/commit-tests.sh",

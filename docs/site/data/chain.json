@@ -247,25 +247,6 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/spec-adversarial-review"
     },
     {
-      "id": "spec-adversary",
-      "phase": "spec",
-      "row": 3,
-      "kind": "lighthouse",
-      "trigger": "skill",
-      "label": "spec-adversary",
-      "what": "The agent that runs one review round through Codex and hands back only the findings table; the review skills use it to retry a failed round 1.",
-      "how": [
-        "It runs review.sh once with the document, the round number, the output path, the prior review and optional context paths.",
-        "The script runs codex exec in a read-only sandbox with a JSON output schema and writes the raw review to the output path.",
-        "The agent gives each finding an ID by its position, sorts by severity and prints every field verbatim, with status, top 3, verdict and unverified items; on a non-zero exit it returns the code and does not review by itself.",
-        "The two review skills now call it only to retry a round 1 whose paired run failed."
-      ],
-      "when": "When spec-adversarial-review or plan-adversarial-review retries a round 1 whose paired run failed.",
-      "without": "A round 1 whose paired run failed has no single-reviewer retry.",
-      "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/agents/spec-adversary.md"
-    },
-    {
       "id": "writing-plans",
       "phase": "plan",
       "row": 0,
@@ -794,8 +775,7 @@
       "id": "4c",
       "label": "Spec first (4c)",
       "examples": [
-        "worktree-linkcheck",
-        "spec-adversary"
+        "worktree-linkcheck"
       ],
       "chips": [
         "write-issue",
@@ -808,7 +788,6 @@
         "brainstorming",
         "worktree-linkcheck",
         "spec-adversarial-review",
-        "spec-adversary",
         "writing-plans",
         "plan-adversarial-review",
         "executing-plans",

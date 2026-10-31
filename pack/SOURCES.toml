@@ -217,11 +217,6 @@ source_path = ".claude/agents/issue-impact-scout.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/agents/spec-adversary.md"
-source_path = ".claude/agents/spec-adversary.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/expo/skills/refresh-expo-lockfiles/SKILL.md"
 source_path = [".claude/skills/paia-refresh-expo-lockfiles/SKILL.md", ".agents/skills/paia-refresh-expo-lockfiles/SKILL.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
