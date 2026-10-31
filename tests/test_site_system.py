@@ -13,14 +13,14 @@ import pytest
 from tests.test_site_chain import REPO_BLOB, ROOT, SITE
 
 FIXTURE = ROOT / "tests" / "fixtures" / "site" / "system.json"
+SYSTEM = SITE / "data" / "system.json"
 STATUSES = {"works", "planned", "idea"}
 PART_KEYS = ["id", "label", "status"]
 PART_TEXT_KEYS = ["what", "when", "without"]
 ISSUE_KEYS = ["issue", "title", "part", "status"]
 LINK_KEYS = ["from", "to", "label"]
 
-# Task 2 adds docs/site/data/system.json here.
-SYSTEMS = [pytest.param(FIXTURE, id="fixture")]
+SYSTEMS = [pytest.param(FIXTURE, id="fixture"), pytest.param(SYSTEM, id="system.json")]
 
 
 def load_system(path: Path) -> dict:
@@ -177,6 +177,48 @@ def test_milestone_titles_carry_no_number(path):
 @pytest.mark.parametrize("path", SYSTEMS)
 def test_snapshot_is_an_iso_date(path):
     assert snapshot_problems(load_system(path)) == []
+
+
+PARTS = {  # id: (parent, status), in the order of spec §4
+    "binary": (None, "works"), "installer": ("binary", "works"),
+    "usage-meter": ("binary", "works"), "dashboard": ("binary", "works"),
+    "controller": ("binary", "planned"), "packs": ("binary", "works"),
+    "repo": (None, "works"), "chain": ("repo", "works"), "guardrails": ("repo", "works"),
+    "environments": (None, "works"), "env-now": ("environments", "works"),
+    "env-second": ("environments", "planned"), "env-sdp": ("environments", "planned"),
+    "docs": (None, "works"),
+}
+
+
+def test_parts_are_the_fourteen_of_the_spec():
+    parts = load_system(SYSTEM)["parts"]
+    assert {p["id"]: (p.get("parent"), p["status"]) for p in parts} == PARTS
+    assert [p["id"] for p in parts] == list(PARTS)
+    assert {p["id"] for p in parts if p.get("not_in_first_release")} == {"dashboard", "controller", "env-now"}
+    assert {p["id"]: p["milestone"] for p in parts if "milestone" in p} == {"controller": 3, "env-second": 4, "env-sdp": 5}
+    assert {p["id"] for p in parts if p.get("group")} == {"environments"}
+    sources = {p["id"]: p["source"][len(REPO_BLOB):] for p in parts if "source" in p}
+    assert sources == {"binary": "cmd/lighthouse", "installer": "internal/initcmd",
+                       "usage-meter": "internal/usage", "dashboard": "internal/server",
+                       "controller": "internal/cli/tick.go", "packs": "pack",
+                       "chain": "pack/core/skills", "guardrails": "pack/core/hooks",
+                       "env-now": "deploy", "docs": "docs"}
+
+
+def test_links_are_the_two_of_the_spec():
+    links = load_system(SYSTEM)["links"]
+    assert {(l["from"], l["to"], l["label"]) for l in links} == {
+        ("installer", "repo", "installs"), ("controller", "chain", "starts sessions"),
+    }
+
+
+def test_milestones_in_their_order_without_numbers():
+    milestones = load_system(SYSTEM)["milestones"]
+    assert [(m["number"], m["title"], m["state"]) for m in milestones] == [
+        (1, "Pakket", "closed"), (2, "Romp en zicht", "closed"), (3, "Dispatcher", "open"),
+        (4, "Tweede omgeving", "open"), (5, "SURF Research Cloud als werkplek", "open"),
+        (6, "Product: eerste versie voor anderen", "open"), (7, "Kaarten: lighthouse in beeld", "open"),
+    ]
 
 
 def fixture_system() -> dict:
