@@ -38,6 +38,13 @@ func UnitName(profile, worktreePath string) string {
 // profile, the claude processes of the given sessions in the shared devcontainer.
 // Anything it cannot measure is an error, never "gone".
 func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []string) error {
+	// An empty id would make pgrep -f and pkill -f match every process in the shared
+	// devcontainer, foreign sessions included.
+	for _, sid := range sessionIDs {
+		if sid == "" {
+			return fmt.Errorf("stop workspace %s: empty session id", workspaceID)
+		}
+	}
 	var w wireWorkspace
 	if err := a.Client.do(ctx, http.MethodGet, wsPath(workspaceID), nil, 0, &w); err != nil {
 		return fmt.Errorf("read workspace %s: %w", workspaceID, err)

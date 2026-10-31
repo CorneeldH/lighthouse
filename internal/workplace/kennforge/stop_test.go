@@ -175,3 +175,50 @@ func TestStopPodmanPsFails(t *testing.T) {
 		t.Error("err = nil, want an error for podman ps rc 125")
 	}
 }
+
+func TestStopEmptySessionIDRejectedBeforeAnyCall(t *testing.T) {
+	a, _, calls := stopAdapter(t, "software", nil)
+	err := a.Stop(context.Background(), "ws1", []string{testSessionID, ""})
+	if err == nil {
+		t.Fatal("err = nil, want an error for an empty session id")
+	}
+	if len(*calls) != 0 {
+		t.Errorf("calls = %v, want none: an empty id would make pgrep and pkill match every process", *calls)
+	}
+}
+
+func TestStopIsActiveRunnerError(t *testing.T) {
+	a, _, _ := stopAdapter(t, "infra", []step{
+		{cmd: "systemctl --user stop paia-forge-infra-issue-7-x"},
+		{cmd: "systemctl --user is-active paia-forge-infra-issue-7-x", code: -1, err: context.DeadlineExceeded},
+	})
+	if err := a.Stop(context.Background(), "ws1", nil); err == nil {
+		t.Error("err = nil, want an error for an is-active timeout")
+	}
+}
+
+func TestStopPgrepUnmeasurableInRetryLoop(t *testing.T) {
+	steps := append(softwareHead(),
+		step{cmd: "podman exec c1 pgrep -f " + testSessionID},
+		step{cmd: "podman exec c1 pkill -f " + testSessionID},
+		step{cmd: "podman exec c1 pgrep -f " + testSessionID, code: 2},
+	)
+	a, _, calls := stopAdapter(t, "software", steps)
+	if err := a.Stop(context.Background(), "ws1", []string{testSessionID}); err == nil {
+		t.Error("err = nil, want an error for pgrep rc 2 after pkill")
+	}
+	if len(*calls) != len(steps) {
+		t.Errorf("calls = %d, want %d", len(*calls), len(steps))
+	}
+}
+
+func TestStopWorkspaceReadFails(t *testing.T) {
+	a, _, calls := stopAdapter(t, "infra", nil)
+	a.Client = New("http://127.0.0.1:1", a.Client.TokenFile)
+	if err := a.Stop(context.Background(), "ws1", nil); err == nil {
+		t.Error("err = nil, want an error when the workspace cannot be read")
+	}
+	if len(*calls) != 0 {
+		t.Errorf("calls = %v, want none", *calls)
+	}
+}
