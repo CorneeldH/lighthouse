@@ -9,6 +9,7 @@ The hook is bash. These tests run it as a subprocess in a real git repository wi
 import json
 import os
 import subprocess
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -19,8 +20,10 @@ from tests.pack._testkit import (
     alarm_line,
     git,
     install_pack,
+    past_this_second,
     prompt_entry,
     result_entry,
+    stamp,
     stop_payload,
     tool_bin,
     tool_entry,
@@ -86,8 +89,11 @@ def _run(
     hook: Path = HOOK,
 ) -> subprocess.CompletedProcess:
     if payload is None:
-        # A turn without tool calls: the hook falls back to the payload `cwd`.
-        transcript = write_transcript(root.parent / "transcript.jsonl", [prompt_entry(root)])
+        # A turn that edited a Go file in `root`: the root is touched, so it is linted.
+        transcript = write_transcript(
+            root.parent / "transcript.jsonl",
+            [prompt_entry(root), tool_entry("Edit", {"file_path": str(root / "a.go")}, root)],
+        )
         payload = stop_payload(root, transcript)
     return subprocess.run(
         [str(hook)],
@@ -272,6 +278,8 @@ def test_every_checkout_of_the_turn_is_linted(tmp_path):
     """A Bash call from main into the worktree names both; the finding in the second blocks."""
     root, wt = _worktree(tmp_path)
     env = _env(tmp_path, STUB_FAIL_IN=os.path.realpath(wt), STUB_RUN_OUT=LINT_FINDING)
+    (root / "b.go").write_text("package m\n")
+    (wt / "a.go").write_text("package m\n")
     transcript = write_transcript(
         tmp_path / "transcript.jsonl",
         [prompt_entry(root), tool_entry("Bash", {"command": f"git -C {wt} commit -qm x"}, root)],
@@ -368,3 +376,73 @@ def test_stop_hook_active_with_alarm_is_silent(tmp_path):
     result = _run(root, _alarm_env(tmp_path, alarm_line()), payload)
     assert result.returncode == 0
     assert result.stdout == ""
+
+
+def _clean_turn(tmp_path: Path, root: Path, edited: str) -> dict:
+    """A turn that started now and edited only `edited` in `root`."""
+    past_this_second()
+    transcript = write_transcript(
+        tmp_path / "transcript.jsonl",
+        [
+            prompt_entry(root, stamp(time.time())),
+            tool_entry("Edit", {"file_path": str(root / edited)}, root),
+            result_entry(root),
+        ],
+    )
+    return stop_payload(root, transcript)
+
+
+def _skip_message(root: Path) -> str:
+    return f"go-check: not checked — the turn touched no Go path in {os.path.realpath(root)}."
+
+
+def test_a_turn_without_go_paths_skips_and_says_so(tmp_path):
+    root, _ = _worktree(tmp_path)
+    env = _env(tmp_path)
+    result = _run(root, env, _clean_turn(tmp_path, root, "README.md"))
+    assert _message(result) == _skip_message(root)
+    assert _runs(env) == []
+
+
+@pytest.mark.parametrize(
+    "rel", ["internal/x/a.go", "go.mod", "go.sum", ".golangci.yml", ".golangci-version"]
+)
+def test_a_go_path_lints(tmp_path, rel):
+    root, _ = _worktree(tmp_path)
+    env = _env(tmp_path)
+    result = _run(root, env, _clean_turn(tmp_path, root, rel))
+    assert result.returncode == 0, result.stderr
+    assert _runs(env) == [f"run ./... @ {os.path.realpath(root)}"]
+
+
+def test_a_skipped_root_needs_no_go_tooling(tmp_path):
+    root, _ = _worktree(tmp_path)
+    bin_dir = tool_bin(tmp_path / "bin", TOOLS)
+    result = _run(
+        root,
+        {"PATH": str(bin_dir), "STUB_LOG": str(tmp_path / "l")},
+        _clean_turn(tmp_path, root, "README.md"),
+    )
+    message = _message(result)
+    assert "not checked — the turn touched no Go path" in message
+    assert "COULD NOT CHECK" not in message
+
+
+def test_an_untouched_root_is_named_next_to_a_finding(tmp_path):
+    root, wt = _worktree(tmp_path)
+    env = _env(tmp_path, STUB_FAIL_IN=os.path.realpath(wt), STUB_RUN_OUT=LINT_FINDING)
+    past_this_second()
+    transcript = write_transcript(
+        tmp_path / "transcript.jsonl",
+        [
+            prompt_entry(root, stamp(time.time())),
+            tool_entry("Edit", {"file_path": str(wt / "a.go")}, root),
+            tool_entry("Bash", {"command": "ls"}, root),
+            result_entry(root),
+        ],
+    )
+    result = _run(root, env, stop_payload(root, transcript))
+    assert result.returncode == 2, result.stdout
+    assert LINT_FINDING in result.stderr
+    assert _skip_message(root) in result.stderr
+    assert _runs(env) == [f"run ./... @ {os.path.realpath(wt)}"]

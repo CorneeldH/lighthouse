@@ -8,10 +8,12 @@
 # Deliberately NOT a PostToolUse hook: a package often does not compile halfway
 # through a change, so per-edit feedback would burn turns on half-finished state.
 #
-# Runs on every Stop, not only after a Go edit: Go work may already be committed
-# in the turn, and then no edit is left to hook on.
+# Runs on every Stop, but lints only a checkout in which the turn touched a Go
+# path: an edit, a Bash write or a commit in the turn (`turn_roots.py --match`,
+# #80). The rest gets `not checked`. Go work may already be committed in the turn,
+# and then no edit is left to hook on: the commit counts.
 #
-# Lints every checkout the turn wrote in (turn_roots.py, #54), not the `cwd` of
+# Looks at every checkout the turn wrote in (turn_roots.py, #54), not the `cwd` of
 # the payload: that is the shell's directory at Stop, and a session in the main
 # checkout that edits a worktree stops there.
 #
@@ -82,8 +84,20 @@ fi
 # LIGHTHOUSE_REPO_ROOT or git, never from this file's own path.
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
 
-# The checkouts this turn wrote in, one per line (#54).
-if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/turn_roots.py" 2>&1); then
+# What makes a path a Go path (fnmatch on the path relative to the root; `*` also
+# matches `/`).
+GO_PATTERNS=(
+  '*.go' go.mod go.sum go.work go.work.sum
+  .golangci.yml .golangci.yaml .golangci.toml .golangci.json .golangci-version
+)
+MATCH_ARGS=()
+for pattern in "${GO_PATTERNS[@]}"; do
+  MATCH_ARGS+=(--match "$pattern")
+done
+
+# The checkouts this turn wrote in, one per line: `touched<TAB>root` or
+# `untouched<TAB>root` (#54, #80).
+if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/turn_roots.py" "${MATCH_ARGS[@]}" 2>&1); then
   # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
   cannot_check "the checkout of this turn cannot be determined: $(printf '%s' "$ROOTS" | tr '\n"\134' '   ')"
 fi
@@ -91,7 +105,12 @@ fi
 # One checkout, in a subshell: `report` and `cannot_check` end only that one.
 check_root() (
   ROOT="$1"
+  VERDICT="$2"
   cd "$ROOT" 2>/dev/null || cannot_check "the checkout $ROOT does not exist."
+
+  if [ "$VERDICT" = "untouched" ]; then
+    report "$HOOK_NAME: not checked — the turn touched no Go path in $ROOT."
+  fi
 
   if [ ! -f "$ROOT/go.mod" ]; then
     report "$HOOK_NAME: not checked — no go.mod in the repository root $ROOT (go-check lints only a root module)."
@@ -146,9 +165,12 @@ ERRS=$(mktemp) || cannot_check "mktemp failed."
 trap 'rm -f "$ERRS"' EXIT
 MESSAGES=""
 BLOCKED=0
-while IFS= read -r root; do
-  [ -n "$root" ] || continue
-  MSG=$(check_root "$root" 2>>"$ERRS")
+TAB=$(printf '\t')
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+  verdict="${line%%"$TAB"*}"
+  root="${line#*"$TAB"}"
+  MSG=$(check_root "$root" "$verdict" 2>>"$ERRS")
   RC=$?
   if [ "$RC" -eq 2 ]; then
     BLOCKED=1

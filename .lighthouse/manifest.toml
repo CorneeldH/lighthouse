@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "419bc3d118940af3920207e8b248780d019df1010ead4b9301d573a8d92e1e7b"
+sha256 = "9f1e593c211bd1a280c7f9c97b420732448616e29aa5702499c8c8bb5926fa14"
 
 [[unit]]
 kind = "file"
@@ -218,7 +218,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/go-check.sh"
 package = "go"
 version = "dev"
-sha256 = "1af3f1aef220742c82372a06511771fa42789974830fbe810bf269e5ff6ad2b3"
+sha256 = "693ef6303ec42ccf145847eeed815ef02c931714365ee0a30a20874c2534add5"
 
 [[unit]]
 kind = "file"
@@ -470,7 +470,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-go-writing/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "119b0b924d8eb3d8abd5de9d936d0a6a0c29047853555409bb772504e6f4a445"
+sha256 = "3fc7e900c4643029858f976691bc7aa52d7f8e36cce6e1fe95ddd3b5fb0262e4"
 
 [[unit]]
 kind = "file"
@@ -899,4 +899,4 @@ path = "AGENTS.md"
 id = "go"
 package = "go"
 version = "dev"
-sha256 = "5d2b19c92dc98b501cefd36171d52640b47386d6872608a6ed1e1861af56ade6"
+sha256 = "ec60003e16c663fd4a61a52bb11c1c37f3884e3cf41191b154e549f3bf7819de"
