@@ -140,13 +140,15 @@ source file is open.
 | this skill | the procedure, the KPI table, the measurement rules | while planning and writing |
 | `lighthouse-testing` | the test norms and the class table | for every test, before the first edit |
 | `.claude/hooks/lighthouse/gofmt.sh` | formatting, per edit | right after the edit |
-| `.claude/hooks/lighthouse/go-check.sh` | `golangci-lint` (`govet` included), once per turn | at `Stop` |
+| `.claude/hooks/lighthouse/go-check.sh` | `golangci-lint` (`govet` included), once per turn, where the turn touched a Go path | at `Stop` |
 
 `gofmt.sh` formats the file in place and blocks (exit 2) only on a file that does not parse.
 `go-check.sh` blocks on a finding, and on a build that fails, except while a valid usage alarm is
 up (see `docs/usage-guard.md`, *Andere Stop-gates*): `golangci-lint` reports both the
-same way. It lints every checkout the turn wrote in, read from the transcript: a worktree you
-edit from a session in the main checkout is linted, not the main checkout. When a hook cannot
+same way. It lints every checkout the turn wrote in, read from the transcript, and only when the turn
+touched a Go path there (a `.go` file, `go.mod`, `go.sum`, `go.work`, or a `.golangci` file or pin:
+an edit, a Bash write or a commit in the turn); any other checkout gets `not checked`. A worktree
+you edit from a session in the main checkout is linted, not the main checkout. When a hook cannot
 check — `gofmt.sh` needs `jq` and `gofmt`; `go-check.sh` needs `jq`, `git`, `python3`, `go` and
 `golangci-lint`, at the version in `.golangci-version`, and a transcript that names the turn's
 checkout — it says so with `COULD NOT CHECK` instead of passing silently. `gofmt.sh` then blocks:

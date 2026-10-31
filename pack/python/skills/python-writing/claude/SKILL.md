@@ -165,13 +165,16 @@ source file is open.
 | `lighthouse-testing` | the test norms and the class table | for every test, and before the first edit |
 | `.claude/rules/python.md` (if present) | the norms | as soon as Claude reads a source or test file |
 | `.claude/hooks/lighthouse/ruff-format.sh` | the blocking rules, per edit, exit 2 | right after the edit |
-| `.claude/hooks/lighthouse/ty-check.sh` | a signal on type-dirty source directories, once per turn | at `Stop` |
+| `.claude/hooks/lighthouse/ty-check.sh` | a signal on type-dirty source directories, once per turn, where the turn touched a Python path | at `Stop` |
 
 When a hook cannot check — no `jq`, no `uvx` or `ruff`, a broken environment — it says so with
 `COULD NOT CHECK` instead of passing silently. `ruff-format` then blocks (exit 2): an unchecked
 file must not read as a clean one. `ty-check` runs at `Stop`, where blocking would keep the
-session from stopping, so it reports it as a message. While a valid usage alarm is up it does not
-check at all (see `docs/usage-guard.md`, *Andere Stop-gates*).
+session from stopping, so it reports it as a message. It checks only a checkout in which the turn
+touched a Python path (a `.py` or `.pyi` file in `python.source_dirs`, `pyproject.toml`, `ty.toml` or
+`uv.lock`: an edit, a Bash write or a commit in the turn); any other checkout gets `not checked`.
+While a valid usage alarm is up it does not check at all (see `docs/usage-guard.md`, *Andere
+Stop-gates*).
 
 ## Known pitfalls
 
