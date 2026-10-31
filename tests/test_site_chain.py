@@ -17,6 +17,8 @@ REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/"
 KINDS = {"lighthouse", "superpowers", "hook", "github"}
 TRIGGERS = {"you", "skill", "description", "tool", "github"}
 STATUSES = {"works", "planned", "idea"}
+# An optional `form` names a part that is no skill, agent, hook or workflow of a pack.
+FORMS = {"tool", "dispatcher"}
 REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "how", "when", "without", "status"]
 
 
@@ -83,6 +85,8 @@ def vocabulary_problems(chain: dict) -> list[str]:
             problems.append(f"{name}: unknown trigger")
         if chip.get("status") not in STATUSES:
             problems.append(f"{name}: unknown status")
+        if "form" in chip and chip["form"] not in FORMS:
+            problems.append(f"{name}: unknown form")
         if chip.get("phase") not in phases:
             problems.append(f"{name}: unknown phase")
         if name in seen_ids:
@@ -96,11 +100,11 @@ def vocabulary_problems(chain: dict) -> list[str]:
 
 
 def source_problems(chain: dict) -> list[str]:
-    """Lighthouse and hook chips need a REPO_BLOB source; every source under REPO_BLOB must exist."""
+    """Working lighthouse and hook chips need a REPO_BLOB source; every source under it must exist."""
     problems = []
     for chip in chain["chips"]:
         name = chip["id"]
-        if chip["kind"] in ("lighthouse", "hook") and "source" not in chip:
+        if chip["kind"] in ("lighthouse", "hook") and chip["status"] == "works" and "source" not in chip:
             problems.append(f"{name}: no source")
         source = chip.get("source")
         if source is None:

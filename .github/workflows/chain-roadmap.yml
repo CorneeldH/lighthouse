@@ -1,0 +1,33 @@
+# Chain roadmap: the planned steps and handoffs of the chain map (docs/site/data/chain.json) match
+# the open issues labelled `chain`. Runs when such an issue changes and when the map changes;
+# see ci/chain_roadmap.py.
+name: chain-roadmap
+
+on:
+  issues:
+    types: [opened, closed, reopened, labeled, unlabeled]
+  pull_request:
+    paths:
+      - "docs/site/data/chain.json"
+      - "ci/chain_roadmap.py"
+  push:
+    branches: [main]
+    paths:
+      - "docs/site/data/chain.json"
+      - "ci/chain_roadmap.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Compare the map with the open chain issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ci/chain_roadmap.py
