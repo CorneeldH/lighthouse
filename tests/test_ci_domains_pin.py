@@ -66,6 +66,22 @@ def test_web_job_runs_every_check():
         assert needle in web, needle
 
 
+def test_python_job_runs_in_three_shards():
+    """Fails when the python job stops splitting pytest, or runs the literal grep more than once."""
+    python = _jobs()["python"]
+    assert re.search(r"^      fail-fast: false\s*$", python, re.MULTILINE)
+    assert re.search(r"^        shard: \[1, 2, 3\]\s*$", python, re.MULTILINE)
+    steps = re.split(r"(?m)^      - ", python)[1:]
+    pytest_steps = [s for s in steps if "uv run pytest -q -n auto" in s]
+    assert len(pytest_steps) == 1, pytest_steps
+    assert "LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3" in pytest_steps[0]
+    assert python.count("LIGHTHOUSE_PYTEST_SHARD") == 1
+    grep = [s for s in steps if "ci/literal-grep.sh" in s]
+    assert len(grep) == 1, grep
+    assert re.match(r"if: matrix\.shard == 1\n        run: ci/literal-grep\.sh$", grep[0], re.MULTILINE), grep[0]
+    assert python.count("ci/literal-grep.sh") == 1
+
+
 def test_node_jobs_cache_npm():
     """Fails when web or binary stops caching the npm download for npm ci."""
     jobs = _jobs()
