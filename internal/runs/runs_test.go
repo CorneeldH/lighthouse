@@ -209,3 +209,138 @@ func TestOpenListsOnlyOpenRunsOfRepo(t *testing.T) {
 		t.Errorf("TriggerKey, SessionID = %q, %q; want %q, %q", got.TriggerKey, got.SessionID, "start:3", three.SessionID)
 	}
 }
+
+func TestSetWorkplaceAndSession(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c := claim("owner/a", 7, "start:7")
+	c.Profile = "dev"
+	r, err := Take(ctx, db, c)
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := SetWorkplace(ctx, db, r.ID, "ws-1", "issue-7-x"); err != nil {
+		t.Fatalf("SetWorkplace: %v", err)
+	}
+	if err := SetSession(ctx, db, r.ID, "key-1"); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+	got, err := Open(ctx, db, "owner/a")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	want := OpenRun{
+		ID: r.ID, Issue: 7, SessionID: c.SessionID, Profile: "dev", Branch: "issue-7-x",
+		WorkspaceID: "ws-1", WorkplaceSession: "key-1", StartedAt: c.Now,
+	}
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("Open = %+v, want [%+v]", got, want)
+	}
+}
+
+func TestSetOnClosedRun(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	r, err := Take(ctx, db, claim("owner/a", 7, "start:7"))
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := Release(ctx, db, r.ID, Done, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if err := SetWorkplace(ctx, db, r.ID, "ws-1", "b"); !errors.Is(err, ErrNotOpen) {
+		t.Errorf("SetWorkplace error = %v, want ErrNotOpen", err)
+	}
+	if err := SetSession(ctx, db, r.ID, "k"); !errors.Is(err, ErrNotOpen) {
+		t.Errorf("SetSession error = %v, want ErrNotOpen", err)
+	}
+}
+
+func TestOpenOnlyRepo(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	mine, err := Take(ctx, db, claim("owner/a", 7, "start:7"))
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if _, err := Take(ctx, db, claim("owner/b", 8, "start:8")); err != nil {
+		t.Fatalf("Take other repo: %v", err)
+	}
+	closed, err := Take(ctx, db, claim("owner/a", 9, "start:9"))
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := Release(ctx, db, closed.ID, Done, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	got, err := Open(ctx, db, "owner/a")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != mine.ID {
+		t.Errorf("Open = %+v, want only run %d", got, mine.ID)
+	}
+}
+
+func TestSessionIDsIncludesClosed(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c1 := claim("owner/a", 7, "start:7")
+	r1, err := Take(ctx, db, c1)
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := Release(ctx, db, r1.ID, Returned, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	c2 := claim("owner/a", 7, "answer:7")
+	if _, err := Take(ctx, db, c2); err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	c3 := claim("owner/a", 8, "start:8")
+	if _, err := Take(ctx, db, c3); err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	got, err := SessionIDs(ctx, db, "owner/a", 7)
+	if err != nil {
+		t.Fatalf("SessionIDs: %v", err)
+	}
+	if len(got) != 2 || !got[c1.SessionID] || !got[c2.SessionID] || got[c3.SessionID] {
+		t.Errorf("SessionIDs = %v, want exactly %q and %q", got, c1.SessionID, c2.SessionID)
+	}
+}
+
+func TestSessionIDsExcludesStartFailed(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	closeAs := func(key string, o Outcome, workplaceSession string) string {
+		t.Helper()
+		c := claim("owner/a", 7, key)
+		r, err := Take(ctx, db, c)
+		if err != nil {
+			t.Fatalf("Take %s: %v", key, err)
+		}
+		if workplaceSession != "" {
+			if err := SetSession(ctx, db, r.ID, workplaceSession); err != nil {
+				t.Fatalf("SetSession: %v", err)
+			}
+		}
+		if err := Release(ctx, db, r.ID, o, "", time.Now()); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+		return c.SessionID
+	}
+	never := closeAs("a:1", StartFailed, "")
+	accepted := closeAs("b:1", StartFailed, "key-b")
+	returned := closeAs("c:1", Returned, "")
+	got, err := SessionIDs(ctx, db, "owner/a", 7)
+	if err != nil {
+		t.Fatalf("SessionIDs: %v", err)
+	}
+	if got[never] {
+		t.Errorf("start_failed without workplace_session must be left out: %v", got)
+	}
+	if !got[accepted] || !got[returned] || len(got) != 2 {
+		t.Errorf("SessionIDs = %v, want exactly %q and %q", got, accepted, returned)
+	}
+}

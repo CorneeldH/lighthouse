@@ -123,6 +123,34 @@ func Release(ctx context.Context, db *sql.DB, id int64, o Outcome, reason string
 	return nil
 }
 
+// SetWorkplace records the workspace and branch of an open run.
+func SetWorkplace(ctx context.Context, db *sql.DB, id int64, workspaceID, branch string) error {
+	return setOpen(ctx, db, id, `UPDATE runs SET workspace_id = ?, branch = ?
+		WHERE id = ? AND ended_at IS NULL`, workspaceID, branch, id)
+}
+
+// SetSession records the workplace session key of an open run.
+func SetSession(ctx context.Context, db *sql.DB, id int64, key string) error {
+	return setOpen(ctx, db, id, `UPDATE runs SET workplace_session = ?
+		WHERE id = ? AND ended_at IS NULL`, key, id)
+}
+
+// setOpen runs an UPDATE that only matches an open row; no match is ErrNotOpen.
+func setOpen(ctx context.Context, db *sql.DB, id int64, query string, args ...any) error {
+	res, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("runs: update run %d: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("runs: update run %d rows: %w", id, err)
+	}
+	if n == 0 {
+		return ErrNotOpen
+	}
+	return nil
+}
+
 // OpenRun is an open run with its workplace columns.
 type OpenRun struct {
 	ID               int64     `json:"id"`
@@ -161,6 +189,33 @@ func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("runs: open runs: %w", err)
+	}
+	return out, nil
+}
+
+// SessionIDs returns the session ids of every run of the issue, open and
+// closed. A run that closed as start_failed without a workplace session is
+// left out: the forge never accepted its spawn, so an agent that starts after
+// all (a 5xx that was not a refusal) belongs to no run and counts as foreign.
+// An accepted run that closes as start_failed stays: cleanup stops its session.
+func SessionIDs(ctx context.Context, db *sql.DB, repo string, issue int) (map[string]bool, error) {
+	rows, err := db.QueryContext(ctx, `SELECT session_id FROM runs
+		WHERE repo = ? AND issue = ?
+		AND NOT (coalesce(outcome, '') = 'start_failed' AND workplace_session = '')`, repo, issue)
+	if err != nil {
+		return nil, fmt.Errorf("runs: session ids: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("runs: scan session id: %w", err)
+		}
+		out[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("runs: session ids: %w", err)
 	}
 	return out, nil
 }
