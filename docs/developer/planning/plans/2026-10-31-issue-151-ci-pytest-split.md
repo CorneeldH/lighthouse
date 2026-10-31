@@ -285,12 +285,14 @@ def test_python_job_runs_in_three_shards():
     assert python.count("LIGHTHOUSE_PYTEST_SHARD") == 1
     grep = [s for s in steps if "ci/literal-grep.sh" in s]
     assert len(grep) == 1, grep
-    assert re.match(r"if: matrix\.shard == 1\n        run: ci/literal-grep\.sh\s*$", grep[0]), grep[0]
+    assert re.match(r"if: matrix\.shard == 1\n        run: ci/literal-grep\.sh$", grep[0], re.MULTILINE), grep[0]
     assert python.count("ci/literal-grep.sh") == 1
 ```
 
 De stappen worden geknipt zoals in `test_node_jobs_cache_npm`, zodat de `env` aantoonbaar op
-de pytest-stap staat en niet op job-niveau of op een andere stap. Als het commentaar uit stap 3
+de pytest-stap staat en niet op job-niveau of op een andere stap. `re.MULTILINE` is nodig:
+de literal-grep-stap is de laatste van de job, en `_jobs()` rekent het commentaarblok vóór
+`go:` (`ci.yml:69-73`) nog tot dat laatste stuk. Als het commentaar uit stap 3
 `LIGHTHOUSE_PYTEST_SHARD` letterlijk noemt, faalt de telling `== 1`: noem in het commentaar
 `tests/conftest.py`, niet de variabele.
 
