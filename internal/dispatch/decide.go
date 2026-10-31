@@ -436,7 +436,8 @@ func (c issueCtx) startFailed(row runs.Row) (Action, bool) {
 }
 
 // answer resumes the session of the last turn when that is a Question with a session and an
-// answer follows it. A session no run in the history has resumes nothing.
+// answer follows it. A session no run of this issue has resumes nothing: a Question carrying
+// another issue's session never resumes that run.
 func (c issueCtx) answer() (planned, bool) {
 	q := lastTurn(c.hs)
 	if q == nil || q.Header.Kind != protocol.KindQuestion || q.Header.Session == "" {
@@ -450,7 +451,7 @@ func (c issueCtx) answer() (planned, bool) {
 	if c.spent(key) {
 		return planned{}, false
 	}
-	run, ok := lastRunOf(c.repo.History, q.Header.Session)
+	run, ok := lastRunOf(c.repo.History, c.it.Issue, q.Header.Session)
 	if !ok {
 		return planned{}, false
 	}
@@ -475,10 +476,10 @@ func (c issueCtx) answerTo(id int64) (Comment, bool) {
 	return Comment{}, false
 }
 
-// lastRunOf returns the last row of the history with session.
-func lastRunOf(history []runs.Row, session string) (runs.Row, bool) {
+// lastRunOf returns the last row of the history on issue with session.
+func lastRunOf(history []runs.Row, issue int, session string) (runs.Row, bool) {
 	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].SessionID == session {
+		if history[i].Issue == issue && history[i].SessionID == session {
 			return history[i], true
 		}
 	}
