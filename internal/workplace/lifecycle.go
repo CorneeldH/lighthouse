@@ -163,6 +163,10 @@ type Candidate struct {
 // Cleanup removes the workspace of a candidate when nothing is lost by it. A
 // workspace it must keep, or cannot measure, is recorded as a leftover; it is
 // never removed on an unmeasurable check. A running run is never touched.
+//
+// The order: in the controller or an open run (nothing), the workspace path,
+// the sessions, a live foreign session (keep), stop the own sessions, dirty,
+// unpushed, remove.
 func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candidate, now time.Time) (removed bool, err error) {
 	if c.Workspace.ID == "" {
 		return false, errors.New("cleanup: candidate has no workspace id")
@@ -199,21 +203,10 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	if s, ok := ForeignLive(sessions, own); ok {
 		return keep("foreign session " + s.Key)
 	}
-	dirty, err := Dirty(ctx, run, c.Workspace.Path)
-	if err != nil {
-		return keep("not measurable: " + err.Error())
-	}
-	if dirty {
-		return keep("uncommitted changes")
-	}
-	unpushed, err := Unpushed(ctx, run, c.Workspace.Path, c.MergedHead)
-	if err != nil {
-		return keep("not measurable: " + err.Error())
-	}
-	if unpushed {
-		return keep("unpushed commits")
-	}
 
+	// Stop ends the whole systemd unit of the worktree, so it runs only after
+	// ForeignLive found no foreign session there. It runs before the git
+	// checks: an own agent that still works cannot commit after them.
 	var ids []string
 	for _, s := range sessions {
 		if !own[s.Key] {
@@ -232,6 +225,21 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		if err := w.Stop(ctx, c.Workspace.ID, ids); err != nil {
 			return keep("not measurable: stop: " + err.Error())
 		}
+	}
+
+	dirty, err := Dirty(ctx, run, c.Workspace.Path)
+	if err != nil {
+		return keep("not measurable: " + err.Error())
+	}
+	if dirty {
+		return keep("uncommitted changes")
+	}
+	unpushed, err := Unpushed(ctx, run, c.Workspace.Path, c.MergedHead)
+	if err != nil {
+		return keep("not measurable: " + err.Error())
+	}
+	if unpushed {
+		return keep("unpushed commits")
 	}
 	if err := w.Remove(ctx, c.Workspace.ID); err != nil {
 		if errors.Is(err, ErrDirty) {

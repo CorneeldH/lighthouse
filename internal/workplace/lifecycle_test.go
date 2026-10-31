@@ -486,12 +486,18 @@ func TestCleanupStaleForeignSessionStays(t *testing.T) {
 	}
 }
 
+// Own sessions are stopped before the git checks, so an own agent cannot
+// commit after them; a dirty workspace is stopped and still stays.
 func TestCleanupDirtyStays(t *testing.T) {
 	db := openLeftoverDB(t)
-	w := &fakeWP{}
+	sid := closedOwnRun(t, db, "k1")
+	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "working"}}}
 	removed, err := Cleanup(context.Background(), db, w, gitRunner(" M a.txt\n", "abc", "0"), cand(7), lcNow)
 	if err != nil || removed || w.removes != 0 {
 		t.Fatalf("Cleanup = %v, %v", removed, err)
+	}
+	if want := []string{"w1:" + sid}; !reflect.DeepEqual(w.stopped, want) {
+		t.Errorf("stopped = %v, want %v", w.stopped, want)
 	}
 	if got := leftoverReasons(t, db)["w1"]; got != "uncommitted changes" {
 		t.Errorf("reason = %q", got)
@@ -500,10 +506,14 @@ func TestCleanupDirtyStays(t *testing.T) {
 
 func TestCleanupUnpushedStays(t *testing.T) {
 	db := openLeftoverDB(t)
-	w := &fakeWP{}
+	sid := closedOwnRun(t, db, "k1")
+	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "idle"}}}
 	removed, err := Cleanup(context.Background(), db, w, gitRunner("", "abc", "2"), cand(7), lcNow)
 	if err != nil || removed || w.removes != 0 {
 		t.Fatalf("Cleanup = %v, %v", removed, err)
+	}
+	if want := []string{"w1:" + sid}; !reflect.DeepEqual(w.stopped, want) {
+		t.Errorf("stopped = %v, want %v", w.stopped, want)
 	}
 	if got := leftoverReasons(t, db)["w1"]; got != "unpushed commits" {
 		t.Errorf("reason = %q", got)
@@ -576,7 +586,8 @@ func TestCleanupStopFailsStays(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "idle"}}, stopErr: errors.New("nope")}
-	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), cand(7), lcNow)
+	// Stop comes before the git checks: after a failed stop git never runs.
+	removed, err := Cleanup(context.Background(), db, w, noRunner(t), cand(7), lcNow)
 	if err != nil || removed || w.removes != 0 {
 		t.Fatalf("Cleanup = %v, %v", removed, err)
 	}
@@ -739,7 +750,7 @@ func TestCleanupOwnSessionWithoutSessionIDStays(t *testing.T) {
 	db := openLeftoverDB(t)
 	closedOwnRun(t, db, "k1")
 	w := &fakeWP{sessions: []Session{{Key: "k1", State: "working"}}}
-	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), cand(7), lcNow)
+	removed, err := Cleanup(context.Background(), db, w, noRunner(t), cand(7), lcNow)
 	if err != nil || removed || w.stops != 0 || w.removes != 0 {
 		t.Fatalf("Cleanup = %v, %v, stops %d removes %d", removed, err, w.stops, w.removes)
 	}
@@ -794,5 +805,22 @@ func TestCleanupWithoutAbsolutePathStays(t *testing.T) {
 		if got := leftoverReasons(t, db)["w1"]; got != "not measurable: no workspace path" {
 			t.Errorf("%q: reason = %q", path, got)
 		}
+	}
+}
+
+// Stop ends the whole unit of the worktree: never while a foreign session lives there.
+func TestCleanupForeignLiveNoStopOfOwn(t *testing.T) {
+	db := openLeftoverDB(t)
+	sid := closedOwnRun(t, db, "k1")
+	w := &fakeWP{sessions: []Session{
+		{Key: "k1", SessionID: sid, State: "working"},
+		{Key: "kf", SessionID: "foreign", State: "idle"},
+	}}
+	removed, err := Cleanup(context.Background(), db, w, noRunner(t), cand(7), lcNow)
+	if err != nil || removed || w.stops != 0 || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, stops %d removes %d", removed, err, w.stops, w.removes)
+	}
+	if got := leftoverReasons(t, db)["w1"]; got != "foreign session kf" {
+		t.Errorf("reason = %q", got)
 	}
 }
