@@ -1099,3 +1099,107 @@ a.tile:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Stand switch and timeline */
+
+.stand-switch {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 8px;
+}
+
+.stand-switch button {
+  border: 1px solid var(--muted);
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stand-switch button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  color: #16181d;
+}
+
+.timeline-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+  font-size: 13px;
+}
+
+.timeline-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timeline-group h2 {
+  flex-basis: 100%;
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.timeline-count {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.plan-chip {
+  padding: 4px 10px;
+  border: 1.5px solid var(--lighthouse);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.plan-chip.status-works {
+  background: var(--lighthouse);
+  color: var(--lighthouse-fg);
+}
+
+.plan-chip.status-planned,
+.plan-chip.status-idea {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--idea) 22%, transparent) 0 6px,
+    transparent 6px 12px
+  );
+  border: 1.5px dotted var(--idea);
+  color: var(--fg);
+}
+
+.plan-chip.dim {
+  opacity: 0.25;
+}
+
+.plan-chip.current {
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--accent-soft);
+}
+
+.timeline-empty {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--muted) 15%, transparent) 0 6px,
+    transparent 6px 12px
+  );
+}

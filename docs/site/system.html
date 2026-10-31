@@ -31,9 +31,14 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   </ul>
 </section>
 
+<div class="stand-switch" role="group" aria-label="View">
+  <button type="button" id="switch-now" aria-pressed="true">Now</button>
+  <button type="button" id="switch-time" aria-pressed="false">Over time</button>
+</div>
+
 <div id="plan-map"></div>
 
-<div id="timeline"></div>
+<div id="timeline" hidden></div>
 
 <aside id="detail" class="detail" aria-label="Details"></aside>
 </body>

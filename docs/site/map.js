@@ -880,3 +880,59 @@ export function renderPlanMap(root, data, detail) {
   redraw();
   return { redraw };
 }
+
+/**
+ * Renders the timeline into `root`: the issues grouped per milestone, in the order of the data,
+ * with a filter that dims the issues outside one part. A click on an issue opens `detail`.
+ */
+export function renderTimeline(root, data, detail) {
+  const drawer = drawerFor(detail);
+  const chips = []; // { chip, issue }
+
+  const filter = el("div", "timeline-filter");
+  const label = el("label", "", "Show part");
+  const select = el("select");
+  select.id = "timeline-part";
+  label.htmlFor = select.id;
+  const all = el("option", "", "All parts");
+  all.value = "";
+  select.append(all);
+  for (const part of data.parts || []) {
+    if (part.group) {
+      continue;
+    }
+    const option = el("option", "", part.label);
+    option.value = part.id;
+    select.append(option);
+  }
+  filter.append(label, select);
+
+  const groups = (data.milestones || []).map((milestone) => {
+    const issues = (data.issues || []).filter((issue) => issue.milestone === milestone.number);
+    const works = issues.filter((issue) => issue.status === "works").length;
+    const group = el("section", "timeline-group");
+    const head = el("h2", "", milestone.title);
+    head.append(el("span", "timeline-count", `${works}/${issues.length}`));
+    group.append(head);
+    if (!issues.length) {
+      group.append(el("p", "timeline-empty", "no issues yet"));
+    }
+    for (const issue of issues) {
+      const chip = el("button", `plan-chip status-${issue.status}`, `#${issue.issue} ${issue.title}`);
+      chip.type = "button";
+      chip.addEventListener("click", () => showIssue(drawer, issue, data, chip));
+      chips.push({ chip, issue });
+      group.append(chip);
+    }
+    return group;
+  });
+
+  select.addEventListener("change", () => {
+    const shown = select.value ? new Set(issuesOf(data, select.value)) : null;
+    for (const { chip, issue } of chips) {
+      chip.classList.toggle("dim", shown !== null && !shown.has(issue));
+    }
+  });
+
+  root.replaceChildren(filter, ...groups);
+}
