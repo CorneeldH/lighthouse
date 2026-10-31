@@ -75,6 +75,9 @@ func TestJudgeArgumentShapes(t *testing.T) {
 		{"/lighthouse-fix-pr 12", VerdictStart},
 		{"/superpowers:writing-plans relative.md", VerdictRejected},
 		{"/superpowers:writing-plans /a/b.md; rm", VerdictRejected},
+		{`/superpowers:writing-plans "/a/b.md"`, VerdictRejected},
+		{"/superpowers:writing-plans /a/b;c.md", VerdictRejected},
+		{"/superpowers:writing-plans /a/$(x).md", VerdictRejected},
 		{"/superpowers:writing-plans /a/b.md", VerdictStart},
 		{"/superpowers:writing-plans", VerdictRejected},
 	}
