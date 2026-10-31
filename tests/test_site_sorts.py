@@ -53,11 +53,29 @@ def test_legends_name_known_sorts():
         counts[path.name] = len(found)
         for names in found:
             assert set(names.split()) <= known, f"{path.name}: unknown sort in {names!r}"
-    for page in ["chain.html", "session.html", "system.html", "reference.html"]:
+    for page in ["chain.html", "session.html", "reference.html"]:
         assert counts.get(page), f"{page} has no data-sorts legend"
+    # The system page is read without one: every box names what it is.
+    assert counts.get("system.html") == 0
 
 
 def test_config_token_in_every_theme():
     css = (SITE / "map.css").read_text(encoding="utf-8")
-    for token in ["--config:", "--config-fg:", "--you:", "--you-fg:"]:
+    for token in ["--config:", "--config-fg:", "--rules:", "--rules-fg:", "--session:", "--session-fg:", "--you:", "--you-fg:"]:
         assert css.count(token) == 3, token
+
+
+def kind_colour(css: str, cls: str) -> str:
+    """The `--kind` value of the rule whose selector list names `.cls`."""
+    for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+        if cls in [s.strip() for s in selectors.split(",")]:
+            found = re.search(r"--kind:\s*([^;]+);", body)
+            if found:
+                return found.group(1).strip()
+    raise AssertionError(f"no --kind for {cls}")
+
+
+@pytest.mark.parametrize("one, other", [(".form-rules", ".form-config"), (".form-loop", ".form-session")])
+def test_neighbouring_sorts_have_their_own_colour(one, other):
+    css = (SITE / "map.css").read_text(encoding="utf-8")
+    assert kind_colour(css, one) != kind_colour(css, other)

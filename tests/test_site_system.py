@@ -117,9 +117,12 @@ def test_nothing_that_is_not_for_users(path):
     assert word_problems(load_system(path)) == []
 
 
-def test_init_step_is_the_command():
+def test_init_step_is_the_command_in_the_repo():
     step = load_system(SYSTEM)["steps"][1]
     assert step["command"] == "lighthouse init"
+    assert step["where"] == "in repo"
+    # Everything the step shows lands in the repo: nothing set apart on the workstation.
+    assert [item["label"] for item in step["items"] if "where" in item] == []
 
 
 def test_bring_groups_in_order():

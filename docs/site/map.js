@@ -284,14 +284,18 @@ export function renderStory(root, data) {
   data.steps.forEach((step, index) => {
     const node = el("li", "story-step");
     node.append(el("p", "kicker", `Step ${index + 1}`));
-    const title = el("h2", "story-title");
+    const title = el("h2", step.command ? "story-title story-command-line" : "story-title");
     if (step.command) {
+      // The place of a command goes before it, as in a prompt: "in repo: $ lighthouse init".
+      if (step.where) {
+        title.append(el("span", "story-place", `${step.where}:`));
+      }
       title.append(el("code", "story-command", `$ ${step.command}`));
     } else {
       title.textContent = step.title;
     }
     node.append(title);
-    if (step.where) {
+    if (step.where && !step.command) {
       node.append(el("p", "story-where", step.where));
     }
     const list = el("ul", "story-items");

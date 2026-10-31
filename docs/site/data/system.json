@@ -34,7 +34,7 @@
       "id": "init",
       "title": "lighthouse init",
       "command": "lighthouse init",
-      "where": "your repo",
+      "where": "in repo",
       "items": [
         {
           "form": "workflow-skill",
@@ -77,14 +77,6 @@
           "label": ".github/",
           "note": "PR template, workflows",
           "href": "reference.html#github"
-        },
-        {
-          "form": "config",
-          "kind": "lighthouse",
-          "label": "host.toml",
-          "note": "Only with Tailscale.",
-          "where": "on your workstation",
-          "href": "#config"
         }
       ]
     },
