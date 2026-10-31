@@ -20,14 +20,14 @@ const (
 	readyPoll           = time.Second
 )
 
-// Adapter is the kenn-forge implementation of the workplace interface. Stop comes
-// with the stop code; until then it does not satisfy workplace.Workplace.
+// Adapter is the kenn-forge implementation of the workplace interface.
 type Adapter struct {
 	Client       *Client
 	Kind, Repo   string            // [forge] kind and repo of the repository
 	MainCheckout string            // the repo's main checkout, for the devcontainer label
 	StateDir     string            // where carriers go
 	Targets      map[string]string // profile -> forge target_key
+	Profile      string            // the repo profile ([controller] profile)
 	Run          workplace.Runner
 	Sleep        func(time.Duration) // nil: time.Sleep
 	ReadyWait    time.Duration       // 0: 60s
