@@ -1,14 +1,14 @@
-// The guardrails page: the flow map from data/guardrails.json.
+// The session page: the flow map from data/session.json.
 
 import { initTheme, loadJson, renderFlowMap } from "./map.js";
 
 initTheme(document.getElementById("theme-toggle"));
 
 try {
-  const guardrails = await loadJson("data/guardrails.json");
-  document.getElementById("title").textContent = guardrails.title;
-  document.getElementById("subtitle").textContent = guardrails.subtitle;
-  renderFlowMap(document.getElementById("guardrails-map"), guardrails, document.getElementById("detail"));
+  const session = await loadJson("data/session.json");
+  document.getElementById("title").textContent = session.title;
+  document.getElementById("subtitle").textContent = session.subtitle;
+  renderFlowMap(document.getElementById("session-map"), session, document.getElementById("detail"));
   document.getElementById("serve-hint").hidden = true;
 } catch (error) {
   console.error(error);

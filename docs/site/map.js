@@ -1,5 +1,5 @@
-// Shared flow map of the lighthouse site: columns of chips, an "Always on" band, route buttons,
-// handoff badges and a detail drawer. Data reaches the page only through textContent and
+// Shared flow map of the lighthouse site: columns of chips, route buttons, handoff badges and a
+// detail drawer. Data reaches the page only through textContent and
 // attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
 
 const GLYPHS = { you: "⌨", skill: "↪", description: "◎", tool: "⚡", event: "◷", github: "⚙" };
@@ -12,13 +12,11 @@ const TRIGGERS = {
   event: "a turn event",
   github: "a GitHub event",
 };
-// A trigger in the terms of the harness docs.
+// A trigger in the terms of the harness docs. A hook has none: its column already is its event.
 const STARTS = {
   you: "User-invoked",
   skill: "Invoked by another skill",
   description: "Model-invoked",
-  tool: "Hook event",
-  event: "Hook event",
   github: "GitHub event",
 };
 // What a hook does when it fires.
@@ -237,9 +235,7 @@ function chipButton(chip, columns) {
   button.type = "button";
   button.dataset.id = chip.id;
   button.title = `${chip.label}: ${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status}`;
-  if (chip.phase !== "always") {
-    button.style.width = `calc(${100 / columns}% - 14px)`;
-  }
+  button.style.width = `calc(${100 / columns}% - 14px)`;
   const glyph = el("span", "glyph", glyphOf(chip));
   glyph.setAttribute("aria-hidden", "true");
   button.append(glyph, el("span", "label", chip.label));
@@ -353,7 +349,7 @@ export function drawerFor(detail) {
 
 /**
  * Renders a flow map into `root`: route buttons with the note of the chosen route, columns of
- * chips, the "Always on" band and the handoff badges. A click on a chip or badge opens `detail`
+ * chips and the handoff badges. A click on a chip or badge opens `detail`
  * as a drawer from the right; Escape or its close button shuts it.
  */
 export function renderFlowMap(root, data, detail) {
@@ -363,12 +359,10 @@ export function renderFlowMap(root, data, detail) {
   const handoffs = data.handoffs || [];
   const columnOf = new Map(phases.map((phase, i) => [phase.id, i]));
   const phaseLabel = new Map(phases.map((phase) => [phase.id, phase.label]));
-  phaseLabel.set("always", "Always on");
   const byId = new Map(chips.map((chip) => [chip.id, chip]));
   const placed = chips
     .filter((chip) => columnOf.has(chip.phase))
     .sort((a, b) => columnOf.get(a.phase) - columnOf.get(b.phase) || a.row - b.row);
-  const always = chips.filter((chip) => chip.phase === "always").sort((a, b) => a.row - b.row);
   const rows = Math.max(-1, ...placed.map((chip) => chip.row)) + 1;
   const height = HEAD + rows * ROW;
   const columnWidth = WIDTH / Math.max(phases.length, 1);
@@ -429,11 +423,10 @@ export function renderFlowMap(root, data, detail) {
           "",
           facts([
             ["What it is", FORMS[kind]],
-            ["When it starts", STARTS[chip.trigger] || chip.trigger],
+            ...(kind === "hook" ? [] : [["When it starts", STARTS[chip.trigger] || chip.trigger]]),
             ["Who provides it", provider(chip.kind, chip.source, kind)],
             ...(chip.command
               ? [
-                  ["Event", chip.events.join(" and ")],
                   ["Matcher", chip.matcher || (chip.trigger === "event" ? "none: this event has no matcher" : "none: every call")],
                   ["Command", chip.command],
                   ["What it does", chip.effects.map((e) => EFFECTS[e]).join("; ")],
@@ -584,18 +577,6 @@ export function renderFlowMap(root, data, detail) {
     }
   }
   map.append(area);
-
-  if (always.length) {
-    const band = el("div", "band");
-    band.append(el("p", "band-title", "Always on"));
-    for (const chip of always) {
-      const button = chipButton(chip, phases.length);
-      button.addEventListener("click", () => showChip(chip, button));
-      chipButtons.push(button);
-      band.append(button);
-    }
-    map.append(band);
-  }
   scroll.append(map);
 
   const routeButtons = routes.map((route, i) => {
@@ -617,9 +598,7 @@ export function renderFlowMap(root, data, detail) {
     casing.setAttribute("d", paths[index].getAttribute("d"));
     svg.append(casing, paths[index]);
     for (const button of chipButtons) {
-      // Always-on chips take part in every route, so they never dim.
-      const always = byId.get(button.dataset.id)?.phase === "always";
-      button.classList.toggle("dim", !always && !used.has(button.dataset.id));
+      button.classList.toggle("dim", !used.has(button.dataset.id));
     }
     for (const badge of badges) {
       // Lit when the route passes both ends in order, also with an example step in between.

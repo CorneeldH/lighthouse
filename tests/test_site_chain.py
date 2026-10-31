@@ -74,7 +74,7 @@ def load_map(path: Path) -> dict:
 
 
 def vocabulary_problems(chain: dict) -> list[str]:
-    phases = {p["id"] for p in chain["phases"]} | {"always"}
+    phases = {p["id"] for p in chain["phases"]}
     problems, seen_ids, seen_cells = [], set(), set()
     for chip in chain["chips"]:
         name = chip.get("id")
@@ -156,13 +156,9 @@ def handoff_problems(chain: dict) -> list[str]:
 
 
 def coverage_problems(chain: dict) -> list[str]:
-    """Every chip outside the Always on band is on a route; every example is on its own route."""
+    """Every chip is on a route; every example is on its own route."""
     on_route = {chip_id for route in chain["routes"] for chip_id in route["chips"]}
-    problems = [
-        f"{chip['id']}: on no route"
-        for chip in chain["chips"]
-        if chip["phase"] != "always" and chip["id"] not in on_route
-    ]
+    problems = [f"{chip['id']}: on no route" for chip in chain["chips"] if chip["id"] not in on_route]
     problems += [
         f"route {route['id']}: example {chip_id} is not on the route"
         for route in chain["routes"]
@@ -261,19 +257,15 @@ def test_phases_are_the_seven_of_the_chain():
     assert labels == ["Issue", "Orient", "Spec", "Plan", "Build", "PR", "Close"]
 
 
-def test_always_on_band():
-    chips = load("chain.json")["chips"]
-    assert {c["id"] for c in chips if c["phase"] == "always"} == {"usage-guard", "instrument", "worktree-audit"}
-
-
 def test_every_pack_part_is_on_the_chain():
-    assert missing_parts(load("chain.json")) == []
+    # Tools outside the flow from idea to main; their place is the overview map (#102).
+    assert missing_parts(load("chain.json")) == ["pack/core/skills/instrument", "pack/core/skills/worktree-audit"]
 
 
 def test_coverage_flags_a_removed_skill():
     chain = copy.deepcopy(load("chain.json"))
     chain["chips"] = [c for c in chain["chips"] if c["id"] != "write-issue"]
-    assert missing_parts(chain) == ["pack/core/skills/write-issue"]
+    assert "pack/core/skills/write-issue" in missing_parts(chain)
 
 
 def test_works_handoffs_follow_the_handoff_table():

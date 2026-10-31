@@ -88,7 +88,7 @@ def test_site_links_resolve():
             assert target.is_file(), f"{path.name}: {link} points nowhere"
 
 
-MAP_PAGES = ["chain.html", "guardrails.html", "system.html"]
+MAP_PAGES = ["chain.html", "session.html", "system.html"]
 
 
 @pytest.mark.parametrize("page", MAP_PAGES)
@@ -121,7 +121,7 @@ def test_page_lang_is_english():
 def test_index_lists_the_six_maps():
     links = relative_links(SITE / "index.html")
     assert "chain.html" in links
-    assert "guardrails.html" in links
+    assert "session.html" in links
     assert "system.html" in links
     text = (SITE / "index.html").read_text(encoding="utf-8")
     for issue in ["#101", "#103", "#104"]:
@@ -140,5 +140,5 @@ def test_guide_links_to_the_maps():
     text = GUIDE.read_text(encoding="utf-8")
     section = text.split("## Your first issue", 1)[1].split("\n## ", 1)[0]
     assert "](site/chain.html)" in section
-    assert "](site/guardrails.html)" in section
+    assert "](site/session.html)" in section
     assert SERVE_COMMAND in section
