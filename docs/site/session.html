@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The hooks</title>
+<title>Inside a session</title>
 <link rel="stylesheet" href="map.css">
-<script type="module" src="hooks.js"></script>
+<script type="module" src="session.js"></script>
 </head>
 <body>
 <header class="page-head">
   <div>
-    <h1 id="title">The hooks</h1>
-    <p id="subtitle" class="subtitle">One turn in Claude Code, and which hook steps in when.</p>
+    <h1 id="title">Inside a session</h1>
+    <p id="subtitle" class="subtitle">One turn in Claude Code, from prompt to stop: which skill joins in, and which hook steps in when.</p>
   </div>
   <a class="back-link" href="index.html">All maps</a>
   <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
@@ -20,13 +20,15 @@
 <p id="serve-hint" class="serve-hint">This map reads its data with <code>fetch</code>, which a
 browser blocks for a page opened straight from disk. From the root of the repository, run
 <code>python3 -m http.server --directory docs/site</code> and open
-<code>http://localhost:8000/hooks.html</code>.</p>
+<code>http://localhost:8000/session.html</code>.</p>
 
 <details class="why">
   <summary>Wait, but why?</summary>
-  <p><strong>Why does it stop me now?</strong> This map answers that. It follows one turn from
-  the prompt to the stop, and shows which hook can step in at each moment, on which tool, from
-  which pack, and what it does.</p>
+  <p><strong>Two levels.</strong> <a href="chain.html">The chain</a> follows the work from an idea
+  to main, phase by phase, across sessions. This map zooms in on one session. It follows one turn
+  from the prompt to the stop, and answers "why does it stop me now?": which skill loads before the
+  model writes, and which hook steps in at each moment, on which tool, from which pack, and what it
+  does.</p>
   <p><strong>Instructions ask, hooks check.</strong> <code>AGENTS.md</code> (which Claude Code
   reads through <code>CLAUDE.md</code>), skills and agents are text that the model reads. The model
   follows that text most of the time. It can still lose a rule late in a long session, or decide that
@@ -38,8 +40,10 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   follows it rarely meets the hook. The hook steps in at the moment itself, with a warning or with a
   hard line, as the headers of <code>main-commit-guard.sh</code> and <code>worktree-guard.sh</code>
   explain. When a hook blocks, its message goes back to the agent, which reads why and corrects
-  its step. A skill and its hook often come as a pair: <code>/lighthouse-verify-pr</code> writes the
-  PR body that <code>pr-create-gate</code> checks.</p>
+  its step. A skill and its hook often come as a pair. On this map, <code>go-writing</code> loads
+  before the model writes Go, and <code>gofmt</code> and <code>go-check</code> check what it wrote.
+  On the chain, <code>/lighthouse-verify-pr</code> writes the PR body that
+  <code>pr-create-gate</code> checks.</p>
   <p class="aside">How hooks, skills and agents work in Claude Code:
   <a href="https://code.claude.com/docs/en/hooks-guide">the hooks guide</a>,
   <a href="https://code.claude.com/docs/en/hooks">the hooks reference</a>,
@@ -52,9 +56,11 @@ browser blocks for a page opened straight from disk. From the root of the reposi
 
 <section class="legend" aria-label="Legend">
   <ul aria-label="Who provides it">
+    <li><span class="swatch kind-lighthouse"></span>lighthouse skill</li>
     <li><span class="swatch kind-hook"></span>hook</li>
   </ul>
   <ul aria-label="How it starts">
+    <li>◎ its description matches the task</li>
     <li>⚡ a tool call</li>
     <li>◷ a turn event</li>
   </ul>
@@ -66,7 +72,7 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   </ul>
 </section>
 
-<div id="hooks-map"></div>
+<div id="session-map"></div>
 
 <aside id="detail" class="detail" aria-label="Details"></aside>
 

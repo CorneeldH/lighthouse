@@ -1,14 +1,14 @@
-// The hooks page: the flow map from data/hooks.json.
+// The session page: the flow map from data/session.json.
 
 import { initTheme, loadJson, renderFlowMap } from "./map.js";
 
 initTheme(document.getElementById("theme-toggle"));
 
 try {
-  const hooks = await loadJson("data/hooks.json");
-  document.getElementById("title").textContent = hooks.title;
-  document.getElementById("subtitle").textContent = hooks.subtitle;
-  renderFlowMap(document.getElementById("hooks-map"), hooks, document.getElementById("detail"));
+  const session = await loadJson("data/session.json");
+  document.getElementById("title").textContent = session.title;
+  document.getElementById("subtitle").textContent = session.subtitle;
+  renderFlowMap(document.getElementById("session-map"), session, document.getElementById("detail"));
   document.getElementById("serve-hint").hidden = true;
 } catch (error) {
   console.error(error);
