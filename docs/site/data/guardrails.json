@@ -1,0 +1,590 @@
+{
+  "title": "The guardrails",
+  "subtitle": "One turn in Claude Code, and which hook steps in when.",
+  "phases": [
+    {
+      "id": "prompt",
+      "label": "UserPromptSubmit",
+      "blurb": "you send a prompt"
+    },
+    {
+      "id": "pre-tool",
+      "label": "PreToolUse",
+      "blurb": "before a tool runs"
+    },
+    {
+      "id": "tool-call",
+      "label": "The tool call",
+      "blurb": "Bash, Edit or Write runs here"
+    },
+    {
+      "id": "post-tool",
+      "label": "PostToolUse / PostToolUseFailure",
+      "blurb": "after a tool ran"
+    },
+    {
+      "id": "subagent-stop",
+      "label": "SubagentStop",
+      "blurb": "a subagent stops"
+    },
+    {
+      "id": "stop",
+      "label": "Stop",
+      "blurb": "the turn ends"
+    }
+  ],
+  "chips": [
+    {
+      "id": "usage-guard-prompt",
+      "phase": "prompt",
+      "row": 7,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "UserPromptSubmit"
+      ],
+      "matcher": "",
+      "command": "usage-guard.sh prompt",
+      "effects": [
+        "warns"
+      ],
+      "label": "usage-guard prompt",
+      "what": "Starts a refresh of the usage meter and, when the usage alarm is up, adds a note to the prompt.",
+      "how": [
+        "It runs on UserPromptSubmit and starts a detached `lighthouse usage refresh`.",
+        "With an alarm it adds a note as additionalContext; it never blocks.",
+        "The alarm is one line in ${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse/usage-window.alarm, written by the usage meter; the guard never removes it.",
+        "It always exits 0; when it cannot check, it says so on stderr."
+      ],
+      "when": "When you submit a prompt.",
+      "without": "The session runs into the limit without a warning, and the meter is not refreshed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
+    },
+    {
+      "id": "worktree-guard",
+      "phase": "pre-tool",
+      "row": 0,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PreToolUse"
+      ],
+      "matcher": "Edit|Write",
+      "command": "worktree-guard.sh",
+      "effects": [
+        "warns"
+      ],
+      "label": "worktree-guard",
+      "what": "Warns, and never blocks, at a write into the main checkout on main.",
+      "how": [
+        "It checks the target file path of the Edit or Write, not the working directory.",
+        "It compares the git dir with the common git dir to tell a linked worktree from the main checkout, and reads the protected branch from lighthouse.toml.",
+        "On a match it returns a systemMessage with the git worktree add command; when it cannot check, the message says COULD NOT CHECK.",
+        "It always exits 0."
+      ],
+      "when": "Before each Edit or Write.",
+      "without": "A write into the main checkout on main passes without a warning.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-guard.sh"
+    },
+    {
+      "id": "main-commit-guard",
+      "phase": "pre-tool",
+      "row": 1,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PreToolUse"
+      ],
+      "matcher": "Bash",
+      "command": "main-commit-guard.sh",
+      "effects": [
+        "blocks"
+      ],
+      "label": "main-commit-guard",
+      "what": "Blocks git commit and git push on the default branch.",
+      "how": [
+        "It reads the default branch from `forge.default_branch` in lighthouse.toml, and uses main when it is not set.",
+        "It also sees a commit after `cd` and through `git -C <path>`.",
+        "A commit or push there blocks with exit 2 and a message on stderr. `touch .claude/allow-main` in the repo root is the deliberate escape hatch.",
+        "When it cannot see where a commit goes, it blocks with COULD NOT CHECK."
+      ],
+      "when": "Before each Bash call.",
+      "without": "A commit or push lands directly on main.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-guard.sh"
+    },
+    {
+      "id": "commit-tests-pre",
+      "phase": "pre-tool",
+      "row": 2,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PreToolUse"
+      ],
+      "matcher": "Bash",
+      "command": "commit-tests.sh pre",
+      "effects": [
+        "blocks"
+      ],
+      "label": "commit-tests pre",
+      "what": "Blocks a commit with --no-verify and tests a commit to the default branch before it happens.",
+      "how": [
+        "It sees a commit after `cd`, `;`, `|`, `&&` or with `git -C <path>`, and tests the tree that is committed.",
+        "For a commit to the default branch it runs the test gate up front; red blocks with exit 2.",
+        "For every other commit it records the HEAD before the commit, so `post` knows what the commit touched.",
+        "When it cannot parse the command or resolve the tree, it blocks with COULD NOT CHECK."
+      ],
+      "when": "Before each Bash call.",
+      "without": "A commit skips the gate with --no-verify, and a commit to main goes in untested.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-tests.sh"
+    },
+    {
+      "id": "pr-create-gate",
+      "phase": "pre-tool",
+      "row": 3,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PreToolUse"
+      ],
+      "matcher": "Bash",
+      "command": "pr-create-gate.sh",
+      "effects": [
+        "blocks"
+      ],
+      "label": "pr-create-gate",
+      "what": "Blocks a gh pr create whose body has no evidence.",
+      "how": [
+        "It checks the body of the `gh pr create` call.",
+        "The body must hold `Closes #N` with an Evidence table, `Refs #N — <reason>` or `No issue: <reason>`.",
+        "Otherwise it blocks with exit 2 and a message on stderr; the check is in lighthouse_lib/pr_body_gate.py.",
+        "When it cannot check, it blocks with COULD NOT CHECK."
+      ],
+      "when": "Before each Bash call that runs gh pr create.",
+      "without": "A PR opens without a Closes line and evidence.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/pr-create-gate.sh"
+    },
+    {
+      "id": "bash-write-gates-pre",
+      "phase": "pre-tool",
+      "row": 4,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PreToolUse"
+      ],
+      "matcher": "Bash",
+      "command": "bash-write-gates.sh pre",
+      "effects": [
+        "records"
+      ],
+      "label": "bash-write-gates pre",
+      "what": "Records a baseline of the files before a Bash call, so post can see what the call wrote.",
+      "how": [
+        "It is a thin wrapper around lighthouse_lib/bash_writes.py.",
+        "It records the baseline and a marker, and always exits 0: a PreToolUse exit 2 would block the Bash call itself.",
+        "It stays silent by design; post reports a failure loudly."
+      ],
+      "when": "Before each Bash call.",
+      "without": "The post gate cannot tell which files a Bash call wrote.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-gates.sh"
+    },
+    {
+      "id": "worktree-linkcheck",
+      "phase": "post-tool",
+      "row": 0,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse"
+      ],
+      "matcher": "Edit|Write",
+      "command": "worktree-linkcheck.sh",
+      "effects": [
+        "blocks"
+      ],
+      "label": "worktree-linkcheck",
+      "what": "Blocks a markdown link that is absolute or points nowhere.",
+      "how": [
+        "It checks only .md and .markdown files.",
+        "It finds the git root of the written file, and md_links.py resolves each relative link against the directory of that file.",
+        "A dead or absolute link blocks with exit 2 and a list of the bad targets.",
+        "When jq, git or python3 is missing, or the parser fails, it blocks with COULD NOT CHECK."
+      ],
+      "when": "After each Edit or Write.",
+      "without": "A broken or absolute link in a .md file is committed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-linkcheck.sh"
+    },
+    {
+      "id": "code-language",
+      "phase": "post-tool",
+      "row": 1,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse"
+      ],
+      "matcher": "Edit|Write",
+      "command": "code-language.sh",
+      "effects": [
+        "blocks",
+        "warns"
+      ],
+      "label": "code-language",
+      "what": "Blocks code whose names, comments or docstrings are not in English.",
+      "how": [
+        "It is on only with `[project] code_language` in the lighthouse.toml of the git root of the written file.",
+        "It always reads .py, .sh, .bash and .go files; anything else only inside `[project] code_language_paths`.",
+        "A finding blocks with exit 2 and stderr; a line marked `lighthouse: allow-language` is skipped.",
+        "When the optional model check gives no verdict, it prints a notice without a judgment and does not block; when it cannot check at all, it blocks with COULD NOT CHECK."
+      ],
+      "when": "After each Edit or Write.",
+      "without": "Dutch comments, docstrings and names land in code that must be English.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language.sh"
+    },
+    {
+      "id": "commit-tests-post",
+      "phase": "post-tool",
+      "row": 2,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse",
+        "PostToolUseFailure"
+      ],
+      "matcher": "Bash",
+      "command": "commit-tests.sh post",
+      "effects": [
+        "blocks"
+      ],
+      "label": "commit-tests post",
+      "what": "Tests what a commit touched with the test gate, and reports red.",
+      "how": [
+        "Per recorded root whose HEAD moved, it runs `[test_gate] command` from lighthouse.toml with the changed files in LIGHTHOUSE_GATE_FILES.",
+        "Red is exit 2 after the commit: the commit stays and the fix comes in a new commit.",
+        "Without a command the commit passes with a note that nothing was tested.",
+        "When it cannot parse the command or resolve the tree, it blocks with COULD NOT CHECK."
+      ],
+      "when": "After each Bash call, also one that failed.",
+      "without": "A commit with red tests goes unnoticed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-tests.sh"
+    },
+    {
+      "id": "gofmt",
+      "phase": "post-tool",
+      "row": 3,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse"
+      ],
+      "matcher": "Edit|Write",
+      "command": "gofmt.sh",
+      "effects": [
+        "formats",
+        "blocks"
+      ],
+      "label": "gofmt",
+      "what": "Runs gofmt -w on an edited Go file.",
+      "how": [
+        "Formatting is silent and does not block.",
+        "A file that does not parse blocks with exit 2: gofmt cannot format it, and every later check would run on broken code.",
+        "Without jq or gofmt, it blocks with COULD NOT CHECK.",
+        "A file with another extension, or none, leaves nothing to check."
+      ],
+      "when": "After each Edit or Write.",
+      "without": "Go files are left unformatted, and a file that does not parse goes unnoticed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/hooks/gofmt.sh"
+    },
+    {
+      "id": "bash-write-gates-post",
+      "phase": "post-tool",
+      "row": 4,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse",
+        "PostToolUseFailure"
+      ],
+      "matcher": "Bash",
+      "command": "bash-write-gates.sh post",
+      "effects": [
+        "blocks",
+        "warns"
+      ],
+      "label": "bash-write-gates post",
+      "what": "Runs the Edit and Write gates on the files a Bash call wrote.",
+      "how": [
+        "It compares against the baseline of pre and sends each dirty file through its gate: shellcheck, ruff-format, code-language for .py, .sh, .bash and .go files, and worktree-linkcheck.",
+        "A finding blocks with exit 2.",
+        "A gate whose package is not installed is reported per file, without blocking.",
+        "When it cannot check, it blocks with COULD NOT CHECK."
+      ],
+      "when": "After each Bash call, also one that failed.",
+      "without": "What a Bash call writes skips the gates that an Edit or Write passes.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-gates.sh"
+    },
+    {
+      "id": "ruff-format",
+      "phase": "post-tool",
+      "row": 5,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse"
+      ],
+      "matcher": "Edit|Write",
+      "command": "ruff-format.sh",
+      "effects": [
+        "formats",
+        "blocks"
+      ],
+      "label": "ruff-format",
+      "what": "Runs ruff format and ruff check --fix on an edited Python file.",
+      "how": [
+        "Pass 1 formats and fixes, silently and without blocking.",
+        "Pass 2 blocks with exit 2 on eight rules (BLOCKING_RULES in the script) that are kept at zero across the repo.",
+        "Without jq, uvx or ruff, or with a ruff that does not start, it blocks with COULD NOT CHECK.",
+        "A file with another extension, or none, leaves nothing to check."
+      ],
+      "when": "After each Edit or Write.",
+      "without": "Python files are left unformatted, and a blocking ruff rule goes unnoticed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/hooks/ruff-format.sh"
+    },
+    {
+      "id": "shellcheck",
+      "phase": "post-tool",
+      "row": 6,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse"
+      ],
+      "matcher": "Edit|Write",
+      "command": "shellcheck.sh",
+      "effects": [
+        "blocks"
+      ],
+      "label": "shellcheck",
+      "what": "Runs shellcheck on an edited shell script.",
+      "how": [
+        "In the directories of `shell.strict_dirs` (default `.claude/hooks`) every finding blocks, down to style.",
+        "In every other .sh file only errors and warnings block.",
+        "A finding blocks with exit 2.",
+        "When shellcheck or the tooling is missing, it blocks with COULD NOT CHECK; it is never silent."
+      ],
+      "when": "After each Edit or Write.",
+      "without": "A shell script with a shellcheck finding is committed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/hooks/shellcheck.sh"
+    },
+    {
+      "id": "usage-guard-tool",
+      "phase": "post-tool",
+      "row": 7,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse"
+      ],
+      "matcher": "",
+      "command": "usage-guard.sh tool",
+      "effects": [
+        "blocks"
+      ],
+      "label": "usage-guard tool",
+      "what": "With the usage alarm up, blocks once per window so the session wraps up.",
+      "how": [
+        "It runs after every tool call; without an alarm the cost is one file test.",
+        "The alarm is one line in ${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse/usage-window.alarm, written by the usage meter; the guard never removes it.",
+        "With an alarm it blocks once per window with `{\"decision\": \"block\"}` and exit 0, not exit 2.",
+        "In a controller run it also writes the pause flag. It is fail-open: when it cannot check, it says so on stderr."
+      ],
+      "when": "After each tool call.",
+      "without": "The session runs into the limit instead of wrapping up.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
+    },
+    {
+      "id": "usage-guard-subagent",
+      "phase": "subagent-stop",
+      "row": 7,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "SubagentStop"
+      ],
+      "matcher": "",
+      "command": "usage-guard.sh subagent",
+      "effects": [
+        "blocks"
+      ],
+      "label": "usage-guard subagent",
+      "what": "With the usage alarm up, blocks once per subagent so it wraps up.",
+      "how": [
+        "It runs when a subagent stops.",
+        "The alarm is one line in ${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse/usage-window.alarm, written by the usage meter; the guard never removes it.",
+        "With an alarm it blocks once per subagent with `{\"decision\": \"block\"}` and exit 0, not exit 2.",
+        "It is fail-open: when it cannot check, it says so on stderr."
+      ],
+      "when": "When a subagent stops.",
+      "without": "A subagent runs into the limit instead of wrapping up.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
+    },
+    {
+      "id": "go-check",
+      "phase": "stop",
+      "row": 3,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "Stop"
+      ],
+      "matcher": "",
+      "command": "go-check.sh",
+      "effects": [
+        "blocks",
+        "warns"
+      ],
+      "label": "go-check",
+      "what": "Runs golangci-lint at the end of a turn that touched Go.",
+      "how": [
+        "It lints only a checkout in which the turn touched a Go path: an edit, a Bash write or a commit; the rest gets `not checked`.",
+        "A finding, or a build that fails, blocks with exit 2 and sends the findings back to the model.",
+        "While the usage alarm is up, it says `not checked` and exits 0.",
+        "When it cannot check, it exits 0 with a systemMessage `go-check: COULD NOT CHECK`, since blocking there would keep the session from stopping."
+      ],
+      "when": "At the end of each turn.",
+      "without": "Lint findings in Go code are left for the next turn.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/hooks/go-check.sh"
+    },
+    {
+      "id": "ty-check",
+      "phase": "stop",
+      "row": 5,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "Stop"
+      ],
+      "matcher": "",
+      "command": "ty-check.sh",
+      "effects": [
+        "blocks",
+        "warns"
+      ],
+      "label": "ty-check",
+      "what": "Runs ty check on the Python source directories at the end of a turn that touched Python.",
+      "how": [
+        "It checks the directories in `python.source_dirs`, and only a checkout in which the turn touched a .py or .pyi file there, pyproject.toml, ty.toml or uv.lock.",
+        "A diagnostic blocks with exit 2 and sends it back to the model.",
+        "While the usage alarm is up, it says `not checked` and exits 0; `python.source_dirs = []` turns it off.",
+        "When it cannot check, it exits 0 with a systemMessage `ty-check: COULD NOT CHECK`."
+      ],
+      "when": "At the end of each turn.",
+      "without": "Type errors in Python code are left for the next turn.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/hooks/ty-check.sh"
+    },
+    {
+      "id": "usage-guard-stop",
+      "phase": "stop",
+      "row": 7,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "Stop"
+      ],
+      "matcher": "",
+      "command": "usage-guard.sh stop",
+      "effects": [
+        "blocks"
+      ],
+      "label": "usage-guard stop",
+      "what": "With the usage alarm up, blocks once per window at the end of a turn so the session wraps up.",
+      "how": [
+        "It runs on Stop.",
+        "The alarm is one line in ${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse/usage-window.alarm, written by the usage meter; the guard never removes it.",
+        "With an alarm it blocks once per window with `{\"decision\": \"block\"}` and exit 0, not exit 2.",
+        "It is fail-open: when it cannot check, it says so on stderr."
+      ],
+      "when": "At the end of each turn.",
+      "without": "The session ends without wrapping up, and the next one runs into the limit.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
+    }
+  ],
+  "handoffs": [],
+  "routes": [
+    {
+      "id": "main-commit",
+      "label": "I commit on main",
+      "chips": [
+        "worktree-guard",
+        "main-commit-guard"
+      ]
+    },
+    {
+      "id": "red-tests",
+      "label": "I commit with red tests",
+      "chips": [
+        "commit-tests-pre",
+        "commit-tests-post"
+      ]
+    },
+    {
+      "id": "pr-evidence",
+      "label": "I open a PR without evidence",
+      "chips": [
+        "pr-create-gate"
+      ]
+    },
+    {
+      "id": "usage-limit",
+      "label": "My limit is almost reached",
+      "chips": [
+        "usage-guard-prompt",
+        "usage-guard-tool",
+        "usage-guard-subagent",
+        "usage-guard-stop"
+      ]
+    },
+    {
+      "id": "dead-link",
+      "label": "I write a dead link",
+      "chips": [
+        "bash-write-gates-pre",
+        "worktree-linkcheck",
+        "bash-write-gates-post"
+      ]
+    },
+    {
+      "id": "write-gates",
+      "label": "I write code a gate rejects",
+      "chips": [
+        "bash-write-gates-pre",
+        "code-language",
+        "gofmt",
+        "ruff-format",
+        "shellcheck",
+        "bash-write-gates-post",
+        "go-check",
+        "ty-check"
+      ]
+    }
+  ]
+}
