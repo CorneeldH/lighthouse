@@ -45,15 +45,18 @@ buiten dit plan.
 
 ## Review-focus
 
-1. **De site via `file://` openen.** `fetch` van de JSON faalt dan en de kaart blijft leeg. De
-   pagina moet dan het servercommando tonen. Test in taak 3: `test_pages_name_the_local_server_command`.
+1. **De site via `file://` openen.** `fetch` van de JSON faalt dan en de kaart blijft leeg;
+   Chromium laadt een ES-module vanaf `file://` niet eens, zodat `chain.js` niet draait. De
+   melding met het servercommando staat daarom zichtbaar in de statische HTML en `chain.js`
+   verbergt haar pas na een geslaagde `loadJson`. Test in taak 3:
+   `test_pages_name_the_local_server_command`; de headless check in taak 3, stap 6, opent `file://`.
 2. **Tekst met `<` of `&` in de data**, zoals `issue-<nr>-<slug>`. Die moet letterlijk verschijnen,
    niet als HTML. De component zet data alleen via `textContent`. Test in taak 3:
    `test_component_never_writes_html_from_data`.
 3. **Een smal scherm.** Zeven kolommen passen niet op een telefoon. De kaart scrolt dan
-   horizontaal binnen haar eigen vak, de pagina niet. Handmatige check in taak 3, stap 6.
+   horizontaal binnen haar eigen vak, de pagina niet. Headless check in taak 3, stap 6.
 4. **Geen `localStorage`** (privévenster, geblokkeerde opslag). De themaknop werkt dan nog, alleen
-   zonder geheugen; lezen en schrijven staan in `try/catch`. Handmatige check in taak 3, stap 6.
+   zonder geheugen; lezen en schrijven staan in `try/catch`. Headless check in taak 3, stap 6.
 5. **Een route die een badge mist of een badge die nergens oplicht.** Een sprong omhoog zonder
    handoff, of een handoff op een paar dat in geen route opeenvolgt. Tests in taak 1:
    `test_every_upward_jump_has_a_handoff` en `test_every_handoff_sits_on_a_route_step`.
@@ -85,6 +88,9 @@ buiten dit plan.
     "routes": [{"id": "4c", "label": "Spec first (4c)", "chips": ["write-issue", "…"]}]
   }
   ```
+
+  Optioneel per route: `note` (str), een zin die de kaart onder de routeknoppen toont zolang
+  die route aan staat.
 
   Optioneel per chip: `issue` (int), `milestone` (str), `not_in_first_release` (bool). `source`
   ontbreekt alleen bij een chip van Superpowers of GitHub die lighthouse niet levert. Chips met
@@ -121,7 +127,8 @@ buiten dit plan.
     en voor elk bevat een `SKILL.md` onder `repo_path(from_chip["source"])` (rglob) de tekst
     `lighthouse-handoff`. Alle andere handoffs zijn `planned`.
   - `test_routes_name_existing_chips`: route-`id`'s zijn precies `{"1", "2", "4a", "4b", "4c", "red-pr"}`
-    en elke `id` in een route is een chip.
+    en elke `id` in een route is een chip. Route `1` heeft een `note` die `refresh-expo-lockfiles`
+    een voorbeeld noemt (spec §4: "de skill die het issue sluit").
   - `test_every_upward_jump_has_a_handoff`: voor elk opeenvolgend paar `(a, b)` in een route met
     fase-index `b` > `a` en `b.row < a.row` bestaat een handoff `(a, b)`.
   - `test_every_handoff_sits_on_a_route_step`: elk handoff-paar is een opeenvolgend paar in
@@ -162,6 +169,10 @@ buiten dit plan.
   | `1` | `Known recipe (1)` | write-issue … using-git-worktrees, refresh-expo-lockfiles, commit-tests, verify-pr, pr-create-gate, pr-and-ci, close-issue |
   | `red-pr` | `Red PR` | pr-and-ci, fix-pr, receiving-code-review, pr-and-ci |
 
+  Route `1` krijgt `"note": "The skill whose description matches the issue does the work and closes it; refresh-expo-lockfiles is one example."`
+  Spec §4 zegt "de skill die het issue sluit": `refresh-expo-lockfiles` staat in de route als
+  voorbeeld, niet als de enige.
+
   `handoffs`: precies de sprongen omhoog die de routes geven (de tests in stap 1 dwingen dat af).
   De twee na de reviews zijn `works`; de rest is `planned` met `"milestone": "M2"`. De tekst van
   `handoff` komt uit `pack/core/skills/handoff/SKILL.md`.
@@ -191,7 +202,8 @@ buiten dit plan.
   ```json
   [{"name": "go", "proposed_when": "a go.mod in the repository root", "detect": ["go.mod"],
     "skills": ["go-writing"], "agents": [], "workflows": [],
-    "hooks": [{"name": "gofmt", "when": "after every edit"}, {"name": "go-check", "when": "when the session stops"}],
+    "hooks": [{"name": "gofmt", "events": ["PostToolUse"], "when": "after every edit"},
+              {"name": "go-check", "events": ["Stop"], "when": "when the session stops"}],
     "extra": []}]
   ```
 
@@ -203,12 +215,14 @@ buiten dit plan.
     `pack/` met een `skills/`-map.
   - `test_detect_matches_detect_toml`: `detect` is de `files`-lijst van `pack/<naam>/detect.toml`,
     of de vereniging van `contains[].files`; zonder `detect.toml` (core) is het `[]` en
-    `proposed_when == "always"`.
+    `proposed_when == "always"`. Voor elke `contains[].text` staat die tekst zonder
+    aanhalingstekens (`expo`) in `proposed_when`.
   - `test_skills_agents_workflows_match`: `skills`, `agents` en `workflows` zijn gesorteerd gelijk
     aan de mapnamen onder `skills/`, de stems onder `agents/*.md` en onder `workflows/*`.
   - `test_hooks_match_hooks_json`: `{h["name"] for h in hooks}` is de set script-stems uit elk
     `command` in `pack/<naam>/hooks/hooks.json` (`hooks/<stem>.sh`, argumenten weg); zonder
-    `hooks.json` leeg. Core telt er 8.
+    `hooks.json` leeg. Core telt er 8. Per hook is `sorted(events)` gelijk aan de gesorteerde
+    set events in `hooks.json` waaronder die stem voorkomt.
 
   De aantallen op de pagina komen uit de lengte van deze lijsten (taak 3); daarmee dekt deze test
   ook de aantallen.
@@ -218,9 +232,22 @@ buiten dit plan.
   Run: `uv run pytest -q tests/test_site_packs.py`
   Verwacht: FAIL, `FileNotFoundError` op `docs/site/data/packs.json`.
 
-- [ ] **Stap 3: Schrijf `docs/site/data/packs.json`** volgens de tabel in spec §4 (*Pakketten*),
-  met `when` per hook uit de event in `hooks.json` (`PostToolUse` = "after every edit", `Stop` =
-  "when the session stops").
+- [ ] **Stap 3: Schrijf `docs/site/data/packs.json`** volgens de tabel in spec §4 (*Pakketten*).
+  `events` komt uit `hooks.json`; `when` staat letterlijk hieronder (uit `hooks.json` en
+  `CLAUDE.md` *Hooks*), verzin geen andere tekst:
+
+  | Hook | `events` | `when` |
+  |---|---|---|
+  | `main-commit-guard` | PreToolUse | `before every shell command` |
+  | `commit-tests` | PreToolUse, PostToolUse, PostToolUseFailure | `around every shell command` |
+  | `bash-write-gates` | PreToolUse, PostToolUse, PostToolUseFailure | `around every shell command` |
+  | `pr-create-gate` | PreToolUse | `before every shell command` |
+  | `worktree-guard` | PreToolUse | `before every edit` |
+  | `worktree-linkcheck` | PostToolUse | `after every edit` |
+  | `code-language` | PostToolUse | `after every edit` |
+  | `usage-guard` | PostToolUse, Stop, SubagentStop, UserPromptSubmit | `at every prompt, tool call, subagent stop and session stop` |
+  | `gofmt`, `ruff-format`, `shellcheck` | PostToolUse | `after every edit` |
+  | `go-check`, `ty-check` | Stop | `when the session stops` |
 
 - [ ] **Stap 4: Draai de tests en zie ze slagen**
 
@@ -258,7 +285,9 @@ buiten dit plan.
   - `test_site_links_resolve`: voor elke `docs/site/**/*.html` en `docs/site/**/*.js` wijst elke
     `relative_links` naar een bestaand bestand, relatief aan het bestand.
   - `test_pages_name_the_local_server_command`: `chain.html` bevat letterlijk
-    `python3 -m http.server --directory docs/site` (de melding bij een mislukte `fetch`).
+    `python3 -m http.server --directory docs/site`, in een element met `id="serve-hint"` dat in
+    de HTML geen attribuut `hidden` en geen `display: none` heeft (de melding moet zonder JS
+    zichtbaar zijn).
   - `test_component_never_writes_html_from_data`: `map.js` en `chain.js` bevatten geen
     `innerHTML`, `outerHTML`, `insertAdjacentHTML` of `document.write`.
   - `test_page_lang_is_english`: elke `docs/site/**/*.html` heeft `<html lang="en">`.
@@ -280,7 +309,8 @@ buiten dit plan.
   - de kaarthoogte volgt uit de hoogste `row`; de kaart staat in een vak met `overflow-x: auto` en
     een `min-width`, zodat alleen dat vak scrolt;
   - een route-knop licht de route op en dimt de rest; een handoff-badge licht alleen op als zijn
-    paar in de gekozen route opeenvolgt; de eerste route staat bij laden aan;
+    paar in de gekozen route opeenvolgt; de eerste route staat bij laden aan; de `note` van de
+    gekozen route staat onder de routeknoppen;
   - het detailpaneel toont: het label en het teken, `what`, dan "When it starts" (`when`), "Who
     provides it" (uit `kind`, met het pakket uit het `source`-pad), "What you miss without"
     (`without`), de status, en een link "Source" naar `source`. Een badge toont `handoff` met zijn
@@ -291,8 +321,9 @@ buiten dit plan.
 
   `chain.html`: titel, ondertitel, legenda (kinds, tekens, statussen, badge vol/gestippeld), de
   themaknop, een vak voor de kaart, het detailpaneel, en daaronder `<section id="packs">` met de
-  pakkettabel; een link terug naar `index.html`. Een `<p>` met het servercommando staat verborgen
-  en wordt zichtbaar als `loadJson` gooit. `chain.js` laadt `data/chain.json` en
+  pakkettabel. De link terug naar `index.html` komt in taak 4, als `index.html` bestaat. Een
+  `<p id="serve-hint">` met het servercommando staat zichtbaar in de HTML; `chain.js` verbergt
+  haar pas als `loadJson` slaagt. `chain.js` laadt `data/chain.json` en
   `data/packs.json`, roept `renderFlowMap` en `initTheme` aan, en rendert de pakkettabel: per
   pakket `proposed_when`, de skills, de agents en workflows, de hooks met `when`, en `extra`, met
   de aantallen uit de lijstlengtes.
@@ -302,16 +333,29 @@ buiten dit plan.
   Run: `uv run pytest -q tests/test_site_pages.py`
   Verwacht: PASS.
 
-- [ ] **Stap 6: Handmatige check in een browser**
+- [ ] **Stap 6: Headless check in de browser (wegwerpscript, niet committen)**
 
-  Run: `python3 -m http.server --directory docs/site 8099` en open
-  `http://localhost:8099/chain.html`. Verwacht:
-  - zeven kolommen en de band "Always on"; elke route-knop licht zijn pad op, inclusief de
-    badges op zijn sprongen omhoog; twee badges zijn vol;
-  - een chip openen met muis en met Tab + Enter;
-  - de themaknop wisselt licht en donker; in een privévenster ook, zonder fout in de console;
-  - op 375 px breed scrolt alleen de kaart horizontaal;
-  - `file://…/chain.html` toont het servercommando.
+  In de worktree: `npm ci --prefix web` (Playwright 1.64.1 uit `web/package.json`; chromium staat
+  in de cache `~/.cache/ms-playwright`). Start `python3 -m http.server --directory docs/site 8099`
+  op de achtergrond. Schrijf in de scratchpad een CommonJS-script `site-check.cjs` naar het
+  patroon van `web/e2e/screenshot.mjs` (`const { chromium } = require('@playwright/test')`) en
+  draai het met `NODE_PATH=web/node_modules node <scratchpad>/site-check.cjs`. Het script faalt
+  (exit 1) zodra één assert niet klopt, en checkt op `http://localhost:8099/chain.html`:
+  - zeven kolommen en de band "Always on" zijn zichtbaar;
+  - per route-knop: na een klik zijn precies de chips van die route niet gedimd, lichten precies
+    de badges van haar handoff-paren op, en staat haar `note` (als ze die heeft) in beeld;
+    over de hele kaart zijn twee badges vol;
+  - Tab naar een chip en Enter: het detailpaneel toont het label van die chip;
+  - de themaknop wisselt `data-theme` op `<html>`; ook in een context waarin `localStorage`
+    gooit (`addInitScript` dat de getter vervangt door een `throw`), zonder `pageerror`;
+  - bij een viewport van 375 px breed: `document.documentElement.scrollWidth <= 375` en het
+    kaartvak heeft `scrollWidth > clientWidth`;
+  - `file://<worktree>/docs/site/chain.html`: `#serve-hint` is zichtbaar;
+  - schermafdrukken licht en donker naar de scratchpad, voor het bewijs in de PR.
+
+  Lukt `npm ci` of de start van chromium niet, meld dat dan letterlijk en zet deze lijst als
+  handstap voor de eigenaar in de PR-body; vink hem niet zelf af. Stop de server na afloop en
+  controleer dat `git status` geen bestand van de check toont.
 
 - [ ] **Stap 7: Commit**
 
@@ -324,6 +368,7 @@ buiten dit plan.
 
 **Files:**
 - Create: `docs/site/index.html`
+- Modify: `docs/site/chain.html` (link terug naar `index.html`)
 - Modify: `docs/getting-started.md` (sectie `## Your first issue`)
 - Modify: `tests/test_site_pages.py`
 
@@ -335,6 +380,7 @@ buiten dit plan.
   - `test_site_links_resolve` neemt ook `docs/getting-started.md` mee.
   - `test_index_lists_the_six_maps`: `index.html` linkt naar `chain.html` en noemt `#100`, `#101`,
     `#102`, `#103` en `#104`.
+  - `test_chain_links_back_to_index`: `chain.html` heeft een `href="index.html"`.
   - `test_guide_links_to_the_chain_map`: de sectie `## Your first issue` van de gids bevat de
     link `site/chain.html` en het servercommando.
 
@@ -348,7 +394,7 @@ buiten dit plan.
   `index.html`: `<header>` met naam en één zin, dan `<section id="maps">` met zes tegels. K1 is
   een link naar `chain.html`; K2–K6 zijn tegels zonder link, `planned` met hun issue (spec, tabel
   bovenaan). Een HTML-commentaar boven `#maps` zegt dat #89 de download daarboven zet. Zelfde
-  `map.css` en themaknop.
+  `map.css` en themaknop. In `chain.html` komt de link terug naar `index.html`.
 
   In `docs/getting-started.md`, onder `## Your first issue`: één zin met een relatieve link naar
   `site/chain.html` (als markdownlink) en het commando
@@ -362,7 +408,7 @@ buiten dit plan.
 - [ ] **Stap 5: Commit**
 
   ```bash
-  git add docs/site/index.html docs/getting-started.md tests/test_site_pages.py
+  git add docs/site/index.html docs/site/chain.html docs/getting-started.md tests/test_site_pages.py
   git commit -m "feat(site): ingang met de zes kaarten en link vanuit de startgids (#99)"
   ```
 
@@ -383,6 +429,7 @@ buiten dit plan.
   - `test_runs_on_site_changes_on_main`: `branches: [main]`, `- "docs/site/**"` onder `paths` en
     `workflow_dispatch:`.
   - `test_permissions_for_pages`: `pages: write`, `id-token: write`, `contents: read`.
+  - `test_job_has_a_runner`: een regel `runs-on: ubuntu-latest`.
   - `test_actions_are_pinned`: elke `uses:`-regel matcht `@[0-9a-f]{40} # v\d`.
 
 - [ ] **Stap 2: Draai de tests en zie ze falen**
@@ -392,7 +439,7 @@ buiten dit plan.
 
 - [ ] **Stap 3: Schrijf `.github/workflows/pages.yml`**
 
-  Kopcommentaar zoals `ci.yml`. Eén job `deploy`, `environment: github-pages` met
+  Kopcommentaar zoals `ci.yml`. Eén job `deploy` met `runs-on: ubuntu-latest`, `environment: github-pages` met
   `url: ${{ steps.deployment.outputs.page_url }}`, `concurrency: {group: pages, cancel-in-progress: false}`,
   `timeout-minutes: 10`. Stappen met deze pins:
 
@@ -420,9 +467,11 @@ buiten dit plan.
 
 - [ ] **Stap 6: Handstap voor de eigenaar, in de PR-body**
 
-  Pages staat nog uit (`has_pages: false`). Vóór de eerste deploy zet de eigenaar
-  *Settings → Pages → Source* op **GitHub Actions**; daarna `workflow_dispatch` of een push op
-  `docs/site/**`. De uitvoerder zet die instelling niet zelf.
+  Pages staat nog uit (`has_pages: false`). Vóór de merge zet de eigenaar
+  *Settings → Pages → Source* op **GitHub Actions**: de merge zelf is een push op `docs/site/**`
+  en start de eerste deploy. Staat Pages bij de merge nog uit, dan is die run rood en herstelt
+  `workflow_dispatch` na het aanzetten hem. De uitvoerder zet die instelling niet zelf. Of de site
+  live staat, controleert `/lighthouse-close-issue` na de merge.
 
 ### Taak 6: Eindcontrole
 
