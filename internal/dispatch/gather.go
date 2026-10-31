@@ -93,7 +93,8 @@ func mergePRs(closing, onBranch []forge.PR) []forge.PR {
 
 // Complete reads the comments of every prepared item and returns the snapshot. Comments of an
 // untrusted author drop out; a dropped 🤖-comment gets one line in log. A comment's Rocket is
-// set only when tokenLogin put a 🚀 on it. Any failed request fails the whole gather.
+// set only when tokenLogin put a 🚀 on it. Any failed request fails the whole gather. Every
+// list in the snapshot is non-nil, so its JSON has [] where a list is empty, never null.
 func Complete(ctx context.Context, c *forge.Client, pre Pre, trust *Trust, tokenLogin string, log io.Writer, now time.Time) (Snapshot, error) {
 	items := make([]Item, 0, len(pre.Items))
 	for _, it := range pre.Items {
@@ -101,7 +102,9 @@ func Complete(ctx context.Context, c *forge.Client, pre Pre, trust *Trust, token
 		if err != nil {
 			return Snapshot{}, err
 		}
-		it.Comments = nil
+		it.BlockedBy = nonNil(it.BlockedBy)
+		it.PRs = nonNil(it.PRs)
+		it.Comments = []Comment{}
 		for _, pc := range all {
 			ok, err := trust.Trusted(ctx, pc.Author)
 			if err != nil {
@@ -129,8 +132,16 @@ func Complete(ctx context.Context, c *forge.Client, pre Pre, trust *Trust, token
 		TokenLogin: tokenLogin,
 		GatheredAt: now.UTC(),
 		Items:      items,
-		OpenRuns:   pre.OpenRuns,
+		OpenRuns:   nonNil(pre.OpenRuns),
 	}, nil
+}
+
+// nonNil returns s, or an empty slice when s is nil.
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }
 
 // tokenRocket reports whether tokenLogin put a 🚀 on the comment. A comment without any 🚀

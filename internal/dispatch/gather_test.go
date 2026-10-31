@@ -3,6 +3,7 @@ package dispatch
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -260,6 +261,36 @@ func TestCompleteFailsOnPermissionError(t *testing.T) {
 	srv.Comments = map[int][]map[string]any{7: {comment(1, "owner", "ja")}}
 	if _, err := Complete(context.Background(), c, pre7(), NewTrust(c, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now()); err == nil {
 		t.Fatal("Complete with a 500 on the permission route gave no error")
+	}
+}
+
+func TestCompleteWritesEmptyListsAsArrays(t *testing.T) {
+	_, c := client(t)
+	for name, tc := range map[string]struct {
+		pre  Pre
+		want []string
+	}{
+		"empty board": {Pre{Repo: testRepo}, []string{`"items": []`, `"open_runs": []`}},
+		"bare item":   {pre7(), []string{`"blocked_by": []`, `"prs": []`, `"comments": []`, `"open_runs": []`}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			snap, err := Complete(context.Background(), c, tc.pre, NewTrust(c, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now())
+			if err != nil {
+				t.Fatal(err)
+			}
+			data, err := json.MarshalIndent(snap, "", "  ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, w := range tc.want {
+				if !bytes.Contains(data, []byte(w)) {
+					t.Errorf("snapshot JSON lacks %s:\n%s", w, data)
+				}
+			}
+			if bytes.Contains(data, []byte("null")) {
+				t.Errorf("snapshot JSON has a null:\n%s", data)
+			}
+		})
 	}
 }
 

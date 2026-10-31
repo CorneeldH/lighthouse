@@ -2,25 +2,50 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/flock"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
+	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
-// tickEnv is what tick reads from the machine: the environment and the path of host.toml.
+// tickEnv is what tick and gather read from the machine: the environment, the path of
+// host.toml, the GitHub API root and the clock. Only tests set ForgeURL and Now.
 type tickEnv struct {
 	Getenv   func(string) string
 	HostToml string
+	ForgeURL string           // "" is forge.DefaultBaseURL
+	Now      func() time.Time // nil is time.Now
+}
+
+func (e tickEnv) now() time.Time {
+	if e.Now == nil {
+		return time.Now()
+	}
+	return e.Now()
+}
+
+// client returns a GitHub client for repo at ForgeURL.
+func (e tickEnv) client(repo, token string) *forge.Client {
+	c := forge.New(repo, token)
+	if e.ForgeURL != "" {
+		c.BaseURL = e.ForgeURL
+	}
+	return c
 }
 
 func newTickCommand() *cobra.Command {
@@ -28,8 +53,9 @@ func newTickCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tick",
 		Short: "Run one dispatcher tick",
-		Long: "Run one dispatcher tick over the repos in host.toml [dispatch]. A repo that cannot be\n" +
-			"dispatched is skipped loudly and tick exits 1; a tick that is still running makes this one exit 0.",
+		Long: "Run one dispatcher tick over the repos in host.toml [dispatch]. Each dispatchable repo gets\n" +
+			"a precheck and, when something changed, a full gather. A repo that cannot be dispatched or\n" +
+			"gathered is skipped loudly and tick exits 1; a tick that is still running makes this one exit 0.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			env := tickEnv{Getenv: os.Getenv, HostToml: hostconfig.Path()}
@@ -41,8 +67,8 @@ func newTickCommand() *cobra.Command {
 }
 
 // tick takes tick.lock, loads the repos of host.toml and skips, loudly, each one that is not
-// dispatchable. A busy lock is not an error. At least one skip returns errSilent: the reasons
-// are already on errOut.
+// dispatchable or whose gather fails; the others get gatherRepo. A busy lock is not an error.
+// At least one skip returns errSilent: the reasons are already on errOut.
 func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) error {
 	runtime := env.Getenv("XDG_RUNTIME_DIR")
 	if runtime == "" {
@@ -65,7 +91,8 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	}
 	defer func() { _ = lock.Close() }()
 
-	if githubToken(env.Getenv) == "" {
+	token := githubToken(env.Getenv)
+	if token == "" {
 		return errors.New("tick: no GitHub token: set GH_TOKEN or GITHUB_TOKEN")
 	}
 	cfg, err := hostconfig.LoadDispatch(env.HostToml)
@@ -90,11 +117,21 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	}
 	defer func() { _ = st.Close() }()
 
+	// One GET /user per tick, and none when no repo is due. /user does not depend on the
+	// repo, so the client of the first dispatchable repo serves every repo.
+	var login func() (string, error)
 	skipped := false
 	for _, path := range cfg.Repos {
 		repo, err := repoconfig.Load(path)
 		if err == nil {
 			err = repoconfig.Dispatchable(repo)
+		}
+		if err == nil {
+			if login == nil {
+				c := env.client(repo.Slug, token)
+				login = sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
+			}
+			err = gatherRepo(ctx, env, st.DB, cfg, repo, token, login, errOut)
 		}
 		if err != nil {
 			skipped = true
@@ -106,4 +143,57 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 		return errSilent
 	}
 	return nil
+}
+
+// gatherRepo runs the precheck for repo and, when it is due, the full gather. A repo that is
+// not due writes nothing. A full gather saves the fingerprint and its time and writes one
+// gathered line to errOut; an error saves nothing. Until #114 decides on the snapshot, every
+// full gather saves the state.
+func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, repo repoconfig.Repo,
+	token string, login func() (string, error), errOut io.Writer) error {
+	open, err := runs.Open(ctx, db, repo.Slug)
+	if err != nil {
+		return err
+	}
+	c := env.client(repo.Slug, token)
+	pre, err := dispatch.Prepare(ctx, c, repo, open)
+	if err != nil {
+		return err
+	}
+	fp := dispatch.Fingerprint(pre)
+	prev, err := dispatch.LoadTickState(ctx, db, repo.Slug)
+	if err != nil {
+		return err
+	}
+	now := env.now()
+	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, open, now))
+	if !due {
+		return nil
+	}
+	who, err := login()
+	if err != nil {
+		return err
+	}
+	snap, err := dispatch.Complete(ctx, c, pre, dispatch.NewTrust(c, cfg.AnswerPermissions), who, errOut, now)
+	if err != nil {
+		return err
+	}
+	if err := dispatch.SaveTickState(ctx, db, repo.Slug, dispatch.TickState{Fingerprint: fp, FullAt: now}, now); err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(errOut, "lighthouse: gathered %s: %d items (%s)\n", repo.Slug, len(snap.Items), reason)
+	return nil
+}
+
+// tokenLogin returns the login of the token. A 🚀 counts only from this login, so an empty
+// login is an error rather than a gather in which no 🚀 counts.
+func tokenLogin(ctx context.Context, c *forge.Client) (string, error) {
+	login, err := c.Login(ctx)
+	if err != nil {
+		return "", err
+	}
+	if login == "" {
+		return "", errors.New("GET /user: token has no login")
+	}
+	return login, nil
 }
