@@ -96,10 +96,43 @@ def test_binary_runs_without_web():
     assert "web-dist" not in _text()
 
 
+def _go_jobs() -> dict[str, str]:
+    return {name: body for name, body in _jobs().items() if name == "go" or name.startswith("go-")}
+
+
+def test_go_jobs_wait_for_changes():
+    """Fails when a job split off from go runs without the go output of the changes job."""
+    jobs = _go_jobs()
+    assert len(jobs) >= 2, sorted(jobs)
+    for name, body in jobs.items():
+        assert re.search(r"^    needs: changes\s*$", body, re.MULTILINE), name
+        assert "if: needs.changes.outputs.go == 'true'" in body, name
+
+
+def test_go_checks_stay_in_go_jobs():
+    """Fails when a Go check drops out of every go job while the go jobs are split."""
+    go = "\n".join(_go_jobs().values())
+    for needle in (
+        "golangci/golangci-lint-action@",
+        "- run: CGO_ENABLED=0 go build ./...",
+        "- run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...",
+        "- run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...",
+        "- run: go test -race -shuffle=on ./...",
+        "- run: go test -race -shuffle=on -tags e2e ./e2e/ -v",
+        "name: installed pack/core matches pack/",
+    ):
+        assert needle in go, needle
+
+
+def test_no_measurement_step():
+    """Fails when the temporary #131 measurement step stays in CI."""
+    assert "-run '^$'" not in _text()
+
+
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert len(uses) == 14, uses
+    assert len(uses) == 16, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)
