@@ -375,7 +375,7 @@ def test_skill_uses_the_hook_pin():
     pin = re.search(r'^TY_VERSION="([^"]+)"', (PACK / "hooks/ty-check.sh").read_text(), re.M)
     assert pin, "TY_VERSION not found in ty-check.sh"
     for variant in ("claude", "agents"):
-        text = (PACK / f"skills/python-writing/{variant}/SKILL.md").read_text()
+        text = (PACK / f"skills/python-standard/{variant}/SKILL.md").read_text()
         assert re.findall(r"ty@([\d.]+)", text) and set(re.findall(r"ty@([\d.]+)", text)) == {
             pin.group(1)
         }, variant

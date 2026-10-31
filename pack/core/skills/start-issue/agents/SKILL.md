@@ -160,12 +160,12 @@ skill, that travels along as context for the execution.
 
 **Controller run?** (Only if present.) If the prompt ended on `(issue #<nr>, controller-run)`,
 do not call `superpowers:brainstorming` at exit **c**: headless, nobody can answer. Post with
-`/lighthouse-handoff` (controller mode) a handoff with `next: /superpowers:brainstorming` and
+`/lighthouse-write-handoff` (controller mode) a handoff with `next: /superpowers:brainstorming` and
 stop. The controller returns the issue with "needs a brainstorm".
 
 **Blocked in a controller run?** (Only if present.) If the line carries `— blocker #<x> open`:
 - Gate `4b` or `4c`: execute the route as always; those already end in a handoff.
-- Gate `1`, `2` or `4a`: do not execute. Post with `/lighthouse-handoff` (controller mode) a
+- Gate `1`, `2` or `4a`: do not execute. Post with `/lighthouse-write-handoff` (controller mode) a
   handoff `next: /lighthouse-start-issue <nr>` from the issue's own worktree, and stop. The
   controller starts it only when the predecessor's PR is green.
 - Exception: if the last `🤖 heading:kind_started` on the issue carries the field
@@ -251,7 +251,7 @@ you report an error and follow the fail-open path: the route goes on with the no
 exploration of the next skill. You do **not simulate** the persona with a general executor — then
 you get the cost of a subagent without the bounds that make it useful.
 
-**b ends at the committed plan.** Plan written and committed → `/lighthouse-handoff` (fixed seam).
+**b ends at the committed plan.** Plan written and committed → `/lighthouse-write-handoff` (fixed seam).
 That lets the user choose: plan review, controller (SDD, if present) or interactive (`/superpowers:executing-plans`). Execution follows only after that choice, in a window of its
 own or through the controller.
 
@@ -267,7 +267,7 @@ plugin's own folder.
 - ✅ Report all three axes · ❌ name only the axis that decided the route
 - ✅ Get the route from `lighthouse-route-issue` and copy its line literally before the next
   `Skill` call · ❌ route yourself, summarise the line, or name it only after handing on
-- ✅ After b: commit the plan, then `/lighthouse-handoff` with the choice review, controller (if present) or interactive · ❌ SDD in the same session, or skip the plan review without a decision of the user
+- ✅ After b: commit the plan, then `/lighthouse-write-handoff` with the choice review, controller (if present) or interactive · ❌ SDD in the same session, or skip the plan review without a decision of the user
 - ✅ Name the project path when handing on · ❌ let superpowers choose its own default folder
 - ✅ At 4b/4c call the scout or skip it with a concrete reason · ❌ skip it silently
 - ✅ Leave the pack in context and refer to it with `IMPACT PACK: in context, do not repeat` · ❌ summarise, paraphrase or repeat the pack in the Skill args

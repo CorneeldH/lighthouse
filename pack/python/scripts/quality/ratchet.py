@@ -973,7 +973,7 @@ def _report_failures(heading: str, failures: list[str]) -> None:
 # only failure a bump can solve; a zero rule or hard limit is not.
 BUMPABLE_FAILURE = re.compile(r"^\w+: \d+ -> \d+")
 COMPLEXITY_SKILL = (
-    ".claude/skills/lighthouse-python-writing/SKILL.md, section "
+    ".claude/skills/lighthouse-python-standard/SKILL.md, section "
     "`## Reaching a complexity limit: deepen, don't split`"
 )
 

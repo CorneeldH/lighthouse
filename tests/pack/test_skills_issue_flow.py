@@ -63,7 +63,7 @@ def test_gate_0_routes_on_in_a_controller_run():
         gate0 = body[body.index("### Gate 0") : body.index("### Gate 1")]
         assert "controller run" in gate0.lower()
         assert "labels.blocked_external" in gate0
-        assert "/lighthouse-handoff" not in gate0  # the router posts nothing
+        assert "/lighthouse-write-handoff" not in gate0  # the router posts nothing
 
 
 def test_router_invariants_know_the_controller_run():
@@ -315,7 +315,7 @@ def test_the_agents_variant_names_the_missing_persona():
 def test_handoff_blocked_restart_from_its_own_worktree():
     """The blocked restart from lighthouse-start-issue comes from the issue's own worktree;
     from `main` the controller puts it on hold and never stacks."""
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         step3 = _step(body, "3. **`next:`", "4. **`when:`**")
         assert "main checkout and `branch:` `main`" in step3
         assert "— blocker #<x> open" in step3
@@ -335,16 +335,16 @@ PLAN_SEAM = [
     "`First step: /superpowers:executing-plans <plan>`",
     "| What there is | First step | Controller (if present) |",
     "The Controller column says what controller mode step 2 does",
-    "`/lighthouse-spec-adversarial-review` on that spec | `default` |",
+    "`/lighthouse-review-spec` on that spec | `default` |",
     "`/superpowers:writing-plans` on that spec | `no` |",
-    "`/lighthouse-plan-adversarial-review` on that plan | `choice` |",
+    "`/lighthouse-review-plan` on that plan | `choice` |",
     "`/superpowers:executing-plans` | `offer` |",
     "`/lighthouse-fix-pr <pr>` | `offer` |",
     "At `choice` you print two blocks in step 6 before the question: first *review*, then *interactive*.",
     "Only *controller* still asks for an answer in this window.",
     "then ask the question only with *review* or *interactive*, without *controller*",
     "At `no` you do not read the board status; if the issue is on `Controller` anyway, it stays there until the user moves it.",
-    "If the user wants the plan review itself through the controller: `next: /lighthouse-plan-adversarial-review <plan>` and steps 5 and 6.",
+    "If the user wants the plan review itself through the controller: `next: /lighthouse-review-plan <plan>` and steps 5 and 6.",
     "When in doubt: **review**.",
     "This also holds when the issue is already on `Controller`",
 ]
@@ -352,7 +352,7 @@ PLAN_SEAM = [
 
 def test_handoff_plan_seam_asks_in_chat_text():
     """At a committed plan the user chooses, after inspection."""
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         flat = " ".join(body.split())
         missing = [phrase for phrase in PLAN_SEAM if " ".join(phrase.split()) not in flat]
         assert not missing, missing
@@ -361,11 +361,11 @@ def test_handoff_plan_seam_asks_in_chat_text():
 def test_handoff_plan_seam_blocks_before_the_question():
     """At *review* or *interactive* the user need not come back to the window: review
     block, interactive block, only then plan link, advice and question."""
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         start = body.index("**Exception: a plan, not reviewed.**")
         para = body[start : body.index("A controller run does not ask this", start)]
         order = [
-            "`First step: /lighthouse-plan-adversarial-review <plan>`",
+            "`First step: /lighthouse-review-plan <plan>`",
             "`First step: /superpowers:executing-plans <plan>`",
             "Plan is in",
             "My advice:",
@@ -376,7 +376,7 @@ def test_handoff_plan_seam_blocks_before_the_question():
 
 
 def test_handoff_plan_seam_exception_before_controller_post():
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         assert body.index("**Exception: a plan, not reviewed.**") < body.index(
             "Only at `offer` (never at `default` above): if it is already on `Controller`, "
             "post at once"
@@ -384,7 +384,7 @@ def test_handoff_plan_seam_exception_before_controller_post():
 
 
 def test_handoff_post_artefact():
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         flat = " ".join(body.split())
         for phrase in (
             "python3 .lighthouse/scripts/post_artefact.py <nr> <absolute path>",
@@ -397,7 +397,7 @@ def test_handoff_post_artefact():
 
 
 def test_handoff_post_artefact_is_in_step_3():
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         assert (
             body.index("3. **Decide the anchor.**")
             < body.index(".lighthouse/scripts/post_artefact.py")
@@ -406,10 +406,10 @@ def test_handoff_post_artefact_is_in_step_3():
 
 
 def test_handoff_pause_form():
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         flat = " ".join(body.split())
         for phrase in (
-            "## Pause form: /lighthouse-handoff <path>",
+            "## Pause form: /lighthouse-write-handoff <path>",
             "an absolute path that ends in `.handoff.md`",
             "mkdir -p",
             "mv",
@@ -424,7 +424,7 @@ def test_handoff_pause_form():
 
 
 def test_handoff_pause_form_skips_phase_side_effects():
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         assert body.index("## Pause form") < body.index("## Workflow")
         section = body[body.index("## Pause form") : body.index("## Workflow")]
         flat = " ".join(section.split())
@@ -442,14 +442,14 @@ def test_handoff_pause_form_skips_phase_side_effects():
 def test_guard_names_the_pause_form():
     lib = (CORE / "lib/usage_guard.py").read_text(encoding="utf-8")
     resume = (CORE / "hooks/usage-guard/resume.py").read_text(encoding="utf-8")
-    assert "/lighthouse-handoff " in lib
+    assert "/lighthouse-write-handoff " in lib
     # resume.py builds on base_speak (refactor 00c4090), so its reasons carry the same call
     assert "base_speak(" in resume
     assert ".handoff.md" in lib
 
 
 def test_handoff_knows_lane_native():
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         assert "lane: native" in body
         assert "the controller starts it on Sonnet" in body
         assert "Yes, native" in body
@@ -458,7 +458,7 @@ def test_handoff_knows_lane_native():
 def test_handoff_writes_new_tokens():
     """The handoff block writes the tokens of `lighthouse_lib.protocol` (Protocoltokens):
     `next:`, `when: now|night`, `anchor:`, under the heading from headings.toml."""
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         post = body[body.index("5. **Post**") : body.index("6. **Status")]
         for token in ("anchor: <anchor>", "next: <command> <argument>", "when: now"):
             assert token in post, token
@@ -469,7 +469,7 @@ def test_handoff_writes_new_tokens():
 
 
 def test_handoff_board_and_host_from_config():
-    for body in skill("handoff"):
+    for body in skill("write-handoff"):
         for key in (
             "forge.owner",
             "forge.name",

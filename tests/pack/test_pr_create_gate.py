@@ -109,7 +109,7 @@ def test_no_form_blocks(gate: Gate) -> None:
     result = gate.run("gh pr create --body 'zie titel'")
 
     assert result.returncode == 2, result.stdout
-    assert "/lighthouse-verify-pr" in result.stderr
+    assert "/lighthouse-write-pr" in result.stderr
 
 
 def test_cd_prefix_reads_relative(gate: Gate) -> None:
@@ -250,7 +250,7 @@ def test_hook_registered_and_executable() -> None:
     assert len(entries) == 1, bash_blocks[0]["hooks"]
     assert entries[0]["timeout"] == 15
     assert os.access(HOOK, os.X_OK)
-    assert "# Counterpart: /lighthouse-verify-pr" in HOOK.read_text(encoding="utf-8")
+    assert "# Counterpart: /lighthouse-write-pr" in HOOK.read_text(encoding="utf-8")
 
 
 def run_hook_raw(gate: Gate):

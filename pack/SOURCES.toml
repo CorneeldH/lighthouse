@@ -245,12 +245,12 @@ source_path = ".agents/skills/paia-start-issue/SKILL.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/handoff/SKILL.md"
+path = "pack/core/skills/write-handoff/SKILL.md"
 source_path = [".claude/skills/paia-handoff/SKILL.md", ".agents/skills/paia-handoff/SKILL.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/verify-pr/SKILL.md"
+path = "pack/core/skills/write-pr/SKILL.md"
 source_path = [".claude/skills/paia-verify-pr/SKILL.md", ".agents/skills/paia-verify-pr/SKILL.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
@@ -275,42 +275,42 @@ source_path = ".agents/skills/paia-close-issue/SKILL.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/spec-adversarial-review/claude/SKILL.md"
+path = "pack/core/skills/review-spec/claude/SKILL.md"
 source_path = ".claude/skills/paia-spec-adversarial-review/SKILL.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/spec-adversarial-review/agents/SKILL.md"
+path = "pack/core/skills/review-spec/agents/SKILL.md"
 source_path = ".agents/skills/paia-spec-adversarial-review/SKILL.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/spec-adversarial-review/findings.schema.json"
+path = "pack/core/skills/review-spec/findings.schema.json"
 source_path = [".claude/skills/paia-spec-adversarial-review/findings.schema.json", ".agents/skills/paia-spec-adversarial-review/findings.schema.json"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/spec-adversarial-review/verification.schema.json"
+path = "pack/core/skills/review-spec/verification.schema.json"
 source_path = [".claude/skills/paia-spec-adversarial-review/verification.schema.json", ".agents/skills/paia-spec-adversarial-review/verification.schema.json"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/spec-adversarial-review/reviewer-prompt.md"
+path = "pack/core/skills/review-spec/reviewer-prompt.md"
 source_path = [".claude/skills/paia-spec-adversarial-review/reviewer-prompt.md", ".agents/skills/paia-spec-adversarial-review/reviewer-prompt.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/spec-adversarial-review/verifier-prompt.md"
+path = "pack/core/skills/review-spec/verifier-prompt.md"
 source_path = [".claude/skills/paia-spec-adversarial-review/verifier-prompt.md", ".agents/skills/paia-spec-adversarial-review/verifier-prompt.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/spec-adversarial-review/review.sh"
+path = "pack/core/skills/review-spec/review.sh"
 source_path = [".claude/skills/paia-spec-adversarial-review/review.sh", ".agents/skills/paia-spec-adversarial-review/review.sh"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/spec-adversarial-review/verify.sh"
+path = "pack/core/skills/review-spec/verify.sh"
 source_path = [".claude/skills/paia-spec-adversarial-review/verify.sh", ".agents/skills/paia-spec-adversarial-review/verify.sh"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
@@ -320,57 +320,57 @@ source_path = ".claude/settings.json"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
-path = "pack/core/skills/plan-adversarial-review/claude/SKILL.md"
+path = "pack/core/skills/review-plan/claude/SKILL.md"
 source_path = ".claude/skills/paia-plan-adversarial-review/SKILL.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/plan-adversarial-review/agents/SKILL.md"
+path = "pack/core/skills/review-plan/agents/SKILL.md"
 source_path = ".agents/skills/paia-plan-adversarial-review/SKILL.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/plan-adversarial-review/findings.schema.json"
+path = "pack/core/skills/review-plan/findings.schema.json"
 source_path = [".claude/skills/paia-plan-adversarial-review/findings.schema.json", ".agents/skills/paia-plan-adversarial-review/findings.schema.json"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/plan-adversarial-review/verification.schema.json"
+path = "pack/core/skills/review-plan/verification.schema.json"
 source_path = [".claude/skills/paia-plan-adversarial-review/verification.schema.json", ".agents/skills/paia-plan-adversarial-review/verification.schema.json"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/plan-adversarial-review/reviewer-prompt.md"
+path = "pack/core/skills/review-plan/reviewer-prompt.md"
 source_path = [".claude/skills/paia-plan-adversarial-review/reviewer-prompt.md", ".agents/skills/paia-plan-adversarial-review/reviewer-prompt.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/plan-adversarial-review/verifier-prompt.md"
+path = "pack/core/skills/review-plan/verifier-prompt.md"
 source_path = [".claude/skills/paia-plan-adversarial-review/verifier-prompt.md", ".agents/skills/paia-plan-adversarial-review/verifier-prompt.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/plan-adversarial-review/review.sh"
+path = "pack/core/skills/review-plan/review.sh"
 source_path = [".claude/skills/paia-plan-adversarial-review/review.sh", ".agents/skills/paia-plan-adversarial-review/review.sh"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/plan-adversarial-review/verify.sh"
+path = "pack/core/skills/review-plan/verify.sh"
 source_path = [".claude/skills/paia-plan-adversarial-review/verify.sh", ".agents/skills/paia-plan-adversarial-review/verify.sh"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/worktree-audit/SKILL.md"
+path = "pack/core/skills/audit-worktrees/SKILL.md"
 source_path = [".claude/skills/paia-worktree-audit/SKILL.md", ".agents/skills/paia-worktree-audit/SKILL.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/instrument/SKILL.md"
+path = "pack/core/skills/place-instruction/SKILL.md"
 source_path = [".claude/skills/paia-instrumenteren/SKILL.md", ".agents/skills/paia-instrumenteren/SKILL.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/testing/SKILL.md"
+path = "pack/core/skills/test-standard/SKILL.md"
 new = true
 
 [[file]]
@@ -384,12 +384,12 @@ source_path = ".agents/skills/paia-write-issue/SKILL.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/python/skills/python-writing/claude/SKILL.md"
+path = "pack/python/skills/python-standard/claude/SKILL.md"
 source_path = ".claude/skills/paia-python-schrijven/SKILL.md"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
-path = "pack/python/skills/python-writing/agents/SKILL.md"
+path = "pack/python/skills/python-standard/agents/SKILL.md"
 source_path = ".agents/skills/paia-python-schrijven/SKILL.md"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
@@ -486,12 +486,12 @@ path = "pack/shell/requires.toml"
 new = true
 
 [[file]]
-path = "pack/shell/skills/shell-gates/claude/SKILL.md"
+path = "pack/shell/skills/shell-standard/claude/SKILL.md"
 source_path = ".claude/skills/paia-shell-gates/SKILL.md"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
 [[file]]
-path = "pack/shell/skills/shell-gates/agents/SKILL.md"
+path = "pack/shell/skills/shell-standard/agents/SKILL.md"
 source_path = ".agents/skills/paia-shell-gates/SKILL.md"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
 
@@ -554,11 +554,11 @@ path = "pack/go/requires.toml"
 new = true
 
 [[file]]
-path = "pack/go/skills/go-writing/claude/SKILL.md"
+path = "pack/go/skills/go-standard/claude/SKILL.md"
 new = true
 
 [[file]]
-path = "pack/go/skills/go-writing/agents/SKILL.md"
+path = "pack/go/skills/go-standard/agents/SKILL.md"
 new = true
 
 [[file]]

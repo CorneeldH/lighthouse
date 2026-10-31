@@ -52,7 +52,7 @@ van een meting) doet elke stand niets.
 - **Verversen.** Alleen in `prompt`, en alleen als `lighthouse` op `PATH` staat, start de guard een
   losgekoppelde `LIGHTHOUSE_USAGE_REFRESH=1 lighthouse usage refresh` met stdin, stdout en stderr
   naar `/dev/null`. Hij wacht er niet op; de meter houdt zijn eigen TTL en lock aan.
-- **Afronden.** Zonder optie `resume` noemt de reden `/lighthouse-handoff <pad>` als afrondstap,
+- **Afronden.** Zonder optie `resume` noemt de reden `/lighthouse-write-handoff <pad>` als afrondstap,
   met het pad `<resume-map>/<session_id>.handoff.md` (zonder `session_id`:
   `no-session-<epoch>.handoff.md`). Dat schrijft en toont alleen het blok. Met `resume` neemt de
   module de stappen over.
@@ -88,7 +88,7 @@ Voor een gewone sessie, en voor een controller-run met `controller = false`:
   cron-expressie `M H D Mon *` van `reset_at` plus 2 minuten in lokale tijd, `recurring false`,
   prompt = de eerste stap uit de handoff. Staat er al een wekker in dit venster, dan zegt de reden
   die via `CronList` over te nemen in plaats van een tweede te zetten.
-- **Handoff.** De reden noemt `/lighthouse-handoff` met het handoff-pad als argument en vraagt
+- **Handoff.** De reden noemt `/lighthouse-write-handoff` met het handoff-pad als argument en vraagt
   de job-ID van de wekker erin te noteren (bij `venster`).
 
 ### Controller (`controller = true`)
@@ -194,7 +194,7 @@ De reden noemt het winnende hervatmoment. Een onleesbare of ongeldige marker wor
 
 ## Handoff naar een bestand
 
-`/lighthouse-handoff <pad>`, met een absoluut pad dat eindigt op `.handoff.md`, schrijft het blok
+`/lighthouse-write-handoff <pad>`, met een absoluut pad dat eindigt op `.handoff.md`, schrijft het blok
 atomair naar dat pad en toont het ook in de chat. Het is een pauze en geen fase-overgang: het slaat
 het posten van het artefact, de controller-modus, elke vraag en de `/clear`-tip over, ook met
 `LIGHTHOUSE_CONTROLLER_RUN` gezet. Zonder pad werkt de skill als altijd.

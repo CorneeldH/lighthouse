@@ -24,7 +24,7 @@ from tests.pack.python.conftest import PY_HOOKS
 RUFF_HOOK = PY_HOOKS / "ruff-format.sh"
 SKILL = (
     Path(__file__).resolve().parents[3]
-    / "pack/python/skills/python-writing/claude/SKILL.md"
+    / "pack/python/skills/python-standard/claude/SKILL.md"
 )
 CLEAN_PY = '"""Docstring."""\n\n\ndef f() -> int:\n    return 1\n'
 BARE_EXCEPT_PY = "def f():\n    try:\n        pass\n    except:\n        pass\n"
@@ -157,7 +157,7 @@ def _hook_blocking_rules() -> str:
 
 
 def test_skill_blocks_on_the_same_rules():
-    """The KPI row of `python-writing` measures the same axis as the gate."""
+    """The KPI row of `python-standard` measures the same axis as the gate."""
     assert f"--select {_hook_blocking_rules()} " in SKILL.read_text()
 
 

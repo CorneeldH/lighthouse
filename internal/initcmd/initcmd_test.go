@@ -715,14 +715,14 @@ func TestInitProposesRealPython(t *testing.T) {
 	}
 	for _, rel := range []string{
 		".claude/hooks/lighthouse/ruff-format.sh",
-		".claude/skills/lighthouse-python-writing/SKILL.md",
+		".claude/skills/lighthouse-python-standard/SKILL.md",
 		".lighthouse/scripts/quality/ratchet.py",
 	} {
 		if !exists(root, rel) {
 			t.Fatalf("%s not installed", rel)
 		}
 	}
-	if !strings.Contains(read(t, root, "AGENTS.md"), "/lighthouse-python-writing") {
+	if !strings.Contains(read(t, root, "AGENTS.md"), "/lighthouse-python-standard") {
 		t.Fatal("instruction block of python missing in AGENTS.md")
 	}
 }
@@ -757,8 +757,8 @@ func TestInitProposesRealShell(t *testing.T) {
 		".claude/hooks/lighthouse/shellcheck.sh",
 		".lighthouse/scripts/shellcheck-repo.sh",
 		".lighthouse/scripts/lib/shellcheck-bin.sh",
-		".claude/skills/lighthouse-shell-gates/SKILL.md",
-		".agents/skills/lighthouse-shell-gates/SKILL.md",
+		".claude/skills/lighthouse-shell-standard/SKILL.md",
+		".agents/skills/lighthouse-shell-standard/SKILL.md",
 	} {
 		if !exists(root, f) {
 			t.Fatalf("%s not installed", f)

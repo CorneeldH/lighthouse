@@ -144,7 +144,7 @@ def test_writing_skills_load_before_the_tool_call():
     loaded = {c["id"]: (c["kind"], c["trigger"]) for c in chips if c["phase"] == "skill"}
     assert loaded == {
         skill: ("lighthouse", "description")
-        for skill in ["testing", "go-writing", "python-writing", "shell-gates"]
+        for skill in ["test-standard", "go-standard", "python-standard", "shell-standard"]
     }
 
 

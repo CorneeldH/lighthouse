@@ -227,7 +227,7 @@ def base_speak(ctx: Context, stand: str, *, wake: str = "", note: str = "") -> d
     A module adds to them without restating them: `wake` is a lowercase clause for a
     step before the handoff ("schedule ..."), `note` a sentence after the handoff step.
     """
-    handoff = f"`/lighthouse-handoff {handoff_path(ctx)}`"
+    handoff = f"`/lighthouse-write-handoff {handoff_path(ctx)}`"
     head = headline(ctx)
     tail = f" {note}" if note else ""
     if stand == "prompt":

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PostToolUse hook: shellcheck on every edited shell script.
-# Matcher: Edit|Write. Counterpart of the shell-gates skill.
+# Matcher: Edit|Write. Counterpart of the shell-standard skill.
 #
 # Why this hook is NOT fail-open: skipping silently is itself the error the
 # hook must prevent. shellcheck is pinned, sha256-verified and lives in the

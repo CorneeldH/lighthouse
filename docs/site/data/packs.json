@@ -4,18 +4,18 @@
     "proposed_when": "always",
     "detect": [],
     "skills": [
+      "audit-worktrees",
       "close-issue",
       "fix-pr",
-      "handoff",
-      "instrument",
-      "plan-adversarial-review",
+      "place-instruction",
+      "review-plan",
+      "review-spec",
       "route-issue",
-      "spec-adversarial-review",
       "start-issue",
-      "testing",
-      "verify-pr",
-      "worktree-audit",
-      "write-issue"
+      "test-standard",
+      "write-handoff",
+      "write-issue",
+      "write-pr"
     ],
     "agents": [
       "issue-impact-scout"
@@ -99,7 +99,7 @@
       "go.mod"
     ],
     "skills": [
-      "go-writing"
+      "go-standard"
     ],
     "agents": [],
     "workflows": [],
@@ -140,7 +140,7 @@
       "pyproject.toml"
     ],
     "skills": [
-      "python-writing"
+      "python-standard"
     ],
     "agents": [],
     "workflows": [],
@@ -172,7 +172,7 @@
       "**/*.bash"
     ],
     "skills": [
-      "shell-gates"
+      "shell-standard"
     ],
     "agents": [],
     "workflows": [],

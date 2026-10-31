@@ -4,7 +4,7 @@
 # Matcher: Bash. Blocking: exit 2 + stderr. Passed: exit 0, notes as JSON on
 # stdout.
 #
-# Counterpart: /lighthouse-verify-pr
+# Counterpart: /lighthouse-write-pr
 # The skill carries the norm up front (build the body with Closes evidence);
 # this hook enforces it at the moment of `gh pr create`: a body without
 # `Closes #N` + Evidence table, `Refs #N — <reason>` or `No issue: <reason>`

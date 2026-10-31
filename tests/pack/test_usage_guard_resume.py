@@ -91,7 +91,7 @@ def test_tool_window_writes_marker(tmp_path: Path) -> None:
     assert f'cron "{cron}"' in reason
     assert "recurring false" in reason
     assert "CronList" in reason
-    assert f"/lighthouse-handoff {resume / 's1.handoff.md'}" in reason
+    assert f"/lighthouse-write-handoff {resume / 's1.handoff.md'}" in reason
     assert list(resume.glob("*.tmp")) == []
 
 
@@ -116,7 +116,7 @@ def test_prompt_names_steps_without_marker(tmp_path: Path) -> None:
 
     reason = _reason(result)
     assert "CronCreate" in reason
-    assert "/lighthouse-handoff" in reason
+    assert "/lighthouse-write-handoff" in reason
     assert not resume.exists() or list(resume.iterdir()) == []
 
 
@@ -143,7 +143,7 @@ def test_config_error_falls_back_to_base(tmp_path: Path) -> None:
     result, resume = _run(tmp_path, "tool", alarm_line(), toml=toml)
 
     reason = _reason(result)
-    assert "/lighthouse-handoff" in reason
+    assert "/lighthouse-write-handoff" in reason
     assert "CronCreate" not in reason
     assert not resume.exists() or list(resume.iterdir()) == []
     assert "usage-guard: config:" in result.stderr

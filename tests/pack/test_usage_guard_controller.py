@@ -94,7 +94,7 @@ def _marker(env: dict, name: str = "s1") -> dict:
 def _is_controller_reason(reason: str) -> bool:
     return (
         "controller" in reason
-        and "/lighthouse-handoff" not in reason
+        and "/lighthouse-write-handoff" not in reason
         and "CronCreate" not in reason
     )
 
@@ -149,14 +149,14 @@ def test_option_off_is_plain_session(tmp_path: Path) -> None:
     off = TOML.replace("controller = true", "controller = false")
     root, env = _setup(tmp_path, toml=off, alarm=alarm_line())
     result = _run(root, env, "tool", _payload(tmp_path, "tool"))
-    assert "/lighthouse-handoff" in _reason(result)
+    assert "/lighthouse-write-handoff" in _reason(result)
     assert not _resume(env).exists()
 
 
 def test_invalid_run_id_is_plain_session(tmp_path: Path) -> None:
     root, env = _setup(tmp_path, run="XYZ", alarm=alarm_line())
     result = _run(root, env, "tool", _payload(tmp_path, "tool"))
-    assert "/lighthouse-handoff" in _reason(result)
+    assert "/lighthouse-write-handoff" in _reason(result)
     assert not _resume(env).exists()
 
 
@@ -168,7 +168,7 @@ def test_prompt_warning(tmp_path: Path) -> None:
     reason = _reason(result)
     assert "92%" in reason
     assert "CronCreate" not in reason
-    assert "/lighthouse-handoff" not in reason
+    assert "/lighthouse-write-handoff" not in reason
     assert not _resume(env).exists()
 
 
@@ -296,7 +296,7 @@ def test_pause_option_off_falls_through(tmp_path: Path) -> None:
 
     result = _run(root, env, "tool", _payload(tmp_path, "tool"))
 
-    assert "/lighthouse-handoff" in _reason(result)
+    assert "/lighthouse-write-handoff" in _reason(result)
     assert not [k for k in _keys(env) if k.startswith("pause-")]
     assert not _resume(env).exists()
 

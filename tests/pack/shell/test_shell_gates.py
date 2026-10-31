@@ -1,4 +1,4 @@
-"""The skill `shell-gates` and the instruction block of `pack/shell`: config instead of
+"""The skill `shell-standard` and the instruction block of `pack/shell`: config instead of
 paia's directories, the two harness variants, and KPI commands that really run."""
 
 import os
@@ -12,7 +12,7 @@ from lighthouse_lib import config
 from tests.pack._testkit import GIT_ENV, PACKS, git, init_repo, install_pack
 
 SHELL = PACKS / "shell"
-SKILL_DIR = SHELL / "skills" / "shell-gates"
+SKILL_DIR = SHELL / "skills" / "shell-standard"
 VARIANTS = {"claude": SKILL_DIR / "claude" / "SKILL.md", "agents": SKILL_DIR / "agents" / "SKILL.md"}
 BLOCK = SHELL / "instructions" / "AGENTS.md"
 
@@ -29,7 +29,7 @@ def _paragraphs(text: str) -> list[str]:
 
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_frontmatter_name(variant):
-    assert _text(variant).startswith("---\nname: lighthouse-shell-gates\n")
+    assert _text(variant).startswith("---\nname: lighthouse-shell-standard\n")
 
 
 @pytest.mark.parametrize("variant", VARIANTS)
@@ -146,7 +146,7 @@ def test_instruction_block():
     assert text.startswith("## Lighthouse: shell\n")
     assert len(text.split()) <= 60, len(text.split())
     assert "COULD NOT CHECK" in text
-    assert "lighthouse-shell-gates" in text
+    assert "lighthouse-shell-standard" in text
 
 
 def test_detect_rule():
@@ -236,7 +236,7 @@ CLASSIFICATION = "This is a <class> change; the likely regression surface is <ob
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_points_to_the_testing_skill(variant):
     domain = _text(variant).split("## Domain", 1)[1].split("\n## ", 1)[0]
-    assert "lighthouse-testing" in domain
+    assert "lighthouse-test-standard" in domain
     assert "*Classify first*" in domain
     assert "Before the first edit" in domain
     assert CLASSIFICATION in domain
@@ -245,8 +245,8 @@ def test_points_to_the_testing_skill(variant):
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_shell_form_of_the_testing_norms(variant):
     text = _text(variant)
-    assert "## The shell form of lighthouse-testing" in text
-    section = text.split("## The shell form of lighthouse-testing", 1)[1].split("\n## ", 1)[0]
+    assert "## The shell form of lighthouse-test-standard" in text
+    section = text.split("## The shell form of lighthouse-test-standard", 1)[1].split("\n## ", 1)[0]
     for phrase in (
         "temporary directory",
         "the exit code and the output",
@@ -259,5 +259,5 @@ def test_shell_form_of_the_testing_norms(variant):
 @pytest.mark.parametrize("variant", VARIANTS)
 def test_pairing_names_the_testing_skill(variant):
     pairing = _text(variant).split("## The pairing", 1)[1].split("\n## ", 1)[0]
-    rows = [line for line in pairing.splitlines() if line.startswith("| `lighthouse-testing` |")]
+    rows = [line for line in pairing.splitlines() if line.startswith("| `lighthouse-test-standard` |")]
     assert len(rows) == 1

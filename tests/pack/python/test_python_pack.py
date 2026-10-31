@@ -21,7 +21,7 @@ def test_instruction_block_is_short_and_names_skill_gates_and_ratchet():
     text = (PY / "instructions" / "AGENTS.md").read_text()
     assert text.startswith("## Lighthouse: python\n")
     assert len(re.findall(r"\S+", text)) <= 80
-    for needle in ("/lighthouse-python-writing", "ruff-format", "ty-check", ".lighthouse/scripts/quality/ratchet.py"):
+    for needle in ("/lighthouse-python-standard", "ruff-format", "ty-check", ".lighthouse/scripts/quality/ratchet.py"):
         assert needle in text, needle
 
 

@@ -142,7 +142,7 @@ def test_prompt_warns_without_key(tmp_path):
     assert d.output["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
     assert "92%" in text
     assert "14:30" in text
-    assert f"/lighthouse-handoff {ug.handoff_path(c)}" in text
+    assert f"/lighthouse-write-handoff {ug.handoff_path(c)}" in text
     assert "decision" not in d.output
     assert d.key_after is None
     assert done_keys() == []
@@ -153,7 +153,7 @@ def test_tool_blocks_once_per_window(tmp_path):
     first = decide(c, tmp_path).output
     assert first["decision"] == "block"
     assert "commit" in first["reason"]
-    assert f"/lighthouse-handoff {ug.handoff_path(c)}" in first["reason"]
+    assert f"/lighthouse-write-handoff {ug.handoff_path(c)}" in first["reason"]
     assert decide(c, tmp_path) == ug.Decision(None, None)
     assert decide(ctx("tool", {"session_id": "s2"}), tmp_path).output["decision"] == "block"
 
@@ -164,7 +164,7 @@ def test_tool_with_agent_id_is_subagent(tmp_path):
     reason = decide(c, tmp_path).output["reason"]
     assert reason == ug.subagent_speak(c)["reason"]
     assert "main thread" in reason
-    assert "/lighthouse-handoff" not in reason
+    assert "/lighthouse-write-handoff" not in reason
     assert "CronCreate" not in reason
     assert ug.alarm_key(c, "subagent").exists()
     assert not ug.alarm_key(c, "tool").exists()
@@ -185,7 +185,7 @@ def test_stop(tmp_path):
     c = ctx("stop", {"session_id": "s1"})
     d = decide(c, tmp_path)
     assert d.output["decision"] == "block"
-    assert f"/lighthouse-handoff {ug.handoff_path(c)}" in d.output["reason"]
+    assert f"/lighthouse-write-handoff {ug.handoff_path(c)}" in d.output["reason"]
     assert d.key_after == ug.alarm_key(c, "stop")
     assert not d.key_after.exists()
 

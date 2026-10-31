@@ -42,7 +42,7 @@
   ],
   "handoff": {
     "what": "A handoff that exists.", "when": "At the end.", "without": "Nothing.",
-    "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/handoff"
+    "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/write-handoff"
   },
   "handoffs": [
     {"from": "main-commit-guard", "to": "planned-issue", "status": "planned", "milestone": "M9"}

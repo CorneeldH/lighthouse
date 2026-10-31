@@ -94,7 +94,7 @@ $RUFF check --force-exclude --fix "$FILE_PATH" >/dev/null 2>&1 || true
 #
 # Keep naming the list here explicitly, also when pyproject.toml selects more:
 # the linted set and the blocking set are two different sets on purpose. The KPI
-# row of the python-writing skill names the same eight.
+# row of the python-standard skill names the same eight.
 BLOCKING_RULES="E722,B006,F403,F811,B023,PT012,PGH003,PGH004"
 
 # ruff exits 1 on findings and 2 when it could not lint (a broken [tool.ruff], a

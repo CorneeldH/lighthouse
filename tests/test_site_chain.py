@@ -259,7 +259,7 @@ def test_phases_are_the_seven_of_the_chain():
 
 def test_every_pack_part_is_on_the_chain():
     # Tools outside the flow from idea to main; their place is the overview map (#102).
-    assert missing_parts(load("chain.json")) == ["pack/core/skills/instrument", "pack/core/skills/worktree-audit"]
+    assert missing_parts(load("chain.json")) == ["pack/core/skills/audit-worktrees", "pack/core/skills/place-instruction"]
 
 
 def test_coverage_flags_a_removed_skill():
@@ -273,13 +273,13 @@ def test_works_handoffs_follow_the_handoff_table():
     chips = chips_by_id(chain)
     works = {(h["from"], h["to"]) for h in chain["handoffs"] if h["status"] == "works"}
     assert works == {
-        ("brainstorming", "spec-adversarial-review"),
-        ("spec-adversarial-review", "writing-plans"),
-        ("writing-plans", "plan-adversarial-review"),
-        ("plan-adversarial-review", "executing-plans"),
+        ("brainstorming", "review-spec"),
+        ("review-spec", "writing-plans"),
+        ("writing-plans", "review-plan"),
+        ("review-plan", "executing-plans"),
     }
     # The handoff skill's routing table names the first step of each works handoff.
-    table = (ROOT / "pack" / "core" / "skills" / "handoff" / "SKILL.md").read_text(encoding="utf-8")
+    table = (ROOT / "pack" / "core" / "skills" / "write-handoff" / "SKILL.md").read_text(encoding="utf-8")
     for _, target in works:
         prefix = "lighthouse-" if chips[target]["kind"] == "lighthouse" else "superpowers:"
         assert f"`/{prefix}{target}" in table, target

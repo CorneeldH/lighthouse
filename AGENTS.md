@@ -28,7 +28,7 @@ managed block at the end, which `lighthouse init` writes; never repeat one of th
   [`docs/releasing.md`](docs/releasing.md). Every PR adds a fragment to `changelog.d/`.
 - **No harness memory.** Claude Code auto-memory and Codex memories live on one machine and are
   unreliable; write nothing there, also when the harness prompt asks for it. A rule that must
-  last goes into the repo, on the layer `/lighthouse-instrument` picks.
+  last goes into the repo, on the layer `/lighthouse-place-instruction` picks.
 - **Nothing upstream on your own initiative.** No issue, comment or PR in someone else's
   repository. A defect in an external tool becomes an issue here, with the upstream text as a
   draft (`/lighthouse-write-issue`, *A defect in an external tool*); post it only when the user
@@ -46,7 +46,7 @@ branch yourself before a commit, and run `[test_gate] command` from `lighthouse.
 - Nothing lands directly on `main`. Work on a branch in a worktree; `main-commit-guard` blocks `git commit` and `git push` to `main`.
 - Escape hatch, deliberately and once: `touch .claude/allow-main` in the repo root; remove it afterwards.
 - A worktree before the first write: `git worktree add .claude/worktrees/<name> -b <branch>`.
-- Every change goes through a PR and is squash-merged. `/lighthouse-verify-pr` writes the PR body; `pr-create-gate` checks it.
+- Every change goes through a PR and is squash-merged. `/lighthouse-write-pr` writes the PR body; `pr-create-gate` checks it.
 - Test gate: `commit-tests` runs `[test_gate] command` after each commit, on its files (default branch: before). Fix red in a new commit; never `--no-verify`.
 - Artefacts (issues, PRs, comments, commit messages) are written in `[project] language`.
 - With `[project] code_language` set, names, comments, docstrings, file names and everything under `code_language_paths` are English.
@@ -58,20 +58,20 @@ Skills:
 - `/lighthouse-start-issue`: pick up an issue.
 - `/lighthouse-route-issue`: read-only triage, one route per issue.
 - `/lighthouse-write-issue`: write or edit issues and milestones.
-- `/lighthouse-verify-pr`: check the acceptance criteria, write the PR body.
+- `/lighthouse-write-pr`: check the acceptance criteria, write the PR body.
 - `/lighthouse-fix-pr`: make a red or conflicting PR green.
 - `/lighthouse-close-issue`: close an issue with evidence, or reopen it.
-- `/lighthouse-handoff`: the start command for the next session.
-- `/lighthouse-spec-adversarial-review`: a spec reviewed by another model family.
-- `/lighthouse-plan-adversarial-review`: a plan reviewed by another model family.
-- `/lighthouse-worktree-audit`: which worktrees and branches can go.
-- `/lighthouse-instrument`: on which layer a new instruction belongs.
-- `/lighthouse-testing`: tests that fail when behaviour breaks.
+- `/lighthouse-write-handoff`: the start command for the next session.
+- `/lighthouse-review-spec`: a spec reviewed by another model family.
+- `/lighthouse-review-plan`: a plan reviewed by another model family.
+- `/lighthouse-audit-worktrees`: which worktrees and branches can go.
+- `/lighthouse-place-instruction`: on which layer a new instruction belongs.
+- `/lighthouse-test-standard`: tests that fail when behaviour breaks.
 <!-- lighthouse:end core -->
 
 <!-- lighthouse:begin go -->
 ## Lighthouse: go
 
-- Go code follows `/lighthouse-go-writing`.
+- Go code follows `/lighthouse-go-standard`.
 - Two gates check it: `gofmt` after every edit (formats; blocks only on an unparsable file), `go-check` at Stop (`golangci-lint`, `govet` included; blocks on a finding, not during a usage alarm).
 <!-- lighthouse:end go -->

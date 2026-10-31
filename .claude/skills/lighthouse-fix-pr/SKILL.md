@@ -23,7 +23,7 @@ the controller (if present) starts the skill for it, or you say "process the rob
 
 Not here: closing the issue (`/lighthouse-close-issue`), a review of the diff on content (a review
 skill such as `caveman:caveman-review`), starting new work on an issue (`/lighthouse-start-issue`),
-opening a PR (`/lighthouse-verify-pr`), and the merge itself — that is a human decision.
+opening a PR (`/lighthouse-write-pr`), and the merge itself — that is a human decision.
 
 ## 1. Diagnosis in one block
 

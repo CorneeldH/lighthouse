@@ -69,7 +69,7 @@
       "how": [
         "write-issue creates it from a Bug or Task template, with labels per axis, at most one blocking label, an optional milestone and blocked_by relations to other issues.",
         "start-issue and route-issue read it through gh api and choose a route from its labels and body.",
-        "verify-pr turns each acceptance criterion into an Evidence row in the PR body, and close-issue runs those rows again after the merge.",
+        "write-pr turns each acceptance criterion into an Evidence row in the PR body, and close-issue runs those rows again after the merge.",
         "When it closes as completed, the unblock-dependents workflow releases the issues that waited on it."
       ],
       "when": "Whenever work is tracked as an issue.",
@@ -228,12 +228,12 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-linkcheck.sh"
     },
     {
-      "id": "spec-adversarial-review",
+      "id": "review-spec",
       "phase": "spec",
       "row": 2,
       "kind": "lighthouse",
       "trigger": "you",
-      "label": "spec-adversarial-review",
+      "label": "review-spec",
       "what": "The skill that runs the whole review of a spec: it starts each round, decides per finding and changes the spec; another model family does the reviewing.",
       "how": [
         "Round 1 runs Codex in a read-only sandbox with a clean CODEX_HOME next to an Opus subagent, and the session decides blind on the merged table.",
@@ -244,7 +244,7 @@
       "when": "After writing a spec and before writing-plans.",
       "without": "The spec is only checked by the model that wrote it.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/spec-adversarial-review"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/review-spec"
     },
     {
       "id": "writing-plans",
@@ -265,12 +265,12 @@
       "status": "works"
     },
     {
-      "id": "plan-adversarial-review",
+      "id": "review-plan",
       "phase": "plan",
       "row": 1,
       "kind": "lighthouse",
       "trigger": "you",
-      "label": "plan-adversarial-review",
+      "label": "review-plan",
       "what": "Has an implementation plan reviewed by an agent of another model family against the spec and the repo; round 1 checks executability, later rounds only verify the fixes.",
       "how": [
         "It takes the spec from the Spec line of the plan, or fetches the issue body when the issue is the spec.",
@@ -281,7 +281,7 @@
       "when": "After committing a plan and before subagent-driven development.",
       "without": "The plan is only checked by the model that wrote it.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/plan-adversarial-review"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/review-plan"
     },
     {
       "id": "executing-plans",
@@ -302,15 +302,15 @@
       "status": "works"
     },
     {
-      "id": "go-writing",
+      "id": "go-standard",
       "phase": "build",
       "row": 1,
       "kind": "lighthouse",
       "trigger": "description",
-      "label": "go-writing",
+      "label": "go-standard",
       "what": "Rules and a KPI table of commands (gofmt, vet, golangci-lint, race) for writing Go in the repo.",
       "how": [
-        "Before the first edit it asks for the classification sentence from lighthouse-testing.",
+        "Before the first edit it asks for the classification sentence from lighthouse-test-standard.",
         "Before done, every KPI row is run and reported as passed, failed or not measurable from here, with GOOS, build tags, -race and GOWORK named.",
         "It carries the norms replace, don't layer for merged packages and deepen, don't split at a complexity limit, plus the Go form of the testing norms.",
         "Two hooks enforce part of it: gofmt.sh after each edit and go-check.sh with golangci-lint at Stop."
@@ -318,7 +318,7 @@
       "when": "When writing or changing Go, and when planning a Go refactor or test strategy.",
       "without": "Go code is written without the repo's checks in view.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/skills/go-writing"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/skills/go-standard"
     },
     {
       "id": "systematic-debugging",
@@ -350,19 +350,19 @@
         "It runs the red-green-refactor cycle: write one minimal test for one behaviour, run it and confirm that it fails for the expected reason.",
         "Then it writes the minimal code that makes the test pass, runs the tests until all are green, and cleans up while they stay green.",
         "Code written before its test is deleted and written again from the test.",
-        "lighthouse-testing adds what that test must assert."
+        "lighthouse-test-standard adds what that test must assert."
       ],
       "when": "When implementing a feature or a bugfix.",
       "without": "Tests are written after the code, if at all.",
       "status": "works"
     },
     {
-      "id": "shell-gates",
+      "id": "shell-standard",
       "phase": "build",
       "row": 4,
       "kind": "lighthouse",
       "trigger": "description",
-      "label": "shell-gates",
+      "label": "shell-standard",
       "what": "The norm 'the absence of a signal is treated as a negative result', plus a KPI table of commands for shell that guards something.",
       "how": [
         "It lists six real defects in which could not look came out green, and requires three outcomes: checked and clean, checked with findings, and COULD NOT CHECK.",
@@ -373,7 +373,7 @@
       "when": "When writing or changing hooks, pre-commit, pre-push or CI gate scripts, and the tests on them.",
       "without": "A gate script can pass because it could not check.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/skills/shell-gates"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/skills/shell-standard"
     },
     {
       "id": "refresh-expo-lockfiles",
@@ -395,15 +395,15 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/expo/skills/refresh-expo-lockfiles"
     },
     {
-      "id": "python-writing",
+      "id": "python-standard",
       "phase": "build",
       "row": 6,
       "kind": "lighthouse",
       "trigger": "description",
-      "label": "python-writing",
+      "label": "python-standard",
       "what": "Rules and a KPI table of commands (ruff, ty, pytest) for writing Python in the repo's source and test directories.",
       "how": [
-        "Before the first edit it asks for the classification sentence from lighthouse-testing.",
+        "Before the first edit it asks for the classification sentence from lighthouse-test-standard.",
         "Before done, rows 1 to 3 are run and reported as passed, failed or not measurable from here, because a ty zero without its extras is not a zero.",
         "It carries the norms replace, don't layer and deepen, don't split, with the complexity limits, plus the Python form of the testing norms.",
         "Two hooks enforce part of it: ruff-format.sh blocks on the blocking rules after each edit, and ty-check.sh reports type errors at Stop."
@@ -411,15 +411,15 @@
       "when": "When writing or changing Python, and when planning a Python refactor or test strategy.",
       "without": "Python code is written without the repo's checks in view.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/skills/python-writing"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/skills/python-standard"
     },
     {
-      "id": "testing",
+      "id": "test-standard",
       "phase": "build",
       "row": 7,
       "kind": "lighthouse",
       "trigger": "description",
-      "label": "testing",
+      "label": "test-standard",
       "what": "Carries what a good test is: the production change that should make it fail, the classification sentence before the first edit and the mutation check before reporting done.",
       "how": [
         "Before the first edit it asks for one classification sentence that names the change class, such as pure-logic, cli-output or hook/gate, and the regression surface; each class sets a minimal check.",
@@ -430,7 +430,7 @@
       "when": "When writing, changing, fixing or reviewing a test, mock, fake or assert.",
       "without": "A test can pass without ever being able to fail.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/testing"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/test-standard"
     },
     {
       "id": "code-language",
@@ -509,12 +509,12 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-tests.sh"
     },
     {
-      "id": "verify-pr",
+      "id": "write-pr",
       "phase": "pr",
       "row": 0,
       "kind": "lighthouse",
       "trigger": "you",
-      "label": "verify-pr",
+      "label": "write-pr",
       "what": "Verifies each acceptance criterion of the issue on the branch and writes the PR body: Closes #N with an Evidence table, Refs #N, or No issue.",
       "how": [
         "It reads the issue with gh api and looks for evidence per criterion in the branch diff, in commands it runs and in files it opens.",
@@ -525,7 +525,7 @@
       "when": "Before every gh pr create.",
       "without": "The PR body is written without checking the acceptance criteria.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/verify-pr"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/write-pr"
     },
     {
       "id": "roborev",
@@ -535,9 +535,9 @@
       "form": "tool",
       "trigger": "skill",
       "label": "roborev",
-      "what": "A review of the finished branch by roborev, run inside verify-pr before the PR opens.",
+      "what": "A review of the finished branch by roborev, run inside write-pr before the PR opens.",
       "how": [
-        "verify-pr runs the local roborev review before gh pr create, above a threshold of changed lines and with Codex budget.",
+        "write-pr runs the local roborev review before gh pr create, above a threshold of changed lines and with Codex budget.",
         "The session fixes or rejects each finding with a reason, in one round.",
         "After gh pr create the review and its table of decisions go on the PR as a comment with a roborev-verwerkt marker.",
         "Without codex or budget it skips, with the reason in the PR body, and CI stays the safety net."
@@ -575,7 +575,7 @@
       "label": "pr-and-ci",
       "what": "The pull request, built on the repo's PR template, and the CI checks that run on it.",
       "how": [
-        "The template has sections for what and why, changes, related issues, open review points, before and after, and verification, and verify-pr writes the related issues part.",
+        "The template has sections for what and why, changes, related issues, open review points, before and after, and verification, and write-pr writes the related issues part.",
         "In lighthouse's own repo the ci workflow runs on every pull request: a changelog fragment check, a job per changed domain for Python, Go and web, and a binary build with smoke and end-to-end tests.",
         "The Go job also checks that the installed pack/core matches pack/, and a CLA workflow runs on every PR to main.",
         "fix-pr repairs a red PR, and after the merge close-issue checks the evidence again."
@@ -671,32 +671,32 @@
     ],
     "when": "At the end of a phase, or when you ask for a command for a new session.",
     "without": "The next session starts without knowing where the work stands.",
-    "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/handoff"
+    "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/write-handoff"
   },
   "handoffs": [
     {
       "from": "brainstorming",
-      "to": "spec-adversarial-review",
+      "to": "review-spec",
       "status": "works"
     },
     {
-      "from": "spec-adversarial-review",
+      "from": "review-spec",
       "to": "writing-plans",
       "status": "works"
     },
     {
       "from": "writing-plans",
-      "to": "plan-adversarial-review",
+      "to": "review-plan",
       "status": "works"
     },
     {
-      "from": "plan-adversarial-review",
+      "from": "review-plan",
       "to": "executing-plans",
       "status": "works"
     },
     {
       "from": "commit-tests",
-      "to": "verify-pr",
+      "to": "write-pr",
       "status": "planned",
       "issue": 147
     },
@@ -730,13 +730,13 @@
         "issue-impact-scout",
         "brainstorming",
         "worktree-linkcheck",
-        "spec-adversarial-review",
+        "review-spec",
         "writing-plans",
-        "plan-adversarial-review",
+        "review-plan",
         "executing-plans",
         "test-driven-development",
         "commit-tests",
-        "verify-pr",
+        "write-pr",
         "roborev",
         "pr-create-gate",
         "pr-and-ci",
@@ -748,7 +748,7 @@
       "id": "4b",
       "label": "Plan (4b)",
       "examples": [
-        "go-writing"
+        "go-standard"
       ],
       "chips": [
         "write-issue",
@@ -759,12 +759,12 @@
         "route-issue",
         "issue-impact-scout",
         "writing-plans",
-        "plan-adversarial-review",
+        "review-plan",
         "executing-plans",
-        "go-writing",
+        "go-standard",
         "test-driven-development",
         "commit-tests",
-        "verify-pr",
+        "write-pr",
         "roborev",
         "pr-create-gate",
         "pr-and-ci",
@@ -777,7 +777,7 @@
       "label": "Small job (4a)",
       "note": "The session writes the code itself; no skill runs the build.",
       "examples": [
-        "python-writing",
+        "python-standard",
         "code-language",
         "bash-write-gates",
         "main-commit-guard"
@@ -789,13 +789,13 @@
         "start-issue",
         "using-git-worktrees",
         "route-issue",
-        "python-writing",
-        "testing",
+        "python-standard",
+        "test-standard",
         "code-language",
         "bash-write-gates",
         "main-commit-guard",
         "commit-tests",
-        "verify-pr",
+        "write-pr",
         "roborev",
         "pr-create-gate",
         "pr-and-ci",
@@ -806,7 +806,7 @@
       "id": "2",
       "label": "Bug (2)",
       "examples": [
-        "shell-gates"
+        "shell-standard"
       ],
       "chips": [
         "write-issue",
@@ -817,9 +817,9 @@
         "route-issue",
         "systematic-debugging",
         "test-driven-development",
-        "shell-gates",
+        "shell-standard",
         "commit-tests",
-        "verify-pr",
+        "write-pr",
         "roborev",
         "pr-create-gate",
         "pr-and-ci",
@@ -842,7 +842,7 @@
         "route-issue",
         "refresh-expo-lockfiles",
         "commit-tests",
-        "verify-pr",
+        "write-pr",
         "roborev",
         "pr-create-gate",
         "pr-and-ci",
@@ -852,13 +852,13 @@
     {
       "id": "no-issue",
       "label": "No issue",
-      "note": "Work without an issue, such as a conversation: worktree-guard warns at the first write on main, the work moves to a worktree, and verify-pr writes No issue with a reason.",
+      "note": "Work without an issue, such as a conversation: worktree-guard warns at the first write on main, the work moves to a worktree, and write-pr writes No issue with a reason.",
       "chips": [
         "worktree-guard",
         "using-git-worktrees",
         "main-commit-guard",
         "commit-tests",
-        "verify-pr",
+        "write-pr",
         "roborev",
         "pr-create-gate",
         "pr-and-ci"

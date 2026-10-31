@@ -28,7 +28,7 @@
 # `python.source_dirs = []` turns the check off, without a message, alarm or not: the
 # alarm is read after that exit.
 
-# The pin of ty. The python-writing skill names the same version.
+# The pin of ty. The python-standard skill names the same version.
 TY_VERSION="0.0.72"
 HOOK_NAME="ty-check"
 

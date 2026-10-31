@@ -19,7 +19,7 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | `jq` | core, go, python, shell | reading the payload of a hook | The hooks report `COULD NOT CHECK`; `main-commit-guard`, `pre-commit-tests`, `pr-create-gate` and `worktree-linkcheck` block. |
 | `gh` | core, python | reading and writing issues and PRs | The issue and PR skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. |
 | `superpowers` (Claude Code plugin) | core, expo | the steps the skills hand off: worktrees, brainstorming, plans, debugging | The skills cannot hand off; `/lighthouse-start-issue` loses its worktree, spec and plan steps. |
-| `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-spec-adversarial-review` and `/lighthouse-plan-adversarial-review` stop with `CODEX_MISSING`. |
+| `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-review-spec` and `/lighthouse-review-plan` stop with `CODEX_MISSING`. |
 | `uv` | python | `ruff-format`, `ty-check`, the test gate `uv run pytest -q` | `ty-check` reports `COULD NOT CHECK`; `ruff-format` falls back to `ruff` on the `PATH`, else blocks with `COULD NOT CHECK`. The test gate `uv run pytest -q` cannot start: `pre-commit-tests` reports `COULD NOT CHECK` and blocks the commit. |
 | `go` | go | `go-check` | `go-check` reports `COULD NOT CHECK` at Stop; nothing was linted. |
 | `gofmt` | go | `gofmt` after every edit | `gofmt` blocks with `COULD NOT CHECK`. |
@@ -168,7 +168,7 @@ What happens within one turn, which skill joins in and which hook steps in, is o
    `git commit`; a red run blocks the commit. `main-commit-guard` blocks a commit or push on
    `main`, also through `git -C <path>` or a preceding `cd`. `worktree-guard` warns when you
    write into the main checkout on `main`.
-4. **Open the PR.** Type `/lighthouse-verify-pr`. It checks each acceptance criterion on the
+4. **Open the PR.** Type `/lighthouse-write-pr`. It checks each acceptance criterion on the
    branch and writes the PR body with an evidence table. `pr-create-gate` blocks a
    `gh pr create` whose body lacks `Closes #N` with evidence, `Refs #N — <reason>` or
    `No issue: <reason>`.
