@@ -53,7 +53,8 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    tick opnieuw kijkt. Een issue met meer dan 10 voorgangers, of een voorganger met meer dan 5
    sluitende PR's, slaat de repo ook luid over: zo'n lijst leest tick niet half.
 
-Tick beslist nog niet en start nog geen run: decide en apply volgen in #114.
+Tick beslist nog niet en start nog geen run: decide en apply volgen in #114. De bouwstenen voor de
+forge-kant (workspace, agent starten, bezet, opruimen) staan in [workplace.md](workplace.md).
 
 ## Exitcodes
 
