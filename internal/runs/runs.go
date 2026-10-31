@@ -194,14 +194,16 @@ func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
 }
 
 // SessionIDs returns the session ids of every run of the issue, open and
-// closed. A run that closed as start_failed without a workplace session is
-// left out: the forge never accepted its spawn, so an agent that starts after
-// all (a 5xx that was not a refusal) belongs to no run and counts as foreign.
-// An accepted run that closes as start_failed stays: cleanup stops its session.
+// closed. A closed run without a workplace session is left out: either the
+// forge never accepted its spawn (start_failed) or its start stayed uncertain
+// and CheckOpen returned it. An agent that starts late for such a run belongs
+// to no run and counts as foreign, so cleanup does not stop it. A closed run
+// that had a session stays: cleanup stops that session. An open run stays,
+// with or without a session.
 func SessionIDs(ctx context.Context, db *sql.DB, repo string, issue int) (map[string]bool, error) {
 	rows, err := db.QueryContext(ctx, `SELECT session_id FROM runs
 		WHERE repo = ? AND issue = ?
-		AND NOT (coalesce(outcome, '') = 'start_failed' AND workplace_session = '')`, repo, issue)
+		AND NOT (ended_at IS NOT NULL AND workplace_session = '')`, repo, issue)
 	if err != nil {
 		return nil, fmt.Errorf("runs: session ids: %w", err)
 	}

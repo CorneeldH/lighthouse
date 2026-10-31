@@ -290,6 +290,9 @@ func TestSessionIDsIncludesClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Take: %v", err)
 	}
+	if err := SetSession(ctx, db, r1.ID, "key-1"); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
 	if err := Release(ctx, db, r1.ID, Returned, "", time.Now()); err != nil {
 		t.Fatalf("Release: %v", err)
 	}
@@ -310,7 +313,7 @@ func TestSessionIDsIncludesClosed(t *testing.T) {
 	}
 }
 
-func TestSessionIDsExcludesStartFailed(t *testing.T) {
+func TestSessionIDsExcludesClosedWithoutSession(t *testing.T) {
 	ctx := context.Background()
 	db := openDB(t)
 	closeAs := func(key string, o Outcome, workplaceSession string) string {
@@ -332,15 +335,20 @@ func TestSessionIDsExcludesStartFailed(t *testing.T) {
 	}
 	never := closeAs("a:1", StartFailed, "")
 	accepted := closeAs("b:1", StartFailed, "key-b")
-	returned := closeAs("c:1", Returned, "")
+	returned := closeAs("c:1", Returned, "key-c")
+	returnedUncertain := closeAs("d:1", Returned, "")
+	c := claim("owner/a", 7, "e:1")
+	if _, err := Take(ctx, db, c); err != nil {
+		t.Fatalf("Take: %v", err)
+	}
 	got, err := SessionIDs(ctx, db, "owner/a", 7)
 	if err != nil {
 		t.Fatalf("SessionIDs: %v", err)
 	}
-	if got[never] {
-		t.Errorf("start_failed without workplace_session must be left out: %v", got)
+	if got[never] || got[returnedUncertain] {
+		t.Errorf("a closed run without workplace_session must be left out: %v", got)
 	}
-	if !got[accepted] || !got[returned] || len(got) != 2 {
-		t.Errorf("SessionIDs = %v, want exactly %q and %q", got, accepted, returned)
+	if !got[accepted] || !got[returned] || !got[c.SessionID] || len(got) != 3 {
+		t.Errorf("SessionIDs = %v, want exactly %q, %q and open %q", got, accepted, returned, c.SessionID)
 	}
 }
