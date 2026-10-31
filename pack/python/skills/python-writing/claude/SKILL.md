@@ -172,8 +172,9 @@ When a hook cannot check â€” no `jq`, no `uvx` or `ruff`, a broken environment â
 file must not read as a clean one. `ty-check` runs at `Stop`, where blocking would keep the
 session from stopping, so it reports it as a message. It checks only a checkout in which the turn
 touched a Python path (a `.py` or `.pyi` file in `python.source_dirs`, `pyproject.toml`, `ty.toml` or
-`uv.lock`: an edit, a Bash write or a commit in the turn); any other checkout gets `not checked`. While a valid usage alarm is up it does not
-check at all (see `docs/usage-guard.md`, *Andere Stop-gates*).
+`uv.lock`: an edit, a Bash write or a commit in the turn); any other checkout gets `not checked`.
+While a valid usage alarm is up it does not check at all (see `docs/usage-guard.md`, *Andere
+Stop-gates*).
 
 ## Known pitfalls
 
