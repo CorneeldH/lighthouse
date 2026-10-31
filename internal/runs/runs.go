@@ -123,6 +123,48 @@ func Release(ctx context.Context, db *sql.DB, id int64, o Outcome, reason string
 	return nil
 }
 
+// OpenRun is an open run with its workplace columns.
+type OpenRun struct {
+	ID               int64     `json:"id"`
+	Issue            int       `json:"issue"`
+	SessionID        string    `json:"session_id"`
+	TriggerKey       string    `json:"trigger_key"`
+	Profile          string    `json:"profile"`
+	Branch           string    `json:"branch"`
+	WorkspaceID      string    `json:"workspace_id"`
+	WorkplaceSession string    `json:"workplace_session"`
+	StartedAt        time.Time `json:"started_at"`
+}
+
+// Open returns the open runs of repo, ordered by id.
+func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id, issue, session_id, trigger_key, profile, branch,
+		workspace_id, workplace_session, started_at
+		FROM runs WHERE repo = ? AND ended_at IS NULL ORDER BY id`, repo)
+	if err != nil {
+		return nil, fmt.Errorf("runs: open runs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []OpenRun
+	for rows.Next() {
+		var r OpenRun
+		var started string
+		if err := rows.Scan(&r.ID, &r.Issue, &r.SessionID, &r.TriggerKey, &r.Profile, &r.Branch,
+			&r.WorkspaceID, &r.WorkplaceSession, &started); err != nil {
+			return nil, fmt.Errorf("runs: scan open run: %w", err)
+		}
+		r.StartedAt, err = time.Parse(time.RFC3339, started)
+		if err != nil {
+			return nil, fmt.Errorf("runs: run %d started_at %q: %w", r.ID, started, err)
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("runs: open runs: %w", err)
+	}
+	return out, nil
+}
+
 // NewSessionID returns a random UUID v4, lower case.
 func NewSessionID() string {
 	var b [16]byte
