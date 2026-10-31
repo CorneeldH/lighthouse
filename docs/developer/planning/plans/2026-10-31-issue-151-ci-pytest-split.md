@@ -185,11 +185,21 @@ def test_shards_are_stable_and_not_empty():
     assert all(first)
 
 
-def test_known_nodeid_lands_in_its_crc32_shard():
-    nodeid = "tests/test_domains.py::test_classify"
-    expected = zlib.crc32(nodeid.encode()) % 3 + 1
-    assert in_shard(nodeid, expected, 3)
+@pytest.mark.parametrize(
+    ("nodeid", "expected"),
+    [
+        ("tests/test_domains.py::test_classify", 2),
+        ("tests/test_x.py::test_b", 3),
+        ("tests/test_y.py::test_c", 1),
+    ],
+)
+def test_known_nodeid_lands_in_its_crc32_shard(nodeid, expected):
+    """Literal shard numbers: hash() differs per process and would fail here."""
+    assert [i for i in (1, 2, 3) if in_shard(nodeid, i, 3)] == [expected]
 ```
+
+De verwachte delen zijn `zlib.crc32(nodeid.encode()) % 3 + 1`, eenmalig uitgerekend en als
+getal vastgezet; een mutatie naar `hash(nodeid)` faalt daardoor niet bij toeval maar altijd.
 
 Plus de hooks uit `tests/conftest.py`, direct aangeroepen met nep-objecten (geen `pytester`):
 `items` als `types.SimpleNamespace(nodeid=...)`, `config` als een `SimpleNamespace` met een
@@ -239,7 +249,8 @@ Expected: een `UsageError` met `LIGHTHOUSE_PYTEST_SHARD`, `rc=4`.
 
 - [ ] **Stap 6: Mutatiecheck.** Vervang tijdelijk `% total + 1` door `% total`: 
 `test_every_test_in_exactly_one_shard` of `test_known_nodeid_lands_in_its_crc32_shard` faalt.
-Terugdraaien.
+Terugdraaien. Vervang daarna tijdelijk `zlib.crc32(nodeid.encode())` door `hash(nodeid)`:
+`test_known_nodeid_lands_in_its_crc32_shard` faalt. Terugdraaien.
 
 - [ ] **Stap 7: Commit.**
 
@@ -267,12 +278,21 @@ def test_python_job_runs_in_three_shards():
     python = _jobs()["python"]
     assert re.search(r"^      fail-fast: false\s*$", python, re.MULTILINE)
     assert re.search(r"^        shard: \[1, 2, 3\]\s*$", python, re.MULTILINE)
-    assert "LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3" in python
-    assert "uv run pytest -q -n auto" in python
-    grep = re.search(r"^      - if: matrix\.shard == 1\n        run: ci/literal-grep\.sh\s*$", python, re.MULTILINE)
-    assert grep, python
+    steps = re.split(r"(?m)^      - ", python)[1:]
+    pytest_steps = [s for s in steps if "uv run pytest -q -n auto" in s]
+    assert len(pytest_steps) == 1, pytest_steps
+    assert "LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3" in pytest_steps[0]
+    assert python.count("LIGHTHOUSE_PYTEST_SHARD") == 1
+    grep = [s for s in steps if "ci/literal-grep.sh" in s]
+    assert len(grep) == 1, grep
+    assert re.match(r"if: matrix\.shard == 1\n        run: ci/literal-grep\.sh\s*$", grep[0]), grep[0]
     assert python.count("ci/literal-grep.sh") == 1
 ```
+
+De stappen worden geknipt zoals in `test_node_jobs_cache_npm`, zodat de `env` aantoonbaar op
+de pytest-stap staat en niet op job-niveau of op een andere stap. Als het commentaar uit stap 3
+`LIGHTHOUSE_PYTEST_SHARD` letterlijk noemt, faalt de telling `== 1`: noem in het commentaar
+`tests/conftest.py`, niet de variabele.
 
 - [ ] **Stap 2: Draai en zie rood.**
 
@@ -300,9 +320,6 @@ type: internal
 CI no longer runs the Go and binary jobs for a change that touches only `tests/`, the root `README.md` or `CHANGELOG.md`, and runs the Python tests in three parallel parts.
 ```
 
-Run: `python3 ci/changelog.py check --base origin/main --head HEAD`
-Expected: rc 0.
-
 - [ ] **Stap 6: Volledige suite.**
 
 Run: `uv run pytest -q -n auto`
@@ -314,6 +331,17 @@ Expected: alles groen.
 git add .github/workflows/ci.yml tests/test_ci_domains_pin.py changelog.d/issue-151-ci-pytest-split.md
 git commit -m "feat(ci): python-job in drie delen (#151)"
 ```
+
+De commit raakt `.github/workflows/ci.yml`, dus de test gate start `gate_node.py`. Zonder
+`web/node_modules` meldt die `COULD NOT CHECK: web/node_modules missing`
+(`.lighthouse/scripts/gate_node.py:171-172`); dat is verwacht en geen rood. Wie de web-checks
+toch wil: `cd web && npm ci`, daarna de gate opnieuw.
+
+- [ ] **Stap 8: Controleer het changelogfragment.** Pas na de commit: `ci/changelog.py check`
+leest alleen fragmenten die in `base...HEAD` zijn toegevoegd (`ci/changelog.py:111-123`).
+
+Run: `git fetch origin main && python3 ci/changelog.py check --base origin/main --head HEAD; echo rc=$?`
+Expected: `rc=0`.
 
 ## Na de merge (geen taak in dit plan)
 
