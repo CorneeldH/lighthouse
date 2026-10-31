@@ -63,11 +63,13 @@ def test_requirements_say_what_falls_away():
     assert not empty, f"no 'Without it' text for {empty}"
 
 
-def test_install_uses_module_path():
+def test_install_offers_binary_then_go():
+    """The binary route comes first; the Go route stays, without the private-repo detour."""
     module = (ROOT / "go.mod").read_text(encoding="utf-8").splitlines()[0].split()[1]
     text = section("Install")
+    assert "releases/latest/download/lighthouse_linux_amd64" in text and "SHA256SUMS" in text
     assert f"go install {module}/cmd/lighthouse@" in text
-    assert "GOPRIVATE=" in text
+    assert "GOPRIVATE" not in text and "not published yet" not in text
 
 
 def test_init_prompt_matches_the_binary():

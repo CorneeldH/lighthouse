@@ -103,6 +103,13 @@ def test_project_part_does_not_repeat_the_core_block():
         assert token not in part, token
 
 
+def test_project_part_points_at_the_release_policy():
+    """The old hand-tagging rule is gone; the policy lives in docs/releasing.md."""
+    part = _project_part()
+    assert "tags are set by hand" not in part
+    assert "docs/releasing.md" in part and "changelog.d/" in part
+
+
 def test_project_part_keeps_the_lighthouse_rules():
     """The rules for lighthouse itself stay: Dutch artefacts, allow-main never committed,
     links, and the planning folders."""

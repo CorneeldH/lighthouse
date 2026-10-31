@@ -5,43 +5,61 @@ serves all your repositories from one SQLite database.
 
 ## Requirements
 
-- Linux with systemd (user units). macOS is not supported.
-- Go, to install the binary.
+- Linux with systemd (user units) for `lighthouse serve`; macOS is not supported there. The CLI
+  runs on macOS, but the hooks are untested there (`usage-guard.sh` uses GNU `date -d`).
+  Windows has a binary, but the hooks need WSL.
+- Go, only to install with `go install` or to build from a clone.
 - Node 22 with npm, to build the web UI. `web/.nvmrc` holds the exact version.
 - Optional: Tailscale, to reach the server from other devices on your tailnet.
 
-## Install the binary
+## Download a release binary
 
-Clone the repository. The steps below run from the clone.
+Each release carries a binary per platform, plus `SHA256SUMS`: `lighthouse_linux_amd64`,
+`lighthouse_linux_arm64`, `lighthouse_darwin_amd64`, `lighthouse_darwin_arm64` and
+`lighthouse_windows_amd64.exe`. This example takes Linux on amd64:
+
+```bash
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_amd64
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
+chmod +x lighthouse_linux_amd64
+mkdir -p ~/go/bin && mv lighthouse_linux_amd64 ~/go/bin/lighthouse
+```
+
+`~/go/bin/lighthouse` is where the systemd unit below looks for the binary; any directory on
+your `PATH` works for the CLI. The release binary reports its tag (`lighthouse version`) and
+serves a placeholder page: it does not carry the web UI (#78).
+
+## Install with Go
+
+`go install` builds a tagged version from source. `@latest` resolves to the newest tag:
+
+```bash
+go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
+```
+
+`go install` puts the binary in `~/go/bin`. Like the release binary, it serves only a
+placeholder page.
+
+## Build from a clone
+
+To get the web UI, clone the repository and build it. The build writes the UI into
+`internal/web/dist`, and `go install` embeds it.
 
 ```bash
 git clone https://github.com/CorneeldH/lighthouse.git
 cd lighthouse
-```
-
-Build the web UI, then install the binary. The build writes the UI into
-`internal/web/dist`, and `go install` embeds it.
-
-```bash
 cd web && npm ci && npm run build && cd ..
 go install ./cmd/lighthouse
 ```
 
-`go install` puts the binary in `~/go/bin`.
-
 A build from a clone reports version `dev`, and `lighthouse init` writes that version into
-`.lighthouse/manifest.toml`. For a repository you run `init` in, install a tag instead:
+`.lighthouse/manifest.toml`. For a repository you run `init` in, use a release binary or a
+tag instead.
 
-```bash
-GOPRIVATE=github.com/CorneeldH go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
-```
-
-`@latest` resolves to the newest tag; `serve` is in every tag from v0.1.6. The repository is
-private, so `GOPRIVATE` makes `go` fetch it with your git credentials instead of through
-`proxy.golang.org`, which cannot read it. That binary serves only a placeholder page:
-`go install` does not build the web UI. Release binaries with the UI follow in #78.
-
-Both installs write `~/go/bin/lighthouse`, so the last one wins: the tag install replaces a UI build from a clone, and the systemd unit then serves the placeholder page.
+All routes write `~/go/bin/lighthouse` (or your chosen path), so the last one wins: a release
+binary or tag install replaces a UI build from a clone, and the systemd unit then serves the
+placeholder page.
 
 ## Run it as a user service
 
