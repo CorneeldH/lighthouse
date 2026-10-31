@@ -1,3 +1,4 @@
+import { CleanupList } from '@/components/CleanupList'
 import { Header } from '@/components/Header'
 import { QuestionList } from '@/components/QuestionList'
 import { ReturnedList } from '@/components/ReturnedList'
@@ -10,6 +11,7 @@ export default function App() {
       <UsagePanel />
       <QuestionList />
       <ReturnedList />
+      <CleanupList />
     </main>
   )
 }

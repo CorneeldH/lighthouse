@@ -20,7 +20,7 @@ const staleMsg = "web/openapi.json is stale: run go test ./internal/server -run 
 // TestOpenAPISnapshot keeps web/openapi.json, the input of the generated
 // TypeScript client, equal to the description the server serves.
 func TestOpenAPISnapshot(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, stubSource{}), "/api/openapi.json")
+	rec := get(New(testSite(), fakeReport, stubSource{}, noLeftovers), "/api/openapi.json")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}

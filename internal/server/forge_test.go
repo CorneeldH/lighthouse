@@ -10,7 +10,10 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
+
+func noLeftovers(context.Context) ([]workplace.Leftover, error) { return []workplace.Leftover{}, nil }
 
 // fakeSource serves canned issues and comments, or err from OpenIssues.
 type fakeSource struct {
@@ -48,7 +51,7 @@ func decode(t *testing.T, body []byte) map[string]json.RawMessage {
 }
 
 func TestQuestionsEndpoint(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, populated()), "/api/questions")
+	rec := get(New(testSite(), fakeReport, populated(), noLeftovers), "/api/questions")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -74,7 +77,7 @@ func TestQuestionsEndpoint(t *testing.T) {
 }
 
 func TestReturnedEndpoint(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, populated()), "/api/returned")
+	rec := get(New(testSite(), fakeReport, populated(), noLeftovers), "/api/returned")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -100,7 +103,7 @@ var listRoutes = []struct{ path, key string }{{"/api/questions", "questions"}, {
 
 func TestEmptyListIsArray(t *testing.T) {
 	for _, route := range listRoutes {
-		rec := get(New(testSite(), fakeReport, stubSource{}), route.path)
+		rec := get(New(testSite(), fakeReport, stubSource{}, noLeftovers), route.path)
 		if rec.Code != 200 {
 			t.Fatalf("%s: status = %d", route.path, rec.Code)
 		}
@@ -121,12 +124,48 @@ func TestEndpointForgeDown(t *testing.T) {
 func assertEndpointError(t *testing.T, err error, status int) {
 	t.Helper()
 	for _, route := range listRoutes {
-		rec := get(New(testSite(), fakeReport, fakeSource{err: err}), route.path)
+		rec := get(New(testSite(), fakeReport, fakeSource{err: err}, noLeftovers), route.path)
 		if rec.Code != status {
 			t.Fatalf("%s: status = %d, want %d, body %s", route.path, rec.Code, status, rec.Body)
 		}
 		if _, ok := decode(t, rec.Body.Bytes())[route.key]; ok {
 			t.Errorf("%s: error body has key %q: %s", route.path, route.key, rec.Body)
 		}
+	}
+}
+
+func TestCleanupEndpoint(t *testing.T) {
+	want := workplace.Leftover{Repo: "o/r", Issue: 7, WorkspaceID: "ws-1", Path: "/w/ws-1", Reason: "dirty worktree"}
+	leftovers := func(context.Context) ([]workplace.Leftover, error) { return []workplace.Leftover{want}, nil }
+	rec := get(New(testSite(), fakeReport, stubSource{}, leftovers), "/api/cleanup")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	got := string(decode(t, rec.Body.Bytes())["cleanup"])
+	const wantJSON = `[{"repo":"o/r","issue":7,"workspace_id":"ws-1","path":"/w/ws-1","reason":"dirty worktree"}]`
+	if got != wantJSON {
+		t.Errorf("cleanup = %s, want %s", got, wantJSON)
+	}
+}
+
+func TestCleanupEndpointEmptyIsArray(t *testing.T) {
+	nilList := func(context.Context) ([]workplace.Leftover, error) { return nil, nil }
+	rec := get(New(testSite(), fakeReport, stubSource{}, nilList), "/api/cleanup")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if got := string(decode(t, rec.Body.Bytes())["cleanup"]); got != "[]" {
+		t.Errorf("cleanup = %s, want []", got)
+	}
+}
+
+func TestCleanupEndpointError(t *testing.T) {
+	leftovers := func(context.Context) ([]workplace.Leftover, error) { return nil, errors.New("db closed") }
+	rec := get(New(testSite(), fakeReport, stubSource{}, leftovers), "/api/cleanup")
+	if rec.Code != 500 {
+		t.Fatalf("status = %d, want 500, body %s", rec.Code, rec.Body)
+	}
+	if _, ok := decode(t, rec.Body.Bytes())["cleanup"]; ok {
+		t.Errorf("error body has key cleanup: %s", rec.Body)
 	}
 }

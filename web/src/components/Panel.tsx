@@ -10,10 +10,12 @@ interface PanelProps {
   updatedAt: number
   error: unknown
   loading: boolean
+  // Formats the error; defaults to the forge wording.
+  errorText?: (error: unknown) => string
   children: ReactNode
 }
 
-export function Panel({ title, updatedAt, error, loading, children }: PanelProps): JSX.Element {
+export function Panel({ title, updatedAt, error, loading, errorText = forgeErrorText, children }: PanelProps): JSX.Element {
   const now = useNow()
   const hasError = error !== null && error !== undefined
   return (
@@ -27,7 +29,7 @@ export function Panel({ title, updatedAt, error, loading, children }: PanelProps
         )}
       </CardHeader>
       <CardContent className="space-y-3">
-        {hasError && <p role="alert">{forgeErrorText(error)}</p>}
+        {hasError && <p role="alert">{errorText(error)}</p>}
         {loading && <p>Loading…</p>}
         {children}
       </CardContent>

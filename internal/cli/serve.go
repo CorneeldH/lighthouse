@@ -21,6 +21,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/web"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 const (
@@ -99,7 +100,9 @@ func serve(ctx context.Context, addr, dbPath string, src overview.Source, errOut
 	if paths, err := usage.DefaultPaths(); err == nil {
 		rep.Cache = paths.Cache()
 	}
-	srv := &http.Server{Handler: server.New(web.FS(), rep.Report, src), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: server.New(web.FS(), rep.Report, src, func(ctx context.Context) ([]workplace.Leftover, error) {
+		return workplace.Leftovers(ctx, st.DB)
+	}), ReadHeaderTimeout: 10 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 

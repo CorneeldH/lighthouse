@@ -8,6 +8,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 type questionsOutput struct {
@@ -20,6 +21,28 @@ type returnedOutput struct {
 	Body struct {
 		Returned []overview.Returned `json:"returned"`
 	}
+}
+
+type cleanupOutput struct {
+	Body struct {
+		Cleanup []workplace.Leftover `json:"cleanup"`
+	}
+}
+
+// registerCleanup adds the endpoint that lists the workspaces cleanup left behind.
+func registerCleanup(api huma.API, leftovers func(context.Context) ([]workplace.Leftover, error)) {
+	huma.Get(api, "/api/cleanup", func(ctx context.Context, _ *struct{}) (*cleanupOutput, error) {
+		list, err := leftovers(ctx)
+		if err != nil {
+			return nil, huma.Error500InternalServerError(err.Error())
+		}
+		if list == nil {
+			list = []workplace.Leftover{}
+		}
+		out := &cleanupOutput{}
+		out.Body.Cleanup = list
+		return out, nil
+	}, func(op *huma.Operation) { op.OperationID = "get-cleanup" })
 }
 
 // registerForge adds the endpoints that read the forge through src.

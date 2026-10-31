@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"testing"
 	"time"
@@ -207,5 +208,114 @@ func TestOpenListsOnlyOpenRunsOfRepo(t *testing.T) {
 	}
 	if got.TriggerKey != "start:3" || got.SessionID != three.SessionID {
 		t.Errorf("TriggerKey, SessionID = %q, %q; want %q, %q", got.TriggerKey, got.SessionID, "start:3", three.SessionID)
+	}
+}
+
+func TestSetWorkplaceAndSession(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c := claim("owner/a", 7, "start:7")
+	c.Profile = "dev"
+	r, err := Take(ctx, db, c)
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := SetWorkplace(ctx, db, r.ID, "ws-1", "issue-7-x"); err != nil {
+		t.Fatalf("SetWorkplace: %v", err)
+	}
+	if err := SetSession(ctx, db, r.ID, "key-1"); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+	got, err := Open(ctx, db, "owner/a")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	want := OpenRun{
+		ID: r.ID, Issue: 7, SessionID: c.SessionID, TriggerKey: "start:7", Profile: "dev", Branch: "issue-7-x",
+		WorkspaceID: "ws-1", WorkplaceSession: "key-1", StartedAt: c.Now,
+	}
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("Open = %+v, want [%+v]", got, want)
+	}
+}
+
+func TestSetOnClosedRun(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	r, err := Take(ctx, db, claim("owner/a", 7, "start:7"))
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := Release(ctx, db, r.ID, Done, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if err := SetWorkplace(ctx, db, r.ID, "ws-1", "b"); !errors.Is(err, ErrNotOpen) {
+		t.Errorf("SetWorkplace error = %v, want ErrNotOpen", err)
+	}
+	if err := SetSession(ctx, db, r.ID, "k"); !errors.Is(err, ErrNotOpen) {
+		t.Errorf("SetSession error = %v, want ErrNotOpen", err)
+	}
+}
+
+func TestOpenOnlyRepo(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	mine, err := Take(ctx, db, claim("owner/a", 7, "start:7"))
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if _, err := Take(ctx, db, claim("owner/b", 8, "start:8")); err != nil {
+		t.Fatalf("Take other repo: %v", err)
+	}
+	closed, err := Take(ctx, db, claim("owner/a", 9, "start:9"))
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := Release(ctx, db, closed.ID, Done, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	got, err := Open(ctx, db, "owner/a")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != mine.ID {
+		t.Errorf("Open = %+v, want only run %d", got, mine.ID)
+	}
+}
+
+func TestSessionKeys(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	run := func(issue int, key string, o Outcome, workplaceSession string) string {
+		t.Helper()
+		c := claim("owner/a", issue, key)
+		r, err := Take(ctx, db, c)
+		if err != nil {
+			t.Fatalf("Take %s: %v", key, err)
+		}
+		if workplaceSession != "" {
+			if err := SetSession(ctx, db, r.ID, workplaceSession); err != nil {
+				t.Fatalf("SetSession: %v", err)
+			}
+		}
+		if o != "" {
+			if err := Release(ctx, db, r.ID, o, "", time.Now()); err != nil {
+				t.Fatalf("Release: %v", err)
+			}
+		}
+		return c.SessionID
+	}
+	s1 := run(7, "a:1", Returned, "key-1")
+	run(7, "b:1", StartFailed, "")
+	s2 := run(7, "c:1", StartFailed, "key-2")
+	run(8, "d:1", Done, "key-other-issue")
+	s3 := run(7, "e:1", "", "key-open")
+	got, err := SessionKeys(ctx, db, "owner/a", 7)
+	if err != nil {
+		t.Fatalf("SessionKeys: %v", err)
+	}
+	want := map[string]string{"key-1": s1, "key-2": s2, "key-open": s3}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SessionKeys = %v, want %v", got, want)
 	}
 }

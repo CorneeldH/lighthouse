@@ -4,6 +4,19 @@
  * lighthouse
  * OpenAPI spec version: dev
  */
+export interface Leftover {
+  issue: number;
+  path: string;
+  reason: string;
+  repo: string;
+  workspace_id: string;
+}
+
+export interface CleanupOutputBody {
+  /** @nullable */
+  cleanup: Leftover[] | null;
+}
+
 export interface ErrorDetail {
   /** Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
   location?: string;
@@ -96,6 +109,56 @@ export type HTTPStatusCode3xx = 300 | 301 | 302 | 303 | 304 | 305 | 307 | 308;
 export type HTTPStatusCode4xx = 400 | 401 | 402 | 403 | 404 | 405 | 406 | 407 | 408 | 409 | 410 | 411 | 412 | 413 | 414 | 415 | 416 | 417 | 418 | 419 | 420 | 421 | 422 | 423 | 424 | 426 | 428 | 429 | 431 | 451;
 export type HTTPStatusCode5xx = 500 | 501 | 502 | 503 | 504 | 505 | 507 | 511;
 export type HTTPStatusCodes = HTTPStatusCode1xx | HTTPStatusCode2xx | HTTPStatusCode3xx | HTTPStatusCode4xx | HTTPStatusCode5xx;
+
+export type getCleanupResponse200 = {
+  data: CleanupOutputBody
+  status: 200
+}
+
+export type getCleanupResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getCleanupResponseSuccess = (getCleanupResponse200) & {
+  headers: Headers;
+};
+export type getCleanupResponseError = (getCleanupResponseDefault) & {
+  headers: Headers;
+};
+
+export type getCleanupResponse = (getCleanupResponseSuccess | getCleanupResponseError)
+
+export const getGetCleanupUrl = () => {
+
+
+
+
+  return `/api/cleanup`
+}
+
+/**
+ * @summary Get API cleanup
+ */
+export const getCleanup = async ( options?: RequestInit): Promise<getCleanupResponse> => {
+
+  const res = await fetch(getGetCleanupUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getCleanupResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getCleanupResponse
+}
+
+
 
 export type getHealthResponse200 = {
   data: HealthOutputBody
