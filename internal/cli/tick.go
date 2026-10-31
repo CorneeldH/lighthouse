@@ -69,6 +69,13 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	if err != nil {
 		return err
 	}
+	if len(cfg.Repos) == 0 {
+		if env.HostToml == "" {
+			_, _ = fmt.Fprintln(errOut, "lighthouse: no host.toml: no repos to check")
+		} else {
+			_, _ = fmt.Fprintf(errOut, "lighthouse: no repos in [dispatch] of %s\n", env.HostToml)
+		}
+	}
 	if dbPath == "" {
 		if dbPath, err = store.DefaultPath(); err != nil {
 			return err

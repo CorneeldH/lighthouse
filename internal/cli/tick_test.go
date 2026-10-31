@@ -122,8 +122,12 @@ func TestTickWithoutRuntimeDir(t *testing.T) {
 
 func TestTickNoRepos(t *testing.T) {
 	env, db := tickFixture(t)
-	if err := tick(context.Background(), env, db, &bytes.Buffer{}); err != nil {
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatal(err)
+	}
+	if want := "lighthouse: no repos in [dispatch] of " + env.HostToml + "\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
 	}
 	conn, err := sql.Open("sqlite", db)
 	if err != nil {
@@ -136,6 +140,18 @@ func TestTickNoRepos(t *testing.T) {
 	}
 	if v != 2 {
 		t.Errorf("user_version = %d, want 2", v)
+	}
+}
+
+func TestTickNoRepos_NoHostToml(t *testing.T) {
+	env, db := tickFixture(t)
+	env.HostToml = ""
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	if want := "lighthouse: no host.toml: no repos to check\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
 	}
 }
 
