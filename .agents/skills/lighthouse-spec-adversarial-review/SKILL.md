@@ -168,8 +168,7 @@ not git.
 round 1 by default, and Opus verifies rounds 2 and 3. Here that subagent does not exist; every
 round runs through Codex, as below.
 
-The `lighthouse-spec-adversary` agent exists only in Claude Code (`.claude/agents/`). Here you
-call the runner yourself; the whole review then does come into your context. Before *every*
+Here you call the runner yourself; the whole review then does come into your context. Before *every*
 round a snapshot of the spec:
 
 ```bash
