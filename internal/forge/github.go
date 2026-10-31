@@ -90,9 +90,13 @@ func (c *Client) Comments(ctx context.Context, number int) ([]protocol.Comment, 
 		return nil, err
 	}
 	type item struct {
+		ID        int64  `json:"id"`
 		Body      string `json:"body"`
 		CreatedAt string `json:"created_at"`
 		HTMLURL   string `json:"html_url"`
+		User      *struct {
+			Login string `json:"login"`
+		} `json:"user"`
 		Reactions struct {
 			Rocket int `json:"rocket"`
 		} `json:"reactions"`
@@ -106,7 +110,11 @@ func (c *Client) Comments(ctx context.Context, number int) ([]protocol.Comment, 
 			return nil, err
 		}
 		for _, it := range page {
-			out = append(out, protocol.Comment{Body: it.Body, CreatedAt: it.CreatedAt, URL: it.HTMLURL, Rockets: it.Reactions.Rocket})
+			author := ""
+			if it.User != nil {
+				author = it.User.Login
+			}
+			out = append(out, protocol.Comment{Body: it.Body, CreatedAt: it.CreatedAt, URL: it.HTMLURL, Rockets: it.Reactions.Rocket, ID: it.ID, Author: author})
 		}
 		url = next
 	}
@@ -161,11 +169,20 @@ func statusError(method, url string, resp *http.Response) error {
 		Message string `json:"message"`
 	}
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	msg := fmt.Sprintf("forge %s %s: status %d", method, url, resp.StatusCode)
 	if json.Unmarshal(data, &body) == nil && body.Message != "" {
-		return fmt.Errorf("forge %s %s: status %d: %s", method, url, resp.StatusCode, body.Message)
+		msg += ": " + body.Message
 	}
-	return fmt.Errorf("forge %s %s: status %d", method, url, resp.StatusCode)
+	return &httpStatusError{Code: resp.StatusCode, msg: msg}
 }
+
+// httpStatusError is a non-2xx response; callers read Code with errors.As.
+type httpStatusError struct {
+	Code int
+	msg  string
+}
+
+func (e *httpStatusError) Error() string { return e.msg }
 
 // sameOrigin refuses a next-page URL whose scheme or host differs from BaseURL, so the
 // token never goes to another host. Only scheme and host count: GitHub's Link URLs use

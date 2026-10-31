@@ -113,7 +113,7 @@ func commentsJSON(from, count int, lastRockets int) string {
 		if i == from+count-1 {
 			rockets = lastRockets
 		}
-		items = append(items, fmt.Sprintf(`{"body":"b%d","created_at":"2026-01-01T00:00:%02dZ","html_url":"https://github.com/o/r/issues/7#issuecomment-%d","reactions":{"rocket":%d,"+1":5}}`, i, i%60, i, rockets))
+		items = append(items, fmt.Sprintf(`{"id":%d,"user":{"login":"u%d"},"body":"b%d","created_at":"2026-01-01T00:00:%02dZ","html_url":"https://github.com/o/r/issues/7#issuecomment-%d","reactions":{"rocket":%d,"+1":5}}`, 1000+i, i, i, i%60, i, rockets))
 	}
 	return strings.Join(items, ",")
 }
@@ -139,6 +139,21 @@ func TestCommentsFollowsPages(t *testing.T) {
 	}
 	if comments[0].Rockets != 0 {
 		t.Errorf("first Rockets = %d, want 0", comments[0].Rockets)
+	}
+}
+
+func TestCommentsCarryIDAndAuthor(t *testing.T) {
+	body := `[` + commentsJSON(3, 1, 0) + `,{"id":9,"user":null,"body":"gone","created_at":"x","html_url":"y","reactions":{"rocket":0}}]`
+	c, _ := newTestClient(t, map[string]fakeResponse{commentsURL1: {status: 200, body: body}})
+	comments, err := c.Comments(context.Background(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if comments[0].ID != 1003 || comments[0].Author != "u3" {
+		t.Errorf("first = id %d author %q, want 1003 and u3", comments[0].ID, comments[0].Author)
+	}
+	if comments[1].ID != 9 || comments[1].Author != "" {
+		t.Errorf("user null = id %d author %q, want 9 and empty", comments[1].ID, comments[1].Author)
 	}
 }
 
