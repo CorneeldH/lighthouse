@@ -105,7 +105,10 @@ func TestTickWithoutToken(t *testing.T) {
 }
 
 func TestTickWithoutRuntimeDir(t *testing.T) {
-	for _, v := range []string{"", "relative"} {
+	for v, want := range map[string]string{
+		"":         "tick: XDG_RUNTIME_DIR is not set: cannot take tick.lock",
+		"relative": "tick: XDG_RUNTIME_DIR is not an absolute path: cannot take tick.lock",
+	} {
 		env, db := tickFixture(t)
 		env.Getenv = func(k string) string {
 			if k == "XDG_RUNTIME_DIR" {
@@ -114,8 +117,8 @@ func TestTickWithoutRuntimeDir(t *testing.T) {
 			return "tok"
 		}
 		err := tick(context.Background(), env, db, &bytes.Buffer{})
-		if err == nil || !strings.Contains(err.Error(), "XDG_RUNTIME_DIR") {
-			t.Errorf("XDG_RUNTIME_DIR=%q: err = %v", v, err)
+		if err == nil || err.Error() != want {
+			t.Errorf("XDG_RUNTIME_DIR=%q: err = %v, want %q", v, err, want)
 		}
 	}
 }

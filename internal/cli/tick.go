@@ -45,8 +45,11 @@ func newTickCommand() *cobra.Command {
 // are already on errOut.
 func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) error {
 	runtime := env.Getenv("XDG_RUNTIME_DIR")
-	if !filepath.IsAbs(runtime) {
+	if runtime == "" {
 		return errors.New("tick: XDG_RUNTIME_DIR is not set: cannot take tick.lock")
+	}
+	if !filepath.IsAbs(runtime) {
+		return errors.New("tick: XDG_RUNTIME_DIR is not an absolute path: cannot take tick.lock")
 	}
 	dir := filepath.Join(runtime, "lighthouse")
 	if err := os.MkdirAll(dir, 0o700); err != nil {

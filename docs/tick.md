@@ -8,8 +8,9 @@ Het is een korte run, geen daemon. Het ontwerp staat in
 ## Wat tick nu doet
 
 1. **Slot.** Neemt `${XDG_RUNTIME_DIR}/lighthouse/tick.lock`. Staat het slot nog vast, dan schrijft
-   tick `lighthouse: previous tick still running` naar stderr en eindigt met exitcode 0. Zonder een
-   absoluut `XDG_RUNTIME_DIR` stopt tick met een fout.
+   tick `lighthouse: previous tick still running` naar stderr en eindigt met exitcode 0. Zonder
+   `XDG_RUNTIME_DIR` stopt tick met `tick: XDG_RUNTIME_DIR is not set: cannot take tick.lock`; bij een
+   relatief pad met `tick: XDG_RUNTIME_DIR is not an absolute path: cannot take tick.lock`.
 2. **Token.** Vereist `GH_TOKEN` of `GITHUB_TOKEN`. Zonder stopt tick met
    `tick: no GitHub token: set GH_TOKEN or GITHUB_TOKEN`.
 3. **Configuratie.** Leest `[dispatch]` uit `host.toml` (`$LIGHTHOUSE_HOST_TOML`, anders
