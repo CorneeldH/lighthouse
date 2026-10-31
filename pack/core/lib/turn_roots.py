@@ -47,7 +47,8 @@ In doubt, a root is `touched`, as before #80: a prompt without a readable
 `timestamp`, or a git call that fails for that root. Too little is acceptable:
 a dirty path from an earlier turn, a Bash write git does not see (an ignored
 file), and the first commit of a repo that came into being in the turn do not
-count.
+count. So does an interrupted turn: after an Esc the Stop hook does not run, so
+its edits are never checked when the next turn touches only other paths.
 
 Exit 0: without `--match` the roots, sorted, one per line; with it one line
 `touched\t<root>` or `untouched\t<root>` per root. Exit 1: the checkout cannot
