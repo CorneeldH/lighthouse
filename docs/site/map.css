@@ -403,12 +403,6 @@ button:focus-visible {
   transition: opacity 0.2s, box-shadow 0.2s;
 }
 
-.band .chip {
-  position: static;
-  transform: none;
-  width: auto;
-}
-
 .chip.kind-hook {
   border-radius: 8px;
 }
@@ -564,26 +558,6 @@ button:focus-visible {
   position: static;
   transform: none;
   cursor: default;
-}
-
-.band {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 12px 0;
-  padding: 8px 12px;
-  border-radius: 12px;
-  background: var(--col-bg);
-}
-
-.band-title {
-  margin: 0 6px 0 0;
-  color: var(--col-fg);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 /* Detail drawer: slides in from the right at a click on a chip or a handoff. */
