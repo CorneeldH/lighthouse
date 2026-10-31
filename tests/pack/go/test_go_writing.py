@@ -1,4 +1,4 @@
-"""The skill `go-writing` of `pack/go`: a KPI table whose every row is a command, the
+"""The skill `go-standard` of `pack/go`: a KPI table whose every row is a command, the
 measurement rules with their environment, and the pairing with the hooks of `pack/go`.
 
 Modelled on `tests/pack/python/test_python_writing.py`; the content is fixed by the spec
@@ -10,7 +10,7 @@ from pathlib import Path
 
 from lighthouse_lib import config
 
-SKILL_DIR = Path(__file__).resolve().parents[3] / "pack" / "go" / "skills" / "go-writing"
+SKILL_DIR = Path(__file__).resolve().parents[3] / "pack" / "go" / "skills" / "go-standard"
 CLAUDE = SKILL_DIR / "claude" / "SKILL.md"
 AGENTS = SKILL_DIR / "agents" / "SKILL.md"
 VARIANTS = (CLAUDE, AGENTS)
@@ -21,7 +21,7 @@ SECTIONS = (
     "## Non-negotiable",
     "## Reporting done",
     "## Merging or deepening: replace, don't layer",
-    "## The Go form of lighthouse-testing",
+    "## The Go form of lighthouse-test-standard",
     "## Reaching a complexity limit: deepen, don't split",
     "## The pairing",
     "## Known pitfalls",
@@ -57,7 +57,7 @@ def _paragraphs(text: str) -> list[str]:
 
 def test_frontmatter_name():
     for path in VARIANTS:
-        assert "name: lighthouse-go-writing\n" in _frontmatter(path), path
+        assert "name: lighthouse-go-standard\n" in _frontmatter(path), path
 
 
 def test_description_has_a_negative_boundary():
@@ -66,8 +66,8 @@ def test_description_has_a_negative_boundary():
     for path in VARIANTS:
         front = _frontmatter(path)
         assert "NOT for" in front, path
-        assert "lighthouse-python-writing" in front, f"{path}: the boundary to Python is missing"
-        assert "lighthouse-shell-gates" in front, f"{path}: the boundary to shell is missing"
+        assert "lighthouse-python-standard" in front, f"{path}: the boundary to Python is missing"
+        assert "lighthouse-shell-standard" in front, f"{path}: the boundary to shell is missing"
 
 
 def test_description_triggers_on_planning():
@@ -148,10 +148,10 @@ def test_config_keys_are_known():
 
 
 def test_points_to_the_testing_skill():
-    """The class table lives in `lighthouse-testing`; this skill only asks for the sentence."""
+    """The class table lives in `lighthouse-test-standard`; this skill only asks for the sentence."""
     for path in VARIANTS:
         text = path.read_text(encoding="utf-8")
-        assert "lighthouse-testing" in text, path
+        assert "lighthouse-test-standard" in text, path
         assert "Classify first" in text, path
         assert (
             "This is a <class> change; the likely regression surface is <observable behaviour>."
@@ -162,7 +162,7 @@ def test_points_to_the_testing_skill():
 
 def test_go_form_of_the_testing_norms():
     for path in VARIANTS:
-        section = _section(path.read_text(encoding="utf-8"), "## The Go form of lighthouse-testing")
+        section = _section(path.read_text(encoding="utf-8"), "## The Go form of lighthouse-test-standard")
         for tool in ("t.TempDir()", "httptest", "testify", "require", "want"):
             assert tool in section, f"{path}: {tool}"
 
@@ -185,15 +185,15 @@ def test_names_the_environment():
             assert word in section, f"{path}: {word}"
 
 
-def test_pairing_go_check_row():
-    """`go-check.sh` runs only `golangci-lint run ./...`; `govet` is in its standard set, and
+def test_pairing_go_lint_gate_row():
+    """`go-lint-gate.sh` runs only `golangci-lint run ./...`; `govet` is in its standard set, and
     there is no separate `go vet` in the hook."""
     for path in VARIANTS:
         pairing = _section(path.read_text(encoding="utf-8"), "## The pairing")
-        assert "lighthouse-testing" in pairing, path
-        assert ".claude/hooks/lighthouse/gofmt.sh" in pairing, path
+        assert "lighthouse-test-standard" in pairing, path
+        assert ".claude/hooks/lighthouse/gofmt-check.sh" in pairing, path
         rows = [
-            line for line in pairing.splitlines() if line.startswith("|") and "go-check.sh" in line
+            line for line in pairing.splitlines() if line.startswith("|") and "go-lint-gate.sh" in line
         ]
         assert len(rows) == 1, f"{path}: {rows}"
         assert "golangci-lint" in rows[0], rows[0]

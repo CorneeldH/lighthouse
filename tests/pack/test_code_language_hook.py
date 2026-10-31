@@ -1,4 +1,4 @@
-"""pack/core code-language.sh, as installed (#26): blocks a non-English comment,
+"""pack/core code-language-check.sh, as installed (#26): blocks a non-English comment,
 docstring or name in a written .py/.sh/.bash/.go file, and says so when it could not look.
 
 The hook is bash and reads its payload as JSON on stdin. These tests run it as a
@@ -17,10 +17,10 @@ import pytest
 from tests.pack._fake_llm import FakeEndpoint
 from tests.pack._testkit import GIT_ENV, INSTALLED_HOOKS, MINIMAL_TOML, git
 
-HOOK = INSTALLED_HOOKS / "code-language.sh"
+HOOK = INSTALLED_HOOKS / "code-language-check.sh"
 ON_TOML = MINIMAL_TOML.replace('language = "en"\n', 'language = "en"\ncode_language = "en"\n')
 DUTCH = "# lees het bestand en geef de regels terug\nx = 1\n"
-COULD_NOT = "code-language: COULD NOT CHECK — "
+COULD_NOT = "code-language-check: COULD NOT CHECK — "
 
 
 def _repo(path: Path, toml: str | None = ON_TOML) -> Path:
@@ -292,9 +292,9 @@ def test_hook_ends_within_deadline(tmp_path, mode):
 def test_hook_under_gates(tmp_path):
     with FakeEndpoint() as fake:
         root = _llm_repo(tmp_path, fake.url)
-        env = _llm_env(tmp_path, LIGHTHOUSE_UNDER_BASH_GATES="1")
+        env = _llm_env(tmp_path, LIGHTHOUSE_UNDER_BASH_WRITE_CHECK="1")
         result = _run(str(_write(root, "a.py", DOUBT_LINE)), root, env=env)
     assert fake.requests == []
     assert result.returncode == 0, result.stderr
-    assert result.stdout.startswith("code-language: NOTICE — ")
+    assert result.stdout.startswith("code-language-check: NOTICE — ")
     assert "legacy_processed_lijst_weg" in result.stdout

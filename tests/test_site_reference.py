@@ -41,8 +41,8 @@ def test_every_reference_link_exists():
 def test_reference_marks_standard_skills():
     entries = run_map(f"m.referenceEntries({json.dumps(load('packs.json'))}, 'skills')")
     sorts = {i["name"]: i["sort"] for e in entries for i in e["items"]}
-    assert sorts["testing"] == "standard-skill"
-    assert sorts["instrument"] == "workflow-skill"
+    assert sorts["test-standard"] == "standard-skill"
+    assert sorts["place-instruction"] == "workflow-skill"
 
 
 def test_reference_page_has_the_four_anchors():

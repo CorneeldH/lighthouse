@@ -29,7 +29,7 @@ JSON object on stdout). It uses its own thresholds (`[codex_usage] review_pct_se
 a review only wants to know whether Codex still fits.
 
 Only `read` and `budget` are in this package (decision 26). The gate, which parks a run,
-belongs to the usage guard and is not in here.
+belongs to the usage gate and is not in here.
 
 Output keys and values are fixed English tokens; a skill or `review.sh` parses them.
 """

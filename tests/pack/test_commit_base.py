@@ -85,7 +85,7 @@ def test_moved_without_marker_is_empty():
 def test_moved_does_not_create_the_state_dir(runtime_dir):
     # `post` runs after every Bash call: only `record` makes the state dir.
     assert cb.moved(payload()) == []
-    assert not (runtime_dir / "lighthouse-commit-tests").exists()
+    assert not (runtime_dir / "lighthouse-commit-test-gate").exists()
 
 
 def test_moved_with_read_only_runtime_dir_is_empty(runtime_dir):

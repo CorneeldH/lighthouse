@@ -3,8 +3,8 @@
 Two kinds (`kind`, `"plan"` or `"spec"`) share one write path and one
 record format: only the document key (`plan`/`spec`) and the matching
 hash fields (`plan_sha256_*`/`spec_sha256_*`) follow `kind`. Four subcommands,
-called by the operator of `plan-adversarial-review` or
-`spec-adversarial-review`:
+called by the operator of `review-plan` or
+`review-spec`:
 
     plan_review_record.py start [--kind plan|spec] <DOC>
         Reserves the ephemeral attempt directory
@@ -109,8 +109,8 @@ HostError = ConfigError
 
 KINDS = ("plan", "spec")
 DEFAULT_SKILL_DIRS = {
-    "plan": ".claude/skills/lighthouse-plan-adversarial-review",
-    "spec": ".claude/skills/lighthouse-spec-adversarial-review",
+    "plan": ".claude/skills/lighthouse-review-plan",
+    "spec": ".claude/skills/lighthouse-review-spec",
 }
 OUTCOMES = ("converged", "round_limit", "aborted")
 REVIEW_MODES = ("codex", "codex_same_family", "fallback")

@@ -4,7 +4,7 @@
 In round 1 a shadow reviewer from the same model family runs alongside Codex, on
 the same SHA and with the same prompt. The main thread decides blind on an A/B table;
 only `merge` unblinds. Two subcommands, called by the operator of
-`plan-adversarial-review` or `spec-adversarial-review`:
+`review-plan` or `review-spec`:
 
     review_pair.py blind <ATTEMPT_DIR>
         First checks that the work tree has not changed since `start` (`HEAD` is

@@ -1,6 +1,6 @@
 """Contract of the adversarial review runner.
 
-`lighthouse-spec-adversarial-review/review.sh` is the only Codex runner; the plan review calls it
+`lighthouse-review-spec/review.sh` is the only Codex runner; the plan review calls it
 through a wrapper with its own prompt and schema. These tests run the real script, installed
 the way `init` installs it, against a fake `codex` on PATH that records the prompt and the argv.
 So they check what the runner promises without network or Codex account:
@@ -29,7 +29,7 @@ import pytest
 from tests.pack._testkit import CORE
 
 SKILLS = CORE / "skills"
-NAMES = ("spec-adversarial-review", "plan-adversarial-review")
+NAMES = ("review-spec", "review-plan")
 
 
 def install_skills(root: pathlib.Path) -> None:
@@ -113,10 +113,10 @@ NINE = [
 ]
 
 SCRIPTS = [
-    ("lighthouse-spec-adversarial-review", "review.sh"),
-    ("lighthouse-plan-adversarial-review", "review.sh"),
-    ("lighthouse-plan-adversarial-review", "verify.sh"),
-    ("lighthouse-spec-adversarial-review", "verify.sh"),
+    ("lighthouse-review-spec", "review.sh"),
+    ("lighthouse-review-plan", "review.sh"),
+    ("lighthouse-review-plan", "verify.sh"),
+    ("lighthouse-review-spec", "verify.sh"),
 ]
 
 
@@ -202,7 +202,7 @@ def captured(sandbox: dict) -> tuple[str, list[str]]:
 
 @pytest.mark.parametrize("prior", ["none", "PRIOR"])
 def test_spec_review_prompt_is_byte_identical_without_new_flags(root, prior, sandbox):
-    skill = root / "lighthouse-spec-adversarial-review"
+    skill = root / "lighthouse-review-spec"
     out = sandbox["tmp"] / "out" / "round-2.json"
     prior_arg = (
         "none" if prior == "none" else str(sandbox["tmp"] / "out" / "round-1.json")
@@ -226,7 +226,7 @@ def test_spec_review_prompt_is_byte_identical_without_new_flags(root, prior, san
 
 
 def test_sidecar_changes_only_the_prior_block(root, sandbox):
-    skill = root / "lighthouse-spec-adversarial-review"
+    skill = root / "lighthouse-review-spec"
     outdir = sandbox["tmp"] / "out"
     outdir.mkdir()
     prior = outdir / "round-1.json"
@@ -266,7 +266,7 @@ def test_sidecar_changes_only_the_prior_block(root, sandbox):
 def test_context_on_a_template_without_the_placeholder_fails(root, sandbox):
     """The spec prompt has no {{CONTEXT_PATHS}}: ignoring it silently would hide the
     spec(s) the operator passed on purpose."""
-    skill = root / "lighthouse-spec-adversarial-review"
+    skill = root / "lighthouse-review-spec"
     out = sandbox["tmp"] / "out" / "round-1.json"
     result = run(
         skill / "review.sh",
@@ -282,7 +282,7 @@ def test_context_on_a_template_without_the_placeholder_fails(root, sandbox):
 
 
 def test_plan_wrapper_sends_plan_prompt_schema_and_context(root, sandbox):
-    plan_skill = root / "lighthouse-plan-adversarial-review"
+    plan_skill = root / "lighthouse-review-plan"
     out = sandbox["tmp"] / "out" / "round-1.json"
     result = run(
         plan_skill / "review.sh",
@@ -304,7 +304,7 @@ def test_plan_wrapper_sends_plan_prompt_schema_and_context(root, sandbox):
 
 
 def test_missing_context_path_is_a_usage_error(root, sandbox):
-    plan_skill = root / "lighthouse-plan-adversarial-review"
+    plan_skill = root / "lighthouse-review-plan"
     out = sandbox["tmp"] / "out" / "round-1.json"
     result = run(
         plan_skill / "review.sh",
@@ -332,7 +332,7 @@ EXECUTABILITY_CATS = [
 
 def test_plan_schema_requires_one_of_seven_categories(root):
     schema = json.loads(
-        (root / "lighthouse-plan-adversarial-review" / "findings.schema.json").read_text()
+        (root / "lighthouse-review-plan" / "findings.schema.json").read_text()
     )
     item = schema["properties"]["findings"]["items"]
     assert {"cat", "plan_section", "failure_scenario"} <= set(item["required"])
@@ -341,7 +341,7 @@ def test_plan_schema_requires_one_of_seven_categories(root):
 
 
 def test_plan_prompt_asks_executability_not_improvement(root):
-    text = (root / "lighthouse-plan-adversarial-review" / "reviewer-prompt.md").read_text()
+    text = (root / "lighthouse-review-plan" / "reviewer-prompt.md").read_text()
     body = text.split("---BEGIN PROMPT---", 1)[1].split("---END PROMPT---", 1)[0]
     for cat in EXECUTABILITY_CATS:
         assert f"`{cat}`" in body
@@ -352,7 +352,7 @@ def test_plan_prompt_asks_executability_not_improvement(root):
 
 
 def test_plan_verify_wrapper_sends_verifier_prompt_and_schema(root, sandbox):
-    plan_skill = root / "lighthouse-plan-adversarial-review"
+    plan_skill = root / "lighthouse-review-plan"
     outdir = sandbox["tmp"] / "out"
     outdir.mkdir()
     (outdir / "round-1.json").write_text("{}")
@@ -383,7 +383,7 @@ def test_plan_verify_wrapper_sends_verifier_prompt_and_schema(root, sandbox):
 
 def test_plan_verification_schema_is_scoped(root):
     schema = json.loads(
-        (root / "lighthouse-plan-adversarial-review" / "verification.schema.json").read_text()
+        (root / "lighthouse-review-plan" / "verification.schema.json").read_text()
     )
     assert "verified" in schema["required"]
     item = schema["properties"]["findings"]["items"]
@@ -393,7 +393,7 @@ def test_plan_verification_schema_is_scoped(root):
 
 
 def test_spec_blocker_needs_a_failure_scenario(root):
-    skill = root / "lighthouse-spec-adversarial-review"
+    skill = root / "lighthouse-review-spec"
     item = json.loads((skill / "findings.schema.json").read_text())["properties"][
         "findings"
     ]["items"]
@@ -405,7 +405,7 @@ def test_spec_blocker_needs_a_failure_scenario(root):
 
 
 def test_spec_verify_wrapper_sends_verifier_prompt_and_schema(root, sandbox):
-    skill = root / "lighthouse-spec-adversarial-review"
+    skill = root / "lighthouse-review-spec"
     outdir = sandbox["tmp"] / "out"
     outdir.mkdir()
     (outdir / "round-1.json").write_text("{}")
@@ -455,7 +455,7 @@ def test_broken_budget_check_is_not_measurable_and_codex_runs(root, mode, sandbo
     sandbox["env"]["FAKE_BUDGET_MODE"] = mode
     out = sandbox["tmp"] / "out" / "round-1.json"
     res = run(
-        root / "lighthouse-spec-adversarial-review" / "review.sh",
+        root / "lighthouse-review-spec" / "review.sh",
         sandbox,
         "docs/doc.md",
         "1",
@@ -474,7 +474,7 @@ def test_broken_budget_check_is_not_measurable_and_codex_runs(root, mode, sandbo
 def test_budget_codex_writes_record_and_runs(root, sandbox):
     out = sandbox["tmp"] / "out" / "round-1.json"
     res = run(
-        root / "lighthouse-spec-adversarial-review" / "review.sh",
+        root / "lighthouse-review-spec" / "review.sh",
         sandbox,
         "docs/doc.md",
         "1",
@@ -506,7 +506,7 @@ def test_production_path_calls_codex_usage_budget(root, sandbox):
     _install_fake_codex_usage(sandbox["repo"])
     out = sandbox["tmp"] / "out" / "round-1.json"
     res = run(
-        root / "lighthouse-spec-adversarial-review" / "review.sh",
+        root / "lighthouse-review-spec" / "review.sh",
         sandbox,
         "docs/doc.md",
         "1",
@@ -529,7 +529,7 @@ def test_repo_root_from_lighthouse_repo_root(root, sandbox):
     sandbox["env"]["LIGHTHOUSE_REPO_ROOT"] = str(other)
     out = sandbox["tmp"] / "out" / "round-1.json"
     res = run(
-        root / "lighthouse-spec-adversarial-review" / "review.sh",
+        root / "lighthouse-review-spec" / "review.sh",
         sandbox,
         "docs/doc.md",
         "1",
@@ -543,8 +543,8 @@ def test_repo_root_from_lighthouse_repo_root(root, sandbox):
 
 
 def test_runner_messages_are_english(root, sandbox):
-    res = run(root / "lighthouse-spec-adversarial-review" / "review.sh", sandbox)
+    res = run(root / "lighthouse-review-spec" / "review.sh", sandbox)
     assert res.returncode == 2
     assert res.stderr.startswith("usage: review.sh")
-    res = run(root / "lighthouse-spec-adversarial-review" / "review.sh", sandbox, "--bogus")
+    res = run(root / "lighthouse-review-spec" / "review.sh", sandbox, "--bogus")
     assert "unknown flag: --bogus" in res.stderr

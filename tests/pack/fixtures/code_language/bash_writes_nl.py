@@ -1,11 +1,11 @@
-"""`bash-write-gates` (#871): wortels, git-records, reflog, de per-sessie
+"""`bash-write-check` (#871): wortels, git-records, reflog, de per-sessie
 ledger, `pre`, en `post` met de dispatch naar de bestaande gates.
 
 Zie `docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
 secties *Datastroom* (Wortels, post bron 1/2), *Staat*, *Lock*, *pre*, *post*,
 *De pool*, *Dispatch*, *Uitvoer* en *Foutafhandeling* voor de semantiek.
 Aangeroepen als `python3 bash_writes.py pre|post` met de hookpayload op
-stdin, via de wrapper `.claude/hooks/lighthouse/bash-write-gates.sh`. De gates
+stdin, via de wrapper `.claude/hooks/lighthouse/bash-write-check.sh`. De gates
 staan in `<repo-root>/.claude/hooks/lighthouse/` (`config.repo_root()`); een gate
 die er niet staat, omdat zijn taalpakket ontbreekt, meldt post per bestand
 zonder te blokkeren (besluit 19).
@@ -44,18 +44,18 @@ from lighthouse_lib.deadline import Interrupted, run_until
 HOOK_DIR = Path(".claude/hooks/lighthouse")
 
 GATES: dict[str, str] = {
-    ".sh": "shellcheck.sh",
-    ".bash": "shellcheck.sh",
-    ".py": "ruff-format.sh",
-    ".md": "worktree-linkcheck.sh",
-    ".markdown": "worktree-linkcheck.sh",
+    ".sh": "shell-lint-check.sh",
+    ".bash": "shell-lint-check.sh",
+    ".py": "ruff-format-check.sh",
+    ".md": "md-link-check.sh",
+    ".markdown": "md-link-check.sh",
 }
 
 # Het pakket dat elke gate levert; ontbreekt de gate, dan noemt de melding het.
 GATE_PACKS: dict[str, str] = {
-    "shellcheck.sh": "shell",
-    "ruff-format.sh": "python",
-    "worktree-linkcheck.sh": "core",
+    "shell-lint-check.sh": "shell",
+    "ruff-format-check.sh": "python",
+    "md-link-check.sh": "core",
 }
 
 
@@ -796,7 +796,7 @@ def run_pre(payload: dict) -> int:
 
 # --- post (taak 7): bron 1, claims, dispatch, uitvoer ------------------------
 
-_PREFIX = "bash-write-gates:"
+_PREFIX = "bash-write-check:"
 _CANNOT = "COULD NOT CHECK"
 
 # Spec *Dispatch*: één deadline van 90 s na de start van post, 10 s grace per
@@ -804,10 +804,10 @@ _CANNOT = "COULD NOT CHECK"
 _POST_DEADLINE_S = 90.0
 _GATE_GRACE_S = 10.0
 
-# ruff-format.sh herschrijft het bestand zelf: zijn oordeel geldt de versie
+# ruff-format-check.sh herschrijft het bestand zelf: zijn oordeel geldt de versie
 # van ná de gate. De andere gates lezen alleen: hun oordeel geldt de versie
 # van vlak vóór de gate, zodat een schrijfactie tijdens de gate nieuw blijft.
-_SIGN_AFTER_GATE = frozenset({"ruff-format.sh"})
+_SIGN_AFTER_GATE = frozenset({"ruff-format-check.sh"})
 
 # `run_until` gooit `Interrupted` als de post zelf een doorgestuurd signaal
 # kreeg (de hooktimeout, een Ctrl-C): de gate werd afgebroken, en de post zelf
@@ -858,7 +858,7 @@ def run_gate(root: str, rel: str, deadline: float) -> tuple[str, bytes]:
     """Draai de gate van `rel` met een nagemaakte Edit-achtige payload.
 
     Payload `{"tool_name":"Bash","cwd":root,"tool_input":{"file_path":<abs>}}`,
-    proces-cwd = `root`: `ruff-format.sh` zoekt zijn `.ruff-version` vanuit de
+    proces-cwd = `root`: `ruff-format-check.sh` zoekt zijn `.ruff-version` vanuit de
     proces-cwd, niet via de payload. Geeft `(classify(rc, uitvoer), uitvoer)`,
     of `(_STOPPED, uitvoer)` als een doorgestuurd signaal de gate afbrak, of
     `(_MISSING, melding)` als de gate niet onder de repo-root staat.

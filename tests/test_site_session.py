@@ -96,41 +96,41 @@ def test_every_hook_is_on_its_event():
 
 def test_hook_problems_flags_a_removed_hook():
     data = copy.deepcopy(load("session.json"))
-    data["chips"] = [c for c in data["chips"] if c["id"] != "main-commit-guard"]
-    assert hook_problems(data, ROOT / "pack") == ["not on the map: core PreToolUse Bash main-commit-guard.sh"]
+    data["chips"] = [c for c in data["chips"] if c["id"] != "main-commit-gate"]
+    assert hook_problems(data, ROOT / "pack") == ["not on the map: core PreToolUse Bash main-commit-gate.sh"]
 
 
 def test_hook_problems_flags_another_matcher():
     data = copy.deepcopy(load("session.json"))
-    chip(data, "worktree-guard")["matcher"] = "Bash"
+    chip(data, "worktree-check")["matcher"] = "Bash"
     assert hook_problems(data, ROOT / "pack") == [
-        "not in hooks.json: core PreToolUse Bash worktree-guard.sh",
-        "not on the map: core PreToolUse Edit|Write worktree-guard.sh",
+        "not in hooks.json: core PreToolUse Bash worktree-check.sh",
+        "not on the map: core PreToolUse Edit|Write worktree-check.sh",
     ]
 
 
 def test_hook_problems_flags_another_column():
     data = copy.deepcopy(load("session.json"))
-    chip(data, "go-check")["phase"] = "subagent-stop"
-    assert hook_problems(data, ROOT / "pack") == ["go-check: Stop belongs in column stop, not subagent-stop"]
+    chip(data, "go-lint-gate")["phase"] = "subagent-stop"
+    assert hook_problems(data, ROOT / "pack") == ["go-lint-gate: Stop belongs in column stop, not subagent-stop"]
 
 
 def test_hook_problems_flags_a_dropped_event():
     data = copy.deepcopy(load("session.json"))
-    chip(data, "commit-tests-post")["events"] = ["PostToolUse"]
-    assert hook_problems(data, ROOT / "pack") == ["not on the map: core PostToolUseFailure Bash commit-tests.sh post"]
+    chip(data, "commit-test-gate-post")["events"] = ["PostToolUse"]
+    assert hook_problems(data, ROOT / "pack") == ["not on the map: core PostToolUseFailure Bash commit-test-gate.sh post"]
 
 
 def test_hook_problems_flags_a_source_of_another_script():
     data = copy.deepcopy(load("session.json"))
-    chip(data, "gofmt")["source"] = chip(data, "go-check")["source"]
-    assert hook_problems(data, ROOT / "pack") == ["gofmt: source does not match go/hooks/gofmt.sh"]
+    chip(data, "gofmt-check")["source"] = chip(data, "go-lint-gate")["source"]
+    assert hook_problems(data, ROOT / "pack") == ["gofmt-check: source does not match go/hooks/gofmt-check.sh"]
 
 
 def test_hook_problems_flags_a_hook_chip_without_effects():
     data = copy.deepcopy(load("session.json"))
-    del chip(data, "gofmt")["effects"]
-    assert hook_problems(data, ROOT / "pack") == ["gofmt: hook chip lacks events or effects"]
+    del chip(data, "gofmt-check")["effects"]
+    assert hook_problems(data, ROOT / "pack") == ["gofmt-check: hook chip lacks events or effects"]
 
 
 def test_phases_are_the_moments_of_a_turn():
@@ -145,7 +145,7 @@ def test_writing_skills_load_before_the_tool_call():
     loaded = {c["id"]: (c["kind"], c["trigger"]) for c in chips if c["phase"] == "skill"}
     assert loaded == {
         skill: ("lighthouse", "description")
-        for skill in ["testing", "go-writing", "python-writing", "shell-gates"]
+        for skill in ["test-standard", "go-standard", "python-standard", "shell-standard"]
     }
 
 

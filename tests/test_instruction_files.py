@@ -14,8 +14,8 @@ def test_claude_md_imports_agents_md():
 def test_agents_md_names_the_guards_and_the_escape_hatch():
     text = AGENTS.read_text(encoding="utf-8")
     for token in (
-        "main-commit-guard",
-        "worktree-guard",
+        "main-commit-gate",
+        "worktree-check",
         ".claude/allow-main",
         ".claude/worktrees/",
     ):
@@ -32,7 +32,7 @@ def test_core_block_word_budget():
     text = (CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
     assert len(text.split()) <= 290, len(text.split())
     for token in (
-        "main-commit-guard",
+        "main-commit-gate",
         ".claude/allow-main",
         "worktree",
         "squash",
@@ -96,7 +96,7 @@ def test_project_part_does_not_repeat_the_core_block():
         "git worktree add",
         "blocks `git commit`",
         "touch .claude/allow-main",
-        "commit-tests",
+        "commit-test-gate",
         "--no-verify",
         "uv run pytest",
     ):

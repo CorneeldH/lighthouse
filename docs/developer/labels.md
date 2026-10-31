@@ -33,7 +33,7 @@ controleren dat.
 | `2-area:init` | `6D28D9` | `lighthouse init`, `--upgrade`, het manifest, het blok in `AGENTS.md`, en het weer verwijderen |
 | `2-area:server` | `7C3AED` | `lighthouse serve`, SQLite, de SPA, de forge-lezer |
 | `2-area:dispatcher` | `8B5CF6` | tick, decide, apply, werkplekken (M2), en kenn-forge als werkplek |
-| `2-area:usage` | `A78BFA` | de venstermeters en de usage-guard |
+| `2-area:usage` | `A78BFA` | de venstermeters en de usage-gate |
 | `2-area:product` | `C4B5FD` | release, website, installatie, licentie, documentatie voor gebruikers |
 | `2-area:meta` | `DDD6FE` | CI, docs voor wie aan lighthouse werkt, planning, deze repo zelf |
 
@@ -42,7 +42,7 @@ licht.
 
 Grensgevallen:
 
-- **core/usage:** de usage-guard is een hook in `pack/core`, maar hoort bij `usage` (#66).
+- **core/usage:** de usage-gate is een hook in `pack/core`, maar hoort bij `usage` (#66).
 - **core/init:** wat `init` schrijft is `init`; wat de geschreven hook of skill doet is `core`.
 - **product/meta:** voor wie is het? Wie lighthouse gebruikt → `product` (#99–#104, #88); wie
   aan lighthouse werkt → `meta`.

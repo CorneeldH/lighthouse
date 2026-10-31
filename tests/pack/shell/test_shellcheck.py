@@ -1,4 +1,4 @@
-"""pack/shell: the shellcheck gate, `shellcheck-repo.sh` and `shellcheck-bin.sh`, as installed.
+"""pack/shell: the shell-lint-check hook, `shellcheck-repo.sh` and `shellcheck-bin.sh`, as installed.
 
 The hook is bash and reads its input as JSON on stdin. These tests run it as a
 subprocess against a real temporary file, so the contract (exit code + stderr)
@@ -31,7 +31,7 @@ from tests.pack.shell.conftest import SHELL_HOOKS, SHELL_SCRIPTS, SHELLCHECK_LIB
 
 # The gate is the hook in pack/shell; it does not shellcheck itself, it runs
 # shellcheck-repo.sh. Both come from the installation (conftest).
-SHELLCHECK_HOOK = SHELL_HOOKS / "shellcheck.sh"
+SHELLCHECK_HOOK = SHELL_HOOKS / "shell-lint-check.sh"
 REPO_SCRIPT = SHELL_SCRIPTS / "shellcheck-repo.sh"
 
 bw = load_hook_lib("bash_writes")
@@ -92,7 +92,7 @@ def test_shellcheck_hook_blocks_a_deliberately_broken_script(tmp_path, pinned_sh
     result = _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck)
     assert result.returncode == 2, result.stdout
     assert "SC2034" in result.stderr
-    assert _first_line(result).startswith("shellcheck: fix this in the code")
+    assert _first_line(result).startswith("shell-lint-check: fix this in the code")
     assert bw.classify(result.returncode, result.stderr.encode()) == "finding"
 
 
@@ -143,7 +143,7 @@ def test_broken_config_is_unchecked(tmp_path):
     target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
     result = _run_shellcheck_hook(target, LIGHTHOUSE_TOML=toml)
     assert result.returncode == 2, result.stdout
-    assert _first_line(result).startswith("shellcheck: COULD NOT CHECK — "), result.stderr
+    assert _first_line(result).startswith("shell-lint-check: COULD NOT CHECK — "), result.stderr
 
 
 def test_shellcheck_hook_fails_loud_when_the_tool_is_missing(tmp_path):
@@ -151,7 +151,7 @@ def test_shellcheck_hook_fails_loud_when_the_tool_is_missing(tmp_path):
     target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
     result = _run_shellcheck_hook(target, SHELLCHECK_BIN="/nowhere/shellcheck")
     assert result.returncode == 2, result.stdout
-    assert _first_line(result).startswith("shellcheck: COULD NOT CHECK — "), result.stderr
+    assert _first_line(result).startswith("shell-lint-check: COULD NOT CHECK — "), result.stderr
     assert bw.classify(result.returncode, result.stderr.encode()) == "unchecked"
 
 
@@ -160,7 +160,7 @@ def test_unchecked_first_line(tmp_path):
     target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
     result = _run_shellcheck_hook(target, LIGHTHOUSE_REPO_ROOT=str(INSTALL_ROOT))
     assert result.returncode == 2, result.stdout
-    assert _first_line(result).startswith("shellcheck: COULD NOT CHECK — "), result.stderr
+    assert _first_line(result).startswith("shell-lint-check: COULD NOT CHECK — "), result.stderr
     assert ".lighthouse/scripts/shellcheck-repo.sh" in result.stderr
     assert bw.classify(result.returncode, result.stderr.encode()) == "unchecked"
 
@@ -172,7 +172,7 @@ def test_script_found_in_the_file_root_without_env(tmp_path, pinned_shellcheck):
     install_pack("shell", tmp_path / "repo")
     env = dict(os.environ, SHELLCHECK_BIN=pinned_shellcheck)
     env.pop("LIGHTHOUSE_REPO_ROOT")
-    hook = tmp_path / "repo" / ".claude" / "hooks" / "lighthouse" / "shellcheck.sh"
+    hook = tmp_path / "repo" / ".claude" / "hooks" / "lighthouse" / "shell-lint-check.sh"
     result = subprocess.run(
         [str(hook)],
         input=json.dumps({"tool_input": {"file_path": str(target)}}),
@@ -320,7 +320,7 @@ def test_divergent_version_notice_reaches_the_session(tmp_path):
     result = _run_shellcheck_hook(target, PATH=path)
     assert result.returncode == 0, result.stderr
     message = json.loads(result.stdout)["systemMessage"]
-    assert message.startswith("shellcheck: ")
+    assert message.startswith("shell-lint-check: ")
     assert "differs from the pin" in message
 
 
@@ -389,14 +389,14 @@ def test_repo_script_unchecked_is_rc_4(tmp_path):
     assert "is not executable" in result.stderr
 
 
-# --- through bash-write-gates.sh ---------------------------------------------
+# --- through bash-write-check.sh ---------------------------------------------
 
 
 def test_bash_write_through_gate(tmp_path, pinned_shellcheck):
     """With core and shell installed, a Bash write of a broken `.sh` is a finding via
-    `bash-write-gates post`, not `no shell gate installed`."""
-    from tests.pack.test_bash_write_gates import BROKEN_SH as GATES_BROKEN_SH
-    from tests.pack.test_bash_write_gates import _Session, heredoc
+    `bash-write-check post`, not `no shell gate installed`."""
+    from tests.pack.test_bash_write_check import BROKEN_SH as GATES_BROKEN_SH
+    from tests.pack.test_bash_write_check import _Session, heredoc
 
     session = _Session(tmp_path, shellcheck=pinned_shellcheck, language_gates=False)
     install_pack("shell", session.root)
@@ -431,5 +431,5 @@ def test_hook_shellcheck_failure_is_unchecked(tmp_path):
     target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
     result = _run_shellcheck_hook(target, SHELLCHECK_BIN=_crashing_shellcheck(tmp_path, 3))
     assert result.returncode == 2, result.stdout
-    assert _first_line(result).startswith("shellcheck: COULD NOT CHECK — "), result.stderr
+    assert _first_line(result).startswith("shell-lint-check: COULD NOT CHECK — "), result.stderr
     assert bw.classify(result.returncode, result.stderr.encode()) == "unchecked"

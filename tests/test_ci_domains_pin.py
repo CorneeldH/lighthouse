@@ -109,7 +109,7 @@ def test_go_jobs_wait_for_changes():
         assert "if: needs.changes.outputs.go == 'true'" in body, name
 
 
-def test_go_checks_stay_in_go_jobs():
+def test_go_lint_gates_stay_in_go_jobs():
     """Fails when a Go check drops out of every go job while the go jobs are split."""
     go = "\n".join(_go_jobs().values())
     for needle in (

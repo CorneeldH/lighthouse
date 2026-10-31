@@ -55,13 +55,13 @@ def test_registered_bash_hook_blocks_a_commit_on_main(tmp_path):
     init_repo(repo)
 
     result = _run_registered(
-        _registered("Bash", "main-commit-guard.sh"),
+        _registered("Bash", "main-commit-gate.sh"),
         bash_payload('git commit -m "x"', repo),
         cwd=repo,
     )
 
     assert result.returncode == 2, result.stdout
-    assert "Main-commit guard: blocked" in result.stderr
+    assert "Main-commit gate: blocked" in result.stderr
     assert "COULD NOT CHECK" not in result.stderr
 
 
@@ -71,7 +71,7 @@ def test_registered_bash_hook_allows_a_commit_on_a_branch(tmp_path):
     git(repo, "checkout", "-q", "-b", "issue-1-x")
 
     result = _run_registered(
-        _registered("Bash", "main-commit-guard.sh"),
+        _registered("Bash", "main-commit-gate.sh"),
         bash_payload('git commit -m "x"', repo),
         cwd=repo,
     )
@@ -89,11 +89,11 @@ def test_registered_edit_hook_warns_in_main_checkout(tmp_path):
     }
 
     result = _run_registered(
-        _registered("Edit|Write", "worktree-guard.sh"), payload, cwd=repo
+        _registered("Edit|Write", "worktree-check.sh"), payload, cwd=repo
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Worktree guard:" in json.loads(result.stdout)["systemMessage"]
+    assert "Worktree check:" in json.loads(result.stdout)["systemMessage"]
 
 
 def test_bash_pretooluse_hooks_live_in_one_block():
@@ -148,8 +148,8 @@ def _registered_in(event: str, matcher: str | None, script: str) -> list[str]:
 
 def test_go_hooks_registered():
     """Fails when init stops registering the pack/go hooks under their events."""
-    assert len(_registered_in("PostToolUse", "Edit|Write", "gofmt.sh")) == 1
-    assert len(_registered_in("Stop", None, "go-check.sh")) == 1
+    assert len(_registered_in("PostToolUse", "Edit|Write", "gofmt-check.sh")) == 1
+    assert len(_registered_in("Stop", None, "go-lint-gate.sh")) == 1
 
 
 def test_test_gate_uses_selectors():

@@ -19,6 +19,6 @@ def test_instruction_block_is_short_and_names_skill_and_gates():
     text = (GO / "instructions" / "AGENTS.md").read_text()
     assert text.startswith("## Lighthouse: go\n")
     assert len(re.findall(r"\S+", text)) <= 80
-    for needle in ("/lighthouse-go-writing", "gofmt", "go-check", "govet"):
+    for needle in ("/lighthouse-go-standard", "gofmt", "go-lint-gate", "govet"):
         assert needle in text, needle
     assert "go vet" not in text

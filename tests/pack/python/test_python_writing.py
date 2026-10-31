@@ -1,4 +1,4 @@
-"""The skill `python-writing` of `pack/python`: a KPI table whose every row is a
+"""The skill `python-standard` of `pack/python`: a KPI table whose every row is a
 command, the measurement rules, and no path or pin that only the source repository has.
 
 From the source repository's `test_instructielagen.py:430-497`. Left out there: the
@@ -11,7 +11,7 @@ from pathlib import Path
 
 from lighthouse_lib import config
 
-SKILL_DIR = Path(__file__).resolve().parents[3] / "pack" / "python" / "skills" / "python-writing"
+SKILL_DIR = Path(__file__).resolve().parents[3] / "pack" / "python" / "skills" / "python-standard"
 CLAUDE = SKILL_DIR / "claude" / "SKILL.md"
 AGENTS = SKILL_DIR / "agents" / "SKILL.md"
 VARIANTS = (CLAUDE, AGENTS)
@@ -49,7 +49,7 @@ def _kpi_rows(path: Path) -> list[str]:
 
 def test_frontmatter_name():
     for path in VARIANTS:
-        assert "name: lighthouse-python-writing\n" in _frontmatter(path), path
+        assert "name: lighthouse-python-standard\n" in _frontmatter(path), path
 
 
 def test_description_has_a_negative_boundary():
@@ -57,7 +57,7 @@ def test_description_has_a_negative_boundary():
     for path in VARIANTS:
         front = _frontmatter(path)
         assert "NOT for" in front, path
-        assert "lighthouse-shell-gates" in front, f"{path}: the boundary to shell is missing"
+        assert "lighthouse-shell-standard" in front, f"{path}: the boundary to shell is missing"
 
 
 def test_kpi_rows_all_carry_a_command():
@@ -122,13 +122,13 @@ def test_ruff_pin_from_file():
 def test_hooks_by_installed_path():
     for path in VARIANTS:
         text = path.read_text(encoding="utf-8")
-        assert ".claude/hooks/lighthouse/ruff-format.sh" in text, path
-        assert ".claude/hooks/lighthouse/ty-check.sh" in text, path
-        assert ".claude/hooks/ruff-format.sh" not in text, path
+        assert ".claude/hooks/lighthouse/ruff-format-check.sh" in text, path
+        assert ".claude/hooks/lighthouse/ty-gate.sh" in text, path
+        assert ".claude/hooks/ruff-format-check.sh" not in text, path
 
 
 def test_hooks_are_not_fail_open():
-    """`ruff-format` blocks when it could not check (decision 18); the skill says so."""
+    """`ruff-format-check` blocks when it could not check (decision 18); the skill says so."""
     for path in VARIANTS:
         text = path.read_text(encoding="utf-8")
         assert "fail-open" not in text, path
@@ -192,7 +192,7 @@ def test_description_triggers_on_planning():
 def test_points_to_the_testing_skill():
     for path in VARIANTS:
         text = path.read_text(encoding="utf-8")
-        assert "lighthouse-testing" in text, path
+        assert "lighthouse-test-standard" in text, path
         assert "<observable behaviour>." in text, f"{path}: the classification sentence"
         assert "This is a <class> change" in text, f"{path}: the classification sentence"
 
@@ -200,7 +200,7 @@ def test_points_to_the_testing_skill():
 def test_python_form_of_the_testing_norms():
     for path in VARIANTS:
         text = path.read_text(encoding="utf-8")
-        assert "## The Python form of lighthouse-testing" in text, path
+        assert "## The Python form of lighthouse-test-standard" in text, path
         for tool in ("pytest.mark.parametrize", "create_autospec", "tmp_path", "subprocess.run"):
             assert tool in text, f"{path}: {tool}"
 
@@ -217,7 +217,7 @@ def test_reporting_done_runs_every_kpi_row():
 def test_pairing_names_the_testing_skill():
     for path in VARIANTS:
         pairing = path.read_text(encoding="utf-8").split("## The pairing", 1)[1].split("\n## ", 1)[0]
-        assert "lighthouse-testing" in pairing, path
+        assert "lighthouse-test-standard" in pairing, path
 
 
 def test_reporting_done_matches_the_optional_row_4():

@@ -6,17 +6,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/main-commit-guard.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/main-commit-gate.sh",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-tests.sh pre",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-test-gate.sh pre",
             "timeout": 300
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-gates.sh pre",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-check.sh pre",
             "timeout": 5
           },
           {
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/worktree-guard.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/worktree-check.sh",
             "timeout": 15
           }
         ]
@@ -43,12 +43,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/worktree-linkcheck.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/md-link-check.sh",
             "timeout": 15
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/code-language.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/code-language-check.sh",
             "timeout": 15
           }
         ]
@@ -58,12 +58,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-gates.sh post",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-check.sh post",
             "timeout": 120
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-tests.sh post",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-test-gate.sh post",
             "timeout": 300
           }
         ]
@@ -72,7 +72,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/usage-guard.sh tool",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/usage-gate.sh tool",
             "timeout": 10
           }
         ]
@@ -84,12 +84,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-gates.sh post",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-check.sh post",
             "timeout": 120
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-tests.sh post",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-test-gate.sh post",
             "timeout": 300
           }
         ]
@@ -100,7 +100,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/usage-guard.sh prompt",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/usage-gate.sh prompt",
             "timeout": 10
           }
         ]
@@ -111,7 +111,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/usage-guard.sh subagent",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/usage-gate.sh subagent",
             "timeout": 10
           }
         ]
@@ -122,7 +122,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/usage-guard.sh stop",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/usage-gate.sh stop",
             "timeout": 10
           }
         ]

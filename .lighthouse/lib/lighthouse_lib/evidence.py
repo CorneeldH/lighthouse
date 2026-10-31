@@ -8,7 +8,7 @@ write options, no options that start another program. What does not fit never
 runs; the row is then `invalid`.
 
 Extending the allowlist is a change of this lib *and* of the table in
-`/lighthouse-verify-pr`, never something a PR body can do. Design:
+`/lighthouse-write-pr`, never something a PR body can do. Design:
 `docs/developer/planning/specs/2026-10-03-pr-verifieert-issue-design.md`,
 section 2 (allowlist) and 4 (comparison rule).
 

@@ -27,7 +27,7 @@ func testPacks() fstest.MapFS {
 		"core/hooks/hooks.json":       file(hooksJSON),
 		"core/lib/a.py":               file("x = 1\n"),
 		"core/instructions/AGENTS.md": file("## core\n\n- rule\n"),
-		"core/requires.toml":          file("jq = [\"main-commit-guard\"]\n"),
+		"core/requires.toml":          file("jq = [\"main-commit-gate\"]\n"),
 	}
 }
 
@@ -344,6 +344,220 @@ func TestUpgradeRemovesDroppedUnit(t *testing.T) {
 	}
 }
 
+func TestUpgradeRemovesEmptiedDirs(t *testing.T) {
+	withOld := func(o *Options) {
+		m := testPacks()
+		m["core/skills/old/SKILL.md"] = file("---\nname: lighthouse-old\n---\nbody\n")
+		m["core/hooks/old/helper.py"] = file("x = 1\n")
+		o.Packs = m
+	}
+	cases := map[string]struct {
+		before func(t *testing.T, root string)
+		check  func(t *testing.T, root string)
+	}{
+		"skill_dir": {
+			check: func(t *testing.T, root string) {
+				for _, rel := range []string{".claude/skills/lighthouse-old", ".agents/skills/lighthouse-old"} {
+					if exists(root, rel) {
+						t.Errorf("%s still there", rel)
+					}
+				}
+				if !exists(root, ".claude/skills") {
+					t.Error(".claude/skills was removed")
+				}
+			},
+		},
+		"hook_subdir": {
+			check: func(t *testing.T, root string) {
+				if exists(root, ".claude/hooks/lighthouse/old") {
+					t.Error("hooks/lighthouse/old still there")
+				}
+				if !exists(root, ".claude/hooks/lighthouse/g.sh") {
+					t.Error("g.sh gone")
+				}
+			},
+		},
+		"hook_subdir_with_pycache": {
+			before: func(t *testing.T, root string) {
+				write(t, root, ".claude/hooks/lighthouse/old/__pycache__/helper.cpython-312.pyc", "x")
+			},
+			check: func(t *testing.T, root string) {
+				if exists(root, ".claude/hooks/lighthouse/old") {
+					t.Error("hooks/lighthouse/old survives on its __pycache__")
+				}
+				if !exists(root, ".claude/hooks/lighthouse/g.sh") {
+					t.Error("g.sh gone")
+				}
+			},
+		},
+		"keeps_pycache_with_sibling": {
+			before: func(t *testing.T, root string) {
+				write(t, root, ".claude/hooks/lighthouse/old/__pycache__/helper.cpython-312.pyc", "x")
+				write(t, root, ".claude/hooks/lighthouse/old/notes.txt", "mine\n")
+			},
+			check: func(t *testing.T, root string) {
+				if !exists(root, ".claude/hooks/lighthouse/old/notes.txt") {
+					t.Error("sibling file removed")
+				}
+				if !exists(root, ".claude/hooks/lighthouse/old/__pycache__") {
+					t.Error("__pycache__ removed next to a sibling")
+				}
+			},
+		},
+		"keeps_sibling": {
+			before: func(t *testing.T, root string) {
+				write(t, root, ".claude/skills/lighthouse-old/notes.txt", "mine\n")
+			},
+			check: func(t *testing.T, root string) {
+				if !exists(root, ".claude/skills/lighthouse-old/notes.txt") {
+					t.Error("sibling file removed")
+				}
+				if exists(root, ".claude/skills/lighthouse-old/SKILL.md") {
+					t.Error("SKILL.md still there")
+				}
+			},
+		},
+		"keeps_preexisting_empty": {
+			before: func(t *testing.T, root string) {
+				if err := os.MkdirAll(filepath.Join(root, ".claude/skills/empty-own"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+			check: func(t *testing.T, root string) {
+				if !exists(root, ".claude/skills/empty-own") {
+					t.Error("preexisting empty dir removed")
+				}
+			},
+		},
+		"outside_roots": {
+			check: func(t *testing.T, root string) {
+				if !exists(root, ".lighthouse/lib/lighthouse_lib") {
+					t.Error("lighthouse_lib removed")
+				}
+			},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := newRepo(t)
+			if r := run(t, root, "", func(o *Options) { yes(o); withOld(o) }); r.code != 0 {
+				t.Fatalf("init: rc %d\n%s%s", r.code, r.out, r.err)
+			}
+			if tc.before != nil {
+				tc.before(t, root)
+			}
+			r := run(t, root, "", func(o *Options) {
+				upgrade(o)
+				yes(o)
+				p := testPacks()
+				if name == "outside_roots" {
+					delete(p, "core/lib/a.py")
+				}
+				o.Packs = p
+			})
+			if r.code != 0 {
+				t.Fatalf("upgrade: rc %d\n%s%s", r.code, r.out, r.err)
+			}
+			tc.check(t, root)
+		})
+	}
+}
+
+// A file already gone is no removal: the empty directory it leaves is not ours to clean up.
+func TestApplyDeleteOfMissingFileKeepsDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".claude/skills/lighthouse-old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := apply(root, ".claude/skills/lighthouse-old/SKILL.md", &planned{delete: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(root, ".claude/skills/lighthouse-old") {
+		t.Error("dir of an already missing file was removed")
+	}
+}
+
+func TestUpgradeRenamesUnits(t *testing.T) {
+	packsWith := func(skill, hook string) func(*Options) {
+		return func(o *Options) {
+			m := testPacks()
+			delete(m, "core/hooks/g.sh")
+			m["core/hooks/hooks.json"] = file(strings.ReplaceAll(hooksJSON, "g.sh", hook))
+			m["core/hooks/"+hook] = file("#!/bin/bash\necho " + hook + "\n")
+			m["core/skills/"+skill+"/SKILL.md"] = file("---\nname: lighthouse-" + skill + "\n---\nbody\n")
+			o.Packs = m
+		}
+	}
+	oldPacks, newPacks := packsWith("old", "old-guard.sh"), packsWith("new", "new-gate.sh")
+	setup := func(t *testing.T) string {
+		root := newRepo(t)
+		if r := run(t, root, "", func(o *Options) { yes(o); oldPacks(o) }); r.code != 0 {
+			t.Fatalf("init: rc %d\n%s%s", r.code, r.out, r.err)
+		}
+		return root
+	}
+	upgradeNew := func(t *testing.T, root string, force bool) result {
+		return run(t, root, "", func(o *Options) { upgrade(o); yes(o); o.Force = force; newPacks(o) })
+	}
+
+	t.Run("untouched", func(t *testing.T) {
+		root := setup(t)
+		if r := upgradeNew(t, root, false); r.code != 0 {
+			t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+		}
+		for _, top := range []string{".claude", ".agents"} {
+			err := filepath.WalkDir(filepath.Join(root, top), func(p string, _ fs.DirEntry, err error) error {
+				if rel, _ := filepath.Rel(root, p); err == nil && strings.Contains(rel, "old") {
+					t.Errorf("leftover %s", rel)
+				}
+				return err
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if strings.Contains(read(t, root, ".lighthouse/manifest.toml"), "old") {
+			t.Error("manifest still names old")
+		}
+		s := read(t, root, ".claude/settings.json")
+		if strings.Contains(s, "old-guard.sh") || !strings.Contains(s, "new-gate.sh") {
+			t.Errorf("settings:\n%s", s)
+		}
+	})
+
+	t.Run("edited_refused", func(t *testing.T) {
+		root := setup(t)
+		hook := ".claude/hooks/lighthouse/old-guard.sh"
+		write(t, root, hook, read(t, root, hook)+"echo mine\n")
+		before := snapshot(t, root)
+		r := upgradeNew(t, root, false)
+		if r.code != 1 || !strings.Contains(r.out+r.err, "--force") {
+			t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+		}
+		if !sameSnapshot(before, snapshot(t, root)) {
+			t.Error("refused run changed files")
+		}
+		if exists(root, ".claude/hooks/lighthouse/new-gate.sh") {
+			t.Error("new-gate.sh written")
+		}
+	})
+
+	t.Run("edited_forced", func(t *testing.T) {
+		root := setup(t)
+		hook := ".claude/hooks/lighthouse/old-guard.sh"
+		write(t, root, hook, read(t, root, hook)+"echo mine\n")
+		if r := upgradeNew(t, root, true); r.code != 0 {
+			t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+		}
+		if exists(root, hook) || !exists(root, ".claude/hooks/lighthouse/new-gate.sh") {
+			t.Error("old hook not replaced by new")
+		}
+		if s := read(t, root, ".claude/settings.json"); strings.Contains(s, "old-guard.sh") || !strings.Contains(s, "new-gate.sh") {
+			t.Errorf("settings:\n%s", s)
+		}
+	})
+}
+
 const projectSettings = `{
   "permissions": {
     "allow": ["Bash(ls)"]
@@ -458,7 +672,7 @@ func TestReportsMissingDeps(t *testing.T) {
 			Run: func(string, ...string) error { return nil },
 		}
 	})
-	if r.code != 0 || !strings.Contains(r.err, "missing dependency: jq (needed by: main-commit-guard)") || !exists(root, ".lighthouse/manifest.toml") {
+	if r.code != 0 || !strings.Contains(r.err, "missing dependency: jq (needed by: main-commit-gate)") || !exists(root, ".lighthouse/manifest.toml") {
 		t.Fatalf("rc %d err %q", r.code, r.err)
 	}
 }
@@ -527,15 +741,15 @@ func TestInitProposesRealPython(t *testing.T) {
 		t.Fatalf("lighthouse.toml = %q", got)
 	}
 	for _, rel := range []string{
-		".claude/hooks/lighthouse/ruff-format.sh",
-		".claude/skills/lighthouse-python-writing/SKILL.md",
+		".claude/hooks/lighthouse/ruff-format-check.sh",
+		".claude/skills/lighthouse-python-standard/SKILL.md",
 		".lighthouse/scripts/quality/ratchet.py",
 	} {
 		if !exists(root, rel) {
 			t.Fatalf("%s not installed", rel)
 		}
 	}
-	if !strings.Contains(read(t, root, "AGENTS.md"), "/lighthouse-python-writing") {
+	if !strings.Contains(read(t, root, "AGENTS.md"), "/lighthouse-python-standard") {
 		t.Fatal("instruction block of python missing in AGENTS.md")
 	}
 }
@@ -567,11 +781,11 @@ func TestInitProposesRealShell(t *testing.T) {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
 	for _, f := range []string{
-		".claude/hooks/lighthouse/shellcheck.sh",
+		".claude/hooks/lighthouse/shell-lint-check.sh",
 		".lighthouse/scripts/shellcheck-repo.sh",
 		".lighthouse/scripts/lib/shellcheck-bin.sh",
-		".claude/skills/lighthouse-shell-gates/SKILL.md",
-		".agents/skills/lighthouse-shell-gates/SKILL.md",
+		".claude/skills/lighthouse-shell-standard/SKILL.md",
+		".agents/skills/lighthouse-shell-standard/SKILL.md",
 	} {
 		if !exists(root, f) {
 			t.Fatalf("%s not installed", f)

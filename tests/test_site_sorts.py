@@ -19,7 +19,7 @@ def test_every_sort_has_the_glyph_of_the_spec():
     assert run_map("Object.fromEntries(Object.entries(m.SORTS).map(([k, v]) => [k, v.glyph]))") == SPEC_GLYPHS
 
 
-SKILL = REPO_BLOB + "pack/core/skills/testing"
+SKILL = REPO_BLOB + "pack/core/skills/test-standard"
 
 
 @pytest.mark.parametrize("item, glyph", [

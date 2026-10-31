@@ -141,7 +141,7 @@ work that still has to happen?* Only the first closes.
 
 | | Example | Role |
 |---|---|---|
-| closing | `lighthouse-worktree-audit`, a skill that refreshes lockfiles | the skill *does* the issue |
+| closing | `lighthouse-audit-worktrees`, a skill that refreshes lockfiles | the skill *does* the issue |
 | accompanying | a skill with the writing norms of a language, a diagram skill | the skill carries a norm |
 
 Those two rows are illustration, not a list to maintain. An accompanying skill closes nothing: it
