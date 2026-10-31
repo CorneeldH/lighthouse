@@ -600,3 +600,51 @@ button:focus-visible {
     padding: 16px 16px 40px;
   }
 }
+
+/* Entry page: one tile per map */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.tile {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.tile h2 {
+  margin: 2px 0 6px;
+  font-size: 18px;
+}
+
+.tile p {
+  margin: 0;
+}
+
+.tile .kicker {
+  margin-bottom: 4px;
+}
+
+a.tile:hover,
+a.tile:focus-visible {
+  border-color: var(--focus);
+}
+
+.tile.status-planned {
+  border-style: dashed;
+  color: var(--muted);
+}
+
+.back-link {
+  margin-left: auto;
+  padding: 6px 0;
+  color: var(--link);
+}

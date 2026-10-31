@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lighthouse maps</title>
+<link rel="stylesheet" href="map.css">
+<script type="module" src="index.js"></script>
+</head>
+<body>
+<header class="page-head">
+  <div>
+    <h1>Lighthouse maps</h1>
+    <p class="subtitle">Six maps that show how lighthouse works. Pick one.</p>
+  </div>
+  <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
+</header>
+
+<!-- #89 puts the download above this section. -->
+<section id="maps" class="tiles" aria-label="Maps">
+  <a class="tile kind-lighthouse status-works" href="chain.html">
+    <p class="kicker">Map 1</p>
+    <h2>The chain</h2>
+    <p>From an idea to a closed issue, and what joins in at each step.</p>
+  </a>
+  <div class="tile status-planned">
+    <p class="kicker">Map 2 · planned · #100</p>
+    <h2>The guardrails</h2>
+    <p>The hooks that stop a wrong step.</p>
+  </div>
+  <div class="tile status-planned">
+    <p class="kicker">Map 3 · planned · #101</p>
+    <h2>Your repo after init</h2>
+    <p>What <code>init</code> writes, and where.</p>
+  </div>
+  <div class="tile status-planned">
+    <p class="kicker">Map 4 · planned · #102</p>
+    <h2>The system and the roadmap</h2>
+    <p>How the parts fit, and what comes next.</p>
+  </div>
+  <div class="tile status-planned">
+    <p class="kicker">Map 5 · planned · #103</p>
+    <h2>Per harness</h2>
+    <p>What runs in Claude Code, Codex and OpenCode.</p>
+  </div>
+  <div class="tile status-planned">
+    <p class="kicker">Map 6 · planned · #104</p>
+    <h2>The configuration</h2>
+    <p>The keys of <code>lighthouse.toml</code> and what they connect.</p>
+  </div>
+</section>
+</body>
+</html>

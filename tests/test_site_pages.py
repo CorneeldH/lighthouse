@@ -8,6 +8,8 @@ from pathlib import Path
 
 from tests.test_site_chain import SITE
 
+GUIDE = SITE.parent / "getting-started.md"
+
 SERVE_COMMAND = "python3 -m http.server --directory docs/site"
 HTML_SINKS = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"]
 
@@ -75,13 +77,13 @@ class ElementById(HTMLParser):
 def test_site_links_resolve():
     pages = site_files(".html")
     assert pages, "docs/site has no HTML page"
-    for path in pages + site_files(".js"):
+    for path in pages + site_files(".js") + [GUIDE]:
         links = relative_links(path)
         if path.suffix == ".html":
             assert links, f"{path.name} links no stylesheet or script"
         for link in links:
             target = (path.parent / link).resolve()
-            assert target.is_file(), f"{path.relative_to(SITE)}: {link} points nowhere"
+            assert target.is_file(), f"{path.name}: {link} points nowhere"
 
 
 def test_pages_name_the_local_server_command():
@@ -95,7 +97,7 @@ def test_pages_name_the_local_server_command():
 
 
 def test_component_never_writes_html_from_data():
-    for name in ["map.js", "chain.js"]:
+    for name in ["map.js", "chain.js", "index.js"]:
         text = (SITE / name).read_text(encoding="utf-8")
         for sink in HTML_SINKS:
             assert sink not in text, f"{name} uses {sink}"
@@ -106,3 +108,23 @@ def test_page_lang_is_english():
     assert pages, "docs/site has no HTML page"
     for path in pages:
         assert '<html lang="en">' in path.read_text(encoding="utf-8"), path.name
+
+
+def test_index_lists_the_six_maps():
+    links = relative_links(SITE / "index.html")
+    assert "chain.html" in links
+    text = (SITE / "index.html").read_text(encoding="utf-8")
+    for issue in ["#100", "#101", "#102", "#103", "#104"]:
+        assert issue in text, f"index.html does not name {issue}"
+    assert 'id="maps"' in text
+
+
+def test_chain_links_back_to_index():
+    assert 'href="index.html"' in (SITE / "chain.html").read_text(encoding="utf-8")
+
+
+def test_guide_links_to_the_chain_map():
+    text = GUIDE.read_text(encoding="utf-8")
+    section = text.split("## Your first issue", 1)[1].split("\n## ", 1)[0]
+    assert "](site/chain.html)" in section
+    assert SERVE_COMMAND in section
