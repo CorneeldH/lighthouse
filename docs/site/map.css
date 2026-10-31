@@ -12,7 +12,6 @@
   --map-bg: #e9ecf3;
   --col-bg: rgba(20, 33, 61, 0.05);
   --col-fg: #34405a;
-  --line: rgba(20, 33, 61, 0.14);
   --accent: #b88a00;
   --accent-soft: #f4d74b;
   --route: #f4d74b;
@@ -43,7 +42,6 @@
     --map-bg: #14213d;
     --col-bg: rgba(255, 255, 255, 0.05);
     --col-fg: #cfd8ff;
-    --line: rgba(255, 255, 255, 0.14);
     --accent: #f4d74b;
     --accent-soft: #f4d74b;
     --route: #f4d74b;
@@ -74,7 +72,6 @@
   --map-bg: #14213d;
   --col-bg: rgba(255, 255, 255, 0.05);
   --col-fg: #cfd8ff;
-  --line: rgba(255, 255, 255, 0.14);
   --accent: #f4d74b;
   --accent-soft: #f4d74b;
   --route: #f4d74b;
@@ -328,26 +325,23 @@ button:focus-visible {
   pointer-events: none;
 }
 
+/* Only the chosen route is drawn: overlapping faint lines of the others stacked darker where
+   they crossed and read as a route of their own. */
 .map-area path {
   fill: none;
-  stroke: var(--line);
-  stroke-width: 1;
-  stroke-dasharray: 3 4;
+  stroke: none;
   vector-effect: non-scaling-stroke;
-  transition: stroke 0.2s;
 }
 
 /* The chosen route: solid yellow on a dark casing, so it reads on the light map too. */
 .map-area path.on {
   stroke: var(--route);
   stroke-width: 3.5;
-  stroke-dasharray: none;
 }
 
 .map-area path.casing {
   stroke: var(--route-casing);
   stroke-width: 6.5;
-  stroke-dasharray: none;
 }
 
 .column {
