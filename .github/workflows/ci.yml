@@ -1,7 +1,7 @@
 # CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
-# finds a changed path in it. Go runs as two parallel jobs, `go` and `go-test`. A `binary` job
-# builds the SPA itself, embeds it in the Go binary and smoke-tests it, next to web instead of
-# after it.
+# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`. A
+# `binary` job builds the SPA itself, embeds it in the Go binary and smoke-tests it, next to web
+# instead of after it.
 name: ci
 
 on:
@@ -66,10 +66,11 @@ jobs:
       - run: uv run pytest -q -n auto
       - run: ci/literal-grep.sh
 
-  # Split per the measurement in #131 (issuecomment-6541734664): setup 13 s, lint 30 s,
-  # builds 49 s (linux, windows, darwin), race compile 42 s, tests 34 s, e2e 16 s. `go` holds
-  # lint, builds and pack-match (≈92 s); `go-test` holds the race tests and the e2e (≈107 s).
-  # The e2e stays with the race tests: it reuses their race compile of the dependencies.
+  # Split per the measurements in #131 (issuecomment-6541734664, -6541786347): setup 13 s,
+  # lint 30 s, builds 49 s (linux, windows, darwin), race compile 42 s, tests 34 s. `go` holds
+  # lint, builds and pack-match (≈92 s); `go-test` holds the race tests (≈92 s). The e2e tests
+  # build cmd/lighthouse themselves, 27 s cold: next to the race tests they took 44 s and made
+  # that job 143 s, so they run in `go-e2e`.
   go:
     needs: changes
     if: needs.changes.outputs.go == 'true'
@@ -112,6 +113,19 @@ jobs:
           go-version-file: go.mod
       # Same flags as the Go part of [test_gate] command; tests/test_ci_go_test_pin.py pins it.
       - run: go test -race -shuffle=on ./...
+
+  go-e2e:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
       # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: go test -race -shuffle=on -tags e2e ./e2e/ -v

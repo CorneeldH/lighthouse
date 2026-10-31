@@ -124,6 +124,15 @@ def test_go_checks_stay_in_go_jobs():
         assert needle in go, needle
 
 
+def test_e2e_runs_apart_from_race_tests():
+    """Fails when the e2e moves back into the job of the race tests, which made that job the slowest."""
+    jobs = _go_jobs()
+    race = [n for n, b in jobs.items() if "- run: go test -race -shuffle=on ./..." in b]
+    e2e = [n for n, b in jobs.items() if "- run: go test -race -shuffle=on -tags e2e ./e2e/ -v" in b]
+    assert len(race) == 1 and len(e2e) == 1 and race != e2e, (race, e2e)
+    assert "astral-sh/setup-uv@" in jobs[e2e[0]] and "astral-sh/setup-uv@" not in jobs[race[0]]
+
+
 def test_no_measurement_step():
     """Fails when the temporary #131 measurement step stays in CI."""
     assert "-run '^$'" not in _text()
@@ -132,7 +141,7 @@ def test_no_measurement_step():
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert len(uses) == 16, uses
+    assert len(uses) == 18, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)
