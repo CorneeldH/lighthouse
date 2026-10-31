@@ -129,6 +129,14 @@ func TestLoadDispatchInvalid(t *testing.T) {
 	}
 }
 
+func TestLoadDispatchParseErrorNamesPath(t *testing.T) {
+	p := writeHost(t, "[dispatch\nslots = \n")
+	_, err := LoadDispatch(p)
+	if err == nil || !strings.Contains(err.Error(), p) {
+		t.Errorf("err = %v, want it to name %s", err, p)
+	}
+}
+
 func TestLoadDispatchProfiles(t *testing.T) {
 	p := writeHost(t, "[dispatch.profiles.software]\ntarget_key = \"paia-software\"\nmcp_config = \"/etc/mcp.json\"\n")
 	got, err := LoadDispatch(p)

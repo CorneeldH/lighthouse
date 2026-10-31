@@ -105,7 +105,7 @@ func LoadDispatch(path string) (Dispatch, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return d, nil
 		}
-		return DefaultDispatch(), err
+		return DefaultDispatch(), fmt.Errorf("read %s: %w", path, err)
 	}
 	r := raw.Dispatch
 	for _, repo := range r.Repos {
