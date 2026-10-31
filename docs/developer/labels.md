@@ -3,7 +3,8 @@
 De labels van deze repo. `lighthouse-write-issue` leest dit bestand via `[paths] labels` in
 `lighthouse.toml`; de skill zelf kent geen labels.
 
-Elk issue draagt twee assen. Het cijferprefix is de leesvolgorde in de labellijst.
+Er zijn twee assen: elk issue heeft precies één area-label en hoogstens één blokkadelabel. Het
+cijferprefix is de leesvolgorde in de labellijst.
 
 | As | Cardinaliteit | Vraag |
 |---|---|---|
