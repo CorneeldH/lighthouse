@@ -1,0 +1,176 @@
+[
+  {
+    "name": "one-question-commands",
+    "meta": {
+      "issue": 12,
+      "title": "Titel",
+      "issue_url": "https://x/12",
+      "session": "0b7e3c1a-1111-4222-8333-444455556666",
+      "worktree": "issue-12-x",
+      "handoff_url": "https://x/12#issuecomment-9"
+    },
+    "fields": {
+      "phase": "plan",
+      "task": "",
+      "where": "in de plan-fase",
+      "what": "twee wegen",
+      "commands": [
+        "go test ./...",
+        "echo `date`"
+      ],
+      "questions": [
+        {
+          "question": "welke?",
+          "options": [
+            {
+              "text": "links",
+              "recommended": true
+            },
+            {
+              "text": "rechts",
+              "recommended": false
+            }
+          ]
+        }
+      ]
+    },
+    "language": "nl",
+    "body": "🤖 Vraag · #12 Titel ([link](https://x/12)) · fase plan\n\n**Waar het staat:** in de plan-fase\n**Wat er speelt:** twee wegen\n**Vraag:** welke?\n\n**Zelf draaien:**\n\n```bash\ngo test ./...\n```\n\n```bash\necho `date`\n```\n\n- **a)** links *(aanbevolen)*\n- **b)** rechts\n\n**Max 1 comment als reactie.**\n<sub>session 0b7e3c1a-1111-4222-8333-444455556666 · worktree issue-12-x · handoff https://x/12#issuecomment-9</sub>"
+  },
+  {
+    "name": "bundle-two-questions",
+    "meta": {
+      "issue": 12,
+      "title": "Titel",
+      "issue_url": "https://x/12",
+      "session": "0b7e3c1a-1111-4222-8333-444455556666",
+      "worktree": "issue-12-x",
+      "handoff_url": ""
+    },
+    "fields": {
+      "phase": "spec",
+      "task": "",
+      "where": "in the spec",
+      "what": "two choices",
+      "commands": [],
+      "questions": [
+        {
+          "question": "first?",
+          "options": [
+            {
+              "text": "yes",
+              "recommended": true
+            },
+            {
+              "text": "no",
+              "recommended": false
+            }
+          ]
+        },
+        {
+          "question": "second?",
+          "options": [
+            {
+              "text": "a thing",
+              "recommended": false
+            },
+            {
+              "text": "another",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    },
+    "language": "en",
+    "body": "🤖 Question · #12 Titel ([link](https://x/12)) · phase spec\n\n**Where it stands:** in the spec\n**What is going on:** two choices\n**Question 1:** first?\n- **1a)** yes *(recommended)*\n- **1b)** no\n\n**Question 2:** second?\n- **2a)** a thing\n- **2b)** another *(recommended)*\n\n**At most 1 comment in reply.**\nAnswer per question, for example `1a, 2c`.\n<sub>session 0b7e3c1a-1111-4222-8333-444455556666 · worktree issue-12-x</sub>"
+  },
+  {
+    "name": "with-task",
+    "meta": {
+      "issue": 12,
+      "title": "Titel",
+      "issue_url": "https://x/12",
+      "session": "0b7e3c1a-1111-4222-8333-444455556666",
+      "worktree": "issue-12-x",
+      "handoff_url": ""
+    },
+    "fields": {
+      "phase": "uitvoering",
+      "task": "Taak 3",
+      "where": "in taak 3",
+      "what": "een keuze",
+      "commands": [],
+      "questions": [
+        {
+          "question": "hoe?",
+          "options": [
+            {
+              "text": "zo",
+              "recommended": false
+            }
+          ]
+        }
+      ]
+    },
+    "language": "nl",
+    "body": "🤖 Vraag · #12 Titel ([link](https://x/12)) · fase uitvoering · taak Taak 3\n\n**Waar het staat:** in taak 3\n**Wat er speelt:** een keuze\n**Vraag:** hoe?\n- **a)** zo\n\n**Max 1 comment als reactie.**\n<sub>session 0b7e3c1a-1111-4222-8333-444455556666 · worktree issue-12-x</sub>"
+  },
+  {
+    "name": "cleaned-option",
+    "meta": {
+      "issue": 12,
+      "title": "Titel",
+      "issue_url": "https://x/12",
+      "session": "0b7e3c1a-1111-4222-8333-444455556666",
+      "worktree": "issue-12-x",
+      "handoff_url": ""
+    },
+    "fields": {
+      "phase": "plan",
+      "task": "",
+      "where": "here",
+      "what": "there",
+      "commands": [],
+      "questions": [
+        {
+          "question": "which?",
+          "options": [
+            {
+              "text": "use ```code``` here",
+              "recommended": false
+            },
+            {
+              "text": "a <sub>small</sub> one",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    },
+    "language": "en",
+    "body": "🤖 Question · #12 Titel ([link](https://x/12)) · phase plan\n\n**Where it stands:** here\n**What is going on:** there\n**Question:** which?\n- **a)** use '''code''' here\n- **b)** a &lt;sub&gt;small</sub> one *(recommended)*\n\n**At most 1 comment in reply.**\n<sub>session 0b7e3c1a-1111-4222-8333-444455556666 · worktree issue-12-x</sub>",
+    "parsed": {
+      "phase": "plan",
+      "task": "",
+      "where": "here",
+      "what": "there",
+      "commands": [],
+      "questions": [
+        {
+          "question": "which?",
+          "options": [
+            {
+              "text": "use '''code''' here",
+              "recommended": false
+            },
+            {
+              "text": "a &lt;sub&gt;small</sub> one",
+              "recommended": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

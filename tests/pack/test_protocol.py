@@ -930,3 +930,24 @@ def test_shared_header_fixture():
             assert dict(header.fields) == case["fields"], case["name"]
         if "session" in case:
             assert (header.session or "") == case["session"], case["name"]
+
+
+def test_question_shared_fixture():
+    """The Go renderer and parser (`internal/protocol`) read the same fixture."""
+    path = Path(__file__).parent / "fixtures/protocol/questions.json"
+    cases = json.loads(path.read_text(encoding="utf-8"))
+    assert cases
+    for case in cases:
+        meta = case["meta"]
+        body = render_question(
+            issue=meta["issue"],
+            title=meta["title"],
+            issue_url=meta["issue_url"],
+            fields=case["fields"],
+            session=meta["session"],
+            worktree=meta["worktree"],
+            handoff_url=meta["handoff_url"],
+            language=case["language"],
+        )
+        assert body == case["body"], case["name"]
+        assert parse_question(case["body"]) == case.get("parsed", case["fields"]), case["name"]
