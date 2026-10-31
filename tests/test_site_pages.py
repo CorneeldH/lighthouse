@@ -97,10 +97,12 @@ def test_pages_name_the_local_server_command():
 
 
 def test_component_never_writes_html_from_data():
-    for name in ["map.js", "chain.js", "index.js"]:
-        text = (SITE / name).read_text(encoding="utf-8")
+    scripts = site_files(".js")
+    assert scripts, "docs/site has no JS file"
+    for path in scripts:
+        text = path.read_text(encoding="utf-8")
         for sink in HTML_SINKS:
-            assert sink not in text, f"{name} uses {sink}"
+            assert sink not in text, f"{path.name} uses {sink}"
 
 
 def test_page_lang_is_english():
