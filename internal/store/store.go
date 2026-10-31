@@ -121,7 +121,10 @@ func open(ctx context.Context, path string, lock bool) (*Store, error) {
 	}
 	db, err := sql.Open("sqlite", dsn(path))
 	if err == nil {
-		err = setWAL(ctx, db)
+		err = refuseTooNew(ctx, db)
+		if err == nil {
+			err = setWAL(ctx, db)
+		}
 		if err == nil {
 			err = migrate(ctx, db, migrationFS)
 		}
@@ -144,5 +147,16 @@ func (s *Store) Close() error {
 	if s.lock != nil {
 		err = errors.Join(err, s.lock.Close())
 	}
+	return err
+}
+
+// refuseTooNew returns ErrSchemaTooNew for a database from a newer lighthouse before
+// setWAL changes its journal mode: the refusal must leave the file untouched.
+func refuseTooNew(ctx context.Context, db *sql.DB) error {
+	list, err := loadMigrations(migrationFS)
+	if err != nil {
+		return err
+	}
+	_, err = checkVersion(ctx, db, len(list))
 	return err
 }

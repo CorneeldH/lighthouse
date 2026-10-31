@@ -230,6 +230,13 @@ func TestOpenSharedSchemaTooNew(t *testing.T) {
 	if n != 0 {
 		t.Errorf("database touched: %d schema objects", n)
 	}
+	var mode string
+	if err := db.QueryRow(`PRAGMA journal_mode`).Scan(&mode); err != nil {
+		t.Fatalf("query journal_mode: %v", err)
+	}
+	if mode == "wal" {
+		t.Errorf("journal_mode = wal: a refused database was changed")
+	}
 }
 
 // TestApplyRereadsUserVersion covers the state another process leaves

@@ -66,6 +66,22 @@ func loadMigrations(fsys fs.FS) ([]migration, error) {
 	return list, nil
 }
 
+// checkVersion reads user_version and refuses a negative one and one above known,
+// without writing anything to the database.
+func checkVersion(ctx context.Context, db *sql.DB, known int) (int, error) {
+	var current int
+	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&current); err != nil {
+		return 0, fmt.Errorf("read user_version: %w", err)
+	}
+	if current < 0 {
+		return 0, fmt.Errorf("database has invalid user_version %d; not a lighthouse database", current)
+	}
+	if current > known {
+		return 0, fmt.Errorf("%w: user_version %d, highest known %d", ErrSchemaTooNew, current, known)
+	}
+	return current, nil
+}
+
 // migrate runs every migration above the database's user_version, each in
 // one transaction that also sets user_version. A database newer than the
 // highest known migration is refused untouched.
@@ -74,15 +90,9 @@ func migrate(ctx context.Context, db *sql.DB, fsys fs.FS) error {
 	if err != nil {
 		return err
 	}
-	var current int
-	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&current); err != nil {
-		return fmt.Errorf("read user_version: %w", err)
-	}
-	if current < 0 {
-		return fmt.Errorf("database has invalid user_version %d; not a lighthouse database", current)
-	}
-	if current > len(list) {
-		return fmt.Errorf("%w: user_version %d, highest known %d", ErrSchemaTooNew, current, len(list))
+	current, err := checkVersion(ctx, db, len(list))
+	if err != nil {
+		return err
 	}
 	for _, m := range list[current:] {
 		if err := apply(ctx, db, fsys, m, len(list)); err != nil {
