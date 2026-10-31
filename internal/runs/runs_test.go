@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"testing"
 	"time"
@@ -282,44 +283,12 @@ func TestOpenOnlyRepo(t *testing.T) {
 	}
 }
 
-func TestSessionIDsIncludesClosed(t *testing.T) {
+func TestSessionKeys(t *testing.T) {
 	ctx := context.Background()
 	db := openDB(t)
-	c1 := claim("owner/a", 7, "start:7")
-	r1, err := Take(ctx, db, c1)
-	if err != nil {
-		t.Fatalf("Take: %v", err)
-	}
-	if err := SetSession(ctx, db, r1.ID, "key-1"); err != nil {
-		t.Fatalf("SetSession: %v", err)
-	}
-	if err := Release(ctx, db, r1.ID, Returned, "", time.Now()); err != nil {
-		t.Fatalf("Release: %v", err)
-	}
-	c2 := claim("owner/a", 7, "answer:7")
-	if _, err := Take(ctx, db, c2); err != nil {
-		t.Fatalf("Take: %v", err)
-	}
-	c3 := claim("owner/a", 8, "start:8")
-	if _, err := Take(ctx, db, c3); err != nil {
-		t.Fatalf("Take: %v", err)
-	}
-	got, err := SessionIDs(ctx, db, "owner/a", 7)
-	if err != nil {
-		t.Fatalf("SessionIDs: %v", err)
-	}
-	if len(got) != 2 || !got[c1.SessionID] || !got[c2.SessionID] || got[c3.SessionID] {
-		t.Errorf("SessionIDs = %v, want exactly %q and %q", got, c1.SessionID, c2.SessionID)
-	}
-}
-
-func TestSessionIDsExcludesClosedWithoutSession(t *testing.T) {
-	ctx := context.Background()
-	db := openDB(t)
-	closeAs := func(key string, o Outcome, workplaceSession string) string {
+	run := func(issue int, key string, o Outcome, workplaceSession string) {
 		t.Helper()
-		c := claim("owner/a", 7, key)
-		r, err := Take(ctx, db, c)
+		r, err := Take(ctx, db, claim("owner/a", issue, key))
 		if err != nil {
 			t.Fatalf("Take %s: %v", key, err)
 		}
@@ -328,27 +297,23 @@ func TestSessionIDsExcludesClosedWithoutSession(t *testing.T) {
 				t.Fatalf("SetSession: %v", err)
 			}
 		}
-		if err := Release(ctx, db, r.ID, o, "", time.Now()); err != nil {
-			t.Fatalf("Release: %v", err)
+		if o != "" {
+			if err := Release(ctx, db, r.ID, o, "", time.Now()); err != nil {
+				t.Fatalf("Release: %v", err)
+			}
 		}
-		return c.SessionID
 	}
-	never := closeAs("a:1", StartFailed, "")
-	accepted := closeAs("b:1", StartFailed, "key-b")
-	returned := closeAs("c:1", Returned, "key-c")
-	returnedUncertain := closeAs("d:1", Returned, "")
-	c := claim("owner/a", 7, "e:1")
-	if _, err := Take(ctx, db, c); err != nil {
-		t.Fatalf("Take: %v", err)
-	}
-	got, err := SessionIDs(ctx, db, "owner/a", 7)
+	run(7, "a:1", Returned, "key-1")
+	run(7, "b:1", StartFailed, "")
+	run(7, "c:1", StartFailed, "key-2")
+	run(8, "d:1", Done, "key-other-issue")
+	run(7, "e:1", "", "key-open")
+	got, err := SessionKeys(ctx, db, "owner/a", 7)
 	if err != nil {
-		t.Fatalf("SessionIDs: %v", err)
+		t.Fatalf("SessionKeys: %v", err)
 	}
-	if got[never] || got[returnedUncertain] {
-		t.Errorf("a closed run without workplace_session must be left out: %v", got)
-	}
-	if !got[accepted] || !got[returned] || !got[c.SessionID] || len(got) != 3 {
-		t.Errorf("SessionIDs = %v, want exactly %q, %q and open %q", got, accepted, returned, c.SessionID)
+	want := map[string]bool{"key-1": true, "key-2": true, "key-open": true}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("SessionKeys = %v, want %v", got, want)
 	}
 }

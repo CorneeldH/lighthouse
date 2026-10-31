@@ -193,31 +193,29 @@ func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
 	return out, nil
 }
 
-// SessionIDs returns the session ids of every run of the issue, open and
-// closed. A closed run without a workplace session is left out: either the
-// forge never accepted its spawn (start_failed) or its start stayed uncertain
-// and CheckOpen returned it. An agent that starts late for such a run belongs
-// to no run and counts as foreign, so cleanup does not stop it. A closed run
-// that had a session stays: cleanup stops that session. An open run stays,
-// with or without a session.
-func SessionIDs(ctx context.Context, db *sql.DB, repo string, issue int) (map[string]bool, error) {
-	rows, err := db.QueryContext(ctx, `SELECT session_id FROM runs
-		WHERE repo = ? AND issue = ?
-		AND NOT (ended_at IS NOT NULL AND workplace_session = '')`, repo, issue)
+// SessionKeys returns the workplace session keys of every run of the issue,
+// open and closed: the forge sessions lighthouse started for it. It keys on
+// the forge key, not on session_id, because a resume run gets a new row with
+// the same session_id: a late agent of a resume whose start failed must not
+// pass for the earlier run's session. A run without a key (never accepted, or
+// returned as uncertain) adds nothing, so its late agent counts as foreign.
+func SessionKeys(ctx context.Context, db *sql.DB, repo string, issue int) (map[string]bool, error) {
+	rows, err := db.QueryContext(ctx, `SELECT workplace_session FROM runs
+		WHERE repo = ? AND issue = ? AND workplace_session != ''`, repo, issue)
 	if err != nil {
-		return nil, fmt.Errorf("runs: session ids: %w", err)
+		return nil, fmt.Errorf("runs: session keys: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	out := map[string]bool{}
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("runs: scan session id: %w", err)
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, fmt.Errorf("runs: scan session key: %w", err)
 		}
-		out[id] = true
+		out[key] = true
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("runs: session ids: %w", err)
+		return nil, fmt.Errorf("runs: session keys: %w", err)
 	}
 	return out, nil
 }

@@ -606,3 +606,128 @@ func TestCleanupRemoveOtherErrorStays(t *testing.T) {
 		t.Errorf("reason = %q", got)
 	}
 }
+
+// resumeRows writes the history of a resume: a start row of issue 7 closed
+// with key k1, then a resume row with the same session_id. It returns that
+// session_id and the resume row.
+func resumeRows(t *testing.T, db *sql.DB, resumeStarted time.Time) (string, runs.Run) {
+	t.Helper()
+	ctx := context.Background()
+	const sid = "sid-shared"
+	start, err := runs.Take(ctx, db, runs.Claim{Repo: lcRepo, Issue: 7, SessionID: sid, Mode: "start",
+		Trigger: "handoff", TriggerKey: "start:7", Now: lcNow.Add(-3 * time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, db, start.ID, "w1", "issue-7"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetSession(ctx, db, start.ID, "k1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.Release(ctx, db, start.ID, runs.Handoff, "", lcNow.Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	resume, err := runs.Take(ctx, db, runs.Claim{Repo: lcRepo, Issue: 7, SessionID: sid, Mode: "resume",
+		Trigger: "answer", TriggerKey: "answer:7", Now: resumeStarted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, db, resume.ID, "w1", "issue-7"); err != nil {
+		t.Fatal(err)
+	}
+	return sid, resume
+}
+
+func TestResumeStartFailedLateAgentIsForeign(t *testing.T) {
+	db := openLeftoverDB(t)
+	ctx := context.Background()
+	sid, resume := resumeRows(t, db, lcNow.Add(-time.Hour))
+	if err := runs.Release(ctx, db, resume.ID, runs.StartFailed, "forge 503", lcNow.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	late := Session{Key: "k2", SessionID: sid, State: "working", UpdatedAt: lcNow}
+	ownKeys, err := runs.SessionKeys(ctx, db, lcRepo, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := Busy([]Session{late}, ownKeys, nil, nil, lcNow, time.Hour); !ok || got.Key != "k2" {
+		t.Errorf("Busy = %v %v, want busy k2", got, ok)
+	}
+	if got, ok := ForeignLive([]Session{late}, ownKeys); !ok || got.Key != "k2" {
+		t.Errorf("ForeignLive = %v %v, want live k2", got, ok)
+	}
+	w := &fakeWP{sessions: []Session{late}}
+	removed, err := Cleanup(ctx, db, w, cleanRunner(), cand(7), lcNow)
+	if err != nil || removed || w.stops != 0 || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, stops %d removes %d", removed, err, w.stops, w.removes)
+	}
+	if got := leftoverReasons(t, db)["w1"]; got != "foreign session k2" {
+		t.Errorf("reason = %q", got)
+	}
+}
+
+func TestCheckOpenIgnoresSessionOfEarlierRow(t *testing.T) {
+	db := openLeftoverDB(t)
+	sid, resume := resumeRows(t, db, lcNow.Add(-11*time.Minute))
+	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "done"}}}
+	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []Closed{{RunID: resume.ID, Issue: 7, Reason: ReasonUncertain}}; !reflect.DeepEqual(closed, want) {
+		t.Errorf("closed = %+v, want %+v", closed, want)
+	}
+	if got := rowOf(t, db, resume.ID); got.session != "" || got.outcome != "returned" {
+		t.Errorf("row = %+v, want returned without the earlier key", got)
+	}
+}
+
+func TestCheckOpenResumeFindsItsNewSession(t *testing.T) {
+	db := openLeftoverDB(t)
+	sid, resume := resumeRows(t, db, lcNow.Add(-time.Minute))
+	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "done"}, {Key: "k2", SessionID: sid, State: "working"}}}
+	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
+	if err != nil || len(closed) != 0 {
+		t.Fatalf("CheckOpen = %v, %v", closed, err)
+	}
+	if got := rowOf(t, db, resume.ID); got.session != "k2" || got.outcome != "" {
+		t.Errorf("row = %+v, want open with k2", got)
+	}
+}
+
+// closedOwnRun records a closed run of issue 7 that held key.
+func closedOwnRun(t *testing.T, db *sql.DB, key string) string {
+	t.Helper()
+	run, sid := takeRun(t, db, 7, lcNow.Add(-time.Hour))
+	if err := runs.SetSession(context.Background(), db, run.ID, key); err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.Release(context.Background(), db, run.ID, runs.Done, "", lcNow); err != nil {
+		t.Fatal(err)
+	}
+	return sid
+}
+
+func TestCleanupOwnSessionWithoutSessionIDStays(t *testing.T) {
+	db := openLeftoverDB(t)
+	closedOwnRun(t, db, "k1")
+	w := &fakeWP{sessions: []Session{{Key: "k1", State: "working"}}}
+	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), cand(7), lcNow)
+	if err != nil || removed || w.stops != 0 || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, stops %d removes %d", removed, err, w.stops, w.removes)
+	}
+	if got := leftoverReasons(t, db)["w1"]; got != "not measurable: own session k1 has no session id" {
+		t.Errorf("reason = %q", got)
+	}
+}
+
+func TestCleanupDoneOwnSessionWithoutSessionIDRemoves(t *testing.T) {
+	db := openLeftoverDB(t)
+	closedOwnRun(t, db, "k1")
+	w := &fakeWP{sessions: []Session{{Key: "k1", State: "done"}}}
+	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), cand(7), lcNow)
+	if err != nil || !removed || w.stops != 0 {
+		t.Fatalf("Cleanup = %v, %v, stops %d", removed, err, w.stops)
+	}
+}

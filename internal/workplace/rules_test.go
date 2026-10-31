@@ -54,7 +54,7 @@ func TestBusyForeignDone(t *testing.T) {
 func TestBusyOpenRunWaiting(t *testing.T) {
 	t.Parallel()
 	s := sess("a", "idle", "mine", now0.Add(-2*time.Hour))
-	_, ok := Busy([]Session{s}, map[string]bool{"mine": true}, map[string]bool{"mine": true}, nil, now0, time.Hour)
+	_, ok := Busy([]Session{s}, map[string]bool{"a": true}, map[string]bool{"mine": true}, nil, now0, time.Hour)
 	if !ok {
 		t.Fatal("want busy")
 	}
@@ -63,7 +63,7 @@ func TestBusyOpenRunWaiting(t *testing.T) {
 func TestBusyOpenRunDone(t *testing.T) {
 	t.Parallel()
 	s := sess("a", "done", "mine", now0)
-	_, ok := Busy([]Session{s}, map[string]bool{"mine": true}, map[string]bool{"mine": true}, nil, now0, time.Hour)
+	_, ok := Busy([]Session{s}, map[string]bool{"a": true}, map[string]bool{"mine": true}, nil, now0, time.Hour)
 	if ok {
 		t.Fatal("want not busy")
 	}
@@ -72,9 +72,20 @@ func TestBusyOpenRunDone(t *testing.T) {
 func TestBusyClosedOwnIgnored(t *testing.T) {
 	t.Parallel()
 	s := sess("a", "working", "mine", now0)
-	_, ok := Busy([]Session{s}, map[string]bool{"mine": true}, map[string]bool{}, nil, now0, time.Hour)
+	_, ok := Busy([]Session{s}, map[string]bool{"a": true}, map[string]bool{}, nil, now0, time.Hour)
 	if ok {
 		t.Fatal("want not busy")
+	}
+}
+
+// A resume row shares the session_id of the earlier row; its late agent has a
+// key no row recorded, so it is foreign even though its session_id is known.
+func TestBusyUnrecordedKeyWithOwnSessionIDIsForeign(t *testing.T) {
+	t.Parallel()
+	s := sess("k2", "working", "mine", now0)
+	got, ok := Busy([]Session{s}, map[string]bool{"k1": true}, map[string]bool{}, nil, now0, time.Hour)
+	if !ok || got.Key != "k2" {
+		t.Fatalf("got %v %v, want busy k2", got, ok)
 	}
 }
 
@@ -134,17 +145,26 @@ func TestForeignLiveStaleIdle(t *testing.T) {
 
 func TestForeignLiveIgnoresOwnAndDone(t *testing.T) {
 	t.Parallel()
-	own := map[string]bool{"mine": true}
+	own := map[string]bool{"a": true}
 	ss := []Session{sess("a", "working", "mine", now0), sess("b", "done", "x", now0)}
 	if got, ok := ForeignLive(ss, own); ok {
 		t.Fatalf("got %v, want none", got)
 	}
 }
 
+func TestForeignLiveUnrecordedKeyWithOwnSessionID(t *testing.T) {
+	t.Parallel()
+	s := sess("k2", "idle", "mine", now0)
+	got, ok := ForeignLive([]Session{s}, map[string]bool{"k1": true})
+	if !ok || got.Key != "k2" {
+		t.Fatalf("got %v %v, want live k2", got, ok)
+	}
+}
+
 func TestBusyOpenRunWorking(t *testing.T) {
 	t.Parallel()
 	s := sess("a", "working", "mine", now0.Add(-5*time.Hour))
-	_, ok := Busy([]Session{s}, map[string]bool{"mine": true}, map[string]bool{"mine": true}, nil, now0, time.Hour)
+	_, ok := Busy([]Session{s}, nil, map[string]bool{"mine": true}, nil, now0, time.Hour)
 	if !ok {
 		t.Fatal("want busy")
 	}

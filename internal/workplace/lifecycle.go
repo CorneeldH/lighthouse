@@ -96,7 +96,12 @@ func CheckOpen(ctx context.Context, db *sql.DB, w Workplace, repo string, lim Li
 				errs = append(errs, fmt.Errorf("sessions of run %d: %w", run.ID, err))
 				continue
 			}
-			if key, ok := findSession(sessions, run.SessionID); ok {
+			taken, err := runs.SessionKeys(ctx, db, repo, run.Issue)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("session keys of run %d: %w", run.ID, err))
+				continue
+			}
+			if key, ok := findSession(sessions, run.SessionID, taken); ok {
 				if err := runs.SetSession(ctx, db, run.ID, key); err != nil {
 					errs = append(errs, fmt.Errorf("record session of run %d: %w", run.ID, err))
 					continue
@@ -126,9 +131,12 @@ func CheckOpen(ctx context.Context, db *sql.DB, w Workplace, repo string, lim Li
 	return closed, errors.Join(errs...)
 }
 
-func findSession(sessions []Session, sessionID string) (key string, ok bool) {
+// findSession looks up the session of an uncertain start by its session_id. A
+// key that a row already holds is skipped: a resume run shares the session_id
+// of the earlier run, whose forge session may still be listed.
+func findSession(sessions []Session, sessionID string, taken map[string]bool) (key string, ok bool) {
 	for _, s := range sessions {
-		if s.SessionID == sessionID {
+		if s.SessionID == sessionID && !taken[s.Key] {
 			return s.Key, true
 		}
 	}
@@ -170,9 +178,9 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	if err != nil {
 		return keep("not measurable: sessions: " + err.Error())
 	}
-	own, err := runs.SessionIDs(ctx, db, c.Repo, c.Issue)
+	own, err := runs.SessionKeys(ctx, db, c.Repo, c.Issue)
 	if err != nil {
-		return keep("not measurable: session ids: " + err.Error())
+		return keep("not measurable: session keys: " + err.Error())
 	}
 	if s, ok := ForeignLive(sessions, own); ok {
 		return keep("foreign session " + s.Key)
@@ -194,9 +202,17 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 
 	var ids []string
 	for _, s := range sessions {
-		if own[s.SessionID] && s.SessionID != "" {
-			ids = append(ids, s.SessionID)
+		if !own[s.Key] {
+			continue
 		}
+		if s.SessionID == "" {
+			if s.Stand() == Done {
+				continue
+			}
+			// Stop finds the agent by session id; without one it cannot be stopped.
+			return keep("not measurable: own session " + s.Key + " has no session id")
+		}
+		ids = append(ids, s.SessionID)
 	}
 	if len(ids) > 0 {
 		if err := w.Stop(ctx, c.Workspace.ID, ids); err != nil {
