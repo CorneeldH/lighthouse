@@ -17,6 +17,9 @@
       "write-issue",
       "write-pr"
     ],
+    "standard_skills": [
+      "test-standard"
+    ],
     "agents": [
       "issue-impact-scout"
     ],
@@ -101,6 +104,9 @@
     "skills": [
       "go-standard"
     ],
+    "standard_skills": [
+      "go-standard"
+    ],
     "agents": [],
     "workflows": [],
     "hooks": [
@@ -128,6 +134,7 @@
       "**/package.json"
     ],
     "skills": [],
+    "standard_skills": [],
     "agents": [],
     "workflows": [],
     "hooks": [],
@@ -140,6 +147,9 @@
       "pyproject.toml"
     ],
     "skills": [
+      "python-standard"
+    ],
+    "standard_skills": [
       "python-standard"
     ],
     "agents": [],
@@ -174,6 +184,9 @@
     "skills": [
       "shell-standard"
     ],
+    "standard_skills": [
+      "shell-standard"
+    ],
     "agents": [],
     "workflows": [],
     "hooks": [
@@ -196,6 +209,7 @@
     "skills": [
       "refresh-expo-lockfiles"
     ],
+    "standard_skills": [],
     "agents": [],
     "workflows": [],
     "hooks": [],

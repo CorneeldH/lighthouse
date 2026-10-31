@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Inside a session</title>
-<link rel="stylesheet" href="map.css?v=87b4b61c">
-<script type="module" src="session.js?v=87b4b61c"></script>
+<link rel="stylesheet" href="map.css?v=3f3f67c5">
+<script type="module" src="session.js?v=3f3f67c5"></script>
 </head>
 <body>
 <header class="page-head">
@@ -24,7 +24,7 @@ browser blocks for a page opened straight from disk. From the root of the reposi
 
 <details class="why">
   <summary>Wait, but why?</summary>
-  <p><strong>Two levels.</strong> <a href="chain.html">The chain</a> follows the work from an idea
+  <p><strong>Two levels.</strong> <a href="chain.html">The loop</a> follows the work from an idea
   to main, phase by phase, across sessions. This map zooms in on one session. It follows one turn
   from the prompt to the stop, and answers "why does it stop me now?": which skill loads before the
   model writes, and which hook steps in at each moment, on which tool, from which pack, and what it
@@ -42,7 +42,7 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   explain. When a hook blocks, its message goes back to the agent, which reads why and corrects
   its step. A skill and its hook often come as a pair. On this map, <code>go-standard</code> loads
   before the model writes Go, and <code>gofmt-check</code> and <code>go-lint-gate</code> check what it wrote.
-  On the chain, <code>/lighthouse-write-pr</code> writes the PR body that
+  On the loop, <code>/lighthouse-write-pr</code> writes the PR body that
   <code>pr-create-gate</code> checks.</p>
   <p class="aside">How hooks, skills and agents work in Claude Code:
   <a href="https://code.claude.com/docs/en/hooks-guide">the hooks guide</a>,
@@ -59,11 +59,7 @@ browser blocks for a page opened straight from disk. From the root of the reposi
     <li><span class="swatch kind-lighthouse"></span>lighthouse skill</li>
     <li><span class="swatch kind-hook"></span>hook</li>
   </ul>
-  <ul aria-label="How it starts">
-    <li>◎ its description matches the task</li>
-    <li>⚡ a tool call</li>
-    <li>◷ a turn event</li>
-  </ul>
+  <ul aria-label="What it is" data-sorts="standard-skill hook"></ul>
   <ul aria-label="What it does">
     <li>blocks the step</li>
     <li>warns, does not block</li>

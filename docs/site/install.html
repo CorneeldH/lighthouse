@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Install lighthouse</title>
-<link rel="stylesheet" href="map.css?v=87b4b61c">
-<script type="module" src="install.js?v=87b4b61c"></script>
+<link rel="stylesheet" href="map.css?v=3f3f67c5">
+<script type="module" src="install.js?v=3f3f67c5"></script>
 </head>
 <body>
 <header class="page-head">
@@ -101,6 +101,15 @@ mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_darwin_amd64 ~/.local/bin/lightho
     <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_windows_amd64.exe">or download the file</a>.
     Check it against <code>SHA256SUMS</code> yourself.</p>
   </details>
+
+  <p class="other-routes">Or install with Go,
+  <code>go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest</code>, which puts the
+  binary in <code>~/go/bin</code>, or build it from a clone. A build from <code>main</code> or
+  from a clone reports version <code>dev</code>, and <code>lighthouse init</code> writes that
+  version into <code>.lighthouse/manifest.toml</code>, so install a tag for a repository you
+  work in. The
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#install">getting-started guide</a>
+  has the details.</p>
 
   <p class="next-step">Next: run <code>lighthouse init</code> in your repository, as the
   <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#run-lighthouse-init">getting-started guide</a>

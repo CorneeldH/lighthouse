@@ -28,6 +28,10 @@
   --hook-fg: #16181d;
   --github: #c9cbd1;
   --github-fg: #16181d;
+  --config: #f4d74b;
+  --config-fg: #16181d;
+  --you: #ffffff;
+  --you-fg: #16181d;
   --idea: #5f6470;
   --badge-bg: #14213d;
   --badge-fg: #ffffff;
@@ -60,6 +64,10 @@
     --hook-fg: #16181d;
     --github: #d4d4d8;
     --github-fg: #16181d;
+    --config: #d9b92e;
+    --config-fg: #16181d;
+    --you: #222a3d;
+    --you-fg: #e8eaf0;
     --idea: #9aa0ab;
     --badge-bg: #ffffff;
     --badge-fg: #14213d;
@@ -92,6 +100,10 @@
   --hook-fg: #16181d;
   --github: #d4d4d8;
   --github-fg: #16181d;
+  --config: #d9b92e;
+  --config-fg: #16181d;
+  --you: #222a3d;
+  --you-fg: #e8eaf0;
   --idea: #9aa0ab;
   --badge-bg: #ffffff;
   --badge-fg: #14213d;
@@ -106,7 +118,7 @@ body {
   padding: 24px 32px 48px;
   background: var(--bg);
   color: var(--fg);
-  font-family: system-ui, sans-serif;
+  font-family: system-ui, sans-serif, "Noto Sans Symbols", "Segoe UI Symbol", "Apple Symbols";
   line-height: 1.45;
 }
 
@@ -236,6 +248,26 @@ button:focus-visible {
 .form-agent {
   --kind: var(--agent);
   --kind-fg: var(--agent-fg);
+}
+
+/* A you-brought part is a white box with a border; rules and config are yellow; the loop and a
+   session are dark, like a handoff badge. */
+.kind-you {
+  --kind: var(--you);
+  --kind-fg: var(--you-fg);
+  border: 1.5px solid var(--border);
+}
+
+.form-rules,
+.form-config {
+  --kind: var(--config);
+  --kind-fg: var(--config-fg);
+}
+
+.form-loop,
+.form-session {
+  --kind: var(--badge-bg);
+  --kind-fg: var(--badge-fg);
 }
 
 .sample {
@@ -778,6 +810,7 @@ a.tile:focus-visible {
 }
 
 .download-lead,
+.other-routes,
 .next-step {
   margin: 0 0 12px;
 }
@@ -1016,263 +1049,208 @@ details.who summary:focus-visible {
   outline-offset: 2px;
 }
 
-/* System map: the parts as nested boxes, works solid and planned grey hatched, with thin lines
-   for the links on top. Its own classes, so nothing of .map or .chip applies. */
+/* Reference page: one link per part of a pack, coloured by kind */
 
-.snapshot {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 13px;
+.reference {
+  margin-top: 28px;
 }
 
-.plan {
-  position: relative;
+.reference h2 {
+  margin: 0 0 4px;
+}
+
+.reference p {
+  margin: 4px 0 0;
+  max-width: 70ch;
+}
+
+.reference-part {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
-  gap: 24px 72px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
   margin-top: 12px;
 }
 
-.plan > .plan-group {
-  grid-column: 1 / -1;
+.reference-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.plan-shell {
+.reference-link {
+  display: block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--kind);
+  color: var(--kind-fg);
+  font-size: 13px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.reference-link:hover,
+.reference-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* System page: three steps side by side, one column on a narrow screen, and the sections below. */
+
+.story {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story-step {
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  padding: 12px;
+  padding: 14px 16px 16px;
   border: 1px solid var(--border);
   border-radius: 16px;
-  background: var(--col-bg);
+  background: var(--panel);
 }
 
-.plan-group {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-}
-
-.plan-group > .plan-title {
-  grid-column: 1 / -1;
-}
-
-.plan-title {
+.story-step .kicker {
   margin: 0;
-  color: var(--col-fg);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
-.plan-part {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 2px 8px;
-  width: 100%;
-  min-width: 0;
-  padding: 8px 12px;
-  border: 1.5px solid var(--lighthouse);
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: left;
-  overflow-wrap: anywhere;
-  cursor: pointer;
-  transition: box-shadow 0.2s;
+.story-title {
+  margin: 0;
+  font-size: 18px;
 }
 
-.plan-head {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.plan-mark,
-.plan-part .release {
-  font-size: 11px;
-  font-weight: 600;
-  opacity: 0.85;
-}
-
-.plan-part .release {
-  flex-basis: 100%;
-}
-
-.plan-part.status-works,
-.plan-swatch.status-works {
-  background: var(--lighthouse);
-  border-color: var(--lighthouse);
-  color: var(--lighthouse-fg);
-}
-
-.plan-part.status-planned,
-.plan-part.status-idea,
-.plan-swatch.status-planned {
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--idea) 22%, transparent) 0 6px,
-    transparent 6px 12px
-  );
-  border: 1.5px dotted var(--idea);
+/* The init step is a command: a terminal line that wraps rather than runs over the edge. */
+.story-command {
+  display: block;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--map-bg);
   color: var(--fg);
+  font-size: 15px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
-.plan-part.current {
-  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--accent-soft);
+.story-where {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
 }
 
-.plan-lines {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-  pointer-events: none;
+.story-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-.plan-lines line {
-  stroke: var(--muted);
-  stroke-width: 1;
+.story-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1.5px solid var(--kind);
+  border-radius: 10px;
+  background: var(--kind);
+  color: var(--kind-fg);
+  text-decoration: none;
 }
 
-.plan-lines line.planned {
-  stroke-dasharray: 5 4;
+/* What you bring is white on white: its border has to carry the box. */
+.story-item.kind-you {
+  border-color: var(--muted);
 }
 
-.plan-lines text {
-  fill: var(--muted);
-  font-size: 11px;
-  font-weight: 600;
-  text-anchor: middle;
-  dominant-baseline: middle;
-  paint-order: stroke;
-  stroke: var(--bg);
-  stroke-width: 4px;
-  stroke-linejoin: round;
+.story-item:hover .story-label {
+  text-decoration: underline;
 }
 
-/* The label of a line down sits left of the line, not on it. */
-.plan-lines text.beside {
-  text-anchor: end;
+.story-item:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
-.plan-issues {
-  font-size: 13.5px;
+.story-item .glyph {
+  flex: 0 0 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.18);
 }
 
-.plan-issues li + li {
+.story-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.story-label {
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.story-note {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+/* An item outside the place of its step, such as host.toml on your workstation. */
+.story-apart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+.story-section {
+  margin-top: 20px;
+  max-width: 900px;
+}
+
+.story-section p {
+  max-width: 75ch;
+}
+
+.story-section p + p {
+  margin-top: 8px;
+}
+
+.story-section dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 12px 0 0;
+  font-size: 14px;
+}
+
+.story-section dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.story-section dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 700px) {
-  .plan {
+  .story {
     grid-template-columns: minmax(0, 1fr);
   }
-}
-
-/* Stand switch and timeline */
-
-.stand-switch {
-  display: flex;
-  gap: 6px;
-  margin: 10px 0 8px;
-}
-
-.stand-switch button {
-  border: 1px solid var(--muted);
-  background: transparent;
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.stand-switch button[aria-pressed="true"] {
-  background: var(--accent-soft);
-  border-color: var(--accent-soft);
-  color: #16181d;
-}
-
-.timeline-filter {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0 12px;
-  font-size: 13px;
-}
-
-.timeline-group {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.timeline-group h2 {
-  flex-basis: 100%;
-  margin: 0 0 4px;
-  font-size: 15px;
-}
-
-.timeline-count {
-  margin-left: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.plan-chip {
-  padding: 4px 10px;
-  border: 1.5px solid var(--lighthouse);
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 600;
-  text-align: left;
-  overflow-wrap: anywhere;
-  cursor: pointer;
-}
-
-.plan-chip.status-works {
-  background: var(--lighthouse);
-  color: var(--lighthouse-fg);
-}
-
-.plan-chip.status-planned,
-.plan-chip.status-idea {
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--idea) 22%, transparent) 0 6px,
-    transparent 6px 12px
-  );
-  border: 1.5px dotted var(--idea);
-  color: var(--fg);
-}
-
-.plan-chip.dim {
-  opacity: 0.25;
-}
-
-.plan-chip.current {
-  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--accent-soft);
-}
-
-.timeline-empty {
-  flex-basis: 100%;
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 13px;
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--muted) 15%, transparent) 0 6px,
-    transparent 6px 12px
-  );
 }

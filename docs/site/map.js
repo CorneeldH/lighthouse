@@ -1,9 +1,23 @@
 // Shared flow map of the lighthouse site: columns of chips, route buttons, handoff badges and a
-// detail drawer. Data reaches the page only through textContent and
-// attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
+// detail drawer. SORTS is the one table of glyphs and labels, used by chips and legends. Data
+// reaches the page only through textContent and attributes, never as HTML, so a label such as
+// issue-<nr>-<slug> shows as written.
 
-const GLYPHS = { you: "⌨", skill: "↪", description: "◎", tool: "⚡", event: "◷", github: "⚙" };
-const AGENT_GLYPH = "◆"; // an agent keeps its own mark, whatever starts it
+/** The sorts of thing on the maps, each with one glyph and one label. The glyph says what a thing
+    is; what starts it is in the title, the drawer and the screen-reader text. */
+export const SORTS = {
+  program: { glyph: "⛯", label: "lighthouse, the program" },
+  "workflow-skill": { glyph: "↪", label: "Workflow skill" },
+  "standard-skill": { glyph: "✓", label: "Standard skill" },
+  agent: { glyph: "◆", label: "Agent" },
+  hook: { glyph: "⚡", label: "Hook" },
+  rules: { glyph: "§", label: "Rules" },
+  config: { glyph: "⚙", label: "Config" },
+  github: { glyph: "⑂", label: "GitHub" },
+  loop: { glyph: "∞", label: "The loop" },
+  session: { glyph: "❯", label: "A session" },
+  you: { glyph: "▣", label: "You bring it" },
+};
 const TRIGGERS = {
   you: "you invoke it",
   skill: "another skill invokes it",
@@ -39,10 +53,9 @@ const WIDTH = 1260; // virtual width of the map, equal to the min-width of .map 
 const HEAD = 64; // height of the column heads, in px
 const ROW = 46; // height of one row of chips, in px
 const SVG_NS = "http://www.w3.org/2000/svg";
-const LINE_INSET = 24; // a line down runs this far, in px, inside the right side of its boxes
-const LINE_STAGGER = 16; // and each next link this much further left, so no two lines coincide
 const THEME_KEY = "lighthouse-theme";
-const ISSUE_URL = "https://github.com/CorneeldH/lighthouse/issues/";
+const REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/";
+const REPO_TREE = "https://github.com/CorneeldH/lighthouse/tree/main/";
 const drawers = new WeakMap(); // detail element -> its drawer
 
 /** Fetches and parses a JSON file; throws when the request fails. */
@@ -153,9 +166,158 @@ function form(chip) {
   return "github";
 }
 
-/** The mark on a chip: the agent mark for an agent, otherwise the mark of its trigger. */
-function glyphOf(chip) {
-  return form(chip) === "agent" ? AGENT_GLYPH : GLYPHS[chip.trigger] || "?";
+// A form of the flow maps that is no sort of its own: a GitHub Actions workflow is GitHub, an
+// external tool is something you bring, the dispatcher is the lighthouse program.
+const SORT_OF_FORM = { workflow: "github", tool: "you", dispatcher: "program" };
+
+/** The key of SORTS an item belongs to. */
+export function sortOf(item) {
+  const kind = form(item);
+  if (kind === "skill") {
+    return item.trigger === "description" ? "standard-skill" : "workflow-skill";
+  }
+  return SORT_OF_FORM[kind] || kind;
+}
+
+/** The mark on a chip: the glyph of its sort. */
+export function glyphOf(item) {
+  const sort = SORTS[sortOf(item)];
+  return sort ? sort.glyph : "?";
+}
+
+/** Fills a legend list with one item per sort named in its data-sorts, as "<glyph> <label>". */
+export function fillLegend(list) {
+  const items = list.dataset.sorts.split(/\s+/).filter(Boolean).map((name) => {
+    if (!SORTS[name]) {
+      throw new Error(`unknown sort in legend: ${name}`);
+    }
+    return el("li", "", `${SORTS[name].glyph} ${SORTS[name].label}`);
+  });
+  list.replaceChildren(...items);
+}
+
+// The colour kind of each sort on the reference page; an agent adds its own colour by form-agent.
+const KIND_OF_SORT = {
+  "workflow-skill": "lighthouse",
+  "standard-skill": "lighthouse",
+  agent: "lighthouse",
+  hook: "hook",
+  github: "github",
+};
+
+// Per part of a pack: the names it lists, the sort of each and the repo path of its place.
+const REFERENCE_PARTS = {
+  skills: (pack, name) => ({
+    sort: pack.standard_skills.includes(name) ? "standard-skill" : "workflow-skill",
+    href: `${REPO_TREE}pack/${pack.name}/skills/${name}`,
+  }),
+  agents: (pack, name) => ({ sort: "agent", href: `${REPO_BLOB}pack/${pack.name}/agents/${name}.md` }),
+  hooks: (pack, name) => ({ sort: "hook", href: `${REPO_BLOB}pack/${pack.name}/hooks/${name}.sh` }),
+  workflows: (pack, name) => ({
+    sort: "github",
+    href: `${REPO_BLOB}pack/${pack.name}/workflows/${name}.yml`,
+  }),
+};
+
+/** The parts of one kind per pack, in the order of packs.json: [{pack, items: [{name, sort, href}]}].
+    A pack without a part of that kind is left out. `part` is skills, agents, hooks or workflows. */
+export function referenceEntries(packs, part) {
+  const make = REFERENCE_PARTS[part];
+  if (!make) {
+    throw new Error(`unknown part: ${part}`);
+  }
+  return packs
+    .map((pack) => ({
+      pack: pack.name,
+      items: pack[part].map((entry) => {
+        const name = part === "hooks" ? entry.name : entry;
+        return { name, ...make(pack, name) };
+      }),
+    }))
+    .filter((entry) => entry.items.length > 0);
+}
+
+/** Per pack a heading and a list of links to the parts of one kind, each with its glyph. */
+export function renderReference(root, packs, part) {
+  const groups = referenceEntries(packs, part).map((entry) => {
+    const group = el("div", "reference-pack");
+    group.append(el("h3", "", entry.pack));
+    const list = el("ul", "reference-list");
+    for (const item of entry.items) {
+      const link = el("a", `reference-link kind-${KIND_OF_SORT[item.sort]} form-${item.sort}`);
+      link.href = item.href;
+      const glyph = el("span", "reference-glyph", SORTS[item.sort].glyph);
+      glyph.setAttribute("aria-hidden", "true");
+      link.append(glyph, ` ${item.name}`);
+      const row = el("li");
+      row.append(link);
+      list.append(row);
+    }
+    group.append(list);
+    return group;
+  });
+  root.replaceChildren(...groups);
+}
+
+/** One item of the system page: a link with the glyph of its sort, its label and its note. */
+function storyItem(item) {
+  const link = el("a", `story-item kind-${item.kind} form-${sortOf(item)}`);
+  link.href = item.href;
+  const glyph = el("span", "glyph", glyphOf(item));
+  glyph.setAttribute("aria-hidden", "true");
+  const text = el("span", "story-text");
+  text.append(el("span", "story-label", item.label));
+  if (item.note) {
+    text.append(el("span", "story-note", item.note));
+  }
+  link.append(glyph, text);
+  return link;
+}
+
+/**
+ * Renders the system page into `root`: the steps side by side, each with its number, its title
+ * (a command as a terminal line) and its items, an item with a `where` of its own apart at the
+ * bottom of its step. Below them every section as a box, its groups as a list of terms.
+ */
+export function renderStory(root, data) {
+  const story = el("ol", "story");
+  data.steps.forEach((step, index) => {
+    const node = el("li", "story-step");
+    node.append(el("p", "kicker", `Step ${index + 1}`));
+    const title = el("h2", "story-title");
+    if (step.command) {
+      title.append(el("code", "story-command", `$ ${step.command}`));
+    } else {
+      title.textContent = step.title;
+    }
+    node.append(title);
+    if (step.where) {
+      node.append(el("p", "story-where", step.where));
+    }
+    const list = el("ul", "story-items");
+    for (const item of step.items.filter((item) => !item.where)) {
+      const row = el("li");
+      row.append(storyItem(item));
+      list.append(row);
+    }
+    node.append(list);
+    for (const item of step.items.filter((item) => item.where)) {
+      const apart = el("div", "story-apart");
+      apart.append(el("p", "story-where", item.where), storyItem(item));
+      node.append(apart);
+    }
+    story.append(node);
+  });
+  const sections = data.sections.map((section) => {
+    const node = el("section", "box story-section");
+    node.id = section.id;
+    node.append(el("h2", "", section.title), ...section.text.map((text) => el("p", "", text)));
+    if (section.groups) {
+      node.append(facts(section.groups.map((group) => [group.label, group.tools.join(", ")])));
+    }
+    return node;
+  });
+  root.replaceChildren(story, ...sections);
 }
 
 /** `how` as a list of steps; a single string stays one paragraph. */
@@ -414,7 +576,7 @@ export function renderFlowMap(root, data, detail) {
       button,
       [
         box(
-          `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${GLYPHS[chip.trigger] || "?"} ${TRIGGERS[chip.trigger] || chip.trigger}`,
+          `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${TRIGGERS[chip.trigger] || chip.trigger}`,
           `${glyph} ${chip.label}`,
           el("p", "summary", chip.what),
         ),
@@ -635,283 +797,4 @@ export function renderFlowMap(root, data, detail) {
   if (routes.length) {
     select(0);
   }
-}
-
-/** The issues of the part `partId` and of every part below it, in the order of the data. */
-function issuesOf(data, partId) {
-  const ids = new Set([partId]);
-  let grown = true;
-  while (grown) {
-    grown = false;
-    for (const part of data.parts || []) {
-      if (part.parent && ids.has(part.parent) && !ids.has(part.id)) {
-        ids.add(part.id);
-        grown = true;
-      }
-    }
-  }
-  return (data.issues || []).filter((issue) => ids.has(issue.part));
-}
-
-/** The title of milestone `number`, as GitHub names it; empty when the data does not know it. */
-function milestoneTitle(data, number) {
-  return (data.milestones || []).find((milestone) => milestone.number === number)?.title || "";
-}
-
-/** "works", or "planned, <milestone title>", plus " · not in first release" when so marked. */
-function planStatus(item, data) {
-  let text = item.status;
-  const title = item.status === "planned" ? milestoneTitle(data, item.milestone) : "";
-  if (title) {
-    text += `, ${title}`;
-  }
-  if (item.not_in_first_release) {
-    text += " · not in first release";
-  }
-  return text;
-}
-
-function issueLink(issue, text) {
-  const link = el("a", "", text);
-  link.href = `${ISSUE_URL}${issue.issue}`;
-  return link;
-}
-
-/** The drawer of a part: what it does, when it runs, its status and its issues. */
-function showPart(drawer, part, data, node) {
-  const parent = (data.parts || []).find((other) => other.id === part.parent);
-  const issues = issuesOf(data, part.id);
-  const works = issues.filter((issue) => issue.status === "works").length;
-  let list;
-  if (issues.length) {
-    list = el("ul", "plan-issues");
-    for (const issue of issues) {
-      const item = el("li");
-      item.append(issueLink(issue, `#${issue.issue} ${issue.title}`), ` · ${issue.status}`);
-      list.append(item);
-    }
-  } else {
-    list = el("p", "", "No issues on this part yet.");
-  }
-  drawer.show(node, [
-    box(parent ? `In ${parent.label}` : "", part.label, el("p", "summary", part.what)),
-    box(
-      "",
-      "",
-      facts([
-        ["When it runs", part.when],
-        ["What you miss without", part.without],
-        ["Status", planStatus(part, data)],
-      ]),
-    ),
-    box(`Issues (${works}/${issues.length})`, "", list),
-    ...definition(part.source),
-  ]);
-}
-
-/** The drawer of an issue: its status, milestone and part, and a link to it on GitHub. */
-function showIssue(drawer, issue, data, node) {
-  const part = (data.parts || []).find((other) => other.id === issue.part);
-  const open = el("p");
-  open.append(issueLink(issue, `Open #${issue.issue} on GitHub`));
-  drawer.show(node, [
-    box(`Issue #${issue.issue}`, issue.title),
-    box(
-      "",
-      "",
-      facts([
-        ["Status", issue.status],
-        ["Milestone", milestoneTitle(data, issue.milestone)],
-        ["Part", part?.label || issue.part],
-      ]),
-      open,
-    ),
-  ]);
-}
-
-/**
- * Renders the plan map into `root`: every part as a box in a grid, a part with parts below it as
- * a container around them, and the links between parts as thin lines on top. A click on a part
- * opens `detail` as a drawer. `redraw()` measures the boxes again and moves the lines; it does
- * nothing while `root` is hidden.
- */
-export function renderPlanMap(root, data, detail) {
-  const parts = data.parts || [];
-  const links = data.links || [];
-  const byId = new Map(parts.map((part) => [part.id, part]));
-  const boxes = new Map(); // part id -> the element a line ends on
-  const drawer = drawerFor(detail);
-
-  const partButton = (part, className) => {
-    const button = el("button", `${className} status-${part.status}`);
-    button.type = "button";
-    button.dataset.id = part.id;
-    button.append(el("span", "plan-label", part.label));
-    if (part.status === "planned") {
-      const title = milestoneTitle(data, part.milestone);
-      if (title) {
-        button.append(el("span", "plan-mark", title));
-      }
-    }
-    button.append(el("span", "sr-only", ` (${part.status})`));
-    if (part.not_in_first_release) {
-      button.append(el("span", "release", "not in first release"));
-    }
-    button.addEventListener("click", () => showPart(drawer, part, data, button));
-    return button;
-  };
-
-  // A part with parts below it is a container: its own head button (or, for a group, a title
-  // without a button) sits next to the buttons of its parts, never around them.
-  const build = (part) => {
-    const children = parts.filter((other) => other.parent === part.id);
-    if (!children.length) {
-      const button = partButton(part, "plan-part");
-      boxes.set(part.id, button);
-      return button;
-    }
-    const shell = el("div", part.group ? "plan-shell plan-group" : "plan-shell");
-    shell.append(
-      part.group ? el("p", "plan-title", part.label) : partButton(part, "plan-part plan-head"),
-    );
-    shell.append(...children.map(build));
-    boxes.set(part.id, shell);
-    return shell;
-  };
-
-  const plan = el("div", "plan");
-  const svg = document.createElementNS(SVG_NS, "svg");
-  svg.classList.add("plan-lines");
-  svg.setAttribute("aria-hidden", "true");
-  const drawn = links
-    .filter((link) => byId.has(link.from) && byId.has(link.to))
-    .map((link) => {
-      const line = document.createElementNS(SVG_NS, "line");
-      const text = document.createElementNS(SVG_NS, "text");
-      text.textContent = link.label;
-      if (byId.get(link.from).status !== "works" || byId.get(link.to).status !== "works") {
-        line.classList.add("planned");
-        text.classList.add("planned");
-      }
-      svg.append(line, text);
-      return { link, line, text };
-    });
-  plan.append(...parts.filter((part) => !part.parent).map(build), svg);
-
-  function redraw() {
-    if (root.offsetParent === null) {
-      return;
-    }
-    const origin = plan.getBoundingClientRect();
-    const measure = (id) => {
-      const r = boxes.get(id).getBoundingClientRect();
-      const left = r.left - origin.left;
-      const top = r.top - origin.top;
-      return {
-        left,
-        top,
-        right: left + r.width,
-        bottom: top + r.height,
-        x: left + r.width / 2,
-        y: top + r.height / 2,
-      };
-    };
-    drawn.forEach(({ link, line, text }, index) => {
-      const a = measure(link.from);
-      const b = measure(link.to);
-      // Facing sides: left and right when the centres lie further apart across than down. The
-      // centres, not the gaps: a part low in a tall container still faces sideways. Across, the
-      // line runs between the middles of the facing sides, with its label centred on it.
-      // Down, as in one column where every box is full width, the middles would all share one x
-      // and the lines would run into each other. So a line down runs straight, at an x inside the
-      // horizontal overlap of both boxes, near its right side and staggered per link. Its label
-      // sits left of it, over the empty right end of the buttons, clear of their text.
-      const across = Math.abs(b.x - a.x) > Math.abs(b.y - a.y);
-      let start;
-      let end;
-      if (across) {
-        start = { x: b.x > a.x ? a.right : a.left, y: a.y };
-        end = { x: b.x > a.x ? b.left : b.right, y: b.y };
-      } else {
-        const x = Math.max(
-          Math.max(a.left, b.left) + 8,
-          Math.min(a.right, b.right) - LINE_INSET - LINE_STAGGER * index,
-        );
-        start = { x, y: b.y > a.y ? a.bottom : a.top };
-        end = { x, y: b.y > a.y ? b.top : b.bottom };
-      }
-      line.setAttribute("x1", start.x);
-      line.setAttribute("y1", start.y);
-      line.setAttribute("x2", end.x);
-      line.setAttribute("y2", end.y);
-      text.classList.toggle("beside", !across);
-      text.setAttribute("x", across ? (start.x + end.x) / 2 : start.x - 6);
-      text.setAttribute("y", (start.y + end.y) / 2);
-    });
-  }
-
-  root.replaceChildren(
-    el("p", "map-hint", "Click a part for what it does, what you miss without it, and its issues."),
-    plan,
-  );
-  new ResizeObserver(redraw).observe(root);
-  redraw();
-  return { redraw };
-}
-
-/**
- * Renders the timeline into `root`: the issues grouped per milestone, in the order of the data,
- * with a filter that dims the issues outside one part. A click on an issue opens `detail`.
- */
-export function renderTimeline(root, data, detail) {
-  const drawer = drawerFor(detail);
-  const chips = []; // { chip, issue }
-
-  const filter = el("div", "timeline-filter");
-  const label = el("label", "", "Show part");
-  const select = el("select");
-  select.id = "timeline-part";
-  label.htmlFor = select.id;
-  const all = el("option", "", "All parts");
-  all.value = "";
-  select.append(all);
-  for (const part of data.parts || []) {
-    if (part.group) {
-      continue;
-    }
-    const option = el("option", "", part.label);
-    option.value = part.id;
-    select.append(option);
-  }
-  filter.append(label, select);
-
-  const groups = (data.milestones || []).map((milestone) => {
-    const issues = (data.issues || []).filter((issue) => issue.milestone === milestone.number);
-    const works = issues.filter((issue) => issue.status === "works").length;
-    const group = el("section", "timeline-group");
-    const head = el("h2", "", milestone.title);
-    head.append(el("span", "timeline-count", `${works}/${issues.length}`));
-    group.append(head);
-    if (!issues.length) {
-      group.append(el("p", "timeline-empty", "no issues yet"));
-    }
-    for (const issue of issues) {
-      const chip = el("button", `plan-chip status-${issue.status}`, `#${issue.issue} ${issue.title}`);
-      chip.append(el("span", "sr-only", ` (${issue.status})`));
-      chip.type = "button";
-      chip.addEventListener("click", () => showIssue(drawer, issue, data, chip));
-      chips.push({ chip, issue });
-      group.append(chip);
-    }
-    return group;
-  });
-
-  select.addEventListener("change", () => {
-    const shown = select.value ? new Set(issuesOf(data, select.value)) : null;
-    for (const { chip, issue } of chips) {
-      chip.classList.toggle("dim", shown !== null && !shown.has(issue));
-    }
-  });
-
-  root.replaceChildren(filter, ...groups);
 }

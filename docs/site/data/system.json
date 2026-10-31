@@ -1,83 +1,155 @@
 {
   "title": "The system",
-  "subtitle": "What lighthouse is made of, what works today, and what comes next.",
-  "snapshot": "2026-10-31",
-  "parts": [
-    {"id": "binary", "label": "Binary", "status": "works", "what": "One program, lighthouse, that you install once. It carries the commands below and the packs.", "when": "Every time you run a lighthouse command.", "without": "Each repo would need its own copies of the scripts, and they would drift apart.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/cmd/lighthouse"},
-    {"id": "installer", "label": "Installer (init)", "parent": "binary", "status": "works", "what": "Copies the skills, hooks and working agreements from the packs into your repo, and keeps them up to date.", "when": "Once when you start, and again with init --upgrade after a new version.", "without": "You would copy files by hand and miss updates.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/initcmd"},
-    {"id": "usage-meter", "label": "Usage meter (usage)", "parent": "binary", "status": "works", "what": "Measures how much of your Claude and Codex usage window is left, and raises an alarm when it runs low.", "when": "Before and during agent work, read by the usage guard.", "without": "An agent would run out of usage halfway through a task.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/usage"},
-    {"id": "dashboard", "label": "Dashboard (serve)", "parent": "binary", "status": "works", "not_in_first_release": true, "what": "A small web server with a page that shows open questions, returned issues and the usage window.", "when": "While agents work, so you see what waits for you.", "without": "You would look through GitHub yourself to find what needs an answer.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/server"},
-    {"id": "controller", "label": "Controller (tick)", "parent": "binary", "status": "planned", "milestone": 3, "not_in_first_release": true, "what": "Will pick up issues from the board and start agent sessions on its own. Today tick only checks the repos it is set up for and reads their project board: it does not pick up issues or start sessions yet.", "when": "On a timer, every few minutes.", "without": "You start every session yourself.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/cli/tick.go"},
-    {"id": "packs", "label": "Packs", "parent": "binary", "status": "works", "what": "The skills, hooks and rules lighthouse carries, in a core pack and a pack per language.", "when": "Whenever init installs or upgrades a repo.", "without": "The installer would have nothing to install.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack"},
-    {"id": "repo", "label": "Your repo", "status": "works", "what": "Your own project, after init has put the skills chain and the hooks in it.", "when": "Every time you or an agent works on the project.", "without": "Lighthouse would have nowhere to work."},
-    {"id": "chain", "label": "Skills chain", "parent": "repo", "status": "works", "what": "The steps an agent follows from issue to merged pull request: start, plan, build, verify, close.", "when": "From the moment an agent picks up an issue until it is closed.", "without": "Each agent would work its own way, and steps like review and tests would get skipped.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills"},
-    {"id": "guardrails", "label": "Hooks", "parent": "repo", "status": "works", "what": "Hooks that stop an agent from doing harm, such as a commit on main, and run the tests after a commit.", "when": "On every commit, push, edit and session end of an agent.", "without": "A mistake would land on main without anyone noticing.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks"},
-    {"id": "environments", "label": "Environments", "status": "works", "group": true},
-    {"id": "env-now", "label": "Environment today", "parent": "environments", "status": "works", "not_in_first_release": true, "what": "One Linux machine that runs lighthouse serve as a systemd service, reachable over Tailscale.", "when": "All the time, as the home of the dashboard.", "without": "The dashboard would only run while you start it by hand.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/deploy"},
-    {"id": "env-second", "label": "Second environment", "parent": "environments", "status": "planned", "milestone": 4, "what": "A second user's own setup, such as a laptop with a local server, where lighthouse runs without the owner's paths, host or board.", "when": "Once someone besides the owner uses lighthouse on their own machine.", "without": "Lighthouse is only proven on the machine it was built on."},
-    {"id": "env-sdp", "label": "Research Cloud workspace", "parent": "environments", "status": "planned", "milestone": 5, "what": "Lighthouse in a SURF Research Cloud workspace, so researchers can use it there.", "when": "When you work in SURF Research Cloud.", "without": "Researchers on SURF Research Cloud would set everything up by hand."},
-    {"id": "docs", "label": "Docs and site", "status": "works", "what": "The install and getting-started guides, the reference pages and this site with its maps.", "when": "When you install lighthouse, learn how it works, or look up a rule.", "without": "Only the owner would know how lighthouse works.", "source": "https://github.com/CorneeldH/lighthouse/blob/main/docs"}
+  "subtitle": "What you have once lighthouse is installed, and what happens when you work.",
+  "steps": [
+    {
+      "id": "install",
+      "title": "Install once",
+      "where": "your workstation",
+      "items": [
+        {
+          "form": "program",
+          "kind": "lighthouse",
+          "label": "lighthouse",
+          "note": "One program with the packs inside. Install it with curl.",
+          "href": "install.html"
+        },
+        {
+          "form": "workflow-skill",
+          "kind": "superpowers",
+          "label": "superpowers plugin",
+          "note": "Not part of lighthouse. init checks that it is there.",
+          "href": "#bring"
+        },
+        {
+          "form": "you",
+          "kind": "you",
+          "label": "You bring",
+          "note": "Claude Code, git, gh, jq, python3",
+          "href": "#bring"
+        }
+      ]
+    },
+    {
+      "id": "init",
+      "title": "lighthouse init",
+      "command": "lighthouse init",
+      "where": "your repo",
+      "items": [
+        {
+          "form": "workflow-skill",
+          "kind": "lighthouse",
+          "label": "Skills",
+          "note": ".claude/skills/, .agents/skills/",
+          "href": "reference.html#skills"
+        },
+        {
+          "form": "agent",
+          "kind": "lighthouse",
+          "label": "Agents",
+          "note": ".claude/agents/",
+          "href": "reference.html#agents"
+        },
+        {
+          "form": "hook",
+          "kind": "hook",
+          "label": "Hooks",
+          "note": ".claude/hooks/lighthouse/, registered in .claude/settings.json",
+          "href": "reference.html#hooks"
+        },
+        {
+          "form": "rules",
+          "kind": "lighthouse",
+          "label": "Rules",
+          "note": "AGENTS.md, CLAUDE.md",
+          "href": "#rules"
+        },
+        {
+          "form": "config",
+          "kind": "lighthouse",
+          "label": "Config",
+          "note": "lighthouse.toml, .lighthouse/",
+          "href": "#config"
+        },
+        {
+          "form": "github",
+          "kind": "github",
+          "label": ".github/",
+          "note": "PR template, workflows",
+          "href": "reference.html#github"
+        },
+        {
+          "form": "config",
+          "kind": "lighthouse",
+          "label": "host.toml",
+          "note": "Only with Tailscale.",
+          "where": "on your workstation",
+          "href": "#config"
+        }
+      ]
+    },
+    {
+      "id": "loop",
+      "title": "Run the loop",
+      "items": [
+        {
+          "form": "loop",
+          "kind": "lighthouse",
+          "label": "The loop",
+          "note": "From an issue to a closed issue, over several sessions.",
+          "href": "chain.html"
+        },
+        {
+          "form": "session",
+          "kind": "lighthouse",
+          "label": "Inside a session",
+          "note": "Which skill loads, and which hook steps in.",
+          "href": "session.html"
+        },
+        {
+          "form": "github",
+          "kind": "github",
+          "label": "Keep track on GitHub",
+          "note": "Issues, milestones, labels, PRs, CI",
+          "href": "reference.html#github"
+        }
+      ]
+    }
   ],
-  "links": [
-    {"from": "installer", "to": "repo", "label": "installs"},
-    {"from": "controller", "to": "chain", "label": "starts sessions"}
-  ],
-  "milestones": [
-    {"number": 1, "title": "Pakket", "state": "closed"},
-    {"number": 2, "title": "Romp en zicht", "state": "closed"},
-    {"number": 3, "title": "Dispatcher", "state": "open"},
-    {"number": 4, "title": "Tweede omgeving", "state": "open"},
-    {"number": 5, "title": "SURF Research Cloud als werkplek", "state": "open"},
-    {"number": 6, "title": "Product: eerste versie voor anderen", "state": "open"},
-    {"number": 7, "title": "Kaarten: lighthouse in beeld", "state": "open"}
-  ],
-  "issues": [
-    {"issue": 1, "title": "Bouw M0: Go-skelet met lighthouse init en de vier pakketten", "milestone": 1, "part": "binary", "status": "works"},
-    {"issue": 3, "title": "M0 (a0): bootstrap van lighthouse met guards, werkafspraken en CI-skelet", "milestone": 1, "part": "repo", "status": "works"},
-    {"issue": 4, "title": "M0 (a): Go-skelet, lighthouse init en het installatiemechanisme", "milestone": 1, "part": "installer", "status": "works"},
-    {"issue": 7, "title": "M0 (b): rest van pack/core, vertaald, en lighthouse op zijn eigen pack/core", "milestone": 1, "part": "packs", "status": "works"},
-    {"issue": 8, "title": "M0 (c): taalpakketten pack/python, pack/shell en pack/expo", "milestone": 1, "part": "packs", "status": "works"},
-    {"issue": 9, "title": "M0 (d): overstap van personal_ai_agent op lighthouse init", "milestone": 1, "part": "installer", "status": "works"},
-    {"issue": 63, "title": "Romp van lighthouse serve: Huma, SQLite in WAL en een ingebedde pagina", "milestone": 2, "part": "dashboard", "status": "works"},
-    {"issue": 64, "title": "Claude-venstermeter in de binary: lighthouse usage refresh en tick met het alarm", "milestone": 2, "part": "usage-meter", "status": "works"},
-    {"issue": 65, "title": "Codex-venstermeter in de binary en GET /api/usage", "milestone": 2, "part": "usage-meter", "status": "works"},
-    {"issue": 66, "title": "Usage-guard naar pack/core, op het alarm van lighthouse", "milestone": 2, "part": "guardrails", "status": "works"},
-    {"issue": 67, "title": "Open vragen en teruggegeven issues read-only uit de GitHub-forge", "milestone": 2, "part": "dashboard", "status": "works"},
-    {"issue": 68, "title": "SPA-skelet met orval-client, ingebed in de binary", "milestone": 2, "part": "dashboard", "status": "works"},
-    {"issue": 69, "title": "UI voor de DoD van M1: open vragen, teruggegeven issues en usage-venster", "milestone": 2, "part": "dashboard", "status": "works"},
-    {"issue": 31, "title": "Forge-sessie die in idle blijft hangen blokkeert de workspace voor altijd (forge-bezet)", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 34, "title": "Plugin-commando onbekend na Superpowers-autoupdate in de devcontainer; controller geeft terug als 'geen handoff of vraag'", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 35, "title": "Controller-run hangt stil op permissie-prompt van achtergrond-subagent; teruggegeven als 'wachtte zonder invoer'", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 56, "title": "Controller zet een geblokkeerd uitvoerend issue zelf op On hold, en terug naar Controller zodra de blokkade vervalt", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 85, "title": "Ruim de forge-workspace op en laat het issue uit het overzicht zodra het van Controller af gaat", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 111, "title": "Runstaat, claim en lighthouse tick als eigen proces naast serve", "milestone": 3, "part": "controller", "status": "works"},
-    {"issue": 112, "title": "Lighthouse schrijft zelf naar GitHub en bouwt de snapshot voor de tick", "milestone": 3, "part": "controller", "status": "works"},
-    {"issue": 113, "title": "kenn-forge-werkplek: adapter, drager, stop, bezet en opruimen", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 114, "title": "De keten in decide en apply: handoff, start, vraag, antwoord, hervat, klaar", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 115, "title": "Afloop van een run: elke uitkomst met een eerlijke reden, met startfout en permissie-prompt", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 116, "title": "De rem: usage, geheugen, plekken, pauze en hervatten na de usage-reset", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 117, "title": "Blokkades naar On hold en terug, en het overzicht alleen voor Controller-issues", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 118, "title": "Lopende runs in de UI en de overstap van paia naar lighthouse tick", "milestone": 3, "part": "binary", "status": "planned"},
-    {"issue": 119, "title": "Roborev in lighthouse-verify-pr vóór de PR, en automatische fix-pr vanuit de dispatcher", "milestone": 3, "part": "chain", "status": "planned"},
-    {"issue": 120, "title": "Triage en auto_aanbevolen naar lighthouse, met de telemetrie van paia als bewijs", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 147, "title": "Handoffs build→verify-pr en merge→close-issue automatisch, met de regel voor een handoff", "milestone": 3, "part": "controller", "status": "planned"},
-    {"issue": 19, "title": "Instapniveaus licht, standaard en streng voor een nieuwe repo", "milestone": 4, "part": "installer", "status": "planned"},
-    {"issue": 78, "title": "Release-binaries met de ingebouwde SPA voor installatie zonder clone", "milestone": 4, "part": "binary", "status": "planned"},
-    {"issue": 95, "title": "Labeltaxonomie als optie van lighthouse init", "milestone": 4, "part": "installer", "status": "planned"},
-    {"issue": 86, "title": "Releasebeleid, eerste release voor anderen en binaries voor Linux, macOS en Windows", "milestone": 6, "part": "docs", "status": "works"},
-    {"issue": 87, "title": "Startgids in het Engels: van installatie tot eerste PR met lighthouse init", "milestone": 6, "part": "docs", "status": "works"},
-    {"issue": 88, "title": "Installatiehandleiding voor agents: keuzes als vragen met een aanbevolen antwoord", "milestone": 6, "part": "docs", "status": "planned"},
-    {"issue": 89, "title": "Website met een eenvoudige download van lighthouse", "milestone": 6, "part": "docs", "status": "works"},
-    {"issue": 90, "title": "lighthouse init en de hooks testen op macOS en Windows", "milestone": 6, "part": "guardrails", "status": "planned"},
-    {"issue": 91, "title": "Lighthouse schoon verwijderen uit een repo", "milestone": 6, "part": "installer", "status": "planned"},
-    {"issue": 92, "title": "Issue-templates, SECURITY.md en CONTRIBUTING.md voor externe gebruikers", "milestone": 6, "part": "docs", "status": "works"},
-    {"issue": 93, "title": "Toegang voor anderen: repo publiek, of downloads zonder leesrecht op de code", "milestone": 6, "part": "docs", "status": "works"},
-    {"issue": 99, "title": "Kaartsite met de gedeelde kaartcomponent", "milestone": 7, "part": "docs", "status": "works"},
-    {"issue": 100, "title": "Kaart van de vangrails: welke hook wanneer afgaat", "milestone": 7, "part": "docs", "status": "works"},
-    {"issue": 101, "title": "Plattegrond van je repo na lighthouse init", "milestone": 7, "part": "docs", "status": "planned"},
-    {"issue": 102, "title": "Kaart van het systeem en de roadmap", "milestone": 7, "part": "docs", "status": "planned"},
-    {"issue": 103, "title": "Kaart per harness: Claude Code, Codex en OpenCode", "milestone": 7, "part": "docs", "status": "planned"},
-    {"issue": 104, "title": "Kaart van de configuratie in lighthouse.toml", "milestone": 7, "part": "docs", "status": "planned"},
-    {"issue": 129, "title": "Ketenkaart: van issue tot afronden door lighthouse", "milestone": 7, "part": "docs", "status": "works"}
+  "sections": [
+    {
+      "id": "bring",
+      "title": "What you bring, and what lighthouse checks",
+      "text": [
+        "lighthouse installs none of these. lighthouse init checks every tool that the packs it installs need. When one is missing, it reports \"missing dependency: <tool> (needed by: …)\" and goes on. It does not check Claude Code.",
+        "A tool per language matters only with the pack for that language, which init proposes when it recognises your repository. codex is optional: it runs the reviews by another model family."
+      ],
+      "groups": [
+        { "label": "Needed", "tools": ["Claude Code", "git", "python3 3.11+", "jq", "superpowers"] },
+        { "label": "For GitHub", "tools": ["gh"] },
+        {
+          "label": "Per language",
+          "tools": ["uv", "go", "gofmt", "golangci-lint", "node", "npm", "curl", "sha256sum", "tar", "xz"]
+        },
+        { "label": "Optional", "tools": ["codex"] }
+      ]
+    },
+    {
+      "id": "rules",
+      "title": "Rules",
+      "text": [
+        "init writes a managed block into AGENTS.md: the rules every lighthouse repo shares, a part per pack. Your own text in the file stays as it is.",
+        "CLAUDE.md imports AGENTS.md with the line @AGENTS.md, so Claude Code reads the same rules as Codex and OpenCode. init adds that line only when neither file exists yet; otherwise you add it yourself."
+      ]
+    },
+    {
+      "id": "config",
+      "title": "Config",
+      "text": [
+        "lighthouse.toml, in the root of your repo, holds the settings of your project, such as the language of its issues and pull requests and the test command. That command runs on your workstation after every commit; CI runs on GitHub. init adds the keys that are missing and leaves the rest as it is.",
+        ".lighthouse/ holds the manifest of what init installed and at which version, the headings the skills write and read, and the helper code of the hooks and skills.",
+        "One file lands outside your repo: ~/.config/lighthouse/host.toml on your workstation. init offers it only on a machine with Tailscale."
+      ]
+    }
   ]
 }

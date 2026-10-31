@@ -1,6 +1,6 @@
 // The chain page: the flow map from data/chain.json and the pack cards from data/packs.json.
 
-import { initTheme, loadJson, renderFlowMap } from "./map.js?v=87b4b61c";
+import { fillLegend, initTheme, loadJson, renderFlowMap } from "./map.js?v=3f3f67c5";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -61,6 +61,7 @@ function packCard(pack) {
 }
 
 initTheme(document.getElementById("theme-toggle"));
+fillLegend(document.querySelector("[data-sorts]"));
 
 try {
   const [chain, packs] = await Promise.all([loadJson("data/chain.json"), loadJson("data/packs.json")]);

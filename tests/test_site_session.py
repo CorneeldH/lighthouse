@@ -3,9 +3,10 @@ event with its matcher and command, and nothing is drawn that hooks.json does no
 
 import copy
 import json
+import re
 from pathlib import Path
 
-from tests.test_site_chain import REPO_BLOB, ROOT, load
+from tests.test_site_chain import REPO_BLOB, ROOT, SITE, load
 
 # The column of the session map (docs/site/data/session.json) that each hook event belongs in.
 EVENT_PHASE = {
@@ -160,3 +161,9 @@ def test_routes_are_the_situations():
         "pr-evidence": "I open a PR without evidence", "usage-limit": "My limit is almost reached",
         "dead-link": "I write a dead link", "write-gates": "I write code a gate rejects",
     }
+
+
+def test_session_why_names_the_loop_not_the_chain():
+    html = (SITE / "session.html").read_text(encoding="utf-8")
+    why = html.split('<details class="why">', 1)[1].split("</details>", 1)[0]
+    assert not re.search(r"\bchain\b", why.replace("chain.html", ""), re.IGNORECASE)

@@ -5,6 +5,7 @@ chain.json only."""
 
 import copy
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "docs" / "site"
 FIXTURE = ROOT / "tests" / "fixtures" / "site" / "map.json"
 REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/"
+REPO_TREE = "https://github.com/CorneeldH/lighthouse/tree/main/"
 
 KINDS = {"lighthouse", "superpowers", "hook", "github"}
 TRIGGERS = {"you", "skill", "description", "tool", "event", "github"}
@@ -257,11 +259,6 @@ def test_phases_are_the_seven_of_the_chain():
     assert labels == ["Issue", "Orient", "Spec", "Plan", "Build", "PR", "Close"]
 
 
-def test_every_pack_part_is_on_the_chain():
-    # Tools outside the flow from idea to main; their place is the overview map (#102).
-    assert missing_parts(load("chain.json")) == ["pack/core/skills/audit-worktrees", "pack/core/skills/place-instruction"]
-
-
 def test_coverage_flags_a_removed_skill():
     chain = copy.deepcopy(load("chain.json"))
     chain["chips"] = [c for c in chain["chips"] if c["id"] != "write-issue"]
@@ -291,3 +288,12 @@ def test_chain_routes_are_the_known_ones():
     assert set(routes) == {"1", "2", "4a", "4b", "4c", "no-issue", "red-pr"}
     assert routes["1"]["examples"] == ["refresh-expo-lockfiles"]
     assert routes["no-issue"]["chips"][0] == "worktree-check"
+
+
+def test_the_chain_map_is_called_the_loop():
+    assert load("chain.json")["title"] == "The loop"
+    html = (SITE / "chain.html").read_text(encoding="utf-8")
+    assert "<title>The loop</title>" in html
+    assert '<h1 id="title">The loop</h1>' in html
+    why = html.split('<details class="why">', 1)[1].split("</details>", 1)[0]
+    assert not re.search(r"\bchain\b", why, re.IGNORECASE)

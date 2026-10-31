@@ -11,6 +11,7 @@ from html.parser import HTMLParser
 import pytest
 
 from tests.test_site_chain import ROOT, SITE
+from tests.test_site_pages import ElementById
 
 PLATFORM_JS = SITE / "platform.js"
 INDEX = SITE / "index.html"
@@ -208,3 +209,12 @@ def test_old_download_link_redirects_to_the_install_page():
     text = (SITE / "index.js").read_text(encoding="utf-8")
     assert 'location.hash === "#download"' in text
     assert 'location.replace("install.html")' in text
+
+
+def test_install_page_names_the_other_routes():
+    parser = ElementById("install")
+    parser.feed(INSTALL.read_text(encoding="utf-8"))
+    assert parser.attrs is not None, 'install.html has no element with id="install"'
+    text = " ".join(parser.text.split())
+    assert "go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest" in text
+    assert "clone" in text
