@@ -121,7 +121,7 @@
       "id": "bring",
       "title": "What you bring, and what lighthouse checks",
       "text": [
-        "lighthouse installs none of these. lighthouse init checks every tool that the packs it installs need. When one is missing, it reports \"missing dependency: <tool> (needed by: …)\" and goes on.",
+        "lighthouse installs none of these. lighthouse init checks every tool that the packs it installs need. When one is missing, it reports \"missing dependency: <tool> (needed by: …)\" and goes on. It does not check Claude Code.",
         "A tool per language matters only with the pack for that language, which init proposes when it recognises your repository. codex is optional: it runs the reviews by another model family."
       ],
       "groups": [
