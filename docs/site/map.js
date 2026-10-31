@@ -1,6 +1,7 @@
 // Shared flow map of the lighthouse site: columns of chips, route buttons, handoff badges and a
-// detail drawer. SORTS is the one table of glyphs and labels, used by chips and legends. Data reaches the page only through textContent and
-// attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
+// detail drawer. SORTS is the one table of glyphs and labels, used by chips and legends. Data
+// reaches the page only through textContent and attributes, never as HTML, so a label such as
+// issue-<nr>-<slug> shows as written.
 
 /** The sorts of thing on the maps, each with one glyph and one label. The glyph says what a thing
     is; what starts it is in the title, the drawer and the screen-reader text. */
@@ -245,7 +246,9 @@ export function renderReference(root, packs, part) {
     for (const item of entry.items) {
       const link = el("a", `reference-link kind-${KIND_OF_SORT[item.sort]} form-${item.sort}`);
       link.href = item.href;
-      link.append(el("span", "reference-glyph", SORTS[item.sort].glyph), ` ${item.name}`);
+      const glyph = el("span", "reference-glyph", SORTS[item.sort].glyph);
+      glyph.setAttribute("aria-hidden", "true");
+      link.append(glyph, ` ${item.name}`);
       const row = el("li");
       row.append(link);
       list.append(row);
