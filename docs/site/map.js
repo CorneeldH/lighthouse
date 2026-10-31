@@ -3,6 +3,7 @@
 // attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
 
 const GLYPHS = { you: "⌨", skill: "↪", description: "◎", tool: "⚡", github: "⚙" };
+const AGENT_GLYPH = "◆"; // an agent keeps its own mark, whatever starts it
 const TRIGGERS = {
   you: "you invoke it",
   skill: "another skill invokes it",
@@ -136,6 +137,11 @@ function form(chip) {
   return "github";
 }
 
+/** The mark on a chip: the agent mark for an agent, otherwise the mark of its trigger. */
+function glyphOf(chip) {
+  return form(chip) === "agent" ? AGENT_GLYPH : GLYPHS[chip.trigger] || "?";
+}
+
 /** `how` as a list of steps; a single string stays one paragraph. */
 function steps(how) {
   if (!Array.isArray(how)) {
@@ -207,7 +213,7 @@ function chipButton(chip, columns) {
   if (chip.phase !== "always") {
     button.style.width = `calc(${100 / columns}% - 14px)`;
   }
-  const glyph = el("span", "glyph", GLYPHS[chip.trigger] || "?");
+  const glyph = el("span", "glyph", glyphOf(chip));
   glyph.setAttribute("aria-hidden", "true");
   button.append(glyph, el("span", "label", chip.label));
   button.append(el("span", "sr-only", ` (${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status})`));
@@ -346,12 +352,12 @@ export function renderFlowMap(root, data, detail) {
     mark(button);
     // Another route changes the neighbours in "In the chain", so a route click redraws it.
     reshow = () => showChip(chip, button, false);
-    const glyph = GLYPHS[chip.trigger] || "?";
+    const glyph = glyphOf(chip);
     const kind = form(chip);
     open(
       [
         box(
-          `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${glyph} ${TRIGGERS[chip.trigger] || chip.trigger}`,
+          `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${GLYPHS[chip.trigger] || "?"} ${TRIGGERS[chip.trigger] || chip.trigger}`,
           `${glyph} ${chip.label}`,
           el("p", "summary", chip.what),
         ),
@@ -548,6 +554,16 @@ export function renderFlowMap(root, data, detail) {
     if (reshow) {
       reshow();
     }
+  }
+
+  // The roadmap (planned and idea) stays off the map until asked for: the map shows what runs.
+  if ([...chips, ...handoffs].some((item) => item.status !== "works")) {
+    const toggle = el("label", "roadmap-toggle");
+    const check = el("input");
+    check.type = "checkbox";
+    check.addEventListener("change", () => map.classList.toggle("show-roadmap", check.checked));
+    toggle.append(check, " Show roadmap");
+    routeBar.append(toggle);
   }
 
   root.replaceChildren(routeBar, note, examples, hint, scroll);
