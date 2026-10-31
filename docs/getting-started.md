@@ -144,8 +144,9 @@ names the file and the key.
 
 The chain runs from an issue to a merged PR. Each step names what you type, what you see, and
 which hook can step in. Run the skills in Claude Code, in your repository.
-To see the chain as a map, run `python3 -m http.server --directory docs/site` from the root of
-a clone of the lighthouse repository and open [the chain map](site/chain.html) at `http://localhost:8000/chain.html`.
+To see the chain as a map, open [the chain map](https://corneeldh.github.io/lighthouse/chain.html).
+In a clone of the lighthouse repository, run `python3 -m http.server --directory docs/site` from its
+root and open [the local copy](site/chain.html) at `http://localhost:8000/chain.html`.
 
 1. **Write the issue.** Type `/lighthouse-write-issue` and describe the change. You get an issue
    on GitHub with acceptance criteria, in `project.language`.
