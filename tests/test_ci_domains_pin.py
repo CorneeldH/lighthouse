@@ -66,6 +66,17 @@ def test_web_job_runs_every_check():
         assert needle in web, needle
 
 
+def test_node_jobs_cache_npm():
+    """Fails when web or binary stops caching the npm download for npm ci."""
+    jobs = _jobs()
+    for name in ("web", "binary"):
+        steps = re.split(r"(?m)^      - ", jobs[name])[1:]
+        setup = [s for s in steps if "actions/setup-node" in s]
+        assert len(setup) == 1, (name, setup)
+        assert re.search(r"^\s+cache: npm\s*$", setup[0], re.MULTILINE), name
+        assert "cache-dependency-path: web/package-lock.json" in setup[0], name
+
+
 def test_binary_builds_after_web():
     """Fails when the binary job stops waiting for web or stops building and smoking."""
     binary = _jobs()["binary"]
