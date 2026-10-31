@@ -1,7 +1,8 @@
 # Releasing
 
 Lighthouse releases itself. A workflow picks the version, writes `CHANGELOG.md`, tags, and
-builds the binaries. Nobody sets a tag by hand.
+builds the binaries. Nobody sets a release tag by hand; the one exception is a prerelease tag
+(see [Testing the build](#testing-the-build)).
 
 ## Versions
 
@@ -28,8 +29,9 @@ when it stamps the build, and the binary reports `dev` instead of the version.
 - A maintainer can run the `release` workflow by hand (`workflow_dispatch`) with `bump`:
   `auto`, `patch`, `minor` or `major`. A forced bump lower than what the fragments need, or
   without a releasable fragment, fails instead of releasing.
-- Fragments of type `internal` never start a release.
-- Never create a tag by hand.
+- Fragments of type `internal` never start a release. They stay in `changelog.d/` until the
+  next release, which removes them with the rest.
+- Never create a `vX.Y.Z` tag by hand.
 
 ## Changelog fragments
 
@@ -75,13 +77,21 @@ retries, three times at most.
 ## Recovering a failed release
 
 - The workflow failed before or during the push: nothing landed, or the fragments are still
-  open. Run the `release` workflow again with `bump: auto`. The fragments are still there, so
-  it picks them up.
+  open. Choose *Re-run failed jobs* on the failed run first: it keeps the event, so a failed
+  push run follows the push rule again. Only then dispatch the `release` workflow with
+  `bump: auto`. A dispatch follows the schedule rule: with only `added` open it releases a minor
+  at once, where the failed push run would have waited for Monday.
 - The tag exists but the build failed: run the `build` workflow by hand (`workflow_dispatch`)
   with that tag. It builds the five binaries again. If the GitHub release exists, it uploads the
   files with `--clobber`; otherwise it creates the release. The notes of an existing release
   stay as they are. To change them, edit the release notes on GitHub by hand. The run still
-  needs a `CHANGELOG.md` section for the tag, and fails without one.
+  needs a `CHANGELOG.md` section for the tag, and for a non-prerelease tag it fails without one.
+
+## Testing the build
+
+To test `build.yml` without a release, push a prerelease tag `vX.Y.Z-rc.N`. The build needs no
+`CHANGELOG.md` section for it: the release gets a fixed note and `--prerelease`. Delete it
+afterwards with `gh release delete <tag> --cleanup-tag --yes`.
 
 ## Upgrading
 

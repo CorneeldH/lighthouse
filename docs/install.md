@@ -26,6 +26,11 @@ chmod +x lighthouse_linux_amd64
 mkdir -p ~/go/bin && mv lighthouse_linux_amd64 ~/go/bin/lighthouse
 ```
 
+On macOS, download `lighthouse_darwin_arm64` (Apple silicon) or `lighthouse_darwin_amd64`, verify
+with `shasum -a 256 -c --ignore-missing SHA256SUMS`, then `chmod +x` the file. On Windows,
+download `lighthouse_windows_amd64.exe`, run `Get-FileHash -Algorithm SHA256
+lighthouse_windows_amd64.exe` in PowerShell and compare the hash with its line in `SHA256SUMS`.
+
 `~/go/bin/lighthouse` is where the systemd unit below looks for the binary; any directory on
 your `PATH` works for the CLI. The release binary reports its tag (`lighthouse version`) and
 serves a placeholder page: it does not carry the web UI (#78).
