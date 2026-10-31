@@ -1,4 +1,4 @@
 ---
 type: added
 ---
-De systeemkaart `docs/site/system.html` laat lighthouse in drie stappen zien: één keer installeren op je werkstation, `lighthouse init` die de onderdelen in je repo zet, en de loop draaien; daaronder staat ook wat je zelf meebrengt. De referentiepagina `docs/site/reference.html` toont elke skill, agent, hook en workflow per pack, met een link naar de plek in de repository. Op elke kaart heeft elke soort onderdeel nu één eigen teken, uit één tabel, met een legenda. De ketenkaart heet nu "The loop".
+The system map (`system.html`) now shows lighthouse in three steps: install once on your workstation, `lighthouse init` in your repo, and run the loop, with every box linking to the details. A new reference page (`reference.html`) lists every skill, agent, hook and workflow per pack, each linking to its place in the repository. Every map now gives each sort of part one glyph from a single table, and the chain map is called "The loop".
