@@ -1,6 +1,6 @@
 // The guardrails page: the flow map from data/guardrails.json.
 
-import { initTheme, loadJson, renderFlowMap } from "./map.js";
+import { initTheme, loadJson, renderFlowMap } from "./map.js?v=647b9a73";
 
 initTheme(document.getElementById("theme-toggle"));
 
