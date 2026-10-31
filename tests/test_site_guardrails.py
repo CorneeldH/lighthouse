@@ -47,10 +47,10 @@ def source_pack(chip: dict) -> str:
 def drawn_entries(data: dict) -> set[Entry]:
     """One tuple per event of every chip that has a command."""
     return {
-        (source_pack(c), event, c["matcher"], c["command"])
+        (source_pack(c), event, c.get("matcher", ""), c["command"])
         for c in data["chips"]
         if "command" in c
-        for event in c["events"]
+        for event in c.get("events", [])
     }
 
 
@@ -65,6 +65,9 @@ def hook_problems(data: dict, pack_root: Path) -> list[str]:
     problems += [f"not in hooks.json: {describe(e)}" for e in drawn - real]
     for c in data["chips"]:
         if "command" not in c:
+            continue
+        if not c.get("events") or not c.get("effects"):
+            problems.append(f"{c['id']}: hook chip lacks events or effects")
             continue
         for event in c["events"]:
             if c["phase"] != EVENT_PHASE[event]:
@@ -121,6 +124,12 @@ def test_hook_problems_flags_a_source_of_another_script():
     data = copy.deepcopy(load("guardrails.json"))
     chip(data, "gofmt")["source"] = chip(data, "go-check")["source"]
     assert hook_problems(data, ROOT / "pack") == ["gofmt: source does not match go/hooks/gofmt.sh"]
+
+
+def test_hook_problems_flags_a_hook_chip_without_effects():
+    data = copy.deepcopy(load("guardrails.json"))
+    del chip(data, "gofmt")["effects"]
+    assert hook_problems(data, ROOT / "pack") == ["gofmt: hook chip lacks events or effects"]
 
 
 def test_phases_are_the_hook_events():
