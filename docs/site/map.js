@@ -25,6 +25,8 @@ const FORMS = {
   hook: "Hook",
   workflow: "Workflow",
   github: "GitHub",
+  tool: "External tool",
+  dispatcher: "Dispatcher",
 };
 const WIDTH = 1260; // virtual width of the map, equal to the min-width of .map in map.css
 const HEAD = 64; // height of the column heads, in px
@@ -124,6 +126,9 @@ function sourceParts(source) {
 
 /** skill, agent, hook, workflow or github: what kind of thing the chip is. */
 function form(chip) {
+  if (chip.form) {
+    return chip.form;
+  }
   const parts = sourceParts(chip.source);
   if (chip.kind === "hook") {
     return "hook";
@@ -154,7 +159,10 @@ function steps(how) {
   return list;
 }
 
-function provider(kind, source) {
+function provider(kind, source, kindOfPart) {
+  if (kindOfPart === "tool") {
+    return "an external tool that lighthouse runs";
+  }
   const parts = sourceParts(source);
   const pack = parts ? `pack ${parts.pack}` : "";
   switch (kind) {
@@ -175,7 +183,7 @@ function sourceLink(source) {
   if (!source || !source.startsWith("https://")) {
     return null;
   }
-  const link = el("a", "", "Source");
+  const link = el("a", "", "Read the full definition");
   link.href = source;
   return link;
 }
@@ -244,6 +252,17 @@ function routePath(points) {
     }
   }
   return d;
+}
+
+/** The last box of the drawer: a link to the file that defines the part, when there is one. */
+function definition(source) {
+  const link = sourceLink(source);
+  if (!link) {
+    return [];
+  }
+  const text = el("p");
+  text.append(link);
+  return [box("Definition", "", text)];
 }
 
 /** The labels of `ids` as a comma-separated list, or `none` when there are none. */
@@ -367,14 +386,14 @@ export function renderFlowMap(root, data, detail) {
           facts([
             ["What it is", FORMS[kind]],
             ["When it starts", STARTS[chip.trigger] || chip.trigger],
-            ["Who provides it", provider(chip.kind, chip.source)],
+            ["Who provides it", provider(chip.kind, chip.source, kind)],
             ["What you miss without", chip.without],
             ["Status", statusText(chip)],
-            ["Source", sourceLink(chip.source)],
           ]),
         ),
         box("How it works", "", steps(chip.how)),
         box("In the chain", "", facts(routeFacts(chip))),
+        ...definition(chip.source),
       ],
       focus,
     );
@@ -401,10 +420,10 @@ export function renderFlowMap(root, data, detail) {
           ["Who provides it", provider("lighthouse", about.source)],
           ["What you miss without", about.without],
           ["Status", statusText(handoff)],
-          ["Source", sourceLink(about.source)],
         ]),
       ),
       box("How it works", "", steps(about.how)),
+      ...definition(about.source),
     ]);
   };
 
@@ -441,19 +460,29 @@ export function renderFlowMap(root, data, detail) {
   svg.setAttribute("viewBox", `0 0 ${WIDTH} ${height}`);
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("aria-hidden", "true");
-  const paths = routes.map((route) => {
+  const paths = routes.map(() => {
     const path = document.createElementNS(SVG_NS, "path");
-    const points = route.chips
-      .map((id) => byId.get(id))
-      .filter((chip) => chip && columnOf.has(chip.phase))
-      .map(point);
-    path.setAttribute("d", routePath(points));
     svg.append(path);
     return path;
   });
+  // With the roadmap off, a route line runs past the planned steps it would otherwise visit.
+  const drawRoutes = (roadmap) => {
+    routes.forEach((route, i) => {
+      const points = route.chips
+        .map((id) => byId.get(id))
+        .filter((chip) => chip && columnOf.has(chip.phase))
+        .filter((chip) => roadmap || chip.status === "works")
+        .map(point);
+      paths[i].setAttribute("d", routePath(points));
+    });
+    if (chosen) {
+      casing.setAttribute("d", paths[routes.indexOf(chosen)].getAttribute("d"));
+    }
+  };
   // Drawn under the chosen route only, so its yellow keeps an edge on a light map.
   const casing = document.createElementNS(SVG_NS, "path");
   casing.classList.add("casing");
+  drawRoutes(false);
   area.append(svg);
 
   const badgeFor = (handoff) => {
@@ -561,7 +590,10 @@ export function renderFlowMap(root, data, detail) {
     const toggle = el("label", "roadmap-toggle");
     const check = el("input");
     check.type = "checkbox";
-    check.addEventListener("change", () => map.classList.toggle("show-roadmap", check.checked));
+    check.addEventListener("change", () => {
+      map.classList.toggle("show-roadmap", check.checked);
+      drawRoutes(check.checked);
+    });
     toggle.append(check, " Show roadmap");
     routeBar.append(toggle);
   }

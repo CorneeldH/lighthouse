@@ -83,7 +83,7 @@
       "kind": "lighthouse",
       "form": "dispatcher",
       "trigger": "github",
-      "label": "triage · auto_aanbevolen",
+      "label": "triage",
       "what": "The dispatcher sorts incoming issues and answers a question with a clear recommendation itself.",
       "how": [
         "Triage sorts an incoming issue before any session picks it up.",
