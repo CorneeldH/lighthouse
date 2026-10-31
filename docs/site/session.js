@@ -1,6 +1,6 @@
 // The session page: the flow map from data/session.json.
 
-import { initTheme, loadJson, renderFlowMap } from "./map.js";
+import { initTheme, loadJson, renderFlowMap } from "./map.js?v=87b4b61c";
 
 initTheme(document.getElementById("theme-toggle"));
 

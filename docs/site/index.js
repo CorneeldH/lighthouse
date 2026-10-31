@@ -1,13 +1,15 @@
-// The entry page: the theme button, the download, and "Why lighthouse?" opened when a link
-// points at it.
+// The entry page: the theme button, the old "#download" link sent on to the install page, and
+// "Who it is for" opened when a link points at it.
 
-import { initDownload } from "./download.js";
-import { initTheme } from "./map.js";
+import { initTheme } from "./map.js?v=87b4b61c";
 
 initTheme(document.getElementById("theme-toggle"));
-initDownload(document.getElementById("download"));
 
-const why = document.getElementById("why");
-if (why && location.hash === "#why") {
-  why.open = true;
+if (location.hash === "#download") {
+  location.replace("install.html");
+}
+
+const who = document.getElementById("who");
+if (who && location.hash === "#who") {
+  who.open = true;
 }

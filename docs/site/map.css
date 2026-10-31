@@ -750,9 +750,10 @@ a.tile:focus-visible {
   color: var(--muted);
 }
 
-/* Entry page: the download, what lighthouse does, who it is for, the footer links */
+/* Shared blocks: the install page (.download), the reasoning, what lighthouse does, who it is for */
 
 .download,
+.reason,
 .what,
 .who {
   margin: 20px 0 0;
@@ -760,8 +761,8 @@ a.tile:focus-visible {
 }
 
 .download h2,
-.what h2,
-.who h2 {
+.reason h2,
+.what h2 {
   margin: 0 0 8px;
   font-size: 22px;
 }
@@ -788,16 +789,56 @@ a.tile:focus-visible {
   background: var(--panel);
 }
 
-.platform {
+details.platform {
   margin: 0 0 12px;
-  padding: 12px 16px;
+  padding: 0 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--panel);
 }
 
-.platform h3 {
-  margin: 0 0 8px;
+details.platform[open] {
+  padding-bottom: 12px;
+}
+
+details.platform summary {
+  padding: 12px 0;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  list-style: none;
+}
+
+details.platform summary::-webkit-details-marker {
+  display: none;
+}
+
+details.platform summary::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+
+details.platform[open] summary::before {
+  transform: rotate(45deg);
+}
+
+details.platform summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.download .others-title {
+  margin: 20px 0 8px;
+  color: var(--muted);
   font-size: 16px;
 }
 
@@ -826,38 +867,11 @@ a.tile:focus-visible {
   color: var(--muted);
 }
 
-/* download.js adds the tabs and the copy button; without it every block shows. */
-
-.platform-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 0 8px;
-}
-
-.platform-tabs [role="tab"] {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--panel);
-  padding: 5px 12px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.platform-tabs [role="tab"][aria-selected="true"] {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-  font-weight: 700;
-}
-
-.platform {
-  position: relative;
-}
+/* download.js adds the copy button; without it every block still works. */
 
 .copy-button {
-  position: absolute;
-  top: 10px;
-  right: 14px;
+  display: block;
+  margin: 0 0 8px auto;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
@@ -921,6 +935,85 @@ a.tile:focus-visible {
   margin-left: auto;
   padding: 6px 0;
   color: var(--link);
+}
+
+/* Landing page: the hero, the reasoning, "Who it is for" folded */
+
+.hero {
+  position: relative;
+  padding: 40px 0 24px;
+}
+
+.hero h1 {
+  margin: 0 0 8px;
+  font-size: 48px;
+  line-height: 1.1;
+}
+
+.hero .theme-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.hero .subtitle {
+  font-size: 18px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin: 20px 0 0;
+}
+
+.hero-button {
+  display: inline-block;
+  padding: 10px 22px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--hook-fg);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.hero-button:hover {
+  filter: brightness(1.08);
+}
+
+.hero-button:focus-visible,
+.hero-link:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.reason p {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.reason p.aside {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+details.who {
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+details.who summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+details.who summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 /* System map: the parts as nested boxes, works solid and planned grey hatched, with thin lines

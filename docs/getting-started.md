@@ -50,7 +50,7 @@ mkdir -p ~/.local/bin && mv lighthouse_linux_amd64 ~/.local/bin/lighthouse &&
 ```
 
 Not on your `PATH` yet? Add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile. The
-other platforms are on the site, <https://corneeldh.github.io/lighthouse/#download>; the details
+other platforms are on the site, <https://corneeldh.github.io/lighthouse/install.html>; the details
 are in [install.md](install.md#download-a-release-binary). Or install with Go:
 
 ```bash
