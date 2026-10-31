@@ -505,6 +505,9 @@ func TestApplyNotAcceptedCountsNoStart(t *testing.T) {
 	if res.Started != 0 {
 		t.Errorf("Started = %d, want 0", res.Started)
 	}
+	if want := []string{applyRepo + "#7"}; !reflect.DeepEqual(res.NotAccepted, want) {
+		t.Errorf("NotAccepted = %q, want %q", res.NotAccepted, want)
+	}
 	if len(h.poster(applyRepo).bodies) != 1 {
 		t.Errorf("posted %d, want the Started to stay", len(h.poster(applyRepo).bodies))
 	}

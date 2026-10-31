@@ -126,11 +126,14 @@ De `close` gaat mee, want een open run die in deze beslissing sluit (bijvoorbeel
 een antwoord), zou de claim van de hervatting anders laten mislukken. Een Teruggegeven, een Klaar en
 een 🚀-herstel laat `run` aan de tick. `run` bewaart geen vingerafdruk in `tick_state`.
 
-Het eindigt met één regel op stderr, alle drie met exitcode 0:
+Het eindigt met één regel op stderr, alle vier met exitcode 0:
 
 - `lighthouse: started <repo>#<n>`;
 - `lighthouse: deferred <repo>#<n>: <reden>` (buiten het `night`-venster, een open voorganger, of een
   bezette werkplek);
+- `lighthouse: not accepted <repo>#<n>`: de werkplek weigerde de launch. De 🤖 Gestart blijft staan,
+  de run is gesloten als `start_failed`, en de volgende tick behandelt het als elke mislukte start
+  (een tweede poging, na twee mislukte pogingen een Teruggegeven);
 - `lighthouse: nothing to start for <repo>#<n>`, ook als de tick de claim van dezelfde trigger net
   won: dan post `run` niets (zie *De volgorde van een start*).
 

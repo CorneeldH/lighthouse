@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"sync"
 
@@ -26,8 +27,8 @@ func newRunCommand() *cobra.Command {
 		Long: "Start or resume one issue now, as the next tick would. The repo must be in host.toml\n" +
 			"[dispatch] repos. run takes no tick.lock and runs no precheck: it gathers the repo, decides,\n" +
 			"and applies only the close, defer, start or resume of that issue. A Returned, a Done or a 🚀\n" +
-			"stays with the tick. It ends in one line: started, deferred with its reason, or nothing to\n" +
-			"start, each with exit 0.",
+			"stays with the tick. It ends in one line: started, deferred with its reason, not accepted\n" +
+			"(the workplace refused the launch), or nothing to start, each with exit 0.",
 		Example: "  lighthouse run CorneeldH/lighthouse#114",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -127,8 +128,8 @@ func findRepo(cfg hostconfig.Dispatch, slug, hostToml string) (repoconfig.Repo, 
 }
 
 // runResult writes what apply did for slug#issue to errOut: each deferral, an apply line for
-// a failed action, and then started or, when nothing started, deferred or failed, nothing to
-// start. A failed action returns errSilent.
+// a failed action, and then started, not accepted (the workplace refused the launch) or, when
+// nothing started, deferred or failed, nothing to start. A failed action returns errSilent.
 func runResult(res dispatch.Result, slug string, issue int, errOut io.Writer) error {
 	for _, d := range res.Deferred {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: deferred %s\n", d)
@@ -137,11 +138,14 @@ func runResult(res dispatch.Result, slug string, issue int, errOut io.Writer) er
 	if failed != nil {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: apply %s: %s\n", slug, oneLine(failed))
 	}
+	target := fmt.Sprintf("%s#%d", slug, issue)
 	switch {
 	case res.Started > 0:
-		_, _ = fmt.Fprintf(errOut, "lighthouse: started %s#%d\n", slug, issue)
+		_, _ = fmt.Fprintf(errOut, "lighthouse: started %s\n", target)
+	case slices.Contains(res.NotAccepted, target):
+		_, _ = fmt.Fprintf(errOut, "lighthouse: not accepted %s\n", target)
 	case len(res.Deferred) == 0 && failed == nil:
-		_, _ = fmt.Fprintf(errOut, "lighthouse: nothing to start for %s#%d\n", slug, issue)
+		_, _ = fmt.Fprintf(errOut, "lighthouse: nothing to start for %s\n", target)
 	}
 	if failed != nil {
 		return errSilent

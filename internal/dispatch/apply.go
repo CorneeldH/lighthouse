@@ -38,6 +38,9 @@ type Result struct {
 	Deferred []string         // "<repo>#<n>: <reason>"
 	Failed   map[string]error // per repo: the joined errors of its actions; absent = no error
 	Started  int              // launches that were accepted or are uncertain
+	// NotAccepted is "<repo>#<n>" per launch the workplace refused; its run is closed as
+	// start_failed and its Started stays.
+	NotAccepted []string
 }
 
 // runnerForge is the runner field of a 🤖 Started that apply posts.
@@ -200,6 +203,7 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 			return err
 		}
 		ap.logf("%s#%d: launch of run %d not accepted", a.Repo, a.Issue, run.ID)
+		res.NotAccepted = append(res.NotAccepted, fmt.Sprintf("%s#%d", a.Repo, a.Issue))
 	}
 	return nil
 }

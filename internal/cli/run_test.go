@@ -253,3 +253,32 @@ func TestRunFailedApply(t *testing.T) {
 		t.Errorf("spawns = %d, want 0", n)
 	}
 }
+
+// refusingWorkplace refuses every spawn, as a kenn-forge that does not accept the launch.
+type refusingWorkplace struct{ *fakeWorkplace }
+
+func (refusingWorkplace) Spawn(context.Context, workplace.Workspace, workplace.LaunchSpec) (workplace.Session, error) {
+	return workplace.Session{}, workplace.ErrNotAccepted
+}
+
+// A refused launch is not "nothing to start": the Started stands and the run closed as
+// start_failed, so the next tick tries again.
+func TestRunNotAccepted(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	env.Workplace = func(repoconfig.Repo) workplace.Workplace { return refusingWorkplace{w} }
+	var errOut bytes.Buffer
+	if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
+		t.Fatalf("run = %v\n%s", err, errOut.String())
+	}
+	if !strings.HasSuffix(errOut.String(), "\nlighthouse: not accepted o/r#7\n") ||
+		strings.Contains(errOut.String(), "nothing to start") {
+		t.Errorf("errOut = %q, want the result line 'lighthouse: not accepted o/r#7'", errOut.String())
+	}
+	if posted := bodies(srv, 7); len(posted) != 1 || !strings.HasPrefix(posted[0], "🤖 Started\n") {
+		t.Errorf("comments on #7 = %q, want the Started to stay", posted)
+	}
+	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed {
+		t.Errorf("runs = %+v, want one closed as start_failed", rows)
+	}
+}
