@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -306,5 +307,31 @@ func TestAskHelpDescribesEveryFlag(t *testing.T) {
 	}
 	if len(srv.Posts) != 0 {
 		t.Errorf("%d POSTs, want none", len(srv.Posts))
+	}
+}
+
+// A run may call ask from a subdirectory of its worktree: lighthouse.toml is read from the
+// top of the git repository, and that top is the worktree in the question.
+func TestAskFromSubdirectoryReadsRepoRoot(t *testing.T) {
+	srv, env, root := askFixture(t)
+	git := exec.Command("git", "-C", root, "init", "-q")
+	if out, err := git.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	sub := filepath.Join(root, "internal", "pkg")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env.Cwd = sub
+	code, _, errOut := runAsk(env, askArgs(oneQuestion...)...)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr %q", code, errOut)
+	}
+	posted := bodies(srv, 42)
+	if len(posted) != 1 {
+		t.Fatalf("comments on #42 = %d, want 1", len(posted))
+	}
+	if !strings.Contains(posted[0], root) || strings.Contains(posted[0], sub) {
+		t.Errorf("body names the worktree %s, want the root %s:\n%s", sub, root, posted[0])
 	}
 }

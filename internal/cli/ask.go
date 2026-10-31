@@ -22,7 +22,7 @@ import (
 // askEnv is what `lighthouse ask` takes from its surroundings, so a test can replace it.
 type askEnv struct {
 	Getenv   func(string) string
-	Cwd      string        // the worktree of the run, and where lighthouse.toml is read
+	Cwd      string        // where ask runs; its git top is the worktree and holds lighthouse.toml
 	ForgeURL string        // "" is forge.DefaultBaseURL
 	GhToken  func() string // the token of `gh auth token`; "" when there is none
 }
@@ -91,8 +91,9 @@ func newAskCommand(env askEnv) *cobra.Command {
 		Short: "Post a 🤖 Question on an issue from a controller run",
 		Long: "Post the question of a controller run on its issue, as one bundle of 1 to 4 questions. Every\n" +
 			"--question opens a question; the --option and --recommended flags after it belong to it. The\n" +
-			"session comes from LIGHTHOUSE_CONTROLLER_RUN, the repo and the language from lighthouse.toml in\n" +
-			"the current directory. Prints the comment URL; with --dry-run, the question instead of posting it.",
+			"session comes from LIGHTHOUSE_CONTROLLER_RUN, the repo and the language from lighthouse.toml at\n" +
+			"the top of the git repository around the current directory. Prints the comment URL; with\n" +
+			"--dry-run, the question instead of posting it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			err := ask(cmd.Context(), env, in, cmd.OutOrStdout())
@@ -135,7 +136,8 @@ func ask(ctx context.Context, env askEnv, in askInput, out io.Writer) error {
 	if in.issue < 1 {
 		return errors.New("--issue is required and must be a positive number; nothing posted")
 	}
-	repo, err := repoconfig.Load(env.Cwd)
+	root := askRoot(env.Cwd)
+	repo, err := repoconfig.Load(root)
 	if err != nil {
 		return fmt.Errorf("%w; nothing posted", err)
 	}
@@ -152,7 +154,7 @@ func ask(ctx context.Context, env askEnv, in askInput, out io.Writer) error {
 		return fmt.Errorf("post failed: %w", err)
 	}
 	body := protocol.RenderQuestion(protocol.QuestionMeta{
-		Issue: in.issue, Title: issue.Title, IssueURL: issue.URL, Session: session, Worktree: env.Cwd,
+		Issue: in.issue, Title: issue.Title, IssueURL: issue.URL, Session: session, Worktree: root,
 	}, fields, repo.Language)
 	if got, ok := protocol.ParseQuestion(body); !ok || !reflect.DeepEqual(got, protocol.CleanFields(fields)) {
 		return errors.New("the question reads back differently than it went in (a field heading in the text?); nothing posted")
@@ -167,6 +169,16 @@ func ask(ctx context.Context, env askEnv, in askInput, out io.Writer) error {
 	}
 	_, err = fmt.Fprintln(out, comment.URL)
 	return err
+}
+
+// askRoot is the top of the git repository around cwd, so ask works from a subdirectory of
+// the worktree; cwd itself when git gives no top.
+func askRoot(cwd string) string {
+	out, err := exec.Command("git", "-C", cwd, "rev-parse", "--show-toplevel").Output()
+	if top := strings.TrimSpace(string(out)); err == nil && top != "" {
+		return top
+	}
+	return cwd
 }
 
 // askFields builds the question fields from the flags, or says what is wrong with their shape.

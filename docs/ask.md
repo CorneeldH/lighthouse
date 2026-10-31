@@ -12,7 +12,9 @@ document: een bediende repo heeft de docs van lighthouse niet. De help beschrijf
 1. Leest de sessie uit `LIGHTHOUSE_CONTROLLER_RUN` (een UUID). Ontbreekt die of is het geen UUID,
    dan staat er niets op het issue.
 2. Leest de repo (`[forge] repo`) en de taal (`[project] language`) uit `lighthouse.toml` in de
-   huidige map. De huidige map is ook de worktree in de vraag.
+   top van de git-repo rond de huidige map (`git rev-parse --show-toplevel`), zodat `ask` ook uit
+   een submap werkt; buiten een git-repo is dat de huidige map zelf. Die top is ook de worktree in
+   de vraag.
 3. Leest het issue voor titel en link, en rendert de vraag in de projecttaal.
 4. Leest de gerenderde vraag terug zoals de controller dat doet. Komt er niet uit wat erin ging
    (bijvoorbeeld een veldkop in de tekst), dan volgt een fout en geen post.
