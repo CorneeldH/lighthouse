@@ -140,7 +140,7 @@ func TestTickNoRepos(t *testing.T) {
 }
 
 func TestTickSkipsBadRepos(t *testing.T) {
-	noController := repoDir(t, "[forge]\nrepo = \"o/a\"\n")
+	noController := repoDir(t, strings.Replace(completeRepo, "[controller]\n\n", "", 1))
 	noGuard := repoDir(t, strings.Replace(completeRepo, "controller = true", "controller = false", 1))
 	noOption := repoDir(t, strings.Replace(completeRepo, "\"Controller\" = \"c1\"\n", "", 1))
 	good := repoDir(t, completeRepo)
@@ -151,18 +151,26 @@ func TestTickSkipsBadRepos(t *testing.T) {
 	if !errors.Is(err, errSilent) {
 		t.Fatalf("err = %v, want errSilent", err)
 	}
-	out := errOut.String()
+	lines := strings.Split(strings.TrimSpace(errOut.String()), "\n")
 	for path, reason := range map[string]string{
-		noController: "controller",
-		noGuard:      "usage_guard",
-		noOption:     "Controller",
+		noController: "missing [controller]",
+		noGuard:      "usage_guard.controller is not true",
+		noOption:     "status_options.Controller",
 	} {
-		if !strings.Contains(out, "lighthouse: skip "+path) || !strings.Contains(out, reason) {
-			t.Errorf("errOut lacks %s / %s:\n%s", path, reason, out)
+		var found string
+		for _, l := range lines {
+			if strings.HasPrefix(l, "lighthouse: skip "+path+":") {
+				found = l
+			}
+		}
+		if found == "" {
+			t.Errorf("no skip line for %s:\n%s", path, errOut.String())
+		} else if !strings.Contains(found, reason) {
+			t.Errorf("skip line %q lacks its own reason %q", found, reason)
 		}
 	}
-	if strings.Contains(out, good) {
-		t.Errorf("complete repo skipped:\n%s", out)
+	if len(lines) != 3 {
+		t.Errorf("want 3 skip lines (complete repo has none), got %d:\n%s", len(lines), errOut.String())
 	}
 }
 
