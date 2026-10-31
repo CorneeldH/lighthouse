@@ -177,7 +177,9 @@ def test_node_pack_installed():
     # init stamps the installed copy with a "# lighthouse: node@<version>" line.
     installed = [
         line
-        for line in (ROOT / ".lighthouse" / "scripts" / "gate_node.py").read_text().splitlines(True)
+        for line in (ROOT / ".lighthouse" / "scripts" / "gate_node.py")
+        .read_text(encoding="utf-8")
+        .splitlines(True)
         if not line.startswith("# lighthouse: node@")
     ]
     assert "".join(installed) == (ROOT / "pack" / "node" / "scripts" / "gate_node.py").read_text()

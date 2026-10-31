@@ -841,7 +841,7 @@ kind = "file"
 path = ".lighthouse/scripts/gate_node.py"
 package = "node"
 version = "dev"
-sha256 = "bbb0406c6a46dc12ee02b7d1347a7164b12f50606b99d36c0392d268d35492b6"
+sha256 = "b333b7e2d9feca85cc3859e7fadd3df1549d741c76c8da4aa35ec59aec46faac"
 
 [[unit]]
 kind = "file"

@@ -30,6 +30,7 @@ _GO_TOO = frozenset({"web/openapi.json", "web/go.mod"})
 _NOT_GO_DIRS = ("docs/", "changelog.d/")
 _NOT_GO = frozenset({"ci/literal-denylist.txt", "ci/literal-allowlist.txt"})
 
+
 def classify(paths: Iterable[str]) -> set[str]:
     """Return the domains the paths touch."""
     touched: set[str] = set()
