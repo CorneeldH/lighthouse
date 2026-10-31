@@ -50,6 +50,7 @@ type fakePoster struct {
 	log       *callLog
 	postErr   error
 	rocketErr error
+	onPost    func() // runs at the start of CreateComment
 	nextID    int64
 	issues    []int
 	bodies    []string
@@ -58,6 +59,9 @@ type fakePoster struct {
 
 func (p *fakePoster) CreateComment(_ context.Context, number int, body string) (protocol.Comment, error) {
 	p.log.add("CreateComment")
+	if p.onPost != nil {
+		p.onPost()
+	}
 	if p.postErr != nil {
 		return protocol.Comment{}, p.postErr
 	}
@@ -78,6 +82,7 @@ type fakeWorkplace struct {
 	log      *callLog
 	sessions []workplace.Session
 	spawnErr error
+	onSpawn  func() // runs at the start of Spawn
 	spawned  []workplace.LaunchSpec
 }
 
@@ -89,6 +94,9 @@ func (w *fakeWorkplace) Prepare(_ context.Context, branch string) (workplace.Wor
 func (w *fakeWorkplace) Spawn(_ context.Context, ws workplace.Workspace, l workplace.LaunchSpec) (workplace.Session, error) {
 	w.log.add("Spawn")
 	w.spawned = append(w.spawned, l)
+	if w.onSpawn != nil {
+		w.onSpawn()
+	}
 	if w.spawnErr != nil {
 		return workplace.Session{}, w.spawnErr
 	}
@@ -659,5 +667,68 @@ func TestApplyOpenRunSessionIsBusy(t *testing.T) {
 	want := []string{"o/r#7: workplace busy: session k, idle since " + quiet.Local().Format("15:04")}
 	if !reflect.DeepEqual(res.Deferred, want) {
 		t.Errorf("Deferred = %q, want %q", res.Deferred, want)
+	}
+}
+
+// closeOpenRun closes the open run of issue 7 behind apply's back, as another process would.
+func (h *harness) closeOpenRun(t *testing.T) {
+	t.Helper()
+	for _, r := range h.history(t) {
+		if r.Open && r.Issue == 7 {
+			if err := runs.Release(context.Background(), h.db, r.ID, runs.Returned, "elsewhere", applyNow); err != nil {
+				t.Errorf("closeOpenRun: %v", err)
+			}
+		}
+	}
+}
+
+func TestApplyNotAcceptedReleaseFailsIsFailed(t *testing.T) {
+	h := newHarness(t)
+	h.wp.spawnErr = workplace.ErrNotAccepted
+	h.wp.onSpawn = func() { h.closeOpenRun(t) }
+	res, err := Apply(context.Background(), h.env, []Action{startAction()})
+	if err == nil || res.Failed[applyRepo] == nil || !errors.Is(res.Failed[applyRepo], runs.ErrNotOpen) {
+		t.Errorf("err = %v, Failed = %v; want the failed release of run in Failed[%s]", err, res.Failed, applyRepo)
+	}
+	if res.Started != 0 {
+		t.Errorf("Started = %d, want 0", res.Started)
+	}
+}
+
+func TestApplyNotAcceptedLogsNoNilError(t *testing.T) {
+	h := newHarness(t)
+	h.wp.spawnErr = workplace.ErrNotAccepted
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if strings.Contains(h.out.String(), "<nil>") {
+		t.Errorf("log %q prints a nil error", h.out.String())
+	}
+}
+
+func TestApplyAcceptedSessionNotRecordedIsFailed(t *testing.T) {
+	h := newHarness(t)
+	h.wp.onSpawn = func() { h.closeOpenRun(t) }
+	res, err := Apply(context.Background(), h.env, []Action{startAction()})
+	if err == nil || res.Failed[applyRepo] == nil || !errors.Is(res.Failed[applyRepo], runs.ErrNotOpen) {
+		t.Errorf("err = %v, Failed = %v; want the failed SetSession in Failed[%s]", err, res.Failed, applyRepo)
+	}
+	if res.Started != 1 {
+		t.Errorf("Started = %d, want 1: the agent was accepted", res.Started)
+	}
+}
+
+func TestApplyPostCancelledStillReleases(t *testing.T) {
+	h := newHarness(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h.poster(applyRepo).onPost = cancel
+	h.poster(applyRepo).postErr = context.Canceled
+	if _, err := Apply(ctx, h.env, []Action{startAction()}); err == nil {
+		t.Fatal("Apply: want an error")
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed || rows[0].Reason != "post: context canceled" {
+		t.Errorf("rows = %+v, want one closed start_failed with reason %q", rows, "post: context canceled")
 	}
 }

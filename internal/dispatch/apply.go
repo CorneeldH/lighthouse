@@ -184,13 +184,22 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	}
 	outcome, err := workplace.Launch(ctx, env.DB, w, run.ID, a.Branch, spec, now)
 	switch outcome {
-	case workplace.Accepted, workplace.Uncertain:
+	case workplace.Accepted:
+		// An error is a session key the run could not record: SessionKeys then misses the agent.
+		res.Started++
+		return err
+	case workplace.Uncertain:
+		// The error is diagnostic only; CheckOpen settles the open run.
 		res.Started++
 		if err != nil {
-			ap.logf("%s#%d: launch of run %d: %v", a.Repo, a.Issue, run.ID, err)
+			ap.logf("%s#%d: launch of run %d uncertain: %v", a.Repo, a.Issue, run.ID, err)
 		}
 	case workplace.NotAccepted:
-		ap.logf("%s#%d: launch of run %d not accepted: %v", a.Repo, a.Issue, run.ID, err)
+		// An error means the run could not be closed: an open run without an agent.
+		if err != nil {
+			return err
+		}
+		ap.logf("%s#%d: launch of run %d not accepted", a.Repo, a.Issue, run.ID)
 	}
 	return nil
 }
@@ -222,10 +231,11 @@ func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.
 	return workplace.BusyReason(s), nil
 }
 
-// startFailed closes a claimed run as start_failed with reason "<step>: <cause>".
+// startFailed closes a claimed run as start_failed with reason "<step>: <cause>". The release
+// ignores a cancelled ctx: the cancel may be what made the step fail.
 func (ap applier) startFailed(ctx context.Context, runID int64, step string, cause error) error {
 	err := fmt.Errorf("%s: %w", step, cause)
-	if rerr := runs.Release(ctx, ap.env.DB, runID, runs.StartFailed, err.Error(), ap.env.Now()); rerr != nil {
+	if rerr := runs.Release(context.WithoutCancel(ctx), ap.env.DB, runID, runs.StartFailed, err.Error(), ap.env.Now()); rerr != nil {
 		return errors.Join(err, fmt.Errorf("release run %d: %w", runID, rerr))
 	}
 	return err
