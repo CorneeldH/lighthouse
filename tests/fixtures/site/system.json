@@ -1,0 +1,28 @@
+{
+  "title": "Fixture system",
+  "subtitle": "A small system map in the system.json format, for the checks.",
+  "snapshot": "2026-10-31",
+  "parts": [
+    {"id": "shell", "label": "Shell", "status": "works", "what": "A shell.", "when": "Always.",
+     "without": "Nothing holds the parts.",
+     "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack"},
+    {"id": "leaf", "label": "Leaf", "parent": "shell", "status": "works", "what": "A part.",
+     "when": "Always.", "without": "Nothing.",
+     "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills"},
+    {"id": "planned-leaf", "label": "Planned leaf", "parent": "shell", "status": "planned",
+     "milestone": 2, "not_in_first_release": true, "what": "A part to come.", "when": "Later.",
+     "without": "Nothing yet."},
+    {"id": "envs", "label": "Envs", "status": "works", "group": true},
+    {"id": "env-a", "label": "Env A", "parent": "envs", "status": "works", "what": "A place.",
+     "when": "Always.", "without": "Nowhere to run."}
+  ],
+  "links": [{"from": "leaf", "to": "planned-leaf", "label": "starts"}],
+  "milestones": [
+    {"number": 1, "title": "One", "state": "closed"},
+    {"number": 2, "title": "Two", "state": "open"}
+  ],
+  "issues": [
+    {"issue": 10, "title": "A done issue", "milestone": 1, "part": "leaf", "status": "works"},
+    {"issue": 11, "title": "An open issue", "milestone": 2, "part": "planned-leaf", "status": "planned"}
+  ]
+}
