@@ -118,7 +118,7 @@ body {
   padding: 24px 32px 48px;
   background: var(--bg);
   color: var(--fg);
-  font-family: system-ui, sans-serif;
+  font-family: system-ui, sans-serif, "Noto Sans Symbols", "Segoe UI Symbol", "Apple Symbols";
   line-height: 1.45;
 }
 
