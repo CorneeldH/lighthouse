@@ -103,8 +103,8 @@ func TestLaunchUncertainKeepsRowOpen(t *testing.T) {
 	run, _ := takeRun(t, db, 7, lcNow)
 	w := &fakeWP{spawnErr: fmt.Errorf("timeout: %w", ErrUncertain)}
 	out, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
-	if err != nil || out != Uncertain {
-		t.Fatalf("Launch = %v, %v; want Uncertain, nil", out, err)
+	if !errors.Is(err, ErrUncertain) || !strings.Contains(err.Error(), "timeout") || out != Uncertain {
+		t.Fatalf("Launch = %v, %v; want Uncertain, error wrapping ErrUncertain with its text", out, err)
 	}
 	if got := rowOf(t, db, run.ID); got.outcome != "" || got.session != "" || got.workspace != "w1" {
 		t.Errorf("row = %+v", got)
@@ -119,8 +119,8 @@ func TestLaunchOtherSpawnErrorIsUncertain(t *testing.T) {
 	run, _ := takeRun(t, db, 7, lcNow)
 	w := &fakeWP{spawnErr: errors.New("boom")}
 	out, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
-	if err != nil || out != Uncertain {
-		t.Fatalf("Launch = %v, %v; want Uncertain, nil", out, err)
+	if err == nil || !strings.Contains(err.Error(), "boom") || out != Uncertain {
+		t.Fatalf("Launch = %v, %v; want Uncertain, error with cause boom", out, err)
 	}
 	if got := rowOf(t, db, run.ID); got.outcome != "" {
 		t.Errorf("row closed: %+v", got)
@@ -137,6 +137,27 @@ func TestLaunchAcceptedSetsSession(t *testing.T) {
 	}
 	if got := rowOf(t, db, run.ID); got != (runRow{session: "k1", workspace: "w1"}) {
 		t.Errorf("row = %+v", got)
+	}
+}
+
+func TestLaunchSetWorkplaceFailsReleasesStartFailed(t *testing.T) {
+	db := openLeftoverDB(t)
+	run, _ := takeRun(t, db, 7, lcNow)
+	if _, err := db.Exec(`CREATE TRIGGER no_workspace BEFORE UPDATE OF workspace_id ON runs
+		BEGIN SELECT RAISE(ABORT, 'disk says no'); END`); err != nil {
+		t.Fatal(err)
+	}
+	w := &fakeWP{}
+	out, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
+	if out != NotAccepted || err == nil || !strings.Contains(err.Error(), "disk says no") {
+		t.Fatalf("Launch = %v, %v; want NotAccepted, error with the cause", out, err)
+	}
+	got := rowOf(t, db, run.ID)
+	if got.outcome != "start_failed" || !strings.HasPrefix(got.reason, "record workplace: ") {
+		t.Errorf("row = %+v", got)
+	}
+	if w.spawns != 0 {
+		t.Errorf("spawns = %d, want 0", w.spawns)
 	}
 }
 
@@ -294,6 +315,36 @@ func TestCheckOpenStopFailsKeepsOpen(t *testing.T) {
 	}
 }
 
+// stopFailsFirst fails Stop for the first workspace call only.
+type stopFailsFirst struct{ fakeWP }
+
+func (f *stopFailsFirst) Stop(ctx context.Context, id string, ids []string) error {
+	err := f.fakeWP.Stop(ctx, id, ids)
+	if f.stops == 1 {
+		return errors.New("first stop failed")
+	}
+	return err
+}
+
+func TestCheckOpenOneFailureDoesNotBlockTheNext(t *testing.T) {
+	db := openLeftoverDB(t)
+	first, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-2*time.Hour), "k1")
+	second, _ := openRunWithWorkspace(t, db, 8, lcNow.Add(-2*time.Hour), "k2")
+	third, _ := openRunWithWorkspace(t, db, 9, lcNow.Add(-2*time.Hour), "k3")
+	w := &stopFailsFirst{}
+	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
+	if err == nil || !strings.Contains(err.Error(), "first stop failed") {
+		t.Fatalf("err = %v", err)
+	}
+	want := []Closed{{RunID: second.ID, Issue: 8, Reason: ReasonTimeout}, {RunID: third.ID, Issue: 9, Reason: ReasonTimeout}}
+	if !reflect.DeepEqual(closed, want) {
+		t.Errorf("closed = %+v, want %+v", closed, want)
+	}
+	if got := rowOf(t, db, first.ID); got.outcome != "" {
+		t.Errorf("first row = %+v", got)
+	}
+}
+
 func TestCheckOpenSkipsRowsWithoutWorkspace(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := takeRun(t, db, 7, lcNow.Add(-5*time.Hour))
@@ -348,6 +399,9 @@ func leftoverReasons(t *testing.T, db *sql.DB) map[string]string {
 func TestCleanupRemovesClean(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, sid := takeRun(t, db, 7, lcNow.Add(-time.Hour))
+	if err := runs.SetSession(context.Background(), db, run.ID, "k1"); err != nil {
+		t.Fatal(err)
+	}
 	if err := runs.Release(context.Background(), db, run.ID, runs.Done, "", lcNow); err != nil {
 		t.Fatal(err)
 	}
@@ -456,6 +510,24 @@ func TestCleanupGitErrorStays(t *testing.T) {
 	}
 }
 
+func TestCleanupUnpushedErrorStays(t *testing.T) {
+	db := openLeftoverDB(t)
+	w := &fakeWP{}
+	run := func(_ context.Context, _ time.Duration, _ string, args ...string) (string, int, error) {
+		if strings.Contains(strings.Join(args, " "), "rev-list") {
+			return "", 128, nil
+		}
+		return "", 0, nil
+	}
+	removed, err := Cleanup(context.Background(), db, w, run, cand(7), lcNow)
+	if err != nil || removed || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, removes %d", removed, err, w.removes)
+	}
+	if got := leftoverReasons(t, db)["w1"]; !strings.HasPrefix(got, "not measurable: ") || !strings.Contains(got, "128") {
+		t.Errorf("reason = %q", got)
+	}
+}
+
 func TestCleanupSessionsErrorStays(t *testing.T) {
 	db := openLeftoverDB(t)
 	w := &fakeWP{sessionsErr: errors.New("down")}
@@ -471,6 +543,9 @@ func TestCleanupSessionsErrorStays(t *testing.T) {
 func TestCleanupStopFailsStays(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, sid := takeRun(t, db, 7, lcNow.Add(-time.Hour))
+	if err := runs.SetSession(context.Background(), db, run.ID, "k1"); err != nil {
+		t.Fatal(err)
+	}
 	if err := runs.Release(context.Background(), db, run.ID, runs.Done, "", lcNow); err != nil {
 		t.Fatal(err)
 	}

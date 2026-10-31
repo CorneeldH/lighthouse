@@ -34,13 +34,18 @@ const (
 
 // Launch starts the agent of a claimed run (after runs.Take). It never spawns
 // twice: an uncertain spawn leaves the row open for CheckOpen to settle.
+//
+// With Uncertain the error is diagnostic only (the cause of the doubt): the row
+// stays open and the caller must never spawn again.
 func Launch(ctx context.Context, db *sql.DB, w Workplace, runID int64, branch string, l LaunchSpec, now time.Time) (Outcome, error) {
 	ws, err := w.Prepare(ctx, branch)
 	if err != nil {
 		return NotAccepted, releaseFailed(ctx, db, runID, "prepare: "+err.Error(), now)
 	}
 	if err := runs.SetWorkplace(ctx, db, runID, ws.ID, branch); err != nil {
-		return Uncertain, fmt.Errorf("record workplace of run %d: %w", runID, err)
+		// Nothing was spawned, and a row without workspace_id would never close.
+		cause := fmt.Errorf("record workplace of run %d: %w", runID, err)
+		return NotAccepted, errors.Join(cause, releaseFailed(ctx, db, runID, "record workplace: "+err.Error(), now))
 	}
 	s, err := w.Spawn(ctx, ws, l)
 	switch {
@@ -48,7 +53,7 @@ func Launch(ctx context.Context, db *sql.DB, w Workplace, runID int64, branch st
 		return NotAccepted, releaseFailed(ctx, db, runID, err.Error(), now)
 	case err != nil:
 		// ErrUncertain, or any other failure: an agent may be running.
-		return Uncertain, nil
+		return Uncertain, fmt.Errorf("spawn run %d: %w", runID, err)
 	}
 	if err := runs.SetSession(ctx, db, runID, s.Key); err != nil {
 		return Accepted, fmt.Errorf("record session of run %d: %w", runID, err)
@@ -167,7 +172,7 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	}
 	own, err := runs.SessionIDs(ctx, db, c.Repo, c.Issue)
 	if err != nil {
-		return false, err
+		return keep("not measurable: session ids: " + err.Error())
 	}
 	if s, ok := ForeignLive(sessions, own); ok {
 		return keep("foreign session " + s.Key)
