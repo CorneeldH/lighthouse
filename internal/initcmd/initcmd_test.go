@@ -377,6 +377,33 @@ func TestUpgradeRemovesEmptiedDirs(t *testing.T) {
 				}
 			},
 		},
+		"hook_subdir_with_pycache": {
+			before: func(t *testing.T, root string) {
+				write(t, root, ".claude/hooks/lighthouse/old/__pycache__/helper.cpython-312.pyc", "x")
+			},
+			check: func(t *testing.T, root string) {
+				if exists(root, ".claude/hooks/lighthouse/old") {
+					t.Error("hooks/lighthouse/old survives on its __pycache__")
+				}
+				if !exists(root, ".claude/hooks/lighthouse/g.sh") {
+					t.Error("g.sh gone")
+				}
+			},
+		},
+		"keeps_pycache_with_sibling": {
+			before: func(t *testing.T, root string) {
+				write(t, root, ".claude/hooks/lighthouse/old/__pycache__/helper.cpython-312.pyc", "x")
+				write(t, root, ".claude/hooks/lighthouse/old/notes.txt", "mine\n")
+			},
+			check: func(t *testing.T, root string) {
+				if !exists(root, ".claude/hooks/lighthouse/old/notes.txt") {
+					t.Error("sibling file removed")
+				}
+				if !exists(root, ".claude/hooks/lighthouse/old/__pycache__") {
+					t.Error("__pycache__ removed next to a sibling")
+				}
+			},
+		},
 		"keeps_sibling": {
 			before: func(t *testing.T, root string) {
 				write(t, root, ".claude/skills/lighthouse-old/notes.txt", "mine\n")

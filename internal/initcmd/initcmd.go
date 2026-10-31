@@ -611,11 +611,12 @@ func apply(root, rel string, p *planned) error {
 }
 
 // installRoots are the directories init installs units under. They stay when they empty.
-var installRoots = []string{".claude/skills", ".agents/skills", ".claude/agents", ".claude/hooks/lighthouse"}
+var installRoots = []string{".claude/skills", ".agents/skills", ".claude/agents", strings.TrimSuffix(packs.HookDir, "/")}
 
 // removeEmptyParents removes the directories that removing rel left empty, from its parent
 // upward. It stops at the first directory with an entry in it and at the install root, which
-// stays. A rel outside every install root is left alone.
+// stays. A directory whose only entry is a __pycache__ directory counts as empty: Python
+// writes it next to the hook scripts, and it is no content of ours or the project's. A rel outside every install root is left alone.
 func removeEmptyParents(root, rel string) error {
 	rel = filepath.ToSlash(rel)
 	var stop string
@@ -637,7 +638,11 @@ func removeEmptyParents(root, rel string) error {
 		if err != nil {
 			return err
 		}
-		if len(entries) > 0 {
+		if len(entries) == 1 && entries[0].IsDir() && entries[0].Name() == "__pycache__" {
+			if err := os.RemoveAll(filepath.Join(abs, "__pycache__")); err != nil {
+				return err
+			}
+		} else if len(entries) > 0 {
 			return nil
 		}
 		if err := os.Remove(abs); err != nil {
