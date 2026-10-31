@@ -7,6 +7,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/runs"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 func onHoldPre(b forge.Blocker) Pre {
@@ -131,5 +132,29 @@ func TestFingerprintEveryInputCounts(t *testing.T) {
 				t.Errorf("changing %s left the fingerprint unchanged", tc.name)
 			}
 		})
+	}
+}
+
+func TestFingerprintStands(t *testing.T) {
+	t0 := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	mk := func(stands map[int64]workplace.Stand) Pre {
+		return Pre{
+			Items:    []Item{{Issue: 1, Status: "Controller"}},
+			OpenRuns: []runs.OpenRun{{ID: 1, Issue: 1, StartedAt: t0}},
+			Stands:   stands,
+		}
+	}
+	working := Fingerprint(mk(map[int64]workplace.Stand{1: workplace.Working}))
+	for name, stands := range map[string]map[int64]workplace.Stand{
+		"done":           {1: workplace.Done},
+		"waiting":        {1: workplace.Waiting},
+		"not measurable": nil,
+	} {
+		if Fingerprint(mk(stands)) == working {
+			t.Errorf("stand %s hashes like working", name)
+		}
+	}
+	if Fingerprint(mk(map[int64]workplace.Stand{1: workplace.Working, 9: workplace.Done})) != working {
+		t.Error("the stand of a run that is not open changed the fingerprint")
 	}
 }

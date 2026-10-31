@@ -12,6 +12,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 // dispatchStatuses are the board statuses whose items the dispatcher looks at.
@@ -22,12 +23,14 @@ type Pre struct {
 	Repo     repoconfig.Repo
 	Items    []Item // board fields and PRs; no comments
 	OpenRuns []runs.OpenRun
+	Stands   map[int64]workplace.Stand // per open run id, set by the caller; missing = not measurable
 }
 
 // Prepare reads the board of repo and keeps the issues of repo.Slug whose Status is
-// Controller or On hold, sorted by issue. An item with an open run on a branch also gets the
-// PRs of that branch, merged with its closing PRs.
-func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []runs.OpenRun) (Pre, error) {
+// Controller or On hold, sorted by issue. branches is per issue the branch of its last run,
+// open or closed: such an item also gets the PRs of that branch, merged with its closing PRs,
+// so a merged PR that does not close the issue stays visible after its run closed.
+func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []runs.OpenRun, branches map[int]string) (Pre, error) {
 	b := repo.Board
 	if b == nil {
 		return Pre{}, fmt.Errorf("dispatch: %s: missing [forge.board]", repo.Slug)
@@ -38,12 +41,6 @@ func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []
 	}
 	statusName := invert(b.StatusOptions)
 	priorityName := invert(b.PriorityOptions)
-	branch := map[int]string{}
-	for _, r := range open {
-		if r.Branch != "" {
-			branch[r.Issue] = r.Branch
-		}
-	}
 	var items []Item
 	for _, bi := range board {
 		status := statusName[bi.SingleSelect[b.StatusFieldID]]
@@ -56,7 +53,7 @@ func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []
 			ItemUpdatedAt: bi.ItemUpdatedAt, IssueUpdatedAt: bi.IssueUpdatedAt,
 			BlockedBy: bi.BlockedBy, PRs: bi.ClosingPRs,
 		}
-		if br, ok := branch[bi.Issue]; ok {
+		if br := branches[bi.Issue]; br != "" {
 			onBranch, err := c.BranchPRs(ctx, br)
 			if err != nil {
 				return Pre{}, err

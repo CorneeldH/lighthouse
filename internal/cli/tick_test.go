@@ -8,14 +8,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
+	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 const completeRepo = `[forge]
@@ -65,7 +71,11 @@ func tickFixture(t *testing.T, repos ...string) (tickEnv, string) {
 		t.Fatal(err)
 	}
 	vars := map[string]string{"XDG_RUNTIME_DIR": runtime, "GH_TOKEN": "tok"}
-	env := tickEnv{Getenv: func(k string) string { return vars[k] }, HostToml: host}
+	env := tickEnv{Getenv: func(k string) string { return vars[k] }, HostToml: host, StateDir: t.TempDir(),
+		Workplace: func(r repoconfig.Repo) workplace.Workplace {
+			t.Errorf("unexpected workplace for %s: this test starts nothing", r.Slug)
+			return newFakeWorkplace(t, r.Slug)
+		}}
 	return env, filepath.Join(t.TempDir(), "lh.db")
 }
 
@@ -238,7 +248,7 @@ func TestTickGathersThenSkipsUnchanged(t *testing.T) {
 	good := repoDir(t, completeRepo)
 	env, db := tickFixture(t, good)
 	srv := fakeForge(t, &env)
-	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", nil))}
+	srv.BoardNodes = []map[string]any{boardNode("I7", "h1", issueContent(7, "Issue", nil))} // On hold: nothing starts
 	t0 := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	const comments = "/repos/o/r/issues/7/comments"
 
@@ -374,7 +384,7 @@ func TestTickTrustsAnswerPermissions(t *testing.T) {
 	}
 	srv := fakeForge(t, &env)
 	srv.Roles = map[string]string{"owner": "admin"}
-	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", nil))}
+	srv.BoardNodes = []map[string]any{boardNode("I7", "h1", issueContent(7, "Issue", nil))} // On hold: nothing starts
 	srv.Comments = map[int][]map[string]any{7: {{"id": 1, "body": "🤖 Vraag\n\nWelke kant op?",
 		"created_at": "2026-10-30T11:00:00Z", "html_url": "https://github.com/o/r/issues/7#issuecomment-1",
 		"user": map[string]any{"login": "owner"}}}}
@@ -386,5 +396,444 @@ func TestTickTrustsAnswerPermissions(t *testing.T) {
 		"lighthouse: gathered o/r: 1 items (first)\n"
 	if errOut.String() != want {
 		t.Errorf("errOut = %q, want %q (admin is not in answer_permissions = [\"write\"])", errOut.String(), want)
+	}
+}
+
+// fakeWorkplace is the forge of one repo: a workspace per branch, and per spawn a session in
+// state "working" until setState changes every session's state.
+type fakeWorkplace struct {
+	t    *testing.T
+	repo string
+
+	mu       sync.Mutex
+	state    string
+	spawns   []workplace.LaunchSpec
+	sessions map[string][]workplace.Session // per workspace id
+}
+
+func newFakeWorkplace(t *testing.T, repo string) *fakeWorkplace {
+	return &fakeWorkplace{t: t, repo: repo, sessions: map[string][]workplace.Session{}}
+}
+
+func (w *fakeWorkplace) Prepare(_ context.Context, branch string) (workplace.Workspace, error) {
+	return workplace.Workspace{ID: "ws-" + branch, Path: "/work/" + branch, Branch: branch}, nil
+}
+
+func (w *fakeWorkplace) Spawn(_ context.Context, ws workplace.Workspace, l workplace.LaunchSpec) (workplace.Session, error) {
+	if l.Repo != w.repo {
+		w.t.Errorf("spawn for %s on the workplace of %s", l.Repo, w.repo)
+	}
+	if _, err := os.Stat(l.InstructionsFile); err != nil {
+		w.t.Errorf("spawn without its instructions file: %v", err)
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	s := workplace.Session{Key: "key-" + l.SessionID, WorkspaceID: ws.ID, State: "working", SessionID: l.SessionID}
+	w.spawns = append(w.spawns, l)
+	w.sessions[ws.ID] = append(w.sessions[ws.ID], s)
+	return s, nil
+}
+
+func (w *fakeWorkplace) Sessions(_ context.Context, workspaceID string) ([]workplace.Session, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	out := slices.Clone(w.sessions[workspaceID])
+	for i := range out {
+		if w.state != "" {
+			out[i].State = w.state
+		}
+	}
+	return out, nil
+}
+
+func (w *fakeWorkplace) Stop(context.Context, string, []string) error {
+	w.t.Error("unexpected Stop")
+	return errors.New("unexpected Stop")
+}
+
+func (w *fakeWorkplace) Remove(context.Context, string) error {
+	w.t.Error("unexpected Remove")
+	return errors.New("unexpected Remove")
+}
+
+func (w *fakeWorkplace) Discard(context.Context, string) error {
+	w.t.Error("unexpected Discard")
+	return errors.New("unexpected Discard")
+}
+
+func (w *fakeWorkplace) setState(state string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.state = state
+}
+
+func (w *fakeWorkplace) spawned() []workplace.LaunchSpec {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.Clone(w.spawns)
+}
+
+// useWorkplaces gives each repo slug its fake workplace; any other repo is an error.
+func useWorkplaces(t *testing.T, env *tickEnv, places map[string]*fakeWorkplace) {
+	env.Workplace = func(r repoconfig.Repo) workplace.Workplace {
+		w, ok := places[r.Slug]
+		if !ok {
+			t.Errorf("workplace for unknown repo %s", r.Slug)
+			return newFakeWorkplace(t, r.Slug)
+		}
+		return w
+	}
+}
+
+var t0 = time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+
+// startable is a fake GitHub with issue 7 of o/r in Controller and nothing on it yet, trusted
+// logins lh-bot (the token) and owner, and the clock at t0 for tick and server alike.
+func startable(t *testing.T, env *tickEnv) (*forgetest.Server, *fakeWorkplace) {
+	t.Helper()
+	srv := fakeForge(t, env)
+	srv.Roles = map[string]string{"lh-bot": "admin", "owner": "admin"}
+	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", nil))}
+	env.Now = func() time.Time { return t0 }
+	srv.Now = env.Now
+	w := newFakeWorkplace(t, "o/r")
+	useWorkplaces(t, env, map[string]*fakeWorkplace{"o/r": w})
+	return srv, w
+}
+
+func appendHostToml(t *testing.T, env tickEnv, text string) {
+	t.Helper()
+	f, err := os.OpenFile(env.HostToml, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(text); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func openStore(t *testing.T, db string) *sql.DB {
+	t.Helper()
+	st, err := store.OpenShared(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st.DB
+}
+
+func history(t *testing.T, db *sql.DB, repo string) []runs.Row {
+	t.Helper()
+	rows, err := runs.History(context.Background(), db, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rows
+}
+
+func tickState(t *testing.T, db *sql.DB, repo string) dispatch.TickState {
+	t.Helper()
+	s, err := dispatch.LoadTickState(context.Background(), db, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// writes are the REST POST paths the server received: comments and reactions, not GraphQL reads.
+func writes(srv *forgetest.Server) []string {
+	var out []string
+	for _, p := range srv.Posts {
+		if p.Path != "/graphql" {
+			out = append(out, p.Path)
+		}
+	}
+	return out
+}
+
+// bodies are the bodies of the comments the server holds on issue n.
+func bodies(srv *forgetest.Server, n int) []string {
+	var out []string
+	for _, c := range srv.IssueComments(n) {
+		b, _ := c["body"].(string)
+		out = append(out, b)
+	}
+	return out
+}
+
+func TestTickStartsNewIssue(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, strings.Replace(completeRepo, "[controller]\n",
+		"[controller]\nprofile = \"software\"\nbij_rondegrens = \"vraag\"\n", 1)))
+	appendHostToml(t, env, "\n[dispatch.profiles.software]\nmcp_config = \"/etc/lh/mcp.json\"\n")
+	srv, w := startable(t, &env)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: gathered o/r: 1 items (first)\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+	posted := bodies(srv, 7)
+	if len(posted) != 1 {
+		t.Fatalf("comments on #7 = %q, want one Started", posted)
+	}
+	h, ok := protocol.ParseHeader(posted[0])
+	if !ok || h.Kind != protocol.KindStarted || h.Fields["command"] != "/lighthouse-start-issue 7" ||
+		h.Fields["branch"] != "issue-7-issue" || h.Fields["workspace"] != "ws-issue-7-issue" {
+		t.Errorf("posted %q, want a Started of /lighthouse-start-issue 7 on issue-7-issue in ws-issue-7-issue", posted[0])
+	}
+	conn := openStore(t, db)
+	rows := history(t, conn, "o/r")
+	if len(rows) != 1 {
+		t.Fatalf("runs = %+v, want one", rows)
+	}
+	if r := rows[0]; !r.Open || r.Issue != 7 || r.TriggerKey != "start:7" || r.Branch != "issue-7-issue" ||
+		r.Profile != "software" || r.SessionID == "" || r.SessionID != h.Session {
+		t.Errorf("run = %+v, want open start:7 on issue-7-issue in profile software with the session of the Started (%q)", r, h.Session)
+	}
+	spawns := w.spawned()
+	if len(spawns) != 1 {
+		t.Fatalf("spawns = %+v, want one", spawns)
+	}
+	if l := spawns[0]; l.Prompt != "/lighthouse-start-issue 7 (issue #7, controller-run)" || l.Mode != "start" ||
+		l.Profile != "software" || l.MCPConfig != "/etc/lh/mcp.json" || !strings.HasPrefix(l.InstructionsFile, env.StateDir+"/") {
+		t.Errorf("spawn = %+v, want a start with the controller-run prompt, profile software, its mcp_config and instructions under %s", l, env.StateDir)
+	}
+	if text, err := os.ReadFile(spawns[0].InstructionsFile); err != nil || !strings.Contains(string(text), "asks at the round limit") {
+		t.Errorf("instructions lack the round-limit appendix of bij_rondegrens = \"vraag\" (err %v)", err)
+	}
+	if s := tickState(t, conn, "o/r"); s.Fingerprint == "" || !s.FullAt.Equal(t0) {
+		t.Errorf("tick state = %+v, want a fingerprint gathered at %v", s, t0)
+	}
+}
+
+// handoffComment is a 🤖 Handoff by owner on issue 7 with next and when.
+func handoffComment(next, when string) map[string]any {
+	return map[string]any{"id": 30, "created_at": "2026-10-31T11:00:00Z",
+		"html_url": "https://github.com/o/r/issues/7#issuecomment-30", "user": map[string]any{"login": "owner"},
+		"body": "🤖 Handoff\nissue: #7\nworktree: /work/issue-7-issue\nbranch: issue-7-issue\n" +
+			"next: " + next + "\nwhen: " + when + "\n"}
+}
+
+// o/s, with nothing on its board, keeps its own fingerprint: a deferral holds back only the
+// repo it is in.
+func TestTickDeferredKeepsFingerprint(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo), repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, `repo = "o/s"`, 1)))
+	srv, w := startable(t, &env)
+	useWorkplaces(t, &env, map[string]*fakeWorkplace{"o/r": w, "o/s": newFakeWorkplace(t, "o/s")})
+	srv.Comments = map[int][]map[string]any{7: {handoffComment("/superpowers:subagent-driven-development /work/plans/plan.md", "night")}}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: gathered o/r: 1 items (first)\nlighthouse: gathered o/s: 0 items (first)\n" +
+		"lighthouse: deferred o/r#7: night\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q (12:00 is outside the night window 21:00-08:00)", errOut.String(), want)
+	}
+	if p := writes(srv); len(p) != 0 || len(w.spawned()) != 0 {
+		t.Errorf("writes %v, spawns %v; want none for a deferred start", p, w.spawned())
+	}
+	conn := openStore(t, db)
+	if rows := history(t, conn, "o/r"); len(rows) != 0 {
+		t.Errorf("runs = %+v, want none", rows)
+	}
+	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+		t.Errorf("tick state = %+v after a deferral, want none", s)
+	}
+	if s := tickState(t, conn, "o/s"); s.Fingerprint == "" {
+		t.Errorf("tick state of o/s = %+v, want its fingerprint saved", s)
+	}
+
+	// Nothing on the board changed, but without a saved fingerprint the night tick gathers
+	// again, and starts.
+	env.Now = func() time.Time { return time.Date(2026, 10, 31, 22, 0, 0, 0, time.UTC) }
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("night tick = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: gathered o/r: 1 items (first)\nlighthouse: gathered o/s: 0 items (stale)\n"; errOut.String() != want {
+		t.Errorf("night tick: errOut = %q, want %q", errOut.String(), want)
+	}
+	if rows := history(t, conn, "o/r"); len(rows) != 1 || rows[0].TriggerKey != "handoff:30" {
+		t.Errorf("runs after the night tick = %+v, want the start of handoff:30", rows)
+	}
+}
+
+// The skills of the repo's main checkout decide whether a /lighthouse- command can start.
+func TestTickJudgesInstalledSkills(t *testing.T) {
+	for name, tc := range map[string]struct {
+		installed bool
+		want      string // the kind of the comment tick posts
+	}{
+		"installed": {true, "Started"},
+		"missing":   {false, "Returned"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := repoDir(t, strings.Replace(completeRepo, "[controller]\n", "[controller]\nplan_review = true\n", 1))
+			if tc.installed {
+				skill := filepath.Join(dir, ".claude", "skills", "lighthouse-plan-adversarial-review")
+				if err := os.MkdirAll(skill, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte("---\n---\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			env, db := tickFixture(t, dir)
+			srv, _ := startable(t, &env)
+			srv.Comments = map[int][]map[string]any{7: {handoffComment("/lighthouse-plan-adversarial-review /work/plans/plan.md", "now")}}
+			var errOut bytes.Buffer
+			if err := tick(context.Background(), env, db, &errOut); err != nil {
+				t.Fatalf("tick = %v\n%s", err, errOut.String())
+			}
+			posted := bodies(srv, 7)
+			if len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 "+tc.want+"\n") {
+				t.Errorf("comments on #7 = %q, want the handoff and then a %s", posted, tc.want)
+			}
+		})
+	}
+}
+
+func TestTickSecondTickDoesNotRestart(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	for _, step := range []struct {
+		after time.Duration
+		want  string
+	}{
+		{0, "lighthouse: gathered o/r: 1 items (first)\n"},
+		{3 * time.Minute, "lighthouse: gathered o/r: 1 items (changed)\n"}, // the open run changed the fingerprint
+	} {
+		env.Now = func() time.Time { return t0.Add(step.after) }
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick at +%v = %v\n%s", step.after, err, errOut.String())
+		}
+		if errOut.String() != step.want {
+			t.Errorf("tick at +%v: errOut = %q, want %q", step.after, errOut.String(), step.want)
+		}
+	}
+	if posted := bodies(srv, 7); len(posted) != 1 {
+		t.Errorf("comments on #7 = %q, want one Started", posted)
+	}
+	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 1 || !rows[0].Open {
+		t.Errorf("runs = %+v, want one open run", rows)
+	}
+	if n := len(w.spawned()); n != 1 {
+		t.Errorf("spawns = %d, want 1", n)
+	}
+}
+
+// A `lighthouse run` claims issue 7 while the tick reads its comments: its row is in the
+// database before its Started is on the issue. The tick sees the Started and must also see
+// the row, so it hands nothing back as an orphan and starts nothing.
+func TestTickRunClaimsDuringGather(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	conn := openStore(t, db)
+	const session = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	var once sync.Once
+	srv.BeforeComments = func(n int) {
+		if n != 7 {
+			return
+		}
+		once.Do(func() {
+			_, err := runs.Take(context.Background(), conn, runs.Claim{Repo: "o/r", Issue: 7, SessionID: session,
+				Mode: "start", Trigger: "handoff", TriggerKey: "start:7", Command: "/lighthouse-start-issue 7",
+				Prompt: "/lighthouse-start-issue 7 (issue #7, controller-run)", Branch: "issue-7-issue", Now: t0})
+			if err != nil {
+				t.Errorf("claim of the concurrent run: %v", err)
+			}
+			srv.AddComment(7, "lh-bot", protocol.RenderStarted(protocol.Started{Session: session,
+				Worktree: "/work/issue-7-issue", Command: "/lighthouse-start-issue 7", Start: "2026-10-31T12:00:00Z",
+				Branch: "issue-7-issue", Runner: "forge", Workspace: "ws-issue-7-issue"}, "en"))
+		})
+	}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: gathered o/r: 1 items (first)\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+	if p := writes(srv); len(p) != 0 {
+		t.Errorf("tick wrote %v, want nothing: the Started has its row", p)
+	}
+	if rows := history(t, conn, "o/r"); len(rows) != 1 || !rows[0].Open || rows[0].SessionID != session {
+		t.Errorf("runs = %+v, want only the open run of the concurrent claim", rows)
+	}
+	if n := len(w.spawned()); n != 0 {
+		t.Errorf("spawns = %d, want 0", n)
+	}
+}
+
+func TestTickFailedRepoKeepsNoFingerprint(t *testing.T) {
+	first := repoDir(t, completeRepo)
+	second := repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, `repo = "o/s"`, 1))
+	env, db := tickFixture(t, first, second)
+	srv, wr := startable(t, &env)
+	ws := newFakeWorkplace(t, "o/s")
+	useWorkplaces(t, &env, map[string]*fakeWorkplace{"o/r": wr, "o/s": ws})
+	srv.BoardNodes = append(srv.BoardNodes, boardNode("I8", "c1", issueContent(8, "Ander", map[string]any{
+		"repository": map[string]any{"nameWithOwner": "o/s"}})))
+	srv.Fail = map[string]int{"POST /repos/o/r/issues/7/comments": 500}
+
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "\nlighthouse: apply o/r: o/r#7 start: post: ") {
+		t.Errorf("errOut = %q, want an apply line for o/r naming the failed post", errOut.String())
+	}
+	if strings.Contains(errOut.String(), "apply o/s") {
+		t.Errorf("errOut = %q, want no apply line for o/s", errOut.String())
+	}
+	conn := openStore(t, db)
+	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+		t.Errorf("tick state of o/r = %+v after its failed post, want none", s)
+	}
+	if s := tickState(t, conn, "o/s"); s.Fingerprint == "" {
+		t.Errorf("tick state of o/s = %+v, want its fingerprint saved", s)
+	}
+	if rows := history(t, conn, "o/r"); len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed {
+		t.Errorf("runs of o/r = %+v, want one closed as start_failed", rows)
+	}
+	if rows := history(t, conn, "o/s"); len(rows) != 1 || !rows[0].Open {
+		t.Errorf("runs of o/s = %+v, want one open run", rows)
+	}
+	if len(wr.spawned()) != 0 || len(ws.spawned()) != 1 {
+		t.Errorf("spawns o/r %d, o/s %d; want 0 and 1", len(wr.spawned()), len(ws.spawned()))
+	}
+}
+
+// The stand of an open run's session is part of the fingerprint: a session that turns Done
+// makes the next tick gather, so a green PR gets its Done without waiting for a stale gather.
+func TestTickSessionStandRegathers(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	_, w := startable(t, &env)
+	for _, step := range []struct {
+		after time.Duration
+		state string // "" leaves the sessions as they are
+		want  string
+	}{
+		{0, "", "lighthouse: gathered o/r: 1 items (first)\n"},
+		{3 * time.Minute, "", "lighthouse: gathered o/r: 1 items (changed)\n"},
+		{6 * time.Minute, "", ""},
+		{9 * time.Minute, "done", "lighthouse: gathered o/r: 1 items (changed)\n"},
+	} {
+		if step.state != "" {
+			w.setState(step.state)
+		}
+		env.Now = func() time.Time { return t0.Add(step.after) }
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick at +%v = %v\n%s", step.after, err, errOut.String())
+		}
+		if errOut.String() != step.want {
+			t.Errorf("tick at +%v: errOut = %q, want %q", step.after, errOut.String(), step.want)
+		}
 	}
 }

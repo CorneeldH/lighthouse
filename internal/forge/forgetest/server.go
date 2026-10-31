@@ -11,21 +11,35 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // Server is a fake GitHub API. Set its fields before the first request; read Posts and Count
-// after the requests returned.
+// after the requests returned. A POSTed comment or 🚀 lands in Comments or Rockets, so the
+// next GET returns it; read those through IssueComments while requests may still run.
 type Server struct {
-	// Login is the login GET /user answers for the token.
+	// Login is the login GET /user answers for the token, and the author of what is POSTed.
 	Login string
+	// Now stamps the created_at of a POSTed comment; nil is time.Now.
+	Now func() time.Time
 	// Comments are the comments per issue number, in GitHub's REST shape (id, body, created_at,
 	// html_url, user, reactions). A comment without a reactions key gets reactions.rocket from
 	// the length of Rockets[id].
 	Comments map[int][]map[string]any
+	// BeforeComments, when set, runs before a GET of the comments of an issue is served, with
+	// its number: a test can change the forge or the database between two requests.
+	BeforeComments func(number int)
+	// Issues are the issues per number in GitHub's REST shape, served by GET
+	// /repos/{owner}/{name}/issues/{number}; a missing number answers 404.
+	Issues map[int]map[string]any
+	// Fail maps "METHOD path", such as "POST /repos/o/r/issues/7/comments", to the status that
+	// request answers instead. A failed POST is still in Posts, but changes nothing.
+	Fail map[string]int
 	// Roles maps a login to its role_name on the repo; a login that is missing answers 404.
 	Roles map[string]string
 	// RoleStatus, when not 0, is the status every permission request answers.
@@ -69,8 +83,11 @@ func New(t *testing.T) *Server {
 	s := &Server{t: t, counts: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /user", s.user)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues/comments/{id}/reactions", s.addReaction)
 	mux.HandleFunc("GET /repos/{owner}/{name}/collaborators/{user}/permission", s.permission)
 	mux.HandleFunc("POST /graphql", s.graphql)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +116,8 @@ func (s *Server) inc(key string) {
 	s.counts[key]++
 }
 
-// record counts the path, refuses a request without a token, and keeps every POST body.
+// record counts the path, refuses a request without a token, keeps every POST body, and
+// answers the status of Fail for the request when it names one.
 func (s *Server) record(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		s.inc(r.URL.Path)
@@ -118,6 +136,10 @@ func (s *Server) record(next http.Handler) http.Handler {
 			s.mu.Unlock()
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 		}
+		if status := s.Fail[r.Method+" "+r.URL.Path]; status != 0 {
+			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -126,12 +148,27 @@ func (s *Server) user(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"login": s.Login})
 }
 
+func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(r.PathValue("number"))
+	issue, ok := s.Issues[n]
+	if err != nil || !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, issue)
+}
+
 func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
 	n, err := strconv.Atoi(r.PathValue("number"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
 		return
 	}
+	if s.BeforeComments != nil {
+		s.BeforeComments(n)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []any
 	for _, c := range s.Comments[n] {
 		if _, ok := c["reactions"]; !ok {
@@ -156,11 +193,96 @@ func (s *Server) reactions(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []any
 	for _, login := range s.Rockets[id] {
 		out = append(out, map[string]any{"content": "rocket", "user": map[string]any{"login": login}})
 	}
 	s.page(w, r, out)
+}
+
+// createComment stores the comment as Login's and answers 201 with it, as GitHub does.
+func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(r.PathValue("number"))
+	var req struct {
+		Body string `json:"body"`
+	}
+	if err == nil {
+		err = json.NewDecoder(r.Body).Decode(&req)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed"})
+		return
+	}
+	repo := r.PathValue("owner") + "/" + r.PathValue("name")
+	writeJSON(w, http.StatusCreated, s.addComment(repo, n, s.Login, req.Body))
+}
+
+// AddComment appends a comment by login to issue n, with the next free id, and returns it in
+// GitHub's REST shape; its html_url names repo o/r. Safe to call while requests run, also
+// from BeforeComments.
+func (s *Server) AddComment(n int, login, body string) map[string]any {
+	return s.addComment("o/r", n, login, body)
+}
+
+// addComment keeps comments per issue number, whatever repo; repo only shapes html_url.
+func (s *Server) addComment(repo string, n int, login, body string) map[string]any {
+	now := time.Now
+	if s.Now != nil {
+		now = s.Now
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var id int64
+	for _, cs := range s.Comments {
+		for _, c := range cs {
+			id = max(id, commentID(c["id"]))
+		}
+	}
+	id++
+	if s.Comments == nil {
+		s.Comments = map[int][]map[string]any{}
+	}
+	c := map[string]any{"id": id, "body": body, "created_at": now().UTC().Format(time.RFC3339),
+		"html_url": fmt.Sprintf("https://github.com/%s/issues/%d#issuecomment-%d", repo, n, id),
+		"user":     map[string]any{"login": login}}
+	s.Comments[n] = append(s.Comments[n], c)
+	return c
+}
+
+// IssueComments returns the comments the server holds on issue n, posted ones included.
+func (s *Server) IssueComments(n int) []map[string]any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]map[string]any{}, s.Comments[n]...)
+}
+
+// addReaction adds Login's 🚀 to the comment once, as GitHub keeps one reaction per user.
+func (s *Server) addReaction(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err == nil {
+		err = json.NewDecoder(r.Body).Decode(&req)
+	}
+	if err != nil || req.Content != "rocket" {
+		s.t.Errorf("forgetest: reaction %s: %v, content %q; only rocket is served", r.URL, err, req.Content)
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed"})
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Rockets == nil {
+		s.Rockets = map[int64][]string{}
+	}
+	status := http.StatusOK
+	if !slices.Contains(s.Rockets[id], s.Login) {
+		s.Rockets[id] = append(s.Rockets[id], s.Login)
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, map[string]any{"content": "rocket", "user": map[string]any{"login": s.Login}})
 }
 
 // legacyPermission is GitHub's permission field per role: it knows no maintain or triage,
