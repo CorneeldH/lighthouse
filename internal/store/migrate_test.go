@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -77,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 2 {
-		t.Errorf("user_version = %d, want 2", v2)
+	if v2 != 3 {
+		t.Errorf("user_version = %d, want 3", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -293,5 +294,43 @@ func TestNegativeUserVersion(t *testing.T) {
 	}
 	if v := userVersion(t, db); v != -1 {
 		t.Errorf("user_version = %d, want -1", v)
+	}
+}
+
+func TestMigrate0003KeepsTickState(t *testing.T) {
+	ctx := context.Background()
+	upTo2 := fstest.MapFS{}
+	for _, f := range []string{"0001_meta.sql", "0002_runs.sql"} {
+		body, err := fs.ReadFile(migrationFS, f)
+		if err != nil {
+			t.Fatalf("read %s: %v", f, err)
+		}
+		upTo2[f] = &fstest.MapFile{Data: body}
+	}
+	db := bareDB(t)
+	if err := migrate(ctx, db, upTo2); err != nil {
+		t.Fatalf("migrate to 2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO tick_state(repo, kind, key, value, updated_at) VALUES ('o/r', 'fingerprint', 'k', 'v', 't')`); err != nil {
+		t.Fatalf("insert at v2: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO tick_state(repo, kind, key, value, updated_at) VALUES ('o/r', 'cleanup', 'w', '{}', 't')`); err == nil {
+		t.Fatal("version 2 accepted kind cleanup")
+	}
+	if err := migrate(ctx, db, migrationFS); err != nil {
+		t.Fatalf("migrate to 3: %v", err)
+	}
+	if v := userVersion(t, db); v != 3 {
+		t.Errorf("user_version = %d, want 3", v)
+	}
+	var value string
+	if err := db.QueryRow(`SELECT value FROM tick_state WHERE repo = 'o/r' AND kind = 'fingerprint' AND key = 'k'`).Scan(&value); err != nil || value != "v" {
+		t.Errorf("fingerprint row after migration = %q, %v; want \"v\"", value, err)
+	}
+	if _, err := db.Exec(`INSERT INTO tick_state(repo, kind, key, value, updated_at) VALUES ('o/r', 'cleanup', 'w', '{}', 't')`); err != nil {
+		t.Errorf("cleanup rejected after migration: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO tick_state(repo, kind, key, value, updated_at) VALUES ('o/r', 'bogus', 'w', '{}', 't')`); err == nil {
+		t.Error("unknown kind accepted after migration")
 	}
 }
