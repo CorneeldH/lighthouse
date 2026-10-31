@@ -2,12 +2,29 @@
 // handoff badges and a detail drawer. Data reaches the page only through textContent and
 // attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
 
-const GLYPHS = { you: "⌨", skill: "↪", tool: "⚡", github: "⚙" };
+const GLYPHS = { you: "⌨", skill: "↪", description: "◎", tool: "⚡", github: "⚙" };
 const TRIGGERS = {
-  you: "you ask for it",
-  skill: "another skill calls it",
+  you: "you invoke it",
+  skill: "another skill invokes it",
+  description: "its description matches the task",
   tool: "a tool call",
   github: "a GitHub event",
+};
+// The long form of a trigger, in the terms of the harness docs.
+const STARTS = {
+  you: "User-invoked: you ask for it, or type its slash command.",
+  skill: "Invoked by another skill, which names it in its own steps.",
+  description: "Model-invoked: the agent loads it by itself when the task matches its description.",
+  tool: "A hook event: the harness runs it around a tool call, without the model choosing it.",
+  github: "A GitHub event starts it, outside any session.",
+};
+// What each form is, so a skill and an agent with similar names read apart.
+const FORMS = {
+  skill: "A skill: instructions the session loads and follows itself, in its own context.",
+  agent: "An agent: a subagent with a clean context of its own. It does one job apart and hands back only its result.",
+  hook: "A hook: a script the harness runs at a fixed event. The model does not choose it.",
+  workflow: "A GitHub Actions workflow: it runs on GitHub, outside any session.",
+  github: "A GitHub object or check. Lighthouse shapes it but does not run it.",
 };
 const WIDTH = 1260; // virtual width of the map, equal to the min-width of .map in map.css
 const HEAD = 64; // height of the column heads, in px
@@ -103,6 +120,33 @@ function statusText(item) {
 function sourceParts(source) {
   const match = /\/blob\/main\/pack\/([^/]+)\/([^/]+)\//.exec(source || "");
   return match ? { pack: match[1], part: match[2].replace(/s$/, "") } : null;
+}
+
+/** skill, agent, hook, workflow or github: what kind of thing the chip is. */
+function form(chip) {
+  const parts = sourceParts(chip.source);
+  if (chip.kind === "hook") {
+    return "hook";
+  }
+  if (chip.kind === "superpowers") {
+    return "skill";
+  }
+  if (parts && ["skill", "agent", "workflow"].includes(parts.part)) {
+    return parts.part;
+  }
+  return "github";
+}
+
+/** `how` as a list of steps; a single string stays one paragraph. */
+function steps(how) {
+  if (!Array.isArray(how)) {
+    return el("p", "", how || "");
+  }
+  const list = el("ul", "steps");
+  for (const step of how) {
+    list.append(el("li", "", step));
+  }
+  return list;
 }
 
 function provider(kind, source) {
@@ -275,8 +319,10 @@ export function renderFlowMap(root, data, detail) {
   /** Where `chip` sits on the routes: which ones, and its neighbours on the chosen one. */
   const routeFacts = (chip) => {
     const on = routes.filter((route) => route.chips.includes(chip.id));
-    const names = on.map((route) => route.label).join(", ");
-    const rows = [["On routes", names || "none: it joins in on its own"]];
+    const names = on.map((route) =>
+      (route.examples || []).includes(chip.id) ? `${route.label}, as an example` : route.label,
+    );
+    const rows = [["On routes", names.join("; ") || "none"]];
     if (chosen && chosen.chips.includes(chip.id)) {
       const before = new Set();
       const after = new Set();
@@ -302,18 +348,20 @@ export function renderFlowMap(root, data, detail) {
     // Another route changes the neighbours in "In the chain", so a route click redraws it.
     reshow = () => showChip(chip, button, false);
     const glyph = GLYPHS[chip.trigger] || "?";
+    const kind = form(chip);
     open(
       [
         box(
-          `${phaseLabel.get(chip.phase) || chip.phase} · ${glyph} ${TRIGGERS[chip.trigger] || chip.trigger}`,
+          `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${glyph} ${TRIGGERS[chip.trigger] || chip.trigger}`,
           `${glyph} ${chip.label}`,
-          el("p", "", chip.what),
+          el("p", "summary", chip.what),
         ),
-        box("How it works", "", el("p", "", chip.how)),
         box(
           "When, who and why",
           "",
           facts([
+            ["What it is", FORMS[kind]],
+            ["How it starts", STARTS[chip.trigger] || chip.trigger],
             ["When it starts", chip.when],
             ["Who provides it", provider(chip.kind, chip.source)],
             ["What you miss without", chip.without],
@@ -321,6 +369,7 @@ export function renderFlowMap(root, data, detail) {
             ["Source", sourceLink(chip.source)],
           ]),
         ),
+        box("How it works", "", steps(chip.how)),
         box("In the chain", "", facts(routeFacts(chip))),
       ],
       focus,
@@ -337,10 +386,9 @@ export function renderFlowMap(root, data, detail) {
       box(
         `handoff · ${phaseLabel.get(from.phase)} → ${phaseLabel.get(to.phase)}`,
         "↻ handoff",
-        el("p", "", about.what || ""),
+        el("p", "summary", about.what || ""),
         el("p", "aside", `Between ${from.label} and ${to.label}.`),
       ),
-      box("How it works", "", el("p", "", about.how || "")),
       box(
         "When, who and why",
         "",
@@ -352,6 +400,7 @@ export function renderFlowMap(root, data, detail) {
           ["Source", sourceLink(about.source)],
         ]),
       ),
+      box("How it works", "", steps(about.how)),
     ]);
   };
 
@@ -361,6 +410,8 @@ export function renderFlowMap(root, data, detail) {
   routeBar.setAttribute("aria-label", "Routes");
   const note = el("p", "route-note");
   note.hidden = true;
+  const examples = el("p", "route-note");
+  examples.hidden = true;
   const hint = el(
     "p",
     "map-hint",
@@ -409,10 +460,12 @@ export function renderFlowMap(root, data, detail) {
     }
     const a = point(from);
     const b = point(to);
-    // Halfway between the two chips; on a row of chips, half a row higher, between two rows.
-    let row = (from.row + to.row) / 2;
+    // Within a phase: centred in the column, just above the step it hands over to, so an example
+    // step in between stays before it. Across phases: halfway, on a row of chips half a row
+    // lower, which keeps it off the first gap where the handoffs within a phase sit.
+    let row = from.phase === to.phase ? to.row - 0.5 : (from.row + to.row) / 2;
     if (Number.isInteger(row)) {
-      row = row > 0 ? row - 0.5 : row + 0.5;
+      row += 0.5;
     }
     const tag = plannedMark(handoff);
     const badge = el("button", `handoff status-${handoff.status}`, tag ? `↻ handoff · ${tag}` : "↻ handoff");
@@ -471,10 +524,6 @@ export function renderFlowMap(root, data, detail) {
     const route = routes[index];
     chosen = route;
     const used = new Set(route.chips);
-    const pairs = new Set();
-    for (let i = 1; i < route.chips.length; i++) {
-      pairs.add(`${route.chips[i - 1]}>${route.chips[i]}`);
-    }
     routeButtons.forEach((button, i) => button.setAttribute("aria-pressed", String(i === index)));
     paths.forEach((path, i) => path.classList.toggle("on", i === index));
     // The chosen route goes on top, so a route drawn later does not cross over it.
@@ -486,16 +535,24 @@ export function renderFlowMap(root, data, detail) {
       button.classList.toggle("dim", !always && !used.has(button.dataset.id));
     }
     for (const badge of badges) {
-      badge.classList.toggle("dim", !pairs.has(`${badge.dataset.from}>${badge.dataset.to}`));
+      // Lit when the route passes both ends in order, also with an example step in between.
+      const from = route.chips.indexOf(badge.dataset.from);
+      const to = route.chips.indexOf(badge.dataset.to);
+      badge.classList.toggle("dim", from < 0 || to < 0 || from > to);
     }
     note.textContent = route.note || "";
     note.hidden = !route.note;
+    const shown = (route.examples || []).map((id) => byId.get(id)?.label || id);
+    examples.textContent = shown.length
+      ? `Examples on this route, which join in only when the work calls for them: ${shown.join(", ")}.`
+      : "";
+    examples.hidden = !shown.length;
     if (reshow) {
       reshow();
     }
   }
 
-  root.replaceChildren(routeBar, note, hint, scroll);
+  root.replaceChildren(routeBar, note, examples, hint, scroll);
   if (routes.length) {
     select(0);
   }
