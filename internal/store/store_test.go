@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -40,7 +42,31 @@ func TestOpenSetsPragmas(t *testing.T) {
 		t.Fatalf("Open: %v", err)
 	}
 	defer func() { _ = s.Close() }()
+	checkPragmas(t, s)
 
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat dir: %v", err)
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Errorf("dir mode = %o, want 700", info.Mode().Perm())
+	}
+}
+
+func TestOpenSharedSetsPragmas(t *testing.T) {
+	s, err := OpenShared(context.Background(), filepath.Join(t.TempDir(), "l.db"))
+	if err != nil {
+		t.Fatalf("OpenShared: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	checkPragmas(t, s)
+}
+
+// checkPragmas reads the pragmas on two distinct connections: each pragma
+// from the DSN must hold on every connection, not only the first.
+func checkPragmas(t *testing.T, s *Store) {
+	t.Helper()
+	ctx := context.Background()
 	c1, err := s.DB.Conn(ctx)
 	if err != nil {
 		t.Fatalf("Conn 1: %v", err)
@@ -72,13 +98,50 @@ func TestOpenSetsPragmas(t *testing.T) {
 			}
 		}
 	}
+}
 
-	info, err := os.Stat(dir)
+func TestDSNTxLock(t *testing.T) {
+	u, err := url.Parse(dsn("/x/l.db"))
 	if err != nil {
-		t.Fatalf("stat dir: %v", err)
+		t.Fatalf("parse dsn: %v", err)
 	}
-	if info.Mode().Perm() != 0o700 {
-		t.Errorf("dir mode = %o, want 700", info.Mode().Perm())
+	q := u.Query()
+	if got := q.Get("_txlock"); got != "immediate" {
+		t.Errorf("_txlock = %q, want %q", got, "immediate")
+	}
+	for _, p := range q["_pragma"] {
+		if strings.HasPrefix(p, "journal_mode") {
+			t.Errorf("dsn sets %q; journal_mode belongs to the one-time step in open", p)
+		}
+	}
+}
+
+func TestOpenSharedTakesNoLock(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "l.db")
+	served, err := Open(ctx, path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = served.Close() }()
+	for i := 1; i <= 2; i++ {
+		s, err := OpenShared(ctx, path)
+		if err != nil {
+			t.Fatalf("OpenShared %d next to a serve lock: %v", i, err)
+		}
+		defer func() { _ = s.Close() }()
+	}
+
+	fresh := filepath.Join(t.TempDir(), "sub", "l.db")
+	s, err := OpenShared(ctx, fresh)
+	if err != nil {
+		t.Fatalf("OpenShared on a fresh path: %v", err)
+	}
+	if _, err := os.Stat(fresh + ".lock"); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("stat %s.lock: err = %v, want not exist", fresh, err)
+	}
+	if err := s.Close(); err != nil {
+		t.Errorf("Close shared store: %v", err)
 	}
 }
 

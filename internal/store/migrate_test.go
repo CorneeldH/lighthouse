@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -166,6 +167,69 @@ func TestSchemaTooNew(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("database touched: %d schema objects", n)
+	}
+}
+
+func TestOpenSharedSchemaTooNew(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "l.db")
+	db, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`PRAGMA user_version = 99`); err != nil {
+		t.Fatalf("set user_version: %v", err)
+	}
+	s, err := OpenShared(context.Background(), path)
+	if err == nil {
+		_ = s.Close()
+	}
+	if !errors.Is(err, ErrSchemaTooNew) {
+		t.Fatalf("OpenShared error = %v, want ErrSchemaTooNew", err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master`).Scan(&n); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("database touched: %d schema objects", n)
+	}
+}
+
+// TestApplyRereadsUserVersion covers the state another process leaves
+// between migrate's first read and apply's transaction.
+func TestApplyRereadsUserVersion(t *testing.T) {
+	m := migration{number: 1, file: "0001_a.sql"}
+	fsys := fstest.MapFS{m.file: {Data: []byte("CREATE TABLE a(x);")}}
+	tests := []struct {
+		name    string
+		version int
+		tooNew  bool
+	}{
+		{"already migrated", 1, false},
+		{"newer than known", 2, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db := bareDB(t)
+			if _, err := db.Exec(fmt.Sprintf("PRAGMA user_version = %d", tc.version)); err != nil {
+				t.Fatalf("set user_version: %v", err)
+			}
+			err := apply(context.Background(), db, fsys, m, 1)
+			if tc.tooNew != errors.Is(err, ErrSchemaTooNew) || (!tc.tooNew && err != nil) {
+				t.Fatalf("apply error = %v, want ErrSchemaTooNew: %v", err, tc.tooNew)
+			}
+			var n int
+			if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name='a'`).Scan(&n); err != nil {
+				t.Fatalf("query: %v", err)
+			}
+			if n != 0 {
+				t.Errorf("migration ran although user_version was %d", tc.version)
+			}
+			if v := userVersion(t, db); v != tc.version {
+				t.Errorf("user_version = %d, want %d", v, tc.version)
+			}
+		})
 	}
 }
 
