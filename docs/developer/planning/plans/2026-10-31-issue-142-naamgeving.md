@@ -15,17 +15,24 @@
 - Worktree: `/home/corneel/repositories/lighthouse/.claude/worktrees/issue-142-naamgeving`. Elk shellcommando begint met `cd <worktree>`.
 - Instructies (skills, agents, hookmeldingen, codecommentaar) Engels; commits, spec, plan en changelog-fragment Nederlands (`[project] language = nl`), changelog-tekst zelf Engels (zoals de bestaande fragmenten).
 - Nooit met de hand bewerken: `.claude/skills/lighthouse-*`, `.agents/skills/lighthouse-*`, `.claude/agents/lighthouse-*`, `.claude/hooks/lighthouse/`, de lighthouse-registraties in `.claude/settings.json`, `.lighthouse/` (behalve via `init --upgrade`), het managed block in `AGENTS.md`. Die volgen uit `go run ./cmd/lighthouse init --upgrade --yes`.
-- Historische tekst blijft: `changelog.d/` (bestaande fragmenten), `CHANGELOG.md`, `docs/developer/planning/**`.
+- Historische tekst blijft: `changelog.d/` (bestaande fragmenten), `CHANGELOG.md`, `docs/developer/planning/**`. Ook historisch, dus nooit vervangen:
+  - in `pack/SOURCES.toml` de velden `source_path` (pad in de bronrepo op een vaste `source_sha`); alleen `path` gaat mee;
+  - externe URL's, zoals `.../.agents/skills/testing-without-tautologies/SKILL.md` in de testing-skill;
+  - `internal/usage/testdata/` (opgenomen `/usage`-uitvoer).
+  Sluit deze drie uit in elke `git grep` en restgrep (`':!internal/usage/testdata'`; `SOURCES.toml` en URL's beoordeel je per treffer).
+- Een JSON-sleutel of een protocolwaarde is geen skillnaam: de sleutels `"handoff"` en `"handoffs"` in `docs/site/data/chain.json` en `tests/fixtures/site/map.json`, `KINDS`/`kind == "handoff"` in `pack/core/lib/protocol.py` en `pack/python/scripts/quality/prcov_issues.py`, en `import "testing"` in Go blijven.
 - Blijft ongewijzigd: `[test_gate]`, `[usage_guard]` in `lighthouse.toml`, de statusmap `~/.local/state/lighthouse/usage-guard` (`pack/core/lib/usage_guard.py:141`), modulenamen onder `pack/*/lib/` en `pack/*/scripts/` (o.a. `usage_guard.py`, `code_language.py`, `worktree_audit.py`, `gate_*.py`), het voorvoegsel `lighthouse-`, `spec-adversary`.
 - Na elke taak: `go run ./cmd/lighthouse init --upgrade --yes`, daarna `go run ./cmd/lighthouse init --upgrade </dev/null` geeft precies `No changes.`; de installatiekopie gaat in dezelfde commit.
 - Nooit `--no-verify`; rood van de test gate wordt een nieuwe commit.
+- Vanaf de dogfood in Taak 3 kan de lopende sessie nog naar de oude hookscripts wijzen (exit 127, niet blokkerend). Dan draait de test gate niet na een commit: de handmatige testrun in de stap vóór elke commit is vanaf daar de gate en wordt nooit overgeslagen.
 
 ## Review Focus
 
 - **Een gewoon woord dat ook een oude naam is** (`testing`, `handoff`, `instrument`, `gofmt`, `shellcheck`, `ruff-format`): alleen de tokens uit de tabellen hieronder vervangen, nooit het losse woord. `internal/protocol/header.go:26` (`KindHandoff`) en `internal/runs/runs.go:23` blijven. Test: de restgrep in Taak 6 en `go test ./...`.
-- **De statusmap van de usage-hook**: een vervanging van `usage-guard` die ook `"lighthouse" / "usage-guard"` raakt, reset elk venster op elke machine. Test: Taak 3 stap 1 pint het pad.
+- **De statusmap van de usage-hook**: een vervanging van `usage-guard` die ook `"lighthouse" / "usage-guard"` raakt, reset elk venster op elke machine. Test: Taak 3 stap 1 pint het pad met een waarde die de vervanging niet raakt; Taak 3 stap 5 telt de regel.
+- **Kale namen**: `requires.toml` en de site-data noemen een unit zonder voorvoegsel of pad (`"verify-pr"`, `"go-check"`). Test: de kale-namen-restgrep in Taak 2 stap 4 en Taak 3 stap 5, en `test_requires_names_the_skill_per_tool`.
 - **Een map die al leeg was of nog iets anders bevat**: het opruimen in `init` mag die niet raken. Test: Taak 1 stap 1, gevallen `keeps_sibling` en `keeps_preexisting_empty`.
-- **Een project-hook in `settings.json`** (`.claude/hooks/own.sh`, `npx …`): check 14 mag er niet op falen. Test: Taak 5 stap 1, `test_hook_names_ignore_project_hooks`.
+- **Een project-hook in `settings.json`** (`.claude/hooks/own.sh`, `npx …`): check 14 mag er niet op falen. Test: Taak 4 stap 1, `test_hook_names_ignore_project_hooks`.
 - **Een upgrade met één lokaal aangepaste oude kopie**: geweigerd, niets geschreven; met `--force` alles weg. Test: Taak 1 stap 1, `TestUpgradeRenamesUnits`.
 
 ---
@@ -76,7 +83,7 @@ cd <worktree> && git add internal/initcmd && git commit -m "feat(init): geleegde
 **Files:** `pack/**/skills/*`, alle verwijzingen (zie tabel), testbestanden die naar een skill heten, lighthouse's eigen `AGENTS.md` (Rules), `CLAUDE.md`, `docs/`, `docs/site/data/*.json`, `tests/fixtures/site/map.json`, Go-tests.
 
 **Interfaces:**
-- Produces: de nieuwe skillnamen uit de tabel; Taak 4 verwijst naar `place-instruction`.
+- Produces: de nieuwe skillnamen uit de tabel; Taak 5 verwijst naar `place-instruction`.
 
 | Oud (dir) | Nieuw | Tokens om te vervangen | Testbestand |
 |---|---|---|---|
@@ -86,17 +93,19 @@ cd <worktree> && git add internal/initcmd && git commit -m "feat(init): geleegde
 | `core/skills/spec-adversarial-review` | `review-spec` | `lighthouse-spec-adversarial-review`, `skills/spec-adversarial-review` | — (`test_adversarial_review_*.py` blijven) |
 | `core/skills/plan-adversarial-review` | `review-plan` | `lighthouse-plan-adversarial-review`, `skills/plan-adversarial-review` | — |
 | `core/skills/worktree-audit` | `audit-worktrees` | `lighthouse-worktree-audit`, `skills/worktree-audit` | `test_worktree_audit_skill.py` → `test_audit_worktrees_skill.py` (`test_worktree_audit.py` test het script, blijft) |
-| `core/skills/testing` | `test-standard` | `lighthouse-testing`, `skills/testing` | `test_testing_skill.py` → `test_test_standard_skill.py` |
+| `core/skills/testing` | `test-standard` | `lighthouse-testing`, `skills/testing/` en `skills/testing` aan regeleinde of vóór `"`, `)`, `` ` `` (nooit `skills/testing-without-tautologies`) | `test_testing_skill.py` → `test_test_standard_skill.py` |
 | `go/skills/go-writing` | `go-standard` | `lighthouse-go-writing`, `skills/go-writing` | — |
 | `python/skills/python-writing` | `python-standard` | `lighthouse-python-writing`, `skills/python-writing` | — |
 | `shell/skills/shell-gates` | `shell-standard` | `lighthouse-shell-gates`, `skills/shell-gates` | — |
 
 Prose die een skill bij de korte naam noemt (bijv. "the testing skill", kopjes als `# Writing Go in this repository`) pas je met de hand aan waar de naam bedoeld is; het losse woord blijft.
 
+**Kale namen.** Naast de tokens noemen deze bestanden een skill bij de oude dirnaam tussen dubbele quotes (`"verify-pr"`, `"testing"`, `"go-writing"`): `pack/*/requires.toml` (lijstwaarden), `docs/site/data/chain.json` (`id`, `label`, verwijzingen in `routes` en `handoffs`), `docs/site/data/packs.json`, `tests/fixtures/site/map.json`. Vervang daar elke waarde `"<oud>"` door `"<nieuw>"`; JSON-sleutels blijven (Global Constraints). `KALE_SKILLS` hieronder is `verify-pr|handoff|instrument|spec-adversarial-review|plan-adversarial-review|worktree-audit|testing|go-writing|python-writing|shell-gates`.
+
 - [ ] **Stap 1: `git mv` per regel, en het `name:`-veld** in elke `SKILL.md` (gedeeld, of `claude/` en `agents/`) naar `lighthouse-<nieuw>`.
-- [ ] **Stap 2: Vervang de tokens.** Zoek per regel met `cd <worktree> && git grep -nF '<token>' -- . ':!changelog.d' ':!CHANGELOG.md' ':!docs/developer/planning' ':!.claude/skills' ':!.agents' ':!.claude/agents' ':!.claude/hooks/lighthouse' ':!.claude/settings.json' ':!.lighthouse'` en vervang elke treffer. In de root-`AGENTS.md` alleen buiten het managed block (alles tussen `<!-- lighthouse:begin <pack> -->` en `<!-- lighthouse:end <pack> -->` schrijft `init`): een handmatige wijziging daarin is een Conflict en laat de upgrade weigeren. Hernoem de testbestanden uit de tabel met `git mv`.
+- [ ] **Stap 2: Vervang de tokens.** Zoek per regel met `cd <worktree> && git grep -nF '<token>' -- . ':!changelog.d' ':!CHANGELOG.md' ':!docs/developer/planning' ':!internal/usage/testdata' ':!.claude/skills' ':!.agents' ':!.claude/agents' ':!.claude/hooks/lighthouse' ':!.claude/settings.json' ':!.lighthouse'` en vervang elke treffer, behalve de historische uit de Global Constraints. In de root-`AGENTS.md` alleen buiten het managed block (alles tussen `<!-- lighthouse:begin <pack> -->` en `<!-- lighthouse:end <pack> -->` schrijft `init`): een handmatige wijziging daarin is een Conflict en laat de upgrade weigeren. Vervang daarna de kale namen (alinea hierboven). Hernoem de testbestanden uit de tabel met `git mv`.
 - [ ] **Stap 3: Dogfood.** `cd <worktree> && go run ./cmd/lighthouse init --upgrade --yes`, daarna `go run ./cmd/lighthouse init --upgrade </dev/null` → `No changes.`
-- [ ] **Stap 4: Restgrep.** Zelfde `git grep`-pathspecs als stap 2 maar zonder de vier geïnstalleerde uitsluitingen, op alle oude tokens: nul treffers. `ls .claude/skills .agents/skills` toont geen oude naam.
+- [ ] **Stap 4: Restgrep.** Zelfde `git grep`-pathspecs als stap 2 maar zonder de vier geïnstalleerde uitsluitingen, op alle oude tokens: geen treffers buiten `source_path`-regels van `pack/SOURCES.toml` en de externe URL `testing-without-tautologies`. Kale namen: `git grep -nE '"(KALE_SKILLS)"' -- 'pack/*/requires.toml' docs/site/data tests/fixtures/site` (met `KALE_SKILLS` letterlijk ingevuld) geeft alleen JSON-sleutels (`"handoff": {`). `ls .claude/skills .agents/skills` toont geen oude naam.
 - [ ] **Stap 5: Tests.** `cd <worktree> && go test ./... -race && uv run pytest -q && .lighthouse/scripts/check-instructions.sh` → alles groen, exit 0.
 - [ ] **Stap 6: Commit** (pack, verwijzingen, installatiekopie samen): `refactor(pack): skills hernoemen naar taak of standard (#142)`.
 
@@ -106,12 +115,12 @@ Prose die een skill bij de korte naam noemt (bijv. "the testing skill", kopjes a
 
 | Oud | Nieuw | Tokens om te vervangen | Testbestand |
 |---|---|---|---|
-| `core/hooks/main-commit-guard.sh` | `main-commit-gate.sh` | `main-commit-guard` | `test_main_commit_guard.py` → `test_main_commit_gate.py` |
+| `core/hooks/main-commit-guard.sh` | `main-commit-gate.sh` | `main-commit-guard`, meldingsprefix `Main-commit guard:` → `Main-commit gate:` | `test_main_commit_guard.py` → `test_main_commit_gate.py` |
 | `core/hooks/commit-tests.sh` | `commit-test-gate.sh` | `commit-tests` | `test_commit_tests.py` → `test_commit_test_gate.py`, `test_commit_tests_no_verify.py` → `test_commit_test_gate_no_verify.py` |
 | `core/hooks/usage-guard.sh` + `core/hooks/usage-guard/` | `usage-gate.sh` + `usage-gate/` | `usage-guard.sh`, `hooks/lighthouse/usage-guard/`, `hooks_dir / "usage-guard"`, meldingsprefix `usage-guard:`, prose "usage-guard" | `test_usage_guard*.py` → `test_usage_gate*.py` |
 | `go/hooks/go-check.sh` | `go-lint-gate.sh` | `go-check` | `go/test_go_check.py` → `go/test_go_lint_gate.py` |
 | `python/hooks/ty-check.sh` | `ty-gate.sh` | `ty-check` | `python/test_ty_check.py` → `python/test_ty_gate.py` |
-| `core/hooks/worktree-guard.sh` | `worktree-check.sh` | `worktree-guard` | `test_worktree_guard.py` → `test_worktree_check.py` |
+| `core/hooks/worktree-guard.sh` | `worktree-check.sh` | `worktree-guard`, meldingsprefix `Worktree guard:` → `Worktree check:` | `test_worktree_guard.py` → `test_worktree_check.py` |
 | `core/hooks/worktree-linkcheck.sh` | `md-link-check.sh` | `worktree-linkcheck` | `test_worktree_linkcheck.py` → `test_md_link_check.py` |
 | `core/hooks/code-language.sh` | `code-language-check.sh` | `code-language.sh`, meldingsprefix `code-language:` | `test_code_language_hook.py` blijft |
 | `core/hooks/bash-write-gates.sh` | `bash-write-check.sh` | `bash-write-gates`, `LIGHTHOUSE_UNDER_BASH_GATES` → `LIGHTHOUSE_UNDER_BASH_WRITE_CHECK` | `test_bash_write_gates.py` → `test_bash_write_check.py` |
@@ -119,34 +128,21 @@ Prose die een skill bij de korte naam noemt (bijv. "the testing skill", kopjes a
 | `python/hooks/ruff-format.sh` | `ruff-format-check.sh` | `ruff-format.sh`, prose "the ruff-format hook/gate" | — |
 | `shell/hooks/shellcheck.sh` | `shell-lint-check.sh` | `shellcheck.sh`, prose "the shellcheck hook/gate" | — |
 
-Ook: "write gates" → "write checks", "Edit\|Write gates" → "Edit\|Write checks" in prose en meldingen. Nooit vervangen: het commando `gofmt`, `shellcheck`, `ruff format`, `[usage_guard]`, `usage_guard.py`, `code_language`, het pad `"lighthouse" / "usage-guard"` in `pack/core/lib/usage_guard.py:141`, `[test_gate]` en "test gate".
+Ook: "write gates" → "write checks", "Edit\|Write gates" → "Edit\|Write checks" in prose en meldingen. Elk hernoemd script met `HOOK_NAME="<oud>"` krijgt `HOOK_NAME="<nieuwe stam>"` (o.a. `gofmt.sh`, `ruff-format.sh`, `go-check.sh`, `ty-check.sh`, `commit-tests.sh`). Kale namen zoals in Taak 2 (`requires.toml`-lijsten, site-data, fixture), met `KALE_HOOKS` = `main-commit-guard|commit-tests|usage-guard|go-check|ty-check|worktree-guard|worktree-linkcheck|code-language|bash-write-gates|gofmt|ruff-format|shellcheck`; in `requires.toml` is `gofmt`/`shellcheck` als *sleutel* het commando en blijft, alleen de lijstwaarde gaat mee. Nooit vervangen: het commando `gofmt`, `shellcheck`, `ruff format`, `[usage_guard]`, `usage_guard.py`, `code_language`, het pad `"lighthouse" / "usage-guard"` in `pack/core/lib/usage_guard.py:141`, `[test_gate]`, "test gate", en de historische resten uit de Global Constraints (`source_path` in `pack/SOURCES.toml`, o.a. `.claude/hooks/pre-commit-tests.sh`).
 
-- [ ] **Stap 1: Pin de statusmap.** Voeg `test_state_dir_keeps_old_name` toe aan het hernoemde `tests/pack/test_usage_gate_lib.py`: met `XDG_STATE_HOME=<tmp>` eindigt de statusmap van `usage_guard` op `lighthouse/usage-guard`. Draai: PASS (pint bestaand gedrag; faalt als stap 3 het pad raakt).
+- [ ] **Stap 1: Pin de statusmap, vóór de `git mv`.** Voeg `test_state_dir_keeps_old_name` toe aan `tests/pack/test_usage_guard_lib.py` (stap 2 hernoemt het bestand). Met `XDG_STATE_HOME=<tmp>` assert hij `ug.state_dir().name == "usage" + "-guard"` en `ug.state_dir().parent.name == "lighthouse"`: de opgebouwde waarde raakt geen vervanging van `usage-guard`. Draai: PASS (pint bestaand gedrag; faalt als stap 3 het pad raakt).
 - [ ] **Stap 2: `git mv`** per regel, scripts en testbestanden.
-- [ ] **Stap 3: Vervang de tokens** met dezelfde `git grep`-pathspecs als Taak 2 stap 2. Een meldingsprefix volgt de nieuwe scriptnaam; tests die erop asserten gaan mee.
+- [ ] **Stap 3: Vervang de tokens** met dezelfde `git grep`-pathspecs als Taak 2 stap 2, dan de kale namen. Een meldingsprefix volgt de nieuwe scriptnaam; tests die erop asserten gaan mee (o.a. `tests/test_dogfood.py`). Laat `pack/core/lib/usage_guard.py:141` staan.
 - [ ] **Stap 4: Dogfood**, zoals Taak 2 stap 3. `.claude/settings.json` noemt daarna alleen nieuwe scriptnamen; de project-entries erin zijn onveranderd (`git diff .claude/settings.json` toont alleen lighthouse-commando's).
-- [ ] **Stap 5: Restgrep** op alle oude tokens (inclusief "write gates"), zoals Taak 2 stap 4: alleen de toegestane resten uit de Global Constraints.
+- [ ] **Stap 5: Restgrep** op alle oude tokens (inclusief "write gates", en hoofdletterongevoelig `main-commit guard` en `worktree guard`), zoals Taak 2 stap 4: alleen de toegestane resten uit de Global Constraints. Kale namen: `git grep -nE '"(KALE_HOOKS)"' -- 'pack/*/requires.toml' docs/site/data tests/fixtures/site` geeft niets. En `git grep -c '"lighthouse" / "usage-guard"' -- pack/core/lib/usage_guard.py` geeft precies `pack/core/lib/usage_guard.py:1`.
 - [ ] **Stap 6: Tests**, zoals Taak 2 stap 5.
 - [ ] **Stap 7: Commit:** `refactor(pack): hooks hernoemen naar gate of check (#142)`.
 
-### Taak 4: De conventie in `place-instruction`
+### Taak 4: Check 14 — hooknamen
 
 **Files:**
-- Modify: `pack/core/skills/place-instruction/SKILL.md` (stap 5 en stap 6)
-- Test: `tests/pack/test_place_instruction_skill.py`
-
-**Interfaces:**
-- Consumes: de namen uit Taak 2 en 3.
-
-- [ ] **Stap 1: Falende test** `test_naming_convention_per_form`: de body van stap 6 bevat de vijf regels uit de spec-tabel, herkenbaar aan `verb + object`, `-standard`, `-gate`, `-check` en `occupation`; en stap 5 bevat een zin dat `type` wegblijft omdat de naam de soort draagt (assert op `the name carries`). Draai: FAIL.
-- [ ] **Stap 2: Schrijf de tekst** (Engels): een tabel vorm → naam → één zin reden, de regel "a script with several modes is named after its strongest", en dat de controle (check 14) alleen lighthouse-hooks leest; voor project-hooks is het advies.
-- [ ] **Stap 3: Dogfood + tests**, zoals Taak 2 stap 3 en 5.
-- [ ] **Stap 4: Commit:** `docs(skills): naamconventie in place-instruction (#142)`.
-
-### Taak 5: Check 14 — hooknamen
-
-**Files:**
-- Modify: `pack/core/scripts/check-instructions.sh` (nieuwe `check_hook_names`, aanroep na `check_pairing`; kopcommentaar regel 2: `1, 2, 3, 4, 5, 7, 8, 10, 11 and 14`)
+- Modify: `pack/core/scripts/check-instructions.sh` (nieuwe `check_hook_names` onder de sectiekop `# --- Check 14: hook names ---…` in de stijl van de andere koppen, aanroep na `check_pairing`; kopcommentaar regel 2: `1, 2, 3, 4, 5, 7, 8, 10, 11 and 14`)
+- Modify: `tests/pack/test_place_instruction_skill.py`: `14` in `GENERIC` en in de docstring-opsomming van de generieke checks (Taak 5 noemt check 14 in de skill; `test_instrument_lists_generic_checks_only` eist het nummer in `GENERIC` en de kop `# --- Check 14:` in het script)
 - Test: `tests/pack/test_check_instructions.py`
 
 **Interfaces:**
@@ -168,10 +164,24 @@ Uitkomsten (exacte teksten):
   - `test_hook_names_ignore_project_hooks`: `"$CLAUDE_PROJECT_DIR"/.claude/hooks/own.sh` en `npx prettier --write` naast een geldige lighthouse-hook → exit 0.
   - `test_hook_names_without_settings_skips`: geen `settings.json` → `SKIPPED  hook-names`, exit 0.
   Draai: `cd <worktree> && uv run pytest tests/pack/test_check_instructions.py -q -k hook_name` → FAIL.
-- [ ] **Stap 2: Implementeer `check_hook_names`.**
-- [ ] **Stap 3: Draai** dezelfde tests → PASS; `test_this_script_is_green_on_this_repo` blijft groen.
+- [ ] **Stap 2: Implementeer `check_hook_names`**, en pas de bestaande `test_check_8_sees_hook_subdirs` aan: zijn fixture-hook `streng.sh` (registratie op PostToolUse, verwacht exit 0) wordt `streng-check.sh`, in het bestand, het `command` en de skill-body. Check 14 wordt hiervoor niet versoepeld. Zet `14` in `GENERIC` van `tests/pack/test_place_instruction_skill.py`.
+- [ ] **Stap 3: Draai** dezelfde tests → PASS; `test_this_script_is_green_on_this_repo` en `test_check_8_sees_hook_subdirs` blijven groen.
 - [ ] **Stap 4: Dogfood + tests**, zoals Taak 2 stap 3 en 5.
 - [ ] **Stap 5: Commit:** `feat(check-instructions): check 14 bewaakt hooknamen (#142)`.
+
+### Taak 5: De conventie in `place-instruction`
+
+**Files:**
+- Modify: `pack/core/skills/place-instruction/SKILL.md` (stap 5 en stap 6)
+- Test: `tests/pack/test_place_instruction_skill.py`
+
+**Interfaces:**
+- Consumes: de namen uit Taak 2 en 3; de kop `# --- Check 14:` en `14` in `GENERIC` uit Taak 4.
+
+- [ ] **Stap 1: Falende test** `test_naming_convention_per_form`: de body van stap 6 bevat de vijf regels uit de spec-tabel, herkenbaar aan `verb + object`, `-standard`, `-gate`, `-check` en `occupation`; en stap 5 bevat een zin dat `type` wegblijft omdat de naam de soort draagt (assert op `the name carries`). Draai: FAIL.
+- [ ] **Stap 2: Schrijf de tekst** (Engels): een tabel vorm → naam → één zin reden, de regel "a script with several modes is named after its strongest", en dat de controle (check 14) alleen lighthouse-hooks leest; voor project-hooks is het advies.
+- [ ] **Stap 3: Dogfood + tests**, zoals Taak 2 stap 3 en 5.
+- [ ] **Stap 4: Commit:** `docs(skills): naamconventie in place-instruction (#142)`.
 
 ### Taak 6: Changelog-fragment en eindcontrole
 
