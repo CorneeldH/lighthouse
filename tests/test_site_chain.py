@@ -262,18 +262,21 @@ def test_coverage_flags_a_removed_skill():
     assert missing_parts(chain) == ["pack/core/skills/write-issue"]
 
 
-def test_works_handoffs_are_after_the_reviews():
+def test_works_handoffs_follow_the_handoff_table():
     chain = load("chain.json")
     chips = chips_by_id(chain)
     works = {(h["from"], h["to"]) for h in chain["handoffs"] if h["status"] == "works"}
     assert works == {
+        ("brainstorming", "spec-adversarial-review"),
         ("spec-adversarial-review", "writing-plans"),
+        ("writing-plans", "plan-adversarial-review"),
         ("plan-adversarial-review", "executing-plans"),
     }
-    for origin, _ in works:
-        skills = list(repo_path(chips[origin]["source"]).rglob("SKILL.md"))
-        assert skills, f"{origin} has no SKILL.md"
-        assert any("lighthouse-handoff" in s.read_text(encoding="utf-8") for s in skills), origin
+    # The handoff skill's routing table names the first step of each works handoff.
+    table = (ROOT / "pack" / "core" / "skills" / "handoff" / "SKILL.md").read_text(encoding="utf-8")
+    for _, target in works:
+        prefix = "lighthouse-" if chips[target]["kind"] == "lighthouse" else "superpowers:"
+        assert f"`/{prefix}{target}" in table, target
     assert all(h["status"] in ("works", "planned") for h in chain["handoffs"])
 
 

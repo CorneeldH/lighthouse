@@ -711,8 +711,18 @@
   },
   "handoffs": [
     {
+      "from": "brainstorming",
+      "to": "spec-adversarial-review",
+      "status": "works"
+    },
+    {
       "from": "spec-adversarial-review",
       "to": "writing-plans",
+      "status": "works"
+    },
+    {
+      "from": "writing-plans",
+      "to": "plan-adversarial-review",
       "status": "works"
     },
     {

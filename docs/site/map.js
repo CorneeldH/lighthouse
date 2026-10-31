@@ -460,10 +460,12 @@ export function renderFlowMap(root, data, detail) {
     }
     const a = point(from);
     const b = point(to);
-    // Halfway between the two chips; on a row of chips, half a row higher, between two rows.
-    let row = (from.row + to.row) / 2;
+    // Within a phase: centred in the column, just above the step it hands over to, so an example
+    // step in between stays before it. Across phases: halfway, on a row of chips half a row
+    // lower, which keeps it off the first gap where the handoffs within a phase sit.
+    let row = from.phase === to.phase ? to.row - 0.5 : (from.row + to.row) / 2;
     if (Number.isInteger(row)) {
-      row = row > 0 ? row - 0.5 : row + 0.5;
+      row += 0.5;
     }
     const tag = plannedMark(handoff);
     const badge = el("button", `handoff status-${handoff.status}`, tag ? `↻ handoff · ${tag}` : "↻ handoff");
