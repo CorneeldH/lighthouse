@@ -353,21 +353,24 @@ func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace
 	return res, nil
 }
 
-// Remove deletes the workspace. A workspace that is already gone is no error; one with
-// work in it is workplace.ErrDirty.
+// Remove deletes the workspace and then its carrier. A workspace that is already gone is
+// no error; one with work in it is workplace.ErrDirty. A carrier it cannot wipe is an error.
 func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 	err := a.Client.do(ctx, http.MethodDelete, wsPath(workspaceID), nil, 0, nil)
 	var se *StatusError
-	if errors.As(err, &se) {
-		switch se.Status {
-		case http.StatusConflict:
-			return fmt.Errorf("remove workspace %s: %v: %w", workspaceID, se, workplace.ErrDirty)
-		case http.StatusNotFound:
-			return nil
-		}
+	if errors.As(err, &se) && se.Status == http.StatusConflict {
+		return fmt.Errorf("remove workspace %s: %v: %w", workspaceID, se, workplace.ErrDirty)
 	}
-	if err != nil {
+	if err != nil && (se == nil || se.Status != http.StatusNotFound) {
 		return fmt.Errorf("remove workspace %s: %w", workspaceID, err)
+	}
+	return a.Discard(ctx, workspaceID)
+}
+
+// Discard wipes the carrier of the workspace; a missing carrier is no error.
+func (a *Adapter) Discard(_ context.Context, workspaceID string) error {
+	if err := workplace.RemoveCarrier(a.StateDir, workspaceID); err != nil {
+		return fmt.Errorf("remove carrier of %s: %w", workspaceID, err)
 	}
 	return nil
 }

@@ -66,6 +66,9 @@ type Workplace interface {
 	Sessions(ctx context.Context, workspaceID string) ([]Session, error)
 	Stop(ctx context.Context, workspaceID string, sessionIDs []string) error
 	Remove(ctx context.Context, workspaceID string) error
+	// Discard forgets a launch whose agent never showed up: a target that
+	// starts late must find nothing to start. Nothing left to forget is no error.
+	Discard(ctx context.Context, workspaceID string) error
 }
 
 // Sentinels; adapters wrap them with %w.

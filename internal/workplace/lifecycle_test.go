@@ -19,12 +19,13 @@ const lcRepo = "o/r"
 
 // fakeWP is a scriptable Workplace that records its calls.
 type fakeWP struct {
-	prepareErr, spawnErr, sessionsErr, stopErr, removeErr error
-	spawned                                               Session
-	sessions                                              []Session
-	spawns, stops, removes                                int
-	stopped                                               []string
-	removed                                               []string
+	prepareErr, spawnErr, sessionsErr, stopErr, removeErr, discardErr error
+	spawned                                                           Session
+	sessions                                                          []Session
+	spawns, stops, removes                                            int
+	stopped                                                           []string
+	removed                                                           []string
+	discarded                                                         []string
 }
 
 func (f *fakeWP) Prepare(_ context.Context, branch string) (Workspace, error) {
@@ -53,6 +54,11 @@ func (f *fakeWP) Remove(_ context.Context, id string) error {
 	f.removes++
 	f.removed = append(f.removed, id)
 	return f.removeErr
+}
+
+func (f *fakeWP) Discard(_ context.Context, id string) error {
+	f.discarded = append(f.discarded, id)
+	return f.discardErr
 }
 
 func takeRun(t *testing.T, db *sql.DB, issue int, started time.Time) (runs.Run, string) {
@@ -224,14 +230,34 @@ func TestCheckOpenUncertainPastMaxWait(t *testing.T) {
 	if got := rowOf(t, db, run.ID); got.outcome != "returned" || got.reason != "start uncertain: no session found" {
 		t.Errorf("row = %+v", got)
 	}
+	if want := []string{"w1"}; !reflect.DeepEqual(w.discarded, want) {
+		t.Errorf("discarded = %v, want %v", w.discarded, want)
+	}
+}
+
+func TestCheckOpenDiscardFailsStillReturnsRow(t *testing.T) {
+	db := openLeftoverDB(t)
+	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-11*time.Minute), "")
+	w := &fakeWP{discardErr: errors.New("read-only state dir")}
+	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
+	if err == nil || !strings.Contains(err.Error(), "read-only state dir") {
+		t.Fatalf("err = %v, want the discard error", err)
+	}
+	if want := []Closed{{RunID: run.ID, Issue: 7, Reason: ReasonUncertain}}; !reflect.DeepEqual(closed, want) {
+		t.Errorf("closed = %+v, want %+v", closed, want)
+	}
+	if got := rowOf(t, db, run.ID); got.outcome != "returned" {
+		t.Errorf("row = %+v", got)
+	}
 }
 
 func TestCheckOpenUncertainWithinMaxWait(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-9*time.Minute), "")
-	closed, err := CheckOpen(context.Background(), db, &fakeWP{}, lcRepo, lcLimits, lcNow)
-	if err != nil || len(closed) != 0 {
-		t.Fatalf("CheckOpen = %v, %v", closed, err)
+	w := &fakeWP{}
+	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
+	if err != nil || len(closed) != 0 || len(w.discarded) != 0 {
+		t.Fatalf("CheckOpen = %v, %v, discarded %v", closed, err, w.discarded)
 	}
 	if got := rowOf(t, db, run.ID); got.outcome != "" {
 		t.Errorf("row = %+v", got)

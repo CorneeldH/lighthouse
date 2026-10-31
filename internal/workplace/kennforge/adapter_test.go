@@ -617,6 +617,76 @@ func TestRemove404Gone(t *testing.T) {
 	}
 }
 
+// writeCarrier puts a carrier for ws1 in the state dir, as a spawn leaves it.
+func writeCarrier(t *testing.T, a *Adapter) {
+	t.Helper()
+	c, err := workplace.NewCarrier(spec(), a.StateDir, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workplace.WriteCarrier(a.StateDir, "ws1", c); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRemoveWipesCarrier(t *testing.T) {
+	for _, status := range []int{204, 404} {
+		f, a := newFakeForge(t)
+		f.deleteStatus = status
+		writeCarrier(t, a)
+		if err := a.Remove(context.Background(), "ws1"); err != nil {
+			t.Fatalf("%d: err = %v", status, err)
+		}
+		if carrierExists(a) {
+			t.Errorf("%d: carrier kept, want wiped", status)
+		}
+	}
+}
+
+func TestRemoveRefusedKeepsCarrier(t *testing.T) {
+	for _, status := range []int{409, 500} {
+		f, a := newFakeForge(t)
+		f.deleteStatus = status
+		writeCarrier(t, a)
+		if err := a.Remove(context.Background(), "ws1"); err == nil {
+			t.Fatalf("%d: err = nil, want an error", status)
+		}
+		if !carrierExists(a) {
+			t.Errorf("%d: carrier wiped, want kept", status)
+		}
+	}
+}
+
+func TestRemoveReportsFailedCarrierWipe(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	_, a := newFakeForge(t)
+	writeCarrier(t, a)
+	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "ws1"))
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("err = %v, want the wipe error", err)
+	}
+}
+
+func TestDiscardWipesCarrier(t *testing.T) {
+	_, a := newFakeForge(t)
+	writeCarrier(t, a)
+	if err := a.Discard(context.Background(), "ws1"); err != nil {
+		t.Fatal(err)
+	}
+	if carrierExists(a) {
+		t.Error("carrier kept, want wiped")
+	}
+	if err := a.Discard(context.Background(), "ws1"); err != nil {
+		t.Errorf("second Discard = %v, want nil for a missing carrier", err)
+	}
+}
+
 func TestRemoveOtherErrorPassedOn(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.deleteStatus = 500

@@ -77,7 +77,9 @@ type Closed struct {
 
 // CheckOpen settles the open runs of repo that have a workspace: it looks up
 // the session of an uncertain start, and stops a run past MaxRuntime. A run it
-// cannot measure or stop stays open; the errors are joined.
+// cannot measure or stop stays open; the errors are joined. A run it returns
+// as uncertain has its launch discarded; a failed Discard is joined, and the
+// run is still returned.
 func CheckOpen(ctx context.Context, db *sql.DB, w Workplace, repo string, lim Limits, now time.Time) ([]Closed, error) {
 	open, err := runs.Open(ctx, db, repo)
 	if err != nil {
@@ -112,6 +114,10 @@ func CheckOpen(ctx context.Context, db *sql.DB, w Workplace, repo string, lim Li
 					continue
 				}
 				closed = append(closed, Closed{RunID: run.ID, Issue: run.Issue, Reason: ReasonUncertain})
+				// The row is closed: a late target must not start its agent any more.
+				if err := w.Discard(ctx, run.WorkspaceID); err != nil {
+					errs = append(errs, fmt.Errorf("discard launch of run %d: %w", run.ID, err))
+				}
 				continue
 			}
 		}
