@@ -133,6 +133,10 @@ func TestBusyReason(t *testing.T) {
 	if want := "workplace busy: session k2, idle since unknown"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
+	got = BusyReason(sess("k3", "", "x", time.Time{}))
+	if want := "workplace busy: session k3, unknown since unknown"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
 }
 
 func TestForeignLiveStaleIdle(t *testing.T) {

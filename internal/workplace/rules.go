@@ -54,11 +54,14 @@ func foreignBusy(s Session, activity map[string]time.Time, now time.Time, maxWai
 
 // BusyReason explains why Busy returned s.
 func BusyReason(s Session) string {
-	since := "unknown"
+	state, since := s.State, "unknown"
+	if state == "" {
+		state = "unknown"
+	}
 	if !s.UpdatedAt.IsZero() {
 		since = s.UpdatedAt.Local().Format("15:04")
 	}
-	return fmt.Sprintf("workplace busy: session %s, %s since %s", s.Key, s.State, since)
+	return fmt.Sprintf("workplace busy: session %s, %s since %s", s.Key, state, since)
 }
 
 // ForeignLive returns the first session whose key is not in ownKeys and that
