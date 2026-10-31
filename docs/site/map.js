@@ -10,21 +10,20 @@ const TRIGGERS = {
   tool: "a tool call",
   github: "a GitHub event",
 };
-// The long form of a trigger, in the terms of the harness docs.
+// A trigger in the terms of the harness docs.
 const STARTS = {
-  you: "User-invoked: you ask for it, or type its slash command.",
-  skill: "Invoked by another skill, which names it in its own steps.",
-  description: "Model-invoked: the agent loads it by itself when the task matches its description.",
-  tool: "A hook event: the harness runs it around a tool call, without the model choosing it.",
-  github: "A GitHub event starts it, outside any session.",
+  you: "User-invoked",
+  skill: "Invoked by another skill",
+  description: "Model-invoked",
+  tool: "Hook event",
+  github: "GitHub event",
 };
-// What each form is, so a skill and an agent with similar names read apart.
 const FORMS = {
-  skill: "A skill: instructions the session loads and follows itself, in its own context.",
-  agent: "An agent: a subagent with a clean context of its own. It does one job apart and hands back only its result.",
-  hook: "A hook: a script the harness runs at a fixed event. The model does not choose it.",
-  workflow: "A GitHub Actions workflow: it runs on GitHub, outside any session.",
-  github: "A GitHub object or check. Lighthouse shapes it but does not run it.",
+  skill: "Skill",
+  agent: "Agent",
+  hook: "Hook",
+  workflow: "Workflow",
+  github: "GitHub",
 };
 const WIDTH = 1260; // virtual width of the map, equal to the min-width of .map in map.css
 const HEAD = 64; // height of the column heads, in px
@@ -201,7 +200,7 @@ function box(kicker, heading, ...body) {
 }
 
 function chipButton(chip, columns) {
-  const button = el("button", `chip kind-${chip.kind} status-${chip.status}`);
+  const button = el("button", `chip kind-${chip.kind} form-${form(chip)} status-${chip.status}`);
   button.type = "button";
   button.dataset.id = chip.id;
   button.title = `${chip.label}: ${TRIGGERS[chip.trigger] || chip.trigger}, ${chip.status}`;
@@ -361,8 +360,7 @@ export function renderFlowMap(root, data, detail) {
           "",
           facts([
             ["What it is", FORMS[kind]],
-            ["How it starts", STARTS[chip.trigger] || chip.trigger],
-            ["When it starts", chip.when],
+            ["When it starts", STARTS[chip.trigger] || chip.trigger],
             ["Who provides it", provider(chip.kind, chip.source)],
             ["What you miss without", chip.without],
             ["Status", statusText(chip)],

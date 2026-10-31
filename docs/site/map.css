@@ -20,6 +20,8 @@
   --link: #1f4fd1;
   --lighthouse: #2f5bd8;
   --lighthouse-fg: #ffffff;
+  --agent: #7b3fc4;
+  --agent-fg: #ffffff;
   --superpowers: #087a5b;
   --superpowers-fg: #ffffff;
   --hook: #e07b4c;
@@ -50,6 +52,8 @@
     --link: #8fb0ff;
     --lighthouse: #4169e1;
     --lighthouse-fg: #ffffff;
+    --agent: #9466e0;
+    --agent-fg: #ffffff;
     --superpowers: #00a87c;
     --superpowers-fg: #06140f;
     --hook: #e58a5e;
@@ -80,6 +84,8 @@
   --link: #8fb0ff;
   --lighthouse: #4169e1;
   --lighthouse-fg: #ffffff;
+  --agent: #9466e0;
+  --agent-fg: #ffffff;
   --superpowers: #00a87c;
   --superpowers-fg: #06140f;
   --hook: #e58a5e;
@@ -224,6 +230,12 @@ button:focus-visible {
 .kind-github {
   --kind: var(--github);
   --kind-fg: var(--github-fg);
+}
+
+/* An agent is a lighthouse part too, but runs as a subagent: its own colour, after the kinds. */
+.form-agent {
+  --kind: var(--agent);
+  --kind-fg: var(--agent-fg);
 }
 
 .sample {

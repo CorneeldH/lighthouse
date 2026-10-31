@@ -77,28 +77,9 @@
       "status": "works"
     },
     {
-      "id": "worktree-guard",
-      "phase": "orient",
-      "row": 0,
-      "kind": "hook",
-      "trigger": "tool",
-      "label": "worktree-guard",
-      "what": "Warns, and never blocks, at a write into the main checkout on main.",
-      "how": [
-        "It runs on PreToolUse for Edit and Write and checks the target file path, not the working directory.",
-        "It compares the git dir with the common git dir to tell a linked worktree from the main checkout, and reads the protected branch from lighthouse.toml.",
-        "On a match it returns a systemMessage with the git worktree add command; when it cannot check, the message says COULD NOT CHECK.",
-        "It always exits 0."
-      ],
-      "when": "Before each Edit or Write.",
-      "without": "A write into the main checkout on main passes without a warning.",
-      "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-guard.sh"
-    },
-    {
       "id": "start-issue",
       "phase": "orient",
-      "row": 1,
+      "row": 0,
       "kind": "lighthouse",
       "trigger": "you",
       "label": "start-issue",
@@ -113,6 +94,25 @@
       "without": "You pick the route and set up the worktree by hand.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/start-issue"
+    },
+    {
+      "id": "worktree-guard",
+      "phase": "orient",
+      "row": 1,
+      "kind": "hook",
+      "trigger": "tool",
+      "label": "worktree-guard",
+      "what": "Warns, and never blocks, at a write into the main checkout on main.",
+      "how": [
+        "It runs on PreToolUse for Edit and Write and checks the target file path, not the working directory.",
+        "It compares the git dir with the common git dir to tell a linked worktree from the main checkout, and reads the protected branch from lighthouse.toml.",
+        "On a match it returns a systemMessage with the git worktree add command; when it cannot check, the message says COULD NOT CHECK.",
+        "It always exits 0."
+      ],
+      "when": "Before each Edit or Write.",
+      "without": "A write into the main checkout on main passes without a warning.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-guard.sh"
     },
     {
       "id": "using-git-worktrees",
