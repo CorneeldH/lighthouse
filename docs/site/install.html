@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install lighthouse</title>
+<link rel="stylesheet" href="map.css">
+<script type="module" src="install.js"></script>
+</head>
+<body>
+<header class="page-head">
+  <div>
+    <h1>Install lighthouse</h1>
+  </div>
+  <a class="back-link" href="index.html">Lighthouse</a>
+  <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
+</header>
+
+<main id="install" class="download">
+  <p id="release-version">latest release</p>
+  <p class="download-lead">Paste one block into a terminal. It checks the binary against
+  <code>SHA256SUMS</code> before it puts it in <code>~/.local/bin</code>, without
+  <code>sudo</code>.</p>
+  <p id="platform-note" hidden></p>
+
+  <details class="platform" data-platform="linux-amd64">
+    <summary>Linux x86-64</summary>
+<pre><code>cd "$(mktemp -d)" &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_amd64 &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &amp;&amp;
+sha256sum --check --ignore-missing SHA256SUMS &amp;&amp;
+chmod +x lighthouse_linux_amd64 &amp;&amp;
+mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_linux_amd64 ~/.local/bin/lighthouse &amp;&amp;
+~/.local/bin/lighthouse version</code></pre>
+    <p class="path-hint">Not on your <code>PATH</code> yet? Add
+    <code>export PATH="$HOME/.local/bin:$PATH"</code> to <code>~/.bashrc</code>.</p>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_amd64">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> and <code>chmod +x</code> it yourself.</p>
+  </details>
+
+  <details class="platform" data-platform="linux-arm64">
+    <summary>Linux ARM</summary>
+<pre><code>cd "$(mktemp -d)" &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_arm64 &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &amp;&amp;
+sha256sum --check --ignore-missing SHA256SUMS &amp;&amp;
+chmod +x lighthouse_linux_arm64 &amp;&amp;
+mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_linux_arm64 ~/.local/bin/lighthouse &amp;&amp;
+~/.local/bin/lighthouse version</code></pre>
+    <p class="path-hint">Not on your <code>PATH</code> yet? Add
+    <code>export PATH="$HOME/.local/bin:$PATH"</code> to <code>~/.bashrc</code>.</p>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_linux_arm64">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> and <code>chmod +x</code> it yourself.</p>
+  </details>
+
+  <details class="platform" data-platform="darwin-arm64">
+    <summary>macOS Apple silicon</summary>
+<pre><code>cd "$(mktemp -d)" &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_darwin_arm64 &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &amp;&amp;
+shasum -a 256 -c --ignore-missing SHA256SUMS &amp;&amp;
+chmod +x lighthouse_darwin_arm64 &amp;&amp;
+mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_darwin_arm64 ~/.local/bin/lighthouse &amp;&amp;
+~/.local/bin/lighthouse version</code></pre>
+    <p class="path-hint">Not on your <code>PATH</code> yet? Add
+    <code>export PATH="$HOME/.local/bin:$PATH"</code> to <code>~/.zshrc</code>.</p>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_darwin_arm64">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> and <code>chmod +x</code> it yourself.</p>
+  </details>
+
+  <details class="platform" data-platform="darwin-amd64">
+    <summary>macOS Intel</summary>
+<pre><code>cd "$(mktemp -d)" &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_darwin_amd64 &amp;&amp;
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &amp;&amp;
+shasum -a 256 -c --ignore-missing SHA256SUMS &amp;&amp;
+chmod +x lighthouse_darwin_amd64 &amp;&amp;
+mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_darwin_amd64 ~/.local/bin/lighthouse &amp;&amp;
+~/.local/bin/lighthouse version</code></pre>
+    <p class="path-hint">Not on your <code>PATH</code> yet? Add
+    <code>export PATH="$HOME/.local/bin:$PATH"</code> to <code>~/.zshrc</code>.</p>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_darwin_amd64">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> and <code>chmod +x</code> it yourself.</p>
+  </details>
+
+  <details class="platform" data-platform="windows-amd64">
+    <summary>Windows</summary>
+    <p class="platform-intro">The hooks need WSL: inside WSL, use the Linux x86-64 block. The Windows
+    binary runs the CLI only. In PowerShell:</p>
+<pre><code>&amp; {
+  $ErrorActionPreference = "Stop"
+  $ProgressPreference = "SilentlyContinue"
+  $base = "https://github.com/CorneeldH/lighthouse/releases/latest/download"
+  Invoke-WebRequest -UseBasicParsing "$base/lighthouse_windows_amd64.exe" -OutFile lighthouse.exe
+  Invoke-WebRequest -UseBasicParsing "$base/SHA256SUMS" -OutFile SHA256SUMS
+  $want = ((Select-String -Path SHA256SUMS -Pattern "lighthouse_windows_amd64.exe").Line -split "\s+")[0]
+  $have = (Get-FileHash -Algorithm SHA256 lighthouse.exe).Hash.ToLower()
+  if ($have -ne $want) { Remove-Item lighthouse.exe; throw "Checksum mismatch: lighthouse.exe removed" }
+  .\lighthouse.exe version
+}</code></pre>
+    <p class="file-line"><a class="file-link" href="https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_windows_amd64.exe">or download the file</a>.
+    Check it against <code>SHA256SUMS</code> yourself.</p>
+  </details>
+
+
+  <p class="next-step">Next: run <code>lighthouse init</code> in your repository, as the
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#run-lighthouse-init">getting-started guide</a>
+  shows. Check the <a href="index.html#who">requirements</a> first.</p>
+</main>
+
+<footer class="links">
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md">Getting started</a>
+  <a href="https://github.com/CorneeldH/lighthouse/issues/88">Agent guide (coming, #88)</a>
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/LICENSE">License</a>
+  <a href="https://github.com/CorneeldH/lighthouse/blob/main/CHANGELOG.md">Changelog</a>
+</footer>
+</body>
+</html>
