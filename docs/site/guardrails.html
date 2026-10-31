@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The guardrails</title>
+<link rel="stylesheet" href="map.css">
+<script type="module" src="guardrails.js"></script>
+</head>
+<body>
+<header class="page-head">
+  <div>
+    <h1 id="title">The guardrails</h1>
+    <p id="subtitle" class="subtitle">One turn in Claude Code, and which hook steps in when.</p>
+  </div>
+  <a class="back-link" href="index.html">All maps</a>
+  <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
+</header>
+
+<p id="serve-hint" class="serve-hint">This map reads its data with <code>fetch</code>, which a
+browser blocks for a page opened straight from disk. From the root of the repository, run
+<code>python3 -m http.server --directory docs/site</code> and open
+<code>http://localhost:8000/guardrails.html</code>.</p>
+
+<details class="why">
+  <summary>Wait, but why?</summary>
+  <p><strong>Why does it stop me now?</strong> This map answers that. It follows one turn from
+  the prompt to the stop, and shows which hook can step in at each moment, on which tool, from
+  which pack, and what it does.</p>
+  <p><strong>A rule sets the norm, a hook steps in.</strong> Each guardrail is the
+  counterpart of a rule in <code>AGENTS.md</code> or a skill. The rule carries the norm
+  beforehand; the hook steps in at the moment itself, with a warning or with a hard line, as the headers of
+  <code>main-commit-guard.sh</code> and <code>worktree-guard.sh</code> explain.</p>
+  <p class="aside">Why lighthouse works this way at all: see <a href="index.html#why">the
+  overview</a>.</p>
+</details>
+
+<section class="legend" aria-label="Legend">
+  <ul aria-label="Who provides it">
+    <li><span class="swatch kind-hook"></span>hook</li>
+  </ul>
+  <ul aria-label="How it starts">
+    <li>⚡ a tool call</li>
+    <li>◷ a turn event</li>
+  </ul>
+  <ul aria-label="What it does">
+    <li>blocks the step</li>
+    <li>warns, does not block</li>
+    <li>formats the file</li>
+    <li>records state for a later hook</li>
+  </ul>
+</section>
+
+<div id="guardrails-map"></div>
+
+<aside id="detail" class="detail" aria-label="Details"></aside>
+
+</body>
+</html>

@@ -15,8 +15,10 @@ FIXTURE = ROOT / "tests" / "fixtures" / "site" / "map.json"
 REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/"
 
 KINDS = {"lighthouse", "superpowers", "hook", "github"}
-TRIGGERS = {"you", "skill", "description", "tool", "github"}
+TRIGGERS = {"you", "skill", "description", "tool", "event", "github"}
 STATUSES = {"works", "planned", "idea"}
+# An optional `effects` lists what a hook chip does: it blocks, warns, formats or records a baseline.
+EFFECTS = {"blocks", "warns", "formats", "records"}
 # An optional `form` names a part that is no skill, agent, hook or workflow of a pack.
 FORMS = {"tool", "dispatcher"}
 REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "how", "when", "without", "status"]
@@ -87,6 +89,8 @@ def vocabulary_problems(chain: dict) -> list[str]:
             problems.append(f"{name}: unknown status")
         if "form" in chip and chip["form"] not in FORMS:
             problems.append(f"{name}: unknown form")
+        if "effects" in chip and not (chip["effects"] and set(chip["effects"]) <= EFFECTS):
+            problems.append(f"{name}: unknown effect")
         if chip.get("phase") not in phases:
             problems.append(f"{name}: unknown phase")
         if name in seen_ids:
@@ -244,6 +248,12 @@ def test_fixture_unknown_status_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
     chain["chips"][0]["status"] = "done"
     assert vocabulary_problems(chain) == ["write-issue: unknown status"]
+
+
+def test_fixture_unknown_effect_is_flagged():
+    chain = copy.deepcopy(load_map(FIXTURE))
+    chain["chips"][1]["effects"] = ["shouts"]
+    assert vocabulary_problems(chain) == ["main-commit-guard: unknown effect"]
 
 
 def test_phases_are_the_seven_of_the_chain():

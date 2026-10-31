@@ -149,6 +149,9 @@ which hook can step in. Run the skills in Claude Code, in your repository.
 To see the chain as a map, open [the chain map](https://corneeldh.github.io/lighthouse/chain.html).
 In a clone of the lighthouse repository, run `python3 -m http.server --directory docs/site` from its
 root and open [the local copy](site/chain.html) at `http://localhost:8000/chain.html`.
+Which hook steps in at which moment is on
+[the guardrails map](https://corneeldh.github.io/lighthouse/guardrails.html), and locally at
+[site/guardrails.html](site/guardrails.html).
 
 1. **Write the issue.** Type `/lighthouse-write-issue` and describe the change. You get an issue
    on GitHub with acceptance criteria, in `project.language`.
