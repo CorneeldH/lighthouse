@@ -1,8 +1,9 @@
 // The session page: the flow map from data/session.json.
 
-import { initTheme, loadJson, renderFlowMap } from "./map.js";
+import { fillLegend, initTheme, loadJson, renderFlowMap } from "./map.js";
 
 initTheme(document.getElementById("theme-toggle"));
+fillLegend(document.querySelector("[data-sorts]"));
 
 try {
   const session = await loadJson("data/session.json");

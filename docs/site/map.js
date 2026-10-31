@@ -1,9 +1,22 @@
 // Shared flow map of the lighthouse site: columns of chips, route buttons, handoff badges and a
-// detail drawer. Data reaches the page only through textContent and
+// detail drawer. SORTS is the one table of glyphs and labels, used by chips and legends. Data reaches the page only through textContent and
 // attributes, never as HTML, so a label such as issue-<nr>-<slug> shows as written.
 
-const GLYPHS = { you: "⌨", skill: "↪", description: "◎", tool: "⚡", event: "◷", github: "⚙" };
-const AGENT_GLYPH = "◆"; // an agent keeps its own mark, whatever starts it
+/** The sorts of thing on the maps, each with one glyph and one label. The glyph says what a thing
+    is; what starts it is in the title, the drawer and the screen-reader text. */
+export const SORTS = {
+  program: { glyph: "⛯", label: "lighthouse, the program" },
+  "workflow-skill": { glyph: "↪", label: "Workflow skill" },
+  "standard-skill": { glyph: "✓", label: "Standard skill" },
+  agent: { glyph: "◆", label: "Agent" },
+  hook: { glyph: "⚡", label: "Hook" },
+  rules: { glyph: "§", label: "Rules" },
+  config: { glyph: "⚙", label: "Config" },
+  github: { glyph: "⑂", label: "GitHub" },
+  loop: { glyph: "∞", label: "The loop" },
+  session: { glyph: "❯", label: "A session" },
+  you: { glyph: "▣", label: "You bring it" },
+};
 const TRIGGERS = {
   you: "you invoke it",
   skill: "another skill invokes it",
@@ -153,9 +166,34 @@ function form(chip) {
   return "github";
 }
 
-/** The mark on a chip: the agent mark for an agent, otherwise the mark of its trigger. */
-function glyphOf(chip) {
-  return form(chip) === "agent" ? AGENT_GLYPH : GLYPHS[chip.trigger] || "?";
+// A form of the flow maps that is no sort of its own: a GitHub Actions workflow is GitHub, an
+// external tool is something you bring, the dispatcher is the lighthouse program.
+const SORT_OF_FORM = { workflow: "github", tool: "you", dispatcher: "program" };
+
+/** The key of SORTS an item belongs to. */
+export function sortOf(item) {
+  const kind = form(item);
+  if (kind === "skill") {
+    return item.trigger === "description" ? "standard-skill" : "workflow-skill";
+  }
+  return SORT_OF_FORM[kind] || kind;
+}
+
+/** The mark on a chip: the glyph of its sort. */
+export function glyphOf(item) {
+  const sort = SORTS[sortOf(item)];
+  return sort ? sort.glyph : "?";
+}
+
+/** Fills a legend list with one item per sort named in its data-sorts, as "<glyph> <label>". */
+export function fillLegend(list) {
+  const items = list.dataset.sorts.split(/\s+/).filter(Boolean).map((name) => {
+    if (!SORTS[name]) {
+      throw new Error(`unknown sort in legend: ${name}`);
+    }
+    return el("li", "", `${SORTS[name].glyph} ${SORTS[name].label}`);
+  });
+  list.replaceChildren(...items);
 }
 
 /** `how` as a list of steps; a single string stays one paragraph. */
@@ -414,7 +452,7 @@ export function renderFlowMap(root, data, detail) {
       button,
       [
         box(
-          `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${GLYPHS[chip.trigger] || "?"} ${TRIGGERS[chip.trigger] || chip.trigger}`,
+          `${phaseLabel.get(chip.phase) || chip.phase} · ${kind} · ${TRIGGERS[chip.trigger] || chip.trigger}`,
           `${glyph} ${chip.label}`,
           el("p", "summary", chip.what),
         ),

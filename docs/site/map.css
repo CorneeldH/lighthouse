@@ -28,6 +28,10 @@
   --hook-fg: #16181d;
   --github: #c9cbd1;
   --github-fg: #16181d;
+  --config: #f4d74b;
+  --config-fg: #16181d;
+  --you: #ffffff;
+  --you-fg: #16181d;
   --idea: #5f6470;
   --badge-bg: #14213d;
   --badge-fg: #ffffff;
@@ -60,6 +64,10 @@
     --hook-fg: #16181d;
     --github: #d4d4d8;
     --github-fg: #16181d;
+    --config: #d9b92e;
+    --config-fg: #16181d;
+    --you: #222a3d;
+    --you-fg: #e8eaf0;
     --idea: #9aa0ab;
     --badge-bg: #ffffff;
     --badge-fg: #14213d;
@@ -92,6 +100,10 @@
   --hook-fg: #16181d;
   --github: #d4d4d8;
   --github-fg: #16181d;
+  --config: #d9b92e;
+  --config-fg: #16181d;
+  --you: #222a3d;
+  --you-fg: #e8eaf0;
   --idea: #9aa0ab;
   --badge-bg: #ffffff;
   --badge-fg: #14213d;
@@ -236,6 +248,26 @@ button:focus-visible {
 .form-agent {
   --kind: var(--agent);
   --kind-fg: var(--agent-fg);
+}
+
+/* A you-brought part is a white box with a border; rules and config are yellow; the loop and a
+   session are dark, like a handoff badge. */
+.kind-you {
+  --kind: var(--you);
+  --kind-fg: var(--you-fg);
+  border: 1.5px solid var(--border);
+}
+
+.form-rules,
+.form-config {
+  --kind: var(--config);
+  --kind-fg: var(--config-fg);
+}
+
+.form-loop,
+.form-session {
+  --kind: var(--badge-bg);
+  --kind-fg: var(--badge-fg);
 }
 
 .sample {
