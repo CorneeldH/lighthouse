@@ -95,7 +95,7 @@
       "repo": "o/r",
       "issue": 7,
       "reason": "reason_bad_handoff",
-      "reason_arg": "protocol: handoff: fields missing: when",
+      "reason_arg": "fields missing: when",
       "language": "nl"
     }
   ]

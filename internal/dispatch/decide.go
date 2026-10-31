@@ -537,7 +537,7 @@ func (c issueCtx) handoff() (planned, bool) {
 	}
 	ho, err := protocol.ParseHandoff(p.Header)
 	if err != nil {
-		return c.returned("reason_bad_handoff", err.Error()), true
+		return c.returned("reason_bad_handoff", strings.TrimPrefix(err.Error(), protocol.ErrHandoff.Error()+": ")), true
 	}
 	if ho.Issue != c.it.Issue {
 		return c.returned("reason_not_allowed", ho.Next), true
