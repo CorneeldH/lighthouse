@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -243,5 +244,20 @@ func TestClientNilHTTPReusesConnection(t *testing.T) {
 	}
 	if conns.Load() != 1 {
 		t.Fatalf("connections = %d, want 1 (a transport per request leaks idle connections)", conns.Load())
+	}
+}
+
+func TestDetailCutsAtRuneBoundary(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ in, want string }{
+		{" not found\n", "not found"},
+		{strings.Repeat("a", 201), strings.Repeat("a", 200)},
+		// é is two bytes at 199-200: cutting at 200 would split it.
+		{strings.Repeat("a", 199) + "é" + "z", strings.Repeat("a", 199)},
+	}
+	for _, c := range cases {
+		if got := detail([]byte(c.in)); got != c.want {
+			t.Errorf("detail(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }

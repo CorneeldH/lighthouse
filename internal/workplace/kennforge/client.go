@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
@@ -124,10 +125,15 @@ func (c *Client) do(ctx context.Context, method, path string, body any, timeout 
 	return nil
 }
 
+// detail is the trimmed answer body, cut to 200 bytes, never inside a UTF-8 character.
 func detail(b []byte) string {
 	s := strings.TrimSpace(string(b))
-	if len(s) > 200 {
-		s = s[:200]
+	n := 200
+	if len(s) <= n {
+		return s
 	}
-	return s
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
