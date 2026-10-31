@@ -332,3 +332,9 @@ def test_fixture_snapshot_not_iso_is_flagged():
     system = fixture_system()
     system["snapshot"] = "31-10-2026"
     assert snapshot_problems(system) == ["snapshot is not an ISO date: 31-10-2026"]
+
+
+def test_page_shows_the_snapshot():
+    assert 'id="snapshot"' in (SITE / "system.html").read_text(encoding="utf-8")
+    script = (SITE / "system.js").read_text(encoding="utf-8")
+    assert ".snapshot" in script and "Snapshot of" in script

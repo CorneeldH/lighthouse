@@ -942,3 +942,155 @@ a.tile:focus-visible {
   padding: 6px 0;
   color: var(--link);
 }
+
+/* System map: the parts as nested boxes, works solid and planned grey hatched, with thin lines
+   for the links on top. Its own classes, so nothing of .map or .chip applies. */
+
+.snapshot {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.plan {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 24px 72px;
+  margin-top: 12px;
+}
+
+.plan > .plan-group {
+  grid-column: 1 / -1;
+}
+
+.plan-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--col-bg);
+}
+
+.plan-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.plan-group > .plan-title {
+  grid-column: 1 / -1;
+}
+
+.plan-title {
+  margin: 0;
+  color: var(--col-fg);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.plan-part {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1.5px solid var(--lighthouse);
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition: box-shadow 0.2s;
+}
+
+.plan-head {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.plan-mark,
+.plan-part .release {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.plan-part .release {
+  flex-basis: 100%;
+}
+
+.plan-part.status-works,
+.plan-swatch.status-works {
+  background: var(--lighthouse);
+  border-color: var(--lighthouse);
+  color: var(--lighthouse-fg);
+}
+
+.plan-part.status-planned,
+.plan-part.status-idea,
+.plan-swatch.status-planned {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--idea) 22%, transparent) 0 6px,
+    transparent 6px 12px
+  );
+  border: 1.5px dotted var(--idea);
+  color: var(--fg);
+}
+
+.plan-part.current {
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--accent-soft);
+}
+
+.plan-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.plan-lines line {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.plan-lines line.planned {
+  stroke-dasharray: 5 4;
+}
+
+.plan-lines text {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.plan-issues {
+  font-size: 13.5px;
+}
+
+.plan-issues li + li {
+  margin-top: 4px;
+}
+
+@media (max-width: 700px) {
+  .plan {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

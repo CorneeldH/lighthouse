@@ -42,6 +42,7 @@ const HEAD = 64; // height of the column heads, in px
 const ROW = 46; // height of one row of chips, in px
 const SVG_NS = "http://www.w3.org/2000/svg";
 const THEME_KEY = "lighthouse-theme";
+const ISSUE_URL = "https://github.com/CorneeldH/lighthouse/issues/";
 const drawers = new WeakMap(); // detail element -> its drawer
 
 /** Fetches and parses a JSON file; throws when the request fails. */
@@ -653,4 +654,216 @@ export function renderFlowMap(root, data, detail) {
   if (routes.length) {
     select(0);
   }
+}
+
+/** The issues of the part `partId` and of every part below it, in the order of the data. */
+function issuesOf(data, partId) {
+  const ids = new Set([partId]);
+  let grown = true;
+  while (grown) {
+    grown = false;
+    for (const part of data.parts || []) {
+      if (part.parent && ids.has(part.parent) && !ids.has(part.id)) {
+        ids.add(part.id);
+        grown = true;
+      }
+    }
+  }
+  return (data.issues || []).filter((issue) => ids.has(issue.part));
+}
+
+/** The title of milestone `number`, as GitHub names it; empty when the data does not know it. */
+function milestoneTitle(data, number) {
+  return (data.milestones || []).find((milestone) => milestone.number === number)?.title || "";
+}
+
+/** "works", or "planned, <milestone title>", plus " · not in first release" when so marked. */
+function planStatus(item, data) {
+  let text = item.status;
+  const title = item.status === "planned" ? milestoneTitle(data, item.milestone) : "";
+  if (title) {
+    text += `, ${title}`;
+  }
+  if (item.not_in_first_release) {
+    text += " · not in first release";
+  }
+  return text;
+}
+
+function issueLink(issue, text) {
+  const link = el("a", "", text);
+  link.href = `${ISSUE_URL}${issue.issue}`;
+  return link;
+}
+
+/** The drawer of a part: what it does, when it runs, its status and its issues. */
+function showPart(drawer, part, data, node) {
+  const parent = (data.parts || []).find((other) => other.id === part.parent);
+  const issues = issuesOf(data, part.id);
+  const works = issues.filter((issue) => issue.status === "works").length;
+  let list;
+  if (issues.length) {
+    list = el("ul", "plan-issues");
+    for (const issue of issues) {
+      const item = el("li");
+      item.append(issueLink(issue, `#${issue.issue} ${issue.title}`), ` · ${issue.status}`);
+      list.append(item);
+    }
+  } else {
+    list = el("p", "", "No issues in a milestone yet.");
+  }
+  drawer.show(node, [
+    box(parent ? `In ${parent.label}` : "", part.label, el("p", "summary", part.what)),
+    box(
+      "",
+      "",
+      facts([
+        ["When it runs", part.when],
+        ["What you miss without", part.without],
+        ["Status", planStatus(part, data)],
+      ]),
+    ),
+    box(`Issues (${works}/${issues.length})`, "", list),
+    ...definition(part.source),
+  ]);
+}
+
+/** The drawer of an issue: its status, milestone and part, and a link to it on GitHub. */
+function showIssue(drawer, issue, data, node) {
+  const part = (data.parts || []).find((other) => other.id === issue.part);
+  const open = el("p");
+  open.append(issueLink(issue, `Open #${issue.issue} on GitHub`));
+  drawer.show(node, [
+    box(`Issue #${issue.issue}`, issue.title),
+    box(
+      "",
+      "",
+      facts([
+        ["Status", issue.status],
+        ["Milestone", milestoneTitle(data, issue.milestone)],
+        ["Part", part?.label || issue.part],
+      ]),
+      open,
+    ),
+  ]);
+}
+
+/**
+ * Renders the plan map into `root`: every part as a box in a grid, a part with parts below it as
+ * a container around them, and the links between parts as thin lines on top. A click on a part
+ * opens `detail` as a drawer. `redraw()` measures the boxes again and moves the lines; it does
+ * nothing while `root` is hidden.
+ */
+export function renderPlanMap(root, data, detail) {
+  const parts = data.parts || [];
+  const links = data.links || [];
+  const byId = new Map(parts.map((part) => [part.id, part]));
+  const boxes = new Map(); // part id -> the element a line ends on
+  const drawer = drawerFor(detail);
+
+  const partButton = (part, className) => {
+    const button = el("button", `${className} status-${part.status}`);
+    button.type = "button";
+    button.dataset.id = part.id;
+    button.append(el("span", "plan-label", part.label));
+    if (part.status === "planned") {
+      const title = milestoneTitle(data, part.milestone);
+      if (title) {
+        button.append(el("span", "plan-mark", title));
+      }
+    } else {
+      button.append(el("span", "sr-only", ` (${part.status})`));
+    }
+    if (part.not_in_first_release) {
+      button.append(el("span", "release", "not in first release"));
+    }
+    button.addEventListener("click", () => showPart(drawer, part, data, button));
+    return button;
+  };
+
+  // A part with parts below it is a container: its own head button (or, for a group, a title
+  // without a button) sits next to the buttons of its parts, never around them.
+  const build = (part) => {
+    const children = parts.filter((other) => other.parent === part.id);
+    if (!children.length) {
+      const button = partButton(part, "plan-part");
+      boxes.set(part.id, button);
+      return button;
+    }
+    const shell = el("div", part.group ? "plan-shell plan-group" : "plan-shell");
+    shell.append(
+      part.group ? el("p", "plan-title", part.label) : partButton(part, "plan-part plan-head"),
+    );
+    shell.append(...children.map(build));
+    boxes.set(part.id, shell);
+    return shell;
+  };
+
+  const plan = el("div", "plan");
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.classList.add("plan-lines");
+  svg.setAttribute("aria-hidden", "true");
+  const drawn = links
+    .filter((link) => byId.has(link.from) && byId.has(link.to))
+    .map((link) => {
+      const line = document.createElementNS(SVG_NS, "line");
+      const text = document.createElementNS(SVG_NS, "text");
+      text.textContent = link.label;
+      if (byId.get(link.from).status !== "works" || byId.get(link.to).status !== "works") {
+        line.classList.add("planned");
+        text.classList.add("planned");
+      }
+      svg.append(line, text);
+      return { link, line, text };
+    });
+  plan.append(...parts.filter((part) => !part.parent).map(build), svg);
+
+  function redraw() {
+    if (root.offsetParent === null) {
+      return;
+    }
+    const origin = plan.getBoundingClientRect();
+    const measure = (id) => {
+      const r = boxes.get(id).getBoundingClientRect();
+      const left = r.left - origin.left;
+      const top = r.top - origin.top;
+      return {
+        left,
+        top,
+        right: left + r.width,
+        bottom: top + r.height,
+        x: left + r.width / 2,
+        y: top + r.height / 2,
+      };
+    };
+    for (const { link, line, text } of drawn) {
+      const a = measure(link.from);
+      const b = measure(link.to);
+      // Facing sides: left and right when the centres lie further apart across than down. The
+      // centres, not the gaps: a part low in a tall container still faces sideways.
+      let start;
+      let end;
+      if (Math.abs(b.x - a.x) > Math.abs(b.y - a.y)) {
+        start = { x: b.x > a.x ? a.right : a.left, y: a.y };
+        end = { x: b.x > a.x ? b.left : b.right, y: b.y };
+      } else {
+        start = { x: a.x, y: b.y > a.y ? a.bottom : a.top };
+        end = { x: b.x, y: b.y > a.y ? b.top : b.bottom };
+      }
+      line.setAttribute("x1", start.x);
+      line.setAttribute("y1", start.y);
+      line.setAttribute("x2", end.x);
+      line.setAttribute("y2", end.y);
+      text.setAttribute("x", (start.x + end.x) / 2);
+      text.setAttribute("y", (start.y + end.y) / 2);
+    }
+  }
+
+  root.replaceChildren(
+    el("p", "map-hint", "Click a part for what it does, what you miss without it, and its issues."),
+    plan,
+  );
+  new ResizeObserver(redraw).observe(root);
+  redraw();
+  return { redraw };
 }
