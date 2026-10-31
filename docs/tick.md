@@ -84,7 +84,8 @@ rij, en tick geeft een verse run nooit terug als wees (`runstaat kwijt`). Claime
 dezelfde trigger tegelijk, dan wint één `runs.Take`; de ander post niets.
 
 Run-instructies en dragers staan onder `${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. De
-forge-kant (workspace, agent starten, bezet, opruimen) staat in [workplace.md](workplace.md).
+forge-kant (workspace, agent starten, bezet, opruimen) staat in [workplace.md](workplace.md). Een
+Vraag aan de gebruiker vanuit de werkplek post `lighthouse ask`, zie [ask.md](ask.md).
 
 ## Exitcodes
 
