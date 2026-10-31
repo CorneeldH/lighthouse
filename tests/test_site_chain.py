@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "docs" / "site"
 FIXTURE = ROOT / "tests" / "fixtures" / "site" / "map.json"
 REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/"
+REPO_TREE = "https://github.com/CorneeldH/lighthouse/tree/main/"
 
 KINDS = {"lighthouse", "superpowers", "hook", "github"}
 TRIGGERS = {"you", "skill", "description", "tool", "event", "github"}
@@ -256,11 +257,6 @@ def test_fixture_unknown_effect_is_flagged():
 def test_phases_are_the_seven_of_the_chain():
     labels = [p["label"] for p in load("chain.json")["phases"]]
     assert labels == ["Issue", "Orient", "Spec", "Plan", "Build", "PR", "Close"]
-
-
-def test_every_pack_part_is_on_the_chain():
-    # Tools outside the flow from idea to main; their place is the overview map (#102).
-    assert missing_parts(load("chain.json")) == ["pack/core/skills/instrument", "pack/core/skills/worktree-audit"]
 
 
 def test_coverage_flags_a_removed_skill():

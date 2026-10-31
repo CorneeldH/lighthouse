@@ -17,6 +17,9 @@
       "worktree-audit",
       "write-issue"
     ],
+    "standard_skills": [
+      "testing"
+    ],
     "agents": [
       "issue-impact-scout"
     ],
@@ -101,6 +104,9 @@
     "skills": [
       "go-writing"
     ],
+    "standard_skills": [
+      "go-writing"
+    ],
     "agents": [],
     "workflows": [],
     "hooks": [
@@ -128,6 +134,7 @@
       "**/package.json"
     ],
     "skills": [],
+    "standard_skills": [],
     "agents": [],
     "workflows": [],
     "hooks": [],
@@ -140,6 +147,9 @@
       "pyproject.toml"
     ],
     "skills": [
+      "python-writing"
+    ],
+    "standard_skills": [
       "python-writing"
     ],
     "agents": [],
@@ -174,6 +184,9 @@
     "skills": [
       "shell-gates"
     ],
+    "standard_skills": [
+      "shell-gates"
+    ],
     "agents": [],
     "workflows": [],
     "hooks": [
@@ -196,6 +209,7 @@
     "skills": [
       "refresh-expo-lockfiles"
     ],
+    "standard_skills": [],
     "agents": [],
     "workflows": [],
     "hooks": [],

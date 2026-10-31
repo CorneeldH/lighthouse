@@ -88,7 +88,7 @@ def test_site_links_resolve():
             assert target.is_file(), f"{path.name}: {link} points nowhere"
 
 
-MAP_PAGES = ["chain.html", "session.html", "system.html"]
+MAP_PAGES = ["chain.html", "session.html", "system.html", "reference.html"]
 
 
 @pytest.mark.parametrize("page", MAP_PAGES)

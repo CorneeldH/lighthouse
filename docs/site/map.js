@@ -55,6 +55,8 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const LINE_INSET = 24; // a line down runs this far, in px, inside the right side of its boxes
 const LINE_STAGGER = 16; // and each next link this much further left, so no two lines coincide
 const THEME_KEY = "lighthouse-theme";
+const REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/";
+const REPO_TREE = "https://github.com/CorneeldH/lighthouse/tree/main/";
 const ISSUE_URL = "https://github.com/CorneeldH/lighthouse/issues/";
 const drawers = new WeakMap(); // detail element -> its drawer
 
@@ -194,6 +196,67 @@ export function fillLegend(list) {
     return el("li", "", `${SORTS[name].glyph} ${SORTS[name].label}`);
   });
   list.replaceChildren(...items);
+}
+
+// The colour kind of each sort on the reference page; an agent adds its own colour by form-agent.
+const KIND_OF_SORT = {
+  "workflow-skill": "lighthouse",
+  "standard-skill": "lighthouse",
+  agent: "lighthouse",
+  hook: "hook",
+  github: "github",
+};
+
+// Per part of a pack: the names it lists, the sort of each and the repo path of its place.
+const REFERENCE_PARTS = {
+  skills: (pack, name) => ({
+    sort: pack.standard_skills.includes(name) ? "standard-skill" : "workflow-skill",
+    href: `${REPO_TREE}pack/${pack.name}/skills/${name}`,
+  }),
+  agents: (pack, name) => ({ sort: "agent", href: `${REPO_BLOB}pack/${pack.name}/agents/${name}.md` }),
+  hooks: (pack, name) => ({ sort: "hook", href: `${REPO_BLOB}pack/${pack.name}/hooks/${name}.sh` }),
+  workflows: (pack, name) => ({
+    sort: "github",
+    href: `${REPO_BLOB}pack/${pack.name}/workflows/${name}.yml`,
+  }),
+};
+
+/** The parts of one kind per pack, in the order of packs.json: [{pack, items: [{name, sort, href}]}].
+    A pack without a part of that kind is left out. `part` is skills, agents, hooks or workflows. */
+export function referenceEntries(packs, part) {
+  const make = REFERENCE_PARTS[part];
+  if (!make) {
+    throw new Error(`unknown part: ${part}`);
+  }
+  return packs
+    .map((pack) => ({
+      pack: pack.name,
+      items: pack[part].map((entry) => {
+        const name = part === "hooks" ? entry.name : entry;
+        return { name, ...make(pack, name) };
+      }),
+    }))
+    .filter((entry) => entry.items.length > 0);
+}
+
+/** Per pack a heading and a list of links to the parts of one kind, each with its glyph. */
+export function renderReference(root, packs, part) {
+  const groups = referenceEntries(packs, part).map((entry) => {
+    const group = el("div", "reference-pack");
+    group.append(el("h3", "", entry.pack));
+    const list = el("ul", "reference-list");
+    for (const item of entry.items) {
+      const link = el("a", `reference-link kind-${KIND_OF_SORT[item.sort]} form-${item.sort}`);
+      link.href = item.href;
+      link.append(el("span", "reference-glyph", SORTS[item.sort].glyph), ` ${item.name}`);
+      const row = el("li");
+      row.append(link);
+      list.append(row);
+    }
+    group.append(list);
+    return group;
+  });
+  root.replaceChildren(...groups);
 }
 
 /** `how` as a list of steps; a single string stays one paragraph. */

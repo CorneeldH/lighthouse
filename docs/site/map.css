@@ -1215,3 +1215,50 @@ a.tile:focus-visible {
     transparent 6px 12px
   );
 }
+
+/* Reference page: one link per part of a pack, coloured by kind */
+
+.reference {
+  margin-top: 28px;
+}
+
+.reference h2 {
+  margin: 0 0 4px;
+}
+
+.reference p {
+  margin: 4px 0 0;
+  max-width: 70ch;
+}
+
+.reference-part {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.reference-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reference-link {
+  display: block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--kind);
+  color: var(--kind-fg);
+  font-size: 13px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.reference-link:hover,
+.reference-link:focus-visible {
+  text-decoration: underline;
+}
