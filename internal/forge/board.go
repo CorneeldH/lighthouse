@@ -207,7 +207,12 @@ func (c *Client) BoardItems(ctx context.Context, projectID string) ([]BoardItem,
 		if !data.Node.Items.PageInfo.HasNextPage {
 			return out, nil
 		}
-		after = data.Node.Items.PageInfo.EndCursor
+		// An empty or repeated cursor would ask the same page again, for ever.
+		next := data.Node.Items.PageInfo.EndCursor
+		if next == "" || next == after {
+			return nil, fmt.Errorf("forge: board %s: pagination stuck at endCursor %q", projectID, next)
+		}
+		after = next
 	}
 }
 

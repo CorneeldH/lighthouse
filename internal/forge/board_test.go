@@ -45,6 +45,31 @@ func TestBoardItemsFollowsPages(t *testing.T) {
 	}
 }
 
+func TestBoardItemsStuckCursorFails(t *testing.T) {
+	// hasNextPage with an endCursor that is empty or the one just asked would loop for ever
+	// while tick holds tick.lock.
+	for name, tc := range map[string]struct {
+		cursor string
+		boards int // Board requests before the error
+	}{
+		"empty":     {"", 1},
+		"unchanged": {"cursor-0", 2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			srv, c := boardClient(t)
+			srv.BoardNodes = []map[string]any{{"id": "I0", "content": map[string]any{}}}
+			srv.BoardStuckCursor = &tc.cursor
+			got, err := c.BoardItems(context.Background(), "PVT_1")
+			if err == nil || !strings.Contains(err.Error(), "board PVT_1: pagination stuck") || got != nil {
+				t.Fatalf("BoardItems = %v, %v; want a pagination-stuck error and nil items", got, err)
+			}
+			if n := srv.Count("Board"); n != tc.boards {
+				t.Errorf("Count(Board) = %d, want %d", n, tc.boards)
+			}
+		})
+	}
+}
+
 func TestBoardItemsMapsFields(t *testing.T) {
 	srv, c := boardClient(t)
 	srv.BoardNodes = []map[string]any{{

@@ -41,6 +41,9 @@ type Server struct {
 	BoardNodes []map[string]any
 	// BoardNotAProject makes Board answer {"node": {}}, as GitHub does for an ID of another type.
 	BoardNotAProject bool
+	// BoardStuckCursor, when not nil, makes every Board page claim a next page with this
+	// endCursor, whatever the cursor asked.
+	BoardStuckCursor *string
 	// GraphQLErrors, when set, makes every GraphQL operation answer 200 with these errors and
 	// null data.
 	GraphQLErrors []string
@@ -258,8 +261,12 @@ func (s *Server) board(vars map[string]any) any {
 		start = min(n, len(s.BoardNodes))
 	}
 	end := min(start+100, len(s.BoardNodes))
+	more, cursor := end < len(s.BoardNodes), fmt.Sprintf("cursor-%d", end)
+	if s.BoardStuckCursor != nil {
+		more, cursor = true, *s.BoardStuckCursor
+	}
 	return map[string]any{"node": map[string]any{"items": map[string]any{
-		"pageInfo": map[string]any{"hasNextPage": end < len(s.BoardNodes), "endCursor": fmt.Sprintf("cursor-%d", end)},
+		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
 		"nodes":    append([]map[string]any{}, s.BoardNodes[start:end]...),
 	}}}
 }
