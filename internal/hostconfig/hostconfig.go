@@ -76,8 +76,8 @@ func DefaultDispatch() Dispatch {
 
 // LoadDispatch reads [dispatch], [dispatch.forge] and [dispatch.profiles.<name>] of the
 // host.toml at path. A missing file, an empty path or a missing key gives the default.
-// Unlike usage.LoadConfig an invalid value is an error naming its key, because the tick
-// must stop loudly on it.
+// Unlike usage.LoadConfig an invalid value or an unknown key under dispatch is an error naming
+// its key, because the tick must stop loudly on it. Keys outside dispatch are ignored.
 func LoadDispatch(path string) (Dispatch, error) {
 	d := DefaultDispatch()
 	if path == "" {
@@ -101,11 +101,17 @@ func LoadDispatch(path string) (Dispatch, error) {
 			Profiles map[string]Profile `toml:"profiles"`
 		} `toml:"dispatch"`
 	}
-	if _, err := toml.DecodeFile(path, &raw); err != nil {
+	md, err := toml.DecodeFile(path, &raw)
+	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return d, nil
 		}
 		return DefaultDispatch(), fmt.Errorf("read %s: %w", path, err)
+	}
+	for _, key := range md.Undecoded() {
+		if key[0] == "dispatch" {
+			return DefaultDispatch(), fmt.Errorf("%s: unknown key in %s", key, path)
+		}
 	}
 	r := raw.Dispatch
 	for _, repo := range r.Repos {

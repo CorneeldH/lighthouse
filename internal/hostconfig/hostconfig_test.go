@@ -129,6 +129,29 @@ func TestLoadDispatchInvalid(t *testing.T) {
 	}
 }
 
+func TestLoadDispatchUnknownKey(t *testing.T) {
+	cases := []struct{ body, key string }{
+		{"[dispatch]\nrepo = [\"/a\"]\n", "dispatch.repo"},
+		{"[dispatch]\nmax_runtme = \"1h\"\n", "dispatch.max_runtme"},
+		{"[dispatch.forge]\nurll = \"x\"\n", "dispatch.forge.urll"},
+		{"[dispatch.profiles.x]\ntarget = \"y\"\n", "dispatch.profiles.x.target"},
+	}
+	for _, c := range cases {
+		t.Run(c.key, func(t *testing.T) {
+			_, err := LoadDispatch(writeHost(t, c.body))
+			if err == nil || !strings.Contains(err.Error(), c.key) {
+				t.Errorf("err = %v, want it to name %s", err, c.key)
+			}
+		})
+	}
+}
+
+func TestLoadDispatchIgnoresOtherTables(t *testing.T) {
+	if _, err := LoadDispatch(writeHost(t, "[usage]\nanything = 1\n[dispatch]\nslots = 3\n")); err != nil {
+		t.Errorf("err = %v, want nil", err)
+	}
+}
+
 func TestLoadDispatchParseErrorNamesPath(t *testing.T) {
 	p := writeHost(t, "[dispatch\nslots = \n")
 	_, err := LoadDispatch(p)
