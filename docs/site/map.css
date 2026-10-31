@@ -498,6 +498,47 @@ button:focus-visible {
   border-style: dashed;
 }
 
+/* Planned and idea items show only with the roadmap switch on. */
+.map:not(.show-roadmap) .status-planned,
+.map:not(.show-roadmap) .status-idea {
+  display: none;
+}
+
+.roadmap-toggle {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+/* "Wait, but why": the reasoning behind the chain, folded by default. */
+.why {
+  margin: 14px 0 0;
+  padding: 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  max-width: 900px;
+}
+
+.why summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.why p {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+
+.why p.aside {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .handoff.dim {
   opacity: 0.15;
 }
