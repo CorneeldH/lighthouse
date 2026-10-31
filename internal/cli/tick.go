@@ -227,33 +227,9 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		repos[g.repo.Slug] = g.repo
 	}
 	actions := dispatch.Decide(dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: inputs})
-	res := dispatch.Result{}
-	if len(actions) > 0 {
-		dir, err := env.stateDir()
-		if err != nil {
-			return false, fmt.Errorf("tick: %w", err)
-		}
-		places := make(map[string]workplace.Workplace, len(repos))
-		for slug, repo := range repos {
-			places[slug] = env.workplace(cfg, repo, dir)
-		}
-		// Apply's joined error is dropped on purpose: the same errors are in res.Failed, per
-		// repo, and that is what decides the apply lines and which fingerprints are saved.
-		res, _ = dispatch.Apply(ctx, dispatch.Env{
-			DB:        db,
-			Poster:    func(slug string) dispatch.Poster { return env.client(slug, token) },
-			Workplace: func(slug string) workplace.Workplace { return places[slug] },
-			Profile: func(slug string) (string, string) {
-				name := repos[slug].Controller.Profile
-				return name, cfg.Profiles[name].MCPConfig
-			},
-			RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
-			StateDir:   dir,
-			MaxWait:    cfg.MaxWait,
-			Now:        env.now,
-			NewSession: runs.NewSessionID,
-			Log:        prefixed{errOut},
-		}, actions)
+	res, err := applyActions(ctx, env, db, cfg, token, repos, actions, errOut)
+	if err != nil {
+		return false, fmt.Errorf("tick: %w", err)
 	}
 	for _, d := range res.Deferred {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: deferred %s\n", d)
@@ -275,6 +251,43 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		}
 	}
 	return failed, nil
+}
+
+// applyActions applies actions to repos, each with its forge workplace; apply logs to errOut
+// with the "lighthouse: " of every tick line. Without actions it applies nothing. tick and
+// `lighthouse run` share it.
+func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
+	repos map[string]repoconfig.Repo, actions []dispatch.Action, errOut io.Writer) (dispatch.Result, error) {
+	if len(actions) == 0 {
+		return dispatch.Result{}, nil
+	}
+	dir, err := env.stateDir()
+	if err != nil {
+		return dispatch.Result{}, err
+	}
+	places := make(map[string]workplace.Workplace, len(repos))
+	for slug, repo := range repos {
+		places[slug] = env.workplace(cfg, repo, dir)
+	}
+	// Apply's joined error is dropped on purpose: the same errors are in res.Failed, per
+	// repo: the callers write their apply lines from it, and tick decides which fingerprints
+	// it saves.
+	res, _ := dispatch.Apply(ctx, dispatch.Env{
+		DB:        db,
+		Poster:    func(slug string) dispatch.Poster { return env.client(slug, token) },
+		Workplace: func(slug string) workplace.Workplace { return places[slug] },
+		Profile: func(slug string) (string, string) {
+			name := repos[slug].Controller.Profile
+			return name, cfg.Profiles[name].MCPConfig
+		},
+		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
+		StateDir:   dir,
+		MaxWait:    cfg.MaxWait,
+		Now:        env.now,
+		NewSession: runs.NewSessionID,
+		Log:        prefixed{errOut},
+	}, actions)
+	return res, nil
 }
 
 // prefixed writes each line apply logs with the "lighthouse: " of every tick line: apply

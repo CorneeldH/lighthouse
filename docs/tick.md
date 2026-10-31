@@ -108,6 +108,34 @@ De uitvoer op een nep-GitHub is de fixture
 [`internal/dispatch/testdata/snapshot.json`](../internal/dispatch/testdata/snapshot.json): daarop
 wordt decide getest.
 
+## `lighthouse run`
+
+```bash
+lighthouse run <owner/name>#<issue> [--db <pad>]
+```
+
+Start of hervat één issue nu, zoals de volgende tick dat zou doen. De repo moet in
+`[dispatch] repos` staan (gezocht op de `repo` uit zijn `lighthouse.toml`) en bedienbaar zijn; anders
+stopt `run` met exitcode 1, bijvoorbeeld met `run: <owner/name> is not in [dispatch] repos of <pad>`.
+Hetzelfde token, dezelfde `host.toml` en dezelfde database als tick.
+
+`run` neemt geen `tick.lock` en draait geen precheck: het doet een volledige gather van de repo, dan
+decide, en voert alleen de acties van dat issue uit van de soort `close`, `defer`, `start` of `resume`.
+De `close` gaat mee, want een open run die in deze beslissing sluit (bijvoorbeeld op een 🤖 Vraag met
+een antwoord), zou de claim van de hervatting anders laten mislukken. Een Teruggegeven, een Klaar en
+een 🚀-herstel laat `run` aan de tick. `run` bewaart geen vingerafdruk in `tick_state`.
+
+Het eindigt met één regel op stderr, alle drie met exitcode 0:
+
+- `lighthouse: started <repo>#<n>`;
+- `lighthouse: deferred <repo>#<n>: <reden>` (buiten het `night`-venster, een open voorganger, of een
+  bezette werkplek);
+- `lighthouse: nothing to start for <repo>#<n>`, ook als de tick de claim van dezelfde trigger net
+  won: dan post `run` niets (zie *De volgorde van een start*).
+
+Een mislukte actie geeft `lighthouse: apply <repo>: <fouten>` en exitcode 1. Wat apply onderweg meldt,
+staat ervoor op stderr, zoals bij tick.
+
 ## `[dispatch]` in `host.toml`
 
 Elke sleutel is optioneel; dit zijn de standaarden.
