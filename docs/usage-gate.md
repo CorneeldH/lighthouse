@@ -4,7 +4,7 @@ De usage-gate bewaakt het Claude-venster in een lopende sessie. Hij leest alleen
 `lighthouse usage` (zie [usage-venster.md](usage-venster.md)), nooit de cache, en roept nooit
 `claude` aan. Met een alarm waarschuwt hij bij een prompt, onderbreekt hij een taak die midden in
 een vol venster doorloopt en dwingt hij bij `Stop` een afronding af. De drempels staan in
-`host.toml` en gelden in de meter; de guard kent er zelf geen.
+`host.toml` en gelden in de meter; de hook kent er zelf geen.
 
 `pack/core/hooks/usage-gate.sh` is de enige geregistreerde hook. Hij eindigt altijd met exitcode 0
 en zet hooguit één JSON-object op stdout. Een fout geeft geen blokkade en geen rode hook, alleen
@@ -27,15 +27,15 @@ van een meting) doet elke stand niets.
   heeft (`<soort> <pct> <reset_local> <reset_at>`), `soort` `venster` of `week` is, `pct` alleen
   cijfers bevat en `reset_at` de vorm `2006-01-02T15:04:05Z` heeft en in de toekomst ligt. Een
   vijfde veld, een `\r` aan het eind, een `?` als `reset_at`, een verlopen tijd of een onleesbaar
-  bestand telt als geen alarm. De guard verwijdert het alarm nooit: alleen de meter schrijft en
+  bestand telt als geen alarm. De hook verwijdert het alarm nooit: alleen de meter schrijft en
   ruimt. `_` in `reset_local` wordt een spatie. Deze regels staan in `usage-gate/alarm.sh`
-  (`USAGE_ALARM`, `usage_alarm_valid`), die de guard en de blokkerende Stop-gates sourcen.
+  (`USAGE_ALARM`, `usage_alarm_valid`), die de hook en de blokkerende Stop-gates sourcen.
 - **Tijd.** `reset_at` wordt epoch via GNU `date -d`, en anders via BSD `date -j -u -f`. Faalt
   beide, dan telt het alarm niet.
 - **Snelle pad.** In `tool` en `subagent` is het pad zonder alarm één `[ -f ]`, zonder fork en
   zonder stdin te lezen. Alleen een controller-run toetst eerst de pauzevlag. Pas bij een geldig
   alarm of een geldige vlag start `python3`; de payload gaat dan op stdin mee.
-- **Subagent-calls.** Een `PostToolUse` met `agent_id` komt uit een subagent. De guard ziet dat pas
+- **Subagent-calls.** Een `PostToolUse` met `agent_id` komt uit een subagent. De hook ziet dat pas
   op het trage pad en behandelt de call dan als stand `subagent`. De `tool`-sleutel blijft zo voor
   de hoofdthread.
 - **Alleen de hoofdthread parkeert.** `subagent` geeft altijd de eigen subagent-reden, ook met
@@ -43,13 +43,13 @@ van een meting) doet elke stand niets.
   alleen uit `tool` en `stop`.
 - **Eén keer per venster.** Zie *Sleutels*. `tool` en `subagent` claimen de sleutel exclusief
   vóór ze spreken; lukt dat niet, dan zwijgt de call. Faalt daarna de module, of geeft ze iets
-  anders terug dan een JSON-object, dan haalt de guard de claim weg en zwijgt hij: de volgende
+  anders terug dan een JSON-object, dan haalt de hook de claim weg en zwijgt hij: de volgende
   call kan opnieuw spreken. `stop` zet de sleutel pas nadat de blokkade is uitgezonden.
 - **`stop` zwijgt** bij `stop_hook_active`, bij een onleesbare payload (`not json`, `[]`) en
   als de sleutelmap niet te maken is (één regel `usage-gate: ` op stderr). Anders blokkeerde hij
   bij elke beurt opnieuw. `tool` zonder leesbare payload blokkeert wel, zonder sessiedeel in de
   sleutel.
-- **Verversen.** Alleen in `prompt`, en alleen als `lighthouse` op `PATH` staat, start de guard een
+- **Verversen.** Alleen in `prompt`, en alleen als `lighthouse` op `PATH` staat, start de hook een
   losgekoppelde `LIGHTHOUSE_USAGE_REFRESH=1 lighthouse usage refresh` met stdin, stdout en stderr
   naar `/dev/null`. Hij wacht er niet op; de meter houdt zijn eigen TTL en lock aan.
 - **Afronden.** Zonder optie `resume` noemt de reden `/lighthouse-write-handoff <pad>` als afrondstap,
@@ -73,7 +73,7 @@ controller = false  # controller-tak: een controller-run parkeren, ook bij een p
 | `controller` | `false` | een controller-run parkeert met een marker, en ook bij de pauzevlag |
 
 Zonder tabel draait alleen de basis. Een waarde die geen boolean is, is een configuratiefout (rc 2
-in `lighthouse config`). De guard leest de opties pas als hij iets te zeggen heeft; een
+in `lighthouse config`). De hook leest de opties pas als hij iets te zeggen heeft; een
 configuratiefout daarbij telt als "beide uit", met één regel `usage-gate: config: <fout>` op
 stderr. Lighthouse zelf zet ze niet aan: het heeft geen controller.
 
@@ -115,6 +115,8 @@ Dit is wat de modules schrijven en wat een poller of controller leest.
 | pauzevlag | `${LIGHTHOUSE_CONTROLLER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/controller}/PAUSE` |
 | controller-run | env `LIGHTHOUSE_CONTROLLER_RUN=<session-uuid>` |
 | meting (kind) | env `LIGHTHOUSE_USAGE_REFRESH=1` |
+
+De statusmap `~/.local/state/lighthouse/usage-guard` houdt bewust haar oude naam, zodat een upgrade het venster niet terugzet.
 
 Een `session_id` of `agent_id` die niet past op `[A-Za-z0-9_-]{1,128}` (`../x`, `a/b`, 300 tekens)
 telt als afwezig: de waarden belanden in bestandsnamen.
@@ -176,7 +178,7 @@ Gelden alle vijf en staat `controller` aan, dan schrijft de lib de sleutel, schr
 marker met `"window": "pause"` en `"pause": true`, en blokkeert ze: commit het werk-in-uitvoering,
 stop, de controller hervat na `<tot>`. De pauzetoets gaat vóór de alarmtoets. Een ongeldige vlag
 (stap 1 tot en met 3) valt door naar het alarmpad; faalt stap 4 of 5, of staat `controller` uit,
-dan valt de guard met dezelfde payload door naar het alarmpad.
+dan valt de hook met dezelfde payload door naar het alarmpad.
 
 Gelden een geldige vlag en een geldig alarm tegelijk, dan blijft er één marker per sessie: de
 module voegt samen met de bestaande marker en het latere hervatmoment (`reset_at`) wint, met
@@ -187,7 +189,7 @@ De reden noemt het winnende hervatmoment. Een onleesbare of ongeldige marker wor
 
 | Variabele | Betekenis |
 |---|---|
-| `LIGHTHOUSE_USAGE_REFRESH=1` | kindsessie van een meting: de guard zwijgt |
+| `LIGHTHOUSE_USAGE_REFRESH=1` | kindsessie van een meting: de hook zwijgt |
 | `LIGHTHOUSE_CONTROLLER_RUN` | run-id van een controller-run; telt alleen bij een volle match op `[0-9a-f-]+` |
 | `LIGHTHOUSE_CONTROLLER_STATE` | map van de pauzevlag; anders `${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/controller` |
 | `XDG_CACHE_HOME`, `XDG_STATE_HOME`, `XDG_DATA_HOME` | verplaatsen alarm, sleutels en markers; een lege waarde telt als niet gezet |
@@ -212,7 +214,7 @@ the usage gate wraps up this session.` (`ty-gate: …` voor ty) als `systemMessa
 exit 0. Een `systemMessage` gaat naar de gebruiker en is geen opdracht aan de agent: "stil" uit #74
 betekent dat de gate niets afdwingt, niet dat hij niets zegt.
 
-- **Waarom.** Een blokkerende gate naast de guard geeft de agent twee tegenstrijdige opdrachten:
+- **Waarom.** Een blokkerende gate naast de usage-gate geeft de agent twee tegenstrijdige opdrachten:
   rond af en stop, en herstel eerst de bevinding. Dat kost bovendien budget dat er niet meer is.
 - **Volgorde.** De alarmcheck staat ná de `stop_hook_active`-exit: een herhaalde `Stop` zwijgt
   al stil en krijgt geen tweede melding.
