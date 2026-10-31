@@ -42,3 +42,21 @@ func TestExecRunner(t *testing.T) {
 		t.Error("timeout: want error")
 	}
 }
+
+func TestExecRunnerTimeoutWithGrandchildHoldingStdout(t *testing.T) {
+	start := time.Now()
+	_, _, err := ExecRunner()(context.Background(), 200*time.Millisecond, "sh", "-c", "sleep 30 & wait")
+	if err == nil {
+		t.Fatal("want timeout error")
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Errorf("returned after %v, want near the 200ms timeout", d)
+	}
+}
+
+func TestExecRunnerSignalKilledIsError(t *testing.T) {
+	_, code, err := ExecRunner()(context.Background(), 5*time.Second, "sh", "-c", "kill -9 $$")
+	if err == nil {
+		t.Errorf("killed by signal: want error, got code %d and no error", code)
+	}
+}

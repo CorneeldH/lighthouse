@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"time"
 )
@@ -90,12 +91,17 @@ func ExecRunner() Runner {
 		var out bytes.Buffer
 		cmd := exec.CommandContext(ctx, name, args...)
 		cmd.Stdout = &out
+		// A grandchild that outlives the kill may hold the stdout pipe open.
+		cmd.WaitDelay = 2 * time.Second
 		err := cmd.Run()
 		if ctx.Err() != nil {
 			return out.String(), -1, ctx.Err()
 		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
+			if exitErr.ExitCode() < 0 {
+				return out.String(), -1, fmt.Errorf("command ended without an exit code: %w", err)
+			}
 			return out.String(), exitErr.ExitCode(), nil
 		}
 		if err != nil {
