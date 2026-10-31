@@ -659,63 +659,6 @@
       "without": "Issues blocked on the closed issue stay blocked until someone removes the label.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/workflows/unblock-dependents.yml"
-    },
-    {
-      "id": "usage-guard",
-      "phase": "always",
-      "row": 0,
-      "kind": "hook",
-      "trigger": "tool",
-      "label": "usage-guard",
-      "what": "Reads the alarm of lighthouse usage: warns at a prompt, blocks once per window in tool and stop, once per subagent in subagent; never fails red.",
-      "how": [
-        "On UserPromptSubmit it starts a detached lighthouse usage refresh and, with an alarm, adds a note to the context.",
-        "On PostToolUse and SubagentStop the check without an alarm costs one file test.",
-        "With a valid alarm the tool mode blocks once per window and asks to commit the work in progress, write a handoff and start no new step, and the stop mode asks to write the handoff and stop.",
-        "The subagent mode asks the subagent to stop and report to the main thread, and every mode exits 0."
-      ],
-      "when": "At a prompt, after tool calls, at a subagent stop and at Stop.",
-      "without": "The session runs into the usage limit without warning.",
-      "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-guard.sh"
-    },
-    {
-      "id": "instrument",
-      "phase": "always",
-      "row": 1,
-      "kind": "lighthouse",
-      "trigger": "you",
-      "label": "instrument",
-      "what": "Decides on which layer a new instruction belongs (CLAUDE.md or AGENTS.md, a path-scoped rule, a skill or a hook) and enforces the pairing rule: no hook without a counterpart.",
-      "how": [
-        "It first searches for an existing external skill and vets its licence before adoption.",
-        "A provenance gate then asks where the content comes from, and writes nothing when the only source is general model knowledge.",
-        "A decision tree picks the layer: what must be enforced becomes a hook, what hangs on a path becomes a rule with paths:, a procedure becomes a skill, and the rest goes to AGENTS.md.",
-        "It sets metadata fields such as binding, origin and source, leaves the writing itself to writing-skills and validates with check-instructions.sh."
-      ],
-      "when": "When a new instruction needs a home.",
-      "without": "A new rule lands on whatever layer comes to mind.",
-      "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/instrument"
-    },
-    {
-      "id": "worktree-audit",
-      "phase": "always",
-      "row": 2,
-      "kind": "lighthouse",
-      "trigger": "you",
-      "label": "worktree-audit",
-      "what": "Audits worktrees, local and remote branches, PR state and sessions in one table with a verdict per row; reports and changes nothing itself.",
-      "how": [
-        "It runs worktree_audit.py, which joins git worktree list, the local and remote branches, the PR state per head branch and the sessions on disk.",
-        "Each row goes down a verdict ladder in which the first hit wins, from protected, active session, dirty tree and unpushed commits to open PR and merged PR.",
-        "It relies on the PR lookup instead of git branch --merged, because a squash merge hides the original commits.",
-        "The user pastes the printed cleanup commands, and the script refuses every git verb that does not only read."
-      ],
-      "when": "When you ask which worktrees or branches can go, or where you left off.",
-      "without": "Stale worktrees and branches pile up unseen.",
-      "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/worktree-audit"
     }
   ],
   "handoff": {

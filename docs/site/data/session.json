@@ -1,15 +1,20 @@
 {
-  "title": "The guardrails",
-  "subtitle": "One turn in Claude Code, and which hook steps in when.",
+  "title": "Inside a session",
+  "subtitle": "One turn in Claude Code, from prompt to stop: which skill joins in, and which hook steps in when.",
   "phases": [
     {
       "id": "prompt",
-      "label": "UserPromptSubmit",
+      "label": "User prompt submit",
       "blurb": "you send a prompt"
     },
     {
+      "id": "skill",
+      "label": "A skill loads",
+      "blurb": "on its description, before the model writes"
+    },
+    {
       "id": "pre-tool",
-      "label": "PreToolUse",
+      "label": "Pre tool use",
       "blurb": "before a tool runs"
     },
     {
@@ -19,12 +24,12 @@
     },
     {
       "id": "post-tool",
-      "label": "PostToolUse / PostToolUseFailure",
+      "label": "Post tool use / failure",
       "blurb": "after a tool ran"
     },
     {
       "id": "subagent-stop",
-      "label": "SubagentStop",
+      "label": "Subagent stop",
       "blurb": "a subagent stops"
     },
     {
@@ -34,6 +39,82 @@
     }
   ],
   "chips": [
+    {
+      "id": "testing",
+      "phase": "skill",
+      "row": 2,
+      "kind": "lighthouse",
+      "trigger": "description",
+      "label": "testing",
+      "what": "Carries what a good test is: the production change that should make it fail, the classification sentence before the first edit and the mutation check before reporting done.",
+      "how": [
+        "Before the first edit it asks for one classification sentence that names the change class, such as pure-logic, cli-output or hook/gate, and the regression surface; each class sets a minimal check.",
+        "While writing it applies required checks, such as asserting an observable effect, specific fakes and no mirror assertions, and lists red flags that mean the test needs a redesign.",
+        "Before done it asks for a mutation check: for every realistic mutation of the production code, at least one test must fail.",
+        "Contract tests on instruction text follow their own rules, and the language skills add the tooling."
+      ],
+      "when": "When writing, changing, fixing or reviewing a test, mock, fake or assert.",
+      "without": "A test can pass without ever being able to fail.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/testing"
+    },
+    {
+      "id": "go-writing",
+      "phase": "skill",
+      "row": 3,
+      "kind": "lighthouse",
+      "trigger": "description",
+      "label": "go-writing",
+      "what": "Rules and a KPI table of commands (gofmt, vet, golangci-lint, race) for writing Go in the repo.",
+      "how": [
+        "Before the first edit it asks for the classification sentence from lighthouse-testing.",
+        "Before done, every KPI row is run and reported as passed, failed or not measurable from here, with GOOS, build tags, -race and GOWORK named.",
+        "It carries the norms replace, don't layer for merged packages and deepen, don't split at a complexity limit, plus the Go form of the testing norms.",
+        "Two hooks enforce part of it: gofmt.sh after each edit and go-check.sh with golangci-lint at Stop."
+      ],
+      "when": "When writing or changing Go, and when planning a Go refactor or test strategy.",
+      "without": "Go code is written without the repo's checks in view.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/skills/go-writing"
+    },
+    {
+      "id": "python-writing",
+      "phase": "skill",
+      "row": 5,
+      "kind": "lighthouse",
+      "trigger": "description",
+      "label": "python-writing",
+      "what": "Rules and a KPI table of commands (ruff, ty, pytest) for writing Python in the repo's source and test directories.",
+      "how": [
+        "Before the first edit it asks for the classification sentence from lighthouse-testing.",
+        "Before done, rows 1 to 3 are run and reported as passed, failed or not measurable from here, because a ty zero without its extras is not a zero.",
+        "It carries the norms replace, don't layer and deepen, don't split, with the complexity limits, plus the Python form of the testing norms.",
+        "Two hooks enforce part of it: ruff-format.sh blocks on the blocking rules after each edit, and ty-check.sh reports type errors at Stop."
+      ],
+      "when": "When writing or changing Python, and when planning a Python refactor or test strategy.",
+      "without": "Python code is written without the repo's checks in view.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/skills/python-writing"
+    },
+    {
+      "id": "shell-gates",
+      "phase": "skill",
+      "row": 6,
+      "kind": "lighthouse",
+      "trigger": "description",
+      "label": "shell-gates",
+      "what": "The norm 'the absence of a signal is treated as a negative result', plus a KPI table of commands for shell that guards something.",
+      "how": [
+        "It lists six real defects in which could not look came out green, and requires three outcomes: checked and clean, checked with findings, and COULD NOT CHECK.",
+        "Its KPI table runs shellcheck-repo.sh on the strict directories and on all shell in the repo, and checks that no gate script falls outside git.",
+        "A gate is not done until its test has been seen red once for the right reason, with one input that must block and one that must pass.",
+        "The shellcheck.sh hook blocks after every edit of a .sh or .bash file."
+      ],
+      "when": "When writing or changing hooks, pre-commit, pre-push or CI gate scripts, and the tests on them.",
+      "without": "A gate script can pass because it could not check.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/skills/shell-gates"
+    },
     {
       "id": "usage-guard-prompt",
       "phase": "prompt",
@@ -531,26 +612,20 @@
   "handoffs": [],
   "routes": [
     {
-      "id": "main-commit",
-      "label": "I commit on main",
+      "id": "write-gates",
+      "label": "I write code a gate rejects",
       "chips": [
-        "worktree-guard",
-        "main-commit-guard"
-      ]
-    },
-    {
-      "id": "red-tests",
-      "label": "I commit with red tests",
-      "chips": [
-        "commit-tests-pre",
-        "commit-tests-post"
-      ]
-    },
-    {
-      "id": "pr-evidence",
-      "label": "I open a PR without evidence",
-      "chips": [
-        "pr-create-gate"
+        "go-writing",
+        "python-writing",
+        "shell-gates",
+        "bash-write-gates-pre",
+        "code-language",
+        "gofmt",
+        "ruff-format",
+        "shellcheck",
+        "bash-write-gates-post",
+        "go-check",
+        "ty-check"
       ]
     },
     {
@@ -573,17 +648,27 @@
       ]
     },
     {
-      "id": "write-gates",
-      "label": "I write code a gate rejects",
+      "id": "red-tests",
+      "label": "I commit with red tests",
       "chips": [
-        "bash-write-gates-pre",
-        "code-language",
-        "gofmt",
-        "ruff-format",
-        "shellcheck",
-        "bash-write-gates-post",
-        "go-check",
-        "ty-check"
+        "testing",
+        "commit-tests-pre",
+        "commit-tests-post"
+      ]
+    },
+    {
+      "id": "main-commit",
+      "label": "I commit on main",
+      "chips": [
+        "worktree-guard",
+        "main-commit-guard"
+      ]
+    },
+    {
+      "id": "pr-evidence",
+      "label": "I open a PR without evidence",
+      "chips": [
+        "pr-create-gate"
       ]
     }
   ]

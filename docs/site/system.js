@@ -1,6 +1,6 @@
 // The system page: the plan map of the parts from data/system.json, with the date of the snapshot.
 
-import { drawerFor, initTheme, loadJson, renderPlanMap, renderTimeline } from "./map.js?v=ce0ead53";
+import { drawerFor, initTheme, loadJson, renderPlanMap, renderTimeline } from "./map.js?v=87b4b61c";
 
 initTheme(document.getElementById("theme-toggle"));
 
