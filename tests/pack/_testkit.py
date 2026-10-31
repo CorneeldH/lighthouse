@@ -114,6 +114,12 @@ def bash_payload(cmd: str, cwd: Path) -> dict:
 PROMPT_TS = "2026-10-25T10:00:00.000Z"
 
 
+def stamp(at: float) -> str:
+    """`at` (epoch seconds) as a transcript `timestamp` in UTC, the format of `PROMPT_TS`."""
+    moment = datetime.fromtimestamp(at, timezone.utc)
+    return moment.strftime("%Y-%m-%dT%H:%M:%S.") + f"{moment.microsecond // 1000:03d}Z"
+
+
 def prompt_entry(cwd: Path, ts: str = PROMPT_TS) -> dict:
     return {
         "type": "user",
