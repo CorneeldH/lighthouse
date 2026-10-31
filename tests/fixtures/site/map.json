@@ -9,29 +9,34 @@
   "chips": [
     {
       "id": "write-issue", "phase": "one", "row": 1, "kind": "lighthouse", "trigger": "you",
-      "label": "write-issue", "what": "A skill that exists.", "when": "When you type it.",
+      "label": "write-issue", "what": "A skill that exists.", "how": "It works.",
+      "when": "When you type it.",
       "without": "Nothing guards it.", "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/write-issue"
     },
     {
       "id": "main-commit-guard", "phase": "one", "row": 2, "kind": "hook", "trigger": "tool",
-      "label": "main-commit-guard", "what": "A hook that exists.", "when": "On a commit.",
+      "label": "main-commit-guard", "what": "A hook that exists.", "how": "It works.",
+      "when": "On a commit.",
       "without": "A commit lands on main.", "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-guard.sh"
     },
     {
       "id": "planned-issue", "phase": "two", "row": 0, "kind": "superpowers", "trigger": "skill",
-      "label": "planned-issue", "what": "Planned, with an issue.", "when": "Later.",
+      "label": "planned-issue", "what": "Planned, with an issue.", "how": "It works.",
+      "when": "Later.",
       "without": "Nothing.", "status": "planned", "issue": 123
     },
     {
       "id": "planned-milestone", "phase": "two", "row": 1, "kind": "github", "trigger": "github",
-      "label": "planned-milestone", "what": "Planned, with a milestone.", "when": "Later.",
+      "label": "planned-milestone", "what": "Planned, with a milestone.", "how": "It works.",
+      "when": "Later.",
       "without": "Nothing.", "status": "planned", "milestone": "M9"
     },
     {
       "id": "an-idea", "phase": "three", "row": 2, "kind": "superpowers", "trigger": "you",
-      "label": "an-idea", "what": "Only an idea.", "when": "Maybe.",
+      "label": "an-idea", "what": "Only an idea.", "how": "It works.",
+      "when": "Maybe.",
       "without": "Nothing.", "status": "idea", "not_in_first_release": true
     }
   ],

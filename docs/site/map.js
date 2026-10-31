@@ -309,8 +309,9 @@ export function renderFlowMap(root, data, detail) {
           `${glyph} ${chip.label}`,
           el("p", "", chip.what),
         ),
+        box("How it works", "", el("p", "", chip.how)),
         box(
-          "How it works",
+          "When, who and why",
           "",
           facts([
             ["When it starts", chip.when],
@@ -339,8 +340,9 @@ export function renderFlowMap(root, data, detail) {
         el("p", "", about.what || ""),
         el("p", "aside", `Between ${from.label} and ${to.label}.`),
       ),
+      box("How it works", "", el("p", "", about.how || "")),
       box(
-        "How it works",
+        "When, who and why",
         "",
         facts([
           ["When it starts", about.when],
