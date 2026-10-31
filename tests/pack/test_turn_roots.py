@@ -8,6 +8,7 @@ The script runs as a subprocess against real repositories and a transcript on
 disk, the way the hooks call it.
 """
 
+import io
 import json
 import os
 import subprocess
@@ -274,6 +275,15 @@ def test_match_an_edit_in_an_unborn_repo_is_touched(tmp_path):
     assert _classify(repo, repo, entries, tmp_path, "*.go") == [f"touched\t{repo.resolve()}"]
 
 
+def test_match_an_unborn_repo_without_a_domain_path_is_untouched(tmp_path):
+    # An unborn HEAD skips the reflog source; it is no git failure.
+    repo = tmp_path / "unborn"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    entries = [prompt_entry(repo, stamp(time.time())), _edit(repo / "README.md", repo)]
+    assert _classify(repo, repo, entries, tmp_path, "*.go") == [f"untouched\t{repo.resolve()}"]
+
+
 def test_match_judges_each_root(tmp_path, main, wt):
     entries = [prompt_entry(main, stamp(time.time())), _edit(wt / "a.go", main), _bash("ls", main)]
     assert _classify(main, main, entries, tmp_path, "*.go") == [
@@ -301,3 +311,17 @@ def test_match_a_root_git_cannot_read_is_touched(tmp_path, main):
     (main / ".git" / "index").write_bytes(b"garbage")
     entries = [prompt_entry(main, stamp(time.time())), _bash("ls", main)]
     assert _classify(main, main, entries, tmp_path, "*.go") == [f"touched\t{main.resolve()}"]
+
+
+def test_only_a_json_error_is_reported_as_invalid_json(monkeypatch, capsys):
+    # A ValueError from git output (`bash_writes.parse_reflog`) is no JSON error.
+    from lighthouse_lib import turn_roots
+
+    def broken(payload, patterns):
+        raise ValueError("not enough values to unpack")
+
+    monkeypatch.setattr(turn_roots, "classify", broken)
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"cwd": "/x"})))
+    with pytest.raises(ValueError, match="unpack"):
+        turn_roots.main(["--match", "*.go"])
+    assert "not valid JSON" not in capsys.readouterr().out

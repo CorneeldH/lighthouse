@@ -306,6 +306,10 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     try:
         payload = json.loads(sys.stdin.read())
+    except ValueError:
+        print("the payload is not valid JSON.")
+        return 1
+    try:
         if not isinstance(payload, dict):
             raise Undetermined("the payload is no JSON object.")
         if args.match:
@@ -313,9 +317,6 @@ def main(argv: list[str]) -> int:
             lines = [f"{'touched' if touched else 'untouched'}\t{root}" for root, touched in verdicts]
         else:
             lines = resolve(payload)
-    except ValueError:
-        print("the payload is not valid JSON.")
-        return 1
     except Undetermined as exc:
         print(exc)
         return 1
@@ -325,4 +326,3 @@ def main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))
-

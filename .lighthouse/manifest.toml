@@ -799,7 +799,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/turn_roots.py"
 package = "core"
 version = "dev"
-sha256 = "425a9f1fe31848e40790ca566b77d43793fdcc6390b0558e325695c8be05f834"
+sha256 = "93b08b10bbfe1c6c7fceef3b80d4a14d48192fd29f651203ec05bbeb773df410"
 
 [[unit]]
 kind = "file"
