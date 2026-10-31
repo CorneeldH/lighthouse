@@ -84,13 +84,22 @@ def parse_fragment(path: Path) -> Fragment:
     return Fragment(path, typ, text)
 
 
+def _fragment_order(path: Path) -> tuple[str, int]:
+    """Sort key: the stem without a trailing `-<n>`, then n (no suffix counts as 1)."""
+    match = re.fullmatch(r"(.+)-(\d+)", path.stem)
+    if match:
+        return match.group(1), int(match.group(2))
+    return path.stem, 1
+
+
 def read_fragments(directory: Path) -> list[Fragment]:
-    """All fragments in `directory`, sorted by file name. The marker is skipped, any other
+    """All fragments in `directory`, by name with `<name>-<n>.md` after `<name>.md` in numeric
+    order (`x.md`, `x-2.md`, `x-10.md`). The marker is skipped, any other
     item that is not a `*.md` file is refused. A missing directory holds no fragments."""
     if not directory.is_dir():
         return []
     fragments = []
-    for item in sorted(directory.iterdir(), key=lambda p: p.name):
+    for item in sorted(directory.iterdir(), key=_fragment_order):
         if item.name == MARKER:
             continue
         if not (item.is_file() and item.suffix == ".md"):

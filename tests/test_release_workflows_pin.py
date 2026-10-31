@@ -85,16 +85,20 @@ def test_release_pushes_atomically():
 
 
 def test_only_release_job_persists_credentials():
-    """Fails when a second job keeps the token in .git/config."""
+    """Fails when a second job keeps the token in .git/config, or a checkout lacks `false`."""
     total = 0
     for path in (RELEASE, BUILD):
+        text = _text(path)
         for name, job in _jobs(path).items():
             count = job.count("persist-credentials: true")
             total += count
             if count:
                 assert (path.name, name) == ("release.yml", "release")
+        checkouts = len(re.findall(r"uses:\s*actions/checkout@", text))
+        # release.yml's one pushing checkout is the sole exception.
+        exempt = 1 if path == RELEASE else 0
+        assert text.count("persist-credentials: false") == checkouts - exempt, path.name
     assert total == 1
-    assert "persist-credentials: false" in _text(BUILD)
 
 
 def test_write_permission_only_where_needed():
@@ -174,7 +178,9 @@ def test_every_step_job_has_a_runner():
 def test_release_recovers_a_push_that_landed():
     """Fails when a push error after a server-side landing drops the tag and skips the build."""
     release = _jobs(RELEASE)["release"]
-    check = 'git ls-remote --exit-code --tags origin "refs/tags/$tag"'
+    check = 'git ls-remote origin "refs/tags/$tag"'
     assert check in release
     assert release.index(check) < release.index('git tag -d "$tag"')
+    # Only our own tag object counts as landed; a rival run's tag of the same name must not.
+    assert 'git rev-parse "refs/tags/$tag"' in release
     assert "sleep $((attempt * 5))" in release

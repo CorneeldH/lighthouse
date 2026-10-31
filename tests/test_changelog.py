@@ -345,3 +345,13 @@ def test_cli_notes_missing_section_exits_1(tmp_path):
     """Fails when a tag without a section exits other than 1."""
     root = _release_root(tmp_path, {})
     assert changelog.main(["notes", "v0.2.0", "--root", str(root)]) == 1
+
+
+def test_read_fragments_orders_numbered_suffixes_after_the_base(tmp_path):
+    """Fails when `x-2.md` sorts before `x.md`, or `x-10.md` before `x-3.md`."""
+    names = ["x-10.md", "x-2.md", "y.md", "x.md", "x-3.md"]
+    for name in names:
+        (tmp_path / name).write_text("---\ntype: fixed\n---\nx\n", encoding="utf-8")
+    assert [f.path.name for f in changelog.read_fragments(tmp_path)] == [
+        "x.md", "x-2.md", "x-3.md", "x-10.md", "y.md",
+    ]
