@@ -43,7 +43,8 @@ De spec laat de Node-selectie aan de bouwer (*Selectors*: "De bouwer werkt de se
 - Elke wijziging onder `pack/` draait `go run ./cmd/lighthouse init --upgrade --yes` en commit alles wat dat schrijft (geïnstalleerde kopie, `.lighthouse/manifest.toml`). Eindcontrole: `go run ./cmd/lighthouse init --upgrade </dev/null` geeft `No changes.`
 - Elk nieuw pakketbestand krijgt `[[file]] path = "…" new = true` in `pack/SOURCES.toml`.
 - `ci/domains.py classify`, `.github/workflows/ci.yml` en `tests/test_ci_domains_pin.py` veranderen niet.
-- De hooks van de lopende sessie komen uit de hoofdcheckout: de oude gate (`ci/domains.py gate`) draait daar nog tot de merge. Test het nieuwe commando met de hand (Taak 2, stap 6).
+- De hooks van de lopende sessie komen uit de hoofdcheckout: `commit-tests.sh` leest `[test_gate] command` uit de `lighthouse.toml` van de hoofdcheckout (`commit-tests.sh:132`, `:320`) en draait het in de worktree (`:498`). Tot de merge draait na elke commit dus het oude commando, dat eindigt op `python3 ci/domains.py gate`, tegen de `ci/domains.py` van de worktree. Test het nieuwe commando met de hand (Taak 2, stap 6).
+- Daarom is het schrappen van `gate` (Taak 4) de **laatste** commit van de branch. Na die commit meldt de hook rood met `invalid choice: 'gate'` (argparse, exit 2). Dat is verwacht: herstel geen `gate`-stub, draai de commit niet terug en maak geen fix-commit. Het bewijs is de handmatige run van Taak 4, stap 4; noem de verwachte rode melding in het PR-bewijs.
 - Commits: Conventional Commits, Nederlands, één logische wijziging per commit, `(#80)` in de subject.
 
 ## Review Focus
@@ -64,7 +65,8 @@ De spec laat de Node-selectie aan de bouwer (*Selectors*: "De bouwer werkt de se
 - Create: `tests/pack/node/__init__.py`, `tests/pack/node/test_gate_node.py`, `tests/pack/node/test_node_pack.py`
 - Modify: `pack/SOURCES.toml` (drie `[[file]]`-regels, `new = true`)
 - Modify: `internal/packs/core_test.go` (`TestLanguagePacks`, rij `node`)
-- Modify: `docs/site/data/packs.json` (entry `node`), `tests/test_site_packs.py` (`test_every_pack_is_listed`)
+- Modify: `docs/site/data/packs.json` (entry `node`), `tests/test_site_packs.py` (`test_every_pack_is_listed`, `test_skills_agents_workflows_match`)
+- Modify: `internal/initcmd/initcmd_test.go:510` (`TestInitProposesRealExpo`)
 - Modify: `docs/getting-started.md:12-30` (pakketlijst en de tabel *Requirements*)
 
 **Interfaces:**
@@ -87,7 +89,8 @@ De spec laat de Node-selectie aan de bouwer (*Selectors*: "De bouwer werkt de se
   - `test_also_path_touches`: lijst `lighthouse.toml\n`, `--also lighthouse.toml` → de scripts draaien.
   - `test_path_with_space_touches`: lijst `web/src/a b.ts\n` → de scripts draaien.
   - `test_stops_at_first_failure`: `NPM_EXIT_lint=7` → rc 7, `typecheck` niet in de log.
-  - `test_without_gate_files_runs_everything`: `LIGHTHOUSE_GATE_FILES` niet gezet → alle scripts draaien.
+  - `test_without_gate_files_runs_everything`: `monkeypatch.delenv("LIGHTHOUSE_GATE_FILES", raising=False)` (de hook exporteert die variabele naar pytest) → alle scripts draaien.
+  - `test_skips_without_node_modules`: zonder `web/node_modules`, lijst `pack/go/x.go\n` → rc 0 en de `skipped`-regel (de domeincheck komt vóór de controle op `node`, `npm` en `node_modules`, zoals `ci/domains.py:148-155`).
   - `test_drift_stale_fails`: `GEN_CONTENT=v2` → rc 1, stdout bevat `gate-node: web/src/api was stale; npm run gen regenerated it — commit the result`, `lint` niet in de log.
   - `test_drift_new_file_is_stale`: `GEN_NEW=x` → rc 1.
   - `test_drift_up_to_date_passes`: `GEN_CONTENT=v1` → rc 0.
@@ -110,28 +113,30 @@ De spec laat de Node-selectie aan de bouwer (*Selectors*: "De bouwer werkt de se
   - `pack/SOURCES.toml`: `pack/node/scripts/gate_node.py`, `pack/node/requires.toml`, `pack/node/detect.toml`, elk `new = true`.
   - `internal/packs/core_test.go`, `TestLanguagePacks`, een rij tussen `go` en `python`: `name: "node"`, `files: []string{".lighthouse/scripts/gate_node.py"}`, `detect: true`, `tools: "node,npm,python3"`.
   - `tests/test_site_packs.py`, `test_every_pack_is_listed`: `on_disk` wordt elke map onder `pack/` (`{p.name for p in PACK.iterdir() if p.is_dir()}`), niet alleen mappen met `skills/`. Docstring: elk pakket staat op de kaart, ook een zonder skill.
+  - `tests/test_site_packs.py`, `test_skills_agents_workflows_match` (regel 68): een ontbrekende `skills/` telt als lege lijst (`… if (base / "skills").is_dir() else []`); anders geeft `iterdir()` een `FileNotFoundError` op `pack/node/skills`.
+  - `internal/initcmd/initcmd_test.go:510`, `TestInitProposesRealExpo`: die test gebruikt de echte pakketten (`o.Packs = nil`), en `node` vindt dezelfde `apps/a/package.json`. Het verwachte voorvoegsel wordt `"Packages: core, expo (found apps/a/package.json), node (found apps/a/package.json)\n"`.
   - `docs/site/data/packs.json`: entry `node` na `go`, met `"proposed_when": "a package.json that git tracks"`, `"detect": ["**/package.json"]` en lege `skills`, `agents`, `workflows`, `hooks`, `extra`.
   - `docs/getting-started.md`: `tests/test_getting_started.py` eist een rij per tool uit elke `requires.toml`, dus dit hoort bij deze commit. Regel 12: "`go`, `python`, `shell`, `node` or `expo`". Twee rijen na `golangci-lint` (`python3` staat er al met "all"):
     - `` `node` `` | node | the test gate `gate_node.py` | `gate_node.py` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested.
     - `` `npm` `` | node | the web checks of `gate_node.py` (`npm run …`) | As for `node`.
 
-- [ ] **Step 5: Draai de tests.** Run: `uv run pytest tests/pack/node tests/test_site_packs.py tests/test_sources.py tests/test_getting_started.py -q && go test -race ./pack/... ./internal/packs/...` · Expected: PASS. Run daarna `go run ./cmd/lighthouse init --upgrade </dev/null` · Expected: `No changes.` (`node` staat nog niet in het manifest), eventueel met de notitie `package node fits this repository`.
+- [ ] **Step 5: Draai de tests.** Run: `uv run pytest tests/pack/node tests/test_site_packs.py tests/test_sources.py tests/test_getting_started.py -q && go test -race ./pack/... ./internal/packs/... ./internal/initcmd/...` · Expected: PASS. Run daarna `go run ./cmd/lighthouse init --upgrade </dev/null` · Expected: `No changes.` (`node` staat nog niet in het manifest), eventueel met de notitie `package node fits this repository`.
 
 - [ ] **Step 6: Mutatiecheck** (`lighthouse-testing`): zet in `touches` de mapgrens om naar `startswith(package_dir)` → `test_dir_is_a_directory_boundary` faalt; laat de drift-snapshot nieuwe bestanden negeren → `test_drift_new_file_is_stale` faalt. Draai beide terug.
 
 - [ ] **Step 7: Commit** — `feat(node): pack/node met de selector gate_node.py voor de webchecks (#80)`.
 
-### Task 2: deze repo stapt over, `ci/domains.py gate` verdwijnt
+### Task 2: deze repo stapt over op `gate_node.py`
 
 **Files:**
 - Modify: `.lighthouse/manifest.toml` en Create: `.lighthouse/scripts/gate_node.py` (beide via `init`)
 - Modify: `lighthouse.toml:41-46`
 - Modify: `tests/test_dogfood.py:154-168` (`test_test_gate_uses_selectors`)
-- Modify: `ci/domains.py`, `tests/test_domains.py`
 
 **Interfaces:**
 - Consumes: `gate_node.py` en zijn CLI (Taak 1).
-- Produces: `ci/domains.py` met alleen `DOMAINS`, `_WEB_TOO`, `_GO_TOO`, `_NOT_GO_DIRS`, `_NOT_GO`, `classify`, `_classify_cli` en `main` met het subcommando `classify`. `main` gebruikt nog steeds argparse met verplicht subcommando, zodat `ci.yml:35` ongewijzigd blijft.
+
+- [ ] **Step 0: Webafhankelijkheden.** Ontbreekt `web/node_modules`, draai dan eerst `cd web && npm ci`. De commit van stap 5 raakt `lighthouse.toml` (in `_WEB_TOO`), dus de oude gate uit de hoofdcheckout draait de webchecks, en zonder `node_modules` blokkeert hij met `COULD NOT CHECK`. Kan `npm ci` niet (geen netwerk): ga door en noem die exit 3 in het PR-bewijs.
 
 - [ ] **Step 1: Pas `test_test_gate_uses_selectors` aan** naar het commando uit *Besluiten* 5 (de laatste `" && python3 ci/domains.py gate"` wordt `" && python3 .lighthouse/scripts/gate_node.py --dir web --also .github/workflows/ci.yml --also lighthouse.toml --drift gen=src/api -- lint typecheck test"`). Docstring: "…its Go packages, pytest files and web checks from the commit." Voeg toe: `test_node_pack_installed`: `.lighthouse/manifest.toml` heeft `"node"` in `packages`, en `.lighthouse/scripts/gate_node.py` is byte-gelijk aan `pack/node/scripts/gate_node.py`.
 
@@ -145,18 +150,10 @@ De spec laat de Node-selectie aan de bouwer (*Selectors*: "De bouwer werkt de se
 
 - [ ] **Step 5: Commit** — `build(gate): deze repo test de web-checks met gate_node.py (#80)`; manifest, geïnstalleerde kopie, `lighthouse.toml`, `tests/test_dogfood.py`.
 
-- [ ] **Step 6: Proefdraai van het nieuwe commando** (de lopende hook draait nog de oude). Vereist `cd web && npm ci` als `web/node_modules` ontbreekt.
+- [ ] **Step 6: Proefdraai van het nieuwe commando** (de lopende hook draait nog de oude). Vereist `web/node_modules` (stap 0).
   - `printf 'web/src/main.tsx\n' > "$T/files" && LIGHTHOUSE_GATE_FILES="$T/files" bash -c "$(python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command)"` met `T` in de scratchpad · Expected: gate-go en gate-python `skipped`, gate-node draait `gen`, `lint`, `typecheck`, `test` en eindigt met `gate-node: passed — gen, lint, typecheck, test`; rc 0.
   - Dezelfde run met `docs/x.md` in de lijst · Expected: drie `skipped`-regels, rc 0.
   - Kan `npm ci` niet (geen netwerk): meld dat als niet gemeten in het PR-bewijs en noem de exit 3-regel die de run wel gaf.
-
-- [ ] **Step 7: Schrap `gate` uit `ci/domains.py`.** Verwijder `CHECKS`, `UNCHECKED`, `_say`, `_snapshot`, `api_drift`, `_git_paths`, `changed_paths`, `_web_missing`, `gate`, het subcommando `gate` en de imports die daarna ongebruikt zijn (`os`, `shutil`, `subprocess`, `Callable`, `Path` als niemand ze nog gebruikt). Docstring: één gebruiker, CI (`classify`); de eerste regel wordt "Sort changed paths into the domains web, python and go, for the jobs of CI." Het commentaar bij `_WEB_TOO` noemt "the CI job, this script, and the gate command in lighthouse.toml" en blijft kloppen.
-  - `tests/test_domains.py`: verwijder `test_checks_hold_only_web` en alle `test_gate_*` met hun fixtures en helpers (`web_ready`, `markers`, `_touching`, `_no_drift`, `_no_gate_files`), plus imports die daarna ongebruikt zijn. Moduledocstring: "ci/domains.py: which domains a change touches." `test_classify` en `test_no_go_file_names_a_path_outside_go` blijven.
-  - Voeg toe aan `tests/test_domains.py`: `test_gate_subcommand_is_gone`: `domains.main(["gate"])` geeft `SystemExit` met code 2 (argparse, onbekende keuze).
-
-- [ ] **Step 8: Draai de tests.** Run: `uv run pytest tests/test_domains.py tests/test_ci_domains_pin.py tests/test_dogfood.py -q && grep -rn 'domains.py gate' --include='*.py' --include='*.toml' --include='*.yml' --include='*.sh' . | grep -v '^./docs/developer/planning/'` · Expected: PASS, en grep vindt niets.
-
-- [ ] **Step 9: Commit** — `refactor(ci): ci/domains.py houdt alleen classify voor CI (#80)`.
 
 ### Task 3: labels en changelog
 
@@ -168,3 +165,25 @@ De spec laat de Node-selectie aan de bouwer (*Selectors*: "De bouwer werkt de se
 - [ ] **Step 2: Changelog-fragment** `changelog.d/issue-80-pack-node.md`, in de vorm van de bestaande fragmenten (`type: added`): "A new package `node` adds `gate_node.py`, the test-gate selector for a JavaScript project: when the commit touches the package directory it runs the npm scripts you name (lint, typecheck, test) after any drift check (`--drift gen=src/api`). Add it with `lighthouse init --upgrade --pack node` and put it in `[test_gate] command` yourself."
 - [ ] **Step 3: Controle.** Run: `uv run pytest tests/test_instruction_files.py tests/test_site_packs.py tests/test_getting_started.py -q` en `go run ./cmd/lighthouse init --upgrade </dev/null` · Expected: PASS en `No changes.`
 - [ ] **Step 4: Commit** — `docs: pack/node in labels en changelog (#80)`.
+
+### Task 4: `ci/domains.py gate` verdwijnt (laatste commit)
+
+Deze taak komt als laatste: zie *Global Constraints* over de hook uit de hoofdcheckout. Na de commit van stap 5 meldt de hook rood met `invalid choice: 'gate'`; dat is verwacht en wordt niet gerepareerd.
+
+**Files:**
+- Modify: `ci/domains.py`, `tests/test_domains.py`
+
+**Interfaces:**
+- Produces: `ci/domains.py` met alleen `DOMAINS`, `_WEB_TOO`, `_GO_TOO`, `_NOT_GO_DIRS`, `_NOT_GO`, `classify`, `_classify_cli` en `main` met het subcommando `classify`. `main` gebruikt nog steeds argparse met verplicht subcommando, zodat `ci.yml:35` ongewijzigd blijft.
+
+- [ ] **Step 1: Schrap `gate` uit `ci/domains.py`.** Verwijder `CHECKS`, `UNCHECKED`, `_say`, `_snapshot`, `api_drift`, `_git_paths`, `changed_paths`, `_web_missing`, `gate`, het subcommando `gate` en de imports die daarna ongebruikt zijn (`os`, `shutil`, `subprocess`, `Callable`, `Path` als niemand ze nog gebruikt). Docstring: één gebruiker, CI (`classify`); de eerste regel wordt "Sort changed paths into the domains web, python and go, for the jobs of CI." Het commentaar bij `_WEB_TOO` noemt "the CI job, this script, and the gate command in lighthouse.toml" en blijft kloppen.
+  - `tests/test_domains.py`: verwijder `test_checks_hold_only_web`, alle `test_gate_*` en `test_api_drift` (regel 235; die dekking zit nu in de drifttests van `tests/pack/node/test_gate_node.py`), met hun fixtures en helpers (`repo`, `web_ready`, `markers`, `_touching`, `_ran`, `_no_drift`, `_no_gate_files`), plus imports die daarna ongebruikt zijn. Moduledocstring: "ci/domains.py: which domains a change touches." `test_classify` en `test_no_go_file_names_a_path_outside_go` blijven.
+  - Voeg toe aan `tests/test_domains.py`: `test_gate_subcommand_is_gone`: `domains.main(["gate"])` geeft `SystemExit` met code 2 (argparse, onbekende keuze).
+
+- [ ] **Step 2: Draai de tests.** Run: `uv run pytest tests/test_domains.py tests/test_ci_domains_pin.py tests/test_dogfood.py -q && ! grep -rn 'domains.py gate' --include='*.py' --include='*.toml' --include='*.yml' --include='*.sh' . | grep -v '^./docs/developer/planning/'` · Expected: PASS en rc 0 (de `!` maakt van "grep vindt niets" een geslaagde check).
+
+- [ ] **Step 3: Eindcontrole.** Run: `go run ./cmd/lighthouse init --upgrade </dev/null` · Expected: `No changes.`
+
+- [ ] **Step 4: Handmatige run van het nieuwe commando** na de wijziging, met de lijst `ci/domains.py\ntests/test_domains.py\n` in `$T/files` (zoals Taak 2, stap 6): `LIGHTHOUSE_GATE_FILES="$T/files" bash -c "$(python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command)"` · Expected: gate-go en gate-node `skipped`, gate-python draait de pytest-bestanden van die lijst groen; rc 0. Dit is het bewijs voor deze commit; de hook draait het oude commando.
+
+- [ ] **Step 5: Commit** — `refactor(ci): ci/domains.py houdt alleen classify voor CI (#80)`. De hook meldt daarna rood met `invalid choice: 'gate'`: verwacht, zie *Global Constraints*; geen fix-commit.
