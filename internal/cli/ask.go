@@ -104,6 +104,10 @@ func newAskCommand(env askEnv) *cobra.Command {
 			return errSilent
 		},
 	}
+	cmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "lighthouse ask: %v; nothing posted\n", err)
+		return errSilent
+	})
 	fl := cmd.Flags()
 	fl.IntVar(&in.issue, "issue", 0, "the issue number <N> from the prompt (issue #<N>, controller-run); required")
 	fl.StringVar(&in.phase, "phase", "", "the phase of the run; required")

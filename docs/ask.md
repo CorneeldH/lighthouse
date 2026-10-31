@@ -61,7 +61,7 @@ lighthouse ask --issue 42 --phase execution --task "Task 2" \
 - `1`: alles anders. Een foute vorm eindigt op `; nothing posted`: een `--option` of `--recommended`
   vóór de eerste `--question`, geen of meer dan vier vragen, een vraag met minder dan twee of meer
   dan zes opties, een lege optie, een vraag zonder of met twee `--recommended`, een `--recommended`
-  naar een optie die er niet is, een leeg veld, een ontbrekende of ongeldige sessie, geen
-  `lighthouse.toml` met `[forge] repo`, of geen token. Een mislukte lees van het issue of een mislukte
-  post geeft `lighthouse ask: post failed: <fout>`; dan staat er niets op het issue en mag de run
+  naar een optie die er niet is, een vlag die niet bestaat of niet te lezen is (`--issue abc`), een
+  leeg veld, een ontbrekende of ongeldige sessie, geen `lighthouse.toml` met `[forge] repo`, of geen
+  token. Een mislukte lees van het issue of een mislukte post geeft `lighthouse ask: post failed: <fout>`; dan staat er niets op het issue en mag de run
   dezelfde aanroep één keer herhalen.

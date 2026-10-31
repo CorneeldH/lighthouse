@@ -335,3 +335,28 @@ func TestAskFromSubdirectoryReadsRepoRoot(t *testing.T) {
 		t.Errorf("body names the worktree %s, want the root %s:\n%s", sub, root, posted[0])
 	}
 }
+
+// A flag cobra cannot parse ends like every other refusal before the post.
+func TestAskFlagErrorNothingPosted(t *testing.T) {
+	cases := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"issue not a number", append([]string{"--issue", "abc"}, askBase[2:]...),
+			`lighthouse ask: invalid argument "abc" for "--issue" flag: strconv.ParseInt: parsing "abc": invalid syntax; nothing posted` + "\n"},
+		{"unknown flag", askArgs("--bogus"), "lighthouse ask: unknown flag: --bogus; nothing posted\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, env, _ := askFixture(t)
+			code, out, errOut := runAsk(env, append(tc.args, oneQuestion...)...)
+			if code != 1 || errOut != tc.want || out != "" {
+				t.Errorf("exit %d, stdout %q, stderr %q; want 1, nothing and %q", code, out, errOut, tc.want)
+			}
+			if len(srv.Posts) != 0 {
+				t.Errorf("%d POSTs, want none", len(srv.Posts))
+			}
+		})
+	}
+}
