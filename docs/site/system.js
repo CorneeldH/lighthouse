@@ -1,9 +1,8 @@
 // The system page: the three steps and the sections below them, from data/system.json.
 
-import { fillLegend, initTheme, loadJson, renderStory } from "./map.js?v=3f3f67c5";
+import { initTheme, loadJson, renderStory } from "./map.js?v=79c73d3e";
 
 initTheme(document.getElementById("theme-toggle"));
-fillLegend(document.querySelector("[data-sorts]"));
 
 try {
   const system = await loadJson("data/system.json");

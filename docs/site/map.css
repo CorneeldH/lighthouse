@@ -28,13 +28,17 @@
   --hook-fg: #16181d;
   --github: #c9cbd1;
   --github-fg: #16181d;
-  --config: #f4d74b;
+  --rules: #f4d74b;
+  --rules-fg: #16181d;
+  --config: #ede0a6;
   --config-fg: #16181d;
   --you: #ffffff;
   --you-fg: #16181d;
   --idea: #5f6470;
   --badge-bg: #14213d;
   --badge-fg: #ffffff;
+  --session: #3a4a6b;
+  --session-fg: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -64,13 +68,17 @@
     --hook-fg: #16181d;
     --github: #d4d4d8;
     --github-fg: #16181d;
-    --config: #d9b92e;
+    --rules: #d9b92e;
+    --rules-fg: #16181d;
+    --config: #b8a45a;
     --config-fg: #16181d;
     --you: #222a3d;
     --you-fg: #e8eaf0;
     --idea: #9aa0ab;
     --badge-bg: #ffffff;
     --badge-fg: #14213d;
+    --session: #c9d1e3;
+    --session-fg: #14213d;
   }
 }
 
@@ -100,13 +108,17 @@
   --hook-fg: #16181d;
   --github: #d4d4d8;
   --github-fg: #16181d;
-  --config: #d9b92e;
+  --rules: #d9b92e;
+  --rules-fg: #16181d;
+  --config: #b8a45a;
   --config-fg: #16181d;
   --you: #222a3d;
   --you-fg: #e8eaf0;
   --idea: #9aa0ab;
   --badge-bg: #ffffff;
   --badge-fg: #14213d;
+  --session: #c9d1e3;
+  --session-fg: #14213d;
 }
 
 * {
@@ -258,16 +270,24 @@ button:focus-visible {
   border: 1.5px solid var(--border);
 }
 
-.form-rules,
+.form-rules {
+  --kind: var(--rules);
+  --kind-fg: var(--rules-fg);
+}
+
 .form-config {
   --kind: var(--config);
   --kind-fg: var(--config-fg);
 }
 
-.form-loop,
-.form-session {
+.form-loop {
   --kind: var(--badge-bg);
   --kind-fg: var(--badge-fg);
+}
+
+.form-session {
+  --kind: var(--session);
+  --kind-fg: var(--session-fg);
 }
 
 .sample {
@@ -1137,6 +1157,25 @@ details.who summary:focus-visible {
   font-size: 15px;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* "in repo:" before the command, on one line while it fits. */
+.story-command-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.story-command-line .story-command {
+  flex: 1;
+  min-width: 0;
+}
+
+.story-place {
+  color: var(--muted);
+  font-size: 15px;
+  white-space: nowrap;
 }
 
 .story-where {
