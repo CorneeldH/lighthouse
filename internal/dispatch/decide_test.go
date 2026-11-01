@@ -63,7 +63,7 @@ func TestDecideFixtures(t *testing.T) {
 
 // Apply posts Reason and Skip through protocol.Heading, which panics on an unknown key. Every
 // key a fixture expects must be in the headings table, in nl and en. A defer carries the
-// literal night or blocker, which apply never looks up.
+// literal night, which apply never looks up.
 func TestDecideKeysAreHeadings(t *testing.T) {
 	keys := map[string]bool{}
 	for _, f := range decideFixtures(t) {

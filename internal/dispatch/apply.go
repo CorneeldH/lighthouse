@@ -20,10 +20,17 @@ type Poster interface {
 	AddRocket(ctx context.Context, commentID int64) error
 }
 
+// Board is the board side apply writes to: the Status of one repo's board items, by option
+// name.
+type Board interface {
+	SetStatus(ctx context.Context, itemID, status string) error
+}
+
 // Env is what Apply needs from the outside, per repo where it differs.
 type Env struct {
 	DB         *sql.DB
 	Poster     func(repo string) Poster
+	Board      func(repo string) Board
 	Workplace  func(repo string) workplace.Workplace
 	Profile    func(repo string) (name, mcpConfig string)
 	RoundLimit func(repo string) string // what a run does at an adversarial round limit
@@ -102,11 +109,31 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 	case KindDefer:
 		res.Deferred = append(res.Deferred, deferral(a, a.Reason))
 		return nil
+	case KindPark:
+		// The comment first: a failed board change leaves a Parked that the next tick sees,
+		// and holds without posting a second one.
+		body := protocol.RenderParked(a.Blockers, a.Language)
+		if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+			return fmt.Errorf("post: %w", err)
+		}
+		return ap.setStatus(ctx, a, statusOnHold)
+	case KindHold:
+		return ap.setStatus(ctx, a, statusOnHold)
+	case KindUnpark:
+		return ap.setStatus(ctx, a, statusController)
 	case KindDropMarker:
 		ap.removeMarker(a)
 		return nil
 	}
 	return fmt.Errorf("unknown action kind %q", a.Kind)
+}
+
+// setStatus moves the board item of a to status.
+func (ap applier) setStatus(ctx context.Context, a Action, status string) error {
+	if err := ap.env.Board(a.Repo).SetStatus(ctx, a.ItemID, status); err != nil {
+		return fmt.Errorf("board: %w", err)
+	}
+	return nil
 }
 
 // reasonText is the heading of a.Reason in a.Language, followed by ": <argument>" when the

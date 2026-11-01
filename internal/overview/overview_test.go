@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 type fakeSource struct {
@@ -62,7 +64,7 @@ func TestBuild(t *testing.T) {
 		},
 	}
 
-	got, err := Build(context.Background(), src)
+	got, err := Build(context.Background(), src, nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -96,7 +98,7 @@ func TestBuildAnswerURLFallsBackToIssue(t *testing.T) {
 		issues:   []forge.Issue{issue(1)},
 		comments: map[int][]protocol.Comment{1: {question("", "2026-01-01T10:00:00Z", "Why?")}},
 	}
-	got, err := Build(context.Background(), src)
+	got, err := Build(context.Background(), src, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +120,7 @@ func TestBuildOrder(t *testing.T) {
 		},
 	}
 
-	got, err := Build(context.Background(), src)
+	got, err := Build(context.Background(), src, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +146,7 @@ func TestBuildFailsWhole(t *testing.T) {
 		src.issues = append(src.issues, issue(n))
 		src.comments[n] = []protocol.Comment{question("c", "2026-01-01T00:00:00Z", "q")}
 	}
-	got, err := Build(context.Background(), src)
+	got, err := Build(context.Background(), src, nil)
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want boom", err)
 	}
@@ -155,7 +157,7 @@ func TestBuildFailsWhole(t *testing.T) {
 
 func TestBuildListFails(t *testing.T) {
 	boom := errors.New("list down")
-	got, err := Build(context.Background(), &fakeSource{listErr: boom})
+	got, err := Build(context.Background(), &fakeSource{listErr: boom}, nil)
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want list down", err)
 	}
@@ -165,7 +167,7 @@ func TestBuildListFails(t *testing.T) {
 }
 
 func TestBuildEmptyIsNotNil(t *testing.T) {
-	got, err := Build(context.Background(), &fakeSource{})
+	got, err := Build(context.Background(), &fakeSource{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,5 +176,91 @@ func TestBuildEmptyIsNotNil(t *testing.T) {
 	}
 	if len(got.Questions)+len(got.Returned) != 0 {
 		t.Errorf("overview = %+v, want empty", got)
+	}
+}
+
+func TestBuildOnlyController(t *testing.T) {
+	// 945 is paia#945 on 2026-10-26: a run that asks an open question outside Controller.
+	src := &fakeSource{
+		issues: []forge.Issue{issue(945), issue(12), issue(13)},
+		comments: map[int][]protocol.Comment{
+			945: {question("c945", "2026-10-26T10:00:00Z", "A of B?")},
+			12:  returnedComment("2026-10-26T11:00:00Z"),
+			13:  {question("c13", "2026-10-26T12:00:00Z", "Welke poort?")},
+		},
+	}
+	inController := func(context.Context) (map[int]bool, error) { return map[int]bool{12: true, 13: true}, nil }
+
+	got, err := Build(context.Background(), src, inController)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Questions) != 1 || got.Questions[0].Number != 13 {
+		t.Errorf("questions = %+v, want only 13", got.Questions)
+	}
+	if len(got.Returned) != 1 || got.Returned[0].Number != 12 {
+		t.Errorf("returned = %+v, want only 12", got.Returned)
+	}
+	for _, n := range src.called {
+		if n == 945 {
+			t.Error("Comments called for 945, which is not in Controller")
+		}
+	}
+}
+
+func TestBuildFilterFails(t *testing.T) {
+	boom := errors.New("board down")
+	src := &fakeSource{
+		issues:   []forge.Issue{issue(1)},
+		comments: map[int][]protocol.Comment{1: {question("c1", "2026-01-01T00:00:00Z", "q")}},
+	}
+	got, err := Build(context.Background(), src, func(context.Context) (map[int]bool, error) { return nil, boom })
+	if !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want board down", err)
+	}
+	if got.Questions != nil || got.Returned != nil {
+		t.Errorf("overview = %+v, want empty", got)
+	}
+}
+
+type fakeBoard struct {
+	items []forge.BoardItem
+	err   error
+	asked string
+}
+
+func (f *fakeBoard) BoardItems(_ context.Context, projectID string) ([]forge.BoardItem, error) {
+	f.asked = projectID
+	return f.items, f.err
+}
+
+func TestControllerIssues(t *testing.T) {
+	b := repoconfig.Board{ProjectID: "PVT_x", StatusFieldID: "SF",
+		StatusOptions: map[string]string{"Controller": "c1", "In progress": "p1"}}
+	board := &fakeBoard{items: []forge.BoardItem{
+		{Repo: "o/r", Issue: 12, SingleSelect: map[string]string{"SF": "c1"}},
+		{Repo: "o/r", Issue: 945, SingleSelect: map[string]string{"SF": "p1"}},
+		{Repo: "x/y", Issue: 12, SingleSelect: map[string]string{"SF": "c1"}},
+		{Repo: "x/y", Issue: 14, SingleSelect: map[string]string{"SF": "c1"}},
+		{Repo: "o/r", Issue: 20, SingleSelect: map[string]string{"PF": "c1"}},
+	}}
+
+	got, err := ControllerIssues(board, "o/r", b)(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !maps.Equal(got, map[int]bool{12: true}) {
+		t.Errorf("got %v, want map[12:true]", got)
+	}
+	if board.asked != "PVT_x" {
+		t.Errorf("project = %q, want PVT_x", board.asked)
+	}
+}
+
+func TestControllerIssuesBoardFails(t *testing.T) {
+	boom := errors.New("graphql down")
+	b := repoconfig.Board{ProjectID: "PVT_x", StatusFieldID: "SF", StatusOptions: map[string]string{"Controller": "c1"}}
+	if _, err := ControllerIssues(&fakeBoard{err: boom}, "o/r", b)(context.Background()); !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want graphql down", err)
 	}
 }

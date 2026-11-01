@@ -1311,3 +1311,76 @@ details.who summary:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Configuration map: one button per key, grouped by file and table, filtered by level */
+
+.config-file {
+  margin-top: 28px;
+}
+
+.config-file h2 {
+  margin: 0 0 4px;
+}
+
+.config-file h3 {
+  margin: 16px 0 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+}
+
+.config-file p {
+  margin: 4px 0 0;
+  max-width: 70ch;
+}
+
+.config-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.config-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.config-key.dim {
+  opacity: 0.25;
+}
+
+.config-key.current {
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--accent-soft);
+}
+
+/* The clicked key shows in full colour, also when the chosen level passes it by. */
+.config-key.dim.current {
+  opacity: 1;
+}
+
+.config-level {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.level-set {
+  background: var(--accent-soft);
+  color: #16181d;
+}
+
+.level-optional {
+  border: 1px solid var(--muted);
+}
+
+.level-advanced {
+  color: var(--muted);
+}

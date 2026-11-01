@@ -82,6 +82,23 @@
             "Open": false,
             "Outcome": "handoff",
             "Reason": ""
+          },
+          {
+            "ID": 6,
+            "Issue": 7,
+            "SessionID": "22222222-3333-4444-8555-666666666666",
+            "Mode": "start",
+            "Trigger": "handoff",
+            "TriggerKey": "handoff:63",
+            "Attempt": 1,
+            "Command": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md",
+            "Prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-31T11:05:00Z",
+            "Open": false,
+            "Outcome": "returned",
+            "Reason": ""
           }
         ],
         "stands": {}
@@ -90,10 +107,10 @@
   },
   "want": [
     {
-      "kind": "defer",
+      "kind": "rocket",
       "repo": "o/r",
       "issue": 7,
-      "reason": "blocker",
+      "comment_id": 63,
       "language": "nl"
     }
   ]

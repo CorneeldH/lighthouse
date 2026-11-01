@@ -64,6 +64,7 @@ func TestVariantsFromHeadings(t *testing.T) {
 		KindDone:     {"Klaar", "Done"},
 		KindReturned: {"Teruggegeven", "Returned"},
 		KindRebased:  {"Herbaseerd", "Rebased"},
+		KindParked:   {"Geparkeerd", "Parked"},
 	}
 	for kind, variants := range want {
 		got := map[string]bool{}

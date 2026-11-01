@@ -37,6 +37,10 @@ en = "Returned"
 nl = "Herbaseerd"
 en = "Rebased"
 
+[kind_parked]
+nl = "Geparkeerd"
+en = "Parked"
+
 # Texts the dispatcher posts
 [reason_needs_brainstorm]
 nl = "heeft brainstorm nodig"

@@ -28,6 +28,7 @@ NL = {
     "kind_done": "Klaar",
     "kind_returned": "Teruggegeven",
     "kind_rebased": "Herbaseerd",
+    "kind_parked": "Geparkeerd",
     "question_where": "Waar het staat",
     "question_what": "Wat er speelt",
     "question_label": "Vraag",
