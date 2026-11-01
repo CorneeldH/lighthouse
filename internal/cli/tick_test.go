@@ -452,6 +452,8 @@ type fakeWorkplace struct {
 	// looked, asked, removed and discarded are the workspace ids of each Lookup, Sessions,
 	// Remove and Discard, in order.
 	looked, asked, removed, discarded []string
+	// removeErr, when set, is what Remove answers.
+	removeErr error
 }
 
 func newFakeWorkplace(t *testing.T, repo string) *fakeWorkplace {
@@ -499,7 +501,7 @@ func (w *fakeWorkplace) Remove(_ context.Context, workspaceID string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.removed = append(w.removed, workspaceID)
-	return nil
+	return w.removeErr
 }
 
 func (w *fakeWorkplace) Lookup(_ context.Context, workspaceID string) (workplace.Workspace, error) {
@@ -1647,5 +1649,30 @@ func TestTickSweepRunsWhenNotDue(t *testing.T) {
 	}
 	if got := leftovers(t, db); len(got) != 0 {
 		t.Errorf("leftovers = %+v, want none", got)
+	}
+}
+
+// A Remove that fails with something other than a 409 is a cleanup line and exit 1; the
+// workspace stays a candidate and is listed, so the next tick tries again.
+func TestTickSweepRemoveFails(t *testing.T) {
+	env, db := tickFixture(t, repo945(t))
+	_, w := sweepable(t, &env, "p1", &gitState{ahead: "0"})
+	w.removeErr = errors.New("delete workspace: status 500")
+	doneRuns945(t, db)
+
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: cleanup o/r: workspace " + ws945 + " of #945: "; !strings.Contains(errOut.String(), want) ||
+		!strings.Contains(errOut.String(), "status 500") || strings.Contains(errOut.String(), "removed workspace") {
+		t.Errorf("errOut = %q, want a cleanup line with the remove error and no removed line", errOut.String())
+	}
+	ws, err := runs.Workspaces(context.Background(), openStore(t, db), "o/r")
+	if err != nil || len(ws) != 1 {
+		t.Errorf("candidates = %+v, %v; want %s still there", ws, err, ws945)
+	}
+	if ls := leftovers(t, db); len(ls) != 1 || !strings.HasPrefix(ls[0].Reason, "not measurable: remove: ") {
+		t.Errorf("leftovers = %+v, want one with not measurable: remove", ls)
 	}
 }
