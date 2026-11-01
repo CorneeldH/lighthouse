@@ -4,8 +4,10 @@ controller run is written to `<LIGHTHOUSE_STATE_DIR>/runs/<run>/permission.json`
 
 import json
 import os
+import re
 import stat
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tests.pack._testkit import MINIMAL_TOML, guard_env, install_core
@@ -107,7 +109,6 @@ def test_permission_prompt_writes_tool_and_path(tmp_path: Path) -> None:
     assert note["path"] == "/tmp/x"
     assert note["thread"] == ""
     assert note["message"] == MESSAGE
-    assert note["at"].endswith("Z")
     path = state / "runs" / RUN / "permission.json"
     assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
     assert [p.name for p in path.parent.iterdir()] == ["permission.json"]
@@ -194,3 +195,19 @@ def test_no_state_dir_could_not_check(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert result.stdout == ""
     assert "COULD NOT CHECK" in result.stderr
+
+
+def test_at_has_milliseconds_and_is_the_prompt_moment(tmp_path: Path) -> None:
+    # A transcript line carries milliseconds; the tool_use behind the prompt is usually
+    # written in the same second. An `at` cut to whole seconds lies before it, and the
+    # dispatcher would read the prompt as answered.
+    transcript = _write(
+        tmp_path / "t.jsonl", [_entry("Write", {"file_path": "/tmp/x"}, "2026-11-01T10:00:00Z")]
+    )
+    before = datetime.now(timezone.utc)
+    _run(tmp_path, _payload(transcript))
+    after = datetime.now(timezone.utc)
+    at = _note(tmp_path / "state")["at"]
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z", at), at
+    moment = datetime.fromisoformat(at.replace("Z", "+00:00"))
+    assert before.replace(microsecond=before.microsecond // 1000 * 1000) <= moment <= after

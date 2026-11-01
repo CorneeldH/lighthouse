@@ -40,6 +40,17 @@ func TestReadPermission(t *testing.T) {
 			t.Errorf("ReadPermission = %+v, want %+v", got, want)
 		}
 	})
+	t.Run("milliseconds, as the hook writes at", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, note(dir), `{"version": 1, "at": "2026-10-24T09:05:01.339Z", "tool": "Write"}`)
+		got, err := ReadPermission(dir, runSession)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := time.Date(2026, 10, 24, 9, 5, 1, 339_000_000, time.UTC); got == nil || !got.At.Equal(want) {
+			t.Errorf("ReadPermission = %+v, want at %v", got, want)
+		}
+	})
 	t.Run("no note", func(t *testing.T) {
 		got, err := ReadPermission(t.TempDir(), runSession)
 		if got != nil || err != nil {

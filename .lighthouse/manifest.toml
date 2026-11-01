@@ -246,7 +246,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/permission-check/note.py"
 package = "core"
 version = "dev"
-sha256 = "4aa1b0dcc5f26251136fdb3ecc9ff9cd4a61d0fcb2bf0a58aed132476247510e"
+sha256 = "da392368b225660a2b091d2024a98109dbf95b7180c3fa181da8cab7ecdbede5"
 
 [[unit]]
 kind = "file"

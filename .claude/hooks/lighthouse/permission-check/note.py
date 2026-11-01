@@ -9,7 +9,9 @@ overwrites). `tool` and `path` come from the newest `tool_use` (by `timestamp`) 
 `transcript_path` and in `<transcript without .jsonl>/subagents/*.jsonl`; `thread` is
 `""` for the main transcript, else the file name without `.jsonl`. Without a readable
 `tool_use`, `tool` comes from the message (`... to use <Tool>`), `path` and `thread`
-are `""`. Exit 0 always; a failure goes to stderr. Only stdlib.
+are `""`. `at` is RFC 3339 UTC with milliseconds, as transcript lines are: the `tool_use`
+behind the prompt is usually written in the same second, and an `at` cut to whole seconds
+would lie before it. Exit 0 always; a failure goes to stderr. Only stdlib.
 """
 
 from __future__ import annotations
@@ -106,7 +108,7 @@ def build_note(payload: dict, now: datetime) -> dict:
     tool, path, thread = found
     return {
         "version": 1,
-        "at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "at": now.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
         "tool": tool,
         "path": path,
         "thread": thread,
