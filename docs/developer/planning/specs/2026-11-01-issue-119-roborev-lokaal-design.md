@@ -24,7 +24,7 @@ gebeurde, moet per commit terug te vinden zijn, en een script moet het later kun
    de drempel en met Codex-budget, in één ronde.
 2. Elke bevinding wordt gefixt of gemotiveerd afgewezen, en dat staat zichtbaar en parseerbaar op
    de PR.
-3. Overslaan gebeurt nooit stil: de reden staat in de PR-body.
+3. Bij `local` gebeurt overslaan nooit stil: de reden staat in de PR-body.
 4. De dispatcher start bij een rode PR `/lighthouse-fix-pr`, met een plafond van drie runs.
 
 ## Niet-doelen
@@ -85,7 +85,15 @@ roborev = "local"   # "local" of "off"; zonder sleutel: "off"
 ```
 
 `.roborev.toml` blijft de plek voor agent, model en review-typen, zoals in paia. De stand `local`
-zonder `.roborev.toml` telt als overslaan, met de reden `geen .roborev.toml`.
+zonder `.roborev.toml` telt als overslaan, met de reden `geen .roborev.toml`. Bij `off` (of zonder
+sleutel) slaat write-pr de stap stil over en schrijft geen regel in de body: elke repo met
+`pack/core` staat standaard op `off`, en een skipregel in elke PR daar is ruis. *(eigen keuze na
+spec-review, r1-f5)*
+
+De waarde-check komt in `.lighthouse/lib/lighthouse_lib/config.py`, als enum-check zoals die van
+`forge.kind`; SCHEMA alleen controleert het type. De sleutel krijgt een rij in
+`docs/site/data/config.json`, anders wordt `tests/test_site_config.py` rood. *(eigen keuze na
+spec-review, r1-f8)*
 
 Lighthouse zelf krijgt `roborev = "local"` en een `.roborev.toml`. Die neemt agent, model en
 `review_types` over van paia.
@@ -98,7 +106,15 @@ Lighthouse zelf krijgt `roborev = "local"` en een `.roborev.toml`. Die neemt age
 Een nieuwe stap in `pack/core/skills/write-pr/SKILL.md`, na V2 (bewijs per AC) en vóór V4 (body en
 `gh pr create`). De stap draait alleen bij `roborev = "local"`.
 
-1. **Drempel.** Tel de coderegels van de branch-diff vanaf de merge-base met de default branch.
+De stap draait ook bij een PR met `No issue:`, waar write-pr V1–V3 overslaat. Doel 3 geldt voor
+elke PR. *(eigen keuze na spec-review, r1-f10)*
+
+0. **Al gereviewd?** Bestaat de reviewuitvoer van deze branch al (zie *Uitvoer en herstart*), dan
+   draait er geen tweede review en gaat de stap meteen naar V4 en de comment. Write-pr draait
+   opnieuw na een blokkade door `pr-create-gate` (`pack/core/skills/write-pr/SKILL.md:20,72-73`).
+   Zonder deze stap zou een herstart een tweede Codex-review starten, op HEAD met de fixes erin.
+1. **Drempel.** Tel de coderegels van de branch-diff vanaf `git merge-base origin/<default> HEAD`,
+   na een `git fetch origin <default>`, zoals de rest van write-pr tegen `origin/<default>` dift.
    Gebruik de regel van paia's `Size`-stap: docs/, binaire bestanden en .md .rst .txt .toml .yaml
    .yml .json .lock .csv .ini .cfg .cff tellen niet; `.github/workflows/` telt wel. Onder de 100
    regels: overslaan.
@@ -106,24 +122,50 @@ Een nieuwe stap in `pack/core/skills/write-pr/SKILL.md`, na V2 (bewijs per AC) e
    de review door. `fallback`, `not_measurable` of een kapotte check: overslaan, met het besluit
    en de reden.
 3. **Review.** `roborev ci review --ref <merge-base>..HEAD`, zonder `--comment`. Zo draait de
-   review lokaal, zonder daemon, in hetzelfde formaat als de CI-comment van paia: de kop
-   `` ## roborev: Review Complete (`<sha>`) `` en dezelfde bevindingen. De ruwe output gaat naar
-   een bestand.
+   review lokaal, zonder daemon, in hetzelfde formaat als de CI-comment van paia. De ruwe output
+   gaat naar het bestand uit *Uitvoer en herstart*.
+
+   **De aanroep.** In de voorgrond: een controller-run mag geen achtergrondwerk starten
+   (`internal/dispatch/instructions/run.md:56-58`). Buiten de sandbox, want Codex heeft netwerk
+   nodig. Gewikkeld in `timeout 540`, met een Bash-timeout van 600000 ms, het maximum van één
+   Bash-call. Loopt de review langer dan 9 minuten, dan slaat de stap over met
+   `review faalde: timeout na 9 min`. *(eigen keuze na spec-review, r1-f2)*
+
+   **De uitkomst lezen.** roborev v0.69.0 kent vijf koppen van de vorm
+   `` ## roborev: <soort> (`<sha>`) ``:
+
+   | Kop | Betekenis voor write-pr |
+   |---|---|
+   | `Review Complete`, `Combined Review` | review gedaan, met bevindingen: verwerken |
+   | `Review Passed` | review gedaan, geen bevindingen: marker en comment met lege lijst |
+   | `Review Failed`, `Review Skipped` | overslaan: `review faalde: <kop>` |
+   | geen van deze | overslaan: `review faalde: <eerste foutregel>` |
+
+   De exitcode alleen is geen faalsignaal. Paia zet `continue-on-error` op de stap "zodat een
+   vondst … de PR niet blokkeert", dus een review met bevindingen kan een exitcode ≠ 0 geven. De
+   builder meet de exitcodes van `roborev ci review` en pint deze indeling in de tests van het
+   script. *(eigen keuze na spec-review, r1-f1)*
 4. **Verwerken, één ronde.** Per bevinding `superpowers:receiving-code-review`: fixen of
    gemotiveerd afwijzen, met dezelfde severity-regels als fix-pr sectie 6 (high en medium serieus,
    een low alleen als die triviaal is). Elke fix is een eigen commit, en de body noemt de
    bevinding: `roborev: <path>:<line> (<severity>)`.
 5. **Geen tweede review.**
 
+**Uitvoer en herstart.** De ruwe output komt in
+`$(git rev-parse --git-dir)/lighthouse/roborev/<branch>.md`, met de gereviewde range in de eerste
+regel. Het staat buiten de werkboom, overleeft een herstart van write-pr en is per worktree
+uniek. Bestaat dat bestand, dan meldt het script `done: <sha>` in plaats van `run`.
+*(eigen keuze na spec-review, r1-f3)*
+
 Drempel en budget komen in één script, zodat skill en tests hetzelfde meten:
 `pack/core/scripts/roborev_gate.py` (naam is de keuze van de builder). Het geeft `run` of
 `skip: <reden>` en de range, als JSON. Het script draait de review zelf niet; dat blijft één
 zichtbaar commando in de skill.
 
-Overslaan heeft vijf redenen, elk letterlijk in de PR-body: `roborev uit`, `geen .roborev.toml`,
-`geen roborev of codex op PATH`, `<n> coderegels (drempel 100)`, `Codex-budget: <besluit> -
-<reden>`. Een review die faalt (exit ≠ 0, geen leesbare kop) telt ook als overslaan:
-`review faalde: <eerste foutregel>`.
+Overslaan heeft vier redenen, elk letterlijk in de PR-body: `geen .roborev.toml`,
+`geen roborev of codex op PATH`, `<n> coderegels (drempel 100)` en `Codex-budget: <besluit> -
+<reden>`. Een review die faalt, volgens de tabel hierboven, telt ook als overslaan:
+`review faalde: <kop, foutregel of timeout>`.
 
 ### 3. PR-body: de lokaal-marker
 
@@ -155,7 +197,14 @@ gefixt is. De opbouw:
 
 - `uitkomst` is `fixed`, `refuted` of `left`. Bij `refuted` en `left` staat de reden in `reden`, en
   `commit` is `null`.
-- Het log-blok staat op één regel, zodat een parser het met één regex vindt.
+- Het log-blok staat op één regel, zodat een parser het met één regex vindt. De renderer
+  escapet `<`, `>` en `-` in de JSON als `\u003c`, `\u003e` en `\u002d`. Zo sluit een reden met
+  `-->` of een regeleinde het commentaar niet voortijdig af. Een bevinding zonder bestand of
+  regel krijgt `path` of `line` als `null`. *(eigen keuze na spec-review, r1-f7)*
+- De ruwe output wordt ingekort zodat de comment onder de limiet van GitHub blijft (65536
+  tekens). Het log-blok en de tabel worden nooit ingekort. Faalt `gh pr comment`, dan meldt
+  write-pr dat, en de bewaarde uitvoer maakt een tweede poging mogelijk. *(eigen keuze na
+  spec-review, r1-f7)*
 - Zonder bevindingen is de lijst leeg, en de tabel zegt "geen bevindingen".
 - Het blok heeft een versieveld `v`, zodat een latere wijziging van de vorm herkenbaar blijft.
 
@@ -171,15 +220,25 @@ met de reden `reason_pr_red`.
 
 Voortaan:
 
-- Een klare run met een open PR waarvan de checks `FAILURE` of `ERROR` zijn, sluit af, en de
-  dispatcher start een nieuwe run met `/lighthouse-fix-pr <pr>` op de head-branch van de PR.
+- **Waar het besluit valt.** Alleen bij het afsluiten van een klare runrij in deze tick, in de
+  regel die nu `prRed()` is (`settle` → `runCtx.outcome`, `decide.go:260-299,330-333`). Er komt
+  geen losse regel in `issueCtx.next()`. Die zou ook zonder afgelopen run vuren: op een rode PR na
+  een Teruggegeven om een andere reden, of na een push van de gebruiker, en dan bij elke tick
+  opnieuw. *(eigen keuze na spec-review, r1-f4)*
+- **Rood, onder het plafond, verse SHA.** De rij sluit met uitkomst `handoff`: de keten loopt
+  door, net als bij een Handoff die de keten niet beëindigt. De actie draagt een start van
+  `/lighthouse-fix-pr <pr>` op de head-branch van de PR. Hoe `settle` die start doorgeeft aan de
+  geplande uitvoer, bepaalt de builder; de start mag alleen ontstaan uit dit afsluiten.
 - **Trigger** `fixpr`, met als **trigger key** `fixpr:<pr>:<head-sha>`. Een rode staat op dezelfde
   SHA start zo nooit twee keer (`spentKey`, `decide.go:1039`).
-- **Plafond: drie fix-pr-runs per PR.** Tel de runrijen met trigger `fixpr` voor die PR. Staat de
-  teller op drie en is de PR nog rood, dan volgt een Teruggegeven met een nieuwe reden: "PR rood na
-  3 fix-pr-runs" (`headings.toml`, nl en en).
-- Een fix-pr-run die eindigt zonder push, met dezelfde head-SHA, telt mee in het plafond. Er start
-  geen tweede run op die SHA, dus de rode PR wordt Teruggegeven met de bestaande reden "PR rood".
+- **Plafond: drie fix-pr-runs per PR.** Tel de gesloten runrijen van het issue waarvan het
+  commando `/lighthouse-fix-pr <pr>` is en de uitkomst niet `start_failed`. Een fix-pr-run die via
+  een handoff startte, telt dus mee; een mislukte start niet. Is de teller drie en de PR nog rood,
+  dan sluit de rij als `returned` met de nieuwe reden "PR rood na 3 fix-pr-runs" (`headings.toml`,
+  nl en en). *(eigen keuze na spec-review, r1-f6)*
+- **Rood op een al gebruikte SHA.** Een fix-pr-run die eindigt zonder push laat dezelfde head-SHA
+  achter. Er start dan geen tweede run, en de rij sluit als `returned` met de bestaande reden
+  "PR rood". Zijn zowel het plafond als de gebruikte SHA waar, dan wint de plafondreden.
 - Een fixture in `internal/dispatch/testdata/decide/` per geval: eerste rode PR geeft een start
   van fix-pr; rood op een al gebruikte SHA geeft Teruggegeven; drie runs geeft Teruggegeven met de
   plafondreden. `settle-red-pr.json` past zich aan aan het nieuwe gedrag.
@@ -214,7 +273,9 @@ rood en de sessie is klaar" in de run-uitkomsttabel wordt "start fix-pr, na 3 ru
 
 De PR van #119 zelf ligt boven de 100 coderegels. Na `init --upgrade` draait de nieuwe write-pr
 op die PR. Bewijs: de ruwe output en het log-blok in de comment, en precies één CI-run op de
-head-SHA, gemeten met `gh run list --commit <sha>`.
+head-SHA, gemeten met `gh run list --commit <sha> --workflow ci.yml`. `cla.yml` en
+`chain-roadmap.yml` draaien ook op `pull_request` en tellen niet mee. *(eigen keuze na
+spec-review, r1-f9)*
 
 ## Aan de builder
 
