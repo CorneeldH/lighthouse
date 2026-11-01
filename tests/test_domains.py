@@ -13,10 +13,12 @@ from tests._domains import load
 ROOT = Path(__file__).resolve().parents[1]
 domains = load()
 
+# The loose root .md files that classify keeps out of go.
+_ROOT_MD = r"README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLA\.md"
 # A string literal that climbs out of its package (`../`, once or more) into tests/ (not the
-# fixtures), README.md or CHANGELOG.md.
+# fixtures) or one of the loose root .md files.
 _REPO_READ = re.compile(
-    r"[\"`]((?:\.\./)+(?:tests/(?!pack/fixtures/)[^\"`]*|README\.md|CHANGELOG\.md))[\"`]"
+    rf"[\"`]((?:\.\./)+(?:tests/(?!pack/fixtures/)[^\"`]*|{_ROOT_MD}))[\"`]"
 )
 
 
@@ -46,6 +48,11 @@ def _repo_reads(text: str) -> list[str]:
         (["tests/test_x.py"], {"python"}),
         (["README.md"], {"python"}),
         (["CHANGELOG.md"], {"python"}),
+        (["CONTRIBUTING.md"], {"python"}),
+        (["SECURITY.md"], {"python"}),
+        (["CLA.md"], {"python"}),
+        (["CONTRIBUTING.md", "internal/a.go"], {"go", "python"}),
+        (["AGENTS.md"], {"go", "python"}),
         (["tests/test_x.py", "README.md"], {"python"}),
         (["tests/pack/fixtures/protocol/headers.json"], {"go", "python"}),
         (["pack/core/README.md"], {"go", "python"}),
@@ -78,8 +85,18 @@ def test_no_go_file_names_a_path_outside_go():
 
 
 def test_repo_reads_finds_a_read_above_the_package():
-    text = 'os.ReadFile("../../tests/x.py")\nos.ReadFile(`../README.md`)\n"../../CHANGELOG.md"'
-    assert _repo_reads(text) == ["../../tests/x.py", "../README.md", "../../CHANGELOG.md"]
+    text = (
+        'os.ReadFile("../../tests/x.py")\nos.ReadFile(`../README.md`)\n"../../CHANGELOG.md"\n'
+        '"../../CONTRIBUTING.md"\n`../SECURITY.md`\n"../CLA.md"'
+    )
+    assert _repo_reads(text) == [
+        "../../tests/x.py",
+        "../README.md",
+        "../../CHANGELOG.md",
+        "../../CONTRIBUTING.md",
+        "../SECURITY.md",
+        "../CLA.md",
+    ]
 
 
 def test_repo_reads_skips_fixtures_temp_repos_and_inner_dotdot():
@@ -93,7 +110,7 @@ def test_repo_reads_skips_fixtures_temp_repos_and_inner_dotdot():
 
 
 def test_no_go_file_reads_tests_or_root_md():
-    """Fails when Go code starts to read tests/ (outside the fixtures), README.md or CHANGELOG.md.
+    """Fails when Go code starts to read tests/ (outside the fixtures) or a loose root .md file.
 
     A Go test reads this repo from its own package directory, so through `../`; go:embed cannot
     reach above its module. A path built from parts (`filepath.Join(root, "tests", ...)`) is not
