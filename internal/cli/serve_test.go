@@ -392,8 +392,8 @@ func TestServeCommandStopsOnUnreadableHostToml(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		cancel()
-		<-done
-		t.Fatal("serve still running after 5s, want it to stop on the host.toml error")
+		err := <-done
+		t.Fatalf("serve still running after 5s, want it to stop on the host.toml error; after cancel: %v", err)
 	}
 	if strings.Contains(errOut.String(), "listening") {
 		t.Errorf("serve started listening: %q", errOut.String())
