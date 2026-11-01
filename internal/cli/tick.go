@@ -255,7 +255,7 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 
 // applyActions applies actions to repos, each with its forge workplace; apply logs to errOut
 // with the "lighthouse: " of every tick line. Without actions it applies nothing. tick and
-// `lighthouse run` share it.
+// `lighthouse run` share it. Every repo in repos has a board: Dispatchable guarantees it.
 func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
 	repos map[string]repoconfig.Repo, actions []dispatch.Action, errOut io.Writer) (dispatch.Result, error) {
 	if len(actions) == 0 {
@@ -273,8 +273,11 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	// repo: the callers write their apply lines from it, and tick decides which fingerprints
 	// it saves.
 	res, _ := dispatch.Apply(ctx, dispatch.Env{
-		DB:        db,
-		Poster:    func(slug string) dispatch.Poster { return env.client(slug, token) },
+		DB:     db,
+		Poster: func(slug string) dispatch.Poster { return env.client(slug, token) },
+		Board: func(slug string) dispatch.Board {
+			return dispatch.NewBoard(env.client(slug, token), *repos[slug].Board)
+		},
 		Workplace: func(slug string) workplace.Workplace { return places[slug] },
 		Profile: func(slug string) (string, string) {
 			name := repos[slug].Controller.Profile
