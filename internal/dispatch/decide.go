@@ -757,7 +757,7 @@ func (c issueCtx) planned(a Action, at time.Time) planned {
 		Action:   a,
 		priority: priorityRank(c.it.Priority),
 		at:       at,
-		software: c.repo.Controller.Profile == profileSoftware,
+		software: c.repo.Controller.Profile == ProfileSoftware,
 		parked:   a.Trigger == triggerUsage,
 	}
 }

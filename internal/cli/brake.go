@@ -84,7 +84,7 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 	}
 	for _, r := range open {
 		b.InUse++
-		if r.Profile == "software" {
+		if r.Profile == dispatch.ProfileSoftware {
 			b.SoftwareInUse++
 		}
 	}
@@ -107,7 +107,7 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 		f.Markers[repo] = append(f.Markers[repo], m)
 		if runs.Resumable(last, m.Key()) {
 			b.InUse++
-			if last.Profile == "software" {
+			if last.Profile == dispatch.ProfileSoftware {
 				b.SoftwareInUse++
 			}
 		}

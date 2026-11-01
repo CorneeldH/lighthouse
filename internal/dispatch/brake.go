@@ -2,8 +2,8 @@ package dispatch
 
 import "fmt"
 
-// profileSoftware is the repo profile the software limit counts.
-const profileSoftware = "software"
+// ProfileSoftware is the repo profile the software limit counts.
+const ProfileSoftware = "software"
 
 // triggerUsage is the trigger of a resume of a run parked by the usage brake.
 const triggerUsage = "usage"
