@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/spf13/cobra"
+
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge"
@@ -462,4 +464,48 @@ func (n *counts) count(row tri.Row) {
 	default:
 		n.other++
 	}
+}
+
+// newTriageCommand is `lighthouse triage`. env builds the environment at the start of the run;
+// its error is exit code 2. A panic in the round is exit code 2 too, with a line naming it.
+func newTriageCommand(env func() (triageEnv, error)) *cobra.Command {
+	var (
+		opts   triageOpts
+		issues []string
+		dbPath string
+	)
+	cmd := &cobra.Command{
+		Use:   "triage",
+		Short: "Judge the open issues of the repos with [controller.triage]",
+		Long: "Judge the open issues of the repos in host.toml [dispatch] repos that have\n" +
+			"[controller.triage]: per candidate one claude judgment, then the comment, the marker and,\n" +
+			"for a clear recommendation, the move to Controller. The pause flag and the usage window\n" +
+			"close the round like they close a tick. Exit code 0: the round ran. 1: skipped (no repo,\n" +
+			"the brake, a round still running). 2: a failure.",
+		Example: "  lighthouse triage --dry-run --issue CorneeldH/lighthouse#114",
+		Args:    cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = &exitError{code: 2, err: fmt.Errorf("triage panicked: %v", r)}
+				}
+			}()
+			for _, s := range issues {
+				ref, perr := parseIssueRef(s)
+				if perr != nil {
+					return &exitError{code: 2, err: perr}
+				}
+				opts.Issues = append(opts.Issues, ref)
+			}
+			e, eerr := env()
+			if eerr != nil {
+				return &exitError{code: 2, err: eerr}
+			}
+			return triage(cmd.Context(), e, opts, dbPath, cmd.OutOrStdout(), cmd.ErrOrStderr())
+		},
+	}
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "judge, but write nothing; the route lines go to stdout")
+	cmd.Flags().StringArrayVar(&issues, "issue", nil, "judge only this issue, <owner>/<name>#<number> (repeatable, needs --dry-run)")
+	cmd.Flags().StringVar(&dbPath, "db", "", "path of the SQLite database (default: the lighthouse data directory)")
+	return cmd
 }

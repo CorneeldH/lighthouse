@@ -31,7 +31,7 @@ issue wordt gemeld, nooit gesloten of doorgezet. Triage zet geen labels en legt 
 ## Het commando
 
 ```bash
-lighthouse triage [--dry-run] [--issue <owner>/<naam>#<nr>]...
+lighthouse triage [--dry-run] [--issue <owner>/<naam>#<nr>]... [--db <pad>]
 ```
 
 - `--dry-run` doet de oordelen, maar schrijft niets. De routeregels gaan naar stdout. Gebruik het
