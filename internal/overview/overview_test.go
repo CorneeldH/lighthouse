@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"sync"
 	"testing"
 
@@ -262,5 +263,66 @@ func TestControllerIssuesBoardFails(t *testing.T) {
 	b := repoconfig.Board{ProjectID: "PVT_x", StatusFieldID: "SF", StatusOptions: map[string]string{"Controller": "c1"}}
 	if _, err := ControllerIssues(&fakeBoard{err: boom}, "o/r", b)(context.Background()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want graphql down", err)
+	}
+}
+
+func questionSource(n int) *fakeSource {
+	return &fakeSource{
+		issues:   []forge.Issue{issue(n)},
+		comments: map[int][]protocol.Comment{n: {question("c", "2026-01-01T10:00:00Z", "Why?")}},
+	}
+}
+
+func TestBuildAllSetsRepo(t *testing.T) {
+	got, err := BuildAll(context.Background(), []RepoSource{
+		{Slug: "o/a", Src: questionSource(1)},
+		{Slug: "o/b", Src: questionSource(2)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Questions) != 2 {
+		t.Fatalf("questions = %+v, want two", got.Questions)
+	}
+	if q := got.Questions[0]; q.Repo != "o/a" || q.Number != 1 {
+		t.Errorf("Questions[0] = %+v", q)
+	}
+	if q := got.Questions[1]; q.Repo != "o/b" || q.Number != 2 {
+		t.Errorf("Questions[1] = %+v", q)
+	}
+}
+
+func TestBuildAllSetsRepoOnReturned(t *testing.T) {
+	src := &fakeSource{
+		issues:   []forge.Issue{issue(3)},
+		comments: map[int][]protocol.Comment{3: returnedComment("2026-01-03T10:00:00Z")},
+	}
+	got, err := BuildAll(context.Background(), []RepoSource{{Slug: "o/a", Src: src}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Returned) != 1 || got.Returned[0].Repo != "o/a" {
+		t.Errorf("returned = %+v", got.Returned)
+	}
+}
+
+func TestBuildAllFailsWhole(t *testing.T) {
+	boom := errors.New("boom")
+	got, err := BuildAll(context.Background(), []RepoSource{
+		{Slug: "o/a", Src: questionSource(1)},
+		{Slug: "o/b", Src: &fakeSource{listErr: boom}},
+	})
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "o/b") {
+		t.Fatalf("err = %v, want boom naming o/b", err)
+	}
+	if got.Questions != nil || got.Returned != nil {
+		t.Errorf("overview = %+v, want empty", got)
+	}
+}
+
+func TestBuildAllNoRepos(t *testing.T) {
+	_, err := BuildAll(context.Background(), nil)
+	if !errors.Is(err, forge.ErrNotConfigured) {
+		t.Fatalf("err = %v, want ErrNotConfigured", err)
 	}
 }

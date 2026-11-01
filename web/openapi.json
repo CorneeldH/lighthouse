@@ -145,6 +145,9 @@
           "question": {
             "type": "string"
           },
+          "repo": {
+            "type": "string"
+          },
           "title": {
             "type": "string"
           },
@@ -153,6 +156,7 @@
           }
         },
         "required": [
+          "repo",
           "number",
           "title",
           "url",
@@ -205,6 +209,9 @@
           "reason": {
             "type": "string"
           },
+          "repo": {
+            "type": "string"
+          },
           "title": {
             "type": "string"
           },
@@ -213,6 +220,7 @@
           }
         },
         "required": [
+          "repo",
           "number",
           "title",
           "url",

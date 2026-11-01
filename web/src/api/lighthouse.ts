@@ -52,6 +52,7 @@ export interface Question {
   answer_url: string;
   number: number;
   question: string;
+  repo: string;
   title: string;
   url: string;
 }
@@ -94,6 +95,7 @@ export interface Report {
 export interface Returned {
   number: number;
   reason: string;
+  repo: string;
   title: string;
   url: string;
 }

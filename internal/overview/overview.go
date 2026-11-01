@@ -3,6 +3,7 @@ package overview
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 
@@ -51,6 +52,8 @@ func ControllerIssues(r BoardReader, slug string, b repoconfig.Board) Filter {
 
 // Question is an open question on an issue.
 type Question struct {
+	// Repo is the slug of the repository the issue belongs to; set by BuildAll.
+	Repo     string `json:"repo"`
 	Number   int    `json:"number"`
 	Title    string `json:"title"`
 	URL      string `json:"url"`
@@ -62,6 +65,8 @@ type Question struct {
 
 // Returned is an issue that was handed back, with the reason from its header.
 type Returned struct {
+	// Repo is the slug of the repository the issue belongs to; set by BuildAll.
+	Repo   string `json:"repo"`
 	Number int    `json:"number"`
 	Title  string `json:"title"`
 	URL    string `json:"url"`
@@ -72,6 +77,39 @@ type Returned struct {
 type Overview struct {
 	Questions []Question
 	Returned  []Returned
+}
+
+// RepoSource is one repository for BuildAll: its slug, where its issues come from and its
+// controller filter (nil shows every open issue).
+type RepoSource struct {
+	Slug         string
+	Src          Source
+	InController Filter
+}
+
+// BuildAll runs Build per repo, in the order given, and sets Repo on every item. The first
+// failure fails the whole overview and names its repo; with no repos it returns
+// forge.ErrNotConfigured.
+func BuildAll(ctx context.Context, repos []RepoSource) (Overview, error) {
+	if len(repos) == 0 {
+		return Overview{}, forge.ErrNotConfigured
+	}
+	all := Overview{Questions: []Question{}, Returned: []Returned{}}
+	for _, r := range repos {
+		o, err := Build(ctx, r.Src, r.InController)
+		if err != nil {
+			return Overview{}, fmt.Errorf("%s: %w", r.Slug, err)
+		}
+		for _, q := range o.Questions {
+			q.Repo = r.Slug
+			all.Questions = append(all.Questions, q)
+		}
+		for _, x := range o.Returned {
+			x.Repo = r.Slug
+			all.Returned = append(all.Returned, x)
+		}
+	}
+	return all, nil
 }
 
 // entry is one result with the sort key of the comment that put it on the list.
