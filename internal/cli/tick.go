@@ -253,7 +253,7 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 				defers = append(defers, a)
 			}
 		}
-		if err := dispatch.SaveDeferred(ctx, db, g.repo.Slug, defers, env.now()); err != nil {
+		if err := dispatch.SaveDeferred(ctx, db, g.repo.Slug, defers, nil, env.now()); err != nil {
 			failed = true
 			_, _ = fmt.Fprintf(errOut, "lighthouse: save deferred %s: %s\n", g.repo.Slug, oneLine(err))
 		}

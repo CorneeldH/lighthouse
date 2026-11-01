@@ -172,17 +172,17 @@ func TestSaveDeferredReplacesRowsOfRepo(t *testing.T) {
 	d := func(issue int, reason string) Action {
 		return Action{Kind: KindDefer, Repo: "o/r", Issue: issue, Reason: reason}
 	}
-	if err := SaveDeferred(ctx, st.DB, "o/s", []Action{d(1, "other repo")}, now); err != nil {
+	if err := SaveDeferred(ctx, st.DB, "o/s", []Action{d(1, "other repo")}, nil, now); err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveDeferred(ctx, st.DB, "o/r", []Action{d(7, "usage: not measured"), d(8, "night")}, now); err != nil {
+	if err := SaveDeferred(ctx, st.DB, "o/r", []Action{d(7, "usage: not measured"), d(8, "night")}, nil, now); err != nil {
 		t.Fatal(err)
 	}
 	got := read("o/r")
-	if len(got) != 2 || got["7"] != `{"issue":7,"reason":"usage: not measured","at":"2026-10-31T12:00:00Z"}` {
+	if len(got) != 2 || got["7"] != `{"issue":7,"title":"","reason":"usage: not measured","at":"2026-10-31T12:00:00Z"}` {
 		t.Errorf("rows after the first save = %v", got)
 	}
-	if err := SaveDeferred(ctx, st.DB, "o/r", []Action{d(8, "night")}, now); err != nil {
+	if err := SaveDeferred(ctx, st.DB, "o/r", []Action{d(8, "night")}, nil, now); err != nil {
 		t.Fatal(err)
 	}
 	if got := read("o/r"); len(got) != 1 || got["8"] == "" {
@@ -191,7 +191,7 @@ func TestSaveDeferredReplacesRowsOfRepo(t *testing.T) {
 	if got := read("o/s"); len(got) != 1 {
 		t.Errorf("rows of o/s = %v, want the other repo untouched", got)
 	}
-	if err := SaveDeferred(ctx, st.DB, "o/r", nil, now); err != nil {
+	if err := SaveDeferred(ctx, st.DB, "o/r", nil, nil, now); err != nil {
 		t.Fatal(err)
 	}
 	if got := read("o/r"); len(got) != 0 {

@@ -79,9 +79,9 @@ func SaveTickState(ctx context.Context, db *sql.DB, repo string, s TickState, no
 }
 
 // SaveDeferred replaces the deferred starts of repo in tick_state with defers, in one
-// transaction: key is the issue number, value is {"issue", "reason", "at"}. Without defers it
-// leaves no row.
-func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action, now time.Time) (err error) {
+// transaction: key is the issue number, value is {"issue", "title", "reason", "at"}. titles maps
+// an issue number to its title; a missing issue gets an empty one. Without defers it leaves no row.
+func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action, titles map[int]string, now time.Time) (err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("dispatch: save deferred %s: %w", repo, err)
@@ -98,9 +98,10 @@ func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action,
 	for _, a := range defers {
 		value, merr := json.Marshal(struct {
 			Issue  int    `json:"issue"`
+			Title  string `json:"title"`
 			Reason string `json:"reason"`
 			At     string `json:"at"`
-		}{a.Issue, a.Reason, stamp})
+		}{a.Issue, titles[a.Issue], a.Reason, stamp})
 		if merr != nil {
 			return fmt.Errorf("dispatch: save deferred %s: %w", repo, merr)
 		}
