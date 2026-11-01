@@ -1,18 +1,20 @@
 {
   "title": "Your repo after init",
-  "subtitle": "Every place lighthouse init writes: whose it is, where it comes from, and what --upgrade does with it.",
-  "rooms": [
+  "subtitle": "Everything lighthouse init puts in your repo, and the files of yours it edits.",
+  "dirs": [
     {
       "id": "root",
-      "label": "root"
+      "label": "your repo/"
     },
     {
       "id": ".claude",
-      "label": ".claude/"
+      "label": ".claude/",
+      "yours": "your own skills, agents and settings"
     },
     {
       "id": ".agents",
-      "label": ".agents/"
+      "label": ".agents/",
+      "yours": "your own skills"
     },
     {
       "id": ".lighthouse",
@@ -20,291 +22,135 @@
     },
     {
       "id": ".github",
-      "label": ".github/"
-    },
-    {
-      "id": "yours",
-      "label": "your code, your tests, …"
-    },
-    {
-      "id": "workstation",
-      "label": "on your workstation"
+      "label": ".github/",
+      "yours": "your own workflows"
     }
   ],
-  "areas": [
+  "rows": [
     {
       "id": "agents-md",
       "place": "AGENTS.md",
       "label": "AGENTS.md",
-      "room": "root",
-      "owner": "shared",
-      "about": "The instructions every coding agent in the repo reads: your own text plus one block per package.",
-      "how": "Init adds one managed block per package and leaves the rest of the file as it is.",
-      "upgrade": "Replaces or removes only lighthouse's blocks; your text stays. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core",
-        "go",
-        "python",
-        "shell"
-      ],
-      "readers": [
-        "Claude Code",
-        "Codex",
-        "OpenCode"
-      ],
-      "more": "system.html#rules"
-    },
-    {
-      "id": "claude-md",
-      "place": "CLAUDE.md",
-      "label": "CLAUDE.md",
-      "room": "root",
-      "owner": "yours",
-      "about": "The file Claude Code reads; it imports AGENTS.md so both read the same rules.",
-      "how": "Init writes the single line @AGENTS.md, only when neither AGENTS.md nor CLAUDE.md exists. An existing CLAUDE.md is never changed; init warns when it lacks the import.",
-      "upgrade": "Same rule: written only when both files are missing. An existing CLAUDE.md is never touched.",
-      "packs": [],
-      "readers": [
-        "Claude Code"
-      ],
-      "more": "system.html#rules"
+      "dir": "root",
+      "kind": "rules",
+      "act": "edits",
+      "href": "system.html#rules"
     },
     {
       "id": "lighthouse-toml",
       "place": "lighthouse.toml",
       "label": "lighthouse.toml",
-      "room": "root",
-      "owner": "shared",
-      "about": "Your project's settings for lighthouse: language, forge, test gate and more.",
-      "how": "Init adds the tables and keys that are missing and never changes a value that is already there.",
-      "upgrade": "Adds only missing keys. Keys of a package you removed stay, and a deleted key of lighthouse's comes back in the diff you approve, without a refusal.",
-      "packs": [
-        "core",
-        "python"
-      ],
-      "readers": [
-        "pack/core/lib/config.py"
-      ],
-      "more": "config.html"
+      "dir": "root",
+      "kind": "config",
+      "act": "edits",
+      "href": "config.html"
     },
     {
       "id": "claude-hooks",
       "place": ".claude/hooks/lighthouse/",
-      "label": ".claude/hooks/lighthouse/",
-      "room": ".claude",
-      "owner": "lighthouse",
-      "about": "Scripts that Claude Code runs around tool calls, prompts and stops, such as the commit gate.",
-      "how": "Whole files, copied from the hooks of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core",
-        "go",
-        "python",
-        "shell"
-      ],
-      "readers": [
-        "Claude Code"
-      ],
-      "more": "reference.html#hooks"
+      "label": "hooks/lighthouse/",
+      "dir": ".claude",
+      "kind": "hook",
+      "act": "adds",
+      "href": "reference.html#hooks"
     },
     {
       "id": "claude-skills",
       "place": ".claude/skills/lighthouse-*/",
-      "label": ".claude/skills/lighthouse-*/",
-      "room": ".claude",
-      "owner": "lighthouse",
-      "about": "The lighthouse skills Claude Code can run, one folder per skill.",
-      "how": "Whole files, copied from the skills of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core",
-        "expo",
-        "go",
-        "python",
-        "shell"
-      ],
-      "readers": [
-        "Claude Code"
-      ],
-      "more": "reference.html#skills"
-    },
-    {
-      "id": "agents-skills",
-      "place": ".agents/skills/lighthouse-*/",
-      "label": ".agents/skills/lighthouse-*/",
-      "room": ".agents",
-      "owner": "lighthouse",
-      "about": "The same skills for Codex and OpenCode.",
-      "how": "Whole files, copied from the skills of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core",
-        "expo",
-        "go",
-        "python",
-        "shell"
-      ],
-      "readers": [
-        "Codex",
-        "OpenCode"
-      ],
-      "more": "reference.html#skills"
+      "label": "skills/lighthouse-*/",
+      "dir": ".claude",
+      "kind": "standard-skill",
+      "act": "adds",
+      "href": "reference.html#skills"
     },
     {
       "id": "claude-agents",
       "place": ".claude/agents/lighthouse-*.md",
-      "label": ".claude/agents/lighthouse-*.md",
-      "room": ".claude",
-      "owner": "lighthouse",
-      "about": "The lighthouse subagents Claude Code can start.",
-      "how": "Whole files, copied from the agents of the core package.",
-      "upgrade": "Replaces them and removes files the package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core"
-      ],
-      "readers": [
-        "Claude Code"
-      ],
-      "more": "reference.html#agents"
+      "label": "agents/lighthouse-*.md",
+      "dir": ".claude",
+      "kind": "agent",
+      "act": "adds",
+      "href": "reference.html#agents"
     },
     {
       "id": "claude-settings",
       "place": ".claude/settings.json",
-      "label": ".claude/settings.json",
-      "room": ".claude",
-      "owner": "shared",
-      "about": "Claude Code's settings: lighthouse registers its hooks and permissions here next to yours.",
-      "how": "Init merges lighthouse's hook registrations and permissions.allow rules into the file; everything else is yours.",
-      "upgrade": "Replaces only lighthouse's hooks and rules; the rest of the file stays. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core",
-        "go",
-        "python",
-        "shell"
-      ],
-      "readers": [
-        "Claude Code"
-      ],
-      "more": "reference.html#hooks"
+      "label": "settings.json",
+      "dir": ".claude",
+      "kind": "config",
+      "act": "edits"
+    },
+    {
+      "id": "agents-skills",
+      "place": ".agents/skills/lighthouse-*/",
+      "label": "skills/lighthouse-*/",
+      "dir": ".agents",
+      "kind": "standard-skill",
+      "act": "adds",
+      "href": "reference.html#skills"
     },
     {
       "id": "lighthouse-lib",
       "place": ".lighthouse/lib/lighthouse_lib/",
-      "label": ".lighthouse/lib/lighthouse_lib/",
-      "room": ".lighthouse",
-      "owner": "lighthouse",
-      "about": "The shared Python code that lighthouse's skills and hooks import.",
-      "how": "Whole files, copied from the lib of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core"
-      ],
-      "readers": [
-        "pack/core/hooks"
-      ],
-      "more": "system.html#config"
+      "label": "lib/",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds"
     },
     {
       "id": "lighthouse-scripts",
       "place": ".lighthouse/scripts/",
-      "label": ".lighthouse/scripts/",
-      "room": ".lighthouse",
-      "owner": "lighthouse",
-      "about": "The helper scripts that lighthouse's skills run.",
-      "how": "Whole files, copied from the scripts of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core",
-        "go",
-        "node",
-        "python",
-        "shell"
-      ],
-      "readers": [
-        "pack/core/skills/start-issue/claude/SKILL.md"
-      ],
-      "more": "system.html#config"
+      "label": "scripts/",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds"
     },
     {
       "id": "headings",
       "place": ".lighthouse/headings.toml",
-      "label": ".lighthouse/headings.toml",
-      "room": ".lighthouse",
-      "owner": "lighthouse",
-      "about": "The table of headings that issues and pull requests must use, per language.",
-      "how": "One whole file, copied from the core package.",
-      "upgrade": "Replaces it. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core"
-      ],
-      "readers": [
-        "pack/core/lib/headings.py"
-      ],
-      "more": "system.html#config"
+      "label": "headings.toml",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds"
     },
     {
       "id": "manifest",
       "place": ".lighthouse/manifest.toml",
-      "label": ".lighthouse/manifest.toml",
-      "room": ".lighthouse",
-      "owner": "lighthouse",
-      "about": "The record of what lighthouse installed, so --upgrade knows what it may replace.",
-      "how": "Written by init: the record of what lighthouse installed.",
-      "upgrade": "Rewritten whenever the installed units or the lighthouse version change; an unchanged run leaves it as it is.",
-      "packs": [],
-      "readers": [
-        "internal/manifest/manifest.go"
-      ],
-      "more": "system.html#config"
+      "label": "manifest.toml",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds"
     },
     {
       "id": "pr-template",
       "place": ".github/pull_request_template.md",
-      "label": ".github/pull_request_template.md",
-      "room": ".github",
-      "owner": "lighthouse",
-      "about": "The pull request template GitHub offers on every new pull request.",
-      "how": "One whole file, copied from the core package.",
-      "upgrade": "Replaces it. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core"
-      ],
-      "readers": [
-        "GitHub",
-        "pack/core/skills/write-pr/SKILL.md"
-      ],
-      "more": "reference.html#github"
+      "label": "pull_request_template.md",
+      "dir": ".github",
+      "kind": "github",
+      "act": "adds",
+      "href": "reference.html#github"
     },
     {
       "id": "workflows",
       "place": ".github/workflows/lighthouse-*.yml",
-      "label": ".github/workflows/lighthouse-*.yml",
-      "room": ".github",
-      "owner": "lighthouse",
-      "about": "The GitHub Actions workflows of lighthouse.",
-      "how": "Whole files, with the @@key@@ placeholders filled from lighthouse.toml. A workflow is installed only when every key it needs is set; otherwise init reports it and skips it.",
-      "upgrade": "Replaces a workflow when every key is set; when one is missing, the installed workflow stays as it is. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
-      "packs": [
-        "core"
-      ],
-      "readers": [
-        "GitHub Actions"
-      ],
-      "more": "reference.html#github"
+      "label": "workflows/lighthouse-*.yml",
+      "dir": ".github",
+      "kind": "github",
+      "act": "adds",
+      "href": "reference.html#github"
     },
     {
       "id": "host-toml",
       "label": "~/.config/lighthouse/host.toml",
-      "room": "workstation",
-      "owner": "yours",
-      "about": "Settings of this workstation, such as its Tailscale address, for lighthouse usage and serve.",
-      "how": "Written by init only, only when Tailscale identifies the host; it asks first, unless you pass --yes.",
-      "upgrade": "Only reports a note when the file is missing.",
-      "packs": [],
-      "readers": [
-        "internal/hostconfig"
-      ],
-      "more": "config.html"
+      "dir": "workstation",
+      "kind": "config",
+      "act": "adds",
+      "href": "config.html"
     }
-  ]
+  ],
+  "yours": "your code, your tests, your config, …",
+  "workstation": {
+    "label": "On your workstation",
+    "note": "Only with Tailscale. It is not in the repo, so a teammate or another machine does not have it."
+  }
 }
