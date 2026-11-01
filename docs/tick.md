@@ -345,3 +345,9 @@ Het `lighthouse.toml` van elke repo in `repos` heeft:
   `priority_field_id`, en onder `status_options` minstens `Controller` en `On hold`.
 
 Ontbreekt iets, dan staan alle ontbrekende sleutels, bij naam, in één `skip`-regel.
+
+## Zicht
+
+Wat de tick gestart heeft, zie je terug in `GET /api/runs` en op de kaart *Running runs* van
+`lighthouse serve`: de open en geparkeerde runs en de uitgestelde starts, uit de tickstand. Zie
+[install.md](install.md#running-runs) voor het gebruik.
