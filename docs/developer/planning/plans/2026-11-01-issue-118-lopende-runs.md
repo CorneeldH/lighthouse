@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Code, comments, UI-teksten en bestandsnamen Engels; plan, docs, commits en changelog Nederlands.
+- Code, comments, UI-teksten en bestandsnamen Engels; plan en commits Nederlands. Het changelog-fragment is Engels (`docs/releasing.md`); een doc houdt de taal die het al heeft (`docs/install.md` Engels, `docs/tick.md` Nederlands).
 - `/api/runs` is alleen lezen (Huma, `huma.Get`), OperationID `get-runs`; een lege lijst is `[]`, nooit `null`.
 - `serve` leest `/api/runs` uit de tickstand, niet uit de werkplek of de forge (spec §1).
 - Met `[dispatch] repos` leest `serve` die repo's en hun `[forge.board]`; zonder `[dispatch]` het gedrag van M1: één repo uit `--repo` (spec §12).
@@ -22,6 +22,9 @@
 - Na elke wijziging aan een route: `go test ./internal/server -run TestOpenAPISnapshot -update` en `cd web && npm run gen`; de gate controleert drift.
 - Elke PR voegt `changelog.d/issue-118-lopende-runs.md` toe.
 - Verificatie per taak: `go test -race` op de geraakte pakketten, of `cd web && npm run lint && npm run typecheck && npm test`; aan het eind `[test_gate] command` uit `lighthouse.toml`.
+- Elk bestand in `e2e/` heeft `//go:build e2e`: dat pakket draai je alleen met `go test -race -tags e2e ./e2e/`. Zonder de tag faalt het met `[setup failed]`, en `./...` slaat het over.
+- `web/node_modules` ontbreekt in een verse worktree: draai `cd web && npm ci` vóór het eerste web-commando (taak 5, stap 4).
+- Taken 1–6 voert de uitvoerder zonder mens uit en eindigt met de PR (taak 6, stap 8). Taken 7 en 8 zijn voor de operator met de gebruiker, na de merge; de uitvoerder begint er niet aan.
 
 ## Besluiten die dit plan neemt
 
@@ -121,7 +124,7 @@ git commit -m "feat(runs): korte rij met commando en trigger, stand als tekst (#
     ```
   - `func RunViews(pre Pre, open, parked []runs.Brief) []RunView`: puur; `State` `open` voor open, `parked` voor parked, op issue gesorteerd; een issue dat in beide staat alleen als `open`. `Stand` uit `pre.Stands[id]`, alleen als die sleutel bestaat. `Title` uit `pre.Items`. `At` blijft nul; `SaveRunView` zet hem.
   - `func SaveRunView(ctx context.Context, db *sql.DB, repo string, views []RunView, now time.Time) error`: vervangt de `run`-rijen van repo in één transactie. Key is het issuenummer, `At` is `now` in UTC.
-  - `func LoadView(ctx context.Context, db *sql.DB, repos []string) ([]RunView, []DeferredView, error)`: leest `run` en `deferred` voor die repo's, in de volgorde van repos en dan op issue. Nooit `nil`. Een value die niet parst, geeft een fout met repo en key.
+  - `func LoadView(ctx context.Context, db *sql.DB, repos []string) ([]RunView, []DeferredView, error)`: leest `run` en `deferred` voor die repo's, in de volgorde van repos en dan op het gedecodeerde `Issue` (niet `ORDER BY key`: key is TEXT, dan komt 10 vóór 9). Nooit `nil`. Een value die niet parst, geeft een fout met repo en key.
   - `SaveDeferred(ctx, db, repo string, defers []Action, titles map[int]string, now time.Time) error`: de value krijgt `"title"`.
 
 - [ ] **Step 1: Schrijf de falende tests**
@@ -129,7 +132,7 @@ git commit -m "feat(runs): korte rij met commando en trigger, stand als tekst (#
 - `TestRunViews`: een Pre met Items `{3, "Drie"}` en `{5, "Vijf"}` en `Stands{10: workplace.Waiting}`. Open is `[{ID: 10, Issue: 3, …}]`, parked is `[{ID: 7, Issue: 5, …}]`. Verwacht twee views: issue 3 `open`, titel `Drie`, stand `waiting`; issue 5 `parked`, titel `Vijf`, stand `""`.
 - `TestRunViewsUnmeasured`: een open run zonder sleutel in `Stands` geeft stand `""` en staat in de lijst.
 - `TestRunViewsOpenWinsOverParked`: open en parked met issue 3 geven één view, `State == "open"`.
-- `TestSaveRunViewRoundTrip`: `SaveRunView` voor `o/a` en `o/b`, dan `LoadView(ctx, db, []string{"o/b", "o/a"})`. Verwacht eerst `o/b`, dan `o/a`, `Repo` gevuld en `At == now.UTC()`. `LoadView` met `[]string{"o/a"}` laat `o/b` weg.
+- `TestSaveRunViewRoundTrip`: `SaveRunView` voor `o/a` (issues 10 en 9) en `o/b`, dan `LoadView(ctx, db, []string{"o/b", "o/a"})`. Verwacht eerst `o/b`, dan `o/a` met 9 vóór 10, `Repo` gevuld en `At == now.UTC()`. `LoadView` met `[]string{"o/a"}` laat `o/b` weg.
 - `TestSaveRunViewEmptyClears`: eerst één view, dan `SaveRunView(…, nil, …)`, dan geeft `LoadView` een lege, niet-nil slice.
 - `TestLoadViewDeferred`: `SaveDeferred` met een `KindDefer`-actie voor issue 4, reden `"slots full"` en `titles{4: "Vier"}` geeft één `DeferredView{Repo, 4, "Vier", "slots full", now}`.
 - `TestLoadViewBadValue`: een met de hand ingevoegde `run`-rij met value `"{"` geeft een fout die `o/a` en de key noemt.
@@ -141,7 +144,7 @@ Expected: FAIL, `undefined: RunViews`
 
 - [ ] **Step 3: Implementeer `view.go` en pas `SaveDeferred` aan**
 
-`SaveRunView` volgt de vorm van `SaveDeferred` (DELETE van de soort, dan INSERT per view). De `precheck_test.go`-aanroepen krijgen `nil` als titles.
+`SaveRunView` volgt de vorm van `SaveDeferred` (DELETE van de soort, dan INSERT per view). De `precheck_test.go`-aanroepen krijgen `nil` als titles. Het veld `title` krijgt geen `omitempty`: de verwachte JSON in `TestSaveDeferredReplacesRowsOfRepo` (`precheck_test.go:182`) wordt `{"issue":7,"title":"","reason":"usage: not measured","at":"2026-10-31T12:00:00Z"}`, in die veldvolgorde.
 
 - [ ] **Step 4: Draai de tests**
 
@@ -160,7 +163,7 @@ git commit -m "feat(dispatch): tickstand van open en geparkeerde runs, titel bij
 **Files:**
 - Modify: `internal/cli/brake.go:18-117` (`hostFacts`, `readHostFacts`)
 - Modify: `internal/cli/tick.go` (`gatherRepo` na `measuredPre`; `decideAndApply` bij `SaveDeferred`)
-- Test: `internal/cli/tick_test.go` of `e2e/tick_test.go`; zoek de bestaande test die een tick met een open run draait en volg die.
+- Test: `internal/cli/tick_test.go` (met `tickFixture`/`tickEnv`); niet `e2e/`, dat de `-run` in stap 2 niet draait.
 
 **Interfaces:**
 - Consumes: `runs.OpenBriefs`, `runs.BriefsByID` (taak 1); `dispatch.RunViews`, `dispatch.SaveRunView`, de nieuwe `SaveDeferred` (taak 2).
@@ -170,7 +173,7 @@ git commit -m "feat(dispatch): tickstand van open en geparkeerde runs, titel bij
 
 - `TestTickWritesRunView`: een tick met één open run met workspace en een gemeten sessie `waiting`. Verwacht daarna in `dispatch.LoadView` één view met de titel van het board-item, stand `waiting` en het commando van de run.
 - `TestTickWritesParkedRunView`: een controller-marker waarvan de laatste run `parked` is. Verwacht één view met `State == "parked"`.
-- `TestTickRunViewWhenNotDue`: een tweede tick zonder wijziging (niet aan de beurt) werkt `At` toch bij.
+- `TestTickRunViewWhenNotDue`: zet `env.Now`; een tweede tick één minuut later (onder `FullGatherAfter`, dus niet aan de beurt) heeft geen `gathered`-regel en werkt `At` toch bij naar de nieuwe tijd. `At` heeft secondenresolutie: zonder de klok te verzetten bewijst de test niets.
 - `TestTickDeferredTitle`: een uitgestelde start (slots vol) heeft in `LoadView` de titel van het board-item.
 
 - [ ] **Step 2: Draai ze en zie ze falen**
@@ -184,13 +187,13 @@ Expected: FAIL, lege `LoadView`
 
 - [ ] **Step 4: Draai de tests**
 
-Run: `go test -race ./internal/cli ./e2e`
+Run: `go test -race ./internal/cli && go test -race -tags e2e ./e2e/`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/cli/brake.go internal/cli/tick.go internal/cli/*_test.go e2e/
+git add internal/cli/brake.go internal/cli/tick.go internal/cli/*_test.go
 git commit -m "feat(tick): schrijf de stand van open en geparkeerde runs elke tick (#118)"
 ```
 
@@ -275,12 +278,12 @@ Expected: FAIL, compileerfouten op `Deps`/`forgeRepos`
 
 - [ ] **Step 4: Snapshot en client bijwerken**
 
-Run: `go test ./internal/server -run TestOpenAPISnapshot -update && cd web && npm run gen`
+Run: `go test ./internal/server -run TestOpenAPISnapshot -update && cd web && npm ci && npm run gen`
 Expected: `web/openapi.json` heeft `/api/runs`, `repo` op `Question` en `Returned`; `web/src/api/lighthouse.ts` heeft `getRuns`.
 
 - [ ] **Step 5: Draai de tests**
 
-Run: `go test -race ./... && cd web && npm run typecheck`
+Run: `go test -race ./... && go test -race -tags e2e ./e2e/ && cd web && npm run typecheck`
 Expected: PASS
 
 - [ ] **Step 6: Commit**
@@ -322,12 +325,27 @@ Expected: FAIL, `Cannot find module './RunsList'`
 
 - [ ] **Step 4: Draai lint, types en tests, dan de e2e**
 
-Run: `cd web && npm run lint && npm run typecheck && npm test && npm run e2e`
+Run: `cd web && npm run lint && npm run typecheck && npm test`
+Expected: PASS
+
+Daarna de Playwright-e2e tegen een binary met de SPA erin (`web/README.md`, *End-to-end tests*; `internal/web/dist` staat in `.gitignore`):
+
+```bash
+cd web && npm run build && cd .. && go build -o <scratchpad>/lh ./cmd/lighthouse
+cd web && npx playwright install chromium && LIGHTHOUSE_BIN=<scratchpad>/lh npm run e2e
+```
+
 Expected: PASS
 
 - [ ] **Step 5: Schermafdruk**
 
-Draai `serve` tegen een database met een open run, een geparkeerde run en een uitgestelde start. Vul die met de helper uit de test van taak 5, of na een echte tick in taak 7. Run daarna `cd web && npm run screenshot -- http://127.0.0.1:8127 ../docs/images/ui-m2.png`.
+Gebruik de binary uit stap 4 met een lege database in de scratchpad. Start hem één keer zodat de migraties lopen, en stop hem weer:
+
+```bash
+LIGHTHOUSE_HOST_TOML=<scratchpad>/none.toml <scratchpad>/lh serve --db <scratchpad>/ui.db --repo o/a --forge-url http://127.0.0.1:1 --addr 127.0.0.1:8127
+```
+
+Vul de tickstand met `sqlite3 <scratchpad>/ui.db`: drie `INSERT INTO tick_state (repo, kind, key, value, updated_at)` met repo `o/a`. Twee rijen van soort `run` (key `3`, `State` `open`, stand `waiting`; key `5`, `State` `parked`, stand `""`) en één van soort `deferred` (key `4`, reden `slots full`). De value is precies de JSON die `json.Marshal` van `dispatch.RunView` en van de waarde in `SaveDeferred` geeft (veldnamen uit taak 2, tijden in RFC3339 UTC); `updated_at` is dezelfde RFC3339-tijd. Start `serve` daarna opnieuw met hetzelfde commando. De forge-kaarten tonen dan hun foutmelding; dat is goed, de kaart *Running runs* is het bewijs. Controleer eerst `curl -s http://127.0.0.1:8127/api/runs`: twee runs en één uitgestelde start. Run daarna `cd web && npm run screenshot -- http://127.0.0.1:8127 ../docs/images/ui-m2.png` en stop `serve`.
 Expected: `wrote ../docs/images/ui-m2.png`; de kaart staat erop. Die afbeelding is het bewijs voor AC 2.
 
 - [ ] **Step 6: Docs en changelog**
@@ -341,9 +359,13 @@ git add web docs changelog.d/issue-118-lopende-runs.md
 git commit -m "feat(web): kaart Running runs en de repo bij elk item (#118)"
 ```
 
+- [ ] **Step 8: Push en PR, dan stoppen**
+
+Draai `[test_gate] command` uit `lighthouse.toml`, push de branch en schrijf de PR met `/lighthouse-write-pr`. AC 3–5 kunnen pas na de merge (taken 7 en 8), dus de body is `Refs #118 — de end-to-end-proef en de overstap van paia volgen na de merge`, nooit `Closes #118`. Hier stopt de uitvoerder; taken 7 en 8 zijn voor de operator.
+
 ### Task 7: End-to-end-proef op lighthouse (handwerk, bewijs in #118)
 
-Geen code; vereist dat taken 1–6 gemerged zijn en een gebouwde binary op de host. Spec §13 stap 0 (de paia-PR uit *Launch*) moet staan: zonder die PR start lighthouse geen agent. Controleer dat eerst en stop met een vraag aan de gebruiker als die PR er niet is.
+Alleen de operator met de gebruiker, niet de uitvoerder van taken 1–6. Geen code; vereist dat taken 1–6 gemerged zijn en een gebouwde binary op de host. Spec §13 stap 0 (de paia-PR uit *Launch*) moet staan: zonder die PR start lighthouse geen agent. Controleer dat eerst en stop met een vraag aan de gebruiker als die PR er niet is.
 
 - [ ] **Step 1:** `host.toml [dispatch] repos` bevat alleen lighthouse (Software-profiel). De Python-controller bedient lighthouse niet (spec §13 stap 1).
 - [ ] **Step 2:** Een testissue in Controller met een Handoff → de tick start een run: 🚀 op de Handoff, de run staat in `/api/runs` als `open`.
@@ -354,7 +376,7 @@ Geen code; vereist dat taken 1–6 gemerged zijn en een gebouwde binary op de ho
 
 ### Task 8: Overstap van paia (handwerk en een PR in paia)
 
-Werk in `CorneeldH/personal_ai_agent`, niet in deze worktree; vraag de gebruiker vóór elke stap die de productie-controller raakt.
+Alleen de operator met de gebruiker, na taak 7. Werk in `CorneeldH/personal_ai_agent`, niet in deze worktree; vraag de gebruiker vóór elke stap die de productie-controller raakt.
 
 - [ ] **Step 1 (leeglopen):** zet in paia de stop op nieuwe starts aan, niet de pauzevlag (spec §13 stap 3). Wacht tot geen paia-issue meer een open, geparkeerde of vragende run van de Python-controller heeft. Een open Vraag beantwoordt de gebruiker of geeft hij zelf terug.
 - [ ] **Step 2 (bewijs leeg):** leg de lege toestand van de Python-runstaat vast (het commando en de uitvoer) in een comment op #118.
