@@ -513,10 +513,26 @@ export function drawerFor(detail) {
   return drawer;
 }
 
+/** The index of the route to show for an item made of `ids` (one chip, or the two ends of a
+    handoff): `current` when that route passes them in this order, else the first route that
+    does, else `current`. */
+export function routeWith(routes, current, ids) {
+  const passes = (route) => {
+    const at = ids.map((id) => route.chips.indexOf(id));
+    return at.every((i, n) => i >= 0 && (n === 0 || at[n - 1] <= i));
+  };
+  if (routes[current] && passes(routes[current])) {
+    return current;
+  }
+  const found = routes.findIndex(passes);
+  return found >= 0 ? found : current;
+}
+
 /**
  * Renders a flow map into `root`: route buttons with the note of the chosen route, columns of
- * chips and the handoff badges. A click on a chip or badge opens `detail`
- * as a drawer from the right; Escape or its close button shuts it.
+ * chips and the handoff badges. A click on a chip or badge opens `detail` as a drawer from the
+ * right, and switches to a route it is on when the chosen route passes it by; Escape or its
+ * close button shuts the drawer.
  */
 export function renderFlowMap(root, data, detail) {
   const phases = data.phases || [];
@@ -651,8 +667,15 @@ export function renderFlowMap(root, data, detail) {
   const hint = el(
     "p",
     "map-hint",
-    "Click a chip or a handoff for what it does, when it starts and who provides it.",
+    "Click a chip or a handoff for what it does, when it starts and who provides it. Off the chosen route, the click switches to a route it is on.",
   );
+  // Called after the drawer is filled: select redraws it with the neighbours on the new route.
+  const follow = (ids) => {
+    const index = routeWith(routes, routes.indexOf(chosen), ids);
+    if (index >= 0 && routes[index] !== chosen) {
+      select(index);
+    }
+  };
 
   // The map: column backgrounds, route curves, chips and badges.
   const scroll = el("div", "map-scroll");
@@ -721,7 +744,10 @@ export function renderFlowMap(root, data, detail) {
     badge.title = `handoff from ${from.label} to ${to.label}: ${statusText(handoff)}`;
     badge.style.left = percent((a.x + b.x) / 2);
     badge.style.top = `${HEAD + row * ROW + ROW / 2}px`;
-    badge.addEventListener("click", () => showHandoff(handoff, badge));
+    badge.addEventListener("click", () => {
+      showHandoff(handoff, badge);
+      follow([handoff.from, handoff.to]);
+    });
     badges.push(badge);
     return badge;
   };
@@ -731,7 +757,10 @@ export function renderFlowMap(root, data, detail) {
     const p = point(chip);
     button.style.left = percent(p.x);
     button.style.top = `${p.y}px`;
-    button.addEventListener("click", () => showChip(chip, button));
+    button.addEventListener("click", () => {
+      showChip(chip, button);
+      follow([chip.id]);
+    });
     chipButtons.push(button);
     area.append(button);
     // A badge follows the chip it leaves from, so Tab meets it in reading order.
