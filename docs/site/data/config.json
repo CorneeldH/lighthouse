@@ -251,6 +251,8 @@
               "required": "with [forge.board]",
               "about": "The ids of the Status options, one entry per option name.",
               "readers": [
+                "internal/cli/serve.go",
+                "internal/dispatch/board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
                 "pack/core/skills/write-handoff",
