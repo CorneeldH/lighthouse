@@ -156,6 +156,7 @@
                 "pack/core/hooks/worktree-check.sh",
                 "pack/core/lib/protocol.py",
                 "pack/core/scripts/post_artefact.py",
+                "pack/core/scripts/roborev_gate.py",
                 "pack/core/scripts/worktree_audit.py",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
