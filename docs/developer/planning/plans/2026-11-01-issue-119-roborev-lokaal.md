@@ -557,3 +557,10 @@ dezelfde id en trigger.
   `gh run list --commit <sha> --workflow ci.yml` met precies één run.
 - AC 4 is `Refs` naar het paia-follow-up-issue (§6); dat issue wordt pas na de merge aangemaakt.
 - `measure_fix_pr_kpi.py` leest transcripts, geen triggers: geen wijziging nodig.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Afwijking/r3-f1 (apply.start bullet), Task 6 Interfaces (`applier.start`), Review Focus 4): The new rule in `applier.start` keys only on `a.Trigger == triggerFixPR`. `retry` builds its second attempt with `a.Trigger = row.Trigger`, so a second fix-pr attempt also has trigger `fixpr`. `retry` plans that attempt again on every tick while the single `start_failed` row stays. Each tick the workspace is busy (or `Prepare` fails), `apply.start` now posts a new Teruggegeven "PR rood". Before the diff, a busy retry only deferred quietly. The diff itself sends post-claim failures to `retry` ("dan neemt `retry` het over"), so it creates this path.
