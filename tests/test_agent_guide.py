@@ -4,6 +4,8 @@ import ast
 import re
 import tomllib
 
+import pytest
+
 from tests.test_getting_started import init_flags, required_tools, section
 from tests.test_site_chain import ROOT, SITE
 from tests.test_site_download import DOWNLOAD, INDEX, INSTALL, TABS
@@ -72,7 +74,8 @@ def test_approval_goes_through_stdin():
 
 def test_no_changes_is_what_init_prints():
     assert "No changes." in guide_section("Check")
-    assert "No changes." in (ROOT / "internal/initcmd/initcmd.go").read_text(encoding="utf-8")
+    src = (ROOT / "internal/initcmd/initcmd.go").read_text(encoding="utf-8")
+    assert 'Fprintln(o.Out, "No changes.")' in src
 
 
 def test_help_rule():
@@ -85,10 +88,9 @@ def test_help_rule():
 def test_superpowers_count():
     needs = tomllib.loads((ROOT / "pack/core/requires.toml").read_text(encoding="utf-8"))
     count = len(needs["superpowers"])
-    lines = [line for line in guide_section("Choices").splitlines() if "Superpowers" in line]
-    assert lines, "Choices has no line that names Superpowers"
-    assert any(re.search(rf"(?<!\d){count}(?!\d)", line) for line in lines), (
-        f"no Superpowers line in Choices names the {count} units of pack/core/requires.toml"
+    named = re.findall(r"Without Superpowers, (\d+) lighthouse skills", guide_section("Choices"))
+    assert named == [str(count)], (
+        f"Choices names {named} skills without Superpowers; pack/core/requires.toml has {count}"
     )
 
 
@@ -187,3 +189,40 @@ def test_packages_are_asked_after_the_dry_run():
     """Choice 6 needs the `Packages: …` line, so the dry run comes before it."""
     text = guide_section("Run lighthouse init")
     assert text.index("</dev/null") < text.index("choice 6")
+
+
+def test_stops_outside_a_git_repository():
+    text = guide_section("Look first")
+    assert "not a git repository" in text and "stop" in text
+
+
+# Printed by cobra through `lighthouse: %v` in internal/cli/root.go, not by lighthouse itself.
+COBRA_MESSAGES = {"unknown flag: --<name>"}
+PREFIXES = {
+    "lighthouse init: ": ("internal/initcmd/initcmd.go", '"lighthouse init: %v\\n"'),
+    "lighthouse: ": ("internal/cli/root.go", '"lighthouse: %v\\n"'),
+}
+
+
+def failure_messages() -> list[str]:
+    """The message that opens each item of When something fails, in its code span."""
+    found = re.findall(r"^- (`+) ?(.*?) ?\1", guide_section("When something fails"), re.M)
+    assert found, "When something fails quotes no message"
+    return [message for _, message in found]
+
+
+@pytest.mark.parametrize("message", failure_messages())
+def test_failure_message_is_printed(message):
+    """Each quoted message, placeholders aside, is text that lighthouse prints."""
+    for prefix, (path, printf) in PREFIXES.items():
+        if message.startswith(prefix):
+            assert printf in (ROOT / path).read_text(encoding="utf-8"), f"{path} lacks {printf}"
+            message = message.removeprefix(prefix)
+            break
+    if message in COBRA_MESSAGES:
+        return
+    sources = sorted(p for p in (ROOT / "internal").rglob("*.go") if not p.name.endswith("_test.go"))
+    src = "".join(p.read_text(encoding="utf-8") for p in sources)
+    pieces = [piece for piece in re.split(r"<[^>]*>|…", message) if piece.strip(" ()")]
+    missing = [piece for piece in pieces if piece not in src]
+    assert not missing, f"lighthouse prints none of {missing}"

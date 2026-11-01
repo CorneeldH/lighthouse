@@ -39,7 +39,9 @@ Read, do not change, and do not ask yet. Find out:
 1. The OS and architecture: `uname -sm` (on Windows, see [Install the binary](#install-the-binary)).
 2. Whether `lighthouse` is on the `PATH`, and which version: `command -v lighthouse` and
    `lighthouse version`.
-3. Whether this is a git repository with an `origin` on GitHub: `git remote get-url origin`.
+3. Whether this is a git repository with an `origin` on GitHub: `git remote get-url origin`. If
+   it is not a git repository, stop: `init` needs one. Tell the user, and do not run `git init`
+   yourself.
 4. Whether lighthouse is already installed here: does `lighthouse.toml` or
    `.lighthouse/manifest.toml` exist? If `.lighthouse/manifest.toml` exists, stop. Tell the user
    lighthouse is already installed; updating it is outside this guide.
@@ -233,6 +235,8 @@ here.
   `missing dependency: superpowers` is expected (see [Choices](#choices)).
 - `` lighthouse init: this repository is already initialized; use `lighthouse init --upgrade` ``:
   stop. Lighthouse is already installed; updating is outside this guide.
+- `lighthouse init: <dir> is not a git repository (or git failed)`: stop. Tell the user that
+  `init` runs in the root of a git repository.
 - `lighthouse init: refused: <n> locally modified unit(s); rerun with --force to overwrite`:
   stop and report it. Do not add `--force`.
 - `warning: no GitHub remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it`:
