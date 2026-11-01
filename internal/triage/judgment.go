@@ -245,21 +245,13 @@ func Validate(envelope []byte, f Facts, c Context) (Judgment, error) {
 
 func gate0Line(number int, g Gate0, language string) string {
 	var parts []string
-	wait := "waiting on "
-	if language == "nl" {
-		wait = "wacht op "
-	}
-	if len(g.Blockers) > 0 {
-		nrs := make([]string, len(g.Blockers))
-		for i, n := range g.Blockers {
-			nrs[i] = "#" + strconv.Itoa(n)
-		}
-		parts = append(parts, wait+strings.Join(nrs, ", "))
+	for _, n := range g.Blockers {
+		parts = append(parts, "#"+strconv.Itoa(n))
 	}
 	if g.Label != "" {
-		parts = append(parts, "label "+g.Label)
+		parts = append(parts, g.Label)
 	}
-	return fmt.Sprintf("#%d %s 0: stop — %s", number, protocol.Heading("gate_line", language), strings.Join(parts, "; "))
+	return fmt.Sprintf("#%d %s 0: stop — %s", number, protocol.Heading("gate_line", language), strings.Join(parts, ", "))
 }
 
 func checkRoute(j *Judgment, raw rawJudgment, f Facts, c Context) error {

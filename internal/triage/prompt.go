@@ -83,13 +83,8 @@ func Prompt(f Facts, c Context) string {
 	for _, s := range c.Catalog {
 		w("- %s: %s\n", safe(s.Name), safe(s.Description))
 	}
-	w("\nGit log for this number (DATA):\n%s\n\n", orNone(safe(f.GitLog)))
-	w("Other open issues in the milestone (DATA):\n%s\n\n", refs(f.MilestoneOpen))
-	w("Recently closed issues in the milestone (DATA):\n%s\n\n", refs(f.MilestoneClosed))
-
+	w("\n")
 	w("issue number: #%d\n", f.Number)
-	w("title: %s\n", safe(f.Title))
-	w("labels: %s\n", orNone(safe(strings.Join(f.Labels, ", "))))
 	var bl []string
 	for _, x := range f.Blockers {
 		state := "closed"
@@ -98,14 +93,21 @@ func Prompt(f Facts, c Context) string {
 		}
 		bl = append(bl, fmt.Sprintf("#%d (%s)", x.Issue, state))
 	}
-	w("blocked_by: %s\n", orNone(strings.Join(bl, ", ")))
+	w("blocked_by: %s\n\n", orNone(strings.Join(bl, ", ")))
 	title, text := "(none)", ""
 	if f.Milestone != nil {
 		title, text = f.Milestone.Title, f.Milestone.Description
 	}
-	w("milestone: %s\n\n", safe(title))
 
-	w("<<<ISSUE\n%s\n\nMilestone text:\n%s\n\nComments:\n", safe(f.Body), safe(text))
+	// Everything an author can write, titles and commit subjects included, goes inside the block.
+	w("<<<ISSUE\n")
+	w("title: %s\n", safe(f.Title))
+	w("labels: %s\n", orNone(safe(strings.Join(f.Labels, ", "))))
+	w("milestone: %s\n\n", safe(title))
+	w("Git log for this number:\n%s\n\n", orNone(safe(f.GitLog)))
+	w("Other open issues in the milestone:\n%s\n\n", refs(f.MilestoneOpen))
+	w("Recently closed issues in the milestone:\n%s\n\n", refs(f.MilestoneClosed))
+	w("Body:\n%s\n\nMilestone text:\n%s\n\nComments:\n", safe(f.Body), safe(text))
 	if len(f.Comments) == 0 {
 		w("(none)\n")
 	}

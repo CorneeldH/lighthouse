@@ -191,21 +191,21 @@ func TestValidateInvalid(t *testing.T) {
 	}{
 		{"4 without sub", facts7(), map[string]any{"route_line": "#7 Poort 4: x — y", "sub": ""}, "sub-letter"},
 		{"gate 3", facts7(), map[string]any{"route_line": "#7 Poort 3: x — y", "gate": 3, "sub": ""}, "gate 3"},
-		{"gate field mismatch", facts7(), map[string]any{"gate": 2}, "gate"},
-		{"sub field mismatch", facts7(), map[string]any{"sub": "a"}, "sub"},
+		{"gate field mismatch", facts7(), map[string]any{"gate": 2}, "field gate 2"},
+		{"sub field mismatch", facts7(), map[string]any{"sub": "a"}, "field sub"},
 		{"4b with needs-decision", needsDecision, nil, "needs-decision"},
 		{"4b with needs-shaping", needsShaping, nil, "needs-shaping"},
-		{"4c without questions", facts7(), c4, "questions"},
-		{"4c five questions", facts7(), merge(map[string]any{"design_questions": questions(5, 2, 0)}), "questions"},
+		{"4c without questions", facts7(), c4, "4c needs 1 to 4"},
+		{"4c five questions", facts7(), merge(map[string]any{"design_questions": questions(5, 2, 0)}), "4c needs 1 to 4"},
 		{"4c one option", facts7(), merge(map[string]any{"design_questions": questions(1, 1, 0)}), "options"},
 		{"4c seven options", facts7(), merge(map[string]any{"design_questions": questions(1, 7, 0)}), "options"},
 		{"4c recommended out", facts7(), merge(map[string]any{"design_questions": questions(1, 3, 3)}), "recommended"},
 		{"4c recommended negative", facts7(), merge(map[string]any{"design_questions": questions(1, 3, -1)}), "recommended"},
-		{"questions at 4b", facts7(), map[string]any{"design_questions": questions(1, 2, 0)}, "questions"},
-		{"gate 0 without Go", facts7(), map[string]any{"route_line": "#7 Poort 0: stop — x", "gate": 0, "sub": ""}, "gate 0"},
-		{"duplicate without issue", facts7(), map[string]any{"redundancy": "duplicate"}, "redundancy"},
-		{"done without evidence", facts7(), map[string]any{"redundancy": "done"}, "redundancy"},
-		{"headless false without reason", facts7(), map[string]any{"headless": false}, "headless"},
+		{"questions at 4b", facts7(), map[string]any{"design_questions": questions(1, 2, 0)}, "only belong to 4c"},
+		{"gate 0 without Go", facts7(), map[string]any{"route_line": "#7 Poort 0: stop — x", "gate": 0, "sub": ""}, "gate 0 where Go found no block"},
+		{"duplicate without issue", facts7(), map[string]any{"redundancy": "duplicate"}, "without redundancy_issue"},
+		{"done without evidence", facts7(), map[string]any{"redundancy": "done"}, "without redundancy_evidence"},
+		{"headless false without reason", facts7(), map[string]any{"headless": false}, "without headless_reason"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -218,14 +218,15 @@ func TestValidateInvalid(t *testing.T) {
 }
 
 func TestValidateEnvelope(t *testing.T) {
-	for name, env := range map[string]string{
-		"is_error":    `{"is_error":true,"structured_output":{}}`,
-		"no output":   `{"is_error":false,"result":"hi"}`,
-		"null output": `{"is_error":false,"structured_output":null}`,
-		"not json":    `oops`,
+	for _, tc := range []struct{ name, env, want string }{
+		{"is_error", `{"is_error":true,"structured_output":{}}`, "claude reported an error"},
+		{"no output", `{"is_error":false,"result":"hi"}`, "no structured_output"},
+		{"null output", `{"is_error":false,"structured_output":null}`, "no structured_output"},
+		{"not json", `oops`, "envelope is not JSON"},
 	} {
-		if _, err := Validate([]byte(env), facts7(), ctxNL()); err == nil {
-			t.Errorf("%s: no error", name)
+		_, err := Validate([]byte(tc.env), facts7(), ctxNL())
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want %q", tc.name, err, tc.want)
 		}
 	}
 }
@@ -263,7 +264,7 @@ func TestValidateGate0FromGo(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if j.Gate != 0 || j.Sub != "" || j.RouteLine != "#7 Poort 0: stop — wacht op #5" {
+		if j.Gate != 0 || j.Sub != "" || j.RouteLine != "#7 Poort 0: stop — #5" {
 			t.Errorf("gate 0: %+v", j)
 		}
 		if j.Redundancy != "done" || j.Headless {
@@ -272,8 +273,13 @@ func TestValidateGate0FromGo(t *testing.T) {
 	}
 	c.Gate0 = &Gate0{Label: "blocked-external"}
 	j, err := Validate(envelope(t, verdict(nil)), facts7(), c)
-	if err != nil || j.RouteLine != "#7 Poort 0: stop — label blocked-external" {
+	if err != nil || j.RouteLine != "#7 Poort 0: stop — blocked-external" {
 		t.Errorf("label: %+v %v", j, err)
+	}
+	c.Gate0 = &Gate0{Blockers: []int{5, 6}, Label: "3-blocked-external"}
+	j, err = Validate(envelope(t, verdict(nil)), facts7(), c)
+	if err != nil || j.RouteLine != "#7 Poort 0: stop — #5, #6, 3-blocked-external" {
+		t.Errorf("both: %+v %v", j, err)
 	}
 	// the redundancy rules still hold under gate 0
 	if _, err := Validate(envelope(t, verdict(map[string]any{"redundancy": "done"})), facts7(), c); err == nil {
