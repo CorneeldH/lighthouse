@@ -12,6 +12,8 @@ from tests.test_site_chain import REPO_BLOB, ROOT, SITE, load
 EVENT_PHASE = {
     "UserPromptSubmit": "prompt",
     "PreToolUse": "pre-tool",
+    # A permission prompt comes before the tool runs.
+    "Notification": "pre-tool",
     "PostToolUse": "post-tool",
     "PostToolUseFailure": "post-tool",
     "SubagentStop": "subagent-stop",

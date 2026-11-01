@@ -621,6 +621,33 @@
       "without": "The session ends without wrapping up, and the next one runs into the limit.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
+    },
+    {
+      "id": "permission-note",
+      "phase": "pre-tool",
+      "row": 5,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "Notification"
+      ],
+      "matcher": "permission_prompt|worker_permission_prompt",
+      "command": "permission-note.sh",
+      "effects": [
+        "records"
+      ],
+      "label": "permission-note",
+      "what": "In a controller run, writes the permission prompt the session is waiting on to a note file.",
+      "how": [
+        "It runs on a permission_prompt or worker_permission_prompt notification; outside a controller run it exits at once.",
+        "It writes permission.json under the run's state directory: the tool and path of the newest tool call in the transcript and its subagents, and the thread.",
+        "It does not refuse the prompt; a Notification hook cannot.",
+        "It always exits 0 and prints nothing; when it cannot check, it says so on stderr."
+      ],
+      "when": "When Claude asks for a permission in a controller run.",
+      "without": "The dispatcher cannot tell a session waiting for a permission from a silent one.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/permission-note.sh"
     }
   ],
   "handoffs": [],
