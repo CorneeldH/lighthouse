@@ -42,7 +42,7 @@ type Claim struct {
 	Issue      int
 	SessionID  string
 	Mode       string
-	Trigger    string // handoff, answer, usage, closecheck or manual
+	Trigger    string // handoff, answer, usage, closecheck, manual or fixpr
 	TriggerKey string // unique per repo, e.g. "start:<issue>"
 	Command    string
 	Prompt     string
