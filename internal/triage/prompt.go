@@ -57,8 +57,10 @@ func Prompt(f Facts, c Context) string {
 
 	w("Fields: route_line, gate (0, 1, 2 or 4), sub (a, b or c, only at gate 4), redundancy, headless, design_questions.\n")
 	w("redundancy: \"duplicate\" (with redundancy_issue, the number of the other issue) or \"done\" (with\n")
-	w("redundancy_evidence, for example a commit from the git log below) when the work exists elsewhere or is finished;\n")
+	w("redundancy_evidence) when the work exists elsewhere or is finished;\n")
 	w("otherwise \"none\". Base it on the facts below: the git log for this number and the other issues of the milestone.\n")
+	w("redundancy_evidence holds only references, at most %d, separated by \", \" or \" \": #<number> of at most %d digits,\n", MaxEvidenceRefs, MaxIssueDigits)
+	w("or a commit sha of 7 to 40 hex from the git log below.\n")
 	w("headless: true, unless the work needs sudo, another host")
 	if l.LocationPrefix != "" {
 		w(" (see the location label of the issue)")
@@ -68,7 +70,12 @@ func Prompt(f Facts, c Context) string {
 	w("At gate 4c fill design_questions: 1 to %d questions, each with 2 to %d options and exactly one recommended\n", protocol.MaxQuestions, len(protocol.Letters))
 	w("option (recommended is its index in options). The open questions of the milestone stand under the heading %s.\n",
 		quoteAll(protocol.Variants("milestone_not_yet_decided")))
-	w("At every other gate design_questions is [].\n\n")
+	w("At every other gate design_questions is [].\n")
+	w("Lengths in characters: route at most %d, reason at most %d (both in route_line), headless_reason at most %d,\n",
+		MaxRouteRunes, MaxRouteReasonRunes, MaxHeadlessReasonRunes)
+	w("design question at most %d, option at most %d, redundancy_evidence at most %d.\n",
+		MaxQuestionRunes, MaxOptionRunes, MaxEvidenceRunes)
+	w("Prose in redundancy_evidence or a longer field makes the whole judgment invalid.\n\n")
 
 	if c.Gate0 == nil {
 		w("Gate 0 was checked by Go: there is no open block.\n\n")

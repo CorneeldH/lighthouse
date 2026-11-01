@@ -31,6 +31,9 @@ type repoGather struct {
 	open   []forge.Issue           // the open issues
 	work   workLists
 	closed map[int][]tri.Ref // closed issues per milestone number, read once
+
+	export string      // the export of origin/<default_branch>: the cwd of each judgment
+	judge  judgeConfig // what each judgment takes from the user's settings
 }
 
 // readRepo fetches the default branch and reads the lists of step 4: the board, the open
@@ -144,10 +147,15 @@ func (g *repoGather) gatherFacts(ctx context.Context, is forge.Issue, item itemF
 	if !full {
 		return f, nil
 	}
-	if f.GitLog, err = gitOut(ctx, g.repo.Dir, "log", "--oneline", "origin/"+g.repo.DefaultBranch,
-		"-E", "--grep", "#"+strconv.Itoa(is.Number)+"([^0-9]|$)"); err != nil {
+	logArgs := []string{"origin/" + g.repo.DefaultBranch, "-E", "--grep", "#" + strconv.Itoa(is.Number) + "([^0-9]|$)"}
+	if f.GitLog, err = gitOut(ctx, g.repo.Dir, append([]string{"log", "--oneline"}, logArgs...)...); err != nil {
 		return tri.Facts{}, err
 	}
+	shas, err := gitOut(ctx, g.repo.Dir, append([]string{"log", "--format=%H"}, logArgs...)...)
+	if err != nil {
+		return tri.Facts{}, err
+	}
+	f.GitShas = lines(shas)
 	if m := is.Milestone; m != nil {
 		for _, o := range g.open {
 			if o.Number != is.Number && o.Milestone != nil && o.Milestone.Number == m.Number {

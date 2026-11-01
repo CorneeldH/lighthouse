@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -95,10 +96,8 @@ func mustGit(t *testing.T, dir string, args ...string) string {
 	return out
 }
 
-// triageFixture is a main checkout with toml as lighthouse.toml, a bare origin with main pushed,
-// a host.toml listing the checkout, a fake GitHub with token login lh-bot (lh-bot and alice are
-// admin), a fake judge, an open brake and a superpowers plugin with one skill.
-func triageFixture(t *testing.T, toml string) *triageFix {
+// isolateGit gives git a fixed identity and no user or system config for the test.
+func isolateGit(t *testing.T) {
 	t.Helper()
 	for k, v := range map[string]string{
 		"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
@@ -106,6 +105,15 @@ func triageFixture(t *testing.T, toml string) *triageFix {
 	} {
 		t.Setenv(k, v)
 	}
+}
+
+// triageFixture is a main checkout with toml as lighthouse.toml and the route skill, a bare origin
+// with main pushed, a host.toml listing the checkout, a fake GitHub with token login lh-bot (lh-bot
+// and alice are admin), a fake judge, an open brake, a superpowers plugin with one skill and a
+// user settings file that does not exist.
+func triageFixture(t *testing.T, toml string) *triageFix {
+	t.Helper()
+	isolateGit(t)
 	root := t.TempDir()
 	bare, dir := filepath.Join(root, "origin.git"), filepath.Join(root, "work")
 	mustGit(t, root, "init", "-q", "--bare", "-b", "main", bare)
@@ -114,7 +122,14 @@ func triageFixture(t *testing.T, toml string) *triageFix {
 	if err := os.WriteFile(filepath.Join(dir, "lighthouse.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	mustGit(t, dir, "add", "lighthouse.toml")
+	route := filepath.Join(dir, ".claude", "skills", "lighthouse-route-issue")
+	if err := os.MkdirAll(route, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(route, "SKILL.md"), []byte("---\nname: lighthouse-route-issue\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, dir, "add", "lighthouse.toml", ".claude")
 	mustGit(t, dir, "commit", "-q", "-m", "init (#3)")
 	mustGit(t, dir, "push", "-q", "origin", "main")
 
@@ -139,8 +154,10 @@ func triageFixture(t *testing.T, toml string) *triageFix {
 	}
 
 	fx := &triageFix{db: db, srv: srv, dir: dir, brake: &fakeBrake{closeAfter: -1}}
-	fx.judge = &fakeJudge{t: t, dir: dir, answers: map[int]string{}, prompts: map[int]string{}}
-	fx.env = triageEnv{tickEnv: tenv, Judge: fx.judge.judge, Brake: fx.brake, PluginsFile: plugins}
+	fx.judge = &fakeJudge{t: t, dir: dir, answers: map[int]string{}, prompts: map[int]string{},
+		dirs: map[int]string{}, files: map[int][]string{}, cfgs: map[int]judgeConfig{}}
+	fx.env = triageEnv{tickEnv: tenv, Judge: fx.judge.judge, Brake: fx.brake, PluginsFile: plugins,
+		SettingsFile: filepath.Join(t.TempDir(), "settings.json")}
 	return fx
 }
 
@@ -170,24 +187,28 @@ func (fx *triageFix) onBoard(n int, status string, extra map[string]any) {
 		boardNode("PVTI_"+strconv.Itoa(n), status, issueContent(n, "Issue "+strconv.Itoa(n), extra)))
 }
 
-// fakeJudge answers a fixed structured_output per issue number and records each call.
+// fakeJudge answers a fixed structured_output per issue number and records each call: the prompt,
+// the directory it ran in, the files in that directory at the time, and the config.
 type fakeJudge struct {
 	t       *testing.T
-	dir     string
+	dir     string // the main checkout, where no judgment may run
 	mu      sync.Mutex
 	answers map[int]string
 	errs    map[int]error // a failed judgment instead of an answer
 	calls   []int
 	prompts map[int]string
+	dirs    map[int]string
+	files   map[int][]string // the non-directories under dirs[n], relative, sorted
+	cfgs    map[int]judgeConfig
 }
 
 var promptIssue = regexp.MustCompile(`(?m)^issue number: #([0-9]+)$`)
 
-func (j *fakeJudge) judge(_ context.Context, dir, prompt string) ([]byte, error) {
+func (j *fakeJudge) judge(_ context.Context, dir, prompt string, cfg judgeConfig) ([]byte, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if dir != j.dir {
-		j.t.Errorf("judge dir = %q, want the main checkout %q", dir, j.dir)
+	if !strings.HasPrefix(filepath.Base(dir), "lighthouse-triage-") || dir == j.dir {
+		j.t.Errorf("judge dir = %q, want a lighthouse-triage-* export, not the main checkout %q", dir, j.dir)
 	}
 	m := promptIssue.FindStringSubmatch(prompt)
 	if m == nil {
@@ -197,6 +218,8 @@ func (j *fakeJudge) judge(_ context.Context, dir, prompt string) ([]byte, error)
 	n, _ := strconv.Atoi(m[1])
 	j.calls = append(j.calls, n)
 	j.prompts[n] = prompt
+	j.dirs[n], j.cfgs[n] = dir, cfg
+	j.files[n] = treeFiles(j.t, dir)
 	if err := j.errs[n]; err != nil {
 		return nil, err
 	}
@@ -206,6 +229,25 @@ func (j *fakeJudge) judge(_ context.Context, dir, prompt string) ([]byte, error)
 		return nil, errors.New("no answer")
 	}
 	return []byte(`{"type":"result","is_error":false,"structured_output":` + ans + `}`), nil
+}
+
+// treeFiles lists the non-directories under dir, relative and slash-separated, sorted.
+func treeFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(dir, p)
+		out = append(out, filepath.ToSlash(rel))
+		return err
+	})
+	if err != nil {
+		t.Errorf("walk %s: %v", dir, err)
+	}
+	slices.Sort(out)
+	return out
 }
 
 func (j *fakeJudge) called() []int {
@@ -972,6 +1014,148 @@ func TestTriageBrakeMidRound(t *testing.T) {
 	if want := "lighthouse: triage stopped: usage: session 87%, week 10%\n" + summary(2, 1, 0, 0, 1, 0, 0, 0, 0); errOut != want {
 		t.Errorf("errOut = %q, want %q", errOut, want)
 	}
+	if _, err := os.Stat(fx.judge.dirs[7]); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("export %q after the brake: %v, want it removed", fx.judge.dirs[7], err)
+	}
+}
+
+// writeFiles writes name-content pairs into dir.
+func writeFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// The judgment runs in an export of origin/main: only what is tracked there, without an
+// export-ignore file, a local commit, an untracked or an ignored file. The export is gone after the
+// round; the handoff still names the main checkout.
+func TestTriageJudgesInExport(t *testing.T) {
+	fx := triageFixture(t, triageToml)
+	writeFiles(t, fx.dir, map[string]string{".gitattributes": "secret.txt export-ignore\n",
+		"secret.txt": "secret\n", ".gitignore": ".env\n"})
+	mustGit(t, fx.dir, "add", ".gitattributes", "secret.txt", ".gitignore")
+	mustGit(t, fx.dir, "commit", "-q", "-m", "attributes")
+	mustGit(t, fx.dir, "push", "-q", "origin", "main")
+	writeFiles(t, fx.dir, map[string]string{"local.txt": "local\n"})
+	mustGit(t, fx.dir, "add", "local.txt")
+	mustGit(t, fx.dir, "commit", "-q", "-m", "local only")
+	writeFiles(t, fx.dir, map[string]string{"u.txt": "untracked\n", ".env": "TOKEN=x\n"})
+	local := filepath.Join(fx.dir, ".claude", "skills", "local-skill")
+	if err := os.MkdirAll(local, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFiles(t, local, map[string]string{"SKILL.md": "---\nname: local-skill\n---\n"})
+	fx.issue(7, "2-area:cli", "3-needs-hands")
+	fx.onBoard(7, "t1", nil)
+	fx.judge.answers[7] = forward(7)
+
+	if _, errOut, err := fx.run(triageOpts{}); err != nil {
+		t.Fatalf("triage = %v\n%s", err, errOut)
+	}
+	want := []string{".claude/skills/lighthouse-route-issue/SKILL.md", ".gitattributes", ".gitignore", "lighthouse.toml"}
+	if got := fx.judge.files[7]; !slices.Equal(got, want) {
+		t.Errorf("judgment saw %q, want %q", got, want)
+	}
+	if p := fx.judge.prompts[7]; !strings.Contains(p, "- lighthouse-route-issue:") || strings.Contains(p, "local-skill") {
+		t.Errorf("prompt catalog is not that of the export:\n%s", p)
+	}
+	if _, err := os.Stat(fx.judge.dirs[7]); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("export %q after the round: %v, want it removed", fx.judge.dirs[7], err)
+	}
+	if b := bodies(fx.srv, 7); len(b) != 2 || !strings.Contains(b[1], "\nworktree: "+fx.dir+"\n") {
+		t.Errorf("comments = %q, want a handoff with worktree: %s", b, fx.dir)
+	}
+}
+
+// All judgments of one repo in one round share one export.
+func TestTriageOneExportPerRepo(t *testing.T) {
+	fx := triageFixture(t, triageToml)
+	for _, n := range []int{7, 8} {
+		fx.issue(n, "2-area:cli")
+		fx.onBoard(n, "t1", nil)
+		fx.judge.answers[n] = stopAt1(n)
+	}
+
+	if _, errOut, err := fx.run(triageOpts{}); err != nil {
+		t.Fatalf("triage = %v\n%s", err, errOut)
+	}
+	if d := fx.judge.dirs; d[7] == "" || d[7] != d[8] {
+		t.Errorf("judgment dirs = %v, want one export for #7 and #8", d)
+	}
+}
+
+// Without the route skill on origin the repo is skipped before any judgment, and its export is gone.
+func TestTriageSkipsWithoutRouteSkill(t *testing.T) {
+	fx := triageFixture(t, triageToml)
+	mustGit(t, fx.dir, "rm", "-q", "-r", ".claude/skills/lighthouse-route-issue")
+	mustGit(t, fx.dir, "commit", "-q", "-m", "no route skill")
+	mustGit(t, fx.dir, "push", "-q", "origin", "main")
+	fx.issue(7, "2-area:cli")
+	fx.onBoard(7, "t1", nil)
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+
+	_, errOut, err := fx.run(triageOpts{})
+	if exitCode(err) != 2 {
+		t.Fatalf("triage = %v, want exit code 2\n%s", err, errOut)
+	}
+	if !strings.Contains(errOut, "lighthouse: skip ") || !strings.Contains(errOut, ": origin/main: route skill missing") ||
+		!strings.Contains(errOut, "lighthouse-route-issue") {
+		t.Errorf("errOut = %q, want a skip for the missing route skill on origin/main", errOut)
+	}
+	if got := fx.judge.called(); len(got) != 0 {
+		t.Errorf("judged %v, want none", got)
+	}
+	if left, _ := filepath.Glob(filepath.Join(tmp, "lighthouse-triage-*")); len(left) != 0 {
+		t.Errorf("exports left after the skip: %q", left)
+	}
+}
+
+// A settings file that is no JSON skips the repo before any judgment.
+func TestTriageSettingsInvalid(t *testing.T) {
+	fx := triageFixture(t, triageToml)
+	if err := os.WriteFile(fx.env.SettingsFile, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx.issue(7, "2-area:cli")
+	fx.onBoard(7, "t1", nil)
+
+	_, errOut, err := fx.run(triageOpts{})
+	if exitCode(err) != 2 {
+		t.Fatalf("triage = %v, want exit code 2\n%s", err, errOut)
+	}
+	if !strings.Contains(errOut, "lighthouse: skip ") || !strings.Contains(errOut, fx.env.SettingsFile) {
+		t.Errorf("errOut = %q, want a skip naming %s", errOut, fx.env.SettingsFile)
+	}
+	if got := fx.judge.called(); len(got) != 0 {
+		t.Errorf("judged %v, want none", got)
+	}
+}
+
+// The judgment gets env and modelSettings of the user's settings, and nothing else of them.
+func TestTriageSettingsPassed(t *testing.T) {
+	fx := triageFixture(t, triageToml)
+	settings := `{"env":{"A":"1"},"modelSettings":{"effort":"high"},"permissions":{"allow":["Read(//**)"]}}`
+	if err := os.WriteFile(fx.env.SettingsFile, []byte(settings), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx.issue(7, "2-area:cli")
+	fx.onBoard(7, "t1", nil)
+	fx.judge.answers[7] = stopAt1(7)
+
+	if _, errOut, err := fx.run(triageOpts{}); err != nil {
+		t.Fatalf("triage = %v\n%s", err, errOut)
+	}
+	cfg := fx.judge.cfgs[7]
+	if !slices.Equal(cfg.Env, []string{"A=1"}) {
+		t.Errorf("Env = %q, want [A=1]", cfg.Env)
+	}
+	if want := `{"disableAllHooks":true,"modelSettings":{"effort":"high"}}`; cfg.Settings != want {
+		t.Errorf("Settings = %s, want %s", cfg.Settings, want)
+	}
 }
 
 func TestTriageNoRepoEnabled(t *testing.T) {
@@ -1147,5 +1331,46 @@ func TestParseIssueRef(t *testing.T) {
 		if got, err := parseIssueRef(bad); err == nil {
 			t.Errorf("parseIssueRef(%q) = %+v, want an error", bad, got)
 		}
+	}
+}
+
+// The evidence of a "done" judgment is checked against the shas of the log of the issue.
+func TestTriageEvidenceFromLog(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		evidence func(sha string) string
+		valid    bool
+	}{
+		{"sha from the log", func(sha string) string { return sha[:12] }, true},
+		{"sha not in the log", func(string) string { return "deadbeef" }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := triageFixture(t, triageToml)
+			fx.issue(7, "2-area:cli")
+			fx.onBoard(7, "t1", nil)
+			other := filepath.Join(t.TempDir(), "other")
+			mustGit(t, filepath.Dir(other), "clone", "-q", mustGit(t, fx.dir, "remote", "get-url", "origin"), other)
+			mustGit(t, other, "commit", "-q", "--allow-empty", "-m", "fix: thing (#7)")
+			mustGit(t, other, "push", "-q", "origin", "main")
+			sha := strings.TrimSpace(mustGit(t, other, "rev-parse", "HEAD"))
+			evidence := tc.evidence(sha)
+			fx.judge.answers[7] = answerWith("#7 Poort 4b: writing-plans — x", 4, "b", map[string]any{
+				"redundancy": "done", "redundancy_evidence": evidence})
+
+			_, errOut, err := fx.run(triageOpts{})
+			if err != nil {
+				t.Fatalf("triage = %v\n%s", err, errOut)
+			}
+			b := bodies(fx.srv, 7)
+			if tc.valid {
+				if len(b) != 1 || !strings.Contains(b[0], evidence) {
+					t.Errorf("comment = %q, want it to contain %q", b, evidence)
+				}
+				return
+			}
+			if len(b) != 0 || !strings.Contains(errOut, "invalid judgment") || !strings.Contains(errOut, "not in the git log") {
+				t.Errorf("comments = %q errOut = %q, want an invalid judgment (not in the git log) and no comment", b, errOut)
+			}
+		})
 	}
 }

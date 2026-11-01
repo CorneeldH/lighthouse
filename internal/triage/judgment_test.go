@@ -39,9 +39,19 @@ func writeFile(t *testing.T, path, body string) {
 func TestCatalog(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
-	writeFile(t, filepath.Join(repo, ".claude/skills/lighthouse-a/SKILL.md"),
+	export := filepath.Join(root, "export")
+	writeFile(t, filepath.Join(export, ".claude/skills/lighthouse-a/SKILL.md"),
 		"---\nname: lighthouse-a\ndescription: 'It''s a skill — with quote'\n---\nbody\n")
-	writeFile(t, filepath.Join(repo, ".claude/skills/lighthouse-b/SKILL.md"), "no frontmatter\n")
+	writeFile(t, filepath.Join(export, ".claude/skills/lighthouse-b/SKILL.md"), "no frontmatter\n")
+	// a symlinked SKILL.md that resolves outside the export stays out of the catalog
+	outside := filepath.Join(root, "outside.md")
+	writeFile(t, outside, "---\nname: x\ndescription: leaked\n---\n")
+	if err := os.MkdirAll(filepath.Join(export, ".claude/skills/x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(export, ".claude/skills/x/SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
 	userInstall := filepath.Join(root, "user")
 	projInstall := filepath.Join(root, "proj")
 	writeFile(t, filepath.Join(userInstall, "skills/stale/SKILL.md"), "---\nname: stale\ndescription: old\n---\n")
@@ -54,7 +64,7 @@ func TestCatalog(t *testing.T) {
   {"scope":"user","installPath":"`+userInstall+`","version":"7.0.1"},
   {"scope":"project","projectPath":"`+repo+`","installPath":"`+projInstall+`","version":"7.0.1"}]}}`)
 
-	got, warn, err := Catalog(repo, plugins)
+	got, warn, err := Catalog(export, repo, plugins)
 	if err != nil || warn != "" {
 		t.Fatalf("err = %v warn = %q", err, warn)
 	}
@@ -69,7 +79,7 @@ func TestCatalog(t *testing.T) {
 	// no project entry for this repo: the user entry is used
 	other := filepath.Join(root, "other")
 	writeFile(t, filepath.Join(other, ".claude/skills/x/SKILL.md"), "---\nname: x\ndescription: d\n---\n")
-	got, _, _ = Catalog(other, plugins)
+	got, _, _ = Catalog(other, other, plugins)
 	want = []Skill{{"x", "d"}, {"superpowers:stale", "old"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("user entry: got %v want %v", got, want)
@@ -78,7 +88,7 @@ func TestCatalog(t *testing.T) {
 	// no superpowers entry, and no file at all
 	writeFile(t, plugins, `{"version":2,"plugins":{"other@x":[]}}`)
 	for _, file := range []string{plugins, filepath.Join(root, "missing.json")} {
-		got, warn, err = Catalog(repo, file)
+		got, warn, err = Catalog(export, repo, file)
 		if err != nil || warn == "" {
 			t.Errorf("%s: err = %v warn = %q, want a warning", file, err, warn)
 		}
@@ -86,6 +96,54 @@ func TestCatalog(t *testing.T) {
 			t.Errorf("%s: got %v, want only repo skills", file, got)
 		}
 	}
+}
+
+func TestCheckRouteSkill(t *testing.T) {
+	skill := func(dir string) string { return filepath.Join(dir, ".claude/skills/lighthouse-route-issue/SKILL.md") }
+	t.Run("missing", func(t *testing.T) {
+		if err := CheckRouteSkill(t.TempDir()); err == nil {
+			t.Error("want an error for a missing route skill")
+		}
+	})
+	t.Run("regular file", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, skill(dir), "x")
+		if err := CheckRouteSkill(dir); err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("directory", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(skill(dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckRouteSkill(dir); err == nil {
+			t.Error("want an error for a directory")
+		}
+	})
+	t.Run("symlink inside", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "real.md"), "x")
+		writeFile(t, filepath.Join(dir, ".claude/skills/lighthouse-route-issue/keep"), "")
+		if err := os.Symlink(filepath.Join(dir, "real.md"), skill(dir)); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckRouteSkill(dir); err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("symlink outside", func(t *testing.T) {
+		dir := t.TempDir()
+		out := filepath.Join(t.TempDir(), "real.md")
+		writeFile(t, out, "x")
+		writeFile(t, filepath.Join(dir, ".claude/skills/lighthouse-route-issue/keep"), "")
+		if err := os.Symlink(out, skill(dir)); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckRouteSkill(dir); err == nil {
+			t.Error("want an error for a symlink leaving the directory")
+		}
+	})
 }
 
 func facts7() Facts {
@@ -206,6 +264,21 @@ func TestValidateInvalid(t *testing.T) {
 		{"duplicate without issue", facts7(), map[string]any{"redundancy": "duplicate"}, "without redundancy_issue"},
 		{"duplicate of itself", facts7(), map[string]any{"redundancy": "duplicate", "redundancy_issue": 7}, "duplicate of #7 itself"},
 		{"done without evidence", facts7(), map[string]any{"redundancy": "done"}, "without redundancy_evidence"},
+		{"route over limit", facts7(), map[string]any{"route_line": "#7 Poort 4b: " + strings.Repeat("r", MaxRouteRunes+1) + " — x"}, "route"},
+		{"reason over limit", facts7(), map[string]any{"route_line": "#7 Poort 4b: writing-plans — " + strings.Repeat("r", MaxRouteReasonRunes+1)}, "reason"},
+		{"headless_reason over limit", facts7(), map[string]any{"headless": false, "headless_reason": strings.Repeat("h", MaxHeadlessReasonRunes+1)}, "headless_reason"},
+		{"question over limit", facts7(), merge(map[string]any{"design_questions": []any{map[string]any{
+			"question": strings.Repeat("q", MaxQuestionRunes+1), "options": []any{"a", "b"}, "recommended": 0}}}), "design_questions[0]"},
+		{"option over limit", facts7(), merge(map[string]any{"design_questions": []any{map[string]any{
+			"question": "q?", "options": []any{"a", strings.Repeat("o", MaxOptionRunes+1)}, "recommended": 0}}}), "options[1]"},
+		{"evidence prose", factsSha(), done("fixed in abc1234"), "redundancy_evidence"},
+		{"evidence unknown sha", factsSha(), done("fff0000"), "not in the git log"},
+		{"evidence sha extended", factsSha(), done("abc1234ff"), "not in the git log"},
+		{"evidence seven digit issue", factsSha(), done("#1234567"), "redundancy_evidence"},
+		{"evidence six refs", factsSha(), done("#1, #2, #3, #4, #5, #6"), "redundancy_evidence"},
+		{"evidence empty separator", factsSha(), done("#1 ,, ,#2"), "redundancy_evidence"},
+		// the pattern alone bounds the field (see MaxEvidenceRunes); padding is not a reference
+		{"evidence padded past the limit", factsSha(), done("#1" + strings.Repeat(" ", MaxEvidenceRunes) + "#2"), "not only references"},
 		{"headless false without reason", facts7(), map[string]any{"headless": false}, "without headless_reason"},
 	}
 	for _, tc := range tests {
@@ -213,6 +286,63 @@ func TestValidateInvalid(t *testing.T) {
 			_, err := Validate(envelope(t, verdict(tc.over)), tc.f, ctxNL())
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Errorf("err = %v, want it to mention %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+const testSha = "abc1234def5678abc1234def5678abc1234def56"
+
+func factsSha() Facts {
+	f := facts7()
+	f.GitShas = []string{testSha}
+	return f
+}
+
+func done(evidence string) map[string]any {
+	return map[string]any{"redundancy": "done", "redundancy_evidence": evidence}
+}
+
+func TestValidateLimitsValid(t *testing.T) {
+	c4 := map[string]any{"route_line": "#7 Poort 4c: brainstorming — x", "sub": "c", "gate": 4}
+	with := func(extra map[string]any) map[string]any {
+		m := map[string]any{}
+		for k, v := range c4 {
+			m[k] = v
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	oneQuestion := func(q string, opts ...string) []any {
+		o := make([]any, len(opts))
+		for i, s := range opts {
+			o[i] = s
+		}
+		return []any{map[string]any{"question": q, "options": o, "recommended": 0}}
+	}
+	tests := []struct {
+		name string
+		over map[string]any
+	}{
+		{"route at limit in runes", map[string]any{"route_line": "#7 Poort 4b: " + strings.Repeat("é", MaxRouteRunes) + " — x"}},
+		{"reason at limit", map[string]any{"route_line": "#7 Poort 4b: writing-plans — " + strings.Repeat("r", MaxRouteReasonRunes)}},
+		{"headless_reason at limit", map[string]any{"headless": false, "headless_reason": strings.Repeat("h", MaxHeadlessReasonRunes)}},
+		{"question and option at limit", with(map[string]any{"design_questions": oneQuestion(strings.Repeat("q", MaxQuestionRunes), "a", strings.Repeat("o", MaxOptionRunes))})},
+		{"done with evidence skips the design limits", with(map[string]any{"redundancy": "done", "redundancy_evidence": "#12",
+			"design_questions": oneQuestion(strings.Repeat("q", 400), "a", "b")})},
+		{"headless_reason over limit at gate 1", map[string]any{"route_line": "#7 Poort 1: x — y", "gate": 1, "sub": "",
+			"headless": false, "headless_reason": strings.Repeat("h", 400)}},
+		{"evidence issue and sha", done("#12, abc1234")},
+		{"evidence upper case sha", done("ABC1234")},
+		{"evidence space separated", done("#1 #2 #3 #4 #5")},
+		{"empty evidence at duplicate", map[string]any{"redundancy": "duplicate", "redundancy_issue": 3}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Validate(envelope(t, verdict(tc.over)), factsSha(), ctxNL()); err != nil {
+				t.Error(err)
 			}
 		})
 	}
@@ -241,15 +371,26 @@ func TestValidateWrongNumber(t *testing.T) {
 
 func TestValidateRedundancyAndHeadless(t *testing.T) {
 	j, err := Validate(envelope(t, verdict(map[string]any{
-		"redundancy": "duplicate", "redundancy_issue": 3, "redundancy_evidence": "same title",
+		"redundancy": "duplicate", "redundancy_issue": 3, "redundancy_evidence": "#3",
 		"headless": false, "headless_reason": "needs sudo",
 	})), facts7(), ctxNL())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if j.Redundancy != "duplicate" || j.RedundancyIssue != 3 || j.RedundancyEvidence != "same title" ||
+	if j.Redundancy != "duplicate" || j.RedundancyIssue != 3 || j.RedundancyEvidence != "#3" ||
 		j.Headless || j.HeadlessReason != "needs sudo" {
 		t.Errorf("got %+v", j)
+	}
+}
+
+// Letter case of a sha is a free bit per hex letter: an accepted sha is published lowercased.
+func TestValidateEvidenceLowercased(t *testing.T) {
+	j, err := Validate(envelope(t, verdict(done("ABC1234, #12"))), factsSha(), ctxNL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.RedundancyEvidence != "abc1234, #12" {
+		t.Errorf("RedundancyEvidence = %q, want %q", j.RedundancyEvidence, "abc1234, #12")
 	}
 }
 
@@ -259,9 +400,9 @@ func TestValidateGate0FromGo(t *testing.T) {
 	// the model says 4b, and even a malformed line: Go's stop wins
 	for _, line := range []string{"#7 Poort 4b: writing-plans — x", "garbage"} {
 		j, err := Validate(envelope(t, verdict(map[string]any{
-			"route_line": line, "redundancy": "done", "redundancy_evidence": "abc123 fixes it",
+			"route_line": line, "redundancy": "done", "redundancy_evidence": "abc1234",
 			"headless": false, "headless_reason": "other host",
-		})), facts7(), c)
+		})), factsSha(), c)
 		if err != nil {
 			t.Fatal(err)
 		}

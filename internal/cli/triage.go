@@ -23,8 +23,8 @@ import (
 	tri "github.com/CorneeldH/lighthouse/internal/triage"
 )
 
-// judgeFunc runs one judgment in dir with prompt on stdin and returns claude's stdout.
-type judgeFunc func(ctx context.Context, dir, prompt string) ([]byte, error)
+// judgeFunc runs one judgment in dir with prompt on stdin and cfg, and returns claude's stdout.
+type judgeFunc func(ctx context.Context, dir, prompt string, cfg judgeConfig) ([]byte, error)
 
 // brake reports whether the round may go on; reason says why not ("usage: not measured").
 type brake interface {
@@ -38,6 +38,9 @@ type triageEnv struct {
 	Judge       judgeFunc // nil is execJudge
 	Brake       brake     // required
 	PluginsFile string    // "" is $HOME/.claude/plugins/installed_plugins.json
+	// SettingsFile is the user's settings file the judgment takes env and modelSettings from;
+	// "" is judgeSettingsPath(Getenv).
+	SettingsFile string
 }
 
 // issueRef is one --issue: an issue of a repo, by slug and number.
@@ -195,18 +198,35 @@ type counts struct {
 }
 
 // repo triages one repo and writes its summary line; failed reports a skipped repo or an
-// issue that failed.
+// issue that failed. Every judgment of the repo runs in one export of origin/<default_branch>
+// with one judge config; the export is removed when repo returns, also after an error or the
+// brake.
 func (r *round) repo(ctx context.Context, path string, repo repoconfig.Repo) (failed bool) {
+	skip := func(err error) bool {
+		_, _ = fmt.Fprintf(r.errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
+		return true
+	}
 	g, err := r.prepare(ctx, path, repo)
 	if err != nil {
-		_, _ = fmt.Fprintf(r.errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
-		return true
+		return skip(err)
 	}
-	catalog, warning, err := tri.Catalog(repo.Dir, r.pluginsFile())
+	if g.judge, err = loadJudgeConfig(r.settingsFile()); err != nil {
+		return skip(err)
+	}
+	ref := "origin/" + repo.DefaultBranch
+	export, remove, err := exportTree(ctx, repo.Dir, ref)
 	if err != nil {
-		_, _ = fmt.Fprintf(r.errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
-		return true
+		return skip(err)
 	}
+	defer remove()
+	if err := tri.CheckRouteSkill(export); err != nil {
+		return skip(fmt.Errorf("%s: %w", ref, err))
+	}
+	catalog, warning, err := tri.Catalog(export, repo.Dir, r.pluginsFile())
+	if err != nil {
+		return skip(err)
+	}
+	g.export = export
 	if warning != "" {
 		_, _ = fmt.Fprintf(r.errOut, "lighthouse: warning: %s: %s\n", repo.Slug, warning)
 	}
@@ -229,6 +249,13 @@ func (r *round) pluginsFile() string {
 		return r.env.PluginsFile
 	}
 	return filepath.Join(r.env.Getenv("HOME"), ".claude", "plugins", "installed_plugins.json")
+}
+
+func (r *round) settingsFile() string {
+	if r.env.SettingsFile != "" {
+		return r.env.SettingsFile
+	}
+	return judgeSettingsPath(r.env.Getenv)
 }
 
 // prepare checks the conditions of a repo (steps 1 and 2) and reads its lists (steps 3 and 4).
@@ -382,7 +409,7 @@ func (r *round) issue(ctx context.Context, g *repoGather, f tri.Facts, jc tri.Co
 		}
 		jc.Gate0 = g0
 		n.judgments++
-		envelope, err := r.env.Judge(ctx, repo.Dir, tri.Prompt(f, jc))
+		envelope, err := r.env.Judge(ctx, g.export, tri.Prompt(f, jc), g.judge)
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 			// The spec counts a timeout as an invalid judgment.
 			n.invalid++

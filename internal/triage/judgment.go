@@ -64,20 +64,62 @@ type Context struct {
 	Gate0    *Gate0 // nil: Go found no block
 }
 
-// Catalog reads name and description from the frontmatter of repoDir/.claude/skills/*/SKILL.md,
-// then the superpowers:* skills of the installed plugin. warning is non-empty when the plugin
+// inside reports whether path, with symlinks resolved, lies under root (also resolved). A path
+// that cannot be resolved is not inside.
+func inside(root, path string) bool {
+	r, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
+	}
+	p, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(r, p)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// CheckRouteSkill fails when dir/.claude/skills/lighthouse-route-issue/SKILL.md is missing, is not
+// a regular file, or resolves (through symlinks) to a path outside dir.
+func CheckRouteSkill(dir string) error {
+	path := filepath.Join(dir, ".claude", "skills", "lighthouse-route-issue", "SKILL.md")
+	if _, err := os.Lstat(path); err != nil {
+		return fmt.Errorf("route skill missing: %w", err)
+	}
+	if !inside(dir, path) {
+		return fmt.Errorf("route skill %s does not resolve inside %s", path, dir)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("route skill %s: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("route skill %s is not a regular file", path)
+	}
+	return nil
+}
+
+// Catalog reads name and description from the frontmatter of skillDir/.claude/skills/*/SKILL.md
+// (a SKILL.md that resolves outside skillDir is left out), then the superpowers:* skills of the
+// installed plugin, whose project entry matches projectDir. warning is non-empty when the plugin
 // is missing; the result never fails on one unreadable SKILL.md (it is left out).
-func Catalog(repoDir, pluginsFile string) (skills []Skill, warning string, err error) {
-	repoPaths, err := filepath.Glob(filepath.Join(repoDir, ".claude", "skills", "*", "SKILL.md"))
+func Catalog(skillDir, projectDir, pluginsFile string) (skills []Skill, warning string, err error) {
+	repoPaths, err := filepath.Glob(filepath.Join(skillDir, ".claude", "skills", "*", "SKILL.md"))
 	if err != nil {
 		return nil, "", err
 	}
 	for _, p := range repoPaths {
+		if !inside(skillDir, p) {
+			continue
+		}
 		if s, ok := readSkill(p, ""); ok {
 			skills = append(skills, s)
 		}
 	}
-	install, warning := pluginInstall(repoDir, pluginsFile)
+	install, warning := pluginInstall(projectDir, pluginsFile)
 	if install == "" {
 		return skills, warning, nil
 	}
@@ -93,9 +135,9 @@ func Catalog(repoDir, pluginsFile string) (skills []Skill, warning string, err e
 	return skills, "", nil
 }
 
-// pluginInstall finds the install path of the superpowers plugin: the project entry for repoDir,
+// pluginInstall finds the install path of the superpowers plugin: the project entry for projectDir,
 // else the user entry. install is "" and warning set when there is none.
-func pluginInstall(repoDir, pluginsFile string) (install, warning string) {
+func pluginInstall(projectDir, pluginsFile string) (install, warning string) {
 	data, err := os.ReadFile(pluginsFile)
 	if err != nil {
 		return "", "superpowers plugin not found: " + err.Error()
@@ -122,7 +164,7 @@ func pluginInstall(repoDir, pluginsFile string) (install, warning string) {
 		}
 		entries := file.Plugins[key]
 		for _, e := range entries {
-			if e.ProjectPath != "" && e.ProjectPath == repoDir && e.InstallPath != "" {
+			if e.ProjectPath != "" && e.ProjectPath == projectDir && e.InstallPath != "" {
 				return e.InstallPath, ""
 			}
 		}
@@ -237,6 +279,11 @@ func Validate(envelope []byte, f Facts, c Context) (Judgment, error) {
 	if err := checkRedundancy(j, f.Number); err != nil {
 		return Judgment{}, err
 	}
+	if err := checkPublished(j, f, c); err != nil {
+		return Judgment{}, err
+	}
+	// a sha is lowercase in the log; case in the field would be a free bit per letter
+	j.RedundancyEvidence = strings.ToLower(j.RedundancyEvidence)
 	if !j.Headless && j.HeadlessReason == "" {
 		return Judgment{}, invalid("headless false without headless_reason")
 	}
@@ -263,6 +310,12 @@ func checkRoute(j *Judgment, raw rawJudgment, f Facts, c Context) error {
 	}
 	if n, _ := strconv.Atoi(m[1]); n != f.Number {
 		return invalid("route_line is for #%s, not #%d", m[1], f.Number)
+	}
+	if err := checkLen("route", m[4], MaxRouteRunes); err != nil {
+		return err
+	}
+	if err := checkLen("reason", m[5], MaxRouteReasonRunes); err != nil {
+		return err
 	}
 	gate, _ := strconv.Atoi(m[2])
 	sub := m[3]
@@ -336,6 +389,28 @@ func checkRedundancy(j Judgment, number int) error {
 		}
 	default:
 		return invalid("redundancy %q is not none, duplicate or done", j.Redundancy)
+	}
+	return nil
+}
+
+// checkPublished bounds the free text fields that the row of the judgment publishes.
+func checkPublished(j Judgment, f Facts, c Context) error {
+	switch judgedRow(&j, c.Gate0, f.AuthorTrusted) {
+	case RowRedundant:
+		return checkEvidence(j.RedundancyEvidence, f.GitShas)
+	case RowDesign:
+		for i, q := range j.Questions {
+			if err := checkLen(fmt.Sprintf("design_questions[%d]", i), q.Text, MaxQuestionRunes); err != nil {
+				return err
+			}
+			for k, o := range q.Options {
+				if err := checkLen(fmt.Sprintf("design_questions[%d].options[%d]", i, k), o, MaxOptionRunes); err != nil {
+					return err
+				}
+			}
+		}
+	case RowInteractive:
+		return checkLen("headless_reason", j.HeadlessReason, MaxHeadlessReasonRunes)
 	}
 	return nil
 }

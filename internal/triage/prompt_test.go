@@ -1,6 +1,7 @@
 package triage
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -37,6 +38,13 @@ func TestPrompt(t *testing.T) {
 		"abc123 feat: earlier work (#7)", "#8 Open sibling", "#9 Closed sibling",
 		"#5 (open)", "#4 (closed)", "Milestone prose", "Nog niet vastgelegd", "Not yet decided",
 		"first comment", "second comment", "Read, Grep and Glob", "1-loc:",
+		fmt.Sprintf("at most %d", MaxEvidenceRefs), "invalid",
+		fmt.Sprintf("route at most %d", MaxRouteRunes),
+		fmt.Sprintf("reason at most %d", MaxRouteReasonRunes),
+		fmt.Sprintf("headless_reason at most %d", MaxHeadlessReasonRunes),
+		fmt.Sprintf("design question at most %d", MaxQuestionRunes),
+		fmt.Sprintf("option at most %d", MaxOptionRunes),
+		fmt.Sprintf("redundancy_evidence at most %d", MaxEvidenceRunes),
 	} {
 		if !strings.Contains(p, want) {
 			t.Errorf("prompt lacks %q", want)
