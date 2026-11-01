@@ -476,7 +476,8 @@ func (n *counts) count(row tri.Row) {
 }
 
 // newTriageCommand is `lighthouse triage`. env builds the environment at the start of the run;
-// its error is exit code 2. A panic in the round is exit code 2 too, with a line naming it.
+// its error is exit code 2. A panic in the round is exit code 2 too, with a line naming it, and
+// so is a flag or argument error: the host unit counts 1 as success, so a typo must not pass.
 func newTriageCommand(env func() (triageEnv, error)) *cobra.Command {
 	var (
 		opts   triageOpts
@@ -492,7 +493,12 @@ func newTriageCommand(env func() (triageEnv, error)) *cobra.Command {
 			"close the round like they close a tick. Exit code 0: the round ran. 1: skipped (no repo,\n" +
 			"the brake, a round still running). 2: a failure.",
 		Example: "  lighthouse triage --dry-run --issue CorneeldH/lighthouse#114",
-		Args:    cobra.NoArgs,
+		Args: func(cmd *cobra.Command, args []string) error {
+			if err := cobra.NoArgs(cmd, args); err != nil {
+				return &exitError{code: 2, err: err}
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			defer func() {
 				if r := recover(); r != nil {
@@ -513,6 +519,9 @@ func newTriageCommand(env func() (triageEnv, error)) *cobra.Command {
 			return triage(cmd.Context(), e, opts, dbPath, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return &exitError{code: 2, err: err}
+	})
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "judge, but write nothing; the route lines go to stdout")
 	cmd.Flags().StringArrayVar(&issues, "issue", nil, "judge only this issue, <owner>/<name>#<number> (repeatable, needs --dry-run)")
 	cmd.Flags().StringVar(&dbPath, "db", "", "path of the SQLite database (default: the lighthouse data directory)")

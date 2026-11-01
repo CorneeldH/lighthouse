@@ -197,6 +197,29 @@ func TestTriageCommandFlags(t *testing.T) {
 			t.Errorf("judged %v, want issues 7 and 8", got)
 		}
 	})
+	// The host unit counts exit code 1 as success: a typo in ExecStart must give 2.
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"unknown flag", []string{"--dryrun"}, "lighthouse: unknown flag: --dryrun\n"},
+		{"argument", []string{"now"}, "lighthouse: unknown command \"now\" for \"lighthouse triage\"\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := triageFixture(t, triageToml)
+			var out, errOut bytes.Buffer
+			if code := execute(triageRoot(fx, &out, &errOut, tc.args...), &errOut); code != 2 {
+				t.Errorf("exit code = %d, want 2\n%s", code, errOut.String())
+			}
+			if errOut.String() != tc.want {
+				t.Errorf("stderr = %q, want %q", errOut.String(), tc.want)
+			}
+			if n := fx.srv.Count("/user"); n != 0 {
+				t.Errorf("/user requests = %d, want 0: the round must not start", n)
+			}
+		})
+	}
 	t.Run("bad issue", func(t *testing.T) {
 		fx := triageFixture(t, triageToml)
 		var out, errOut bytes.Buffer

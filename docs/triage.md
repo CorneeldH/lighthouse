@@ -62,7 +62,7 @@ stap halverwege, dan stopt dat issue en gaat de ronde door met het volgende.
 |---|---|
 | 0 | De ronde draaide. Dat geldt ook bij nul kandidaten, en bij een ronde die halverwege stopt omdat de rem sloot (`lighthouse: triage stopped: <reden>`). Wat al geschreven is, blijft staan. |
 | 1 | De ronde is overgeslagen: geen repo met `[controller.triage]`, de rem of de pauzevlag stond aan bij de start (`lighthouse: triage skipped: <reden>`), of een vorige ronde draait nog (`lighthouse: previous triage still running`). |
-| 2 | Fout: een repo die niet aan de voorwaarden voldoet, een ongeldig `[controller.triage]`, een issue waarvan een stap faalde, een ongeldige `host.toml`, een ontbrekend token, of een paniek. De unit komt dan op `failed`. |
+| 2 | Fout: een repo die niet aan de voorwaarden voldoet, een ongeldig `[controller.triage]`, een issue waarvan een stap faalde, een ongeldige `host.toml`, een ontbrekend token, een onbekende vlag of een los argument, of een paniek. De unit komt dan op `failed`. |
 
 Een ongeldig oordeel is geen fout en geeft geen `2`.
 
