@@ -41,6 +41,7 @@ func unpackArchive(ctx context.Context, repoDir, ref, dir string) error {
 	var stderr strings.Builder
 	cmd := exec.CommandContext(gctx, "git", "-C", repoDir, "archive", "--format=tar", ref)
 	cmd.Stderr = &stderr
+	cmd.WaitDelay = judgeWaitDelay
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
