@@ -335,6 +335,8 @@ def test_probe_cached_per_process(cs, tmp_path, isolated):
 #   FAKE_GITLEAKS_REPORT=none   write no report; =garbage: write one that is no JSON
 #   FAKE_GITLEAKS_RC=<rc>       exit with this rc instead
 #   FAKE_GITLEAKS_SCANNED=none  say nothing about the bytes; =short: one byte too few
+#   FAKE_GITLEAKS_MEMBER=<path> name the finding the way gitleaks names an archive
+#                               member: `<file>!<path>`
 FAKE_GITLEAKS = f"""#!{sys.executable}
 import json, os, signal, sys
 
@@ -361,7 +363,9 @@ with open(log, "a") as out:
         body = open(path, "rb").read()
         scanned += len(body)
         if b"FAKESECRET" in body:
-            findings.append({{"RuleID": "fake-rule", "File": path, "Match": "REDACTED"}})
+            member = os.environ.get("FAKE_GITLEAKS_MEMBER")
+            where = f"{{path}}!{{member}}" if member else path
+            findings.append({{"RuleID": "fake-rule", "File": where, "Match": "REDACTED"}})
 said = os.environ.get("FAKE_GITLEAKS_SCANNED")
 if said != "none":
     print(f"INF scanned ~{{scanned - (said == 'short')}} bytes", file=sys.stderr)
@@ -765,6 +769,19 @@ def test_full_ignores_the_ledger(sx):
     assert result.returncode == 0, result.stderr
     assert sorted(sx.logged()) == everything
     assert sx.ledger() == set(everything)
+
+
+def test_archive_member_maps_to_its_blob(sx):
+    """A finding in an archive member, `<blob id>!<inner path>`, is a finding of the
+    blob: the `!` part may hold a `/`."""
+    dirty = b'{"text": "FAKESECRET"}\n'
+    refs = _checkpoints(sx.repo, {"refs/entire/checkpoints/01/dirty": {"0/full.jsonl": dirty}})
+
+    result = sx.scan(refs, FAKE_GITLEAKS_MEMBER="inner/dir/file.txt")
+
+    assert result.returncode == 1, result.stderr
+    assert "refs/entire/checkpoints/01/dirty  0/full.jsonl  fake-rule  REDACTED" in result.stdout
+    assert sx.ledger() == set()
 
 
 def test_dirty_blob_not_in_ledger(sx):

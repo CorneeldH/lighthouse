@@ -569,8 +569,9 @@ def _scan_batch(
     members = set(batch)
     found = []
     for item in items:
-        # `<blob id>`, relative to the cwd; an archive member would add `!<inner path>`.
-        oid = Path(item["File"]).name.split("!")[0]
+        # `<blob id>`, relative to the cwd; an archive member adds `!<inner path>`,
+        # which may hold a `/`: split it off first.
+        oid = Path(item["File"].split("!")[0]).name
         if oid not in members:
             raise _ScanError(f"the report of batch {i} names {item['File']}, not a blob of the batch")
         found.append(Finding(oid, item["RuleID"], _one_line(item["Match"])))
