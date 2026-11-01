@@ -11,12 +11,6 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/runs"
 )
 
-// Reasons a run was returned by CheckOpen, which AdoptSessions and Decide replaced.
-const (
-	ReasonUncertain = "start uncertain: no session found"
-	ReasonTimeout   = "timeout (max_runtime)"
-)
-
 // Outcome is what Launch made of a start.
 type Outcome int
 
@@ -65,13 +59,6 @@ func releaseFailed(ctx context.Context, db *sql.DB, runID int64, reason string, 
 		return fmt.Errorf("release run %d: %w", runID, err)
 	}
 	return nil
-}
-
-// Closed is a run that CheckOpen returned, before AdoptSessions and Decide replaced it.
-type Closed struct {
-	RunID  int64
-	Issue  int
-	Reason string
 }
 
 // AdoptSessions records the session key of each open run of repo that has a

@@ -886,7 +886,7 @@ func TestSpawn3xxNotAccepted(t *testing.T) {
 }
 
 // A failed re-read after a 5xx cannot tell whether an agent started: uncertain,
-// and the carrier stays for CheckOpen to settle.
+// and the carrier stays for Decide to settle.
 func TestSpawn5xxRereadFailsUncertain(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.handoffStatus = 503
