@@ -20,6 +20,7 @@ type Input struct {
 	Now   time.Time   `json:"now"`
 	Night string      `json:"night"`
 	Repos []RepoInput `json:"repos"`
+	Brake *Brake      `json:"brake,omitempty"` // nil: no brake
 }
 
 // RepoInput is what Decide knows about one repo.
@@ -84,6 +85,10 @@ func Decide(in Input) []Action {
 		}
 	}
 	slices.SortStableFunc(ps, comparePlanned)
+	if in.Brake != nil {
+		ps = in.Brake.apply(ps)
+		slices.SortStableFunc(ps, comparePlanned)
+	}
 	out := make([]Action, 0, len(ps))
 	for _, p := range ps {
 		out = append(out, p.Action)
@@ -96,6 +101,8 @@ type planned struct {
 	Action
 	priority int
 	at       time.Time
+	software bool // the repo profile is "software"
+	parked   bool // a usage resume: its run already holds a slot
 }
 
 // group places an action in the output: 0 without a start or resume, 1 a defer, 2 a start
@@ -660,7 +667,13 @@ func (c issueCtx) deferred(reason string) planned {
 
 // planned orders a start or resume by the item's priority and the time of its trigger.
 func (c issueCtx) planned(a Action, at time.Time) planned {
-	return planned{Action: a, priority: priorityRank(c.it.Priority), at: at}
+	return planned{
+		Action:   a,
+		priority: priorityRank(c.it.Priority),
+		at:       at,
+		software: c.repo.Controller.Profile == profileSoftware,
+		parked:   a.Trigger == triggerUsage,
+	}
 }
 
 // priorityRank orders P0, P1, P2, then no or an unknown priority.
