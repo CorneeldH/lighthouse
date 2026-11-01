@@ -110,8 +110,10 @@ dezelfde trigger tegelijk, dan wint één `runs.Take`; de ander post niets.
 **Een geweigerde of onzekere launch.** Weigert de werkplek de launch, dan meldt apply
 `<repo>#<n>: launch of run <id> not accepted: <reden>` op stderr, op één regel. Onder de 🤖 Gestart
 post het een 🤖 Teruggegeven *start mislukt: <reden>* met de sessie van de run, en de run is gesloten
-als `start_failed`. De volgende tick start een tweede poging, met een nieuwe Gestart; tot dan toont de
-UI het issue als teruggegeven. Een onzekere launch geeft `<repo>#<n>: launch of run <id> uncertain:
+als `start_failed`. De volgende tick start een tweede poging, met een nieuwe Gestart of Hervat; tot
+dan toont de UI het issue als teruggegeven. Een hervatting na de usage-reset krijgt de Teruggegeven
+pas na haar tweede weigering: haar tweede poging post geen kop, dus een eerdere Teruggegeven bleef de
+laatste kop terwijl de agent draait. Een onzekere launch geeft `<repo>#<n>: launch of run <id> uncertain:
 <fout>` en post niets op het issue: er kan een agent draaien. Decide beslist later over de open run.
 
 Run-instructies en dragers staan onder `${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. De

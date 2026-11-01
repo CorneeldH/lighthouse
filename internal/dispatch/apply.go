@@ -49,7 +49,8 @@ type Result struct {
 	Failed   map[string]error // per repo: the joined errors of its actions; absent = no error
 	Started  int              // launches that were accepted or are uncertain
 	// NotAccepted is "<repo>#<n>" per launch the workplace refused; its run is closed as
-	// start_failed, its Started stays, and a Returned with the reason follows.
+	// start_failed, its Started stays, and a Returned with the reason follows (a usage resume:
+	// only after its second attempt).
 	NotAccepted []string
 }
 
@@ -290,7 +291,10 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 			return err
 		}
 		ap.logf("%s#%d: launch of run %d not accepted: %s", a.Repo, a.Issue, run.ID, oneLine(reason))
-		ap.returnStartFailed(ctx, a, run.ID, session, reason)
+		// The second attempt of a usage resume posts no header: a Returned now would outlast its agent.
+		if a.Trigger != triggerUsage || a.Attempt > 1 {
+			ap.returnStartFailed(ctx, a, run.ID, session, reason)
+		}
 		res.NotAccepted = append(res.NotAccepted, fmt.Sprintf("%s#%d", a.Repo, a.Issue))
 	}
 	return nil

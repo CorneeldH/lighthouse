@@ -1142,6 +1142,28 @@ func TestApplyUsageResumePostsNothing(t *testing.T) {
 	}
 }
 
+// The second attempt of a usage resume posts no header, so a Returned after the first refusal
+// would stay the last header while its agent runs.
+func TestApplyUsageResumeNotAcceptedReturnsOnSecondAttempt(t *testing.T) {
+	for _, attempt := range []int{1, 2} {
+		h := newHarness(t)
+		h.seed(t, 7, oldSession, "start:7", runs.Parked)
+		h.wp.spawnErr = workplace.ErrNotAccepted
+		a := usageResumeAction()
+		a.Attempt = attempt
+		if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		bodies := h.poster(applyRepo).bodies
+		if want := attempt - 1; len(bodies) != want {
+			t.Errorf("attempt %d: posted %q, want %d comments", attempt, bodies, want)
+		}
+		if attempt == 2 && len(bodies) == 1 && !strings.HasSuffix(bodies[0], protocol.Footer(oldSession)) {
+			t.Errorf("attempt 2: Returned = %q, want the footer of %s", bodies[0], oldSession)
+		}
+	}
+}
+
 func TestApplyUsageResumeRemovesMarker(t *testing.T) {
 	cases := []struct {
 		name     string
