@@ -231,6 +231,41 @@ def test_secret_already_on_the_remote_is_not_scanned_again(fx):
 
 
 @needs_gitleaks
+def test_commit_on_the_fetch_url_is_scanned_for_another_push_url(fx, tmp_path):
+    # refs/remotes/origin/* follow the fetch URL. With a separate pushurl the push
+    # repo may lack what they hold, so they exclude nothing from the range.
+    push = tmp_path / "push.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(push)], check=True)
+    git(fx["repo"], "remote", "set-url", "--push", "origin", str(push))
+    git(fx["repo"], "checkout", "-qb", "leak")
+    _commit(fx["repo"], "env.txt", f"GITHUB_PAT={FAKE_PAT}\n")
+    git(fx["repo"], "push", "-q", "--no-verify", str(fx["origin"]), "leak")
+    git(fx["repo"], "fetch", "-q", "origin")
+    assert "refs/remotes/origin/leak" in _out(fx["repo"], "for-each-ref", "--format=%(refname)")
+
+    result = _push(fx["repo"], "origin", "leak")
+
+    assert result.returncode != 0
+    assert "found a secret" in result.stderr
+    assert "refs/heads/leak" not in _remote_refs(push)
+
+
+@needs_gitleaks
+def test_commit_on_the_remote_tracking_refs_is_not_scanned_again(fx, tmp_path):
+    # Push URL and fetch URL are one: what refs/remotes/origin/* hold is there.
+    # The leak is pushed past the hook to another branch, so the ref line of `next`
+    # carries no remote sha; only --remotes=origin leaves the leak out.
+    git(fx["repo"], "checkout", "-qb", "leak")
+    _commit(fx["repo"], "env.txt", f"GITHUB_PAT={FAKE_PAT}\n")
+    git(fx["repo"], "push", "-q", "--no-verify", "origin", "leak")
+    _commit(fx["repo"], "env.txt", "GITHUB_PAT=\n")
+
+    result = _push(fx["repo"], "origin", "HEAD:refs/heads/next")
+
+    assert result.returncode == 0, result.stderr
+
+
+@needs_gitleaks
 def test_checkpoint_ref_to_another_remote_than_the_checkpoint_remote_is_blocked(fx):
     ref = _checkpoint_ref(fx["repo"], "01AAAAAAAAAAAAAAAAAAAAAAAA", '{"text": "clean"}\n')
     result = _push(fx["repo"], "origin", f"{ref}:{ref}")

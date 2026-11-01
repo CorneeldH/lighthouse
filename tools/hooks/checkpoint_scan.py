@@ -39,6 +39,10 @@ Subcommands:
                                for the hook: two lines, yes/no, whether entire
                                may push by itself and whether this is the
                                checkpoint remote. The rule lives here, once.
+    remote-exclusion <remote>  for the hook: one line, the rev-list arguments that
+                               leave out what <remote> has (`--remotes=<remote>`),
+                               or an empty line when its push URL is not its one
+                               fetch URL. The rule lives here, once.
 
 The ledger, `<git-common-dir>/lighthouse/secret-scan/clean-<key>.txt`, holds the
 blobs gitleaks saw without a finding in a batch that completed (rc 0 or 1 with a
@@ -335,12 +339,29 @@ def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
     return proc.stdout
 
 
+def remote_exclusion(repo: Path, remote: str) -> list[str]:
+    """The rev-list arguments for what a push to `remote` need not send: its
+    remote-tracking refs, `--remotes=<remote>`. Those follow the fetch URL, so only
+    for a configured remote whose push goes to that one URL and nowhere else; else
+    none, and a scan reads more, never less. One rule for the hook and `scan`."""
+    if remote not in _git(repo, "remote").split():
+        return []
+    try:
+        fetch = _git(repo, "remote", "get-url", "--all", remote).splitlines()
+        push = _git(repo, "remote", "get-url", "--push", "--all", remote).splitlines()
+    except CouldNotCheck:
+        return []
+    return [f"--remotes={remote}"] if len(fetch) == 1 and push == fetch else []
+
+
 def missing_blobs(repo: Path, refs: dict[str, str], remote: str) -> dict[str, Blob]:
-    """Every blob reachable from `refs` (ref -> sha) but not from `remote`'s
-    remote-tracking refs, with its size and the (ref, path) places it sits in."""
+    """Every blob reachable from `refs` (ref -> sha) but not from what
+    `remote_exclusion` leaves out, with its size and the (ref, path) places it sits
+    in."""
+    exclusion = remote_exclusion(repo, remote)
     places: dict[str, set[tuple[str, str]]] = {}
     for ref, sha in refs.items():
-        out = _git(repo, "rev-list", "--objects", sha, "--not", f"--remotes={remote}")
+        out = _git(repo, "rev-list", "--objects", sha, *(["--not", *exclusion] if exclusion else []))
         for line in out.splitlines():
             oid, named, path = line.partition(" ")
             if named:  # trees and blobs; commits carry no path
@@ -764,6 +785,11 @@ def is_checkpoint_remote(settings: EntireSettings, remote: str, url: str) -> boo
     return hit["path"] in (path, f"{path}.git", f"{path}/")
 
 
+def _remote_exclusion_cli(ns: argparse.Namespace) -> int:
+    print(" ".join(remote_exclusion(Path.cwd(), ns.remote)))
+    return 0
+
+
 def _entire_remote_cli(ns: argparse.Namespace) -> int:
     settings = read_entire_settings(Path(ns.toplevel))
     print("yes" if settings.self_push else "no")
@@ -939,6 +965,11 @@ def _main(args: list[str]) -> int:
     rule.add_argument("--toplevel", required=True, help="the work tree holding .entire/")
     rule.add_argument("remote")
     rule.add_argument("url")
+    exclusion = sub.add_parser(
+        "remote-exclusion",
+        help="for the hook: the rev-list arguments that leave out what <remote> already has",
+    )
+    exclusion.add_argument("remote")
     ns = parser.parse_args(head)
     if ns.cmd == "run-bounded":
         if not command:
@@ -950,6 +981,8 @@ def _main(args: list[str]) -> int:
         return _push_cli(ns)
     if ns.cmd == "entire-remote":
         return _entire_remote_cli(ns)
+    if ns.cmd == "remote-exclusion":
+        return _remote_exclusion_cli(ns)
     return _scan_cli(ns, parser)
 
 

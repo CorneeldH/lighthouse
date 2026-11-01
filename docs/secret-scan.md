@@ -7,6 +7,15 @@ push met gitleaks voordat die de machine verlaat; de checkpoints mogen alleen na
 checkpoint-remote. Deze pagina beschrijft de scan van de checkpoints (#198). De gewone branches
 gaan nog steeds door `gitleaks git` over het commitbereik, met dezelfde `.gitleaks.toml` als CI.
 
+Wat de remote al heeft, scant de hook niet opnieuw: in het commitbereik de shas die git per ref aan
+de hook geeft, in beide modi de remote-tracking refs (`--not --remotes=<naam>`). Die laatste volgen
+de fetch-URL.
+Daarom tellen ze alleen voor een geconfigureerde remote met precies één URL, waarnaar ook de push
+gaat (`git remote get-url --push --all <naam>` geeft hetzelfde als `git remote get-url --all
+<naam>`). Met een aparte `pushurl`, een tweede URL, of een push naar een kale URL sluit `--remotes`
+niets uit: de push-repo kan missen wat de fetch-repo heeft. De regel staat één keer in de module
+(`remote_exclusion`, voor de hook via `checkpoint_scan.py remote-exclusion <naam>`).
+
 ## Waarom per blob, en begrensd
 
 Op 2026-11-01 legde één `gitleaks git` over alle checkpoints de host plat: 7–10 GB RSS, swap vol.
@@ -19,7 +28,8 @@ unieke blob één keer, in batches, elke gitleaks-run in een systemd-scope met e
 
 `checkpoint_scan.py scan --remote <naam> <ref>=<sha>…` (de hook roept dit aan voor `refs/entire/*`):
 
-1. Bepaalt de blobs die de remote mist (`git rev-list --objects` met `--not --remotes=<naam>`).
+1. Bepaalt de blobs die de remote mist (`git rev-list --objects`, met `--not --remotes=<naam>` alleen
+   als de push naar de enige fetch-URL gaat; zie boven).
 2. Haalt de blobs weg die de ledger al schoon kent.
 3. Zet de rest op grootte in batches van ca. 64 MB, schrijft elke blob als bestand naar een
    tijdelijke map, met een newline vóór de inhoud, en draait `gitleaks dir .` in die map met
@@ -161,7 +171,8 @@ python3 -I tools/hooks/checkpoint_scan.py scan --full --keep-going --remote <naa
   $(git for-each-ref --format='%(refname)=%(objectname)' refs/entire/)
 ```
 
-`<naam>` is een remote die de checkpoint-remote is of ernaar verwijst. `scan` neemt altijd
+`<naam>` is een remote die de checkpoint-remote is of ernaar verwijst; zijn remote-tracking refs
+sluiten alleen iets uit als hij naar zijn enige fetch-URL pusht. `scan` neemt altijd
 `<ref>=<sha>`-argumenten. `--keep-going` stopt niet bij het findings-plafond. Draai dit nooit met
 een kale `gitleaks git` over `refs/entire/*`.
 

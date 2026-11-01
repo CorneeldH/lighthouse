@@ -1119,6 +1119,68 @@ def test_push_lists_refs_on_the_push_url(px, tmp_path):
     assert px.pushed() == set(refs)
 
 
+def _separate_pushurl(px: PushFx, tmp_path: Path) -> dict[str, str]:
+    """`ckpt` fetches from another repo than it pushes to. A dirty checkpoint sits in
+    the fetch repo and under refs/remotes/ckpt/, not in the push repo."""
+    fetch = tmp_path / "fetch.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(fetch)], check=True)
+    git(px.repo, "remote", "set-url", "ckpt", str(fetch))
+    git(px.repo, "remote", "set-url", "--push", "ckpt", str(px.ckpt))
+    refs = _checkpoints(px.repo, {"refs/entire/checkpoints/01/dirty": {"0/full.jsonl": b'{"text": "FAKESECRET"}\n'}})
+    for ref, sha in refs.items():
+        git(px.repo, "push", "-q", "--no-verify", str(fetch), f"{ref}:{ref}")
+        git(px.repo, "update-ref", f"refs/remotes/ckpt/{ref[5:]}", sha)
+    return refs
+
+
+def test_hook_scans_what_only_the_fetch_url_has(px, tmp_path):
+    refs = _separate_pushurl(px, tmp_path)
+
+    result = subprocess.run(
+        ["git", "-C", str(px.repo), "push", "ckpt", *(f"{r}:{r}" for r in refs)],
+        capture_output=True, text=True, env=px.env, timeout=120, check=False,
+    )  # fmt: skip
+
+    assert result.returncode != 0
+    assert "found a secret" in result.stderr
+    assert "refs/entire/checkpoints/01/dirty  0/full.jsonl  fake-rule  REDACTED" in result.stderr
+    assert px.pushed() == set()
+    assert px.ledger() == set()
+
+
+def test_push_scans_what_only_the_fetch_url_has(px, tmp_path):
+    refs = _separate_pushurl(px, tmp_path)
+
+    result = px.push("ckpt")
+
+    assert result.returncode == 1, result.stderr
+    assert px.pushed() == set()
+    assert f"held  {next(iter(refs))}" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("setup", "excluded"),
+    [
+        ([], True),
+        # A pushurl that names the fetch URL once more: still one repo.
+        ([["--push", "ckpt", "{url}"]], True),
+        ([["--push", "ckpt", "/srv/other.git"]], False),
+        # Two URLs: fetch reads the first, push goes to both.
+        ([["--add", "ckpt", "/srv/other.git"]], False),
+        ([["--add", "--push", "ckpt", "{url}"], ["--add", "--push", "ckpt", "/srv/other.git"]], False),
+    ],
+    ids=["one-url", "same-pushurl", "pushurl", "two-urls", "two-pushurls"],
+)
+def test_remote_exclusion_only_where_push_goes_to_the_fetch_url(cs, sx, setup, excluded):
+    url = str(sx.repo.parent / "ckpt.git")
+    for args in setup:
+        git(sx.repo, "remote", "set-url", *(a.format(url=url) for a in args))
+
+    assert cs.remote_exclusion(sx.repo, "ckpt") == (["--remotes=ckpt"] if excluded else [])
+    # A push to a URL, not a configured remote, has no remote-tracking refs.
+    assert cs.remote_exclusion(sx.repo, url) == []
+
+
 def _push_trace(trace: Path) -> list[list[str]]:
     """The refspecs of every `git push` in a GIT_TRACE file, one list per call."""
     pushes = []

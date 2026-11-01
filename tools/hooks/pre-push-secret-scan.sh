@@ -43,6 +43,9 @@
 #     the next stays reachable on the remote after the push (the branch,
 #     refs/pull/N/head), so the range is what counts. All those refs go into one
 #     `gitleaks git` run: `<local shas> ^<remote shas> --not --remotes=<remote>`.
+#     `--remotes=<remote>` only when the push goes to the one fetch URL: the
+#     remote-tracking refs follow the fetch URL, and with a separate pushurl the
+#     push repo may lack what they hold (`checkpoint_scan.py remote-exclusion`).
 #
 # A memory ceiling hit or a scan that could not complete blocks the push, with its
 # own message rather than "found a secret".
@@ -152,7 +155,8 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   labels+=("$local_ref -> ${remote_ref:-?}")
   case "$seen" in *" $local_sha "*) ;; *) tips+=("$local_sha"); seen="$seen$local_sha " ;; esac
   # What the remote already has needs no second look. A remote sha we do not have
-  # locally (a force push over unfetched work) cannot be excluded; --remotes still is.
+  # locally (a force push over unfetched work) cannot be excluded; --remotes still
+  # is, where the push goes to the fetch URL.
   case "${remote_sha:-}" in
     *[!0]*) git cat-file -e "$remote_sha^{commit}" 2>/dev/null && excludes+=("^$remote_sha") ;;
   esac
@@ -218,7 +222,10 @@ fi
 if [ "${#tips[@]}" -gt 0 ]; then
   log_opts="${tips[*]}"
   [ "${#excludes[@]}" -eq 0 ] || log_opts="$log_opts ${excludes[*]}"
-  log_opts="$log_opts --not --remotes=$remote"
+  # The rule for --remotes lives in the module, shared with the blob mode.
+  exclusion="$(python3 -I "$CHECKPOINT_SCAN" remote-exclusion "$remote")" ||
+    die "COULD NOT CHECK — could not read the URLs of remote '$remote'."
+  [ -z "$exclusion" ] || log_opts="$log_opts --not $exclusion"
 
   rc=0
   out="$(python3 -I "$CHECKPOINT_SCAN" run-bounded -- \
