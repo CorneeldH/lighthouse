@@ -269,7 +269,8 @@ git commit -m "feat(dispatch): apply parkeert en zet terug op het board (#117)"
 - `TestBuildFilterFails`: filter-fout → `Build` faalt met die fout.
 - `TestControllerIssues`: board met o/r#12 in Controller (`"c1"`), o/r#945 in `"In progress"`, x/y#12 in Controller → `{12: true}`.
 - `TestQuestionsEndpointFilter` en `TestReturnedEndpointFilter` (server, `forge_test.go`): `server.New` met een fake-bron (zoals `TestQuestionsEndpoint`) en een filter zonder het issue met de open Vraag of de Teruggegeven → het endpoint geeft een lege lijst; met `nil` staat het issue er wel. Dit bewijst de wiring `New` → `registerForge` → `Build`.
-- `TestServeFilter` (cli, naast `serve_test.go:99`): `serve` met een filter die het issue weglaat → `/api/questions` op het echte adres geeft het niet. Dit bewijst dat `serve` de filter aan `server.New` doorgeeft.
+- `TestServeCommandFiltersController` (cli, naar het model van `TestServeForgeURL`, `serve_test.go:160`): `LIGHTHOUSE_HOST_TOML` wijst naar een tmp host.toml met `[dispatch] repos = [<tmp repo>]`, die repo heeft een `lighthouse.toml` met slug `o/r` en een `[forge.board]`; de fake forge antwoordt op `POST /graphql` (Board) met #7 in Controller en #8 in een andere status, en op de issues- en comments-paden met een open Vraag op #7 en op #8. `NewRoot` + `serve --repo o/r --forge-url <fake>` → `/api/questions` geeft #7 en niet #8. Dit bewijst de hele keten `RunE` → `controllerFilter(hostconfig.Path(), …)` → `serve` → `server.New`.
+- De bestaande commando-tests in `serve_test.go` zetten `LIGHTHOUSE_HOST_TOML` op een niet-bestaand pad in `t.TempDir()`, zodat ze nooit de echte `~/.config/lighthouse/host.toml` lezen.
 - `TestControllerFilterFromHostToml` (cli): host.toml met `[dispatch] repos = [<tmp repo met board>]`, `--repo` gelijk aan de slug → filter niet nil; een andere slug → nil; geen host.toml → nil. Een onleesbare host.toml → fout.
 - Bestaande `Build`-aanroepen en `server.New` in tests krijgen `nil`.
 
