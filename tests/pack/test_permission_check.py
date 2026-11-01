@@ -1,4 +1,4 @@
-"""The `Notification` hook `permission-note.sh` (#115): a permission prompt in a
+"""The `Notification` hook `permission-check.sh` (#115): a permission prompt in a
 controller run is written to `<LIGHTHOUSE_STATE_DIR>/runs/<run>/permission.json`.
 """
 
@@ -47,7 +47,7 @@ def _run(
     if state:
         env["LIGHTHOUSE_STATE_DIR"] = str(state_dir)
     result = subprocess.run(
-        [str(root / ".claude/hooks/lighthouse/permission-note.sh")],
+        [str(root / ".claude/hooks/lighthouse/permission-check.sh")],
         input=json.dumps(payload),
         capture_output=True,
         text=True,

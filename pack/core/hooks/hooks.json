@@ -123,7 +123,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/permission-note.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/permission-check.sh",
             "timeout": 10
           }
         ]

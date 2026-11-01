@@ -132,7 +132,7 @@ def write_note(target: Path, note: dict) -> None:
 
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
-        print("permission-note: COULD NOT CHECK — usage: note.py <state dir> <run id>", file=sys.stderr)
+        print("permission-check: COULD NOT CHECK — usage: note.py <state dir> <run id>", file=sys.stderr)
         return 0
     try:
         payload = json.load(sys.stdin)
@@ -141,7 +141,7 @@ def main(argv: list[str]) -> int:
         note = build_note(payload, datetime.now(timezone.utc))
         write_note(Path(argv[1]) / "runs" / argv[2] / "permission.json", note)
     except Exception as err:  # fail open: a note that cannot be written never stops the session
-        print(f"permission-note: COULD NOT CHECK — {err}", file=sys.stderr)
+        print(f"permission-check: COULD NOT CHECK — {err}", file=sys.stderr)
     return 0
 
 

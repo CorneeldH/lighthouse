@@ -236,17 +236,17 @@ sha256 = "a4b307aa70b003cd9d5e883f76f1b30f30cf3d2fee2177032faa262cba46971d"
 
 [[unit]]
 kind = "file"
-path = ".claude/hooks/lighthouse/permission-note.sh"
+path = ".claude/hooks/lighthouse/permission-check.sh"
 package = "core"
 version = "dev"
-sha256 = "95a4dd0d11b3807a228cd822f6ed1b6de4eb6dfe9b98aa49852d9ad54f8f10dd"
+sha256 = "ae21e354e8154879f3db203bddadd1e42e242203913c94817347e8dbfbfaaa2b"
 
 [[unit]]
 kind = "file"
-path = ".claude/hooks/lighthouse/permission-note/note.py"
+path = ".claude/hooks/lighthouse/permission-check/note.py"
 package = "core"
 version = "dev"
-sha256 = "38b131004b960323719b67b93aaaa06490180c295122a7252553659802b9b877"
+sha256 = "4aa1b0dcc5f26251136fdb3ecc9ff9cd4a61d0fcb2bf0a58aed132476247510e"
 
 [[unit]]
 kind = "file"
@@ -325,10 +325,10 @@ sha256 = "2bb7011332c21ef34d7114405e7bbe81b843ee8c906e0c6e081b3e605a24bfcc"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "Notification|permission_prompt|worker_permission_prompt|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/permission-note.sh"
+id = "Notification|permission_prompt|worker_permission_prompt|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/permission-check.sh"
 package = "core"
 version = "dev"
-sha256 = "1b49db79133c4eabaac3845603a3299f0d0b63a1cba866f7163eda9c64f5eb3c"
+sha256 = "9b0d5f7a870497a413ab161bf977ab70bacf054132ebde35e542dd4fe4e7921e"
 
 [[unit]]
 kind = "hook"

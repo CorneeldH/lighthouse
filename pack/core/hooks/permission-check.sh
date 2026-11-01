@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
-# lighthouse: core@dev
 # Permission note (#115): in a controller run, a permission prompt of the session is
 # written to `<LIGHTHOUSE_STATE_DIR>/runs/<run>/permission.json`, so the dispatcher can
 # tell "waiting for a permission" from "silent". Thin wrapper; the work is in
-# permission-note/note.py next to this file.
+# permission-check/note.py next to this file.
 #
-#   permission-note.sh    Notification (matcher permission_prompt|worker_permission_prompt)
+#   permission-check.sh    Notification (matcher permission_prompt|worker_permission_prompt)
 #
 # Fast path: outside a controller run (LIGHTHOUSE_CONTROLLER_RUN empty or not in the
 # shape of a uuid) the cost is one `case`: no fork, stdin unread.
@@ -21,7 +20,7 @@ esac
 
 STATE_DIR="${LIGHTHOUSE_STATE_DIR:-}"
 if [ -z "$STATE_DIR" ]; then
-  printf 'permission-note: COULD NOT CHECK — LIGHTHOUSE_STATE_DIR is empty\n' >&2
+  printf 'permission-check: COULD NOT CHECK — LIGHTHOUSE_STATE_DIR is empty\n' >&2
   exit 0
 fi
 
@@ -29,13 +28,13 @@ case "${BASH_SOURCE[0]}" in
   */*) HOOKS_DIR="${BASH_SOURCE[0]%/*}" ;;
   *) HOOKS_DIR="." ;;
 esac
-NOTE="$HOOKS_DIR/permission-note/note.py"
+NOTE="$HOOKS_DIR/permission-check/note.py"
 if ! command -v python3 >/dev/null 2>&1; then
-  printf 'permission-note: COULD NOT CHECK — python3 is missing\n' >&2
+  printf 'permission-check: COULD NOT CHECK — python3 is missing\n' >&2
   exit 0
 fi
 if [ ! -f "$NOTE" ]; then
-  printf 'permission-note: COULD NOT CHECK — permission-note/note.py is missing\n' >&2
+  printf 'permission-check: COULD NOT CHECK — permission-check/note.py is missing\n' >&2
   exit 0
 fi
 

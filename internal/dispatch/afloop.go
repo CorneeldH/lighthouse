@@ -23,7 +23,7 @@ type RunState struct {
 }
 
 // Permission is the permission prompt the session of a run last showed, as the
-// permission-note hook wrote it.
+// permission-check hook wrote it.
 type Permission struct {
 	At     time.Time `json:"at"`
 	Tool   string    `json:"tool"`
@@ -49,11 +49,11 @@ func (d *Duration) UnmarshalText(b []byte) error {
 	return nil
 }
 
-// permissionVersion is the version of the note the permission-note hook writes.
+// permissionVersion is the version of the note the permission-check hook writes.
 const permissionVersion = 1
 
 // ReadPermission reads <stateDir>/runs/<sessionID>/permission.json: the note the
-// permission-note hook writes for the run whose LIGHTHOUSE_CONTROLLER_RUN is sessionID. No
+// permission-check hook writes for the run whose LIGHTHOUSE_CONTROLLER_RUN is sessionID. No
 // note is nil, nil; a note that does not parse, has another version or no time is an error.
 func ReadPermission(stateDir, sessionID string) (*Permission, error) {
 	if err := checkFileName(sessionID); err != nil {
