@@ -10,9 +10,11 @@ export function QuestionList(): JSX.Element {
       {data && data.length > 0 && (
         <ul className="space-y-4">
           {data.map((q) => (
-            <li key={q.number} className="space-y-1">
+            <li key={`${q.repo}#${q.number}`} className="space-y-1">
               <p>
-                <span>#{q.number}</span>{' '}
+                <span>
+                  {q.repo}#{q.number}
+                </span>{' '}
                 <a href={q.url} className="underline">
                   {q.title}
                 </a>

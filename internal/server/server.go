@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/overview"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/version"
@@ -23,10 +24,16 @@ type healthOutput struct {
 	}
 }
 
+// Deps are the sources the API reads from.
+type Deps struct {
+	Report    func(context.Context) usage.Report
+	Forge     []overview.RepoSource // the repos of the forge endpoints, in the order shown
+	Leftovers func(context.Context) ([]workplace.Leftover, error)
+	Runs      func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)
+}
+
 // New returns the handler: the JSON API under /api/ and site as SPA elsewhere, behind the Host check.
-// inController narrows the forge endpoints to the issues it names; nil shows every open issue.
-func New(site fs.FS, report func(context.Context) usage.Report, src overview.Source, inController overview.Filter,
-	leftovers func(context.Context) ([]workplace.Leftover, error)) http.Handler {
+func New(site fs.FS, d Deps) http.Handler {
 	mux := http.NewServeMux()
 	cfg := huma.DefaultConfig("lighthouse", version.String())
 	cfg.OpenAPIPath = "/api/openapi"
@@ -42,11 +49,12 @@ func New(site fs.FS, report func(context.Context) usage.Report, src overview.Sou
 	}, func(op *huma.Operation) { op.OperationID = "get-health" })
 
 	huma.Get(api, "/api/usage", func(ctx context.Context, _ *struct{}) (*usageOutput, error) {
-		return &usageOutput{Body: report(ctx)}, nil
+		return &usageOutput{Body: d.Report(ctx)}, nil
 	}, func(op *huma.Operation) { op.OperationID = "get-usage" })
 
-	registerForge(api, src, inController)
-	registerCleanup(api, leftovers)
+	registerForge(api, d.Forge)
+	registerCleanup(api, d.Leftovers)
+	registerRuns(api, d.Runs)
 
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spa(site))

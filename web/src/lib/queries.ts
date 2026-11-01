@@ -1,5 +1,5 @@
 import { QueryClient, useQuery } from '@tanstack/react-query'
-import { fetchCleanup, fetchQuestions, fetchReturned, fetchUsage, fetchVersion } from './api'
+import { fetchCleanup, fetchQuestions, fetchReturned, fetchRuns, fetchUsage, fetchVersion } from './api'
 
 export const USAGE_INTERVAL_MS = 30_000
 export const FORGE_INTERVAL_MS = 300_000
@@ -8,6 +8,7 @@ export const queryKeys = {
   questions: ['questions'],
   returned: ['returned'],
   cleanup: ['cleanup'],
+  runs: ['runs'],
   usage: ['usage'],
   health: ['health'],
 } as const
@@ -36,6 +37,16 @@ export function useCleanup() {
     queryFn: ({ signal }) => fetchCleanup(signal),
     refetchInterval: FORGE_INTERVAL_MS,
     staleTime: FORGE_INTERVAL_MS,
+  })
+}
+
+// The runs come from the tick state in the local database: no forge cost, so the usage interval.
+export function useRuns() {
+  return useQuery({
+    queryKey: queryKeys.runs,
+    queryFn: ({ signal }) => fetchRuns(signal),
+    refetchInterval: USAGE_INTERVAL_MS,
+    staleTime: USAGE_INTERVAL_MS,
   })
 }
 

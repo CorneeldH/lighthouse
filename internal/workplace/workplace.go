@@ -32,6 +32,18 @@ const (
 	Done
 )
 
+// String is the stand as the UI shows it.
+func (s Stand) String() string {
+	switch s {
+	case Working:
+		return "working"
+	case Done:
+		return "done"
+	default:
+		return "waiting"
+	}
+}
+
 // Stand maps the forge state: "working" is Working, "done" is Done, anything
 // else (idle, null) is Waiting.
 func (s Session) Stand() Stand {

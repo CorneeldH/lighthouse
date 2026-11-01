@@ -57,6 +57,14 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    Activiteit en prompts staan niet in de vingerafdruk: ze veranderen elke tick, en deze grenzen laten
    tick kijken als hun `max_wait` verloopt.
    Vingerafdruk en tijd van de laatste volledige gather staan in de tabel `tick_state` van de database.
+   Na de precheck schrijft tick per bedienbare repo ook de stand van zijn runs in `tick_state`
+   (soort `run`, sleutel het issuenummer), elke tick, ook als de gather niet aan de beurt is: per
+   open run en per geparkeerde run (met een marker die hem nog hervat) de titel van het issue van
+   het board, `open` of `parked`, het commando, de trigger, het profiel, de workspace, `started_at`,
+   de gemeten forge-stand (`working`, `waiting` of `done`; leeg als tick hem niet kon meten) en de
+   tijd van de tick. Een issue met een open én een geparkeerde run staat er één keer, als `open`.
+   Mislukt de precheck, dan blijven de rijen van de vorige tick staan. `serve` leest ze voor
+   `GET /api/runs` en de kaart *Running runs*, zonder de forge (zie [install.md](install.md)).
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
    de items in Controller of On hold met hun velden, voorgangers en PR's (de PR's die het issue sluiten
    plus de PR's op de branch van de laatste run van het issue, ook als die run al dicht is, met hun
@@ -261,7 +269,8 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
   is op, de laatste run sloot als `parked` maar de sleutel van de marker is al gebruikt, of het
   issue is gesloten of uit Controller en On hold) ruimt tick op, anders bleef hij in
   `in_use` tellen. Een marker van een repo die deze tick niet gathert, blijft staan.
-- De uitgestelde starts staan met hun reden in de tickstand (`tick_state`, soort `deferred`). Bij een
+- De uitgestelde starts staan met hun titel en reden in de tickstand (`tick_state`, soort
+  `deferred`); de kaart *Running runs* toont ze onder *Deferred starts*. Bij een
   pauze valt de start weg zonder defer, zodat tick zijn vingerafdruk bewaart; de pauzevlag zit zelf
   in de vingerafdruk.
 - [`lighthouse run`](#lighthouse-run) toetst alleen Pauze en Usage. Geheugen, Plekken en Software

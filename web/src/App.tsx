@@ -2,6 +2,7 @@ import { CleanupList } from '@/components/CleanupList'
 import { Header } from '@/components/Header'
 import { QuestionList } from '@/components/QuestionList'
 import { ReturnedList } from '@/components/ReturnedList'
+import { RunsList } from '@/components/RunsList'
 import { UsagePanel } from '@/components/UsagePanel'
 
 export default function App() {
@@ -9,6 +10,7 @@ export default function App() {
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <Header />
       <UsagePanel />
+      <RunsList />
       <QuestionList />
       <ReturnedList />
       <CleanupList />

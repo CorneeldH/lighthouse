@@ -17,6 +17,14 @@ export interface CleanupOutputBody {
   cleanup: Leftover[] | null;
 }
 
+export interface DeferredView {
+  at: string;
+  issue: number;
+  reason: string;
+  repo: string;
+  title: string;
+}
+
 export interface ErrorDetail {
   /** Where the error occurred, e.g. 'body.items[3].tags' or 'path.thing-id' */
   location?: string;
@@ -52,6 +60,7 @@ export interface Question {
   answer_url: string;
   number: number;
   question: string;
+  repo: string;
   title: string;
   url: string;
 }
@@ -94,6 +103,7 @@ export interface Report {
 export interface Returned {
   number: number;
   reason: string;
+  repo: string;
   title: string;
   url: string;
 }
@@ -101,6 +111,27 @@ export interface Returned {
 export interface ReturnedOutputBody {
   /** @nullable */
   returned: Returned[] | null;
+}
+
+export interface RunView {
+  at: string;
+  command: string;
+  issue: number;
+  profile: string;
+  repo: string;
+  stand: string;
+  started_at: string;
+  state: string;
+  title: string;
+  trigger: string;
+  workspace_id: string;
+}
+
+export interface RunsOutputBody {
+  /** @nullable */
+  deferred: DeferredView[] | null;
+  /** @nullable */
+  runs: RunView[] | null;
 }
 
 export type HTTPStatusCode1xx = 100 | 101 | 102 | 103;
@@ -306,6 +337,56 @@ export const getReturned = async ( options?: RequestInit): Promise<getReturnedRe
 
   const data: getReturnedResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as getReturnedResponse
+}
+
+
+
+export type getRunsResponse200 = {
+  data: RunsOutputBody
+  status: 200
+}
+
+export type getRunsResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getRunsResponseSuccess = (getRunsResponse200) & {
+  headers: Headers;
+};
+export type getRunsResponseError = (getRunsResponseDefault) & {
+  headers: Headers;
+};
+
+export type getRunsResponse = (getRunsResponseSuccess | getRunsResponseError)
+
+export const getGetRunsUrl = () => {
+
+
+
+
+  return `/api/runs`
+}
+
+/**
+ * @summary Get API runs
+ */
+export const getRuns = async ( options?: RequestInit): Promise<getRunsResponse> => {
+
+  const res = await fetch(getGetRunsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getRunsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getRunsResponse
 }
 
 

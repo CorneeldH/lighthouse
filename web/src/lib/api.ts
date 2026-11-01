@@ -1,13 +1,16 @@
 import {
+  type DeferredView,
   type Leftover,
   getCleanup,
   getHealth,
   getQuestions,
   getReturned,
+  getRuns,
   getUsage,
   type Question,
   type Report,
   type Returned,
+  type RunView,
 } from '@/api/lighthouse'
 
 export class ApiError extends Error {
@@ -64,6 +67,12 @@ export async function fetchCleanup(signal?: AbortSignal): Promise<Leftover[]> {
   return (res.data as { cleanup: Leftover[] | null }).cleanup ?? []
 }
 
+export async function fetchRuns(signal?: AbortSignal): Promise<{ runs: RunView[]; deferred: DeferredView[] }> {
+  const res = await call(() => getRuns({ signal }))
+  const body = res.data as { runs: RunView[] | null; deferred: DeferredView[] | null }
+  return { runs: body.runs ?? [], deferred: body.deferred ?? [] }
+}
+
 export async function fetchUsage(signal?: AbortSignal): Promise<Report> {
   const res = await call(() => getUsage({ signal }))
   return res.data as Report
@@ -76,7 +85,7 @@ export async function fetchVersion(signal?: AbortSignal): Promise<string> {
 
 export function forgeErrorText(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.status === 503) return 'Forge not configured — set GH_TOKEN and --repo'
+    if (err.status === 503) return 'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml'
     return `Forge unreachable: ${err.detail === '' ? `HTTP ${err.status}` : err.detail}`
   }
   return 'Server unreachable'

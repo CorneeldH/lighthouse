@@ -16,7 +16,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
 // syncBuf is a buffer the serve goroutine writes while the test reads (-race).
@@ -107,7 +111,7 @@ func startServe(t *testing.T) (addr string, stop func() error) {
 	errOut := &syncBuf{}
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), forge.New("", ""), nil, errOut)
+		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, errOut)
 	}()
 
 	addr = waitListening(t, errOut, done)
@@ -316,50 +320,158 @@ status_field_id = "SF"
 "On hold" = "h1"
 `
 
-func TestControllerFilterFromHostToml(t *testing.T) {
+func TestForgeReposFromHostToml(t *testing.T) {
 	served := repoDir(t, completeRepo)
-	broken := repoDir(t, "[forge")
-	unreadable := unreadableHostToml(t)
 	tests := []struct {
 		name       string
 		hostToml   string
 		repo       string
+		wantSlugs  string
 		wantFilter bool
 		wantErrOut string
 	}{
-		{"served repo", hostToml(t, served), "o/r", true, ""},
-		{"other slug", hostToml(t, served), "x/y", false, ""},
-		{"no host.toml", filepath.Join(t.TempDir(), "host.toml"), "o/r", false, ""},
-		{"broken repo is skipped", hostToml(t, broken, served), "o/r", true, broken},
-		{"no Controller option", hostToml(t, repoDir(t, noController)), "o/r", false, "Controller"},
+		{"served repo", hostToml(t, served), "o/r", "o/r", true, ""},
+		{"served without --repo", hostToml(t, served), "", "o/r", true, ""},
+		{"no Controller option", hostToml(t, repoDir(t, noController)), "o/r", "o/r", false,
+			"lighthouse: " + "%s" + ": missing forge.board.status_options.Controller: overview shows every open issue\n"},
+		{"no board", hostToml(t, repoDir(t, "[forge]\nrepo = \"o/r\"\n")), "o/r", "o/r", false, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var errOut bytes.Buffer
-			f, err := controllerFilter(tt.hostToml, tt.repo, forge.New(tt.repo, "t"), &errOut)
+			got, err := forgeRepos(tt.hostToml, tt.repo, "http://forge", func(string) string { return "t" }, &errOut)
 			if err != nil {
-				t.Fatalf("controllerFilter: %v", err)
+				t.Fatalf("forgeRepos: %v", err)
 			}
-			if (f != nil) != tt.wantFilter {
-				t.Errorf("filter != nil is %v, want %v", f != nil, tt.wantFilter)
+			if s := slugs(got); s != tt.wantSlugs {
+				t.Fatalf("slugs = %q, want %q", s, tt.wantSlugs)
 			}
-			if tt.wantErrOut == "" && errOut.Len() != 0 {
-				t.Errorf("errOut = %q, want empty", errOut.String())
+			if (got[0].InController != nil) != tt.wantFilter {
+				t.Errorf("filter != nil is %v, want %v", got[0].InController != nil, tt.wantFilter)
 			}
-			if !strings.Contains(errOut.String(), tt.wantErrOut) {
-				t.Errorf("errOut = %q, want it to name %q", errOut.String(), tt.wantErrOut)
+			want := tt.wantErrOut
+			if strings.Contains(want, "%s") {
+				want = fmt.Sprintf(want, firstRepo(t, tt.hostToml))
+			}
+			if errOut.String() != want {
+				t.Errorf("errOut = %q, want %q", errOut.String(), want)
 			}
 		})
 	}
+}
 
-	if _, err := controllerFilter(unreadable, "o/r", forge.New("o/r", "t"), io.Discard); err == nil {
-		t.Error("controllerFilter on an unreadable host.toml = nil error, want one")
+// slugs joins the slugs of repos with commas.
+func slugs(repos []overview.RepoSource) string {
+	s := make([]string, len(repos))
+	for i, r := range repos {
+		s[i] = r.Slug
+	}
+	return strings.Join(s, ",")
+}
+
+// firstRepo returns the first path in [dispatch] repos of the host.toml at path.
+func firstRepo(t *testing.T, path string) string {
+	t.Helper()
+	cfg, err := hostconfig.LoadDispatch(path)
+	if err != nil || len(cfg.Repos) == 0 {
+		t.Fatalf("host.toml %s: %v, repos %v", path, err, cfg.Repos)
+	}
+	return cfg.Repos[0]
+}
+
+func TestForgeReposDispatchClientPerRepo(t *testing.T) {
+	withBoard := repoDir(t, completeRepo)
+	noBoard := repoDir(t, "[forge]\nrepo = \"o/s\"\n")
+	var errOut bytes.Buffer
+	got, err := forgeRepos(hostToml(t, withBoard, noBoard), "", "http://forge", func(string) string { return "t" }, &errOut)
+	if err != nil {
+		t.Fatalf("forgeRepos: %v", err)
+	}
+	if s := slugs(got); s != "o/r,o/s" {
+		t.Fatalf("slugs = %q, want o/r,o/s", s)
+	}
+	wantFilter := []bool{true, false}
+	for i, g := range got {
+		c, ok := g.Src.(*forge.Client)
+		if !ok || c.Repo != g.Slug {
+			t.Errorf("source %s: Src = %+v, want the forge client of %s", g.Slug, g.Src, g.Slug)
+		}
+		if (g.InController != nil) != wantFilter[i] {
+			t.Errorf("source %s: filter != nil is %v, want %v", g.Slug, g.InController != nil, wantFilter[i])
+		}
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want empty", errOut.String())
+	}
+}
+
+func TestForgeReposSkipsBrokenRepo(t *testing.T) {
+	broken := repoDir(t, "[forge")
+	other := repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, `repo = "o/s"`, 1))
+	var errOut bytes.Buffer
+	got, err := forgeRepos(hostToml(t, broken, other), "", "http://forge", func(string) string { return "t" }, &errOut)
+	if err != nil {
+		t.Fatalf("forgeRepos: %v", err)
+	}
+	if s := slugs(got); s != "o/s" {
+		t.Errorf("slugs = %q, want o/s", s)
+	}
+	lines := strings.Split(strings.TrimSuffix(errOut.String(), "\n"), "\n")
+	if len(lines) != 1 || !strings.HasPrefix(lines[0], "lighthouse: skip "+broken+": ") {
+		t.Errorf("errOut = %q, want one line starting %q", errOut.String(), "lighthouse: skip "+broken+": ")
+	}
+}
+
+func TestForgeReposWithoutDispatch(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "host.toml")
+	getenv := func(k string) string {
+		if k == "GH_TOKEN" {
+			return "tok"
+		}
+		return ""
+	}
+	var errOut bytes.Buffer
+	got, err := forgeRepos(missing, "o/r", "http://forge/", getenv, &errOut)
+	if err != nil {
+		t.Fatalf("forgeRepos: %v", err)
+	}
+	if len(got) != 1 || got[0].Slug != "o/r" || got[0].InController != nil {
+		t.Fatalf("forgeRepos = %+v, want one source o/r without filter", got)
+	}
+	c, ok := got[0].Src.(*forge.Client)
+	if !ok || c.Repo != "o/r" || c.Token != "tok" || c.BaseURL != "http://forge" {
+		t.Errorf("Src = %+v, want the forge client of o/r at http://forge with token tok", got[0].Src)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want empty", errOut.String())
 	}
 
-	// Without --repo no filter applies, so a broken host.toml does not stop serve.
-	f, err := controllerFilter(unreadable, "", forge.New("", "t"), io.Discard)
-	if err != nil || f != nil {
-		t.Errorf("controllerFilter without repo = (%v, %v), want (nil, nil)", f != nil, err)
+	// Without --repo there is nothing to serve.
+	got, err = forgeRepos(missing, "", "http://forge", getenv, &errOut)
+	if err != nil || len(got) != 0 {
+		t.Errorf("forgeRepos without repo = (%+v, %v), want (none, nil)", got, err)
+	}
+}
+
+func TestForgeReposIgnoresRepoFlag(t *testing.T) {
+	var errOut bytes.Buffer
+	got, err := forgeRepos(hostToml(t, repoDir(t, completeRepo)), "x/y", "http://forge", func(string) string { return "t" }, &errOut)
+	if err != nil {
+		t.Fatalf("forgeRepos: %v", err)
+	}
+	if s := slugs(got); s != "o/r" {
+		t.Errorf("slugs = %q, want o/r", s)
+	}
+	if want := "lighthouse: --repo x/y ignored: serving the repos of [dispatch]\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+}
+
+func TestForgeReposUnreadableHostToml(t *testing.T) {
+	for _, repo := range []string{"o/r", ""} {
+		if _, err := forgeRepos(unreadableHostToml(t), repo, "http://forge", func(string) string { return "t" }, io.Discard); err == nil {
+			t.Errorf("forgeRepos(repo %q) on an unreadable host.toml = nil error, want one", repo)
+		}
 	}
 }
 
@@ -397,5 +509,97 @@ func TestServeCommandStopsOnUnreadableHostToml(t *testing.T) {
 	}
 	if strings.Contains(errOut.String(), "listening") {
 		t.Errorf("serve started listening: %q", errOut.String())
+	}
+}
+
+// startServeCommand runs `lighthouse serve` on a free port with args added and returns its
+// address and a stop func that cancels and waits for the result.
+func startServeCommand(t *testing.T, args ...string) (addr string, stop func() error) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	errOut := &syncBuf{}
+	root := NewRoot(strings.NewReader(""), io.Discard, errOut)
+	root.SetArgs(append([]string{"serve", "--addr", "127.0.0.1:0"}, args...))
+	done := make(chan error, 1)
+	go func() { done <- root.ExecuteContext(ctx) }()
+
+	addr = waitListening(t, errOut, done)
+	return addr, func() error {
+		cancel()
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(11 * time.Second):
+			return errors.New("serve did not stop within 11s")
+		}
+	}
+}
+
+// getBody returns the status and body of GET path on addr.
+func getBody(t *testing.T, addr, path string) (int, string) {
+	t.Helper()
+	resp, err := http.Get("http://" + addr + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, string(body)
+}
+
+func TestServeRunsWithoutDispatch(t *testing.T) {
+	noHostToml(t)
+	t.Setenv("LIGHTHOUSE_FORGE_REPO", "")
+	addr, stop := startServeCommand(t, "--db", filepath.Join(t.TempDir(), "l.db"))
+	if code, body := getBody(t, addr, "/api/runs"); code != http.StatusOK || strings.TrimSpace(body) != `{"runs":[],"deferred":[]}` {
+		t.Errorf("runs = %d %s, want 200 {\"runs\":[],\"deferred\":[]}", code, body)
+	}
+	if code, body := getBody(t, addr, "/api/questions"); code != http.StatusServiceUnavailable {
+		t.Errorf("questions = %d %s, want 503", code, body)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("serve = %v, want nil", err)
+	}
+}
+
+func TestServeRunsFromTickState(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "l.db")
+	ctx := context.Background()
+	st, err := store.Open(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	for _, repo := range []string{"o/r", "x/y"} {
+		views := []dispatch.RunView{{Issue: 7, Title: "zeven in " + repo, State: "open", Stand: "working"}}
+		if err := dispatch.SaveRunView(ctx, st.DB, repo, views, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("LIGHTHOUSE_HOST_TOML", hostToml(t, repoDir(t, completeRepo)))
+	addr, stop := startServeCommand(t, "--db", db)
+	code, body := getBody(t, addr, "/api/runs")
+	if code != http.StatusOK {
+		t.Fatalf("runs = %d %s, want 200", code, body)
+	}
+	var got struct {
+		Runs []dispatch.RunView `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Runs) != 1 || got.Runs[0].Repo != "o/r" || got.Runs[0].Title != "zeven in o/r" || !got.Runs[0].At.Equal(at) {
+		t.Errorf("runs = %+v, want only #7 of o/r, the served repo, at %s", got.Runs, at)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("serve = %v, want nil", err)
 	}
 }

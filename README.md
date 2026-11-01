@@ -24,7 +24,7 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 
 The page shows the Claude and Codex usage windows, the open questions and the returned issues of one GitHub repository.
 
-![lighthouse UI](docs/images/ui-m1.png)
+![lighthouse UI](docs/images/ui-m2.png)
 
 ## Contributing
 

@@ -52,11 +52,11 @@ LIGHTHOUSE_BIN=/tmp/lh npm run e2e
 
 ## Screenshot
 
-With `lighthouse serve` running, `npm run screenshot` writes `../docs/images/ui-m1.png` from
+With `lighthouse serve` running, `npm run screenshot` writes `../docs/images/ui-m2.png` from
 `http://127.0.0.1:8127`. Pass another URL and output path as arguments:
 
 ```bash
-npm run screenshot -- http://127.0.0.1:8137 ../docs/images/ui-m1.png
+npm run screenshot -- http://127.0.0.1:8137 ../docs/images/ui-m2.png
 ```
 
 ## API client

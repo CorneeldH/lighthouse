@@ -1,0 +1,134 @@
+package dispatch
+
+import (
+	"context"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/runs"
+	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
+)
+
+func openViewStore(t *testing.T) *store.Store {
+	t.Helper()
+	st, err := store.OpenShared(context.Background(), filepath.Join(t.TempDir(), "lh.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+func TestRunViews(t *testing.T) {
+	pre := Pre{
+		Items:  []Item{{Issue: 3, Title: "Drie"}, {Issue: 5, Title: "Vijf"}},
+		Stands: map[int64]workplace.Stand{10: workplace.Waiting},
+	}
+	open := []runs.Brief{{ID: 10, Issue: 3, Command: "start", Trigger: "board", Profile: "p", WorkspaceID: "w"}}
+	parked := []runs.Brief{{ID: 7, Issue: 5}}
+	got := RunViews(pre, open, parked)
+	if len(got) != 2 {
+		t.Fatalf("RunViews = %+v, want 2 views", got)
+	}
+	if v := got[0]; v.Issue != 3 || v.State != "open" || v.Title != "Drie" || v.Stand != "waiting" || v.Command != "start" || v.WorkspaceID != "w" {
+		t.Errorf("view 0 = %+v", v)
+	}
+	if v := got[1]; v.Issue != 5 || v.State != "parked" || v.Title != "Vijf" || v.Stand != "" {
+		t.Errorf("view 1 = %+v", v)
+	}
+}
+
+func TestRunViewsUnmeasured(t *testing.T) {
+	got := RunViews(Pre{}, []runs.Brief{{ID: 1, Issue: 2}}, nil)
+	if len(got) != 1 || got[0].Stand != "" || got[0].State != "open" {
+		t.Errorf("RunViews = %+v, want one open view with stand \"\"", got)
+	}
+}
+
+func TestRunViewsOpenWinsOverParked(t *testing.T) {
+	got := RunViews(Pre{}, []runs.Brief{{ID: 1, Issue: 3}}, []runs.Brief{{ID: 2, Issue: 3}})
+	if len(got) != 1 || got[0].State != "open" {
+		t.Errorf("RunViews = %+v, want one open view", got)
+	}
+}
+
+func TestSaveRunViewRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	st := openViewStore(t)
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.FixedZone("CET", 3600))
+	if err := SaveRunView(ctx, st.DB, "o/a", []RunView{{Issue: 10, State: "open"}, {Issue: 9, State: "parked"}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveRunView(ctx, st.DB, "o/b", []RunView{{Issue: 1, State: "open"}}, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _, err := LoadView(ctx, st.DB, []string{"o/b", "o/a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []struct {
+		repo  string
+		issue int
+	}{{"o/b", 1}, {"o/a", 9}, {"o/a", 10}}
+	if len(got) != len(want) {
+		t.Fatalf("LoadView = %+v, want %d views", got, len(want))
+	}
+	for i, w := range want {
+		if got[i].Repo != w.repo || got[i].Issue != w.issue || !got[i].At.Equal(now.UTC()) {
+			t.Errorf("view %d = %+v, want %s #%d at %v", i, got[i], w.repo, w.issue, now.UTC())
+		}
+	}
+	got, _, err = LoadView(ctx, st.DB, []string{"o/a"})
+	if err != nil || len(got) != 2 {
+		t.Errorf("LoadView(o/a) = %+v, %v, want only o/a", got, err)
+	}
+}
+
+func TestSaveRunViewEmptyClears(t *testing.T) {
+	ctx := context.Background()
+	st := openViewStore(t)
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	if err := SaveRunView(ctx, st.DB, "o/a", []RunView{{Issue: 1, State: "open"}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveRunView(ctx, st.DB, "o/a", nil, now); err != nil {
+		t.Fatal(err)
+	}
+	r, d, err := LoadView(ctx, st.DB, []string{"o/a"})
+	if err != nil || r == nil || d == nil || len(r) != 0 || len(d) != 0 {
+		t.Errorf("LoadView = %#v, %#v, %v, want empty non-nil slices", r, d, err)
+	}
+}
+
+func TestLoadViewDeferred(t *testing.T) {
+	ctx := context.Background()
+	st := openViewStore(t)
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	act := Action{Kind: KindDefer, Repo: "o/a", Issue: 4, Reason: "slots full"}
+	if err := SaveDeferred(ctx, st.DB, "o/a", []Action{act}, map[int]string{4: "Vier"}, now); err != nil {
+		t.Fatal(err)
+	}
+	_, d, err := LoadView(ctx, st.DB, []string{"o/a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := DeferredView{Repo: "o/a", Issue: 4, Title: "Vier", Reason: "slots full", At: now}
+	if len(d) != 1 || d[0] != want {
+		t.Errorf("deferred = %+v, want [%+v]", d, want)
+	}
+}
+
+func TestLoadViewBadValue(t *testing.T) {
+	ctx := context.Background()
+	st := openViewStore(t)
+	if _, err := st.DB.ExecContext(ctx, `INSERT INTO tick_state (repo, kind, key, value, updated_at) VALUES ('o/a', 'run', '12', '{', '2026-11-01T12:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := LoadView(ctx, st.DB, []string{"o/a"})
+	if err == nil || !strings.Contains(err.Error(), "o/a") || !strings.Contains(err.Error(), "12") {
+		t.Errorf("err = %v, want one naming o/a and key 12", err)
+	}
+}

@@ -56,7 +56,7 @@ func get(h http.Handler, path string) *httptest.ResponseRecorder {
 }
 
 func TestRoutes(t *testing.T) {
-	h := New(testSite(), fakeReport, stubSource{}, nil, noLeftovers)
+	h := New(testSite(), testDeps(stubSource{}, nil))
 	tests := []struct {
 		path    string
 		status  []int
@@ -69,6 +69,7 @@ func TestRoutes(t *testing.T) {
 		{"/assets/app.js", []int{200}, "js", "placeholder"},
 		{"/assets/", []int{200}, "placeholder", ""},
 		{"/api/usage", []int{200}, "", "placeholder"},
+		{"/api/runs", []int{200}, "runs", "placeholder"},
 		{"/api/docs", []int{200}, "", "placeholder"},
 		{"/../../etc/passwd", []int{200, 301, 307, 404}, "", ""},
 	}
@@ -103,7 +104,7 @@ func TestRoutes(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, stubSource{}, nil, noLeftovers), "/api/health")
+	rec := get(New(testSite(), testDeps(stubSource{}, nil)), "/api/health")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -117,7 +118,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestUsage(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, stubSource{}, nil, noLeftovers), "/api/usage")
+	rec := get(New(testSite(), testDeps(stubSource{}, nil)), "/api/usage")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -141,7 +142,7 @@ func TestUsage(t *testing.T) {
 }
 
 func TestOpenAPI(t *testing.T) {
-	h := New(testSite(), fakeReport, stubSource{}, nil, noLeftovers)
+	h := New(testSite(), testDeps(stubSource{}, nil))
 	rec := get(h, "/api/openapi.json")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
@@ -174,7 +175,7 @@ func TestOpenAPI(t *testing.T) {
 			t.Errorf("paths lack %s: %v", p, doc.Paths)
 		}
 	}
-	for _, p := range []string{"/api/questions", "/api/returned"} {
+	for _, p := range []string{"/api/questions", "/api/returned", "/api/runs"} {
 		if _, ok := doc.Paths[p]; !ok {
 			t.Errorf("paths lack %s: %v", p, doc.Paths)
 		}
@@ -198,7 +199,7 @@ func TestUnbuiltSiteServesPlaceholder(t *testing.T) {
 	h := New(web.Choose(fstest.MapFS{
 		"dist/.gitkeep":          {},
 		"placeholder/index.html": {Data: []byte("<p>placeholder</p>")},
-	}), fakeReport, stubSource{}, nil, noLeftovers)
+	}), testDeps(stubSource{}, nil))
 	for _, path := range []string{"/", "/runs/42"} {
 		rec := get(h, path)
 		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "placeholder") {

@@ -7,13 +7,30 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/overview"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 func noLeftovers(context.Context) ([]workplace.Leftover, error) { return []workplace.Leftover{}, nil }
+
+func noRuns(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
+	return nil, nil, nil
+}
+
+// testDeps serves src as the one repo o/r, narrowed by inController, with no leftovers and no runs.
+func testDeps(src overview.Source, inController overview.Filter) Deps {
+	return Deps{
+		Report:    fakeReport,
+		Forge:     []overview.RepoSource{{Slug: "o/r", Src: src, InController: inController}},
+		Leftovers: noLeftovers,
+		Runs:      noRuns,
+	}
+}
 
 // fakeSource serves canned issues and comments, or err from OpenIssues.
 type fakeSource struct {
@@ -51,7 +68,7 @@ func decode(t *testing.T, body []byte) map[string]json.RawMessage {
 }
 
 func TestQuestionsEndpoint(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, populated(), nil, noLeftovers), "/api/questions")
+	rec := get(New(testSite(), testDeps(populated(), nil)), "/api/questions")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -77,7 +94,7 @@ func TestQuestionsEndpoint(t *testing.T) {
 }
 
 func TestReturnedEndpoint(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, populated(), nil, noLeftovers), "/api/returned")
+	rec := get(New(testSite(), testDeps(populated(), nil)), "/api/returned")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -103,7 +120,7 @@ var listRoutes = []struct{ path, key string }{{"/api/questions", "questions"}, {
 
 func TestEmptyListIsArray(t *testing.T) {
 	for _, route := range listRoutes {
-		rec := get(New(testSite(), fakeReport, stubSource{}, nil, noLeftovers), route.path)
+		rec := get(New(testSite(), testDeps(stubSource{}, nil)), route.path)
 		if rec.Code != 200 {
 			t.Fatalf("%s: status = %d", route.path, rec.Code)
 		}
@@ -124,7 +141,7 @@ func TestEndpointForgeDown(t *testing.T) {
 func assertEndpointError(t *testing.T, err error, status int) {
 	t.Helper()
 	for _, route := range listRoutes {
-		rec := get(New(testSite(), fakeReport, fakeSource{err: err}, nil, noLeftovers), route.path)
+		rec := get(New(testSite(), testDeps(fakeSource{err: err}, nil)), route.path)
 		if rec.Code != status {
 			t.Fatalf("%s: status = %d, want %d, body %s", route.path, rec.Code, status, rec.Body)
 		}
@@ -137,7 +154,9 @@ func assertEndpointError(t *testing.T, err error, status int) {
 func TestCleanupEndpoint(t *testing.T) {
 	want := workplace.Leftover{Repo: "o/r", Issue: 7, WorkspaceID: "ws-1", Path: "/w/ws-1", Reason: "dirty worktree"}
 	leftovers := func(context.Context) ([]workplace.Leftover, error) { return []workplace.Leftover{want}, nil }
-	rec := get(New(testSite(), fakeReport, stubSource{}, nil, leftovers), "/api/cleanup")
+	d := testDeps(stubSource{}, nil)
+	d.Leftovers = leftovers
+	rec := get(New(testSite(), d), "/api/cleanup")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -150,7 +169,9 @@ func TestCleanupEndpoint(t *testing.T) {
 
 func TestCleanupEndpointEmptyIsArray(t *testing.T) {
 	nilList := func(context.Context) ([]workplace.Leftover, error) { return nil, nil }
-	rec := get(New(testSite(), fakeReport, stubSource{}, nil, nilList), "/api/cleanup")
+	d := testDeps(stubSource{}, nil)
+	d.Leftovers = nilList
+	rec := get(New(testSite(), d), "/api/cleanup")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -161,7 +182,9 @@ func TestCleanupEndpointEmptyIsArray(t *testing.T) {
 
 func TestCleanupEndpointError(t *testing.T) {
 	leftovers := func(context.Context) ([]workplace.Leftover, error) { return nil, errors.New("db closed") }
-	rec := get(New(testSite(), fakeReport, stubSource{}, nil, leftovers), "/api/cleanup")
+	d := testDeps(stubSource{}, nil)
+	d.Leftovers = leftovers
+	rec := get(New(testSite(), d), "/api/cleanup")
 	if rec.Code != 500 {
 		t.Fatalf("status = %d, want 500, body %s", rec.Code, rec.Body)
 	}
@@ -196,14 +219,14 @@ func listLen(t *testing.T, body []byte, key string) int {
 
 func TestQuestionsEndpointFilter(t *testing.T) {
 	// Issue 1 has the open question; the filter keeps only 2.
-	rec := get(New(testSite(), fakeReport, populated(), only(2), noLeftovers), "/api/questions")
+	rec := get(New(testSite(), testDeps(populated(), only(2))), "/api/questions")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
 	if n := listLen(t, rec.Body.Bytes(), "questions"); n != 0 {
 		t.Errorf("questions = %s, want empty", rec.Body)
 	}
-	rec = get(New(testSite(), fakeReport, populated(), nil, noLeftovers), "/api/questions")
+	rec = get(New(testSite(), testDeps(populated(), nil)), "/api/questions")
 	if n := listLen(t, rec.Body.Bytes(), "questions"); n != 1 {
 		t.Errorf("questions without filter = %s, want one", rec.Body)
 	}
@@ -211,15 +234,64 @@ func TestQuestionsEndpointFilter(t *testing.T) {
 
 func TestReturnedEndpointFilter(t *testing.T) {
 	// Issue 2 is returned; the filter keeps only 1.
-	rec := get(New(testSite(), fakeReport, populated(), only(1), noLeftovers), "/api/returned")
+	rec := get(New(testSite(), testDeps(populated(), only(1))), "/api/returned")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
 	if n := listLen(t, rec.Body.Bytes(), "returned"); n != 0 {
 		t.Errorf("returned = %s, want empty", rec.Body)
 	}
-	rec = get(New(testSite(), fakeReport, populated(), nil, noLeftovers), "/api/returned")
+	rec = get(New(testSite(), testDeps(populated(), nil)), "/api/returned")
 	if n := listLen(t, rec.Body.Bytes(), "returned"); n != 1 {
 		t.Errorf("returned without filter = %s, want one", rec.Body)
+	}
+}
+
+func TestRunsList(t *testing.T) {
+	at := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	d := testDeps(stubSource{}, nil)
+	d.Runs = func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
+		return []dispatch.RunView{{Repo: "o/r", Issue: 7, Title: "zeven", State: "open", Command: "/lighthouse-start-issue 7",
+				Trigger: "board", Profile: "software", WorkspaceID: "ws-7", StartedAt: at, Stand: "working", At: at}},
+			[]dispatch.DeferredView{{Repo: "o/r", Issue: 8, Title: "acht", Reason: "no slot", At: at}}, nil
+	}
+	rec := get(New(testSite(), d), "/api/runs")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	body := decode(t, rec.Body.Bytes())
+	const wantRuns = `[{"repo":"o/r","issue":7,"title":"zeven","state":"open","command":"/lighthouse-start-issue 7",` +
+		`"trigger":"board","profile":"software","workspace_id":"ws-7","started_at":"2026-11-01T09:00:00Z",` +
+		`"stand":"working","at":"2026-11-01T09:00:00Z"}]`
+	if got := string(body["runs"]); got != wantRuns {
+		t.Errorf("runs = %s, want %s", got, wantRuns)
+	}
+	const wantDeferred = `[{"repo":"o/r","issue":8,"title":"acht","reason":"no slot","at":"2026-11-01T09:00:00Z"}]`
+	if got := string(body["deferred"]); got != wantDeferred {
+		t.Errorf("deferred = %s, want %s", got, wantDeferred)
+	}
+}
+
+func TestRunsEmpty(t *testing.T) {
+	rec := get(New(testSite(), testDeps(stubSource{}, nil)), "/api/runs")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"runs":[],"deferred":[]}` {
+		t.Errorf("body = %s, want {\"runs\":[],\"deferred\":[]}", got)
+	}
+}
+
+func TestRunsError(t *testing.T) {
+	d := testDeps(stubSource{}, nil)
+	d.Runs = func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
+		return nil, nil, errors.New("db closed")
+	}
+	rec := get(New(testSite(), d), "/api/runs")
+	if rec.Code != 500 {
+		t.Fatalf("status = %d, want 500, body %s", rec.Code, rec.Body)
+	}
+	if _, ok := decode(t, rec.Body.Bytes())["runs"]; ok {
+		t.Errorf("error body has key runs: %s", rec.Body)
 	}
 }

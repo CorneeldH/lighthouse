@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, fetchQuestions, forgeErrorText } from './api'
+import { ApiError, fetchQuestions, fetchRuns, forgeErrorText } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -53,10 +53,17 @@ describe('fetchQuestions', () => {
   })
 })
 
+describe('fetchRuns', () => {
+  it('returns empty lists when the API sends null', async () => {
+    stubResponse('{"runs":null,"deferred":null}', 200, 'application/json')
+    expect(await fetchRuns()).toEqual({ runs: [], deferred: [] })
+  })
+})
+
 describe('forgeErrorText', () => {
   it('explains a missing forge on 503', () => {
     expect(forgeErrorText(new ApiError(503, 'forge not configured'))).toBe(
-      'Forge not configured — set GH_TOKEN and --repo',
+      'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml',
     )
   })
 

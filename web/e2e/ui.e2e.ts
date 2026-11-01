@@ -12,14 +12,14 @@ const FULL: FakeIssue[] = [
   { number: 13, title: 'Handed back', comments: [RETURNED] },
 ]
 
-const NOT_CONFIGURED = 'Forge not configured — set GH_TOKEN and --repo'
+const NOT_CONFIGURED = 'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml'
 
 test('full: both lists and the usage windows', async ({ page, github, lighthouse }) => {
   github.set({ issues: FULL })
   await page.goto(await lighthouse.start({ token: true, cache: 'fresh' }))
 
   const questions = page.getByRole('region', { name: 'Open questions' })
-  const first = questions.getByRole('listitem').filter({ hasText: '#11' })
+  const first = questions.getByRole('listitem').filter({ hasText: 'test/repo#11' })
   await expect(first.getByRole('link', { name: 'First question' })).toHaveAttribute(
     'href',
     'https://github.com/test/repo/issues/11',
@@ -29,7 +29,7 @@ test('full: both lists and the usage windows', async ({ page, github, lighthouse
     'href',
     'https://github.com/test/repo/issues/11#issuecomment-1101',
   )
-  const second = questions.getByRole('listitem').filter({ hasText: '#12' })
+  const second = questions.getByRole('listitem').filter({ hasText: 'test/repo#12' })
   await expect(second.getByRole('link', { name: 'Second question' })).toHaveAttribute(
     'href',
     'https://github.com/test/repo/issues/12',
@@ -37,7 +37,7 @@ test('full: both lists and the usage windows', async ({ page, github, lighthouse
   await expect(second.getByText('Kies C of D?')).toBeVisible()
 
   const returned = page.getByRole('region', { name: 'Returned' })
-  const handedBack = returned.getByRole('listitem').filter({ hasText: '#13' })
+  const handedBack = returned.getByRole('listitem').filter({ hasText: 'test/repo#13' })
   await expect(handedBack.getByRole('link', { name: 'Handed back' })).toHaveAttribute(
     'href',
     'https://github.com/test/repo/issues/13',
@@ -59,6 +59,8 @@ test('empty: no issues and an old Claude cache', async ({ page, github, lighthou
 
   await expect(page.getByRole('region', { name: 'Open questions' })).toContainText('No open questions')
   await expect(page.getByRole('region', { name: 'Returned' })).toContainText('No returned issues')
+  // A fresh database has no tick state: the card reads it without the forge.
+  await expect(page.getByRole('region', { name: 'Running runs' })).toContainText('No running runs')
   await expect(page.getByRole('group', { name: 'Claude session' })).toContainText('stale')
 })
 
