@@ -15,6 +15,8 @@ type PR struct {
 	Mergeable string `json:"mergeable"` // MERGEABLE, CONFLICTING, UNKNOWN
 	HeadSHA   string `json:"head_sha"`
 	HeadRef   string `json:"head_ref"`
+	// CrossRepo is true for a PR whose head lives in another repository, such as a fork.
+	CrossRepo bool   `json:"cross_repo,omitempty"`
 	Checks    string `json:"checks"` // statusCheckRollup.state, "" without checks
 	Closes    bool   `json:"closes"` // in closedByPullRequestsReferences
 	URL       string `json:"url"`
@@ -49,7 +51,7 @@ type BoardItem struct {
 }
 
 // prFields are the pull request fields both queries read into a PR.
-const prFields = `number state isDraft mergeable headRefOid headRefName mergedAt closedAt url statusCheckRollup { state }`
+const prFields = `number state isDraft mergeable headRefOid headRefName isCrossRepository mergedAt closedAt url statusCheckRollup { state }`
 
 // BoardQuery reads one page of 100 project items. Every nested connection asks pageInfo, so a
 // list longer than its first: n is an error instead of a silent cut. GitHub prices a page by
@@ -125,6 +127,7 @@ type prNode struct {
 	Mergeable         string    `json:"mergeable"`
 	HeadRefOid        string    `json:"headRefOid"`
 	HeadRefName       string    `json:"headRefName"`
+	IsCrossRepository bool      `json:"isCrossRepository"`
 	MergedAt          time.Time `json:"mergedAt"`
 	ClosedAt          time.Time `json:"closedAt"`
 	URL               string    `json:"url"`
@@ -135,7 +138,7 @@ type prNode struct {
 
 func (n prNode) pr(closes bool) PR {
 	p := PR{Number: n.Number, State: n.State, Draft: n.IsDraft, Mergeable: n.Mergeable,
-		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, Closes: closes, URL: n.URL, MergedAt: n.MergedAt, ClosedAt: n.ClosedAt}
+		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, CrossRepo: n.IsCrossRepository, Closes: closes, URL: n.URL, MergedAt: n.MergedAt, ClosedAt: n.ClosedAt}
 	if n.StatusCheckRollup != nil {
 		p.Checks = n.StatusCheckRollup.State
 	}

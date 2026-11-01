@@ -359,10 +359,12 @@ type runCtx struct {
 	handoff  bool          // a Handoff stands from row's start on
 	markers  []park.Marker // the repo's resume markers
 	history  []runs.Row    // the repo's runs, open and closed
+	trunk    string        // the repo's default branch
 }
 
 func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) runCtx {
-	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers, history: repo.History}
+	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers, history: repo.History,
+		trunk: repo.DefaultBranch}
 	for _, o := range repo.Snapshot.OpenRuns {
 		if o.ID == row.ID {
 			c.open = o
@@ -520,17 +522,23 @@ func (c runCtx) prDraft() (Action, bool) {
 	return a, c.anyPR(func(pr forge.PR) bool { return pr.State == "OPEN" && pr.Draft })
 }
 
-// prRed settles a Done run with an open, red PR (the first in it.PRs). At the ceiling of
-// maxFixPRRuns fix-pr runs for that PR it hands the issue back with the ceiling reason; on a
-// head SHA a fix-pr run already had, with "PR red"; the ceiling wins when both hold. Else it
-// closes the run as a handoff carrying the fix-pr key and the run's session, and returns the
-// fix-pr start for decideIssue.
+// prRed settles a Done run with an open, red PR. Only the run's own PR (ownPR) gets a fix-pr
+// start: anyone can link a PR to a public issue with "Closes #N", and a fix-pr session reads
+// the PR's text and logs. Any other red PR hands the issue back with "PR red". For the own PR,
+// at the ceiling of maxFixPRRuns fix-pr runs it hands the issue back with the ceiling reason;
+// on a head SHA a fix-pr run already had, with "PR red"; the ceiling wins when both hold. Else
+// it closes the run as a handoff carrying the fix-pr key and the run's session, and returns
+// the fix-pr start for decideIssue.
 func (c runCtx) prRed() (Action, bool, *fixPRStart) {
-	i := slices.IndexFunc(c.it.PRs, func(pr forge.PR) bool {
+	red := func(pr forge.PR) bool {
 		return pr.State == "OPEN" && (pr.Checks == "FAILURE" || pr.Checks == "ERROR")
-	})
-	if !c.done() || i < 0 {
+	}
+	if !c.done() || !slices.ContainsFunc(c.it.PRs, red) {
 		return Action{}, false, nil
+	}
+	i := slices.IndexFunc(c.it.PRs, func(pr forge.PR) bool { return red(pr) && c.ownPR(pr) })
+	if i < 0 {
+		return c.returned("reason_pr_red", ""), true, nil
 	}
 	pr := c.it.PRs[i]
 	key := fixPRKey(pr.Number, pr.HeadSHA)
@@ -543,6 +551,13 @@ func (c runCtx) prRed() (Action, bool, *fixPRStart) {
 	a := c.closed(runs.Handoff)
 	a.ReasonArg, a.SessionID = key, c.row.SessionID
 	return a, true, &fixPRStart{pr: pr, key: key}
+}
+
+// ownPR reports whether pr is the run's own PR, the one a fix-pr run may work on: its head is
+// the run's branch, a name safe to pass to git, not the default branch, in this repository and
+// not in a fork.
+func (c runCtx) ownPR(pr forge.PR) bool {
+	return pr.HeadRef == c.row.Branch && validBranch(pr.HeadRef) && pr.HeadRef != c.trunk && !pr.CrossRepo
 }
 
 // fixPRKey is the trigger key of a fix-pr start: one per PR and head SHA, so a red state on
