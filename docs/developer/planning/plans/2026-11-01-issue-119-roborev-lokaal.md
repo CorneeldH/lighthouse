@@ -75,6 +75,8 @@ dicht dat gat zonder nieuwe regel in `next()`:
 - `apply.start` dekt de rest: een fix-pr-start die vóór `runs.Take` stopt (werkplek bezet, een fout
   in `Prepare` of in de busy-check, `apply.go:210-224`) post een 🤖 Teruggegeven "PR rood" zonder
   `RunID`. Een fout ná de claim sluit de run als `start_failed`, en dan neemt `retry` het over.
+  Alleen de eerste poging (`Attempt == 1`) post: een tweede poging komt uit `retry`, die elke tick
+  opnieuw plant en zelf na twee mislukte starts teruggeeft.
   Zo eindigt elke uitkomst anders dan een start als `returned`, zoals §5 vraagt.
 
 **r3-f2 (§2).** De spec routeert `<branch>.md` zonder `<branch>.json` al naar `classify`. Het plan
@@ -484,7 +486,7 @@ Stap 4 bouwt de comment voortaan met `roborev_gate.py record --done <sha> --deci
     `fixpr:`, zonder `KindStart` met `Trigger == triggerFixPR` voor dezelfde `Repo`/`Issue`, wordt
     `KindReturn` met `Reason "reason_pr_red"`, `RunID` en `SessionID` behouden, `Outcome` en
     `ReasonArg` leeg. Daarna opnieuw sorteren.
-  - `applier.start`: bij `a.Trigger == triggerFixPR` post elk pad dat vóór een geslaagde
+  - `applier.start`: bij `a.Trigger == triggerFixPR && a.Attempt == 1` post elk pad dat vóór een geslaagde
     `runs.Take` eindigt (busy-defer, fout uit `Prepare` of `busy`, `ErrClaimed`) eerst
     `protocol.RenderReturned` met de tekst van `reason_pr_red`, zonder `RunID`; de defer of de fout
     blijft daarna gewoon in `Result`. Een post die faalt, wordt aan de fout toegevoegd.
@@ -509,7 +511,9 @@ Stap 4 bouwt de comment voortaan met `roborev_gate.py record --done <sha> --deci
 In `apply_test.go`, met de fakes daar: `TestApplyFixPRBusyReturns` (werkplek bezet: één comment
 met de kop van Teruggegeven en "PR rood", geen runs-rij, de defer in `Result.Deferred`) en
 `TestApplyFixPRPrepareFailsReturns` (fout uit `Prepare`: dezelfde comment, en de fout in
-`Result.Failed`). Een gewone handoff-start die bezet is, post niets (bestaand gedrag blijft).
+`Result.Failed`). Een gewone handoff-start die bezet is, post niets (bestaand gedrag blijft), en
+`TestApplyFixPRSecondAttemptBusyPostsNothing` (`Attempt: 2`, bezet: geen comment, alleen de defer;
+`retry` plant die poging elke tick opnieuw).
 `TestTakeFixPR` in `internal/runs/runs_test.go`: `Take` met `Trigger: "fixpr"` op een gemigreerde
 database slaagt. In `migrate_test.go`: een rij uit vóór 0004 staat er na de migratie nog, met
 dezelfde id en trigger.
