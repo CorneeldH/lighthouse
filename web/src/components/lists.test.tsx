@@ -210,6 +210,23 @@ describe('RunsList', () => {
     expect(within(deferred).queryByText('o/a#3')).toBeNull()
   })
 
+  it('shows the age of the tick that wrote each run and deferred start', async () => {
+    // A margin of 30 s keeps the floored age stable while the test runs.
+    const ago = (ms: number) => new Date(Date.now() - ms - 30_000).toISOString()
+    stubFetch(() =>
+      json({
+        runs: [{ ...run, at: ago(2 * 3_600_000) }],
+        deferred: [{ repo: 'o/a', issue: 4, title: 'Wait for night', reason: 'slots full', at: ago(5 * 60_000) }],
+      }),
+    )
+    renderWithClient(<RunsList />)
+
+    const deferred = await screen.findByRole('list', { name: 'Deferred starts' })
+    const [item] = within(screen.getByRole('region', { name: 'Running runs' })).getAllByRole('listitem')
+    expect(within(item).getByText('tick 2 h ago')).toBeTruthy()
+    expect(within(deferred).getByText('tick 5 min ago')).toBeTruthy()
+  })
+
   it('shows the empty text when there are no runs and no deferred starts', async () => {
     stubFetch(() => json({ runs: [], deferred: [] }))
     renderWithClient(<RunsList />)

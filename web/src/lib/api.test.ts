@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, fetchQuestions, forgeErrorText } from './api'
+import { ApiError, fetchQuestions, fetchRuns, forgeErrorText } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -50,6 +50,13 @@ describe('fetchQuestions', () => {
   it('lets a network error through', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
     await expect(fetchQuestions()).rejects.toBeInstanceOf(TypeError)
+  })
+})
+
+describe('fetchRuns', () => {
+  it('returns empty lists when the API sends null', async () => {
+    stubResponse('{"runs":null,"deferred":null}', 200, 'application/json')
+    expect(await fetchRuns()).toEqual({ runs: [], deferred: [] })
   })
 })
 

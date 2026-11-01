@@ -165,7 +165,8 @@ one `lighthouse tick` writes (see [tick.md](tick.md)): no forge call and no toke
 refreshes every 30 seconds. Per run: `repo`, `issue`, `title`, `state` (`open` or `parked`),
 `command`, `trigger`, `profile`, `workspace_id`, `started_at`, `stand` (`working`, `waiting` or
 `done`; empty when the tick could not measure the session, shown as *not measured*) and `at`, the
-tick that wrote it. Per deferred start: `repo`, `issue`, `title`, `reason` and `at`. Without a
+tick that wrote it. Per deferred start: `repo`, `issue`, `title`, `reason` and `at`. The card
+shows the age of `at` on every row as *tick … ago*: a row is at most one tick behind. Without a
 tick both lists are empty. A `500` means the database could not be read.
 
 ## Reach it from your tailnet

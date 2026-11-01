@@ -1,5 +1,7 @@
 import { type JSX, useId } from 'react'
 import { ApiError } from '@/lib/api'
+import { formatAge } from '@/lib/format'
+import { useNow } from '@/lib/now'
 import { useRuns } from '@/lib/queries'
 import { Panel } from './Panel'
 
@@ -15,6 +17,11 @@ function standText(stand: string): string {
   return stand === '' ? 'not measured' : stand
 }
 
+// at is the tick that wrote the row: the row is at most that old.
+function tickText(at: string, now: number): string {
+  return `tick ${formatAge(Math.max(0, (now - Date.parse(at)) / 1000))} ago`
+}
+
 function Field({ label, children }: { label: string; children: JSX.Element | string }): JSX.Element {
   return (
     <span>
@@ -26,6 +33,7 @@ function Field({ label, children }: { label: string; children: JSX.Element | str
 export function RunsList(): JSX.Element {
   const { data, error, isPending, dataUpdatedAt } = useRuns()
   const deferredId = useId()
+  const now = useNow()
   return (
     <Panel
       title="Running runs"
@@ -48,6 +56,7 @@ export function RunsList(): JSX.Element {
               <p className="flex flex-wrap gap-x-4">
                 <span>{r.state}</span>
                 <span>{standText(r.stand)}</span>
+                <span className="text-muted-foreground">{tickText(r.at, now)}</span>
               </p>
               <p className="flex flex-wrap gap-x-4">
                 <Field label="command">
@@ -77,7 +86,10 @@ export function RunsList(): JSX.Element {
                   </span>{' '}
                   <span>{d.title}</span>
                 </p>
-                <p>{d.reason}</p>
+                <p className="flex flex-wrap gap-x-4">
+                  <span>{d.reason}</span>
+                  <span className="text-muted-foreground">{tickText(d.at, now)}</span>
+                </p>
               </li>
             ))}
           </ul>
