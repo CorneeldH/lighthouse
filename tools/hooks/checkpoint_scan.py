@@ -228,8 +228,9 @@ def _max_rss_kb(ru_maxrss: int) -> int | None:
     return None
 
 
-def run_bounded(argv: list[str], limits: Limits) -> Run:
-    """Run `argv` bounded and wait for it; stdout and stderr together in `output`.
+def run_bounded(argv: list[str], limits: Limits, cwd: Path | None = None) -> Run:
+    """Run `argv` bounded, in `cwd` when given, and wait for it; stdout and stderr
+    together in `output`.
 
     Raises OSError when the command line cannot start at all.
     """
@@ -240,7 +241,7 @@ def run_bounded(argv: list[str], limits: Limits) -> Run:
     # A file, not a pipe: wait4 does not drain a pipe, and a full one would hang the child.
     with tempfile.TemporaryFile() as out:
         proc = subprocess.Popen(
-            wrapped, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT
+            wrapped, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, cwd=cwd
         )
         # wait4, not Popen.wait: only wait4 returns the child's rusage. Every link of
         # the chain (systemd-run --scope, env, choom, nice) execs, so it is gitleaks'.
@@ -489,7 +490,13 @@ def _scan_batch(
 ) -> tuple[Run, list[Finding] | None]:
     """One batch in its own temp dir `<root>`: blobs in `<root>/blobs/`, the report
     at `<root>/report.json`, which does not exist before gitleaks runs. Returns the
-    run and its findings; findings None when the ceiling was hit."""
+    run and its findings; findings None when the ceiling was hit.
+
+    gitleaks runs in `<root>/blobs/` on `.`, so the path it matches its path
+    allowlists against is the bare blob id. On the absolute path, a TMPDIR under
+    `node_modules/` (the default config allowlists it, and more such directories)
+    made every blob clean. The cwd also keeps a `.gitleaksignore` of the repo out of the scan.
+    """
     with tempfile.TemporaryDirectory(prefix="secret-scan-") as tmp:
         root = Path(tmp)
         blobdir = root / "blobs"
@@ -500,11 +507,11 @@ def _scan_batch(
         except OSError as exc:
             raise _ScanError(f"cannot write the blobs of batch {i}: {exc}") from exc
         argv = [
-            "gitleaks", "dir", str(blobdir), "--config", str(config), "--no-banner",
+            "gitleaks", "dir", ".", "--config", str(config.resolve()), "--no-banner",
             "--redact", "-f", "json", "-r", str(report), "--exit-code", "1",
         ]  # fmt: skip
         try:
-            run = run_bounded(argv, limits)
+            run = run_bounded(argv, limits, cwd=blobdir)
         except OSError as exc:
             raise _ScanError(f"gitleaks did not start: {exc}") from exc
         if run.ceiling_hit:
@@ -520,7 +527,7 @@ def _scan_batch(
     members = set(batch)
     found = []
     for item in items:
-        # `<root>/blobs/<blob id>`; an archive member would add `!<inner path>`.
+        # `<blob id>`, relative to the cwd; an archive member would add `!<inner path>`.
         oid = Path(item["File"]).name.split("!")[0]
         if oid not in members:
             raise _ScanError(f"the report of batch {i} names {item['File']}, not a blob of the batch")

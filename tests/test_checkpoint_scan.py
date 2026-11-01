@@ -348,6 +348,8 @@ open(calls, "w").write(str(n))
 if os.environ.get("FAKE_GITLEAKS_KILL_AT") == str(n):
     os.kill(os.getpid(), signal.SIGKILL)
 root, report = args[1], args[args.index("-r") + 1]
+# gitleaks runs in the blob dir: a config path relative to the repo would be lost.
+assert os.path.isfile(args[args.index("--config") + 1]), args
 findings = []
 with open(log, "a") as out:
     for name in sorted(os.listdir(root)):
@@ -710,6 +712,16 @@ def test_volume_limit_refuses(sx):
     assert sx.logged() == []
 
 
+def test_relative_config_is_found(sx):
+    """`--config` relative to the repo still reaches gitleaks, which runs elsewhere."""
+    refs = _bulk_checkpoints(sx.repo, 0, 2)
+
+    result = sx.scan(refs, "--config", os.path.relpath(sx.config, sx.repo))
+
+    assert result.returncode == 0, result.stderr
+    assert sx.ledger() == _tree_blobs(sx.repo, refs.values())
+
+
 def test_full_ignores_the_ledger(sx):
     refs = _bulk_checkpoints(sx.repo, 0, 10)
     assert sx.scan(refs).returncode == 0
@@ -788,11 +800,36 @@ def test_ledger_written_sorted_and_merged(cs, tmp_path):
     assert list(path.parent.iterdir()) == [path]  # no temp file left behind
 
 
-@needs_gitleaks
-def test_real_gitleaks_finds_pat(tmp_path):
+def _real_sx(tmp_path: Path) -> ScanFx:
+    """ScanFx with the real gitleaks and the repository's own `.gitleaks.toml`."""
     sx = ScanFx(tmp_path, gitleaks="")
     sx.env["PATH"] = os.environ["PATH"]
     sx.config.write_text((ROOT / ".gitleaks.toml").read_text(encoding="utf-8"), encoding="utf-8")
+    return sx
+
+
+LEAK = f'{{"text": "GITHUB_PAT={FAKE_PAT}"}}\n'.encode()
+
+
+@needs_gitleaks
+def test_real_gitleaks_ignores_the_temp_path(tmp_path):
+    """gitleaks' default path allowlist (node_modules, vendor, ...) applies to the path
+    it reports: a TMPDIR under such a directory must not make every blob clean."""
+    sx = _real_sx(tmp_path)
+    tmpdir = tmp_path / "node_modules"
+    tmpdir.mkdir()
+    refs = _checkpoints(sx.repo, {"refs/entire/checkpoints/01/leak": {"0/full.jsonl": LEAK}})
+
+    result = sx.scan(refs, TMPDIR=str(tmpdir))
+
+    assert result.returncode == 1, result.stderr
+    assert "refs/entire/checkpoints/01/leak  0/full.jsonl  github-pat  REDACTED" in result.stdout
+    assert sx.ledger() == set()
+
+
+@needs_gitleaks
+def test_real_gitleaks_finds_pat(tmp_path):
+    sx = _real_sx(tmp_path)
     refs = _checkpoints(
         sx.repo,
         {
