@@ -159,7 +159,7 @@ func TestReadTranscriptNoTimestamp(t *testing.T) {
 }
 
 func TestReadTranscriptUnknownCommandSuggestion(t *testing.T) {
-	dir := writeSession(t, `{"type":"user","timestamp":"2026-10-24T10:00:00.000Z","message":{"content":"Unknown command: /x. Did you mean /y?"}}`)
+	dir := writeSession(t, `{"type":"system","subtype":"informational","timestamp":"2026-10-24T10:00:00.000Z","content":"Unknown command: /x. Did you mean /y?"}`)
 	tr, err := ReadTranscript(dir, "s")
 	if err != nil {
 		t.Fatal(err)
@@ -173,5 +173,19 @@ func TestTranscriptDirMissing(t *testing.T) {
 	_, err := ReadTranscript(filepath.Join(t.TempDir(), "absent"), "s")
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("err = %v, want fs.ErrNotExist", err)
+	}
+}
+
+func TestUnknownCommandQuotedByUserOrAttachmentDoesNotCount(t *testing.T) {
+	dir := writeSession(t,
+		`{"type":"attachment","timestamp":"2026-10-24T10:00:00.000Z","attachment":{"content":"Unknown command: /x"}}`,
+		`{"type":"user","timestamp":"2026-10-24T10:00:01.000Z","message":{"role":"user","content":"Unknown command: /x"}}`,
+		`{"type":"assistant","timestamp":"2026-10-24T10:00:02.000Z"}`)
+	tr, err := ReadTranscript(dir, "s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tr.UnknownCommand != "" {
+		t.Errorf("UnknownCommand = %q, want empty", tr.UnknownCommand)
 	}
 }

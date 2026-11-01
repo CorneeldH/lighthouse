@@ -147,7 +147,20 @@ func lineTimestamp(line []byte) (time.Time, bool) {
 	return ts, err == nil
 }
 
-var unknownCommand = regexp.MustCompile(`Unknown (?:command|skill): ([^\s"<\\]+)`)
+var unknownCommand = regexp.MustCompile(`Unknown (?:command|skill): (\S+)`)
+
+// unknownIn is the command named by a start-failure message, "" if content is
+// not one. Only a string content counts.
+func unknownIn(content any) string {
+	text, ok := content.(string)
+	if !ok {
+		return ""
+	}
+	if m := unknownCommand.FindStringSubmatch(text); m != nil {
+		return strings.TrimRight(m[1], ".?,")
+	}
+	return ""
+}
 
 // scanStart streams the main transcript from the top to the first assistant
 // line. No line has a size limit.
@@ -162,16 +175,15 @@ func scanStart(path string) (assistant bool, unknown string, err error) {
 		line, rerr := r.ReadBytes('\n')
 		if len(bytes.TrimSpace(line)) > 0 {
 			var v struct {
-				Type string `json:"type"`
+				Type    string `json:"type"`
+				Content any    `json:"content"`
 			}
 			if json.Unmarshal(line, &v) == nil {
 				if v.Type == "assistant" {
 					return true, unknown, nil
 				}
-				if unknown == "" {
-					if m := unknownCommand.FindSubmatch(line); m != nil {
-						unknown = strings.TrimRight(string(m[1]), ".?,")
-					}
+				if unknown == "" && v.Type == "system" {
+					unknown = unknownIn(v.Content)
 				}
 			}
 		}
