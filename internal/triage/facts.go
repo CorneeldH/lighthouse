@@ -35,7 +35,7 @@ type Facts struct {
 	UpdatedAt                      time.Time
 	Milestone                      *forge.Milestone
 	ItemID                         string          // "" when not on the board
-	Status, Priority               string          // option names; "" when unset or not on the board
+	Status, Priority               string          // option names; "" when unset or not on the board, Status "unknown:<id>" for an unlisted option
 	Blockers                       []forge.Blocker // blocked_by, open and closed: BoardItem.BlockedBy, or forge.BlockedBy off the board
 	Comments                       []Comment       // oldest first
 	Work                           []string        // running work found, e.g. "PR #12", "branch origin/issue-7-x", "worktree /p", "run 31"

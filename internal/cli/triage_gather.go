@@ -58,11 +58,16 @@ func readRepo(ctx context.Context, g *repoGather) error {
 	return err
 }
 
-// boardFields are status and priority of an item, by option name.
+// boardFields are status and priority of an item, by option name. A status option that
+// status_options does not list is "unknown:<id>", not "": a column such as In progress or Done
+// is no "no status", so candidate rule 2 rejects it and Changed sees a move into it.
 func (g *repoGather) boardFields(it forge.BoardItem) (status, priority string) {
 	b := g.repo.Board
-	return optionName(b.StatusOptions, it.SingleSelect[b.StatusFieldID]),
-		optionName(b.PriorityOptions, it.SingleSelect[b.PriorityFieldID])
+	id := it.SingleSelect[b.StatusFieldID]
+	if status = optionName(b.StatusOptions, id); status == "" && id != "" {
+		status = "unknown:" + id
+	}
+	return status, optionName(b.PriorityOptions, it.SingleSelect[b.PriorityFieldID])
 }
 
 // optionName is the name of option id in options; "" for an unknown or empty id.

@@ -623,6 +623,46 @@ func TestTriageRecheckSkips(t *testing.T) {
 	}
 }
 
+// A board column that status_options does not list (Done, Review) is not "no status": the
+// issue is no candidate, and a move into it before the recheck is a change.
+func TestTriageUnlistedStatus(t *testing.T) {
+	t.Run("gather", func(t *testing.T) {
+		fx := triageFixture(t, triageToml)
+		fx.issue(7, "2-area:cli")
+		fx.onBoard(7, "d1", nil)
+
+		_, errOut, err := fx.run(triageOpts{})
+		if err != nil {
+			t.Fatalf("triage = %v\n%s", err, errOut)
+		}
+		assertWrites(t, fx.srv)
+		if c := fx.judge.called(); len(c) != 0 {
+			t.Errorf("judged %v, want none for an issue in an unlisted column", c)
+		}
+		if errOut != summary(0, 0, 0, 0, 0, 0, 0, 0, 0) {
+			t.Errorf("errOut = %q", errOut)
+		}
+	})
+	t.Run("recheck", func(t *testing.T) {
+		fx := triageFixture(t, triageToml)
+		fx.issue(7, "2-area:cli")
+		fx.onBoard(7, "", nil) // on the board without a status
+		fx.judge.answers[7] = forward(7)
+		onSecondRead(fx, 7, func() {
+			fx.srv.BoardNodes[0] = boardNode("PVTI_7", "d1", issueContent(7, "Issue 7", nil))
+		})
+
+		_, errOut, err := fx.run(triageOpts{})
+		if err != nil {
+			t.Fatalf("triage = %v\n%s", err, errOut)
+		}
+		assertWrites(t, fx.srv)
+		if want := "lighthouse: triage o/r#7: changed since gather, skipped\n" + summary(1, 1, 0, 0, 0, 0, 0, 1, 0); errOut != want {
+			t.Errorf("errOut = %q, want %q", errOut, want)
+		}
+	})
+}
+
 func TestTriageRecheckSeesNewWork(t *testing.T) {
 	for _, tc := range []struct {
 		name string
