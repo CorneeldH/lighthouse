@@ -104,9 +104,13 @@ voor de hook (`pack/core/hooks/`), pytest voor de hooktests.
   - `case-818/`: de `type`/`timestamp`-regels van
     `~/.claude/projects/-home-corneel--kenn-forge-worktrees-github-github-com-corneeldh-personal-ai-agent-work-issue-818-processed-marker-per-88c1e196/73270a65-d89d-4763-9fef-3b363058df04.jsonl`
     en van `73270a65-d89d-4763-9fef-3b363058df04/subagents/agent-a1370a2b6f1c5edda.jsonl` en
-    `agent-a82f84926776ea6ae.jsonl` daarnaast. Noteer per draad het laatste `timestamp`, en de
-    `timestamp` van de laatste `tool_use` zonder `tool_result` in de subagent die op de prompt
-    stond: dat is de prompttijd van de fixture `case-818-subagent-permission` in taak 4.
+    `agent-a82f84926776ea6ae.jsonl` daarnaast. Gemeten (2026-11-01): geen draad heeft een
+    `tool_use` zonder `tool_result`. In `agent-a1370a2b6f1c5edda` kreeg een `Bash`-aanroep om
+    `10:45:33.339Z` binnen 78 ms `is_error` "Permission to use Bash with command … has been
+    denied." en werkte de subagent door tot `10:46:52.562Z`; `agent-a82f84926776ea6ae` eindigt op
+    `10:50:35.404Z`, het hoofdtranscript op `10:51:30.716Z`. Er stond dus geen prompt open. Neem
+    die regels (alleen `type`, `timestamp`, `is_error`) op en controleer de laatste tijden per
+    draad tegen deze waarden.
 
   Geen inhoud van berichten in de fixtures, behalve de `Unknown command`-tekst. Meet stap 1 in
   plaats van `Unknown command:` de tekst `Unknown skill:`, herken dan beide en noteer dat in de
@@ -122,7 +126,7 @@ func TestReadTranscriptNoAssistant(t *testing.T)      // AssistantTurn == false;
 func TestReadTranscriptTornLine(t *testing.T)         // geen fout, LastEvent == 10:00:00Z
 func TestReadTranscript558(t *testing.T)              // LastEvent == het gemeten laatste timestamp; regels zonder timestamp tellen niet
 func TestReadTranscript818(t *testing.T)              // Threads per draad == de gemeten tijden; LastEvent == hun maximum
-func TestReadTranscriptLongPrelude(t *testing.T)      // in de test gegenereerd: 500 KiB attachment-regels, dan één assistant-regel → AssistantTurn == true
+func TestReadTranscriptLongPrelude(t *testing.T)      // in de test gegenereerd: 500 KiB attachment-regels waaronder één regel van 90 KiB (zoals regel 34, api-request-shape, in 558 en 818), dan één assistant-regel → AssistantTurn == true
 func TestReadTranscriptHugeLastLine(t *testing.T)     // laatste regel > 64 KiB zonder timestamp, daarvoor een regel met 10:00:00Z → LastEvent == 10:00:00Z
 func TestReadTranscriptNoTimestamp(t *testing.T)      // alleen regels zonder timestamp → errors.Is(err, ErrNotMeasurable)
 func TestReadTranscriptUnknownCommandSuggestion(t *testing.T) // "Unknown command: /x. Did you mean /y?" → UnknownCommand == "/x"
@@ -142,7 +146,10 @@ func TestTranscriptDirMissing(t *testing.T)           // errors.Is(err, fs.ErrNo
   `timestamp`, verdubbel het dan tot er een is of het begin van het bestand bereikt is; een draad
   zonder enige `timestamp` krijgt geen sleutel in `Threads`. `AssistantTurn` en `UnknownCommand`
   komen uit een stream van het hoofdtranscript van voor af, regel voor regel, tot de eerste
-  `assistant`-regel (geen bovengrens in bytes): `AssistantTurn` is of die regel er is,
+  `assistant`-regel (geen bovengrens in bytes, ook niet per regel: lees met
+  `bufio.Reader.ReadBytes('\n')`, niet met een `bufio.Scanner`, die bij een regel boven 64 KiB
+  stopt met `bufio.ErrTooLong`; een leesfout is een fout van `ReadTranscript`, nooit
+  `AssistantTurn == false`): `AssistantTurn` is of die regel er is,
   `UnknownCommand` komt uit de niet-`assistant`-regels daarvóór, op de plek die stap 1 mat. Het
   commando is het eerste woord na `Unknown command: `, zonder afsluitende `.`, `?` of `,`.
 
@@ -386,12 +393,16 @@ nog werkt (geen skill in `pack/core` maakt een draft-PR), en stopt die sessie da
   - `case-1463-unknown-command`: sessie `28577747-50e3-4668-8e70-bdb89c1e345c`, Gestart
     `2026-10-24T14:39:38Z`, stand Done, `UnknownCommand` het commando uit de Gestart
     (`/superpowers:writing-plans`) → `KindClose` `start_failed` met dat commando in `ReasonArg`.
-  - `case-818-subagent-permission`: sessie `73270a65-d89d-4763-9fef-3b363058df04`, Gestart
+  - `case-818-subagent-denied`: sessie `73270a65-d89d-4763-9fef-3b363058df04`, Gestart
     `2026-10-18T10:36:45Z`, stand Waiting, `Transcript.Threads` de gemeten tijden per draad uit
-    taak 1 (`case-818/`), `Permission` met `Thread` de subagent die op de prompt stond, `At` de
-    gemeten prompttijd, `Write` en een pad buiten de worktree, `now` prompt + 61 min →
-    `KindReturn` `reason_permission`. Schreef een andere draad na de prompt nog events, dan blijft
-    de verwachting dezelfde: regel 16 kijkt alleen naar de draad van de prompt.
+    taak 1 (`case-818/`), geen `Permission` (de prompt werd meteen geweigerd, zie taak 1 stap 1),
+    `now` `2026-10-18T11:52:30Z` (laatste event + 61 min) → `KindReturn` `reason_silent`, `Stop`.
+    Dat is de echte toestand; "wacht op permissie" toetst de volgende fixture.
+  - `permission-wait-subagent` (gemaakt, niet echt): stand Waiting, `Threads` `{"": 10:00, "agent-a":
+    10:05}`, `Permission` `{At: 10:05:01, Tool: Write, Path: /tmp/x, Thread: agent-a}`, hoofdthread
+    daarna nog actief tot `10:30` (`Threads[""]` `10:30`), `now` `11:06` → `KindReturn`
+    `reason_permission` met `ReasonArg` "`Write` `/tmp/x`": regel 16 kijkt alleen naar de draad van
+    de prompt.
   - `subagent-keeps-run-alive`: stand Waiting (de hoofdthread beëindigde zijn beurt),
     `SessionAt` twee uur oud, `Transcript.LastEvent` vijf minuten oud (van een subagent) → geen
     actie (AC 3).
@@ -478,3 +489,8 @@ staan. Bewijs voor de PR: de inhoud van `state/runs/<id>/permission.json` met de
 de `thread` van de subagent. Leg ook vast welke velden de echte payload had (`notification_type`:
 `permission_prompt` of `worker_permission_prompt`; `transcript_path` van hoofdthread of subagent).
 Wijkt dat af van de aanname in taak 2 stap 3, pas dan de hook en de test aan in een nieuwe commit.
+
+Weigert Claude Code de prompt van een achtergrond-subagent meteen, zoals in #818 (taak 1 stap 1),
+en ontstaat er dus geen `permission.json`, dan haalt de PR het bewijs uit spec §7 ("een
+achtergrond-subagent zo'n bestand oplevert") niet. Leg dat dan aan de gebruiker voor vóór de PR:
+het is een spec-punt, geen bouwkeuze.
