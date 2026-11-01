@@ -34,7 +34,7 @@ func unpackArchive(ctx context.Context, repoDir, ref, dir string) error {
 	if err != nil {
 		return err
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 
 	gctx, cancel := context.WithCancel(ctx)
 	defer cancel()
