@@ -1,0 +1,118 @@
+{
+  "input": {
+    "now": "2026-10-31T12:00:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/r",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 7,
+              "title": "Bouw de keten",
+              "state": "OPEN",
+              "item_id": "I7",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 55,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #7\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-7-bouw-de-keten\nanchor: 3f2a1bc\nnext: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-7-bouw-de-keten\nDoel: de keten afmaken.\nEerste stap: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\n```",
+                  "created_at": "2026-10-31T09:00:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-55",
+                  "rocket": false
+                },
+                {
+                  "id": 62,
+                  "author": "lh-bot",
+                  "body": "🤖 Gestart\nsession: 11111111-2222-4333-8444-555555555555\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\ncommand: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\nstart: 2026-10-31T10:00:00Z\nbranch: issue-7-bouw-de-keten\nrunner: forge\nworkspace: ws-1\n\n<sub>session 11111111-2222-4333-8444-555555555555</sub>",
+                  "created_at": "2026-10-31T10:00:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-62",
+                  "rocket": false
+                },
+                {
+                  "id": 63,
+                  "author": "lh-bot",
+                  "body": "🤖 Klaar\nsession: 11111111-2222-4333-8444-555555555555\npr: https://github.com/o/r/pull/12\n\nChecks groen, klaar voor review.\n\n<sub>session 11111111-2222-4333-8444-555555555555</sub>",
+                  "created_at": "2026-10-31T12:00:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-63",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [
+          {
+            "ID": 4,
+            "Issue": 7,
+            "SessionID": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+            "Mode": "start",
+            "Trigger": "handoff",
+            "TriggerKey": "handoff:55",
+            "Attempt": 1,
+            "Command": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md",
+            "Prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-31T09:30:00Z",
+            "Open": false,
+            "Outcome": "start_failed",
+            "Reason": "post: boom"
+          },
+          {
+            "ID": 5,
+            "Issue": 7,
+            "SessionID": "11111111-2222-4333-8444-555555555555",
+            "Mode": "start",
+            "Trigger": "handoff",
+            "TriggerKey": "handoff:55",
+            "Attempt": 2,
+            "Command": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md",
+            "Prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-31T10:00:00Z",
+            "Open": false,
+            "Outcome": "done",
+            "Reason": ""
+          }
+        ],
+        "stands": {}
+      }
+    ]
+  },
+  "want": [
+    {
+      "kind": "rocket",
+      "repo": "o/r",
+      "issue": 7,
+      "comment_id": 55,
+      "language": "nl"
+    }
+  ]
+}

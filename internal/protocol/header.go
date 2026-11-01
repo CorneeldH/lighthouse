@@ -5,7 +5,6 @@ package protocol
 import (
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"unicode"
@@ -39,6 +38,8 @@ var kinds = []Kind{KindHandoff, KindStarted, KindQuestion, KindResumed, KindDone
 type Header struct {
 	Kind   Kind
 	Fields map[string]string
+	// Session is the id of the last `<sub>session <uuid>` footer in the body, "" when none.
+	Session string
 }
 
 // The keys and values of comments from before the move, as in _LEGACY_KEYS and
@@ -66,6 +67,9 @@ var legacyValues = map[[2]string]string{
 	{"blocker", "verrekend"}: "accounted",
 }
 
+var sessionFooter = regexp.MustCompile(
+	`<sub>(?:session|sessie) ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`)
+
 var fieldLine = regexp.MustCompile(`^([a-z_]+):\s?(.*)$`)
 
 type variant struct {
@@ -73,9 +77,9 @@ type variant struct {
 	text string
 }
 
-// kindVariants holds every heading variant of every kind, longest first. The embedded
-// table is part of the binary, so an unreadable one is a programming error.
-var kindVariants = sync.OnceValue(func() []variant {
+// headingTable is the embedded heading table: key, then language, then text. It is part of
+// the binary, so an unreadable one is a programming error.
+var headingTable = sync.OnceValue(func() map[string]map[string]string {
 	raw, err := pack.Files.ReadFile("core/headings.toml")
 	if err != nil {
 		panic("protocol: read core/headings.toml: " + err.Error())
@@ -84,16 +88,15 @@ var kindVariants = sync.OnceValue(func() []variant {
 	if err := toml.Unmarshal(raw, &table); err != nil {
 		panic("protocol: decode core/headings.toml: " + err.Error())
 	}
+	return table
+})
+
+// kindVariants holds every heading variant of every kind, longest first.
+var kindVariants = sync.OnceValue(func() []variant {
 	var out []variant
 	for _, kind := range kinds {
-		byLanguage := table["kind_"+string(kind)]
-		languages := make([]string, 0, len(byLanguage))
-		for language := range byLanguage {
-			languages = append(languages, language)
-		}
-		sort.Strings(languages)
-		for _, language := range languages {
-			out = append(out, variant{kind: kind, text: byLanguage[language]})
+		for _, text := range Variants("kind_" + string(kind)) {
+			out = append(out, variant{kind: kind, text: text})
 		}
 	}
 	slices.SortStableFunc(out, func(a, b variant) int { return len(b.text) - len(a.text) })
@@ -150,5 +153,9 @@ func ParseHeader(body string) (Header, bool) {
 		}
 		fields[key] = value
 	}
-	return Header{Kind: kind, Fields: fields}, true
+	header := Header{Kind: kind, Fields: fields}
+	if sessions := sessionFooter.FindAllStringSubmatch(body, -1); len(sessions) > 0 {
+		header.Session = sessions[len(sessions)-1][1]
+	}
+	return header, true
 }

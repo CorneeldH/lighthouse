@@ -12,6 +12,8 @@ type headerCase struct {
 	Body   string            `json:"body"`
 	Kind   *string           `json:"kind"`
 	Fields map[string]string `json:"fields"`
+	// Session is checked only when the case has the key.
+	Session *string `json:"session"`
 }
 
 // The fixture is shared with tests/pack/test_protocol.py: both parsers must agree.
@@ -41,6 +43,9 @@ func TestParseHeaderSharedFixture(t *testing.T) {
 			}
 			if string(header.Kind) != *c.Kind {
 				t.Fatalf("kind = %q, want %q", header.Kind, *c.Kind)
+			}
+			if c.Session != nil && header.Session != *c.Session {
+				t.Errorf("session = %q, want %q", header.Session, *c.Session)
 			}
 			if c.Fields != nil && !maps.Equal(header.Fields, c.Fields) {
 				t.Errorf("fields = %v, want %v", header.Fields, c.Fields)

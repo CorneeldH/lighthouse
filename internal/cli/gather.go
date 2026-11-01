@@ -13,7 +13,6 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
-	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
@@ -65,12 +64,8 @@ func gather(ctx context.Context, env tickEnv, dir, dbPath string, out, errOut io
 	}
 	defer func() { _ = st.Close() }()
 
-	open, err := runs.Open(ctx, st.DB, repo.Slug)
-	if err != nil {
-		return err
-	}
 	c := env.client(repo.Slug, token)
-	pre, err := dispatch.Prepare(ctx, c, repo, open)
+	pre, err := prepare(ctx, st.DB, c, repo)
 	if err != nil {
 		return err
 	}

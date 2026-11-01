@@ -155,7 +155,7 @@ func (a *Adapter) followRemote(ctx context.Context, ws workplace.Workspace, crea
 	if out == "" {
 		return nil
 	}
-	if _, err := a.gitOK(ctx, ws.Path, "fetch", "origin", ws.Branch); err != nil {
+	if _, err := a.gitOK(ctx, ws.Path, "fetch", "origin", "--", ws.Branch); err != nil {
 		return err
 	}
 	head, err := a.gitOK(ctx, ws.Path, "rev-parse", "HEAD")

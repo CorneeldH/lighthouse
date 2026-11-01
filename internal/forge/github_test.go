@@ -312,3 +312,24 @@ func TestErrorIncludesGitHubMessage(t *testing.T) {
 		t.Fatalf("err leaks the token: %v", err)
 	}
 }
+
+func TestIssueReadsTitleAndURL(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.Issues = map[int]map[string]any{
+		7: {"number": 7, "title": "Een issue", "html_url": "https://github.com/o/r/issues/7", "comments": 3},
+	}
+	got, err := c.Issue(context.Background(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Issue{Number: 7, Title: "Een issue", URL: "https://github.com/o/r/issues/7", Comments: 3}
+	if got != want {
+		t.Errorf("Issue(7) = %+v, want %+v", got, want)
+	}
+	if _, err := c.Issue(context.Background(), 8); err == nil {
+		t.Error("Issue(8) of a missing issue: err = nil, want the 404")
+	}
+	if _, err := New("", "t").Issue(context.Background(), 7); !errors.Is(err, ErrNotConfigured) {
+		t.Errorf("unconfigured Issue: err = %v, want ErrNotConfigured", err)
+	}
+}
