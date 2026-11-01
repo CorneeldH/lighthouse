@@ -86,6 +86,10 @@ en = "PR is a draft"
 nl = "PR rood"
 en = "PR red"
 
+[reason_pr_red_ceiling]
+nl = "PR rood na 3 fix-pr-runs"
+en = "PR red after 3 fix-pr runs"
+
 [reason_no_handoff]
 nl = "geen handoff of vraag"
 en = "no handoff or question"

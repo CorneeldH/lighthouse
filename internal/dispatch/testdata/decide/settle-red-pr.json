@@ -90,12 +90,26 @@
   },
   "want": [
     {
-      "kind": "return",
+      "kind": "close",
       "repo": "o/r",
       "issue": 7,
       "run_id": 5,
+      "outcome": "handoff",
       "session_id": "11111111-2222-4333-8444-555555555555",
-      "reason": "reason_pr_red",
+      "reason_arg": "fixpr:12:abc123",
+      "language": "nl"
+    },
+    {
+      "kind": "start",
+      "repo": "o/r",
+      "issue": 7,
+      "trigger": "fixpr",
+      "trigger_key": "fixpr:12:abc123",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/lighthouse-fix-pr 12",
+      "prompt": "/lighthouse-fix-pr 12 (issue #7, controller-run)",
+      "branch": "issue-7-bouw-de-keten",
       "language": "nl"
     }
   ]
