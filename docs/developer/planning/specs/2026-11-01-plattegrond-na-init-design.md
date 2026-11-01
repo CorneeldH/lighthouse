@@ -47,7 +47,7 @@ wie hij is, uit welk pakket hij komt, wie hem leest, en wat `--upgrade` ermee do
   `internal/reconcile/reconcile.go:79-105`). Dat geldt alleen voor de units in het manifest
   (file, block, hook, permission). `lighthouse.toml` en `.lighthouse/manifest.toml` zijn geen
   unit: een verwijderde sleutel van lighthouse in `lighthouse.toml` komt zonder vraag terug
-  (`projectconfig.AppendMissing`), en `manifest.toml` wordt elke run opnieuw geschreven. De
+  (`projectconfig.AppendMissing`), en `manifest.toml` wordt opnieuw geschreven als de geïnstalleerde units of de lighthouse-versie veranderen *(correctie na eindreview: de code schrijft alleen bij een wijziging)*. De
   kaart zegt de weigering daar dus niet.
 - Het oogt als een bestandsboom uit een IDE in plaats van een plattegrond.
 - Je herkent je eigen repo er niet in.
@@ -74,7 +74,7 @@ your repo/
 │ └────────────────────────────────────────────────────────────────┘ │
 │ ┌ .agents/skills/ ───────┐   ┌ .lighthouse/ ─────────────────────┐ │
 │ │ ▓ lighthouse-*/ ▓      │   │ ▓ lib/ scripts/ headings.toml ▓   │ │
-│ └────────────────────────┘   │ ▓ manifest.toml (every run) ▓     │ │
+│ └────────────────────────┘   │ ▓ manifest.toml (changed) ▓      │ │
 │ ┌ .github/ ──────────────────┐└───────────────────────────────────┘ │
 │ │ ▓ pull_request_template ▓  │                                     │
 │ │ ▓ workflows/lighthouse-* ▓ │    your code, your tests, …         │
@@ -136,7 +136,7 @@ bestand, en `buildPlan` in `internal/initcmd/initcmd.go`.
 | `.lighthouse/lib/lighthouse_lib/` | lighthouse | hele bestanden | core | idem |
 | `.lighthouse/scripts/` | lighthouse | hele bestanden | core, go, node, python, shell | idem |
 | `.lighthouse/headings.toml` | lighthouse | heel bestand | core | idem |
-| `.lighthouse/manifest.toml` | lighthouse | elke run opnieuw | — (init zelf) | schrijft het opnieuw |
+| `.lighthouse/manifest.toml` | lighthouse | alleen bij een wijziging van de units of de versie *(correctie na eindreview: de code schrijft alleen bij een wijziging)* | — (init zelf) | schrijft het opnieuw bij een wijziging |
 | `.github/pull_request_template.md` | lighthouse | heel bestand | core | idem |
 | `.github/workflows/lighthouse-*.yml` | lighthouse | hele bestanden, `@@key@@` ingevuld uit de config; alleen als elke sleutel gezet is (`ci.bot_client_id_var` en `ci.bot_private_key_secret` hebben geen default), anders niet geïnstalleerd | core | vervangt als elke sleutel gezet is; mist er een, dan blijft een geïnstalleerde workflow zoals hij is |
 | `~/.config/lighthouse/host.toml` | yours | alleen bij `init`, alleen met Tailscale, na een eigen vraag | — (init zelf) | meldt alleen dat hij ontbreekt |
