@@ -166,8 +166,12 @@ na de laatste besluit-commit bij `done`. Het script leest alleen dit bestand. `d
 `skip: <reden>`, zodat een herstart dezelfde reden in de body zet. Een gefaalde of afgebroken
 review geldt dus nooit als gedaan, en een herstart reviewt niet opnieuw. Een
 `<branch>.md` zonder `<branch>.json` (afgebroken tijdens het verwerken) telt als niet
-geclassificeerd. Dan classificeert write-pr opnieuw uit die `.md` en draait geen nieuwe review.
-*(eigen keuze na spec-review, r1-f3, r2-f1)*
+geclassificeerd. Het script geeft dan `classify: <pad naar .md>`, een vierde uitkomst naast
+`run`, `skip` en `done`. Stap 0 stuurt die naar classificatie en verwerken (stap 3, de tabel, en
+stap 4), zonder nieuwe review. Stap 4 haalt eerst de besluiten terug die al genomen zijn: een
+commit op de branch met `roborev: <path>:<line> (<severity>)` in de body telt als `fixed in
+<die commit>`. Alleen de overige bevindingen worden opnieuw beoordeeld.
+*(eigen keuze na spec-review, r1-f3, r2-f1, r3-f2)*
 
 Drempel en budget komen in één script, zodat skill en tests hetzelfde meten:
 `pack/core/scripts/roborev_gate.py` (naam is de keuze van de builder). Het geeft `run` of
@@ -245,7 +249,10 @@ Voortaan:
   - Poorten open: de rij sluit met uitkomst `handoff` en de start van `/lighthouse-fix-pr <pr>`
     volgt in dezelfde tick.
   - Een poort dicht (bijvoorbeeld On hold, of een tweede open rij): geen start. De rij sluit als
-    `returned` met de bestaande reden "PR rood", zoals nu.
+    `returned` met de bestaande reden "PR rood", zoals nu. Dat geldt ook voor elke andere uitkomst
+    dan een start: parkeren bij een actieve blokkade (`decide.go:961-967`), wachten op de nacht of
+    uitstellen. Het signaal leeft maar één tick. Een `handoff`-rij zonder start zou het issue stil
+    op een rode PR laten staan. *(eigen keuze na spec-review, r3-f1)*
 
   Een fix-pr-start ontstaat dus alleen uit het afsluiten van een klare runrij in deze tick, en
   nooit naast een orphan of buiten `Controller`. *(eigen keuze na spec-review, r1-f4, r2-f2)*
