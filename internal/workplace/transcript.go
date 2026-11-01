@@ -42,7 +42,8 @@ type Transcript struct {
 func ProjectDir(home, cwd string) string {
 	b := []byte(cwd)
 	for i, c := range b {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+		alnum := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+		if !alnum {
 			b[i] = '-'
 		}
 	}
