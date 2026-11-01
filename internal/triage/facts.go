@@ -35,6 +35,7 @@ type Facts struct {
 	UpdatedAt                      time.Time
 	Milestone                      *forge.Milestone
 	ItemID                         string          // "" when not on the board
+	Archived                       bool            // the board item is archived
 	Status, Priority               string          // option names; "" when unset or not on the board, Status "unknown:<id>" for an unlisted option
 	Blockers                       []forge.Blocker // blocked_by, open and closed: BoardItem.BlockedBy, or forge.BlockedBy off the board
 	Comments                       []Comment       // oldest first
@@ -51,6 +52,7 @@ const (
 	SkipNone      Skip = ""
 	SkipMilestone Skip = "milestone"
 	SkipStatus    Skip = "status"
+	SkipArchived  Skip = "archived"
 	SkipMarker    Skip = "marker"
 	SkipChain     Skip = "chain"
 	SkipWork      Skip = "running work"
@@ -65,6 +67,9 @@ func Candidate(f Facts, cfg repoconfig.Triage, l repoconfig.Labels) Skip {
 		return SkipMilestone
 	case cfg.MilestonesOnly && f.Milestone == nil:
 		return SkipMilestone
+	case f.Archived:
+		// An archived item is on the board, out of sight of the tick: a write there helps no one.
+		return SkipArchived
 	case f.Status != "" && f.Status != "To do":
 		return SkipStatus
 	}
@@ -119,10 +124,12 @@ func MarkerHolds(m protocol.TriageMarker, f Facts, l repoconfig.Labels) bool {
 }
 
 // Changed reports whether the issue differs between two reads in a way the recheck refuses to
-// write over (spec "Hercontrole"): state, status, labels, comments, update time or running work.
+// write over (spec "Hercontrole"): state, status, an archived item, labels, comments, update time
+// or running work.
 func Changed(before, after Facts) bool {
 	return before.State != after.State ||
 		before.Status != after.Status ||
+		before.Archived != after.Archived ||
 		!before.UpdatedAt.Equal(after.UpdatedAt) ||
 		!sameSorted(before.Labels, after.Labels) ||
 		!sameSorted(before.Work, after.Work) ||

@@ -86,10 +86,14 @@ func optionName(options map[string]string, id string) string {
 // itemFunc returns the board item of issue n; ok is false when n is not on the board.
 type itemFunc func(n int) (item forge.BoardItem, ok bool, err error)
 
-// boardItem looks n up in the board of the gather.
-func (g *repoGather) boardItem(n int) (forge.BoardItem, bool, error) {
-	it, ok := g.board[n]
-	return it, ok, nil
+// boardItem looks n up in the board of the gather. The board lists no archived item, so for an
+// issue missing from it boardItem reads the items of the issue: an archived item must not read
+// as "not on the board", or the round would judge the issue every round and write next to it.
+func (g *repoGather) boardItem(ctx context.Context, n int) (forge.BoardItem, bool, error) {
+	if it, ok := g.board[n]; ok {
+		return it, true, nil
+	}
+	return g.c.IssueItem(ctx, g.repo.Board.ProjectID, n)
 }
 
 // gatherFacts reads the facts of issue is, in this order: the comments, the author's trust,
@@ -120,12 +124,13 @@ func (g *repoGather) gatherFacts(ctx context.Context, is forge.Issue, item itemF
 		return tri.Facts{}, err
 	}
 	if onBoard {
-		f.ItemID = it.ItemID
+		f.ItemID, f.Archived = it.ItemID, it.Archived
 		f.Status, f.Priority = g.boardFields(it)
 	}
 	if full {
-		// Decision 10: the board's blockers for an item, else always the REST read.
-		if onBoard {
+		// Decision 10: the board's blockers for an item of the board, else always the REST
+		// read. An item read on its own (IssueItem) carries no blockers.
+		if _, listed := g.board[is.Number]; listed {
 			f.Blockers = it.BlockedBy
 		} else if f.Blockers, err = g.c.BlockedBy(ctx, is.Number); err != nil {
 			return tri.Facts{}, err

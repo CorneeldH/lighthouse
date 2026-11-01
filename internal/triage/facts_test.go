@@ -45,6 +45,8 @@ func TestCandidate(t *testing.T) {
 		{"status In progress", func(f *Facts) { f.Status = "In progress" }, testCfg, SkipStatus},
 		{"status Controller", func(f *Facts) { f.Status = "Controller" }, testCfg, SkipStatus},
 		{"status On hold", func(f *Facts) { f.Status = "On hold" }, testCfg, SkipStatus},
+		{"status unlisted", func(f *Facts) { f.Status = "unknown:d1" }, testCfg, SkipStatus},
+		{"archived item", func(f *Facts) { f.Status, f.Archived = "To do", true }, testCfg, SkipArchived},
 		{"lighthouse marker 4b", func(f *Facts) {
 			f.Comments = []Comment{trusted(`<!-- lighthouse: {"kind":"triage","version":1,"gate":"4b"} -->`)}
 		}, testCfg, SkipMarker},
@@ -167,6 +169,7 @@ func TestChanged(t *testing.T) {
 		{"work", func(f *Facts) { f.Work = []string{"PR #2"} }, true},
 		{"work added", func(f *Facts) { f.Work = append(f.Work, "run 3") }, true},
 		{"state", func(f *Facts) { f.State = "closed" }, true},
+		{"archived", func(f *Facts) { f.Archived = true }, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -117,6 +117,11 @@ naar het issue verwijst, geen lokale of remote branch `issue-<nr>-*`, geen workt
 en geen open rij in `runs`. Zo'n issue krijgt een regel op stderr en telt als `running work`. De
 volgorde is eerst `Priority`, dan het issuenummer.
 
+Een kolom die niet in `status_options` staat, zoals `In progress` of `Done`, telt niet als "geen
+status": zo'n issue is geen kandidaat. Een issue met een gearchiveerd board-item slaat de ronde
+over, met een regel op stderr; het telt als `skipped`. De tick ziet dat item niet, dus de ronde
+oordeelt er niet over en schrijft er niets.
+
 Een marker met een vaste stop (een open blokkeerder, een blokkadelabel of een gebroken invariant)
 vervalt zodra de stop is weggevallen; dan is het issue weer kandidaat. Een marker zonder vaste
 stop vervalt nooit vanzelf.

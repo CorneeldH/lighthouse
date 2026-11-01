@@ -419,6 +419,25 @@ func TestIssueItem(t *testing.T) {
 	}
 }
 
+// An archived item is still an item of the issue: IssueItem returns it, marked Archived.
+func TestIssueItemArchived(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.ProjectID = "P1"
+	archived := issueNode("PVTI_7", 7, "s1")
+	archived["isArchived"] = true
+	srv.BoardNodes = []map[string]any{archived, issueNode("PVTI_9", 9, "s2")}
+	ctx := context.Background()
+
+	got, ok, err := c.IssueItem(ctx, "P1", 7)
+	if err != nil || !ok || got.ItemID != "PVTI_7" || !got.Archived {
+		t.Errorf("IssueItem(P1, 7) = %+v, %v, %v; want PVTI_7, archived", got, ok, err)
+	}
+	got, ok, err = c.IssueItem(ctx, "P1", 9)
+	if err != nil || !ok || got.ItemID != "PVTI_9" || got.Archived {
+		t.Errorf("IssueItem(P1, 9) = %+v, %v, %v; want PVTI_9, not archived", got, ok, err)
+	}
+}
+
 func TestIssueItemTruncated(t *testing.T) {
 	srv, c := boardClient(t)
 	srv.ProjectID = "P1"

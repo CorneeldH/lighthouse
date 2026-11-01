@@ -320,9 +320,10 @@ func (r *round) candidates(ctx context.Context, g *repoGather, n *counts) []tri.
 		}
 	}
 	var out []tri.Facts
+	item := func(n int) (forge.BoardItem, bool, error) { return g.boardItem(ctx, n) }
 	work := func() (workLists, error) { return g.work, nil }
 	for _, is := range issues {
-		f, err := g.gatherFacts(ctx, is, g.boardItem, work, true)
+		f, err := g.gatherFacts(ctx, is, item, work, true)
 		if err != nil {
 			r.issueError(slug, is.Number, "gather", err, n)
 			continue
@@ -333,6 +334,10 @@ func (r *round) candidates(ctx context.Context, g *repoGather, n *counts) []tri.
 			case tri.SkipWork:
 				n.work++
 				_, _ = fmt.Fprintf(r.errOut, "lighthouse: triage %s#%d: running work: %s\n", slug, f.Number, strings.Join(f.Work, ", "))
+				continue
+			case tri.SkipArchived:
+				n.skipped++
+				_, _ = fmt.Fprintf(r.errOut, "lighthouse: triage %s#%d: archived board item, skipped\n", slug, f.Number)
 				continue
 			default:
 				continue

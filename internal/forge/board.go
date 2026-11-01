@@ -46,6 +46,8 @@ type BoardItem struct {
 	IssueUpdatedAt time.Time
 	BlockedBy      []Blocker
 	ClosingPRs     []PR
+	// Archived is an archived item. Only IssueItem reads it: BoardItems lists no archived item.
+	Archived bool
 }
 
 // prFields are the pull request fields both queries read into a PR.
@@ -111,6 +113,7 @@ const BranchPRsQuery = `query BranchPRs($owner: String!, $name: String!, $branch
 }`
 
 // IssueItemsQuery reads the project items of one issue, with their single-select values.
+// projectItems includes archived items, so it selects isArchived.
 const IssueItemsQuery = `query IssueItems($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     issue(number: $number) {
@@ -119,6 +122,7 @@ const IssueItemsQuery = `query IssueItems($owner: String!, $name: String!, $numb
         nodes {
           id
           updatedAt
+          isArchived
           project { id }
           ` + fieldValuesSelection + `
         }
@@ -173,6 +177,7 @@ type repoRef struct {
 type itemNode struct {
 	ID          string    `json:"id"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+	IsArchived  bool      `json:"isArchived"` // only IssueItemsQuery selects it
 	FieldValues struct {
 		PageInfo pageInfo `json:"pageInfo"`
 		Nodes    []struct {
@@ -254,7 +259,7 @@ func (c *Client) BoardItems(ctx context.Context, projectID string) ([]BoardItem,
 
 // item maps one node, refusing any nested connection with more pages.
 func (n itemNode) item() (BoardItem, error) {
-	it := BoardItem{ItemID: n.ID, ItemUpdatedAt: n.UpdatedAt, SingleSelect: map[string]string{}}
+	it := BoardItem{ItemID: n.ID, ItemUpdatedAt: n.UpdatedAt, SingleSelect: map[string]string{}, Archived: n.IsArchived}
 	if n.FieldValues.PageInfo.HasNextPage {
 		return BoardItem{}, truncated("fieldValues", len(n.FieldValues.Nodes))
 	}
@@ -341,7 +346,8 @@ func (c *Client) SetStatus(ctx context.Context, projectID, itemID, fieldID, opti
 }
 
 // IssueItem returns the item of issue number on project projectID; ok is false when the issue
-// is not on that board. SingleSelect is filled as in BoardItems; a cut list is an error.
+// is not on that board. SingleSelect is filled as in BoardItems; a cut list is an error. An
+// archived item counts as an item, with Archived set.
 func (c *Client) IssueItem(ctx context.Context, projectID string, number int) (item BoardItem, ok bool, err error) {
 	if err := c.configured(); err != nil {
 		return BoardItem{}, false, err

@@ -58,7 +58,9 @@ type Server struct {
 	// first 20, like the query asks.
 	Branches map[string][]map[string]any
 	// BoardNodes are the project items in GraphQL shape, served by Board in pages of 100. A
-	// nested connection carries its own pageInfo when a test sets one.
+	// nested connection carries its own pageInfo when a test sets one. A node with
+	// "isArchived": true is left out of Board, as ProjectV2.items lists no archived item, and
+	// served by IssueItems, as Issue.projectItems includes them.
 	BoardNodes []map[string]any
 	// ProjectID is the project every BoardNodes item belongs to, as IssueItems serves it in
 	// project { id }.
@@ -438,7 +440,7 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			"nodes":    append([]map[string]any{}, nodes...),
 		}}}
 	case "IssueItems":
-		data = s.issueItems(req.Variables)
+		data = s.issueItems(req.Query, req.Variables)
 	case "AddToBoard":
 		data = s.addToBoard(req.Variables)
 	case "SetStatus":
@@ -458,28 +460,35 @@ func (s *Server) board(vars map[string]any) any {
 	if s.BoardNotAProject {
 		return map[string]any{"node": map[string]any{}}
 	}
+	var live []map[string]any
+	for _, n := range s.BoardNodes {
+		if archived, _ := n["isArchived"].(bool); !archived {
+			live = append(live, n)
+		}
+	}
 	start := 0
 	if after, _ := vars["after"].(string); after != "" {
 		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
 		if err != nil {
 			s.t.Errorf("forgetest: Board after = %q, not a cursor this server gave", after)
 		}
-		start = min(n, len(s.BoardNodes))
+		start = min(n, len(live))
 	}
-	end := min(start+100, len(s.BoardNodes))
-	more, cursor := end < len(s.BoardNodes), fmt.Sprintf("cursor-%d", end)
+	end := min(start+100, len(live))
+	more, cursor := end < len(live), fmt.Sprintf("cursor-%d", end)
 	if s.BoardStuckCursor != nil {
 		more, cursor = true, *s.BoardStuckCursor
 	}
 	return map[string]any{"node": map[string]any{"items": map[string]any{
 		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
-		"nodes":    append([]map[string]any{}, s.BoardNodes[start:end]...),
+		"nodes":    append([]map[string]any{}, live[start:end]...),
 	}}}
 }
 
 // issueItems serves the BoardNodes whose content.number is $number, each with project { id }
-// from ProjectID. The content is left out, as the real query does not select it.
-func (s *Server) issueItems(vars map[string]any) any {
+// from ProjectID. The content is left out, as the real query does not select it, and so is
+// isArchived when the query does not select it.
+func (s *Server) issueItems(query string, vars map[string]any) any {
 	number, _ := vars["number"].(float64)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -491,7 +500,7 @@ func (s *Server) issueItems(vars map[string]any) any {
 		}
 		cp := map[string]any{"project": map[string]any{"id": s.ProjectID}}
 		for k, v := range n {
-			if k != "content" {
+			if k != "content" && (k != "isArchived" || strings.Contains(query, "isArchived")) {
 				cp[k] = v
 			}
 		}

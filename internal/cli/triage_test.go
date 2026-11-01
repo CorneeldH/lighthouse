@@ -663,6 +663,73 @@ func TestTriageUnlistedStatus(t *testing.T) {
 	})
 }
 
+// The board lists no archived item, but GitHub still has it: an issue whose item is archived is
+// skipped with a line, never judged and never written, and an item archived before the
+// recheck is a change.
+func TestTriageArchivedItem(t *testing.T) {
+	t.Run("gather", func(t *testing.T) {
+		fx := triageFixture(t, triageToml)
+		fx.issue(7, "2-area:cli")
+		fx.onBoard(7, "t1", nil)
+		fx.srv.BoardNodes[0]["isArchived"] = true
+
+		_, errOut, err := fx.run(triageOpts{})
+		if err != nil {
+			t.Fatalf("triage = %v\n%s", err, errOut)
+		}
+		assertWrites(t, fx.srv)
+		if c := fx.judge.called(); len(c) != 0 {
+			t.Errorf("judged %v, want none for an archived item", c)
+		}
+		if want := "lighthouse: triage o/r#7: archived board item, skipped\n" + summary(0, 0, 0, 0, 0, 0, 0, 1, 0); errOut != want {
+			t.Errorf("errOut = %q, want %q", errOut, want)
+		}
+	})
+	t.Run("recheck", func(t *testing.T) {
+		fx := triageFixture(t, triageToml)
+		fx.issue(7, "2-area:cli")
+		fx.onBoard(7, "t1", nil)
+		fx.judge.answers[7] = forward(7)
+		onSecondRead(fx, 7, func() {
+			node := boardNode("PVTI_7", "t1", issueContent(7, "Issue 7", nil))
+			node["isArchived"] = true
+			fx.srv.BoardNodes[0] = node
+		})
+
+		_, errOut, err := fx.run(triageOpts{})
+		if err != nil {
+			t.Fatalf("triage = %v\n%s", err, errOut)
+		}
+		assertWrites(t, fx.srv)
+		if want := "lighthouse: triage o/r#7: changed since gather, skipped\n" + summary(1, 1, 0, 0, 0, 0, 0, 1, 0); errOut != want {
+			t.Errorf("errOut = %q, want %q", errOut, want)
+		}
+	})
+}
+
+// An item the board read did not list, but the issue's own read finds, carries no blockers:
+// they come from the REST read (decision 10), never from the empty list of that item.
+func TestTriageItemOffBoardListReadsBlockers(t *testing.T) {
+	fx := triageFixture(t, triageToml)
+	fx.issue(11, "2-area:cli")
+	fx.srv.BlockedBy = map[int][]map[string]any{11: {{"number": 5, "state": "open", "repository_url": fx.srv.URL() + "/repos/o/r"}}}
+	fx.judge.answers[11] = answer("", 0, "")
+	var once sync.Once
+	fx.srv.BeforeComments = func(n int) {
+		if n == 11 {
+			once.Do(func() { fx.onBoard(11, "t1", nil) }) // after the board read, before the item read
+		}
+	}
+
+	if _, errOut, err := fx.run(triageOpts{}); err != nil {
+		t.Fatalf("triage = %v\n%s", err, errOut)
+	}
+	assertWrites(t, fx.srv, `comment 11: <!-- lighthouse: {"kind":"triage","version":1,"gate":"0","blockers":[5],"label":null} -->`)
+	if n := fx.srv.Count("/repos/o/r/issues/11/dependencies/blocked_by"); n != 1 {
+		t.Errorf("blocked_by REST reads = %d, want 1", n)
+	}
+}
+
 func TestTriageRecheckSeesNewWork(t *testing.T) {
 	for _, tc := range []struct {
 		name string
