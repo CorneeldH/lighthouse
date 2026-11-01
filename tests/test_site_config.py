@@ -27,6 +27,8 @@ REQUIRED = {
     "forge.board.project_id": "with [forge.board]",
     "forge.board.status_field_id": "with [forge.board]",
     "forge.board.status_options": "with [forge.board]",
+    "code_language_llm.url": "with [code_language_llm]",
+    "code_language_llm.models": "with [code_language_llm]",
     "host.name": "yes",
     "host.tailscale_ip": "yes",
     "forge.owner": "derived",

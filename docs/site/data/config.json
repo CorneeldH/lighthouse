@@ -102,7 +102,7 @@
               "key": "forge.kind",
               "level": "set",
               "required": "no",
-              "about": "Which forge hosts the repo, for example github.",
+              "about": "Which forge hosts the repo. Only github is accepted for now.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/kennforge/adapter.go"
@@ -315,7 +315,7 @@
               "level": "advanced",
               "required": "no",
               "default": [],
-              "about": "Exit codes of the test command that mean the tests could not run; the gate reports the commit as untested instead of red.",
+              "about": "Exit codes of the test command that mean the tests could not run; the gate reports COULD NOT CHECK instead of failed tests.",
               "readers": [
                 "pack/core/hooks/commit-test-gate.sh",
                 "pack/go/scripts/gate_go.py",
@@ -334,7 +334,7 @@
               "key": "paths.areas",
               "level": "advanced",
               "required": "no",
-              "about": "The file that describes the areas of the project.",
+              "about": "The folder with one file per area; closing a milestone updates its near goal.",
               "readers": [
                 "pack/core/skills/close-issue"
               ]
@@ -531,7 +531,7 @@
               "key": "ci.bot_login",
               "level": "advanced",
               "required": "no",
-              "about": "The login of the bot that acts on issues and PRs.",
+              "about": "The login of the bot the unblock lane runs as, to unblock dependent issues.",
               "readers": [
                 "pack/core/skills/close-issue"
               ]
@@ -577,7 +577,7 @@
               "level": "advanced",
               "required": "no",
               "default": false,
-              "about": "Whether the usage guard resumes work by itself when the alarm clears.",
+              "about": "Whether the usage guard writes a resume marker and schedules a one-shot wake-up after the window resets. Never on a week alarm.",
               "readers": [
                 "pack/core/hooks/usage-gate/resume.py",
                 "pack/core/lib/usage_guard.py"
@@ -611,7 +611,7 @@
               "level": "advanced",
               "required": "no",
               "default": 90,
-              "about": "The Codex session percentage above which a review is skipped.",
+              "about": "The Codex 5-hour usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
                 "pack/core/scripts/codex_usage.py"
               ]
@@ -621,7 +621,7 @@
               "level": "advanced",
               "required": "no",
               "default": 95,
-              "about": "The Codex week percentage above which a review is skipped.",
+              "about": "The Codex week usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
                 "pack/core/scripts/codex_usage.py"
               ]
@@ -692,7 +692,7 @@
                 "src",
                 "tests"
               ],
-              "about": "The directories that are linted and type-checked.",
+              "about": "The directories ruff and complexipy check.",
               "readers": [
                 "pack/python/scripts/quality/ratchet.py",
                 "pack/python/skills/python-standard"
@@ -768,7 +768,7 @@
             {
               "key": "code_language_llm.models",
               "level": "advanced",
-              "required": "no",
+              "required": "with [code_language_llm]",
               "about": "The models to try, in order, for the code-language check.",
               "readers": [
                 "pack/core/lib/code_language_llm.py"
@@ -777,7 +777,7 @@
             {
               "key": "code_language_llm.url",
               "level": "advanced",
-              "required": "no",
+              "required": "with [code_language_llm]",
               "about": "The endpoint of the model that judges the code language.",
               "readers": [
                 "pack/core/lib/code_language_llm.py"
