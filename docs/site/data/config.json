@@ -1,0 +1,862 @@
+{
+  "title": "The configuration",
+  "subtitle": "Every key of lighthouse.toml and host.toml: whether you set it, its default, and what reads it.",
+  "files": [
+    {
+      "file": "lighthouse.toml",
+      "where": "in the root of your repo",
+      "tables": [
+        {
+          "table": "project",
+          "keys": [
+            {
+              "key": "project.language",
+              "level": "set",
+              "required": "no",
+              "default": "en",
+              "about": "The language of issues, PRs and commit messages: nl or en.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/headings.toml",
+                "pack/core/instructions/AGENTS.md",
+                "pack/core/lib/artefacts.py",
+                "pack/core/lib/evidence.py",
+                "pack/core/lib/headings.py",
+                "pack/core/lib/protocol.py",
+                "pack/core/scripts/plan_review_record.py",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/write-handoff",
+                "pack/core/skills/write-issue",
+                "pack/core/skills/write-pr",
+                "pack/python/scripts/quality/prcov_issues.py",
+                "pack/python/scripts/quality/ratchet.py"
+              ]
+            },
+            {
+              "key": "project.code_language",
+              "level": "advanced",
+              "required": "no",
+              "about": "The language names, comments and docstrings in code must be written in.",
+              "readers": [
+                "pack/core/hooks/code-language-check.sh",
+                "pack/core/instructions/AGENTS.md",
+                "pack/core/lib/code_language.py"
+              ]
+            },
+            {
+              "key": "project.code_language_exempt",
+              "level": "advanced",
+              "required": "no",
+              "about": "Paths exempt from the code-language check.",
+              "readers": [
+                "pack/core/lib/code_language.py"
+              ]
+            },
+            {
+              "key": "project.code_language_paths",
+              "level": "advanced",
+              "required": "no",
+              "about": "Extra paths that must follow the code language, such as documentation.",
+              "readers": [
+                "pack/core/hooks/code-language-check.sh",
+                "pack/core/lib/code_language.py"
+              ]
+            },
+            {
+              "key": "project.instructions_word_ceiling",
+              "level": "advanced",
+              "required": "no",
+              "default": 3000,
+              "about": "The word budget for the instruction files; the check fails above it.",
+              "readers": [
+                "internal/initcmd/budget.go",
+                "pack/core/scripts/check-instructions.sh",
+                "pack/core/skills/place-instruction"
+              ]
+            },
+            {
+              "key": "project.milestone_prefix",
+              "level": "advanced",
+              "required": "no",
+              "about": "The prefix of milestone titles in this project.",
+              "readers": [
+                "pack/core/skills/close-issue",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "project.skill_prefix",
+              "level": "advanced",
+              "required": "no",
+              "about": "The prefix of your own skill names, used when placing a new instruction.",
+              "readers": [
+                "pack/core/skills/place-instruction"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "forge",
+          "keys": [
+            {
+              "key": "forge.kind",
+              "level": "set",
+              "required": "no",
+              "about": "Which forge hosts the repo, for example github.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "internal/workplace/kennforge/adapter.go"
+              ]
+            },
+            {
+              "key": "forge.repo",
+              "level": "set",
+              "required": "no",
+              "about": "The repository as owner/name.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/lib/artefacts.py",
+                "pack/core/lib/pr_body_gate.py",
+                "pack/core/scripts/board_start.py",
+                "pack/core/scripts/post_artefact.py",
+                "pack/core/scripts/worktree_audit.py",
+                "pack/core/skills/audit-worktrees",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/fix-pr",
+                "pack/core/skills/review-plan",
+                "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-handoff",
+                "pack/core/skills/write-issue",
+                "pack/core/skills/write-pr",
+                "pack/python/scripts/quality/prcov_issues.py"
+              ]
+            },
+            {
+              "key": "forge.default_branch",
+              "level": "advanced",
+              "required": "no",
+              "default": "main",
+              "about": "The branch that work is merged into and that commits are guarded on.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/hooks/commit-test-gate.sh",
+                "pack/core/hooks/main-commit-gate.sh",
+                "pack/core/hooks/worktree-check.sh",
+                "pack/core/lib/protocol.py",
+                "pack/core/scripts/post_artefact.py",
+                "pack/core/scripts/worktree_audit.py",
+                "pack/core/skills/audit-worktrees",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-handoff",
+                "pack/core/skills/write-issue",
+                "pack/core/workflows/unblock-dependents.yml",
+                "pack/python/scripts/quality/prcov_issues.py",
+                "pack/python/scripts/quality/ratchet.py",
+                "pack/python/skills/python-standard"
+              ]
+            },
+            {
+              "key": "forge.name",
+              "level": "advanced",
+              "required": "derived",
+              "about": "The name part of forge.repo, derived by config.py.",
+              "readers": [
+                "pack/core/skills/close-issue",
+                "pack/core/skills/write-handoff"
+              ]
+            },
+            {
+              "key": "forge.owner",
+              "level": "advanced",
+              "required": "derived",
+              "about": "The owner part of forge.repo, derived by config.py.",
+              "readers": [
+                "pack/core/skills/close-issue",
+                "pack/core/skills/write-handoff",
+                "pack/core/skills/write-issue"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "forge.board",
+          "keys": [
+            {
+              "key": "forge.board.priority_field_id",
+              "level": "optional",
+              "required": "no",
+              "about": "The id of the board's Priority field.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "forge.board.priority_options",
+              "level": "optional",
+              "required": "no",
+              "about": "The ids of the Priority options, one entry per option name.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "forge.board.project_id",
+              "level": "optional",
+              "required": "with [forge.board]",
+              "about": "The node id of the GitHub project board.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/write-handoff",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "forge.board.project_number",
+              "level": "optional",
+              "required": "with [forge.board]",
+              "about": "The number of the GitHub project board.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-handoff",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "forge.board.status_field_id",
+              "level": "optional",
+              "required": "with [forge.board]",
+              "about": "The id of the board's Status field.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/write-handoff"
+              ]
+            },
+            {
+              "key": "forge.board.status_options",
+              "level": "optional",
+              "required": "with [forge.board]",
+              "about": "The ids of the Status options, one entry per option name.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/write-handoff",
+                "pack/core/skills/write-issue"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "test_gate",
+          "keys": [
+            {
+              "key": "test_gate.command",
+              "level": "set",
+              "required": "no",
+              "about": "The command the test gate runs after a commit; empty turns the gate off.",
+              "readers": [
+                "pack/core/hooks/commit-test-gate.sh",
+                "pack/core/instructions/AGENTS.md",
+                "pack/core/skills/fix-pr",
+                "pack/core/skills/write-pr",
+                "pack/go/skills/go-standard",
+                "pack/python/requires.toml",
+                "pack/python/skills/python-standard"
+              ]
+            },
+            {
+              "key": "test_gate.deadline_seconds",
+              "level": "advanced",
+              "required": "no",
+              "default": 270,
+              "about": "How long the test gate may run before it gives up.",
+              "readers": [
+                "pack/core/hooks/commit-test-gate.sh"
+              ]
+            },
+            {
+              "key": "test_gate.evidence_test_dir",
+              "level": "advanced",
+              "required": "no",
+              "default": "tests/",
+              "about": "The directory where tests live, searched for evidence in a PR body.",
+              "readers": [
+                "pack/core/lib/evidence.py",
+                "pack/core/skills/write-pr"
+              ]
+            },
+            {
+              "key": "test_gate.slot_wait_seconds",
+              "level": "advanced",
+              "required": "no",
+              "default": 180,
+              "about": "How long a test gate waits for a free slot.",
+              "readers": [
+                "pack/core/hooks/commit-test-gate.sh"
+              ]
+            },
+            {
+              "key": "test_gate.slots",
+              "level": "advanced",
+              "required": "no",
+              "default": 2,
+              "about": "How many test gates may run at the same time on this machine.",
+              "readers": [
+                "pack/core/hooks/commit-test-gate.sh"
+              ]
+            },
+            {
+              "key": "test_gate.unchecked_exit_codes",
+              "level": "advanced",
+              "required": "no",
+              "default": [],
+              "about": "Exit codes of the test command that the gate does not count as red.",
+              "readers": [
+                "pack/core/hooks/commit-test-gate.sh",
+                "pack/go/scripts/gate_go.py",
+                "pack/go/skills/go-standard",
+                "pack/node/scripts/gate_node.py",
+                "pack/python/scripts/gate_python.py",
+                "pack/python/skills/python-standard"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "paths",
+          "keys": [
+            {
+              "key": "paths.areas",
+              "level": "advanced",
+              "required": "no",
+              "about": "The file that describes the areas of the project.",
+              "readers": [
+                "pack/core/skills/close-issue"
+              ]
+            },
+            {
+              "key": "paths.history",
+              "level": "advanced",
+              "required": "no",
+              "about": "The file with the project's history; only config.py checks it for now.",
+              "readers": []
+            },
+            {
+              "key": "paths.labels",
+              "level": "advanced",
+              "required": "no",
+              "about": "The file that lists the labels of the project.",
+              "readers": [
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "paths.mirror_exceptions",
+              "level": "advanced",
+              "required": "no",
+              "about": "The file that lists instruction files exempt from the mirror check.",
+              "readers": [
+                "pack/core/scripts/check-instructions.sh"
+              ]
+            },
+            {
+              "key": "paths.plans",
+              "level": "advanced",
+              "required": "no",
+              "default": "docs/developer/planning/plans",
+              "about": "Where plans are written.",
+              "readers": [
+                "pack/core/scripts/measure_start_issue_kpi.py",
+                "pack/core/scripts/plan_review_record.py",
+                "pack/core/scripts/post_artefact.py",
+                "pack/core/skills/review-plan",
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-handoff",
+                "pack/core/skills/write-pr"
+              ]
+            },
+            {
+              "key": "paths.search_dirs",
+              "level": "advanced",
+              "required": "no",
+              "default": [
+                "."
+              ],
+              "about": "The directories searched when starting an issue.",
+              "readers": [
+                "pack/core/skills/start-issue"
+              ]
+            },
+            {
+              "key": "paths.specs",
+              "level": "advanced",
+              "required": "no",
+              "default": "docs/developer/planning/specs",
+              "about": "Where specs are written.",
+              "readers": [
+                "pack/core/scripts/measure_start_issue_kpi.py",
+                "pack/core/scripts/plan_review_record.py",
+                "pack/core/scripts/post_artefact.py",
+                "pack/core/skills/review-spec",
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-handoff",
+                "pack/core/skills/write-pr"
+              ]
+            },
+            {
+              "key": "paths.tenets",
+              "level": "advanced",
+              "required": "no",
+              "about": "The file with the project's tenets, read when writing an issue.",
+              "readers": [
+                "pack/core/skills/write-issue"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "labels",
+          "keys": [
+            {
+              "key": "labels.area_prefix",
+              "level": "advanced",
+              "required": "no",
+              "about": "The prefix of area labels.",
+              "readers": [
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-issue",
+                "pack/expo/skills/refresh-expo-lockfiles"
+              ]
+            },
+            {
+              "key": "labels.blocked_external",
+              "level": "advanced",
+              "required": "no",
+              "default": "blocked-external",
+              "about": "The label for an issue blocked by something outside the repo.",
+              "readers": [
+                "pack/core/skills/route-issue",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "labels.blocked_issue",
+              "level": "advanced",
+              "required": "no",
+              "default": "blocked-issue",
+              "about": "The label for an issue blocked by another issue.",
+              "readers": [
+                "pack/core/scripts/unblock_dependents.py",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-issue",
+                "pack/core/workflows/unblock-dependents.yml"
+              ]
+            },
+            {
+              "key": "labels.location_prefix",
+              "level": "advanced",
+              "required": "no",
+              "about": "The prefix of location labels.",
+              "readers": [
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "labels.needs_decision",
+              "level": "advanced",
+              "required": "no",
+              "default": "needs-decision",
+              "about": "The label for an issue that waits for a decision.",
+              "readers": [
+                "pack/core/skills/route-issue",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "labels.needs_hands",
+              "level": "advanced",
+              "required": "no",
+              "default": "needs-hands",
+              "about": "The label for an issue that needs manual work.",
+              "readers": [
+                "pack/core/skills/route-issue",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "labels.needs_shaping",
+              "level": "advanced",
+              "required": "no",
+              "default": "needs-shaping",
+              "about": "The label for an issue that still needs shaping.",
+              "readers": [
+                "pack/core/skills/route-issue",
+                "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "labels.needs_testing",
+              "level": "advanced",
+              "required": "no",
+              "default": "needs-testing",
+              "about": "The label for an issue that needs testing by a person.",
+              "readers": [
+                "pack/core/skills/route-issue",
+                "pack/core/skills/write-issue"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "ci",
+          "keys": [
+            {
+              "key": "ci.bot_client_id_var",
+              "level": "advanced",
+              "required": "no",
+              "about": "The name of the variable that holds the bot's client id.",
+              "readers": [
+                "pack/core/workflows/unblock-dependents.yml"
+              ]
+            },
+            {
+              "key": "ci.bot_login",
+              "level": "advanced",
+              "required": "no",
+              "about": "The login of the bot that acts on issues and PRs.",
+              "readers": [
+                "pack/core/skills/close-issue"
+              ]
+            },
+            {
+              "key": "ci.bot_private_key_secret",
+              "level": "advanced",
+              "required": "no",
+              "about": "The name of the secret that holds the bot's private key.",
+              "readers": [
+                "pack/core/workflows/unblock-dependents.yml"
+              ]
+            },
+            {
+              "key": "ci.runs_on",
+              "level": "advanced",
+              "required": "no",
+              "default": "ubuntu-latest",
+              "about": "The runner label the generated workflows use.",
+              "readers": [
+                "pack/core/workflows/unblock-dependents.yml"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "usage_guard",
+          "keys": [
+            {
+              "key": "usage_guard.controller",
+              "level": "advanced",
+              "required": "no",
+              "default": false,
+              "about": "Whether the usage guard hands the pause to a controller; an advanced option.",
+              "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/hooks/usage-gate/controller.py",
+                "pack/core/lib/usage_guard.py"
+              ]
+            },
+            {
+              "key": "usage_guard.resume",
+              "level": "advanced",
+              "required": "no",
+              "default": false,
+              "about": "Whether the usage guard resumes work by itself when the alarm clears.",
+              "readers": [
+                "pack/core/hooks/usage-gate/resume.py",
+                "pack/core/lib/usage_guard.py"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "codex_usage",
+          "keys": [
+            {
+              "key": "codex_usage.app_server_timeout_seconds",
+              "level": "advanced",
+              "required": "no",
+              "default": 20,
+              "about": "How long to wait for the Codex app server.",
+              "readers": [
+                "pack/core/scripts/codex_usage.py"
+              ]
+            },
+            {
+              "key": "codex_usage.halt_pct_session",
+              "level": "advanced",
+              "required": "no",
+              "default": 85,
+              "about": "The Codex session percentage at which work halts; only config.py checks it for now.",
+              "readers": []
+            },
+            {
+              "key": "codex_usage.review_pct_session",
+              "level": "advanced",
+              "required": "no",
+              "default": 90,
+              "about": "The Codex session percentage above which a review is skipped.",
+              "readers": [
+                "pack/core/scripts/codex_usage.py"
+              ]
+            },
+            {
+              "key": "codex_usage.review_pct_week",
+              "level": "advanced",
+              "required": "no",
+              "default": 95,
+              "about": "The Codex week percentage above which a review is skipped.",
+              "readers": [
+                "pack/core/scripts/codex_usage.py"
+              ]
+            },
+            {
+              "key": "codex_usage.vraag_pct_week",
+              "level": "advanced",
+              "required": "no",
+              "default": 80,
+              "about": "The Codex week percentage at which to ask first; only config.py checks it for now.",
+              "readers": []
+            }
+          ]
+        },
+        {
+          "table": "worktree_audit",
+          "keys": [
+            {
+              "key": "worktree_audit.protected_paths",
+              "level": "advanced",
+              "required": "no",
+              "default": [],
+              "about": "Worktree paths the audit never proposes to remove.",
+              "readers": [
+                "pack/core/scripts/worktree_audit.py"
+              ]
+            },
+            {
+              "key": "worktree_audit.protected_refs",
+              "level": "advanced",
+              "required": "no",
+              "default": [],
+              "about": "Branches the worktree audit never proposes to remove.",
+              "readers": [
+                "pack/core/scripts/worktree_audit.py"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "python",
+          "keys": [
+            {
+              "key": "python.coverage_command",
+              "level": "advanced",
+              "required": "no",
+              "default": "uv run pytest -q",
+              "about": "The command that measures coverage.",
+              "readers": [
+                "pack/python/scripts/quality/ratchet.py"
+              ]
+            },
+            {
+              "key": "python.coverage_issue_labels",
+              "level": "advanced",
+              "required": "no",
+              "default": [],
+              "about": "Labels put on issues the coverage job opens.",
+              "readers": [
+                "pack/python/scripts/quality/prcov_issues.py"
+              ]
+            },
+            {
+              "key": "python.lint_dirs",
+              "level": "advanced",
+              "required": "no",
+              "default": [
+                "src",
+                "tests"
+              ],
+              "about": "The directories that are linted and type-checked.",
+              "readers": [
+                "pack/python/scripts/quality/ratchet.py",
+                "pack/python/skills/python-standard"
+              ]
+            },
+            {
+              "key": "python.nightly_workflow",
+              "level": "advanced",
+              "required": "no",
+              "about": "The workflow that runs the nightly coverage job.",
+              "readers": [
+                "pack/python/scripts/quality/prcov_issues.py",
+                "pack/python/scripts/quality/ratchet.py"
+              ]
+            },
+            {
+              "key": "python.source_dirs",
+              "level": "advanced",
+              "required": "no",
+              "default": [
+                "src"
+              ],
+              "about": "The Python source directories.",
+              "readers": [
+                "pack/python/hooks/ty-gate.sh",
+                "pack/python/scripts/quality/prcov.py",
+                "pack/python/scripts/quality/ratchet.py",
+                "pack/python/skills/python-standard"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "shell",
+          "keys": [
+            {
+              "key": "shell.strict_dirs",
+              "level": "advanced",
+              "required": "no",
+              "default": [
+                ".claude/hooks"
+              ],
+              "about": "The directories whose shell scripts must pass shellcheck.",
+              "readers": [
+                "pack/shell/hooks/shell-lint-check.sh",
+                "pack/shell/scripts/shellcheck-repo.sh",
+                "pack/shell/skills/shell-standard"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "code_language_llm",
+          "keys": [
+            {
+              "key": "code_language_llm.env_file",
+              "level": "advanced",
+              "required": "no",
+              "about": "The file the API key is read from when the variable is not set.",
+              "readers": [
+                "pack/core/lib/code_language_llm.py"
+              ]
+            },
+            {
+              "key": "code_language_llm.key_env",
+              "level": "advanced",
+              "required": "no",
+              "about": "The environment variable that holds the API key.",
+              "readers": [
+                "pack/core/lib/code_language_llm.py"
+              ]
+            },
+            {
+              "key": "code_language_llm.models",
+              "level": "advanced",
+              "required": "no",
+              "about": "The models to try, in order, for the code-language check.",
+              "readers": [
+                "pack/core/lib/code_language_llm.py"
+              ]
+            },
+            {
+              "key": "code_language_llm.url",
+              "level": "advanced",
+              "required": "no",
+              "about": "The endpoint of the model that judges the code language.",
+              "readers": [
+                "pack/core/lib/code_language_llm.py"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "file": "host.toml",
+      "where": "~/.config/lighthouse/ on your workstation",
+      "tables": [
+        {
+          "table": "host",
+          "keys": [
+            {
+              "key": "host.name",
+              "level": "set",
+              "required": "yes",
+              "about": "The name of this workstation; init writes it.",
+              "readers": []
+            },
+            {
+              "key": "host.tailscale_ip",
+              "level": "set",
+              "required": "yes",
+              "about": "The Tailscale address of this workstation; init writes it.",
+              "readers": [
+                "pack/core/scripts/plan_review_record.py"
+              ]
+            },
+            {
+              "key": "host.gate_slice",
+              "level": "advanced",
+              "required": "no",
+              "about": "The systemd slice the test gate runs in.",
+              "readers": [
+                "pack/core/hooks/commit-test-gate.sh"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "usage",
+          "keys": [
+            {
+              "key": "usage.cache_ttl_seconds",
+              "level": "advanced",
+              "required": "no",
+              "default": 300,
+              "about": "How long a cached usage reading stays fresh.",
+              "readers": [
+                "internal/usage/config.go"
+              ]
+            },
+            {
+              "key": "usage.halt_pct_session",
+              "level": "advanced",
+              "required": "no",
+              "default": 85,
+              "about": "The session percentage at which the usage alarm goes up.",
+              "readers": [
+                "internal/usage/config.go"
+              ]
+            },
+            {
+              "key": "usage.halt_pct_week",
+              "level": "advanced",
+              "required": "no",
+              "default": 95,
+              "about": "The week percentage at which the usage alarm goes up.",
+              "readers": [
+                "internal/usage/config.go"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
