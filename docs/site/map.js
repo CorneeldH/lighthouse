@@ -533,137 +533,127 @@ export function renderConfig(root, data, packs) {
   root.replaceChildren(...sections);
 }
 
-/** The zones of the floor plan of a repo after init, as the buttons above it. */
-export const REPO_ZONES = [
-  { id: "all", label: "All" },
-  { id: "lighthouse", label: "Lighthouse's" },
-  { id: "shared", label: "Shared" },
-  { id: "yours", label: "Yours" },
-  { id: "upgrade", label: "--upgrade touches" },
+/** The three positions of the switch above the tree of a repo after init. */
+export const REPO_MODES = [
+  { id: "everything", label: "Everything" },
+  { id: "adds", label: "Adds" },
+  { id: "edits", label: "Edits your file" },
 ];
-const REPO_OWNERS = {
-  lighthouse: "lighthouse's: --upgrade replaces it",
-  shared: "shared: only lighthouse's block or keys",
-  yours: "yours: init leaves it alone",
-};
-const REPO_READER_NAMES = ["Claude Code", "Codex", "OpenCode", "GitHub", "GitHub Actions"];
+const REPO_ACTS = { adds: "init adds it", edits: "init edits your file" };
 
-/** The name and link of one reader of an area. A fixed name has no link; a path links to its file,
-    or to its tree when the last segment has no dot (a folder). */
-export function repoReader(reader) {
-  if (REPO_READER_NAMES.includes(reader)) {
-    return { name: reader, href: null };
+/** The tree without a DOM: the dirs in order, then the workstation, each with its rows.
+    [{id, label, yours, rows: [{id, place, label, kind, glyph, className, act, actLabel, href, dim}]},
+    …, {id: "workstation", label, note, rows}]. A row dims when `mode` shows the other act; the
+    yours of a dir never dims. */
+export function repoEntries(data, mode = "everything") {
+  if (!REPO_MODES.some((m) => m.id === mode)) {
+    throw new Error(`unknown mode: ${mode}`);
   }
-  const base = reader.split("/").pop();
-  return { name: reader, href: (base.includes(".") ? REPO_BLOB : REPO_TREE) + reader };
+  const rowsOf = (dir) =>
+    data.rows
+      .filter((row) => row.dir === dir)
+      .map((row) => {
+        if (!SORTS[row.kind]) {
+          throw new Error(`unknown kind: ${row.kind}`);
+        }
+        return {
+          id: row.id,
+          place: row.place || null,
+          label: row.label,
+          kind: row.kind,
+          glyph: SORTS[row.kind].glyph,
+          className: `kind-${KIND_OF_SORT[row.kind] || row.kind} form-${row.kind}`,
+          act: row.act,
+          actLabel: REPO_ACTS[row.act],
+          href: row.href || null,
+          dim: mode !== "everything" && row.act !== mode,
+        };
+      });
+  const dirs = data.dirs.map((dir) => ({
+    id: dir.id,
+    label: dir.label,
+    yours: dir.id === "root" ? data.yours : dir.yours || null,
+    rows: rowsOf(dir.id),
+  }));
+  const station = { id: "workstation", ...data.workstation, rows: rowsOf("workstation") };
+  return [...dirs, station];
 }
 
-/** The floor plan without a DOM: per room its areas, with the zones each lights up in.
-    [{id, label, zones, areas: [{id, label, owner, ownerLabel, zones, about, facts, readers, more}]}].
-    `zones` of a room is only set for a room without areas: the zones of `yours`. */
-export function repoEntries(data) {
-  return data.rooms.map((room) => {
-    const areas = data.areas
-      .filter((area) => area.room === room.id)
-      .map((area) => ({
-        id: area.id,
-        label: area.label,
-        owner: area.owner,
-        ownerLabel: REPO_OWNERS[area.owner],
-        zones: area.owner === "yours" ? ["all", area.owner] : ["all", area.owner, "upgrade"],
-        about: area.about,
-        facts: [
-          ["Owner", REPO_OWNERS[area.owner]],
-          ["How init writes it", area.how],
-          ["Comes from", area.packs.join(", ") || "lighthouse init itself"],
-          ["On --upgrade", area.upgrade],
-        ],
-        readers: area.readers.map(repoReader),
-        more: area.more,
-      }));
-    return { id: room.id, label: room.label, zones: areas.length ? null : ["all", "yours"], areas };
-  });
+/** One row of the tree: its glyph, its label, what init does with it, and a ↗ to where it is
+    explained. The ↗ has no text of its own; its name comes from the row. */
+function repoRow(row) {
+  const item = el("li");
+  const pill = el("span", `repo-row ${row.className}`);
+  pill.dataset.id = row.id;
+  const glyph = el("span", "glyph", row.glyph);
+  glyph.setAttribute("aria-hidden", "true");
+  pill.append(glyph, el("code", "", row.label), el("span", "sr-only", `, ${row.actLabel}`));
+  if (row.href) {
+    const go = el("a", "repo-go", "↗");
+    go.href = row.href;
+    go.setAttribute("aria-label", `More about ${row.label}`);
+    pill.append(go);
+  }
+  item.append(pill);
+  return item;
 }
 
-/** The floor plan of a repo after init: zone buttons, the rooms with their areas, and a click on
-    an area opens `detail` as a drawer. */
-export function renderRepo(root, data, detail) {
-  const drawer = drawerFor(detail);
-  const rooms = repoEntries(data);
-  const bar = el("div", "routes");
+function repoYours(text) {
+  const item = el("li");
+  item.append(el("span", "repo-yours", text));
+  return item;
+}
+
+/** The tree of a repo after init: the switch, your repo as an indented tree, and the workstation
+    in a box of its own. */
+export function renderRepo(root, data) {
+  const [top, ...rest] = repoEntries(data);
+  const dirs = rest.filter((entry) => entry.id !== "workstation");
+  const station = rest.find((entry) => entry.id === "workstation");
+
+  const bar = el("div", "routes repo-switch");
   bar.setAttribute("role", "group");
-  bar.setAttribute("aria-label", "Zones");
-  const hint = el(
-    "p",
-    "map-hint",
-    "Click an area for what it is, who owns it and what --upgrade does with it.",
-  );
-  const lit = [];
-
-  const buttons = REPO_ZONES.map((zone) => {
-    const button = el("button", "", zone.label);
+  bar.setAttribute("aria-label", "What init does");
+  const buttons = REPO_MODES.map((mode) => {
+    const button = el("button", "", mode.label);
     button.type = "button";
-    button.dataset.zone = zone.id;
-    button.setAttribute("aria-pressed", String(zone.id === "all"));
+    button.dataset.mode = mode.id;
+    button.setAttribute("aria-pressed", String(mode.id === "everything"));
     return button;
   });
-  const select = (zone) => {
-    buttons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.zone === zone)));
-    for (const node of lit) {
-      node.classList.toggle("dim", !node.dataset.zones.split(" ").includes(zone));
-    }
-  };
-  buttons.forEach((button) => button.addEventListener("click", () => select(button.dataset.zone)));
   bar.append(...buttons);
 
-  const show = (button, room, area) => {
-    const readers = el("ul", "reference-list");
-    for (const reader of area.readers) {
-      const row = el("li");
-      if (reader.href) {
-        const link = el("a", "reference-link kind-lighthouse", reader.name);
-        link.href = reader.href;
-        row.append(link);
-      } else {
-        row.append(reader.name);
-      }
-      readers.append(row);
+  const tree = el("div", "repo-tree");
+  const list = el("ul");
+  list.append(...top.rows.map(repoRow));
+  for (const dir of dirs) {
+    const item = el("li");
+    const sub = el("ul");
+    sub.append(...dir.rows.map(repoRow));
+    if (dir.yours) {
+      sub.append(repoYours(dir.yours));
     }
-    const more = el("a", "", "More about it");
-    more.href = area.more;
-    drawer.show(button, [
-      box(`${room.label} · ${area.owner}`, area.label, el("p", "", area.about)),
-      box("", "", facts(area.facts)),
-      box("Read by", "", readers),
-      box("", "", more),
-    ]);
-  };
+    item.append(el("span", "repo-dir", dir.label), sub);
+    list.append(item);
+  }
+  list.append(repoYours(top.yours));
+  tree.append(el("h2", "", top.label), list);
 
-  const roomNode = (room) => {
-    const section = el("section", "repo-room");
-    section.dataset.room = room.id;
-    section.append(el("h3", "", room.label));
-    if (room.zones) {
-      section.dataset.zones = room.zones.join(" ");
-      lit.push(section);
-    }
-    for (const area of room.areas) {
-      const button = el("button", `repo-area owner-${area.owner}${area.zones.includes("upgrade") ? " touched" : ""}`);
-      button.type = "button";
-      button.dataset.zones = area.zones.join(" ");
-      button.append(el("code", "", area.label));
-      button.append(el("span", "sr-only", `, ${area.ownerLabel}`));
-      button.addEventListener("click", () => show(button, room, area));
-      lit.push(button);
-      section.append(button);
-    }
-    return section;
-  };
+  const stationBox = el("section", "repo-station");
+  const stationList = el("ul");
+  stationList.append(...station.rows.map(repoRow));
+  stationBox.append(el("h3", "", station.label), stationList, el("p", "repo-note", station.note));
 
-  const wall = el("div", "repo-wall");
-  wall.append(el("h2", "", "your repo/"), ...rooms.filter((room) => room.id !== "workstation").map(roomNode));
-  const station = rooms.filter((room) => room.id === "workstation").map(roomNode);
-  root.replaceChildren(bar, hint, wall, ...station);
+  const select = (mode) => {
+    buttons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.mode === mode)));
+    const dim = new Map(repoEntries(data, mode).flatMap((entry) => entry.rows.map((row) => [row.id, row.dim])));
+    for (const node of root.querySelectorAll(".repo-row")) {
+      node.classList.toggle("dim", dim.get(node.dataset.id));
+    }
+  };
+  buttons.forEach((button) => button.addEventListener("click", () => select(button.dataset.mode)));
+
+  root.replaceChildren(bar, tree, stationBox);
 }
 
 /** One item of the system page: a link with the glyph of its sort, its label and its note. */

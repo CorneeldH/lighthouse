@@ -4,6 +4,7 @@ names, each row says whether init adds it or edits a file of yours as the golden
 link lands."""
 
 import copy
+import json
 
 from tests._site_node import run_map
 from tests.test_site_chain import ROOT, SITE, load
@@ -242,3 +243,77 @@ def test_problems_flag_two_things_in_one_row():
     data = mutated()
     row(data, "lighthouse-lib")["label"] = "lib/ · scripts/"
     assert label_problems(data) == ["lighthouse-lib: label lib/ · scripts/ holds two things"]
+
+
+def entries(mode: str, data: dict | None = None):
+    return run_map(f"m.repoEntries({json.dumps(data or load('repo.json'))}, {json.dumps(mode)})")
+
+
+def entry_rows(mode: str) -> dict[str, dict]:
+    """place (or label, for the workstation) -> row, from repoEntries in `mode`."""
+    return {r["place"] or r["label"]: r for e in entries(mode) for r in e["rows"]}
+
+
+def refusal(mode: str, data: dict) -> str | None:
+    return run_map(
+        f"(() => {{ try {{ m.repoEntries({json.dumps(data)}, {json.dumps(mode)}); return null; }}"
+        " catch (e) { return e.message; } })()"
+    )
+
+
+def test_entries_keep_the_order_of_the_tree():
+    found = entries("everything")
+    assert [e["id"] for e in found] == ["root", ".claude", ".agents", ".lighthouse", ".github", "workstation"]
+    by_id = {e["id"]: e for e in found}
+    assert by_id["root"]["yours"] == "your code, your tests, your config, …"
+    assert by_id[".lighthouse"]["yours"] is None
+    assert by_id["workstation"]["note"] == load("repo.json")["workstation"]["note"]
+
+
+def test_everything_dims_nothing():
+    assert [p for p, r in entry_rows("everything").items() if r["dim"]] == []
+
+
+def test_edits_leaves_three():
+    rows = entry_rows("edits")
+    assert {p for p, r in rows.items() if not r["dim"]} == {"AGENTS.md", "lighthouse.toml", ".claude/settings.json"}
+    assert rows["~/.config/lighthouse/host.toml"]["dim"] is True
+
+
+def test_adds_leaves_what_init_adds():
+    lit = {r["id"] for e in entries("adds") for r in e["rows"] if not r["dim"]}
+    assert lit == {r["id"] for r in load("repo.json")["rows"] if r["act"] == "adds"}
+    assert "host-toml" in lit
+
+
+def test_rows_carry_glyph_and_colour():
+    rows = entry_rows("everything")
+    assert rows[".claude/agents/lighthouse-*.md"]["glyph"] == "◆"
+    assert rows[".claude/agents/lighthouse-*.md"]["className"] == "kind-lighthouse form-agent"
+    assert rows["AGENTS.md"]["glyph"] == "§"
+    assert rows["AGENTS.md"]["className"] == "kind-rules form-rules"
+
+
+def test_rows_say_what_init_does():
+    rows = entry_rows("everything")
+    assert rows[".claude/settings.json"]["actLabel"] == "init edits your file"
+    assert rows[".lighthouse/scripts/"]["actLabel"] == "init adds it"
+
+
+def test_entries_refuse_an_unknown_mode():
+    assert refusal("upgrade", load("repo.json")) == "unknown mode: upgrade"
+
+
+def test_entries_refuse_an_unknown_kind():
+    data = mutated()
+    row(data, "headings")["kind"] = "skill"
+    assert refusal("everything", data) == "unknown kind: skill"
+
+
+def test_links_have_an_accessible_name():
+    """No DOM in node: this only holds that repoRow, which renderRepo draws each row with, names
+    each ↗ after its row."""
+    text = (SITE / "map.js").read_text(encoding="utf-8")
+    body = text.split("function repoRow", 1)[1].split("\nfunction ", 1)[0]
+    assert '"aria-label"' in body
+    assert "`More about ${" in body
