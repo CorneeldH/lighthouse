@@ -400,10 +400,14 @@ func (c runCtx) didNothing() (Action, bool) {
 	return a, true
 }
 
+// prClosed hands back a run whose PR closed unmerged. A run that also has an open PR replaced
+// the closed one and works on.
 func (c runCtx) prClosed() (Action, bool) {
 	a := c.returned("reason_pr_closed", "")
 	a.Stop = !c.done()
-	return a, c.anyPR(func(pr forge.PR) bool { return pr.State == "CLOSED" })
+	closed := c.anyPR(func(pr forge.PR) bool { return pr.State == "CLOSED" })
+	open := c.anyPR(func(pr forge.PR) bool { return pr.State == "OPEN" })
+	return a, closed && !open
 }
 
 func (c runCtx) prDraft() (Action, bool) {
