@@ -7,7 +7,8 @@ import copy
 import json
 from pathlib import Path
 
-from tests.test_site_chain import ROOT, SITE, load
+from tests._site_node import run_map
+from tests.test_site_chain import REPO_BLOB, REPO_TREE, ROOT, SITE, load
 
 GOLDEN = ROOT / "internal/initcmd/testdata/places.golden"
 OWNERS = {"lighthouse", "shared", "yours"}
@@ -279,3 +280,39 @@ def test_problems_flag_an_anchor_that_does_not_exist():
     data = mutated()
     area(data, "claude-skills")["more"] = "reference.html#nope"
     assert link_problems(data) == ["claude-skills: reference.html has no id nope"]
+
+
+def repo_entries():
+    return run_map(f"m.repoEntries({json.dumps(load('repo.json'))})")
+
+
+def test_upgrade_zone_is_lighthouse_and_shared():
+    areas = [a for room in repo_entries() for a in room["areas"]]
+    assert {a["id"] for a in areas if "upgrade" in a["zones"]} == {
+        a["id"] for a in load("repo.json")["areas"] if a["owner"] in {"lighthouse", "shared"}}
+
+
+def test_your_code_lights_only_in_yours():
+    room = next(r for r in repo_entries() if r["id"] == "yours")
+    assert room["zones"] == ["all", "yours"] and room["areas"] == []
+
+
+def test_entries_say_where_it_comes_from():
+    facts = {a["id"]: dict(a["facts"]) for r in repo_entries() for a in r["areas"]}
+    assert facts["claude-md"]["Comes from"] == "lighthouse init itself"
+    assert facts["agents-md"]["Comes from"] == "core, go, python, shell"
+    assert facts["claude-settings"]["Owner"] == "shared: only lighthouse's block or keys"
+
+
+def test_repo_reader_links():
+    read = lambda r: run_map(f"m.repoReader({json.dumps(r)})")
+    assert read("Claude Code") == {"name": "Claude Code", "href": None}
+    assert read("internal/hostconfig") == {"name": "internal/hostconfig", "href": REPO_TREE + "internal/hostconfig"}
+    assert read("pack/core/lib/config.py")["href"] == REPO_BLOB + "pack/core/lib/config.py"
+
+
+def test_every_path_reader_links_tree_for_a_dir():
+    paths = sorted({r for a in load("repo.json")["areas"] for r in a["readers"] if r not in READER_NAMES})
+    links = run_map(f"{json.dumps(paths)}.map((p) => m.repoReader(p).href)")
+    for path, href in zip(paths, links):
+        assert href == (REPO_TREE if (ROOT / path).is_dir() else REPO_BLOB) + path
