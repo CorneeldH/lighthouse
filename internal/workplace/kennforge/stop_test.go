@@ -222,3 +222,86 @@ func TestStopWorkspaceReadFails(t *testing.T) {
 		t.Errorf("calls = %v, want none", *calls)
 	}
 }
+
+const podmanPS = "podman ps --filter label=devcontainer.local_folder=/repo/main --format {{.ID}}"
+
+// The script holds no systemctl step: Kill never touches the unit, so a foreign session in the
+// same worktree runs on.
+func TestKillSoftwareEndsOnlyTheSessionNeverTheUnit(t *testing.T) {
+	steps := []step{
+		{cmd: podmanPS, out: "c1\nc2\n"},
+		{cmd: "podman exec c1 pgrep -f " + testSessionID, code: 1},
+		{cmd: "podman exec c2 pgrep -f " + testSessionID, out: "19691\n"},
+		{cmd: "podman exec c2 pkill -f " + testSessionID},
+		{cmd: "podman exec c2 pgrep -f " + testSessionID, code: 1},
+	}
+	a, _, calls := stopAdapter(t, "software", steps)
+	if err := a.Kill(context.Background(), "ws1", []string{testSessionID}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*calls) != len(steps) {
+		t.Errorf("calls = %q, want %d", *calls, len(steps))
+	}
+}
+
+func TestKillOtherProfileOnTheHost(t *testing.T) {
+	steps := []step{
+		{cmd: "pgrep -f " + testSessionID, out: "14604\n"},
+		{cmd: "pkill -f " + testSessionID},
+		{cmd: "pgrep -f " + testSessionID, code: 1},
+	}
+	a, _, calls := stopAdapter(t, "infra", steps)
+	if err := a.Kill(context.Background(), "ws1", []string{testSessionID}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*calls) != len(steps) {
+		t.Errorf("calls = %q, want %d", *calls, len(steps))
+	}
+}
+
+func TestKillNothingAliveSendsNoSignal(t *testing.T) {
+	a, _, calls := stopAdapter(t, "infra", []step{{cmd: "pgrep -f " + testSessionID, code: 1}})
+	if err := a.Kill(context.Background(), "ws1", []string{testSessionID}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*calls) != 1 {
+		t.Errorf("calls = %q, want only the pgrep", *calls)
+	}
+}
+
+func TestKillSurvivorIsAnError(t *testing.T) {
+	steps := []step{
+		{cmd: "pgrep -f " + testSessionID},
+		{cmd: "pkill -f " + testSessionID},
+	}
+	for i := 0; i < 5; i++ {
+		steps = append(steps, step{cmd: "pgrep -f " + testSessionID})
+	}
+	a, _, _ := stopAdapter(t, "infra", steps)
+	err := a.Kill(context.Background(), "ws1", []string{testSessionID})
+	if err == nil || !strings.Contains(err.Error(), "still runs on this host") {
+		t.Errorf("err = %v, want one saying the session still runs on this host", err)
+	}
+}
+
+func TestKillPgrepUnmeasurable(t *testing.T) {
+	a, _, calls := stopAdapter(t, "infra", []step{{cmd: "pgrep -f " + testSessionID, code: 2}})
+	if err := a.Kill(context.Background(), "ws1", []string{testSessionID}); err == nil {
+		t.Error("err = nil, want an error for pgrep rc 2")
+	}
+	if len(*calls) != 1 {
+		t.Errorf("calls = %q, want no pkill after an unmeasurable pgrep", *calls)
+	}
+}
+
+func TestKillEmptySessionIDRejectedBeforeAnyCall(t *testing.T) {
+	for _, profile := range []string{"software", "infra"} {
+		a, _, calls := stopAdapter(t, profile, nil)
+		if err := a.Kill(context.Background(), "ws1", []string{testSessionID, ""}); err == nil {
+			t.Errorf("%s: err = nil, want an error for an empty session id", profile)
+		}
+		if len(*calls) != 0 {
+			t.Errorf("%s: calls = %q, want none: an empty id would make pkill match every process", profile, *calls)
+		}
+	}
+}

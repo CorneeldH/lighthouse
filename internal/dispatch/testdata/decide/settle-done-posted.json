@@ -103,7 +103,8 @@
       "issue": 7,
       "run_id": 5,
       "outcome": "done",
-      "language": "nl"
+      "language": "nl",
+      "end": true
     }
   ]
 }

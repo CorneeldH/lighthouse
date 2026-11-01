@@ -57,8 +57,9 @@ session for one phase of an issue. Most likely nobody is watching.
   or red and starts `/lighthouse-fix-pr` when needed. This goes above every rule that tells you
   to wait for a green PR, also above "stop at green" in `lighthouse-fix-pr`.
 - Start no background work (`run_in_background`, Monitor, an alarm): claude stays alive in the
-  unit after your last answer, and whatever still runs out then can wake your session again
-  later. The controller reads that as a run that works again. Nobody else calls you back.
+  unit after your last answer until the controller ends it, and whatever still runs out then can
+  wake your session again. The controller reads that as a run that works again. Nobody else calls
+  you back.
 - End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask`
   (see above): it posts the block as `🤖 Handoff` on the issue. Stop after it, without a `/clear`
   suggestion or any further tool call.
