@@ -556,6 +556,9 @@ export function repoEntries(data, mode = "everything") {
         if (!SORTS[row.kind]) {
           throw new Error(`unknown kind: ${row.kind}`);
         }
+        if (!REPO_ACTS[row.act]) {
+          throw new Error(`unknown act: ${row.act}`);
+        }
         return {
           id: row.id,
           place: row.place || null,
@@ -642,7 +645,7 @@ export function renderRepo(root, data) {
   const stationBox = el("section", "repo-station");
   const stationList = el("ul");
   stationList.append(...station.rows.map(repoRow));
-  stationBox.append(el("h3", "", station.label), stationList, el("p", "repo-note", station.note));
+  stationBox.append(el("h2", "", station.label), stationList, el("p", "repo-note", station.note));
 
   const select = (mode) => {
     buttons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.mode === mode)));

@@ -328,3 +328,32 @@ def test_page_has_no_legend_or_panel_and_explains_below():
     for name in ["lib/", "scripts/", "headings.toml", "manifest.toml", "settings.json", "permissions.allow",
                  "host.toml", "--yes"]:
         assert name in notes, f"the text below the map does not name {name}"
+
+
+def notes_text() -> str:
+    html = (SITE / "repo.html").read_text(encoding="utf-8")
+    return " ".join(html.split('id="repo-notes"', 1)[1].split("</section>", 1)[0].split())
+
+
+def test_notes_say_only_the_first_init_proposes_host_toml():
+    """A second init refuses and --upgrade only notes a missing host.toml (internal/initcmd/host.go)."""
+    assert "The first <code>init</code> proposes" in notes_text()
+
+
+def test_notes_count_the_manifest_per_unit_not_per_file():
+    """manifest.toml has one sha256 per unit: a file, block, hook or permission."""
+    assert "per file" not in notes_text()
+    assert "per part" in notes_text()
+
+
+def test_entries_refuse_an_unknown_act():
+    data = mutated()
+    row(data, "headings")["act"] = "replaces"
+    assert refusal("everything", data) == "unknown act: replaces"
+
+
+def test_workstation_heading_is_beside_the_repo_not_under_it():
+    """The tree's title is an h2; the workstation box is apart from it, so an h2 too."""
+    text = (SITE / "map.js").read_text(encoding="utf-8")
+    body = text.split("export function renderRepo", 1)[1].split("\nfunction ", 1)[0]
+    assert 'el("h2", "", station.label)' in body

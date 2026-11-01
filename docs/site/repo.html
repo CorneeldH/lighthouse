@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your repo after init</title>
-<link rel="stylesheet" href="map.css?v=ffbe4c8c">
-<script type="module" src="repo.js?v=ffbe4c8c"></script>
+<link rel="stylesheet" href="map.css?v=ca84807a">
+<script type="module" src="repo.js?v=ca84807a"></script>
 </head>
 <body>
 <header class="page-head">
@@ -37,10 +37,10 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   <code>scripts/</code> holds the scripts that skills and the test gate run.
   <code>headings.toml</code> lists the headings that code and skills read as a contract, with one
   variant per language. <code>manifest.toml</code> records what <code>init</code> installed, with a
-  checksum per file.</p>
+  checksum per part it installed.</p>
   <p><strong><code>.claude/settings.json</code></strong> gets the hooks of lighthouse and its
   <code>permissions.allow</code> rules. The rest of the file is yours.</p>
-  <p><strong><code>host.toml</code></strong> holds the settings of this machine. <code>init</code>
+  <p><strong><code>host.toml</code></strong> holds the settings of this machine. The first <code>init</code>
   proposes one with the name of the machine and its Tailscale address, only when there is none yet
   and <code>tailscale ip</code> answers, and asks before it writes, unless you pass
   <code>--yes</code>. Commands such as <code>lighthouse serve</code>, <code>tick</code> and
