@@ -19,6 +19,7 @@
               "about": "The language of issues, PRs and commit messages: nl or en.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/lib/artefacts.py",
                 "pack/core/lib/evidence.py",
@@ -231,6 +232,7 @@
               "about": "The node id of the GitHub project board.",
               "example": "PVT_...",
               "readers": [
+                "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
@@ -260,6 +262,7 @@
               "about": "The id of the board's Status field.",
               "example": "PVTSSF_...",
               "readers": [
+                "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
@@ -280,6 +283,7 @@
               },
               "readers": [
                 "internal/cli/serve.go",
+                "internal/cli/triage.go",
                 "internal/dispatch/board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
@@ -473,6 +477,8 @@
               "about": "The prefix of area labels.",
               "example": "area:",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "internal/triage/prompt.go",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",
                 "pack/expo/skills/refresh-expo-lockfiles"
@@ -485,6 +491,8 @@
               "default": "blocked-external",
               "about": "The label for an issue blocked by something outside the repo.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "internal/triage/rules.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -496,6 +504,8 @@
               "default": "blocked-issue",
               "about": "The label for an issue blocked by another issue.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "internal/triage/rules.go",
                 "pack/core/scripts/unblock_dependents.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/route-issue",
@@ -511,6 +521,8 @@
               "about": "The prefix of location labels.",
               "example": "location:",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "internal/triage/prompt.go",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -522,6 +534,7 @@
               "default": "needs-decision",
               "about": "The label for an issue that waits for a decision.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -533,6 +546,7 @@
               "default": "needs-hands",
               "about": "The label for an issue that needs manual work.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -544,6 +558,7 @@
               "default": "needs-shaping",
               "about": "The label for an issue that still needs shaping.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -555,6 +570,7 @@
               "default": "needs-testing",
               "about": "The label for an issue that needs testing by a person.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
