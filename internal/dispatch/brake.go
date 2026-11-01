@@ -48,7 +48,7 @@ func (b *Brake) apply(ps []planned) []planned {
 			continue
 		}
 		passed++
-		if p.Kind == KindStart && !p.parked {
+		if !p.parked {
 			admitted++
 			if p.software {
 				admittedSoftware++
