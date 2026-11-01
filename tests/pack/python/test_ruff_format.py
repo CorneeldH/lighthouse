@@ -1,4 +1,4 @@
-"""The gate `ruff-format.sh` of `pack/python`: does it block what it must block, let
+"""The gate `ruff-format-check.sh` of `pack/python`: does it block what it must block, let
 the rest through, and say so when it could not check?
 
 The hook is bash and reads its input as JSON on stdin. These tests run it as a
@@ -21,14 +21,14 @@ from lighthouse_lib import bash_writes
 from tests.pack._testkit import install_pack, tool_bin
 from tests.pack.python.conftest import PY_HOOKS
 
-RUFF_HOOK = PY_HOOKS / "ruff-format.sh"
+RUFF_HOOK = PY_HOOKS / "ruff-format-check.sh"
 SKILL = (
     Path(__file__).resolve().parents[3]
-    / "pack/python/skills/python-writing/claude/SKILL.md"
+    / "pack/python/skills/python-standard/claude/SKILL.md"
 )
 CLEAN_PY = '"""Docstring."""\n\n\ndef f() -> int:\n    return 1\n'
 BARE_EXCEPT_PY = "def f():\n    try:\n        pass\n    except:\n        pass\n"
-UNCHECKED = "ruff-format: COULD NOT CHECK — "
+UNCHECKED = "ruff-format-check: COULD NOT CHECK — "
 
 
 def _run(
@@ -98,7 +98,7 @@ def test_ruff_finding_first_line(tmp_path):
     result = _run(_file(tmp_path, "bad.py", "import os,sys\n" + BARE_EXCEPT_PY), tmp_path)
     assert result.returncode == 2, result.stdout
     assert result.stdout == ""
-    assert result.stderr.startswith("ruff-format: "), result.stderr
+    assert result.stderr.startswith("ruff-format-check: "), result.stderr
     assert "COULD NOT CHECK" not in result.stderr.splitlines()[0]
     assert bash_writes.classify(2, result.stderr.encode()) == "finding"
 
@@ -147,17 +147,17 @@ def test_the_ruff_pin_has_exactly_one_source():
     file and has no version number in the script itself."""
     hook = RUFF_HOOK.read_text()
     assert ".ruff-version" in hook, "the hook does not read the pin from .ruff-version"
-    assert not re.search(r"ruff@\d", hook), "a ruff version hardcoded in ruff-format.sh"
+    assert not re.search(r"ruff@\d", hook), "a ruff version hardcoded in ruff-format-check.sh"
 
 
 def _hook_blocking_rules() -> str:
     match = re.search(r'^BLOCKING_RULES="([^"]+)"', RUFF_HOOK.read_text(), re.MULTILINE)
-    assert match, "BLOCKING_RULES not found in ruff-format.sh"
+    assert match, "BLOCKING_RULES not found in ruff-format-check.sh"
     return match.group(1)
 
 
 def test_skill_blocks_on_the_same_rules():
-    """The KPI row of `python-writing` measures the same axis as the gate."""
+    """The KPI row of `python-standard` measures the same axis as the gate."""
     assert f"--select {_hook_blocking_rules()} " in SKILL.read_text()
 
 
@@ -172,22 +172,22 @@ def test_registered_after_edit_and_write():
         for h in block["hooks"]
     ]
     assert [(h["command"], h["timeout"]) for h in entries] == [
-        ("${CLAUDE_PLUGIN_ROOT}/hooks/ruff-format.sh", 15)
+        ("${CLAUDE_PLUGIN_ROOT}/hooks/ruff-format-check.sh", 15)
     ]
 
 
 def test_bash_write_through_gate(tmp_path):
     """With core and python installed, a Bash write of a `.py` with `except:` is a
-    finding via `bash-write-gates post`, not `no python gate installed`."""
-    from tests.pack.test_bash_write_gates import _Session, context, heredoc
+    finding via `bash-write-check post`, not `no python check installed`."""
+    from tests.pack.test_bash_write_check import _Session, context, heredoc
 
     s = _Session(tmp_path, language_gates=False)
     install_pack("python", s.root)
     out = s.call(heredoc("bad.py", BARE_EXCEPT_PY))
     assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "== bad.py (ruff-format.sh) ==" in out.stderr
+    assert "== bad.py (ruff-format-check.sh) ==" in out.stderr
     assert "E722" in out.stderr
-    assert "no python gate installed" not in out.stderr + context(out)
+    assert "no python check installed" not in out.stderr + context(out)
 
 
 def test_ruff_unchecked_on_a_broken_config(tmp_path):

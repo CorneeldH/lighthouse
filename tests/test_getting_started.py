@@ -109,7 +109,7 @@ def test_config_example_loads(tmp_path):
         assert out.stdout.strip() == want
 
 
-CHAIN = ["/lighthouse-write-issue", "/lighthouse-start-issue", "/lighthouse-verify-pr"]
+CHAIN = ["/lighthouse-write-issue", "/lighthouse-start-issue", "/lighthouse-write-pr"]
 
 
 def test_first_issue_walks_the_chain_in_order():

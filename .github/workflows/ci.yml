@@ -1,7 +1,7 @@
 # CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
-# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`. A
-# `binary` job builds the SPA itself, embeds it in the Go binary and smoke-tests it, next to web
-# instead of after it.
+# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`, and
+# Python as a matrix of three parts of the pytest suite (tests/conftest.py). A `binary` job builds
+# the SPA itself, embeds it in the Go binary and smoke-tests it, next to web instead of after it.
 name: ci
 
 on:
@@ -54,6 +54,10 @@ jobs:
     if: needs.changes.outputs.python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,9 +66,13 @@ jobs:
       - run: uv sync --locked
       # `-n auto` (pytest-xdist): one worker per vCPU the runner has, 4 on ubuntu-latest for a
       # public repo. A fixed count would oversubscribe a smaller runner. Locally, a plain
-      # `uv run pytest -q` stays serial.
+      # `uv run pytest -q` stays serial. The suite is bound by cores (104 s on 4 vCPU, #151), so
+      # each matrix job runs one third: tests/conftest.py splits it on the crc32 of the test id.
       - run: uv run pytest -q -n auto
-      - run: ci/literal-grep.sh
+        env:
+          LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3
+      - if: matrix.shard == 1
+        run: ci/literal-grep.sh
 
   # Split per the measurements in #131 (issuecomment-6541734664, -6541786347): setup 13 s,
   # lint 30 s, builds 49 s (linux, windows, darwin), race compile 42 s, tests 34 s. `go` holds

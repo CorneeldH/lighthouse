@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"flag"
 	"os"
 	"path/filepath"
@@ -151,4 +152,62 @@ func TestGatherTrustsAnswerPermissions(t *testing.T) {
 	if strings.Contains(out.String(), `"body": "Links."`) {
 		t.Errorf("the comment of an admin is kept with answer_permissions = [\"read\"]:\n%s", out.String())
 	}
+}
+
+// The PRs of an issue's last branch join its item also after that run closed, so a merged PR
+// that does not close the issue stays in the snapshot.
+func TestGatherBranchOfClosedRun(t *testing.T) {
+	dir := repoDir(t, completeRepo)
+	env, db := tickFixture(t)
+	vars := map[string]string{"GH_TOKEN": fixtureToken}
+	env.Getenv = func(k string) string { return vars[k] }
+	srv := gatherForge(t)
+	srv.Branches["issue-7-z"] = []map[string]any{{"number": 41, "state": "MERGED", "isDraft": false,
+		"mergeable": "UNKNOWN", "headRefOid": "sha-41", "headRefName": "issue-7-z"}}
+	env.ForgeURL = srv.URL()
+
+	ctx := context.Background()
+	st, err := store.OpenShared(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	run, err := runs.Take(ctx, st.DB, runs.Claim{Repo: "o/r", Issue: 7, SessionID: "0b9a3c1e-0000-4000-8000-000000000007",
+		Mode: "start", Trigger: "handoff", TriggerKey: "start:7", Command: "/lighthouse-start-issue 7",
+		Branch: "issue-7-z", Now: t0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.Release(ctx, st.DB, run.ID, runs.Handoff, "", t0.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	if err := gather(ctx, env, dir, db, &out, &errOut); err != nil {
+		t.Fatalf("gather = %v\n%s", err, errOut.String())
+	}
+	var snap struct {
+		Items []struct {
+			Issue int `json:"issue"`
+			PRs   []struct {
+				Number int    `json:"number"`
+				State  string `json:"state"`
+			} `json:"prs"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &snap); err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range snap.Items {
+		if it.Issue == 7 {
+			if len(it.PRs) != 1 || it.PRs[0].Number != 41 || it.PRs[0].State != "MERGED" {
+				t.Errorf("issue 7 PRs = %+v, want merged PR 41 of the closed run's branch", it.PRs)
+			}
+			return
+		}
+	}
+	t.Errorf("no issue 7 in %s", out.String())
 }

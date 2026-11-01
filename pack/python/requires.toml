@@ -1,7 +1,7 @@
 # Tool -> the units in this package that need it. `lighthouse init` reports a
 # missing tool with these names; it does not stop on it.
-jq = ["ruff-format", "ty-check"]
-uv = ["ruff-format", "ty-check", "quality/ratchet.py", "commit-tests ([test_gate] command)", "gate_python"]
+jq = ["ruff-format-check", "ty-gate"]
+uv = ["ruff-format-check", "ty-gate", "quality/ratchet.py", "commit-test-gate ([test_gate] command)", "gate_python"]
 gh = ["quality/ratchet.py nightly"]
-python3 = ["ty-check", "python-writing", "gate_python"]
-tomllib = ["python-writing"]
+python3 = ["ty-gate", "python-standard", "gate_python"]
+tomllib = ["python-standard"]

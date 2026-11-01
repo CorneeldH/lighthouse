@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared shellcheck provisioning. Is *sourced*, not executed.
 #
-# Reason for existing: the shellcheck gate must never skip silently. A hook that
+# Reason for existing: the shell-lint-check hook must never skip silently. A hook that
 # does not find its tool and then does exit 0 reports "clean" while it has
 # looked at nothing. Therefore resolve_shellcheck() returns three
 # outcomes, not two: found (rc 0, path on stdout), or not usable

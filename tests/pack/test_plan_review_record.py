@@ -1698,8 +1698,8 @@ def test_data_dir_from_env(world, capsys, monkeypatch):
 
 def test_skill_dirs_are_lighthouse():
     assert rec.DEFAULT_SKILL_DIRS == {
-        "plan": ".claude/skills/lighthouse-plan-adversarial-review",
-        "spec": ".claude/skills/lighthouse-spec-adversarial-review",
+        "plan": ".claude/skills/lighthouse-review-plan",
+        "spec": ".claude/skills/lighthouse-review-spec",
     }
 
 

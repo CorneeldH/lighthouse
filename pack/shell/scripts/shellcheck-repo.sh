@@ -4,7 +4,7 @@
 # Without arguments it runs the *strict set*: the shell in `shell.strict_dirs`
 # from lighthouse.toml (default `.claude/hooks`), the shell that itself guards
 # gates. That set stands at zero findings at the lowest severity (style) - that is
-# KPI row 1 of the shell-gates skill.
+# KPI row 1 of the shell-standard skill.
 #
 # Exit codes, and this is the whole point of this script:
 #   0  checked, nothing found

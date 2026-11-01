@@ -17,6 +17,9 @@ type PR struct {
 	HeadRef   string `json:"head_ref"`
 	Checks    string `json:"checks"` // statusCheckRollup.state, "" without checks
 	Closes    bool   `json:"closes"` // in closedByPullRequestsReferences
+	URL       string `json:"url"`
+	// MergedAt is the zero time for a PR that is not merged.
+	MergedAt time.Time `json:"merged_at"`
 }
 
 // Blocker is an issue that blocks a board item.
@@ -42,7 +45,7 @@ type BoardItem struct {
 }
 
 // prFields are the pull request fields both queries read into a PR.
-const prFields = `number state isDraft mergeable headRefOid headRefName statusCheckRollup { state }`
+const prFields = `number state isDraft mergeable headRefOid headRefName mergedAt url statusCheckRollup { state }`
 
 // BoardQuery reads one page of 100 project items. Every nested connection asks pageInfo, so a
 // list longer than its first: n is an error instead of a silent cut. GitHub prices a page by
@@ -112,12 +115,14 @@ type pageInfo struct {
 }
 
 type prNode struct {
-	Number            int    `json:"number"`
-	State             string `json:"state"`
-	IsDraft           bool   `json:"isDraft"`
-	Mergeable         string `json:"mergeable"`
-	HeadRefOid        string `json:"headRefOid"`
-	HeadRefName       string `json:"headRefName"`
+	Number            int       `json:"number"`
+	State             string    `json:"state"`
+	IsDraft           bool      `json:"isDraft"`
+	Mergeable         string    `json:"mergeable"`
+	HeadRefOid        string    `json:"headRefOid"`
+	HeadRefName       string    `json:"headRefName"`
+	MergedAt          time.Time `json:"mergedAt"`
+	URL               string    `json:"url"`
 	StatusCheckRollup *struct {
 		State string `json:"state"`
 	} `json:"statusCheckRollup"`
@@ -125,7 +130,7 @@ type prNode struct {
 
 func (n prNode) pr(closes bool) PR {
 	p := PR{Number: n.Number, State: n.State, Draft: n.IsDraft, Mergeable: n.Mergeable,
-		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, Closes: closes}
+		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, Closes: closes, URL: n.URL, MergedAt: n.MergedAt}
 	if n.StatusCheckRollup != nil {
 		p.Checks = n.StatusCheckRollup.State
 	}

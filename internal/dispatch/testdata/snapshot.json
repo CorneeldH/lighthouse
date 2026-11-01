@@ -73,7 +73,9 @@
           "head_sha": "sha-old",
           "head_ref": "issue-9-y",
           "checks": "FAILURE",
-          "closes": false
+          "closes": false,
+          "url": "",
+          "merged_at": "0001-01-01T00:00:00Z"
         },
         {
           "number": 30,
@@ -83,7 +85,9 @@
           "head_sha": "sha-new",
           "head_ref": "issue-9-y",
           "checks": "SUCCESS",
-          "closes": true
+          "closes": true,
+          "url": "",
+          "merged_at": "0001-01-01T00:00:00Z"
         }
       ],
       "comments": [

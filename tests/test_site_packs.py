@@ -94,3 +94,15 @@ def test_hook_when_follows_its_events():
             pairs = frozenset(found[hook["name"]])
             assert pairs in WHEN, f"{hook['name']}: unknown set of event/matcher pairs {set(pairs)}"
             assert hook["when"] == WHEN[pairs], hook["name"]
+
+
+def test_standard_skills_follow_the_maps():
+    by_pack = {p["name"]: p for p in packs()}
+    for entry in packs():
+        assert set(entry["standard_skills"]) <= set(entry["skills"]), entry["name"]
+    for name in ["chain.json", "session.json"]:
+        for chip in load(name)["chips"]:
+            m = re.search(r"/blob/main/pack/([^/]+)/skills/([^/]+)", chip.get("source", ""))
+            if m:
+                standard = m.group(2) in by_pack[m.group(1)]["standard_skills"]
+                assert standard == (chip["trigger"] == "description"), chip["id"]

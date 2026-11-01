@@ -19,7 +19,7 @@ import (
 // ErrNotConfigured means the client has no repo or no token, so no request was made.
 var ErrNotConfigured = errors.New("forge not configured")
 
-// Issue is an open issue as listed by the forge. Pull requests are not issues here.
+// Issue is an issue as the forge returns it; OpenIssues lists only open ones. Pull requests are not issues here.
 type Issue struct {
 	Number   int
 	Title    string
@@ -82,6 +82,24 @@ func (c *Client) OpenIssues(ctx context.Context) ([]Issue, error) {
 		url = next
 	}
 	return out, nil
+}
+
+// Issue reads one issue by number, whether it is open or closed.
+func (c *Client) Issue(ctx context.Context, number int) (Issue, error) {
+	if err := c.configured(); err != nil {
+		return Issue{}, err
+	}
+	var it struct {
+		Number   int    `json:"number"`
+		Title    string `json:"title"`
+		HTMLURL  string `json:"html_url"`
+		Comments int    `json:"comments"`
+	}
+	url := fmt.Sprintf("%s/repos/%s/issues/%d", c.BaseURL, c.Repo, number)
+	if _, err := c.do(ctx, http.MethodGet, url, nil, &it); err != nil {
+		return Issue{}, err
+	}
+	return Issue{Number: it.Number, Title: it.Title, URL: it.HTMLURL, Comments: it.Comments}, nil
 }
 
 // Comments lists all comments of one issue, following every page.

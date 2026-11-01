@@ -147,3 +147,20 @@ func TestOwnLighthouseToml(t *testing.T) {
 		t.Errorf("reasons: %v", msg)
 	}
 }
+
+func TestLoadKindAndLanguage(t *testing.T) {
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\nkind = \"forgejo\"\ndefault_branch = \"trunk\"\n[project]\nlanguage = \"nl\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Kind != "forgejo" || r.Language != "nl" || r.DefaultBranch != "trunk" {
+		t.Errorf("kind/language/default branch: %q %q %q", r.Kind, r.Language, r.DefaultBranch)
+	}
+	d, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Kind != "github" || d.Language != "en" || d.DefaultBranch != "main" {
+		t.Errorf("defaults: %q %q %q", d.Kind, d.Language, d.DefaultBranch)
+	}
+}

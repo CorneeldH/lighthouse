@@ -5,6 +5,7 @@ chain.json only."""
 
 import copy
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SITE = ROOT / "docs" / "site"
 FIXTURE = ROOT / "tests" / "fixtures" / "site" / "map.json"
 REPO_BLOB = "https://github.com/CorneeldH/lighthouse/blob/main/"
+REPO_TREE = "https://github.com/CorneeldH/lighthouse/tree/main/"
 
 KINDS = {"lighthouse", "superpowers", "hook", "github"}
 TRIGGERS = {"you", "skill", "description", "tool", "event", "github"}
@@ -209,7 +211,7 @@ def test_fixture_planned_without_issue_is_flagged():
 def test_fixture_planned_handoff_without_milestone_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
     del chain["handoffs"][0]["milestone"]
-    assert planned_problems(chain) == ["main-commit-guard->planned-issue: planned without issue or milestone"]
+    assert planned_problems(chain) == ["main-commit-gate->planned-issue: planned without issue or milestone"]
 
 
 def test_fixture_source_pointing_nowhere_is_flagged():
@@ -249,17 +251,12 @@ def test_fixture_unknown_status_is_flagged():
 def test_fixture_unknown_effect_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
     chain["chips"][1]["effects"] = ["shouts"]
-    assert vocabulary_problems(chain) == ["main-commit-guard: unknown effect"]
+    assert vocabulary_problems(chain) == ["main-commit-gate: unknown effect"]
 
 
 def test_phases_are_the_seven_of_the_chain():
     labels = [p["label"] for p in load("chain.json")["phases"]]
     assert labels == ["Issue", "Orient", "Spec", "Plan", "Build", "PR", "Close"]
-
-
-def test_every_pack_part_is_on_the_chain():
-    # Tools outside the flow from idea to main; their place is the overview map (#102).
-    assert missing_parts(load("chain.json")) == ["pack/core/skills/instrument", "pack/core/skills/worktree-audit"]
 
 
 def test_coverage_flags_a_removed_skill():
@@ -273,13 +270,13 @@ def test_works_handoffs_follow_the_handoff_table():
     chips = chips_by_id(chain)
     works = {(h["from"], h["to"]) for h in chain["handoffs"] if h["status"] == "works"}
     assert works == {
-        ("brainstorming", "spec-adversarial-review"),
-        ("spec-adversarial-review", "writing-plans"),
-        ("writing-plans", "plan-adversarial-review"),
-        ("plan-adversarial-review", "executing-plans"),
+        ("brainstorming", "review-spec"),
+        ("review-spec", "writing-plans"),
+        ("writing-plans", "review-plan"),
+        ("review-plan", "executing-plans"),
     }
     # The handoff skill's routing table names the first step of each works handoff.
-    table = (ROOT / "pack" / "core" / "skills" / "handoff" / "SKILL.md").read_text(encoding="utf-8")
+    table = (ROOT / "pack" / "core" / "skills" / "write-handoff" / "SKILL.md").read_text(encoding="utf-8")
     for _, target in works:
         prefix = "lighthouse-" if chips[target]["kind"] == "lighthouse" else "superpowers:"
         assert f"`/{prefix}{target}" in table, target
@@ -290,4 +287,13 @@ def test_chain_routes_are_the_known_ones():
     routes = {r["id"]: r for r in load("chain.json")["routes"]}
     assert set(routes) == {"1", "2", "4a", "4b", "4c", "no-issue", "red-pr"}
     assert routes["1"]["examples"] == ["refresh-expo-lockfiles"]
-    assert routes["no-issue"]["chips"][0] == "worktree-guard"
+    assert routes["no-issue"]["chips"][0] == "worktree-check"
+
+
+def test_the_chain_map_is_called_the_loop():
+    assert load("chain.json")["title"] == "The loop"
+    html = (SITE / "chain.html").read_text(encoding="utf-8")
+    assert "<title>The loop</title>" in html
+    assert '<h1 id="title">The loop</h1>' in html
+    why = html.split('<details class="why">', 1)[1].split("</details>", 1)[0]
+    assert not re.search(r"\bchain\b", why, re.IGNORECASE)

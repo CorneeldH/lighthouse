@@ -1,4 +1,4 @@
-"""The golangci-lint pin of go-check.sh and the version CI installs must be one version."""
+"""The golangci-lint pin of go-lint-gate.sh and the version CI installs must be one version."""
 
 import re
 from pathlib import Path

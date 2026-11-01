@@ -5,7 +5,7 @@ Het is een korte run, geen daemon. Het ontwerp staat in
 [de dispatcher-spec](developer/planning/specs/2026-10-27-m2-dispatcher-design.md) (§2 *Configuratie*,
 §3 *De tick*).
 
-## Wat tick nu doet
+## Wat tick doet
 
 1. **Slot.** Neemt `${XDG_RUNTIME_DIR}/lighthouse/tick.lock`. Staat het slot nog vast, dan schrijft
    tick `lighthouse: previous tick still running` naar stderr en eindigt met exitcode 0. Zonder
@@ -31,37 +31,68 @@ Het is een korte run, geen daemon. Het ontwerp staat in
 5. **Controle per repo.** Leest het `lighthouse.toml` van elke repo in `[dispatch] repos`. Voldoet
    een repo niet, dan slaat tick hem luid over met `lighthouse: skip <pad>: <redenen>` op stderr en
    gaat door met de rest.
-6. **Precheck.** Per bedienbare repo leest tick het board en de open runs, en rekent daaruit een
-   vingerafdruk: per item in Controller of On hold de Status, Priority en de `updatedAt` van item en
-   issue, de voorgangers van een On hold-item, de PR's van een item met een open run, en de open runs
-   zelf. Een nieuwe comment telt mee via de `updatedAt` van het issue. Tick slaat de volledige gather
+6. **Precheck.** Per bedienbare repo leest tick het board, de open runs en de runhistorie, en rekent
+   daaruit een vingerafdruk: per item in Controller of On hold de Status, Priority en de `updatedAt`
+   van item en issue, de voorgangers van een On hold-item, de PR's van een item met een open run, en
+   de open runs zelf met de stand van hun forge-sessie (`working`, `waiting` of `done`; een sessie die
+   tick niet kan lezen telt als niet meetbaar, en een fout bij het lezen schrijft
+   `lighthouse: stand <repo>: <fout>` naar stderr). Een nieuwe comment telt mee via de `updatedAt` van het
+   issue; een sessie die klaar is via haar stand. Tick slaat de volledige gather
    alleen over als de vingerafdruk gelijk is aan de vorige, de vorige volledige gather jonger is dan
    30 minuten, en er sinds die gather geen tijdgrens viel. Tijdgrenzen zijn per open run
    `started_at + max_runtime` en `started_at + max_wait`, en het begin van het `night`-venster.
    Vingerafdruk en tijd van de laatste volledige gather staan in de tabel `tick_state` van de database.
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
    de items in Controller of On hold met hun velden, voorgangers en PR's (de PR's die het issue sluiten
-   plus de PR's op de branch van een open run, met hun checks), hun comments en de open runs. Alleen
+   plus de PR's op de branch van de laatste run van het issue, ook als die run al dicht is, met hun
+   checks), hun comments en de open runs. Zo blijft een gemergde PR die het issue niet sluit zichtbaar. Alleen
    comments van vertrouwde auteurs komen erin: hun rol op de repo (`role_name` van de
    collaborator-permissie) staat in `[dispatch] answer_permissions`. Een 🤖-comment van een andere
    auteur valt weg met een regel op stderr. Een 🚀 telt alleen als de login van het token hem zette;
    die login vraagt tick hoogstens één keer per tick op, en niet als geen repo aan de beurt is. Na de
-   gather bewaart tick de vingerafdruk en schrijft
+   comments leest tick de runhistorie (zie *De volgorde van een start*) en de skills in
+   `.claude/skills/` van de main checkout. Na de gather schrijft tick
    `lighthouse: gathered <repo>: <n> items (<reden>)` naar stderr; de reden is `first`, `changed`,
    `stale` of `boundary`. Een fout van GitHub (ook een GraphQL-fout in een antwoord met status 200)
    slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en bewaart niets, zodat de volgende
    tick opnieuw kijkt. Een issue met meer dan 10 voorgangers, of een voorganger met meer dan 5
    sluitende PR's, slaat de repo ook luid over: zo'n lijst leest tick niet half.
 
-Tick beslist nog niet en start nog geen run: decide en apply volgen in #114. De bouwstenen voor de
-forge-kant (workspace, agent starten, bezet, opruimen) staan in [workplace.md](workplace.md).
+8. **Decide.** Eén keer per tick, over alle gegatherde repo's samen, beslist tick wat er moet
+   gebeuren: een run sluiten, een issue teruggeven, een 🚀 herstellen, en per issue hoogstens één
+   start of hervatting. Decide is puur: het leest alleen de snapshots, de runhistorie, de standen en
+   de klok. De regels staan in de spec (§4, §7).
+9. **Apply.** Tick voert de acties in volgorde uit. Een mislukte actie houdt de rest niet tegen. Een
+   uitgestelde start (buiten het `night`-venster, een open voorganger, of een bezette werkplek)
+   schrijft `lighthouse: deferred <repo>#<n>: <reden>` naar stderr. Een repo met een mislukte actie
+   krijgt `lighthouse: apply <repo>: <fouten>`, en tick eindigt dan met exitcode 1. Wat apply
+   onderweg meldt (een claim die een ander proces al had, een onzekere launch) staat ook op stderr,
+   met `lighthouse: ` ervoor.
+
+**De vingerafdruk na apply.** Tick bewaart de vingerafdruk van de precheck pas na apply, en alleen
+voor een repo zonder uitgestelde en zonder mislukte actie (spec §3 stap 2). Zo probeert de volgende
+tick het opnieuw, ook als op het board niets veranderde: een start die op de nacht wacht, begint in
+de eerste tick binnen het venster.
+
+**De volgorde van een start.** Eerst bereidt apply de werkplek voor en kijkt of die bezet is, dan
+claimt het de run (`runs.Take`), dan post het de 🤖 Gestart of Hervat, dan de 🚀 op de comment die
+de start uitlokte, en als laatste start het de agent. Mislukt het schrijven van de run-instructies
+of de post, dan sluit apply de run als `start_failed` en start er niets. `lighthouse run` neemt
+geen `tick.lock`, maar volgt dezelfde volgorde: zijn rij staat in de database vóór zijn Gestart op
+het issue. Daarom leest tick de runhistorie pas ná de comments. Wie de Gestart ziet, ziet zo ook de
+rij, en tick geeft een verse run nooit terug als wees (`runstaat kwijt`). Claimen tick en `run`
+dezelfde trigger tegelijk, dan wint één `runs.Take`; de ander post niets.
+
+Run-instructies en dragers staan onder `${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. De
+forge-kant (workspace, agent starten, bezet, opruimen) staat in [workplace.md](workplace.md). Een
+Vraag aan de gebruiker vanuit de werkplek post `lighthouse ask`, zie [ask.md](ask.md).
 
 ## Exitcodes
 
 | Code | Wanneer |
 |---|---|
-| 0 | Alle repo's zijn bedienbaar en hun precheck en gather lukten, of een vorige tick draait nog |
-| 1 | Minstens één repo overgeslagen (niet bedienbaar, of de gather mislukte), of een fout (geen `XDG_RUNTIME_DIR`, geen token, ongeldige `host.toml`, database niet te openen) |
+| 0 | Alle repo's zijn bedienbaar en hun precheck, gather en acties lukten (een uitgestelde start telt als gelukt), of een vorige tick draait nog |
+| 1 | Minstens één repo overgeslagen (niet bedienbaar, of de gather mislukte), een mislukte actie in apply, of een fout (geen `XDG_RUNTIME_DIR`, geen token, ongeldige `host.toml`, database niet te openen) |
 
 ## `lighthouse gather`
 
@@ -77,6 +108,37 @@ bewaart geen stand in `tick_state`. De repo moet bedienbaar zijn (zie *Vereisten
 De uitvoer op een nep-GitHub is de fixture
 [`internal/dispatch/testdata/snapshot.json`](../internal/dispatch/testdata/snapshot.json): daarop
 wordt decide getest.
+
+## `lighthouse run`
+
+```bash
+lighthouse run <owner/name>#<issue> [--db <pad>]
+```
+
+Start of hervat één issue nu, zoals de volgende tick dat zou doen. De repo moet in
+`[dispatch] repos` staan (gezocht op de `repo` uit zijn `lighthouse.toml`) en bedienbaar zijn; anders
+stopt `run` met exitcode 1, bijvoorbeeld met `run: <owner/name> is not in [dispatch] repos of <pad>`.
+Hetzelfde token, dezelfde `host.toml` en dezelfde database als tick.
+
+`run` neemt geen `tick.lock` en draait geen precheck: het doet een volledige gather van de repo, dan
+decide, en voert alleen de acties van dat issue uit van de soort `close`, `defer`, `start` of `resume`.
+De `close` gaat mee, want een open run die in deze beslissing sluit (bijvoorbeeld op een 🤖 Vraag met
+een antwoord), zou de claim van de hervatting anders laten mislukken. Een Teruggegeven, een Klaar en
+een 🚀-herstel laat `run` aan de tick. `run` bewaart geen vingerafdruk in `tick_state`.
+
+Het eindigt met één regel op stderr, alle vier met exitcode 0:
+
+- `lighthouse: started <repo>#<n>`;
+- `lighthouse: deferred <repo>#<n>: <reden>` (buiten het `night`-venster, een open voorganger, of een
+  bezette werkplek);
+- `lighthouse: not accepted <repo>#<n>`: de werkplek weigerde de launch. De 🤖 Gestart blijft staan,
+  de run is gesloten als `start_failed`, en de volgende tick behandelt het als elke mislukte start
+  (een tweede poging, na twee mislukte pogingen een Teruggegeven);
+- `lighthouse: nothing to start for <repo>#<n>`, ook als de tick de claim van dezelfde trigger net
+  won: dan post `run` niets (zie *De volgorde van een start*).
+
+Een mislukte actie geeft `lighthouse: apply <repo>: <fouten>` en exitcode 1. Wat apply onderweg meldt,
+staat ervoor op stderr, zoals bij tick.
 
 ## `[dispatch]` in `host.toml`
 

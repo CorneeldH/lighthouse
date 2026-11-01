@@ -187,7 +187,7 @@ per AC that is not `demonstrably done` a line *what is missing*.
 | Verdict over all AC | Outcome |
 |---|---|
 | all criteria `demonstrably done` | steps 4–6 of entry A. For the DoD the merge counts as review; a DoD line that is not measurable from here goes into the close comment as such and does not block. `gh issue close` knows no file flag (only `-c, --comment string`): first post the close comment with the evidence lines through `gh issue comment <nr> --body-file <file>` (from the `mktemp -d` directory) and then close with `gh issue close <nr> --reason completed`. If the comment fails, do not close. Before that close comment, run *Clean up the worktree*; its result per branch goes along as evidence lines in the close comment. |
-| otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not shorten through `lighthouse-write-issue`, do not touch the board (the controller sets `In progress`), no question, no `/lighthouse-handoff`. End after the comment. |
+| otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not shorten through `lighthouse-write-issue`, do not touch the board (the controller sets `In progress`), no question, no `/lighthouse-write-handoff`. End after the comment. |
 
 **Reports.** Every report that step 0, 4 or 6 addresses to the user (e.g. "DoD not met → report",
 "report #m is free", "waits for merge") goes into the after-merge comment in B7: there is nobody
@@ -438,7 +438,7 @@ If a call fails, report "released issues not read" with that command, never "non
 ## Clean up the worktree — the last step
 
 After the close the worktree and the local branch of the issue otherwise stay. The verdict comes
-from `.lighthouse/scripts/worktree_audit.py`, the same ladder as `/lighthouse-worktree-audit`: no
+from `.lighthouse/scripts/worktree_audit.py`, the same ladder as `/lighthouse-audit-worktrees`: no
 second set of rules here.
 
 **When.**

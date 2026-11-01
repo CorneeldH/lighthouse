@@ -1,0 +1,297 @@
+{
+  "input": {
+    "now": "2026-10-31T12:00:00Z",
+    "night": "22:00-06:00",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "b/two",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 4,
+              "title": "Vier",
+              "state": "OPEN",
+              "item_id": "I4",
+              "status": "Controller",
+              "priority": "P0",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 41,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #4\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-4-werk\nanchor: 3f2a1bc\nnext: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-4-werk\nDoel: de keten afmaken.\nEerste stap: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\n```",
+                  "created_at": "2026-10-31T11:00:00Z",
+                  "url": "https://github.com/b/two/issues/4#issuecomment-41",
+                  "rocket": false
+                }
+              ]
+            },
+            {
+              "issue": 5,
+              "title": "Vijf",
+              "state": "OPEN",
+              "item_id": "I5",
+              "status": "Controller",
+              "priority": "P0",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 51,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #5\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-5-werk\nanchor: 3f2a1bc\nnext: /superpowers:executing-plans /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-5-werk\nDoel: de keten afmaken.\nEerste stap: /superpowers:executing-plans /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\n```",
+                  "created_at": "2026-10-31T10:00:00Z",
+                  "url": "https://github.com/b/two/issues/5#issuecomment-51",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [],
+        "stands": {}
+      },
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "a/one",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 2,
+              "title": "Twee",
+              "state": "OPEN",
+              "item_id": "I2",
+              "status": "Controller",
+              "priority": "P0",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 21,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #2\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-2-werk\nanchor: 3f2a1bc\nnext: /superpowers:brainstorming\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-2-werk\nDoel: de keten afmaken.\nEerste stap: /superpowers:brainstorming\n```",
+                  "created_at": "2026-10-31T09:30:00Z",
+                  "url": "https://github.com/a/one/issues/2#issuecomment-21",
+                  "rocket": false
+                }
+              ]
+            },
+            {
+              "issue": 3,
+              "title": "Drie",
+              "state": "OPEN",
+              "item_id": "I3",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 31,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #3\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-3-werk\nanchor: 3f2a1bc\nnext: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-3-werk\nDoel: de keten afmaken.\nEerste stap: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\n```",
+                  "created_at": "2026-10-31T09:00:00Z",
+                  "url": "https://github.com/a/one/issues/3#issuecomment-31",
+                  "rocket": false
+                }
+              ]
+            },
+            {
+              "issue": 6,
+              "title": "Zes",
+              "state": "OPEN",
+              "item_id": "I6",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 61,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #6\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-6-werk\nanchor: 3f2a1bc\nnext: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-6-werk\nDoel: de keten afmaken.\nEerste stap: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\n```",
+                  "created_at": "2026-10-31T08:00:00Z",
+                  "url": "https://github.com/a/one/issues/6#issuecomment-61",
+                  "rocket": false
+                }
+              ]
+            },
+            {
+              "issue": 8,
+              "title": "Acht",
+              "state": "OPEN",
+              "item_id": "I8",
+              "status": "Controller",
+              "priority": "",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 81,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #8\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-8-werk\nanchor: 3f2a1bc\nnext: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-8-werk\nDoel: de keten afmaken.\nEerste stap: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\n```",
+                  "created_at": "2026-10-31T07:00:00Z",
+                  "url": "https://github.com/a/one/issues/8#issuecomment-81",
+                  "rocket": false
+                }
+              ]
+            },
+            {
+              "issue": 9,
+              "title": "Negen",
+              "state": "OPEN",
+              "item_id": "I9",
+              "status": "Controller",
+              "priority": "P0",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 91,
+                  "author": "owner",
+                  "body": "🤖 Handoff\nissue: #9\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-9-werk\nanchor: 3f2a1bc\nnext: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\nwhen: night\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-9-werk\nDoel: de keten afmaken.\nEerste stap: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\n```",
+                  "created_at": "2026-10-31T06:00:00Z",
+                  "url": "https://github.com/a/one/issues/9#issuecomment-91",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [],
+        "stands": {}
+      }
+    ]
+  },
+  "want": [
+    {
+      "kind": "return",
+      "repo": "a/one",
+      "issue": 2,
+      "reason": "reason_needs_brainstorm",
+      "language": "nl"
+    },
+    {
+      "kind": "return",
+      "repo": "b/two",
+      "issue": 5,
+      "reason": "reason_interactive",
+      "language": "nl"
+    },
+    {
+      "kind": "defer",
+      "repo": "a/one",
+      "issue": 9,
+      "reason": "night",
+      "language": "nl"
+    },
+    {
+      "kind": "start",
+      "repo": "b/two",
+      "issue": 4,
+      "trigger": "handoff",
+      "trigger_key": "handoff:41",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md",
+      "prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #4, controller-run)",
+      "branch": "issue-4-werk",
+      "comment_id": 41,
+      "language": "nl"
+    },
+    {
+      "kind": "start",
+      "repo": "a/one",
+      "issue": 6,
+      "trigger": "handoff",
+      "trigger_key": "handoff:61",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md",
+      "prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #6, controller-run)",
+      "branch": "issue-6-werk",
+      "comment_id": 61,
+      "language": "nl"
+    },
+    {
+      "kind": "start",
+      "repo": "a/one",
+      "issue": 3,
+      "trigger": "handoff",
+      "trigger_key": "handoff:31",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md",
+      "prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #3, controller-run)",
+      "branch": "issue-3-werk",
+      "comment_id": 31,
+      "language": "nl"
+    },
+    {
+      "kind": "start",
+      "repo": "a/one",
+      "issue": 8,
+      "trigger": "handoff",
+      "trigger_key": "handoff:81",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md",
+      "prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #8, controller-run)",
+      "branch": "issue-8-werk",
+      "comment_id": 81,
+      "language": "nl"
+    }
+  ]
+}

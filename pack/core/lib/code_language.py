@@ -34,7 +34,7 @@ from lighthouse_lib.code_language_score import split_name
 MARKER = "lighthouse: allow-language"
 
 # Set by bash_writes.run_gate for every gate it runs: layer 2 is skipped there (decision 19).
-UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_GATES"
+UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"
 
 
 class Finding(NamedTuple):
@@ -670,7 +670,7 @@ def _line(path: Path, finding: Finding) -> str:
 def _notice(path: Path, doubts: list[Finding], reasons: str, *, prefix: str = "") -> str:
     """The notice of decision 11: layer 2 gave no verdict, so these doubts stay unchecked."""
     lines = [
-        f"code-language: {prefix}layer 2 did not answer ({reasons}); "
+        f"code-language-check: {prefix}layer 2 did not answer ({reasons}); "
         f"{len(doubts)} doubtful units not checked:"
     ]
     lines += [_line(path, doubt) for doubt in doubts]
@@ -682,7 +682,7 @@ def resolve(
 ) -> tuple[list[Finding], str | None]:
     """All findings (layer 1, plus each doubt layer 2 calls NOT-EN) and the notice, or None.
 
-    No doubts or no chain: layer 1 alone, silently (decision 12). Under bash-write-gates
+    No doubts or no chain: layer 1 alone, silently (decision 12). Under bash-write-check
     layer 2 does not run and the doubts go into a `NOTICE` (decision 19). Layer 2 only
     hears the doubts, never a layer 1 finding (decision 10).
     """
@@ -691,7 +691,7 @@ def resolve(
     if not doubts or inspection.chain is None:
         return found, None
     if under_gates:
-        reason = "layer 2 skipped under bash-write-gates"
+        reason = "layer 2 skipped under bash-write-check"
         return found, _notice(path, doubts, reason, prefix="NOTICE — ")
     reply = code_language_llm.ask(
         inspection.chain, [(d.kind, d.unit or d.text) for d in doubts], state_dir=state_dir
@@ -709,7 +709,7 @@ def resolve(
 
 
 def _report(path: Path, found: list[Finding]) -> str:
-    lines = [f"code-language: {path} is not English"]
+    lines = [f"code-language-check: {path} is not English"]
     for finding in found[:_MAX_LINES]:
         lines.append(f"{_line(path, finding)} [{finding.layer}]")
     if len(found) > _MAX_LINES:
@@ -748,7 +748,7 @@ def main(argv: list[str]) -> int:
             state_dir=code_language_llm.default_state_dir(),
         )
     except Exception as error:  # a crash must never read as findings (rc 1)
-        print(f"code-language: COULD NOT CHECK — {error}", file=sys.stderr)
+        print(f"code-language-check: COULD NOT CHECK — {error}", file=sys.stderr)
         return 2
     if found:
         print(_report(path, found))

@@ -319,3 +319,24 @@ func TestSessionKeys(t *testing.T) {
 		t.Errorf("SessionKeys = %v, want %v", got, want)
 	}
 }
+
+func TestTakeWritesBranch(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c := claim("owner/a", 7, "start:7")
+	c.Branch = "issue-7-x"
+	r, err := Take(ctx, db, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Release(ctx, db, r.ID, StartFailed, "boom", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	var branch string
+	if err := db.QueryRowContext(ctx, `SELECT branch FROM runs WHERE id = ?`, r.ID).Scan(&branch); err != nil {
+		t.Fatal(err)
+	}
+	if branch != "issue-7-x" {
+		t.Errorf("branch = %q, want issue-7-x", branch)
+	}
+}

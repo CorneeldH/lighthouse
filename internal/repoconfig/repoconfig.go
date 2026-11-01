@@ -3,6 +3,7 @@
 package repoconfig
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -14,6 +15,9 @@ import (
 type Repo struct {
 	Dir                  string
 	Slug                 string // [forge] repo
+	Kind                 string // [forge] kind, default "github"
+	DefaultBranch        string // [forge] default_branch, default "main"
+	Language             string // [project] language, default "en"
 	Board                *Board // nil when [forge.board] is absent
 	Controller           *Controller
 	UsageGuardController bool // [usage_guard] controller
@@ -47,9 +51,14 @@ type rawController struct {
 
 type rawFile struct {
 	Forge struct {
-		Repo  string `toml:"repo"`
-		Board *Board `toml:"board"`
+		Repo          string `toml:"repo"`
+		Kind          string `toml:"kind"`
+		DefaultBranch string `toml:"default_branch"`
+		Board         *Board `toml:"board"`
 	} `toml:"forge"`
+	Project struct {
+		Language string `toml:"language"`
+	} `toml:"project"`
 	Controller *rawController `toml:"controller"`
 	UsageGuard struct {
 		Controller bool `toml:"controller"`
@@ -69,6 +78,9 @@ func Load(dir string) (Repo, error) {
 	r := Repo{
 		Dir:                  dir,
 		Slug:                 raw.Forge.Repo,
+		Kind:                 cmp.Or(raw.Forge.Kind, "github"),
+		DefaultBranch:        cmp.Or(raw.Forge.DefaultBranch, "main"),
+		Language:             cmp.Or(raw.Project.Language, "en"),
 		Board:                raw.Forge.Board,
 		UsageGuardController: raw.UsageGuard.Controller,
 	}

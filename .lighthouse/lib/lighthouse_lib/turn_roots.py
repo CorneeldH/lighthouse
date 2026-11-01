@@ -1,7 +1,7 @@
 # lighthouse: core@dev
 """In which checkouts of this project did the turn write? (#54)
 
-The Stop hooks (`ty-check.sh`, `go-check.sh`) check a checkout. The `cwd` of the
+The Stop hooks (`ty-gate.sh`, `go-lint-gate.sh`) check a checkout. The `cwd` of the
 Stop payload is the shell's directory at that moment, not where the turn changed
 files. Measured in #54 (Claude Code 2.1.310, a headless session started in the
 main checkout, a Stop hook that logs its payload):

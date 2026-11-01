@@ -22,7 +22,7 @@ the controller (if present) starts the skill for it, or you say "process the rob
 
 Not here: closing the issue (`/lighthouse-close-issue`), a review of the diff on content (a review
 skill such as `caveman:caveman-review`), starting new work on an issue (`/lighthouse-start-issue`),
-opening a PR (`/lighthouse-verify-pr`), and the merge itself — that is a human decision.
+opening a PR (`/lighthouse-write-pr`), and the merge itself — that is a human decision.
 
 ## 1. Diagnosis in one block
 
@@ -139,11 +139,11 @@ gate failed.
 | Expo lockfiles | patch drift in the Expo lockfiles; pack/expo, only if present | `/lighthouse-refresh-expo-lockfiles` |
 | Any other step | lint, type check, scan, licence | the command of that step in `.github/workflows/`; a step that cannot run locally (a signature) the contributor fixes themselves |
 
-Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/bash-write-gates.sh`
+Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/bash-write-check.sh`
 (per edit, with the gates of the language packs that are installed),
-`.claude/hooks/lighthouse/commit-tests.sh` (after each commit, on its files) and a pre-push hook, if present
+`.claude/hooks/lighthouse/commit-test-gate.sh` (after each commit, on its files) and a pre-push hook, if present
 (`test -x "$(git rev-parse --git-path hooks/pre-push)"`).
-`.claude/hooks/lighthouse/main-commit-guard.sh` blocks a commit that lands on the default branch.
+`.claude/hooks/lighthouse/main-commit-gate.sh` blocks a commit that lands on the default branch.
 
 **With pack/python (if present): a `ty` zero without extras is no zero.** A module `ty` cannot
 resolve makes *every* symbol from it `Unknown`, and on `Unknown` no type error is possible. Always
@@ -239,6 +239,6 @@ Row 4 sees only a `Skill` call; a review done by hand in the same turn does not 
 - **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
   only on the branch must carry the full absolute worktree path: the IDE resolves chat links
   against the main checkout. In a `.md` file, relative instead;
-  `.claude/hooks/lighthouse/worktree-linkcheck.sh` blocks an absolute path there.
+  `.claude/hooks/lighthouse/md-link-check.sh` blocks an absolute path there.
 - **In auto mode the permission classifier refuses `git worktree unlock` and `git worktree remove`
   on a locked worktree.** Do not clean up then; report it.

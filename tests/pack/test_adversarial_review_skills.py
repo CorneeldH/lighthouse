@@ -1,5 +1,5 @@
-"""Contract test for the skills `lighthouse-spec-adversarial-review` and
-`lighthouse-plan-adversarial-review`.
+"""Contract test for the skills `lighthouse-review-spec` and
+`lighthouse-review-plan`.
 
 What lives only in skill text: the convergence rules (round 1 is a review, every later round only
 verifies the fixes), the budget fallback at exit 6, the paired round 1 (Codex and Opus, decided
@@ -24,7 +24,7 @@ import pytest
 from tests.pack._testkit import CORE
 
 SKILLS = CORE / "skills"
-NAMES = ("spec-adversarial-review", "plan-adversarial-review")
+NAMES = ("review-spec", "review-plan")
 VARIANTS = ("claude", "agents")
 
 
@@ -65,7 +65,7 @@ def test_review_verifies_instead_of_rereviewing(name, variant):
 
 @pytest.mark.parametrize("variant", BOTH)
 def test_plan_review_has_no_open_question_category(variant):
-    assert "open_vraag" not in skill("plan-adversarial-review", variant)
+    assert "open_vraag" not in skill("review-plan", variant)
 
 
 # --- budget --------------------------------------------------------------------------------------
@@ -94,7 +94,7 @@ def test_plan_failure_table_has_exit_6():
         "| Codex exit 6 (budget exhausted beforehand) | "
         "`mv <ATTEMPT>/round-1.fallback.json <ATTEMPT>/round-1.json` | "
         "`fallback --reviewer-model <reported model>` |"
-    ) in skill("plan-adversarial-review", "claude")
+    ) in skill("review-plan", "claude")
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -109,12 +109,12 @@ def test_no_skill_names_the_adversary(name, variant):
 
 
 RETRY_COMMANDS = {
-    "spec-adversarial-review": (
-        ".claude/skills/lighthouse-spec-adversarial-review/review.sh <spec> 1 "
+    "review-spec": (
+        ".claude/skills/lighthouse-review-spec/review.sh <spec> 1 "
         "<ATTEMPT>/round-1.json none [max] > <ATTEMPT>/round-1.retry.log 2>&1; echo \"exit=$?\""
     ),
-    "plan-adversarial-review": (
-        ".claude/skills/lighthouse-plan-adversarial-review/review.sh <plan> 1 "
+    "review-plan": (
+        ".claude/skills/lighthouse-review-plan/review.sh <plan> 1 "
         "<ATTEMPT>/round-1.json none [max] --context <spec path> [--context <spec path 2>] "
         "> <ATTEMPT>/round-1.retry.log 2>&1; echo \"exit=$?\""
     ),
@@ -135,13 +135,13 @@ def test_retry_is_inline_codex(name):
 
 def test_spec_skill_maps_the_plan_retry():
     phrase = "run the retry from step 5 once"
-    assert f"| none; {phrase} |" in skill("plan-adversarial-review", "claude")
-    spec = flat(skill("spec-adversarial-review", "claude"))
+    assert f"| none; {phrase} |" in skill("review-plan", "claude")
+    spec = flat(skill("review-spec", "claude"))
     assert f'Where that table says "{phrase}", that is the retry in step 2 here' in spec
 
 
 def test_retry_skips_exit_6():
-    text = flat(skill("plan-adversarial-review", "claude"))
+    text = flat(skill("review-plan", "claude"))
     assert "exit 6 is never retried" in text
 
 
@@ -150,8 +150,8 @@ def test_retry_skips_exit_6():
 
 @pytest.mark.parametrize("variant", BOTH)
 def test_spec_review_motivates_against_builder_check(variant):
-    text = skill("spec-adversarial-review", variant)
-    prompt = (SKILLS / "spec-adversarial-review" / "reviewer-prompt.md").read_text()
+    text = skill("review-spec", variant)
+    prompt = (SKILLS / "review-spec" / "reviewer-prompt.md").read_text()
     for stale in ("spec-document-reviewer-prompt", "self-review", "SKILL.md:119"):
         assert stale not in text
         assert stale not in prompt
@@ -160,7 +160,7 @@ def test_spec_review_motivates_against_builder_check(variant):
 
 
 def test_reviewer_prompt_skips_builder_freedom():
-    text = (SKILLS / "spec-adversarial-review" / "reviewer-prompt.md").read_text()
+    text = (SKILLS / "review-spec" / "reviewer-prompt.md").read_text()
     assert "explicitly leaves to the implementer" in text
     assert "a reasonable implementer could decide" in text
     assert "never to Ground truth or Gaps" in text
@@ -168,7 +168,7 @@ def test_reviewer_prompt_skips_builder_freedom():
 
 @pytest.mark.parametrize("variant", BOTH)
 def test_spec_gate_sorts_three_piles(variant):
-    text = skill("spec-adversarial-review", variant)
+    text = skill("review-spec", variant)
     for pile in ("**Already answered**", "**Small**", "**The user's**"):
         assert pile in text
     assert "*(own choice after spec review, <ID>)*" in text
@@ -177,7 +177,7 @@ def test_spec_gate_sorts_three_piles(variant):
 
 
 def test_claude_spec_gate_asks_through_the_controller_only_if_present():
-    s = flat(skill("spec-adversarial-review", "claude"))
+    s = flat(skill("review-spec", "claude"))
     assert "in a controller run (if present) a numbered list as the last text" in s
 
 
@@ -185,7 +185,7 @@ def test_claude_spec_gate_asks_through_the_controller_only_if_present():
 
 
 def test_claude_plan_skill_runs_the_pair_in_round_one():
-    text = skill("plan-adversarial-review", "claude")
+    text = skill("review-plan", "claude")
     for needle in (
         "python3 .lighthouse/scripts/review_pair.py blind",
         "python3 .lighthouse/scripts/review_pair.py merge",
@@ -199,7 +199,7 @@ def test_claude_plan_skill_runs_the_pair_in_round_one():
 
 
 def test_claude_spec_skill_records_and_pairs():
-    text = skill("spec-adversarial-review", "claude")
+    text = skill("review-spec", "claude")
     for needle in (
         "python3 .lighthouse/scripts/plan_review_record.py start --kind spec",
         "python3 .lighthouse/scripts/plan_review_record.py write",
@@ -218,9 +218,9 @@ def test_agents_skills_say_the_pair_is_claude_code_only(name):
 
 
 def test_agents_spec_skill_records_with_its_own_skill_dir():
-    text = skill("spec-adversarial-review", "agents")
+    text = skill("review-spec", "agents")
     assert "python3 .lighthouse/scripts/plan_review_record.py start --kind spec" in text
-    assert "--skill-dir .agents/skills/lighthouse-spec-adversarial-review" in text
+    assert "--skill-dir .agents/skills/lighthouse-review-spec" in text
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -264,7 +264,7 @@ def test_round_limit_records_and_carries_on(name, variant):
 @pytest.mark.parametrize("variant", BOTH)
 def test_spec_decision_in_round_3_does_not_stop_the_chain(variant):
     assert "in round 3 a `spec` decision does not stop the chain" in skill(
-        "plan-adversarial-review", variant
+        "review-plan", variant
     )
 
 
@@ -294,10 +294,10 @@ def test_controller_run_section_is_guarded(name):
 
 
 def test_plan_controller_run_section():
-    s = flat(section(skill("plan-adversarial-review", "claude"), "## Controller run"))
+    s = flat(section(skill("review-plan", "claude"), "## Controller run"))
     for phrase in (
         "*Adjust the spec*",
-        "`next: /lighthouse-spec-adversarial-review <absolute spec path>`",
+        "`next: /lighthouse-review-spec <absolute spec path>`",
         "*Carry on with the point open*",
         "The run never changes the spec materially by itself.",
         "*On to SDD with the open points*",
@@ -308,14 +308,14 @@ def test_plan_controller_run_section():
 
 
 def test_plan_round_1_carries_the_controller_wait_rule():
-    text = skill("plan-adversarial-review", "claude")
+    text = skill("review-plan", "claude")
     start = text.index("#### Round 1: Codex and Opus")
     round1 = text[start : text.index("### 6. Gate", start)]
     assert "**Controller run (if present):**" in round1
 
 
 def test_spec_controller_run_section():
-    s = flat(section(skill("spec-adversarial-review", "claude"), "## Controller run"))
+    s = flat(section(skill("review-spec", "claude"), "## Controller run"))
     for phrase in (
         "MINOR",
         "`next: /superpowers:writing-plans <absolute spec path>`",
@@ -333,7 +333,7 @@ def test_spec_controller_run_section():
 def test_spec_review_next_window_only_interactive():
     assert (
         "Interactively, `superpowers:writing-plans` runs only in the next window"
-        in flat(skill("spec-adversarial-review", "claude"))
+        in flat(skill("review-spec", "claude"))
     )
 
 
@@ -368,7 +368,7 @@ def test_claude_skills_name_the_always_on_host(name):
 
 @pytest.mark.parametrize("variant", BOTH)
 def test_spec_dir_from_config(variant):
-    text = skill("spec-adversarial-review", variant)
+    text = skill("review-spec", variant)
     assert "python3 .lighthouse/lib/lighthouse_lib/config.py paths.specs" in text
     assert "docs/developer/planning/specs/" not in text
 

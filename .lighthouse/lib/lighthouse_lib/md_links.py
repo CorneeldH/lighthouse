@@ -8,10 +8,10 @@ file relative, chat absolute").
 Moved/merged from two earlier, slightly different implementations:
 - the `_strip_code_fences`/`iter_relative_links` helpers in
   `tests/unit/test_docs_planning.py` (fence and inline-code logic);
-- the Python heredoc in `worktree-linkcheck.sh` (link regex, anchor/scheme/
+- the Python heredoc in `md-link-check.sh` (link regex, anchor/scheme/
   absolute filter, path resolution against `root`).
 
-Used by `worktree-linkcheck.sh` (task 5, through the CLI below) and by the
+Used by `md-link-check.sh` (task 5, through the CLI below) and by the
 docs link tests (task 6, through `strip_code`, `relative_links` and
 `absolute_links`), so that norm is no longer maintained separately in two
 places.

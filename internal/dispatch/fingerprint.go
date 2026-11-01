@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"slices"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 type fpItem struct {
@@ -36,21 +38,26 @@ type fpPR struct {
 }
 
 type fpRun struct {
-	ID        int64     `json:"id"`
-	Issue     int       `json:"issue"`
-	StartedAt time.Time `json:"started_at"`
+	ID        int64            `json:"id"`
+	Issue     int              `json:"issue"`
+	StartedAt time.Time        `json:"started_at"`
+	Stand     *workplace.Stand `json:"stand"` // nil: not measurable
 }
 
 // Fingerprint is the hex SHA-256 of what decides whether a tick has work: the board fields
 // of the items, the blockers of On hold items, the PRs of items with an open run, and the
-// open runs. Comments are left out: a new comment moves IssueUpdatedAt. Lists are sorted
+// open runs with the stand of their session. Comments are left out: a new comment moves IssueUpdatedAt. Lists are sorted
 // and an empty list hashes like a nil one, so order and nil-ness never change the result.
 func Fingerprint(pre Pre) string {
 	hasRun := map[int]bool{}
 	runsIn := make([]fpRun, 0, len(pre.OpenRuns))
 	for _, r := range pre.OpenRuns {
 		hasRun[r.Issue] = true
-		runsIn = append(runsIn, fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC()})
+		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC()}
+		if stand, ok := pre.Stands[r.ID]; ok {
+			f.Stand = &stand
+		}
+		runsIn = append(runsIn, f)
 	}
 	slices.SortFunc(runsIn, func(a, b fpRun) int { return cmp.Compare(a.ID, b.ID) })
 

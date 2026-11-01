@@ -231,7 +231,10 @@ workspace verwijderd, dan verdwijnt ook zijn achterblijver-record.
 
 ## Wie roept dit aan
 
-Dit werk levert alleen de bouwstenen. Decide en apply roepen `Busy`, `Launch`, `CheckOpen` en `Cleanup`
-aan in #114 en #115. De aanroeper toetst `Busy` vóór elke start, ook vóór een tweede poging. #115 levert de
-`activity` (laatste transcript-gebeurtenis per sessiekey), en #112 en #114 leveren `InController` en
-`MergedHead` van de kandidaat.
+Apply (`internal/dispatch`) roept `Busy` en `Launch` aan, voor `lighthouse tick` en `lighthouse run`
+(zie [tick.md](tick.md)). Apply toetst `Busy` vóór `runs.Take`, dus vóór elke start en ook vóór een
+tweede poging, en start de agent met `Launch` als laatste stap. De instructies van de run schrijft
+apply naar `<statemap>/runs/<sessie>/instructions.md` (bestand 0600, map 0700); de statemap is
+`${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. `CheckOpen` en `Cleanup` roept #115 nog aan.
+#115 levert de `activity` (laatste transcript-gebeurtenis per sessiekey), en #112 en #114 leveren
+`InController` en `MergedHead` van de kandidaat.

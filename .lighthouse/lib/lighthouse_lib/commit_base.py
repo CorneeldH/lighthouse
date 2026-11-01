@@ -1,5 +1,5 @@
 # lighthouse: core@dev
-"""`commit-tests` (#80): record the HEAD of each repo root before a commit, and
+"""`commit-test-gate` (#80): record the HEAD of each repo root before a commit, and
 find afterwards which roots moved and which files changed.
 
 `record` runs in the pre phase of the hook, `moved` and `changed_files` in the post
@@ -41,14 +41,14 @@ class Moved(NamedTuple):
 
 
 def state_dir(session_id: str, create: bool = True) -> Path:
-    """`${XDG_RUNTIME_DIR:-/tmp}/lighthouse-commit-tests/<session_id>/`, mode `0700`.
+    """`${XDG_RUNTIME_DIR:-/tmp}/lighthouse-commit-test-gate/<session_id>/`, mode `0700`.
 
     With `create=False` only the path: `moved` runs after every Bash call and must not
     fail on a state dir it cannot make.
     """
     if "/" in session_id or session_id == "..":
         raise ValueError(f"invalid session_id: {session_id!r}")
-    base = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "lighthouse-commit-tests"
+    base = Path(os.environ.get("XDG_RUNTIME_DIR") or "/tmp") / "lighthouse-commit-test-gate"
     path = base / session_id
     if create:
         path.mkdir(mode=0o700, parents=True, exist_ok=True)

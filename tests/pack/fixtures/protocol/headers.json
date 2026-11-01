@@ -126,5 +126,23 @@
     "name": "human",
     "body": "ja, doe 1a",
     "kind": null
+  },
+  {
+    "name": "session-footer",
+    "body": "🤖 Vraag\nreason: x\n\ntekst\n\n<sub>session 1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b · fase plan</sub>",
+    "kind": "question",
+    "session": "1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b"
+  },
+  {
+    "name": "sessie-legacy-footer",
+    "body": "🤖 Vraag\n\n<sub>sessie 1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b</sub>\n\nmeer\n\n<sub>sessie 2c3d4e5f-6071-4829-9bac-1d2e3f4a5b6c</sub>",
+    "kind": "question",
+    "session": "2c3d4e5f-6071-4829-9bac-1d2e3f4a5b6c"
+  },
+  {
+    "name": "no-footer",
+    "body": "🤖 Vraag\n\ntekst",
+    "kind": "question",
+    "session": ""
   }
 ]

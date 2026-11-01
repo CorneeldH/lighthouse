@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/gofmt.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/gofmt-check.sh",
             "timeout": 15
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-check.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-lint-gate.sh",
             "timeout": 120
           }
         ]

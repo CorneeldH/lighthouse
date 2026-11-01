@@ -73,7 +73,7 @@ func TestPrepareFiltersBoard(t *testing.T) {
 		node("I8", map[string]string{"F_status": "opt-unknown"}, issue("o/r", 8, nil)),
 		node("I9", nil, issue("o/r", 9, nil)), // no Status at all
 	}
-	pre, err := Prepare(context.Background(), c, testRepo, nil)
+	pre, err := Prepare(context.Background(), c, testRepo, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,8 @@ func TestPrepareMergesBranchPRs(t *testing.T) {
 		prNode(10, "issue-1-x", nil),
 	}}
 	open := []runs.OpenRun{{ID: 1, Issue: 1, Branch: "issue-1-x"}, {ID: 2, Issue: 6, Branch: ""}}
-	pre, err := Prepare(context.Background(), c, testRepo, open)
+	branches := map[int]string{1: "issue-1-x", 6: ""}
+	pre, err := Prepare(context.Background(), c, testRepo, open, branches)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,16 +143,37 @@ func TestPrepareMergesBranchPRs(t *testing.T) {
 		t.Errorf("issue 6 PRs = %+v, want none", byIssue[6])
 	}
 	if n := srv.Count("BranchPRs"); n != 1 {
-		t.Errorf("BranchPRs requests = %d, want 1 (issue 4 has no open run, issue 6 no branch)", n)
+		t.Errorf("BranchPRs requests = %d, want 1 (issue 4 has no run, issue 6 no branch)", n)
 	}
 	if !reflect.DeepEqual(pre.OpenRuns, open) {
 		t.Errorf("OpenRuns = %+v, want %+v", pre.OpenRuns, open)
 	}
 }
 
+// A merged Refs PR stays visible after its run closed: the branch comes from the history,
+// not from the open runs.
+func TestPrepareBranchOfClosedRun(t *testing.T) {
+	srv, c := client(t)
+	srv.BoardNodes = []map[string]any{
+		node("I1", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 1, nil)),
+	}
+	srv.Branches = map[string][]map[string]any{"issue-1-x": {prNode(11, "issue-1-x", nil)}}
+	pre, err := Prepare(context.Background(), c, testRepo, nil, map[int]string{1: "issue-1-x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pre.Items) != 1 {
+		t.Fatalf("Items = %+v, want issue 1", pre.Items)
+	}
+	want := []forge.PR{{Number: 11, State: "OPEN", Mergeable: "MERGEABLE", HeadSHA: "shaissue-1-x", HeadRef: "issue-1-x"}}
+	if !reflect.DeepEqual(pre.Items[0].PRs, want) {
+		t.Errorf("issue 1 PRs =\n%+v\nwant\n%+v", pre.Items[0].PRs, want)
+	}
+}
+
 func TestPrepareWithoutBoardFails(t *testing.T) {
 	_, c := client(t)
-	if _, err := Prepare(context.Background(), c, repoconfig.Repo{Slug: "o/r"}, nil); err == nil {
+	if _, err := Prepare(context.Background(), c, repoconfig.Repo{Slug: "o/r"}, nil, nil); err == nil {
 		t.Fatal("Prepare without [forge.board] gave no error")
 	}
 }

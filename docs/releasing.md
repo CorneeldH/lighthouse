@@ -57,7 +57,7 @@ The types:
 The file is `changelog.d/<branch>.md`, a `/` in the branch name becoming `-`. A second fragment
 on the same branch, or a name an open fragment already holds, takes `-2`, `-3` and so on:
 `<branch>-2.md`. The marker `changelog.d/.lighthouse` switches the convention on; it is never
-removed and never parsed. `/lighthouse-verify-pr` writes the fragment when the marker is there.
+removed and never parsed. `/lighthouse-write-pr` writes the fragment when the marker is there.
 
 CI checks every PR: it needs at least one fragment added by the PR (an edited or renamed old
 fragment does not count), and every fragment must parse. Windows line endings and a BOM are
