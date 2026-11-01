@@ -1474,7 +1474,7 @@ details.who summary:focus-visible {
   background: var(--panel);
 }
 
-.repo-room h2 {
+.repo-room h3 {
   margin: 0;
   font-size: 13px;
   color: var(--muted);
@@ -1502,13 +1502,15 @@ details.who summary:focus-visible {
   background: transparent;
 }
 
-.repo-area.owner-lighthouse {
+.repo-area.owner-lighthouse,
+.swatch.owner-lighthouse {
   background: var(--lighthouse);
   color: var(--lighthouse-fg);
   border-color: var(--lighthouse);
 }
 
-.repo-area.owner-shared {
+.repo-area.owner-shared,
+.swatch.owner-shared {
   background: repeating-linear-gradient(135deg, var(--lighthouse) 0 6px, var(--panel) 6px 12px);
   border-color: var(--lighthouse);
 }
@@ -1520,11 +1522,13 @@ details.who summary:focus-visible {
   border-radius: 3px;
 }
 
-.repo-area.owner-yours {
+.repo-area.owner-yours,
+.swatch.owner-yours {
   border: 2px solid var(--border);
 }
 
-.repo-area.touched {
+.repo-area.touched,
+.swatch.touched {
   outline: 2px dashed var(--lighthouse);
   outline-offset: 2px;
 }

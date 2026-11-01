@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your repo after init</title>
-<link rel="stylesheet" href="map.css?v=886d61cc">
-<script type="module" src="repo.js?v=886d61cc"></script>
+<link rel="stylesheet" href="map.css?v=081086c5">
+<script type="module" src="repo.js?v=081086c5"></script>
 </head>
 <body>
 <header class="page-head">
@@ -30,18 +30,18 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   <code>init</code> writes it, the packages it comes from and what reads it.</p>
   <p><strong>What <code>--upgrade</code> does.</strong> <code>lighthouse init --upgrade</code>
   replaces what is lighthouse's and adds missing keys to <code>lighthouse.toml</code>. If you
-  changed a part of lighthouse's locally, the whole run refuses and writes nothing until you pass
+  changed or deleted a file, block or hook of lighthouse's, the whole run refuses and writes nothing until you pass
   <code>--force</code>. The dashed line shows the zone it touches.</p>
 </details>
 
 <section class="legend" aria-label="Legend">
   <ul aria-label="Whose it is">
-    <li>lighthouse's: --upgrade replaces it</li>
-    <li>shared: only lighthouse's block or keys</li>
-    <li>yours: init leaves it alone</li>
+    <li><span class="swatch owner-lighthouse"></span>lighthouse's: --upgrade replaces it</li>
+    <li><span class="swatch owner-shared"></span>shared: only lighthouse's block or keys</li>
+    <li><span class="swatch owner-yours"></span>yours: init leaves it alone</li>
   </ul>
   <ul aria-label="The line">
-    <li>dashed line: the zone --upgrade touches</li>
+    <li><span class="swatch touched"></span>dashed line: the zone --upgrade touches</li>
   </ul>
   <ul aria-label="A refusal">
     <li>changed or deleted a file, block or hook of lighthouse's? --upgrade stops and writes nothing until you pass --force</li>

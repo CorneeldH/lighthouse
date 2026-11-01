@@ -316,3 +316,29 @@ def test_every_path_reader_links_tree_for_a_dir():
     links = run_map(f"{json.dumps(paths)}.map((p) => m.repoReader(p).href)")
     for path, href in zip(paths, links):
         assert href == (REPO_TREE if (ROOT / path).is_dir() else REPO_BLOB) + path
+
+
+LEGEND_LINES = [
+    "lighthouse's: --upgrade replaces it",
+    "shared: only lighthouse's block or keys",
+    "yours: init leaves it alone",
+    "dashed line: the zone --upgrade touches",
+    "changed or deleted a file, block or hook of lighthouse's? --upgrade stops and writes nothing until you pass --force",
+]
+SWATCHED = {LEGEND_LINES[0]: "owner-lighthouse", LEGEND_LINES[1]: "owner-shared",
+            LEGEND_LINES[2]: "owner-yours", LEGEND_LINES[3]: "touched"}
+
+
+def legend_items() -> list[str]:
+    html = (SITE / "repo.html").read_text(encoding="utf-8")
+    legend = html.split('<section class="legend"', 1)[1].split("</section>", 1)[0]
+    return [item.split("</li>")[0] for item in legend.split("<li>")[1:]]
+
+
+def test_legend_lines_are_verbatim_and_each_sample_has_its_swatch():
+    items = legend_items()
+    assert [i.split("</span>")[-1] for i in items] == LEGEND_LINES
+    for item in items[:4]:
+        text = item.split("</span>")[-1]
+        assert item.startswith(f'<span class="swatch {SWATCHED[text]}"></span>')
+    assert "swatch" not in items[4]

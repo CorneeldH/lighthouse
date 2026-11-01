@@ -40,7 +40,7 @@
       "owner": "shared",
       "about": "The instructions every coding agent in the repo reads: your own text plus one block per package.",
       "how": "Init adds one managed block per package and leaves the rest of the file as it is.",
-      "upgrade": "Replaces or removes only lighthouse's blocks; your text stays. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces or removes only lighthouse's blocks; your text stays. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core",
         "go",
@@ -95,7 +95,7 @@
       "owner": "lighthouse",
       "about": "Scripts that Claude Code runs around tool calls, prompts and stops, such as the commit gate.",
       "how": "Whole files, copied from the hooks of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core",
         "go",
@@ -115,7 +115,7 @@
       "owner": "lighthouse",
       "about": "The lighthouse skills Claude Code can run, one folder per skill.",
       "how": "Whole files, copied from the skills of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core",
         "expo",
@@ -136,7 +136,7 @@
       "owner": "lighthouse",
       "about": "The same skills for Codex and OpenCode.",
       "how": "Whole files, copied from the skills of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core",
         "expo",
@@ -158,7 +158,7 @@
       "owner": "lighthouse",
       "about": "The lighthouse subagents Claude Code can start.",
       "how": "Whole files, copied from the agents of the core package.",
-      "upgrade": "Replaces them and removes files the package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces them and removes files the package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core"
       ],
@@ -175,7 +175,7 @@
       "owner": "shared",
       "about": "Claude Code's settings: lighthouse registers its hooks and permissions here next to yours.",
       "how": "Init merges lighthouse's hook registrations and permissions.allow rules into the file; everything else is yours.",
-      "upgrade": "Replaces only lighthouse's hooks and rules; the rest of the file stays. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces only lighthouse's hooks and rules; the rest of the file stays. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core",
         "go",
@@ -195,12 +195,12 @@
       "owner": "lighthouse",
       "about": "The shared Python code that lighthouse's skills and hooks import.",
       "how": "Whole files, copied from the lib of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core"
       ],
       "readers": [
-        "pack/core/lib/config.py"
+        "pack/core/hooks"
       ],
       "more": "system.html#config"
     },
@@ -212,7 +212,7 @@
       "owner": "lighthouse",
       "about": "The helper scripts that lighthouse's skills run.",
       "how": "Whole files, copied from the scripts of each package.",
-      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces them and removes files a package no longer ships. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core",
         "go",
@@ -233,7 +233,7 @@
       "owner": "lighthouse",
       "about": "The table of headings that issues and pull requests must use, per language.",
       "how": "One whole file, copied from the core package.",
-      "upgrade": "Replaces it. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces it. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core"
       ],
@@ -265,7 +265,7 @@
       "owner": "lighthouse",
       "about": "The pull request template GitHub offers on every new pull request.",
       "how": "One whole file, copied from the core package.",
-      "upgrade": "Replaces it. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces it. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core"
       ],
@@ -283,7 +283,7 @@
       "owner": "lighthouse",
       "about": "The GitHub Actions workflows of lighthouse.",
       "how": "Whole files, with the @@key@@ placeholders filled from lighthouse.toml. A workflow is installed only when every key it needs is set; otherwise init reports it and skips it.",
-      "upgrade": "Replaces a workflow when every key is set; when one is missing, the installed workflow stays as it is. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force.",
+      "upgrade": "Replaces a workflow when every key is set; when one is missing, the installed workflow stays as it is. If you changed or deleted a part of lighthouse's, --upgrade stops and writes nothing until you pass --force, which overwrites your change.",
       "packs": [
         "core"
       ],
@@ -298,7 +298,7 @@
       "room": "workstation",
       "owner": "yours",
       "about": "Settings of this workstation, such as its Tailscale address, for lighthouse usage and serve.",
-      "how": "Written by init only, only when Tailscale identifies the host, and after its own question.",
+      "how": "Written by init only, only when Tailscale identifies the host; it asks first, unless you pass --yes.",
       "upgrade": "Only reports a note when the file is missing.",
       "packs": [],
       "readers": [

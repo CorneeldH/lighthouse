@@ -566,7 +566,7 @@ export function renderRepo(root, data, detail) {
     for (const reader of area.readers) {
       const row = el("li");
       if (reader.href) {
-        const link = el("a", "reference-link", reader.name);
+        const link = el("a", "reference-link kind-lighthouse", reader.name);
         link.href = reader.href;
         row.append(link);
       } else {
@@ -587,7 +587,7 @@ export function renderRepo(root, data, detail) {
   const roomNode = (room) => {
     const section = el("section", "repo-room");
     section.dataset.room = room.id;
-    section.append(el("h2", "", room.label));
+    section.append(el("h3", "", room.label));
     if (room.zones) {
       section.dataset.zones = room.zones.join(" ");
       lit.push(section);
@@ -597,6 +597,7 @@ export function renderRepo(root, data, detail) {
       button.type = "button";
       button.dataset.zones = area.zones.join(" ");
       button.append(el("code", "", area.label));
+      button.append(el("span", "sr-only", `, ${area.ownerLabel}`));
       button.addEventListener("click", () => show(button, room, area));
       lit.push(button);
       section.append(button);
