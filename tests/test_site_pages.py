@@ -88,7 +88,7 @@ def test_site_links_resolve():
             assert target.is_file(), f"{path.name}: {link} points nowhere"
 
 
-MAP_PAGES = ["chain.html", "session.html", "system.html", "reference.html", "config.html"]
+MAP_PAGES = ["loop.html", "session.html", "system.html", "reference.html", "config.html"]
 
 
 @pytest.mark.parametrize("page", MAP_PAGES)
@@ -120,7 +120,7 @@ def test_page_lang_is_english():
 
 def test_index_lists_the_six_maps():
     links = relative_links(SITE / "index.html")
-    assert "chain.html" in links
+    assert "loop.html" in links
     assert "session.html" in links
     assert "system.html" in links
     assert "config.html" in links
@@ -144,8 +144,8 @@ def test_map_pages_link_back_to_index(page):
 def test_guide_links_to_the_maps():
     text = GUIDE.read_text(encoding="utf-8")
     section = text.split("## Your first issue", 1)[1].split("\n## ", 1)[0]
-    assert "](site/chain.html)" in section
-    assert "[The loop](https://corneeldh.github.io/lighthouse/chain.html)" in section
+    assert "](site/loop.html)" in section
+    assert "[The loop](https://corneeldh.github.io/lighthouse/loop.html)" in section
     assert "](site/session.html)" in section
     assert SERVE_COMMAND in section
 

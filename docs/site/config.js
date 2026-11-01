@@ -1,6 +1,6 @@
 // The configuration page: the key map from data/config.json.
 
-import { fillLegend, initTheme, loadJson, renderConfig } from "./map.js?v=de831df2";
+import { fillLegend, initTheme, loadJson, renderConfig } from "./map.js?v=6e674421";
 
 initTheme(document.getElementById("theme-toggle"));
 fillLegend(document.querySelector("[data-sorts]"));

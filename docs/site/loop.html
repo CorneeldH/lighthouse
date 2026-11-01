@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The loop</title>
+<link rel="stylesheet" href="map.css?v=6e674421">
+<script type="module" src="loop.js?v=6e674421"></script>
+</head>
+<body>
+<header class="page-head">
+  <div>
+    <h1 id="title">The loop</h1>
+    <p id="subtitle" class="subtitle">From an idea to a closed issue, over several sessions, and what joins in at each step.</p>
+  </div>
+  <a class="back-link" href="index.html">All maps</a>
+  <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
+</header>
+
+<p id="serve-hint" class="serve-hint">This map reads its data with <code>fetch</code>, which a
+browser blocks for a page opened straight from disk. From the root of the repository, run
+<code>python3 -m http.server --directory docs/site</code> and open
+<code>http://localhost:8000/loop.html</code>.</p>
+
+<details class="why">
+  <summary>Wait, but why?</summary>
+  <p><strong>The loop is the connections.</strong> Each skill does one job well on its own. This
+  map shows what joins them: which step hands over to which, where a fresh session takes over,
+  and which hooks check the work on the way.</p>
+  <p><strong>Not every job takes the whole road.</strong> There are several routes through the
+  loop. A small job skips the spec and the plan, a bug starts with debugging, and a known recipe
+  runs one skill. <code>route-issue</code> picks the route, so a job pays only for the steps it
+  needs.</p>
+  <p><strong>Handoffs keep each phase clean.</strong> A handoff ends one session and starts the
+  next with only what it needs: the issue, the spec or the plan. Long work does not drag its whole
+  history along.</p>
+  <p class="aside">Why lighthouse works this way at all: see <a href="index.html#why">the
+  overview</a>.</p>
+</details>
+
+<section class="legend" aria-label="Legend">
+  <ul aria-label="Who provides it">
+    <li><span class="swatch kind-superpowers"></span>Superpowers</li>
+    <li><span class="swatch kind-lighthouse"></span>lighthouse skill</li>
+    <li><span class="swatch kind-hook"></span>hook</li>
+    <li><span class="swatch kind-github"></span>GitHub</li>
+  </ul>
+  <ul aria-label="What it is" data-sorts="workflow-skill standard-skill hook github program you"></ul>
+  <ul aria-label="Handoffs">
+    <li><span class="handoff status-works">↻ handoff</span> a fresh session takes over</li>
+  </ul>
+</section>
+
+<div id="chain-map"></div>
+
+<aside id="detail" class="detail" aria-label="Details"></aside>
+
+<section id="packs" class="cards">
+  <h2>Packs: what <code>init</code> adds, and when</h2>
+  <p class="subtitle">Core always comes along. <code>init</code> proposes a language pack when it
+  recognises your repository; you say yes or no.</p>
+  <div id="pack-grid" class="card-grid"></div>
+</section>
+</body>
+</html>
