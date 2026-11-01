@@ -193,6 +193,8 @@ def test_roborev_step_carries_the_contract():
         "No issue",
         "git ls-remote --exit-code origin <branch>",
         "git push origin HEAD",
+        "--range <range>",
+        "Any other non-zero exit",
     ):
         assert needle in s, needle
     assert "--comment" not in s and "run_in_background" not in s

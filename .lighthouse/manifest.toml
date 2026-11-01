@@ -176,7 +176,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "1880bab1297eb019e364193657e5f8c498bff82aacb98da106c77544713e307e"
+sha256 = "505714b83e9cbd7a15c05ac253004ae62910abc3144b3f2c766e0cb72551ee67"
 
 [[unit]]
 kind = "file"
@@ -639,7 +639,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "1880bab1297eb019e364193657e5f8c498bff82aacb98da106c77544713e307e"
+sha256 = "505714b83e9cbd7a15c05ac253004ae62910abc3144b3f2c766e0cb72551ee67"
 
 [[unit]]
 kind = "file"
@@ -905,7 +905,7 @@ kind = "file"
 path = ".lighthouse/scripts/roborev_gate.py"
 package = "core"
 version = "dev"
-sha256 = "8fe0165b7949276e5bf26d7069a7297936c227fa55ed5cbe9ef5de4e19cd80fa"
+sha256 = "e3ad5a42c5f2b5f116dd0a1f246841bca41eec356e7d40c217c7ea09ef54e6ef"
 
 [[unit]]
 kind = "file"

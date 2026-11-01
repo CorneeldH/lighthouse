@@ -27,8 +27,10 @@ committed by accident. The file stem is the branch with `/` turned into `-`.
 
 State json has two forms, both read by `read_state`:
 `{"range", "uitkomst": "done", "sha", "bevindingen": [...]}` and
-`{"range", "uitkomst": "skip", "reden"}`. The Dutch keys and reasons are literals: the
-reasons end up in the PR body.
+`{"range", "uitkomst": "skip", "reden"}`. `range` is `<base>..<head>`: the range `gate`
+printed with verdict `run` when the skill passes it to `record --range`, else the range at
+the time of writing. The Dutch keys and reasons are literals: the reasons end up in the PR
+body.
 
 The size rule is that of paia's `Size` step: added plus removed lines of
 `git diff --numstat --no-renames <base> HEAD`, without binary files, without `docs/`,
@@ -58,6 +60,7 @@ NON_CODE_SUFFIXES = (
     ".md", ".rst", ".txt", ".toml", ".yaml", ".yml", ".json", ".lock", ".csv", ".ini", ".cfg", ".cff",
 )  # fmt: skip
 CODEX_USAGE = pathlib.Path(__file__).resolve().parent / "codex_usage.py"
+RANGE = re.compile(r"[0-9a-f]{7,64}\.\.[0-9a-f]{7,64}")
 
 
 class GateError(Exception):
@@ -330,23 +333,27 @@ def record(
     decisions: list[dict] | None = None,
     out: pathlib.Path | None = None,
     raw: pathlib.Path | None = None,
+    range_: str | None = None,
 ) -> pathlib.Path:
     """Write the state file: a skip with its reason, or done with one decision per finding.
 
     The decisions are checked one to one against the findings of a raw review: `raw` when
     given (fix-pr passes the CI comment), else the branch's local `<stem>.md`, but only
-    without `out`: a record elsewhere is not about the local review.
+    without `out`: a record elsewhere is not about the local review. `range_` is the reviewed
+    range `<base>..<head>` as `gate` printed it; without it the state holds `<base>..HEAD`
+    of now, which after fix commits is no longer the reviewed range.
     """
     if (skip is None) == (sha is None):
         raise ValueError("give either skip or sha")
+    if range_ is not None and not RANGE.fullmatch(range_):
+        raise ValueError(f"--range must be <base>..<head> as gate printed it, not {range_!r}")
     state, local = _paths(root)
     target = out or state
     if raw is not None and not raw.is_file():
         raise ValueError(f"{raw}: no such raw review")
     if raw is None and out is None:
         raw = local
-    head = _git(root, "rev-parse", "HEAD")
-    data: dict = {"range": f"{_base(root)}..{head}"}
+    data: dict = {"range": range_ or f"{_base(root)}..{_git(root, 'rev-parse', 'HEAD')}"}
     if skip is not None:
         data.update({"uitkomst": "skip", "reden": skip})
     else:
@@ -389,6 +396,7 @@ def _run(argv: list[str]) -> str:
     rec.add_argument("--decisions")
     rec.add_argument("--out")
     rec.add_argument("--raw")
+    rec.add_argument("--range", dest="range_")
     args = parser.parse_args(argv)
     root = pathlib.Path(_git(pathlib.Path.cwd(), "rev-parse", "--show-toplevel"))
     if args.command == "gate":
@@ -420,7 +428,7 @@ def _run(argv: list[str]) -> str:
             raise ValueError(f"{args.decisions}: not a JSON list")
     return str(record(root, skip=args.skip, sha=args.done, decisions=decisions,
                       out=pathlib.Path(args.out) if args.out else None,
-                      raw=pathlib.Path(args.raw) if args.raw else None))
+                      raw=pathlib.Path(args.raw) if args.raw else None, range_=args.range_))
 
 
 def main(argv: list[str] | None = None) -> int:

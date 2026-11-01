@@ -47,7 +47,9 @@ The session that did the work reviews it before `gh pr create`, so CI runs once,
 the findings are already processed. This step also runs with `No issue:`, where V1–V3 are
 skipped. One command per step, in this order. Every command here runs outside the sandbox
 (`dangerouslyDisableSandbox: true`): the gate reads the Codex budget, the review needs the
-network.
+network. Any other non-zero exit of `roborev_gate.py` than exit 3 of `gate` (step 0) and exit 2
+of `record` (step 3), such as `gate` exit 1 or a failing `classify`, `fixed` or `record`: report
+it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
 0. **Gate.**
 
@@ -104,11 +106,15 @@ network.
    Write the decisions to a JSON file in the scratchpad or `$TMPDIR`: a list with one object per
    finding, keys `path`, `line`, `severity` (as `classify` printed them), `uitkomst` (`fixed`,
    `refuted` or `left`), `commit` (the fix commit, else `null`) and `reden` (the reason, `null`
-   with `fixed`). Record them, with `<sha>` the `sha` of `classify`:
+   with `fixed`). Record them, with `<sha>` the `sha` of `classify` and `<range>` the `range`
+   that `gate` printed at step 0, the reviewed range (the fix commits came after it):
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <file>
+   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <file> --range <range>
    ```
+
+   After a `classify` verdict at step 0 (a restart, no review in this run) there is no `range`:
+   leave out `--range`.
 
    Exit 2: the decisions do not match the findings one to one, or one is inconsistent; the
    message says which. Fix the file and record again. No second review, also when a fix changed

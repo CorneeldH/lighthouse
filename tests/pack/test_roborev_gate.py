@@ -430,6 +430,23 @@ def test_record_done_then_gate_says_done(repo):
     assert (gated["verdict"], gated["sha"]) == ("done", "bf1eb24")
 
 
+def test_record_done_keeps_the_reviewed_range_after_fix_commits(repo):
+    reviewed_head = _git(repo, "rev-parse", "HEAD")
+    base = _git(repo, "rev-parse", "origin/main")
+    reviewed = rg.gate(repo, lambda: CODEX_OK)["range"]
+    _write_raw(repo, FIX("review-complete.md"))
+    _fix_commit(repo, "a.py", "fix: a\n\nroborev: scripts/forge_drager.py:93 (medium)")
+    out = rg.record(repo, sha="bf1eb24", decisions=_decisions(*COMPLETE_DECISIONS), range_=reviewed)
+    assert json.loads(out.read_text())["range"] == f"{base}..{reviewed_head}"
+
+
+@pytest.mark.parametrize("bad", ["", "abc", "abc..", "..abc", "abc...def", "--all..abc", "abc..def ghi"])
+def test_record_refuses_a_malformed_range(repo, bad):
+    with pytest.raises(ValueError):
+        rg.record(repo, sha="s", decisions=_decisions(COMPLETE_DECISIONS[0]), range_=bad)
+    assert not (rg.state_dir(repo) / "feat.json").exists()
+
+
 def test_record_without_raw_accepts_decisions_unchecked(repo):
     out = rg.record(repo, sha="s", decisions=_decisions(COMPLETE_DECISIONS[0]))
     assert json.loads(out.read_text())["uitkomst"] == "done"
@@ -541,6 +558,15 @@ def test_cli_record_done_and_body_line(repo, tmp_path):
     decisions.write_text(json.dumps(_decisions(*COMPLETE_DECISIONS)))
     assert _cli(repo, "record", "--done", "bf1eb24", "--decisions", str(decisions)).returncode == 0
     assert _cli(repo, "body-line").stdout.strip() == "<!-- roborev-lokaal: bf1eb24 -->"
+
+
+def test_cli_record_done_stores_the_given_range(repo, tmp_path):
+    decisions = tmp_path / "d.json"
+    decisions.write_text(json.dumps(_decisions(COMPLETE_DECISIONS[0])))
+    args = ("record", "--done", "s", "--decisions", str(decisions), "--range")
+    assert _cli(repo, *args, "1111111..2222222").returncode == 0
+    assert json.loads((rg.state_dir(repo) / "feat.json").read_text())["range"] == "1111111..2222222"
+    assert _cli(repo, *args, "HEAD").returncode == 2
 
 
 def test_cli_record_refusal_exits_2(repo, tmp_path):
