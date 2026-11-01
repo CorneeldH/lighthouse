@@ -476,6 +476,34 @@ func TestCleanupLookupFails(t *testing.T) {
 	}
 }
 
+// lighthouse run takes no tick.lock: a run claimed while Cleanup measures, of the issue or on
+// the same workspace, keeps the workspace.
+func TestCleanupRunClaimedDuringChecks(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		issue int
+	}{{"same issue", 7}, {"other issue on the workspace", 8}} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := openLeftoverDB(t)
+			w := &fakeWP{}
+			clean := cleanRunner()
+			run := func(ctx context.Context, d time.Duration, name string, args ...string) (string, int, error) {
+				if strings.Contains(strings.Join(args, " "), "rev-list") {
+					r, _ := takeRun(t, db, tc.issue, lcNow)
+					if err := runs.SetWorkplace(ctx, db, r.ID, "w1", "issue-7"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return clean(ctx, d, name, args...)
+			}
+			removed, err := Cleanup(context.Background(), db, w, run, cand(7), lcNow)
+			if err != nil || removed || w.removes != 0 {
+				t.Fatalf("Cleanup = %v, %v, removes %d; want the workspace kept", removed, err, w.removes)
+			}
+		})
+	}
+}
+
 func TestCleanupInControllerUntouched(t *testing.T) {
 	db := openLeftoverDB(t)
 	w := &fakeWP{}

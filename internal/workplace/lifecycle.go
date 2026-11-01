@@ -113,6 +113,20 @@ func findSession(sessions []Session, sessionID string, taken Own) (key string, o
 	return "", false
 }
 
+// hasOpenRun reports whether an open run of c.Repo belongs to the issue of c or uses its workspace.
+func hasOpenRun(ctx context.Context, db *sql.DB, c Candidate) (bool, error) {
+	open, err := runs.Open(ctx, db, c.Repo)
+	if err != nil {
+		return false, err
+	}
+	for _, r := range open {
+		if r.Issue == c.Issue || r.WorkspaceID == c.Workspace.ID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // Candidate is a workspace that may be removed. InController and MergedHead
 // come from the board and the PR.
 type Candidate struct {
@@ -127,10 +141,11 @@ type Candidate struct {
 // workspace it must keep, or cannot measure, is recorded as a leftover; it is
 // never removed on an unmeasurable check. A running run is never touched.
 //
-// The order: in the controller or an open run (nothing), the workspace path
-// (looked up when the candidate has none), the sessions (a workspace forge no
-// longer knows counts as removed), a live foreign session (keep), stop the own
-// sessions, dirty, unpushed, remove.
+// The order: in the controller or an open run of the issue or on the workspace
+// (nothing), the workspace path (looked up when the candidate has none), the
+// sessions (a workspace forge no longer knows counts as removed), a live foreign
+// session (keep), stop the own sessions, dirty, unpushed, an open run again
+// (nothing), remove.
 func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candidate, now time.Time) (removed bool, err error) {
 	if c.Workspace.ID == "" {
 		return false, errors.New("cleanup: candidate has no workspace id")
@@ -138,14 +153,8 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	if c.InController {
 		return false, nil
 	}
-	open, err := runs.Open(ctx, db, c.Repo)
-	if err != nil {
+	if running, err := hasOpenRun(ctx, db, c); err != nil || running {
 		return false, err
-	}
-	for _, r := range open {
-		if r.Issue == c.Issue {
-			return false, nil
-		}
 	}
 	keep := func(reason string) (bool, error) {
 		l := Leftover{Repo: c.Repo, Issue: c.Issue, WorkspaceID: c.Workspace.ID, Path: c.Workspace.Path, Reason: reason}
@@ -228,6 +237,13 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	}
 	if unpushed {
 		return keep("unpushed commits")
+	}
+	// lighthouse run takes no tick.lock: a run claimed during the checks above keeps the
+	// workspace. A run that Prepare already found but has not claimed yet is not seen here.
+	if running, err := hasOpenRun(ctx, db, c); err != nil {
+		return keep("not measurable: open runs: " + err.Error())
+	} else if running {
+		return false, nil
 	}
 	if err := w.Remove(ctx, c.Workspace.ID); err != nil {
 		if errors.Is(err, ErrDirty) {

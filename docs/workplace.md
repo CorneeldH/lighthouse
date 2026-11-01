@@ -213,8 +213,8 @@ een tweede agent in dezelfde worktree het werk van de eerste stuk kan maken.
 
 `Cleanup(candidate)` verwijdert een workspace alleen als er niets mee verloren gaat. Een kandidaat zonder
 workspace-id is een fout van de aanroeper: `Cleanup` geeft een fout en legt niets vast. Het doet niets bij
-een kandidaat die nog in de controller staat of waarvoor een run open is: een lopende run wordt nooit
-afgebroken. Daarna, in deze volgorde, en elke stap die de workspace moet laten staan is een
+een kandidaat die nog in de controller staat, of waarvan het issue of de workspace een open run heeft: een
+lopende run wordt nooit afgebroken. Daarna, in deze volgorde, en elke stap die de workspace moet laten staan is een
 **achterblijver** (`Leftover`, in `tick_state` met soort `cleanup`, per repo en workspace):
 
 1. Het pad. Heeft de kandidaat geen pad, dan zoekt `Cleanup` het op met `Lookup`. Een 404 daar telt als
@@ -238,7 +238,13 @@ afgebroken. Daarna, in deze volgorde, en elke stap die de workspace moet laten s
    gemergede PR (`MergedHead`), dan telt dat niet: elke PR wordt squash-merged en GitHub verwijdert de
    branch, dus zonder deze uitzondering bleef elke afgeronde workspace staan.
 8. Een fout bij git: `not measurable: <fout>`. Een worktree die niet meetbaar is, is nooit "schoon".
-9. `Remove`. Een 409 van forge is `forge refused: dirty worktree (409)`. Een andere fout wordt
+9. Opnieuw de open runs. `lighthouse run` neemt geen `tick.lock`: een run die tijdens de stappen hierboven
+   geclaimd werd, op het issue of op de workspace, houdt de workspace. Onleesbaar:
+   `not measurable: open runs: …`. Eén venster blijft open: een `lighthouse run` die de workspace met
+   `Prepare` al vond maar zijn run nog niet claimde, ziet `Cleanup` niet. Die start mislukt dan als
+   `start_failed`, en de volgende tick doet de tweede poging in een nieuwe workspace. Er gaat geen werk
+   verloren: de workspace was schoon en gepusht.
+10. `Remove`. Een 409 van forge is `forge refused: dirty worktree (409)`. Een andere fout wordt
    `not measurable: remove: <fout>`, en `Cleanup` geeft die fout ook terug. Een 404 telt als al weg.
    Na een geslaagde `DELETE` of een 404 wist de adapter de drager; lukt dat niet, dan is dat een fout van
    `Remove`.
