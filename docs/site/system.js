@@ -1,6 +1,6 @@
 // The system page: the three steps and the sections below them, from data/system.json.
 
-import { initTheme, loadJson, renderStory } from "./map.js?v=0081d303";
+import { initTheme, loadJson, renderStory } from "./map.js?v=081086c5";
 
 initTheme(document.getElementById("theme-toggle"));
 
@@ -9,6 +9,10 @@ try {
   document.getElementById("title").textContent = system.title;
   document.getElementById("subtitle").textContent = system.subtitle;
   renderStory(document.getElementById("story"), system);
+  // The sections exist only now, so the browser could not scroll to a #section in the address yet.
+  if (location.hash) {
+    document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+  }
   document.getElementById("serve-hint").hidden = true;
 } catch (error) {
   console.error(error);
