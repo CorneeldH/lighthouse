@@ -49,7 +49,7 @@ type Result struct {
 	Failed   map[string]error // per repo: the joined errors of its actions; absent = no error
 	Started  int              // launches that were accepted or are uncertain
 	// NotAccepted is "<repo>#<n>" per launch the workplace refused; its run is closed as
-	// start_failed and its Started stays.
+	// start_failed, its Started stays, and a Returned with the reason follows.
 	NotAccepted []string
 }
 
@@ -290,9 +290,23 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 			return err
 		}
 		ap.logf("%s#%d: launch of run %d not accepted: %s", a.Repo, a.Issue, run.ID, oneLine(reason))
+		ap.returnStartFailed(ctx, a, run.ID, session, reason)
 		res.NotAccepted = append(res.NotAccepted, fmt.Sprintf("%s#%d", a.Repo, a.Issue))
 	}
 	return nil
+}
+
+// returnStartFailed posts the 🤖 Returned of a refused launch under its Started, with the
+// session of the run, so decide sees it and posts none after a second refusal. A failed post
+// logs one line and is no action error: the run is closed, and decide posts the Returned of a
+// second refusal itself.
+func (ap applier) returnStartFailed(ctx context.Context, a Action, runID int64, session, reason string) {
+	ra := a
+	ra.Reason, ra.ReasonArg = "reason_start_failed", reason
+	body := protocol.RenderReturned(reasonText(ra), session, "", a.Language)
+	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		ap.logf("%s#%d: post Returned of run %d: %v", a.Repo, a.Issue, runID, err)
+	}
 }
 
 // announce posts the 🤖 Started or Resumed and the 🚀; a failed post closes the run as

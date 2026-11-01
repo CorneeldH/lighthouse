@@ -520,9 +520,9 @@ func TestApplyResumeKeepsSession(t *testing.T) {
 	}
 }
 
-func TestApplyNotAcceptedCountsNoStart(t *testing.T) {
+func TestApplyNotAcceptedPostsReturned(t *testing.T) {
 	h := newHarness(t)
-	h.wp.spawnErr = workplace.ErrNotAccepted
+	h.wp.spawnErr = fmt.Errorf("kenn-forge answered 409: %w", workplace.ErrNotAccepted)
 	res, err := Apply(context.Background(), h.env, []Action{startAction()})
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
@@ -533,11 +533,51 @@ func TestApplyNotAcceptedCountsNoStart(t *testing.T) {
 	if want := []string{applyRepo + "#7"}; !reflect.DeepEqual(res.NotAccepted, want) {
 		t.Errorf("NotAccepted = %q, want %q", res.NotAccepted, want)
 	}
-	if len(h.poster(applyRepo).bodies) != 1 {
-		t.Errorf("posted %d, want the Started to stay", len(h.poster(applyRepo).bodies))
+	bodies := h.poster(applyRepo).bodies
+	if len(bodies) != 2 {
+		t.Fatalf("posted %q, want the Started and a Returned", bodies)
+	}
+	session := h.wp.spawned[0].SessionID
+	head := "🤖 " + protocol.Heading("kind_returned", "nl") + "\nreason: " +
+		protocol.Heading("reason_start_failed", "nl") + ": kenn-forge answered 409: workplace: spawn not accepted\nsession: " + session
+	if !strings.HasPrefix(bodies[1], head) || !strings.HasSuffix(bodies[1], protocol.Footer(session)) {
+		t.Errorf("Returned = %q, want %q... ending in the footer of %s", bodies[1], head, session)
 	}
 	if !strings.Contains(h.out.String(), "not accepted") {
 		t.Errorf("log %q does not report the refused launch", h.out.String())
+	}
+}
+
+func TestApplyNotAcceptedReturnPostFails(t *testing.T) {
+	h := newHarness(t)
+	h.wp.spawnErr = workplace.ErrNotAccepted
+	p := h.poster(applyRepo)
+	posts := 0
+	p.onPost = func() {
+		if posts++; posts == 2 {
+			p.postErr = errors.New("forge down")
+		}
+	}
+	res, err := Apply(context.Background(), h.env, []Action{startAction()})
+	if err != nil || res.Failed[applyRepo] != nil {
+		t.Errorf("err = %v, Failed = %v; want no action error: the run is closed", err, res.Failed)
+	}
+	if want := []string{applyRepo + "#7"}; !reflect.DeepEqual(res.NotAccepted, want) {
+		t.Errorf("NotAccepted = %q, want %q", res.NotAccepted, want)
+	}
+	if !strings.Contains(h.out.String(), "post Returned of run 1: forge down") {
+		t.Errorf("log %q does not report the failed post", h.out.String())
+	}
+}
+
+func TestApplyUncertainPostsNoReturn(t *testing.T) {
+	h := newHarness(t)
+	h.wp.spawnErr = workplace.ErrUncertain
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if bodies := h.poster(applyRepo).bodies; len(bodies) != 1 {
+		t.Errorf("posted %q, want only the Started: an agent may be running", bodies)
 	}
 }
 
@@ -750,6 +790,9 @@ func TestApplyNotAcceptedReleaseFailsIsFailed(t *testing.T) {
 	}
 	if res.Started != 0 {
 		t.Errorf("Started = %d, want 0", res.Started)
+	}
+	if bodies := h.poster(applyRepo).bodies; len(bodies) != 1 {
+		t.Errorf("posted %q, want only the Started: the run is still open", bodies)
 	}
 }
 
