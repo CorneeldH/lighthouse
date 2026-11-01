@@ -773,7 +773,9 @@ def _push_cli(ns: argparse.Namespace) -> int:
         raise CouldNotCheck(f"cannot find {config}; scans must use the same config as CI")
     ledger = ledger_path(repo, config)
     local = _refs(_git(repo, "for-each-ref", "--format=%(refname) %(objectname)", "refs/entire/"), False)
-    there = _refs(_git(repo, "ls-remote", remote, "refs/entire/*"), True)
+    # The URL the rule checked (the push URL), not the remote's fetch URL: with a
+    # separate pushurl those are two repos.
+    there = _refs(_git(repo, "ls-remote", url, "refs/entire/*"), True)
     missing = {ref: sha for ref, sha in local.items() if there.get(ref) != sha}
     blobs = missing_blobs(repo, missing, remote)
     todo = blobs

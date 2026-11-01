@@ -923,6 +923,56 @@ def test_push_refuses_non_checkpoint_remote(px):
     assert px.calls() == 0  # refused before any scan
 
 
+def test_push_refuses_while_entire_pushes_by_itself(px):
+    """entire would push past the hook with --no-verify: push refuses before a scan."""
+    (px.repo / ".entire" / "settings.json").write_text(
+        json.dumps({"enabled": True, "strategy_options": {"push_sessions": True}}), encoding="utf-8"
+    )
+    _bulk_checkpoints(px.repo, 0, 3)
+
+    result = px.push("ckpt")
+
+    assert result.returncode == 2
+    assert "entire may push checkpoints by itself" in result.stderr
+    assert px.pushed() == set()
+    assert px.calls() == 0
+
+
+def test_push_by_url(px):
+    """A URL, not a remote name: git hands the hook that URL as both name and URL. The
+    URL rule knows only github and gitlab hosts, so a local path is the checkpoint
+    remote here through `checkpoint_push_remote` naming that path."""
+    url = str(px.ckpt)
+    (px.repo / ".entire" / "settings.local.json").write_text(
+        json.dumps({"strategy_options": {"checkpoint_push_remote": url}}), encoding="utf-8"
+    )
+    refs = _bulk_checkpoints(px.repo, 0, 3)
+
+    result = px.push(url)
+
+    assert result.returncode == 0, result.stderr
+    assert px.pushed() == set(refs)
+    # The remote `ckpt` (same repo, but another name) is no longer the checkpoint remote.
+    assert px.push("ckpt").returncode == 2
+
+
+def test_push_lists_refs_on_the_push_url(px, tmp_path):
+    """With a separate pushurl, what the remote misses is read from the push URL, the
+    repo the rule checked and the push goes to."""
+    fetch = tmp_path / "fetch.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(fetch)], check=True)
+    git(px.repo, "remote", "set-url", "ckpt", str(fetch))
+    git(px.repo, "remote", "set-url", "--push", "ckpt", str(px.ckpt))
+    refs = _bulk_checkpoints(px.repo, 0, 2)
+    # The fetch repo already holds both refs; the push repo holds none.
+    git(px.repo, "push", "-q", "--no-verify", str(fetch), *(f"{r}:{r}" for r in refs))
+
+    result = px.push("ckpt")
+
+    assert result.returncode == 0, result.stderr
+    assert px.pushed() == set(refs)
+
+
 def _push_trace(trace: Path) -> list[list[str]]:
     """The refspecs of every `git push` in a GIT_TRACE file, one list per call."""
     pushes = []
@@ -956,6 +1006,7 @@ def test_push_chunks_refspecs(px, tmp_path):
 def test_push_full_writes_ledger(px):
     old = _bulk_checkpoints(px.repo, 0, 5)
     assert px.scan(old).returncode == 0
+    # drain the log of the earlier scan
     px.logged()
     new = _bulk_checkpoints(px.repo, 5, 5)
     everything = _tree_blobs(px.repo, [*old.values(), *new.values()])
@@ -1076,6 +1127,22 @@ def test_checkpoint_remote_by_url(cs, tmp_path, remote, url, expected):
     settings = cs.read_entire_settings(_settings_dir(tmp_path, GITHUB_CKPT))
 
     assert cs.is_checkpoint_remote(settings, remote, url) is expected
+
+
+def test_checkpoint_remote_of_lighthouse(cs, tmp_path):
+    """The real checkpoint repo: its URL passes, the public repo's does not."""
+    shared = {
+        "strategy_options": {
+            "push_sessions": False,
+            "checkpoint_remote": {"provider": "github", "repo": "CorneeldH/lighthouse-checkpoints"},
+        }
+    }
+    settings = cs.read_entire_settings(_settings_dir(tmp_path, shared))
+    url = "https://github.com/CorneeldH/lighthouse-checkpoints.git"
+
+    assert cs.is_checkpoint_remote(settings, url, url)
+    public = "https://github.com/CorneeldH/lighthouse.git"
+    assert not cs.is_checkpoint_remote(settings, public, public)
 
 
 def test_checkpoint_remote_by_gitlab_url(cs, tmp_path):
