@@ -483,9 +483,12 @@ func (c runCtx) silent() (Action, bool) {
 }
 
 // silentForge falls back on the forge state when the transcript is not measurable: a waiting
-// session whose forge time is max_wait old.
+// session whose forge time is max_wait old. Without a forge time nothing says how long it waits.
 func (c runCtx) silentForge() (Action, bool) {
 	if c.maxWait() <= 0 || c.state.Transcript != nil || !c.hasStand || c.stand != workplace.Waiting {
+		return Action{}, false
+	}
+	if c.state.SessionAt.IsZero() {
 		return Action{}, false
 	}
 	if c.in.Now.Sub(c.state.SessionAt) < c.maxWait() {
