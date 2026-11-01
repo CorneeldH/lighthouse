@@ -4,6 +4,21 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.6.0] - 2026-11-01
+
+### Added
+
+- `/lighthouse-write-pr` runs a local roborev (Codex) review before the PR is opened when `[review] roborev = "local"` is set, processes the findings and records them in a PR comment. The dispatcher starts `/lighthouse-fix-pr` on a red PR (trigger `fixpr`), at most 3 runs per PR; after that the run returns with "PR red after 3 fix-pr runs".
+
+### Changed
+
+- `docs/tick.md` now has a *Zicht* section that points to `GET /api/runs` and the *Running runs* card of `lighthouse serve`, with a link to `docs/install.md`.
+
+### Fixed
+
+- Triage now judges an issue in a temporary export of the tracked content of the default branch, so it no longer reads untracked files, ignored files or other worktrees. A free-text field that is too long, or a `redundancy_evidence` field with prose instead of references, now makes the judgment invalid.
+  The judgment no longer loads Claude Code settings sources: only `env` and `modelSettings` are taken from the user settings file, so auth that lives only there (for example `apiKeyHelper`) no longer reaches it.
+
 ## [v0.5.0] - 2026-11-01
 
 ### Added
