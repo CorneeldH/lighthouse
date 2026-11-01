@@ -97,15 +97,33 @@ The health endpoint answers `{"version":"…"}`. The page answers with
 `content="placeholder"` means the UI was not built before `go install`. The log shows
 `lighthouse: listening on 127.0.0.1:8127`.
 
+The API is read-only. Its routes:
+
+| Route | What it reads |
+|---|---|
+| `GET /api/health` | the version of the binary |
+| `GET /api/usage` | the Claude and Codex usage windows |
+| `GET /api/runs` | the open and parked runs and the deferred starts, from the tick state |
+| `GET /api/questions` | the open questions, from the forge |
+| `GET /api/returned` | the returned issues, from the forge |
+| `GET /api/cleanup` | the workspaces to clean up, from the database |
+
 ## Connect the forge
 
 `GET /api/questions` and `GET /api/returned` read the open questions and returned issues of
-one GitHub repository. Tell the server which repository and give it a token:
+the served GitHub repositories. Every item carries its `repo` (`owner/name`), and the UI shows
+it as `owner/name#number`. Which repositories `serve` reads:
 
-- Repository: `--repo owner/name` on `lighthouse serve`, or `LIGHTHOUSE_FORGE_REPO=owner/name`.
-- Token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment. Create a fine-grained personal
-  access token for that repository with only the *Issues: read* permission. The server only
-  reads. With the Controller filter described below it also needs the `project` scope.
+- With `[dispatch] repos` in `host.toml`: every repository listed there, in that order. A repo
+  whose `lighthouse.toml` does not load is skipped with a line on stderr. `--repo` is then
+  ignored, with `lighthouse: --repo <owner/name> ignored: serving the repos of [dispatch]` when
+  it is not among them.
+- Without `[dispatch] repos`: the one repository of `--repo owner/name` on `lighthouse serve`, or
+  `LIGHTHOUSE_FORGE_REPO=owner/name`.
+
+Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment. Create a fine-grained
+personal access token for those repositories with only the *Issues: read* permission. The
+server only reads. With the Controller filter described below it also needs the `project` scope.
 
 Under systemd, put both in `~/.config/lighthouse/forge.env`, which the unit loads through
 `EnvironmentFile=`. The token is a secret, so keep the file private:
@@ -129,14 +147,26 @@ Check it:
 curl -s http://127.0.0.1:8127/api/questions
 ```
 
-The overview shows only the issues in Controller when the repository is in `[dispatch] repos` of
-`host.toml` and its `lighthouse.toml` has a `[forge.board]` with a `Controller` option. Issues the
-dispatcher parked (On hold, see [tick.md](tick.md)) then drop out. Otherwise it shows every open
-issue. With the filter `serve` reads the project board, so the token needs the `project` scope as well.
-An unreadable `host.toml` stops `serve` only when `--repo` is set.
+For a repository in `[dispatch] repos` whose `lighthouse.toml` has a `[forge.board]` with a
+`Controller` option, the overview shows only the issues in Controller. Issues the dispatcher
+parked (On hold, see [tick.md](tick.md)) then drop out. Otherwise it shows every open issue of
+that repository. With the filter `serve` reads the project board, so the token needs the
+`project` scope as well. A `host.toml` that does not load (an invalid value or an unknown key under
+`[dispatch]`) stops `serve`; a missing one counts as no `[dispatch]`.
 
-A `503` means the repository or the token is not set. A `502` means GitHub could not be
-reached or answered with an error; the response body says which.
+A `503` means no repository or no token is set. A `502` means GitHub could not be reached or
+answered with an error for one of the repositories; the response body names it.
+
+## Running runs
+
+`GET /api/runs` and the *Running runs* card show the open and parked runs and the deferred
+starts of the served repositories. `serve` reads them from the tick state in its database, the
+one `lighthouse tick` writes (see [tick.md](tick.md)): no forge call and no token, so the card
+refreshes every 30 seconds. Per run: `repo`, `issue`, `title`, `state` (`open` or `parked`),
+`command`, `trigger`, `profile`, `workspace_id`, `started_at`, `stand` (`working`, `waiting` or
+`done`; empty when the tick could not measure the session, shown as *not measured*) and `at`, the
+tick that wrote it. Per deferred start: `repo`, `issue`, `title`, `reason` and `at`. Without a
+tick both lists are empty. A `500` means the database could not be read.
 
 ## Reach it from your tailnet
 
@@ -166,6 +196,6 @@ the tailnet can do everything the API can. The server binds loopback, so nothing
 host and the tailnet sees it. Today the API is read-only; once lighthouse starts runs, any
 device on the tailnet can start one.
 
-`/api/questions` and `/api/returned` show the issue titles and question text of the configured
-repository, private ones too (read with the server's token), to every device that can reach
-the server.
+`/api/questions` and `/api/returned` show the issue titles and question text of the served
+repositories, private ones too (read with the server's token), to every device that can reach
+the server. `/api/runs` shows their issue titles and the commands of their runs.

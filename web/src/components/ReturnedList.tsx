@@ -10,9 +10,11 @@ export function ReturnedList(): JSX.Element {
       {data && data.length > 0 && (
         <ul className="space-y-4">
           {data.map((r) => (
-            <li key={r.number} className="space-y-1">
+            <li key={`${r.repo}#${r.number}`} className="space-y-1">
               <p>
-                <span>#{r.number}</span>{' '}
+                <span>
+                  {r.repo}#{r.number}
+                </span>{' '}
                 <a href={r.url} className="underline">
                   {r.title}
                 </a>

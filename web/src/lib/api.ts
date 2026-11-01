@@ -1,13 +1,16 @@
 import {
+  type DeferredView,
   type Leftover,
   getCleanup,
   getHealth,
   getQuestions,
   getReturned,
+  getRuns,
   getUsage,
   type Question,
   type Report,
   type Returned,
+  type RunView,
 } from '@/api/lighthouse'
 
 export class ApiError extends Error {
@@ -62,6 +65,12 @@ export async function fetchReturned(signal?: AbortSignal): Promise<Returned[]> {
 export async function fetchCleanup(signal?: AbortSignal): Promise<Leftover[]> {
   const res = await call(() => getCleanup({ signal }))
   return (res.data as { cleanup: Leftover[] | null }).cleanup ?? []
+}
+
+export async function fetchRuns(signal?: AbortSignal): Promise<{ runs: RunView[]; deferred: DeferredView[] }> {
+  const res = await call(() => getRuns({ signal }))
+  const body = res.data as { runs: RunView[] | null; deferred: DeferredView[] | null }
+  return { runs: body.runs ?? [], deferred: body.deferred ?? [] }
 }
 
 export async function fetchUsage(signal?: AbortSignal): Promise<Report> {
