@@ -31,8 +31,8 @@ import (
 
 // tickEnv is what tick and gather read from the machine: the environment, the path of
 // host.toml, the GitHub API root, the clock, the forge workplace, the state directory, the
-// usage meter and the meminfo file. Only tests set ForgeURL, Now, Workplace, StateDir, Meter
-// and MemInfo.
+// usage meter, the meminfo file and the subprocess runner. Only tests set ForgeURL, Now,
+// Workplace, StateDir, Meter, MemInfo and Run.
 type tickEnv struct {
 	Getenv   func(string) string
 	HostToml string
@@ -46,6 +46,15 @@ type tickEnv struct {
 	Meter *usage.Meter
 	// MemInfo is the meminfo file of the memory brake; "" is /proc/meminfo.
 	MemInfo string
+	// Run runs git for the workplace and the sweep; nil is workplace.ExecRunner.
+	Run workplace.Runner
+}
+
+func (e tickEnv) runner() workplace.Runner {
+	if e.Run == nil {
+		return workplace.ExecRunner()
+	}
+	return e.Run
 }
 
 func (e tickEnv) now() time.Time {
@@ -93,7 +102,7 @@ func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateD
 	return &kennforge.Adapter{
 		Client: kennforge.New(cfg.Forge.URL, cfg.Forge.TokenFile),
 		Kind:   repo.Kind, Repo: repo.Slug, MainCheckout: repo.Dir, StateDir: stateDir,
-		Targets: targets, Profile: repo.Controller.Profile, Run: workplace.ExecRunner(),
+		Targets: targets, Profile: repo.Controller.Profile, Run: e.runner(),
 		Home: e.Getenv("HOME"),
 	}
 }
@@ -105,9 +114,10 @@ func newTickCommand() *cobra.Command {
 		Short: "Run one dispatcher tick",
 		Long: "Run one dispatcher tick over the repos in host.toml [dispatch]. Each dispatchable repo gets\n" +
 			"a precheck and, when something changed, a full gather. Decide then runs once over the gathered\n" +
-			"repos, and apply posts, claims and launches what it decided. A repo that cannot be dispatched or\n" +
-			"gathered is skipped loudly, as is a failed action, and tick exits 1; a tick that is still running\n" +
-			"makes this one exit 0.",
+			"repos, and apply posts, claims and launches what it decided. Every tick then removes the forge\n" +
+			"workspaces of issues that left Controller, when nothing is lost by it. A repo that cannot be\n" +
+			"dispatched or gathered is skipped loudly, as is a failed action or cleanup, and tick exits 1; a\n" +
+			"tick that is still running makes this one exit 0.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			env := tickEnv{Getenv: os.Getenv, HostToml: hostconfig.Path()}
@@ -119,9 +129,10 @@ func newTickCommand() *cobra.Command {
 }
 
 // tick takes tick.lock, loads the repos of host.toml and skips, loudly, each one that is not
-// dispatchable or whose gather fails; the others get gatherRepo, and the gathered ones
-// decideAndApply. A busy lock is not an error. At least one skip or failed action returns
-// errSilent: the reasons are already on errOut.
+// dispatchable or whose gather fails; the others get gatherRepo, the gathered ones
+// decideAndApply, and every repo whose precheck passed sweepRepos, due or not. A busy lock is
+// not an error. At least one skip, failed action or failed cleanup returns errSilent: the
+// reasons are already on errOut.
 func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) error {
 	runtime := env.Getenv("XDG_RUNTIME_DIR")
 	if runtime == "" {
@@ -179,6 +190,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	// repo, so the client of the first dispatchable repo serves every repo.
 	var login func() (string, error)
 	var gathered []gatheredRepo
+	var swept []sweepRepo
 	skipped := false
 	for _, path := range cfg.Repos {
 		repo, err := repoconfig.Load(path)
@@ -187,18 +199,20 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 		}
 		var in *dispatch.RepoInput
 		var fp string
+		var statuses map[int]string
 		if err == nil {
 			if login == nil {
 				c := env.client(repo.Slug, token)
 				login = sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
 			}
-			in, fp, err = gatherRepo(ctx, env, st.DB, cfg, facts, repo, token, login, errOut)
+			in, fp, statuses, err = gatherRepo(ctx, env, st.DB, cfg, facts, repo, token, login, errOut)
 		}
 		if err != nil {
 			skipped = true
 			_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 			continue
 		}
+		swept = append(swept, sweepRepo{repo: repo, statuses: statuses})
 		if in != nil {
 			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp})
 		}
@@ -206,6 +220,9 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	failed, err := decideAndApply(ctx, env, st.DB, cfg, facts, token, gathered, errOut)
 	if err != nil {
 		return err
+	}
+	if sweepRepos(ctx, env, st.DB, cfg, token, swept, errOut) {
+		failed = true
 	}
 	if skipped || failed {
 		return errSilent
@@ -223,6 +240,59 @@ type gatheredRepo struct {
 	repo repoconfig.Repo
 	in   dispatch.RepoInput
 	fp   string
+}
+
+// sweepRepo is a repo whose precheck passed in this tick, with the board status of its issues.
+type sweepRepo struct {
+	repo     repoconfig.Repo
+	statuses map[int]string
+}
+
+// sweepRepos runs workplace.Sweep for each repo: the workspaces of issues the controller no
+// longer holds go, when nothing is lost by it (docs/workplace.md, Opruimen). Each removed
+// workspace gets a removed line on errOut, each repo whose sweep failed a cleanup line; a
+// workspace it keeps gets no line: it is in Workspaces to clean up. A repo without a
+// workspace to sweep builds no workplace. failed reports a cleanup line.
+func sweepRepos(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
+	repos []sweepRepo, errOut io.Writer) (failed bool) {
+	for _, sr := range repos {
+		slug := sr.repo.Slug
+		removed, err := sweepOne(ctx, env, db, cfg, token, sr)
+		for _, l := range removed {
+			_, _ = fmt.Fprintf(errOut, "lighthouse: removed workspace %s of %s#%d\n", l.WorkspaceID, slug, l.Issue)
+		}
+		if err != nil {
+			failed = true
+			_, _ = fmt.Fprintf(errOut, "lighthouse: cleanup %s: %s\n", slug, oneLine(err))
+		}
+	}
+	return failed
+}
+
+// sweepOne sweeps one repo; see sweepRepos.
+func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
+	sr sweepRepo) ([]workplace.Leftover, error) {
+	refs, err := runs.Workspaces(ctx, db, sr.repo.Slug)
+	if err != nil || len(refs) == 0 {
+		return nil, err
+	}
+	dir, err := env.stateDir()
+	if err != nil {
+		return nil, err
+	}
+	c := env.client(sr.repo.Slug, token)
+	in := workplace.SweepInput{
+		Repo:         sr.repo.Slug,
+		InController: dispatch.InController(sr.statuses),
+		MergedHead: func(ctx context.Context, branch string) (string, error) {
+			prs, err := c.BranchPRs(ctx, branch)
+			if err != nil {
+				return "", err
+			}
+			return dispatch.MergedHead(prs), nil
+		},
+	}
+	return workplace.Sweep(ctx, db, env.workplace(cfg, sr.repo, dir), env.runner(), in, env.now())
 }
 
 // decideAndApply decides once over the gathered repos and applies the actions. Each deferral
@@ -342,42 +412,43 @@ func (p prefixed) Write(b []byte) (int, error) {
 
 // gatherRepo runs the precheck for repo and, when it is due, the full gather; in is nil when
 // the repo is not due. fp is the fingerprint of the precheck: tick saves it after apply.
+// statuses is the board status per issue of the precheck, also when the repo is not due.
 // A full gather writes one gathered line to errOut.
 func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, repo repoconfig.Repo,
-	token string, login func() (string, error), errOut io.Writer) (in *dispatch.RepoInput, fp string, err error) {
+	token string, login func() (string, error), errOut io.Writer) (in *dispatch.RepoInput, fp string, statuses map[int]string, err error) {
 	c := env.client(repo.Slug, token)
 	pre, err := measuredPre(ctx, env, db, cfg, c, repo, errOut)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	pre.Markers, pre.PauseUntil = facts.Markers[repo.Slug], facts.PauseUntil
 	open, err := runs.OpenBriefs(ctx, db, repo.Slug)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	parked, err := runs.BriefsByID(ctx, db, facts.Parked[repo.Slug])
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	if err := dispatch.SaveRunView(ctx, db, repo.Slug, dispatch.RunViews(pre, open, parked), env.now()); err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	fp = dispatch.Fingerprint(pre)
 	prev, err := dispatch.LoadTickState(ctx, db, repo.Slug)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	now := env.now()
 	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, pre.OpenRuns, pre.Runs, pre.Markers, now))
 	if !due {
-		return nil, "", nil
+		return nil, "", pre.Statuses, nil
 	}
 	ri, err := repoInput(ctx, db, cfg, c, pre, login, errOut, now)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	_, _ = fmt.Fprintf(errOut, "lighthouse: gathered %s: %d items (%s)\n", repo.Slug, len(ri.Snapshot.Items), reason)
-	return &ri, fp, nil
+	return &ri, fp, pre.Statuses, nil
 }
 
 // prepare is the board half of a gather: the open runs, the branch of each issue's last run,
