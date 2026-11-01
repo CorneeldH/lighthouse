@@ -248,6 +248,7 @@ Apply (`internal/dispatch`) roept `Busy` en `Launch` aan, voor `lighthouse tick`
 (zie [tick.md](tick.md)). Apply toetst `Busy` vóór `runs.Take`, dus vóór elke start en ook vóór een
 tweede poging, en start de agent met `Launch` als laatste stap. De instructies van de run schrijft
 apply naar `<statemap>/runs/<sessie>/instructions.md` (bestand 0600, map 0700); de statemap is
-`${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. `AdoptSessions` loopt in de precheck van de tick, de `activity` (laatste transcript-gebeurtenis per
-sessiekey) komt uit de transcriptmeting, en `Cleanup` roept #115 nog aan. #112 en #114 leveren
-`InController` en `MergedHead` van de kandidaat.
+`${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. `AdoptSessions` loopt in de precheck van de
+tick, en de `activity` (laatste transcript-gebeurtenis per sessiekey) komt uit de transcriptmeting.
+`Cleanup` heeft nog geen aanroeper; #112 en #114 leveren `InController` en `MergedHead` van de
+kandidaat.
