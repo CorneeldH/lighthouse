@@ -31,6 +31,9 @@ type repoGather struct {
 	open   []forge.Issue           // the open issues
 	work   workLists
 	closed map[int][]tri.Ref // closed issues per milestone number, read once
+
+	export string      // the export of origin/<default_branch>: the cwd of each judgment
+	judge  judgeConfig // what each judgment takes from the user's settings
 }
 
 // readRepo fetches the default branch and reads the lists of step 4: the board, the open
