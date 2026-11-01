@@ -448,14 +448,25 @@ func (c runCtx) uncertain() (Action, bool) {
 	return a, true
 }
 
-// permission hands back a run whose prompt has waited max_wait: only activity of the prompt's
-// own thread that is newer than the prompt means it was answered. The session keeps waiting.
+// permission hands back a run whose prompt has waited max_wait. The session keeps waiting.
 func (c runCtx) permission() (Action, bool) {
-	p := c.state.Permission
-	if c.maxWait() <= 0 || p == nil || c.threadActivity(p.Thread).After(p.At) || c.in.Now.Sub(p.At) < c.maxWait() {
+	p := c.pendingPermission()
+	if c.maxWait() <= 0 || p == nil || c.in.Now.Sub(p.At) < c.maxWait() {
 		return Action{}, false
 	}
 	return c.returned("reason_permission", "`"+p.Tool+"` `"+p.Path+"`"), true
+}
+
+// pendingPermission is the run's permission prompt while it waits for an answer, else nil:
+// only activity of the prompt's own thread that is newer than the prompt means it was answered.
+// A session waiting on a prompt writes nothing, so while one is pending the silence rules hold
+// off and the permission rule decides at max_wait.
+func (c runCtx) pendingPermission() *Permission {
+	p := c.state.Permission
+	if p == nil || c.threadActivity(p.Thread).After(p.At) {
+		return nil
+	}
+	return p
 }
 
 // threadActivity is the newest event of thread; the transcript's newest event when the
@@ -471,10 +482,11 @@ func (c runCtx) threadActivity(thread string) time.Time {
 	return t.LastEvent
 }
 
-// silent stops a session whose transcripts, subagents included, had no event in max_wait.
+// silent stops a session whose transcripts, subagents included, had no event in max_wait, unless
+// it waits on a permission prompt.
 func (c runCtx) silent() (Action, bool) {
 	t := c.state.Transcript
-	if c.maxWait() <= 0 || c.done() || t == nil || c.in.Now.Sub(t.LastEvent) < c.maxWait() {
+	if c.maxWait() <= 0 || c.done() || t == nil || c.pendingPermission() != nil || c.in.Now.Sub(t.LastEvent) < c.maxWait() {
 		return Action{}, false
 	}
 	a := c.returned("reason_silent", "")
@@ -485,7 +497,7 @@ func (c runCtx) silent() (Action, bool) {
 // silentForge falls back on the forge state when the transcript is not measurable: a waiting
 // session whose forge time is max_wait old. Without a forge time nothing says how long it waits.
 func (c runCtx) silentForge() (Action, bool) {
-	if c.maxWait() <= 0 || c.state.Transcript != nil || !c.hasStand || c.stand != workplace.Waiting {
+	if c.maxWait() <= 0 || c.state.Transcript != nil || !c.hasStand || c.stand != workplace.Waiting || c.pendingPermission() != nil {
 		return Action{}, false
 	}
 	if c.state.SessionAt.IsZero() {
