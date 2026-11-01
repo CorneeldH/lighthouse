@@ -233,16 +233,20 @@ Go beslist zelf, zonder model:
 
 ### Het oordeel
 
-Per issue één `claude -p`, in de main checkout van de repo (het pad uit `[dispatch] repos`).
-De vlaggen zijn die van paia, gemeten met `claude` 2.1.296:
+Per issue één `claude -p`, in een export van `origin/<default_branch>` van de repo (het pad uit
+`[dispatch] repos` levert de repo; de export is een tijdelijke map met alleen de getrackte
+inhoud, zie [de leesgrens](2026-11-01-triage-leesgrens-design.md)). De vlaggen zijn die van paia,
+gemeten met `claude` 2.1.296, met `--setting-sources ""` en `--no-session-persistence` erbij:
 
 ```text
---tools Read,Grep,Glob --strict-mcp-config --setting-sources user
---settings '{"disableAllHooks": true}' --output-format json --json-schema <schema>
+--tools Read,Grep,Glob --strict-mcp-config --setting-sources ""
+--settings '{"disableAllHooks": true, ...}' --no-session-persistence
+--output-format json --json-schema <schema>
 ```
 
 Met deze vlaggen heeft het model alleen `Read`, `Grep` en `Glob`. Er vuren geen hooks, en
-`CLAUDE.md`/`AGENTS.md` laden niet. De invoer van een oordeel daalde daarmee van 40k naar 18k
+`CLAUDE.md`/`AGENTS.md` laden niet. Uit de gebruikersinstellingen komen alleen `env` en
+`modelSettings` mee, via `--settings`. De invoer van een oordeel daalde daarmee van 40k naar 18k
 tokens. De bouwer meet de vlaggen opnieuw met de `claude`-versie op de host (zie *Aan de
 bouwer*).
 

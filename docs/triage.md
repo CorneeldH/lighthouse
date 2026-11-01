@@ -14,8 +14,13 @@ niets: het heeft alleen `Read`, `Grep` en `Glob`.
 1. **Verzamelen.** Per repo met `[controller.triage]` de kandidaten, en per issue de vaste feiten:
    labels, `blocked_by`, de `git log` van `origin/<default_branch>`, de andere issues in dezelfde
    milestone en de skillcatalogus.
-2. **Oordelen.** Eén `claude -p` per kandidaat, in de main checkout van de repo, met een harde
-   timeout van 300 seconden. Een timeout of een oordeel dat niet klopt met het contract telt als
+2. **Oordelen.** Eén `claude -p` per kandidaat, met een harde timeout van 300 seconden. Het draait
+   in een tijdelijke map met de getrackte inhoud van `origin/<default_branch>`, die na de ronde
+   verdwijnt. Het model leest alleen die map: geen ongetrackte of genegeerde bestanden, geen
+   `.git`, geen worktrees. Van de gebruikersinstellingen neemt het alleen `env` en
+   `modelSettings` over. De ronde slaat een repo over als `origin/<default_branch>` geen
+   `.claude/skills/lighthouse-route-issue/SKILL.md` heeft, of als het instellingenbestand
+   onleesbaar of ongeldig is. Een timeout of een oordeel dat niet klopt met het contract telt als
    ongeldig: geen actie op dat issue, een foutregel op stderr, en het issue komt de volgende
    ronde terug.
 3. **Toepassen.** Vlak voor de eerste schrijfactie leest de ronde het issue opnieuw. Is er iets
@@ -30,7 +35,11 @@ issue wordt gemeld, nooit gesloten of doorgezet. Triage zet geen labels en legt 
 
 Vrije tekst van het model komt op één regel in de comment, zonder codefence, `<sub>` of `<!--`.
 Dat geldt voor de routeregel na `#<nr> Poort <n>:`, het bewijs bij een dubbel of afgerond issue,
-de reden voor interactief en de ontwerpvragen. Na de `@` of `#` van een mention of
+de reden voor interactief en de ontwerpvragen. Elk veld heeft een grens, na `strings.TrimSpace` in
+tekens: de route 80, de reden na de route 200, de reden voor interactief 300, een ontwerpvraag 300,
+een optie 150. `redundancy_evidence` bevat alleen verwijzingen (`#<nr>` of een commit-sha die in de
+log staat), hoogstens 5, en hoogstens 220 tekens. Een overschrijding, of proza in dat veld, maakt
+het oordeel ongeldig: geen actie, een foutregel, en het issue komt terug. Na de `@` of `#` van een mention of
 issueverwijzing in die tekst staat een zero-width joiner. Zo notificeert `@naam` niemand, en maken
 `#N` en `owner/repo#N` geen kruisverwijzing. De verwijzingen die Go zelf schrijft, de
 blokkeerders van poort 0 en het issue achter `Mogelijk dubbel van`, blijven klikbaar.
