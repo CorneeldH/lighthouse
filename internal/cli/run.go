@@ -10,12 +10,15 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
+	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
@@ -85,18 +88,32 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	}
 	defer func() { _ = st.Close() }()
 
+	facts, err := readHostFacts(ctx, env, st.DB, cfg)
+	if err != nil {
+		return fmt.Errorf("run: the brake cannot check: %w", err)
+	}
+	facts.Brake.Manual = true // a person who runs an issue decides on memory, slots and software
+
 	c := env.client(repo.Slug, token)
 	pre, err := measuredPre(ctx, env, st.DB, cfg, c, repo, errOut)
 	if err != nil {
 		return err
 	}
+	pre.Markers = facts.Markers[slug]
 	login := sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
 	in, err := repoInput(ctx, st.DB, cfg, c, pre, login, errOut, env.now())
 	if err != nil {
 		return err
 	}
+	// run has no board snapshot of all issues, so Decide must not judge the markers of other
+	// issues (a marker whose issue is not in Items is dropped): it gets those of this issue only.
+	// runKinds already excludes drop_marker, so run never applies such a drop; the filter is belt
+	// and braces.
+	in.Markers = slices.DeleteFunc(slices.Clone(in.Markers), func(m park.Marker) bool {
+		return lastIssueOfSession(in.History, m.SessionID) != issue
+	})
 	var actions []dispatch.Action
-	for _, a := range dispatch.Decide(decideInput(env, cfg, []dispatch.RepoInput{in})) {
+	for _, a := range dispatch.Decide(decideInput(env, cfg, []dispatch.RepoInput{in}, &facts.Brake)) {
 		if a.Issue == issue && runKinds[a.Kind] {
 			actions = append(actions, a)
 		}
@@ -105,7 +122,17 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	return runResult(res, repo.Slug, issue, errOut)
+	return runResult(res, repo.Slug, issue, facts.PauseUntil, errOut)
+}
+
+// lastIssueOfSession is the issue of the last run of session in history, 0 without one.
+func lastIssueOfSession(history []runs.Row, session string) int {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].SessionID == session {
+			return history[i].Issue
+		}
+	}
+	return 0
 }
 
 // findRepo returns the repo of [dispatch] repos with slug; it must be dispatchable. A repo
@@ -126,8 +153,9 @@ func findRepo(cfg hostconfig.Dispatch, slug, hostToml string) (repoconfig.Repo, 
 
 // runResult writes what apply did for slug#issue to errOut: each deferral, an apply line for
 // a failed action, and then started, not accepted (the workplace refused the launch) or, when
-// nothing started, deferred or failed, nothing to start. A failed action returns errSilent.
-func runResult(res dispatch.Result, slug string, issue int, errOut io.Writer) error {
+// nothing started, deferred or failed, paused (pauseUntil is set: the pause drops the start
+// without a deferral) or nothing to start. A failed action returns errSilent.
+func runResult(res dispatch.Result, slug string, issue int, pauseUntil time.Time, errOut io.Writer) error {
 	for _, d := range res.Deferred {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: deferred %s\n", d)
 	}
@@ -141,6 +169,8 @@ func runResult(res dispatch.Result, slug string, issue int, errOut io.Writer) er
 		_, _ = fmt.Fprintf(errOut, "lighthouse: started %s\n", target)
 	case slices.Contains(res.NotAccepted, target):
 		_, _ = fmt.Fprintf(errOut, "lighthouse: not accepted %s\n", target)
+	case len(res.Deferred) == 0 && failed == nil && !pauseUntil.IsZero():
+		_, _ = fmt.Fprintf(errOut, "lighthouse: paused until %s\n", pauseUntil.Format(time.RFC3339))
 	case len(res.Deferred) == 0 && failed == nil:
 		_, _ = fmt.Fprintf(errOut, "lighthouse: nothing to start for %s\n", target)
 	}

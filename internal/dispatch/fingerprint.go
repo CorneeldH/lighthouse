@@ -41,23 +41,26 @@ type fpRun struct {
 	ID        int64            `json:"id"`
 	Issue     int              `json:"issue"`
 	StartedAt time.Time        `json:"started_at"`
-	Stand     *workplace.Stand `json:"stand"`            // nil: not measurable
-	Parked    bool             `json:"parked,omitempty"` // omitted when false: older fingerprints stay equal
+	Stand     *workplace.Stand `json:"stand"` // nil: not measurable
+}
+
+type fpMarker struct {
+	Key string `json:"key"` // session, created_at and reset_at: a new parking is a new key
 }
 
 // Fingerprint is the hex SHA-256 of what decides whether a tick has work: the board fields
 // of the items, the blockers of On hold items, the PRs of items with an open run, and the
-// open runs with the stand of their session and their resume marker. Comments are left out:
-// a new comment moves IssueUpdatedAt. Activity and permission prompts are left out too: they
-// change every tick, and Boundaries makes the tick look when their max_wait runs out. Lists
-// are sorted and an empty list hashes like a nil one, so order and nil-ness never change the
-// result.
+// open runs with the stand of their session, the resume markers and the end of the pause.
+// Comments are left out: a new comment moves IssueUpdatedAt. Activity and permission prompts
+// are left out too: they change every tick, and Boundaries makes the tick look when their
+// max_wait runs out. Lists are sorted and an empty list hashes like a nil one, so order and
+// nil-ness never change the result.
 func Fingerprint(pre Pre) string {
 	hasRun := map[int]bool{}
 	runsIn := make([]fpRun, 0, len(pre.OpenRuns))
 	for _, r := range pre.OpenRuns {
 		hasRun[r.Issue] = true
-		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC(), Parked: pre.Runs[r.ID].Parked}
+		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC()}
 		if stand, ok := pre.Stands[r.ID]; ok {
 			f.Stand = &stand
 		}
@@ -90,10 +93,18 @@ func Fingerprint(pre Pre) string {
 	}
 	slices.SortFunc(items, func(a, b fpItem) int { return cmp.Compare(a.Issue, b.Issue) })
 
+	markers := make([]fpMarker, 0, len(pre.Markers))
+	for _, m := range pre.Markers {
+		markers = append(markers, fpMarker{m.Key()})
+	}
+	slices.SortFunc(markers, func(a, b fpMarker) int { return cmp.Compare(a.Key, b.Key) })
+
 	data, err := json.Marshal(struct {
-		Items []fpItem `json:"items"`
-		Runs  []fpRun  `json:"runs"`
-	}{items, runsIn})
+		Items      []fpItem   `json:"items"`
+		Runs       []fpRun    `json:"runs"`
+		Markers    []fpMarker `json:"markers"`
+		PauseUntil time.Time  `json:"pause_until"`
+	}{items, runsIn, markers, pre.PauseUntil.UTC()})
 	if err != nil {
 		// Plain structs of strings, ints, bools and times cannot fail to marshal.
 		panic("dispatch: fingerprint: " + err.Error())

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -25,6 +26,12 @@ type Pre struct {
 	OpenRuns []runs.OpenRun
 	Stands   map[int64]workplace.Stand // per open run id, set by the caller; missing = not measurable
 	Runs     map[int64]RunState        // per open run id, set by the caller; missing = not measured
+	// Markers are the controller markers whose session's last run is in this repo; the
+	// fingerprint and the boundaries of the precheck read them.
+	Markers []park.Marker
+	// PauseUntil is the end of the active pause flag; zero is no pause. It is in the fingerprint,
+	// so a pause that ends makes the next tick gather.
+	PauseUntil time.Time
 }
 
 // Prepare reads the board of repo and keeps the issues of repo.Slug whose Status is
@@ -42,6 +49,18 @@ func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []
 	}
 	statusName := invert(b.StatusOptions)
 	priorityName := invert(b.PriorityOptions)
+	// The status of every board item, before the dispatch filter: a blocker is usually not a
+	// dispatch item.
+	type ref struct {
+		repo  string
+		issue int
+	}
+	boardStatus := make(map[ref]string, len(board))
+	for _, bi := range board {
+		if bi.Repo != "" && bi.Issue > 0 {
+			boardStatus[ref{bi.Repo, bi.Issue}] = statusName[bi.SingleSelect[b.StatusFieldID]]
+		}
+	}
 	var items []Item
 	for _, bi := range board {
 		status := statusName[bi.SingleSelect[b.StatusFieldID]]
@@ -52,7 +71,8 @@ func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []
 			Issue: bi.Issue, Title: bi.Title, State: bi.IssueState, ItemID: bi.ItemID,
 			Status: status, Priority: priorityName[bi.SingleSelect[b.PriorityFieldID]],
 			ItemUpdatedAt: bi.ItemUpdatedAt, IssueUpdatedAt: bi.IssueUpdatedAt,
-			BlockedBy: bi.BlockedBy, PRs: bi.ClosingPRs,
+			BlockedBy: withStatus(bi.BlockedBy, func(bl forge.Blocker) string { return boardStatus[ref{bl.Repo, bl.Issue}] }),
+			PRs:       bi.ClosingPRs,
 		}
 		if br := branches[bi.Issue]; br != "" {
 			onBranch, err := c.BranchPRs(ctx, br)
@@ -66,6 +86,19 @@ func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []
 	}
 	slices.SortFunc(items, func(x, y Item) int { return x.Issue - y.Issue })
 	return Pre{Repo: repo, Items: items, OpenRuns: open}, nil
+}
+
+// withStatus returns a copy of blockers with Status set by status; the input stays untouched.
+// The fingerprint ignores Status: it is text for the comment only.
+func withStatus(blockers []forge.Blocker, status func(forge.Blocker) string) []forge.Blocker {
+	if blockers == nil {
+		return nil
+	}
+	out := slices.Clone(blockers)
+	for i := range out {
+		out[i].Status = status(out[i])
+	}
+	return out
 }
 
 // invert maps option ID → option name.

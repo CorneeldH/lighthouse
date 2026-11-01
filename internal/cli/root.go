@@ -44,6 +44,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newTickCommand())
 	root.AddCommand(newGatherCommand())
 	root.AddCommand(newRunCommand())
+	root.AddCommand(newPauseCommand())
 	root.AddCommand(newAskCommand(defaultAskEnv()))
 	root.AddCommand(&cobra.Command{
 		Use:   "version",

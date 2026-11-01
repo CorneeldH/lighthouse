@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -24,6 +25,7 @@ type Input struct {
 	// the time rules that use them off.
 	MaxWait    Duration `json:"max_wait,omitempty"`
 	MaxRuntime Duration `json:"max_runtime,omitempty"`
+	Brake      *Brake   `json:"brake,omitempty"` // nil: no brake
 }
 
 // RepoInput is what Decide knows about one repo.
@@ -36,6 +38,9 @@ type RepoInput struct {
 	History       []runs.Row                `json:"history"`
 	Stands        map[int64]workplace.Stand `json:"stands"`         // per open run id; missing = not measurable
 	Runs          map[int64]RunState        `json:"runs,omitempty"` // per open run id; missing = not measured
+	// Markers are the controller markers whose session's last run is in this repo, resumable
+	// or not.
+	Markers []park.Marker `json:"markers"`
 }
 
 // Kind is what an action does.
@@ -49,10 +54,16 @@ const (
 	KindClose  Kind = "close"
 	KindRocket Kind = "rocket"
 	KindDefer  Kind = "defer"
+	KindPark   Kind = "park"
+	KindHold   Kind = "hold"
+	KindUnpark Kind = "unpark"
+	// KindDropMarker removes the resume marker of SessionID while its key is TriggerKey.
+	KindDropMarker Kind = "drop_marker"
 )
 
 // Action is one thing apply does. Reason and Skip are heading keys, never posted text; only a
-// KindDefer carries a literal Reason (night or blocker), which apply reports without a lookup.
+// KindDefer carries a literal Reason (night), which apply reports without a lookup. A park,
+// hold or unpark carries the board ItemID; a park also the Blockers its 🤖 Parked names.
 type Action struct {
 	Kind       Kind         `json:"kind"`
 	Repo       string       `json:"repo"`
@@ -74,23 +85,33 @@ type Action struct {
 	ReasonArg  string       `json:"reason_arg,omitempty"` // the argument of Reason, literal
 	PRURL      string       `json:"pr_url,omitempty"`
 	Language   string       `json:"language,omitempty"`
-	Stop       bool         `json:"stop,omitempty"`    // stop the session of run RunID
-	Discard    bool         `json:"discard,omitempty"` // forget the launch of run RunID
+	Stop       bool         `json:"stop,omitempty"`     // stop the session of run RunID
+	Discard    bool         `json:"discard,omitempty"`  // forget the launch of run RunID
+	ItemID     string       `json:"item_id,omitempty"`  // park, hold, unpark: the board item
+	Blockers   []string     `json:"blockers,omitempty"` // park: "<repo>#<n> (<status>)" per active blocker
 }
 
 // Decide is the pure decision of one tick: per repo, per item, first the orphan rule, then
-// the settlement of the item's open runs, then the 🚀 repair, then at most one start or
-// resume (next). The result is ordered: the actions without a start or resume by repo and
-// issue, then the defers, then the starts and resumes by priority, trigger time, repo and
-// issue.
+// the settlement of the item's open runs, then the 🚀 repair, then at most one start,
+// resume, park or hold (next), or for an item in On hold at most one unpark; per repo also
+// the markers that will never resume. The result is ordered: the actions without a start or
+// resume (park, hold and unpark among them) by repo and issue, then the defers, then the
+// starts and resumes by priority, trigger time, repo and issue.
 func Decide(in Input) []Action {
 	var ps []planned
 	for _, repo := range in.Repos {
 		for _, it := range repo.Snapshot.Items {
 			ps = append(ps, decideIssue(in, repo, it)...)
 		}
+		for _, a := range dropMarkers(repo) {
+			ps = append(ps, planned{Action: a})
+		}
 	}
 	slices.SortStableFunc(ps, comparePlanned)
+	if in.Brake != nil {
+		ps = in.Brake.apply(ps)
+		slices.SortStableFunc(ps, comparePlanned)
+	}
 	out := make([]Action, 0, len(ps))
 	for _, p := range ps {
 		out = append(out, p.Action)
@@ -103,10 +124,12 @@ type planned struct {
 	Action
 	priority int
 	at       time.Time
+	software bool // the repo profile is "software"
+	parked   bool // a usage resume: its run already holds a slot
 }
 
-// group places an action in the output: 0 without a start or resume, 1 a defer, 2 a start
-// or resume.
+// group places an action in the output: 0 without a start or resume (a park, hold or unpark
+// too), 1 a defer, 2 a start or resume.
 func (p planned) group() int {
 	switch p.Kind {
 	case KindStart, KindResume:
@@ -134,7 +157,8 @@ func comparePlanned(a, b planned) int {
 
 // decideIssue gives the actions of one item. The start rules run only for an open issue in
 // Controller whose open runs all close in this tick, and not when the orphan rule hands the
-// issue back: a start next to that Returned would contradict it.
+// issue back: a start next to that Returned would contradict it. The same holds for the
+// unpark rule of an open issue in On hold.
 func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	hs := headers(it)
 	base := Action{Repo: repo.Snapshot.Repo, Issue: it.Issue, Language: repo.Language}
@@ -157,10 +181,18 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	for _, a := range repair(repo.History, it, base) {
 		out = append(out, planned{Action: a})
 	}
-	if free && it.Status == statusController && it.State == "OPEN" {
-		c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night}
+	if !free || it.State != "OPEN" {
+		return out
+	}
+	c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night}
+	switch it.Status {
+	case statusController:
 		if p, ok := c.next(); ok {
 			out = append(out, p)
+		}
+	case statusOnHold:
+		if c.ownParked() && !c.active() {
+			out = append(out, planned{Action: c.board(KindUnpark)})
 		}
 	}
 	return out
@@ -277,11 +309,12 @@ type runCtx struct {
 	measured bool // the run is in RepoInput.Runs
 	stand    workplace.Stand
 	hasStand bool
-	handoff  bool // a Handoff stands from row's start on
+	handoff  bool          // a Handoff stands from row's start on
+	markers  []park.Marker // the repo's resume markers
 }
 
 func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) runCtx {
-	c := runCtx{in: in, it: it, row: row, base: base}
+	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers}
 	for _, o := range repo.Snapshot.OpenRuns {
 		if o.ID == row.ID {
 			c.open = o
@@ -328,7 +361,20 @@ func (c runCtx) returned(reason, arg string) Action {
 }
 
 func (c runCtx) parked() (Action, bool) {
-	return c.closed(runs.Parked), c.state.Parked
+	return c.closed(runs.Parked), parkedRun(c.markers, c.row)
+}
+
+// parkedRun reports whether the usage guard parked row: a marker of row's session written
+// at or after row's start. An older marker belongs to an earlier parking: a resume reuses the
+// session, and its row must not close on the marker the resume answered.
+func parkedRun(markers []park.Marker, row runs.Row) bool {
+	for _, m := range markers {
+		created, _ := m.Created()
+		if row.SessionID != "" && m.SessionID == row.SessionID && !created.Before(row.StartedAt) {
+			return true
+		}
+	}
+	return false
 }
 
 // endedInRun reports whether pr merged or closed from the run's start on: a PR of an earlier
@@ -533,6 +579,42 @@ func (c runCtx) timeout() (Action, bool) {
 	return a, true
 }
 
+// lastOfSession returns the last row of the history with session, on any issue: the run
+// state says to which issue a marker belongs.
+func lastOfSession(history []runs.Row, session string) (runs.Row, bool) {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].SessionID == session {
+			return history[i], true
+		}
+	}
+	return runs.Row{}, false
+}
+
+// dropMarkers gives a drop_marker for every marker of repo that will never resume: its last
+// run is closed and not resumable, or parked under a key a run already spent (usageResume never
+// fires for it), or its issue left the snapshot or is closed. An open last run, or none, gives
+// nothing; On hold keeps the marker for when the issue comes back.
+func dropMarkers(repo RepoInput) []Action {
+	var out []Action
+	for _, m := range repo.Markers {
+		last, ok := lastOfSession(repo.History, m.SessionID)
+		if !ok || last.Open {
+			continue
+		}
+		i := slices.IndexFunc(repo.Snapshot.Items, func(it Item) bool { return it.Issue == last.Issue })
+		gone := i < 0 || repo.Snapshot.Items[i].State == "CLOSED"
+		stuck := last.Outcome == runs.Parked && spentKey(repo.History, m.Key())
+		if !gone && !stuck && runs.Resumable(last, m.Key()) {
+			continue
+		}
+		out = append(out, Action{
+			Kind: KindDropMarker, Repo: repo.Snapshot.Repo, Issue: last.Issue, SessionID: m.SessionID,
+			TriggerKey: m.Key(), Language: repo.Language,
+		})
+	}
+	return out
+}
+
 // endsChain reports whether a handoff names the end command for issue: the run then waits
 // for green and the handoff does not close it. An unreadable handoff, or one for another
 // issue, does not end the chain.
@@ -600,6 +682,7 @@ func triggerComment(key string) (int64, bool) {
 
 const (
 	statusController = "Controller"
+	statusOnHold     = "On hold"
 	cmdStartIssue    = "/lighthouse-start-issue"
 	modeStart        = "start"
 	modeResume       = "resume"
@@ -618,10 +701,10 @@ type issueCtx struct {
 	night string
 }
 
-// next returns the one start, resume, return or defer the item gets in this tick: the first
-// rule that gives an action wins.
+// next returns the one start, resume, return, defer, park or hold the item gets in this tick:
+// the first rule that gives an action wins.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.answer, c.closeCheck, c.newIssue, c.handoff} {
+	for _, rule := range []func() (planned, bool){c.retry, c.usageResume, c.answer, c.closeCheck, c.newIssue, c.handoff} {
 		if p, ok := rule(); ok {
 			return p, true
 		}
@@ -722,6 +805,34 @@ func (c issueCtx) startFailed(row runs.Row) (Action, bool) {
 	return a, true
 }
 
+// usageResume resumes a run the usage guard parked, once per parking: a marker whose
+// session's last run is on this issue and closed as parked, whose key no run has, and whose
+// reset has passed. A pause marker does not wait for its reset: while the pause holds, the
+// brake drops the resume. The second attempt after a failed start is retry's.
+func (c issueCtx) usageResume() (planned, bool) {
+	for _, m := range c.repo.Markers {
+		run, ok := lastOfSession(c.repo.History, m.SessionID)
+		// Resumable also holds for a first resume that failed to start; that one is retry's,
+		// so only a run closed as parked resumes here.
+		if !ok || run.Issue != c.it.Issue || !runs.Resumable(run, m.Key()) || run.Outcome != runs.Parked ||
+			c.spent(m.Key()) {
+			continue
+		}
+		at, _ := m.Reset()
+		if m.Pause {
+			at = c.now
+		} else if at.After(c.now) {
+			continue
+		}
+		a := c.base
+		a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerUsage, m.Key(), 1
+		a.SessionID, a.Command, a.Branch = m.SessionID, run.Command, run.Branch
+		a.Prompt = protocol.Heading("prompt_usage_resume", c.repo.Language)
+		return c.planned(a, at), true
+	}
+	return planned{}, false
+}
+
 // answer resumes the session of the last turn when that is a Question with a session and an
 // answer follows it. A session no run of this issue has resumes nothing: a Question carrying
 // another issue's session never resumes that run.
@@ -811,7 +922,8 @@ func (c issueCtx) newIssue() (planned, bool) {
 
 // handoff acts on the last turn when that is a Handoff without 🚀 whose trigger has no run:
 // it goes back when it does not read, names another issue, is not for a headless run or
-// names a branch git must not see; waits for the night or an open blocker; else starts.
+// names a branch git must not see; waits for the night; parks an executing command with an
+// active blocker, or only holds it when its own Parked already stands; else starts.
 func (c issueCtx) handoff() (planned, bool) {
 	p := lastTurn(c.hs)
 	if p == nil || p.Header.Kind != protocol.KindHandoff || p.Comment.Rocket {
@@ -847,8 +959,13 @@ func (c issueCtx) handoff() (planned, bool) {
 	if ho.When == "night" && !InNight(c.night, c.now) {
 		return c.deferred("night"), true
 	}
-	if Executing(j.Command) && c.blocked() {
-		return c.deferred("blocker"), true
+	if Executing(j.Command) && c.active() {
+		if c.ownParked() {
+			return planned{Action: c.board(KindHold)}, true
+		}
+		a := c.board(KindPark)
+		a.Blockers = c.activeBlockers()
+		return planned{Action: a}, true
 	}
 	branch := ho.Branch
 	if branch == c.repo.DefaultBranch {
@@ -868,20 +985,47 @@ func validBranch(branch string) bool {
 	return branchName.MatchString(branch) && !strings.HasPrefix(branch, "-") && !strings.Contains(branch, "..")
 }
 
-func (c issueCtx) blocked() bool {
+// active reports whether a blocker of the item is still active: open and without a merged
+// PR. A blocker closed without a merge has lapsed.
+func (c issueCtx) active() bool {
+	return len(c.activeBlockers()) > 0
+}
+
+// activeBlockers names the active blockers in BlockedBy order, as "<repo>#<n> (<status>)",
+// or "<repo>#<n>" for a blocker that is not on the board.
+func (c issueCtx) activeBlockers() []string {
+	var out []string
 	for _, b := range c.it.BlockedBy {
-		if b.State == "OPEN" {
-			return true
+		if b.State != "OPEN" || b.MergedPR {
+			continue
 		}
+		name := b.Repo + "#" + strconv.Itoa(b.Issue)
+		if b.Status != "" {
+			name += " (" + b.Status + ")"
+		}
+		out = append(out, name)
+	}
+	return out
+}
+
+// ownParked reports whether the last protocol comment (Rebased does not count) is a Parked
+// by the token login: the tick parked the item itself.
+func (c issueCtx) ownParked() bool {
+	for i := len(c.hs) - 1; i >= 0; i-- {
+		p := c.hs[i]
+		if p.Header.Kind == protocol.KindRebased {
+			continue
+		}
+		return p.Header.Kind == protocol.KindParked && p.Comment.Author == c.repo.Snapshot.TokenLogin
 	}
 	return false
 }
 
-// lastTurn returns the last protocol comment that is a turn: a Rebased is a status note and
-// does not hide a Handoff or Question.
+// lastTurn returns the last protocol comment that is a turn: a Rebased or a Parked is a
+// status note and does not hide a Handoff or Question.
 func lastTurn(hs []parsed) *parsed {
 	for i := len(hs) - 1; i >= 0; i-- {
-		if hs[i].Header.Kind != protocol.KindRebased {
+		if k := hs[i].Header.Kind; k != protocol.KindRebased && k != protocol.KindParked {
 			return &hs[i]
 		}
 	}
@@ -889,13 +1033,10 @@ func lastTurn(hs []parsed) *parsed {
 }
 
 // spent reports whether a run of the repo already has this trigger key.
-func (c issueCtx) spent(key string) bool {
-	for _, row := range c.repo.History {
-		if row.TriggerKey == key {
-			return true
-		}
-	}
-	return false
+func (c issueCtx) spent(key string) bool { return spentKey(c.repo.History, key) }
+
+func spentKey(history []runs.Row, key string) bool {
+	return slices.ContainsFunc(history, func(row runs.Row) bool { return row.TriggerKey == key })
 }
 
 func (c issueCtx) comment(id int64) (Comment, bool) {
@@ -931,6 +1072,13 @@ func (c issueCtx) returned(reason, arg string) planned {
 	return planned{Action: a}
 }
 
+// board is a park, hold or unpark of the item's board item.
+func (c issueCtx) board(kind Kind) Action {
+	a := c.base
+	a.Kind, a.ItemID = kind, c.it.ItemID
+	return a
+}
+
 func (c issueCtx) deferred(reason string) planned {
 	a := c.base
 	a.Kind, a.Reason = KindDefer, reason
@@ -939,7 +1087,13 @@ func (c issueCtx) deferred(reason string) planned {
 
 // planned orders a start or resume by the item's priority and the time of its trigger.
 func (c issueCtx) planned(a Action, at time.Time) planned {
-	return planned{Action: a, priority: priorityRank(c.it.Priority), at: at}
+	return planned{
+		Action:   a,
+		priority: priorityRank(c.it.Priority),
+		at:       at,
+		software: c.repo.Controller.Profile == ProfileSoftware,
+		parked:   a.Trigger == triggerUsage,
+	}
 }
 
 // priorityRank orders P0, P1, P2, then no or an unknown priority.

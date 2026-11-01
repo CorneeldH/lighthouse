@@ -19,14 +19,7 @@
               "priority": "P1",
               "item_updated_at": "2026-10-31T08:00:00Z",
               "issue_updated_at": "2026-10-31T08:00:00Z",
-              "blocked_by": [
-                {
-                  "repo": "o/r",
-                  "issue": 5,
-                  "state": "OPEN",
-                  "merged_pr": false
-                }
-              ],
+              "blocked_by": [],
               "prs": [],
               "comments": [
                 {
@@ -36,19 +29,36 @@
                   "created_at": "2026-10-31T10:00:00Z",
                   "url": "https://github.com/o/r/issues/7#issuecomment-62",
                   "rocket": false
-                },
-                {
-                  "id": 63,
-                  "author": "owner",
-                  "body": "🤖 Handoff\nissue: #7\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-7-bouw-de-keten\nanchor: 3f2a1bc\nnext: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-7-bouw-de-keten\nDoel: de keten afmaken.\nEerste stap: /superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md\n```",
-                  "created_at": "2026-10-31T11:00:00Z",
-                  "url": "https://github.com/o/r/issues/7#issuecomment-63",
-                  "rocket": false
                 }
               ]
+            },
+            {
+              "issue": 8,
+              "title": "Nog een issue",
+              "state": "OPEN",
+              "item_id": "I8",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": []
             }
           ],
-          "open_runs": []
+          "open_runs": [
+            {
+              "id": 5,
+              "issue": 7,
+              "session_id": "11111111-2222-4333-8444-555555555555",
+              "trigger_key": "start:7",
+              "profile": "",
+              "branch": "issue-7-bouw-de-keten",
+              "workspace_id": "ws-1",
+              "workplace_session": "ks-1",
+              "started_at": "2026-10-31T10:00:00Z"
+            }
+          ]
         },
         "controller": {
           "Profile": "",
@@ -79,21 +89,56 @@
             "Branch": "issue-7-bouw-de-keten",
             "Profile": "",
             "StartedAt": "2026-10-31T10:00:00Z",
-            "Open": false,
-            "Outcome": "handoff",
+            "Open": true,
+            "Outcome": "",
             "Reason": ""
           }
         ],
-        "stands": {}
+        "stands": {
+          "5": 0
+        },
+        "runs": {
+          "5": {
+            "session_at": "2026-10-31T11:55:00Z",
+            "transcript": {
+              "last_event": "2026-10-31T11:00:00Z",
+              "threads": {
+                "": "2026-10-31T11:00:00Z"
+              },
+              "assistant_turn": true
+            }
+          }
+        }
       }
-    ]
+    ],
+    "max_wait": "1h",
+    "max_runtime": "8h",
+    "brake": {
+      "paused": true,
+      "manual": false,
+      "usage_measured": true,
+      "session_pct": 10,
+      "week_pct": 10,
+      "halt_pct_session": 85,
+      "halt_pct_week": 90,
+      "mem_available_gib": 32.0,
+      "min_mem_available_gb": 8,
+      "reserve_per_run_gb": 3,
+      "slots": 4,
+      "max_software": 2,
+      "in_use": 0,
+      "software_in_use": 0
+    }
   },
   "want": [
     {
-      "kind": "defer",
+      "kind": "return",
       "repo": "o/r",
       "issue": 7,
-      "reason": "blocker",
+      "run_id": 5,
+      "session_id": "11111111-2222-4333-8444-555555555555",
+      "reason": "reason_silent",
+      "stop": true,
       "language": "nl"
     }
   ]

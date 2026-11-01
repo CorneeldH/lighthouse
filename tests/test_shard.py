@@ -19,7 +19,7 @@ def test_parse_valid(value, expected):
     assert parse_shard(value) == expected
 
 
-@pytest.mark.parametrize("value", ["", "0/3", "4/3", "3", "a/b", "2/0", " 2/3", "1/3/5"])
+@pytest.mark.parametrize("value", ["", "0/3", "4/3", "3", "a/b", "2/0", " 2/3", "1/3/5", "１/３"])
 def test_parse_invalid(value):
     with pytest.raises(ValueError, match=ENV):
         parse_shard(value)
@@ -30,10 +30,12 @@ def test_every_test_in_exactly_one_shard():
         assert sum(in_shard(nodeid, i, 3) for i in (1, 2, 3)) == 1, nodeid
 
 
-def test_shards_are_stable_and_not_empty():
-    first = [[n for n in NODEIDS if in_shard(n, i, 3)] for i in (1, 2, 3)]
-    assert first == [[n for n in NODEIDS if in_shard(n, i, 3)] for i in (1, 2, 3)]
-    assert all(first)
+def test_shards_are_not_empty():
+    assert all([n for n in NODEIDS if in_shard(n, i, 3)] for i in (1, 2, 3))
+
+
+def test_one_shard_keeps_every_test():
+    assert all(in_shard(n, 1, 1) for n in NODEIDS)
 
 
 @pytest.mark.parametrize(
@@ -89,3 +91,17 @@ def test_modifyitems_keeps_only_its_shard(monkeypatch):
     assert [i.nodeid for i in items] == kept
     assert len(deselected) == 1
     assert [i.nodeid for i in deselected[0]] == [n for n in NODEIDS if n not in kept]
+
+
+def test_report_header_names_the_shard(monkeypatch):
+    monkeypatch.setenv(ENV, "2/3")
+    config, _ = _config()
+    conftest.pytest_configure(config)
+    assert conftest.pytest_report_header(config) == [f"{ENV}=2/3"]
+
+
+def test_report_header_empty_without_env(monkeypatch):
+    monkeypatch.delenv(ENV, raising=False)
+    config, _ = _config()
+    conftest.pytest_configure(config)
+    assert conftest.pytest_report_header(config) == []

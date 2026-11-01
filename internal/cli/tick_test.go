@@ -19,10 +19,12 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -72,14 +74,49 @@ func tickFixture(t *testing.T, repos ...string) (tickEnv, string) {
 	if err := os.WriteFile(host, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	vars := map[string]string{"XDG_RUNTIME_DIR": runtime, "GH_TOKEN": "tok"}
+	vars := map[string]string{"XDG_RUNTIME_DIR": runtime, "GH_TOKEN": "tok",
+		"XDG_DATA_HOME": t.TempDir(), "XDG_STATE_HOME": t.TempDir()}
 	env := tickEnv{Getenv: func(k string) string { return vars[k] }, HostToml: host, StateDir: t.TempDir(),
-		ResumeDir: t.TempDir(),
 		Workplace: func(r repoconfig.Repo) workplace.Workplace {
 			t.Errorf("unexpected workplace for %s: this test starts nothing", r.Slug)
 			return newFakeWorkplace(t, r.Slug)
 		}}
+	openBrake(t, &env)
 	return env, filepath.Join(t.TempDir(), "lh.db")
+}
+
+// openBrake gives env a brake that is open: a fresh usage cache at 10% and 10%, and 32 GiB of
+// MemAvailable. The meter has its own clock (t0), apart from env.Now, which tests move by hours;
+// a refresh or a pgrep fails the test, so a fresh cache is what the tick relies on.
+func openBrake(t *testing.T, env *tickEnv) {
+	t.Helper()
+	m := usage.NewMeter(usage.Paths{Dir: t.TempDir()}, usage.DefaultConfig())
+	m.Now = func() time.Time { return t0 }
+	m.RunUsage = func(context.Context, string) ([]byte, error) {
+		t.Error("the meter refreshed: the cache should be fresh")
+		return nil, errors.New("no refresh in this test")
+	}
+	m.ClaudeRunning = func() bool {
+		t.Error("the meter looked for claude")
+		return false
+	}
+	env.Meter = &m
+	env.MemInfo = filepath.Join(t.TempDir(), "meminfo")
+	if err := os.WriteFile(env.MemInfo, []byte("MemTotal: 67108864 kB\nMemAvailable:   33554432 kB\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setUsage(t, *env, 10, 10)
+}
+
+// setUsage writes the usage cache of env's meter, generated ten seconds before its clock.
+func setUsage(t *testing.T, env tickEnv, session, week int) {
+	t.Helper()
+	m := env.Meter
+	s := usage.State{Schema: 1, GeneratedAt: m.Now().Add(-10 * time.Second).UTC().Format("2006-01-02T15:04:05Z"),
+		Session: usage.WindowState{Pct: session}, Week: usage.WindowState{Pct: week}}
+	if err := usage.WriteState(m.Paths.Cache(), s); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // fakeForge points env at a fake GitHub with an empty board and token login lh-bot.
@@ -900,10 +937,9 @@ func TestTickMeasuresRunState(t *testing.T) {
 		},
 		dirs: map[string]string{"ws-1": transcripts, "ws-6": transcripts},
 	}
-	env := tickEnv{StateDir: t.TempDir(), ResumeDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
+	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
 	writeTestFile(t, filepath.Join(env.StateDir, "runs", sidMeasured, "permission.json"),
 		`{"version":1,"at":"2026-10-31T11:56:00Z","tool":"Bash","path":"rm -rf build","thread":"","message":"m"}`+"\n")
-	writeTestFile(t, filepath.Join(env.ResumeDir, sidMeasured+".json"), `{"session_id":"`+sidMeasured+`"}`)
 	open := []runs.OpenRun{
 		{ID: 1, Issue: 7, SessionID: sidMeasured, WorkspaceID: "ws-1", WorkplaceSession: "mine"},
 		{ID: 2, Issue: 8, SessionID: sidGone, WorkspaceID: "ws-gone", WorkplaceSession: "k2"},
@@ -930,7 +966,6 @@ func TestTickMeasuresRunState(t *testing.T) {
 				AssistantTurn: true,
 			},
 			Permission: &dispatch.Permission{At: time.Date(2026, 10, 31, 11, 56, 0, 0, time.UTC), Tool: "Bash", Path: "rm -rf build"},
-			Parked:     true,
 		},
 		2: {Gone: true},
 		3: {},                   // nothing found yet: measured, not an error
@@ -945,12 +980,12 @@ func TestTickMeasuresRunState(t *testing.T) {
 }
 
 // One unreadable file leaves its run without any measurement: a half measurement would read
-// as "no permission prompt" or "not parked".
+// as "no permission prompt".
 func TestMeasureFileErrorLeavesRunUnmeasured(t *testing.T) {
 	w := &measureWorkplace{sessions: map[string][]workplace.Session{
 		"ws-1": {{Key: "mine", WorkspaceID: "ws-1", State: "working"}},
 	}}
-	env := tickEnv{StateDir: t.TempDir(), ResumeDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
+	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
 	writeTestFile(t, filepath.Join(env.StateDir, "runs", sidMeasured, "permission.json"), `{"version":1,"at":`)
 	open := []runs.OpenRun{{ID: 1, Issue: 7, SessionID: sidMeasured, WorkspaceID: "ws-1", WorkplaceSession: "mine"}}
 	var errOut bytes.Buffer
@@ -991,7 +1026,7 @@ func TestTickAdoptFailureIsLoudNotFatal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var errOut bytes.Buffer
-	in, _, err := gatherRepo(ctx, env, conn, hostconfig.Dispatch{}, repo, "tok", func() (string, error) { return "lh-bot", nil }, &errOut)
+	in, _, err := gatherRepo(ctx, env, conn, hostconfig.Dispatch{}, hostFacts{}, repo, "tok", func() (string, error) { return "lh-bot", nil }, &errOut)
 	if err != nil || in == nil {
 		t.Fatalf("gatherRepo = %v, %v, want the repo gathered\n%s", in, err, errOut.String())
 	}
@@ -1006,12 +1041,13 @@ func TestTickAdoptFailureIsLoudNotFatal(t *testing.T) {
 	}
 }
 
-// tick and run decide with the limits of host.toml [dispatch].
+// tick and run decide with the limits of host.toml [dispatch] and the brake of the tick.
 func TestDecideInputCarriesLimits(t *testing.T) {
 	env := tickEnv{Now: func() time.Time { return t0 }}
 	cfg := hostconfig.Dispatch{Night: "21:00-08:00", MaxWait: 90 * time.Minute, MaxRuntime: 8 * time.Hour}
-	got := decideInput(env, cfg, nil)
-	want := dispatch.Input{Now: t0, Night: "21:00-08:00",
+	brake := &dispatch.Brake{Paused: true}
+	got := decideInput(env, cfg, nil, brake)
+	want := dispatch.Input{Now: t0, Night: "21:00-08:00", Brake: brake,
 		MaxWait: dispatch.Duration(90 * time.Minute), MaxRuntime: dispatch.Duration(8 * time.Hour)}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("decideInput = %+v, want %+v", got, want)
@@ -1045,7 +1081,7 @@ func TestTickAdoptsBeforePrepare(t *testing.T) {
 	cfg := hostconfig.Dispatch{MaxWait: time.Hour, MaxRuntime: 8 * time.Hour}
 	login := func() (string, error) { return "lh-bot", nil }
 	var errOut bytes.Buffer
-	in, _, err := gatherRepo(ctx, env, conn, cfg, repo, "tok", login, &errOut)
+	in, _, err := gatherRepo(ctx, env, conn, cfg, hostFacts{}, repo, "tok", login, &errOut)
 	if err != nil || in == nil {
 		t.Fatalf("gatherRepo = %v, %v\n%s", in, err, errOut.String())
 	}
@@ -1060,5 +1096,198 @@ func TestTickAdoptsBeforePrepare(t *testing.T) {
 	}
 	if want := "lighthouse: gathered o/r: 1 items (first)\n"; errOut.String() != want {
 		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+}
+
+// parkable is startable with issue 7 blocked by the open issue o/r#5, an executing handoff on
+// it, and Dutch artefacts.
+func parkable(t *testing.T) (tickEnv, string, *forgetest.Server) {
+	t.Helper()
+	env, db := tickFixture(t, repoDir(t, "[project]\nlanguage = \"nl\"\n\n"+completeRepo))
+	srv, _ := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", map[string]any{
+		"blockedBy": map[string]any{"nodes": []any{map[string]any{
+			"number": 5, "state": "OPEN", "repository": map[string]any{"nameWithOwner": "o/r"},
+			"closedByPullRequestsReferences": map[string]any{"nodes": []any{}},
+		}}},
+	}))}
+	srv.Comments = map[int][]map[string]any{7: {handoffComment("/superpowers:subagent-driven-development /work/plans/plan.md", "now")}}
+	return env, db, srv
+}
+
+// statusSets are the item and option of every SetStatus the server received.
+func statusSets(srv *forgetest.Server) []string {
+	var out []string
+	for _, v := range srv.StatusSets {
+		out = append(out, fmt.Sprintf("%v %v", v["item"], v["option"]))
+	}
+	return out
+}
+
+func TestTickParksBlockedHandoff(t *testing.T) {
+	env, db, srv := parkable(t)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	posted := bodies(srv, 7)
+	if len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 Geparkeerd") {
+		t.Errorf("comments on #7 = %q, want the handoff and then one Geparkeerd", posted)
+	}
+	if got, want := statusSets(srv), []string{"I7 h1"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("status sets = %q, want %q", got, want)
+	}
+	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 0 {
+		t.Errorf("runs = %+v, want none: a parked issue starts nothing", rows)
+	}
+}
+
+// A park whose board change fails keeps its Geparkeerd and no fingerprint; the next tick sees
+// its own Geparkeerd, posts nothing new and only sets the board.
+func TestTickParkBoardFailureRetries(t *testing.T) {
+	env, db, srv := parkable(t)
+	srv.FailOps = map[string]string{"SetStatus": "boom"}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "lighthouse: apply o/r: o/r#7 park: ") || !strings.Contains(errOut.String(), "boom") {
+		t.Errorf("errOut = %q, want an apply line for the park naming boom", errOut.String())
+	}
+	if posted := bodies(srv, 7); len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 Geparkeerd") {
+		t.Fatalf("comments on #7 = %q, want the handoff and then one Geparkeerd", posted)
+	}
+	if s := tickState(t, openStore(t, db), "o/r"); s != (dispatch.TickState{}) {
+		t.Errorf("tick state = %+v after the failed board change, want none", s)
+	}
+
+	srv.FailOps = nil
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("second tick = %v\n%s", err, errOut.String())
+	}
+	if posted := bodies(srv, 7); len(posted) != 2 {
+		t.Errorf("comments on #7 after the second tick = %q, want no new comment", posted)
+	}
+	// The failed SetStatus of the first tick is recorded too: StatusSets keeps every request.
+	if got, want := statusSets(srv), []string{"I7 h1", "I7 h1"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("status sets = %q, want %q", got, want)
+	}
+}
+
+// An idle host with a fresh usage cache starts the new issue (the fixture fails the test when
+// the meter refreshes or looks for claude).
+func TestTickIdleHostFreshCacheStarts(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if posted := bodies(srv, 7); len(posted) != 1 || !strings.HasPrefix(posted[0], "🤖 Started\n") {
+		t.Errorf("comments on #7 = %q, want one Started", posted)
+	}
+	if len(w.spawned()) != 1 {
+		t.Errorf("spawns = %+v, want one", w.spawned())
+	}
+}
+
+// deferredRows are the key and value of the deferred rows of repo in tick_state.
+func deferredRows(t *testing.T, db *sql.DB, repo string) map[string]string {
+	t.Helper()
+	rows, err := db.QueryContext(context.Background(), `SELECT key, value FROM tick_state WHERE repo = ? AND kind = 'deferred'`, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]string{}
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			t.Fatal(err)
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// A usage at the halt threshold defers the start with its reason on stderr and in the tick
+// state; no fingerprint is saved, so an open brake starts it on the next tick and leaves no row.
+func TestTickUsageClosedDefers(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	setUsage(t, env, 90, 10)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	want := "lighthouse: gathered o/r: 1 items (first)\nlighthouse: deferred o/r#7: usage: session 90%, week 10%\n"
+	if errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+	if p := writes(srv); len(p) != 0 || len(w.spawned()) != 0 {
+		t.Errorf("writes %v, spawns %v; want none for a deferred start", p, w.spawned())
+	}
+	conn := openStore(t, db)
+	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+		t.Errorf("tick state = %+v after a deferral, want none", s)
+	}
+	rows := deferredRows(t, conn, "o/r")
+	if len(rows) != 1 || !strings.Contains(rows["7"], "usage: session 90%, week 10%") {
+		t.Errorf("deferred rows = %v, want one for issue 7 with the reason", rows)
+	}
+
+	setUsage(t, env, 10, 10)
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("second tick = %v\n%s", err, errOut.String())
+	}
+	if len(w.spawned()) != 1 {
+		t.Errorf("spawns = %+v after the brake opened, want one", w.spawned())
+	}
+	if rows := deferredRows(t, conn, "o/r"); len(rows) != 0 {
+		t.Errorf("deferred rows = %v after the start, want none", rows)
+	}
+}
+
+// A pause drops the start without a deferred line and with the tick state saved; the flag is
+// in the fingerprint, so the tick after `pause off` gathers again and starts.
+func TestTickPausedStartsNothingAndRegathersAfterOff(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	flag, err := park.PauseFile(env.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := park.WritePause(flag, t0.Add(3*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: gathered o/r: 1 items (first)\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q: a pause defers nothing", errOut.String(), want)
+	}
+	conn := openStore(t, db)
+	if p := writes(srv); len(p) != 0 || len(w.spawned()) != 0 {
+		t.Errorf("writes %v, spawns %v; want none under a pause", p, w.spawned())
+	}
+	if s := tickState(t, conn, "o/r"); s.Fingerprint == "" {
+		t.Errorf("tick state = %+v, want the fingerprint saved under a pause", s)
+	}
+
+	if removed, err := park.ClearPause(flag); err != nil || !removed {
+		t.Fatalf("ClearPause = %v, %v", removed, err)
+	}
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick after pause off = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: gathered o/r: 1 items (changed)\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+	if len(w.spawned()) != 1 {
+		t.Errorf("spawns = %+v after pause off, want one", w.spawned())
 	}
 }

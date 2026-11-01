@@ -35,11 +35,13 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    daaruit een vingerafdruk: per item in Controller of On hold de Status, Priority en de `updatedAt`
    van item en issue, de voorgangers van een On hold-item, de PR's van een item met een open run, en
    de open runs zelf met de stand van hun forge-sessie (`working`, `waiting` of `done`; een sessie die
-   tick niet kan lezen telt als niet meetbaar). Per open run met een werkplek meet tick ook de
+   tick niet kan lezen telt als niet meetbaar), de resume-markers met `controller: true` waarvan de
+   laatste run van de sessie in deze repo staat, en het einde van de pauze (zie *De rem*). De markers
+   leest tick één keer per tick voor alle repo's; een onleesbare markermap stopt de tick, want dan
+   kan noch de rem noch de afloop (regel 5) kijken. Per open run met een werkplek meet tick ook de
    afloop: de laatste gebeurtenis in het transcript (subagents meegeteld, per draad), of de sessie
-   nog een eerste commando mist (`Unknown command:`) of nooit een assistent-beurt had, de laatste
-   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven) en een
-   hervat-markering. Staat het transcript niet op deze host (het Software-profiel in een
+   nog een eerste commando mist (`Unknown command:`) of nooit een assistent-beurt had, en de laatste
+   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven). Staat het transcript niet op deze host (het Software-profiel in een
    devcontainer), dan is de run niet meetbaar: geen fout, en de afloop valt terug op de forge-stand.
    Een run die tick niet kan meten (stand of afloop) schrijft
    `lighthouse: measure <repo>: run <id>: <fout>` naar stderr; de andere runs worden wel gemeten. Een
@@ -49,7 +51,10 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    via de `updatedAt` van het issue; een sessie die klaar is via haar stand. Tick slaat de volledige gather
    alleen over als de vingerafdruk gelijk is aan de vorige, de vorige volledige gather jonger is dan
    30 minuten, en er sinds die gather geen tijdgrens viel. Tijdgrenzen zijn per open run
-   `started_at + max_runtime` en `started_at + max_wait`, en het begin van het `night`-venster.
+   `started_at + max_runtime` en `started_at + max_wait`, `max_wait` na zijn laatste activiteit en na
+   zijn permissie-prompt, per marker zijn `reset_at`, en het begin van het `night`-venster.
+   Activiteit en prompts staan niet in de vingerafdruk: ze veranderen elke tick, en deze grenzen laten
+   tick kijken als hun `max_wait` verloopt.
    Vingerafdruk en tijd van de laatste volledige gather staan in de tabel `tick_state` van de database.
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
    de items in Controller of On hold met hun velden, voorgangers en PR's (de PR's die het issue sluiten
@@ -68,11 +73,12 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    sluitende PR's, slaat de repo ook luid over: zo'n lijst leest tick niet half.
 
 8. **Decide.** Eén keer per tick, over alle gegatherde repo's samen, beslist tick wat er moet
-   gebeuren: een run sluiten, een issue teruggeven, een 🚀 herstellen, en per issue hoogstens één
-   start of hervatting. Decide is puur: het leest alleen de snapshots, de runhistorie, de standen en
-   de klok. De regels staan in de spec (§4, §7); de afloop van een open run staat in *Afloop* hieronder.
+   gebeuren: een run sluiten, een issue teruggeven, een 🚀 herstellen, een issue parkeren of
+   terugzetten (zie *Blokkades*), en per issue hoogstens één start of hervatting. Decide is puur: het
+   leest alleen de snapshots, de runhistorie, de standen, de metingen, de markers en de klok. De
+   regels staan in de spec (§4, §7); de afloop van een open run staat in *Afloop* hieronder.
 9. **Apply.** Tick voert de acties in volgorde uit. Een mislukte actie houdt de rest niet tegen. Een
-   uitgestelde start (buiten het `night`-venster, een open voorganger, of een bezette werkplek)
+   uitgestelde start (buiten het `night`-venster, of een bezette werkplek)
    schrijft `lighthouse: deferred <repo>#<n>: <reden>` naar stderr. Een repo met een mislukte actie
    krijgt `lighthouse: apply <repo>: <fouten>`, en tick eindigt dan met exitcode 1. Wat apply
    onderweg meldt (een claim die een ander proces al had, een onzekere launch) staat ook op stderr,
@@ -110,7 +116,7 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 |---|---|---|---|
 | 1-3 | Klaar-comment, Handoff (niet het einde van de keten), Vraag | zoals voorheen | |
 | 4 | Een eigen 🤖 Teruggegeven van deze sessie staat er al | rij `returned`; de sessie stoppen als ze niet klaar is en de werkplek er nog is, zonder sessie de launch vergeten | |
-| 5 | Hervat-markering (`Parked`) | rij `parked` | |
+| 5 | Resume-marker (`controller: true`) van deze sessie, geschreven op of na `started_at` van de run | rij `parked`, sessie blijft staan | |
 | 6 | PR van deze run gemerged | rij `done` | |
 | 6b | Klaar en het issue is `CLOSED` | rij `done`, geen post (een close-check-run die zijn issue sloot) | |
 | 7 | Groene PR en klaar | 🤖 Klaar | |
@@ -135,7 +141,10 @@ Verschillen met de spec-tabel, bewust:
   transcript: de `tool_use` achter de prompt valt meestal in dezelfde seconde. Zolang een prompt
   openstaat, gelden 17 en 18 niet: een wachtende sessie schrijft niets.
 - Een resume hergebruikt de sessie, en daarmee haar transcript en `permission.json`. Wat van vóór
-  `started_at` van de run is, telt daarom niet als prompt of als laatste activiteit.
+  `started_at` van de run is, telt daarom niet als prompt of als laatste activiteit. Zo ook de
+  marker: een marker van vóór `started_at` hoort bij een eerdere parkering (de usage-hervatting die
+  hem beantwoordde kon hem niet verwijderen) en parkeert de hervatte run niet opnieuw. Parkeert de
+  usage-guard de hervatte run zelf, dan schrijft hij een nieuwe marker met een nieuwe `created_at`.
 - Regel 15 geldt alleen voor een run die tick heeft gemeten. Een storing bij forge geeft dus nooit
   een Teruggegeven voor een run die misschien draait.
 - Regel 6b: een sessie die klaar is op een gesloten issue laat geen Handoff, Vraag of PR achter.
@@ -154,6 +163,27 @@ tick het issue terug met de oorzaak (*start mislukt: …*).
 |---|---|
 | 0 | Alle repo's zijn bedienbaar en hun precheck, gather en acties lukten (een uitgestelde start telt als gelukt), of een vorige tick draait nog |
 | 1 | Minstens één repo overgeslagen (niet bedienbaar, of de gather mislukte), een mislukte actie in apply, of een fout (geen `XDG_RUNTIME_DIR`, geen token, ongeldige `host.toml`, database niet te openen) |
+
+## Blokkades
+
+Een voorganger is *actief* als hij `OPEN` is en geen gemergde PR heeft. Gesloten zonder merge telt als
+vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-, plan-
+en review-fase.
+
+- **Parkeren.** Heeft een uitvoerend issue in Controller een actieve voorganger, dan parkeert tick het.
+  Eerst komt de comment `🤖 Geparkeerd` (`🤖 Parked`) met één regel
+  `blocked_by: <repo>#<n> (<boardstatus>), …`; staat de voorganger niet op hetzelfde board, dan staat
+  er geen status tussen haakjes. Daarna gaat het issue op het board naar On hold. Een issue dat nog in
+  de spec-, plan- of reviewfase zit, blijft staan; de blokkade hindert pas bij uitvoering.
+- **Afmaken.** Slaagt de comment maar mislukt de boardwijziging, dan eindigt tick met exitcode 1 en
+  bewaart hij de vingerafdruk van de repo niet. De volgende tick ziet zijn eigen Geparkeerd als laatste
+  beurt en zet het issue alleen op On hold (`hold`). Hij post nooit een tweede Geparkeerd.
+- **Terugzetten.** Een issue in On hold dat `OPEN` is, waarvan de laatste 🤖-comment (Rebased niet
+  meegeteld) een eigen Geparkeerd is (auteur is de login van het token) en dat geen actieve voorganger
+  meer heeft, gaat terug naar Controller (`unpark`). De volgende tick start de laatste Handoff.
+- **Menselijk On hold.** Een issue dat een mens op On hold zette (de laatste 🤖-comment is geen
+  Geparkeerd, of er staat er een van een andere auteur) raakt lighthouse niet aan. Lighthouse haalt een
+  issue alleen uit Controller om het te parkeren.
 
 ## `lighthouse gather`
 
@@ -185,13 +215,13 @@ Hetzelfde token, dezelfde `host.toml` en dezelfde database als tick.
 decide, en voert alleen de acties van dat issue uit van de soort `close`, `defer`, `start` of `resume`.
 De `close` gaat mee, want een open run die in deze beslissing sluit (bijvoorbeeld op een 🤖 Vraag met
 een antwoord), zou de claim van de hervatting anders laten mislukken. Een Teruggegeven, een Klaar en
-een 🚀-herstel laat `run` aan de tick. `run` bewaart geen vingerafdruk in `tick_state`.
+een 🚀-herstel laat `run` aan de tick. Hetzelfde geldt voor parkeren, afmaken en terugzetten (zie
+*Blokkades*): een uitvoerend issue met een actieve voorganger geeft in `run` dus `nothing to start`. `run` bewaart geen vingerafdruk in `tick_state`.
 
 Het eindigt met één regel op stderr, alle vier met exitcode 0:
 
 - `lighthouse: started <repo>#<n>`;
-- `lighthouse: deferred <repo>#<n>: <reden>` (buiten het `night`-venster, een open voorganger, of een
-  bezette werkplek);
+- `lighthouse: deferred <repo>#<n>: <reden>` (buiten het `night`-venster, of een bezette werkplek);
 - `lighthouse: not accepted <repo>#<n>`: de werkplek weigerde de launch. De 🤖 Gestart blijft staan,
   de run is gesloten als `start_failed`, en de volgende tick behandelt het als elke mislukte start
   (een tweede poging, na twee mislukte pogingen een Teruggegeven);
@@ -200,6 +230,65 @@ Het eindigt met één regel op stderr, alle vier met exitcode 0:
 
 Een mislukte actie geeft `lighthouse: apply <repo>: <fouten>` en exitcode 1. Wat apply onderweg meldt,
 staat ervoor op stderr, zoals bij tick.
+
+## De rem
+
+Voor elke start of hervatting die decide kiest, toetst tick één gedeelde rem over alle repo's van de
+host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitsteltekst:
+
+| Rem | Dicht als | Uitsteltekst |
+|---|---|---|
+| Pauze | de pauzevlag geldt (zie *Pauze*) | geen: de start valt weg, zonder defer |
+| Usage | niet gemeten, of `session_pct` >= `halt_pct_session`, of `week_pct` >= `halt_pct_week` | `usage: not measured` of `usage: session 87%, week 40%` |
+| Geheugen | `MemAvailable` niet gemeten, of `MemAvailable - n x reserve_per_run_gb < min_mem_available_gb` | `memory: MemAvailable not measured` of `memory: MemAvailable 9.5 GiB - 1 x 3 GiB < 8 GiB` |
+| Plekken | `in_use` plus de al toegelaten starts >= `slots` | `slots: 4 of 4 in use` |
+| Software | profiel `software`, en `software_in_use` plus de al toegelaten software-starts >= `max_software` | `software: 2 of 2 in use` |
+
+- De rem houdt alleen starts en hervattingen tegen. De afloop van open runs (sluiten, Teruggegeven,
+  stoppen, 🤖 Klaar, zie *Afloop*) gaat door, ook tijdens een pauze of bij een dichte usage-rem.
+- `n` bij Geheugen is het aantal starts en hervattingen dat deze tick al door de rem kwam: een net
+  gestarte run reserveert van dezelfde meting.
+- `in_use` komt uit de database en geldt voor de hele host: de open runs over alle repo's, plus de
+  geparkeerde runs (een marker met `controller: true` waarvan de laatste run van de sessie nog
+  hervatbaar is). `software_in_use` telt daarvan de runs met profiel `software`. Een run die in deze
+  tick sluit, telt nog mee; de volgende tick ziet de plek vrij.
+- Een usage-hervatting (de geparkeerde run na de reset, trigger `usage`) slaat Plekken en Software
+  over en telt er niet in mee: de run zit al in `in_use`. Hij telt wel mee in `n` van Geheugen.
+- Een marker met `pause: true` hervat zodra er geen pauze meer geldt, ook vóór zijn `reset_at`; de
+  toets `reset_at <= nu` slaat tick bij hem over.
+- Een marker die nooit meer hervat (de laatste run sloot als Handoff, Vraag of Klaar, de herkansing
+  is op, de laatste run sloot als `parked` maar de sleutel van de marker is al gebruikt, of het
+  issue is gesloten of uit Controller en On hold) ruimt tick op, anders bleef hij in
+  `in_use` tellen. Een marker van een repo die deze tick niet gathert, blijft staan.
+- De uitgestelde starts staan met hun reden in de tickstand (`tick_state`, soort `deferred`). Bij een
+  pauze valt de start weg zonder defer, zodat tick zijn vingerafdruk bewaart; de pauzevlag zit zelf
+  in de vingerafdruk.
+- [`lighthouse run`](#lighthouse-run) toetst alleen Pauze en Usage. Geheugen, Plekken en Software
+  slaat het over: wie een issue met de hand start, beslist zelf.
+
+De markers en de pauzevlag staan beschreven in [usage-gate.md](usage-gate.md) (*Contract*).
+
+## Pauze
+
+```bash
+lighthouse pause [--until HH:MM]
+lighthouse pause off
+```
+
+`lighthouse pause` schrijft de pauzevlag: tot het einde ervan start de dispatcher niets. Een run die
+al loopt, gaat door; een run die de controller parkeert, hervat na het einde (of na `pause off`).
+
+- Zonder `--until` duurt de pauze tot het eerstvolgende begin van `[dispatch] night` (21:00 bij de
+  standaard): vandaag, of morgen als dat begin vandaag al voorbij is. Een lege `night` (begin gelijk
+  aan einde) heeft geen begin; dan is `--until` verplicht.
+- Tijdens `night` is `--until` verplicht; de fout stelt de eerstvolgende hele uren voor.
+- `--until HH:MM` is het eerstvolgende moment met die klokstand, binnen 24 uur. Een klokstand die
+  verder weg ligt, of die niet bestaat (de uren die de zomertijd overslaat), is een fout.
+- Zomertijd telt mee: de klok is de lokale wandtijd, en bij de dubbele uren van het najaar geldt het
+  eerste moment na nu.
+- `lighthouse pause off` verwijdert de vlag; zonder vlag meldt het `lighthouse: no pause`.
+
+Het pad van de vlag staat in [usage-gate.md](usage-gate.md) (*Contract*).
 
 ## `[dispatch]` in `host.toml`
 

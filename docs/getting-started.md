@@ -122,6 +122,8 @@ report it`.
 `init` proposes `[project] language`, and `[forge]` from your `origin` remote when it is on
 GitHub. Only the `python` package proposes a test gate. Until you set `[test_gate] command`,
 `commit-test-gate` passes every commit with `no test command configured, nothing was tested`.
+Every key and what reads it is on [the configuration map](site/config.html) (also online:
+[The configuration](https://corneeldh.github.io/lighthouse/config.html)).
 Check the file, and set your test gate:
 
 ```toml
@@ -160,9 +162,9 @@ names the file and the key.
 
 The chain runs from an issue to a merged PR. Each step names what you type, what you see, and
 which hook can step in. Run the skills in Claude Code, in your repository.
-To see it as a map, open [The loop](https://corneeldh.github.io/lighthouse/chain.html).
+To see it as a map, open [The loop](https://corneeldh.github.io/lighthouse/loop.html).
 In a clone of the lighthouse repository, run `python3 -m http.server --directory docs/site` from its
-root and open [the local copy](site/chain.html) at `http://localhost:8000/chain.html`.
+root and open [the local copy](site/loop.html) at `http://localhost:8000/loop.html`.
 What happens within one turn, which skill joins in and which hook steps in, is on
 [the session map](https://corneeldh.github.io/lighthouse/session.html), and locally at
 [site/session.html](site/session.html).

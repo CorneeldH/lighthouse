@@ -3,11 +3,14 @@ package dispatch
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 )
 
@@ -75,15 +78,53 @@ func SaveTickState(ctx context.Context, db *sql.DB, repo string, s TickState, no
 	return nil
 }
 
+// SaveDeferred replaces the deferred starts of repo in tick_state with defers, in one
+// transaction: key is the issue number, value is {"issue", "reason", "at"}. Without defers it
+// leaves no row.
+func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action, now time.Time) (err error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("dispatch: save deferred %s: %w", repo, err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.ExecContext(ctx, `DELETE FROM tick_state WHERE repo = ? AND kind = 'deferred'`, repo); err != nil {
+		return fmt.Errorf("dispatch: save deferred %s: %w", repo, err)
+	}
+	stamp := now.UTC().Format(time.RFC3339)
+	for _, a := range defers {
+		value, merr := json.Marshal(struct {
+			Issue  int    `json:"issue"`
+			Reason string `json:"reason"`
+			At     string `json:"at"`
+		}{a.Issue, a.Reason, stamp})
+		if merr != nil {
+			return fmt.Errorf("dispatch: save deferred %s: %w", repo, merr)
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO tick_state (repo, kind, key, value, updated_at) VALUES (?, 'deferred', ?, ?, ?)
+			ON CONFLICT (repo, kind, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+			repo, strconv.Itoa(a.Issue), string(value), stamp); err != nil {
+			return fmt.Errorf("dispatch: save deferred %s: %w", repo, err)
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("dispatch: save deferred %s: %w", repo, err)
+	}
+	return nil
+}
+
 // Boundaries are the moments a tick must look again even when nothing on the board changed:
 // per open run the end of MaxRuntime and MaxWait, MaxWait after its last activity (the last
 // transcript event, or without a transcript the forge updated_at of its session) and after
-// its permission prompt, and the start of the night window today and yesterday, in the zone
-// of now. Activity and prompts stay out of the fingerprint; these boundaries make the tick
-// look when their MaxWait runs out. Decide counts silence from the later of the last event
-// and the run's start, so its moment is one of the two MaxWait boundaries; a note from before
-// the start only adds a wake that decides nothing.
-func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, states map[int64]RunState, now time.Time) []time.Time {
+// its permission prompt, per marker its reset_at, and the start of the night window today and
+// yesterday, in the zone of now. Activity and prompts stay out of the fingerprint; these
+// boundaries make the tick look when their MaxWait runs out. Decide counts silence from the
+// later of the last event and the run's start, so its moment is one of the two MaxWait
+// boundaries; a note from before the start only adds a wake that decides nothing.
+func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, states map[int64]RunState, markers []park.Marker, now time.Time) []time.Time {
 	var out []time.Time
 	for _, r := range open {
 		out = append(out, r.StartedAt.Add(d.MaxRuntime), r.StartedAt.Add(d.MaxWait))
@@ -96,6 +137,11 @@ func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, states map[int64]Run
 		}
 		if s.Permission != nil {
 			out = append(out, s.Permission.At.Add(d.MaxWait))
+		}
+	}
+	for _, m := range markers {
+		if reset, ok := m.Reset(); ok {
+			out = append(out, reset)
 		}
 	}
 	if start, err := nightStart(d.Night); err == nil {

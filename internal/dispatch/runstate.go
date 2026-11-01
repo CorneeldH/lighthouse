@@ -19,7 +19,6 @@ type RunState struct {
 	SessionAt  time.Time             `json:"session_at,omitzero"`  // forge updated_at of the run's session
 	Transcript *workplace.Transcript `json:"transcript,omitempty"` // nil: not measurable
 	Permission *Permission           `json:"permission,omitempty"`
-	Parked     bool                  `json:"parked,omitempty"` // a resume marker for the run's session
 }
 
 // Permission is the permission prompt the session of a run last showed, as the
@@ -81,22 +80,6 @@ func ReadPermission(stateDir, sessionID string) (*Permission, error) {
 		return nil, fmt.Errorf("dispatch: permission note %s: no time", path)
 	}
 	return &note.Permission, nil
-}
-
-// Parked says whether <resumeDir>/<sessionID>.json, the resume marker of the usage guard, is a
-// regular file. A missing one, a symlink or a directory is no marker.
-func Parked(resumeDir, sessionID string) (bool, error) {
-	if err := checkFileName(sessionID); err != nil {
-		return false, err
-	}
-	st, err := os.Lstat(filepath.Join(resumeDir, sessionID+".json"))
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("dispatch: resume marker: %w", err)
-	}
-	return st.Mode().IsRegular(), nil
 }
 
 // checkFileName refuses a session id that would name another file than the run's own.

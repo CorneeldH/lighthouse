@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
@@ -159,9 +160,9 @@ func TestFingerprintStands(t *testing.T) {
 	}
 }
 
-// A resume marker that appears changes the fingerprint; activity and a permission note do not:
-// they change every tick, and the boundaries make the tick look at them in time.
-func TestFingerprintParked(t *testing.T) {
+// Activity and a permission note do not change the fingerprint: they change every tick, and
+// the boundaries make the tick look at them in time. A parking does, through the markers.
+func TestFingerprintIgnoresActivity(t *testing.T) {
 	t0 := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
 	mk := func(states map[int64]RunState) Pre {
 		return Pre{
@@ -171,12 +172,6 @@ func TestFingerprintParked(t *testing.T) {
 		}
 	}
 	base := Fingerprint(mk(map[int64]RunState{1: {}}))
-	if Fingerprint(mk(map[int64]RunState{1: {Parked: true}})) == base {
-		t.Error("a resume marker that appeared left the fingerprint unchanged")
-	}
-	if Fingerprint(mk(map[int64]RunState{1: {}, 9: {Parked: true}})) != base {
-		t.Error("the marker of a run that is not open changed the fingerprint")
-	}
 	for name, state := range map[string]RunState{
 		"not measured": {},
 		"last event":   {Transcript: &workplace.Transcript{LastEvent: t0.Add(time.Minute)}},
@@ -190,6 +185,33 @@ func TestFingerprintParked(t *testing.T) {
 		}
 		if Fingerprint(mk(states)) != base {
 			t.Errorf("%s changed the fingerprint", name)
+		}
+	}
+}
+
+// The markers and the pause flag decide whether a tick has work: a marker whose reset_at
+// passed hands its run back, and a pause that ends opens the starts again. Order is no change.
+func TestFingerprintMarkersAndPause(t *testing.T) {
+	mk := func(session, created, reset string) park.Marker {
+		return park.Marker{SessionID: session, Controller: true, CreatedAt: created, ResetAt: reset}
+	}
+	a := mk("a", "2026-10-31T10:00:00Z", "2026-10-31T15:00:00Z")
+	b := mk("b", "2026-10-31T10:00:00Z", "2026-10-31T15:00:00Z")
+	until := time.Date(2026, 10, 31, 21, 0, 0, 0, time.UTC)
+	base := Fingerprint(Pre{Markers: []park.Marker{a, b}, PauseUntil: until})
+
+	if got := Fingerprint(Pre{Markers: []park.Marker{b, a}, PauseUntil: until}); got != base {
+		t.Error("marker order changed the fingerprint")
+	}
+	for name, pre := range map[string]Pre{
+		"extra marker":     {Markers: []park.Marker{a, b, mk("c", "2026-10-31T10:00:00Z", "2026-10-31T15:00:00Z")}, PauseUntil: until},
+		"other reset_at":   {Markers: []park.Marker{a, mk("b", "2026-10-31T10:00:00Z", "2026-10-31T16:00:00Z")}, PauseUntil: until},
+		"other created_at": {Markers: []park.Marker{a, mk("b", "2026-10-31T11:00:00Z", "2026-10-31T15:00:00Z")}, PauseUntil: until},
+		"other pause":      {Markers: []park.Marker{a, b}, PauseUntil: until.Add(time.Hour)},
+		"no pause":         {Markers: []park.Marker{a, b}},
+	} {
+		if Fingerprint(pre) == base {
+			t.Errorf("%s: fingerprint unchanged", name)
 		}
 	}
 }

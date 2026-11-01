@@ -45,10 +45,10 @@ func registerCleanup(api huma.API, leftovers func(context.Context) ([]workplace.
 	}, func(op *huma.Operation) { op.OperationID = "get-cleanup" })
 }
 
-// registerForge adds the endpoints that read the forge through src.
-func registerForge(api huma.API, src overview.Source) {
+// registerForge adds the endpoints that read the forge through src, narrowed by inController.
+func registerForge(api huma.API, src overview.Source, inController overview.Filter) {
 	huma.Get(api, "/api/questions", func(ctx context.Context, _ *struct{}) (*questionsOutput, error) {
-		o, err := overview.Build(ctx, src)
+		o, err := overview.Build(ctx, src, inController)
 		if err != nil {
 			return nil, forgeError(err)
 		}
@@ -58,7 +58,7 @@ func registerForge(api huma.API, src overview.Source) {
 	}, func(op *huma.Operation) { op.OperationID = "get-questions" })
 
 	huma.Get(api, "/api/returned", func(ctx context.Context, _ *struct{}) (*returnedOutput, error) {
-		o, err := overview.Build(ctx, src)
+		o, err := overview.Build(ctx, src, inController)
 		if err != nil {
 			return nil, forgeError(err)
 		}

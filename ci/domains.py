@@ -30,11 +30,21 @@ _GO_FIXTURES = "tests/pack/fixtures/"
 # own package only tests/pack/fixtures/, internal/usage/testdata/ and temporary repos; the literal
 # lists are read only by ci/literal-grep.sh and tools/gen_code_language_freq.py.
 # Measured again for #151: from tests/ Go reads only tests/pack/fixtures/; the other tests/ and
-# README.md strings in Go are files in temporary repos. Only the root README.md and CHANGELOG.md
-# leave go: pack/ is embedded. tests/test_domains.py fails when Go starts to read one of them.
+# README.md strings in Go are files in temporary repos. Only the loose root .md files (README.md,
+# CHANGELOG.md, CONTRIBUTING.md, SECURITY.md, CLA.md) leave go; AGENTS.md and CLAUDE.md stay, the
+# dogfood check reads them. pack/ is embedded. tests/test_domains.py fails when Go starts to read
+# one of them. Measured again for #163: no .go file names CONTRIBUTING, SECURITY or CLA.md.
 _NOT_GO_DIRS = ("docs/", "changelog.d/", "tests/")
 _NOT_GO = frozenset(
-    {"ci/literal-denylist.txt", "ci/literal-allowlist.txt", "README.md", "CHANGELOG.md"}
+    {
+        "ci/literal-denylist.txt",
+        "ci/literal-allowlist.txt",
+        "README.md",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        "CLA.md",
+    }
 )
 
 

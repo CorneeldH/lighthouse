@@ -20,16 +20,19 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 	"github.com/CorneeldH/lighthouse/internal/workplace/kennforge"
 )
 
 // tickEnv is what tick and gather read from the machine: the environment, the path of
-// host.toml, the GitHub API root, the clock, the forge workplace, the state directory and
-// the resume directory. Only tests set ForgeURL, Now, Workplace, StateDir and ResumeDir.
+// host.toml, the GitHub API root, the clock, the forge workplace, the state directory, the
+// usage meter and the meminfo file. Only tests set ForgeURL, Now, Workplace, StateDir, Meter
+// and MemInfo.
 type tickEnv struct {
 	Getenv   func(string) string
 	HostToml string
@@ -39,7 +42,10 @@ type tickEnv struct {
 	// [dispatch.forge], [dispatch.profiles] and the repo.
 	Workplace func(repo repoconfig.Repo) workplace.Workplace
 	StateDir  string // run instructions, carriers and permission notes; "" is ${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/dispatch
-	ResumeDir string // resume markers of the usage guard; "" is ${XDG_DATA_HOME:-$HOME/.local/share}/lighthouse/resume
+	// Meter measures the usage windows; nil is a meter on usage.DefaultPaths and the [usage] table of HostToml.
+	Meter *usage.Meter
+	// MemInfo is the meminfo file of the memory brake; "" is /proc/meminfo.
+	MemInfo string
 }
 
 func (e tickEnv) now() time.Time {
@@ -73,24 +79,6 @@ func (e tickEnv) stateDir() (string, error) {
 		base = filepath.Join(home, ".local", "state")
 	}
 	return filepath.Join(base, "lighthouse", "dispatch"), nil
-}
-
-// resumeDir is ResumeDir, or lighthouse/resume under XDG_DATA_HOME, or under
-// $HOME/.local/share when XDG_DATA_HOME is not an absolute path: where the usage guard
-// (resume_dir in usage_guard.py) parks a session.
-func (e tickEnv) resumeDir() (string, error) {
-	if e.ResumeDir != "" {
-		return e.ResumeDir, nil
-	}
-	base := e.Getenv("XDG_DATA_HOME")
-	if !filepath.IsAbs(base) {
-		home := e.Getenv("HOME")
-		if !filepath.IsAbs(home) {
-			return "", errors.New("neither XDG_DATA_HOME nor HOME is an absolute path: no place to read the resume markers")
-		}
-		base = filepath.Join(home, ".local", "share")
-	}
-	return filepath.Join(base, "lighthouse", "resume"), nil
 }
 
 // workplace returns the forge workplace of repo; stateDir is where its carriers go.
@@ -182,6 +170,11 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	}
 	defer func() { _ = st.Close() }()
 
+	facts, err := readHostFacts(ctx, env, st.DB, cfg)
+	if err != nil {
+		return fmt.Errorf("tick: the brake cannot check: %w", err)
+	}
+
 	// One GET /user per tick, and none when no repo is due. /user does not depend on the
 	// repo, so the client of the first dispatchable repo serves every repo.
 	var login func() (string, error)
@@ -199,7 +192,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 				c := env.client(repo.Slug, token)
 				login = sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
 			}
-			in, fp, err = gatherRepo(ctx, env, st.DB, cfg, repo, token, login, errOut)
+			in, fp, err = gatherRepo(ctx, env, st.DB, cfg, facts, repo, token, login, errOut)
 		}
 		if err != nil {
 			skipped = true
@@ -210,7 +203,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp})
 		}
 	}
-	failed, err := decideAndApply(ctx, env, st.DB, cfg, token, gathered, errOut)
+	failed, err := decideAndApply(ctx, env, st.DB, cfg, facts, token, gathered, errOut)
 	if err != nil {
 		return err
 	}
@@ -235,8 +228,9 @@ type gatheredRepo struct {
 // decideAndApply decides once over the gathered repos and applies the actions. Each deferral
 // gets a deferred line on errOut, each repo with a failed action an apply line. It saves the
 // fingerprint of a repo only when none of its actions was deferred or failed, so the next tick
-// tries again (spec §3 step 2). failed reports an apply line or a state that was not saved.
-func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
+// tries again (spec §3 step 2), and replaces the deferred rows of each gathered repo with the
+// deferrals of Decide. failed reports an apply line or a state that was not saved.
+func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, token string,
 	gathered []gatheredRepo, errOut io.Writer) (failed bool, err error) {
 	if len(gathered) == 0 {
 		return false, nil
@@ -247,10 +241,22 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		inputs[i] = g.in
 		repos[g.repo.Slug] = g.repo
 	}
-	actions := dispatch.Decide(decideInput(env, cfg, inputs))
+	actions := dispatch.Decide(decideInput(env, cfg, inputs, &facts.Brake))
 	res, err := applyActions(ctx, env, db, cfg, token, repos, actions, errOut)
 	if err != nil {
 		return false, fmt.Errorf("tick: %w", err)
+	}
+	for _, g := range gathered {
+		var defers []dispatch.Action
+		for _, a := range actions {
+			if a.Kind == dispatch.KindDefer && a.Repo == g.repo.Slug {
+				defers = append(defers, a)
+			}
+		}
+		if err := dispatch.SaveDeferred(ctx, db, g.repo.Slug, defers, env.now()); err != nil {
+			failed = true
+			_, _ = fmt.Fprintf(errOut, "lighthouse: save deferred %s: %s\n", g.repo.Slug, oneLine(err))
+		}
 	}
 	for _, d := range res.Deferred {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: deferred %s\n", d)
@@ -276,13 +282,17 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 
 // applyActions applies actions to repos, each with its forge workplace; apply logs to errOut
 // with the "lighthouse: " of every tick line. Without actions it applies nothing. tick and
-// `lighthouse run` share it.
+// `lighthouse run` share it. Every repo in repos has a board: Dispatchable guarantees it.
 func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
 	repos map[string]repoconfig.Repo, actions []dispatch.Action, errOut io.Writer) (dispatch.Result, error) {
 	if len(actions) == 0 {
 		return dispatch.Result{}, nil
 	}
 	dir, err := env.stateDir()
+	if err != nil {
+		return dispatch.Result{}, err
+	}
+	markerDir, err := park.MarkerDir(env.Getenv)
 	if err != nil {
 		return dispatch.Result{}, err
 	}
@@ -294,8 +304,11 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	// repo: the callers write their apply lines from it, and tick decides which fingerprints
 	// it saves.
 	res, _ := dispatch.Apply(ctx, dispatch.Env{
-		DB:        db,
-		Poster:    func(slug string) dispatch.Poster { return env.client(slug, token) },
+		DB:     db,
+		Poster: func(slug string) dispatch.Poster { return env.client(slug, token) },
+		Board: func(slug string) dispatch.Board {
+			return dispatch.NewBoard(env.client(slug, token), *repos[slug].Board)
+		},
 		Workplace: func(slug string) workplace.Workplace { return places[slug] },
 		Profile: func(slug string) (string, string) {
 			name := repos[slug].Controller.Profile
@@ -303,6 +316,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		},
 		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		StateDir:   dir,
+		MarkerDir:  markerDir,
 		MaxWait:    cfg.MaxWait,
 		Now:        env.now,
 		NewSession: runs.NewSessionID,
@@ -325,20 +339,21 @@ func (p prefixed) Write(b []byte) (int, error) {
 // gatherRepo runs the precheck for repo and, when it is due, the full gather; in is nil when
 // the repo is not due. fp is the fingerprint of the precheck: tick saves it after apply.
 // A full gather writes one gathered line to errOut.
-func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, repo repoconfig.Repo,
+func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, repo repoconfig.Repo,
 	token string, login func() (string, error), errOut io.Writer) (in *dispatch.RepoInput, fp string, err error) {
 	c := env.client(repo.Slug, token)
 	pre, err := measuredPre(ctx, env, db, cfg, c, repo, errOut)
 	if err != nil {
 		return nil, "", err
 	}
+	pre.Markers, pre.PauseUntil = facts.Markers[repo.Slug], facts.PauseUntil
 	fp = dispatch.Fingerprint(pre)
 	prev, err := dispatch.LoadTickState(ctx, db, repo.Slug)
 	if err != nil {
 		return nil, "", err
 	}
 	now := env.now()
-	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, pre.OpenRuns, pre.Runs, now))
+	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, pre.OpenRuns, pre.Runs, pre.Markers, now))
 	if !due {
 		return nil, "", nil
 	}
@@ -410,8 +425,8 @@ func adopt(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch
 
 // measure measures each open run that has a workspace: the stand of its session (only with a
 // session key) and its RunState. A run it cannot measure has neither, and gets a measure line
-// on errOut; the other runs are still measured. The error is only for a missing state or
-// resume directory.
+// on errOut; the other runs are still measured. The error is only for a missing state
+// directory.
 func measure(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo repoconfig.Repo,
 	open []runs.OpenRun, errOut io.Writer) (map[int64]workplace.Stand, map[int64]dispatch.RunState, error) {
 	stands := map[int64]workplace.Stand{}
@@ -426,11 +441,7 @@ func measure(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo rep
 			if err != nil {
 				return nil, nil, err
 			}
-			resume, err := env.resumeDir()
-			if err != nil {
-				return nil, nil, err
-			}
-			m = &runProbe{w: env.workplace(cfg, repo, dir), stateDir: dir, resumeDir: resume}
+			m = &runProbe{w: env.workplace(cfg, repo, dir), stateDir: dir}
 		}
 		stand, measured, state, err := m.measure(ctx, r)
 		if err != nil {
@@ -445,15 +456,16 @@ func measure(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo rep
 	return stands, states, nil
 }
 
-// runProbe measures one open run in its workplace, against the state directory (permission
-// notes) and the resume directory (resume markers).
+// runProbe measures one open run in its workplace and against the state directory
+// (permission notes). The resume markers of the usage guard are not its: tick reads them once
+// per tick (readHostFacts) and Decide gets them in RepoInput.Markers.
 type runProbe struct {
-	w                   workplace.Workplace
-	stateDir, resumeDir string
+	w        workplace.Workplace
+	stateDir string
 }
 
 // measure reads the sessions of the run's workspace, its transcript when the workplace has
-// one on this host, its permission note and its resume marker. A workspace the workplace no
+// one on this host and its permission note. A workspace the workplace no
 // longer knows is Gone, not an error. measured says whether stand holds the stand of the
 // session whose key the run recorded.
 func (m *runProbe) measure(ctx context.Context, r runs.OpenRun) (stand workplace.Stand, measured bool, s dispatch.RunState, err error) {
@@ -478,9 +490,6 @@ func (m *runProbe) measure(ctx context.Context, r runs.OpenRun) (stand workplace
 		}
 	}
 	if s.Permission, err = dispatch.ReadPermission(m.stateDir, r.SessionID); err != nil {
-		return 0, false, dispatch.RunState{}, err
-	}
-	if s.Parked, err = dispatch.Parked(m.resumeDir, r.SessionID); err != nil {
 		return 0, false, dispatch.RunState{}, err
 	}
 	return stand, measured, s, nil
@@ -511,9 +520,10 @@ func (m *runProbe) transcript(ctx context.Context, r runs.OpenRun) (*workplace.T
 	return &t, nil
 }
 
-// decideInput is the Input of one decide over repos, with the limits of host.toml [dispatch].
-func decideInput(env tickEnv, cfg hostconfig.Dispatch, repos []dispatch.RepoInput) dispatch.Input {
-	return dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: repos,
+// decideInput is the Input of one decide over repos, with the limits of host.toml [dispatch]
+// and brake; a nil brake is no brake.
+func decideInput(env tickEnv, cfg hostconfig.Dispatch, repos []dispatch.RepoInput, brake *dispatch.Brake) dispatch.Input {
+	return dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: repos, Brake: brake,
 		MaxWait: dispatch.Duration(cfg.MaxWait), MaxRuntime: dispatch.Duration(cfg.MaxRuntime)}
 }
 
@@ -542,6 +552,7 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, c *forg
 	return dispatch.RepoInput{
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
 		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
+		Markers: pre.Markers,
 	}, nil
 }
 

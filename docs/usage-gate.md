@@ -75,7 +75,7 @@ controller = false  # controller-tak: een controller-run parkeren, ook bij een p
 Zonder tabel draait alleen de basis. Een waarde die geen boolean is, is een configuratiefout (rc 2
 in `lighthouse config`). De hook leest de opties pas als hij iets te zeggen heeft; een
 configuratiefout daarbij telt als "beide uit", met één regel `usage-gate: config: <fout>` op
-stderr. Lighthouse zelf zet ze niet aan: het heeft geen controller.
+stderr.
 
 ### Hervatten (`resume = true`)
 
@@ -117,6 +117,8 @@ Dit is wat de modules schrijven en wat een poller of controller leest.
 | meting (kind) | env `LIGHTHOUSE_USAGE_REFRESH=1` |
 
 De statusmap `~/.local/state/lighthouse/usage-guard` houdt bewust haar oude naam, zodat een upgrade het venster niet terugzet.
+
+Meer controllers op één host delen deze map. Een controller hervat en verwijdert alleen markers van sessies uit zijn eigen runstaat; een marker van een sessie die hij niet kent, laat hij staan.
 
 Een `session_id` of `agent_id` die niet past op `[A-Za-z0-9_-]{1,128}` (`../x`, `a/b`, 300 tekens)
 telt als afwezig: de waarden belanden in bestandsnamen.

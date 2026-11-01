@@ -93,10 +93,20 @@
                 "": "2026-10-31T11:55:00Z"
               },
               "assistant_turn": true
-            },
-            "parked": true
+            }
           }
-        }
+        },
+        "markers": [
+          {
+            "session_id": "11111111-2222-4333-8444-555555555555",
+            "cwd": "/home/u/r/.claude/worktrees/issue-7-bouw-de-keten",
+            "window": "session",
+            "reset_at": "2026-10-31T14:00:00Z",
+            "created_at": "2026-10-31T11:50:00Z",
+            "source": "tool",
+            "controller": true
+          }
+        ]
       }
     ],
     "max_wait": "1h",

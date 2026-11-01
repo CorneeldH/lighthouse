@@ -51,7 +51,7 @@ func decode(t *testing.T, body []byte) map[string]json.RawMessage {
 }
 
 func TestQuestionsEndpoint(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, populated(), noLeftovers), "/api/questions")
+	rec := get(New(testSite(), fakeReport, populated(), nil, noLeftovers), "/api/questions")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -77,7 +77,7 @@ func TestQuestionsEndpoint(t *testing.T) {
 }
 
 func TestReturnedEndpoint(t *testing.T) {
-	rec := get(New(testSite(), fakeReport, populated(), noLeftovers), "/api/returned")
+	rec := get(New(testSite(), fakeReport, populated(), nil, noLeftovers), "/api/returned")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -103,7 +103,7 @@ var listRoutes = []struct{ path, key string }{{"/api/questions", "questions"}, {
 
 func TestEmptyListIsArray(t *testing.T) {
 	for _, route := range listRoutes {
-		rec := get(New(testSite(), fakeReport, stubSource{}, noLeftovers), route.path)
+		rec := get(New(testSite(), fakeReport, stubSource{}, nil, noLeftovers), route.path)
 		if rec.Code != 200 {
 			t.Fatalf("%s: status = %d", route.path, rec.Code)
 		}
@@ -124,7 +124,7 @@ func TestEndpointForgeDown(t *testing.T) {
 func assertEndpointError(t *testing.T, err error, status int) {
 	t.Helper()
 	for _, route := range listRoutes {
-		rec := get(New(testSite(), fakeReport, fakeSource{err: err}, noLeftovers), route.path)
+		rec := get(New(testSite(), fakeReport, fakeSource{err: err}, nil, noLeftovers), route.path)
 		if rec.Code != status {
 			t.Fatalf("%s: status = %d, want %d, body %s", route.path, rec.Code, status, rec.Body)
 		}
@@ -137,7 +137,7 @@ func assertEndpointError(t *testing.T, err error, status int) {
 func TestCleanupEndpoint(t *testing.T) {
 	want := workplace.Leftover{Repo: "o/r", Issue: 7, WorkspaceID: "ws-1", Path: "/w/ws-1", Reason: "dirty worktree"}
 	leftovers := func(context.Context) ([]workplace.Leftover, error) { return []workplace.Leftover{want}, nil }
-	rec := get(New(testSite(), fakeReport, stubSource{}, leftovers), "/api/cleanup")
+	rec := get(New(testSite(), fakeReport, stubSource{}, nil, leftovers), "/api/cleanup")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
@@ -150,7 +150,7 @@ func TestCleanupEndpoint(t *testing.T) {
 
 func TestCleanupEndpointEmptyIsArray(t *testing.T) {
 	nilList := func(context.Context) ([]workplace.Leftover, error) { return nil, nil }
-	rec := get(New(testSite(), fakeReport, stubSource{}, nilList), "/api/cleanup")
+	rec := get(New(testSite(), fakeReport, stubSource{}, nil, nilList), "/api/cleanup")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d", rec.Code)
 	}
@@ -161,11 +161,65 @@ func TestCleanupEndpointEmptyIsArray(t *testing.T) {
 
 func TestCleanupEndpointError(t *testing.T) {
 	leftovers := func(context.Context) ([]workplace.Leftover, error) { return nil, errors.New("db closed") }
-	rec := get(New(testSite(), fakeReport, stubSource{}, leftovers), "/api/cleanup")
+	rec := get(New(testSite(), fakeReport, stubSource{}, nil, leftovers), "/api/cleanup")
 	if rec.Code != 500 {
 		t.Fatalf("status = %d, want 500, body %s", rec.Code, rec.Body)
 	}
 	if _, ok := decode(t, rec.Body.Bytes())["cleanup"]; ok {
 		t.Errorf("error body has key cleanup: %s", rec.Body)
+	}
+}
+
+// only is a filter that keeps the given issue numbers.
+func only(numbers ...int) func(context.Context) (map[int]bool, error) {
+	return func(context.Context) (map[int]bool, error) {
+		m := map[int]bool{}
+		for _, n := range numbers {
+			m[n] = true
+		}
+		return m, nil
+	}
+}
+
+// listLen returns the length of the JSON list under key in an endpoint body.
+func listLen(t *testing.T, body []byte, key string) int {
+	t.Helper()
+	var list []json.RawMessage
+	if err := json.Unmarshal(decode(t, body)[key], &list); err != nil {
+		t.Fatalf("%s in %s: %v", key, body, err)
+	}
+	if list == nil {
+		t.Fatalf("%s is null in %s, want a list", key, body)
+	}
+	return len(list)
+}
+
+func TestQuestionsEndpointFilter(t *testing.T) {
+	// Issue 1 has the open question; the filter keeps only 2.
+	rec := get(New(testSite(), fakeReport, populated(), only(2), noLeftovers), "/api/questions")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	if n := listLen(t, rec.Body.Bytes(), "questions"); n != 0 {
+		t.Errorf("questions = %s, want empty", rec.Body)
+	}
+	rec = get(New(testSite(), fakeReport, populated(), nil, noLeftovers), "/api/questions")
+	if n := listLen(t, rec.Body.Bytes(), "questions"); n != 1 {
+		t.Errorf("questions without filter = %s, want one", rec.Body)
+	}
+}
+
+func TestReturnedEndpointFilter(t *testing.T) {
+	// Issue 2 is returned; the filter keeps only 1.
+	rec := get(New(testSite(), fakeReport, populated(), only(1), noLeftovers), "/api/returned")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	if n := listLen(t, rec.Body.Bytes(), "returned"); n != 0 {
+		t.Errorf("returned = %s, want empty", rec.Body)
+	}
+	rec = get(New(testSite(), fakeReport, populated(), nil, noLeftovers), "/api/returned")
+	if n := listLen(t, rec.Body.Bytes(), "returned"); n != 1 {
+		t.Errorf("returned without filter = %s, want one", rec.Body)
 	}
 }

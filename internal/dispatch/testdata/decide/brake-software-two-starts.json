@@ -1,0 +1,146 @@
+{
+  "input": {
+    "now": "2026-10-31T12:00:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/a",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 1,
+              "title": "Werk 1",
+              "state": "OPEN",
+              "item_id": "I1",
+              "status": "Controller",
+              "priority": "P2",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 60,
+                  "author": "owner",
+                  "body": "Graag oppakken.",
+                  "created_at": "2026-10-31T05:00:00Z",
+                  "url": "https://github.com/o/a/issues/1#issuecomment-60",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "software",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [],
+        "stands": {}
+      },
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/b",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 2,
+              "title": "Werk 2",
+              "state": "OPEN",
+              "item_id": "I2",
+              "status": "Controller",
+              "priority": "P0",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 60,
+                  "author": "owner",
+                  "body": "Graag oppakken.",
+                  "created_at": "2026-10-31T07:00:00Z",
+                  "url": "https://github.com/o/b/issues/2#issuecomment-60",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "software",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [],
+        "stands": {}
+      }
+    ],
+    "brake": {
+      "paused": false,
+      "manual": false,
+      "usage_measured": true,
+      "session_pct": 10,
+      "week_pct": 10,
+      "halt_pct_session": 85,
+      "halt_pct_week": 90,
+      "mem_available_gib": 32.0,
+      "min_mem_available_gb": 8,
+      "reserve_per_run_gb": 3,
+      "slots": 4,
+      "max_software": 2,
+      "in_use": 1,
+      "software_in_use": 1
+    }
+  },
+  "want": [
+    {
+      "kind": "defer",
+      "repo": "o/a",
+      "issue": 1,
+      "reason": "software: 2 of 2 in use",
+      "language": "nl"
+    },
+    {
+      "kind": "start",
+      "repo": "o/b",
+      "issue": 2,
+      "trigger": "handoff",
+      "trigger_key": "start:2",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/lighthouse-start-issue 2",
+      "prompt": "/lighthouse-start-issue 2 (issue #2, controller-run)",
+      "branch": "issue-2-werk-2",
+      "language": "nl"
+    }
+  ]
+}

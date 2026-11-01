@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The configuration</title>
+<link rel="stylesheet" href="map.css?v=0081d303">
+<script type="module" src="config.js?v=0081d303"></script>
+</head>
+<body>
+<header class="page-head">
+  <div>
+    <h1 id="title">The configuration</h1>
+    <p id="subtitle" class="subtitle">Every key of lighthouse.toml and host.toml, and what reads it.</p>
+  </div>
+  <a class="back-link" href="index.html">All maps</a>
+  <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
+</header>
+
+<p id="serve-hint" class="serve-hint">This map reads its data with <code>fetch</code>, which a
+browser blocks for a page opened straight from disk. From the root of the repository, run
+<code>python3 -m http.server --directory docs/site</code> and open
+<code>http://localhost:8000/config.html</code>.</p>
+
+<details class="why">
+  <summary>Wait, but why?</summary>
+  <p><strong>Two files.</strong> <code>lighthouse.toml</code> sits in the root of your repository.
+  It holds the settings of that project. <code>host.toml</code> sits in
+  <code>~/.config/lighthouse/</code> and holds the settings of one machine. <code>lighthouse
+  init</code> writes <code>lighthouse.toml</code>, and on a machine with Tailscale it also offers
+  to write <code>host.toml</code>. You edit both by hand after that.</p>
+  <p><strong>Three levels.</strong> Not every key needs your attention. A key marked "Set this"
+  has a default that rarely fits, or one that <code>lighthouse init</code> proposes, so check it. A key marked "Optional" works without a value and
+  only adds a feature, such as the project board. A key marked "Advanced" has a default that most
+  projects leave alone. Click a key in a file to see what it does and what reads it. Controller
+  settings come later.</p>
+</details>
+
+<section class="legend" aria-label="Legend">
+  <ul aria-label="What reads it" data-sorts="workflow-skill standard-skill hook github program"></ul>
+  <ul aria-label="Levels">
+    <li>Set this: you fill it in</li>
+    <li>Optional: adds a feature</li>
+    <li>Advanced: most projects leave it alone</li>
+  </ul>
+</section>
+
+<div id="config-map"></div>
+
+</body>
+</html>

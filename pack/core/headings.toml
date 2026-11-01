@@ -37,6 +37,10 @@ en = "Returned"
 nl = "Herbaseerd"
 en = "Rebased"
 
+[kind_parked]
+nl = "Geparkeerd"
+en = "Parked"
+
 # Texts the dispatcher posts
 [reason_needs_brainstorm]
 nl = "heeft brainstorm nodig"
@@ -117,6 +121,10 @@ en = "plan review skipped (config)"
 [note_done]
 nl = "Checks groen, klaar voor review. Mergen blijft bij jou; na de merge toetst de controller het issue opnieuw als het nog open staat."
 en = "Checks green, ready for review. Merging stays with you; after the merge the controller checks the issue again if it is still open."
+
+[prompt_usage_resume]
+nl = "ga verder"
+en = "continue"
 
 # The fields of a question
 [question_where]

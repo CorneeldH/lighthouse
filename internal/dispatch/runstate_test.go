@@ -81,55 +81,6 @@ func TestReadPermission(t *testing.T) {
 	})
 }
 
-func TestParked(t *testing.T) {
-	marker := func(dir string) string { return filepath.Join(dir, runSession+".json") }
-
-	t.Run("a marker file", func(t *testing.T) {
-		dir := t.TempDir()
-		writeFile(t, marker(dir), `{"session_id": "`+runSession+`"}`)
-		if got, err := Parked(dir, runSession); !got || err != nil {
-			t.Errorf("Parked = %v, %v; want true, nil", got, err)
-		}
-	})
-	t.Run("no marker", func(t *testing.T) {
-		if got, err := Parked(t.TempDir(), runSession); got || err != nil {
-			t.Errorf("Parked = %v, %v; want false, nil", got, err)
-		}
-	})
-	t.Run("no resume dir", func(t *testing.T) {
-		if got, err := Parked(filepath.Join(t.TempDir(), "missing"), runSession); got || err != nil {
-			t.Errorf("Parked = %v, %v; want false, nil", got, err)
-		}
-	})
-	t.Run("a symlink", func(t *testing.T) {
-		dir := t.TempDir()
-		target := filepath.Join(t.TempDir(), "elsewhere.json")
-		writeFile(t, target, "{}")
-		if err := os.Symlink(target, marker(dir)); err != nil {
-			t.Fatal(err)
-		}
-		if got, err := Parked(dir, runSession); got || err != nil {
-			t.Errorf("Parked = %v, %v; want false, nil", got, err)
-		}
-	})
-	t.Run("a directory", func(t *testing.T) {
-		dir := t.TempDir()
-		if err := os.Mkdir(marker(dir), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if got, err := Parked(dir, runSession); got || err != nil {
-			t.Errorf("Parked = %v, %v; want false, nil", got, err)
-		}
-	})
-	t.Run("a session id that is no file name", func(t *testing.T) {
-		dir := t.TempDir()
-		writeFile(t, filepath.Join(dir, ".json"), "{}")
-		if got, err := Parked(dir, ""); err == nil {
-			t.Errorf("Parked(\"\") = %v, nil; want an error", got)
-		}
-	})
-}
-
 func TestDurationText(t *testing.T) {
 	var in struct {
 		MaxWait Duration `json:"max_wait"`
@@ -176,7 +127,7 @@ func TestBoundariesActivity(t *testing.T) {
 		2: {SessionAt: time.Date(2026, 10, 31, 11, 30, 0, 0, time.UTC)},
 		3: {}, // not measured: only the run's own limits
 	}
-	got := Boundaries(d, open, states, now)
+	got := Boundaries(d, open, states, nil, now)
 	for _, w := range []time.Time{
 		time.Date(2026, 10, 31, 16, 0, 0, 0, time.UTC),  // started + max_runtime
 		time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC),   // started + max_wait

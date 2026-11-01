@@ -28,7 +28,7 @@
       "id": "loop",
       "title": "Run the loop",
       "items": [
-        { "form": "loop", "kind": "lighthouse", "label": "The loop", "href": "chain.html" }
+        { "form": "loop", "kind": "lighthouse", "label": "The loop", "href": "loop.html" }
       ]
     }
   ],

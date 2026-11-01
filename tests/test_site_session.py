@@ -177,4 +177,4 @@ def test_routes_are_the_situations():
 def test_session_why_names_the_loop_not_the_chain():
     html = (SITE / "session.html").read_text(encoding="utf-8")
     why = html.split('<details class="why">', 1)[1].split("</details>", 1)[0]
-    assert not re.search(r"\bchain\b", why.replace("chain.html", ""), re.IGNORECASE)
+    assert not re.search(r"\bchain\b", why.replace("loop.html", ""), re.IGNORECASE)

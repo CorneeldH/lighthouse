@@ -8,6 +8,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // maxConcurrent caps the comment fetches that run at the same time.
@@ -17,6 +18,35 @@ const maxConcurrent = 8
 type Source interface {
 	OpenIssues(ctx context.Context) ([]forge.Issue, error)
 	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
+}
+
+// Filter returns the numbers of the issues the overview may show. A nil Filter shows every
+// open issue, as without [dispatch].
+type Filter func(ctx context.Context) (map[int]bool, error)
+
+// BoardReader lists the items of a Projects v2 board; *forge.Client satisfies it.
+type BoardReader interface {
+	BoardItems(ctx context.Context, projectID string) ([]forge.BoardItem, error)
+}
+
+// ControllerIssues is the Filter of the issues of slug whose Status on board b is the option
+// b.StatusOptions["Controller"]. The caller makes sure that option is set: an empty option ID
+// would match every item without a Status.
+func ControllerIssues(r BoardReader, slug string, b repoconfig.Board) Filter {
+	controller := b.StatusOptions["Controller"]
+	return func(ctx context.Context) (map[int]bool, error) {
+		items, err := r.BoardItems(ctx, b.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		in := map[int]bool{}
+		for _, it := range items {
+			if it.Repo == slug && it.SingleSelect[b.StatusFieldID] == controller {
+				in[it.Issue] = true
+			}
+		}
+		return in, nil
+	}
 }
 
 // Question is an open question on an issue.
@@ -51,12 +81,27 @@ type entry[T any] struct {
 	item      T
 }
 
-// Build lists the open questions and returned issues, oldest header comment first. Any
-// failure fails the whole build: a partial list would hide issues.
-func Build(ctx context.Context, src Source) (Overview, error) {
+// Build lists the open questions and returned issues, oldest header comment first. With a
+// non-nil inController only the issues it names count, and no comments are read for the
+// others. Any failure fails the whole build: a partial list would hide issues.
+func Build(ctx context.Context, src Source, inController Filter) (Overview, error) {
 	issues, err := src.OpenIssues(ctx)
 	if err != nil {
 		return Overview{}, err
+	}
+	if inController != nil {
+		in, err := inController(ctx)
+		if err != nil {
+			return Overview{}, err
+		}
+		// A new slice: the source may keep the one it returned.
+		kept := make([]forge.Issue, 0, len(issues))
+		for _, issue := range issues {
+			if in[issue.Number] {
+				kept = append(kept, issue)
+			}
+		}
+		issues = kept
 	}
 	statuses, err := fetchStatuses(ctx, src, issues)
 	if err != nil {

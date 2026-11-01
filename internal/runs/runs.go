@@ -167,8 +167,7 @@ type OpenRun struct {
 
 // Open returns the open runs of repo, ordered by id.
 func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, issue, session_id, trigger_key, profile, branch,
-		workspace_id, workplace_session, started_at
+	rows, err := db.QueryContext(ctx, `SELECT `+openColumns+`
 		FROM runs WHERE repo = ? AND ended_at IS NULL ORDER BY id`, repo)
 	if err != nil {
 		return nil, fmt.Errorf("runs: open runs: %w", err)
@@ -176,15 +175,9 @@ func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
 	defer func() { _ = rows.Close() }()
 	var out []OpenRun
 	for rows.Next() {
-		var r OpenRun
-		var started string
-		if err := rows.Scan(&r.ID, &r.Issue, &r.SessionID, &r.TriggerKey, &r.Profile, &r.Branch,
-			&r.WorkspaceID, &r.WorkplaceSession, &started); err != nil {
-			return nil, fmt.Errorf("runs: scan open run: %w", err)
-		}
-		r.StartedAt, err = time.Parse(time.RFC3339, started)
+		r, err := scanOpen(rows)
 		if err != nil {
-			return nil, fmt.Errorf("runs: run %d started_at %q: %w", r.ID, started, err)
+			return nil, err
 		}
 		out = append(out, r)
 	}
@@ -192,6 +185,28 @@ func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
 		return nil, fmt.Errorf("runs: open runs: %w", err)
 	}
 	return out, nil
+}
+
+// openColumns are the runs columns scanOpen reads, in order.
+const openColumns = `id, issue, session_id, trigger_key, profile, branch,
+	workspace_id, workplace_session, started_at`
+
+// scanOpen reads a row selected with openColumns, after any lead destinations
+// for columns selected before them.
+func scanOpen(rows interface{ Scan(...any) error }, lead ...any) (OpenRun, error) {
+	var r OpenRun
+	var started string
+	dest := append(lead, &r.ID, &r.Issue, &r.SessionID, &r.TriggerKey, &r.Profile, &r.Branch,
+		&r.WorkspaceID, &r.WorkplaceSession, &started)
+	if err := rows.Scan(dest...); err != nil {
+		return OpenRun{}, fmt.Errorf("runs: scan open run: %w", err)
+	}
+	var err error
+	r.StartedAt, err = time.Parse(time.RFC3339, started)
+	if err != nil {
+		return OpenRun{}, fmt.Errorf("runs: run %d started_at %q: %w", r.ID, started, err)
+	}
+	return r, nil
 }
 
 // SessionKeys maps the workplace session key of every run of the issue, open

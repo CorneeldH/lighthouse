@@ -1311,3 +1311,131 @@ details.who summary:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Configuration page: where the files are, each file as TOML, and per table one row per key */
+
+.config-file {
+  margin-top: 28px;
+}
+
+.config-file h2 {
+  margin: 0 0 4px;
+}
+
+.config-file h3 {
+  margin: 20px 0 6px;
+  font-family: ui-monospace, monospace;
+  font-size: 14px;
+}
+
+.config-file p {
+  margin: 4px 0 0;
+  max-width: 70ch;
+}
+
+.config-toml {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.config-toml a {
+  color: inherit;
+  text-decoration: underline dotted;
+}
+
+.config-comment {
+  color: var(--muted);
+}
+
+.config-scroll {
+  overflow-x: auto;
+}
+
+.config-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 14px;
+}
+
+.config-table th,
+.config-table td {
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.config-table th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* The same columns in every table, so the tables of one file line up. */
+.config-table th:nth-child(1) {
+  width: 28%;
+}
+
+.config-table th:nth-child(2) {
+  width: 14%;
+}
+
+.config-table th:nth-child(3) {
+  width: 28%;
+}
+
+.config-paths th:nth-child(1) {
+  width: 18%;
+}
+
+.config-paths th:nth-child(2) {
+  width: 32%;
+}
+
+/* A link from the TOML lands on the row of its key. */
+.config-table tr:has(> td:target) > td {
+  background: var(--col-bg);
+}
+
+.config-table td p {
+  margin: 0;
+}
+
+.config-table .reference-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.config-none {
+  color: var(--muted);
+}
+
+.config-level {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.level-set {
+  background: var(--accent-soft);
+  color: #16181d;
+}
+
+.level-optional {
+  border: 1px solid var(--muted);
+}
+
+.level-advanced {
+  color: var(--muted);
+}
