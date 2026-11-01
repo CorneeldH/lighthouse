@@ -20,6 +20,7 @@ type hostFacts struct {
 	PauseUntil time.Time                // zero: no active pause
 	Markers    map[string][]park.Marker // per repo slug: controller markers whose last run is there
 	MarkerDir  string
+	Parked     map[string][]int64 // per repo slug: ids of the last runs that are resumable for their marker
 }
 
 // meter is env.Meter, or a meter on the default cache directory and the [usage] table of host.toml.
@@ -93,6 +94,7 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 		return hostFacts{}, fmt.Errorf("resume markers: %w", err)
 	}
 	f.Markers = map[string][]park.Marker{}
+	f.Parked = map[string][]int64{}
 	for _, m := range markers {
 		if !m.Controller {
 			continue
@@ -106,6 +108,7 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 		}
 		f.Markers[repo] = append(f.Markers[repo], m)
 		if runs.Resumable(last, m.Key()) {
+			f.Parked[repo] = append(f.Parked[repo], last.ID)
 			b.InUse++
 			if last.Profile == dispatch.ProfileSoftware {
 				b.SoftwareInUse++
