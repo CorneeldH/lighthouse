@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Install lighthouse</title>
-<link rel="stylesheet" href="map.css?v=79c73d3e">
-<script type="module" src="install.js?v=79c73d3e"></script>
+<link rel="stylesheet" href="map.css?v=523763e3">
+<script type="module" src="install.js?v=523763e3"></script>
 </head>
 <body>
 <header class="page-head">
@@ -18,6 +18,14 @@
 
 <main id="install" class="download">
   <p id="release-version">latest release</p>
+  <section id="agent" class="agent-prompt">
+    <h2>Install with your agent</h2>
+    <p>Paste this sentence into Claude Code, Codex or OpenCode in your repository. The agent
+    follows the <a href="agents/install.md">agent guide</a> and asks before it installs or writes
+    anything.</p>
+<pre><code>Read https://corneeldh.github.io/lighthouse/agents/install.md and install lighthouse in this repo.</code></pre>
+  </section>
+  <h2>Install by hand</h2>
   <p class="download-lead">Paste one block into a terminal. It checks the binary against
   <code>SHA256SUMS</code> before it puts it in <code>~/.local/bin</code>, without
   <code>sudo</code>.</p>
@@ -113,12 +121,13 @@ mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_darwin_amd64 ~/.local/bin/lightho
 
   <p class="next-step">Next: run <code>lighthouse init</code> in your repository, as the
   <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#run-lighthouse-init">getting-started guide</a>
-  shows. Check the <a href="index.html#who">requirements</a> first.</p>
+  shows, or let your agent do it with the <a href="agents/install.md">agent guide</a>. Check the
+  <a href="index.html#who">requirements</a> first.</p>
 </main>
 
 <footer class="links">
   <a href="https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md">Getting started</a>
-  <a href="https://github.com/CorneeldH/lighthouse/issues/88">Agent guide (coming, #88)</a>
+  <a href="agents/install.md">Agent guide</a>
   <a href="https://github.com/CorneeldH/lighthouse/blob/main/LICENSE">License</a>
   <a href="https://github.com/CorneeldH/lighthouse/blob/main/CHANGELOG.md">Changelog</a>
 </footer>

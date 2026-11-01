@@ -35,6 +35,16 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 
 ## Install
 
+Rather have your agent do it? Paste this sentence into Claude Code, Codex or OpenCode, in your
+repository:
+
+```text
+Read https://corneeldh.github.io/lighthouse/agents/install.md and install lighthouse in this repo.
+```
+
+The agent follows [the agent guide](https://corneeldh.github.io/lighthouse/agents/install.md): it
+asks before it installs or writes anything. To install by hand, read on.
+
 Download the binary for your platform from the latest release and check it against
 `SHA256SUMS` before it lands in `~/.local/bin`. For Linux on amd64, paste this block in one go;
 it stops at the first step that fails:

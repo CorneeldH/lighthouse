@@ -79,7 +79,7 @@ class ElementById(HTMLParser):
 def test_site_links_resolve():
     pages = site_files(".html")
     assert pages, "docs/site has no HTML page"
-    for path in pages + site_files(".js") + [GUIDE]:
+    for path in pages + site_files(".js", ".md") + [GUIDE]:
         links = relative_links(path)
         if path.suffix == ".html":
             assert links, f"{path.name} links no stylesheet or script"
