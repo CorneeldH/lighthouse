@@ -134,7 +134,7 @@ De controle hoort in `Validate`, vóór `oneLine`, zodat ook `--dry-run` hem too
 
 | Veld | Grens | Gecontroleerd wanneer (de rij van `Choose`) |
 |---|---|---|
-| `redundancy_evidence` | alleen verwijzingen, gescheiden door spaties of komma's, hoogstens 5: `#<nr>` met 1 tot 6 cijfers, of een commit-sha van 7 tot 40 hex. Een sha telt alleen als hij een prefix is van de volledige sha (`%H`) van een commit uit de log van `Facts.GitLog`. | rij *Redundant*: `redundancy` is `done` (niet leeg) of `duplicate` (mag leeg) |
+| `redundancy_evidence` | alleen verwijzingen, hoogstens 5, met tussen twee verwijzingen precies één scheider: `, ` of ` `. Een verwijzing is `#<nr>` met 1 tot 6 cijfers, of een commit-sha van 7 tot 40 hex. Een sha telt alleen als hij een prefix is van de volledige sha (`%H`) van een commit uit de log van `Facts.GitLog`. Het hele veld (na `strings.TrimSpace`) past op één reguliere expressie van begin tot eind, en is ≤ 220 tekens. | rij *Redundant*: `redundancy` is `done` (niet leeg) of `duplicate` (mag leeg) |
 | `headless_reason` | ≤ 300 tekens | rij *Interactief*: `redundancy` is `none`, Go vond geen poort 0, poort niet 0, 1 of 4c, `headless` is false |
 | `design_questions[].question` | ≤ 300 tekens | rij *Ontwerp*: `redundancy` is `none`, Go vond geen poort 0, poort 4c |
 | `design_questions[].options[]` | ≤ 150 tekens | rij *Ontwerp*, als hierboven |
@@ -154,7 +154,11 @@ volgorde van één plek, zodat een latere wijziging van de volgorde de controle 
 
 *(eigen keuze na spec-review, r1-f3, r1-f6)* De grenzen op `redundancy_evidence` sluiten het
 kanaal: een sha mag alleen tekens dragen die al in een echte sha staan, en `#<nr>` draagt
-hoogstens 6 cijfers. Vijf verwijzingen dragen samen hoogstens 30 cijfers, ongeveer 12 bytes. `Facts.GitLog` blijft `--oneline` voor de prompt; de volledige sha's zijn
+hoogstens 6 cijfers. Vijf verwijzingen dragen samen hoogstens 30 cijfers, ongeveer 12 bytes.
+*(eigen keuze na spec-review, r2-f1)* Ook de scheiders liggen vast: een rij spaties en komma's
+tussen twee verwijzingen zou bit voor bit inhoud dragen. `strings.FieldsFunc` laat lege velden
+weg en ziet dat niet; de controle is één expressie over het hele veld. De 220 is 5 × 40 hex
+plus 4 scheiders van 2 tekens, met wat ruimte. `Facts.GitLog` blijft `--oneline` voor de prompt; de volledige sha's zijn
 een extra feit, uit dezelfde `git log` (bijvoorbeeld `--format='%H %s'`).
 
 Sinds #186 gaat `redundancy_evidence` door `modelText`: een `#<nr>` krijgt een zero-width joiner
@@ -194,7 +198,8 @@ tweede laag.
   `permission_denials` gaan in de PR.
 - **AC 2, test:** per veld een geval net onder en net boven de grens. Voor
   `redundancy_evidence` ook: proza, een sha die niet in de log staat, een sha die met een korte
-  log-sha begint maar daarna afwijkt, een `#<nr>` van 7 cijfers, zes verwijzingen, en een geldige
+  log-sha begint maar daarna afwijkt, een `#<nr>` van 7 cijfers, zes verwijzingen, twee
+verwijzingen met een rij spaties en komma's ertussen, en een geldige
   `#<nr>` en sha samen. Een oordeel met `redundancy` `done` en een te lange ontwerpvraag is geldig.
 - `TestExecJudgeFlags` legt de nieuwe argv vast.
 - Een test met een nep-gebruikersinstellingenbestand met `env`, `modelSettings` en
