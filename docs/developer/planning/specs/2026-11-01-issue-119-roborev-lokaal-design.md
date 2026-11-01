@@ -191,8 +191,10 @@ wordt `/lighthouse-write-pr`. Regel 53-55 over de roborev-run op een groene PR v
 
 `personal_ai_agent/.github/workflows/roborev.yml` krijgt vóór `Size` een stap die de PR-body leest.
 Staat `roborev-lokaal:` erin, dan slaat de job over met een notice. Dit is een wijziging in een
-andere repo van dezelfde eigenaar. Ze komt als eigen PR in paia (`Refs` naar #119) en hoort niet
-in de PR van lighthouse.
+andere repo van dezelfde eigenaar. Ze wordt een follow-up-issue in paia, en dat issue noemt de
+marker en verwijst naar #119. Het hoort niet in de PR van lighthouse. #119 sluit zonder die
+wijziging (besluit van de gebruiker). Het issue wordt aangemaakt zodra de markervorm in lighthouse
+gemerged is, zodat het naar een vaste vorm verwijst.
 
 ### 7. M2-spec bijwerken
 
@@ -205,7 +207,8 @@ rood en de sessie is klaar" in de run-uitkomsttabel wordt "start fix-pr, na 3 ru
   ontwerp doet alleen de rode PR. Met de lokale stand ontstaat geen onverwerkte comment meer; zie
   *Niet-doelen*. De PR-body vermeldt deze afwijking.
 - **AC 4** ("de CI-review slaat over op de lokaal-marker") gaat over de lane in paia: lighthouse
-  heeft geen CI-review. Bewijs komt uit de paia-PR van §6.
+  heeft geen CI-review. Dit AC verhuist naar het follow-up-issue in paia van §6. In de PR van #119
+  staat het als `Refs`, met een link naar dat issue.
 
 ## Bewijs (AC 6)
 
