@@ -60,6 +60,9 @@ type Server struct {
 	// BoardNodes are the project items in GraphQL shape, served by Board in pages of 100. A
 	// nested connection carries its own pageInfo when a test sets one.
 	BoardNodes []map[string]any
+	// ProjectID is the project every BoardNodes item belongs to, as IssueItems serves it in
+	// project { id }.
+	ProjectID string
 	// BoardNotAProject makes Board answer {"node": {}}, as GitHub does for an ID of another type.
 	BoardNotAProject bool
 	// BoardStuckCursor, when not nil, makes every Board page claim a next page with this
@@ -434,6 +437,10 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			"pageInfo": map[string]any{"hasNextPage": more},
 			"nodes":    append([]map[string]any{}, nodes...),
 		}}}
+	case "IssueItems":
+		data = s.issueItems(req.Variables)
+	case "AddToBoard":
+		data = s.addToBoard(req.Variables)
 	case "SetStatus":
 		data = map[string]any{"updateProjectV2ItemFieldValue": map[string]any{
 			"projectV2Item": map[string]any{"id": req.Variables["item"]},
@@ -468,6 +475,49 @@ func (s *Server) board(vars map[string]any) any {
 		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
 		"nodes":    append([]map[string]any{}, s.BoardNodes[start:end]...),
 	}}}
+}
+
+// issueItems serves the BoardNodes whose content.number is $number, each with project { id }
+// from ProjectID. The content is left out, as the real query does not select it.
+func (s *Server) issueItems(vars map[string]any) any {
+	number, _ := vars["number"].(float64)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	nodes := []map[string]any{}
+	for _, n := range s.BoardNodes {
+		content, _ := n["content"].(map[string]any)
+		if num, ok := content["number"].(int); !ok || float64(num) != number {
+			continue
+		}
+		cp := map[string]any{"project": map[string]any{"id": s.ProjectID}}
+		for k, v := range n {
+			if k != "content" {
+				cp[k] = v
+			}
+		}
+		nodes = append(nodes, cp)
+	}
+	return map[string]any{"repository": map[string]any{"issue": map[string]any{"projectItems": map[string]any{
+		"pageInfo": map[string]any{"hasNextPage": false},
+		"nodes":    nodes,
+	}}}}
+}
+
+// addToBoard appends a BoardNodes item "item-<content>" for the Issues item whose node_id is
+// $content, and answers its id.
+func (s *Server) addToBoard(vars map[string]any) any {
+	content, _ := vars["content"].(string)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for n, it := range s.Issues {
+		if id, _ := it["node_id"].(string); id == content {
+			item := "item-" + content
+			s.BoardNodes = append(s.BoardNodes, map[string]any{"id": item, "content": map[string]any{"number": n}})
+			return map[string]any{"addProjectV2ItemById": map[string]any{"item": map[string]any{"id": item}}}
+		}
+	}
+	s.t.Errorf("forgetest: AddToBoard content %q matches no Issues node_id", content)
+	return map[string]any{"addProjectV2ItemById": nil}
 }
 
 // operationName is the name after "query " or "mutation " at the start of a query.
