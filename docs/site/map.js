@@ -203,6 +203,7 @@ const KIND_OF_SORT = {
   agent: "lighthouse",
   hook: "hook",
   github: "github",
+  program: "lighthouse",
 };
 
 // Per part of a pack: the names it lists, the sort of each and the repo path of its place.
@@ -257,6 +258,138 @@ export function renderReference(root, packs, part) {
     return group;
   });
   root.replaceChildren(...groups);
+}
+
+const CONFIG_LEVELS = { set: "Set this", optional: "Optional", advanced: "Advanced" };
+
+// The sort of a reader by the folder of its file under pack/<pack>/.
+const CONFIG_READER_SORTS = { hooks: "hook", workflows: "github", agents: "agent" };
+
+/** The name, sort and link of one reader of a key, from its repo path. A skill folder links to its
+    tree, everything else to its file. */
+export function configReader(path, packs) {
+  const [root, packName, folder, name] = path.split("/");
+  const file = path.split("/").pop();
+  if (root === "pack" && folder === "skills" && name) {
+    const pack = packs.find((entry) => entry.name === packName);
+    const standard = pack && pack.standard_skills.includes(name);
+    return { name, sort: standard ? "standard-skill" : "workflow-skill", href: REPO_TREE + path };
+  }
+  const sort = (root === "pack" && CONFIG_READER_SORTS[folder]) || "program";
+  return { name: file, sort, href: REPO_BLOB + path };
+}
+
+/** What the configuration map says per key, in the order of the data and without a DOM:
+    [{file, table, key, level, levelLabel, required, without, about, status, readers}]. */
+export function configEntries(data, packs) {
+  const entries = [];
+  for (const file of data.files) {
+    for (const table of file.tables) {
+      for (const key of table.keys) {
+        const fallback = Array.isArray(key.default) ? `[${key.default.join(", ")}]` : String(key.default);
+        entries.push({
+          file: file.file,
+          table: table.table,
+          key: key.key,
+          level: key.level,
+          levelLabel: CONFIG_LEVELS[key.level],
+          required: key.required,
+          without: `Without it: ${key.default === undefined ? "not set" : fallback}`,
+          about: key.about,
+          status: key.readers.length
+            ? "Status: works"
+            : "Status: not used yet — config.py accepts it, nothing acts on it.",
+          readers: key.readers.map((path) => configReader(path, packs)),
+        });
+      }
+    }
+  }
+  return entries;
+}
+
+/** A link to one reader, with the glyph of its sort, like the links of the reference page. */
+function configReaderLink(reader) {
+  const link = el("a", `reference-link kind-${KIND_OF_SORT[reader.sort]} form-${reader.sort}`);
+  link.href = reader.href;
+  const glyph = el("span", "reference-glyph", SORTS[reader.sort].glyph);
+  glyph.setAttribute("aria-hidden", "true");
+  link.append(glyph, ` ${reader.name}`);
+  const row = el("li");
+  row.append(link);
+  return row;
+}
+
+/** The boxes of the drawer for one key: about, place, required, without, readers and status. */
+function configBoxes(entry) {
+  const readers = entry.readers.length
+    ? el("ul", "reference-list")
+    : el("p", "", "Nothing in lighthouse reads it yet.");
+  if (entry.readers.length) {
+    readers.append(...entry.readers.map(configReaderLink));
+  }
+  return [
+    box("", entry.key, el("p", "", entry.about)),
+    box("", "", el("p", "", `In ${entry.file}, table [${entry.table}]`)),
+    box("", "", el("p", "", `Required: ${entry.required}`)),
+    box("", "", el("p", "", entry.without)),
+    box("Read by", "", readers),
+    box("", "", el("p", "", entry.status)),
+  ];
+}
+
+/** The configuration map: a level filter on top, then per file and table one button per key. A
+    click on a key opens its drawer in `detail`. */
+export function renderConfig(root, data, packs, detail) {
+  const entries = configEntries(data, packs);
+  const drawer = drawerFor(detail);
+  const buttons = [];
+  const filter = el("div", "routes");
+  const choices = [["", "All keys"], ...Object.entries(CONFIG_LEVELS)];
+  const choose = (level) => {
+    for (const button of filter.children) {
+      button.setAttribute("aria-pressed", String(button.dataset.level === level));
+    }
+    for (const key of buttons) {
+      key.classList.toggle("dim", level !== "" && key.dataset.level !== level);
+    }
+  };
+  for (const [level, label] of choices) {
+    const button = el("button", "", label);
+    button.type = "button";
+    button.dataset.level = level;
+    button.setAttribute("aria-pressed", String(level === ""));
+    button.addEventListener("click", () => choose(level));
+    filter.append(button);
+  }
+  const sections = [];
+  let section = null;
+  let keys = null;
+  let table = null;
+  for (const entry of entries) {
+    if (!section || section.file !== entry.file) {
+      const node = el("section", "config-file");
+      node.append(el("h2", "", entry.file));
+      const where = data.files.find((file) => file.file === entry.file).where;
+      node.append(el("p", "", where));
+      section = { file: entry.file, node };
+      sections.push(node);
+      table = null;
+    }
+    if (table !== entry.table) {
+      table = entry.table;
+      keys = el("div", "config-keys");
+      section.node.append(el("h3", "", `[${table}]`), keys);
+    }
+    const button = el("button", entry.readers.length ? "config-key status-works" : "config-key");
+    button.type = "button";
+    button.dataset.key = entry.key;
+    button.dataset.level = entry.level;
+    button.append(el("code", "", entry.key), el("span", `config-level level-${entry.level}`, entry.levelLabel));
+    button.addEventListener("click", () => drawer.show(button, configBoxes(entry)));
+    buttons.push(button);
+    keys.append(button);
+  }
+  root.replaceChildren(filter, ...sections);
 }
 
 /** One item of the system page: a link with the glyph of its sort, its label and its note. */
