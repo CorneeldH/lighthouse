@@ -1142,6 +1142,46 @@ def test_pending_rename_source_is_not_unchecked(tmp_path, monkeypatch):
     assert _ledger_root(tmp_path, repo)["pending"] == []
 
 
+def test_pending_managed_file_leaves_pending_undispatched(tmp_path, monkeypatch):
+    # a.py gets into `pending` through a missed deadline; then the manifest names it
+    # as a file unit (#88): lighthouse's own, so no gate, and out of `pending`.
+    repo = _post_env(tmp_path, monkeypatch)
+    dispatched: list[str] = []
+    monkeypatch.setattr(
+        bw,
+        "run_gate",
+        lambda root, rel, gate, deadline: dispatched.append(rel) or ("ok", b""),
+    )
+    assert bw.run_pre(_payload(repo, 0)) == 0
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    git(repo, "add", "a.py")
+    git(repo, "commit", "-qm", "a")
+    start = time.time()
+    calls = {"n": 0}
+
+    def late_now():
+        calls["n"] += 1
+        return start if calls["n"] == 1 else start + 10**6
+
+    monkeypatch.setattr(bw, "_now", late_now)
+    code, _out, err = bw.run_post(_payload(repo, 0))
+    assert code == 2, err
+    assert _ledger_root(tmp_path, repo)["pending"] == ["a.py"]
+
+    monkeypatch.setattr(bw, "_now", time.time)
+    (repo / ".lighthouse").mkdir()
+    (repo / ".lighthouse" / "manifest.toml").write_text(
+        '[[unit]]\nkind = "file"\npath = "a.py"\n', encoding="utf-8"
+    )
+    git(repo, "add", ".lighthouse/manifest.toml")
+    git(repo, "commit", "-qm", "manifest")
+    assert bw.run_pre(_payload(repo, 1)) == 0
+    code, out, err = bw.run_post(_payload(repo, 1))
+    assert code == 0, err
+    assert dispatched == []
+    assert _ledger_root(tmp_path, repo)["pending"] == []
+
+
 # --- dispatch: vanished candidate, signal; pre: marker before the seeding ----
 
 

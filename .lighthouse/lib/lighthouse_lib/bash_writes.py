@@ -251,6 +251,33 @@ def project_filter(
     return kept, errors
 
 
+class ManifestError(Exception):
+    """`.lighthouse/manifest.toml` exists but cannot be read as a manifest."""
+
+
+def managed_files(root: str) -> set[str]:
+    """The repo-relative paths of the file units in `<root>/.lighthouse/manifest.toml` (#88).
+
+    Those files are lighthouse's own: a gate that rewrites one (`ruff format`, `gofmt`)
+    makes `init --upgrade` refuse it as locally modified. A block, hook or permission
+    unit sits inside a file of the project (`AGENTS.md`, `.claude/settings.json`), so it
+    does not count. No manifest is an empty set; an unreadable one raises
+    `ManifestError`.
+    """
+    import tomllib  # lazily, like config._read_toml: Python < 3.11 must still import this module
+
+    manifest = Path(root) / ".lighthouse" / "manifest.toml"
+    if not manifest.is_file():
+        return set()
+    try:
+        data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+        return {unit["path"] for unit in data.get("unit", []) if unit.get("kind") == "file"}
+    except (
+        OSError, UnicodeDecodeError, tomllib.TOMLDecodeError, KeyError, TypeError, AttributeError
+    ) as exc:
+        raise ManifestError(f"cannot read {manifest}: {exc}") from exc
+
+
 def head_of(root: str, *, deadline: float) -> str:
     """The current `HEAD` sha, or `"unborn"` in a repo without commits.
 
@@ -1169,15 +1196,19 @@ def _root_pool(view: _RootView, *, deadline: float) -> _Pool:
     exists only elsewhere, e.g. on the branch the call returned from — also
     `unchecked`, with the commit attached. But only if a ref still
     contains that commit (`_in_a_ref`): if only the reflog knows it, the call threw it away
-    and the path is simply deleted. Raises `GitError` if status, reflog,
-    diff-tree or for-each-ref fails.
+    and the path is simply deleted. A file unit of the manifest (`managed_files`) is
+    never a candidate and leaves `pending`. Raises `GitError` if status, reflog,
+    diff-tree or for-each-ref fails, and `ManifestError` on an unreadable manifest.
     """
+    managed = managed_files(view.root)
     data = git(view.root, "status", "--porcelain", "-z", "-uall", deadline=deadline)
     dirty, removed = parse_porcelain(data)
     committed, stranded, notes = _committed_paths(view, deadline=deadline)
     from_source_2 = committed | set(view.pending)
     pool = sorted(
-        rel for rel in dirty | from_source_2 if os.path.splitext(rel)[1] in GATES
+        rel
+        for rel in dirty | from_source_2
+        if os.path.splitext(rel)[1] in GATES and rel not in managed
     )
     sigs = {rel: signature(os.path.join(view.root, rel)) for rel in pool}
     missing = [rel for rel in pool if sigs[rel] is None and rel not in removed]
@@ -1188,7 +1219,7 @@ def _root_pool(view: _RootView, *, deadline: float) -> _Pool:
     kept = _in_a_ref(view.root, elsewhere_shas, deadline=deadline)
     stranded = {rel: sha for rel, sha in stranded.items() if sha in kept}
 
-    result = _Pool(view, [], [], [], [], notes)
+    result = _Pool(view, [], [], [], sorted(from_source_2 & managed), notes)
     for rel in pool:
         sig = sigs[rel]
         elsewhere = sig is None and rel not in in_head
@@ -1559,7 +1590,7 @@ def _root_pools(
         try:
             view = _root_view(ledger, root, since, deadline=deadline)
             pool = _root_pool(view, deadline=deadline)
-        except GitError as exc:
+        except (GitError, ManifestError) as exc:
             outcome.cannot(f"{root} ({exc})")
             continue
         pools.append(pool)

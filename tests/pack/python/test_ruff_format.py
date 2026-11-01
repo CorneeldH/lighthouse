@@ -190,6 +190,26 @@ def test_bash_write_through_gate(tmp_path):
     assert "no python check installed" not in out.stderr + context(out)
 
 
+def test_bash_write_leaves_a_managed_file_alone(tmp_path):
+    """`lighthouse init` in a Bash call writes package code (#88). A path that
+    `.lighthouse/manifest.toml` names as a file unit does not go to ruff, so
+    `init --upgrade` still finds it unchanged; an unmanaged file with the same text does."""
+    from tests.pack.test_bash_write_check import MANAGED_SCRIPT, _Session, heredoc
+
+    s = _Session(tmp_path, language_gates=False)
+    install_pack("python", s.root)
+    unformatted = "x=1\n"
+    out = s.call(
+        "mkdir -p .lighthouse/scripts && "
+        + heredoc(".lighthouse/manifest.toml", MANAGED_SCRIPT)
+        + heredoc(".lighthouse/scripts/managed.py", unformatted)
+        + heredoc("own.py", unformatted)
+    )
+    assert out.returncode == 0, (out.stdout, out.stderr)
+    assert (s.repo / ".lighthouse/scripts/managed.py").read_text() == "x=1\n"
+    assert (s.repo / "own.py").read_text() == "x = 1\n"
+
+
 def test_ruff_unchecked_on_a_broken_config(tmp_path):
     """ruff exit 2 (a broken `[tool.ruff]`) is no finding: the code was not checked."""
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)

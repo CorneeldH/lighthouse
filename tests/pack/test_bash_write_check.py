@@ -462,6 +462,63 @@ def test_md_dead_link(tmp_path):
     assert "== note.md (md-link-check.sh) ==" in out.stderr
 
 
+# A manifest with one file unit (#88): `init` wrote `.lighthouse/scripts/managed.py`,
+# and that file belongs to lighthouse, not to the project.
+MANAGED_SCRIPT = """\
+version = "dev"
+packages = ["core", "python"]
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/scripts/managed.py"
+package = "python"
+version = "dev"
+sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
+"""
+
+
+def test_managed_file_does_not_go_to_its_gate(session):
+    out = session.call(
+        "mkdir -p .lighthouse/scripts && "
+        + heredoc(".lighthouse/manifest.toml", MANAGED_SCRIPT)
+        + heredoc(".lighthouse/scripts/managed.py", BARE_EXCEPT_PY)
+        + heredoc("own.py", BARE_EXCEPT_PY)
+    )
+    assert out.returncode == 2, (out.stdout, out.stderr)
+    assert "== own.py (ruff-format-check.sh) ==" in out.stderr
+    assert "managed.py" not in out.stderr
+
+
+def test_managed_block_leaves_the_file_to_the_project(session):
+    """A block unit (the lighthouse part of `AGENTS.md`) does not make the file
+    lighthouse's: the rest of it is the project's, and its gates still run."""
+    manifest = (
+        '[[unit]]\nkind = "block"\npath = "AGENTS.md"\nid = "core"\n'
+        'package = "core"\nversion = "dev"\nsha256 = "0"\n'
+    )
+    out = session.call(
+        "mkdir -p .lighthouse && "
+        + heredoc(".lighthouse/manifest.toml", manifest)
+        + heredoc("AGENTS.md", "[x](nergens.md)\n")
+    )
+    assert out.returncode == 2, (out.stdout, out.stderr)
+    assert "== AGENTS.md (md-link-check.sh) ==" in out.stderr
+
+
+def test_unreadable_manifest_is_loud(session):
+    """Without a readable manifest the dispatcher cannot tell lighthouse's files from
+    the project's: running the gates could rewrite package code, skipping them is blind."""
+    out = session.call(
+        "mkdir -p .lighthouse && "
+        + heredoc(".lighthouse/manifest.toml", "[[unit]\n")
+        + heredoc("own.py", BARE_EXCEPT_PY)
+    )
+    assert out.returncode == 2, (out.stdout, out.stderr)
+    assert "COULD NOT CHECK" in out.stderr
+    assert ".lighthouse/manifest.toml" in out.stderr
+    assert "E722" not in out.stderr
+
+
 def test_gate_unchecked_is_retried(session):
     missing = {"SHELLCHECK_BIN": "/nergens/shellcheck"}
     first = session.call(heredoc("x.sh", BROKEN_SH), env=missing)
