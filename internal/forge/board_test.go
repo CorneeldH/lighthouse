@@ -380,3 +380,96 @@ func TestBoardItemsPRURLAndMergedAt(t *testing.T) {
 		t.Errorf("open PR: %+v", prs[1])
 	}
 }
+
+// issueNode is a board node of issue number with Status option opt, as the board serves it.
+func issueNode(id string, number int, opt string) map[string]any {
+	return map[string]any{
+		"id": id, "updatedAt": "2026-10-30T09:00:00Z",
+		"fieldValues": map[string]any{"nodes": []any{
+			map[string]any{"optionId": opt, "field": map[string]any{"id": "F_status"}},
+		}},
+		"content": map[string]any{"number": number},
+	}
+}
+
+func TestIssueItem(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.ProjectID = "P1"
+	srv.BoardNodes = []map[string]any{issueNode("PVTI_7", 7, "s1"), issueNode("PVTI_9", 9, "s2")}
+	ctx := context.Background()
+
+	got, ok, err := c.IssueItem(ctx, "P1", 7)
+	if err != nil || !ok {
+		t.Fatalf("IssueItem(P1, 7) = %v, %v, %v; want the item", got, ok, err)
+	}
+	if got.ItemID != "PVTI_7" || got.SingleSelect["F_status"] != "s1" || got.Issue != 7 || got.Repo != "o/r" {
+		t.Errorf("item = %+v; want PVTI_7, Status s1, issue 7 of o/r", got)
+	}
+	if _, ok, err := c.IssueItem(ctx, "P1", 8); ok || err != nil {
+		t.Errorf("IssueItem(P1, 8) ok=%v err=%v; want not on the board and no error", ok, err)
+	}
+	if _, ok, err := c.IssueItem(ctx, "P2", 7); ok || err != nil {
+		t.Errorf("IssueItem(P2, 7) ok=%v err=%v; want not on that board (only on P1)", ok, err)
+	}
+	vars := srv.Posts[0].Body["variables"].(map[string]any)
+	if vars["owner"] != "o" || vars["name"] != "r" || vars["number"] != float64(7) {
+		t.Errorf("variables = %v, want owner o, name r, number 7", vars)
+	}
+	if n := srv.Count("IssueItems"); n != 3 {
+		t.Errorf("Count(IssueItems) = %d, want 3", n)
+	}
+}
+
+// An archived item is still an item of the issue: IssueItem returns it, marked Archived.
+func TestIssueItemArchived(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.ProjectID = "P1"
+	archived := issueNode("PVTI_7", 7, "s1")
+	archived["isArchived"] = true
+	srv.BoardNodes = []map[string]any{archived, issueNode("PVTI_9", 9, "s2")}
+	ctx := context.Background()
+
+	got, ok, err := c.IssueItem(ctx, "P1", 7)
+	if err != nil || !ok || got.ItemID != "PVTI_7" || !got.Archived {
+		t.Errorf("IssueItem(P1, 7) = %+v, %v, %v; want PVTI_7, archived", got, ok, err)
+	}
+	got, ok, err = c.IssueItem(ctx, "P1", 9)
+	if err != nil || !ok || got.ItemID != "PVTI_9" || got.Archived {
+		t.Errorf("IssueItem(P1, 9) = %+v, %v, %v; want PVTI_9, not archived", got, ok, err)
+	}
+}
+
+func TestIssueItemTruncated(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.ProjectID = "P1"
+	node := issueNode("PVTI_7", 7, "s1")
+	node["fieldValues"].(map[string]any)["pageInfo"] = map[string]any{"hasNextPage": true}
+	srv.BoardNodes = []map[string]any{node}
+	_, ok, err := c.IssueItem(context.Background(), "P1", 7)
+	if err == nil || ok || !strings.Contains(err.Error(), "fieldValues truncated") {
+		t.Fatalf("IssueItem ok=%v err=%v; want a fieldValues truncated error", ok, err)
+	}
+}
+
+func TestAddToBoard(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.ProjectID = "P1"
+	srv.Issues = map[int]map[string]any{7: {"number": 7, "node_id": "I_kw7"}}
+	ctx := context.Background()
+
+	id, err := c.AddToBoard(ctx, "P1", "I_kw7")
+	if err != nil || id != "item-I_kw7" {
+		t.Fatalf("AddToBoard = %q, %v; want item-I_kw7", id, err)
+	}
+	vars := srv.Posts[0].Body["variables"].(map[string]any)
+	if vars["project"] != "P1" || vars["content"] != "I_kw7" {
+		t.Errorf("variables = %v, want project P1 and content I_kw7", vars)
+	}
+	if srv.Count("AddToBoard") != 1 {
+		t.Errorf("Count(AddToBoard) = %d, want 1", srv.Count("AddToBoard"))
+	}
+	got, ok, err := c.IssueItem(ctx, "P1", 7)
+	if err != nil || !ok || got.ItemID != "item-I_kw7" {
+		t.Fatalf("IssueItem after AddToBoard = %+v, %v, %v; want item-I_kw7", got, ok, err)
+	}
+}

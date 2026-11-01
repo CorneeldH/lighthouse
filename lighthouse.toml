@@ -52,3 +52,11 @@ resume = true
 [review]
 # Local roborev review in /lighthouse-write-pr (#119); see .roborev.toml.
 roborev = "local"
+
+# `lighthouse tick` bedient deze repo alleen met deze tabel (docs/tick.md, *Vereisten per repo*). De
+# skills herkennen er ook de controller-modus aan.
+[controller]
+profile = "software"
+spec_review = true
+plan_review = true
+bij_rondegrens = "doorgaan"

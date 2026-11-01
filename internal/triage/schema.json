@@ -1,0 +1,31 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "route_line": {"type": "string"},
+    "gate": {"type": "integer", "enum": [0, 1, 2, 3, 4]},
+    "sub": {"type": "string", "enum": ["", "a", "b", "c"]},
+    "redundancy": {"type": "string", "enum": ["none", "duplicate", "done"]},
+    "redundancy_issue": {"type": "integer"},
+    "redundancy_evidence": {"type": "string"},
+    "headless": {"type": "boolean"},
+    "headless_reason": {"type": "string"},
+    "design_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "question": {"type": "string"},
+          "options": {"type": "array", "items": {"type": "string"}},
+          "recommended": {"type": "integer"}
+        },
+        "required": ["question", "options", "recommended"]
+      }
+    }
+  },
+  "required": [
+    "route_line", "gate", "sub", "redundancy", "redundancy_issue",
+    "redundancy_evidence", "headless", "headless_reason", "design_questions"
+  ]
+}

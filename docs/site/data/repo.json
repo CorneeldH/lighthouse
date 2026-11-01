@@ -1,0 +1,156 @@
+{
+  "title": "Your repo after init",
+  "subtitle": "Everything lighthouse init puts in your repo, and the files of yours it edits.",
+  "dirs": [
+    {
+      "id": "root",
+      "label": "your repo/"
+    },
+    {
+      "id": ".claude",
+      "label": ".claude/",
+      "yours": "your own skills, agents and settings"
+    },
+    {
+      "id": ".agents",
+      "label": ".agents/",
+      "yours": "your own skills"
+    },
+    {
+      "id": ".lighthouse",
+      "label": ".lighthouse/"
+    },
+    {
+      "id": ".github",
+      "label": ".github/",
+      "yours": "your own workflows"
+    }
+  ],
+  "rows": [
+    {
+      "id": "agents-md",
+      "place": "AGENTS.md",
+      "label": "AGENTS.md",
+      "dir": "root",
+      "kind": "rules",
+      "act": "edits",
+      "href": "system.html#rules"
+    },
+    {
+      "id": "lighthouse-toml",
+      "place": "lighthouse.toml",
+      "label": "lighthouse.toml",
+      "dir": "root",
+      "kind": "config",
+      "act": "edits",
+      "href": "config.html"
+    },
+    {
+      "id": "claude-hooks",
+      "place": ".claude/hooks/lighthouse/",
+      "label": "hooks/lighthouse/",
+      "dir": ".claude",
+      "kind": "hook",
+      "act": "adds",
+      "href": "reference.html#hooks"
+    },
+    {
+      "id": "claude-skills",
+      "place": ".claude/skills/lighthouse-*/",
+      "label": "skills/lighthouse-*/",
+      "dir": ".claude",
+      "kind": "standard-skill",
+      "act": "adds",
+      "href": "reference.html#skills"
+    },
+    {
+      "id": "claude-agents",
+      "place": ".claude/agents/lighthouse-*.md",
+      "label": "agents/lighthouse-*.md",
+      "dir": ".claude",
+      "kind": "agent",
+      "act": "adds",
+      "href": "reference.html#agents"
+    },
+    {
+      "id": "claude-settings",
+      "place": ".claude/settings.json",
+      "label": "settings.json",
+      "dir": ".claude",
+      "kind": "config",
+      "act": "edits"
+    },
+    {
+      "id": "agents-skills",
+      "place": ".agents/skills/lighthouse-*/",
+      "label": "skills/lighthouse-*/",
+      "dir": ".agents",
+      "kind": "standard-skill",
+      "act": "adds",
+      "href": "reference.html#skills"
+    },
+    {
+      "id": "lighthouse-lib",
+      "place": ".lighthouse/lib/lighthouse_lib/",
+      "label": "lib/",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds"
+    },
+    {
+      "id": "lighthouse-scripts",
+      "place": ".lighthouse/scripts/",
+      "label": "scripts/",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds"
+    },
+    {
+      "id": "headings",
+      "place": ".lighthouse/headings.toml",
+      "label": "headings.toml",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds"
+    },
+    {
+      "id": "manifest",
+      "place": ".lighthouse/manifest.toml",
+      "label": "manifest.toml",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds"
+    },
+    {
+      "id": "pr-template",
+      "place": ".github/pull_request_template.md",
+      "label": "pull_request_template.md",
+      "dir": ".github",
+      "kind": "github",
+      "act": "adds",
+      "href": "reference.html#github"
+    },
+    {
+      "id": "workflows",
+      "place": ".github/workflows/lighthouse-*.yml",
+      "label": "workflows/lighthouse-*.yml",
+      "dir": ".github",
+      "kind": "github",
+      "act": "adds",
+      "href": "reference.html#github"
+    },
+    {
+      "id": "host-toml",
+      "label": "~/.config/lighthouse/host.toml",
+      "dir": "workstation",
+      "kind": "config",
+      "act": "adds",
+      "href": "config.html"
+    }
+  ],
+  "yours": "your code, your tests, your config, …",
+  "workstation": {
+    "label": "On your workstation",
+    "note": "Only with Tailscale. It is not in the repo, so a teammate or another machine does not have it."
+  }
+}

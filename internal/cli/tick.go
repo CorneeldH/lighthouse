@@ -253,7 +253,11 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 				defers = append(defers, a)
 			}
 		}
-		if err := dispatch.SaveDeferred(ctx, db, g.repo.Slug, defers, env.now()); err != nil {
+		titles := make(map[int]string, len(g.in.Snapshot.Items))
+		for _, it := range g.in.Snapshot.Items {
+			titles[it.Issue] = it.Title
+		}
+		if err := dispatch.SaveDeferred(ctx, db, g.repo.Slug, defers, titles, env.now()); err != nil {
 			failed = true
 			_, _ = fmt.Fprintf(errOut, "lighthouse: save deferred %s: %s\n", g.repo.Slug, oneLine(err))
 		}
@@ -347,6 +351,17 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 		return nil, "", err
 	}
 	pre.Markers, pre.PauseUntil = facts.Markers[repo.Slug], facts.PauseUntil
+	open, err := runs.OpenBriefs(ctx, db, repo.Slug)
+	if err != nil {
+		return nil, "", err
+	}
+	parked, err := runs.BriefsByID(ctx, db, facts.Parked[repo.Slug])
+	if err != nil {
+		return nil, "", err
+	}
+	if err := dispatch.SaveRunView(ctx, db, repo.Slug, dispatch.RunViews(pre, open, parked), env.now()); err != nil {
+		return nil, "", err
+	}
 	fp = dispatch.Fingerprint(pre)
 	prev, err := dispatch.LoadTickState(ctx, db, repo.Slug)
 	if err != nil {

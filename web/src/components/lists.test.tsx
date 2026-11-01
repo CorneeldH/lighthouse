@@ -5,6 +5,7 @@ import { newQueryClient } from '@/lib/queries'
 import { CleanupList } from './CleanupList'
 import { QuestionList } from './QuestionList'
 import { ReturnedList } from './ReturnedList'
+import { RunsList } from './RunsList'
 
 let client: QueryClient | undefined
 
@@ -32,18 +33,18 @@ function renderWithClient(ui: React.ReactElement) {
 }
 
 const questions = [
-  { number: 7, title: 'First', url: 'https://x/7', question: 'why?', answer_url: 'https://x/7#a' },
-  { number: 9, title: 'Second', url: 'https://x/9', question: 'how?', answer_url: 'https://x/9#a' },
+  { repo: 'o/a', number: 7, title: 'First', url: 'https://x/7', question: 'why?', answer_url: 'https://x/7#a' },
+  { repo: 'o/b', number: 9, title: 'Second', url: 'https://x/9', question: 'how?', answer_url: 'https://x/9#a' },
 ]
 
 describe('QuestionList', () => {
-  it('shows number, title link, question text and answer link per item', async () => {
+  it('shows repo and number, title link, question text and answer link per item', async () => {
     stubFetch(() => json({ questions }))
     renderWithClient(<QuestionList />)
 
-    expect(await screen.findByText('#7')).toBeTruthy()
+    expect(await screen.findByText('o/a#7')).toBeTruthy()
     expect(within(screen.getByRole('region', { name: 'Open questions' })).getByText('updated < 1 min ago')).toBeTruthy()
-    expect(screen.getByText('#9')).toBeTruthy()
+    expect(screen.getByText('o/b#9')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'First' }).getAttribute('href')).toBe('https://x/7')
     expect(screen.getByRole('link', { name: 'Second' }).getAttribute('href')).toBe('https://x/9')
     expect(screen.getByText('why?')).toBeTruthy()
@@ -72,7 +73,7 @@ describe('QuestionList', () => {
     stubFetch(() => json({ detail: 'forge not configured' }, 503))
     renderWithClient(<QuestionList />)
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'Forge not configured — set GH_TOKEN and --repo',
+      'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml',
     )
     expect(screen.queryByText('No open questions')).toBeNull()
   })
@@ -81,27 +82,27 @@ describe('QuestionList', () => {
     let res = () => json({ questions })
     stubFetch(() => res())
     renderWithClient(<QuestionList />)
-    expect(await screen.findByText('#7')).toBeTruthy()
+    expect(await screen.findByText('o/a#7')).toBeTruthy()
 
     res = () => json({ detail: 'bad gateway' }, 502)
     await act(async () => {
       await client?.refetchQueries()
     })
 
-    expect(screen.getByText('#7')).toBeTruthy()
+    expect(screen.getByText('o/a#7')).toBeTruthy()
     expect((await screen.findByRole('alert')).textContent).toMatch(/^Forge unreachable: /)
     expect(within(screen.getByRole('region', { name: 'Open questions' })).getByText('updated < 1 min ago')).toBeTruthy()
   })
 })
 
 describe('ReturnedList', () => {
-  it('shows number, title link and reason', async () => {
+  it('shows repo and number, title link and reason', async () => {
     stubFetch(() =>
-      json({ returned: [{ number: 3, title: 'Back', url: 'https://x/3', reason: 'unclear AC' }] }),
+      json({ returned: [{ repo: 'o/a', number: 3, title: 'Back', url: 'https://x/3', reason: 'unclear AC' }] }),
     )
     renderWithClient(<ReturnedList />)
 
-    expect(await screen.findByText('#3')).toBeTruthy()
+    expect(await screen.findByText('o/a#3')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Back' }).getAttribute('href')).toBe('https://x/3')
     expect(screen.getByText('unclear AC')).toBeTruthy()
   })
@@ -116,7 +117,7 @@ describe('ReturnedList', () => {
     stubFetch(() => json({ detail: 'x' }, 503))
     renderWithClient(<ReturnedList />)
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'Forge not configured — set GH_TOKEN and --repo',
+      'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml',
     )
   })
 })
@@ -152,5 +153,91 @@ describe('CleanupList', () => {
     const alert = await screen.findByRole('alert')
     expect(alert.textContent).toBe('Cleanup list unavailable: db closed')
     expect(alert.textContent).not.toContain('Forge unreachable')
+  })
+})
+
+const run = {
+  repo: 'o/a',
+  issue: 3,
+  title: 'Add the runs card',
+  state: 'open',
+  command: '/lighthouse-start-issue',
+  trigger: 'board',
+  profile: 'software',
+  workspace_id: 'ws-3',
+  started_at: '2026-11-01T09:00:00Z',
+  stand: 'waiting',
+  at: '2026-11-01T09:05:00Z',
+}
+
+describe('RunsList', () => {
+  it('shows repo, issue, title, state, stand, command, trigger, profile and workspace', async () => {
+    stubFetch(() => json({ runs: [run], deferred: [] }))
+    renderWithClient(<RunsList />)
+
+    const region = screen.getByRole('region', { name: 'Running runs' })
+    await within(region).findByText('o/a#3')
+    const [item] = within(region).getAllByRole('listitem')
+    const texts = ['o/a#3', 'Add the runs card', 'open', 'waiting', '/lighthouse-start-issue', 'board', 'software', 'ws-3']
+    for (const text of texts) {
+      expect(within(item).getByText(text)).toBeTruthy()
+    }
+    expect(screen.queryByText('No running runs')).toBeNull()
+  })
+
+  it('shows a parked run without a stand as not measured', async () => {
+    stubFetch(() => json({ runs: [{ ...run, issue: 5, state: 'parked', stand: '' }], deferred: [] }))
+    renderWithClient(<RunsList />)
+
+    expect(await screen.findByText('o/a#5')).toBeTruthy()
+    expect(screen.getByText('parked')).toBeTruthy()
+    expect(screen.getByText('not measured')).toBeTruthy()
+  })
+
+  it('shows a deferred start with its title and reason under Deferred starts', async () => {
+    stubFetch(() =>
+      json({
+        runs: [run],
+        deferred: [{ repo: 'o/a', issue: 4, title: 'Wait for night', reason: 'slots full', at: '2026-11-01T09:05:00Z' }],
+      }),
+    )
+    renderWithClient(<RunsList />)
+
+    const deferred = await screen.findByRole('list', { name: 'Deferred starts' })
+    expect(within(deferred).getByText('o/a#4')).toBeTruthy()
+    expect(within(deferred).getByText('Wait for night')).toBeTruthy()
+    expect(within(deferred).getByText('slots full')).toBeTruthy()
+    expect(within(deferred).queryByText('o/a#3')).toBeNull()
+  })
+
+  it('shows the age of the tick that wrote each run and deferred start', async () => {
+    // A margin of 30 s keeps the floored age stable while the test runs.
+    const ago = (ms: number) => new Date(Date.now() - ms - 30_000).toISOString()
+    stubFetch(() =>
+      json({
+        runs: [{ ...run, at: ago(2 * 3_600_000) }],
+        deferred: [{ repo: 'o/a', issue: 4, title: 'Wait for night', reason: 'slots full', at: ago(5 * 60_000) }],
+      }),
+    )
+    renderWithClient(<RunsList />)
+
+    const deferred = await screen.findByRole('list', { name: 'Deferred starts' })
+    const [item] = within(screen.getByRole('region', { name: 'Running runs' })).getAllByRole('listitem')
+    expect(within(item).getByText('tick 2 h ago')).toBeTruthy()
+    expect(within(deferred).getByText('tick 5 min ago')).toBeTruthy()
+  })
+
+  it('shows the empty text when there are no runs and no deferred starts', async () => {
+    stubFetch(() => json({ runs: [], deferred: [] }))
+    renderWithClient(<RunsList />)
+    expect(await screen.findByText('No running runs')).toBeTruthy()
+    expect(screen.queryByRole('list', { name: 'Deferred starts' })).toBeNull()
+  })
+
+  it('shows a neutral alert on a 500, not the forge text', async () => {
+    stubFetch(() => json({ detail: 'db closed' }, 500))
+    renderWithClient(<RunsList />)
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe('Runs unavailable: db closed')
   })
 })

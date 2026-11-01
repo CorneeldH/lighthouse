@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -323,7 +324,7 @@ func TestIssueReadsTitleAndURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Issue{Number: 7, Title: "Een issue", URL: "https://github.com/o/r/issues/7", Comments: 3}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Issue(7) = %+v, want %+v", got, want)
 	}
 	if _, err := c.Issue(context.Background(), 8); err == nil {

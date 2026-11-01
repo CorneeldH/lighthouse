@@ -10,6 +10,8 @@
       "tables": [
         {
           "table": "project",
+          "title": "Project",
+          "about": "The languages the project writes in. language sets the language of issues, PRs and commit messages; most projects set only that. The other keys guard the language of the code and the size of the instruction files.",
           "keys": [
             {
               "key": "project.language",
@@ -17,8 +19,13 @@
               "required": "no",
               "default": "en",
               "about": "The language of issues, PRs and commit messages: nl or en.",
+              "options": [
+                "nl",
+                "en"
+              ],
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/lib/artefacts.py",
                 "pack/core/lib/evidence.py",
@@ -37,6 +44,9 @@
               "level": "advanced",
               "required": "no",
               "about": "The language names, comments and docstrings in code must be written in.",
+              "options": [
+                "en"
+              ],
               "example": "en",
               "readers": [
                 "pack/core/hooks/code-language-check.sh",
@@ -106,12 +116,17 @@
         },
         {
           "table": "forge",
+          "title": "Forge",
+          "about": "Where the repository lives. Skills and hooks read owner/name to talk to GitHub, and default_branch is the branch the commit gate guards.",
           "keys": [
             {
               "key": "forge.kind",
               "level": "set",
               "required": "no",
               "about": "Which forge hosts the repo. Only github is accepted for now.",
+              "options": [
+                "github"
+              ],
               "example": "github",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
@@ -198,6 +213,8 @@
         },
         {
           "table": "forge.board",
+          "title": "Project board",
+          "about": "A GitHub project board that issues move on when work starts. Leave the table out and nothing touches a board. With the table, the keys marked required must be there.",
           "keys": [
             {
               "key": "forge.board.priority_field_id",
@@ -232,6 +249,7 @@
               "about": "The node id of the GitHub project board.",
               "example": "PVT_...",
               "readers": [
+                "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
@@ -261,6 +279,7 @@
               "about": "The id of the board's Status field.",
               "example": "PVTSSF_...",
               "readers": [
+                "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
@@ -281,6 +300,7 @@
               },
               "readers": [
                 "internal/cli/serve.go",
+                "internal/cli/triage.go",
                 "internal/dispatch/board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
@@ -293,6 +313,8 @@
         },
         {
           "table": "test_gate",
+          "title": "Test gate",
+          "about": "The command commit-test-gate runs after each commit, on the files of that commit, and how long and how many at a time. Without a command the gate is off.",
           "keys": [
             {
               "key": "test_gate.command",
@@ -369,6 +391,8 @@
         },
         {
           "table": "paths",
+          "title": "Paths",
+          "about": "Where specs and plans are written, and where the project keeps the documents that skills read, such as its tenets and its labels.",
           "keys": [
             {
               "key": "paths.areas",
@@ -466,6 +490,8 @@
         },
         {
           "table": "labels",
+          "title": "Labels",
+          "about": "The names of the labels that mark a blocked or waiting issue. Change them only when the repository already uses other names.",
           "keys": [
             {
               "key": "labels.area_prefix",
@@ -474,6 +500,8 @@
               "about": "The prefix of area labels.",
               "example": "area:",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "internal/triage/prompt.go",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",
                 "pack/expo/skills/refresh-expo-lockfiles"
@@ -486,6 +514,8 @@
               "default": "blocked-external",
               "about": "The label for an issue blocked by something outside the repo.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "internal/triage/rules.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -497,6 +527,8 @@
               "default": "blocked-issue",
               "about": "The label for an issue blocked by another issue.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "internal/triage/rules.go",
                 "pack/core/scripts/unblock_dependents.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/route-issue",
@@ -512,6 +544,8 @@
               "about": "The prefix of location labels.",
               "example": "location:",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
+                "internal/triage/prompt.go",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -523,6 +557,7 @@
               "default": "needs-decision",
               "about": "The label for an issue that waits for a decision.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -534,6 +569,7 @@
               "default": "needs-hands",
               "about": "The label for an issue that needs manual work.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -545,6 +581,7 @@
               "default": "needs-shaping",
               "about": "The label for an issue that still needs shaping.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -556,6 +593,7 @@
               "default": "needs-testing",
               "about": "The label for an issue that needs testing by a person.",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -564,6 +602,8 @@
         },
         {
           "table": "ci",
+          "title": "CI",
+          "about": "The runner of the workflows lighthouse generates, and the bot the unblock lane runs as.",
           "keys": [
             {
               "key": "ci.bot_client_id_var",
@@ -609,6 +649,8 @@
         },
         {
           "table": "usage_guard",
+          "title": "Usage guard",
+          "about": "What the usage gate does when the usage alarm goes up: whether a controller takes over the pause, and whether the session resumes after the window resets.",
           "keys": [
             {
               "key": "usage_guard.controller",
@@ -616,6 +658,10 @@
               "required": "no",
               "default": false,
               "about": "Whether the usage guard hands the pause to a controller; an advanced option.",
+              "options": [
+                true,
+                false
+              ],
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/hooks/usage-gate/controller.py",
@@ -628,6 +674,10 @@
               "required": "no",
               "default": false,
               "about": "Whether the usage guard writes a resume marker and schedules a one-shot wake-up after the window resets. Never on a week alarm.",
+              "options": [
+                true,
+                false
+              ],
               "readers": [
                 "pack/core/hooks/usage-gate/resume.py",
                 "pack/core/lib/usage_guard.py"
@@ -637,6 +687,8 @@
         },
         {
           "table": "review",
+          "title": "Review",
+          "about": "Whether lighthouse-write-pr runs a local roborev review of the branch before it opens the PR; agent and model come from .roborev.toml.",
           "keys": [
             {
               "key": "review.roborev",
@@ -645,6 +697,10 @@
               "default": "off",
               "about": "Runs a local roborev review in lighthouse-write-pr before gh pr create: local or off.",
               "example": "local",
+              "options": [
+                "local",
+                "off"
+              ],
               "readers": [
                 "pack/core/scripts/roborev_gate.py",
                 "pack/core/skills/write-pr"
@@ -654,6 +710,8 @@
         },
         {
           "table": "codex_usage",
+          "title": "Codex usage",
+          "about": "The Codex usage at which a spec or plan review runs without Codex, and how long to wait for the Codex app server.",
           "keys": [
             {
               "key": "codex_usage.app_server_timeout_seconds",
@@ -705,6 +763,8 @@
         },
         {
           "table": "worktree_audit",
+          "title": "Worktree audit",
+          "about": "Worktrees and branches that the worktree audit never proposes to remove.",
           "keys": [
             {
               "key": "worktree_audit.protected_paths",
@@ -730,6 +790,8 @@
         },
         {
           "table": "python",
+          "title": "Python",
+          "about": "Read by the python pack: where the source lives, which directories ruff and complexipy check, and how the nightly job measures coverage.",
           "keys": [
             {
               "key": "python.coverage_command",
@@ -794,6 +856,8 @@
         },
         {
           "table": "shell",
+          "title": "Shell",
+          "about": "Read by the shell pack: which shell scripts must pass shellcheck.",
           "keys": [
             {
               "key": "shell.strict_dirs",
@@ -813,6 +877,8 @@
         },
         {
           "table": "code_language_llm",
+          "title": "Code-language model",
+          "about": "A chain of models that judges the doubts of the code-language check. It can add a finding, never remove one. Without this table, the check judges by word counts alone.",
           "keys": [
             {
               "key": "code_language_llm.env_file",
@@ -869,6 +935,8 @@
       "tables": [
         {
           "table": "host",
+          "title": "Host",
+          "about": "Who this machine is. lighthouse init writes name and tailscale_ip on a machine with Tailscale.",
           "keys": [
             {
               "key": "host.name",
@@ -902,6 +970,8 @@
         },
         {
           "table": "usage",
+          "title": "Usage",
+          "about": "When the usage alarm goes up, as a percentage of the session and of the week, and how long a reading stays fresh.",
           "keys": [
             {
               "key": "usage.cache_ttl_seconds",

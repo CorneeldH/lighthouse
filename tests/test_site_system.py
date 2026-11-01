@@ -50,6 +50,16 @@ def sort_problems(system: dict, sorts: set[str]) -> list[str]:
     return problems
 
 
+def page_problems(label: str, href: str) -> list[str]:
+    page, _, anchor = href.partition("#")
+    target = SITE / page
+    if not target.is_file():
+        return [f"{label}: {page} points nowhere"]
+    if anchor and f'id="{anchor}"' not in target.read_text(encoding="utf-8"):
+        return [f"{label}: {page} has no id {anchor}"]
+    return []
+
+
 def link_problems(system: dict) -> list[str]:
     """A `#id` names a section; a repo URL names a path that exists; any other http(s) link is
     external; the rest is `page[#id]` on the site, and the page has that id."""
@@ -69,12 +79,10 @@ def link_problems(system: dict) -> list[str]:
         elif href.startswith(("http:", "https:")):
             problems.append(f"{label}: external link {href}")
         else:
-            page, _, anchor = href.partition("#")
-            target = SITE / page
-            if not target.is_file():
-                problems.append(f"{label}: {page} points nowhere")
-            elif anchor and f'id="{anchor}"' not in target.read_text(encoding="utf-8"):
-                problems.append(f"{label}: {page} has no id {anchor}")
+            problems += page_problems(label, href)
+    for step in system["steps"]:
+        if "map" in step:
+            problems += page_problems(step["map"]["label"], step["map"]["href"])
     return problems
 
 
@@ -123,6 +131,19 @@ def test_init_step_is_the_command_in_the_repo():
     assert step["where"] == "in repo"
     # Everything the step shows lands in the repo: nothing set apart on the workstation.
     assert [item["label"] for item in step["items"] if "where" in item] == []
+
+
+def test_init_step_links_to_the_repo_map():
+    step = load_system(SYSTEM)["steps"][1]
+    assert step["map"] == {"label": "Map of your repo", "href": "repo.html"}
+    assert [item["href"] for item in step["items"]] == [
+        "reference.html#skills",
+        "reference.html#agents",
+        "reference.html#hooks",
+        "#rules",
+        "#config",
+        "reference.html#github",
+    ]
 
 
 def test_bring_groups_in_order():
@@ -184,6 +205,13 @@ def test_fixture_repo_path_pointing_nowhere_is_flagged():
     system, item = fixture_item(1)
     item["href"] = REPO_BLOB + "pack/core/nope"
     assert link_problems(system) == ["Skills: pack/core/nope does not exist"]
+
+
+def test_fixture_map_pointing_nowhere_is_flagged():
+    system = copy.deepcopy(load_system(FIXTURE))
+    assert system["steps"][1]["map"] == {"label": "Map", "href": "repo.html"}
+    system["steps"][1]["map"]["href"] = "nowhere.html"
+    assert link_problems(system) == ["Map: nowhere.html points nowhere"]
 
 
 def test_fixture_external_link_is_flagged():

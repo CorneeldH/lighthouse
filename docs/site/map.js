@@ -307,10 +307,17 @@ function commentLines(text, width = 80) {
   return [...lines, line];
 }
 
-/** One file of the configuration page as TOML lines, without a DOM: per table its header, per key
-    its about as a comment and then the key with its default, or commented out with its example
-    when it has none. A derived key is left out: nobody writes it. [{text, key}], `key` only on the
-    line of a key. */
+// The comment behind a key starts in one column per table. A key longer than this does not push
+// that column out: its comment starts on the next line, in the same column.
+const CONFIG_COLUMN = 40;
+// A comment wraps at this column.
+const CONFIG_RIGHT = 100;
+
+/** One file of the configuration page as TOML lines, without a DOM: per table a heading comment
+    with its title, its header and one line per key, set to its default or commented out with its
+    example when it has none, and what it does as a comment behind it, aligned per table. A blank
+    line parts two tables. A derived key is left out: nobody writes it. [{text, key, note}]: `key`
+    only on the line of a key, `note` the index where its comment starts on that line. */
 export function configToml(file) {
   const lines = [];
   for (const table of file.tables) {
@@ -318,23 +325,30 @@ export function configToml(file) {
     if (lines.length) {
       lines.push({ text: "" });
     }
-    lines.push({ text: `[${table.table}]` });
-    for (const key of keys) {
+    lines.push({ text: `# ── ${table.title} `.padEnd(60, "─") }, { text: `[${table.table}]` });
+    const settings = keys.map((key) => {
       const name = key.key.slice(table.table.length + 1);
-      lines.push({ text: "" }, ...commentLines(key.about).map((text) => ({ text })));
-      lines.push(
-        "default" in key
-          ? { text: `${name} = ${tomlValue(key.default)}`, key: key.key }
-          : { text: `# ${name} = ${tomlValue(key.example)}`, key: key.key },
-      );
-    }
+      return "default" in key ? `${name} = ${tomlValue(key.default)}` : `# ${name} = ${tomlValue(key.example)}`;
+    });
+    const column = Math.max(0, ...settings.map((setting) => setting.length).filter((n) => n <= CONFIG_COLUMN)) + 2;
+    keys.forEach((key, index) => {
+      const comments = commentLines(key.about, CONFIG_RIGHT - column);
+      const setting = settings[index];
+      if (setting.length + 2 > column) {
+        lines.push({ text: setting, key: key.key, note: setting.length });
+      } else {
+        lines.push({ text: setting.padEnd(column) + comments.shift(), key: key.key, note: column });
+      }
+      lines.push(...comments.map((text) => ({ text: " ".repeat(column) + text })));
+    });
   }
   return lines;
 }
 
 /** What the configuration page says per key, in the order of the data and without a DOM:
-    [{file, table, key, level, levelLabel, required, default, about, status, readers}]. `default`
-    is the TOML of the default, or null without one. */
+    [{file, table, key, level, levelLabel, required, default, example, options, about, status,
+    readers}]. `default` and `example` are TOML, or null without one. `options` lists the values
+    the key accepts, [{value, isDefault}], or is null when its values are free. */
 export function configEntries(data, packs) {
   const entries = [];
   for (const file of data.files) {
@@ -348,6 +362,10 @@ export function configEntries(data, packs) {
           levelLabel: CONFIG_LEVELS[key.level],
           required: key.required,
           default: "default" in key ? tomlValue(key.default) : null,
+          example: "example" in key ? tomlValue(key.example) : null,
+          options: key.options
+            ? key.options.map((value) => ({ value: String(value), isDefault: key.default === value }))
+            : null,
           about: key.about,
           status: key.readers.length
             ? "Status: works"
@@ -405,11 +423,13 @@ function configBlock(file) {
   for (const line of configToml(file)) {
     if (line.key) {
       const name = line.key.split(".").pop();
-      const at = line.text.indexOf(name);
+      const setting = line.text.slice(0, line.note);
+      const at = setting.indexOf(name);
       const link = el("a", "", name);
       link.href = `#${line.key}`;
-      code.append(line.text.slice(0, at), link, `${line.text.slice(at + name.length)}\n`);
-    } else if (line.text.startsWith("#")) {
+      const comment = el("span", "config-comment", line.text.slice(line.note));
+      code.append(setting.slice(0, at), link, setting.slice(at + name.length), comment, "\n");
+    } else if (line.text.trimStart().startsWith("#")) {
       code.append(el("span", "config-comment", line.text), "\n");
     } else {
       code.append(`${line.text}\n`);
@@ -420,7 +440,38 @@ function configBlock(file) {
   return pre;
 }
 
-/** The row of one key: its name and level, its default, what it does and what reads it. */
+/** The value cell of one key: the values it accepts with the default marked, else its default,
+    else "not set" with an example. */
+function configValue(entry) {
+  const node = el("td");
+  if (entry.options) {
+    const list = el("ul", "config-options");
+    for (const option of entry.options) {
+      const item = el("li", option.isDefault ? "config-option is-default" : "config-option");
+      item.append(el("code", "", option.value));
+      if (option.isDefault) {
+        item.append(el("span", "config-default-mark", "default"));
+      }
+      list.append(item);
+    }
+    node.append(list);
+    if (entry.default === null) {
+      node.append(el("p", "config-none", "not set"));
+    }
+  } else if (entry.default !== null) {
+    node.append(el("code", "", entry.default));
+  } else {
+    node.append(el("span", "config-none", "not set"));
+    if (entry.example !== null) {
+      const example = el("p", "config-none", "e.g. ");
+      example.append(el("code", "", entry.example));
+      node.append(example);
+    }
+  }
+  return node;
+}
+
+/** The row of one key: its name and level, its value, what it does and what reads it. */
 function configRow(entry) {
   const name = el("td");
   name.id = entry.key;
@@ -433,8 +484,6 @@ function configRow(entry) {
     }[entry.required] || `Required ${entry.required}`;
     name.append(el("p", "config-none", required));
   }
-  const fallback =
-    entry.default === null ? el("span", "config-none", "not set") : el("code", "", entry.default);
   let readers;
   if (entry.readers.length) {
     readers = el("ul", "reference-list");
@@ -442,11 +491,11 @@ function configRow(entry) {
   } else {
     readers = el("p", "config-none", "Nothing reads it yet: config.py only checks it.");
   }
-  return [name, cell(fallback), cell(el("p", "", entry.about)), cell(readers)];
+  return [name, configValue(entry), cell(el("p", "", entry.about)), cell(readers)];
 }
 
-/** The configuration page: where the two files are, each file as TOML with its comments and
-    defaults, and per table one row per key. */
+/** The configuration page: where the two files are, each file as TOML with its defaults and a
+    comment behind every key, and per table its title, what it is for and one row per key. */
 export function renderConfig(root, data, packs) {
   const entries = configEntries(data, packs);
   const paths = el("section", "config-file");
@@ -459,7 +508,8 @@ export function renderConfig(root, data, packs) {
   const sections = [paths];
   for (const file of data.files) {
     const section = el("section", "config-file");
-    const note = "Every key with its default. A key without one is commented out, with an example.";
+    const note =
+      "Every key with its default and what it does. A key without a default is commented out, with an example.";
     section.append(el("h2", "", file.file), el("p", "", note), configBlock(file));
     sections.push(section);
   }
@@ -470,12 +520,143 @@ export function renderConfig(root, data, packs) {
       const rows = entries
         .filter((entry) => entry.file === file.file && entry.table === table.table)
         .map(configRow);
-      const head = ["Key", "Default", "What it does", "Read by"];
-      section.append(el("h3", "", `[${table.table}]`), configTable(head, rows));
+      const head = ["Key", "Value", "What it does", "Read by"];
+      const title = el("h3", "", `${table.title} `);
+      title.append(el("code", "", `[${table.table}]`));
+      const theme = el("div", "config-theme");
+      theme.id = table.table;
+      theme.append(title, el("p", "", table.about), configTable(head, rows));
+      section.append(theme);
     }
     sections.push(section);
   }
   root.replaceChildren(...sections);
+}
+
+/** The three positions of the switch above the tree of a repo after init. */
+export const REPO_MODES = [
+  { id: "everything", label: "Everything" },
+  { id: "adds", label: "Adds" },
+  { id: "edits", label: "Edits your file" },
+];
+const REPO_ACTS = { adds: "init adds it", edits: "init edits your file" };
+
+/** The tree without a DOM: the dirs in order, then the workstation, each with its rows.
+    [{id, label, yours, rows: [{id, place, label, kind, glyph, className, act, actLabel, href, dim}]},
+    …, {id: "workstation", label, note, rows}]. A row dims when `mode` shows the other act; the
+    yours of a dir never dims. */
+export function repoEntries(data, mode = "everything") {
+  if (!REPO_MODES.some((m) => m.id === mode)) {
+    throw new Error(`unknown mode: ${mode}`);
+  }
+  const rowsOf = (dir) =>
+    data.rows
+      .filter((row) => row.dir === dir)
+      .map((row) => {
+        if (!SORTS[row.kind]) {
+          throw new Error(`unknown kind: ${row.kind}`);
+        }
+        if (!REPO_ACTS[row.act]) {
+          throw new Error(`unknown act: ${row.act}`);
+        }
+        return {
+          id: row.id,
+          place: row.place || null,
+          label: row.label,
+          kind: row.kind,
+          glyph: SORTS[row.kind].glyph,
+          className: `kind-${KIND_OF_SORT[row.kind] || row.kind} form-${row.kind}`,
+          act: row.act,
+          actLabel: REPO_ACTS[row.act],
+          href: row.href || null,
+          dim: mode !== "everything" && row.act !== mode,
+        };
+      });
+  const dirs = data.dirs.map((dir) => ({
+    id: dir.id,
+    label: dir.label,
+    yours: dir.id === "root" ? data.yours : dir.yours || null,
+    rows: rowsOf(dir.id),
+  }));
+  const station = { id: "workstation", ...data.workstation, rows: rowsOf("workstation") };
+  return [...dirs, station];
+}
+
+/** One row of the tree: its glyph, its label, what init does with it, and a ↗ to where it is
+    explained. The ↗ has no text of its own; its name comes from the row. */
+function repoRow(row) {
+  const item = el("li");
+  const pill = el("span", `repo-row ${row.className}`);
+  pill.dataset.id = row.id;
+  const glyph = el("span", "glyph", row.glyph);
+  glyph.setAttribute("aria-hidden", "true");
+  pill.append(glyph, el("code", "", row.label), el("span", "sr-only", `, ${row.actLabel}`));
+  if (row.href) {
+    const go = el("a", "repo-go", "↗");
+    go.href = row.href;
+    go.setAttribute("aria-label", `More about ${row.label}`);
+    pill.append(go);
+  }
+  item.append(pill);
+  return item;
+}
+
+function repoYours(text) {
+  const item = el("li");
+  item.append(el("span", "repo-yours", text));
+  return item;
+}
+
+/** The tree of a repo after init: the switch, your repo as an indented tree, and the workstation
+    in a box of its own. */
+export function renderRepo(root, data) {
+  const [top, ...rest] = repoEntries(data);
+  const dirs = rest.filter((entry) => entry.id !== "workstation");
+  const station = rest.find((entry) => entry.id === "workstation");
+
+  const bar = el("div", "routes repo-switch");
+  bar.setAttribute("role", "group");
+  bar.setAttribute("aria-label", "What init does");
+  const buttons = REPO_MODES.map((mode) => {
+    const button = el("button", "", mode.label);
+    button.type = "button";
+    button.dataset.mode = mode.id;
+    button.setAttribute("aria-pressed", String(mode.id === "everything"));
+    return button;
+  });
+  bar.append(...buttons);
+
+  const tree = el("div", "repo-tree");
+  const list = el("ul");
+  list.append(...top.rows.map(repoRow));
+  for (const dir of dirs) {
+    const item = el("li");
+    const sub = el("ul");
+    sub.append(...dir.rows.map(repoRow));
+    if (dir.yours) {
+      sub.append(repoYours(dir.yours));
+    }
+    item.append(el("span", "repo-dir", dir.label), sub);
+    list.append(item);
+  }
+  list.append(repoYours(top.yours));
+  tree.append(el("h2", "", top.label), list);
+
+  const stationBox = el("section", "repo-station");
+  const stationList = el("ul");
+  stationList.append(...station.rows.map(repoRow));
+  stationBox.append(el("h2", "", station.label), stationList, el("p", "repo-note", station.note));
+
+  const select = (mode) => {
+    buttons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.mode === mode)));
+    const dim = new Map(repoEntries(data, mode).flatMap((entry) => entry.rows.map((row) => [row.id, row.dim])));
+    for (const node of root.querySelectorAll(".repo-row")) {
+      node.classList.toggle("dim", dim.get(node.dataset.id));
+    }
+  };
+  buttons.forEach((button) => button.addEventListener("click", () => select(button.dataset.mode)));
+
+  root.replaceChildren(bar, tree, stationBox);
 }
 
 /** One item of the system page: a link with the glyph of its sort, its label and its note. */
@@ -528,6 +709,11 @@ export function renderStory(root, data) {
       const apart = el("div", "story-apart");
       apart.append(el("p", "story-where", item.where), storyItem(item));
       node.append(apart);
+    }
+    if (step.map) {
+      const link = el("a", "story-map", step.map.label);
+      link.href = step.map.href;
+      node.append(link);
     }
     story.append(node);
   });

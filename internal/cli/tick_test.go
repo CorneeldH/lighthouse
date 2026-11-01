@@ -1291,3 +1291,101 @@ func TestTickPausedStartsNothingAndRegathersAfterOff(t *testing.T) {
 		t.Errorf("spawns = %+v after pause off, want one", w.spawned())
 	}
 }
+
+// loadView is the run and deferred views of repo o/r as the UI reads them.
+func loadView(t *testing.T, db string) ([]dispatch.RunView, []dispatch.DeferredView) {
+	t.Helper()
+	rv, dv, err := dispatch.LoadView(context.Background(), openStore(t, db), []string{"o/r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rv, dv
+}
+
+// A tick writes one run view per open run: the board title, the measured stand and the command.
+func TestTickWritesRunView(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	_, w := startable(t, &env)
+	for _, after := range []time.Duration{0, 3 * time.Minute} {
+		if after > 0 {
+			w.setState("idle") // the session waits
+		}
+		env.Now = func() time.Time { return t0.Add(after) }
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick at +%v = %v\n%s", after, err, errOut.String())
+		}
+	}
+	rv, _ := loadView(t, db)
+	if len(rv) != 1 {
+		t.Fatalf("views = %+v, want one", rv)
+	}
+	if v := rv[0]; v.Issue != 7 || v.Title != "Issue" || v.State != "open" || v.Stand != "waiting" ||
+		v.Command != "/lighthouse-start-issue 7" || v.WorkspaceID != "ws-issue-7-issue" {
+		t.Errorf("view = %+v, want issue 7 \"Issue\", open, waiting, /lighthouse-start-issue 7 in ws-issue-7-issue", v)
+	}
+}
+
+// A run that is parked for its resume marker is a view in state parked, without a stand.
+func TestTickWritesParkedRunView(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "h1", issueContent(7, "Issue", nil))} // On hold: nothing starts
+	claim(t, openStore(t, db), "o/r", 7, "sess-p", "software", "handoff", "start:7", runs.Parked)
+	writeMarker(t, env, "sess-p", true)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	rv, _ := loadView(t, db)
+	if len(rv) != 1 {
+		t.Fatalf("views = %+v, want one", rv)
+	}
+	if v := rv[0]; v.Issue != 7 || v.State != "parked" || v.Title != "Issue" || v.Stand != "" {
+		t.Errorf("view = %+v, want issue 7 \"Issue\", parked, no stand", v)
+	}
+}
+
+// A tick that is not due still rewrites the run rows: At is the tick, so the UI can tell a live
+// tick from a stopped one. The clock moves a minute: At has a resolution of seconds.
+func TestTickRunViewWhenNotDue(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "h1", issueContent(7, "Issue", nil))} // On hold: nothing starts
+	claim(t, openStore(t, db), "o/r", 7, "sess-o", "software", "handoff", "start:7", "")
+	for _, step := range []struct {
+		after time.Duration
+		want  string
+	}{
+		{0, "lighthouse: gathered o/r: 1 items (first)\n"},
+		{time.Minute, ""},
+	} {
+		env.Now = func() time.Time { return t0.Add(step.after) }
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick at +%v = %v\n%s", step.after, err, errOut.String())
+		}
+		if errOut.String() != step.want {
+			t.Errorf("tick at +%v: errOut = %q, want %q", step.after, errOut.String(), step.want)
+		}
+		rv, _ := loadView(t, db)
+		if len(rv) != 1 || !rv[0].At.Equal(t0.Add(step.after)) {
+			t.Errorf("tick at +%v: views = %+v, want one with At %v", step.after, rv, t0.Add(step.after))
+		}
+	}
+}
+
+// A deferred start carries the title of its board item.
+func TestTickDeferredTitle(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	startable(t, &env)
+	setUsage(t, env, 90, 10)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	_, dv := loadView(t, db)
+	if len(dv) != 1 || dv[0].Issue != 7 || dv[0].Title != "Issue" {
+		t.Errorf("deferred = %+v, want issue 7 with title \"Issue\"", dv)
+	}
+}

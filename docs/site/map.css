@@ -1202,6 +1202,11 @@ details.who summary:focus-visible {
   font-size: 12.5px;
 }
 
+.story-map {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
 .story-items {
   display: flex;
   flex-direction: column;
@@ -1322,10 +1327,24 @@ details.who summary:focus-visible {
   margin: 0 0 4px;
 }
 
+.config-theme {
+  margin-top: 24px;
+}
+
 .config-file h3 {
-  margin: 20px 0 6px;
-  font-family: ui-monospace, monospace;
-  font-size: 14px;
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.config-file h3 code {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.config-theme > p {
+  margin-bottom: 8px;
 }
 
 .config-file p {
@@ -1420,6 +1439,37 @@ details.who summary:focus-visible {
   color: var(--muted);
 }
 
+/* The values a key accepts, the default one highlighted like the level "Set this". */
+.config-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.config-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.config-option.is-default {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: #16181d;
+  font-weight: 600;
+}
+
+.config-default-mark {
+  font-size: 11px;
+  font-weight: 400;
+}
+
 .config-level {
   padding: 1px 8px;
   border-radius: 999px;
@@ -1438,4 +1488,147 @@ details.who summary:focus-visible {
 
 .level-advanced {
   color: var(--muted);
+}
+
+/* The tree of a repo after init: an indented list with connecting lines, each place a coloured
+   row with its glyph, what was already yours a grey row with only a border. */
+
+.repo-tree {
+  border: 3px solid var(--badge-bg);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin: 10px 0;
+  background: var(--panel);
+}
+
+.repo-tree h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.repo-tree ul,
+.repo-station ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.repo-tree ul {
+  padding-left: 22px;
+  border-left: 2px solid var(--border);
+}
+
+.repo-tree li {
+  position: relative;
+  margin: 7px 0;
+}
+
+.repo-tree li::before {
+  content: "";
+  position: absolute;
+  left: -22px;
+  top: 13px;
+  width: 16px;
+  border-top: 2px solid var(--border);
+}
+
+.repo-dir {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.repo-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--kind);
+  color: var(--kind-fg);
+  font-size: 13px;
+  transition: opacity 0.15s;
+}
+
+.repo-row code {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.repo-row .glyph {
+  width: 1.1em;
+  text-align: center;
+  font-weight: 700;
+}
+
+.repo-row.dim {
+  opacity: 0.25;
+}
+
+.repo-go {
+  color: inherit;
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.repo-go:hover {
+  text-decoration: underline;
+}
+
+.repo-go:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.repo-yours {
+  display: inline-block;
+  max-width: 100%;
+  padding: 3px 9px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.repo-station {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 3px solid var(--session);
+  border-radius: 12px;
+}
+
+.repo-station h2 {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+}
+
+.repo-note,
+.repo-notes {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.repo-note {
+  margin: 6px 0 0;
+}
+
+.repo-notes {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+@media (max-width: 720px) {
+  .repo-tree {
+    padding: 12px;
+  }
+
+  .repo-tree ul {
+    padding-left: 14px;
+  }
+
+  .repo-tree li::before {
+    left: -14px;
+    width: 10px;
+  }
 }

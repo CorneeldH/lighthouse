@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your repo after init</title>
+<link rel="stylesheet" href="map.css?v=ca84807a">
+<script type="module" src="repo.js?v=ca84807a"></script>
+</head>
+<body>
+<header class="page-head">
+  <div>
+    <h1 id="title">Your repo after init</h1>
+    <p id="subtitle" class="subtitle">Everything lighthouse init puts in your repo, and the files of yours it edits.</p>
+  </div>
+  <a class="back-link" href="index.html">All maps</a>
+  <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
+</header>
+
+<p id="serve-hint" class="serve-hint">This map reads its data with <code>fetch</code>, which a
+browser blocks for a page opened straight from disk. From the root of the repository, run
+<code>python3 -m http.server --directory docs/site</code> and open
+<code>http://localhost:8000/repo.html</code>.</p>
+
+<details class="why">
+  <summary>Wait, but why?</summary>
+  <p>The tree is your repository. Each coloured row is a place <code>lighthouse init</code> writes;
+  the grey rows are what was already yours, and they stay. The switch shows what <code>init</code>
+  adds and which files of yours it edits. An arrow ↗ leads to where that part is explained.</p>
+</details>
+
+<div id="repo-map"></div>
+
+<section id="repo-notes" class="repo-notes" aria-label="About the rows">
+  <p><strong><code>.lighthouse/</code></strong> holds what the parts of lighthouse share.
+  <code>lib/</code> is the Python library the hooks, skills and scripts import.
+  <code>scripts/</code> holds the scripts that skills and the test gate run.
+  <code>headings.toml</code> lists the headings that code and skills read as a contract, with one
+  variant per language. <code>manifest.toml</code> records what <code>init</code> installed, with a
+  checksum per part it installed.</p>
+  <p><strong><code>.claude/settings.json</code></strong> gets the hooks of lighthouse and its
+  <code>permissions.allow</code> rules. The rest of the file is yours.</p>
+  <p><strong><code>host.toml</code></strong> holds the settings of this machine. The first <code>init</code>
+  proposes one with the name of the machine and its Tailscale address, only when there is none yet
+  and <code>tailscale ip</code> answers, and asks before it writes, unless you pass
+  <code>--yes</code>. Commands such as <code>lighthouse serve</code>, <code>tick</code> and
+  <code>usage</code> read it, and so do some skills and hooks. It is not in the repository, so
+  another machine does not have it until you write one there.</p>
+</section>
+
+</body>
+</html>

@@ -104,3 +104,11 @@ func TestClip(t *testing.T) {
 		}
 	}
 }
+
+func TestStandString(t *testing.T) {
+	for s, want := range map[Stand]string{Working: "working", Waiting: "waiting", Done: "done"} {
+		if got := s.String(); got != want {
+			t.Errorf("Stand(%d).String() = %q, want %q", s, got, want)
+		}
+	}
+}
