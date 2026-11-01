@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
@@ -42,12 +44,11 @@ func newServeCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			c := newForge(repo, forgeURL, os.Getenv)
-			inController, err := controllerFilter(hostconfig.Path(), repo, c, cmd.ErrOrStderr())
+			repos, err := forgeRepos(hostconfig.Path(), repo, forgeURL, os.Getenv, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
-			return serve(ctx, addr, dbPath, c, inController, cmd.ErrOrStderr())
+			return serve(ctx, addr, dbPath, repos, cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
@@ -82,42 +83,51 @@ func githubToken(getenv func(string) string) string {
 	return getenv("GITHUB_TOKEN")
 }
 
-// controllerFilter narrows the overview to the issues in Controller when repo is served by
-// [dispatch] of the host.toml at hostToml and has a [forge.board]. Otherwise it returns nil:
-// without [dispatch] the overview shows every open issue, as in M1. A host.toml that does not
-// load is an error; a served repo that does not load gets one line on errOut and is skipped.
-// Without repo no filter can apply, so host.toml is not read.
-func controllerFilter(hostToml, repo string, c *forge.Client, errOut io.Writer) (overview.Filter, error) {
-	if repo == "" {
-		return nil, nil
-	}
+// forgeRepos returns the repos serve shows. With [dispatch] repos in the host.toml at hostToml,
+// those that load, in that order, each narrowed to the issues in Controller when its board has
+// that option; repo is then ignored, with one line on errOut when it is not among them. Without
+// [dispatch] repos, repo alone without a filter, as in M1, and none without repo. A host.toml
+// that does not load is an error; a served repo that does not load gets one line on errOut and
+// is skipped.
+func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, errOut io.Writer) ([]overview.RepoSource, error) {
 	cfg, err := hostconfig.LoadDispatch(hostToml)
 	if err != nil {
 		return nil, err
 	}
+	if len(cfg.Repos) == 0 {
+		if repo == "" {
+			return nil, nil
+		}
+		return []overview.RepoSource{{Slug: repo, Src: newForge(repo, forgeURL, getenv)}}, nil
+	}
+	var out []overview.RepoSource
 	for _, path := range cfg.Repos {
 		r, err := repoconfig.Load(path)
 		if err != nil {
 			_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 			continue
 		}
-		if r.Slug != repo || r.Board == nil {
-			continue
-		}
-		if r.Board.StatusOptions["Controller"] == "" {
+		c := newForge(r.Slug, forgeURL, getenv)
+		src := overview.RepoSource{Slug: r.Slug, Src: c}
+		switch {
+		case r.Board == nil:
+		case r.Board.StatusOptions["Controller"] == "":
 			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: missing forge.board.status_options.Controller: overview shows every open issue\n", path)
-			return nil, nil
+		default:
+			src.InController = overview.ControllerIssues(c, r.Slug, *r.Board)
 		}
-		return overview.ControllerIssues(c, repo, *r.Board), nil
+		out = append(out, src)
 	}
-	return nil, nil
+	if repo != "" && !slices.ContainsFunc(out, func(s overview.RepoSource) bool { return s.Slug == repo }) {
+		_, _ = fmt.Fprintf(errOut, "lighthouse: --repo %s ignored: serving the repos of [dispatch]\n", repo)
+	}
+	return out, nil
 }
 
 // serve opens the store, listens on addr and serves until ctx is done, then shuts down
-// within shutdownTimeout. An empty dbPath means the default path. src feeds the forge endpoints,
-// narrowed by inController; nil shows every open issue.
-func serve(ctx context.Context, addr, dbPath string, src overview.Source, inController overview.Filter,
-	errOut io.Writer) error {
+// within shutdownTimeout. An empty dbPath means the default path. repos feed the forge endpoints,
+// and their slugs pick the rows of the tick state that /api/runs shows.
+func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, errOut io.Writer) error {
 	if dbPath == "" {
 		p, err := store.DefaultPath()
 		if err != nil {
@@ -140,8 +150,19 @@ func serve(ctx context.Context, addr, dbPath string, src overview.Source, inCont
 	if paths, err := usage.DefaultPaths(); err == nil {
 		rep.Cache = paths.Cache()
 	}
-	srv := &http.Server{Handler: server.New(web.FS(), rep.Report, src, inController, func(ctx context.Context) ([]workplace.Leftover, error) {
-		return workplace.Leftovers(ctx, st.DB)
+	slugs := make([]string, len(repos))
+	for i, r := range repos {
+		slugs[i] = r.Slug
+	}
+	srv := &http.Server{Handler: server.New(web.FS(), server.Deps{
+		Report: rep.Report,
+		Forge:  repos,
+		Leftovers: func(ctx context.Context) ([]workplace.Leftover, error) {
+			return workplace.Leftovers(ctx, st.DB)
+		},
+		Runs: func(ctx context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
+			return dispatch.LoadView(ctx, st.DB, slugs)
+		},
 	}), ReadHeaderTimeout: 10 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()

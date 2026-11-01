@@ -6,6 +6,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/overview"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -45,10 +46,38 @@ func registerCleanup(api huma.API, leftovers func(context.Context) ([]workplace.
 	}, func(op *huma.Operation) { op.OperationID = "get-cleanup" })
 }
 
-// registerForge adds the endpoints that read the forge through src, narrowed by inController.
-func registerForge(api huma.API, src overview.Source, inController overview.Filter) {
+type runsOutput struct {
+	Body struct {
+		Runs     []dispatch.RunView      `json:"runs"`
+		Deferred []dispatch.DeferredView `json:"deferred"`
+	}
+}
+
+// registerRuns adds the endpoint that lists the open and parked runs and the deferred starts,
+// as the last tick wrote them.
+func registerRuns(api huma.API, list func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)) {
+	huma.Get(api, "/api/runs", func(ctx context.Context, _ *struct{}) (*runsOutput, error) {
+		runViews, deferred, err := list(ctx)
+		if err != nil {
+			return nil, huma.Error500InternalServerError(err.Error())
+		}
+		if runViews == nil {
+			runViews = []dispatch.RunView{}
+		}
+		if deferred == nil {
+			deferred = []dispatch.DeferredView{}
+		}
+		out := &runsOutput{}
+		out.Body.Runs = runViews
+		out.Body.Deferred = deferred
+		return out, nil
+	}, func(op *huma.Operation) { op.OperationID = "get-runs" })
+}
+
+// registerForge adds the endpoints that read the forge of repos, each narrowed by its filter.
+func registerForge(api huma.API, repos []overview.RepoSource) {
 	huma.Get(api, "/api/questions", func(ctx context.Context, _ *struct{}) (*questionsOutput, error) {
-		o, err := overview.Build(ctx, src, inController)
+		o, err := overview.BuildAll(ctx, repos)
 		if err != nil {
 			return nil, forgeError(err)
 		}
@@ -58,7 +87,7 @@ func registerForge(api huma.API, src overview.Source, inController overview.Filt
 	}, func(op *huma.Operation) { op.OperationID = "get-questions" })
 
 	huma.Get(api, "/api/returned", func(ctx context.Context, _ *struct{}) (*returnedOutput, error) {
-		o, err := overview.Build(ctx, src, inController)
+		o, err := overview.BuildAll(ctx, repos)
 		if err != nil {
 			return nil, forgeError(err)
 		}

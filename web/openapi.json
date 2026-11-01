@@ -19,6 +19,36 @@
         ],
         "type": "object"
       },
+      "DeferredView": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "issue": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "issue",
+          "title",
+          "reason",
+          "at"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -246,6 +276,89 @@
         ],
         "type": "object"
       },
+      "RunView": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "issue": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "stand": {
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "issue",
+          "title",
+          "state",
+          "command",
+          "trigger",
+          "profile",
+          "workspace_id",
+          "started_at",
+          "stand",
+          "at"
+        ],
+        "type": "object"
+      },
+      "RunsOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "deferred": {
+            "items": {
+              "$ref": "#/components/schemas/DeferredView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "runs",
+          "deferred"
+        ],
+        "type": "object"
+      },
       "SourceReport": {
         "additionalProperties": false,
         "properties": {
@@ -424,6 +537,34 @@
           }
         },
         "summary": "Get API returned"
+      }
+    },
+    "/api/runs": {
+      "get": {
+        "operationId": "get-runs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunsOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get API runs"
       }
     },
     "/api/usage": {

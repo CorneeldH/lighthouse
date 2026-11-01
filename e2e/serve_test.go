@@ -78,6 +78,13 @@ func startRaw(t *testing.T, bin string, env []string, args ...string) *serveProc
 	return p
 }
 
+// serveEnv is cleanEnv with host.toml pointed at a missing file: serve reads the repos of
+// [dispatch] from it, and the developer's own host.toml must not leak in.
+func serveEnv(t *testing.T) []string {
+	t.Helper()
+	return append(cleanEnv(), "LIGHTHOUSE_HOST_TOML="+filepath.Join(t.TempDir(), "host.toml"))
+}
+
 func health(t *testing.T, addr string) {
 	t.Helper()
 	c := http.Client{Timeout: 5 * time.Second}
@@ -113,7 +120,7 @@ func TestServeSignals(t *testing.T) {
 	bin := buildLighthouse(t)
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGINT} {
 		t.Run(sig.String(), func(t *testing.T) {
-			p := startServe(t, bin, cleanEnv(), "serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"))
+			p := startServe(t, bin, serveEnv(t), "serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"))
 			health(t, p.addr)
 			if err := p.cmd.Process.Signal(sig); err != nil {
 				t.Fatal(err)
@@ -128,10 +135,10 @@ func TestServeSignals(t *testing.T) {
 func TestServeSecondInstanceRefused(t *testing.T) {
 	bin := buildLighthouse(t)
 	db := filepath.Join(t.TempDir(), "l.db")
-	first := startServe(t, bin, cleanEnv(), "serve", "--addr", "127.0.0.1:0", "--db", db)
+	first := startServe(t, bin, serveEnv(t), "serve", "--addr", "127.0.0.1:0", "--db", db)
 
 	cmd := exec.Command(bin, "serve", "--addr", "127.0.0.1:0", "--db", db)
-	cmd.Env = cleanEnv()
+	cmd.Env = serveEnv(t)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	done := make(chan error, 1)
@@ -160,7 +167,7 @@ func TestServePortInUse(t *testing.T) {
 	}
 	defer func() { _ = ln.Close() }()
 
-	failing := startRaw(t, bin, cleanEnv(), "serve", "--addr", ln.Addr().String(), "--db", db)
+	failing := startRaw(t, bin, serveEnv(t), "serve", "--addr", ln.Addr().String(), "--db", db)
 	if code := exitCode(t, failing.done); code != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr: %s", code, failing.stderr.String())
 	}
@@ -168,7 +175,7 @@ func TestServePortInUse(t *testing.T) {
 		t.Errorf("stderr lacks the net.Listen error: %s", failing.stderr.String())
 	}
 
-	p := startServe(t, bin, cleanEnv(), "serve", "--addr", "127.0.0.1:0", "--db", db)
+	p := startServe(t, bin, serveEnv(t), "serve", "--addr", "127.0.0.1:0", "--db", db)
 	health(t, p.addr)
 }
 
