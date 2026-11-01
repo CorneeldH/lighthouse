@@ -516,7 +516,7 @@ nieuwe actie geeft wel exit 1. Een geslaagde actie wist haar regel. Zo vervangt 
 
 `lighthouse pause [--until HH:MM]` en `lighthouse pause off` schrijven en wissen de pauzevlag
 op het pad uit het contract van de usage-guard (`docs/usage-guard.md`, *Contract*). De regels
-van `src/controller/pauze.py` blijven: standaard tot 21:00 vandaag; 's nachts is `--until`
+van `src/controller/pauze.py` blijven: standaard tot het begin van `night` vandaag (21:00 bij de standaard); 's nachts is `--until`
 verplicht; het einde ligt binnen 24 uur; zomertijd telt mee. De usage-guard parkeert lopende
 runs al op die vlag (#66), mits de repo `[usage_guard] controller = true` heeft (*Configuratie*).
 De tick hervat ze via de markers.
