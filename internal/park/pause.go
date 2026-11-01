@@ -87,7 +87,7 @@ func (e *NightError) Error() string {
 }
 
 // Until is the end of a pause started at now, in now's zone. Without clock ("HH:MM") it is the
-// start of night today, and by night a *NightError. With clock it is the first moment after now
+// next start of night after now, and by night a *NightError. With clock it is the first moment after now
 // at that wall-clock time, within 24 hours.
 func Until(now time.Time, clock, night string) (time.Time, error) {
 	loc := now.Location()
@@ -95,12 +95,23 @@ func Until(now time.Time, clock, night string) (time.Time, error) {
 		if inNight(night, now) {
 			return time.Time{}, &NightError{Suggestions: nextHours(now, 3)}
 		}
-		start, _, _ := strings.Cut(night, "-")
+		start, end, _ := strings.Cut(night, "-")
+		if start == end {
+			return time.Time{}, fmt.Errorf("night %q is empty: pass --until", night)
+		}
 		t, err := time.Parse("15:04", start)
 		if err != nil {
 			return time.Time{}, fmt.Errorf("night %q is not HH:MM-HH:MM", night)
 		}
-		return time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, loc), nil
+		// The next start of night after now: today's, else tomorrow's. An empty window has no
+		// start of night, so it fails above.
+		for _, day := range []int{0, 1} {
+			c := time.Date(now.Year(), now.Month(), now.Day()+day, t.Hour(), t.Minute(), 0, 0, loc)
+			if c.After(now) {
+				return c, nil
+			}
+		}
+		return time.Time{}, fmt.Errorf("night %q gives no end after now", night)
 	}
 
 	t, err := parseClock(clock)

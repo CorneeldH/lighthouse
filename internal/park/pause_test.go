@@ -137,6 +137,36 @@ func TestUntilDayDefault(t *testing.T) {
 	}
 }
 
+// A night window that does not wrap midnight has its start before an afternoon now: the pause
+// must run to the next start, never to a time already past.
+func TestUntilDayDefaultNeverInThePast(t *testing.T) {
+	loc := ams(t)
+	now := at(loc, 2026, 11, 1, 14, 0)
+	tests := []struct {
+		night string
+		want  time.Time
+	}{
+		{"21:00-08:00", at(loc, 2026, 11, 1, 21, 0)},
+		{"00:00-07:00", at(loc, 2026, 11, 2, 0, 0)},
+		{"01:00-06:00", at(loc, 2026, 11, 2, 1, 0)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.night, func(t *testing.T) {
+			got, err := Until(now, "", tt.night)
+			if err != nil || !got.Equal(tt.want) || got.Location() != loc {
+				t.Errorf("Until = %v, %v; want %v", got, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestUntilDayDefaultEmptyNightFails(t *testing.T) {
+	_, err := Until(at(ams(t), 2026, 11, 1, 14, 0), "", "00:00-00:00")
+	if err == nil || !strings.Contains(err.Error(), "--until") {
+		t.Errorf("err = %v, want one naming --until", err)
+	}
+}
+
 func TestUntilNightRequiresClock(t *testing.T) {
 	loc := ams(t)
 	_, err := Until(at(loc, 2026, 11, 1, 23, 10), "", night)
