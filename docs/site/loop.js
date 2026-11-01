@@ -1,6 +1,6 @@
 // The loop page: the flow map from data/chain.json and the pack cards from data/packs.json.
 
-import { fillLegend, initTheme, loadJson, renderFlowMap } from "./map.js?v=524a6512";
+import { fillLegend, initTheme, loadJson, renderFlowMap } from "./map.js?v=ca84807a";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);

@@ -1,6 +1,6 @@
-// The repo page: the floor plan of a repo after init, from data/repo.json.
+// The repo page: the tree of a repo after init, from data/repo.json.
 
-import { initTheme, loadJson, renderRepo } from "./map.js?v=524a6512";
+import { initTheme, loadJson, renderRepo } from "./map.js?v=ca84807a";
 
 initTheme(document.getElementById("theme-toggle"));
 
@@ -8,7 +8,7 @@ try {
   const repo = await loadJson("data/repo.json");
   document.getElementById("title").textContent = repo.title;
   document.getElementById("subtitle").textContent = repo.subtitle;
-  renderRepo(document.getElementById("repo-map"), repo, document.getElementById("detail"));
+  renderRepo(document.getElementById("repo-map"), repo);
   document.getElementById("serve-hint").hidden = true;
 } catch (error) {
   console.error(error);

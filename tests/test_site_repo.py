@@ -1,24 +1,26 @@
 """The map of the repo after init (docs/site/data/repo.json) stays in step with the code: every place
-init writes (internal/initcmd/testdata/places.golden) is an area on it with the owner and packs the
-golden implies, every reader it names exists, every link lands, and --force is promised only where
---upgrade really refuses."""
+init writes (internal/initcmd/testdata/places.golden) is one row on it, except what OFF_THE_MAP
+names, each row says whether init adds it or edits a file of yours as the golden implies, and every
+link lands."""
 
 import copy
 import json
-from pathlib import Path
 
 from tests._site_node import run_map
-from tests.test_site_chain import REPO_BLOB, REPO_TREE, ROOT, SITE, load
+from tests.test_site_chain import ROOT, SITE, load
 
 GOLDEN = ROOT / "internal/initcmd/testdata/places.golden"
-OWNERS = {"lighthouse", "shared", "yours"}
-ROOMS = ["root", ".claude", ".agents", ".lighthouse", ".github", "yours", "workstation"]
-READER_NAMES = {"Claude Code", "Codex", "OpenCode", "GitHub", "GitHub Actions"}
-READER_ROOTS = ("pack/", "internal/", "cmd/")
-REQUIRED = "id label room owner about how upgrade packs readers more".split()
-INIT_OWNERS = {"CLAUDE.md": "yours", "lighthouse.toml": "shared", ".lighthouse/manifest.toml": "lighthouse"}
-MANIFEST_KINDS = {"file", "block", "hook", "permission"}
-_texts: dict[Path, str] = {}
+DIRS = ["root", ".claude", ".agents", ".lighthouse", ".github"]
+REQUIRED = "id label dir kind act".split()
+ACTS = {"adds", "edits"}
+OFF_THE_MAP = {
+    "CLAUDE.md": "init writes it only when AGENTS.md and CLAUDE.md are both missing, as one line "
+    "@AGENTS.md, and never touches one that exists",
+}
+INIT_ACTS = {"lighthouse.toml": "edits", ".lighthouse/manifest.toml": "adds"}
+EDIT_KINDS = {"block", "hook", "permission"}
+SEPARATORS = ("·", ",")
+_sorts: list[str] = []
 
 
 def parse_golden(text: str) -> dict[str, tuple[set[str], list[str]]]:
@@ -36,9 +38,11 @@ def golden():
     return parse_golden(GOLDEN.read_text(encoding="utf-8"))
 
 
-def named_token(area: dict) -> str:
-    """The text a reader of this area must contain: the basename of its place, without * or a final /."""
-    return (area.get("place") or area["label"]).rstrip("/").rsplit("/", 1)[-1].replace("*", "")
+def sort_keys() -> list[str]:
+    """The keys of SORTS in map.js: the kinds a row may have."""
+    if not _sorts:
+        _sorts.extend(run_map("Object.keys(m.SORTS)"))
+    return _sorts
 
 
 def listed(items) -> str:
@@ -50,124 +54,96 @@ def room_of(place: str) -> str:
     return first if "/" in place and first.startswith(".") else "root"
 
 
-def shape_problems(data: dict) -> list[str]:
+def place_problems(data: dict, gold: dict) -> list[str]:
     problems = []
-    ids = [r["id"] for r in data["rooms"]]
-    if ids != ROOMS:
-        problems.append(f"rooms are {listed(ids)}, not {listed(ROOMS)}")
+    placed = [r for r in data["rows"] if r.get("place")]
+    for key in gold:
+        if key not in OFF_THE_MAP and not any(r["place"] == key for r in placed):
+            problems.append(f"not on the map: {key}")
+    for place in {r["place"] for r in placed}:
+        count = sum(r["place"] == place for r in placed)
+        if count > 1:
+            problems.append(f"{place}: on {count} rows")
+    for r in placed:
+        if r["place"] in OFF_THE_MAP:
+            problems.append(f"{r['place']}: off the map, yet a row")
+        elif r["place"] not in gold:
+            problems.append(f"not in places.golden: {r['place']}")
+    bare = [r for r in data["rows"] if not r.get("place")]
+    problems += [f"{r['id']}: no place outside the workstation" for r in bare if r["dir"] != "workstation"]
+    if len(bare) != 1:
+        problems.append(f"expected one row without a place, found {len(bare)}")
+    return sorted(problems)
+
+
+def act_problems(data: dict, gold: dict) -> list[str]:
+    problems = []
+    for r in data["rows"]:
+        if r.get("place") not in gold:
+            continue
+        kinds = gold[r["place"]][0]
+        if kinds & EDIT_KINDS:
+            want = "edits"
+        elif kinds == {"file"}:
+            want = "adds"
+        else:
+            want = INIT_ACTS[r["place"]]
+        if r["act"] != want:
+            problems.append(f"{r['id']}: act {r['act']}, expected {want}")
+    return sorted(problems)
+
+
+def shape_problems(data: dict, sorts: list[str]) -> list[str]:
+    problems = []
+    ids = [d["id"] for d in data["dirs"]]
+    if ids != DIRS:
+        problems.append(f"dirs are {listed(ids)}, not {listed(DIRS)}")
     seen = set()
-    for a in data["areas"]:
-        i = a.get("id", "?")
-        problems += [f"{i}: lacks {k}" for k in REQUIRED if k not in a]
+    for r in data["rows"]:
+        i = r.get("id", "?")
+        problems += [f"{i}: lacks {k}" for k in REQUIRED if k not in r]
         if i in seen:
             problems.append(f"duplicate id {i}")
         seen.add(i)
-        if a.get("owner") not in OWNERS | {None}:
-            problems.append(f"{i}: unknown owner {a['owner']}")
-        if a.get("room") not in set(ROOMS) | {None}:
-            problems.append(f"{i}: unknown room {a['room']}")
-        place = a.get("place")
-        if place:
-            if a.get("label") != place:
-                problems.append(f"{i}: label {a.get('label')}, place {place}")
-            if a.get("room") != room_of(place):
-                problems.append(f"{i}: room {a.get('room')}, place says {room_of(place)}")
-        if a.get("room") == "yours":
-            problems.append("room yours has areas")
-    return sorted(problems)
-
-
-def place_problems(data: dict, gold: dict) -> list[str]:
-    problems = []
-    placed = [a for a in data["areas"] if a.get("place")]
-    for key in gold:
-        if not any(a["place"] == key for a in placed):
-            problems.append(f"not on the map: {key}")
-    for place in {a["place"] for a in placed}:
-        count = sum(a["place"] == place for a in placed)
-        if count > 1:
-            problems.append(f"{place}: on {count} areas")
-    for a in placed:
-        if a["place"] not in gold:
-            problems.append(f"not in places.golden: {a['place']}")
-            continue
-        kinds, packs = gold[a["place"]]
-        if sorted(a["packs"]) != sorted(packs):
-            problems.append(f"{a['id']}: packs {listed(sorted(a['packs']))}, places.golden says {listed(sorted(packs))}")
-        if kinds == {"file"}:
-            want = "lighthouse"
-        elif kinds & {"block", "hook", "permission"}:
-            want = "shared"
-        else:
-            want = INIT_OWNERS[a["place"]]
-        if a["owner"] != want:
-            problems.append(f"{a['id']}: owner {a['owner']}, expected {want}")
-    bare = [a for a in data["areas"] if not a.get("place")]
-    problems += [f"{a['id']}: no place outside the workstation" for a in bare if a["room"] != "workstation"]
-    if len(bare) != 1:
-        problems.append(f"expected one area without a place, found {len(bare)}")
-    return sorted(problems)
-
-
-def reader_text(path: Path) -> str:
-    if path not in _texts:
-        _texts[path] = path.read_text(encoding="utf-8", errors="replace")
-    return _texts[path]
-
-
-def names(path: Path, token: str) -> bool:
-    if path.is_file():
-        return token in reader_text(path)
-    return any(token in reader_text(f) for f in sorted(path.rglob("*")) if f.is_file())
-
-
-def reader_problems(data: dict, root: Path) -> list[str]:
-    problems = []
-    for a in data["areas"]:
-        if not a["readers"]:
-            problems.append(f"{a['id']}: no readers")
-        token = named_token(a)
-        for r in a["readers"]:
-            if r in READER_NAMES:
-                continue
-            if not r.startswith(READER_ROOTS):
-                problems.append(f"{a['id']}: reader {r} outside pack/, internal/ or cmd/")
-            elif not (root / r).exists():
-                problems.append(f"{a['id']}: reader {r} does not exist")
-            elif not names(root / r, token):
-                problems.append(f"{a['id']}: reader {r} does not name {token}")
+        if "kind" in r and r["kind"] not in sorts:
+            problems.append(f"{i}: unknown kind {r['kind']}")
+        if "act" in r and r["act"] not in ACTS:
+            problems.append(f"{i}: unknown act {r['act']}")
+        if "dir" in r and r["dir"] not in DIRS + ["workstation"]:
+            problems.append(f"{i}: unknown dir {r['dir']}")
+        elif r.get("place") and r.get("dir") != room_of(r["place"]):
+            problems.append(f"{i}: dir {r.get('dir')}, place says {room_of(r['place'])}")
     return sorted(problems)
 
 
 def link_problems(data: dict) -> list[str]:
     problems = []
     system_ids = {s["id"] for s in load("system.json")["sections"]}
-    for a in data["areas"]:
-        page, _, anchor = a["more"].partition("#")
+    for r in data["rows"]:
+        if not r.get("href"):
+            continue
+        page, _, anchor = r["href"].partition("#")
         if not (SITE / page).is_file():
-            problems.append(f"{a['id']}: {page} points nowhere")
+            problems.append(f"{r['id']}: {page} points nowhere")
         elif anchor:
             have = system_ids if page == "system.html" else None
             ok = anchor in have if have is not None else f'id="{anchor}"' in (SITE / page).read_text(encoding="utf-8")
             if not ok:
-                problems.append(f"{a['id']}: {page} has no id {anchor}")
+                problems.append(f"{r['id']}: {page} has no id {anchor}")
     return sorted(problems)
 
 
-def upgrade_problems(data: dict, gold: dict) -> list[str]:
-    problems = []
-    for a in data["areas"]:
-        refuses = bool(a.get("place") in gold and gold[a["place"]][0] & MANIFEST_KINDS)
-        says = "--force" in a["upgrade"]
-        if refuses and not says:
-            problems.append(f"{a['id']}: upgrade does not say --force")
-        if says and not refuses:
-            problems.append(f"{a['id']}: upgrade names --force")
-    return sorted(problems)
+def label_problems(data: dict) -> list[str]:
+    """A row is one thing: its label holds no separator such as `lib/ · scripts/`."""
+    return sorted(
+        f"{r['id']}: label {r['label']} holds two things"
+        for r in data["rows"]
+        if any(s in r["label"] for s in SEPARATORS)
+    )
 
 
-def area(data: dict, ident: str) -> dict:
-    return next(a for a in data["areas"] if a["id"] == ident)
+def row(data: dict, ident: str) -> dict:
+    return next(r for r in data["rows"] if r["id"] == ident)
 
 
 def mutated():
@@ -178,31 +154,25 @@ def test_the_map_matches_the_places_init_writes():
     assert place_problems(load("repo.json"), golden()) == []
 
 
+def test_act_matches_the_golden():
+    assert act_problems(load("repo.json"), golden()) == []
+
+
 def test_shape():
-    assert shape_problems(load("repo.json")) == []
-
-
-def test_readers():
-    assert reader_problems(load("repo.json"), ROOT) == []
+    assert shape_problems(load("repo.json"), sort_keys()) == []
 
 
 def test_links():
     assert link_problems(load("repo.json")) == []
 
 
-def test_upgrade_says_force_only_where_it_refuses():
-    assert upgrade_problems(load("repo.json"), golden()) == []
+def test_one_thing_per_row():
+    assert label_problems(load("repo.json")) == []
 
 
-def test_named_token():
-    assert named_token({"place": ".claude/skills/lighthouse-*/"}) == "lighthouse-"
-    assert named_token({"place": ".lighthouse/headings.toml"}) == "headings.toml"
-    assert named_token({"label": "~/.config/lighthouse/host.toml"}) == "host.toml"
-
-
-def test_problems_flag_a_missing_area():
+def test_problems_flag_a_missing_row():
     data = mutated()
-    data["areas"] = [a for a in data["areas"] if a["id"] != "claude-agents"]
+    data["rows"] = [r for r in data["rows"] if r["id"] != "claude-agents"]
     assert place_problems(data, golden()) == ["not on the map: .claude/agents/lighthouse-*.md"]
 
 
@@ -213,132 +183,177 @@ def test_problems_flag_a_new_place_in_the_golden():
 
 def test_problems_flag_a_place_init_does_not_write():
     data = mutated()
-    area(data, "headings")["place"] = area(data, "headings")["label"] = ".lighthouse/cache/"
+    row(data, "headings")["place"] = ".lighthouse/cache/"
     assert place_problems(data, golden()) == [
         "not in places.golden: .lighthouse/cache/",
         "not on the map: .lighthouse/headings.toml",
     ]
 
 
-def test_problems_flag_other_packs():
+def test_problems_flag_claude_md_on_the_map():
     data = mutated()
-    area(data, "agents-md")["packs"].remove("go")
+    data["rows"].append(
+        {"id": "claude-md", "place": "CLAUDE.md", "label": "CLAUDE.md", "dir": "root", "kind": "rules", "act": "adds"}
+    )
+    assert place_problems(data, golden()) == ["CLAUDE.md: off the map, yet a row"]
+
+
+def test_problems_flag_a_second_row_without_place():
+    data = mutated()
+    del row(data, "manifest")["place"]
     assert place_problems(data, golden()) == [
-        "agents-md: packs [core, python, shell], places.golden says [core, go, python, shell]"
-    ]
-
-
-def test_problems_flag_a_wrong_owner():
-    data = mutated()
-    area(data, "claude-settings")["owner"] = "lighthouse"
-    assert place_problems(data, golden()) == ["claude-settings: owner lighthouse, expected shared"]
-
-
-def test_problems_flag_a_second_area_without_place():
-    data = mutated()
-    del area(data, "manifest")["place"]
-    assert place_problems(data, golden()) == [
-        "expected one area without a place, found 2",
+        "expected one row without a place, found 2",
         "manifest: no place outside the workstation",
         "not on the map: .lighthouse/manifest.toml",
     ]
 
 
-def test_problems_flag_a_reader_that_does_not_name_it():
+def test_problems_flag_a_wrong_act():
     data = mutated()
-    area(data, "headings")["readers"] = ["internal/hostconfig"]
-    assert reader_problems(data, ROOT) == ["headings: reader internal/hostconfig does not name headings.toml"]
+    row(data, "claude-settings")["act"] = "adds"
+    assert act_problems(data, golden()) == ["claude-settings: act adds, expected edits"]
+    data = mutated()
+    row(data, "manifest")["act"] = "edits"
+    assert act_problems(data, golden()) == ["manifest: act edits, expected adds"]
 
 
-def test_problems_flag_a_dogfood_reader():
+def test_problems_flag_an_unknown_kind_and_dir():
     data = mutated()
-    area(data, "pr-template")["readers"] = [".claude/skills/lighthouse-write-pr/SKILL.md"]
-    assert reader_problems(data, ROOT) == [
-        "pr-template: reader .claude/skills/lighthouse-write-pr/SKILL.md outside pack/, internal/ or cmd/"
+    row(data, "headings")["kind"] = "skill"
+    row(data, "headings")["dir"] = ".claude"
+    row(data, "host-toml")["dir"] = "home"
+    assert shape_problems(data, sort_keys()) == [
+        "headings: dir .claude, place says .lighthouse",
+        "headings: unknown kind skill",
+        "host-toml: unknown dir home",
     ]
-
-
-def test_problems_flag_an_unknown_reader_name():
-    data = mutated()
-    area(data, "claude-md")["readers"] = ["Cursor"]
-    assert reader_problems(data, ROOT) == ["claude-md: reader Cursor outside pack/, internal/ or cmd/"]
-
-
-def test_problems_flag_force_on_lighthouse_toml():
-    data = mutated()
-    area(data, "lighthouse-toml")["upgrade"] += " Pass --force to overwrite."
-    assert upgrade_problems(data, golden()) == ["lighthouse-toml: upgrade names --force"]
-
-
-def test_problems_flag_a_missing_force():
-    data = mutated()
-    area(data, "claude-skills")["upgrade"] = "Replaces them."
-    assert upgrade_problems(data, golden()) == ["claude-skills: upgrade does not say --force"]
 
 
 def test_problems_flag_an_anchor_that_does_not_exist():
     data = mutated()
-    area(data, "claude-skills")["more"] = "reference.html#nope"
-    assert link_problems(data) == ["claude-skills: reference.html has no id nope"]
+    row(data, "claude-skills")["href"] = "reference.html#nope"
+    row(data, "agents-md")["href"] = "system.html#nope"
+    assert link_problems(data) == [
+        "agents-md: system.html has no id nope",
+        "claude-skills: reference.html has no id nope",
+    ]
 
 
-def repo_entries():
-    return run_map(f"m.repoEntries({json.dumps(load('repo.json'))})")
+def test_problems_flag_two_things_in_one_row():
+    data = mutated()
+    row(data, "lighthouse-lib")["label"] = "lib/ · scripts/"
+    assert label_problems(data) == ["lighthouse-lib: label lib/ · scripts/ holds two things"]
 
 
-def test_upgrade_zone_is_lighthouse_and_shared():
-    areas = [a for room in repo_entries() for a in room["areas"]]
-    assert {a["id"] for a in areas if "upgrade" in a["zones"]} == {
-        a["id"] for a in load("repo.json")["areas"] if a["owner"] in {"lighthouse", "shared"}}
+def entries(mode: str, data: dict | None = None):
+    return run_map(f"m.repoEntries({json.dumps(data or load('repo.json'))}, {json.dumps(mode)})")
 
 
-def test_your_code_lights_only_in_yours():
-    room = next(r for r in repo_entries() if r["id"] == "yours")
-    assert room["zones"] == ["all", "yours"] and room["areas"] == []
+def entry_rows(mode: str) -> dict[str, dict]:
+    """place (or label, for the workstation) -> row, from repoEntries in `mode`."""
+    return {r["place"] or r["label"]: r for e in entries(mode) for r in e["rows"]}
 
 
-def test_entries_say_where_it_comes_from():
-    facts = {a["id"]: dict(a["facts"]) for r in repo_entries() for a in r["areas"]}
-    assert facts["claude-md"]["Comes from"] == "lighthouse init itself"
-    assert facts["agents-md"]["Comes from"] == "core, go, python, shell"
-    assert facts["claude-settings"]["Owner"] == "shared: only lighthouse's block or keys"
+def refusal(mode: str, data: dict) -> str | None:
+    return run_map(
+        f"(() => {{ try {{ m.repoEntries({json.dumps(data)}, {json.dumps(mode)}); return null; }}"
+        " catch (e) { return e.message; } })()"
+    )
 
 
-def test_repo_reader_links():
-    read = lambda r: run_map(f"m.repoReader({json.dumps(r)})")
-    assert read("Claude Code") == {"name": "Claude Code", "href": None}
-    assert read("internal/hostconfig") == {"name": "internal/hostconfig", "href": REPO_TREE + "internal/hostconfig"}
-    assert read("pack/core/lib/config.py")["href"] == REPO_BLOB + "pack/core/lib/config.py"
+def test_entries_keep_the_order_of_the_tree():
+    found = entries("everything")
+    assert [e["id"] for e in found] == ["root", ".claude", ".agents", ".lighthouse", ".github", "workstation"]
+    by_id = {e["id"]: e for e in found}
+    assert by_id["root"]["yours"] == "your code, your tests, your config, …"
+    assert by_id[".lighthouse"]["yours"] is None
+    assert by_id["workstation"]["note"] == load("repo.json")["workstation"]["note"]
 
 
-def test_every_path_reader_links_tree_for_a_dir():
-    paths = sorted({r for a in load("repo.json")["areas"] for r in a["readers"] if r not in READER_NAMES})
-    links = run_map(f"{json.dumps(paths)}.map((p) => m.repoReader(p).href)")
-    for path, href in zip(paths, links):
-        assert href == (REPO_TREE if (ROOT / path).is_dir() else REPO_BLOB) + path
+def test_everything_dims_nothing():
+    assert [p for p, r in entry_rows("everything").items() if r["dim"]] == []
 
 
-LEGEND_LINES = [
-    "lighthouse's: --upgrade replaces it",
-    "shared: only lighthouse's block or keys",
-    "yours: init leaves it alone",
-    "dashed line: the zone --upgrade touches",
-    "changed or deleted a file, block or hook of lighthouse's? --upgrade stops and writes nothing until you pass --force",
-]
-SWATCHED = {LEGEND_LINES[0]: "owner-lighthouse", LEGEND_LINES[1]: "owner-shared",
-            LEGEND_LINES[2]: "owner-yours", LEGEND_LINES[3]: "touched"}
+def test_edits_leaves_three():
+    rows = entry_rows("edits")
+    assert {p for p, r in rows.items() if not r["dim"]} == {"AGENTS.md", "lighthouse.toml", ".claude/settings.json"}
+    assert rows["~/.config/lighthouse/host.toml"]["dim"] is True
 
 
-def legend_items() -> list[str]:
+def test_adds_leaves_what_init_adds():
+    lit = {r["id"] for e in entries("adds") for r in e["rows"] if not r["dim"]}
+    assert lit == {r["id"] for r in load("repo.json")["rows"] if r["act"] == "adds"}
+    assert "host-toml" in lit
+
+
+def test_rows_carry_glyph_and_colour():
+    rows = entry_rows("everything")
+    assert rows[".claude/agents/lighthouse-*.md"]["glyph"] == "◆"
+    assert rows[".claude/agents/lighthouse-*.md"]["className"] == "kind-lighthouse form-agent"
+    assert rows["AGENTS.md"]["glyph"] == "§"
+    assert rows["AGENTS.md"]["className"] == "kind-rules form-rules"
+
+
+def test_rows_say_what_init_does():
+    rows = entry_rows("everything")
+    assert rows[".claude/settings.json"]["actLabel"] == "init edits your file"
+    assert rows[".lighthouse/scripts/"]["actLabel"] == "init adds it"
+
+
+def test_entries_refuse_an_unknown_mode():
+    assert refusal("upgrade", load("repo.json")) == "unknown mode: upgrade"
+
+
+def test_entries_refuse_an_unknown_kind():
+    data = mutated()
+    row(data, "headings")["kind"] = "skill"
+    assert refusal("everything", data) == "unknown kind: skill"
+
+
+def test_links_have_an_accessible_name():
+    """No DOM in node: this only holds that repoRow, which renderRepo draws each row with, names
+    each ↗ after its row."""
+    text = (SITE / "map.js").read_text(encoding="utf-8")
+    body = text.split("function repoRow", 1)[1].split("\nfunction ", 1)[0]
+    assert '"aria-label"' in body
+    assert "`More about ${" in body
+
+
+def test_page_has_no_legend_or_panel_and_explains_below():
     html = (SITE / "repo.html").read_text(encoding="utf-8")
-    legend = html.split('<section class="legend"', 1)[1].split("</section>", 1)[0]
-    return [item.split("</li>")[0] for item in legend.split("<li>")[1:]]
+    assert 'class="legend"' not in html
+    assert 'id="detail"' not in html
+    assert html.index('id="repo-map"') < html.index('id="repo-notes"')
+    notes = html.split('id="repo-notes"', 1)[1].split("</section>", 1)[0]
+    for name in ["lib/", "scripts/", "headings.toml", "manifest.toml", "settings.json", "permissions.allow",
+                 "host.toml", "--yes"]:
+        assert name in notes, f"the text below the map does not name {name}"
 
 
-def test_legend_lines_are_verbatim_and_each_sample_has_its_swatch():
-    items = legend_items()
-    assert [i.split("</span>")[-1] for i in items] == LEGEND_LINES
-    for item in items[:4]:
-        text = item.split("</span>")[-1]
-        assert item.startswith(f'<span class="swatch {SWATCHED[text]}"></span>')
-    assert "swatch" not in items[4]
+def notes_text() -> str:
+    html = (SITE / "repo.html").read_text(encoding="utf-8")
+    return " ".join(html.split('id="repo-notes"', 1)[1].split("</section>", 1)[0].split())
+
+
+def test_notes_say_only_the_first_init_proposes_host_toml():
+    """A second init refuses and --upgrade only notes a missing host.toml (internal/initcmd/host.go)."""
+    assert "The first <code>init</code> proposes" in notes_text()
+
+
+def test_notes_count_the_manifest_per_unit_not_per_file():
+    """manifest.toml has one sha256 per unit: a file, block, hook or permission."""
+    assert "per file" not in notes_text()
+    assert "per part" in notes_text()
+
+
+def test_entries_refuse_an_unknown_act():
+    data = mutated()
+    row(data, "headings")["act"] = "replaces"
+    assert refusal("everything", data) == "unknown act: replaces"
+
+
+def test_workstation_heading_is_beside_the_repo_not_under_it():
+    """The tree's title is an h2; the workstation box is apart from it, so an h2 too."""
+    text = (SITE / "map.js").read_text(encoding="utf-8")
+    body = text.split("export function renderRepo", 1)[1].split("\nfunction ", 1)[0]
+    assert 'el("h2", "", station.label)' in body
