@@ -189,7 +189,7 @@ type fakeJudge struct {
 
 var promptIssue = regexp.MustCompile(`(?m)^issue number: #([0-9]+)$`)
 
-func (j *fakeJudge) judge(_ context.Context, dir, prompt string) ([]byte, error) {
+func (j *fakeJudge) judge(_ context.Context, dir, prompt string, _ judgeConfig) ([]byte, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if dir != j.dir {

@@ -23,8 +23,8 @@ import (
 	tri "github.com/CorneeldH/lighthouse/internal/triage"
 )
 
-// judgeFunc runs one judgment in dir with prompt on stdin and returns claude's stdout.
-type judgeFunc func(ctx context.Context, dir, prompt string) ([]byte, error)
+// judgeFunc runs one judgment in dir with prompt on stdin and cfg, and returns claude's stdout.
+type judgeFunc func(ctx context.Context, dir, prompt string, cfg judgeConfig) ([]byte, error)
 
 // brake reports whether the round may go on; reason says why not ("usage: not measured").
 type brake interface {
@@ -38,6 +38,9 @@ type triageEnv struct {
 	Judge       judgeFunc // nil is execJudge
 	Brake       brake     // required
 	PluginsFile string    // "" is $HOME/.claude/plugins/installed_plugins.json
+	// SettingsFile is the user's settings file the judgment takes env and modelSettings from;
+	// "" is judgeSettingsPath(Getenv).
+	SettingsFile string
 }
 
 // issueRef is one --issue: an issue of a repo, by slug and number.
@@ -382,7 +385,7 @@ func (r *round) issue(ctx context.Context, g *repoGather, f tri.Facts, jc tri.Co
 		}
 		jc.Gate0 = g0
 		n.judgments++
-		envelope, err := r.env.Judge(ctx, repo.Dir, tri.Prompt(f, jc))
+		envelope, err := r.env.Judge(ctx, repo.Dir, tri.Prompt(f, jc), judgeConfig{Settings: `{"disableAllHooks":true}`})
 		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
 			// The spec counts a timeout as an invalid judgment.
 			n.invalid++

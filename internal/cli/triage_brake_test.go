@@ -151,7 +151,7 @@ func TestTriageCommandExitCodes(t *testing.T) {
 		fx := triageFixture(t, triageToml)
 		fx.issue(7, "2-area:cli")
 		fx.onBoard(7, "t1", nil)
-		fx.env.Judge = func(context.Context, string, string) ([]byte, error) { panic("boom") }
+		fx.env.Judge = func(context.Context, string, string, judgeConfig) ([]byte, error) { panic("boom") }
 		var out, errOut bytes.Buffer
 		if code := execute(triageRoot(fx, &out, &errOut), &errOut); code != 2 {
 			t.Errorf("exit code = %d, want 2", code)
