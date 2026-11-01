@@ -71,7 +71,11 @@ dicht dat gat zonder nieuwe regel in `next()`:
 - Een post-pass `returnUnstartedFixPR` in `Decide`, ná `Brake.apply`, zet elke close met
   `Outcome handoff` en een `ReasonArg` met prefix `fixpr:` zonder `KindStart` met trigger `fixpr`
   voor hetzelfde repo/issue om in `KindReturn` `reason_pr_red` met dezelfde `RunID` en
-  `SessionID`. Zo eindigt elke uitkomst anders dan een start als `returned`, zoals §5 vraagt.
+  `SessionID`.
+- `apply.start` dekt de rest: een fix-pr-start die vóór `runs.Take` stopt (werkplek bezet, een fout
+  in `Prepare` of in de busy-check, `apply.go:210-224`) post een 🤖 Teruggegeven "PR rood" zonder
+  `RunID`. Een fout ná de claim sluit de run als `start_failed`, en dan neemt `retry` het over.
+  Zo eindigt elke uitkomst anders dan een start als `returned`, zoals §5 vraagt.
 
 **r3-f2 (§2).** De spec routeert `<branch>.md` zonder `<branch>.json` al naar `classify`. Het plan
 pint dat in Task 3, plus het terughalen van al genomen besluiten (`fixed`), en laat `gate` een
@@ -86,8 +90,9 @@ skip zelf vastleggen, zodat een herstart nooit een tweede review start.
    regel, sluit niet voortijdig af en `json.loads` geeft de reden ongewijzigd terug. Test in Task 4.
 3. **Ruwe output boven 65536 tekens**: alleen de `<details>` wordt ingekort; log-blok en tabel
    volledig. Test in Task 4.
-4. **De rem houdt de fix-pr-start tegen** (slots vol, of `lighthouse pause`): de rij sluit als
-   `returned` "PR rood", nooit als `handoff` zonder start. Fixtures in Task 6.
+4. **De rem of een bezette werkplek houdt de fix-pr-start tegen** (slots vol, `lighthouse pause`,
+   een eigen sessie in de werkplek): het issue krijgt een Teruggegeven "PR rood", en blijft nooit
+   stil op een rode PR achter een `handoff` zonder start. Fixtures en apply-tests in Task 6.
 5. **Een branchnaam met `/`** (`fix/x`): de uitvoerbestanden heten `fix-x.md`/`fix-x.json` en
    botsen niet met een map. Test in Task 2.
 
@@ -448,12 +453,13 @@ Stap 4 bouwt de comment voortaan met `roborev_gate.py record --done <sha> --deci
 - Modify: `internal/runs/runs.go:45` (comment bij `Trigger`)
 - Modify: `internal/dispatch/decide.go` (`Decide`, `decideIssue`, `settle`, `runCtx`, `prRed`,
   consts)
+- Modify: `internal/dispatch/apply.go` (`start`)
 - Modify: `pack/core/headings.toml` (`reason_pr_red_ceiling`)
 - Modify: `internal/dispatch/testdata/decide/settle-red-pr.json`
 - Create: `internal/dispatch/testdata/decide/fixpr-*.json` (zie Step 1)
 - Test: `internal/dispatch/decide_test.go` (`TestDecideFixtures`, `TestFixPRRuns`),
   `internal/runs/runs_test.go` (`Take` met `Trigger: "fixpr"`), `internal/store/migrate_test.go`
-  (rijen overleven 0004)
+  (rijen overleven 0004), `internal/dispatch/apply_test.go` (fix-pr-start niet geclaimd)
 
 **Interfaces:**
 - Produces:
@@ -478,6 +484,10 @@ Stap 4 bouwt de comment voortaan met `roborev_gate.py record --done <sha> --deci
     `fixpr:`, zonder `KindStart` met `Trigger == triggerFixPR` voor dezelfde `Repo`/`Issue`, wordt
     `KindReturn` met `Reason "reason_pr_red"`, `RunID` en `SessionID` behouden, `Outcome` en
     `ReasonArg` leeg. Daarna opnieuw sorteren.
+  - `applier.start`: bij `a.Trigger == triggerFixPR` post elk pad dat vóór een geslaagde
+    `runs.Take` eindigt (busy-defer, fout uit `Prepare` of `busy`, `ErrClaimed`) eerst
+    `protocol.RenderReturned` met de tekst van `reason_pr_red`, zonder `RunID`; de defer of de fout
+    blijft daarna gewoon in `Result`. Een post die faalt, wordt aan de fout toegevoegd.
 
 - [ ] **Step 1: Schrijf de fixtures en tests (falend)** — kopieer de opbouw van
   `settle-red-pr.json` (issue 7, PR 12 op `abc123`, branch `issue-7-bouw-de-keten`, sessie
@@ -496,6 +506,10 @@ Stap 4 bouwt de comment voortaan met `roborev_gate.py record --done <sha> --deci
 | `fixpr-brake-paused.json` | als `settle-red-pr`, rem `Paused` | `return` `reason_pr_red` |
 
 `TestFixPRRuns` (tabel: open rij telt, `start_failed` telt niet, andere PR telt niet).
+In `apply_test.go`, met de fakes daar: `TestApplyFixPRBusyReturns` (werkplek bezet: één comment
+met de kop van Teruggegeven en "PR rood", geen runs-rij, de defer in `Result.Deferred`) en
+`TestApplyFixPRPrepareFailsReturns` (fout uit `Prepare`: dezelfde comment, en de fout in
+`Result.Failed`). Een gewone handoff-start die bezet is, post niets (bestaand gedrag blijft).
 `TestTakeFixPR` in `internal/runs/runs_test.go`: `Take` met `Trigger: "fixpr"` op een gemigreerde
 database slaagt. In `migrate_test.go`: een rij uit vóór 0004 staat er na de migratie nog, met
 dezelfde id en trigger.
