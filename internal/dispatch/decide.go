@@ -258,7 +258,8 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 		if c.open.WorkplaceSession == "" {
 			a.Discard = true
 		} else {
-			a.Stop = !c.done()
+			// A gone workspace has no session to stop: Stop would fail every tick.
+			a.Stop = !c.done() && !c.state.Gone
 		}
 		return a, true
 	}
