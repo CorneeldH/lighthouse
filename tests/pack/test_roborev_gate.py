@@ -417,6 +417,20 @@ def test_record_refuses_an_inconsistent_decision(repo, row):
         rg.record(repo, sha="s", decisions=_decisions(row))
 
 
+def test_record_refuses_done_with_another_sha_than_the_review(repo):
+    _write_raw(repo, FIX("review-complete.md"))
+    with pytest.raises(ValueError, match="bf1eb24"):
+        rg.record(repo, sha="0000000", decisions=_decisions(*COMPLETE_DECISIONS))
+    assert not (rg.state_dir(repo) / "feat.json").exists()
+
+
+def test_record_refuses_done_on_a_failed_review(repo):
+    _write_raw(repo, "Error: codex: 401 unauthorized\n")
+    with pytest.raises(ValueError, match="review faalde: Error: codex: 401 unauthorized"):
+        rg.record(repo, sha="bf1eb24", decisions=[])
+    assert not (rg.state_dir(repo) / "feat.json").exists()
+
+
 def test_record_done_then_gate_says_done(repo):
     _write_raw(repo, FIX("review-complete.md"))
     out = rg.record(repo, sha="bf1eb24", decisions=_decisions(*COMPLETE_DECISIONS))

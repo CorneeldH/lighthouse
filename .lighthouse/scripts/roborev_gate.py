@@ -340,7 +340,8 @@ def record(
 
     The decisions are checked one to one against the findings of a raw review: `raw` when
     given (fix-pr passes the CI comment), else the branch's local `<stem>.md`, but only
-    without `out`: a record elsewhere is not about the local review. `range_` is the reviewed
+    without `out`: a record elsewhere is not about the local review. That raw review must be a
+    `done` with the same sha, so the marker never claims a failed or another review. `range_` is the reviewed
     range `<base>..<head>` as `gate` printed it; without it the state holds `<base>..HEAD`
     of now, which after fix commits is no longer the reviewed range.
     """
@@ -361,7 +362,11 @@ def record(
         findings = None
         if raw is not None and raw.is_file():
             verdict = classify(raw.read_text())
-            findings = verdict["findings"] if verdict["verdict"] == "done" else None
+            if verdict["verdict"] != "done":
+                raise ValueError(f"{raw}: no review to record as done ({verdict['reason']})")
+            if verdict["sha"] != sha:
+                raise ValueError(f"--done {sha} is not the reviewed sha {verdict['sha']}")
+            findings = verdict["findings"]
         data.update({"uitkomst": "done", "sha": sha, "bevindingen": _validate(decisions or [], findings)})
     write_state(target, data)
     return target
