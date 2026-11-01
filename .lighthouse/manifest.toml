@@ -895,6 +895,13 @@ sha256 = "28782793f9134e554fbe64578d4b49d50f5386fcaf4bd6fbb46ace1e9927f797"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/scripts/roborev_comment.py"
+package = "core"
+version = "dev"
+sha256 = "3cd6f6881acaeb5f4a9a378c1f58d22ebfc31e1fa7ebfe6576813202086136f3"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/scripts/roborev_gate.py"
 package = "core"
 version = "dev"

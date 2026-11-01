@@ -125,6 +125,7 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/scripts/plan_review_record.py",
 		".lighthouse/scripts/post_artefact.py",
 		".lighthouse/scripts/review_pair.py",
+		".lighthouse/scripts/roborev_comment.py",
 		".lighthouse/scripts/roborev_gate.py",
 		".lighthouse/scripts/unblock_dependents.py",
 		".lighthouse/scripts/worktree_audit.py",
