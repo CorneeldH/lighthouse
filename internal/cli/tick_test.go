@@ -19,10 +19,12 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -72,13 +74,49 @@ func tickFixture(t *testing.T, repos ...string) (tickEnv, string) {
 	if err := os.WriteFile(host, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	vars := map[string]string{"XDG_RUNTIME_DIR": runtime, "GH_TOKEN": "tok"}
+	vars := map[string]string{"XDG_RUNTIME_DIR": runtime, "GH_TOKEN": "tok",
+		"XDG_DATA_HOME": t.TempDir(), "XDG_STATE_HOME": t.TempDir()}
 	env := tickEnv{Getenv: func(k string) string { return vars[k] }, HostToml: host, StateDir: t.TempDir(),
 		Workplace: func(r repoconfig.Repo) workplace.Workplace {
 			t.Errorf("unexpected workplace for %s: this test starts nothing", r.Slug)
 			return newFakeWorkplace(t, r.Slug)
 		}}
+	openBrake(t, &env)
 	return env, filepath.Join(t.TempDir(), "lh.db")
+}
+
+// openBrake gives env a brake that is open: a fresh usage cache at 10% and 10%, and 32 GiB of
+// MemAvailable. The meter has its own clock (t0), apart from env.Now, which tests move by hours;
+// a refresh or a pgrep fails the test, so a fresh cache is what the tick relies on.
+func openBrake(t *testing.T, env *tickEnv) {
+	t.Helper()
+	m := usage.NewMeter(usage.Paths{Dir: t.TempDir()}, usage.DefaultConfig())
+	m.Now = func() time.Time { return t0 }
+	m.RunUsage = func(context.Context, string) ([]byte, error) {
+		t.Error("the meter refreshed: the cache should be fresh")
+		return nil, errors.New("no refresh in this test")
+	}
+	m.ClaudeRunning = func() bool {
+		t.Error("the meter looked for claude")
+		return false
+	}
+	env.Meter = &m
+	env.MemInfo = filepath.Join(t.TempDir(), "meminfo")
+	if err := os.WriteFile(env.MemInfo, []byte("MemTotal: 67108864 kB\nMemAvailable:   33554432 kB\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setUsage(t, *env, 10, 10)
+}
+
+// setUsage writes the usage cache of env's meter, generated ten seconds before its clock.
+func setUsage(t *testing.T, env tickEnv, session, week int) {
+	t.Helper()
+	m := env.Meter
+	s := usage.State{Schema: 1, GeneratedAt: m.Now().Add(-10 * time.Second).UTC().Format("2006-01-02T15:04:05Z"),
+		Session: usage.WindowState{Pct: session}, Week: usage.WindowState{Pct: week}}
+	if err := usage.WriteState(m.Paths.Cache(), s); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // fakeForge points env at a fake GitHub with an empty board and token login lh-bot.
@@ -891,5 +929,122 @@ func TestStandsSessionsErrorIsLoud(t *testing.T) {
 	}
 	if want := "lighthouse: stand o/r: forge down\n"; errOut.String() != want {
 		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+}
+
+// An idle host with a fresh usage cache starts the new issue (the fixture fails the test when
+// the meter refreshes or looks for claude).
+func TestTickIdleHostFreshCacheStarts(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if posted := bodies(srv, 7); len(posted) != 1 || !strings.HasPrefix(posted[0], "🤖 Started\n") {
+		t.Errorf("comments on #7 = %q, want one Started", posted)
+	}
+	if len(w.spawned()) != 1 {
+		t.Errorf("spawns = %+v, want one", w.spawned())
+	}
+}
+
+// deferredRows are the key and value of the deferred rows of repo in tick_state.
+func deferredRows(t *testing.T, db *sql.DB, repo string) map[string]string {
+	t.Helper()
+	rows, err := db.QueryContext(context.Background(), `SELECT key, value FROM tick_state WHERE repo = ? AND kind = 'deferred'`, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[string]string{}
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
+			t.Fatal(err)
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// A usage at the halt threshold defers the start with its reason on stderr and in the tick
+// state; no fingerprint is saved, so an open brake starts it on the next tick and leaves no row.
+func TestTickUsageClosedDefers(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	setUsage(t, env, 90, 10)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	want := "lighthouse: gathered o/r: 1 items (first)\nlighthouse: deferred o/r#7: usage: session 90%, week 10%\n"
+	if errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+	if p := writes(srv); len(p) != 0 || len(w.spawned()) != 0 {
+		t.Errorf("writes %v, spawns %v; want none for a deferred start", p, w.spawned())
+	}
+	conn := openStore(t, db)
+	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+		t.Errorf("tick state = %+v after a deferral, want none", s)
+	}
+	rows := deferredRows(t, conn, "o/r")
+	if len(rows) != 1 || !strings.Contains(rows["7"], "usage: session 90%, week 10%") {
+		t.Errorf("deferred rows = %v, want one for issue 7 with the reason", rows)
+	}
+
+	setUsage(t, env, 10, 10)
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("second tick = %v\n%s", err, errOut.String())
+	}
+	if len(w.spawned()) != 1 {
+		t.Errorf("spawns = %+v after the brake opened, want one", w.spawned())
+	}
+	if rows := deferredRows(t, conn, "o/r"); len(rows) != 0 {
+		t.Errorf("deferred rows = %v after the start, want none", rows)
+	}
+}
+
+// A pause drops the start without a deferred line and with the tick state saved; the flag is
+// in the fingerprint, so the tick after `pause off` gathers again and starts.
+func TestTickPausedStartsNothingAndRegathersAfterOff(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	flag, err := park.PauseFile(env.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := park.WritePause(flag, t0.Add(3*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: gathered o/r: 1 items (first)\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q: a pause defers nothing", errOut.String(), want)
+	}
+	conn := openStore(t, db)
+	if p := writes(srv); len(p) != 0 || len(w.spawned()) != 0 {
+		t.Errorf("writes %v, spawns %v; want none under a pause", p, w.spawned())
+	}
+	if s := tickState(t, conn, "o/r"); s.Fingerprint == "" {
+		t.Errorf("tick state = %+v, want the fingerprint saved under a pause", s)
+	}
+
+	if removed, err := park.ClearPause(flag); err != nil || !removed {
+		t.Fatalf("ClearPause = %v, %v", removed, err)
+	}
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick after pause off = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: gathered o/r: 1 items (changed)\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+	if len(w.spawned()) != 1 {
+		t.Errorf("spawns = %+v after pause off, want one", w.spawned())
 	}
 }

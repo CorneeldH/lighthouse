@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/flock"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -280,5 +282,84 @@ func TestRunNotAccepted(t *testing.T) {
 	}
 	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed {
 		t.Errorf("runs = %+v, want one closed as start_failed", rows)
+	}
+}
+
+// `lighthouse run` checks the pause and the usage, not the slots: a person who runs an issue
+// decides for themselves.
+func TestRunIgnoresSlots(t *testing.T) {
+	full := func(t *testing.T, env tickEnv, db string) {
+		t.Helper()
+		conn := openStore(t, db)
+		for i := 1; i <= 4; i++ {
+			claim(t, conn, "o/x", i, fmt.Sprintf("sess-x%d", i), "infra", "handoff", fmt.Sprintf("start:%d", i), "")
+		}
+	}
+	t.Run("slots full", func(t *testing.T) {
+		env, db := tickFixture(t, repoDir(t, completeRepo))
+		_, w := startable(t, &env)
+		full(t, env, db)
+		var errOut bytes.Buffer
+		if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
+			t.Fatalf("run = %v\n%s", err, errOut.String())
+		}
+		if want := "lighthouse: started o/r#7\n"; errOut.String() != want {
+			t.Errorf("errOut = %q, want %q", errOut.String(), want)
+		}
+		if len(w.spawned()) != 1 {
+			t.Errorf("spawns = %+v, want one", w.spawned())
+		}
+	})
+	t.Run("paused", func(t *testing.T) {
+		env, db := tickFixture(t, repoDir(t, completeRepo))
+		_, w := startable(t, &env)
+		flag, err := park.PauseFile(env.Getenv)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := park.WritePause(flag, t0.Add(3*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		var errOut bytes.Buffer
+		if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
+			t.Fatalf("run = %v\n%s", err, errOut.String())
+		}
+		if want := "lighthouse: nothing to start for o/r#7\n"; errOut.String() != want {
+			t.Errorf("errOut = %q, want %q", errOut.String(), want)
+		}
+		if len(w.spawned()) != 0 {
+			t.Errorf("spawns = %+v under a pause, want none", w.spawned())
+		}
+	})
+}
+
+// run passes the markers of its issue to Decide, so the run the guard parked closes as parked
+// and the usage resume can claim it.
+func TestRunSettlesParked(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	startable(t, &env)
+	const session = "sess-p"
+	conn := openStore(t, db)
+	claim(t, conn, "o/r", 7, session, "", "handoff", "start:7", "")
+	m := park.Marker{SessionID: session, Cwd: "/work", Window: "session", Source: "guard", Controller: true,
+		CreatedAt: t0.Add(-time.Hour).Format(time.RFC3339), ResetAt: t0.Add(time.Hour).Format(time.RFC3339)}
+	dir, err := park.MarkerDir(env.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.Marshal(m)
+	if err := os.WriteFile(filepath.Join(dir, session+".json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var errOut bytes.Buffer
+	if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
+		t.Fatalf("run = %v\n%s", err, errOut.String())
+	}
+	rows := history(t, conn, "o/r")
+	if len(rows) == 0 || rows[0].Open || rows[0].Outcome != runs.Parked {
+		t.Errorf("runs = %+v, want the first closed as parked\n%s", rows, errOut.String())
 	}
 }

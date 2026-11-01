@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
@@ -156,5 +157,32 @@ func TestFingerprintStands(t *testing.T) {
 	}
 	if Fingerprint(mk(map[int64]workplace.Stand{1: workplace.Working, 9: workplace.Done})) != working {
 		t.Error("the stand of a run that is not open changed the fingerprint")
+	}
+}
+
+// The markers and the pause flag decide whether a tick has work: a marker whose reset_at
+// passed hands its run back, and a pause that ends opens the starts again. Order is no change.
+func TestFingerprintMarkersAndPause(t *testing.T) {
+	mk := func(session, created, reset string) park.Marker {
+		return park.Marker{SessionID: session, Controller: true, CreatedAt: created, ResetAt: reset}
+	}
+	a := mk("a", "2026-10-31T10:00:00Z", "2026-10-31T15:00:00Z")
+	b := mk("b", "2026-10-31T10:00:00Z", "2026-10-31T15:00:00Z")
+	until := time.Date(2026, 10, 31, 21, 0, 0, 0, time.UTC)
+	base := Fingerprint(Pre{Markers: []park.Marker{a, b}, PauseUntil: until})
+
+	if got := Fingerprint(Pre{Markers: []park.Marker{b, a}, PauseUntil: until}); got != base {
+		t.Error("marker order changed the fingerprint")
+	}
+	for name, pre := range map[string]Pre{
+		"extra marker":     {Markers: []park.Marker{a, b, mk("c", "2026-10-31T10:00:00Z", "2026-10-31T15:00:00Z")}, PauseUntil: until},
+		"other reset_at":   {Markers: []park.Marker{a, mk("b", "2026-10-31T10:00:00Z", "2026-10-31T16:00:00Z")}, PauseUntil: until},
+		"other created_at": {Markers: []park.Marker{a, mk("b", "2026-10-31T11:00:00Z", "2026-10-31T15:00:00Z")}, PauseUntil: until},
+		"other pause":      {Markers: []park.Marker{a, b}, PauseUntil: until.Add(time.Hour)},
+		"no pause":         {Markers: []park.Marker{a, b}},
+	} {
+		if Fingerprint(pre) == base {
+			t.Errorf("%s: fingerprint unchanged", name)
+		}
 	}
 }

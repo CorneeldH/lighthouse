@@ -15,7 +15,9 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
+	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
@@ -85,6 +87,12 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	}
 	defer func() { _ = st.Close() }()
 
+	facts, err := readHostFacts(ctx, env, st.DB, cfg)
+	if err != nil {
+		return fmt.Errorf("run: the brake cannot check: %w", err)
+	}
+	facts.Brake.Manual = true // a person who runs an issue decides on memory, slots and software
+
 	c := env.client(repo.Slug, token)
 	pre, err := prepare(ctx, st.DB, c, repo)
 	if err != nil {
@@ -93,13 +101,19 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	if pre.Stands, err = stands(ctx, env, cfg, repo, pre.OpenRuns, errOut); err != nil {
 		return err
 	}
+	pre.Markers = facts.Markers[slug]
 	login := sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
 	in, err := repoInput(ctx, st.DB, cfg, c, pre, login, errOut, env.now())
 	if err != nil {
 		return err
 	}
+	// run has no board snapshot of all issues, so Decide must not judge the markers of other
+	// issues (a marker whose issue is not in Items is dropped): it gets those of this issue only.
+	in.Markers = slices.DeleteFunc(slices.Clone(in.Markers), func(m park.Marker) bool {
+		return lastIssueOfSession(in.History, m.SessionID) != issue
+	})
 	var actions []dispatch.Action
-	for _, a := range dispatch.Decide(dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: []dispatch.RepoInput{in}}) {
+	for _, a := range dispatch.Decide(dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: []dispatch.RepoInput{in}, Brake: &facts.Brake}) {
 		if a.Issue == issue && runKinds[a.Kind] {
 			actions = append(actions, a)
 		}
@@ -109,6 +123,16 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 		return fmt.Errorf("run: %w", err)
 	}
 	return runResult(res, repo.Slug, issue, errOut)
+}
+
+// lastIssueOfSession is the issue of the last run of session in history, 0 without one.
+func lastIssueOfSession(history []runs.Row, session string) int {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].SessionID == session {
+			return history[i].Issue
+		}
+	}
+	return 0
 }
 
 // findRepo returns the repo of [dispatch] repos with slug; it must be dispatchable. A repo

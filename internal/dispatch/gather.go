@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -24,6 +25,12 @@ type Pre struct {
 	Items    []Item // board fields and PRs; no comments
 	OpenRuns []runs.OpenRun
 	Stands   map[int64]workplace.Stand // per open run id, set by the caller; missing = not measurable
+	// Markers are the controller markers whose session's last run is in this repo; the
+	// fingerprint and the boundaries of the precheck read them.
+	Markers []park.Marker
+	// PauseUntil is the end of the active pause flag; zero is no pause. It is in the fingerprint,
+	// so a pause that ends makes the next tick gather.
+	PauseUntil time.Time
 }
 
 // Prepare reads the board of repo and keeps the issues of repo.Slug whose Status is
