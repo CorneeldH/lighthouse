@@ -48,8 +48,8 @@
 - Modify: `internal/protocol/render.go` (na `RenderReturned`)
 - Modify: `pack/core/lib/protocol.py:40`
 - Modify: `tests/pack/fixtures/protocol/headers.json` (na `en-rebased`)
-- Modify: `tests/pack/test_headings.py:22-30`
-- Test: `internal/protocol/header_test.go:60-66`, `internal/protocol/render_test.go:59-63`
+- Modify: `tests/pack/test_headings.py:22-30`, `tests/pack/test_protocol.py:73-81` (de `KINDS`-tuple in `test_public_names`)
+- Test: `internal/protocol/header_test.go:60-66`, `internal/protocol/render_test.go` (nieuwe `TestRenderParked`)
 - Installed copy: `.lighthouse/headings.toml`, `.lighthouse/lib/lighthouse_lib/protocol.py`
 
 **Interfaces:**
@@ -57,7 +57,7 @@
 
 - [ ] **Step 1: Write the failing tests**
 
-In `headers.json` twee gevallen: `{"name": "nl-parked", "body": "🤖 Geparkeerd", "kind": "parked"}` en `{"name": "en-parked", "body": "🤖 Parked", "kind": "parked"}`. In `test_headings.py` `NL`: `"kind_parked": "Geparkeerd"`. In `header_test.go` de rij `{KindParked, ...}` in de kinds-tabel. In `render_test.go` de roundtrip-rij `{KindParked, RenderParked([]string{"o/r#5 (In progress)"}, language)}` en:
+In `headers.json` twee gevallen: `{"name": "nl-parked", "body": "🤖 Geparkeerd", "kind": "parked"}` en `{"name": "en-parked", "body": "🤖 Parked", "kind": "parked"}`. In `test_headings.py` `NL`: `"kind_parked": "Geparkeerd"`. In `test_protocol.py` `test_public_names`: `"parked"` achteraan de verwachte `KINDS`-tuple. In `header_test.go` de rij `{KindParked, ...}` in de kinds-tabel. In `render_test.go` **geen** rij in `TestParseHeaderOfRendered`: die lus eist `header.Session == testSession` (`render_test.go:66`) en een Geparkeerd heeft geen sessie. De roundtrip zit in `TestRenderParked`, ook voor `en`:
 
 ```go
 func TestRenderParked(t *testing.T) {
@@ -69,6 +69,9 @@ func TestRenderParked(t *testing.T) {
 	h, ok := ParseHeader(got)
 	if !ok || h.Kind != KindParked || h.Fields["blocked_by"] != "o/r#5 (In progress), x/y#9" {
 		t.Errorf("ParseHeader = %+v, %v", h, ok)
+	}
+	if h, ok := ParseHeader(RenderParked([]string{"o/r#5"}, "en")); !ok || h.Kind != KindParked || h.Session != "" {
+		t.Errorf("en: ParseHeader = %+v, %v", h, ok)
 	}
 }
 ```
@@ -106,7 +109,7 @@ git commit -m "feat(protocol): kind Geparkeerd (#117)"
 
 - [ ] **Step 1: Write the failing test**
 
-`TestPrepareBlockerStatus`: een board met item 7 (Controller, `blocked_by` o/r#5 en x/y#9), item 5 van o/r met Status "In progress", geen item voor x/y#9. Verwacht: `Items[0].BlockedBy` = `[{o/r 5 OPEN false "In progress"} {x/y 9 OPEN false ""}]`. Item 5 zelf staat niet in `Items` (geen dispatch-status).
+`TestPrepareBlockerStatus`, met een eigen kopie van `testRepo` waarvan `StatusOptions` ook `"In progress": "opt-prog"` heeft (de gedeelde `testRepo` in `gather_test.go:21-27` kent die optie niet): een board met item 7 (Controller, `blocked_by` o/r#5 en x/y#9), item 5 van o/r met Status "In progress", geen item voor x/y#9. Verwacht: `Items[0].BlockedBy` = `[{o/r 5 OPEN false "In progress"} {x/y 9 OPEN false ""}]`. Item 5 zelf staat niet in `Items` (geen dispatch-status).
 
 - [ ] **Step 2: Run to verify it fails**
 
@@ -199,7 +202,7 @@ git commit -m "feat(dispatch): parkeren, afmaken en terugzetten in decide (#117)
 - Modify: `internal/dispatch/apply.go`
 - Create: `internal/dispatch/board.go`
 - Modify: `internal/cli/tick.go:277` (`applyActions`)
-- Modify: `internal/forge/forgetest/server.go:360` (`SetStatus` vastleggen)
+- Modify: `internal/forge/forgetest/server.go:360` (`SetStatus` vastleggen), `:62-63` en `:337-344` (fout per operatie)
 - Test: `internal/dispatch/apply_test.go`, `internal/dispatch/board_test.go`, `internal/cli/tick_test.go`
 
 **Interfaces:**
@@ -208,6 +211,7 @@ git commit -m "feat(dispatch): parkeren, afmaken en terugzetten in decide (#117)
   - `type Board interface { SetStatus(ctx context.Context, itemID, status string) error }` in `apply.go`; `Env.Board func(repo string) Board`.
   - `func NewBoard(c StatusSetter, b repoconfig.Board) Board` in `board.go`, met `type StatusSetter interface { SetStatus(ctx context.Context, projectID, itemID, fieldID, optionID string) error }` (`*forge.Client` voldoet). Een status die niet in `b.StatusOptions` staat geeft een fout die de status noemt.
   - `forgetest.Server.StatusSets []map[string]any`: de variabelen van elke `SetStatus`.
+  - `forgetest.Server.FailOps map[string]string`: operatienaam → GraphQL-foutmelding; alleen die operatie antwoordt 200 met die fout en `data: null`, de rest werkt gewoon. `GraphQLErrors` (alle operaties) en `Fail` (op `METHOD path`, dus ook de Board-query) zijn daarvoor onbruikbaar: dan faalt de tick al in `Prepare`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -220,7 +224,7 @@ In `apply_test.go`, met een `fakeBoard` die in dezelfde `callLog` schrijft als `
 
 In `board_test.go`: `TestNewBoardMapsStatus` (`"On hold"` → `projectID`, item, `StatusFieldID`, optie-id `"h1"`) en `TestNewBoardUnknownStatus` (fout met `"Gone"` erin, geen call).
 
-In `tick_test.go`, `TestTickParksBlockedHandoff`: board-item 7 in Controller met een open voorganger en een uitvoerende `handoffComment`; na de tick staat op #7 één nieuwe comment die begint met `"🤖 Geparkeerd"`, en `srv.StatusSets` heeft één entry met `item "I7"` en `option "h1"`. `TestTickParkBoardFailureRetries`: de eerste tick faalt op `SetStatus` (GraphQL-fout) en geeft exit 1; de tweede tick, met de Geparkeerd nu in de comments, post niets nieuws en zet `SetStatus` op `"h1"`.
+In `tick_test.go`, `TestTickParksBlockedHandoff`: board-item 7 in Controller met een open voorganger en een uitvoerende `handoffComment`; na de tick staat op #7 één nieuwe comment die begint met `"🤖 Geparkeerd"`, en `srv.StatusSets` heeft één entry met `item "I7"` en `option "h1"`. `TestTickParkBoardFailureRetries`: de eerste tick draait met `srv.FailOps = {"SetStatus": "boom"}`, post de Geparkeerd en geeft exit 1; daarna `FailOps = nil`, en de tweede tick, met de Geparkeerd nu in de comments, post niets nieuws en zet `SetStatus` op `"h1"`.
 
 - [ ] **Step 2: Run to verify they fail**
 
@@ -257,12 +261,15 @@ git commit -m "feat(dispatch): apply parkeert en zet terug op het board (#117)"
   - `type BoardReader interface { BoardItems(ctx context.Context, projectID string) ([]forge.BoardItem, error) }`; `func ControllerIssues(r BoardReader, slug string, b repoconfig.Board) Filter`: de issues van `slug` waarvan de Status-optie `b.StatusOptions["Controller"]` is.
   - `server.New(site, report, src, inController overview.Filter, leftovers)`.
   - `func controllerFilter(hostToml, repo string, c *forge.Client, errOut io.Writer) (overview.Filter, error)` in `serve.go`.
+  - `serve(ctx, addr, dbPath string, src overview.Source, inController overview.Filter, errOut io.Writer)`: `newServeCommand` bouwt de filter in `RunE` en geeft hem door.
 
 - [ ] **Step 1: Write the failing tests**
 
 - `TestBuildOnlyController` (overview): issues 945 (open Vraag zonder antwoord, de toestand van paia#945 op 2026-10-26: een uitvoerende run met een open Vraag, buiten Controller) en 12 (Teruggegeven) en 13 (open Vraag); filter `{12: true, 13: true}`. Verwacht: `Questions` alleen 13, `Returned` alleen 12, en `Comments` is nooit voor 945 gevraagd.
 - `TestBuildFilterFails`: filter-fout → `Build` faalt met die fout.
 - `TestControllerIssues`: board met o/r#12 in Controller (`"c1"`), o/r#945 in `"In progress"`, x/y#12 in Controller → `{12: true}`.
+- `TestQuestionsEndpointFilter` en `TestReturnedEndpointFilter` (server, `forge_test.go`): `server.New` met een fake-bron (zoals `TestQuestionsEndpoint`) en een filter zonder het issue met de open Vraag of de Teruggegeven → het endpoint geeft een lege lijst; met `nil` staat het issue er wel. Dit bewijst de wiring `New` → `registerForge` → `Build`.
+- `TestServeFilter` (cli, naast `serve_test.go:99`): `serve` met een filter die het issue weglaat → `/api/questions` op het echte adres geeft het niet. Dit bewijst dat `serve` de filter aan `server.New` doorgeeft.
 - `TestControllerFilterFromHostToml` (cli): host.toml met `[dispatch] repos = [<tmp repo met board>]`, `--repo` gelijk aan de slug → filter niet nil; een andere slug → nil; geen host.toml → nil. Een onleesbare host.toml → fout.
 - Bestaande `Build`-aanroepen en `server.New` in tests krijgen `nil`.
 
@@ -273,7 +280,7 @@ Expected: FAIL (te veel argumenten, `undefined: ControllerIssues`).
 
 - [ ] **Step 3: Implement**
 
-`Build` haalt de filter-map vóór `fetchStatuses` op en laat issues buiten de map vallen voordat er comments worden gelezen. `controllerFilter` leest `hostconfig.LoadDispatch(hostToml)` (fout → `serve` start niet), dan per pad `repoconfig.Load`; een repo die niet laadt krijgt één regel op `errOut` en wordt overgeslagen. De eerste repo met `Slug == repo` en een `Board` geeft `ControllerIssues(c, repo, *Board)`. `serve` geeft de filter door aan `server.New`; `newServeCmd` gebruikt `hostconfig.Path()`.
+`Build` haalt de filter-map vóór `fetchStatuses` op en laat issues buiten de map vallen voordat er comments worden gelezen. `controllerFilter` leest `hostconfig.LoadDispatch(hostToml)` (fout → `serve` start niet), dan per pad `repoconfig.Load`; een repo die niet laadt krijgt één regel op `errOut` en wordt overgeslagen. De eerste repo met `Slug == repo` en een `Board` geeft `ControllerIssues(c, repo, *Board)`; heeft dat board geen `StatusOptions["Controller"]`, dan één regel op `errOut` en een `nil`-filter (een lege optie-id zou gelijk zijn aan elk item zonder Status). `serve` geeft de filter door aan `server.New`; `newServeCommand` gebruikt `hostconfig.Path()`.
 
 - [ ] **Step 4: Run tests**
 
@@ -290,18 +297,29 @@ git commit -m "feat(overview): alleen issues in Controller (#117)"
 ### Task 6: Docs en changelog
 
 **Files:**
-- Modify: `docs/tick.md` (sectie *Wat tick doet*, regels 35-46, plus een nieuwe sectie `## Blokkades`)
+- Modify: `docs/tick.md` (sectie *Wat tick doet*, regels 35-46; "een open voorganger" als uitstelreden op regels 66 en 132 eruit; de sectie over `lighthouse run`: een geblokkeerd issue geeft daar `nothing to start`, want `runKinds` filtert park weg; plus een nieuwe sectie `## Blokkades`)
 - Modify: `docs/install.md` (de passage over `/api/questions`)
 - Create: `changelog.d/issue-117-blokkades-on-hold.md`
 
 - [ ] **Step 1: Schrijf**
 
-`docs/tick.md` *Blokkades*: wanneer de tick parkeert (uitvoerende Handoff, actieve voorganger, definitie van actief), de Geparkeerd-comment met `blocked_by`, het afmaken van een half gelukte parkering, het terugzetten, en dat een menselijk On hold blijft staan. `docs/install.md`: het overzicht toont alleen issues in Controller als de repo in `host.toml [dispatch]` staat met een `[forge.board]`; anders alle open issues. Changelog: één alinea in de stijl van `changelog.d/issue-114-decide-apply-keten.md`.
+`docs/tick.md` *Blokkades*: wanneer de tick parkeert (uitvoerende Handoff, actieve voorganger, definitie van actief), de Geparkeerd-comment met `blocked_by`, het afmaken van een half gelukte parkering, het terugzetten, en dat een menselijk On hold blijft staan. `docs/install.md`: het overzicht toont alleen issues in Controller als de repo in `host.toml [dispatch]` staat met een `[forge.board]`; anders alle open issues; `serve` leest dan het board, dus het token heeft scope `project` nodig. Changelog: één alinea in de stijl van `changelog.d/issue-114-decide-apply-keten.md`.
 
 - [ ] **Step 2: Verifieer**
 
-Run: de `[test_gate] command` uit `lighthouse.toml` (`python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command` geeft hem), en `go run ./cmd/lighthouse init --upgrade`.
-Expected: groen; `No changes.`
+Run de Go-KPI's uit `.agents/skills/lighthouse-go-standard/SKILL.md`, de test gate en de dogfood-check:
+
+```bash
+git ls-files -z '*.go' | xargs -0r gofmt -l
+go mod tidy -diff
+go vet ./...
+golangci-lint run ./...
+go test -race -shuffle=on ./...
+bash -c "$(python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command)"
+go run ./cmd/lighthouse init --upgrade
+```
+
+Expected: `gofmt` en `go mod tidy -diff` zonder uitvoer; de overige rc 0; `No changes.` Rapporteer elke uitkomst.
 
 - [ ] **Step 3: Commit**
 
