@@ -280,7 +280,7 @@ export function configReader(path, packs) {
 }
 
 /** What the configuration map says per key, in the order of the data and without a DOM:
-    [{file, table, key, level, levelLabel, required, without, about, readers}]. */
+    [{file, table, key, level, levelLabel, required, without, about, status, readers}]. */
 export function configEntries(data, packs) {
   const entries = [];
   for (const file of data.files) {
@@ -296,6 +296,9 @@ export function configEntries(data, packs) {
           required: key.required,
           without: `Without it: ${key.default === undefined ? "not set" : fallback}`,
           about: key.about,
+          status: key.readers.length
+            ? "Status: works"
+            : "Status: not used yet — config.py accepts it, nothing acts on it.",
           readers: key.readers.map((path) => configReader(path, packs)),
         });
       }
@@ -330,7 +333,7 @@ function configBoxes(entry) {
     box("", "", el("p", "", `Required: ${entry.required}`)),
     box("", "", el("p", "", entry.without)),
     box("Read by", "", readers),
-    box("", "", el("p", "", "Status: works")),
+    box("", "", el("p", "", entry.status)),
   ];
 }
 
@@ -377,7 +380,7 @@ export function renderConfig(root, data, packs, detail) {
       keys = el("div", "config-keys");
       section.node.append(el("h3", "", `[${table}]`), keys);
     }
-    const button = el("button", "config-key status-works");
+    const button = el("button", entry.readers.length ? "config-key status-works" : "config-key");
     button.type = "button";
     button.dataset.key = entry.key;
     button.dataset.level = entry.level;

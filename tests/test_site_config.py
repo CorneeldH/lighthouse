@@ -395,6 +395,13 @@ def test_config_entries_cover_every_key_with_its_label():
     assert entries["usage_guard.controller"]["levelLabel"] == "Advanced"
 
 
+def test_config_entries_say_whether_anything_acts_on_the_key():
+    entries = config_entries()
+    assert entries["test_gate.command"]["status"] == "Status: works"
+    assert entries["paths.history"]["status"] == (
+        "Status: not used yet — config.py accepts it, nothing acts on it.")
+
+
 def test_config_entries_say_what_happens_without_the_key():
     entries = config_entries()
     assert entries["paths.search_dirs"]["without"] == "Without it: [.]"

@@ -1,6 +1,6 @@
 // The system page: the three steps and the sections below them, from data/system.json.
 
-import { initTheme, loadJson, renderStory } from "./map.js?v=cb5549a8";
+import { initTheme, loadJson, renderStory } from "./map.js?v=97605b52";
 
 initTheme(document.getElementById("theme-toggle"));
 
