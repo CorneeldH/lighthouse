@@ -263,8 +263,8 @@ func (refusingWorkplace) Spawn(context.Context, workplace.Workspace, workplace.L
 	return workplace.Session{}, workplace.ErrNotAccepted
 }
 
-// A refused launch is not "nothing to start": the Started stands and the run closed as
-// start_failed, so the next tick tries again.
+// A refused launch is not "nothing to start": the Started stands, a Returned with the reason
+// follows, and the run closed as start_failed, so the next tick tries again.
 func TestRunNotAccepted(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, completeRepo))
 	srv, w := startable(t, &env)
@@ -277,8 +277,12 @@ func TestRunNotAccepted(t *testing.T) {
 		strings.Contains(errOut.String(), "nothing to start") {
 		t.Errorf("errOut = %q, want the result line 'lighthouse: not accepted o/r#7'", errOut.String())
 	}
-	if posted := bodies(srv, 7); len(posted) != 1 || !strings.HasPrefix(posted[0], "🤖 Started\n") {
-		t.Errorf("comments on #7 = %q, want the Started to stay", posted)
+	if !strings.Contains(errOut.String(), "launch of run 1 not accepted: ") {
+		t.Errorf("errOut = %q, want the reason of the refused launch", errOut.String())
+	}
+	if posted := bodies(srv, 7); len(posted) != 2 || !strings.HasPrefix(posted[0], "🤖 Started\n") ||
+		!strings.HasPrefix(posted[1], "🤖 Returned\nreason: start failed: ") {
+		t.Errorf("comments on #7 = %q, want the Started and a Returned with the reason", posted)
 	}
 	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed {
 		t.Errorf("runs = %+v, want one closed as start_failed", rows)

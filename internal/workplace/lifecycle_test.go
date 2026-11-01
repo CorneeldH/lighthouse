@@ -91,13 +91,16 @@ func TestLaunchNotAcceptedReleasesStartFailed(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := takeRun(t, db, 7, lcNow)
 	w := &fakeWP{spawnErr: fmt.Errorf("forge said 422: %w", ErrNotAccepted)}
-	out, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
+	out, reason, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
 	if err != nil || out != NotAccepted {
 		t.Fatalf("Launch = %v, %v; want NotAccepted, nil", out, err)
 	}
 	got := rowOf(t, db, run.ID)
 	if got.outcome != "start_failed" || !strings.Contains(got.reason, "422") || got.session != "" {
 		t.Errorf("row = %+v", got)
+	}
+	if reason != got.reason || !strings.Contains(reason, "forge said 422") {
+		t.Errorf("reason = %q, want the reason of the row %q", reason, got.reason)
 	}
 	if w.spawns != 1 {
 		t.Errorf("spawns = %d, want 1", w.spawns)
@@ -108,9 +111,12 @@ func TestLaunchUncertainKeepsRowOpen(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := takeRun(t, db, 7, lcNow)
 	w := &fakeWP{spawnErr: fmt.Errorf("timeout: %w", ErrUncertain)}
-	out, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
+	out, reason, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
 	if !errors.Is(err, ErrUncertain) || !strings.Contains(err.Error(), "timeout") || out != Uncertain {
 		t.Fatalf("Launch = %v, %v; want Uncertain, error wrapping ErrUncertain with its text", out, err)
+	}
+	if reason != "" {
+		t.Errorf("reason = %q, want none: the run stays open", reason)
 	}
 	if got := rowOf(t, db, run.ID); got.outcome != "" || got.session != "" || got.workspace != "w1" {
 		t.Errorf("row = %+v", got)
@@ -124,9 +130,12 @@ func TestLaunchOtherSpawnErrorIsUncertain(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := takeRun(t, db, 7, lcNow)
 	w := &fakeWP{spawnErr: errors.New("boom")}
-	out, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
+	out, reason, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
 	if err == nil || !strings.Contains(err.Error(), "boom") || out != Uncertain {
 		t.Fatalf("Launch = %v, %v; want Uncertain, error with cause boom", out, err)
+	}
+	if reason != "" {
+		t.Errorf("reason = %q, want none: the run stays open", reason)
 	}
 	if got := rowOf(t, db, run.ID); got.outcome != "" {
 		t.Errorf("row closed: %+v", got)
@@ -137,9 +146,12 @@ func TestLaunchAcceptedSetsSession(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := takeRun(t, db, 7, lcNow)
 	w := &fakeWP{spawned: Session{Key: "k1"}}
-	out, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
+	out, reason, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
 	if err != nil || out != Accepted {
 		t.Fatalf("Launch = %v, %v; want Accepted, nil", out, err)
+	}
+	if reason != "" {
+		t.Errorf("reason = %q, want none", reason)
 	}
 	if got := rowOf(t, db, run.ID); got != (runRow{session: "k1", workspace: "w1"}) {
 		t.Errorf("row = %+v", got)
@@ -154,13 +166,16 @@ func TestLaunchSetWorkplaceFailsReleasesStartFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := &fakeWP{}
-	out, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
+	out, reason, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
 	if out != NotAccepted || err == nil || !strings.Contains(err.Error(), "disk says no") {
 		t.Fatalf("Launch = %v, %v; want NotAccepted, error with the cause", out, err)
 	}
 	got := rowOf(t, db, run.ID)
 	if got.outcome != "start_failed" || !strings.HasPrefix(got.reason, "record workplace: ") {
 		t.Errorf("row = %+v", got)
+	}
+	if reason != got.reason {
+		t.Errorf("reason = %q, want the reason of the row %q", reason, got.reason)
 	}
 	if w.spawns != 0 {
 		t.Errorf("spawns = %d, want 0", w.spawns)
@@ -171,13 +186,16 @@ func TestLaunchPrepareFails(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := takeRun(t, db, 7, lcNow)
 	w := &fakeWP{prepareErr: errors.New("no branch")}
-	out, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
+	out, reason, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{}, lcNow)
 	if err != nil || out != NotAccepted {
 		t.Fatalf("Launch = %v, %v; want NotAccepted, nil", out, err)
 	}
 	got := rowOf(t, db, run.ID)
 	if got.outcome != "start_failed" || got.reason != "prepare: no branch" {
 		t.Errorf("row = %+v", got)
+	}
+	if reason != got.reason || !strings.HasPrefix(reason, "prepare: ") {
+		t.Errorf("reason = %q, want the reason of the row %q", reason, got.reason)
 	}
 	if w.spawns != 0 {
 		t.Errorf("spawns = %d, want 0", w.spawns)

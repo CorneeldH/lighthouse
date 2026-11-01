@@ -4,6 +4,21 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.5.0] - 2026-11-01
+
+### Added
+
+- A map of your repo after `lighthouse init` in `docs/site/repo.html` shows, as a tree, every place `init` writes, with a link to where each is explained. A switch shows what `init` adds and which of your files it edits. A test fails when `init` writes to a place that is not on the map.
+- The web UI has a *Running runs* card, fed by the new read-only `GET /api/runs`: the open and parked runs with their command, trigger, profile, workspace and measured stand, and the deferred starts with their reason. It reads the state the tick writes every tick, so it costs no forge calls. With `[dispatch] repos` in `host.toml`, `serve` now shows every repo listed there instead of the one `--repo`, and every question, returned issue and run carries its `repo`, shown as `owner/name#number`.
+
+### Changed
+
+- The configuration page reads more easily. In `lighthouse.toml` and `host.toml` what a key does now stands as a comment behind the key, aligned per table, with a heading and a blank line per topic. Below the files each table has a title and a short explanation, and a key with a fixed set of values shows them as options with the default highlighted, such as `nl` and `en` for `[project] language`.
+
+### Fixed
+
+- A launch the workplace refuses now names its reason on the tick line and posts a 🤖 Returned *start failed: <reason>* under its 🤖 Started, so the issue shows why no agent runs. An uncertain launch names its cause on the tick line and posts nothing, since an agent may be running.
+
 ## [v0.4.1] - 2026-11-01
 
 ### Fixed
