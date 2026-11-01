@@ -45,27 +45,25 @@ session for one phase of an issue. Most likely nobody is watching.
 - An adversarial review at `round_limit` is no question: follow the skill (`accept-open`, the
   block in the document, commit) and post the usual handoff to the next phase.
 - At `finishing-a-development-branch`, choose push + PR.
-- Before push + PR: `/lighthouse-verify-pr <nr>`, the body through `--body-file`.
+- Before push + PR: `/lighthouse-write-pr <nr>`, the body through `--body-file`.
 - Never wait for CI and never poll `gh pr checks`, also not in `/lighthouse-fix-pr`. After push +
   PR, post the handoff `next: /lighthouse-close-issue <nr>` and stop: the controller judges green
   or red and starts `/lighthouse-fix-pr` when needed. This goes above every rule that tells you
   to wait for a green PR, also above "stop at green" in `lighthouse-fix-pr`.
-- A `/lighthouse-fix-pr` run on a green PR with an unprocessed roborev review processes the
-  findings, posts one answer comment with the marker `<!-- roborev-verwerkt: <sha> -->` and
-  stops, without waiting for CI.
 - Start no background work (`run_in_background`, Monitor, an alarm): claude stays alive in the
   unit after your last answer, and whatever still runs out then can wake your session again
   later. The controller reads that as a run that works again. Nobody else calls you back.
-- End every phase with `/lighthouse-handoff`: it posts the block as `🤖 Handoff` on the issue.
+- End every phase with `/lighthouse-write-handoff`: it posts the block as `🤖 Handoff` on the issue.
   Stop after it, without a `/clear` suggestion or any further tool call.
 - **Native lane**: a run that starts `/superpowers:executing-plans` runs on Sonnet. Dispatch the
   whole-branch review of that skill with `model: "opus"` explicitly, never without a model. If
   such a run posts a handoff for the same phase (context full), it repeats `lane: native`;
   without that field the controller hands the issue back.
-- Never merge. Verifying (`/lighthouse-verify-pr`) is allowed.
+- Never merge. Verifying (`/lighthouse-write-pr`) is allowed.
 - `/lighthouse-close-issue` only when the controller started this run with it (the check after a
   merge). First run `git fetch origin` and measure the acceptance criteria against
   `origin/<default branch>`, not against the worktree branch. Then follow entry B in controller
-  mode (B7) of `lighthouse-close-issue`, without `/lighthouse-handoff`. In every other run, never.
+  mode (B7) of `lighthouse-close-issue`, without `/lighthouse-write-handoff`. In every other run,
+  never.
 - Never `superpowers:brainstorming`: at gate 4c of `lighthouse-start-issue`, post a brainstorm
   handoff (`next: /superpowers:brainstorming`) and stop.

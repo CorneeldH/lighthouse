@@ -185,17 +185,39 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 2. Follow `superpowers:receiving-code-review` per finding: fix and commit, or refute with
    a reason. Read the severity critically: in one calibration the user found 3 of 4 tested
    `high` findings not `high`. Take high and medium seriously. Fix a low only if that is trivial.
+   Every fix is a commit of its own whose body has the line `roborev: <path>:<line> (<severity>)`.
 3. Push once (section 5) — only if there is something to push. If you refute *all* findings,
    there is nothing to push and you skip this step.
 4. Post **always** one answer comment, also if you pushed nothing and also if you refuted every
    finding: the marker is the only signal by which the controller (if present) sees the round as
    done. Without the marker it returns the issue, or after a push it starts another fix-pr run (at
    most three).
-   `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh pr comment <nr> --repo "$R" --body-file <file>`. At the top is
-   the marker `<!-- roborev-verwerkt: <sha> -->`, with `<sha>` literally from the heading
-   `` ## roborev: Review Complete (`<sha>`) `` (or `Combined Review`, same form). Below it a table with the columns *finding
-   (path:line)*, *severity* and *outcome*. The outcome is `fixed in <commit>`,
-   `refuted: <reason>` or `left: low, not trivial`.
+   The comment comes from the renderer `lighthouse-write-pr` uses too, so both routes leave the
+   same log. `<scratch>` is the scratchpad or `$TMPDIR`. Save the roborev comment, the same one
+   the diagnosis shows:
+
+   ```bash
+   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues/<nr>/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' | tail -1 | jq -r . > <scratch>/roborev-ci.md
+   python3 .lighthouse/scripts/roborev_gate.py classify <scratch>/roborev-ci.md
+   ```
+
+   `classify` prints `sha` (literally from the heading `` ## roborev: Review Complete (`<sha>`) ``,
+   or `Combined Review`) and the `findings`. Write the decisions to `<scratch>/decisions.json`: a
+   list with one object per finding, keys `path`, `line`, `severity` (as `classify` printed them),
+   `uitkomst` (`fixed`, `refuted` or `left`), `commit` (the fix commit, else `null`) and `reden`
+   (the reason, `null` with `fixed`; for a low that is not trivial: `low, not trivial`). Then:
+
+   ```bash
+   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
+   python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
+   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh pr comment <nr> --repo "$R" --body-file <scratch>/comment.md
+   ```
+
+   `record` exits 2 when the decisions do not match the findings one to one; the message says
+   which, so fix the file and run it again. The renderer puts the marker
+   `<!-- roborev-verwerkt: <sha> -->` at the top, then a one-line `roborev-log` block for scripts
+   and a table with the outcome per finding: `fixed in <commit>`, `refuted: <reason>` or
+   `left: <reason>`.
 5. Stop — the marker is there then, also for a round without a push. Request no new review
    (no close and reopen) and no `roborev fix` or `roborev refine`. The user requests a new review
    themselves.

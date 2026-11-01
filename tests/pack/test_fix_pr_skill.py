@@ -167,3 +167,10 @@ def test_variants_differ_only_in_the_sandbox_wording() -> None:
     assert "dangerouslyDisableSandbox" not in _section(AGENTS, DIAGNOSE_HEADING)
     claude = [line for line in CLAUDE.splitlines() if line not in AGENTS.splitlines()]
     assert len(claude) == 2, claude
+
+
+def test_roborev_section_renders_the_shared_log() -> None:
+    for text in TEXTS:
+        s6 = text[text.index("## 6.") : text.index("## Non-negotiable")]
+        for needle in ("roborev_comment.py render", "--bron ci", "roborev_gate.py record", "--raw"):
+            assert needle in s6, needle

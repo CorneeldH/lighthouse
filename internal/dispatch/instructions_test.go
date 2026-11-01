@@ -3,6 +3,7 @@ package dispatch
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -121,5 +122,34 @@ func TestRunInstructionsPinnedText(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("run.md lacks %q", want)
 		}
+	}
+}
+
+// Every `/lighthouse-<name>` run.md tells a run to start must be a skill of pack/core: a renamed
+// skill left behind here is a command the run cannot start.
+func TestRunInstructionsNameExistingSkills(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("instructions", "run.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, "Before push + PR: `/lighthouse-write-pr <nr>`") {
+		t.Error("run.md does not send a run through /lighthouse-write-pr before push + PR")
+	}
+	names := regexp.MustCompile("/lighthouse-([a-z0-9-]+)").FindAllStringSubmatch(text, -1)
+	if len(names) == 0 {
+		t.Fatal("run.md names no /lighthouse- skill")
+	}
+	for _, m := range names {
+		if _, err := os.Stat(filepath.Join("..", "..", "pack", "core", "skills", m[1], "SKILL.md")); err == nil {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join("..", "..", "pack", "core", "skills", m[1], "claude", "SKILL.md")); err != nil {
+			t.Errorf("run.md names /lighthouse-%s, which is no skill in pack/core/skills", m[1])
+		}
+	}
+	// The dispatcher starts fix-pr only on a red PR (#119): run.md carries no roborev rule.
+	if strings.Contains(text, "roborev") {
+		t.Error("run.md still carries a roborev rule")
 	}
 }
