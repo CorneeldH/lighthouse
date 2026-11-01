@@ -554,6 +554,8 @@ func latest(a, b time.Time) time.Time {
 
 // silentForge falls back on the forge state when the transcript is not measurable: a waiting
 // session whose forge time is max_wait old. Without a forge time nothing says how long it waits.
+// Like silent, it counts from the run's start at the earliest: a resume reuses the session, and
+// its forge time, of an earlier run.
 func (c runCtx) silentForge() (Action, bool) {
 	if c.maxWait() <= 0 || c.state.Transcript != nil || !c.hasStand || c.stand != workplace.Waiting || c.pendingPermission() != nil {
 		return Action{}, false
@@ -561,7 +563,7 @@ func (c runCtx) silentForge() (Action, bool) {
 	if c.state.SessionAt.IsZero() {
 		return Action{}, false
 	}
-	if c.in.Now.Sub(c.state.SessionAt) < c.maxWait() {
+	if c.in.Now.Sub(latest(c.state.SessionAt, c.row.StartedAt)) < c.maxWait() {
 		return Action{}, false
 	}
 	a := c.returned("reason_silent_forge", "")

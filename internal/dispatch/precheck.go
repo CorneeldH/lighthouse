@@ -122,8 +122,8 @@ func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action,
 // its permission prompt, per marker its reset_at, and the start of the night window today and
 // yesterday, in the zone of now. Activity and prompts stay out of the fingerprint; these
 // boundaries make the tick look when their MaxWait runs out. Decide counts silence from the
-// later of the last event and the run's start, so its moment is one of the two MaxWait
-// boundaries; a note from before the start only adds a wake that decides nothing.
+// later of the last activity and the run's start, so its moment is one of the two MaxWait
+// boundaries; activity or a note from before the start only adds a wake that decides nothing.
 func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, states map[int64]RunState, markers []park.Marker, now time.Time) []time.Time {
 	var out []time.Time
 	for _, r := range open {
