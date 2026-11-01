@@ -164,7 +164,8 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
 - Een marker met `pause: true` hervat zodra er geen pauze meer geldt, ook vóór zijn `reset_at`; de
   toets `reset_at <= nu` slaat tick bij hem over.
 - Een marker die nooit meer hervat (de laatste run sloot als Handoff, Vraag of Klaar, de herkansing
-  is op, of het issue is gesloten of uit Controller en On hold) ruimt tick op, anders bleef hij in
+  is op, de laatste run sloot als `parked` maar de sleutel van de marker is al gebruikt, of het
+  issue is gesloten of uit Controller en On hold) ruimt tick op, anders bleef hij in
   `in_use` tellen. Een marker van een repo die deze tick niet gathert, blijft staan.
 - De uitgestelde starts staan met hun reden in de tickstand (`tick_state`, soort `deferred`). Bij een
   pauze valt de start weg zonder defer, zodat tick zijn vingerafdruk bewaart; de pauzevlag zit zelf
@@ -184,7 +185,9 @@ lighthouse pause off
 `lighthouse pause` schrijft de pauzevlag: tot het einde ervan start de dispatcher niets. Een run die
 al loopt, gaat door; een run die de controller parkeert, hervat na het einde (of na `pause off`).
 
-- Zonder `--until` duurt de pauze tot het begin van `[dispatch] night` (21:00 bij de standaard).
+- Zonder `--until` duurt de pauze tot het eerstvolgende begin van `[dispatch] night` (21:00 bij de
+  standaard): vandaag, of morgen als dat begin vandaag al voorbij is. Een lege `night` (begin gelijk
+  aan einde) heeft geen begin; dan is `--until` verplicht.
 - Tijdens `night` is `--until` verplicht; de fout stelt de eerstvolgende hele uren voor.
 - `--until HH:MM` is het eerstvolgende moment met die klokstand, binnen 24 uur. Een klokstand die
   verder weg ligt, of die niet bestaat (de uren die de zomertijd overslaat), is een fout.
