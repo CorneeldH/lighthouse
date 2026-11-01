@@ -79,7 +79,7 @@ jobs:
         run: gitleaks git . --log-opts="$BASE..$HEAD" --config .gitleaks.toml --no-banner --redact --exit-code 1
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked
-      - run: uv run pytest -q tests/test_pre_push_secret_scan.py
+      - run: uv run pytest -q tests/test_pre_push_secret_scan.py tests/test_checkpoint_scan.py
         env:
           LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
 

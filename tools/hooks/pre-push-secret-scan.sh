@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Scan every push for secrets before it leaves this machine (#194).
+# Documentation: docs/secret-scan.md (#198).
 #
 # Why this exists. lighthouse records agent sessions with entire: a checkpoint is a
 # verbatim copy of the transcript, so it holds everything an agent read, a gitignored
