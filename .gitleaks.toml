@@ -17,6 +17,16 @@ targetRules = ["generic-api-key"]
 regexTarget = "match"
 regexes = ['''^row\.TriggerKey, triggerHandoff\+"$''']
 
+# generic-api-key reads `"oauth-2025-04-20","interleaved-thinking-2025-05-14"` as a key
+# with a value: that is the name of the Anthropic beta header and a feature date, in
+# every Claude transcript. Scoped to the rule and to this exact match, so a real key on
+# that line stays red.
+[[allowlists]]
+description = "Anthropic beta-header name and feature date in transcripts, not a secret"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''^oauth-2025-04-20","interleaved-thinking-2025-05-14"$''']
+
 # entire's local transcript cache. `.entire/.gitignore` excludes it, so it can never
 # be committed: skipping it hides nothing in the repo. Without this entry a local
 # `gitleaks dir .` is red on conversation text, and a gate that is red for no reason

@@ -395,3 +395,22 @@ def test_entire_checkpoints_leave_only_through_the_scan(tmp_path):
     blocked = push("ckpt", "refs/entire/checkpoints/*:refs/entire/checkpoints/*")
     assert blocked.returncode != 0 and "BLOCKED" in blocked.stderr
     assert leak not in _remote_refs(ckpt)
+
+
+@needs_gitleaks
+def test_gitleaks_config_allows_beta_header_name(tmp_path):
+    line = '{"anthropic-beta":"oauth-2025-04-20","interleaved-thinking-2025-05-14"}\n'
+    clean = tmp_path / "t.jsonl"
+    clean.write_text(line, encoding="utf-8")
+    dirty = tmp_path / "u.jsonl"
+    dirty.write_text(line + FAKE_PAT + "\n", encoding="utf-8")
+
+    def scan(path: Path) -> int:
+        return subprocess.run(
+            ["gitleaks", "dir", str(path), "--config", str(ROOT / ".gitleaks.toml"),
+             "--no-banner", "--exit-code", "1"],
+            capture_output=True, text=True,
+        ).returncode
+
+    assert scan(clean) == 0
+    assert scan(dirty) == 1
