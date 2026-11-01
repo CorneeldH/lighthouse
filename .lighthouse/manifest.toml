@@ -905,7 +905,7 @@ kind = "file"
 path = ".lighthouse/scripts/roborev_gate.py"
 package = "core"
 version = "dev"
-sha256 = "eef6fefac7e50a9d331589c350025761feb52869289ad8c8a37b94abdbe3ce7e"
+sha256 = "24da958a5ece589b26fff628bd9bffd22dee9a091d3f5a1847102e9344cdcbbf"
 
 [[unit]]
 kind = "file"

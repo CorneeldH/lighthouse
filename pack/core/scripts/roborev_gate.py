@@ -324,19 +324,29 @@ def record(
     sha: str | None = None,
     decisions: list[dict] | None = None,
     out: pathlib.Path | None = None,
+    raw: pathlib.Path | None = None,
 ) -> pathlib.Path:
-    """Write the state file: a skip with its reason, or done with one decision per finding."""
+    """Write the state file: a skip with its reason, or done with one decision per finding.
+
+    The decisions are checked one to one against the findings of a raw review: `raw` when
+    given (fix-pr passes the CI comment), else the branch's local `<stem>.md`, but only
+    without `out`: a record elsewhere is not about the local review.
+    """
     if (skip is None) == (sha is None):
         raise ValueError("give either skip or sha")
-    state, raw = _paths(root)
+    state, local = _paths(root)
     target = out or state
+    if raw is not None and not raw.is_file():
+        raise ValueError(f"{raw}: no such raw review")
+    if raw is None and out is None:
+        raw = local
     head = _git(root, "rev-parse", "HEAD")
     data: dict = {"range": f"{_base(root)}..{head}"}
     if skip is not None:
         data.update({"uitkomst": "skip", "reden": skip})
     else:
         findings = None
-        if raw.is_file():
+        if raw is not None and raw.is_file():
             verdict = classify(raw.read_text())
             findings = verdict["findings"] if verdict["verdict"] == "done" else None
         data.update({"uitkomst": "done", "sha": sha, "bevindingen": _validate(decisions or [], findings)})
@@ -373,6 +383,7 @@ def _run(argv: list[str]) -> str:
     rec.add_argument("--done")
     rec.add_argument("--decisions")
     rec.add_argument("--out")
+    rec.add_argument("--raw")
     args = parser.parse_args(argv)
     root = pathlib.Path(_git(pathlib.Path.cwd(), "rev-parse", "--show-toplevel"))
     if args.command == "gate":
@@ -403,7 +414,8 @@ def _run(argv: list[str]) -> str:
         if not isinstance(decisions, list):
             raise ValueError(f"{args.decisions}: not a JSON list")
     return str(record(root, skip=args.skip, sha=args.done, decisions=decisions,
-                      out=pathlib.Path(args.out) if args.out else None))
+                      out=pathlib.Path(args.out) if args.out else None,
+                      raw=pathlib.Path(args.raw) if args.raw else None))
 
 
 def main(argv: list[str] | None = None) -> int:

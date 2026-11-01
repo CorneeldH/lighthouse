@@ -434,6 +434,46 @@ def test_record_honours_out(repo, tmp_path):
     assert json.loads(target.read_text())["reden"] == "x"
 
 
+def test_record_out_validates_against_the_given_raw_not_the_local_review(repo, tmp_path):
+    # The branch has its own local review (two findings); the CI review has one other finding.
+    _write_raw(repo, FIX("review-complete.md"))
+    ci = tmp_path / "ci.md"
+    ci.write_text("## roborev: Review Complete (`abc1234`)\n\n### High\n\n- a.py:3: bad\n")
+    target = tmp_path / "ci.json"
+    decision = _decisions(("a.py", 3, "high", "refuted", None, "geen probleem"))
+    assert rg.record(repo, sha="abc1234", decisions=decision, out=target, raw=ci) == target
+    assert json.loads(target.read_text())["bevindingen"] == decision
+    with pytest.raises(ValueError):
+        rg.record(repo, sha="abc1234", decisions=_decisions(*COMPLETE_DECISIONS), out=target, raw=ci)
+
+
+def test_record_out_without_raw_ignores_the_local_review(repo, tmp_path):
+    _write_raw(repo, FIX("review-complete.md"))
+    target = tmp_path / "ci.json"
+    decision = _decisions(("a.py", 3, "high", "refuted", None, "geen probleem"))
+    rg.record(repo, sha="abc1234", decisions=decision, out=target)
+    assert json.loads(target.read_text())["bevindingen"] == decision
+
+
+def test_record_refuses_a_missing_raw(repo, tmp_path):
+    decision = _decisions(("a.py", 3, "high", "refuted", None, "geen probleem"))
+    with pytest.raises(ValueError):
+        rg.record(repo, sha="abc1234", decisions=decision, out=tmp_path / "ci.json", raw=tmp_path / "nope.md")
+    assert not (tmp_path / "ci.json").exists()
+
+
+def test_cli_record_out_and_raw(repo, tmp_path):
+    _write_raw(repo, FIX("review-complete.md"))
+    ci = tmp_path / "ci.md"
+    ci.write_text("## roborev: Review Complete (`abc1234`)\n\n### High\n\n- a.py:3: bad\n")
+    good, bad = tmp_path / "good.json", tmp_path / "bad.json"
+    good.write_text(json.dumps(_decisions(("a.py", 3, "high", "left", None, "later"))))
+    bad.write_text(json.dumps(_decisions(*COMPLETE_DECISIONS)))
+    args = ("record", "--done", "abc1234", "--out", str(tmp_path / "ci.json"), "--raw", str(ci))
+    assert _cli(repo, *args, "--decisions", str(good)).returncode == 0
+    assert _cli(repo, *args, "--decisions", str(bad)).returncode == 2
+
+
 def test_record_needs_skip_or_sha(repo):
     with pytest.raises(ValueError):
         rg.record(repo)
