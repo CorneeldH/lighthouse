@@ -21,6 +21,15 @@ def pytest_configure(config):
         raise pytest.UsageError(str(err)) from err
 
 
+def pytest_report_header(config):
+    # Under xdist the closing line lacks `N deselected`; this hook runs in the main process, so
+    # the header names the part there too.
+    shard = config.stash[SHARD]
+    if shard is None:
+        return []
+    return [f"{ENV}={shard[0]}/{shard[1]}"]
+
+
 def pytest_collection_modifyitems(config, items):
     shard = config.stash[SHARD]
     if shard is None:

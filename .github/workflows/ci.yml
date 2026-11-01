@@ -68,7 +68,8 @@ jobs:
       # public repo. A fixed count would oversubscribe a smaller runner. Locally, a plain
       # `uv run pytest -q` stays serial. The suite is bound by cores (104 s on 4 vCPU, #151), so
       # each matrix job runs one third: tests/conftest.py splits it on the crc32 of the test id.
-      - run: uv run pytest -q -n auto
+      # No `-q`: it hides the header, and under xdist only the header names the part (#163).
+      - run: uv run pytest -n auto
         env:
           LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3
       - if: matrix.shard == 1
