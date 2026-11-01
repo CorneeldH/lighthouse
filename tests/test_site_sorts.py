@@ -40,7 +40,7 @@ def test_glyph_follows_the_sort_not_the_trigger(item, glyph):
     assert run_map(f"m.glyphOf({json.dumps(item)})") == glyph
 
 
-@pytest.mark.parametrize("page", ["chain.html", "session.html"])
+@pytest.mark.parametrize("page", ["loop.html", "session.html"])
 def test_how_it_starts_legend_is_gone(page):
     assert "How it starts" not in (SITE / page).read_text(encoding="utf-8")
 
@@ -53,7 +53,7 @@ def test_legends_name_known_sorts():
         counts[path.name] = len(found)
         for names in found:
             assert set(names.split()) <= known, f"{path.name}: unknown sort in {names!r}"
-    for page in ["chain.html", "session.html", "reference.html"]:
+    for page in ["loop.html", "session.html", "reference.html"]:
         assert counts.get(page), f"{page} has no data-sorts legend"
     # The system page is read without one: every box names what it is.
     assert counts.get("system.html") == 0

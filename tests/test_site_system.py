@@ -170,8 +170,8 @@ def test_fixture_page_pointing_nowhere_is_flagged():
 
 def test_fixture_anchor_pointing_nowhere_is_flagged():
     system, item = fixture_item(2)
-    item["href"] = "chain.html#nope"
-    assert link_problems(system) == ["The loop: chain.html has no id nope"]
+    item["href"] = "loop.html#nope"
+    assert link_problems(system) == ["The loop: loop.html has no id nope"]
 
 
 def test_fixture_section_anchor_pointing_nowhere_is_flagged():

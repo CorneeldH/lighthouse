@@ -89,7 +89,7 @@
           "kind": "lighthouse",
           "label": "The loop",
           "note": "From an issue to a closed issue, over several sessions.",
-          "href": "chain.html"
+          "href": "loop.html"
         },
         {
           "form": "session",

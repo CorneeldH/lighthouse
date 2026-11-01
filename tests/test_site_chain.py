@@ -292,8 +292,15 @@ def test_chain_routes_are_the_known_ones():
 
 def test_the_chain_map_is_called_the_loop():
     assert load("chain.json")["title"] == "The loop"
-    html = (SITE / "chain.html").read_text(encoding="utf-8")
+    html = (SITE / "loop.html").read_text(encoding="utf-8")
     assert "<title>The loop</title>" in html
     assert '<h1 id="title">The loop</h1>' in html
     why = html.split('<details class="why">', 1)[1].split("</details>", 1)[0]
     assert not re.search(r"\bchain\b", why, re.IGNORECASE)
+
+
+def test_the_old_chain_page_forwards_to_the_loop():
+    html = (SITE / "chain.html").read_text(encoding="utf-8")
+    assert '<meta http-equiv="refresh" content="0; url=loop.html">' in html
+    assert 'href="loop.html"' in html
+
