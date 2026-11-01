@@ -15,7 +15,7 @@
     {
       "id": "tool-call",
       "label": "The tool or skill call",
-      "blurb": "Bash, Edit or Write runs, or the Skill tool loads a skill"
+      "blurb": "Bash, Edit, Write, Skill or Agent runs"
     },
     {
       "id": "post-tool",
@@ -34,6 +34,25 @@
     }
   ],
   "chips": [
+    {
+      "id": "issue-impact-scout",
+      "phase": "tool-call",
+      "row": 0,
+      "kind": "lighthouse",
+      "trigger": "skill",
+      "label": "issue-impact-scout",
+      "what": "A narrow, read-only agent that scouts the codebase and returns one IMPACT PACK of facts and evidence.",
+      "how": [
+        "It receives the issue body, the acceptance criteria, the milestone sections, the route and the absolute worktree path, and reads only inside that path with Read, Grep and Glob.",
+        "It turns the criteria into search terms and finds the affected components, their callers and the tests that count them, the nearest existing pattern, the rules that apply and the test command.",
+        "It stops at 35 searches and returns fixed sections in which every fact carries a file:line reference and every gap is marked UNKNOWN.",
+        "If the scout fails, start-issue continues the route without the pack."
+      ],
+      "when": "When start-issue starts it through the Agent tool at gate 4b and 4c, once the worktree exists; it runs as a subagent, and its end is a Subagent stop.",
+      "without": "The design or plan starts without a fact sheet of what the issue touches.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/agents/issue-impact-scout.md"
+    },
     {
       "id": "test-standard",
       "phase": "tool-call",
@@ -657,6 +676,14 @@
       "chips": [
         "worktree-check",
         "main-commit-gate"
+      ]
+    },
+    {
+      "id": "agent",
+      "label": "I send an agent to scout",
+      "chips": [
+        "issue-impact-scout",
+        "usage-gate-subagent"
       ]
     },
     {

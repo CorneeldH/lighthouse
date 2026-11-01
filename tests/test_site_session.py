@@ -143,11 +143,17 @@ def test_phases_are_the_moments_of_a_turn():
 def test_writing_skills_load_at_the_skill_call():
     # A skill loads through the Skill tool, so it sits in the column of the call, between its hooks.
     chips = load("session.json")["chips"]
-    loaded = {c["id"]: (c["kind"], c["trigger"]) for c in chips if c["phase"] == "tool-call"}
+    loaded = {c["id"]: c["kind"] for c in chips if c["phase"] == "tool-call" and c["trigger"] == "description"}
     assert loaded == {
-        skill: ("lighthouse", "description")
-        for skill in ["test-standard", "go-standard", "python-standard", "shell-standard"]
+        skill: "lighthouse" for skill in ["test-standard", "go-standard", "python-standard", "shell-standard"]
     }
+
+
+def test_the_agent_runs_at_the_agent_call_not_on_the_loop():
+    # An agent runs as a subagent through the Agent tool: a moment inside a session, not a step of the loop.
+    scout = chip(load("session.json"), "issue-impact-scout")
+    assert (scout["phase"], scout["source"]) == ("tool-call", REPO_BLOB + "pack/core/agents/issue-impact-scout.md")
+    assert "issue-impact-scout" not in {c["id"] for c in load("chain.json")["chips"]}
 
 
 def test_routes_light_up_the_most_hooks_first():
@@ -161,6 +167,7 @@ def test_routes_are_the_situations():
         "main-commit": "I commit on main", "red-tests": "I commit with red tests",
         "pr-evidence": "I open a PR without evidence", "usage-limit": "My limit is almost reached",
         "dead-link": "I write a dead link", "write-gates": "I write code a gate rejects",
+        "agent": "I send an agent to scout",
     }
 
 
