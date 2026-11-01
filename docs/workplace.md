@@ -117,7 +117,8 @@ opruimen stopt haar nooit.
 - `Accepted`: de rij heeft de sessiekey.
 - `NotAccepted`: de rij is gesloten als `start_failed`, met de fout van `Prepare` of `Spawn` als reden.
   Mislukt `SetWorkplace`, dan sluit `Launch` de rij ook als `start_failed` (er is niets gestart, en een
-  rij zonder `workspace_id` zou nooit sluiten).
+  rij zonder `workspace_id` zou nooit sluiten). `Launch` geeft die reden terug; apply zet hem op de
+  logregel van de tick en in de 🤖 Teruggegeven onder de Gestart (zie [tick.md](tick.md)).
 - `Uncertain`: `Launch` geeft **tegelijk een fout** terug, alleen als diagnose (de oorzaak van de twijfel).
   De rij blijft open zonder sessie. De aanroeper (#114) mag voor dit paar nooit opnieuw spawnen.
 

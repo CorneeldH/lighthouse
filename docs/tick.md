@@ -107,6 +107,13 @@ het issue. Daarom leest tick de runhistorie pas ná de comments. Wie de Gestart 
 rij, en tick geeft een verse run nooit terug als wees (`runstaat kwijt`). Claimen tick en `run`
 dezelfde trigger tegelijk, dan wint één `runs.Take`; de ander post niets.
 
+**Een geweigerde of onzekere launch.** Weigert de werkplek de launch, dan meldt apply
+`<repo>#<n>: launch of run <id> not accepted: <reden>` op stderr, op één regel. Onder de 🤖 Gestart
+post het een 🤖 Teruggegeven *start mislukt: <reden>* met de sessie van de run, en de run is gesloten
+als `start_failed`. De volgende tick start een tweede poging, met een nieuwe Gestart; tot dan toont de
+UI het issue als teruggegeven. Een onzekere launch geeft `<repo>#<n>: launch of run <id> uncertain:
+<fout>` en post niets op het issue: er kan een agent draaien. Decide beslist later over de open run.
+
 Run-instructies en dragers staan onder `${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. De
 forge-kant (workspace, agent starten, bezet, opruimen) staat in [workplace.md](workplace.md). Een
 Vraag aan de gebruiker vanuit de werkplek post `lighthouse ask`, zie [ask.md](ask.md).
@@ -163,8 +170,9 @@ Apply voert de uitkomst uit. Een Teruggegeven post eerst en sluit de rij dan als
 de sessie-id van de run, niet op de forge-sleutel: de werkplek zoekt het proces op die id. Een stop
 of vergeet op een rij zonder sessie of werkplek slaat apply over. Mislukt het stoppen na de post, dan
 ziet de volgende tick regel 4 en post niets opnieuw: ze stopt of vergeet en sluit alleen. Een
-`start_failed` zonder Teruggegeven krijgt de bestaande tweede poging; na twee mislukte pogingen geeft
-tick het issue terug met de oorzaak (*start mislukt: …*).
+`start_failed` krijgt de bestaande tweede poging. Een geweigerde launch post apply zelf al een
+Teruggegeven met de oorzaak (*start mislukt: …*); na twee mislukte pogingen post tick die alleen als
+de post van apply mislukte.
 
 ## Exitcodes
 
@@ -231,8 +239,8 @@ Het eindigt met één regel op stderr, alle vier met exitcode 0:
 
 - `lighthouse: started <repo>#<n>`;
 - `lighthouse: deferred <repo>#<n>: <reden>` (buiten het `night`-venster, of een bezette werkplek);
-- `lighthouse: not accepted <repo>#<n>`: de werkplek weigerde de launch. De 🤖 Gestart blijft staan,
-  de run is gesloten als `start_failed`, en de volgende tick behandelt het als elke mislukte start
+- `lighthouse: not accepted <repo>#<n>`: de werkplek weigerde de launch. Onder de 🤖 Gestart staat
+  een Teruggegeven met de reden, de run is gesloten als `start_failed`, en de volgende tick behandelt het als elke mislukte start
   (een tweede poging, na twee mislukte pogingen een Teruggegeven);
 - `lighthouse: nothing to start for <repo>#<n>`, ook als de tick de claim van dezelfde trigger net
   won: dan post `run` niets (zie *De volgorde van een start*).
