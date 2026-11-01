@@ -86,7 +86,11 @@ func githubToken(getenv func(string) string) string {
 // [dispatch] of the host.toml at hostToml and has a [forge.board]. Otherwise it returns nil:
 // without [dispatch] the overview shows every open issue, as in M1. A host.toml that does not
 // load is an error; a served repo that does not load gets one line on errOut and is skipped.
+// Without repo no filter can apply, so host.toml is not read.
 func controllerFilter(hostToml, repo string, c *forge.Client, errOut io.Writer) (overview.Filter, error) {
+	if repo == "" {
+		return nil, nil
+	}
 	cfg, err := hostconfig.LoadDispatch(hostToml)
 	if err != nil {
 		return nil, err

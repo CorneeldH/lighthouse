@@ -319,10 +319,7 @@ status_field_id = "SF"
 func TestControllerFilterFromHostToml(t *testing.T) {
 	served := repoDir(t, completeRepo)
 	broken := repoDir(t, "[forge")
-	unreadable := filepath.Join(t.TempDir(), "host.toml")
-	if err := os.WriteFile(unreadable, []byte("[dispatch\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	unreadable := unreadableHostToml(t)
 	tests := []struct {
 		name       string
 		hostToml   string
@@ -357,5 +354,48 @@ func TestControllerFilterFromHostToml(t *testing.T) {
 
 	if _, err := controllerFilter(unreadable, "o/r", forge.New("o/r", "t"), io.Discard); err == nil {
 		t.Error("controllerFilter on an unreadable host.toml = nil error, want one")
+	}
+
+	// Without --repo no filter applies, so a broken host.toml does not stop serve.
+	f, err := controllerFilter(unreadable, "", forge.New("", "t"), io.Discard)
+	if err != nil || f != nil {
+		t.Errorf("controllerFilter without repo = (%v, %v), want (nil, nil)", f != nil, err)
+	}
+}
+
+// unreadableHostToml writes a host.toml that does not parse and returns its path.
+func unreadableHostToml(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "host.toml")
+	if err := os.WriteFile(path, []byte("[dispatch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestServeCommandStopsOnUnreadableHostToml(t *testing.T) {
+	t.Setenv("LIGHTHOUSE_HOST_TOML", unreadableHostToml(t))
+	t.Setenv("GH_TOKEN", "t")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errOut := &syncBuf{}
+	root := NewRoot(strings.NewReader(""), io.Discard, errOut)
+	root.SetArgs([]string{"serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"),
+		"--repo", "o/r"})
+	done := make(chan error, 1)
+	go func() { done <- root.ExecuteContext(ctx) }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("serve = nil, want the host.toml error")
+		}
+	case <-time.After(5 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("serve still running after 5s, want it to stop on the host.toml error")
+	}
+	if strings.Contains(errOut.String(), "listening") {
+		t.Errorf("serve started listening: %q", errOut.String())
 	}
 }
