@@ -174,3 +174,11 @@ def test_roborev_section_renders_the_shared_log() -> None:
         s6 = text[text.index("## 6.") : text.index("## Non-negotiable")]
         for needle in ("roborev_comment.py render", "--bron ci", "roborev_gate.py record", "--raw"):
             assert needle in s6, needle
+
+
+def test_roborev_section_stops_on_an_unreadable_ci_review() -> None:
+    """`classify` skip has no sha for `record --done`: the skill must say what to do instead."""
+    for text in TEXTS:
+        s6 = text[text.index("## 6.") : text.index("## Non-negotiable")]
+        assert "`classify` prints `verdict` `skip`" in s6
+        assert "render and post nothing" in s6

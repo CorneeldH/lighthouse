@@ -112,8 +112,17 @@ network.
 
    Exit 2: the decisions do not match the findings one to one, or one is inconsistent; the
    message says which. Fix the file and record again. No second review, also when a fix changed
-   a lot. If the branch is already on origin (`git ls-remote --exit-code origin <branch>` exits
-   0), push the fix commits before V4, so CI runs once, on the processed code.
+   a lot. Then check whether the branch is already on origin:
+
+   ```bash
+   git ls-remote --exit-code origin <branch>
+   ```
+
+   Exit 0: push the fix commits before V4, so CI runs once, on the processed code:
+
+   ```bash
+   git push origin HEAD
+   ```
 
 ## Verdicts
 

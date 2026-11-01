@@ -200,7 +200,10 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    python3 .lighthouse/scripts/roborev_gate.py classify <scratch>/roborev-ci.md
    ```
 
-   `classify` prints `sha` (literally from the heading `` ## roborev: Review Complete (`<sha>`) ``,
+   If `classify` prints `verdict` `skip` (for instance `review faalde: bevindingen onleesbaar`),
+   there is no `sha` to record: render and post nothing, name the reason in your answer and stop
+   this section.
+   Otherwise `classify` prints `sha` (literally from the heading `` ## roborev: Review Complete (`<sha>`) ``,
    or `Combined Review`) and the `findings`. Write the decisions to `<scratch>/decisions.json`: a
    list with one object per finding, keys `path`, `line`, `severity` (as `classify` printed them),
    `uitkomst` (`fixed`, `refuted` or `left`), `commit` (the fix commit, else `null`) and `reden`
