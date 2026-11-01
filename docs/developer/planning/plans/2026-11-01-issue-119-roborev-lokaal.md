@@ -10,9 +10,9 @@ dispatcher start bij een rode PR `/lighthouse-fix-pr`, hooguit drie keer per PR.
 is: `roborev_gate.py` (drempel, budget, reviewuitvoer en herstart, de bodyregel) en
 `roborev_comment.py` (de comment met log-blok, tabel en ingekorte ruwe output). De skill houdt
 alleen de zichtbare aanroep van `roborev ci review` en het beoordelen per bevinding. In de
-dispatcher sluit `settle` een klare run op een rode PR als `handoff` en bewaart de trigger key in
-de reden van de rij; een nieuwe eerste regel in `issueCtx.next()` start daaruit fix-pr, achter
-alle bestaande poorten.
+dispatcher sluit `settle` een klare run op een rode PR als `handoff` en geeft de fix-pr-start door
+aan `decideIssue`, dat hem vóór `c.next()` plant, achter de bestaande poorten. Een post-pass in
+`Decide`, na de rem, maakt van elke fix-pr-close zonder start alsnog `returned` "PR rood".
 
 **Tech stack:** Python 3 (stdlib, `lighthouse_lib.config`), pytest; Go (`internal/dispatch`),
 JSON-fixtures in `internal/dispatch/testdata/decide/`; markdown-skills in `pack/core/skills/`.
@@ -26,9 +26,16 @@ JSON-fixtures in `internal/dispatch/testdata/decide/`; markdown-skills in `pack/
 - Code, skilltekst, CLI-sleutels van de scripts en testnamen Engels. Artefacten (PR-body, comment,
   commitberichten, deze docs) Nederlands. De letterlijke teksten hieronder zijn artefact en blijven
   Nederlands.
-- Elke wijziging onder `pack/`: `go run ./cmd/lighthouse init --upgrade` en de geïnstalleerde
-  kopie in dezelfde commit; CI vereist `No changes.`. Een nieuw script komt ook in de lijst van
-  `internal/packs/core_test.go` (alfabetisch).
+- Elke wijziging onder `pack/`: `go run ./cmd/lighthouse init --upgrade` en alles wat dat wijzigt
+  (`git status`: de geïnstalleerde kopie én `.lighthouse/manifest.toml`) in dezelfde commit; CI
+  vereist `No changes.`. Een nieuw script komt ook in de lijst van `internal/packs/core_test.go`
+  (alfabetisch) en krijgt een entry met `new = true` in `pack/SOURCES.toml`
+  (`tests/test_sources.py`).
+- Python-namen onder `pack/**` en `tests/**` zijn Engels (`code-language-check` blokkeert anders):
+  `source`, `outcome`, `reason`. De Nederlandse JSON-sleutels en CLI-waarden (`bron`, `uitkomst`,
+  `reden`, `--bron lokaal`) zijn stringliterals en blijven.
+- Een alinea in een core-skill die `controller` noemt, zegt `(controller run, if present)`
+  (`tests/pack/test_skill_contracts.py:102-103`).
 - Het V4-deel van `pack/core/skills/write-pr/SKILL.md` krijgt geen regel die met `## ` begint.
 - Drempel: **100** coderegels; telregel van paia's `Size`-stap: `git diff --numstat --no-renames
   <base> HEAD`, sla over bij numstat `-` (binair) of pad onder `docs/`, en bij extensie
@@ -48,23 +55,23 @@ JSON-fixtures in `internal/dispatch/testdata/decide/`; markdown-skills in `pack/
 - Dispatcher: trigger `fixpr`, trigger key `fixpr:<pr>:<head-sha>`, plafond **3**, nieuwe reden
   `reason_pr_red_ceiling` = nl `PR rood na 3 fix-pr-runs`, en `PR red after 3 fix-pr runs`.
 
-## Afwijking van de spec: r3-f1 en r3-f2 opnieuw gewogen
+## r3-f1 en r3-f2 opnieuw gewogen
 
-**r3-f1 (§5).** De spec laat het fix-pr-signaal één tick leven en sluit de rij als `returned`
-zodra een poort dicht is. Dat sluit niet: de rem (`Brake.apply`, `internal/dispatch/brake.go:33`)
-draait ná `decideIssue` over alle repo's en kan een start nog in een `defer` veranderen, terwijl de
-rij al als `handoff` dicht is. Dan staat het issue stil op een rode PR. Dit plan maakt het signaal
-duurzaam, zoals elke andere trigger (een Handoff-comment, een resume-marker):
+**r3-f1 (§5).** De spec laat het fix-pr-signaal één tick leven: geen start ⇒ de rij sluit als
+`returned` "PR rood", ook bij uitstellen. Eén geval ziet `decideIssue` niet: de rem
+(`Brake.apply`, `internal/dispatch/brake.go:33`) draait ná `decideIssue` over alle repo's en kan
+de start nog in een `defer` veranderen of (bij `Paused`) laten vallen. Dit plan volgt de spec en
+dicht dat gat zonder nieuwe regel in `next()`:
 
-- `settle` sluit de rij als `handoff` met `ReasonArg = fixpr:<pr>:<sha>`; `closeReason`
-  (`apply.go:164`) schrijft dat al in `runs.reason`.
-- De regel `fixPR()` in `next()` start zolang de laatste rij van het issue zo'n reden draagt, de
-  key niet besteed is en de PR nog open, rood en op die SHA staat. Een rem-defer, On hold of een
-  blokkade stelt de start dus uit in plaats van hem te verliezen.
-- Is de PR intussen groen, dicht of verder gepusht, dan vervalt het signaal zonder actie.
-
-De `returned`-uitkomst voor plafond en besteedde SHA blijft zoals in de spec. Deze afwijking gaat
-in de PR-body onder `Open review points` en in de *Open na review* van de spec als verwerkt.
+- `settle` geeft bij een rode PR onder het plafond op een verse SHA een close `handoff` met
+  `ReasonArg = fixpr:<pr>:<sha>` en `SessionID` van de rij, en geeft de start door aan
+  `decideIssue`.
+- `decideIssue` plant de start als eerste, vóór `c.next()`, alleen als `free`, `OPEN`,
+  `Controller` en geen actieve blokkade (een fix-pr is `Executing`). Anders plant het geen start.
+- Een post-pass `returnUnstartedFixPR` in `Decide`, ná `Brake.apply`, zet elke close met
+  `Outcome handoff` en een `ReasonArg` met prefix `fixpr:` zonder `KindStart` met trigger `fixpr`
+  voor hetzelfde repo/issue om in `KindReturn` `reason_pr_red` met dezelfde `RunID` en
+  `SessionID`. Zo eindigt elke uitkomst anders dan een start als `returned`, zoals §5 vraagt.
 
 **r3-f2 (§2).** De spec routeert `<branch>.md` zonder `<branch>.json` al naar `classify`. Het plan
 pint dat in Task 3, plus het terughalen van al genomen besluiten (`fixed`), en laat `gate` een
@@ -79,8 +86,8 @@ skip zelf vastleggen, zodat een herstart nooit een tweede review start.
    regel, sluit niet voortijdig af en `json.loads` geeft de reden ongewijzigd terug. Test in Task 4.
 3. **Ruwe output boven 65536 tekens**: alleen de `<details>` wordt ingekort; log-blok en tabel
    volledig. Test in Task 4.
-4. **De rem of On hold houdt de fix-pr-start tegen**: de volgende tick (rij al dicht) start hem
-   alsnog. Fixtures in Task 6.
+4. **De rem houdt de fix-pr-start tegen** (slots vol, of `lighthouse pause`): de rij sluit als
+   `returned` "PR rood", nooit als `handoff` zonder start. Fixtures in Task 6.
 5. **Een branchnaam met `/`** (`fix/x`): de uitvoerbestanden heten `fix-x.md`/`fix-x.json` en
    botsen niet met een map. Test in Task 2.
 
@@ -122,7 +129,8 @@ enum-check naast die van `forge.kind` (`config.py:369-372`) met de boodschap uit
 
 ```bash
 go run ./cmd/lighthouse init --upgrade
-git add pack/core/lib/config.py .lighthouse/lib/lighthouse_lib/config.py tests/pack/test_config.py
+git status --short   # alles van init --upgrade mee, ook .lighthouse/manifest.toml
+git add pack/core/lib/config.py tests/pack/test_config.py .lighthouse/
 git commit -m "feat(config): setting [review] roborev, local of off (#119)"
 ```
 
@@ -132,7 +140,7 @@ git commit -m "feat(config): setting [review] roborev, local of off (#119)"
 
 **Files:**
 - Create: `pack/core/scripts/roborev_gate.py`
-- Modify: `internal/packs/core_test.go` (scriptlijst)
+- Modify: `internal/packs/core_test.go` (scriptlijst), `pack/SOURCES.toml` (entry, `new = true`)
 - Test: `tests/pack/test_roborev_gate.py`
 
 **Interfaces:**
@@ -145,6 +153,8 @@ git commit -m "feat(config): setting [review] roborev, local of off (#119)"
   - `gate(root: Path, budget: Callable[[], tuple[int, str]] = run_budget) -> dict`
   - CLI `roborev_gate.py gate` print `json.dumps(gate(Path.cwd()))`, exit 0; exit 3 met
     `COULD NOT CHECK: <reden>` op stderr bij geen git-repo of een configfout.
+- Elk verdict behalve `off` draagt ook `"state": "<state_dir>/<stem>.json"` en
+  `"raw": "<state_dir>/<stem>.md"` (absoluut), zodat V4 en een herstart nooit een pad zelf bouwen.
 - `gate` geeft, eerste treffer wint:
   1. `{"verdict": "off"}` bij `review.roborev != "local"`;
   2. `{"verdict": "done", "sha": s}` of `{"verdict": "skip", "reason": r}` uit een bestaand
@@ -181,6 +191,7 @@ def test_gate_runs_at_the_threshold(repo): ...              # 100 regels, budget
 def test_gate_skips_on_the_budget(repo, budget, reason): ...
 def test_gate_records_its_skip_and_repeats_it(repo): ...    # tweede gate() met budget dat zou runnen: zelfde skip
 def test_state_files_of_a_slashed_branch(repo): ...         # branch fix/x -> fix-x.json in state_dir   (Review Focus 5)
+def test_every_verdict_names_state_and_raw(repo): ...       # skip, run, done, classify: beide paden, absoluut, onder state_dir
 def test_state_dir_is_per_worktree(repo, tmp_path): ...     # git worktree add: andere state_dir
 ```
 
@@ -199,7 +210,8 @@ def test_state_dir_is_per_worktree(repo, tmp_path): ...     # git worktree add: 
 - Modify: `pack/core/scripts/roborev_gate.py`
 - Create: `tests/pack/fixtures/roborev/review-complete.md` (de paia-comment uit PR #1665,
   `issuecomment-6555476169`, zonder de eerste regel `<!-- roborev-pr-comment -->`),
-  `review-passed.md`, `review-failed.md` (hand gemaakt naar dezelfde kopvorm)
+  `review-passed.md`, `review-failed.md` (hand gemaakt naar dezelfde kopvorm),
+  `review-local.md` (gemeten in Step 0)
 - Test: `tests/pack/test_roborev_gate.py`
 
 **Interfaces:**
@@ -227,9 +239,24 @@ def test_state_dir_is_per_worktree(repo, tmp_path): ...     # git worktree add: 
     `fixed`, `record --skip <reden>` | `record --done <sha> --decisions <file> [--out <pad>]`,
     `body-line`.
 
+- [ ] **Step 0: Meet de echte lokale uitvoer, één keer** (kost één Codex-review; eerst
+  `python3 .lighthouse/scripts/codex_usage.py budget`, alleen bij `codex`):
+
+```bash
+timeout 540 roborev ci review --agent codex --ref "$(git rev-parse HEAD~1)..HEAD" > <scratch>/local.out 2> <scratch>/local.err; echo "exit=$?"
+```
+
+  Buiten de sandbox, voorgrond, Bash-timeout 600000. Bewaar stdout als
+  `tests/pack/fixtures/roborev/review-local.md` en noteer exitcode en stderr in de docstring van
+  `classify`. Wijkt de vorm af van de CI-comment (geen kop op stdout, kop op stderr, eis van
+  `--gh-repo`), pas dan de aanroep in Task 5 en de classificatie hier aan en meld het in de
+  PR-body. Geen budget: sla de stap over en zet dat als open punt in de PR-body.
+
 - [ ] **Step 1: Schrijf de falende tests**
 
 ```python
+def test_classify_reads_the_measured_local_output():         # review-local.md -> verdict done of skip met de gemeten kop, nooit "review faalde: <eerste regel>"
+    ...
 def test_classify_reads_sha_and_findings_of_a_complete_review():
     got = classify(FIX("review-complete.md"))
     assert got["verdict"] == "done" and got["sha"] == "bf1eb24"
@@ -256,7 +283,8 @@ def test_body_line(repo, state, line): ...
 ```
 
 - [ ] **Step 2: Draai, verwacht FAIL**
-- [ ] **Step 3: Implementeer** de vier functies en CLI-subcommando's.
+- [ ] **Step 3: Implementeer** de vier functies en CLI-subcommando's (Engelse namen:
+  `outcome`, `reason`; de JSON-sleutels blijven Nederlands).
 - [ ] **Step 4: Draai** `uv run pytest tests/pack/test_roborev_gate.py -q` — PASS.
 - [ ] **Step 5: Dogfood en commit** —
   `feat(roborev): classificatie, besluiten en herstart van de lokale review (#119)`
@@ -267,20 +295,20 @@ def test_body_line(repo, state, line): ...
 
 **Files:**
 - Create: `pack/core/scripts/roborev_comment.py`
-- Modify: `internal/packs/core_test.go`
+- Modify: `internal/packs/core_test.go`, `pack/SOURCES.toml` (entry, `new = true`)
 - Test: `tests/pack/test_roborev_comment.py`
 
 **Interfaces:**
 - Consumes: de `done`-vorm van `<stem>.json` uit Task 3.
 - Produces:
-  - `log_block(sha: str, bron: str, pr: int, findings: list[dict]) -> str` — één regel
+  - `log_block(sha: str, source: str, pr: int, findings: list[dict]) -> str` — één regel
     `<!-- roborev-log: <json> -->`, sleutelvolgorde `v, sha, bron, pr, bevindingen`, `v` = 1,
     `separators=(",", ":")`, `ensure_ascii=False`, daarna de drie escapes.
   - `table(findings: list[dict]) -> str` — kolommen `Bevinding | Severity | Uitkomst`; cel
     `` `path:line` `` (of `—` zonder pad); uitkomst `fixed in <commit>`, `refuted: <reden>` of
     `left: <reden>`; `|` in een reden als `\|`. Zonder bevindingen één rij
     `| geen bevindingen | — | — |`.
-  - `render(state: dict, raw: str, pr: int, bron: str, limit: int = 65536) -> str` — marker,
+  - `render(state: dict, raw: str, pr: int, source: str, limit: int = 65536) -> str` — marker,
     log-blok, lege regel, tabel, lege regel, `<details><summary>Ruwe roborev-output</summary>`,
     ruwe output, `</details>`. Te lang ⇒ alleen de ruwe output inkorten, met als laatste regel
     `… ingekort tot de limiet van GitHub`.
@@ -300,7 +328,7 @@ def test_log_block_keeps_the_key_order_and_version(): ...  # json.loads(...) key
 def test_render_starts_with_the_marker_and_the_log(): ...  # regel 1 "<!-- roborev-verwerkt: abc1234 -->", regel 2 begint "<!-- roborev-log: "
 def test_render_without_findings_says_so(): ...            # "| geen bevindingen | — | — |" en "\"bevindingen\":[]"
 def test_render_truncates_only_the_raw_output():           # Review Focus 3
-    out = render(_state(30 findings), raw="x" * 200_000, pr=7, bron="lokaal")
+    out = render(_state(30 findings), raw="x" * 200_000, pr=7, source="lokaal")
     assert len(out) <= 65536 and log_block(...) in out and table(...) in out
     assert "… ingekort tot de limiet van GitHub" in out
 def test_table_escapes_a_pipe_in_a_reason(): ...
@@ -323,8 +351,11 @@ def test_table_escapes_a_pipe_in_a_reason(): ...
   `required` `no`, default `off`, voorbeeld `local`, `about` (Engels) "Runs a local roborev review
   in lighthouse-write-pr before gh pr create: local or off.", readers `pack/core/skills/write-pr`
   en `pack/core/scripts/roborev_gate.py`
+- Modify: `tests/test_site_config.py:25` — `review.roborev` in `SET`
+- Modify: `pack/core/requires.toml` — `write-pr` in de lijst `superpowers`; `roborev_gate` in
+  `git`, `python3` en `tomllib`; `roborev_comment` in `python3`
 - Test: `tests/pack/test_write_pr_skill.py`, `tests/pack/test_fix_pr_skill.py`,
-  `tests/test_site_config.py`
+  `tests/test_site_config.py`, `tests/pack/test_skill_contracts.py`
 
 **Interfaces:**
 - Consumes: CLI's van Task 2–4, letterlijk.
@@ -375,10 +406,16 @@ Eén commando per stap, in deze volgorde; Engels; ook bij `No issue:` (zeg dat i
    bevinding `superpowers:receiving-code-review`, severity-regels van fix-pr sectie 6. Elke fix
    een eigen commit met `roborev: <path>:<line> (<severity>)` in de body. Schrijf de besluiten naar
    een JSON-bestand en `roborev_gate.py record --done <sha> --decisions <file>`. Geen tweede review.
+   Staat de branch al op origin (`git ls-remote --exit-code origin <branch>`), push de
+   fix-commits vóór V4, zodat CI één keer draait, op de verwerkte code.
+
+De reden voor de voorgrond schrijf je als: start no background work (controller run, if present).
 
 In V4 (geen regel met `## `): voeg de uitvoer van `roborev_gate.py body-line` als eigen regel toe
 aan de body, buiten het Evidence-blok; na `gh pr create`:
-`python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron lokaal --state <json> --raw <md> > <file>`
+`python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron lokaal --state <state> --raw <raw> > <file>`,
+met `<state>` en `<raw>` letterlijk uit de uitvoer van `roborev_gate.py gate` (draai `gate` opnieuw
+na een herstart; bouw nooit zelf een pad),
 en `gh pr comment <nr> --repo "$R" --body-file <file>`, alleen bij een `done`-uitkomst. Faalt
 `gh pr comment`, meld het; de bewaarde uitvoer maakt een tweede poging mogelijk.
 
@@ -392,7 +429,7 @@ Stap 4 bouwt de comment voortaan met `roborev_gate.py record --done <sha> --deci
 - [ ] **Step 5: run.md** — regels 48 en 65: `/lighthouse-verify-pr` → `/lighthouse-write-pr`;
   regel 53-55 (fix-pr op een groene PR met roborev-review) weg.
 
-- [ ] **Step 6: Draai** `uv run pytest tests/pack/test_write_pr_skill.py tests/pack/test_fix_pr_skill.py tests/test_site_config.py -q`
+- [ ] **Step 6: Draai** `uv run pytest tests/pack/test_write_pr_skill.py tests/pack/test_fix_pr_skill.py tests/test_site_config.py tests/pack/test_skill_contracts.py tests/test_sources.py -q`
   en `go test ./internal/dispatch/ -run Instructions` — PASS.
 
 - [ ] **Step 7: Dogfood en commit** — twee commits:
@@ -404,63 +441,76 @@ Stap 4 bouwt de comment voortaan met `roborev_gate.py record --done <sha> --deci
 ### Task 6: Dispatcher — fix-pr bij een rode PR
 
 **Files:**
-- Modify: `internal/dispatch/decide.go` (`decideIssue`, `runCtx`, `prRed`, `issueCtx.next`,
+- Create: `internal/store/migrations/0004_runs_fixpr.sql` — herbouw `runs` naar het patroon van
+  `0003_cleanup.sql`: zelfde kolommen, checks en indexen als `0002_runs.sql`, alleen de
+  trigger-CHECK met `'fixpr'` erbij; `INSERT … SELECT` van alle rijen; daarna
+  `runs_open_issue` en `runs_trigger` opnieuw
+- Modify: `internal/runs/runs.go:45` (comment bij `Trigger`)
+- Modify: `internal/dispatch/decide.go` (`Decide`, `decideIssue`, `settle`, `runCtx`, `prRed`,
   consts)
 - Modify: `pack/core/headings.toml` (`reason_pr_red_ceiling`)
 - Modify: `internal/dispatch/testdata/decide/settle-red-pr.json`
 - Create: `internal/dispatch/testdata/decide/fixpr-*.json` (zie Step 1)
-- Test: `internal/dispatch/decide_test.go` (`TestDecideFixtures`), plus een unittest voor
-  `fixPRRuns`
+- Test: `internal/dispatch/decide_test.go` (`TestDecideFixtures`, `TestFixPRRuns`),
+  `internal/runs/runs_test.go` (`Take` met `Trigger: "fixpr"`), `internal/store/migrate_test.go`
+  (rijen overleven 0004)
 
 **Interfaces:**
 - Produces:
   - consts `triggerFixPR = "fixpr"`, `cmdFixPR = "/lighthouse-fix-pr"`, `maxFixPRRuns = 3`.
-  - `fixPRKey(pr int, sha string) string` → `fixpr:<pr>:<sha>`;
-    `parseFixPRKey(key string) (pr int, sha string, ok bool)`.
+  - `fixPRKey(pr int, sha string) string` → `fixpr:<pr>:<sha>`.
   - `fixPRRuns(history []runs.Row, issue, pr int) int` — rijen van `issue` met
     `Command == cmdFixPR+" "+pr` en `Outcome != runs.StartFailed`. Een open rij (Outcome `""`)
     telt mee: bij het afsluiten van de derde fix-pr-run is de teller al 3.
   - `runCtx.history []runs.Row` (gevuld in `newRunCtx`).
-  - `prRed()`: `done && open rode PR` (eerste in `it.PRs`). Dan, in deze volgorde:
-    `fixPRRuns ≥ maxFixPRRuns` → `returned("reason_pr_red_ceiling", "")`;
-    `spentKey(history, key)` → `returned("reason_pr_red", "")`;
-    anders `closed(runs.Handoff)` met `ReasonArg = key`.
-  - `owedFixPR(history []runs.Row, issue int) (string, bool)` — de laatste rij van het issue is
-    dicht, `Outcome == runs.Handoff` en `Reason` begint met `fixpr:`.
-  - `issueCtx.owed string` — de key die `settle` in deze tick zette (de rij staat in de history
-    nog open); `decideIssue` vult hem uit een gesloten actie met `Outcome Handoff` en een
-    `ReasonArg` met prefix `fixpr:`.
-  - `issueCtx.fixPR() (planned, bool)`, eerste regel in `next()`: key = `c.owed`, anders
-    `owedFixPR`; niet besteed; de PR uit de key is `OPEN`, rood en heeft `HeadSHA == sha`, anders
-    geen actie. Een actieve blokkade: park/hold zoals `handoff()` (`Executing` is waar voor
-    fix-pr); haal die logica naar een gedeelde helper `parkOrHold() (planned, bool)`. Anders
-    `c.fresh(triggerFixPR, key, cmdFixPR+" "+pr, pr.HeadRef)`, gepland op `c.now`.
+  - `fixPRStart struct { pr forge.PR; key string }` — wat `settle` doorgeeft.
+  - `settle(...) (Action, bool, *fixPRStart)` (derde resultaat alleen uit `prRed`); `outcome()` en
+    `prRed()` geven hem door. `prRed()`: `done && open rode PR` (eerste in `it.PRs`). Dan, in deze
+    volgorde: `fixPRRuns ≥ maxFixPRRuns` → `returned("reason_pr_red_ceiling", "")`;
+    `spentKey(history, key)` → `returned("reason_pr_red", "")`; anders `closed(runs.Handoff)` met
+    `ReasonArg = key` en `SessionID = row.SessionID`, plus `&fixPRStart{pr, key}`.
+  - `decideIssue`: na de bestaande poorten (`free`, `OPEN`) en alleen bij `statusController`: is er
+    een `fixPRStart` en geen actieve blokkade (`c.active()`), dan
+    `c.planned(c.fresh(triggerFixPR, key, cmdFixPR+" "+strconv.Itoa(pr.Number), pr.HeadRef), c.now)`
+    en **geen** `c.next()` in deze tick. Anders gewoon `c.next()`.
+  - `returnUnstartedFixPR(ps []planned) []planned` — in `Decide` na `Brake.apply` (en altijd, ook
+    zonder rem): elke `KindClose` met `Outcome == runs.Handoff` en `ReasonArg` met prefix
+    `fixpr:`, zonder `KindStart` met `Trigger == triggerFixPR` voor dezelfde `Repo`/`Issue`, wordt
+    `KindReturn` met `Reason "reason_pr_red"`, `RunID` en `SessionID` behouden, `Outcome` en
+    `ReasonArg` leeg. Daarna opnieuw sorteren.
 
-- [ ] **Step 1: Schrijf de fixtures (falend)** — kopieer de opbouw van `settle-red-pr.json`
-  (issue 7, PR 12 op `abc123`, branch `issue-7-bouw-de-keten`).
+- [ ] **Step 1: Schrijf de fixtures en tests (falend)** — kopieer de opbouw van
+  `settle-red-pr.json` (issue 7, PR 12 op `abc123`, branch `issue-7-bouw-de-keten`, sessie
+  `1111…`).
 
 | Fixture | Input | `want` |
 |---|---|---|
-| `settle-red-pr.json` (aangepast) | open start-issue-run, klaar, PR rood | `close` run 5 `outcome: handoff`, `reason_arg: fixpr:12:abc123`; dan `start` trigger `fixpr`, key `fixpr:12:abc123`, command `/lighthouse-fix-pr 12`, branch `issue-7-bouw-de-keten` |
+| `settle-red-pr.json` (aangepast) | open start-issue-run, klaar, PR rood | `close` run 5 `outcome: handoff`, `reason_arg: fixpr:12:abc123`, `session_id`; dan `start` trigger `fixpr`, key `fixpr:12:abc123`, command `/lighthouse-fix-pr 12`, branch `issue-7-bouw-de-keten` |
 | `fixpr-spent-sha.json` | open fix-pr-run met key `fixpr:12:abc123`, klaar, PR nog rood op `abc123` | `return` `reason_pr_red` |
 | `fixpr-ceiling.json` | twee gesloten fix-pr-rijen + open derde, klaar, PR rood op `def456` | `return` `reason_pr_red_ceiling` |
-| `fixpr-ceiling-start-failed.json` | als hierboven, maar één gesloten rij `start_failed` | `close` handoff + `start` fixpr |
-| `fixpr-owed-later-tick.json` | geen open rij; laatste rij dicht `handoff`, reason `fixpr:12:abc123`; PR rood | `start` fixpr |
-| `fixpr-owed-on-hold.json` | als hierboven, status `On hold` | `[]` |
-| `fixpr-owed-pr-green.json` | als `owed-later-tick`, PR `SUCCESS` | `[]` |
-| `fixpr-owed-new-sha.json` | als `owed-later-tick`, PR rood op `fff999` | `[]` |
-| `fixpr-brake-defers.json` | als `settle-red-pr`, met rem `slots` vol | `close` handoff + `defer` met de slots-reden |
-| `fixpr-blocker-parks.json` | als `owed-later-tick`, actieve blokkade | `park` met die blokkade |
+| `fixpr-ceiling-and-spent.json` | als hierboven, key `fixpr:12:def456` al besteed | `return` `reason_pr_red_ceiling` (plafond wint) |
+| `fixpr-ceiling-start-failed.json` | als `fixpr-ceiling`, maar één gesloten rij `start_failed` | `close` handoff + `start` fixpr |
+| `fixpr-on-hold.json` | als `settle-red-pr`, status `On hold` | `return` `reason_pr_red`, geen start |
+| `fixpr-blocker.json` | als `settle-red-pr`, actieve blokkade | `return` `reason_pr_red`, geen start, geen park |
+| `fixpr-brake-defers.json` | als `settle-red-pr`, rem met slots vol | `return` `reason_pr_red` + `defer` met de slots-reden |
+| `fixpr-brake-paused.json` | als `settle-red-pr`, rem `Paused` | `return` `reason_pr_red` |
 
-Plus `TestFixPRRuns` (tabel: open rij telt, `start_failed` telt niet, andere PR telt niet).
+`TestFixPRRuns` (tabel: open rij telt, `start_failed` telt niet, andere PR telt niet).
+`TestTakeFixPR` in `internal/runs/runs_test.go`: `Take` met `Trigger: "fixpr"` op een gemigreerde
+database slaagt. In `migrate_test.go`: een rij uit vóór 0004 staat er na de migratie nog, met
+dezelfde id en trigger.
 
-- [ ] **Step 2: Draai, verwacht FAIL** — `go test ./internal/dispatch/ -run 'TestDecideFixtures|TestFixPRRuns'`
-- [ ] **Step 3: Heading** — `[reason_pr_red_ceiling]` met nl/en uit *Vaste eisen* in
+- [ ] **Step 2: Draai, verwacht FAIL** —
+  `go test ./internal/dispatch/ ./internal/runs/ ./internal/store/`
+- [ ] **Step 3: Migratie** `0004_runs_fixpr.sql`; `go test ./internal/runs/ ./internal/store/` — PASS.
+- [ ] **Step 4: Heading** — `[reason_pr_red_ceiling]` met nl/en uit *Vaste eisen* in
   `pack/core/headings.toml`, na `reason_pr_red`.
-- [ ] **Step 4: Implementeer** de interfaces hierboven; werk de doc-comments van `decideIssue`,
-  `settle` en `next` bij.
-- [ ] **Step 5: Draai** `go test ./internal/dispatch/...` en `golangci-lint run ./internal/dispatch/...` — PASS, geen bevinding.
-- [ ] **Step 6: Dogfood en commit** —
+- [ ] **Step 5: Implementeer** de interfaces hierboven; werk de doc-comments van `Decide`,
+  `decideIssue`, `settle` en `prRed` bij.
+- [ ] **Step 6: Draai** `go test ./internal/...` en `golangci-lint run ./internal/...` — PASS,
+  geen bevinding.
+- [ ] **Step 7: Dogfood en commit** — twee commits:
+  `feat(store): trigger fixpr in de runs-tabel (#119)` (migratie, runs) en
   `feat(dispatch): start fix-pr bij een rode PR, hooguit drie keer (#119)`
 
 ---
