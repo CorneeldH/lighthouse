@@ -85,16 +85,25 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 			return fmt.Errorf("post: %w", err)
 		}
-		return nil
+		if a.RunID == 0 {
+			return nil
+		}
+		if err := ap.release(ctx, a); err != nil {
+			return err
+		}
+		return ap.closeRun(ctx, a.RunID, runs.Returned, reasonText(a))
 	case KindDone:
 		note := protocol.Heading("note_done", a.Language)
 		body := protocol.RenderDone(a.SessionID, a.PRURL, note, a.Language)
 		if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 			return fmt.Errorf("post: %w", err)
 		}
-		return ap.closeRun(ctx, a.RunID, runs.Done)
+		return ap.closeRun(ctx, a.RunID, runs.Done, "")
 	case KindClose:
-		return ap.closeRun(ctx, a.RunID, a.Outcome)
+		if err := ap.release(ctx, a); err != nil {
+			return err
+		}
+		return ap.closeRun(ctx, a.RunID, a.Outcome, closeReason(a))
 	case KindRocket:
 		return ap.env.Poster(a.Repo).AddRocket(ctx, a.CommentID)
 	case KindDefer:
@@ -118,9 +127,49 @@ func deferral(a Action, reason string) string {
 	return fmt.Sprintf("%s#%d: %s", a.Repo, a.Issue, reason)
 }
 
+// closeReason is the reason a KindClose records: the heading text when the action names a
+// reason, else the literal cause (a start_failed).
+func closeReason(a Action) string {
+	if a.Reason != "" {
+		return reasonText(a)
+	}
+	return a.ReasonArg
+}
+
+// release stops the session of run a.RunID (a.Stop) or forgets its workspace (a.Discard). A row
+// without a session or without a workspace has nothing to stop or forget: that is no error. A
+// run no longer open has no row to read, and nothing is stopped.
+func (ap applier) release(ctx context.Context, a Action) error {
+	if !a.Stop && !a.Discard {
+		return nil
+	}
+	open, err := runs.Open(ctx, ap.env.DB, a.Repo)
+	if err != nil {
+		return err
+	}
+	for _, r := range open {
+		if r.ID != a.RunID {
+			continue
+		}
+		w := ap.env.Workplace(a.Repo)
+		switch {
+		case a.Stop && r.WorkplaceSession != "":
+			if err := w.Stop(ctx, r.WorkspaceID, []string{r.WorkplaceSession}); err != nil {
+				return fmt.Errorf("stop run %d: %w", r.ID, err)
+			}
+		case a.Discard && r.WorkspaceID != "":
+			if err := w.Discard(ctx, r.WorkspaceID); err != nil {
+				return fmt.Errorf("discard run %d: %w", r.ID, err)
+			}
+		}
+		return nil
+	}
+	return nil
+}
+
 // closeRun closes the run; a run another process already closed is no error.
-func (ap applier) closeRun(ctx context.Context, runID int64, o runs.Outcome) error {
-	err := runs.Release(ctx, ap.env.DB, runID, o, "", ap.env.Now())
+func (ap applier) closeRun(ctx context.Context, runID int64, o runs.Outcome, reason string) error {
+	err := runs.Release(ctx, ap.env.DB, runID, o, reason, ap.env.Now())
 	if errors.Is(err, runs.ErrNotOpen) {
 		ap.logf("run %d: already closed", runID)
 		return nil
@@ -192,7 +241,7 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		res.Started++
 		return err
 	case workplace.Uncertain:
-		// The error is diagnostic only; CheckOpen settles the open run.
+		// The error is diagnostic only; AdoptSessions finds its session and Decide settles the open run.
 		res.Started++
 		if err != nil {
 			ap.logf("%s#%d: launch of run %d uncertain: %v", a.Repo, a.Issue, run.ID, err)
