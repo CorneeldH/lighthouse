@@ -115,6 +115,7 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "code_language_llm.models": _STRS,
         "code_language_llm.key_env": _STR,
         "code_language_llm.env_file": _STR,
+        "review.roborev": _STR,
     }
 )
 
@@ -153,6 +154,7 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
         "shell.strict_dirs": (".claude/hooks",),
         "usage_guard.resume": False,
         "usage_guard.controller": False,
+        "review.roborev": "off",
     }
 )
 
@@ -398,6 +400,10 @@ def load(path: Path) -> Config:
             )
 
     _check_schema(data, path)
+
+    roborev = data.get("review", {}).get("roborev")
+    if roborev is not None and roborev not in ("local", "off"):
+        raise ConfigError(f"{path}: key review.roborev must be 'local' or 'off', not {roborev!r}")
 
     return Config(
         kind=kind,
