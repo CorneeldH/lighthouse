@@ -306,6 +306,11 @@ func TestAskHelpDescribesEveryFlag(t *testing.T) {
 			t.Errorf("help lacks %q:\n%s", want, out)
 		}
 	}
+	// #204: ask renders only its fixed parts in the project language; the run writes the rest.
+	language := "Write the text of --task, --where, --what, --question and --option in that language; --command stays literal."
+	if !strings.Contains(strings.Join(strings.Fields(out), " "), language) {
+		t.Errorf("help lacks %q:\n%s", language, out)
+	}
 	if len(srv.Posts) != 0 {
 		t.Errorf("%d POSTs, want none", len(srv.Posts))
 	}
