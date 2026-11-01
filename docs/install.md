@@ -105,7 +105,7 @@ one GitHub repository. Tell the server which repository and give it a token:
 - Repository: `--repo owner/name` on `lighthouse serve`, or `LIGHTHOUSE_FORGE_REPO=owner/name`.
 - Token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment. Create a fine-grained personal
   access token for that repository with only the *Issues: read* permission. The server only
-  reads.
+  reads. With the Controller filter described below it also needs the `project` scope.
 
 Under systemd, put both in `~/.config/lighthouse/forge.env`, which the unit loads through
 `EnvironmentFile=`. The token is a secret, so keep the file private:
@@ -128,6 +128,12 @@ Check it:
 ```bash
 curl -s http://127.0.0.1:8127/api/questions
 ```
+
+The overview shows only the issues in Controller when the repository is in `[dispatch] repos` of
+`host.toml` and its `lighthouse.toml` has a `[forge.board]` with a `Controller` option. Issues the
+dispatcher parked (On hold, see [tick.md](tick.md)) then drop out. Otherwise it shows every open
+issue. With the filter `serve` reads the project board, so the token needs the `project` scope as well.
+An unreadable `host.toml` stops `serve` only when `--repo` is set.
 
 A `503` means the repository or the token is not set. A `502` means GitHub could not be
 reached or answered with an error; the response body says which.
