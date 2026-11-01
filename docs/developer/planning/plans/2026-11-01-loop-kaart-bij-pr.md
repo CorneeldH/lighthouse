@@ -18,7 +18,7 @@ Eerst wordt alles van *chain* naar *loop* hernoemd.
 ## Globale beperkingen
 
 - Werk in `/home/corneel/repositories/lighthouse/.claude/worktrees/loop-kaart-bij-pr`, branch
-  `fix-loop-kaart-bij-pr`; prefix elk shellcommando met `cd <worktree>`.
+  `issue-219-loop-kaart-bij-pr`; prefix elk shellcommando met `cd <worktree>`.
 - Commits als Conventional Commits, in het Nederlands; skilltekst, code, comments en
   foutmeldingen in het Engels.
 - `pack/core/skills/write-pr/SKILL.md` en `pack/core/skills/write-issue/{claude,agents}/SKILL.md`
@@ -250,7 +250,7 @@ def test_free_labels_with_a_document():
 - Wijzig: `pack/core/skills/write-pr/SKILL.md` (nieuwe `## Documents of the linked issues` tussen
   `## V3. Choose the form` en `## Changelog fragment (if present)`)
 - Test: `tests/pack/test_write_pr_skill.py`
-- Maak: `changelog.d/fix-loop-kaart-bij-pr.md`
+- Maak: `changelog.d/issue-219-loop-kaart-bij-pr.md`
 
 - [ ] **Stap 1: falende test.**
 
@@ -293,12 +293,12 @@ def test_documents_of_the_linked_issues():
 
 Buiten de repo; elke stap hier vraagt eerst bevestiging van Corneel.
 
-- [ ] **Stap 1:** schrijf met `/lighthouse-write-issue` (a) een issue voor dit werk, met de
-  acceptatiecriteria uit de spec, label `loop`; (b) het vervolgissue uit spec *Vervolgissue*:
+- [ ] **Stap 1:** het issue voor dit werk is #219 (label `chain`, wordt `loop`). Schrijf met
+  `/lighthouse-write-issue` het vervolgissue uit spec *Vervolgissue*:
   *Een `loop`-issue op een milestone staat als `planned` op de loop-kaart.*
 - [ ] **Stap 2:** hernoem het label vlak vóór de PR: `gh label edit chain --name loop`. Daarna
   `python3 ci/loop_roadmap.py`. Verwacht: exit 0.
-- [ ] **Stap 3:** `/lighthouse-write-pr` met `Closes #<issue uit stap 1a>`. Die PR sluit zelf een
+- [ ] **Stap 3:** `/lighthouse-write-pr` met `Closes #219`. Die PR sluit zelf een
   `loop`-issue en raakt `loop.json`: de nieuwe PR-modus moet groen zijn. Dat is het eerste
   echte bewijs.
 

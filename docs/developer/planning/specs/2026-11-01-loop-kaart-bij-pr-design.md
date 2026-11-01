@@ -178,7 +178,7 @@ werk dat op een milestone staat, en beslist over `planned` met alleen `milestone
 - Artefacten in het Nederlands; skills, hookteksten en code in het Engels.
 - `write-pr` en `write-issue` blijven generiek: geen labelnaam, geen pad.
 - Dogfood: wijziging onder `pack/` → `init --upgrade`, CI eist `No changes.`
-- Werk in de worktree `.claude/worktrees/loop-kaart-bij-pr` op branch `fix-loop-kaart-bij-pr`.
+- Werk in de worktree `.claude/worktrees/loop-kaart-bij-pr` op branch `issue-219-loop-kaart-bij-pr`.
 
 ## Aan de bouwer
 
