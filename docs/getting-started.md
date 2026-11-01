@@ -112,7 +112,7 @@ What `init` writes, all of it on the diff first:
 - `.github/pull_request_template.md` and `.github/workflows/lighthouse-<name>.yml`.
 - `lighthouse.toml`: the keys that are missing, see below. Existing keys stay as they are.
 
-Each of these places, whose it is and what --upgrade does with it, is on [the repo map](site/repo.html) (also online: [Your repo after init](https://corneeldh.github.io/lighthouse/repo.html)).
+Each of these places, and whether `init` adds it or edits a file of yours, is on [the repo map](site/repo.html) (also online: [Your repo after init](https://corneeldh.github.io/lighthouse/repo.html)).
 
 On a machine with Tailscale, the first `init` also offers to write
 `~/.config/lighthouse/host.toml`; `--yes` writes it without asking. Without Tailscale you see

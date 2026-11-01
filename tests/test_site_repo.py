@@ -317,3 +317,14 @@ def test_links_have_an_accessible_name():
     body = text.split("function repoRow", 1)[1].split("\nfunction ", 1)[0]
     assert '"aria-label"' in body
     assert "`More about ${" in body
+
+
+def test_page_has_no_legend_or_panel_and_explains_below():
+    html = (SITE / "repo.html").read_text(encoding="utf-8")
+    assert 'class="legend"' not in html
+    assert 'id="detail"' not in html
+    assert html.index('id="repo-map"') < html.index('id="repo-notes"')
+    notes = html.split('id="repo-notes"', 1)[1].split("</section>", 1)[0]
+    for name in ["lib/", "scripts/", "headings.toml", "manifest.toml", "settings.json", "permissions.allow",
+                 "host.toml", "--yes"]:
+        assert name in notes, f"the text below the map does not name {name}"
