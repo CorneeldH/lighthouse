@@ -17,7 +17,6 @@
               "about": "The language of issues, PRs and commit messages: nl or en.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/headings.toml",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/lib/artefacts.py",
                 "pack/core/lib/evidence.py",
@@ -28,8 +27,7 @@
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
-                "pack/python/scripts/quality/prcov_issues.py",
-                "pack/python/scripts/quality/ratchet.py"
+                "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
             {
@@ -163,8 +161,10 @@
               "required": "derived",
               "about": "The name part of forge.repo, derived by config.py.",
               "readers": [
+                "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
-                "pack/core/skills/write-handoff"
+                "pack/core/skills/write-handoff",
+                "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
             {
@@ -173,9 +173,11 @@
               "required": "derived",
               "about": "The owner part of forge.repo, derived by config.py.",
               "readers": [
+                "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue"
+                "pack/core/skills/write-issue",
+                "pack/python/scripts/quality/prcov_issues.py"
               ]
             }
           ]
@@ -210,9 +212,11 @@
               "about": "The node id of the GitHub project board.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue"
+                "pack/core/skills/write-issue",
+                "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
             {
@@ -224,7 +228,8 @@
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue"
+                "pack/core/skills/write-issue",
+                "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
             {
@@ -234,8 +239,10 @@
               "about": "The id of the board's Status field.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
-                "pack/core/skills/write-handoff"
+                "pack/core/skills/write-handoff",
+                "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
             {
@@ -245,8 +252,10 @@
               "about": "The ids of the Status options, one entry per option name.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/scripts/board_start.py",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue"
+                "pack/core/skills/write-issue",
+                "pack/python/scripts/quality/prcov_issues.py"
               ]
             }
           ]
@@ -265,7 +274,6 @@
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/write-pr",
                 "pack/go/skills/go-standard",
-                "pack/python/requires.toml",
                 "pack/python/skills/python-standard"
               ]
             },
@@ -718,7 +726,6 @@
               "about": "The Python source directories.",
               "readers": [
                 "pack/python/hooks/ty-gate.sh",
-                "pack/python/scripts/quality/prcov.py",
                 "pack/python/scripts/quality/ratchet.py",
                 "pack/python/skills/python-standard"
               ]

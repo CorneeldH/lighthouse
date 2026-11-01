@@ -35,6 +35,35 @@ REQUIRED = {
     "forge.name": "derived",
 }
 SKIPPED_READERS = {"pack/core/lib/config.py"}
+# found_readers is a text match. These two dicts correct it, each entry with its reason: a file that
+# names a key without reading it, and a file that reads it through the attributes of the loaded
+# Config (cfg.language, repo.board.project_id) so no text names it.
+NOT_READERS = {
+    ("project.language", "pack/python/scripts/quality/ratchet.py"):
+        "its docstring says messages stay English whatever [project] language says",
+    ("project.language", "pack/core/headings.toml"):
+        "a comment explains how the table is read; the file reads nothing",
+    ("test_gate.command", "pack/python/requires.toml"):
+        "the name of a unit in a list of tools, not a read of the command",
+    ("python.source_dirs", "pack/python/scripts/quality/prcov.py"):
+        "its docstring names the key; the directories arrive as an argument from ratchet.py",
+}
+INDIRECT_READERS = {
+    ("forge.board.project_id", "pack/core/scripts/board_start.py"): ".project_id",
+    ("forge.board.status_field_id", "pack/core/scripts/board_start.py"): ".status_field_id",
+    ("forge.board.status_options", "pack/core/scripts/board_start.py"): ".status_options",
+    ("forge.owner", "pack/core/scripts/board_start.py"): ".owner",
+    ("forge.name", "pack/core/scripts/board_start.py"): ".name",
+    ("forge.board.project_id", "pack/python/scripts/quality/prcov_issues.py"): ".project_id",
+    ("forge.board.project_number", "pack/python/scripts/quality/prcov_issues.py"): ".project_number",
+    ("forge.board.status_field_id", "pack/python/scripts/quality/prcov_issues.py"): ".status_field_id",
+    ("forge.board.status_options", "pack/python/scripts/quality/prcov_issues.py"): ".status_options",
+    ("forge.owner", "pack/python/scripts/quality/prcov_issues.py"): ".owner",
+    ("forge.name", "pack/python/scripts/quality/prcov_issues.py"): ".name",
+}
+# Each value is the attribute that file reads: board_start.py and prcov_issues.py use repo.board.*
+# and repo.owner of the loaded Config.
+LOADS_CONFIG = re.compile(r"config\.load\(|\bload\(config_path\(\)\)")
 _texts: dict[str, str] = {}
 _files: list[str] = []
 
@@ -63,7 +92,7 @@ def expected_keys() -> dict[str, object]:
     """key -> default (or NO_DEFAULT) for every key on the map."""
     go = (ROOT / "internal/usage/config.go").read_text(encoding="utf-8")
     usage = usage_defaults(go)
-    keys = {*config.SCHEMA, *config._BASE_KEYS, *config.HOST_KEYS, *usage}
+    keys = {*config.SCHEMA, *config.DEFAULTS, *config._BASE_KEYS, *config.HOST_KEYS, *usage}
     keys |= {p.rstrip(".") for p in config._OPTION_PREFIXES}
     found: dict[str, object] = {}
     for key in keys:
@@ -117,13 +146,38 @@ def found_readers(key: str, root: Path) -> list[str]:
     return sorted(found)
 
 
+def expected_readers(key: str, root: Path) -> list[str]:
+    """What the map must list: the text match, less NOT_READERS, plus INDIRECT_READERS."""
+    found = {p for p in found_readers(key, root) if (key, p) not in NOT_READERS}
+    found |= {p for (k, p) in INDIRECT_READERS if k == key}
+    return sorted(found)
+
+
+def exception_problems(root: Path) -> list[str]:
+    """An entry of NOT_READERS or INDIRECT_READERS that no longer holds."""
+    problems = []
+    for key, path in NOT_READERS:
+        if not (root / path).exists() or path not in found_readers(key, root):
+            problems.append(f"{key}: NOT_READERS {path} no longer names it")
+    for (key, path), attribute in INDIRECT_READERS.items():
+        if not (root / path).exists():
+            problems.append(f"{key}: INDIRECT_READERS {path} does not exist")
+            continue
+        text = (root / path).read_text(encoding="utf-8")
+        if path in found_readers(key, root):
+            problems.append(f"{key}: INDIRECT_READERS {path} names it, so it needs no entry")
+        elif not LOADS_CONFIG.search(text) or attribute not in text:
+            problems.append(f"{key}: INDIRECT_READERS {path} no longer loads the config or uses {attribute}")
+    return problems
+
+
 def all_keys(data: dict):
     return [k for f in data["files"] for t in f["tables"] for k in t["keys"]]
 
 
 def config_problems(data: dict, root: Path) -> list[str]:
     expected = expected_keys()
-    problems = []
+    problems = exception_problems(root)
     on_map = {k["key"]: k for k in all_keys(data)}
     for key in expected.keys() - on_map.keys():
         problems.append(f"not on the map: {key}")
@@ -150,7 +204,7 @@ def reader_problems(key: str, readers: list[str], root: Path) -> list[str]:
     problems = []
     if not readers and key not in UNREAD:
         problems.append(f"{key}: no readers")
-    found = found_readers(key, root)
+    found = expected_readers(key, root)
     for path in readers:
         if not path.startswith(("pack/", "internal/", "cmd/")):
             problems.append(f"{key}: reader {path} outside pack/, internal/ or cmd/")
@@ -265,6 +319,32 @@ def test_problems_flag_an_empty_reader_list():
     entry["readers"] = []
     assert config_problems(data, ROOT) == sorted(
         ["test_gate.command: no readers"] + [f"test_gate.command: reader {p} missing from the map" for p in gone])
+
+
+def test_problems_flag_an_indirect_reader_left_off_the_map():
+    data = copy.deepcopy(load("config.json"))
+    entry_of(data, "forge.board.project_id")["readers"].remove("pack/core/scripts/board_start.py")
+    assert config_problems(data, ROOT) == [
+        "forge.board.project_id: reader pack/core/scripts/board_start.py missing from the map"]
+
+
+def test_problems_flag_a_not_reader_that_is_dropped_from_the_exceptions(monkeypatch):
+    monkeypatch.delitem(NOT_READERS, ("project.language", "pack/python/scripts/quality/ratchet.py"))
+    assert config_problems(load("config.json"), ROOT) == [
+        "project.language: reader pack/python/scripts/quality/ratchet.py missing from the map"]
+
+
+def test_problems_flag_a_stale_not_readers_entry(monkeypatch):
+    monkeypatch.setitem(NOT_READERS, ("shell.strict_dirs", "pack/core/skills/close-issue"), "x")
+    assert config_problems(load("config.json"), ROOT) == [
+        "shell.strict_dirs: NOT_READERS pack/core/skills/close-issue no longer names it"]
+
+
+def test_problems_flag_an_indirect_entry_of_a_file_without_the_config(monkeypatch):
+    monkeypatch.setitem(INDIRECT_READERS, ("forge.owner", "pack/core/hooks/main-commit-gate.sh"), ".owner")
+    problems = config_problems(load("config.json"), ROOT)
+    assert ("forge.owner: INDIRECT_READERS pack/core/hooks/main-commit-gate.sh "
+            "no longer loads the config or uses .owner") in problems
 
 
 def test_problems_flag_a_dogfood_reader():
