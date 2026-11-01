@@ -110,7 +110,12 @@ python3 -I tools/hooks/checkpoint_scan.py push https://github.com/CorneeldH/ligh
 ```
 
 Er is geen git-remote voor de checkpoints; de URL komt uit `checkpoint_remote` in
-`.entire/settings.json`. `push` weigert als dit niet de checkpoint-remote is, of zolang entire zelf
+`.entire/settings.json`. Een push gaat naar de checkpoint-remote als de remote de naam uit
+`checkpoint_push_remote` heeft, of als de URL precies de host van de forge heeft (`github.com`,
+`gitlab.com`; als `https://`, `http://`, `ssh://`, `git://` of `[user@]host:`) en precies
+`<owner>/<repo>` als pad, eventueel met `.git` of een `/` erachter. Een andere host, ook
+`notgithub.com` of `github.com.evil.com`, of de forge in het pad of de query van een andere host,
+telt niet. `push` weigert als dit niet de checkpoint-remote is, of zolang entire zelf
 mag pushen: er is een `.entire/settings*.json` gelezen, `enabled` is daarin niet `false` en
 `strategy_options.push_sessions` is niet `false`. Het:
 

@@ -734,11 +734,22 @@ def read_entire_settings(toplevel: Path) -> EntireSettings:
 
 _FORGE_HOSTS = {"github": "github.com", "gitlab": "gitlab.com"}
 
+# A URL a forge serves: `<scheme>://[userinfo@]host[:port]/<path>`. The userinfo
+# holds no `@`, `/`, `\` or whitespace, so the host is the one after the only `@`;
+# a query or a fragment does not match at all. Matched in full: a match on the tail
+# of the URL let `https://notgithub.com/<owner>/<repo>` through (roborev).
+_URL = re.compile(
+    r"(?:https?|ssh|git)://(?:[^@/?#\\\s]*@)?(?P<host>[A-Za-z0-9.-]+)(?::[0-9]+)?/(?P<path>[^?#\\\s]*)"
+)
+# git's scp-like syntax, `[user@]host:<path>`: no slash before the colon.
+_SCP = re.compile(r"(?:[^@/:\\\s]+@)?(?P<host>[A-Za-z0-9.-]+):(?P<path>[^\\\s]*)")
+
 
 def is_checkpoint_remote(settings: EntireSettings, remote: str, url: str) -> bool:
     """Is a push to `remote` (`url`) a push to the checkpoint remote? By the remote's
     name when entire has a checkpoint push remote, else by the URL of the checkpoint
-    repo. The one rule for the pre-push hook and `push`."""
+    repo: the forge's host exactly, and exactly `<owner>/<repo>`, with `.git` or a
+    trailing slash. The one rule for the pre-push hook and `push`."""
     if settings.push_remote and remote == settings.push_remote:
         return True
     if settings.checkpoint_repo is None:
@@ -747,8 +758,10 @@ def is_checkpoint_remote(settings: EntireSettings, remote: str, url: str) -> boo
     host = _FORGE_HOSTS.get(provider)
     if host is None:
         return False
-    tails = (f"{host}/{path}", f"{host}/{path}.git", f"{host}/{path}/", f"{host}:{path}", f"{host}:{path}.git")
-    return url.endswith(tails)
+    hit = _URL.fullmatch(url) or _SCP.fullmatch(url)
+    if hit is None or hit["host"].lower() != host:
+        return False
+    return hit["path"] in (path, f"{path}.git", f"{path}/")
 
 
 def _entire_remote_cli(ns: argparse.Namespace) -> int:

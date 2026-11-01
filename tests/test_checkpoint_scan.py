@@ -1295,6 +1295,68 @@ def test_checkpoint_remote_by_url(cs, tmp_path, remote, url, expected):
     assert cs.is_checkpoint_remote(settings, remote, url) is expected
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://github.com/Acme/ckpt.git",
+        "https://GitHub.com/Acme/ckpt.git",
+        "https://github.com:443/Acme/ckpt.git",
+        "https://x-access-token:tok@github.com/Acme/ckpt.git",
+        "github.com:Acme/ckpt.git",
+        "ssh://github.com/Acme/ckpt",
+        "ssh://git@github.com:22/Acme/ckpt.git",
+        "ssh://git@github.com/Acme/ckpt/",
+        "git://github.com/Acme/ckpt.git",
+    ],
+)
+def test_checkpoint_remote_accepts_every_url_form_of_the_host(cs, tmp_path, url):
+    settings = cs.read_entire_settings(_settings_dir(tmp_path, GITHUB_CKPT))
+
+    assert cs.is_checkpoint_remote(settings, "c", url), url
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        # Another host whose name ends in the forge's, or holds it.
+        "https://notgithub.com/Acme/ckpt.git",
+        "git@notgithub.com:Acme/ckpt.git",
+        "ssh://git@notgithub.com/Acme/ckpt.git",
+        "https://github.com.evil.com/Acme/ckpt.git",
+        "git@github.com.evil.com:Acme/ckpt.git",
+        # The forge's host and path inside the path, query or fragment of another.
+        "https://evil.com/github.com/Acme/ckpt.git",
+        "https://evil.com/github.com:Acme/ckpt.git",
+        "https://evil.com/?x=github.com/Acme/ckpt",
+        "https://evil.com/x#github.com/Acme/ckpt",
+        "ssh://git@evil.com/github.com:Acme/ckpt.git",
+        # The forge's host as userinfo, before the real host.
+        "https://github.com@evil.com/Acme/ckpt.git",
+        "https://github.com:443@evil.com/Acme/ckpt.git",
+        "https://evil.com\\@github.com/Acme/ckpt.git",
+        "git@evil.com@github.com:Acme/ckpt.git",
+        # The right host, but not exactly owner/repo.
+        "https://github.com/acme/ckpt.git",
+        "https://github.com/Acme/ckptx.git",
+        "https://github.com/Other/Acme/ckpt.git",
+        "https://github.com//Acme/ckpt.git",
+        "https://github.com/Acme/ckpt.git?x=1",
+        "https://github.com/Acme/ckpt.git#x",
+        "git@github.com:/Acme/ckpt.git",
+        "https://github.com/Acme/ckpt.git\n",
+        # No forge URL at all: a scheme git does not push over to a forge, or a path.
+        "ftp://github.com/Acme/ckpt.git",
+        "file:///github.com/Acme/ckpt.git",
+        "github.com/Acme/ckpt.git",
+        "./github.com:Acme/ckpt.git",
+    ],
+)
+def test_checkpoint_remote_refuses_any_other_host(cs, tmp_path, url):
+    settings = cs.read_entire_settings(_settings_dir(tmp_path, GITHUB_CKPT))
+
+    assert not cs.is_checkpoint_remote(settings, "c", url), url
+
+
 def test_checkpoint_remote_of_lighthouse(cs, tmp_path):
     """The real checkpoint repo: its URL passes, the public repo's does not."""
     shared = {
@@ -1309,6 +1371,8 @@ def test_checkpoint_remote_of_lighthouse(cs, tmp_path):
     assert cs.is_checkpoint_remote(settings, url, url)
     public = "https://github.com/CorneeldH/lighthouse.git"
     assert not cs.is_checkpoint_remote(settings, public, public)
+    lookalike = "https://notgithub.com/CorneeldH/lighthouse-checkpoints.git"
+    assert not cs.is_checkpoint_remote(settings, lookalike, lookalike)
 
 
 def test_checkpoint_remote_by_gitlab_url(cs, tmp_path):
