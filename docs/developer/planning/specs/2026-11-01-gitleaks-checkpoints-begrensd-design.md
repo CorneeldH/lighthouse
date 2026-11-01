@@ -67,8 +67,11 @@ Overwogen in de brainstorm:
 **Gekozen: A** (gebruiker). Het is de enige aanpak waarbij de omvang van de scan niet meegroeit
 met het aantal checkpoints.
 
-Voor een root-commit is A precies gelijkwaardig aan `gitleaks git`: de diff van een root-commit
-is de volledige inhoud van elke blob. Daarom geldt de blobmodus alleen voor `refs/entire/*`. Voor
+Voor een root-commit ziet A dezelfde inhoud als `gitleaks git`: de diff van een root-commit
+is de volledige inhoud van elke blob. Daarom geldt de blobmodus alleen voor `refs/entire/*`.
+(Correctie na de review: gelijkwaardig is het niet vanzelf. `gitleaks dir` slaat bestanden over
+op type en pad, waar `gitleaks git` ze scant; wat de blobmodus daartegen doet en wat overblijft,
+staat in [`docs/secret-scan.md`](../../../secret-scan.md).) Voor
 een gewone commit zou een volledige blob meer zien dan de toegevoegde regels, en daarmee afwijken
 van CI.
 

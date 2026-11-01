@@ -22,20 +22,50 @@ unieke blob één keer, in batches, elke gitleaks-run in een systemd-scope met e
 1. Bepaalt de blobs die de remote mist (`git rev-list --objects` met `--not --remotes=<naam>`).
 2. Haalt de blobs weg die de ledger al schoon kent.
 3. Zet de rest op grootte in batches van ca. 64 MB, schrijft elke blob als bestand naar een
-   tijdelijke map en draait `gitleaks dir` met `.gitleaks.toml`, begrensd.
-4. Schrijft na elke batch zonder finding de blobs in de ledger (atomair), en meldt per batch
+   tijdelijke map, met een newline vóór de inhoud, en draait `gitleaks dir .` in die map met
+   `.gitleaks.toml`, begrensd.
+4. Controleert dat gitleaks alle geschreven bytes scande (zie hieronder).
+5. Schrijft na elke batch de blobs zonder finding in de ledger (atomair), en meldt per batch
    `secret-scan: batch 3/12, 64 MB, 0 findings`.
 
-De blobmodus is voor `refs/entire/*` gelijkwaardig aan `gitleaks git`, omdat een checkpoint een
-root-commit is. `refs/heads/entire/*` (shadow branches, `entire/checkpoints/v1`) staan op de
+Wat de blobmodus garandeert: elke unieke blob die de remote mist, scant gitleaks volledig, of de
+batch telt als niet te scannen (`COULD NOT CHECK`, niets ervan in de ledger). Een checkpoint is een
+root-commit, dus `gitleaks git` zou dezelfde inhoud zien. Toch is de blobmodus daar niet vanzelf
+gelijk aan; de verschillen en wat de module ertegen doet:
+
+- `gitleaks dir` (8.30.1) slaat een bestand over waarvan de eerste bytes het magic number van een
+  binair type zijn (zip, gzip, ELF, PDF, RTF, SQLite, OLE en meer), ook als git het als tekst ziet
+  en `gitleaks git` het wel scant. De newline vooraan haalt dat weg: geen type begint daarmee.
+  Matches blijven gelijk (gemeten, ook voor een match aan het begin van de blob); alleen
+  regelnummers schuiven één op, en de module meldt die niet.
+- gitleaks draait in de tijdelijke map op `.`, dus het pad waarop zijn pad-allowlists werken is het
+  kale blob-id. Op het absolute pad maakte een `TMPDIR` onder bijvoorbeeld `node_modules/` (in de
+  standaard-allowlist) elke blob schoon. Zo doet ook een `.gitleaksignore` van de repo niet mee.
+- gitleaks meldt `scanned ~<n> bytes`. Is dat minder dan de batch op schijf (een binair type op een
+  vaste offset voorbij de eerste byte, zoals `ustar` op 257 bij tar; een pad-allowlist; een
+  groottegrens), of ontbreekt de melding, dan geeft de batch `secret-scan: COULD NOT CHECK —
+  gitleaks scanned <n> of <m> bytes in batch <i>; it skipped <blob-id>`.
+- Een blob die git binair vindt (een NUL in de eerste 8000 bytes) slaat `gitleaks git` over; de
+  blobmodus scant hem wel.
+
+Wat overblijft:
+
+- Een blob die gitleaks ondanks de newline overslaat, blokkeert elke push van zijn refs (hook en
+  `push`) tot de checkpoint gedropt is. Hij komt nooit schoon in de ledger, maar er is geen weg om
+  hem alsnog te scannen.
+- De bytetelling leest een logregel van gitleaks. Verandert die in een nieuwe versie, dan is elke
+  batch `COULD NOT CHECK`: dicht, niet open.
+
+`refs/heads/entire/*` (shadow branches, `entire/checkpoints/v1`) staan op de
 werkbranch en gaan, net als gewone refs, door `gitleaks git` over het commitbereik; ze mogen wel
 alleen naar de checkpoint-remote.
 
 De ledger staat in `<git-common-dir>/lighthouse/secret-scan/clean-<sleutel>.txt`, gedeeld door alle
 worktrees van een clone en nooit in een commit. De sleutel is de sha256 van de bytes van
-`.gitleaks.toml` plus de uitvoer van `gitleaks version`. Verandert een van beide, dan begint een
-nieuwe ledger en volgt een volledige herscan. Alleen blobs zonder finding uit een batch die
-afrondde (rc 0, of rc 1 met een gelezen rapport) komen erin.
+`.gitleaks.toml`, de uitvoer van `gitleaks version` en de scanmethode (`SCAN_METHOD` in de module).
+Verandert een van de drie, dan begint een nieuwe ledger en volgt een volledige herscan; zo telt een
+ledger van vóór de newline en de bytetelling niet meer. Alleen blobs zonder finding uit een batch
+die afrondde (rc 0, of rc 1 met een gelezen rapport) en volledig gescand is, komen erin.
 
 Uitslag van `scan`: exit 0 schoon, 1 bevindingen (per ref het pad, het regel-id van gitleaks en de
 geredigeerde match), 2 niet te scannen. Is er meer dan 256 MB ongescand, dan scant de hook niet maar blokkeert
@@ -85,11 +115,14 @@ mag pushen: er is een `.entire/settings*.json` gelezen, `enabled` is daarin niet
 
 1. Scant alle `refs/entire/*` die de remote mist (zelfde batches en begrenzing, ledger bijgewerkt).
 2. Schrijft de vuile refs naar `held.txt`, naast de ledger.
-3. Pusht de schone refs met een gewone `git push`, in brokken van maximaal 500 refs, dus door de
-   pre-push-hook; die vindt alles in de ledger en is snel.
+3. Pusht de schone refs als de commits die het scande (`<sha>:<ref>`, niet wat de ref bij de push
+   houdt) met `git push --atomic`, in brokken van maximaal 500 refs, dus door de pre-push-hook;
+   die vindt alles in de ledger en is snel. Faalt een brok, dan landt niets van dat brok en
+   stopt `push`; `<k> of <n> clean refs pushed` klopt dus.
 4. Eindigt met `<n> pushed, <m> held — see <pad>`. Exit 0 als niets vuil is, 1 bij vuile refs, 2
-   als er niets (of niet alles) gepusht is. Een afgebroken scan gaat bij de volgende run verder
-   vanaf de ledger.
+   als er niets (of niet alles) gepusht is. Een afgebroken scan pusht niets en verwijdert
+   `held.txt` van een eerdere run; de volgende run gaat verder vanaf de ledger en schrijft
+   `held.txt` opnieuw.
 
 `push` stopt niet bij het findings-plafond: de blobs met een finding blijven uit de ledger, hun
 refs gaan naar `held.txt`, de melding staat bovenaan het overzicht, en de schone refs gaan uit de
@@ -102,7 +135,8 @@ onbegrensd met `gitleaks git` scant. Push checkpoints alleen vanuit een checkout
 
 ## `held.txt`
 
-`<git-common-dir>/lighthouse/secret-scan/held.txt` wordt bij elke `push` herschreven. Eerst de
+`<git-common-dir>/lighthouse/secret-scan/held.txt` wordt bij elke `push` herschreven, en weggehaald
+als de scan afbreekt. Eerst de
 meldingen van het findings-plafond, dan één blok per vuile ref: de ref, daarna per finding
 `  <pad>  <regel-id>  <geredigeerde match>`.
 
@@ -128,7 +162,9 @@ een kale `gitleaks git` over `refs/entire/*`.
 ## Kosten van een volledige scan
 
 Gemeten op 2026-11-01 op de always-on host, gitleaks 8.30.1, `.gitleaks.toml` met de allowlist van
-de beta-headers, standaardlimieten (`scan_memory_max = "2G"`, `scan_cpu_quota = "200%"`):
+de beta-headers, standaardlimieten (`scan_memory_max = "2G"`, `scan_cpu_quota = "200%"`). De meting
+liep vóór de newline vooraan en de bytetelling: blobs die met een binair magic number begonnen,
+zijn toen overgeslagen, dus de aantallen findings en schone blobs kunnen nu anders uitvallen.
 
 | Maat | Waarde |
 |---|---|
