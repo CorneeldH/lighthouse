@@ -411,6 +411,10 @@ in paia. Vóór de eerste lighthouse-tick landt in paia één PR (*Overstap*, st
   Software-profiel draaien.
 - De Python-controller krijgt een eigen stop op nieuwe starts, los van de pauzevlag: hij start
   dan niets nieuws, maar hervat wel na een antwoord of een usage-reset (*Overstap*, stap 3).
+- De Python-controller hervat en verwijdert alleen markers in de resume-map van sessies uit zijn
+  eigen runmap; een `controller: true`-marker van een lighthouse-sessie laat hij staan
+  (`docs/usage-gate.md`, *Contract*). Anders ruimt hij de markers van lighthouse op voordat de
+  tick ze ziet *(planreview #116, r1-f9)*.
 
 Een eigen starter in lighthouse, met eigen forge-targets, komt in M3: een tweede gebruiker heeft
 geen paia.
@@ -540,7 +544,7 @@ De tick hervat ze via de markers.
 ### 13. Overstap
 
 0. In paia: de PR uit *Launch* (dubbele drager in `forge_agent.sh`, mounts, de
-   `lighthouse`-binary en Go in de devcontainer, de stop op nieuwe starts). Zonder die PR start lighthouse geen agent.
+   `lighthouse`-binary en Go in de devcontainer, de stop op nieuwe starts, markers van lighthouse laten staan). Zonder die PR start lighthouse geen agent.
 1. Lighthouse draait `tick` naast de Python-controller, alleen voor lighthouse zelf
    (Software-profiel). De Python-controller bedient lighthouse niet.
 2. De end-to-end-proef uit de DoD, op lighthouse: handoff, start, vraag, antwoord, hervat,
