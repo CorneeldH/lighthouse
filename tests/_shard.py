@@ -14,7 +14,7 @@ def parse_shard(value: str | None) -> tuple[int, int] | None:
     """`(index, total)` from `<i>/<n>`, None when unset; ValueError on anything else."""
     if value is None:
         return None
-    match = re.fullmatch(r"(\d+)/(\d+)", value)
+    match = re.fullmatch(r"([0-9]+)/([0-9]+)", value)
     if match:
         index, total = int(match.group(1)), int(match.group(2))
         if 1 <= index <= total:
