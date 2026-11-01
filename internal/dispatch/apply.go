@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/park"
@@ -83,6 +84,11 @@ type applier struct {
 
 func (ap applier) logf(format string, args ...any) {
 	_, _ = fmt.Fprintf(ap.log, format+"\n", args...)
+}
+
+// oneLine flattens s for a log line or a comment field.
+func oneLine(s string) string {
+	return strings.ReplaceAll(strings.TrimSpace(s), "\n", "; ")
 }
 
 func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
@@ -264,7 +270,7 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		Repo: a.Repo, Issue: a.Issue, SessionID: session, Mode: a.Mode, Profile: profile,
 		Prompt: a.Prompt, Native: a.Native, InstructionsFile: file, MCPConfig: mcpConfig,
 	}
-	outcome, err := workplace.Launch(ctx, env.DB, w, run.ID, a.Branch, spec, now)
+	outcome, reason, err := workplace.Launch(ctx, env.DB, w, run.ID, a.Branch, spec, now)
 	switch outcome {
 	case workplace.Accepted:
 		// An error is a session key the run could not record: SessionKeys then misses the agent.
@@ -276,14 +282,14 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		res.Started++
 		ap.resumedMarker(a)
 		if err != nil {
-			ap.logf("%s#%d: launch of run %d uncertain: %v", a.Repo, a.Issue, run.ID, err)
+			ap.logf("%s#%d: launch of run %d uncertain: %s", a.Repo, a.Issue, run.ID, oneLine(err.Error()))
 		}
 	case workplace.NotAccepted:
 		// An error means the run could not be closed: an open run without an agent.
 		if err != nil {
 			return err
 		}
-		ap.logf("%s#%d: launch of run %d not accepted", a.Repo, a.Issue, run.ID)
+		ap.logf("%s#%d: launch of run %d not accepted: %s", a.Repo, a.Issue, run.ID, oneLine(reason))
 		res.NotAccepted = append(res.NotAccepted, fmt.Sprintf("%s#%d", a.Repo, a.Issue))
 	}
 	return nil

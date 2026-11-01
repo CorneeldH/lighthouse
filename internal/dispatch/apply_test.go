@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -537,6 +538,36 @@ func TestApplyNotAcceptedCountsNoStart(t *testing.T) {
 	}
 	if !strings.Contains(h.out.String(), "not accepted") {
 		t.Errorf("log %q does not report the refused launch", h.out.String())
+	}
+}
+
+func TestApplyNotAcceptedLogsReason(t *testing.T) {
+	h := newHarness(t)
+	h.wp.spawnErr = fmt.Errorf("kenn-forge answered 409: session\nnot live: %w", workplace.ErrNotAccepted)
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	want := applyRepo + "#7: launch of run 1 not accepted: kenn-forge answered 409: session; not live: workplace: spawn not accepted"
+	if !strings.Contains(h.out.String(), want) {
+		t.Errorf("log %q, want %q", h.out.String(), want)
+	}
+	if n := strings.Count(h.out.String(), "\n"); n != 1 {
+		t.Errorf("log %q has %d lines, want 1", h.out.String(), n)
+	}
+}
+
+func TestApplyUncertainLogsReason(t *testing.T) {
+	h := newHarness(t)
+	h.wp.spawnErr = fmt.Errorf("sessions: timeout\nretry: %w", workplace.ErrUncertain)
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	want := "launch of run 1 uncertain: spawn run 1: sessions: timeout; retry: "
+	if !strings.Contains(h.out.String(), want) {
+		t.Errorf("log %q, want %q", h.out.String(), want)
+	}
+	if n := strings.Count(h.out.String(), "\n"); n != 1 {
+		t.Errorf("log %q has %d lines, want 1", h.out.String(), n)
 	}
 }
 
