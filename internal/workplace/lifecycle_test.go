@@ -26,6 +26,18 @@ type fakeWP struct {
 	stopped                                                           []string
 	removed                                                           []string
 	discarded                                                         []string
+	// lookupPath and lookupErr answer Lookup; looked lists the ids it was asked for.
+	lookupPath string
+	lookupErr  error
+	looked     []string
+}
+
+func (f *fakeWP) Lookup(_ context.Context, id string) (Workspace, error) {
+	f.looked = append(f.looked, id)
+	if f.lookupErr != nil {
+		return Workspace{}, f.lookupErr
+	}
+	return Workspace{ID: id, Path: f.lookupPath, Branch: "forge-branch"}, nil
 }
 
 func (f *fakeWP) Prepare(_ context.Context, branch string) (Workspace, error) {
@@ -375,6 +387,92 @@ func TestCleanupRemovesClean(t *testing.T) {
 	}
 	if got := leftoverReasons(t, db); len(got) != 0 {
 		t.Errorf("leftovers = %v", got)
+	}
+}
+
+// A candidate without a path gets it from Lookup; git measures that path, and the leftover has it.
+func TestCleanupLooksUpPath(t *testing.T) {
+	db := openLeftoverDB(t)
+	w := &fakeWP{lookupPath: "/p/looked"}
+	var paths []string
+	run := func(ctx context.Context, d time.Duration, name string, args ...string) (string, int, error) {
+		for i, a := range args {
+			if a == "-C" {
+				paths = append(paths, args[i+1])
+			}
+		}
+		return gitRunner(" M x.go", "abc", "0")(ctx, d, name, args...)
+	}
+	c := cand(7)
+	c.Workspace.Path = ""
+	removed, err := Cleanup(context.Background(), db, w, run, c, lcNow)
+	if err != nil || removed || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, removes %d", removed, err, w.removes)
+	}
+	if !reflect.DeepEqual(w.looked, []string{"w1"}) || !reflect.DeepEqual(paths, []string{"/p/looked"}) {
+		t.Errorf("looked = %v, git paths = %v; want [w1], [/p/looked]", w.looked, paths)
+	}
+	ls, err := Leftovers(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ls) != 1 || ls[0].Path != "/p/looked" || ls[0].Reason != "uncommitted changes" {
+		t.Errorf("leftovers = %+v, want one with path /p/looked and uncommitted changes", ls)
+	}
+}
+
+func TestCleanupLooksUpPathAndRemoves(t *testing.T) {
+	db := openLeftoverDB(t)
+	w := &fakeWP{lookupPath: "/p/looked"}
+	c := cand(7)
+	c.Workspace.Path = ""
+	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), c, lcNow)
+	if err != nil || !removed || !reflect.DeepEqual(w.removed, []string{"w1"}) {
+		t.Fatalf("Cleanup = %v, %v, removed %v", removed, err, w.removed)
+	}
+}
+
+// A candidate with a path is not looked up.
+func TestCleanupKnownPathNoLookup(t *testing.T) {
+	db := openLeftoverDB(t)
+	w := &fakeWP{lookupErr: errors.New("unexpected Lookup")}
+	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), cand(7), lcNow)
+	if err != nil || !removed || len(w.looked) != 0 {
+		t.Fatalf("Cleanup = %v, %v, looked %v", removed, err, w.looked)
+	}
+}
+
+func TestCleanupLookupGone(t *testing.T) {
+	db := openLeftoverDB(t)
+	if err := RecordLeftover(context.Background(), db, Leftover{Repo: lcRepo, Issue: 7, WorkspaceID: "w1", Reason: "old"}, lcNow); err != nil {
+		t.Fatal(err)
+	}
+	w := &fakeWP{lookupErr: fmt.Errorf("404: %w", ErrGone), sessionsErr: errors.New("unexpected Sessions")}
+	c := cand(7)
+	c.Workspace.Path = ""
+	removed, err := Cleanup(context.Background(), db, w, noRunner(t), c, lcNow)
+	if err != nil || !removed || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, removes %d", removed, err, w.removes)
+	}
+	if !reflect.DeepEqual(w.discarded, []string{"w1"}) {
+		t.Errorf("discarded = %v, want [w1]", w.discarded)
+	}
+	if got := leftoverReasons(t, db); len(got) != 0 {
+		t.Errorf("leftovers = %v", got)
+	}
+}
+
+func TestCleanupLookupFails(t *testing.T) {
+	db := openLeftoverDB(t)
+	w := &fakeWP{lookupErr: errors.New("forge down"), sessionsErr: errors.New("unexpected Sessions")}
+	c := cand(7)
+	c.Workspace.Path = ""
+	removed, err := Cleanup(context.Background(), db, w, noRunner(t), c, lcNow)
+	if err != nil || removed || w.removes != 0 || len(w.discarded) != 0 {
+		t.Fatalf("Cleanup = %v, %v, removes %d, discarded %v", removed, err, w.removes, w.discarded)
+	}
+	if got := leftoverReasons(t, db)["w1"]; got != "not measurable: lookup: forge down" {
+		t.Errorf("reason = %q", got)
 	}
 }
 

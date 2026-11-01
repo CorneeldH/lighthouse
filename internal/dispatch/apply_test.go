@@ -143,6 +143,11 @@ func (w *fakeWorkplace) Remove(context.Context, string) error {
 	return nil
 }
 
+func (w *fakeWorkplace) Lookup(_ context.Context, workspaceID string) (workplace.Workspace, error) {
+	w.log.add("Lookup " + workspaceID)
+	return workplace.Workspace{ID: workspaceID, Path: "/work/" + workspaceID}, nil
+}
+
 func (w *fakeWorkplace) Discard(_ context.Context, workspaceID string) error {
 	w.log.add("Discard")
 	w.forgot = append(w.forgot, workspaceID)

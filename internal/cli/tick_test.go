@@ -496,6 +496,10 @@ func (w *fakeWorkplace) Remove(context.Context, string) error {
 	return errors.New("unexpected Remove")
 }
 
+func (w *fakeWorkplace) Lookup(_ context.Context, workspaceID string) (workplace.Workspace, error) {
+	return workplace.Workspace{ID: workspaceID, Path: "/work/" + workspaceID}, nil
+}
+
 func (w *fakeWorkplace) Discard(context.Context, string) error {
 	w.t.Error("unexpected Discard")
 	return errors.New("unexpected Discard")

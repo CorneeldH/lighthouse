@@ -127,9 +127,10 @@ type Candidate struct {
 // workspace it must keep, or cannot measure, is recorded as a leftover; it is
 // never removed on an unmeasurable check. A running run is never touched.
 //
-// The order: in the controller or an open run (nothing), the workspace path,
-// the sessions (a workspace forge no longer knows counts as removed), a live
-// foreign session (keep), stop the own sessions, dirty, unpushed, remove.
+// The order: in the controller or an open run (nothing), the workspace path
+// (looked up when the candidate has none), the sessions (a workspace forge no
+// longer knows counts as removed), a live foreign session (keep), stop the own
+// sessions, dirty, unpushed, remove.
 func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candidate, now time.Time) (removed bool, err error) {
 	if c.Workspace.ID == "" {
 		return false, errors.New("cleanup: candidate has no workspace id")
@@ -150,14 +151,8 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		l := Leftover{Repo: c.Repo, Issue: c.Issue, WorkspaceID: c.Workspace.ID, Path: c.Workspace.Path, Reason: reason}
 		return false, RecordLeftover(ctx, db, l, now)
 	}
-	// git -C "" or a relative path would measure the working directory instead.
-	if !filepath.IsAbs(c.Workspace.Path) {
-		return keep("not measurable: no workspace path")
-	}
-
-	sessions, err := w.Sessions(ctx, c.Workspace.ID)
-	if errors.Is(err, ErrGone) {
-		// Forge no longer knows the workspace: removed, as after a 404 on Remove.
+	// Forge no longer knows the workspace: removed, as after a 404 on Remove.
+	gone := func() (bool, error) {
 		if err := w.Discard(ctx, c.Workspace.ID); err != nil {
 			return keep("not measurable: discard: " + err.Error())
 		}
@@ -165,6 +160,25 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 			return true, err
 		}
 		return true, nil
+	}
+	if c.Workspace.Path == "" {
+		ws, err := w.Lookup(ctx, c.Workspace.ID)
+		if errors.Is(err, ErrGone) {
+			return gone()
+		}
+		if err != nil {
+			return keep("not measurable: lookup: " + err.Error())
+		}
+		c.Workspace.Path = ws.Path
+	}
+	// git -C "" or a relative path would measure the working directory instead.
+	if !filepath.IsAbs(c.Workspace.Path) {
+		return keep("not measurable: no workspace path")
+	}
+
+	sessions, err := w.Sessions(ctx, c.Workspace.ID)
+	if errors.Is(err, ErrGone) {
+		return gone()
 	}
 	if err != nil {
 		return keep("not measurable: sessions: " + err.Error())
