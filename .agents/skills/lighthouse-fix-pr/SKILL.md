@@ -18,8 +18,9 @@ In scope: an **existing** PR in this repo (`forge.repo`) that is red or conflict
 worktree of the head branch, the fix, getting it green.
 
 Second entry: a **green** PR with an unprocessed roborev review (section 6, only if present) —
-the controller (if present) starts the skill for it, or you say "process the roborev review on
-1407".
+the user starts it: "process the roborev review on 1407". The dispatcher (controller run, if
+present) starts this skill only on a red PR after a finished run, never for a roborev review on
+a green PR.
 
 Not here: closing the issue (`/lighthouse-close-issue`), a review of the diff on content (a review
 skill such as `caveman:caveman-review`), starting new work on an issue (`/lighthouse-start-issue`),
@@ -189,9 +190,9 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 3. Push once (section 5) — only if there is something to push. If you refute *all* findings,
    there is nothing to push and you skip this step.
 4. Post **always** one answer comment, also if you pushed nothing and also if you refuted every
-   finding: the marker is the only signal by which the controller (if present) sees the round as
-   done. Without the marker it returns the issue, or after a push it starts another fix-pr run (at
-   most three).
+   finding: the marker is the signal that the round is done; without it a later fix-pr run
+   processes the same review again. The dispatcher (controller run, if present) does not read the
+   marker: it starts fix-pr only on a red PR after a finished run, at most three times per PR.
    The comment comes from the renderer `lighthouse-write-pr` uses too, so both routes leave the
    same log. `<scratch>` is the scratchpad or `$TMPDIR`. Save the roborev comment, the same one
    the diagnosis shows:

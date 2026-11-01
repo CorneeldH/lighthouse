@@ -182,3 +182,11 @@ def test_roborev_section_stops_on_an_unreadable_ci_review() -> None:
         s6 = text[text.index("## 6.") : text.index("## Non-negotiable")]
         assert "`classify` prints `verdict` `skip`" in s6
         assert "render and post nothing" in s6
+
+
+def test_only_a_red_pr_is_started_by_the_dispatcher() -> None:
+    """The dispatcher starts fix-pr on a red PR only and never reads the roborev marker."""
+    for text in TEXTS:
+        flat = " ".join(text.split())
+        assert "starts this skill only on a red PR after a finished run" in flat
+        assert "does not read the marker" in flat
