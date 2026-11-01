@@ -324,7 +324,11 @@ func TestRunIgnoresSlots(t *testing.T) {
 		if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
 			t.Fatalf("run = %v\n%s", err, errOut.String())
 		}
-		if want := "lighthouse: nothing to start for o/r#7\n"; errOut.String() != want {
+		raw, err := os.ReadFile(flag)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "lighthouse: paused until " + strings.TrimSpace(string(raw)) + "\n"; errOut.String() != want {
 			t.Errorf("errOut = %q, want %q", errOut.String(), want)
 		}
 		if len(w.spawned()) != 0 {

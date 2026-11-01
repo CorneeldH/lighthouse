@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -109,6 +110,8 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	}
 	// run has no board snapshot of all issues, so Decide must not judge the markers of other
 	// issues (a marker whose issue is not in Items is dropped): it gets those of this issue only.
+	// runKinds already excludes drop_marker, so run never applies such a drop; the filter is belt
+	// and braces.
 	in.Markers = slices.DeleteFunc(slices.Clone(in.Markers), func(m park.Marker) bool {
 		return lastIssueOfSession(in.History, m.SessionID) != issue
 	})
@@ -122,7 +125,7 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	return runResult(res, repo.Slug, issue, errOut)
+	return runResult(res, repo.Slug, issue, facts.PauseUntil, errOut)
 }
 
 // lastIssueOfSession is the issue of the last run of session in history, 0 without one.
@@ -153,8 +156,9 @@ func findRepo(cfg hostconfig.Dispatch, slug, hostToml string) (repoconfig.Repo, 
 
 // runResult writes what apply did for slug#issue to errOut: each deferral, an apply line for
 // a failed action, and then started, not accepted (the workplace refused the launch) or, when
-// nothing started, deferred or failed, nothing to start. A failed action returns errSilent.
-func runResult(res dispatch.Result, slug string, issue int, errOut io.Writer) error {
+// nothing started, deferred or failed, paused (pauseUntil is set: the pause drops the start
+// without a deferral) or nothing to start. A failed action returns errSilent.
+func runResult(res dispatch.Result, slug string, issue int, pauseUntil time.Time, errOut io.Writer) error {
 	for _, d := range res.Deferred {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: deferred %s\n", d)
 	}
@@ -168,6 +172,8 @@ func runResult(res dispatch.Result, slug string, issue int, errOut io.Writer) er
 		_, _ = fmt.Fprintf(errOut, "lighthouse: started %s\n", target)
 	case slices.Contains(res.NotAccepted, target):
 		_, _ = fmt.Fprintf(errOut, "lighthouse: not accepted %s\n", target)
+	case len(res.Deferred) == 0 && failed == nil && !pauseUntil.IsZero():
+		_, _ = fmt.Fprintf(errOut, "lighthouse: paused until %s\n", pauseUntil.Format(time.RFC3339))
 	case len(res.Deferred) == 0 && failed == nil:
 		_, _ = fmt.Fprintf(errOut, "lighthouse: nothing to start for %s\n", target)
 	}
