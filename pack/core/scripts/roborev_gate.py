@@ -59,7 +59,7 @@ class GateError(Exception):
     """The gate could not check: the CLI turns it into `COULD NOT CHECK` and exit 3."""
 
 
-def _git(root: pathlib.Path, *args: str) -> str:
+def _git(root: pathlib.Path, *args: str, strip: bool = True) -> str:
     try:
         result = subprocess.run(
             ["git", "-C", str(root), *args], capture_output=True, text=True, check=False
@@ -68,7 +68,7 @@ def _git(root: pathlib.Path, *args: str) -> str:
         raise GateError(f"git did not run: {exc}") from exc
     if result.returncode != 0:
         raise GateError(f"git {' '.join(args)}: {result.stderr.strip() or result.returncode}")
-    return result.stdout.strip()
+    return result.stdout.strip() if strip else result.stdout
 
 
 def state_dir(root: pathlib.Path) -> pathlib.Path:
@@ -89,8 +89,13 @@ def _counts(path: str) -> bool:
 
 
 def count_code_lines(numstat: str) -> int:
+    """Code lines of `git diff --numstat --no-renames -z` output.
+
+    `-z` keeps path names unquoted: without it git writes `"docs/caf\\303\\251.md"` and the
+    `docs/` and extension rules would not see the path.
+    """
     total = 0
-    for line in numstat.splitlines():
+    for line in numstat.split("\0"):
         parts = line.split("\t", 2)
         if len(parts) != 3 or parts[0] == "-" or parts[1] == "-":
             continue
@@ -156,6 +161,8 @@ def gate(root: pathlib.Path, budget: Callable[[], tuple[int, str]] = run_budget)
 
     stem = branch_stem(_git(root, "rev-parse", "--abbrev-ref", "HEAD"))
     sdir = state_dir(root)
+    # The skill redirects the review into `raw`: the directory must exist before roborev runs.
+    sdir.mkdir(parents=True, exist_ok=True)
     paths = {"state": str(sdir / f"{stem}.json"), "raw": str(sdir / f"{stem}.md")}
 
     recorded = read_state(sdir / f"{stem}.json")
@@ -166,7 +173,9 @@ def gate(root: pathlib.Path, budget: Callable[[], tuple[int, str]] = run_budget)
 
     head = _git(root, "rev-parse", "HEAD")
     base = _git(root, "merge-base", f"origin/{default_branch}", "HEAD")
-    lines = count_code_lines(_git(root, "diff", "--numstat", "--no-renames", base, "HEAD"))
+    lines = count_code_lines(
+        _git(root, "diff", "--numstat", "--no-renames", "-z", base, "HEAD", strip=False)
+    )
 
     reason: str | None = None
     if not (root / ".roborev.toml").is_file():

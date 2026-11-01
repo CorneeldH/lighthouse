@@ -75,8 +75,8 @@ def _must_not_run() -> tuple[int, str]:
 
 def test_count_code_lines_follows_the_paia_size_rule():
     numstat = (
-        "10\t2\tinternal/x.go\n5\t5\tdocs/a.go\n-\t-\tlogo.png\n7\t0\tREADME.md\n"
-        "3\t1\t.github/workflows/ci.yml\n4\t0\tpack/x.toml\n"
+        "10\t2\tinternal/x.go\0" "5\t5\tdocs/a.go\0" "-\t-\tlogo.png\0" "7\t0\tREADME.md\0"
+        "3\t1\t.github/workflows/ci.yml\0" "4\t0\tpack/x.toml\0"
     )
     assert rg.count_code_lines(numstat) == 16
 
@@ -197,6 +197,7 @@ def test_state_dir_is_per_worktree(repo, tmp_path):
 
 
 def test_cli_prints_the_verdict_as_json(repo):
+    (repo / ".roborev.toml").unlink()  # skips before the budget: codex_usage never runs
     result = subprocess.run(
         [sys.executable, str(SCRIPT), "gate"],
         cwd=repo,
@@ -205,7 +206,25 @@ def test_cli_prints_the_verdict_as_json(repo):
         env={"PATH": os.environ["PATH"], **GIT_ENV},
     )
     assert result.returncode == 0
-    assert json.loads(result.stdout)["verdict"] in {"run", "skip"}
+    out = json.loads(result.stdout)
+    assert (out["verdict"], out["reason"]) == ("skip", "geen .roborev.toml")
+
+
+def test_run_verdict_raw_path_is_writable_at_once(repo):
+    out = rg.gate(repo, lambda: CODEX_OK)
+    assert out["verdict"] == "run"
+    with open(out["raw"], "w") as handle:
+        handle.write("review")
+
+
+def test_quoted_non_ascii_paths_are_not_counted(repo):
+    (repo / "docs").mkdir()
+    (repo / "docs" / "café.md").write_text("x\n" * 50)
+    (repo / "café.md").write_text("x\n" * 50)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-m", "prose with non-ascii names")
+    out = rg.gate(repo, lambda: CODEX_OK)
+    assert (out["verdict"], out["lines"]) == ("run", 100)
 
 
 def test_cli_cannot_check_outside_a_repo(tmp_path):
