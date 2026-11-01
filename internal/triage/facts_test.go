@@ -38,7 +38,7 @@ func TestCandidate(t *testing.T) {
 		{"no milestone", func(f *Facts) { f.Milestone = nil }, testCfg, SkipMilestone},
 		{"closed milestone", func(f *Facts) { f.Milestone = closed }, testCfg, SkipMilestone},
 		{"no milestone, milestones_only off", func(f *Facts) { f.Milestone = nil }, repoconfig.Triage{}, SkipNone},
-		{"closed milestone, milestones_only off", func(f *Facts) { f.Milestone = closed }, repoconfig.Triage{}, SkipMilestone},
+		{"closed milestone, milestones_only off", func(f *Facts) { f.Milestone = closed }, repoconfig.Triage{}, SkipNone},
 		{"closed issue", func(f *Facts) { f.State = "closed" }, testCfg, SkipMilestone},
 		{"status empty", func(f *Facts) { f.Status = "" }, testCfg, SkipNone},
 		{"status To do", func(f *Facts) { f.Status = "To do" }, testCfg, SkipNone},

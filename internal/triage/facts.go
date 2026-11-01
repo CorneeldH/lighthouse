@@ -63,9 +63,8 @@ func Candidate(f Facts, cfg repoconfig.Triage, l repoconfig.Labels) Skip {
 	switch {
 	case f.State != "open":
 		return SkipMilestone
-	case f.Milestone != nil && f.Milestone.State != "open":
-		return SkipMilestone
-	case cfg.MilestonesOnly && f.Milestone == nil:
+	case cfg.MilestonesOnly && (f.Milestone == nil || f.Milestone.State != "open"):
+		// With milestones_only = false every open issue counts, also one in a closed milestone.
 		return SkipMilestone
 	case f.Archived:
 		// An archived item is on the board, out of sight of the tick: a write there helps no one.
