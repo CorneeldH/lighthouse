@@ -32,6 +32,10 @@ session for one phase of an issue. Most likely nobody is watching.
   and run it again. When the post fails, it exits 1
   (`lighthouse ask: post failed: …`) and nothing is on the issue: run the same call once more,
   and stop if it fails again.
+- Write the text you pass to `lighthouse ask` (`--task`, `--where`, `--what`, `--question`,
+  `--option`) in the `[project] language` of `lighthouse.toml`, also when these instructions and
+  their example are English. `lighthouse ask` renders only its own headings in that language;
+  `--command` stays literal.
 - If the user has to run something themselves (sudo, another host, an interactive login), put
   every command literally and completely in a fenced code block of its own (```` ```bash ````);
   do not only describe it in words. Pass every such command with `--command`: `lighthouse ask`
