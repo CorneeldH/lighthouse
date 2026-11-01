@@ -37,8 +37,8 @@ worktrees van een clone en nooit in een commit. De sleutel is de sha256 van de b
 nieuwe ledger en volgt een volledige herscan. Alleen blobs zonder finding uit een batch die
 afrondde (rc 0, of rc 1 met een gelezen rapport) komen erin.
 
-Uitslag van `scan`: exit 0 schoon, 1 bevindingen (per ref het pad, de regel en de geredigeerde
-match), 2 niet te scannen. Is er meer dan 256 MB ongescand, dan scant de hook niet maar blokkeert
+Uitslag van `scan`: exit 0 schoon, 1 bevindingen (per ref het pad, het regel-id van gitleaks en de
+geredigeerde match), 2 niet te scannen. Is er meer dan 256 MB ongescand, dan scant de hook niet maar blokkeert
 hij met `pre-push: BLOCKED — <n> checkpoint blobs (<mb> MB) are not yet scanned`; draai dan `push`.
 Eén vuile ref blokkeert de hele hook-push, want een hook kan niet half doorlaten.
 
@@ -47,8 +47,8 @@ Eén vuile ref blokkeert de hele hook-push, want een hook kan niet half doorlate
 Elke gitleaks-run loopt via `checkpoint_scan.py run-bounded` in:
 
 ```
-systemd-run --user --scope --quiet -p MemoryMax=<max> -p MemorySwapMax=0 -p CPUQuota=<quota> \
-  -- env GOMAXPROCS=<n> choom -n 800 -- nice -n 10 gitleaks …
+systemd-run --user --scope --quiet -p MemoryMax=<max> -p MemorySwapMax=0 -p CPUQuota=<quota> --collect \
+  [--slice=<slice>] -- env GOMAXPROCS=<n> choom -n 800 -- nice -n 10 gitleaks …
 ```
 
 Sleutels in `[host]` van `host.toml`, alle optioneel:
@@ -68,7 +68,8 @@ Zonder systemd (geen `systemd-run`, geen user-bus of geen `choom`) draait de sca
 maar wel in batches, met `GOMAXPROCS` en `nice`, en meldt `secret-scan: no memory ceiling: <reden>`.
 
 Meer dan 200 findings van één regel in één batch geeft `secret-scan: <n> findings for rule
-<regel> in one batch; an allowlist is probably missing for this pattern`. Dat blokkeert in de
+<regel-id> in one batch; an allowlist is probably missing for this pattern (sample: <match>)`,
+met `<regel-id>` het id van de gitleaks-regel. Dat blokkeert in de
 hook; `push` gaat door (zie hieronder).
 
 ## De eerste push: `push`
@@ -79,7 +80,8 @@ python3 -I tools/hooks/checkpoint_scan.py push https://github.com/CorneeldH/ligh
 
 Er is geen git-remote voor de checkpoints; de URL komt uit `checkpoint_remote` in
 `.entire/settings.json`. `push` weigert als dit niet de checkpoint-remote is, of zolang entire zelf
-mag pushen (`push_sessions` niet `false`). Het:
+mag pushen: er is een `.entire/settings*.json` gelezen, `enabled` is daarin niet `false` en
+`strategy_options.push_sessions` is niet `false`. Het:
 
 1. Scant alle `refs/entire/*` die de remote mist (zelfde batches en begrenzing, ledger bijgewerkt).
 2. Schrijft de vuile refs naar `held.txt`, naast de ledger.
@@ -102,7 +104,7 @@ onbegrensd met `gitleaks git` scant. Push checkpoints alleen vanuit een checkout
 
 `<git-common-dir>/lighthouse/secret-scan/held.txt` wordt bij elke `push` herschreven. Eerst de
 meldingen van het findings-plafond, dan één blok per vuile ref: de ref, daarna per finding
-`  <pad>  <regel>  <geredigeerde match>`.
+`  <pad>  <regel-id>  <geredigeerde match>`.
 
 ## Een vuile checkpoint vrijgeven
 
@@ -125,4 +127,34 @@ een kale `gitleaks git` over `refs/entire/*`.
 
 ## Kosten van een volledige scan
 
-Volgt met de meting (#198).
+Gemeten op 2026-11-01 op de always-on host, gitleaks 8.30.1, `.gitleaks.toml` met de allowlist van
+de beta-headers, standaardlimieten (`scan_memory_max = "2G"`, `scan_cpu_quota = "200%"`):
+
+| Maat | Waarde |
+|---|---|
+| Refs onder `refs/entire/*` | 2671 |
+| Unieke blobs | 8593, 582 MiB (ca. 0,61 GB) |
+| Batches | 10 (negen van 57-64 MB, de laatste 19 MB) |
+| Totale duur | 27,5 s (exit 1: bevindingen) |
+| Piek-RSS per batch (gitleaks) | 102, 104, 94, 91, 86, 83, 79, 75, 71, 66 MB |
+| Piek-RSS over de hele run | 108 MB |
+| Swap | vlak, geen plafond geraakt |
+| Findings | 469 over de 10 batches (11, 89, 72, 81, 89, 30, 51, 31, 15, 0); hoogste per regel per batch 89 |
+
+Na de run kende de ledger 8448 schone blobs; 145 blobs hebben dus een finding. Het rapport telde
+1604 regels over 1478 verschillende refs: `generic-api-key` 1578, `aws-access-token` 26. Bij
+`generic-api-key` zijn de meeste matches `turnAttributionKey` (1453); 56 zijn een tweede
+beta-header-combinatie (`oauth-2025-04-20`, met een andere beta-header) die de allowlist niet dekt
+en die niet is toegestaan: die vraagt menselijke beoordeling.
+
+Tegen de constanten: een batch van 64 MB kost ca. 100 MB RSS, ver onder het plafond van 2G. De
+hele set (582 MiB) ligt boven de 256 MB-grens van de hook, dus de eerste push na deze import loopt
+via `checkpoint_scan.py push`, zoals bedoeld. Het findings-plafond (200) is niet bereikt. De
+constanten 64 MB, 256 MB en 200 houden stand.
+
+De opdracht, met een `--remote` die niet bestaat zodat niets wordt uitgesloten:
+
+```
+/usr/bin/time -v python3 -I tools/hooks/checkpoint_scan.py scan --full --keep-going --remote ckpt-probe \
+  $(git for-each-ref --format='%(refname)=%(objectname)' refs/entire/)
+```
