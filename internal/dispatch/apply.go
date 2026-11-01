@@ -136,9 +136,11 @@ func closeReason(a Action) string {
 	return a.ReasonArg
 }
 
-// release stops the session of run a.RunID (a.Stop) or forgets its workspace (a.Discard). A row
-// without a session or without a workspace has nothing to stop or forget: that is no error. A
-// run no longer open has no row to read, and nothing is stopped.
+// release stops the session of run a.RunID (a.Stop) or forgets its workspace (a.Discard). Stop
+// takes the claude session id, which the workplace finds the process by, never the forge key; a
+// run the workplace never adopted (no forge key) or without a session id has nothing to stop. A
+// row without a workspace has nothing to forget. Neither is an error. A run no longer open has
+// no row to read, and nothing is stopped.
 func (ap applier) release(ctx context.Context, a Action) error {
 	if !a.Stop && !a.Discard {
 		return nil
@@ -153,8 +155,8 @@ func (ap applier) release(ctx context.Context, a Action) error {
 		}
 		w := ap.env.Workplace(a.Repo)
 		switch {
-		case a.Stop && r.WorkplaceSession != "":
-			if err := w.Stop(ctx, r.WorkspaceID, []string{r.WorkplaceSession}); err != nil {
+		case a.Stop && r.WorkplaceSession != "" && r.SessionID != "":
+			if err := w.Stop(ctx, r.WorkspaceID, []string{r.SessionID}); err != nil {
 				return fmt.Errorf("stop run %d: %w", r.ID, err)
 			}
 		case a.Discard && r.WorkspaceID != "":

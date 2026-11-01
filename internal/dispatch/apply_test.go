@@ -773,7 +773,7 @@ func TestApplyReturnRunPostsThenStopsThenCloses(t *testing.T) {
 	if got, want := h.log.all(), []string{"CreateComment", "Stop"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
-	if want := []string{"ws-1 key-1"}; !reflect.DeepEqual(h.wp.stopped, want) {
+	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.stopped, want) {
 		t.Errorf("stopped = %q, want %q", h.wp.stopped, want)
 	}
 	rows := h.history(t)
@@ -847,6 +847,9 @@ func TestApplyCloseStop(t *testing.T) {
 	if got, want := h.log.all(), []string{"Stop"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q (no post)", got, want)
 	}
+	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.stopped, want) {
+		t.Errorf("stopped = %q, want %q (the claude session id, not the forge key)", h.wp.stopped, want)
+	}
 	if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Returned {
 		t.Errorf("row = %+v, want closed as returned", rows[0])
 	}
@@ -860,7 +863,7 @@ func TestApplyCloseStartFailedKeepsCause(t *testing.T) {
 	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if want := []string{"ws-1 key-1"}; !reflect.DeepEqual(h.wp.stopped, want) {
+	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.stopped, want) {
 		t.Errorf("stopped = %q, want %q", h.wp.stopped, want)
 	}
 	rows := h.history(t)
@@ -882,5 +885,31 @@ func TestApplyStopWithoutSessionIsSkipped(t *testing.T) {
 	}
 	if rows := h.history(t); rows[0].Open {
 		t.Errorf("row = %+v, want closed", rows[0])
+	}
+}
+
+func TestApplyStopWithoutSessionIDIsSkipped(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	run, err := runs.Take(ctx, h.db, runs.Claim{
+		Repo: applyRepo, Issue: 7, Mode: "start", Trigger: "handoff", TriggerKey: "start:7",
+		Command: "/lighthouse-start-issue 7", Branch: "issue-7-x", Now: applyNow.Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := runs.SetWorkplace(ctx, h.db, run.ID, "ws-1", "issue-7-x"); err != nil {
+		t.Fatalf("SetWorkplace: %v", err)
+	}
+	if err := runs.SetSession(ctx, h.db, run.ID, "key-1"); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+	a := Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: run.ID, Outcome: runs.Returned,
+		Reason: "reason_silent", Stop: true, Language: "nl"}
+	if _, err := Apply(ctx, h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if h.wp.stopped != nil {
+		t.Errorf("stopped = %q, want none: a run without a session id has nothing Stop can find", h.wp.stopped)
 	}
 }
