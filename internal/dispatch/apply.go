@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/park"
@@ -48,7 +49,8 @@ type Result struct {
 	Failed   map[string]error // per repo: the joined errors of its actions; absent = no error
 	Started  int              // launches that were accepted or are uncertain
 	// NotAccepted is "<repo>#<n>" per launch the workplace refused; its run is closed as
-	// start_failed and its Started stays.
+	// start_failed, its Started stays, and a Returned with the reason follows (a usage resume:
+	// only after its second attempt).
 	NotAccepted []string
 }
 
@@ -83,6 +85,11 @@ type applier struct {
 
 func (ap applier) logf(format string, args ...any) {
 	_, _ = fmt.Fprintf(ap.log, format+"\n", args...)
+}
+
+// oneLine flattens s for a log line or a comment field.
+func oneLine(s string) string {
+	return strings.ReplaceAll(strings.TrimSpace(s), "\n", "; ")
 }
 
 func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
@@ -264,7 +271,7 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		Repo: a.Repo, Issue: a.Issue, SessionID: session, Mode: a.Mode, Profile: profile,
 		Prompt: a.Prompt, Native: a.Native, InstructionsFile: file, MCPConfig: mcpConfig,
 	}
-	outcome, err := workplace.Launch(ctx, env.DB, w, run.ID, a.Branch, spec, now)
+	outcome, reason, err := workplace.Launch(ctx, env.DB, w, run.ID, a.Branch, spec, now)
 	switch outcome {
 	case workplace.Accepted:
 		// An error is a session key the run could not record: SessionKeys then misses the agent.
@@ -276,17 +283,34 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		res.Started++
 		ap.resumedMarker(a)
 		if err != nil {
-			ap.logf("%s#%d: launch of run %d uncertain: %v", a.Repo, a.Issue, run.ID, err)
+			ap.logf("%s#%d: launch of run %d uncertain: %s", a.Repo, a.Issue, run.ID, oneLine(err.Error()))
 		}
 	case workplace.NotAccepted:
 		// An error means the run could not be closed: an open run without an agent.
 		if err != nil {
 			return err
 		}
-		ap.logf("%s#%d: launch of run %d not accepted", a.Repo, a.Issue, run.ID)
+		ap.logf("%s#%d: launch of run %d not accepted: %s", a.Repo, a.Issue, run.ID, oneLine(reason))
+		// The second attempt of a usage resume posts no header: a Returned now would outlast its agent.
+		if a.Trigger != triggerUsage || a.Attempt > 1 {
+			ap.returnStartFailed(ctx, a, run.ID, session, reason)
+		}
 		res.NotAccepted = append(res.NotAccepted, fmt.Sprintf("%s#%d", a.Repo, a.Issue))
 	}
 	return nil
+}
+
+// returnStartFailed posts the 🤖 Returned of a refused launch under its Started, with the
+// session of the run, so decide sees it and posts none after a second refusal. A failed post
+// logs one line and is no action error: the run is closed, and decide posts the Returned of a
+// second refusal itself.
+func (ap applier) returnStartFailed(ctx context.Context, a Action, runID int64, session, reason string) {
+	ra := a
+	ra.Reason, ra.ReasonArg = "reason_start_failed", reason
+	body := protocol.RenderReturned(reasonText(ra), session, "", a.Language)
+	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		ap.logf("%s#%d: post Returned of run %d: %v", a.Repo, a.Issue, runID, err)
+	}
 }
 
 // announce posts the 🤖 Started or Resumed and the 🚀; a failed post closes the run as

@@ -29,29 +29,32 @@ const (
 // its session, and Decide settles it.
 //
 // With Uncertain the error is diagnostic only (the cause of the doubt): the row
-// stays open and the caller must never spawn again.
-func Launch(ctx context.Context, db *sql.DB, w Workplace, runID int64, branch string, l LaunchSpec, now time.Time) (Outcome, error) {
+// stays open and the caller must never spawn again. With NotAccepted the string
+// is the reason the run was closed with; it is empty for the other outcomes.
+func Launch(ctx context.Context, db *sql.DB, w Workplace, runID int64, branch string, l LaunchSpec, now time.Time) (Outcome, string, error) {
 	ws, err := w.Prepare(ctx, branch)
 	if err != nil {
-		return NotAccepted, releaseFailed(ctx, db, runID, "prepare: "+err.Error(), now)
+		reason := "prepare: " + err.Error()
+		return NotAccepted, reason, releaseFailed(ctx, db, runID, reason, now)
 	}
 	if err := runs.SetWorkplace(ctx, db, runID, ws.ID, branch); err != nil {
 		// Nothing was spawned, and a row without workspace_id would never close.
 		cause := fmt.Errorf("record workplace of run %d: %w", runID, err)
-		return NotAccepted, errors.Join(cause, releaseFailed(ctx, db, runID, "record workplace: "+err.Error(), now))
+		reason := "record workplace: " + err.Error()
+		return NotAccepted, reason, errors.Join(cause, releaseFailed(ctx, db, runID, reason, now))
 	}
 	s, err := w.Spawn(ctx, ws, l)
 	switch {
 	case errors.Is(err, ErrNotAccepted):
-		return NotAccepted, releaseFailed(ctx, db, runID, err.Error(), now)
+		return NotAccepted, err.Error(), releaseFailed(ctx, db, runID, err.Error(), now)
 	case err != nil:
 		// ErrUncertain, or any other failure: an agent may be running.
-		return Uncertain, fmt.Errorf("spawn run %d: %w", runID, err)
+		return Uncertain, "", fmt.Errorf("spawn run %d: %w", runID, err)
 	}
 	if err := runs.SetSession(ctx, db, runID, s.Key); err != nil {
-		return Accepted, fmt.Errorf("record session of run %d: %w", runID, err)
+		return Accepted, "", fmt.Errorf("record session of run %d: %w", runID, err)
 	}
-	return Accepted, nil
+	return Accepted, "", nil
 }
 
 func releaseFailed(ctx context.Context, db *sql.DB, runID int64, reason string, now time.Time) error {
