@@ -623,7 +623,7 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
     },
     {
-      "id": "permission-note",
+      "id": "permission-check",
       "phase": "pre-tool",
       "row": 5,
       "kind": "hook",
@@ -632,11 +632,11 @@
         "Notification"
       ],
       "matcher": "permission_prompt|worker_permission_prompt",
-      "command": "permission-note.sh",
+      "command": "permission-check.sh",
       "effects": [
         "records"
       ],
-      "label": "permission-note",
+      "label": "permission-check",
       "what": "In a controller run, writes the permission prompt the session is waiting on to a note file.",
       "how": [
         "It runs on a permission_prompt or worker_permission_prompt notification; outside a controller run it exits at once.",
@@ -647,7 +647,7 @@
       "when": "When Claude asks for a permission in a controller run.",
       "without": "The dispatcher cannot tell a session waiting for a permission from a silent one.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/permission-note.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/permission-check.sh"
     }
   ],
   "handoffs": [],
@@ -718,6 +718,13 @@
       "label": "I open a PR without evidence",
       "chips": [
         "pr-create-gate"
+      ]
+    },
+    {
+      "id": "permission-prompt",
+      "label": "A controller run waits on a permission",
+      "chips": [
+        "permission-check"
       ]
     }
   ]
