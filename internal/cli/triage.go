@@ -232,8 +232,12 @@ func (r *round) pluginsFile() string {
 }
 
 // prepare checks the conditions of a repo (steps 1 and 2) and reads its lists (steps 3 and 4).
-// Under --dry-run a condition other than the board and its To do option is a warning line.
+// Under --dry-run only [controller], usage_guard.controller and answer_permissions are a warning
+// line (decision 7): an error in [controller.triage], the board or its To do option still skips.
 func (r *round) prepare(ctx context.Context, path string, repo repoconfig.Repo) (*repoGather, error) {
+	if repo.TriageErr != nil {
+		return nil, repo.TriageErr
+	}
 	if err := repoconfig.Triageable(repo); err != nil {
 		if !r.opts.DryRun {
 			return nil, err

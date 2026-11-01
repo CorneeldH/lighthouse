@@ -973,6 +973,37 @@ func TestTriageRepoNotTriageable(t *testing.T) {
 	}
 }
 
+// A [controller.triage] error skips the repo with exit code 2, under --dry-run too: a typo in
+// max_judgments must not fall back to 15 judgments.
+func TestTriageConfigError(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts triageOpts
+	}{
+		{"live", triageOpts{}},
+		{"dry run", triageOpts{DryRun: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := triageFixture(t, withTriage("max_judgment = 3\n"))
+			fx.issue(7, "2-area:cli")
+			fx.onBoard(7, "t1", nil)
+			fx.judge.answers[7] = stopAt1(7)
+
+			out, errOut, err := fx.run(tc.opts)
+			if exitCode(err) != 2 {
+				t.Fatalf("triage = %v, want exit code 2\n%s", err, errOut)
+			}
+			if want := "lighthouse: skip " + fx.dir + ": unknown key controller.triage.max_judgment\n"; errOut != want {
+				t.Errorf("errOut = %q, want %q", errOut, want)
+			}
+			if c := fx.judge.called(); len(c) != 0 || out != "" {
+				t.Errorf("judged %v, out %q; want nothing in a skipped repo", c, out)
+			}
+			assertWrites(t, fx.srv)
+		})
+	}
+}
+
 func TestTriageTokenNotTrusted(t *testing.T) {
 	t.Run("live", func(t *testing.T) {
 		fx := triageFixture(t, triageToml)
