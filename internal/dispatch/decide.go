@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -32,6 +33,9 @@ type RepoInput struct {
 	Installed     map[string]bool           `json:"installed"`
 	History       []runs.Row                `json:"history"`
 	Stands        map[int64]workplace.Stand `json:"stands"` // per open run id; missing = not measurable
+	// Markers are the controller markers whose session's last run is in this repo, resumable
+	// or not.
+	Markers []park.Marker `json:"markers"`
 }
 
 // Kind is what an action does.
@@ -45,6 +49,8 @@ const (
 	KindClose  Kind = "close"
 	KindRocket Kind = "rocket"
 	KindDefer  Kind = "defer"
+	// KindDropMarker removes the resume marker of SessionID while its key is TriggerKey.
+	KindDropMarker Kind = "drop_marker"
 )
 
 // Action is one thing apply does. Reason and Skip are heading keys, never posted text; only a
@@ -74,14 +80,17 @@ type Action struct {
 
 // Decide is the pure decision of one tick: per repo, per item, first the orphan rule, then
 // the settlement of the item's open runs, then the 🚀 repair, then at most one start or
-// resume (next). The result is ordered: the actions without a start or resume by repo and
-// issue, then the defers, then the starts and resumes by priority, trigger time, repo and
-// issue.
+// resume (next); per repo also the markers that will never resume. The result is ordered:
+// the actions without a start or resume by repo and issue, then the defers, then the starts
+// and resumes by priority, trigger time, repo and issue.
 func Decide(in Input) []Action {
 	var ps []planned
 	for _, repo := range in.Repos {
 		for _, it := range repo.Snapshot.Items {
 			ps = append(ps, decideIssue(in, repo, it)...)
+		}
+		for _, a := range dropMarkers(repo) {
+			ps = append(ps, planned{Action: a})
 		}
 	}
 	slices.SortStableFunc(ps, comparePlanned)
@@ -221,8 +230,9 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 
 // settle decides whether the open run row ends in this tick. Only comments from row's start
 // on count; a Done or Question also needs row's session, a Handoff carries none. A Done
-// closes, then a Handoff that does not end the chain, then a Question; else a green PR with
-// a session that is Done gives the done action. Every action it returns closes row.
+// closes, then a Handoff that does not end the chain, then a Question, then a marker that
+// parked row; else a green PR with a session that is Done gives the done action. Every
+// action it returns closes row.
 func settle(repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool) {
 	var done, question bool
 	var handoff *parsed
@@ -252,6 +262,9 @@ func settle(repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Ac
 	case question:
 		a.Kind, a.Outcome = KindClose, runs.Question
 		return a, true
+	case parkedRun(repo.Markers, row):
+		a.Kind, a.Outcome = KindClose, runs.Parked
+		return a, true
 	}
 	pr, green := greenPR(it.PRs)
 	if stand, measured := repo.Stands[row.ID]; green && measured && stand == workplace.Done {
@@ -259,6 +272,52 @@ func settle(repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Ac
 		return a, true
 	}
 	return Action{}, false
+}
+
+// parkedRun reports whether the usage guard parked row: a marker of row's session written
+// at or after row's start. An older marker belongs to an earlier parking.
+func parkedRun(markers []park.Marker, row runs.Row) bool {
+	for _, m := range markers {
+		created, _ := m.Created()
+		if row.SessionID != "" && m.SessionID == row.SessionID && !created.Before(row.StartedAt) {
+			return true
+		}
+	}
+	return false
+}
+
+// lastOfSession returns the last row of the history with session, on any issue: the run
+// state says to which issue a marker belongs.
+func lastOfSession(history []runs.Row, session string) (runs.Row, bool) {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].SessionID == session {
+			return history[i], true
+		}
+	}
+	return runs.Row{}, false
+}
+
+// dropMarkers gives a drop_marker for every marker of repo that will never resume: its last
+// run is closed and not resumable, or its issue left the snapshot or is closed. An open last
+// run, or none, gives nothing; On hold keeps the marker for when the issue comes back.
+func dropMarkers(repo RepoInput) []Action {
+	var out []Action
+	for _, m := range repo.Markers {
+		last, ok := lastOfSession(repo.History, m.SessionID)
+		if !ok || last.Open {
+			continue
+		}
+		i := slices.IndexFunc(repo.Snapshot.Items, func(it Item) bool { return it.Issue == last.Issue })
+		gone := i < 0 || repo.Snapshot.Items[i].State == "CLOSED"
+		if !gone && runs.Resumable(last, m.Key()) {
+			continue
+		}
+		out = append(out, Action{
+			Kind: KindDropMarker, Repo: repo.Snapshot.Repo, Issue: last.Issue, SessionID: m.SessionID,
+			TriggerKey: m.Key(), Language: repo.Language,
+		})
+	}
+	return out
 }
 
 // endsChain reports whether a handoff names the end command for issue: the run then waits
@@ -349,7 +408,7 @@ type issueCtx struct {
 // next returns the one start, resume, return or defer the item gets in this tick: the first
 // rule that gives an action wins.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.answer, c.closeCheck, c.newIssue, c.handoff} {
+	for _, rule := range []func() (planned, bool){c.retry, c.usageResume, c.answer, c.closeCheck, c.newIssue, c.handoff} {
 		if p, ok := rule(); ok {
 			return p, true
 		}
@@ -448,6 +507,31 @@ func (c issueCtx) startFailed(row runs.Row) (Action, bool) {
 	a := c.base
 	a.Kind, a.Reason, a.ReasonArg, a.SessionID = KindReturn, "reason_start_failed", row.Reason, row.SessionID
 	return a, true
+}
+
+// usageResume resumes a run the usage guard parked, once per parking: a marker whose
+// session's last run is on this issue and closed as parked, whose key no run has, and whose
+// reset has passed. A pause marker does not wait for its reset: while the pause holds, the
+// brake drops the resume. The second attempt after a failed start is retry's.
+func (c issueCtx) usageResume() (planned, bool) {
+	for _, m := range c.repo.Markers {
+		run, ok := lastOfSession(c.repo.History, m.SessionID)
+		if !ok || run.Issue != c.it.Issue || run.Open || run.Outcome != runs.Parked || c.spent(m.Key()) {
+			continue
+		}
+		at, _ := m.Reset()
+		if m.Pause {
+			at = c.now
+		} else if at.After(c.now) {
+			continue
+		}
+		a := c.base
+		a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerUsage, m.Key(), 1
+		a.SessionID, a.Command, a.Branch = m.SessionID, run.Command, run.Branch
+		a.Prompt = protocol.Heading("prompt_usage_resume", c.repo.Language)
+		return c.planned(a, at), true
+	}
+	return planned{}, false
 }
 
 // answer resumes the session of the last turn when that is a Question with a session and an
