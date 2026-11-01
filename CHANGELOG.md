@@ -4,6 +4,16 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.7.0] - 2026-11-01
+
+### Changed
+
+- `docs/tick.md` now says in the *Pauze* section that a parked run shows as `parked` in `GET /api/runs` and on the *Running runs* card.
+
+### Fixed
+
+- A controller run now writes the text of a `lighthouse ask` question in the `[project] language` of `lighthouse.toml`, so a question no longer comes out half in English.
+
 ## [v0.6.0] - 2026-11-01
 
 ### Added
