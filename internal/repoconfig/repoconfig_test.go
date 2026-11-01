@@ -137,14 +137,11 @@ func TestOwnLighthouseToml(t *testing.T) {
 	if r.Slug != "CorneeldH/lighthouse" || r.Board == nil || r.Board.StatusOptions["Controller"] != "7c834c1d" {
 		t.Fatalf("own config: %+v", r)
 	}
-	err = Dispatchable(r)
-	if err == nil {
-		t.Fatal("own repo has no [controller] yet; want error")
+	if err := Dispatchable(r); err != nil {
+		t.Fatalf("own repo is served by tick: %v", err)
 	}
-	msg := err.Error()
-	if !strings.Contains(msg, "[controller]") || strings.Contains(msg, "usage_guard.controller") ||
-		strings.Contains(msg, "forge.board") {
-		t.Errorf("reasons: %v", msg)
+	if r.Controller.Profile != "software" {
+		t.Errorf("controller profile = %q, want software", r.Controller.Profile)
 	}
 }
 
