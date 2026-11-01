@@ -95,11 +95,8 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	facts.Brake.Manual = true // a person who runs an issue decides on memory, slots and software
 
 	c := env.client(repo.Slug, token)
-	pre, err := prepare(ctx, st.DB, c, repo)
+	pre, err := measuredPre(ctx, env, st.DB, cfg, c, repo, errOut)
 	if err != nil {
-		return err
-	}
-	if pre.Stands, err = stands(ctx, env, cfg, repo, pre.OpenRuns, errOut); err != nil {
 		return err
 	}
 	pre.Markers = facts.Markers[slug]
@@ -116,7 +113,7 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 		return lastIssueOfSession(in.History, m.SessionID) != issue
 	})
 	var actions []dispatch.Action
-	for _, a := range dispatch.Decide(dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: []dispatch.RepoInput{in}, Brake: &facts.Brake}) {
+	for _, a := range dispatch.Decide(decideInput(env, cfg, []dispatch.RepoInput{in}, &facts.Brake)) {
 		if a.Issue == issue && runKinds[a.Kind] {
 			actions = append(actions, a)
 		}

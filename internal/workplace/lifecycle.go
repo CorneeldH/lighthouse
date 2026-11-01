@@ -11,15 +11,6 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/runs"
 )
 
-// Reasons a run is returned by CheckOpen.
-const (
-	ReasonUncertain = "start uncertain: no session found"
-	ReasonTimeout   = "timeout (max_runtime)"
-)
-
-// Limits are the two upper bounds on a run.
-type Limits struct{ MaxWait, MaxRuntime time.Duration }
-
 // Outcome is what Launch made of a start.
 type Outcome int
 
@@ -34,7 +25,8 @@ const (
 )
 
 // Launch starts the agent of a claimed run (after runs.Take). It never spawns
-// twice: an uncertain spawn leaves the row open for CheckOpen to settle.
+// twice: an uncertain spawn leaves the row open: AdoptSessions finds
+// its session, and Decide settles it.
 //
 // With Uncertain the error is diagnostic only (the cause of the doubt): the row
 // stays open and the caller must never spawn again.
@@ -69,73 +61,40 @@ func releaseFailed(ctx context.Context, db *sql.DB, runID int64, reason string, 
 	return nil
 }
 
-// Closed is a run that CheckOpen returned.
-type Closed struct {
-	RunID  int64
-	Issue  int
-	Reason string
-}
-
-// CheckOpen settles the open runs of repo that have a workspace: it looks up
-// the session of an uncertain start, and stops a run past MaxRuntime. A run it
-// cannot measure or stop stays open; the errors are joined. A run it returns
-// as uncertain has its launch discarded; a failed Discard is joined, and the
-// run is still returned.
-func CheckOpen(ctx context.Context, db *sql.DB, w Workplace, repo string, lim Limits, now time.Time) ([]Closed, error) {
+// AdoptSessions records the session key of each open run of repo that has a
+// workspace but no key yet (an uncertain start), when its session shows up in
+// the workplace. It never closes, stops or discards a run: what to do with a
+// session that does not show up is Decide's. A run it cannot look up keeps no
+// key; the errors are joined and the other runs are still looked up.
+func AdoptSessions(ctx context.Context, db *sql.DB, w Workplace, repo string) error {
 	open, err := runs.Open(ctx, db, repo)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var closed []Closed
 	var errs []error
 	for _, run := range open {
-		if run.WorkspaceID == "" {
+		if run.WorkspaceID == "" || run.WorkplaceSession != "" {
 			continue
 		}
-		age := now.Sub(run.StartedAt)
-		if run.WorkplaceSession == "" {
-			sessions, err := w.Sessions(ctx, run.WorkspaceID)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("sessions of run %d: %w", run.ID, err))
-				continue
-			}
-			taken, err := runs.SessionKeys(ctx, db, repo, run.Issue)
-			if err != nil {
-				errs = append(errs, fmt.Errorf("session keys of run %d: %w", run.ID, err))
-				continue
-			}
-			if key, ok := findSession(sessions, run.SessionID, taken); ok {
-				if err := runs.SetSession(ctx, db, run.ID, key); err != nil {
-					errs = append(errs, fmt.Errorf("record session of run %d: %w", run.ID, err))
-					continue
-				}
-			} else if age >= lim.MaxWait {
-				if err := runs.Release(ctx, db, run.ID, runs.Returned, ReasonUncertain, now); err != nil {
-					errs = append(errs, fmt.Errorf("release run %d: %w", run.ID, err))
-					continue
-				}
-				closed = append(closed, Closed{RunID: run.ID, Issue: run.Issue, Reason: ReasonUncertain})
-				// The row is closed: a late target must not start its agent any more.
-				if err := w.Discard(ctx, run.WorkspaceID); err != nil {
-					errs = append(errs, fmt.Errorf("discard launch of run %d: %w", run.ID, err))
-				}
-				continue
-			}
-		}
-		if age < lim.MaxRuntime {
+		sessions, err := w.Sessions(ctx, run.WorkspaceID)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("sessions of run %d: %w", run.ID, err))
 			continue
 		}
-		if err := w.Stop(ctx, run.WorkspaceID, []string{run.SessionID}); err != nil {
-			errs = append(errs, fmt.Errorf("stop run %d: %w", run.ID, err))
+		taken, err := runs.SessionKeys(ctx, db, repo, run.Issue)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("session keys of run %d: %w", run.ID, err))
 			continue
 		}
-		if err := runs.Release(ctx, db, run.ID, runs.Returned, ReasonTimeout, now); err != nil {
-			errs = append(errs, fmt.Errorf("release run %d: %w", run.ID, err))
+		key, ok := findSession(sessions, run.SessionID, taken)
+		if !ok {
 			continue
 		}
-		closed = append(closed, Closed{RunID: run.ID, Issue: run.Issue, Reason: ReasonTimeout})
+		if err := runs.SetSession(ctx, db, run.ID, key); err != nil {
+			errs = append(errs, fmt.Errorf("record session of run %d: %w", run.ID, err))
+		}
 	}
-	return closed, errors.Join(errs...)
+	return errors.Join(errs...)
 }
 
 // findSession looks up the session of an uncertain start by its session_id. A

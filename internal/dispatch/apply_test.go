@@ -100,6 +100,9 @@ type fakeWorkplace struct {
 	spawnErr error
 	onSpawn  func() // runs at the start of Spawn
 	spawned  []workplace.LaunchSpec
+	stopErr  error
+	stopped  []string // "<workspace> <session ids>" per Stop
+	forgot   []string // workspace per Discard
 }
 
 func (w *fakeWorkplace) Prepare(_ context.Context, branch string) (workplace.Workspace, error) {
@@ -124,9 +127,10 @@ func (w *fakeWorkplace) Sessions(_ context.Context, workspaceID string) ([]workp
 	return w.sessions, nil
 }
 
-func (w *fakeWorkplace) Stop(context.Context, string, []string) error {
+func (w *fakeWorkplace) Stop(_ context.Context, workspaceID string, sessionIDs []string) error {
 	w.log.add("Stop")
-	return nil
+	w.stopped = append(w.stopped, workspaceID+" "+strings.Join(sessionIDs, ","))
+	return w.stopErr
 }
 
 func (w *fakeWorkplace) Remove(context.Context, string) error {
@@ -134,8 +138,9 @@ func (w *fakeWorkplace) Remove(context.Context, string) error {
 	return nil
 }
 
-func (w *fakeWorkplace) Discard(context.Context, string) error {
+func (w *fakeWorkplace) Discard(_ context.Context, workspaceID string) error {
 	w.log.add("Discard")
+	w.forgot = append(w.forgot, workspaceID)
 	return nil
 }
 
@@ -752,6 +757,179 @@ func TestApplyPostCancelledStillReleases(t *testing.T) {
 	rows := h.history(t)
 	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed || rows[0].Reason != "post: context canceled" {
 		t.Errorf("rows = %+v, want one closed start_failed with reason %q", rows, "post: context canceled")
+	}
+}
+
+// seedWorkplace claims an open run on workspace ws; session "" leaves it without a workplace
+// session, as an uncertain start is.
+func (h *harness) seedWorkplace(t *testing.T, ws, session string) int64 {
+	t.Helper()
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	if err := runs.SetWorkplace(context.Background(), h.db, id, ws, "issue-7-x"); err != nil {
+		t.Fatalf("SetWorkplace: %v", err)
+	}
+	if session != "" {
+		if err := runs.SetSession(context.Background(), h.db, id, session); err != nil {
+			t.Fatalf("SetSession: %v", err)
+		}
+	}
+	return id
+}
+
+func returnRun(id int64) Action {
+	return Action{Kind: KindReturn, Repo: applyRepo, Issue: 7, RunID: id, Reason: "reason_silent",
+		SessionID: oldSession, Language: "nl"}
+}
+
+func TestApplyReturnRunPostsThenStopsThenCloses(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
+	a := returnRun(id)
+	a.Stop = true
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"CreateComment", "Stop"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.stopped, want) {
+		t.Errorf("stopped = %q, want %q", h.wp.stopped, want)
+	}
+	rows := h.history(t)
+	if rows[0].Open || rows[0].Outcome != runs.Returned || rows[0].Reason != "geen activiteit in max_wait" {
+		t.Errorf("row = %+v, want closed as returned with the reason text", rows[0])
+	}
+}
+
+func TestApplyReturnRunStopFailsKeepsRowOpen(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
+	h.wp.stopErr = errors.New("forge down")
+	a := returnRun(id)
+	a.Stop = true
+	res, err := Apply(context.Background(), h.env, []Action{a})
+	if err == nil || res.Failed[applyRepo] == nil {
+		t.Fatalf("Apply = %v, Failed = %v, want an error", err, res.Failed)
+	}
+	if rows := h.history(t); !rows[0].Open {
+		t.Errorf("row = %+v, want still open", rows[0])
+	}
+	want := "🤖 Teruggegeven\nreason: geen activiteit in max_wait\nsession: " + oldSession + "\n\n<sub>session " + oldSession + "</sub>"
+	if got := h.poster(applyRepo).bodies; !reflect.DeepEqual(got, []string{want}) {
+		t.Errorf("posted %q, want %q", got, want)
+	}
+}
+
+func TestApplyReturnRunDiscard(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "")
+	a := returnRun(id)
+	a.Discard = true
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"CreateComment", "Discard"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if want := []string{"ws-1"}; !reflect.DeepEqual(h.wp.forgot, want) {
+		t.Errorf("discarded = %q, want %q", h.wp.forgot, want)
+	}
+	if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Returned {
+		t.Errorf("row = %+v, want closed as returned", rows[0])
+	}
+}
+
+func TestApplyCloseDiscard(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "")
+	a := Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: id, Outcome: runs.Returned,
+		Reason: "reason_silent", Discard: true, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"Discard"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q (no post)", got, want)
+	}
+	if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Returned {
+		t.Errorf("row = %+v, want closed as returned", rows[0])
+	}
+}
+
+func TestApplyCloseStop(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
+	a := Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: id, Outcome: runs.Returned,
+		Reason: "reason_silent", Stop: true, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"Stop"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q (no post)", got, want)
+	}
+	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.stopped, want) {
+		t.Errorf("stopped = %q, want %q (the claude session id, not the forge key)", h.wp.stopped, want)
+	}
+	if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Returned {
+		t.Errorf("row = %+v, want closed as returned", rows[0])
+	}
+}
+
+func TestApplyCloseStartFailedKeepsCause(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
+	a := Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: id, Outcome: runs.StartFailed,
+		ReasonArg: "post: 502", Stop: true, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.stopped, want) {
+		t.Errorf("stopped = %q, want %q", h.wp.stopped, want)
+	}
+	rows := h.history(t)
+	if rows[0].Outcome != runs.StartFailed || rows[0].Reason != "post: 502" {
+		t.Errorf("row = %+v, want start_failed with reason %q", rows[0], "post: 502")
+	}
+}
+
+func TestApplyStopWithoutSessionIsSkipped(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "") // an unmeasured run: workspace, no session
+	a := Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: id, Outcome: runs.Returned,
+		Reason: "reason_silent", Stop: true, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v, want a stop without session to be no error", err)
+	}
+	if got := h.log.all(); len(got) != 0 {
+		t.Errorf("calls = %q, want none", got)
+	}
+	if rows := h.history(t); rows[0].Open {
+		t.Errorf("row = %+v, want closed", rows[0])
+	}
+}
+
+func TestApplyStopWithoutSessionIDIsSkipped(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	run, err := runs.Take(ctx, h.db, runs.Claim{
+		Repo: applyRepo, Issue: 7, Mode: "start", Trigger: "handoff", TriggerKey: "start:7",
+		Command: "/lighthouse-start-issue 7", Branch: "issue-7-x", Now: applyNow.Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := runs.SetWorkplace(ctx, h.db, run.ID, "ws-1", "issue-7-x"); err != nil {
+		t.Fatalf("SetWorkplace: %v", err)
+	}
+	if err := runs.SetSession(ctx, h.db, run.ID, "key-1"); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+	a := Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: run.ID, Outcome: runs.Returned,
+		Reason: "reason_silent", Stop: true, Language: "nl"}
+	if _, err := Apply(ctx, h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if h.wp.stopped != nil {
+		t.Errorf("stopped = %q, want none: a run without a session id has nothing Stop can find", h.wp.stopped)
 	}
 }
 

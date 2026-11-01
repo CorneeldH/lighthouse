@@ -878,56 +878,223 @@ func TestTickSessionStandRegathers(t *testing.T) {
 	}
 }
 
-// standsWorkplace answers Sessions from a fixed list per workspace, or with err.
-type standsWorkplace struct {
+// measureWorkplace answers Sessions from a fixed list per workspace, or with the error of that
+// workspace, and TranscriptDir from dirs: a workspace without a dir is not measurable.
+type measureWorkplace struct {
 	fakeWorkplace
 	sessions map[string][]workplace.Session
-	err      error
+	errs     map[string]error
+	dirs     map[string]string
 }
 
-func (w *standsWorkplace) Sessions(_ context.Context, workspaceID string) ([]workplace.Session, error) {
-	return w.sessions[workspaceID], w.err
+func (w *measureWorkplace) Sessions(_ context.Context, workspaceID string) ([]workplace.Session, error) {
+	return w.sessions[workspaceID], w.errs[workspaceID]
 }
 
-// Two sessions share a workspace: the stand is the one whose key the run recorded.
-func TestStandsPicksSessionByKey(t *testing.T) {
-	w := &standsWorkplace{sessions: map[string][]workplace.Session{"ws-1": {
-		{Key: "other", WorkspaceID: "ws-1", State: "done"},
-		{Key: "mine", WorkspaceID: "ws-1", State: "working"},
-	}}}
+func (w *measureWorkplace) TranscriptDir(_ context.Context, workspaceID string) (string, error) {
+	if dir, ok := w.dirs[workspaceID]; ok {
+		return dir, nil
+	}
+	return "", fmt.Errorf("no project dir for %s: %w", workspaceID, workplace.ErrNotMeasurable)
+}
+
+func writeTestFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const (
+	sidMeasured  = "11111111-1111-4111-8111-111111111111"
+	sidGone      = "22222222-2222-4222-8222-222222222222"
+	sidUncertain = "33333333-3333-4333-8333-333333333333"
+	sidDown      = "44444444-4444-4444-8444-444444444444"
+	sidNoFile    = "55555555-5555-4555-8555-555555555555"
+)
+
+// Per open run with a workspace, measure reads the stand of its session and what lies on disk
+// for it: the transcript, the permission note and the resume marker.
+func TestTickMeasuresRunState(t *testing.T) {
+	transcripts := t.TempDir()
+	writeTestFile(t, filepath.Join(transcripts, sidMeasured+".jsonl"),
+		`{"type":"user","timestamp":"2026-10-31T11:50:00Z"}`+"\n"+`{"type":"assistant","timestamp":"2026-10-31T11:55:00Z"}`+"\n")
+	updated := time.Date(2026, 10, 31, 11, 40, 0, 0, time.UTC)
+	w := &measureWorkplace{
+		sessions: map[string][]workplace.Session{
+			"ws-1": {
+				{Key: "other", WorkspaceID: "ws-1", State: "done", UpdatedAt: updated.Add(time.Hour)},
+				{Key: "mine", WorkspaceID: "ws-1", State: "working", SessionID: sidMeasured, UpdatedAt: updated},
+			},
+			"ws-6": {{Key: "k6", WorkspaceID: "ws-6", State: "idle", SessionID: sidNoFile, UpdatedAt: updated}},
+		},
+		errs: map[string]error{
+			"ws-gone": fmt.Errorf("read sessions of ws-gone: 404: %w", workplace.ErrGone),
+			"ws-down": errors.New("forge down"),
+		},
+		dirs: map[string]string{"ws-1": transcripts, "ws-6": transcripts},
+	}
 	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
+	writeTestFile(t, filepath.Join(env.StateDir, "runs", sidMeasured, "permission.json"),
+		`{"version":1,"at":"2026-10-31T11:56:00Z","tool":"Bash","path":"rm -rf build","thread":"","message":"m"}`+"\n")
 	open := []runs.OpenRun{
-		{ID: 1, Issue: 7, WorkspaceID: "ws-1", WorkplaceSession: "mine"},
-		{ID: 2, Issue: 8, WorkspaceID: "ws-1", WorkplaceSession: "gone"},
-		{ID: 3, Issue: 9, WorkspaceID: "ws-1"}, // no session key yet
+		{ID: 1, Issue: 7, SessionID: sidMeasured, WorkspaceID: "ws-1", WorkplaceSession: "mine"},
+		{ID: 2, Issue: 8, SessionID: sidGone, WorkspaceID: "ws-gone", WorkplaceSession: "k2"},
+		{ID: 3, Issue: 9, SessionID: sidUncertain, WorkspaceID: "ws-3"}, // no session key yet
+		{ID: 4, Issue: 10, SessionID: sidDown, WorkspaceID: "ws-down", WorkplaceSession: "k4"},
+		{ID: 5, Issue: 11, SessionID: "66666666-6666-4666-8666-666666666666"}, // no workspace yet
+		{ID: 6, Issue: 12, SessionID: sidNoFile, WorkspaceID: "ws-6", WorkplaceSession: "k6"},
 	}
 	var errOut bytes.Buffer
-	got, err := stands(context.Background(), env, hostconfig.Dispatch{}, repoconfig.Repo{Slug: "o/r"}, open, &errOut)
+	gotStands, gotRuns, err := measure(context.Background(), env, hostconfig.Dispatch{}, repoconfig.Repo{Slug: "o/r"}, open, &errOut)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[int64]workplace.Stand{1: workplace.Working}; !reflect.DeepEqual(got, want) {
-		t.Errorf("stands = %v, want %v (run 1 by its key; a gone session and no key are not measurable)", got, want)
+	wantStands := map[int64]workplace.Stand{1: workplace.Working, 6: workplace.Waiting}
+	if !reflect.DeepEqual(gotStands, wantStands) {
+		t.Errorf("stands = %v, want %v", gotStands, wantStands)
 	}
-	if errOut.Len() != 0 {
-		t.Errorf("errOut = %q, want nothing", errOut.String())
+	wantRuns := map[int64]dispatch.RunState{
+		1: {
+			SessionAt: updated,
+			Transcript: &workplace.Transcript{
+				LastEvent:     time.Date(2026, 10, 31, 11, 55, 0, 0, time.UTC),
+				Threads:       map[string]time.Time{"": time.Date(2026, 10, 31, 11, 55, 0, 0, time.UTC)},
+				AssistantTurn: true,
+			},
+			Permission: &dispatch.Permission{At: time.Date(2026, 10, 31, 11, 56, 0, 0, time.UTC), Tool: "Bash", Path: "rm -rf build"},
+		},
+		2: {Gone: true},
+		3: {},                   // nothing found yet: measured, not an error
+		6: {SessionAt: updated}, // no transcript file yet: not measurable, no line
+	}
+	if !reflect.DeepEqual(gotRuns, wantRuns) {
+		t.Errorf("runs =\n%+v\nwant\n%+v", gotRuns, wantRuns)
+	}
+	if want := "lighthouse: measure o/r: run 4: forge down\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
 	}
 }
 
-// A workplace that cannot list its sessions leaves the run without a stand, and says so.
-func TestStandsSessionsErrorIsLoud(t *testing.T) {
-	w := &standsWorkplace{err: errors.New("forge down")}
+// One unreadable file leaves its run without any measurement: a half measurement would read
+// as "no permission prompt".
+func TestMeasureFileErrorLeavesRunUnmeasured(t *testing.T) {
+	w := &measureWorkplace{sessions: map[string][]workplace.Session{
+		"ws-1": {{Key: "mine", WorkspaceID: "ws-1", State: "working"}},
+	}}
 	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
-	open := []runs.OpenRun{{ID: 1, Issue: 7, WorkspaceID: "ws-1", WorkplaceSession: "mine"}}
+	writeTestFile(t, filepath.Join(env.StateDir, "runs", sidMeasured, "permission.json"), `{"version":1,"at":`)
+	open := []runs.OpenRun{{ID: 1, Issue: 7, SessionID: sidMeasured, WorkspaceID: "ws-1", WorkplaceSession: "mine"}}
 	var errOut bytes.Buffer
-	got, err := stands(context.Background(), env, hostconfig.Dispatch{}, repoconfig.Repo{Slug: "o/r"}, open, &errOut)
+	gotStands, gotRuns, err := measure(context.Background(), env, hostconfig.Dispatch{}, repoconfig.Repo{Slug: "o/r"}, open, &errOut)
 	if err != nil {
-		t.Fatalf("stands = %v, want no error: an unreadable stand is not measurable", err)
+		t.Fatalf("measure = %v, want no error: an unreadable run is not measurable", err)
 	}
-	if len(got) != 0 {
-		t.Errorf("stands = %v, want none", got)
+	if len(gotStands) != 0 || len(gotRuns) != 0 {
+		t.Errorf("stands %v, runs %v; want none", gotStands, gotRuns)
 	}
-	if want := "lighthouse: stand o/r: forge down\n"; errOut.String() != want {
+	if !strings.HasPrefix(errOut.String(), "lighthouse: measure o/r: run 1: ") || strings.Count(errOut.String(), "\n") != 1 {
+		t.Errorf("errOut = %q, want one measure line for run 1", errOut.String())
+	}
+}
+
+// A workplace that cannot list the sessions of an uncertain start costs that run its key and
+// its measurement, loudly, but the repo is still gathered.
+func TestTickAdoptFailureIsLoudNotFatal(t *testing.T) {
+	dir := repoDir(t, completeRepo)
+	env, db := tickFixture(t, dir)
+	srv := fakeForge(t, &env)
+	srv.Roles = map[string]string{"lh-bot": "admin"}
+	env.Now = func() time.Time { return t0 }
+	w := &measureWorkplace{errs: map[string]error{"ws-7": errors.New("forge down")}}
+	env.Workplace = func(repoconfig.Repo) workplace.Workplace { return w }
+	conn := openStore(t, db)
+	ctx := context.Background()
+	run, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 7, SessionID: sidUncertain, Mode: "start",
+		Trigger: "handoff", TriggerKey: "start:7", Branch: "issue-7-issue", Now: t0.Add(-time.Minute)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, conn, run.ID, "ws-7", "issue-7-issue"); err != nil {
+		t.Fatal(err)
+	}
+	repo, err := repoconfig.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var errOut bytes.Buffer
+	in, _, err := gatherRepo(ctx, env, conn, hostconfig.Dispatch{}, hostFacts{}, repo, "tok", func() (string, error) { return "lh-bot", nil }, &errOut)
+	if err != nil || in == nil {
+		t.Fatalf("gatherRepo = %v, %v, want the repo gathered\n%s", in, err, errOut.String())
+	}
+	if _, ok := in.Runs[run.ID]; ok {
+		t.Errorf("runs = %v, want run %d unmeasured", in.Runs, run.ID)
+	}
+	want := "lighthouse: measure o/r: sessions of run 1: forge down\n" +
+		"lighthouse: measure o/r: run 1: forge down\n" +
+		"lighthouse: gathered o/r: 0 items (first)\n"
+	if errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+}
+
+// tick and run decide with the limits of host.toml [dispatch] and the brake of the tick.
+func TestDecideInputCarriesLimits(t *testing.T) {
+	env := tickEnv{Now: func() time.Time { return t0 }}
+	cfg := hostconfig.Dispatch{Night: "21:00-08:00", MaxWait: 90 * time.Minute, MaxRuntime: 8 * time.Hour}
+	brake := &dispatch.Brake{Paused: true}
+	got := decideInput(env, cfg, nil, brake)
+	want := dispatch.Input{Now: t0, Night: "21:00-08:00", Brake: brake,
+		MaxWait: dispatch.Duration(90 * time.Minute), MaxRuntime: dispatch.Duration(8 * time.Hour)}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("decideInput = %+v, want %+v", got, want)
+	}
+}
+
+// An uncertain start whose session shows up in this tick is adopted before the board half of
+// the gather reads the open runs: the snapshot has its session key, and its stand counts.
+func TestTickAdoptsBeforePrepare(t *testing.T) {
+	dir := repoDir(t, completeRepo)
+	env, db := tickFixture(t, dir)
+	_, w := startable(t, &env)
+	conn := openStore(t, db)
+	ctx := context.Background()
+	const session = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	run, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 7, SessionID: session, Mode: "start",
+		Trigger: "handoff", TriggerKey: "start:7", Branch: "issue-7-issue", Now: t0.Add(-2 * time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, conn, run.ID, "ws-issue-7-issue", "issue-7-issue"); err != nil {
+		t.Fatal(err)
+	}
+	w.sessions["ws-issue-7-issue"] = []workplace.Session{
+		{Key: "key-late", WorkspaceID: "ws-issue-7-issue", State: "working", SessionID: session},
+	}
+	repo, err := repoconfig.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := hostconfig.Dispatch{MaxWait: time.Hour, MaxRuntime: 8 * time.Hour}
+	login := func() (string, error) { return "lh-bot", nil }
+	var errOut bytes.Buffer
+	in, _, err := gatherRepo(ctx, env, conn, cfg, hostFacts{}, repo, "tok", login, &errOut)
+	if err != nil || in == nil {
+		t.Fatalf("gatherRepo = %v, %v\n%s", in, err, errOut.String())
+	}
+	if open := in.Snapshot.OpenRuns; len(open) != 1 || open[0].WorkplaceSession != "key-late" {
+		t.Errorf("snapshot open runs = %+v, want run %d with key-late", open, run.ID)
+	}
+	if got, ok := in.Stands[run.ID]; !ok || got != workplace.Working {
+		t.Errorf("stands = %v, want run %d working", in.Stands, run.ID)
+	}
+	if _, ok := in.Runs[run.ID]; !ok {
+		t.Errorf("runs = %v, want a measurement of run %d", in.Runs, run.ID)
+	}
+	if want := "lighthouse: gathered o/r: 1 items (first)\n"; errOut.String() != want {
 		t.Errorf("errOut = %q, want %q", errOut.String(), want)
 	}
 }

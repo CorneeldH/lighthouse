@@ -184,8 +184,6 @@ func TestLaunchPrepareFails(t *testing.T) {
 	}
 }
 
-var lcLimits = Limits{MaxWait: 10 * time.Minute, MaxRuntime: 60 * time.Minute}
-
 // openRunWithWorkspace takes a run and records its workspace, as Launch would.
 func openRunWithWorkspace(t *testing.T, db *sql.DB, issue int, started time.Time, session string) (runs.Run, string) {
 	t.Helper()
@@ -202,185 +200,97 @@ func openRunWithWorkspace(t *testing.T, db *sql.DB, issue int, started time.Time
 	return run, sid
 }
 
-func TestCheckOpenUncertainFoundLater(t *testing.T) {
+func TestAdoptSessionsRecordsKey(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, sid := openRunWithWorkspace(t, db, 7, lcNow.Add(-time.Minute), "")
 	w := &fakeWP{sessions: []Session{{Key: "other", SessionID: "x"}, {Key: "k9", SessionID: sid}}}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err != nil || len(closed) != 0 {
-		t.Fatalf("CheckOpen = %v, %v", closed, err)
-	}
-	if got := rowOf(t, db, run.ID); got.outcome != "" || got.session != "k9" {
-		t.Errorf("row = %+v", got)
-	}
-}
-
-func TestCheckOpenUncertainPastMaxWait(t *testing.T) {
-	db := openLeftoverDB(t)
-	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-11*time.Minute), "")
-	w := &fakeWP{}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err != nil {
+	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
 		t.Fatal(err)
 	}
-	want := []Closed{{RunID: run.ID, Issue: 7, Reason: ReasonUncertain}}
-	if !reflect.DeepEqual(closed, want) {
-		t.Errorf("closed = %+v, want %+v", closed, want)
-	}
-	if got := rowOf(t, db, run.ID); got.outcome != "returned" || got.reason != "start uncertain: no session found" {
-		t.Errorf("row = %+v", got)
-	}
-	if want := []string{"w1"}; !reflect.DeepEqual(w.discarded, want) {
-		t.Errorf("discarded = %v, want %v", w.discarded, want)
+	if got := rowOf(t, db, run.ID); got.outcome != "" || got.session != "k9" {
+		t.Errorf("row = %+v, want open with k9", got)
 	}
 }
 
-func TestCheckOpenDiscardFailsStillReturnsRow(t *testing.T) {
+// A session that never showed up is Decide's to settle: AdoptSessions never closes, stops or
+// discards, however old the run.
+func TestAdoptSessionsNotFoundLeavesRow(t *testing.T) {
 	db := openLeftoverDB(t)
-	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-11*time.Minute), "")
-	w := &fakeWP{discardErr: errors.New("read-only state dir")}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err == nil || !strings.Contains(err.Error(), "read-only state dir") {
-		t.Fatalf("err = %v, want the discard error", err)
+	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-9*time.Hour), "")
+	w := &fakeWP{sessions: []Session{{Key: "other", SessionID: "x"}}}
+	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
+		t.Fatal(err)
 	}
-	if want := []Closed{{RunID: run.ID, Issue: 7, Reason: ReasonUncertain}}; !reflect.DeepEqual(closed, want) {
-		t.Errorf("closed = %+v, want %+v", closed, want)
+	if got := rowOf(t, db, run.ID); got != (runRow{workspace: "w1"}) {
+		t.Errorf("row = %+v, want open without a session", got)
 	}
-	if got := rowOf(t, db, run.ID); got.outcome != "returned" {
-		t.Errorf("row = %+v", got)
-	}
-}
-
-func TestCheckOpenUncertainWithinMaxWait(t *testing.T) {
-	db := openLeftoverDB(t)
-	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-9*time.Minute), "")
-	w := &fakeWP{}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err != nil || len(closed) != 0 || len(w.discarded) != 0 {
-		t.Fatalf("CheckOpen = %v, %v, discarded %v", closed, err, w.discarded)
-	}
-	if got := rowOf(t, db, run.ID); got.outcome != "" {
-		t.Errorf("row = %+v", got)
+	if w.stops != 0 || len(w.discarded) != 0 {
+		t.Errorf("stops %d, discarded %v; want none", w.stops, w.discarded)
 	}
 }
 
-func TestCheckOpenUncertainPastBothLimits(t *testing.T) {
-	db := openLeftoverDB(t)
-	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-2*time.Hour), "")
-	w := &fakeWP{}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err != nil {
-		t.Fatalf("err = %v", err)
-	}
-	if len(closed) != 1 || closed[0].Reason != ReasonUncertain {
-		t.Errorf("closed = %+v", closed)
-	}
-	if w.stops != 0 {
-		t.Errorf("stops = %d, want 0", w.stops)
-	}
-	if got := rowOf(t, db, run.ID); got.reason != ReasonUncertain {
-		t.Errorf("row = %+v", got)
-	}
-}
-
-func TestCheckOpenSessionsFailsLeavesRow(t *testing.T) {
+func TestAdoptSessionsSessionsFailsLeavesRow(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-time.Hour), "")
 	w := &fakeWP{sessionsErr: errors.New("forge down")}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err == nil || !strings.Contains(err.Error(), "forge down") || len(closed) != 0 {
-		t.Fatalf("CheckOpen = %v, %v", closed, err)
+	err := AdoptSessions(context.Background(), db, w, lcRepo)
+	if err == nil || !strings.Contains(err.Error(), "forge down") {
+		t.Fatalf("AdoptSessions = %v, want the sessions error", err)
 	}
-	if got := rowOf(t, db, run.ID); got.outcome != "" {
+	if got := rowOf(t, db, run.ID); got != (runRow{workspace: "w1"}) {
 		t.Errorf("row = %+v", got)
 	}
 }
 
-func TestCheckOpenOverdueStops(t *testing.T) {
+// A run that holds its key, or has no workspace yet, is not looked up: a failing Sessions
+// proves it.
+func TestAdoptSessionsSkipsSettledAndUnplacedRows(t *testing.T) {
 	db := openLeftoverDB(t)
-	run, sid := openRunWithWorkspace(t, db, 7, lcNow.Add(-61*time.Minute), "k1")
-	w := &fakeWP{}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err != nil {
-		t.Fatal(err)
+	held, sid := openRunWithWorkspace(t, db, 7, lcNow.Add(-time.Hour), "k1")
+	unplaced, _ := takeRun(t, db, 8, lcNow.Add(-time.Hour))
+	w := &fakeWP{sessions: []Session{{Key: "k2", SessionID: sid}}, sessionsErr: errors.New("unexpected Sessions")}
+	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
+		t.Fatalf("AdoptSessions = %v, want no lookup", err)
 	}
-	if want := []Closed{{RunID: run.ID, Issue: 7, Reason: ReasonTimeout}}; !reflect.DeepEqual(closed, want) {
-		t.Errorf("closed = %+v, want %+v", closed, want)
+	if got := rowOf(t, db, held.ID); got.session != "k1" {
+		t.Errorf("held row = %+v, want k1 kept", got)
 	}
-	if want := []string{"w1:" + sid}; !reflect.DeepEqual(w.stopped, want) {
-		t.Errorf("stopped = %v, want %v", w.stopped, want)
-	}
-	if got := rowOf(t, db, run.ID); got.outcome != "returned" || got.reason != "timeout (max_runtime)" {
-		t.Errorf("row = %+v", got)
+	if got := rowOf(t, db, unplaced.ID); got != (runRow{}) {
+		t.Errorf("unplaced row = %+v", got)
 	}
 }
 
-func TestCheckOpenWithinRuntimeUntouched(t *testing.T) {
-	db := openLeftoverDB(t)
-	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-59*time.Minute), "k1")
-	w := &fakeWP{}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err != nil || len(closed) != 0 || w.stops != 0 {
-		t.Fatalf("CheckOpen = %v, %v, stops %d", closed, err, w.stops)
-	}
-	if got := rowOf(t, db, run.ID); got.outcome != "" {
-		t.Errorf("row = %+v", got)
-	}
+// sessionsByWorkspace answers Sessions per workspace id; a workspace in fail gets an error.
+type sessionsByWorkspace struct {
+	fakeWP
+	per  map[string][]Session
+	fail string
 }
 
-func TestCheckOpenStopFailsKeepsOpen(t *testing.T) {
-	db := openLeftoverDB(t)
-	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-61*time.Minute), "k1")
-	w := &fakeWP{stopErr: errors.New("systemctl failed")}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err == nil || !strings.Contains(err.Error(), "systemctl failed") || len(closed) != 0 {
-		t.Fatalf("CheckOpen = %v, %v", closed, err)
+func (f *sessionsByWorkspace) Sessions(_ context.Context, id string) ([]Session, error) {
+	if id == f.fail {
+		return nil, errors.New("sessions of " + id + " failed")
 	}
-	if got := rowOf(t, db, run.ID); got.outcome != "" {
-		t.Errorf("row = %+v", got)
-	}
+	return f.per[id], nil
 }
 
-// stopFailsFirst fails Stop for the first workspace call only.
-type stopFailsFirst struct{ fakeWP }
-
-func (f *stopFailsFirst) Stop(ctx context.Context, id string, ids []string) error {
-	err := f.fakeWP.Stop(ctx, id, ids)
-	if f.stops == 1 {
-		return errors.New("first stop failed")
-	}
-	return err
-}
-
-func TestCheckOpenOneFailureDoesNotBlockTheNext(t *testing.T) {
+func TestAdoptSessionsOneFailureDoesNotBlockTheNext(t *testing.T) {
 	db := openLeftoverDB(t)
-	first, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-2*time.Hour), "k1")
-	second, _ := openRunWithWorkspace(t, db, 8, lcNow.Add(-2*time.Hour), "k2")
-	third, _ := openRunWithWorkspace(t, db, 9, lcNow.Add(-2*time.Hour), "k3")
-	w := &stopFailsFirst{}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err == nil || !strings.Contains(err.Error(), "first stop failed") {
-		t.Fatalf("err = %v", err)
+	ctx := context.Background()
+	first, _ := takeRun(t, db, 7, lcNow.Add(-time.Hour))
+	second, sid := takeRun(t, db, 8, lcNow.Add(-time.Hour))
+	for id, ws := range map[int64]string{first.ID: "w1", second.ID: "w2"} {
+		if err := runs.SetWorkplace(ctx, db, id, ws, "issue"); err != nil {
+			t.Fatal(err)
+		}
 	}
-	want := []Closed{{RunID: second.ID, Issue: 8, Reason: ReasonTimeout}, {RunID: third.ID, Issue: 9, Reason: ReasonTimeout}}
-	if !reflect.DeepEqual(closed, want) {
-		t.Errorf("closed = %+v, want %+v", closed, want)
+	w := &sessionsByWorkspace{per: map[string][]Session{"w2": {{Key: "k2", SessionID: sid}}}, fail: "w1"}
+	err := AdoptSessions(ctx, db, w, lcRepo)
+	if err == nil || !strings.Contains(err.Error(), "sessions of w1 failed") {
+		t.Fatalf("AdoptSessions = %v, want the error of w1", err)
 	}
-	if got := rowOf(t, db, first.ID); got.outcome != "" {
-		t.Errorf("first row = %+v", got)
-	}
-}
-
-func TestCheckOpenSkipsRowsWithoutWorkspace(t *testing.T) {
-	db := openLeftoverDB(t)
-	run, _ := takeRun(t, db, 7, lcNow.Add(-5*time.Hour))
-	w := &fakeWP{}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err != nil || len(closed) != 0 || w.stops != 0 {
-		t.Fatalf("CheckOpen = %v, %v", closed, err)
-	}
-	if got := rowOf(t, db, run.ID); got.outcome != "" {
-		t.Errorf("row = %+v", got)
+	if got := rowOf(t, db, second.ID); got.session != "k2" {
+		t.Errorf("second row = %+v, want k2 despite the failure of the first", got)
 	}
 }
 
@@ -704,29 +614,24 @@ func TestResumeStartFailedLateAgentIsForeign(t *testing.T) {
 	}
 }
 
-func TestCheckOpenIgnoresSessionOfEarlierRow(t *testing.T) {
+func TestAdoptSessionsIgnoresSessionOfEarlierRow(t *testing.T) {
 	db := openLeftoverDB(t)
 	sid, resume := resumeRows(t, db, lcNow.Add(-11*time.Minute))
 	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "done"}}}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err != nil {
+	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
 		t.Fatal(err)
 	}
-	if want := []Closed{{RunID: resume.ID, Issue: 7, Reason: ReasonUncertain}}; !reflect.DeepEqual(closed, want) {
-		t.Errorf("closed = %+v, want %+v", closed, want)
-	}
-	if got := rowOf(t, db, resume.ID); got.session != "" || got.outcome != "returned" {
-		t.Errorf("row = %+v, want returned without the earlier key", got)
+	if got := rowOf(t, db, resume.ID); got.session != "" || got.outcome != "" {
+		t.Errorf("row = %+v, want open without the earlier key", got)
 	}
 }
 
-func TestCheckOpenResumeFindsItsNewSession(t *testing.T) {
+func TestAdoptSessionsResumeFindsItsNewSession(t *testing.T) {
 	db := openLeftoverDB(t)
 	sid, resume := resumeRows(t, db, lcNow.Add(-time.Minute))
 	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "done"}, {Key: "k2", SessionID: sid, State: "working"}}}
-	closed, err := CheckOpen(context.Background(), db, w, lcRepo, lcLimits, lcNow)
-	if err != nil || len(closed) != 0 {
-		t.Fatalf("CheckOpen = %v, %v", closed, err)
+	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
+		t.Fatal(err)
 	}
 	if got := rowOf(t, db, resume.ID); got.session != "k2" || got.outcome != "" {
 		t.Errorf("row = %+v, want open with k2", got)

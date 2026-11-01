@@ -12,6 +12,8 @@ from tests.test_site_chain import REPO_BLOB, ROOT, SITE, load
 EVENT_PHASE = {
     "UserPromptSubmit": "prompt",
     "PreToolUse": "pre-tool",
+    # A permission prompt comes before the tool runs.
+    "Notification": "pre-tool",
     "PostToolUse": "post-tool",
     "PostToolUseFailure": "post-tool",
     "SubagentStop": "subagent-stop",
@@ -168,6 +170,7 @@ def test_routes_are_the_situations():
         "pr-evidence": "I open a PR without evidence", "usage-limit": "My limit is almost reached",
         "dead-link": "I write a dead link", "write-gates": "I write code a gate rejects",
         "agent": "I send an agent to scout",
+        "permission-prompt": "A controller run waits on a permission",
     }
 
 

@@ -1,7 +1,8 @@
 # Tick
 
 `lighthouse tick` is de dispatcher-tick: een eigen proces dat een timer of cron periodiek start.
-Het is een korte run, geen daemon. Het ontwerp staat in
+Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controller` zet, leest
+[triage.md](triage.md). Het ontwerp staat in
 [de dispatcher-spec](developer/planning/specs/2026-10-27-m2-dispatcher-design.md) (§2 *Configuratie*,
 §3 *De tick*).
 
@@ -35,12 +36,26 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    daaruit een vingerafdruk: per item in Controller of On hold de Status, Priority en de `updatedAt`
    van item en issue, de voorgangers van een On hold-item, de PR's van een item met een open run, en
    de open runs zelf met de stand van hun forge-sessie (`working`, `waiting` of `done`; een sessie die
-   tick niet kan lezen telt als niet meetbaar, en een fout bij het lezen schrijft
-   `lighthouse: stand <repo>: <fout>` naar stderr). Een nieuwe comment telt mee via de `updatedAt` van het
-   issue; een sessie die klaar is via haar stand. Tick slaat de volledige gather
+   tick niet kan lezen telt als niet meetbaar), de resume-markers met `controller: true` waarvan de
+   laatste run van de sessie in deze repo staat, en het einde van de pauze (zie *De rem*). De markers
+   leest tick één keer per tick voor alle repo's; een onleesbare markermap stopt de tick, want dan
+   kan noch de rem noch de afloop (regel 5) kijken. Per open run met een werkplek meet tick ook de
+   afloop: de laatste gebeurtenis in het transcript (subagents meegeteld, per draad), of de sessie
+   nog een eerste commando mist (`Unknown command:`) of nooit een assistent-beurt had, en de laatste
+   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven). Staat het transcript niet op deze host (het Software-profiel in een
+   devcontainer), dan is de run niet meetbaar: geen fout, en de afloop valt terug op de forge-stand.
+   Een run die tick niet kan meten (stand of afloop) schrijft
+   `lighthouse: measure <repo>: run <id>: <fout>` naar stderr; de andere runs worden wel gemeten. Een
+   sessie die de tick zonder sleutel aantreft (een onzekere start) zoekt `workplace.AdoptSessions`
+   op; mislukt dat zoeken, dan schrijft tick `lighthouse: measure <repo>: <fout>` naar stderr en meet
+   de rest toch. Vindt het haar niet, dan is dat aan decide (regel 15). Een nieuwe comment telt mee
+   via de `updatedAt` van het issue; een sessie die klaar is via haar stand. Tick slaat de volledige gather
    alleen over als de vingerafdruk gelijk is aan de vorige, de vorige volledige gather jonger is dan
    30 minuten, en er sinds die gather geen tijdgrens viel. Tijdgrenzen zijn per open run
-   `started_at + max_runtime` en `started_at + max_wait`, en het begin van het `night`-venster.
+   `started_at + max_runtime` en `started_at + max_wait`, `max_wait` na zijn laatste activiteit en na
+   zijn permissie-prompt, per marker zijn `reset_at`, en het begin van het `night`-venster.
+   Activiteit en prompts staan niet in de vingerafdruk: ze veranderen elke tick, en deze grenzen laten
+   tick kijken als hun `max_wait` verloopt.
    Vingerafdruk en tijd van de laatste volledige gather staan in de tabel `tick_state` van de database.
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
    de items in Controller of On hold met hun velden, voorgangers en PR's (de PR's die het issue sluiten
@@ -60,8 +75,9 @@ Het is een korte run, geen daemon. Het ontwerp staat in
 
 8. **Decide.** Eén keer per tick, over alle gegatherde repo's samen, beslist tick wat er moet
    gebeuren: een run sluiten, een issue teruggeven, een 🚀 herstellen, een issue parkeren of
-   terugzetten (zie *Blokkades*), en per issue hoogstens één start of hervatting. Decide is puur: het leest alleen de snapshots, de runhistorie, de standen en
-   de klok. De regels staan in de spec (§4, §7).
+   terugzetten (zie *Blokkades*), en per issue hoogstens één start of hervatting. Decide is puur: het
+   leest alleen de snapshots, de runhistorie, de standen, de metingen, de markers en de klok. De
+   regels staan in de spec (§4, §7); de afloop van een open run staat in *Afloop* hieronder.
 9. **Apply.** Tick voert de acties in volgorde uit. Een mislukte actie houdt de rest niet tegen. Een
    uitgestelde start (buiten het `night`-venster, of een bezette werkplek)
    schrijft `lighthouse: deferred <repo>#<n>: <reden>` naar stderr. Een repo met een mislukte actie
@@ -86,6 +102,61 @@ dezelfde trigger tegelijk, dan wint één `runs.Take`; de ander post niets.
 Run-instructies en dragers staan onder `${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. De
 forge-kant (workspace, agent starten, bezet, opruimen) staat in [workplace.md](workplace.md). Een
 Vraag aan de gebruiker vanuit de werkplek post `lighthouse ask`, zie [ask.md](ask.md).
+
+## Afloop
+
+Per open run beslist decide elke tick wat er van de run wordt, op de metingen van stap 6. De
+volgorde is vast en de eerste treffer wint. Het ontwerp staat in
+[de dispatcher-spec](developer/planning/specs/2026-10-27-m2-dispatcher-design.md) (§7). "Klaar" is
+een forge-stand `done`; "activiteit" is de laatste gebeurtenis in het transcript (alle draden), en
+zonder transcript de tijd van de forge-sessie. Een PR telt alleen als hij van deze run is: een
+gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime` komen uit
+`host.toml`; staat een limiet op nul, dan staan de regels die haar gebruiken uit.
+
+| # | Situatie | Uitkomst | Reden op de 🤖 Teruggegeven |
+|---|---|---|---|
+| 1-3 | Klaar-comment, Handoff (niet het einde van de keten), Vraag | zoals voorheen | |
+| 4 | Een eigen 🤖 Teruggegeven van deze sessie staat er al | rij `returned`; de sessie stoppen als ze niet klaar is en de werkplek er nog is, zonder sessie de launch vergeten | |
+| 5 | Resume-marker (`controller: true`) van deze sessie, geschreven op of na `started_at` van de run | rij `parked`, sessie blijft staan | |
+| 6 | PR van deze run gemerged | rij `done` | |
+| 6b | Klaar en het issue is `CLOSED` | rij `done`, geen post (een close-check-run die zijn issue sloot) | |
+| 7 | Groene PR en klaar | 🤖 Klaar | |
+| 8 | Werkplek verdwenen | Teruggegeven | werkplek verdwenen |
+| 9 | `Unknown command:` in het transcript | rij `start_failed`, sessie stoppen als ze niet klaar is | |
+| 10 | Klaar, maar nooit een assistent-beurt | rij `start_failed` | |
+| 11 | PR van deze run gesloten zonder merge, en geen open PR | Teruggegeven, sessie stoppen als ze niet klaar is | PR gesloten |
+| 12 | Open PR is draft | Teruggegeven, sessie stoppen als ze niet klaar is | PR is draft |
+| 13 | Klaar en een open PR met rode checks | Teruggegeven | PR rood |
+| 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
+| 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
+| 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
+| 17 | `max_wait` > 0, niet klaar, geen openstaande permissie-prompt, geen activiteit in `max_wait` (geteld vanaf `started_at` op zijn vroegst) | Teruggegeven, sessie stoppen | geen activiteit in max_wait |
+| 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud, ook geteld vanaf `started_at` op zijn vroegst (zonder forge-tijd niet) | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
+| 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
+
+Verschillen met de spec-tabel, bewust:
+
+- Wacht op permissie (16) stopt de sessie niet: de prompt kan nog beantwoord worden. Alleen
+  activiteit van de draad van de prompt, nieuwer dan de prompt, telt als beantwoord; een subagent die
+  verder werkt houdt de hoofdthread niet in leven. De hook schrijft `at` in milliseconden, zoals het
+  transcript: de `tool_use` achter de prompt valt meestal in dezelfde seconde. Zolang een prompt
+  openstaat, gelden 17 en 18 niet: een wachtende sessie schrijft niets.
+- Een resume hergebruikt de sessie, en daarmee haar transcript en `permission.json`. Wat van vóór
+  `started_at` van de run is, telt daarom niet als prompt of als laatste activiteit. Zo ook de
+  marker: een marker van vóór `started_at` hoort bij een eerdere parkering (de usage-hervatting die
+  hem beantwoordde kon hem niet verwijderen) en parkeert de hervatte run niet opnieuw. Parkeert de
+  usage-guard de hervatte run zelf, dan schrijft hij een nieuwe marker met een nieuwe `created_at`.
+- Regel 15 geldt alleen voor een run die tick heeft gemeten. Een storing bij forge geeft dus nooit
+  een Teruggegeven voor een run die misschien draait.
+- Regel 6b: een sessie die klaar is op een gesloten issue laat geen Handoff, Vraag of PR achter.
+
+Apply voert de uitkomst uit. Een Teruggegeven post eerst en sluit de rij dan als `returned`; een
+`close` met `Stop` stopt de sessie voor elke uitkomst, ook voor `start_failed`. Stoppen gaat op
+de sessie-id van de run, niet op de forge-sleutel: de werkplek zoekt het proces op die id. Een stop
+of vergeet op een rij zonder sessie of werkplek slaat apply over. Mislukt het stoppen na de post, dan
+ziet de volgende tick regel 4 en post niets opnieuw: ze stopt of vergeet en sluit alleen. Een
+`start_failed` zonder Teruggegeven krijgt de bestaande tweede poging; na twee mislukte pogingen geeft
+tick het issue terug met de oorzaak (*start mislukt: …*).
 
 ## Exitcodes
 
@@ -174,6 +245,8 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
 | Plekken | `in_use` plus de al toegelaten starts >= `slots` | `slots: 4 of 4 in use` |
 | Software | profiel `software`, en `software_in_use` plus de al toegelaten software-starts >= `max_software` | `software: 2 of 2 in use` |
 
+- De rem houdt alleen starts en hervattingen tegen. De afloop van open runs (sluiten, Teruggegeven,
+  stoppen, 🤖 Klaar, zie *Afloop*) gaat door, ook tijdens een pauze of bij een dichte usage-rem.
 - `n` bij Geheugen is het aantal starts en hervattingen dat deze tick al door de rem kwam: een net
   gestarte run reserveert van dezelfde meting.
 - `in_use` komt uit de database en geldt voor de hele host: de open runs over alle repo's, plus de
@@ -231,7 +304,7 @@ min_mem_available_gb = 8     # rem: MemAvailable - n x reserve >= min
 reserve_per_run_gb = 3       # reserve per lopende run
 night = "21:00-08:00"        # venster voor `when: night`, lokale tijd
 max_runtime = "8h"           # bovengrens per run
-max_wait = "1h"              # grens voor een stille run
+max_wait = "1h"              # grens voor een stille run, een onzekere start of een permissie-prompt zonder antwoord
 answer_permissions = ["admin", "maintain"]
 
 [dispatch.forge]

@@ -21,6 +21,9 @@ WHEN = {
     frozenset(
         {("PostToolUse", ""), ("UserPromptSubmit", ""), ("SubagentStop", ""), ("Stop", "")}
     ): "at every prompt, tool call, subagent stop and session stop",
+    frozenset(
+        {("Notification", "permission_prompt|worker_permission_prompt")}
+    ): "when Claude asks for a permission in a controller run",
 }
 
 
@@ -84,7 +87,7 @@ def test_hooks_match_hooks_json():
             events = {event for event, _ in found[hook["name"]]}
             assert sorted(hook["events"]) == sorted(events), hook["name"]
     core = next(p for p in packs() if p["name"] == "core")
-    assert len(core["hooks"]) == 8
+    assert len(core["hooks"]) == 9
 
 
 def test_hook_when_follows_its_events():

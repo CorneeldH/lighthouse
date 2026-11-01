@@ -5,6 +5,7 @@ package forgetest
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,6 +38,12 @@ type Server struct {
 	// Issues are the issues per number in GitHub's REST shape, served by GET
 	// /repos/{owner}/{name}/issues/{number}; a missing number answers 404.
 	Issues map[int]map[string]any
+	// Pulls are the open pull requests in REST shape (number, title, body, head.ref), served by
+	// GET /repos/{owner}/{name}/pulls in the order given.
+	Pulls []map[string]any
+	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
+	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
+	BlockedBy map[int][]map[string]any
 	// Fail maps "METHOD path", such as "POST /repos/o/r/issues/7/comments", to the status that
 	// request answers instead. A failed POST is still in Posts, but changes nothing.
 	Fail map[string]int
@@ -51,8 +58,13 @@ type Server struct {
 	// first 20, like the query asks.
 	Branches map[string][]map[string]any
 	// BoardNodes are the project items in GraphQL shape, served by Board in pages of 100. A
-	// nested connection carries its own pageInfo when a test sets one.
+	// nested connection carries its own pageInfo when a test sets one. A node with
+	// "isArchived": true is left out of Board, as ProjectV2.items lists no archived item, and
+	// served by IssueItems, as Issue.projectItems includes them.
 	BoardNodes []map[string]any
+	// ProjectID is the project every BoardNodes item belongs to, as IssueItems serves it in
+	// project { id }.
+	ProjectID string
 	// BoardNotAProject makes Board answer {"node": {}}, as GitHub does for an ID of another type.
 	BoardNotAProject bool
 	// BoardStuckCursor, when not nil, makes every Board page claim a next page with this
@@ -90,7 +102,10 @@ func New(t *testing.T) *Server {
 	s := &Server{t: t, counts: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /user", s.user)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
+	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
@@ -163,6 +178,57 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, issue)
+}
+
+// listIssues serves Issues by number, filtered on state (default open; an item without state
+// is open) and milestone (the milestone.number), in pages.
+func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
+	state := r.URL.Query().Get("state")
+	if state == "" {
+		state = "open"
+	}
+	milestone := r.URL.Query().Get("milestone")
+	var nums []int
+	for n := range s.Issues {
+		nums = append(nums, n)
+	}
+	slices.Sort(nums)
+	var out []any
+	for _, n := range nums {
+		it := s.Issues[n]
+		if st, _ := it["state"].(string); state != "all" && state != cmp.Or(st, "open") {
+			continue
+		}
+		if milestone != "" {
+			m, _ := it["milestone"].(map[string]any)
+			if m == nil || fmt.Sprint(m["number"]) != milestone {
+				continue
+			}
+		}
+		out = append(out, it)
+	}
+	s.page(w, r, out)
+}
+
+func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	var out []any
+	for _, b := range s.BlockedBy[n] {
+		out = append(out, b)
+	}
+	s.page(w, r, out)
+}
+
+func (s *Server) pulls(w http.ResponseWriter, r *http.Request) {
+	var out []any
+	for _, p := range s.Pulls {
+		out = append(out, p)
+	}
+	s.page(w, r, out)
 }
 
 func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
@@ -373,6 +439,10 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			"pageInfo": map[string]any{"hasNextPage": more},
 			"nodes":    append([]map[string]any{}, nodes...),
 		}}}
+	case "IssueItems":
+		data = s.issueItems(req.Query, req.Variables)
+	case "AddToBoard":
+		data = s.addToBoard(req.Variables)
 	case "SetStatus":
 		data = map[string]any{"updateProjectV2ItemFieldValue": map[string]any{
 			"projectV2Item": map[string]any{"id": req.Variables["item"]},
@@ -390,23 +460,73 @@ func (s *Server) board(vars map[string]any) any {
 	if s.BoardNotAProject {
 		return map[string]any{"node": map[string]any{}}
 	}
+	var live []map[string]any
+	for _, n := range s.BoardNodes {
+		if archived, _ := n["isArchived"].(bool); !archived {
+			live = append(live, n)
+		}
+	}
 	start := 0
 	if after, _ := vars["after"].(string); after != "" {
 		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
 		if err != nil {
 			s.t.Errorf("forgetest: Board after = %q, not a cursor this server gave", after)
 		}
-		start = min(n, len(s.BoardNodes))
+		start = min(n, len(live))
 	}
-	end := min(start+100, len(s.BoardNodes))
-	more, cursor := end < len(s.BoardNodes), fmt.Sprintf("cursor-%d", end)
+	end := min(start+100, len(live))
+	more, cursor := end < len(live), fmt.Sprintf("cursor-%d", end)
 	if s.BoardStuckCursor != nil {
 		more, cursor = true, *s.BoardStuckCursor
 	}
 	return map[string]any{"node": map[string]any{"items": map[string]any{
 		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
-		"nodes":    append([]map[string]any{}, s.BoardNodes[start:end]...),
+		"nodes":    append([]map[string]any{}, live[start:end]...),
 	}}}
+}
+
+// issueItems serves the BoardNodes whose content.number is $number, each with project { id }
+// from ProjectID. The content is left out, as the real query does not select it, and so is
+// isArchived when the query does not select it.
+func (s *Server) issueItems(query string, vars map[string]any) any {
+	number, _ := vars["number"].(float64)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	nodes := []map[string]any{}
+	for _, n := range s.BoardNodes {
+		content, _ := n["content"].(map[string]any)
+		if num, ok := content["number"].(int); !ok || float64(num) != number {
+			continue
+		}
+		cp := map[string]any{"project": map[string]any{"id": s.ProjectID}}
+		for k, v := range n {
+			if k != "content" && (k != "isArchived" || strings.Contains(query, "isArchived")) {
+				cp[k] = v
+			}
+		}
+		nodes = append(nodes, cp)
+	}
+	return map[string]any{"repository": map[string]any{"issue": map[string]any{"projectItems": map[string]any{
+		"pageInfo": map[string]any{"hasNextPage": false},
+		"nodes":    nodes,
+	}}}}
+}
+
+// addToBoard appends a BoardNodes item "item-<content>" for the Issues item whose node_id is
+// $content, and answers its id.
+func (s *Server) addToBoard(vars map[string]any) any {
+	content, _ := vars["content"].(string)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for n, it := range s.Issues {
+		if id, _ := it["node_id"].(string); id == content {
+			item := "item-" + content
+			s.BoardNodes = append(s.BoardNodes, map[string]any{"id": item, "content": map[string]any{"number": n}})
+			return map[string]any{"addProjectV2ItemById": map[string]any{"item": map[string]any{"id": item}}}
+		}
+	}
+	s.t.Errorf("forgetest: AddToBoard content %q matches no Issues node_id", content)
+	return map[string]any{"addProjectV2ItemById": nil}
 }
 
 // operationName is the name after "query " or "mutation " at the start of a query.

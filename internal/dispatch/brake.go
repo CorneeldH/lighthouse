@@ -59,13 +59,22 @@ func (b *Brake) apply(ps []planned) []planned {
 	return out
 }
 
-// closed returns the defer text of the first closed brake for p, or "" when all are open.
-func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int) string {
+// UsageClosed returns the defer text of the usage brake, or "" when it is open. The triage round
+// uses it too, so both brakes close on the same text and thresholds.
+func (b *Brake) UsageClosed() string {
 	if !b.UsageMeasured {
 		return "usage: not measured"
 	}
 	if b.SessionPct >= b.HaltPctSession || b.WeekPct >= b.HaltPctWeek {
 		return fmt.Sprintf("usage: session %d%%, week %d%%", b.SessionPct, b.WeekPct)
+	}
+	return ""
+}
+
+// closed returns the defer text of the first closed brake for p, or "" when all are open.
+func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int) string {
+	if reason := b.UsageClosed(); reason != "" {
+		return reason
 	}
 	if b.Manual {
 		return ""

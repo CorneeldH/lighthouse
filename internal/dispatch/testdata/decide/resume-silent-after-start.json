@@ -1,0 +1,149 @@
+{
+  "input": {
+    "now": "2026-10-24T10:10:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/r",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-24T11:00:00Z",
+          "items": [
+            {
+              "issue": 7,
+              "title": "Bouw de keten",
+              "state": "OPEN",
+              "item_id": "I7",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 5580,
+                  "author": "lh-bot",
+                  "body": "🤖 Hervat\nsession: 62b1fdd2-7894-4e1e-a0a1-fc81a5d6ef39\n\n<sub>session 62b1fdd2-7894-4e1e-a0a1-fc81a5d6ef39</sub>",
+                  "created_at": "2026-10-24T08:46:47Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-5580",
+                  "rocket": false
+                },
+                {
+                  "id": 5581,
+                  "author": "lh-bot",
+                  "body": "🤖 Vraag\n\nWelke kant op?\n\n<sub>session 62b1fdd2-7894-4e1e-a0a1-fc81a5d6ef39</sub>",
+                  "created_at": "2026-10-24T09:03:54Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-5581",
+                  "rocket": false
+                },
+                {
+                  "id": 5582,
+                  "author": "owner",
+                  "body": "Optie a.",
+                  "created_at": "2026-10-24T09:08:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-5582",
+                  "rocket": true
+                }
+              ]
+            }
+          ],
+          "open_runs": [
+            {
+              "id": 5,
+              "issue": 7,
+              "session_id": "62b1fdd2-7894-4e1e-a0a1-fc81a5d6ef39",
+              "trigger_key": "answer:5582",
+              "profile": "",
+              "branch": "issue-7-bouw-de-keten",
+              "workspace_id": "ws-1",
+              "workplace_session": "ks-1",
+              "started_at": "2026-10-24T09:10:00Z"
+            }
+          ]
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [
+          {
+            "ID": 4,
+            "Issue": 7,
+            "SessionID": "62b1fdd2-7894-4e1e-a0a1-fc81a5d6ef39",
+            "Mode": "resume",
+            "Trigger": "answer",
+            "TriggerKey": "answer:5570",
+            "Attempt": 1,
+            "Command": "/superpowers:subagent-driven-development /home/u/r/docs/plan.md",
+            "Prompt": "/superpowers:subagent-driven-development /home/u/r/docs/plan.md (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-24T08:46:47Z",
+            "Open": false,
+            "Outcome": "question",
+            "Reason": ""
+          },
+          {
+            "ID": 5,
+            "Issue": 7,
+            "SessionID": "62b1fdd2-7894-4e1e-a0a1-fc81a5d6ef39",
+            "Mode": "resume",
+            "Trigger": "answer",
+            "TriggerKey": "answer:5582",
+            "Attempt": 1,
+            "Command": "/superpowers:subagent-driven-development /home/u/r/docs/plan.md",
+            "Prompt": "/superpowers:subagent-driven-development /home/u/r/docs/plan.md (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-24T09:10:00Z",
+            "Open": true,
+            "Outcome": "",
+            "Reason": ""
+          }
+        ],
+        "stands": {
+          "5": 1
+        },
+        "runs": {
+          "5": {
+            "session_at": "2026-10-24T09:10:05Z",
+            "transcript": {
+              "last_event": "2026-10-24T08:58:00.100Z",
+              "threads": {
+                "": "2026-10-24T08:58:00.100Z"
+              },
+              "assistant_turn": true
+            }
+          }
+        }
+      }
+    ],
+    "max_wait": "1h",
+    "max_runtime": "8h"
+  },
+  "want": [
+    {
+      "kind": "return",
+      "repo": "o/r",
+      "issue": 7,
+      "run_id": 5,
+      "session_id": "62b1fdd2-7894-4e1e-a0a1-fc81a5d6ef39",
+      "reason": "reason_silent",
+      "stop": true,
+      "language": "nl"
+    }
+  ]
+}

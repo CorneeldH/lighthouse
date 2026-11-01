@@ -25,6 +25,7 @@ type Pre struct {
 	Items    []Item // board fields and PRs; no comments
 	OpenRuns []runs.OpenRun
 	Stands   map[int64]workplace.Stand // per open run id, set by the caller; missing = not measurable
+	Runs     map[int64]RunState        // per open run id, set by the caller; missing = not measured
 	// Markers are the controller markers whose session's last run is in this repo; the
 	// fingerprint and the boundaries of the precheck read them.
 	Markers []park.Marker
