@@ -47,13 +47,17 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 	var body []string // paragraphs between the head line and the fix line
 	var route string
 
-	switch {
-	case len(devs) > 0:
+	row := RowInvariant
+	if len(devs) == 0 {
+		row = judgedRow(j, g0, f.AuthorTrusted)
+	}
+	switch row {
+	case RowInvariant:
 		o.Row = RowInvariant
 		o.Marker = protocol.TriageMarker{Gate: "invariant", Stop: true}
 		route = fmt.Sprintf("#%d %s", f.Number, h("triage_invariant"))
 		body = append(body, invariantLines(devs, h), h("triage_invariant_note"))
-	case j.Redundancy == "duplicate" || j.Redundancy == "done":
+	case RowRedundant:
 		o.Row = RowRedundant
 		o.Marker = protocol.TriageMarker{Gate: gateOf(j, g0)}
 		route = routeLine(j, g0)
@@ -62,7 +66,7 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 			text = h("triage_duplicate") + " #" + strconv.Itoa(j.RedundancyIssue)
 		}
 		body = append(body, text+": "+modelText(j.RedundancyEvidence), h("triage_redundant_note"))
-	case g0 != nil || j.Gate == 0 || j.Gate == 1:
+	case RowStop:
 		o.Row = RowStop
 		o.Marker = protocol.TriageMarker{Gate: gateOf(j, g0)}
 		if g0 != nil {
@@ -70,7 +74,7 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 		}
 		route = routeLine(j, g0)
 		body = append(body, h("triage_stop_note"))
-	case j.Gate == 4 && j.Sub == "c":
+	case RowDesign:
 		o.Row = RowDesign
 		o.Marker = protocol.TriageMarker{Gate: "4c"}
 		for _, name := range []string{l.NeedsShaping, l.NeedsDecision} {
@@ -81,17 +85,17 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 		}
 		route = routeLine(j, g0)
 		body = append(body, h("triage_stop_note"), questionLines(j.Questions, h("triage_design_questions"), h("question_recommended")))
-	case !j.Headless:
+	case RowInteractive:
 		o.Row = RowInteractive
 		o.Marker = protocol.TriageMarker{Gate: gateOf(j, g0)}
 		route = routeLine(j, g0)
 		body = append(body, h("triage_interactive")+" "+modelText(j.HeadlessReason))
-	case !f.AuthorTrusted:
+	case RowUntrusted:
 		o.Row = RowUntrusted
 		o.Marker = protocol.TriageMarker{Gate: gateOf(j, g0)}
 		route = routeLine(j, g0)
 		body = append(body, h("triage_untrusted"))
-	default:
+	default: // RowForward
 		o.Row = RowForward
 		o.Marker = protocol.TriageMarker{Gate: gateOf(j, g0)}
 		route = routeLine(j, g0)
@@ -116,6 +120,23 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 	parts := []string{protocol.RenderTriageMarker(o.Marker), "**" + h("triage_title") + "** · " + route}
 	o.Comment = strings.Join(parts, "\n") + "\n\n" + strings.Join(body, "\n\n") + "\n\n<sub>" + fix + "</sub>"
 	return o
+}
+
+// judgedRow is the row of a valid judgment, never RowInvariant: the first that fits wins.
+func judgedRow(j *Judgment, g0 *Gate0, authorTrusted bool) Row {
+	switch {
+	case j.Redundancy == "duplicate" || j.Redundancy == "done":
+		return RowRedundant
+	case g0 != nil || j.Gate == 0 || j.Gate == 1:
+		return RowStop
+	case j.Gate == 4 && j.Sub == "c":
+		return RowDesign
+	case !j.Headless:
+		return RowInteractive
+	case !authorTrusted:
+		return RowUntrusted
+	}
+	return RowForward
 }
 
 // RenderHandoff writes the handoff comment that /lighthouse-start-issue starts from in the night.

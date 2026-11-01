@@ -133,6 +133,40 @@ func allRows() map[string]Outcome {
 
 // The fix line of a forwarded issue: re-triage sets the status back first, or the next tick
 // starts the issue on Controller; without wait_for_night there is no handoff to delete.
+func TestJudgedRow(t *testing.T) {
+	g0 := &Gate0{Blockers: []int{5}, Label: "3-blocked-external"}
+	with := func(j *Judgment, mut func(*Judgment)) *Judgment { mut(j); return j }
+	tests := []struct {
+		name    string
+		j       *Judgment
+		g0      *Gate0
+		trusted bool
+		want    Row
+	}{
+		{"duplicate", with(judged(4, "b", "x"), func(j *Judgment) { j.Redundancy = "duplicate" }), nil, true, RowRedundant},
+		{"done", with(judged(4, "b", "x"), func(j *Judgment) { j.Redundancy = "done" }), nil, true, RowRedundant},
+		{"gate 0 judgment", judged(0, "", "x"), nil, true, RowStop},
+		{"gate 1", judged(1, "", "x"), nil, true, RowStop},
+		{"gate 4c", judged(4, "c", "x"), nil, true, RowDesign},
+		{"not headless", with(judged(4, "b", "x"), func(j *Judgment) { j.Headless = false }), nil, true, RowInteractive},
+		{"untrusted author", judged(4, "b", "x"), nil, false, RowUntrusted},
+		{"forward", judged(4, "b", "x"), nil, true, RowForward},
+		{"done beats 4c", with(judged(4, "c", "x"), func(j *Judgment) { j.Redundancy = "done" }), nil, true, RowRedundant},
+		{"gate 1 beats not headless", with(judged(1, "", "x"), func(j *Judgment) { j.Headless = false }), nil, true, RowStop},
+		{"4c beats not headless", with(judged(4, "c", "x"), func(j *Judgment) { j.Headless = false }), nil, true, RowDesign},
+		{"not headless beats untrusted", with(judged(4, "b", "x"), func(j *Judgment) { j.Headless = false }), nil, false, RowInteractive},
+		{"gate 0 with redundancy none", judged(4, "b", "x"), g0, true, RowStop},
+		{"gate 0 beats 4c", judged(4, "c", "x"), g0, true, RowStop},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := judgedRow(tt.j, tt.g0, tt.trusted); got != tt.want {
+				t.Errorf("judgedRow = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestForwardFixLine(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
