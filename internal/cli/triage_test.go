@@ -95,10 +95,8 @@ func mustGit(t *testing.T, dir string, args ...string) string {
 	return out
 }
 
-// triageFixture is a main checkout with toml as lighthouse.toml, a bare origin with main pushed,
-// a host.toml listing the checkout, a fake GitHub with token login lh-bot (lh-bot and alice are
-// admin), a fake judge, an open brake and a superpowers plugin with one skill.
-func triageFixture(t *testing.T, toml string) *triageFix {
+// isolateGit gives git a fixed identity and no user or system config for the test.
+func isolateGit(t *testing.T) {
 	t.Helper()
 	for k, v := range map[string]string{
 		"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t",
@@ -106,6 +104,14 @@ func triageFixture(t *testing.T, toml string) *triageFix {
 	} {
 		t.Setenv(k, v)
 	}
+}
+
+// triageFixture is a main checkout with toml as lighthouse.toml, a bare origin with main pushed,
+// a host.toml listing the checkout, a fake GitHub with token login lh-bot (lh-bot and alice are
+// admin), a fake judge, an open brake and a superpowers plugin with one skill.
+func triageFixture(t *testing.T, toml string) *triageFix {
+	t.Helper()
+	isolateGit(t)
 	root := t.TempDir()
 	bare, dir := filepath.Join(root, "origin.git"), filepath.Join(root, "work")
 	mustGit(t, root, "init", "-q", "--bare", "-b", "main", bare)
