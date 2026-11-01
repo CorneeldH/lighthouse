@@ -306,8 +306,12 @@ nl = "Doorgezet naar de dispatcher; de eerstvolgende tick start het."
 en = "Forwarded to the dispatcher; the next tick starts it."
 
 [triage_fix_forwarded]
-nl = "Corrigeren: niet naar de dispatcher: zet de status terug naar To do en verwijder de 🤖 Handoff. Opnieuw triëren: verwijder deze comment en de 🤖 Handoff. Zelf oppakken: zet eerst de status terug naar To do, start dan /lighthouse-start-issue."
-en = "To correct: not to the dispatcher: set the status back to To do and delete the 🤖 Handoff. Triage again: delete this comment and the 🤖 Handoff. Pick it up yourself: first set the status back to To do, then start /lighthouse-start-issue."
+nl = "Corrigeren: niet naar de dispatcher: zet de status terug naar To do en verwijder de 🤖 Handoff. Opnieuw triëren: zet eerst de status terug naar To do, verwijder dan deze comment en de 🤖 Handoff. Zelf oppakken: zet eerst de status terug naar To do, start dan /lighthouse-start-issue."
+en = "To correct: not to the dispatcher: set the status back to To do and delete the 🤖 Handoff. Triage again: first set the status back to To do, then delete this comment and the 🤖 Handoff. Pick it up yourself: first set the status back to To do, then start /lighthouse-start-issue."
+
+[triage_fix_forwarded_now]
+nl = "Corrigeren: niet naar de dispatcher: zet de status terug naar To do. Opnieuw triëren: zet eerst de status terug naar To do, verwijder dan deze comment. Zelf oppakken: zet eerst de status terug naar To do, start dan /lighthouse-start-issue."
+en = "To correct: not to the dispatcher: set the status back to To do. Triage again: first set the status back to To do, then delete this comment. Pick it up yourself: first set the status back to To do, then start /lighthouse-start-issue."
 
 [triage_fix_other]
 nl = "Corrigeren: pas zo nodig de labels of de body aan en verwijder deze comment; de volgende ronde triëert opnieuw."

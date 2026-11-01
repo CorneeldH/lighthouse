@@ -130,12 +130,15 @@ stop vervalt nooit vanzelf.
 
 De ronde laat een correctievenster: de triage-comment staat er, en bij `wait_for_night = true`
 start de tick pas in het nachtvenster. De herstelregel onderaan de comment zegt per uitkomst welke
-van deze drie geldt.
+van deze drie geldt. Bij `wait_for_night = false` noemt die regel geen `🤖 Handoff`: die is er dan
+niet.
 
 - **Niet naar de dispatcher:** zet de status terug naar `To do`. Staat er een `🤖 Handoff`,
   verwijder die dan ook, of zet de status terug vóór het nachtvenster begint.
-- **Opnieuw triëren:** pas eerst zo nodig de labels of de body aan. Verwijder daarna de
-  triage-comment, en bij een doorgezet issue ook de `🤖 Handoff`.
+- **Opnieuw triëren:** pas eerst zo nodig de labels of de body aan. Zet een doorgezet issue
+  eerst terug op `To do`: zonder 🤖-comment start de volgende tick het anders meteen, ook buiten
+  het nachtvenster. Verwijder daarna de triage-comment, en bij `wait_for_night = true` ook de
+  `🤖 Handoff`.
 - **Zelf oppakken:** zet eerst de status terug naar `To do`, en start dan
   `/lighthouse-start-issue`. Anders start de dispatcher er 's nachts een run naast.
 

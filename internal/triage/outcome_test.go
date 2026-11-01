@@ -131,8 +131,42 @@ func allRows() map[string]Outcome {
 	}
 }
 
+// The fix line of a forwarded issue: re-triage sets the status back first, or the next tick
+// starts the issue on Controller; without wait_for_night there is no handoff to delete.
+func TestForwardFixLine(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		language string
+		night    bool
+		want     string
+	}{
+		{"night nl", "nl", true, "<sub>Corrigeren: niet naar de dispatcher: zet de status terug naar To do en verwijder de 🤖 Handoff. " +
+			"Opnieuw triëren: zet eerst de status terug naar To do, verwijder dan deze comment en de 🤖 Handoff. " +
+			"Zelf oppakken: zet eerst de status terug naar To do, start dan /lighthouse-start-issue.</sub>"},
+		{"now nl", "nl", false, "<sub>Corrigeren: niet naar de dispatcher: zet de status terug naar To do. " +
+			"Opnieuw triëren: zet eerst de status terug naar To do, verwijder dan deze comment. " +
+			"Zelf oppakken: zet eerst de status terug naar To do, start dan /lighthouse-start-issue.</sub>"},
+		{"night en", "en", true, "<sub>To correct: not to the dispatcher: set the status back to To do and delete the 🤖 Handoff. " +
+			"Triage again: first set the status back to To do, then delete this comment and the 🤖 Handoff. " +
+			"Pick it up yourself: first set the status back to To do, then start /lighthouse-start-issue.</sub>"},
+		{"now en", "en", false, "<sub>To correct: not to the dispatcher: set the status back to To do. " +
+			"Triage again: first set the status back to To do, then delete this comment. " +
+			"Pick it up yourself: first set the status back to To do, then start /lighthouse-start-issue.</sub>"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target := Target{Language: tc.language, Worktree: "/r", DefaultBranch: "main", WaitForNight: tc.night}
+			o := Choose(outcomeFacts(), nil, nil, judged(4, "b", "#7 Poort 4b: x — y"), outcomeLabels, target)
+			lines := strings.Split(o.Comment, "\n")
+			if last := lines[len(lines)-1]; last != tc.want {
+				t.Errorf("fix line = %q\nwant       %q", last, tc.want)
+			}
+		})
+	}
+}
+
 func TestCommentShape(t *testing.T) {
 	fixForwarded := protocol.Heading("triage_fix_forwarded", "nl")
+	fixForwardedNow := protocol.Heading("triage_fix_forwarded_now", "nl")
 	fixOther := protocol.Heading("triage_fix_other", "nl")
 	for name, o := range allRows() {
 		t.Run(name, func(t *testing.T) {
@@ -146,7 +180,10 @@ func TestCommentShape(t *testing.T) {
 				}
 			}
 			fix := fixOther
-			if o.Row == RowForward {
+			switch {
+			case name == "forwardnow":
+				fix = fixForwardedNow
+			case o.Row == RowForward:
 				fix = fixForwarded
 			}
 			if last := lines[len(lines)-1]; last != "<sub>"+fix+"</sub>" {

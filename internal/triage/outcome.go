@@ -106,8 +106,11 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 	}
 
 	fix := h("triage_fix_other")
-	if o.Row == RowForward {
+	switch {
+	case o.Row == RowForward && t.WaitForNight:
 		fix = h("triage_fix_forwarded")
+	case o.Row == RowForward:
+		fix = h("triage_fix_forwarded_now") // no handoff to delete
 	}
 	parts := []string{protocol.RenderTriageMarker(o.Marker), "**" + h("triage_title") + "** · " + route}
 	o.Comment = strings.Join(parts, "\n") + "\n\n" + strings.Join(body, "\n\n") + "\n\n<sub>" + fix + "</sub>"
