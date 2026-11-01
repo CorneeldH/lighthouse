@@ -194,14 +194,14 @@ def test_bash_write_leaves_a_managed_file_alone(tmp_path):
     """`lighthouse init` in a Bash call writes package code (#88). A path that
     `.lighthouse/manifest.toml` names as a file unit does not go to ruff, so
     `init --upgrade` still finds it unchanged; an unmanaged file with the same text does."""
-    from tests.pack.test_bash_write_check import MANAGED_SCRIPT, _Session, heredoc
+    from tests.pack.test_bash_write_check import _Session, heredoc, managed_script
 
     s = _Session(tmp_path, language_gates=False)
     install_pack("python", s.root)
     unformatted = "x=1\n"
     out = s.call(
         "mkdir -p .lighthouse/scripts && "
-        + heredoc(".lighthouse/manifest.toml", MANAGED_SCRIPT)
+        + heredoc(".lighthouse/manifest.toml", managed_script(unformatted))
         + heredoc(".lighthouse/scripts/managed.py", unformatted)
         + heredoc("own.py", unformatted)
     )

@@ -9,6 +9,7 @@ task briefs under `.superpowers/sdd/2026-09-26-bash-write-gates/`. Dispatch
 and `post` come in task 7.
 """
 
+import hashlib
 import json
 import os
 import stat
@@ -1170,8 +1171,9 @@ def test_pending_managed_file_leaves_pending_undispatched(tmp_path, monkeypatch)
 
     monkeypatch.setattr(bw, "_now", time.time)
     (repo / ".lighthouse").mkdir()
+    sha = hashlib.sha256(b"x = 1\n").hexdigest()
     (repo / ".lighthouse" / "manifest.toml").write_text(
-        '[[unit]]\nkind = "file"\npath = "a.py"\n', encoding="utf-8"
+        f'[[unit]]\nkind = "file"\npath = "a.py"\nsha256 = "{sha}"\n', encoding="utf-8"
     )
     git(repo, "add", ".lighthouse/manifest.toml")
     git(repo, "commit", "-qm", "manifest")

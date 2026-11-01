@@ -13,6 +13,7 @@ shellcheck and ruff quote source lines.
 """
 
 import functools
+import hashlib
 import json
 import os
 import subprocess
@@ -462,31 +463,39 @@ def test_md_dead_link(tmp_path):
     assert "== note.md (md-link-check.sh) ==" in out.stderr
 
 
-# A manifest with one file unit (#88): `init` wrote `.lighthouse/scripts/managed.py`,
-# and that file belongs to lighthouse, not to the project.
-MANAGED_SCRIPT = """\
-version = "dev"
-packages = ["core", "python"]
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/managed.py"
-package = "python"
-version = "dev"
-sha256 = "0000000000000000000000000000000000000000000000000000000000000000"
-"""
+def managed_script(installed: str) -> str:
+    """A manifest with one file unit (#88): `init` wrote `.lighthouse/scripts/managed.py`
+    with the text `installed`, and that file belongs to lighthouse, not to the project."""
+    sha = hashlib.sha256(installed.encode()).hexdigest()
+    return (
+        'version = "dev"\npackages = ["core", "python"]\n\n[[unit]]\nkind = "file"\n'
+        'path = ".lighthouse/scripts/managed.py"\npackage = "python"\nversion = "dev"\n'
+        f'sha256 = "{sha}"\n'
+    )
 
 
 def test_managed_file_does_not_go_to_its_gate(session):
     out = session.call(
         "mkdir -p .lighthouse/scripts && "
-        + heredoc(".lighthouse/manifest.toml", MANAGED_SCRIPT)
+        + heredoc(".lighthouse/manifest.toml", managed_script(BARE_EXCEPT_PY))
         + heredoc(".lighthouse/scripts/managed.py", BARE_EXCEPT_PY)
         + heredoc("own.py", BARE_EXCEPT_PY)
     )
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "== own.py (ruff-format-check.sh) ==" in out.stderr
     assert "managed.py" not in out.stderr
+
+
+def test_changed_managed_file_still_goes_to_its_gate(session):
+    """Only the bytes `init` recorded are lighthouse's: a managed file that differs from
+    its sha256, or an entry that names a file of the project, is checked as usual."""
+    out = session.call(
+        "mkdir -p .lighthouse/scripts && "
+        + heredoc(".lighthouse/manifest.toml", managed_script("x = 1\n"))
+        + heredoc(".lighthouse/scripts/managed.py", BARE_EXCEPT_PY)
+    )
+    assert out.returncode == 2, (out.stdout, out.stderr)
+    assert "== .lighthouse/scripts/managed.py (ruff-format-check.sh) ==" in out.stderr
 
 
 def test_managed_block_leaves_the_file_to_the_project(session):
