@@ -77,7 +77,7 @@
       "owner": "shared",
       "about": "Your project's settings for lighthouse: language, forge, test gate and more.",
       "how": "Init adds the tables and keys that are missing and never changes a value that is already there.",
-      "upgrade": "Adds only missing keys. Keys of a package you removed stay, and a deleted key of lighthouse's comes back without a question.",
+      "upgrade": "Adds only missing keys. Keys of a package you removed stay, and a deleted key of lighthouse's comes back in the diff you approve, without a refusal.",
       "packs": [
         "core",
         "python"
@@ -249,8 +249,8 @@
       "room": ".lighthouse",
       "owner": "lighthouse",
       "about": "The record of what lighthouse installed, so --upgrade knows what it may replace.",
-      "how": "Written again on every run.",
-      "upgrade": "Written again on every run.",
+      "how": "Written by init: the record of what lighthouse installed.",
+      "upgrade": "Rewritten whenever the installed units or the lighthouse version change; an unchanged run leaves it as it is.",
       "packs": [],
       "readers": [
         "internal/manifest/manifest.go"
