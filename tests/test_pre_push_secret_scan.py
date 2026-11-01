@@ -8,6 +8,12 @@ directly with the ref lines git would hand it.
 gitleaks is needed for every scan. Without it the scan tests skip, unless
 `LIGHTHOUSE_REQUIRE_GITLEAKS` is set: the `secret-scan` job in CI sets it, so a
 runner without gitleaks fails there instead of skipping.
+
+The hook bounds every gitleaks run through `tools/hooks/checkpoint_scan.py` (#198).
+No test depends on the host for that: each one gets its own `host.toml` and
+pass-through stubs for `systemctl`, `systemd-run` and `choom` first on `PATH`. The
+tests of the split between blob mode and commit range use a fake gitleaks that
+logs how it was called.
 """
 
 import json
@@ -23,6 +29,7 @@ from tests.pack._testkit import GIT_ENV, git, init_repo, tool_bin
 
 ROOT = Path(__file__).resolve().parents[1]
 SCAN = ROOT / "tools" / "hooks" / "pre-push-secret-scan.sh"
+MODULE = ROOT / "tools" / "hooks" / "checkpoint_scan.py"
 INSTALL = ROOT / "tools" / "hooks" / "install.sh"
 ZERO = "0" * 40
 
@@ -36,6 +43,65 @@ needs_gitleaks = pytest.mark.skipif(
     reason="gitleaks is not installed",
 )
 needs_entire = pytest.mark.skipif(shutil.which("entire") is None, reason="entire is not installed")
+
+
+# Pass-through stubs for the bounding: `systemctl --user` works, `systemd-run` and
+# `choom` drop everything up to the first `--` and run the rest.
+_PASS_THROUGH = (
+    'while [ "$#" -gt 0 ]; do\n'
+    '  if [ "$1" = "--" ]; then shift; break; fi\n'
+    "  shift\n"
+    "done\n"
+    'exec "$@"\n'
+)
+BOUNDED = {
+    "systemctl": "#!/bin/sh\nexit 0\n",
+    "systemd-run": "#!/bin/sh\n" + _PASS_THROUGH,
+    "choom": "#!/bin/sh\n" + _PASS_THROUGH,
+}
+# What a shell reports for a child the kernel killed with SIGKILL at the ceiling.
+SYSTEMD_RUN_KILLED = "#!/bin/sh\nexit 137\n"
+
+# A fake gitleaks: logs its subcommand and arguments, one call per line, to
+# $FAKE_GITLEAKS_LOG, prints a version, writes an empty report for `dir`, and finds
+# nothing.
+FAKE_GITLEAKS = """#!/bin/sh
+echo "$*" >> "$FAKE_GITLEAKS_LOG"
+case "$1" in
+  version) echo "fake 1" ;;
+  dir)
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = "-r" ]; then echo "[]" > "$2"; fi
+      shift
+    done
+    ;;
+esac
+exit 0
+"""
+
+
+@pytest.fixture(autouse=True)
+def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An own host.toml and the bounding stubs first on PATH, for every test; returns
+    the stub directory, where a test can add or replace a stub."""
+    host = tmp_path / "host.toml"
+    host.write_text('[host]\nname = "h"\ntailscale_ip = "100.64.0.1"\n', encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(host))
+    stub_dir = tool_bin(tmp_path / "stubs", (), stubs=BOUNDED)
+    monkeypatch.setenv("PATH", f"{stub_dir}{os.pathsep}{os.environ['PATH']}")
+    return stub_dir
+
+
+def _fake_gitleaks(stub_dir: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """The fake gitleaks first on PATH; returns its log."""
+    log = stub_dir.parent / "gitleaks.log"
+    monkeypatch.setenv("FAKE_GITLEAKS_LOG", str(log))
+    tool_bin(stub_dir, (), stubs={"gitleaks": FAKE_GITLEAKS})
+    return log
+
+
+def _calls(log: Path) -> list[str]:
+    return log.read_text(encoding="utf-8").splitlines() if log.exists() else []
 
 
 def _env(**extra: str) -> dict[str, str]:
@@ -55,12 +121,12 @@ def _commit(repo: Path, name: str, text: str) -> str:
     return _out(repo, "rev-parse", "HEAD")
 
 
-def _push(repo: Path, remote: str, *refspecs: str) -> subprocess.CompletedProcess:
+def _push(repo: Path, remote: str, *refspecs: str, **extra: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["git", "-C", str(repo), "push", remote, *refspecs],
         capture_output=True,
         text=True,
-        env=_env(),
+        env=_env(**extra),
     )
 
 
@@ -199,6 +265,68 @@ def test_checkpoint_ref_with_a_secret_is_blocked_on_the_checkpoint_remote(fx):
     assert clean not in refs and leak not in refs
 
 
+def test_entire_refs_go_through_blob_scan(fx, stubs, monkeypatch):
+    log = _fake_gitleaks(stubs, monkeypatch)
+    refs = [
+        _checkpoint_ref(fx["repo"], f"01{c * 24}", f'{{"text": "checkpoint {c}"}}\n') for c in "FGH"
+    ]
+    result = _push(fx["repo"], "ckpt", "refs/entire/checkpoints/*:refs/entire/checkpoints/*")
+    assert result.returncode == 0, result.stderr
+    assert set(refs) <= set(_remote_refs(fx["ckpt"]))
+    calls = [line.split(" ")[0] for line in _calls(log)]
+    assert "dir" in calls, calls
+    assert "git" not in calls, calls
+
+
+def test_shadow_branch_uses_commit_range(fx, stubs, monkeypatch):
+    # refs/heads/entire/* sit on the work branch: blob mode would read the whole
+    # history the checkpoint remote lacks, so they go through the commit range.
+    log = _fake_gitleaks(stubs, monkeypatch)
+    git(fx["repo"], "branch", "entire/shadow")
+    result = _push(fx["repo"], "ckpt", "entire/shadow")
+    assert result.returncode == 0, result.stderr
+    calls = _calls(log)
+    scans = [line for line in calls if line.split(" ")[0] in ("git", "dir")]
+    assert scans and all(line.startswith("git ") and "--log-opts=" in line for line in scans), calls
+
+
+@pytest.mark.parametrize("kind", ["branch", "checkpoint"])
+def test_ceiling_blocks_push(fx, stubs, monkeypatch, kind):
+    # Without a fake gitleaks a host without one lets a push to a local path through
+    # unscanned, and the ceiling would never be reached.
+    _fake_gitleaks(stubs, monkeypatch)
+    tool_bin(stubs, (), stubs={"systemd-run": SYSTEMD_RUN_KILLED})
+    if kind == "branch":
+        _commit(fx["repo"], "a.txt", "nothing to see\n")
+        remote, bare, spec, ref = "origin", fx["origin"], "work", "refs/heads/work"
+        before = _out(bare, "rev-parse", ref)
+    else:
+        ref = _checkpoint_ref(fx["repo"], "01KKKKKKKKKKKKKKKKKKKKKKKK", '{"text": "clean"}\n')
+        remote, bare, spec, before = "ckpt", fx["ckpt"], f"{ref}:{ref}", None
+    result = _push(fx["repo"], remote, spec)
+    assert result.returncode != 0
+    assert "ABORTED at memory ceiling" in result.stderr
+    assert "found a secret" not in result.stderr
+    if before is None:
+        assert ref not in _remote_refs(bare)
+    else:
+        assert _out(bare, "rev-parse", ref) == before
+
+
+def test_bulk_push_refused_with_pointer(fx, stubs, monkeypatch):
+    log = _fake_gitleaks(stubs, monkeypatch)
+    for c in "PQR":
+        _checkpoint_ref(fx["repo"], f"01{c * 24}", f'{{"text": "{c * 600}"}}\n')
+    result = _push(
+        fx["repo"], "ckpt", "refs/entire/checkpoints/*:refs/entire/checkpoints/*",
+        LIGHTHOUSE_SCAN_VOLUME_LIMIT="1000",
+    )
+    assert result.returncode != 0
+    assert "checkpoint_scan.py push ckpt" in result.stderr
+    assert not any(line.startswith("dir ") for line in _calls(log))
+    assert not any(r.startswith("refs/entire/") for r in _remote_refs(fx["ckpt"]))
+
+
 def test_entire_pushing_checkpoints_itself_is_refused(fx):
     # entire pushes its own refs with `git push --no-verify`, past this hook (#194).
     _settings(fx["repo"], {"push_sessions": True}, local={"checkpoint_push_remote": "ckpt"})
@@ -335,8 +463,14 @@ def test_entire_checkpoints_leave_only_through_the_scan(tmp_path):
     git(repo, "push", "-q", "origin", "work")
     (repo / "tools" / "hooks").mkdir(parents=True)
     shutil.copy(SCAN, repo / "tools" / "hooks" / SCAN.name)
+    # The scan runs gitleaks through the module, which finds config.py next to itself.
+    shutil.copy(MODULE, repo / "tools" / "hooks" / MODULE.name)
+    shutil.copytree(
+        ROOT / ".lighthouse" / "lib", repo / ".lighthouse" / "lib",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
     shutil.copy(ROOT / ".gitleaks.toml", repo / ".gitleaks.toml")
-    git(repo, "add", "tools", ".gitleaks.toml")
+    git(repo, "add", "tools", ".lighthouse", ".gitleaks.toml")
     git(repo, "commit", "-qm", "scan")
 
     env = _env()
