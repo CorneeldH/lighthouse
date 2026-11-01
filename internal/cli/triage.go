@@ -358,8 +358,9 @@ func (r *round) issueError(slug string, number int, step string, err error, n *c
 	_, _ = fmt.Fprintf(r.errOut, "lighthouse: triage %s#%d: %s: %s\n", slug, number, step, oneLine(err))
 }
 
-// issue judges candidate f and applies the outcome. It returns false when the repo stops: the
-// brake closed (then the whole round stops) or max_judgments is spent.
+// issue judges candidate f and applies the outcome. It returns false when the brake closed: then
+// the whole round stops. Once max_judgments is spent it judges no more, but returns true, so an
+// invariant issue later in the list still gets its comment.
 func (r *round) issue(ctx context.Context, g *repoGather, f tri.Facts, jc tri.Context, n *counts) bool {
 	repo, slug := g.repo, g.repo.Slug
 	l := repo.Labels
@@ -372,7 +373,7 @@ func (r *round) issue(ctx context.Context, g *repoGather, f tri.Facts, jc tri.Co
 	if len(devs) == 0 {
 		// Decision 1: a broken invariant costs no judgment, so only a judgment meets the limit and the brake.
 		if n.judgments >= repo.Triage.MaxJudgments {
-			return false
+			return true
 		}
 		if reason, open := r.env.Brake.Check(); !open {
 			_, _ = fmt.Fprintf(r.errOut, "lighthouse: triage stopped: %s\n", reason)

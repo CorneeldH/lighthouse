@@ -812,6 +812,33 @@ func TestTriageMaxJudgments(t *testing.T) {
 	}
 }
 
+// An invariant issue costs no judgment (decision 1): after max_judgments the round judges no
+// more, but an invariant issue later in the list still gets its comment.
+func TestTriageMaxJudgmentsKeepsInvariant(t *testing.T) {
+	fx := triageFixture(t, withTriage("max_judgments = 1\n"))
+	for _, n := range []int{7, 8} {
+		fx.issue(n, "2-area:cli")
+		fx.onBoard(n, "t1", nil)
+		fx.judge.answers[n] = stopAt1(n)
+	}
+	fx.issue(12) // breaks the invariant; sorted last
+	fx.onBoard(12, "t1", nil)
+
+	_, errOut, err := fx.run(triageOpts{})
+	if err != nil {
+		t.Fatalf("triage = %v\n%s", err, errOut)
+	}
+	if c := fx.judge.called(); !slices.Equal(c, []int{7}) {
+		t.Errorf("judged %v, want [7]", c)
+	}
+	assertWrites(t, fx.srv,
+		`comment 7: <!-- lighthouse: {"kind":"triage","version":1,"gate":"1"} -->`,
+		`comment 12: <!-- lighthouse: {"kind":"triage","version":1,"gate":"invariant"} -->`)
+	if errOut != summary(3, 1, 0, 0, 2, 0, 0, 0, 0) {
+		t.Errorf("errOut = %q", errOut)
+	}
+}
+
 func TestTriageInvalidJudgment(t *testing.T) {
 	fx := triageFixture(t, triageToml)
 	fx.issue(7, "2-area:cli")

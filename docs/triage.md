@@ -84,7 +84,7 @@ max_judgments = 15
 | `milestones_only` | `true` | Alleen issues met een open milestone zijn kandidaat. Met `false` doet elk open issue mee. |
 | `wait_for_night` | `true` | Het correctievenster. Met `true` schrijft de ronde bij een doorgezet issue een `🤖 Handoff` met `when: night`, zodat de tick het pas start als het `night`-venster van `[dispatch]` begint. Met `false` zet ze alleen de status, en start de eerstvolgende tick het issue meteen. |
 | `max_forwarded` | `5` | Na zoveel doorgezette issues stopt de ronde voor die repo. De rest krijgt geen marker en komt de volgende ronde aan de beurt. |
-| `max_judgments` | `15` | Hoogstens zoveel oordelen per ronde en per repo, om de usage te begrenzen. |
+| `max_judgments` | `15` | Hoogstens zoveel oordelen per ronde en per repo, om de usage te begrenzen. Een issue met een gebroken invariant kost geen oordeel en krijgt ook na die grens zijn comment. |
 
 Een onbekende sleutel of een waarde onder 1 is een fout die de sleutel noemt. Die fout stopt
 alleen triage, voor die repo: `lighthouse tick` leest `[controller]` en negeert de subtabel, dus
