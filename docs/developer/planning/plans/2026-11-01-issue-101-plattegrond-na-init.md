@@ -65,7 +65,9 @@ buildstap), JSON, pytest, node (via `tests/_site_node.py`).
   sectie van de systeemkaart: `system.html#rules` (`AGENTS.md`, `CLAUDE.md`) en
   `system.html#config` (de vier gebieden onder `.lighthouse/`). Die secties rendert `renderStory`
   uit `system.json`, dus de linktest zoekt het anker daar, en `system.js` krijgt de
-  hash-scroll van `config.js:14-16`.
+  hash-scroll van `config.js:14-16`. Dit gaat verder dan spec §3/§6 (referentiepagina of
+  `config.html`): die twee pagina's hebben geen sectie over de regels of `.lighthouse/`
+  *(keuze van Corneel na plan-review, r1-f1)*.
 - **Paneel**, in deze volgorde: `about`; dan `facts` met `Owner` (het label van de eigenaar uit de
   legenda), `How init writes it` (`how`), `Comes from` (pakketten, of `lighthouse init itself`
   bij een lege lijst), `On --upgrade` (`upgrade`); dan `Read by` als lijst; dan de link `more`.
@@ -528,6 +530,9 @@ paneel met `about`, `Owner`, `How init writes it`, `Comes from`, `On --upgrade`,
 link; Tab bereikt elk gebied, Escape sluit; licht en donker; op 360px breed stapelen de kamers
 zonder horizontale scroll. Open `system.html`: stap 2 toont *Map of your repo*;
 `system.html#rules` scrollt naar de sectie.
+
+Geen browser beschikbaar (onbewaakte uitvoering)? Meld deze stap als *niet uitgevoerd*, met de
+lijst hierboven als open check voor de PR; claim hem niet als gedaan.
 
 - [ ] **Stap 7: Commit**
 
