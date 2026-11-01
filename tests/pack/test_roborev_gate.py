@@ -237,3 +237,247 @@ def test_cli_cannot_check_outside_a_repo(tmp_path):
     )
     assert result.returncode == 3
     assert result.stderr.startswith("COULD NOT CHECK:")
+
+
+# --- classify, fixed_findings, record, body_line (#119 task 3) ---
+
+FIXTURES = Path(__file__).parent / "fixtures" / "roborev"
+
+
+def FIX(name: str) -> str:
+    return (FIXTURES / name).read_text()
+
+
+def _triples(got: dict) -> list[tuple]:
+    return [(f["path"], f["line"], f["severity"]) for f in got["findings"]]
+
+
+def test_classify_reads_the_measured_local_output():
+    got = rg.classify(FIX("review-local.md"))
+    assert got["verdict"] == "done" and got["sha"] == "803c1a6"
+    assert _triples(got) == [
+        ("pack/core/scripts/roborev_gate.py", 184, "medium"),
+        ("pack/core/scripts/roborev_gate.py", 169, "medium"),
+    ]
+    assert got["findings"][0]["text"].startswith("Bij de eerste uitkomst `run`")
+
+
+def test_classify_reads_a_local_pass():
+    got = rg.classify(FIX("review-local-passed.md"))
+    assert (got["verdict"], got["sha"], got["findings"]) == ("done", "HEAD", [])
+
+
+def test_classify_reads_sha_and_findings_of_a_complete_review():
+    got = rg.classify(FIX("review-complete.md"))
+    assert got["verdict"] == "done" and got["sha"] == "bf1eb24"
+    assert _triples(got) == [
+        ("scripts/forge_drager.py", 93, "medium"),
+        ("scripts/forge_agent.sh", 612, "medium"),
+    ]
+
+
+def test_classify_passed_is_done_without_findings():
+    got = rg.classify(FIX("review-passed.md"))
+    assert (got["verdict"], got["sha"], got["findings"]) == ("done", "bf1eb24", [])
+
+
+def test_classify_combined_review_is_done():
+    got = rg.classify("## roborev: Combined Review (`abc1234`)\n\n### High\n\n- a.py:3: bad\n")
+    assert (got["verdict"], got["kind"]) == ("done", "Combined Review")
+    assert _triples(got) == [("a.py", 3, "high")]
+
+
+def test_classify_bullet_without_location_has_no_path():
+    got = rg.classify("## roborev: Review Complete (`abc1234`)\n\n### Low\n\n- no location here\n")
+    assert _triples(got) == [(None, None, "low")]
+
+
+def test_classify_local_finding_without_location_has_no_path():
+    raw = "## roborev: Review Complete (`abc`)\n\n## Findings\n\n### 1. High\n\n**Problem:** vague\n"
+    assert _triples(rg.classify(raw)) == [(None, None, "high")]
+
+
+@pytest.mark.parametrize("kind", ["Review Failed", "Review Skipped"])
+def test_classify_failed_heads_skip(kind):
+    got = rg.classify(FIX("review-failed.md").replace("Review Failed", kind))
+    assert got == {"verdict": "skip", "reason": f"review faalde: {kind}"}
+
+
+def test_classify_without_heading_names_the_first_line():
+    got = rg.classify("\nError: codex: 401\nmore\n")
+    assert got == {"verdict": "skip", "reason": "review faalde: Error: codex: 401"}
+
+
+def test_classify_cuts_a_long_first_line_at_200_chars():
+    got = rg.classify("x" * 500)
+    assert got["reason"] == "review faalde: " + "x" * 200
+
+
+@pytest.mark.parametrize("raw", ["", "  \n\n"])
+def test_classify_empty_output(raw):
+    assert rg.classify(raw) == {"verdict": "skip", "reason": "review faalde: geen output"}
+
+
+def _fix_commit(repo: Path, name: str, subject: str) -> str:
+    _commit_lines(repo, 1, name)
+    _git(repo, "commit", "--amend", "-m", subject)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _write_raw(repo: Path, text: str) -> Path:
+    raw = rg.state_dir(repo) / "feat.md"
+    raw.parent.mkdir(parents=True, exist_ok=True)
+    raw.write_text(text)
+    return raw
+
+
+def test_resume_after_abort_routes_to_classify_and_recovers_fixes(repo):
+    _write_raw(repo, FIX("review-complete.md"))
+    c1 = _fix_commit(repo, "a.py", "fix: a\n\nroborev: scripts/forge_drager.py:93 (medium)")
+    c2 = _fix_commit(repo, "b.py", "fix: b\n\nroborev: scripts/forge_agent.sh:612 (medium)")
+    _fix_commit(repo, "c.py", "fix: unrelated")
+    assert rg.gate(repo, _must_not_run)["verdict"] == "classify"
+    assert [(f["path"], f["line"], f["severity"], f["commit"]) for f in rg.fixed_findings(repo)] == [
+        ("scripts/forge_drager.py", 93, "medium", c1),
+        ("scripts/forge_agent.sh", 612, "medium", c2),
+    ]
+
+
+def _decisions(*rows: tuple) -> list[dict]:
+    return [
+        {"path": p, "line": ln, "severity": s, "uitkomst": o, "commit": c, "reden": r}
+        for p, ln, s, o, c, r in rows
+    ]
+
+
+COMPLETE_DECISIONS = (
+    ("scripts/forge_drager.py", 93, "medium", "fixed", "abc1234", None),
+    ("scripts/forge_agent.sh", 612, "medium", "refuted", None, "klopt niet"),
+)
+
+
+def test_record_refuses_a_missing_decision(repo):
+    _write_raw(repo, FIX("review-complete.md"))
+    with pytest.raises(ValueError):
+        rg.record(repo, sha="bf1eb24", decisions=_decisions(COMPLETE_DECISIONS[0]))
+
+
+def test_record_refuses_a_double_decision(repo):
+    _write_raw(repo, FIX("review-complete.md"))
+    with pytest.raises(ValueError):
+        rg.record(repo, sha="bf1eb24", decisions=_decisions(*COMPLETE_DECISIONS, COMPLETE_DECISIONS[0]))
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        ("scripts/forge_drager.py", 93, "medium", "fixed", None, None),
+        ("scripts/forge_drager.py", 93, "medium", "fixed", "abc", "why"),
+        ("scripts/forge_drager.py", 93, "medium", "refuted", None, None),
+        ("scripts/forge_drager.py", 93, "medium", "left", "abc", "why"),
+        ("scripts/forge_drager.py", 93, "medium", "maybe", None, "why"),
+    ],
+)
+def test_record_refuses_an_inconsistent_decision(repo, row):
+    with pytest.raises(ValueError):
+        rg.record(repo, sha="s", decisions=_decisions(row))
+
+
+def test_record_done_then_gate_says_done(repo):
+    _write_raw(repo, FIX("review-complete.md"))
+    out = rg.record(repo, sha="bf1eb24", decisions=_decisions(*COMPLETE_DECISIONS))
+    assert out == rg.state_dir(repo) / "feat.json"
+    written = json.loads(out.read_text())
+    base, head = _git(repo, "rev-parse", "origin/main"), _git(repo, "rev-parse", "HEAD")
+    assert written["range"] == f"{base}..{head}"
+    assert (written["uitkomst"], written["sha"]) == ("done", "bf1eb24")
+    assert written["bevindingen"] == _decisions(*COMPLETE_DECISIONS)
+    gated = rg.gate(repo, _must_not_run)
+    assert (gated["verdict"], gated["sha"]) == ("done", "bf1eb24")
+
+
+def test_record_without_raw_accepts_decisions_unchecked(repo):
+    out = rg.record(repo, sha="s", decisions=_decisions(COMPLETE_DECISIONS[0]))
+    assert json.loads(out.read_text())["uitkomst"] == "done"
+
+
+def test_record_skip_then_gate_says_skip(repo):
+    rg.record(repo, skip="review faalde: timeout na 9 min")
+    gated = rg.gate(repo, _must_not_run)
+    assert (gated["verdict"], gated["reason"]) == ("skip", "review faalde: timeout na 9 min")
+
+
+def test_record_honours_out(repo, tmp_path):
+    target = tmp_path / "elsewhere" / "r.json"
+    assert rg.record(repo, skip="x", out=target) == target
+    assert json.loads(target.read_text())["reden"] == "x"
+
+
+def test_record_needs_skip_or_sha(repo):
+    with pytest.raises(ValueError):
+        rg.record(repo)
+
+
+@pytest.mark.parametrize(
+    "state,line",
+    [
+        (None, "Roborev overgeslagen: geen reviewuitkomst vastgelegd"),
+        ({"uitkomst": "done", "sha": "bf1eb24"}, "<!-- roborev-lokaal: bf1eb24 -->"),
+        ({"uitkomst": "skip", "reden": "geen .roborev.toml"}, "Roborev overgeslagen: geen .roborev.toml"),
+    ],
+)
+def test_body_line(repo, state, line):
+    if state is not None:
+        rg.write_state(rg.state_dir(repo) / "feat.json", {"range": "a..b", **state})
+    assert rg.body_line(repo) == line
+
+
+def test_body_line_is_empty_when_off(repo):
+    (repo / "lighthouse.toml").write_text('[project]\nlanguage = "nl"\n')
+    assert rg.body_line(repo) == ""
+
+
+def _cli(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env={"PATH": os.environ["PATH"], **GIT_ENV},
+    )
+
+
+def test_cli_classify_skip_also_records(repo):
+    raw = _write_raw(repo, "Error: codex: 401\n")
+    result = _cli(repo, "classify")
+    assert result.returncode == 0
+    assert json.loads(result.stdout) == {"verdict": "skip", "reason": "review faalde: Error: codex: 401"}
+    assert json.loads((raw.with_suffix(".json")).read_text())["reden"] == "review faalde: Error: codex: 401"
+
+
+def test_cli_classify_takes_a_path_and_prints_findings(repo):
+    result = _cli(repo, "classify", str(FIXTURES / "review-complete.md"))
+    assert json.loads(result.stdout)["sha"] == "bf1eb24"
+    assert not (rg.state_dir(repo) / "feat.json").exists()
+
+
+def test_cli_record_done_and_body_line(repo, tmp_path):
+    _write_raw(repo, FIX("review-complete.md"))
+    decisions = tmp_path / "d.json"
+    decisions.write_text(json.dumps(_decisions(*COMPLETE_DECISIONS)))
+    assert _cli(repo, "record", "--done", "bf1eb24", "--decisions", str(decisions)).returncode == 0
+    assert _cli(repo, "body-line").stdout.strip() == "<!-- roborev-lokaal: bf1eb24 -->"
+
+
+def test_cli_record_refusal_exits_2(repo, tmp_path):
+    _write_raw(repo, FIX("review-complete.md"))
+    decisions = tmp_path / "d.json"
+    decisions.write_text("[]")
+    result = _cli(repo, "record", "--done", "s", "--decisions", str(decisions))
+    assert result.returncode == 2 and result.stderr.strip()
+
+
+def test_cli_fixed_prints_json(repo):
+    c1 = _fix_commit(repo, "a.py", "fix: a\n\nroborev: p.py:1 (high)")
+    out = json.loads(_cli(repo, "fixed").stdout)
+    assert out == [{"path": "p.py", "line": 1, "severity": "high", "commit": c1}]

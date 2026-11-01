@@ -1,5 +1,8 @@
 """Gate of the local roborev review that `write-pr` runs before `gh pr create` (#119).
 
+    roborev_gate.py classify [<path>] | fixed | record ... | body-line
+        See `classify`, `fixed_findings`, `record` and `body_line`.
+
     roborev_gate.py gate
         Prints one JSON object, exit 0, with a `verdict` the skill acts on:
 
@@ -34,8 +37,10 @@ and without prose or data extensions (except under `.github/workflows/`).
 
 from __future__ import annotations
 
+import argparse
 import json
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -193,16 +198,221 @@ def gate(root: pathlib.Path, budget: Callable[[], tuple[int, str]] = run_budget)
     return {"verdict": "run", "range": f"{base}..{head}", "lines": lines, **paths}
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = sys.argv[1:] if argv is None else argv
-    if args != ["gate"]:
-        print("usage: roborev_gate.py gate", file=sys.stderr)
-        return 2
+HEADING = re.compile(r"^## roborev: (?P<kind>.+?) \(`(?P<sha>[^`]+)`\)\s*$", re.MULTILINE)
+SEVERITY = re.compile(r"^### (?:\d+\. )?(?P<severity>Critical|High|Medium|Low|Info)\s*$", re.IGNORECASE)
+NUMBERED = re.compile(r"^### \d+\. ")
+BULLET = re.compile(r"^- (?P<path>\S+?):(?P<line>\d+):\s*(?P<text>.*)$")
+LOCATION = re.compile(r"^\*\*Location:\*\*\s*(?P<path>\S+?):(?P<line>\d+)")
+PROBLEM = re.compile(r"^\*\*Problem:\*\*\s*(?P<text>.*)$")
+DONE_KINDS = ("Review Complete", "Combined Review", "Review Passed")
+OUTCOMES = ("fixed", "refuted", "left")
+
+
+def _findings(raw: str) -> list[dict]:
+    """Findings in both forms: paia `### <Severity>` + `- <path>:<line>: <text>` bullets, and
+    the local `### <n>. <Severity>` + `**Location:** <path>:<line>` + `**Problem:** <text>`."""
+    found: list[dict] = []
+    severity = ""
+    local: dict | None = None
+    for line in raw.splitlines():
+        head = SEVERITY.match(line)
+        if head:
+            severity = head["severity"].lower()
+            local = None
+            if NUMBERED.match(line):
+                local = {"path": None, "line": None, "severity": severity, "text": ""}
+                found.append(local)
+            continue
+        if line.startswith("#"):
+            severity, local = "", None
+            continue
+        if not severity:
+            continue
+        if local is not None:
+            if m := LOCATION.match(line):
+                local["path"], local["line"] = m["path"], int(m["line"])
+            elif m := PROBLEM.match(line):
+                local["text"] = m["text"].strip()
+        elif m := BULLET.match(line):
+            found.append(
+                {"path": m["path"], "line": int(m["line"]), "severity": severity, "text": m["text"].strip()}
+            )
+        elif line.startswith("- "):
+            found.append({"path": None, "line": None, "severity": severity, "text": line[2:].strip()})
+    return found
+
+
+def classify(raw: str) -> dict:
+    """Turn raw review output into a verdict; the exit code of roborev plays no part.
+
+    Heading: ``## roborev: <kind> (`<sha>`)``. `Review Complete`, `Combined Review` and
+    `Review Passed` give `{"verdict": "done", "sha", "kind", "findings"}` (a pass has no
+    findings); any other kind, `Review Failed` and `Review Skipped` included, gives
+    `{"verdict": "skip", "reason": "review faalde: <kind>"}`. No heading: the reason names the
+    first non-empty line (200 characters at most); empty output: `geen output`.
+
+    Measured on roborev v0.69.0 (`roborev ci review --agent codex --ref <base>..<head>`, no
+    `.roborev.toml`): the exit code is 0 also when the review has findings ("Agent assessment:
+    Fail"); stderr holds only log lines such as `ci review: ref=... agents=[codex] ...`; the
+    review, heading included, is on stdout. The sha in the heading is the head part of `--ref`
+    as given (`803c1a6`, or the literal `HEAD`). It takes about 50 seconds. Without
+    `.roborev.toml` the review type defaults to `security`.
+    """
+    match = HEADING.search(raw)
+    if not match:
+        first = next((ln.strip() for ln in raw.splitlines() if ln.strip()), "")
+        return {"verdict": "skip", "reason": f"review faalde: {first[:200] or 'geen output'}"}
+    kind = match["kind"]
+    if kind not in DONE_KINDS:
+        return {"verdict": "skip", "reason": f"review faalde: {kind}"}
+    findings = [] if kind == "Review Passed" else _findings(raw[match.end():])
+    return {"verdict": "done", "sha": match["sha"], "kind": kind, "findings": findings}
+
+
+def _base(root: pathlib.Path) -> str:
     try:
-        print(json.dumps(gate(pathlib.Path(_git(pathlib.Path.cwd(), "rev-parse", "--show-toplevel")))))
+        default_branch = str(lookup(load(root / "lighthouse.toml"), "forge.default_branch"))
+    except (ConfigError, KeyError) as exc:
+        raise GateError(f"config: {exc}") from exc
+    return _git(root, "merge-base", f"origin/{default_branch}", "HEAD")
+
+
+def fixed_findings(root: pathlib.Path) -> list[dict]:
+    """Findings named by a `roborev: <path>:<line> (<severity>)` line in a commit body of `<base>..HEAD`."""
+    log = _git(root, "log", "--reverse", "--format=%x01%H%n%B", f"{_base(root)}..HEAD", strip=False)
+    pattern = re.compile(r"^roborev: (\S+?):(\d+) \((\w+)\)\s*$", re.MULTILINE)
+    fixed: list[dict] = []
+    for entry in log.split("\x01")[1:]:
+        commit, _, body = entry.partition("\n")
+        for m in pattern.finditer(body):
+            fixed.append({"path": m[1], "line": int(m[2]), "severity": m[3], "commit": commit.strip()})
+    return fixed
+
+
+def _validate(decisions: list[dict], findings: list[dict] | None) -> list[dict]:
+    clean = []
+    for d in decisions:
+        outcome, commit, reason = d.get("uitkomst"), d.get("commit"), d.get("reden")
+        where = f"{d.get('path')}:{d.get('line')}"
+        if outcome not in OUTCOMES:
+            raise ValueError(f"{where}: uitkomst must be one of {', '.join(OUTCOMES)}, not {outcome!r}")
+        if outcome == "fixed" and (not commit or reason is not None):
+            raise ValueError(f"{where}: fixed needs a commit and reden null")
+        if outcome != "fixed" and (not reason or commit is not None):
+            raise ValueError(f"{where}: {outcome} needs a reden and commit null")
+        clean.append({k: d.get(k) for k in ("path", "line", "severity", "uitkomst", "commit", "reden")})
+    if findings is not None:
+        want = sorted((f["path"] or "", f["line"] or 0, f["severity"]) for f in findings)
+        have = sorted((d["path"] or "", d["line"] or 0, d["severity"]) for d in clean)
+        if want != have:
+            raise ValueError(f"decisions do not match the findings one to one: want {want}, got {have}")
+    return clean
+
+
+def _paths(root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path]:
+    stem = branch_stem(_git(root, "rev-parse", "--abbrev-ref", "HEAD"))
+    sdir = state_dir(root)
+    return sdir / f"{stem}.json", sdir / f"{stem}.md"
+
+
+def record(
+    root: pathlib.Path,
+    *,
+    skip: str | None = None,
+    sha: str | None = None,
+    decisions: list[dict] | None = None,
+    out: pathlib.Path | None = None,
+) -> pathlib.Path:
+    """Write the state file: a skip with its reason, or done with one decision per finding."""
+    if (skip is None) == (sha is None):
+        raise ValueError("give either skip or sha")
+    state, raw = _paths(root)
+    target = out or state
+    head = _git(root, "rev-parse", "HEAD")
+    data: dict = {"range": f"{_base(root)}..{head}"}
+    if skip is not None:
+        data.update({"uitkomst": "skip", "reden": skip})
+    else:
+        findings = None
+        if raw.is_file():
+            verdict = classify(raw.read_text())
+            findings = verdict["findings"] if verdict["verdict"] == "done" else None
+        data.update({"uitkomst": "done", "sha": sha, "bevindingen": _validate(decisions or [], findings)})
+    write_state(target, data)
+    return target
+
+
+def body_line(root: pathlib.Path) -> str:
+    """The line the PR body carries: empty when off, never silent when `local`."""
+    try:
+        setting = lookup(load(root / "lighthouse.toml"), "review.roborev")
+    except (ConfigError, KeyError) as exc:
+        raise GateError(f"config: {exc}") from exc
+    if setting != "local":
+        return ""
+    recorded = read_state(_paths(root)[0])
+    if recorded is None:
+        return "Roborev overgeslagen: geen reviewuitkomst vastgelegd"
+    if recorded["verdict"] == "done":
+        return f"<!-- roborev-lokaal: {recorded['sha']} -->"
+    return f"Roborev overgeslagen: {recorded['reason']}"
+
+
+def _run(argv: list[str]) -> str:
+    parser = argparse.ArgumentParser(prog="roborev_gate.py")
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("gate")
+    sub.add_parser("fixed")
+    sub.add_parser("body-line")
+    cls = sub.add_parser("classify")
+    cls.add_argument("path", nargs="?")
+    rec = sub.add_parser("record")
+    rec.add_argument("--skip")
+    rec.add_argument("--done")
+    rec.add_argument("--decisions")
+    rec.add_argument("--out")
+    args = parser.parse_args(argv)
+    root = pathlib.Path(_git(pathlib.Path.cwd(), "rev-parse", "--show-toplevel"))
+    if args.command == "gate":
+        return json.dumps(gate(root))
+    if args.command == "fixed":
+        return json.dumps(fixed_findings(root))
+    if args.command == "body-line":
+        return body_line(root)
+    if args.command == "classify":
+        source = pathlib.Path(args.path) if args.path else _paths(root)[1]
+        try:
+            result = classify(source.read_text())
+        except OSError as exc:
+            raise GateError(f"{source}: unreadable: {exc}") from exc
+        if result["verdict"] == "skip" and not args.path:
+            record(root, skip=result["reason"])
+        return json.dumps(result)
+    if (args.skip is None) == (args.done is None):
+        raise ValueError("record needs --skip <reason> or --done <sha> --decisions <file>")
+    decisions = None
+    if args.done is not None:
+        if not args.decisions:
+            raise ValueError("--done needs --decisions <file>")
+        try:
+            decisions = json.loads(pathlib.Path(args.decisions).read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"{args.decisions}: unreadable: {exc}") from exc
+        if not isinstance(decisions, list):
+            raise ValueError(f"{args.decisions}: not a JSON list")
+    return str(record(root, skip=args.skip, sha=args.done, decisions=decisions,
+                      out=pathlib.Path(args.out) if args.out else None))
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        print(_run(sys.argv[1:] if argv is None else argv))
     except GateError as exc:
         print(f"COULD NOT CHECK: {exc}", file=sys.stderr)
         return 3
+    except ValueError as exc:
+        print(f"roborev_gate: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 
