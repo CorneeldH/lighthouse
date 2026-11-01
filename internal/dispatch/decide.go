@@ -460,10 +460,11 @@ func (c runCtx) permission() (Action, bool) {
 // pendingPermission is the run's permission prompt while it waits for an answer, else nil:
 // only activity of the prompt's own thread that is newer than the prompt means it was answered.
 // A session waiting on a prompt writes nothing, so while one is pending the silence rules hold
-// off and the permission rule decides at max_wait.
+// off and the permission rule decides at max_wait. A note from before the run's start is one of
+// an earlier run on the same session (a resume): it does not count.
 func (c runCtx) pendingPermission() *Permission {
 	p := c.state.Permission
-	if p == nil || c.threadActivity(p.Thread).After(p.At) {
+	if p == nil || p.At.Before(c.row.StartedAt) || c.threadActivity(p.Thread).After(p.At) {
 		return nil
 	}
 	return p
@@ -483,15 +484,26 @@ func (c runCtx) threadActivity(thread string) time.Time {
 }
 
 // silent stops a session whose transcripts, subagents included, had no event in max_wait, unless
-// it waits on a permission prompt.
+// it waits on a permission prompt. Silence counts from the run's start at the earliest: a resume
+// reuses the session, and its transcript, of an earlier run.
 func (c runCtx) silent() (Action, bool) {
 	t := c.state.Transcript
-	if c.maxWait() <= 0 || c.done() || t == nil || c.pendingPermission() != nil || c.in.Now.Sub(t.LastEvent) < c.maxWait() {
+	if c.maxWait() <= 0 || c.done() || t == nil || c.pendingPermission() != nil {
+		return Action{}, false
+	}
+	if c.in.Now.Sub(latest(t.LastEvent, c.row.StartedAt)) < c.maxWait() {
 		return Action{}, false
 	}
 	a := c.returned("reason_silent", "")
 	a.Stop = true
 	return a, true
+}
+
+func latest(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }
 
 // silentForge falls back on the forge state when the transcript is not measurable: a waiting
