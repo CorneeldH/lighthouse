@@ -5,6 +5,7 @@ package forgetest
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,6 +38,12 @@ type Server struct {
 	// Issues are the issues per number in GitHub's REST shape, served by GET
 	// /repos/{owner}/{name}/issues/{number}; a missing number answers 404.
 	Issues map[int]map[string]any
+	// Pulls are the open pull requests in REST shape (number, title, body, head.ref), served by
+	// GET /repos/{owner}/{name}/pulls in the order given.
+	Pulls []map[string]any
+	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
+	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
+	BlockedBy map[int][]map[string]any
 	// Fail maps "METHOD path", such as "POST /repos/o/r/issues/7/comments", to the status that
 	// request answers instead. A failed POST is still in Posts, but changes nothing.
 	Fail map[string]int
@@ -90,7 +97,10 @@ func New(t *testing.T) *Server {
 	s := &Server{t: t, counts: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /user", s.user)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
+	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
@@ -163,6 +173,57 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, issue)
+}
+
+// listIssues serves Issues by number, filtered on state (default open; an item without state
+// is open) and milestone (the milestone.number), in pages.
+func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
+	state := r.URL.Query().Get("state")
+	if state == "" {
+		state = "open"
+	}
+	milestone := r.URL.Query().Get("milestone")
+	var nums []int
+	for n := range s.Issues {
+		nums = append(nums, n)
+	}
+	slices.Sort(nums)
+	var out []any
+	for _, n := range nums {
+		it := s.Issues[n]
+		if st, _ := it["state"].(string); state != "all" && state != cmp.Or(st, "open") {
+			continue
+		}
+		if milestone != "" {
+			m, _ := it["milestone"].(map[string]any)
+			if m == nil || fmt.Sprint(m["number"]) != milestone {
+				continue
+			}
+		}
+		out = append(out, it)
+	}
+	s.page(w, r, out)
+}
+
+func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	var out []any
+	for _, b := range s.BlockedBy[n] {
+		out = append(out, b)
+	}
+	s.page(w, r, out)
+}
+
+func (s *Server) pulls(w http.ResponseWriter, r *http.Request) {
+	var out []any
+	for _, p := range s.Pulls {
+		out = append(out, p)
+	}
+	s.page(w, r, out)
 }
 
 func (s *Server) comments(w http.ResponseWriter, r *http.Request) {

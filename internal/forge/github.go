@@ -21,10 +21,18 @@ var ErrNotConfigured = errors.New("forge not configured")
 
 // Issue is an issue as the forge returns it; OpenIssues lists only open ones. Pull requests are not issues here.
 type Issue struct {
-	Number   int
-	Title    string
-	URL      string // html_url
-	Comments int    // comment count from the list
+	Number    int
+	Title     string
+	URL       string // html_url
+	Comments  int    // comment count from the list
+	State     string // open, closed
+	Body      string
+	Author    string // user.login
+	Labels    []string
+	UpdatedAt time.Time
+	ClosedAt  time.Time // zero while open
+	NodeID    string
+	Milestone *Milestone // nil: none
 }
 
 // Client is a GitHub REST client.
@@ -58,17 +66,10 @@ func (c *Client) OpenIssues(ctx context.Context) ([]Issue, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
-	type item struct {
-		Number      int             `json:"number"`
-		Title       string          `json:"title"`
-		HTMLURL     string          `json:"html_url"`
-		Comments    int             `json:"comments"`
-		PullRequest json.RawMessage `json:"pull_request"`
-	}
 	var out []Issue
 	url := fmt.Sprintf("%s/repos/%s/issues?state=open&per_page=100", c.BaseURL, c.Repo)
 	for url != "" {
-		var page []item
+		var page []issueItem
 		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
 		if err != nil {
 			return nil, err
@@ -77,7 +78,7 @@ func (c *Client) OpenIssues(ctx context.Context) ([]Issue, error) {
 			if it.PullRequest != nil {
 				continue
 			}
-			out = append(out, Issue{Number: it.Number, Title: it.Title, URL: it.HTMLURL, Comments: it.Comments})
+			out = append(out, it.issue())
 		}
 		url = next
 	}
@@ -89,17 +90,12 @@ func (c *Client) Issue(ctx context.Context, number int) (Issue, error) {
 	if err := c.configured(); err != nil {
 		return Issue{}, err
 	}
-	var it struct {
-		Number   int    `json:"number"`
-		Title    string `json:"title"`
-		HTMLURL  string `json:"html_url"`
-		Comments int    `json:"comments"`
-	}
+	var it issueItem
 	url := fmt.Sprintf("%s/repos/%s/issues/%d", c.BaseURL, c.Repo, number)
 	if _, err := c.do(ctx, http.MethodGet, url, nil, &it); err != nil {
 		return Issue{}, err
 	}
-	return Issue{Number: it.Number, Title: it.Title, URL: it.HTMLURL, Comments: it.Comments}, nil
+	return it.issue(), nil
 }
 
 // Comments lists all comments of one issue, following every page.
