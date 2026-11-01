@@ -230,11 +230,50 @@ func TestCommentShape(t *testing.T) {
 	if c := allRows()["duplicate"].Comment; !strings.Contains(c, "Mogelijk dubbel van #3: zelfde &lt;!-- titel &lt;/sub>") {
 		t.Errorf("duplicate:\n%s", c)
 	}
-	if c := allRows()["done"].Comment; !strings.Contains(c, "Mogelijk al af: PR #9") {
+	if c := allRows()["done"].Comment; !strings.Contains(c, "Mogelijk al af: PR #\u200d9") {
 		t.Errorf("done:\n%s", c)
 	}
 	if c := allRows()["interactive"].Comment; !strings.Contains(c, "Dit moet interactief: kiest een smaak '''") {
 		t.Errorf("interactive:\n%s", c)
+	}
+}
+
+// A mention or issue reference in free model text gets a zero-width joiner after its @ or #, so
+// GitHub notifies no one and links nothing; the references Go writes itself stay clickable.
+func TestModelTextMakesNoReference(t *testing.T) {
+	forward := judged(4, "b", "#7 Poort 4b: writing-plans — zoals @alice in acme/x#12 en #3")
+	dup := judged(4, "b", "#7 Poort 4b: x — y")
+	dup.Redundancy, dup.RedundancyIssue, dup.RedundancyEvidence = "duplicate", 3, "@bob schreef #4"
+	inter := judged(4, "b", "#7 Poort 4b: x — y")
+	inter.Headless, inter.HeadlessReason = false, "vraag @carol"
+	design := judged(4, "c", "#7 Poort 4c: brainstorming — x")
+	design.Questions = []Question{{Text: "Volgt het #8?", Options: []string{"zoals @dave", "nee"}, Recommended: 1}}
+	g0 := &Gate0{Blockers: []int{5}, Label: "3-blocked-external"}
+
+	tests := []struct {
+		name string
+		got  Outcome
+		want []string
+	}{
+		{"route line", Choose(outcomeFacts(), nil, nil, forward, outcomeLabels, outcomeTarget),
+			[]string{"**Triage** · #7 Poort 4b: writing-plans — zoals @\u200dalice in acme/x#\u200d12 en #\u200d3"}},
+		{"redundancy evidence", Choose(outcomeFacts(), nil, nil, dup, outcomeLabels, outcomeTarget),
+			[]string{"Mogelijk dubbel van #3: @\u200dbob schreef #\u200d4"}},
+		{"headless reason", Choose(outcomeFacts(), nil, nil, inter, outcomeLabels, outcomeTarget),
+			[]string{"Dit moet interactief: vraag @\u200dcarol"}},
+		{"design questions", Choose(outcomeFacts(), nil, nil, design, outcomeLabels, outcomeTarget),
+			[]string{"1. Volgt het #\u200d8?", "   a) zoals @\u200ddave"}},
+		{"gate 0 blockers", Choose(outcomeFacts(), nil, g0, judged(0, "", "#7 Poort 0: stop — #5, 3-blocked-external"), outcomeLabels, outcomeTarget),
+			[]string{"**Triage** · #7 Poort 0: stop — #5, 3-blocked-external"}},
+	}
+	for _, c := range tests {
+		t.Run(c.name, func(t *testing.T) {
+			for _, want := range c.want {
+				if !strings.Contains(c.got.Comment, want) {
+					t.Errorf("comment lacks %q:\n%s", want, c.got.Comment)
+				}
+			}
+		})
 	}
 }
 
