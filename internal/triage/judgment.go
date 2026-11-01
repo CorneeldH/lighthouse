@@ -234,7 +234,7 @@ func Validate(envelope []byte, f Facts, c Context) (Judgment, error) {
 	} else if err := checkRoute(&j, raw, f, c); err != nil {
 		return Judgment{}, err
 	}
-	if err := checkRedundancy(j); err != nil {
+	if err := checkRedundancy(j, f.Number); err != nil {
 		return Judgment{}, err
 	}
 	if !j.Headless && j.HeadlessReason == "" {
@@ -319,12 +319,16 @@ func checkQuestions(rs []rawQuestion, want bool) ([]Question, error) {
 	return out, nil
 }
 
-func checkRedundancy(j Judgment) error {
+// checkRedundancy checks the redundancy fields of a judgment of issue number.
+func checkRedundancy(j Judgment, number int) error {
 	switch j.Redundancy {
 	case "none":
 	case "duplicate":
 		if j.RedundancyIssue <= 0 {
 			return invalid("redundancy duplicate without redundancy_issue")
+		}
+		if j.RedundancyIssue == number {
+			return invalid("redundancy duplicate of #%d itself", number)
 		}
 	case "done":
 		if j.RedundancyEvidence == "" {

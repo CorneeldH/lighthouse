@@ -204,6 +204,7 @@ func TestValidateInvalid(t *testing.T) {
 		{"questions at 4b", facts7(), map[string]any{"design_questions": questions(1, 2, 0)}, "only belong to 4c"},
 		{"gate 0 without Go", facts7(), map[string]any{"route_line": "#7 Poort 0: stop — x", "gate": 0, "sub": ""}, "gate 0 where Go found no block"},
 		{"duplicate without issue", facts7(), map[string]any{"redundancy": "duplicate"}, "without redundancy_issue"},
+		{"duplicate of itself", facts7(), map[string]any{"redundancy": "duplicate", "redundancy_issue": 7}, "duplicate of #7 itself"},
 		{"done without evidence", facts7(), map[string]any{"redundancy": "done"}, "without redundancy_evidence"},
 		{"headless false without reason", facts7(), map[string]any{"headless": false}, "without headless_reason"},
 	}
