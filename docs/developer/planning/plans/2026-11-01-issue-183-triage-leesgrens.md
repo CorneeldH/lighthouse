@@ -16,8 +16,9 @@ publiceert, met de rijvolgorde van `Choose` uit één functie.
 
 ## Global Constraints
 
-- Artefacten (commits, docs, changelog, PR) in het Nederlands; namen, comments en testnamen in Go in
-  het Engels. Go volgt `/lighthouse-go-standard`.
+- Artefacten (commits, docs, PR) in het Nederlands; het changelog-fragment in het Engels
+  (`docs/releasing.md`, *Changelog fragments*); namen, comments en testnamen in Go in het Engels.
+  Go volgt `/lighthouse-go-standard`.
 - Commits als Conventional Commits, één logische wijziging per commit, met
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Nooit terug naar `--setting-sources user`, ook niet als een meting tegenvalt: meld het in de PR.
@@ -92,7 +93,8 @@ publiceert, met de rijvolgorde van `Choose` uit één functie.
   - rij *Interactief*: `headless_reason` van 301 (`headless_reason`); geldig: 300, en 400 bij poort 1
     (rij *Stop*, niet gepubliceerd).
   - rij *Ontwerp*: vraag van 301 (`design_questions[0]`), optie van 151 (`options[1]`); geldig: een
-    oordeel met `redundancy` `done`, geldig bewijs en een vraag van 400 runes.
+    vraag van 300 en een optie van 150, en een oordeel met `redundancy` `done`, geldig bewijs en een
+    vraag van 400 runes.
   - `redundancy_evidence` bij `done`, met `GitShas: {"abc1234def…"(40 hex)}` in de feiten:
     proza `"fixed in abc1234"` (`redundancy_evidence`); sha `"fff0000"` die niet in de log staat
     (`not in the git log`); `"abc1234ff"`, begint met de korte sha maar wijkt af
@@ -101,7 +103,9 @@ publiceert, met de rijvolgorde van `Choose` uit één functie.
   - Pas de bestaande gevallen met proza als bewijs aan (`judgment_test.go:244` `"same title"`,
     `:262` `"abc123 fixes it"`) naar geldige verwijzingen, met `GitShas` in de feiten.
 - [ ] **Step 2: Write the failing test** in `prompt_test.go`: `TestPrompt` verwacht ook
-  `"at most 5"`, `"80"`, `"200"`, `"300"`, `"150"` en `"invalid"` in de prompt.
+  `"at most 5"` en `"invalid"` in de prompt, en de regel met de lengtegrenzen als geheel, opgebouwd
+  uit de constanten (bijvoorbeeld `fmt.Sprintf("route at most %d", tri.MaxRouteRunes)` per veld),
+  niet de losse getallen.
 - [ ] **Step 3: Run** `go test ./internal/triage` — Expected: FAIL op de nieuwe rijen.
 - [ ] **Step 4: Implement** in `limits.go` de constanten en
   `checkEvidence(ev string, shas []string) error`: leeg is goed; > `MaxEvidenceRunes` fout; het
@@ -174,17 +178,22 @@ publiceert, met de rijvolgorde van `Choose` uit één functie.
   `exportTree(ctx, dir, "origin/main")`: de bestanden (WalkDir, alleen niet-mappen, relatief) zijn
   precies `.gitattributes`, `.gitignore`, `a.txt`, `link`, `run.sh`, `sub/b c é.txt`; geen `.git`;
   `link` is een symlink met `Readlink` `/etc/hostname`; `run.sh` heeft de uitvoerbit; de naam van
-  `dir` begint met `lighthouse-triage-`. Na `remove()` geeft `os.Stat(dir)` `fs.ErrNotExist`.
+  `dir` begint met `lighthouse-triage-`; de inhoud van `a.txt`, `sub/b c é.txt` en `run.sh` is
+  byte voor byte die van origin. Na `remove()` geeft `os.Stat(dir)` `fs.ErrNotExist`.
   `TestExportTreeBadRef`: `ref` `origin/nope` → fout, en geen `lighthouse-triage-*`-map blijft
   achter in een eigen `TMPDIR` (`t.Setenv("TMPDIR", t.TempDir())`).
 - [ ] **Step 2: Run** `go test ./internal/cli -run TestExportTree` — Expected: FAIL, undefined.
 - [ ] **Step 3: Implement** `exportTree`: `os.MkdirTemp("", "lighthouse-triage-")`, `os.OpenRoot`
-  erop, `git -C repoDir archive --format=tar ref` met stdout als pipe in `archive/tar`. Per header:
-  `TypeDir` → `root.MkdirAll`; `TypeReg` → `root.MkdirAll` van de ouder en `root.OpenFile` met
-  `O_CREATE|O_EXCL|O_WRONLY` en `fs.FileMode(h.Mode).Perm()`; `TypeSymlink` →
+  erop, `git -C repoDir archive --format=tar ref` via `exec.CommandContext` met een eigen
+  `context.WithCancel(ctx)`, stdout als pipe in `archive/tar`. Per header:
+  `TypeDir` → `root.MkdirAll`; `TypeReg` → `root.MkdirAll` van de ouder, `root.OpenFile` met
+  `O_CREATE|O_EXCL|O_WRONLY` en `fs.FileMode(h.Mode).Perm()`, `io.Copy` van de tar-reader erin en
+  `Close` met foutcontrole; `TypeSymlink` →
   `root.Symlink(h.Linkname, h.Name)`; `TypeXGlobalHeader` → overslaan; anders een fout. `os.Root`
-  weigert namen die buiten de map uitkomen. Bij elke fout, ook een mislukte `git`, haalt hij de
-  map weg en geeft hij de fout met de start van stderr terug (zoals `gitOut`).
+  weigert namen die buiten de map uitkomen. Bij een fout tijdens het uitpakken annuleert hij de
+  eigen context vóór `cmd.Wait`, zodat `git` niet blijft hangen op een volle pipe. Bij elke fout,
+  ook een mislukte `git`, haalt hij de map weg en geeft hij de fout met de start van stderr terug
+  (zoals `gitOut`).
 - [ ] **Step 4: Run** `go test ./internal/cli -run TestExportTree` — Expected: PASS.
 - [ ] **Step 5: Commit** `feat(triage): export van origin/<default_branch> naar een tijdelijke map (#183)`
 
@@ -193,7 +202,9 @@ publiceert, met de rijvolgorde van `Choose` uit één functie.
 **Files:**
 - Modify: `internal/cli/triage_judge.go`, `internal/cli/triage.go:26-41` (`judgeFunc`,
   `triageEnv`)
-- Test: `internal/cli/triage_judge_test.go`
+- Test: `internal/cli/triage_judge_test.go` (ook de bestaande `execJudge`-aanroepen op `:46`, `:74`
+  en `:94`), `internal/cli/triage_brake_test.go:154` (`fx.env.Judge`), `internal/cli/triage_test.go:186`
+  (`fakeJudge.judge`)
 
 **Interfaces:**
 - Produces:
@@ -264,8 +275,9 @@ publiceert, met de rijvolgorde van `Choose` uit één functie.
     exit 2, stderr bevat `skip` en `lighthouse-route-issue`, geen oordeel.
   - `TestTriageSettingsInvalid`: `SettingsFile` bevat `{` → exit 2, stderr bevat `skip` en het pad,
     geen oordeel.
-  - `TestTriageSettingsPassed`: `SettingsFile` met `env` `{"A":"1"}` → `cfg.Env` van het oordeel is
-    `{"A=1"}`.
+  - `TestTriageSettingsPassed`: `SettingsFile` met `env` `{"A":"1"}` en `modelSettings`
+    `{"effort":"high"}` → `cfg.Env` van het oordeel is `{"A=1"}` en `cfg.Settings` is
+    `{"disableAllHooks":true,"modelSettings":{"effort":"high"}}`.
   - `TestTriageBrakeMidRound`: daarnaast bestaat `dirs[<eerste issue>]` na de ronde niet meer.
   - Twee issues in één repo: `dirs` van beide gelijk (één export per repo per ronde).
 - [ ] **Step 3: Run** `go test ./internal/cli -run TestTriage` — Expected: FAIL (de ronde oordeelt
@@ -285,7 +297,7 @@ publiceert, met de rijvolgorde van `Choose` uit één functie.
 **Files:**
 - Modify: `docs/developer/planning/specs/2026-11-01-triage-design.md:234-247` (*Het oordeel*),
   `docs/triage.md:17-20` (stap 2) en `:31-36` (vrije tekst)
-- Create: `changelog.d/issue-183-triage-leesgrens.md`
+- Create: `changelog.d/issue-183-triage-leesbereik.md` (naar de branch)
 
 - [ ] **Step 1: Triage-spec**: "in de main checkout van de repo" wordt "in een export van
   `origin/<default_branch>`", met een relatieve link naar
@@ -297,9 +309,9 @@ publiceert, met de rijvolgorde van `Choose` uit één functie.
   het overneemt (`env`, `modelSettings`), en dat de ronde een repo overslaat zonder route-skill of
   met kapotte instellingen. Bij de alinea over vrije tekst: de grenzen uit de tabel van de spec, en
   dat een overschrijding het oordeel ongeldig maakt.
-- [ ] **Step 3: Changelog**: `type: fixed`, één alinea: het oordeel leest alleen de getrackte
-  inhoud van de default branch, en vrije velden met proza of te veel tekst maken het oordeel
-  ongeldig.
+- [ ] **Step 3: Changelog**: `type: fixed`, één tot drie Engelse zinnen: het oordeel leest alleen
+  de getrackte inhoud van de default branch, en vrije velden met proza of te veel tekst maken het
+  oordeel ongeldig.
 - [ ] **Step 4: Check** `md-link-check` blokkeert niet (gebeurt bij de Write); `go test ./...` —
   Expected: PASS.
 - [ ] **Step 5: Commit** `docs(triage): leesgrens en grenzen op de vrije velden (#183)`
@@ -313,17 +325,32 @@ Geen code, tenzij een meting dat afdwingt. Elke uitkomst gaat met de ruwe uitvoe
   `Read` van een bestand buiten de map, `Grep` en `Glob` op een map erbuiten, `Read` via een
   symlink naar een bestand erbuiten, en `Grep`/`Glob` via een symlink naar een map erbuiten.
   Expected: elk in `permission_denials`.
-- [ ] **Step 2: `modelSettings` en `env`.** Draai één oordeel met een tijdelijk
-  instellingenbestand (`SettingsFile`) met een `env` met
-  `OTEL_METRICS_EXPORTER=console`/`CLAUDE_CODE_ENABLE_TELEMETRY=1` en een `modelSettings`.
-  Expected: de telemetrie verschijnt; het effort-niveau is dat uit `modelSettings`. Werkt
-  `modelSettings` niet, meld het in de PR.
+- [ ] **Step 2: `modelSettings` en `env`.** Draai `claude` direct in de export van Step 1, met de
+  argv van `judgeArgs`, de `env` `OTEL_METRICS_EXPORTER=console` en
+  `CLAUDE_CODE_ENABLE_TELEMETRY=1` op het proces, en een `--settings`-JSON zoals
+  `loadJudgeConfig` die bouwt, met een `modelSettings`. Raak `~/.claude/settings.json` niet aan en
+  zet geen `CLAUDE_CONFIG_DIR` (dat verplaatst ook de login). Expected: de telemetrie verschijnt;
+  het effort-niveau is dat uit `modelSettings`. Werkt `modelSettings` niet, meld het in de PR.
 - [ ] **Step 3: Paden en vlaggen.** Meet welk instellingenbestand `claude` op de host leest
   (`CLAUDE_CONFIG_DIR` gezet of niet); of `disableAllHooks` met `--setting-sources ""` nog iets
   doet (laat hem staan tenzij niet); en of `--no-session-persistence` voorkomt dat er een map
   onder `~/.claude/projects/` voor de export komt. Voorkomt hij dat niet, meld het in de PR.
-- [ ] **Step 4: De getallen.** `go run ./cmd/lighthouse triage --dry-run` op deze repo; leg de
-  routeregels, redenen en ontwerpvragen naast 80/200/300/150 en naast de vormen van de route-skill
-  (`— touches open question "<question>" from the milestone`, `· layer: <layer> (<file>)`). Valt
-  een gewoon oordeel erboven: hoog de constante op in `limits.go`, pas de test mee aan, commit
-  `fix(triage): grens <veld> naar <n> na meting (#183)`, en noem het in de PR.
+- [ ] **Step 4: De getallen.** Lighthouse heeft geen `[controller.triage]` (`lighthouse.toml:54`
+  heeft alleen `[controller]`), en zonder die tabel slaat de ronde de repo over en eindigt met
+  `no repo with [controller.triage]` (`internal/cli/triage.go:109-127`). Daarom, alleen voor de
+  meting en nooit gecommit:
+  1. Voeg onderaan de `lighthouse.toml` van deze worktree een lege tabel `[controller.triage]` toe.
+  2. Schrijf in de scratchpad een `host.toml` met `[dispatch]` `repos = ["<absoluut pad van deze
+     worktree>"]` en verder de `[dispatch]`-sleutels uit `~/.config/lighthouse/host.toml`.
+  3. Draai `LIGHTHOUSE_HOST_TOML=<die host.toml> go run ./cmd/lighthouse triage --dry-run`, met
+     dezelfde forge-token als de tick. Ontbreekt de token of faalt de forge, meld het in de PR en
+     sla de meting over; verander niets in de main checkout.
+  4. `git checkout -- lighthouse.toml`; `git status --porcelain` is daarna leeg.
+
+  Leg de routeregels, redenen en ontwerpvragen naast 80/200/300/150 en naast de vormen van de
+  route-skill (`— touches open question "<question>" from the milestone`, `· layer: <layer>
+  (<file>)`). Valt een gewoon oordeel erboven: hoog de constante op in `limits.go`, pas de test,
+  de grens in `docs/triage.md` en de tabel in
+  `docs/developer/planning/specs/2026-11-01-triage-leesgrens-design.md` mee aan, draai
+  `go test ./...`, commit `fix(triage): grens <veld> naar <n> na meting (#183)`, en noem het in de
+  PR.
