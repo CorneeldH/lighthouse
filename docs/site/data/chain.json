@@ -697,7 +697,7 @@
   "routes": [
     {
       "id": "4c",
-      "label": "Spec first (4c)",
+      "label": "Spec first",
       "examples": [
         "md-link-check"
       ],
@@ -726,7 +726,7 @@
     },
     {
       "id": "4b",
-      "label": "Plan (4b)",
+      "label": "Plan",
       "examples": [
         "go-standard"
       ],
@@ -753,7 +753,7 @@
     },
     {
       "id": "4a",
-      "label": "Small job (4a)",
+      "label": "Small job",
       "note": "The session writes the code itself; no skill runs the build.",
       "examples": [
         "python-standard",
@@ -783,7 +783,7 @@
     },
     {
       "id": "2",
-      "label": "Bug (2)",
+      "label": "Bug",
       "examples": [
         "shell-standard"
       ],
@@ -807,7 +807,7 @@
     },
     {
       "id": "1",
-      "label": "Known recipe (1)",
+      "label": "Known recipe",
       "note": "The skill whose description matches the issue does the work and closes it.",
       "examples": [
         "refresh-expo-lockfiles"

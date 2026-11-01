@@ -304,3 +304,7 @@ def test_the_old_chain_page_forwards_to_the_loop():
     assert '<meta http-equiv="refresh" content="0; url=loop.html">' in html
     assert 'href="loop.html"' in html
 
+
+def test_route_labels_carry_no_gate_number():
+    for route in load("chain.json")["routes"]:
+        assert not re.search(r"\(\s*\w+\s*\)", route["label"]), route["label"]
