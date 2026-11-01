@@ -78,3 +78,18 @@ func TestFooterLeavesOutEmptyExtras(t *testing.T) {
 		t.Errorf("Footer = %q", got)
 	}
 }
+
+func TestRenderParked(t *testing.T) {
+	got := RenderParked([]string{"o/r#5 (In progress)", "x/y#9"}, "nl")
+	want := "🤖 Geparkeerd\nblocked_by: o/r#5 (In progress), x/y#9"
+	if got != want {
+		t.Errorf("RenderParked = %q, want %q", got, want)
+	}
+	h, ok := ParseHeader(got)
+	if !ok || h.Kind != KindParked || h.Fields["blocked_by"] != "o/r#5 (In progress), x/y#9" {
+		t.Errorf("ParseHeader = %+v, %v", h, ok)
+	}
+	if h, ok := ParseHeader(RenderParked([]string{"o/r#5"}, "en")); !ok || h.Kind != KindParked || h.Session != "" {
+		t.Errorf("en: ParseHeader = %+v, %v", h, ok)
+	}
+}

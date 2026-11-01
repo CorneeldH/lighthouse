@@ -28,6 +28,8 @@ type Blocker struct {
 	Issue    int    `json:"issue"`
 	State    string `json:"state"`     // OPEN, CLOSED
 	MergedPR bool   `json:"merged_pr"` // a closing PR of the blocker is merged
+	// Status is the Status option name of the blocker on the same board, "" when it is not on it.
+	Status string `json:"status,omitempty"`
 }
 
 // BoardItem is one item of a Projects v2 board.

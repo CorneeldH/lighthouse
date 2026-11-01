@@ -77,6 +77,22 @@ func (p *fakePoster) AddRocket(_ context.Context, commentID int64) error {
 	return p.rocketErr
 }
 
+// fakeBoard keeps every status set as "<itemID> <status>"; err makes the call fail.
+type fakeBoard struct {
+	log  *callLog
+	err  error
+	sets []string
+}
+
+func (b *fakeBoard) SetStatus(_ context.Context, itemID, status string) error {
+	b.log.add("SetStatus")
+	if b.err != nil {
+		return b.err
+	}
+	b.sets = append(b.sets, itemID+" "+status)
+	return nil
+}
+
 // fakeWorkplace prepares a workspace per branch and records every spawn.
 type fakeWorkplace struct {
 	log      *callLog
@@ -128,6 +144,7 @@ type harness struct {
 	db      *sql.DB
 	log     *callLog
 	posters map[string]*fakePoster
+	board   *fakeBoard
 	wp      *fakeWorkplace
 	out     *bytes.Buffer
 	env     Env
@@ -151,7 +168,8 @@ func newHarness(t *testing.T) *harness {
 func newHarnessOn(t *testing.T, db *sql.DB) *harness {
 	t.Helper()
 	log := &callLog{}
-	h := &harness{db: db, log: log, posters: map[string]*fakePoster{}, wp: &fakeWorkplace{log: log}, out: &bytes.Buffer{}}
+	h := &harness{db: db, log: log, posters: map[string]*fakePoster{}, board: &fakeBoard{log: log},
+		wp: &fakeWorkplace{log: log}, out: &bytes.Buffer{}}
 	h.env = Env{
 		DB: db,
 		Poster: func(repo string) Poster {
@@ -162,6 +180,7 @@ func newHarnessOn(t *testing.T, db *sql.DB) *harness {
 			}
 			return p
 		},
+		Board:      func(string) Board { return h.board },
 		Workplace:  func(string) workplace.Workplace { return h.wp },
 		Profile:    func(string) (string, string) { return "writing", "/etc/lighthouse/mcp.json" },
 		RoundLimit: func(string) string { return "stop" },
@@ -641,7 +660,7 @@ func TestApplyOneFailureDoesNotStopOthers(t *testing.T) {
 	actions := []Action{
 		{Kind: KindRocket, Repo: applyRepo, Issue: 6, CommentID: 41},
 		{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: id, Outcome: runs.Handoff},
-		{Kind: KindDefer, Repo: applyRepo, Issue: 9, Reason: "blocker"},
+		{Kind: KindDefer, Repo: applyRepo, Issue: 9, Reason: "night"},
 	}
 	res, err := Apply(context.Background(), h.env, actions)
 	if err == nil || !strings.Contains(err.Error(), "rocket refused") {
@@ -650,7 +669,7 @@ func TestApplyOneFailureDoesNotStopOthers(t *testing.T) {
 	if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Handoff {
 		t.Errorf("row = %+v, want closed as handoff after the failed rocket", rows[0])
 	}
-	if !reflect.DeepEqual(res.Deferred, []string{"o/r#9: blocker"}) {
+	if !reflect.DeepEqual(res.Deferred, []string{"o/r#9: night"}) {
 		t.Errorf("Deferred = %q", res.Deferred)
 	}
 	if res.Failed[applyRepo] == nil {
@@ -733,5 +752,83 @@ func TestApplyPostCancelledStillReleases(t *testing.T) {
 	rows := h.history(t)
 	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed || rows[0].Reason != "post: context canceled" {
 		t.Errorf("rows = %+v, want one closed start_failed with reason %q", rows, "post: context canceled")
+	}
+}
+
+func parkAction() Action {
+	return Action{Kind: KindPark, Repo: applyRepo, Issue: 7, ItemID: "I7", Language: "nl",
+		Blockers: []string{"o/r#5 (In progress)"}}
+}
+
+func TestApplyParkPostsThenHolds(t *testing.T) {
+	h := newHarness(t)
+	if _, err := Apply(context.Background(), h.env, []Action{parkAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"CreateComment", "SetStatus"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	p := h.poster(applyRepo)
+	if len(p.bodies) != 1 || p.issues[0] != 7 || !strings.HasPrefix(p.bodies[0], "🤖 Geparkeerd\nblocked_by: o/r#5 (In progress)") {
+		t.Errorf("posted %q on %v, want one Geparkeerd naming o/r#5 (In progress) on #7", p.bodies, p.issues)
+	}
+	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.board.sets, want) {
+		t.Errorf("status sets = %q, want %q", h.board.sets, want)
+	}
+}
+
+func TestApplyParkPostFailsNoBoard(t *testing.T) {
+	h := newHarness(t)
+	h.poster(applyRepo).postErr = errors.New("post refused")
+	res, err := Apply(context.Background(), h.env, []Action{parkAction()})
+	if err == nil || !strings.Contains(err.Error(), "post refused") {
+		t.Fatalf("Apply: %v, want the post error", err)
+	}
+	if res.Failed[applyRepo] == nil {
+		t.Errorf("Failed = %v, want %s", res.Failed, applyRepo)
+	}
+	if got, want := h.log.all(), []string{"CreateComment"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q: no board change without the comment", got, want)
+	}
+}
+
+func TestApplyParkBoardFails(t *testing.T) {
+	h := newHarness(t)
+	h.board.err = errors.New("board refused")
+	res, err := Apply(context.Background(), h.env, []Action{parkAction()})
+	if err == nil || !strings.Contains(err.Error(), "board refused") {
+		t.Fatalf("Apply: %v, want the board error", err)
+	}
+	if res.Failed[applyRepo] == nil {
+		t.Errorf("Failed = %v, want %s", res.Failed, applyRepo)
+	}
+	if p := h.poster(applyRepo); len(p.bodies) != 1 {
+		t.Errorf("posted %q, want the Geparkeerd to stand", p.bodies)
+	}
+}
+
+func TestApplyHold(t *testing.T) {
+	h := newHarness(t)
+	if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindHold, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.board.sets, want) {
+		t.Errorf("status sets = %q, want %q", h.board.sets, want)
+	}
+}
+
+func TestApplyUnpark(t *testing.T) {
+	h := newHarness(t)
+	if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindUnpark, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if want := []string{"I7 Controller"}; !reflect.DeepEqual(h.board.sets, want) {
+		t.Errorf("status sets = %q, want %q", h.board.sets, want)
 	}
 }

@@ -59,11 +59,11 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    sluitende PR's, slaat de repo ook luid over: zo'n lijst leest tick niet half.
 
 8. **Decide.** Eén keer per tick, over alle gegatherde repo's samen, beslist tick wat er moet
-   gebeuren: een run sluiten, een issue teruggeven, een 🚀 herstellen, en per issue hoogstens één
-   start of hervatting. Decide is puur: het leest alleen de snapshots, de runhistorie, de standen en
+   gebeuren: een run sluiten, een issue teruggeven, een 🚀 herstellen, een issue parkeren of
+   terugzetten (zie *Blokkades*), en per issue hoogstens één start of hervatting. Decide is puur: het leest alleen de snapshots, de runhistorie, de standen en
    de klok. De regels staan in de spec (§4, §7).
 9. **Apply.** Tick voert de acties in volgorde uit. Een mislukte actie houdt de rest niet tegen. Een
-   uitgestelde start (buiten het `night`-venster, een open voorganger, of een bezette werkplek)
+   uitgestelde start (buiten het `night`-venster, of een bezette werkplek)
    schrijft `lighthouse: deferred <repo>#<n>: <reden>` naar stderr. Een repo met een mislukte actie
    krijgt `lighthouse: apply <repo>: <fouten>`, en tick eindigt dan met exitcode 1. Wat apply
    onderweg meldt (een claim die een ander proces al had, een onzekere launch) staat ook op stderr,
@@ -93,6 +93,27 @@ Vraag aan de gebruiker vanuit de werkplek post `lighthouse ask`, zie [ask.md](as
 |---|---|
 | 0 | Alle repo's zijn bedienbaar en hun precheck, gather en acties lukten (een uitgestelde start telt als gelukt), of een vorige tick draait nog |
 | 1 | Minstens één repo overgeslagen (niet bedienbaar, of de gather mislukte), een mislukte actie in apply, of een fout (geen `XDG_RUNTIME_DIR`, geen token, ongeldige `host.toml`, database niet te openen) |
+
+## Blokkades
+
+Een voorganger is *actief* als hij `OPEN` is en geen gemergde PR heeft. Gesloten zonder merge telt als
+vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-, plan-
+en review-fase.
+
+- **Parkeren.** Heeft een uitvoerend issue in Controller een actieve voorganger, dan parkeert tick het.
+  Eerst komt de comment `🤖 Geparkeerd` (`🤖 Parked`) met één regel
+  `blocked_by: <repo>#<n> (<boardstatus>), …`; staat de voorganger niet op hetzelfde board, dan staat
+  er geen status tussen haakjes. Daarna gaat het issue op het board naar On hold. Een issue dat nog in
+  de spec-, plan- of reviewfase zit, blijft staan; de blokkade hindert pas bij uitvoering.
+- **Afmaken.** Slaagt de comment maar mislukt de boardwijziging, dan eindigt tick met exitcode 1 en
+  bewaart hij de vingerafdruk van de repo niet. De volgende tick ziet zijn eigen Geparkeerd als laatste
+  beurt en zet het issue alleen op On hold (`hold`). Hij post nooit een tweede Geparkeerd.
+- **Terugzetten.** Een issue in On hold dat `OPEN` is, waarvan de laatste 🤖-comment (Rebased niet
+  meegeteld) een eigen Geparkeerd is (auteur is de login van het token) en dat geen actieve voorganger
+  meer heeft, gaat terug naar Controller (`unpark`). De volgende tick start de laatste Handoff.
+- **Menselijk On hold.** Een issue dat een mens op On hold zette (de laatste 🤖-comment is geen
+  Geparkeerd, of er staat er een van een andere auteur) raakt lighthouse niet aan. Lighthouse haalt een
+  issue alleen uit Controller om het te parkeren.
 
 ## `lighthouse gather`
 
@@ -124,13 +145,13 @@ Hetzelfde token, dezelfde `host.toml` en dezelfde database als tick.
 decide, en voert alleen de acties van dat issue uit van de soort `close`, `defer`, `start` of `resume`.
 De `close` gaat mee, want een open run die in deze beslissing sluit (bijvoorbeeld op een 🤖 Vraag met
 een antwoord), zou de claim van de hervatting anders laten mislukken. Een Teruggegeven, een Klaar en
-een 🚀-herstel laat `run` aan de tick. `run` bewaart geen vingerafdruk in `tick_state`.
+een 🚀-herstel laat `run` aan de tick. Hetzelfde geldt voor parkeren, afmaken en terugzetten (zie
+*Blokkades*): een uitvoerend issue met een actieve voorganger geeft in `run` dus `nothing to start`. `run` bewaart geen vingerafdruk in `tick_state`.
 
 Het eindigt met één regel op stderr, alle vier met exitcode 0:
 
 - `lighthouse: started <repo>#<n>`;
-- `lighthouse: deferred <repo>#<n>: <reden>` (buiten het `night`-venster, een open voorganger, of een
-  bezette werkplek);
+- `lighthouse: deferred <repo>#<n>: <reden>` (buiten het `night`-venster, of een bezette werkplek);
 - `lighthouse: not accepted <repo>#<n>`: de werkplek weigerde de launch. De 🤖 Gestart blijft staan,
   de run is gesloten als `start_failed`, en de volgende tick behandelt het als elke mislukte start
   (een tweede poging, na twee mislukte pogingen een Teruggegeven);

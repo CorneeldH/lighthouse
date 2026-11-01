@@ -24,7 +24,8 @@ type healthOutput struct {
 }
 
 // New returns the handler: the JSON API under /api/ and site as SPA elsewhere, behind the Host check.
-func New(site fs.FS, report func(context.Context) usage.Report, src overview.Source,
+// inController narrows the forge endpoints to the issues it names; nil shows every open issue.
+func New(site fs.FS, report func(context.Context) usage.Report, src overview.Source, inController overview.Filter,
 	leftovers func(context.Context) ([]workplace.Leftover, error)) http.Handler {
 	mux := http.NewServeMux()
 	cfg := huma.DefaultConfig("lighthouse", version.String())
@@ -44,7 +45,7 @@ func New(site fs.FS, report func(context.Context) usage.Report, src overview.Sou
 		return &usageOutput{Body: report(ctx)}, nil
 	}, func(op *huma.Operation) { op.OperationID = "get-usage" })
 
-	registerForge(api, src)
+	registerForge(api, src, inController)
 	registerCleanup(api, leftovers)
 
 	mux.Handle("/api/", http.NotFoundHandler())

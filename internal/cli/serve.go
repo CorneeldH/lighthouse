@@ -16,7 +16,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/usage"
@@ -40,7 +42,12 @@ func newServeCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			return serve(ctx, addr, dbPath, newForge(repo, forgeURL, os.Getenv), cmd.ErrOrStderr())
+			c := newForge(repo, forgeURL, os.Getenv)
+			inController, err := controllerFilter(hostconfig.Path(), repo, c, cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			return serve(ctx, addr, dbPath, c, inController, cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
@@ -75,9 +82,42 @@ func githubToken(getenv func(string) string) string {
 	return getenv("GITHUB_TOKEN")
 }
 
+// controllerFilter narrows the overview to the issues in Controller when repo is served by
+// [dispatch] of the host.toml at hostToml and has a [forge.board]. Otherwise it returns nil:
+// without [dispatch] the overview shows every open issue, as in M1. A host.toml that does not
+// load is an error; a served repo that does not load gets one line on errOut and is skipped.
+// Without repo no filter can apply, so host.toml is not read.
+func controllerFilter(hostToml, repo string, c *forge.Client, errOut io.Writer) (overview.Filter, error) {
+	if repo == "" {
+		return nil, nil
+	}
+	cfg, err := hostconfig.LoadDispatch(hostToml)
+	if err != nil {
+		return nil, err
+	}
+	for _, path := range cfg.Repos {
+		r, err := repoconfig.Load(path)
+		if err != nil {
+			_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
+			continue
+		}
+		if r.Slug != repo || r.Board == nil {
+			continue
+		}
+		if r.Board.StatusOptions["Controller"] == "" {
+			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: missing forge.board.status_options.Controller: overview shows every open issue\n", path)
+			return nil, nil
+		}
+		return overview.ControllerIssues(c, repo, *r.Board), nil
+	}
+	return nil, nil
+}
+
 // serve opens the store, listens on addr and serves until ctx is done, then shuts down
-// within shutdownTimeout. An empty dbPath means the default path. src feeds the forge endpoints.
-func serve(ctx context.Context, addr, dbPath string, src overview.Source, errOut io.Writer) error {
+// within shutdownTimeout. An empty dbPath means the default path. src feeds the forge endpoints,
+// narrowed by inController; nil shows every open issue.
+func serve(ctx context.Context, addr, dbPath string, src overview.Source, inController overview.Filter,
+	errOut io.Writer) error {
 	if dbPath == "" {
 		p, err := store.DefaultPath()
 		if err != nil {
@@ -100,7 +140,7 @@ func serve(ctx context.Context, addr, dbPath string, src overview.Source, errOut
 	if paths, err := usage.DefaultPaths(); err == nil {
 		rep.Cache = paths.Cache()
 	}
-	srv := &http.Server{Handler: server.New(web.FS(), rep.Report, src, func(ctx context.Context) ([]workplace.Leftover, error) {
+	srv := &http.Server{Handler: server.New(web.FS(), rep.Report, src, inController, func(ctx context.Context) ([]workplace.Leftover, error) {
 		return workplace.Leftovers(ctx, st.DB)
 	}), ReadHeaderTimeout: 10 * time.Second}
 	serveErr := make(chan error, 1)

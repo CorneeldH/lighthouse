@@ -52,6 +52,38 @@ func prNode(number int, ref string, checks any) map[string]any {
 		"headRefOid": "sha" + ref, "headRefName": ref, "statusCheckRollup": checks}
 }
 
+func TestPrepareBlockerStatus(t *testing.T) {
+	srv, c := client(t)
+	repo := testRepo
+	board := *testRepo.Board
+	board.StatusOptions = map[string]string{"Controller": "opt-ctrl", "On hold": "opt-hold", "In progress": "opt-prog"}
+	repo.Board = &board
+	blocker := func(repo string, n int) any {
+		return map[string]any{"number": n, "state": "OPEN", "repository": map[string]any{"nameWithOwner": repo},
+			"closedByPullRequestsReferences": map[string]any{"nodes": []any{}}}
+	}
+	srv.BoardNodes = []map[string]any{
+		node("I7", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 7, map[string]any{
+			"blockedBy": map[string]any{"nodes": []any{blocker("o/r", 5), blocker("x/y", 9)}},
+		})),
+		node("I5", map[string]string{"F_status": "opt-prog"}, issue("o/r", 5, nil)),
+	}
+	pre, err := Prepare(context.Background(), c, repo, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pre.Items) != 1 || pre.Items[0].Issue != 7 {
+		t.Fatalf("Items = %+v, want only issue 7", pre.Items)
+	}
+	want := []forge.Blocker{
+		{Repo: "o/r", Issue: 5, State: "OPEN", Status: "In progress"},
+		{Repo: "x/y", Issue: 9, State: "OPEN"},
+	}
+	if got := pre.Items[0].BlockedBy; !reflect.DeepEqual(got, want) {
+		t.Errorf("BlockedBy = %+v, want %+v", got, want)
+	}
+}
+
 func TestPrepareFiltersBoard(t *testing.T) {
 	srv, c := client(t)
 	srv.BoardNodes = []map[string]any{

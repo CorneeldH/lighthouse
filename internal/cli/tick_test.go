@@ -893,3 +893,79 @@ func TestStandsSessionsErrorIsLoud(t *testing.T) {
 		t.Errorf("errOut = %q, want %q", errOut.String(), want)
 	}
 }
+
+// parkable is startable with issue 7 blocked by the open issue o/r#5, an executing handoff on
+// it, and Dutch artefacts.
+func parkable(t *testing.T) (tickEnv, string, *forgetest.Server) {
+	t.Helper()
+	env, db := tickFixture(t, repoDir(t, "[project]\nlanguage = \"nl\"\n\n"+completeRepo))
+	srv, _ := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", map[string]any{
+		"blockedBy": map[string]any{"nodes": []any{map[string]any{
+			"number": 5, "state": "OPEN", "repository": map[string]any{"nameWithOwner": "o/r"},
+			"closedByPullRequestsReferences": map[string]any{"nodes": []any{}},
+		}}},
+	}))}
+	srv.Comments = map[int][]map[string]any{7: {handoffComment("/superpowers:subagent-driven-development /work/plans/plan.md", "now")}}
+	return env, db, srv
+}
+
+// statusSets are the item and option of every SetStatus the server received.
+func statusSets(srv *forgetest.Server) []string {
+	var out []string
+	for _, v := range srv.StatusSets {
+		out = append(out, fmt.Sprintf("%v %v", v["item"], v["option"]))
+	}
+	return out
+}
+
+func TestTickParksBlockedHandoff(t *testing.T) {
+	env, db, srv := parkable(t)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	posted := bodies(srv, 7)
+	if len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 Geparkeerd") {
+		t.Errorf("comments on #7 = %q, want the handoff and then one Geparkeerd", posted)
+	}
+	if got, want := statusSets(srv), []string{"I7 h1"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("status sets = %q, want %q", got, want)
+	}
+	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 0 {
+		t.Errorf("runs = %+v, want none: a parked issue starts nothing", rows)
+	}
+}
+
+// A park whose board change fails keeps its Geparkeerd and no fingerprint; the next tick sees
+// its own Geparkeerd, posts nothing new and only sets the board.
+func TestTickParkBoardFailureRetries(t *testing.T) {
+	env, db, srv := parkable(t)
+	srv.FailOps = map[string]string{"SetStatus": "boom"}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "lighthouse: apply o/r: o/r#7 park: ") || !strings.Contains(errOut.String(), "boom") {
+		t.Errorf("errOut = %q, want an apply line for the park naming boom", errOut.String())
+	}
+	if posted := bodies(srv, 7); len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 Geparkeerd") {
+		t.Fatalf("comments on #7 = %q, want the handoff and then one Geparkeerd", posted)
+	}
+	if s := tickState(t, openStore(t, db), "o/r"); s != (dispatch.TickState{}) {
+		t.Errorf("tick state = %+v after the failed board change, want none", s)
+	}
+
+	srv.FailOps = nil
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("second tick = %v\n%s", err, errOut.String())
+	}
+	if posted := bodies(srv, 7); len(posted) != 2 {
+		t.Errorf("comments on #7 after the second tick = %q, want no new comment", posted)
+	}
+	// The failed SetStatus of the first tick is recorded too: StatusSets keeps every request.
+	if got, want := statusSets(srv), []string{"I7 h1", "I7 h1"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("status sets = %q, want %q", got, want)
+	}
+}

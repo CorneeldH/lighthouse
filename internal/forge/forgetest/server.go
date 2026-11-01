@@ -61,6 +61,13 @@ type Server struct {
 	// GraphQLErrors, when set, makes every GraphQL operation answer 200 with these errors and
 	// null data.
 	GraphQLErrors []string
+	// FailOps maps a GraphQL operation name, such as "SetStatus", to an error message: only
+	// that operation answers 200 with that error and null data; the others work as usual.
+	FailOps map[string]string
+
+	// StatusSets are the variables of every SetStatus, in order; a failed one is in it too, but
+	// changes nothing. Read it after the requests returned.
+	StatusSets []map[string]any
 
 	// Posts are the JSON bodies of all POST requests, in order.
 	Posts []Post
@@ -336,9 +343,18 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	}
 	op := operationName(req.Query)
 	s.inc(op)
-	if len(s.GraphQLErrors) > 0 {
+	if op == "SetStatus" {
+		s.mu.Lock()
+		s.StatusSets = append(s.StatusSets, req.Variables)
+		s.mu.Unlock()
+	}
+	msgs := s.GraphQLErrors
+	if m, ok := s.FailOps[op]; ok {
+		msgs = []string{m}
+	}
+	if len(msgs) > 0 {
 		var errs []any
-		for _, m := range s.GraphQLErrors {
+		for _, m := range msgs {
 			errs = append(errs, map[string]any{"message": m})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": nil, "errors": errs})
