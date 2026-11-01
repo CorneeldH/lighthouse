@@ -26,8 +26,8 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   <summary>Wait, but why?</summary>
   <p><strong>Two levels.</strong> <a href="chain.html">The loop</a> follows the work from an idea
   to main, phase by phase, across sessions. This map zooms in on one session. It follows one turn
-  from the prompt to the stop, and answers "why does it stop me now?": which skill loads before the
-  model writes, and which hook steps in at each moment, on which tool, from which pack, and what it
+  from the prompt to the stop, and answers "why does it stop me now?": which skill the model loads
+  through a Skill call, and which hook steps in at each moment, on which tool, from which pack, and what it
   does.</p>
   <p><strong>Instructions ask, hooks check.</strong> <code>AGENTS.md</code> (which Claude Code
   reads through <code>CLAUDE.md</code>), skills and agents are text that the model reads. The model
@@ -40,8 +40,8 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   follows it rarely meets the hook. The hook steps in at the moment itself, with a warning or with a
   hard line, as the headers of <code>main-commit-gate.sh</code> and <code>worktree-check.sh</code>
   explain. When a hook blocks, its message goes back to the agent, which reads why and corrects
-  its step. A skill and its hook often come as a pair. On this map, <code>go-standard</code> loads
-  before the model writes Go, and <code>gofmt-check</code> and <code>go-lint-gate</code> check what it wrote.
+  its step. A skill and its hook often come as a pair. On this map, the model loads
+  <code>go-standard</code> through a Skill call before it writes Go, and <code>gofmt-check</code> and <code>go-lint-gate</code> check what it wrote.
   On the loop, <code>/lighthouse-write-pr</code> writes the PR body that
   <code>pr-create-gate</code> checks.</p>
   <p class="aside">How hooks, skills and agents work in Claude Code:

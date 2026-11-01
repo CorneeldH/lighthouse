@@ -136,13 +136,14 @@ def test_hook_problems_flags_a_hook_chip_without_effects():
 def test_phases_are_the_moments_of_a_turn():
     # The column head is upper case, so an event name gets spaces: USERPROMPTSUBMIT does not read.
     labels = [p["label"] for p in load("session.json")["phases"]]
-    assert labels == ["User prompt submit", "A skill loads", "Pre tool use", "The tool call",
+    assert labels == ["User prompt submit", "Pre tool use", "The tool or skill call",
                       "Post tool use / failure", "Subagent stop", "Stop"]
 
 
-def test_writing_skills_load_before_the_tool_call():
+def test_writing_skills_load_at_the_skill_call():
+    # A skill loads through the Skill tool, so it sits in the column of the call, between its hooks.
     chips = load("session.json")["chips"]
-    loaded = {c["id"]: (c["kind"], c["trigger"]) for c in chips if c["phase"] == "skill"}
+    loaded = {c["id"]: (c["kind"], c["trigger"]) for c in chips if c["phase"] == "tool-call"}
     assert loaded == {
         skill: ("lighthouse", "description")
         for skill in ["test-standard", "go-standard", "python-standard", "shell-standard"]

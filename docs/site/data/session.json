@@ -8,19 +8,14 @@
       "blurb": "you send a prompt"
     },
     {
-      "id": "skill",
-      "label": "A skill loads",
-      "blurb": "on its description, before the model writes"
-    },
-    {
       "id": "pre-tool",
       "label": "Pre tool use",
       "blurb": "before a tool runs"
     },
     {
       "id": "tool-call",
-      "label": "The tool call",
-      "blurb": "Bash, Edit or Write runs here"
+      "label": "The tool or skill call",
+      "blurb": "Bash, Edit or Write runs, or the Skill tool loads a skill"
     },
     {
       "id": "post-tool",
@@ -41,7 +36,7 @@
   "chips": [
     {
       "id": "test-standard",
-      "phase": "skill",
+      "phase": "tool-call",
       "row": 2,
       "kind": "lighthouse",
       "trigger": "description",
@@ -60,7 +55,7 @@
     },
     {
       "id": "go-standard",
-      "phase": "skill",
+      "phase": "tool-call",
       "row": 3,
       "kind": "lighthouse",
       "trigger": "description",
@@ -79,7 +74,7 @@
     },
     {
       "id": "python-standard",
-      "phase": "skill",
+      "phase": "tool-call",
       "row": 5,
       "kind": "lighthouse",
       "trigger": "description",
@@ -98,7 +93,7 @@
     },
     {
       "id": "shell-standard",
-      "phase": "skill",
+      "phase": "tool-call",
       "row": 6,
       "kind": "lighthouse",
       "trigger": "description",
@@ -615,10 +610,10 @@
       "id": "write-gates",
       "label": "I write code a gate rejects",
       "chips": [
+        "bash-write-check-pre",
         "go-standard",
         "python-standard",
         "shell-standard",
-        "bash-write-check-pre",
         "code-language-check",
         "gofmt-check",
         "ruff-format-check",
@@ -651,8 +646,8 @@
       "id": "red-tests",
       "label": "I commit with red tests",
       "chips": [
-        "test-standard",
         "commit-test-gate-pre",
+        "test-standard",
         "commit-test-gate-post"
       ]
     },
