@@ -2,7 +2,7 @@
 language = "nl"
 code_language = "en"
 code_language_paths = ["pack/**", "internal/**", "cmd/**", "tests/**", "tools/**"]
-code_language_exempt = ["tests/pack/fixtures/code_language/**"]
+code_language_exempt = ["tests/pack/fixtures/code_language/**", "tests/pack/fixtures/roborev/**"]
 
 [forge]
 kind = "github"

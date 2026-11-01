@@ -75,7 +75,7 @@ on what `init` proposes: ask them after the dry run, in step 2 of
 |---|---|---|---|
 | 1 | Download the binary to `~/.local/bin` | yes · no, I install it myself | Ask only if `lighthouse` is not on the `PATH`. On "no", wait until it is. |
 | 2 | Each missing requirement | the user installs it · skip it | Name the install command for this OS. Run it only after a yes, and never with `sudo`. |
-| 3 | Superpowers | yes · no | Without Superpowers, 9 lighthouse skills cannot hand off. Name the install command from the Superpowers README (<https://github.com/obra/superpowers>); the user runs it, or approves that you do. |
+| 3 | Superpowers | yes · no | Without Superpowers, 10 lighthouse skills cannot hand off. Name the install command from the Superpowers README (<https://github.com/obra/superpowers>); the user runs it, or approves that you do. |
 | 4 | Codex for the adversarial reviews | yes, if the user has a subscription · no | Without `codex`, the two reviews stop with `CODEX_MISSING`. |
 | 5a | Language of issues, PRs and commits (`[project] language`) | `nl` or `en`: recommend the language the user speaks with you now, and `en` for any other language | These are the only two values; any other is an error. |
 | 5b | Code in English (`[project] code_language = "en"`) | yes · no | Ask only if 5a is `nl`. |

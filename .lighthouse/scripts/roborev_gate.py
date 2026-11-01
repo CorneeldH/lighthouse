@@ -33,7 +33,7 @@ printed with verdict `run` when the skill passes it to `record --range`, else th
 the time of writing. The Dutch keys and reasons are literals: the reasons end up in the PR
 body.
 
-The size rule is that of paia's `Size` step: added plus removed lines of
+The size rule is that of the `Size` step of a roborev CI workflow: added plus removed lines of
 `git diff --numstat --no-renames <base> HEAD`, without binary files, without `docs/`,
 and without prose or data extensions (except under `.github/workflows/`).
 """
@@ -215,7 +215,7 @@ OUTCOMES = ("fixed", "refuted", "left")
 
 
 def _findings(raw: str) -> list[dict]:
-    """Findings in both forms: paia `### <Severity>` + `- <path>:<line>: <text>` bullets, and
+    """Findings in both forms: CI `### <Severity>` + `- <path>:<line>: <text>` bullets, and
     the local `### <n>. <Severity>` + `**Location:** <path>:<line>` + `**Problem:** <text>`."""
     found: list[dict] = []
     severity = ""
