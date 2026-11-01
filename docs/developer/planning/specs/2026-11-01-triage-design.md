@@ -1,8 +1,9 @@
 # Triage: issues vooraf routeren en zelf naar de dispatcher zetten
 
-Issue: #120 (het triage-deel) · Datum: 2026-11-01 · Milestone: M2 — Dispatcher · Area: dispatcher
+Issue: #120 · Datum: 2026-11-01 · Milestone: M2 — Dispatcher · Area: dispatcher
 
-**Status:** Ontwerp, keuzes van de gebruiker vastgelegd in de brainstorm van 2026-11-01.
+**Status:** Ontwerp. De keuzes van de gebruiker zijn vastgelegd in de brainstorm van 2026-11-01,
+de spec-review is verwerkt.
 **Bouwt voort op:** [M2-dispatcher](2026-10-27-m2-dispatcher-design.md) (de tick, de keten, de
 rem, `when: night`).
 **Bron:** de triage-ronde van paia (CorneeldH/personal_ai_agent#1138): de spec
@@ -10,8 +11,7 @@ rem, `when: night`).
 `src/controller/triage.py` en `scripts/controller_triage.py`, en het bewijs
 `deploy/beelink/controller-triage-verification.md`.
 
-#120 dekt twee dingen: triage en `auto_aanbevolen`. Deze spec gaat alleen over triage.
-`auto_aanbevolen` krijgt een eigen spec.
+`auto_aanbevolen` is afgesplitst naar #168. Deze spec gaat alleen over triage.
 
 ## Probleem
 
@@ -44,8 +44,10 @@ verificatiebestand:
 - **De hercontrole werkt.** Op 2026-10-22 sloeg de ronde 2 van de 4 issues over omdat ze
   tussen oordeel en schrijven waren gewijzigd.
 
-Paia heeft ongeveer 14 issues met een triage-comment. Die markers gebruiken de oude sleutels
-(`soort`, `versie`, `poort`, `blokkers`, `label3`).
+Paia heeft ongeveer 14 issues met een triage-comment, in twee vormen. Comments van vóór
+2026-10-24 gebruiken `<!-- paia: {"soort", "versie", "poort", "blokkers", "label3"} -->`.
+Daarna schrijft paia `<!-- lighthouse: {"kind", "version", "gate", "blockers", "label3"} -->`
+(`render_marker` in `src/controller/triage.py`).
 
 ## Doel
 
@@ -54,21 +56,23 @@ Paia heeft ongeveer 14 issues met een triage-comment. Die markers gebruiken de o
    in het nachtvenster, zodat de gebruiker de avond heeft om te corrigeren.
 2. Elk getrieerd issue heeft een triage-comment met de routeregel. Bij 4c staan daar ook de
    ontwerpvragen met opties in.
-3. Een tweede ronde wijzigt niets aan een issue dat al getrieerd is. De enige uitzondering is
-   een issue dat op een open blokkeerder of een blokkadelabel stond, als die is weggevallen.
+3. Een tweede ronde wijzigt niets aan een issue dat al getrieerd is. De uitzondering is een
+   issue dat op een vaste stop stond (een open blokkeerder, een blokkadelabel of een gebroken
+   invariant), als die stop is weggevallen.
 4. Triage draait per repo, en alleen als die repo het aanzet.
 
 ## Buiten scope
 
-- `auto_aanbevolen` (eigen spec, het andere deel van #120).
+- `auto_aanbevolen` (#168).
 - Labels zetten of wijzigen, issues sluiten, of `blocked_by`-relaties leggen. De ronde meldt
   het en laat het aan de gebruiker.
 - Wijzigingen aan decide en apply van de tick. Triage levert alleen invoer aan waar de tick al
   op draait: de status `Controller` en een `🤖 Handoff`.
 - De timer zelf. Die hoort bij de host-deploy, net als `controller-tick.timer` (M2, *De
   timer*).
-- De overstap van paia. Die gebeurt pas als deze functie draait. Pas daarna kunnen
-  `controller_triage.py` en `triage.py` weg uit paia (AC 4 van #120).
+- Lighthouse dispatchbaar maken. Dat doen de M2-issues (#118). Het is een voorwaarde voor AC 9.
+- De overstap van paia. Die gebeurt pas als deze functie draait. Pas daarna kan
+  `controller_triage.py` weg uit paia (AC 3 van #120).
 
 ## Approaches
 
@@ -97,25 +101,44 @@ Het nieuwe package `internal/triage` bevat de pure logica: het kandidaatfilter, 
 regels, het schema en de prompt, de validatie, de uitkomst en de comment-teksten. Het is te
 testen zonder netwerk en zonder `claude`. Het commando staat in `internal/cli/triage.go`.
 
-Go hergebruikt `internal/forge` voor issues, comments, board en status, `internal/protocol`
-voor de handoff en de marker-lezers, `internal/repoconfig` en `internal/hostconfig` voor de
-configuratie, en de usage-rem van M2.
+**Wat er al is:** `internal/forge` (`OpenIssues`, `Issue`, `Comments`, `CreateComment`,
+`BoardItems`, `BranchPRs`, `SetStatus`, `RoleName`), `internal/protocol` (`ParseHeader`,
+`ParseHandoff`, `IsAnswer`), de `Trust` van `internal/dispatch`, `repoconfig.Dispatchable`,
+`internal/hostconfig` en de usage-rem van M2.
+
+**Wat er bij moet** *(eigen keuze na spec-review, r1-f14)*:
+
+- in `internal/forge`:
+  - per issue de labels, de body, de auteur, `updatedAt`, en de milestone met status en
+    beschrijving;
+  - de issues die in de laatste 30 dagen in een milestone zijn gesloten;
+  - de open PR's die naar een issue verwijzen;
+  - een issue aan het board toevoegen (voor een issue zonder board-item);
+- in `internal/repoconfig`: het lezen van `[labels]` en `[controller.triage]`;
+- in `internal/protocol`: een lezer voor de triage-marker. Er bestaat nu alleen een lijst met
+  prefixen (`artefactMarkers`).
 
 ### Het commando
 
 `lighthouse triage [--dry-run] [--issue <repo>#<nr>]...`
 
-- Zonder argumenten loopt het over de repo's in `[dispatch] repos` van `host.toml` die een
-  `[triage]`-tabel hebben. Per repo volgt het de stappen hieronder.
+- Het loopt over de repo's in `[dispatch] repos` van `host.toml` die een tabel
+  `[controller.triage]` hebben. Die lijst is de enige bron. Een repo die er niet in staat,
+  bestaat voor de ronde niet *(eigen keuze na spec-review, r1-f4)*.
 - `--dry-run` doet de oordelen, maar schrijft niets. De routeregels gaan naar stdout. Dit is
   het gereedschap om de prompt te ijken (zie *Testen en bewijs*).
 - `--issue` mag alleen samen met `--dry-run`. Het beoordeelt precies die issues, ook als ze
   buiten het kandidaatfilter vallen.
-- Exitcodes, zoals in paia:
-  - `0`: de ronde heeft gedraaid.
-  - `1`: de ronde is overgeslagen. Er was niets te doen, `[triage]` stond nergens aan, de rem
-    stond aan of de pauzevlag was gezet.
+- Exitcodes:
+  - `0`: de ronde heeft gedraaid. Dat geldt ook bij nul kandidaten, en bij een ronde die
+    halverwege stopt op de rem.
+  - `1`: de ronde is overgeslagen. Er stond in geen enkele repo triage aan, de rem stond bij de
+    start aan, of de pauzevlag was gezet.
   - `2`: fout. Ook een paniek wordt `2`, zodat de unit op `failed` komt.
+
+  Nu geeft `cli.Execute` elke fout exitcode `1` (`internal/cli/root.go`). Daarom krijgt de CLI
+  een getypeerde exitfout die `execute` naar zijn code vertaalt. Een gewone fout van
+  `triage` wordt `2` *(eigen keuze na spec-review, r1-f2)*.
 - Een eigen `triage.lock` voorkomt dat twee rondes tegelijk lopen. De ronde neemt `tick.lock`
   niet: de tick mag doordraaien.
 - Per ronde en per repo schrijft het commando één samenvattingsregel naar stderr, met de
@@ -124,34 +147,49 @@ configuratie, en de usage-rem van M2.
 
 ### Configuratie
 
-Nieuwe tabel `[triage]` in `lighthouse.toml`. Staat de tabel er, dan staat triage aan voor die
-repo. De repo moet ook `[controller]` hebben en in `[dispatch] repos` staan. Zonder die twee is
-er geen afnemer, en dan geeft de ronde voor die repo een luide fout.
+Nieuwe subtabel `[controller.triage]` in `lighthouse.toml`, zoals AC 2 van #120 vraagt
+(configuratie per repo in `[controller]`) *(eigen keuze na spec-review, r1-f17)*. Staat de
+tabel er, dan staat triage aan voor die repo.
 
 | Sleutel | Standaard | Doel |
 |---|---|---|
-| `milestones_only` | `true` | Alleen issues met een milestone zijn kandidaat. Met `false` doet elk open issue mee. |
+| `milestones_only` | `true` | Alleen issues met een open milestone zijn kandidaat. Met `false` doet elk open issue mee. |
 | `wait_for_night` | `true` | Het correctievenster. Met `true` schrijft de ronde bij een doorgezet issue een `🤖 Handoff` met `when: night`. Met `false` zet ze alleen de status, en start de eerstvolgende tick het issue meteen. |
-| `max_forwarded` | `5` | Hoogstens zoveel issues per ronde naar `Controller`. Is dat aantal bereikt, dan stopt de ronde voor die repo. |
-| `max_judgments` | `15` | Hoogstens zoveel oordelen per ronde, om de usage te begrenzen. |
+| `max_forwarded` | `5` | Na zoveel doorgezette issues stopt de ronde voor die repo. |
+| `max_judgments` | `15` | Hoogstens zoveel oordelen per ronde en per repo, om de usage te begrenzen. |
 
-Een onbekende sleutel of een ongeldige waarde is een
-fout, zoals bij `[dispatch]`. *Mijn keuze:* de tabel staat per repo, omdat de keuze om een
-repo te trièren bij het project hoort. De limieten tellen per repo.
+Een onbekende sleutel of een ongeldige waarde is een fout, zoals bij `[dispatch]`. *Mijn
+keuze:* de tabel staat per repo, omdat de keuze om een repo te triëren bij het project hoort.
 
-`init` schrijft `[triage]` niet. Triage staat pas aan als de gebruiker de tabel zelf toevoegt.
+**Voorwaarden per repo**, getoetst vóór het eerste oordeel. Faalt er één, dan slaat de ronde
+die repo over met een luide fout, en eindigt ze met exitcode `2`:
+
+- `repoconfig.Dispatchable(r)` geeft `nil`. Dat dekt `[controller]`,
+  `[usage_guard] controller = true` en een compleet `[forge.board]`.
+- `[forge.board] status_options` heeft ook de optie `To do`. Triage leest en zet die
+  *(eigen keuze na spec-review, r1-f3)*.
+- Bij `wait_for_night = true` valt het account van het token in `answer_permissions`. Anders
+  leest de tick de handoff niet. Hij ziet dan geen 🤖-comment, en start het issue meteen,
+  zonder venster (`internal/dispatch/decide.go`, de start van een issue zonder comments)
+  *(eigen keuze na spec-review, r1-f5)*.
+
+`init` schrijft `[controller.triage]` niet. Triage staat pas aan als de gebruiker de tabel zelf
+toevoegt.
 
 ### Kandidaten
 
 Een issue is kandidaat als het aan alles hieronder voldoet. Dit filter is deterministisch.
 
-1. Het issue is open. Met `milestones_only = true` heeft het een milestone. Die milestone moet
-   open zijn.
+1. Het issue is open. Met `milestones_only = true` heeft het een milestone, en die milestone
+   is open.
 2. Het staat op board-Status `To do`, of het heeft nog geen status. Een issue dat nog niet op
    het board staat, telt als "geen status".
 3. Het heeft geen geldige triage-marker (zie *Marker*).
-4. Er staat geen 🤖-comment op. Zo'n issue zat al in de keten. Ook een handoff die de ronde
-   eerder zelf schreef, telt hier mee.
+4. Er staat geen 🤖-comment op die de dispatcher als protocolkop leest. Dat is een comment van
+   een auteur die de `Trust` van de dispatcher vertrouwt, en die door `protocol.ParseHeader`
+   komt. Zo'n issue zat al in de keten. Ook een handoff die de ronde eerder zelf schreef, telt
+   hier mee. Een 🤖-comment van een vreemde auteur telt niet *(eigen keuze na spec-review,
+   r1-f5)*.
 5. Er loopt nog geen werk aan:
    - geen open PR die naar het issue verwijst;
    - geen lokale of remote branch `issue-<nr>-*`;
@@ -161,8 +199,7 @@ Een issue is kandidaat als het aan alles hieronder voldoet. Dit filter is determ
    Een issue dat op regel 5 afvalt, krijgt een regel op stderr met wat er gevonden is. Het telt
    in de samenvatting onder "lopend werk".
 
-Volgorde: eerst `Priority`, dan het issuenummer. Dat is dezelfde volgorde als de rij
-`Controller` in de tick.
+Volgorde: eerst `Priority`, dan het issuenummer *(eigen keuze na spec-review, r1-f6)*.
 
 ### Vaste regels vóór het model
 
@@ -174,12 +211,19 @@ Go beslist zelf, zonder model:
   alleen de redundantie. Go schrijft de routeregel zelf, en de reden noemt de open
   blokkeerders. Zegt het model poort 0 terwijl Go geen blokkade vindt, dan is het oordeel
   ongeldig.
-- **Gebroken invariant.** `docs/developer/labels.md` eist precies één area-label en hoogstens
-  één blokkadelabel. Breekt een issue dat al, dan corrigeert de ronde niets en zet ze het
-  issue niet door. De comment meldt de afwijking. Het issue krijgt wel een marker, zodat de
-  volgende ronde het niet opnieuw meldt. Paia vulde ontbrekende labels aan. Lighthouse doet
-  dat niet: een ontbrekend area-label is hier ook een gebroken invariant.
-- **Feiten die Go meegeeft als data:**
+- **Gebroken invariant.** De invariant volgt uit `[labels]`, zoals `lighthouse-write-issue`
+  stap 3a en 3b *(eigen keuze na spec-review, r1-f13)*:
+  - met `labels.location_prefix`: precies één label met dat prefix;
+  - met `labels.area_prefix`: precies één label met dat prefix;
+  - hoogstens één blokkadelabel (de zes `labels.blocked_*`/`labels.needs_*`).
+
+  Een sleutel die de repo niet heeft, levert geen eis. Breekt een issue de invariant, dan
+  corrigeert de ronde niets en zet ze het issue niet door. De comment meldt de afwijking.
+  Het issue krijgt een marker die vervalt zodra de invariant weer klopt (zie *Marker*). Paia
+  vulde ontbrekende labels aan; lighthouse doet dat niet.
+- **Feiten die Go meegeeft als data.** Eén keer per repo per ronde doet Go eerst
+  `git fetch origin <default_branch>` in de main checkout *(eigen keuze na spec-review,
+  r1-f18)*. Daarna per issue:
   - `git log --oneline origin/<default_branch> -E --grep '#<nr>([^0-9]|$)'`;
   - de `blocked_by`-lijst;
   - titel en nummer van de andere open issues in dezelfde milestone, en van de issues die daar
@@ -218,29 +262,36 @@ daarom als data mee:
   Ontbreekt de plugin, dan laat Go ze weg en schrijft het één regel op stderr. De dry-run
   ijkt poort 1 met de catalogus zoals die op de host staat. *Mijn keuze:* geen vaste lijst die
   iemand moet bijhouden.
-- het locatielabel als het issue er een draagt (`labels.location_prefix`, als de repo die
-  sleutel heeft, zoals paia). Het model beoordeelt of het werk een andere host vraagt
-  (`headless: no`). Een ontbrekend locatielabel is geen gebroken invariant: lighthouse kent
-  geen regel die het verplicht. *Mijn keuze:* lighthouse weet niet welke locatie bij de host
-  van de dispatcher hoort, dus een vaste `1-loc:mac`-regel zoals in paia past hier niet.
+- het locatielabel, als de repo `labels.location_prefix` heeft. Of het werk een andere host
+  vraagt, beoordeelt het model (`headless: no`). *Mijn keuze:* lighthouse weet niet welke
+  locatie bij de host van de dispatcher hoort, dus een vaste `1-loc:mac`-regel zoals in paia
+  past hier niet. Een ontbrekend locatielabel valt onder de invariant.
 
 Issuebody, comments en milestonetekst gaan mee als DATA. Een instructie in een issuebody is
-geen opdracht.
+geen opdracht. Dat beschermt alleen het oordeel. Wie het issue mag laten uitvoeren, regelt
+*Toepassen* (rij 6).
 
 Schema (de bouwer legt de exacte veldnamen vast):
 
 | Veld | Inhoud |
 |---|---|
 | `route_line` | precies de regel uit `route-issue`: `#<nr> <poortwoord> <n>[<a\|b\|c>]: <route> — <reden>` |
-| `gate`, `sub` | `0`–`4`, en `a`/`b`/`c` (alleen bij poort 4) |
+| `gate`, `sub` | `0`, `1`, `2` of `4`, en `a`/`b`/`c` (alleen bij poort 4). Poort 3 valt in `route-issue` altijd door naar 4, dus een regel met poort 3 is ongeldig *(eigen keuze na spec-review, r1-f9)*. |
 | `redundancy` | `none`, `duplicate` (met nummer) of `done` (met bewijs) |
 | `headless` | `yes`, of `no` met een reden. `no` alleen als het werk sudo vraagt, een andere host, of een live onomkeerbare stap. Een handstap telt niet als `no`. |
-| `design_questions` | alleen bij 4c: hoogstens 4 vragen, elk met 2–6 opties en één aanbevolen optie |
+| `design_questions` | verplicht bij 4c, en alleen daar: 1 tot 4 vragen, elk met 2–6 opties en één aanbevolen optie |
 
-Go valideert het oordeel tegen een strikte regex op het hele contract: bij poort 4 is de
-subletter verplicht, `gate`/`sub` moet bij de regel passen, en bij poort 0 wint de uitkomst
-van Go. Een ongeldig oordeel betekent: geen actie op dit issue, geen marker, en een foutregel
-op stderr. De ronde gaat door met het volgende issue.
+Go valideert het oordeel tegen een strikte regex op het hele contract:
+
+- bij poort 4 is de subletter verplicht;
+- `gate`/`sub` moet bij de regel passen;
+- bij poort 0 wint de uitkomst van Go;
+- draagt het issue `labels.needs_shaping` of `labels.needs_decision`, dan moet het oordeel 4c
+  zijn, met ontwerpvragen. `route-issue` stuurt beide labels naar 4c (*A blocking label steers
+  the triage*). Elk ander oordeel is ongeldig *(eigen keuze na spec-review, r1-f1)*.
+
+Een ongeldig oordeel betekent: geen actie op dit issue, geen marker, en een foutregel op
+stderr. De ronde gaat door met het volgende issue.
 
 ### Toepassen
 
@@ -251,19 +302,26 @@ De eerste rij die past, wint, van boven naar beneden:
 | 1 | invariant gebroken | triage met de afwijking | — | ongewijzigd |
 | 2 | redundantie `duplicate` of `done` | triage met de kandidaat en het bewijs; er wordt niets gesloten | — | ongewijzigd |
 | 3 | poort 0 of 1 | triage (routeregel) | — | ongewijzigd |
-| 4 | `labels.needs_shaping` of `labels.needs_decision` | triage met ontwerpvragen | — | ongewijzigd |
-| 5 | poort 4c | triage met ontwerpvragen | — | ongewijzigd |
-| 6 | 4a, 4b of 2 met `headless: no` | triage met de reden waarom het interactief moet | — | ongewijzigd |
+| 4 | poort 4c (ook met `labels.needs_shaping` of `labels.needs_decision`) | triage met ontwerpvragen | — | ongewijzigd |
+| 5 | 4a, 4b of 2 met `headless: no` | triage met de reden waarom het interactief moet | — | ongewijzigd |
+| 6 | 4a, 4b of 2, maar de auteur van het issue valt niet in `answer_permissions` | triage met de reden: een vertrouwde gebruiker zet het zelf door | — | ongewijzigd |
 | 7 | 4a, 4b of 2 (ook met `labels.needs_hands` of `labels.needs_testing`) | triage | `when: night` als `wait_for_night` | → `Controller` |
 
 Rij 7 is het verschil met paia. Daar ging een issue met een `3-`-label nooit naar
 `Controller`. Hier gaan `labels.needs_hands` en `labels.needs_testing` wél door. De run werkt
 dan door tot de handstap, en stelt daar een Vraag of geeft het issue terug (M2, *Afloop*). Het
-issue blijft dan in `Controller`. Dat is de keuze van de gebruiker. De blokkadelabels en
-`labels.needs_shaping`/`labels.needs_decision` blijven buiten de dispatcher.
+issue blijft dan in `Controller`. Dat is de keuze van de gebruiker.
 
-Komt een issue op rij 7 terwijl `max_forwarded` al bereikt is, dan stopt de ronde voor die
-repo. Dat issue en de rest krijgen geen marker, en komen de volgende ronde aan de beurt.
+Rij 6 bestaat omdat de body de opdracht wordt van een run met schrijftools. M2 vertrouwt een
+comment alleen via `answer_permissions` (`internal/dispatch/gather.go`, `Complete`). Zonder
+triage bepaalde een mens welke issues een run kregen. Een buitenstaander die in een publieke
+repo een issue opent, zou met triage anders 's nachts een run op die tekst krijgen. Rij 6 legt
+dezelfde grens op de auteur van het issue, met dezelfde `Trust` *(eigen keuze na spec-review,
+r1-f8)*.
+
+Na het doorzetten van issue nummer `max_forwarded` stopt de ronde voor die repo. De issues die
+nog niet aan de beurt waren, krijgen geen marker, en komen de volgende ronde aan de beurt
+*(eigen keuze na spec-review, r1-f10)*.
 
 **De handoff** bij `wait_for_night = true`, in het formaat dat `protocol.ParseHandoff` leest:
 
@@ -282,9 +340,7 @@ Waarom dit zonder wijziging aan de tick werkt (`internal/dispatch/decide.go`, `h
 - Een handoff op de default branch krijgt de branch `issue-<nr>-<slug>`.
 - `when: night` stelt de start uit tot het venster `night` van `[dispatch]` begint.
 - Een doorgezet issue heeft geen open blokkeerder, want poort 0 zet niet door.
-
-De handoff staat op naam van het token van de host. Dat account moet in `answer_permissions`
-vallen, anders leest de tick de handoff niet (M2, *Antwoorden*).
+- Het token valt in `answer_permissions` (een voorwaarde per repo, zie *Configuratie*).
 
 Bij `wait_for_night = false` schrijft de ronde geen handoff. Dan geldt M2-regel 6: een issue in
 `Controller` zonder 🤖-comment start met `/lighthouse-start-issue <nr>`.
@@ -306,19 +362,22 @@ ronde eindigt dan met exitcode `2`. Een half afgemaakt issue maakt de ronde niet
 ### De rem
 
 De ronde gebruikt de rem van M2 (#116), met dezelfde definitie van "gemeten": een usage-cache
-die niet ouder is dan twee keer de TTL, ververst met `Refresh(false)`. Een `Busy` met zo'n
-verse cache telt ook als gemeten. Er is geen eis dat de meting nieuwer is dan de start van de
-ronde. Dat verhelpt het "niet vers"-probleem van paia.
+die niet ouder is dan twee keer de TTL. Er is geen eis dat de meting nieuwer is dan de start
+van de ronde. Dat verhelpt het "niet vers"-probleem van paia.
 
-Voor de start van de ronde gelden:
+Bij de start van de ronde gelden:
 
 - de pauzevlag van de dispatcher;
 - `halt_pct_session` en `halt_pct_week` uit `[usage]`.
 
 Staat één daarvan aan, of is de usage niet gemeten, dan slaat de ronde over met exitcode `1`
-en een regel met de reden. Voor elk volgend oordeel toetst de ronde de usage opnieuw, uit de
-cache. Komt de usage tijdens de ronde boven de drempel, dan stopt ze. Wat al geschreven is,
-blijft staan.
+en een regel met de reden.
+
+Voor elk oordeel roept de ronde `Refresh(false)` aan, en toetst ze de usage opnieuw. Een
+`Busy` met een cache die niet ouder is dan twee keer de TTL telt als gemeten. Staat de rem
+aan, of is de usage niet meer gemeten, dan stopt de ronde met een regel op stderr. Wat al
+geschreven is, blijft staan. Het commando eindigt dan met exitcode `0`, want de ronde heeft
+gedraaid *(eigen keuze na spec-review, r1-f16)*.
 
 Geheugen en plekken tellen niet mee: een oordeel is één kort proces, geen run.
 
@@ -333,30 +392,42 @@ De triage-comment begint met een artefactmarker, in de vorm die M0 vastlegde (be
 …
 ```
 
-Bij een deterministische stop draagt de marker die stop:
+Bij een vaste stop draagt de marker die stop:
 
 ```text
 <!-- lighthouse: {"kind": "triage", "version": 1, "gate": "0", "blockers": [114], "label": null} -->
+<!-- lighthouse: {"kind": "triage", "version": 1, "gate": "invariant"} -->
 ```
 
-- Bij poort 0 bevat `blockers` de nummers uit `blocked_by`, en `label` het blokkadelabel. Elk
-  ander blokkadelabel uit `docs/developer/labels.md` dat het issue bij de triage droeg, staat
-  ook in `label`, dus ook `labels.needs_shaping` en `labels.needs_decision` (rij 4).
-- Go toetst elke ronde, zonder model, of die stop nog geldt. Zijn alle blokkeerders gesloten
+- Bij poort 0 bevat `blockers` de nummers uit `blocked_by`. In `label` staat het blokkadelabel
+  dat het issue bij de triage droeg. Dat kan alleen `labels.blocked_issue`,
+  `labels.blocked_external`, `labels.needs_shaping` of `labels.needs_decision` zijn.
+  `labels.needs_hands` en `labels.needs_testing` komen niet in de marker, want die houden een
+  issue niet tegen (rij 7) *(eigen keuze na spec-review, r1-f11)*.
+- Een marker met `"gate": "invariant"` vervalt zodra Go de invariant weer ziet kloppen
+  *(eigen keuze na spec-review, r1-f12)*.
+- Go toetst elke ronde, zonder model, of de stop nog geldt. Zijn alle blokkeerders gesloten
   en is het label weg, dan vervalt de marker, en is het issue weer kandidaat. Een issue
   waarvan de beslissing genomen is en het label is weggehaald, komt zo vanzelf bij de
   dispatcher. Alleen de nieuwste marker telt. *Mijn keuze, zoals paia (`marker_geldig`).*
-- Een marker zonder deterministische stop vervalt nooit vanzelf.
+- Een marker zonder vaste stop vervalt nooit vanzelf.
 - De comment begint niet met 🤖. Hij verbergt dus geen handoff, en hij geldt ook niet als
   antwoord op een Vraag (`protocol.IsAnswer` negeert een comment die met een artefactmarker
   begint).
-- De lezer accepteert ook de marker van paia: `<!-- paia: {"soort": "triage", "versie": 1,
-  "poort": …, "blokkers": …, "label3": …} -->`. Zonder die lezer triëert lighthouse na de
-  overstap de ongeveer 14 paia-issues met zo'n comment opnieuw. Schrijven gebeurt alleen in de
-  nieuwe vorm. Een paia-marker met `label3` gelijk aan `labels.needs_hands` of
-  `labels.needs_testing` geldt als vervallen. Paia hield zulke issues tegen, deze spec niet
-  (rij 7), dus ze worden één keer opnieuw getrieerd. *Mijn keuze.*
 - Onderaan de comment staat in één regel hoe je corrigeert.
+
+**De markers van paia.** De lezer accepteert beide vormen die paia schreef (zie *Wat paia ons
+leert*). Zonder die lezer triëert lighthouse na de overstap de ongeveer 14 paia-issues met zo'n
+comment opnieuw:
+
+- `<!-- paia: {"soort", "versie", "poort", "blokkers", "label3"} -->`;
+- `<!-- lighthouse: {"kind", "version", "gate", "blockers", "label3"} -->`: hier is `label3`
+  een alias van `label` *(eigen keuze na spec-review, r1-f7)*.
+
+In beide vormen geldt een marker met `label3` gelijk aan `labels.needs_hands` of
+`labels.needs_testing` als vervallen. Paia hield zulke issues tegen, deze spec niet (rij 7),
+dus ze worden één keer opnieuw getrieerd. Schrijven gebeurt alleen in de nieuwe vorm, met
+`label`.
 
 ### Corrigeren
 
@@ -379,19 +450,21 @@ De herstelregel onderaan de comment zegt per uitkomst welke van deze drie geldt.
 
 ## Acceptatiecriteria
 
-1. Een issue op 4a, 4b of 2, zonder blokkade, `labels.needs_shaping` of
-   `labels.needs_decision`, staat na de ronde op `Controller`. Dat geldt ook met
-   `labels.needs_hands` of `labels.needs_testing`. Met `wait_for_night = true` staat er een
-   `🤖 Handoff` met `when: night` die `decide` als start beoordeelt.
+1. Een issue op 4a, 4b of 2 komt na de ronde op `Controller`, op twee voorwaarden: het heeft
+   geen blokkade, `labels.needs_shaping` of `labels.needs_decision`, en de auteur valt in
+   `answer_permissions`. Dat geldt ook met `labels.needs_hands` of `labels.needs_testing`. Met
+   `wait_for_night = true` staat er een `🤖 Handoff` met `when: night`, die `decide` als start
+   beoordeelt.
 2. Een 4c-issue, of een issue met `labels.needs_shaping` of `labels.needs_decision`, komt niet
    op `Controller`. Het krijgt een comment met ontwerpvragen en opties.
 3. Poort 0 en 1 houden hun status en krijgen alleen de comment.
 4. Een vermoedelijk dubbel of al afgerond issue wordt gemeld, niet gesloten en niet
    doorgezet.
 5. Een tweede ronde doet niets met een issue dat een geldige marker draagt. Dat geldt ook voor
-   een marker in de vorm van paia.
+   een marker in een van beide vormen van paia.
 6. Met `milestones_only = true` doet een issue zonder milestone niet mee. Met `false` wel.
-7. Een repo zonder `[triage]` wordt niet getrieerd.
+7. Een repo zonder `[controller.triage]` wordt niet getrieerd. Een repo die niet aan de
+   voorwaarden voldoet, geeft een luide fout en exitcode `2`.
 8. De ronde slaat over met exitcode `1` bij een rem of een pauzevlag, en met een verse cache
    (niet ouder dan twee keer de TTL) draait ze.
 9. Live bewijs op lighthouse: minstens één issue dat via de ronde op `Controller` kwam, met
@@ -403,15 +476,24 @@ De herstelregel onderaan de comment zegt per uitkomst welke van deze drie geldt.
 
 Unit, in `internal/triage` (zonder netwerk en zonder `claude`):
 
-- het kandidaatfilter: milestone aan/uit, status, marker (nieuw en paia), 🤖-comment, lopend
-  werk (PR, branch, worktree, runrij);
-- een vervallen marker: poort 0 met alle blokkeerders dicht en zonder label wordt weer
-  kandidaat, en met één blokkeerder nog open niet;
-- de vaste regels: poort 0, een gebroken invariant, een ontbrekend area-label;
+- het kandidaatfilter: milestone aan/uit, status, marker (nieuw en beide paia-vormen),
+  🤖-comment van een vertrouwde en van een vreemde auteur, en lopend werk (PR, branch,
+  worktree, runrij);
+- een vervallen marker:
+  - poort 0 met alle blokkeerders dicht en zonder label wordt weer kandidaat, en met één
+    blokkeerder nog open niet;
+  - een invariantmarker op een issue dat nu klopt;
+  - een paia-marker met `label3` `3-needs-hands`;
+- de vaste regels: poort 0, en de invariant met en zonder `location_prefix`/`area_prefix`;
 - de voorrang tussen de rijen van *Toepassen*. Bijvoorbeeld: 4b met `labels.needs_hands` gaat
-  door, 4b met `labels.needs_decision` niet;
-- de validatie van het oordeel: een goede routeregel, een kale `Poort 4` zonder subletter, en
-  een `gate`/`sub` die niet bij de regel past;
+  door, 4b van een vreemde auteur niet;
+- de validatie van het oordeel:
+  - een goede routeregel;
+  - een kale `Poort 4` zonder subletter;
+  - een regel met poort 3;
+  - een `gate`/`sub` die niet bij de regel past;
+  - 4b op een issue met `labels.needs_decision`;
+  - 4c zonder ontwerpvragen;
 - `max_forwarded` en `max_judgments`;
 - de hercontrole: een gewijzigde status geeft nul schrijfacties;
 - de schrijfvolgorde: de handoff staat vóór de status;
@@ -420,8 +502,11 @@ Unit, in `internal/triage` (zonder netwerk en zonder `claude`):
   levert een start na het begin van `night`;
 - de triage-comment is geen 🤖-kop, en `IsAnswer` geeft onwaar.
 
-Voor de CLI: een test met een nep-`claude` op het `PATH` die vaste JSON teruggeeft, en de
-forge-testserver uit `internal/forge/forgetest`.
+Voor de CLI:
+
+- een test met een nep-`claude` op het `PATH` die vaste JSON teruggeeft, en de
+  forge-testserver uit `internal/forge/forgetest`;
+- de exitcodes `0`, `1` en `2` door `cli.Execute` heen, ook voor een gewone fout en een paniek.
 
 **Vóór de eerste timer: de routekwaliteit.** Het headless oordeel mist de sessiecontext waar
 `route-issue` interactief op rekent. Schema en regex zeggen niets over de gekozen poort.
@@ -441,11 +526,13 @@ dezelfde issues. Wijkt de poort af, dan gaat de timer pas aan als de prompt is b
   codeblok, en de headings uit `headings.toml` in `[project] language`. De vragen volgen
   dezelfde limieten als een Vraag (`MAX_QUESTIONS`, de letters `a`–`f`), maar de comment is
   geen 🤖 Vraag.
-- Hoe de ronde de board-status per issue leest. Een issue dat nog niet op het board staat,
-  moet eerst worden toegevoegd vóór de status gezet kan worden.
-- De systemd-unit voor de host-deploy: een `--user`-oneshot met `TimeoutStartSec` ≥
-  `max_judgments` × de oordeeltimeout plus marge, en een tijdstip vóór het begin van `night`.
-  In paia was dat 18:00.
+- Hoe de ronde de board-status per issue leest, en hoe ze een issue zonder board-item
+  toevoegt voordat ze de status zet.
+- De systemd-unit voor de host-deploy *(eigen keuze na spec-review, r1-f15)*:
+  - een `--user`-oneshot met `SuccessExitStatus=1`;
+  - `TimeoutStartSec` ≥ het aantal getrieerde repo's × `max_judgments` × de oordeeltimeout,
+    plus marge;
+  - een tijdstip vóór het begin van `night`. In paia was dat 18:00.
 
 ## Afhankelijkheden
 
