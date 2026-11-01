@@ -1202,6 +1202,11 @@ details.who summary:focus-visible {
   font-size: 12.5px;
 }
 
+.story-map {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
 .story-items {
   display: flex;
   flex-direction: column;

@@ -15,6 +15,7 @@
       "title": "lighthouse init",
       "command": "lighthouse init",
       "where": "your repo",
+      "map": {"label": "Map", "href": "repo.html"},
       "items": [
         {
           "form": "workflow-skill",

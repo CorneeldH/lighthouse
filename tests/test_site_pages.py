@@ -88,7 +88,7 @@ def test_site_links_resolve():
             assert target.is_file(), f"{path.name}: {link} points nowhere"
 
 
-MAP_PAGES = ["loop.html", "session.html", "system.html", "reference.html", "config.html"]
+MAP_PAGES = ["loop.html", "session.html", "system.html", "reference.html", "config.html", "repo.html"]
 
 
 @pytest.mark.parametrize("page", MAP_PAGES)
@@ -124,10 +124,11 @@ def test_index_lists_the_six_maps():
     assert "session.html" in links
     assert "system.html" in links
     assert "config.html" in links
+    assert "repo.html" in links
     text = (SITE / "index.html").read_text(encoding="utf-8")
-    for issue in ["#101", "#103"]:
+    for issue in ["#103"]:
         assert issue in text, f"index.html does not name {issue}"
-    for issue in ["#100", "#102", "#104"]:
+    for issue in ["#100", "#101", "#102", "#104"]:
         assert issue not in text, f"index.html still names {issue} as planned"
     assert 'id="maps"' in text
     assert "<h2>The loop</h2>" in text and "<h2>The chain</h2>" not in text
@@ -155,3 +156,10 @@ def test_guide_links_to_the_config_map():
     section = text.split("## Configure lighthouse.toml", 1)[1].split("\n## ", 1)[0]
     assert "](site/config.html)" in section
     assert "[The configuration](https://corneeldh.github.io/lighthouse/config.html)" in section
+
+
+def test_guide_links_to_the_repo_map():
+    text = GUIDE.read_text(encoding="utf-8")
+    section = text.split("## Run lighthouse init", 1)[1].split("\n## ", 1)[0]
+    assert "](site/repo.html)" in section
+    assert "[Your repo after init](https://corneeldh.github.io/lighthouse/repo.html)" in section

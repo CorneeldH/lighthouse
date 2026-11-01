@@ -661,6 +661,11 @@ export function renderStory(root, data) {
       apart.append(el("p", "story-where", item.where), storyItem(item));
       node.append(apart);
     }
+    if (step.map) {
+      const link = el("a", "story-map", step.map.label);
+      link.href = step.map.href;
+      node.append(link);
+    }
     story.append(node);
   });
   const sections = data.sections.map((section) => {
