@@ -72,7 +72,7 @@ def test_python_job_runs_in_three_shards():
     assert re.search(r"^      fail-fast: false\s*$", python, re.MULTILINE)
     assert re.search(r"^        shard: \[1, 2, 3\]\s*$", python, re.MULTILINE)
     steps = re.split(r"(?m)^      - ", python)[1:]
-    pytest_steps = [s for s in steps if "uv run pytest -q -n auto" in s]
+    pytest_steps = [s for s in steps if "uv run pytest -n auto" in s]
     assert len(pytest_steps) == 1, pytest_steps
     assert "LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3" in pytest_steps[0]
     assert python.count("LIGHTHOUSE_PYTEST_SHARD") == 1
@@ -80,6 +80,13 @@ def test_python_job_runs_in_three_shards():
     assert len(grep) == 1, grep
     assert re.match(r"if: matrix\.shard == 1\n        run: ci/literal-grep\.sh$", grep[0], re.MULTILINE), grep[0]
     assert python.count("ci/literal-grep.sh") == 1
+
+
+def test_python_job_shows_the_pytest_header():
+    """Fails when `-q` returns: it hides the header, the only line that names the part (#163)."""
+    python = _jobs()["python"]
+    runs = re.findall(r"run: (uv run pytest[^\n]*)", python)
+    assert runs == ["uv run pytest -n auto"], runs
 
 
 def test_node_jobs_cache_npm():

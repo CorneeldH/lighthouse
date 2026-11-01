@@ -89,3 +89,17 @@ def test_modifyitems_keeps_only_its_shard(monkeypatch):
     assert [i.nodeid for i in items] == kept
     assert len(deselected) == 1
     assert [i.nodeid for i in deselected[0]] == [n for n in NODEIDS if n not in kept]
+
+
+def test_report_header_names_the_shard(monkeypatch):
+    monkeypatch.setenv(ENV, "2/3")
+    config, _ = _config()
+    conftest.pytest_configure(config)
+    assert conftest.pytest_report_header(config) == [f"{ENV}=2/3"]
+
+
+def test_report_header_empty_without_env(monkeypatch):
+    monkeypatch.delenv(ENV, raising=False)
+    config, _ = _config()
+    conftest.pytest_configure(config)
+    assert conftest.pytest_report_header(config) == []
