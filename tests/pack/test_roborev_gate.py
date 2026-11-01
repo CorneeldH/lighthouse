@@ -329,6 +329,19 @@ def test_classify_without_heading_names_the_first_line():
     assert got == {"verdict": "skip", "reason": "review faalde: Error: codex: 401"}
 
 
+def test_classify_without_heading_skips_roborev_log_lines():
+    raw = "2026/11/01 15:04:29 ci review: ref=a..b agents=[codex]\nError: codex: 401 unauthorized\n"
+    assert rg.classify(raw) == {"verdict": "skip", "reason": "review faalde: Error: codex: 401 unauthorized"}
+
+
+def test_classify_with_only_log_lines_names_the_first():
+    raw = "2026/11/01 15:04:29 ci review: ref=a..b agents=[codex]\n2026/11/01 15:04:30 done\n"
+    assert rg.classify(raw) == {
+        "verdict": "skip",
+        "reason": "review faalde: 2026/11/01 15:04:29 ci review: ref=a..b agents=[codex]",
+    }
+
+
 def test_classify_cuts_a_long_first_line_at_200_chars():
     got = rg.classify("x" * 500)
     assert got["reason"] == "review faalde: " + "x" * 200

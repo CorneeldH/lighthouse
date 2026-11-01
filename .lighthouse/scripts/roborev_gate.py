@@ -205,6 +205,8 @@ NUMBERED = re.compile(r"^### \d+\. ")
 BULLET = re.compile(r"^- (?P<path>\S+?):(?P<line>\d+):\s*(?P<text>.*)$")
 LOCATION = re.compile(r"^\*\*Location:\*\*\s*(?P<path>\S+?):(?P<line>\d+)")
 PROBLEM = re.compile(r"^\*\*Problem:\*\*\s*(?P<text>.*)$")
+# roborev's own log lines on stderr (`2026/11/01 15:04:29 ci review: ref=...`): never the reason.
+LOG_LINE = re.compile(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} ")
 DONE_KINDS = ("Review Complete", "Combined Review", "Review Passed")
 OUTCOMES = ("fixed", "refuted", "left")
 
@@ -250,7 +252,9 @@ def classify(raw: str) -> dict:
     `Review Passed` give `{"verdict": "done", "sha", "kind", "findings"}` (a pass has no
     findings; a complete review that parses to none is `review faalde: bevindingen onleesbaar`); any other kind, `Review Failed` and `Review Skipped` included, gives
     `{"verdict": "skip", "reason": "review faalde: <kind>"}`. No heading: the reason names the
-    first non-empty line (200 characters at most); empty output: `geen output`.
+    first non-empty line that is no roborev log line (`2026/11/01 15:04:29 ...`; the skill
+    redirects stderr into the file), else the first line; 200 characters at most; empty
+    output: `geen output`.
 
     Measured on roborev v0.69.0 (`roborev ci review --agent codex --ref <base>..<head>`, no
     `.roborev.toml`): the exit code is 0 also when the review has findings ("Agent assessment:
@@ -261,7 +265,8 @@ def classify(raw: str) -> dict:
     """
     match = HEADING.search(raw)
     if not match:
-        first = next((ln.strip() for ln in raw.splitlines() if ln.strip()), "")
+        lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        first = next((ln for ln in lines if not LOG_LINE.match(ln)), lines[0] if lines else "")
         return {"verdict": "skip", "reason": f"review faalde: {first[:200] or 'geen output'}"}
     kind = match["kind"]
     if kind not in DONE_KINDS:
