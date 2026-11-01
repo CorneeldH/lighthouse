@@ -297,6 +297,27 @@ def test_classify_local_finding_without_location_has_no_path():
     assert _triples(rg.classify(raw)) == [(None, None, "high")]
 
 
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        ("### Major\n\n- a.py:3: bad\n", ("a.py", 3, "major")),
+        (
+            "## Findings\n\n### 1. Warning\n\n**Location:** b.py:7\n\n**Problem:** bad\n",
+            ("b.py", 7, "warning"),
+        ),
+    ],
+)
+def test_classify_keeps_a_finding_under_an_unknown_severity(body, expected):
+    got = rg.classify(f"## roborev: Review Complete (`abc1234`)\n\n{body}")
+    assert got["verdict"] == "done" and _triples(got) == [expected]
+
+
+@pytest.mark.parametrize("kind", ["Review Complete", "Combined Review"])
+def test_classify_complete_review_without_readable_findings_is_a_skip(kind):
+    got = rg.classify(f"## roborev: {kind} (`abc1234`)\n\n**Verdict:** 2 findings.\n\nSomething odd.\n")
+    assert got == {"verdict": "skip", "reason": "review faalde: bevindingen onleesbaar"}
+
+
 @pytest.mark.parametrize("kind", ["Review Failed", "Review Skipped"])
 def test_classify_failed_heads_skip(kind):
     got = rg.classify(FIX("review-failed.md").replace("Review Failed", kind))

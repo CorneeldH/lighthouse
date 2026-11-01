@@ -200,7 +200,7 @@ def gate(root: pathlib.Path, budget: Callable[[], tuple[int, str]] = run_budget)
 
 
 HEADING = re.compile(r"^## roborev: (?P<kind>.+?) \(`(?P<sha>[^`]+)`\)\s*$", re.MULTILINE)
-SEVERITY = re.compile(r"^### (?:\d+\. )?(?P<severity>Critical|High|Medium|Low|Info)\s*$", re.IGNORECASE)
+SEVERITY = re.compile(r"^### (?:\d+\. )?(?P<severity>\S.*?)\s*$")
 NUMBERED = re.compile(r"^### \d+\. ")
 BULLET = re.compile(r"^- (?P<path>\S+?):(?P<line>\d+):\s*(?P<text>.*)$")
 LOCATION = re.compile(r"^\*\*Location:\*\*\s*(?P<path>\S+?):(?P<line>\d+)")
@@ -248,7 +248,7 @@ def classify(raw: str) -> dict:
 
     Heading: ``## roborev: <kind> (`<sha>`)``. `Review Complete`, `Combined Review` and
     `Review Passed` give `{"verdict": "done", "sha", "kind", "findings"}` (a pass has no
-    findings); any other kind, `Review Failed` and `Review Skipped` included, gives
+    findings; a complete review that parses to none is `review faalde: bevindingen onleesbaar`); any other kind, `Review Failed` and `Review Skipped` included, gives
     `{"verdict": "skip", "reason": "review faalde: <kind>"}`. No heading: the reason names the
     first non-empty line (200 characters at most); empty output: `geen output`.
 
@@ -267,6 +267,8 @@ def classify(raw: str) -> dict:
     if kind not in DONE_KINDS:
         return {"verdict": "skip", "reason": f"review faalde: {kind}"}
     findings = [] if kind == "Review Passed" else _findings(raw[match.end():])
+    if kind != "Review Passed" and not findings:
+        return {"verdict": "skip", "reason": "review faalde: bevindingen onleesbaar"}
     return {"verdict": "done", "sha": match["sha"], "kind": kind, "findings": findings}
 
 
