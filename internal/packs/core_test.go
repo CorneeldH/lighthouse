@@ -58,6 +58,8 @@ func TestCorePack(t *testing.T) {
 		".claude/hooks/lighthouse/commit-test-gate.sh",
 		".claude/hooks/lighthouse/main-commit-gate.sh",
 		".claude/hooks/lighthouse/md-link-check.sh",
+		".claude/hooks/lighthouse/permission-note.sh",
+		".claude/hooks/lighthouse/permission-note/note.py",
 		".claude/hooks/lighthouse/pr-create-gate.sh",
 		".claude/hooks/lighthouse/usage-gate.sh",
 		".claude/hooks/lighthouse/usage-gate/alarm.sh",
@@ -129,7 +131,7 @@ func TestCorePack(t *testing.T) {
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
 	}
-	if kinds[KindBlock] != 1 || kinds[KindHook] != 15 {
+	if kinds[KindBlock] != 1 || kinds[KindHook] != 16 {
 		t.Fatalf("kinds = %v", kinds)
 	}
 	var tools []string

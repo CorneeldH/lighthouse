@@ -137,6 +137,18 @@
           }
         ]
       }
+    ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|worker_permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/permission-note.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   },
   "permissions": {

@@ -76,6 +76,14 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
             "tool_name": "Bash",
             "tool_input": {"command": "ls"},
         }
+    if name == "permission-note.sh":
+        return {
+            "hook_event_name": event,
+            "session_id": "s1",
+            "cwd": str(worktree),
+            "notification_type": "permission_prompt",
+            "message": "Claude needs your permission to use Write",
+        }
     if name == "main-commit-gate.sh":
         # A commit on a feature branch: the guard reads forge.default_branch.
         cmd = "git commit -m x"
@@ -142,6 +150,7 @@ def test_every_registration_has_a_payload() -> None:
         "md-link-check.sh",
         "code-language-check.sh",
         "usage-gate.sh",
+        "permission-note.sh",
     }
 
 

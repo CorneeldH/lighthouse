@@ -117,6 +117,18 @@
         ]
       }
     ],
+    "Notification": [
+      {
+        "matcher": "permission_prompt|worker_permission_prompt",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/permission-note.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
