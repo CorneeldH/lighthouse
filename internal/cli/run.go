@@ -86,11 +86,8 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	defer func() { _ = st.Close() }()
 
 	c := env.client(repo.Slug, token)
-	pre, err := prepare(ctx, st.DB, c, repo)
+	pre, err := measuredPre(ctx, env, st.DB, cfg, c, repo, errOut)
 	if err != nil {
-		return err
-	}
-	if pre.Stands, err = stands(ctx, env, cfg, repo, pre.OpenRuns, errOut); err != nil {
 		return err
 	}
 	login := sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
@@ -99,7 +96,7 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 		return err
 	}
 	var actions []dispatch.Action
-	for _, a := range dispatch.Decide(dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: []dispatch.RepoInput{in}}) {
+	for _, a := range dispatch.Decide(decideInput(env, cfg, []dispatch.RepoInput{in})) {
 		if a.Issue == issue && runKinds[a.Kind] {
 			actions = append(actions, a)
 		}

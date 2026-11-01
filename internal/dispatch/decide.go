@@ -20,6 +20,10 @@ type Input struct {
 	Now   time.Time   `json:"now"`
 	Night string      `json:"night"`
 	Repos []RepoInput `json:"repos"`
+	// MaxWait and MaxRuntime are host.toml [dispatch] max_wait and max_runtime; zero turns
+	// the time rules that use them off.
+	MaxWait    Duration `json:"max_wait,omitempty"`
+	MaxRuntime Duration `json:"max_runtime,omitempty"`
 }
 
 // RepoInput is what Decide knows about one repo.
@@ -30,7 +34,8 @@ type RepoInput struct {
 	DefaultBranch string                    `json:"default_branch"`
 	Installed     map[string]bool           `json:"installed"`
 	History       []runs.Row                `json:"history"`
-	Stands        map[int64]workplace.Stand `json:"stands"` // per open run id; missing = not measurable
+	Stands        map[int64]workplace.Stand `json:"stands"`         // per open run id; missing = not measurable
+	Runs          map[int64]RunState        `json:"runs,omitempty"` // per open run id; missing = not measured
 }
 
 // Kind is what an action does.

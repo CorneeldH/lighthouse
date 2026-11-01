@@ -76,12 +76,25 @@ func SaveTickState(ctx context.Context, db *sql.DB, repo string, s TickState, no
 }
 
 // Boundaries are the moments a tick must look again even when nothing on the board changed:
-// per open run the end of MaxRuntime and MaxWait, and the start of the night window today
-// and yesterday, in the zone of now.
-func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, now time.Time) []time.Time {
+// per open run the end of MaxRuntime and MaxWait, MaxWait after its last activity (the last
+// transcript event, or without a transcript the forge updated_at of its session) and after
+// its permission prompt, and the start of the night window today and yesterday, in the zone
+// of now. Activity and prompts stay out of the fingerprint; these boundaries make the tick
+// look when their MaxWait runs out.
+func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, states map[int64]RunState, now time.Time) []time.Time {
 	var out []time.Time
 	for _, r := range open {
 		out = append(out, r.StartedAt.Add(d.MaxRuntime), r.StartedAt.Add(d.MaxWait))
+		s := states[r.ID]
+		switch {
+		case s.Transcript != nil:
+			out = append(out, s.Transcript.LastEvent.Add(d.MaxWait))
+		case !s.SessionAt.IsZero():
+			out = append(out, s.SessionAt.Add(d.MaxWait))
+		}
+		if s.Permission != nil {
+			out = append(out, s.Permission.At.Add(d.MaxWait))
+		}
 	}
 	if start, err := nightStart(d.Night); err == nil {
 		y, m, day := now.Date()

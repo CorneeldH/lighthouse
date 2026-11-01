@@ -24,6 +24,7 @@ type Pre struct {
 	Items    []Item // board fields and PRs; no comments
 	OpenRuns []runs.OpenRun
 	Stands   map[int64]workplace.Stand // per open run id, set by the caller; missing = not measurable
+	Runs     map[int64]RunState        // per open run id, set by the caller; missing = not measured
 }
 
 // Prepare reads the board of repo and keeps the issues of repo.Slug whose Status is

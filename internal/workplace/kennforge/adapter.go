@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -29,6 +31,7 @@ type Adapter struct {
 	Targets      map[string]string // profile -> forge target_key
 	Profile      string            // the repo profile ([controller] profile)
 	Run          workplace.Runner
+	Home         string              // where ~/.claude/projects lives; "": os.UserHomeDir
 	Sleep        func(time.Duration) // nil: time.Sleep
 	ReadyWait    time.Duration       // 0: 60s
 
@@ -369,6 +372,41 @@ func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace
 		res = append(res, s)
 	}
 	return res, nil
+}
+
+// TranscriptDir is the directory Claude Code keeps the transcripts of the workspace's
+// worktree in, under Home. A directory that is not on this host (the agent runs in a
+// devcontainer, say) is workplace.ErrNotMeasurable; a 404 is workplace.ErrGone.
+func (a *Adapter) TranscriptDir(ctx context.Context, workspaceID string) (string, error) {
+	var w wireWorkspace
+	if err := a.Client.do(ctx, http.MethodGet, wsPath(workspaceID), nil, 0, &w); err != nil {
+		var se *StatusError
+		if errors.As(err, &se) && se.Status == http.StatusNotFound {
+			return "", fmt.Errorf("read workspace %s: %v: %w", workspaceID, se, workplace.ErrGone)
+		}
+		return "", fmt.Errorf("read workspace %s: %w", workspaceID, err)
+	}
+	if w.WorktreeDir == "" {
+		return "", fmt.Errorf("workspace %s has no worktree_path", workspaceID)
+	}
+	home := a.Home
+	if home == "" {
+		var err error
+		if home, err = os.UserHomeDir(); err != nil {
+			return "", fmt.Errorf("transcripts of %s: %w", workspaceID, err)
+		}
+	}
+	dir := workplace.ProjectDir(home, w.WorktreeDir)
+	st, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", fmt.Errorf("transcripts of %s: %s is not on this host: %w", workspaceID, dir, workplace.ErrNotMeasurable)
+	case err != nil:
+		return "", fmt.Errorf("transcripts of %s: %w", workspaceID, err)
+	case !st.IsDir():
+		return "", fmt.Errorf("transcripts of %s: %s is no directory: %w", workspaceID, dir, workplace.ErrNotMeasurable)
+	}
+	return dir, nil
 }
 
 // Remove deletes the workspace and then its carrier. A workspace that is already gone is

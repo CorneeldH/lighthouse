@@ -41,19 +41,23 @@ type fpRun struct {
 	ID        int64            `json:"id"`
 	Issue     int              `json:"issue"`
 	StartedAt time.Time        `json:"started_at"`
-	Stand     *workplace.Stand `json:"stand"` // nil: not measurable
+	Stand     *workplace.Stand `json:"stand"`            // nil: not measurable
+	Parked    bool             `json:"parked,omitempty"` // omitted when false: older fingerprints stay equal
 }
 
 // Fingerprint is the hex SHA-256 of what decides whether a tick has work: the board fields
 // of the items, the blockers of On hold items, the PRs of items with an open run, and the
-// open runs with the stand of their session. Comments are left out: a new comment moves IssueUpdatedAt. Lists are sorted
-// and an empty list hashes like a nil one, so order and nil-ness never change the result.
+// open runs with the stand of their session and their resume marker. Comments are left out:
+// a new comment moves IssueUpdatedAt. Activity and permission prompts are left out too: they
+// change every tick, and Boundaries makes the tick look when their max_wait runs out. Lists
+// are sorted and an empty list hashes like a nil one, so order and nil-ness never change the
+// result.
 func Fingerprint(pre Pre) string {
 	hasRun := map[int]bool{}
 	runsIn := make([]fpRun, 0, len(pre.OpenRuns))
 	for _, r := range pre.OpenRuns {
 		hasRun[r.Issue] = true
-		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC()}
+		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC(), Parked: pre.Runs[r.ID].Parked}
 		if stand, ok := pre.Stands[r.ID]; ok {
 			f.Stand = &stand
 		}

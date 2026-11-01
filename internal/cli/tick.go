@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -27,8 +28,8 @@ import (
 )
 
 // tickEnv is what tick and gather read from the machine: the environment, the path of
-// host.toml, the GitHub API root, the clock, the forge workplace and the state directory.
-// Only tests set ForgeURL, Now, Workplace and StateDir.
+// host.toml, the GitHub API root, the clock, the forge workplace, the state directory and
+// the resume directory. Only tests set ForgeURL, Now, Workplace, StateDir and ResumeDir.
 type tickEnv struct {
 	Getenv   func(string) string
 	HostToml string
@@ -37,7 +38,8 @@ type tickEnv struct {
 	// Workplace is the forge workplace of a repo; nil is a kennforge.Adapter from
 	// [dispatch.forge], [dispatch.profiles] and the repo.
 	Workplace func(repo repoconfig.Repo) workplace.Workplace
-	StateDir  string // run instructions and carriers; "" is ${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/dispatch
+	StateDir  string // run instructions, carriers and permission notes; "" is ${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/dispatch
+	ResumeDir string // resume markers of the usage guard; "" is ${XDG_DATA_HOME:-$HOME/.local/share}/lighthouse/resume
 }
 
 func (e tickEnv) now() time.Time {
@@ -73,6 +75,24 @@ func (e tickEnv) stateDir() (string, error) {
 	return filepath.Join(base, "lighthouse", "dispatch"), nil
 }
 
+// resumeDir is ResumeDir, or lighthouse/resume under XDG_DATA_HOME, or under
+// $HOME/.local/share when XDG_DATA_HOME is not an absolute path: where the usage guard
+// (resume_dir in usage_guard.py) parks a session.
+func (e tickEnv) resumeDir() (string, error) {
+	if e.ResumeDir != "" {
+		return e.ResumeDir, nil
+	}
+	base := e.Getenv("XDG_DATA_HOME")
+	if !filepath.IsAbs(base) {
+		home := e.Getenv("HOME")
+		if !filepath.IsAbs(home) {
+			return "", errors.New("neither XDG_DATA_HOME nor HOME is an absolute path: no place to read the resume markers")
+		}
+		base = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(base, "lighthouse", "resume"), nil
+}
+
 // workplace returns the forge workplace of repo; stateDir is where its carriers go.
 func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateDir string) workplace.Workplace {
 	if e.Workplace != nil {
@@ -86,6 +106,7 @@ func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateD
 		Client: kennforge.New(cfg.Forge.URL, cfg.Forge.TokenFile),
 		Kind:   repo.Kind, Repo: repo.Slug, MainCheckout: repo.Dir, StateDir: stateDir,
 		Targets: targets, Profile: repo.Controller.Profile, Run: workplace.ExecRunner(),
+		Home: e.Getenv("HOME"),
 	}
 }
 
@@ -226,7 +247,7 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		inputs[i] = g.in
 		repos[g.repo.Slug] = g.repo
 	}
-	actions := dispatch.Decide(dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: inputs})
+	actions := dispatch.Decide(decideInput(env, cfg, inputs))
 	res, err := applyActions(ctx, env, db, cfg, token, repos, actions, errOut)
 	if err != nil {
 		return false, fmt.Errorf("tick: %w", err)
@@ -307,11 +328,8 @@ func (p prefixed) Write(b []byte) (int, error) {
 func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, repo repoconfig.Repo,
 	token string, login func() (string, error), errOut io.Writer) (in *dispatch.RepoInput, fp string, err error) {
 	c := env.client(repo.Slug, token)
-	pre, err := prepare(ctx, db, c, repo)
+	pre, err := measuredPre(ctx, env, db, cfg, c, repo, errOut)
 	if err != nil {
-		return nil, "", err
-	}
-	if pre.Stands, err = stands(ctx, env, cfg, repo, pre.OpenRuns, errOut); err != nil {
 		return nil, "", err
 	}
 	fp = dispatch.Fingerprint(pre)
@@ -320,7 +338,7 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 		return nil, "", err
 	}
 	now := env.now()
-	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, pre.OpenRuns, now))
+	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, pre.OpenRuns, pre.Runs, now))
 	if !due {
 		return nil, "", nil
 	}
@@ -350,37 +368,153 @@ func prepare(ctx context.Context, db *sql.DB, c *forge.Client, repo repoconfig.R
 	return dispatch.Prepare(ctx, c, repo, open, branches)
 }
 
-// stands measures the session of each open run that has a workspace and a session key. A
-// run whose sessions cannot be read, or whose session is gone, has no stand: not measurable.
-// A read error also gets a stand line on errOut.
-func stands(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo repoconfig.Repo,
-	open []runs.OpenRun, errOut io.Writer) (map[int64]workplace.Stand, error) {
-	out := map[int64]workplace.Stand{}
-	var w workplace.Workplace
+// measuredPre is the precheck half of a gather that tick and `lighthouse run` share: it
+// adopts the sessions of uncertain starts, reads the board half (prepare), and measures the
+// open runs. Adoption comes first, so the open runs prepare reads already hold a session that
+// showed up in this tick.
+func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, c *forge.Client,
+	repo repoconfig.Repo, errOut io.Writer) (dispatch.Pre, error) {
+	if err := adopt(ctx, env, db, cfg, repo, errOut); err != nil {
+		return dispatch.Pre{}, err
+	}
+	pre, err := prepare(ctx, db, c, repo)
+	if err != nil {
+		return dispatch.Pre{}, err
+	}
+	if pre.Stands, pre.Runs, err = measure(ctx, env, cfg, repo, pre.OpenRuns, errOut); err != nil {
+		return dispatch.Pre{}, err
+	}
+	return pre, nil
+}
+
+// adopt runs workplace.AdoptSessions for repo when one of its open runs has a workspace but no
+// session key; otherwise it builds no workplace. A run it cannot look up keeps no key and gets
+// a measure line on errOut: the tick goes on without it.
+func adopt(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, repo repoconfig.Repo, errOut io.Writer) error {
+	open, err := runs.Open(ctx, db, repo.Slug)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(open, func(r runs.OpenRun) bool { return r.WorkspaceID != "" && r.WorkplaceSession == "" }) {
+		return nil
+	}
+	dir, err := env.stateDir()
+	if err != nil {
+		return err
+	}
+	if err := workplace.AdoptSessions(ctx, db, env.workplace(cfg, repo, dir), repo.Slug); err != nil {
+		_, _ = fmt.Fprintf(errOut, "lighthouse: measure %s: %s\n", repo.Slug, oneLine(err))
+	}
+	return nil
+}
+
+// measure measures each open run that has a workspace: the stand of its session (only with a
+// session key) and its RunState. A run it cannot measure has neither, and gets a measure line
+// on errOut; the other runs are still measured. The error is only for a missing state or
+// resume directory.
+func measure(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo repoconfig.Repo,
+	open []runs.OpenRun, errOut io.Writer) (map[int64]workplace.Stand, map[int64]dispatch.RunState, error) {
+	stands := map[int64]workplace.Stand{}
+	states := map[int64]dispatch.RunState{}
+	var m *runProbe
 	for _, r := range open {
-		if r.WorkspaceID == "" || r.WorkplaceSession == "" {
+		if r.WorkspaceID == "" {
 			continue
 		}
-		if w == nil {
+		if m == nil {
 			dir, err := env.stateDir()
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			w = env.workplace(cfg, repo, dir)
+			resume, err := env.resumeDir()
+			if err != nil {
+				return nil, nil, err
+			}
+			m = &runProbe{w: env.workplace(cfg, repo, dir), stateDir: dir, resumeDir: resume}
 		}
-		sessions, err := w.Sessions(ctx, r.WorkspaceID)
+		stand, measured, state, err := m.measure(ctx, r)
 		if err != nil {
-			_, _ = fmt.Fprintf(errOut, "lighthouse: stand %s: %s\n", repo.Slug, oneLine(err))
+			_, _ = fmt.Fprintf(errOut, "lighthouse: measure %s: run %d: %s\n", repo.Slug, r.ID, oneLine(err))
 			continue
 		}
-		for _, s := range sessions {
-			if s.Key == r.WorkplaceSession {
-				out[r.ID] = s.Stand()
+		if measured {
+			stands[r.ID] = stand
+		}
+		states[r.ID] = state
+	}
+	return stands, states, nil
+}
+
+// runProbe measures one open run in its workplace, against the state directory (permission
+// notes) and the resume directory (resume markers).
+type runProbe struct {
+	w                   workplace.Workplace
+	stateDir, resumeDir string
+}
+
+// measure reads the sessions of the run's workspace, its transcript when the workplace has
+// one on this host, its permission note and its resume marker. A workspace the workplace no
+// longer knows is Gone, not an error. measured says whether stand holds the stand of the
+// session whose key the run recorded.
+func (m *runProbe) measure(ctx context.Context, r runs.OpenRun) (stand workplace.Stand, measured bool, s dispatch.RunState, err error) {
+	sessions, err := m.w.Sessions(ctx, r.WorkspaceID)
+	switch {
+	case errors.Is(err, workplace.ErrGone):
+		s.Gone = true
+	case err != nil:
+		return 0, false, dispatch.RunState{}, err
+	}
+	if r.WorkplaceSession != "" {
+		for _, ses := range sessions {
+			if ses.Key == r.WorkplaceSession {
+				stand, measured, s.SessionAt = ses.Stand(), true, ses.UpdatedAt
 				break
 			}
 		}
 	}
-	return out, nil
+	if !s.Gone {
+		if s.Transcript, err = m.transcript(ctx, r); err != nil {
+			return 0, false, dispatch.RunState{}, err
+		}
+	}
+	if s.Permission, err = dispatch.ReadPermission(m.stateDir, r.SessionID); err != nil {
+		return 0, false, dispatch.RunState{}, err
+	}
+	if s.Parked, err = dispatch.Parked(m.resumeDir, r.SessionID); err != nil {
+		return 0, false, dispatch.RunState{}, err
+	}
+	return stand, measured, s, nil
+}
+
+// transcript is the transcript of the run's session, or nil when it is not measurable: a
+// workplace without transcripts, no transcript directory on this host, no transcript file yet
+// (an uncertain start whose agent never ran), or a transcript without a timestamp.
+func (m *runProbe) transcript(ctx context.Context, r runs.OpenRun) (*workplace.Transcript, error) {
+	tr, ok := m.w.(workplace.Transcripts)
+	if !ok {
+		return nil, nil
+	}
+	dir, err := tr.TranscriptDir(ctx, r.WorkspaceID)
+	if errors.Is(err, workplace.ErrNotMeasurable) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	t, err := workplace.ReadTranscript(dir, r.SessionID)
+	if errors.Is(err, workplace.ErrNotMeasurable) || errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// decideInput is the Input of one decide over repos, with the limits of host.toml [dispatch].
+func decideInput(env tickEnv, cfg hostconfig.Dispatch, repos []dispatch.RepoInput) dispatch.Input {
+	return dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: repos,
+		MaxWait: dispatch.Duration(cfg.MaxWait), MaxRuntime: dispatch.Duration(cfg.MaxRuntime)}
 }
 
 // repoInput completes the gather of pre and returns what Decide knows of the repo. It reads
@@ -407,7 +541,7 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, c *forg
 	}
 	return dispatch.RepoInput{
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
-		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands,
+		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
 	}, nil
 }
 

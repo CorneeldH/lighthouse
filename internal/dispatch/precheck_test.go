@@ -48,7 +48,7 @@ func TestBoundaries(t *testing.T) {
 
 	t.Run("utc", func(t *testing.T) {
 		now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
-		got := Boundaries(d, open, now)
+		got := Boundaries(d, open, nil, now)
 		for _, w := range []time.Time{
 			time.Date(2026, 10, 31, 18, 0, 0, 0, time.UTC),
 			time.Date(2026, 10, 31, 11, 0, 0, 0, time.UTC),
@@ -63,7 +63,7 @@ func TestBoundaries(t *testing.T) {
 	t.Run("night follows the zone of now", func(t *testing.T) {
 		cet := time.FixedZone("CET", 3600)
 		now := time.Date(2026, 10, 31, 12, 0, 0, 0, cet)
-		got := Boundaries(d, nil, now)
+		got := Boundaries(d, nil, nil, now)
 		for _, w := range []time.Time{
 			time.Date(2026, 10, 31, 20, 0, 0, 0, time.UTC),
 			time.Date(2026, 10, 30, 20, 0, 0, 0, time.UTC),

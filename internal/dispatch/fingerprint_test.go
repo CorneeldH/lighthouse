@@ -158,3 +158,38 @@ func TestFingerprintStands(t *testing.T) {
 		t.Error("the stand of a run that is not open changed the fingerprint")
 	}
 }
+
+// A resume marker that appears changes the fingerprint; activity and a permission note do not:
+// they change every tick, and the boundaries make the tick look at them in time.
+func TestFingerprintParked(t *testing.T) {
+	t0 := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	mk := func(states map[int64]RunState) Pre {
+		return Pre{
+			Items:    []Item{{Issue: 1, Status: "Controller"}},
+			OpenRuns: []runs.OpenRun{{ID: 1, Issue: 1, StartedAt: t0}},
+			Runs:     states,
+		}
+	}
+	base := Fingerprint(mk(map[int64]RunState{1: {}}))
+	if Fingerprint(mk(map[int64]RunState{1: {Parked: true}})) == base {
+		t.Error("a resume marker that appeared left the fingerprint unchanged")
+	}
+	if Fingerprint(mk(map[int64]RunState{1: {}, 9: {Parked: true}})) != base {
+		t.Error("the marker of a run that is not open changed the fingerprint")
+	}
+	for name, state := range map[string]RunState{
+		"not measured": {},
+		"last event":   {Transcript: &workplace.Transcript{LastEvent: t0.Add(time.Minute)}},
+		"permission":   {Permission: &Permission{At: t0.Add(time.Minute), Tool: "Write"}},
+		"session at":   {SessionAt: t0.Add(time.Minute)},
+		"gone":         {Gone: true},
+	} {
+		states := map[int64]RunState{1: state}
+		if name == "not measured" {
+			states = nil
+		}
+		if Fingerprint(mk(states)) != base {
+			t.Errorf("%s changed the fingerprint", name)
+		}
+	}
+}
