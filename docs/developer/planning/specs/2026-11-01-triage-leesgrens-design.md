@@ -88,9 +88,20 @@ De gebruiker koos 1.
   beschrijving in de prompt staan en kan het model die naar de routeregel kopiëren. De
   `superpowers:*`-skills komen zoals nu uit de plugin-installatie van de host. De export moet dus
   bestaan voordat `Catalog` draait.
+- *(eigen keuze na spec-review, r1-f2)* `Catalog` krijgt twee mappen in plaats van één: de map
+  waaruit het `.claude/skills/*/SKILL.md` leest (de export) en het projectpad waarop
+  `pluginInstall` een project-entry uit `installed_plugins.json` zoekt (`repo.Dir`). Nu is dat
+  één argument (`internal/triage/judgment.go:70`, `:125`). Met alleen de export vindt een
+  project-scoped `superpowers`-installatie geen match meer, en valt de catalogus terug op de
+  user-entry of op niets.
+- *(eigen keuze na spec-review, r1-f1)* `Catalog` leest uit de export alleen een `SKILL.md` dat,
+  na `filepath.EvalSymlinks`, binnen de export ligt. Een getrackte symlink naar buiten slaat het
+  over, zoals een onleesbaar bestand. `readSkill` leest met `os.ReadFile`, en dat volgt een
+  symlink: de weigering van de harness geldt alleen voor de tools van het model, niet voor Go.
 - *Eigen keuze, na de bouwerscheck:* staat `.claude/skills/lighthouse-route-issue/SKILL.md` niet
   in de export, dan slaat de ronde de repo over met een foutregel op stderr. Zonder dat bestand
-  oordeelt het model zonder poorten, en niemand ziet dat.
+  oordeelt het model zonder poorten, en niemand ziet dat. *(eigen keuze na spec-review, r1-f1)*
+  Hetzelfde geldt als dat pad een symlink is die buiten de export uitkomt.
 - *Eigen keuze, na de bouwerscheck:* `git archive` volgt `export-ignore` uit `.gitattributes`.
   De export kan dus kleiner zijn dan `git ls-files`, nooit groter. Dat houdt de grens. Een
   weggelaten route-skill vangt de vorige regel.
@@ -110,6 +121,10 @@ De gebruiker koos 1.
   sleutel, dan draait het oordeel zonder. Is het bestand geen geldige JSON, dan stopt de ronde
   voor die repo met een foutregel: stil zonder telemetrie draaien is precies wat de gebruiker
   niet wil.
+  *(eigen keuze na spec-review, r1-f9)* De ronde leest het bestand één keer per repo, vóór het
+  eerste oordeel, en geeft `env` en de `--settings`-JSON mee aan elke aanroep van de judge. Nu
+  krijgt `judgeFunc` alleen `dir` en `prompt` (`internal/cli/triage.go:27`); leest `execJudge` het
+  bestand zelf, dan wordt een kapot bestand een fout per issue in plaats van per repo.
 
 ### De vrije velden
 
@@ -117,26 +132,41 @@ Een veld dat zijn grens overschrijdt, maakt het oordeel ongeldig, met de gewone 
 stderr. Er volgen geen comment en geen statuswijziging, en het issue komt de volgende ronde terug.
 De controle hoort in `Validate`, vóór `oneLine`, zodat ook `--dry-run` hem toont.
 
-| Veld | Grens | Gecontroleerd wanneer |
+| Veld | Grens | Gecontroleerd wanneer (de rij van `Choose`) |
 |---|---|---|
-| `redundancy_evidence` | alleen verwijzingen, gescheiden door spaties of komma's: `#<nr>` of een commit-sha. Een sha telt alleen als hij naar een commit uit `Facts.GitLog` verwijst. | `redundancy` is `done` (niet leeg) of `duplicate` (mag leeg) |
-| `headless_reason` | ≤ 300 tekens | `headless` is false |
-| `design_questions[].question` | ≤ 300 tekens | poort 4c |
-| `design_questions[].options[]` | ≤ 150 tekens | poort 4c |
-| de route in `route_line` (tussen `: ` en ` — `) | ≤ 80 tekens | Go vond geen poort 0 |
-| de reden-staart van `route_line` (na ` — `) | ≤ 200 tekens | Go vond geen poort 0 |
+| `redundancy_evidence` | alleen verwijzingen, gescheiden door spaties of komma's, hoogstens 5: `#<nr>` met 1 tot 6 cijfers, of een commit-sha van 7 tot 40 hex. Een sha telt alleen als hij een prefix is van de volledige sha (`%H`) van een commit uit de log van `Facts.GitLog`. | rij *Redundant*: `redundancy` is `done` (niet leeg) of `duplicate` (mag leeg) |
+| `headless_reason` | ≤ 300 tekens | rij *Interactief*: `redundancy` is `none`, Go vond geen poort 0, poort niet 0, 1 of 4c, `headless` is false |
+| `design_questions[].question` | ≤ 300 tekens | rij *Ontwerp*: `redundancy` is `none`, Go vond geen poort 0, poort 4c |
+| `design_questions[].options[]` | ≤ 150 tekens | rij *Ontwerp*, als hierboven |
+| de route in `route_line` (tussen `: ` en ` — `) | ≤ 80 tekens | elke rij, als Go geen poort 0 vond (anders schrijft Go de regel zelf, `internal/triage/judgment.go:233`) |
+| de reden-staart van `route_line` (na ` — `) | ≤ 200 tekens | als hierboven |
 
 *Eigen keuze, na de bouwerscheck:* Go controleert een veld alleen als `Choose` het publiceert.
 Proza in een veld dat nooit op GitHub komt, zoals `redundancy_evidence` bij `none`, lekt niets
 en mag het oordeel niet ongeldig maken. Elk ongeldig oordeel komt elke ronde terug en kost een
 plek van `max_judgments`.
 
+*(eigen keuze na spec-review, r1-f4)* De kolom *Gecontroleerd wanneer* volgt de rijvolgorde van
+`Choose` (`internal/triage/outcome.go:50-88`): *Redundant* gaat voor *Stop*, *Stop* voor
+*Ontwerp*, *Ontwerp* voor *Interactief*. Een oordeel met `redundancy` `done` en een te lange
+ontwerpvraag is dus geldig: de vraag komt niet in de comment. De controle en `Choose` lezen de
+volgorde van één plek, zodat een latere wijziging van de volgorde de controle meeneemt.
+
+*(eigen keuze na spec-review, r1-f3, r1-f6)* De grenzen op `redundancy_evidence` sluiten het
+kanaal: een sha mag alleen tekens dragen die al in een echte sha staan, en `#<nr>` draagt
+hoogstens 6 cijfers. Vijf verwijzingen dragen samen hoogstens 30 cijfers, ongeveer 12 bytes. `Facts.GitLog` blijft `--oneline` voor de prompt; de volledige sha's zijn
+een extra feit, uit dezelfde `git log` (bijvoorbeeld `--format='%H %s'`).
+
+Sinds #186 gaat `redundancy_evidence` door `modelText`: een `#<nr>` krijgt een zero-width joiner
+na de `#` en wordt dus geen klikbare verwijzing of kruisverwijzing. Dat blijft zo. Bij `duplicate`
+schrijft Go zelf de klikbare "Mogelijk dubbel van #N".
+
 *Eigen keuze, na de bouwerscheck:* de prompt noemt elke grens. Een model dat de grens niet kent,
 gaat er vaker overheen.
 
 Een sha uit de log kan geen bestandsinhoud dragen; een verzonnen sha van 40 hex wel (20 bytes).
-Daarom de koppeling aan `Facts.GitLog`. Een `#<nr>` draagt te weinig om het waard te zijn het
-na te trekken.
+Daarom de koppeling aan de volledige sha's uit de log. Een `#<nr>` van hoogstens 6 cijfers draagt
+te weinig om het waard te zijn het na te trekken.
 
 De lengtes zijn tekens (runes), niet bytes, na `strings.TrimSpace`. De getallen staan als
 constanten in `internal/triage`, met één regel commentaar die naar deze spec verwijst.
@@ -148,14 +178,24 @@ tweede laag.
 ### Bewijs
 
 - **AC 1, test:** een Go-test op een repo met een getrackt bestand, een commit op
-  `origin/<default_branch>`, een ongetrackt bestand en een genegeerd bestand. Hij legt vast dat de
-  map die `Judge` als `dir` krijgt precies `git ls-files` van `origin/<default_branch>` bevat.
-  Er staat geen ongetrackt of genegeerd bestand en geen `.git` in, en de map is weg na de ronde.
+  `origin/<default_branch>`, een ongetrackt bestand, een genegeerd bestand en een getrackt bestand
+  met `export-ignore` in `.gitattributes`. *(eigen keuze na spec-review, r1-f5)* De test schrijft
+  de verwachte lijst bestanden zelf uit, niet via `git ls-files`: dat neemt pathspecs aan, geen
+  tree-ish, en kent `export-ignore` niet. Hij legt vast dat de map die `Judge` als `dir` krijgt
+  precies die lijst bevat. Er staat geen ongetrackt, genegeerd of `export-ignore`-bestand en geen
+  `.git` in, en de map is weg na de ronde.
+- **AC 1, test:** *(eigen keuze na spec-review, r1-f1, r1-f2)* een getrackte
+  `.claude/skills/x/SKILL.md` als symlink naar een bestand buiten de export komt niet in de
+  catalogus. Een project-scoped `superpowers`-entry voor `repo.Dir` wordt gevonden terwijl de
+  skills uit de export komen.
 - **AC 1, meting:** dezelfde meting als hierboven, nu met de definitieve vlaggen en
-  `--model opus`, op een export van deze repo. De ruwe `permission_denials` gaan in de PR.
+  `--model opus`, op een export van deze repo. *(eigen keuze na spec-review, r1-f8)* Ook `Grep` en
+  `Glob` vanuit de cwd over een getrackte symlink naar een map buiten de export. De ruwe
+  `permission_denials` gaan in de PR.
 - **AC 2, test:** per veld een geval net onder en net boven de grens. Voor
-  `redundancy_evidence` ook: proza, een sha die niet in de log staat, en een geldige `#<nr>` en
-  sha samen.
+  `redundancy_evidence` ook: proza, een sha die niet in de log staat, een sha die met een korte
+  log-sha begint maar daarna afwijkt, een `#<nr>` van 7 cijfers, zes verwijzingen, en een geldige
+  `#<nr>` en sha samen. Een oordeel met `redundancy` `done` en een te lange ontwerpvraag is geldig.
 - `TestExecJudgeFlags` legt de nieuwe argv vast.
 - Een test met een nep-gebruikersinstellingenbestand met `env`, `modelSettings` en
   `permissions`: de `env` staat in de omgeving van het proces, `modelSettings` staat in
@@ -185,9 +225,12 @@ tweede laag.
   als die gezet is. Meet welk pad `claude` op de host leest.
 - Of `--settings '{"disableAllHooks": true}'` met `--setting-sources ""` nog nodig is. Laat hem
   staan tenzij de meting toont dat hij niets doet.
-- De precieze vorm van de sha-controle: `Facts.GitLog` is `git log --oneline` (korte sha's). Een
-  sha in het oordeel mag langer zijn dan de korte sha in de log, zolang de log-sha er een prefix
-  van is.
+- Hoe de volledige sha's bij `Validate` komen: een extra veld in `Facts`, of `GitLog` uit
+  `--format='%H %s'` en de prompt kort hem in. De regel staat vast (zie de tabel); de vorm niet.
+- *(eigen keuze na spec-review, r1-f7)* Elke ronde een nieuwe tijdelijke map is elke ronde een
+  nieuwe cwd, en `claude` maakt per cwd een map onder `~/.claude/projects/` en een entry in
+  `~/.claude.json`. Meet of `--no-session-persistence` dat voorkomt, en zet de vlag dan bij het
+  oordeel. Werkt hij niet, meld het in de PR.
 - De getallen 80/200/300/150 zijn niet gemeten. Leg ze naast de oordelen van een
   `lighthouse triage --dry-run` op deze repo, en naast de vormen die de route-skill zelf vraagt
   (`— touches open question "<question>" from the milestone`, `· layer: <layer> (<file>)`). Valt
