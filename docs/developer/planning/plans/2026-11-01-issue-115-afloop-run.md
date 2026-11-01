@@ -176,9 +176,10 @@ func TestTranscriptDirMissing(t *testing.T)           // errors.Is(err, fs.ErrNo
   (mode 0600, atomair via tmp plus rename, elke prompt overschrijft):
 
 ```json
-{"version": 1, "at": "2026-11-01T10:00:00Z", "tool": "Write", "path": "/tmp/x", "thread": "agent-a", "message": "Claude needs your permission to use Write"}
+{"version": 1, "at": "2026-11-01T10:00:00.339Z", "tool": "Write", "path": "/tmp/x", "thread": "agent-a", "message": "Claude needs your permission to use Write"}
 ```
 
+  `at` is RFC 3339 UTC met milliseconden, zoals de regels van het transcript.
   `path` is `file_path`, `path` of `notebook_path` uit de input van het tool; bij `Bash` de eerste
   80 tekens van `command`; anders `""`. `tool` en `path` komen van de nieuwste `tool_use` (op
   `timestamp`) in `transcript_path` en in elk `<transcript zonder .jsonl>/subagents/*.jsonl`,

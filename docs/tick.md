@@ -35,17 +35,18 @@ Het is een korte run, geen daemon. Het ontwerp staat in
    daaruit een vingerafdruk: per item in Controller of On hold de Status, Priority en de `updatedAt`
    van item en issue, de voorgangers van een On hold-item, de PR's van een item met een open run, en
    de open runs zelf met de stand van hun forge-sessie (`working`, `waiting` of `done`; een sessie die
-   tick niet kan lezen telt als niet meetbaar, en een fout bij het lezen schrijft
-   `lighthouse: stand <repo>: <fout>` naar stderr). Per open run met een werkplek meet tick ook de
+   tick niet kan lezen telt als niet meetbaar). Per open run met een werkplek meet tick ook de
    afloop: de laatste gebeurtenis in het transcript (subagents meegeteld, per draad), of de sessie
    nog een eerste commando mist (`Unknown command:`) of nooit een assistent-beurt had, de laatste
    permissie-prompt (`permission.json`, door de hook `permission-check` geschreven) en een
    hervat-markering. Staat het transcript niet op deze host (het Software-profiel in een
    devcontainer), dan is de run niet meetbaar: geen fout, en de afloop valt terug op de forge-stand.
-   Een run die tick niet kan meten schrijft `lighthouse: measure <repo>: run <id>: <fout>` naar stderr;
-   de andere runs worden wel gemeten. Een sessie die de tick zonder sleutel aantreft (een onzekere
-   start) zoekt `workplace.AdoptSessions` op; vindt het haar niet, dan is dat aan decide (regel 15). Een nieuwe comment telt mee via de `updatedAt` van het
-   issue; een sessie die klaar is via haar stand. Tick slaat de volledige gather
+   Een run die tick niet kan meten (stand of afloop) schrijft
+   `lighthouse: measure <repo>: run <id>: <fout>` naar stderr; de andere runs worden wel gemeten. Een
+   sessie die de tick zonder sleutel aantreft (een onzekere start) zoekt `workplace.AdoptSessions`
+   op; mislukt dat zoeken, dan schrijft tick `lighthouse: measure <repo>: <fout>` naar stderr en meet
+   de rest toch. Vindt het haar niet, dan is dat aan decide (regel 15). Een nieuwe comment telt mee
+   via de `updatedAt` van het issue; een sessie die klaar is via haar stand. Tick slaat de volledige gather
    alleen over als de vingerafdruk gelijk is aan de vorige, de vorige volledige gather jonger is dan
    30 minuten, en er sinds die gather geen tijdgrens viel. Tijdgrenzen zijn per open run
    `started_at + max_runtime` en `started_at + max_wait`, en het begin van het `night`-venster.
@@ -108,7 +109,7 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | # | Situatie | Uitkomst | Reden op de 🤖 Teruggegeven |
 |---|---|---|---|
 | 1-3 | Klaar-comment, Handoff (niet het einde van de keten), Vraag | zoals voorheen | |
-| 4 | Een eigen 🤖 Teruggegeven van deze sessie staat er al | rij `returned`; de sessie stoppen als ze niet klaar is, zonder sessie de launch vergeten | |
+| 4 | Een eigen 🤖 Teruggegeven van deze sessie staat er al | rij `returned`; de sessie stoppen als ze niet klaar is en de werkplek er nog is, zonder sessie de launch vergeten | |
 | 5 | Hervat-markering (`Parked`) | rij `parked` | |
 | 6 | PR van deze run gemerged | rij `done` | |
 | 6b | Klaar en het issue is `CLOSED` | rij `done`, geen post (een close-check-run die zijn issue sloot) | |
@@ -116,28 +117,33 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 8 | Werkplek verdwenen | Teruggegeven | werkplek verdwenen |
 | 9 | `Unknown command:` in het transcript | rij `start_failed`, sessie stoppen als ze niet klaar is | |
 | 10 | Klaar, maar nooit een assistent-beurt | rij `start_failed` | |
-| 11 | PR van deze run gesloten zonder merge | Teruggegeven, sessie stoppen als ze niet klaar is | PR gesloten |
+| 11 | PR van deze run gesloten zonder merge, en geen open PR | Teruggegeven, sessie stoppen als ze niet klaar is | PR gesloten |
 | 12 | Open PR is draft | Teruggegeven, sessie stoppen als ze niet klaar is | PR is draft |
 | 13 | Klaar en een open PR met rode checks | Teruggegeven | PR rood |
 | 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
-| 16 | `max_wait` > 0, permissie-prompt waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
-| 17 | `max_wait` > 0, niet klaar, geen activiteit in `max_wait` | Teruggegeven, sessie stoppen | geen activiteit in max_wait |
-| 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
+| 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
+| 17 | `max_wait` > 0, niet klaar, geen openstaande permissie-prompt, geen activiteit in `max_wait` (geteld vanaf `started_at` op zijn vroegst) | Teruggegeven, sessie stoppen | geen activiteit in max_wait |
+| 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud (zonder forge-tijd niet) | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
 | 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
 
 Verschillen met de spec-tabel, bewust:
 
 - Wacht op permissie (16) stopt de sessie niet: de prompt kan nog beantwoord worden. Alleen
   activiteit van de draad van de prompt, nieuwer dan de prompt, telt als beantwoord; een subagent die
-  verder werkt houdt de hoofdthread niet in leven.
+  verder werkt houdt de hoofdthread niet in leven. De hook schrijft `at` in milliseconden, zoals het
+  transcript: de `tool_use` achter de prompt valt meestal in dezelfde seconde. Zolang een prompt
+  openstaat, gelden 17 en 18 niet: een wachtende sessie schrijft niets.
+- Een resume hergebruikt de sessie, en daarmee haar transcript en `permission.json`. Wat van vóór
+  `started_at` van de run is, telt daarom niet als prompt of als laatste activiteit.
 - Regel 15 geldt alleen voor een run die tick heeft gemeten. Een storing bij forge geeft dus nooit
   een Teruggegeven voor een run die misschien draait.
 - Regel 6b: een sessie die klaar is op een gesloten issue laat geen Handoff, Vraag of PR achter.
 
 Apply voert de uitkomst uit. Een Teruggegeven post eerst en sluit de rij dan als `returned`; een
-`close` met `Stop` stopt de sessie voor elke uitkomst, ook voor `start_failed`. Een stop of
-vergeet op een rij zonder sessie of werkplek slaat apply over. Mislukt het stoppen na de post, dan
+`close` met `Stop` stopt de sessie voor elke uitkomst, ook voor `start_failed`. Stoppen gaat op
+de sessie-id van de run, niet op de forge-sleutel: de werkplek zoekt het proces op die id. Een stop
+of vergeet op een rij zonder sessie of werkplek slaat apply over. Mislukt het stoppen na de post, dan
 ziet de volgende tick regel 4 en post niets opnieuw: ze stopt of vergeet en sluit alleen. Een
 `start_failed` zonder Teruggegeven krijgt de bestaande tweede poging; na twee mislukte pogingen geeft
 tick het issue terug met de oorzaak (*start mislukt: …*).
