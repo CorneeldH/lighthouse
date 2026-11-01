@@ -1,0 +1,136 @@
+{
+  "input": {
+    "now": "2026-10-31T12:00:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/r",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 7,
+              "title": "Bouw de keten",
+              "state": "OPEN",
+              "item_id": "I7",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [
+                {
+                  "number": 12,
+                  "state": "OPEN",
+                  "draft": false,
+                  "mergeable": "MERGEABLE",
+                  "head_sha": "def456",
+                  "head_ref": "issue-7-bouw-de-keten",
+                  "checks": "FAILURE",
+                  "closes": true,
+                  "url": "https://github.com/o/r/pull/12",
+                  "merged_at": "0001-01-01T00:00:00Z"
+                }
+              ],
+              "comments": [
+                {
+                  "id": 62,
+                  "author": "lh-bot",
+                  "body": "🤖 Gestart\nsession: 11111111-2222-4333-8444-555555555555\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\ncommand: /lighthouse-fix-pr 12\nstart: 2026-10-31T10:00:00Z\nbranch: issue-7-bouw-de-keten\nrunner: forge\nworkspace: ws-1\n\n<sub>session 11111111-2222-4333-8444-555555555555</sub>",
+                  "created_at": "2026-10-31T10:00:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-62",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [
+          {
+            "ID": 3,
+            "Issue": 7,
+            "SessionID": "33333333-2222-4333-8444-555555555555",
+            "Mode": "start",
+            "Trigger": "fixpr",
+            "TriggerKey": "fixpr:12:aaa111",
+            "Attempt": 1,
+            "Command": "/lighthouse-fix-pr 12",
+            "Prompt": "/lighthouse-fix-pr 12 (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-31T06:00:00Z",
+            "Open": false,
+            "Outcome": "handoff",
+            "Reason": ""
+          },
+          {
+            "ID": 4,
+            "Issue": 7,
+            "SessionID": "44444444-2222-4333-8444-555555555555",
+            "Mode": "start",
+            "Trigger": "fixpr",
+            "TriggerKey": "fixpr:12:bbb222",
+            "Attempt": 1,
+            "Command": "/lighthouse-fix-pr 12",
+            "Prompt": "/lighthouse-fix-pr 12 (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-31T08:00:00Z",
+            "Open": false,
+            "Outcome": "done",
+            "Reason": ""
+          },
+          {
+            "ID": 5,
+            "Issue": 7,
+            "SessionID": "11111111-2222-4333-8444-555555555555",
+            "Mode": "start",
+            "Trigger": "fixpr",
+            "TriggerKey": "fixpr:12:ccc333",
+            "Attempt": 1,
+            "Command": "/lighthouse-fix-pr 12",
+            "Prompt": "/lighthouse-fix-pr 12 (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-31T10:00:00Z",
+            "Open": true,
+            "Outcome": "",
+            "Reason": ""
+          }
+        ],
+        "stands": {
+          "5": 2
+        }
+      }
+    ]
+  },
+  "want": [
+    {
+      "kind": "return",
+      "repo": "o/r",
+      "issue": 7,
+      "run_id": 5,
+      "session_id": "11111111-2222-4333-8444-555555555555",
+      "reason": "reason_pr_red_ceiling",
+      "language": "nl"
+    }
+  ]
+}

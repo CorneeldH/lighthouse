@@ -20,7 +20,7 @@ question: interactive and headless (controller run, if present) the outcome is t
 - When `.claude/hooks/lighthouse/pr-create-gate.sh` blocks a `gh pr create`.
 - `/lighthouse-write-pr <nr>`. Without an argument the number comes from the branch
   `issue-<nr>-…` (`git branch --show-current`). No issue: the body gets `No issue: <reason>`
-  (≥10 characters) and no milestone; skip V1–V3.
+  (≥10 characters) and no milestone; skip V1–V3 (V2b still runs).
 
 ## V1. Read the issue
 
@@ -39,6 +39,95 @@ runs outside the sandbox (`dangerouslyDisableSandbox: true`).
 Look for evidence per AC on the branch: `git diff origin/<default branch>...HEAD`, run commands,
 open files. What counts as evidence and what does *not*: B2–B4 of
 `lighthouse-close-issue`. No evidence = `not`, also when it is probably done.
+
+## V2b. Roborev review (only with `[review] roborev = "local"`)
+
+The session that did the work reviews it before `gh pr create`, so CI runs once, on code where
+the findings are already processed. This step also runs with `No issue:`, where V1–V3 are
+skipped. One command per step, in this order. Every command here runs outside the sandbox
+(`dangerouslyDisableSandbox: true`): the gate reads the Codex budget, the review needs the
+network. Any other non-zero exit of `roborev_gate.py` than exit 3 of `gate` (step 0) and exit 2
+of `record` (step 3), such as `gate` exit 1 or a failing `classify`, `fixed` or `record`: report
+it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
+
+0. **Gate.**
+
+   ```bash
+   git fetch origin <default branch>
+   python3 .lighthouse/scripts/roborev_gate.py gate
+   ```
+
+   One JSON object. Every `verdict` except `off` carries `state` and `raw`, absolute paths: take
+   them literally, never build a path yourself.
+
+   | `verdict` | Do |
+   |---|---|
+   | `off` | skip this section; V4 gets no roborev line and no comment |
+   | `skip` | on to V4: the gate recorded the reason, the body repeats it |
+   | `done` | on to V4: this branch was reviewed and processed already (a restart) |
+   | `classify` | step 2, without a review: raw output of an earlier run is there |
+   | `run` | step 1 |
+
+   Exit 3 (`COULD NOT CHECK`): no PR; report the message.
+1. **Review** (`run` only), with `<range>` and `<raw>` from the gate output:
+
+   ```bash
+   timeout 540 roborev ci review --agent codex --ref <range> > <raw> 2>&1
+   ```
+
+   In the foreground, with Bash timeout `600000`: start no background work (controller run, if
+   present). Exit 124 is the timeout:
+   `python3 .lighthouse/scripts/roborev_gate.py record --skip "review faalde: timeout na 9 min"`,
+   then V4. Every other exit code goes to step 2: roborev exits 0 also with findings, so the exit
+   code alone is no failure signal.
+2. **Classify.**
+
+   ```bash
+   python3 .lighthouse/scripts/roborev_gate.py classify
+   ```
+
+   `verdict` `skip`: on to V4; the script recorded the reason. `done`: step 3, with `sha` and
+   `findings` from this output.
+3. **Process, one round** (`done` only). First the findings a commit on the branch already
+   fixed (a run broken off halfway):
+
+   ```bash
+   python3 .lighthouse/scripts/roborev_gate.py fixed
+   ```
+
+   Each one listed is `fixed` in that commit; do not judge it again. For every other finding
+   follow `superpowers:receiving-code-review`: fix it or refute it with a reason, with the
+   severity rules of section 6 of `lighthouse-fix-pr` (high and medium seriously; a low only if
+   the fix is trivial, otherwise `left`). Every fix is a commit of its own whose body has the
+   line `roborev: <path>:<line> (<severity>)`, with `path`, `line` and `severity` as `classify`
+   printed them (a finding without `path` gets no such line).
+
+   Write the decisions to a JSON file in the scratchpad or `$TMPDIR`: a list with one object per
+   finding, keys `path`, `line`, `severity` (as `classify` printed them), `uitkomst` (`fixed`,
+   `refuted` or `left`), `commit` (the fix commit, else `null`) and `reden` (the reason, `null`
+   with `fixed`). Record them, with `<sha>` the `sha` of `classify` and `<range>` the `range`
+   that `gate` printed at step 0, the reviewed range (the fix commits came after it):
+
+   ```bash
+   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <file> --range <range>
+   ```
+
+   After a `classify` verdict at step 0 (a restart, no review in this run) there is no `range`:
+   leave out `--range`.
+
+   Exit 2: the decisions do not match the findings one to one, or one is inconsistent; the
+   message says which. Fix the file and record again. No second review, also when a fix changed
+   a lot. Then check whether the branch is already on origin:
+
+   ```bash
+   git ls-remote --exit-code origin <branch>
+   ```
+
+   Exit 0: push the fix commits before V4, so CI runs once, on the processed code:
+
+   ```bash
+   git push origin HEAD
+   ```
 
 ## Verdicts
 
@@ -189,6 +278,11 @@ body; if it is empty, leave the section out. It is no Evidence row and does not 
 count of `pr-create-gate.sh`. Name the headings here only inline between backticks: a line that
 starts with `## ` breaks the V4 section the tests cut out.
 
+Roborev line (V2b ran): add the output of `python3 .lighthouse/scripts/roborev_gate.py body-line`
+to the body as a line of its own, outside the Evidence block. It is the marker
+`<!-- roborev-lokaal: <sha> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
+empty with `off` (then no line).
+
 Then give the command:
 
 ```bash
@@ -198,6 +292,22 @@ gh pr create --title '<title>' --body-file <path> --milestone "<milestone>"
 `--title` always: without it gh asks for it, and headless it refuses. Single quotes, so the shell
 executes nothing in the title. `--milestone` only if the issue has one; with `No issue:` never.
 Never `--body "$(…)"`, `--fill` or `--web`: the hook blocks them.
+
+Roborev comment, only after a `done` outcome of V2b (also when every finding was refuted). Right
+after `gh pr create`, with `<nr>` the number at the end of the URL it printed, and `<state>` and
+`<raw>` literally from the output of `roborev_gate.py gate` (after a restart, run `gate` again;
+never build a path yourself):
+
+```bash
+python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron lokaal --state <state> --raw <raw> > <file>
+```
+
+```bash
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh pr comment <nr> --repo "$R" --body-file <file>
+```
+
+`gh` outside the sandbox. If `gh pr comment` fails, report it: the state and the raw output stay
+on disk, so a second try needs only these two commands.
 
 ## Shape of the evidence block
 

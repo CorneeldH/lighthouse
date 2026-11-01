@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "175e11ad7fd1516d31b616b209582b15fd7aacd30a11d6da73d65113242d344f"
+sha256 = "053a1f15c8854c83f0b77af3a2ca6998cd1d508d51a9041c68c189c1ab6c5659"
 
 [[unit]]
 kind = "file"
@@ -176,7 +176,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "9078f173f2a695036568e40bd2a2f5e6a94d0792a13872053cb99e06267663e7"
+sha256 = "505714b83e9cbd7a15c05ac253004ae62910abc3144b3f2c766e0cb72551ee67"
 
 [[unit]]
 kind = "file"
@@ -485,7 +485,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "d32c8724fe1a58ce1f06aa6b2414800d0a5becf91445ce2f758694bfa74aa8c8"
+sha256 = "3cb91b8330d1ce0a43206165766ba31f7664928a395e3baa59953ffe7256bb2f"
 
 [[unit]]
 kind = "file"
@@ -639,7 +639,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "9078f173f2a695036568e40bd2a2f5e6a94d0792a13872053cb99e06267663e7"
+sha256 = "505714b83e9cbd7a15c05ac253004ae62910abc3144b3f2c766e0cb72551ee67"
 
 [[unit]]
 kind = "file"
@@ -653,7 +653,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "f5de8a020d0686b47e8d8539e9add56341d0ac77f5269cc52b5308723b1d9868"
+sha256 = "6762098f785f1a161dbba88932a1d31e649225f94bbf6183b86866f141ccb3d0"
 
 [[unit]]
 kind = "file"
@@ -730,7 +730,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
-sha256 = "372f5063c597917f53402994f4dee9846dbd797cfc531a9cb050a35e3581c18e"
+sha256 = "73e16e9f7dae838201cff41ae5d3be51cc326584f126114075c2e0e6c29a0b1c"
 
 [[unit]]
 kind = "file"
@@ -892,6 +892,20 @@ path = ".lighthouse/scripts/review_pair.py"
 package = "core"
 version = "dev"
 sha256 = "28782793f9134e554fbe64578d4b49d50f5386fcaf4bd6fbb46ace1e9927f797"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/scripts/roborev_comment.py"
+package = "core"
+version = "dev"
+sha256 = "c58d028c2f2ee2199680af41499aa15704e767210a176457afbf46c0b1c7d000"
+
+[[unit]]
+kind = "file"
+path = ".lighthouse/scripts/roborev_gate.py"
+package = "core"
+version = "dev"
+sha256 = "e5eb877fc9681cb79f179eb54faad43b8c61efdd3114762f507b9aae2efdb2c0"
 
 [[unit]]
 kind = "file"

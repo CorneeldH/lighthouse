@@ -96,18 +96,22 @@ func (b *fakeBoard) SetStatus(_ context.Context, itemID, status string) error {
 
 // fakeWorkplace prepares a workspace per branch and records every spawn.
 type fakeWorkplace struct {
-	log      *callLog
-	sessions []workplace.Session
-	spawnErr error
-	onSpawn  func() // runs at the start of Spawn
-	spawned  []workplace.LaunchSpec
-	stopErr  error
-	stopped  []string // "<workspace> <session ids>" per Stop
-	forgot   []string // workspace per Discard
+	log        *callLog
+	prepareErr error
+	sessions   []workplace.Session
+	spawnErr   error
+	onSpawn    func() // runs at the start of Spawn
+	spawned    []workplace.LaunchSpec
+	stopErr    error
+	stopped    []string // "<workspace> <session ids>" per Stop
+	forgot     []string // workspace per Discard
 }
 
 func (w *fakeWorkplace) Prepare(_ context.Context, branch string) (workplace.Workspace, error) {
 	w.log.add("Prepare")
+	if w.prepareErr != nil {
+		return workplace.Workspace{}, w.prepareErr
+	}
 	return workplace.Workspace{ID: "ws-" + branch, Path: "/forge/" + branch, Branch: branch}, nil
 }
 
@@ -1270,4 +1274,103 @@ func TestApplyDropMarker(t *testing.T) {
 			t.Errorf("log %q, want one line with the removal error", h.out.String())
 		}
 	})
+}
+
+// fixPRAction is the start of /lighthouse-fix-pr that Decide plans after a red PR.
+func fixPRAction(attempt int) Action {
+	return Action{
+		Kind: KindStart, Repo: applyRepo, Issue: 7, Mode: "start", Trigger: "fixpr",
+		TriggerKey: "fixpr:12:abc123", Attempt: attempt, Command: "/lighthouse-fix-pr 12",
+		Prompt: "/lighthouse-fix-pr 12 (issue #7, controller-run)", Branch: "issue-7-x", Language: "nl",
+	}
+}
+
+// fixPRReturned is the 🤖 Returned a first fix-pr start posts when it stops before its claim.
+const fixPRReturned = "🤖 Teruggegeven\nreason: PR rood"
+
+// The run that found the red PR closed as handoff: a fix-pr start the busy workplace defers
+// hands the issue back, so it does not sit silent on a red PR.
+func TestApplyFixPRBusyReturns(t *testing.T) {
+	h := newHarness(t)
+	h.wp.sessions = []workplace.Session{{Key: "other", WorkspaceID: "ws-issue-7-x", State: "working", SessionID: "x"}}
+	res, err := Apply(context.Background(), h.env, []Action{fixPRAction(1)})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	p := h.poster(applyRepo)
+	if !reflect.DeepEqual(p.bodies, []string{fixPRReturned}) || !reflect.DeepEqual(p.issues, []int{7}) {
+		t.Errorf("posted %q on %v, want %q on [7]", p.bodies, p.issues, fixPRReturned)
+	}
+	want := []string{"o/r#7: workplace busy: session other, working since unknown"}
+	if !reflect.DeepEqual(res.Deferred, want) {
+		t.Errorf("Deferred = %q, want %q", res.Deferred, want)
+	}
+	if rows := h.history(t); len(rows) != 0 {
+		t.Errorf("rows = %+v, want none", rows)
+	}
+}
+
+func TestApplyFixPRPrepareFailsReturns(t *testing.T) {
+	h := newHarness(t)
+	h.wp.prepareErr = errors.New("no forge")
+	res, err := Apply(context.Background(), h.env, []Action{fixPRAction(1)})
+	if err == nil || !strings.Contains(err.Error(), "prepare: no forge") {
+		t.Fatalf("Apply error = %v, want it to name prepare: no forge", err)
+	}
+	if res.Failed[applyRepo] == nil {
+		t.Errorf("Failed = %v, want the prepare error under %s", res.Failed, applyRepo)
+	}
+	if p := h.poster(applyRepo); !reflect.DeepEqual(p.bodies, []string{fixPRReturned}) {
+		t.Errorf("posted %q, want %q", p.bodies, fixPRReturned)
+	}
+	if rows := h.history(t); len(rows) != 0 {
+		t.Errorf("rows = %+v, want none", rows)
+	}
+}
+
+// Another run holds the issue: the claim fails, and the first fix-pr start hands the issue back.
+func TestApplyFixPRClaimLostReturns(t *testing.T) {
+	h := newHarness(t)
+	h.seed(t, 7, oldSession, "start:7", "")
+	res, err := Apply(context.Background(), h.env, []Action{fixPRAction(1)})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if p := h.poster(applyRepo); !reflect.DeepEqual(p.bodies, []string{fixPRReturned}) {
+		t.Errorf("posted %q, want %q", p.bodies, fixPRReturned)
+	}
+	if res.Started != 0 || len(h.wp.spawned) != 0 {
+		t.Errorf("Started = %d, spawned = %d; want no start", res.Started, len(h.wp.spawned))
+	}
+}
+
+// A post that fails joins the error; the defer still stands.
+func TestApplyFixPRReturnPostFails(t *testing.T) {
+	h := newHarness(t)
+	h.wp.sessions = []workplace.Session{{Key: "other", WorkspaceID: "ws-issue-7-x", State: "working", SessionID: "x"}}
+	h.poster(applyRepo).postErr = errors.New("forge down")
+	res, err := Apply(context.Background(), h.env, []Action{fixPRAction(1)})
+	if err == nil || !strings.Contains(err.Error(), "forge down") {
+		t.Fatalf("Apply error = %v, want it to name forge down", err)
+	}
+	if len(res.Deferred) != 1 {
+		t.Errorf("Deferred = %q, want the busy defer", res.Deferred)
+	}
+}
+
+// A second attempt comes from retry, which plans it every tick and hands the issue back after
+// two failed starts: a busy workplace only defers it.
+func TestApplyFixPRSecondAttemptBusyPostsNothing(t *testing.T) {
+	h := newHarness(t)
+	h.wp.sessions = []workplace.Session{{Key: "other", WorkspaceID: "ws-issue-7-x", State: "working", SessionID: "x"}}
+	res, err := Apply(context.Background(), h.env, []Action{fixPRAction(2)})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if p := h.poster(applyRepo); len(p.bodies) != 0 {
+		t.Errorf("posted %q, want nothing", p.bodies)
+	}
+	if want := []string{"o/r#7: workplace busy: session other, working since unknown"}; !reflect.DeepEqual(res.Deferred, want) {
+		t.Errorf("Deferred = %q, want %q", res.Deferred, want)
+	}
 }

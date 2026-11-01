@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 3 {
-		t.Errorf("user_version = %d, want 3", v2)
+	if v2 != 4 {
+		t.Errorf("user_version = %d, want 4", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -297,18 +297,24 @@ func TestNegativeUserVersion(t *testing.T) {
 	}
 }
 
-func TestMigrate0003KeepsTickState(t *testing.T) {
-	ctx := context.Background()
-	upTo2 := fstest.MapFS{}
-	for _, f := range []string{"0001_meta.sql", "0002_runs.sql"} {
+// embeddedUpTo is the embedded migration set up to and including file.
+func embeddedUpTo(t *testing.T, files ...string) fstest.MapFS {
+	t.Helper()
+	out := fstest.MapFS{}
+	for _, f := range files {
 		body, err := fs.ReadFile(migrationFS, f)
 		if err != nil {
 			t.Fatalf("read %s: %v", f, err)
 		}
-		upTo2[f] = &fstest.MapFile{Data: body}
+		out[f] = &fstest.MapFile{Data: body}
 	}
+	return out
+}
+
+func TestMigrate0003KeepsTickState(t *testing.T) {
+	ctx := context.Background()
 	db := bareDB(t)
-	if err := migrate(ctx, db, upTo2); err != nil {
+	if err := migrate(ctx, db, embeddedUpTo(t, "0001_meta.sql", "0002_runs.sql")); err != nil {
 		t.Fatalf("migrate to 2: %v", err)
 	}
 	if _, err := db.Exec(`INSERT INTO tick_state(repo, kind, key, value, updated_at) VALUES ('o/r', 'fingerprint', 'k', 'v', 't')`); err != nil {
@@ -317,7 +323,7 @@ func TestMigrate0003KeepsTickState(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO tick_state(repo, kind, key, value, updated_at) VALUES ('o/r', 'cleanup', 'w', '{}', 't')`); err == nil {
 		t.Fatal("version 2 accepted kind cleanup")
 	}
-	if err := migrate(ctx, db, migrationFS); err != nil {
+	if err := migrate(ctx, db, embeddedUpTo(t, "0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql")); err != nil {
 		t.Fatalf("migrate to 3: %v", err)
 	}
 	if v := userVersion(t, db); v != 3 {
@@ -332,5 +338,71 @@ func TestMigrate0003KeepsTickState(t *testing.T) {
 	}
 	if _, err := db.Exec(`INSERT INTO tick_state(repo, kind, key, value, updated_at) VALUES ('o/r', 'bogus', 'w', '{}', 't')`); err == nil {
 		t.Error("unknown kind accepted after migration")
+	}
+}
+
+// 0004 rebuilds runs to accept trigger fixpr: every row from before keeps its id and columns,
+// the checks and the open-run index still hold.
+func TestMigrate0004KeepsRuns(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	if err := migrate(ctx, db, embeddedUpTo(t, "0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql")); err != nil {
+		t.Fatalf("migrate to 3: %v", err)
+	}
+	insert := `INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command,
+		branch, workspace_id, workplace_session, started_at, ended_at, outcome, reason)
+		VALUES (?, 'o/r', ?, 's', 'start', ?, ?, 1, 'c', 'b', 'w', 'k', 't0', ?, ?, ?)`
+	if _, err := db.Exec(insert, 41, 7, "handoff", "start:7", "t1", "done", "why"); err != nil {
+		t.Fatalf("insert closed row at v3: %v", err)
+	}
+	if _, err := db.Exec(insert, 42, 7, "answer", "answer:9", nil, nil, ""); err != nil {
+		t.Fatalf("insert open row at v3: %v", err)
+	}
+	if _, err := db.Exec(insert, 43, 8, "fixpr", "fixpr:12:abc", nil, nil, ""); err == nil {
+		t.Fatal("version 3 accepted trigger fixpr")
+	}
+	if err := migrate(ctx, db, migrationFS); err != nil {
+		t.Fatalf("migrate to 4: %v", err)
+	}
+	if v := userVersion(t, db); v != 4 {
+		t.Errorf("user_version = %d, want 4", v)
+	}
+	type row struct {
+		ID                                                   int
+		Trigger, Key, Workspace, Session, Ended, Out, Reason string
+	}
+	rows, err := db.Query(`SELECT id, trigger, trigger_key, workspace_id, workplace_session,
+		coalesce(ended_at, ''), coalesce(outcome, ''), reason FROM runs ORDER BY id`)
+	if err != nil {
+		t.Fatalf("query runs: %v", err)
+	}
+	var got []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.ID, &r.Trigger, &r.Key, &r.Workspace, &r.Session, &r.Ended, &r.Out, &r.Reason); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, r)
+	}
+	_ = rows.Close()
+	want := []row{
+		{41, "handoff", "start:7", "w", "k", "t1", "done", "why"},
+		{42, "answer", "answer:9", "w", "k", "", "", ""},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("runs after migration = %+v, want %+v", got, want)
+	}
+	if _, err := db.Exec(insert, 43, 8, "fixpr", "fixpr:12:abc", nil, nil, ""); err != nil {
+		t.Errorf("trigger fixpr rejected after migration: %v", err)
+	}
+	if _, err := db.Exec(insert, 44, 9, "bogus", "x:1", nil, nil, ""); err == nil {
+		t.Error("unknown trigger accepted after migration")
+	}
+	if _, err := db.Exec(insert, 45, 7, "handoff", "handoff:3", nil, nil, ""); err == nil {
+		t.Error("second open run of issue 7 accepted: runs_open_issue is gone")
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'runs_trigger'`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("runs_trigger index count = %d, %v; want 1", n, err)
 	}
 }

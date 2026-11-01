@@ -171,3 +171,36 @@ def test_changelog_fragment_is_opt_in_and_english():
                    "--diff-filter=A", "writes nothing twice",
                    "added", "changed", "fixed", "removed", "internal", "English", "before `gh pr create`"):
         assert needle in section, needle
+
+
+def test_roborev_step_sits_between_v2_and_the_verdicts():
+    assert TEXT.index("## V2.") < TEXT.index("## V2b. Roborev review") < TEXT.index("## Verdicts")
+
+
+def test_roborev_step_carries_the_contract():
+    s = _section(TEXT, "## V2b.")
+    for needle in (
+        "roborev_gate.py gate",
+        "git fetch origin",
+        "timeout 540 roborev ci review --agent codex --ref",
+        "600000",
+        "dangerouslyDisableSandbox: true",
+        "superpowers:receiving-code-review",
+        "roborev: <path>:<line> (<severity>)",
+        "roborev_gate.py fixed",
+        "roborev_gate.py record",
+        "classify",
+        "No issue",
+        "git ls-remote --exit-code origin <branch>",
+        "git push origin HEAD",
+        "--range <range>",
+        "Any other non-zero exit",
+    ):
+        assert needle in s, needle
+    assert "--comment" not in s and "run_in_background" not in s
+
+
+def test_v4_writes_the_marker_and_posts_the_comment():
+    v4 = _section(TEXT, "## V4.")
+    for needle in ("roborev_gate.py body-line", "roborev_comment.py render", "--bron lokaal", "gh pr comment"):
+        assert needle in v4, needle

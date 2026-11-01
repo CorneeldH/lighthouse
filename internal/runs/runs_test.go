@@ -340,3 +340,21 @@ func TestTakeWritesBranch(t *testing.T) {
 		t.Errorf("branch = %q, want issue-7-x", branch)
 	}
 }
+
+// The dispatcher claims a fix-pr run with trigger fixpr: the runs table must accept it.
+func TestTakeFixPR(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c := claim("owner/a", 7, "fixpr:12:abc123")
+	c.Trigger, c.Command = "fixpr", "/lighthouse-fix-pr 12"
+	if _, err := Take(ctx, db, c); err != nil {
+		t.Fatalf("Take with trigger fixpr: %v", err)
+	}
+	rows, err := History(ctx, db, "owner/a")
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Trigger != "fixpr" || rows[0].TriggerKey != "fixpr:12:abc123" {
+		t.Errorf("history = %+v, want one row with trigger fixpr and key fixpr:12:abc123", rows)
+	}
+}

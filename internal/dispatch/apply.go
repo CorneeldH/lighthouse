@@ -221,22 +221,24 @@ func (ap applier) closeRun(ctx context.Context, runID int64, o runs.Outcome, rea
 // start runs a start or resume in the decided order: prepare and the busy check, the claim,
 // the instructions, the 🤖 Started or Resumed, the 🚀, and last the launch. A failure between
 // the claim and the launch closes the run as start_failed, so no open run is left without a
-// workplace.
+// workplace. A first fix-pr start that stops before the claim hands the issue back
+// (returnFixPR).
 func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	env := ap.env
 	w := env.Workplace(a.Repo)
 	now := env.Now()
 	ws, err := w.Prepare(ctx, a.Branch)
 	if err != nil {
-		return fmt.Errorf("prepare: %w", err)
+		return ap.returnFixPR(ctx, a, fmt.Errorf("prepare: %w", err))
 	}
 	busy, err := ap.busy(ctx, w, ws, a, now)
 	if err != nil {
-		return err
+		return ap.returnFixPR(ctx, a, err)
 	}
 	if busy != "" {
+		err := ap.returnFixPR(ctx, a, nil)
 		res.Deferred = append(res.Deferred, deferral(a, busy))
-		return nil
+		return err
 	}
 
 	session := a.SessionID
@@ -251,6 +253,9 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	})
 	if errors.Is(err, runs.ErrClaimed) || errors.Is(err, runs.ErrTriggerSpent) {
 		ap.logf("%s#%d: %s not claimed: %v", a.Repo, a.Issue, a.TriggerKey, err)
+		if errors.Is(err, runs.ErrClaimed) {
+			return ap.returnFixPR(ctx, a, nil)
+		}
 		return nil
 	}
 	if err != nil {
@@ -298,6 +303,22 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		res.NotAccepted = append(res.NotAccepted, fmt.Sprintf("%s#%d", a.Repo, a.Issue))
 	}
 	return nil
+}
+
+// returnFixPR posts a 🤖 Returned "PR red" without a run for a first fix-pr start that stops
+// before its claim, and returns cause, joined with a failed post. The run that found the red
+// PR already closed as a handoff, so without it the issue would sit silent on a red PR. A
+// trigger key another run already spent needs nothing; a second attempt comes from retry, which
+// plans it every tick and hands the issue back itself; any other start posts nothing.
+func (ap applier) returnFixPR(ctx context.Context, a Action, cause error) error {
+	if a.Trigger != triggerFixPR || a.Attempt != 1 {
+		return cause
+	}
+	body := protocol.RenderReturned(protocol.Heading("reason_pr_red", a.Language), "", "", a.Language)
+	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		return errors.Join(cause, fmt.Errorf("post returned: %w", err))
+	}
+	return cause
 }
 
 // returnStartFailed posts the 🤖 Returned of a refused launch under its Started, with the

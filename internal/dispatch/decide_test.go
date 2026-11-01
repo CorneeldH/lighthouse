@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/runs"
 )
 
 // fixture is one file of testdata/decide: an input and the actions Decide must return.
@@ -117,5 +118,90 @@ func TestValidBranch(t *testing.T) {
 		if got := validBranch(tt.branch); got != tt.want {
 			t.Errorf("validBranch(%q) = %v, want %v", tt.branch, got, tt.want)
 		}
+	}
+}
+
+// fixPRRuns counts the fix-pr runs of one PR towards the ceiling: an open run counts, a failed
+// start does not, nor a run of another PR or another issue.
+func TestFixPRRuns(t *testing.T) {
+	fix := func(issue int, command string, open bool, o runs.Outcome) runs.Row {
+		return runs.Row{Issue: issue, Command: command, Open: open, Outcome: o}
+	}
+	tests := []struct {
+		name    string
+		history []runs.Row
+		want    int
+	}{
+		{"none", nil, 0},
+		{"closed handoff and done", []runs.Row{
+			fix(7, "/lighthouse-fix-pr 12", false, runs.Handoff), fix(7, "/lighthouse-fix-pr 12", false, runs.Done),
+		}, 2},
+		{"open row counts", []runs.Row{
+			fix(7, "/lighthouse-fix-pr 12", false, runs.Returned), fix(7, "/lighthouse-fix-pr 12", true, ""),
+		}, 2},
+		{"start_failed does not count", []runs.Row{
+			fix(7, "/lighthouse-fix-pr 12", false, runs.StartFailed), fix(7, "/lighthouse-fix-pr 12", false, runs.Done),
+		}, 1},
+		{"other PR does not count", []runs.Row{
+			fix(7, "/lighthouse-fix-pr 13", false, runs.Done), fix(7, "/lighthouse-fix-pr 120", false, runs.Done),
+		}, 0},
+		{"other issue does not count", []runs.Row{fix(8, "/lighthouse-fix-pr 12", false, runs.Done)}, 0},
+		{"other command does not count", []runs.Row{fix(7, "/lighthouse-start-issue 7", false, runs.Done)}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fixPRRuns(tt.history, 7, 12); got != tt.want {
+				t.Errorf("fixPRRuns = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// Only a fix-pr start of the same repo and issue keeps a fix-pr close a handoff; any other
+// close passes untouched.
+func TestReturnUnstartedFixPR(t *testing.T) {
+	const session = "11111111-2222-4333-8444-555555555555"
+	fixClose := Action{Kind: KindClose, Repo: "o/r", Issue: 7, RunID: 5, Outcome: runs.Handoff,
+		SessionID: session, ReasonArg: "fixpr:12:abc123", Language: "nl"}
+	returned := Action{Kind: KindReturn, Repo: "o/r", Issue: 7, RunID: 5, SessionID: session,
+		Reason: "reason_pr_red", Language: "nl"}
+	fixStart := Action{Kind: KindStart, Repo: "o/r", Issue: 7, Trigger: "fixpr", TriggerKey: "fixpr:12:abc123"}
+	tests := []struct {
+		name string
+		in   []Action
+		want []Action
+	}{
+		{"own fix-pr start keeps the close", []Action{fixClose, fixStart}, []Action{fixClose, fixStart}},
+		{"no start returns", []Action{fixClose}, []Action{returned}},
+		{"other trigger returns",
+			[]Action{fixClose, {Kind: KindStart, Repo: "o/r", Issue: 7, Trigger: "handoff", TriggerKey: "handoff:50"}},
+			[]Action{returned, {Kind: KindStart, Repo: "o/r", Issue: 7, Trigger: "handoff", TriggerKey: "handoff:50"}}},
+		{"fix-pr start of another issue returns",
+			[]Action{fixClose, {Kind: KindStart, Repo: "o/r", Issue: 8, Trigger: "fixpr"}},
+			[]Action{returned, {Kind: KindStart, Repo: "o/r", Issue: 8, Trigger: "fixpr"}}},
+		{"fix-pr start of another repo returns",
+			[]Action{fixClose, {Kind: KindStart, Repo: "o/s", Issue: 7, Trigger: "fixpr"}},
+			[]Action{returned, {Kind: KindStart, Repo: "o/s", Issue: 7, Trigger: "fixpr"}}},
+		{"plain handoff close passes",
+			[]Action{{Kind: KindClose, Repo: "o/r", Issue: 7, RunID: 5, Outcome: runs.Handoff}},
+			[]Action{{Kind: KindClose, Repo: "o/r", Issue: 7, RunID: 5, Outcome: runs.Handoff}}},
+		{"start_failed close with a fixpr arg passes",
+			[]Action{{Kind: KindClose, Repo: "o/r", Issue: 7, RunID: 5, Outcome: runs.StartFailed, ReasonArg: "fixpr:x"}},
+			[]Action{{Kind: KindClose, Repo: "o/r", Issue: 7, RunID: 5, Outcome: runs.StartFailed, ReasonArg: "fixpr:x"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var ps []planned
+			for _, a := range tt.in {
+				ps = append(ps, planned{Action: a})
+			}
+			var got []Action
+			for _, p := range returnUnstartedFixPR(ps) {
+				got = append(got, p.Action)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("got  %+v\nwant %+v", got, tt.want)
+			}
+		})
 	}
 }

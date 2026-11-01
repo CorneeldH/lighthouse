@@ -2,7 +2,7 @@
 language = "nl"
 code_language = "en"
 code_language_paths = ["pack/**", "internal/**", "cmd/**", "tests/**", "tools/**"]
-code_language_exempt = ["tests/pack/fixtures/code_language/**"]
+code_language_exempt = ["tests/pack/fixtures/code_language/**", "tests/pack/fixtures/roborev/**"]
 
 [forge]
 kind = "github"
@@ -48,6 +48,10 @@ unchecked_exit_codes = [3]
 [usage_guard]
 controller = true
 resume = true
+
+[review]
+# Local roborev review in /lighthouse-write-pr (#119); see .roborev.toml.
+roborev = "local"
 
 # `lighthouse tick` bedient deze repo alleen met deze tabel (docs/tick.md, *Vereisten per repo*). De
 # skills herkennen er ook de controller-modus aan.

@@ -1,0 +1,9 @@
+# roborev config for the Codex review per PR (#119), copied from personal_ai_agent.
+# Model equal to the retro of paia #1015, so outcomes stay comparable. `roborev ci review` has
+# no --model flag; the model comes from here.
+agent = "codex"
+model = "gpt-5.6-sol"
+
+[ci]
+# The CI default is `security` only; we want the ordinary review.
+review_types = ["default"]

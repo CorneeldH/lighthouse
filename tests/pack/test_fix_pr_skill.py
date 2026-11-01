@@ -167,3 +167,26 @@ def test_variants_differ_only_in_the_sandbox_wording() -> None:
     assert "dangerouslyDisableSandbox" not in _section(AGENTS, DIAGNOSE_HEADING)
     claude = [line for line in CLAUDE.splitlines() if line not in AGENTS.splitlines()]
     assert len(claude) == 2, claude
+
+
+def test_roborev_section_renders_the_shared_log() -> None:
+    for text in TEXTS:
+        s6 = text[text.index("## 6.") : text.index("## Non-negotiable")]
+        for needle in ("roborev_comment.py render", "--bron ci", "roborev_gate.py record", "--raw"):
+            assert needle in s6, needle
+
+
+def test_roborev_section_stops_on_an_unreadable_ci_review() -> None:
+    """`classify` skip has no sha for `record --done`: the skill must say what to do instead."""
+    for text in TEXTS:
+        s6 = text[text.index("## 6.") : text.index("## Non-negotiable")]
+        assert "`classify` prints `verdict` `skip`" in s6
+        assert "render and post nothing" in s6
+
+
+def test_only_a_red_pr_is_started_by_the_dispatcher() -> None:
+    """The dispatcher starts fix-pr on a red PR only and never reads the roborev marker."""
+    for text in TEXTS:
+        flat = " ".join(text.split())
+        assert "starts this skill only on a red PR after a finished run" in flat
+        assert "does not read the marker" in flat

@@ -56,7 +56,7 @@ runs.
 |---|---|---|
 | Headless-runner (`systemd-run claude -p`) en classify | Forge is de enige werkplek; een forge-run post zijn Vraag zelf | Weg |
 | Stapelen en herbaseren | Wachten op de merge van de voorganger is goed genoeg | Weg; een geblokkeerd issue gaat naar On hold |
-| Automatische fix-pr en roborev | Later | Nieuw lighthouse-issue, overgezet van CorneeldH/personal_ai_agent#1442 |
+| Automatische fix-pr en roborev | Later; opgepakt in #119 (dispatcher start `/lighthouse-fix-pr` bij een rode PR, roborev lokaal in write-pr) | Lighthouse-issue #119, overgezet van CorneeldH/personal_ai_agent#1442 |
 | Triage en `auto_aanbevolen` | Eigen functie, geen dispatch | Eén nieuw lighthouse-issue zonder milestone, met paia-milestone #67 als bewijsbron |
 | Geplande runs (codebase-map, reflect) | Draaien nu als eigen timers, los van de controller | Nieuw lighthouse-issue zonder milestone |
 | De wachter-timer (elke 3 min, vingerafdruk) | Een tick met een goedkope precheck doet hetzelfde | Weg (*De tick*) |
@@ -431,7 +431,7 @@ Elke tick bekijkt elke open rij. Uitkomsten en de reden op het issue:
 | PR gemerged | `done` | — |
 | PR groen (checks groen, niet draft, mergeable) en de sessie is klaar | `done`, post 🤖 Klaar | — |
 | PR gesloten zonder merge, of draft | `returned` | "PR gesloten" / "PR is draft" |
-| PR rood en de sessie is klaar | `returned` | "PR rood" (fix-pr volgt later) |
+| PR rood en de sessie is klaar | `handoff`; de dispatcher start `/lighthouse-fix-pr` (#119). Na 3 runs per PR `returned` | "PR rood na 3 fix-pr-runs" |
 | **Startfout (#34)**: transcript met `Unknown command:`, of een sessie die klaar is zonder één assistant-beurt | `start_failed`; *Dedup* geeft één tweede poging, de tweede `start_failed` wordt Teruggegeven | "startfout: `<commando>` onbekend in de sessie" of "startfout: sessie deed niets" |
 | Onzekere spawn, binnen `max_wait` geen sessie gevonden | `returned` | "start onzeker: geen sessie gevonden" |
 | **Wacht op permissie (#35)** | `returned` na `max_wait` | "wacht op permissie: `<tool>` `<pad>`" |

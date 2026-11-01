@@ -94,7 +94,8 @@ func TestBoardItemsMapsFields(t *testing.T) {
 				map[string]any{"number": 12, "state": "OPEN", "isDraft": true, "mergeable": "UNKNOWN",
 					"headRefOid": "abc", "headRefName": "issue-7-x", "statusCheckRollup": nil},
 				map[string]any{"number": 13, "state": "MERGED", "isDraft": false, "mergeable": "CONFLICTING",
-					"headRefOid": "def", "headRefName": "issue-7-y", "statusCheckRollup": map[string]any{"state": "SUCCESS"}},
+					"headRefOid": "def", "headRefName": "issue-7-y", "isCrossRepository": true,
+					"statusCheckRollup": map[string]any{"state": "SUCCESS"}},
 			}},
 		},
 	}}
@@ -114,7 +115,7 @@ func TestBoardItemsMapsFields(t *testing.T) {
 		BlockedBy:      []Blocker{{Repo: "o/x", Issue: 5, State: "CLOSED", MergedPR: true}},
 		ClosingPRs: []PR{
 			{Number: 12, State: "OPEN", Draft: true, Mergeable: "UNKNOWN", HeadSHA: "abc", HeadRef: "issue-7-x", Checks: "", Closes: true},
-			{Number: 13, State: "MERGED", Draft: false, Mergeable: "CONFLICTING", HeadSHA: "def", HeadRef: "issue-7-y", Checks: "SUCCESS", Closes: true},
+			{Number: 13, State: "MERGED", Draft: false, Mergeable: "CONFLICTING", HeadSHA: "def", HeadRef: "issue-7-y", CrossRepo: true, Checks: "SUCCESS", Closes: true},
 		},
 	}}
 	if !reflect.DeepEqual(got, want) {

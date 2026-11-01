@@ -844,3 +844,23 @@ def test_code_language_llm_keys(tmp_path):
     path.write_text("code_language_llm = 1\n" + _render(VALID))
     with pytest.raises(ConfigError, match="code_language_llm"):
         load(path)
+
+
+# --- [review] roborev --------------------------------------------------------
+
+
+def test_review_roborev_defaults_to_off(tmp_path):
+    assert lookup(load(_write(tmp_path, VALID)), "review.roborev") == "off"
+
+
+def test_review_roborev_accepts_local(tmp_path):
+    cfg = load(_write(tmp_path, {**VALID, "review": {"roborev": "local"}}))
+    assert lookup(cfg, "review.roborev") == "local"
+
+
+@pytest.mark.parametrize("value", ["pr", "github", "LOCAL"])
+def test_review_roborev_rejects_other_values(tmp_path, value):
+    path = _write(tmp_path, {**VALID, "review": {"roborev": value}})
+    with pytest.raises(ConfigError) as exc:
+        load(path)
+    assert "key review.roborev must be 'local' or 'off'" in str(exc.value)

@@ -22,7 +22,7 @@ _spec.loader.exec_module(config)
 NO_DEFAULT = object()
 # Keys nothing in the repo reads: only config.py checks them (spec section 2).
 UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name"}
-SET = {"project.language", "forge.kind", "forge.repo", "test_gate.command", "host.name", "host.tailscale_ip"}
+SET = {"project.language", "forge.kind", "forge.repo", "test_gate.command", "host.name", "host.tailscale_ip", "review.roborev"}
 REQUIRED = {
     "forge.board.project_number": "with [forge.board]",
     "forge.board.project_id": "with [forge.board]",
@@ -468,6 +468,7 @@ def test_options_are_the_values_config_py_accepts():
         "project.language": list(config.LANGUAGES),
         "project.code_language": ["en"],
         "forge.kind": ["github"],
+        "review.roborev": ["local", "off"],
         **{key: [True, False] for key, kind in config.SCHEMA.items() if kind == config._BOOL},
     }
     on_map = {k["key"]: k["options"] for k in all_keys(load("config.json")) if "options" in k}

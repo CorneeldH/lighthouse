@@ -93,10 +93,12 @@ type Action struct {
 
 // Decide is the pure decision of one tick: per repo, per item, first the orphan rule, then
 // the settlement of the item's open runs, then the 🚀 repair, then at most one start,
-// resume, park or hold (next), or for an item in On hold at most one unpark; per repo also
-// the markers that will never resume. The result is ordered: the actions without a start or
-// resume (park, hold and unpark among them) by repo and issue, then the defers, then the
-// starts and resumes by priority, trigger time, repo and issue.
+// resume, park or hold (a fix-pr start, else next), or for an item in On hold at most one
+// unpark; per repo also the markers that will never resume. After the brake, a run closed for
+// a fix-pr start that did not survive (a closed gate, a defer, a pause) is handed back as
+// "PR red" instead. The result is ordered: the actions without a start or resume (park, hold
+// and unpark among them) by repo and issue, then the defers, then the starts and resumes by
+// priority, trigger time, repo and issue.
 func Decide(in Input) []Action {
 	var ps []planned
 	for _, repo := range in.Repos {
@@ -110,13 +112,42 @@ func Decide(in Input) []Action {
 	slices.SortStableFunc(ps, comparePlanned)
 	if in.Brake != nil {
 		ps = in.Brake.apply(ps)
-		slices.SortStableFunc(ps, comparePlanned)
 	}
+	ps = returnUnstartedFixPR(ps)
+	slices.SortStableFunc(ps, comparePlanned)
 	out := make([]Action, 0, len(ps))
 	for _, p := range ps {
 		out = append(out, p.Action)
 	}
 	return out
+}
+
+// returnUnstartedFixPR hands back every run settle closed for a fix-pr start (a handoff close
+// whose ReasonArg is the fixpr: key) when ps holds no fix-pr start for its issue: decideIssue
+// did not plan one, or the brake deferred or dropped it. The run then closes as Returned "PR
+// red" with its own session, as before fix-pr existed: a handoff without a start would leave
+// the issue silent on a red PR.
+func returnUnstartedFixPR(ps []planned) []planned {
+	type issueKey struct {
+		repo  string
+		issue int
+	}
+	started := map[issueKey]bool{}
+	for _, p := range ps {
+		if p.Kind == KindStart && p.Trigger == triggerFixPR {
+			started[issueKey{p.Repo, p.Issue}] = true
+		}
+	}
+	for i, p := range ps {
+		if p.Kind != KindClose || p.Outcome != runs.Handoff || !strings.HasPrefix(p.ReasonArg, triggerFixPR+":") ||
+			started[issueKey{p.Repo, p.Issue}] {
+			continue
+		}
+		a := p.Action
+		a.Kind, a.Reason, a.Outcome, a.ReasonArg = KindReturn, "reason_pr_red", "", ""
+		ps[i] = planned{Action: a}
+	}
+	return ps
 }
 
 // planned is an action with what orders it; priority and at count for a start or resume.
@@ -158,7 +189,9 @@ func comparePlanned(a, b planned) int {
 // decideIssue gives the actions of one item. The start rules run only for an open issue in
 // Controller whose open runs all close in this tick, and not when the orphan rule hands the
 // issue back: a start next to that Returned would contradict it. The same holds for the
-// unpark rule of an open issue in On hold.
+// unpark rule of an open issue in On hold. When settle closed a run for a fix-pr start and no
+// blocker is active, that start is the item's one start in this tick and next does not run;
+// in every other case Decide hands the run back (returnUnstartedFixPR).
 func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	hs := headers(it)
 	base := Action{Repo: repo.Snapshot.Repo, Issue: it.Issue, Language: repo.Language}
@@ -168,13 +201,17 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		out = append(out, planned{Action: a})
 	}
 	free := !orphaned
+	var fix *fixPRStart
 	for _, row := range repo.History {
 		if !row.Open || row.Issue != it.Issue {
 			continue
 		}
-		a, closes := settle(in, repo, it, row, hs, base)
+		a, closes, f := settle(in, repo, it, row, hs, base)
 		if closes {
 			out = append(out, planned{Action: a})
+			if f != nil {
+				fix = f
+			}
 		}
 		free = free && closes
 	}
@@ -187,7 +224,10 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night}
 	switch it.Status {
 	case statusController:
-		if p, ok := c.next(); ok {
+		if fix != nil && !c.active() {
+			a := c.fresh(triggerFixPR, fix.key, cmdFixPR+" "+strconv.Itoa(fix.pr.Number), fix.pr.HeadRef)
+			out = append(out, c.planned(a, c.now))
+		} else if p, ok := c.next(); ok {
 			out = append(out, p)
 		}
 	case statusOnHold:
@@ -256,8 +296,9 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 // also needs row's session, a Handoff carries none. A Done closes, then a Handoff that does
 // not end the chain, then a Question, then the run's own Returned (posted by an earlier tick
 // whose stop failed); after those the measurement rules of runCtx.outcome. Every action it
-// returns closes row.
-func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool) {
+// returns closes row. The third result, only from prRed, is the fix-pr start the close stands
+// for; settle starts nothing itself.
+func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool, *fixPRStart) {
 	var done, question, returned bool
 	var handoff *parsed
 	for i, p := range hs {
@@ -280,11 +321,11 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 	c.handoff = handoff != nil
 	switch {
 	case done:
-		return c.closed(runs.Done), true
+		return c.closed(runs.Done), true, nil
 	case handoff != nil && !endsChain(repo, it.Issue, handoff.Header):
-		return c.closed(runs.Handoff), true
+		return c.closed(runs.Handoff), true, nil
 	case question:
-		return c.closed(runs.Question), true
+		return c.closed(runs.Question), true, nil
 	case returned:
 		a := c.closed(runs.Returned)
 		if c.open.WorkplaceSession == "" {
@@ -293,9 +334,15 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 			// A gone workspace has no session to stop: Stop would fail every tick.
 			a.Stop = !c.done() && !c.state.Gone
 		}
-		return a, true
+		return a, true, nil
 	}
 	return c.outcome()
+}
+
+// fixPRStart is the fix-pr start settle hands to decideIssue: the red PR and its trigger key.
+type fixPRStart struct {
+	pr  forge.PR
+	key string
 }
 
 // runCtx is what the measurement rules of one open run read.
@@ -311,10 +358,13 @@ type runCtx struct {
 	hasStand bool
 	handoff  bool          // a Handoff stands from row's start on
 	markers  []park.Marker // the repo's resume markers
+	history  []runs.Row    // the repo's runs, open and closed
+	trunk    string        // the repo's default branch
 }
 
 func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) runCtx {
-	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers}
+	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers, history: repo.History,
+		trunk: repo.DefaultBranch}
 	for _, o := range repo.Snapshot.OpenRuns {
 		if o.ID == row.ID {
 			c.open = o
@@ -326,19 +376,28 @@ func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) run
 }
 
 // outcome returns the action of the first measurement rule that holds, in the order of the
-// run-outcome table.
-func (c runCtx) outcome() (Action, bool) {
-	rules := []func() (Action, bool){
-		c.parked, c.merged, c.closedIssue, c.green, c.gone, c.unknownCommand, c.didNothing,
-		c.prClosed, c.prDraft, c.prRed, c.noHandoff,
-		c.uncertain, c.permission, c.silent, c.silentForge, c.timeout,
+// run-outcome table, with the fix-pr start of prRed.
+func (c runCtx) outcome() (Action, bool, *fixPRStart) {
+	rules := []func() (Action, bool, *fixPRStart){
+		noStart(c.parked), noStart(c.merged), noStart(c.closedIssue), noStart(c.green), noStart(c.gone),
+		noStart(c.unknownCommand), noStart(c.didNothing), noStart(c.prClosed), noStart(c.prDraft),
+		c.prRed, noStart(c.noHandoff), noStart(c.uncertain), noStart(c.permission), noStart(c.silent),
+		noStart(c.silentForge), noStart(c.timeout),
 	}
 	for _, rule := range rules {
-		if a, ok := rule(); ok {
-			return a, true
+		if a, ok, fix := rule(); ok {
+			return a, true, fix
 		}
 	}
-	return Action{}, false
+	return Action{}, false, nil
+}
+
+// noStart lifts a measurement rule that never starts fix-pr into outcome's rule shape.
+func noStart(rule func() (Action, bool)) func() (Action, bool, *fixPRStart) {
+	return func() (Action, bool, *fixPRStart) {
+		a, ok := rule()
+		return a, ok, nil
+	}
 }
 
 // done reports whether the run's session measured Done.
@@ -463,11 +522,61 @@ func (c runCtx) prDraft() (Action, bool) {
 	return a, c.anyPR(func(pr forge.PR) bool { return pr.State == "OPEN" && pr.Draft })
 }
 
-func (c runCtx) prRed() (Action, bool) {
-	red := c.anyPR(func(pr forge.PR) bool {
+// prRed settles a Done run with an open, red PR. Only the run's own PR (ownPR) gets a fix-pr
+// start: anyone can link a PR to a public issue with "Closes #N", and a fix-pr session reads
+// the PR's text and logs. Any other red PR hands the issue back with "PR red". For the own PR,
+// at the ceiling of maxFixPRRuns fix-pr runs it hands the issue back with the ceiling reason;
+// on a head SHA a fix-pr run already had, with "PR red"; the ceiling wins when both hold. Else
+// it closes the run as a handoff carrying the fix-pr key and the run's session, and returns
+// the fix-pr start for decideIssue.
+func (c runCtx) prRed() (Action, bool, *fixPRStart) {
+	red := func(pr forge.PR) bool {
 		return pr.State == "OPEN" && (pr.Checks == "FAILURE" || pr.Checks == "ERROR")
-	})
-	return c.returned("reason_pr_red", ""), c.done() && red
+	}
+	if !c.done() || !slices.ContainsFunc(c.it.PRs, red) {
+		return Action{}, false, nil
+	}
+	i := slices.IndexFunc(c.it.PRs, func(pr forge.PR) bool { return red(pr) && c.ownPR(pr) })
+	if i < 0 {
+		return c.returned("reason_pr_red", ""), true, nil
+	}
+	pr := c.it.PRs[i]
+	key := fixPRKey(pr.Number, pr.HeadSHA)
+	switch {
+	case fixPRRuns(c.history, c.it.Issue, pr.Number) >= maxFixPRRuns:
+		return c.returned("reason_pr_red_ceiling", ""), true, nil
+	case spentKey(c.history, key):
+		return c.returned("reason_pr_red", ""), true, nil
+	}
+	a := c.closed(runs.Handoff)
+	a.ReasonArg, a.SessionID = key, c.row.SessionID
+	return a, true, &fixPRStart{pr: pr, key: key}
+}
+
+// ownPR reports whether pr is the run's own PR, the one a fix-pr run may work on: its head is
+// the run's branch, a name safe to pass to git, not the default branch, in this repository and
+// not in a fork.
+func (c runCtx) ownPR(pr forge.PR) bool {
+	return pr.HeadRef == c.row.Branch && validBranch(pr.HeadRef) && pr.HeadRef != c.trunk && !pr.CrossRepo
+}
+
+// fixPRKey is the trigger key of a fix-pr start: one per PR and head SHA, so a red state on
+// the same SHA never starts twice.
+func fixPRKey(pr int, sha string) string {
+	return triggerFixPR + ":" + strconv.Itoa(pr) + ":" + sha
+}
+
+// fixPRRuns counts the runs of issue that ran /lighthouse-fix-pr on pr, an open one included,
+// a failed start not: when the third fix-pr run closes, the count is already 3.
+func fixPRRuns(history []runs.Row, issue, pr int) int {
+	command := cmdFixPR + " " + strconv.Itoa(pr)
+	n := 0
+	for _, row := range history {
+		if row.Issue == issue && row.Command == command && row.Outcome != runs.StartFailed {
+			n++
+		}
+	}
+	return n
 }
 
 // noHandoff hands back a session that is Done without a PR, Handoff or Question: the Question
@@ -691,6 +800,9 @@ const (
 	triggerHandoff   = "handoff"
 	triggerAnswer    = "answer"
 	triggerClose     = "closecheck"
+	triggerFixPR     = "fixpr"
+	cmdFixPR         = "/lighthouse-fix-pr"
+	maxFixPRRuns     = 3
 )
 
 // issueCtx is what the start rules of one item read.

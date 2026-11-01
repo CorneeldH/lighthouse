@@ -180,6 +180,14 @@ source_path = "scripts/review_pair.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
+path = "pack/core/scripts/roborev_comment.py"
+new = true
+
+[[file]]
+path = "pack/core/scripts/roborev_gate.py"
+new = true
+
+[[file]]
 path = "pack/core/scripts/codex_usage.py"
 source_path = "scripts/codex_usage.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
