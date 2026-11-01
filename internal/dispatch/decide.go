@@ -78,10 +78,11 @@ type Action struct {
 }
 
 // Decide is the pure decision of one tick: per repo, per item, first the orphan rule, then
-// the settlement of the item's open runs, then the 🚀 repair, then at most one start or
-// resume (next). The result is ordered: the actions without a start or resume by repo and
-// issue, then the defers, then the starts and resumes by priority, trigger time, repo and
-// issue.
+// the settlement of the item's open runs, then the 🚀 repair, then at most one start,
+// resume, park or hold (next), or for an item in On hold at most one unpark. The result is
+// ordered: the actions without a start or resume (park, hold and unpark among them) by repo
+// and issue, then the defers, then the starts and resumes by priority, trigger time, repo
+// and issue.
 func Decide(in Input) []Action {
 	var ps []planned
 	for _, repo := range in.Repos {
