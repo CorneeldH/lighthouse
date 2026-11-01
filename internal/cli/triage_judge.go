@@ -100,8 +100,9 @@ func judgeArgs(settings string) []string {
 		"--output-format", "json", "--json-schema", tri.Schema}
 }
 
-// execJudge runs one judgment with claude in dir, prompt on stdin, cfg.Env added to the environment, and returns its stdout. A
-// failed exit carries the first bytes of stderr; a timeout wraps context.DeadlineExceeded.
+// execJudge runs one judgment with claude in dir, prompt on stdin, cfg.Env added to the
+// environment, and returns its stdout. A failed exit carries the first bytes of stderr; a
+// timeout wraps context.DeadlineExceeded.
 func execJudge(ctx context.Context, dir, prompt string, cfg judgeConfig) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
 	defer cancel()

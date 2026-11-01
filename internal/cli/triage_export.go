@@ -57,14 +57,18 @@ func unpackArchive(ctx context.Context, repoDir, ref, dir string) error {
 		_, _ = io.Copy(io.Discard, stdout) // let git finish its trailing padding
 	}
 	waitErr := cmd.Wait()
+	msg := strings.TrimSpace(stderr.String())
+	if len(msg) > judgeStderr {
+		msg = msg[:judgeStderr]
+	}
 	if unpackErr != nil {
+		if msg != "" {
+			// git may have died first: keep its message next to the truncated stream
+			return fmt.Errorf("%w (git archive: %s)", unpackErr, msg)
+		}
 		return unpackErr // git's own error is only the cancel
 	}
 	if waitErr != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if len(msg) > judgeStderr {
-			msg = msg[:judgeStderr]
-		}
 		return fmt.Errorf("git archive: %w: %s", waitErr, msg)
 	}
 	return nil
@@ -82,6 +86,9 @@ func unpackTar(root *os.Root, r io.Reader) error {
 			return fmt.Errorf("read archive: %w", err)
 		}
 		name := path.Clean(h.Name)
+		if hasGitComponent(name) {
+			return fmt.Errorf("archive entry %q: a .git path component is not allowed", h.Name)
+		}
 		switch h.Typeflag {
 		case tar.TypeXGlobalHeader:
 			continue
@@ -116,4 +123,15 @@ func writeEntry(root *os.Root, name string, h *tar.Header, r io.Reader) error {
 		return err
 	}
 	return f.Close()
+}
+
+// hasGitComponent reports whether a component of the cleaned name is .git, in any letter case:
+// the export holds no repository metadata, and a .git file or directory could redirect the harness.
+func hasGitComponent(name string) bool {
+	for _, c := range strings.Split(name, "/") {
+		if strings.EqualFold(c, ".git") {
+			return true
+		}
+	}
+	return false
 }

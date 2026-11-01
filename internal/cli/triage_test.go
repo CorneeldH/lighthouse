@@ -1368,8 +1368,8 @@ func TestTriageEvidenceFromLog(t *testing.T) {
 				}
 				return
 			}
-			if len(b) != 0 || !strings.Contains(errOut, "invalid judgment") {
-				t.Errorf("comments = %q errOut = %q, want an invalid judgment and no comment", b, errOut)
+			if len(b) != 0 || !strings.Contains(errOut, "invalid judgment") || !strings.Contains(errOut, "not in the git log") {
+				t.Errorf("comments = %q errOut = %q, want an invalid judgment (not in the git log) and no comment", b, errOut)
 			}
 		})
 	}

@@ -282,6 +282,8 @@ func Validate(envelope []byte, f Facts, c Context) (Judgment, error) {
 	if err := checkPublished(j, f, c); err != nil {
 		return Judgment{}, err
 	}
+	// a sha is lowercase in the log; case in the field would be a free bit per letter
+	j.RedundancyEvidence = strings.ToLower(j.RedundancyEvidence)
 	if !j.Headless && j.HeadlessReason == "" {
 		return Judgment{}, invalid("headless false without headless_reason")
 	}

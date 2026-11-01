@@ -73,6 +73,7 @@ func TestExecJudgeFlags(t *testing.T) {
 func TestExecJudgeEnv(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env")
 	fakeClaude(t, "env > "+envFile+`; printf '{}'`)
+	t.Setenv("LH_T", "0") // the settings env wins over the process env
 	if _, err := execJudge(context.Background(), t.TempDir(), "p", judgeConfig{Env: []string{"LH_T=1"}}); err != nil {
 		t.Fatal(err)
 	}

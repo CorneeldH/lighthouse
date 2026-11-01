@@ -131,8 +131,6 @@ func allRows() map[string]Outcome {
 	}
 }
 
-// The fix line of a forwarded issue: re-triage sets the status back first, or the next tick
-// starts the issue on Controller; without wait_for_night there is no handoff to delete.
 func TestJudgedRow(t *testing.T) {
 	g0 := &Gate0{Blockers: []int{5}, Label: "3-blocked-external"}
 	with := func(j *Judgment, mut func(*Judgment)) *Judgment { mut(j); return j }
@@ -156,6 +154,7 @@ func TestJudgedRow(t *testing.T) {
 		{"4c beats not headless", with(judged(4, "c", "x"), func(j *Judgment) { j.Headless = false }), nil, true, RowDesign},
 		{"not headless beats untrusted", with(judged(4, "b", "x"), func(j *Judgment) { j.Headless = false }), nil, false, RowInteractive},
 		{"gate 0 with redundancy none", judged(4, "b", "x"), g0, true, RowStop},
+		{"gate 0 with done keeps redundant", with(judged(4, "b", "x"), func(j *Judgment) { j.Redundancy = "done" }), g0, true, RowRedundant},
 		{"gate 0 beats 4c", judged(4, "c", "x"), g0, true, RowStop},
 	}
 	for _, tt := range tests {
@@ -167,6 +166,8 @@ func TestJudgedRow(t *testing.T) {
 	}
 }
 
+// The fix line of a forwarded issue: re-triage sets the status back first, or the next tick
+// starts the issue on Controller; without wait_for_night there is no handoff to delete.
 func TestForwardFixLine(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

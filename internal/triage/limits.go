@@ -16,9 +16,11 @@ const (
 	MaxHeadlessReasonRunes = 300
 	MaxQuestionRunes       = 300
 	MaxOptionRunes         = 150
-	MaxEvidenceRunes       = 220
-	MaxEvidenceRefs        = 5
-	MaxIssueDigits         = 6
+	// MaxEvidenceRunes is the spec's limit of redundancy_evidence. No separate check enforces it:
+	// evidenceRe admits at most 5*40 + 4*2 = 208 runes, so the pattern is the stricter bound.
+	MaxEvidenceRunes = 220
+	MaxEvidenceRefs  = 5
+	MaxIssueDigits   = 6
 )
 
 // evidenceRef is one reference of redundancy_evidence: #<number> or a commit sha of 7 to 40 hex.
@@ -33,9 +35,6 @@ func checkEvidence(ev string, shas []string) error {
 	ev = strings.TrimSpace(ev)
 	if ev == "" {
 		return nil
-	}
-	if n := utf8.RuneCountInString(ev); n > MaxEvidenceRunes {
-		return invalid("redundancy_evidence is %d characters, the limit is %d", n, MaxEvidenceRunes)
 	}
 	if !evidenceRe.MatchString(ev) {
 		return invalid("redundancy_evidence %q is not only references (at most %d, #<number> or a commit sha, separated by \", \" or \" \")", ev, MaxEvidenceRefs)

@@ -277,7 +277,8 @@ func TestValidateInvalid(t *testing.T) {
 		{"evidence seven digit issue", factsSha(), done("#1234567"), "redundancy_evidence"},
 		{"evidence six refs", factsSha(), done("#1, #2, #3, #4, #5, #6"), "redundancy_evidence"},
 		{"evidence empty separator", factsSha(), done("#1 ,, ,#2"), "redundancy_evidence"},
-		{"evidence over limit", factsSha(), done("#1" + strings.Repeat(" ", MaxEvidenceRunes) + "#2"), "redundancy_evidence"},
+		// the pattern alone bounds the field (see MaxEvidenceRunes); padding is not a reference
+		{"evidence padded past the limit", factsSha(), done("#1" + strings.Repeat(" ", MaxEvidenceRunes) + "#2"), "not only references"},
 		{"headless false without reason", facts7(), map[string]any{"headless": false}, "without headless_reason"},
 	}
 	for _, tc := range tests {
@@ -379,6 +380,17 @@ func TestValidateRedundancyAndHeadless(t *testing.T) {
 	if j.Redundancy != "duplicate" || j.RedundancyIssue != 3 || j.RedundancyEvidence != "#3" ||
 		j.Headless || j.HeadlessReason != "needs sudo" {
 		t.Errorf("got %+v", j)
+	}
+}
+
+// Letter case of a sha is a free bit per hex letter: an accepted sha is published lowercased.
+func TestValidateEvidenceLowercased(t *testing.T) {
+	j, err := Validate(envelope(t, verdict(done("ABC1234, #12"))), factsSha(), ctxNL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if j.RedundancyEvidence != "abc1234, #12" {
+		t.Errorf("RedundancyEvidence = %q, want %q", j.RedundancyEvidence, "abc1234, #12")
 	}
 }
 

@@ -132,6 +132,21 @@ func TestExportTreeBadRef(t *testing.T) {
 	}
 }
 
+// When git dies in the middle of the stream, the operator reads git's own message next to the
+// truncated-archive error.
+func TestExportTreeGitDiesMidStream(t *testing.T) {
+	bin := t.TempDir()
+	script := "#!/bin/sh\necho 'fatal: pack is corrupt' >&2\nprintf short\nexit 128\n"
+	writeModeFile(t, filepath.Join(bin, "git"), script, 0o755)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("TMPDIR", t.TempDir())
+
+	_, _, err := exportTree(context.Background(), t.TempDir(), "origin/main")
+	if err == nil || !strings.Contains(err.Error(), "read archive") || !strings.Contains(err.Error(), "fatal: pack is corrupt") {
+		t.Errorf("err = %v, want read archive and git's fatal message", err)
+	}
+}
+
 func TestUnpackTarContainment(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -146,6 +161,15 @@ func TestUnpackTarContainment(t *testing.T) {
 				{Name: "link", Typeflag: tar.TypeSymlink, Linkname: outside},
 				{Name: "link/f", Typeflag: tar.TypeReg, Mode: 0o644},
 			}
+		}},
+		{"git dir", func(string) []tar.Header {
+			return []tar.Header{{Name: ".git/config", Typeflag: tar.TypeReg, Mode: 0o644}}
+		}},
+		{"nested git dir upper case", func(string) []tar.Header {
+			return []tar.Header{{Name: "sub/.GIT/hooks/x", Typeflag: tar.TypeReg, Mode: 0o644}}
+		}},
+		{"git file", func(string) []tar.Header {
+			return []tar.Header{{Name: "sub/.git", Typeflag: tar.TypeReg, Mode: 0o644}}
 		}},
 		{"hard link", func(string) []tar.Header {
 			return []tar.Header{{Name: "hl", Typeflag: tar.TypeLink, Linkname: "a.txt"}}
