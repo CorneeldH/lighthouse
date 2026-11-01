@@ -310,6 +310,9 @@ def test_ceiling_blocks_push(fx, stubs, monkeypatch, kind):
     assert "found a secret" not in result.stderr
     if before is None:
         assert ref not in _remote_refs(bare)
+        # The batch at the ceiling is not clean: nothing of it in the ledger.
+        ledgers = (fx["repo"] / ".git" / "lighthouse" / "secret-scan").glob("clean-*.txt")
+        assert all(not path.read_text().split() for path in ledgers)
     else:
         assert _out(bare, "rev-parse", ref) == before
 
@@ -541,7 +544,8 @@ def test_gitleaks_config_allows_beta_header_name(tmp_path):
     clean = tmp_path / "t.jsonl"
     clean.write_text(line, encoding="utf-8")
     dirty = tmp_path / "u.jsonl"
-    dirty.write_text(line + FAKE_PAT + "\n", encoding="utf-8")
+    # A real key on the line of the allowed match: that line stays red.
+    dirty.write_text(line.replace("}", f',"token":"{FAKE_PAT}"}}'), encoding="utf-8")
 
     def scan(path: Path) -> int:
         return subprocess.run(
