@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.8.1] - 2026-11-01
+
+### Fixed
+
+- `bash-write-check` no longer hands a file that lighthouse itself installed (a file unit in `.lighthouse/manifest.toml`) to its gates, so `ruff format` or `gofmt` no longer rewrites it when `lighthouse init` runs in an agent's Bash call, and `lighthouse init --upgrade` afterwards says `No changes.`
+
 ## [v0.8.0] - 2026-11-01
 
 ### Changed
