@@ -399,3 +399,78 @@ func TestClaudeRunning(t *testing.T) {
 		})
 	}
 }
+
+// Classification: behaviour tests of Meter.Measure. Each fails when Measure
+// drops the 2*TTL bound, forces or skips the refresh, or accepts a future cache.
+func measureMeter(t *testing.T, cache string, out []byte, runErr error) (Meter, *fakeRun, Paths) {
+	t.Helper()
+	p := Paths{Dir: t.TempDir()}
+	m, f := newTestMeter(t, p, out, false)
+	f.err = runErr
+	if cache != "" {
+		writeFile(t, p.Cache(), cache)
+	}
+	return m, f, p
+}
+
+func TestMeasureIdleHostFreshCache(t *testing.T) {
+	m, f, _ := measureMeter(t, cacheAged(4*time.Minute), nil, errors.New("RunUsage must not run"))
+	m.ClaudeRunning = func() bool { t.Error("ClaudeRunning must not be called"); return false }
+
+	s, measured := m.Measure()
+	if !measured || s.Session.Pct != 1 {
+		t.Errorf("Measure = %+v, %v; want session pct 1, measured", s, measured)
+	}
+	if f.calls != 0 {
+		t.Errorf("RunUsage calls = %d, want 0", f.calls)
+	}
+}
+
+func TestMeasureRefreshesStaleCache(t *testing.T) {
+	m, f, _ := measureMeter(t, cacheAged(6*time.Minute), fixture(t, "usage_full.json"), nil)
+
+	s, measured := m.Measure()
+	if !measured || s.Session.Pct != 99 {
+		t.Errorf("Measure = %+v, %v; want session pct 99, measured", s, measured)
+	}
+	if f.calls != 1 {
+		t.Errorf("RunUsage calls = %d, want 1", f.calls)
+	}
+}
+
+func TestMeasureBusyFreshCounts(t *testing.T) {
+	m, f, p := measureMeter(t, cacheAged(8*time.Minute), nil, errors.New("RunUsage must not run"))
+	unlock, held, err := tryLock(p.Lock())
+	if err != nil || !held {
+		t.Fatalf("tryLock = %v, %v", held, err)
+	}
+	defer unlock()
+
+	if _, measured := m.Measure(); !measured {
+		t.Error("measured = false, want true for a busy refresh with a cache within 2*TTL")
+	}
+	if f.calls != 0 {
+		t.Errorf("RunUsage calls = %d, want 0", f.calls)
+	}
+}
+
+func TestMeasureFailedOldCache(t *testing.T) {
+	m, _, _ := measureMeter(t, cacheAged(11*time.Minute), nil, errors.New("boom"))
+	if _, measured := m.Measure(); measured {
+		t.Error("measured = true, want false for a cache older than 2*TTL")
+	}
+}
+
+func TestMeasureFutureCacheNotMeasured(t *testing.T) {
+	m, _, _ := measureMeter(t, cacheAged(-time.Minute), nil, errors.New("boom"))
+	if _, measured := m.Measure(); measured {
+		t.Error("measured = true, want false for a cache from the future")
+	}
+}
+
+func TestMeasureNoCache(t *testing.T) {
+	m, _, _ := measureMeter(t, "", nil, errors.New("boom"))
+	if _, measured := m.Measure(); measured {
+		t.Error("measured = true, want false without a cache")
+	}
+}
