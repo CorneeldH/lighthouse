@@ -396,13 +396,16 @@ Bij een vaste stop draagt de marker die stop:
 
 ```text
 <!-- lighthouse: {"kind": "triage", "version": 1, "gate": "0", "blockers": [114], "label": null} -->
+<!-- lighthouse: {"kind": "triage", "version": 1, "gate": "4c", "blockers": [], "label": "3-needs-decision"} -->
 <!-- lighthouse: {"kind": "triage", "version": 1, "gate": "invariant"} -->
 ```
 
-- Bij poort 0 bevat `blockers` de nummers uit `blocked_by`. In `label` staat het blokkadelabel
-  dat het issue bij de triage droeg. Dat kan alleen `labels.blocked_issue`,
-  `labels.blocked_external`, `labels.needs_shaping` of `labels.needs_decision` zijn.
-  `labels.needs_hands` en `labels.needs_testing` komen niet in de marker, want die houden een
+- Bij poort 0 bevat `blockers` de nummers uit `blocked_by`, en `label` het label
+  `labels.blocked_issue` of `labels.blocked_external` als het issue dat droeg.
+- Bij poort 4c op een issue met `labels.needs_shaping` of `labels.needs_decision` (rij 4) staat
+  dat label in `label`. Zo'n marker is ook een vaste stop: haalt de gebruiker het label weg na
+  de beslissing, dan vervalt de marker *(eigen keuze na spec-review, r2-f1)*.
+- `labels.needs_hands` en `labels.needs_testing` komen niet in de marker, want die houden een
   issue niet tegen (rij 7) *(eigen keuze na spec-review, r1-f11)*.
 - Een marker met `"gate": "invariant"` vervalt zodra Go de invariant weer ziet kloppen
   *(eigen keuze na spec-review, r1-f12)*.
@@ -483,6 +486,7 @@ Unit, in `internal/triage` (zonder netwerk en zonder `claude`):
   - poort 0 met alle blokkeerders dicht en zonder label wordt weer kandidaat, en met één
     blokkeerder nog open niet;
   - een invariantmarker op een issue dat nu klopt;
+  - een 4c-marker met `labels.needs_decision`, waarvan het label is weggehaald;
   - een paia-marker met `label3` `3-needs-hands`;
 - de vaste regels: poort 0, en de invariant met en zonder `location_prefix`/`area_prefix`;
 - de voorrang tussen de rijen van *Toepassen*. Bijvoorbeeld: 4b met `labels.needs_hands` gaat
