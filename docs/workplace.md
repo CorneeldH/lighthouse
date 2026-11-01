@@ -8,12 +8,13 @@ HTTP-adapter). Het ontwerp staat in de [dispatcher-spec](developer/planning/spec
 
 ## De interface
 
-`workplace.Workplace` heeft zes methoden: `Prepare(branch)` geeft een klare workspace,
+`workplace.Workplace` heeft zeven methoden: `Prepare(branch)` geeft een klare workspace,
 `Spawn(ws, launch)` start de agent en geeft zijn sessie, `Sessions(workspaceID)` leest de
 agentsessies, `Stop(workspaceID, sessionIDs)` beëindigt de processen, `Remove(workspaceID)` verwijdert
-de workspace en `Discard(workspaceID)` vergeet een start waarvan de agent nooit verscheen (de adapter
-wist dan de drager). Een workspace die forge niet meer kent (een 404 op de sessielijst) is
-`workplace.ErrGone`. Elke subprocess-aanroep (git, systemctl, podman) loopt via een injecteerbare
+de workspace, `Lookup(workspaceID)` leest het pad (`worktree_path`) en de branch (`git_head_ref`) van
+een workspace, en `Discard(workspaceID)` vergeet een start waarvan de agent nooit verscheen (de adapter
+wist dan de drager). Een workspace die forge niet meer kent (een 404 op de sessielijst of op `Lookup`)
+is `workplace.ErrGone`; een workspace zonder `worktree_path` is voor `Lookup` een fout. Elke subprocess-aanroep (git, systemctl, podman) loopt via een injecteerbare
 `workplace.Runner`. Een onbekende exitcode of time-out is een fout, nooit een negatief signaal:
 onmeetbaar is niet "weg" en niet "schoon".
 
@@ -216,8 +217,10 @@ een kandidaat die nog in de controller staat of waarvoor een run open is: een lo
 afgebroken. Daarna, in deze volgorde, en elke stap die de workspace moet laten staan is een
 **achterblijver** (`Leftover`, in `tick_state` met soort `cleanup`, per repo en workspace):
 
-1. Het pad. Geen absoluut pad: `not measurable: no workspace path`, zonder `Stop` en zonder `Remove`.
-   `git -C ""` of een relatief pad zou de werkmap van het proces meten.
+1. Het pad. Heeft de kandidaat geen pad, dan zoekt `Cleanup` het op met `Lookup`. Een 404 daar telt als
+   verwijderd, net als in stap 2; een andere fout wordt `not measurable: lookup: …`. Geen absoluut pad:
+   `not measurable: no workspace path`, zonder `Stop` en zonder `Remove`. `git -C ""` of een relatief
+   pad zou de werkmap van het proces meten.
 2. Sessies lezen. Kent forge de workspace niet meer (`ErrGone`, een 404), dan telt hij als verwijderd,
    net als na een 404 op `Remove`: de drager wordt gewist en het achterblijver-record verdwijnt. Lukt het
    wissen van de drager niet, dan blijft hij staan als `not measurable: discard: …`. Andere fout:
@@ -251,5 +254,19 @@ tweede poging, en start de agent met `Launch` als laatste stap. De instructies v
 apply naar `<statemap>/runs/<sessie>/instructions.md` (bestand 0600, map 0700); de statemap is
 `${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. `AdoptSessions` loopt in de precheck van de
 tick, en de `activity` (laatste transcript-gebeurtenis per sessiekey) komt uit de transcriptmeting.
-`Cleanup` heeft nog geen aanroeper; #112 en #114 leveren `InController` en `MergedHead` van de
-kandidaat.
+`Sweep` roept `Cleanup` aan, elke tick na apply, voor elke repo waarvan de precheck slaagde: ook als de
+repo niet *due* is, want een vuile workspace die de gebruiker later opruimt verandert de vingerafdruk
+niet. Een repo zonder leesbaar board slaat de tick over, dus van geen enkel issue is dan bekend dat het
+de controller verliet en wordt niets verwijderd. De kandidaten komen uit de runrijen
+(`runs.Workspaces`): één per workspace, met het issue en de branch van de laatste rij. Per kandidaat:
+
+- Staat het issue op `Controller` of `On hold`, of heeft het een open run, dan blijft de workspace
+  staan en verdwijnt een oud achterblijver-record. On hold telt als in de controller: de tick zet een
+  geparkeerd issue zelf terug.
+- Anders zoekt `Sweep` de head-SHA van de laatst gemergede PR van de branch op (`MergedHead`; een PR uit
+  een fork telt niet). Mislukt dat, dan is de workspace een achterblijver met
+  `not measurable: merged PR: …`.
+- Dan `Cleanup`, met een kandidaat zonder pad: `Cleanup` zoekt het op.
+
+Een verwijderde workspace (ook een 404) krijgt `workspace_removed_at` op al zijn runrijen en wordt
+daarna niet meer getoetst. De fout van één kandidaat houdt de andere niet tegen.
