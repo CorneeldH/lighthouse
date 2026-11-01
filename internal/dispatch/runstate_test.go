@@ -12,7 +12,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
-const afSession = "62b1fdd2-7894-4e1e-a0a1-fc81a5d6ef39"
+const runSession = "62b1fdd2-7894-4e1e-a0a1-fc81a5d6ef39"
 
 func writeFile(t *testing.T, path, body string) {
 	t.Helper()
@@ -25,13 +25,13 @@ func writeFile(t *testing.T, path, body string) {
 }
 
 func TestReadPermission(t *testing.T) {
-	note := func(dir string) string { return filepath.Join(dir, "runs", afSession, "permission.json") }
+	note := func(dir string) string { return filepath.Join(dir, "runs", runSession, "permission.json") }
 
 	t.Run("the note of the hook", func(t *testing.T) {
 		dir := t.TempDir()
 		writeFile(t, note(dir), `{"version": 1, "at": "2026-10-24T09:05:01Z", "tool": "Write", "path": "/tmp/x", `+
 			`"thread": "agent-a", "message": "Claude needs your permission to use Write"}`+"\n")
-		got, err := ReadPermission(dir, afSession)
+		got, err := ReadPermission(dir, runSession)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -41,7 +41,7 @@ func TestReadPermission(t *testing.T) {
 		}
 	})
 	t.Run("no note", func(t *testing.T) {
-		got, err := ReadPermission(t.TempDir(), afSession)
+		got, err := ReadPermission(t.TempDir(), runSession)
 		if got != nil || err != nil {
 			t.Errorf("ReadPermission = %+v, %v; want nil, nil", got, err)
 		}
@@ -54,7 +54,7 @@ func TestReadPermission(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeFile(t, note(dir), body)
-			if got, err := ReadPermission(dir, afSession); err == nil {
+			if got, err := ReadPermission(dir, runSession); err == nil {
 				t.Errorf("ReadPermission = %+v, nil; want an error", got)
 			}
 		})
@@ -71,22 +71,22 @@ func TestReadPermission(t *testing.T) {
 }
 
 func TestParked(t *testing.T) {
-	marker := func(dir string) string { return filepath.Join(dir, afSession+".json") }
+	marker := func(dir string) string { return filepath.Join(dir, runSession+".json") }
 
 	t.Run("a marker file", func(t *testing.T) {
 		dir := t.TempDir()
-		writeFile(t, marker(dir), `{"session_id": "`+afSession+`"}`)
-		if got, err := Parked(dir, afSession); !got || err != nil {
+		writeFile(t, marker(dir), `{"session_id": "`+runSession+`"}`)
+		if got, err := Parked(dir, runSession); !got || err != nil {
 			t.Errorf("Parked = %v, %v; want true, nil", got, err)
 		}
 	})
 	t.Run("no marker", func(t *testing.T) {
-		if got, err := Parked(t.TempDir(), afSession); got || err != nil {
+		if got, err := Parked(t.TempDir(), runSession); got || err != nil {
 			t.Errorf("Parked = %v, %v; want false, nil", got, err)
 		}
 	})
 	t.Run("no resume dir", func(t *testing.T) {
-		if got, err := Parked(filepath.Join(t.TempDir(), "missing"), afSession); got || err != nil {
+		if got, err := Parked(filepath.Join(t.TempDir(), "missing"), runSession); got || err != nil {
 			t.Errorf("Parked = %v, %v; want false, nil", got, err)
 		}
 	})
@@ -97,7 +97,7 @@ func TestParked(t *testing.T) {
 		if err := os.Symlink(target, marker(dir)); err != nil {
 			t.Fatal(err)
 		}
-		if got, err := Parked(dir, afSession); got || err != nil {
+		if got, err := Parked(dir, runSession); got || err != nil {
 			t.Errorf("Parked = %v, %v; want false, nil", got, err)
 		}
 	})
@@ -106,7 +106,7 @@ func TestParked(t *testing.T) {
 		if err := os.Mkdir(marker(dir), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if got, err := Parked(dir, afSession); got || err != nil {
+		if got, err := Parked(dir, runSession); got || err != nil {
 			t.Errorf("Parked = %v, %v; want false, nil", got, err)
 		}
 	})
