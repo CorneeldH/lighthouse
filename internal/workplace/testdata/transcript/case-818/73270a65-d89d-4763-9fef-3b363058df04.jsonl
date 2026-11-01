@@ -1,0 +1,12 @@
+{"type":"atis-latch"}
+{"type":"bridge-session"}
+{"type":"attachment","timestamp":"2026-10-18T10:51:19.481Z"}
+{"type":"attachment","timestamp":"2026-10-18T10:51:29.950Z"}
+{"type":"assistant","timestamp":"2026-10-18T10:51:29.949Z"}
+{"type":"attachment","timestamp":"2026-10-18T10:51:30.015Z"}
+{"type":"system","timestamp":"2026-10-18T10:51:30.708Z"}
+{"type":"system","timestamp":"2026-10-18T10:51:30.716Z"}
+{"type":"bridge-session"}
+{"type":"cost-state"}
+{"type":"last-prompt"}
+{"type":"cost-state"}

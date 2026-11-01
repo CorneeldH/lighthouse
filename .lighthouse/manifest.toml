@@ -236,6 +236,20 @@ sha256 = "a4b307aa70b003cd9d5e883f76f1b30f30cf3d2fee2177032faa262cba46971d"
 
 [[unit]]
 kind = "file"
+path = ".claude/hooks/lighthouse/permission-check.sh"
+package = "core"
+version = "dev"
+sha256 = "ae21e354e8154879f3db203bddadd1e42e242203913c94817347e8dbfbfaaa2b"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/permission-check/note.py"
+package = "core"
+version = "dev"
+sha256 = "da392368b225660a2b091d2024a98109dbf95b7180c3fa181da8cab7ecdbede5"
+
+[[unit]]
+kind = "file"
 path = ".claude/hooks/lighthouse/pr-create-gate.sh"
 package = "core"
 version = "dev"
@@ -307,6 +321,14 @@ id = "Bash(.claude/skills/lighthouse-review-spec/verify.sh:*)"
 package = "core"
 version = "dev"
 sha256 = "2bb7011332c21ef34d7114405e7bbe81b843ee8c906e0c6e081b3e605a24bfcc"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "Notification|permission_prompt|worker_permission_prompt|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/permission-check.sh"
+package = "core"
+version = "dev"
+sha256 = "9b0d5f7a870497a413ab161bf977ab70bacf054132ebde35e542dd4fe4e7921e"
 
 [[unit]]
 kind = "hook"
@@ -631,7 +653,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "c8565248e7bd1b3fc8d1065673014c37ab2efe79605c3ed81db3684083457236"
+sha256 = "9e14f89b18c20f15616de1006f73cca1671ac5a5c04b9000ab6b1dd553459c1e"
 
 [[unit]]
 kind = "file"

@@ -89,6 +89,13 @@
           "UserPromptSubmit"
         ],
         "when": "at every prompt, tool call, subagent stop and session stop"
+      },
+      {
+        "name": "permission-check",
+        "events": [
+          "Notification"
+        ],
+        "when": "when Claude asks for a permission in a controller run"
       }
     ],
     "extra": [

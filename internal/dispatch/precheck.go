@@ -117,12 +117,27 @@ func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action,
 }
 
 // Boundaries are the moments a tick must look again even when nothing on the board changed:
-// per open run the end of MaxRuntime and MaxWait, per marker its reset_at, and the start of
-// the night window today and yesterday, in the zone of now.
-func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, markers []park.Marker, now time.Time) []time.Time {
+// per open run the end of MaxRuntime and MaxWait, MaxWait after its last activity (the last
+// transcript event, or without a transcript the forge updated_at of its session) and after
+// its permission prompt, per marker its reset_at, and the start of the night window today and
+// yesterday, in the zone of now. Activity and prompts stay out of the fingerprint; these
+// boundaries make the tick look when their MaxWait runs out. Decide counts silence from the
+// later of the last event and the run's start, so its moment is one of the two MaxWait
+// boundaries; a note from before the start only adds a wake that decides nothing.
+func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, states map[int64]RunState, markers []park.Marker, now time.Time) []time.Time {
 	var out []time.Time
 	for _, r := range open {
 		out = append(out, r.StartedAt.Add(d.MaxRuntime), r.StartedAt.Add(d.MaxWait))
+		s := states[r.ID]
+		switch {
+		case s.Transcript != nil:
+			out = append(out, s.Transcript.LastEvent.Add(d.MaxWait))
+		case !s.SessionAt.IsZero():
+			out = append(out, s.SessionAt.Add(d.MaxWait))
+		}
+		if s.Permission != nil {
+			out = append(out, s.Permission.At.Add(d.MaxWait))
+		}
 	}
 	for _, m := range markers {
 		if reset, ok := m.Reset(); ok {

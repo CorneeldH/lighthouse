@@ -51,8 +51,10 @@ type fpMarker struct {
 // Fingerprint is the hex SHA-256 of what decides whether a tick has work: the board fields
 // of the items, the blockers of On hold items, the PRs of items with an open run, and the
 // open runs with the stand of their session, the resume markers and the end of the pause.
-// Comments are left out: a new comment moves IssueUpdatedAt. Lists are sorted
-// and an empty list hashes like a nil one, so order and nil-ness never change the result.
+// Comments are left out: a new comment moves IssueUpdatedAt. Activity and permission prompts
+// are left out too: they change every tick, and Boundaries makes the tick look when their
+// max_wait runs out. Lists are sorted and an empty list hashes like a nil one, so order and
+// nil-ness never change the result.
 func Fingerprint(pre Pre) string {
 	hasRun := map[int]bool{}
 	runsIn := make([]fpRun, 0, len(pre.OpenRuns))

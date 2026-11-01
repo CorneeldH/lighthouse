@@ -160,6 +160,35 @@ func TestFingerprintStands(t *testing.T) {
 	}
 }
 
+// Activity and a permission note do not change the fingerprint: they change every tick, and
+// the boundaries make the tick look at them in time. A parking does, through the markers.
+func TestFingerprintIgnoresActivity(t *testing.T) {
+	t0 := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	mk := func(states map[int64]RunState) Pre {
+		return Pre{
+			Items:    []Item{{Issue: 1, Status: "Controller"}},
+			OpenRuns: []runs.OpenRun{{ID: 1, Issue: 1, StartedAt: t0}},
+			Runs:     states,
+		}
+	}
+	base := Fingerprint(mk(map[int64]RunState{1: {}}))
+	for name, state := range map[string]RunState{
+		"not measured": {},
+		"last event":   {Transcript: &workplace.Transcript{LastEvent: t0.Add(time.Minute)}},
+		"permission":   {Permission: &Permission{At: t0.Add(time.Minute), Tool: "Write"}},
+		"session at":   {SessionAt: t0.Add(time.Minute)},
+		"gone":         {Gone: true},
+	} {
+		states := map[int64]RunState{1: state}
+		if name == "not measured" {
+			states = nil
+		}
+		if Fingerprint(mk(states)) != base {
+			t.Errorf("%s changed the fingerprint", name)
+		}
+	}
+}
+
 // The markers and the pause flag decide whether a tick has work: a marker whose reset_at
 // passed hands its run back, and a pause that ends opens the starts again. Order is no change.
 func TestFingerprintMarkersAndPause(t *testing.T) {

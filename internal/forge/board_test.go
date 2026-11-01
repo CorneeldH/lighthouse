@@ -311,6 +311,41 @@ func TestSetStatusPosts(t *testing.T) {
 	}
 }
 
+func TestBoardPRClosedAt(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.BoardNodes = []map[string]any{{
+		"id": "PVTI_1", "updatedAt": "2026-10-30T09:00:00Z",
+		"fieldValues": map[string]any{"nodes": []any{}},
+		"content": map[string]any{
+			"number": 7, "title": "t", "state": "OPEN", "updatedAt": "2026-10-30T10:00:00Z",
+			"repository": map[string]any{"nameWithOwner": "o/r"},
+			"closedByPullRequestsReferences": map[string]any{"nodes": []any{
+				map[string]any{"number": 13, "state": "CLOSED", "headRefName": "issue-7-y",
+					"mergedAt": nil, "closedAt": "2026-10-30T12:30:00Z"},
+				map[string]any{"number": 14, "state": "OPEN", "headRefName": "issue-7-z",
+					"mergedAt": nil, "closedAt": nil},
+			}},
+		},
+	}}
+	got, err := c.BoardItems(context.Background(), "PVT_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if query, _ := srv.Posts[0].Body["query"].(string); !strings.Contains(query, " closedAt ") {
+		t.Errorf("the board query does not ask closedAt: %s", query)
+	}
+	prs := got[0].ClosingPRs
+	if len(prs) != 2 {
+		t.Fatalf("PRs = %+v", prs)
+	}
+	if !prs[0].ClosedAt.Equal(time.Date(2026, 10, 30, 12, 30, 0, 0, time.UTC)) {
+		t.Errorf("closed PR: ClosedAt = %v, want 2026-10-30T12:30:00Z", prs[0].ClosedAt)
+	}
+	if !prs[1].ClosedAt.IsZero() {
+		t.Errorf("open PR: ClosedAt = %v, want the zero time", prs[1].ClosedAt)
+	}
+}
+
 func TestBoardItemsPRURLAndMergedAt(t *testing.T) {
 	srv, c := boardClient(t)
 	srv.BoardNodes = []map[string]any{{

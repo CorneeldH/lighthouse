@@ -70,6 +70,46 @@ en = "run state lost"
 nl = "start mislukt"
 en = "start failed"
 
+[reason_workplace_gone]
+nl = "werkplek verdwenen"
+en = "workplace gone"
+
+[reason_pr_closed]
+nl = "PR gesloten"
+en = "PR closed"
+
+[reason_pr_draft]
+nl = "PR is draft"
+en = "PR is a draft"
+
+[reason_pr_red]
+nl = "PR rood"
+en = "PR red"
+
+[reason_no_handoff]
+nl = "geen handoff of vraag"
+en = "no handoff or question"
+
+[reason_start_uncertain]
+nl = "start onzeker: geen sessie gevonden"
+en = "start uncertain: no session found"
+
+[reason_permission]
+nl = "wacht op permissie"
+en = "waiting for permission"
+
+[reason_silent]
+nl = "geen activiteit in max_wait"
+en = "no activity in max_wait"
+
+[reason_silent_forge]
+nl = "geen activiteit in max_wait (forge-stand; transcript niet meetbaar)"
+en = "no activity in max_wait (forge state; transcript not measurable)"
+
+[reason_timeout]
+nl = "time-out (max_runtime)"
+en = "timeout (max_runtime)"
+
 [skip_spec_review]
 nl = "spec-review overgeslagen (config)"
 en = "spec review skipped (config)"

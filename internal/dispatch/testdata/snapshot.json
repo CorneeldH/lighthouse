@@ -75,7 +75,8 @@
           "checks": "FAILURE",
           "closes": false,
           "url": "",
-          "merged_at": "0001-01-01T00:00:00Z"
+          "merged_at": "0001-01-01T00:00:00Z",
+          "closed_at": "0001-01-01T00:00:00Z"
         },
         {
           "number": 30,
@@ -87,7 +88,8 @@
           "checks": "SUCCESS",
           "closes": true,
           "url": "",
-          "merged_at": "0001-01-01T00:00:00Z"
+          "merged_at": "0001-01-01T00:00:00Z",
+          "closed_at": "0001-01-01T00:00:00Z"
         }
       ],
       "comments": [

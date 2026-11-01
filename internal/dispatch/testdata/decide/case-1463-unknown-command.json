@@ -1,0 +1,116 @@
+{
+  "input": {
+    "now": "2026-10-24T14:45:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/r",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-24T14:45:00Z",
+          "items": [
+            {
+              "issue": 7,
+              "title": "Bouw de keten",
+              "state": "OPEN",
+              "item_id": "I7",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 14630,
+                  "author": "lh-bot",
+                  "body": "🤖 Gestart\nsession: 28577747-50e3-4668-8e70-bdb89c1e345c\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\ncommand: /superpowers:writing-plans /home/u/r/docs/spec.md\nstart: 2026-10-24T14:39:38Z\nbranch: issue-7-bouw-de-keten\nrunner: forge\nworkspace: ws-1\n\n<sub>session 28577747-50e3-4668-8e70-bdb89c1e345c</sub>",
+                  "created_at": "2026-10-24T14:39:38Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-14630",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": [
+            {
+              "id": 5,
+              "issue": 7,
+              "session_id": "28577747-50e3-4668-8e70-bdb89c1e345c",
+              "trigger_key": "handoff:14620",
+              "profile": "",
+              "branch": "issue-7-bouw-de-keten",
+              "workspace_id": "ws-1",
+              "workplace_session": "ks-1",
+              "started_at": "2026-10-24T14:39:38Z"
+            }
+          ]
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [
+          {
+            "ID": 5,
+            "Issue": 7,
+            "SessionID": "28577747-50e3-4668-8e70-bdb89c1e345c",
+            "Mode": "start",
+            "Trigger": "handoff",
+            "TriggerKey": "handoff:14620",
+            "Attempt": 1,
+            "Command": "/superpowers:writing-plans /home/u/r/docs/spec.md",
+            "Prompt": "/superpowers:writing-plans /home/u/r/docs/spec.md (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-24T14:39:38Z",
+            "Open": true,
+            "Outcome": "",
+            "Reason": ""
+          }
+        ],
+        "stands": {
+          "5": 2
+        },
+        "runs": {
+          "5": {
+            "session_at": "2026-10-24T14:39:50Z",
+            "transcript": {
+              "last_event": "2026-10-24T14:39:41Z",
+              "threads": {
+                "": "2026-10-24T14:39:41Z"
+              },
+              "unknown_command": "/superpowers:writing-plans",
+              "assistant_turn": false
+            }
+          }
+        }
+      }
+    ],
+    "max_wait": "1h",
+    "max_runtime": "8h"
+  },
+  "want": [
+    {
+      "kind": "close",
+      "repo": "o/r",
+      "issue": 7,
+      "run_id": 5,
+      "outcome": "start_failed",
+      "reason_arg": "unknown command `/superpowers:writing-plans`",
+      "language": "nl"
+    }
+  ]
+}
