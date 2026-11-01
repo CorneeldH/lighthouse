@@ -46,10 +46,21 @@ type BoardItem struct {
 	IssueUpdatedAt time.Time
 	BlockedBy      []Blocker
 	ClosingPRs     []PR
+	// Archived is an archived item. Only IssueItem reads it: BoardItems lists no archived item.
+	Archived bool
 }
 
 // prFields are the pull request fields both queries read into a PR.
 const prFields = `number state isDraft mergeable headRefOid headRefName mergedAt closedAt url statusCheckRollup { state }`
+
+// fieldValuesSelection is the single-select values of a project item, shared by the board and
+// the one-issue query so both fill BoardItem.SingleSelect the same way.
+const fieldValuesSelection = `fieldValues(first: 50) {
+            pageInfo { hasNextPage }
+            nodes {
+              ... on ProjectV2ItemFieldSingleSelectValue { optionId field { ... on ProjectV2SingleSelectField { id } } }
+            }
+          }`
 
 // BoardQuery reads one page of 100 project items. Every nested connection asks pageInfo, so a
 // list longer than its first: n is an error instead of a silent cut. GitHub prices a page by
@@ -63,12 +74,7 @@ const BoardQuery = `query Board($project: ID!, $after: String) {
         nodes {
           id
           updatedAt
-          fieldValues(first: 50) {
-            pageInfo { hasNextPage }
-            nodes {
-              ... on ProjectV2ItemFieldSingleSelectValue { optionId field { ... on ProjectV2SingleSelectField { id } } }
-            }
-          }
+          ` + fieldValuesSelection + `
           content {
             ... on Issue {
               number title state updatedAt
@@ -105,6 +111,28 @@ const BranchPRsQuery = `query BranchPRs($owner: String!, $name: String!, $branch
     }
   }
 }`
+
+// IssueItemsQuery reads the project items of one issue, with their single-select values.
+// projectItems includes archived items, so it selects isArchived.
+const IssueItemsQuery = `query IssueItems($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      projectItems(first: 20) {
+        pageInfo { hasNextPage }
+        nodes {
+          id
+          updatedAt
+          isArchived
+          project { id }
+          ` + fieldValuesSelection + `
+        }
+      }
+    }
+  }
+}`
+
+// AddToBoardMutation adds an issue, by its node ID, to a project.
+const AddToBoardMutation = `mutation AddToBoard($project: ID!, $content: ID!) { addProjectV2ItemById(input: {projectId: $project, contentId: $content}) { item { id } } }`
 
 // SetStatusMutation sets one single-select field of one project item.
 const SetStatusMutation = `mutation SetStatus($project: ID!, $item: ID!, $field: ID!, $option: String!) {
@@ -149,6 +177,7 @@ type repoRef struct {
 type itemNode struct {
 	ID          string    `json:"id"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+	IsArchived  bool      `json:"isArchived"` // only IssueItemsQuery selects it
 	FieldValues struct {
 		PageInfo pageInfo `json:"pageInfo"`
 		Nodes    []struct {
@@ -230,7 +259,7 @@ func (c *Client) BoardItems(ctx context.Context, projectID string) ([]BoardItem,
 
 // item maps one node, refusing any nested connection with more pages.
 func (n itemNode) item() (BoardItem, error) {
-	it := BoardItem{ItemID: n.ID, ItemUpdatedAt: n.UpdatedAt, SingleSelect: map[string]string{}}
+	it := BoardItem{ItemID: n.ID, ItemUpdatedAt: n.UpdatedAt, SingleSelect: map[string]string{}, Archived: n.IsArchived}
 	if n.FieldValues.PageInfo.HasNextPage {
 		return BoardItem{}, truncated("fieldValues", len(n.FieldValues.Nodes))
 	}
@@ -314,4 +343,77 @@ func (c *Client) SetStatus(ctx context.Context, projectID, itemID, fieldID, opti
 	}
 	vars := map[string]any{"project": projectID, "item": itemID, "field": fieldID, "option": optionID}
 	return c.graphql(ctx, SetStatusMutation, vars, nil)
+}
+
+// IssueItem returns the item of issue number on project projectID; ok is false when the issue
+// is not on that board. SingleSelect is filled as in BoardItems; a cut list is an error. An
+// archived item counts as an item, with Archived set.
+func (c *Client) IssueItem(ctx context.Context, projectID string, number int) (item BoardItem, ok bool, err error) {
+	if err := c.configured(); err != nil {
+		return BoardItem{}, false, err
+	}
+	owner, name, found := strings.Cut(c.Repo, "/")
+	if !found || owner == "" || name == "" {
+		return BoardItem{}, false, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
+	}
+	var data struct {
+		Repository *struct {
+			Issue *struct {
+				ProjectItems struct {
+					PageInfo pageInfo `json:"pageInfo"`
+					Nodes    []struct {
+						itemNode
+						Project struct {
+							ID string `json:"id"`
+						} `json:"project"`
+					} `json:"nodes"`
+				} `json:"projectItems"`
+			} `json:"issue"`
+		} `json:"repository"`
+	}
+	vars := map[string]any{"owner": owner, "name": name, "number": number}
+	if err := c.graphql(ctx, IssueItemsQuery, vars, &data); err != nil {
+		return BoardItem{}, false, err
+	}
+	if data.Repository == nil || data.Repository.Issue == nil {
+		return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d not found", c.Repo, number)
+	}
+	items := data.Repository.Issue.ProjectItems
+	if items.PageInfo.HasNextPage {
+		return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d: %w", c.Repo, number, truncated("projectItems", len(items.Nodes)))
+	}
+	for _, n := range items.Nodes {
+		if n.Project.ID != projectID {
+			continue
+		}
+		it, err := n.item()
+		if err != nil {
+			return BoardItem{}, false, fmt.Errorf("forge: board item %s: %w", n.ID, err)
+		}
+		it.Repo, it.Issue = c.Repo, number // the query selects no content: the issue is the one asked for
+		return it, true, nil
+	}
+	return BoardItem{}, false, nil
+}
+
+// AddToBoard adds the issue with node ID contentID to project projectID and returns the ID of
+// the new project item.
+func (c *Client) AddToBoard(ctx context.Context, projectID, contentID string) (itemID string, err error) {
+	if err := c.configured(); err != nil {
+		return "", err
+	}
+	var data struct {
+		AddProjectV2ItemByID *struct {
+			Item struct {
+				ID string `json:"id"`
+			} `json:"item"`
+		} `json:"addProjectV2ItemById"`
+	}
+	if err := c.graphql(ctx, AddToBoardMutation, map[string]any{"project": projectID, "content": contentID}, &data); err != nil {
+		return "", err
+	}
+	if data.AddProjectV2ItemByID == nil || data.AddProjectV2ItemByID.Item.ID == "" {
+		return "", fmt.Errorf("forge: add %s to board %s: no item in the answer", contentID, projectID)
+	}
+	return data.AddProjectV2ItemByID.Item.ID, nil
 }

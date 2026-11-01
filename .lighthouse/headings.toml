@@ -239,3 +239,80 @@ en = "No-Gos"
 [milestone_not_yet_decided]
 nl = "Nog niet vastgelegd"
 en = "Not yet decided"
+
+# Texts of the triage comment
+[triage_title]
+nl = "Triage"
+en = "Triage"
+
+[triage_invariant]
+nl = "invariant gebroken"
+en = "invariant broken"
+
+[triage_invariant_missing]
+nl = "geen label met prefix"
+en = "no label with prefix"
+
+[triage_invariant_many]
+nl = "meer dan één label met prefix"
+en = "more than one label with prefix"
+
+[triage_invariant_blocking]
+nl = "meer dan één blokkadelabel"
+en = "more than one blocking label"
+
+[triage_invariant_note]
+nl = "Er is niets aangepast en het issue gaat niet naar de dispatcher. Maak de labels weer kloppend; dan vervalt deze triage."
+en = "Nothing was changed and the issue does not go to the dispatcher. Fix the labels; this triage then lapses."
+
+[triage_duplicate]
+nl = "Mogelijk dubbel van"
+en = "Possibly a duplicate of"
+
+[triage_done]
+nl = "Mogelijk al af"
+en = "Possibly already done"
+
+[triage_redundant_note]
+nl = "Er is niets gesloten en het issue gaat niet naar de dispatcher; kijk zelf of dit klopt."
+en = "Nothing was closed and the issue does not go to the dispatcher; check yourself whether this holds."
+
+[triage_stop_note]
+nl = "Het issue gaat niet naar de dispatcher."
+en = "The issue does not go to the dispatcher."
+
+[triage_stop_expires]
+nl = "Deze triage vervalt vanzelf zodra de stop weg is."
+en = "This triage lapses by itself as soon as the stop is gone."
+
+[triage_design_questions]
+nl = "Ontwerpvragen"
+en = "Design questions"
+
+[triage_interactive]
+nl = "Dit moet interactief:"
+en = "This has to be interactive:"
+
+[triage_untrusted]
+nl = "De auteur van dit issue valt niet in answer_permissions: een vertrouwde gebruiker zet het zelf door."
+en = "The author of this issue is not in answer_permissions: a trusted user forwards it themselves."
+
+[triage_forwarded_night]
+nl = "Doorgezet naar de dispatcher. De handoff start de run pas in het nachtvenster; tot dan kun je corrigeren."
+en = "Forwarded to the dispatcher. The handoff starts the run only in the night window; until then you can correct it."
+
+[triage_forwarded_now]
+nl = "Doorgezet naar de dispatcher; de eerstvolgende tick start het."
+en = "Forwarded to the dispatcher; the next tick starts it."
+
+[triage_fix_forwarded]
+nl = "Corrigeren: niet naar de dispatcher: zet de status terug naar To do en verwijder de 🤖 Handoff. Opnieuw triëren: zet eerst de status terug naar To do, verwijder dan deze comment en de 🤖 Handoff. Zelf oppakken: zet eerst de status terug naar To do, start dan /lighthouse-start-issue."
+en = "To correct: not to the dispatcher: set the status back to To do and delete the 🤖 Handoff. Triage again: first set the status back to To do, then delete this comment and the 🤖 Handoff. Pick it up yourself: first set the status back to To do, then start /lighthouse-start-issue."
+
+[triage_fix_forwarded_now]
+nl = "Corrigeren: niet naar de dispatcher: zet de status terug naar To do. Opnieuw triëren: zet eerst de status terug naar To do, verwijder dan deze comment. Zelf oppakken: zet eerst de status terug naar To do, start dan /lighthouse-start-issue."
+en = "To correct: not to the dispatcher: set the status back to To do. Triage again: first set the status back to To do, then delete this comment. Pick it up yourself: first set the status back to To do, then start /lighthouse-start-issue."
+
+[triage_fix_other]
+nl = "Corrigeren: pas zo nodig de labels of de body aan en verwijder deze comment; de volgende ronde triëert opnieuw."
+en = "To correct: adjust the labels or the body if needed and delete this comment; the next round triages again."

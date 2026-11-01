@@ -1,7 +1,8 @@
 # Tick
 
 `lighthouse tick` is de dispatcher-tick: een eigen proces dat een timer of cron periodiek start.
-Het is een korte run, geen daemon. Het ontwerp staat in
+Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controller` zet, leest
+[triage.md](triage.md). Het ontwerp staat in
 [de dispatcher-spec](developer/planning/specs/2026-10-27-m2-dispatcher-design.md) (§2 *Configuratie*,
 §3 *De tick*).
 
