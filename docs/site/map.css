@@ -1312,7 +1312,7 @@ details.who summary:focus-visible {
   }
 }
 
-/* Configuration map: one button per key, grouped by file and table, filtered by level */
+/* Configuration page: where the files are, each file as TOML, and per table one row per key */
 
 .config-file {
   margin-top: 28px;
@@ -1323,7 +1323,7 @@ details.who summary:focus-visible {
 }
 
 .config-file h3 {
-  margin: 16px 0 6px;
+  margin: 20px 0 6px;
   font-family: ui-monospace, monospace;
   font-size: 14px;
 }
@@ -1333,36 +1333,91 @@ details.who summary:focus-visible {
   max-width: 70ch;
 }
 
-.config-keys {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.config-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  border: 1px solid var(--muted);
+.config-toml {
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: transparent;
-  color: inherit;
+  background: var(--panel);
   font-size: 13px;
-  cursor: pointer;
+  line-height: 1.5;
 }
 
-.config-key.dim {
-  opacity: 0.25;
+.config-toml a {
+  color: inherit;
+  text-decoration: underline dotted;
 }
 
-.config-key.current {
-  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 14px var(--accent-soft);
+.config-comment {
+  color: var(--muted);
 }
 
-/* The clicked key shows in full colour, also when the chosen level passes it by. */
-.config-key.dim.current {
-  opacity: 1;
+.config-scroll {
+  overflow-x: auto;
+}
+
+.config-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 14px;
+}
+
+.config-table th,
+.config-table td {
+  padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.config-table th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* The same columns in every table, so the tables of one file line up. */
+.config-table th:nth-child(1) {
+  width: 28%;
+}
+
+.config-table th:nth-child(2) {
+  width: 14%;
+}
+
+.config-table th:nth-child(3) {
+  width: 28%;
+}
+
+.config-paths th:nth-child(1) {
+  width: 18%;
+}
+
+.config-paths th:nth-child(2) {
+  width: 32%;
+}
+
+/* A link from the TOML lands on the row of its key. */
+.config-table tr:has(> td:target) > td {
+  background: var(--col-bg);
+}
+
+.config-table td p {
+  margin: 0;
+}
+
+.config-table .reference-list {
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.config-none {
+  color: var(--muted);
 }
 
 .config-level {
