@@ -161,6 +161,63 @@ Het eindigt met één regel op stderr, alle vier met exitcode 0:
 Een mislukte actie geeft `lighthouse: apply <repo>: <fouten>` en exitcode 1. Wat apply onderweg meldt,
 staat ervoor op stderr, zoals bij tick.
 
+## De rem
+
+Voor elke start of hervatting die decide kiest, toetst tick één gedeelde rem over alle repo's van de
+host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitsteltekst:
+
+| Rem | Dicht als | Uitsteltekst |
+|---|---|---|
+| Pauze | de pauzevlag geldt (zie *Pauze*) | geen: de start valt weg, zonder defer |
+| Usage | niet gemeten, of `session_pct` >= `halt_pct_session`, of `week_pct` >= `halt_pct_week` | `usage: not measured` of `usage: session 87%, week 40%` |
+| Geheugen | `MemAvailable` niet gemeten, of `MemAvailable - n x reserve_per_run_gb < min_mem_available_gb` | `memory: MemAvailable not measured` of `memory: MemAvailable 9.5 GiB - 1 x 3 GiB < 8 GiB` |
+| Plekken | `in_use` plus de al toegelaten starts >= `slots` | `slots: 4 of 4 in use` |
+| Software | profiel `software`, en `software_in_use` plus de al toegelaten software-starts >= `max_software` | `software: 2 of 2 in use` |
+
+- `n` bij Geheugen is het aantal starts en hervattingen dat deze tick al door de rem kwam: een net
+  gestarte run reserveert van dezelfde meting.
+- `in_use` komt uit de database en geldt voor de hele host: de open runs over alle repo's, plus de
+  geparkeerde runs (een marker met `controller: true` waarvan de laatste run van de sessie nog
+  hervatbaar is). `software_in_use` telt daarvan de runs met profiel `software`. Een run die in deze
+  tick sluit, telt nog mee; de volgende tick ziet de plek vrij.
+- Een usage-hervatting (de geparkeerde run na de reset, trigger `usage`) slaat Plekken en Software
+  over en telt er niet in mee: de run zit al in `in_use`. Hij telt wel mee in `n` van Geheugen.
+- Een marker met `pause: true` hervat zodra er geen pauze meer geldt, ook vóór zijn `reset_at`; de
+  toets `reset_at <= nu` slaat tick bij hem over.
+- Een marker die nooit meer hervat (de laatste run sloot als Handoff, Vraag of Klaar, de herkansing
+  is op, de laatste run sloot als `parked` maar de sleutel van de marker is al gebruikt, of het
+  issue is gesloten of uit Controller en On hold) ruimt tick op, anders bleef hij in
+  `in_use` tellen. Een marker van een repo die deze tick niet gathert, blijft staan.
+- De uitgestelde starts staan met hun reden in de tickstand (`tick_state`, soort `deferred`). Bij een
+  pauze valt de start weg zonder defer, zodat tick zijn vingerafdruk bewaart; de pauzevlag zit zelf
+  in de vingerafdruk.
+- [`lighthouse run`](#lighthouse-run) toetst alleen Pauze en Usage. Geheugen, Plekken en Software
+  slaat het over: wie een issue met de hand start, beslist zelf.
+
+De markers en de pauzevlag staan beschreven in [usage-gate.md](usage-gate.md) (*Contract*).
+
+## Pauze
+
+```bash
+lighthouse pause [--until HH:MM]
+lighthouse pause off
+```
+
+`lighthouse pause` schrijft de pauzevlag: tot het einde ervan start de dispatcher niets. Een run die
+al loopt, gaat door; een run die de controller parkeert, hervat na het einde (of na `pause off`).
+
+- Zonder `--until` duurt de pauze tot het eerstvolgende begin van `[dispatch] night` (21:00 bij de
+  standaard): vandaag, of morgen als dat begin vandaag al voorbij is. Een lege `night` (begin gelijk
+  aan einde) heeft geen begin; dan is `--until` verplicht.
+- Tijdens `night` is `--until` verplicht; de fout stelt de eerstvolgende hele uren voor.
+- `--until HH:MM` is het eerstvolgende moment met die klokstand, binnen 24 uur. Een klokstand die
+  verder weg ligt, of die niet bestaat (de uren die de zomertijd overslaat), is een fout.
+- Zomertijd telt mee: de klok is de lokale wandtijd, en bij de dubbele uren van het najaar geldt het
+  eerste moment na nu.
+- `lighthouse pause off` verwijdert de vlag; zonder vlag meldt het `lighthouse: no pause`.
+
+Het pad van de vlag staat in [usage-gate.md](usage-gate.md) (*Contract*).
+
 ## `[dispatch]` in `host.toml`
 
 Elke sleutel is optioneel; dit zijn de standaarden.

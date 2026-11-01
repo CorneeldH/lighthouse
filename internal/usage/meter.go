@@ -114,6 +114,19 @@ func (m Meter) Tick() (Outcome, error) {
 	return m.Refresh(false)
 }
 
+// Measure refreshes without force and reports the cache when it is at most
+// two TTLs old, whatever the refresh returned: a busy or failed refresh with
+// such a cache still counts as measured. A cache from the future does not.
+func (m Meter) Measure() (State, bool) {
+	_, _ = m.Refresh(false)
+	s, at, ok := ReadState(m.Paths.Cache())
+	if !ok {
+		return State{}, false
+	}
+	age := m.Now().Sub(at)
+	return s, age >= 0 && age <= 2*m.Config.TTL
+}
+
 // usageCommand is `claude -p /usage --output-format json` in workdir, marked
 // with LIGHTHOUSE_USAGE_REFRESH=1 and killed when ctx ends.
 func usageCommand(ctx context.Context, workdir string) *exec.Cmd {

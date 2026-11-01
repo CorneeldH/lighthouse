@@ -1,0 +1,83 @@
+{
+  "input": {
+    "now": "2026-10-31T12:00:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/r",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 7,
+              "title": "Bouw de keten",
+              "state": "OPEN",
+              "item_id": "I7",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 60,
+                  "author": "owner",
+                  "body": "Graag oppakken.",
+                  "created_at": "2026-10-31T07:00:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-60",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-spec-adversarial-review": true,
+          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [],
+        "stands": {}
+      }
+    ],
+    "brake": {
+      "paused": false,
+      "manual": false,
+      "usage_measured": true,
+      "session_pct": 10,
+      "week_pct": 10,
+      "halt_pct_session": 85,
+      "halt_pct_week": 90,
+      "mem_available_gib": 32.0,
+      "min_mem_available_gb": 8,
+      "reserve_per_run_gb": 3,
+      "slots": 4,
+      "max_software": 2,
+      "in_use": 4,
+      "software_in_use": 0
+    }
+  },
+  "want": [
+    {
+      "kind": "defer",
+      "repo": "o/r",
+      "issue": 7,
+      "reason": "slots: 4 of 4 in use",
+      "language": "nl"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -34,6 +35,7 @@ type Env struct {
 	Profile    func(repo string) (name, mcpConfig string)
 	RoundLimit func(repo string) string // what a run does at an adversarial round limit
 	StateDir   string
+	MarkerDir  string // the resume markers; "" removes none
 	MaxWait    time.Duration
 	Now        func() time.Time
 	NewSession func() string // runs.NewSessionID
@@ -119,6 +121,9 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		return ap.setStatus(ctx, a, statusOnHold)
 	case KindUnpark:
 		return ap.setStatus(ctx, a, statusController)
+	case KindDropMarker:
+		ap.removeMarker(a)
+		return nil
 	}
 	return fmt.Errorf("unknown action kind %q", a.Kind)
 }
@@ -198,13 +203,9 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	if err != nil {
 		return ap.startFailed(ctx, run.ID, "instructions", err)
 	}
-	poster := env.Poster(a.Repo)
-	if _, err := poster.CreateComment(ctx, a.Issue, startBody(a, session, ws, now)); err != nil {
-		return ap.startFailed(ctx, run.ID, "post", err)
-	}
-	if a.CommentID > 0 {
-		if err := poster.AddRocket(ctx, a.CommentID); err != nil {
-			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)
+	if a.Trigger != triggerUsage {
+		if err := ap.announce(ctx, a, run.ID, session, ws, now); err != nil {
+			return err
 		}
 	}
 
@@ -217,10 +218,12 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	case workplace.Accepted:
 		// An error is a session key the run could not record: SessionKeys then misses the agent.
 		res.Started++
+		ap.resumedMarker(a)
 		return err
 	case workplace.Uncertain:
 		// The error is diagnostic only; CheckOpen settles the open run.
 		res.Started++
+		ap.resumedMarker(a)
 		if err != nil {
 			ap.logf("%s#%d: launch of run %d uncertain: %v", a.Repo, a.Issue, run.ID, err)
 		}
@@ -233,6 +236,40 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		res.NotAccepted = append(res.NotAccepted, fmt.Sprintf("%s#%d", a.Repo, a.Issue))
 	}
 	return nil
+}
+
+// announce posts the 🤖 Started or Resumed and the 🚀; a failed post closes the run as
+// start_failed.
+func (ap applier) announce(ctx context.Context, a Action, runID int64, session string, ws workplace.Workspace, now time.Time) error {
+	poster := ap.env.Poster(a.Repo)
+	if _, err := poster.CreateComment(ctx, a.Issue, startBody(a, session, ws, now)); err != nil {
+		return ap.startFailed(ctx, runID, "post", err)
+	}
+	if a.CommentID > 0 {
+		if err := poster.AddRocket(ctx, a.CommentID); err != nil {
+			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)
+		}
+	}
+	return nil
+}
+
+// resumedMarker removes the marker a usage resume answered, once the launch is accepted or
+// uncertain; any other start leaves markers alone.
+func (ap applier) resumedMarker(a Action) {
+	if a.Trigger == triggerUsage {
+		ap.removeMarker(a)
+	}
+}
+
+// removeMarker removes the marker of a.SessionID while its key is a.TriggerKey. A failure
+// logs one line and is no action error: the next tick drops the marker again.
+func (ap applier) removeMarker(a Action) {
+	if ap.env.MarkerDir == "" {
+		return
+	}
+	if err := park.RemoveMarker(ap.env.MarkerDir, a.SessionID, a.TriggerKey); err != nil {
+		ap.logf("%s#%d: remove marker of session %s: %v", a.Repo, a.Issue, a.SessionID, err)
+	}
 }
 
 // busy returns why the workplace cannot take the run, or "" when it can.

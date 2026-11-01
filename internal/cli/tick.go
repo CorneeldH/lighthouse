@@ -19,9 +19,11 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 	"github.com/CorneeldH/lighthouse/internal/workplace/kennforge"
 )
@@ -38,6 +40,10 @@ type tickEnv struct {
 	// [dispatch.forge], [dispatch.profiles] and the repo.
 	Workplace func(repo repoconfig.Repo) workplace.Workplace
 	StateDir  string // run instructions and carriers; "" is ${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/dispatch
+	// Meter measures the usage windows; nil is a meter on usage.DefaultPaths and the [usage] table of HostToml.
+	Meter *usage.Meter
+	// MemInfo is the meminfo file of the memory brake; "" is /proc/meminfo.
+	MemInfo string
 }
 
 func (e tickEnv) now() time.Time {
@@ -161,6 +167,11 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	}
 	defer func() { _ = st.Close() }()
 
+	facts, err := readHostFacts(ctx, env, st.DB, cfg)
+	if err != nil {
+		return fmt.Errorf("tick: the brake cannot check: %w", err)
+	}
+
 	// One GET /user per tick, and none when no repo is due. /user does not depend on the
 	// repo, so the client of the first dispatchable repo serves every repo.
 	var login func() (string, error)
@@ -178,7 +189,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 				c := env.client(repo.Slug, token)
 				login = sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
 			}
-			in, fp, err = gatherRepo(ctx, env, st.DB, cfg, repo, token, login, errOut)
+			in, fp, err = gatherRepo(ctx, env, st.DB, cfg, facts, repo, token, login, errOut)
 		}
 		if err != nil {
 			skipped = true
@@ -189,7 +200,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp})
 		}
 	}
-	failed, err := decideAndApply(ctx, env, st.DB, cfg, token, gathered, errOut)
+	failed, err := decideAndApply(ctx, env, st.DB, cfg, facts, token, gathered, errOut)
 	if err != nil {
 		return err
 	}
@@ -214,8 +225,9 @@ type gatheredRepo struct {
 // decideAndApply decides once over the gathered repos and applies the actions. Each deferral
 // gets a deferred line on errOut, each repo with a failed action an apply line. It saves the
 // fingerprint of a repo only when none of its actions was deferred or failed, so the next tick
-// tries again (spec §3 step 2). failed reports an apply line or a state that was not saved.
-func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
+// tries again (spec §3 step 2), and replaces the deferred rows of each gathered repo with the
+// deferrals of Decide. failed reports an apply line or a state that was not saved.
+func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, token string,
 	gathered []gatheredRepo, errOut io.Writer) (failed bool, err error) {
 	if len(gathered) == 0 {
 		return false, nil
@@ -226,10 +238,22 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		inputs[i] = g.in
 		repos[g.repo.Slug] = g.repo
 	}
-	actions := dispatch.Decide(dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: inputs})
+	actions := dispatch.Decide(dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: inputs, Brake: &facts.Brake})
 	res, err := applyActions(ctx, env, db, cfg, token, repos, actions, errOut)
 	if err != nil {
 		return false, fmt.Errorf("tick: %w", err)
+	}
+	for _, g := range gathered {
+		var defers []dispatch.Action
+		for _, a := range actions {
+			if a.Kind == dispatch.KindDefer && a.Repo == g.repo.Slug {
+				defers = append(defers, a)
+			}
+		}
+		if err := dispatch.SaveDeferred(ctx, db, g.repo.Slug, defers, env.now()); err != nil {
+			failed = true
+			_, _ = fmt.Fprintf(errOut, "lighthouse: save deferred %s: %s\n", g.repo.Slug, oneLine(err))
+		}
 	}
 	for _, d := range res.Deferred {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: deferred %s\n", d)
@@ -265,6 +289,10 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	if err != nil {
 		return dispatch.Result{}, err
 	}
+	markerDir, err := park.MarkerDir(env.Getenv)
+	if err != nil {
+		return dispatch.Result{}, err
+	}
 	places := make(map[string]workplace.Workplace, len(repos))
 	for slug, repo := range repos {
 		places[slug] = env.workplace(cfg, repo, dir)
@@ -285,6 +313,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		},
 		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		StateDir:   dir,
+		MarkerDir:  markerDir,
 		MaxWait:    cfg.MaxWait,
 		Now:        env.now,
 		NewSession: runs.NewSessionID,
@@ -307,7 +336,7 @@ func (p prefixed) Write(b []byte) (int, error) {
 // gatherRepo runs the precheck for repo and, when it is due, the full gather; in is nil when
 // the repo is not due. fp is the fingerprint of the precheck: tick saves it after apply.
 // A full gather writes one gathered line to errOut.
-func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, repo repoconfig.Repo,
+func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, repo repoconfig.Repo,
 	token string, login func() (string, error), errOut io.Writer) (in *dispatch.RepoInput, fp string, err error) {
 	c := env.client(repo.Slug, token)
 	pre, err := prepare(ctx, db, c, repo)
@@ -317,13 +346,14 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 	if pre.Stands, err = stands(ctx, env, cfg, repo, pre.OpenRuns, errOut); err != nil {
 		return nil, "", err
 	}
+	pre.Markers, pre.PauseUntil = facts.Markers[repo.Slug], facts.PauseUntil
 	fp = dispatch.Fingerprint(pre)
 	prev, err := dispatch.LoadTickState(ctx, db, repo.Slug)
 	if err != nil {
 		return nil, "", err
 	}
 	now := env.now()
-	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, pre.OpenRuns, now))
+	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, pre.OpenRuns, pre.Markers, now))
 	if !due {
 		return nil, "", nil
 	}
@@ -410,7 +440,7 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, c *forg
 	}
 	return dispatch.RepoInput{
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
-		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands,
+		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Markers: pre.Markers,
 	}, nil
 }
 

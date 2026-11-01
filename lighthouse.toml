@@ -44,3 +44,7 @@ labels = "docs/developer/labels.md"
 command = "python3 .lighthouse/scripts/gate_go.py -- go test -race && python3 pack/python/scripts/gate_python.py -- uv run pytest -q && python3 .lighthouse/scripts/gate_node.py --dir web --also .github/workflows/ci.yml --also lighthouse.toml --drift gen=src/api -- lint typecheck test"
 # 3: a selector could not check, so nothing was tested (see the scripts).
 unchecked_exit_codes = [3]
+
+[usage_guard]
+controller = true
+resume = true

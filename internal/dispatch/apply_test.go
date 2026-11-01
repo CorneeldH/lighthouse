@@ -832,3 +832,168 @@ func TestApplyUnpark(t *testing.T) {
 		t.Errorf("status sets = %q, want %q", h.board.sets, want)
 	}
 }
+
+const usageKey = "usage:" + oldSession + "@2026-10-31T08:00:00Z:2026-10-31T08:30:00Z"
+
+func usageResumeAction() Action {
+	return Action{
+		Kind: KindResume, Repo: applyRepo, Issue: 7, Mode: "resume", Trigger: "usage", TriggerKey: usageKey,
+		Attempt: 1, SessionID: oldSession, Command: "/lighthouse-start-issue 7", Prompt: "ga verder",
+		Branch: "issue-7-x", Language: "nl",
+	}
+}
+
+// writeMarker writes the resume marker of oldSession into dir with these times.
+func writeMarker(t *testing.T, dir, created, reset string) string {
+	t.Helper()
+	path := filepath.Join(dir, oldSession+".json")
+	body := `{"session_id":"` + oldSession + `","cwd":"/forge/issue-7-x","window":"venster","reset_at":"` + reset +
+		`","created_at":"` + created + `","source":"tool","controller":true}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func exists(t *testing.T, path string) bool {
+	t.Helper()
+	_, err := os.Stat(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	return err == nil
+}
+
+func TestApplyUsageResumePostsNothing(t *testing.T) {
+	h := newHarness(t)
+	h.seed(t, 7, oldSession, "start:7", runs.Parked)
+	res, err := Apply(context.Background(), h.env, []Action{usageResumeAction()})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "Prepare", "Spawn"}
+	if got := h.log.all(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls = %q, want %q", got, want)
+	}
+	if p := h.poster(applyRepo); len(p.bodies) != 0 || len(p.rockets) != 0 {
+		t.Errorf("posted %q, rockets %v; want nothing", p.bodies, p.rockets)
+	}
+	if len(h.wp.spawned) != 1 || h.wp.spawned[0].Mode != "resume" || h.wp.spawned[0].SessionID != oldSession ||
+		h.wp.spawned[0].Prompt != "ga verder" {
+		t.Errorf("spawned %+v, want one resume of %s with ga verder", h.wp.spawned, oldSession)
+	}
+	if res.Started != 1 {
+		t.Errorf("Started = %d, want 1", res.Started)
+	}
+	if rows := h.history(t); len(rows) != 2 || !rows[1].Open || rows[1].TriggerKey != usageKey {
+		t.Errorf("rows = %+v, want an open usage resume", rows)
+	}
+}
+
+func TestApplyUsageResumeRemovesMarker(t *testing.T) {
+	cases := []struct {
+		name     string
+		created  string
+		reset    string
+		spawnErr error
+		gone     bool
+	}{
+		{"accepted, same key", "2026-10-31T08:00:00Z", "2026-10-31T08:30:00Z", nil, true},
+		{"uncertain, same key", "2026-10-31T08:00:00Z", "2026-10-31T08:30:00Z", workplace.ErrUncertain, true},
+		{"accepted, other created_at", "2026-10-31T08:05:00Z", "2026-10-31T08:30:00Z", nil, false},
+		{"accepted, other reset_at", "2026-10-31T08:00:00Z", "2026-10-31T09:30:00Z", nil, false},
+		{"not accepted", "2026-10-31T08:00:00Z", "2026-10-31T08:30:00Z", workplace.ErrNotAccepted, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.seed(t, 7, oldSession, "start:7", runs.Parked)
+			h.env.MarkerDir = t.TempDir()
+			h.wp.spawnErr = tc.spawnErr
+			path := writeMarker(t, h.env.MarkerDir, tc.created, tc.reset)
+			if _, err := Apply(context.Background(), h.env, []Action{usageResumeAction()}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if got := !exists(t, path); got != tc.gone {
+				t.Errorf("marker gone = %v, want %v", got, tc.gone)
+			}
+		})
+	}
+}
+
+// A resume of another trigger leaves the marker of its session alone.
+func TestApplyAnswerResumeKeepsMarker(t *testing.T) {
+	h := newHarness(t)
+	h.seed(t, 7, oldSession, "start:7", runs.Question)
+	h.env.MarkerDir = t.TempDir()
+	path := writeMarker(t, h.env.MarkerDir, "2026-10-31T08:00:00Z", "2026-10-31T08:30:00Z")
+	a := resumeAction()
+	a.TriggerKey = usageKey // only the trigger tells a usage resume apart
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if !exists(t, path) {
+		t.Error("marker removed by an answer resume")
+	}
+	if len(h.poster(applyRepo).bodies) != 1 {
+		t.Errorf("posted %q, want the Resumed", h.poster(applyRepo).bodies)
+	}
+}
+
+func TestApplyDropMarker(t *testing.T) {
+	drop := Action{Kind: KindDropMarker, Repo: applyRepo, Issue: 7, SessionID: oldSession, TriggerKey: usageKey, Language: "nl"}
+	t.Run("same key", func(t *testing.T) {
+		h := newHarness(t)
+		h.env.MarkerDir = t.TempDir()
+		path := writeMarker(t, h.env.MarkerDir, "2026-10-31T08:00:00Z", "2026-10-31T08:30:00Z")
+		res, err := Apply(context.Background(), h.env, []Action{drop})
+		if err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		if exists(t, path) {
+			t.Error("marker still there")
+		}
+		if got := h.log.all(); len(got) != 0 {
+			t.Errorf("calls = %q, want none", got)
+		}
+		if res.Started != 0 || len(h.wp.spawned) != 0 {
+			t.Errorf("Started = %d, spawned %+v; want no launch", res.Started, h.wp.spawned)
+		}
+	})
+	t.Run("other key", func(t *testing.T) {
+		h := newHarness(t)
+		h.env.MarkerDir = t.TempDir()
+		path := writeMarker(t, h.env.MarkerDir, "2026-10-31T08:05:00Z", "2026-10-31T08:30:00Z")
+		if _, err := Apply(context.Background(), h.env, []Action{drop}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		if !exists(t, path) {
+			t.Error("marker with another key removed")
+		}
+	})
+	t.Run("no marker dir", func(t *testing.T) {
+		h := newHarness(t)
+		dir := t.TempDir()
+		t.Chdir(dir) // "" must not resolve against the working directory
+		path := writeMarker(t, dir, "2026-10-31T08:00:00Z", "2026-10-31T08:30:00Z")
+		if _, err := Apply(context.Background(), h.env, []Action{drop}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		if !exists(t, path) {
+			t.Error("marker removed without a MarkerDir")
+		}
+	})
+	t.Run("removal fails", func(t *testing.T) {
+		h := newHarness(t)
+		h.env.MarkerDir = t.TempDir()
+		bad := drop
+		bad.SessionID = "../x"
+		res, err := Apply(context.Background(), h.env, []Action{bad})
+		if err != nil || len(res.Failed) != 0 {
+			t.Fatalf("Apply: %v, Failed = %v; want a removal error to be no action error", err, res.Failed)
+		}
+		if lines := strings.Count(h.out.String(), "\n"); lines != 1 || !strings.Contains(h.out.String(), "invalid session id") {
+			t.Errorf("log %q, want one line with the removal error", h.out.String())
+		}
+	})
+}
