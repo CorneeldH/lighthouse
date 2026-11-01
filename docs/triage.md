@@ -28,6 +28,13 @@ ontwerpvragen, elk met opties en een aanbevolen optie. Een vermoedelijk dubbel o
 issue wordt gemeld, nooit gesloten of doorgezet. Triage zet geen labels en legt geen
 `blocked_by`-relaties.
 
+Vrije tekst van het model komt op één regel in de comment, zonder codefence, `<sub>` of `<!--`.
+Dat geldt voor de routeregel na `#<nr> Poort <n>:`, het bewijs bij een dubbel of afgerond issue,
+de reden voor interactief en de ontwerpvragen. Na de `@` of `#` van een mention of
+issueverwijzing in die tekst staat een zero-width joiner. Zo notificeert `@naam` niemand, en maken
+`#N` en `owner/repo#N` geen kruisverwijzing. De verwijzingen die Go zelf schrijft, de
+blokkeerders van poort 0 en het issue achter `Mogelijk dubbel van`, blijven klikbaar.
+
 ## Het commando
 
 ```bash
