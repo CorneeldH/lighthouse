@@ -86,6 +86,7 @@ type Action struct {
 	PRURL      string       `json:"pr_url,omitempty"`
 	Language   string       `json:"language,omitempty"`
 	Stop       bool         `json:"stop,omitempty"`     // stop the session of run RunID
+	End        bool         `json:"end,omitempty"`      // end only the claude of run RunID
 	Discard    bool         `json:"discard,omitempty"`  // forget the launch of run RunID
 	ItemID     string       `json:"item_id,omitempty"`  // park, hold, unpark: the board item
 	Blockers   []string     `json:"blockers,omitempty"` // park: "<repo>#<n> (<status>)" per active blocker
@@ -405,9 +406,13 @@ func (c runCtx) done() bool {
 	return c.hasStand && c.stand == workplace.Done
 }
 
+// closed closes row with o. A run that ends as done, handoff or question is over, but its
+// claude lives on in the workplace, also with a forge stand done: closed ends it, or a resume
+// of its session fails at forge.
 func (c runCtx) closed(o runs.Outcome) Action {
 	a := c.base
 	a.Kind, a.RunID, a.Outcome = KindClose, c.row.ID, o
+	a.End = o == runs.Done || o == runs.Handoff || o == runs.Question
 	return a
 }
 
@@ -475,7 +480,7 @@ func (c runCtx) green() (Action, bool) {
 		return Action{}, false
 	}
 	a := c.base
-	a.Kind, a.RunID, a.SessionID, a.PRURL = KindDone, c.row.ID, c.row.SessionID, pr.URL
+	a.Kind, a.RunID, a.SessionID, a.PRURL, a.End = KindDone, c.row.ID, c.row.SessionID, pr.URL, true
 	return a, true
 }
 

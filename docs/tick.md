@@ -132,12 +132,12 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 
 | # | Situatie | Uitkomst | Reden op de 🤖 Teruggegeven |
 |---|---|---|---|
-| 1-3 | Klaar-comment, Handoff (niet het einde van de keten), Vraag | zoals voorheen | |
+| 1-3 | Klaar-comment, Handoff (niet het einde van de keten), Vraag | zoals voorheen, en de claude van de run beëindigen | |
 | 4 | Een eigen 🤖 Teruggegeven van deze sessie staat er al | rij `returned`; de sessie stoppen als ze niet klaar is en de werkplek er nog is, zonder sessie de launch vergeten | |
 | 5 | Resume-marker (`controller: true`) van deze sessie, geschreven op of na `started_at` van de run | rij `parked`, sessie blijft staan | |
-| 6 | PR van deze run gemerged | rij `done` | |
-| 6b | Klaar en het issue is `CLOSED` | rij `done`, geen post (een close-check-run die zijn issue sloot) | |
-| 7 | Groene PR en klaar | 🤖 Klaar | |
+| 6 | PR van deze run gemerged | rij `done`, de claude van de run beëindigen | |
+| 6b | Klaar en het issue is `CLOSED` | rij `done`, geen post (een close-check-run die zijn issue sloot), de claude van de run beëindigen | |
+| 7 | Groene PR en klaar | 🤖 Klaar, de claude van de run beëindigen | |
 | 8 | Werkplek verdwenen | Teruggegeven | werkplek verdwenen |
 | 9 | `Unknown command:` in het transcript | rij `start_failed`, sessie stoppen als ze niet klaar is | |
 | 10 | Klaar, maar nooit een assistent-beurt | rij `start_failed` | |
@@ -175,6 +175,16 @@ ziet de volgende tick regel 4 en post niets opnieuw: ze stopt of vergeet en slui
 `start_failed` krijgt de bestaande tweede poging. Een geweigerde launch post apply zelf al een
 Teruggegeven met de oorzaak (*start mislukt: …*); na twee mislukte pogingen post tick die alleen als
 de post van apply mislukte.
+
+Een claude blijft na zijn laatste antwoord draaien, ook bij een forge-stand `done`, en forge weigert een
+hervatting van zijn sessie zolang hij leeft (#206). Een run die sluit als `done`, `handoff` of
+`question` (regels 1-3, 6, 6b, 7 en de fix-pr-handoff van een rode PR) draagt daarom `End`: apply
+beëindigt met `Kill` alleen de claude van die sessie-id, nooit de unit, zodat een interactieve sessie in
+dezelfde worktree doordraait. Een run zonder sessie-id slaat apply over. Mislukt `Kill`, dan blijft de
+rij open en probeert de volgende tick het opnieuw; een 🤖 Klaar staat er dan al, en regel 1 sluit. Een
+hervatting doet na de claim nog een `Kill` op haar sessie, vóór de 🤖 Hervat en de launch: ook een
+geparkeerde run of een eerdere mislukte `Kill` laat zo geen claude achter die de handoff blokkeert.
+Mislukt die `Kill`, dan sluit de run als `start_failed` (*end earlier claude: …*), zonder post.
 
 ## Exitcodes
 

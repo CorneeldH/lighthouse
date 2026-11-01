@@ -1023,6 +1023,128 @@ func TestApplyStopWithoutSessionIDIsSkipped(t *testing.T) {
 	}
 }
 
+func TestApplyCloseQuestionEndsOnlyTheClaude(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
+	a := Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: id, Outcome: runs.Question, End: true, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"Kill"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q (no Stop of the unit, no post)", got, want)
+	}
+	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.killed, want) {
+		t.Errorf("killed = %q, want %q (the claude session id, not the forge key)", h.wp.killed, want)
+	}
+	if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Question {
+		t.Errorf("row = %+v, want closed as question", rows[0])
+	}
+}
+
+// A run whose launch was never adopted can still have a claude: Kill finds it by session id.
+func TestApplyEndWithoutForgeKeyStillKills(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "")
+	a := Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: id, Outcome: runs.Handoff, End: true, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.killed, want) {
+		t.Errorf("killed = %q, want %q", h.wp.killed, want)
+	}
+}
+
+func TestApplyDonePostsThenEndsThenCloses(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
+	a := Action{Kind: KindDone, Repo: applyRepo, Issue: 7, RunID: id, SessionID: oldSession,
+		PRURL: "https://github.com/o/r/pull/9", End: true, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"CreateComment", "Kill"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.killed, want) {
+		t.Errorf("killed = %q, want %q", h.wp.killed, want)
+	}
+	if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Done {
+		t.Errorf("row = %+v, want closed as done", rows[0])
+	}
+}
+
+// A kill that fails keeps the row open, so the next tick ends the claude before a resume can
+// collide with it.
+func TestApplyEndFailsKeepsRowOpen(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
+	h.wp.killErr = errors.New("podman ps: exit code 125")
+	a := Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: id, Outcome: runs.Question, End: true, Language: "nl"}
+	res, err := Apply(context.Background(), h.env, []Action{a})
+	if err == nil || res.Failed[applyRepo] == nil {
+		t.Fatalf("Apply = %v, Failed = %v, want an error", err, res.Failed)
+	}
+	if rows := h.history(t); !rows[0].Open {
+		t.Errorf("row = %+v, want still open", rows[0])
+	}
+}
+
+// The resume reuses the session of the earlier run: its claude is killed after the claim, so a
+// second process that lost the claim never kills the claude the winner just started.
+func TestApplyResumeKillsEarlierClaudeAfterTheClaim(t *testing.T) {
+	h := newHarness(t)
+	h.seed(t, 7, oldSession, "start:7", runs.Question)
+	openAtKill := -1
+	h.wp.onKill = func() {
+		open, err := runs.Open(context.Background(), h.db, applyRepo)
+		if err != nil {
+			t.Errorf("Open: %v", err)
+		}
+		openAtKill = len(open)
+	}
+	if _, err := Apply(context.Background(), h.env, []Action{resumeAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if want := []string{"ws-issue-7-x " + oldSession}; !reflect.DeepEqual(h.wp.killed, want) {
+		t.Errorf("killed = %q, want %q", h.wp.killed, want)
+	}
+	if openAtKill != 1 {
+		t.Errorf("open runs at Kill = %d, want 1: the resume's own claim", openAtKill)
+	}
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	if got := h.log.all(); !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+}
+
+func TestApplyResumeKillFailsClosesStartFailedWithoutSpawn(t *testing.T) {
+	h := newHarness(t)
+	h.seed(t, 7, oldSession, "start:7", runs.Question)
+	h.wp.killErr = errors.New("session still runs in container c1 after pkill")
+	if _, err := Apply(context.Background(), h.env, []Action{resumeAction()}); err == nil {
+		t.Fatal("Apply: err = nil, want the kill error")
+	}
+	if len(h.wp.spawned) != 0 || len(h.poster(applyRepo).bodies) != 0 {
+		t.Errorf("spawned %d, posted %q; want neither", len(h.wp.spawned), h.poster(applyRepo).bodies)
+	}
+	rows := h.history(t)
+	if r := rows[1]; r.Open || r.Outcome != runs.StartFailed ||
+		r.Reason != "end earlier claude: session still runs in container c1 after pkill" {
+		t.Errorf("resume row = %+v, want start_failed with the kill as reason", r)
+	}
+}
+
+// A start makes a new session: there is no earlier claude of it to kill.
+func TestApplyStartKillsNothing(t *testing.T) {
+	h := newHarness(t)
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if h.wp.killed != nil {
+		t.Errorf("killed = %q, want none", h.wp.killed)
+	}
+}
+
 func parkAction() Action {
 	return Action{Kind: KindPark, Repo: applyRepo, Issue: 7, ItemID: "I7", Language: "nl",
 		Blockers: []string{"o/r#5 (In progress)"}}
@@ -1139,7 +1261,8 @@ func TestApplyUsageResumePostsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	want := []string{"Prepare", "Sessions ws-issue-7-x", "Prepare", "Spawn"}
+	// A parked run's claude may still wait in the workplace: the usage resume kills it too.
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "Prepare", "Spawn"}
 	if got := h.log.all(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("calls = %q, want %q", got, want)
 	}
