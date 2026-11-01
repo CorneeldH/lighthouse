@@ -41,8 +41,9 @@ Subcommands:
 
 The ledger, `<git-common-dir>/lighthouse/secret-scan/clean-<key>.txt`, holds the
 blobs gitleaks saw without a finding in a batch that completed (rc 0 or 1 with a
-report read). The key covers the config and the gitleaks version, so a change to
-either starts a new ledger and a full rescan.
+report read) and counted as scanned in full. The key covers the config, the
+gitleaks version and SCAN_METHOD, so a change to any of them starts a new ledger
+and a full rescan.
 
 Runs on the host's python3 with `-I`: stdlib only, and `config.py` is found relative
 to this file, never through the cwd.
@@ -78,6 +79,15 @@ BATCH_BYTES = 64 * 2**20
 HOOK_VOLUME_LIMIT = 256 * 2**20
 # More findings of one rule in one batch: an allowlist is probably missing.
 FINDINGS_CAP = 200
+# Written before every blob in its file. `gitleaks dir` skips a file whose first
+# bytes are the magic number of a binary type (zip, gzip, ELF, PDF, RTF, SQLite, OLE,
+# ...; measured on 8.30.1), also when git sees text and `gitleaks git` would scan it.
+# No such type starts with a newline. Matches stay the same; only line numbers
+# shift by one, and this module reports none.
+BLOB_PREFIX = b"\n"
+# Part of the ledger key: a ledger written by another way of scanning (without
+# BLOB_PREFIX or the byte count, on the absolute temp path) is not trusted.
+SCAN_METHOD = b"dir in blobdir, newline prefix, byte count"
 # Test-only overrides of BATCH_BYTES and HOOK_VOLUME_LIMIT.
 BATCH_BYTES_ENV = "LIGHTHOUSE_SCAN_BATCH_BYTES"
 VOLUME_LIMIT_ENV = "LIGHTHOUSE_SCAN_VOLUME_LIMIT"
@@ -349,7 +359,8 @@ def missing_blobs(repo: Path, refs: dict[str, str], remote: str) -> dict[str, Bl
 
 
 def ledger_path(repo: Path, config: Path) -> Path:
-    """The ledger for this config and this gitleaks, shared by every worktree."""
+    """The ledger for this config, this gitleaks and this SCAN_METHOD, shared by
+    every worktree."""
     common = _git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
     try:
         body = config.read_bytes()
@@ -367,7 +378,7 @@ def ledger_path(repo: Path, config: Path) -> Path:
         raise CouldNotCheck(f"gitleaks version failed: {exc}") from exc
     if version.returncode != 0:
         raise CouldNotCheck(f"gitleaks version exited {version.returncode}")
-    key = hashlib.sha256(body + version.stdout.strip()).hexdigest()
+    key = hashlib.sha256(body + version.stdout.strip() + b"\0" + SCAN_METHOD).hexdigest()
     return Path(common) / "lighthouse" / "secret-scan" / f"clean-{key}.txt"
 
 
@@ -432,9 +443,10 @@ def _mb(size: int) -> str:
     return f"{size / 2**20:.0f}"
 
 
-def _write_blobs(repo: Path, batch: list[str], dest: Path) -> None:
-    """Each blob of `batch` to `dest/<blob id>`, through one `git cat-file --batch`,
-    streamed: no more than one chunk of a blob is in memory at once."""
+def _write_blobs(repo: Path, batch: list[str], dest: Path) -> int:
+    """Each blob of `batch` to `dest/<blob id>`, BLOB_PREFIX first, through one
+    `git cat-file --batch`, streamed: no more than one chunk of a blob is in memory
+    at once. Returns the bytes written, prefixes included."""
     with tempfile.TemporaryFile() as ids:
         ids.write("".join(f"{oid}\n" for oid in batch).encode())
         ids.seek(0)
@@ -444,13 +456,16 @@ def _write_blobs(repo: Path, batch: list[str], dest: Path) -> None:
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
         )
+    written = 0
     try:
         for oid in batch:
             header = proc.stdout.readline().decode(errors="replace").split()
             if header[:2] != [oid, "blob"] or len(header) != 3:
                 raise _ScanError(f"git cat-file --batch gave {' '.join(header) or 'nothing'} for {oid}")
             left = int(header[2])
+            written += len(BLOB_PREFIX) + left
             with open(dest / oid, "wb") as out:
+                out.write(BLOB_PREFIX)
                 while left:
                     chunk = proc.stdout.read(min(left, 2**20))
                     if not chunk:
@@ -463,6 +478,18 @@ def _write_blobs(repo: Path, batch: list[str], dest: Path) -> None:
         if proc.poll() is None:
             proc.kill()
         proc.wait()
+    return written
+
+
+# gitleaks' own count of what it read, and the debug line of a file it skipped.
+_SCANNED = re.compile(r"\bscanned ~(\d+) bytes\b")
+_SKIPPING = re.compile(r"\bskipping\b")
+
+
+def _skipped(output: str, batch: list[str]) -> list[str]:
+    """The blobs of `batch` named in gitleaks' `skipping` lines."""
+    lines = [line for line in output.splitlines() if _SKIPPING.search(line)]
+    return sorted(oid for oid in batch if any(oid in line for line in lines))
 
 
 def _read_report(path: Path) -> list[dict] | None:
@@ -495,7 +522,12 @@ def _scan_batch(
     gitleaks runs in `<root>/blobs/` on `.`, so the path it matches its path
     allowlists against is the bare blob id. On the absolute path, a TMPDIR under
     `node_modules/` (the default config allowlists it, and more such directories)
-    made every blob clean. The cwd also keeps a `.gitleaksignore` of the repo out of the scan.
+    made every blob clean. The cwd also keeps a `.gitleaksignore` of the repo out of
+    the scan.
+
+    gitleaks says how many bytes it scanned. Less than was written means it skipped
+    a file (a binary type at an offset BLOB_PREFIX does not move, a path allowlist,
+    a size limit): the batch could not be checked, and none of it is clean.
     """
     with tempfile.TemporaryDirectory(prefix="secret-scan-") as tmp:
         root = Path(tmp)
@@ -503,12 +535,14 @@ def _scan_batch(
         blobdir.mkdir()
         report = root / "report.json"
         try:
-            _write_blobs(repo, batch, blobdir)
+            written = _write_blobs(repo, batch, blobdir)
         except OSError as exc:
             raise _ScanError(f"cannot write the blobs of batch {i}: {exc}") from exc
         argv = [
             "gitleaks", "dir", ".", "--config", str(config.resolve()), "--no-banner",
             "--redact", "-f", "json", "-r", str(report), "--exit-code", "1",
+            # debug: gitleaks names a file it skips only at this level.
+            "--no-color", "--log-level", "debug",
         ]  # fmt: skip
         try:
             run = run_bounded(argv, limits, cwd=blobdir)
@@ -524,6 +558,14 @@ def _scan_batch(
     # gitleaks also exits 1 on an error; rc 1 is findings only with findings to show.
     if run.rc == 1 and not items:
         raise _ScanError(f"gitleaks exited 1 in batch {i} with no findings in its report", run.output)
+    counts = _SCANNED.findall(run.output)
+    if len(counts) != 1:
+        raise _ScanError(f"gitleaks did not say how many bytes it scanned in batch {i}")
+    if int(counts[0]) != written:
+        skipped = ", ".join(_skipped(run.output, batch)) or "a blob it did not name"
+        raise _ScanError(
+            f"gitleaks scanned {counts[0]} of {written} bytes in batch {i}; it skipped {skipped}"
+        )
     members = set(batch)
     found = []
     for item in items:

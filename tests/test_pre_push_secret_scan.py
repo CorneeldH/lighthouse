@@ -63,13 +63,14 @@ BOUNDED = {
 SYSTEMD_RUN_KILLED = "#!/bin/sh\nexit 137\n"
 
 # A fake gitleaks: logs its subcommand and arguments, one call per line, to
-# $FAKE_GITLEAKS_LOG, prints a version, writes an empty report for `dir`, and finds
-# nothing.
+# $FAKE_GITLEAKS_LOG, prints a version, writes an empty report for `dir` and says,
+# like gitleaks, how many bytes it scanned (the files in its cwd), and finds nothing.
 FAKE_GITLEAKS = """#!/bin/sh
 echo "$*" >> "$FAKE_GITLEAKS_LOG"
 case "$1" in
   version) echo "fake 1" ;;
   dir)
+    echo "INF scanned ~$(( $(cat -- * | wc -c) )) bytes" >&2
     while [ "$#" -gt 0 ]; do
       if [ "$1" = "-r" ]; then echo "[]" > "$2"; fi
       shift

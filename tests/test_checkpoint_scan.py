@@ -329,10 +329,12 @@ def test_probe_cached_per_process(cs, tmp_path, isolated):
 # A fake gitleaks. `version` prints $FAKE_GITLEAKS_VERSION (default `fake 1`).
 # `dir <dir> ... -r <report>` counts its calls next to $FAKE_GITLEAKS_LOG, logs the
 # name of every file it got, and writes a JSON report with one `fake-rule` finding
-# per file holding FAKESECRET; rc 1 with findings, else 0. Knobs:
+# per file holding FAKESECRET; rc 1 with findings, else 0. Like gitleaks it says
+# `scanned ~<n> bytes` on stderr, the bytes of every file it got. Knobs:
 #   FAKE_GITLEAKS_KILL_AT=<n>   the n-th `dir` call SIGKILLs itself before reading
 #   FAKE_GITLEAKS_REPORT=none   write no report; =garbage: write one that is no JSON
 #   FAKE_GITLEAKS_RC=<rc>       exit with this rc instead
+#   FAKE_GITLEAKS_SCANNED=none  say nothing about the bytes; =short: one byte too few
 FAKE_GITLEAKS = f"""#!{sys.executable}
 import json, os, signal, sys
 
@@ -351,12 +353,18 @@ root, report = args[1], args[args.index("-r") + 1]
 # gitleaks runs in the blob dir: a config path relative to the repo would be lost.
 assert os.path.isfile(args[args.index("--config") + 1]), args
 findings = []
+scanned = 0
 with open(log, "a") as out:
     for name in sorted(os.listdir(root)):
         path = os.path.join(root, name)
         out.write(name + "\\n")
-        if b"FAKESECRET" in open(path, "rb").read():
+        body = open(path, "rb").read()
+        scanned += len(body)
+        if b"FAKESECRET" in body:
             findings.append({{"RuleID": "fake-rule", "File": path, "Match": "REDACTED"}})
+said = os.environ.get("FAKE_GITLEAKS_SCANNED")
+if said != "none":
+    print(f"INF scanned ~{{scanned - (said == 'short')}} bytes", file=sys.stderr)
 mode = os.environ.get("FAKE_GITLEAKS_REPORT", "write")
 if mode == "write":
     json.dump(findings, open(report, "w"))
@@ -654,6 +662,31 @@ def test_other_gitleaks_rc_with_a_report_is_not_clean(sx):
     assert sx.ledger() == set()
 
 
+@pytest.mark.parametrize("said", ["none", "short"])
+def test_skipped_bytes_are_not_clean(sx, said):
+    """gitleaks scanned fewer bytes than the batch holds, or did not say: it skipped
+    a blob, and no blob of the batch goes into the ledger."""
+    refs = _bulk_checkpoints(sx.repo, 0, 3)
+
+    result = sx.scan(refs, FAKE_GITLEAKS_SCANNED=said)
+
+    assert result.returncode == 2
+    assert "secret-scan: COULD NOT CHECK — gitleaks " in result.stderr
+    assert "in batch 1" in result.stderr
+    assert sx.ledger() == set()
+
+
+def test_ledger_key_covers_the_scan_method(cs, sx, monkeypatch):
+    """A ledger written by another way of scanning (before the blob prefix and the
+    byte count) is not trusted: the key changes with the scan method."""
+    monkeypatch.setenv("PATH", sx.env["PATH"])
+    before = cs.ledger_path(sx.repo, sx.config)
+
+    monkeypatch.setattr(cs, "SCAN_METHOD", cs.SCAN_METHOD + b"+")
+
+    assert cs.ledger_path(sx.repo, sx.config) != before
+
+
 def test_uncaught_error_is_could_not_check(tmp_path):
     """A module without `.lighthouse/lib` next to it fails on the import of config.py:
     exit 2 (could not check), never 1, which the hook reads as findings."""
@@ -844,6 +877,58 @@ def test_real_gitleaks_finds_pat(tmp_path):
     assert "refs/entire/checkpoints/01/leak  0/full.jsonl  github-pat  REDACTED" in result.stdout
     assert FAKE_PAT not in result.stdout + result.stderr
     assert sx.ledger() == {_blob_id(b'{"text": "hello"}\n')}
+
+
+# Text to git (no NUL in the first 8000 bytes), so `gitleaks git` scans it; but the
+# first bytes are the magic number of a binary type, and `gitleaks dir` 8.30.1 skips
+# such a file unscanned (rc 0, `[]`). Measured for each of these.
+MAGIC = {
+    "zip": b"PK\x03\x04",
+    "gzip": b"\x1f\x8b\x08",
+    "sqlite": b"SQLite format 3",
+    "elf": b"\x7fELF",
+    "rtf": b"{\\rtf1",
+    "pdf": b"%PDF-",
+    "ole": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",
+    "bz2": b"BZh",
+    "exe": b"MZ",
+}
+
+
+@needs_gitleaks
+@pytest.mark.parametrize("magic", MAGIC.values(), ids=MAGIC.keys())
+def test_real_gitleaks_scans_text_with_a_binary_magic(tmp_path, magic):
+    sx = _real_sx(tmp_path)
+    refs = _checkpoints(sx.repo, {"refs/entire/checkpoints/01/leak": {"0/full.jsonl": magic + LEAK}})
+
+    result = sx.scan(refs)
+
+    assert result.returncode == 1, result.stderr
+    assert "refs/entire/checkpoints/01/leak  0/full.jsonl  github-pat  REDACTED" in result.stdout
+    assert sx.ledger() == set()
+
+
+@needs_gitleaks
+def test_real_gitleaks_skip_past_the_prefix_is_not_clean(tmp_path):
+    """The residual class: a binary signature at a fixed offset past the first byte
+    (`ustar` at 257, tar). The blob prefix shifts it by one, so `ustar` at 256 in the
+    blob still makes gitleaks skip the file; the byte count catches that."""
+    sx = _real_sx(tmp_path)
+    body = b"x" * 256 + b"ustar" + LEAK
+    refs = _checkpoints(
+        sx.repo,
+        {
+            "refs/entire/checkpoints/01/tar": {"0/full.jsonl": body},
+            "refs/entire/checkpoints/02/clean": {"0/full.jsonl": b'{"text": "hello"}\n'},
+        },
+    )
+
+    result = sx.scan(refs)
+
+    assert result.returncode == 2, result.stderr
+    assert f"it skipped {_blob_id(body)}" in result.stderr
+    assert sx.ledger() == set()
+    assert FAKE_PAT not in result.stdout + result.stderr
 
 
 # --- push: scan what the checkpoint remote misses, push the clean refs -----------
