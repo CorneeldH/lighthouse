@@ -1,5 +1,5 @@
 // Package park reads and writes what the usage guard leaves behind: the resume markers of
-// parked sessions and the PAUSE flag. The contract is docs/usage-gate.md. Package park is a
+// parked sessions and the PAUSE flag. The contract is usage-gate.md (Contract). Package park is a
 // leaf: it imports nothing from the dispatcher.
 package park
 
