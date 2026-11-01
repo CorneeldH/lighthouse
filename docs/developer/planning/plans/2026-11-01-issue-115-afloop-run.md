@@ -32,7 +32,7 @@ voor de hook (`pack/core/hooks/`), pytest voor de hooktests.
 - `max_wait` en `max_runtime` komen uit `host.toml [dispatch]` (standaard `1h` en `8h`).
 - Gate: `[test_gate] command` uit `lighthouse.toml`; smal tijdens het werk:
   `go test -race ./internal/dispatch/... ./internal/workplace/... ./internal/cli/... ./internal/packs/...`
-  en `uv run pytest -q tests/pack/test_permission_note.py`.
+  en `uv run pytest -q tests/pack/test_permission_check.py`.
 - Elke PR voegt `changelog.d/issue-115-afloop-run.md` toe.
 
 ## Review-focus
@@ -160,16 +160,16 @@ func TestTranscriptDirMissing(t *testing.T)           // errors.Is(err, fs.ErrNo
 ### Taak 2: de `Notification`-hook schrijft het permissiebestand
 
 **Bestanden:**
-- Nieuw: `pack/core/hooks/permission-note.sh`
-- Nieuw: `pack/core/hooks/permission-note/note.py`
+- Nieuw: `pack/core/hooks/permission-check.sh`
+- Nieuw: `pack/core/hooks/permission-check/note.py`
 - Wijzig: `pack/core/hooks/hooks.json` (nieuw event `Notification`)
 - Wijzig: `internal/packs/core_test.go:30-66` (twee bestanden in de lijst) en `:132`
   (`kinds[KindHook] != 15` wordt `16`)
 - Wijzig: `tests/pack/test_hooks_minimal_config.py` (een `Notification`-payload bij `:94` en
-  `permission-note.sh` in de set van `test_every_registration_has_a_payload`)
-- Nieuw: `tests/pack/test_permission_note.py`
-- Geïnstalleerd (door `init --upgrade`): `.claude/hooks/lighthouse/permission-note.sh`,
-  `.claude/hooks/lighthouse/permission-note/note.py`, `.claude/settings.json`
+  `permission-check.sh` in de set van `test_every_registration_has_a_payload`)
+- Nieuw: `tests/pack/test_permission_check.py`
+- Geïnstalleerd (door `init --upgrade`): `.claude/hooks/lighthouse/permission-check.sh`,
+  `.claude/hooks/lighthouse/permission-check/note.py`, `.claude/settings.json`
 
 **Interfaces:**
 - Levert het bestand `<LIGHTHOUSE_STATE_DIR>/runs/<LIGHTHOUSE_CONTROLLER_RUN>/permission.json`
@@ -205,18 +205,18 @@ def test_unreadable_transcript_falls_back_to_message(tmp_path): ...  # tool uit 
 def test_no_state_dir_could_not_check(tmp_path): ...  # LIGHTHOUSE_STATE_DIR leeg: exit 0, stderr bevat "COULD NOT CHECK"
 ```
 
-- [ ] **Stap 2: draai ze en zie ze falen.** `uv run pytest -q tests/pack/test_permission_note.py`:
+- [ ] **Stap 2: draai ze en zie ze falen.** `uv run pytest -q tests/pack/test_permission_check.py`:
   FAIL, script bestaat niet.
 
-- [ ] **Stap 3: implementeer de hook.** `permission-note.sh` volgt `usage-gate.sh`: snelle weg
+- [ ] **Stap 3: implementeer de hook.** `permission-check.sh` volgt `usage-gate.sh`: snelle weg
   zonder fork en zonder stdin te lezen als `LIGHTHOUSE_CONTROLLER_RUN` leeg of niet in de vorm
-  `[0-9a-f-]` is; daarna één `python3 permission-note/note.py` met de payload op stdin. Altijd exit 0,
+  `[0-9a-f-]` is; daarna één `python3 permission-check/note.py` met de payload op stdin. Altijd exit 0,
   nooit stdout. Registratie in `hooks.json`:
 
 ```json
 "Notification": [
   {"matcher": "permission_prompt|worker_permission_prompt", "hooks": [
-    {"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/permission-note.sh", "timeout": 10}
+    {"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/permission-check.sh", "timeout": 10}
   ]}
 ]
 ```
@@ -241,8 +241,8 @@ Het bewijs met een echte prompt is geen stap van deze taak: het vraagt mensenhan
 ### Taak 3: de tick meet de afloop
 
 **Bestanden:**
-- Nieuw: `internal/dispatch/afloop.go` (de meet-typen en de lezers van de statemap)
-- Nieuw: `internal/dispatch/afloop_test.go`
+- Nieuw: `internal/dispatch/runstate.go` (de meet-typen en de lezers van de statemap)
+- Nieuw: `internal/dispatch/runstate_test.go`
 - Wijzig: `internal/dispatch/decide.go:26-34` (`RepoInput.Runs`) en `:19-23` (`Input`)
 - Wijzig: `internal/dispatch/precheck.go:78-90` (`Boundaries`)
 - Wijzig: `internal/cli/tick.go:356-384` (`stands` wordt `measure`), `:229` (limieten in `Input`)
@@ -353,6 +353,7 @@ sessievoet krijgt die regel 4 herkent.
 | 4 | Eigen 🤖 Teruggegeven van deze sessie na `StartedAt` | `KindClose` `returned`; zonder `WorkplaceSession` `Discard`, anders `Stop` als niet klaar | — |
 | 5 | `Parked` | `KindClose` `parked` | — |
 | 6 | Een PR van deze run `MERGED` | `KindClose` `done` | — |
+| 6b | Klaar en het issue is `CLOSED` | `KindClose` `done` | — (een close-check-run die zijn issue sloot, laat geen Handoff, Vraag of PR achter) |
 | 7 | Groene PR en klaar | bestaand `KindDone` | — |
 | 8 | `Gone` | `KindReturn` | `reason_workplace_gone` "werkplek verdwenen" |
 | 9 | `Transcript.UnknownCommand != ""` | `KindClose` `start_failed`, `Stop` als niet klaar, `ReasonArg` "unknown command `<cmd>`" | — (de retry-regel geeft later "start mislukt: …") |
@@ -467,7 +468,7 @@ func TestApplyCloseStop(t *testing.T)                         // KindClose retur
   tabel van taak 4 en de verwijzing naar spec §7; `max_wait` op regel 156 noemt stil en permissie)
 - Wijzig: `docs/workplace.md` (`Transcripts` en `ErrNotMeasurable`; `AdoptSessions` in plaats van
   `CheckOpen`; de omgeving op regel 60 noemt het permissiebestand)
-- Wijzig: `CLAUDE.md` (*Hooks*: één regel voor `permission-note.sh`, Notification `permission_prompt`,
+- Wijzig: `CLAUDE.md` (*Hooks*: één regel voor `permission-check.sh`, Notification `permission_prompt`,
   schrijft alleen in een controller-run, blokkeert nooit)
 - Nieuw: `changelog.d/issue-115-afloop-run.md`
 
