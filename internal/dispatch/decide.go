@@ -74,6 +74,8 @@ type Action struct {
 	ReasonArg  string       `json:"reason_arg,omitempty"` // the argument of Reason, literal
 	PRURL      string       `json:"pr_url,omitempty"`
 	Language   string       `json:"language,omitempty"`
+	Stop       bool         `json:"stop,omitempty"`    // stop the session of run RunID
+	Discard    bool         `json:"discard,omitempty"` // forget the launch of run RunID
 }
 
 // Decide is the pure decision of one tick: per repo, per item, first the orphan rule, then
@@ -146,7 +148,7 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		if !row.Open || row.Issue != it.Issue {
 			continue
 		}
-		a, closes := settle(repo, it, row, hs, base)
+		a, closes := settle(in, repo, it, row, hs, base)
 		if closes {
 			out = append(out, planned{Action: a})
 		}
@@ -217,12 +219,14 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 	return a, true
 }
 
-// settle decides whether the open run row ends in this tick. Only comments from row's start
-// on count; a Done or Question also needs row's session, a Handoff carries none. A Done
-// closes, then a Handoff that does not end the chain, then a Question; else a green PR with
-// a session that is Done gives the done action. Every action it returns closes row.
-func settle(repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool) {
-	var done, question bool
+// settle decides whether the open run row ends in this tick: the first rule of the run-outcome
+// table that holds wins. Only comments from row's start on count; a Done, Question or Returned
+// also needs row's session, a Handoff carries none. A Done closes, then a Handoff that does
+// not end the chain, then a Question, then the run's own Returned (posted by an earlier tick
+// whose stop failed); after those the measurement rules of runCtx.outcome. Every action it
+// returns closes row.
+func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool) {
+	var done, question, returned bool
 	var handoff *parsed
 	for i, p := range hs {
 		if p.Time.Before(row.StartedAt) {
@@ -234,29 +238,261 @@ func settle(repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Ac
 			done = done || ofRun
 		case protocol.KindQuestion:
 			question = question || ofRun
+		case protocol.KindReturned:
+			returned = returned || ofRun
 		case protocol.KindHandoff:
 			handoff = &hs[i]
 		}
 	}
-	a := base
-	a.RunID = row.ID
+	c := newRunCtx(in, repo, it, row, base)
+	c.handoff = handoff != nil
 	switch {
 	case done:
-		a.Kind, a.Outcome = KindClose, runs.Done
-		return a, true
+		return c.closed(runs.Done), true
 	case handoff != nil && !endsChain(repo, it.Issue, handoff.Header):
-		a.Kind, a.Outcome = KindClose, runs.Handoff
-		return a, true
+		return c.closed(runs.Handoff), true
 	case question:
-		a.Kind, a.Outcome = KindClose, runs.Question
+		return c.closed(runs.Question), true
+	case returned:
+		a := c.closed(runs.Returned)
+		if c.open.WorkplaceSession == "" {
+			a.Discard = true
+		} else {
+			a.Stop = !c.done()
+		}
 		return a, true
 	}
-	pr, green := greenPR(it.PRs)
-	if stand, measured := repo.Stands[row.ID]; green && measured && stand == workplace.Done {
-		a.Kind, a.SessionID, a.PRURL = KindDone, row.SessionID, pr.URL
-		return a, true
+	return c.outcome()
+}
+
+// runCtx is what the measurement rules of one open run read.
+type runCtx struct {
+	in       Input
+	it       Item
+	row      runs.Row
+	base     Action
+	open     runs.OpenRun // the snapshot's open run of row; zero when it has none
+	state    RunState
+	measured bool // the run is in RepoInput.Runs
+	stand    workplace.Stand
+	hasStand bool
+	handoff  bool // a Handoff stands from row's start on
+}
+
+func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) runCtx {
+	c := runCtx{in: in, it: it, row: row, base: base}
+	for _, o := range repo.Snapshot.OpenRuns {
+		if o.ID == row.ID {
+			c.open = o
+		}
+	}
+	c.state, c.measured = repo.Runs[row.ID]
+	c.stand, c.hasStand = repo.Stands[row.ID]
+	return c
+}
+
+// outcome returns the action of the first measurement rule that holds, in the order of the
+// run-outcome table.
+func (c runCtx) outcome() (Action, bool) {
+	rules := []func() (Action, bool){
+		c.parked, c.merged, c.green, c.gone, c.unknownCommand, c.didNothing,
+		c.prClosed, c.prDraft, c.prRed, c.noHandoff,
+		c.uncertain, c.permission, c.silent, c.silentForge, c.timeout,
+	}
+	for _, rule := range rules {
+		if a, ok := rule(); ok {
+			return a, true
+		}
 	}
 	return Action{}, false
+}
+
+// done reports whether the run's session measured Done.
+func (c runCtx) done() bool {
+	return c.hasStand && c.stand == workplace.Done
+}
+
+func (c runCtx) closed(o runs.Outcome) Action {
+	a := c.base
+	a.Kind, a.RunID, a.Outcome = KindClose, c.row.ID, o
+	return a
+}
+
+// returned hands the issue back and closes row; the session footer is row's, so a later tick
+// recognises the Returned as the run's own.
+func (c runCtx) returned(reason, arg string) Action {
+	a := c.base
+	a.Kind, a.RunID, a.SessionID, a.Reason, a.ReasonArg = KindReturn, c.row.ID, c.row.SessionID, reason, arg
+	return a
+}
+
+func (c runCtx) parked() (Action, bool) {
+	return c.closed(runs.Parked), c.state.Parked
+}
+
+// endedInRun reports whether pr merged or closed from the run's start on: a PR of an earlier
+// run does not count.
+func (c runCtx) endedInRun(pr forge.PR) bool {
+	switch pr.State {
+	case "MERGED":
+		return !pr.MergedAt.Before(c.row.StartedAt)
+	case "CLOSED":
+		return !pr.ClosedAt.Before(c.row.StartedAt)
+	}
+	return false
+}
+
+// anyPR reports whether a PR that counts for the run satisfies f: an open one, or one that
+// ended in the run.
+func (c runCtx) anyPR(f func(forge.PR) bool) bool {
+	for _, pr := range c.it.PRs {
+		if (pr.State == "OPEN" || c.endedInRun(pr)) && f(pr) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c runCtx) merged() (Action, bool) {
+	return c.closed(runs.Done), c.anyPR(func(pr forge.PR) bool { return pr.State == "MERGED" })
+}
+
+func (c runCtx) green() (Action, bool) {
+	pr, green := greenPR(c.it.PRs)
+	if !green || !c.done() {
+		return Action{}, false
+	}
+	a := c.base
+	a.Kind, a.RunID, a.SessionID, a.PRURL = KindDone, c.row.ID, c.row.SessionID, pr.URL
+	return a, true
+}
+
+func (c runCtx) gone() (Action, bool) {
+	return c.returned("reason_workplace_gone", ""), c.state.Gone
+}
+
+// unknownCommand closes a run whose session failed to start on its command; the retry rule
+// starts it again or hands the issue back with the cause.
+func (c runCtx) unknownCommand() (Action, bool) {
+	t := c.state.Transcript
+	if t == nil || t.UnknownCommand == "" {
+		return Action{}, false
+	}
+	a := c.closed(runs.StartFailed)
+	a.ReasonArg, a.Stop = "unknown command `"+t.UnknownCommand+"`", !c.done()
+	return a, true
+}
+
+// didNothing closes a run whose session is Done without one assistant turn.
+func (c runCtx) didNothing() (Action, bool) {
+	t := c.state.Transcript
+	if !c.done() || t == nil || t.AssistantTurn {
+		return Action{}, false
+	}
+	a := c.closed(runs.StartFailed)
+	a.ReasonArg = "session did nothing"
+	return a, true
+}
+
+func (c runCtx) prClosed() (Action, bool) {
+	a := c.returned("reason_pr_closed", "")
+	a.Stop = !c.done()
+	return a, c.anyPR(func(pr forge.PR) bool { return pr.State == "CLOSED" })
+}
+
+func (c runCtx) prDraft() (Action, bool) {
+	a := c.returned("reason_pr_draft", "")
+	a.Stop = !c.done()
+	return a, c.anyPR(func(pr forge.PR) bool { return pr.State == "OPEN" && pr.Draft })
+}
+
+func (c runCtx) prRed() (Action, bool) {
+	red := c.anyPR(func(pr forge.PR) bool {
+		return pr.State == "OPEN" && (pr.Checks == "FAILURE" || pr.Checks == "ERROR")
+	})
+	return c.returned("reason_pr_red", ""), c.done() && red
+}
+
+// noHandoff hands back a session that is Done without a PR, Handoff or Question: the Question
+// and a Handoff that does not end the chain closed the run before this rule.
+func (c runCtx) noHandoff() (Action, bool) {
+	anyPR := c.anyPR(func(forge.PR) bool { return true })
+	return c.returned("reason_no_handoff", ""), c.done() && !c.handoff && !anyPR
+}
+
+// The time rules. Each is off while its limit is zero.
+
+func (c runCtx) maxWait() time.Duration { return time.Duration(c.in.MaxWait) }
+
+func (c runCtx) age() time.Duration { return c.in.Now.Sub(c.row.StartedAt) }
+
+// uncertain forgets a launch for which no session was found within max_wait. Only a measured
+// run counts: a run nothing could be measured of (a forge outage) may still be running.
+func (c runCtx) uncertain() (Action, bool) {
+	if c.maxWait() <= 0 || !c.measured || c.open.WorkplaceSession != "" || c.age() < c.maxWait() {
+		return Action{}, false
+	}
+	a := c.returned("reason_start_uncertain", "")
+	a.Discard = true
+	return a, true
+}
+
+// permission hands back a run whose prompt has waited max_wait: only activity of the prompt's
+// own thread that is newer than the prompt means it was answered. The session keeps waiting.
+func (c runCtx) permission() (Action, bool) {
+	p := c.state.Permission
+	if c.maxWait() <= 0 || p == nil || c.threadActivity(p.Thread).After(p.At) || c.in.Now.Sub(p.At) < c.maxWait() {
+		return Action{}, false
+	}
+	return c.returned("reason_permission", "`"+p.Tool+"` `"+p.Path+"`"), true
+}
+
+// threadActivity is the newest event of thread; the transcript's newest event when the
+// thread has none, and the forge time of the session without a transcript.
+func (c runCtx) threadActivity(thread string) time.Time {
+	t := c.state.Transcript
+	if t == nil {
+		return c.state.SessionAt
+	}
+	if at, ok := t.Threads[thread]; ok {
+		return at
+	}
+	return t.LastEvent
+}
+
+// silent stops a session whose transcripts, subagents included, had no event in max_wait.
+func (c runCtx) silent() (Action, bool) {
+	t := c.state.Transcript
+	if c.maxWait() <= 0 || c.done() || t == nil || c.in.Now.Sub(t.LastEvent) < c.maxWait() {
+		return Action{}, false
+	}
+	a := c.returned("reason_silent", "")
+	a.Stop = true
+	return a, true
+}
+
+// silentForge falls back on the forge state when the transcript is not measurable: a waiting
+// session whose forge time is max_wait old.
+func (c runCtx) silentForge() (Action, bool) {
+	if c.maxWait() <= 0 || c.state.Transcript != nil || !c.hasStand || c.stand != workplace.Waiting {
+		return Action{}, false
+	}
+	if c.in.Now.Sub(c.state.SessionAt) < c.maxWait() {
+		return Action{}, false
+	}
+	a := c.returned("reason_silent_forge", "")
+	a.Stop = true
+	return a, true
+}
+
+func (c runCtx) timeout() (Action, bool) {
+	limit := time.Duration(c.in.MaxRuntime)
+	if limit <= 0 || c.age() < limit {
+		return Action{}, false
+	}
+	a := c.returned("reason_timeout", "")
+	a.Stop = true
+	return a, true
 }
 
 // endsChain reports whether a handoff names the end command for issue: the run then waits
