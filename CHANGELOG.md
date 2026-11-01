@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.4.1] - 2026-11-01
+
+### Fixed
+
+- A resumed run without a measurable transcript is no longer returned as silent on its first tick: the forge-silence rule now counts from the run's start at the earliest, as the transcript rule already did.
+
 ## [v0.4.0] - 2026-11-01
 
 ### Added
