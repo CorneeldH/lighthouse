@@ -104,6 +104,9 @@ type fakeWorkplace struct {
 	spawned    []workplace.LaunchSpec
 	stopErr    error
 	stopped    []string // "<workspace> <session ids>" per Stop
+	killErr    error
+	onKill     func()   // runs at the start of Kill
+	killed     []string // "<workspace> <session ids>" per Kill
 	forgot     []string // workspace per Discard
 }
 
@@ -136,6 +139,15 @@ func (w *fakeWorkplace) Stop(_ context.Context, workspaceID string, sessionIDs [
 	w.log.add("Stop")
 	w.stopped = append(w.stopped, workspaceID+" "+strings.Join(sessionIDs, ","))
 	return w.stopErr
+}
+
+func (w *fakeWorkplace) Kill(_ context.Context, workspaceID string, sessionIDs []string) error {
+	w.log.add("Kill")
+	if w.onKill != nil {
+		w.onKill()
+	}
+	w.killed = append(w.killed, workspaceID+" "+strings.Join(sessionIDs, ","))
+	return w.killErr
 }
 
 func (w *fakeWorkplace) Remove(context.Context, string) error {

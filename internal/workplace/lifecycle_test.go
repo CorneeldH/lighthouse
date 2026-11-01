@@ -50,6 +50,11 @@ func (f *fakeWP) Stop(_ context.Context, id string, sessionIDs []string) error {
 	return f.stopErr
 }
 
+// Kill is no part of the lifecycle: Cleanup stops through Stop, after ForeignLive.
+func (f *fakeWP) Kill(context.Context, string, []string) error {
+	return errors.New("unexpected Kill")
+}
+
 func (f *fakeWP) Remove(_ context.Context, id string) error {
 	f.removes++
 	f.removed = append(f.removed, id)

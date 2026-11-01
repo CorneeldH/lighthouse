@@ -8,9 +8,10 @@ HTTP-adapter). Het ontwerp staat in de [dispatcher-spec](developer/planning/spec
 
 ## De interface
 
-`workplace.Workplace` heeft zes methoden: `Prepare(branch)` geeft een klare workspace,
+`workplace.Workplace` heeft zeven methoden: `Prepare(branch)` geeft een klare workspace,
 `Spawn(ws, launch)` start de agent en geeft zijn sessie, `Sessions(workspaceID)` leest de
-agentsessies, `Stop(workspaceID, sessionIDs)` beëindigt de processen, `Remove(workspaceID)` verwijdert
+agentsessies, `Stop(workspaceID, sessionIDs)` beëindigt de processen, `Kill(workspaceID, sessionIDs)`
+beëindigt alleen de claude van die sessies, `Remove(workspaceID)` verwijdert
 de workspace en `Discard(workspaceID)` vergeet een start waarvan de agent nooit verscheen (de adapter
 wist dan de drager). Een workspace die forge niet meer kent (een 404 op de sessielijst) is
 `workplace.ErrGone`. Elke subprocess-aanroep (git, systemctl, podman) loopt via een injecteerbare
@@ -166,6 +167,24 @@ wordt (een multibyte teken geeft er dus meer). Dan:
 
 `Stop` weigert een leeg sessie-id vóór elke aanroep: `pgrep -f ""` en `pkill -f ""` raken elk proces in
 de gedeelde devcontainer, ook vreemde sessies.
+
+## Kill
+
+Een claude blijft na zijn laatste antwoord draaien, ook als forge zijn sessie `done` noemt. Een hervatting
+van dezelfde sessie (`--resume <sessie>`) weigert forge zolang die oude claude leeft: een 500
+`submit initial message failed` (#206). `Kill(workspaceID, sessionIDs)` beëindigt daarom alleen de
+claude-processen van de gegeven sessies, op sessie-id, en raakt de unit nooit: een vreemde sessie in
+dezelfde worktree draait door.
+
+- Profiel `software`: per container (dezelfde `podman ps` als bij `Stop`) en per sessie-id `pgrep -f <id>`,
+  `pkill -f <id>` en tot vijf keer een `pgrep` om te bevestigen.
+- Elk ander profiel: dezelfde stappen op deze host, zonder `podman exec`.
+
+Draait er niets met dat id, dan is dat geen fout. Een onmeetbare `pgrep` of een proces dat `pkill`
+overleeft wel. Ook `Kill` weigert een leeg sessie-id vóór elke aanroep.
+
+De tick roept `Kill` op twee plekken aan (zie *Afloop* in [tick.md](tick.md)): bij het sluiten van een run
+als `done`, `handoff` of `question`, en vlak vóór de handoff van een hervatting, na de claim.
 
 ## Eigen en vreemd
 
