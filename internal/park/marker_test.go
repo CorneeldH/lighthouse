@@ -28,20 +28,22 @@ func TestReadMarkers(t *testing.T) {
 	writeFile(t, dir, "b.json", `{"session_id":"b","cwd":"/w","window":"week","reset_at":"`+resetOK+
 		`","created_at":"`+createdOK+`","source":"usage-guard","controller":true}`)
 	writeFile(t, dir, "a.json", markerJSON("a", resetOK, createdOK))
+	writeFile(t, dir, "a-b.json", markerJSON("a-b", resetOK, createdOK))
 	writeFile(t, dir, "a.handoff.md", "# handoff")
 
 	got, err := ReadMarkers(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got[0].SessionID != "a" || got[1].SessionID != "b" {
-		t.Fatalf("markers = %+v, want a then b", got)
+	// "a-b.json" sorts before "a.json" by file name, so only a sort on SessionID gives a, a-b, b.
+	if len(got) != 3 || got[0].SessionID != "a" || got[1].SessionID != "a-b" || got[2].SessionID != "b" {
+		t.Fatalf("markers = %+v, want a, a-b, b", got)
 	}
-	if got[0].Controller || !got[1].Controller {
-		t.Errorf("Controller = %v, %v; want false, true", got[0].Controller, got[1].Controller)
+	if got[0].Controller || !got[2].Controller {
+		t.Errorf("Controller = %v, %v; want false, true", got[0].Controller, got[2].Controller)
 	}
-	if got[1].Window != "week" || got[1].Cwd != "/w" {
-		t.Errorf("fields not read: %+v", got[1])
+	if got[2].Window != "week" || got[2].Cwd != "/w" {
+		t.Errorf("fields not read: %+v", got[2])
 	}
 }
 

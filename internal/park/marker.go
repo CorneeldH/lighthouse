@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -85,8 +86,7 @@ func readMarker(dir, id string) (Marker, bool) {
 	return m, true
 }
 
-// ReadMarkers returns the valid markers in dir, sorted by SessionID (os.ReadDir sorts by file
-// name, which is the session id). It skips every other file
+// ReadMarkers returns the valid markers in dir, sorted by SessionID. It skips every other file
 // without error; a missing dir gives nil, nil.
 func ReadMarkers(dir string) ([]Marker, error) {
 	entries, err := os.ReadDir(dir)
@@ -106,6 +106,7 @@ func ReadMarkers(dir string) ([]Marker, error) {
 			markers = append(markers, m)
 		}
 	}
+	slices.SortFunc(markers, func(a, b Marker) int { return strings.Compare(a.SessionID, b.SessionID) })
 	return markers, nil
 }
 
