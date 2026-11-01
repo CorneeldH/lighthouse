@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.7.1] - 2026-11-01
+
+### Fixed
+
+- A controller run that asks a question with `lighthouse ask` now stops without posting a handoff. The run instructions and the handoff skill both say so, so the question stays the last turn on the issue and the answer resumes the session.
+
 ## [v0.7.0] - 2026-11-01
 
 ### Changed
