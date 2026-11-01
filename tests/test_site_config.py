@@ -4,12 +4,14 @@ level they have, and every reader it names really names the key."""
 
 import copy
 import importlib.util
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-from tests.test_site_chain import ROOT, load
+from tests._site_node import run_map
+from tests.test_site_chain import REPO_BLOB, REPO_TREE, ROOT, load
 
 _spec = importlib.util.spec_from_file_location("lighthouse_site_config", ROOT / "pack/core/lib/config.py")
 config = importlib.util.module_from_spec(_spec)
@@ -274,3 +276,46 @@ def test_problems_flag_a_tuple_default_as_equal():
     data = copy.deepcopy(load("config.json"))
     assert entry_of(data, "paths.search_dirs")["default"] == ["."]
     assert config_problems(data, ROOT) == []
+
+
+def test_config_reader_marks_the_sort():
+    packs = json.dumps(load("packs.json"))
+    read = lambda p: run_map(f"m.configReader({json.dumps(p)}, {packs})")
+    assert read("pack/go/skills/go-standard")["sort"] == "standard-skill"
+    assert read("pack/core/skills/write-issue") == {
+        "name": "write-issue", "sort": "workflow-skill",
+        "href": REPO_TREE + "pack/core/skills/write-issue"}
+    assert read("pack/core/hooks/commit-test-gate.sh")["sort"] == "hook"
+    assert read("pack/core/workflows/unblock-dependents.yml")["sort"] == "github"
+    assert read("internal/usage/config.go") == {
+        "name": "config.go", "sort": "program", "href": REPO_BLOB + "internal/usage/config.go"}
+
+
+def test_every_reader_on_the_map_gets_a_link():
+    packs = json.dumps(load("packs.json"))
+    paths = sorted({r for f in load("config.json")["files"] for t in f["tables"]
+                    for k in t["keys"] for r in k["readers"]})
+    links = run_map(f"{json.dumps(paths)}.map((p) => m.configReader(p, {packs}).href)")
+    assert all(h.startswith((REPO_BLOB, REPO_TREE)) for h in links)
+
+
+def config_entries():
+    data, packs = json.dumps(load("config.json")), json.dumps(load("packs.json"))
+    return {e["key"]: e for e in run_map(f"m.configEntries({data}, {packs})")}
+
+
+def test_config_entries_cover_every_key_with_its_label():
+    entries = config_entries()
+    keys = {k["key"] for f in load("config.json")["files"] for t in f["tables"] for k in t["keys"]}
+    assert set(entries) == keys
+    assert entries["forge.repo"]["levelLabel"] == "Set this"
+    assert entries["forge.board.project_id"]["levelLabel"] == "Optional"
+    assert entries["usage_guard.controller"]["levelLabel"] == "Advanced"
+
+
+def test_config_entries_say_what_happens_without_the_key():
+    entries = config_entries()
+    assert entries["paths.search_dirs"]["without"] == "Without it: [.]"
+    assert entries["usage_guard.resume"]["without"] == "Without it: false"  # config.py: False
+    assert entries["paths.tenets"]["without"] == "Without it: not set"
+    assert entries["paths.history"]["readers"] == []
