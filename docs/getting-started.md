@@ -122,6 +122,8 @@ report it`.
 `init` proposes `[project] language`, and `[forge]` from your `origin` remote when it is on
 GitHub. Only the `python` package proposes a test gate. Until you set `[test_gate] command`,
 `commit-test-gate` passes every commit with `no test command configured, nothing was tested`.
+Every key and what reads it is on [the configuration map](site/config.html) (also online:
+[The configuration](https://corneeldh.github.io/lighthouse/config.html)).
 Check the file, and set your test gate:
 
 ```toml

@@ -53,7 +53,7 @@ def test_legends_name_known_sorts():
         counts[path.name] = len(found)
         for names in found:
             assert set(names.split()) <= known, f"{path.name}: unknown sort in {names!r}"
-    for page in ["chain.html", "session.html", "reference.html"]:
+    for page in ["chain.html", "session.html", "reference.html", "config.html"]:
         assert counts.get(page), f"{page} has no data-sorts legend"
     # The system page is read without one: every box names what it is.
     assert counts.get("system.html") == 0
