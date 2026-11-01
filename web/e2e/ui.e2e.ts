@@ -12,7 +12,7 @@ const FULL: FakeIssue[] = [
   { number: 13, title: 'Handed back', comments: [RETURNED] },
 ]
 
-const NOT_CONFIGURED = 'Forge not configured — set GH_TOKEN and --repo'
+const NOT_CONFIGURED = 'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml'
 
 test('full: both lists and the usage windows', async ({ page, github, lighthouse }) => {
   github.set({ issues: FULL })

@@ -73,7 +73,7 @@ describe('QuestionList', () => {
     stubFetch(() => json({ detail: 'forge not configured' }, 503))
     renderWithClient(<QuestionList />)
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'Forge not configured — set GH_TOKEN and --repo',
+      'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml',
     )
     expect(screen.queryByText('No open questions')).toBeNull()
   })
@@ -117,7 +117,7 @@ describe('ReturnedList', () => {
     stubFetch(() => json({ detail: 'x' }, 503))
     renderWithClient(<ReturnedList />)
     expect((await screen.findByRole('alert')).textContent).toBe(
-      'Forge not configured — set GH_TOKEN and --repo',
+      'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml',
     )
   })
 })

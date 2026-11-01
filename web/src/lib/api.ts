@@ -85,7 +85,7 @@ export async function fetchVersion(signal?: AbortSignal): Promise<string> {
 
 export function forgeErrorText(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.status === 503) return 'Forge not configured — set GH_TOKEN and --repo'
+    if (err.status === 503) return 'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml'
     return `Forge unreachable: ${err.detail === '' ? `HTTP ${err.status}` : err.detail}`
   }
   return 'Server unreachable'

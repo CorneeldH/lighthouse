@@ -63,7 +63,7 @@ describe('fetchRuns', () => {
 describe('forgeErrorText', () => {
   it('explains a missing forge on 503', () => {
     expect(forgeErrorText(new ApiError(503, 'forge not configured'))).toBe(
-      'Forge not configured — set GH_TOKEN and --repo',
+      'Forge not configured — set GH_TOKEN, and --repo or [dispatch] repos in host.toml',
     )
   })
 

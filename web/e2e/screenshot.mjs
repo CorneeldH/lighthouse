@@ -5,7 +5,7 @@ import { dirname } from 'node:path'
 import { chromium } from '@playwright/test'
 
 const url = process.argv[2] ?? 'http://127.0.0.1:8127'
-const out = process.argv[3] ?? '../docs/images/ui-m1.png'
+const out = process.argv[3] ?? '../docs/images/ui-m2.png'
 const TITLES = ['Usage', 'Running runs', 'Open questions', 'Returned']
 
 const browser = await chromium.launch()
