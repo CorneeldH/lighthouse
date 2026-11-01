@@ -151,11 +151,23 @@ elke PR. *(eigen keuze na spec-review, r1-f10)*
    bevinding: `roborev: <path>:<line> (<severity>)`.
 5. **Geen tweede review.**
 
-**Uitvoer en herstart.** De ruwe output komt in
-`$(git rev-parse --git-dir)/lighthouse/roborev/<branch>.md`, met de gereviewde range in de eerste
-regel. Het staat buiten de werkboom, overleeft een herstart van write-pr en is per worktree
-uniek. Bestaat dat bestand, dan meldt het script `done: <sha>` in plaats van `run`.
-*(eigen keuze na spec-review, r1-f3)*
+**Uitvoer en herstart.** Alles komt in `$(git rev-parse --git-dir)/lighthouse/roborev/`: buiten
+de werkboom, per worktree uniek, en het overleeft een herstart van write-pr. Twee bestanden per
+branch:
+
+- `<branch>.md`: de ruwe output van roborev;
+- `<branch>.json`: de geclassificeerde uitkomst. Dat is de gereviewde range plus óf
+  `{"uitkomst":"done","sha":"<sha uit de kop>"}` met de besluiten per bevinding (de velden van het
+  log-blok), óf `{"uitkomst":"skip","reden":"<reden>"}`.
+
+Write-pr schrijft `<branch>.json` pas als de uitkomst vaststaat: na de classificatie bij een skip,
+na de laatste besluit-commit bij `done`. Het script leest alleen dit bestand. `done` geeft
+`done: <sha>`, en V4 en de comment gebruiken de opgeslagen besluiten. `skip` geeft
+`skip: <reden>`, zodat een herstart dezelfde reden in de body zet. Een gefaalde of afgebroken
+review geldt dus nooit als gedaan, en een herstart reviewt niet opnieuw. Een
+`<branch>.md` zonder `<branch>.json` (afgebroken tijdens het verwerken) telt als niet
+geclassificeerd. Dan classificeert write-pr opnieuw uit die `.md` en draait geen nieuwe review.
+*(eigen keuze na spec-review, r1-f3, r2-f1)*
 
 Drempel en budget komen in één script, zodat skill en tests hetzelfde meten:
 `pack/core/scripts/roborev_gate.py` (naam is de keuze van de builder). Het geeft `run` of
@@ -225,10 +237,18 @@ Voortaan:
   geen losse regel in `issueCtx.next()`. Die zou ook zonder afgelopen run vuren: op een rode PR na
   een Teruggegeven om een andere reden, of na een push van de gebruiker, en dan bij elke tick
   opnieuw. *(eigen keuze na spec-review, r1-f4)*
-- **Rood, onder het plafond, verse SHA.** De rij sluit met uitkomst `handoff`: de keten loopt
-  door, net als bij een Handoff die de keten niet beëindigt. De actie draagt een start van
-  `/lighthouse-fix-pr <pr>` op de head-branch van de PR. Hoe `settle` die start doorgeeft aan de
-  geplande uitvoer, bepaalt de builder; de start mag alleen ontstaan uit dit afsluiten.
+- **Rood, onder het plafond, verse SHA.** `settle` start zelf niets. Het sluit de rij en geeft
+  aan `decideIssue` door dat fix-pr aan de beurt is: PR, head-branch en trigger key. De start komt
+  uit `decideIssue`, achter de bestaande poorten (`decide.go:158-195`): alle open rijen sluiten
+  deze tick (`free`), geen orphan, het issue is `OPEN` en staat op `Controller`. Daar is het de
+  eerste regel vóór `c.next()`. De blokkade-, park- en nachtregels van `next()` gelden net zo.
+  - Poorten open: de rij sluit met uitkomst `handoff` en de start van `/lighthouse-fix-pr <pr>`
+    volgt in dezelfde tick.
+  - Een poort dicht (bijvoorbeeld On hold, of een tweede open rij): geen start. De rij sluit als
+    `returned` met de bestaande reden "PR rood", zoals nu.
+
+  Een fix-pr-start ontstaat dus alleen uit het afsluiten van een klare runrij in deze tick, en
+  nooit naast een orphan of buiten `Controller`. *(eigen keuze na spec-review, r1-f4, r2-f2)*
 - **Trigger** `fixpr`, met als **trigger key** `fixpr:<pr>:<head-sha>`. Een rode staat op dezelfde
   SHA start zo nooit twee keer (`spentKey`, `decide.go:1039`).
 - **Plafond: drie fix-pr-runs per PR.** Tel de gesloten runrijen van het issue waarvan het
