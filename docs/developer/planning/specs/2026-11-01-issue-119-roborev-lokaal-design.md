@@ -312,3 +312,11 @@ spec-review, r1-f9)*
 - Hoe de dispatcher de fix-pr-runs per PR telt in `runs.Row`, en hoe de start de head-branch
   vindt.
 - De KPI-telling in `measure_fix_pr_kpi.py` als die runs met trigger `fixpr` moet kennen.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Ontwerp §5, Rood, onder het plafond, verse SHA): The fix says the blocker, park and night rules of next() apply to the fix-pr start, but it defines only two outcomes: gates open (row closes handoff, start in the same tick) or a gate closed (row closes returned, PR rood). When a next()-style rule parks or defers instead of starting, the row closes as handoff while the start is withheld. The fix-pr signal exists only while settle closes the row in this tick, so no later tick can start it.
+- **r3-f2** (MAJOR, Ontwerp §2 stap 0 / Uitvoer en herstart): The fix adds a third state, `<branch>.md` without `<branch>.json`, but neither the script contract nor step 0 routes it. The script reads only `.json` and returns only run, skip or done. Step 0, unchanged, still sends any existing review output straight to V4. The fix-commit decisions made before the abort are not persisted anywhere, yet the resumed run must re-process the findings.
