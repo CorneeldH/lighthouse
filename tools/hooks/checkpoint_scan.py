@@ -28,9 +28,10 @@ Subcommands:
                                unscanned without `--full`.
     push <remote> [--full]     scan every `refs/entire/*` the checkpoint remote
                                misses, write the dirty refs to `held.txt` next to
-                               the ledger, and push the clean ones with a plain
-                               `git push` (through the hook, which finds them in
-                               the ledger), at most PUSH_CHUNK refspecs per call.
+                               the ledger, and push the clean ones, as the
+                               commits it scanned, with an atomic `git push`
+                               (through the hook, which finds them in the
+                               ledger), at most PUSH_CHUNK refspecs per call.
                                Exit 0 nothing held, 1 refs held, 2 nothing pushed
                                (not the checkpoint remote, scan aborted) or a
                                chunk failed.
@@ -853,9 +854,11 @@ def _push_cli(ns: argparse.Namespace) -> int:
         chunk = clean_refs[start : start + PUSH_CHUNK]
         sys.stderr.flush()
         # A plain push, through the pre-push hook. Its stdout goes to stderr: stdout
-        # is the overview.
+        # is the overview. `<sha>:<ref>`: the commit the scan read, not what the ref
+        # holds by now. Atomic: a refused chunk lands not at all, so the count holds.
+        specs = [f"{missing[ref]}:{ref}" for ref in chunk]
         rc = subprocess.run(
-            ["git", "-C", str(repo), "push", remote, *(f"{ref}:{ref}" for ref in chunk)],
+            ["git", "-C", str(repo), "push", "--atomic", remote, *specs],
             stdout=2,
             check=False,
         ).returncode

@@ -337,6 +337,9 @@ def test_probe_cached_per_process(cs, tmp_path, isolated):
 #   FAKE_GITLEAKS_SCANNED=none  say nothing about the bytes; =short: one byte too few
 #   FAKE_GITLEAKS_MEMBER=<path> name the finding the way gitleaks names an archive
 #                               member: `<file>!<path>`
+#   FAKE_GITLEAKS_MOVE="<git dir> <ref> <sha>"
+#                               the first `dir` call sets <ref> to <sha>: a ref
+#                               that moves while it is scanned
 FAKE_GITLEAKS = f"""#!{sys.executable}
 import json, os, signal, sys
 
@@ -351,6 +354,10 @@ n = (int(open(calls).read()) if os.path.exists(calls) else 0) + 1
 open(calls, "w").write(str(n))
 if os.environ.get("FAKE_GITLEAKS_KILL_AT") == str(n):
     os.kill(os.getpid(), signal.SIGKILL)
+if n == 1 and os.environ.get("FAKE_GITLEAKS_MOVE"):
+    import subprocess
+    gitdir, ref, sha = os.environ["FAKE_GITLEAKS_MOVE"].split(" ")
+    subprocess.run(["git", "--git-dir", gitdir, "update-ref", ref, sha], check=True)
 root, report = args[1], args[args.index("-r") + 1]
 # gitleaks runs in the blob dir: a config path relative to the repo would be lost.
 assert os.path.isfile(args[args.index("--config") + 1]), args
@@ -1118,7 +1125,7 @@ def _push_trace(trace: Path) -> list[list[str]]:
     for line in trace.read_text().splitlines():
         _, hit, argv = line.partition("built-in: git push ")
         if hit:
-            pushes.append([a for a in argv.split() if a.startswith("refs/")])
+            pushes.append([a for a in argv.split() if ":refs/" in a])
     return pushes
 
 
@@ -1133,13 +1140,27 @@ def test_push_chunks_refspecs(px, tmp_path):
     pushes = _push_trace(trace)
     assert len(pushes) >= 3
     assert all(0 < len(spec) <= 500 for spec in pushes), [len(s) for s in pushes]
-    assert sorted(s for spec in pushes for s in spec) == sorted(f"{r}:{r}" for r in refs)
+    assert sorted(s for spec in pushes for s in spec) == sorted(f"{sha}:{r}" for r, sha in refs.items())
     # One gitleaks run, push's own, each blob once: the hook found it all in the ledger.
     assert px.calls() == 1
     logged = px.logged()
     assert sorted(logged) == sorted(_tree_blobs(px.repo, refs.values()))
     assert result.stdout.endswith(f"1200 pushed, 0 held — see {px.held}\n")
     assert "peak RSS" not in result.stderr
+
+
+def test_push_sends_the_scanned_commit(px):
+    """A ref that moves after the scan read it: push sends the commit it scanned,
+    not what the ref holds by the time of the push."""
+    refs = _bulk_checkpoints(px.repo, 0, 2)
+    first, other = sorted(refs)
+    moved = f"{px.repo / '.git'} {first} {refs[other]}"
+
+    result = px.push("ckpt", FAKE_GITLEAKS_MOVE=moved)
+
+    assert result.returncode == 0, result.stderr
+    assert _git_out(px.repo, "rev-parse", first).strip() == refs[other]  # it moved
+    assert _git_out(px.ckpt, "rev-parse", first).strip() == refs[first]  # scanned sha sent
 
 
 def test_push_full_writes_ledger(px):
@@ -1211,28 +1232,29 @@ def test_push_could_not_check_pushes_nothing(px):
 
 
 def test_failed_chunk_stops_and_counts(cs, px, monkeypatch, capsys):
-    """The second of three chunks is refused by the remote: the third is not tried."""
-    refs = _bulk_checkpoints(px.repo, 0, 3)
+    """The remote refuses one ref of the second of three chunks: nothing of that chunk
+    lands (an atomic push), the third is not tried, and the count says so."""
+    refs = sorted(_bulk_checkpoints(px.repo, 0, 6))
     count = px.ckpt / "receives"
-    hook = px.ckpt / "hooks" / "pre-receive"
-    hook.write_text(
-        # Shell builtins only: PATH holds no coreutils.
-        f'#!/bin/sh\necho x >> "{count}"\nn=0\nwhile read -r _; do n=$((n + 1)); done < "{count}"\n[ "$n" -ne 2 ]\n',
-        encoding="utf-8",
-    )
-    hook.chmod(0o755)
+    hooks = px.ckpt / "hooks"
+    # Shell builtins only: PATH holds no coreutils.
+    (hooks / "pre-receive").write_text(f'#!/bin/sh\necho x >> "{count}"\n', encoding="utf-8")
+    # Refuses the first ref of chunk 2; its second ref alone would be accepted.
+    (hooks / "update").write_text(f'#!/bin/sh\n[ "$1" != "{refs[2]}" ]\n', encoding="utf-8")
+    for hook in ("pre-receive", "update"):
+        (hooks / hook).chmod(0o755)
     for key, value in px.env.items():
         monkeypatch.setenv(key, value)
     monkeypatch.chdir(px.repo)
-    monkeypatch.setattr(cs, "PUSH_CHUNK", 1)
+    monkeypatch.setattr(cs, "PUSH_CHUNK", 2)
 
     rc = cs.main(["push", "ckpt"])
 
     err = capsys.readouterr().err
     assert rc == 2, err
-    assert px.pushed() == {min(refs)}
+    assert px.pushed() == set(refs[:2])
     assert count.read_text().count("x") == 2
-    assert "1 of 3 clean refs pushed" in err
+    assert "git push exited 1 at refs 3-4; 2 of 6 clean refs pushed, the rest not" in err
 
 
 def _settings_dir(tmp_path: Path, shared: dict | None, local: dict | None = None) -> Path:
