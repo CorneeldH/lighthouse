@@ -11,6 +11,8 @@ import re
 import subprocess
 import sys
 
+import pytest
+
 from tests.pack._testkit import INSTALL_ROOT
 
 SCRIPT = INSTALL_ROOT / ".lighthouse" / "scripts" / "roborev_comment.py"
@@ -130,3 +132,26 @@ def test_cli_renders_a_done_state_to_stdout(tmp_path):
 def test_cli_exits_2_on_a_skip_state(tmp_path):
     result = _cli(tmp_path, {"range": "a..b", "uitkomst": "skip", "reden": "geen .roborev.toml"})
     assert result.returncode == 2 and result.stdout == ""
+
+
+def test_table_keeps_a_multiline_reason_on_one_row():
+    reason = "regel een\nregel twee\r\nregel drie"
+    finding = _finding(uitkomst="left", reden=reason, severity="hi\ngh")
+    rows = comment.table([finding]).splitlines()
+    assert len(rows) == 3
+    assert rows[2] == "| `src/a.py:12` | hi gh | left: regel een regel twee regel drie |"
+    line = comment.log_block("abc1234", "lokaal", 7, [finding])
+    payload = re.fullmatch(r"<!-- roborev-log: (.*) -->", line).group(1)
+    assert json.loads(payload)["bevindingen"][0]["reden"] == reason
+
+
+def test_render_refuses_when_log_and_table_alone_exceed_the_limit():
+    findings = [_finding(path=f"f{i}.py", line=i, reden="r" * 100, uitkomst="left") for i in range(1000)]
+    with pytest.raises(ValueError, match="65536"):
+        comment.render(_state(findings), "ruw", 7, "lokaal")
+
+
+def test_cli_exits_2_when_the_comment_cannot_fit(tmp_path):
+    findings = [_finding(path=f"f{i}.py", line=i, reden="r" * 100, uitkomst="left") for i in range(1000)]
+    result = _cli(tmp_path, _state(findings))
+    assert result.returncode == 2 and result.stdout == "" and "65536" in result.stderr

@@ -43,20 +43,24 @@ def log_block(sha: str, source: str, pr: int, findings: list[dict]) -> str:
     return f"<!-- roborev-log: {payload} -->"
 
 
+def _clean(text: object) -> str:
+    """One table cell: whitespace runs folded to a space, `|` escaped, so a row stays one line."""
+    return " ".join(str(text).split()).replace("|", "\\|")
+
+
 def _cell(finding: dict) -> str:
     path = finding.get("path")
     if not path:
         return "—"
     line = finding.get("line")
-    return f"`{path}:{line}`" if line is not None else f"`{path}`"
+    return _clean(f"`{path}:{line}`" if line is not None else f"`{path}`")
 
 
 def _outcome(finding: dict) -> str:
-    reason = str(finding.get("reden") or "").replace("|", "\\|")
     kind = finding["uitkomst"]
     if kind == "fixed":
-        return f"fixed in {finding.get('commit')}"
-    return f"{kind}: {reason}"
+        return _clean(f"fixed in {finding.get('commit')}")
+    return _clean(f"{kind}: {finding.get('reden') or ''}")
 
 
 def table(findings: list[dict]) -> str:
@@ -65,7 +69,7 @@ def table(findings: list[dict]) -> str:
     if not findings:
         rows.append("| geen bevindingen | — | — |")
     for finding in findings:
-        rows.append(f"| {_cell(finding)} | {finding['severity']} | {_outcome(finding)} |")
+        rows.append(f"| {_cell(finding)} | {_clean(finding['severity'])} | {_outcome(finding)} |")
     return "\n".join(rows)
 
 
@@ -83,7 +87,12 @@ def render(state: dict, raw: str, pr: int, source: str, limit: int = LIMIT) -> s
     if len(head) + len(raw) + len(tail) <= limit:
         return head + raw + tail
     note = "\n" + TRUNCATED
-    room = max(limit - len(head) - len(tail) - len(note), 0)
+    room = limit - len(head) - len(tail) - len(note)
+    if room < 0:
+        raise ValueError(
+            f"log block and table alone are {len(head) + len(tail) + len(note)} characters, "
+            f"over the limit of {limit}"
+        )
     return head + raw[:room] + note + tail
 
 

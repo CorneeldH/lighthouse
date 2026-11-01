@@ -898,7 +898,7 @@ kind = "file"
 path = ".lighthouse/scripts/roborev_comment.py"
 package = "core"
 version = "dev"
-sha256 = "3cd6f6881acaeb5f4a9a378c1f58d22ebfc31e1fa7ebfe6576813202086136f3"
+sha256 = "c58d028c2f2ee2199680af41499aa15704e767210a176457afbf46c0b1c7d000"
 
 [[unit]]
 kind = "file"
