@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"errors"
@@ -40,7 +41,8 @@ func TestExportTree(t *testing.T) {
 	for name, data := range files {
 		writeModeFile(t, filepath.Join(dir, name), data, 0o644)
 	}
-	writeModeFile(t, filepath.Join(dir, "run.sh"), "#!/bin/sh\n", 0o755)
+	files["run.sh"] = "#!/bin/sh\n"
+	writeModeFile(t, filepath.Join(dir, "run.sh"), files["run.sh"], 0o755)
 	if err := os.Symlink("/etc/hostname", filepath.Join(dir, "link")); err != nil {
 		t.Fatal(err)
 	}
@@ -95,8 +97,8 @@ func TestExportTree(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if wantB := mustGit(t, dir, "show", "origin/main:"+name); !bytes.Equal(bytes.TrimSpace(b), []byte(wantB)) {
-			t.Errorf("%s = %q, want %q", name, b, wantB)
+		if string(b) != files[name] {
+			t.Errorf("%s = %q, want %q", name, b, files[name])
 		}
 	}
 
@@ -127,5 +129,67 @@ func TestExportTreeBadRef(t *testing.T) {
 	left, _ := filepath.Glob(filepath.Join(tmp, "lighthouse-triage-*"))
 	if len(left) != 0 {
 		t.Errorf("temp dirs left behind: %v", left)
+	}
+}
+
+func TestUnpackTarContainment(t *testing.T) {
+	cases := []struct {
+		name    string
+		entries func(outside string) []tar.Header
+	}{
+		{"dotdot", func(string) []tar.Header { return []tar.Header{{Name: "../x", Typeflag: tar.TypeReg, Mode: 0o644}} }},
+		{"absolute", func(outside string) []tar.Header {
+			return []tar.Header{{Name: filepath.Join(outside, "abs"), Typeflag: tar.TypeReg, Mode: 0o644}}
+		}},
+		{"through symlink", func(outside string) []tar.Header {
+			return []tar.Header{
+				{Name: "link", Typeflag: tar.TypeSymlink, Linkname: outside},
+				{Name: "link/f", Typeflag: tar.TypeReg, Mode: 0o644},
+			}
+		}},
+		{"hard link", func(string) []tar.Header {
+			return []tar.Header{{Name: "hl", Typeflag: tar.TypeLink, Linkname: "a.txt"}}
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			parent := t.TempDir()
+			rootDir := filepath.Join(parent, "root")
+			outside := filepath.Join(parent, "outside")
+			for _, d := range []string{rootDir, outside} {
+				if err := os.Mkdir(d, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var buf bytes.Buffer
+			tw := tar.NewWriter(&buf)
+			for _, h := range c.entries(outside) {
+				if err := tw.WriteHeader(&h); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := tw.Close(); err != nil {
+				t.Fatal(err)
+			}
+			root, err := os.OpenRoot(rootDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = root.Close() }()
+			if err := unpackTar(root, &buf); err == nil {
+				t.Error("unpackTar: want error")
+			}
+			for _, d := range []string{parent, outside} {
+				ents, _ := os.ReadDir(d)
+				for _, e := range ents {
+					if e.Name() != "root" && e.Name() != "outside" {
+						t.Errorf("created outside root: %s/%s", d, e.Name())
+					}
+				}
+			}
+			if ents, _ := os.ReadDir(outside); len(ents) != 0 {
+				t.Errorf("outside not empty: %v", ents)
+			}
+		})
 	}
 }
