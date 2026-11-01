@@ -315,7 +315,7 @@
               "level": "advanced",
               "required": "no",
               "default": [],
-              "about": "Exit codes of the test command that the gate does not count as red.",
+              "about": "Exit codes of the test command that mean the tests could not run; the gate reports the commit as untested instead of red.",
               "readers": [
                 "pack/core/hooks/commit-test-gate.sh",
                 "pack/go/scripts/gate_go.py",
@@ -603,7 +603,7 @@
               "level": "advanced",
               "required": "no",
               "default": 85,
-              "about": "The Codex session percentage at which work halts; only config.py checks it for now.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
               "readers": []
             },
             {
@@ -631,7 +631,7 @@
               "level": "advanced",
               "required": "no",
               "default": 80,
-              "about": "The Codex week percentage at which to ask first; only config.py checks it for now.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
               "readers": []
             }
           ]
