@@ -645,7 +645,9 @@
               "default": "off",
               "about": "Runs a local roborev review in lighthouse-write-pr before gh pr create: local or off.",
               "example": "local",
-              "readers": []
+              "readers": [
+                "pack/core/scripts/roborev_gate.py"
+              ]
             }
           ]
         },
