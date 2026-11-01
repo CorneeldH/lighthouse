@@ -8,6 +8,7 @@ import json
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 from tests._site_node import run_map
@@ -402,9 +403,60 @@ def test_config_entries_say_whether_anything_acts_on_the_key():
         "Status: not used yet — config.py accepts it, nothing acts on it.")
 
 
-def test_config_entries_say_what_happens_without_the_key():
+def test_config_entries_give_the_default_as_toml():
     entries = config_entries()
-    assert entries["paths.search_dirs"]["without"] == "Without it: [.]"
-    assert entries["usage_guard.resume"]["without"] == "Without it: false"  # config.py: False
-    assert entries["paths.tenets"]["without"] == "Without it: not set"
+    assert entries["paths.search_dirs"]["default"] == '["."]'
+    assert entries["usage_guard.resume"]["default"] == "false"  # config.py: False
+    assert entries["paths.tenets"]["default"] is None
     assert entries["paths.history"]["readers"] == []
+
+
+def config_toml(name):
+    """The TOML text the page shows for file `name`, and the keys it links."""
+    data = json.dumps(load("config.json"))
+    lines = run_map(f"m.configToml({data}.files.find((f) => f.file === {json.dumps(name)}))")
+    return "\n".join(line["text"] for line in lines) + "\n", [line["key"] for line in lines if "key" in line]
+
+
+def uncommented(text):
+    """`text` with every commented-out key line switched on."""
+    return re.sub(r"^# ([a-z_]+ = )", r"\1", text, flags=re.MULTILINE)
+
+
+def test_toml_block_sets_exactly_the_defaults():
+    for f in load("config.json")["files"]:
+        text, _ = config_toml(f["file"])
+        parsed = tomllib.loads(text)
+        expected = {}
+        for t in f["tables"]:
+            for k in t["keys"]:
+                if "default" in k:
+                    node = expected
+                    for part in t["table"].split("."):
+                        node = node.setdefault(part, {})
+                    node[k["key"].rsplit(".", 1)[1]] = k["default"]
+        tables = {t["table"] for t in f["tables"]}
+        for table in tables:  # a table whose keys are all commented out is still a header
+            node = expected
+            for part in table.split("."):
+                node = node.setdefault(part, {})
+        assert parsed == expected, f["file"]
+
+
+def test_toml_block_links_every_key_but_the_derived_ones():
+    for f in load("config.json")["files"]:
+        _, keys = config_toml(f["file"])
+        assert keys == [k["key"] for t in f["tables"] for k in t["keys"] if k["required"] != "derived"]
+
+
+def test_toml_examples_pass_config_py(tmp_path):
+    text, _ = config_toml("lighthouse.toml")
+    path = tmp_path / "lighthouse.toml"
+    path.write_text(uncommented(text), encoding="utf-8")
+    cfg = config.load(path)
+    assert cfg.board is not None and cfg.repo == "owner/name"
+    assert cfg.raw["code_language_llm"]["models"] == ["model-a", "model-b"]
+    text, _ = config_toml("host.toml")
+    path = tmp_path / "host.toml"
+    path.write_text(uncommented(text), encoding="utf-8")
+    assert config.load_host(path).gate_slice == "lighthouse-gate.slice"

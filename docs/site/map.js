@@ -279,14 +279,67 @@ export function configReader(path, packs) {
   return { name: file, sort, href: REPO_BLOB + path };
 }
 
-/** What the configuration map says per key, in the order of the data and without a DOM:
-    [{file, table, key, level, levelLabel, required, without, about, status, readers}]. */
+/** One value as TOML: a string quoted, a list in brackets, a table inline. */
+export function tomlValue(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(tomlValue).join(", ")}]`;
+  }
+  if (value !== null && typeof value === "object") {
+    const pairs = Object.entries(value).map(
+      ([name, item]) => `${/^[A-Za-z0-9_-]+$/.test(name) ? name : JSON.stringify(name)} = ${tomlValue(item)}`,
+    );
+    return `{ ${pairs.join(", ")} }`;
+  }
+  return typeof value === "string" ? JSON.stringify(value) : String(value);
+}
+
+/** `text` as comment lines of at most `width` characters. */
+function commentLines(text, width = 80) {
+  const lines = [];
+  let line = "#";
+  for (const word of text.split(" ")) {
+    if (line.length > 1 && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = "#";
+    }
+    line += ` ${word}`;
+  }
+  return [...lines, line];
+}
+
+/** One file of the configuration page as TOML lines, without a DOM: per table its header, per key
+    its about as a comment and then the key with its default, or commented out with its example
+    when it has none. A derived key is left out: nobody writes it. [{text, key}], `key` only on the
+    line of a key. */
+export function configToml(file) {
+  const lines = [];
+  for (const table of file.tables) {
+    const keys = table.keys.filter((key) => key.required !== "derived");
+    if (lines.length) {
+      lines.push({ text: "" });
+    }
+    lines.push({ text: `[${table.table}]` });
+    for (const key of keys) {
+      const name = key.key.slice(table.table.length + 1);
+      lines.push({ text: "" }, ...commentLines(key.about).map((text) => ({ text })));
+      lines.push(
+        "default" in key
+          ? { text: `${name} = ${tomlValue(key.default)}`, key: key.key }
+          : { text: `# ${name} = ${tomlValue(key.example)}`, key: key.key },
+      );
+    }
+  }
+  return lines;
+}
+
+/** What the configuration page says per key, in the order of the data and without a DOM:
+    [{file, table, key, level, levelLabel, required, default, about, status, readers}]. `default`
+    is the TOML of the default, or null without one. */
 export function configEntries(data, packs) {
   const entries = [];
   for (const file of data.files) {
     for (const table of file.tables) {
       for (const key of table.keys) {
-        const fallback = Array.isArray(key.default) ? `[${key.default.join(", ")}]` : String(key.default);
         entries.push({
           file: file.file,
           table: table.table,
@@ -294,7 +347,7 @@ export function configEntries(data, packs) {
           level: key.level,
           levelLabel: CONFIG_LEVELS[key.level],
           required: key.required,
-          without: `Without it: ${key.default === undefined ? "not set" : fallback}`,
+          default: "default" in key ? tomlValue(key.default) : null,
           about: key.about,
           status: key.readers.length
             ? "Status: works"
@@ -319,77 +372,110 @@ function configReaderLink(reader) {
   return row;
 }
 
-/** The boxes of the drawer for one key: about, place, required, without, readers and status. */
-function configBoxes(entry) {
-  const readers = entry.readers.length
-    ? el("ul", "reference-list")
-    : el("p", "", "Nothing in lighthouse reads it yet.");
-  if (entry.readers.length) {
-    readers.append(...entry.readers.map(configReaderLink));
+/** A table with a header row and one row per item of `rows`, each a list of cells, that scrolls
+    sideways on a narrow screen. */
+function configTable(head, rows, className = "config-table") {
+  const table = el("table", className);
+  const top = el("tr");
+  top.append(...head.map((label) => el("th", "", label)));
+  const thead = el("thead");
+  thead.append(top);
+  const tbody = el("tbody");
+  for (const cells of rows) {
+    const row = el("tr");
+    row.append(...cells);
+    tbody.append(row);
   }
-  return [
-    box("", entry.key, el("p", "", entry.about)),
-    box("", "", el("p", "", `In ${entry.file}, table [${entry.table}]`)),
-    box("", "", el("p", "", `Required: ${entry.required}`)),
-    box("", "", el("p", "", entry.without)),
-    box("Read by", "", readers),
-    box("", "", el("p", "", entry.status)),
-  ];
+  table.append(thead, tbody);
+  const wrap = el("div", "config-scroll");
+  wrap.append(table);
+  return wrap;
 }
 
-/** The configuration map: a level filter on top, then per file and table one button per key. A
-    click on a key opens its drawer in `detail`. */
-export function renderConfig(root, data, packs, detail) {
+/** A table cell holding `nodes`. */
+function cell(...nodes) {
+  const node = el("td");
+  node.append(...nodes);
+  return node;
+}
+
+/** The TOML of one file as a code block, each key a link to its row below. */
+function configBlock(file) {
+  const code = el("code");
+  for (const line of configToml(file)) {
+    if (line.key) {
+      const name = line.key.split(".").pop();
+      const at = line.text.indexOf(name);
+      const link = el("a", "", name);
+      link.href = `#${line.key}`;
+      code.append(line.text.slice(0, at), link, `${line.text.slice(at + name.length)}\n`);
+    } else if (line.text.startsWith("#")) {
+      code.append(el("span", "config-comment", line.text), "\n");
+    } else {
+      code.append(`${line.text}\n`);
+    }
+  }
+  const pre = el("pre", "config-toml");
+  pre.append(code);
+  return pre;
+}
+
+/** The row of one key: its name and level, its default, what it does and what reads it. */
+function configRow(entry) {
+  const name = el("td");
+  name.id = entry.key;
+  const level = el("span", `config-level level-${entry.level}`, entry.levelLabel);
+  name.append(el("code", "", entry.key), " ", level);
+  if (entry.required !== "no") {
+    const required = {
+      yes: "Required",
+      derived: "Derived from forge.repo; you do not set it.",
+    }[entry.required] || `Required ${entry.required}`;
+    name.append(el("p", "config-none", required));
+  }
+  const fallback =
+    entry.default === null ? el("span", "config-none", "not set") : el("code", "", entry.default);
+  let readers;
+  if (entry.readers.length) {
+    readers = el("ul", "reference-list");
+    readers.append(...entry.readers.map(configReaderLink));
+  } else {
+    readers = el("p", "config-none", "Nothing reads it yet: config.py only checks it.");
+  }
+  return [name, cell(fallback), cell(el("p", "", entry.about)), cell(readers)];
+}
+
+/** The configuration page: where the two files are, each file as TOML with its comments and
+    defaults, and per table one row per key. */
+export function renderConfig(root, data, packs) {
   const entries = configEntries(data, packs);
-  const drawer = drawerFor(detail);
-  const buttons = [];
-  const filter = el("div", "routes");
-  const choices = [["", "All keys"], ...Object.entries(CONFIG_LEVELS)];
-  const choose = (level) => {
-    for (const button of filter.children) {
-      button.setAttribute("aria-pressed", String(button.dataset.level === level));
-    }
-    for (const key of buttons) {
-      key.classList.toggle("dim", level !== "" && key.dataset.level !== level);
-    }
-  };
-  for (const [level, label] of choices) {
-    const button = el("button", "", label);
-    button.type = "button";
-    button.dataset.level = level;
-    button.setAttribute("aria-pressed", String(level === ""));
-    button.addEventListener("click", () => choose(level));
-    filter.append(button);
+  const paths = el("section", "config-file");
+  const places = data.files.map((file) => {
+    const where = el("td");
+    where.append(el("code", "", file.path), el("p", "config-none", `Elsewhere: set ${file.override}.`));
+    return [cell(el("code", "", file.file)), where, cell(el("p", "", file.written))];
+  });
+  paths.append(el("h2", "", "Where the files are"), configTable(["File", "Path", "Who writes it"], places, "config-table config-paths"));
+  const sections = [paths];
+  for (const file of data.files) {
+    const section = el("section", "config-file");
+    const note = "Every key with its default. A key without one is commented out, with an example.";
+    section.append(el("h2", "", file.file), el("p", "", note), configBlock(file));
+    sections.push(section);
   }
-  const sections = [];
-  let section = null;
-  let keys = null;
-  let table = null;
-  for (const entry of entries) {
-    if (!section || section.file !== entry.file) {
-      const node = el("section", "config-file");
-      node.append(el("h2", "", entry.file));
-      const where = data.files.find((file) => file.file === entry.file).where;
-      node.append(el("p", "", where));
-      section = { file: entry.file, node };
-      sections.push(node);
-      table = null;
+  for (const file of data.files) {
+    const section = el("section", "config-file");
+    section.append(el("h2", "", `The keys of ${file.file}`));
+    for (const table of file.tables) {
+      const rows = entries
+        .filter((entry) => entry.file === file.file && entry.table === table.table)
+        .map(configRow);
+      const head = ["Key", "Default", "What it does", "Read by"];
+      section.append(el("h3", "", `[${table.table}]`), configTable(head, rows));
     }
-    if (table !== entry.table) {
-      table = entry.table;
-      keys = el("div", "config-keys");
-      section.node.append(el("h3", "", `[${table}]`), keys);
-    }
-    const button = el("button", entry.readers.length ? "config-key status-works" : "config-key");
-    button.type = "button";
-    button.dataset.key = entry.key;
-    button.dataset.level = entry.level;
-    button.append(el("code", "", entry.key), el("span", `config-level level-${entry.level}`, entry.levelLabel));
-    button.addEventListener("click", () => drawer.show(button, configBoxes(entry)));
-    buttons.push(button);
-    keys.append(button);
+    sections.push(section);
   }
-  root.replaceChildren(filter, ...sections);
+  root.replaceChildren(...sections);
 }
 
 /** One item of the system page: a link with the glyph of its sort, its label and its note. */

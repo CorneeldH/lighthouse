@@ -4,7 +4,9 @@
   "files": [
     {
       "file": "lighthouse.toml",
-      "where": "in the root of your repo",
+      "path": "<repo>/lighthouse.toml",
+      "override": "LIGHTHOUSE_TOML",
+      "written": "lighthouse init writes [project] language and [forge], plus the keys of the packages it installs. You add the rest by hand. Commit it: it holds the settings of the project.",
       "tables": [
         {
           "table": "project",
@@ -35,6 +37,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The language names, comments and docstrings in code must be written in.",
+              "example": "en",
               "readers": [
                 "pack/core/hooks/code-language-check.sh",
                 "pack/core/instructions/AGENTS.md",
@@ -46,6 +49,9 @@
               "level": "advanced",
               "required": "no",
               "about": "Paths exempt from the code-language check.",
+              "example": [
+                "tests/fixtures/**"
+              ],
               "readers": [
                 "pack/core/lib/code_language.py"
               ]
@@ -55,6 +61,9 @@
               "level": "advanced",
               "required": "no",
               "about": "Extra paths that must follow the code language, such as documentation.",
+              "example": [
+                "docs/**"
+              ],
               "readers": [
                 "pack/core/hooks/code-language-check.sh",
                 "pack/core/lib/code_language.py"
@@ -77,6 +86,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The prefix of milestone titles in this project.",
+              "example": "LH",
               "readers": [
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-issue"
@@ -87,6 +97,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The prefix of your own skill names, used when placing a new instruction.",
+              "example": "myproject-",
               "readers": [
                 "pack/core/skills/place-instruction"
               ]
@@ -101,6 +112,7 @@
               "level": "set",
               "required": "no",
               "about": "Which forge hosts the repo. Only github is accepted for now.",
+              "example": "github",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/kennforge/adapter.go"
@@ -111,6 +123,7 @@
               "level": "set",
               "required": "no",
               "about": "The repository as owner/name.",
+              "example": "owner/name",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/lib/artefacts.py",
@@ -190,6 +203,7 @@
               "level": "optional",
               "required": "no",
               "about": "The id of the board's Priority field.",
+              "example": "PVTSSF_...",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue"
@@ -200,6 +214,11 @@
               "level": "optional",
               "required": "no",
               "about": "The ids of the Priority options, one entry per option name.",
+              "example": {
+                "P0": "...",
+                "P1": "...",
+                "P2": "..."
+              },
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue"
@@ -210,6 +229,7 @@
               "level": "optional",
               "required": "with [forge.board]",
               "about": "The node id of the GitHub project board.",
+              "example": "PVT_...",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
@@ -224,6 +244,7 @@
               "level": "optional",
               "required": "with [forge.board]",
               "about": "The number of the GitHub project board.",
+              "example": 1,
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/start-issue",
@@ -237,6 +258,7 @@
               "level": "optional",
               "required": "with [forge.board]",
               "about": "The id of the board's Status field.",
+              "example": "PVTSSF_...",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
@@ -250,6 +272,12 @@
               "level": "optional",
               "required": "with [forge.board]",
               "about": "The ids of the Status options, one entry per option name.",
+              "example": {
+                "To do": "...",
+                "In progress": "...",
+                "Done": "...",
+                "On hold": "..."
+              },
               "readers": [
                 "internal/cli/serve.go",
                 "internal/dispatch/board.go",
@@ -270,6 +298,7 @@
               "level": "set",
               "required": "no",
               "about": "The command the test gate runs after a commit; empty turns the gate off.",
+              "example": "uv run pytest -q",
               "readers": [
                 "pack/core/hooks/commit-test-gate.sh",
                 "pack/core/instructions/AGENTS.md",
@@ -345,6 +374,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The folder with one file per area; closing a milestone updates its near goal.",
+              "example": "docs/areas",
               "readers": [
                 "pack/core/skills/close-issue"
               ]
@@ -354,6 +384,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The file with the project's history; only config.py checks it for now.",
+              "example": "docs/history.md",
               "readers": []
             },
             {
@@ -361,6 +392,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The file that lists the labels of the project.",
+              "example": "docs/labels.md",
               "readers": [
                 "pack/core/skills/write-issue"
               ]
@@ -370,6 +402,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The file that lists instruction files exempt from the mirror check.",
+              "example": "docs/mirror-exceptions.md",
               "readers": [
                 "pack/core/scripts/check-instructions.sh"
               ]
@@ -423,6 +456,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The file with the project's tenets, read when writing an issue.",
+              "example": "docs/tenets.md",
               "readers": [
                 "pack/core/skills/write-issue"
               ]
@@ -437,6 +471,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The prefix of area labels.",
+              "example": "area:",
               "readers": [
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",
@@ -474,6 +509,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The prefix of location labels.",
+              "example": "location:",
               "readers": [
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
@@ -533,6 +569,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The name of the variable that holds the bot's client id.",
+              "example": "BOT_CLIENT_ID",
               "readers": [
                 "pack/core/workflows/unblock-dependents.yml"
               ]
@@ -542,6 +579,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The login of the bot the unblock lane runs as, to unblock dependent issues.",
+              "example": "my-bot[bot]",
               "readers": [
                 "pack/core/skills/close-issue"
               ]
@@ -551,6 +589,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The name of the secret that holds the bot's private key.",
+              "example": "BOT_PRIVATE_KEY",
               "readers": [
                 "pack/core/workflows/unblock-dependents.yml"
               ]
@@ -713,6 +752,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The workflow that runs the nightly coverage job.",
+              "example": "nightly.yml",
               "readers": [
                 "pack/python/scripts/quality/prcov_issues.py",
                 "pack/python/scripts/quality/ratchet.py"
@@ -761,6 +801,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The file the API key is read from when the variable is not set.",
+              "example": ".env",
               "readers": [
                 "pack/core/lib/code_language_llm.py"
               ]
@@ -770,6 +811,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The environment variable that holds the API key.",
+              "example": "OPENROUTER_API_KEY",
               "readers": [
                 "pack/core/lib/code_language_llm.py"
               ]
@@ -779,6 +821,10 @@
               "level": "advanced",
               "required": "with [code_language_llm]",
               "about": "The models to try, in order, for the code-language check.",
+              "example": [
+                "model-a",
+                "model-b"
+              ],
               "readers": [
                 "pack/core/lib/code_language_llm.py"
               ]
@@ -788,6 +834,7 @@
               "level": "advanced",
               "required": "with [code_language_llm]",
               "about": "The endpoint of the model that judges the code language.",
+              "example": "https://openrouter.ai/api/v1/chat/completions",
               "readers": [
                 "pack/core/lib/code_language_llm.py"
               ]
@@ -798,7 +845,9 @@
     },
     {
       "file": "host.toml",
-      "where": "~/.config/lighthouse/ on your workstation",
+      "path": "~/.config/lighthouse/host.toml",
+      "override": "LIGHTHOUSE_HOST_TOML",
+      "written": "lighthouse init offers to write [host] on a machine with Tailscale. It holds the settings of one machine and never goes into a repository.",
       "tables": [
         {
           "table": "host",
@@ -808,6 +857,7 @@
               "level": "set",
               "required": "yes",
               "about": "The name of this workstation; init writes it.",
+              "example": "my-workstation",
               "readers": []
             },
             {
@@ -815,6 +865,7 @@
               "level": "set",
               "required": "yes",
               "about": "The Tailscale address of this workstation; init writes it.",
+              "example": "100.64.0.1",
               "readers": [
                 "pack/core/scripts/plan_review_record.py"
               ]
@@ -824,6 +875,7 @@
               "level": "advanced",
               "required": "no",
               "about": "The systemd slice the test gate runs in.",
+              "example": "lighthouse-gate.slice",
               "readers": [
                 "pack/core/hooks/commit-test-gate.sh"
               ]
