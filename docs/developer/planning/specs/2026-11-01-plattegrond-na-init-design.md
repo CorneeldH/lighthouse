@@ -44,7 +44,11 @@ wie hij is, uit welk pakket hij komt, wie hem leest, en wat `--upgrade` ermee do
   lighthouse lokaal gewijzigd of verwijderd (een bestand, een blok in `AGENTS.md`, een hook in
   `settings.json`), dan weigert `--upgrade` de hele run en schrijft niets, tot je `--force`
   geeft (`internal/initcmd/initcmd.go:175-187`, `internal/initcmd/workspace.go:51-95`,
-  `internal/reconcile/reconcile.go:79-105`).
+  `internal/reconcile/reconcile.go:79-105`). Dat geldt alleen voor de units in het manifest
+  (file, block, hook, permission). `lighthouse.toml` en `.lighthouse/manifest.toml` zijn geen
+  unit: een verwijderde sleutel van lighthouse in `lighthouse.toml` komt zonder vraag terug
+  (`projectconfig.AppendMissing`), en `manifest.toml` wordt elke run opnieuw geschreven. De
+  kaart zegt de weigering daar dus niet.
 - Het oogt als een bestandsboom uit een IDE in plaats van een plattegrond.
 - Je herkent je eigen repo er niet in.
 
@@ -82,27 +86,30 @@ your repo/
   ░ shared: only lighthouse's block or keys
     blank: yours, init leaves it alone
   - - dashed line around ▓ and ░ = the zone --upgrade touches
-  changed or deleted something of lighthouse's? --upgrade stops and writes
-  nothing until you pass --force
+  changed or deleted a file, block or hook of lighthouse's? --upgrade stops
+  and writes nothing until you pass --force
 ```
 
 *Na het gesprek aangepast:* de legenda zei eerst "a file you changed: only with --force". De
 code weigert dan de hele run, ook voor blokken en hooks; de laatste regel van de legenda zegt
-dat nu.
+dat nu. Na de spec-review (r1-f2) noemt die regel "a file, block or hook" in plaats van
+"something": voor de sleutels in `lighthouse.toml` en voor `manifest.toml` weigert `--upgrade`
+niet *(eigen keuze na spec-review, r1-f2)*.
 
 **Grondplan.** De kamers volgen de echte mappen van de repo: de root met drie bestanden,
 `.claude/`, `.agents/`, `.lighthouse/`, `.github/`. Een kamer *your code, your tests, …* staat
 erbij als lege ruimte van de gebruiker, zodat zichtbaar is dat lighthouse maar een deel van de
 repo bezet. Die kamer is geen gebied (`init` schrijft er niet), maar licht wel op in de zone
-*Yours* (keuze van Claude). `host.toml` staat buiten de muur, als klein vak *on your workstation*, zoals bij
-stap 2 van de systeemkaart.
+*Yours* (keuze van Claude). `host.toml` staat buiten de muur, als klein vak *on your
+workstation*.
 
 **Drie niveaus** (kaarten-design §3):
 
 1. **Het geheel.** De plattegrond over de volle breedte.
 2. **Een zone.** Knoppen boven de kaart: *All*, *Lighthouse's*, *Shared*, *Yours*,
    *--upgrade touches*. De gekozen zone licht op, de rest dimt. Zelfde gedrag als de
-   niveauknoppen van de configuratiekaart (`renderConfig` in `docs/site/map.js`).
+   routeknoppen van `renderFlowMap` in `docs/site/map.js` (`aria-pressed`, klasse `dim`), op
+   `loop.html` en `session.html`. `renderConfig` heeft geen knoppen en geen paneel.
 3. **Eén gebied.** Klik een gebied: het paneel (`drawerFor`) toont in gewone taal wat het is,
    en daaronder *Owner*, *Comes from* (pakketten), *Read by* (lezers), *On --upgrade* en een
    link verder (referentiepagina of configuratiekaart).
@@ -131,12 +138,13 @@ bestand, en `buildPlan` in `internal/initcmd/initcmd.go`.
 | `.lighthouse/headings.toml` | lighthouse | heel bestand | core | idem |
 | `.lighthouse/manifest.toml` | lighthouse | elke run opnieuw | — (init zelf) | schrijft het opnieuw |
 | `.github/pull_request_template.md` | lighthouse | heel bestand | core | idem |
-| `.github/workflows/lighthouse-*.yml` | lighthouse | hele bestanden, `@@key@@` ingevuld uit de config | core | idem |
+| `.github/workflows/lighthouse-*.yml` | lighthouse | hele bestanden, `@@key@@` ingevuld uit de config; alleen als elke sleutel gezet is (`ci.bot_client_id_var` en `ci.bot_private_key_secret` hebben geen default), anders niet geïnstalleerd | core | vervangt als elke sleutel gezet is; mist er een, dan blijft een geïnstalleerde workflow zoals hij is |
 | `~/.config/lighthouse/host.toml` | yours | alleen bij `init`, alleen met Tailscale, na een eigen vraag | — (init zelf) | meldt alleen dat hij ontbreekt |
 
-Voor elk gebied van lighthouse of shared geldt bovendien: heb je het deel van lighthouse lokaal
-gewijzigd of verwijderd, dan weigert `--upgrade` de hele run tot je `--force` geeft. Het paneel
-zegt dat bij elk van die gebieden.
+Voor elk gebied met units in het manifest (`AGENTS.md`, `.claude/settings.json` en de
+bestandsgebieden) geldt bovendien: heb je het deel van lighthouse lokaal gewijzigd of
+verwijderd, dan weigert `--upgrade` de hele run tot je `--force` geeft. Het paneel zegt dat bij
+elk van die gebieden, en niet bij `lighthouse.toml` en `manifest.toml` (zie Anti-doelen).
 
 De pakketkolom is een momentopname van vandaag; de test (§6) bewaakt hem, de tabel hier niet.
 
@@ -144,9 +152,10 @@ De pakketkolom is een momentopname van vandaag; de test (§6) bewaakt hem, de ta
 (Claude Code, Codex, OpenCode); `.claude/skills/` en `.claude/agents/` leest Claude Code,
 `.agents/skills/` Codex en OpenCode; `.claude/settings.json` leest Claude Code;
 `lighthouse.toml` leest `pack/core/lib/config.py` (en via die alle skills en hooks);
-`headings.toml` leest `pack/core/lib/headings.py`; `manifest.toml` leest `init --upgrade`
-(`internal/manifest`); de PR-template leest GitHub en de skill `write-pr`; de workflows leest
-GitHub Actions; `host.toml` leest `lighthouse usage` en `serve`.
+`headings.toml` leest `pack/core/lib/headings.py`; `manifest.toml` leest `internal/manifest`;
+de PR-template leest GitHub en `pack/core/skills/write-pr/SKILL.md`; de workflows leest GitHub
+Actions; `host.toml` leest `internal/hostconfig` (voor `lighthouse usage` en `serve`). Elke
+lezer is een pad of een naam uit de vaste lijst van §6 *(eigen keuze na spec-review, r1-f5)*.
 
 ## 5. Benaderingen
 
@@ -162,9 +171,10 @@ Corneel koos A ("deze vorm").
 
 **Pagina en data**
 
-- `docs/site/repo.html` + `docs/site/repo.js`, volgens het patroon van `config.html`
-  (`<html lang="en">`, terug-link, themaknop, `#serve-hint`, `<details class="why">`,
-  `<aside id="detail">`). Titel: *Your repo after init* (keuze van Claude).
+- `docs/site/repo.html` + `docs/site/repo.js`. De kop volgt `config.html` (`<html lang="en">`,
+  terug-link, themaknop, `#serve-hint`, `<details class="why">`); het paneel
+  `<aside id="detail">` en de knoppenrij volgen `loop.html` en `session.html`, want
+  `config.html` heeft geen paneel. Titel: *Your repo after init* (keuze van Claude).
 - Data in `docs/site/data/repo.json`, handgeschreven. Per gebied: `id`, `label` (het pad zoals
   de gebruiker het ziet), `room` (de kamer: `root`, `.claude`, `.agents`, `.lighthouse`,
   `.github`, `workstation`), `owner` (`lighthouse` | `shared` | `yours`), `how`, `upgrade`,
@@ -183,7 +193,10 @@ Corneel koos A ("deze vorm").
 
 **Inhaken op de site**
 
-- Stap 2 van de systeemkaart krijgt één link *Map of your repo* naar `repo.html`. De zes vakken
+- Stap 2 van de systeemkaart krijgt één link *Map of your repo* naar `repo.html`: een nieuw,
+  optioneel stapveld in `system.json` (bijvoorbeeld `map: {label, href}`) dat `renderStory`
+  onder de vakken rendert, geen zevende item, want een item vraagt een `form` en `kind` die de
+  link niet heeft *(eigen keuze na spec-review, r1-f6)*. De zes vakken
   houden hun huidige links (referentiepagina, de secties `rules` en `config`), en die secties
   blijven staan (keuze van Claude: een vak dekt vaak meerdere gebieden, zodat een link per vak
   naar één gebied half klopt; en `repo.html` rendert zijn gebieden uit JSON, dus statische
@@ -201,14 +214,20 @@ die alleen onder `docs/` valt. De Python-job draait bij elke wijziging buiten `w
 bij `internal/`, `pack/` en `docs/` (keuze van Claude).
 
 - **Go**: een test in `internal/initcmd` draait een echte `init` met alle pakketten
-  (`o.Packs = nil`, `o.AddPacks` = alle pakketten onder `pack/`) in een lege temp-repo. Hij
+  (`o.Packs = nil`, `o.AddPacks` = alle pakketten onder `pack/`) in een lege temp-repo, met
+  `o.Lookup` op een stub die elke sleutel beantwoordt. Zonder die stub installeert `init` geen
+  workflow (`ci.bot_client_id_var` en `ci.bot_private_key_secret` hebben geen default), en dan
+  ontbreekt de plek `.github/workflows/lighthouse-*.yml` in de golden *(eigen keuze na
+  spec-review, r1-f1)*. Hij
   vat elk geschreven pad samen tot een plaatssleutel: een map van lighthouse wordt die map
   (`.claude/hooks/lighthouse/`, `.lighthouse/lib/lighthouse_lib/`, `.lighthouse/scripts/`),
   een skill `<skilldir>lighthouse-*/`, een agent `.claude/agents/lighthouse-*.md`, een
   workflow `.github/workflows/lighthouse-*.yml`, al het andere het pad zelf. Per sleutel
   schrijft hij één regel `<sleutel>\t<soorten>\t<pakketten>` (soorten en pakketten uit
   `.lighthouse/manifest.toml`; voor `CLAUDE.md`, `lighthouse.toml` en `manifest.toml`, die
-  buiten het manifest vallen, `init` als soort en de pakketten die de test vastlegt), gesorteerd,
+  buiten het manifest vallen, `init` als soort; de pakketten van `lighthouse.toml` leidt de test
+  af als core plus elk gekozen pakket met een niet-lege `Config`, zoals `configTables`, en
+  `CLAUDE.md` en `manifest.toml` krijgen geen pakket *(eigen keuze na spec-review, r1-f4)*), gesorteerd,
   en vergelijkt met `internal/initcmd/testdata/places.golden`. Met `-update` schrijft hij de
   golden opnieuw. Schrijft `init` naar een nieuwe plek, dan wordt de Go-test rood.
 - **Python** (`tests/test_site_repo.py`, in de stijl van `tests/test_site_config.py`) leest de
@@ -221,9 +240,13 @@ bij `internal/`, `pack/` en `docs/` (keuze van Claude).
     `permission` → `shared`; `init` → zoals vastgelegd per plek (`CLAUDE.md` yours,
     `lighthouse.toml` shared, `manifest.toml` lighthouse);
   - precies één gebied zonder `place`, in de kamer `workstation` (`host.toml`);
-  - geldige `owner` en `room`; elke lezer is een bestaand pad onder `pack/`, `internal/` of
-    `cmd/` dat het gebied noemt, of een naam uit een vaste lijst (`Claude Code`, `Codex`,
-    `OpenCode`, `GitHub`, `GitHub Actions`); elke `more`-link bestaat;
+  - geldige `owner` en `room`; elke lezer is een bestaand pad (bestand of map) onder `pack/`,
+    `internal/` of `cmd/` dat het gebied noemt, of een naam uit een vaste lijst (`Claude Code`,
+    `Codex`, `OpenCode`, `GitHub`, `GitHub Actions`). "Noemt" = de basename van `place` (of van
+    `label` zonder `place`) zonder `*` en zonder slash aan het eind, bijvoorbeeld
+    `headings.toml`, `host.toml` of `lighthouse-`, staat letterlijk in het bestand of in een
+    bestand van de map *(eigen keuze na spec-review, r1-f5)*; elke `more`-link bestaat;
+  - geen gebied `lighthouse.toml` of `.lighthouse/manifest.toml` noemt `--force` in `upgrade`;
   - de zone *--upgrade touches* bevat precies de gebieden met `owner` `lighthouse` of `shared`;
   - mutatietests op een kopie van de data en van de golden.
 - Een changelog-fragment `changelog.d/issue-101-plattegrond-na-init.md`, `type: added`, Engels.
