@@ -84,22 +84,40 @@
       "form": "dispatcher",
       "trigger": "github",
       "label": "triage",
-      "what": "The dispatcher sorts incoming issues and answers a question with a clear recommendation itself.",
+      "what": "The dispatcher sorts incoming issues before any session picks them up.",
       "how": [
         "Triage sorts an incoming issue before any session picks it up.",
-        "When a controller run would ask a question that has a clear recommendation, auto_aanbevolen takes that recommendation instead of waiting.",
-        "Each answer it takes over is posted on the issue as a 🤖 comment, with the question and the chosen option.",
-        "The question categories it may answer are chosen from the controller telemetry of paia."
+        "It gathers the facts (board, blockers, running work, git log), asks for a verdict and applies it: a label, a comment or a handoff."
       ],
-      "when": "When an issue comes in, and when a controller run reaches a question with a recommendation.",
-      "without": "Every incoming issue and every recommended answer waits for you.",
+      "when": "When an issue comes in.",
+      "without": "Every incoming issue waits for you.",
       "status": "planned",
       "issue": 120
     },
     {
-      "id": "start-issue",
+      "id": "auto-answer",
       "phase": "orient",
       "row": 1,
+      "kind": "lighthouse",
+      "form": "dispatcher",
+      "trigger": "github",
+      "label": "auto-answer",
+      "what": "The dispatcher answers a question with a clear recommendation itself, instead of waiting for you.",
+      "how": [
+        "When a controller run would ask a question that has a clear recommendation, auto_aanbevolen takes that recommendation instead of waiting.",
+        "Each answer it takes over is posted on the issue as a 🤖 comment, with the question and the chosen option.",
+        "Every category is off by default, and an error or doubt about the category means asking.",
+        "The question categories it may answer are chosen from the controller telemetry of paia."
+      ],
+      "when": "When a controller run reaches a question with a recommendation.",
+      "without": "Every recommended answer waits for you.",
+      "status": "planned",
+      "issue": 168
+    },
+    {
+      "id": "start-issue",
+      "phase": "orient",
+      "row": 2,
       "kind": "lighthouse",
       "trigger": "you",
       "label": "start-issue",
@@ -118,7 +136,7 @@
     {
       "id": "worktree-check",
       "phase": "orient",
-      "row": 2,
+      "row": 3,
       "kind": "hook",
       "trigger": "tool",
       "label": "worktree-check",
@@ -137,7 +155,7 @@
     {
       "id": "using-git-worktrees",
       "phase": "orient",
-      "row": 3,
+      "row": 4,
       "kind": "superpowers",
       "trigger": "skill",
       "label": "using-git-worktrees",
@@ -155,7 +173,7 @@
     {
       "id": "route-issue",
       "phase": "orient",
-      "row": 4,
+      "row": 5,
       "kind": "lighthouse",
       "trigger": "skill",
       "label": "route-issue",
@@ -697,7 +715,7 @@
   "routes": [
     {
       "id": "4c",
-      "label": "Spec first (4c)",
+      "label": "Spec first",
       "examples": [
         "md-link-check"
       ],
@@ -705,6 +723,7 @@
         "write-issue",
         "github-issue",
         "triage",
+        "auto-answer",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
@@ -726,7 +745,7 @@
     },
     {
       "id": "4b",
-      "label": "Plan (4b)",
+      "label": "Plan",
       "examples": [
         "go-standard"
       ],
@@ -734,6 +753,7 @@
         "write-issue",
         "github-issue",
         "triage",
+        "auto-answer",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
@@ -753,7 +773,7 @@
     },
     {
       "id": "4a",
-      "label": "Small job (4a)",
+      "label": "Small job",
       "note": "The session writes the code itself; no skill runs the build.",
       "examples": [
         "python-standard",
@@ -765,6 +785,7 @@
         "write-issue",
         "github-issue",
         "triage",
+        "auto-answer",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
@@ -783,7 +804,7 @@
     },
     {
       "id": "2",
-      "label": "Bug (2)",
+      "label": "Bug",
       "examples": [
         "shell-standard"
       ],
@@ -791,6 +812,7 @@
         "write-issue",
         "github-issue",
         "triage",
+        "auto-answer",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
@@ -807,7 +829,7 @@
     },
     {
       "id": "1",
-      "label": "Known recipe (1)",
+      "label": "Known recipe",
       "note": "The skill whose description matches the issue does the work and closes it.",
       "examples": [
         "refresh-expo-lockfiles"
@@ -816,6 +838,7 @@
         "write-issue",
         "github-issue",
         "triage",
+        "auto-answer",
         "start-issue",
         "using-git-worktrees",
         "route-issue",
