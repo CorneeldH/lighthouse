@@ -4,6 +4,35 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.8.1] - 2026-11-01
+
+### Fixed
+
+- `bash-write-check` no longer hands a file that lighthouse itself installed (a file unit in `.lighthouse/manifest.toml`) to its gates, so `ruff format` or `gofmt` no longer rewrites it when `lighthouse init` runs in an agent's Bash call, and `lighthouse init --upgrade` afterwards says `No changes.`
+
+## [v0.8.0] - 2026-11-01
+
+### Changed
+
+- The `lighthouse-triage.service` example in `docs/triage.md` now loads the token from an `EnvironmentFile`, sets a `PATH` that finds `claude`, and runs the binary from `~/go/bin`, where the install guide puts it.
+- The *De pauzevlag* section of `docs/usage-gate.md` now says how to set the pause flag: `lighthouse pause` and `lighthouse pause off`, with a link to `tick.md#pauze`.
+
+### Fixed
+
+- A controller run that ended on a question, a handoff or Done no longer leaves its `claude` running in the workplace, so resuming it after an answer no longer fails with `submit initial message failed`. The tick ends only that session's process, never the unit, so an interactive session in the same worktree runs on.
+
+## [v0.7.3] - 2026-11-01
+
+### Fixed
+
+- `docs/tick.md` (*Pauze*) no longer says a running run carries on during a pause. The tick starts nothing, and a running controller run parks at its next tool call; the text now says so and links to the pause flag in `usage-gate.md`.
+
+## [v0.7.2] - 2026-11-01
+
+### Fixed
+
+- `lighthouse triage` no longer forwards an issue to `Controller` when a commit under another issue number already did the work. The judgment now weighs the code it reads, and reports such an issue as already done.
+
 ## [v0.7.1] - 2026-11-01
 
 ### Fixed

@@ -60,3 +60,11 @@ profile = "software"
 spec_review = true
 plan_review = true
 bij_rondegrens = "doorgaan"
+
+# `lighthouse triage` triëert deze repo alleen met deze tabel (docs/triage.md, *[controller.triage]*).
+# De waarden zijn de standaarden.
+[controller.triage]
+milestones_only = true
+wait_for_night = true
+max_forwarded = 5
+max_judgments = 15

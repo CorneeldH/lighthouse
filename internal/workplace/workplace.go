@@ -79,6 +79,9 @@ type Workplace interface {
 	Spawn(ctx context.Context, ws Workspace, l LaunchSpec) (Session, error)
 	Sessions(ctx context.Context, workspaceID string) ([]Session, error)
 	Stop(ctx context.Context, workspaceID string, sessionIDs []string) error
+	// Kill ends only the agent processes of the given sessions, never the rest of the
+	// workspace: a foreign session in it runs on. A session without a process is no error.
+	Kill(ctx context.Context, workspaceID string, sessionIDs []string) error
 	Remove(ctx context.Context, workspaceID string) error
 	// Lookup reads a workspace by id: its path and branch. A workspace the forge no
 	// longer knows is ErrGone; one without a path is an error.

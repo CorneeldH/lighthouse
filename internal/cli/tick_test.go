@@ -448,6 +448,7 @@ type fakeWorkplace struct {
 	mu       sync.Mutex
 	state    string
 	spawns   []workplace.LaunchSpec
+	kills    []string                       // the session ids per Kill
 	sessions map[string][]workplace.Session // per workspace id
 	// looked, asked, removed and discarded are the workspace ids of each Lookup, Sessions,
 	// Remove and Discard, in order.
@@ -495,6 +496,19 @@ func (w *fakeWorkplace) Sessions(_ context.Context, workspaceID string) ([]workp
 func (w *fakeWorkplace) Stop(context.Context, string, []string) error {
 	w.t.Error("unexpected Stop")
 	return errors.New("unexpected Stop")
+}
+
+func (w *fakeWorkplace) Kill(_ context.Context, _ string, sessionIDs []string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.kills = append(w.kills, strings.Join(sessionIDs, ","))
+	return nil
+}
+
+func (w *fakeWorkplace) killed() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.Clone(w.kills)
 }
 
 func (w *fakeWorkplace) Remove(_ context.Context, workspaceID string) error {

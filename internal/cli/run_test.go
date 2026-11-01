@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -136,6 +137,11 @@ func TestRunClosesThenResumes(t *testing.T) {
 	}
 	if spawns := w.spawned(); len(spawns) != 1 || spawns[0].Mode != "resume" || spawns[0].SessionID != session {
 		t.Errorf("spawns = %+v, want one resume of session %s", spawns, session)
+	}
+	// The close of the Question ends the claude of the run, and the resume kills it once more
+	// before its handoff: forge refuses a resume while it lives.
+	if got, want := w.killed(), []string{session, session}; !reflect.DeepEqual(got, want) {
+		t.Errorf("kills = %q, want %q", got, want)
 	}
 }
 
