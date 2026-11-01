@@ -295,8 +295,11 @@ lighthouse pause [--until HH:MM]
 lighthouse pause off
 ```
 
-`lighthouse pause` schrijft de pauzevlag: tot het einde ervan start de dispatcher niets. Een run die
-al loopt, gaat door; een run die de controller parkeert, hervat na het einde (of na `pause off`). Tot die tijd staat de geparkeerde run als `parked` in
+`lighthouse pause` schrijft de pauzevlag: tot het einde ervan start de tick zelf niets meer. Een
+lopende controller-run gaat niet door: de usage-gate-hook toetst de vlag in stand `tool`, dus de run
+parkeert bij zijn volgende tool-call van de hoofdthread (zie
+[usage-gate.md](usage-gate.md#de-pauzevlag)). Een geparkeerde run hervat na het einde van de pauze
+(of na `pause off`). Tot die tijd staat hij als `parked` in
 `GET /api/runs` en op de kaart *Running runs* (zie [install.md](install.md#running-runs)).
 
 - Zonder `--until` duurt de pauze tot het eerstvolgende begin van `[dispatch] night` (21:00 bij de
