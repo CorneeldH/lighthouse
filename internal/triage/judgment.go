@@ -237,6 +237,9 @@ func Validate(envelope []byte, f Facts, c Context) (Judgment, error) {
 	if err := checkRedundancy(j, f.Number); err != nil {
 		return Judgment{}, err
 	}
+	if err := checkPublished(j, f, c); err != nil {
+		return Judgment{}, err
+	}
 	if !j.Headless && j.HeadlessReason == "" {
 		return Judgment{}, invalid("headless false without headless_reason")
 	}
@@ -263,6 +266,12 @@ func checkRoute(j *Judgment, raw rawJudgment, f Facts, c Context) error {
 	}
 	if n, _ := strconv.Atoi(m[1]); n != f.Number {
 		return invalid("route_line is for #%s, not #%d", m[1], f.Number)
+	}
+	if err := checkLen("route", m[4], MaxRouteRunes); err != nil {
+		return err
+	}
+	if err := checkLen("reason", m[5], MaxRouteReasonRunes); err != nil {
+		return err
 	}
 	gate, _ := strconv.Atoi(m[2])
 	sub := m[3]
@@ -336,6 +345,28 @@ func checkRedundancy(j Judgment, number int) error {
 		}
 	default:
 		return invalid("redundancy %q is not none, duplicate or done", j.Redundancy)
+	}
+	return nil
+}
+
+// checkPublished bounds the free text fields that the row of the judgment publishes.
+func checkPublished(j Judgment, f Facts, c Context) error {
+	switch judgedRow(&j, c.Gate0, f.AuthorTrusted) {
+	case RowRedundant:
+		return checkEvidence(j.RedundancyEvidence, f.GitShas)
+	case RowDesign:
+		for i, q := range j.Questions {
+			if err := checkLen(fmt.Sprintf("design_questions[%d]", i), q.Text, MaxQuestionRunes); err != nil {
+				return err
+			}
+			for k, o := range q.Options {
+				if err := checkLen(fmt.Sprintf("design_questions[%d].options[%d]", i, k), o, MaxOptionRunes); err != nil {
+					return err
+				}
+			}
+		}
+	case RowInteractive:
+		return checkLen("headless_reason", j.HeadlessReason, MaxHeadlessReasonRunes)
 	}
 	return nil
 }

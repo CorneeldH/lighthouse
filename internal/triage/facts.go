@@ -41,6 +41,7 @@ type Facts struct {
 	Comments                       []Comment       // oldest first
 	Work                           []string        // running work found, e.g. "PR #12", "branch origin/issue-7-x", "worktree /p", "run 31"
 	GitLog                         string
+	GitShas                        []string // full shas of the commits in GitLog
 	MilestoneOpen, MilestoneClosed []Ref
 }
 

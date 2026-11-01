@@ -1149,3 +1149,44 @@ func TestParseIssueRef(t *testing.T) {
 		}
 	}
 }
+
+// The evidence of a "done" judgment is checked against the shas of the log of the issue.
+func TestTriageEvidenceFromLog(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		evidence func(sha string) string
+		valid    bool
+	}{
+		{"sha from the log", func(sha string) string { return sha[:12] }, true},
+		{"sha not in the log", func(string) string { return "deadbeef" }, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := triageFixture(t, triageToml)
+			fx.issue(7, "2-area:cli")
+			fx.onBoard(7, "t1", nil)
+			other := filepath.Join(t.TempDir(), "other")
+			mustGit(t, filepath.Dir(other), "clone", "-q", mustGit(t, fx.dir, "remote", "get-url", "origin"), other)
+			mustGit(t, other, "commit", "-q", "--allow-empty", "-m", "fix: thing (#7)")
+			mustGit(t, other, "push", "-q", "origin", "main")
+			sha := strings.TrimSpace(mustGit(t, other, "rev-parse", "HEAD"))
+			evidence := tc.evidence(sha)
+			fx.judge.answers[7] = answerWith("#7 Poort 4b: writing-plans — x", 4, "b", map[string]any{
+				"redundancy": "done", "redundancy_evidence": evidence})
+
+			_, errOut, err := fx.run(triageOpts{})
+			if err != nil {
+				t.Fatalf("triage = %v\n%s", err, errOut)
+			}
+			b := bodies(fx.srv, 7)
+			if tc.valid {
+				if len(b) != 1 || !strings.Contains(b[0], evidence) {
+					t.Errorf("comment = %q, want it to contain %q", b, evidence)
+				}
+				return
+			}
+			if len(b) != 0 || !strings.Contains(errOut, "invalid judgment") {
+				t.Errorf("comments = %q errOut = %q, want an invalid judgment and no comment", b, errOut)
+			}
+		})
+	}
+}

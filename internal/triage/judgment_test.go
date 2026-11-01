@@ -206,6 +206,20 @@ func TestValidateInvalid(t *testing.T) {
 		{"duplicate without issue", facts7(), map[string]any{"redundancy": "duplicate"}, "without redundancy_issue"},
 		{"duplicate of itself", facts7(), map[string]any{"redundancy": "duplicate", "redundancy_issue": 7}, "duplicate of #7 itself"},
 		{"done without evidence", facts7(), map[string]any{"redundancy": "done"}, "without redundancy_evidence"},
+		{"route over limit", facts7(), map[string]any{"route_line": "#7 Poort 4b: " + strings.Repeat("r", MaxRouteRunes+1) + " — x"}, "route"},
+		{"reason over limit", facts7(), map[string]any{"route_line": "#7 Poort 4b: writing-plans — " + strings.Repeat("r", MaxRouteReasonRunes+1)}, "reason"},
+		{"headless_reason over limit", facts7(), map[string]any{"headless": false, "headless_reason": strings.Repeat("h", MaxHeadlessReasonRunes+1)}, "headless_reason"},
+		{"question over limit", facts7(), merge(map[string]any{"design_questions": []any{map[string]any{
+			"question": strings.Repeat("q", MaxQuestionRunes+1), "options": []any{"a", "b"}, "recommended": 0}}}), "design_questions[0]"},
+		{"option over limit", facts7(), merge(map[string]any{"design_questions": []any{map[string]any{
+			"question": "q?", "options": []any{"a", strings.Repeat("o", MaxOptionRunes+1)}, "recommended": 0}}}), "options[1]"},
+		{"evidence prose", factsSha(), done("fixed in abc1234"), "redundancy_evidence"},
+		{"evidence unknown sha", factsSha(), done("fff0000"), "not in the git log"},
+		{"evidence sha extended", factsSha(), done("abc1234ff"), "not in the git log"},
+		{"evidence seven digit issue", factsSha(), done("#1234567"), "redundancy_evidence"},
+		{"evidence six refs", factsSha(), done("#1, #2, #3, #4, #5, #6"), "redundancy_evidence"},
+		{"evidence empty separator", factsSha(), done("#1 ,, ,#2"), "redundancy_evidence"},
+		{"evidence over limit", factsSha(), done("#1" + strings.Repeat(" ", MaxEvidenceRunes) + "#2"), "redundancy_evidence"},
 		{"headless false without reason", facts7(), map[string]any{"headless": false}, "without headless_reason"},
 	}
 	for _, tc := range tests {
@@ -213,6 +227,63 @@ func TestValidateInvalid(t *testing.T) {
 			_, err := Validate(envelope(t, verdict(tc.over)), tc.f, ctxNL())
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Errorf("err = %v, want it to mention %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+const testSha = "abc1234def5678abc1234def5678abc1234def56"
+
+func factsSha() Facts {
+	f := facts7()
+	f.GitShas = []string{testSha}
+	return f
+}
+
+func done(evidence string) map[string]any {
+	return map[string]any{"redundancy": "done", "redundancy_evidence": evidence}
+}
+
+func TestValidateLimitsValid(t *testing.T) {
+	c4 := map[string]any{"route_line": "#7 Poort 4c: brainstorming — x", "sub": "c", "gate": 4}
+	with := func(extra map[string]any) map[string]any {
+		m := map[string]any{}
+		for k, v := range c4 {
+			m[k] = v
+		}
+		for k, v := range extra {
+			m[k] = v
+		}
+		return m
+	}
+	oneQuestion := func(q string, opts ...string) []any {
+		o := make([]any, len(opts))
+		for i, s := range opts {
+			o[i] = s
+		}
+		return []any{map[string]any{"question": q, "options": o, "recommended": 0}}
+	}
+	tests := []struct {
+		name string
+		over map[string]any
+	}{
+		{"route at limit in runes", map[string]any{"route_line": "#7 Poort 4b: " + strings.Repeat("é", MaxRouteRunes) + " — x"}},
+		{"reason at limit", map[string]any{"route_line": "#7 Poort 4b: writing-plans — " + strings.Repeat("r", MaxRouteReasonRunes)}},
+		{"headless_reason at limit", map[string]any{"headless": false, "headless_reason": strings.Repeat("h", MaxHeadlessReasonRunes)}},
+		{"question and option at limit", with(map[string]any{"design_questions": oneQuestion(strings.Repeat("q", MaxQuestionRunes), "a", strings.Repeat("o", MaxOptionRunes))})},
+		{"done with evidence skips the design limits", with(map[string]any{"redundancy": "done", "redundancy_evidence": "#12",
+			"design_questions": oneQuestion(strings.Repeat("q", 400), "a", "b")})},
+		{"headless_reason over limit at gate 1", map[string]any{"route_line": "#7 Poort 1: x — y", "gate": 1, "sub": "",
+			"headless": false, "headless_reason": strings.Repeat("h", 400)}},
+		{"evidence issue and sha", done("#12, abc1234")},
+		{"evidence upper case sha", done("ABC1234")},
+		{"evidence space separated", done("#1 #2 #3 #4 #5")},
+		{"empty evidence at duplicate", map[string]any{"redundancy": "duplicate", "redundancy_issue": 3}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Validate(envelope(t, verdict(tc.over)), factsSha(), ctxNL()); err != nil {
+				t.Error(err)
 			}
 		})
 	}
@@ -241,13 +312,13 @@ func TestValidateWrongNumber(t *testing.T) {
 
 func TestValidateRedundancyAndHeadless(t *testing.T) {
 	j, err := Validate(envelope(t, verdict(map[string]any{
-		"redundancy": "duplicate", "redundancy_issue": 3, "redundancy_evidence": "same title",
+		"redundancy": "duplicate", "redundancy_issue": 3, "redundancy_evidence": "#3",
 		"headless": false, "headless_reason": "needs sudo",
 	})), facts7(), ctxNL())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if j.Redundancy != "duplicate" || j.RedundancyIssue != 3 || j.RedundancyEvidence != "same title" ||
+	if j.Redundancy != "duplicate" || j.RedundancyIssue != 3 || j.RedundancyEvidence != "#3" ||
 		j.Headless || j.HeadlessReason != "needs sudo" {
 		t.Errorf("got %+v", j)
 	}
@@ -259,9 +330,9 @@ func TestValidateGate0FromGo(t *testing.T) {
 	// the model says 4b, and even a malformed line: Go's stop wins
 	for _, line := range []string{"#7 Poort 4b: writing-plans — x", "garbage"} {
 		j, err := Validate(envelope(t, verdict(map[string]any{
-			"route_line": line, "redundancy": "done", "redundancy_evidence": "abc123 fixes it",
+			"route_line": line, "redundancy": "done", "redundancy_evidence": "abc1234",
 			"headless": false, "headless_reason": "other host",
-		})), facts7(), c)
+		})), factsSha(), c)
 		if err != nil {
 			t.Fatal(err)
 		}
