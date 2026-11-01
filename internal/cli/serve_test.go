@@ -379,6 +379,32 @@ func firstRepo(t *testing.T, path string) string {
 	return cfg.Repos[0]
 }
 
+func TestForgeReposDispatchClientPerRepo(t *testing.T) {
+	withBoard := repoDir(t, completeRepo)
+	noBoard := repoDir(t, "[forge]\nrepo = \"o/s\"\n")
+	var errOut bytes.Buffer
+	got, err := forgeRepos(hostToml(t, withBoard, noBoard), "", "http://forge", func(string) string { return "t" }, &errOut)
+	if err != nil {
+		t.Fatalf("forgeRepos: %v", err)
+	}
+	if s := slugs(got); s != "o/r,o/s" {
+		t.Fatalf("slugs = %q, want o/r,o/s", s)
+	}
+	wantFilter := []bool{true, false}
+	for i, g := range got {
+		c, ok := g.Src.(*forge.Client)
+		if !ok || c.Repo != g.Slug {
+			t.Errorf("source %s: Src = %+v, want the forge client of %s", g.Slug, g.Src, g.Slug)
+		}
+		if (g.InController != nil) != wantFilter[i] {
+			t.Errorf("source %s: filter != nil is %v, want %v", g.Slug, g.InController != nil, wantFilter[i])
+		}
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want empty", errOut.String())
+	}
+}
+
 func TestForgeReposSkipsBrokenRepo(t *testing.T) {
 	broken := repoDir(t, "[forge")
 	other := repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, `repo = "o/s"`, 1))
