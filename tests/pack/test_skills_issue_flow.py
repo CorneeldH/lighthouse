@@ -396,6 +396,13 @@ def test_handoff_post_artefact():
             assert phrase in flat, phrase
 
 
+def test_handoff_posts_nothing_after_a_question():
+    # #203: a handoff after `lighthouse ask` becomes the last turn, and the answer resumes nothing.
+    for body in skill("write-handoff"):
+        flat = " ".join(body.split())
+        assert "except when this run posted a question with `lighthouse ask`" in flat
+
+
 def test_handoff_post_artefact_is_in_step_3():
     for body in skill("write-handoff"):
         assert (

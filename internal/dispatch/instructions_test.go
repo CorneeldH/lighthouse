@@ -118,6 +118,9 @@ func TestRunInstructionsPinnedText(t *testing.T) {
 		// the flag names the run uses must be the flags of `lighthouse ask`.
 		"--issue", "--phase", "--task", "--where", "--what", "--question", "--option", "--recommended",
 		"--command", "--dry-run",
+		// #203: a handoff after the question becomes the last turn, and the answer resumes nothing.
+		"stop after it, without `/lighthouse-write-handoff`",
+		"End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask`",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("run.md lacks %q", want)
