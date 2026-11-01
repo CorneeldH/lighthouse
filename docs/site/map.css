@@ -1482,7 +1482,7 @@ details.who summary:focus-visible {
 }
 
 .repo-room[data-room="workstation"] {
-  border-style: dashed;
+  border-color: var(--muted);
 }
 
 .repo-area {
@@ -1520,7 +1520,7 @@ details.who summary:focus-visible {
 }
 
 .repo-area.touched {
-  outline: 2px dotted var(--lighthouse);
+  outline: 2px dashed var(--lighthouse);
   outline-offset: 2px;
 }
 
