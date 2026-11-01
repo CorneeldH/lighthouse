@@ -48,3 +48,11 @@ unchecked_exit_codes = [3]
 [usage_guard]
 controller = true
 resume = true
+
+# `lighthouse tick` bedient deze repo alleen met deze tabel (docs/tick.md, *Vereisten per repo*). De
+# skills herkennen er ook de controller-modus aan.
+[controller]
+profile = "software"
+spec_review = true
+plan_review = true
+bij_rondegrens = "doorgaan"
