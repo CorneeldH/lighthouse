@@ -34,7 +34,9 @@ niets: het heeft alleen `Read`, `Grep` en `Glob`.
 Een issue op poort 4a, 4b of 2 gaat naar `Controller`, ook met `needs-hands` of `needs-testing`.
 Poort 0 en 1 houden hun status en krijgen alleen de comment. Poort 4c krijgt de comment met
 ontwerpvragen, elk met opties en een aanbevolen optie. Een vermoedelijk dubbel of al afgerond
-issue wordt gemeld, nooit gesloten of doorgezet. Triage zet geen labels en legt geen
+issue wordt gemeld, nooit gesloten of doorgezet. Al afgerond is ook werk dat een commit onder een
+ander issuenummer leverde, zonder dit issue te noemen: het model weegt de code die het zelf leest,
+niet alleen de git log van dit nummer. Triage zet geen labels en legt geen
 `blocked_by`-relaties.
 
 Vrije tekst van het model komt op één regel in de comment, zonder codefence, `<sub>` of `<!--`.
