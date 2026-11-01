@@ -44,8 +44,10 @@ blobmodus voor de pre-push-hook) en `push` (de begrensde eerste push). De bestaa
    (`test_missing_report_is_not_clean`).
 4. **Eén blob in een schone en een vuile ref**: beide refs worden vastgehouden. Test in Taak 6
    (`test_shared_dirty_blob_holds_every_ref`).
-5. **`refs/heads/entire/*` op de werkbranch**: gaat door `gitleaks git`, niet door de blobmodus,
-   en scant dus niet de hele geschiedenis. Test in Taak 5 (`test_shadow_branch_uses_commit_range`).
+5. **`refs/heads/entire/*` op de werkbranch**: gaat door `gitleaks git` over het commitbereik,
+   niet door de blobmodus. Naar de echte checkpoint-remote sluit `--not --remotes=<remote>` niets
+   uit (die remote heeft geen remote-tracking refs), dus dat bereik is de hele geschiedenis van de
+   werkbranch, nu wel begrensd. Test in Taak 5 (`test_shadow_branch_uses_commit_range`).
 
 ---
 
@@ -75,7 +77,12 @@ blobmodus voor de pre-push-hook) en `push` (de begrensde eerste push). De bestaa
 **Files:**
 - Modify: `pack/core/lib/config.py` (`HOST_KEYS`, `_OPTIONAL_HOST_KEYS`, `Host`, validator, sleutelkaart)
 - Modify (via `init --upgrade`): `.lighthouse/lib/lighthouse_lib/config.py`
-- Test: `tests/pack/test_config.py`
+- Modify: `docs/site/data/config.json` (twee entries in de `host`-tabel naast `host.gate_slice`:
+  `level: advanced`, `required: no`, geen `default`, `readers: []`)
+- Modify: `tests/test_site_config.py` (`host.scan_memory_max` en `host.scan_cpu_quota` in `UNREAD`:
+  de enige lezer, `tools/hooks/checkpoint_scan.py`, ligt buiten `pack/`, `internal/` en `cmd/`,
+  zie `tests/test_site_config.py:210`)
+- Test: `tests/pack/test_config.py`, `tests/test_site_config.py`
 
 **Interfaces:**
 - Produces: `Host.scan_memory_max: str | None = None`, `Host.scan_cpu_quota: str | None = None`;
@@ -89,14 +96,17 @@ blobmodus voor de pre-push-hook) en `push` (de begrensde eerste push). De bestaa
     Geldig geheugen: `^[1-9][0-9]*[KMGT]?$`; geldige quota: `^[1-9][0-9]*%$`.
 - [ ] **Stap 2:** `uv run pytest -q tests/pack/test_config.py -k scan`, verwacht FAIL.
 - [ ] **Stap 3:** implementeer naar het patroon van `gate_slice` (beide sleutels optioneel, rc 1 zonder `host.toml`).
-- [ ] **Stap 4:** tests PASS; `go run ./cmd/lighthouse init --upgrade` en daarna nogmaals → `No changes.`
+- [ ] **Stap 4:** `uv run pytest -q tests/pack/test_config.py tests/test_site_config.py` PASS (de
+  commit-gate draait bij `config.py` alleen `test_config.py`; `test_site_config.py` vangt een sleutel
+  die niet op de kaart staat); `go run ./cmd/lighthouse init --upgrade` en daarna nogmaals → `No changes.`
 - [ ] **Stap 5:** commit `feat(config): host.scan_memory_max en host.scan_cpu_quota (#198)`, met de geïnstalleerde kopie.
 
 ### Taak 3: begrenzing — `run-bounded`
 
 **Files:**
 - Create: `tools/hooks/checkpoint_scan.py`
-- Test: `tests/test_checkpoint_scan.py` (nieuw; stubs op `PATH` zoals `tests/pack/test_commit_test_gate.py:96,113-114`)
+- Test: `tests/test_checkpoint_scan.py` (nieuw; stubs op `PATH` zoals `tests/pack/test_commit_test_gate.py:86-96,112-114`,
+  dus ook een `systemctl`-stub: geen test hangt af van de user-bus van de host)
 
 **Interfaces:**
 - Produces:
@@ -105,18 +115,25 @@ blobmodus voor de pre-push-hook) en `push` (de begrensde eerste push). De bestaa
     `ConfigError` → exit 2 met `COULD NOT CHECK — <fout>`)
   - `wrap(argv: list[str], limits: Limits) -> tuple[list[str], str | None]` — gewrapte argv en de
     reden als er geen plafond is (`None` als er wel een is)
-  - `@dataclass class Run: rc: int; ceiling_hit: bool; output: str`
+  - `@dataclass class Run: rc: int; ceiling_hit: bool; output: str; max_rss_kb: int | None` —
+    `max_rss_kb` is `ru_maxrss` uit `os.wait4` op het kindproces (in KB op Linux; `systemd-run --scope`,
+    `env`, `choom` en `nice` doen `exec`, dus dat is gitleaks); `None` als het niet te meten is
   - `run_bounded(argv: list[str], limits: Limits) -> Run`
   - CLI: `checkpoint_scan.py run-bounded -- <argv…>`: geeft rc 0/1 van het commando door; plafond
     of andere rc → exit 2 met de melding op stderr.
 
-- [ ] **Stap 1: falende tests**:
-  - `test_wrap_builds_scope`: met nep-`systemd-run` en `choom` op `PATH` en `Limits("2G","200%",None)`
+- [ ] **Stap 1: falende tests**. Elke test zet `LIGHTHOUSE_HOST_TOML` op een eigen, volledige
+  `host.toml` (`name`, `tailscale_ip`, plus de sleutels van die test), zodat de echte
+  `~/.config`-`host.toml` nooit meedoet. Elke wrap- en plafondtest zet naast `systemd-run` en `choom`
+  een slagende `systemctl`-stub op `PATH`; alleen de test voor `systemctl --user failed` een falende.
+  - `test_wrap_builds_scope`: met nep-`systemctl`, `systemd-run` en `choom` op `PATH` en `Limits("2G","200%",None)`
     begint de argv met `systemd-run --user --scope --quiet -p MemoryMax=2G -p MemorySwapMax=0 -p CPUQuota=200%`,
     bevat hij `GOMAXPROCS=2`, `choom -n 800` en `nice -n 10`, en geen `--slice`.
   - `test_wrap_adds_slice_when_configured`: `Limits(..., slice="s.slice")` → `--slice=s.slice`.
-  - `test_no_systemd_says_why`: `PATH` zonder `systemd-run` → `run-bounded` draait het commando
-    toch, en stderr bevat `secret-scan: no memory ceiling: no systemd-run`.
+  - `test_no_systemd_says_why`: `PATH` met de `systemctl`-stub maar zonder `systemd-run` → `run-bounded`
+    draait het commando toch, en stderr bevat `secret-scan: no memory ceiling: no systemd-run`.
+  - `test_max_rss_measured`: `run_bounded` op `python3 -c "b = bytearray(32 * 2**20)"` zonder
+    scope → `max_rss_kb` ≥ 32 MB.
   - `test_ceiling_message_on_sigkill`: nep-`systemd-run` die `exit 137` doet → exit 2 en stderr bevat
     `secret-scan: ABORTED at memory ceiling (2G)`.
   - `test_other_rc_is_could_not_check`: commando met rc 5 → exit 2, `COULD NOT CHECK — gitleaks exited 5`.
@@ -125,7 +142,8 @@ blobmodus voor de pre-push-hook) en `push` (de begrensde eerste push). De bestaa
 - [ ] **Stap 2:** `uv run pytest -q tests/test_checkpoint_scan.py`, verwacht FAIL (module ontbreekt).
 - [ ] **Stap 3:** implementeer. Neem de `XDG_RUNTIME_DIR`-reparatie en de ladder van redenen over van
   `pack/core/hooks/commit-test-gate.sh:421-457` (geen systemctl / geen systemd-run / geen choom /
-  `systemctl --user` faalt). Plafond = rc 137 of -9, **of** `oom_kill` > 0 in `memory.events` van de
+  `systemctl --user show-environment` faalt; de scan vraagt geen slice, dus de slicechecks vallen weg).
+  Wacht op het kind met `os.wait4`, niet met `Popen.wait`, voor `max_rss_kb`. Plafond = rc 137 of -9, **of** `oom_kill` > 0 in `memory.events` van de
   scope. Meet met `test_real_ceiling` welk signaal betrouwbaar is na het einde van de scope en
   noteer dat in een commentaar; hou alleen wat werkt.
 - [ ] **Stap 4:** tests PASS.
@@ -179,17 +197,24 @@ findings, anders 0. `FAKE_GITLEAKS_KILL_AT=<n>`: de n-de aanroep doet `kill -9 $
   - `test_dirty_blob_not_in_ledger`: één vuile blob → exit 1, de schone blobs uit die batch in de ledger, de vuile niet.
   - `test_real_gitleaks_finds_pat`, `@needs_gitleaks`: één checkpoint met `FAKE_PAT` → exit 1 en de ref in de uitvoer.
 - [ ] **Stap 2:** tests FAIL.
-- [ ] **Stap 3:** implementeer. Per batch een `tempfile.TemporaryDirectory()`, blobs via één
-  `git cat-file --batch` ernaartoe met de blob-id als bestandsnaam, gitleaks via `run_bounded` met
-  `dir <map> --config <config> --no-banner --redact -f json -r <map>/../report.json --exit-code 1`.
-  Tussenstand per batch naar stderr: `secret-scan: batch <i>/<n>, <mb> MB, <k> findings`.
+- [ ] **Stap 3:** implementeer. Per batch één `tempfile.TemporaryDirectory()` als `<root>`, met de
+  blobs in `<root>/blobs/` (via één `git cat-file --batch`, de blob-id als bestandsnaam) en het rapport
+  op `<root>/report.json`, dat vóór de gitleaks-aanroep niet bestaat. Nooit een rapportpad buiten
+  `<root>`: een gedeeld pad zoals `/tmp/report.json` laat een andere batch of push zijn rapport lezen.
+  gitleaks via `run_bounded` met
+  `dir <root>/blobs --config <config> --no-banner --redact -f json -r <root>/report.json --exit-code 1`.
+  Tussenstand per batch naar stderr: `secret-scan: batch <i>/<n>, <mb> MB, <k> findings`. Met
+  `--keep-going` (de meting) daarnaast per batch `secret-scan: batch <i>/<n> peak RSS <mb> MB`
+  uit `Run.max_rss_kb` (`unknown` bij `None`).
 - [ ] **Stap 4:** tests PASS; `test_second_scan_touches_only_new_blobs` duurt < 20 s.
 - [ ] **Stap 5:** commit `feat(hooks): secret-scan van checkpoints per unieke blob met ledger (#198)`.
 
 ### Taak 5: de pre-push-hook gebruikt de module
 
 **Files:**
-- Modify: `tools/hooks/pre-push-secret-scan.sh` (het verzamelen `:139-164` en de scan `:182-196`; de header-comment bijwerken)
+- Modify: `tools/hooks/pre-push-secret-scan.sh` (het verzamelen `:139-164`, de vroege exit en de
+  gitleaks-check `:166-176`, die nu doorlopen als de entire-lijst of `tips` niet leeg is, en de scan
+  `:182-196`; de header-comment bijwerken)
 - Test: `tests/test_pre_push_secret_scan.py`
 
 **Interfaces:**
@@ -200,7 +225,9 @@ findings, anders 0. `FAKE_GITLEAKS_KILL_AT=<n>`: de n-de aanroep doet `kill -9 $
     de aanroep is `gitleaks dir`, niet `gitleaks git`.
   - `test_shadow_branch_uses_commit_range` (Review Focus 5): een `refs/heads/entire/shadow` op `work` naar
     `ckpt` → `gitleaks git` met `--log-opts`, geen `dir`.
-  - `test_ceiling_blocks_push`: nep-`systemd-run` met rc 137 → push geweigerd, stderr bevat `ABORTED at memory ceiling`,
+  - `test_ceiling_blocks_push`: nep-`gitleaks` plus slagende `systemctl`-stub, `choom`-stub en
+    nep-`systemd-run` met rc 137 op `PATH` (zonder nep-gitleaks laat de hook een push naar een lokale
+    remote ongescand door, `:168-174`) → push geweigerd, stderr bevat `ABORTED at memory ceiling`,
     niet `found a secret`.
   - `test_bulk_push_refused_with_pointer`: met `LIGHTHOUSE_SCAN_VOLUME_LIMIT=1000` → geweigerd, stderr wijst naar `checkpoint_scan.py push`.
 - [ ] **Stap 2:** tests FAIL.
@@ -209,6 +236,9 @@ findings, anders 0. `FAKE_GITLEAKS_KILL_AT=<n>`: de n-de aanroep doet `kill -9 $
   Gewone tips → `python3 -I … run-bounded -- gitleaks git …` met de bestaande `log_opts`. Exit 1 →
   de bestaande BLOCKED-melding; exit 2 → `pre-push: BLOCKED — the scan did not complete:` plus de uitvoer van de module.
   Vul de `tool_bin`-lijsten in de bestaande tests aan met wat de hook nu vóór de gitleaks-check aanroept.
+  Elke test die de hook naar een fixture-repo kopieert, kopieert nu ook `tools/hooks/checkpoint_scan.py`
+  en `.lighthouse/lib/` (de module zoekt `config.py` relatief aan zichzelf), in het bijzonder
+  `test_entire_checkpoints_leave_only_through_the_scan` (`tests/test_pre_push_secret_scan.py:336-340`).
 - [ ] **Stap 4:** alle tests in `tests/test_pre_push_secret_scan.py` en `tests/test_checkpoint_scan.py` PASS,
   met `LIGHTHOUSE_REQUIRE_GITLEAKS=1`.
 - [ ] **Stap 5:** commit `feat(hooks): pre-push scant checkpoints per blob en begrensd (#198)`.
@@ -234,11 +264,16 @@ findings, anders 0. `FAKE_GITLEAKS_KILL_AT=<n>`: de n-de aanroep doet `kill -9 $
     in ≥ 3 `git push`-aanroepen (tel via `GIT_TRACE` of een wrapper), en de hook scant in die pushes niets meer (log leeg).
   - `test_push_full_writes_ledger`: `push --full` na een eerdere scan → log bevat alles opnieuw, daarna is de ledger gevuld.
   - `test_cap_in_push_holds_and_continues`: 201 vuile blobs met één regel → de rest gepusht, overzicht begint met de cap-melding.
+  - `test_push_aborted_pushes_nothing`: `FAKE_GITLEAKS_KILL_AT=2` met 3 batches → exit 2, niets in `ckpt`,
+    batch 1 wel in de ledger.
 - [ ] **Stap 2:** tests FAIL.
 - [ ] **Stap 3:** implementeer. Welke refs de remote mist: `git ls-remote <remote> 'refs/entire/*'`; de
   checkpoint-remote-regel hergebruikt de logica van de hook (lees `.entire/settings*.json` zoals
   `read_entire_settings`; trek die in de module en laat de hook hem aanroepen als dat de regel op één plek houdt).
   Pushen in brokken van ≤ 500 refspecs `<ref>:<ref>`, gewone `git push`, zonder `--no-verify`.
+  Een afgebroken batch (plafond) of `COULD NOT CHECK` in de scan: geen enkele push, exit 2 met de
+  melding; een volgende `push` gaat verder dankzij de ledger. Een brok-`git push` die faalt: stop,
+  exit 2, meld hoeveel refs al gepusht zijn.
 - [ ] **Stap 4:** tests PASS.
 - [ ] **Stap 5:** commit `feat(hooks): checkpoint_scan.py push laat schone checkpoints door (#198)`.
 
@@ -255,6 +290,10 @@ findings, anders 0. `FAKE_GITLEAKS_KILL_AT=<n>`: de n-de aanroep doet `kill -9 $
 - [ ] **Stap 2:** `_ci_scan_command()` in de tests vindt nog precies één `run: gitleaks git`-regel:
   `uv run pytest -q tests/test_pre_push_secret_scan.py` PASS. `md-link-check` meldt niets.
 - [ ] **Stap 3:** commit `docs(security): secret-scan van checkpoints, CI en changelog (#198)`.
+- [ ] **Stap 4:** pas met `/lighthouse-write-issue` de AC-tekst van #198 aan, zoals de spec
+  (*Afwijkingen van de AC*) vastlegt: AC 4 meldt het ongescande volume bij de eerste push (pre-push-hook
+  en `checkpoint_scan.py push`), niet bij `entire import`; AC 2 citeert de Engelse melding
+  `ABORTED at memory ceiling`. Verwijs in de bewerking naar de spec. Geen commit.
 
 ### Taak 8: meting op de Beelink (AC 3)
 
@@ -266,17 +305,23 @@ findings, anders 0. `FAKE_GITLEAKS_KILL_AT=<n>`: de n-de aanroep doet `kill -9 $
   met `ckpt-probe` een niet-bestaande remote-naam (sluit niets uit). Draai het in de achtergrond en volg
   `free -m` en de tussenstand; breek af bij swapgebruik > 1 GB.
 - [ ] **Stap 2:** noteer datum, refs, unieke blobs en MB, aantal batches, totale duur, piek-RSS per batch
-  (`memory.peak` als de scope hem geeft, anders `time -v`) en findings per regel.
+  (de regels `peak RSS` uit `--keep-going`; `time -v` geeft alleen het maximum over de hele run) en
+  findings per regel.
 - [ ] **Stap 3:** schrijf de cijfers en de opdracht in `docs/secret-scan.md`. Verschillen de cijfers sterk
   van 64 MB/256 MB/200, zeg dat in het rapport aan de gebruiker; verplaats geen constante naar config.
 - [ ] **Stap 4:** commit `docs(security): gemeten kosten van een volledige checkpoint-scan (#198)`.
 
 ### Taak 9: na de merge — de echte eerste push
 
-Pas na de merge van #194 en deze PR naar `main`: de hook verwijst naar de kopie in de hoofdcheckout.
+**Niet in de SDD-uitvoering.** SDD stopt na Taak 8 en de PR. Taak 9 draait de bouwer pas na de merge
+van #194 en deze PR naar `main` (keuze van de gebruiker), als eigen sessie: de overdracht na de merge
+noemt deze taak als eerste stap. Dan verwijst de hook naar de kopie in de hoofdcheckout.
 
-- [ ] **Stap 1:** controleer dat `CorneeldH/lighthouse-checkpoints` bestaat en privé is (`gh repo view --json visibility`).
-  Bestaat hij niet of is hij publiek: stop en meld het.
+- [ ] **Stap 1:** `gh repo view CorneeldH/lighthouse-checkpoints --json nameWithOwner,visibility`: verwacht
+  `nameWithOwner` = `CorneeldH/lighthouse-checkpoints` en `visibility` = `PRIVATE`.
+  Bestaat hij niet of is hij niet privé: stop en meld het.
 - [ ] **Stap 2:** in de hoofdcheckout: `bash tools/hooks/install.sh`; controleer dat `.git/hooks/pre-push` het blok bovenaan heeft.
-- [ ] **Stap 3:** `python3 -I tools/hooks/checkpoint_scan.py push <checkpoint-remote>`; meld `<n> pushed, <m> held`
-  en het pad van `held.txt` aan de gebruiker.
+- [ ] **Stap 3:** in de hoofdcheckout: `python3 -I tools/hooks/checkpoint_scan.py push https://github.com/CorneeldH/lighthouse-checkpoints.git`
+  (er is geen git-remote voor de checkpoints; de URL past op de checkpoint-remote-regel van de hook,
+  `.entire/settings.json` → `checkpoint_remote.repo`). Meld `<n> pushed, <m> held` en het pad van
+  `held.txt` aan de gebruiker.
