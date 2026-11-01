@@ -6,20 +6,29 @@ at its own complete `host.toml`, so the real one in `~/.config` never takes part
 and puts stubs for `systemctl`, `systemd-run` and `choom` first on `PATH`, so no
 test depends on the user bus of the host. Only `test_real_ceiling` uses the real
 systemd, and skips without a working user bus.
+
+`scan` is the blob mode of the pre-push hook: the blobs the remote misses, minus the
+ledger, in batches of a fake gitleaks that logs what it got. Only
+`test_real_gitleaks_finds_pat` runs the real gitleaks, on a two-checkpoint fixture.
 """
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import tool_bin
+from tests.pack._testkit import GIT_ENV, git, init_repo, tool_bin
+from tests.test_pre_push_secret_scan import FAKE_PAT, needs_gitleaks
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "tools" / "hooks" / "checkpoint_scan.py"
@@ -297,3 +306,435 @@ def test_real_ceiling(tmp_path):
 
     assert result.returncode == 2, result.stderr
     assert "secret-scan: ABORTED at memory ceiling (8M)" in result.stderr
+
+
+def test_probe_cached_per_process(cs, tmp_path, isolated):
+    """Every batch of one run is bounded the same way: the bus is probed once."""
+    count = tmp_path / "probes"
+    # Succeeds on the first probe only.
+    systemctl = f'#!/bin/sh\necho x >> "{count}"\n[ -e "{count}.seen" ] && exit 1\n: > "{count}.seen"\n'
+    isolated.setenv("PATH", _stub_path(tmp_path, dict(BOUNDED, systemctl=systemctl)))
+    limits = cs.Limits("2G", "200%", None)
+
+    first, _ = cs.wrap(["gitleaks"], limits)
+    second, reason = cs.wrap(["gitleaks"], limits)
+
+    assert reason is None
+    assert first == second
+    assert count.read_text().count("x") == 1
+
+
+# --- scan: blob mode, ledger and batches ------------------------------------------
+
+# A fake gitleaks. `version` prints $FAKE_GITLEAKS_VERSION (default `fake 1`).
+# `dir <dir> ... -r <report>` counts its calls next to $FAKE_GITLEAKS_LOG, logs the
+# name of every file it got, and writes a JSON report with one `fake-rule` finding
+# per file holding FAKESECRET; rc 1 with findings, else 0. Knobs:
+#   FAKE_GITLEAKS_KILL_AT=<n>   the n-th `dir` call SIGKILLs itself before reading
+#   FAKE_GITLEAKS_REPORT=none   write no report; =garbage: write one that is no JSON
+#   FAKE_GITLEAKS_RC=<rc>       exit with this rc instead
+FAKE_GITLEAKS = f"""#!{sys.executable}
+import json, os, signal, sys
+
+args = sys.argv[1:]
+if args[:1] == ["version"]:
+    print(os.environ.get("FAKE_GITLEAKS_VERSION", "fake 1"))
+    sys.exit(0)
+assert args[0] == "dir", args
+log = os.environ["FAKE_GITLEAKS_LOG"]
+calls = log + ".calls"
+n = (int(open(calls).read()) if os.path.exists(calls) else 0) + 1
+open(calls, "w").write(str(n))
+if os.environ.get("FAKE_GITLEAKS_KILL_AT") == str(n):
+    os.kill(os.getpid(), signal.SIGKILL)
+root, report = args[1], args[args.index("-r") + 1]
+findings = []
+with open(log, "a") as out:
+    for name in sorted(os.listdir(root)):
+        path = os.path.join(root, name)
+        out.write(name + "\\n")
+        if b"FAKESECRET" in open(path, "rb").read():
+            findings.append({{"RuleID": "fake-rule", "File": path, "Match": "REDACTED"}})
+mode = os.environ.get("FAKE_GITLEAKS_REPORT", "write")
+if mode == "write":
+    json.dump(findings, open(report, "w"))
+elif mode == "garbage":
+    open(report, "w").write("{{not json")
+sys.exit(int(os.environ.get("FAKE_GITLEAKS_RC", 1 if findings else 0)))
+"""
+
+SCAN_TOOLS = (*REAL_TOOLS, "git")
+
+
+def _git_out(repo: Path, *args: str, stdin: bytes | None = None) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), *args],
+        input=stdin,
+        check=True,
+        capture_output=True,
+        env=dict(os.environ, **GIT_ENV),
+    ).stdout.decode()
+
+
+def _checkpoints(repo: Path, trees: dict[str, dict[str, bytes]]) -> dict[str, str]:
+    """One root commit per ref holding `files`, all through one `git fast-import`."""
+    stream = bytearray()
+    for mark, (ref, files) in enumerate(trees.items(), 1):
+        stream += (
+            f"reset {ref}\ncommit {ref}\nmark :{mark}\n"
+            "committer t <t@example.com> 0 +0000\ndata 10\ncheckpoint\n"
+        ).encode()
+        for path, body in files.items():
+            stream += f"M 100644 inline {path}\ndata {len(body)}\n".encode() + body + b"\n"
+        stream += b"\n"
+    marks = repo / ".git" / "fast-import.marks"
+    _git_out(repo, "fast-import", "--quiet", f"--export-marks={marks}", stdin=bytes(stream))
+    sha = dict(line.split(" ") for line in marks.read_text().splitlines())
+    return {ref: sha[f":{mark}"] for mark, ref in enumerate(trees, 1)}
+
+
+def _bulk_checkpoints(repo: Path, start: int, n: int) -> dict[str, str]:
+    """Checkpoints `start..start+n-1` the way entire grows them: `full.jsonl` of
+    checkpoint i holds lines 0..i%10 of session i//10, and every checkpoint shares
+    one `metadata.json`."""
+    trees = {}
+    for i in range(start, start + n):
+        session, last = divmod(i, 10)
+        transcript = "".join(
+            json.dumps({"session": session, "line": j, "text": f"turn {j}"}) + "\n"
+            for j in range(last + 1)
+        )
+        trees[f"refs/entire/checkpoints/{i % 100:02d}/ck{i:04d}"] = {
+            "0/full.jsonl": transcript.encode(),
+            "0/metadata.json": b'{"agent": "Claude Code"}\n',
+        }
+    return _checkpoints(repo, trees)
+
+
+def _tree_blobs(repo: Path, shas) -> set[str]:
+    blobs = set()
+    for sha in shas:
+        for line in _git_out(repo, "ls-tree", "-r", sha).splitlines():
+            meta, _, _ = line.partition("\t")
+            _, kind, oid = meta.split(" ")
+            if kind == "blob":
+                blobs.add(oid)
+    return blobs
+
+
+class ScanFx:
+    """A repo with a bare checkpoint remote `ckpt`, a fake gitleaks first on PATH,
+    an own host.toml and an own gitleaks config."""
+
+    def __init__(self, tmp_path: Path, gitleaks: str = FAKE_GITLEAKS):
+        self.repo = tmp_path / "repo"
+        init_repo(self.repo)
+        ckpt = tmp_path / "ckpt.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(ckpt)], check=True)
+        git(self.repo, "remote", "add", "ckpt", str(ckpt))
+        self.log = tmp_path / "gitleaks.log"
+        self.config = tmp_path / "gitleaks.toml"
+        self.config.write_text('title = "test"\n', encoding="utf-8")
+        stubs = dict(BOUNDED, gitleaks=gitleaks) if gitleaks else BOUNDED
+        self.env = dict(
+            os.environ,
+            PATH=str(tool_bin(tmp_path / "bin", SCAN_TOOLS, stubs=stubs)),
+            LIGHTHOUSE_HOST_TOML=str(_host(tmp_path)),
+            FAKE_GITLEAKS_LOG=str(self.log),
+        )
+
+    def scan(self, refs: dict[str, str], *flags: str, **env: str):
+        argv = [f"{ref}={sha}" for ref, sha in refs.items()]
+        command = [
+            sys.executable, "-I", str(MODULE), "scan",
+            "--remote", "ckpt", "--config", str(self.config), *flags, *argv,
+        ]  # fmt: skip
+        return subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            env=dict(self.env, **env),
+            cwd=self.repo,
+            timeout=120,
+            check=False,
+        )
+
+    def logged(self) -> list[str]:
+        """The files gitleaks got since the last call, then a fresh log."""
+        lines = self.log.read_text().splitlines() if self.log.exists() else []
+        self.log.unlink(missing_ok=True)
+        Path(f"{self.log}.calls").unlink(missing_ok=True)
+        return lines
+
+    def calls(self) -> int:
+        calls = Path(f"{self.log}.calls")
+        return int(calls.read_text()) if calls.exists() else 0
+
+    def ledger(self) -> set[str]:
+        files = list((self.repo / ".git" / "lighthouse" / "secret-scan").glob("clean-*.txt"))
+        assert len(files) <= 1, files
+        return set(files[0].read_text().split()) if files else set()
+
+
+@pytest.fixture
+def sx(tmp_path) -> ScanFx:
+    return ScanFx(tmp_path)
+
+
+def _blob_id(body: bytes) -> str:
+    return hashlib.sha1(b"blob %d\0" % len(body) + body).hexdigest()
+
+
+def test_second_scan_touches_only_new_blobs(sx):
+    started = time.monotonic()
+    old = _bulk_checkpoints(sx.repo, 0, 500)
+
+    first = sx.scan(old)
+
+    assert first.returncode == 0, first.stderr
+    logged = sx.logged()
+    assert sorted(logged) == sorted(_tree_blobs(sx.repo, old.values()))
+
+    new = _bulk_checkpoints(sx.repo, 500, 5)
+    second = sx.scan({**old, **new})
+
+    assert second.returncode == 0, second.stderr
+    fresh = _tree_blobs(sx.repo, new.values()) - _tree_blobs(sx.repo, old.values())
+    assert len(fresh) == 5  # the shared metadata.json is not among them
+    assert sorted(sx.logged()) == sorted(fresh)
+    assert time.monotonic() - started < 20
+
+
+def test_shared_blob_scanned_once(sx):
+    body = b'{"text": "FAKESECRET"}\n'
+    refs = _checkpoints(
+        sx.repo,
+        {
+            "refs/entire/checkpoints/aa/one": {"0/full.jsonl": body},
+            "refs/entire/checkpoints/bb/two": {"1/full.jsonl": body},
+        },
+    )
+
+    result = sx.scan(refs)
+
+    assert result.returncode == 1, result.stderr
+    assert sx.logged() == [_blob_id(body)]
+    # One hit in a shared blob makes every ref that holds it dirty.
+    assert "refs/entire/checkpoints/aa/one  0/full.jsonl  fake-rule  REDACTED" in result.stdout
+    assert "refs/entire/checkpoints/bb/two  1/full.jsonl  fake-rule  REDACTED" in result.stdout
+
+
+@pytest.mark.parametrize("change", ["config", "gitleaks-version"])
+def test_config_change_rescans_everything(sx, change):
+    refs = _bulk_checkpoints(sx.repo, 0, 20)
+    assert sx.scan(refs).returncode == 0
+    everything = sorted(sx.logged())
+    assert sx.scan(refs).returncode == 0
+    assert sx.logged() == []  # unchanged: all in the ledger
+
+    env = {}
+    if change == "config":
+        sx.config.write_text('title = "test"\n# an allowlist more\n', encoding="utf-8")
+    else:
+        env["FAKE_GITLEAKS_VERSION"] = "fake 2"
+    result = sx.scan(refs, **env)
+
+    assert result.returncode == 0, result.stderr
+    assert sorted(sx.logged()) == everything
+
+
+def _three_batches(sx) -> dict[str, str]:
+    """Three checkpoints of one 1000-byte blob each; with a 1500-byte batch, three batches."""
+    sx.env["LIGHTHOUSE_SCAN_BATCH_BYTES"] = "1500"
+    return _checkpoints(
+        sx.repo,
+        {f"refs/entire/checkpoints/0{i}/ck{i}": {"0/full.jsonl": bytes([65 + i]) * 1000} for i in range(3)},
+    )
+
+
+def test_kill_mid_run_keeps_earlier_batches(sx):
+    refs = _three_batches(sx)
+
+    result = sx.scan(refs, FAKE_GITLEAKS_KILL_AT="2")
+
+    assert result.returncode == 2
+    assert "secret-scan: batch 1/3, " in result.stderr
+    assert (
+        "secret-scan: ABORTED at memory ceiling (2G) in batch 2; "
+        "raise host.scan_memory_max or lower the batch size"
+    ) in result.stderr
+    assert sx.calls() == 2  # batch 3 never ran
+    batch_one = sx.logged()
+    assert len(batch_one) == 1
+    assert sx.ledger() == set(batch_one)
+
+
+@pytest.mark.parametrize(
+    ("report", "rc"),
+    [("none", "0"), ("none", "1"), ("garbage", "0"), ("garbage", "1")],
+)
+def test_missing_report_is_not_clean(sx, report, rc):
+    refs = _bulk_checkpoints(sx.repo, 0, 3)
+
+    result = sx.scan(refs, FAKE_GITLEAKS_REPORT=report, FAKE_GITLEAKS_RC=rc)
+
+    assert result.returncode == 2
+    assert "secret-scan: COULD NOT CHECK — " in result.stderr
+    assert sx.logged()  # gitleaks ran
+    assert sx.ledger() == set()
+
+
+def test_rc1_with_empty_report_is_not_clean(sx):
+    """rc 1 is findings only with findings in the report; gitleaks also exits 1 on an error."""
+    refs = _bulk_checkpoints(sx.repo, 0, 3)
+
+    result = sx.scan(refs, FAKE_GITLEAKS_RC="1")
+
+    assert result.returncode == 2
+    assert "COULD NOT CHECK — " in result.stderr
+    assert sx.ledger() == set()
+
+
+def test_findings_cap_blocks_scan(sx):
+    refs = _checkpoints(
+        sx.repo,
+        {f"refs/entire/checkpoints/cap/ck{i:03d}": {"0/full.jsonl": f"FAKESECRET {i}\n".encode()} for i in range(201)},
+    )
+
+    result = sx.scan(refs)
+
+    assert result.returncode == 1, result.stderr
+    assert sx.calls() == 1  # one batch
+    assert (
+        "secret-scan: 201 findings for rule fake-rule in one batch; "
+        "an allowlist is probably missing for this pattern (sample: REDACTED)"
+    ) in result.stderr
+
+
+def test_under_the_cap_says_nothing(sx):
+    refs = _checkpoints(
+        sx.repo,
+        {f"refs/entire/checkpoints/cap/ck{i:03d}": {"0/full.jsonl": f"FAKESECRET {i}\n".encode()} for i in range(200)},
+    )
+
+    result = sx.scan(refs)
+
+    assert result.returncode == 1, result.stderr
+    assert "allowlist is probably missing" not in result.stderr
+
+
+def test_volume_limit_refuses(sx):
+    refs = _bulk_checkpoints(sx.repo, 0, 20)
+    limit = {"LIGHTHOUSE_SCAN_VOLUME_LIMIT": "1000"}
+
+    refused = sx.scan(refs, **limit)
+
+    assert refused.returncode == 2
+    assert "pre-push: BLOCKED — " in refused.stderr
+    assert "checkpoint blobs (" in refused.stderr
+    assert "are not yet scanned" in refused.stderr
+    assert "run: python3 tools/hooks/checkpoint_scan.py push ckpt" in refused.stderr
+    assert sx.calls() == 0
+
+    # --full is the explicit heavy scan; after it the ledger holds everything.
+    assert sx.scan(refs, "--full", **limit).returncode == 0
+    assert sx.logged()
+    again = sx.scan(refs, **limit)
+    assert again.returncode == 0, again.stderr
+    assert sx.logged() == []
+
+
+def test_full_ignores_the_ledger(sx):
+    refs = _bulk_checkpoints(sx.repo, 0, 10)
+    assert sx.scan(refs).returncode == 0
+    everything = sorted(sx.logged())
+
+    result = sx.scan(refs, "--full")
+
+    assert result.returncode == 0, result.stderr
+    assert sorted(sx.logged()) == everything
+    assert sx.ledger() == set(everything)
+
+
+def test_dirty_blob_not_in_ledger(sx):
+    dirty = b'{"text": "FAKESECRET"}\n'
+    refs = _checkpoints(
+        sx.repo,
+        {
+            "refs/entire/checkpoints/01/clean": {"0/full.jsonl": b"clean one\n", "0/metadata.json": b"{}\n"},
+            "refs/entire/checkpoints/02/dirty": {"0/full.jsonl": dirty, "0/metadata.json": b"{}\n"},
+        },
+    )
+
+    result = sx.scan(refs)
+
+    assert result.returncode == 1, result.stderr
+    assert sx.calls() == 1  # one batch
+    assert "refs/entire/checkpoints/02/dirty  0/full.jsonl  fake-rule  REDACTED" in result.stdout
+    assert "refs/entire/checkpoints/01/clean" not in result.stdout
+    assert sx.ledger() == {_blob_id(b"clean one\n"), _blob_id(b"{}\n")}
+
+
+def test_commits_on_the_remote_are_not_scanned(sx):
+    old = _bulk_checkpoints(sx.repo, 0, 3)
+    # As if a fetch from `ckpt` had brought them: remote-tracking refs.
+    for ref, sha in old.items():
+        git(sx.repo, "update-ref", f"refs/remotes/ckpt/{ref[5:]}", sha)
+    new = _bulk_checkpoints(sx.repo, 3, 1)
+
+    result = sx.scan({**old, **new})
+
+    assert result.returncode == 0, result.stderr
+    # `--not --remotes=` drops whole commits. A blob the new root commit shares with
+    # an old one (metadata.json) is not excluded: git marks trees uninteresting only
+    # along ancestry. The ledger covers that, not rev-list.
+    assert sorted(sx.logged()) == sorted(_tree_blobs(sx.repo, new.values()))
+
+
+def test_keep_going_reports_peak_rss(sx):
+    refs = _three_batches(sx)
+
+    result = sx.scan(refs, "--keep-going")
+
+    assert result.returncode == 0, result.stderr
+    for i in (1, 2, 3):
+        assert re.search(rf"secret-scan: batch {i}/3 peak RSS (\d+|unknown) MB", result.stderr)
+
+
+def test_batches_by_size(cs):
+    blobs = {name: cs.Blob(size, set()) for name, size in [("a", 40), ("b", 50), ("c", 10), ("d", 200)]}
+
+    assert cs.batches(blobs, limit=100) == [["c", "a", "b"], ["d"]]
+    assert cs.batches(blobs, limit=60) == [["c", "a"], ["b"], ["d"]]
+
+
+def test_ledger_written_sorted_and_merged(cs, tmp_path):
+    path = tmp_path / "sub" / "clean-x.txt"
+
+    cs.add_to_ledger(path, ["b", "a"])
+    cs.add_to_ledger(path, ["c", "a"])
+
+    assert path.read_text() == "a\nb\nc\n"
+    assert cs.load_ledger(path) == {"a", "b", "c"}
+    assert list(path.parent.iterdir()) == [path]  # no temp file left behind
+
+
+@needs_gitleaks
+def test_real_gitleaks_finds_pat(tmp_path):
+    sx = ScanFx(tmp_path, gitleaks="")
+    sx.env["PATH"] = os.environ["PATH"]
+    sx.config.write_text((ROOT / ".gitleaks.toml").read_text(encoding="utf-8"), encoding="utf-8")
+    refs = _checkpoints(
+        sx.repo,
+        {
+            "refs/entire/checkpoints/01/leak": {"0/full.jsonl": f'{{"text": "GITHUB_PAT={FAKE_PAT}"}}\n'.encode()},
+            "refs/entire/checkpoints/02/clean": {"0/full.jsonl": b'{"text": "hello"}\n'},
+        },
+    )
+
+    result = sx.scan(refs)
+
+    assert result.returncode == 1, result.stderr
+    assert "refs/entire/checkpoints/01/leak  0/full.jsonl  github-pat  REDACTED" in result.stdout
+    assert FAKE_PAT not in result.stdout + result.stderr
+    assert sx.ledger() == {_blob_id(b'{"text": "hello"}\n')}
