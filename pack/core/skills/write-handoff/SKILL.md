@@ -118,7 +118,10 @@ The block also goes as a comment `🤖 heading:kind_handoff` on the issue, so th
 tick starts the next phase itself. Two entries:
 
 - **Controller run** (the prompt ended on `(issue #<nr>, controller-run)`, or `LIGHTHOUSE_CONTROLLER_RUN`
-  is set in the environment: after a resume the prompt does not carry the suffix): always post.
+  is set in the environment: after a resume the prompt does not carry the suffix): always post,
+  except when this run posted a question with `lighthouse ask` and no answer resumed it yet. Then
+  post nothing, no block either, and stop without any further tool call: a handoff after the
+  question becomes the last turn on the issue, and the answer then resumes nothing.
 - **Interactive, after a phase**: offer it (see the Controller column in Workflow step 4). The user does not put the issue on the board and does not paste fields;
   this skill does that after one question.
 
