@@ -21,10 +21,21 @@ _REPO_READ = re.compile(
     rf"[\"`]((?:\.\./)+(?:tests/(?!pack/fixtures/)[^\"`]*|{_ROOT_MD}))[\"`]"
 )
 
+# The same read built from parts, filepath.Join-style: one or more `".."` parts, then a part
+# that reaches tests/ (not the fixtures) or a loose root .md file. Go builds paths this way, as
+# internal/cli/gather_test.go:23 does for internal/dispatch/testdata.
+_REPO_READ_PARTS = re.compile(
+    r'(?:"\.\."\s*,\s*)+"(?:'
+    r'tests"(?!\s*,\s*"pack"\s*,\s*"fixtures")'
+    r'|tests/(?!pack/fixtures/)[^"]*"'
+    rf'|(?:{_ROOT_MD})"'
+    r")"
+)
+
 
 def _repo_reads(text: str) -> list[str]:
     """The paths of this repo that Go source `text` reads from above its package directory."""
-    return _REPO_READ.findall(text)
+    return _REPO_READ.findall(text) + [m.group(0) for m in _REPO_READ_PARTS.finditer(text)]
 
 
 @pytest.mark.parametrize(
@@ -109,12 +120,32 @@ def test_repo_reads_skips_fixtures_temp_repos_and_inner_dotdot():
     assert _repo_reads(text) == []
 
 
+def test_repo_reads_finds_a_read_built_from_parts():
+    text = (
+        'filepath.Join("..", "..", "README.md")\n'
+        'filepath.Join("..", "..", "tests", "test_x.py")\n'
+        'filepath.Join("..", "CHANGELOG.md")\n'
+        'filepath.Join("..", "..", "tests/test_x.py")\n'
+    )
+    assert len(_repo_reads(text)) == 4
+
+
+def test_repo_reads_parts_skip_fixtures_and_other_dirs():
+    text = (
+        'filepath.Join("..", "..", "tests", "pack", "fixtures", "protocol", "headers.json")\n'
+        'filepath.Join("..", "..", "tests/pack/fixtures/protocol/headers.json")\n'
+        'filepath.Join("..", "dispatch", "testdata", "snapshot.json")\n'
+        'filepath.Join(repo, "tests", "test_x.py")\n'
+    )
+    assert _repo_reads(text) == []
+
+
 def test_no_go_file_reads_tests_or_root_md():
     """Fails when Go code starts to read tests/ (outside the fixtures) or a loose root .md file.
 
-    A Go test reads this repo from its own package directory, so through `../`; go:embed cannot
-    reach above its module. A path built from parts (`filepath.Join(root, "tests", ...)`) is not
-    seen, as for docs/ above.
+    A Go test reads this repo from its own package directory, so through `../` or `".."` parts;
+    go:embed cannot reach above its module. A path from a variable plus parts
+    (`filepath.Join(root, "tests", ...)`) is not seen, as for docs/ above.
     """
     out = subprocess.run(
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.go"],
