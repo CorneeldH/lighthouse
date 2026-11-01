@@ -1098,6 +1098,10 @@ details.who summary:focus-visible {
   max-width: 70ch;
 }
 
+.reference > h3 {
+  margin: 16px 0 0;
+}
+
 .reference-part {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

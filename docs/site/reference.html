@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Reference</title>
-<link rel="stylesheet" href="map.css?v=97605b52">
-<script type="module" src="reference.js?v=97605b52"></script>
+<link rel="stylesheet" href="map.css?v=de831df2">
+<script type="module" src="reference.js?v=de831df2"></script>
 </head>
 <body>
 <header class="page-head">
@@ -46,13 +46,56 @@ browser blocks for a page opened straight from disk. From the root of the reposi
 
 <section id="github" class="reference">
   <h2>GitHub</h2>
-  <p>lighthouse keeps the work on GitHub: issues carry the acceptance criteria, milestones group
-  them, labels mark their state, and every change goes through a pull request. CI checks that pull
-  request on GitHub. The pull request
+  <p>lighthouse keeps the work on GitHub, not in files in the repository: what to do lives in
+  issues and milestones, what was done in pull requests. The skills read and write them with
+  <code>gh</code>; <code>[forge]</code> in <code>lighthouse.toml</code> names the repository.
+  Most of it is a way of working the skills carry, not a file init installs.</p>
+
+  <h3>Issues</h3>
+  <p>One issue is one piece of work. <code>/lighthouse-write-issue</code> writes it from one of two
+  forms: a bug (broken behaviour you can reproduce) or a task (everything else), each with its
+  acceptance criteria and its Definition of Done. The forms live in the skill, not in
+  <code>.github/ISSUE_TEMPLATE/</code>, so a session writes the same issue as a person filling in a
+  form would. Before it writes one, the skill searches for an issue that already covers the work.
+  The acceptance criteria are what <code>/lighthouse-write-pr</code> proves and
+  <code>/lighthouse-close-issue</code> checks again after the merge.</p>
+
+  <h3>Milestones</h3>
+  <p>A milestone is a larger block of work, at least about five issues. Its description is the
+  pitch: the problem, the appetite, the solution, the rabbit holes, a Definition of Done and the
+  no-gos. A milestone without a Definition of Done does not exist. The description is also the
+  gatekeeper: an issue goes into a milestone only when it brings that Definition of Done closer,
+  and otherwise to the backlog, with no milestone.</p>
+
+  <h3>Labels</h3>
+  <p>A blocking label says what stands in the way of the next step: the work is not shaped yet,
+  waits on a decision, on another issue, on a third party, on hands or on a test by a person. At
+  most one at a time; an issue without one is ready to pick up. A block on another issue is first
+  a <code>blocked_by</code> relation on GitHub, then the label. <code>[labels]</code> in
+  <code>lighthouse.toml</code> names the labels; init does not create them on GitHub.</p>
+
+  <h3>The board</h3>
+  <p>Optional: a GitHub Projects board, configured in <code>[forge.board]</code>. Labels and
+  milestones say what an issue is; the board adds only its status (To do, In progress, Done, On
+  hold) and a priority. <code>/lighthouse-start-issue</code> moves an issue to In progress. Without
+  <code>[forge.board]</code> the skills skip it.</p>
+
+  <h3>Pull requests</h3>
+  <p>Every change goes through a pull request and is squash-merged. <code>/lighthouse-write-pr</code>
+  writes the body: <code>Closes #N</code> with an evidence table, one row per acceptance criterion,
+  or <code>Refs #N</code> or <code>No issue</code> with a reason. The hook
+  <code>pr-create-gate</code> blocks a <code>gh pr create</code> without one of those.</p>
+
+  <h3>What init puts in <code>.github/</code></h3>
+  <p>Two files, and no more. The pull request
   <a href="https://github.com/CorneeldH/lighthouse/tree/main/pack/core/templates">template</a>
-  and the GitHub Actions
-  <a href="https://github.com/CorneeldH/lighthouse/tree/main/pack/core/workflows">workflows</a>
-  that init installs are below.</p>
+  becomes <code>.github/pull_request_template.md</code>. The GitHub Actions
+  <a href="https://github.com/CorneeldH/lighthouse/tree/main/pack/core/workflows">workflow</a>
+  unblock-dependents becomes <code>.github/workflows/lighthouse-unblock-dependents.yml</code>:
+  when an issue closes as completed, it removes the blocking label from every issue that waited
+  only on it. It acts as a GitHub App, so init installs it only when <code>[ci]</code> names that
+  app's keys. init installs no CI, no release workflow and no issue templates: those stay your
+  project's own. The ones in this repository's <code>.github/</code> are lighthouse's own.</p>
   <div class="reference-part" data-part="workflows"></div>
 </section>
 </body>
