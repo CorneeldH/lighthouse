@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.7.3] - 2026-11-01
+
+### Fixed
+
+- `docs/tick.md` (*Pauze*) no longer says a running run carries on during a pause. The tick starts nothing, and a running controller run parks at its next tool call; the text now says so and links to the pause flag in `usage-gate.md`.
+
 ## [v0.7.2] - 2026-11-01
 
 ### Fixed
