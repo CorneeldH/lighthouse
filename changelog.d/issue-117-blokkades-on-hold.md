@@ -1,4 +1,4 @@
 ---
 type: added
 ---
-`lighthouse tick` parkeert een uitvoerend issue met een actieve voorganger: een `🤖 Geparkeerd`-comment met `blocked_by`, daarna het board naar On hold. Een half gelukte parkering maakt de volgende tick af, en zodra geen voorganger meer actief is zet tick het issue terug naar Controller. Een On hold dat een mens zette blijft staan. Het overzicht (`lighthouse serve`, `/api/questions`, `/api/returned`) toont alleen issues in Controller als de repo in `host.toml [dispatch]` staat met een `[forge.board]`.
+`lighthouse tick` parks an executing issue that has an active blocker (a `🤖 Geparkeerd` comment with `blocked_by`, then the board to On hold), finishes a half-done park on the next tick, and puts the issue back in Controller once no blocker is active; an On hold set by a human stays untouched. The overview (`lighthouse serve`, `/api/questions`, `/api/returned`) shows only Controller issues when the repo is in `host.toml [dispatch]` with a `[forge.board]`.
