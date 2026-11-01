@@ -1,6 +1,6 @@
 // The repo page: the floor plan of a repo after init, from data/repo.json.
 
-import { initTheme, loadJson, renderRepo } from "./map.js?v=081086c5";
+import { initTheme, loadJson, renderRepo } from "./map.js?v=524a6512";
 
 initTheme(document.getElementById("theme-toggle"));
 

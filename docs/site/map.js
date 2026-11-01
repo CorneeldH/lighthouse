@@ -307,10 +307,17 @@ function commentLines(text, width = 80) {
   return [...lines, line];
 }
 
-/** One file of the configuration page as TOML lines, without a DOM: per table its header, per key
-    its about as a comment and then the key with its default, or commented out with its example
-    when it has none. A derived key is left out: nobody writes it. [{text, key}], `key` only on the
-    line of a key. */
+// The comment behind a key starts in one column per table. A key longer than this does not push
+// that column out: its comment starts on the next line, in the same column.
+const CONFIG_COLUMN = 40;
+// A comment wraps at this column.
+const CONFIG_RIGHT = 100;
+
+/** One file of the configuration page as TOML lines, without a DOM: per table a heading comment
+    with its title, its header and one line per key, set to its default or commented out with its
+    example when it has none, and what it does as a comment behind it, aligned per table. A blank
+    line parts two tables. A derived key is left out: nobody writes it. [{text, key, note}]: `key`
+    only on the line of a key, `note` the index where its comment starts on that line. */
 export function configToml(file) {
   const lines = [];
   for (const table of file.tables) {
@@ -318,23 +325,30 @@ export function configToml(file) {
     if (lines.length) {
       lines.push({ text: "" });
     }
-    lines.push({ text: `[${table.table}]` });
-    for (const key of keys) {
+    lines.push({ text: `# ── ${table.title} `.padEnd(60, "─") }, { text: `[${table.table}]` });
+    const settings = keys.map((key) => {
       const name = key.key.slice(table.table.length + 1);
-      lines.push({ text: "" }, ...commentLines(key.about).map((text) => ({ text })));
-      lines.push(
-        "default" in key
-          ? { text: `${name} = ${tomlValue(key.default)}`, key: key.key }
-          : { text: `# ${name} = ${tomlValue(key.example)}`, key: key.key },
-      );
-    }
+      return "default" in key ? `${name} = ${tomlValue(key.default)}` : `# ${name} = ${tomlValue(key.example)}`;
+    });
+    const column = Math.max(0, ...settings.map((setting) => setting.length).filter((n) => n <= CONFIG_COLUMN)) + 2;
+    keys.forEach((key, index) => {
+      const comments = commentLines(key.about, CONFIG_RIGHT - column);
+      const setting = settings[index];
+      if (setting.length + 2 > column) {
+        lines.push({ text: setting, key: key.key, note: setting.length });
+      } else {
+        lines.push({ text: setting.padEnd(column) + comments.shift(), key: key.key, note: column });
+      }
+      lines.push(...comments.map((text) => ({ text: " ".repeat(column) + text })));
+    });
   }
   return lines;
 }
 
 /** What the configuration page says per key, in the order of the data and without a DOM:
-    [{file, table, key, level, levelLabel, required, default, about, status, readers}]. `default`
-    is the TOML of the default, or null without one. */
+    [{file, table, key, level, levelLabel, required, default, example, options, about, status,
+    readers}]. `default` and `example` are TOML, or null without one. `options` lists the values
+    the key accepts, [{value, isDefault}], or is null when its values are free. */
 export function configEntries(data, packs) {
   const entries = [];
   for (const file of data.files) {
@@ -348,6 +362,10 @@ export function configEntries(data, packs) {
           levelLabel: CONFIG_LEVELS[key.level],
           required: key.required,
           default: "default" in key ? tomlValue(key.default) : null,
+          example: "example" in key ? tomlValue(key.example) : null,
+          options: key.options
+            ? key.options.map((value) => ({ value: String(value), isDefault: key.default === value }))
+            : null,
           about: key.about,
           status: key.readers.length
             ? "Status: works"
@@ -405,11 +423,13 @@ function configBlock(file) {
   for (const line of configToml(file)) {
     if (line.key) {
       const name = line.key.split(".").pop();
-      const at = line.text.indexOf(name);
+      const setting = line.text.slice(0, line.note);
+      const at = setting.indexOf(name);
       const link = el("a", "", name);
       link.href = `#${line.key}`;
-      code.append(line.text.slice(0, at), link, `${line.text.slice(at + name.length)}\n`);
-    } else if (line.text.startsWith("#")) {
+      const comment = el("span", "config-comment", line.text.slice(line.note));
+      code.append(setting.slice(0, at), link, setting.slice(at + name.length), comment, "\n");
+    } else if (line.text.trimStart().startsWith("#")) {
       code.append(el("span", "config-comment", line.text), "\n");
     } else {
       code.append(`${line.text}\n`);
@@ -420,7 +440,38 @@ function configBlock(file) {
   return pre;
 }
 
-/** The row of one key: its name and level, its default, what it does and what reads it. */
+/** The value cell of one key: the values it accepts with the default marked, else its default,
+    else "not set" with an example. */
+function configValue(entry) {
+  const node = el("td");
+  if (entry.options) {
+    const list = el("ul", "config-options");
+    for (const option of entry.options) {
+      const item = el("li", option.isDefault ? "config-option is-default" : "config-option");
+      item.append(el("code", "", option.value));
+      if (option.isDefault) {
+        item.append(el("span", "config-default-mark", "default"));
+      }
+      list.append(item);
+    }
+    node.append(list);
+    if (entry.default === null) {
+      node.append(el("p", "config-none", "not set"));
+    }
+  } else if (entry.default !== null) {
+    node.append(el("code", "", entry.default));
+  } else {
+    node.append(el("span", "config-none", "not set"));
+    if (entry.example !== null) {
+      const example = el("p", "config-none", "e.g. ");
+      example.append(el("code", "", entry.example));
+      node.append(example);
+    }
+  }
+  return node;
+}
+
+/** The row of one key: its name and level, its value, what it does and what reads it. */
 function configRow(entry) {
   const name = el("td");
   name.id = entry.key;
@@ -433,8 +484,6 @@ function configRow(entry) {
     }[entry.required] || `Required ${entry.required}`;
     name.append(el("p", "config-none", required));
   }
-  const fallback =
-    entry.default === null ? el("span", "config-none", "not set") : el("code", "", entry.default);
   let readers;
   if (entry.readers.length) {
     readers = el("ul", "reference-list");
@@ -442,11 +491,11 @@ function configRow(entry) {
   } else {
     readers = el("p", "config-none", "Nothing reads it yet: config.py only checks it.");
   }
-  return [name, cell(fallback), cell(el("p", "", entry.about)), cell(readers)];
+  return [name, configValue(entry), cell(el("p", "", entry.about)), cell(readers)];
 }
 
-/** The configuration page: where the two files are, each file as TOML with its comments and
-    defaults, and per table one row per key. */
+/** The configuration page: where the two files are, each file as TOML with its defaults and a
+    comment behind every key, and per table its title, what it is for and one row per key. */
 export function renderConfig(root, data, packs) {
   const entries = configEntries(data, packs);
   const paths = el("section", "config-file");
@@ -459,7 +508,8 @@ export function renderConfig(root, data, packs) {
   const sections = [paths];
   for (const file of data.files) {
     const section = el("section", "config-file");
-    const note = "Every key with its default. A key without one is commented out, with an example.";
+    const note =
+      "Every key with its default and what it does. A key without a default is commented out, with an example.";
     section.append(el("h2", "", file.file), el("p", "", note), configBlock(file));
     sections.push(section);
   }
@@ -470,8 +520,13 @@ export function renderConfig(root, data, packs) {
       const rows = entries
         .filter((entry) => entry.file === file.file && entry.table === table.table)
         .map(configRow);
-      const head = ["Key", "Default", "What it does", "Read by"];
-      section.append(el("h3", "", `[${table.table}]`), configTable(head, rows));
+      const head = ["Key", "Value", "What it does", "Read by"];
+      const title = el("h3", "", `${table.title} `);
+      title.append(el("code", "", `[${table.table}]`));
+      const theme = el("div", "config-theme");
+      theme.id = table.table;
+      theme.append(title, el("p", "", table.about), configTable(head, rows));
+      section.append(theme);
     }
     sections.push(section);
   }

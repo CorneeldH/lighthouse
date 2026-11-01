@@ -1327,10 +1327,24 @@ details.who summary:focus-visible {
   margin: 0 0 4px;
 }
 
+.config-theme {
+  margin-top: 24px;
+}
+
 .config-file h3 {
-  margin: 20px 0 6px;
-  font-family: ui-monospace, monospace;
-  font-size: 14px;
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.config-file h3 code {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.config-theme > p {
+  margin-bottom: 8px;
 }
 
 .config-file p {
@@ -1423,6 +1437,37 @@ details.who summary:focus-visible {
 
 .config-none {
   color: var(--muted);
+}
+
+/* The values a key accepts, the default one highlighted like the level "Set this". */
+.config-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.config-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.config-option.is-default {
+  border-color: transparent;
+  background: var(--accent-soft);
+  color: #16181d;
+  font-weight: 600;
+}
+
+.config-default-mark {
+  font-size: 11px;
+  font-weight: 400;
 }
 
 .config-level {
