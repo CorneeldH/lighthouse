@@ -8,19 +8,14 @@
       "blurb": "you send a prompt"
     },
     {
-      "id": "skill",
-      "label": "A skill loads",
-      "blurb": "on its description, before the model writes"
-    },
-    {
       "id": "pre-tool",
       "label": "Pre tool use",
       "blurb": "before a tool runs"
     },
     {
       "id": "tool-call",
-      "label": "The tool call",
-      "blurb": "Bash, Edit or Write runs here"
+      "label": "The tool or skill call",
+      "blurb": "Bash, Edit, Write, Skill or Agent runs"
     },
     {
       "id": "post-tool",
@@ -40,8 +35,27 @@
   ],
   "chips": [
     {
+      "id": "issue-impact-scout",
+      "phase": "tool-call",
+      "row": 0,
+      "kind": "lighthouse",
+      "trigger": "skill",
+      "label": "issue-impact-scout",
+      "what": "A narrow, read-only agent that scouts the codebase and returns one IMPACT PACK of facts and evidence.",
+      "how": [
+        "It receives the issue body, the acceptance criteria, the milestone sections, the route and the absolute worktree path, and reads only inside that path with Read, Grep and Glob.",
+        "It turns the criteria into search terms and finds the affected components, their callers and the tests that count them, the nearest existing pattern, the rules that apply and the test command.",
+        "It stops at 35 searches and returns fixed sections in which every fact carries a file:line reference and every gap is marked UNKNOWN.",
+        "If the scout fails, start-issue continues the route without the pack."
+      ],
+      "when": "When start-issue starts it through the Agent tool at gate 4b and 4c, once the worktree exists; it runs as a subagent, and its end is a Subagent stop.",
+      "without": "The design or plan starts without a fact sheet of what the issue touches.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/agents/issue-impact-scout.md"
+    },
+    {
       "id": "test-standard",
-      "phase": "skill",
+      "phase": "tool-call",
       "row": 2,
       "kind": "lighthouse",
       "trigger": "description",
@@ -60,7 +74,7 @@
     },
     {
       "id": "go-standard",
-      "phase": "skill",
+      "phase": "tool-call",
       "row": 3,
       "kind": "lighthouse",
       "trigger": "description",
@@ -79,7 +93,7 @@
     },
     {
       "id": "python-standard",
-      "phase": "skill",
+      "phase": "tool-call",
       "row": 5,
       "kind": "lighthouse",
       "trigger": "description",
@@ -98,7 +112,7 @@
     },
     {
       "id": "shell-standard",
-      "phase": "skill",
+      "phase": "tool-call",
       "row": 6,
       "kind": "lighthouse",
       "trigger": "description",
@@ -615,10 +629,10 @@
       "id": "write-gates",
       "label": "I write code a gate rejects",
       "chips": [
+        "bash-write-check-pre",
         "go-standard",
         "python-standard",
         "shell-standard",
-        "bash-write-check-pre",
         "code-language-check",
         "gofmt-check",
         "ruff-format-check",
@@ -651,8 +665,8 @@
       "id": "red-tests",
       "label": "I commit with red tests",
       "chips": [
-        "test-standard",
         "commit-test-gate-pre",
+        "test-standard",
         "commit-test-gate-post"
       ]
     },
@@ -662,6 +676,14 @@
       "chips": [
         "worktree-check",
         "main-commit-gate"
+      ]
+    },
+    {
+      "id": "agent",
+      "label": "I send an agent to scout",
+      "chips": [
+        "issue-impact-scout",
+        "usage-gate-subagent"
       ]
     },
     {
