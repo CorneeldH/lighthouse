@@ -39,9 +39,19 @@ func writeFile(t *testing.T, path, body string) {
 func TestCatalog(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
-	writeFile(t, filepath.Join(repo, ".claude/skills/lighthouse-a/SKILL.md"),
+	export := filepath.Join(root, "export")
+	writeFile(t, filepath.Join(export, ".claude/skills/lighthouse-a/SKILL.md"),
 		"---\nname: lighthouse-a\ndescription: 'It''s a skill — with quote'\n---\nbody\n")
-	writeFile(t, filepath.Join(repo, ".claude/skills/lighthouse-b/SKILL.md"), "no frontmatter\n")
+	writeFile(t, filepath.Join(export, ".claude/skills/lighthouse-b/SKILL.md"), "no frontmatter\n")
+	// a symlinked SKILL.md that resolves outside the export stays out of the catalog
+	outside := filepath.Join(root, "outside.md")
+	writeFile(t, outside, "---\nname: x\ndescription: leaked\n---\n")
+	if err := os.MkdirAll(filepath.Join(export, ".claude/skills/x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(export, ".claude/skills/x/SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
 	userInstall := filepath.Join(root, "user")
 	projInstall := filepath.Join(root, "proj")
 	writeFile(t, filepath.Join(userInstall, "skills/stale/SKILL.md"), "---\nname: stale\ndescription: old\n---\n")
@@ -54,7 +64,7 @@ func TestCatalog(t *testing.T) {
   {"scope":"user","installPath":"`+userInstall+`","version":"7.0.1"},
   {"scope":"project","projectPath":"`+repo+`","installPath":"`+projInstall+`","version":"7.0.1"}]}}`)
 
-	got, warn, err := Catalog(repo, plugins)
+	got, warn, err := Catalog(export, repo, plugins)
 	if err != nil || warn != "" {
 		t.Fatalf("err = %v warn = %q", err, warn)
 	}
@@ -69,7 +79,7 @@ func TestCatalog(t *testing.T) {
 	// no project entry for this repo: the user entry is used
 	other := filepath.Join(root, "other")
 	writeFile(t, filepath.Join(other, ".claude/skills/x/SKILL.md"), "---\nname: x\ndescription: d\n---\n")
-	got, _, _ = Catalog(other, plugins)
+	got, _, _ = Catalog(other, other, plugins)
 	want = []Skill{{"x", "d"}, {"superpowers:stale", "old"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("user entry: got %v want %v", got, want)
@@ -78,7 +88,7 @@ func TestCatalog(t *testing.T) {
 	// no superpowers entry, and no file at all
 	writeFile(t, plugins, `{"version":2,"plugins":{"other@x":[]}}`)
 	for _, file := range []string{plugins, filepath.Join(root, "missing.json")} {
-		got, warn, err = Catalog(repo, file)
+		got, warn, err = Catalog(export, repo, file)
 		if err != nil || warn == "" {
 			t.Errorf("%s: err = %v warn = %q, want a warning", file, err, warn)
 		}
@@ -86,6 +96,54 @@ func TestCatalog(t *testing.T) {
 			t.Errorf("%s: got %v, want only repo skills", file, got)
 		}
 	}
+}
+
+func TestCheckRouteSkill(t *testing.T) {
+	skill := func(dir string) string { return filepath.Join(dir, ".claude/skills/lighthouse-route-issue/SKILL.md") }
+	t.Run("missing", func(t *testing.T) {
+		if err := CheckRouteSkill(t.TempDir()); err == nil {
+			t.Error("want an error for a missing route skill")
+		}
+	})
+	t.Run("regular file", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, skill(dir), "x")
+		if err := CheckRouteSkill(dir); err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("directory", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.MkdirAll(skill(dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckRouteSkill(dir); err == nil {
+			t.Error("want an error for a directory")
+		}
+	})
+	t.Run("symlink inside", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "real.md"), "x")
+		writeFile(t, filepath.Join(dir, ".claude/skills/lighthouse-route-issue/keep"), "")
+		if err := os.Symlink(filepath.Join(dir, "real.md"), skill(dir)); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckRouteSkill(dir); err != nil {
+			t.Error(err)
+		}
+	})
+	t.Run("symlink outside", func(t *testing.T) {
+		dir := t.TempDir()
+		out := filepath.Join(t.TempDir(), "real.md")
+		writeFile(t, out, "x")
+		writeFile(t, filepath.Join(dir, ".claude/skills/lighthouse-route-issue/keep"), "")
+		if err := os.Symlink(out, skill(dir)); err != nil {
+			t.Fatal(err)
+		}
+		if err := CheckRouteSkill(dir); err == nil {
+			t.Error("want an error for a symlink leaving the directory")
+		}
+	})
 }
 
 func facts7() Facts {

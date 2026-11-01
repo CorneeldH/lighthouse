@@ -202,7 +202,7 @@ func (r *round) repo(ctx context.Context, path string, repo repoconfig.Repo) (fa
 		_, _ = fmt.Fprintf(r.errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 		return true
 	}
-	catalog, warning, err := tri.Catalog(repo.Dir, r.pluginsFile())
+	catalog, warning, err := tri.Catalog(repo.Dir, repo.Dir, r.pluginsFile())
 	if err != nil {
 		_, _ = fmt.Fprintf(r.errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 		return true
