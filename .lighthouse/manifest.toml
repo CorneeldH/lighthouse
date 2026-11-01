@@ -631,7 +631,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "962337a3fe1e568cac48c606a59d5c3d1c6b3ada0547b67414651d112c2ecd30"
+sha256 = "977379f10d07304625308bdfa4c9748cc01f3945bf0ada604098bd38c236909b"
 
 [[unit]]
 kind = "file"
@@ -778,7 +778,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/protocol.py"
 package = "core"
 version = "dev"
-sha256 = "662c0f6366a4b4a18d00aef6273b577140a8a0ecb73366ea3b0793a71cab8564"
+sha256 = "6651e0aac3c29bf54e3999ce9a9cee9a1402052c7c033e04b82bb27c4376424f"
 
 [[unit]]
 kind = "file"

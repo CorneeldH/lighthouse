@@ -65,6 +65,16 @@
     "kind": "rebased"
   },
   {
+    "name": "nl-parked",
+    "body": "🤖 Geparkeerd",
+    "kind": "parked"
+  },
+  {
+    "name": "en-parked",
+    "body": "🤖 Parked",
+    "kind": "parked"
+  },
+  {
     "name": "returned-legacy-key",
     "body": "🤖 Teruggegeven\nreden: geen worktree",
     "kind": "returned",

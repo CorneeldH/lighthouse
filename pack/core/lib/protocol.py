@@ -37,7 +37,7 @@ ROBOT = "🤖"
 MARKER = "<!-- lighthouse:"
 LEGACY_MARKERS = ("<!-- paia:",)
 # The canonical kinds; the heading of kind `x` is `kind_x` in `headings.toml`.
-KINDS = ("handoff", "started", "question", "resumed", "done", "returned", "rebased")
+KINDS = ("handoff", "started", "question", "resumed", "done", "returned", "rebased", "parked")
 # The option letters of a question, and the most questions in one comment.
 LETTERS = "abcdef"
 MAX_QUESTIONS = 4

@@ -99,3 +99,9 @@ func RenderReturned(reason, session, detail, language string) string {
 	}
 	return text
 }
+
+// RenderParked renders a `🤖 Parked`: the header and one `blocked_by:` line with the open
+// predecessors. It has no session and no footer. There is no Python twin: only the tick posts one.
+func RenderParked(blockers []string, language string) string {
+	return Robot + " " + Heading("kind_parked", language) + "\nblocked_by: " + strings.Join(blockers, ", ")
+}

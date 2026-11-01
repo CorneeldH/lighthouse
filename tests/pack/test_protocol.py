@@ -78,6 +78,7 @@ def test_public_names():
         "done",
         "returned",
         "rebased",
+        "parked",
     )
 
 
