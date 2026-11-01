@@ -89,7 +89,7 @@ max_judgments = 15
 Een onbekende sleutel of een waarde onder 1 is een fout die de sleutel noemt. Die fout stopt
 alleen triage, voor die repo: `lighthouse tick` leest `[controller]` en negeert de subtabel, dus
 de tick van die repo blijft draaien. De triage-ronde slaat de repo over met
-`lighthouse: skip <pad>: <fout>` en eindigt met exitcode 2.
+`lighthouse: skip <pad>: <fout>` en eindigt met exitcode 2, ook bij `--dry-run`.
 
 ## Voorwaarden per repo
 
