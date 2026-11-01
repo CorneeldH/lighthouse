@@ -164,3 +164,157 @@ func TestLoadKindAndLanguage(t *testing.T) {
 		t.Errorf("defaults: %q %q %q", d.Kind, d.Language, d.DefaultBranch)
 	}
 }
+
+func TestLoadLabelsDefaults(t *testing.T) {
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Labels{
+		BlockedIssue: "blocked-issue", BlockedExternal: "blocked-external",
+		NeedsShaping: "needs-shaping", NeedsDecision: "needs-decision",
+		NeedsHands: "needs-hands", NeedsTesting: "needs-testing",
+	}
+	if r.Labels != want {
+		t.Errorf("labels = %+v, want %+v", r.Labels, want)
+	}
+}
+
+func TestLoadLabelsFromFile(t *testing.T) {
+	body := `[forge]
+repo = "o/r"
+
+[labels]
+blocked_issue = "3-blocked-issue"
+blocked_external = "3-blocked-external"
+needs_shaping = "3-needs-shaping"
+needs_decision = "3-needs-decision"
+needs_hands = "3-needs-hands"
+needs_testing = "3-needs-testing"
+location_prefix = "1-loc:"
+area_prefix = "2-area:"
+`
+	r, err := Load(write(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := r.Labels
+	if l.LocationPrefix != "1-loc:" || l.AreaPrefix != "2-area:" {
+		t.Errorf("prefixes: %+v", l)
+	}
+	want := []string{
+		"3-blocked-issue", "3-blocked-external", "3-needs-shaping",
+		"3-needs-decision", "3-needs-hands", "3-needs-testing",
+	}
+	got := l.Blocking()
+	if len(got) != len(want) {
+		t.Fatalf("Blocking() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Blocking()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestLoadTriageAbsent(t *testing.T) {
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Triage != nil || r.TriageErr != nil {
+		t.Errorf("triage = %+v, err = %v; want both unset", r.Triage, r.TriageErr)
+	}
+}
+
+func TestLoadTriageDefaults(t *testing.T) {
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n[controller.triage]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Triage{MilestonesOnly: true, WaitForNight: true, MaxForwarded: 5, MaxJudgments: 15}
+	if r.Triage == nil || *r.Triage != want || r.TriageErr != nil {
+		t.Errorf("triage = %+v, err = %v; want %+v", r.Triage, r.TriageErr, want)
+	}
+}
+
+func TestLoadTriageValues(t *testing.T) {
+	body := "[forge]\nrepo = \"o/r\"\n[controller]\n[controller.triage]\nmilestones_only = false\nmax_forwarded = 2\n"
+	r, err := Load(write(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Triage{MilestonesOnly: false, WaitForNight: true, MaxForwarded: 2, MaxJudgments: 15}
+	if r.Triage == nil || *r.Triage != want {
+		t.Errorf("triage = %+v, want %+v", r.Triage, want)
+	}
+}
+
+func TestLoadTriageBadKeyDoesNotFailLoad(t *testing.T) {
+	for name, tc := range map[string]struct{ line, key string }{
+		"unknown key": {"max_forward = 2", "controller.triage.max_forward"},
+		"below one":   {"max_judgments = 0", "controller.triage.max_judgments"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n[controller.triage]\n"+tc.line+"\n"))
+			if err != nil {
+				t.Fatalf("Load must not fail: %v", err)
+			}
+			if r.Controller == nil {
+				t.Error("Controller must stay set so the tick keeps serving the repo")
+			}
+			if r.TriageErr == nil || !strings.Contains(r.TriageErr.Error(), tc.key) {
+				t.Errorf("TriageErr = %v, want it to name %s", r.TriageErr, tc.key)
+			}
+			if err := Triageable(r); err == nil || !strings.Contains(err.Error(), tc.key) {
+				t.Errorf("Triageable = %v, want it to name %s", err, tc.key)
+			}
+		})
+	}
+}
+
+func TestLoadTriageWithoutController(t *testing.T) {
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller.triage]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Triage == nil {
+		t.Error("Triage must be set")
+	}
+	if r.Controller != nil {
+		t.Errorf("Controller = %+v, want nil: [controller.triage] alone is no [controller]", r.Controller)
+	}
+	if err := Dispatchable(r); err == nil || !strings.Contains(err.Error(), "missing [controller]") {
+		t.Errorf("Dispatchable = %v, want missing [controller]", err)
+	}
+}
+
+func TestTriageable(t *testing.T) {
+	withToDo := strings.Replace(full, `"Controller" = "c1"`, `"Controller" = "c1"`+"\n"+`"To do" = "t1"`, 1)
+	withTriage := withToDo + "\n[controller.triage]\n"
+	tests := []struct {
+		name, body, wantErr string
+	}{
+		{"ok", withTriage, ""},
+		{"no To do", full + "\n[controller.triage]\n", "missing forge.board.status_options.To do"},
+		{"no triage", withToDo, "missing [controller.triage]"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r, err := Load(write(t, tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = Triageable(r)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Errorf("Triageable = %v, want nil", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("Triageable = %v, want %q", err, tc.wantErr)
+			}
+		})
+	}
+}
