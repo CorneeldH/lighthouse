@@ -295,7 +295,7 @@ func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) run
 // run-outcome table.
 func (c runCtx) outcome() (Action, bool) {
 	rules := []func() (Action, bool){
-		c.parked, c.merged, c.green, c.gone, c.unknownCommand, c.didNothing,
+		c.parked, c.merged, c.closedIssue, c.green, c.gone, c.unknownCommand, c.didNothing,
 		c.prClosed, c.prDraft, c.prRed, c.noHandoff,
 		c.uncertain, c.permission, c.silent, c.silentForge, c.timeout,
 	}
@@ -355,6 +355,12 @@ func (c runCtx) anyPR(f func(forge.PR) bool) bool {
 
 func (c runCtx) merged() (Action, bool) {
 	return c.closed(runs.Done), c.anyPR(func(pr forge.PR) bool { return pr.State == "MERGED" })
+}
+
+// closedIssue closes a run whose session is Done on an issue that is closed: a close-check run
+// that closed the issue leaves no Handoff, Question or PR of its own.
+func (c runCtx) closedIssue() (Action, bool) {
+	return c.closed(runs.Done), c.done() && c.it.State == "CLOSED"
 }
 
 func (c runCtx) green() (Action, bool) {
