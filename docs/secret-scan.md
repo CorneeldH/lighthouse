@@ -50,9 +50,10 @@ gelijk aan; de verschillen en wat de module ertegen doet:
 
 Wat overblijft:
 
-- Een blob die gitleaks ondanks de newline overslaat, blokkeert elke push van zijn refs (hook en
-  `push`) tot de checkpoint gedropt is. Hij komt nooit schoon in de ledger, maar er is geen weg om
-  hem alsnog te scannen.
+- Een blob die gitleaks ondanks de newline overslaat (de bytetelling klopt niet) maakt de hele batch
+  `COULD NOT CHECK`. Daarmee stopt de scan bij die batch: latere batches komen niet in de ledger.
+  `push` pusht dan niets (het haalt een oude `held.txt` weg) en de hook blokkeert elke push waarvan
+  de ongescande set die blob bevat. Verder komen: drop de checkpoint, of scan hem met de hand.
 - De bytetelling leest een logregel van gitleaks. Verandert die in een nieuwe versie, dan is elke
   batch `COULD NOT CHECK`: dicht, niet open.
 
@@ -162,24 +163,24 @@ een kale `gitleaks git` over `refs/entire/*`.
 ## Kosten van een volledige scan
 
 Gemeten op 2026-11-01 op de always-on host, gitleaks 8.30.1, `.gitleaks.toml` met de allowlist van
-de beta-headers, standaardlimieten (`scan_memory_max = "2G"`, `scan_cpu_quota = "200%"`). De meting
-liep vóór de newline vooraan en de bytetelling: blobs die met een binair magic number begonnen,
-zijn toen overgeslagen, dus de aantallen findings en schone blobs kunnen nu anders uitvallen.
+de beta-headers, standaardlimieten (`scan_memory_max = "2G"`, `scan_cpu_quota = "200%"`). Het zijn
+de cijfers van de tweede meting, na de reviewfixes (newline vooraan, scan in de blobmap, bytetelling).
+Een tweede meting na die fixes zag één vuile blob meer dan de eerste en niets minder.
 
 | Maat | Waarde |
 |---|---|
 | Refs onder `refs/entire/*` | 2671 |
 | Unieke blobs | 8593, 582 MiB (ca. 0,61 GB) |
 | Batches | 10 (negen van 57-64 MB, de laatste 19 MB) |
-| Totale duur | 27,5 s (exit 1: bevindingen) |
-| Piek-RSS per batch (gitleaks) | 102, 104, 94, 91, 86, 83, 79, 75, 71, 66 MB |
+| Totale duur | 28,0 s (exit 1: bevindingen) |
+| Piek-RSS per batch (gitleaks) | 106, 102, 94, 93, 89, 85, 84, 75, 73, 72 MB |
 | Piek-RSS over de hele run | 108 MB |
 | Swap | vlak, geen plafond geraakt |
-| Findings | 469 over de 10 batches (11, 89, 72, 81, 89, 30, 51, 31, 15, 0); hoogste per regel per batch 89 |
+| Findings | 470 over de 10 batches (11, 89, 72, 81, 90, 30, 51, 31, 15, 0); geen batch boven het plafond van 200 |
 
-Na de run kende de ledger 8448 schone blobs; 145 blobs hebben dus een finding. Het rapport telde
-1604 regels over 1478 verschillende refs: `generic-api-key` 1578, `aws-access-token` 26. Bij
-`generic-api-key` zijn de meeste matches `turnAttributionKey` (1453); 56 zijn een tweede
+Na de run kende de ledger 8447 schone blobs; 146 blobs hebben dus een finding. Het rapport telde
+1622 regels over 1496 verschillende refs: `generic-api-key` 1596, `aws-access-token` 26. Bij
+`generic-api-key` zijn (deze deeltallen zijn van de eerste meting van die dag) de meeste matches `turnAttributionKey` (1453); 56 zijn een tweede
 beta-header-combinatie (`oauth-2025-04-20`, met een andere beta-header) die de allowlist niet dekt
 en die niet is toegestaan: die vraagt menselijke beoordeling.
 
