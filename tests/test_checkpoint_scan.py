@@ -611,6 +611,72 @@ def test_findings_cap_blocks_scan(sx):
     ) in result.stderr
 
 
+def _cap_then_clean(sx) -> dict[str, str]:
+    """201 dirty one-line blobs (batch 1, over the cap), then two clean 3000-byte
+    blobs that each get a batch of their own with a 4000-byte batch."""
+    sx.env["LIGHTHOUSE_SCAN_BATCH_BYTES"] = "4000"
+    trees = {f"refs/entire/checkpoints/cap/ck{i:03d}": {"0/full.jsonl": f"FAKESECRET {i}\n".encode()} for i in range(201)}
+    trees.update({f"refs/entire/checkpoints/ok/ck{i}": {"0/full.jsonl": bytes([65 + i]) * 3000} for i in range(2)})
+    return _checkpoints(sx.repo, trees)
+
+
+def test_cap_stops_later_batches(sx):
+    refs = _cap_then_clean(sx)
+
+    result = sx.scan(refs)
+
+    assert result.returncode == 1, result.stderr
+    assert "allowlist is probably missing" in result.stderr
+    assert sx.calls() == 1  # batches 2 and 3 never ran
+
+
+def test_keep_going_scans_past_the_cap(sx):
+    refs = _cap_then_clean(sx)
+
+    result = sx.scan(refs, "--keep-going")
+
+    assert result.returncode == 1, result.stderr
+    assert "allowlist is probably missing" in result.stderr
+    assert sx.calls() == 3
+
+
+def test_other_gitleaks_rc_with_a_report_is_not_clean(sx):
+    """A readable `[]` report does not make rc 2 clean."""
+    refs = _bulk_checkpoints(sx.repo, 0, 3)
+
+    result = sx.scan(refs, FAKE_GITLEAKS_RC="2")
+
+    assert result.returncode == 2
+    assert "secret-scan: COULD NOT CHECK — gitleaks exited 2" in result.stderr
+    assert sx.logged()  # gitleaks ran and wrote its report
+    assert sx.ledger() == set()
+
+
+def test_uncaught_error_is_could_not_check(tmp_path):
+    """A module without `.lighthouse/lib` next to it fails on the import of config.py:
+    exit 2 (could not check), never 1, which the hook reads as findings."""
+    lonely = tmp_path / "tools" / "hooks" / "checkpoint_scan.py"
+    lonely.parent.mkdir(parents=True)
+    shutil.copy(MODULE, lonely)
+    sx = ScanFx(tmp_path)
+    refs = _bulk_checkpoints(sx.repo, 0, 1)
+    argv = [f"{ref}={sha}" for ref, sha in refs.items()]
+
+    result = subprocess.run(
+        [sys.executable, "-I", str(lonely), "scan", "--remote", "ckpt", "--config", str(sx.config), *argv],
+        capture_output=True,
+        text=True,
+        env=sx.env,
+        cwd=sx.repo,
+        timeout=60,
+        check=False,
+    )
+
+    assert result.returncode == 2, result.stderr
+    assert "secret-scan: COULD NOT CHECK — ModuleNotFoundError: " in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 def test_under_the_cap_says_nothing(sx):
     refs = _checkpoints(
         sx.repo,
@@ -685,10 +751,13 @@ def test_commits_on_the_remote_are_not_scanned(sx):
     result = sx.scan({**old, **new})
 
     assert result.returncode == 0, result.stderr
-    # `--not --remotes=` drops whole commits. A blob the new root commit shares with
-    # an old one (metadata.json) is not excluded: git marks trees uninteresting only
-    # along ancestry. The ledger covers that, not rev-list.
-    assert sorted(sx.logged()) == sorted(_tree_blobs(sx.repo, new.values()))
+    # `--not --remotes=` drops whole commits. Whether a blob the new root commit
+    # shares with an old one (metadata.json) is excluded is up to git's tree walk;
+    # the ledger covers that, not rev-list. So only the two sides are pinned.
+    logged = set(sx.logged())
+    old_blobs, new_blobs = _tree_blobs(sx.repo, old.values()), _tree_blobs(sx.repo, new.values())
+    assert not logged & (old_blobs - new_blobs)
+    assert new_blobs - old_blobs <= logged
 
 
 def test_keep_going_reports_peak_rss(sx):
@@ -738,3 +807,316 @@ def test_real_gitleaks_finds_pat(tmp_path):
     assert "refs/entire/checkpoints/01/leak  0/full.jsonl  github-pat  REDACTED" in result.stdout
     assert FAKE_PAT not in result.stdout + result.stderr
     assert sx.ledger() == {_blob_id(b'{"text": "hello"}\n')}
+
+
+# --- push: scan what the checkpoint remote misses, push the clean refs -----------
+
+HOOK = ROOT / "tools" / "hooks" / "pre-push-secret-scan.sh"
+# The hook needs these besides SCAN_TOOLS.
+PUSH_TOOLS = ("bash", "dirname")
+
+
+class PushFx(ScanFx):
+    """ScanFx plus what `push` needs: a bare `origin` next to `ckpt`, entire set up
+    the way lighthouse is (no automatic push, `ckpt` as the checkpoint push remote)
+    and the pre-push scan installed as the repo's hook. The config is the repo's own
+    `.gitleaks.toml`, the one the hook uses, so `push` and the hook share a ledger."""
+
+    def __init__(self, tmp_path: Path, gitleaks: str = FAKE_GITLEAKS):
+        super().__init__(tmp_path, gitleaks)
+        tool_bin(tmp_path / "bin", PUSH_TOOLS)
+        self.ckpt = tmp_path / "ckpt.git"
+        self.origin = tmp_path / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(self.origin)], check=True)
+        git(self.repo, "remote", "add", "origin", str(self.origin))
+        self.config = ROOT / ".gitleaks.toml"
+        entire = self.repo / ".entire"
+        entire.mkdir()
+        (entire / "settings.json").write_text(
+            json.dumps({"enabled": True, "strategy_options": {"push_sessions": False}}), encoding="utf-8"
+        )
+        (entire / "settings.local.json").write_text(
+            json.dumps({"strategy_options": {"checkpoint_push_remote": "ckpt"}}), encoding="utf-8"
+        )
+        hook = self.repo / ".git" / "hooks" / "pre-push"
+        hook.write_text(f'#!/bin/sh\nexec bash "{HOOK}" "$@"\n', encoding="utf-8")
+        hook.chmod(0o755)
+        self.held = self.repo / ".git" / "lighthouse" / "secret-scan" / "held.txt"
+
+    def push(self, *args: str, **env: str):
+        return subprocess.run(
+            [sys.executable, "-I", str(MODULE), "push", *args],
+            capture_output=True,
+            text=True,
+            env=dict(self.env, **env),
+            cwd=self.repo,
+            timeout=300,
+            check=False,
+        )
+
+    def pushed(self, bare: Path | None = None) -> set[str]:
+        """The refs/entire/ refs on `bare` (default: ckpt)."""
+        out = _git_out(bare or self.ckpt, "for-each-ref", "--format=%(refname)", "refs/entire/")
+        return set(out.split())
+
+
+@pytest.fixture
+def px(tmp_path) -> PushFx:
+    return PushFx(tmp_path)
+
+
+@needs_gitleaks
+def test_push_sends_clean_and_holds_dirty(tmp_path):
+    px = PushFx(tmp_path, gitleaks="")
+    px.env["PATH"] = os.environ["PATH"]
+    _checkpoints(
+        px.repo,
+        {
+            "refs/entire/checkpoints/01/one": {"0/full.jsonl": b'{"text": "hello"}\n'},
+            "refs/entire/checkpoints/02/two": {"0/full.jsonl": b'{"text": "goodbye"}\n'},
+            "refs/entire/checkpoints/03/leak": {"0/full.jsonl": f'{{"text": "GITHUB_PAT={FAKE_PAT}"}}\n'.encode()},
+        },
+    )
+
+    result = px.push("ckpt")
+
+    assert result.returncode == 1, result.stderr
+    assert px.pushed() == {"refs/entire/checkpoints/01/one", "refs/entire/checkpoints/02/two"}
+    held = px.held.read_text(encoding="utf-8")
+    assert "refs/entire/checkpoints/03/leak\n  0/full.jsonl  github-pat  REDACTED\n" in held
+    assert "checkpoints/01/one" not in held and "checkpoints/02/two" not in held
+    assert result.stdout.endswith(f"2 pushed, 1 held — see {px.held}\n")
+    assert FAKE_PAT not in result.stdout + result.stderr + held
+
+
+def test_shared_dirty_blob_holds_every_ref(px):
+    """One dirty blob in a ref that looks clean otherwise: that ref is held too."""
+    dirty = b'{"text": "FAKESECRET"}\n'
+    _checkpoints(
+        px.repo,
+        {
+            "refs/entire/checkpoints/01/dirty": {"0/full.jsonl": dirty},
+            "refs/entire/checkpoints/02/shares": {"0/full.jsonl": b"clean\n", "1/full.jsonl": dirty},
+            "refs/entire/checkpoints/03/clean": {"0/full.jsonl": b"clean\n"},
+        },
+    )
+
+    result = px.push("ckpt")
+
+    assert result.returncode == 1, result.stderr
+    assert px.pushed() == {"refs/entire/checkpoints/03/clean"}
+    held = px.held.read_text(encoding="utf-8")
+    assert "refs/entire/checkpoints/01/dirty\n  0/full.jsonl  fake-rule  REDACTED\n" in held
+    assert "refs/entire/checkpoints/02/shares\n  1/full.jsonl  fake-rule  REDACTED\n" in held
+    assert px.logged().count(_blob_id(dirty)) == 1  # scanned once
+    assert result.stdout.endswith(f"1 pushed, 2 held — see {px.held}\n")
+
+
+def test_push_refuses_non_checkpoint_remote(px):
+    _bulk_checkpoints(px.repo, 0, 3)
+
+    result = px.push("origin")
+
+    assert result.returncode == 2
+    assert "is not the checkpoint remote" in result.stderr
+    assert px.pushed(px.origin) == set()
+    assert px.calls() == 0  # refused before any scan
+
+
+def _push_trace(trace: Path) -> list[list[str]]:
+    """The refspecs of every `git push` in a GIT_TRACE file, one list per call."""
+    pushes = []
+    for line in trace.read_text().splitlines():
+        _, hit, argv = line.partition("built-in: git push ")
+        if hit:
+            pushes.append([a for a in argv.split() if a.startswith("refs/")])
+    return pushes
+
+
+def test_push_chunks_refspecs(px, tmp_path):
+    refs = _bulk_checkpoints(px.repo, 0, 1200)
+    trace = tmp_path / "trace"
+
+    result = px.push("ckpt", GIT_TRACE=str(trace))
+
+    assert result.returncode == 0, result.stderr
+    assert px.pushed() == set(refs)
+    pushes = _push_trace(trace)
+    assert len(pushes) >= 3
+    assert all(0 < len(spec) <= 500 for spec in pushes), [len(s) for s in pushes]
+    assert sorted(s for spec in pushes for s in spec) == sorted(f"{r}:{r}" for r in refs)
+    # One gitleaks run, push's own, each blob once: the hook found it all in the ledger.
+    assert px.calls() == 1
+    logged = px.logged()
+    assert sorted(logged) == sorted(_tree_blobs(px.repo, refs.values()))
+    assert result.stdout.endswith(f"1200 pushed, 0 held — see {px.held}\n")
+    assert "peak RSS" not in result.stderr
+
+
+def test_push_full_writes_ledger(px):
+    old = _bulk_checkpoints(px.repo, 0, 5)
+    assert px.scan(old).returncode == 0
+    px.logged()
+    new = _bulk_checkpoints(px.repo, 5, 5)
+    everything = _tree_blobs(px.repo, [*old.values(), *new.values()])
+
+    result = px.push("ckpt", "--full")
+
+    assert result.returncode == 0, result.stderr
+    assert sorted(px.logged()) == sorted(everything)  # the ledger was not read
+    assert px.ledger() == everything
+    assert px.pushed() == set(old) | set(new)
+
+
+def test_cap_in_push_holds_and_continues(px):
+    refs = _cap_then_clean(px)
+
+    result = px.push("ckpt")
+
+    assert result.returncode == 1, result.stderr
+    cap = (
+        "secret-scan: 201 findings for rule fake-rule in one batch; "
+        "an allowlist is probably missing for this pattern (sample: REDACTED)"
+    )
+    # Past the cap: push's own scan ran batches 2 and 3 (the hook prints nothing on a pass).
+    assert "secret-scan: batch 3/3, " in result.stderr
+    clean = {r for r in refs if "/ok/" in r}
+    assert px.pushed() == clean
+    assert result.stdout.startswith(cap + "\n")
+    assert result.stdout.endswith(f"2 pushed, 201 held — see {px.held}\n")
+    held = px.held.read_text(encoding="utf-8")
+    assert held.startswith(cap + "\n")
+    assert held.count("\nrefs/entire/checkpoints/cap/") == 201
+    assert _tree_blobs(px.repo, [refs[r] for r in clean]) <= px.ledger()
+
+
+def test_push_aborted_pushes_nothing(px):
+    refs = _three_batches(px)
+
+    result = px.push("ckpt", FAKE_GITLEAKS_KILL_AT="2")
+
+    assert result.returncode == 2
+    assert "ABORTED at memory ceiling (2G) in batch 2" in result.stderr
+    assert px.pushed() == set()
+    batch_one = px.logged()
+    assert len(batch_one) == 1
+    assert px.ledger() == set(batch_one)
+
+    # A rerun goes on where the ledger left off.
+    again = px.push("ckpt")
+
+    assert again.returncode == 0, again.stderr
+    assert len(px.logged()) == 2
+    assert px.pushed() == set(refs)
+
+
+def test_push_could_not_check_pushes_nothing(px):
+    _bulk_checkpoints(px.repo, 0, 3)
+
+    result = px.push("ckpt", FAKE_GITLEAKS_REPORT="none")
+
+    assert result.returncode == 2
+    assert "secret-scan: COULD NOT CHECK — " in result.stderr
+    assert px.pushed() == set()
+
+
+def test_failed_chunk_stops_and_counts(cs, px, monkeypatch, capsys):
+    """The second of three chunks is refused by the remote: the third is not tried."""
+    refs = _bulk_checkpoints(px.repo, 0, 3)
+    count = px.ckpt / "receives"
+    hook = px.ckpt / "hooks" / "pre-receive"
+    hook.write_text(
+        # Shell builtins only: PATH holds no coreutils.
+        f'#!/bin/sh\necho x >> "{count}"\nn=0\nwhile read -r _; do n=$((n + 1)); done < "{count}"\n[ "$n" -ne 2 ]\n',
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    for key, value in px.env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.chdir(px.repo)
+    monkeypatch.setattr(cs, "PUSH_CHUNK", 1)
+
+    rc = cs.main(["push", "ckpt"])
+
+    err = capsys.readouterr().err
+    assert rc == 2, err
+    assert px.pushed() == {min(refs)}
+    assert count.read_text().count("x") == 2
+    assert "1 of 3 clean refs pushed" in err
+
+
+def _settings_dir(tmp_path: Path, shared: dict | None, local: dict | None = None) -> Path:
+    entire = tmp_path / ".entire"
+    entire.mkdir()
+    if shared is not None:
+        (entire / "settings.json").write_text(json.dumps(shared), encoding="utf-8")
+    if local is not None:
+        (entire / "settings.local.json").write_text(json.dumps(local), encoding="utf-8")
+    return tmp_path
+
+
+GITHUB_CKPT = {"strategy_options": {"push_sessions": False, "checkpoint_remote": {"provider": "github", "repo": "Acme/ckpt"}}}
+
+
+@pytest.mark.parametrize(
+    ("remote", "url", "expected"),
+    [
+        ("c", "https://github.com/Acme/ckpt.git", True),
+        ("c", "https://github.com/Acme/ckpt", True),
+        ("c", "https://github.com/Acme/ckpt/", True),
+        ("c", "git@github.com:Acme/ckpt.git", True),
+        ("c", "git@github.com:Acme/ckpt", True),
+        ("c", "ssh://git@github.com/Acme/ckpt.git", True),
+        ("c", "https://github.com/Acme/widgets.git", False),
+        ("c", "https://gitlab.com/Acme/ckpt.git", False),
+        ("c", "/srv/ckpt.git", False),
+    ],
+)
+def test_checkpoint_remote_by_url(cs, tmp_path, remote, url, expected):
+    settings = cs.read_entire_settings(_settings_dir(tmp_path, GITHUB_CKPT))
+
+    assert cs.is_checkpoint_remote(settings, remote, url) is expected
+
+
+def test_checkpoint_remote_by_gitlab_url(cs, tmp_path):
+    shared = {"strategy_options": {"checkpoint_remote": {"provider": "gitlab", "repo": "Acme/ckpt"}}}
+    settings = cs.read_entire_settings(_settings_dir(tmp_path, shared))
+
+    assert cs.is_checkpoint_remote(settings, "c", "git@gitlab.com:Acme/ckpt.git")
+    assert not cs.is_checkpoint_remote(settings, "c", "git@github.com:Acme/ckpt.git")
+
+
+def test_checkpoint_remote_unknown_provider_never_matches(cs, tmp_path):
+    shared = {"strategy_options": {"checkpoint_remote": {"provider": "forgejo", "repo": "Acme/ckpt"}}}
+    settings = cs.read_entire_settings(_settings_dir(tmp_path, shared))
+
+    assert not cs.is_checkpoint_remote(settings, "c", "https://forgejo.example/Acme/ckpt.git")
+
+
+def test_checkpoint_remote_by_name_from_local_settings(cs, tmp_path):
+    settings = cs.read_entire_settings(
+        _settings_dir(tmp_path, GITHUB_CKPT, local={"strategy_options": {"checkpoint_push_remote": "ckpt"}})
+    )
+
+    assert cs.is_checkpoint_remote(settings, "ckpt", "/srv/anything.git")
+    assert not cs.is_checkpoint_remote(settings, "origin", "/srv/anything.git")
+    # The local file adds to the shared strategy options, it does not replace them.
+    assert cs.is_checkpoint_remote(settings, "c", "https://github.com/Acme/ckpt.git")
+
+
+@pytest.mark.parametrize(
+    ("shared", "local", "self_push"),
+    [
+        (None, None, False),
+        ({"strategy_options": {}}, None, True),
+        ({"strategy_options": {"push_sessions": False}}, None, False),
+        ({"enabled": False, "strategy_options": {}}, None, False),
+        ({"strategy_options": {"push_sessions": False}}, {"strategy_options": {"push_sessions": True}}, True),
+        ({"strategy_options": {}}, {"enabled": False}, False),
+    ],
+    ids=["no-settings", "default-on", "push-sessions-off", "disabled", "local-turns-on", "local-disables"],
+)
+def test_entire_self_push(cs, tmp_path, shared, local, self_push):
+    settings = cs.read_entire_settings(_settings_dir(tmp_path, shared, local))
+
+    assert settings.self_push is self_push

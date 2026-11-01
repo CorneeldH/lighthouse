@@ -26,6 +26,18 @@ Subcommands:
                                findings (one line per ref and path), 2 could not
                                scan, including more than HOOK_VOLUME_LIMIT
                                unscanned without `--full`.
+    push <remote> [--full]     scan every `refs/entire/*` the checkpoint remote
+                               misses, write the dirty refs to `held.txt` next to
+                               the ledger, and push the clean ones with a plain
+                               `git push` (through the hook, which finds them in
+                               the ledger), at most PUSH_CHUNK refspecs per call.
+                               Exit 0 nothing held, 1 refs held, 2 nothing pushed
+                               (not the checkpoint remote, scan aborted) or a
+                               chunk failed.
+    entire-remote --toplevel <dir> <remote> <url>
+                               for the hook: two lines, yes/no, whether entire
+                               may push by itself and whether this is the
+                               checkpoint remote. The rule lives here, once.
 
 The ledger, `<git-common-dir>/lighthouse/secret-scan/clean-<key>.txt`, holds the
 blobs gitleaks saw without a finding in a batch that completed (rc 0 or 1 with a
@@ -53,8 +65,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / ".lighthouse" / "lib"))
-
-from lighthouse_lib.config import ConfigError, host_path, load_host
 
 PREFIX = "secret-scan"
 DEFAULT_MEMORY_MAX = "2G"
@@ -103,9 +113,11 @@ class Run:
     max_rss_kb: int | None
 
 
-def _could_not_check(message: str) -> SystemExit:
-    print(f"{PREFIX}: COULD NOT CHECK — {message}", file=sys.stderr)
-    return SystemExit(2)
+class CouldNotCheck(Exception):
+    """The check cannot be done; `main` says `COULD NOT CHECK — <message>` and exits 2.
+
+    Library code raises this, never SystemExit, so `push` can still report what it did.
+    """
 
 
 def load_limits() -> Limits:
@@ -114,13 +126,18 @@ def load_limits() -> Limits:
     A `host.toml` that does not validate exits 2: a scan with limits nobody chose
     is not a bounded scan.
     """
+    # Imported here, not at the top: a module without `.lighthouse/lib` next to it
+    # then fails inside `main`, as COULD NOT CHECK (exit 2), not with a traceback
+    # (exit 1, which the hook reads as findings).
+    from lighthouse_lib.config import ConfigError, host_path, load_host
+
     path = host_path()
     if not path.exists():
         return Limits(DEFAULT_MEMORY_MAX, DEFAULT_CPU_QUOTA, None)
     try:
         host = load_host(path)
     except ConfigError as exc:
-        raise _could_not_check(str(exc)) from exc
+        raise CouldNotCheck(str(exc)) from exc
     return Limits(
         memory_max=host.scan_memory_max or DEFAULT_MEMORY_MAX,
         cpu_quota=host.scan_cpu_quota or DEFAULT_CPU_QUOTA,
@@ -247,7 +264,7 @@ def _run_bounded_cli(argv: list[str]) -> int:
     try:
         run = run_bounded(argv, limits)
     except OSError as exc:
-        raise _could_not_check(f"{name} did not start: {exc}") from exc
+        raise CouldNotCheck(f"{name} did not start: {exc}") from exc
     sys.stdout.write(run.output)
     if run.ceiling_hit:
         print(
@@ -258,7 +275,7 @@ def _run_bounded_cli(argv: list[str]) -> int:
         return 2
     if run.rc in (0, 1):
         return run.rc
-    raise _could_not_check(f"{name} exited {run.rc}")
+    raise CouldNotCheck(f"{name} exited {run.rc}")
 
 
 @dataclass
@@ -300,9 +317,9 @@ def _git(repo: Path, *args: str, stdin: str | None = None) -> str:
             check=False,
         )
     except OSError as exc:
-        raise _could_not_check(f"git did not start: {exc}") from exc
+        raise CouldNotCheck(f"git did not start: {exc}") from exc
     if proc.returncode != 0:
-        raise _could_not_check(f"git {args[0]} failed: {proc.stderr.strip()}")
+        raise CouldNotCheck(f"git {args[0]} failed: {proc.stderr.strip()}")
     return proc.stdout
 
 
@@ -323,7 +340,7 @@ def missing_blobs(repo: Path, refs: dict[str, str], remote: str) -> dict[str, Bl
     for line in check.splitlines():
         parts = line.split(" ")
         if len(parts) != 3:
-            raise _could_not_check(f"git cat-file: {line}")
+            raise CouldNotCheck(f"git cat-file: {line}")
         oid, kind, size = parts
         if kind == "blob":
             blobs[oid] = Blob(int(size), places[oid])
@@ -336,7 +353,7 @@ def ledger_path(repo: Path, config: Path) -> Path:
     try:
         body = config.read_bytes()
     except OSError as exc:
-        raise _could_not_check(f"cannot read {config}: {exc}") from exc
+        raise CouldNotCheck(f"cannot read {config}: {exc}") from exc
     try:
         version = subprocess.run(
             ["gitleaks", "version"],
@@ -346,9 +363,9 @@ def ledger_path(repo: Path, config: Path) -> Path:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise _could_not_check(f"gitleaks version failed: {exc}") from exc
+        raise CouldNotCheck(f"gitleaks version failed: {exc}") from exc
     if version.returncode != 0:
-        raise _could_not_check(f"gitleaks version exited {version.returncode}")
+        raise CouldNotCheck(f"gitleaks version exited {version.returncode}")
     key = hashlib.sha256(body + version.stdout.strip()).hexdigest()
     return Path(common) / "lighthouse" / "secret-scan" / f"clean-{key}.txt"
 
@@ -359,7 +376,7 @@ def load_ledger(path: Path) -> set[str]:
     except FileNotFoundError:
         return set()
     except OSError as exc:
-        raise _could_not_check(f"cannot read the ledger {path}: {exc}") from exc
+        raise CouldNotCheck(f"cannot read the ledger {path}: {exc}") from exc
 
 
 def add_to_ledger(path: Path, blobs: Iterable[str]) -> None:
@@ -407,7 +424,7 @@ def _env_bytes(name: str, default: int) -> int:
     try:
         return int(value)
     except ValueError as exc:
-        raise _could_not_check(f"{name}={value} is not a number of bytes") from exc
+        raise CouldNotCheck(f"{name}={value} is not a number of bytes") from exc
 
 
 def _mb(size: int) -> str:
@@ -518,14 +535,15 @@ def scan_blobs(
     limits: Limits,
     ledger: Path | None,
     stop_on_cap: bool,
+    report_rss: bool = False,
 ) -> ScanResult:
     """Scan `blobs` in batches and report each batch on stderr as it ends.
 
     After every completed batch its blobs without a finding go into `ledger`. A
     ceiling hit or a batch that could not be scanned ends the scan with `aborted`
     set, and nothing of that batch goes into the ledger. A rule over FINDINGS_CAP
-    in one batch ends the scan after that batch only when `stop_on_cap`; without it
-    (the measurement) every batch also reports gitleaks' peak RSS.
+    in one batch ends the scan after that batch only when `stop_on_cap`. With
+    `report_rss` (the measurement) every batch also reports gitleaks' peak RSS.
     """
     result = ScanResult(findings=[], overloaded=[], aborted=None)
 
@@ -555,10 +573,12 @@ def scan_blobs(
                 add_to_ledger(ledger, (oid for oid in batch if oid not in dirty))
             except OSError as exc:
                 return abort(f"{PREFIX}: COULD NOT CHECK — cannot write the ledger {ledger}: {exc}")
+            except CouldNotCheck as exc:
+                return abort(f"{PREFIX}: COULD NOT CHECK — {exc}")
         result.findings.extend(found)
         size = sum(blobs[oid].size for oid in batch)
         print(f"{PREFIX}: {label}, {_mb(size)} MB, {len(found)} findings", file=sys.stderr)
-        if not stop_on_cap:
+        if report_rss:
             rss = "unknown" if run.max_rss_kb is None else f"{run.max_rss_kb / 1024:.0f}"
             print(f"{PREFIX}: {label} peak RSS {rss} MB", file=sys.stderr)
         capped = False
@@ -592,7 +612,7 @@ def _scan_cli(ns: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     repo = Path.cwd()
     config = Path(ns.config)
     if not config.is_file():
-        raise _could_not_check(f"cannot find {config}; scans must use the same config as CI")
+        raise CouldNotCheck(f"cannot find {config}; scans must use the same config as CI")
     ledger = ledger_path(repo, config)
     blobs = missing_blobs(repo, refs, ns.remote)
     if not ns.full:
@@ -607,7 +627,9 @@ def _scan_cli(ns: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
                 file=sys.stderr,
             )
             return 2
-    result = scan_blobs(repo, blobs, config, limits, ledger, stop_on_cap=not ns.keep_going)
+    result = scan_blobs(
+        repo, blobs, config, limits, ledger, stop_on_cap=not ns.keep_going, report_rss=ns.keep_going
+    )
     lines = {
         f"{ref}  {path}  {f.rule}  {f.match}"
         for f in result.findings
@@ -620,8 +642,200 @@ def _scan_cli(ns: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     return 1 if result.findings else 0
 
 
+@dataclass(frozen=True)
+class EntireSettings:
+    """entire's effective settings, as far as the scan cares."""
+
+    # Whether entire may push checkpoints by itself (with --no-verify, past the hook).
+    self_push: bool
+    # strategy_options.checkpoint_remote: (provider, owner/repo), or None.
+    checkpoint_repo: tuple[str, str] | None
+    # strategy_options.checkpoint_push_remote: a remote name, or "".
+    push_remote: str
+
+
+def read_entire_settings(toplevel: Path) -> EntireSettings:
+    """`.entire/settings.json`, then `.entire/settings.local.json` on top: top-level
+    keys replace, `strategy_options` keys merge."""
+    merged: dict = {}
+    strategy: dict = {}
+    found = False
+    for name in ("settings.json", "settings.local.json"):
+        path = toplevel / ".entire" / name
+        if not path.is_file():
+            continue
+        found = True
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise CouldNotCheck(f"cannot read {path}: {exc}") from exc
+        if not isinstance(data, dict):
+            raise CouldNotCheck(f"cannot read {path}: not a JSON object")
+        strategy.update(data.get("strategy_options") or {})
+        merged.update(data)
+    self_push = (
+        found and merged.get("enabled", True) is not False and strategy.get("push_sessions") is not False
+    )
+    ckpt = strategy.get("checkpoint_remote") or {}
+    repo = (str(ckpt.get("provider", "")), str(ckpt["repo"])) if ckpt.get("repo") else None
+    return EntireSettings(self_push, repo, str(strategy.get("checkpoint_push_remote") or ""))
+
+
+_FORGE_HOSTS = {"github": "github.com", "gitlab": "gitlab.com"}
+
+
+def is_checkpoint_remote(settings: EntireSettings, remote: str, url: str) -> bool:
+    """Is a push to `remote` (`url`) a push to the checkpoint remote? By the remote's
+    name when entire has a checkpoint push remote, else by the URL of the checkpoint
+    repo. The one rule for the pre-push hook and `push`."""
+    if settings.push_remote and remote == settings.push_remote:
+        return True
+    if settings.checkpoint_repo is None:
+        return False
+    provider, path = settings.checkpoint_repo
+    host = _FORGE_HOSTS.get(provider)
+    if host is None:
+        return False
+    tails = (f"{host}/{path}", f"{host}/{path}.git", f"{host}/{path}/", f"{host}:{path}", f"{host}:{path}.git")
+    return url.endswith(tails)
+
+
+def _entire_remote_cli(ns: argparse.Namespace) -> int:
+    settings = read_entire_settings(Path(ns.toplevel))
+    print("yes" if settings.self_push else "no")
+    print("yes" if is_checkpoint_remote(settings, ns.remote, ns.url) else "no")
+    return 0
+
+
+# Refspecs per `git push` of `push`: a bound on the length of the command line.
+PUSH_CHUNK = 500
+
+
+def _resolve_remote(repo: Path, arg: str) -> tuple[str, str]:
+    """(name, url) the way git hands them to the pre-push hook: a configured remote
+    by name and its push URL, anything else as a URL, which is then the name too."""
+    if arg in _git(repo, "remote").split():
+        return arg, _git(repo, "remote", "get-url", "--push", arg).strip()
+    return arg, arg
+
+
+def _refs(out: str, sha_first: bool) -> dict[str, str]:
+    refs = {}
+    for line in out.splitlines():
+        a, _, b = line.partition("\t" if sha_first else " ")
+        sha, ref = (a, b) if sha_first else (b, a)
+        refs[ref] = sha
+    return refs
+
+
+def _write_held(path: Path, overloaded: list[str], held: dict[str, set[str]]) -> None:
+    """The cap lines, then one block per held ref: the ref, then `  <path>  <rule>
+    <match>` per finding. Rewritten every run, through a temp file and a rename."""
+    parts = []
+    if overloaded:
+        parts.append("".join(f"{line}\n" for line in overloaded))
+    for ref in sorted(held):
+        parts.append(f"{ref}\n" + "".join(f"{line}\n" for line in sorted(held[ref])))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as out:
+            out.write("\n".join(parts))
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _push_cli(ns: argparse.Namespace) -> int:
+    repo = Path.cwd()
+    toplevel = Path(_git(repo, "rev-parse", "--show-toplevel").strip())
+    remote, url = _resolve_remote(repo, ns.remote)
+    settings = read_entire_settings(toplevel)
+    if settings.self_push:
+        print(
+            f"{PREFIX}: BLOCKED — entire may push checkpoints by itself here, past the scan; "
+            "set strategy_options.push_sessions to false in .entire/settings.json",
+            file=sys.stderr,
+        )
+        return 2
+    if not is_checkpoint_remote(settings, remote, url):
+        print(
+            f"{PREFIX}: BLOCKED — '{remote}' ({url}) is not the checkpoint remote; "
+            "checkpoints hold agent transcripts and go only there",
+            file=sys.stderr,
+        )
+        return 2
+    limits = load_limits()
+    # The hook's config: one ledger for both, so the hook finds what `push` scanned.
+    config = DEFAULT_CONFIG
+    if not config.is_file():
+        raise CouldNotCheck(f"cannot find {config}; scans must use the same config as CI")
+    ledger = ledger_path(repo, config)
+    local = _refs(_git(repo, "for-each-ref", "--format=%(refname) %(objectname)", "refs/entire/"), False)
+    there = _refs(_git(repo, "ls-remote", remote, "refs/entire/*"), True)
+    missing = {ref: sha for ref, sha in local.items() if there.get(ref) != sha}
+    blobs = missing_blobs(repo, missing, remote)
+    todo = blobs
+    if not ns.full:
+        clean = load_ledger(ledger)
+        todo = {oid: blob for oid, blob in blobs.items() if oid not in clean}
+    volume = sum(blob.size for blob in todo.values())
+    print(
+        f"{PREFIX}: {len(missing)} refs to push, {len(todo)} blobs ({_mb(volume)} MB) to scan",
+        file=sys.stderr,
+    )
+    result = scan_blobs(repo, todo, config, limits, ledger, stop_on_cap=False)
+    if result.aborted is not None:
+        print(f"{PREFIX}: nothing pushed; a rerun goes on from the ledger", file=sys.stderr)
+        return 2
+    held: dict[str, set[str]] = {}
+    for f in result.findings:
+        for ref, path in blobs[f.blob].places:
+            held.setdefault(ref, set()).add(f"  {path}  {f.rule}  {f.match}")
+    held_path = ledger.parent / "held.txt"
+    _write_held(held_path, result.overloaded, held)
+    clean_refs = sorted(ref for ref in missing if ref not in held)
+    pushed = 0
+    for start in range(0, len(clean_refs), PUSH_CHUNK):
+        chunk = clean_refs[start : start + PUSH_CHUNK]
+        sys.stderr.flush()
+        # A plain push, through the pre-push hook. Its stdout goes to stderr: stdout
+        # is the overview.
+        rc = subprocess.run(
+            ["git", "-C", str(repo), "push", remote, *(f"{ref}:{ref}" for ref in chunk)],
+            stdout=2,
+            check=False,
+        ).returncode
+        if rc != 0:
+            print(
+                f"{PREFIX}: git push exited {rc} at refs {start + 1}-{start + len(chunk)}; "
+                f"{pushed} of {len(clean_refs)} clean refs pushed, the rest not",
+                file=sys.stderr,
+            )
+            return 2
+        pushed += len(chunk)
+    for line in result.overloaded:
+        print(line)
+    for ref in sorted(held):
+        print(f"held  {ref}")
+    print(f"{pushed} pushed, {len(held)} held — see {held_path}")
+    return 1 if held else 0
+
+
 def main(args: list[str] | None = None) -> int:
-    args = sys.argv[1:] if args is None else args
+    """Exit 0 clean, 1 findings (or held refs), 2 could not check. Any error, an
+    unexpected one included, is 2: the hook reads 1 as findings."""
+    try:
+        return _main(sys.argv[1:] if args is None else args)
+    except CouldNotCheck as exc:
+        print(f"{PREFIX}: COULD NOT CHECK — {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - see the docstring
+        print(f"{PREFIX}: COULD NOT CHECK — {type(exc).__name__}: {exc}", file=sys.stderr)
+    return 2
+
+
+def _main(args: list[str]) -> int:
     # Everything after the first `--` is the command, untouched by argparse.
     if "--" in args:
         split = args.index("--")
@@ -641,13 +855,27 @@ def main(args: list[str] | None = None) -> int:
     )
     scan.add_argument("--config", default=str(DEFAULT_CONFIG), help="the gitleaks config")
     scan.add_argument("refs", nargs="+", metavar="<ref>=<sha>")
+    push = sub.add_parser("push", help="scan the checkpoints a remote misses, push the clean ones")
+    push.add_argument("remote", help="the checkpoint remote, by name or URL")
+    push.add_argument("--full", action="store_true", help="ignore the ledger (still write it)")
+    rule = sub.add_parser(
+        "entire-remote",
+        help="for the hook: whether entire may push by itself, and whether <remote> is the checkpoint remote",
+    )
+    rule.add_argument("--toplevel", required=True, help="the work tree holding .entire/")
+    rule.add_argument("remote")
+    rule.add_argument("url")
     ns = parser.parse_args(head)
     if ns.cmd == "run-bounded":
         if not command:
             parser.error("run-bounded needs a command after --")
         return _run_bounded_cli(command)
     if command:
-        parser.error("scan takes no command after --")
+        parser.error(f"{ns.cmd} takes no command after --")
+    if ns.cmd == "push":
+        return _push_cli(ns)
+    if ns.cmd == "entire-remote":
+        return _entire_remote_cli(ns)
     return _scan_cli(ns, parser)
 
 

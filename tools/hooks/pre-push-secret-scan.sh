@@ -81,40 +81,20 @@ remote_is_local() {
 
 toplevel="$(git rev-parse --show-toplevel)" || die "COULD NOT CHECK — not inside a work tree."
 
-# entire's effective settings: .entire/settings.json, then .entire/settings.local.json
-# on top. Prints three lines: whether entire may push by itself (yes/no), the
-# checkpoint repo as <provider>:<owner>/<repo> (or empty), and the checkpoint push
-# remote's name (or empty).
-read_entire_settings() {
-  python3 -I - "$toplevel/.entire" <<'PY'
-import json, sys
-from pathlib import Path
-
-base = Path(sys.argv[1])
-merged, strategy, found = {}, {}, False
-for name in ("settings.json", "settings.local.json"):
-    path = base / name
-    if not path.is_file():
-        continue
-    found = True
-    data = json.loads(path.read_text(encoding="utf-8"))
-    strategy.update(data.get("strategy_options") or {})
-    merged.update(data)
-self_push = found and merged.get("enabled", True) is not False and strategy.get("push_sessions") is not False
-ckpt = strategy.get("checkpoint_remote") or {}
-repo = f"{ckpt.get('provider', '')}:{ckpt.get('repo', '')}" if ckpt.get("repo") else ""
-print("yes" if self_push else "no")
-print(repo)
-print(strategy.get("checkpoint_push_remote") or "")
-PY
-}
-
+# Without the module no scan is bounded, and entire's settings are read through it:
+# refuse rather than run gitleaks unbounded.
+[ -f "$CHECKPOINT_SCAN" ] || die "cannot find $CHECKPOINT_SCAN — every scan runs bounded through it."
 command -v python3 >/dev/null 2>&1 || die "COULD NOT CHECK — python3 is needed to read .entire/settings.json."
-settings="$(read_entire_settings)" || die "COULD NOT CHECK — could not read $toplevel/.entire/settings*.json."
+# entire's effective settings (.entire/settings.json, .entire/settings.local.json on
+# top) and the checkpoint-remote rule live in the module, which `checkpoint_scan.py
+# push` shares: two lines, whether entire may push by itself and whether this push
+# goes to the checkpoint remote (by the remote's name when entire has a checkpoint
+# push remote, else by the URL of the checkpoint repo).
+settings="$(python3 -I "$CHECKPOINT_SCAN" entire-remote --toplevel "$toplevel" "$remote" "$url")" ||
+  die "COULD NOT CHECK — could not read $toplevel/.entire/settings*.json."
 {
   read -r entire_self_push
-  read -r checkpoint_repo
-  read -r checkpoint_push_remote
+  read -r checkpoint_remote
 } <<<"$settings"
 
 if [ "$entire_self_push" = "yes" ]; then
@@ -124,24 +104,8 @@ if [ "$entire_self_push" = "yes" ]; then
   exit 1
 fi
 
-# Is this push going to the checkpoint remote? By the remote's name when entire has a
-# checkpoint push remote, else by the URL of the checkpoint repo.
 is_checkpoint_remote() {
-  if [ -n "$checkpoint_push_remote" ] && [ "$remote" = "$checkpoint_push_remote" ]; then
-    return 0
-  fi
-  [ -n "$checkpoint_repo" ] || return 1
-  local host path
-  case "${checkpoint_repo%%:*}" in
-    github) host="github.com" ;;
-    gitlab) host="gitlab.com" ;;
-    *) return 1 ;;
-  esac
-  path="${checkpoint_repo#*:}"
-  case "$url" in
-    *"$host/$path" | *"$host/$path.git" | *"$host/$path/" | *"$host:$path" | *"$host:$path.git") return 0 ;;
-    *) return 1 ;;
-  esac
+  [ "$checkpoint_remote" = "yes" ]
 }
 
 is_entire_ref() {
@@ -209,8 +173,6 @@ fi
 # Without the config the scan is noisier than CI's, so a missing config is an error
 # rather than a silent fallback.
 [ -f "$GITLEAKS_CONFIG" ] || die "cannot find $GITLEAKS_CONFIG — scans must use the same config as CI."
-# Without the module no scan is bounded: refuse rather than run gitleaks unbounded.
-[ -f "$CHECKPOINT_SCAN" ] || die "cannot find $CHECKPOINT_SCAN — every scan runs bounded through it."
 
 # A scan that passed says nothing, except why it had no memory ceiling.
 say_no_ceiling() {
@@ -232,8 +194,14 @@ block() {
     echo "          Rotate the secret, then rewrite the commit or drop the checkpoint before pushing." >&2
     echo "          A false positive belongs in .gitleaks.toml, so CI agrees with this hook." >&2
   else
-    echo "pre-push: BLOCKED — the scan did not complete:" >&2
-    printf '%s\n' "$out" >&2
+    case "$out" in
+      # A refusal of the module's own (the bulk volume): it says what to do.
+      "pre-push: BLOCKED"*) printf '%s\n' "$out" >&2 ;;
+      *)
+        echo "pre-push: BLOCKED — the scan did not complete:" >&2
+        printf '%s\n' "$out" >&2
+        ;;
+    esac
   fi
   exit 1
 }

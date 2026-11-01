@@ -323,6 +323,9 @@ def test_bulk_push_refused_with_pointer(fx, stubs, monkeypatch):
     )
     assert result.returncode != 0
     assert "checkpoint_scan.py push ckpt" in result.stderr
+    # The refusal is its own message, not a scan that did not complete.
+    assert "pre-push: BLOCKED — 3 checkpoint blobs (" in result.stderr
+    assert "the scan did not complete" not in result.stderr
     assert not any(line.startswith("dir ") for line in _calls(log))
     assert not any(r.startswith("refs/entire/") for r in _remote_refs(fx["ckpt"]))
 
