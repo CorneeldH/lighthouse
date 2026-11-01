@@ -142,7 +142,7 @@ func TestOwnLighthouseToml(t *testing.T) {
 		t.Fatal("own repo has no [controller] yet; want error")
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "[controller]") || !strings.Contains(msg, "usage_guard.controller") ||
+	if !strings.Contains(msg, "[controller]") || strings.Contains(msg, "usage_guard.controller") ||
 		strings.Contains(msg, "forge.board") {
 		t.Errorf("reasons: %v", msg)
 	}
