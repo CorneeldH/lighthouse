@@ -57,15 +57,17 @@ starten. Het contract:
   6. `--model sonnet`, alleen op de native lane
   7. de prompt als laatste argument. Hij mag niet met `-` beginnen (claude zou hem als vlag lezen) en
      geen NUL-byte bevatten; anders weigert `Spawn`.
-- **`env`:** precies `LIGHTHOUSE_CONTROLLER_RUN` (de session-id van de run) en `LIGHTHOUSE_STATE_DIR`.
+- **`env`:** precies `LIGHTHOUSE_CONTROLLER_RUN` (de session-id van de run) en `LIGHTHOUSE_STATE_DIR`. Met die twee schrijft de hook
+  `permission-check` een permissie-prompt van de sessie naar `<statemap>/runs/<sessie>/permission.json`;
+  de tick leest dat bestand (zie *Afloop* in [tick.md](tick.md)).
 - **Nooit een token.** De drager heeft er geen veld voor en `env` bevat er geen. Het forge-token blijft
   in `[dispatch.forge] token_file` en wordt per verzoek gelezen.
 - **Het target verbruikt de drager** en voert precies `args` uit, niets toevoegen of weglaten.
   Verbruikt het target hem niet, dan blijft hij staan tot lighthouse hem wist. Lighthouse wist hem
   precies in deze gevallen:
   1. een niet-aangenomen spawn (`ErrNotAccepted`, zie hieronder);
-  2. `CheckOpen` geeft een run terug met `start uncertain: no session found` (`Discard`), zodat een laat
-     startend target niets meer start;
+  2. decide geeft een run terug met "start onzeker: geen sessie gevonden" (`Discard`, zie *Afloop* in
+     [tick.md](tick.md)), zodat een laat startend target niets meer start;
   3. `Remove` na een geslaagde `DELETE` of een 404;
   4. `Cleanup` ziet dat forge de workspace niet meer kent (`ErrGone`).
 
@@ -103,12 +105,12 @@ de spawn aangenomen. Zo niet:
 de 5xx; daarom de herlezing.
 
 **Een laat startende agent.** Verschijnt de agent van een eerdere poging pas na de herlezing, dan is zijn
-rij al `start_failed` (of door `CheckOpen` teruggegeven als "start onzeker"), zonder
+rij al `start_failed` (of door decide teruggegeven als "start onzeker"), zonder
 `workplace_session`. Zijn key staat dus op geen enkele rij. Zo'n sessie telt als **vreemd**: bezet
 zolang ze `working` is of binnen `max_wait` actief, en `ForeignLive` houdt de workspace staan. Het
 opruimen stopt haar nooit.
 
-## Launch en CheckOpen
+## Launch en AdoptSessions
 
 `Launch` loopt na `runs.Take`: `Prepare`, `runs.SetWorkplace`, `Spawn`, `runs.SetSession`. De uitkomst:
 
@@ -122,18 +124,29 @@ opruimen stopt haar nooit.
 `Launch` toetst `Busy` niet zelf. De aanroeper (decide, #114) toetst `Busy` vóór elke start, ook vóór
 een tweede poging.
 
-`CheckOpen` handelt de open runs met een workspace af:
+`AdoptSessions(ctx, db, w, repo)` loopt aan het begin van de precheck van de tick. Het legt alleen de
+sessiekey vast van een open run met een workspace maar zonder key (een onzekere start), als zijn
+`session_id` in de sessies staat. Een sessie die al eigen is van een rij van het issue (`own.Has`) telt
+niet: een resume-run deelt het `session_id` van de eerdere run, en diens sessie kan nog in de lijst
+staan. Het sluit, stopt en vergeet nooit iets, en een run die het niet kan opzoeken houdt zijn lege key;
+de fouten worden samengevoegd en de andere runs worden wel opgezocht. Wat er met een sessie moet die
+niet verschijnt (start onzeker) of die te lang loopt (`max_runtime`), beslist decide; zie *Afloop* in
+[tick.md](tick.md).
 
-- Een run zonder sessiekey zoekt zijn `session_id` in de sessies. Een sessie die al eigen is van een
-  rij van het issue (`own.Has`), telt niet: een resume-run deelt het `session_id` van de eerdere run, en
-  diens sessie kan nog in de lijst staan. Gevonden: de key wordt vastgelegd. Niet gevonden na `max_wait`: de run wordt
-  teruggegeven met de reden `start uncertain: no session found`, en `Discard` wist de drager. Mislukt
-  `Discard`, dan meldt `CheckOpen` die fout en geeft de run toch terug.
-- Een run ouder dan `max_runtime` wordt eerst gestopt (`Stop`) en dan teruggegeven met de reden
-  `timeout (max_runtime)`. Lukt `Stop` niet, dan blijft de run open.
+## Transcripten
 
-De redenen zijn Engels (code-taal onder `internal/**`). Het issue noemt de eerste "start onzeker: geen
-sessie gevonden"; de vertaling naar de projecttaal hoort bij het posten in #114.
+`workplace.Transcripts` is een optionele interface naast `Workplace`: `TranscriptDir(ctx, workspaceID)`
+geeft de map met de transcripten van de workspace (`~/.claude/projects/<cwd, elk teken buiten
+[A-Za-z0-9] als '-'>`; `workplace.ProjectDir`). Staat die map niet op deze host, bijvoorbeeld voor het
+Software-profiel in een devcontainer, dan is dat `workplace.ErrNotMeasurable`: de run is niet
+meetbaar, en dat is geen fout van de tick. Een 404 van forge blijft `workplace.ErrGone`.
+
+`workplace.ReadTranscript(dir, sessionID)` leest `<sessie>.jsonl` en de subagent-transcripten onder
+`<sessie>/subagents` en geeft een `Transcript`: de laatste gebeurtenis over alle draden (`LastEvent`),
+per draad de laatste (`Threads`; `""` is de hoofdthread), het commando waarop de sessie niet startte
+(`UnknownCommand`) en of er een assistent-beurt was (`AssistantTurn`). Een kapotte of afgebroken laatste
+regel telt niet mee. Ontbreekt het hoofdtranscript, dan wikkelt de fout `fs.ErrNotExist`; heeft geen
+draad een regel met tijd, dan is het `ErrNotMeasurable`.
 
 ## Stop
 
@@ -163,7 +176,7 @@ moeten twee dingen gelden:
 2. haar `session_id` bij forge is leeg, of gelijk aan het `session_id` van die rij.
 
 Elke andere sessie is **vreemd**. `Busy`, `ForeignLive`, de stopselectie van `Cleanup` en de zoektocht van
-`CheckOpen` gebruiken alle vier deze ene regel.
+`AdoptSessions` gebruiken alle vier deze ene regel.
 
 Waarom de key: een resume-run krijgt een nieuwe rij met hetzelfde `session_id` als de eerdere run.
 Mislukt de start van zo'n resume zonder key, dan zou een late agent met dat `session_id` op het
@@ -235,6 +248,6 @@ Apply (`internal/dispatch`) roept `Busy` en `Launch` aan, voor `lighthouse tick`
 (zie [tick.md](tick.md)). Apply toetst `Busy` vóór `runs.Take`, dus vóór elke start en ook vóór een
 tweede poging, en start de agent met `Launch` als laatste stap. De instructies van de run schrijft
 apply naar `<statemap>/runs/<sessie>/instructions.md` (bestand 0600, map 0700); de statemap is
-`${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. `CheckOpen` en `Cleanup` roept #115 nog aan.
-#115 levert de `activity` (laatste transcript-gebeurtenis per sessiekey), en #112 en #114 leveren
+`${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`. `AdoptSessions` loopt in de precheck van de tick, de `activity` (laatste transcript-gebeurtenis per
+sessiekey) komt uit de transcriptmeting, en `Cleanup` roept #115 nog aan. #112 en #114 leveren
 `InController` en `MergedHead` van de kandidaat.
