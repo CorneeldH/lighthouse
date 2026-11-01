@@ -1,4 +1,4 @@
 ---
 type: changed
 ---
-De configuratiepagina leest makkelijker. In `lighthouse.toml` en `host.toml` staat wat een key doet nu als comment achter de key, uitgelijnd per tabel, met per onderwerp een kopje en een witregel ertussen. Onder de bestanden heeft elke tabel een titel en een korte toelichting, en een key met een vaste set waarden toont die als opties, met de default gemarkeerd (zoals `nl` en `en` bij `[project] language`).
+The configuration page reads more easily. In `lighthouse.toml` and `host.toml` what a key does now stands as a comment behind the key, aligned per table, with a heading and a blank line per topic. Below the files each table has a title and a short explanation, and a key with a fixed set of values shows them as options with the default highlighted, such as `nl` and `en` for `[project] language`.
