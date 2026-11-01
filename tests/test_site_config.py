@@ -460,3 +460,49 @@ def test_toml_examples_pass_config_py(tmp_path):
     path = tmp_path / "host.toml"
     path.write_text(uncommented(text), encoding="utf-8")
     assert config.load_host(path).gate_slice == "lighthouse-gate.slice"
+
+
+def test_options_are_the_values_config_py_accepts():
+    """A key with a fixed set of values lists exactly that set; config.py rejects every other."""
+    expected = {
+        "project.language": list(config.LANGUAGES),
+        "project.code_language": ["en"],
+        "forge.kind": ["github"],
+        **{key: [True, False] for key, kind in config.SCHEMA.items() if kind == config._BOOL},
+    }
+    on_map = {k["key"]: k["options"] for k in all_keys(load("config.json")) if "options" in k}
+    assert on_map == expected
+
+
+def test_config_entries_mark_the_default_option():
+    entries = config_entries()
+    assert entries["project.language"]["options"] == [
+        {"value": "nl", "isDefault": False}, {"value": "en", "isDefault": True}]
+    assert entries["usage_guard.resume"]["options"] == [
+        {"value": "true", "isDefault": False}, {"value": "false", "isDefault": True}]
+    assert entries["paths.specs"]["options"] is None
+    assert entries["paths.tenets"]["example"] == '"docs/tenets.md"'
+
+
+def test_every_table_has_a_title_and_what_it_is_for():
+    for f in load("config.json")["files"]:
+        for t in f["tables"]:
+            assert t["title"].strip() and len(t["about"].split()) >= 8, t["table"]
+
+
+def test_toml_puts_what_a_key_does_behind_it_in_one_column():
+    data = json.dumps(load("config.json"))
+    for f in load("config.json")["files"]:
+        about = {k["key"]: k["about"] for t in f["tables"] for k in t["keys"]}
+        lines = run_map(f"m.configToml({data}.files.find((f) => f.file === {json.dumps(f['file'])}))")
+        for index, line in enumerate(lines):
+            if "key" not in line:
+                continue
+            comment = line["text"][line["note"]:] or lines[index + 1]["text"]
+            assert comment.strip().startswith("# " + about[line["key"]].split()[0]), line
+        # One column per table: every comment that does not open a line starts in the same place.
+        tables = "\n".join(line["text"] for line in lines).split("\n\n")
+        for table in tables:
+            columns = {len(text) - len(text.lstrip()) for text in table.splitlines() if text.startswith(" ")}
+            columns |= {text.index("  # ") + 2 for text in table.splitlines() if "  # " in text}
+            assert len(columns) <= 1, table
