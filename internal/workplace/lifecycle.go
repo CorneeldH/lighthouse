@@ -144,8 +144,8 @@ type Candidate struct {
 // The order: in the controller or an open run of the issue or on the workspace
 // (nothing), the workspace path (looked up when the candidate has none), the
 // sessions (a workspace forge no longer knows counts as removed), a live foreign
-// session (keep), stop the own sessions, dirty, unpushed, an open run again
-// (nothing), remove.
+// session (keep), an open run again (nothing), stop the own sessions, dirty,
+// unpushed, an open run again (nothing), remove.
 func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candidate, now time.Time) (removed bool, err error) {
 	if c.Workspace.ID == "" {
 		return false, errors.New("cleanup: candidate has no workspace id")
@@ -218,6 +218,13 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		}
 		ids = append(ids, s.SessionID)
 	}
+	// lighthouse run takes no tick.lock: a run claimed since the first check would count its
+	// agent as own here, and Stop would end it.
+	if running, err := hasOpenRun(ctx, db, c); err != nil {
+		return keep("not measurable: open runs: " + err.Error())
+	} else if running {
+		return false, nil
+	}
 	if len(ids) > 0 {
 		if err := w.Stop(ctx, c.Workspace.ID, ids); err != nil {
 			return keep("not measurable: stop: " + err.Error())
@@ -238,8 +245,8 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	if unpushed {
 		return keep("unpushed commits")
 	}
-	// lighthouse run takes no tick.lock: a run claimed during the checks above keeps the
-	// workspace. A run that Prepare already found but has not claimed yet is not seen here.
+	// Again for a run claimed during the git checks. A run that Prepare already found but has
+	// not claimed yet is not seen here.
 	if running, err := hasOpenRun(ctx, db, c); err != nil {
 		return keep("not measurable: open runs: " + err.Error())
 	} else if running {

@@ -504,6 +504,35 @@ func TestCleanupRunClaimedDuringChecks(t *testing.T) {
 	}
 }
 
+// claimOnSessions claims a run of issue 7 on w1 while Sessions is read, as lighthouse run can
+// between Cleanup's first open-run check and Stop, and lists that run's working session.
+type claimOnSessions struct {
+	fakeWP
+	t  *testing.T
+	db *sql.DB
+}
+
+func (f *claimOnSessions) Sessions(ctx context.Context, id string) ([]Session, error) {
+	r, sid := takeRun(f.t, f.db, 7, lcNow)
+	if err := runs.SetWorkplace(ctx, f.db, r.ID, id, "issue-7"); err != nil {
+		f.t.Fatal(err)
+	}
+	if err := runs.SetSession(ctx, f.db, r.ID, "k-new"); err != nil {
+		f.t.Fatal(err)
+	}
+	return []Session{{Key: "k-new", WorkspaceID: id, SessionID: sid, State: "working"}}, nil
+}
+
+// A run claimed after the first open-run check is never stopped.
+func TestCleanupRunClaimedBeforeStop(t *testing.T) {
+	db := openLeftoverDB(t)
+	w := &claimOnSessions{t: t, db: db}
+	removed, err := Cleanup(context.Background(), db, w, noRunner(t), cand(7), lcNow)
+	if err != nil || removed || w.stops != 0 || w.removes != 0 {
+		t.Fatalf("Cleanup = %v, %v, stops %d, removes %d; want the run untouched", removed, err, w.stops, w.removes)
+	}
+}
+
 func TestCleanupInControllerUntouched(t *testing.T) {
 	db := openLeftoverDB(t)
 	w := &fakeWP{}

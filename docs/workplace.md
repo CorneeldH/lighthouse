@@ -228,7 +228,9 @@ lopende run wordt nooit afgebroken. Daarna, in deze volgorde, en elke stap die d
 3. Eigen keys lezen (`runs.SessionKeys`). Mislukt: `not measurable: session keys: …`.
 4. Een niet-`done` vreemde sessie (`ForeignLive`, ook een stille): `foreign session <key>`. Een
    vreemde sessie stopt lighthouse nooit; de workspace blijft onder haar staan.
-5. De eigen sessies (`own.Has`) stoppen (`Stop`, met hun `session_id`'s). `Stop` beëindigt de hele systemd-unit van
+5. De eigen sessies (`own.Has`) stoppen (`Stop`, met hun `session_id`'s). Vlak ervoor leest `Cleanup` de
+   open runs opnieuw: een run die `lighthouse run` sinds de eerste check claimde, telt zijn agent hier als
+   eigen, en `Stop` zou hem beëindigen; dan blijft alles staan. `Stop` beëindigt de hele systemd-unit van
    de worktree, dus dat gebeurt pas nadat stap 4 geen vreemde sessie vond. Het gebeurt vóór de git-checks:
    een eigen agent die nog werkt, kan na de check niets meer committen. Een eigen sessie zonder
    `session_id` die niet `done` is, is niet te stoppen: `not measurable: own session <key> has no
@@ -238,7 +240,7 @@ lopende run wordt nooit afgebroken. Daarna, in deze volgorde, en elke stap die d
    gemergede PR (`MergedHead`), dan telt dat niet: elke PR wordt squash-merged en GitHub verwijdert de
    branch, dus zonder deze uitzondering bleef elke afgeronde workspace staan.
 8. Een fout bij git: `not measurable: <fout>`. Een worktree die niet meetbaar is, is nooit "schoon".
-9. Opnieuw de open runs. `lighthouse run` neemt geen `tick.lock`: een run die tijdens de stappen hierboven
+9. Opnieuw de open runs. `lighthouse run` neemt geen `tick.lock`: een run die tijdens de git-checks
    geclaimd werd, op het issue of op de workspace, houdt de workspace. Onleesbaar:
    `not measurable: open runs: …`. Eén venster blijft open: een `lighthouse run` die de workspace met
    `Prepare` al vond maar zijn run nog niet claimde, ziet `Cleanup` niet. Die start mislukt dan als
