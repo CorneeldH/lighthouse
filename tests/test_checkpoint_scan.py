@@ -1203,11 +1203,16 @@ def test_cap_in_push_holds_and_continues(px):
 
 def test_push_aborted_pushes_nothing(px):
     refs = _three_batches(px)
+    # held.txt of an earlier run: it no longer says what is held.
+    px.held.parent.mkdir(parents=True)
+    px.held.write_text("refs/entire/checkpoints/old/held\n", encoding="utf-8")
 
     result = px.push("ckpt", FAKE_GITLEAKS_KILL_AT="2")
 
     assert result.returncode == 2
     assert "ABORTED at memory ceiling (2G) in batch 2" in result.stderr
+    assert f"nothing pushed; removed {px.held}" in result.stderr
+    assert not px.held.exists()
     assert px.pushed() == set()
     batch_one = px.logged()
     assert len(batch_one) == 1

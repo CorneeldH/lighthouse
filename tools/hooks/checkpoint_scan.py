@@ -839,14 +839,20 @@ def _push_cli(ns: argparse.Namespace) -> int:
         file=sys.stderr,
     )
     result = scan_blobs(repo, todo, config, limits, ledger, stop_on_cap=False)
+    held_path = ledger.parent / "held.txt"
     if result.aborted is not None:
-        print(f"{PREFIX}: nothing pushed; a rerun goes on from the ledger", file=sys.stderr)
+        # A held.txt of an earlier run no longer says what is held.
+        held_path.unlink(missing_ok=True)
+        print(
+            f"{PREFIX}: nothing pushed; removed {held_path}; a rerun goes on from the "
+            "ledger and writes it again",
+            file=sys.stderr,
+        )
         return 2
     held: dict[str, set[str]] = {}
     for f in result.findings:
         for ref, path in blobs[f.blob].places:
             held.setdefault(ref, set()).add(f"  {path}  {f.rule}  {f.match}")
-    held_path = ledger.parent / "held.txt"
     _write_held(held_path, result.overloaded, held)
     clean_refs = sorted(ref for ref in missing if ref not in held)
     pushed = 0
