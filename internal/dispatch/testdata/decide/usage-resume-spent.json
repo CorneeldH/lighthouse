@@ -101,5 +101,14 @@
       }
     ]
   },
-  "want": []
+  "want": [
+    {
+      "kind": "drop_marker",
+      "repo": "o/r",
+      "issue": 7,
+      "trigger_key": "usage:s1@2026-10-31T11:00:00Z:2026-10-31T11:30:00Z",
+      "session_id": "s1",
+      "language": "nl"
+    }
+  ]
 }

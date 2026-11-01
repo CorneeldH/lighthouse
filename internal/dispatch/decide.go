@@ -298,8 +298,9 @@ func lastOfSession(history []runs.Row, session string) (runs.Row, bool) {
 }
 
 // dropMarkers gives a drop_marker for every marker of repo that will never resume: its last
-// run is closed and not resumable, or its issue left the snapshot or is closed. An open last
-// run, or none, gives nothing; On hold keeps the marker for when the issue comes back.
+// run is closed and not resumable, or parked under a key a run already spent (usageResume never
+// fires for it), or its issue left the snapshot or is closed. An open last run, or none, gives
+// nothing; On hold keeps the marker for when the issue comes back.
 func dropMarkers(repo RepoInput) []Action {
 	var out []Action
 	for _, m := range repo.Markers {
@@ -309,7 +310,8 @@ func dropMarkers(repo RepoInput) []Action {
 		}
 		i := slices.IndexFunc(repo.Snapshot.Items, func(it Item) bool { return it.Issue == last.Issue })
 		gone := i < 0 || repo.Snapshot.Items[i].State == "CLOSED"
-		if !gone && runs.Resumable(last, m.Key()) {
+		stuck := last.Outcome == runs.Parked && spentKey(repo.History, m.Key())
+		if !gone && !stuck && runs.Resumable(last, m.Key()) {
 			continue
 		}
 		out = append(out, Action{
@@ -516,7 +518,10 @@ func (c issueCtx) startFailed(row runs.Row) (Action, bool) {
 func (c issueCtx) usageResume() (planned, bool) {
 	for _, m := range c.repo.Markers {
 		run, ok := lastOfSession(c.repo.History, m.SessionID)
-		if !ok || run.Issue != c.it.Issue || run.Open || run.Outcome != runs.Parked || c.spent(m.Key()) {
+		// Resumable also holds for a first resume that failed to start; that one is retry's,
+		// so only a run closed as parked resumes here.
+		if !ok || run.Issue != c.it.Issue || !runs.Resumable(run, m.Key()) || run.Outcome != runs.Parked ||
+			c.spent(m.Key()) {
 			continue
 		}
 		at, _ := m.Reset()
@@ -701,13 +706,10 @@ func lastTurn(hs []parsed) *parsed {
 }
 
 // spent reports whether a run of the repo already has this trigger key.
-func (c issueCtx) spent(key string) bool {
-	for _, row := range c.repo.History {
-		if row.TriggerKey == key {
-			return true
-		}
-	}
-	return false
+func (c issueCtx) spent(key string) bool { return spentKey(c.repo.History, key) }
+
+func spentKey(history []runs.Row, key string) bool {
+	return slices.ContainsFunc(history, func(row runs.Row) bool { return row.TriggerKey == key })
 }
 
 func (c issueCtx) comment(id int64) (Comment, bool) {
