@@ -249,7 +249,7 @@ type sweepRepo struct {
 }
 
 // sweepRepos runs workplace.Sweep for each repo: the workspaces of issues the controller no
-// longer holds go, when nothing is lost by it (docs/workplace.md, Opruimen). Each removed
+// longer holds go, when nothing is lost by it (workplace.Cleanup). Each removed
 // workspace gets a removed line on errOut, each repo whose sweep failed a cleanup line; a
 // workspace it keeps gets no line: it is in Workspaces to clean up. A repo without a
 // workspace to sweep builds no workplace. failed reports a cleanup line.
