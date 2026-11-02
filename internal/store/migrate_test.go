@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 4 {
-		t.Errorf("user_version = %d, want 4", v2)
+	if v2 != 5 {
+		t.Errorf("user_version = %d, want 5", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -361,7 +361,7 @@ func TestMigrate0004KeepsRuns(t *testing.T) {
 	if _, err := db.Exec(insert, 43, 8, "fixpr", "fixpr:12:abc", nil, nil, ""); err == nil {
 		t.Fatal("version 3 accepted trigger fixpr")
 	}
-	if err := migrate(ctx, db, migrationFS); err != nil {
+	if err := migrate(ctx, db, embeddedUpTo(t, "0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql", "0004_runs_fixpr.sql")); err != nil {
 		t.Fatalf("migrate to 4: %v", err)
 	}
 	if v := userVersion(t, db); v != 4 {
@@ -404,5 +404,39 @@ func TestMigrate0004KeepsRuns(t *testing.T) {
 	var n int
 	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'runs_trigger'`).Scan(&n); err != nil || n != 1 {
 		t.Errorf("runs_trigger index count = %d, %v; want 1", n, err)
+	}
+}
+
+// 0005 adds workspace_removed_at to runs: every row from before keeps its columns and has no mark.
+func TestMigrate0005KeepsRuns(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	if err := migrate(ctx, db, embeddedUpTo(t, "0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql", "0004_runs_fixpr.sql")); err != nil {
+		t.Fatalf("migrate to 4: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command,
+		branch, workspace_id, workplace_session, started_at, ended_at, outcome, reason)
+		VALUES (41, 'o/r', 7, 's', 'start', 'fixpr', 'fixpr:7:abc', 1, 'c', 'b', 'w', 'k', 't0', 't1', 'done', 'why')`); err != nil {
+		t.Fatalf("insert row at v4: %v", err)
+	}
+	if err := migrate(ctx, db, migrationFS); err != nil {
+		t.Fatalf("migrate to 5: %v", err)
+	}
+	if v := userVersion(t, db); v != 5 {
+		t.Errorf("user_version = %d, want 5", v)
+	}
+	var trigger, key, branch, workspace, session, ended, outcome, reason string
+	var removed sql.NullString
+	err := db.QueryRow(`SELECT trigger, trigger_key, branch, workspace_id, workplace_session, ended_at, outcome, reason,
+		workspace_removed_at FROM runs WHERE id = 41`).Scan(&trigger, &key, &branch, &workspace, &session, &ended, &outcome, &reason, &removed)
+	if err != nil {
+		t.Fatalf("read row after migration: %v", err)
+	}
+	got := []string{trigger, key, branch, workspace, session, ended, outcome, reason}
+	if want := []string{"fixpr", "fixpr:7:abc", "b", "w", "k", "t1", "done", "why"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("row after migration = %q, want %q", got, want)
+	}
+	if removed.Valid {
+		t.Errorf("workspace_removed_at = %q, want NULL", removed.String)
 	}
 }

@@ -92,6 +92,14 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    krijgt `lighthouse: apply <repo>: <fouten>`, en tick eindigt dan met exitcode 1. Wat apply
    onderweg meldt (een claim die een ander proces al had, een onzekere launch) staat ook op stderr,
    met `lighthouse: ` ervoor.
+10. **Opruimen.** Na apply ruimt tick de forge-workspaces op van issues die niet meer op `Controller`
+    of `On hold` staan, zonder open run, zonder levende vreemde sessie, schoon en gepusht. Dat gebeurt
+    elke tick, ook voor een repo die niet *due* was, maar alleen voor een repo waarvan de precheck
+    slaagde. Een verwijderde workspace geeft `lighthouse: removed workspace <id> of <repo>#<n>`. Een
+    workspace die moet blijven, geeft geen regel: hij staat onder *Workspaces to clean up*. Een fout
+    (een `Remove` die geen 409 is, een record dat niet weg te schrijven is) geeft
+    `lighthouse: cleanup <repo>: <fouten>`, en tick eindigt met exitcode 1. De regels staan in
+    [workplace.md](workplace.md), *Opruimen* en *Wie roept dit aan*.
 
 **De vingerafdruk na apply.** Tick bewaart de vingerafdruk van de precheck pas na apply, en alleen
 voor een repo zonder uitgestelde en zonder mislukte actie (spec §3 stap 2). Zo probeert de volgende
@@ -191,7 +199,7 @@ Mislukt die `Kill`, dan sluit de run als `start_failed` (*end earlier claude: �
 | Code | Wanneer |
 |---|---|
 | 0 | Alle repo's zijn bedienbaar en hun precheck, gather en acties lukten (een uitgestelde start telt als gelukt), of een vorige tick draait nog |
-| 1 | Minstens één repo overgeslagen (niet bedienbaar, of de gather mislukte), een mislukte actie in apply, of een fout (geen `XDG_RUNTIME_DIR`, geen token, ongeldige `host.toml`, database niet te openen) |
+| 1 | Minstens één repo overgeslagen (niet bedienbaar, of de gather mislukte), een mislukte actie in apply, een mislukte opruiming, of een fout (geen `XDG_RUNTIME_DIR`, geen token, ongeldige `host.toml`, database niet te openen) |
 
 ## Blokkades
 
@@ -245,7 +253,8 @@ decide, en voert alleen de acties van dat issue uit van de soort `close`, `defer
 De `close` gaat mee, want een open run die in deze beslissing sluit (bijvoorbeeld op een 🤖 Vraag met
 een antwoord), zou de claim van de hervatting anders laten mislukken. Een Teruggegeven, een Klaar en
 een 🚀-herstel laat `run` aan de tick. Hetzelfde geldt voor parkeren, afmaken en terugzetten (zie
-*Blokkades*): een uitvoerend issue met een actieve voorganger geeft in `run` dus `nothing to start`. `run` bewaart geen vingerafdruk in `tick_state`.
+*Blokkades*): een uitvoerend issue met een actieve voorganger geeft in `run` dus `nothing to start`. `run` bewaart geen vingerafdruk in `tick_state` en ruimt geen workspaces op:
+dat doet alleen de tick.
 
 Het eindigt met één regel op stderr, alle vier met exitcode 0:
 

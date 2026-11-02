@@ -374,20 +374,39 @@ func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace
 	return res, nil
 }
 
-// TranscriptDir is the directory Claude Code keeps the transcripts of the workspace's
-// worktree in, under Home. A directory that is not on this host (the agent runs in a
-// devcontainer, say) is workplace.ErrNotMeasurable; a 404 is workplace.ErrGone.
-func (a *Adapter) TranscriptDir(ctx context.Context, workspaceID string) (string, error) {
+// Lookup reads the workspace: Path from worktree_path, Branch from git_head_ref. A 404 is
+// workplace.ErrGone; a workspace without worktree_path is an error.
+func (a *Adapter) Lookup(ctx context.Context, workspaceID string) (workplace.Workspace, error) {
+	w, err := a.readWorkspace(ctx, workspaceID)
+	if err != nil {
+		return workplace.Workspace{}, err
+	}
+	return workplace.Workspace{ID: workspaceID, Path: w.WorktreeDir, Branch: w.GitHeadRef}, nil
+}
+
+// readWorkspace reads one workspace that has a worktree_path. A 404 is workplace.ErrGone.
+func (a *Adapter) readWorkspace(ctx context.Context, workspaceID string) (wireWorkspace, error) {
 	var w wireWorkspace
 	if err := a.Client.do(ctx, http.MethodGet, wsPath(workspaceID), nil, 0, &w); err != nil {
 		var se *StatusError
 		if errors.As(err, &se) && se.Status == http.StatusNotFound {
-			return "", fmt.Errorf("read workspace %s: %v: %w", workspaceID, se, workplace.ErrGone)
+			return w, fmt.Errorf("read workspace %s: %v: %w", workspaceID, se, workplace.ErrGone)
 		}
-		return "", fmt.Errorf("read workspace %s: %w", workspaceID, err)
+		return w, fmt.Errorf("read workspace %s: %w", workspaceID, err)
 	}
 	if w.WorktreeDir == "" {
-		return "", fmt.Errorf("workspace %s has no worktree_path", workspaceID)
+		return w, fmt.Errorf("workspace %s has no worktree_path", workspaceID)
+	}
+	return w, nil
+}
+
+// TranscriptDir is the directory Claude Code keeps the transcripts of the workspace's
+// worktree in, under Home. A directory that is not on this host (the agent runs in a
+// devcontainer, say) is workplace.ErrNotMeasurable; a 404 is workplace.ErrGone.
+func (a *Adapter) TranscriptDir(ctx context.Context, workspaceID string) (string, error) {
+	w, err := a.readWorkspace(ctx, workspaceID)
+	if err != nil {
+		return "", err
 	}
 	home := a.Home
 	if home == "" {

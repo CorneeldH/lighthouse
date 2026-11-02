@@ -222,8 +222,8 @@ func TestTickNoRepos(t *testing.T) {
 	if err := conn.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 4 {
-		t.Errorf("user_version = %d, want 4", v)
+	if v != 5 {
+		t.Errorf("user_version = %d, want 5", v)
 	}
 }
 
@@ -450,6 +450,11 @@ type fakeWorkplace struct {
 	spawns   []workplace.LaunchSpec
 	kills    []string                       // the session ids per Kill
 	sessions map[string][]workplace.Session // per workspace id
+	// looked, asked, removed and discarded are the workspace ids of each Lookup, Sessions,
+	// Remove and Discard, in order.
+	looked, asked, removed, discarded []string
+	// removeErr, when set, is what Remove answers.
+	removeErr error
 }
 
 func newFakeWorkplace(t *testing.T, repo string) *fakeWorkplace {
@@ -478,6 +483,7 @@ func (w *fakeWorkplace) Spawn(_ context.Context, ws workplace.Workspace, l workp
 func (w *fakeWorkplace) Sessions(_ context.Context, workspaceID string) ([]workplace.Session, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.asked = append(w.asked, workspaceID)
 	out := slices.Clone(w.sessions[workspaceID])
 	for i := range out {
 		if w.state != "" {
@@ -505,14 +511,32 @@ func (w *fakeWorkplace) killed() []string {
 	return slices.Clone(w.kills)
 }
 
-func (w *fakeWorkplace) Remove(context.Context, string) error {
-	w.t.Error("unexpected Remove")
-	return errors.New("unexpected Remove")
+func (w *fakeWorkplace) Remove(_ context.Context, workspaceID string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.removed = append(w.removed, workspaceID)
+	return w.removeErr
 }
 
-func (w *fakeWorkplace) Discard(context.Context, string) error {
-	w.t.Error("unexpected Discard")
-	return errors.New("unexpected Discard")
+func (w *fakeWorkplace) Lookup(_ context.Context, workspaceID string) (workplace.Workspace, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.looked = append(w.looked, workspaceID)
+	return workplace.Workspace{ID: workspaceID, Path: "/work/" + workspaceID}, nil
+}
+
+func (w *fakeWorkplace) Discard(_ context.Context, workspaceID string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.discarded = append(w.discarded, workspaceID)
+	return nil
+}
+
+// calls returns copies of looked, asked and removed.
+func (w *fakeWorkplace) calls() (looked, asked, removed []string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.Clone(w.looked), slices.Clone(w.asked), slices.Clone(w.removed)
 }
 
 func (w *fakeWorkplace) setState(state string) {
@@ -1040,7 +1064,7 @@ func TestTickAdoptFailureIsLoudNotFatal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var errOut bytes.Buffer
-	in, _, err := gatherRepo(ctx, env, conn, hostconfig.Dispatch{}, hostFacts{}, repo, "tok", func() (string, error) { return "lh-bot", nil }, &errOut)
+	in, _, _, err := gatherRepo(ctx, env, conn, hostconfig.Dispatch{}, hostFacts{}, repo, "tok", func() (string, error) { return "lh-bot", nil }, &errOut)
 	if err != nil || in == nil {
 		t.Fatalf("gatherRepo = %v, %v, want the repo gathered\n%s", in, err, errOut.String())
 	}
@@ -1095,7 +1119,7 @@ func TestTickAdoptsBeforePrepare(t *testing.T) {
 	cfg := hostconfig.Dispatch{MaxWait: time.Hour, MaxRuntime: 8 * time.Hour}
 	login := func() (string, error) { return "lh-bot", nil }
 	var errOut bytes.Buffer
-	in, _, err := gatherRepo(ctx, env, conn, cfg, hostFacts{}, repo, "tok", login, &errOut)
+	in, _, _, err := gatherRepo(ctx, env, conn, cfg, hostFacts{}, repo, "tok", login, &errOut)
 	if err != nil || in == nil {
 		t.Fatalf("gatherRepo = %v, %v\n%s", in, err, errOut.String())
 	}
@@ -1401,5 +1425,268 @@ func TestTickDeferredTitle(t *testing.T) {
 	_, dv := loadView(t, db)
 	if len(dv) != 1 || dv[0].Issue != 7 || dv[0].Title != "Issue" {
 		t.Errorf("deferred = %+v, want issue 7 with title \"Issue\"", dv)
+	}
+}
+
+const (
+	ws945     = "d7c0b0ea0de54804"
+	branch945 = "work-issue-945-immich-smart-search-191b7750"
+)
+
+// sweepable is #945: issue 945 of o/r open on the board with status (an option id of repo945),
+// a fake workplace for o/r and a git that answers from git. The four done runs on workspace
+// ws945 are doneRuns945.
+func sweepable(t *testing.T, env *tickEnv, status string, git *gitState) (*forgetest.Server, *fakeWorkplace) {
+	t.Helper()
+	srv := fakeForge(t, env)
+	srv.Roles = map[string]string{"lh-bot": "admin"}
+	srv.BoardNodes = []map[string]any{boardNode("I945", status, issueContent(945, "Immich smart search", nil))}
+	env.Now = func() time.Time { return t0 }
+	srv.Now = env.Now
+	w := newFakeWorkplace(t, "o/r")
+	useWorkplaces(t, env, map[string]*fakeWorkplace{"o/r": w})
+	env.Run = git.runner(t)
+	return srv, w
+}
+
+// repo945 is completeRepo with an In progress option p1.
+func repo945(t *testing.T) string {
+	return repoDir(t, strings.Replace(completeRepo, "\"On hold\" = \"h1\"\n", "\"On hold\" = \"h1\"\n\"In progress\" = \"p1\"\n", 1))
+}
+
+// doneRuns945 adds the four done runs of #945 on one workspace.
+func doneRuns945(t *testing.T, db string) {
+	t.Helper()
+	ctx := context.Background()
+	conn := openStore(t, db)
+	for _, key := range []string{"start:945", "answer:1", "answer:2", "handoff:3"} {
+		r, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 945, SessionID: runs.NewSessionID(), Mode: "start",
+			Trigger: "handoff", TriggerKey: key, Now: t0.Add(-time.Hour)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runs.SetWorkplace(ctx, conn, r.ID, ws945, branch945); err != nil {
+			t.Fatal(err)
+		}
+		if err := runs.Release(ctx, conn, r.ID, runs.Done, "", t0.Add(-time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// gitState is what the fake git answers: the porcelain status and the commits ahead of origin.
+type gitState struct {
+	mu            sync.Mutex
+	status, ahead string
+}
+
+func (g *gitState) set(status, ahead string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.status, g.ahead = status, ahead
+}
+
+// runner answers git status, rev-parse and rev-list on /work/ws945; any other command fails the test.
+func (g *gitState) runner(t *testing.T) workplace.Runner {
+	return func(_ context.Context, _ time.Duration, name string, args ...string) (string, int, error) {
+		joined := strings.Join(args, " ")
+		if name != "git" || !strings.Contains(joined, "-C /work/"+ws945) {
+			t.Errorf("unexpected command %s %s", name, joined)
+			return "", -1, errors.New("unexpected command")
+		}
+		g.mu.Lock()
+		defer g.mu.Unlock()
+		switch {
+		case strings.HasSuffix(joined, "status --porcelain"):
+			return g.status, 0, nil
+		case strings.HasSuffix(joined, "rev-parse HEAD"):
+			return "abc\n", 0, nil
+		case strings.Contains(joined, "rev-list --count"):
+			return g.ahead + "\n", 0, nil
+		}
+		t.Errorf("unexpected git %s", joined)
+		return "", -1, errors.New("unexpected git")
+	}
+}
+
+func leftovers(t *testing.T, db string) []workplace.Leftover {
+	t.Helper()
+	ls, err := workplace.Leftovers(context.Background(), openStore(t, db))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ls
+}
+
+// AC 1: the workspace of an issue that left Controller, clean and pushed, is removed once.
+func TestTickSweepsWorkspaceOffController(t *testing.T) {
+	env, db := tickFixture(t, repo945(t))
+	_, w := sweepable(t, &env, "p1", &gitState{ahead: "0"})
+	doneRuns945(t, db)
+
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: removed workspace " + ws945 + " of o/r#945\n"; !strings.Contains(errOut.String(), want) {
+		t.Errorf("errOut = %q, want it to contain %q", errOut.String(), want)
+	}
+	if _, _, removed := w.calls(); !reflect.DeepEqual(removed, []string{ws945}) {
+		t.Errorf("removed = %v, want [%s]", removed, ws945)
+	}
+
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("second tick = %v\n%s", err, errOut.String())
+	}
+	looked, asked, removed := w.calls()
+	if len(looked) != 1 || len(asked) != 1 || len(removed) != 1 {
+		t.Errorf("after two ticks: looked %v, asked %v, removed %v; want one of each", looked, asked, removed)
+	}
+}
+
+// AC 2: a dirty workspace stays and is listed with its path and reason.
+func TestTickSweepKeepsDirtyWorkspace(t *testing.T) {
+	env, db := tickFixture(t, repo945(t))
+	_, w := sweepable(t, &env, "p1", &gitState{status: " M main.go", ahead: "0"})
+	doneRuns945(t, db)
+
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if _, _, removed := w.calls(); len(removed) != 0 {
+		t.Errorf("removed = %v, want none", removed)
+	}
+	if strings.Contains(errOut.String(), "workspace") {
+		t.Errorf("errOut = %q, want no line for a leftover", errOut.String())
+	}
+	want := []workplace.Leftover{{Repo: "o/r", Issue: 945, WorkspaceID: ws945, Path: "/work/" + ws945, Reason: "uncommitted changes"}}
+	if got := leftovers(t, db); !reflect.DeepEqual(got, want) {
+		t.Errorf("leftovers = %+v, want %+v", got, want)
+	}
+}
+
+func TestTickSweepLeavesControllerIssue(t *testing.T) {
+	env, db := tickFixture(t, repo945(t))
+	_, w := sweepable(t, &env, "c1", &gitState{ahead: "0"})
+	doneRuns945(t, db)
+
+	// The second tick is not due: the statuses still come from its precheck.
+	var errOut bytes.Buffer
+	for range 2 {
+		_ = tick(context.Background(), env, db, &errOut)
+	}
+	if strings.Count(errOut.String(), "gathered o/r") != 1 {
+		t.Errorf("errOut = %q, want one gathered line over two ticks", errOut.String())
+	}
+	looked, _, removed := w.calls()
+	if slices.Contains(looked, ws945) || slices.Contains(removed, ws945) {
+		t.Errorf("looked %v, removed %v; want %s untouched\n%s", looked, removed, ws945, errOut.String())
+	}
+}
+
+// AC 4: a running run is never stopped or removed, also when its issue left Controller.
+func TestTickSweepLeavesOpenRun(t *testing.T) {
+	env, db := tickFixture(t, repo945(t))
+	_, w := sweepable(t, &env, "p1", &gitState{ahead: "0"})
+	doneRuns945(t, db)
+	ctx := context.Background()
+	conn := openStore(t, db)
+	sid := runs.NewSessionID()
+	r, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 945, SessionID: sid, Mode: "resume",
+		Trigger: "answer", TriggerKey: "answer:9", Now: t0.Add(-time.Minute)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, conn, r.ID, ws945, branch945); err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetSession(ctx, conn, r.ID, "k-945"); err != nil {
+		t.Fatal(err)
+	}
+	w.sessions[ws945] = []workplace.Session{{Key: "k-945", WorkspaceID: ws945, State: "working", SessionID: sid}}
+
+	var errOut bytes.Buffer
+	_ = tick(ctx, env, db, &errOut)
+	looked, _, removed := w.calls()
+	if len(looked) != 0 || len(removed) != 0 {
+		t.Errorf("looked %v, removed %v; want none\n%s", looked, removed, errOut.String())
+	}
+}
+
+// Without a readable board no issue is known to have left Controller: nothing is swept.
+func TestTickSweepSkipsRepoWithoutBoard(t *testing.T) {
+	path := repo945(t)
+	env, db := tickFixture(t, path)
+	srv, w := sweepable(t, &env, "p1", &gitState{ahead: "0"})
+	srv.FailOps = map[string]string{"Board": "board down"}
+	doneRuns945(t, db)
+
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: skip " + path + ": "; !strings.HasPrefix(errOut.String(), want) {
+		t.Errorf("errOut = %q, want a skip line", errOut.String())
+	}
+	looked, asked, removed := w.calls()
+	if len(looked) != 0 || len(asked) != 0 || len(removed) != 0 {
+		t.Errorf("looked %v, asked %v, removed %v; want none", looked, asked, removed)
+	}
+}
+
+// The sweep runs every tick, also when the repo is not due: a leftover that became clean goes.
+func TestTickSweepRunsWhenNotDue(t *testing.T) {
+	env, db := tickFixture(t, repo945(t))
+	git := &gitState{status: " M main.go", ahead: "0"}
+	_, w := sweepable(t, &env, "p1", git)
+	doneRuns945(t, db)
+
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if len(leftovers(t, db)) != 1 {
+		t.Fatalf("leftovers after the first tick = %+v, want one", leftovers(t, db))
+	}
+	git.set("", "0")
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("second tick = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: removed workspace " + ws945 + " of o/r#945\n"; errOut.String() != want {
+		t.Errorf("second tick errOut = %q, want only %q (no gathered line)", errOut.String(), want)
+	}
+	if _, _, removed := w.calls(); !reflect.DeepEqual(removed, []string{ws945}) {
+		t.Errorf("removed = %v, want [%s]", removed, ws945)
+	}
+	if got := leftovers(t, db); len(got) != 0 {
+		t.Errorf("leftovers = %+v, want none", got)
+	}
+}
+
+// A Remove that fails with something other than a 409 is a cleanup line and exit 1; the
+// workspace stays a candidate and is listed, so the next tick tries again.
+func TestTickSweepRemoveFails(t *testing.T) {
+	env, db := tickFixture(t, repo945(t))
+	_, w := sweepable(t, &env, "p1", &gitState{ahead: "0"})
+	w.removeErr = errors.New("delete workspace: status 500")
+	doneRuns945(t, db)
+
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: cleanup o/r: workspace " + ws945 + " of #945: "; !strings.Contains(errOut.String(), want) ||
+		!strings.Contains(errOut.String(), "status 500") || strings.Contains(errOut.String(), "removed workspace") {
+		t.Errorf("errOut = %q, want a cleanup line with the remove error and no removed line", errOut.String())
+	}
+	ws, err := runs.Workspaces(context.Background(), openStore(t, db), "o/r")
+	if err != nil || len(ws) != 1 {
+		t.Errorf("candidates = %+v, %v; want %s still there", ws, err, ws945)
+	}
+	if ls := leftovers(t, db); len(ls) != 1 || !strings.HasPrefix(ls[0].Reason, "not measurable: remove: ") {
+		t.Errorf("leftovers = %+v, want one with not measurable: remove", ls)
 	}
 }

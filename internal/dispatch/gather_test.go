@@ -128,6 +128,67 @@ func TestPrepareFiltersBoard(t *testing.T) {
 	}
 }
 
+// Statuses holds every board item of the repo, whatever its Status; Items only the dispatch ones.
+func TestPrepareStatuses(t *testing.T) {
+	srv, c := client(t)
+	repo := testRepo
+	board := *testRepo.Board
+	board.StatusOptions = map[string]string{"Controller": "opt-ctrl", "On hold": "opt-hold", "In progress": "opt-prog"}
+	repo.Board = &board
+	srv.BoardNodes = []map[string]any{
+		node("I945", map[string]string{"F_status": "opt-prog"}, issue("o/r", 945, nil)),
+		node("I12", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 12, nil)),
+		node("I13", map[string]string{"F_status": "opt-prog"}, issue("o/x", 13, nil)),
+	}
+	pre, err := Prepare(context.Background(), c, repo, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[int]string{945: "In progress", 12: "Controller"}; !reflect.DeepEqual(pre.Statuses, want) {
+		t.Errorf("Statuses = %v, want %v", pre.Statuses, want)
+	}
+	if len(pre.Items) != 1 || pre.Items[0].Issue != 12 {
+		t.Errorf("Items = %+v, want only issue 12", pre.Items)
+	}
+}
+
+func TestInController(t *testing.T) {
+	in := InController(map[int]string{1: "Controller", 2: "On hold", 3: "In progress", 4: ""})
+	for issue, want := range map[int]bool{1: true, 2: true, 3: false, 4: false, 5: false} {
+		if got := in(issue); got != want {
+			t.Errorf("InController(%d) = %v, want %v", issue, got, want)
+		}
+	}
+}
+
+func TestMergedHead(t *testing.T) {
+	at := func(day int) time.Time { return time.Date(2026, 10, day, 12, 0, 0, 0, time.UTC) }
+	tests := []struct {
+		name string
+		prs  []forge.PR
+		want string
+	}{
+		{"no PR", nil, ""},
+		{"open PR", []forge.PR{{Number: 1, State: "OPEN", HeadSHA: "open"}}, ""},
+		{"closed, not merged", []forge.PR{{Number: 1, State: "CLOSED", HeadSHA: "closed", ClosedAt: at(2)}}, ""},
+		{"last merged wins", []forge.PR{
+			{Number: 2, State: "MERGED", HeadSHA: "late", MergedAt: at(5)},
+			{Number: 1, State: "MERGED", HeadSHA: "early", MergedAt: at(3)},
+		}, "late"},
+		{"cross-repo merged does not count", []forge.PR{
+			{Number: 1, State: "MERGED", HeadSHA: "own", MergedAt: at(3)},
+			{Number: 2, State: "MERGED", HeadSHA: "fork", MergedAt: at(5), CrossRepo: true},
+		}, "own"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := MergedHead(tc.prs); got != tc.want {
+				t.Errorf("MergedHead = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPrepareMergesBranchPRs(t *testing.T) {
 	srv, c := client(t)
 	srv.BoardNodes = []map[string]any{

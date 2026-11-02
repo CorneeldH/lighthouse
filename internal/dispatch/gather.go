@@ -19,10 +19,31 @@ import (
 // dispatchStatuses are the board statuses whose items the dispatcher looks at.
 var dispatchStatuses = map[string]bool{"Controller": true, "On hold": true}
 
+// InController reports per issue whether statuses puts it in a dispatch status: Controller or
+// On hold. An issue without a status is not in the controller.
+func InController(statuses map[int]string) func(issue int) bool {
+	return func(issue int) bool { return dispatchStatuses[statuses[issue]] }
+}
+
+// MergedHead is the head SHA of the merged PR of prs with the latest MergedAt, leaving out a
+// PR from another repository; "" when none is merged.
+func MergedHead(prs []forge.PR) string {
+	var last forge.PR
+	for _, p := range prs {
+		if p.State == "MERGED" && !p.CrossRepo && (last.HeadSHA == "" || p.MergedAt.After(last.MergedAt)) {
+			last = p
+		}
+	}
+	return last.HeadSHA
+}
+
 // Pre is the first half of a gather: the board fields and PRs of the items, without comments.
 type Pre struct {
-	Repo     repoconfig.Repo
-	Items    []Item // board fields and PRs; no comments
+	Repo  repoconfig.Repo
+	Items []Item // board fields and PRs; no comments
+	// Statuses is the Status name of every board item of the repo, in any status; an issue
+	// without an item is missing. The fingerprint does not read it.
+	Statuses map[int]string
 	OpenRuns []runs.OpenRun
 	Stands   map[int64]workplace.Stand // per open run id, set by the caller; missing = not measurable
 	Runs     map[int64]RunState        // per open run id, set by the caller; missing = not measured
@@ -56,9 +77,14 @@ func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []
 		issue int
 	}
 	boardStatus := make(map[ref]string, len(board))
+	statuses := map[int]string{}
 	for _, bi := range board {
 		if bi.Repo != "" && bi.Issue > 0 {
-			boardStatus[ref{bi.Repo, bi.Issue}] = statusName[bi.SingleSelect[b.StatusFieldID]]
+			status := statusName[bi.SingleSelect[b.StatusFieldID]]
+			boardStatus[ref{bi.Repo, bi.Issue}] = status
+			if bi.Repo == repo.Slug {
+				statuses[bi.Issue] = status
+			}
 		}
 	}
 	var items []Item
@@ -85,7 +111,7 @@ func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []
 		items = append(items, it)
 	}
 	slices.SortFunc(items, func(x, y Item) int { return x.Issue - y.Issue })
-	return Pre{Repo: repo, Items: items, OpenRuns: open}, nil
+	return Pre{Repo: repo, Items: items, Statuses: statuses, OpenRuns: open}, nil
 }
 
 // withStatus returns a copy of blockers with Status set by status; the input stays untouched.
