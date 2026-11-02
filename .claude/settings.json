@@ -1,38 +1,13 @@
 {
   "hooks": {
-    "PreToolUse": [
+    "Notification": [
       {
-        "matcher": "Bash",
+        "matcher": "permission_prompt|worker_permission_prompt",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/pr-create-gate.sh",
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/main-commit-gate.sh",
-            "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/commit-test-gate.sh pre",
-            "timeout": 300
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/bash-write-check.sh pre",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/worktree-check.sh",
-            "timeout": 15
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/permission-check.sh",
+            "timeout": 10
           }
         ]
       }
@@ -74,11 +49,30 @@
         ]
       },
       {
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-gate.sh tool",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code post-task'"
+          }
+        ]
+      },
+      {
+        "matcher": "TaskCreate|TaskUpdate",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code post-todo'"
           }
         ]
       }
@@ -100,30 +94,77 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
+    "PreToolUse": [
       {
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-gate.sh prompt",
-            "timeout": 10
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/pr-create-gate.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/main-commit-gate.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/commit-test-gate.sh pre",
+            "timeout": 300
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/bash-write-check.sh pre",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/worktree-check.sh",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code pre-task'"
           }
         ]
       }
     ],
-    "SubagentStop": [
+    "SessionEnd": [
       {
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-gate.sh subagent",
-            "timeout": 10
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code session-end'"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then printf \"%s\\n\" \"{\\\"systemMessage\\\":\\\"\\\\n\\\\nEntire CLI is enabled but not installed or not on PATH.\\\\nInstallation guide: https://docs.entire.io/cli/installation#installation-methods\\\"}\"; exit 0; fi; exec entire hooks claude-code session-start'"
           }
         ]
       }
     ],
     "Stop": [
       {
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
@@ -134,18 +175,42 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/go-lint-gate.sh",
             "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code stop'"
           }
         ]
       }
     ],
-    "Notification": [
+    "SubagentStop": [
       {
-        "matcher": "permission_prompt|worker_permission_prompt",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/permission-check.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-gate.sh subagent",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code subagent-stop'"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-gate.sh prompt",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks claude-code user-prompt-submit'"
           }
         ]
       }

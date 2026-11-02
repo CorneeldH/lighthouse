@@ -45,6 +45,10 @@ command = "python3 .lighthouse/scripts/gate_go.py -- go test -race && python3 pa
 # 3: a selector could not check, so nothing was tested (see the scripts).
 unchecked_exit_codes = [3]
 
+[worktree_audit]
+# entire's checkpoint refs and shadow branches (#194): no PR, never merged, never cleanable.
+protected_refs = ["entire/*"]
+
 [usage_guard]
 controller = true
 resume = true

@@ -1,0 +1,20 @@
+# gitleaks configuration (#194): one config for the pre-push hook and CI.
+#
+# Allowlists work on the matched text, never on a path: a `paths` entry makes a whole
+# file invisible, including a real secret that later lands in it. That holds for
+# `.entire/metadata/` too: it is gitignored, but `git add -f` still commits it. A local
+# `gitleaks dir .` therefore reads entire's transcript cache; scan the commits
+# (`gitleaks git`), as the pre-push hook and CI do.
+title = "lighthouse"
+
+[extend]
+useDefault = true
+
+# generic-api-key reads `TriggerKey, triggerHandoff+"` as a key with a value. It is
+# a Go expression in internal/dispatch/decide.go, also in history (bf285594). Scoped
+# to the rule and to this exact match, so a real key on that line stays red.
+[[allowlists]]
+description = "Go expression row.TriggerKey in internal/dispatch/decide.go, not a secret"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''^row\.TriggerKey, triggerHandoff\+"$''']
