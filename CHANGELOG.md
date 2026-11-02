@@ -4,6 +4,14 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.8.5] - 2026-11-02
+
+### Fixed
+
+- The dispatcher starts `/lighthouse-review-spec` and `/lighthouse-review-plan` again: its allowlist
+  still held the names from before the rename and returned every review handoff. A handoff with an
+  old name now starts the review under its new name.
+
 ## [v0.8.4] - 2026-11-02
 
 ### Fixed
