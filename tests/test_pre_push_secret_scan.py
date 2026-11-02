@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -602,3 +603,49 @@ def test_gitleaks_config_allows_beta_header_name(tmp_path):
 
     assert scan(clean) == 0
     assert scan(dirty) == 1
+
+
+def _allowed(rule: str, match: str) -> bool:
+    """Does an allowlist of `.gitleaks.toml` drop this match of `rule`? Python's `re`
+    reads these regexes as gitleaks' RE2 does."""
+    config = tomllib.loads((ROOT / ".gitleaks.toml").read_text(encoding="utf-8"))
+    return any(
+        rule in allow.get("targetRules", [rule]) and re.search(regex, match)
+        for allow in config["allowlists"]
+        for regex in allow.get("regexes", [])
+    )
+
+
+UUID = "e51f5dd8-a2ee-42c9-83aa-d9e5f0412345"
+# The cut-off forms are slices of the whole header: written out in this file, gitleaks
+# itself would flag them here, ending on a Python quote.
+BETA = 'oauth-2025-04-20","interleaved-thinking-2025-05-14"'
+
+
+@pytest.mark.parametrize(
+    "match",
+    [
+        BETA,
+        BETA[:-1],  # ...-2025-05-14
+        BETA[:-9],  # ...interleaved-thinking-20
+        BETA[1:-11],  # auth-...interleaved-thinking-
+        f'turnAttributionKey":"{UUID}"',
+        f'tionKey":"{UUID}"',
+        f'ionKey":"{UUID[:30]}',
+    ],
+)
+def test_allowlist_takes_cut_off_header_and_attribution_key(match):
+    # gitleaks cuts a match off at a chunk boundary, at either end.
+    assert _allowed("generic-api-key", match)
+
+
+@pytest.mark.parametrize(
+    "match",
+    [
+        f'oauth-2025-04-20","{FAKE_PAT}"',
+        f'apiKey":"{UUID}"',
+        f'turnAttributionKey":"{FAKE_PAT}"',
+    ],
+)
+def test_allowlist_keeps_a_real_key_next_to_them_red(match):
+    assert not _allowed("generic-api-key", match)
