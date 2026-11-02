@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.8.4] - 2026-11-02
+
+### Fixed
+
+- The checkpoint secret scan no longer holds checkpoints back on Entire's `turnAttributionKey` or on an Anthropic beta header that gitleaks cut off at a chunk boundary.
+
 ## [v0.8.3] - 2026-11-02
 
 ### Fixed
