@@ -1,8 +1,10 @@
 # gitleaks configuration (#194): one config for the pre-push hook and CI.
 #
 # Allowlists work on the matched text, never on a path: a `paths` entry makes a whole
-# file invisible, including a real secret that later lands in it. The one exception
-# is `.entire/metadata/`, below.
+# file invisible, including a real secret that later lands in it. That holds for
+# `.entire/metadata/` too: it is gitignored, but `git add -f` still commits it. A local
+# `gitleaks dir .` therefore reads entire's transcript cache; scan the commits
+# (`gitleaks git`), as the pre-push hook and CI do.
 title = "lighthouse"
 
 [extend]
@@ -26,12 +28,3 @@ description = "Anthropic beta-header name and feature date in transcripts, not a
 targetRules = ["generic-api-key"]
 regexTarget = "match"
 regexes = ['''^oauth-2025-04-20","interleaved-thinking-2025-05-14"$''']
-
-# entire's local transcript cache. `.entire/.gitignore` excludes it, so it can never
-# be committed: skipping it hides nothing in the repo. Without this entry a local
-# `gitleaks dir .` is red on conversation text, and a gate that is red for no reason
-# gets ignored. Pushed checkpoints do not live here (they are refs/entire/...), so
-# this entry never blinds the pre-push scan of a checkpoint.
-[[allowlists]]
-description = "entire's local transcript cache (gitignored, never in a commit)"
-paths = ['''^\.entire/metadata/''']
