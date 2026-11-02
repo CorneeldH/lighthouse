@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.8.2] - 2026-11-02
+
+### Fixed
+
+- The install guide for agents now has the agent ask to add `@AGENTS.md` to an existing `CLAUDE.md` and carry on, instead of leaving it open and stopping before the check.
+
 ## [v0.8.1] - 2026-11-01
 
 ### Fixed
