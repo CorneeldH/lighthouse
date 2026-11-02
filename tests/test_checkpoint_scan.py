@@ -19,6 +19,7 @@ import importlib.util
 import json
 import os
 import re
+import resource
 import shutil
 import subprocess
 import sys
@@ -202,16 +203,15 @@ def test_max_rss_measured(cs, tmp_path, isolated):
     isolated.setenv("PATH", _stub_path(tmp_path, {"systemctl": SYSTEMCTL_OK}))
     limits = cs.Limits("2G", "200%", None)
 
-    small = cs.run_bounded(["python3", "-c", "pass"], limits)
-    big = cs.run_bounded(["python3", "-c", "b = bytearray(32 * 2**20)"], limits)
-    huge = cs.run_bounded(["python3", "-c", "b = bytearray(128 * 2**20)"], limits)
+    # The forked child starts at this process's RSS, so its peak is never below it
+    # (under xdist in CI that is ~120 MB). A child that allocates 64 MB more than
+    # pytest's own peak reaches that number only if the child itself is measured.
+    alloc_mb = cs._max_rss_kb(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) // 1024 + 64
 
-    assert big.max_rss_kb is not None and big.max_rss_kb >= 32 * 1024
-    # The forked child starts at this process's RSS, so `small` already reports
-    # tens of MB; only the contrast shows that the child is measured, not pytest.
-    assert small.max_rss_kb is not None and huge.max_rss_kb is not None
-    assert huge.max_rss_kb - small.max_rss_kb >= 64 * 1024
-    assert (big.rc, big.ceiling_hit) == (0, False)
+    run = cs.run_bounded(["python3", "-c", f"b = bytearray({alloc_mb} * 2**20)"], limits)
+
+    assert run.max_rss_kb is not None and run.max_rss_kb >= alloc_mb * 1024
+    assert (run.rc, run.ceiling_hit) == (0, False)
 
 
 @pytest.mark.parametrize("rc", [0, 1])
