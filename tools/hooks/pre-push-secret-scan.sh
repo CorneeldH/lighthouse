@@ -96,10 +96,12 @@ PY
 
 command -v python3 >/dev/null 2>&1 || die "COULD NOT CHECK — python3 is needed to read .entire/settings.json."
 settings="$(read_entire_settings)" || die "COULD NOT CHECK — could not read $toplevel/.entire/settings*.json."
+# Command substitution drops trailing empty lines, so a read past them meets EOF:
+# that is an empty setting, not an error.
 {
-  read -r entire_self_push
-  read -r checkpoint_repo
-  read -r checkpoint_push_remote
+  read -r entire_self_push || true
+  read -r checkpoint_repo || true
+  read -r checkpoint_push_remote || true
 } <<<"$settings"
 
 if [ "$entire_self_push" = "yes" ]; then

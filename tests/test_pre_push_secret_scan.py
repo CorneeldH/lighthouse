@@ -131,6 +131,17 @@ def test_clean_push_passes(fx):
     assert _out(fx["origin"], "rev-parse", "refs/heads/work") == sha
 
 
+def test_push_passes_without_a_checkpoint_push_remote(fx):
+    """lighthouse's own settings name a checkpoint repo but no checkpoint push remote:
+    the empty last setting must not end the hook (roborev)."""
+    (fx["repo"] / ".entire" / "settings.local.json").unlink()
+    _settings(fx["repo"], {"push_sessions": False, "checkpoint_remote": {"provider": "github", "repo": "o/r"}})
+    sha = _commit(fx["repo"], "a.txt", "nothing to see\n")
+    result = _push(fx["repo"], "origin", "work")
+    assert result.returncode == 0, result.stderr
+    assert _out(fx["origin"], "rev-parse", "refs/heads/work") == sha
+
+
 @needs_gitleaks
 def test_secret_in_the_tip_of_a_new_branch_is_blocked(fx):
     git(fx["repo"], "checkout", "-qb", "leak")
