@@ -96,7 +96,8 @@
       "issue": 7,
       "run_id": 5,
       "outcome": "handoff",
-      "language": "nl"
+      "language": "nl",
+      "end": true
     },
     {
       "kind": "start",

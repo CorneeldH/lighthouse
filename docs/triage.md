@@ -34,7 +34,9 @@ niets: het heeft alleen `Read`, `Grep` en `Glob`.
 Een issue op poort 4a, 4b of 2 gaat naar `Controller`, ook met `needs-hands` of `needs-testing`.
 Poort 0 en 1 houden hun status en krijgen alleen de comment. Poort 4c krijgt de comment met
 ontwerpvragen, elk met opties en een aanbevolen optie. Een vermoedelijk dubbel of al afgerond
-issue wordt gemeld, nooit gesloten of doorgezet. Triage zet geen labels en legt geen
+issue wordt gemeld, nooit gesloten of doorgezet. Al afgerond is ook werk dat een commit onder een
+ander issuenummer leverde, zonder dit issue te noemen: het model weegt de code die het zelf leest,
+niet alleen de git log van dit nummer. Triage zet geen labels en legt geen
 `blocked_by`-relaties.
 
 Vrije tekst van het model komt op één regel in de comment, zonder codefence, `<sub>` of `<!--`.
@@ -188,7 +190,9 @@ Description=Lighthouse triage
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/lighthouse triage
+EnvironmentFile=%h/.config/lighthouse/triage.env
+Environment=PATH=%h/go/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/go/bin/lighthouse triage
 SuccessExitStatus=1
 TimeoutStartSec=80min
 ```
@@ -206,6 +210,13 @@ WantedBy=timers.target
 ```
 
 - `--user`: de unit draait onder het account dat het token en de `claude`-login heeft.
+- `EnvironmentFile`: een bestand met `GH_TOKEN` (`chmod 600`), of hetzelfde bestand als dat van
+  de tick. Het token heeft dezelfde rechten nodig als dat van de tick (zie *Token* in
+  [tick.md](tick.md)): de ronde schrijft comments en zet de board-status.
+- `Environment=PATH`: systemd geeft een user-unit een kaal `PATH`. De ronde start `claude` en
+  `git`, en `claude` staat vaak in `~/.local/bin`.
+- `ExecStart`: `~/go/bin/lighthouse` is waar [install.md](install.md) de binary neerzet. Staat hij
+  elders, pas dan het pad aan.
 - `SuccessExitStatus=1`: exitcode 1 is overgeslagen (rem, pauze, vorige ronde nog bezig), geen
   fout. Alleen exitcode 2 zet de unit op `failed`.
 - `TimeoutStartSec`: het aantal repo's maal `max_judgments` maal 300 seconden (de timeout van één

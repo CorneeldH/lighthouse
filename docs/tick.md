@@ -92,6 +92,14 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    krijgt `lighthouse: apply <repo>: <fouten>`, en tick eindigt dan met exitcode 1. Wat apply
    onderweg meldt (een claim die een ander proces al had, een onzekere launch) staat ook op stderr,
    met `lighthouse: ` ervoor.
+10. **Opruimen.** Na apply ruimt tick de forge-workspaces op van issues die niet meer op `Controller`
+    of `On hold` staan, zonder open run, zonder levende vreemde sessie, schoon en gepusht. Dat gebeurt
+    elke tick, ook voor een repo die niet *due* was, maar alleen voor een repo waarvan de precheck
+    slaagde. Een verwijderde workspace geeft `lighthouse: removed workspace <id> of <repo>#<n>`. Een
+    workspace die moet blijven, geeft geen regel: hij staat onder *Workspaces to clean up*. Een fout
+    (een `Remove` die geen 409 is, een record dat niet weg te schrijven is) geeft
+    `lighthouse: cleanup <repo>: <fouten>`, en tick eindigt met exitcode 1. De regels staan in
+    [workplace.md](workplace.md), *Opruimen* en *Wie roept dit aan*.
 
 **De vingerafdruk na apply.** Tick bewaart de vingerafdruk van de precheck pas na apply, en alleen
 voor een repo zonder uitgestelde en zonder mislukte actie (spec §3 stap 2). Zo probeert de volgende
@@ -132,12 +140,12 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 
 | # | Situatie | Uitkomst | Reden op de 🤖 Teruggegeven |
 |---|---|---|---|
-| 1-3 | Klaar-comment, Handoff (niet het einde van de keten), Vraag | zoals voorheen | |
+| 1-3 | Klaar-comment, Handoff (niet het einde van de keten), Vraag | zoals voorheen, en de claude van de run beëindigen | |
 | 4 | Een eigen 🤖 Teruggegeven van deze sessie staat er al | rij `returned`; de sessie stoppen als ze niet klaar is en de werkplek er nog is, zonder sessie de launch vergeten | |
 | 5 | Resume-marker (`controller: true`) van deze sessie, geschreven op of na `started_at` van de run | rij `parked`, sessie blijft staan | |
-| 6 | PR van deze run gemerged | rij `done` | |
-| 6b | Klaar en het issue is `CLOSED` | rij `done`, geen post (een close-check-run die zijn issue sloot) | |
-| 7 | Groene PR en klaar | 🤖 Klaar | |
+| 6 | PR van deze run gemerged | rij `done`, de claude van de run beëindigen | |
+| 6b | Klaar en het issue is `CLOSED` | rij `done`, geen post (een close-check-run die zijn issue sloot), de claude van de run beëindigen | |
+| 7 | Groene PR en klaar | 🤖 Klaar, de claude van de run beëindigen | |
 | 8 | Werkplek verdwenen | Teruggegeven | werkplek verdwenen |
 | 9 | `Unknown command:` in het transcript | rij `start_failed`, sessie stoppen als ze niet klaar is | |
 | 10 | Klaar, maar nooit een assistent-beurt | rij `start_failed` | |
@@ -176,12 +184,22 @@ ziet de volgende tick regel 4 en post niets opnieuw: ze stopt of vergeet en slui
 Teruggegeven met de oorzaak (*start mislukt: …*); na twee mislukte pogingen post tick die alleen als
 de post van apply mislukte.
 
+Een claude blijft na zijn laatste antwoord draaien, ook bij een forge-stand `done`, en forge weigert een
+hervatting van zijn sessie zolang hij leeft (#206). Een run die sluit als `done`, `handoff` of
+`question` (regels 1-3, 6, 6b, 7 en de fix-pr-handoff van een rode PR) draagt daarom `End`: apply
+beëindigt met `Kill` alleen de claude van die sessie-id, nooit de unit, zodat een interactieve sessie in
+dezelfde worktree doordraait. Een run zonder sessie-id slaat apply over. Mislukt `Kill`, dan blijft de
+rij open en probeert de volgende tick het opnieuw; een 🤖 Klaar staat er dan al, en regel 1 sluit. Een
+hervatting doet na de claim nog een `Kill` op haar sessie, vóór de 🤖 Hervat en de launch: ook een
+geparkeerde run of een eerdere mislukte `Kill` laat zo geen claude achter die de handoff blokkeert.
+Mislukt die `Kill`, dan sluit de run als `start_failed` (*end earlier claude: …*), zonder post.
+
 ## Exitcodes
 
 | Code | Wanneer |
 |---|---|
 | 0 | Alle repo's zijn bedienbaar en hun precheck, gather en acties lukten (een uitgestelde start telt als gelukt), of een vorige tick draait nog |
-| 1 | Minstens één repo overgeslagen (niet bedienbaar, of de gather mislukte), een mislukte actie in apply, of een fout (geen `XDG_RUNTIME_DIR`, geen token, ongeldige `host.toml`, database niet te openen) |
+| 1 | Minstens één repo overgeslagen (niet bedienbaar, of de gather mislukte), een mislukte actie in apply, een mislukte opruiming, of een fout (geen `XDG_RUNTIME_DIR`, geen token, ongeldige `host.toml`, database niet te openen) |
 
 ## Blokkades
 
@@ -235,7 +253,8 @@ decide, en voert alleen de acties van dat issue uit van de soort `close`, `defer
 De `close` gaat mee, want een open run die in deze beslissing sluit (bijvoorbeeld op een 🤖 Vraag met
 een antwoord), zou de claim van de hervatting anders laten mislukken. Een Teruggegeven, een Klaar en
 een 🚀-herstel laat `run` aan de tick. Hetzelfde geldt voor parkeren, afmaken en terugzetten (zie
-*Blokkades*): een uitvoerend issue met een actieve voorganger geeft in `run` dus `nothing to start`. `run` bewaart geen vingerafdruk in `tick_state`.
+*Blokkades*): een uitvoerend issue met een actieve voorganger geeft in `run` dus `nothing to start`. `run` bewaart geen vingerafdruk in `tick_state` en ruimt geen workspaces op:
+dat doet alleen de tick.
 
 Het eindigt met één regel op stderr, alle vier met exitcode 0:
 
@@ -295,8 +314,12 @@ lighthouse pause [--until HH:MM]
 lighthouse pause off
 ```
 
-`lighthouse pause` schrijft de pauzevlag: tot het einde ervan start de dispatcher niets. Een run die
-al loopt, gaat door; een run die de controller parkeert, hervat na het einde (of na `pause off`).
+`lighthouse pause` schrijft de pauzevlag: tot het einde ervan start de tick zelf niets meer. Een
+lopende controller-run gaat niet door: de usage-gate-hook toetst de vlag in stand `tool`, dus de run
+parkeert bij zijn volgende tool-call van de hoofdthread (zie
+[usage-gate.md](usage-gate.md#de-pauzevlag)). Een geparkeerde run hervat na het einde van de pauze
+(of na `pause off`). Tot die tijd staat hij als `parked` in
+`GET /api/runs` en op de kaart *Running runs* (zie [install.md](install.md#running-runs)).
 
 - Zonder `--until` duurt de pauze tot het eerstvolgende begin van `[dispatch] night` (21:00 bij de
   standaard): vandaag, of morgen als dat begin vandaag al voorbij is. Een lege `night` (begin gelijk

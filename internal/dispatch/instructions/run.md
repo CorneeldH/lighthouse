@@ -5,10 +5,12 @@ session for one phase of an issue. Most likely nobody is watching.
 - Never use `AskUserQuestion`: nobody answers it. Before you ask, check whether the repo decides
   the choice (`AGENTS.md`, the spec or plan, the issue), or whether you can verify the fact
   yourself: then choose, and name what decided it. If questions remain, post them yourself as
-  **one** bundle with `lighthouse ask` and stop after it: at most four `--question`, each with 2
-  to 6 options and one `--recommended`. A question that depends on another answer waits for
-  the next round. The controller sees the answer and resumes this session with it. A full
-  example, a bundle of two questions:
+  **one** bundle with `lighthouse ask` and stop after it, without `/lighthouse-write-handoff`
+  and without any further tool call: at most four `--question`, each with 2 to 6 options and one
+  `--recommended`. A question that depends on another answer waits for the next round. The
+  controller sees the answer and resumes this session with it, but only while the question is
+  the last comment of the run: a handoff after it hides the question, and the answer then
+  resumes nothing. A full example, a bundle of two questions:
 
   ```bash
   lighthouse ask --issue 42 --phase execution --task "Task 2" \
@@ -32,6 +34,10 @@ session for one phase of an issue. Most likely nobody is watching.
   and run it again. When the post fails, it exits 1
   (`lighthouse ask: post failed: …`) and nothing is on the issue: run the same call once more,
   and stop if it fails again.
+- Write the text you pass to `lighthouse ask` (`--task`, `--where`, `--what`, `--question`,
+  `--option`) in the `[project] language` of `lighthouse.toml`, also when these instructions and
+  their example are English. `lighthouse ask` renders only its own headings in that language;
+  `--command` stays literal.
 - If the user has to run something themselves (sudo, another host, an interactive login), put
   every command literally and completely in a fenced code block of its own (```` ```bash ````);
   do not only describe it in words. Pass every such command with `--command`: `lighthouse ask`
@@ -51,10 +57,12 @@ session for one phase of an issue. Most likely nobody is watching.
   or red and starts `/lighthouse-fix-pr` when needed. This goes above every rule that tells you
   to wait for a green PR, also above "stop at green" in `lighthouse-fix-pr`.
 - Start no background work (`run_in_background`, Monitor, an alarm): claude stays alive in the
-  unit after your last answer, and whatever still runs out then can wake your session again
-  later. The controller reads that as a run that works again. Nobody else calls you back.
-- End every phase with `/lighthouse-write-handoff`: it posts the block as `🤖 Handoff` on the issue.
-  Stop after it, without a `/clear` suggestion or any further tool call.
+  unit after your last answer until the controller ends it, and whatever still runs out then can
+  wake your session again. The controller reads that as a run that works again. Nobody else calls
+  you back.
+- End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask`
+  (see above): it posts the block as `🤖 Handoff` on the issue. Stop after it, without a `/clear`
+  suggestion or any further tool call.
 - **Native lane**: a run that starts `/superpowers:executing-plans` runs on Sonnet. Dispatch the
   whole-branch review of that skill with `model: "opus"` explicitly, never without a model. If
   such a run posts a handoff for the same phase (context full), it repeats `lane: native`;

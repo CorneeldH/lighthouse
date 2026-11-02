@@ -115,9 +115,14 @@ func TestRunInstructionsPinnedText(t *testing.T) {
 		"`lighthouse ask --help`",
 		// the hint covers every refusal before the post, not only a wrong shape.
 		"When it says `nothing posted`, nothing is on the issue: fix what the message names (the shape of the call, `LIGHTHOUSE_CONTROLLER_RUN`, `lighthouse.toml` or the GitHub token) and run it again.",
+		// #204: ask renders only its fixed parts in the project language; the run writes the rest.
+		"Write the text you pass to `lighthouse ask` (`--task`, `--where`, `--what`, `--question`, `--option`) in the `[project] language` of `lighthouse.toml`, also when these instructions and their example are English.",
 		// the flag names the run uses must be the flags of `lighthouse ask`.
 		"--issue", "--phase", "--task", "--where", "--what", "--question", "--option", "--recommended",
 		"--command", "--dry-run",
+		// #203: a handoff after the question becomes the last turn, and the answer resumes nothing.
+		"stop after it, without `/lighthouse-write-handoff`",
+		"End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask`",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("run.md lacks %q", want)

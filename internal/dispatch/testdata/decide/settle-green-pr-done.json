@@ -96,7 +96,8 @@
       "run_id": 5,
       "session_id": "11111111-2222-4333-8444-555555555555",
       "pr_url": "https://github.com/o/r/pull/12",
-      "language": "nl"
+      "language": "nl",
+      "end": true
     }
   ]
 }

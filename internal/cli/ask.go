@@ -92,8 +92,9 @@ func newAskCommand(env askEnv) *cobra.Command {
 		Long: "Post the question of a controller run on its issue, as one bundle of 1 to 4 questions. Every\n" +
 			"--question opens a question; the --option and --recommended flags after it belong to it. The\n" +
 			"session comes from LIGHTHOUSE_CONTROLLER_RUN, the repo and the language from lighthouse.toml at\n" +
-			"the top of the git repository around the current directory. Prints the comment URL; with\n" +
-			"--dry-run, the question instead of posting it.",
+			"the top of the git repository around the current directory. Write the text of --task, --where,\n" +
+			"--what, --question and --option in that language; --command stays literal. Prints the comment\n" +
+			"URL; with --dry-run, the question instead of posting it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			err := ask(cmd.Context(), env, in, cmd.OutOrStdout())
