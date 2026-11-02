@@ -195,10 +195,18 @@ Een tweede meting na die fixes zag één vuile blob meer dan de eerste en niets 
 | Findings | 470 over de 10 batches (11, 89, 72, 81, 90, 30, 51, 31, 15, 0); geen batch boven het plafond van 200 |
 
 Na de run kende de ledger 8447 schone blobs; 146 blobs hebben dus een finding. Het rapport telde
-1622 regels over 1496 verschillende refs: `generic-api-key` 1596, `aws-access-token` 26. Bij
-`generic-api-key` zijn (deze deeltallen zijn van de eerste meting van die dag) de meeste matches `turnAttributionKey` (1453); 56 zijn een tweede
-beta-header-combinatie (`oauth-2025-04-20`, met een andere beta-header) die de allowlist niet dekt
-en die niet is toegestaan: die vraagt menselijke beoordeling.
+1622 regels over 1496 verschillende refs: `generic-api-key` 1596, `aws-access-token` 26. Per ref:
+
+- 1409 refs hadden alleen `turnAttributionKey` (een UUID van entire);
+- 43 refs hadden alleen de beta-header;
+- 31 refs hadden beide;
+- 13 refs uit één sessie hadden de testwaarden uit de `.gitleaks.toml` van een andere repo.
+
+De beta-header-matches waren geen andere header. gitleaks knipt een match af op een chunkgrens, aan
+het begin of aan het eind. De allowlist vroeg de hele header en miste die stukken. Na beoordeling
+door de gebruiker dekken de allowlists elk afgeknipt stuk van de header en van `turnAttributionKey`,
+plus de exacte testwaarden. Een derde volledige scan op 2026-11-02 vond toen 0 findings in alle 10
+batches (29,6 s, piek-RSS 107 MB, swap vlak).
 
 Tegen de constanten: een batch van 64 MB kost ca. 100 MB RSS, ver onder het plafond van 2G. De
 hele set (582 MiB) ligt boven de 256 MB-grens van de hook, dus de eerste push na deze import loopt
