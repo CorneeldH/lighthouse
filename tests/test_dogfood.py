@@ -8,6 +8,7 @@ registration fails here, even when the script itself is fine.
 
 import json
 import os
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -16,6 +17,13 @@ from tests.pack._testkit import bash_payload, git, init_repo
 
 ROOT = Path(__file__).resolve().parents[1]
 SETTINGS = ROOT / ".claude" / "settings.json"
+
+# entire's own hooks (#194), each a no-op when entire is not installed. The project
+# owns them; init does not manage them.
+ENTIRE_HOOK = re.compile(
+    r"sh -c 'if ! command -v entire >/dev/null 2>&1; then (?:.*; )?exit 0; fi; "
+    r"exec entire hooks claude-code [a-z-]+'"
+)
 
 
 def _pretooluse() -> list[dict]:
@@ -102,7 +110,8 @@ def test_bash_pretooluse_hooks_live_in_one_block():
 
 
 def test_no_registration_outside_lighthouse_hooks():
-    """The bootstrap of (a0) is gone: every hook registered here is one init manages."""
+    """The bootstrap of (a0) is gone: every hook registered here is one init manages,
+    or one of entire's guarded hooks."""
     settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
     commands = [
         hook["command"]
@@ -112,6 +121,8 @@ def test_no_registration_outside_lighthouse_hooks():
     ]
     assert commands
     for command in commands:
+        if ENTIRE_HOOK.fullmatch(command):
+            continue
         assert command.startswith('"$CLAUDE_PROJECT_DIR"/.claude/hooks/lighthouse/'), command
 
 
