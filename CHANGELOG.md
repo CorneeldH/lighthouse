@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.8.3] - 2026-11-02
+
+### Fixed
+
+- The tick now removes the forge workspace of an issue that left Controller once it has no open run, no live foreign session, no local changes and no unpushed commits. A workspace it must keep is listed under *Workspaces to clean up*.
+
 ## [v0.8.2] - 2026-11-02
 
 ### Fixed
