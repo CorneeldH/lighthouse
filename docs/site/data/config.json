@@ -966,6 +966,22 @@
               "readers": [
                 "pack/core/hooks/commit-test-gate.sh"
               ]
+            },
+            {
+              "key": "host.scan_memory_max",
+              "level": "advanced",
+              "required": "no",
+              "about": "The memory ceiling of the secret scan of entire checkpoints; the scan is aborted above it. Without the key the scan uses 2G.",
+              "example": "2G",
+              "readers": []
+            },
+            {
+              "key": "host.scan_cpu_quota",
+              "level": "advanced",
+              "required": "no",
+              "about": "The CPU quota of the secret scan of entire checkpoints, as a percentage of one core. Without the key the scan uses 200%.",
+              "example": "200%",
+              "readers": []
             }
           ]
         },

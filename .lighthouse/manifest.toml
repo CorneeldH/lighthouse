@@ -730,7 +730,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
-sha256 = "73e16e9f7dae838201cff41ae5d3be51cc326584f126114075c2e0e6c29a0b1c"
+sha256 = "903a60e7371ed4dfd3642d338834455dd0da8d9ddbca06a08634354e10d04159"
 
 [[unit]]
 kind = "file"
