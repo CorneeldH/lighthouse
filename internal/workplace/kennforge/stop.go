@@ -72,6 +72,47 @@ func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []str
 	return a.killInContainers(ctx, sessionIDs)
 }
 
+// Kill ends only the claude processes of the given sessions, found by session id, and never the
+// systemd unit: a foreign session in the same worktree runs on. With the software profile they
+// run in the shared devcontainer, with any other profile on this host. A session without a
+// process is no error; anything it cannot measure is.
+func (a *Adapter) Kill(ctx context.Context, workspaceID string, sessionIDs []string) error {
+	// An empty id would make pgrep -f and pkill -f match every process, foreign sessions included.
+	for _, sid := range sessionIDs {
+		if sid == "" {
+			return fmt.Errorf("kill in workspace %s: empty session id", workspaceID)
+		}
+	}
+	if a.Profile == "software" {
+		return a.killInContainers(ctx, sessionIDs)
+	}
+	for _, sid := range sessionIDs {
+		if err := a.killSession(ctx, onHost, sid); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// onHost is the place of killSession for a process on this host, outside any container.
+const onHost = ""
+
+// in runs a command in container c, or on this host when c is onHost.
+func (a *Adapter) in(ctx context.Context, c string, args ...string) (string, int, error) {
+	if c == onHost {
+		return a.Run(ctx, stopTimeout, args[0], args[1:]...)
+	}
+	return a.Run(ctx, stopTimeout, "podman", append([]string{"exec", c}, args...)...)
+}
+
+// where places container c, or this host, in an error.
+func where(c string) string {
+	if c == onHost {
+		return "on this host"
+	}
+	return "in container " + c
+}
+
 func (a *Adapter) killInContainers(ctx context.Context, sessionIDs []string) error {
 	out, code, err := a.Run(ctx, stopTimeout, "podman", "ps",
 		"--filter", "label=devcontainer.local_folder="+a.MainCheckout, "--format", "{{.ID}}")
@@ -91,11 +132,12 @@ func (a *Adapter) killInContainers(ctx context.Context, sessionIDs []string) err
 	return nil
 }
 
-// alive asks whether a process matching sid runs in container c: rc 0 yes, rc 1 no.
+// alive asks whether a process matching sid runs in container c (or on this host): rc 0 yes,
+// rc 1 no.
 func (a *Adapter) alive(ctx context.Context, c, sid string) (bool, error) {
-	_, code, err := a.Run(ctx, stopTimeout, "podman", "exec", c, "pgrep", "-f", sid)
+	_, code, err := a.in(ctx, c, "pgrep", "-f", sid)
 	if err != nil {
-		return false, fmt.Errorf("pgrep %s in %s: %w", sid, c, err)
+		return false, fmt.Errorf("pgrep %s %s: %w", sid, where(c), err)
 	}
 	switch code {
 	case 0:
@@ -103,7 +145,7 @@ func (a *Adapter) alive(ctx context.Context, c, sid string) (bool, error) {
 	case 1:
 		return false, nil
 	}
-	return false, fmt.Errorf("pgrep %s in %s: exit code %d", sid, c, code)
+	return false, fmt.Errorf("pgrep %s %s: exit code %d", sid, where(c), code)
 }
 
 func (a *Adapter) killSession(ctx context.Context, c, sid string) error {
@@ -111,8 +153,8 @@ func (a *Adapter) killSession(ctx context.Context, c, sid string) error {
 	if err != nil || !live {
 		return err
 	}
-	if _, _, err := a.Run(ctx, stopTimeout, "podman", "exec", c, "pkill", "-f", sid); err != nil {
-		return fmt.Errorf("pkill %s in %s: %w", sid, c, err)
+	if _, _, err := a.in(ctx, c, "pkill", "-f", sid); err != nil {
+		return fmt.Errorf("pkill %s %s: %w", sid, where(c), err)
 	}
 	for i := 0; i < killRetries; i++ {
 		a.sleep(killRetryGap)
@@ -124,5 +166,5 @@ func (a *Adapter) killSession(ctx context.Context, c, sid string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("session %s still runs in container %s after pkill", sid, c)
+	return fmt.Errorf("session %s still runs %s after pkill", sid, where(c))
 }

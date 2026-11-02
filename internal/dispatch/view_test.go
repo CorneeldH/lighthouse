@@ -48,6 +48,33 @@ func TestRunViewsUnmeasured(t *testing.T) {
 	}
 }
 
+// #945: four done runs and no open or parked one give no Running runs card, so the issue is
+// not shown as running or waiting once it left Controller.
+func TestRunViewsNoRunNoView(t *testing.T) {
+	ctx := context.Background()
+	db := openViewStore(t).DB
+	for _, key := range []string{"start:945", "answer:1", "answer:2", "handoff:3"} {
+		r, err := runs.Take(ctx, db, runs.Claim{Repo: "o/r", Issue: 945, SessionID: runs.NewSessionID(), Mode: "start",
+			Trigger: "handoff", TriggerKey: key, Now: time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runs.SetWorkplace(ctx, db, r.ID, "d7c0b0ea0de54804", "work-issue-945-immich-smart-search-191b7750"); err != nil {
+			t.Fatal(err)
+		}
+		if err := runs.Release(ctx, db, r.ID, runs.Done, "", time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open, err := runs.OpenBriefs(ctx, db, "o/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := RunViews(Pre{}, open, nil); got == nil || len(got) != 0 {
+		t.Errorf("RunViews = %#v, want an empty list", got)
+	}
+}
+
 func TestRunViewsOpenWinsOverParked(t *testing.T) {
 	got := RunViews(Pre{}, []runs.Brief{{ID: 1, Issue: 3}}, []runs.Brief{{ID: 2, Issue: 3}})
 	if len(got) != 1 || got[0].State != "open" {

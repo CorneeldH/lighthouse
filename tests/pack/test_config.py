@@ -360,6 +360,54 @@ def _host(tmp_path: Path, text: str) -> Path:
     return path
 
 
+_HOST_HEAD = '[host]\nname = "box"\ntailscale_ip = "100.64.0.1"\n'
+
+
+def test_load_host_scan_limits(tmp_path):
+    host = load_host(_host(tmp_path, _HOST_HEAD + 'scan_memory_max = "2G"\nscan_cpu_quota = "150%"\n'))
+    assert (host.scan_memory_max, host.scan_cpu_quota) == ("2G", "150%")
+
+
+def test_load_host_scan_limits_absent(tmp_path):
+    host = load_host(_host(tmp_path, _HOST_HEAD))
+    assert (host.scan_memory_max, host.scan_cpu_quota) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("scan_memory_max", '""'),
+        ("scan_memory_max", "42"),
+        ("scan_memory_max", '"2 GB"'),
+        ("scan_cpu_quota", '""'),
+        ("scan_cpu_quota", '"150"'),
+        ("scan_cpu_quota", '"0%"'),
+    ],
+)
+def test_load_host_rejects_invalid_scan_limits(tmp_path, key, value):
+    path = _host(tmp_path, _HOST_HEAD + f"{key} = {value}\n")
+    with pytest.raises(ConfigError) as exc:
+        load_host(path)
+    assert str(path) in str(exc.value) and f"host.{key}" in str(exc.value)
+
+
+def test_scan_limit_keys_from_host(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv(
+        "LIGHTHOUSE_HOST_TOML",
+        str(_host(tmp_path, _HOST_HEAD + 'scan_memory_max = "512M"\nscan_cpu_quota = "100%"\n')),
+    )
+    assert main(["host.scan_memory_max"]) == 0
+    assert capsys.readouterr().out == "512M\n"
+    assert main(["host.scan_cpu_quota"]) == 0
+    assert capsys.readouterr().out == "100%\n"
+
+
+def test_scan_limit_keys_absent_is_rc_1(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(tmp_path / "host.toml"))
+    assert main(["host.scan_memory_max"]) == 1
+    assert main(["host.scan_cpu_quota"]) == 1
+
+
 def test_load_host_valid(tmp_path):
     host = load_host(_host(tmp_path, '[host]\nname = "box"\ntailscale_ip = "100.64.0.1"\n'))
     assert (host.name, host.tailscale_ip) == ("box", "100.64.0.1")
@@ -638,6 +686,8 @@ def test_defaults_are_not_shared(tmp_path):
         ("forge.board.priority_options.P0", True),
         ("host.name", True),
         ("host.gate_slice", True),
+        ("host.scan_memory_max", True),
+        ("host.scan_cpu_quota", True),
         ("paths.labels", True),
         ("ci.bot_login", True),
         ("project.skill_prefix", True),

@@ -114,6 +114,9 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 			return fmt.Errorf("post: %w", err)
 		}
+		if err := ap.release(ctx, a); err != nil {
+			return err
+		}
 		return ap.closeRun(ctx, a.RunID, runs.Done, "")
 	case KindClose:
 		if err := ap.release(ctx, a); err != nil {
@@ -175,13 +178,14 @@ func closeReason(a Action) string {
 	return a.ReasonArg
 }
 
-// release stops the session of run a.RunID (a.Stop) or forgets its workspace (a.Discard). Stop
-// takes the claude session id, which the workplace finds the process by, never the forge key; a
-// run the workplace never adopted (no forge key) or without a session id has nothing to stop. A
-// row without a workspace has nothing to forget. Neither is an error. A run no longer open has
-// no row to read, and nothing is stopped.
+// release stops the session of run a.RunID (a.Stop), ends only its claude (a.End) or forgets its
+// workspace (a.Discard). Stop and End take the claude session id, which the workplace finds the
+// process by, never the forge key; a run the workplace never adopted (no forge key) has nothing
+// to stop, a run without a session id nothing to stop or end. A row without a workspace has
+// nothing to forget. None of these is an error. A run no longer open has no row to read, and
+// nothing is stopped.
 func (ap applier) release(ctx context.Context, a Action) error {
-	if !a.Stop && !a.Discard {
+	if !a.Stop && !a.End && !a.Discard {
 		return nil
 	}
 	open, err := runs.Open(ctx, ap.env.DB, a.Repo)
@@ -197,6 +201,10 @@ func (ap applier) release(ctx context.Context, a Action) error {
 		case a.Stop && r.WorkplaceSession != "" && r.SessionID != "":
 			if err := w.Stop(ctx, r.WorkspaceID, []string{r.SessionID}); err != nil {
 				return fmt.Errorf("stop run %d: %w", r.ID, err)
+			}
+		case a.End && r.SessionID != "":
+			if err := w.Kill(ctx, r.WorkspaceID, []string{r.SessionID}); err != nil {
+				return fmt.Errorf("end claude of run %d: %w", r.ID, err)
 			}
 		case a.Discard && r.WorkspaceID != "":
 			if err := w.Discard(ctx, r.WorkspaceID); err != nil {
@@ -260,6 +268,13 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	}
 	if err != nil {
 		return err
+	}
+	// A resume reuses the session: while the claude of the earlier run still lives, forge
+	// refuses the handoff. Only after the claim, so a process that lost it kills nothing.
+	if a.Kind == KindResume {
+		if err := w.Kill(ctx, ws.ID, []string{session}); err != nil {
+			return ap.startFailed(ctx, run.ID, "end earlier claude", err)
+		}
 	}
 
 	file, err := WriteInstructions(env.StateDir, session, env.RoundLimit(a.Repo))

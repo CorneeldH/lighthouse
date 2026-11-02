@@ -35,6 +35,9 @@ type fakeForge struct {
 	// statuses answers GET /workspaces/ws1, one entry per call; the last repeats.
 	statuses []string
 	path     string
+	// headRef is the git_head_ref of GET /workspaces/ws1; getStatus, when set, answers it instead.
+	headRef   string
+	getStatus int
 	// sessions answers the agent-sessions reads, one entry per call; the last repeats.
 	sessions []string
 	// sessionsStatus, when set, answers the agent-sessions reads instead.
@@ -116,7 +119,11 @@ func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "POST /api/v1/repo/github/CorneeldH/lighthouse/workspaces":
 		_, _ = w.Write([]byte(f.createBody))
 	case "GET /api/v1/workspaces/ws1":
-		_, _ = fmt.Fprintf(w, `{"id":"ws1","status":%q,"worktree_path":%q}`, next(f.statuses, n), f.path)
+		if f.getStatus != 0 {
+			w.WriteHeader(f.getStatus)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"id":"ws1","status":%q,"worktree_path":%q,"git_head_ref":%q}`, next(f.statuses, n), f.path, f.headRef)
 	case "GET /api/v1/workspaces/ws1/agent-sessions":
 		if f.sessionsStatus != 0 {
 			w.WriteHeader(f.sessionsStatus)
@@ -669,6 +676,39 @@ func TestAdapterTranscriptDir(t *testing.T) {
 			t.Errorf("TranscriptDir = %q, %v; want an error that is not ErrNotMeasurable", got, err)
 		}
 	})
+}
+
+func TestLookup(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.path, f.headRef = "/w/1", "issue-7"
+	got, err := a.Lookup(context.Background(), "ws1")
+	if want := (workplace.Workspace{ID: "ws1", Path: "/w/1", Branch: "issue-7"}); err != nil || got != want {
+		t.Fatalf("Lookup = %+v, %v; want %+v", got, err, want)
+	}
+}
+
+func TestLookupGone(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.getStatus = 404
+	if _, err := a.Lookup(context.Background(), "ws1"); !errors.Is(err, workplace.ErrGone) {
+		t.Fatalf("err = %v, want ErrGone", err)
+	}
+}
+
+func TestLookupOtherStatusNotGone(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.getStatus = 500
+	if _, err := a.Lookup(context.Background(), "ws1"); err == nil || errors.Is(err, workplace.ErrGone) {
+		t.Fatalf("err = %v, want an error that is not ErrGone", err)
+	}
+}
+
+func TestLookupNoPath(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.headRef = "issue-7"
+	if got, err := a.Lookup(context.Background(), "ws1"); err == nil || errors.Is(err, workplace.ErrGone) {
+		t.Fatalf("Lookup = %+v, %v; want an error that is not ErrGone", got, err)
+	}
 }
 
 func TestRemove409Dirty(t *testing.T) {

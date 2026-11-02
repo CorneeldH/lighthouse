@@ -1,0 +1,63 @@
+# gitleaks configuration (#194): one config for the pre-push hook and CI.
+#
+# Allowlists work on the matched text, never on a path: a `paths` entry makes a whole
+# file invisible, including a real secret that later lands in it. That holds for
+# `.entire/metadata/` too: it is gitignored, but `git add -f` still commits it. A local
+# `gitleaks dir .` therefore reads entire's transcript cache; scan the commits
+# (`gitleaks git`), as the pre-push hook and CI do.
+title = "lighthouse"
+
+[extend]
+useDefault = true
+
+# generic-api-key reads `TriggerKey, triggerHandoff+"` as a key with a value. It is
+# a Go expression in internal/dispatch/decide.go, also in history (bf285594). Scoped
+# to the rule and to this exact match, so a real key on that line stays red.
+[[allowlists]]
+description = "Go expression row.TriggerKey in internal/dispatch/decide.go, not a secret"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''^row\.TriggerKey, triggerHandoff\+"$''']
+
+# generic-api-key reads `"oauth-2025-04-20","interleaved-thinking-2025-05-14"` as a key
+# with a value: that is the name of the Anthropic beta header and a feature date, in
+# every Claude transcript. gitleaks cuts a match off at a chunk boundary, so the match
+# may end anywhere in the header (and lose the `o` in front): the regex takes every
+# prefix. Scoped to the rule and to this header, so a real key on that line stays red.
+[[allowlists]]
+description = "Anthropic beta-header name and feature date in transcripts, not a secret"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''^o?auth-2025-04-20","(?:i(?:n(?:t(?:e(?:r(?:l(?:e(?:a(?:v(?:e(?:d(?:\-(?:t(?:h(?:i(?:n(?:k(?:i(?:n(?:g(?:\-(?:2(?:0(?:2(?:5(?:\-(?:0(?:5(?:\-(?:1(?:4(?:")?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?$''']
+
+# generic-api-key reads `"turnAttributionKey":"<uuid>"` as a key with a value: entire
+# writes that field on every turn of a checkpoint, a UUID. A cut-off match keeps any
+# tail of the name down to `Key`, and the UUID may end early. Scoped to the rule, to
+# that name and to a UUID-shaped value, so another key with a UUID value stays red.
+[[allowlists]]
+description = "entire's turnAttributionKey (a UUID) in checkpoint metadata, not a secret"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''^(?:turnAttributionKey|urnAttributionKey|rnAttributionKey|nAttributionKey|AttributionKey|ttributionKey|tributionKey|ributionKey|ibutionKey|butionKey|utionKey|tionKey|ionKey|onKey|nKey|Key)":"[0-9a-f]{1,8}(?:-[0-9a-f]{0,12}){0,4}"?$''']
+
+# A session read the .gitleaks.toml of another repository, whose allowlists name its
+# synthetic test values: two AWS keys "from the redaction validation and the allowlist
+# test", a scrubber test token and a slop-signal line. Exact matches only, decided by
+# the user (#198).
+[[allowlists]]
+description = "synthetic AWS test keys from another repository's allowlist, read in a session"
+targetRules = ["aws-access-token"]
+regexTarget = "match"
+regexes = [
+  '''^AKIA2E4TQZBH7XKLM3PQ$''',
+  '''^AKIAIOSFODNN7EXAMPLF$''',
+]
+
+[[allowlists]]
+description = "test values from another repository's allowlist, read in a session"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = [
+  '''^GITHUB_TOKEN=ghp_secret123`$''',
+  '''^_gateway_creds':\ complexity=14\ $''',
+]

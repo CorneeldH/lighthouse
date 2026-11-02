@@ -163,7 +163,7 @@ Een controller-marker heeft geen `handoff_path`: de controller-reden vraagt geen
 
 ## De pauzevlag
 
-De controller kan een run laten parkeren zonder alarm, met het bestand `PAUSE` (pad in *Contract*).
+De controller kan een run laten parkeren zonder alarm, met het bestand `PAUSE` (pad in *Contract*). Je zet de vlag met `lighthouse pause [--until HH:MM]` en haalt hem weg met `lighthouse pause off` (zie [tick.md](tick.md#pauze)).
 Alleen `tool` toetst het, alleen in een controller-run, in deze volgorde. De stappen 1 tot en met
 3 draaien in shell, zonder Python:
 

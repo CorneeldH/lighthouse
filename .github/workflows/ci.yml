@@ -49,6 +49,40 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: python3 ci/changelog.py check --base "$BASE" --head "$HEAD"
 
+  # Every PR, outside the domains too: a secret can land in any file (#194). The scan
+  # covers the commits of the PR, base..head, so a secret added and removed again inside
+  # the PR is red as well; same config as the pre-push hook in tools/hooks/. Then the tests
+  # of that hook, with gitleaks present, so they cannot skip here.
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          archive="$RUNNER_TEMP/gitleaks.tar.gz"
+          curl -sSfL -o "$archive" "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "$SHA256  $archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/gitleaks"
+          tar -xzf "$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
+          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+      - name: scan the commits of this PR
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: gitleaks git . --log-opts="$BASE..$HEAD" --config .gitleaks.toml --no-banner --redact --exit-code 1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: uv sync --locked
+      - run: uv run pytest -q tests/test_pre_push_secret_scan.py tests/test_checkpoint_scan.py
+        env:
+          LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
+
   python:
     needs: changes
     if: needs.changes.outputs.python == 'true'
