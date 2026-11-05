@@ -283,14 +283,21 @@ to the body as a line of its own, outside the Evidence block. It is the marker
 `<!-- roborev-lokaal: <sha> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
 empty with `off` (then no line).
 
-Then give the command:
+Then read the repo:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh pr create --repo "$R" --title '<title>' --body-file <path> --milestone "<milestone>"
+python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo
 ```
 
-`--repo` always, with `forge.repo`: in a clone of a fork gh otherwise opens the PR in the upstream
-repo, and `pr-create-gate` blocks a `gh pr create` without it. `--title` always: without it gh asks for it, and headless it refuses. Single quotes, so the shell
+Then give the command, with that output spelled out literally as `<forge.repo>`:
+
+```bash
+gh pr create --repo <forge.repo> --title '<title>' --body-file <path> --milestone "<milestone>"
+```
+
+`--repo` always, spelled out: in a clone of a fork gh otherwise opens the PR in the upstream repo,
+and `pr-create-gate` blocks a `gh pr create` without it, and one with `--repo "$R"` too (it cannot
+read a variable). `--title` always: without it gh asks for it, and headless it refuses. Single quotes, so the shell
 executes nothing in the title. `--milestone` only if the issue has one; with `No issue:` never.
 Never `--body "$(…)"`, `--fill` or `--web`: the hook blocks them.
 
