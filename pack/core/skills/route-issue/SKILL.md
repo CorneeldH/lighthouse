@@ -113,7 +113,7 @@ track of a `--remove-label`).
 payload of step 1, no extra call): if the issue carries none of `labels.needs_shaping`,
 `labels.needs_decision` or `labels.blocked_issue`, this also stops at gate 0. Confirm with the same
 list GET above and report **label missing** with the repair command from `lighthouse-write-issue`
-3e (`gh issue edit <nr> --add-label <labels.blocked_issue>`). If that GET fails, report **unknown**
+3e (`gh issue edit <nr> --repo <forge.repo> --add-label <labels.blocked_issue>`). If that GET fails, report **unknown**
 and stop — an unreadable blocker never falls silently through to gate 4.
 
 If the issue does carry `labels.needs_shaping` or `labels.needs_decision` with an open

@@ -287,10 +287,11 @@ empty with `off` (then no line).
 Then give the command:
 
 ```bash
-gh pr create --title '<title>' --body-file <path> --milestone "<milestone>"
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh pr create --repo "$R" --title '<title>' --body-file <path> --milestone "<milestone>"
 ```
 
-`--title` always: without it gh asks for it, and headless it refuses. Single quotes, so the shell
+`--repo` always, with `forge.repo`: in a clone of a fork gh otherwise opens the PR in the upstream
+repo, and `pr-create-gate` blocks a `gh pr create` without it. `--title` always: without it gh asks for it, and headless it refuses. Single quotes, so the shell
 executes nothing in the title. `--milestone` only if the issue has one; with `No issue:` never.
 Never `--body "$(…)"`, `--fill` or `--web`: the hook blocks them.
 
@@ -339,7 +340,7 @@ count the ACs (no `gh`, no network), it lets through loudly with
 OpenCode and Codex do not run the hook. Check the body yourself then:
 
 ```bash
-printf '%s' "gh pr create --body-file <path>" | python3 .lighthouse/lib/lighthouse_lib/pr_body_gate.py "$PWD"
+printf '%s' "gh pr create --repo <forge.repo> --body-file <path>" | python3 .lighthouse/lib/lighthouse_lib/pr_body_gate.py "$PWD"
 ```
 
 Exit 0 = fine (read the messages on stdout); 2 = blocked (reason on stderr); 3 = open quote; any

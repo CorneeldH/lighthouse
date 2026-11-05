@@ -57,6 +57,9 @@ class Gate:
         self.stub = tmp_path / "stub"
         tool_bin(self.stub, (), stubs={"gh": FAKE_GH})
 
+    def git(self, *args: str) -> None:
+        subprocess.run(["git", "-C", str(self.project), *args], check=True, capture_output=True)
+
     def run(
         self,
         cmd: str,
@@ -89,7 +92,7 @@ def _body_with_rows(n: int) -> str:
 def test_valid_closes_passes(gate: Gate) -> None:
     (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
 
-    result = gate.run("gh pr create --title t --body-file body.md")
+    result = gate.run("gh pr create --repo Acme/widgets --title t --body-file body.md")
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
@@ -99,14 +102,14 @@ def test_valid_closes_passes(gate: Gate) -> None:
 
 
 def test_valid_refs_passes(gate: Gate) -> None:
-    result = gate.run("gh pr create --body 'Refs #5 — wacht op deploy op de Beelink'")
+    result = gate.run("gh pr create --repo Acme/widgets --body 'Refs #5 — wacht op deploy op de Beelink'")
 
     assert result.returncode == 0, result.stderr
     assert "body checked" in json.loads(result.stdout)["systemMessage"]
 
 
 def test_no_form_blocks(gate: Gate) -> None:
-    result = gate.run("gh pr create --body 'zie titel'")
+    result = gate.run("gh pr create --repo Acme/widgets --body 'zie titel'")
 
     assert result.returncode == 2, result.stdout
     assert "/lighthouse-write-pr" in result.stderr
@@ -115,7 +118,7 @@ def test_no_form_blocks(gate: Gate) -> None:
 def test_cd_prefix_reads_relative(gate: Gate) -> None:
     sub = gate.project / "sub"
     sub.mkdir()
-    cmd = "cd sub && gh pr create -F body.md"
+    cmd = "cd sub && gh pr create --repo Acme/widgets -F body.md"
 
     without = gate.run(cmd)
     assert without.returncode == 2, without.stdout
@@ -126,7 +129,7 @@ def test_cd_prefix_reads_relative(gate: Gate) -> None:
 
 
 def test_gh_pr_new_is_checked(gate: Gate) -> None:
-    result = gate.run("gh pr new --body 'zie titel'")
+    result = gate.run("gh pr new --repo Acme/widgets --body 'zie titel'")
 
     assert result.returncode == 2, result.stdout
 
@@ -154,7 +157,7 @@ def test_unparseable_without_gh_pr_passes(gate: Gate) -> None:
 
 
 def test_unparseable_with_gh_pr_blocks(gate: Gate) -> None:
-    result = gate.run("gh pr create --body 'x")
+    result = gate.run("gh pr create --repo Acme/widgets --body 'x")
 
     assert result.returncode == 2, result.stdout
     assert "COULD NOT CHECK" in result.stderr
@@ -164,7 +167,7 @@ def test_unparseable_with_gh_pr_blocks(gate: Gate) -> None:
 def test_ac_count_differs_blocks(gate: Gate) -> None:
     (gate.project / "body.md").write_text(_body_with_rows(2), encoding="utf-8")
 
-    result = gate.run("gh pr create -F body.md")
+    result = gate.run("gh pr create --repo Acme/widgets -F body.md")
 
     assert result.returncode == 2, result.stdout
     assert "3" in result.stderr and "2" in result.stderr
@@ -173,7 +176,7 @@ def test_ac_count_differs_blocks(gate: Gate) -> None:
 def test_gh_fails_passes_loudly(gate: Gate) -> None:
     (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
 
-    result = gate.run("gh pr create -F body.md", GH_FAIL="1")
+    result = gate.run("gh pr create --repo Acme/widgets -F body.md", GH_FAIL="1")
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
@@ -186,7 +189,7 @@ def test_gh_missing_passes_loudly(gate: Gate, tmp_path: Path) -> None:
     (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
     no_gh = tool_bin(tmp_path / "zonder_gh", BASE_TOOLS)
 
-    result = gate.run("gh pr create -F body.md", path=str(no_gh), stub=False)
+    result = gate.run("gh pr create --repo Acme/widgets -F body.md", path=str(no_gh), stub=False)
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
@@ -198,7 +201,7 @@ def test_gh_missing_passes_loudly(gate: Gate, tmp_path: Path) -> None:
 def test_without_tooling_blocks(gate: Gate, tmp_path: Path, drop: str) -> None:
     bare = tool_bin(tmp_path / "kaal", BASE_TOOLS, drop=drop)
 
-    result = gate.run("gh pr create --body 'zie titel'", path=str(bare), stub=False)
+    result = gate.run("gh pr create --repo Acme/widgets --body 'zie titel'", path=str(bare), stub=False)
 
     assert result.returncode == 2, result.stdout
     assert "COULD NOT CHECK" in result.stderr
@@ -210,7 +213,7 @@ def test_parser_with_unexpected_rc_blocks(gate: Gate) -> None:
     # no green light. A fake python3 first on PATH forces that.
     tool_bin(gate.stub, (), stubs={"python3": "#!/bin/sh\nexit 1\n"})
 
-    result = gate.run("gh pr create --body 'Refs #5 — wacht op deploy op de Beelink'")
+    result = gate.run("gh pr create --repo Acme/widgets --body 'Refs #5 — wacht op deploy op de Beelink'")
 
     assert result.returncode == 2, result.stdout
     assert "COULD NOT CHECK" in result.stderr
@@ -264,3 +267,18 @@ def run_hook_raw(gate: Gate):
         env=dict(os.environ, PATH=f"{gate.stub}{os.pathsep}{os.environ['PATH']}"),
         check=False,
     )
+
+
+def test_fork_clone_without_repo_blocks_with_the_exact_flag(gate: Gate) -> None:
+    """#224: in a clone of a fork gh would pick the upstream repo; the gate demands `--repo`."""
+    gate.git("remote", "add", "origin", "https://github.com/Acme/widgets.git")
+    gate.git("remote", "add", "upstream", "https://github.com/Upstream/widgets.git")
+    (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
+
+    without = gate.run("gh pr create --title t --body-file body.md")
+    assert without.returncode == 2, without.stdout
+    assert f"--repo {REPO}" in without.stderr
+
+    with_repo = gate.run(f"gh pr create --repo {REPO} --title t --body-file body.md")
+    assert with_repo.returncode == 0, with_repo.stderr
+    assert "body checked" in json.loads(with_repo.stdout)["systemMessage"]
