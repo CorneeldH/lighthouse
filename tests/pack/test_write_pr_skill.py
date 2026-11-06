@@ -217,6 +217,7 @@ def test_documents_of_the_linked_issues():
     assert "no note in the body" in s
     assert "With `Closes #N`: yes" in s and "With `Refs #N`: judge" in s
     assert "skip this section" in s
+    assert "rc 1 (not set)" in s and "rc 2: the configuration is broken; stop" in s
     assert "planned" not in s
     for named in ("loop.json", "`loop`", "docs/site"):
         assert named not in s, named

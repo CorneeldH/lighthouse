@@ -154,9 +154,10 @@ Mixing is allowed: `Closes #5` with Evidence #5 next to `Refs #6 — <reason>`.
 
 ## Documents of the linked issues
 
-Read the taxonomy file with `python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels`. If
-that command fails or prints nothing, there is no taxonomy file: skip this section, with no note in
-the body. The same when the file has no label with a `Document` column entry.
+Read the taxonomy file with `python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels`.
+rc 1 (not set), or a path to a file that does not exist: there is no taxonomy file; skip this
+section, with no note in the body. The same when the file has no label with a `Document` column
+entry. rc 2: the configuration is broken; stop and report it, no PR.
 
 For every `Closes #N` and every `Refs #N` of the body, read the labels:
 `gh issue view N --json labels`. For each label that has a `Document` in the taxonomy file, ask:
