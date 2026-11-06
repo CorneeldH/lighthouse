@@ -119,6 +119,14 @@ het issue. Daarom leest tick de runhistorie pas ná de comments. Wie de Gestart 
 rij, en tick geeft een verse run nooit terug als wees (`runstaat kwijt`). Claimen tick en `run`
 dezelfde trigger tegelijk, dan wint één `runs.Take`; de ander post niets.
 
+**Het pad in het commando.** Een handoff die in een andere checkout is geschreven, noemt zijn spec of
+plan daar, bijvoorbeeld in een worktree onder de hoofdcheckout. De run kan dat pad niet lezen: zijn
+devcontainer mount alleen de forge-worktrees (#237). Ligt het pad-argument van een start buiten de
+worktree van de run, dan vervangt apply het door de langste staart van minstens twee delen die daar
+als bestand bestaat (`dispatch.Relocate`). Dat geldt voor de Gestart, de rij en de prompt. Bestaat
+geen staart, dan sluit apply de run na de claim als `start_failed`, met reden
+`handoff path: <pad> is not in the worktree …`, en start er niets.
+
 **Een geweigerde of onzekere launch.** Weigert de werkplek de launch, dan meldt apply
 `<repo>#<n>: launch of run <id> not accepted: <reden>` op stderr, op één regel. Onder de 🤖 Gestart
 post het een 🤖 Teruggegeven *start mislukt: <reden>* met de sessie van de run, en de run is gesloten
