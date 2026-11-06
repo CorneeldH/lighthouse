@@ -8,12 +8,13 @@
 
 ## Related issues
 
-<!-- Written by /lighthouse-write-pr. One of three forms (mixing is allowed):
-     `Closes #123` + a `### Evidence #123` table with one row per acceptance criterion
-       (| AC | Command | Result |), when every criterion is proven on this branch or can only be
-       measured once the PR exists;
-     `Refs #123 — <reason>`, when a criterion depends on something after the merge (a deploy,
-       a measurement over days, a test that cannot run in CI);
+<!-- Written by /lighthouse-write-pr. One of three forms:
+     `Refs #123 — <reason>`, with a `### Evidence #123` table (| AC | Command | Result |) of one
+       row per criterion proven on this branch, and below it each open criterion with what is
+       still needed (a deploy, a measurement over days, a test that cannot run in CI);
+       /lighthouse-close-issue runs the rows after the merge and closes the issue;
+     `Closes #123` + a `### Evidence #123` table with one row per acceptance criterion, only
+       when a person opens the PR without /lighthouse-write-pr: the merge closes the issue;
      `No issue: <reason>`.
      Give the PR the milestone of that issue (`gh pr create --milestone "<title>"`).
      No issue, no milestone. -->
