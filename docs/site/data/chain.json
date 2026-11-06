@@ -557,7 +557,7 @@
       "how": [
         "It runs on PreToolUse for Bash and finds each gh pr create or gh pr new in the command.",
         "pr_body_gate.py checks the body from a literal value or a --body-file, and for Closes #N it fetches the issue and requires one Evidence row per acceptance criterion.",
-        "A wrong form, a wrong row count or a body built with command substitution, --fill or --web blocks with exit 2.",
+        "A table under Refs #N is checked on form, not counted. A wrong form, a wrong row count or a body built with command substitution, --fill or --web blocks with exit 2.",
         "When it cannot count the criteria it lets the PR through with the note AC count not measurable; when it cannot parse the command it blocks with COULD NOT CHECK."
       ],
       "when": "Before each Bash call.",
