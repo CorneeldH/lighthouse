@@ -174,9 +174,15 @@ _BASE_KEYS = (
     "project.language",
 )
 _OPTION_PREFIXES = ("forge.board.status_options.", "forge.board.priority_options.")
-HOST_KEYS = ("host.name", "host.tailscale_ip", "host.gate_slice")
+HOST_KEYS = (
+    "host.name",
+    "host.tailscale_ip",
+    "host.gate_slice",
+    "host.scan_memory_max",
+    "host.scan_cpu_quota",
+)
 # Host keys a host without `host.toml` simply does not have (rc 1, not rc 2).
-_OPTIONAL_HOST_KEYS = ("host.gate_slice",)
+_OPTIONAL_HOST_KEYS = ("host.gate_slice", "host.scan_memory_max", "host.scan_cpu_quota")
 
 
 class ConfigError(Exception):
@@ -219,6 +225,8 @@ class Host:
     name: str
     tailscale_ip: str
     gate_slice: str | None = None
+    scan_memory_max: str | None = None
+    scan_cpu_quota: str | None = None
 
 
 def is_known_key(key: str) -> bool:
@@ -414,6 +422,19 @@ def load(path: Path) -> Config:
     )
 
 
+_SCAN_MEMORY_RE = re.compile(r"[1-9][0-9]*[KMGT]?")
+_SCAN_CPU_RE = re.compile(r"[1-9][0-9]*%")
+
+
+def _scan_limit(path: Path, host: dict, name: str, pattern: re.Pattern[str], shape: str) -> str | None:
+    value = host.get(name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not pattern.fullmatch(value):
+        raise ConfigError(f"{path}: key host.{name} must be a string {shape}: {value!r}")
+    return value
+
+
 def load_host(path: Path) -> Host:
     """Read and validate one `host.toml`."""
     data = _read_toml(path, f"host unknown: no host.toml ({path})")
@@ -444,7 +465,15 @@ def load_host(path: Path) -> Host:
     gate_slice = host.get("gate_slice")
     if gate_slice is not None and (not isinstance(gate_slice, str) or not gate_slice):
         raise ConfigError(f"{path}: key host.gate_slice must be a non-empty string")
-    return Host(name=name, tailscale_ip=tailscale_ip, gate_slice=gate_slice)
+    scan_memory_max = _scan_limit(path, host, "scan_memory_max", _SCAN_MEMORY_RE, "like 2G")
+    scan_cpu_quota = _scan_limit(path, host, "scan_cpu_quota", _SCAN_CPU_RE, "like 200%")
+    return Host(
+        name=name,
+        tailscale_ip=tailscale_ip,
+        gate_slice=gate_slice,
+        scan_memory_max=scan_memory_max,
+        scan_cpu_quota=scan_cpu_quota,
+    )
 
 
 def is_local(ip: str) -> bool:
@@ -503,6 +532,8 @@ def _host_value(key: str) -> str:
         "host.name": host.name,
         "host.tailscale_ip": host.tailscale_ip,
         "host.gate_slice": host.gate_slice,
+        "host.scan_memory_max": host.scan_memory_max,
+        "host.scan_cpu_quota": host.scan_cpu_quota,
     }
     value = values[key]
     if value is None:

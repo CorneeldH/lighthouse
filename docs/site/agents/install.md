@@ -20,7 +20,8 @@ is <https://corneeldh.github.io/lighthouse/agents/install.md>. The binaries come
   This guide can be newer than the release you install. If a flag from this guide is missing
   there, stop and tell the user which one.
 - Change `AGENTS.md` and `CLAUDE.md` only through the diff of `lighthouse init` that the user
-  approved. Never edit them by hand.
+  approved. Never edit them by hand, with one exception: the line `@AGENTS.md` in `CLAUDE.md`,
+  after a yes (see [Run lighthouse init](#run-lighthouse-init)).
 
 ## Asking the user
 
@@ -187,7 +188,22 @@ In the root of the repository:
    counts as no. `host.toml` is for `lighthouse serve`, which this guide does not set up.
 5. Write the answers of choices 5a, 5b and 7 into `lighthouse.toml`, under `[project]` and
    `[test_gate]`. Show the user the change. Choice 8 writes nothing here.
-6. Go to [Check](#check).
+6. If `init` printed
+   `` warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules ``,
+   `init` left the existing `CLAUDE.md` alone on purpose. Ask the user: add the line
+   `@AGENTS.md` at the top of `CLAUDE.md`? Options: yes (recommended: without it Claude Code
+   does not read the lighthouse rules) · no. After a yes, add that one line, change nothing else
+   in `CLAUDE.md`, and show the user the diff. After a no, put it under "Still open". Then go
+   on; do not wait for the user to ask.
+7. If `init` printed `warning: <path> is ignored by git (<source>:<line>:<pattern>)`, git
+   ignores a file that `init` installed, so it never reaches a commit and other clones and
+   worktrees lack it (the hooks break there). Tell the user which path and which rule. Ask: add an
+   exception for it (a `!<path>` line after the rule in that `.gitignore`, or remove the entry
+   from `.git/info/exclude`)? Options: yes (recommended: without it the install is incomplete in
+   every other clone) · no. After a yes, add only that exception, check with
+   `git check-ignore -v <path>` that nothing prints, and show the user the diff. After a no, put it
+   under "Still open". Then go on; do not wait for the user to ask.
+8. Go to [Check](#check).
 
 ## Check
 
@@ -242,7 +258,9 @@ here.
 - `warning: no GitHub remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it`:
   tell the user. Add `[forge]` only with the user's `owner/name`, after a yes.
 - `` warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules ``:
-  do not edit `CLAUDE.md` yourself. Put the line under "Still open" for the user to add.
+  ask for the line, as step 6 of [Run lighthouse init](#run-lighthouse-init) says.
+- `warning: <path> is ignored by git (<source>:<line>:<pattern>)`: ask for an exception, as step 7
+  of [Run lighthouse init](#run-lighthouse-init) says.
 - `lighthouse init: package <name> is not in this binary`: the release lacks that package. Drop
   its `--pack <name>` and tell the user.
 - `lighthouse init: nothing written` after step 4: the `y` did not reach `init`. Check the pipe,

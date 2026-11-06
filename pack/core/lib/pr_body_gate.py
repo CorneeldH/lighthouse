@@ -442,12 +442,18 @@ def _gh_repo_env(step: Step) -> Option | None:
     return found
 
 
+def _gh_repo_process_env() -> Option | None:
+    """`GH_REPO` of the hook's own environment, which `gh` reads as well."""
+    value = os.environ.get("GH_REPO")
+    return (value, True, False) if value else None
+
+
 def _pr_create(step: Step) -> PrCreate:
     cwd = step.dirs["here"]  # LIVE dict: copy now, before the next next()
     values, flags = _options(step)
     # gh: `--repo`/`-R` beats `GH_REPO`.
     flag = _first_value(values, "--repo", "-R")
-    repo_w = flag or _gh_repo_env(step)
+    repo_w = flag or _gh_repo_env(step) or _gh_repo_process_env()
     body, body_file, problem = _body_source(
         cwd,
         _first_value(values, "--body", "-b"),
@@ -560,6 +566,21 @@ def _scope_repo(repo_value: str) -> tuple[str, str]:
     return "overslaan", f"skipped — other repo {repo_value}"
 
 
+def _without_repo() -> tuple[str, str]:
+    """Scope of a `gh pr create` in this repo without `--repo`, `-R` or `GH_REPO` (#224).
+
+    In a clone of a fork `gh` then picks the upstream repo as the base, not
+    `forge.repo`. With `forge.repo` set the repo has to be spelled out.
+    """
+    own = repo()
+    if own is None:
+        return "toetsen", ""
+    return "blokkeren", (
+        "`gh pr create` without --repo: in a clone of a fork gh then opens the PR"
+        f" in the upstream repo. Add `--repo {own}`."
+    )
+
+
 def in_scope(pc: PrCreate, project_dir: str) -> tuple[str, str]:
     """`("toetsen"|"overslaan"|"blokkeren", reason)` for this `gh pr create`."""
     if pc.repo_problem is not None:
@@ -582,7 +603,7 @@ def in_scope(pc: PrCreate, project_dir: str) -> tuple[str, str]:
             return "overslaan", "skipped — outside this repo"
         return "blokkeren", f"repo of {path} cannot be determined ({error})"
     if dir_ == own_repo:
-        return "toetsen", ""
+        return _without_repo()
     # Another common dir: a worktree of a separate clone (forge) with the
     # same `origin` is this repo after all (#36).
     timeout = _budget(GIT_TIMEOUT_S)
@@ -593,7 +614,7 @@ def in_scope(pc: PrCreate, project_dir: str) -> tuple[str, str]:
     except repo_identity.OriginError as exc:
         return "blokkeren", f"origin of {path} cannot be determined ({exc})"
     if same:
-        return "toetsen", ""
+        return _without_repo()
     return "overslaan", f"skipped — outside this repo (git-common-dir {dir_} vs {own_repo}; {reason})"
 
 

@@ -218,6 +218,7 @@ func execute(o Options) error {
 		_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
 	}
 	warnMissingScripts(o.Err, root)
+	warnIgnored(o.Err, root, desired, plan)
 	return offerHost(o, in)
 }
 
@@ -677,5 +678,61 @@ func warnMissingScripts(w io.Writer, root string) {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(script))); err != nil {
 			_, _ = fmt.Fprintf(w, "warning: %s: a hook runs %s, which does not exist\n", settingsPath, script)
 		}
+	}
+}
+
+// warnIgnored reports every path init installs or writes that git ignores: such a file
+// works locally but never reaches a commit, so another clone lacks it. It checks the
+// desired file and settings paths and everything the plan writes, also on a run without
+// changes. A tracked file is never reported. One line per ignoring rule.
+func warnIgnored(w io.Writer, root string, desired []packs.Unit, plan map[string]*planned) {
+	seen := map[string]bool{}
+	var paths []string
+	add := func(p string) {
+		if !seen[p] {
+			seen[p] = true
+			paths = append(paths, p)
+		}
+	}
+	for _, u := range desired {
+		add(u.Path)
+	}
+	for p := range plan {
+		add(p)
+	}
+	sort.Strings(paths)
+	var exists []string
+	for _, p := range paths {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(p))); err == nil {
+			exists = append(exists, p)
+		}
+	}
+	if len(exists) == 0 {
+		return
+	}
+	cmd := exec.Command("git", "-C", root, "check-ignore", "-v", "-z", "--stdin")
+	cmd.Stdin = strings.NewReader(strings.Join(exists, "\x00") + "\x00")
+	out, _ := cmd.Output() // exit 1: nothing ignored
+	fields := strings.Split(string(out), "\x00")
+	type rule struct{ src, line, pattern string }
+	var order []rule
+	byRule := map[rule][]string{}
+	for i := 0; i+3 < len(fields); i += 4 {
+		r := rule{fields[i], fields[i+1], fields[i+2]}
+		if strings.HasPrefix(r.pattern, "!") {
+			continue // a negation: the path is not ignored
+		}
+		if _, ok := byRule[r]; !ok {
+			order = append(order, r)
+		}
+		byRule[r] = append(byRule[r], fields[i+3])
+	}
+	for _, r := range order {
+		ps := byRule[r]
+		more := ""
+		if len(ps) > 1 {
+			more = fmt.Sprintf(" (and %d more path(s) under this rule)", len(ps)-1)
+		}
+		_, _ = fmt.Fprintf(w, "warning: %s is ignored by git (%s:%s:%s)%s; it will not be committed, so other clones lack it\n", ps[0], r.src, r.line, r.pattern, more)
 	}
 }

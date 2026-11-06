@@ -84,8 +84,8 @@
         "default_branch": "main",
         "installed": {
           "lighthouse-start-issue": true,
-          "lighthouse-spec-adversarial-review": true,
-          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-review-spec": true,
+          "lighthouse-review-plan": true,
           "lighthouse-fix-pr": true,
           "lighthouse-close-issue": true
         },

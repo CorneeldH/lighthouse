@@ -10,10 +10,10 @@ import (
 )
 
 var allInstalled = map[string]bool{
-	"lighthouse-start-issue":             true,
-	"lighthouse-fix-pr":                  true,
-	"lighthouse-spec-adversarial-review": true,
-	"lighthouse-plan-adversarial-review": true,
+	"lighthouse-start-issue": true,
+	"lighthouse-fix-pr":      true,
+	"lighthouse-review-spec": true,
+	"lighthouse-review-plan": true,
 }
 
 func TestJudgeVerdicts(t *testing.T) {
@@ -36,6 +36,10 @@ func TestJudgeVerdicts(t *testing.T) {
 		{"not allowed", "/rm -rf /", "", VerdictRejected, "", false, "/rm -rf /"},
 		{"fix-pr number", "/lighthouse-fix-pr 3", "", VerdictStart, "/lighthouse-fix-pr 3", false, ""},
 		{"legacy prefix", "/paia-start-issue 7", "", VerdictStart, "/lighthouse-start-issue 7", false, ""},
+		{"review spec", "/lighthouse-review-spec /a/b.md", "", VerdictStart, "/lighthouse-review-spec /a/b.md", false, ""},
+		{"review plan", "/lighthouse-review-plan /a/p.md", "", VerdictStart, "/lighthouse-review-plan /a/p.md", false, ""},
+		{"legacy review name", "/lighthouse-spec-adversarial-review /a/b.md", "", VerdictStart, "/lighthouse-review-spec /a/b.md", false, ""},
+		{"legacy prefix and review name", "/paia-plan-adversarial-review /a/p.md", "", VerdictStart, "/lighthouse-review-plan /a/p.md", false, ""},
 		{"native interactive", "/superpowers:executing-plans /a/b.md", "native", VerdictStart, "/superpowers:executing-plans /a/b.md", true, ""},
 		{"bad shape", "/lighthouse-start-issue 8", "", VerdictRejected, "", false, "/lighthouse-start-issue 8"},
 	}
@@ -90,17 +94,21 @@ func TestJudgeArgumentShapes(t *testing.T) {
 
 func TestReviewSkip(t *testing.T) {
 	on := repoconfig.Controller{SpecReview: true, PlanReview: true}
-	cmd, key := ReviewSkip("/lighthouse-spec-adversarial-review /a/b.md", on)
-	if cmd != "/lighthouse-spec-adversarial-review /a/b.md" || key != "" {
+	cmd, key := ReviewSkip("/lighthouse-review-spec /a/b.md", on)
+	if cmd != "/lighthouse-review-spec /a/b.md" || key != "" {
 		t.Fatalf("on: %q %q", cmd, key)
 	}
-	cmd, key = ReviewSkip("/lighthouse-spec-adversarial-review /a/b.md", repoconfig.Controller{PlanReview: true})
+	cmd, key = ReviewSkip("/lighthouse-review-spec /a/b.md", repoconfig.Controller{PlanReview: true})
 	if cmd != "/superpowers:writing-plans /a/b.md" || key != "skip_spec_review" {
 		t.Fatalf("spec off: %q %q", cmd, key)
 	}
 	cmd, key = ReviewSkip("/paia-plan-adversarial-review /a/p.md", repoconfig.Controller{SpecReview: true})
 	if cmd != "/superpowers:subagent-driven-development /a/p.md" || key != "skip_plan_review" {
 		t.Fatalf("plan off: %q %q", cmd, key)
+	}
+	cmd, key = ReviewSkip("/lighthouse-review-plan /a/p.md", repoconfig.Controller{SpecReview: true})
+	if cmd != "/superpowers:subagent-driven-development /a/p.md" || key != "skip_plan_review" {
+		t.Fatalf("plan off, new name: %q %q", cmd, key)
 	}
 	cmd, key = ReviewSkip("/lighthouse-start-issue 7", repoconfig.Controller{})
 	if cmd != "/lighthouse-start-issue 7" || key != "" {
@@ -134,8 +142,10 @@ func TestInNight(t *testing.T) {
 
 func TestExecuting(t *testing.T) {
 	for cmd, want := range map[string]bool{
+		"/lighthouse-review-spec /a.md":                  false,
+		"/lighthouse-review-plan /a.md":                  false,
 		"/lighthouse-spec-adversarial-review /a.md":      false,
-		"/lighthouse-plan-adversarial-review /a.md":      false,
+		"/paia-plan-adversarial-review /a.md":            false,
 		"/superpowers:writing-plans /a.md":               false,
 		"/superpowers:subagent-driven-development /a.md": true,
 		"/lighthouse-start-issue 7":                      true,

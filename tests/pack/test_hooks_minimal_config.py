@@ -90,7 +90,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
     elif name == "commit-test-gate.sh":
         cmd = "git commit -m x"
     elif name == "pr-create-gate.sh":
-        cmd = "gh pr create --body 'Refs #5 — waiting for the deploy'"
+        cmd = "gh pr create --repo Acme/widgets --body 'Refs #5 — waiting for the deploy'"
     elif name == "bash-write-check.sh":
         cmd = "echo x > a.md"
         if script.endswith(" post"):
@@ -161,7 +161,7 @@ PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
 GUARDED = {
     "main-commit-gate.sh": "git commit -m x",
     "commit-test-gate.sh pre": "git commit -m x",
-    "pr-create-gate.sh": "gh pr create --body x",
+    "pr-create-gate.sh": "gh pr create --repo Acme/widgets --body x",
 }
 
 

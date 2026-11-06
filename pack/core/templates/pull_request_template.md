@@ -15,7 +15,7 @@
      `Refs #123 — <reason>`, when a criterion depends on something after the merge (a deploy,
        a measurement over days, a test that cannot run in CI);
      `No issue: <reason>`.
-     Give the PR the milestone of that issue (`gh pr create --milestone "<title>"`).
+     Give the PR the milestone of that issue (`gh pr create --repo <owner/repo> --milestone "<title>"`).
      No issue, no milestone. -->
 
 ## Open review points

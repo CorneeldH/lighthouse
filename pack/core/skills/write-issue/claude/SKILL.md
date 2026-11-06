@@ -192,7 +192,7 @@ The invariant, per open issue (label names from `[labels]`):
 | no label or another one | 0 | **holds**, outside this invariant |
 
 `labels.blocked_external` falls outside it: it waits on something outside the repo. Repair:
-label off is `gh issue edit <nr> --remove-label "$BLOCKED"`, setting the relation is step 2 below.
+label off is `gh issue edit <nr> --repo "$R" --remove-label "$BLOCKED"`, setting the relation is step 2 below.
 
 A `blocked_by` relation between two issues the controller runs (only if present) is also their
 stacking order: the controller lets the blocked issue do spec and plan and stacks the execution
@@ -225,7 +225,8 @@ on the green PR of its predecessor. The invariant and the steps below stay the s
 
    ```bash
    BLOCKED=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_issue) || exit 2
-   gh issue edit <nr> --add-label "$BLOCKED"
+   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+   gh issue edit <nr> --repo "$R" --add-label "$BLOCKED"
    ```
 
 5. **Final check**: the list from step 3 and
@@ -241,7 +242,7 @@ compensate; a relation without a label is caught by the sweep as **label missing
 | `gh issue create` fails or gives no URL | `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && T='<title>' && gh api "search/issues?q=repo:$R+in:title+\"$T\""` | exactly one hit with `created_at` after the noted start time (the literal ISO value from step 1, not `$START`) and the same body: go on with that number. No hit: error, stop. More than one, an older one, another body, or the search call fails: **unknown** + the search call, stop before every mutation. Never create again blindly |
 | POST fails | the list from step 3 | the relation stands: on to the label. It does not: one retry, then "#N stands without relation and without label" + the POST command |
 | the verification misses the blocker | the same | as above; the summary does not count |
-| setting the label fails | the label command from step 5 | the label stands: go on. It does not: "relation stands, label missing" + `gh issue edit <nr> --add-label "$BLOCKED"` |
+| setting the label fails | the label command from step 5 | the label stands: go on. It does not: "relation stands, label missing" + `gh issue edit <nr> --repo "$R" --add-label "$BLOCKED"` |
 | the final check differs, or a GET fails | — | the real state, or **unknown** with the read command. Never success |
 
 #### 3f. Free labels with a document
@@ -259,7 +260,9 @@ this step.
 `--label` always carries one label per axis the project has (3a, 3b) plus every free label from 3f.
 
 ```bash
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh issue create \
+  --repo "$R" \
   --title "<title>" \
   --label "<location label>,<area label>[,<free label>]" \
   --milestone "<milestone>" \
@@ -340,7 +343,7 @@ as what it names is done. Read first what stands: the labels, and for `labels.bl
 `blocked_by` list from 3e step 3. Then one of two paths:
 
 - **Nothing blocks any more**: label off, nothing on.
-  `OLD=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<old key>) && gh issue edit <nr> --remove-label "$OLD"`.
+  `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && OLD=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<old key>) && gh issue edit <nr> --repo "$R" --remove-label "$OLD"`.
   For `labels.blocked_issue` only when the 3e invariant says **lapsed** or **unlinked**: with an
   open blocker the label holds.
 - **Another label takes over** (a decision is taken, but now the issue waits on another one):
@@ -351,7 +354,8 @@ as what it names is done. Read first what stands: the labels, and for `labels.bl
   ```bash
   OLD=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<old key>) || exit 2
   NEW=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<new key>) || exit 2
-  gh issue edit <nr> --remove-label "$OLD" --add-label "$NEW"
+  R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+  gh issue edit <nr> --repo "$R" --remove-label "$OLD" --add-label "$NEW"
   ```
 
 Close with 3e step 5 as the final check, also when no relation is involved; on a failure the

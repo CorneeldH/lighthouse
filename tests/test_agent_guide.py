@@ -191,6 +191,22 @@ def test_packages_are_asked_after_the_dry_run():
     assert text.index("</dev/null") < text.index("choice 6")
 
 
+CLAUDE_MD_WARNING = "warning: CLAUDE.md does not import AGENTS.md"
+
+
+def test_claude_md_import_is_asked_not_left_open():
+    """`init` never touches an existing `CLAUDE.md`, so the agent asks for the
+    `@AGENTS.md` line itself and goes on to Check, instead of stopping with it open."""
+    src = (ROOT / "internal/initcmd/initcmd.go").read_text(encoding="utf-8")
+    assert CLAUDE_MD_WARNING in src, f"init no longer prints {CLAUDE_MD_WARNING!r}"
+    run = guide_section("Run lighthouse init")
+    assert CLAUDE_MD_WARNING in run
+    step = run[run.index(CLAUDE_MD_WARNING) :]
+    assert "`@AGENTS.md`" in step and "recommended" in step
+    assert step.index("`@AGENTS.md`") < step.index("[Check](#check)")
+    assert "`@AGENTS.md`" in guide_section("Ground rules")
+
+
 def test_stops_outside_a_git_repository():
     text = guide_section("Look first")
     assert "not a git repository" in text and "stop" in text
