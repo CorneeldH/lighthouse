@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.8.8] - 2026-11-06
+
+### Fixed
+
+- `lighthouse tick` now closes an open run on an issue that left Controller and On hold, such as a close-check run whose issue `lighthouse-close-issue` already moved to Done. Before, such a run never closed and kept holding a slot.
+
 ## [v0.8.7] - 2026-11-06
 
 ### Fixed
