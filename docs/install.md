@@ -36,7 +36,7 @@ lighthouse_windows_amd64.exe` in PowerShell and compare the hash with its line i
 your `PATH` works for the CLI. The release binary reports its tag (`lighthouse version`) and
 carries the built web UI: `lighthouse serve` serves it at once, with no Node and no clone. To
 upgrade, download the new binary the same way and follow the steps in
-[Releasing](releasing.md).
+[Releasing](releasing.md#upgrading). Restart the service afterwards.
 
 ## Install with Go
 
@@ -52,8 +52,8 @@ a clone.
 
 ## Build from a clone
 
-This route is for developers. To build the web UI yourself, clone the repository and build it. The build writes the UI into
-`internal/web/dist`, and `go install` embeds it.
+This route is for developers. To build the web UI yourself, clone the repository and build it.
+The build writes the UI into `internal/web/dist`, and `go install` embeds it.
 
 ```bash
 git clone https://github.com/CorneeldH/lighthouse.git
@@ -102,7 +102,8 @@ journalctl --user -u lighthouse
 
 The health endpoint answers `{"version":"…"}`. The page answers with
 `<meta name="lighthouse-ui" content="spa" />`: the binary carries the built web UI.
-`content="placeholder"` means the UI was not built before `go install`. The log shows
+`content="placeholder"` means the binary was built without the UI (`go install`, or a clone
+without `npm run build`). The log shows
 `lighthouse: listening on 127.0.0.1:8127`.
 
 The API is read-only. Its routes:
