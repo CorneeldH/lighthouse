@@ -44,10 +44,10 @@ open files. What counts as evidence and what does *not*: B2–B4 of
 ## V2b. Roborev review (only with `[review] roborev = "local"`)
 
 The session that did the work reviews it before `gh pr create`, so CI runs once, on code where
-the findings are already processed. In a controller run V2b runs in the **build session**, before
-its push and its handoff: the run that starts with `/lighthouse-write-pr <nr>` then finds `done`
-at step 0 and changes no code. If the gate says `run` or `classify` there, the build skipped V2b:
-no review and no processing, but
+the findings are already processed. In a controller run the **build session** reviews, in V2b,
+before its push and its handoff; the write-pr run never reviews: the run that starts with
+`/lighthouse-write-pr <nr>` finds `done` at step 0 and changes no code. If the gate says `run` or
+`classify` there, the build skipped V2b: no review and no processing, but
 `python3 .lighthouse/scripts/roborev_gate.py record --skip "build session ran no review"` and on to
 V4. This step also runs with `No issue:`, where V1–V3 are skipped. One command per step, in this
 order. Every command here runs outside the sandbox (`dangerouslyDisableSandbox: true`): the gate
@@ -194,7 +194,7 @@ every row must be repeatable:
 - no branch-relative command (`origin/main...HEAD`, `HEAD~`, `@{u}`);
 - the Command cell is one single command between backticks, without pipe, `;`, `&&`, `$(…)` or
   redirect, and it is on the Evidence allowlist below. If an AC has to be proved outside it, it is
-  no Evidence row: find a command on the list, or it becomes `after merge` (so `Refs`);
+  no Evidence row: find a command on the list, or it becomes `after merge`;
 - the Result cell is a stable fragment of the output: no line number and no test count that moves
   with the default branch. The verdict is in the exit code; Result is a literal substring of the
   output.
@@ -314,7 +314,7 @@ on disk, so a second try needs only these two commands.
 
 ## V5. After the PR
 
-Only if `gh pr create` opened a PR. The issue stays open until the check after the merge.
+Only if `gh pr create` opened a PR for an issue (`Refs #N`); with `No issue:` V5 is skipped. The issue stays open until the check after the merge.
 
 - Interactive: `/lighthouse-write-handoff` with as first step `/lighthouse-close-issue <nr>`, to run
   after the merge (the row "work done, issue can be closed").

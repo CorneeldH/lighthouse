@@ -161,6 +161,11 @@ def test_v2b_runs_in_the_build_session():
     assert "build session" in v2b
     assert "`run` or `classify`" in v2b
     assert 'record --skip "build session ran no review"' in v2b
+    # The verdict table itself carries the override (the prose above it is easy to skip).
+    table = " ".join(v2b[v2b.index("| `verdict` | Do |") :].split())
+    assert "In a run started with `/lighthouse-write-pr <nr>`" in table
+    assert 'record --skip "build session ran no review"' in table
+    assert "the write-pr run never reviews" in v2b
 
 
 def test_v5_hands_off_to_close_issue():
@@ -172,6 +177,7 @@ def test_v5_hands_off_to_close_issue():
         "(issue #<nr>, controller-run)",
         "LIGHTHOUSE_CONTROLLER_RUN",
         "no handoff",
+        "with `No issue:` V5 is skipped",
     ):
         assert needle in v5, needle
     assert TEXT.index("## V4.") < TEXT.index("## V5.")
