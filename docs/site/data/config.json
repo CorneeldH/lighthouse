@@ -990,7 +990,9 @@
               "required": "no",
               "about": "The ceiling on the test gate slots of every project on this host; without the key the ceiling is 7.",
               "example": 2,
-              "readers": []
+              "readers": [
+                "pack/core/hooks/commit-test-gate.sh"
+              ]
             },
             {
               "key": "host.gate_min_mem_available_gb",

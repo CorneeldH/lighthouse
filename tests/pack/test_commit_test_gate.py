@@ -767,6 +767,81 @@ def test_slots_out_of_range_block(gate: Gate, slots: int) -> None:
     assert not gate.mark.exists()
 
 
+def test_host_gate_slots_caps_the_project(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "slots = 3\n")
+    gate.host.write_text(HOST + "gate_slots = 2\n", encoding="utf-8")
+    fds = hold_slots(gate, "slot-1", "slot-2")
+    try:
+        result = gate.run("git commit -m x", gate.project)
+    finally:
+        release(fds)
+
+    assert result.returncode == 2, result.stdout
+    assert "all gate slots busy after 1 s (slots: 2)" in result.stderr
+    assert "test_gate.slots = 3 above host gate_slots = 2, the gate uses 2" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_host_gate_slots_cap_is_noted_on_a_run(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "slots = 3\n")
+    gate.host.write_text(HOST + "gate_slots = 2\n", encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    assert (
+        "commit-test-gate: test_gate.slots = 3 above host gate_slots = 2, the gate uses 2"
+        in _context(result.stdout)
+    )
+
+
+def test_host_gate_slots_above_project_changes_nothing(gate: Gate) -> None:
+    gate.host.write_text(HOST + "gate_slots = 5\n", encoding="utf-8")
+    fds = hold_slots(gate, "slot-1", "slot-2")
+    try:
+        result = gate.run("git commit -m x", gate.project)
+    finally:
+        release(fds)
+
+    assert result.returncode == 2, result.stdout
+    assert "all gate slots busy after 1 s (slots: 2)" in result.stderr
+    assert "above host gate_slots" not in result.stderr
+
+
+def test_without_host_gate_slots_ceiling_is_seven(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "slots = 7\n")
+    fds = hold_slots(gate, *(f"slot-{n}" for n in range(1, 7)))
+    try:
+        result = gate.run("git commit -m x", gate.project)
+    finally:
+        release(fds)
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+
+
+def test_host_gate_slots_out_of_range_blocks(gate: Gate) -> None:
+    gate.host.write_text(HOST + "gate_slots = 8\n", encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "COULD NOT CHECK" in result.stderr
+    assert "host.gate_slots" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_host_gate_slots_invalid_blocks(gate: Gate) -> None:
+    gate.host.write_text(HOST + 'gate_slots = "2"\n', encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project)
+
+    assert result.returncode == 2, result.stdout
+    assert "COULD NOT CHECK" in result.stderr
+    assert "host.gate_slots" in result.stderr
+    assert not gate.mark.exists()
+
+
 def test_gate_takes_the_free_slot(gate: Gate) -> None:
     fds = hold_slots(gate, "slot-1")
     try:

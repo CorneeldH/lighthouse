@@ -65,7 +65,9 @@
 # slot stays taken until the deadline (+ grace) of `deadline.py`. Fixed fd
 # numbers 3-9 through `eval`, not `exec {var}>>`: that is bash 4.1+ and macOS'
 # /bin/bash is 3.2 — the hook would die on that line with an exit that is not 2,
-# and the commit would pass untested. That caps the slots at MAX_SLOTS. The slot
+# and the commit would pass untested. That caps the slots at MAX_SLOTS. The lock
+# dir is per host, shared by every project: `[host] gate_slots` in host.toml caps
+# what `[test_gate] slots` of a project asks for on this host. The slot
 # comes before the loop and holds for all roots: the deadline is also one for
 # the whole loop, and the wait counts towards it. A commit in another project
 # takes no slot (there is nothing to test).
@@ -234,6 +236,12 @@ add_message() {
   fi
 }
 
+# The notes gathered so far, before a block that ends the hook on stderr:
+# a block emits no JSON, so without this they would be lost.
+pending_messages() {
+  [ -z "$MSG" ] || printf '%s\n' "$MSG"
+}
+
 # additionalContext reaches the model, systemMessage the user: a silent gate
 # must not look like a satisfied gate. $1: the hook event the JSON answers
 # (PreToolUse, PostToolUse or PostToolUseFailure).
@@ -323,6 +331,10 @@ run_gate_roots() {
   DEADLINE_SECONDS="$CONFIG_VALUE"
   read_config test_gate.slots
   SLOTS="$CONFIG_VALUE"
+  HOST_SLOTS="$MAX_SLOTS"
+  if read_config host.gate_slots; then
+    HOST_SLOTS="$CONFIG_VALUE"
+  fi
   read_config test_gate.slot_wait_seconds
   SLOT_WAIT="$CONFIG_VALUE"
   read_config test_gate.unchecked_exit_codes
@@ -339,6 +351,14 @@ run_gate_roots() {
   fi
   if [ "$SLOTS" -lt 1 ] || [ "$SLOTS" -gt "$MAX_SLOTS" ]; then
     block "test_gate.slots = $SLOTS; it must be between 1 and $MAX_SLOTS."
+  fi
+  if [ "$HOST_SLOTS" -lt 1 ] || [ "$HOST_SLOTS" -gt "$MAX_SLOTS" ]; then
+    block "host.gate_slots = $HOST_SLOTS in host.toml; it must be between 1 and $MAX_SLOTS."
+  fi
+  # Not a block: the project cannot know the host it lands on.
+  if [ "$SLOTS" -gt "$HOST_SLOTS" ]; then
+    add_message "$HOOK_NAME: test_gate.slots = $SLOTS above host gate_slots = $HOST_SLOTS, the gate uses $HOST_SLOTS"
+    SLOTS="$HOST_SLOTS"
   fi
   if [ "$SLOT_WAIT" -lt 0 ]; then
     block "test_gate.slot_wait_seconds = $SLOT_WAIT; it must not be negative."
@@ -379,6 +399,7 @@ run_gate_roots() {
   SLOT_STATUS=$?
   if [ "$SLOT_STATUS" -eq 75 ]; then
     {
+      pending_messages
       echo "$HOOK_NAME: COULD NOT CHECK — all gate slots busy after $SLOT_WAIT s (slots: $SLOTS)"
       echo ""
       if [ "$MODE" = "post" ]; then
