@@ -72,6 +72,10 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    | `classify` | step 2, without a review: raw output of an earlier run is there |
    | `run` | step 1 |
 
+   In a run started with `/lighthouse-write-pr <nr>`, `run` or `classify` do not mean step 1 or 2:
+   `python3 .lighthouse/scripts/roborev_gate.py record --skip "build session ran no review"`, on
+   to V4.
+
    Exit 3 (`COULD NOT CHECK`): no PR; report the message.
 1. **Review** (`run` only), with `<range>` and `<raw>` from the gate output:
 
