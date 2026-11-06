@@ -17,12 +17,33 @@ repo. Een locatie-as hoort bij een repo die ook machines configureert.
 Daarnaast zijn de GitHub-standaardlabels (`bug`, `enhancement`, `documentation`, …) een vrije
 as.
 
-Eén vrij label hoort bij deze repo: **`chain`** (kleur `F4D74B`). Het staat op een issue dat een
-stap, een handoff of een route van de keten toevoegt of verandert, zoals die op de ketenkaart
-(`docs/site/loop.html`) staat. Uitleg over de controller, of een verbetering binnen een
-bestaande stap, krijgt het niet. Elk open issue met `chain` staat als gepland item op de kaart,
-en elk gepland item noemt zo'n issue; `ci/loop_roadmap.py` en de workflow `loop-roadmap`
-controleren dat.
+## Vrije labels met een document
+
+Een vrij label hoort bij deze repo met een document: het bestand dat een PR bijwerkt zodra het
+issue met dat label geleverd wordt.
+
+| Label | Kleur | When | Document |
+|---|---|---|---|
+| `loop` | `F4D74B` | Voegt een stap, handoff of route van de loop toe of verandert die | `docs/site/data/loop.json` |
+
+Een label met een document betekent twee dingen. `write-issue` toetst een issue aan de kolom
+*When* en geeft het dan het label. `write-pr` werkt het bestand uit de kolom *Document* bij in de
+PR die het issue sluit. Uitleg over de controller, of een verbetering binnen een bestaande stap,
+krijgt het label `loop` niet.
+
+Bijwerken van `loop.json` betekent: een `planned` item met het issuenummer wordt `works` en
+verliest `issue`; een nieuwe stap of handoff komt erbij als `works`, met `source`. Een nieuw
+`loop`-issue krijgt alleen het label en komt pas met de leverende PR op de kaart
+(`docs/site/loop.html`).
+
+`ci/loop_roadmap.py` en de workflow `loop-roadmap` (`.github/workflows/loop-roadmap.yml`)
+controleren dit in twee standen:
+
+- PR-modus (bij `pull_request`): voor elk issue met `loop` dat de PR met `Closes` sluit, noemt
+  geen `planned` item het nog, en de PR raakt `docs/site/data/loop.json`.
+- Hoofdmodus (bij push naar main, issues-events en workflow_dispatch), als vangnet: elk
+  `planned` item noemt een open issue met `loop`. De omgekeerde richting, elk open `loop`-issue
+  op de kaart, wordt niet gecontroleerd.
 
 ## 2-area: — waar hoort het bij
 
