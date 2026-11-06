@@ -23,8 +23,8 @@ NO_DEFAULT = object()
 # Keys nothing in the repo reads: only config.py checks them (spec section 2).
 UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
           "host.scan_memory_max", "host.scan_cpu_quota",
-          # Read by commit-test-gate.sh from #171 task 3 and 4 on.
-          "host.gate_slots", "host.gate_min_mem_available_gb", "host.gate_min_swap_free_gb"}
+          # Read by commit-test-gate.sh from #171 task 4 on.
+          "host.gate_min_mem_available_gb", "host.gate_min_swap_free_gb"}
 SET = {"project.language", "forge.kind", "forge.repo", "test_gate.command", "host.name", "host.tailscale_ip", "review.roborev"}
 REQUIRED = {
     "forge.board.project_number": "with [forge.board]",
@@ -51,6 +51,8 @@ NOT_READERS = {
         "the name of a unit in a list of tools, not a read of the command",
     ("python.source_dirs", "pack/python/scripts/quality/prcov.py"):
         "its docstring names the key; the directories arrive as an argument from ratchet.py",
+    ("host.gate_min_mem_available_gb", "pack/core/lib/host_memory.py"):
+        "its docstring names the key; the thresholds arrive as arguments from commit-test-gate.sh",
 }
 INDIRECT_READERS = {
     ("forge.board.project_id", "pack/core/scripts/board_start.py"): ".project_id",
