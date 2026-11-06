@@ -776,6 +776,13 @@ sha256 = "d91b117b414a6c4a9d486c89a914a07d02a6f70351c35b46633996616a590772"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/host_memory.py"
+package = "core"
+version = "dev"
+sha256 = "54f93ec8b9a73a2ae260b0affe7b1ec2d0591827fe22cdbce0f076043e9c6a5b"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/md_links.py"
 package = "core"
 version = "dev"
