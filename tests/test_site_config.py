@@ -260,7 +260,9 @@ def test_found_readers_skips_go_tests():
 
 
 def test_unread_keys_have_no_reader():
-    assert {k: found_readers(k, ROOT) for k in UNREAD} == {k: [] for k in UNREAD}
+    # A NOT_READERS file names the key without reading it, here as on the map.
+    readers = {k: [p for p in found_readers(k, ROOT) if (k, p) not in NOT_READERS] for k in UNREAD}
+    assert readers == {k: [] for k in UNREAD}
 
 
 def test_no_controller_options():
