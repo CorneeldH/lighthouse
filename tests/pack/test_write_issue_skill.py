@@ -234,10 +234,14 @@ def test_free_labels_with_a_document():
         flat = " ".join(step.split())
         assert "`Document` column" in flat and "`When` column" in flat
         assert "open that document" in flat
+        assert "only when the issue matches the row's `When` column" in flat
+        assert "If the issue touches something that document describes" not in flat
         assert "no such row: skip this step" in flat
         assert "runs before step 4" in flat and "goes into the `--label` of step 4" in flat
         for named in ("loop", "loop.json", "docs/site"):
             assert named not in step, named
+        existing = " ".join(body.split("## An existing issue", 1)[1].split())
+        assert "| 3f. Free labels with a document | only when the change makes the issue match a `When` column |" in existing
         create = _between(body, "### 4. Create the issue", "### 5. Report the result")
         assert "(3a, 3b) plus every free label from 3f" in " ".join(create.split())
         assert "<location label>,<area label>[,<free label>]" in create
