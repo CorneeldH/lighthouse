@@ -12,6 +12,7 @@ import (
 var allInstalled = map[string]bool{
 	"lighthouse-start-issue":             true,
 	"lighthouse-fix-pr":                  true,
+	"lighthouse-write-pr":                true,
 	"lighthouse-spec-adversarial-review": true,
 	"lighthouse-plan-adversarial-review": true,
 }
@@ -37,6 +38,9 @@ func TestJudgeVerdicts(t *testing.T) {
 		{"fix-pr number", "/lighthouse-fix-pr 3", "", VerdictStart, "/lighthouse-fix-pr 3", false, ""},
 		{"legacy prefix", "/paia-start-issue 7", "", VerdictStart, "/lighthouse-start-issue 7", false, ""},
 		{"native interactive", "/superpowers:executing-plans /a/b.md", "native", VerdictStart, "/superpowers:executing-plans /a/b.md", true, ""},
+		{"write-pr own issue", "/lighthouse-write-pr 7", "", VerdictStart, "/lighthouse-write-pr 7", false, ""},
+		{"write-pr other issue", "/lighthouse-write-pr 8", "", VerdictRejected, "", false, "/lighthouse-write-pr 8"},
+		{"write-pr without number", "/lighthouse-write-pr", "", VerdictRejected, "", false, "/lighthouse-write-pr"},
 		{"bad shape", "/lighthouse-start-issue 8", "", VerdictRejected, "", false, "/lighthouse-start-issue 8"},
 	}
 	for _, tt := range tests {
@@ -55,6 +59,10 @@ func TestJudgeVerdicts(t *testing.T) {
 func TestJudgeSkillMissing(t *testing.T) {
 	got := Judge("/paia-fix-pr 3", 7, "", map[string]bool{})
 	if got.Verdict != VerdictSkillMissing || got.Arg != "lighthouse-fix-pr" {
+		t.Fatalf("Judge = %+v", got)
+	}
+	got = Judge("/lighthouse-write-pr 7", 7, "", map[string]bool{})
+	if got.Verdict != VerdictSkillMissing || got.Arg != "lighthouse-write-pr" {
 		t.Fatalf("Judge = %+v", got)
 	}
 	// superpowers skills are not checked against the worktree.
