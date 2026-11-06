@@ -52,9 +52,9 @@ merge: that is why the second query exists.
 
 | Outcome | What now |
 |---|---|
-| issue `state` `OPEN` and a node with `state` `OPEN`, **or** a number from the second query | report literally `waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge` and **stop**: no verification, no `gh issue close`. The merge of a `Closes` PR closes the issue itself; for a `Refs` PR the check runs after the merge. |
+| issue `state` `OPEN` and (a node with `state` `OPEN` **or** a number from the second query) | report literally `waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge` and **stop**: no verification, no `gh issue close`. The merge of a `Closes` PR closes the issue itself; for a `Refs` PR the check runs after the merge. |
 | issue `state` `CLOSED` | **entry C** |
-| otherwise (no open `Closes` PR and no open PR from the second query) | entry A or B |
+| otherwise (issue `OPEN`, no open `Closes` PR and no open PR from the second query) | entry A or B |
 
 ## Three entries
 
@@ -804,7 +804,7 @@ holds when step 4 was skipped (zero closed issues). You do not update the crux a
 
 ## When NOT to close
 
-- An open `Closes` PR, or an open PR from the second query of step 0 (head `issue-<nr>-…` or `Refs #<nr>`), refers to the issue → step 0: wait for the merge
+- An open issue with an open `Closes` PR, or with an open PR from the second query of step 0 (head `issue-<nr>-…` or `Refs #<nr>`), refers to the issue → step 0: wait for the merge
 - AC items not ticked → Ask for clarification or finish the work
 - DoD not met → Complete the missing steps first
 - Unclear whether it is done → entry B: dig up the evidence, table per criterion

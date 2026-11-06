@@ -86,6 +86,18 @@ def test_step_zero_stops_on_an_open_refs_pr():
             assert needle in s0, needle
 
 
+def test_step_zero_open_pr_stop_is_scoped_to_an_open_issue():
+    """A closed issue with some open PR still goes to entry C, not to `waits for merge`."""
+    for body in skill():
+        s0 = _section(body, "## Step 0")
+        assert (
+            "| issue `state` `OPEN` and (a node with `state` `OPEN` **or** a number from the "
+            "second query) |"
+        ) in s0
+        assert "`OPEN` and a node with `state` `OPEN`, **or**" not in s0
+        assert "| otherwise (issue `OPEN`, no open `Closes` PR and no open PR from the second query) |" in s0
+
+
 def test_entry_b_runs_the_evidence_of_merged_refs_prs():
     for body in skill():
         b2a = _b2a(body)
