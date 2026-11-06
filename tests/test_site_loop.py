@@ -265,6 +265,10 @@ def test_coverage_flags_a_removed_skill():
     assert "pack/core/skills/write-issue" in missing_parts(chain)
 
 
+# Handoffs the dispatcher starts itself, not through a handoff block.
+DISPATCHED = {("pr-and-ci", "fix-pr")}
+
+
 def test_works_handoffs_follow_the_handoff_table():
     chain = load("loop.json")
     chips = chips_by_id(chain)
@@ -274,10 +278,16 @@ def test_works_handoffs_follow_the_handoff_table():
         ("review-spec", "writing-plans"),
         ("writing-plans", "review-plan"),
         ("review-plan", "executing-plans"),
+        ("pr-and-ci", "fix-pr"),
     }
-    # The handoff skill's routing table names the first step of each works handoff.
+    # The handoff skill's routing table names the first step of each works handoff,
+    # except the ones the dispatcher starts itself.
     table = (ROOT / "pack" / "core" / "skills" / "write-handoff" / "SKILL.md").read_text(encoding="utf-8")
-    for _, target in works:
+    judge = (ROOT / "internal" / "dispatch" / "judge.go").read_text(encoding="utf-8")
+    for source, target in works:
+        if (source, target) in DISPATCHED:
+            assert f'"/lighthouse-{target}"' in judge, target
+            continue
         prefix = "lighthouse-" if chips[target]["kind"] == "lighthouse" else "superpowers:"
         assert f"`/{prefix}{target}" in table, target
     assert all(h["status"] in ("works", "planned") for h in chain["handoffs"])
