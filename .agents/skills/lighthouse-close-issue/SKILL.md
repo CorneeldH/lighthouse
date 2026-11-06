@@ -137,7 +137,7 @@ falls away and all criteria go through B2–B4.
 
 Otherwise make one scratch directory, once: `scratch=$(mktemp -d) && echo "scratch=$scratch"`.
 `<scratch>` below is the path that line prints; copy it literally into every later call (Bash and
-Write tool), never a second scratch directory. Per PR fetch the body:
+Write tool), never a second scratch directory. Per PR fetch the body, outside the sandbox (`dangerouslyDisableSandbox: true`):
 `gh pr view <pr> --json body --jq .body > <scratch>/body-<pr>.md`. Then write, with the Write
 tool, one file `<scratch>/evidence.md`: the line `### Evidence #<nr>`, the head
 `| AC | Command | Result |`, the line `|---|---|---|`, and per criterion

@@ -108,6 +108,8 @@ def test_entry_b_runs_the_evidence_of_merged_refs_prs():
         for needle in (
             "--state merged",
             "mergedAt",
+            "sort_by(.mergedAt) | reverse",
+            "(?m)^### Evidence #<nr>",
             'startswith("issue-<nr>-")',
             "Refs #<nr>([^0-9]|$)",
             "### Evidence #<nr>",
@@ -126,6 +128,13 @@ def test_entry_b_runs_the_evidence_of_merged_refs_prs():
 def test_b2a_sits_between_b2_and_b3():
     for body in skill():
         assert body.index("### B2.") < body.index("### B2a.") < body.index("### B3.")
+
+
+def test_b2a_per_pr_body_fetch_runs_outside_the_sandbox():
+    for body in skill():
+        b2a = _b2a(body)
+        fetch = b2a.index("gh pr view <pr> --json body")
+        assert "dangerouslyDisableSandbox: true" in " ".join(b2a[fetch : fetch + 400].split())
 
 
 def test_b2a_never_pastes_body_text_into_a_command():
