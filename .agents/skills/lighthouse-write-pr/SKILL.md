@@ -153,6 +153,24 @@ The three of B3 in `lighthouse-close-issue` (`demonstrably done`, `partly`, `not
 
 Mixing is allowed: `Closes #5` with Evidence #5 next to `Refs #6 — <reason>`.
 
+## Documents of the linked issues
+
+Read the taxonomy file with `python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels`. No
+taxonomy file, or no label in it with a `Document` column entry: skip this section.
+
+For every `Closes #N` and every `Refs #N` of the body, read the labels:
+`gh issue view N --json labels`. For each label that has a `Document` in the taxonomy file, ask:
+does the branch deliver what the issue changes?
+
+- With `Closes #N`: yes.
+- With `Refs #N`: judge from the diff and the AC of the issue.
+
+Yes: update the document the way the taxonomy file describes, commit it and push it before
+`gh pr create`. No: do nothing, and leave no note in the body.
+
+A re-run writes nothing twice: the document no longer has a `planned` item that names #N, and the
+branch already touches the document.
+
 ## Changelog fragment (if present)
 
 Only if present: `changelog.d/.lighthouse` in the repository root. Otherwise skip this section.
