@@ -14,6 +14,7 @@ import re
 import shutil
 import signal
 import subprocess
+import threading
 import time
 from pathlib import Path
 
@@ -840,6 +841,157 @@ def test_host_gate_slots_invalid_blocks(gate: Gate) -> None:
     assert "COULD NOT CHECK" in result.stderr
     assert "host.gate_slots" in result.stderr
     assert not gate.mark.exists()
+
+
+# --- Host memory before a run (#171) ---------------------------------------------
+
+GIB_KB = 1024 * 1024
+LOW_AVAIL_KB = 734003  # 0.7 GiB
+LOW_SWAP_KB = 524288  # 0.5 GiB
+HOST_THRESHOLDS = HOST + "gate_min_mem_available_gb = 4\ngate_min_swap_free_gb = 2\n"
+NO_THRESHOLD_NOTE = "commit-test-gate: no gate memory threshold in host.toml, host memory not checked"
+
+
+def meminfo(gate: Gate, avail_kb: int, swap_free_kb: int, swap_total_kb: int = 25165824) -> dict[str, str]:
+    """A made-up /proc/meminfo; returns the env that points the hook at it."""
+    path = gate.tmp / "meminfo"
+    path.write_text(
+        f"MemTotal:       {16 * GIB_KB} kB\n"
+        f"MemAvailable:   {avail_kb} kB\n"
+        f"SwapTotal:      {swap_total_kb} kB\n"
+        f"SwapFree:       {swap_free_kb} kB\n",
+        encoding="utf-8",
+    )
+    return {"LIGHTHOUSE_GATE_MEMINFO": str(path)}
+
+
+def test_memory_low_blocks_with_values(gate: Gate) -> None:
+    gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project, **meminfo(gate, LOW_AVAIL_KB, LOW_SWAP_KB))
+
+    assert result.returncode == 2, result.stdout
+    assert (
+        "COULD NOT CHECK — host memory below threshold after 1 s "
+        "(MemAvailable 0.7 GiB < 4 GiB; SwapFree 0.5 GiB < 2 GiB)"
+    ) in result.stderr
+    assert "Try the commit again shortly." in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_post_memory_low_names_the_rerun(gate: Gate) -> None:
+    gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
+    base = _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+    head = _head(gate.project)
+
+    result = gate.post("git commit -m x", gate.project, **meminfo(gate, LOW_AVAIL_KB, LOW_SWAP_KB))
+
+    assert result.returncode == 2, result.stdout
+    assert "host memory below threshold" in result.stderr
+    assert "Try the commit again" not in result.stderr
+    assert f"{base}..{head} in {gate.project.resolve()}" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_memory_waits_then_runs(gate: Gate) -> None:
+    gate.configure(TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 5"))
+    gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
+    env = meminfo(gate, LOW_AVAIL_KB, LOW_SWAP_KB)
+    timer = threading.Timer(1.0, meminfo, (gate, 8 * GIB_KB, 4 * GIB_KB))
+    timer.start()
+    try:
+        result = gate.run("git commit -m x", gate.project, **env)
+    finally:
+        timer.cancel()
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+
+
+def test_memory_enough_runs_without_notice(gate: Gate) -> None:
+    gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project, **meminfo(gate, 8 * GIB_KB, 4 * GIB_KB))
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+    assert "host memory" not in result.stdout
+    assert "swap" not in result.stdout
+
+
+@pytest.mark.parametrize("host", [None, HOST], ids=["no-host-toml", "no-threshold"])
+def test_without_memory_threshold_says_so(gate: Gate, host: str | None) -> None:
+    if host is None:
+        gate.host.unlink()
+
+    # Low memory: without a threshold it is not looked at.
+    result = gate.run("git commit -m x", gate.project, **meminfo(gate, LOW_AVAIL_KB, LOW_SWAP_KB))
+
+    assert result.returncode == 0, result.stderr
+    assert NO_THRESHOLD_NOTE in _context(result.stdout)
+
+
+def test_memory_unmeasurable_blocks(gate: Gate) -> None:
+    gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
+
+    result = gate.run(
+        "git commit -m x", gate.project, LIGHTHOUSE_GATE_MEMINFO=str(gate.tmp / "absent")
+    )
+
+    assert result.returncode == 2, result.stdout
+    assert "COULD NOT CHECK — host memory not measurable" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_memory_wait_stays_within_deadline(gate: Gate) -> None:
+    gate.configure(
+        TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 30")
+        + "deadline_seconds = 2\n"
+    )
+    gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
+
+    start = time.monotonic()
+    result = gate.run("git commit -m x", gate.project, **meminfo(gate, LOW_AVAIL_KB, LOW_SWAP_KB))
+    elapsed = time.monotonic() - start
+
+    assert result.returncode == 2, result.stdout
+    assert elapsed < 6
+    assert re.search(r"host memory below threshold after [12] s", result.stderr), result.stderr
+    assert not gate.mark.exists()
+
+
+def test_memory_wait_gets_what_the_slot_wait_left(gate: Gate) -> None:
+    # Slot wait ~2 s of a 4 s deadline: the memory wait gets the rest, not slot_wait_seconds.
+    gate.configure(
+        TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 4")
+        + "deadline_seconds = 4\n"
+    )
+    gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
+    fds = hold_slots(gate, "slot-1", "slot-2")
+    timer = threading.Timer(2.0, release, (fds,))
+    timer.start()
+    try:
+        start = time.monotonic()
+        result = gate.run("git commit -m x", gate.project, **meminfo(gate, LOW_AVAIL_KB, LOW_SWAP_KB))
+        elapsed = time.monotonic() - start
+    finally:
+        timer.cancel()
+        timer.join()
+
+    assert result.returncode == 2, result.stdout
+    assert re.search(r"host memory below threshold after [12] s", result.stderr), result.stderr
+    assert elapsed < 5.5
+
+
+def test_no_swap_notice_in_gate(gate: Gate) -> None:
+    gate.host.write_text(HOST + "gate_min_swap_free_gb = 2\n", encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project, **meminfo(gate, 8 * GIB_KB, 0, swap_total_kb=0))
+
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+    assert "commit-test-gate: no swap on this host, SwapFree not checked" in _context(result.stdout)
 
 
 def test_gate_takes_the_free_slot(gate: Gate) -> None:

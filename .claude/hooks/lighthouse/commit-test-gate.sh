@@ -72,6 +72,16 @@
 # the whole loop, and the wait counts towards it. A commit in another project
 # takes no slot (there is nothing to test).
 #
+# Why a host memory check: a slot says how many gates run, not how much memory
+# the rest of the host leaves them. With `gate_min_mem_available_gb` or
+# `gate_min_swap_free_gb` in `[host]` of host.toml, the gate waits after taking
+# its slot until `MemAvailable` and `SwapFree` (lighthouse_lib/host_memory.py,
+# on /proc/meminfo) reach them. It keeps its slot while it waits, and the wait is
+# at most `slot_wait_seconds` and never past the deadline; still short then is
+# COULD NOT CHECK, as is a meminfo it cannot read. A host without swap skips the
+# swap threshold with a note. Without either key memory is not checked, and the
+# output says so.
+#
 # Why a memory brake: the slots cap the number of runs, not the memory. The
 # brake is a property of the host: `gate_slice` in `[host]` of host.toml names a
 # systemd slice with MemoryHigh/MemoryMax. With it, the command runs inside that
@@ -344,6 +354,13 @@ run_gate_roots() {
   if read_config host.gate_slice; then
     SLICE="$CONFIG_VALUE"
   fi
+  MEM_ARGS=()
+  if read_config host.gate_min_mem_available_gb; then
+    MEM_ARGS+=(--min-available-gib "$CONFIG_VALUE")
+  fi
+  if read_config host.gate_min_swap_free_gb; then
+    MEM_ARGS+=(--min-swap-free-gib "$CONFIG_VALUE")
+  fi
 
   # The config reader checked the types; the ranges are this hook's.
   if [ "$DEADLINE_SECONDS" -lt 1 ] || [ "$DEADLINE_SECONDS" -gt "$MAX_DEADLINE" ]; then
@@ -428,6 +445,48 @@ run_gate_roots() {
     [ "$N" -eq "$SLOT" ] || eval "exec $((N + 2))>&-"
     N=$((N + 1))
   done
+
+  # After the slot, so a gate that waits for memory keeps its slot and seven gates
+  # do not slip through the same opening. The wait counts towards the deadline.
+  # LIGHTHOUSE_GATE_MEMINFO: for tests only.
+  if [ "${#MEM_ARGS[@]}" -eq 0 ]; then
+    add_message "$HOOK_NAME: no gate memory threshold in host.toml, host memory not checked"
+  else
+    MEM_WAIT=$(( DEADLINE - $(date +%s) ))
+    [ "$MEM_WAIT" -le "$SLOT_WAIT" ] || MEM_WAIT="$SLOT_WAIT"
+    [ "$MEM_WAIT" -ge 0 ] || MEM_WAIT=0
+    MEM_OUT=$(python3 "$LIB/host_memory.py" --meminfo "${LIGHTHOUSE_GATE_MEMINFO:-/proc/meminfo}" \
+      "${MEM_ARGS[@]}" --wait "$MEM_WAIT" 2>"$ERR_FILE")
+    MEM_STATUS=$?
+    if [ "$MEM_STATUS" -eq 75 ]; then
+      {
+        pending_messages
+        echo "$HOOK_NAME: COULD NOT CHECK — host memory below threshold after $MEM_WAIT s ($MEM_OUT)"
+        echo ""
+        if [ "$MODE" = "post" ]; then
+          echo "The host has too little free memory for a gate run. Not being able to test is not a green light."
+          post_untested
+        else
+          echo "The host has too little free memory for a gate run. Try the commit again shortly."
+          echo "Not being able to test is not a green light."
+        fi
+      } >&2
+      exit 2
+    fi
+    if [ "$MEM_STATUS" -ne 0 ]; then
+      {
+        pending_messages
+        echo "$HOOK_NAME: COULD NOT CHECK — host memory not measurable: $(cat "$ERR_FILE" 2>/dev/null)"
+        echo ""
+        echo "Not being able to test is not a green light."
+        post_untested
+      } >&2
+      exit 2
+    fi
+    while IFS= read -r MEM_LINE; do
+      [ -z "$MEM_LINE" ] || add_message "$HOOK_NAME: $MEM_LINE"
+    done <<< "$MEM_OUT"
+  fi
 
   if ! BT=$(mktemp -d 2>"$ERR_FILE"); then
     BT=""

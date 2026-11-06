@@ -1000,7 +1000,9 @@
               "required": "no",
               "about": "The minimum MemAvailable in GiB before the test gate starts a run.",
               "example": 6,
-              "readers": []
+              "readers": [
+                "pack/core/hooks/commit-test-gate.sh"
+              ]
             },
             {
               "key": "host.gate_min_swap_free_gb",
@@ -1008,7 +1010,9 @@
               "required": "no",
               "about": "The minimum SwapFree in GiB before the test gate starts a run.",
               "example": 4,
-              "readers": []
+              "readers": [
+                "pack/core/hooks/commit-test-gate.sh"
+              ]
             }
           ]
         },
