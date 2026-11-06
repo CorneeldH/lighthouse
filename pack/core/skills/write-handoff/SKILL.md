@@ -103,6 +103,10 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    `offer` is the `AskUserQuestion` from step 2; `default` is posting and Status `Controller` without a question (step 2, *`default`*). A controller run does not look at the
    column: it always posts. At `choice` you print two blocks in step 6 before the question: first *review*, then *interactive*.
 
+   The row "build done, last commit green, no PR yet" has a precondition: an interactive session
+   never read `run.md`, and the write-pr run sees only what is on origin. So before you post or
+   offer that handoff, run step V2b of `/lighthouse-write-pr` and `git push -u origin HEAD`.
+
    If no row fits, still choose explicitly: name the command you would run
    yourself. "Carry on where you left off" is not a first step.
 5. **Name the pitfalls** this session learned and the next session

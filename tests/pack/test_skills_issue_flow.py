@@ -355,6 +355,15 @@ def test_handoff_routes_a_finished_build_to_write_pr():
         assert "| build done, last commit green | `/lighthouse-write-pr <nr>` |" in step3
 
 
+def test_handoff_build_row_pushes_after_v2b_first():
+    """An interactive build never read run.md: the row itself says V2b and the push come first."""
+    for body in skill("write-handoff"):
+        step4 = _flat(_step(body, "4. **Decide the first step", "5. **Name the pitfalls"))
+        needle = "step V2b of `/lighthouse-write-pr` and `git push -u origin HEAD`"
+        assert needle in step4
+        assert "before you post or offer" in step4
+
+
 def test_handoff_pr_open_row_names_the_close_check():
     """The PR-open handoff is final: the close check starts after the merge of the Refs PR."""
     for body in skill("write-handoff"):
