@@ -18,8 +18,8 @@ De spec laat deze keuzes aan de bouwer; het plan legt ze vast.
 - **"Vorm en allowlist" in de gate is vorm.** De spec zegt dat `pr_body_gate.py` de rijen onder `Refs` valideert "zoals nu onder `Closes`". Onder `Closes` controleert de gate nu alleen de vorm (`evidence_rows`); de allowlist controleert `evidence.py`. Onder `Refs` doet de gate hetzelfde: vorm, geen telling, geen allowlist.
 - **Een criterium is het nummer waarmee de AC-cel begint.** Write-pr begint elke AC-cel met het nummer van het criterium in het issue (`1. …`), zoals het voorbeeld in de skill al doet. Close-issue kiest per nummer de rij van de laatst gemergde PR. Een cel zonder nummervoorloop telt als eigen criterium.
 - **Close-issue bouwt één body-bestand.** Uit de gemergde `Refs`-PR's met een `### Evidence #<nr>`-tabel, nieuwste eerst, neemt de skill per criterium de eerste rij, en draait dat ene bestand met `evidence.py run` op een verse `origin/<default branch>`, zoals C2. Oudere rijen voor hetzelfde criterium komen niet in het bestand en draaien dus niet. Geen nieuwe code in `evidence.py`.
-- **V2b als vangnet in de write-pr-run.** De bouwsessie draait V2b vóór haar push. Zegt de gate in de write-pr-run toch `run` of `classify` (de bouw sloeg V2b over), dan draait V2b daar alsnog, zoals nu. Dat is de enige plek waar een write-pr-run een fix-commit maakt; het changelog-fragment commit hij al.
-- **De plek van de regel** kiest `/lighthouse-place-instruction` tijdens taak 6. Verwachting: een sectie `## Where a handoff belongs` direct vóór `## Workflow`. De test eist alleen dat de regel in de skill staat, vóór Workflow stap 4.
+- **De write-pr-run verandert geen code** (spec §1). De bouwsessie draait V2b vóór haar push. Zegt de gate in een run die met `/lighthouse-write-pr <nr>` startte `done`, `off` of `skip`, dan gaat hij door naar V4. Zegt hij `run` of `classify` (de bouw sloeg V2b over), dan reviewt hij niet en verwerkt hij niets: `roborev_gate.py record --skip "build session ran no review"`, en V4 zet die regel in de body. Alleen het changelog-fragment commit hij, zoals nu.
+- **De plek van de regel.** `/lighthouse-place-instruction` heeft `disable-model-invocation: true` (`pack/core/skills/place-instruction/SKILL.md:4`): een agent kan hem niet starten. Taak 6 leest zijn lagentabel als naslag, zonder zijn npx-stappen, en zet de regel in de handoff-skill, sectie `## Where a handoff belongs` direct vóór `## Workflow`. De PR noemt de laag (skill) en waarom, voor AC 5.
 - **Engelse tekst van de regel**, letterlijk vertaald uit de spec: "A handoff belongs where the next step needs a clean context: the previous step used up a lot of context, or the next step must judge independently. A handoff also belongs where the chain waits for an external event, such as red CI or a merge."
 
 ## Global Constraints
@@ -102,6 +102,8 @@ De spec laat deze keuzes aan de bouwer; het plan legt ze vast.
     - `"A run started with `/lighthouse-write-pr <nr>` verifies the acceptance criteria and opens the PR, the body through `--body-file`."`
     - `"When it opens no PR (red tests, `evidence.py` exit 3 or 4, a block of `pr-create-gate`, a PR that already exists), it posts no handoff"`
     - `"after the merge it starts `/lighthouse-close-issue`"`
+    - `"End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask` (see above) or a `/lighthouse-write-pr` run that opened no PR"`
+  - De bestaande pin `"End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask`"` blijft; hij is een prefix van de nieuwe.
   - `TestRunInstructionsNameExistingSkills`: de assert op `"Before push + PR: `/lighthouse-write-pr <nr>`"` wordt omgedraaid: `run.md` bevat `"Before push + PR"` niet en `"choose push + PR"` niet. De regex-lus op bestaande skills en de roborev-check blijven.
 
 - [ ] **Step 2: Draai, verwacht rood**
@@ -133,6 +135,11 @@ De spec laat deze keuzes aan de bouwer; het plan legt ze vast.
   ```
 
   De bullet "Never merge. Verifying (`/lighthouse-write-pr`) is allowed." blijft.
+
+  In de bullet "End every phase with `/lighthouse-write-handoff`, …" wordt de eerste zin:
+  "End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask`
+  (see above) or a `/lighthouse-write-pr` run that opened no PR: it posts the block as `🤖 Handoff`
+  on the issue." De rest van die bullet blijft.
 
 - [ ] **Step 4: Draai, verwacht groen**
 
@@ -210,7 +217,7 @@ De spec laat deze keuzes aan de bouwer; het plan legt ze vast.
   - Nieuw `test_v3_always_writes_refs`: `v3 = _section(TEXT, "## V3.")`, platgeslagen op spaties, bevat `"always `Refs #N — <reason>`, never `Closes`"`, `"/lighthouse-close-issue"`, `"one row per AC that is `demonstrably done`"`, `"starts with the number of the criterion"` en `"no table"`; `"Mixing is allowed"` niet in `TEXT`.
   - Nieuw `test_description_names_refs_not_closes`: de `description` bevat `"`Refs #N — <reason>`"` en niet `"`Closes #N`"`.
   - `test_example_row_holds_against_the_template` blijft; nieuw `test_example_block_is_a_valid_refs_body`: het voorbeeldblok bevat `"Refs #1091 — "` en niet `"Closes #1091"`, en `gate.check_body(block, ac_count=<faalt bij aanroep>).blockers == []`.
-  - Nieuw `test_v2b_runs_in_the_build_session`: `_section(TEXT, "## V2b.")` platgeslagen bevat `"build session"` en `"`run` or `classify`"`.
+  - Nieuw `test_v2b_runs_in_the_build_session`: `_section(TEXT, "## V2b.")` platgeslagen bevat `"build session"`, `"`run` or `classify`"` en `'record --skip "build session ran no review"'`.
   - Nieuw `test_v5_hands_off_to_close_issue`: `v5 = _section(TEXT, "## V5.")` bevat `"/lighthouse-write-handoff"`, `"`/lighthouse-close-issue <nr>`"`, `"after the merge"`, `"(issue #<nr>, controller-run)"`, `"LIGHTHOUSE_CONTROLLER_RUN"` en `"no handoff"`; `TEXT.index("## V4.") < TEXT.index("## V5.")`.
 
   In `test_pr_template.py`:
@@ -230,7 +237,7 @@ De spec laat deze keuzes aan de bouwer; het plan legt ze vast.
   - **description**: "… writes the PR body itself — `Refs #N — <reason>` with an Evidence table of the proven criteria, or `No issue: <reason>` — …"; blijft tussen enkele quotes en eindigt op `is lighthouse-fix-pr.'`.
   - **Intro**: de PR noemt zijn issue altijd met `Refs #N`; `/lighthouse-close-issue` toetst na de merge en sluit. De skill sluit nooit zelf.
   - **V1**: niet meer "the hook counts them and demands as many Evidence rows"; elk criterium krijgt een verdict.
-  - **V2b**: in een controllerrun draait V2b in de **build session**, vóór haar push en haar handoff; de run die met `/lighthouse-write-pr <nr>` start, vindt dan `done` bij stap 0. Zegt de gate daar `run` or `classify`, dan sloeg de bouw V2b over en draait V2b hier.
+  - **V2b**: in een controllerrun draait V2b in de **build session**, vóór haar push en haar handoff; de run die met `/lighthouse-write-pr <nr>` start, vindt dan `done` bij stap 0 en verandert geen code. Zegt de gate daar `run` or `classify`, dan sloeg de bouw V2b over: geen review, geen verwerking, maar `python3 .lighthouse/scripts/roborev_gate.py record --skip "build session ran no review"` en door naar V4.
   - **Verdicts**: de rij `after PR` gaat weg. `after merge` dekt ook een criterium dat alleen na de PR te meten is.
   - **V3**: always `Refs #N — <reason>`, never `Closes`; de reden zegt dat `/lighthouse-close-issue` de rijen na de merge draait en het issue sluit. Daaronder `### Evidence #N` met one row per AC that is `demonstrably done`; de AC-cel starts with the number of the criterion in the issue (`1. …`). Daaronder per open criterium (`partly`, `not`, `after merge`) het verdict en wat nog nodig is. Alle criteria open: no table. Eén zin: `Closes` blijft geldig voor een PR die een mens zelf opent; write-pr schrijft het niet, want de merge zou het issue sluiten vóór de nacontrole.
   - **Evidence rules**: "Entry C runs every row again" wordt "`/lighthouse-close-issue` runs every row again after the merge".
@@ -282,7 +289,7 @@ De spec laat deze keuzes aan de bouwer; het plan legt ze vast.
 - [ ] **Step 1: Failing tests**
 
   - `test_step_zero_stops_on_an_open_refs_pr`: `s0 = _section(body, "## Step 0")` bevat `"gh pr list"`, `"--state open"`, `'startswith("issue-<nr>-")'`, `'Refs #<nr>([^0-9]|$)'` en `"dangerouslyDisableSandbox: true"`; de bestaande `waits for merge of #<pr>`-melding staat in `s0`.
-  - `test_entry_b_runs_the_evidence_of_merged_refs_prs`: `b2a = _section(body, "### B2a.")` (knip tot de volgende `\n### `) bevat `"--state merged"`, `"mergedAt"`, `'startswith("issue-<nr>-")'`, `'Refs #<nr>([^0-9]|$)'`, `"### Evidence #<nr>"`, `"python3 .lighthouse/lib/lighthouse_lib/evidence.py run"`, `"git worktree add --detach"`, `"config.py forge.default_branch"`, `"only the row of the latest merged PR"`, `"the number the AC cell starts with"`, `"`demonstrably done`"`, `"`not`"` en `"not measurable from here"`.
+  - `test_entry_b_runs_the_evidence_of_merged_refs_prs`: `b2a = _section(body, "### B2a.")` (knip tot de volgende `\n### `) bevat `"R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo)"` vóór de eerste `--repo "$R"`, precies één `mktemp -d`, `"--state merged"`, `"mergedAt"`, `'startswith("issue-<nr>-")'`, `'Refs #<nr>([^0-9]|$)'`, `"### Evidence #<nr>"`, `"python3 .lighthouse/lib/lighthouse_lib/evidence.py run"`, `"git worktree add --detach"`, `"config.py forge.default_branch"`, `"only the row of the latest merged PR"`, `"the number the AC cell starts with"`, `"`demonstrably done`"`, `"`not`"` en `"not measurable from here"`.
   - `test_b2a_sits_between_b2_and_b3`: `body.index("### B2.") < body.index("### B2a.") < body.index("### B3.")`.
   - `test_b2a_never_pastes_body_text_into_a_command`: `b2a` bevat `"--body-file"` en `"never paste"`.
   - `test_b7_includes_b2a`: de B7-sectie bevat `"B2a"`.
@@ -308,16 +315,17 @@ De spec laat deze keuzes aan de bouwer; het plan legt ze vast.
 - [ ] **Step 4: B2a**
 
   Nieuwe subsectie `### B2a. The Evidence tables of merged Refs PRs`, met:
-  - De lijst, nieuwste eerst:
+  - De lijst, nieuwste eerst, in een zelfstandig blok (variabelen leven niet door naar een volgende tool-aanroep):
 
     ```bash
+    R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
     gh pr list --repo "$R" --state merged --limit 100 --json number,headRefName,body,mergedAt \
-      --jq '[.[] | select((.headRefName | startswith("issue-<nr>-")) or (.body | test("Refs #<nr>([^0-9]|$)"))) | select(.body | test("(?m)^### Evidence #<nr>[ \t]*$"))] | sort_by(.mergedAt) | reverse | .[] | "\(.number)\t\(.mergedAt)"'
+      --jq '[.[] | select((.headRefName | startswith("issue-<nr>-")) or (.body | test("Refs #<nr>([^0-9]|$)"))) | select(.body | test("(?m)^### Evidence #<nr>[ \t\r]*$"))] | sort_by(.mergedAt) | reverse | .[] | "\(.number)\t\(.mergedAt)"'
     ```
 
   - Geen PR: B2a valt weg, alle criteria gaan door B2–B4.
-  - Anders: haal per PR de body op met `gh pr view <pr> --json body --jq .body > "$scratch/body-<pr>.md"` in een `mktemp -d`. Schrijf met de Write tool één bestand `$scratch/evidence.md`: `### Evidence #<nr>`, de kop `| AC | Command | Result |`, `|---|---|---|`, en per criterium only the row of the latest merged PR; het criterium is the number the AC cell starts with (een cel zonder nummer is een eigen criterium). Rijen ongewijzigd overnemen; never paste body text into a command line, alleen via `--body-file`.
-  - Draai dat bestand zoals C2 (verse `git fetch`, `git worktree add --detach … origin/$B`, `evidence.py run --issue <nr> --body-file "$scratch/evidence.md" --cwd …`, `rc` vóór de `worktree remove`), zonder `--before-pr`.
+  - Anders: maak één keer `scratch=$(mktemp -d) && echo "scratch=$scratch"` en gebruik dat geprinte pad letterlijk in elke volgende aanroep (Bash én Write tool), zonder tweede `mktemp -d`; noem dat in de skilltekst `<scratch>`, zoals C2. Haal per PR de body op met `gh pr view <pr> --json body --jq .body > <scratch>/body-<pr>.md`. Schrijf met de Write tool één bestand `<scratch>/evidence.md`: `### Evidence #<nr>`, de kop `| AC | Command | Result |`, `|---|---|---|`, en per criterium only the row of the latest merged PR; het criterium is the number the AC cell starts with (een cel zonder nummer is een eigen criterium). Rijen ongewijzigd overnemen; never paste body text into a command line, alleen via `--body-file`.
+  - Draai dat bestand zoals C2, in één shell-aanroep (`B=$(… config.py forge.default_branch)`, verse `git fetch`, `git worktree add --detach <scratch>/after-merge-<nr> origin/$B`, `evidence.py run --issue <nr> --body-file <scratch>/evidence.md --cwd <scratch>/after-merge-<nr>`, `rc` vóór de `worktree remove`), zonder `--before-pr`.
   - Uitkomst per rij naar B3: `heading:evidence_holds` → `demonstrably done`, met als bewijsregel het commando en `heading:evidence_holds`; `heading:evidence_fails` of `heading:evidence_invalid` → `not`; `heading:evidence_unmeasurable` → not measurable from here. Geen `rc=`-regel of exit 3: geen verdict uit B2a; die criteria gaan door B2–B4.
   - Criteria zonder rij: B2–B4 zoals nu.
 
@@ -355,9 +363,9 @@ De spec laat deze keuzes aan de bouwer; het plan legt ze vast.
   Run: `uv run pytest -q tests/pack/test_skills_issue_flow.py -k handoff`
   Expected: FAIL op de drie nieuwe tests.
 
-- [ ] **Step 3: Kies de plek**
+- [ ] **Step 3: Toets de laag**
 
-  Run `/lighthouse-place-instruction` met de regel. Verwachte uitkomst: deze skill, sectie `## Where a handoff belongs` direct vóór `## Workflow`. Kiest hij een andere plek binnen de skill, volg die; kiest hij een andere laag, zet de regel toch hier (AC 5 eist hem in de handoff-skill) en noem de keuze in de PR.
+  Start `/lighthouse-place-instruction` niet (alleen de gebruiker kan dat: `disable-model-invocation: true`) en volg zijn npx-stappen niet. Lees zijn lagentabel in `pack/core/skills/place-instruction/SKILL.md` als naslag en noteer in één zin waarom de regel op de laag *skill* hoort (hij geldt alleen bij het schrijven van een handoff). Die zin gaat later in de PR, bij AC 5. De plek staat vast: sectie `## Where a handoff belongs` direct vóór `## Workflow`.
 
 - [ ] **Step 4: Schrijf de regel en de rijen**
 
@@ -436,6 +444,6 @@ De spec laat deze keuzes aan de bouwer; het plan legt ze vast.
 
 ## Na de taken, vóór `/lighthouse-write-pr`
 
-1. **AC 2 en 3 van #147 aanpassen** met `/lighthouse-write-issue`, naar de tabel *Bewijs* van de spec (AC 2: write-pr schrijft altijd `Refs #N` en eindigt met een handoff naar close-issue; AC 3: een gemergde `Closes`-PR start niets). De spec zegt "na akkoord van de eigenaar": vraag dat akkoord eerst (interactief een vraag, in een controllerrun `lighthouse ask`). Write-pr toetst tegen de AC's die dan in het issue staan.
+1. **AC 2 en 3 van #147 controleren.** Het issue heeft ze al in de vorm van de spec (*Bewijs*; gecontroleerd 2026-11-06): AC 2 "Write-pr schrijft altijd `Refs #N` …", AC 3 "Een gemergde `Closes`-PR start niets (fixture)". Lees ze met `gh issue view 147 --json body`. Staan ze er zo, dan gebeurt er niets; noemt AC 2 toch weer `Closes` als uitkomst van write-pr, dan is dat een vraag aan de eigenaar (interactief een vraag, in een controllerrun `lighthouse ask`), geen eigen edit.
 2. **Label `chain` van #147 halen** bij het openen van de PR (`gh issue edit 147 --remove-label chain`): `chain.json` noemt #147 niet meer, en `ci/chain_roadmap.py` faalt anders op de PR zolang #147 open is.
 3. **Dogfood-check** op de hele branch: `go run ./cmd/lighthouse init --upgrade` geeft `No changes.` (AC 7).
