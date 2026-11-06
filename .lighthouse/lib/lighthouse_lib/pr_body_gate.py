@@ -10,7 +10,9 @@ A body must have at least one of three forms (mixing is allowed):
 
 - `Closes #N` with a heading `### Evidence #N` and a table `AC | Command | Result`
   with one row per acceptance criterion of the issue;
-- `Refs #N — <reason>` (reason at least `MIN_REASON` characters);
+- `Refs #N — <reason>` (reason at least `MIN_REASON` characters); a
+  `### Evidence #N` table under it is optional, is checked on form only and is
+  not counted against the criteria of the issue;
 - `No issue: <reason>` (same).
 
 Stdlib only: the hook runs under the host `python3`. The repo comes from
@@ -198,10 +200,20 @@ def _row(line: str, seq: int) -> Row | str:
     return Row(ac, command, result)
 
 
+def _evidence_heading_re(nr: int) -> re.Pattern[str]:
+    return re.compile(rf"^###[ \t]+Evidence[ \t]+#{nr}[ \t]*$")
+
+
+def has_evidence_block(body: str, nr: int) -> bool:
+    """Whether the body, comments stripped, has a `### Evidence #nr` heading."""
+    heading = _evidence_heading_re(nr)
+    return any(heading.match(r) for r in strip_comments(body).split("\n"))
+
+
 def evidence_rows(body: str, nr: int) -> list[Row] | str:
     """The rows of `### Evidence #nr`, or the reason why the block is wrong."""
     lines = strip_comments(body).split("\n")
-    heading = re.compile(rf"^###[ \t]+Evidence[ \t]+#{nr}[ \t]*$")
+    heading = _evidence_heading_re(nr)
     start = next((i for i, r in enumerate(lines) if heading.match(r)), None)
     if start is None:
         return f"heading `### Evidence #{nr}` is missing"
@@ -307,6 +319,14 @@ def check_body(
                 f"Closes #{nr}: the issue has {count} acceptance criteria,"
                 f" the Evidence block {len(rows)} rows — one row per AC"
             )
+
+    for nr in refs_issues(body):
+        if nr in targets or not has_evidence_block(body, nr):
+            continue
+        # Form only: the rows are not counted, so the issue is not fetched.
+        rows = evidence_rows(body, nr)
+        if isinstance(rows, str):
+            blockers.append(f"Refs #{nr}: {rows}")
 
     if not (targets or refs_issues(body) or no_issue(body)):
         hint = ""

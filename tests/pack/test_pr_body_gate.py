@@ -47,6 +47,20 @@ def closes_body(nr: int, rows: list[tuple[str, str, str]]) -> str:
     )
 
 
+def refs_body(nr: int, rows: list[tuple[str, str, str]]) -> str:
+    """A body with `Refs #nr — reason` and an Evidence table with the given rows."""
+    table = "\n".join(f"| {ac} | {cmd} | {res} |" for ac, cmd, res in rows)
+    return (
+        f"Refs #{nr} — close-issue toetst na de merge\n\n"
+        f"### Evidence #{nr}\n\n"
+        f"| AC | Command | Result |\n|---|---|---|\n{table}\n"
+    )
+
+
+def _never(nr: int) -> tuple[int | None, str]:
+    pytest.fail(f"ac_count called for #{nr}; Refs must not fetch the issue")
+
+
 # --- Closes ---------------------------------------------------------------
 
 
@@ -342,6 +356,39 @@ def test_check_body_invalid_block_names_reason():
     v = gate.check_body(closes_body(5, [("1", "ls", "x")]), lambda n: (1, ""))
     assert v.blockers
     assert "#5" in v.blockers[0]
+
+
+def test_check_body_refs_with_valid_evidence_passes():
+    v = gate.check_body(refs_body(5, ROWS1), ac_count=_never)
+    assert v.blockers == []
+    assert v.notices == []
+
+
+def test_check_body_refs_evidence_is_not_counted():
+    v = gate.check_body(refs_body(5, ROWS1), lambda n: (3, ""))
+    assert v.blockers == []
+
+
+def test_check_body_refs_with_broken_evidence_blocks():
+    v = gate.check_body(refs_body(5, [("1", "ls", "x")]))
+    assert len(v.blockers) == 1
+    assert v.blockers[0].startswith("Refs #5: ")
+    assert "backticks" in v.blockers[0]
+
+
+def test_check_body_refs_heading_without_table_blocks():
+    body = "Refs #5 — close-issue toetst na de merge\n\n### Evidence #5\n\ngeen tabel"
+    v = gate.check_body(body, ac_count=_never)
+    assert any("Refs #5: no table" in b for b in v.blockers)
+
+
+def test_has_evidence_block():
+    assert gate.has_evidence_block(refs_body(5, ROWS1), 5)
+    assert not gate.has_evidence_block(refs_body(5, ROWS1), 6)
+    assert not gate.has_evidence_block("Refs #5 — een reden genoeg", 5)
+    assert not gate.has_evidence_block(
+        "Refs #5 — een reden genoeg\n<!--\n### Evidence #5\n-->", 5
+    )
 
 
 # --- fetch_ac_count -------------------------------------------------------

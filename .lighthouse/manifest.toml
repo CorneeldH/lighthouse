@@ -793,7 +793,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/pr_body_gate.py"
 package = "core"
 version = "dev"
-sha256 = "c757175279761bfed5d31238f44bde368670579fb857334504d8b22d1489bc5c"
+sha256 = "5fc0bfdc9f3786cacb4b9ce5b1d5a9411f458d9150d9949b3eae48fed46a819a"
 
 [[unit]]
 kind = "file"

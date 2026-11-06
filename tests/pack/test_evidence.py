@@ -485,6 +485,22 @@ def test_pytest_path_default_is_tests(tmp_path):
     assert ev.check(["uv", "run", "pytest", "src/x.py"]) is not None
 
 
+def test_run_accepts_a_refs_body(tmp_path):
+    (tmp_path / "f").write_text("hallo wereld\n")
+    body = tmp_path / "body.md"
+    body.write_text(
+        _body(5, [("1. een", "`grep -F hallo f`", "wereld")]).replace(
+            "Closes #5", "Refs #5 — close-issue toetst na de merge", 1
+        )
+    )
+    proc, _ = _cli(
+        tmp_path, "run", "--issue", "5", "--body-file", str(body),
+        "--cwd", str(tmp_path), gh_out="y",
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "| klopt |" in proc.stdout or "| holds |" in proc.stdout
+
+
 @pytest.mark.parametrize(
     "language,holds,head",
     [("nl", "| klopt |", "| AC | Uitkomst | Detail |"), ("en", "| holds |", "| AC | Outcome | Detail |")],
