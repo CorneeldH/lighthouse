@@ -50,19 +50,30 @@ session for one phase of an issue. Most likely nobody is watching.
 - "Ask" here means: in the bundle via `lighthouse ask`.
 - An adversarial review at `round_limit` is no question: follow the skill (`accept-open`, the
   block in the document, commit) and post the usual handoff to the next phase.
-- At `finishing-a-development-branch`, choose push + PR.
-- Before push + PR: `/lighthouse-write-pr <nr>`, the body through `--body-file`.
-- Never wait for CI and never poll `gh pr checks`, also not in `/lighthouse-fix-pr`. After push +
-  PR, post the handoff `next: /lighthouse-close-issue <nr>` and stop: the controller judges green
-  or red and starts `/lighthouse-fix-pr` when needed. This goes above every rule that tells you
-  to wait for a green PR, also above "stop at green" in `lighthouse-fix-pr`.
+- A run that builds opens no PR itself, whatever command started it. When the build is done and
+  `commit-test-gate` reported no red after the last commit: run step V2b of
+  `/lighthouse-write-pr` (it ends at once when the repo turned it off), push the branch yourself
+  with `git push -u origin HEAD`, then post the handoff `next: /lighthouse-write-pr <nr>` and
+  stop. At `finishing-a-development-branch` this replaces push + PR. A red last commit you fix
+  first, in a new commit.
+- A run started with `/lighthouse-write-pr <nr>` verifies the acceptance criteria and opens the
+  PR, the body through `--body-file`. Then it posts the handoff
+  `next: /lighthouse-close-issue <nr>` and stops. When it opens no PR (red tests, `evidence.py`
+  exit 3 or 4, a block of `pr-create-gate`, a PR that already exists), it posts no handoff: it
+  asks with `lighthouse ask` when the user has to choose, else it ends without one.
+- Never wait for CI and never poll `gh pr checks`, also not in `/lighthouse-fix-pr`. After a
+  push to an open PR, post the handoff `next: /lighthouse-close-issue <nr>` and stop: the
+  controller judges green or red and starts `/lighthouse-fix-pr` when needed, and after the
+  merge it starts `/lighthouse-close-issue`. This goes above every rule that tells you to wait
+  for a green PR, also above "stop at green" in `lighthouse-fix-pr`.
 - Start no background work (`run_in_background`, Monitor, an alarm): claude stays alive in the
   unit after your last answer until the controller ends it, and whatever still runs out then can
   wake your session again. The controller reads that as a run that works again. Nobody else calls
   you back.
 - End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask`
-  (see above): it posts the block as `🤖 Handoff` on the issue. Stop after it, without a `/clear`
-  suggestion or any further tool call.
+  (see above) or a `/lighthouse-write-pr` run that opened no PR: it posts the block as
+  `🤖 Handoff` on the issue. Stop after it, without a `/clear` suggestion or any further tool
+  call.
 - **Native lane**: a run that starts `/superpowers:executing-plans` runs on Sonnet. Dispatch the
   whole-branch review of that skill with `model: "opus"` explicitly, never without a model. If
   such a run posts a handoff for the same phase (context full), it repeats `lane: native`;

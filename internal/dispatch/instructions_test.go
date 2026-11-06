@@ -123,6 +123,15 @@ func TestRunInstructionsPinnedText(t *testing.T) {
 		// #203: a handoff after the question becomes the last turn, and the answer resumes nothing.
 		"stop after it, without `/lighthouse-write-handoff`",
 		"End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask`",
+		// #147: a build run pushes and hands over to write-pr; write-pr opens the PR.
+		"A run that builds opens no PR itself, whatever command started it.",
+		"run step V2b of `/lighthouse-write-pr`",
+		"push the branch yourself with `git push -u origin HEAD`, then post the handoff `next: /lighthouse-write-pr <nr>` and stop.",
+		"At `finishing-a-development-branch` this replaces push + PR.",
+		"A run started with `/lighthouse-write-pr <nr>` verifies the acceptance criteria and opens the PR, the body through `--body-file`.",
+		"When it opens no PR (red tests, `evidence.py` exit 3 or 4, a block of `pr-create-gate`, a PR that already exists), it posts no handoff",
+		"after the merge it starts `/lighthouse-close-issue`",
+		"End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask` (see above) or a `/lighthouse-write-pr` run that opened no PR",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("run.md lacks %q", want)
@@ -138,8 +147,10 @@ func TestRunInstructionsNameExistingSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(raw)
-	if !strings.Contains(text, "Before push + PR: `/lighthouse-write-pr <nr>`") {
-		t.Error("run.md does not send a run through /lighthouse-write-pr before push + PR")
+	for _, gone := range []string{"Before push + PR", "choose push + PR"} {
+		if strings.Contains(text, gone) {
+			t.Errorf("run.md still carries %q: a build run hands over to /lighthouse-write-pr", gone)
+		}
 	}
 	names := regexp.MustCompile("/lighthouse-([a-z0-9-]+)").FindAllStringSubmatch(text, -1)
 	if len(names) == 0 {
