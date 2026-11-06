@@ -67,6 +67,69 @@ def test_step_zero_waits_for_merge():
         assert body.index("## Step 0") < body.index("## Entry B")
 
 
+def _b2a(body: str) -> str:
+    s = body[body.index("### B2a.") :]
+    return s[: s.index("\n### ", 1)]
+
+
+def test_step_zero_stops_on_an_open_refs_pr():
+    for body in skill():
+        s0 = _section(body, "## Step 0")
+        for needle in (
+            "gh pr list",
+            "--state open",
+            'startswith("issue-<nr>-")',
+            "Refs #<nr>([^0-9]|$)",
+            "dangerouslyDisableSandbox: true",
+            "waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge",
+        ):
+            assert needle in s0, needle
+
+
+def test_entry_b_runs_the_evidence_of_merged_refs_prs():
+    for body in skill():
+        b2a = _b2a(body)
+        repo = "R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo)"
+        assert repo in b2a
+        assert b2a.index(repo) < b2a.index('--repo "$R"')
+        assert b2a.count("mktemp -d") == 1
+        for needle in (
+            "--state merged",
+            "mergedAt",
+            'startswith("issue-<nr>-")',
+            "Refs #<nr>([^0-9]|$)",
+            "### Evidence #<nr>",
+            "python3 .lighthouse/lib/lighthouse_lib/evidence.py run",
+            "git worktree add --detach",
+            "config.py forge.default_branch",
+            "only the row of the latest merged PR",
+            "the number the AC cell starts with",
+            "`demonstrably done`",
+            "`not`",
+            "not measurable from here",
+        ):
+            assert needle in b2a, needle
+
+
+def test_b2a_sits_between_b2_and_b3():
+    for body in skill():
+        assert body.index("### B2.") < body.index("### B2a.") < body.index("### B3.")
+
+
+def test_b2a_never_pastes_body_text_into_a_command():
+    for body in skill():
+        b2a = _b2a(body)
+        assert "--body-file" in b2a
+        assert "never paste" in b2a
+
+
+def test_b7_includes_b2a():
+    for body in skill():
+        b7 = body[body.index("### B7.") :]
+        b7 = b7[: b7.index("\n## ", 1)]
+        assert "B2a" in b7
+
+
 def test_entry_c_runs_only_the_runner():
     for body in skill():
         assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py run" in body
