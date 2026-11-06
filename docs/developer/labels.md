@@ -19,16 +19,18 @@ as.
 
 ## Vrije labels met een document
 
-Een vrij label hoort bij deze repo met een document: het bestand dat een PR bijwerkt zodra het
-issue met dat label geleverd wordt.
+Een vrij label kan een document hebben: het bestand dat een PR bijwerkt zodra het issue met dat
+label geleverd wordt. Een vrij label zonder document, zoals de GitHub-standaardlabels, laat
+`write-pr` met rust.
 
 | Label | Kleur | When | Document |
 |---|---|---|---|
 | `loop` | `F4D74B` | Voegt een stap, handoff of route van de loop toe of verandert die | `docs/site/data/loop.json` |
 
 Een label met een document betekent twee dingen. `write-issue` toetst een issue aan de kolom
-*When* en geeft het dan het label. `write-pr` werkt het bestand uit de kolom *Document* bij in de
-PR die het issue sluit. Uitleg over de controller, of een verbetering binnen een bestaande stap,
+*When* en geeft het dan het label. `write-pr` werkt het bestand uit de kolom *Document* bij: altijd
+bij `Closes`, en bij `Refs` wanneer de branch levert wat het issue verandert (de sessie beoordeelt
+diff en acceptatiecriteria). Uitleg over de controller, of een verbetering binnen een bestaande stap,
 krijgt het label `loop` niet.
 
 Bijwerken van `loop.json` betekent: een `planned` item met het issuenummer wordt `works` en
