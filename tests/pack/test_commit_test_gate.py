@@ -14,6 +14,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -425,6 +426,38 @@ def test_gate_blocks_on_deadline(gate: Gate) -> None:
     assert result.returncode == 2, result.stdout
     assert "deadline of 270 s" in result.stderr
     assert "COULD NOT CHECK" in result.stderr
+
+
+@pytest.mark.parametrize("ending", ["green", "deadline"])
+def test_real_pytest_leaves_nothing_in_tmp(gate: Gate, ending: str) -> None:
+    """A real pytest with --basetemp="$LIGHTHOUSE_GATE_TMP" leaves no pytest-of-* and no
+    gate tmp behind in TMPDIR, also when the deadline kills it (#171)."""
+    tmpdir = gate.tmp / "t"
+    tmpdir.mkdir()
+    suite = gate.tmp / "suite"
+    suite.mkdir()
+    body = '    (tmp_path / "f").write_text("x")\n'
+    if ending == "deadline":
+        body += "    time.sleep(30)\n"
+    (suite / "test_x.py").write_text(f"import time\n\n\ndef test_x(tmp_path):\n{body}", encoding="utf-8")
+    command = (
+        f"{sys.executable} -m pytest -q -p no:cacheprovider"
+        f' --basetemp=\\"$LIGHTHOUSE_GATE_TMP\\" {suite / "test_x.py"}'
+    )
+    gate.configure(
+        f'[test_gate]\ncommand = "{command}"\nslot_wait_seconds = 1\n'
+        + ("deadline_seconds = 3\n" if ending == "deadline" else "")
+    )
+
+    result = gate.run("git commit -m x", gate.project, TMPDIR=str(tmpdir))
+
+    if ending == "green":
+        assert result.returncode == 0, result.stderr
+        assert "1 passed" in _context(result.stdout)
+    else:
+        assert result.returncode == 2, result.stdout
+        assert "ran past the deadline" in result.stderr
+    assert list(tmpdir.iterdir()) == []
 
 
 def test_gate_skips_foreign_repo_visibly(gate: Gate) -> None:
