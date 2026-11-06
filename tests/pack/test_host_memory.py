@@ -113,6 +113,17 @@ def test_cli_waits_until_enough(tmp_path):
     assert 0.4 < elapsed < 3
 
 
+def test_cli_wait_does_not_overshoot(tmp_path):
+    # The last sleep stops at start + wait: a gate whose budget is the rest of its
+    # deadline must not hand deadline.py an expired one.
+    path = _meminfo(tmp_path / "meminfo", 734003, 4 * GIB_KB)
+    start = time.monotonic()
+    result = _cli("--meminfo", str(path), "--min-available-gib", "4", "--wait", "0.3", "--interval", "5")
+    elapsed = time.monotonic() - start
+    assert result.returncode == 75
+    assert elapsed < 2
+
+
 def test_cli_unreadable(tmp_path):
     path = tmp_path / "absent"
     result = _cli("--meminfo", str(path), "--min-available-gib", "4", "--wait", "0")

@@ -96,10 +96,12 @@ def main(argv: list[str]) -> int:
             for note in notes:
                 sys.stdout.write(f"{note}\n")
             return 0
-        if time.monotonic() >= deadline:
+        now = time.monotonic()
+        if now >= deadline:
             sys.stdout.write("; ".join(found) + "\n")
             return BELOW_EXIT
-        time.sleep(args.interval)
+        # Never past start + wait: the gate's budget can be the rest of its deadline.
+        time.sleep(min(args.interval, deadline - now))
 
 
 if __name__ == "__main__":

@@ -779,7 +779,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/host_memory.py"
 package = "core"
 version = "dev"
-sha256 = "54f93ec8b9a73a2ae260b0affe7b1ec2d0591827fe22cdbce0f076043e9c6a5b"
+sha256 = "280e54c84a708fd8f3c73dcb1cbea25f638b49e45cb6a977c9ff36d6606cab06"
 
 [[unit]]
 kind = "file"
