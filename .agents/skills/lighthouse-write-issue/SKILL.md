@@ -246,14 +246,22 @@ compensate; a relation without a label is caught by the sweep as **label missing
 | setting the label fails | the label command from step 5 | the label stands: go on. It does not: "relation stands, label missing" + `gh issue edit <nr> --add-label "$BLOCKED"` |
 | the final check differs, or a GET fails | — | the real state, or **unknown** with the read command. Never success |
 
+#### 3f. Free labels with a document
+
+In the taxonomy file from step 3, look for free labels that have a row in a table with the columns
+`When` and `Document` (the `Document` column names a file). For each such row: open that document, then test the issue against the
+`When` column. If the issue touches something that document describes, or adds something to it,
+set that label. This step runs before step 4; the label goes into the `--label` of step 4. No
+taxonomy file, or no such row: skip this step.
+
 ### 4. Create the issue
 
-`--label` always carries one label per axis the project has (3a, 3b).
+`--label` always carries one label per axis the project has (3a, 3b) plus every free label from 3f.
 
 ```bash
 gh issue create \
   --title "<title>" \
-  --label "<location label>,<area label>" \
+  --label "<location label>,<area label>[,<free label>]" \
   --milestone "<milestone>" \
   --body "$(cat <<'EOF'
 <formatted body>

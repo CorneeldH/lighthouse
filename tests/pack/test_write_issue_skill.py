@@ -225,3 +225,19 @@ def test_milestone_create_reads_its_own_prefix():
         assert "milestone prefix: none — no [project] milestone_prefix set" in block
         assert '-f title="${MP:+$MP }<name>"' in block
         assert "${P:+" not in body
+
+
+def test_free_labels_with_a_document():
+    """A free label whose taxonomy row names a document is set after reading that document."""
+    for body in skill():
+        step = _between(body, "#### 3f. Free labels with a document", "### 4. Create the issue")
+        flat = " ".join(step.split())
+        assert "`Document` column" in flat and "`When` column" in flat
+        assert "open that document" in flat
+        assert "no such row: skip this step" in flat
+        assert "runs before step 4" in flat and "goes into the `--label` of step 4" in flat
+        for named in ("loop", "loop.json", "docs/site"):
+            assert named not in step, named
+        create = _between(body, "### 4. Create the issue", "### 5. Report the result")
+        assert "(3a, 3b) plus every free label from 3f" in " ".join(create.split())
+        assert "<location label>,<area label>[,<free label>]" in create
