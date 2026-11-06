@@ -215,6 +215,9 @@ def test_documents_of_the_linked_issues():
     assert "before `gh pr create`" in s
     assert "nothing twice" in s  # re-run
     assert "no note in the body" in s
+    assert "With `Closes #N`: yes" in s and "With `Refs #N`: judge" in s
+    assert "skip this section" in s
+    assert "planned" not in s
     for named in ("loop.json", "`loop`", "docs/site"):
         assert named not in s, named
     assert TEXT.index("## V3. Choose the form") < TEXT.index("## Documents of the linked issues") \

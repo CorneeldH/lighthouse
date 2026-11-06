@@ -155,8 +155,9 @@ Mixing is allowed: `Closes #5` with Evidence #5 next to `Refs #6 — <reason>`.
 
 ## Documents of the linked issues
 
-Read the taxonomy file with `python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels`. No
-taxonomy file, or no label in it with a `Document` column entry: skip this section.
+Read the taxonomy file with `python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels`. If
+that command fails or prints nothing, there is no taxonomy file: skip this section, with no note in
+the body. The same when the file has no label with a `Document` column entry.
 
 For every `Closes #N` and every `Refs #N` of the body, read the labels:
 `gh issue view N --json labels`. For each label that has a `Document` in the taxonomy file, ask:
@@ -168,8 +169,8 @@ does the branch deliver what the issue changes?
 Yes: update the document the way the taxonomy file describes, commit it and push it before
 `gh pr create`. No: do nothing, and leave no note in the body.
 
-A re-run writes nothing twice: the document no longer has a `planned` item that names #N, and the
-branch already touches the document.
+A re-run writes nothing twice: when the update the taxonomy file describes is already in the
+document on this branch (the branch diff touches it for #N), the step is done.
 
 ## Changelog fragment (if present)
 

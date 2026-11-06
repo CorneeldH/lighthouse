@@ -176,7 +176,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "80891964ec53c6f91bb2cfac7c26bbdfd877a9aeef8fb9e76ced24037ca6130e"
+sha256 = "88ed9b5f85fe2321f9e86037eab221f58219d896008311f4b9d5abd23b589847"
 
 [[unit]]
 kind = "file"
@@ -639,7 +639,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "80891964ec53c6f91bb2cfac7c26bbdfd877a9aeef8fb9e76ced24037ca6130e"
+sha256 = "88ed9b5f85fe2321f9e86037eab221f58219d896008311f4b9d5abd23b589847"
 
 [[unit]]
 kind = "file"
