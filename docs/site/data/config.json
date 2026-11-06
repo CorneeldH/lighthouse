@@ -983,6 +983,30 @@
               "about": "The CPU quota of the secret scan of entire checkpoints, as a percentage of one core. Without the key the scan uses 200%.",
               "example": "200%",
               "readers": []
+            },
+            {
+              "key": "host.gate_slots",
+              "level": "advanced",
+              "required": "no",
+              "about": "The ceiling on the test gate slots of every project on this host; without the key the ceiling is 7.",
+              "example": 2,
+              "readers": []
+            },
+            {
+              "key": "host.gate_min_mem_available_gb",
+              "level": "advanced",
+              "required": "no",
+              "about": "The minimum MemAvailable in GiB before the test gate starts a run.",
+              "example": 6,
+              "readers": []
+            },
+            {
+              "key": "host.gate_min_swap_free_gb",
+              "level": "advanced",
+              "required": "no",
+              "about": "The minimum SwapFree in GiB before the test gate starts a run.",
+              "example": 4,
+              "readers": []
             }
           ]
         },

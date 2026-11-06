@@ -180,9 +180,19 @@ HOST_KEYS = (
     "host.gate_slice",
     "host.scan_memory_max",
     "host.scan_cpu_quota",
+    "host.gate_slots",
+    "host.gate_min_mem_available_gb",
+    "host.gate_min_swap_free_gb",
 )
 # Host keys a host without `host.toml` simply does not have (rc 1, not rc 2).
-_OPTIONAL_HOST_KEYS = ("host.gate_slice", "host.scan_memory_max", "host.scan_cpu_quota")
+_OPTIONAL_HOST_KEYS = (
+    "host.gate_slice",
+    "host.scan_memory_max",
+    "host.scan_cpu_quota",
+    "host.gate_slots",
+    "host.gate_min_mem_available_gb",
+    "host.gate_min_swap_free_gb",
+)
 
 
 class ConfigError(Exception):
@@ -227,6 +237,9 @@ class Host:
     gate_slice: str | None = None
     scan_memory_max: str | None = None
     scan_cpu_quota: str | None = None
+    gate_slots: int | None = None
+    gate_min_mem_available_gb: float | None = None
+    gate_min_swap_free_gb: float | None = None
 
 
 def is_known_key(key: str) -> bool:
@@ -435,6 +448,16 @@ def _scan_limit(path: Path, host: dict, name: str, pattern: re.Pattern[str], sha
     return value
 
 
+def _positive_number(path: Path, host: Mapping[str, Any], name: str) -> float | None:
+    """An optional threshold: an int or float above 0; a bool is not a number."""
+    value = host.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        raise ConfigError(f"{path}: key host.{name} must be a number above 0: {value!r}")
+    return float(value)
+
+
 def load_host(path: Path) -> Host:
     """Read and validate one `host.toml`."""
     data = _read_toml(path, f"host unknown: no host.toml ({path})")
@@ -467,12 +490,22 @@ def load_host(path: Path) -> Host:
         raise ConfigError(f"{path}: key host.gate_slice must be a non-empty string")
     scan_memory_max = _scan_limit(path, host, "scan_memory_max", _SCAN_MEMORY_RE, "like 2G")
     scan_cpu_quota = _scan_limit(path, host, "scan_cpu_quota", _SCAN_CPU_RE, "like 200%")
+    gate_slots = host.get("gate_slots")
+    if gate_slots is not None and (
+        isinstance(gate_slots, bool) or not isinstance(gate_slots, int) or gate_slots < 1
+    ):
+        raise ConfigError(
+            f"{path}: key host.gate_slots must be a whole number of at least 1: {gate_slots!r}"
+        )
     return Host(
         name=name,
         tailscale_ip=tailscale_ip,
         gate_slice=gate_slice,
         scan_memory_max=scan_memory_max,
         scan_cpu_quota=scan_cpu_quota,
+        gate_slots=gate_slots,
+        gate_min_mem_available_gb=_positive_number(path, host, "gate_min_mem_available_gb"),
+        gate_min_swap_free_gb=_positive_number(path, host, "gate_min_swap_free_gb"),
     )
 
 
@@ -534,11 +567,16 @@ def _host_value(key: str) -> str:
         "host.gate_slice": host.gate_slice,
         "host.scan_memory_max": host.scan_memory_max,
         "host.scan_cpu_quota": host.scan_cpu_quota,
+        "host.gate_slots": host.gate_slots,
+        "host.gate_min_mem_available_gb": host.gate_min_mem_available_gb,
+        "host.gate_min_swap_free_gb": host.gate_min_swap_free_gb,
     }
     value = values[key]
     if value is None:
         raise KeyError(key)
-    return value
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else str(value)
+    return str(value)
 
 
 def _scalar(key: str, value: object) -> str:
