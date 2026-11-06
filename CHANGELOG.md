@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.8.6] - 2026-11-06
+
+### Fixed
+
+- `lighthouse init` and `init --upgrade` now warn when git ignores a file they install, for example `.lighthouse/lib/` under a `lib/` rule, with the rule that ignores it. Such a file works locally but never reaches a commit.
+
 ## [v0.8.5] - 2026-11-02
 
 ### Fixed
