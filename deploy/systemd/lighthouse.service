@@ -23,15 +23,16 @@
 # ignores a directory that does not exist; without it a machine lacking one of the homes would
 # fail the first start with 226/NAMESPACE.
 #
-# Install (details in docs/install.md):
-#   go install github.com/CorneeldH/lighthouse/cmd/lighthouse@main
+# Install (details in docs/install.md): first download the release binary into ~/go/bin/lighthouse
+# (it carries the web UI), then fetch this unit for the same tag:
 #   mkdir -p ~/.config/systemd/user
-#   cp deploy/systemd/lighthouse.service ~/.config/systemd/user/
+#   curl -fsSLo ~/.config/systemd/user/lighthouse.service \
+#     https://raw.githubusercontent.com/CorneeldH/lighthouse/<tag>/deploy/systemd/lighthouse.service
 #   systemctl --user daemon-reload
 #   systemctl --user enable --now lighthouse.service
 #   loginctl enable-linger "$USER"
 #
-# %h/go/bin is where `go install` puts the binary; edit ExecStart if yours lives elsewhere.
+# %h/go/bin is where the install guide puts the binary; edit ExecStart if yours lives elsewhere.
 
 [Unit]
 Description=lighthouse — development chain server
