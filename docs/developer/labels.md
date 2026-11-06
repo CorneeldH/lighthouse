@@ -21,7 +21,7 @@ Eén vrij label hoort bij deze repo: **`chain`** (kleur `F4D74B`). Het staat op 
 stap, een handoff of een route van de keten toevoegt of verandert, zoals die op de ketenkaart
 (`docs/site/loop.html`) staat. Uitleg over de controller, of een verbetering binnen een
 bestaande stap, krijgt het niet. Elk open issue met `chain` staat als gepland item op de kaart,
-en elk gepland item noemt zo'n issue; `ci/chain_roadmap.py` en de workflow `chain-roadmap`
+en elk gepland item noemt zo'n issue; `ci/loop_roadmap.py` en de workflow `loop-roadmap`
 controleren dat.
 
 ## 2-area: — waar hoort het bij

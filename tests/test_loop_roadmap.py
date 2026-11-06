@@ -1,10 +1,10 @@
-"""ci/chain_roadmap.py: the planned items of the chain map and the open `chain` issues match."""
+"""ci/loop_roadmap.py: the planned items of the loop map and the open `loop` issues match."""
 
 import importlib.util
 from pathlib import Path
 
-PATH = Path(__file__).resolve().parents[1] / "ci" / "chain_roadmap.py"
-_spec = importlib.util.spec_from_file_location("lighthouse_ci_chain_roadmap", PATH)
+PATH = Path(__file__).resolve().parents[1] / "ci" / "loop_roadmap.py"
+_spec = importlib.util.spec_from_file_location("lighthouse_ci_loop_roadmap", PATH)
 assert _spec is not None and _spec.loader is not None
 roadmap = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(roadmap)
@@ -26,9 +26,9 @@ def test_planned_item_without_issue_is_flagged():
 
 def test_planned_item_on_a_closed_or_unlabelled_issue_is_flagged():
     data = chain({"id": "b", "status": "idea", "issue": 7})
-    assert roadmap.problems(data, set()) == ["b: #7 is not an open issue labelled chain"]
+    assert roadmap.problems(data, set()) == ["b: #7 is not an open issue labelled loop"]
 
 
 def test_labelled_issue_missing_from_the_map_is_flagged():
     data = chain({"id": "b", "status": "planned", "issue": 7})
-    assert roadmap.problems(data, {7, 9}) == ["#9: labelled chain, but not on the map"]
+    assert roadmap.problems(data, {7, 9}) == ["#9: labelled loop, but not on the map"]

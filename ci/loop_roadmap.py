@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""The roadmap layer of the chain map matches the open issues labelled `chain`.
+"""The roadmap layer of the loop map matches the open issues labelled `loop`.
 
-Every planned step or handoff in docs/site/data/chain.json names an open issue with the label
-`chain`, and every such issue is on the map. The label marks an issue that adds or changes a
-step, a handoff or a route of the chain (see docs/developer/labels.md); explaining the
+Every planned step or handoff in docs/site/data/loop.json names an open issue with the label
+`loop`, and every such issue is on the map. The label marks an issue that adds or changes a
+step, a handoff or a route of the loop (see docs/developer/labels.md); explaining the
 controller is not one.
 
-`python3 ci/chain_roadmap.py` reads the open issues through `gh api`. Exit 0 is ok, 1 is a
+`python3 ci/loop_roadmap.py` reads the open issues through `gh api`. Exit 0 is ok, 1 is a
 verdict (a mismatch), 2 is COULD NOT CHECK (gh failed or the map does not parse).
 
 Stdlib only, Python 3.11.
@@ -18,8 +18,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-LABEL = "chain"
-CHAIN = Path(__file__).resolve().parents[1] / "docs" / "site" / "data" / "chain.json"
+LABEL = "loop"
+LOOP = Path(__file__).resolve().parents[1] / "docs" / "site" / "data" / "loop.json"
 
 
 def planned(chain: dict) -> dict[str, int | None]:
@@ -30,7 +30,7 @@ def planned(chain: dict) -> dict[str, int | None]:
 
 
 def problems(chain: dict, open_issues: set[int]) -> list[str]:
-    """Mismatches between the planned items of the map and the open `chain` issues."""
+    """Mismatches between the planned items of the map and the open `loop` issues."""
     items = planned(chain)
     found = [f"{name}: planned without an issue" for name, nr in items.items() if nr is None]
     found += [
@@ -43,7 +43,7 @@ def problems(chain: dict, open_issues: set[int]) -> list[str]:
     return found
 
 
-def open_chain_issues(repo: str) -> set[int]:
+def open_loop_issues(repo: str) -> set[int]:
     """The open issues (no PRs) of `repo` with the label; raises CalledProcessError when gh fails."""
     out = subprocess.run(
         ["gh", "api", f"repos/{repo}/issues?labels={LABEL}&state=open&per_page=100", "--paginate",
@@ -56,8 +56,8 @@ def open_chain_issues(repo: str) -> set[int]:
 def main() -> int:
     repo = os.environ.get("GITHUB_REPOSITORY", "CorneeldH/lighthouse")
     try:
-        chain = json.loads(CHAIN.read_text(encoding="utf-8"))
-        issues = open_chain_issues(repo)
+        chain = json.loads(LOOP.read_text(encoding="utf-8"))
+        issues = open_loop_issues(repo)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"COULD NOT CHECK: {error}", file=sys.stderr)
         return 2
@@ -65,7 +65,7 @@ def main() -> int:
     for line in found:
         print(line)
     if not found:
-        print(f"chain roadmap: {len(issues)} open {LABEL} issues, all on the map")
+        print(f"loop roadmap: {len(issues)} open {LABEL} issues, all on the map")
     return 1 if found else 0
 
 

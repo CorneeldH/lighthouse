@@ -7,7 +7,7 @@ import re
 import pytest
 
 from tests._site_node import run_map
-from tests.test_site_chain import REPO_BLOB, SITE
+from tests.test_site_loop import REPO_BLOB, SITE
 
 SPEC_GLYPHS = {
     "program": "⛯", "workflow-skill": "↪", "standard-skill": "✓", "agent": "◆", "hook": "⚡",
