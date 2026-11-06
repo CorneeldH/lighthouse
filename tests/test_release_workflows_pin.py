@@ -184,3 +184,67 @@ def test_release_recovers_a_push_that_landed():
     # Only our own tag object counts as landed; a rival run's tag of the same name must not.
     assert 'git rev-parse "refs/tags/$tag"' in release
     assert "sleep $((attempt * 5))" in release
+
+
+def _steps(job: str) -> list[str]:
+    """Cut a job per step: each block starting at a `      - ` line (six spaces) under `steps:`."""
+    _, _, body = job.partition("\n    steps:\n")
+    steps: list[str] = []
+    for line in body.splitlines():
+        if line.startswith("      - "):
+            steps.append(line)
+        elif steps:
+            steps[-1] += "\n" + line
+    return steps
+
+
+def _step_index(steps: list[str], name: str) -> int:
+    """Index of the step named `name`; fails the test when there is none."""
+    for i, step in enumerate(steps):
+        if re.match(rf"^      - name: {re.escape(name)}\s*$", step.splitlines()[0]):
+            return i
+    raise AssertionError(f"no step named {name!r}")
+
+
+def test_build_embeds_real_spa():
+    """Fails when the binaries stop embedding the real SPA built by the `web` job."""
+    jobs = _jobs(BUILD)
+    assert "web" in jobs, "build.yml has no `web` job"
+    web = jobs["web"]
+    assert "node-version-file: web/.nvmrc" in web
+    assert "npm ci" in web
+    assert "npm run build" in web
+    assert web.index("npm ci") < web.index("npm run build")
+    assert "actions/upload-artifact@" in web
+    assert "name: spa-dist" in web
+    assert "internal/web/dist" in web
+    assert "contents: read" in web
+    assert "contents: write" not in web
+
+    build = jobs["build"]
+    assert re.search(r"^    needs: \[resolve, web\]\s*$", build, re.MULTILINE)
+    steps = _steps(build)
+    download = next(
+        (
+            i
+            for i, step in enumerate(steps)
+            if "actions/download-artifact@" in step
+            and "name: spa-dist" in step
+            and re.search(r"^\s+path: internal/web/dist\s*$", step, re.MULTILINE)
+        ),
+        None,
+    )
+    assert download is not None, "build has no download of spa-dist into internal/web/dist"
+    assert download < _step_index(steps, "Build")
+
+
+def test_build_runs_spa_smoke():
+    """Fails when the linux/amd64 binary is no longer smoke-tested after `Check version`."""
+    steps = _steps(_jobs(BUILD)["build"])
+    version = _step_index(steps, "Check version")
+    smoke = _step_index(steps, "Check SPA")
+    assert version < smoke
+    condition = "if: matrix.goos == 'linux' && matrix.goarch == 'amd64'"
+    assert condition in steps[version]
+    assert re.search(r"^\s+" + re.escape(condition) + r"\s*$", steps[smoke], re.MULTILINE)
+    assert 'ci/spa-smoke.sh "$RUNNER_TEMP/dist/lighthouse_linux_amd64"' in steps[smoke]
