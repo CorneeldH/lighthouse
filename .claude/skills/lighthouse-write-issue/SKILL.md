@@ -324,7 +324,7 @@ workflow above. Do not guess which part:
 | 3c. The block | holds: at most one blocking label, the lowest rank wins |
 | 3d. Milestone | only when the change moves the issue to another theme |
 | 3e. Set a block | holds, without its step 1: the issue exists already |
-| 3f. Free labels with a document | only when the change makes the issue match a `When` column; then `gh issue edit <nr> --add-label <label>`, since step 4 drops |
+| 3f. Free labels with a document | only when the change makes the issue match a `When` column; then `gh issue edit <nr> --repo "$R" --add-label <label>`, since step 4 drops |
 | 4. Create the issue | drops: never `gh issue create` |
 | 5. Report the result | the final state as read, not the command that was sent |
 

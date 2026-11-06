@@ -241,7 +241,10 @@ def test_free_labels_with_a_document():
         for named in ("loop", "loop.json", "docs/site"):
             assert named not in step, named
         existing = " ".join(body.split("## An existing issue", 1)[1].split())
-        assert "| 3f. Free labels with a document | only when the change makes the issue match a `When` column; then `gh issue edit <nr> --add-label <label>`, since step 4 drops |" in existing
+        assert (
+            '| 3f. Free labels with a document | only when the change makes the issue match a `When` column; '
+            'then `gh issue edit <nr> --repo "$R" --add-label <label>`, since step 4 drops |'
+        ) in existing
         create = _between(body, "### 4. Create the issue", "### 5. Report the result")
         assert "(3a, 3b) plus every free label from 3f" in " ".join(create.split())
         assert "<location label>,<area label>[,<free label>]" in create
