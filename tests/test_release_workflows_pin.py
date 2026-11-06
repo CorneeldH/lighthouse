@@ -215,7 +215,15 @@ def test_build_embeds_real_spa():
     assert "npm ci" in web
     assert "npm run build" in web
     assert web.index("npm ci") < web.index("npm run build")
-    assert "actions/upload-artifact@" in web
+    wsteps = _steps(web)
+    for command in ("npm ci", "npm run build"):
+        pattern = rf"^      - run: {command}\s*$"
+        step = next((x for x in wsteps if re.match(pattern, x.splitlines()[0])), None)
+        assert step is not None, f"web has no step `run: {command}`"
+        assert re.search(r"^\s+working-directory: web\s*$", step, re.MULTILINE), command
+    upload = next((x for x in wsteps if "actions/upload-artifact@" in x), None)
+    assert upload is not None, "web has no upload-artifact step"
+    assert re.search(r"^\s+if-no-files-found: error\s*$", upload, re.MULTILINE)
     assert "name: spa-dist" in web
     assert "internal/web/dist" in web
     assert "contents: read" in web
@@ -251,3 +259,15 @@ def test_build_runs_spa_smoke():
     assert condition in steps[version]
     assert re.search(r"^\s+" + re.escape(condition) + r"\s*$", steps[smoke], re.MULTILINE)
     assert 'ci/spa-smoke.sh "$RUNNER_TEMP/dist/lighthouse_linux_amd64"' in steps[smoke]
+
+
+def test_build_checkouts_pin_the_tag():
+    """Fails when a checkout in build.yml does not check out `refs/tags/<resolved tag>`."""
+    ref = "ref: refs/tags/${{ needs.resolve.outputs.tag }}"
+    found = 0
+    for name, job in _jobs(BUILD).items():
+        for step in _steps(job):
+            if "actions/checkout@" in step:
+                found += 1
+                assert re.search(r"^\s+" + re.escape(ref) + r"\s*$", step, re.MULTILINE), name
+    assert found == 3
