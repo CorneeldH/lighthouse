@@ -359,3 +359,11 @@ def test_every_writing_gh_command_in_the_skills_names_the_repo():
                 if m and re.search(r"--|<", span[m.end() :]) and "--repo" not in span:
                     bad.append(f"{path.relative_to(CORE)}: {span.strip()[:80]}")
     assert not bad, "\n".join(bad)
+
+
+def test_write_pr_creates_the_pr_with_the_forge_repo():
+    """#224: write-pr names the repo from lighthouse.toml, never `"$R"`, which the gate blocks."""
+    text = (CORE / "skills" / "write-pr" / "SKILL.md").read_text(encoding="utf-8")
+    creates = [line for line in text.splitlines() if line.startswith("gh pr create ")]
+    assert creates, "write-pr has no fenced `gh pr create` command"
+    assert all(line.startswith("gh pr create --repo <forge.repo> ") for line in creates), creates
