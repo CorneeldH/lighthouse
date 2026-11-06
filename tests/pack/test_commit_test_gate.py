@@ -888,13 +888,16 @@ NO_THRESHOLD_NOTE = "commit-test-gate: no gate memory threshold in host.toml, ho
 def meminfo(gate: Gate, avail_kb: int, swap_free_kb: int, swap_total_kb: int = 25165824) -> dict[str, str]:
     """A made-up /proc/meminfo; returns the env that points the hook at it."""
     path = gate.tmp / "meminfo"
-    path.write_text(
+    # Write beside and rename: a poll of the hook must never read a half-written file.
+    tmp = gate.tmp / "meminfo.new"
+    tmp.write_text(
         f"MemTotal:       {16 * GIB_KB} kB\n"
         f"MemAvailable:   {avail_kb} kB\n"
         f"SwapTotal:      {swap_total_kb} kB\n"
         f"SwapFree:       {swap_free_kb} kB\n",
         encoding="utf-8",
     )
+    os.replace(tmp, path)
     return {"LIGHTHOUSE_GATE_MEMINFO": str(path)}
 
 

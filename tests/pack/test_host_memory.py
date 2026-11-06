@@ -4,6 +4,7 @@ A made-up meminfo in `tmp_path` stands in for `/proc/meminfo`; the CLI runs as
 installed, the way the hook calls it.
 """
 
+import os
 import subprocess
 import sys
 import threading
@@ -21,13 +22,16 @@ GIB_KB = 1024 * 1024
 
 
 def _meminfo(path: Path, avail_kb: int, swap_free_kb: int, swap_total_kb: int = 24 * GIB_KB) -> Path:
-    path.write_text(
+    # Write beside and rename: a poll must never read a half-written file.
+    tmp = path.with_name(path.name + ".new")
+    tmp.write_text(
         f"MemTotal:       {16 * GIB_KB} kB\n"
         f"MemFree:          123456 kB\n"
         f"MemAvailable:   {avail_kb} kB\n"
         f"SwapTotal:      {swap_total_kb} kB\n"
         f"SwapFree:       {swap_free_kb} kB\n"
     )
+    os.replace(tmp, path)
     return path
 
 
