@@ -417,10 +417,11 @@
               "key": "paths.labels",
               "level": "advanced",
               "required": "no",
-              "about": "The file that lists the labels of the project.",
+              "about": "The file that lists the labels of the project, and the document a free label's PR updates.",
               "example": "docs/labels.md",
               "readers": [
-                "pack/core/skills/write-issue"
+                "pack/core/skills/write-issue",
+                "pack/core/skills/write-pr"
               ]
             },
             {

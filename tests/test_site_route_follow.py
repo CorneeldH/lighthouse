@@ -6,7 +6,7 @@ import json
 import pytest
 
 from tests._site_node import run_map
-from tests.test_site_chain import load
+from tests.test_site_loop import load
 
 ROUTES = [
     {"id": "a", "chips": ["x", "y"]},
@@ -40,7 +40,7 @@ def test_no_routes_gives_no_route():
     assert route_with(-1, ["x"], routes=[]) == -1
 
 
-@pytest.mark.parametrize("path", ["chain.json", "session.json"])
+@pytest.mark.parametrize("path", ["loop.json", "session.json"])
 def test_every_chip_has_a_route_to_switch_to(path):
     data = load(path)
     lost = [c["id"] for c in data["chips"] if route_with(0, [c["id"]], data["routes"]) == 0

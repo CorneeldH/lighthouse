@@ -7,7 +7,7 @@ import tomllib
 import pytest
 
 from tests.test_getting_started import init_flags, required_tools, section
-from tests.test_site_chain import ROOT, SITE
+from tests.test_site_loop import ROOT, SITE
 from tests.test_site_download import DOWNLOAD, INDEX, INSTALL, TABS
 from tests.test_site_pages import ElementById
 

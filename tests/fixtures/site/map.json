@@ -1,6 +1,6 @@
 {
   "title": "Fixture map",
-  "subtitle": "A small map in the chain.json format, for the generic site checks.",
+  "subtitle": "A small map in the loop.json format, for the generic site checks.",
   "phases": [
     {"id": "one", "label": "One", "blurb": "first phase"},
     {"id": "two", "label": "Two", "blurb": "second phase"},

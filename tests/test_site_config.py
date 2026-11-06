@@ -12,7 +12,7 @@ import tomllib
 from pathlib import Path
 
 from tests._site_node import run_map
-from tests.test_site_chain import REPO_BLOB, REPO_TREE, ROOT, load
+from tests.test_site_loop import REPO_BLOB, REPO_TREE, ROOT, load
 
 _spec = importlib.util.spec_from_file_location("lighthouse_site_config", ROOT / "pack/core/lib/config.py")
 config = importlib.util.module_from_spec(_spec)

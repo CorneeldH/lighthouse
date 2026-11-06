@@ -205,3 +205,22 @@ def test_v4_writes_the_marker_and_posts_the_comment():
     v4 = _section(TEXT, "## V4.")
     for needle in ("roborev_gate.py body-line", "roborev_comment.py render", "--bron lokaal", "gh pr comment"):
         assert needle in v4, needle
+
+
+def test_documents_of_the_linked_issues():
+    s = " ".join(_section(TEXT, "## Documents of the linked issues").split())
+    assert "python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels" in s
+    assert "every `Closes #N` and every `Refs #N`" in s
+    assert "gh issue view" in s and "--json labels" in s
+    assert "does the branch deliver" in s
+    assert "before `gh pr create`" in s
+    assert "nothing twice" in s  # re-run
+    assert "no note in the body" in s
+    assert "With `Closes #N`: yes" in s and "With `Refs #N`: judge" in s
+    assert "skip this section" in s
+    assert "rc 1 (not set)" in s and "rc 2: the configuration is broken; stop" in s
+    assert "planned" not in s
+    for named in ("loop.json", "`loop`", "docs/site"):
+        assert named not in s, named
+    assert TEXT.index("## V3. Choose the form") < TEXT.index("## Documents of the linked issues") \
+        < TEXT.index("## Changelog fragment")

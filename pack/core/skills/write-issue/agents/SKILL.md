@@ -245,16 +245,26 @@ compensate; a relation without a label is caught by the sweep as **label missing
 | setting the label fails | the label command from step 5 | the label stands: go on. It does not: "relation stands, label missing" + `gh issue edit <nr> --repo "$R" --add-label "$BLOCKED"` |
 | the final check differs, or a GET fails | — | the real state, or **unknown** with the read command. Never success |
 
+#### 3f. Free labels with a document
+
+In the taxonomy file from step 3, look for free labels that have a row in a table with the columns
+`When` and `Document` (the `Document` column names a file). For each such row: open that document
+to see what already exists, then test the issue against the `When` column. The `When` column is the
+criterion, the document only context: set the label only when the issue matches the row's `When`
+column, not merely because the issue touches something the document describes. This step runs
+before step 4; the label goes into the `--label` of step 4. No taxonomy file, or no such row: skip
+this step.
+
 ### 4. Create the issue
 
-`--label` always carries one label per axis the project has (3a, 3b).
+`--label` always carries one label per axis the project has (3a, 3b) plus every free label from 3f.
 
 ```bash
 R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh issue create \
   --repo "$R" \
   --title "<title>" \
-  --label "<location label>,<area label>" \
+  --label "<location label>,<area label>[,<free label>]" \
   --milestone "<milestone>" \
   --body "$(cat <<'EOF'
 <formatted body>
@@ -312,6 +322,7 @@ workflow above. Do not guess which part:
 | 3c. The block | holds: at most one blocking label, the lowest rank wins |
 | 3d. Milestone | only when the change moves the issue to another theme |
 | 3e. Set a block | holds, without its step 1: the issue exists already |
+| 3f. Free labels with a document | only when the change makes the issue match a `When` column; then `gh issue edit <nr> --repo "$R" --add-label <label>`, since step 4 drops |
 | 4. Create the issue | drops: never `gh issue create` |
 | 5. Report the result | the final state as read, not the command that was sent |
 

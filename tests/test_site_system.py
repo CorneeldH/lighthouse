@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from tests._site_node import run_map
-from tests.test_site_chain import REPO_BLOB, REPO_TREE, ROOT, SITE
+from tests.test_site_loop import REPO_BLOB, REPO_TREE, ROOT, SITE
 
 FIXTURE = ROOT / "tests" / "fixtures" / "site" / "system.json"
 SYSTEM = SITE / "data" / "system.json"

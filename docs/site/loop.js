@@ -1,6 +1,6 @@
-// The loop page: the flow map from data/chain.json and the pack cards from data/packs.json.
+// The loop page: the flow map from data/loop.json and the pack cards from data/packs.json.
 
-import { fillLegend, initTheme, loadJson, renderFlowMap } from "./map.js?v=ca84807a";
+import { fillLegend, initTheme, loadJson, renderFlowMap } from "./map.js?v=548ba90f";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -64,7 +64,7 @@ initTheme(document.getElementById("theme-toggle"));
 fillLegend(document.querySelector("[data-sorts]"));
 
 try {
-  const [chain, packs] = await Promise.all([loadJson("data/chain.json"), loadJson("data/packs.json")]);
+  const [chain, packs] = await Promise.all([loadJson("data/loop.json"), loadJson("data/packs.json")]);
   document.getElementById("title").textContent = chain.title;
   document.getElementById("subtitle").textContent = chain.subtitle;
   renderFlowMap(document.getElementById("chain-map"), chain, document.getElementById("detail"));

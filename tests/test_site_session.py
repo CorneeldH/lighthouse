@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-from tests.test_site_chain import REPO_BLOB, ROOT, SITE, load
+from tests.test_site_loop import REPO_BLOB, ROOT, SITE, load
 
 # The column of the session map (docs/site/data/session.json) that each hook event belongs in.
 EVENT_PHASE = {
@@ -155,7 +155,7 @@ def test_the_agent_runs_at_the_agent_call_not_on_the_loop():
     # An agent runs as a subagent through the Agent tool: a moment inside a session, not a step of the loop.
     scout = chip(load("session.json"), "issue-impact-scout")
     assert (scout["phase"], scout["source"]) == ("tool-call", REPO_BLOB + "pack/core/agents/issue-impact-scout.md")
-    assert "issue-impact-scout" not in {c["id"] for c in load("chain.json")["chips"]}
+    assert "issue-impact-scout" not in {c["id"] for c in load("loop.json")["chips"]}
 
 
 def test_routes_light_up_the_most_hooks_first():
