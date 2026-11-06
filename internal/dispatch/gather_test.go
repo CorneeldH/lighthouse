@@ -152,6 +152,25 @@ func TestPrepareStatuses(t *testing.T) {
 	}
 }
 
+// An item that left Controller and On hold while a run on it is open stays in Items, so the
+// tick can still close that run; without an open run it drops out.
+func TestPrepareKeepsItemWithOpenRun(t *testing.T) {
+	srv, c := client(t)
+	srv.BoardNodes = []map[string]any{
+		node("I2", map[string]string{"F_status": "opt-done"}, issue("o/r", 2, nil)),
+		node("I9", map[string]string{"F_status": "opt-done"}, issue("o/r", 9, map[string]any{"state": "CLOSED"})),
+		node("I5", map[string]string{"F_status": "opt-done"}, issue("o/x", 5, nil)), // open run, other repo
+	}
+	open := []runs.OpenRun{{ID: 15, Issue: 9}, {ID: 16, Issue: 5}}
+	pre, err := Prepare(context.Background(), c, testRepo, open, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pre.Items) != 1 || pre.Items[0].Issue != 9 || pre.Items[0].Status != "Done" || pre.Items[0].State != "CLOSED" {
+		t.Fatalf("Items = %+v, want only issue 9, Done and CLOSED", pre.Items)
+	}
+}
+
 func TestInController(t *testing.T) {
 	in := InController(map[int]string{1: "Controller", 2: "On hold", 3: "In progress", 4: ""})
 	for issue, want := range map[int]bool{1: true, 2: true, 3: false, 4: false, 5: false} {
