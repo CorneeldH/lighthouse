@@ -18,10 +18,11 @@ import (
 // ErrNotMeasurable says the host holds no transcript to measure from.
 var ErrNotMeasurable = errors.New("workplace: not measurable")
 
-// Transcripts is an optional interface next to Workplace. A workplace without
-// a transcript on the host returns ErrNotMeasurable.
+// Transcripts is an optional interface next to Workplace. Transcript reads the
+// transcript of one session as ReadTranscript does: an error that wraps
+// fs.ErrNotExist or is ErrNotMeasurable says there is nothing to measure.
 type Transcripts interface {
-	TranscriptDir(ctx context.Context, workspaceID string) (string, error)
+	Transcript(ctx context.Context, workspaceID, sessionID string) (Transcript, error)
 }
 
 // Transcript is what the dispatcher reads from the transcript of one session.

@@ -42,8 +42,10 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    kan noch de rem noch de afloop (regel 5) kijken. Per open run met een werkplek meet tick ook de
    afloop: de laatste gebeurtenis in het transcript (subagents meegeteld, per draad), of de sessie
    nog een eerste commando mist (`Unknown command:`) of nooit een assistent-beurt had, en de laatste
-   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven). Staat het transcript niet op deze host (het Software-profiel in een
-   devcontainer), dan is de run niet meetbaar: geen fout, en de afloop valt terug op de forge-stand.
+   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven). Bij het
+   Software-profiel haalt de werkplek het transcript uit de devcontainer, zodat ook daar een
+   onbekend commando binnen één tick `start_failed` wordt (#237). Is er (nog) geen transcript, dan
+   is de run niet meetbaar: geen fout, en de afloop valt terug op de forge-stand.
    Een run die tick niet kan meten (stand of afloop) schrijft
    `lighthouse: measure <repo>: run <id>: <fout>` naar stderr; de andere runs worden wel gemeten. Een
    sessie die de tick zonder sleutel aantreft (een onzekere start) zoekt `workplace.AdoptSessions`

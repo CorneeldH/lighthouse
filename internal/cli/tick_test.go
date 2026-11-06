@@ -917,7 +917,7 @@ func TestTickSessionStandRegathers(t *testing.T) {
 }
 
 // measureWorkplace answers Sessions from a fixed list per workspace, or with the error of that
-// workspace, and TranscriptDir from dirs: a workspace without a dir is not measurable.
+// workspace, and Transcript from dirs: a workspace without a dir is not measurable.
 type measureWorkplace struct {
 	fakeWorkplace
 	sessions map[string][]workplace.Session
@@ -929,11 +929,11 @@ func (w *measureWorkplace) Sessions(_ context.Context, workspaceID string) ([]wo
 	return w.sessions[workspaceID], w.errs[workspaceID]
 }
 
-func (w *measureWorkplace) TranscriptDir(_ context.Context, workspaceID string) (string, error) {
+func (w *measureWorkplace) Transcript(_ context.Context, workspaceID, sessionID string) (workplace.Transcript, error) {
 	if dir, ok := w.dirs[workspaceID]; ok {
-		return dir, nil
+		return workplace.ReadTranscript(dir, sessionID)
 	}
-	return "", fmt.Errorf("no project dir for %s: %w", workspaceID, workplace.ErrNotMeasurable)
+	return workplace.Transcript{}, fmt.Errorf("no project dir for %s: %w", workspaceID, workplace.ErrNotMeasurable)
 }
 
 func writeTestFile(t *testing.T, path, body string) {

@@ -139,11 +139,20 @@ niet verschijnt (start onzeker) of die te lang loopt (`max_runtime`), beslist de
 
 ## Transcripten
 
-`workplace.Transcripts` is een optionele interface naast `Workplace`: `TranscriptDir(ctx, workspaceID)`
-geeft de map met de transcripten van de workspace (`~/.claude/projects/<cwd, elk teken buiten
-[A-Za-z0-9] als '-'>`; `workplace.ProjectDir`). Staat die map niet op deze host, bijvoorbeeld voor het
-Software-profiel in een devcontainer, dan is dat `workplace.ErrNotMeasurable`: de run is niet
-meetbaar, en dat is geen fout van de tick. Een 404 van forge blijft `workplace.ErrGone`.
+`workplace.Transcripts` is een optionele interface naast `Workplace`:
+`Transcript(ctx, workspaceID, sessionID)` leest het transcript van één sessie, zoals
+`workplace.ReadTranscript` hieronder. De map is `~/.claude/projects/<cwd, elk teken buiten
+[A-Za-z0-9] als '-'>` (`workplace.ProjectDir`). Een 404 van forge blijft `workplace.ErrGone`.
+
+- Profiel `software`: claude draait in de gedeelde devcontainer en houdt zijn transcripten in een
+  volume dat de host niet kan lezen (eigenaar een subuid, mode 700). De adapter haalt daarom de
+  bestanden van de sessie uit de container: per devcontainer (dezelfde `podman ps` als bij `Stop`)
+  één `podman exec <c> sh -c <script>`, dat `<sessie>.jsonl` en `<sessie>/subagents` als tar
+  uitvoert, of exit 3 geeft als de sessie daar niet staat. De adapter pakt alleen die bestanden uit
+  in een tijdelijke map, leest ze en ruimt de map op. Staat de sessie in geen container, dan
+  wikkelt de fout `fs.ErrNotExist`; een falende `podman` is een fout van de tick (#237).
+- Elk ander profiel: de map op deze host. Staat die er niet, dan is dat `workplace.ErrNotMeasurable`:
+  de run is niet meetbaar, en dat is geen fout van de tick.
 
 `workplace.ReadTranscript(dir, sessionID)` leest `<sessie>.jsonl` en de subagent-transcripten onder
 `<sessie>/subagents` en geeft een `Transcript`: de laatste gebeurtenis over alle draden (`LastEvent`),
