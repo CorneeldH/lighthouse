@@ -74,20 +74,21 @@ def test_pr_ignores_issues_without_the_label():
     assert roadmap.pr_problems(chain({"id": "b", "status": "planned", "issue": 7}), set(), set()) == []
 
 
-def test_pr_mode_gh_failure_could_not_check(monkeypatch, capsys):
-    def fail(*_a, **_k):
-        raise subprocess.CalledProcessError(1, "gh")
-    monkeypatch.setattr(roadmap, "closed_loop_issues", fail)
-    assert roadmap.main(["--pr", "5"]) == 2
-    assert "COULD NOT CHECK" in capsys.readouterr().err
-
-
 def _pr_mode(monkeypatch, tmp_path, data, closed, touched):
     path = tmp_path / "loop.json"
     path.write_text(json.dumps(data), encoding="utf-8")
     monkeypatch.setattr(roadmap, "LOOP", path)
     monkeypatch.setattr(roadmap, "closed_loop_issues", lambda *_a: closed)
     monkeypatch.setattr(roadmap, "touched_files", touched)
+
+
+def test_pr_mode_gh_failure_could_not_check(monkeypatch, tmp_path, capsys):
+    def fail(*_a, **_k):
+        raise subprocess.CalledProcessError(1, "gh")
+    _pr_mode(monkeypatch, tmp_path, chain({"id": "b", "status": "works"}), set(), None)
+    monkeypatch.setattr(roadmap, "closed_loop_issues", fail)
+    assert roadmap.main(["--pr", "5"]) == 2
+    assert "COULD NOT CHECK" in capsys.readouterr().err
 
 
 def test_pr_mode_closing_no_loop_issue_skips_the_files(monkeypatch, tmp_path):
@@ -116,7 +117,30 @@ def test_closed_loop_issues_keeps_only_the_label(monkeypatch):
         {"number": 8, "labels": {"nodes": [{"name": "bug"}]}},
     ]}}}}}
 
-    def fake_run(*_a, **_k):
+    calls = []
+
+    def fake_run(args, **_k):
+        calls.append(args)
         return subprocess.CompletedProcess([], 0, stdout=json.dumps(reply))
     monkeypatch.setattr(roadmap.subprocess, "run", fake_run)
     assert roadmap.closed_loop_issues("o/r", 5) == {7}
+    assert "pr=5" in calls[0] and "owner=o" in calls[0] and "name=r" in calls[0]
+
+
+def test_null_pull_request_reply_could_not_check(monkeypatch, tmp_path, capsys):
+    reply = {"data": {"repository": {"pullRequest": None}}}
+    _pr_mode(monkeypatch, tmp_path, chain({"id": "b", "status": "works"}), set(), None)
+    monkeypatch.setattr(
+        roadmap.subprocess, "run",
+        lambda *_a, **_k: subprocess.CompletedProcess([], 0, stdout=json.dumps(reply)),
+    )
+    assert roadmap.main(["--pr", "5"]) == 2
+    assert "COULD NOT CHECK" in capsys.readouterr().err
+
+
+def test_touched_files_keeps_names_with_spaces(monkeypatch):
+    monkeypatch.setattr(
+        roadmap.subprocess, "run",
+        lambda *_a, **_k: subprocess.CompletedProcess([], 0, stdout="a b.md\n\nc.py\n"),
+    )
+    assert roadmap.touched_files("o/r", 5) == {"a b.md", "c.py"}

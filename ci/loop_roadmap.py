@@ -86,11 +86,14 @@ def closed_loop_issues(repo: str, pr: int) -> set[int]:
         "{ nodes { number labels(first: 50) { nodes { name } } } } } } }"
     )
     out = subprocess.run(
-        ["gh", "api", "graphql", "-f", f"query={query}", "-F", f"owner={owner}", "-F", f"name={name}",
+        ["gh", "api", "graphql", "-f", f"query={query}", "-f", f"owner={owner}", "-f", f"name={name}",
          "-F", f"pr={pr}"],
         check=True, capture_output=True, text=True,
     ).stdout
-    nodes = json.loads(out)["data"]["repository"]["pullRequest"]["closingIssuesReferences"]["nodes"]
+    try:
+        nodes = json.loads(out)["data"]["repository"]["pullRequest"]["closingIssuesReferences"]["nodes"]
+    except (KeyError, TypeError) as error:
+        raise ValueError(f"unexpected gh graphql reply for PR #{pr}: {error!r}") from error
     return {n["number"] for n in nodes if LABEL in {lab["name"] for lab in n["labels"]["nodes"]}}
 
 
@@ -100,7 +103,7 @@ def touched_files(repo: str, pr: int) -> set[str]:
         ["gh", "api", f"repos/{repo}/pulls/{pr}/files", "--paginate", "--jq", ".[].filename"],
         check=True, capture_output=True, text=True,
     ).stdout
-    return set(out.split())
+    return {line for line in out.splitlines() if line}
 
 
 def main(argv: list[str] | None = None) -> int:
