@@ -1289,3 +1289,45 @@ func TestUpgradeDoesNotProposeHostTOML(t *testing.T) {
 		t.Fatalf("out %q err %q", r.out, r.err)
 	}
 }
+
+func TestWarnsIgnoredByGitignore(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".gitignore", "build/\nlib/\n")
+	r := run(t, root, "", yes)
+	if r.code != 0 || !strings.Contains(r.err, "warning: .lighthouse/lib/lighthouse_lib/a.py is ignored by git (.gitignore:2:lib/)") {
+		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+	if n := strings.Count(r.err, "ignored by git"); n != 1 {
+		t.Fatalf("want one line per rule, got %d: %q", n, r.err)
+	}
+}
+
+func TestWarnsIgnoredByInfoExclude(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".git/info/exclude", ".claude/settings.json\n")
+	r := run(t, root, "", yes)
+	if r.code != 0 || !strings.Contains(r.err, "warning: .claude/settings.json is ignored by git (.git/info/exclude:1:.claude/settings.json)") {
+		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+}
+
+func TestWarnsIgnoredOnUpgradeWithoutChanges(t *testing.T) {
+	root := newRepo(t)
+	if r := run(t, root, "", yes); r.code != 0 {
+		t.Fatalf("init: %q", r.err)
+	}
+	write(t, root, ".gitignore", "lib/\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Upgrade = true })
+	if r.code != 0 || !strings.Contains(r.out, "No changes.") || !strings.Contains(r.err, ".lighthouse/lib/lighthouse_lib/a.py is ignored by git (.gitignore:1:lib/)") {
+		t.Fatalf("rc %d out %q err %q", r.code, r.out, r.err)
+	}
+}
+
+func TestNoIgnoreWarningInCleanRepo(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".gitignore", "build/\n")
+	r := run(t, root, "", yes)
+	if r.code != 0 || strings.Contains(r.err, "ignored by git") {
+		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+}
