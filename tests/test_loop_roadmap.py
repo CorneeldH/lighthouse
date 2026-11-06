@@ -80,6 +80,8 @@ def _pr_mode(monkeypatch, tmp_path, data, closed, touched):
     monkeypatch.setattr(roadmap, "LOOP", path)
     monkeypatch.setattr(roadmap, "closed_loop_issues", lambda *_a: closed)
     monkeypatch.setattr(roadmap, "touched_files", touched)
+    # Never reach GitHub from a test: the issues a PR closes are still open while it runs.
+    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: set(closed))
 
 
 def test_pr_mode_gh_failure_could_not_check(monkeypatch, tmp_path, capsys):
