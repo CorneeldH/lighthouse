@@ -48,6 +48,8 @@ project meer dan de host toestaat, dan blokkeert de gate niet: hij meldt
 
 ```toml
 [host]
+name = "beelink"                # verplicht in elke host.toml
+tailscale_ip = "100.64.0.1"     # verplicht in elke host.toml
 gate_slice = "gates.slice"
 gate_slots = 2
 gate_min_mem_available_gb = 6
