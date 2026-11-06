@@ -1,6 +1,7 @@
-# Loop roadmap: the planned steps and handoffs of the loop map (docs/site/data/loop.json) match
-# the open issues labelled `loop`; on a PR, a PR that closes a `loop` issue also updates the map.
-# See ci/loop_roadmap.py.
+# Loop roadmap. Main mode (issues, push, dispatch): the planned steps and handoffs of the loop map
+# (docs/site/data/loop.json) match the open issues labelled `loop`. PR mode: a PR that closes a
+# `loop` issue also updates the map, and a PR that touches the map or the script also gets the
+# main mode check. See ci/loop_roadmap.py.
 name: loop-roadmap
 
 on:
@@ -26,7 +27,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Compare the map with the open loop issues
+      - name: Check the loop map against the loop issues
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 ci/loop_roadmap.py ${{ github.event_name == 'pull_request' && format('--pr {0}', github.event.pull_request.number) || '' }}

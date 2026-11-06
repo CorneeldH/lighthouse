@@ -9,7 +9,11 @@ docs/site/data/loop.json names an open issue with the label. An open issue missi
 is fine: the PR that delivers it adds it.
 
 `python3 ci/loop_roadmap.py --pr <n>` (PR mode) checks that a PR closing a `loop` issue also
-updates the map: no closed issue is still planned on it, and the map file is touched.
+updates the map: no closed issue is still planned on it, and the map file is touched. A PR that
+touches the map or this script also gets the main mode check, so a planned item naming a wrong or
+closed issue, or a broken script, is red in the PR and not only later on `main` (the anti-goal of
+the spec). That takes precedence over "a PR that closes no loop issue is green without further
+check", which is about the closing-issue check only.
 
 Both read GitHub through `gh`. Exit 0 is ok, 1 is a verdict, 2 is COULD NOT CHECK (gh failed or
 the map does not parse).
@@ -37,6 +41,7 @@ def planned(chain: dict) -> dict[str, int | None]:
 
 HINT = "(see docs/developer/labels.md)"
 MAP = "docs/site/data/loop.json"
+SCRIPT = "ci/loop_roadmap.py"
 
 
 def problems(chain: dict, open_issues: set[int]) -> list[str]:
@@ -83,7 +88,7 @@ def closed_loop_issues(repo: str, pr: int) -> set[int]:
     query = (
         "query($owner: String!, $name: String!, $pr: Int!) { repository(owner: $owner, name: $name) "
         "{ pullRequest(number: $pr) { closingIssuesReferences(first: 100) "
-        "{ nodes { number labels(first: 50) { nodes { name } } } } } } }"
+        "{ nodes { number repository { nameWithOwner } labels(first: 50) { nodes { name } } } } } } }"
     )
     out = subprocess.run(
         ["gh", "api", "graphql", "-f", f"query={query}", "-f", f"owner={owner}", "-f", f"name={name}",
@@ -94,7 +99,11 @@ def closed_loop_issues(repo: str, pr: int) -> set[int]:
         nodes = json.loads(out)["data"]["repository"]["pullRequest"]["closingIssuesReferences"]["nodes"]
     except (KeyError, TypeError) as error:
         raise ValueError(f"unexpected gh graphql reply for PR #{pr}: {error!r}") from error
-    return {n["number"] for n in nodes if LABEL in {lab["name"] for lab in n["labels"]["nodes"]}}
+    return {
+        n["number"] for n in nodes
+        if n["repository"]["nameWithOwner"].lower() == repo.lower()
+        and LABEL in {lab["name"] for lab in n["labels"]["nodes"]}
+    }
 
 
 def touched_files(repo: str, pr: int) -> set[str]:
@@ -119,11 +128,13 @@ def main(argv: list[str] | None = None) -> int:
             ok = f"loop roadmap: {len(issues)} open {LABEL} issues, planned items all open"
         else:
             closed = closed_loop_issues(repo, pr)
-            if not closed:
-                print(f"loop roadmap: PR #{pr} closes no loop issue")
-                return 0
-            found = pr_problems(chain, closed, touched_files(repo, pr))
+            touched = touched_files(repo, pr)
+            found = pr_problems(chain, closed, touched) if closed else []
+            if MAP in touched or SCRIPT in touched:
+                found += problems(chain, open_loop_issues(repo))
             ok = f"loop roadmap: PR #{pr} closes {len(closed)} loop issues, map in step"
+            if not closed:
+                ok = f"loop roadmap: PR #{pr} closes no loop issue"
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         print(f"COULD NOT CHECK: {error}", file=sys.stderr)
         return 2

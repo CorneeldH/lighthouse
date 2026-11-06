@@ -91,11 +91,31 @@ def test_pr_mode_gh_failure_could_not_check(monkeypatch, tmp_path, capsys):
     assert "COULD NOT CHECK" in capsys.readouterr().err
 
 
-def test_pr_mode_closing_no_loop_issue_skips_the_files(monkeypatch, tmp_path):
-    def never(*_a):
-        raise AssertionError("touched_files called for a PR that closes no loop issue")
-    _pr_mode(monkeypatch, tmp_path, chain({"id": "b", "status": "planned", "issue": 7}), set(), never)
+def _no_open_issues(*_a):
+    raise AssertionError("open_loop_issues called for a PR that touches neither the map nor the script")
+
+
+def test_pr_mode_closing_no_loop_issue_and_not_touching_the_map_is_green(monkeypatch, tmp_path):
+    _pr_mode(monkeypatch, tmp_path, chain({"id": "b", "status": "planned", "issue": 7}), set(),
+             lambda *_a: {"ci/x.py"})
+    monkeypatch.setattr(roadmap, "open_loop_issues", _no_open_issues)
     assert roadmap.main(["--pr", "5"]) == 0
+
+
+def test_pr_mode_touching_the_map_also_runs_the_main_check(monkeypatch, tmp_path, capsys):
+    data = chain({"id": "b", "status": "planned", "issue": 7})
+    _pr_mode(monkeypatch, tmp_path, data, set(), lambda *_a: {MAP})
+    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: {9})
+    assert roadmap.main(["--pr", "5"]) == 1
+    assert "b: #7 is not an open issue labelled loop" in capsys.readouterr().out
+
+
+def test_pr_mode_touching_the_script_also_runs_the_main_check(monkeypatch, tmp_path, capsys):
+    data = chain({"id": "b", "status": "planned", "issue": 7})
+    _pr_mode(monkeypatch, tmp_path, data, set(), lambda *_a: {"ci/loop_roadmap.py"})
+    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: {9})
+    assert roadmap.main(["--pr", "5"]) == 1
+    assert "b: #7 is not an open issue labelled loop" in capsys.readouterr().out
 
 
 def test_pr_mode_verdict_exits_1(monkeypatch, tmp_path, capsys):
@@ -113,8 +133,10 @@ def test_pr_mode_clean_exits_0(monkeypatch, tmp_path, capsys):
 
 def test_closed_loop_issues_keeps_only_the_label(monkeypatch):
     reply = {"data": {"repository": {"pullRequest": {"closingIssuesReferences": {"nodes": [
-        {"number": 7, "labels": {"nodes": [{"name": "loop"}, {"name": "bug"}]}},
-        {"number": 8, "labels": {"nodes": [{"name": "bug"}]}},
+        {"number": 7, "repository": {"nameWithOwner": "O/R"},
+         "labels": {"nodes": [{"name": "loop"}, {"name": "bug"}]}},
+        {"number": 8, "repository": {"nameWithOwner": "o/r"}, "labels": {"nodes": [{"name": "bug"}]}},
+        {"number": 9, "repository": {"nameWithOwner": "other/repo"}, "labels": {"nodes": [{"name": "loop"}]}},
     ]}}}}}
 
     calls = []
@@ -124,7 +146,10 @@ def test_closed_loop_issues_keeps_only_the_label(monkeypatch):
         return subprocess.CompletedProcess([], 0, stdout=json.dumps(reply))
     monkeypatch.setattr(roadmap.subprocess, "run", fake_run)
     assert roadmap.closed_loop_issues("o/r", 5) == {7}
-    assert "pr=5" in calls[0] and "owner=o" in calls[0] and "name=r" in calls[0]
+    args = calls[0]
+    assert args[args.index("pr=5") - 1] == "-F"
+    assert args[args.index("owner=o") - 1] == "-f"
+    assert args[args.index("name=r") - 1] == "-f"
 
 
 def test_null_pull_request_reply_could_not_check(monkeypatch, tmp_path, capsys):
