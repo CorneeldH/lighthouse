@@ -56,7 +56,9 @@ Eerst wordt alles van *chain* naar *loop* hernoemd.
   `tests/test_loop_roadmap.py`, `tests/test_site_chain.py` → `tests/test_site_loop.py`
 - Wijzig: `docs/site/loop.js:1,67`, `tests/_site_node.py`, `tests/test_agent_guide.py`,
   `tests/test_site_{config,packs,reference,pages,route_follow,session,system,download,sorts,repo}.py`,
-  `tests/fixtures/site/map.json:3`
+  `tests/fixtures/site/map.json:3`, de inhoud van `.github/workflows/loop-roadmap.yml` (`name:`
+  wordt `loop-roadmap`, comment, `paths`, `run`-regel), `docs/developer/labels.md:24` (alleen de
+  bestands- en workflownaam; de alinea zelf herschrijft taak 4)
 
 **Interfaces:**
 - Produceert: `tests/test_site_loop.py` met dezelfde exports als nu (`ROOT`, `SITE`, `REPO_BLOB`,
@@ -65,8 +67,8 @@ Eerst wordt alles van *chain* naar *loop* hernoemd.
 
 - [ ] **Stap 1:** `git mv` de vijf bestanden.
 - [ ] **Stap 2:** vervang elke verwijzing naar de oude bestandsnamen:
-  `rg -l 'chain\.json|chain_roadmap|chain-roadmap|test_site_chain' --glob '!docs/developer/planning/**' --glob '!CHANGELOG.md'`
-  moet daarna leeg zijn. In `ci/loop_roadmap.py` wordt `LABEL = "loop"` en de constante `CHAIN`
+  `rg -l --hidden --glob '!.git' 'chain\.json|chain_roadmap|chain-roadmap|test_site_chain' --glob '!docs/developer/planning/**' --glob '!CHANGELOG.md'`
+  moet daarna leeg zijn (`--hidden`: anders slaat `rg` `.github/` over). In `ci/loop_roadmap.py` wordt `LABEL = "loop"` en de constante `CHAIN`
   heet `LOOP`; docstrings en workflowcomment zeggen *loop map* en label `loop`. Lokale
   variabelen die `chain` heten mogen blijven.
 - [ ] **Stap 3:** in `tests/test_loop_roadmap.py` worden de verwachte meldingen
@@ -96,7 +98,9 @@ Eerst wordt alles van *chain* naar *loop* hernoemd.
 
 - [ ] **Stap 1: falende tests.** Vervang `test_labelled_issue_missing_from_the_map_is_flagged` door
   `test_open_issue_missing_from_the_map_is_not_flagged` (`problems(data, {7, 9}) == []` met alleen
-  #7 op de kaart) en voeg toe:
+  #7 op de kaart). In `test_planned_item_on_a_closed_or_unlabelled_issue_is_flagged` wordt de
+  verwachte melding `"b: #7 is not an open issue labelled loop (see docs/developer/labels.md)"`
+  (stap 3 voegt die verwijzing toe). Voeg toe:
 
 ```python
 MAP = "docs/site/data/loop.json"
@@ -135,9 +139,34 @@ def test_pr_mode_gh_failure_could_not_check(monkeypatch, capsys):
     monkeypatch.setattr(roadmap, "closed_loop_issues", fail)
     assert roadmap.main(["--pr", "5"]) == 2
     assert "COULD NOT CHECK" in capsys.readouterr().err
+
+def _pr_mode(monkeypatch, tmp_path, data, closed, touched):
+    path = tmp_path / "loop.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    monkeypatch.setattr(roadmap, "LOOP", path)
+    monkeypatch.setattr(roadmap, "closed_loop_issues", lambda *_a: closed)
+    monkeypatch.setattr(roadmap, "touched_files", touched)
+
+def test_pr_mode_closing_no_loop_issue_skips_the_files(monkeypatch, tmp_path):
+    def never(*_a):
+        raise AssertionError("touched_files called for a PR that closes no loop issue")
+    _pr_mode(monkeypatch, tmp_path, chain({"id": "b", "status": "planned", "issue": 7}), set(), never)
+    assert roadmap.main(["--pr", "5"]) == 0
+
+def test_pr_mode_verdict_exits_1(monkeypatch, tmp_path, capsys):
+    data = chain({"id": "b", "status": "planned", "issue": 7})
+    _pr_mode(monkeypatch, tmp_path, data, {7}, lambda *_a: {MAP})
+    assert roadmap.main(["--pr", "5"]) == 1
+    assert "b: still planned, but this PR closes #7" in capsys.readouterr().out
+
+def test_pr_mode_clean_exits_0(monkeypatch, tmp_path, capsys):
+    _pr_mode(monkeypatch, tmp_path, chain({"id": "b", "status": "works"}), {7}, lambda *_a: {MAP})
+    assert roadmap.main(["--pr", "5"]) == 0
+    assert "map in step" in capsys.readouterr().out
 ```
 
-  Voeg ook `test_closed_loop_issues_keeps_only_the_label` toe: monkeypatch `subprocess.run` op een
+  (`import json` en `import subprocess` bovenaan het testbestand.) Voeg ook
+  `test_closed_loop_issues_keeps_only_the_label` toe: monkeypatch `subprocess.run` op een
   GraphQL-antwoord met issue 7 (labels `loop`, `bug`) en 8 (label `bug`); verwacht `{7}`.
 - [ ] **Stap 2:** `uv run pytest -q tests/test_loop_roadmap.py`. Verwacht: de nieuwe tests FAIL
   (`pr_problems` bestaat niet).
@@ -145,7 +174,10 @@ def test_pr_mode_gh_failure_could_not_check(monkeypatch, capsys):
   nog `planned` staan (op volgorde van `planned()`), dan, als `MAP` niet in `touched` staat, één
   regel per issue in `sorted(closed)` dat geen gemelde `planned`-regel kreeg. De hoofdmodus-melding
   "#N is not an open issue labelled loop" krijgt dezelfde verwijzing
-  `(see docs/developer/labels.md)`. `main` leest `GITHUB_REPOSITORY` zoals nu; groen in PR-modus
+  `(see docs/developer/labels.md)`. `main` leest `GITHUB_REPOSITORY` zoals nu en `LOOP` pas bij
+  het aanroepen (de tests patchen het). In PR-modus: geeft `closed_loop_issues` een lege set, dan
+  print `main` `loop roadmap: PR #<n> closes no loop issue` en geeft 0 zonder `touched_files` aan
+  te roepen (spec §5: groen zonder verdere check). Anders `touched_files` en `pr_problems`; groen
   print `loop roadmap: PR #<n> closes <k> loop issues, map in step`.
 - [ ] **Stap 4:** `uv run pytest -q tests/test_loop_roadmap.py`. Verwacht: PASS.
 - [ ] **Stap 5: workflow.** In `loop-roadmap.yml`: `pull_request` met
@@ -153,8 +185,12 @@ def test_pr_mode_gh_failure_could_not_check(monkeypatch, capsys):
   `pull-requests: read`; de stap draait
   `python3 ci/loop_roadmap.py ${{ github.event_name == 'pull_request' && format('--pr {0}', github.event.pull_request.number) || '' }}`.
   `issues`, `push` (paden naar `loop.json` en `ci/loop_roadmap.py`) en `workflow_dispatch` blijven.
-- [ ] **Stap 6:** `python3 ci/loop_roadmap.py`. Verwacht nu nog exit 1 met de twee #119-regels
-  (taak 3 lost ze op) — en geen regel "not on the map".
+- [ ] **Stap 6:** `python3 ci/loop_roadmap.py`. Verwacht: exit 1 met zes regels
+  `... is not an open issue labelled loop (see docs/developer/labels.md)`, één per `planned` item
+  (`triage` #120, `auto-answer` #168, `roborev` #119, `pr-and-ci->fix-pr` #119,
+  `commit-test-gate->write-pr` #147, `pr-and-ci->close-issue` #147): het GitHub-label heet nog
+  `chain` tot taak 7, dus de open set is leeg. Geen regel "not on the map". Verander niets aan
+  `loop.json` of de check om deze regels weg te krijgen.
 - [ ] **Stap 7:** commit `feat(ci): loop-roadmap wordt rood in de PR die een loop-issue sluit`.
 
 ### Taak 3: Herstel van #119 op de kaart
@@ -185,8 +221,8 @@ DISPATCHED = {("pr-and-ci", "fix-pr")}
   krijgt `"source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/scripts/roborev_gate.py"`;
   handoff `pr-and-ci → fix-pr` krijgt `"status": "works"` en verliest `issue`.
 - [ ] **Stap 4:** `uv run pytest -q tests/test_site_*.py tests/test_loop_roadmap.py && python3 ci/loop_roadmap.py`.
-  Verwacht: tests PASS; de check exit 1 alleen omdat het label nog `chain` heet (zie taak 7), of
-  exit 0 als het label al hernoemd is.
+  Verwacht: tests PASS; de check exit 1 met vier regels (#120, #168 en twee keer #147), alleen
+  omdat het label nog `chain` heet (zie taak 7). De twee #119-regels zijn weg.
 - [ ] **Stap 5:** commit `fix(site): roborev en de handoff naar fix-pr werken sinds #119`.
 
 ### Taak 4: `labels.md` — het document per vrij label
@@ -215,7 +251,8 @@ DISPATCHED = {("pr-and-ci", "fix-pr")}
 
 **Bestanden:**
 - Wijzig: `pack/core/skills/write-issue/claude/SKILL.md`, `pack/core/skills/write-issue/agents/SKILL.md`
-  (nieuwe `#### 3f. Free labels with a document`, na 3e, vóór `### 4. Create the issue`)
+  (nieuwe `#### 3f. Free labels with a document`, na 3e, vóór `### 4. Create the issue`; plus
+  de `--label`-zin en het voorbeeld in stap 4)
 - Test: `tests/pack/test_write_issue_skill.py`
 
 - [ ] **Stap 1: falende test.**
@@ -229,16 +266,23 @@ def test_free_labels_with_a_document():
         assert "`Document` column" in flat and "`When` column" in flat
         assert "open that document" in flat
         assert "no such row: skip this step" in flat
+        assert "runs before step 4" in flat and "goes into the `--label` of step 4" in flat
         for named in ("loop", "loop.json", "docs/site"):
             assert named not in step, named
+        create = _between(body, "### 4. Create the issue", "### 5. Report the result")
+        assert "(3a, 3b) plus every free label from 3f" in " ".join(create.split())
+        assert "<location label>,<area label>[,<free label>]" in create
 ```
 
 - [ ] **Stap 2:** `uv run pytest -q tests/pack/test_write_issue_skill.py`. Verwacht: FAIL.
 - [ ] **Stap 3:** schrijf 3f in beide varianten, met de zinnen die de test vraagt: lees in het
   taxonomiebestand (uit stap 3) de vrije labels met een rij in een tabel met kolommen `When` en
   `Document`; open that document en toets het issue aan de `When` column — raakt het iets dat in
-  het document staat, of voegt het er iets aan toe, dan het label. No taxonomy file, or no such
-  row: skip this step.
+  het document staat, of voegt het er iets aan toe, dan het label. This step runs before step 4;
+  the label goes into the `--label` of step 4. No taxonomy file, or no such row: skip this step.
+  In stap 4 wordt de zin `` `--label` always carries one label per axis the project has (3a, 3b)
+  plus every free label from 3f`` en het voorbeeld
+  `--label "<location label>,<area label>[,<free label>]"`.
 - [ ] **Stap 4:** `uv run pytest -q tests/pack/test_write_issue_skill.py`. Verwacht: PASS.
 - [ ] **Stap 5:** `go run ./cmd/lighthouse init --upgrade`, daarna `uv run pytest -q tests/pack`.
 - [ ] **Stap 6:** commit `feat(write-issue): vrij label met een document na een toets tegen dat document`
@@ -293,11 +337,12 @@ def test_documents_of_the_linked_issues():
 
 Buiten de repo; elke stap hier vraagt eerst bevestiging van Corneel.
 
-- [ ] **Stap 1:** het issue voor dit werk is #219 (label `chain`, wordt `loop`). Schrijf met
-  `/lighthouse-write-issue` het vervolgissue uit spec *Vervolgissue*:
+- [ ] **Stap 1:** hernoem het label vlak vóór de PR: `gh label edit chain --name loop`. Daarna
+  `python3 ci/loop_roadmap.py`. Verwacht: exit 0. Het issue voor dit werk is #219 (label `chain`,
+  nu `loop`). Eerst het label: de geïnstalleerde `write-issue` (taak 5) zet `loop` in stap 2, en
+  `gh issue create` faalt op een label dat nog niet bestaat.
+- [ ] **Stap 2:** schrijf met `/lighthouse-write-issue` het vervolgissue uit spec *Vervolgissue*:
   *Een `loop`-issue op een milestone staat als `planned` op de loop-kaart.*
-- [ ] **Stap 2:** hernoem het label vlak vóór de PR: `gh label edit chain --name loop`. Daarna
-  `python3 ci/loop_roadmap.py`. Verwacht: exit 0.
 - [ ] **Stap 3:** `/lighthouse-write-pr` met `Closes #219`. Die PR sluit zelf een
   `loop`-issue en raakt `loop.json`: de nieuwe PR-modus moet groen zijn. Dat is het eerste
   echte bewijs.
