@@ -70,7 +70,7 @@ func TestRunLeavesReturnToTick(t *testing.T) {
 func TestRunNightDefers(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, completeRepo))
 	srv, w := startable(t, &env)
-	srv.Comments = map[int][]map[string]any{7: {handoffComment("/superpowers:subagent-driven-development /work/plans/plan.md", "night")}}
+	srv.Comments = map[int][]map[string]any{7: {handoffComment("/superpowers:subagent-driven-development /work/issue-7-issue/plans/plan.md", "night")}}
 	var errOut bytes.Buffer
 	if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
 		t.Fatalf("run = %v\n%s", err, errOut.String())

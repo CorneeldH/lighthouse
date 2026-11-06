@@ -702,7 +702,7 @@ func TestTickDeferredKeepsFingerprint(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, completeRepo), repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, `repo = "o/s"`, 1)))
 	srv, w := startable(t, &env)
 	useWorkplaces(t, &env, map[string]*fakeWorkplace{"o/r": w, "o/s": newFakeWorkplace(t, "o/s")})
-	srv.Comments = map[int][]map[string]any{7: {handoffComment("/superpowers:subagent-driven-development /work/plans/plan.md", "night")}}
+	srv.Comments = map[int][]map[string]any{7: {handoffComment("/superpowers:subagent-driven-development /work/issue-7-issue/plans/plan.md", "night")}}
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatalf("tick = %v\n%s", err, errOut.String())
@@ -762,7 +762,7 @@ func TestTickJudgesInstalledSkills(t *testing.T) {
 			}
 			env, db := tickFixture(t, dir)
 			srv, _ := startable(t, &env)
-			srv.Comments = map[int][]map[string]any{7: {handoffComment("/lighthouse-review-plan /work/plans/plan.md", "now")}}
+			srv.Comments = map[int][]map[string]any{7: {handoffComment("/lighthouse-review-plan /work/issue-7-issue/plans/plan.md", "now")}}
 			var errOut bytes.Buffer
 			if err := tick(context.Background(), env, db, &errOut); err != nil {
 				t.Fatalf("tick = %v\n%s", err, errOut.String())
@@ -1149,7 +1149,7 @@ func parkable(t *testing.T) (tickEnv, string, *forgetest.Server) {
 			"closedByPullRequestsReferences": map[string]any{"nodes": []any{}},
 		}}},
 	}))}
-	srv.Comments = map[int][]map[string]any{7: {handoffComment("/superpowers:subagent-driven-development /work/plans/plan.md", "now")}}
+	srv.Comments = map[int][]map[string]any{7: {handoffComment("/superpowers:subagent-driven-development /work/issue-7-issue/plans/plan.md", "now")}}
 	return env, db, srv
 }
 
