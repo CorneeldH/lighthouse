@@ -123,7 +123,8 @@ def test_example_row_holds_against_the_template(tmp_path):
 
 def test_v4_gives_a_title_and_writes_the_body_separately():
     v4 = _section(TEXT, "## V4.")
-    assert "gh pr create --title '<title>' --body-file <path>" in v4
+    assert "gh pr create --repo <forge.repo> --title '<title>' --body-file <path>" in v4
+    assert "config.py forge.repo" in v4
     assert "Write tool" in v4
     assert "python3 .lighthouse/scripts/plan_review_record.py pr-open-points <path>..." in v4
 
