@@ -274,7 +274,11 @@ def test_works_handoffs_follow_the_handoff_table():
         ("review-spec", "writing-plans"),
         ("writing-plans", "review-plan"),
         ("review-plan", "executing-plans"),
+        ("commit-test-gate", "write-pr"),
+        ("pr-and-ci", "close-issue"),
     }
+    # A works handoff is built: it carries no tracking issue.
+    assert not [h for h in chain["handoffs"] if h["status"] == "works" and "issue" in h]
     # The handoff skill's routing table names the first step of each works handoff.
     table = (ROOT / "pack" / "core" / "skills" / "write-handoff" / "SKILL.md").read_text(encoding="utf-8")
     for _, target in works:

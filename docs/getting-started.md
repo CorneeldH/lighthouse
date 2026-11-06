@@ -183,11 +183,12 @@ What happens within one turn, which skill joins in and which hook steps in, is o
    `main`, also through `git -C <path>` or a preceding `cd`. `worktree-check` warns when you
    write into the main checkout on `main`.
 4. **Open the PR.** Type `/lighthouse-write-pr`. It checks each acceptance criterion on the
-   branch and writes the PR body with an evidence table. `pr-create-gate` blocks a
-   `gh pr create` whose body lacks `Closes #N` with evidence, `Refs #N — <reason>` or
-   `No issue: <reason>`.
-5. **After the merge.** Type `/lighthouse-close-issue <nr>`. A `Closes #N` PR closed the issue on
-   merge; the skill checks the evidence and reopens the issue when it does not hold.
+   branch and writes the PR body with `Refs #N` and an Evidence table of the proven criteria.
+   `pr-create-gate` blocks a `gh pr create` whose body lacks `Closes #N` with evidence,
+   `Refs #N — <reason>` or `No issue: <reason>`.
+5. **After the merge.** Type `/lighthouse-close-issue <nr>`. The issue is still open: the skill
+   runs the Evidence table of the merged PR on the default branch and closes the issue with that
+   evidence, or leaves it open with what is missing.
 
 The hooks run only in Claude Code. In Codex and OpenCode the skills and `AGENTS.md` are there,
 but no hook is: check the branch yourself before a commit, and run your `[test_gate] command`.
