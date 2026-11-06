@@ -286,7 +286,7 @@ def test_works_handoffs_follow_the_handoff_table():
     judge = (ROOT / "internal" / "dispatch" / "judge.go").read_text(encoding="utf-8")
     for source, target in works:
         if (source, target) in DISPATCHED:
-            assert f'"/lighthouse-{target}"' in judge, target
+            assert f'case "/lighthouse-{target}":' in judge, target
             continue
         prefix = "lighthouse-" if chips[target]["kind"] == "lighthouse" else "superpowers:"
         assert f"`/{prefix}{target}" in table, target
