@@ -129,7 +129,9 @@ def test_closed_loop_issues_keeps_only_the_label(monkeypatch):
 
 def test_null_pull_request_reply_could_not_check(monkeypatch, tmp_path, capsys):
     reply = {"data": {"repository": {"pullRequest": None}}}
-    _pr_mode(monkeypatch, tmp_path, chain({"id": "b", "status": "works"}), set(), None)
+    path = tmp_path / "loop.json"
+    path.write_text(json.dumps(chain({"id": "b", "status": "works"})), encoding="utf-8")
+    monkeypatch.setattr(roadmap, "LOOP", path)
     monkeypatch.setattr(
         roadmap.subprocess, "run",
         lambda *_a, **_k: subprocess.CompletedProcess([], 0, stdout=json.dumps(reply)),
