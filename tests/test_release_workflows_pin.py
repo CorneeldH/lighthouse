@@ -236,6 +236,9 @@ def test_build_embeds_real_spa():
     )
     assert download is not None, "build has no download of spa-dist into internal/web/dist"
     assert download < _step_index(steps, "Build")
+    # checkout runs `git clean -ffdx`, which would delete the git-ignored internal/web/dist.
+    checkout = next(i for i, step in enumerate(steps) if "actions/checkout@" in step)
+    assert checkout < download
 
 
 def test_build_runs_spa_smoke():
