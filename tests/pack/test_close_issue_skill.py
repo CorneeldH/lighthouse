@@ -134,7 +134,7 @@ def test_b2a_per_pr_body_fetch_runs_outside_the_sandbox():
     for body in skill():
         b2a = _b2a(body)
         fetch = b2a.index("gh pr view <pr> --json body")
-        assert "dangerouslyDisableSandbox: true" in " ".join(b2a[fetch : fetch + 400].split())
+        assert "dangerouslyDisableSandbox: true" in " ".join(b2a[fetch - 120 : fetch].split())
 
 
 def test_b2a_never_pastes_body_text_into_a_command():
