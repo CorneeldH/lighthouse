@@ -42,7 +42,11 @@ verliest `issue`; een nieuwe stap of handoff komt erbij als `works`, met `source
 controleren dit in twee standen:
 
 - PR-modus (bij `pull_request`): voor elk issue met `loop` dat de PR met `Closes` sluit, noemt
-  geen `planned` item het nog, en de PR raakt `docs/site/data/loop.json`.
+  geen `planned` item het nog, en de PR raakt `docs/site/data/loop.json`. Raakt een PR
+  `docs/site/data/loop.json` of `ci/loop_roadmap.py`, dan krijgt hij ook de hoofdmodus-controle.
+  De PR-controle draait niet opnieuw als het label `loop` pas op een issue komt nadat zijn PR al
+  open staat (het `issues`-event draait de hoofdmodus op de default branch): push een nieuwe
+  commit of bewerk de PR-body om de PR-modus opnieuw te starten.
 - Hoofdmodus (bij push naar main, issues-events en workflow_dispatch), als vangnet: elk
   `planned` item noemt een open issue met `loop`. De omgekeerde richting, elk open `loop`-issue
   op de kaart, wordt niet gecontroleerd.
