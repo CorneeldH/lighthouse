@@ -53,7 +53,6 @@ func stopAdapter(t *testing.T, profile string, steps []step) (*Adapter, *fakeFor
 	f, a := newFakeForge(t)
 	f.path = "/w/issue-7-x"
 	a.Profile = profile
-	a.MainCheckout = "/repo/main"
 	calls := &[]string{}
 	a.Run = scriptRunner(t, steps, calls)
 	return a, f, calls
@@ -109,7 +108,7 @@ func softwareHead() []step {
 	return []step{
 		{cmd: "systemctl --user stop " + unit},
 		{cmd: "systemctl --user is-active " + unit, out: "inactive\n", code: 3},
-		{cmd: "podman ps --filter label=devcontainer.local_folder=/repo/main --format {{.ID}}", out: "c1\n"},
+		{cmd: "podman ps --filter label=devcontainer.local_folder --format {{.ID}}", out: "c1\n"},
 	}
 }
 
@@ -169,7 +168,7 @@ func TestStopPgrepUnmeasurable(t *testing.T) {
 }
 
 func TestStopPodmanPsFails(t *testing.T) {
-	steps := append(softwareHead()[:2], step{cmd: "podman ps --filter label=devcontainer.local_folder=/repo/main --format {{.ID}}", code: 125})
+	steps := append(softwareHead()[:2], step{cmd: "podman ps --filter label=devcontainer.local_folder --format {{.ID}}", code: 125})
 	a, _, _ := stopAdapter(t, "software", steps)
 	if err := a.Stop(context.Background(), "ws1", []string{testSessionID}); err == nil {
 		t.Error("err = nil, want an error for podman ps rc 125")
@@ -223,7 +222,7 @@ func TestStopWorkspaceReadFails(t *testing.T) {
 	}
 }
 
-const podmanPS = "podman ps --filter label=devcontainer.local_folder=/repo/main --format {{.ID}}"
+const podmanPS = "podman ps --filter label=devcontainer.local_folder --format {{.ID}}"
 
 // The script holds no systemctl step: Kill never touches the unit, so a foreign session in the
 // same worktree runs on.

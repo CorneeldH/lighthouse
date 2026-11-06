@@ -113,9 +113,12 @@ func where(c string) string {
 	return "in container " + c
 }
 
+// killInContainers searches every devcontainer, not the one of the repo's main checkout: the
+// launcher runs claude in the shared devcontainer of its own checkout, which may belong to
+// another repo (#237). The session id is a fresh UUID, so no foreign process matches it.
 func (a *Adapter) killInContainers(ctx context.Context, sessionIDs []string) error {
 	out, code, err := a.Run(ctx, stopTimeout, "podman", "ps",
-		"--filter", "label=devcontainer.local_folder="+a.MainCheckout, "--format", "{{.ID}}")
+		"--filter", "label=devcontainer.local_folder", "--format", "{{.ID}}")
 	if err != nil {
 		return fmt.Errorf("podman ps: %w", err)
 	}

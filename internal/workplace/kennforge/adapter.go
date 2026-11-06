@@ -24,16 +24,15 @@ const (
 
 // Adapter is the kenn-forge implementation of the workplace interface.
 type Adapter struct {
-	Client       *Client
-	Kind, Repo   string            // [forge] kind and repo of the repository
-	MainCheckout string            // the repo's main checkout, for the devcontainer label
-	StateDir     string            // where carriers go
-	Targets      map[string]string // profile -> forge target_key
-	Profile      string            // the repo profile ([controller] profile)
-	Run          workplace.Runner
-	Home         string              // where ~/.claude/projects lives; "": os.UserHomeDir
-	Sleep        func(time.Duration) // nil: time.Sleep
-	ReadyWait    time.Duration       // 0: 60s
+	Client     *Client
+	Kind, Repo string            // [forge] kind and repo of the repository
+	StateDir   string            // where carriers go
+	Targets    map[string]string // profile -> forge target_key
+	Profile    string            // the repo profile ([controller] profile)
+	Run        workplace.Runner
+	Home       string              // where ~/.claude/projects lives; "": os.UserHomeDir
+	Sleep      func(time.Duration) // nil: time.Sleep
+	ReadyWait  time.Duration       // 0: 60s
 
 	spawnTimeout time.Duration // 0: 30s
 }

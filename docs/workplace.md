@@ -162,8 +162,11 @@ wordt (een multibyte teken geeft er dus meer). Dan:
 2. `systemctl --user is-active <unit>` beslist: alleen `inactive` of `failed` is gestopt. Alles anders is
    een fout.
 3. Alleen bij het profiel `software` draait claude in de gedeelde devcontainer, buiten de cgroup van de
-   unit, en forge heeft geen stop-endpoint. Dan zoekt `Stop` de containers via
-   `podman ps --filter label=devcontainer.local_folder=<main checkout>` en doet per container en per
+   unit, en forge heeft geen stop-endpoint. Dan zoekt `Stop` in elke devcontainer, via
+   `podman ps --filter label=devcontainer.local_folder` (alleen de sleutel). De gedeelde container hoort
+   bij de checkout van de launcher, en dat kan een andere repo zijn dan die van de run (#237); een
+   filter op de hoofdcheckout van de repo vond dan niets en stopte stil niets. Het sessie-id is een
+   verse UUID, dus een vreemd proces past er niet op. Daarna doet `Stop` per container en per
    sessie-id `pgrep -f <id>` (rc 0 draait, rc 1 weg, de rest een fout), `pkill -f <id>` en tot vijf keer
    een `pgrep` om te bevestigen.
 
@@ -174,7 +177,10 @@ de gedeelde devcontainer, ook vreemde sessies.
 
 Een claude blijft na zijn laatste antwoord draaien, ook als forge zijn sessie `done` noemt. Een hervatting
 van dezelfde sessie (`--resume <sessie>`) weigert forge zolang die oude claude leeft: een 500
-`submit initial message failed` (#206). `Kill(workspaceID, sessionIDs)` beëindigt daarom alleen de
+`submit initial message failed` (#206). Ook een nieuwe start in dezelfde worktree faalt zo: de unit van
+de oude run draait door zolang zijn claude leeft, en de launcher start de nieuwe met dezelfde
+unitnaam. `systemd-run` weigert die (`Unit … was already loaded`), de pane sterft, en forge geeft
+dezelfde 500 (#237). `Kill(workspaceID, sessionIDs)` beëindigt daarom alleen de
 claude-processen van de gegeven sessies, op sessie-id, en raakt de unit nooit: een vreemde sessie in
 dezelfde worktree draait door.
 
