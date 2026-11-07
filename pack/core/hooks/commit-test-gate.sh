@@ -199,8 +199,24 @@ post_untested() {
   done <<< "$POST_ROWS"
 }
 
+MSG=""
+add_message() {
+  if [ -n "$MSG" ]; then
+    MSG="$MSG"$'\n'"$1"
+  else
+    MSG="$1"
+  fi
+}
+
+# The notes gathered so far, before a block that ends the hook on stderr:
+# a block emits no JSON, so without this they would be lost.
+pending_messages() {
+  [ -z "$MSG" ] || printf '%s\n' "$MSG"
+}
+
 block() {
   {
+    pending_messages
     echo "$HOOK_NAME: COULD NOT CHECK — $1"
     echo ""
     if [ "$MODE" = "post" ]; then
@@ -236,21 +252,6 @@ ERR_FILE=$(mktemp 2>/dev/null) || ERR_FILE="${TMPDIR:-/tmp}/commit-test-gate.$$"
 BT=""
 trap 'rm -f "$ERR_FILE"; [ -z "$BT" ] || rm -rf "$BT"' EXIT
 
-MSG=""
-add_message() {
-  if [ -n "$MSG" ]; then
-    MSG="$MSG"$'\n'"$1"
-  else
-    MSG="$1"
-  fi
-}
-
-# The notes gathered so far, before a block that ends the hook on stderr:
-# a block emits no JSON, so without this they would be lost.
-pending_messages() {
-  [ -z "$MSG" ] || printf '%s\n' "$MSG"
-}
-
 # additionalContext reaches the model, systemMessage the user: a silent gate
 # must not look like a satisfied gate. $1: the hook event the JSON answers
 # (PreToolUse, PostToolUse or PostToolUseFailure).
@@ -275,6 +276,7 @@ read_config() {
 
 slot_failed() {
   {
+    pending_messages
     echo "$HOOK_NAME: COULD NOT CHECK — cannot take a gate slot: $1"
     echo ""
     echo "Without a slot this run would go unchecked beside the other gates."
@@ -490,6 +492,7 @@ run_gate_roots() {
   if ! BT=$(mktemp -d 2>"$ERR_FILE"); then
     BT=""
     {
+      pending_messages
       echo "$HOOK_NAME: COULD NOT CHECK — no gate tmp dir: $(cat "$ERR_FILE" 2>/dev/null)"
       echo ""
       echo "Not being able to test is not a green light."

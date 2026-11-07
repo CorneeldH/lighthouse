@@ -204,7 +204,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/commit-test-gate.sh"
 package = "core"
 version = "dev"
-sha256 = "fe1404bc98748c7189607cb9ec1cbcafc6d32138a2ad67fa9406b924cb7c1718"
+sha256 = "aa27ab63f8abb49d03b0e9d60045744597868a7158149cd16f4559abdd7a453c"
 
 [[unit]]
 kind = "file"

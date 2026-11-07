@@ -1053,6 +1053,19 @@ def test_gate_blocks_when_the_lock_dir_cannot_be_made(gate: Gate) -> None:
     assert not gate.mark.exists()
 
 
+def test_slot_failure_shows_the_notes_gathered_before_it(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "slots = 3\n")
+    gate.host.write_text(HOST + "gate_slots = 2\n", encoding="utf-8")
+    blocker = gate.tmp / "geen-map"
+    blocker.write_text("ik ben een bestand\n", encoding="utf-8")
+
+    result = gate.run("git commit -m x", gate.project, LIGHTHOUSE_GATE_SLOT_DIR=str(blocker))
+
+    assert result.returncode == 2, result.stdout
+    assert "cannot take a gate slot" in result.stderr
+    assert "test_gate.slots = 3 above host gate_slots = 2, the gate uses 2" in result.stderr
+
+
 def test_gate_blocks_when_a_lock_file_cannot_be_opened(gate: Gate) -> None:
     (gate.slot_dir / "slot-1").mkdir(parents=True)
 
