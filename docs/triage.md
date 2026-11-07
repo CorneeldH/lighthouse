@@ -106,6 +106,7 @@ milestones_only = true
 wait_for_night = true
 max_forwarded = 5
 max_judgments = 15
+milestone_title_exclude = "(ON-HOLD|TO-?DO|DONE)$"
 ```
 
 | Sleutel | Standaard | Doel |
@@ -114,10 +115,11 @@ max_judgments = 15
 | `wait_for_night` | `true` | Het correctievenster. Met `true` schrijft de ronde bij een doorgezet issue een `🤖 Handoff` met `when: night`, zodat de tick het pas start als het `night`-venster van `[dispatch]` begint. Met `false` zet ze alleen de status, en start de eerstvolgende tick het issue meteen. |
 | `max_forwarded` | `5` | Na zoveel doorgezette issues stopt de ronde voor die repo. De rest krijgt geen marker en komt de volgende ronde aan de beurt. |
 | `max_judgments` | `15` | Hoogstens zoveel oordelen per ronde en per repo, om de usage te begrenzen. Een issue met een gebroken invariant kost geen oordeel en krijgt ook na die grens zijn comment. |
+| `milestone_title_exclude` | leeg | Een Go-RE2-regex, getoetst tegen de titel van de milestone. Past hij, dan is het issue geen kandidaat, ook met `milestones_only = false`. Hoofdlettergevoelig; `(?i)` vooraan maakt hem ongevoelig. Leeg of afwezig: geen filter. |
 
-Een onbekende sleutel of een waarde onder 1 is een fout die de sleutel noemt. Die fout stopt
-alleen triage, voor die repo: `lighthouse tick` leest `[controller]` en negeert de subtabel, dus
-de tick van die repo blijft draaien. De triage-ronde slaat de repo over met
+Een onbekende sleutel, een waarde onder 1 of een ongeldige regex is een fout die de sleutel noemt.
+Die fout stopt alleen triage, voor die repo: `lighthouse tick` leest `[controller]` en negeert de
+subtabel, dus de tick van die repo blijft draaien. De triage-ronde slaat de repo over met
 `lighthouse: skip <pad>: <fout>` en eindigt met exitcode 2, ook bij `--dry-run`.
 
 ## Voorwaarden per repo
@@ -141,10 +143,12 @@ blijft verplicht. Zo kan de prompt geijkt worden vóór de repo dispatchbaar is.
 Een issue is kandidaat als het open is (met `milestones_only = true` ook met een open milestone),
 op board-Status `To do` staat of nog geen status heeft, geen geldige triage-marker draagt, en geen
 🤖-comment heeft die de dispatcher als protocolkop leest. Dat laatste telt alleen voor een
-auteur met een rol in `answer_permissions`. Daarnaast mag er geen werk lopen: geen open PR die
-naar het issue verwijst, geen lokale of remote branch `issue-<nr>-*`, geen worktree op zo'n branch
-en geen open rij in `runs`. Zo'n issue krijgt een regel op stderr en telt als `running work`. De
-volgorde is eerst `Priority`, dan het issuenummer.
+auteur met een rol in `answer_permissions`. Met `milestone_title_exclude` valt een issue af waarvan
+de milestone-titel op die regex past, bijvoorbeeld een geparkeerde milestone die op `ON-HOLD`
+eindigt. Daarnaast mag er geen werk lopen: geen open PR die naar het issue verwijst, geen lokale of
+remote branch `issue-<nr>-*`, geen worktree op zo'n branch en geen open rij in `runs`. Zo'n issue
+krijgt een regel op stderr en telt als `running work`. De volgorde is eerst `Priority`, dan het
+issuenummer.
 
 Een kolom die niet in `status_options` staat, zoals `In progress` of `Done`, telt niet als "geen
 status": zo'n issue is geen kandidaat. Een issue met een gearchiveerd board-item slaat de ronde

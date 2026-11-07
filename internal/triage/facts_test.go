@@ -1,6 +1,7 @@
 package triage
 
 import (
+	"regexp"
 	"testing"
 	"time"
 
@@ -28,6 +29,14 @@ func trusted(body string) Comment { return Comment{ID: 1, Body: body, Trusted: t
 
 func TestCandidate(t *testing.T) {
 	closed := &forge.Milestone{Number: 1, State: "closed"}
+	exclude := regexp.MustCompile("(ON-HOLD|TO-?DO|DONE)$")
+	withExclude := testCfg
+	withExclude.MilestoneTitleExclude = exclude
+	offExclude := repoconfig.Triage{MilestoneTitleExclude: exclude}
+	closedDone := &forge.Milestone{Number: 1, Title: "Foo - DONE", State: "closed"}
+	titled := func(title string) func(*Facts) {
+		return func(f *Facts) { f.Milestone = &forge.Milestone{Number: 1, Title: title, State: "open"} }
+	}
 	tests := []struct {
 		name string
 		mod  func(*Facts)
@@ -39,6 +48,14 @@ func TestCandidate(t *testing.T) {
 		{"closed milestone", func(f *Facts) { f.Milestone = closed }, testCfg, SkipMilestone},
 		{"no milestone, milestones_only off", func(f *Facts) { f.Milestone = nil }, repoconfig.Triage{}, SkipNone},
 		{"closed milestone, milestones_only off", func(f *Facts) { f.Milestone = closed }, repoconfig.Triage{}, SkipNone},
+		{"title ON-HOLD excluded", titled("Foo - ON-HOLD"), withExclude, SkipMilestone},
+		{"title without suffix", titled("Foo"), withExclude, SkipNone},
+		{"title DONE, milestones_only off", titled("Foo - DONE"), offExclude, SkipMilestone},
+		{"closed milestone DONE, milestones_only off", func(f *Facts) { f.Milestone = closedDone }, offExclude, SkipMilestone},
+		{"title TODO without dash", titled("nexus: x TODO"), withExclude, SkipMilestone},
+		{"title lower case", titled("Foo - on-hold"), withExclude, SkipNone},
+		{"no milestone, exclude, milestones_only off", func(f *Facts) { f.Milestone = nil }, offExclude, SkipNone},
+		{"title ON-HOLD, no key", titled("Foo - ON-HOLD"), testCfg, SkipNone},
 		{"closed issue", func(f *Facts) { f.State = "closed" }, testCfg, SkipMilestone},
 		{"status empty", func(f *Facts) { f.Status = "" }, testCfg, SkipNone},
 		{"status To do", func(f *Facts) { f.Status = "To do" }, testCfg, SkipNone},

@@ -247,10 +247,36 @@ func TestLoadTriageValues(t *testing.T) {
 	}
 }
 
+func TestLoadTriageMilestoneTitleExclude(t *testing.T) {
+	for _, tc := range []struct{ name, line, want string }{
+		{"absent", "", ""},
+		{"empty", `milestone_title_exclude = ""`, ""},
+		{"set", `milestone_title_exclude = "(ON-HOLD|TO-?DO|DONE)$"`, "(ON-HOLD|TO-?DO|DONE)$"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n[controller.triage]\n"+tc.line+"\n"))
+			if err != nil || r.TriageErr != nil {
+				t.Fatalf("Load = %v, TriageErr = %v; want both nil", err, r.TriageErr)
+			}
+			re := r.Triage.MilestoneTitleExclude
+			if tc.want == "" {
+				if re != nil {
+					t.Errorf("MilestoneTitleExclude = %v, want nil", re)
+				}
+				return
+			}
+			if re == nil || re.String() != tc.want {
+				t.Errorf("MilestoneTitleExclude = %v, want %q", re, tc.want)
+			}
+		})
+	}
+}
+
 func TestLoadTriageBadKeyDoesNotFailLoad(t *testing.T) {
 	for name, tc := range map[string]struct{ line, key string }{
-		"unknown key": {"max_forward = 2", "controller.triage.max_forward"},
-		"below one":   {"max_judgments = 0", "controller.triage.max_judgments"},
+		"unknown key":   {"max_forward = 2", "controller.triage.max_forward"},
+		"below one":     {"max_judgments = 0", "controller.triage.max_judgments"},
+		"invalid regex": {`milestone_title_exclude = "("`, "controller.triage.milestone_title_exclude"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n[controller.triage]\n"+tc.line+"\n"))
