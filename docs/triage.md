@@ -146,8 +146,9 @@ op board-Status `To do` staat of nog geen status heeft, geen geldige triage-mark
 auteur met een rol in `answer_permissions`. Met `milestone_title_exclude` valt een issue af waarvan
 de milestone-titel op die regex past, bijvoorbeeld een geparkeerde milestone die op `ON-HOLD`
 eindigt. Daarnaast mag er geen werk lopen: geen open PR die naar het issue verwijst, geen lokale of
-remote branch `issue-<nr>-*`, geen worktree op zo'n branch en geen open rij in `runs`. Zo'n issue krijgt een regel op stderr en telt als `running work`. De
-volgorde is eerst `Priority`, dan het issuenummer.
+remote branch `issue-<nr>-*`, geen worktree op zo'n branch en geen open rij in `runs`. Zo'n issue
+krijgt een regel op stderr en telt als `running work`. De volgorde is eerst `Priority`, dan het
+issuenummer.
 
 Een kolom die niet in `status_options` staat, zoals `In progress` of `Done`, telt niet als "geen
 status": zo'n issue is geen kandidaat. Een issue met een gearchiveerd board-item slaat de ronde
