@@ -9,7 +9,8 @@ serves all your repositories from one SQLite database.
   runs on macOS, but the hooks are untested there (`usage-gate.sh` uses GNU `date -d`).
   Windows has a binary, but the hooks need WSL.
 - Go, only to install with `go install` or to build from a clone.
-- Node 22 with npm, to build the web UI. `web/.nvmrc` holds the exact version.
+- Node 22 with npm, only to build from a clone (the web UI). `web/.nvmrc` holds the exact version.
+  A release binary needs neither Node nor a clone.
 - Optional: Tailscale, to reach the server from other devices on your tailnet.
 
 ## Download a release binary
@@ -33,7 +34,9 @@ lighthouse_windows_amd64.exe` in PowerShell and compare the hash with its line i
 
 `~/go/bin/lighthouse` is where the systemd unit below looks for the binary; any directory on
 your `PATH` works for the CLI. The release binary reports its tag (`lighthouse version`) and
-serves a placeholder page: it does not carry the web UI (#78).
+carries the built web UI: `lighthouse serve` serves it at once, with no Node and no clone. To
+upgrade, download the new binary the same way and follow the steps in
+[Releasing](releasing.md#upgrading). Restart the service afterwards.
 
 ## Install with Go
 
@@ -43,13 +46,14 @@ serves a placeholder page: it does not carry the web UI (#78).
 go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
 ```
 
-`go install` puts the binary in `~/go/bin`. Like the release binary, it serves only a
-placeholder page.
+`go install` puts the binary in `~/go/bin`. It serves only a placeholder page, because the web
+UI is not part of the module source. The release binary above is the recommended route without
+a clone.
 
 ## Build from a clone
 
-To get the web UI, clone the repository and build it. The build writes the UI into
-`internal/web/dist`, and `go install` embeds it.
+This route is for developers. To build the web UI yourself, clone the repository and build it.
+The build writes the UI into `internal/web/dist`, and `go install` embeds it.
 
 ```bash
 git clone https://github.com/CorneeldH/lighthouse.git
@@ -63,21 +67,25 @@ A build from a clone reports version `dev`, and `lighthouse init` writes that ve
 tag instead.
 
 All routes write `~/go/bin/lighthouse` (or your chosen path), so the last one wins: a release
-binary or tag install replaces a UI build from a clone, and the systemd unit then serves the
-placeholder page.
+binary replaces a build from a clone and still serves the UI. Only a `go install` of a tag
+replaces it with the placeholder page, and the systemd unit then serves that.
 
 ## Run it as a user service
 
-From the clone, copy the unit, [lighthouse.service](../deploy/systemd/lighthouse.service), into your user
-unit directory. If the binary is not at `~/go/bin/lighthouse`, edit the `ExecStart` path.
+Fetch the unit, [lighthouse.service](../deploy/systemd/lighthouse.service), into your user
+unit directory. Use the tag of the binary you downloaded (`lighthouse version`) for `<tag>`. If
+the binary is not at `~/go/bin/lighthouse`, edit the `ExecStart` path.
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cp deploy/systemd/lighthouse.service ~/.config/systemd/user/
+curl -fsSLo ~/.config/systemd/user/lighthouse.service https://raw.githubusercontent.com/CorneeldH/lighthouse/<tag>/deploy/systemd/lighthouse.service
 systemctl --user daemon-reload
 systemctl --user enable --now lighthouse.service
 loginctl enable-linger "$USER"
 ```
+
+With a clone, copy the unit instead of the `curl` line:
+`cp deploy/systemd/lighthouse.service ~/.config/systemd/user/`.
 
 `enable-linger` keeps the service running when you are not logged in.
 
@@ -94,7 +102,8 @@ journalctl --user -u lighthouse
 
 The health endpoint answers `{"version":"…"}`. The page answers with
 `<meta name="lighthouse-ui" content="spa" />`: the binary carries the built web UI.
-`content="placeholder"` means the UI was not built before `go install`. The log shows
+`content="placeholder"` means the binary was built without the UI (`go install`, or a clone
+without `npm run build`). The log shows
 `lighthouse: listening on 127.0.0.1:8127`.
 
 The API is read-only. Its routes:
@@ -180,12 +189,16 @@ One-time prerequisites:
 sudo tailscale set --operator="$USER"
 ```
 
-Also enable HTTPS certificates in the tailnet admin console. Then run the script from the
-clone:
+Also enable HTTPS certificates in the tailnet admin console. Then fetch the script for your
+release tag (see `<tag>` above) and run it:
 
 ```bash
-deploy/tailscale-serve.sh
+curl -fsSLO https://raw.githubusercontent.com/CorneeldH/lighthouse/<tag>/deploy/tailscale-serve.sh
+chmod +x tailscale-serve.sh
+./tailscale-serve.sh
 ```
+
+With a clone, run `deploy/tailscale-serve.sh` instead.
 
 Turn it off with `tailscale serve --https=<port> off`. Never use `tailscale funnel`: it
 publishes the server on the public internet.
