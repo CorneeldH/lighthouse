@@ -25,8 +25,8 @@ type Repo struct {
 	UsageGuardController bool // [usage_guard] controller
 	Labels               Labels
 	Triage               *Triage // nil when [controller.triage] is absent
-	// TriageErr is an unknown key, a value below 1 or an invalid regex in [controller.triage]. Load does not
-	// fail on it: it is shared with the tick, which must keep serving the repo.
+	// TriageErr is an unknown key, a value below 1 or an invalid regex in [controller.triage]. Load
+	// does not fail on it: it is shared with the tick, which must keep serving the repo.
 	TriageErr error
 }
 
@@ -80,11 +80,10 @@ type rawController struct {
 }
 
 type rawTriage struct {
-	MilestonesOnly *bool `toml:"milestones_only"`
-	WaitForNight   *bool `toml:"wait_for_night"`
-	MaxForwarded   *int  `toml:"max_forwarded"`
-	MaxJudgments   *int  `toml:"max_judgments"`
-
+	MilestonesOnly        *bool   `toml:"milestones_only"`
+	WaitForNight          *bool   `toml:"wait_for_night"`
+	MaxForwarded          *int    `toml:"max_forwarded"`
+	MaxJudgments          *int    `toml:"max_judgments"`
 	MilestoneTitleExclude *string `toml:"milestone_title_exclude"`
 }
 
