@@ -1215,6 +1215,37 @@ func TestTriageConfigError(t *testing.T) {
 	}
 }
 
+// An invalid milestone_title_exclude skips the repo with exit code 2, under --dry-run too: the
+// filter must not silently fall away.
+func TestTriageBadTitleExcludeSkipsRepo(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		opts triageOpts
+	}{
+		{"live", triageOpts{}},
+		{"dry run", triageOpts{DryRun: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := triageFixture(t, withTriage("milestone_title_exclude = \"(\"\n"))
+			fx.issue(7, "2-area:cli")
+			fx.onBoard(7, "t1", nil)
+			fx.judge.answers[7] = stopAt1(7)
+
+			out, errOut, err := fx.run(tc.opts)
+			if exitCode(err) != 2 {
+				t.Fatalf("triage = %v, want exit code 2\n%s", err, errOut)
+			}
+			if want := "lighthouse: skip " + fx.dir + ": controller.triage.milestone_title_exclude: "; !strings.HasPrefix(errOut, want) || strings.Count(errOut, "\n") != 1 {
+				t.Errorf("errOut = %q, want prefix %q and one line", errOut, want)
+			}
+			if c := fx.judge.called(); len(c) != 0 || out != "" {
+				t.Errorf("judged %v, out %q; want nothing in a skipped repo", c, out)
+			}
+			assertWrites(t, fx.srv)
+		})
+	}
+}
+
 func TestTriageTokenNotTrusted(t *testing.T) {
 	t.Run("live", func(t *testing.T) {
 		fx := triageFixture(t, triageToml)

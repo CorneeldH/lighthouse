@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -24,7 +25,7 @@ type Repo struct {
 	UsageGuardController bool // [usage_guard] controller
 	Labels               Labels
 	Triage               *Triage // nil when [controller.triage] is absent
-	// TriageErr is an unknown key or a value below 1 in [controller.triage]. Load does not
+	// TriageErr is an unknown key, a value below 1 or an invalid regex in [controller.triage]. Load does not
 	// fail on it: it is shared with the tick, which must keep serving the repo.
 	TriageErr error
 }
@@ -46,6 +47,9 @@ func (l Labels) Blocking() []string {
 type Triage struct {
 	MilestonesOnly, WaitForNight bool
 	MaxForwarded, MaxJudgments   int
+	// MilestoneTitleExclude is [controller.triage] milestone_title_exclude: nil means no
+	// filter (absent or empty).
+	MilestoneTitleExclude *regexp.Regexp
 }
 
 // Board is [forge.board]: the project and the field and option IDs.
@@ -80,6 +84,8 @@ type rawTriage struct {
 	WaitForNight   *bool `toml:"wait_for_night"`
 	MaxForwarded   *int  `toml:"max_forwarded"`
 	MaxJudgments   *int  `toml:"max_judgments"`
+
+	MilestoneTitleExclude *string `toml:"milestone_title_exclude"`
 }
 
 type rawFile struct {
@@ -156,8 +162,8 @@ func Load(dir string) (Repo, error) {
 	return r, nil
 }
 
-// triageFrom fills the defaults of [controller.triage] and reports an unknown key or a
-// value below 1, naming the key as written in lighthouse.toml.
+// triageFrom fills the defaults of [controller.triage] and reports an unknown key, a
+// value below 1 or an invalid regex, naming the key as written in lighthouse.toml.
 func triageFrom(t *rawTriage, md toml.MetaData) (*Triage, error) {
 	out := &Triage{
 		MilestonesOnly: t.MilestonesOnly == nil || *t.MilestonesOnly,
@@ -185,6 +191,14 @@ func triageFrom(t *rawTriage, md toml.MetaData) (*Triage, error) {
 			errs = append(errs, fmt.Errorf("%s must be at least 1", n.key))
 		default:
 			*n.out = *n.in
+		}
+	}
+	if t.MilestoneTitleExclude != nil && *t.MilestoneTitleExclude != "" {
+		re, err := regexp.Compile(*t.MilestoneTitleExclude)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("controller.triage.milestone_title_exclude: %w", err))
+		} else {
+			out.MilestoneTitleExclude = re
 		}
 	}
 	return out, errors.Join(errs...)
