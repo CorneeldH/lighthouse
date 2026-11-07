@@ -46,8 +46,13 @@ def _cells(line: str) -> list[str]:
     return [c.strip() for c in line.strip().strip("|").split("|")]
 
 
+NAME_HEADERS = ("label", "area")
+COLOR_HEADERS = ("color", "colour", "kleur")
+
+
 def parse_taxonomy(text: str) -> list[tuple[str, str]]:
-    """The (name, COLOR) pairs of every table with the columns `Label` and `Color`."""
+    """The (name, COLOR) pairs of every table with a label column (`Label` or `Area`) and a
+    colour column (`Color`, `Colour` or `Kleur`); headers match case-insensitively."""
     found: list[tuple[str, str]] = []
     cols: tuple[int, int] | None = None
     for line in text.splitlines():
@@ -57,8 +62,10 @@ def parse_taxonomy(text: str) -> list[tuple[str, str]]:
         cells = _cells(line)
         lowered = [c.casefold() for c in cells]
         if cols is None:
-            if "label" in lowered and "color" in lowered:
-                cols = (lowered.index("label"), lowered.index("color"))
+            name_i = next((lowered.index(h) for h in NAME_HEADERS if h in lowered), None)
+            color_i = next((lowered.index(h) for h in COLOR_HEADERS if h in lowered), None)
+            if name_i is not None and color_i is not None:
+                cols = (name_i, color_i)
             continue
         if set("".join(cells)) <= set("-: "):
             continue

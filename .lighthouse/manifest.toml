@@ -863,7 +863,7 @@ kind = "file"
 path = ".lighthouse/scripts/create_labels.py"
 package = "core"
 version = "dev"
-sha256 = "cecfb65fa08c42ee874813ef0888940bb730859115e7b16df4ef3ae5f722c417"
+sha256 = "cf79f3adc5339bbb0d1b3a768b270707eefeaebfd177f1e5d6f20cfdd263eb49"
 
 [[unit]]
 kind = "file"
