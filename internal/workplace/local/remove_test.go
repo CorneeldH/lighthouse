@@ -358,6 +358,33 @@ func TestRemoveDirtySignalsNothing(t *testing.T) {
 	}
 }
 
+// A run that follows "git worktree add .claude/worktrees/<name>" from its cwd nests a worktree
+// in the adapter's; info/exclude hides it from Dirty, and git worktree remove would delete it.
+func TestRemoveNestedWorktreeIsErrDirty(t *testing.T) {
+	a, h, _, ws, s := spawnSetup(t)
+	addSession(t, s, ws.ID, "s1", "s1.aa")
+	h.procs.marked["s1"] = []int{1001}
+	inner := filepath.Join(ws.Path, ".claude", "worktrees", "inner")
+	git(t, ws.Path, "worktree", "add", inner, "-b", "inner")
+	work := filepath.Join(inner, "work.txt")
+	if err := os.WriteFile(work, []byte("uncommitted"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := a.Remove(t.Context(), ws.ID)
+	if !errors.Is(err, workplace.ErrDirty) || !strings.Contains(err.Error(), inner) {
+		t.Fatalf("Remove = %v, want ErrDirty naming %s", err, inner)
+	}
+	if !exists(ws.Path) || !exists(work) {
+		t.Errorf("outer %v, inner file %v; want both kept", exists(ws.Path), exists(work))
+	}
+	if len(h.procs.sent) != 0 {
+		t.Errorf("sent = %v, want none", h.procs.sent)
+	}
+	if !exists(s.workspacePath(ws.ID)) || !exists(s.logPath("s1.aa")) {
+		t.Error("records dropped by a refused Remove")
+	}
+}
+
 func TestDiscardEndsMarkedProcessesOfPidlessSession(t *testing.T) {
 	a, h, _, ws, s := spawnSetup(t)
 	addSession(t, s, ws.ID, "s1", "s1.aa")

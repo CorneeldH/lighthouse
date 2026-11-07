@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
@@ -15,7 +16,8 @@ var safeSession = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 // A workspace without a record is already removed. A vanished or adopted worktree is never
 // deleted from disk (an adopted one is the user's): only its records go, after the processes
 // of its sessions ended; when that fails, the error is returned and the records stay. A
-// worktree with changes is ErrDirty; any other refusal of git is a plain error.
+// worktree with changes, or with a worktree nested inside it, is ErrDirty; any other refusal
+// of git is a plain error.
 func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 	if err := checkLocal(workspaceID); err != nil {
 		return err
@@ -24,7 +26,7 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 	if err != nil {
 		return err
 	}
-	rec, wt, err := a.resolve(ctx, workspaceID)
+	rec, wt, wts, err := a.resolveAll(ctx, workspaceID)
 	if errors.Is(err, workplace.ErrGone) {
 		return s.dropWorkspace(workspaceID) // no record, or a vanished worktree without processes
 	}
@@ -49,6 +51,13 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 	}
 	if dirty {
 		return fmt.Errorf("remove %s: worktree %s has changes: %w", workspaceID, rec.Path, workplace.ErrDirty)
+	}
+	// info/exclude hides .claude/worktrees/ in every worktree, so Dirty misses a worktree a run
+	// nested in this one, and git worktree remove deletes it with its uncommitted work.
+	for _, w := range wts {
+		if strings.HasPrefix(w.Path, rec.Path+"/") {
+			return fmt.Errorf("remove %s: worktree %s holds worktree %s: %w", workspaceID, rec.Path, w.Path, workplace.ErrDirty)
+		}
 	}
 	// After the Dirty check, so a dirty worktree signals nothing; before the removal, so a
 	// process that cannot be ended leaves the worktree and the records in place.
