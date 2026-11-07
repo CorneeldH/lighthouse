@@ -70,6 +70,10 @@ en = "run state lost"
 nl = "start mislukt"
 en = "start failed"
 
+[reason_own_work]
+nl = "werkplek heeft eigen werk dat niet op origin staat"
+en = "workspace holds own work that is not on origin"
+
 [reason_workplace_gone]
 nl = "werkplek verdwenen"
 en = "workplace gone"

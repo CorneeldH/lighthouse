@@ -32,13 +32,28 @@ Daarna volgt de workspace `origin/<branch>`, als die branch bestaat:
 
 - Een nieuwe workspace komt bij forge op `origin/HEAD`, niet op de branch: `Prepare` doet
   `checkout -B <branch> --track origin/<branch>`.
-- Een gevonden workspace kan werk van een eerdere run bevatten, dus nooit `checkout -B` eroverheen.
-  Staat de workspace op de issue-branch, dan volgt alleen een fast-forward (`merge --ff-only`), en alleen
-  als `HEAD` een voorouder is van `origin/<branch>`. Is `HEAD` geen voorouder, dan geldt de
-  rev-list-regel hieronder.
-- Staat de workspace op een andere branch (bijvoorbeeld `main`), dan geldt de rev-list-regel: pas als
-  `HEAD` geen commit heeft die op geen enkele `origin`-ref staat, schakelt `Prepare` om. Een
-  fast-forward zou daar die andere branch verplaatsen; lokale `main` gaat dus nooit mee.
+- Een gevonden workspace kan werk van een eerdere run bevatten, dus nooit `checkout -B` over eigen werk.
+  Staat de workspace op de issue-branch, dan volgt een fast-forward (`merge --ff-only`), en alleen
+  als `HEAD` een voorouder is van `origin/<branch>`. Is `HEAD` geen voorouder, bijvoorbeeld na een
+  rebase en force-push van de branch, dan geldt de regel voor eigen werk hieronder.
+- Staat de workspace op een andere branch (bijvoorbeeld `main`), dan geldt ook de regel voor eigen
+  werk. Een fast-forward zou daar die andere branch verplaatsen; lokale `main` gaat dus nooit mee.
+
+De regel voor eigen werk: een eigen commit staat op geen enkele `origin`-ref
+(`rev-list HEAD --not --remotes=origin`) en heeft geen patch-gelijke commit op `origin/<branch>`
+(`git cherry`). Na een rebase krijgen de commits van een eerdere run een nieuwe SHA op origin; die
+zijn dus geen eigen werk. Een merge-commit telt wel als eigen werk, want `git cherry` toont die niet.
+Een vuile werkboom (`status --porcelain`, ongevolgde bestanden inbegrepen, net als
+`workplace.Dirty`) telt ook als eigen werk. Een ongevolgd bestand dat de branch wel volgt, zou
+`checkout -B` bovendien weigeren.
+
+- Geen eigen werk: `Prepare` schakelt om met `checkout -B <branch> --track origin/<branch>`.
+- Wel eigen werk: `HEAD` blijft staan en `Prepare` geeft een `*workplace.OwnWorkError`. Die noemt de
+  workspace, het aantal eigen commits en of de werkboom vuil is (#269). De dispatcher claimt de run
+  en sluit hem als `returned`. Dan plaatst hij een `🤖 Teruggegeven` met de reden
+  `reason_own_work`, de workspace en het aantal commits. Zo start de run nooit stil op een
+  verouderde `HEAD`, en geen latere tick start dezelfde trigger opnieuw. Lukt de post niet, dan
+  sluit de run als `start_failed` en probeert `retry` het nog één keer.
 
 ## Het dragercontract (paia#1661)
 
