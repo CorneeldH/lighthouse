@@ -1,0 +1,2 @@
+{"type":"assistant","isSidechain":true,"timestamp":"2026-11-07T13:55:10.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_9","name":"Bash","input":{"command":"go vet ./...","run_in_background":true}}]}}
+{"type":"user","isSidechain":true,"timestamp":"2026-11-07T13:55:11.000Z","message":{"role":"user","content":[{"tool_use_id":"toolu_9","type":"tool_result","content":"Command running in background with ID: bk9subag9."}]},"toolUseResult":{"stdout":"","stderr":"","interrupted":false,"backgroundTaskId":"bk9subag9"}}
