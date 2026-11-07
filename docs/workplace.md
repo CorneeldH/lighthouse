@@ -165,7 +165,15 @@ niet verschijnt (start onzeker) of die te lang loopt (`max_runtime`), beslist de
 `<sessie>/subagents` en geeft een `Transcript`: de laatste gebeurtenis over alle draden (`LastEvent`),
 per draad de laatste (`Threads`; `""` is de hoofdthread), het commando waarop de sessie niet startte
 (`UnknownCommand`) en of er een assistent-beurt was (`AssistantTurn`). Een kapotte of afgebroken laatste
-regel telt niet mee. Ontbreekt het hoofdtranscript, dan wikkelt de fout `fs.ErrNotExist`; heeft geen
+regel telt niet mee.
+
+`Background` telt het achtergrondwerk van het hoofdtranscript dat nog loopt (#270). Een start is het
+`toolUseResult` van een Bash-call met `backgroundTaskId`, of van een Agent-call met `status:
+async_launched` en een `agentId`. Een einde is een `<task-id>` in een regel die geen assistent-regel is
+(de `<task-notification>`), of het resultaat van een `TaskStop` (`task_id` met `message`). Starts in
+een subagent-transcript tellen niet: de async subagent zelf is al een taak van het hoofdtranscript.
+Een taak die tot het einde van de sessie doorloopt zonder melding (een server op de achtergrond) blijft
+tellen; dan beslissen de stilte- en looptijdregels van de tick. Ontbreekt het hoofdtranscript, dan wikkelt de fout `fs.ErrNotExist`; heeft geen
 draad een regel met tijd, dan is het `ErrNotMeasurable`.
 
 ## Stop
