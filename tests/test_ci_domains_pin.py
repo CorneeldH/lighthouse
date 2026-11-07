@@ -79,11 +79,14 @@ def test_python_job_runs_in_three_shards():
     grep = [s for s in steps if "ci/literal-grep.sh" in s]
     assert len(grep) == 1, grep
     assert re.match(
-        r"if: matrix\.shard == 1 && matrix\.os == 'ubuntu-latest'\n        run: ci/literal-grep\.sh$",
+        r"if: matrix\.shard == 1 && matrix\.os == 'ubuntu-latest'\n"
+        r"        run: \|\n"
+        r"          ci/literal-grep\.sh\n"
+        r"          LITERAL_DENYLIST=ci/literal-denylist-go\.txt LITERAL_SKIP_TESTS=1 ci/literal-grep\.sh internal cmd$",
         grep[0],
         re.MULTILINE,
     ), grep[0]
-    assert python.count("ci/literal-grep.sh") == 1
+    assert python.count("ci/literal-grep.sh") == 2
 
 
 def test_tests_run_on_linux_and_macos():

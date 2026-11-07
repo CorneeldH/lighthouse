@@ -23,7 +23,7 @@ _GO_TOO = frozenset({"web/openapi.json", "web/go.mod"})
 # Inside tests/, but read by Go: internal/protocol/header_test.go:19 reads the fixtures.
 _GO_FIXTURES = "tests/pack/fixtures/"
 # Outside web/, but read by no Go build or test, so they leave out go (python stays: pytest reads
-# docs/ and tests/, and ci/literal-grep.sh runs in that job). Every other unknown path still
+# docs/ and tests/, and ci/literal-grep.sh runs in that job, on pack/ and on the Go sources). Every other unknown path still
 # touches go. Measured on main (c72662c, #130): go:embed reads only internal/web (dist,
 # placeholder), pack/*/* and internal/store/migrations; no .go file names docs/, changelog.d or
 # ci/literal- (tests/test_domains.py fails when one does); the Go and e2e tests read outside their
@@ -38,6 +38,7 @@ _NOT_GO_DIRS = ("docs/", "changelog.d/", "tests/")
 _NOT_GO = frozenset(
     {
         "ci/literal-denylist.txt",
+        "ci/literal-denylist-go.txt",
         "ci/literal-allowlist.txt",
         "README.md",
         "CHANGELOG.md",

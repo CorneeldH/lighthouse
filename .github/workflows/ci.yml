@@ -110,7 +110,9 @@ jobs:
         env:
           LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3
       - if: matrix.shard == 1 && matrix.os == 'ubuntu-latest'
-        run: ci/literal-grep.sh
+        run: |
+          ci/literal-grep.sh
+          LITERAL_DENYLIST=ci/literal-denylist-go.txt LITERAL_SKIP_TESTS=1 ci/literal-grep.sh internal cmd
 
   # Split per the measurements in #131 (issuecomment-6541734664, -6541786347): setup 13 s,
   # lint 30 s, builds 49 s (linux, windows, darwin), race compile 42 s, tests 34 s. `go` holds

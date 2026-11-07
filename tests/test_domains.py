@@ -49,6 +49,7 @@ def _repo_reads(text: str) -> list[str]:
         (["changelog.d/x.md"], {"python"}),
         (["ci/literal-denylist.txt"], {"python"}),
         (["ci/literal-allowlist.txt"], {"python"}),
+        (["ci/literal-denylist-go.txt"], {"python"}),
         (["ci/x.sh"], {"go", "python"}),
         (["docsx/x.md"], {"go", "python"}),
         (["docs/x.md", "internal/a.go"], {"go", "python"}),

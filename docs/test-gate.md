@@ -47,11 +47,11 @@ ze niet op een host zonder `/proc/meminfo` (macOS): daar blokkeert elke commit m
 - `commit-test-gate: no gate memory threshold in host.toml, host memory not checked`: geen van
   beide drempels gezet; de gate test zoals voorheen.
 
-## Voorbeeld: een Beelink
+## Voorbeeld: een thuisserver
 
 ```toml
 [host]
-name = "beelink"                # verplicht in elke host.toml
+name = "thuisserver"            # verplicht in elke host.toml
 tailscale_ip = "100.64.0.1"     # verplicht in elke host.toml
 gate_slice = "gates.slice"
 gate_slots = 2

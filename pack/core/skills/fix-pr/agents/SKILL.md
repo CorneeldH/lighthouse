@@ -156,6 +156,11 @@ If a host-wide OOM kills a self-hosted runner, the job fails without a single te
 Recognition: in
 `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/actions/runs/<id>/jobs"` the
 test step is at `"completed_at": null` while the job is `failure`, and the log is empty or 404s.
+
+Linux only (systemd journal). On macOS: `log show --last 1h --predicate 'eventMessage CONTAINS "memorystatus"'`;
+elsewhere, or without access to the runner host, skip the confirmation: a step without `completed_at` plus a
+green local run is the recognition.
+
 Confirm:
 
 ```bash
