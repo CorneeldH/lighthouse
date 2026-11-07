@@ -71,6 +71,18 @@
 # the whole loop, and the wait counts towards it. A commit in another project
 # takes no slot (there is nothing to test).
 #
+# Why a process mode (#90): on native Windows (Git Bash: `uname -s` is MINGW*,
+# MSYS* or CYGWIN*; `LIGHTHOUSE_GATE_SLOT_MODE=process` forces it in tests) an
+# `msvcrt` lock belongs to the process and goes when it ends, so a slot taken by
+# `gate_slot.py` or inherited as an fd would be free while the suite runs. There
+# the hook opens no fds and calls no `gate_slot.py`: `deadline.py` takes the slot
+# itself (`--slot-dir --slots --slot-wait --slot-report`), per root, and holds it
+# until its command ends. The hook reads the outcome from a report file beside
+# `GATE_TMP` (`pytest --basetemp` empties that directory), never from the exit
+# code, which can be the suite's own. The lock dir is made without `-m 700`
+# (a Windows mode means nothing). Between two roots of one commit the slot is
+# free for a moment. Memory thresholds and `gate_slice` stay Linux-only.
+#
 # Why a host memory check: a slot says how many gates run, not how much memory
 # the rest of the host leaves them. With `gate_min_mem_available_gb` or
 # `gate_min_swap_free_gb` in `[host]` of host.toml, the gate waits after taking
@@ -395,27 +407,17 @@ run_gate_roots() {
   else
     SLOT_DIR="/tmp/lighthouse-gate-slots-$UID"
   fi
-  # SC2174: only the lock dir itself must be 700; the parent (/run/user/$UID or /tmp) exists already.
-  # shellcheck disable=SC2174
-  if ! MKDIR_OUT=$(mkdir -p -m 700 "$SLOT_DIR" 2>&1); then
-    slot_failed "lock dir $SLOT_DIR cannot be created ($MKDIR_OUT)"
+  SLOT_MODE=fd
+  if [ "${LIGHTHOUSE_GATE_SLOT_MODE:-}" = process ]; then
+    SLOT_MODE=process
+  else
+    case "$(uname -s 2>/dev/null)" in
+      MINGW*|MSYS*|CYGWIN*) SLOT_MODE=process ;;
+    esac
   fi
 
-  # A failed `exec` redirect does not stop a non-interactive bash (measured); the
-  # `if` sees it. Slot n is fd n + 2: see the header on bash 3.2.
-  SLOT_ARGS=()
-  N=1
-  while [ "$N" -le "$SLOTS" ]; do
-    if ! eval "exec $((N + 2))>>\"\$SLOT_DIR/slot-$N\""; then
-      slot_failed "lock files in $SLOT_DIR cannot be opened"
-    fi
-    SLOT_ARGS+=(--fd "$((N + 2))")
-    N=$((N + 1))
-  done
-
-  SLOT=$(python3 "$LIB/gate_slot.py" "${SLOT_ARGS[@]}" --wait "$SLOT_WAIT" 2>"$ERR_FILE")
-  SLOT_STATUS=$?
-  if [ "$SLOT_STATUS" -eq 75 ]; then
+  # All slots busy: a block, never a green light. Both modes use it.
+  slots_busy() {
     {
       pending_messages
       echo "$HOOK_NAME: COULD NOT CHECK — all gate slots busy after $SLOT_WAIT s (slots: $SLOTS)"
@@ -429,23 +431,54 @@ run_gate_roots() {
       fi
     } >&2
     exit 2
+  }
+
+  if [ "$SLOT_MODE" = process ]; then
+    # No -m 700: a Windows mode means nothing. No fds and no gate_slot.py: see "Why a process mode".
+    if ! MKDIR_OUT=$(mkdir -p "$SLOT_DIR" 2>&1); then
+      slot_failed "lock dir $SLOT_DIR cannot be created ($MKDIR_OUT)"
+    fi
+  else
+    # SC2174: only the lock dir itself must be 700; the parent (/run/user/$UID or /tmp) exists already.
+    # shellcheck disable=SC2174
+    if ! MKDIR_OUT=$(mkdir -p -m 700 "$SLOT_DIR" 2>&1); then
+      slot_failed "lock dir $SLOT_DIR cannot be created ($MKDIR_OUT)"
+    fi
+
+    # A failed `exec` redirect does not stop a non-interactive bash (measured); the
+    # `if` sees it. Slot n is fd n + 2: see the header on bash 3.2.
+    SLOT_ARGS=()
+    N=1
+    while [ "$N" -le "$SLOTS" ]; do
+      if ! eval "exec $((N + 2))>>\"\$SLOT_DIR/slot-$N\""; then
+        slot_failed "lock files in $SLOT_DIR cannot be opened"
+      fi
+      SLOT_ARGS+=(--fd "$((N + 2))")
+      N=$((N + 1))
+    done
+
+    SLOT=$(python3 "$LIB/gate_slot.py" "${SLOT_ARGS[@]}" --wait "$SLOT_WAIT" 2>"$ERR_FILE")
+    SLOT_STATUS=$?
+    if [ "$SLOT_STATUS" -eq 75 ]; then
+      slots_busy
+    fi
+    if [ "$SLOT_STATUS" -ne 0 ]; then
+      slot_failed "gate_slot.py gave exit $SLOT_STATUS: $(cat "$ERR_FILE" 2>/dev/null)"
+    fi
+    case "$SLOT" in
+      ''|*[!0-9]*) slot_failed "gate_slot.py gave exit 0 without a valid slot number: '$SLOT'" ;;
+    esac
+    if [ "$SLOT" -lt 1 ] || [ "$SLOT" -gt "$SLOTS" ]; then
+      slot_failed "gate_slot.py gave exit 0 without a valid slot number: '$SLOT'"
+    fi
+    # Close the fds of the slots not taken; the one taken stays open until the
+    # hook ends, and `deadline.py` inherits it.
+    N=1
+    while [ "$N" -le "$SLOTS" ]; do
+      [ "$N" -eq "$SLOT" ] || eval "exec $((N + 2))>&-"
+      N=$((N + 1))
+    done
   fi
-  if [ "$SLOT_STATUS" -ne 0 ]; then
-    slot_failed "gate_slot.py gave exit $SLOT_STATUS: $(cat "$ERR_FILE" 2>/dev/null)"
-  fi
-  case "$SLOT" in
-    ''|*[!0-9]*) slot_failed "gate_slot.py gave exit 0 without a valid slot number: '$SLOT'" ;;
-  esac
-  if [ "$SLOT" -lt 1 ] || [ "$SLOT" -gt "$SLOTS" ]; then
-    slot_failed "gate_slot.py gave exit 0 without a valid slot number: '$SLOT'"
-  fi
-  # Close the fds of the slots not taken; the one taken stays open until the
-  # hook ends, and `deadline.py` inherits it.
-  N=1
-  while [ "$N" -le "$SLOTS" ]; do
-    [ "$N" -eq "$SLOT" ] || eval "exec $((N + 2))>&-"
-    N=$((N + 1))
-  done
 
   # After the slot, so a gate that waits for memory keeps its slot and seven gates
   # do not slip through the same opening. The wait counts towards the deadline.
@@ -569,6 +602,15 @@ run_gate_roots() {
         block "could not list the files of the commit in $ROOT: $(cat "$ERR_FILE" 2>/dev/null)"
       fi
     fi
+    # Process mode: deadline.py takes the slot for this root and reports it in a
+    # file beside GATE_TMP; `pytest --basetemp` empties GATE_TMP itself.
+    SLOT_OPTS=()
+    SLOT_REPORT=""
+    if [ "$SLOT_MODE" = process ]; then
+      SLOT_REPORT="$BT/run-$RUN.slot"
+      rm -f "$SLOT_REPORT"
+      SLOT_OPTS=(--slot-dir "$SLOT_DIR" --slots "$SLOTS" --slot-wait "$SLOT_WAIT" --slot-report "$SLOT_REPORT")
+    fi
     OOM_DELTA=0
     HIGH_DELTA=0
     if [ -z "$REM_REASON" ]; then
@@ -582,9 +624,23 @@ run_gate_roots() {
         export LIGHTHOUSE_GATE_BASE="$GATE_BASE" LIGHTHOUSE_GATE_HEAD="$GATE_HEAD" \
           LIGHTHOUSE_GATE_FILES="$GATE_FILES"
       fi \
-      && LIGHTHOUSE_GATE_TMP="$GATE_TMP" python3 "$LIB/deadline.py" "$DEADLINE" -- \
+      && LIGHTHOUSE_GATE_TMP="$GATE_TMP" python3 "$LIB/deadline.py" "$DEADLINE" ${SLOT_OPTS[@]+"${SLOT_OPTS[@]}"} -- \
       ${WRAP[@]+"${WRAP[@]}"} "$BASH" -c "$COMMAND" 2>&1)
     STATUS=$?
+    if [ "$SLOT_MODE" = process ]; then
+      # The report is the source of truth: the exit code can be the suite's own.
+      SLOT_LINE=$(cat "$SLOT_REPORT" 2>/dev/null)
+      case "$SLOT_LINE" in
+        busy) slots_busy ;;
+        error:\ *) slot_failed "${SLOT_LINE#error: }" ;;
+        ''|*[!0-9]*) slot_failed "deadline.py gave no slot report" ;;
+        *)
+          if [ "$SLOT_LINE" -lt 1 ] || [ "$SLOT_LINE" -gt "$SLOTS" ]; then
+            slot_failed "deadline.py gave no slot report"
+          fi
+          ;;
+      esac
+    fi
     if [ -z "$REM_REASON" ]; then
       OOM_DELTA=$(delta "$OOM_BEFORE" "$(event_count oom_kill)")
       HIGH_DELTA=$(delta "$HIGH_BEFORE" "$(event_count high)")

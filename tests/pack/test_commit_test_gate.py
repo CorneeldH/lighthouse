@@ -1167,6 +1167,160 @@ def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
             hook.wait()
 
 
+# --- the process mode (#90): deadline.py takes and holds the slot (Git Bash on Windows) ---
+
+# A python3 that fails for gate_slot.py: the process mode must never call it.
+NO_GATE_SLOT_PY = (
+    "#!/bin/sh\n"
+    'case "$1" in *gate_slot.py) echo kapot >&2; exit 2 ;; esac\n'
+    f'exec "{REAL_PYTHON3}" "$@"\n'
+)
+
+
+def process(gate: Gate, cmd: str = "git commit -m x", **env: str):
+    """Run the hook in the process mode, with a `gate_slot.py` that would break the run."""
+    if not (gate.stub / "python3").exists():
+        gate.add_stub("python3", NO_GATE_SLOT_PY)
+    return gate.run(cmd, gate.project, LIGHTHOUSE_GATE_SLOT_MODE="process", **env)
+
+
+def test_process_mode_green_passes_without_gate_slot_py(gate: Gate) -> None:
+    result = process(gate)
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+    assert (gate.slot_dir / "slot-1").exists()
+
+
+def test_mingw_uname_selects_the_process_mode(gate: Gate) -> None:
+    gate.add_stub("python3", NO_GATE_SLOT_PY)
+    gate.add_stub("uname", "#!/bin/sh\necho MINGW64_NT-10.0-26100\n")
+    result = gate.run("git commit -m x", gate.project)
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+
+
+def test_process_mode_red_blocks(gate: Gate) -> None:
+    result = process(gate, UV_EXIT="1")
+    assert result.returncode == 2
+    assert "tests failed. Fix the failing tests before committing." in result.stderr
+
+
+def test_process_mode_suite_exit_75_is_a_failure_not_busy(gate: Gate) -> None:
+    result = process(gate, UV_EXIT="75")
+    assert result.returncode == 2
+    assert "tests failed" in result.stderr
+    assert "busy" not in result.stderr and "gate slot" not in result.stderr
+
+
+def test_process_mode_busy_blocks(gate: Gate) -> None:
+    fds = hold_slots(gate, "slot-1", "slot-2")
+    try:
+        result = process(gate)
+    finally:
+        release(fds)
+    assert result.returncode == 2
+    assert "COULD NOT CHECK — all gate slots busy after 1 s (slots: 2)" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_process_mode_lock_dir_cannot_be_made(gate: Gate) -> None:
+    blocker = gate.tmp / "geen-map"
+    blocker.write_text("x\n")
+    result = process(gate, LIGHTHOUSE_GATE_SLOT_DIR=str(blocker))
+    assert result.returncode == 2
+    assert "COULD NOT CHECK — cannot take a gate slot" in result.stderr
+    assert f"lock dir {blocker} cannot be created" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_process_mode_error_report_blocks(gate: Gate) -> None:
+    (gate.slot_dir / "slot-1").mkdir(parents=True)
+    result = process(gate)
+    assert result.returncode == 2
+    assert "cannot take a gate slot: " in result.stderr
+    assert "slot-1" in result.stderr
+    assert not gate.mark.exists()
+
+
+def test_process_mode_without_report_blocks(gate: Gate) -> None:
+    gate.add_stub(
+        "python3",
+        '#!/bin/sh\ncase "$1" in *deadline.py) exit 0 ;; esac\n'
+        f'exec "{REAL_PYTHON3}" "$@"\n',
+    )
+    result = process(gate)
+    assert result.returncode == 2
+    assert "cannot take a gate slot: deadline.py gave no slot report" in result.stderr
+
+
+def test_process_mode_report_survives_a_wiped_gate_tmp(gate: Gate) -> None:
+    gate.configure(
+        "[test_gate]\ncommand = 'rm -rf \"$LIGHTHOUSE_GATE_TMP\" && "
+        "mkdir \"$LIGHTHOUSE_GATE_TMP\" && uv run pytest -q'\nslot_wait_seconds = 1\n"
+    )
+    result = process(gate)
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve())]
+
+
+def test_process_mode_two_roots_with_one_slot(gate: Gate) -> None:
+    gate.configure(TEST_GATE + "slots = 1\n")
+    second = gate.tmp / "X2"
+    _worktree_on_default(gate.project, second)
+    result = process(gate, f"git commit -m a && cd {second} && git commit -m b")
+    assert result.returncode == 0, result.stderr
+    assert gate.marks() == [str(gate.project.resolve()), str(second.resolve())]
+
+
+def test_process_mode_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
+    gate.add_stub("python3", NO_GATE_SLOT_PY)
+    gate.add_stub("date", "#!/bin/sh\necho $(( $(/bin/date +%s) - 262 ))\n")
+    gate.add_stub("uv", '#!/bin/sh\npwd >> "$UV_MARK"\nsleep 30\n')
+    tmpdir = gate.tmp / "tmpdir"
+    tmpdir.mkdir()
+    env = dict(
+        os.environ,
+        PATH=f"{gate.stub}{os.pathsep}{os.environ['PATH']}",
+        CLAUDE_PROJECT_DIR=str(gate.project),
+        UV_MARK=str(gate.mark),
+        LIGHTHOUSE_TOML=str(gate.toml),
+        LIGHTHOUSE_HOST_TOML=str(gate.host),
+        LIGHTHOUSE_GATE_SLOT_DIR=str(gate.slot_dir),
+        LIGHTHOUSE_GATE_CGROUP_ROOT=str(gate.cgroup),
+        LIGHTHOUSE_GATE_SLOT_MODE="process",
+        TMPDIR=str(tmpdir),
+    )
+    payload = json.dumps(bash_payload("git commit -m x", gate.project))
+    start = time.monotonic()
+    hook = subprocess.Popen(
+        [str(HOOK), "pre"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        cwd=str(gate.project),
+        env=env,
+    )
+    assert hook.stdin is not None
+    hook.stdin.write(payload)
+    hook.stdin.close()
+    try:
+        while not gate.marks():
+            assert time.monotonic() - start < 15, "nep-uv startte niet"
+            time.sleep(0.05)
+        os.kill(hook.pid, signal.SIGKILL)
+        hook.wait()
+        slot = gate.slot_dir / "slot-1"
+        assert not _slot_is_free(slot)
+        while not _slot_is_free(slot):
+            assert time.monotonic() - start < 8 + 10 + 2, "slot kwam niet vrij"
+            time.sleep(0.2)
+    finally:
+        if hook.poll() is None:
+            hook.kill()
+            hook.wait()
+
+
 BRACE_FD = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}[<>]")
 
 
