@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.11.3] - 2026-11-07
+
+### Fixed
+
+- A new start of an issue no longer fails with a kenn-forge 500 while the session of a run handed back as "waiting on a permission" still lives in its workspace: the start ends that earlier claude after its claim.
+
 ## [v0.11.2] - 2026-11-07
 
 ### Fixed
