@@ -235,10 +235,8 @@ def test_usage_gate_parses_until_with_bsd_date_only(tmp_path: Path, form: str) -
 
     root, env = _setup(tmp_path, flag=flag)
     log = tmp_path / "date.log"
-    logging_stub = BSD_DATE_STUB.replace(
-        'real=', f'LOG="{log}"\nprintf \'%s\\n\' "$@" >> "$LOG"\nreal=', 1
-    )
-    stubs = tool_bin(tmp_path / "stubs", (), stubs={"date": logging_stub})
+    stubs = tool_bin(tmp_path / "stubs", (), stubs={"date": BSD_DATE_STUB})
+    env["DATE_STUB_LOG"] = str(log)
     env["PATH"] = f"{stubs}:{env['PATH']}"
 
     result = _run(root, env, "tool", _payload(tmp_path, "tool"))
