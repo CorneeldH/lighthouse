@@ -446,7 +446,7 @@ def test_fetch_ac_count_timeout(monkeypatch, tmp_path):
 
 
 def test_finds_create_and_new(tmp_path):
-    cmd = "gh pr create -F b.md; gh pr new -F b.md"
+    cmd = "gh pr create --repo Acme/widgets -F b.md; gh pr new -F b.md"
     assert len(gate.find_pr_creates(cmd, str(tmp_path))) == 2
 
 
@@ -462,7 +462,7 @@ def test_body_file_relative_after_cd(tmp_path):
 
 def test_subshell_cd_does_not_leak(tmp_path):  # Review Focus 1
     (tmp_path / "sub").mkdir()
-    cmd = "(cd sub && gh pr create -F b.md); gh pr create -F b.md"
+    cmd = "(cd sub && gh pr create --repo Acme/widgets -F b.md); gh pr create -F b.md"
     a, b = gate.find_pr_creates(cmd, str(tmp_path))
     assert a.body_file == str(tmp_path / "sub" / "b.md")
     assert b.body_file == str(tmp_path / "b.md")
@@ -471,18 +471,18 @@ def test_subshell_cd_does_not_leak(tmp_path):  # Review Focus 1
 @pytest.mark.parametrize(
     ("cmd", "word"),
     [
-        ("gh pr create --fill", "--fill"),
-        ("gh pr create --fill-first", "--fill-first"),
-        ("gh pr create -f", "-f"),
-        ("gh pr create --web", "--web"),
-        ("gh pr create -e", "-e"),
-        ("gh pr create -F -", "stdin"),
-        ("gh pr create --body-file=-", "stdin"),
-        ('gh pr create --body "$(cat b.md)"', "non-literal"),
-        ("gh pr create --body $BODY", "non-literal"),
-        ("gh pr create -F $F", "non-literal"),
-        ("gh pr create -t x", "no body"),
-        ("gh pr create --body x -F b.md", "choose one"),
+        ("gh pr create --repo Acme/widgets --fill", "--fill"),
+        ("gh pr create --repo Acme/widgets --fill-first", "--fill-first"),
+        ("gh pr create --repo Acme/widgets -f", "-f"),
+        ("gh pr create --repo Acme/widgets --web", "--web"),
+        ("gh pr create --repo Acme/widgets -e", "-e"),
+        ("gh pr create --repo Acme/widgets -F -", "stdin"),
+        ("gh pr create --repo Acme/widgets --body-file=-", "stdin"),
+        ('gh pr create --repo Acme/widgets --body "$(cat b.md)"', "non-literal"),
+        ("gh pr create --repo Acme/widgets --body $BODY", "non-literal"),
+        ("gh pr create --repo Acme/widgets -F $F", "non-literal"),
+        ("gh pr create --repo Acme/widgets -t x", "no body"),
+        ("gh pr create --repo Acme/widgets --body x -F b.md", "choose one"),
     ],
 )
 def test_body_source_problems(tmp_path, cmd, word):
@@ -492,9 +492,9 @@ def test_body_source_problems(tmp_path, cmd, word):
 @pytest.mark.parametrize(
     "cmd",
     [
-        "gh pr create --body 'No issue: alleen docs gewijzigd'",
-        "gh pr create -b 'No issue: alleen docs gewijzigd'",
-        "gh pr create --body='No issue: alleen docs gewijzigd'",
+        "gh pr create --repo Acme/widgets --body 'No issue: alleen docs gewijzigd'",
+        "gh pr create --repo Acme/widgets -b 'No issue: alleen docs gewijzigd'",
+        "gh pr create --repo Acme/widgets --body='No issue: alleen docs gewijzigd'",
     ],
 )
 def test_body_literal(tmp_path, cmd):
@@ -504,19 +504,19 @@ def test_body_literal(tmp_path, cmd):
 
 
 def test_body_file_is(tmp_path):
-    [pc] = gate.find_pr_creates("gh pr create --body-file=/x/b.md", str(tmp_path))
+    [pc] = gate.find_pr_creates("gh pr create --repo Acme/widgets --body-file=/x/b.md", str(tmp_path))
     assert pc.body_file == "/x/b.md"
 
 
 def test_title_with_b_in_value_is_not_a_body(tmp_path):
-    [pc] = gate.find_pr_creates("gh pr create -t -b -F b.md", str(tmp_path))
+    [pc] = gate.find_pr_creates("gh pr create --repo Acme/widgets -t -b -F b.md", str(tmp_path))
     assert pc.body_file == str(tmp_path / "b.md")
 
 
 def test_relative_path_without_known_cwd(tmp_path):
-    [pc] = gate.find_pr_creates("gh pr create -F body.md", None)
+    [pc] = gate.find_pr_creates("gh pr create --repo Acme/widgets -F body.md", None)
     assert "cannot be resolved" in pc.problem
-    [pc] = gate.find_pr_creates("gh pr create -F /abs/body.md", None)
+    [pc] = gate.find_pr_creates("gh pr create --repo Acme/widgets -F /abs/body.md", None)
     assert pc.problem is None
 
 
@@ -556,7 +556,7 @@ def test_non_literal_repo_is_a_repo_problem(tmp_path, cmd):
 
 def test_open_quote(tmp_path):
     with pytest.raises(gate.Unparseable):
-        gate.find_pr_creates("gh pr create --body 'x", str(tmp_path))
+        gate.find_pr_creates("gh pr create --repo Acme/widgets --body 'x", str(tmp_path))
 
 
 def _pc(cwd, repo=None):
@@ -573,10 +573,11 @@ def project(tmp_path):
 def test_scope_own_repo(tmp_path, project):
     wt = tmp_path / "wt"
     git(project, "worktree", "add", "-q", str(wt), "-b", "feat")
-    assert gate.in_scope(_pc(str(project)), str(project))[0] == "toetsen"
-    assert gate.in_scope(_pc(str(wt)), str(project))[0] == "toetsen"
+    # Without --repo a `gh pr create` in this repo is blocked (#224); the cwd decides only that it is ours.
+    assert gate.in_scope(_pc(str(project)), str(project))[0] == "blokkeren"
+    assert gate.in_scope(_pc(str(wt)), str(project))[0] == "blokkeren"
     # A subdirectory that does not exist yet also counts as the repo of its ancestor.
-    assert gate.in_scope(_pc(str(wt / "nieuw")), str(project))[0] == "toetsen"
+    assert gate.in_scope(_pc(str(wt / "nieuw")), str(project))[0] == "blokkeren"
 
 
 def test_scope_other_repo_flag(project):
@@ -670,7 +671,9 @@ def test_scope_forge_worktree_of_the_same_repo(tmp_path, project):
     """A worktree of a separate clone with the same `origin` is this repo (#36)."""
     git(project, "remote", "add", "origin", ORIGIN)
     work = forge_worktree(project, tmp_path)
-    assert gate.in_scope(_pc(str(work)), str(project)) == ("toetsen", "")
+    decision, reason = gate.in_scope(_pc(str(work)), str(project))
+    assert decision == "blokkeren"
+    assert "--repo Acme/widgets" in reason
 
 
 def test_scope_other_origin_names_common_dirs_and_remotes(tmp_path, project):
@@ -705,7 +708,7 @@ def _run_main(monkeypatch, project, command, cwd):
 
 
 def test_main_body_file_does_not_exist(project, monkeypatch, capsys):
-    rc = _run_main(monkeypatch, project, "gh pr create -F nope.md", project)
+    rc = _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets -F nope.md", project)
     err = capsys.readouterr().err
     assert rc == 2
     assert str(project / "nope.md") in err
@@ -719,16 +722,16 @@ def test_main_no_gh_pr_create(project, monkeypatch, capsys):
 
 
 def test_main_open_quote(project, monkeypatch):
-    assert _run_main(monkeypatch, project, "gh pr create --body 'x", project) == 3
+    assert _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets --body 'x", project) == 3
 
 
 def test_main_problem_blocks(project, monkeypatch, capsys):
-    assert _run_main(monkeypatch, project, "gh pr create --fill", project) == 2
+    assert _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets --fill", project) == 2
     assert "--fill gives no body to check" in capsys.readouterr().err
 
 
 def test_main_no_issue_passes(project, monkeypatch, capsys):
-    cmd = "gh pr create --body 'No issue: alleen docs gewijzigd'"
+    cmd = "gh pr create --repo Acme/widgets --body 'No issue: alleen docs gewijzigd'"
     assert _run_main(monkeypatch, project, cmd, project) == 0
     assert capsys.readouterr().out == "pr-create-gate: body checked — No issue\n"
 
@@ -753,7 +756,7 @@ def test_main_closes_passes_with_count(project, monkeypatch, capsys, tmp_path):
     bin_dir = tool_bin(tmp_path / "bin", (), stubs={"gh": stub})
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     (project / "body.md").write_text(closes_body(9, ROWS2), encoding="utf-8")
-    rc = _run_main(monkeypatch, project, "gh pr create -F body.md", project)
+    rc = _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets -F body.md", project)
     assert rc == 0
     assert capsys.readouterr().out == (
         "pr-create-gate: body checked — Closes #9 (2 AC, 2 rows)\n"
@@ -765,13 +768,13 @@ def test_main_closes_ac_mismatch_blocks(project, monkeypatch, capsys, tmp_path):
     bin_dir = tool_bin(tmp_path / "bin", (), stubs={"gh": stub})
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     (project / "body.md").write_text(closes_body(9, ROWS2), encoding="utf-8")
-    rc = _run_main(monkeypatch, project, "gh pr create -F body.md", project)
+    rc = _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets -F body.md", project)
     assert rc == 2
     assert "3 acceptance criteria" in capsys.readouterr().err
 
 
 def test_main_several_creates_one_blocker_blocks(project, monkeypatch, capsys):
-    cmd = "gh pr create --body 'No issue: alleen docs gewijzigd'; gh pr create -t x"
+    cmd = "gh pr create --repo Acme/widgets --body 'No issue: alleen docs gewijzigd'; gh pr create --repo Acme/widgets -t x"
     assert _run_main(monkeypatch, project, cmd, project) == 2
     assert "no body" in capsys.readouterr().err
 
@@ -782,7 +785,7 @@ def test_main_fallback_without_gh_notices_and_passes(
     bin_dir = tool_bin(tmp_path / "bin", ("git",))
     monkeypatch.setenv("PATH", str(bin_dir))
     (project / "body.md").write_text(closes_body(9, ROWS1), encoding="utf-8")
-    assert _run_main(monkeypatch, project, "gh pr create -F body.md", project) == 0
+    assert _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets -F body.md", project) == 0
     out = capsys.readouterr().out
     assert "body checked — Closes #9 (AC not counted, 1 rows)" in out
     assert "AC count not measurable for #9 (gh is missing)" in out
@@ -816,7 +819,7 @@ def test_main_deadline_bounds_slow_gh_fallback(
     _slow_gh(monkeypatch, tmp_path)
     (project / "body.md").write_text(_three_closes((5, 6, 7)), encoding="utf-8")
     start = time.monotonic()
-    rc = _run_main(monkeypatch, project, "gh pr create -F body.md", project)
+    rc = _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets -F body.md", project)
     elapsed = time.monotonic() - start
     out = capsys.readouterr().out
     assert rc == 0
@@ -834,7 +837,7 @@ def test_main_deadline_keeps_blocker_of_earlier_target(
     _slow_gh(monkeypatch, tmp_path)
     (project / "body.md").write_text(_three_closes((6, 7)), encoding="utf-8")
     start = time.monotonic()
-    rc = _run_main(monkeypatch, project, "gh pr create -F body.md", project)
+    rc = _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets -F body.md", project)
     elapsed = time.monotonic() - start
     err = capsys.readouterr().err
     assert rc == 2
@@ -875,7 +878,7 @@ def test_cli_as_script(project, tmp_path):
 
     proc = subprocess.run(
         [sys.executable, str(INSTALLED_LIB / "pr_body_gate.py"), str(project)],
-        input="gh pr create --body 'No issue: alleen docs gewijzigd'",
+        input="gh pr create --repo Acme/widgets --body 'No issue: alleen docs gewijzigd'",
         capture_output=True,
         text=True,
         env=dict(os.environ, CLAUDE_PROJECT_DIR=str(project)),
@@ -924,3 +927,30 @@ def test_not_a_git_repository_under_other_locale(tmp_path, project, monkeypatch)
         "overslaan",
         "skipped — outside this repo",
     )
+
+
+# --- #224: no --repo in a clone of a fork ------------------------------------
+
+
+def test_without_repo_block_names_the_exact_repo(project):
+    decision, reason = gate.in_scope(_pc(str(project)), str(project))
+    assert decision == "blokkeren"
+    assert "`--repo Acme/widgets`" in reason
+
+
+def test_without_repo_passes_with_repo_flag(project):
+    assert gate.in_scope(_pc(str(project), "Acme/widgets"), str(project)) == ("toetsen", "")
+
+
+def test_without_repo_passes_with_gh_repo_env(project, monkeypatch, capsys):
+    cmd = "GH_REPO=Acme/widgets gh pr create --body 'No issue: alleen docs gewijzigd'"
+    assert _run_main(monkeypatch, project, cmd, project) == 0
+    monkeypatch.setenv("GH_REPO", "Acme/widgets")
+    assert _run_main(monkeypatch, project, "gh pr create --body 'No issue: alleen docs gewijzigd'", project) == 0
+
+
+def test_without_repo_not_blocked_without_forge_repo(tmp_path, monkeypatch):
+    toml = tmp_path / "lighthouse.toml"
+    toml.write_text('[project]\nlanguage = "en"\n')
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(toml))
+    assert gate._without_repo() == ("toetsen", "")

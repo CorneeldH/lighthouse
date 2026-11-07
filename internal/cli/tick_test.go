@@ -752,7 +752,7 @@ func TestTickJudgesInstalledSkills(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := repoDir(t, strings.Replace(completeRepo, "[controller]\n", "[controller]\nplan_review = true\n", 1))
 			if tc.installed {
-				skill := filepath.Join(dir, ".claude", "skills", "lighthouse-plan-adversarial-review")
+				skill := filepath.Join(dir, ".claude", "skills", "lighthouse-review-plan")
 				if err := os.MkdirAll(skill, 0o755); err != nil {
 					t.Fatal(err)
 				}
@@ -762,7 +762,7 @@ func TestTickJudgesInstalledSkills(t *testing.T) {
 			}
 			env, db := tickFixture(t, dir)
 			srv, _ := startable(t, &env)
-			srv.Comments = map[int][]map[string]any{7: {handoffComment("/lighthouse-plan-adversarial-review /work/plans/plan.md", "now")}}
+			srv.Comments = map[int][]map[string]any{7: {handoffComment("/lighthouse-review-plan /work/plans/plan.md", "now")}}
 			var errOut bytes.Buffer
 			if err := tick(context.Background(), env, db, &errOut); err != nil {
 				t.Fatalf("tick = %v\n%s", err, errOut.String())

@@ -17,12 +17,39 @@ repo. Een locatie-as hoort bij een repo die ook machines configureert.
 Daarnaast zijn de GitHub-standaardlabels (`bug`, `enhancement`, `documentation`, …) een vrije
 as.
 
-Eén vrij label hoort bij deze repo: **`chain`** (kleur `F4D74B`). Het staat op een issue dat een
-stap, een handoff of een route van de keten toevoegt of verandert, zoals die op de ketenkaart
-(`docs/site/loop.html`) staat. Uitleg over de controller, of een verbetering binnen een
-bestaande stap, krijgt het niet. Elk open issue met `chain` staat als gepland item op de kaart,
-en elk gepland item noemt zo'n issue; `ci/chain_roadmap.py` en de workflow `chain-roadmap`
-controleren dat.
+## Vrije labels met een document
+
+Een vrij label kan een document hebben: het bestand dat een PR bijwerkt zodra het issue met dat
+label geleverd wordt. Een vrij label zonder document, zoals de GitHub-standaardlabels, laat
+`write-pr` met rust.
+
+| Label | Kleur | When | Document |
+|---|---|---|---|
+| `loop` | `F4D74B` | Voegt een stap, handoff of route van de loop toe of verandert die | `docs/site/data/loop.json` |
+
+Een label met een document betekent twee dingen. `write-issue` toetst een issue aan de kolom
+*When* en geeft het dan het label. `write-pr` werkt het bestand uit de kolom *Document* bij: altijd
+bij `Closes`, en bij `Refs` wanneer de branch levert wat het issue verandert (de sessie beoordeelt
+diff en acceptatiecriteria). Uitleg over de controller, of een verbetering binnen een bestaande stap,
+krijgt het label `loop` niet.
+
+Bijwerken van `loop.json` betekent: een `planned` item met het issuenummer wordt `works` en
+verliest `issue`; een nieuwe stap of handoff komt erbij als `works`, met `source`. Een nieuw
+`loop`-issue krijgt alleen het label en komt pas met de leverende PR op de kaart
+(`docs/site/loop.html`).
+
+`ci/loop_roadmap.py` en de workflow `loop-roadmap` (`.github/workflows/loop-roadmap.yml`)
+controleren dit in twee standen:
+
+- PR-modus (bij `pull_request`): voor elk issue met `loop` dat de PR met `Closes` sluit, noemt
+  geen `planned` item het nog, en de PR raakt `docs/site/data/loop.json`. Raakt een PR
+  `docs/site/data/loop.json` of `ci/loop_roadmap.py`, dan krijgt hij ook de hoofdmodus-controle.
+  De PR-controle draait niet opnieuw als het label `loop` pas op een issue komt nadat zijn PR al
+  open staat (het `issues`-event draait de hoofdmodus op de default branch): push een nieuwe
+  commit of bewerk de PR-body om de PR-modus opnieuw te starten.
+- Hoofdmodus (bij push naar main, issues-events en workflow_dispatch), als vangnet: elk
+  `planned` item noemt een open issue met `loop`. De omgekeerde richting, elk open `loop`-issue
+  op de kaart, wordt niet gecontroleerd.
 
 ## 2-area: — waar hoort het bij
 

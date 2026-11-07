@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_site_chain import SITE
+from tests.test_site_loop import SITE
 
 GUIDE = SITE.parent / "getting-started.md"
 

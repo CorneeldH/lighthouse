@@ -33,7 +33,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    een repo niet, dan slaat tick hem luid over met `lighthouse: skip <pad>: <redenen>` op stderr en
    gaat door met de rest.
 6. **Precheck.** Per bedienbare repo leest tick het board, de open runs en de runhistorie, en rekent
-   daaruit een vingerafdruk: per item in Controller of On hold de Status, Priority en de `updatedAt`
+   daaruit een vingerafdruk: per item in Controller of On hold, of met een open run, de Status, Priority en de `updatedAt`
    van item en issue, de voorgangers van een On hold-item, de PR's van een item met een open run, en
    de open runs zelf met de stand van hun forge-sessie (`working`, `waiting` of `done`; een sessie die
    tick niet kan lezen telt als niet meetbaar), de resume-markers met `controller: true` waarvan de
@@ -66,10 +66,12 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    Mislukt de precheck, dan blijven de rijen van de vorige tick staan. `serve` leest ze voor
    `GET /api/runs` en de kaart *Running runs*, zonder de forge (zie [install.md](install.md)).
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
-   de items in Controller of On hold met hun velden, voorgangers en PR's (de PR's die het issue sluiten
+   de items in Controller of On hold, plus elk item met een open run in een andere status, met hun velden, voorgangers en PR's (de PR's die het issue sluiten
    plus de PR's op de branch van de laatste run van het issue, ook als die run al dicht is, met hun
-   checks), hun comments en de open runs. Zo blijft een gemergde PR die het issue niet sluit zichtbaar. Alleen
-   comments van vertrouwde auteurs komen erin: hun rol op de repo (`role_name` van de
+   checks), hun comments en de open runs. Zo blijft een gemergde PR die het issue niet sluit zichtbaar.
+   Een item met een open run buiten Controller en On hold doet mee om die run af te sluiten:
+   `lighthouse-close-issue` zet het item op Done voordat tick de closecheck-run ziet eindigen. Voor
+   zo'n item start of hervat tick niets, en hij zet het niet terug naar Controller. Alleen comments van vertrouwde auteurs komen erin: hun rol op de repo (`role_name` van de
    collaborator-permissie) staat in `[dispatch] answer_permissions`. Een 🤖-comment van een andere
    auteur valt weg met een regel op stderr. Een 🚀 telt alleen als de login van het token hem zette;
    die login vraagt tick hoogstens één keer per tick op, en niet als geen repo aan de beurt is. Na de

@@ -4,7 +4,7 @@ in the repository."""
 import json
 
 from tests._site_node import run_map
-from tests.test_site_chain import REPO_BLOB, REPO_TREE, ROOT, SITE, load
+from tests.test_site_loop import REPO_BLOB, REPO_TREE, ROOT, SITE, load
 
 PARTS = ["skills", "agents", "hooks", "workflows"]
 

@@ -339,3 +339,31 @@ def test_requires_names_the_skill_per_tool(skill):
         if re.search(pattern, text, re.M) and skill.name not in requires.get(tool, [])
     ]
     assert not missing, f"requires.toml lacks {skill.name} under {missing}"
+
+
+def test_every_writing_gh_command_in_the_skills_names_the_repo():
+    """#224: without `--repo` gh picks the upstream repo in a clone of a fork."""
+    pat = re.compile(r"gh (?:issue|pr) (?:create|edit|comment|reopen|close|merge|ready|review)\b")
+    bad = []
+    for path in sorted((CORE / "skills").rglob("*.md")) + [CORE / "templates" / "pull_request_template.md"]:
+        text = path.read_text(encoding="utf-8").replace("\\\n", " ")  # join continuation lines
+        in_fence = False
+        for line in text.splitlines():
+            if line.lstrip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            # Commands: a fenced line, or an inline code span with a flag or an argument placeholder.
+            spans = [line] if in_fence else re.findall(r"`([^`]*)`", line)
+            for span in spans:
+                m = pat.search(span)
+                if m and re.search(r"--|<", span[m.end() :]) and "--repo" not in span:
+                    bad.append(f"{path.relative_to(CORE)}: {span.strip()[:80]}")
+    assert not bad, "\n".join(bad)
+
+
+def test_write_pr_creates_the_pr_with_the_forge_repo():
+    """#224: write-pr names the repo from lighthouse.toml, never `"$R"`, which the gate blocks."""
+    text = (CORE / "skills" / "write-pr" / "SKILL.md").read_text(encoding="utf-8")
+    creates = [line for line in text.splitlines() if line.startswith("gh pr create ")]
+    assert creates, "write-pr has no fenced `gh pr create` command"
+    assert all(line.startswith("gh pr create --repo <forge.repo> ") for line in creates), creates

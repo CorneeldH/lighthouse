@@ -255,8 +255,8 @@ func (h *harness) seed(t *testing.T, issue int, session, key string, outcome run
 func startAction() Action {
 	return Action{
 		Kind: KindStart, Repo: applyRepo, Issue: 7, Mode: "start", Trigger: "handoff",
-		TriggerKey: "handoff:55", Attempt: 1, Command: "/lighthouse-spec-adversarial-review /w/spec.md",
-		Prompt: "/lighthouse-spec-adversarial-review /w/spec.md (issue #7, controller-run)",
+		TriggerKey: "handoff:55", Attempt: 1, Command: "/lighthouse-review-spec /w/spec.md",
+		Prompt: "/lighthouse-review-spec /w/spec.md (issue #7, controller-run)",
 		Branch: "issue-7-x", Native: true, Skip: "skip_plan_review", CommentID: 55, Language: "nl",
 	}
 }
@@ -295,7 +295,7 @@ func TestApplyStartOrder(t *testing.T) {
 	wantBody := "🤖 Gestart\n" +
 		"session: " + freshSession + "\n" +
 		"worktree: /forge/issue-7-x\n" +
-		"command: /lighthouse-spec-adversarial-review /w/spec.md\n" +
+		"command: /lighthouse-review-spec /w/spec.md\n" +
 		"start: 2026-10-31T09:00:00Z\n" +
 		"branch: issue-7-x\n" +
 		"skip: plan-review overgeslagen (config)\n" +
@@ -311,7 +311,7 @@ func TestApplyStartOrder(t *testing.T) {
 	instructions := filepath.Join(h.env.StateDir, "runs", freshSession, "instructions.md")
 	wantSpec := workplace.LaunchSpec{
 		Repo: applyRepo, Issue: 7, SessionID: freshSession, Mode: "start", Profile: "writing",
-		Prompt: "/lighthouse-spec-adversarial-review /w/spec.md (issue #7, controller-run)", Native: true,
+		Prompt: "/lighthouse-review-spec /w/spec.md (issue #7, controller-run)", Native: true,
 		InstructionsFile: instructions, MCPConfig: "/etc/lighthouse/mcp.json",
 	}
 	if !reflect.DeepEqual(h.wp.spawned, []workplace.LaunchSpec{wantSpec}) {

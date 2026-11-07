@@ -1,7 +1,7 @@
 """The maps in docs/site/data/ stay in step with pack/: every part is drawn, every source exists,
 every status and route holds together. The generic checks are helpers that return problems, run
-over a small fixture map and every map in the data directory; the chain-specific ones run on
-chain.json only."""
+over a small fixture map and every map in the data directory; the loop-specific ones run on
+loop.json only."""
 
 import copy
 import json
@@ -255,18 +255,22 @@ def test_fixture_unknown_effect_is_flagged():
 
 
 def test_phases_are_the_seven_of_the_chain():
-    labels = [p["label"] for p in load("chain.json")["phases"]]
+    labels = [p["label"] for p in load("loop.json")["phases"]]
     assert labels == ["Issue", "Orient", "Spec", "Plan", "Build", "PR", "Close"]
 
 
 def test_coverage_flags_a_removed_skill():
-    chain = copy.deepcopy(load("chain.json"))
+    chain = copy.deepcopy(load("loop.json"))
     chain["chips"] = [c for c in chain["chips"] if c["id"] != "write-issue"]
     assert "pack/core/skills/write-issue" in missing_parts(chain)
 
 
+# Handoffs the dispatcher starts itself, not through a handoff block.
+DISPATCHED = {("pr-and-ci", "fix-pr")}
+
+
 def test_works_handoffs_follow_the_handoff_table():
-    chain = load("chain.json")
+    chain = load("loop.json")
     chips = chips_by_id(chain)
     works = {(h["from"], h["to"]) for h in chain["handoffs"] if h["status"] == "works"}
     assert works == {
@@ -276,26 +280,32 @@ def test_works_handoffs_follow_the_handoff_table():
         ("review-plan", "executing-plans"),
         ("commit-test-gate", "write-pr"),
         ("pr-and-ci", "close-issue"),
+        ("pr-and-ci", "fix-pr"),
     }
     # A works handoff is built: it carries no tracking issue.
     assert not [h for h in chain["handoffs"] if h["status"] == "works" and "issue" in h]
-    # The handoff skill's routing table names the first step of each works handoff.
+    # The handoff skill's routing table names the first step of each works handoff,
+    # except the ones the dispatcher starts itself.
     table = (ROOT / "pack" / "core" / "skills" / "write-handoff" / "SKILL.md").read_text(encoding="utf-8")
-    for _, target in works:
+    judge = (ROOT / "internal" / "dispatch" / "judge.go").read_text(encoding="utf-8")
+    for source, target in works:
+        if (source, target) in DISPATCHED:
+            assert f'case "/lighthouse-{target}":' in judge, target
+            continue
         prefix = "lighthouse-" if chips[target]["kind"] == "lighthouse" else "superpowers:"
         assert f"`/{prefix}{target}" in table, target
     assert all(h["status"] in ("works", "planned") for h in chain["handoffs"])
 
 
 def test_chain_routes_are_the_known_ones():
-    routes = {r["id"]: r for r in load("chain.json")["routes"]}
+    routes = {r["id"]: r for r in load("loop.json")["routes"]}
     assert set(routes) == {"1", "2", "4a", "4b", "4c", "no-issue", "red-pr"}
     assert routes["1"]["examples"] == ["refresh-expo-lockfiles"]
     assert routes["no-issue"]["chips"][0] == "worktree-check"
 
 
 def test_the_chain_map_is_called_the_loop():
-    assert load("chain.json")["title"] == "The loop"
+    assert load("loop.json")["title"] == "The loop"
     html = (SITE / "loop.html").read_text(encoding="utf-8")
     assert "<title>The loop</title>" in html
     assert '<h1 id="title">The loop</h1>' in html
@@ -310,5 +320,5 @@ def test_the_old_chain_page_forwards_to_the_loop():
 
 
 def test_route_labels_carry_no_gate_number():
-    for route in load("chain.json")["routes"]:
+    for route in load("loop.json")["routes"]:
         assert not re.search(r"\(\s*\w+\s*\)", route["label"]), route["label"]

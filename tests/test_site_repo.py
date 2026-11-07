@@ -7,7 +7,7 @@ import copy
 import json
 
 from tests._site_node import run_map
-from tests.test_site_chain import ROOT, SITE, load
+from tests.test_site_loop import ROOT, SITE, load
 
 GOLDEN = ROOT / "internal/initcmd/testdata/places.golden"
 DIRS = ["root", ".claude", ".agents", ".lighthouse", ".github"]

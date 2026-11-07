@@ -195,7 +195,15 @@ In the root of the repository:
    does not read the lighthouse rules) · no. After a yes, add that one line, change nothing else
    in `CLAUDE.md`, and show the user the diff. After a no, put it under "Still open". Then go
    on; do not wait for the user to ask.
-7. Go to [Check](#check).
+7. If `init` printed `warning: <path> is ignored by git (<source>:<line>:<pattern>)`, git
+   ignores a file that `init` installed, so it never reaches a commit and other clones and
+   worktrees lack it (the hooks break there). Tell the user which path and which rule. Ask: add an
+   exception for it (a `!<path>` line after the rule in that `.gitignore`, or remove the entry
+   from `.git/info/exclude`)? Options: yes (recommended: without it the install is incomplete in
+   every other clone) · no. After a yes, add only that exception, check with
+   `git check-ignore -v <path>` that nothing prints, and show the user the diff. After a no, put it
+   under "Still open". Then go on; do not wait for the user to ask.
+8. Go to [Check](#check).
 
 ## Check
 
@@ -251,6 +259,8 @@ here.
   tell the user. Add `[forge]` only with the user's `owner/name`, after a yes.
 - `` warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules ``:
   ask for the line, as step 6 of [Run lighthouse init](#run-lighthouse-init) says.
+- `warning: <path> is ignored by git (<source>:<line>:<pattern>)`: ask for an exception, as step 7
+  of [Run lighthouse init](#run-lighthouse-init) says.
 - `lighthouse init: package <name> is not in this binary`: the release lacks that package. Drop
   its `--pack <name>` and tell the user.
 - `lighthouse init: nothing written` after step 4: the `y` did not reach `init`. Check the pipe,

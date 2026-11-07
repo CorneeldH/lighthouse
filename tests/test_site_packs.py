@@ -5,7 +5,7 @@ import json
 import re
 import tomllib
 
-from tests.test_site_chain import ROOT, load
+from tests.test_site_loop import ROOT, load
 
 PACK = ROOT / "pack"
 
@@ -103,7 +103,7 @@ def test_standard_skills_follow_the_maps():
     by_pack = {p["name"]: p for p in packs()}
     for entry in packs():
         assert set(entry["standard_skills"]) <= set(entry["skills"]), entry["name"]
-    for name in ["chain.json", "session.json"]:
+    for name in ["loop.json", "session.json"]:
         for chip in load(name)["chips"]:
             m = re.search(r"/blob/main/pack/([^/]+)/skills/([^/]+)", chip.get("source", ""))
             if m:

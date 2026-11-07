@@ -158,6 +158,26 @@ no table.
 `Closes` stays valid for a PR a person opens without this skill. This skill never writes it: the
 merge would close the issue before the check after the merge.
 
+## Documents of the linked issues
+
+Read the taxonomy file with `python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels`.
+rc 1 (not set), or a path to a file that does not exist: there is no taxonomy file; skip this
+section, with no note in the body. The same when the file has no label with a `Document` column
+entry. rc 2: the configuration is broken; stop and report it, no PR.
+
+For every `Closes #N` and every `Refs #N` of the body, read the labels:
+`gh issue view N --json labels`. For each label that has a `Document` in the taxonomy file, ask:
+does the branch deliver what the issue changes?
+
+- With `Closes #N`: yes.
+- With `Refs #N`: judge from the diff and the AC of the issue.
+
+Yes: update the document the way the taxonomy file describes, commit it and push it before
+`gh pr create`. No: do nothing, and leave no note in the body.
+
+A re-run writes nothing twice: when the update the taxonomy file describes is already in the
+document on this branch (the branch diff touches it for #N), the step is done.
+
 ## Changelog fragment (if present)
 
 Only if present: `changelog.d/.lighthouse` in the repository root. Otherwise skip this section.
@@ -289,13 +309,21 @@ to the body as a line of its own, outside the Evidence block. It is the marker
 `<!-- roborev-lokaal: <sha> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
 empty with `off` (then no line).
 
-Then give the command:
+Then read the repo:
 
 ```bash
-gh pr create --title '<title>' --body-file <path> --milestone "<milestone>"
+python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo
 ```
 
-`--title` always: without it gh asks for it, and headless it refuses. Single quotes, so the shell
+Then give the command, with that output spelled out literally as `<forge.repo>`:
+
+```bash
+gh pr create --repo <forge.repo> --title '<title>' --body-file <path> --milestone "<milestone>"
+```
+
+`--repo` always, spelled out: in a clone of a fork gh otherwise opens the PR in the upstream repo,
+and `pr-create-gate` blocks a `gh pr create` without it, and one with `--repo "$R"` too (it cannot
+read a variable). `--title` always: without it gh asks for it, and headless it refuses. Single quotes, so the shell
 executes nothing in the title. `--milestone` only if the issue has one; with `No issue:` never.
 Never `--body "$(…)"`, `--fill` or `--web`: the hook blocks them.
 
@@ -358,7 +386,7 @@ pass, name it in `## Verification`.
 OpenCode and Codex do not run the hook. Check the body yourself then:
 
 ```bash
-printf '%s' "gh pr create --body-file <path>" | python3 .lighthouse/lib/lighthouse_lib/pr_body_gate.py "$PWD"
+printf '%s' "gh pr create --repo <forge.repo> --body-file <path>" | python3 .lighthouse/lib/lighthouse_lib/pr_body_gate.py "$PWD"
 ```
 
 Exit 0 = fine (read the messages on stdout); 2 = blocked (reason on stderr); 3 = open quote; any

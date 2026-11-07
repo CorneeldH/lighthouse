@@ -56,7 +56,7 @@ type Pre struct {
 }
 
 // Prepare reads the board of repo and keeps the issues of repo.Slug whose Status is
-// Controller or On hold, sorted by issue. branches is per issue the branch of its last run,
+// Controller or On hold, or that have an open run in open, sorted by issue. branches is per issue the branch of its last run,
 // open or closed: such an item also gets the PRs of that branch, merged with its closing PRs,
 // so a merged PR that does not close the issue stays visible after its run closed.
 func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []runs.OpenRun, branches map[int]string) (Pre, error) {
@@ -87,10 +87,16 @@ func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []
 			}
 		}
 	}
+	// An issue with an open run stays in, whatever its status: only settle closes that run,
+	// and close-issue moves the item to Done before the tick sees the run end.
+	hasRun := make(map[int]bool, len(open))
+	for _, r := range open {
+		hasRun[r.Issue] = true
+	}
 	var items []Item
 	for _, bi := range board {
 		status := statusName[bi.SingleSelect[b.StatusFieldID]]
-		if bi.Repo != repo.Slug || bi.Issue <= 0 || !dispatchStatuses[status] {
+		if bi.Repo != repo.Slug || bi.Issue <= 0 || !dispatchStatuses[status] && !hasRun[bi.Issue] {
 			continue
 		}
 		it := Item{

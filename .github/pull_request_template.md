@@ -16,7 +16,7 @@
      `Closes #123` + a `### Evidence #123` table with one row per acceptance criterion, only
        when a person opens the PR without /lighthouse-write-pr: the merge closes the issue;
      `No issue: <reason>`.
-     Give the PR the milestone of that issue (`gh pr create --milestone "<title>"`).
+     Give the PR the milestone of that issue (`gh pr create --repo <owner/repo> --milestone "<title>"`).
      No issue, no milestone. -->
 
 ## Open review points

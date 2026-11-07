@@ -244,7 +244,7 @@ per AC that is not `demonstrably done` a line *what is missing*.
 
 | Verdict over all AC | Outcome |
 |---|---|
-| all criteria `demonstrably done` | steps 4–6 of entry A. For the DoD the merge counts as review; a DoD line that is not measurable from here goes into the close comment as such and does not block. `gh issue close` knows no file flag (only `-c, --comment string`): first post the close comment with the evidence lines through `gh issue comment <nr> --body-file <file>` (from the `mktemp -d` directory) and then close with `gh issue close <nr> --reason completed`. If the comment fails, do not close. Before that close comment, run *Clean up the worktree*; its result per branch goes along as evidence lines in the close comment. |
+| all criteria `demonstrably done` | steps 4–6 of entry A. For the DoD the merge counts as review; a DoD line that is not measurable from here goes into the close comment as such and does not block. `gh issue close` knows no file flag (only `-c, --comment string`): first post the close comment with the evidence lines through `gh issue comment <nr> --repo "$R" --body-file <file>` (from the `mktemp -d` directory) and then close with `gh issue close <nr> --repo "$R" --reason completed`. If the comment fails, do not close. Before that close comment, run *Clean up the worktree*; its result per branch goes along as evidence lines in the close comment. |
 | otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not shorten through `lighthouse-write-issue`, do not touch the board (the controller sets `In progress`), no question, no `/lighthouse-write-handoff`. End after the comment. |
 
 **Reports.** Every report that step 0, 4 or 6 addresses to the user (e.g. "DoD not met → report",
@@ -315,7 +315,7 @@ counts.
 
 | Exit | Output in `run.txt` | Meaning | What now |
 |---|---|---|---|
-| `0` | table | all rows `heading:evidence_holds` | `gh issue comment <nr> --body "after-merge check: $(python3 .lighthouse/lib/lighthouse_lib/headings.py evidence_holds)"`, then step 6 (released issues) and *Close the milestone*, after that *Clean up the worktree* |
+| `0` | table | all rows `heading:evidence_holds` | `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh issue comment <nr> --repo "$R" --body "after-merge check: $(python3 .lighthouse/lib/lighthouse_lib/headings.py evidence_holds)"`, then step 6 (released issues) and *Close the milestone*, after that *Clean up the worktree* |
 | `4` | table | `heading:evidence_unmeasurable` from here | comment through `--body-file` (see below); **do not reopen**; report the rows to the user, then step 6 (released issues) and *Close the milestone* |
 | `1` | the table head `heading:evidence_table_head` is in it | `heading:evidence_fails` / `heading:evidence_invalid` | reopen, see below |
 | `2` | starts with `heading:evidence_closes_without_block` | no evidence block in the PR body | reopen, see below |
@@ -329,13 +329,15 @@ file; the unmeasurable rows do not count as proved at *Close the milestone*:
 
 ```bash
 { printf '%s\n\n' 'after-merge check: holds, except for rows that are not measurable from here'; cat <scratch>/run.txt; } > <scratch>/comment.md
-gh issue comment <nr> --body-file <scratch>/comment.md
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+gh issue comment <nr> --repo "$R" --body-file <scratch>/comment.md
 ```
 
 **Exit `1` or `2` with recognised output — reopen, fail-closed.** First the issue, then the board:
 
 ```bash
-gh issue reopen <nr> --comment "$(cat <scratch>/run.txt)"
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+gh issue reopen <nr> --repo "$R" --comment "$(cat <scratch>/run.txt)"
 python3 .lighthouse/scripts/board_start.py --reopen <nr>
 ```
 
@@ -488,7 +490,8 @@ If the lane does not work (the bot without Issues: write, workflow disabled, or 
 the fallback is by hand, per `<m>` with `0` open blockers, also by the user:
 
 ```bash
-gh issue edit <m> --remove-label <labels.blocked_issue>
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+gh issue edit <m> --repo "$R" --remove-label <labels.blocked_issue>
 ```
 
 If a call fails, report "released issues not read" with that command, never "none".

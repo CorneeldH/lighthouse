@@ -36,8 +36,8 @@ const (
 // allowlist is the set of commands a run may start, after the /paia- rewrite.
 var allowlist = map[string]bool{
 	"/lighthouse-start-issue":                  true,
-	"/lighthouse-spec-adversarial-review":      true,
-	"/lighthouse-plan-adversarial-review":      true,
+	"/lighthouse-review-spec":                  true,
+	"/lighthouse-review-plan":                  true,
 	"/superpowers:writing-plans":               true,
 	"/superpowers:subagent-driven-development": true,
 	"/lighthouse-fix-pr":                       true,
@@ -59,10 +59,20 @@ type Judgement struct {
 	Arg     string
 }
 
-// rewrite turns a /paia-<name> command into /lighthouse-<name>.
+// renamed maps a command name from before the rename of #142 to its current name.
+var renamed = map[string]string{
+	"/lighthouse-spec-adversarial-review": "/lighthouse-review-spec",
+	"/lighthouse-plan-adversarial-review": "/lighthouse-review-plan",
+}
+
+// rewrite turns a /paia-<name> command into /lighthouse-<name>, and an old name into its
+// current one.
 func rewrite(command string) string {
 	if rest, ok := strings.CutPrefix(command, "/paia-"); ok {
-		return "/lighthouse-" + rest
+		command = "/lighthouse-" + rest
+	}
+	if current, ok := renamed[command]; ok {
+		return current
 	}
 	return command
 }
@@ -131,11 +141,11 @@ func ReviewSkip(next string, c repoconfig.Controller) (command, skipKey string) 
 	}
 	rest := strings.Join(fields[1:], " ")
 	switch rewrite(fields[0]) {
-	case "/lighthouse-spec-adversarial-review":
+	case "/lighthouse-review-spec":
 		if !c.SpecReview {
 			return strings.TrimSpace("/superpowers:writing-plans " + rest), "skip_spec_review"
 		}
-	case "/lighthouse-plan-adversarial-review":
+	case "/lighthouse-review-plan":
 		if !c.PlanReview {
 			return strings.TrimSpace("/superpowers:subagent-driven-development " + rest), "skip_plan_review"
 		}
@@ -175,7 +185,7 @@ func Executing(command string) bool {
 		return true
 	}
 	switch rewrite(fields[0]) {
-	case "/lighthouse-spec-adversarial-review", "/lighthouse-plan-adversarial-review", "/superpowers:writing-plans":
+	case "/lighthouse-review-spec", "/lighthouse-review-plan", "/superpowers:writing-plans":
 		return false
 	}
 	return true

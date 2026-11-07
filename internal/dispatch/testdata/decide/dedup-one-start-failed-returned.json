@@ -33,7 +33,7 @@
                 {
                   "id": 63,
                   "author": "owner",
-                  "body": "🤖 Handoff\nissue: #7\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-7-bouw-de-keten\nanchor: 3f2a1bc\nnext: /lighthouse-spec-adversarial-review /home/u/r/docs/developer/planning/specs/2026-10-31-keten.md\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-7-bouw-de-keten\nDoel: de keten afmaken.\nEerste stap: /lighthouse-spec-adversarial-review /home/u/r/docs/developer/planning/specs/2026-10-31-keten.md\n```",
+                  "body": "🤖 Handoff\nissue: #7\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-7-bouw-de-keten\nanchor: 3f2a1bc\nnext: /lighthouse-review-spec /home/u/r/docs/developer/planning/specs/2026-10-31-keten.md\nwhen: now\n\n```\nWorktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nBranch: issue-7-bouw-de-keten\nDoel: de keten afmaken.\nEerste stap: /lighthouse-review-spec /home/u/r/docs/developer/planning/specs/2026-10-31-keten.md\n```",
                   "created_at": "2026-10-31T11:00:00Z",
                   "url": "https://github.com/o/r/issues/7#issuecomment-63",
                   "rocket": true
@@ -69,8 +69,8 @@
         "default_branch": "main",
         "installed": {
           "lighthouse-start-issue": true,
-          "lighthouse-spec-adversarial-review": true,
-          "lighthouse-plan-adversarial-review": true,
+          "lighthouse-review-spec": true,
+          "lighthouse-review-plan": true,
           "lighthouse-fix-pr": true,
           "lighthouse-close-issue": true
         },

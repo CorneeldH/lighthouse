@@ -199,7 +199,7 @@ def test_entry_c_does_not_paste_runner_output_in_a_quoted_line():
     for body in skill():
         c = _entry_c(body)
         assert "run.txt" in c
-        assert 'gh issue reopen <nr> --comment "$(cat <scratch>/run.txt)"' in c
+        assert 'gh issue reopen <nr> --repo "$R" --comment "$(cat <scratch>/run.txt)"' in c
         assert "never paste runner output or body text into a quoted command line" in c
 
 
@@ -245,7 +245,7 @@ def test_entry_c_exit_4_writes_a_comment_file():
     for body in skill():
         c = _entry_c(body)
         assert "> <scratch>/comment.md" in c
-        assert "gh issue comment <nr> --body-file <scratch>/comment.md" in c
+        assert 'gh issue comment <nr> --repo "$R" --body-file <scratch>/comment.md' in c
 
 
 def test_cleanup_reads_the_audit_token():

@@ -4,6 +4,35 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.8.8] - 2026-11-06
+
+### Fixed
+
+- `lighthouse tick` now closes an open run on an issue that left Controller and On hold, such as a close-check run whose issue `lighthouse-close-issue` already moved to Done. Before, such a run never closed and kept holding a slot.
+
+## [v0.8.7] - 2026-11-06
+
+### Fixed
+
+- In a clone of a fork `gh pr create` opened the PR in the upstream repo, because `lighthouse-write-pr`
+  passed no `--repo`. The skill now passes `--repo` with `forge.repo`, as does every other writing
+  `gh` command in the skills, and `pr-create-gate` blocks a `gh pr create` without `--repo`, `-R` or
+  `GH_REPO` and names the exact `--repo <forge.repo>` to add.
+
+## [v0.8.6] - 2026-11-06
+
+### Fixed
+
+- `lighthouse init` and `init --upgrade` now warn when git ignores a file they install, for example `.lighthouse/lib/` under a `lib/` rule, with the rule that ignores it. Such a file works locally but never reaches a commit.
+
+## [v0.8.5] - 2026-11-02
+
+### Fixed
+
+- The dispatcher starts `/lighthouse-review-spec` and `/lighthouse-review-plan` again: its allowlist
+  still held the names from before the rename and returned every review handoff. A handoff with an
+  old name now starts the review under its new name.
+
 ## [v0.8.4] - 2026-11-02
 
 ### Fixed
