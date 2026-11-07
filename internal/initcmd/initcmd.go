@@ -791,10 +791,13 @@ func labelsTarget(root string) (string, error) {
 				Labels string `toml:"labels"`
 			} `toml:"paths"`
 		}
-		if _, err := toml.Decode(string(b), &cfg); err != nil {
+		md, err := toml.Decode(string(b), &cfg)
+		if err != nil {
 			return "", fmt.Errorf("lighthouse.toml: %w", err)
 		}
-		if cfg.Paths.Labels != "" {
+		// A key that is set but empty is an error, not "absent": AppendMissing keeps it,
+		// and the label script would reject it after the seed.
+		if md.IsDefined("paths", "labels") {
 			target = cfg.Paths.Labels
 		}
 	}

@@ -110,7 +110,7 @@ func TestLabelsUsesConfiguredPath(t *testing.T) {
 }
 
 func TestLabelsRejectsBadPath(t *testing.T) {
-	for _, bad := range []string{"../x.md", "/etc/x.md", "a/../b.md", "a//b.md", "./x.md"} {
+	for _, bad := range []string{"../x.md", "/etc/x.md", "a/../b.md", "a//b.md", "./x.md", ""} {
 		root := newRepo(t)
 		write(t, root, "lighthouse.toml", "[paths]\nlabels = \""+bad+"\"\n")
 		before := snapshot(t, root)
