@@ -211,6 +211,23 @@ hervatting ook op haar eigen sessie. Ook een geparkeerde run, een eerdere misluk
 die met *wacht op permissie* (16) is teruggegeven laat zo geen claude achter die de handoff blokkeert
 (#263). Mislukt die `Kill`, dan sluit de run als `start_failed` (*end earlier claude: …*), zonder post.
 
+### Afloop met de lokale werkplek
+
+Decide verandert niet, maar `claude -p` loopt anders dan een interactieve claude. Bij
+`workplace = "local"` vuren sommige regels anders:
+
+| Regel | Bij de lokale adapter |
+|---|---|
+| 1-3, 6, 6b, 7 (`End`, `Kill`) | Claude is meestal al weg; `Kill` ruimt op wat hij achterliet. |
+| 9 `Unknown command:` | Vuurt niet. `-p` antwoordt op een onbekend commando met gewone tekst. De run eindigt `done` zonder PR of handoff, en regel 14 geeft *geen handoff of vraag*. |
+| 10 nooit een assistent-beurt | Vangt een claude die direct na de start sterft. |
+| 16 permissie-prompt | Vuurt niet. In `-p` wordt een permissie geweigerd in plaats van gevraagd; de hook `permission-check` schrijft niets. Een run die daarna vastloopt, valt onder 17. |
+| 18 zonder transcript | Vuurt niet: de stand is nooit `waiting`. Een hangend proces zonder transcript valt onder 19 (`max_runtime`). |
+| Kill vóór resume (#206) | Blijft; vindt meestal niets. |
+
+Stoppen en opruimen gaan op het merk `LIGHTHOUSE_CONTROLLER_RUN` van de run, niet op de unit: `Remove`
+beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workplace.md](workplace.md#lokaal)).
+
 ## Exitcodes
 
 | Code | Wanneer |
@@ -350,12 +367,33 @@ parkeert bij zijn volgende tool-call van de hoofdthread (zie
 
 Het pad van de vlag staat in [usage-gate.md](usage-gate.md) (*Contract*).
 
+## De tick onder systemd of cron
+
+Met de lokale werkplek start de tick de runs zelf, losgekoppeld, en laat ze doorlopen als hij klaar is.
+Draait de tick in een systemd-service met de standaard `KillMode=control-group`, dan doodt systemd na
+afloop elk proces in de cgroup van de unit, en `setsid` ontsnapt daar niet aan: elke run zou met de tick
+sterven. De tick-unit [`lighthouse-tick.service`](../deploy/systemd/lighthouse-tick.service) (met de
+[timer](../deploy/systemd/lighthouse-tick.timer), elke 5 minuten) staat daarom op `KillMode=process`: alleen
+de tick zelf wordt gestopt. Ze heeft ook geen hardening (`ProtectHome`, `ProtectSystem`,
+`NoNewPrivileges`), want die zou voor elke run gelden. Een operator ziet bij elke tick terwijl er runs
+leven in de journal `Found left-over process … in control group while starting unit. Ignoring.`: dat is
+verwacht, de runs van een eerdere tick leven nog in dezelfde cgroup.
+
+Voor `XDG_RUNTIME_DIR` (tick stopt zonder), `HOME`, `GH_TOKEN` en een `PATH` met `claude` zorgt de unit zelf;
+de installatie staat in [install.md](install.md). Onder cron zet de regel `XDG_RUNTIME_DIR` zelf en leest
+hij `forge.env`:
+
+```text
+*/5 * * * * export XDG_RUNTIME_DIR=/run/user/$(id -u) PATH="$HOME/.local/bin:$HOME/go/bin:/usr/bin:/bin"; set -a; . "$HOME/.config/lighthouse/forge.env"; set +a; lighthouse tick
+```
+
 ## `[dispatch]` in `host.toml`
 
 Elke sleutel is optioneel; dit zijn de standaarden.
 
 ```toml
 [dispatch]
+workplace = "kenn-forge"     # of "local"; met local geen [dispatch.forge] en geen target_key
 repos = ["/home/me/repositories/lighthouse"]  # absolute paden van de main checkouts; standaard []
 slots = 4                    # lopende plus geparkeerde runs op de host
 max_software = 2             # runs tegelijk in het Software-profiel
@@ -370,6 +408,12 @@ answer_permissions = ["admin", "maintain"]
 url = "http://127.0.0.1:8091"
 token_file = "/home/me/.kenn/forge/auth_token"   # standaard: <home>/.kenn/forge/auth_token
 ```
+
+Met `workplace = "local"` leest tick `[dispatch.forge]` niet en is `target_key` onder
+`[dispatch.profiles.<naam>]` niet nodig; `mcp_config` van het profiel geldt wel. Een andere waarde dan
+`kenn-forge` of `local` stopt tick met een fout die de sleutel noemt. Zie *Lokaal* in
+[workplace.md](workplace.md#lokaal), *Afloop met de lokale werkplek* hierboven en, voor de tick als systemd-unit of cron-taak,
+*De tick onder systemd of cron* hieronder.
 
 `slots` en `max_software` zijn minstens 1, `min_mem_available_gb` en `reserve_per_run_gb` minstens 0.
 `repos` mag alleen absolute paden bevatten. Per rechtenprofiel kan `[dispatch.profiles.<naam>]` staan;
