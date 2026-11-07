@@ -196,10 +196,12 @@ curl -fsSLo ~/.config/systemd/user/lighthouse-tick.service https://raw.githubuse
 curl -fsSLo ~/.config/systemd/user/lighthouse-tick.timer https://raw.githubusercontent.com/CorneeldH/lighthouse/<tag>/deploy/systemd/lighthouse-tick.timer
 systemctl --user daemon-reload
 systemctl --user enable --now lighthouse-tick.timer
+loginctl enable-linger "$USER"
 ```
 
 With a clone, copy both files from `deploy/systemd/` instead. Enable the timer, not the service; it runs
-the tick two minutes after boot and every five minutes after.
+the tick two minutes after boot and every five minutes after. `enable-linger` keeps the timer running
+when you are not logged in.
 
 Two choices in the unit are on purpose:
 

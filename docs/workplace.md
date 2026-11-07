@@ -332,10 +332,12 @@ van de tick staan.
 - `Stop` en `Kill(workspaceID, sessionIDs)`: doen hetzelfde, want een lokale run heeft geen zachtere
   stop. Ze beëindigen elk gemerkt proces van de sessie-id's: SIGTERM, tot 5 s wachten, dan SIGKILL. Een
   leeg sessie-id weigeren ze vóór elk signaal.
-- `Remove(workspaceID)`: beëindigt eerst elk gemerkt proces van de sessies van de workspace, ook voor
-  een adopted workspace, na de `Dirty`-check en vóór `git worktree remove`. `Cleanup` slaat een sessie
-  over die `done` is, terwijl een klare claude een dev-server kan achterlaten; het merk vindt die nog.
-  Een vuile worktree is `ErrDirty`; de lokale branch blijft staan.
+- `Remove(workspaceID)`: beëindigt elk gemerkt proces van de sessies van de workspace. Bij een eigen
+  worktree gebeurt dat na de `Dirty`-check en vóór `git worktree remove`; een vuile worktree is `ErrDirty`
+  en er wordt niets beëindigd. Bij een adopted of verdwenen worktree beëindigt `Remove` alleen de
+  processen en wist de records, zonder `Dirty`-check en zonder `git worktree remove`. `Cleanup` slaat een
+  sessie over die `done` is, terwijl een klare claude een dev-server kan achterlaten; het merk vindt die
+  nog. De lokale branch blijft staan.
 - `Lookup(workspaceID)`: pad en branch uit het record.
 - `Discard(workspaceID)`: vergeet de launches zonder pid-bestand, na het beëindigen van de processen
   die hun merk dragen.
