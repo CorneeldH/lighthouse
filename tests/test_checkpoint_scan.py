@@ -507,7 +507,6 @@ def _blob_id(body: bytes) -> str:
 
 
 def test_second_scan_touches_only_new_blobs(sx):
-    started = time.monotonic()
     old = _bulk_checkpoints(sx.repo, 0, 500)
 
     first = sx.scan(old)
@@ -517,13 +516,17 @@ def test_second_scan_touches_only_new_blobs(sx):
     assert sorted(logged) == sorted(_tree_blobs(sx.repo, old.values()))
 
     new = _bulk_checkpoints(sx.repo, 500, 5)
+    # Time only the second scan: building 505 checkpoints took most of a 43 s run on
+    # macos-latest (#90) and says nothing about the scan.
+    started = time.monotonic()
     second = sx.scan({**old, **new})
+    elapsed = time.monotonic() - started
 
     assert second.returncode == 0, second.stderr
     fresh = _tree_blobs(sx.repo, new.values()) - _tree_blobs(sx.repo, old.values())
     assert len(fresh) == 5  # the shared metadata.json is not among them
     assert sorted(sx.logged()) == sorted(fresh)
-    assert time.monotonic() - started < 20
+    assert elapsed < 20
 
 
 def test_shared_blob_scanned_once(sx):
