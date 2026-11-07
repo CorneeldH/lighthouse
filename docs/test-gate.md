@@ -51,7 +51,7 @@ ze niet op een host zonder `/proc/meminfo` (macOS): daar blokkeert elke commit m
 
 ```toml
 [host]
-name = "thuisserver"                # verplicht in elke host.toml
+name = "thuisserver"            # verplicht in elke host.toml
 tailscale_ip = "100.64.0.1"     # verplicht in elke host.toml
 gate_slice = "gates.slice"
 gate_slots = 2
