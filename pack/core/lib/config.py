@@ -53,9 +53,18 @@ REQUIRED_STATUS_OPTIONS = ("To do", "In progress", "Done", "On hold")
 CONTROLLER_STATUS_OPTION = "Controller"
 LANGUAGES = ("nl", "en")
 
-# The characters GitHub allows in owner and name. A quote or `<` never reaches a
-# URL or a regex this way.
-_REPO = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
+# The characters a path segment may hold (an owner, a GitLab group or a name). A
+# quote or `<` never reaches a URL or a regex this way.
+_SEGMENT = r"[A-Za-z0-9._-]+"
+FORGE_KINDS = ("github", "gitlab")
+# GitHub: owner/name. GitLab: group/name with any number of subgroups between.
+_REPO = {
+    "github": re.compile(rf"{_SEGMENT}/{_SEGMENT}"),
+    "gitlab": re.compile(rf"{_SEGMENT}(?:/{_SEGMENT})+"),
+}
+_REPO_FORM = {"github": "owner/name", "gitlab": "group/name or group/subgroup/.../name"}
+# A bare host name: no scheme, port or path.
+_HOST = re.compile(r"[A-Za-z0-9.-]+")
 
 _STR, _INT, _STRS, _INTS = "str", "int", "list[str]", "list[int]"
 _BOOL = "bool"
@@ -168,6 +177,7 @@ _BASE_KEYS = (
     "forge.repo",
     "forge.owner",
     "forge.name",
+    "forge.host",
     "forge.board.project_number",
     "forge.board.project_id",
     "forge.board.status_field_id",
@@ -221,14 +231,16 @@ class Config:
     language: str
     board: Board | None
     raw: Mapping[str, Any]
+    host: str | None = None
 
     @property
     def owner(self) -> str | None:
-        return None if self.repo is None else self.repo.split("/", 1)[0]
+        """Everything before the last `/`: `group/sub` for a GitLab subgroup repo."""
+        return None if self.repo is None else self.repo.rpartition("/")[0]
 
     @property
     def name(self) -> str | None:
-        return None if self.repo is None else self.repo.split("/", 1)[1]
+        return None if self.repo is None else self.repo.rpartition("/")[2]
 
 
 @dataclass(frozen=True)
@@ -384,21 +396,34 @@ def load(path: Path) -> Config:
     """Read and validate one `lighthouse.toml`."""
     data = _read_toml(path, f"{path}: file is missing")
 
-    kind = repo = None
+    kind = repo = host = None
     board = None
     if "forge" in data:
         forge = _get(data, "forge", dict, "", path)
-        # `kind` and `repo` are optional too: a repo without a GitHub remote may
+        # `kind`, `repo` and `host` are optional too: a repo without a remote may
         # hold only `default_branch` here.
         if "kind" in forge:
             kind = _get(forge, "kind", str, "forge.", path)
-            if kind != "github":
-                raise ConfigError(f"{path}: key forge.kind must be 'github', not {kind!r}")
+            if kind not in FORGE_KINDS:
+                raise ConfigError(
+                    f"{path}: key forge.kind must be 'github' or 'gitlab', not {kind!r}"
+                )
+        # Without a `kind` the repo is a GitHub one.
+        repo_kind = kind or "github"
         if "repo" in forge:
             repo = _get(forge, "repo", str, "forge.", path)
-            if not _REPO.fullmatch(repo):
+            if not _REPO[repo_kind].fullmatch(repo):
                 raise ConfigError(
-                    f"{path}: key forge.repo must have the form owner/name: {repo!r}"
+                    f"{path}: key forge.repo must have the form "
+                    f"{_REPO_FORM[repo_kind]}: {repo!r}"
+                )
+        if "host" in forge:
+            host = _get(forge, "host", str, "forge.", path)
+            if kind != "gitlab":
+                raise ConfigError(f"{path}: key forge.host is only valid with kind = 'gitlab'")
+            if not _HOST.fullmatch(host):
+                raise ConfigError(
+                    f"{path}: key forge.host must be a bare host name, not {host!r}"
                 )
         if "board" in forge:
             board = _board(
@@ -433,6 +458,7 @@ def load(path: Path) -> Config:
         language=language,
         board=board,
         raw=MappingProxyType(data),
+        host=host,
     )
 
 

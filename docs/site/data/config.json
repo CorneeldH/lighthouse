@@ -124,9 +124,10 @@
               "key": "forge.kind",
               "level": "set",
               "required": "no",
-              "about": "Which forge hosts the repo. Only github is accepted for now.",
+              "about": "Which forge hosts the repo: github or gitlab. Without it the repo is read as a GitHub one.",
               "options": [
-                "github"
+                "github",
+                "gitlab"
               ],
               "example": "github",
               "readers": [
@@ -138,7 +139,7 @@
               "key": "forge.repo",
               "level": "set",
               "required": "no",
-              "about": "The repository as owner/name.",
+              "about": "The repository as owner/name. With kind gitlab, group/name or group/subgroup/.../name.",
               "example": "owner/name",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
@@ -158,6 +159,14 @@
                 "pack/core/skills/write-pr",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
+            },
+            {
+              "key": "forge.host",
+              "level": "set",
+              "required": "no",
+              "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
+              "example": "git.example.org",
+              "readers": []
             },
             {
               "key": "forge.default_branch",

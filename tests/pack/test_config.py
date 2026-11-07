@@ -140,7 +140,7 @@ def test_load_rejects_invalid_utf8(tmp_path):
 @pytest.mark.parametrize(
     ("mutation", "needle"),
     [
-        (_with(("forge", "kind"), "gitlab"), "kind"),
+        (_with(("forge", "kind"), "forgejo"), "kind"),
         (_with(("forge", "repo"), "no-slash"), "repo"),
         (_with(("forge", "repo"), "a/b/c"), "repo"),
         (_with(("forge", "repo"), "/name"), "repo"),
@@ -734,7 +734,7 @@ def test_without_forge_table_load(tmp_path, monkeypatch):
 
 def test_broken_forge_is_rc_2(tmp_path, monkeypatch, capsys):
     path = tmp_path / "lighthouse.toml"
-    path.write_text('[forge]\nkind = "gitlab"\n')
+    path.write_text('[forge]\nkind = "forgejo"\n')
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
     assert main(["test_gate.slots"]) == 2
     assert "forge.kind" in capsys.readouterr().err
@@ -755,6 +755,7 @@ def _forge_only_branch(tmp_path, monkeypatch) -> Path:
         ("forge.repo", 1, ""),
         ("forge.owner", 1, ""),
         ("forge.kind", 1, ""),
+        ("forge.host", 1, ""),
     ],
 )
 def test_forge_with_only_default_branch(tmp_path, monkeypatch, capsys, key, rc, out):
@@ -762,6 +763,78 @@ def test_forge_with_only_default_branch(tmp_path, monkeypatch, capsys, key, rc, 
     _forge_only_branch(tmp_path, monkeypatch)
     assert main([key]) == rc
     assert capsys.readouterr().out == out
+
+
+def _forge_toml(tmp_path, monkeypatch, **forge) -> Path:
+    data = _copy(VALID)
+    data["forge"].update(forge)
+    path = _write(tmp_path, data)
+    monkeypatch.setenv("LIGHTHOUSE_TOML", str(path))
+    return path
+
+
+def test_gitlab_subgroup_repo(tmp_path, monkeypatch, capsys):
+    path = _forge_toml(tmp_path, monkeypatch, kind="gitlab", repo="groep/sub/repo")
+    cfg = load(path)
+    assert (cfg.owner, cfg.name) == ("groep/sub", "repo")
+    assert main(["forge.owner"]) == 0
+    assert capsys.readouterr().out == "groep/sub\n"
+    assert main(["forge.name"]) == 0
+    assert capsys.readouterr().out == "repo\n"
+
+
+def test_gitlab_repo_needs_two_segments(tmp_path):
+    data = _with(("forge", "kind"), "gitlab")
+    data["forge"]["repo"] = "alleen"
+    with pytest.raises(ConfigError, match="repo"):
+        load(_write(tmp_path, data))
+
+
+@pytest.mark.parametrize("kind", ["github", None])
+def test_github_keeps_one_slash(tmp_path, kind):
+    data = _with(("forge", "repo"), "a/b/c")
+    if kind is None:
+        del data["forge"]["kind"]
+    else:
+        data["forge"]["kind"] = kind
+    with pytest.raises(ConfigError, match="repo"):
+        load(_write(tmp_path, data))
+
+
+@pytest.mark.parametrize("repo", ["g/s/<x>", "g//r", "g/s/r/", 'g/s"/r'])
+def test_gitlab_repo_rejects_unsafe_segments(tmp_path, repo):
+    data = _with(("forge", "kind"), "gitlab")
+    data["forge"]["repo"] = repo
+    with pytest.raises(ConfigError, match="repo"):
+        load(_write(tmp_path, data))
+
+
+def test_forge_host(tmp_path, monkeypatch, capsys):
+    _forge_toml(tmp_path, monkeypatch, kind="gitlab", host="git.example.org")
+    assert main(["forge.host"]) == 0
+    assert capsys.readouterr().out == "git.example.org\n"
+
+
+def test_forge_host_default_is_unset(tmp_path, monkeypatch):
+    assert load(_forge_toml(tmp_path, monkeypatch, kind="gitlab")).host is None
+
+
+@pytest.mark.parametrize(
+    ("kind", "host"),
+    [
+        ("github", "git.example.org"),
+        ("gitlab", "https://x"),
+        ("gitlab", "x/y"),
+        ("gitlab", "x:22"),
+        ("gitlab", "a b"),
+        ("gitlab", ""),
+    ],
+)
+def test_forge_host_rejected(tmp_path, kind, host):
+    data = _with(("forge", "kind"), kind)
+    data["forge"]["host"] = host
+    with pytest.raises(ConfigError, match=r"forge\.host"):
+        load(_write(tmp_path, data))
 
 
 def test_forge_with_only_default_branch_load(tmp_path, monkeypatch):
