@@ -1,6 +1,6 @@
 # Ontwerp: Lighthouse zonder Python
 
-Milestone: *Lighthouse zonder Python* (nieuw) · Datum: 2026-11-07 · Bouwt op M0 (besluit 1 van
+Milestone: [Lighthouse zonder Python](https://github.com/CorneeldH/lighthouse/milestone/10) (#274–#285) · Datum: 2026-11-07 · Bouwt op M0 (besluit 1 van
 [de M0-spec](2026-10-17-m0-pakket-design.md): "Herbouw in Go komt in M1/M2") en gaat vóór het
 Windows-issue van [M3](2026-11-07-m3-tweede-omgeving-design.md) (#90).
 
