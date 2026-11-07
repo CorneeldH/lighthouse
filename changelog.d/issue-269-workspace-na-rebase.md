@@ -1,7 +1,7 @@
 ---
 type: fixed
 ---
-Een hergebruikte forge-workspace volgt `origin/<branch>` ook na een rebase en force-push: commits die
-patch-gelijk op origin staan, tellen niet meer als eigen werk. Heeft de workspace echt eigen werk of een
-vuile werkboom, dan start de run niet stil op de oude `HEAD`. De dispatcher geeft de run terug met de
-reden "werkplek heeft eigen werk dat niet op origin staat", de workspace en het aantal eigen commits.
+A reused forge workspace follows `origin/<branch>` after the branch was rebased and force-pushed:
+commits that are on origin as a patch-equal commit no longer count as own work. A workspace with real
+own work or a dirty work tree no longer starts the run silently on its old `HEAD`; the dispatcher hands
+the run back with the reason, the workspace and the number of own commits.
