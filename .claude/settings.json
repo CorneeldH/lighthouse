@@ -223,5 +223,17 @@
       "Bash(.claude/skills/lighthouse-review-spec/review.sh:*)",
       "Bash(.claude/skills/lighthouse-review-spec/verify.sh:*)"
     ]
+  },
+  "enabledPlugins": {
+    "superpowers@superpowers-dev": true
+  },
+  "extraKnownMarketplaces": {
+    "superpowers-dev": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers"
+      },
+      "autoUpdate": false
+    }
   }
 }

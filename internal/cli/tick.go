@@ -101,7 +101,7 @@ func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateD
 	}
 	return &kennforge.Adapter{
 		Client: kennforge.New(cfg.Forge.URL, cfg.Forge.TokenFile),
-		Kind:   repo.Kind, Repo: repo.Slug, MainCheckout: repo.Dir, StateDir: stateDir,
+		Kind:   repo.Kind, Repo: repo.Slug, StateDir: stateDir,
 		Targets: targets, Profile: repo.Controller.Profile, Run: e.runner(),
 		Home: e.Getenv("HOME"),
 	}
@@ -589,14 +589,7 @@ func (m *runProbe) transcript(ctx context.Context, r runs.OpenRun) (*workplace.T
 	if !ok {
 		return nil, nil
 	}
-	dir, err := tr.TranscriptDir(ctx, r.WorkspaceID)
-	if errors.Is(err, workplace.ErrNotMeasurable) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	t, err := workplace.ReadTranscript(dir, r.SessionID)
+	t, err := tr.Transcript(ctx, r.WorkspaceID, r.SessionID)
 	if errors.Is(err, workplace.ErrNotMeasurable) || errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}

@@ -108,6 +108,7 @@ type fakeWorkplace struct {
 	onKill     func()   // runs at the start of Kill
 	killed     []string // "<workspace> <session ids>" per Kill
 	forgot     []string // workspace per Discard
+	root       string   // prefixed to the workspace path, so a test can give it real files
 }
 
 func (w *fakeWorkplace) Prepare(_ context.Context, branch string) (workplace.Workspace, error) {
@@ -115,7 +116,7 @@ func (w *fakeWorkplace) Prepare(_ context.Context, branch string) (workplace.Wor
 	if w.prepareErr != nil {
 		return workplace.Workspace{}, w.prepareErr
 	}
-	return workplace.Workspace{ID: "ws-" + branch, Path: "/forge/" + branch, Branch: branch}, nil
+	return workplace.Workspace{ID: "ws-" + branch, Path: w.root + "/forge/" + branch, Branch: branch}, nil
 }
 
 func (w *fakeWorkplace) Spawn(_ context.Context, ws workplace.Workspace, l workplace.LaunchSpec) (workplace.Session, error) {
@@ -255,8 +256,8 @@ func (h *harness) seed(t *testing.T, issue int, session, key string, outcome run
 func startAction() Action {
 	return Action{
 		Kind: KindStart, Repo: applyRepo, Issue: 7, Mode: "start", Trigger: "handoff",
-		TriggerKey: "handoff:55", Attempt: 1, Command: "/lighthouse-review-spec /w/spec.md",
-		Prompt: "/lighthouse-review-spec /w/spec.md (issue #7, controller-run)",
+		TriggerKey: "handoff:55", Attempt: 1, Command: "/lighthouse-review-spec /forge/issue-7-x/spec.md",
+		Prompt: "/lighthouse-review-spec /forge/issue-7-x/spec.md (issue #7, controller-run)",
 		Branch: "issue-7-x", Native: true, Skip: "skip_plan_review", CommentID: 55, Language: "nl",
 	}
 }
@@ -295,7 +296,7 @@ func TestApplyStartOrder(t *testing.T) {
 	wantBody := "🤖 Gestart\n" +
 		"session: " + freshSession + "\n" +
 		"worktree: /forge/issue-7-x\n" +
-		"command: /lighthouse-review-spec /w/spec.md\n" +
+		"command: /lighthouse-review-spec /forge/issue-7-x/spec.md\n" +
 		"start: 2026-10-31T09:00:00Z\n" +
 		"branch: issue-7-x\n" +
 		"skip: plan-review overgeslagen (config)\n" +
@@ -311,7 +312,7 @@ func TestApplyStartOrder(t *testing.T) {
 	instructions := filepath.Join(h.env.StateDir, "runs", freshSession, "instructions.md")
 	wantSpec := workplace.LaunchSpec{
 		Repo: applyRepo, Issue: 7, SessionID: freshSession, Mode: "start", Profile: "writing",
-		Prompt: "/lighthouse-review-spec /w/spec.md (issue #7, controller-run)", Native: true,
+		Prompt: "/lighthouse-review-spec /forge/issue-7-x/spec.md (issue #7, controller-run)", Native: true,
 		InstructionsFile: instructions, MCPConfig: "/etc/lighthouse/mcp.json",
 	}
 	if !reflect.DeepEqual(h.wp.spawned, []workplace.LaunchSpec{wantSpec}) {
@@ -335,6 +336,52 @@ func TestApplyStartWithoutTriggerCommentPostsNoRocket(t *testing.T) {
 	}
 	if body := h.poster(applyRepo).bodies[0]; strings.Contains(body, "skip:") {
 		t.Errorf("body has a skip line without Skip:\n%s", body)
+	}
+}
+
+// A handoff written in another checkout names its plan there (#237): the run launches with the
+// same plan in its own worktree, and the Started and the run row say so.
+func TestApplyStartRelocatesAPlanFromAnotherCheckout(t *testing.T) {
+	h := newHarness(t)
+	h.wp.root = t.TempDir()
+	plan := h.wp.root + "/forge/issue-7-x/design/plans/p.md"
+	writeEmpty(t, plan)
+	a := startAction()
+	a.Command = "/lighthouse-review-plan /home/u/repo/.claude/worktrees/issue-7-x/design/plans/p.md"
+	a.Prompt = a.Command + " (issue #7, controller-run)"
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	wantPrompt := "/lighthouse-review-plan " + plan + " (issue #7, controller-run)"
+	if len(h.wp.spawned) != 1 || h.wp.spawned[0].Prompt != wantPrompt {
+		t.Fatalf("spawned %+v, want one with prompt %q", h.wp.spawned, wantPrompt)
+	}
+	if body := h.poster(applyRepo).bodies[0]; !strings.Contains(body, "command: /lighthouse-review-plan "+plan+"\n") {
+		t.Errorf("Started does not name the relocated plan:\n%s", body)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].Command != "/lighthouse-review-plan "+plan {
+		t.Errorf("rows = %+v, want one with the relocated command", rows)
+	}
+}
+
+// A plan the run's worktree does not hold closes the run as start_failed within the tick, with
+// the path in the reason, and launches nothing.
+func TestApplyStartPlanNotInTheWorktreeFails(t *testing.T) {
+	h := newHarness(t)
+	h.wp.root = t.TempDir()
+	a := startAction()
+	a.Command = "/lighthouse-review-plan /home/u/repo/design/plans/p.md"
+	a.Prompt = a.Command + " (issue #7, controller-run)"
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err == nil {
+		t.Fatal("Apply: want an error")
+	}
+	if len(h.wp.spawned) != 0 {
+		t.Errorf("spawned %+v, want none", h.wp.spawned)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed ||
+		!strings.HasPrefix(rows[0].Reason, "handoff path: /home/u/repo/design/plans/p.md ") {
+		t.Errorf("rows = %+v, want one closed start_failed with reason handoff path: /home/u/repo/design/plans/p.md …", rows)
 	}
 }
 

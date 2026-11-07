@@ -42,8 +42,10 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    kan noch de rem noch de afloop (regel 5) kijken. Per open run met een werkplek meet tick ook de
    afloop: de laatste gebeurtenis in het transcript (subagents meegeteld, per draad), of de sessie
    nog een eerste commando mist (`Unknown command:`) of nooit een assistent-beurt had, en de laatste
-   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven). Staat het transcript niet op deze host (het Software-profiel in een
-   devcontainer), dan is de run niet meetbaar: geen fout, en de afloop valt terug op de forge-stand.
+   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven). Bij het
+   Software-profiel haalt de werkplek het transcript uit de devcontainer, zodat ook daar een
+   onbekend commando binnen één tick `start_failed` wordt (#237). Is er (nog) geen transcript, dan
+   is de run niet meetbaar: geen fout, en de afloop valt terug op de forge-stand.
    Een run die tick niet kan meten (stand of afloop) schrijft
    `lighthouse: measure <repo>: run <id>: <fout>` naar stderr; de andere runs worden wel gemeten. Een
    sessie die de tick zonder sleutel aantreft (een onzekere start) zoekt `workplace.AdoptSessions`
@@ -116,6 +118,14 @@ geen `tick.lock`, maar volgt dezelfde volgorde: zijn rij staat in de database v�
 het issue. Daarom leest tick de runhistorie pas ná de comments. Wie de Gestart ziet, ziet zo ook de
 rij, en tick geeft een verse run nooit terug als wees (`runstaat kwijt`). Claimen tick en `run`
 dezelfde trigger tegelijk, dan wint één `runs.Take`; de ander post niets.
+
+**Het pad in het commando.** Een handoff die in een andere checkout is geschreven, noemt zijn spec of
+plan daar, bijvoorbeeld in een worktree onder de hoofdcheckout. De run kan dat pad niet lezen: zijn
+devcontainer mount alleen de forge-worktrees (#237). Ligt het pad-argument van een start buiten de
+worktree van de run, dan vervangt apply het door de langste staart van minstens twee delen die daar
+als bestand bestaat (`dispatch.Relocate`). Dat geldt voor de Gestart, de rij en de prompt. Bestaat
+geen staart, dan sluit apply de run na de claim als `start_failed`, met reden
+`handoff path: <pad> is not in the worktree …`, en start er niets.
 
 **Een geweigerde of onzekere launch.** Weigert de werkplek de launch, dan meldt apply
 `<repo>#<n>: launch of run <id> not accepted: <reden>` op stderr, op één regel. Onder de 🤖 Gestart

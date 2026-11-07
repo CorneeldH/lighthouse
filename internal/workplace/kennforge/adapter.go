@@ -24,16 +24,15 @@ const (
 
 // Adapter is the kenn-forge implementation of the workplace interface.
 type Adapter struct {
-	Client       *Client
-	Kind, Repo   string            // [forge] kind and repo of the repository
-	MainCheckout string            // the repo's main checkout, for the devcontainer label
-	StateDir     string            // where carriers go
-	Targets      map[string]string // profile -> forge target_key
-	Profile      string            // the repo profile ([controller] profile)
-	Run          workplace.Runner
-	Home         string              // where ~/.claude/projects lives; "": os.UserHomeDir
-	Sleep        func(time.Duration) // nil: time.Sleep
-	ReadyWait    time.Duration       // 0: 60s
+	Client     *Client
+	Kind, Repo string            // [forge] kind and repo of the repository
+	StateDir   string            // where carriers go
+	Targets    map[string]string // profile -> forge target_key
+	Profile    string            // the repo profile ([controller] profile)
+	Run        workplace.Runner
+	Home       string              // where ~/.claude/projects lives; "": os.UserHomeDir
+	Sleep      func(time.Duration) // nil: time.Sleep
+	ReadyWait  time.Duration       // 0: 60s
 
 	spawnTimeout time.Duration // 0: 30s
 }
@@ -400,14 +399,9 @@ func (a *Adapter) readWorkspace(ctx context.Context, workspaceID string) (wireWo
 	return w, nil
 }
 
-// TranscriptDir is the directory Claude Code keeps the transcripts of the workspace's
-// worktree in, under Home. A directory that is not on this host (the agent runs in a
-// devcontainer, say) is workplace.ErrNotMeasurable; a 404 is workplace.ErrGone.
-func (a *Adapter) TranscriptDir(ctx context.Context, workspaceID string) (string, error) {
-	w, err := a.readWorkspace(ctx, workspaceID)
-	if err != nil {
-		return "", err
-	}
+// hostTranscriptDir is the directory Claude Code keeps the transcripts of worktree in, under
+// Home. A directory that is not on this host is workplace.ErrNotMeasurable.
+func (a *Adapter) hostTranscriptDir(workspaceID, worktree string) (string, error) {
 	home := a.Home
 	if home == "" {
 		var err error
@@ -415,7 +409,7 @@ func (a *Adapter) TranscriptDir(ctx context.Context, workspaceID string) (string
 			return "", fmt.Errorf("transcripts of %s: %w", workspaceID, err)
 		}
 	}
-	dir := workplace.ProjectDir(home, w.WorktreeDir)
+	dir := workplace.ProjectDir(home, worktree)
 	st, err := os.Stat(dir)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):

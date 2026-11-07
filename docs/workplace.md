@@ -139,11 +139,20 @@ niet verschijnt (start onzeker) of die te lang loopt (`max_runtime`), beslist de
 
 ## Transcripten
 
-`workplace.Transcripts` is een optionele interface naast `Workplace`: `TranscriptDir(ctx, workspaceID)`
-geeft de map met de transcripten van de workspace (`~/.claude/projects/<cwd, elk teken buiten
-[A-Za-z0-9] als '-'>`; `workplace.ProjectDir`). Staat die map niet op deze host, bijvoorbeeld voor het
-Software-profiel in een devcontainer, dan is dat `workplace.ErrNotMeasurable`: de run is niet
-meetbaar, en dat is geen fout van de tick. Een 404 van forge blijft `workplace.ErrGone`.
+`workplace.Transcripts` is een optionele interface naast `Workplace`:
+`Transcript(ctx, workspaceID, sessionID)` leest het transcript van één sessie, zoals
+`workplace.ReadTranscript` hieronder. De map is `~/.claude/projects/<cwd, elk teken buiten
+[A-Za-z0-9] als '-'>` (`workplace.ProjectDir`). Een 404 van forge blijft `workplace.ErrGone`.
+
+- Profiel `software`: claude draait in de gedeelde devcontainer en houdt zijn transcripten in een
+  volume dat de host niet kan lezen (eigenaar een subuid, mode 700). De adapter haalt daarom de
+  bestanden van de sessie uit de container: per devcontainer (dezelfde `podman ps` als bij `Stop`)
+  één `podman exec <c> sh -c <script>`, dat `<sessie>.jsonl` en `<sessie>/subagents` als tar
+  uitvoert, of exit 3 geeft als de sessie daar niet staat. De adapter pakt alleen die bestanden uit
+  in een tijdelijke map, leest ze en ruimt de map op. Staat de sessie in geen container, dan
+  wikkelt de fout `fs.ErrNotExist`; een falende `podman` is een fout van de tick (#237).
+- Elk ander profiel: de map op deze host. Staat die er niet, dan is dat `workplace.ErrNotMeasurable`:
+  de run is niet meetbaar, en dat is geen fout van de tick.
 
 `workplace.ReadTranscript(dir, sessionID)` leest `<sessie>.jsonl` en de subagent-transcripten onder
 `<sessie>/subagents` en geeft een `Transcript`: de laatste gebeurtenis over alle draden (`LastEvent`),
@@ -162,8 +171,11 @@ wordt (een multibyte teken geeft er dus meer). Dan:
 2. `systemctl --user is-active <unit>` beslist: alleen `inactive` of `failed` is gestopt. Alles anders is
    een fout.
 3. Alleen bij het profiel `software` draait claude in de gedeelde devcontainer, buiten de cgroup van de
-   unit, en forge heeft geen stop-endpoint. Dan zoekt `Stop` de containers via
-   `podman ps --filter label=devcontainer.local_folder=<main checkout>` en doet per container en per
+   unit, en forge heeft geen stop-endpoint. Dan zoekt `Stop` in elke devcontainer, via
+   `podman ps --filter label=devcontainer.local_folder` (alleen de sleutel). De gedeelde container hoort
+   bij de checkout van de launcher, en dat kan een andere repo zijn dan die van de run (#237); een
+   filter op de hoofdcheckout van de repo vond dan niets en stopte stil niets. Het sessie-id is een
+   verse UUID, dus een vreemd proces past er niet op. Daarna doet `Stop` per container en per
    sessie-id `pgrep -f <id>` (rc 0 draait, rc 1 weg, de rest een fout), `pkill -f <id>` en tot vijf keer
    een `pgrep` om te bevestigen.
 
@@ -174,7 +186,10 @@ de gedeelde devcontainer, ook vreemde sessies.
 
 Een claude blijft na zijn laatste antwoord draaien, ook als forge zijn sessie `done` noemt. Een hervatting
 van dezelfde sessie (`--resume <sessie>`) weigert forge zolang die oude claude leeft: een 500
-`submit initial message failed` (#206). `Kill(workspaceID, sessionIDs)` beëindigt daarom alleen de
+`submit initial message failed` (#206). Ook een nieuwe start in dezelfde worktree faalt zo: de unit van
+de oude run draait door zolang zijn claude leeft, en de launcher start de nieuwe met dezelfde
+unitnaam. `systemd-run` weigert die (`Unit … was already loaded`), de pane sterft, en forge geeft
+dezelfde 500 (#237). `Kill(workspaceID, sessionIDs)` beëindigt daarom alleen de
 claude-processen van de gegeven sessies, op sessie-id, en raakt de unit nooit: een vreemde sessie in
 dezelfde worktree draait door.
 

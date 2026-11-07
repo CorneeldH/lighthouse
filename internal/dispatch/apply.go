@@ -250,8 +250,14 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	}
 
 	session := a.SessionID
+	var relocErr error
 	if a.Kind == KindStart {
 		session = env.NewSession()
+		var command string
+		if command, relocErr = Relocate(a.Command, ws.Path); relocErr == nil && command != a.Command {
+			a.Prompt = strings.Replace(a.Prompt, a.Command, command, 1)
+			a.Command = command
+		}
 	}
 	profile, mcpConfig := env.Profile(a.Repo)
 	run, err := runs.Take(ctx, env.DB, runs.Claim{
@@ -268,6 +274,10 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	}
 	if err != nil {
 		return err
+	}
+	// After the claim, so the retry rule sees a start_failed run with the path in its reason.
+	if relocErr != nil {
+		return ap.startFailed(ctx, run.ID, "handoff path", relocErr)
 	}
 	// A resume reuses the session: while the claude of the earlier run still lives, forge
 	// refuses the handoff. Only after the claim, so a process that lost it kills nothing.

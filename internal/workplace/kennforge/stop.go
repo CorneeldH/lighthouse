@@ -113,16 +113,27 @@ func where(c string) string {
 	return "in container " + c
 }
 
-func (a *Adapter) killInContainers(ctx context.Context, sessionIDs []string) error {
+// devcontainers lists every devcontainer, not only the one of the repo's main checkout: the
+// launcher runs claude in the shared devcontainer of its own checkout, which may belong to
+// another repo (#237). A session id is a fresh UUID, so no foreign process or file matches it.
+func (a *Adapter) devcontainers(ctx context.Context) ([]string, error) {
 	out, code, err := a.Run(ctx, stopTimeout, "podman", "ps",
-		"--filter", "label=devcontainer.local_folder="+a.MainCheckout, "--format", "{{.ID}}")
+		"--filter", "label=devcontainer.local_folder", "--format", "{{.ID}}")
 	if err != nil {
-		return fmt.Errorf("podman ps: %w", err)
+		return nil, fmt.Errorf("podman ps: %w", err)
 	}
 	if code != 0 {
-		return fmt.Errorf("podman ps: exit code %d", code)
+		return nil, fmt.Errorf("podman ps: exit code %d", code)
 	}
-	for _, c := range strings.Fields(out) {
+	return strings.Fields(out), nil
+}
+
+func (a *Adapter) killInContainers(ctx context.Context, sessionIDs []string) error {
+	containers, err := a.devcontainers(ctx)
+	if err != nil {
+		return err
+	}
+	for _, c := range containers {
 		for _, sid := range sessionIDs {
 			if err := a.killSession(ctx, c, sid); err != nil {
 				return err

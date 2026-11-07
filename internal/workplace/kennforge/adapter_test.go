@@ -632,52 +632,6 @@ func TestSessionsOtherStatusNotGone(t *testing.T) {
 	}
 }
 
-func TestAdapterTranscriptDir(t *testing.T) {
-	t.Run("the project dir of the worktree", func(t *testing.T) {
-		f, a := newFakeForge(t)
-		f.path = "/srv/forge/ws/issue-7.x"
-		a.Home = t.TempDir()
-		want := filepath.Join(a.Home, ".claude", "projects", "-srv-forge-ws-issue-7-x")
-		if err := os.MkdirAll(want, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		got, err := a.TranscriptDir(context.Background(), "ws1")
-		if err != nil || got != want {
-			t.Errorf("TranscriptDir = %q, %v; want %q", got, err, want)
-		}
-	})
-	t.Run("no project dir on the host", func(t *testing.T) {
-		f, a := newFakeForge(t)
-		f.path = "/workspaces/issue-7"
-		a.Home = t.TempDir()
-		if got, err := a.TranscriptDir(context.Background(), "ws1"); !errors.Is(err, workplace.ErrNotMeasurable) {
-			t.Errorf("TranscriptDir = %q, %v; want ErrNotMeasurable", got, err)
-		}
-	})
-	t.Run("a file where the dir should be", func(t *testing.T) {
-		f, a := newFakeForge(t)
-		f.path = "/w"
-		a.Home = t.TempDir()
-		if err := os.MkdirAll(filepath.Join(a.Home, ".claude", "projects"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(a.Home, ".claude", "projects", "-w"), nil, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if got, err := a.TranscriptDir(context.Background(), "ws1"); !errors.Is(err, workplace.ErrNotMeasurable) {
-			t.Errorf("TranscriptDir = %q, %v; want ErrNotMeasurable", got, err)
-		}
-	})
-	t.Run("no worktree path", func(t *testing.T) {
-		_, a := newFakeForge(t)
-		a.Home = t.TempDir()
-		got, err := a.TranscriptDir(context.Background(), "ws1")
-		if err == nil || errors.Is(err, workplace.ErrNotMeasurable) {
-			t.Errorf("TranscriptDir = %q, %v; want an error that is not ErrNotMeasurable", got, err)
-		}
-	})
-}
-
 func TestLookup(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.path, f.headRef = "/w/1", "issue-7"
