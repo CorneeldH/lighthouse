@@ -1,0 +1,17 @@
+# lighthouse-upgrade.timer — runs lighthouse-upgrade.service daily (systemd user unit)
+#
+# Why Persistent: a run missed while the machine was off happens at the next start.
+# Why RandomizedDelaySec: machines do not all hit the release endpoint at the same minute.
+#
+# Install: see lighthouse-upgrade.service.
+
+[Unit]
+Description=lighthouse — daily upgrade check
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target
