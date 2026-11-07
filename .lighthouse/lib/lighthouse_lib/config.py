@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import errno
 import ipaddress
+import math
 import os
 import re
 import socket
@@ -450,12 +451,18 @@ def _scan_limit(path: Path, host: dict, name: str, pattern: re.Pattern[str], sha
 
 
 def _positive_number(path: Path, host: Mapping[str, Any], name: str) -> float | None:
-    """An optional threshold: an int or float above 0; a bool is not a number."""
+    """An optional threshold: a finite int or float above 0; a bool is not a number.
+    TOML allows `inf` and `nan`; neither is a threshold a host can meet."""
     value = host.get(name)
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-        raise ConfigError(f"{path}: key host.{name} must be a number above 0: {value!r}")
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+    ):
+        raise ConfigError(f"{path}: key host.{name} must be a finite number above 0: {value!r}")
     return float(value)
 
 

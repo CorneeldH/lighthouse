@@ -847,6 +847,8 @@ def test_gate_host_keys_absent(tmp_path, monkeypatch, capsys, key):
         ("gate_min_mem_available_gb = 0", "gate_min_mem_available_gb"),
         ("gate_min_swap_free_gb = -1", "gate_min_swap_free_gb"),
         ("gate_min_swap_free_gb = true", "gate_min_swap_free_gb"),
+        ("gate_min_mem_available_gb = inf", "gate_min_mem_available_gb"),
+        ("gate_min_swap_free_gb = nan", "gate_min_swap_free_gb"),
     ],
 )
 def test_gate_host_keys_invalid(tmp_path, monkeypatch, capsys, line, key):
