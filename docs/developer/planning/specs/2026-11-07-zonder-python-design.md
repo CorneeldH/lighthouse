@@ -392,3 +392,11 @@ past de M3-spec daarop aan. Het Windows-issue begint pas na deze milestone.
 - De opdeling van stap 7 in één of twee PR's, en het samenvoegen van kleine stappen als een PR
   klein blijft.
 - Hoe de testsuite de binary één keer bouwt (fixture, `conftest.py`).
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, §10 Dogfood (new r2-f1 block) / §10 opening paragraph): The diff makes dev hooks run the branch's own code, and falls back to the PATH binary only when `go build` fails. A branch whose code compiles but whose hook misbehaves (e.g. `main-commit-gate` blocking every Bash call) has no exit. The binary is rebuilt only on a HEAD change, and a commit needs Bash. The diff also leaves the opposite rule in place a few lines up: 'in deze repo roept `run.sh` de geïnstalleerde `lighthouse` aan, niet de code van de branch'. The PR test strategy rests on that rule. The implementer must pick one of the two.
+- **r3-f2** (MAJOR, §10 Dogfood (new r2-f1 block), the rebuild in `run.sh`): Several Claude Code hooks fire in parallel on one event. Each one runs its own `run.sh`, so after every HEAD change they all see a stale stamp at the same moment. They then all run `go build -o .lighthouse/bin/lighthouse` into the same path and write the same stamp. The spec defines no lock, and no build-to-temp-then-rename. One `run.sh` can exec the binary while another is still rewriting it. The exec then fails with exit 126/ENOEXEC or crashes. Claude Code treats that as a non-blocking hook error, so a blocking gate passes unchecked.
