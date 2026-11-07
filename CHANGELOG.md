@@ -4,6 +4,13 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.11.4] - 2026-11-07
+
+### Fixed
+
+- The worktree audit measures a lock pid without `/proc`, so it works on macOS; a pid it cannot measure
+  blocks removal. `docs/host-assumptions.md` lists every assumption about the host.
+
 ## [v0.11.3] - 2026-11-07
 
 ### Fixed
