@@ -147,7 +147,8 @@ func TestWriteFileAtomicModes(t *testing.T) {
   compileerfout, `FollowRemote` en `WriteFileAtomic` bestaan niet.
 
 - [ ] **Stap 3: Verhuis en implementeer.** `followRemote`/`checkoutRemote` naar `remote.go` met
-  een eigen `git(ctx, run, timeout, dir, args...)`-helper (vorm van de `kennforge`-helpers);
+  een eigen `remoteGit(ctx, run, timeout, dir, args...)`-helper (vorm van de `kennforge`-helpers;
+  niet `git`: `git_test.go:13` heeft al een testhelper `git` in package `workplace`);
   `kennforge.Prepare` roept `workplace.FollowRemote(ctx, a.Run, gitTimeout, ws, created)`.
   `hostTranscriptDir` naar `transcript.go`; `kennforge.Transcript` roept
   `workplace.HostTranscriptDir(a.Home, workspaceID, w.WorktreeDir)`. `WriteCarrier` schrijft via
@@ -274,7 +275,7 @@ type Fixture interface {
 	Spec(t *testing.T) workplace.LaunchSpec                    // a valid start; the suite sets SessionID
 	MakeDirty(t *testing.T, ws workplace.Workspace)
 	Forget(t *testing.T, ws workplace.Workspace) // the workplace no longer knows it
-	Live(t *testing.T, sid string)               // a process of sid runs; a spawned sid counts as working
+	Live(t *testing.T, sid string)               // a process of sid runs: its session is working; a spawned sid without Live is done
 	Survivor(t *testing.T, sid string)           // ... and outlives every signal
 	Unmeasurable(t *testing.T)                   // processes cannot be measured
 	SpawnTimesOut(t *testing.T)                  // the next launch has an unknown outcome
@@ -370,7 +371,7 @@ type Procs interface {
 	// the calling process. A process that ends during the scan, or an environ that is not ours
 	// to read, is skipped; an unreadable /proc, or an empty sid, is an error.
 	Marked(sid string) ([]int, error)
-	// StartTime is field 22 of /proc/<pid>/stat; ok is false when pid is gone.
+	// StartTime is field 22 of /proc/<pid>/stat; ok is false when pid is gone or a zombie (state Z).
 	StartTime(pid int) (start uint64, ok bool, err error)
 	// Signal sends sig to pid; a pid that is gone is no error.
 	Signal(pid int, sig syscall.Signal) error
@@ -393,7 +394,8 @@ func newProcFS() Procs // linux: procFS{root: "/proc", uid: os.Getuid(), self: o
   - `TestMarkedSkipsOtherUser`: `uid: os.Getuid()+1` → leeg.
   - `TestMarkedUnreadableProcIsError`: `root` bestaat niet → fout. `Marked("")` → fout.
   - `TestStartTimeParsesField22`: stat `"42 (we ird) x) S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 777 19 20"`
-    → `777, true, nil`. Weg → `0, false, nil`. `"42 (x) S 1"` → fout.
+    → `777, true, nil`. Weg → `0, false, nil`. Dezelfde regel met stand `Z` in plaats van `S`
+    → `0, false, nil`. `"42 (x) S 1"` → fout.
   - `TestMarkedRealProcess` (echt): `exec.Command("sleep", "60")` met `Env` plus
     `LIGHTHOUSE_CONTROLLER_RUN=<uuid>` → `newProcFS().Marked(uuid)` bevat zijn pid.
   - `TestSignalRealAndGone` (echt): `Signal(pid, SIGTERM)` op die `sleep` → `Wait` meldt het
@@ -487,8 +489,9 @@ func (a *Adapter) resolve(ctx context.Context, id string) (rec wsRecord, wt *wor
     `wt == nil`.
   - `Prepare`: de stappen van de spec (*Prepare(branch)*). Na een `worktree add` leest hij de
     lijst opnieuw en bewaart hij het pad zoals git het geeft. Daarvoor zet hij
-    `/.claude/worktrees/` in `$(git rev-parse --git-common-dir)/info/exclude` als die regel er nog
-    niet staat (Review Focus 1). Daarna `workplace.FollowRemote(ctx, a.Run, 60*time.Second, ws, created)`.
+    `/.claude/worktrees/` in `<common>/info/exclude` als die regel er nog niet staat (Review
+    Focus 1). `<common>` is de uitvoer van `git -C <RepoDir> rev-parse --git-common-dir`; in de
+    hoofdcheckout is die relatief (`.git`), dus `filepath.Join(RepoDir, out)` als hij niet absoluut is. Daarna `workplace.FollowRemote(ctx, a.Run, 60*time.Second, ws, created)`.
 
 - [ ] **Stap 1: Schrijf de falende tests.** Gedeelde helper in `prepare_test.go`:
   `newRepo(t) (repoDir, other string)` — bare `origin` met `main` (commit `m1`), `repoDir` een
@@ -579,7 +582,7 @@ de verkeerde argv.
 
 **Files:**
 - Create: `internal/workplace/local/spawn.go`, `spawn_test.go`
-- Modify: `internal/workplace/local/contract_test.go` (pending)
+- Modify: `internal/workplace/local/store.go` (`ensureLogs`), `internal/workplace/local/contract_test.go` (pending)
 
 **Interfaces:**
 - Consumes: `store`, `resolve`, `workplace.NewCarrier`, `Procs`.
@@ -606,7 +609,9 @@ exec "$@"' "$pidf" "$@" </dev/null >>"$log" 2>&1`
   Constanten: `pidWait = 10 * time.Second`, `pidPoll = 200 * time.Millisecond`,
   `launchTimeout = 30 * time.Second`.
   `Spawn`-volgorde (spec *Spawn* 1-6): carrier → `sh -c "command -v claude"` → `Marked(sid)` leeg →
-  `putSession` (sleutel `<sid>.<8 hex>`) → launch → uitkomst. Elke stap vóór de launch die faalt,
+  de map `logs/` maken (`0700`, via een `store`-methode `ensureLogs() error`; `>>"$log"` maakt
+  geen map, en een mislukte redirect op `exec` beëindigt `sh`) → `putSession` (sleutel
+  `<sid>.<8 hex>`) → launch → uitkomst. Elke stap vóór de launch die faalt,
   is `ErrNotAccepted` zonder launch. `Sessions` (spec *Sessions*): `resolve`; records zonder
   pid-bestand overslaan; `State` `"working"` als `StartTime(pid)` ok is en gelijk aan de start uit
   het bestand, anders `"done"`; `UpdatedAt = StartedAt`; een `Procs`-fout is een fout voor de lijst.
@@ -614,7 +619,9 @@ exec "$@"' "$pidf" "$@" </dev/null >>"$log" 2>&1`
 - [ ] **Stap 1: Schrijf de falende tests** (met `newAdapter` en een opnemende runner rond de fixture-runner):
   - `TestSpawnLaunchCommand`: het launch-argv is letterlijk
     `["-c", launchScript, "sh", ws.Path, <StateDir>/local/o/r/logs/<key>.log, <StateDir>/local/o/r/sessions/<id>/<key>.pid, "env", "LIGHTHOUSE_CONTROLLER_RUN=" + sid, "LIGHTHOUSE_STATE_DIR=" + StateDir, "claude", "-p", "--permission-mode", "auto", "--strict-mcp-config", "--allowedTools=Read(~/.claude/plugins/cache/**)", "--append-system-prompt-file", "/abs/instr.md", "--session-id", sid, "do it"]`;
-    `s.Key` past op `^` + sid + `\.[0-9a-f]{8}$`.
+    `s.Key` past op `^` + sid + `\.[0-9a-f]{8}$`; de map van het logpad bestaat met mode `0700`.
+  - `TestSpawnLogsDirUnmakeableNotAccepted`: `StateDir/local/o/r/logs` is een gewoon bestand →
+    `ErrNotAccepted`, geen launch, geen sessie-record.
   - `TestSpawnNoClaudeNotAccepted`: `command -v` exit 1 → `ErrNotAccepted`, geen launch, `store.sessions` leeg.
   - `TestSpawnMarkedSessionNotAccepted`: `marked[sid]` gezet → `ErrNotAccepted`, geen launch.
   - `TestSpawnUnwritableStateNotAccepted`: `StateDir/local/o/r/sessions` bestaat met mode `0500`
@@ -807,6 +814,9 @@ setsid -f sh -c 'echo $$ >"$LH_TEST_GRANDCHILD.tmp" && mv "$LH_TEST_GRANDCHILD.t
 exit 0
 ```
 
+    `Run` is `workplace.ExecRunner()` in een omhulsel dat de uitkomst van de launch-aanroep
+    (`name == "sh"`, `args[1] == launchScript`) bewaart; assert daarop exit 0 en geen fout (zo
+    houdt het script de pipes van de `Runner` niet vast).
     `Prepare`, `Spawn` met prompt `"it's \"$HOME\" $(id); echo\nnext"` → geaccepteerd. Wacht (tot
     10 s) op het kleinkind-bestand. Assert: de argv eindigt op exact die prompt, met `-p` als
     eerste argument (Review Focus 2); `LH_TEST_CWD` is `ws.Path`; `Sessions` wordt binnen 10 s
@@ -817,14 +827,18 @@ exit 0
     `KillMode=`-regel uit `../../../deploy/systemd/lighthouse-tick.service` (zo faalt de test als
     de unit verandert), en draai
     `systemd-run --user --wait --collect -p KillMode=<waarde> --unit=lh-tick-test-<pid>-<ns> sh -c 'setsid -f sh -c "echo \$\$ > <bestand>; exec sleep 600"'`.
-    Assert: na terugkeer leeft de pid uit `<bestand>` (`/proc/<pid>/stat` bestaat, stand niet `Z`).
+    Na terugkeer: poll tot 5 s op `<bestand>` (`setsid -f` keert terug voordat het kind schrijft;
+    geen bestand na 5 s is een fout). Assert: de pid uit `<bestand>` leeft (`/proc/<pid>/stat`
+    bestaat, stand niet `Z`).
     `t.Cleanup` doodt hem.
 - [ ] **Stap 2: Draai** `go test -race ./internal/workplace/local/ -run 'RealRun|TickUnit' -v` —
   eerst zonder unit-bestand: `TestTickUnitKeepsDetachedRun` FAIL (bestand ontbreekt).
   Schrijf de twee unit-bestanden; draai opnieuw — PASS (of SKIP met de reden; noem die in het verslag).
 - [ ] **Stap 3: Mutatie** — zet in de unit tijdelijk `KillMode=control-group`: de cgroup-test faalt.
-  Zet het terug. Haal in `launchScript` tijdelijk `</dev/null` weg: `TestRealRunKillReachesGrandchild`
-  blijft groen of faalt op een hangende launch — noteer welk, als bewijs dat de pipes los zijn.
+  Zet het terug. Haal in `launchScript` tijdelijk `>>"$log" 2>&1` weg: `TestRealRunKillReachesGrandchild`
+  faalt op de assert dat de launch-aanroep zonder fout terugkwam (`ExecRunner` geeft na
+  `WaitDelay` een fout). Zet het terug. (`</dev/null` muteren bewijst niets: `ExecRunner` geeft
+  al `/dev/null` als stdin.)
 - [ ] **Stap 4: Draai** `go test -race ./internal/workplace/...` — PASS.
 - [ ] **Stap 5: Commit** — `feat(deploy): tick-unit met KillMode=process, en echte procestests van de lokale adapter (#253)`
 
@@ -835,8 +849,21 @@ exit 0
 Klasse: docs; geen code. `md-link-check` bewaakt de links.
 
 **Files:**
-- Modify: `docs/workplace.md`, `docs/tick.md`, `docs/install.md`
+- Modify: `docs/workplace.md`, `docs/tick.md`, `docs/install.md`, `docs/host-assumptions.md`
 - Create: `changelog.d/issue-253-werkplek-zonder-kenn-forge.md`
+
+- [ ] **Stap 0: `docs/host-assumptions.md`** (Engels; r. 7: "A new assumption gets a row here in
+  the same change that adds it"). Twee rijen in *Inventory*, in de vorm van de bestaande:
+  1. `internal/workplace/local/procs_linux.go`, `spawn.go` — de lokale adapter leest
+     `/proc/<pid>/environ` en `/proc/<pid>/stat`, en start via `sh` en util-linux `setsid -f` —
+     `Linux-only` — elders geven de methoden van `Procs` de fout
+     `local workplace: needs /proc, which only linux has`; `workplace = "local"` werkt alleen op
+     Linux — `#253`.
+  2. `deploy/systemd/lighthouse-tick.service` — de tick als user-unit met `KillMode=process`,
+     zonder hardening — `Host feature` — zonder systemd draait de tick uit cron (`docs/install.md`);
+     een unit met `KillMode=control-group` doodt elke lokale run na de tick — `#253`.
+  En in de bestaande rij van de forge-standaarden (`hostconfig.go:69,72`) niets wijzigen: die
+  geldt nog steeds alleen voor de kenn-forge-adapter.
 
 - [ ] **Stap 1: `docs/workplace.md`.** De huidige kenn-forge-tekst onder een kop *kenn-forge*; een
   nieuwe kop *Lokaal*: de acht methoden kort, de bestanden onder
