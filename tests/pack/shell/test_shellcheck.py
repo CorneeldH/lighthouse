@@ -236,11 +236,15 @@ def _resolve_shellcheck(repo: Path, stub_dir: Path, fn: str = "resolve_shellchec
     )
 
 
-DARWIN_ARM64_SHA = "56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79"
+DARWIN_PINS = {
+    "arm64": "56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79",
+    "x86_64": "3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6",
+}
 
 
-def test_download_verifies_with_shasum_when_sha256sum_is_missing(tmp_path):
-    """Fails when the pinned download needs GNU sha256sum, which macOS lacks (#90)."""
+@pytest.mark.parametrize("machine", sorted(DARWIN_PINS))
+def test_download_verifies_with_shasum_when_sha256sum_is_missing(tmp_path, machine):
+    """Fails when the pinned download needs GNU sha256sum, which macOS lacks, or has no Mac release (#90)."""
     stubs = tmp_path / "bin"
     stubs.mkdir()
     # The real tooling the download needs, but no sha256sum.
@@ -264,7 +268,7 @@ def test_download_verifies_with_shasum_when_sha256sum_is_missing(tmp_path):
         path.chmod(0o755)
 
     shasum_log = tmp_path / "shasum.log"
-    stub("uname", 'case "$1" in -s) echo Darwin ;; -m) echo arm64 ;; esac\n')
+    stub("uname", f'case "$1" in -s) echo Darwin ;; -m) echo {machine} ;; esac\n')
     stub(
         "curl",
         'out=""\nwhile [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done\n'
@@ -275,7 +279,7 @@ def test_download_verifies_with_shasum_when_sha256sum_is_missing(tmp_path):
         "shasum",
         f'printf "%s\\n" "$*" >> "{shasum_log}"\n'
         '[ "$1" = -a ] && [ "$2" = 256 ] || { echo "shasum: needs -a 256" >&2; exit 1; }\n'
-        f'echo "{DARWIN_ARM64_SHA}  $3"\n',
+        f'echo "{DARWIN_PINS[machine]}  $3"\n',
     )
 
     tool_dir = tmp_path / "tools"

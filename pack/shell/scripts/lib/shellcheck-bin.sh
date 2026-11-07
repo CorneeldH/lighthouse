@@ -23,6 +23,7 @@ _sc_platform() {
     Linux/x86_64) echo linux/x86_64 ;;
     Linux/aarch64) echo linux/aarch64 ;;
     Darwin/arm64) echo darwin/arm64 ;;
+    Darwin/x86_64) echo darwin/x86_64 ;;
     *) return 1 ;;
   esac
 }
@@ -68,6 +69,7 @@ _sc_download() { # tool_dir -> path on stdout, or rc != 0
     linux/x86_64)  url="shellcheck-v${SHELLCHECK_PIN}.linux.x86_64.tar.xz";   sha=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198 ;;
     linux/aarch64) url="shellcheck-v${SHELLCHECK_PIN}.linux.aarch64.tar.xz";  sha=12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588 ;;
     darwin/arm64)  url="shellcheck-v${SHELLCHECK_PIN}.darwin.aarch64.tar.xz"; sha=56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79 ;;
+    darwin/x86_64) url="shellcheck-v${SHELLCHECK_PIN}.darwin.x86_64.tar.xz";  sha=3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6 ;;
   esac
   tmp="$(mktemp -d)" || return 1
   if ! curl -fsSL -o "$tmp/s.txz" \
