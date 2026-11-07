@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -77,8 +79,13 @@ func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace
 		return workplace.Session{}, fmt.Errorf("%w: %w", workplace.ErrNotAccepted, err)
 	}
 
-	argv := []string{"-c", launchScript, "sh", ws.Path, s.logPath(key), s.pidPath(ws.ID, key),
-		"env", markVar + "=" + l.SessionID, "LIGHTHOUSE_STATE_DIR=" + a.StateDir, "claude", "-p"}
+	// The environment of the run is the carrier's, sorted by key so the argv is stable; its
+	// markVar is the mark Marked and Kill find the processes by.
+	argv := []string{"-c", launchScript, "sh", ws.Path, s.logPath(key), s.pidPath(ws.ID, key), "env"}
+	for _, k := range slices.Sorted(maps.Keys(carrier.Env)) {
+		argv = append(argv, k+"="+carrier.Env[k])
+	}
+	argv = append(argv, "claude", "-p")
 	argv = append(argv, carrier.Args...)
 	_, code, runErr := a.Run(ctx, launchTimeout, "sh", argv...)
 	if runErr == nil && code != 0 {
