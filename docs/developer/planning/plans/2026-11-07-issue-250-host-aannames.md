@@ -51,7 +51,7 @@ inventaris is een Engelstalig document, gelinkt vanuit `docs/install.md`.
 
 ---
 
-### Taak 1: `pid_alive` zonder `/proc`
+### Task 1: `pid_alive` zonder `/proc`
 
 **Bestanden:**
 - Wijzig: `pack/core/scripts/worktree_audit.py:163-164` (`pid_alive`), `:183-211` (`_lock_state`),
@@ -163,7 +163,7 @@ git status --porcelain   # verwacht: leeg
 
 ---
 
-### Taak 2: `journalctl -k` gemarkeerd als Linux-only
+### Task 2: `journalctl -k` gemarkeerd als Linux-only
 
 **Bestanden:**
 - Wijzig: `pack/core/skills/fix-pr/claude/SKILL.md:157-166`, `pack/core/skills/fix-pr/agents/SKILL.md:158-167`
@@ -194,7 +194,7 @@ git status --porcelain   # verwacht: leeg
 
 ---
 
-### Taak 3: literal-grep ook op `internal/` en `cmd/`
+### Task 3: literal-grep ook op `internal/` en `cmd/`
 
 **Bestanden:**
 - Wijzig: `ci/literal-grep.sh`
@@ -279,7 +279,7 @@ git commit -m "ci(literal-grep): Go-denylist ook op internal/ en cmd/ (#250)"
 
 ---
 
-### Taak 4: inventaris, installatiegids en changelog
+### Task 4: inventaris, installatiegids en changelog
 
 **Bestanden:**
 - Nieuw: `docs/host-assumptions.md`
