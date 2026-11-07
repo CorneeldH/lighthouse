@@ -239,8 +239,7 @@ Volgorde per tick; een issue krijgt hoogstens één startactie.
    Hervat.
 5. **Nacontrole**: een `Refs`-PR van het issue is gemerged, het issue is open en staat in
    Controller, en er stond een 🤖 Gestart vóór de merge → start `/lighthouse-close-issue N` in
-   de workspace van het issue. Een `Closes`-PR sluit het issue bij de merge al; daar doet de
-   tick niets (ingang C van close-issue is aan de mens) *(eigen keuze na spec-review, r1-f10)*.
+   de workspace van het issue. Een controllerrun opent altijd een `Refs`-PR (`/lighthouse-write-pr`, #147), dus deze regel dekt elke PR van de controller. Een `Closes`-PR sluit het issue bij de merge al; daar doet de tick niets, want alleen een mens opent nog een `Closes`-PR (ingang C van close-issue is aan de mens) *(eigen keuze na spec-review, r1-f10; herzien in #147: eerst sloot ook een controllerrun met `Closes`, en bleef de nacontrole daarvan aan de mens)*.
    Het issue blijft in Controller tot die run klaar is, zodat een Vraag of Teruggegeven van die
    run in het overzicht komt (r1-f15). De run-instructies laten de run eerst
    `git fetch` doen en tegen `origin/main` toetsen. *Mijn keuze:* paia wacht tot `main` gelijk is

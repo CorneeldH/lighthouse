@@ -322,6 +322,58 @@ def test_handoff_blocked_restart_from_its_own_worktree():
         assert "own worktree and branch of the issue" in step3
 
 
+RULE = (
+    "A handoff belongs where the next step needs a clean context: the previous step used up a "
+    "lot of context, or the next step must judge independently. A handoff also belongs where "
+    "the chain waits for an external event, such as red CI or a merge."
+)
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def test_handoff_carries_the_rule():
+    """The rule for where a handoff belongs stands in the skill, before the routing table."""
+    for body in skill("write-handoff"):
+        flat = _flat(body)
+        assert RULE in flat
+        assert flat.index(RULE) < flat.index("4. **Decide the first step")
+
+
+def test_handoff_routes_a_finished_build_to_write_pr():
+    """A finished build with a green last commit goes to write-pr, in both routing tables."""
+    for body in skill("write-handoff"):
+        step4 = _step(body, "4. **Decide the first step", "5. **Name the pitfalls")
+        rows = [r for r in step4.splitlines() if r.lstrip().startswith("| build done")]
+        assert len(rows) == 1
+        assert rows[0].strip().startswith(
+            "| build done, last commit green, no PR yet | `/lighthouse-write-pr <nr>` |"
+        )
+        assert rows[0].strip().endswith("| `offer` |")
+        step3 = _step(body, "3. **`next:` is exactly one command", "4. **`when:`**")
+        assert "| build done, last commit green | `/lighthouse-write-pr <nr>` |" in step3
+
+
+def test_handoff_build_row_pushes_after_v2b_first():
+    """An interactive build never read run.md: the row itself says V2b and the push come first."""
+    for body in skill("write-handoff"):
+        step4 = _flat(_step(body, "4. **Decide the first step", "5. **Name the pitfalls"))
+        needle = "step V2b of `/lighthouse-write-pr` and `git push -u origin HEAD`"
+        assert needle in step4
+        assert "before you post or offer" in step4
+
+
+def test_handoff_pr_open_row_names_the_close_check():
+    """The PR-open handoff is final: the close check starts after the merge of the Refs PR."""
+    for body in skill("write-handoff"):
+        step3 = _step(body, "3. **`next:` is exactly one command", "4. **`when:`**")
+        row = next(r for r in step3.splitlines() if r.lstrip().startswith("| PR open"))
+        assert "the controller does not start it from the handoff" in row
+        assert "after the merge of the `Refs` PR" in row
+        assert "it waits for green" not in body
+
+
 PLAN_SEAM = [
     "**Exception: a plan, not reviewed.**",
     "no `AskUserQuestion`",

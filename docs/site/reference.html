@@ -82,8 +82,9 @@ browser blocks for a page opened straight from disk. From the root of the reposi
 
   <h3>Pull requests</h3>
   <p>Every change goes through a pull request and is squash-merged. <code>/lighthouse-write-pr</code>
-  writes the body: <code>Closes #N</code> with an evidence table, one row per acceptance criterion,
-  or <code>Refs #N</code> or <code>No issue</code> with a reason. The hook
+  writes the body: <code>Refs #N</code> with an Evidence table of the proven criteria
+  (<code>/lighthouse-close-issue</code> runs it after the merge and closes the issue), or
+  <code>No issue</code> with a reason. A person may still open a <code>Closes #N</code> PR. The hook
   <code>pr-create-gate</code> blocks a <code>gh pr create</code> without one of those.</p>
 
   <h3>What init puts in <code>.github/</code></h3>

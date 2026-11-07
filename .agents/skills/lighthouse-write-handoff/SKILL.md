@@ -43,6 +43,12 @@ The pause form skips every side effect of a phase transition, also when
 *Controller mode* section is skipped (no `🤖` comment, no board status), there is no question
 to the user, and the `/clear` suggestion is skipped. Then stop.
 
+## Where a handoff belongs
+
+A handoff belongs where the next step needs a clean context: the previous step used up a lot of
+context, or the next step must judge independently. A handoff also belongs where the chain waits
+for an external event, such as red CI or a merge. Workflow step 4 applies this rule.
+
 ## Workflow
 
 1. **Decide the place.** In a worktree? Then the absolute path + the branch:
@@ -87,6 +93,7 @@ to the user, and the `/clear` suggestion is skipped. Then stop.
    | an issue, no spec yet, several designs possible | `/superpowers:brainstorming` | `no` |
    | an issue that already settles the HOW | `/lighthouse-start-issue <nr>` | `no` |
    | a bug or failing test | `/superpowers:systematic-debugging` | `no` |
+   | build done, last commit green, no PR yet | `/lighthouse-write-pr <nr>` | `offer` |
    | work done, issue can be closed | `/lighthouse-close-issue <nr>` | `no` |
    | PR open, review needed | `/code-review` | `no` |
    | PR red | `/lighthouse-fix-pr <pr>` | `offer` |
@@ -97,6 +104,10 @@ to the user, and the `/clear` suggestion is skipped. Then stop.
    block, without a question; `choice` is the choice in chat text (step 2, *Exception*);
    `offer` is the `AskUserQuestion` from step 2; `default` is posting and Status `Controller` without a question (step 2, *`default`*). A controller run does not look at the
    column: it always posts. At `choice` you print two blocks in step 6 before the question: first *review*, then *interactive*.
+
+   The row "build done, last commit green, no PR yet" has a precondition: an interactive session
+   never read `run.md`, and the write-pr run sees only what is on origin. So before you post or
+   offer that handoff, run step V2b of `/lighthouse-write-pr` and `git push -u origin HEAD`.
 
    If no row fits, still choose explicitly: name the command you would run
    yourself. "Carry on where you left off" is not a first step.
@@ -219,7 +230,8 @@ tick starts the next phase itself. Two entries:
    | a plan, review converged or skipped on a decision of the user | `/superpowers:subagent-driven-development <absolute plan path>` |
    | a spec, not reviewed | `/lighthouse-review-spec <absolute spec path>` |
    | a spec, review converged | `/superpowers:writing-plans <absolute spec path>` |
-   | PR open | `/lighthouse-close-issue <nr>` — final handoff: the controller never starts this, it waits for green |
+   | build done, last commit green | `/lighthouse-write-pr <nr>` |
+   | PR open | `/lighthouse-close-issue <nr>` — final handoff: the controller does not start it from the handoff, but after the merge of the `Refs` PR, as the close check |
    | PR red | `/lighthouse-fix-pr <pr>` |
    | issue without spec, design open | `/superpowers:brainstorming` — the controller returns the issue |
    | plan the user has to guide themselves (only controller run) | `/superpowers:executing-plans <absolute plan path>` without `lane:` — the controller never starts this: it returns it, the status stays `Controller` |

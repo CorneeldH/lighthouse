@@ -1,6 +1,6 @@
 ---
 name: lighthouse-write-pr
-description: 'Use before every `gh pr create` in this repo — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate.sh blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Closes #N` with an Evidence table (one row per AC), `Refs #N — <reason>`, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — not for closing an issue or checking after the merge: use lighthouse-close-issue instead; repairing a red PR is lighthouse-fix-pr.'
+description: 'Use before every `gh pr create` in this repo — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate.sh blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Refs #N — <reason>` with an Evidence table of the proven criteria, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — not for closing an issue or checking after the merge: use lighthouse-close-issue instead; repairing a red PR is lighthouse-fix-pr.'
 metadata:
   binding: hard
   origin: own
@@ -8,9 +8,9 @@ metadata:
 
 # PR body with evidence
 
-A PR says itself whether it finishes its issue: `Closes #N` with an evidence row per acceptance
-criterion, or `Refs #N` with the reason why not yet. This skill verifies and writes that body; it
-never closes an issue itself (the merge of a `Closes` PR does that, or the user). It asks no
+A PR always names its issue with `Refs #N`, and carries an evidence row for every acceptance
+criterion it proves. `/lighthouse-close-issue` checks the rows again after the merge and closes the
+issue. This skill verifies and writes that body; it never closes an issue itself. It asks no
 question: interactive and headless (controller run, if present) the outcome is the same.
 
 ## When
@@ -30,9 +30,9 @@ gh api "repos/$R/issues/<nr>" \
   --jq '{title, milestone: .milestone.title, body}'
 ```
 
-Every checkbox under `### heading:acceptance_criteria` (any language variant) is one AC; the hook
-counts them and demands as many Evidence rows. Also note the DoD and the milestone title. `gh`
-runs outside the sandbox (`dangerouslyDisableSandbox: true`).
+Every checkbox under `### heading:acceptance_criteria` (any language variant) is one AC, and each
+gets a verdict. Also note the DoD and the milestone title. `gh` runs outside the sandbox
+(`dangerouslyDisableSandbox: true`).
 
 ## V2. Evidence per AC
 
@@ -43,10 +43,14 @@ open files. What counts as evidence and what does *not*: B2–B4 of
 ## V2b. Roborev review (only with `[review] roborev = "local"`)
 
 The session that did the work reviews it before `gh pr create`, so CI runs once, on code where
-the findings are already processed. This step also runs with `No issue:`, where V1–V3 are
-skipped. One command per step, in this order. Every command here runs outside the sandbox
-(`dangerouslyDisableSandbox: true`): the gate reads the Codex budget, the review needs the
-network. Any other non-zero exit of `roborev_gate.py` than exit 3 of `gate` (step 0) and exit 2
+the findings are already processed. In a controller run the **build session** reviews, in V2b,
+before its push and its handoff; the write-pr run never reviews: the run that starts with
+`/lighthouse-write-pr <nr>` finds `done` at step 0 and changes no code. If the gate says `run` or
+`classify` there, the build skipped V2b: no review and no processing, but
+`python3 .lighthouse/scripts/roborev_gate.py record --skip "build session ran no review"` and on to
+V4. This step also runs with `No issue:`, where V1–V3 are skipped. One command per step, in this
+order. Every command here runs outside the sandbox (`dangerouslyDisableSandbox: true`): the gate
+reads the Codex budget, the review needs the network. Any other non-zero exit of `roborev_gate.py` than exit 3 of `gate` (step 0) and exit 2
 of `record` (step 3), such as `gate` exit 1 or a failing `classify`, `fixed` or `record`: report
 it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
@@ -67,6 +71,10 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    | `done` | on to V4: this branch was reviewed and processed already (a restart) |
    | `classify` | step 2, without a review: raw output of an earlier run is there |
    | `run` | step 1 |
+
+   In a run started with `/lighthouse-write-pr <nr>`, `run` or `classify` do not mean step 1 or 2:
+   `python3 .lighthouse/scripts/roborev_gate.py record --skip "build session ran no review"`, on
+   to V4.
 
    Exit 3 (`COULD NOT CHECK`): no PR; report the message.
 1. **Review** (`run` only), with `<range>` and `<raw>` from the gate output:
@@ -131,26 +139,24 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
 ## Verdicts
 
-The three of B3 in `lighthouse-close-issue` (`demonstrably done`, `partly`, `not`), plus two:
+The three of B3 in `lighthouse-close-issue` (`demonstrably done`, `partly`, `not`), plus one:
 
 | Verdict | Meaning |
 |---|---|
-| `after merge` | the AC depends on something that can only happen after the merge: a deploy, a measurement over days, a check on the always-on host (`host.toml`) |
-| `after PR` | the AC measures a property of the PR itself and so can only exist once it does: its link to the issue (`closedByPullRequestsReferences`), the live run of the hook on its body. Nothing else falls under this. |
+| `after merge` | the AC depends on something that can only happen after the merge: a deploy, a measurement over days, a check on the always-on host (`host.toml`), or a property that can only be measured once the PR exists |
 
 ## V3. Choose the form
 
-- Every AC `demonstrably done` or `after PR` → `Closes #N`, with a heading `### Evidence #N` and
-  one table row per AC. An `after PR` row has as Result `heading:evidence_after_pr<expected fragment>`;
-  entry C of `lighthouse-close-issue` measures it after the merge. The PR number exists only after
-  `gh pr create`, so measure an `after PR` row through the issue: `gh api graphql` on
-  `closedByPullRequestsReferences` of `issue(number:<nr>)` (see *Shape of the evidence block*).
-  `gh pr view` without a number is refused by the allowlist: after the merge entry C measures in
-  a detached worktree, without a branch to fall back on.
-- Otherwise → `Refs #N — <reason>` on one line (reason ≥10 characters), with below it per open AC
-  the verdict and what is still needed.
+The form is always `Refs #N — <reason>`, never `Closes`, on one line (reason ≥10 characters).
+The reason says that `/lighthouse-close-issue` runs the rows after the merge and closes the issue.
+Below it a heading `### Evidence #N` with one row per AC that is `demonstrably done`; the AC cell starts with
+the number of the criterion in the issue (`1. …`). Below the table each open criterion (`partly`,
+`not`, `after merge`) with its verdict and what is still needed. A row for an open criterion does
+not exist: `evidence.py run --before-pr` fails on a row that does not hold. Every criterion open:
+no table.
 
-Mixing is allowed: `Closes #5` with Evidence #5 next to `Refs #6 — <reason>`.
+`Closes` stays valid for a PR a person opens without this skill. This skill never writes it: the
+merge would close the issue before the check after the merge.
 
 ## Documents of the linked issues
 
@@ -205,13 +211,13 @@ Pick the type from the diff and the AC. Write the text in English for a user, wh
 
 ## Evidence rules
 
-Entry C runs every row again after the merge on `origin/<default branch>`, so every row must be
-repeatable:
+`/lighthouse-close-issue` runs every row again after the merge on `origin/<default branch>`, so
+every row must be repeatable:
 
 - no branch-relative command (`origin/main...HEAD`, `HEAD~`, `@{u}`);
 - the Command cell is one single command between backticks, without pipe, `;`, `&&`, `$(…)` or
   redirect, and it is on the Evidence allowlist below. If an AC has to be proved outside it, it is
-  no Evidence row: find a command on the list, or it becomes `after merge` (so `Refs`);
+  no Evidence row: find a command on the list, or it becomes `after merge`;
 - the Result cell is a stable fragment of the output: no line number and no test count that moves
   with the default branch. The verdict is in the exit code; Result is a literal substring of the
   output.
@@ -222,7 +228,7 @@ stays a pipe and the row is invalid.
 ## Evidence allowlist
 
 At argv level, complete; the same list as `.lighthouse/lib/lighthouse_lib/evidence.py` (the
-source) and entry C. Always: `argv[0]` is the bare name (no `/usr/bin/grep`, no `FOO=1 grep`), an
+source) and `/lighthouse-close-issue`. Always: `argv[0]` is the bare name (no `/usr/bin/grep`, no `FOO=1 grep`), an
 option not on the list is refused, an option with `=` and an empty value too.
 
 | Command | Allowed | Not allowed |
@@ -248,20 +254,20 @@ python3 .lighthouse/lib/lighthouse_lib/evidence.py check '<Command cell>'
 
 Exit 0 (silent) = allowed; exit 1 + reason = choose another command.
 
-Before the PR, run all rows together, outside the sandbox (`dangerouslyDisableSandbox: true`,
-otherwise every `gh` row is `heading:evidence_unmeasurable`):
+Before the PR, only if the body has a table, run all rows together, outside the sandbox
+(`dangerouslyDisableSandbox: true`, otherwise every `gh` row is `heading:evidence_unmeasurable`):
 
 ```bash
 python3 .lighthouse/lib/lighthouse_lib/evidence.py run --issue <nr> --body-file <path> --cwd . --before-pr
 ```
 
 Output (stderr included): a table `heading:evidence_table_head`. Every row must be
-`heading:evidence_holds` or `heading:evidence_after_pr_unmeasured`; another row goes out, and then
-that AC needs another command or it is not proved (`Refs`).
+`heading:evidence_holds`; another row goes out of the table, and that criterion becomes open (it
+needs another command, or it is not proved).
 
 | Exit | Meaning | Do |
 |---|---|---|
-| 0 | all `heading:evidence_holds` or `heading:evidence_after_pr_unmeasured` | on to V4 |
+| 0 | all `heading:evidence_holds` | on to V4 |
 | 1 | ≥1 `heading:evidence_fails` or `heading:evidence_invalid` | repair the row or take it out |
 | 2 | no valid `Evidence #N` table (`heading:evidence_closes_without_block`) | repair the body |
 | 3 | `COULD NOT CHECK` (body unreadable, `--cwd` not a directory) | blocks: no PR, report it |
@@ -270,7 +276,7 @@ that AC needs another command or it is not proved (`Refs`).
 
 ## DoD
 
-Goes to `## Verification` and does not decide between `Closes`/`Refs` ("code reviewed" can never
+Goes to `## Verification` and does not decide which criteria get a row ("code reviewed" can never
 be true before the merge). Exception: if the tests are not green, the skill makes no PR and
 reports that.
 
@@ -337,12 +343,24 @@ R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh pr commen
 `gh` outside the sandbox. If `gh pr comment` fails, report it: the state and the raw output stay
 on disk, so a second try needs only these two commands.
 
+## V5. After the PR
+
+Only if `gh pr create` opened a PR for an issue (`Refs #N`); with `No issue:` V5 is skipped. The issue stays open until the check after the merge.
+
+- Interactive: `/lighthouse-write-handoff` with as first step `/lighthouse-close-issue <nr>`, to run
+  after the merge (the row "work done, issue can be closed").
+- Controller run, if present (the prompt ends in `(issue #<nr>, controller-run)` or
+  `LIGHTHOUSE_CONTROLLER_RUN` is in the environment): `/lighthouse-write-handoff` posts
+  `next: /lighthouse-close-issue <nr>`. Then stop.
+- No PR opened: no handoff to close-issue. In a controller run use `lighthouse ask` when the person
+  must choose; otherwise the run ends.
+
 ## Shape of the evidence block
 
 ```markdown
 ## Related issues
 
-Closes #1091
+Refs #1091 — /lighthouse-close-issue runs these rows after the merge and closes the issue
 
 ### Evidence #1091
 
@@ -350,16 +368,18 @@ Closes #1091
 |---|---|---|
 | 1. Template and skill describe both forms | `grep -F 'Evidence #' .github/pull_request_template.md` | `### Evidence #` |
 | 3. Hook blocks a body without a form | `uv run pytest tests/test_pr_create_gate.py -q` | `passed` |
-| 6. Development panel shows the PR | `gh api graphql -f query=…closedByPullRequestsReferences…` | `after PR: "number":` |
+
+- 6. Development panel shows the PR — `after merge`: <what is still needed>
 ```
 
 ## Counterpart
 
-`.claude/hooks/lighthouse/pr-create-gate.sh` (PreToolUse on `Bash`) enforces this form at every
-`gh pr create`/`gh pr new`: no valid form, an Evidence table with another number of rows than
-ACs, or a body that does not come from a literal value or `--body-file` → block. If it cannot
-count the ACs (no `gh`, no network), it lets through loudly with
-`AC count not measurable` — that is no pass, name it in `## Verification`.
+`.claude/hooks/lighthouse/pr-create-gate.sh` (PreToolUse on `Bash`) enforces the form at every
+`gh pr create`/`gh pr new`: no valid form, or a body that does not come from a literal value or
+`--body-file` → block. Under `Closes #N` the hook counts the rows against the criteria; under
+`Refs #N` it checks a table on form and does not count. If it cannot count the ACs of a `Closes`
+body (no `gh`, no network), it lets through loudly with `AC count not measurable` — that is no
+pass, name it in `## Verification`.
 
 ## Outside Claude Code
 

@@ -49,8 +49,11 @@ def test_names_the_hook():
     assert ".claude/hooks/lighthouse/pr-create-gate.sh" in TEXT
 
 
-def test_names_both_new_verdicts():
-    assert "`after merge`" in TEXT and "`after PR`" in TEXT
+def test_after_pr_is_gone():
+    """A criterion that waits on the PR is `after merge`; write-pr never measures through the PR."""
+    assert "`after merge`" in TEXT
+    for gone in ("`after PR`", "evidence_after_pr", "closedByPullRequestsReferences"):
+        assert gone not in TEXT, gone
 
 
 def test_verify_pr_evidence_by_path():
@@ -121,6 +124,65 @@ def test_example_row_holds_against_the_template(tmp_path):
     assert ev.run_row(rows[0], str(tmp_path), gh_ok=False)[0] == ev.HOLDS
 
 
+def test_description_names_refs_not_closes():
+    desc = next(l for l in front(TEXT).splitlines() if l.startswith("description:"))
+    assert "`Refs #N — <reason>`" in desc
+    assert "`Closes #N`" not in desc
+
+
+def test_v3_always_writes_refs():
+    v3 = " ".join(_section(TEXT, "## V3.").split())
+    for needle in (
+        "always `Refs #N — <reason>`, never `Closes`",
+        "/lighthouse-close-issue",
+        "one row per AC that is `demonstrably done`",
+        "starts with the number of the criterion",
+        "no table",
+    ):
+        assert needle in v3, needle
+    assert "Mixing is allowed" not in TEXT
+
+
+def test_example_block_is_a_valid_refs_body():
+    """The example is a body write-pr could produce: `Refs` with a table, and the gate lets it
+    through without asking the forge for the criteria count."""
+    gate = load_hook_lib("pr_body_gate")
+    block = TEXT[TEXT.index("## Shape of the evidence block") : TEXT.index("## Counterpart")]
+    assert "Refs #1091 — " in block and "Closes #1091" not in block
+
+    def no_forge(nr):
+        raise AssertionError("a Refs body must not count criteria")
+
+    assert gate.check_body(block, ac_count=no_forge).blockers == []
+
+
+def test_v2b_runs_in_the_build_session():
+    v2b = " ".join(_section(TEXT, "## V2b.").split())
+    assert "build session" in v2b
+    assert "`run` or `classify`" in v2b
+    assert 'record --skip "build session ran no review"' in v2b
+    # The verdict table itself carries the override (the prose above it is easy to skip).
+    table = " ".join(v2b[v2b.index("| `verdict` | Do |") :].split())
+    assert "In a run started with `/lighthouse-write-pr <nr>`" in table
+    assert 'record --skip "build session ran no review"' in table
+    assert "the write-pr run never reviews" in v2b
+
+
+def test_v5_hands_off_to_close_issue():
+    v5 = _section(TEXT, "## V5.")
+    for needle in (
+        "/lighthouse-write-handoff",
+        "`/lighthouse-close-issue <nr>`",
+        "after the merge",
+        "(issue #<nr>, controller-run)",
+        "LIGHTHOUSE_CONTROLLER_RUN",
+        "no handoff",
+        "with `No issue:` V5 is skipped",
+    ):
+        assert needle in v5, needle
+    assert TEXT.index("## V4.") < TEXT.index("## V5.")
+
+
 def test_v4_gives_a_title_and_writes_the_body_separately():
     v4 = _section(TEXT, "## V4.")
     assert "gh pr create --repo <forge.repo> --title '<title>' --body-file <path>" in v4
@@ -141,11 +203,8 @@ def test_dod_does_not_run_the_suite_by_hand_in_claude_code():
     assert dod.index("Outside Claude Code") < dod.index("config.py test_gate.command")
 
 
-def test_gh_view_demands_a_number_and_after_pr_measures_through_the_issue():
+def test_gh_view_demands_a_number():
     assert "exactly one number or github.com URL" in _section(TEXT, "## Evidence allowlist")
-    v3 = _section(TEXT, "## V3.")
-    assert "closedByPullRequestsReferences" in v3
-    assert "`gh pr view` without a number" in v3
 
 
 def test_git_grep_row_names_what_evidence_refuses():
@@ -160,7 +219,7 @@ def test_git_grep_row_names_what_evidence_refuses():
 
 def test_outcomes_are_headings():
     """The runner writes its outcomes in the project language (headings.toml)."""
-    for key in ("evidence_holds", "evidence_after_pr_unmeasured", "evidence_table_head"):
+    for key in ("evidence_holds", "evidence_table_head"):
         assert f"heading:{key}" in TEXT
     assert "COULD NOT CHECK" in TEXT
     assert "klopt" not in TEXT and "KON NIET" not in TEXT

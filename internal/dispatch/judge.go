@@ -41,6 +41,7 @@ var allowlist = map[string]bool{
 	"/superpowers:writing-plans":               true,
 	"/superpowers:subagent-driven-development": true,
 	"/lighthouse-fix-pr":                       true,
+	"/lighthouse-write-pr":                     true,
 }
 
 var (
@@ -121,7 +122,7 @@ func argFits(command string, args []string, issue int) bool {
 		return false
 	}
 	switch command {
-	case "/lighthouse-start-issue":
+	case "/lighthouse-start-issue", "/lighthouse-write-pr":
 		return args[0] == strconv.Itoa(issue)
 	case "/lighthouse-fix-pr":
 		return numberArg.MatchString(args[0])

@@ -20,16 +20,23 @@ def _text() -> str:
 def test_template_names_lighthouse_write_pr() -> None:
     lines = _text().splitlines()
     named = [n for n, line in enumerate(lines, 1) if "/lighthouse-write-pr" in line]
-    assert named == [11, 23], named
+    assert named == [11, 17, 24], named
     assert not re.search(r"/[a-z]+-write-pr", _text().replace("/lighthouse-write-pr", ""))
 
 
 def test_template_is_hostless() -> None:
     """A criterion that waits on a fixed host is a criterion CI cannot run; the
     template names that, not a machine."""
-    assert "a test that cannot run in CI" in _text().splitlines()[15]
+    assert "a test that cannot run in CI" in _text()
     for word in ("host", "machine"):
         assert word not in _text().lower(), word
+
+
+def test_template_puts_refs_first() -> None:
+    text = _text()
+    assert text.index("`Refs #123 — <reason>`") < text.index("`Closes #123`")
+    flat = " ".join(text.split())
+    assert "only when a person opens the PR without /lighthouse-write-pr" in flat
 
 
 def test_template_names_the_english_subcommand() -> None:

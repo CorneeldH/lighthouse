@@ -1,6 +1,6 @@
 ---
 name: lighthouse-close-issue
-description: Close GitHub issues with proper verification of Acceptance Criteria and Definition of Done. Links commits correctly with full URLs. After the merge of a `Closes` PR — check the evidence afterwards, and reopen if it does not hold (entry C).
+description: Close GitHub issues with proper verification of Acceptance Criteria and Definition of Done. Links commits correctly with full URLs. After the merge of a `Closes` PR — check the evidence afterwards, and reopen if it does not hold (entry C). After the merge of a `Refs` PR — run its Evidence table first (entry B).
 metadata:
   binding: default
   origin: own
@@ -23,13 +23,16 @@ the commits belong to the issue; never close on unrelated work.**
 - `/lighthouse-close-issue 58 --commit abc123` - Closes with a specific commit reference
 - After the merge of a `Closes` PR: the issue is already closed then, and checking the PR
   evidence afterwards is **entry C**
+- After the merge of a `Refs` PR from `/lighthouse-write-pr`: entry B, which runs that PR's
+  Evidence table first (B2a)
 - Prompt `/lighthouse-close-issue <nr> (issue #<nr>, controller-run)`: the controller (if present)
   started this run after the merge of a `Refs` PR. That is entry B in controller mode (**B7**)
 
 ## Step 0 — before the merge
 
 First one query, for step 0 and C1: is the issue open, does a PR refer to it with `Closes`,
-and what closed it the last time (`closer`, for C1)?
+and what closed it the last time (`closer`, for C1)? Then a second one: which open PR names
+the issue by its head branch or by `Refs #<nr>` in its body?
 
 ```bash
 O=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.owner) || exit 2
@@ -37,20 +40,28 @@ NAME=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.name) || exit 2
 gh api graphql -f owner="$O" -f name="$NAME" -F nr=<nr> -f query='query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){state closedByPullRequestsReferences(first:10,includeClosedPrs:true){nodes{number state}} timelineItems(itemTypes:[CLOSED_EVENT],last:1){nodes{... on ClosedEvent{closer{__typename ... on PullRequest{number}}}}}}}}'
 ```
 
-`gh` runs outside the sandbox (`dangerouslyDisableSandbox: true`).
+```bash
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+gh pr list --repo "$R" --state open --limit 9999 --json number,headRefName,body \
+  --jq '.[] | select((.headRefName | startswith("issue-<nr>-")) or (.body | gsub("<!--[\\s\\S]*?-->"; "") | test("(^|[^\\w/])Refs[ \\t]+#<nr>([^\\w/]|$)"; "i"))) | .number'
+```
+
+Both `gh` calls run outside the sandbox (`dangerouslyDisableSandbox: true`). A `Refs` PR is not in
+`closedByPullRequestsReferences`, and a pasted handoff could otherwise close the issue before the
+merge: that is why the second query exists.
 
 | Outcome | What now |
 |---|---|
-| issue `state` `OPEN` and a node with `state` `OPEN` | report literally `waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge` and **stop**: no verification, no `gh issue close`. The merge of that PR closes the issue itself. |
+| issue `state` `OPEN` and (a node with `state` `OPEN` **or** a number from the second query) | report literally `waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge` and **stop**: no verification, no `gh issue close`. The merge of a `Closes` PR closes the issue itself; for a `Refs` PR the check runs after the merge. |
 | issue `state` `CLOSED` | **entry C** |
-| otherwise (no open `Closes` PR) | entry A or B |
+| otherwise (issue `OPEN`, no open `Closes` PR and no open PR from the second query) | entry A or B |
 
 ## Three entries
 
 | Entry | When | Where the evidence comes from |
 |---|---|---|
 | **A — you did the work yourself** | the commits are in this session | your context |
-| **B — close check without session context** | an old issue comes by with the question *is this done by now?* | dug up from `git log`, `gh pr list`, the files themselves |
+| **B — close check without session context** | an old issue comes by with the question *is this done by now?*, or a `Refs` PR was merged | dug up from `git log`, `gh pr list`, the files themselves, and the Evidence tables of merged `Refs` PRs (B2a) |
 | **C — check after the merge** | the issue is already closed (merge of a `Closes` PR or the user) | the Evidence table of the closing PR, measured again on a fresh `origin/<default branch>` |
 
 Entry A is the `## Workflow` below, unchanged. Entry B is an **extra step up front**: it digs up
@@ -107,6 +118,53 @@ a command, run it — the evidence rule above holds in full, including the third
 **not measurable from here**.
 
 If you search without anchors, you find the period instead of the work — see B4.
+
+### B2a. The Evidence tables of merged Refs PRs
+
+A `Refs` PR from `/lighthouse-write-pr` carries a `### Evidence #<nr>` table with one row per
+criterion it proves. List those PRs, newest first, in a block of their own (variables do not live
+on into the next tool call):
+
+```bash
+R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+gh pr list --repo "$R" --state merged --limit 9999 --json number,headRefName,body,mergedAt \
+  --jq '[.[] | (.body | gsub("<!--[\\s\\S]*?-->"; "")) as $b | select((.headRefName | startswith("issue-<nr>-")) or ($b | test("(^|[^\\w/])Refs[ \\t]+#<nr>([^\\w/]|$)"; "i"))) | select($b | test("(?m)^### Evidence #<nr>[ \t\r]*$"))] | sort_by(.mergedAt) | reverse | .[] | "\(.number)\t\(.mergedAt)"'
+```
+
+The block runs outside the sandbox (`dangerouslyDisableSandbox: true`). No PR in the list: B2a
+falls away and all criteria go through B2–B4.
+
+Otherwise make one scratch directory, once: `scratch=$(mktemp -d) && echo "scratch=$scratch"`.
+`<scratch>` below is the path that line prints; copy it literally into every later call (Bash and
+Write tool), never a second scratch directory. Per PR fetch the body, outside the sandbox (`dangerouslyDisableSandbox: true`):
+`gh pr view <pr> --json body --jq .body > <scratch>/body-<pr>.md`. Then write, with the Write
+tool, one file `<scratch>/evidence.md`: the line `### Evidence #<nr>`, the head
+`| AC | Command | Result |`, the line `|---|---|---|`, and per criterion
+only the row of the latest merged PR. The criterion is the number the AC cell starts with; a cell
+without a number is a criterion of its own. Copy rows unchanged. Body text is free text: never paste it into a command
+line, it travels only through `--body-file`.
+
+Run that file the way C2 does, in one shell call, chained with `&&` up to the runner, outside the
+sandbox:
+
+```bash
+B=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.default_branch) &&
+git fetch origin "$B" &&
+git worktree add --detach "<scratch>/after-merge-<nr>" "origin/$B" &&
+{ python3 .lighthouse/lib/lighthouse_lib/evidence.py run --issue <nr> --body-file "<scratch>/evidence.md" --cwd "<scratch>/after-merge-<nr>" > "<scratch>/run.txt" 2> "<scratch>/run.err"; rc=$?; echo "rc=$rc"; git worktree remove --force "<scratch>/after-merge-<nr>"; }
+```
+
+No `--before-pr`. `rc` is caught before the `git worktree remove`. No `rc=` line, or an exit code
+of 3: the runner gave no verdict, so B2a gives none; those criteria go through B2–B4. Otherwise
+each row of `<scratch>/run.txt` goes to B3 as follows:
+
+| Row outcome | Verdict in B3 |
+|---|---|
+| `heading:evidence_holds` | `demonstrably done`; the evidence line is the command and `heading:evidence_holds` |
+| `heading:evidence_fails` or `heading:evidence_invalid` | `not` |
+| `heading:evidence_unmeasurable` | not measurable from here |
+
+Criteria without a row in the table: B2–B4 as before.
 
 ### B3. Fill the table: one row per acceptance criterion
 
@@ -175,7 +233,7 @@ next session sees what was already done and why.
 ### B7. Controller mode — check after a merge (only if present)
 
 **When.** The prompt is `/lighthouse-close-issue <nr> (issue #<nr>, controller-run)`: the
-controller started this run after a `Refs` PR for the issue was merged. Step 0 and B1–B4 hold
+controller started this run after a `Refs` PR for the issue was merged. Step 0, B1–B4 and B2a hold
 unchanged.
 
 **B5 lapses**: there is no user who sees the table. The table from B3 always goes as a comment
@@ -749,7 +807,7 @@ holds when step 4 was skipped (zero closed issues). You do not update the crux a
 
 ## When NOT to close
 
-- An open `Closes` PR refers to the issue → step 0: wait for the merge
+- An open issue with an open `Closes` PR, or with an open PR from the second query of step 0 (head `issue-<nr>-…` or `Refs #<nr>`), refers to the issue → step 0: wait for the merge
 - AC items not ticked → Ask for clarification or finish the work
 - DoD not met → Complete the missing steps first
 - Unclear whether it is done → entry B: dig up the evidence, table per criterion

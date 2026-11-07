@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import re
 
-from tests.pack._testkit import CORE
+from tests.pack._testkit import CORE, load_hook_lib
 
 SKILL_DIR = CORE / "skills" / "close-issue"
+_STRIP_COMMENTS = 'gsub("<!--[\\\\s\\\\S]*?-->"; "")'
 
 
 def skill() -> tuple[str, str]:
@@ -65,6 +66,92 @@ def test_step_zero_waits_for_merge():
             in body
         )
         assert body.index("## Step 0") < body.index("## Entry B")
+
+
+def _b2a(body: str) -> str:
+    s = body[body.index("### B2a.") :]
+    return s[: s.index("\n### ", 1)]
+
+
+def test_step_zero_stops_on_an_open_refs_pr():
+    for body in skill():
+        s0 = _section(body, "## Step 0")
+        for needle in (
+            "gh pr list",
+            "--state open",
+            'startswith("issue-<nr>-")',
+            _STRIP_COMMENTS,
+            "--limit 9999",
+            "dangerouslyDisableSandbox: true",
+            "waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge",
+        ):
+            assert needle in s0, needle
+
+
+def test_step_zero_open_pr_stop_is_scoped_to_an_open_issue():
+    """A closed issue with some open PR still goes to entry C, not to `waits for merge`."""
+    for body in skill():
+        s0 = _section(body, "## Step 0")
+        assert (
+            "| issue `state` `OPEN` and (a node with `state` `OPEN` **or** a number from the "
+            "second query) |"
+        ) in s0
+        assert "`OPEN` and a node with `state` `OPEN`, **or**" not in s0
+        assert "| otherwise (issue `OPEN`, no open `Closes` PR and no open PR from the second query) |" in s0
+
+
+def test_entry_b_runs_the_evidence_of_merged_refs_prs():
+    for body in skill():
+        b2a = _b2a(body)
+        repo = "R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo)"
+        assert repo in b2a
+        assert b2a.index(repo) < b2a.index('--repo "$R"')
+        assert b2a.count("mktemp -d") == 1
+        for needle in (
+            "--state merged",
+            "mergedAt",
+            "sort_by(.mergedAt) | reverse",
+            "(?m)^### Evidence #<nr>",
+            'startswith("issue-<nr>-")',
+            _STRIP_COMMENTS,
+            "--limit 9999",
+            "### Evidence #<nr>",
+            "python3 .lighthouse/lib/lighthouse_lib/evidence.py run",
+            "git worktree add --detach",
+            "config.py forge.default_branch",
+            "only the row of the latest merged PR",
+            "the number the AC cell starts with",
+            "`demonstrably done`",
+            "`not`",
+            "not measurable from here",
+        ):
+            assert needle in b2a, needle
+
+
+def test_b2a_sits_between_b2_and_b3():
+    for body in skill():
+        assert body.index("### B2.") < body.index("### B2a.") < body.index("### B3.")
+
+
+def test_b2a_per_pr_body_fetch_runs_outside_the_sandbox():
+    for body in skill():
+        b2a = _b2a(body)
+        fetch = b2a.index("gh pr view <pr> --json body")
+        assert "dangerouslyDisableSandbox: true" in " ".join(b2a[fetch - 120 : fetch].split())
+
+
+def test_b2a_never_pastes_body_text_into_a_command():
+    for body in skill():
+        b2a = _b2a(body)
+        assert "--body-file" in b2a
+        assert "never paste" in b2a
+
+
+def test_b7_includes_b2a():
+    for body in skill():
+        b7 = body[body.index("### B7.") :]
+        b7 = b7[: b7.index("\n## ", 1)]
+        assert "B2a" in b7
 
 
 def test_entry_c_runs_only_the_runner():
@@ -245,3 +332,35 @@ def test_area_of_a_milestone_after_the_prefix():
         flat = " ".join(step.split())
         assert "the title prefix of the milestone" not in flat
         assert "the part before `:` after `project.milestone_prefix`" in flat
+
+
+def _refs_regex(section: str) -> re.Pattern[str]:
+    """The `Refs` regex of a jq filter in the skill, as Python sees it, for issue 147."""
+    m = re.search(r'test\("([^"]*Refs[^"]*)"; "i"\)', section)
+    assert m, "no case-insensitive Refs test in the jq filter"
+    return re.compile(m.group(1).replace("\\\\", "\\").replace("<nr>", "147"), re.IGNORECASE)
+
+
+_TEMPLATE = (CORE / "templates" / "pull_request_template.md").read_text(encoding="utf-8")
+
+
+def test_the_refs_filters_find_what_the_gate_parser_finds():
+    """A PR in the jq filters is a PR the gate counts as `Refs #147`: comments out, any case."""
+    gate = load_hook_lib("pr_body_gate")
+    bodies = (
+        _TEMPLATE.replace("#123", "#147"),
+        "refs #147 — lowercase reason",
+        "Refs\t#147: reason after a tab",
+        "Refs #1470 — another issue",
+        "Refs #147_x — not this number",
+        "see a/Refs #147 in a path",
+        "xRefs #147 glued to a word",
+        "<!-- Refs #147 — only in a comment -->\nNo issue: nothing here at all",
+    )
+    for body in skill():
+        for section in (_section(body, "## Step 0"), _b2a(body)):
+            assert _STRIP_COMMENTS in section
+            rx = _refs_regex(section)
+            for text in bodies:
+                found = bool(rx.search(re.sub(r"<!--[\s\S]*?-->", "", text)))
+                assert found == (147 in gate.refs_targets(text)), text
