@@ -23,6 +23,7 @@ _sc_platform() {
     Linux/x86_64) echo linux/x86_64 ;;
     Linux/aarch64) echo linux/aarch64 ;;
     Darwin/arm64) echo darwin/arm64 ;;
+    Darwin/x86_64) echo darwin/x86_64 ;;
     *) return 1 ;;
   esac
 }
@@ -46,6 +47,18 @@ _sc_is_pinned() { # bin
   [ -x "$1" ] && "$1" --version 2>/dev/null | grep -qx "version: $SHELLCHECK_PIN"
 }
 
+# sha256 of a file on stdout. macOS has no sha256sum, only shasum.
+_sc_sha256() { # file
+  if command -v sha256sum >/dev/null 2>&1; then # portable: fallback to shasum -a 256
+    sha256sum "$1" | cut -d' ' -f1              # portable: fallback to shasum -a 256
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -d' ' -f1
+  else
+    echo "shellcheck: no sha256sum and no shasum" >&2 # portable: fallback to shasum -a 256
+    return 1
+  fi
+}
+
 _sc_download() { # tool_dir -> path on stdout, or rc != 0
   local tool_dir="$1" platform url sha tmp got bin="$1/shellcheck"
   platform="$(_sc_platform)" || {
@@ -56,6 +69,7 @@ _sc_download() { # tool_dir -> path on stdout, or rc != 0
     linux/x86_64)  url="shellcheck-v${SHELLCHECK_PIN}.linux.x86_64.tar.xz";   sha=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198 ;;
     linux/aarch64) url="shellcheck-v${SHELLCHECK_PIN}.linux.aarch64.tar.xz";  sha=12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588 ;;
     darwin/arm64)  url="shellcheck-v${SHELLCHECK_PIN}.darwin.aarch64.tar.xz"; sha=56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79 ;;
+    darwin/x86_64) url="shellcheck-v${SHELLCHECK_PIN}.darwin.x86_64.tar.xz";  sha=3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6 ;;
   esac
   tmp="$(mktemp -d)" || return 1
   if ! curl -fsSL -o "$tmp/s.txz" \
@@ -64,7 +78,10 @@ _sc_download() { # tool_dir -> path on stdout, or rc != 0
     rm -rf "$tmp"
     return 1
   fi
-  got="$(sha256sum "$tmp/s.txz" | cut -d' ' -f1)"
+  got="$(_sc_sha256 "$tmp/s.txz")" || {
+    rm -rf "$tmp"
+    return 1
+  }
   if [ "$got" != "$sha" ]; then
     echo "shellcheck: sha256 mismatch (got $got, wanted $sha)" >&2
     rm -rf "$tmp"

@@ -79,7 +79,13 @@ func TestUsageRefreshE2E(t *testing.T) {
 	if !strings.HasPrefix(string(alarm), "venster 99 ") {
 		t.Errorf("alarm = %q, want prefix %q", alarm, "venster 99 ")
 	}
-	wantSeen := filepath.Join(xdg, "lighthouse", "usage-refresh") + "\n1\n"
+	// The script's pwd is the physical path; on macOS t.TempDir() sits behind the
+	// /var -> /private/var symlink.
+	realXDG, err := filepath.EvalSymlinks(xdg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSeen := filepath.Join(realXDG, "lighthouse", "usage-refresh") + "\n1\n"
 	if got, _ := os.ReadFile(seen); string(got) != wantSeen {
 		t.Errorf("script saw %q, want %q", got, wantSeen)
 	}

@@ -73,7 +73,7 @@ if [ -n "$RUN_ID" ] && [ "$STAND" = "tool" ]; then
         OFFSET="${UNTIL: -6}"
         BSD_UNTIL="${UNTIL%??????}${OFFSET%:*}${OFFSET#*:}"
       fi
-      UNTIL_EPOCH="$(date -d "$UNTIL" +%s 2>/dev/null)" ||
+      UNTIL_EPOCH="$(date -d "$UNTIL" +%s 2>/dev/null)" || # portable: BSD fallback on the next line
         UNTIL_EPOCH="$(date -j -f '%Y-%m-%dT%H:%M:%S%z' "$BSD_UNTIL" +%s 2>/dev/null)" ||
         UNTIL_EPOCH=""
       NOW="$(date +%s)"

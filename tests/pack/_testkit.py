@@ -299,25 +299,32 @@ def run_guard(
     )
 
 
-# A BSD `date` on top of the real GNU one: `-d` is rejected, and
-# `-j [-u] -f FMT VALUE [+OUT]` parses VALUE (the format itself is not checked).
+# A BSD `date` on top of the real date (GNU or BSD): `-d` is rejected, and
+# `-j [-u] -f FMT VALUE [+OUT]` parses VALUE. With a GNU real date the parse is done
+# by `-d` (the format itself is not checked); with a BSD one it is passed on as it is.
+# `DATE_STUB_LOG`, when set, collects every argument, one per line.
 BSD_DATE_STUB = f"""#!/bin/bash
 real={shutil.which("date")}
+[ -n "${{DATE_STUB_LOG:-}}" ] && printf '%s\\n' "$@" >> "$DATE_STUB_LOG"
 utc=""
 value=""
+fmt=""
 parse=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -d) echo "date: illegal option -- d" >&2; exit 1 ;;
     -j) parse=1 ;;
     -u) utc=-u ;;
-    -f) shift; shift; value="$1" ;;
+    -f) shift; fmt="$1"; shift; value="$1" ;;
     *) break ;;
   esac
   shift
 done
 if [ -n "$parse" ]; then
-  exec "$real" $utc -d "$value" "$@"
+  if "$real" --version >/dev/null 2>&1; then
+    exec "$real" $utc -d "$value" "$@"
+  fi
+  exec "$real" -j $utc -f "$fmt" "$value" "$@"
 fi
 exec "$real" $utc "$@"
 """

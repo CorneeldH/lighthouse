@@ -222,6 +222,29 @@ def test_pause_bsd_date(tmp_path: Path) -> None:
     assert _is_controller_reason(_reason(result))
 
 
+@pytest.mark.parametrize("form", ["Z", "+01:00"])
+def test_usage_gate_parses_until_with_bsd_date_only(tmp_path: Path, form: str) -> None:
+    """Fails when the gate hands BSD `date -j -f` a value it cannot parse (#90)."""
+    until = datetime.now(timezone.utc) + timedelta(hours=1)
+    if form == "Z":
+        flag = until.strftime("%Y-%m-%dT%H:%M:%SZ")
+    else:
+        flag = until.astimezone(timezone(timedelta(hours=1))).strftime("%Y-%m-%dT%H:%M:%S+01:00")
+    bsd_form = until.astimezone(timezone.utc if form == "Z" else timezone(timedelta(hours=1)))
+    expected = bsd_form.strftime("%Y-%m-%dT%H:%M:%S%z")  # +0000 / +0100: no colon
+
+    root, env = _setup(tmp_path, flag=flag)
+    log = tmp_path / "date.log"
+    stubs = tool_bin(tmp_path / "stubs", (), stubs={"date": BSD_DATE_STUB})
+    env["DATE_STUB_LOG"] = str(log)
+    env["PATH"] = f"{stubs}:{env['PATH']}"
+
+    result = _run(root, env, "tool", _payload(tmp_path, "tool"))
+
+    assert expected in log.read_text().splitlines()
+    assert _is_controller_reason(_reason(result))
+
+
 def _invalid_flag(case: str, state: Path) -> None:
     flag = state / "PAUSE"
     if case == "expired":

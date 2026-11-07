@@ -78,8 +78,21 @@ def test_python_job_runs_in_three_shards():
     assert python.count("LIGHTHOUSE_PYTEST_SHARD") == 1
     grep = [s for s in steps if "ci/literal-grep.sh" in s]
     assert len(grep) == 1, grep
-    assert re.match(r"if: matrix\.shard == 1\n        run: ci/literal-grep\.sh$", grep[0], re.MULTILINE), grep[0]
+    assert re.match(
+        r"if: matrix\.shard == 1 && matrix\.os == 'ubuntu-latest'\n        run: ci/literal-grep\.sh$",
+        grep[0],
+        re.MULTILINE,
+    ), grep[0]
     assert python.count("ci/literal-grep.sh") == 1
+
+
+def test_tests_run_on_linux_and_macos():
+    """Fails when the Go race tests, the e2e tests or the pytest suite stop running on macOS (#90)."""
+    jobs = _jobs()
+    for name in ("python", "go-test", "go-e2e"):
+        job = jobs[name]
+        assert "runs-on: ${{ matrix.os }}" in job, name
+        assert re.search(r"^        os: \[ubuntu-latest, macos-latest\]\s*$", job, re.MULTILINE), name
 
 
 def test_python_job_shows_the_pytest_header():

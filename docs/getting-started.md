@@ -26,8 +26,7 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | `golangci-lint` | go | `go-lint-gate` | `go-lint-gate` reports `COULD NOT CHECK` at Stop; nothing was linted. |
 | `node` | node | the test gate `gate_node.py` | `gate_node.py` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested. |
 | `npm` | node | the web checks of `gate_node.py` (`npm run …`) | As for `node`. |
-| `curl` | shell | the first download of the pinned `shellcheck` | No download. Without a `shellcheck` on your `PATH`, the `shell-lint-check` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
-| `sha256sum` | shell | verifying that download | As for `curl`. |
+| `curl` | shell | the first download of the pinned `shellcheck`, verified with sha256sum or shasum | No download. Without a `shellcheck` on your `PATH`, the `shell-lint-check` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
 | `tar` | shell | unpacking that download | As for `curl`. |
 | `xz` | shell | unpacking that download | As for `curl`. |
 

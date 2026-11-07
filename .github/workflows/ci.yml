@@ -1,7 +1,8 @@
 # CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
 # finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`, and
-# Python as a matrix of three parts of the pytest suite (tests/conftest.py). A `binary` job builds
-# the SPA itself, embeds it in the Go binary and smoke-tests it, next to web instead of after it.
+# Python as a matrix of three parts of the pytest suite (tests/conftest.py). Python, `go-test`
+# and `go-e2e` run on Linux and macOS (#90). A `binary` job builds the SPA itself, embeds it in
+# the Go binary and smoke-tests it, next to web instead of after it.
 name: ci
 
 on:
@@ -86,11 +87,13 @@ jobs:
   python:
     needs: changes
     if: needs.changes.outputs.python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: ${{ matrix.os }}
+    # macOS runners are slower than ubuntu-latest (#90).
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -106,7 +109,7 @@ jobs:
       - run: uv run pytest -n auto
         env:
           LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3
-      - if: matrix.shard == 1
+      - if: matrix.shard == 1 && matrix.os == 'ubuntu-latest'
         run: ci/literal-grep.sh
 
   # Split per the measurements in #131 (issuecomment-6541734664, -6541786347): setup 13 s,
@@ -145,8 +148,12 @@ jobs:
   go-test:
     needs: changes
     if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -160,8 +167,12 @@ jobs:
   go-e2e:
     needs: changes
     if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
