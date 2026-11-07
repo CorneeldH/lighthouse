@@ -104,8 +104,9 @@ Gedrag met deze opties:
 1. Open `D/slot-1` … `D/slot-N` (append, aanmaken als ze ontbreken) en probeer ze op volgorde met
    `filelock.try_lock`. Elke seconde een ronde, tot `W` seconden voorbij zijn; de logica van
    `gate_slot.acquire`.
-2. Wordt de deadline eerder bereikt dan `W`, dan telt de deadline: de wachttijd telt mee voor de
-   deadline, zoals nu.
+2. De effectieve wachttijd is `min(W, deadline - nu)`: de wachttijd telt mee voor de deadline,
+   zoals nu. Is die op zonder slot, dan geldt punt 4 (`busy`). *(eigen keuze na spec-review,
+   r1-f4)*
 3. **Slot gepakt:** schrijf `<n>\n` naar `F`, sluit de fd's van de andere slots, en draai het
    commando zoals nu (`run_until`). Het fd van het slot blijft open tot `deadline.py` eindigt.
    Daarna gaat het slot vrij, op POSIX en op Windows.
@@ -116,8 +117,15 @@ Gedrag met deze opties:
 `F` is de bron van waarheid, niet de exitcode: een suite kan zelf met 75 of 1 eindigen.
 
 Het slot hangt in de procestak aan het proces `deadline.py`. Wordt de hook gestopt (timeout van
-Claude Code), dan leeft `deadline.py` door tot zijn deadline plus grace, en houdt het slot zo
-lang vast. Dat is hetzelfde gedrag als de fd-tak nu, waar `deadline.py` het fd erft.
+Claude Code), dan leeft `deadline.py` naar verwachting door tot zijn deadline plus grace, en houdt
+het slot zo lang vast. Dat is hetzelfde gedrag als de fd-tak nu, waar `deadline.py` het fd erft.
+
+**Aanname, te meten op Windows** *(r1-f7)*: dat Claude Code voor Windows bij een timeout alleen de
+bash van de hook stopt, niet de hele procesboom. Stopt het de boom, dan sterft `deadline.py` (en
+zijn `msvcrt`-slot) en draait de suite verder zonder slot: het eerste anti-doel. Dit restrisico
+geldt alleen voor een hook die zijn timeout haalt. `MAX_DEADLINE` ligt daar ruim onder
+(`commit-test-gate.sh:120-122`). Het is geen bewijsrij, wel een punt voor de meting op een echte
+machine (AC 3 van #90).
 
 ### De hook leest `F`
 
@@ -130,7 +138,11 @@ Per root, na de aanroep van `deadline.py`, in de procestak:
 | `error: …` | `slot_failed "<oorzaak>"`, exit 2 |
 | leeg, ontbreekt of iets anders | `slot_failed "deadline.py gave no slot report"`, exit 2 |
 
-`F` staat in `GATE_TMP`, per root een nieuw bestand.
+`F` staat **naast** `GATE_TMP`, niet erin: `$BT/run-$RUN.slot`, per root een nieuw bestand.
+`pytest --basetemp="$LIGHTHOUSE_GATE_TMP"` (`lighthouse.toml:44`, aanbevolen in
+`docs/test-gate.md`) maakt `GATE_TMP` leeg bij de start, en dan zou de hook geen rapport meer
+vinden. `GATE_FILES` staat om dezelfde reden naast `GATE_TMP` (`commit-test-gate.sh:561-563`).
+*(eigen keuze na spec-review, r1-f1)*
 
 ### Slot per root
 
@@ -144,19 +156,25 @@ houdt het slot over de hele lus, zoals nu.
 - `gate_slot.py` blijft de fd-tak bedienen. `acquire` verhuist niet, maar `deadline.py` gebruikt
   dezelfde functie (import uit `lighthouse_lib.gate_slot`) op fd's die het zelf opende. Zo bestaat
   de wachtlogica één keer.
+- `deadline.py` heeft nu geen bootstrap van `sys.path`. Het krijgt die van `gate_slot.py`
+  (`.lighthouse/lib` vooraan als `__package__` leeg is), en importeert `gate_slot` pas binnen de
+  tak met slotopties. Zonder slotopties (de fd-tak, `bash_writes.py`) verandert er niets aan de
+  imports. *(eigen keuze na spec-review, r1-f3)*
 - De weigering op Windows in `gate_slot.main` blijft: in de fd-tak blijft een `msvcrt`-slot vals.
-  De melding wijst naar de procestak.
+  De melding wijst naar de procestak, maar houdt de bestaande deeltekst
+  `gate slots need flock, which this platform lacks (Windows)`, die
+  `tests/pack/test_filelock.py:146` vastlegt. *(r1-f5)*
 - `filelock.py` verandert niet.
 
 ## Bewijs
 
 | Wat | Waar | Bewijst |
 |---|---|---|
-| procestak op Linux, echte `flock` per pad | `tests/pack/test_commit_test_gate.py` met `LIGHTHOUSE_GATE_SLOT_MODE=process`: groen, rood, `busy` (alle slots vast door een ander proces), map niet te maken, geen rapport | de hook leest `F` goed en blokkeert bij elke fout |
+| procestak op Linux, echte `flock` per pad | `tests/pack/test_commit_test_gate.py` met `LIGHTHOUSE_GATE_SLOT_MODE=process`: groen, rood, `busy` (alle slots vast door een ander proces), map niet te maken, geen rapport, en een commando dat `LIGHTHOUSE_GATE_TMP` leegmaakt (zoals `pytest --basetemp`) | de hook leest `F` goed en blokkeert bij elke fout |
 | slot vast tot `deadline.py` eindigt | `tests/pack/test_deadline.py`: een tweede proces krijgt het slot niet zolang het commando draait, wel daarna | het slot leeft zo lang als de suite |
-| `msvcrt`-kant | `tests/pack/test_deadline.py` met de `FakeMsvcrt` uit `tests/pack/test_filelock.py` | de opties werken zonder `fcntl` |
-| fd-tak ongewijzigd | de bestaande tests in `test_commit_test_gate.py` en `test_gate_slot.py` blijven groen zonder aanpassing | doel 3 |
-| echt Windows | `windows-measure` stap 11 (`git --version` als `[test_gate] command`) `pass`; e2e `TestRedTestBlocksCommit`, `TestRedCommitComesBackAfter`, `TestDefaultCommandWithoutPytest` op `windows-latest` | doel 1 op de echte host |
+| `msvcrt`-kant | `tests/pack/test_deadline.py` met de `FakeMsvcrt` uit `tests/pack/test_filelock.py`. De test patcht `lighthouse_lib.filelock`, de module die `gate_slot` en dus `deadline.py` gebruikt, naar de fake-variant; een losse kopie van `filelock` raakt de slotcode van `deadline.py` niet. *(r1-f2)* | de opties werken zonder `fcntl` |
+| fd-tak ongewijzigd | de bestaande tests in `test_commit_test_gate.py`, `test_gate_slot.py` en `test_filelock.py` blijven groen zonder aanpassing | doel 3 |
+| echt Windows | een `workflow_dispatch`-run van `windows-measure` op de branch (`gh workflow run windows-measure.yml --ref issue-90-windows-gate-slot`), met de runlink in de PR. De workflow draait op een PR alleen bij een wijziging in zijn eigen bestanden, en blijft groen als meting. Verwacht: stap 11 (`git --version` als `[test_gate] command`) `pass`; e2e `TestRedTestBlocksCommit`, `TestRedCommitComesBackAfter`, `TestDefaultCommandWithoutPytest` `ok` in de job summary. *(r1-f6)* | doel 1 op de echte host |
 
 ## Aan de bouwer
 
