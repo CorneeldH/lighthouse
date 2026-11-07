@@ -56,9 +56,10 @@ case $? in
   *) echo "literal-grep: grep failed" >&2; exit 2 ;;
 esac
 
-REMAINING=$(printf '%s\n' "$HITS" | awk -v skips="$SKIPS" -v allow="$ALLOWLIST" -v root="$ROOT/" -v cwd="$(pwd)" '
+# The skip list goes through the environment: BSD awk rejects a newline in a -v value.
+REMAINING=$(printf '%s\n' "$HITS" | LITERAL_SKIPS="$SKIPS" awk -v allow="$ALLOWLIST" -v root="$ROOT/" -v cwd="$(pwd)" '
   BEGIN {
-    n = split(skips, parts, "\n")
+    n = split(ENVIRON["LITERAL_SKIPS"], parts, "\n")
     for (k = 1; k <= n; k++) if (parts[k] != "") skip[parts[k]] = 1
     while ((getline line < allow) > 0) {
       if (line ~ /^[[:space:]]*#/ || line ~ /^[[:space:]]*$/) continue

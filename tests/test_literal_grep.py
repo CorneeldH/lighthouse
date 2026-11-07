@@ -131,11 +131,12 @@ GO_DENYLIST = REPO / "ci" / "literal-denylist-go.txt"
 def test_go_tests_are_skipped_only_on_request(tmp_path):
     import os
 
+    base = {k: v for k, v in os.environ.items() if k != "LITERAL_SKIP_TESTS"}
     (tmp_path / "a_test.go").write_text("// beelink\n")
     (tmp_path / "testdata").mkdir()
     (tmp_path / "testdata" / "x.json").write_text('{"host": "beelink"}\n')
-    assert _grep(tmp_path).returncode == 1
-    assert _grep(tmp_path, env=dict(os.environ, LITERAL_SKIP_TESTS="1")).returncode == 0
+    assert _grep(tmp_path, env=base).returncode == 1
+    assert _grep(tmp_path, env=dict(base, LITERAL_SKIP_TESTS="1")).returncode == 0
 
 
 def test_several_dirs_are_scanned(tmp_path):
