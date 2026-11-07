@@ -240,6 +240,11 @@ class TestPidAlive:
         monkeypatch.setattr(audit.os, "kill", odd)
         assert audit.pid_alive(4242) is None
 
+    @pytest.mark.parametrize("pid", [2**31, 10**12])
+    def test_pid_beyond_c_int_is_not_measurable(self, pid):
+        # os.kill raises OverflowError (not OSError) above the C int range.
+        assert audit.pid_alive(pid) is None
+
     @pytest.mark.parametrize("pid", [0, -1])
     def test_non_positive_pid_is_not_measurable_and_never_signalled(self, monkeypatch, pid):
         monkeypatch.setattr(audit.os, "kill", lambda *_: pytest.fail("os.kill called"))

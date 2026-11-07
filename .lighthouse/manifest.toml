@@ -926,7 +926,7 @@ kind = "file"
 path = ".lighthouse/scripts/worktree_audit.py"
 package = "core"
 version = "dev"
-sha256 = "9aa754896f68eb54ee5c62b7f071c77a0641c6c6ba0625d68dd003d34e6dfe98"
+sha256 = "ec6fb638eea783728aaef359c88a8cb337451f34328480d1efc52d055ca5b1b6"
 
 [[unit]]
 kind = "block"

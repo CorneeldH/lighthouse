@@ -52,7 +52,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import errno
 import fnmatch
 import json
 import os
@@ -180,7 +179,8 @@ def pid_alive(pid: int) -> bool | None:
         return False
     except PermissionError:
         return True
-    except OSError:
+    except (OSError, OverflowError):
+        # OverflowError: a pid beyond the C int range (a hand-written lock reason).
         return None
     return True
 
@@ -349,7 +349,7 @@ def judge(row: Row, *, alive: Alive = pid_alive) -> Verdict:
     never gets a flat "safe to remove". That is the #544 case and the reason rank 4
     was not merged with rank 6.
 
-    Rank 2 covers two things: a lock with a live or unknown pid, and a
+    Rank 2 covers two things: a lock with a live, unknown or unmeasurable pid, and a
     running session with the worktree as cwd (#963) — regardless of who created
     the worktree. A server lock (`claude agent bridge-…`, see `_lock_state`)
     does not block on its own; only this `row.live` step then decides.
