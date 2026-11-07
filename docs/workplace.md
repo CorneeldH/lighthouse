@@ -322,9 +322,10 @@ van de tick staan.
   volgt `workplace.FollowRemote` de `origin/<branch>`, met dezelfde regels als bij kenn-forge. Om de
   checkout van de gebruiker schoon te houden zet `Prepare` `/.claude/worktrees/` in
   `<git-common-dir>/info/exclude`, als het er nog niet staat.
-- `Spawn(ws, launch)`: schrijft de drager (`workplace.NewCarrier`, dezelfde `args` als bij kenn-forge) en
-  start `claude -p` met die `args`. Een fout vóór de start is `ErrNotAccepted` en start niets, ook een
-  onschrijfbare statemap of een `claude` buiten het `PATH`. De start gaat één keer; het kind schrijft
+- `Spawn(ws, launch)`: bouwt de drager (`workplace.NewCarrier`, dezelfde `args` als bij kenn-forge) zonder
+  er een bestand van te schrijven, en start `claude -p` met die `args` en de `env` van de drager. Een
+  fout vóór de start is `ErrNotAccepted` en start niets, ook een onschrijfbare statemap of een `claude`
+  buiten het `PATH`. De start gaat één keer; het kind schrijft
   zelf zijn pid-bestand. Verschijnt dat binnen 10 s niet, dan is de uitkomst `ErrUncertain`.
 - `Sessions(workspaceID)`: per launch met een pid-bestand `working` zolang de pid bestaat met dezelfde
   starttijd, anders `done`. Een gebruiker die `claude --resume` draait of het transcript volgt, houdt de
@@ -334,11 +335,15 @@ van de tick staan.
   leeg sessie-id weigeren ze vóór elk signaal.
 - `Remove(workspaceID)`: beëindigt elk gemerkt proces van de sessies van de workspace. Bij een eigen
   worktree gebeurt dat na de `Dirty`-check en vóór `git worktree remove`; een vuile worktree is `ErrDirty`
-  en er wordt niets beëindigd. Bij een adopted of verdwenen worktree beëindigt `Remove` alleen de
+  en er wordt niets beëindigd. Een worktree waarin een run zelf een worktree aanlegde, is ook `ErrDirty`:
+  `info/exclude` verbergt `.claude/worktrees/` voor `Dirty`, en `git worktree remove` zou de geneste
+  worktree met zijn werk wissen. Bij een adopted of verdwenen worktree beëindigt `Remove` alleen de
   processen en wist de records, zonder `Dirty`-check en zonder `git worktree remove`. `Cleanup` slaat een
   sessie over die `done` is, terwijl een klare claude een dev-server kan achterlaten; het merk vindt die
   nog. De lokale branch blijft staan.
-- `Lookup(workspaceID)`: pad en branch uit het record.
+- `Lookup(workspaceID)`: het pad uit het record en de branch uit `git worktree list`, zodat een branch die
+  met de hand is gewisseld zichtbaar is. Alleen bij een verdwenen worktree met nog gemerkte processen
+  komt de branch uit het record.
 - `Discard(workspaceID)`: vergeet de launches zonder pid-bestand, na het beëindigen van de processen
   die hun merk dragen.
 - `Transcript(workspaceID, sessionID)`: leest `~/.claude/projects/<map>` op deze host, zoals
@@ -370,14 +375,18 @@ dev-servers en MCP-servers, ook als claude zelf al weg is. De tick slaat zijn ei
 
 De grens: een proces dat zijn omgeving wist (`env -i`) of naar een andere gebruiker of container gaat,
 ontsnapt aan het merk en wordt nooit beëindigd. Een interactieve sessie van de gebruiker draagt het
-merk niet en valt er buiten.
+merk niet en valt er buiten. Andersom houdt een tmux-server (of iets vergelijkbaars) die een run start
+het merk, en ook elke latere sessie op die server, dus `Kill` bereikt die ook; onder `-p` is dat
+onwaarschijnlijk.
 
 ### De omgeving van de run
 
-De run erft de omgeving van de tick, met `HOME`, `PATH` en `GH_TOKEN`, plus het merk en
+De run erft de omgeving en de umask van de tick, met `HOME`, `PATH` en `GH_TOKEN`, plus het merk en
 `LIGHTHOUSE_STATE_DIR` (daarmee schrijft de hook `permission-check` zijn bestand). De run heeft dus de
 rechten van de dispatcher: wie `GH_TOKEN` heeft, heeft ze ook in `claude`. Geef die token alleen de rechten
-die een run mag hebben.
+die een run mag hebben. De run erft de omgeving van wie hem start: een `lighthouse run` die je met de hand
+vanuit een Claude Code-sessie start, geeft de variabelen `CLAUDECODE` en `CLAUDE_CODE_*` van die sessie
+door aan de run, dus start hem vanuit een gewone shell. Een tick onder systemd of cron heeft ze niet.
 
 ### Overstap tussen adapters
 
