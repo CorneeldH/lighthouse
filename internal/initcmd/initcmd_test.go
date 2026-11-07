@@ -1108,7 +1108,7 @@ func TestInitDeclinedWritesNoHostTOML(t *testing.T) {
 func TestInitSkipsHostTOMLWithoutTailscale(t *testing.T) {
 	root := newRepo(t)
 	r := run(t, root, "", yes)
-	if !strings.Contains(r.err, "host.toml not proposed: tailscale ip unavailable; skills that check the host will report it") {
+	if !strings.Contains(r.err, "host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml. For the gate_* keys (memory brake, slots) write it by hand: see \"A host.toml without Tailscale\" in docs/getting-started.md") {
 		t.Fatalf("err = %q", r.err)
 	}
 	if _, err := os.Stat(hostTOMLFor(t)); err == nil {
