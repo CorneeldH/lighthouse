@@ -6,12 +6,14 @@ serves all your repositories from one SQLite database.
 ## Requirements
 
 - Linux with systemd (user units) for `lighthouse serve`; macOS is not supported there. The CLI
-  runs on macOS, but the hooks are untested there (`usage-gate.sh` uses GNU `date -d`).
+  runs on macOS, but the hooks are untested there.
   Windows has a binary, but the hooks need WSL.
 - Go, only to install with `go install` or to build from a clone.
 - Node 22 with npm, only to build from a clone (the web UI). `web/.nvmrc` holds the exact version.
   A release binary needs neither Node nor a clone.
 - Optional: Tailscale, to reach the server from other devices on your tailnet.
+
+Every assumption about the host, with what another host does: [host-assumptions.md](host-assumptions.md).
 
 ## Download a release binary
 
