@@ -273,9 +273,9 @@ zoals nu. `pack/python` installeert zijn eigen scripts nog wel onder `.lighthous
 
 ### 10. Dogfood
 
-Lighthouse draait zijn eigen hooks, dus in deze repo roept `run.sh` de geïnstalleerde
-`lighthouse` aan, niet de code van de branch. Een PR die een hook ombouwt, test die hook daarom
-via de pytest-tests met de gebouwde binary, niet via de hooks van de eigen sessie. *(Mijn keuze.)*
+Lighthouse draait zijn eigen hooks. Een PR die een hook ombouwt, bewijst die hook met de
+pytest-tests op een gebouwde binary; dat de eigen sessie hem ook draait (zie onder), is geen
+bewijs. *(Mijn keuze.)*
 
 Deze repo heeft `version = "dev"` in de manifest; §1 en §3 noemen wat daarbij anders is.
 
@@ -300,8 +300,17 @@ spec-review, r2-f1)*:
 
 - `run.sh` gebruikt `.lighthouse/bin/lighthouse` uit de checkout (in `.gitignore`). Is die er
   niet, of is hij gebouwd op een andere `HEAD` dan nu (een stempelbestand ernaast), dan bouwt
-  `run.sh` hem eerst met `go build -o .lighthouse/bin/lighthouse ./cmd/lighthouse`. Zo draaien de
-  hooks van een worktree altijd de code van die branch.
+  `run.sh` hem eerst met `go build ./cmd/lighthouse`. Zo draaien de hooks van een worktree altijd
+  de code van die branch.
+- Claude Code start meerdere hooks tegelijk, dus de build gaat onder een lock (`mkdir`-lock
+  naast de binary; wie hem niet krijgt, wacht tot de stempel klopt). De build schrijft naar een
+  tijdelijk bestand in dezelfde map, `mv` zet het op zijn plek, en pas daarna komt de stempel.
+  Een hook voert dus nooit een half geschreven binary uit. *(eigen keuze na spec-review, r3-f2)*
+- **Nooduitgang.** Bestaat `.lighthouse/bin/use-path` (in `.gitignore`), dan slaat `run.sh` de
+  checkout-binary over en gebruikt `lighthouse` van het PATH. Een agent maakt dat bestand met de
+  Write-tool, die geen Bash-gate passeert. Zo komt een sessie ook uit een branch waarvan de
+  gate compileert maar elke Bash-call blokkeert. De blokkademelding van een hook in een
+  `dev`-checkout noemt die uitgang. *(eigen keuze na spec-review, r3-f1)*
 - Lukt die build niet (de branch compileert niet), dan valt `run.sh` terug op `lighthouse` van
   het PATH. Kent die binary de hook niet, dan wordt de onbekende hook bij `dev` een melding en
   geen blokkade. Een worktree met kapotte Go-code sluit de agent dus niet buiten Bash; de
