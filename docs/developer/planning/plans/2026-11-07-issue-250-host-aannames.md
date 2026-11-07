@@ -25,8 +25,11 @@ inventaris is een Engelstalig document, gelinkt vanuit `docs/install.md`.
 - Go-denylist, exact: `beelink`, `100.76.`, `/home/corneel`, `paia-forge-`, `paia-software`,
   `paia-infra`. Geen kaal `paia`. `_test.go` en `testdata/` vallen buiten de Go-scan.
 - Wijzig nooit `.claude/`, `.agents/` of `.lighthouse/` met de hand. Na elke wijziging onder
-  `pack/`: `go run ./cmd/lighthouse init --upgrade` en de geïnstalleerde kopie meecommitten; daarna
-  geeft `init --upgrade` `No changes.`
+  `pack/`: `go run ./cmd/lighthouse init --upgrade --yes` (zonder `--yes` leest `init` een lege
+  stdin als "nee" en schrijft niets) en de geïnstalleerde kopie meecommitten, **inclusief
+  `.lighthouse/manifest.toml`** (daarin staan de sha256 van elke geïnstalleerde unit); daarna geeft
+  `go run ./cmd/lighthouse init --upgrade </dev/null` `No changes.` en is `git status --porcelain`
+  leeg.
 - Elke PR heeft een fragment in `changelog.d/` (formaat: [releasing.md](../../../releasing.md)).
 - De audit fikst alleen wat klein is. Een groter geval wordt een issue via
   `/lighthouse-write-issue`, en de inventaris verwijst ernaar.
@@ -60,7 +63,9 @@ inventaris is een Engelstalig document, gelinkt vanuit `docs/install.md`.
   `.claude/skills/lighthouse-audit-worktrees/SKILL.md`, `.agents/skills/lighthouse-audit-worktrees/SKILL.md`
 
 **Interfaces:**
-- Produceert: `Alive = Callable[[int], bool | None]` (moduleniveau, na de imports);
+- Produceert: `Alive = Callable[[int], Optional[bool]]` (moduleniveau, na de imports; een alias
+  wordt tijdens runtime geëvalueerd, en `bool | None` geeft op Python 3.9 een `TypeError` vóór de
+  nette versiemelding van `config.py`);
   `pid_alive(pid: int) -> bool | None` — `True` bestaat (ook `EPERM`), `False` alleen bij `ESRCH`,
   `None` niet te meten.
 
@@ -106,20 +111,22 @@ In `TestLockHandling`, met de bestaande `row(...)`-vorm van `test_live_lock_pid_
 `alive=lambda _pid: None`:
 - `test_unmeasurable_lock_pid_blocks`: `verdict.rank == 2`, `verdict.safe is False`,
   `"not measurable" in verdict.text`.
-- `test_unmeasurable_session_pid_is_not_safe`: een rij met `session_id` en een niet te meten
-  sessie-pid geeft geen `safe`. Bouw die via het pad dat `live=` vult (`:713`); kan dat niet zonder
-  collectors, test dan de hulpfunctie uit stap 3 (`_is_live`) direct: `_is_live(None) is True`,
-  `_is_live(False) is False`.
+- `test_unmeasurable_session_pid_is_live`: in `TestBuildRows`, via `self._rows(...)` met een
+  **niet-gelockte** worktree (`audit.WorktreeInfo("/repo/.claude/worktrees/wt-a", "feat-a", False,
+  None)`) en `alive=lambda _pid: None`: de rij van `feat-a` heeft `live is True` en is niet `safe`.
+  Een gelockte worktree bewijst hier niets: de lock alleen geeft al rang 2. Test daarnaast de
+  hulpfunctie uit stap 3 direct: `_is_live(None) is True`, `_is_live(False) is False`.
 
 Voeg `import errno` en `import os` toe aan de testimports.
 
 - [ ] **Stap 2: draai de tests, zie ze falen**
 
-Run: `uv run pytest -q tests/pack/test_worktree_audit.py -k "PidAlive or unmeasurable"`
+Run: `uv run pytest -q tests/pack/test_worktree_audit.py -k "PidAlive or unmeasurable or is_live"`
 Verwacht: FAIL (`AttributeError: module 'worktree_audit' has no attribute 'os'` of verkeerde waarde).
 
 - [ ] **Stap 3: implementeer** in `pack/core/scripts/worktree_audit.py`:
-  - `import errno`, `import os`; `Alive` als boven; vervang elke `Callable[[int], bool]`.
+  - `import errno`, `import os`, `from typing import Optional`; `Alive` als boven; vervang elke
+    `Callable[[int], bool]`.
   - `pid_alive`: `pid <= 0` of `os.name == "nt"` geeft `None` vóór elke aanroep (commentaar: op
     Windows is signaal 0 `CTRL_C_EVENT`); dan `os.kill(pid, 0)`; `ProcessLookupError` → `False`,
     `PermissionError` → `True`, andere `OSError` → `None`.
@@ -140,7 +147,7 @@ Verwacht: PASS, alle tests.
 
 - [ ] **Stap 6: dogfood**
 
-Run: `go run ./cmd/lighthouse init --upgrade`, daarna nogmaals.
+Run: `go run ./cmd/lighthouse init --upgrade --yes && go run ./cmd/lighthouse init --upgrade </dev/null`
 Verwacht: de tweede keer `No changes.`
 
 - [ ] **Stap 7: commit**
@@ -148,8 +155,10 @@ Verwacht: de tweede keer `No changes.`
 ```bash
 git add pack/core/scripts/worktree_audit.py pack/core/skills/audit-worktrees/SKILL.md \
   tests/pack/test_worktree_audit.py .lighthouse/scripts/worktree_audit.py \
-  .claude/skills/lighthouse-audit-worktrees .agents/skills/lighthouse-audit-worktrees
+  .claude/skills/lighthouse-audit-worktrees .agents/skills/lighthouse-audit-worktrees \
+  .lighthouse/manifest.toml
 git commit -m "fix(worktree-audit): pid meten zonder /proc, niet te meten blokkeert (#250)"
+git status --porcelain   # verwacht: leeg
 ```
 
 ---
@@ -168,7 +177,7 @@ git commit -m "fix(worktree-audit): pid meten zonder /proc, niet te meten blokke
 
 - [ ] **Stap 2: controle**
 
-Run: `go run ./cmd/lighthouse init --upgrade && go run ./cmd/lighthouse init --upgrade && ci/literal-grep.sh`
+Run: `go run ./cmd/lighthouse init --upgrade --yes && go run ./cmd/lighthouse init --upgrade </dev/null && ci/literal-grep.sh`
 Verwacht: tweede upgrade `No changes.`, literal-grep rc 0.
 
 Draai ook `uv run pytest -q tests/pack -k "fix_pr or skill"`; een test die de pariteit van de
@@ -177,8 +186,10 @@ claude- en agents-variant vastpint moet groen blijven.
 - [ ] **Stap 3: commit**
 
 ```bash
-git add pack/core/skills/fix-pr .claude/skills/lighthouse-fix-pr .agents/skills/lighthouse-fix-pr
+git add pack/core/skills/fix-pr .claude/skills/lighthouse-fix-pr .agents/skills/lighthouse-fix-pr \
+  .lighthouse/manifest.toml
 git commit -m "docs(fix-pr): journalctl -k als Linux-only markeren (#250)"
+git status --porcelain   # verwacht: leeg
 ```
 
 ---
@@ -223,6 +234,11 @@ Verwacht: FAIL op de nieuwe tests.
 - [ ] **Stap 3: script** — `DIRS=("${@:-pack}")`, slash aan het eind per map eraf; `grep -r` krijgt
   alle mappen; de awk-`skip` wordt een set van `<dir>/SOURCES.toml` per map. Werk de kopregel
   (`Usage:`) en het commentaar bij. De pack-standaard verandert niet.
+  **Bash 3.2:** het script draait op de macOS-shards met `/bin/bash` 3.2 onder `set -u`; daar is een
+  lege array-expansie `"${EXCL[@]}"` een `unbound variable`-fout, en in `HITS=$(...)` wordt die rc 1
+  stil tot `exit 0`. Breid een mogelijk lege array dus uit als `${EXCL[@]+"${EXCL[@]}"}` (voor `DIRS`
+  niet nodig: die heeft altijd minstens `pack`), of gebruik een `if`/`else` met twee
+  `grep`-aanroepen.
 
 - [ ] **Stap 4: lijsten**
   - `ci/literal-denylist-go.txt`: kopcommentaar zoals de pack-lijst (waarom geen kaal `paia`: de
@@ -268,15 +284,22 @@ git commit -m "ci(literal-grep): Go-denylist ook op internal/ en cmd/ (#250)"
 **Bestanden:**
 - Nieuw: `docs/host-assumptions.md`
 - Wijzig: `docs/install.md:6-14`
-- Nieuw: `changelog.d/issue-250-host-assumptions.md`
+- Wijzig: `docs/test-gate.md:50-62` (voorbeeld host-neutraal)
+- Nieuw: `changelog.d/issue-250-beelink-audit.md` (naam volgt de branch, [releasing.md](../../../releasing.md))
 
 - [ ] **Stap 1: scan** — draai en bewaar (in de scratchpad) de treffers op `pack/`, `internal/`,
-  `cmd/`, `deploy/`, `docs/` (zonder `docs/developer/planning/`), tests en `testdata/` uitgezonderd:
+  `cmd/`, `deploy/`, `docs/` (zonder `docs/developer/planning/`), tests en `testdata/` uitgezonderd.
+  Hoofdletterongevoelig (`-i`), anders mist de scan `Beelink`:
 
 ```bash
-grep -rnIE '/proc|journalctl|systemctl|systemd|pgrep|pkill|podman|choom|tailscale|date -d|sha256sum|127\.0\.0\.1|~/\.kenn|beelink|gates\.slice|100\.76\.|/home/|paia-forge-|tomllib' \
-  pack internal cmd deploy docs --exclude='*_test.go' --exclude-dir=testdata --exclude-dir=planning
+grep -rniIE '/proc|journalctl|systemctl|systemd|pgrep|pkill|podman|choom|tailscale|date -d|sha256sum|127\.0\.0\.1|~/\.kenn|beelink|gates\.slice|100\.76\.|/home/|paia-forge-|tomllib' \
+  pack internal cmd deploy docs --exclude='*_test.go' --exclude-dir=testdata --exclude-dir=planning \
+  > <scratchpad>/host-scan.txt
+cut -d: -f1 <scratchpad>/host-scan.txt | sort -u > <scratchpad>/host-scan-files.txt
 ```
+
+  Groepeerregel: één rij per bestand en aanname, niet per treffer; de `Where`-kolom noemt de
+  regel(s).
 
 - [ ] **Stap 2: schrijf `docs/host-assumptions.md`** (Engels). Opbouw: één alinea doel, de vier
   klassen als tabel (betekenis, waar het mag staan, uit het issue), dan één tabel met kolommen
@@ -299,7 +322,8 @@ grep -rnIE '/proc|journalctl|systemctl|systemd|pgrep|pkill|podman|choom|tailscal
 | `internal/workplace/kennforge/stop.go` (`pgrep`/`pkill`/`systemctl`/`podman`) | Linux-only | #253 |
 | `internal/usage/meter.go:165` (`pgrep -x claude`) | Linux-only of Overal-zonder-Windows: bepaal uit de code | — |
 | `deploy/systemd/lighthouse.service` | Linux-only (voorbeeld) | — |
-| `docs/test-gate.md:50-62` ("Voorbeeld: een Beelink") | Beelink, als voorbeeld | — |
+| `docs/test-gate.md:50-62` (voorbeeld-`host.toml`) | Hostkenmerk (na de fix in stap 2b) | — |
+| `docs/workplace.md:174` (unitnaam `paia-forge-<profiel>-…`) | Beelink (beschrijft `stop.go:34`) | #254 |
 | `docs/install.md` (`journalctl --user`, systemd user units) | Linux-only, al vereiste | — |
 | hooks op native Windows | Linux-only/WSL | #90 |
 
@@ -310,12 +334,23 @@ grep -rnIE '/proc|journalctl|systemctl|systemd|pgrep|pkill|podman|choom|tailscal
   Een rij voor `usage-gate.sh` (`date -d` met BSD-fallback, `pack/core/hooks/usage-gate.sh:75`):
   Overal.
 
+  Dekkingscontrole: elk bestand in `host-scan-files.txt` staat in de `Where`-kolom, of in een korte
+  lijst "Scanned, no host assumption" onderaan het document (met één reden per bestand, bijv. de
+  `paia`-leesmarkers). Controleer dat met een lus over `host-scan-files.txt` en `grep -F` op
+  `docs/host-assumptions.md`; geen bestand mag ontbreken.
+
+- [ ] **Stap 2b: `docs/test-gate.md` host-neutraal** — de spec (§1) staat klasse Beelink alleen
+  toe in `host.toml`, `deploy/` of personal_ai_agent, niet in `docs/`. Kop "Voorbeeld: een
+  Beelink" wordt "Voorbeeld: een thuisserver", `name = "beelink"` wordt `name = "thuisserver"`; de
+  rest van het voorbeeld (`gates.slice`, drempels) blijft, want dat zijn hostkenmerken achter
+  sleutels. Daarna: `grep -ni beelink docs/test-gate.md` geeft niets.
+
 - [ ] **Stap 3: `docs/install.md`** — in de vereisten verdwijnt "`(usage-gate.sh` uses GNU
   `date -d`)"; de zin wordt "The CLI runs on macOS, but the hooks are untested there." Voeg een
   regel toe: "Every assumption about the host, with what another host does:" plus een relatieve
   markdown-link naar `host-assumptions.md`.
 
-- [ ] **Stap 4: changelog** — `changelog.d/issue-250-host-assumptions.md`, `type: fixed`: "The
+- [ ] **Stap 4: changelog** — `changelog.d/issue-250-beelink-audit.md`, `type: fixed`: "The
   worktree audit measures a lock pid without `/proc`, so it works on macOS; a pid it cannot measure
   blocks removal. `docs/host-assumptions.md` lists every assumption about the host."
 
@@ -327,7 +362,7 @@ Verwacht: PASS, rc 0. De hook `md-link-check` blokkeert bij een dode of absolute
 - [ ] **Stap 6: commit**
 
 ```bash
-git add docs/host-assumptions.md docs/install.md changelog.d/issue-250-host-assumptions.md
+git add docs/host-assumptions.md docs/install.md docs/test-gate.md changelog.d/issue-250-beelink-audit.md
 git commit -m "docs(host): inventaris van host-aannames, installatiegids linkt ernaar (#250)"
 ```
 
