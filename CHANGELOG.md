@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.11.2] - 2026-11-07
+
+### Fixed
+
+- On native Windows (Git Bash), `commit-test-gate` and `bash-write-check` no longer block every commit on a missing `fcntl` module, and `lighthouse usage` can take its lock. A `[test_gate] command` still cannot run there: the gate slots need `flock`.
+
 ## [v0.11.1] - 2026-11-07
 
 ### Fixed
