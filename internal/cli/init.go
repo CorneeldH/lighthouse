@@ -20,7 +20,10 @@ func newInitCommand() *cobra.Command {
 			"init installs core plus every language package that fits the repository. Add\n" +
 			"or leave out a package with --pack and --no-pack, also later:\n" +
 			"  lighthouse init --upgrade --pack python\n" +
-			"  lighthouse init --upgrade --no-pack shell",
+			"  lighthouse init --upgrade --no-pack shell\n\n" +
+			"--labels proposes a label taxonomy, [labels] and [paths] labels in the same diff,\n" +
+			"under the same single approval. --create-labels, only with --labels, then creates\n" +
+			"the missing labels on the GitHub remote and asks nothing: the flag is the approval.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := os.Getwd()

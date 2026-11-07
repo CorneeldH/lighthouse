@@ -68,7 +68,7 @@ Report what you found to the user in one block. Then go to the choices.
 
 ## Choices
 
-Ask choices 1 to 5 and 8 now, in order, and skip one that does not apply. Choices 6 and 7 depend
+Ask choices 1 to 5, 8 and 9 now, in order, and skip one that does not apply. Choices 6 and 7 depend
 on what `init` proposes: ask them after the dry run, in step 2 of
 [Run lighthouse init](#run-lighthouse-init).
 
@@ -83,6 +83,8 @@ on what `init` proposes: ask them after the dry run, in step 2 of
 | 6 | Packages | what `init` picks · a package added or left out | Read the `Packages: …` line of the dry run. Ask once per change. Add with `--pack <name>`, leave out with `--no-pack <name>`. |
 | 7 | Test gate (`[test_gate] command`) | a command you derive from the repository · another command · off (`command = ""`) | The `python` package proposes `uv run pytest -q`. Without a gate, every commit passes with `no test command configured, nothing was tested`. |
 | 8 | Board (`[forge.board]`) | no, not now · yes | On "yes", point the user to the board section of <https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#configure-lighthousetoml>. Do not fill in its four IDs yourself. |
+| 9 | Label taxonomy | no, not now · yes | On "yes", add `--labels` to the command. It puts a taxonomy file (`docs/developer/labels.md`, or the existing `[paths] labels`), `[labels]` and `[paths] labels` in the diff; an existing taxonomy file is left as it is. Ask choice 9a only after a yes. |
+| 9a | Also create the labels on GitHub | yes · no, only show me the commands | On "yes", add `--create-labels`. It needs `--labels`, needs `gh` with rights on the repository, and creates only the missing labels; existing labels stay as they are. |
 
 In Codex or OpenCode, ask the same choices, with two differences:
 
@@ -172,8 +174,9 @@ In the root of the repository:
    `lighthouse init: nothing written`, writes nothing and exits 1. That is the expected result
    here.
 2. Ask choice 6 and choice 7 now. Build the command: `lighthouse init`, plus a `--pack <name>` or
-   `--no-pack <name>` for every change from choice 6. If there is one, run the dry run again with
-   those flags, for example `lighthouse init --no-pack shell </dev/null`.
+   `--no-pack <name>` for every change from choice 6, plus `--labels` after a yes on choice 9 and
+   `--create-labels` after a yes on choice 9a. If there is a flag, run the dry run again with
+   those flags, for example `lighthouse init --no-pack shell --labels </dev/null`.
 3. Show the diff to the user, or summarise it per file and offer the full diff. Ask for approval.
 4. After a yes, run the same command with one `y` on stdin:
 
@@ -181,7 +184,11 @@ In the root of the repository:
    printf 'y\n' | lighthouse init
    ```
 
-   Add the flags from step 2 after `init`. Do not approve with `--yes`. On a machine with
+   Add the flags from step 2 after `init`, for example
+   `printf 'y\n' | lighthouse init --labels --create-labels`. The same single `y` approves the
+   taxonomy; `--create-labels` asks nothing more. Without `--create-labels`, `init` prints the
+   missing labels as `gh label create` lines and still exits 0: show those lines to the user.
+   Do not approve with `--yes`. On a machine with
    Tailscale, `init` asks a second question after the diff: `Write ~/.config/lighthouse/host.toml?
    [y/N]`. The dry run never reaches it, so the user has not seen it, and `--yes` would write
    `host.toml` without asking. With one `y`, the second question reads the end of stdin, and that
@@ -263,6 +270,7 @@ here.
   of [Run lighthouse init](#run-lighthouse-init) says.
 - `lighthouse init: package <name> is not in this binary`: the release lacks that package. Drop
   its `--pack <name>` and tell the user.
+- `lighthouse init: --create-labels needs --labels`: add `--labels`, or drop `--create-labels`.
 - `lighthouse init: nothing written` after step 4: the `y` did not reach `init`. Check the pipe,
   and do not switch to `--yes`.
 - `lighthouse: unknown flag: --<name>`: the release lacks a flag from this guide. Stop and report
