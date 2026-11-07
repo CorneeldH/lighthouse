@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.10.1] - 2026-11-07
+
+### Fixed
+
+- A controller run in the devcontainer no longer stalls on a permission prompt when a skill reads its own reference files from the plugin cache.
+
 ## [v0.10.0] - 2026-11-07
 
 ### Changed
