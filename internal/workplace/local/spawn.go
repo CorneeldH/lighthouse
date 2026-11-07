@@ -13,14 +13,17 @@ import (
 // launchScript detaches claude from the tick: setsid -f gives it a session of its own, and the
 // redirections free the Runner's pipes. The child writes its own pid and start time (field 22
 // of /proc/<pid>/stat) before exec, so the pid file describes claude. $$ inside $(...) is the
-// pid of the shell that execs.
+// pid of the shell that execs. umask 077 covers only the log and the pid file: the caller's
+// umask, passed in as data, is back in place before claude starts.
 const launchScript = `cd "$1" || exit 97
 log=$2; pidf=$3; shift 3
+mask=$(umask) || exit 97
 umask 077
 exec setsid -f sh -c '
 st=$(sed "s/.*) //" /proc/$$/stat | cut -d" " -f20) && [ -n "$st" ] || exit 98
 printf "%s %s\n" "$$" "$st" >"$0.tmp" && mv "$0.tmp" "$0" || exit 98
-exec "$@"' "$pidf" "$@" </dev/null >>"$log" 2>&1`
+umask "$1" && shift || exit 98
+exec "$@"' "$pidf" "$mask" "$@" </dev/null >>"$log" 2>&1`
 
 const (
 	pidWait       = 10 * time.Second

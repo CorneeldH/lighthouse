@@ -21,11 +21,12 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
-// fakeClaude writes its argv (NUL-separated) and cwd, then leaves a grandchild in a session
+// fakeClaude writes its argv (NUL-separated), cwd and umask, then leaves a grandchild in a session
 // of its own that outlives it, as a dev server started by a run would.
 const fakeClaude = `#!/bin/sh
 printf '%s\0' "$@" >"$LH_TEST_ARGV"
 pwd >"$LH_TEST_CWD"
+umask >"$LH_TEST_UMASK"
 setsid -f sh -c 'echo $$ >"$LH_TEST_GRANDCHILD.tmp" && mv "$LH_TEST_GRANDCHILD.tmp" "$LH_TEST_GRANDCHILD"; exec sleep 600'
 exit 0
 `
@@ -130,11 +131,15 @@ func killPidFile(path string) {
 
 // TestRealRunKillReachesGrandchild runs the launch script in a real shell, against real /proc,
 // from a repo whose path holds a space: claude gets the prompt byte for byte, runs in the
-// worktree, the launch frees the Runner's pipes, and Kill reaches what claude left behind.
+// worktree with the umask of the tick, the launch frees the Runner's pipes, and Kill reaches
+// what claude left behind.
 func TestRealRunKillReachesGrandchild(t *testing.T) {
 	if _, err := exec.LookPath("setsid"); err != nil {
 		t.Skip("no setsid")
 	}
+	// A umask that is neither the usual 022 nor the 077 of the pid and log files.
+	old := syscall.Umask(0o027)
+	t.Cleanup(func() { syscall.Umask(old) })
 	repo, _ := newRepoNamed(t, "repo met spatie")
 	bin, out := t.TempDir(), t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(fakeClaude), 0o700); err != nil {
@@ -142,7 +147,9 @@ func TestRealRunKillReachesGrandchild(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	argvFile, cwdFile, grandchildFile := filepath.Join(out, "argv"), filepath.Join(out, "cwd"), filepath.Join(out, "grandchild")
+	umaskFile := filepath.Join(out, "umask")
 	t.Setenv("LH_TEST_ARGV", argvFile)
+	t.Setenv("LH_TEST_UMASK", umaskFile)
 	t.Setenv("LH_TEST_CWD", cwdFile)
 	t.Setenv("LH_TEST_GRANDCHILD", grandchildFile)
 	t.Cleanup(func() { killPidFile(grandchildFile) })
@@ -195,6 +202,22 @@ func TestRealRunKillReachesGrandchild(t *testing.T) {
 	}
 	if got := strings.TrimSuffix(string(cwd), "\n"); got != ws.Path {
 		t.Errorf("claude cwd = %q, want the worktree %q", got, ws.Path)
+	}
+	mask, err := os.ReadFile(umaskFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(string(mask)); got != "0027" {
+		t.Errorf("claude umask = %q, want the tick's 0027", got)
+	}
+	s, err := a.store()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{s.logPath(sess.Key), s.pidPath(ws.ID, sess.Key)} {
+		if fi, err := os.Stat(p); err != nil || fi.Mode().Perm() != 0o600 {
+			t.Errorf("%s: %v, %v; want mode 0600", p, fi, err)
+		}
 	}
 
 	var sessions []workplace.Session
