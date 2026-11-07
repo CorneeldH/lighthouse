@@ -30,6 +30,7 @@ func TestNewCarrierArgsStart(t *testing.T) {
 	}
 	want := []string{
 		"--permission-mode", "auto", "--strict-mcp-config",
+		"--allowedTools=Read(~/.claude/plugins/cache/**)",
 		"--mcp-config", "/abs/mcp.json",
 		"--append-system-prompt-file", "/abs/instr.md",
 		"--session-id", testUUID,
@@ -59,6 +60,7 @@ func TestNewCarrierArgsResumeNoMCP(t *testing.T) {
 	}
 	want := []string{
 		"--permission-mode", "auto", "--strict-mcp-config",
+		"--allowedTools=Read(~/.claude/plugins/cache/**)",
 		"--append-system-prompt-file", "/abs/instr.md",
 		"--resume", testUUID,
 		"do the thing",

@@ -13,6 +13,13 @@ import (
 // CarrierVersion is the version field of a written carrier.
 const CarrierVersion = 1
 
+// pluginCacheReadRule lets a run read the files of its plugins without a prompt. A skill
+// reads its own reference files from that cache, which lies outside the working directory,
+// and in auto mode the classifier can ask for a permission that no one will give (#246).
+// The flag takes several values, so the rule is joined with "=" to keep the next argument
+// out of it.
+const pluginCacheReadRule = "--allowedTools=Read(~/.claude/plugins/cache/**)"
+
 var (
 	// A lower-case UUID v4, as runs.NewSessionID makes it.
 	uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
@@ -58,7 +65,7 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 	if !filepath.IsAbs(stateDir) {
 		return Carrier{}, fmt.Errorf("carrier: state dir %q is not absolute", stateDir)
 	}
-	args := []string{"--permission-mode", "auto", "--strict-mcp-config"}
+	args := []string{"--permission-mode", "auto", "--strict-mcp-config", pluginCacheReadRule}
 	if l.MCPConfig != "" {
 		args = append(args, "--mcp-config", l.MCPConfig)
 	}
