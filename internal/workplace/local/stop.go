@@ -42,7 +42,7 @@ func (a *Adapter) end(_ context.Context, _ string, sessionIDs []string) error {
 }
 
 func (a *Adapter) endSession(sid string) error {
-	pids, err := a.Procs.Marked(sid)
+	pids, err := a.procs().Marked(sid)
 	if err != nil {
 		return fmt.Errorf("session %s: %w", sid, err)
 	}
@@ -53,8 +53,8 @@ func (a *Adapter) endSession(sid string) error {
 		return err
 	}
 	for range 5 {
-		a.Sleep(time.Second)
-		if pids, err = a.Procs.Marked(sid); err != nil {
+		a.sleep(time.Second)
+		if pids, err = a.procs().Marked(sid); err != nil {
 			return fmt.Errorf("session %s: %w", sid, err)
 		}
 		if len(pids) == 0 {
@@ -64,8 +64,8 @@ func (a *Adapter) endSession(sid string) error {
 	if err := a.signalAll(sid, pids, syscall.SIGKILL); err != nil {
 		return err
 	}
-	a.Sleep(time.Second)
-	if pids, err = a.Procs.Marked(sid); err != nil {
+	a.sleep(time.Second)
+	if pids, err = a.procs().Marked(sid); err != nil {
 		return fmt.Errorf("session %s: %w", sid, err)
 	}
 	if len(pids) > 0 {
@@ -76,7 +76,7 @@ func (a *Adapter) endSession(sid string) error {
 
 func (a *Adapter) signalAll(sid string, pids []int, sig syscall.Signal) error {
 	for _, pid := range pids {
-		if err := a.Procs.Signal(pid, sig); err != nil {
+		if err := a.procs().Signal(pid, sig); err != nil {
 			return fmt.Errorf("session %s: %w", sid, err)
 		}
 	}

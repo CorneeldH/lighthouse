@@ -44,12 +44,18 @@ func commit(t *testing.T, dir, file string) string {
 // checkout), and other a second clone to push branches from. Neither has a .gitignore.
 func newRepo(t *testing.T) (repoDir, other string) {
 	t.Helper()
+	return newRepoNamed(t, "repo")
+}
+
+// newRepoNamed is newRepo with the main checkout in a directory called name.
+func newRepoNamed(t *testing.T, name string) (repoDir, other string) {
+	t.Helper()
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	origin := filepath.Join(root, "origin.git")
-	repoDir, other = filepath.Join(root, "repo"), filepath.Join(root, "other")
+	repoDir, other = filepath.Join(root, name), filepath.Join(root, "other")
 	git(t, root, "init", "--bare", "-b", "main", origin)
 	git(t, root, "clone", origin, other)
 	git(t, other, "checkout", "-b", "main")
