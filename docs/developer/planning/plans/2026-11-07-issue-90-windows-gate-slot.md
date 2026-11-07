@@ -30,9 +30,12 @@ GitHub Actions (`windows-measure`).
   en commitberichten Nederlands; het changelog-fragment Engels.
 - Hook: bash 3.2 (geen `exec {var}>>`, geen `declare -A`, geen `mapfile`). Python: 3.9
   (`from __future__ import annotations` staat er al).
-- Dogfood: na elke wijziging onder `pack/` draait `go run ./cmd/lighthouse init --upgrade` en gaat
-  de geïnstalleerde kopie (`.claude/hooks/lighthouse/`, `.lighthouse/lib/lighthouse_lib/`) mee in
-  dezelfde commit. Daarna geeft een tweede run `No changes.`
+- Dogfood: na elke wijziging onder `pack/` draait `go run ./cmd/lighthouse init --upgrade --yes`
+  (zonder `--yes` weigert init zonder TTY en schrijft niets, `internal/initcmd/initcmd.go:210`) en
+  gaat de geïnstalleerde kopie (`.claude/hooks/lighthouse/`, `.lighthouse/lib/lighthouse_lib/`)
+  plus `.lighthouse/manifest.toml` (sha256 per geïnstalleerd bestand) mee in dezelfde commit.
+  Daarna geeft `go run ./cmd/lighthouse init --upgrade </dev/null` `No changes.` (de CI-check,
+  `.github/workflows/ci.yml:143`), en `git status --porcelain` is na de commit leeg.
 - Changelog: `changelog.d/issue-90-windows-gate-slot.md`, frontmatter `type: fixed`, 1-3 Engelse
   zinnen.
 - Elk shellcommando begint met `cd /home/corneel/repositories/lighthouse/.claude/worktrees/issue-90-windows-gate-slot`
@@ -59,9 +62,10 @@ GitHub Actions (`windows-measure`).
 
 **Files:**
 - Modify: `pack/core/lib/deadline.py` (`USAGE`, `main`, nieuwe helpers)
-- Modify: `pack/core/lib/gate_slot.py:307-311` (alleen de tekst van de weigering)
+- Modify: `pack/core/lib/gate_slot.py:65` (alleen de tekst van de weigering)
 - Test: `tests/pack/test_deadline.py` (nieuwe tests onderaan)
-- Dogfood: `.lighthouse/lib/lighthouse_lib/deadline.py`, `.lighthouse/lib/lighthouse_lib/gate_slot.py`
+- Dogfood: `.lighthouse/lib/lighthouse_lib/deadline.py`, `.lighthouse/lib/lighthouse_lib/gate_slot.py`,
+  `.lighthouse/manifest.toml`
 
 **Interfaces:**
 - Consumes: `gate_slot.acquire(fds: list[int], wait: float, interval: float = 1.0) -> int | None`,
@@ -170,7 +174,9 @@ def test_slot_busy_without_fcntl(tmp_path, windows_gate_slot):
 - [ ] **Step 2: Draai de tests en zie ze falen**
 
 Run: `uv run pytest tests/pack/test_deadline.py -q`
-Expected: de nieuwe tests FAIL (usage exit 2 op `--slot-dir`, geen rapport); de bestaande PASS.
+Expected: de nieuwe tests FAIL (usage exit 2 op `--slot-dir`, geen rapport), behalve
+`test_without_slot_options_gate_slot_is_not_imported`: die pint gedrag dat er al is en slaagt nu
+al. De bestaande PASS.
 
 - [ ] **Step 3: Implementeer in `pack/core/lib/deadline.py`**
 
@@ -190,7 +196,9 @@ Expected: de nieuwe tests FAIL (usage exit 2 op `--slot-dir`, geen rapport); de 
   1.0). Elke `OSError` bij openen of `acquire` → rapport `error: <err>` en `SLOT_ERROR_EXIT`.
   `None` → rapport `busy`, return `gate_slot.SLOT_BUSY_EXIT`. Slot `n` → rapport `f"{n}\n"`,
   sluit de andere fd's, `return run_until(deadline, argv)` met het slot-fd open tot na de return
-  (sluit het in een `finally`). Het rapport schrijft `_report(path, line)`; lukt dat niet
+  (sluit het in een `finally`). Het rapport schrijft `_report(path, line)` met
+`open(path, "w", encoding="utf-8", newline="\n")`: op Windows anders `1\r\n`, en dan past de
+`case` in de hook niet. Lukt dat schrijven niet
   (`OSError`), dan één regel op stderr (`deadline.py: cannot write slot report: …`), het commando
   start niet, return `SLOT_ERROR_EXIT`. Het commando start nooit vóór het rapport geschreven is.
 - `main`: `_parse`; `None` → `USAGE` op stderr, return 2. Zonder opties `run_until(deadline,
@@ -198,7 +206,7 @@ Expected: de nieuwe tests FAIL (usage exit 2 op `--slot-dir`, geen rapport); de 
 - Docstring van de module: één alinea over de slotopties (waarom: op Windows hoort een
   `msvcrt`-slot bij het proces, dus moet het proces dat de suite bewaakt het houden).
 
-In `pack/core/lib/gate_slot.py:310` wordt de melding
+In `pack/core/lib/gate_slot.py:65` wordt de melding
 `gate_slot.py: gate slots need flock, which this platform lacks (Windows); the hook takes the slot in deadline.py there\n`.
 
 - [ ] **Step 4: Draai de tests en zie ze slagen**
@@ -216,10 +224,11 @@ Zet tijdelijk de effectieve wacht op `wait` (zonder `min`); `-k capped` moet FAI
 
 ```bash
 cd /home/corneel/repositories/lighthouse/.claude/worktrees/issue-90-windows-gate-slot
-go run ./cmd/lighthouse init --upgrade
-go run ./cmd/lighthouse init --upgrade   # Expected: No changes.
-git add pack/core/lib/deadline.py pack/core/lib/gate_slot.py tests/pack/test_deadline.py .lighthouse/lib/lighthouse_lib/
+go run ./cmd/lighthouse init --upgrade --yes
+go run ./cmd/lighthouse init --upgrade </dev/null   # Expected: No changes.
+git add pack/core/lib/deadline.py pack/core/lib/gate_slot.py tests/pack/test_deadline.py .lighthouse/lib/lighthouse_lib/ .lighthouse/manifest.toml
 git commit -m "feat(test-gate): deadline.py neemt en houdt het gate-slot met --slot-* (#90)"
+git status --porcelain                              # Expected: leeg
 ```
 
 ---
@@ -228,9 +237,9 @@ git commit -m "feat(test-gate): deadline.py neemt en houdt het gate-slot met --s
 
 **Files:**
 - Modify: `pack/core/hooks/commit-test-gate.sh` (header "Why slots", slotblok `:390-448`, lus
-  `:535-570`)
+  vanaf `:552`)
 - Test: `tests/pack/test_commit_test_gate.py` (nieuwe tests na `test_slot_stays_held_until_deadline_py_ends`)
-- Dogfood: `.claude/hooks/lighthouse/commit-test-gate.sh`
+- Dogfood: `.claude/hooks/lighthouse/commit-test-gate.sh`, `.lighthouse/manifest.toml`
 
 **Interfaces:**
 - Consumes: de CLI, het rapport en de exitcodes van Task 1.
@@ -241,12 +250,13 @@ git commit -m "feat(test-gate): deadline.py neemt en houdt het gate-slot met --s
 
 Een helper `process(gate, cmd="git commit -m x", **env)` roept `gate.run(cmd, gate.project,
 LIGHTHOUSE_GATE_SLOT_MODE="process", **env)` aan. `NO_GATE_SLOT_PY` is de python3-stub uit
-`test_gate_blocks_when_gate_slot_breaks` (`*gate_slot.py) echo kapot >&2; exit 2`): slaagt een
-test daarmee, dan bewijst dat dat de procestak `gate_slot.py` niet aanroept.
+`test_gate_blocks_when_gate_slot_breaks` (`*gate_slot.py) echo kapot >&2; exit 2`). `process()`
+zet die stub altijd, tenzij de test zelf een andere `python3`-stub zet
+(`test_process_mode_without_report_blocks`). Zo bewijst elke procestest dat de procestak
+`gate_slot.py` niet aanroept; zonder de stub liepen ze ook groen via de fd-tak.
 
 ```python
 def test_process_mode_green_passes_without_gate_slot_py(gate):
-    gate.add_stub("python3", NO_GATE_SLOT_PY)
     result = process(gate)
     assert result.returncode == 0, result.stderr
     assert gate.marks() == [str(gate.project.resolve())]
@@ -320,7 +330,7 @@ def test_process_mode_two_roots_with_one_slot(gate):
 
 `test_process_mode_slot_stays_held_until_deadline_py_ends`: dezelfde opzet als
 `test_slot_stays_held_until_deadline_py_ends` (`:1117`), met
-`LIGHTHOUSE_GATE_SLOT_MODE="process"` in de `env`. Dezelfde asserts: na `SIGKILL` op de hook is
+`LIGHTHOUSE_GATE_SLOT_MODE="process"` in de `env` en de `NO_GATE_SLOT_PY`-stub. Dezelfde asserts: na `SIGKILL` op de hook is
 `slot-1` niet vrij, en binnen `8 + 10 + 2` s wel. Trek de gedeelde opzet niet uit de bestaande
 test: die blijft ongewijzigd.
 
@@ -328,14 +338,15 @@ test: die blijft ongewijzigd.
 
 Run: `uv run pytest tests/pack/test_commit_test_gate.py -q -k "process_mode or mingw"`
 Expected: FAIL (de hook kent de procestak niet; met `NO_GATE_SLOT_PY` blokkeert hij op
-`gate_slot.py gave exit 2`).
+`gate_slot.py gave exit 2`). Uitzondering: `test_process_mode_lock_dir_cannot_be_made` faalt al
+vóór `gate_slot.py` (op `mkdir`) en kan nu al slagen.
 
 - [ ] **Step 3: Implementeer in `pack/core/hooks/commit-test-gate.sh`**
 
 - Na de bepaling van `SLOT_DIR`: `SLOT_MODE=fd`; `process` als
   `[ "${LIGHTHOUSE_GATE_SLOT_MODE:-}" = process ]` of `case "$(uname -s 2>/dev/null)" in
   MINGW*|MSYS*|CYGWIN*)`. Alleen de waarde `process` telt.
-- De `busy`-melding (nu `:419-433`) wordt een functie `slots_busy()` met dezelfde tekst; beide
+- De `busy`-melding (nu `:418-432`) wordt een functie `slots_busy()` met dezelfde tekst; beide
   takken roepen hem aan.
 - `fd`: het bestaande blok van `mkdir -p -m 700` t/m het sluiten van de vrije fd's, ongewijzigd
   binnen `if [ "$SLOT_MODE" = fd ]; then … fi`.
@@ -367,15 +378,18 @@ Zet `SLOT_REPORT` tijdelijk op `"$GATE_TMP/slot"`: `-k wiped_gate_tmp` moet FAIL
 `case` tijdelijk op de exitcode 75 beslissen in plaats van het rapport: `-k exit_75` moet FAIL
 geven. Beide terugzetten.
 
-- [ ] **Step 6: Shellcheck, dogfood en commit**
+- [ ] **Step 6: Dogfood en commit**
+
+`shellcheck` staat niet op deze host en geen CI-workflow draait het: geen shellcheck-stap. De
+bash-3.2-regels bewaakt `test_hook_has_no_bash4_fd_variables`.
 
 ```bash
 cd /home/corneel/repositories/lighthouse/.claude/worktrees/issue-90-windows-gate-slot
-shellcheck pack/core/hooks/commit-test-gate.sh       # Expected: geen nieuwe bevinding
-go run ./cmd/lighthouse init --upgrade
-go run ./cmd/lighthouse init --upgrade               # Expected: No changes.
-git add pack/core/hooks/commit-test-gate.sh tests/pack/test_commit_test_gate.py .claude/hooks/lighthouse/commit-test-gate.sh
+go run ./cmd/lighthouse init --upgrade --yes
+go run ./cmd/lighthouse init --upgrade </dev/null   # Expected: No changes.
+git add pack/core/hooks/commit-test-gate.sh tests/pack/test_commit_test_gate.py .claude/hooks/lighthouse/commit-test-gate.sh .lighthouse/manifest.toml
 git commit -m "feat(test-gate): procestak voor het gate-slot op native Windows (#90)"
+git status --porcelain                              # Expected: leeg
 ```
 
 ---
@@ -420,14 +434,18 @@ De workflow draait niet vanzelf op een PR die alleen `pack/` raakt.
 ```bash
 cd /home/corneel/repositories/lighthouse/.claude/worktrees/issue-90-windows-gate-slot
 git push -u origin issue-90-windows-gate-slot
+SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 gh workflow run windows-measure.yml --ref issue-90-windows-gate-slot
-gh run list --workflow windows-measure.yml --branch issue-90-windows-gate-slot -L 1   # run-id
+# `gh workflow run` keert terug voordat de run bestaat: poll tot er een run na $SINCE is.
+gh run list --workflow windows-measure.yml --branch issue-90-windows-gate-slot -L 1 \
+  --json databaseId,createdAt --jq ".[] | select(.createdAt >= \"$SINCE\") | .databaseId"
 gh run watch <run-id>
-gh run view <run-id> --log | grep -n 'test_gate\|TestRedTestBlocksCommit\|TestRedCommitComesBackAfter\|TestDefaultCommandWithoutPytest'
+gh run view <run-id> --log | grep -n 'test_gate\|--- PASS: TestRedTestBlocksCommit\|--- PASS: TestRedCommitComesBackAfter\|--- PASS: TestDefaultCommandWithoutPytest'
 ```
 
-Expected in de job summary: stap 11 (`git --version` als `[test_gate] command`) `pass`; e2e
-`TestRedTestBlocksCommit`, `TestRedCommitComesBackAfter`, `TestDefaultCommandWithoutPytest` `ok`.
+Expected: in de job summary stap 11 (`git --version` als `[test_gate] command`) `pass`; in de log
+`--- PASS:` voor `TestRedTestBlocksCommit`, `TestRedCommitComesBackAfter` en
+`TestDefaultCommandWithoutPytest` (de summary toont alleen FAIL-regels, maximaal 8).
 Bewaar de runlink voor de Evidence-tabel van de PR. Faalt een van deze: stop,
 `superpowers:systematic-debugging` op de log, geen PR met een rode meting.
 
