@@ -32,7 +32,10 @@ func registerLatestComment(api huma.API, repos []overview.RepoSource) {
 			}
 		}
 		return nil, huma.Error404NotFound(fmt.Sprintf("repo %s is not served", in.Repo))
-	}, func(op *huma.Operation) { op.OperationID = "get-latest-comment" })
+	}, func(op *huma.Operation) {
+		op.OperationID = "get-latest-comment"
+		op.DefaultStatus = http.StatusFound // the description names 302, not huma's 204 for a bodiless output
+	})
 }
 
 // latestCommentURL is the URL of the last comment of issue, or the issue page when it has none

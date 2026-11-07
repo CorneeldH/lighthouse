@@ -252,24 +252,22 @@ export const getHealth = async ( options?: RequestInit): Promise<getHealthRespon
 
 
 
-export type getLatestCommentResponse204 = {
+export type getLatestCommentResponse302 = {
   data: void
-  status: 204
+  status: 302
 }
 
 export type getLatestCommentResponseDefault = {
   data: ErrorModel
-  status: Exclude<HTTPStatusCodes, 204>
+  status: Exclude<HTTPStatusCodes, 302>
 }
 
-export type getLatestCommentResponseSuccess = (getLatestCommentResponse204) & {
-  headers: Headers;
-};
-export type getLatestCommentResponseError = (getLatestCommentResponseDefault) & {
+;
+export type getLatestCommentResponseError = (getLatestCommentResponse302 | getLatestCommentResponseDefault) & {
   headers: Headers;
 };
 
-export type getLatestCommentResponse = (getLatestCommentResponseSuccess | getLatestCommentResponseError)
+export type getLatestCommentResponse = (getLatestCommentResponseError)
 
 export const getGetLatestCommentUrl = (params: GetLatestCommentParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -303,7 +301,7 @@ export const getLatestComment = async (params: GetLatestCommentParams, options?:
 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
 
-  const data: getLatestCommentResponse['data'] = body ? JSON.parse(body) : undefined
+  const data: getLatestCommentResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as getLatestCommentResponse
 }
 

@@ -511,8 +511,8 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "No Content",
+          "302": {
+            "description": "Found",
             "headers": {
               "Location": {
                 "schema": {
