@@ -48,16 +48,18 @@ const (
 type Options struct {
 	Dir                 string // working directory; the root comes from git rev-parse --show-toplevel
 	Upgrade, Force, Yes bool
-	Labels              bool                      // --labels: propose the label taxonomy file, [labels] and [paths] labels
-	AddPacks, DropPacks []string                  // --pack and --no-pack (plan M0 (c), design choice 6)
-	Version             string                    // "" means version.String()
-	Packs               fs.FS                     // holds <name>/...; nil means pack.Files
-	Deps                deps.Checker              // nil fields mean deps.Default()
-	Lookup              packs.Lookup              // config values for workflow placeholders; nil runs the package's config reader
-	CountWords          func([]byte) (int, error) // nil means wordcount.Count
-	HostTOML            string                    // "" means $LIGHTHOUSE_HOST_TOML, else ~/.config/lighthouse/host.toml
-	Hostname            func() (string, error)    // nil means os.Hostname
-	TailscaleIP         func() (string, error)    // nil runs `tailscale ip -4`
+	Labels              bool                                                      // --labels: propose the label taxonomy file, [labels] and [paths] labels
+	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
+	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil runs the installed create_labels.py
+	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
+	Version             string                                                    // "" means version.String()
+	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
+	Deps                deps.Checker                                              // nil fields mean deps.Default()
+	Lookup              packs.Lookup                                              // config values for workflow placeholders; nil runs the package's config reader
+	CountWords          func([]byte) (int, error)                                 // nil means wordcount.Count
+	HostTOML            string                                                    // "" means $LIGHTHOUSE_HOST_TOML, else ~/.config/lighthouse/host.toml
+	Hostname            func() (string, error)                                    // nil means os.Hostname
+	TailscaleIP         func() (string, error)                                    // nil runs `tailscale ip -4`
 	In                  io.Reader
 	Out, Err            io.Writer
 }
@@ -108,6 +110,9 @@ func Run(o Options) int {
 var errDeclined = errors.New("nothing written")
 
 func execute(o Options) error {
+	if o.CreateLabels && !o.Labels {
+		return errors.New("--create-labels needs --labels")
+	}
 	root, err := repoRoot(o.Dir)
 	if err != nil {
 		return err
@@ -226,6 +231,15 @@ func execute(o Options) error {
 	}
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
+	if o.Labels {
+		sync := o.SyncLabels
+		if sync == nil {
+			sync = runLabelScript
+		}
+		if err := sync(root, o.CreateLabels, o.Out, o.Err); err != nil {
+			_, _ = fmt.Fprintf(o.Err, "warning: labels: %v\n", err)
+		}
+	}
 	return offerHost(o, in)
 }
 
