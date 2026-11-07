@@ -483,6 +483,58 @@
         "summary": "Get API health"
       }
     },
+    "/api/latest-comment": {
+      "get": {
+        "operationId": "get-latest-comment",
+        "parameters": [
+          {
+            "description": "Slug of a served repo, owner/name",
+            "explode": false,
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "description": "Slug of a served repo, owner/name",
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "issue",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get API latest comment"
+      }
+    },
     "/api/questions": {
       "get": {
         "operationId": "get-questions",
