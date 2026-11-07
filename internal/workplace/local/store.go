@@ -102,6 +102,9 @@ func (s store) pidPath(id, key string) string { return filepath.Join(s.sessionDi
 // logPath holds stdout and stderr of one launch.
 func (s store) logPath(key string) string { return filepath.Join(s.dir, "logs", key+".log") }
 
+// ensureLogs makes the logs directory: the launch redirects into it and creates no directory.
+func (s store) ensureLogs() error { return os.MkdirAll(filepath.Join(s.dir, "logs"), 0o700) }
+
 // pid reads the pid file of a launch. A missing file is ok false; one that does not hold
 // two numbers is an error.
 func (s store) pid(id, key string) (pid int, start uint64, ok bool, err error) {

@@ -15,19 +15,14 @@ import (
 
 // pending lists the cases whose methods are not built yet; task 9 deletes it.
 var pending = map[string]bool{
-	"SessionsOfForgottenIsGone": true,
-	"SpawnInvalidNotAccepted":   true,
-	"SpawnAcceptedShowsSession": true,
-	"SpawnUncertainNeverTwice":  true,
-	"EmptySessionIDRejected":    true,
-	"KillWithoutProcess":        true,
-	"KillSurvivorIsError":       true,
-	"KillUnmeasurableIsError":   true,
-	"KillLeavesOtherSession":    true,
-	"RemoveDirtyKeeps":          true,
-	"RemoveForgottenAndTwice":   true,
-	"DiscardIdempotent":         true,
-	"EndedSessionIsDone":        true,
+	"EmptySessionIDRejected":  true,
+	"KillWithoutProcess":      true,
+	"KillSurvivorIsError":     true,
+	"KillUnmeasurableIsError": true,
+	"KillLeavesOtherSession":  true,
+	"RemoveDirtyKeeps":        true,
+	"RemoveForgottenAndTwice": true,
+	"DiscardIdempotent":       true,
 }
 
 func TestContract(t *testing.T) {

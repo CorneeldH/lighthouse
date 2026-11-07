@@ -114,22 +114,6 @@ func (a *Adapter) Lookup(ctx context.Context, workspaceID string) (workplace.Wor
 	return workplace.Workspace{ID: rec.ID, Path: rec.Path, Branch: branch}, nil
 }
 
-// Spawn is built in a later task.
-func (a *Adapter) Spawn(_ context.Context, ws workplace.Workspace, _ workplace.LaunchSpec) (workplace.Session, error) {
-	if err := checkLocal(ws.ID); err != nil {
-		return workplace.Session{}, fmt.Errorf("%w: %w", workplace.ErrNotAccepted, err)
-	}
-	return workplace.Session{}, errNotBuilt
-}
-
-// Sessions is built in a later task.
-func (a *Adapter) Sessions(_ context.Context, workspaceID string) ([]workplace.Session, error) {
-	if err := checkLocal(workspaceID); err != nil {
-		return nil, err
-	}
-	return nil, errNotBuilt
-}
-
 // Stop is built in a later task.
 func (a *Adapter) Stop(_ context.Context, workspaceID string, _ []string) error {
 	if err := checkLocal(workspaceID); err != nil {

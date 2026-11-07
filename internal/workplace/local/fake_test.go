@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -95,6 +96,12 @@ type fakeHost struct {
 	launches int
 	timeout  bool           // the next launch has an unknown outcome
 	pids     map[string]int // the pid of each session id
+
+	noClaude   bool       // command -v claude exits 1
+	launchCode int        // exit code of the next launches, when nothing else says so
+	launchErr  error      // the launch fails with it, after its work
+	noPidFile  bool       // the launch writes no pid file
+	argvs      [][]string // the args of every launch
 }
 
 func newFakeHost(t *testing.T) *fakeHost {
@@ -112,10 +119,39 @@ func (h *fakeHost) adapter(t *testing.T, repoDir string) (*Adapter, *int) {
 	}, slept
 }
 
-// fixtureRunner runs git for real; any other command fails the test.
+// fixtureRunner runs git for real, answers command -v claude and the launch, and fails the
+// test on any other command. A launch counts, records its args and writes the pid file the
+// child would write: the pid of its session id and start time 5000.
 func (h *fakeHost) fixtureRunner(ctx context.Context, timeout time.Duration, name string, args ...string) (string, int, error) {
 	if name == "git" {
 		return workplace.ExecRunner()(ctx, timeout, name, args...)
+	}
+	if name == "sh" && len(args) == 2 && args[0] == "-c" && args[1] == "command -v claude" {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		if h.noClaude {
+			return "", 1, nil
+		}
+		return "/usr/bin/claude\n", 0, nil
+	}
+	if name == "sh" && len(args) > 7 && args[0] == "-c" && args[1] == launchScript {
+		sid := strings.TrimPrefix(args[7], markVar+"=")
+		h.mu.Lock()
+		h.launches++
+		h.argvs = append(h.argvs, append([]string{}, args...))
+		timedOut, code, err, skip := h.timeout, h.launchCode, h.launchErr, h.noPidFile
+		h.timeout = false
+		h.mu.Unlock()
+		if timedOut {
+			return "", -1, errors.New("fake launch: timed out")
+		}
+		if !skip {
+			content := fmt.Sprintf("%d 5000\n", h.pidOf(sid))
+			if werr := os.WriteFile(args[5], []byte(content), 0o600); werr != nil {
+				h.t.Errorf("fake launch: pid file: %v", werr)
+			}
+		}
+		return "", code, err
 	}
 	cmd := strings.Join(append([]string{name}, args...), " ")
 	h.t.Errorf("unexpected command %q", cmd)
