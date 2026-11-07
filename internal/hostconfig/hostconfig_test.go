@@ -48,6 +48,7 @@ func TestLoadDispatchDefaults(t *testing.T) {
 		MaxRuntime:        8 * time.Hour,
 		MaxWait:           time.Hour,
 		AnswerPermissions: []string{"admin", "maintain"},
+		Workplace:         "kenn-forge",
 		Forge: DispatchForge{
 			URL:       "http://127.0.0.1:8091",
 			TokenFile: filepath.Join(home, ".kenn", "forge", "auth_token"),
@@ -169,5 +170,35 @@ func TestLoadDispatchProfiles(t *testing.T) {
 	want := map[string]Profile{"software": {TargetKey: "paia-software", MCPConfig: "/etc/mcp.json"}}
 	if !reflect.DeepEqual(got.Profiles, want) {
 		t.Errorf("Profiles = %+v, want %+v", got.Profiles, want)
+	}
+}
+
+func TestLoadDispatchWorkplace(t *testing.T) {
+	cases := []struct{ name, body, want, errHas string }{
+		{"missing", "[dispatch]\nslots = 2\n", "kenn-forge", ""},
+		{"existing forge table", "[dispatch.forge]\nurl = \"http://127.0.0.1:9\"\n", "kenn-forge", ""},
+		{"kenn-forge", "[dispatch]\nworkplace = \"kenn-forge\"\n", "kenn-forge", ""},
+		{"local", "[dispatch]\nworkplace = \"local\"\n", "local", ""},
+		{"other", "[dispatch]\nworkplace = \"podman\"\n", "", "dispatch.workplace"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d, err := LoadDispatch(writeHost(t, c.body))
+			if c.errHas != "" {
+				if err == nil || !strings.Contains(err.Error(), c.errHas) {
+					t.Fatalf("err = %v, want containing %q", err, c.errHas)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Workplace != c.want {
+				t.Errorf("Workplace = %q, want %q", d.Workplace, c.want)
+			}
+			if c.name == "existing forge table" && d.Forge.URL != "http://127.0.0.1:9" {
+				t.Errorf("Forge.URL = %q", d.Forge.URL)
+			}
+		})
 	}
 }
