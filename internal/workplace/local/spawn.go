@@ -90,6 +90,9 @@ func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace
 	_, code, runErr := a.Run(ctx, launchTimeout, "sh", argv...)
 	if runErr == nil && code != 0 {
 		if err := s.dropSession(ws.ID, key); err != nil {
+			// Deliberately not the spec's ErrNotAccepted: the session record that could not be
+			// dropped would be left orphaned. On ErrUncertain, rule 15 of decide (start uncertain)
+			// Discards it.
 			return workplace.Session{}, fmt.Errorf("%w: launch exit code %d; dropping its record: %w", workplace.ErrUncertain, code, err)
 		}
 		return workplace.Session{}, notAccepted("launch exit code %d", code)
