@@ -166,7 +166,8 @@ want bij exit 2 negeert Claude Code de JSON op stdout. *(eigen keuze na spec-rev
 
 Een hook die de binary niet kent (registratie nieuwer dan de binary) geeft exit 3 met
 `COULD NOT CHECK: unknown hook <naam> — update lighthouse to v<manifest>`; `run.sh` maakt daar
-exit 2 of een melding van (§2).
+exit 2 of een melding van (§2). Bij `version = "dev"` zegt de melding `go build -o
+.lighthouse/bin/lighthouse ./cmd/lighthouse` in plaats van een versie (§10).
 
 ### 4. Subcommando's voor skills
 
@@ -287,9 +288,25 @@ tot de wekelijkse cron (`.github/workflows/release.yml:2-3`). Daarom:
 - Elke PR van deze milestone krijgt een `minor`-fragment in `changelog.d/`, zodat de release
   direct op de merge volgt.
 - Na de merge draait wie in deze repo werkt `go install ./cmd/lighthouse` op `main`, of wacht
-  op de release. De melding van §1 en §3 zegt dat.
+  op de release.
 
 *(eigen keuze na spec-review, r1-f10)*
+
+Dat dekt `main`, niet de worktree van een PR vóór de merge. Die worktree registreert de nieuwe
+hook al (de PR commit de uitvoer van `init --upgrade`), terwijl de geïnstalleerde binary de vorige
+release is. Een sessie in die worktree (fix-pr, een roborev-ronde, een handoff) zou dan bij elke
+Bash-call vastlopen op `main-commit-gate`. Daarom, alleen bij `version = "dev"` *(eigen keuze na
+spec-review, r2-f1)*:
+
+- `run.sh` gebruikt `.lighthouse/bin/lighthouse` uit de checkout (in `.gitignore`). Is die er
+  niet, of is hij gebouwd op een andere `HEAD` dan nu (een stempelbestand ernaast), dan bouwt
+  `run.sh` hem eerst met `go build -o .lighthouse/bin/lighthouse ./cmd/lighthouse`. Zo draaien de
+  hooks van een worktree altijd de code van die branch.
+- Lukt die build niet (de branch compileert niet), dan valt `run.sh` terug op `lighthouse` van
+  het PATH. Kent die binary de hook niet, dan wordt de onbekende hook bij `dev` een melding en
+  geen blokkade. Een worktree met kapotte Go-code sluit de agent dus niet buiten Bash; de
+  melding noemt de build-fout en het commando van §3.
+- Buiten `dev` bouwt `run.sh` nooit iets.
 
 Elke PR draait `go run ./cmd/lighthouse init --upgrade` en commit het resultaat, zoals AGENTS.md
 voorschrijft.
