@@ -452,11 +452,12 @@ func hasLine(b []byte, line string) bool {
 // configTables are the tables lighthouse.toml should have: the core tables, then the
 // fragments of the chosen packages in their order (plan M0 (c), design choice 4).
 func configTables(root string, chosen []packs.Pack) ([]projectconfig.Table, bool, error) {
-	repo, haveRepo := "", false
+	var forge projectconfig.Forge
+	haveRepo := false
 	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
-		repo, haveRepo = projectconfig.ForgeRepo(strings.TrimSpace(string(url)))
+		forge, haveRepo = projectconfig.ForgeFromRemote(strings.TrimSpace(string(url)), nil)
 	}
-	tables, err := mergeTables(projectconfig.CoreTables(repo, haveRepo), chosen)
+	tables, err := mergeTables(projectconfig.CoreTables(forge, haveRepo), chosen)
 	return tables, haveRepo, err
 }
 
