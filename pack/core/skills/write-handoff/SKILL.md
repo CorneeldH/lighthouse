@@ -113,7 +113,9 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    would hit again: a hard gate, a service that is down, a test that
    only measures on one machine. At most three lines, only if they really exist.
 6. **Print the block** in the format below, followed by the suggestion to run
-   `/clear`.
+   `/clear`. Print it in your last message of the turn, never before an `AskUserQuestion`:
+   the question dialog hides the text written before it, and the user then sees no block.
+   With a question (`offer`), ask first and print the block after the answer.
 7. **Read your own block back** before you hand it over. Is there a slash command on the
    `First step:` line? If not: back to step 4. This is the mistake this skill makes
    most often.
@@ -216,7 +218,9 @@ tick starts the next phase itself. Two entries:
    **No, I paste it myself** (only the plain block). If the reviewed plan meets the native criterion
    (at most four tasks, few interfaces between the tasks), a fourth option is added:
    **Yes, native** (`next: /superpowers:executing-plans <plan>` plus `lane: native`,
-   `when: now`, then steps 5 and 6). The three other options stay. At yes: first post (step 5), then set the
+   `when: now`, then steps 5 and 6). The three other options stay. Ask before you print the block:
+   at **No, I paste it myself** the block follows in the message after the answer (Workflow step 6).
+   At yes: first post (step 5), then set the
    status (step 6). The other way round, a tick in between can see an issue on `Controller` without a handoff
    and start `/lighthouse-start-issue` itself.
 3. **`next:` is exactly one command plus one argument.** Anything else the
