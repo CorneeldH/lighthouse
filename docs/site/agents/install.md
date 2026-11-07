@@ -84,7 +84,7 @@ on what `init` proposes: ask them after the dry run, in step 2 of
 | 7 | Test gate (`[test_gate] command`) | a command you derive from the repository · another command · off (`command = ""`) | The `python` package proposes `uv run pytest -q`. Without a gate, every commit passes with `no test command configured, nothing was tested`. |
 | 8 | Board (`[forge.board]`) | no, not now · yes | On "yes", point the user to the board section of <https://github.com/CorneeldH/lighthouse/blob/main/docs/getting-started.md#configure-lighthousetoml>. Do not fill in its four IDs yourself. |
 | 9 | Label taxonomy | no, not now · yes | On "yes", add `--labels` to the command. It puts a taxonomy file (`docs/developer/labels.md`, or the existing `[paths] labels`), `[labels]` and `[paths] labels` in the diff; an existing taxonomy file is left as it is. Ask choice 9a only after a yes. |
-| 9a | Also create the labels on GitHub | yes · no, only show me the commands | On "yes", add `--create-labels`. It needs `--labels`, needs `gh` with rights on the repository, and creates only the missing labels; existing labels stay as they are. |
+| 9a | Also create the labels on GitHub | yes · no, only show me the commands | On "yes", add `--create-labels`. It needs `--labels`, needs `gh` with rights on the repository, and creates only the missing labels; existing labels stay as they are. With nothing to apply (`No changes.`) the flag still creates the missing labels: the flag is the approval. |
 
 In Codex or OpenCode, ask the same choices, with two differences:
 

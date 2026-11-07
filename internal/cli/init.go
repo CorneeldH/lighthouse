@@ -23,7 +23,8 @@ func newInitCommand() *cobra.Command {
 			"  lighthouse init --upgrade --no-pack shell\n\n" +
 			"--labels proposes a label taxonomy, [labels] and [paths] labels in the same diff,\n" +
 			"under the same single approval. --create-labels, only with --labels, then creates\n" +
-			"the missing labels on the GitHub remote and asks nothing: the flag is the approval.",
+			"the missing labels on the GitHub remote and asks nothing: the flag is the approval,\n" +
+			"also with nothing to apply (No changes.): it still creates the missing labels.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := os.Getwd()
