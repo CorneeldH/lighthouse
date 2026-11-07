@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: go build -o "$RUNNER_TEMP/lighthouse.exe" ./cmd/lighthouse
       # Claude Code on Windows hands the hooks a Windows path (cwd, CLAUDE_PROJECT_DIR), so the
       # work dir goes in in that form too.
