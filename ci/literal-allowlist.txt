@@ -3,3 +3,7 @@
 
 # The old artefact marker, read until M2 (besluit 15); the only place in pack/core.
 pack/core/lib/protocol.py:LEGACY_MARKERS = ("<!-- paia:",)
+
+# kenn-forge unit name, class Beelink; #254 moves it into configuration.
+# Pinned by tests/test_literal_grep.py::test_go_is_clean.
+internal/workplace/kennforge/stop.go:	return "paia-forge-" + profile + "-" + string(b)

@@ -1,0 +1,14 @@
+# Literals that must never appear in the Go sources under internal/ and cmd/ (#250). One
+# fixed string per line, matched case-insensitively as a substring by ci/literal-grep.sh
+# with LITERAL_SKIP_TESTS=1 (so _test.go and testdata/ are not scanned). Lines starting
+# with '#' and blank lines are ignored.
+#
+# No bare `paia`: the read markers `<!-- paia:` and the `/paia-` rewrite in
+# internal/protocol and internal/dispatch are deliberate compatibility.
+
+beelink
+100.76.
+/home/corneel
+paia-forge-
+paia-software
+paia-infra

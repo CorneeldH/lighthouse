@@ -9,9 +9,9 @@ REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "ci" / "literal-grep.sh"
 
 
-def _grep(target: Path, *, env: dict | None = None) -> subprocess.CompletedProcess:
+def _grep(*targets: Path | str, env: dict | None = None) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [str(SCRIPT), str(target)],
+        [str(SCRIPT), *map(str, targets)],
         capture_output=True,
         text=True,
         cwd=REPO,
@@ -123,3 +123,62 @@ def test_unreadable_allowlist_is_rc_2(tmp_path):
     (tmp_path / "a.txt").write_text("clean\n")
     env = dict(os.environ, LITERAL_ALLOWLIST=str(tmp_path / "missing.txt"))
     assert _grep(tmp_path, env=env).returncode == 2
+
+
+GO_DENYLIST = REPO / "ci" / "literal-denylist-go.txt"
+
+
+def test_go_tests_are_skipped_only_on_request(tmp_path):
+    import os
+
+    (tmp_path / "a_test.go").write_text("// beelink\n")
+    (tmp_path / "testdata").mkdir()
+    (tmp_path / "testdata" / "x.json").write_text('{"host": "beelink"}\n')
+    assert _grep(tmp_path).returncode == 1
+    assert _grep(tmp_path, env=dict(os.environ, LITERAL_SKIP_TESTS="1")).returncode == 0
+
+
+def test_several_dirs_are_scanned(tmp_path):
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / "a.txt").write_text("clean\n")
+    (second / "b.txt").write_text("beelink\n")
+    result = _grep(first, second)
+    assert result.returncode == 1
+    assert f"{second}/b.txt:1:" in result.stdout
+    assert f"{first}/" not in result.stdout
+
+
+def test_sources_toml_is_skipped_in_every_dir(tmp_path):
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    for d in (first, second):
+        (d / "SOURCES.toml").write_text("source_path = paia\n")
+    assert _grep(first, f"{second}/").returncode == 0
+
+
+def test_go_denylist_has_no_bare_paia():
+    patterns = [
+        line
+        for line in GO_DENYLIST.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert patterns == [
+        "beelink",
+        "100.76.",
+        "/home/corneel",
+        "paia-forge-",
+        "paia-software",
+        "paia-infra",
+    ]
+
+
+def test_go_is_clean():
+    """Pins the allowlist line for internal/workplace/kennforge/stop.go."""
+    import os
+
+    env = dict(os.environ, LITERAL_DENYLIST=str(GO_DENYLIST), LITERAL_SKIP_TESTS="1")
+    result = _grep("internal", "cmd", env=env)
+    assert result.returncode == 0, result.stdout
