@@ -81,6 +81,7 @@ def test_step_zero_stops_on_an_open_refs_pr():
             "--state open",
             'startswith("issue-<nr>-")',
             _STRIP_COMMENTS,
+            "--limit 9999",
             "dangerouslyDisableSandbox: true",
             "waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge",
         ):
@@ -113,6 +114,7 @@ def test_entry_b_runs_the_evidence_of_merged_refs_prs():
             "(?m)^### Evidence #<nr>",
             'startswith("issue-<nr>-")',
             _STRIP_COMMENTS,
+            "--limit 9999",
             "### Evidence #<nr>",
             "python3 .lighthouse/lib/lighthouse_lib/evidence.py run",
             "git worktree add --detach",
