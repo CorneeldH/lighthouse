@@ -44,6 +44,12 @@ func (a *Adapter) Prepare(ctx context.Context, branch string) (workplace.Workspa
 		return workplace.Workspace{}, err
 	}
 	if err := workplace.FollowRemote(ctx, a.Run, gitTimeout, ws, created); err != nil {
+		// Own work goes back as FollowRemote gives it: it names the workspace already, and
+		// dispatch hands the run back with its text (#269).
+		var own *workplace.OwnWorkError
+		if errors.As(err, &own) {
+			return workplace.Workspace{}, err
+		}
 		return workplace.Workspace{}, fmt.Errorf("workspace %s: %w", ws.ID, err)
 	}
 	return ws, nil

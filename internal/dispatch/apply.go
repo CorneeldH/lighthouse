@@ -237,6 +237,12 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	w := env.Workplace(a.Repo)
 	now := env.Now()
 	ws, err := w.Prepare(ctx, a.Branch)
+	// A workspace with own work goes through the busy check and the claim like any other, so
+	// the hand-back spends the trigger key and no later tick starts it again.
+	var own *workplace.OwnWorkError
+	if errors.As(err, &own) {
+		ws, err = own.Workspace, nil
+	}
 	if err != nil {
 		return ap.returnFixPR(ctx, a, fmt.Errorf("prepare: %w", err))
 	}
@@ -279,6 +285,9 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	// After the claim, so the retry rule sees a start_failed run with the path in its reason.
 	if relocErr != nil {
 		return ap.startFailed(ctx, run.ID, "handoff path", relocErr)
+	}
+	if own != nil {
+		return ap.returnOwnWork(ctx, a, run.ID, session, own)
 	}
 	// While a claude of an earlier run of the issue still lives in the workspace, forge refuses
 	// the handoff: a resume reuses its session (#206), and a run handed back while waiting on a
@@ -350,6 +359,22 @@ func (ap applier) returnFixPR(ctx context.Context, a Action, cause error) error 
 		return errors.Join(cause, fmt.Errorf("post returned: %w", err))
 	}
 	return cause
+}
+
+// returnOwnWork hands back a claimed run whose workspace holds own work origin lacks (#269):
+// a start there would run silently on an old HEAD. The Returned names the workspace and the
+// number of own commits; the run closes as returned, so its trigger is spent. A failed post
+// closes it as start_failed instead, and retry tries once more.
+func (ap applier) returnOwnWork(ctx context.Context, a Action, runID int64, session string, own *workplace.OwnWorkError) error {
+	ra := a
+	ra.Reason, ra.ReasonArg = "reason_own_work", own.Error()
+	reason := reasonText(ra)
+	body := protocol.RenderReturned(reason, session, "", a.Language)
+	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		return ap.startFailed(ctx, runID, "post", err)
+	}
+	ap.logf("%s#%d: run %d returned: %s", a.Repo, a.Issue, runID, reason)
+	return ap.closeRun(ctx, runID, runs.Returned, reason)
 }
 
 // returnStartFailed posts the 🤖 Returned of a refused launch under its Started, with the

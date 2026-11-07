@@ -1,0 +1,9 @@
+{"type":"user","isSidechain":false,"timestamp":"2026-11-07T13:50:20.000Z","message":{"role":"user","content":"/superpowers:subagent-driven-development plan.md"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-11-07T13:54:42.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_3","name":"Agent","input":{"description":"Implement Task 3","prompt":"..."}}]}}
+{"type":"user","isSidechain":false,"timestamp":"2026-11-07T13:54:42.500Z","message":{"role":"user","content":[{"tool_use_id":"toolu_3","type":"tool_result","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: a272347d571c31f38"}]}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a272347d571c31f38","description":"Implement Task 3"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-11-07T13:54:43.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Task 3 implementer running; waiting."}]}}
+{"type":"system","isSidechain":false,"subtype":"stop_hook_summary","timestamp":"2026-11-07T13:54:46.553Z","hookCount":2}
+{"type":"system","isSidechain":false,"subtype":"turn_duration","timestamp":"2026-11-07T13:54:46.556Z","durationMs":13600,"pendingBackgroundAgentCount":1}
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-11-07T14:07:30.000Z","content":"<task-notification>\n<task-id>a272347d571c31f38</task-id>\n<tool-use-id>toolu_3</tool-use-id>\n<status>completed</status>\n<summary>Agent \"Implement Task 3\" completed</summary>\n</task-notification>"}
+{"type":"user","isSidechain":false,"timestamp":"2026-11-07T14:07:30.100Z","message":{"role":"user","content":"Another Claude session sent a message: <agent-message from=\"a272347d571c31f38\">Task 3 done.</agent-message>"}}
+{"type":"assistant","isSidechain":false,"timestamp":"2026-11-07T14:07:35.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_5","name":"Bash","input":{"command":"go test -race ./..."}}]}}

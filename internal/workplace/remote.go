@@ -3,7 +3,6 @@ package workplace
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -30,7 +29,9 @@ func remoteGitOK(ctx context.Context, run Runner, timeout time.Duration, dir str
 }
 
 // FollowRemote moves the workspace onto origin/<branch> when that branch exists, without
-// ever dropping commits of its own. timeout applies to every git command.
+// ever dropping commits of its own. A found workspace with own work (commits origin lacks,
+// or a dirty work tree) stays where it is and gives an *OwnWorkError. timeout applies to
+// every git command.
 func FollowRemote(ctx context.Context, run Runner, timeout time.Duration, ws Workspace, created bool) error {
 	gitOK := func(args ...string) (string, error) {
 		return remoteGitOK(ctx, run, timeout, ws.Path, args...)
@@ -82,20 +83,49 @@ func FollowRemote(ctx context.Context, run Runner, timeout time.Duration, ws Wor
 			return fmt.Errorf("git merge-base --is-ancestor: exit code %d", code)
 		}
 	}
-	// On another branch (main, say) a fast-forward would move that branch: only switch
-	// when HEAD holds nothing that is not on origin.
-	n, err := gitOK("rev-list", "--count", "HEAD", "--not", "--remotes=origin")
+	// On another branch (main, say) a fast-forward would move that branch, and after a
+	// rebase and force-push of the branch HEAD is no ancestor: only switch when HEAD holds
+	// nothing origin lacks. Otherwise the run must not start silently on the old HEAD.
+	own, err := ownCommits(ctx, run, timeout, ws.Path, remote)
 	if err != nil {
 		return err
 	}
-	own, err := strconv.Atoi(n)
+	// Untracked files count, as in Dirty: checkout -B refuses one the branch tracks.
+	status, err := gitOK("status", "--porcelain")
 	if err != nil {
-		return fmt.Errorf("git rev-list --count: unreadable answer %q", n)
+		return err
 	}
-	if own > 0 {
-		return nil
+	if own > 0 || status != "" {
+		return &OwnWorkError{Workspace: ws, Commits: own, Dirty: status != ""}
 	}
 	return checkoutRemote(ctx, run, timeout, ws, remote, want)
+}
+
+// ownCommits counts the commits of HEAD that are on no origin ref and have no patch-equal
+// commit on remote: a rebase gives the commits of an earlier run new SHAs on origin, and
+// those are no own work. A merge commit git cherry does not list counts as own.
+func ownCommits(ctx context.Context, run Runner, timeout time.Duration, dir, remote string) (int, error) {
+	out, err := remoteGitOK(ctx, run, timeout, dir, "rev-list", "HEAD", "--not", "--remotes=origin")
+	if err != nil || out == "" {
+		return 0, err
+	}
+	cherry, err := remoteGitOK(ctx, run, timeout, dir, "cherry", remote, "HEAD")
+	if err != nil {
+		return 0, err
+	}
+	onRemote := map[string]bool{}
+	for line := range strings.Lines(cherry) {
+		if sha, ok := strings.CutPrefix(strings.TrimSpace(line), "- "); ok {
+			onRemote[sha] = true
+		}
+	}
+	own := 0
+	for sha := range strings.Lines(out) {
+		if !onRemote[strings.TrimSpace(sha)] {
+			own++
+		}
+	}
+	return own, nil
 }
 
 func checkoutRemote(ctx context.Context, run Runner, timeout time.Duration, ws Workspace, remote, want string) error {

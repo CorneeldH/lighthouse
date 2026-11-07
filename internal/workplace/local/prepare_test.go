@@ -179,7 +179,9 @@ func TestPrepareKeepsLocalBranchCommits(t *testing.T) {
 	}
 }
 
-// A local branch is found, not created: origin/<branch> must not reset it.
+// A local branch is found, not created: origin/<branch> must not reset it. Its own commit
+// origin lacks hands the run back (#269) with the OwnWorkError as FollowRemote gives it, so
+// dispatch reads the workspace from it.
 func TestPrepareKeepsLocalBranchCommitsOverRemote(t *testing.T) {
 	repo, other := newRepo(t)
 	git(t, repo, "checkout", "-b", "issue-1-x")
@@ -189,8 +191,21 @@ func TestPrepareKeepsLocalBranchCommitsOverRemote(t *testing.T) {
 	commit(t, other, "b")
 	git(t, other, "push", "origin", "issue-1-x")
 	a, _, _ := newAdapter(t, repo)
-	ws := prepare(t, a, "issue-1-x")
-	if got := git(t, ws.Path, "rev-parse", "HEAD"); got != c {
+	_, err := a.Prepare(t.Context(), "issue-1-x")
+	var own *workplace.OwnWorkError
+	if !errors.As(err, &own) {
+		t.Fatalf("err = %v, want an OwnWorkError", err)
+	}
+	if err.Error() != own.Error() {
+		t.Errorf("err = %q, want the OwnWorkError unwrapped %q", err, own)
+	}
+	if own.Commits != 1 || own.Dirty || own.Workspace.Branch != "issue-1-x" {
+		t.Errorf("own = %+v, want issue-1-x with 1 commit, clean", own)
+	}
+	if rec := record(t, a, own.Workspace.ID); rec.Path != own.Workspace.Path {
+		t.Errorf("record path %q, want %q", rec.Path, own.Workspace.Path)
+	}
+	if got := git(t, own.Workspace.Path, "rev-parse", "HEAD"); got != c {
 		t.Errorf("HEAD = %s, want c %s", got, c)
 	}
 }

@@ -1,0 +1,4 @@
+{"type":"user","timestamp":"2026-11-07T14:50:00.000Z","message":{"role":"user","content":"/lighthouse-start-issue 267"}}
+{"type":"assistant","timestamp":"2026-11-07T14:50:30.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"go test -race ./...","run_in_background":true}}]}}
+{"type":"user","timestamp":"2026-11-07T14:50:31.000Z","message":{"role":"user","content":[{"tool_use_id":"toolu_1","type":"tool_result","content":"Command running in background with ID: bk1race01. You will be notified when it completes."}]},"toolUseResult":{"stdout":"","stderr":"","interrupted":false,"backgroundTaskId":"bk1race01"}}
+{"type":"assistant","timestamp":"2026-11-07T14:50:32.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Tests running; waiting."}]}}

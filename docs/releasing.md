@@ -96,7 +96,10 @@ afterwards with `gh release delete <tag> --cleanup-tag --yes`.
 ## Upgrading
 
 1. Download the new binary (see [Installing the server](install.md#download-a-release-binary))
-   and replace the old one.
+   and replace the old one. `lighthouse-upgrade.timer` does this when it is on (see
+   [Upgrade automatically](install.md#upgrade-automatically)).
 2. If you run lighthouse as a user service, restart it: `systemctl --user restart lighthouse`.
+   The timer restarts it after a replacement (see
+   [Upgrade automatically](install.md#upgrade-automatically)).
 3. In every repository that uses lighthouse, run `lighthouse init --upgrade`.
 4. Commit the installed copy and send it as a PR; it contains only what `--upgrade` changed.

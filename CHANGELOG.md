@@ -4,6 +4,25 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.12.1] - 2026-11-07
+
+### Fixed
+
+- A reused forge workspace follows `origin/<branch>` after the branch was rebased and force-pushed:
+  commits that are on origin as a patch-equal commit no longer count as own work. A workspace with real
+  own work or a dirty work tree no longer starts the run silently on its old `HEAD`; the dispatcher hands
+  the run back with the reason, the workspace and the number of own commits.
+
+## [v0.12.0] - 2026-11-07
+
+### Added
+
+- `lighthouse self-update` replaces the binary with the newest release when it is newer and its checksum matches; `deploy/systemd/lighthouse-upgrade.timer` runs it daily and restarts `lighthouse.service`.
+
+### Fixed
+
+- The dispatcher no longer hands back a controller run whose session ended its turn to wait for a background Bash task or an async subagent; such a run now counts as working until that work ends.
+
 ## [v0.11.4] - 2026-11-07
 
 ### Fixed

@@ -34,17 +34,33 @@ telt alleen als `repo.provider` gelijk is aan `[forge] kind` en `repo.repo_path`
 telt de workspace waarvan `git_head_ref` de issue-branch is. Is er geen, dan maakt `Prepare` er een met
 `POST /api/v1/repo/<kind>/<repo>/workspaces` en wacht tot de status `ready` is (standaard 60 s).
 
-Daarna volgt de workspace `origin/<branch>`, als die branch bestaat:
+Daarna volgt de workspace `origin/<branch>`, als die branch bestaat. Dat doet
+`workplace.FollowRemote`, dat de lokale adapter ook gebruikt (zie [Lokaal](#lokaal)):
 
 - Een nieuwe workspace komt bij forge op `origin/HEAD`, niet op de branch: `Prepare` doet
   `checkout -B <branch> --track origin/<branch>`.
-- Een gevonden workspace kan werk van een eerdere run bevatten, dus nooit `checkout -B` eroverheen.
-  Staat de workspace op de issue-branch, dan volgt alleen een fast-forward (`merge --ff-only`), en alleen
-  als `HEAD` een voorouder is van `origin/<branch>`. Is `HEAD` geen voorouder, dan geldt de
-  rev-list-regel hieronder.
-- Staat de workspace op een andere branch (bijvoorbeeld `main`), dan geldt de rev-list-regel: pas als
-  `HEAD` geen commit heeft die op geen enkele `origin`-ref staat, schakelt `Prepare` om. Een
-  fast-forward zou daar die andere branch verplaatsen; lokale `main` gaat dus nooit mee.
+- Een gevonden workspace kan werk van een eerdere run bevatten, dus nooit `checkout -B` over eigen werk.
+  Staat de workspace op de issue-branch, dan volgt een fast-forward (`merge --ff-only`), en alleen
+  als `HEAD` een voorouder is van `origin/<branch>`. Is `HEAD` geen voorouder, bijvoorbeeld na een
+  rebase en force-push van de branch, dan geldt de regel voor eigen werk hieronder.
+- Staat de workspace op een andere branch (bijvoorbeeld `main`), dan geldt ook de regel voor eigen
+  werk. Een fast-forward zou daar die andere branch verplaatsen; lokale `main` gaat dus nooit mee.
+
+De regel voor eigen werk: een eigen commit staat op geen enkele `origin`-ref
+(`rev-list HEAD --not --remotes=origin`) en heeft geen patch-gelijke commit op `origin/<branch>`
+(`git cherry`). Na een rebase krijgen de commits van een eerdere run een nieuwe SHA op origin; die
+zijn dus geen eigen werk. Een merge-commit telt wel als eigen werk, want `git cherry` toont die niet.
+Een vuile werkboom (`status --porcelain`, ongevolgde bestanden inbegrepen, net als
+`workplace.Dirty`) telt ook als eigen werk. Een ongevolgd bestand dat de branch wel volgt, zou
+`checkout -B` bovendien weigeren.
+
+- Geen eigen werk: `Prepare` schakelt om met `checkout -B <branch> --track origin/<branch>`.
+- Wel eigen werk: `HEAD` blijft staan en `Prepare` geeft een `*workplace.OwnWorkError`. Die noemt de
+  workspace, het aantal eigen commits en of de werkboom vuil is (#269). De dispatcher claimt de run
+  en sluit hem als `returned`. Dan plaatst hij een `🤖 Teruggegeven` met de reden
+  `reason_own_work`, de workspace en het aantal commits. Zo start de run nooit stil op een
+  verouderde `HEAD`, en geen latere tick start dezelfde trigger opnieuw. Lukt de post niet, dan
+  sluit de run als `start_failed` en probeert `retry` het nog één keer.
 
 ### Het dragercontract (paia#1661)
 
@@ -173,6 +189,19 @@ per draad de laatste (`Threads`; `""` is de hoofdthread), het commando waarop de
 (`UnknownCommand`) en of er een assistent-beurt was (`AssistantTurn`). Een kapotte of afgebroken laatste
 regel telt niet mee. Ontbreekt het hoofdtranscript, dan wikkelt de fout `fs.ErrNotExist`; heeft geen
 draad een regel met tijd, dan is het `ErrNotMeasurable`.
+
+`Background` telt het achtergrondwerk van het hoofdtranscript dat nog loopt (#270). Een start is het
+`toolUseResult` van een Bash-call met `backgroundTaskId`, of van een Agent-call met `status:
+async_launched` en een `agentId`. Een einde is een `<task-id>` in een regel die geen assistent-regel is
+(de `<task-notification>`), of het resultaat van een `TaskStop` (`task_id` met `message`). Starts in
+een subagent-transcript tellen niet: de async subagent zelf is al een taak van het hoofdtranscript.
+Een taak die tot het einde van de sessie doorloopt zonder melding (een server op de achtergrond) blijft
+tellen; dan beslissen de stilte- en looptijdregels van de tick.
+
+`TurnOpen` is waar als er na de laatste `stop_hook_summary` van het hoofdtranscript nog een user- of
+assistent-regel staat: claude nam na haar Stop een nieuwe beurt, op de melding van achtergrondwerk,
+en de forge-stand van die Stop is verouderd. Een sessie die midden in een beurt stopte, telt ook als
+open. Zonder `stop_hook_summary` (geen Stop-hooks) blijft het onwaar.
 
 ### Stop
 
@@ -319,8 +348,11 @@ van de tick staan.
   `<repo>/.claude/worktrees/<id>`. Een bestaande worktree die de adapter niet zelf maakte, wordt
   *adopted*: hij blijft van de gebruiker en `Remove` verwijdert hem nooit van schijf. Een lege branchnaam
   of een naam die met `-` begint, weigert `Prepare`; een branch die in de hoofdcheckout staat ook. Daarna
-  volgt `workplace.FollowRemote` de `origin/<branch>`, met dezelfde regels als bij kenn-forge. Om de
-  checkout van de gebruiker schoon te houden zet `Prepare` `/.claude/worktrees/` in
+  volgt `workplace.FollowRemote` de `origin/<branch>`, met dezelfde regels als bij kenn-forge (zie
+  [Prepare](#prepare)). Nieuw is een worktree alleen als de branch hier nog niet bestond; een gevonden
+  worktree of een bestaande lokale branch met eigen werk dat origin mist, houdt zijn `HEAD`, en
+  `Prepare` geeft de `*workplace.OwnWorkError` ongewijzigd door, zodat de dispatcher de run teruggeeft
+  (#269). Om de checkout van de gebruiker schoon te houden zet `Prepare` `/.claude/worktrees/` in
   `<git-common-dir>/info/exclude`, als het er nog niet staat.
 - `Spawn(ws, launch)`: bouwt de drager (`workplace.NewCarrier`, dezelfde `args` als bij kenn-forge) zonder
   er een bestand van te schrijven, en start `claude -p` met die `args` en de `env` van de drager. Een
@@ -329,7 +361,9 @@ van de tick staan.
   zelf zijn pid-bestand. Verschijnt dat binnen 10 s niet, dan is de uitkomst `ErrUncertain`.
 - `Sessions(workspaceID)`: per launch met een pid-bestand `working` zolang de pid bestaat met dezelfde
   starttijd, anders `done`. Een gebruiker die `claude --resume` draait of het transcript volgt, houdt de
-  run dus niet in leven.
+  run dus niet in leven. Zolang `claude -p` leeft, is de stand `working`, ook als hij op
+  achtergrondwerk wacht; de regel van #270 (`Background` en `TurnOpen`, zie
+  [Transcripten](#transcripten)) leest het transcript en geldt hier ongewijzigd.
 - `Stop` en `Kill(workspaceID, sessionIDs)`: doen hetzelfde, want een lokale run heeft geen zachtere
   stop. Ze beëindigen elk gemerkt proces van de sessie-id's: SIGTERM, tot 5 s wachten, dan SIGKILL. Een
   leeg sessie-id weigeren ze vóór elk signaal. Elk signaal gaat via een pidfd (`os.FindProcess`), en pas

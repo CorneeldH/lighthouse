@@ -3,6 +3,7 @@ import { ApiError } from '@/lib/api'
 import { formatAge } from '@/lib/format'
 import { useNow } from '@/lib/now'
 import { useRuns } from '@/lib/queries'
+import { IssueLink } from './IssueLink'
 import { Panel } from './Panel'
 
 function runsErrorText(err: unknown): string {
@@ -31,7 +32,7 @@ function Field({ label, children }: { label: string; children: JSX.Element | str
 }
 
 export function RunsList(): JSX.Element {
-  const { data, error, isPending, dataUpdatedAt } = useRuns()
+  const { data, error, isPending, isFetching, dataUpdatedAt } = useRuns()
   const deferredId = useId()
   const now = useNow()
   return (
@@ -41,6 +42,7 @@ export function RunsList(): JSX.Element {
       error={error}
       errorText={runsErrorText}
       loading={isPending && !error}
+      refreshing={isFetching && !isPending}
     >
       {data && data.runs.length === 0 && <p>No running runs</p>}
       {data && data.runs.length > 0 && (
@@ -48,9 +50,7 @@ export function RunsList(): JSX.Element {
           {data.runs.map((r) => (
             <li key={`${r.repo}#${r.issue}`} className="space-y-1">
               <p>
-                <span>
-                  {r.repo}#{r.issue}
-                </span>{' '}
+                <IssueLink repo={r.repo} issue={r.issue} />{' '}
                 <span>{r.title}</span>
               </p>
               <p className="flex flex-wrap gap-x-4">
@@ -81,9 +81,7 @@ export function RunsList(): JSX.Element {
             {data.deferred.map((d) => (
               <li key={`${d.repo}#${d.issue}`} className="space-y-1">
                 <p>
-                  <span>
-                    {d.repo}#{d.issue}
-                  </span>{' '}
+                  <IssueLink repo={d.repo} issue={d.issue} />{' '}
                   <span>{d.title}</span>
                 </p>
                 <p className="flex flex-wrap gap-x-4">

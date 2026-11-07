@@ -145,7 +145,13 @@ Vraag aan de gebruiker vanuit de werkplek post `lighthouse ask`, zie [ask.md](as
 Per open run beslist decide elke tick wat er van de run wordt, op de metingen van stap 6. De
 volgorde is vast en de eerste treffer wint. Het ontwerp staat in
 [de dispatcher-spec](developer/planning/specs/2026-10-27-m2-dispatcher-design.md) (§7). "Klaar" is
-een forge-stand `done`; "activiteit" is de laatste gebeurtenis in het transcript (alle draden), en
+een forge-stand `done` zonder werk na de Stop in het transcript: geen lopend achtergrondwerk
+(`Background` is 0) en geen beurt na de laatste Stop (`TurnOpen` is onwaar), zie
+[workplace.md](workplace.md#transcripten). Forge zet een sessie op `done` bij de Stop-hook, ook
+als claude haar beurt beëindigt om op een Bash-taak met `run_in_background` of een async subagent
+te wachten, en houdt die stand terwijl claude een nieuwe beurt neemt op de melding van dat werk.
+Zo'n sessie is niet klaar en valt onder de stilte- en looptijdregels 17 en 19 (#270).
+"Activiteit" is de laatste gebeurtenis in het transcript (alle draden), en
 zonder transcript de tijd van de forge-sessie. Een PR telt alleen als hij van deze run is: een
 gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime` komen uit
 `host.toml`; staat een limiet op nul, dan staan de regels die haar gebruiken uit.

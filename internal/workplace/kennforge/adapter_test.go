@@ -345,17 +345,119 @@ func TestPrepareFoundBehindFastForwards(t *testing.T) {
 	}
 }
 
-func TestPrepareFoundOwnCommitUntouched(t *testing.T) {
+func TestPrepareFoundOwnCommitHandsBack(t *testing.T) {
 	w := newGitWorld(t)
 	w.pushBranch(t)
 	git(t, w.ws, "checkout", "-b", "issue-1-x")
 	c := commit(t, w.ws, "c")
 	a := gitAdapter(t, w.ws)
-	if _, err := a.Prepare(context.Background(), "issue-1-x"); err != nil {
-		t.Fatal(err)
+	_, err := a.Prepare(context.Background(), "issue-1-x")
+	var own *workplace.OwnWorkError
+	if !errors.As(err, &own) {
+		t.Fatalf("err = %v, want an OwnWorkError", err)
+	}
+	if own.Workspace.ID != "ws1" || own.Commits != 1 || own.Dirty {
+		t.Errorf("own = %+v, want ws1 with 1 commit, clean", own)
 	}
 	if got := git(t, w.ws, "rev-parse", "HEAD"); got != c {
 		t.Errorf("HEAD = %s, want own commit %s", got, c)
+	}
+}
+
+// rebase gives the found workspace a pushed commit c on issue-1-x, then rebases issue-1-x
+// on a newer main elsewhere and force-pushes it. It returns the new origin/issue-1-x.
+func (w gitWorld) rebase(t *testing.T) string {
+	t.Helper()
+	w.pushBranch(t)
+	git(t, w.ws, "fetch", "origin")
+	git(t, w.ws, "checkout", "-b", "issue-1-x", "--track", "origin/issue-1-x")
+	commit(t, w.ws, "c")
+	git(t, w.ws, "push", "origin", "issue-1-x")
+	git(t, w.other, "checkout", "main")
+	commit(t, w.other, "m2")
+	git(t, w.other, "push", "origin", "main")
+	git(t, w.other, "checkout", "issue-1-x")
+	git(t, w.other, "pull", "--ff-only", "origin", "issue-1-x")
+	git(t, w.other, "rebase", "main")
+	git(t, w.other, "push", "--force", "origin", "issue-1-x")
+	return git(t, w.other, "rev-parse", "HEAD")
+}
+
+func TestPrepareFoundRebasedFollowsRemote(t *testing.T) {
+	w := newGitWorld(t)
+	want := w.rebase(t)
+	a := gitAdapter(t, w.ws)
+	if _, err := a.Prepare(context.Background(), "issue-1-x"); err != nil {
+		t.Fatal(err)
+	}
+	if got := git(t, w.ws, "rev-parse", "HEAD"); got != want {
+		t.Errorf("HEAD = %s, want rebased %s", got, want)
+	}
+	if got := git(t, w.ws, "rev-parse", "--abbrev-ref", "issue-1-x@{upstream}"); got != "origin/issue-1-x" {
+		t.Errorf("upstream = %s", got)
+	}
+}
+
+func TestPrepareFoundRebasedWithOwnCommitHandsBack(t *testing.T) {
+	w := newGitWorld(t)
+	w.rebase(t)
+	d := commit(t, w.ws, "d")
+	a := gitAdapter(t, w.ws)
+	_, err := a.Prepare(context.Background(), "issue-1-x")
+	var own *workplace.OwnWorkError
+	if !errors.As(err, &own) {
+		t.Fatalf("err = %v, want an OwnWorkError", err)
+	}
+	// b and c are on origin under other SHAs; only d is own work.
+	if own.Commits != 1 || own.Dirty {
+		t.Errorf("own = %+v, want 1 commit, clean", own)
+	}
+	if got := git(t, w.ws, "rev-parse", "HEAD"); got != d {
+		t.Errorf("HEAD = %s, want own commit %s", got, d)
+	}
+}
+
+func TestPrepareFoundRebasedDirtyHandsBack(t *testing.T) {
+	w := newGitWorld(t)
+	w.rebase(t)
+	head := git(t, w.ws, "rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(w.ws, "c"), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := gitAdapter(t, w.ws)
+	_, err := a.Prepare(context.Background(), "issue-1-x")
+	var own *workplace.OwnWorkError
+	if !errors.As(err, &own) {
+		t.Fatalf("err = %v, want an OwnWorkError", err)
+	}
+	if own.Commits != 0 || !own.Dirty {
+		t.Errorf("own = %+v, want 0 commits, dirty", own)
+	}
+	if got := git(t, w.ws, "rev-parse", "HEAD"); got != head {
+		t.Errorf("HEAD = %s, want unmoved %s", got, head)
+	}
+}
+
+// An untracked file is own work too: checkout -B would refuse one the branch tracks, and
+// workplace.Dirty counts it.
+func TestPrepareFoundRebasedUntrackedHandsBack(t *testing.T) {
+	w := newGitWorld(t)
+	w.rebase(t)
+	head := git(t, w.ws, "rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(w.ws, "m2"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := gitAdapter(t, w.ws)
+	_, err := a.Prepare(context.Background(), "issue-1-x")
+	var own *workplace.OwnWorkError
+	if !errors.As(err, &own) {
+		t.Fatalf("err = %v, want an OwnWorkError", err)
+	}
+	if own.Commits != 0 || !own.Dirty {
+		t.Errorf("own = %+v, want 0 commits, dirty", own)
+	}
+	if got := git(t, w.ws, "rev-parse", "HEAD"); got != head {
+		t.Errorf("HEAD = %s, want unmoved %s", got, head)
 	}
 }
 
