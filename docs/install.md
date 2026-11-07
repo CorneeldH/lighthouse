@@ -92,6 +92,34 @@ With a clone, copy the unit instead of the `curl` line:
 The server listens on `127.0.0.1:8127` and stores its database in
 `${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/lighthouse.db`.
 
+## Upgrade automatically
+
+A timer can keep the binary current. [lighthouse-upgrade.service](../deploy/systemd/lighthouse-upgrade.service)
+runs `lighthouse self-update --restart lighthouse.service`, and
+[lighthouse-upgrade.timer](../deploy/systemd/lighthouse-upgrade.timer) starts it daily. The
+binary is replaced only when the newest release is newer and its checksum matches, and the
+server restarts only after a replacement. A `dev` build is skipped.
+
+```bash
+cp deploy/systemd/lighthouse-upgrade.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now lighthouse-upgrade.timer
+```
+
+Without a clone, fetch both files with `curl` as for `lighthouse.service` above. An optional
+`GH_TOKEN` in `~/.config/lighthouse/forge.env` lifts the GitHub rate limit for the release
+lookup.
+
+Every release goes live without a review. To stop:
+`systemctl --user disable --now lighthouse-upgrade.timer`.
+
+Which version runs, and what the last run did:
+
+```bash
+lighthouse version
+curl -s 127.0.0.1:8127/api/health
+journalctl --user -u lighthouse-upgrade.service -n 5
+```
+
 ## Check it
 
 ```bash

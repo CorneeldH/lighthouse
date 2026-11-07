@@ -1,0 +1,40 @@
+# lighthouse-upgrade — replace the lighthouse binary with the newest release (systemd user unit)
+#
+# Runs `lighthouse self-update --restart lighthouse.service` once, started daily by
+# lighthouse-upgrade.timer. The binary is replaced only when the newest release is newer and
+# its checksum matches; the server restarts only after a replacement. A `dev` build is skipped.
+#
+# Why oneshot: the command does its work and exits. systemd then records the run in the journal
+# and the timer can start the unit again at the next tick.
+#
+# Why ReadWritePaths=%h/go/bin: ProtectHome=read-only would otherwise make the binary's own
+# directory read-only, and the replacement could not be written. Only that directory opens up.
+#
+# Why EnvironmentFile: an optional GH_TOKEN in ~/.config/lighthouse/forge.env lifts the GitHub
+# rate limit for the release lookup. The leading dash lets the unit run without the file.
+#
+# Every release goes live here without a review: a bad release reaches this machine at the next
+# tick. Disable the timer to hold a version (docs/install.md, "Upgrade automatically").
+#
+# Install (details in docs/install.md):
+#   cp deploy/systemd/lighthouse-upgrade.{service,timer} ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now lighthouse-upgrade.timer
+#
+# %h/go/bin is where the install guide puts the binary; edit ExecStart and ReadWritePaths if
+# yours lives elsewhere.
+
+[Unit]
+Description=lighthouse — upgrade the binary to the newest release
+
+[Service]
+Type=oneshot
+EnvironmentFile=-%h/.config/lighthouse/forge.env
+ExecStart=%h/go/bin/lighthouse self-update --restart lighthouse.service
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/go/bin
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lighthouse-upgrade
