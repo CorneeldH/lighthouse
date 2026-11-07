@@ -4,6 +4,16 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.12.0] - 2026-11-07
+
+### Added
+
+- `lighthouse self-update` replaces the binary with the newest release when it is newer and its checksum matches; `deploy/systemd/lighthouse-upgrade.timer` runs it daily and restarts `lighthouse.service`.
+
+### Fixed
+
+- The dispatcher no longer hands back a controller run whose session ended its turn to wait for a background Bash task or an async subagent; such a run now counts as working until that work ends.
+
 ## [v0.11.4] - 2026-11-07
 
 ### Fixed
