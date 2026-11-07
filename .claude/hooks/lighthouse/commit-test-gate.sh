@@ -65,10 +65,22 @@
 # slot stays taken until the deadline (+ grace) of `deadline.py`. Fixed fd
 # numbers 3-9 through `eval`, not `exec {var}>>`: that is bash 4.1+ and macOS'
 # /bin/bash is 3.2 — the hook would die on that line with an exit that is not 2,
-# and the commit would pass untested. That caps the slots at MAX_SLOTS. The slot
+# and the commit would pass untested. That caps the slots at MAX_SLOTS. The lock
+# dir is per host, shared by every project: `[host] gate_slots` in host.toml caps
+# what `[test_gate] slots` of a project asks for on this host. The slot
 # comes before the loop and holds for all roots: the deadline is also one for
 # the whole loop, and the wait counts towards it. A commit in another project
 # takes no slot (there is nothing to test).
+#
+# Why a host memory check: a slot says how many gates run, not how much memory
+# the rest of the host leaves them. With `gate_min_mem_available_gb` or
+# `gate_min_swap_free_gb` in `[host]` of host.toml, the gate waits after taking
+# its slot until `MemAvailable` and `SwapFree` (lighthouse_lib/host_memory.py,
+# on /proc/meminfo) reach them. It keeps its slot while it waits, and the wait is
+# at most `slot_wait_seconds` and never past the deadline; still short then is
+# COULD NOT CHECK, as is a meminfo it cannot read. A host without swap skips the
+# swap threshold with a note. Without either key memory is not checked, and the
+# output says so.
 #
 # Why a memory brake: the slots cap the number of runs, not the memory. The
 # brake is a property of the host: `gate_slice` in `[host]` of host.toml names a
@@ -188,8 +200,24 @@ post_untested() {
   done <<< "$POST_ROWS"
 }
 
+MSG=""
+add_message() {
+  if [ -n "$MSG" ]; then
+    MSG="$MSG"$'\n'"$1"
+  else
+    MSG="$1"
+  fi
+}
+
+# The notes gathered so far, before a block that ends the hook on stderr:
+# a block emits no JSON, so without this they would be lost.
+pending_messages() {
+  [ -z "$MSG" ] || printf '%s\n' "$MSG"
+}
+
 block() {
   {
+    pending_messages
     echo "$HOOK_NAME: COULD NOT CHECK — $1"
     echo ""
     if [ "$MODE" = "post" ]; then
@@ -225,15 +253,6 @@ ERR_FILE=$(mktemp 2>/dev/null) || ERR_FILE="${TMPDIR:-/tmp}/commit-test-gate.$$"
 BT=""
 trap 'rm -f "$ERR_FILE"; [ -z "$BT" ] || rm -rf "$BT"' EXIT
 
-MSG=""
-add_message() {
-  if [ -n "$MSG" ]; then
-    MSG="$MSG"$'\n'"$1"
-  else
-    MSG="$1"
-  fi
-}
-
 # additionalContext reaches the model, systemMessage the user: a silent gate
 # must not look like a satisfied gate. $1: the hook event the JSON answers
 # (PreToolUse, PostToolUse or PostToolUseFailure).
@@ -258,6 +277,7 @@ read_config() {
 
 slot_failed() {
   {
+    pending_messages
     echo "$HOOK_NAME: COULD NOT CHECK — cannot take a gate slot: $1"
     echo ""
     echo "Without a slot this run would go unchecked beside the other gates."
@@ -323,6 +343,10 @@ run_gate_roots() {
   DEADLINE_SECONDS="$CONFIG_VALUE"
   read_config test_gate.slots
   SLOTS="$CONFIG_VALUE"
+  HOST_SLOTS="$MAX_SLOTS"
+  if read_config host.gate_slots; then
+    HOST_SLOTS="$CONFIG_VALUE"
+  fi
   read_config test_gate.slot_wait_seconds
   SLOT_WAIT="$CONFIG_VALUE"
   read_config test_gate.unchecked_exit_codes
@@ -332,6 +356,13 @@ run_gate_roots() {
   if read_config host.gate_slice; then
     SLICE="$CONFIG_VALUE"
   fi
+  MEM_ARGS=()
+  if read_config host.gate_min_mem_available_gb; then
+    MEM_ARGS+=(--min-available-gib "$CONFIG_VALUE")
+  fi
+  if read_config host.gate_min_swap_free_gb; then
+    MEM_ARGS+=(--min-swap-free-gib "$CONFIG_VALUE")
+  fi
 
   # The config reader checked the types; the ranges are this hook's.
   if [ "$DEADLINE_SECONDS" -lt 1 ] || [ "$DEADLINE_SECONDS" -gt "$MAX_DEADLINE" ]; then
@@ -339,6 +370,14 @@ run_gate_roots() {
   fi
   if [ "$SLOTS" -lt 1 ] || [ "$SLOTS" -gt "$MAX_SLOTS" ]; then
     block "test_gate.slots = $SLOTS; it must be between 1 and $MAX_SLOTS."
+  fi
+  if [ "$HOST_SLOTS" -lt 1 ] || [ "$HOST_SLOTS" -gt "$MAX_SLOTS" ]; then
+    block "host.gate_slots = $HOST_SLOTS in host.toml; it must be between 1 and $MAX_SLOTS."
+  fi
+  # Not a block: the project cannot know the host it lands on.
+  if [ "$SLOTS" -gt "$HOST_SLOTS" ]; then
+    add_message "$HOOK_NAME: test_gate.slots = $SLOTS above host gate_slots = $HOST_SLOTS, the gate uses $HOST_SLOTS"
+    SLOTS="$HOST_SLOTS"
   fi
   if [ "$SLOT_WAIT" -lt 0 ]; then
     block "test_gate.slot_wait_seconds = $SLOT_WAIT; it must not be negative."
@@ -379,6 +418,7 @@ run_gate_roots() {
   SLOT_STATUS=$?
   if [ "$SLOT_STATUS" -eq 75 ]; then
     {
+      pending_messages
       echo "$HOOK_NAME: COULD NOT CHECK — all gate slots busy after $SLOT_WAIT s (slots: $SLOTS)"
       echo ""
       if [ "$MODE" = "post" ]; then
@@ -408,9 +448,52 @@ run_gate_roots() {
     N=$((N + 1))
   done
 
+  # After the slot, so a gate that waits for memory keeps its slot and seven gates
+  # do not slip through the same opening. The wait counts towards the deadline.
+  # LIGHTHOUSE_GATE_MEMINFO: for tests only.
+  if [ "${#MEM_ARGS[@]}" -eq 0 ]; then
+    add_message "$HOOK_NAME: no gate memory threshold in host.toml, host memory not checked"
+  else
+    MEM_WAIT=$(( DEADLINE - $(date +%s) ))
+    [ "$MEM_WAIT" -le "$SLOT_WAIT" ] || MEM_WAIT="$SLOT_WAIT"
+    [ "$MEM_WAIT" -ge 0 ] || MEM_WAIT=0
+    MEM_OUT=$(python3 "$LIB/host_memory.py" --meminfo "${LIGHTHOUSE_GATE_MEMINFO:-/proc/meminfo}" \
+      "${MEM_ARGS[@]}" --wait "$MEM_WAIT" 2>"$ERR_FILE")
+    MEM_STATUS=$?
+    if [ "$MEM_STATUS" -eq 75 ]; then
+      {
+        pending_messages
+        echo "$HOOK_NAME: COULD NOT CHECK — host memory below threshold after $MEM_WAIT s ($MEM_OUT)"
+        echo ""
+        if [ "$MODE" = "post" ]; then
+          echo "The host has too little free memory for a gate run. Not being able to test is not a green light."
+          post_untested
+        else
+          echo "The host has too little free memory for a gate run. Try the commit again shortly."
+          echo "Not being able to test is not a green light."
+        fi
+      } >&2
+      exit 2
+    fi
+    if [ "$MEM_STATUS" -ne 0 ]; then
+      {
+        pending_messages
+        echo "$HOOK_NAME: COULD NOT CHECK — host memory not measurable: $(cat "$ERR_FILE" 2>/dev/null)"
+        echo ""
+        echo "Not being able to test is not a green light."
+        post_untested
+      } >&2
+      exit 2
+    fi
+    while IFS= read -r MEM_LINE; do
+      [ -z "$MEM_LINE" ] || add_message "$HOOK_NAME: $MEM_LINE"
+    done <<< "$MEM_OUT"
+  fi
+
   if ! BT=$(mktemp -d 2>"$ERR_FILE"); then
     BT=""
     {
+      pending_messages
       echo "$HOOK_NAME: COULD NOT CHECK — no gate tmp dir: $(cat "$ERR_FILE" 2>/dev/null)"
       echo ""
       echo "Not being able to test is not a green light."

@@ -98,7 +98,7 @@ Sleutels in `[host]` van `host.toml`, alle optioneel:
 |---|---|---|
 | `scan_memory_max` | `2G` | `MemoryMax` van de scope; zonder swap |
 | `scan_cpu_quota` | `200%` | `CPUQuota`; `GOMAXPROCS` volgt eruit |
-| `gate_slice` | niet gezet | alleen als gezet gaat de scope in deze slice (zet hier de eigen slicenaam van de host) |
+| `gate_slice` | niet gezet | alleen als gezet gaat de scope in deze slice (zet hier de eigen slicenaam van de host); de test-gate gebruikt dezelfde sleutel, zie [test-gate.md](test-gate.md) |
 
 Een batch die op het plafond sneuvelt (rc 137 of SIGKILL; `memory.events` bleek na het einde van
 de scope onbetrouwbaar) geeft `secret-scan: ABORTED at memory ceiling (<max>) in batch <i>; raise

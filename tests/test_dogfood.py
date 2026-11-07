@@ -175,7 +175,8 @@ def test_test_gate_uses_selectors():
     )
     assert result.stdout.strip() == (
         "python3 .lighthouse/scripts/gate_go.py -- go test -race"
-        " && python3 pack/python/scripts/gate_python.py -- uv run pytest -q"
+        # --basetemp: pytest's tmp lands in the gate's own dir, which the hook removes (#171).
+        ' && python3 pack/python/scripts/gate_python.py -- uv run pytest -q --basetemp="$LIGHTHOUSE_GATE_TMP"'
         " && python3 .lighthouse/scripts/gate_node.py --dir web --also .github/workflows/ci.yml"
         " --also lighthouse.toml --drift gen=src/api -- lint typecheck test"
     ), result.stdout + result.stderr

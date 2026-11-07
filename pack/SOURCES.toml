@@ -96,6 +96,10 @@ source_path = ".claude/hooks/lib/gate_slot.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
+path = "pack/core/lib/host_memory.py"
+new = true
+
+[[file]]
 path = "pack/core/lib/md_links.py"
 source_path = ".claude/hooks/lib/md_links.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"

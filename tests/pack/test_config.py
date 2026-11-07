@@ -809,6 +809,54 @@ def test_gate_slice_broken_host_toml_is_rc_2(tmp_path, monkeypatch, text):
     assert main(["host.gate_slice"]) == 2
 
 
+_HOST_BASE = '[host]\nname = "box"\ntailscale_ip = "100.64.0.1"\n'
+_GATE_HOST_KEYS = ("gate_slots", "gate_min_mem_available_gb", "gate_min_swap_free_gb")
+
+
+@pytest.mark.parametrize(
+    ("line", "key", "out"),
+    [
+        ("gate_slots = 2", "gate_slots", "2\n"),
+        ("gate_min_mem_available_gb = 6", "gate_min_mem_available_gb", "6\n"),
+        ("gate_min_swap_free_gb = 2.5", "gate_min_swap_free_gb", "2.5\n"),
+    ],
+)
+def test_gate_host_keys_from_host(tmp_path, monkeypatch, capsys, line, key, out):
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(_host(tmp_path, _HOST_BASE + line + "\n")))
+    assert main([f"host.{key}"]) == 0
+    assert capsys.readouterr().out == out
+
+
+@pytest.mark.parametrize("key", _GATE_HOST_KEYS)
+def test_gate_host_keys_absent(tmp_path, monkeypatch, capsys, key):
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(_host(tmp_path, _HOST_BASE)))
+    assert main([f"host.{key}"]) == 1
+    assert "not set" in capsys.readouterr().err
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(tmp_path / "absent" / "host.toml"))
+    assert main([f"host.{key}"]) == 1
+
+
+@pytest.mark.parametrize(
+    ("line", "key"),
+    [
+        ('gate_slots = "2"', "gate_slots"),
+        ("gate_slots = 0", "gate_slots"),
+        ("gate_slots = true", "gate_slots"),
+        ("gate_slots = 1.5", "gate_slots"),
+        ('gate_min_mem_available_gb = "6"', "gate_min_mem_available_gb"),
+        ("gate_min_mem_available_gb = 0", "gate_min_mem_available_gb"),
+        ("gate_min_swap_free_gb = -1", "gate_min_swap_free_gb"),
+        ("gate_min_swap_free_gb = true", "gate_min_swap_free_gb"),
+        ("gate_min_mem_available_gb = inf", "gate_min_mem_available_gb"),
+        ("gate_min_swap_free_gb = nan", "gate_min_swap_free_gb"),
+    ],
+)
+def test_gate_host_keys_invalid(tmp_path, monkeypatch, capsys, line, key):
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(_host(tmp_path, _HOST_BASE + line + "\n")))
+    assert main([f"host.{key}"]) == 2
+    assert f"host.{key}" in capsys.readouterr().err
+
+
 def test_runs_as_file(tmp_path):
     other = tmp_path / "other"
     init_repo(other)

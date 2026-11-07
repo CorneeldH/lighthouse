@@ -49,6 +49,8 @@ NOT_READERS = {
         "the name of a unit in a list of tools, not a read of the command",
     ("python.source_dirs", "pack/python/scripts/quality/prcov.py"):
         "its docstring names the key; the directories arrive as an argument from ratchet.py",
+    ("host.gate_min_mem_available_gb", "pack/core/lib/host_memory.py"):
+        "its docstring names the key; the thresholds arrive as arguments from commit-test-gate.sh",
 }
 INDIRECT_READERS = {
     ("forge.board.project_id", "pack/core/scripts/board_start.py"): ".project_id",
@@ -256,7 +258,9 @@ def test_found_readers_skips_go_tests():
 
 
 def test_unread_keys_have_no_reader():
-    assert {k: found_readers(k, ROOT) for k in UNREAD} == {k: [] for k in UNREAD}
+    # A NOT_READERS file names the key without reading it, here as on the map.
+    readers = {k: [p for p in found_readers(k, ROOT) if (k, p) not in NOT_READERS] for k in UNREAD}
+    assert readers == {k: [] for k in UNREAD}
 
 
 def test_no_controller_options():

@@ -110,6 +110,7 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/gate_slot.py",
 		".lighthouse/lib/lighthouse_lib/git_invocations.py",
 		".lighthouse/lib/lighthouse_lib/headings.py",
+		".lighthouse/lib/lighthouse_lib/host_memory.py",
 		".lighthouse/lib/lighthouse_lib/md_links.py",
 		".lighthouse/lib/lighthouse_lib/no_verify.py",
 		".lighthouse/lib/lighthouse_lib/pr_body_gate.py",
