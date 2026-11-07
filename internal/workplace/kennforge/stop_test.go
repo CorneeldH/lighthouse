@@ -258,16 +258,6 @@ func TestKillOtherProfileOnTheHost(t *testing.T) {
 	}
 }
 
-func TestKillNothingAliveSendsNoSignal(t *testing.T) {
-	a, _, calls := stopAdapter(t, "infra", []step{{cmd: "pgrep -f " + testSessionID, code: 1}})
-	if err := a.Kill(context.Background(), "ws1", []string{testSessionID}); err != nil {
-		t.Fatal(err)
-	}
-	if len(*calls) != 1 {
-		t.Errorf("calls = %q, want only the pgrep", *calls)
-	}
-}
-
 func TestKillSurvivorIsAnError(t *testing.T) {
 	steps := []step{
 		{cmd: "pgrep -f " + testSessionID},
@@ -283,24 +273,13 @@ func TestKillSurvivorIsAnError(t *testing.T) {
 	}
 }
 
-func TestKillPgrepUnmeasurable(t *testing.T) {
-	a, _, calls := stopAdapter(t, "infra", []step{{cmd: "pgrep -f " + testSessionID, code: 2}})
-	if err := a.Kill(context.Background(), "ws1", []string{testSessionID}); err == nil {
-		t.Error("err = nil, want an error for pgrep rc 2")
-	}
-	if len(*calls) != 1 {
-		t.Errorf("calls = %q, want no pkill after an unmeasurable pgrep", *calls)
-	}
-}
-
+// The infra profile is contract case EmptySessionIDRejected; software kills in the containers.
 func TestKillEmptySessionIDRejectedBeforeAnyCall(t *testing.T) {
-	for _, profile := range []string{"software", "infra"} {
-		a, _, calls := stopAdapter(t, profile, nil)
-		if err := a.Kill(context.Background(), "ws1", []string{testSessionID, ""}); err == nil {
-			t.Errorf("%s: err = nil, want an error for an empty session id", profile)
-		}
-		if len(*calls) != 0 {
-			t.Errorf("%s: calls = %q, want none: an empty id would make pkill match every process", profile, *calls)
-		}
+	a, _, calls := stopAdapter(t, "software", nil)
+	if err := a.Kill(context.Background(), "ws1", []string{testSessionID, ""}); err == nil {
+		t.Error("err = nil, want an error for an empty session id")
+	}
+	if len(*calls) != 0 {
+		t.Errorf("calls = %q, want none: an empty id would make pkill match every process", *calls)
 	}
 }

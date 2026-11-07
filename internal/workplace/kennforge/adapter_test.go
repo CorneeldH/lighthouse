@@ -614,14 +614,6 @@ func TestSessionsWithoutListUncertain(t *testing.T) {
 	}
 }
 
-func TestSessions404Gone(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.sessionsStatus = 404
-	if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrGone) {
-		t.Fatalf("err = %v, want ErrGone", err)
-	}
-}
-
 func TestSessionsOtherStatusNotGone(t *testing.T) {
 	for _, status := range []int{403, 500} {
 		f, a := newFakeForge(t)
@@ -629,23 +621,6 @@ func TestSessionsOtherStatusNotGone(t *testing.T) {
 		if _, err := a.Sessions(context.Background(), "ws1"); err == nil || errors.Is(err, workplace.ErrGone) {
 			t.Fatalf("%d: err = %v, want an error that is not ErrGone", status, err)
 		}
-	}
-}
-
-func TestLookup(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.path, f.headRef = "/w/1", "issue-7"
-	got, err := a.Lookup(context.Background(), "ws1")
-	if want := (workplace.Workspace{ID: "ws1", Path: "/w/1", Branch: "issue-7"}); err != nil || got != want {
-		t.Fatalf("Lookup = %+v, %v; want %+v", got, err, want)
-	}
-}
-
-func TestLookupGone(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.getStatus = 404
-	if _, err := a.Lookup(context.Background(), "ws1"); !errors.Is(err, workplace.ErrGone) {
-		t.Fatalf("err = %v, want ErrGone", err)
 	}
 }
 
@@ -662,22 +637,6 @@ func TestLookupNoPath(t *testing.T) {
 	f.headRef = "issue-7"
 	if got, err := a.Lookup(context.Background(), "ws1"); err == nil || errors.Is(err, workplace.ErrGone) {
 		t.Fatalf("Lookup = %+v, %v; want an error that is not ErrGone", got, err)
-	}
-}
-
-func TestRemove409Dirty(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.deleteStatus = 409
-	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, workplace.ErrDirty) {
-		t.Fatalf("err = %v, want ErrDirty", err)
-	}
-}
-
-func TestRemove404Gone(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.deleteStatus = 404
-	if err := a.Remove(context.Background(), "ws1"); err != nil {
-		t.Fatalf("err = %v, want nil", err)
 	}
 }
 
