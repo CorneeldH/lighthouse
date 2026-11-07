@@ -205,7 +205,8 @@ Draait er niets met dat id, dan is dat geen fout. Een onmeetbare `pgrep` of een 
 overleeft wel. Ook `Kill` weigert een leeg sessie-id vóór elke aanroep.
 
 De tick roept `Kill` op twee plekken aan (zie *Afloop* in [tick.md](tick.md)): bij het sluiten van een run
-als `done`, `handoff` of `question`, en vlak vóór de handoff van een hervatting, na de claim.
+als `done`, `handoff` of `question`, en vlak vóór de handoff van een start of hervatting, na de
+claim, op de claudes van de gesloten eigen runs in de workspace (`workplace.Earlier`).
 
 ## Eigen en vreemd
 

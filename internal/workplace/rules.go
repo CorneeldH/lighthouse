@@ -49,6 +49,30 @@ func Busy(sessions []Session, own Own, open map[string]bool, activity map[string
 	return Session{}, false
 }
 
+// Earlier returns the session ids of the claudes of the issue's closed runs in the list: the
+// sessions own.Has accepts whose id is not in open. A forge session without a session_id gets
+// the id its key recorded. Each id comes once, in list order.
+//
+// The forge state does not count: a claude outlives its run, also in state done (#206), and a
+// run handed back while waiting on a permission keeps its session on purpose. While one of them
+// lives, forge refuses a new start in the worktree (#263).
+func Earlier(sessions []Session, own Own, open map[string]bool) []string {
+	var ids []string
+	seen := map[string]bool{}
+	for _, s := range sessions {
+		if !own.Has(s) {
+			continue
+		}
+		id := own[s.Key]
+		if id == "" || open[id] || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 func foreignBusy(s Session, activity map[string]time.Time, now time.Time, maxWait time.Duration) bool {
 	switch s.Stand() {
 	case Working:

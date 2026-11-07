@@ -1186,6 +1186,71 @@ func TestApplyResumeKillFailsClosesStartFailedWithoutSpawn(t *testing.T) {
 	}
 }
 
+// seedReturned seeds a closed run of issue 7 that was handed back with its session left alive
+// (rule 16, waiting on a permission), and lists that session in the workspace in forge state
+// approval.
+func (h *harness) seedReturned(t *testing.T) {
+	t.Helper()
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	if err := runs.SetSession(context.Background(), h.db, id, "key-old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.Release(context.Background(), h.db, id, runs.Returned, "", applyNow.Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	h.wp.sessions = []workplace.Session{{Key: "key-old", WorkspaceID: "ws-issue-7-x", State: "approval", SessionID: oldSession}}
+}
+
+// A run handed back while waiting on a permission leaves its claude alive, and forge refuses a new
+// start in that worktree while it lives (#263): the start kills it after the claim, before the
+// 🤖 Started and the launch.
+func TestApplyStartKillsClaudeOfReturnedRunAfterTheClaim(t *testing.T) {
+	h := newHarness(t)
+	h.seedReturned(t)
+	openAtKill := -1
+	h.wp.onKill = func() {
+		open, err := runs.Open(context.Background(), h.db, applyRepo)
+		if err != nil {
+			t.Errorf("Open: %v", err)
+		}
+		openAtKill = len(open)
+	}
+	res, err := Apply(context.Background(), h.env, []Action{startAction()})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if want := []string{"ws-issue-7-x " + oldSession}; !reflect.DeepEqual(h.wp.killed, want) {
+		t.Errorf("killed = %q, want %q", h.wp.killed, want)
+	}
+	if openAtKill != 1 {
+		t.Errorf("open runs at Kill = %d, want 1: the start's own claim", openAtKill)
+	}
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	if got := h.log.all(); !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if len(res.Deferred) != 0 || res.Started != 1 {
+		t.Errorf("Deferred = %q, Started = %d; want no deferral and one start", res.Deferred, res.Started)
+	}
+}
+
+func TestApplyStartKillOfReturnedRunFailsClosesStartFailedWithoutSpawn(t *testing.T) {
+	h := newHarness(t)
+	h.seedReturned(t)
+	h.wp.killErr = errors.New("session still runs in container c1 after pkill")
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err == nil {
+		t.Fatal("Apply: err = nil, want the kill error")
+	}
+	if len(h.wp.spawned) != 0 || len(h.poster(applyRepo).bodies) != 0 {
+		t.Errorf("spawned %d, posted %q; want neither", len(h.wp.spawned), h.poster(applyRepo).bodies)
+	}
+	rows := h.history(t)
+	if r := rows[1]; r.Open || r.Outcome != runs.StartFailed ||
+		r.Reason != "end earlier claude: session still runs in container c1 after pkill" {
+		t.Errorf("start row = %+v, want start_failed with the kill as reason", r)
+	}
+}
+
 // A start makes a new session: there is no earlier claude of it to kill.
 func TestApplyStartKillsNothing(t *testing.T) {
 	h := newHarness(t)
