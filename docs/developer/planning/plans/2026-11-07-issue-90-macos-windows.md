@@ -4,7 +4,9 @@
 
 **Goal:** Meten waar lighthouse buiten Linux breekt, het kleine oplossen, het grote als issue vastleggen, en de startgids laten zeggen welke route op Windows werkt.
 
-**Architecture:** CI krijgt een `os`-matrix (`ubuntu-latest`, `macos-latest`) op de jobs `go-test` en `python`; de bestaande pin-tests blijven heel omdat de `run`-regels niet veranderen. Een nieuwe Python-test verbiedt GNU-only en bash-4-constructies in de shell van `pack/`. De handmatige metingen op een echte Mac en op Windows volgen een vast protocol; hun uitkomst gaat als comment op #90 en bepaalt de tekst in de startgids.
+**Architecture:** CI krijgt een `os`-matrix (`ubuntu-latest`, `macos-latest`) op de jobs `go-test`, `go-e2e` en `python`; de `run`-regels veranderen niet, alleen de `if:`-regel van `ci/literal-grep.sh` en de pin daarop in `tests/test_ci_domains_pin.py`. Een nieuwe Python-test verbiedt GNU-only en bash-4-constructies in de shell van `pack/`. De handmatige metingen op een echte Mac en op Windows volgen een vast protocol; hun uitkomst gaat als comment op #90 en bepaalt de tekst in de startgids (`docs/getting-started.md`) en de installatiedocs.
+
+**Stoppunt:** Task 3 vraagt een mens met een echte Mac en Windows. De onbewaakte uitvoering (SDD) doet Task 1, Task 2 en Task 3 Step 0, en stopt daar met een handoff. Task 3 Step 1-4 en Task 4 draaien in een nieuwe sessie, pas als de gebruiker de uitkomsten op #90 heeft gezet.
 
 **Tech Stack:** GitHub Actions, pytest (uv), Go (`go test -race -shuffle=on`), bash 3.2 (macOS `/bin/bash`), BSD userland.
 
@@ -28,7 +30,7 @@
 1. **Een hook draait op een Mac onder `/bin/bash` 3.2**, ook als de CI-runner een nieuwere bash op `PATH` heeft. Verwacht: geen `declare -A`, `mapfile`, `${x,,}` in `pack/**/*.sh`. → Task 2, test `test_pack_shell_has_no_bash4_constructs`.
 2. **`shell-lint-check` op een Mac zonder `sha256sum`** moet de pinned shellcheck downloaden en verifiëren met `shasum -a 256`. → Task 2, test `test_download_verifies_with_shasum_when_sha256sum_is_missing`.
 3. **De test-gate op een Mac zonder `/proc/meminfo`** blokkeert elke commit zodra `host.toml` geheugendrempels zet (`docs/test-gate.md:27`). Verwacht in het Mac-protocol: zonder drempels gaat de commit door. → Task 3, stap "commit in worktree" met en zonder `host.toml`.
-4. **Hooks onder de systeem-`python3` 3.9 van macOS.** Verwacht: hooks starten zonder `SyntaxError`. CI dekt dat niet (uv pint een nieuwere Python). → Task 3, protocolstap met `/usr/bin/python3 --version` in de uitkomst.
+4. **Hooks onder de systeem-`python3` 3.9 van macOS.** Lighthouse eist Python 3.11+ met `tomllib` (`docs/getting-started.md:17`). Verwacht: met alleen 3.9 op `PATH` melden de core-hooks `COULD NOT CHECK` en blokkeren de blokkerende; met 3.11+ (Homebrew of uv) draaien ze. CI dekt dat niet (uv pint een nieuwere Python). → Task 3, protocolstap met `python3 --version` en `/usr/bin/python3 --version` in de uitkomst.
 5. **`usage-gate.sh` met een `UNTIL` als `…Z` en als `…+01:00` onder BSD `date`.** De fallback bestaat (`pack/core/hooks/usage-gate.sh:66-77`), maar `docs/install.md:9` zegt nog dat hij GNU-only is. → Task 2, test `test_usage_gate_parses_until_with_bsd_date_only`, en Task 4 haalt de docregel weg.
 
 ---
@@ -36,34 +38,55 @@
 ### Task 1: CI draait de Go- en Python-tests ook op `macos-latest`
 
 **Files:**
-- Modify: `.github/workflows/ci.yml` (jobs `python` regels 86-110, `go-test` regels 145-158)
-- Test: `tests/test_ci_domains_pin.py`
+- Modify: `.github/workflows/ci.yml` (jobs `python` regels 86-110, `go-test` regels 145-158, `go-e2e` regels 160-174)
+- Test: `tests/test_ci_domains_pin.py` (nieuwe test, en `test_python_job_runs_in_three_shards` regel 81 aangepast)
 
 **Interfaces:**
-- Produces: CI-jobnamen `python (<os>, <shard>)` en `go-test (<os>)`; Task 3 leest hun uitkomst.
+- Produces: CI-jobnamen `python (<os>, <shard>)`, `go-test (<os>)` en `go-e2e (<os>)`; Task 3 leest hun uitkomst.
 
-- [ ] **Step 1: Schrijf de falende test** in `tests/test_ci_domains_pin.py`, met de bestaande helper `_jobs()`:
+- [ ] **Step 1: Schrijf de falende test** in `tests/test_ci_domains_pin.py`, met de bestaande helper `_jobs()`, en pas in `test_python_job_runs_in_three_shards` (regel 81) de `if:`-pin aan op de nieuwe regel:
 
 ```python
 def test_tests_run_on_linux_and_macos():
-    """Fails when the Go race tests or the pytest suite stop running on macOS (#90)."""
+    """Fails when the Go race tests, the e2e tests or the pytest suite stop running on macOS (#90)."""
     jobs = _jobs()
-    for name in ("python", "go-test"):
+    for name in ("python", "go-test", "go-e2e"):
         job = jobs[name]
         assert "runs-on: ${{ matrix.os }}" in job, name
-        assert re.search(r"os: \[ubuntu-latest, macos-latest\]", job), name
+        assert re.search(r"^        os: \[ubuntu-latest, macos-latest\]\s*$", job, re.MULTILINE), name
 ```
+
+```python
+    assert re.match(
+        r"if: matrix\.shard == 1 && matrix\.os == 'ubuntu-latest'\n        run: ci/literal-grep\.sh$",
+        grep[0],
+        re.MULTILINE,
+    ), grep[0]
+```
+
+De asserts op `^      fail-fast: false` en `^        shard: \[1, 2, 3\]` blijven ongewijzigd: de matrix blijft in blok-stijl (Step 3).
 
 - [ ] **Step 2: Draai hem en zie hem falen**
 
 Run: `uv run pytest -q tests/test_ci_domains_pin.py::test_tests_run_on_linux_and_macos`
 Expected: FAIL op `runs-on: ${{ matrix.os }}` voor `python`.
 
-- [ ] **Step 3: Pas `ci.yml` aan.**
-  - `python`: `matrix: {os: [ubuntu-latest, macos-latest], shard: [1, 2, 3]}`, `runs-on: ${{ matrix.os }}`, `timeout-minutes: 15` (macOS-runners zijn trager; meet en stel bij). De stap `ci/literal-grep.sh` krijgt `if: matrix.shard == 1 && matrix.os == 'ubuntu-latest'`.
-  - `go-test`: `strategy: {fail-fast: false, matrix: {os: [ubuntu-latest, macos-latest]}}`, `runs-on: ${{ matrix.os }}`. De `run`-regel blijft letterlijk.
-  - `go`, `go-e2e`, `web`, `binary`, `secret-scan`, `changelog`, `changes`: ongewijzigd.
-  - Werk de commentaarkop van `ci.yml` (regels 1-4) bij: Python en `go-test` draaien op Linux en macOS.
+- [ ] **Step 3: Pas `ci.yml` aan.** Alles in blok-stijl, zes spaties voor `fail-fast:`, acht voor `os:` en `shard:`:
+
+```yaml
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        shard: [1, 2, 3]
+```
+
+  - `python`: het blok hierboven (macOS-runners zijn trager; meet `timeout-minutes` en stel bij). De stap `ci/literal-grep.sh` krijgt `if: matrix.shard == 1 && matrix.os == 'ubuntu-latest'`.
+  - `go-test` en `go-e2e`: hetzelfde blok zonder de regel `shard:`, `timeout-minutes` blijft 10 tenzij de macOS-run langer duurt. De `run`-regels blijven letterlijk.
+  - `go`, `web`, `binary`, `secret-scan`, `changelog`, `changes`: ongewijzigd.
+  - Werk de commentaarkop van `ci.yml` (regels 1-4) bij: Python, `go-test` en `go-e2e` draaien op Linux en macOS.
 
 - [ ] **Step 4: Draai de CI-pins**
 
@@ -79,7 +102,7 @@ git commit -m "ci: draai go-test en pytest ook op macos-latest (#90)"
 
 - [ ] **Step 6: Push en open een draft-PR** om de eerste macOS-run te krijgen (CI draait alleen op `pull_request`). Body: `Refs #90 — draft voor de macOS-meting in CI; wordt Closes na de handmatige metingen`. Voeg eerst het changelog-fragment toe (zie Global Constraints), anders is de job `changelog` rood.
 
-- [ ] **Step 7: Lees de macOS-jobs.** Per rode test één regel: test-id, foutregel, oorzaak, en `klein` of `groot`. Kleine fixes gaan naar Task 2 (shell) of een eigen commit `fix(<scope>): … (#90)` met een test die op Linux al faalt waar dat kan. Grote: issue via `/lighthouse-write-issue` (milestone "Product: eerste versie voor anderen") en een skip met het nummer. Herhaal tot beide macOS-jobs groen zijn. Verwacht minstens: `tests/pack/test_shell_style.py` (shellcheck-download zonder `sha256sum`), tests rond `/proc`, `/run/user`, systemd-stubs, gitleaks.
+- [ ] **Step 7: Lees de macOS-jobs.** Per rode test één regel: test-id, foutregel, oorzaak, en `klein` of `groot`. Kleine fixes gaan naar Task 2 (shell) of een eigen commit `fix(<scope>): … (#90)` met een test die op Linux al faalt waar dat kan. Grote: issue via `/lighthouse-write-issue` (milestone "Product: eerste versie voor anderen") en een skip met het nummer. Herhaal tot de drie macOS-jobs groen zijn. Verwacht minstens: `tests/pack/test_shell_style.py` (shellcheck-download zonder `sha256sum`), tests rond `/proc`, `/run/user`, systemd-stubs, gitleaks.
 
 ---
 
@@ -87,10 +110,13 @@ git commit -m "ci: draai go-test en pytest ook op macos-latest (#90)"
 
 **Files:**
 - Modify: `pack/shell/scripts/lib/shellcheck-bin.sh:67`
-- Modify: `pack/shell/requires.toml:7`
+- Modify: `pack/shell/requires.toml:7` (regel `sha256sum` weg)
+- Modify: `internal/packs/core_test.go:222` (`tools` zonder `sha256sum`)
+- Modify: `docs/getting-started.md:30` (rij `sha256sum` in Requirements)
+- Modify: `docs/site/agents/install.md:65` (rij `curl`, `sha256sum`, `tar`, `xz` in Look first)
 - Create: `tests/pack/test_portable_shell.py`
 - Modify: `tests/pack/shell/test_shellcheck.py` (één test erbij)
-- Modify: `tests/pack/test_usage_gate_controller.py` of een nieuw testbestand naast de bestaande usage-gate-tests (één test erbij)
+- Modify: `tests/pack/test_usage_gate_controller.py` (één test erbij)
 
 **Interfaces:**
 - Consumes: niets uit Task 1.
@@ -123,7 +149,7 @@ def test_pack_shell_has_no_bash4_constructs(): ...
 def test_portable_marker_needs_a_reason(): ...  # `# portable:` followed by at least one word
 ```
 
-Een `command -v sha256sum`-test (zoals `pack/core/scripts/check-instructions.sh:53`) is een fallback, geen gebruik: sta `command -v <tool>` toe in de regex of zet de marker.
+Een `command -v sha256sum`-test (zoals `pack/core/scripts/check-instructions.sh:53`) is een fallback, geen gebruik: sta `command -v <tool>` toe in de regex. Elke andere regel binnen zo'n fallback die het woord `sha256sum` bevat (een toewijzing als `SHA_CMD="sha256sum"`, een aanroep in de eerste tak, een foutmelding als `printf 'FAIL  no sha256sum and no shasum …'`) krijgt `# portable: <reden>`. Bekend vooraf: `pack/core/scripts/check-instructions.sh:54` en `:58`.
 
 - [ ] **Step 2: Draai en zie welke regels falen**
 
@@ -148,67 +174,78 @@ Gebruik `tar` echt (de stub-`curl` schrijft een `.tar.xz` met een fake `shellche
 Run: `uv run pytest -q tests/pack/shell/test_shellcheck.py::test_download_verifies_with_shasum_when_sha256sum_is_missing`
 Expected: FAIL (`sha256sum: command not found` of `sha256 mismatch`).
 
-- [ ] **Step 5: Implementeer `_sc_sha256 <file>` in `shellcheck-bin.sh`**: `sha256sum` als die er is, anders `shasum -a 256`, anders rc 1 met `shellcheck: no sha256sum and no shasum` op stderr. Regel 67 roept hem aan. Zelfde patroon als `pack/core/scripts/check-instructions.sh:51-59`. In `pack/shell/requires.toml` wordt de regel `sha256sum` een alternatief (lees eerst hoe `requires.toml` alternatieven noteert; is er geen vorm voor, noteer `shasum` als tweede regel met dezelfde reden).
+- [ ] **Step 5: Implementeer `_sc_sha256 <file>` in `shellcheck-bin.sh`**: `sha256sum` als die er is, anders `shasum -a 256`, anders rc 1 met `shellcheck: no sha256sum and no shasum` op stderr. Regel 67 roept hem aan. Zelfde patroon als `pack/core/scripts/check-instructions.sh:51-59`. Elke regel in `_sc_sha256` met het woord `sha256sum` krijgt `# portable: fallback to shasum -a 256`.
 
-- [ ] **Step 6: Schrijf de test voor de BSD-tak van `usage-gate.sh`**: stub-`date` op `PATH` die rc 1 geeft op `-d` en voor `-j -f '%Y-%m-%dT%H:%M:%S%z' <ts> +%s` een vaste epoch print, en anders doorgeeft aan de echte `date`. Twee cases: `UNTIL=2026-11-07T12:00:00Z` (stub moet `…+0000` krijgen) en `UNTIL=2026-11-07T13:00:00+01:00` (stub moet `…+0100` krijgen).
+  `requires.toml` kent geen alternatieven: `deps.Checker` doet één `LookPath` per sleutel (`internal/deps/deps.go:61`), en de sleutels zijn in beide richtingen gepind tegen de docs. Daarom:
+  - `pack/shell/requires.toml`: haal de regel `sha256sum` weg. Eén van beide tools staat op elk ondersteund platform (coreutils op Linux, `shasum` op macOS); ontbreken ze allebei, dan meldt `_sc_sha256` dat bij de download.
+  - `internal/packs/core_test.go:222`: `tools: "curl,git,jq,python3,tar,tomllib,xz"`.
+  - `docs/getting-started.md:30`: haal de rij `sha256sum` weg en schrijf in de rij `curl` bij *Needed for*: "the first download of the pinned `shellcheck`, verified with sha256sum or shasum" (zonder backticks om die twee namen: `test_requirements_match_code_spans_exactly` eist dat elke code-span in de eerste kolom een requires-sleutel is; de andere kolommen telt hij niet, maar houd het gelijk).
+  - `docs/site/agents/install.md:65`: de eerste cel wordt `` `curl`, `tar`, `xz` `` en de laatste cel noemt "sha256sum or shasum verifies it".
+  - Draai `go test ./internal/packs/ ./internal/deps/` en `uv run pytest -q tests/test_getting_started.py tests/test_agent_guide.py`: PASS.
+
+- [ ] **Step 6: Schrijf de test voor de BSD-tak van `usage-gate.sh`** in `tests/pack/test_usage_gate_controller.py`, naast `test_pause_bsd_date` (regel 214). Die bestaande test dekt de BSD-tak al met `BSD_DATE_STUB` (`tests/pack/_testkit.py:304`) en `_flag_text()`, maar alleen voor één offsetvorm en zonder het argument te controleren. De nieuwe test voegt twee dingen toe: de `Z`-vorm en de `+01:00`-vorm, en een assert op het exacte argument dat `date -j -f` krijgt.
+  - Tijden altijd relatief aan nu, nooit een vaste datum: bouw `UNTIL` uit `datetime.now(timezone.utc) + timedelta(hours=1)`, één keer als `…Z` en één keer omgerekend naar `+01:00`. Een vaste datum verloopt en maakt de test rood met een correcte gate.
+  - Stub: een kopie van `BSD_DATE_STUB` die eerst zijn argumenten naar een logbestand schrijft (`printf '%s\n' "$@" >> "$LOG"`), daarna hetzelfde doet. Assert dat het log de BSD-vorm bevat (`…+0000` voor `Z`, `…+0100` voor `+01:00`, zelf afgeleid van dezelfde `datetime` met `strftime('%Y-%m-%dT%H:%M:%S%z')`) en dat de gate de vlag als actief ziet (`_is_controller_reason(_reason(result))`, zoals `test_pause_bsd_date`).
 
 ```python
-@pytest.mark.parametrize("until,bsd_arg", [
-    ("2026-11-07T12:00:00Z", "2026-11-07T12:00:00+0000"),
-    ("2026-11-07T13:00:00+01:00", "2026-11-07T13:00:00+0100"),
-])
-def test_usage_gate_parses_until_with_bsd_date_only(tmp_path, until, bsd_arg): ...
-    # assert the stub saw bsd_arg, and the gate treats the flag as active (not expired)
+@pytest.mark.parametrize("form", ["Z", "+01:00"])
+def test_usage_gate_parses_until_with_bsd_date_only(tmp_path, form): ...
 ```
 
-Volg de opzet van de bestaande tests in `tests/pack/test_usage_gate_controller.py` voor de vlag en de aanroep. Deze test moet nu al groen zijn (de fallback bestaat): bewijs met een mutatie — zet regel 76 tijdelijk op `UNTIL_EPOCH=""` en zie hem rood worden.
+Deze test moet nu al groen zijn (de fallback bestaat): bewijs met een mutatie — zet `BSD_UNTIL="$BSD_UNTIL+0000"` (`usage-gate.sh:70`) tijdelijk op `BSD_UNTIL="$BSD_UNTIL"` en zie de `Z`-case rood worden; zet daarna in regel 73 `${OFFSET%:*}${OFFSET#*:}` tijdelijk op `${OFFSET}` en zie de `+01:00`-case rood worden. Zet beide terug. Rood komt van de assert op het log: de GNU-`date` onder de stub parseert ook de gemuteerde vorm.
 
-- [ ] **Step 7: Markeer `usage-gate.sh:75`** met `# portable: BSD fallback on the next line`. Draai `uv run pytest -q tests/pack/test_portable_shell.py tests/pack/shell/test_shellcheck.py tests/pack/test_usage_gate_controller.py tests/pack/test_shell_style.py` — PASS.
+- [ ] **Step 7: Markeer `usage-gate.sh:75`** met `# portable: BSD fallback on the next line`. Draai `uv run pytest -q tests/pack/test_portable_shell.py tests/pack/shell/test_shellcheck.py tests/pack/test_usage_gate_controller.py tests/pack/test_shell_style.py tests/test_getting_started.py tests/test_agent_guide.py` en `go test ./internal/packs/` — PASS.
 
 - [ ] **Step 8: Dogfood**
 
-Run: `go run ./cmd/lighthouse init --upgrade` en daarna `go run ./cmd/lighthouse init --upgrade </dev/null`
+Run: eerst `go run ./cmd/lighthouse init --upgrade --yes` (schrijft de gewijzigde pack; zonder `--yes` vraagt `init` om akkoord en weigert bij lege stdin, `internal/initcmd/initcmd.go:210`), daarna `go run ./cmd/lighthouse init --upgrade </dev/null`
 Expected: de tweede run print `No changes.`
 
-- [ ] **Step 9: Commit** (twee commits: de verbod-test met markers, en de shasum-fix met zijn test)
+- [ ] **Step 9: Commit**, in deze volgorde, elk met de dogfood-kopie van wat hij onder `pack/` wijzigt. De verbod-test komt als laatste: committed vóór de fix maakt de test-gate rood op `shellcheck-bin.sh:67`.
 
 ```bash
-git commit -m "test(pack): verbied GNU-only en bash-4-shell in pack/ (#90)"
-git commit -m "fix(shell): verifieer de shellcheck-download ook met shasum (#90)"
+git commit -m "fix(shell): verifieer de shellcheck-download ook met shasum (#90)"   # shellcheck-bin.sh, requires.toml, core_test.go, beide docs, test_shellcheck.py
+git commit -m "test(pack): BSD date-tak van usage-gate met Z en offset (#90)"      # test_usage_gate_controller.py
+git commit -m "test(pack): verbied GNU-only en bash-4-shell in pack/ (#90)"         # test_portable_shell.py en de markers
 ```
 
 ---
 
 ### Task 3: Handmatige meting op een echte Mac en op Windows (handwerk)
 
-Dit is een hand-taak: de uitvoerende agent bereidt het protocol voor en wacht op de uitkomst van de gebruiker. Hij voert geen stap zelf uit.
+Dit is een hand-taak: een mens met een echte Mac en een Windows-machine (met WSL en Git Bash) voert Step 1 en 2 uit. Geen agent kan dat. De onbewaakte uitvoering doet alleen Step 0 en stopt dan.
 
 **Files:**
-- Geen bestanden; uitkomst als comment op #90.
+- Geen bestanden; protocol en uitkomst als comments op #90.
 
 **Interfaces:**
-- Consumes: de branch na Task 1 en 2 (binary via `go build` op de Mac, of release v0.9.0 + `lighthouse init` vanaf de branch-checkout).
+- Consumes: de gepushte branch na Task 1 en 2. De binary komt altijd uit `go build ./cmd/lighthouse` op die branch: de pack zit bij de build in de binary (`pack/pack.go:12`, `//go:embed`), dus een release-binary zoals v0.9.0 test de hooks van deze branch niet.
 - Produces: de keuze `native (Git Bash)`, `alleen WSL` of `nog niet` voor Task 4.
 
-- [ ] **Step 1: Mac-protocol.** Per stap: commando, verwacht, gezien, ✅/❌.
-  1. `sw_vers`, `/bin/bash --version`, `/usr/bin/python3 --version`, `which python3 uv go gh`.
+- [ ] **Step 0: Protocol klaarzetten en stoppen (onbewaakt).** Post Step 1 en 2 hieronder als één comment op #90 (Nederlands), met bovenaan de branch, de commit-SHA van `HEAD` en het build-commando `git checkout issue-90-macos-windows && go build -o lighthouse ./cmd/lighthouse` (Windows native: `GOOS=windows GOARCH=amd64 go build -o lighthouse.exe ./cmd/lighthouse`, of de build op de Windows-machine zelf). Vraag de gebruiker de uitkomst als comment op #90 te zetten. Stop dan de uitvoering: `/lighthouse-write-handoff` met als volgende stap Task 3 Step 3 van dit plan, gegated op die comment. Task 3 Step 1-4 en Task 4 komen niet in deze run; verzin geen uitkomst.
+
+- [ ] **Step 1: Mac-protocol (mens).** Per stap: commando, verwacht, gezien, ✅/❌. Noteer de commit-SHA van de gebouwde binary (`./lighthouse version`).
+  1. `sw_vers`, `/bin/bash --version`, `python3 --version`, `/usr/bin/python3 --version`, `which python3 uv go gh`. Verwacht: met alleen Python 3.9 op `PATH` melden de core-hooks `COULD NOT CHECK` en blokkeren de blokkerende (Review Focus 4); installeer dan Python 3.11+ en ga door.
   2. Schone repo met GitHub-remote (privé testrepo van de gebruiker), `lighthouse init`, akkoord geven.
   3. Worktree, één commit met een triviale wijziging: de test-gate draait (melding in de sessie).
   4. Herhaal 3 met een `host.toml` met `gate_min_mem_available_gb = 1`: verwacht `host memory not measurable` (bekend, `docs/test-gate.md:27`).
   5. Commit op `main`: `main-commit-gate` blokkeert.
   6. `/lighthouse-write-pr` (opvolger van `/lighthouse-verify-pr`) en `gh pr create`: `pr-create-gate` laat de body door.
   7. Elke andere hook-melding of `COULD NOT CHECK` letterlijk noteren.
-- [ ] **Step 2: Windows-protocol.**
-  1. Native, Git Bash: `lighthouse_windows_amd64.exe init` in een schone repo, één commit. Verwacht: Python-hooks falen op `import fcntl` (`pack/core/lib/gate_slot.py:24`, `pack/core/lib/bash_writes.py:22`) en `os.killpg` (`pack/core/lib/deadline.py`). Noteer de eerste fout letterlijk.
-  2. WSL (Ubuntu): Linux-binary, dezelfde stappen 2-6 als op de Mac.
-- [ ] **Step 3: Post de uitkomst** als één comment op #90 (Nederlands): tabel per stap per platform, de gekozen Windows-route met reden, en de nummers van nieuwe issues.
+- [ ] **Step 2: Windows-protocol (mens).**
+  1. Native, Git Bash: de branch-build `lighthouse.exe init` in een schone repo, één commit. Verwacht: Python-hooks falen op `import fcntl` (`pack/core/lib/gate_slot.py:24`, `pack/core/lib/bash_writes.py:22`) en `os.killpg` (`pack/core/lib/deadline.py`). Noteer de eerste fout letterlijk.
+  2. WSL (Ubuntu): Linux-build van de branch, dezelfde stappen 2-6 als op de Mac.
+- [ ] **Step 3: Uitkomst vastleggen (nieuwe sessie).** Begin pas als de gebruiker de uitkomst op #90 heeft gezet; staat die er niet, stop dan. Zet die als één comment op #90 (Nederlands) als dat nog niet zo is: tabel per stap per platform, de gekozen Windows-route met reden, en de nummers van nieuwe issues.
 - [ ] **Step 4: Elke ❌** die klein is wordt een commit `fix(<scope>): … (#90)` met test; elke grote een issue. Native Windows wordt naar verwachting een issue "native Windows (fcntl, killpg, /proc)" in de milestone of een volgende.
 
 ---
 
 ### Task 4: Startgids en installatiedoc zeggen wat geldt
 
+Draait in de nieuwe sessie, na Task 3 Step 3.
+
 **Files:**
+- Modify: `docs/getting-started.md` (de startgids uit AC 3: sectie Requirements of de alinea "The other platforms…" bij regel 60-62)
 - Modify: `docs/install.md:8-10`
 - Modify: `docs/site/agents/install.md:153-155`
 - Modify: `docs/site/install.html:94-96` (blok `windows-amd64`)
@@ -218,10 +255,11 @@ Dit is een hand-taak: de uitvoerende agent bereidt het protocol voor en wacht op
 - Consumes: de Windows-route en de Mac-uitkomst uit Task 3.
 
 - [ ] **Step 1: `docs/install.md:9`**: weg met "the hooks are untested there (`usage-gate.sh` uses GNU `date -d`)". Wordt: de hooks zijn op macOS getest (CI `macos-latest` plus een handmatige run, #90); geheugendrempels in `host.toml` werken alleen op Linux. Windows-zin volgens de route uit Task 3.
-- [ ] **Step 2: `docs/site/agents/install.md` en `docs/site/install.html`**: de Windows-alinea noemt de gekozen route letterlijk (`WSL only` verwacht) en het issue voor native Windows. Geen andere wijziging aan die pagina's.
-- [ ] **Step 3: Controleer links en de site-tests**
+- [ ] **Step 2: `docs/site/agents/install.md` en `docs/site/install.html`**: de Windows-alinea noemt de route uit Task 3 letterlijk en het issue voor native Windows. Geen andere wijziging aan die pagina's in deze task (de rij in Look first is al in Task 2 gewijzigd). Houd het woord `WSL` in *Install the binary* (`tests/test_agent_guide.py:137`).
+- [ ] **Step 2b: `docs/getting-started.md`** (de startgids, AC 3): één zin bij de platformen (regel 60-62) die zegt dat macOS getest is en welke route op Windows werkt, met het issue voor native Windows. Raak de Requirements-tabel niet aan buiten wat Task 2 deed.
+- [ ] **Step 3: Controleer links en de doc-tests**
 
-Run: `uv run pytest -q tests -k "site or install or md_link"`
+Run: `uv run pytest -q tests/test_getting_started.py tests/test_agent_guide.py tests/test_site_*.py && uv run pytest -q tests -k "install or md_link"`
 Expected: PASS.
 
 - [ ] **Step 4: Commit**
