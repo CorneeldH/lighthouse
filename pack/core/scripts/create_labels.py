@@ -75,7 +75,7 @@ def read_remote(repo: str) -> tuple[list[str] | None, str]:
     result = _gh(cmd)
     if isinstance(result, str):
         return None, result
-    return result.stdout.split(), ""
+    return [n for n in result.stdout.splitlines() if n.strip()], ""
 
 
 def _gh(cmd: list[str]) -> subprocess.CompletedProcess[str] | str:

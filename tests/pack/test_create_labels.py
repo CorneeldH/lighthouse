@@ -159,3 +159,17 @@ def test_missing_taxonomy_exits_2(tmp_path):
     result = _run(root, env)
     assert result.returncode == 2
     assert LABELS_PATH in result.stderr
+
+
+def test_remote_label_with_space(tmp_path):
+    root, env, log = _setup(tmp_path, ["good first issue"] + NAMES)
+    taxonomy = root / LABELS_PATH
+    taxonomy.write_text(
+        taxonomy.read_text(encoding="utf-8")
+        + "\n| Label | Color |\n|---|---|\n| `good first issue` | `7057FF` |\n",
+        encoding="utf-8",
+    )
+    result = _run(root, env, "--create")
+    assert result.returncode == 0, result.stderr
+    assert _creates(log) == []
+    assert "labels: all 7 present on Owner/repo" in result.stdout
