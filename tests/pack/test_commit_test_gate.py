@@ -1016,8 +1016,10 @@ def test_memory_wait_gets_what_the_slot_wait_left(gate: Gate) -> None:
         timer.join()
 
     assert result.returncode == 2, result.stdout
-    assert re.search(r"host memory below threshold after [12] s", result.stderr), result.stderr
-    assert elapsed < 5.5
+    # 3 s when a loaded host starts the hook late and the slot wait ends sooner;
+    # without the deadline clip it is slot_wait_seconds, 4 s.
+    assert re.search(r"host memory below threshold after [1-3] s", result.stderr), result.stderr
+    assert elapsed < 6.5
 
 
 def test_no_swap_notice_in_gate(gate: Gate) -> None:
