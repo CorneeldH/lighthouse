@@ -91,8 +91,8 @@
       ],
       "when": "When an issue comes in.",
       "without": "Every incoming issue waits for you.",
-      "status": "planned",
-      "issue": 120
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/triage"
     },
     {
       "id": "auto-answer",
