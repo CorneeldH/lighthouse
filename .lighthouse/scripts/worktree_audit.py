@@ -52,14 +52,17 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import errno
 import fnmatch
 import json
+import os
 import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 # Run as a file (`python3 .lighthouse/scripts/worktree_audit.py`): put `.lighthouse/lib`
 # first, so `lighthouse_lib` imports from this installation.
@@ -68,6 +71,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 from lighthouse_lib import config  # noqa: E402
 from lighthouse_lib.config import ConfigError  # noqa: E402
 from lighthouse_lib.pr_body_gate import refs_targets  # noqa: E402
+
+# Evaluated at runtime, so `Optional`: `bool | None` raises TypeError on Python 3.9
+# before `config` can give its clean version message.
+Alive = Callable[[int], Optional[bool]]
 
 # --- protect list ----------------------------------------------------------
 # The default branch is always protected; a setting that you can forget to fill
@@ -161,8 +168,26 @@ class Verdict:
         return f"{self.icon} {self.text}{suffix}"
 
 
-def pid_alive(pid: int) -> bool:
-    return Path(f"/proc/{pid}").exists()
+def pid_alive(pid: int) -> bool | None:
+    """True: the pid exists (also EPERM). False: only ESRCH. None: not measurable."""
+    # pid <= 0 would signal a process group; on native Windows signal 0 is
+    # CTRL_C_EVENT. Neither may reach os.kill.
+    if pid <= 0 or os.name == "nt":
+        return None
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return None
+    return True
+
+
+def _is_live(state: bool | None) -> bool:
+    """Only a measured False is not live: unmeasurable is not dead."""
+    return state is not False
 
 
 def is_protected(row: Row) -> bool:
@@ -182,14 +207,15 @@ _SERVER_LOCK_PREFIX = "claude agent bridge-"
 
 
 def _lock_state(
-    row: Row, alive: Callable[[int], bool]
+    row: Row, alive: Alive
 ) -> tuple[Verdict | None, tuple[str, ...]]:
     """Rank 2, plus the modifier that a stale lock — or a server lock —
     leaves behind.
 
     A lock with a dead pid is no blockade but a note: the row falls through to the
     next rank and carries "stale lock" along. This script never unlocks. A lock
-    without a pid does block — unknown is not dead.
+    without a pid does block — unknown is not dead. Neither does a pid that cannot
+    be measured (`alive` gives None): unmeasurable is not dead.
 
     A lock whose reason starts with "claude agent bridge-" was set by the
     Remote Control session server (#963), not by a session itself. A spike
@@ -207,7 +233,10 @@ def _lock_state(
         return None, ("server-lock",)
     if row.lock_pid is None:
         return Verdict(2, "⛔", "locked, pid unknown"), ()
-    if alive(row.lock_pid):
+    state = alive(row.lock_pid)
+    if state is None:
+        return Verdict(2, "⛔", f"locked, pid {row.lock_pid} not measurable"), ()
+    if state:
         return Verdict(2, "⛔", f"active session (pid {row.lock_pid})"), ()
     return None, ("stale lock",)
 
@@ -313,7 +342,7 @@ def _unpushed_verdict(
     return None, mods
 
 
-def judge(row: Row, *, alive: Callable[[int], bool] = pid_alive) -> Verdict:
+def judge(row: Row, *, alive: Alive = pid_alive) -> Verdict:
     """The ladder: first hit wins, safety on top.
 
     Rank 3 and 4 are above rank 6 — a merged branch with unpushed commits
@@ -672,7 +701,7 @@ def build_rows(
     orphans: list[OrphanDir],
     ports: dict[str, str],
     pr_lookup_ok: bool = True,
-    alive: Callable[[int], bool] = pid_alive,
+    alive: Alive = pid_alive,
 ) -> list[Row]:
     """The join. Pure: no subprocess, no filesystem."""
     worktree_by_branch = {w.branch: w for w in worktrees if w.branch}
@@ -711,7 +740,7 @@ def build_rows(
                     if session
                     else (transcript[1] if transcript else None)
                 ),
-                live=session is not None and alive(session.pid),
+                live=session is not None and _is_live(alive(session.pid)),
                 port_block=_port_for(name, ports),
             )
         )
@@ -742,7 +771,7 @@ def build_rows(
                     if session
                     else (transcript[1] if transcript else None)
                 ),
-                live=session is not None and alive(session.pid),
+                live=session is not None and _is_live(alive(session.pid)),
                 port_block=_port_for(name, ports),
             )
         )
@@ -1200,7 +1229,7 @@ def _row_line(row: Row, verdict: Verdict) -> str:
     )
 
 
-def _judged(rows: list[Row], alive: Callable[[int], bool]) -> list[tuple[Row, Verdict]]:
+def _judged(rows: list[Row], alive: Alive) -> list[tuple[Row, Verdict]]:
     return [(r, judge(r, alive=alive)) for r in rows]
 
 
@@ -1270,7 +1299,7 @@ def _render_stale_locked_section(pairs: list[tuple[Row, Verdict]]) -> list[str]:
         "Locked with a dead pid — release the lock by hand first, then run again:",
     ]
     lines += [
-        f"  {r.worktree}   (lock-pid {r.lock_pid}, no longer in /proc)"
+        f"  {r.worktree}   (lock-pid {r.lock_pid}, no longer running)"
         for r, _ in stale
     ]
     return lines
@@ -1325,7 +1354,7 @@ def _render_port_blocks_section(rows: list[Row]) -> list[str]:
     return lines
 
 
-def render_cleanup(rows: list[Row], *, alive: Callable[[int], bool] = pid_alive) -> str:
+def render_cleanup(rows: list[Row], *, alive: Alive = pid_alive) -> str:
     pairs = sorted(_judged(rows, alive), key=lambda p: (p[1].rank, p[0].name))
     lines = [TABLE_HEADER, TABLE_RULE]
     lines += [_row_line(row, verdict) for row, verdict in pairs]
@@ -1340,7 +1369,7 @@ def render_cleanup(rows: list[Row], *, alive: Callable[[int], bool] = pid_alive)
 
 
 def render_sessions(
-    rows: list[Row], *, alive: Callable[[int], bool] = pid_alive
+    rows: list[Row], *, alive: Alive = pid_alive
 ) -> str:
     pairs = [(r, v) for r, v in _judged(rows, alive) if r.session_id]
     # Live sessions first, also without a transcript (last_session=None): a live
@@ -1362,7 +1391,7 @@ def render_sessions(
     return "\n".join(lines) + "\n"
 
 
-def render_origin(rows: list[Row], *, alive: Callable[[int], bool] = pid_alive) -> str:
+def render_origin(rows: list[Row], *, alive: Alive = pid_alive) -> str:
     return render_cleanup([r for r in rows if r.remote], alive=alive)
 
 
@@ -1371,7 +1400,7 @@ def render_only(
     branch: str,
     *,
     cwd: Path,
-    alive: Callable[[int], bool] = pid_alive,
+    alive: Alive = pid_alive,
 ) -> tuple[str, bool]:
     """The view for lighthouse-close-issue: one row plus `cleanup: yes|no`.
 
@@ -1440,7 +1469,7 @@ def render_issue(
     pr_heads: list[str] | None,
     *,
     cwd: Path,
-    alive: Callable[[int], bool] = pid_alive,
+    alive: Alive = pid_alive,
 ) -> str:
     """A block per branch of issue `nr`: `branch: <b>` plus the `render_only` output.
 
@@ -1468,7 +1497,7 @@ def render_issue(
     return "\n".join(blocks)
 
 
-def render_kpi(rows: list[Row], *, alive: Callable[[int], bool] = pid_alive) -> str:
+def render_kpi(rows: list[Row], *, alive: Alive = pid_alive) -> str:
     pairs = _judged(rows, alive)
     # Minor 6: the main checkout has `worktree` set too, but the skill
     # labels this number "Worktrees under `.claude/worktrees/`" — so only

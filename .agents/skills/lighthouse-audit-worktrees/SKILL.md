@@ -73,7 +73,7 @@ execution path and not only in this text.
 | # | Condition | Verdict |
 |---|---|---|
 | 1 | name or directory on the protect list | 🔒 never touch |
-| 2 | worktree `locked` and the lock pid lives in `/proc/<pid>` (or the pid is unknown), or a running session has the worktree as cwd | ⛔ active session / running session |
+| 2 | worktree `locked` and the lock pid still runs (`os.kill(pid, 0)` succeeds or gives `EPERM`), or the pid is unknown or not measurable (native Windows), or a running session has the worktree as cwd | ⛔ active session / running session |
 | 3 | dirty tree, or tree status unreadable | ⛔ write it away first |
 | 4a | unpushed commits, tip without a parent, local, no remote, no PR | ⚠️ orphan commit without parent — likely test leakage |
 | 4b | unpushed commits while the PR is merged and the tip lies before the merge | *no hit* — falls through to rank 6 with the modifier `[squash-merge]` |

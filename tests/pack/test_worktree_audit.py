@@ -13,8 +13,10 @@ repo.
 from __future__ import annotations
 
 import dataclasses
+import errno
 import importlib.util
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -216,6 +218,44 @@ class TestDirtyAndUnpushedNeverSafe:
         assert verdict.safe is False
 
 
+class TestPidAlive:
+    def test_own_pid_is_alive(self):
+        assert audit.pid_alive(os.getpid()) is True
+
+    def test_eperm_counts_as_alive(self, monkeypatch):
+        def deny(pid, sig):
+            raise PermissionError(errno.EPERM, "Operation not permitted")
+        monkeypatch.setattr(audit.os, "kill", deny)
+        assert audit.pid_alive(4242) is True
+
+    def test_only_esrch_is_dead(self, monkeypatch):
+        def gone(pid, sig):
+            raise ProcessLookupError(errno.ESRCH, "No such process")
+        monkeypatch.setattr(audit.os, "kill", gone)
+        assert audit.pid_alive(4242) is False
+
+    def test_other_oserror_is_not_measurable(self, monkeypatch):
+        def odd(pid, sig):
+            raise OSError(errno.EINVAL, "Invalid argument")
+        monkeypatch.setattr(audit.os, "kill", odd)
+        assert audit.pid_alive(4242) is None
+
+    @pytest.mark.parametrize("pid", [0, -1])
+    def test_non_positive_pid_is_not_measurable_and_never_signalled(self, monkeypatch, pid):
+        monkeypatch.setattr(audit.os, "kill", lambda *_: pytest.fail("os.kill called"))
+        assert audit.pid_alive(pid) is None
+
+    def test_native_windows_is_not_measurable_and_never_signalled(self, monkeypatch):
+        monkeypatch.setattr(audit.os, "kill", lambda *_: pytest.fail("os.kill called"))
+        monkeypatch.setattr(audit.os, "name", "nt")
+        assert audit.pid_alive(4242) is None
+
+    def test_is_live_only_false_is_dead(self):
+        assert audit._is_live(None) is True
+        assert audit._is_live(True) is True
+        assert audit._is_live(False) is False
+
+
 class TestLockHandling:
     """Test 4 — AC 5: locked worktrees are reported, never unlocked."""
 
@@ -233,6 +273,22 @@ class TestLockHandling:
         )
         assert verdict.rank == 2
         assert "472155" in verdict.text
+
+    def test_unmeasurable_lock_pid_blocks(self):
+        verdict = audit.judge(
+            row(
+                "issue-624",
+                worktree="/repo/.claude/worktrees/issue-624",
+                locked=True,
+                lock_pid=472155,
+                pr_number=1,
+                pr_state="merged",
+            ),
+            alive=lambda _pid: None,
+        )
+        assert verdict.rank == 2
+        assert verdict.safe is False
+        assert "not measurable" in verdict.text
 
     def test_dead_lock_pid_falls_through_with_modifier(self):
         verdict = audit.judge(
@@ -940,6 +996,18 @@ class TestBuildRows:
         }
         kwargs.update(overrides)
         return audit.build_rows(**kwargs)
+
+    def test_unmeasurable_session_pid_is_live(self):
+        rows = self._rows(
+            worktrees=[
+                audit.WorktreeInfo("/repo", "main", False, None),
+                audit.WorktreeInfo("/repo/.claude/worktrees/wt-a", "feat-a", False, None),
+            ],
+            alive=lambda _pid: None,
+        )
+        row_ = next(r for r in rows if r.name == "feat-a")
+        assert row_.live is True
+        assert audit.judge(row_, alive=lambda _pid: None).safe is False
 
     def test_every_branch_local_or_remote_becomes_a_row(self):
         names = [r.name for r in self._rows()]

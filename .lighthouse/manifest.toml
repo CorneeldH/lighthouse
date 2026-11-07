@@ -8,7 +8,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-audit-worktrees/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "bcd9d3f96ca3cb15598924dda4adfeccbaa0362f184e84283bdae1204afbc300"
+sha256 = "c8a486cb3b8577f05e70133440941db0cfb3cac57bbb9148b303bda1a339a39a"
 
 [[unit]]
 kind = "file"
@@ -471,7 +471,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-audit-worktrees/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "bcd9d3f96ca3cb15598924dda4adfeccbaa0362f184e84283bdae1204afbc300"
+sha256 = "c8a486cb3b8577f05e70133440941db0cfb3cac57bbb9148b303bda1a339a39a"
 
 [[unit]]
 kind = "file"
@@ -926,7 +926,7 @@ kind = "file"
 path = ".lighthouse/scripts/worktree_audit.py"
 package = "core"
 version = "dev"
-sha256 = "1538ce1f342ae9d54381bfbcf539f29ef31b61b0a949d844c7d2f3a4803b8a97"
+sha256 = "9aa754896f68eb54ee5c62b7f071c77a0641c6c6ba0625d68dd003d34e6dfe98"
 
 [[unit]]
 kind = "block"
