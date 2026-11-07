@@ -62,7 +62,7 @@ Read, do not change, and do not ask yet. Find out:
 | `uv` | python | The test gate `uv run pytest -q` and `ty-gate` cannot start. |
 | `go`, `gofmt`, `golangci-lint` | go | Go code is not formatted or linted. |
 | `node`, `npm` | node | The node test gate reports `COULD NOT CHECK`. |
-| `curl`, `sha256sum`, `tar`, `xz` | shell | No `shellcheck` download; the `shell-lint-check` hook blocks. |
+| `curl`, `tar`, `xz` | shell | No `shellcheck` download; sha256sum or shasum verifies it; the `shell-lint-check` hook blocks. |
 
 Report what you found to the user in one block. Then go to the choices.
 

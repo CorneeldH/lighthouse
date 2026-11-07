@@ -219,7 +219,7 @@ func TestLanguagePacks(t *testing.T) {
 				".lighthouse/scripts/shellcheck-repo.sh",
 			},
 			detect: true,
-			tools:  "curl,git,jq,python3,sha256sum,tar,tomllib,xz",
+			tools:  "curl,git,jq,python3,tar,tomllib,xz",
 			blocks: 1,
 			hooks:  1,
 		},

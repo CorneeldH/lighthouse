@@ -46,6 +46,18 @@ _sc_is_pinned() { # bin
   [ -x "$1" ] && "$1" --version 2>/dev/null | grep -qx "version: $SHELLCHECK_PIN"
 }
 
+# sha256 of a file on stdout. macOS has no sha256sum, only shasum.
+_sc_sha256() { # file
+  if command -v sha256sum >/dev/null 2>&1; then # portable: fallback to shasum -a 256
+    sha256sum "$1" | cut -d' ' -f1              # portable: fallback to shasum -a 256
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -d' ' -f1
+  else
+    echo "shellcheck: no sha256sum and no shasum" >&2 # portable: fallback to shasum -a 256
+    return 1
+  fi
+}
+
 _sc_download() { # tool_dir -> path on stdout, or rc != 0
   local tool_dir="$1" platform url sha tmp got bin="$1/shellcheck"
   platform="$(_sc_platform)" || {
@@ -64,7 +76,10 @@ _sc_download() { # tool_dir -> path on stdout, or rc != 0
     rm -rf "$tmp"
     return 1
   fi
-  got="$(sha256sum "$tmp/s.txz" | cut -d' ' -f1)"
+  got="$(_sc_sha256 "$tmp/s.txz")" || {
+    rm -rf "$tmp"
+    return 1
+  }
   if [ "$got" != "$sha" ]; then
     echo "shellcheck: sha256 mismatch (got $got, wanted $sha)" >&2
     rm -rf "$tmp"
