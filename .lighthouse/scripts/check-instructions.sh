@@ -52,11 +52,11 @@ ok() { printf 'ok    %s\n' "$1"; }
 # sha256sum does not exist on macOS. A repo is edited on Linux AND on a Mac,
 # and a gate that silently does nothing on one of the two is not a gate.
 if command -v sha256sum >/dev/null 2>&1; then
-  SHA_CMD="sha256sum"
+  SHA_CMD="sha256sum" # portable: fallback to shasum -a 256
 elif command -v shasum >/dev/null 2>&1; then
   SHA_CMD="shasum -a 256"
 else
-  printf 'FAIL  no sha256sum and no shasum on this machine; the duplicate check cannot run\n'
+  printf 'FAIL  no sha256sum and no shasum on this machine; the duplicate check cannot run\n' # portable: fallback to shasum -a 256
   exit 1
 fi
 

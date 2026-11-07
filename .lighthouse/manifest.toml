@@ -260,7 +260,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/usage-gate.sh"
 package = "core"
 version = "dev"
-sha256 = "94b2bb5cc2c7deb6cdd6809a99ef6f7931bf4aef3753447f29b077e7964f0b70"
+sha256 = "0580a9bb095f6ec7fc4f193644c2a4d352dff83c190bd0a076dee4858bf767e6"
 
 [[unit]]
 kind = "file"
@@ -842,7 +842,7 @@ kind = "file"
 path = ".lighthouse/scripts/check-instructions.sh"
 package = "core"
 version = "dev"
-sha256 = "639eefb9ee3fc692d6cc0154baf4590ceb03dca39e5714902c73a9272539c2f4"
+sha256 = "24a9cac2a50de22f752e93b9c9c52998259cab21c7ba59b221ac61aedfb9a6ec"
 
 [[unit]]
 kind = "file"
