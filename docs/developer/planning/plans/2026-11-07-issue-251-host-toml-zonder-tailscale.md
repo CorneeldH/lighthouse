@@ -24,7 +24,7 @@ verandert. Docs, configuratiekaart en changelog volgen.
 - `internal/hostconfig` leest de sleutel niet; niet aanraken.
 - Een aanwezige `tailscale_ip` wordt gevalideerd zoals nu (IPv4, geen unspecified/loopback/multicast).
 - Instructies Engels; artefacten (docs onder `docs/`, commits, PR) Nederlands, behalve
-  `docs/getting-started.md`, `docs/site/agents/install.md` en het changelog-fragment: die zijn Engels.
+  `docs/getting-started.md`, `docs/site/agents/install.md`, `docs/host-assumptions.md` en het changelog-fragment: die zijn Engels.
 - Dogfood: een wijziging onder `pack/` → `go run ./cmd/lighthouse init --upgrade` en de
   geïnstalleerde kopie meecommitten; daarna geeft een tweede run `No changes.`
 - Go volgt `/lighthouse-go-standard`, tests `/lighthouse-test-standard`.
@@ -228,7 +228,7 @@ host.toml not proposed: tailscale ip unavailable; lighthouse works without host.
   `host.tailscale_ip` is optional in `host.toml`, so a host without Tailscale can set the `gate_*` keys. Run `lighthouse init --upgrade` in every repository on the host first: an older copy rejects a `host.toml` without `tailscale_ip`, and its test gate then blocks every commit.
   ```
 
-- [ ] **Stap 7: Controleer** — `uv run pytest -q tests/test_site_config.py tests/pack/test_skill_contracts.py`
+- [ ] **Stap 7: Controleer** — `uv run pytest -q tests/test_site_config.py tests/pack/test_skill_contracts.py tests/test_getting_started.py tests/test_agent_guide.py`
   → PASS; `md-link-check` blokkeert niets.
 - [ ] **Stap 8: Commit** — `docs(host): host.toml zonder tailscale_ip, met compat-waarschuwing (#251)`.
 
@@ -251,12 +251,15 @@ Gesimuleerd op deze host; de echte doorloop op een Linux-server zonder Tailscale
   - `python3 -c` op `plan_review_record.host_refusal("spec")` → `SPEC-REVIEW NOT RECORDED: host unknown: …`.
 - [ ] **Stap 2: Met `host.toml` zonder `tailscale_ip`** (`[host]\nname = "server"\ngate_slots = 2\n`):
   `host-check` rc 1 met `no tailscale_ip`; `host.gate_slots` → `2`; `host_refusal` → `not on the host from host.toml`.
-- [ ] **Stap 3: Een commit met de test-gate** — een hook krijgt de omgeving van de harness, niet
-  die van een Bash-aanroep. Draai daarom de gate zelf, zoals `tests/pack/test_commit_test_gate.py`
-  dat doet (`Gate.run`, l.150-170): `LIGHTHOUSE_HOST_TOML=<pad> bash .claude/hooks/lighthouse/commit-test-gate.sh post`
-  met een PostToolUse-payload van een `git commit` op stdin, na een kleine docs-commit in deze
-  worktree. Verwacht: geen `COULD NOT CHECK`, wel `no gate memory threshold in host.toml` (stap 1)
-  of de slots-regel met `gate_slots = 2` (stap 2). Beide varianten.
+- [ ] **Stap 3: Een commit met de test-gate** — `post` doet niets zonder een rij die `pre` bij
+  dezelfde aanroep opnam (`pack/core/hooks/commit-test-gate.sh:721-741`), dus een losse `post`-run
+  bewijst niets. Schrijf daarom een pytest in `tests/pack/test_commit_test_gate.py` met de
+  `Gate`-fixture, volgens het bestaande pre→commit→post-patroon (l.140-170): `host.toml`
+  `[host]\nname = "h"\ngate_slots = 1\n` (zonder `tailscale_ip`), `pre`, een echte commit in de
+  fixture-repo, dan `post`. Verwacht: geen `COULD NOT CHECK`, wel de slots-regel `the gate uses 1`
+  (stel `gate_slots` lager dan de project-slots, anders verschijnt de regel niet,
+  `commit-test-gate.sh:377-379`). Variant zonder `host.toml`: geen `COULD NOT CHECK`, wel
+  `no gate memory threshold in host.toml`. Geen docs-commit op de PR-branch voor dit bewijs.
 - [ ] **Stap 4: Leg de uitvoer vast** in de PR-body (Evidence). Het AC "op een gewone Linux-server"
   blijft open voor de handen van de gebruiker: de PR zegt `Refs #251`, niet `Closes`, tenzij die
   doorloop er dan al is.
