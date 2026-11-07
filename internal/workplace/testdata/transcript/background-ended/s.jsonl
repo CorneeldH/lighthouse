@@ -1,0 +1,5 @@
+{"type":"user","timestamp":"2026-11-07T13:50:20.000Z","message":{"role":"user","content":"/superpowers:subagent-driven-development plan.md"}}
+{"type":"assistant","timestamp":"2026-11-07T13:54:42.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_3","name":"Agent","input":{"description":"Implement Task 3","prompt":"..."}}]}}
+{"type":"user","timestamp":"2026-11-07T13:54:42.500Z","message":{"role":"user","content":[{"tool_use_id":"toolu_3","type":"tool_result","content":[{"type":"text","text":"Async agent launched successfully.\nagentId: a272347d571c31f38"}]}]},"toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a272347d571c31f38","description":"Implement Task 3"}}
+{"type":"attachment","timestamp":"2026-11-07T14:07:30.000Z","attachment":{"type":"queued_command","prompt":"<task-notification>\n<task-id>a272347d571c31f38</task-id>\n<tool-use-id>toolu_3</tool-use-id>\n<status>completed</status>\n<summary>Agent \"Implement Task 3\" completed</summary>\n</task-notification>"}}
+{"type":"assistant","timestamp":"2026-11-07T14:07:50.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Task 3 done."}]}}

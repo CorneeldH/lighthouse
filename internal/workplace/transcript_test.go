@@ -55,6 +55,27 @@ func TestReadTranscriptSubagentCounts(t *testing.T) {
 	}
 }
 
+// TestReadTranscriptBackground counts the background tasks of the main transcript that did not
+// end (#270). In background-pending a Bash task ends by a task-notification, one by TaskStop,
+// an assistant line quoting the agent's task id ends nothing, and a launch in a subagent
+// transcript does not count: the async agent itself is the main transcript's task.
+func TestReadTranscriptBackground(t *testing.T) {
+	cases := []struct {
+		dir  string
+		want int
+	}{
+		{"background-pending", 1},
+		{"background-bash-running", 1},
+		{"background-ended", 0},
+		{"main-ended-subagent-working", 0},
+	}
+	for _, c := range cases {
+		if got := read(t, c.dir, "s").Background; got != c.want {
+			t.Errorf("%s: Background = %d, want %d", c.dir, got, c.want)
+		}
+	}
+}
+
 func TestReadTranscriptUnknownCommand(t *testing.T) {
 	tr := read(t, "unknown-command", "s")
 	if tr.UnknownCommand != "/lighthouse-bestaat-niet" {

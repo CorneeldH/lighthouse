@@ -36,6 +36,11 @@ type Transcript struct {
 	UnknownCommand string `json:"unknown_command,omitempty"`
 	// AssistantTurn is true once the main transcript holds an assistant line.
 	AssistantTurn bool `json:"assistant_turn"`
+	// Background counts the background tasks the main transcript launched, a Bash task with
+	// run_in_background or an async subagent, that have not ended: no task-notification and no
+	// TaskStop names them. Claude ends its turn while they run, and a Stop hook can then make
+	// the forge report the session done (#270).
+	Background int `json:"background,omitempty"`
 }
 
 // ProjectDir is the directory Claude Code keeps the transcripts of cwd in:
@@ -91,7 +96,94 @@ func ReadTranscript(dir, sessionID string) (Transcript, error) {
 	if t.AssistantTurn, t.UnknownCommand, err = scanStart(main); err != nil {
 		return Transcript{}, err
 	}
+	if t.Background, err = scanBackground(main); err != nil {
+		return Transcript{}, err
+	}
 	return t, nil
+}
+
+var taskID = regexp.MustCompile(`<task-id>([^<\s]+)</task-id>`)
+
+// backgroundMarks are the strings a line needs to launch or end a background task; a line
+// without any of them is not decoded.
+var backgroundMarks = [][]byte{
+	[]byte(`"backgroundTaskId"`), []byte(`"async_launched"`), []byte(`<task-id>`), []byte(`"task_id"`),
+}
+
+// scanBackground streams the main transcript and counts the background tasks that were
+// launched and did not end. A launch is the tool result of a Bash call with a backgroundTaskId,
+// or of an Agent call with status async_launched. An end is a <task-id> in any line but an
+// assistant line (the task-notification), or the result of a TaskStop. A subagent's own
+// launches stay out: the async agent is already a task of the main transcript.
+func scanBackground(path string) (int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = f.Close() }()
+	launched := map[string]bool{}
+	ended := map[string]bool{}
+	r := bufio.NewReader(f)
+	for {
+		line, rerr := r.ReadBytes('\n')
+		if hasAny(line, backgroundMarks) {
+			readBackground(line, launched, ended)
+		}
+		if rerr != nil {
+			if !errors.Is(rerr, io.EOF) {
+				return 0, rerr
+			}
+			break
+		}
+	}
+	n := 0
+	for id := range launched {
+		if !ended[id] {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// readBackground adds the task that line launches to launched, and the tasks it ends to ended.
+func readBackground(line []byte, launched, ended map[string]bool) {
+	var v struct {
+		Type          string          `json:"type"`
+		ToolUseResult json.RawMessage `json:"toolUseResult"`
+	}
+	if json.Unmarshal(line, &v) != nil || v.Type == "assistant" {
+		return
+	}
+	for _, m := range taskID.FindAllSubmatch(line, -1) {
+		ended[string(m[1])] = true
+	}
+	var res struct {
+		BackgroundTaskID string `json:"backgroundTaskId"`
+		Status           string `json:"status"`
+		AgentID          string `json:"agentId"`
+		TaskID           string `json:"task_id"`
+		Message          string `json:"message"`
+	}
+	if len(v.ToolUseResult) == 0 || json.Unmarshal(v.ToolUseResult, &res) != nil {
+		return // no result, or a plain string such as an error
+	}
+	switch {
+	case res.BackgroundTaskID != "":
+		launched[res.BackgroundTaskID] = true
+	case res.Status == "async_launched" && res.AgentID != "":
+		launched[res.AgentID] = true
+	case res.TaskID != "" && res.Message != "":
+		ended[res.TaskID] = true
+	}
+}
+
+func hasAny(line []byte, marks [][]byte) bool {
+	for _, m := range marks {
+		if bytes.Contains(line, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // lastTimestamp is the newest timestamp in the tail of the file. A window that

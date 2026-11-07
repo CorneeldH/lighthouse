@@ -401,9 +401,12 @@ func noStart(rule func() (Action, bool)) func() (Action, bool, *fixPRStart) {
 	}
 }
 
-// done reports whether the run's session measured Done.
+// done reports whether the run's session measured Done. A forge stand done with background
+// work still running in the transcript is not Done: claude ended its turn to wait for that work
+// and goes on when it ends (#270). The silence and runtime rules still hold for such a run.
 func (c runCtx) done() bool {
-	return c.hasStand && c.stand == workplace.Done
+	t := c.state.Transcript
+	return c.hasStand && c.stand == workplace.Done && (t == nil || t.Background == 0)
 }
 
 // closed closes row with o. A run that ends as done, handoff or question is over, but its
