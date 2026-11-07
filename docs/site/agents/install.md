@@ -255,8 +255,9 @@ here.
   `init` runs in the root of a git repository.
 - `lighthouse init: refused: <n> locally modified unit(s); rerun with --force to overwrite`:
   stop and report it. Do not add `--force`.
-- `warning: no GitHub remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it`:
-  tell the user. Add `[forge]` only with the user's `owner/name`, after a yes.
+- `warning: no GitHub or GitLab remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it`:
+  tell the user. Add `[forge]` only with the user's `owner/name` (GitLab: `group/…/name`), after a yes,
+  or rerun with `--forge-host <host>` for a self-hosted GitLab.
 - `` warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules ``:
   ask for the line, as step 6 of [Run lighthouse init](#run-lighthouse-init) says.
 - `warning: <path> is ignored by git (<source>:<line>:<pattern>)`: ask for an exception, as step 7

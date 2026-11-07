@@ -131,6 +131,7 @@
               ],
               "example": "github",
               "readers": [
+                "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/kennforge/adapter.go"
               ]
@@ -166,7 +167,7 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": []
+              "readers": ["internal/initcmd/initcmd.go"]
             },
             {
               "key": "forge.default_branch",

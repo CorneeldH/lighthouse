@@ -42,6 +42,7 @@ func newInitCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.Yes, "yes", false, "approve every change without asking")
 	cmd.Flags().StringArrayVar(&o.AddPacks, "pack", nil, "add a package (repeatable)")
 	cmd.Flags().StringArrayVar(&o.DropPacks, "no-pack", nil, "leave a package out (repeatable)")
+	cmd.Flags().StringArrayVar(&o.ForgeHosts, "forge-host", nil, "host of a self-hosted GitLab (repeatable)")
 	return cmd
 }
 

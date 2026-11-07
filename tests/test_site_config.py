@@ -22,7 +22,7 @@ _spec.loader.exec_module(config)
 NO_DEFAULT = object()
 # Keys nothing in the repo reads: only config.py checks them (spec section 2).
 UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
-          "host.scan_memory_max", "host.scan_cpu_quota", "forge.host"}
+          "host.scan_memory_max", "host.scan_cpu_quota"}
 SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.tailscale_ip", "review.roborev"}
 REQUIRED = {
     "forge.board.project_number": "with [forge.board]",

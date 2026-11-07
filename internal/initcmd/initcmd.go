@@ -49,6 +49,7 @@ type Options struct {
 	Dir                 string // working directory; the root comes from git rev-parse --show-toplevel
 	Upgrade, Force, Yes bool
 	AddPacks, DropPacks []string                  // --pack and --no-pack (plan M0 (c), design choice 6)
+	ForgeHosts          []string                  // --forge-host: hosts of self-hosted GitLab instances
 	Version             string                    // "" means version.String()
 	Packs               fs.FS                     // holds <name>/...; nil means pack.Files
 	Deps                deps.Checker              // nil fields mean deps.Default()
@@ -146,7 +147,7 @@ func execute(o Options) error {
 	for _, c := range chosen {
 		chosenPacks = append(chosenPacks, all[c.Name])
 	}
-	tables, haveRepo, err := configTables(root, chosenPacks)
+	tables, haveRepo, err := configTables(root, chosenPacks, o.ForgeHosts)
 	if err != nil {
 		return err
 	}
@@ -449,13 +450,37 @@ func hasLine(b []byte, line string) bool {
 	return false
 }
 
+// existingForge is the part of an existing lighthouse.toml that decides which hosts are known.
+type existingForge struct {
+	Forge struct {
+		Kind string `toml:"kind"`
+		Host string `toml:"host"`
+	} `toml:"forge"`
+}
+
 // configTables are the tables lighthouse.toml should have: the core tables, then the
 // fragments of the chosen packages in their order (plan M0 (c), design choice 4).
-func configTables(root string, chosen []packs.Pack) ([]projectconfig.Table, bool, error) {
+// A GitLab host is known from extraHosts or from forge.host of an existing lighthouse.toml.
+func configTables(root string, chosen []packs.Pack, extraHosts []string) ([]projectconfig.Table, bool, error) {
+	var ex existingForge
+	if b, err := os.ReadFile(filepath.Join(root, configPath)); err == nil {
+		if _, err := toml.Decode(string(b), &ex); err != nil {
+			ex = existingForge{}
+		}
+	}
+	hosts := append([]string{}, extraHosts...)
+	if ex.Forge.Host != "" {
+		hosts = append(hosts, ex.Forge.Host)
+	}
 	var forge projectconfig.Forge
 	haveRepo := false
 	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
-		forge, haveRepo = projectconfig.ForgeFromRemote(strings.TrimSpace(string(url)), nil)
+		forge, haveRepo = projectconfig.ForgeFromRemote(strings.TrimSpace(string(url)), hosts)
+	}
+	// AppendMissing never overwrites: a host next to an existing kind = "github" would
+	// be rejected by config.py, so it is only proposed beside gitlab or no kind.
+	if ex.Forge.Kind != "" && ex.Forge.Kind != "gitlab" {
+		forge.Host = ""
 	}
 	tables, err := mergeTables(projectconfig.CoreTables(forge, haveRepo), chosen)
 	return tables, haveRepo, err
@@ -518,7 +543,7 @@ func planConfig(o Options, load func(string) (*planned, error), tables []project
 		var v map[string]any
 		md, err := toml.Decode(string(out), &v)
 		if err == nil && !md.IsDefined("forge", "repo") {
-			_, _ = fmt.Fprintln(o.Err, "warning: no GitHub remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it")
+			_, _ = fmt.Fprintln(o.Err, "warning: no GitHub or GitLab remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it")
 		}
 	}
 	for _, k := range manual {
