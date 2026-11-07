@@ -121,7 +121,7 @@ func TestFakeProcsSignal(t *testing.T) {
 	p.survivors[2] = true
 	p.termProof[3] = true
 	for _, s := range []sentSignal{{1, syscall.SIGTERM}, {2, syscall.SIGKILL}, {3, syscall.SIGTERM}} {
-		if err := p.Signal(s.pid, s.sig); err != nil {
+		if err := p.Signal(s.pid, "s", s.sig); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -132,13 +132,19 @@ func TestFakeProcsSignal(t *testing.T) {
 	if len(got) != 2 || got[0] != 2 || got[1] != 3 {
 		t.Fatalf("Marked after signals = %v, want [2 3]", got)
 	}
-	if err := p.Signal(3, syscall.SIGKILL); err != nil {
+	if err := p.Signal(3, "other", syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := p.StartTime(3); !ok {
+		t.Error("StartTime(3) after SIGKILL for another sid: gone, want alive")
+	}
+	if err := p.Signal(3, "s", syscall.SIGKILL); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok, _ := p.StartTime(3); ok {
 		t.Error("StartTime(3) after SIGKILL: ok, want gone")
 	}
-	if p.calls != 6 || len(p.sent) != 4 {
-		t.Errorf("calls = %d, sent = %d; want 6 and 4", p.calls, len(p.sent))
+	if p.calls != 8 || len(p.sent) != 4 {
+		t.Errorf("calls = %d, sent = %d; want 8 and 4", p.calls, len(p.sent))
 	}
 }

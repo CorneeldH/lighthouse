@@ -76,7 +76,7 @@ func (a *Adapter) endSession(sid string) error {
 
 func (a *Adapter) signalAll(sid string, pids []int, sig syscall.Signal) error {
 	for _, pid := range pids {
-		if err := a.procs().Signal(pid, sig); err != nil {
+		if err := a.procs().Signal(pid, sid, sig); err != nil {
 			return fmt.Errorf("session %s: %w", sid, err)
 		}
 	}

@@ -3,11 +3,13 @@
 package local
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
@@ -118,7 +120,20 @@ func startMarkedSleep(t *testing.T, sid string) *exec.Cmd {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 	})
-	return cmd
+	// Right after exec, /proc/<pid>/environ can still read empty: wait until the mark shows.
+	p := newProcFS().(procFS)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		ok, err := p.carries(cmd.Process.Pid, sid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			return cmd
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pid %d shows no mark %s after 5s", cmd.Process.Pid, sid)
+		}
+	}
 }
 
 func TestMarkedRealProcess(t *testing.T) {
@@ -134,22 +149,100 @@ func TestMarkedRealProcess(t *testing.T) {
 }
 
 func TestSignalRealAndGone(t *testing.T) {
-	cmd := startMarkedSleep(t, uniqueSID())
+	sid := uniqueSID()
+	cmd := startMarkedSleep(t, sid)
 	p := newProcFS()
-	if err := p.Signal(cmd.Process.Pid, syscall.SIGTERM); err != nil {
+	if err := p.Signal(cmd.Process.Pid, sid, syscall.SIGTERM); err != nil {
 		t.Fatal(err)
 	}
+	if got := waitSignal(t, cmd); got != syscall.SIGTERM {
+		t.Fatalf("sleep ended by %v, want SIGTERM", got)
+	}
+	if err := p.Signal(cmd.Process.Pid, sid, syscall.SIGTERM); err != nil {
+		t.Fatalf("Signal on gone pid = %v, want nil", err)
+	}
+}
+
+// waitSignal waits for cmd and returns the signal that ended it; an exit without a signal
+// fails the test.
+func waitSignal(t *testing.T, cmd *exec.Cmd) syscall.Signal {
+	t.Helper()
 	err := cmd.Wait()
 	ee, ok := err.(*exec.ExitError)
 	if !ok {
 		t.Fatalf("Wait = %v, want ExitError", err)
 	}
 	ws := ee.Sys().(syscall.WaitStatus)
-	if !ws.Signaled() || ws.Signal() != syscall.SIGTERM {
-		t.Fatalf("wait status = %v, want killed by SIGTERM", ws)
+	if !ws.Signaled() {
+		t.Fatalf("wait status = %v, want ended by a signal", ws)
 	}
-	if err := p.Signal(cmd.Process.Pid, syscall.SIGTERM); err != nil {
-		t.Fatalf("Signal on gone pid = %v, want nil", err)
+	return ws.Signal()
+}
+
+// A pid that carries another mark at signal time is skipped. The SIGKILL with the wrong sid must
+// not arrive: the SIGTERM sent afterwards is what ends sleep.
+func TestSignalSkipsOtherMark(t *testing.T) {
+	sid := uniqueSID()
+	cmd := startMarkedSleep(t, sid)
+	p := newProcFS()
+	if err := p.Signal(cmd.Process.Pid, sid+"x", syscall.SIGKILL); err != nil {
+		t.Fatalf("Signal with another sid = %v, want nil", err)
+	}
+	if err := p.Signal(cmd.Process.Pid, sid, syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if got := waitSignal(t, cmd); got != syscall.SIGTERM {
+		t.Fatalf("sleep ended by %v, want SIGTERM (the SIGKILL for another sid arrived)", got)
+	}
+}
+
+// Signal reads the mark again at signal time, from its own /proc tree: Marked found the pid
+// earlier, but its environ no longer holds the mark, as after a pid reuse.
+func TestSignalRechecksMarkInProcTree(t *testing.T) {
+	cases := []struct {
+		name    string
+		environ string
+		want    syscall.Signal
+	}{
+		{"mark gone", "A=1\x00", syscall.SIGTERM},
+		{"other sid", markVar + "=sid10\x00", syscall.SIGTERM},
+		{"mark kept", "A=1\x00" + markVar + "=sid1\x00", syscall.SIGKILL},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cmd := startMarkedSleep(t, "sid1")
+			pid := cmd.Process.Pid
+			root := t.TempDir()
+			fakeProc(t, root, strconv.Itoa(pid), "environ", c.environ)
+			p := procFS{root: root, uid: os.Getuid(), self: 999}
+			if err := p.Signal(pid, "sid1", syscall.SIGKILL); err != nil {
+				t.Fatalf("Signal = %v, want nil", err)
+			}
+			if err := cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				t.Fatal(err)
+			}
+			if got := waitSignal(t, cmd); got != c.want {
+				t.Fatalf("sleep ended by %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// A pid owned by another user at signal time is skipped, even with the mark.
+func TestSignalSkipsOtherUser(t *testing.T) {
+	cmd := startMarkedSleep(t, "sid1")
+	pid := cmd.Process.Pid
+	root := t.TempDir()
+	fakeProc(t, root, strconv.Itoa(pid), "environ", markVar+"=sid1\x00")
+	p := procFS{root: root, uid: os.Getuid() + 1, self: 999}
+	if err := p.Signal(pid, "sid1", syscall.SIGKILL); err != nil {
+		t.Fatalf("Signal = %v, want nil", err)
+	}
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	if got := waitSignal(t, cmd); got != syscall.SIGTERM {
+		t.Fatalf("sleep ended by %v, want SIGTERM", got)
 	}
 }
 
@@ -160,8 +253,11 @@ func uniqueSID() string {
 func TestSignalRefusesNonPositivePid(t *testing.T) {
 	p := newProcFS()
 	for _, pid := range []int{0, -1} {
-		if err := p.Signal(pid, 0); err == nil {
+		if err := p.Signal(pid, "sid1", 0); err == nil {
 			t.Errorf("Signal(%d) = nil, want an error", pid)
 		}
+	}
+	if err := p.Signal(os.Getpid(), "", 0); err == nil {
+		t.Error("Signal with an empty sid = nil, want an error")
 	}
 }

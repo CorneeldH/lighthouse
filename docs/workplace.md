@@ -332,7 +332,10 @@ van de tick staan.
   run dus niet in leven.
 - `Stop` en `Kill(workspaceID, sessionIDs)`: doen hetzelfde, want een lokale run heeft geen zachtere
   stop. Ze beëindigen elk gemerkt proces van de sessie-id's: SIGTERM, tot 5 s wachten, dan SIGKILL. Een
-  leeg sessie-id weigeren ze vóór elk signaal.
+  leeg sessie-id weigeren ze vóór elk signaal. Elk signaal gaat via een pidfd (`os.FindProcess`), en pas
+  nadat het merk en de uid van die pid opnieuw gelezen zijn; zo raakt een signaal nooit een proces dat de
+  pid intussen hergebruikt. Zonder pidfd (een oude kernel) blijft alleen die herlezing vlak voor het
+  signaal.
 - `Remove(workspaceID)`: beëindigt elk gemerkt proces van de sessies van de workspace. Bij een eigen
   worktree gebeurt dat na de `Dirty`-check en vóór `git worktree remove`; een vuile worktree is `ErrDirty`
   en er wordt niets beëindigd. Een worktree waarin een run zelf een worktree aanlegde, is ook `ErrDirty`:

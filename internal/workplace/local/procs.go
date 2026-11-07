@@ -15,6 +15,8 @@ type Procs interface {
 	Marked(sid string) ([]int, error)
 	// StartTime is field 22 of /proc/<pid>/stat; ok is false when pid is gone or a zombie (state Z).
 	StartTime(pid int) (start uint64, ok bool, err error)
-	// Signal sends sig to pid; a pid that is gone is no error.
-	Signal(pid int, sig syscall.Signal) error
+	// Signal sends sig to pid, only while pid still carries markVar=<sid> and is this user's: a
+	// pid that is gone, or now belongs to another process, is skipped without error. A pid of 0
+	// or below, or an empty sid, is an error.
+	Signal(pid int, sid string, sig syscall.Signal) error
 }

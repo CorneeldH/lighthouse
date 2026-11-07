@@ -13,6 +13,6 @@ type noProcs struct{}
 
 func newProcFS() Procs { return noProcs{} }
 
-func (noProcs) Marked(string) ([]int, error)        { return nil, errNeedsProc }
-func (noProcs) StartTime(int) (uint64, bool, error) { return 0, false, errNeedsProc }
-func (noProcs) Signal(int, syscall.Signal) error    { return errNeedsProc }
+func (noProcs) Marked(string) ([]int, error)             { return nil, errNeedsProc }
+func (noProcs) StartTime(int) (uint64, bool, error)      { return 0, false, errNeedsProc }
+func (noProcs) Signal(int, string, syscall.Signal) error { return errNeedsProc }

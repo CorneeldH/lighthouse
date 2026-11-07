@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -22,7 +23,8 @@ type sentSignal struct {
 }
 
 // fakeProcs is the process table of a test host. A signal ends a pid, unless the pid is a
-// survivor, or termProof and the signal is SIGTERM.
+// survivor, or termProof and the signal is SIGTERM. A pid not marked with the sid of the signal
+// is skipped: no signal is sent.
 type fakeProcs struct {
 	mu        sync.Mutex
 	marked    map[string][]int
@@ -65,10 +67,13 @@ func (p *fakeProcs) StartTime(pid int) (uint64, bool, error) {
 	return start, ok, nil
 }
 
-func (p *fakeProcs) Signal(pid int, sig syscall.Signal) error {
+func (p *fakeProcs) Signal(pid int, sid string, sig syscall.Signal) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.calls++
+	if !slices.Contains(p.marked[sid], pid) {
+		return nil
+	}
 	p.sent = append(p.sent, sentSignal{pid: pid, sig: sig})
 	if p.survivors[pid] || p.termProof[pid] && sig == syscall.SIGTERM {
 		return nil
