@@ -231,6 +231,10 @@ source_path = "scripts/hooks/check-instructies.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
+path = "pack/core/templates/labels.md"
+new = true
+
+[[file]]
 path = "pack/core/templates/pull_request_template.md"
 source_path = ".github/pull_request_template.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"

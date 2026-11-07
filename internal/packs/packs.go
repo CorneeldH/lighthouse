@@ -103,13 +103,15 @@ type Detect struct {
 }
 
 // Pack is a loaded package. Detect is nil without detect.toml, Config nil without
-// lighthouse.toml.fragment.
+// lighthouse.toml.fragment. LabelsTemplate is templates/labels.md, nil without it; it is
+// never a unit, `init --labels` seeds it on request.
 type Pack struct {
-	Name     string
-	Units    []Unit
-	Requires []Requirement
-	Detect   *Detect
-	Config   []projectconfig.Table
+	Name           string
+	Units          []Unit
+	Requires       []Requirement
+	Detect         *Detect
+	Config         []projectconfig.Table
+	LabelsTemplate []byte
 }
 
 // HookDir is where the hook scripts of every package land. A registration whose command
@@ -308,8 +310,12 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 		case "lib":
 			target = ".lighthouse/lib/lighthouse_lib/" + rest
 		case "templates":
+			if rest == "labels.md" {
+				p.LabelsTemplate = data
+				return nil
+			}
 			if rest != "pull_request_template.md" {
-				return fmt.Errorf("package %s: templates/ holds only pull_request_template.md, not %s", name, rel)
+				return fmt.Errorf("package %s: templates/ holds only pull_request_template.md and labels.md, not %s", name, rel)
 			}
 			target = PRTemplatePath
 		case "workflows":
