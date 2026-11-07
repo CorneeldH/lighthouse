@@ -4,6 +4,15 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.12.1] - 2026-11-07
+
+### Fixed
+
+- A reused forge workspace follows `origin/<branch>` after the branch was rebased and force-pushed:
+  commits that are on origin as a patch-equal commit no longer count as own work. A workspace with real
+  own work or a dirty work tree no longer starts the run silently on its old `HEAD`; the dispatcher hands
+  the run back with the reason, the workspace and the number of own commits.
+
 ## [v0.12.0] - 2026-11-07
 
 ### Added
