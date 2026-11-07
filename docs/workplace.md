@@ -151,6 +151,9 @@ niet verschijnt (start onzeker) of die te lang loopt (`max_runtime`), beslist de
   uitvoert, of exit 3 geeft als de sessie daar niet staat. De adapter pakt alleen die bestanden uit
   in een tijdelijke map, leest ze en ruimt de map op. Staat de sessie in geen container, dan
   wikkelt de fout `fs.ErrNotExist`; een falende `podman` is een fout van de tick (#237).
+  Met de hand: zoek de container met `podman ps --filter label=devcontainer.local_folder` en lees
+  `podman exec <container> sh -c 'cat "$HOME/.claude/projects/<map>/<sessie>.jsonl"'`, waarbij
+  `<map>` de projectmap uit `workplace.ProjectDir` is.
 - Elk ander profiel: de map op deze host. Staat die er niet, dan is dat `workplace.ErrNotMeasurable`:
   de run is niet meetbaar, en dat is geen fout van de tick.
 
