@@ -210,8 +210,9 @@ Evidence must touch the **criterion**, not the **period**.
 
 ### B5. Three outcomes
 
-Show the table from B3 **to the user first**. No `gh issue close` goes over it before that table
-has been seen — also not when everything is `demonstrably done`.
+Show the table from B3 to the user, in your reply. With every criterion `demonstrably done` and
+the DoD of step 4 met, close in the same turn: the table in the reply is the check, there is no
+confirmation question. Every other outcome, or a DoD point in doubt, stops before `gh issue close`.
 
 | Verdict over all AC | Outcome |
 |---|---|
@@ -814,7 +815,7 @@ holds when step 4 was skipped (zero closed issues). You do not update the crux a
 - Unclear whether it is done → entry B: dig up the evidence, table per criterion
 - A criterion without an identifiable evidence line → verdict `not`, so do not close
 - Mixed verdicts → propose to shorten the issue, do not close
-- The user has not seen the verdict table yet → show it first
+- The verdict table is not in your reply yet → show it first; with every AC `demonstrably done` and the DoD met, close in the same turn
 
 ## Related Skills
 
