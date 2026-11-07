@@ -62,7 +62,7 @@ def main(argv: list[str]) -> int:
     if not filelock.HELD_PAST_EXIT:
         # Windows: the lock would go when this script exits, so the slot would be free
         # while the suite runs. No slot is better than a false one.
-        sys.stderr.write("gate_slot.py: gate slots need flock, which this platform lacks (Windows)\n")
+        sys.stderr.write("gate_slot.py: gate slots need flock, which this platform lacks (Windows); the hook takes the slot in deadline.py there\n")
         return 1
     try:
         slot = acquire(args.fd, args.wait)

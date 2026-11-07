@@ -6,6 +6,7 @@ fail-open behaviour of Claude Code on a timeout. These tests exercise the module
 directly: no subagent, no real git commit needed.
 """
 
+import fcntl
 import os
 import signal
 import subprocess
@@ -15,6 +16,7 @@ import time
 import pytest
 
 from tests.pack._testkit import INSTALLED_LIB, load_hook_lib
+from tests.pack.test_filelock import FakeMsvcrt
 
 dl = load_hook_lib("deadline")
 
@@ -272,3 +274,204 @@ def test_run_until_env():
     )
     assert got == (0, b"y\n")
     assert "X" not in os.environ
+
+
+# --- gate slot options (#90): deadline.py takes and holds the slot itself ---
+
+
+def _slot_args(slot_dir, report, *, slots="2", wait="0"):
+    return [
+        "--slot-dir", str(slot_dir), "--slots", slots,
+        "--slot-wait", wait, "--slot-report", str(report),
+    ]  # fmt: skip
+
+
+def _slot_cli(slot_dir, report, *cmd, slots="2", wait="0", deadline=None, popen=False):
+    argv = [
+        sys.executable,
+        str(INSTALLED_LIB / "deadline.py"),
+        str(deadline if deadline is not None else time.time() + 30),
+        *_slot_args(slot_dir, report, slots=slots, wait=wait),
+        "--",
+        *cmd,
+    ]
+    if popen:
+        return subprocess.Popen(argv, stderr=subprocess.PIPE, text=True)
+    return subprocess.run(argv, capture_output=True, text=True, check=False)
+
+
+def _hold_slot(path) -> int:
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fd
+
+
+def test_slot_options_take_the_first_slot_and_pass_the_exit_code(tmp_path):
+    report = tmp_path / "report"
+    r = _slot_cli(tmp_path, report, "sh", "-c", "exit 7")
+    assert r.returncode == 7
+    assert report.read_text() == "1\n"
+
+
+def test_slot_options_skip_a_held_slot(tmp_path):
+    report = tmp_path / "report"
+    holder = _hold_slot(tmp_path / "slot-1")
+    try:
+        r = _slot_cli(tmp_path, report, "true")
+    finally:
+        os.close(holder)
+    assert r.returncode == 0 and report.read_text() == "2\n"
+
+
+def test_slot_is_held_while_the_command_runs_and_free_after(tmp_path):
+    report = tmp_path / "report"
+    proc = _slot_cli(
+        tmp_path,
+        report,
+        "sh",
+        "-c",
+        f"echo > {tmp_path}/started; while [ ! -e {tmp_path}/go ]; do sleep 0.05; done",
+        popen=True,
+    )
+    try:
+        end = time.monotonic() + 5
+        while not (tmp_path / "started").exists() and time.monotonic() < end:
+            time.sleep(0.05)
+        assert (tmp_path / "started").exists()
+        probe = os.open(tmp_path / "slot-1", os.O_WRONLY | os.O_APPEND)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(probe)
+        (tmp_path / "go").write_text("")
+        assert proc.wait(timeout=10) == 0
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        proc.stderr.close()
+    probe = os.open(tmp_path / "slot-1", os.O_WRONLY | os.O_APPEND)
+    try:
+        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        os.close(probe)
+
+
+def test_slot_busy_writes_busy_and_does_not_run(tmp_path):
+    report = tmp_path / "report"
+    holders = [_hold_slot(tmp_path / "slot-1"), _hold_slot(tmp_path / "slot-2")]
+    try:
+        r = _slot_cli(tmp_path, report, "touch", str(tmp_path / "ran"))
+    finally:
+        for fd in holders:
+            os.close(fd)
+    assert r.returncode == 75
+    assert report.read_text() == "busy\n"
+    assert not (tmp_path / "ran").exists()
+
+
+def test_slot_wait_is_capped_by_the_deadline(tmp_path):
+    report = tmp_path / "report"
+    holder = _hold_slot(tmp_path / "slot-1")
+    try:
+        start = time.monotonic()
+        r = _slot_cli(
+            tmp_path, report, "true", slots="1", wait="30", deadline=time.time() + 1
+        )
+        elapsed = time.monotonic() - start
+    finally:
+        os.close(holder)
+    assert r.returncode == 75 and report.read_text() == "busy\n"
+    assert elapsed < 5
+
+
+def test_slot_error_when_the_lock_dir_is_missing(tmp_path):
+    report = tmp_path / "report"
+    r = _slot_cli(tmp_path / "nope", report, "touch", str(tmp_path / "ran"))
+    assert r.returncode == 1
+    assert report.read_text().startswith("error: ")
+    assert report.read_text().endswith("\n")
+    assert not (tmp_path / "ran").exists()
+
+
+def test_slot_error_when_a_lock_file_is_a_directory(tmp_path):
+    report = tmp_path / "report"
+    (tmp_path / "slot-1").mkdir()
+    r = _slot_cli(tmp_path, report, "true")
+    assert r.returncode == 1 and report.read_text().startswith("error: ")
+
+
+@pytest.mark.parametrize(
+    "opts",
+    [
+        ["--slot-dir", "D"],
+        ["--slot-dir", "D", "--slots", "2", "--slot-wait", "0"],
+        ["--slot-dir", "D", "--slots", "x", "--slot-wait", "0", "--slot-report", "F"],
+        ["--slot-dir", "D", "--slots", "0", "--slot-wait", "0", "--slot-report", "F"],
+        ["--slot-dir", "D", "--slots", "2", "--slot-wait", "-1", "--slot-report", "F"],
+        [
+            "--slot-dir", "D", "--slot-dir", "D", "--slots", "2",
+            "--slot-wait", "0", "--slot-report", "F",
+        ],  # fmt: skip
+        ["--bogus", "1"],
+    ],
+)
+def test_slot_options_usage_errors_exit_2(opts):
+    r = subprocess.run(
+        [sys.executable, str(INSTALLED_LIB / "deadline.py"), str(time.time() + 30), *opts, "--", "true"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert r.returncode == 2 and "usage" in r.stderr.lower()
+    assert "--slot-report" in r.stderr
+
+
+def test_without_slot_options_gate_slot_is_not_imported(monkeypatch):
+    monkeypatch.delitem(sys.modules, "lighthouse_lib.gate_slot", raising=False)
+    assert dl.main([str(time.time() + 30), "--", "true"]) == 0
+    assert "lighthouse_lib.gate_slot" not in sys.modules
+
+
+@pytest.fixture
+def windows_gate_slot(monkeypatch):
+    """gate_slot and filelock as on Windows: no fcntl, the fake msvcrt."""
+    fake = FakeMsvcrt()
+    monkeypatch.setitem(sys.modules, "fcntl", None)
+    monkeypatch.setitem(sys.modules, "msvcrt", fake)
+    win = load_hook_lib("filelock")
+    import lighthouse_lib.gate_slot as gs
+
+    monkeypatch.setattr(gs, "filelock", win)
+    monkeypatch.setitem(sys.modules, "lighthouse_lib.filelock", win)
+    return win, fake
+
+
+def test_slot_options_work_without_fcntl(tmp_path, windows_gate_slot):
+    _win, fake = windows_gate_slot
+    report = tmp_path / "report"
+    rc = dl.main([str(time.time() + 30), *_slot_args(tmp_path, report), "--", "true"])
+    assert rc == 0 and report.read_text() == "1\n"
+    assert os.stat(tmp_path / "slot-1").st_ino in fake.held
+
+
+def test_slot_busy_without_fcntl(tmp_path, windows_gate_slot):
+    win, _fake = windows_gate_slot
+    report = tmp_path / "report"
+    holder = os.open(tmp_path / "slot-1", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    try:
+        assert win.try_lock(holder)
+        rc = dl.main(
+            [
+                str(time.time() + 30),
+                *_slot_args(tmp_path, report, slots="1"),
+                "--",
+                "touch",
+                str(tmp_path / "ran"),
+            ]
+        )
+    finally:
+        os.close(holder)
+    assert rc == 75 and report.read_text() == "busy\n"
+    assert not (tmp_path / "ran").exists()

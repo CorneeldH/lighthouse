@@ -6,6 +6,12 @@ documentation: Claude sees no error, only silence, and the test gate (task 3)
 would be skipped unnoticed. By having the gate itself end on a deadline (well
 within the hook timeout) and hard-killing the whole child, subprocesses
 included, the gate fails loudly instead of dropping out silently.
+
+Slot options (`--slot-dir --slots --slot-wait --slot-report`): this process takes
+one of the gate slots itself with `gate_slot.acquire`, on lock files it opens
+itself, writes the outcome to the report file and holds the slot until the command
+has ended. On Windows a `msvcrt` lock belongs to the process, not to an inherited
+file description, so the process that watches the suite has to be the one holding it (#90).
 """
 
 # `X | None` in annotations: the hooks also run under python3 3.9 (macOS).
@@ -18,7 +24,9 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 from collections.abc import Mapping
+from pathlib import Path
 
 TIMEOUT_EXIT = 124
 NOT_FOUND_EXIT = 127
@@ -32,7 +40,12 @@ FORWARDED = tuple(
 # Windows has no SIGKILL either; there _kill_group kills the tree whatever the signal.
 HARD_KILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
-USAGE = "usage: deadline.py <epoch-seconds> -- <cmd> [args...]"
+USAGE = (
+    "usage: deadline.py <epoch-seconds> "
+    "[--slot-dir D --slots N --slot-wait W --slot-report F] -- <cmd> [args...]"
+)
+SLOT_ERROR_EXIT = 1
+_SLOT_OPTIONS = ("--slot-dir", "--slots", "--slot-wait", "--slot-report")
 
 
 class _Stopped(Exception):
@@ -229,17 +242,109 @@ def run_until(
                 signal.signal(sig, handler)
 
 
-def main(argv: list[str]) -> int:
-    if len(argv) < 3 or argv[1] != "--":
-        sys.stderr.write(USAGE + "\n")
-        return 2
+def _gate_slot() -> types.ModuleType:
+    """Import `gate_slot` lazily: only the slot options need it."""
+    if not __package__:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from lighthouse_lib import gate_slot
+
+    return gate_slot
+
+
+def _parse(argv: list[str]) -> tuple[float, dict[str, str] | None, list[str]] | None:
+    """Split argv into (deadline, slot options or None, command); None on a usage error."""
+    if not argv:
+        return None
     try:
         deadline = float(argv[0])
     except ValueError:
+        return None
+    options: dict[str, str] = {}
+    i = 1
+    while i < len(argv) and argv[i] != "--":
+        name = argv[i]
+        if name not in _SLOT_OPTIONS or name in options or i + 1 >= len(argv):
+            return None
+        options[name] = argv[i + 1]
+        i += 2
+    cmd = argv[i + 1 :]
+    if i >= len(argv) or not cmd:
+        return None
+    if not options:
+        return deadline, None, cmd
+    if set(options) != set(_SLOT_OPTIONS):
+        return None
+    try:
+        if int(options["--slots"]) < 1 or float(options["--slot-wait"]) < 0:
+            return None
+    except ValueError:
+        return None
+    return deadline, options, cmd
+
+
+def _report(path: str, line: str) -> bool:
+    """Write the one-line slot report; False (plus a stderr line) if that fails."""
+    try:
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(line + "\n")
+    except OSError as err:
+        sys.stderr.write(f"deadline.py: cannot write slot report: {err}\n")
+        return False
+    return True
+
+
+def run_with_slot(
+    deadline: float, argv: list[str], slot_dir: str, slots: int, wait: float, report: str
+) -> int:
+    """Take a gate slot, report which, run `argv` until `deadline` holding it.
+
+    Report: `<n>`, `busy` (exit `SLOT_BUSY_EXIT`) or `error: <cause>` (exit
+    `SLOT_ERROR_EXIT`). The command never starts before the report is written.
+    """
+    gate_slot = _gate_slot()
+    fds: list[int] = []
+    try:
+        try:
+            for n in range(1, slots + 1):
+                path = os.path.join(slot_dir, f"slot-{n}")
+                fds.append(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600))
+            effective = max(0.0, min(wait, deadline - time.time()))
+            slot = gate_slot.acquire(fds, effective)
+        except OSError as err:
+            _report(report, f"error: {err}")
+            return SLOT_ERROR_EXIT
+        if slot is None:
+            _report(report, "busy")
+            return gate_slot.SLOT_BUSY_EXIT
+        if not _report(report, str(slot)):
+            return SLOT_ERROR_EXIT
+        for n, fd in enumerate(fds, start=1):
+            if n != slot:
+                os.close(fd)
+        fds = [fds[slot - 1]]
+        return run_until(deadline, argv)
+    finally:
+        for fd in fds:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+
+
+def main(argv: list[str]) -> int:
+    parsed = _parse(argv)
+    if parsed is None:
         sys.stderr.write(USAGE + "\n")
         return 2
-    cmd = argv[2:]
-    return run_until(deadline, cmd)
+    deadline, options, cmd = parsed
+    if options is None:
+        return run_until(deadline, cmd)
+    return run_with_slot(
+        deadline,
+        cmd,
+        options["--slot-dir"],
+        int(options["--slots"]),
+        float(options["--slot-wait"]),
+        options["--slot-report"],
+    )
 
 
 if __name__ == "__main__":
