@@ -1,0 +1,70 @@
+# Measures lighthouse on native Windows, in Git Bash (#90): builds lighthouse.exe from this commit,
+# runs ci/windows-measure.sh (init plus the core hooks with Claude Code payloads) and the Go tests.
+# A measurement, not a gate: the job stays green whatever it finds; the job summary holds the
+# table per step and the outcome of the Go tests, the artifact the full output per step.
+name: windows-measure
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ci/windows-measure.sh
+      - .github/workflows/windows-measure.yml
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go build -o "$RUNNER_TEMP/lighthouse.exe" ./cmd/lighthouse
+      # Claude Code on Windows hands the hooks a Windows path (cwd, CLAUDE_PROJECT_DIR), so the
+      # work dir goes in in that form too.
+      - name: init and hooks
+        run: |
+          WORK=$(cygpath -w "$RUNNER_TEMP/measure")
+          mkdir -p "$WORK"
+          { echo "## Native Windows (Git Bash), commit $GITHUB_SHA"; echo; } >> "$GITHUB_STEP_SUMMARY"
+          ci/windows-measure.sh "$RUNNER_TEMP/lighthouse.exe" "$WORK" | tee -a "$GITHUB_STEP_SUMMARY"
+      - id: gotest
+        continue-on-error: true
+        run: go test -shuffle=on ./... 2>&1 | tee "$RUNNER_TEMP/measure/go-test.txt"
+      - id: goe2e
+        continue-on-error: true
+        run: go test -shuffle=on -tags e2e ./e2e/ -v 2>&1 | tee "$RUNNER_TEMP/measure/go-e2e.txt"
+      - name: Go tests in the summary
+        if: always()
+        env:
+          GOTEST: ${{ steps.gotest.outcome }}
+          GOE2E: ${{ steps.goe2e.outcome }}
+        run: |
+          {
+            echo
+            echo "| Go tests | Outcome | Failed |"
+            echo "|---|---|---|"
+            for t in go-test go-e2e; do
+              if [ "$t" = go-test ]; then o=$GOTEST; else o=$GOE2E; fi
+              # `shell: bash` runs with -e -o pipefail: no FAIL line (a green run) must not end the step.
+              f=$({ grep -E '^(--- FAIL|FAIL)' "$RUNNER_TEMP/measure/$t.txt" 2>/dev/null || true; } | head -8 | tr '\n' ' ' | tr '|' '/')
+              echo "| \`$t\` | $o | ${f:+\`$f\`} |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: windows-measure
+          path: |
+            ${{ runner.temp }}/measure/steps
+            ${{ runner.temp }}/measure/env.txt
+            ${{ runner.temp }}/measure/go-*.txt
