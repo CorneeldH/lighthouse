@@ -2027,3 +2027,34 @@ def test_pre_runs_without_gate_files(gate: Gate) -> None:
     names, files = gate.seen()
     assert names == {"BASE": "", "HEAD": "", "FILES": ""}
     assert files == ""
+
+
+def test_gate_reads_host_toml_without_tailscale_ip(gate: Gate) -> None:
+    # A hand-written host.toml for the gate alone (#251): no tailscale_ip must not
+    # make the gate "COULD NOT CHECK", and gate_slots is still read.
+    gate.configure(TEST_GATE + "slots = 3\n")
+    gate.host.write_text('[host]\nname = "h"\ngate_slots = 1\n', encoding="utf-8")
+    _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    assert "COULD NOT CHECK" not in result.stderr
+    assert "COULD NOT CHECK" not in result.stdout
+    assert "test_gate.slots = 3 above host gate_slots = 1, the gate uses 1" in _context(result.stdout)
+    assert gate.marks() == [str(gate.project.resolve())]
+
+
+def test_gate_runs_without_host_toml(gate: Gate) -> None:
+    gate.host.unlink()
+    _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+
+    result = gate.post("git commit -m x", gate.project)
+
+    assert result.returncode == 0, result.stderr
+    assert "COULD NOT CHECK" not in result.stderr
+    assert "COULD NOT CHECK" not in result.stdout
+    assert "no gate memory threshold in host.toml" in _context(result.stdout)
+    assert gate.marks() == [str(gate.project.resolve())]
