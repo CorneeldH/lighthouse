@@ -114,22 +114,6 @@ func (a *Adapter) Lookup(ctx context.Context, workspaceID string) (workplace.Wor
 	return workplace.Workspace{ID: rec.ID, Path: rec.Path, Branch: branch}, nil
 }
 
-// Stop is built in a later task.
-func (a *Adapter) Stop(_ context.Context, workspaceID string, _ []string) error {
-	if err := checkLocal(workspaceID); err != nil {
-		return err
-	}
-	return errNotBuilt
-}
-
-// Kill is built in a later task.
-func (a *Adapter) Kill(_ context.Context, workspaceID string, _ []string) error {
-	if err := checkLocal(workspaceID); err != nil {
-		return err
-	}
-	return errNotBuilt
-}
-
 // Remove is built in a later task.
 func (a *Adapter) Remove(_ context.Context, workspaceID string) error {
 	if err := checkLocal(workspaceID); err != nil {

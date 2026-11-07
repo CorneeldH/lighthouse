@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"testing"
 
@@ -15,11 +16,6 @@ import (
 
 // pending lists the cases whose methods are not built yet; task 9 deletes it.
 var pending = map[string]bool{
-	"EmptySessionIDRejected":  true,
-	"KillWithoutProcess":      true,
-	"KillSurvivorIsError":     true,
-	"KillUnmeasurableIsError": true,
-	"KillLeavesOtherSession":  true,
 	"RemoveDirtyKeeps":        true,
 	"RemoveForgottenAndTwice": true,
 	"DiscardIdempotent":       true,
@@ -83,7 +79,9 @@ func (f *localFixture) Live(_ *testing.T, sid string) {
 	p := f.host.procs
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.marked[sid] = append(p.marked[sid], pid)
+	if !slices.Contains(p.marked[sid], pid) {
+		p.marked[sid] = append(p.marked[sid], pid)
+	}
 	p.start[pid] = 5000
 }
 

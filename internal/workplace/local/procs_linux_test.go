@@ -156,3 +156,12 @@ func TestSignalRealAndGone(t *testing.T) {
 func uniqueSID() string {
 	return fmt.Sprintf("test-%d-%d", os.Getpid(), time.Now().UnixNano())
 }
+
+func TestSignalRefusesNonPositivePid(t *testing.T) {
+	p := newProcFS()
+	for _, pid := range []int{0, -1} {
+		if err := p.Signal(pid, 0); err == nil {
+			t.Errorf("Signal(%d) = nil, want an error", pid)
+		}
+	}
+}

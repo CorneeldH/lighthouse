@@ -97,6 +97,9 @@ func (p procFS) StartTime(pid int) (uint64, bool, error) {
 }
 
 func (p procFS) Signal(pid int, sig syscall.Signal) error {
+	if pid <= 0 {
+		return fmt.Errorf("local workplace: refuse to signal pid %d", pid)
+	}
 	if err := syscall.Kill(pid, sig); err != nil && !errors.Is(err, syscall.ESRCH) {
 		return fmt.Errorf("local workplace: signal %d: %w", pid, err)
 	}
