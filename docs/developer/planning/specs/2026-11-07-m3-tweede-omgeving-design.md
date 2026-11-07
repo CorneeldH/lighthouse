@@ -113,11 +113,12 @@ nog open in de pitch van M4.
 
 ### In M3
 
-1. De Beelink-audit: scheiden wat overal geldt van wat de Beelink is, en dat expliciet maken.
-2. Het hostprofiel: `host.toml` voor een host zonder Tailscale en zonder systemd-slice.
+1. De Beelink-audit: scheiden wat overal geldt van wat de Beelink is, en dat expliciet maken
+   (#250).
+2. Het hostprofiel: `host.toml` voor een host zonder Tailscale en zonder systemd-slice (#251).
 3. Instapniveaus, alleen de helft guards en checks (#19, bijgesteld).
 4. De labeltaxonomie als optie van `init` (#95, bijgesteld).
-5. De installatiegids in het Engels, voor de opzet van de tweede gebruiker.
+5. De installatiegids in het Engels, voor de opzet van de tweede gebruiker (#252).
 6. De DoD-run: de tweede gebruiker brengt één echt issue tot een PR.
 7. Windows (#90), alleen als de sessies om native Windows vragen.
 
@@ -330,6 +331,10 @@ Allebei zonder nummer (*mijn keuze*): de volgorde ten opzichte van M4 staat nog 
 
 ### Werkplek zonder kenn-forge
 
+[Milestone 8](https://github.com/CorneeldH/lighthouse/milestone/8): #253 (adapter), #254
+(`paia-forge-` naar de configuratie), #255 (controller-knoppen van #19), #256 (`host-check` met
+een expliciete sleutel).
+
 De dispatcher op de opzet van de tweede gebruiker: een werkplek-adapter naast `kennforge.Adapter`
 (bijvoorbeeld een lokale worktree met headless `claude`), `serve` en `tick` op een Linux-server
 zonder kenn-forge, en de controller-knoppen van #19. Nu bouwt `internal/cli/tick.go:93-107` altijd een
@@ -338,7 +343,8 @@ ook een werkplek zonder kenn-forge.
 
 ### GitLab-forge
 
-GitLab naast GitHub, in delen:
+[Milestone 9](https://github.com/CorneeldH/lighthouse/milestone/9): #257 tot en met #260, één
+issue per deel. GitLab naast GitHub, in delen:
 
 1. Config en `init`: `[forge] kind = "gitlab"`, repo's met subgroepen, remote herkennen. Nu weigert
    `config.py:395` alles behalve `github`, eist `config.py:58` precies één `/`, en herkent
