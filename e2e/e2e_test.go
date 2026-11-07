@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -43,7 +44,12 @@ func cleanEnv() []string {
 
 func buildLighthouse(t *testing.T) string {
 	t.Helper()
-	bin := filepath.Join(t.TempDir(), "lighthouse")
+	name := "lighthouse"
+	if runtime.GOOS == "windows" {
+		// go build -o writes exactly this name, and Windows runs only an .exe (#90).
+		name += ".exe"
+	}
+	bin := filepath.Join(t.TempDir(), name)
 	cmd := exec.Command("go", "build", "-o", bin, "github.com/CorneeldH/lighthouse/cmd/lighthouse")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build: %v\n%s", err, out)
