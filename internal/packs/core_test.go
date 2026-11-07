@@ -107,6 +107,7 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/deadline.py",
 		".lighthouse/lib/lighthouse_lib/evidence.py",
+		".lighthouse/lib/lighthouse_lib/filelock.py",
 		".lighthouse/lib/lighthouse_lib/gate_slot.py",
 		".lighthouse/lib/lighthouse_lib/git_invocations.py",
 		".lighthouse/lib/lighthouse_lib/headings.py",

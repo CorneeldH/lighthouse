@@ -2,7 +2,9 @@ package flock
 
 import (
 	"errors"
+	"io/fs"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -46,7 +48,11 @@ func TestTryLockOpenErrorNamesPath(t *testing.T) {
 	if errors.Is(err, ErrHeld) {
 		t.Errorf("err = %v, must not be ErrHeld", err)
 	}
-	if want := "open lock file: open " + path + ": no such file or directory"; err.Error() != want {
-		t.Errorf("err = %q, want %q", err.Error(), want)
+	// The tail is the OS's own text, which differs per platform (#90).
+	if want := "open lock file: open " + path + ": "; !strings.HasPrefix(err.Error(), want) {
+		t.Errorf("err = %q, want prefix %q", err.Error(), want)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("err = %v, want fs.ErrNotExist", err)
 	}
 }

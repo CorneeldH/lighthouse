@@ -9,8 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/flock"
 )
 
 // tickEnv is the child environment of a tick run: cleanEnv without the token and runtime
@@ -109,14 +110,12 @@ func TestTickExitCodes(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		f, err := os.OpenFile(filepath.Join(dir, "tick.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+		// The same lock the tick takes, also on Windows (#90).
+		f, err := flock.TryLock(filepath.Join(dir, "tick.lock"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer func() { _ = f.Close() }()
-		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-			t.Fatal(err)
-		}
 		code, stderr := runTick(t, bin, tickEnv(runtimeDir, hostToml, "GH_TOKEN=x"), "--db", db)
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0; stderr: %s", code, stderr)

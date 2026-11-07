@@ -674,7 +674,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "9b37869264ab1e733b93932f3da99b7df8f8d04c55281428d01ee333689dea77"
+sha256 = "b8c69f755499656cd46f9b49df6c80b4859b187d016ae748242bb048840b8f92"
 
 [[unit]]
 kind = "file"
@@ -744,7 +744,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/deadline.py"
 package = "core"
 version = "dev"
-sha256 = "bb02eaac80f48302853a4ef71ad3027f8f887ec38c62e4f82993f900218de5df"
+sha256 = "4c06989368cf454402f6ddfaf6e2cf9eb3fece9b2340f57894e39048e197c573"
 
 [[unit]]
 kind = "file"
@@ -755,10 +755,17 @@ sha256 = "037820e2303789809a0b2c99328925ac402ed4107c053bdef68ad02dc5d45561"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/lib/lighthouse_lib/filelock.py"
+package = "core"
+version = "dev"
+sha256 = "34022acba70b6c11dba9cdcc7bfa817d82a93e0bdebe0f083004675d92771d93"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/gate_slot.py"
 package = "core"
 version = "dev"
-sha256 = "f0316130545013bf0d1e237ede9e0ad362a6ba4d7d150f2766cf8002a42fb4ae"
+sha256 = "a758701acb9f657864b63511872dd973c2b72adb7505bb7b89227c5cfff1c446"
 
 [[unit]]
 kind = "file"

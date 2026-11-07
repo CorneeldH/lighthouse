@@ -20,7 +20,6 @@ nanoseconds, read by `run_pre`).
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -38,7 +37,7 @@ from typing import NamedTuple
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from lighthouse_lib import config, git_invocations, repo_identity
+from lighthouse_lib import config, filelock, git_invocations, repo_identity
 from lighthouse_lib.deadline import Interrupted, run_until
 
 # The directory of the gates, under the repo root.
@@ -679,7 +678,7 @@ def locked_ledger(state: Path) -> Iterator[Ledger]:
     ledger_path = state / "ledger.json"
     lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
     try:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        filelock.lock(lock_fd)
         try:
             ledger = _read_ledger(ledger_path)
             clean_exit = False
@@ -693,7 +692,7 @@ def locked_ledger(state: Path) -> Iterator[Ledger]:
                 if clean_exit and not ledger.unreadable:
                     _atomic_write_json(state, ledger_path, ledger.roots)
         finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            filelock.unlock(lock_fd)
     finally:
         os.close(lock_fd)
 

@@ -91,6 +91,10 @@ source_path = ".claude/hooks/lib/deadline.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
+path = "pack/core/lib/filelock.py"
+new = true
+
+[[file]]
 path = "pack/core/lib/gate_slot.py"
 source_path = ".claude/hooks/lib/gate_slot.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
