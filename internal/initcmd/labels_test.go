@@ -293,6 +293,9 @@ label) echo "$@" >> `+logFile+`; exit 0 ;;
 esac
 exit 1
 `)
+	// A caller's shell must not point the script at another repository.
+	t.Setenv("LIGHTHOUSE_TOML", "/nonexistent/lighthouse.toml")
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", "/nonexistent")
 	root := newRepo(t)
 	write(t, root, "lighthouse.toml", "[forge]\nrepo = \"Owner/repo\"\n")
 	r := run(t, root, "", all(realCore, labels, createLabels, yes))
@@ -310,6 +313,29 @@ exit 1
 	for _, l := range lines {
 		if !strings.Contains(l, "label create") || !strings.Contains(l, "--repo Owner/repo") || strings.Contains(l, "needs-hands") {
 			t.Errorf("bad call: %s", l)
+		}
+	}
+}
+
+func TestUpgradeAdoptsLabels(t *testing.T) {
+	root := newRepo(t)
+	if r := run(t, root, "", all(yes, noSync)); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+	if exists(root, projectconfig.DefaultLabelsPath) {
+		t.Fatal("taxonomy written without --labels")
+	}
+	r := run(t, root, "", all(upgrade, labels, yes, noSync))
+	if r.code != 0 {
+		t.Fatalf("upgrade --labels: rc %d\n%s\n%s", r.code, r.out, r.err)
+	}
+	if got := read(t, root, projectconfig.DefaultLabelsPath); got != testTemplate {
+		t.Fatalf("taxonomy = %q", got)
+	}
+	cfg := read(t, root, "lighthouse.toml")
+	for _, want := range []string{"[labels]", "[paths]", `labels = "` + projectconfig.DefaultLabelsPath + `"`} {
+		if !strings.Contains(cfg, want) {
+			t.Errorf("lighthouse.toml lacks %q:\n%s", want, cfg)
 		}
 	}
 }

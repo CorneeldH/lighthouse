@@ -173,3 +173,22 @@ def test_remote_label_with_space(tmp_path):
     assert result.returncode == 0, result.stderr
     assert _creates(log) == []
     assert "labels: all 7 present on Owner/repo" in result.stdout
+
+
+def test_parse_taxonomy_accepts_dutch_and_area_headers():
+    spec = importlib.util.spec_from_file_location("create_labels", SCRIPT_SRC)
+    mod = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(CORE / "lib"))
+    spec.loader.exec_module(mod)
+    text = (
+        "| Rang | Label | Kleur | Bindt wanneer |\n|---|---|---|---|\n"
+        "| 1 | `blocked-issue` | `d93f0b` | x |\n\n"
+        "| Area | Kleur | Vuistregel |\n|---|---|---|\n"
+        "| `area:core` | `0e8a16` | y |\n\n"
+        "| LABEL | Colour |\n|---|---|\n| `needs-hands` | `AABBCC` |\n"
+    )
+    assert mod.parse_taxonomy(text) == [
+        ("blocked-issue", "D93F0B"),
+        ("area:core", "0E8A16"),
+        ("needs-hands", "AABBCC"),
+    ]
