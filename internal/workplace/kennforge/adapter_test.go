@@ -917,3 +917,42 @@ func TestSpawnNotAcceptedReportsFailedCarrierRemoval(t *testing.T) {
 		t.Errorf("err = %v, want the removal error joined", err)
 	}
 }
+
+func TestLocalIDIsNoForgeWorkspace(t *testing.T) {
+	const id = "local-issue-1-x-a1b2c3"
+	calls := map[string]func(*Adapter) error{
+		"Sessions":   func(a *Adapter) error { _, err := a.Sessions(context.Background(), id); return err },
+		"Stop":       func(a *Adapter) error { return a.Stop(context.Background(), id, []string{testSessionID}) },
+		"Kill":       func(a *Adapter) error { return a.Kill(context.Background(), id, []string{testSessionID}) },
+		"Remove":     func(a *Adapter) error { return a.Remove(context.Background(), id) },
+		"Lookup":     func(a *Adapter) error { _, err := a.Lookup(context.Background(), id); return err },
+		"Discard":    func(a *Adapter) error { return a.Discard(context.Background(), id) },
+		"Transcript": func(a *Adapter) error { _, err := a.Transcript(context.Background(), id, testSessionID); return err },
+	}
+	for name, call := range calls {
+		f, a := newFakeForge(t)
+		ran := 0
+		a.Run = func(context.Context, time.Duration, string, ...string) (string, int, error) { ran++; return "", 0, nil }
+		err := call(a)
+		if err == nil || errors.Is(err, workplace.ErrGone) {
+			t.Errorf("%s: err = %v, want an error that is not ErrGone", name, err)
+		}
+		if f.total() != 0 || ran != 0 {
+			t.Errorf("%s: requests = %d, commands = %d, want none", name, f.total(), ran)
+		}
+	}
+
+	f, a := newFakeForge(t)
+	ran := 0
+	a.Run = func(context.Context, time.Duration, string, ...string) (string, int, error) { ran++; return "", 0, nil }
+	_, err := a.Spawn(context.Background(), workplace.Workspace{ID: id}, spec())
+	if !errors.Is(err, workplace.ErrNotAccepted) {
+		t.Errorf("Spawn: err = %v, want ErrNotAccepted", err)
+	}
+	if f.total() != 0 || ran != 0 {
+		t.Errorf("Spawn: requests = %d, commands = %d, want none", f.total(), ran)
+	}
+	if _, statErr := os.Stat(workplace.CarrierPath(a.StateDir, id)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("Spawn: carrier for %s exists (stat err = %v)", id, statErr)
+	}
+}

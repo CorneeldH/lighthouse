@@ -129,6 +129,9 @@ func (a *Adapter) waitReady(ctx context.Context, id string) (wireWorkspace, erro
 // sessions once more and takes a new key of this run. After a 5xx, no such key is
 // ErrNotAccepted; a failed re-read is ErrUncertain.
 func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace.LaunchSpec) (workplace.Session, error) {
+	if err := notForge(ws.ID); err != nil {
+		return workplace.Session{}, fmt.Errorf("%w: %w", err, workplace.ErrNotAccepted)
+	}
 	target, ok := a.Targets[l.Profile]
 	if !ok {
 		return workplace.Session{}, fmt.Errorf("no forge target for profile %q: %w", l.Profile, workplace.ErrNotAccepted)
@@ -232,8 +235,20 @@ func (a *Adapter) appeared(ctx context.Context, ws workplace.Workspace, l workpl
 	return workplace.Session{}, false, nil
 }
 
+// notForge refuses the ID of a workspace the local adapter made: kenn-forge would answer 404
+// and the caller would read that as workplace.ErrGone.
+func notForge(id string) error {
+	if strings.HasPrefix(id, workplace.LocalIDPrefix) {
+		return fmt.Errorf("workspace %s is a local workspace, not a kenn-forge one", id)
+	}
+	return nil
+}
+
 // Sessions lists the agent sessions of a workspace. A 404 is workplace.ErrGone.
 func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace.Session, error) {
+	if err := notForge(workspaceID); err != nil {
+		return nil, err
+	}
 	var out struct {
 		Sessions *[]struct {
 			Key       string  `json:"runtime_session_key"`
@@ -272,6 +287,9 @@ func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace
 // Lookup reads the workspace: Path from worktree_path, Branch from git_head_ref. A 404 is
 // workplace.ErrGone; a workspace without worktree_path is an error.
 func (a *Adapter) Lookup(ctx context.Context, workspaceID string) (workplace.Workspace, error) {
+	if err := notForge(workspaceID); err != nil {
+		return workplace.Workspace{}, err
+	}
 	w, err := a.readWorkspace(ctx, workspaceID)
 	if err != nil {
 		return workplace.Workspace{}, err
@@ -298,6 +316,9 @@ func (a *Adapter) readWorkspace(ctx context.Context, workspaceID string) (wireWo
 // Remove deletes the workspace and then its carrier. A workspace that is already gone is
 // no error; one with work in it is workplace.ErrDirty. A carrier it cannot wipe is an error.
 func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
+	if err := notForge(workspaceID); err != nil {
+		return err
+	}
 	err := a.Client.do(ctx, http.MethodDelete, wsPath(workspaceID), nil, 0, nil)
 	var se *StatusError
 	if errors.As(err, &se) && se.Status == http.StatusConflict {
@@ -311,6 +332,9 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 
 // Discard wipes the carrier of the workspace; a missing carrier is no error.
 func (a *Adapter) Discard(_ context.Context, workspaceID string) error {
+	if err := notForge(workspaceID); err != nil {
+		return err
+	}
 	if err := workplace.RemoveCarrier(a.StateDir, workspaceID); err != nil {
 		return fmt.Errorf("remove carrier of %s: %w", workspaceID, err)
 	}

@@ -38,6 +38,9 @@ var safeSession = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 // files then come out of the container, and a transcript in no container wraps fs.ErrNotExist.
 // With any other profile they are on this host, under Home. A 404 is workplace.ErrGone.
 func (a *Adapter) Transcript(ctx context.Context, workspaceID, sessionID string) (workplace.Transcript, error) {
+	if err := notForge(workspaceID); err != nil {
+		return workplace.Transcript{}, err
+	}
 	if !safeSession.MatchString(sessionID) {
 		return workplace.Transcript{}, fmt.Errorf("transcript in workspace %s: unsafe session id %q", workspaceID, sessionID)
 	}
