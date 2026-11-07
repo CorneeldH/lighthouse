@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -165,8 +166,8 @@ func CoreTables(repo string, haveRepo bool) []Table {
 }
 
 // DefaultLabelsPath is where `init --labels` puts the taxonomy file when lighthouse.toml
-// has no [paths] labels.
-const DefaultLabelsPath = "docs/developer/labels.md"
+// has no [paths] labels. It is a path in the target repository, not a file Go reads here.
+var DefaultLabelsPath = path.Join("docs", "developer", "labels.md")
 
 // LabelTables are the tables `init --labels` proposes: [paths] labels and [labels]
 // with the defaults of pack/core/lib/config.py plus the area prefix.

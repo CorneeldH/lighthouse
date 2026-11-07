@@ -34,7 +34,7 @@ func TestLabelsDryRunShowsTaxonomy(t *testing.T) {
 	if r.code != 1 {
 		t.Fatalf("rc %d\n%s\n%s", r.code, r.out, r.err)
 	}
-	for _, want := range []string{"docs/developer/labels.md", "[labels]", `blocked_issue = "blocked-issue"`, `labels = "docs/developer/labels.md"`} {
+	for _, want := range []string{projectconfig.DefaultLabelsPath, "[labels]", `blocked_issue = "blocked-issue"`, `labels = "` + projectconfig.DefaultLabelsPath + `"`} {
 		if !strings.Contains(r.out, want) {
 			t.Errorf("diff lacks %q:\n%s", want, r.out)
 		}
@@ -50,11 +50,11 @@ func TestLabelsOneYesApplies(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("rc %d\n%s\n%s", r.code, r.out, r.err)
 	}
-	if got := read(t, root, "docs/developer/labels.md"); got != testTemplate {
+	if got := read(t, root, projectconfig.DefaultLabelsPath); got != testTemplate {
 		t.Fatalf("taxonomy = %q", got)
 	}
 	cfg := read(t, root, "lighthouse.toml")
-	for _, want := range []string{"[paths]", `labels = "docs/developer/labels.md"`, "[labels]", `area_prefix = "area:"`} {
+	for _, want := range []string{"[paths]", `labels = "` + projectconfig.DefaultLabelsPath + `"`, "[labels]", `area_prefix = "area:"`} {
 		if !strings.Contains(cfg, want) {
 			t.Errorf("lighthouse.toml lacks %q:\n%s", want, cfg)
 		}
@@ -70,7 +70,7 @@ func TestLabelsOneYesApplies(t *testing.T) {
 func TestNoLabelsFlagNoTaxonomy(t *testing.T) {
 	root := newRepo(t)
 	initYes(t, root)
-	if exists(root, "docs/developer/labels.md") {
+	if exists(root, projectconfig.DefaultLabelsPath) {
 		t.Fatal("taxonomy written without --labels")
 	}
 	if strings.Contains(read(t, root, "lighthouse.toml"), "[labels]") {
@@ -83,13 +83,13 @@ func TestUpgradeKeepsEditedTaxonomy(t *testing.T) {
 	if r := run(t, root, "", all(labels, yes, noSync)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s\n%s", r.code, r.out, r.err)
 	}
-	write(t, root, "docs/developer/labels.md", "# mine\n")
+	write(t, root, projectconfig.DefaultLabelsPath, "# mine\n")
 	for name, mod := range map[string]func(*Options){"without": upgrade, "with": all(upgrade, labels, noSync)} {
 		r := run(t, root, "", mod)
 		if r.code != 0 || r.out != "No changes.\n" {
 			t.Fatalf("upgrade %s --labels: rc %d\n%s\n%s", name, r.code, r.out, r.err)
 		}
-		if got := read(t, root, "docs/developer/labels.md"); got != "# mine\n" {
+		if got := read(t, root, projectconfig.DefaultLabelsPath); got != "# mine\n" {
 			t.Fatalf("upgrade %s --labels: taxonomy = %q", name, got)
 		}
 	}
@@ -104,7 +104,7 @@ func TestLabelsUsesConfiguredPath(t *testing.T) {
 	if got := read(t, root, "meta/labels.md"); got != testTemplate {
 		t.Fatalf("taxonomy = %q", got)
 	}
-	if exists(root, "docs/developer/labels.md") {
+	if exists(root, projectconfig.DefaultLabelsPath) {
 		t.Fatal("default path written next to the configured one")
 	}
 }
@@ -172,7 +172,7 @@ type syncCall struct {
 func recordSync(calls *[]syncCall, ret error) func(*Options) {
 	return func(o *Options) {
 		o.SyncLabels = func(root string, create bool, _, _ io.Writer) error {
-			*calls = append(*calls, syncCall{root, create, exists(root, "docs/developer/labels.md")})
+			*calls = append(*calls, syncCall{root, create, exists(root, projectconfig.DefaultLabelsPath)})
 			return ret
 		}
 	}
