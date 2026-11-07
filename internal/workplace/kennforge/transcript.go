@@ -48,7 +48,7 @@ func (a *Adapter) Transcript(ctx context.Context, workspaceID, sessionID string)
 	if a.Profile == "software" {
 		return a.containerTranscript(ctx, w.WorktreeDir, sessionID)
 	}
-	dir, err := a.hostTranscriptDir(workspaceID, w.WorktreeDir)
+	dir, err := workplace.HostTranscriptDir(a.Home, workspaceID, w.WorktreeDir)
 	if err != nil {
 		return workplace.Transcript{}, err
 	}
