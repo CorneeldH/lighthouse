@@ -22,7 +22,10 @@ op de host delen ze. De gate neemt het minimum van `test_gate.slots` en `gate_sl
 project meer dan de host toestaat, dan blokkeert de gate niet: hij meldt
 `commit-test-gate: test_gate.slots = 3 above host gate_slots = 2, the gate uses 2` en gaat door.
 
-**Geheugen.** Elke drempel controleert alleen zijn eigen waarde. Op een host zonder swap
+**Geheugen.** De drempels zijn in GiB (1024³ bytes), hoewel de sleutels op `_gb` eindigen; zo
+ook `dispatch.min_mem_available_gb`. De gate meet ze in `/proc/meminfo`, dus alleen op Linux. Zet
+ze niet op een host zonder `/proc/meminfo` (macOS): daar blokkeert elke commit met
+`host memory not measurable`. Elke drempel controleert alleen zijn eigen waarde. Op een host zonder swap
 (`SwapTotal: 0 kB`) vervalt de swapdrempel met de melding
 `commit-test-gate: no swap on this host, SwapFree not checked`.
 
