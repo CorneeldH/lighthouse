@@ -33,6 +33,7 @@ func TestCandidate(t *testing.T) {
 	withExclude := testCfg
 	withExclude.MilestoneTitleExclude = exclude
 	offExclude := repoconfig.Triage{MilestoneTitleExclude: exclude}
+	closedDone := &forge.Milestone{Number: 1, Title: "Foo - DONE", State: "closed"}
 	titled := func(title string) func(*Facts) {
 		return func(f *Facts) { f.Milestone = &forge.Milestone{Number: 1, Title: title, State: "open"} }
 	}
@@ -50,6 +51,7 @@ func TestCandidate(t *testing.T) {
 		{"title ON-HOLD excluded", titled("Foo - ON-HOLD"), withExclude, SkipMilestone},
 		{"title without suffix", titled("Foo"), withExclude, SkipNone},
 		{"title DONE, milestones_only off", titled("Foo - DONE"), offExclude, SkipMilestone},
+		{"closed milestone DONE, milestones_only off", func(f *Facts) { f.Milestone = closedDone }, offExclude, SkipMilestone},
 		{"title TODO without dash", titled("nexus: x TODO"), withExclude, SkipMilestone},
 		{"title lower case", titled("Foo - on-hold"), withExclude, SkipNone},
 		{"no milestone, exclude, milestones_only off", func(f *Facts) { f.Milestone = nil }, offExclude, SkipNone},
