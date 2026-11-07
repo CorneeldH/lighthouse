@@ -4,6 +4,12 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.11.1] - 2026-11-07
+
+### Fixed
+
+- `/lighthouse-write-handoff` prints the block after the `AskUserQuestion` instead of before it. The question dialog hid the block, so the user often saw none.
+
 ## [v0.11.0] - 2026-11-07
 
 ### Added
