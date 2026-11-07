@@ -54,11 +54,15 @@ starten. Het contract:
 - **`args`**, in deze volgorde:
   1. `--permission-mode auto`
   2. `--strict-mcp-config` (staat in elke run)
-  3. `--mcp-config <pad>`, alleen als het profiel een MCP-config heeft (absoluut pad)
-  4. `--append-system-prompt-file <pad>` (absoluut pad)
-  5. `--session-id <uuid>` bij `start`, `--resume <uuid>` bij `resume`
-  6. `--model sonnet`, alleen op de native lane
-  7. de prompt als laatste argument. Hij mag niet met `-` beginnen (claude zou hem als vlag lezen) en
+  3. `--allowedTools=Read(~/.claude/plugins/cache/**)` (staat in elke run). Een skill leest zijn eigen
+     referentiebestanden uit de plugin-cache, buiten de worktree. In `auto` kan de classifier die `Read`
+     met een permissieprompt stilzetten, en die beantwoordt niemand (#246). Eén argument met `=`, want
+     de vlag neemt meer waarden en zou anders het volgende argument opslokken.
+  4. `--mcp-config <pad>`, alleen als het profiel een MCP-config heeft (absoluut pad)
+  5. `--append-system-prompt-file <pad>` (absoluut pad)
+  6. `--session-id <uuid>` bij `start`, `--resume <uuid>` bij `resume`
+  7. `--model sonnet`, alleen op de native lane
+  8. de prompt als laatste argument. Hij mag niet met `-` beginnen (claude zou hem als vlag lezen) en
      geen NUL-byte bevatten; anders weigert `Spawn`.
 - **`env`:** precies `LIGHTHOUSE_CONTROLLER_RUN` (de session-id van de run) en `LIGHTHOUSE_STATE_DIR`. Met die twee schrijft de hook
   `permission-check` een permissie-prompt van de sessie naar `<statemap>/runs/<sessie>/permission.json`;
