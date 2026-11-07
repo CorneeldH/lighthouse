@@ -22,6 +22,11 @@ op de host delen ze. De gate neemt het minimum van `test_gate.slots` en `gate_sl
 project meer dan de host toestaat, dan blokkeert de gate niet: hij meldt
 `commit-test-gate: test_gate.slots = 3 above host gate_slots = 2, the gate uses 2` en gaat door.
 
+**Windows.** In Git Bash op Windows neemt `deadline.py` het slot per root en houdt het vast zolang
+de suite draait, omdat een slot daar bij het proces hoort en niet bij een geërfde bestandsbeschrijving.
+Bij een commit over meerdere roots gaat het slot tussen twee roots even vrij. De geheugendrempels en
+`gate_slice` werken daar niet (`/proc`, systemd).
+
 **Geheugen.** De drempels zijn in GiB (1024³ bytes), hoewel de sleutels op `_gb` eindigen; zo
 ook `dispatch.min_mem_available_gb`. De gate meet ze in `/proc/meminfo`, dus alleen op Linux. Zet
 ze niet op een host zonder `/proc/meminfo` (macOS): daar blokkeert elke commit met
