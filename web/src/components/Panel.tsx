@@ -10,21 +10,33 @@ interface PanelProps {
   updatedAt: number
   error: unknown
   loading: boolean
+  // A refetch of data already shown is running.
+  refreshing?: boolean
   // Formats the error; defaults to the forge wording.
   errorText?: (error: unknown) => string
   children: ReactNode
 }
 
-export function Panel({ title, updatedAt, error, loading, errorText = forgeErrorText, children }: PanelProps): JSX.Element {
+export function Panel({
+  title,
+  updatedAt,
+  error,
+  loading,
+  refreshing = false,
+  errorText = forgeErrorText,
+  children,
+}: PanelProps): JSX.Element {
   const now = useNow()
   const hasError = error !== null && error !== undefined
   return (
     <Card role="region" aria-label={title}>
       <CardHeader>
         <CardTitle>{title}</CardTitle>
-        {updatedAt > 0 && (
-          <p className="text-sm text-muted-foreground">
-            updated {formatAge(Math.max(0, (now - updatedAt) / 1000))} ago
+        {(updatedAt > 0 || refreshing) && (
+          <p className="text-sm text-muted-foreground" aria-live="polite">
+            {updatedAt > 0 && `updated ${formatAge(Math.max(0, (now - updatedAt) / 1000))} ago`}
+            {updatedAt > 0 && refreshing && ' · '}
+            {refreshing && 'refreshing…'}
           </p>
         )}
       </CardHeader>

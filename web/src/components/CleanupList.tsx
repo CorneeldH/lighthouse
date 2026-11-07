@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { ApiError } from '@/lib/api'
 import { useCleanup } from '@/lib/queries'
+import { IssueLink } from './IssueLink'
 import { Panel } from './Panel'
 
 function cleanupErrorText(err: unknown): string {
@@ -11,7 +12,7 @@ function cleanupErrorText(err: unknown): string {
 }
 
 export function CleanupList(): JSX.Element {
-  const { data, error, isPending, dataUpdatedAt } = useCleanup()
+  const { data, error, isPending, isFetching, dataUpdatedAt } = useCleanup()
   return (
     <Panel
       title="Workspaces to clean up"
@@ -19,6 +20,7 @@ export function CleanupList(): JSX.Element {
       error={error}
       errorText={cleanupErrorText}
       loading={isPending && !error}
+      refreshing={isFetching && !isPending}
     >
       {data && data.length === 0 && <p>No workspaces to clean up</p>}
       {data && data.length > 0 && (
@@ -26,9 +28,7 @@ export function CleanupList(): JSX.Element {
           {data.map((l) => (
             <li key={`${l.repo}/${l.workspace_id}`} className="space-y-1">
               <p>
-                <span>
-                  {l.repo}#{l.issue}
-                </span>{' '}
+                <IssueLink repo={l.repo} issue={l.issue} />{' '}
                 <span>{l.workspace_id}</span>
               </p>
               <p>

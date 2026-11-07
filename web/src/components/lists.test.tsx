@@ -45,8 +45,9 @@ describe('QuestionList', () => {
     expect(await screen.findByText('o/a#7')).toBeTruthy()
     expect(within(screen.getByRole('region', { name: 'Open questions' })).getByText('updated < 1 min ago')).toBeTruthy()
     expect(screen.getByText('o/b#9')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'First' }).getAttribute('href')).toBe('https://x/7')
-    expect(screen.getByRole('link', { name: 'Second' }).getAttribute('href')).toBe('https://x/9')
+    expect(screen.getByRole('link', { name: 'First' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=7')
+    expect(screen.getByRole('link', { name: 'o/a#7' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=7')
+    expect(screen.getByRole('link', { name: 'Second' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fb&issue=9')
     expect(screen.getByText('why?')).toBeTruthy()
     expect(screen.getByText('how?')).toBeTruthy()
     const answers = screen.getAllByRole('link', { name: 'Answer' })
@@ -78,6 +79,34 @@ describe('QuestionList', () => {
     expect(screen.queryByText('No open questions')).toBeNull()
   })
 
+  it('shows refreshing while a refetch of shown data runs, and not after', async () => {
+    let release: () => void = () => {}
+    let hold = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() =>
+        hold
+          ? new Promise<Response>((resolve) => {
+              release = () => resolve(json({ questions }))
+            })
+          : Promise.resolve(json({ questions })),
+      ),
+    )
+    renderWithClient(<QuestionList />)
+    const region = screen.getByRole('region', { name: 'Open questions' })
+    await within(region).findByText('o/a#7')
+    expect(within(region).queryByText(/refreshing/)).toBeNull()
+
+    hold = true
+    act(() => {
+      void client?.refetchQueries()
+    })
+
+    expect(await within(region).findByText('updated < 1 min ago · refreshing…')).toBeTruthy()
+    release()
+    expect(await within(region).findByText('updated < 1 min ago')).toBeTruthy()
+  })
+
   it('keeps old items and shows an alert when a refetch fails with 502', async () => {
     let res = () => json({ questions })
     stubFetch(() => res())
@@ -103,7 +132,8 @@ describe('ReturnedList', () => {
     renderWithClient(<ReturnedList />)
 
     expect(await screen.findByText('o/a#3')).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Back' }).getAttribute('href')).toBe('https://x/3')
+    expect(screen.getByRole('link', { name: 'Back' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=3')
+    expect(screen.getByRole('link', { name: 'o/a#3' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=3')
     expect(screen.getByText('unclear AC')).toBeTruthy()
   })
 
@@ -134,6 +164,7 @@ describe('CleanupList', () => {
     renderWithClient(<CleanupList />)
 
     expect(await screen.findByText('o/r#7')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'o/r#7' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fr&issue=7')
     expect(screen.getByText('ws-1')).toBeTruthy()
     const path = screen.getByText('/w/ws-1')
     expect(path.tagName).toBe('CODE')
@@ -183,6 +214,9 @@ describe('RunsList', () => {
       expect(within(item).getByText(text)).toBeTruthy()
     }
     expect(screen.queryByText('No running runs')).toBeNull()
+    expect(within(item).getByRole('link', { name: 'o/a#3' }).getAttribute('href')).toBe(
+      '/api/latest-comment?repo=o%2Fa&issue=3',
+    )
   })
 
   it('shows a parked run without a stand as not measured', async () => {
@@ -204,7 +238,9 @@ describe('RunsList', () => {
     renderWithClient(<RunsList />)
 
     const deferred = await screen.findByRole('list', { name: 'Deferred starts' })
-    expect(within(deferred).getByText('o/a#4')).toBeTruthy()
+    expect(within(deferred).getByRole('link', { name: 'o/a#4' }).getAttribute('href')).toBe(
+      '/api/latest-comment?repo=o%2Fa&issue=4',
+    )
     expect(within(deferred).getByText('Wait for night')).toBeTruthy()
     expect(within(deferred).getByText('slots full')).toBeTruthy()
     expect(within(deferred).queryByText('o/a#3')).toBeNull()

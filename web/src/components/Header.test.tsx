@@ -64,6 +64,32 @@ describe('Header', () => {
     expect(screen.queryByText(/lighthouse undefined/)).toBeNull()
   })
 
+  it('shows Refreshing… and is disabled until the refetch settles', async () => {
+    let release: () => void = () => {}
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => {
+        calls++
+        if (calls === 1) return Promise.resolve(json('{"version":"1.2.3"}'))
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(json('{"version":"1.2.3"}'))
+        })
+      }),
+    )
+    renderHeader()
+    await screen.findByText('lighthouse 1.2.3')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+
+    const busy = await screen.findByRole('button', { name: 'Refreshing…' })
+    expect((busy as HTMLButtonElement).disabled).toBe(true)
+    expect(busy.getAttribute('aria-busy')).toBe('true')
+    release()
+    const idle = await screen.findByRole('button', { name: 'Refresh' })
+    expect((idle as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('refetches every query in the client on Refresh', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) =>
       Promise.resolve(url === '/api/health' ? json('{"version":"1.2.3"}') : json('[]')),
