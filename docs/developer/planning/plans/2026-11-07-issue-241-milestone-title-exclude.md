@@ -30,7 +30,7 @@ geeft als de milestone-titel past, los van `MilestonesOnly`.
 1. **Issue zonder milestone, `milestones_only = false`, sleutel gezet** — geen milestone, dus geen titel: het issue blijft kandidaat (geen nil-dereference). Test in Task 2.
 2. **Hoofdletters** — RE2 is hoofdlettergevoelig: `Foo - on-hold` past niet op `(ON-HOLD|TO-?DO|DONE)$`. Verwacht en gedocumenteerd (`(?i)` voor wie dat wil). Test in Task 2.
 3. **Lege string** — `milestone_title_exclude = ""` mag niet alles uitsluiten (een lege regex past op elke titel). Moet `nil` geven. Test in Task 1.
-4. **Gesloten milestone met passende titel bij `milestones_only = true`** — blijft `SkipMilestone`; volgorde van de regels doet er niet toe voor de uitkomst. Gedekt door bestaande rij "closed milestone".
+4. **Gesloten milestone met passende titel bij `milestones_only = true`** — blijft `SkipMilestone`; volgorde van de regels doet er niet toe voor de uitkomst, want beide regels geven `SkipMilestone`. Geen aparte test: de uitkomst kan niet verschillen.
 5. **Ongeldige regex in `--dry-run`** — ook dan exitcode 2 en een `skip`-regel, zoals een onbekende sleutel. Test in Task 1 (beide modi).
 
 ---
@@ -74,7 +74,9 @@ en telt één `\n`; `fx.judge.called()` leeg, `out == ""`; `assertWrites(t, fx.s
 - [ ] **Step 3: Draai de tests, verwacht rood**
 
 Run: `go test ./internal/repoconfig/ ./internal/cli/ -run 'TitleExclude|BadKey'`
-Expected: FAIL — `MilestoneTitleExclude` bestaat niet (compileerfout).
+Expected: FAIL — `internal/repoconfig`: `MilestoneTitleExclude` bestaat niet (compileerfout);
+`internal/cli`: compileert, maar `TestTriageBadTitleExcludeSkipsRepo` faalt op de `errOut`-assertie,
+omdat de sleutel nog als `unknown key controller.triage.milestone_title_exclude` gemeld wordt.
 
 - [ ] **Step 4: Implementeer**
 
