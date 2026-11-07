@@ -44,7 +44,7 @@ gh api graphql -f owner="$O" -f name="$NAME" -F nr=<nr> -f query='query($owner:S
 ```bash
 R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh pr list --repo "$R" --state open --limit 100 --json number,headRefName,body \
-  --jq '.[] | select((.headRefName | startswith("issue-<nr>-")) or (.body | test("Refs #<nr>([^0-9]|$)"))) | .number'
+  --jq '.[] | select((.headRefName | startswith("issue-<nr>-")) or (.body | gsub("<!--[\\s\\S]*?-->"; "") | test("(^|[^\\w/])Refs[ \\t]+#<nr>([^\\w/]|$)"; "i"))) | .number'
 ```
 
 Both `gh` calls run outside the sandbox (`dangerouslyDisableSandbox: true`). A `Refs` PR is not in
@@ -129,7 +129,7 @@ on into the next tool call):
 ```bash
 R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
 gh pr list --repo "$R" --state merged --limit 100 --json number,headRefName,body,mergedAt \
-  --jq '[.[] | select((.headRefName | startswith("issue-<nr>-")) or (.body | test("Refs #<nr>([^0-9]|$)"))) | select(.body | test("(?m)^### Evidence #<nr>[ \t\r]*$"))] | sort_by(.mergedAt) | reverse | .[] | "\(.number)\t\(.mergedAt)"'
+  --jq '[.[] | (.body | gsub("<!--[\\s\\S]*?-->"; "")) as $b | select((.headRefName | startswith("issue-<nr>-")) or ($b | test("(^|[^\\w/])Refs[ \\t]+#<nr>([^\\w/]|$)"; "i"))) | select($b | test("(?m)^### Evidence #<nr>[ \t\r]*$"))] | sort_by(.mergedAt) | reverse | .[] | "\(.number)\t\(.mergedAt)"'
 ```
 
 The block runs outside the sandbox (`dangerouslyDisableSandbox: true`). No PR in the list: B2a

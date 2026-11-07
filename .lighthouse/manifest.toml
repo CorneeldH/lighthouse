@@ -15,7 +15,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "9cd0f704b558bc69099dd3183074fcab9f772668cc657195e43c840e6e991b98"
+sha256 = "c4e6234d8041b8b9a7c2b94c1ca960cfe64b73baf73bf9c9745a8e630f9ca623"
 
 [[unit]]
 kind = "file"
@@ -478,7 +478,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "84cd4315aae0b1c0cf4861b1f8198b45d48620383a271e1cc4efd049db99f226"
+sha256 = "5e659c3c184cf18879f655e8c8746f650d1f9141d24c3a17290e7166e0475e24"
 
 [[unit]]
 kind = "file"
