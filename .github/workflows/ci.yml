@@ -1,8 +1,8 @@
 # CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
 # finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`, and
 # Python as a matrix of three parts of the pytest suite (tests/conftest.py). Python, `go-test`
-# and `go-e2e` run on Linux and macOS (#90). A `binary` job builds
-# the SPA itself, embeds it in the Go binary and smoke-tests it, next to web instead of after it.
+# and `go-e2e` run on Linux and macOS (#90). A `binary` job builds the SPA itself, embeds it in
+# the Go binary and smoke-tests it, next to web instead of after it.
 name: ci
 
 on:
@@ -88,7 +88,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.python == 'true'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    # macOS runners are slower than ubuntu-latest (#90).
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
