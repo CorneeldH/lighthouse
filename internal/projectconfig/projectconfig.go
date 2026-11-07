@@ -164,6 +164,27 @@ func CoreTables(repo string, haveRepo bool) []Table {
 	return tables
 }
 
+// DefaultLabelsPath is where `init --labels` puts the taxonomy file when lighthouse.toml
+// has no [paths] labels.
+const DefaultLabelsPath = "docs/developer/labels.md"
+
+// LabelTables are the tables `init --labels` proposes: [paths] labels and [labels]
+// with the defaults of pack/core/lib/config.py plus the area prefix.
+func LabelTables(path string) []Table {
+	return []Table{
+		{Name: "paths", Keys: []KV{{Key: "labels", Value: strconv.Quote(path)}}},
+		{Name: "labels", Keys: []KV{
+			{Key: "blocked_issue", Value: `"blocked-issue"`},
+			{Key: "blocked_external", Value: `"blocked-external"`},
+			{Key: "needs_shaping", Value: `"needs-shaping"`},
+			{Key: "needs_decision", Value: `"needs-decision"`},
+			{Key: "needs_hands", Value: `"needs-hands"`},
+			{Key: "needs_testing", Value: `"needs-testing"`},
+			{Key: "area_prefix", Value: `"area:"`},
+		}},
+	}
+}
+
 var (
 	fragmentHeader = regexp.MustCompile(`^\[([a-z_]+(?:\.[a-z_]+)*)\]$`)
 	fragmentKey    = regexp.MustCompile(`^([a-z_]+)\s*=\s*(.*)$`)

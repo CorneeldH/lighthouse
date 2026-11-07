@@ -420,6 +420,9 @@
               "about": "The file that lists the labels of the project, and the document a free label's PR updates.",
               "example": "docs/labels.md",
               "readers": [
+                "internal/cli/init.go",
+                "internal/initcmd/initcmd.go",
+                "internal/projectconfig/projectconfig.go",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr"
               ]

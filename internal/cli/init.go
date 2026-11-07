@@ -40,6 +40,7 @@ func newInitCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.Upgrade, "upgrade", false, "replace what an earlier init installed")
 	cmd.Flags().BoolVar(&o.Force, "force", false, "overwrite locally changed units")
 	cmd.Flags().BoolVar(&o.Yes, "yes", false, "approve every change without asking")
+	cmd.Flags().BoolVar(&o.Labels, "labels", false, "propose a label taxonomy, [labels] and [paths] labels")
 	cmd.Flags().StringArrayVar(&o.AddPacks, "pack", nil, "add a package (repeatable)")
 	cmd.Flags().StringArrayVar(&o.DropPacks, "no-pack", nil, "leave a package out (repeatable)")
 	return cmd

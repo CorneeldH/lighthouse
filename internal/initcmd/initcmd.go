@@ -48,6 +48,7 @@ const (
 type Options struct {
 	Dir                 string // working directory; the root comes from git rev-parse --show-toplevel
 	Upgrade, Force, Yes bool
+	Labels              bool                      // --labels: propose the label taxonomy file, [labels] and [paths] labels
 	AddPacks, DropPacks []string                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	Version             string                    // "" means version.String()
 	Packs               fs.FS                     // holds <name>/...; nil means pack.Files
@@ -146,7 +147,13 @@ func execute(o Options) error {
 	for _, c := range chosen {
 		chosenPacks = append(chosenPacks, all[c.Name])
 	}
-	tables, haveRepo, err := configTables(root, chosenPacks)
+	var labelsPath string
+	if o.Labels {
+		if labelsPath, err = labelsTarget(root); err != nil {
+			return err
+		}
+	}
+	tables, haveRepo, err := configTables(root, chosenPacks, labelsPath)
 	if err != nil {
 		return err
 	}
@@ -187,7 +194,7 @@ func execute(o Options) error {
 		}
 	}
 
-	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo)
+	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo, labelsPath, all["core"].LabelsTemplate)
 	if err != nil {
 		return err
 	}
@@ -292,7 +299,7 @@ func writes(a reconcile.Action, force bool) bool {
 	return a == reconcile.Add || a == reconcile.Replace || (force && a == reconcile.Conflict)
 }
 
-func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool) (map[string]*planned, error) {
+func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool, labelsPath string, labelsTemplate []byte) (map[string]*planned, error) {
 	plan := map[string]*planned{}
 	load := func(rel string) (*planned, error) {
 		if p, ok := plan[rel]; ok {
@@ -412,6 +419,19 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		return nil, err
 	}
 
+	if labelsPath != "" && labelsTemplate != nil {
+		// Seed once: the file is the project's after this, so it is not in the manifest.
+		p, err := load(labelsPath)
+		if err != nil {
+			return nil, err
+		}
+		if p.existed {
+			_, _ = fmt.Fprintf(o.Err, "labels: %s exists; left as it is\n", labelsPath)
+		} else {
+			p.new, p.mode = labelsTemplate, 0o644
+		}
+	}
+
 	mp, err := load(manifest.Path)
 	if err != nil {
 		return nil, err
@@ -450,13 +470,18 @@ func hasLine(b []byte, line string) bool {
 }
 
 // configTables are the tables lighthouse.toml should have: the core tables, then the
-// fragments of the chosen packages in their order (plan M0 (c), design choice 4).
-func configTables(root string, chosen []packs.Pack) ([]projectconfig.Table, bool, error) {
+// fragments of the chosen packages in their order (plan M0 (c), design choice 4). A
+// non-empty labelsPath adds the label tables, with that path in [paths] labels.
+func configTables(root string, chosen []packs.Pack, labelsPath string) ([]projectconfig.Table, bool, error) {
 	repo, haveRepo := "", false
 	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
 		repo, haveRepo = projectconfig.ForgeRepo(strings.TrimSpace(string(url)))
 	}
-	tables, err := mergeTables(projectconfig.CoreTables(repo, haveRepo), chosen)
+	core := projectconfig.CoreTables(repo, haveRepo)
+	if labelsPath != "" {
+		core = append(core, projectconfig.LabelTables(labelsPath)...)
+	}
+	tables, err := mergeTables(core, chosen)
 	return tables, haveRepo, err
 }
 
@@ -735,4 +760,32 @@ func warnIgnored(w io.Writer, root string, desired []packs.Unit, plan map[string
 		}
 		_, _ = fmt.Fprintf(w, "warning: %s is ignored by git (%s:%s:%s)%s; it will not be committed, so other clones lack it\n", ps[0], r.src, r.line, r.pattern, more)
 	}
+}
+
+// labelsTarget is where the taxonomy file goes: [paths] labels of an existing
+// lighthouse.toml, else the default. A path that leaves the repo or is not clean is an
+// error, so nothing is written outside it.
+func labelsTarget(root string) (string, error) {
+	target := projectconfig.DefaultLabelsPath
+	b, ok, err := readFile(root, configPath)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		var cfg struct {
+			Paths struct {
+				Labels string `toml:"labels"`
+			} `toml:"paths"`
+		}
+		if _, err := toml.Decode(string(b), &cfg); err != nil {
+			return "", fmt.Errorf("lighthouse.toml: %w", err)
+		}
+		if cfg.Paths.Labels != "" {
+			target = cfg.Paths.Labels
+		}
+	}
+	if filepath.IsAbs(target) || path.IsAbs(target) || path.Clean(target) != target || slices.Contains(strings.Split(target, "/"), "..") {
+		return "", fmt.Errorf("lighthouse.toml: paths.labels %q must be a clean relative path inside the repository", target)
+	}
+	return target, nil
 }

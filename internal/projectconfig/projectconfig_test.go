@@ -186,3 +186,18 @@ func TestParseFragmentRejects(t *testing.T) {
 		})
 	}
 }
+
+func TestLabelTables(t *testing.T) {
+	tables := LabelTables("a/b.md")
+	if len(tables) != 2 || tables[0].Name != "paths" || len(tables[0].Keys) != 1 || tables[1].Name != "labels" || len(tables[1].Keys) != 7 {
+		t.Fatalf("tables = %+v", tables)
+	}
+	if tables[0].Keys[0] != (KV{Key: "labels", Value: `"a/b.md"`}) {
+		t.Fatalf("paths.labels = %+v", tables[0].Keys[0])
+	}
+	for _, kv := range tables[1].Keys {
+		if !strings.HasPrefix(kv.Value, `"`) || !strings.HasSuffix(kv.Value, `"`) {
+			t.Errorf("%s = %s is not quoted", kv.Key, kv.Value)
+		}
+	}
+}
