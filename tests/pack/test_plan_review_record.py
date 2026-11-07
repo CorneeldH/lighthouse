@@ -357,6 +357,23 @@ def test_host_refusal_recognized(monkeypatch):
     assert rec.host_refusal("plan") is None
 
 
+def test_recognize_without_tailscale_ip(tmp_path, monkeypatch):
+    path = tmp_path / "host.toml"
+    path.write_text('[host]\nname = "server"\n', encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(path))
+    monkeypatch.setattr(rec, "is_local", lambda ip: pytest.fail("is_local called"))
+    assert rec.recognize() is None
+
+
+def test_host_refusal_without_tailscale_ip(tmp_path, monkeypatch):
+    path = tmp_path / "host.toml"
+    path.write_text('[host]\nname = "server"\n', encoding="utf-8")
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(path))
+    text = REAL_HOST_REFUSAL("spec")
+    assert text is not None
+    assert "not on the host from host.toml" in text
+
+
 def test_write_failure_leaves_only_staging(world, capsys, monkeypatch):
     attempt = _start(capsys)
     _round(attempt, 1, [])

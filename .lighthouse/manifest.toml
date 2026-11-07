@@ -891,7 +891,7 @@ kind = "file"
 path = ".lighthouse/scripts/plan_review_record.py"
 package = "core"
 version = "dev"
-sha256 = "448bc90e891912c7f6c5252b234e743aa4637d3279efc4082bda0100af0884fe"
+sha256 = "4e1cdd8a8acf3a6c372cd086c10c5353bb0974bbe368c338df44dc4f44e6201d"
 
 [[unit]]
 kind = "file"
