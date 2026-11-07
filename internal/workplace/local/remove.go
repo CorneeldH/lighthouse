@@ -31,11 +31,13 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 	if err != nil {
 		return err
 	}
+	// Cleanup skips a session that is done, yet its dev server may still carry the mark. The
+	// session records are the only way to find it, so end the processes before they go.
+	sids, err := a.sessionIDs(s, workspaceID)
+	if err != nil {
+		return err
+	}
 	if wt == nil || rec.Adopted {
-		sids, err := a.sessionIDs(s, workspaceID)
-		if err != nil {
-			return err
-		}
 		if err := a.end(ctx, workspaceID, sids); err != nil {
 			return fmt.Errorf("remove %s: %w", workspaceID, err)
 		}
@@ -47,6 +49,11 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 	}
 	if dirty {
 		return fmt.Errorf("remove %s: worktree %s has changes: %w", workspaceID, rec.Path, workplace.ErrDirty)
+	}
+	// After the Dirty check, so a dirty worktree signals nothing; before the removal, so a
+	// process that cannot be ended leaves the worktree and the records in place.
+	if err := a.end(ctx, workspaceID, sids); err != nil {
+		return fmt.Errorf("remove %s: %w", workspaceID, err)
 	}
 	if _, err := a.gitOK(ctx, a.RepoDir, "worktree", "remove", rec.Path); err != nil {
 		return fmt.Errorf("remove %s: %w", workspaceID, err)
@@ -67,7 +74,7 @@ func (a *Adapter) sessionIDs(s store, workspaceID string) ([]string, error) {
 }
 
 // Discard forgets the launches whose agent never appeared: the session records without a pid
-// file. When the worktree is gone and no process is left, every record of the workspace goes.
+// file, after ending the processes that carry their mark. When the worktree is gone and no process is left, every record of the workspace goes.
 // A vanished worktree whose run still has processes keeps its records. Nothing to forget is
 // no error.
 func (a *Adapter) Discard(ctx context.Context, workspaceID string) error {
@@ -98,6 +105,10 @@ func (a *Adapter) Discard(ctx context.Context, workspaceID string) error {
 			return err
 		}
 		if !ok {
+			// The record is the only way to find processes with its mark: end them first.
+			if err := a.end(ctx, workspaceID, []string{r.SessionID}); err != nil {
+				return fmt.Errorf("discard %s: %w", workspaceID, err)
+			}
 			if err := s.dropSession(workspaceID, r.Key); err != nil {
 				return err
 			}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -187,8 +188,8 @@ func TestRemoveRefusedIsNotDirty(t *testing.T) {
 	ws := prepare(t, a, "issue-1-x")
 	git(t, repo, "worktree", "lock", ws.Path)
 	err := a.Remove(t.Context(), ws.ID)
-	if err == nil || errors.Is(err, workplace.ErrDirty) {
-		t.Errorf("Remove = %v, want a plain error", err)
+	if err == nil || errors.Is(err, workplace.ErrDirty) || !strings.Contains(err.Error(), "exit code") {
+		t.Errorf("Remove = %v, want a plain error with the exit code", err)
 	}
 	if _, err := a.Lookup(t.Context(), ws.ID); err != nil {
 		t.Errorf("Lookup after a refused Remove = %v, want found", err)
@@ -295,7 +296,7 @@ func TestTranscriptReadsHostProjectDir(t *testing.T) {
 
 func TestTranscriptUnsafeSessionID(t *testing.T) {
 	repo, _ := newRepo(t)
-	a, procs, _ := newAdapter(t, repo)
+	a, _, _ := newAdapter(t, repo)
 	ws := prepare(t, a, "issue-1-x")
 	// A file one level up that a path-joined "../x" would reach.
 	dir := workplace.ProjectDir(a.Home, ws.Path)
@@ -305,9 +306,82 @@ func TestTranscriptUnsafeSessionID(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(filepath.Dir(dir), "x.jsonl"), []byte(unknownTranscript), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	procs.calls = 0
 	_, err := a.Transcript(t.Context(), ws.ID, "../x")
 	if err == nil || errors.Is(err, workplace.ErrNotMeasurable) {
 		t.Errorf("Transcript = %v, want an unsafe-id error", err)
+	}
+}
+
+// A claude that finished can leave a dev server with the mark: Remove ends it before the
+// records that find it go.
+func TestRemoveEndsMarkedProcessesFirst(t *testing.T) {
+	a, h, _, ws, s := spawnSetup(t)
+	addSession(t, s, ws.ID, "s1", "s1.aa")
+	h.procs.marked["s1"] = []int{1001}
+	if err := a.Remove(t.Context(), ws.ID); err != nil {
+		t.Fatalf("Remove = %v, want nil", err)
+	}
+	if len(h.procs.sent) == 0 || h.procs.sent[0] != (sentSignal{1001, syscall.SIGTERM}) {
+		t.Errorf("sent = %v, want SIGTERM to 1001 first", h.procs.sent)
+	}
+	if len(h.procs.marked["s1"]) != 0 || exists(ws.Path) || exists(s.workspacePath(ws.ID)) || exists(s.sessionDir(ws.ID)) {
+		t.Error("process, worktree or records remain")
+	}
+}
+
+func TestRemoveSurvivorKeepsWorktreeAndRecords(t *testing.T) {
+	a, h, _, ws, s := spawnSetup(t)
+	addSession(t, s, ws.ID, "s1", "s1.aa")
+	h.procs.marked["s1"] = []int{1001}
+	h.procs.survivors[1001] = true
+	if err := a.Remove(t.Context(), ws.ID); err == nil || errors.Is(err, workplace.ErrDirty) {
+		t.Fatalf("Remove = %v, want a plain error", err)
+	}
+	if !exists(ws.Path) || !exists(s.workspacePath(ws.ID)) || !exists(s.logPath("s1.aa")) {
+		t.Error("worktree or records dropped by a failed Remove")
+	}
+}
+
+// A dirty worktree is refused before any process is signalled.
+func TestRemoveDirtySignalsNothing(t *testing.T) {
+	a, h, _, ws, s := spawnSetup(t)
+	addSession(t, s, ws.ID, "s1", "s1.aa")
+	h.procs.marked["s1"] = []int{1001}
+	if err := os.WriteFile(filepath.Join(ws.Path, "x.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Remove(t.Context(), ws.ID); !errors.Is(err, workplace.ErrDirty) {
+		t.Fatalf("Remove = %v, want ErrDirty", err)
+	}
+	if len(h.procs.sent) != 0 {
+		t.Errorf("sent = %v, want none", h.procs.sent)
+	}
+}
+
+func TestDiscardEndsMarkedProcessesOfPidlessSession(t *testing.T) {
+	a, h, _, ws, s := spawnSetup(t)
+	addSession(t, s, ws.ID, "s1", "s1.aa")
+	h.procs.marked["s1"] = []int{1001}
+	if err := a.Discard(t.Context(), ws.ID); err != nil {
+		t.Fatalf("Discard = %v, want nil", err)
+	}
+	if len(h.procs.sent) == 0 || h.procs.sent[0] != (sentSignal{1001, syscall.SIGTERM}) {
+		t.Errorf("sent = %v, want SIGTERM to 1001", h.procs.sent)
+	}
+	if recs, _ := s.sessions(ws.ID); len(recs) != 0 {
+		t.Errorf("sessions = %v, want none", recs)
+	}
+}
+
+func TestDiscardSurvivorKeepsRecord(t *testing.T) {
+	a, h, _, ws, s := spawnSetup(t)
+	addSession(t, s, ws.ID, "s1", "s1.aa")
+	h.procs.marked["s1"] = []int{1001}
+	h.procs.survivors[1001] = true
+	if err := a.Discard(t.Context(), ws.ID); err == nil {
+		t.Fatal("Discard = nil, want an error")
+	}
+	if recs, _ := s.sessions(ws.ID); len(recs) != 1 {
+		t.Errorf("sessions = %v, want the record kept", recs)
 	}
 }
