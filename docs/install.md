@@ -105,9 +105,13 @@ cp deploy/systemd/lighthouse-upgrade.{service,timer} ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now lighthouse-upgrade.timer
 ```
 
-Without a clone, fetch both files with `curl` as for `lighthouse.service` above. An optional
-`GH_TOKEN` in `~/.config/lighthouse/forge.env` lifts the GitHub rate limit for the release
-lookup.
+Without a clone, fetch both files with `curl` as for `lighthouse.service` above. The unit
+reuses the forge token in `~/.config/lighthouse/forge.env` (`GH_TOKEN`) when present, and sends
+it to `api.github.com` for the release lookup only; keep that file mode 0600.
+
+The installed binary must already be a release that has `self-update`: upgrade once by hand
+first. Under the unit's hardening `~/go/bin/lighthouse` must not be a symlink to a path outside
+`~/go/bin`, because that directory is the only one the unit may write.
 
 Every release goes live without a review. To stop:
 `systemctl --user disable --now lighthouse-upgrade.timer`.

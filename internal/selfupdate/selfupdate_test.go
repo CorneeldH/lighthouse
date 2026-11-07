@@ -23,7 +23,9 @@ type fixture struct {
 	dir       string
 	downloads atomic.Int32
 	calls     atomic.Int32
-	auth      atomic.Value // string
+	auth      atomic.Value // string, Authorization of the API call
+	sumsAuth  atomic.Value // string
+	assetAuth atomic.Value // string
 	tag       string
 	sums      string // SHA256SUMS body; "" = computed from newBody
 	assetCode int
@@ -44,6 +46,8 @@ func newFixture(t *testing.T, tag string) *fixture {
 		t.Fatal(err)
 	}
 	f.auth.Store("")
+	f.sumsAuth.Store("")
+	f.assetAuth.Store("")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/CorneeldH/lighthouse/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		f.calls.Add(1)
@@ -54,6 +58,7 @@ func newFixture(t *testing.T, tag string) *fixture {
 	mux.HandleFunc(base+asset, func(w http.ResponseWriter, r *http.Request) {
 		f.calls.Add(1)
 		f.downloads.Add(1)
+		f.assetAuth.Store(r.Header.Get("Authorization"))
 		if f.assetCode != 200 {
 			http.Error(w, "boom", f.assetCode)
 			return
@@ -63,6 +68,7 @@ func newFixture(t *testing.T, tag string) *fixture {
 	mux.HandleFunc(base+"SHA256SUMS", func(w http.ResponseWriter, r *http.Request) {
 		f.calls.Add(1)
 		f.downloads.Add(1)
+		f.sumsAuth.Store(r.Header.Get("Authorization"))
 		if f.sums != "" {
 			_, _ = fmt.Fprint(w, f.sums)
 			return
@@ -294,6 +300,9 @@ func TestRunRestartFailureKeepsNewBinary(t *testing.T) {
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v; want wrapping boom", err)
 	}
+	if !strings.Contains(err.Error(), "v0.11.2") || !strings.Contains(err.Error(), "v0.11.3") {
+		t.Fatalf("err = %v; want both versions", err)
+	}
 	b, _ := os.ReadFile(f.target)
 	if string(b) != "new" {
 		t.Fatalf("target = %q", b)
@@ -317,4 +326,33 @@ func TestRunSendsTokenOnlyWhenSet(t *testing.T) {
 	if got := f.auth.Load().(string); got != "" {
 		t.Fatalf("auth = %q; want none", got)
 	}
+}
+
+func TestRunSendsTokenToAPIOnlyNotToDownloads(t *testing.T) {
+	f := newFixture(t, "v0.11.3")
+	o := f.opts("v0.11.2")
+	o.Token = "abc"
+	res, err := Run(context.Background(), o)
+	if err != nil || res.Outcome != Replaced {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if got := f.auth.Load().(string); got != "Bearer abc" {
+		t.Fatalf("api auth = %q", got)
+	}
+	for name, v := range map[string]*atomic.Value{"SHA256SUMS": &f.sumsAuth, "asset": &f.assetAuth} {
+		if got := v.Load().(string); got != "" {
+			t.Fatalf("%s auth = %q; want none", name, got)
+		}
+	}
+}
+
+func TestRunRejectsMalformedCurrentBeforeNetwork(t *testing.T) {
+	f := newFixture(t, "v0.11.3")
+	if _, err := Run(context.Background(), f.opts("v0.12.0-rc.1")); err == nil {
+		t.Fatal("want error")
+	}
+	if n := f.calls.Load(); n != 0 {
+		t.Fatalf("server calls = %d; want 0", n)
+	}
+	f.assertOld(t)
 }

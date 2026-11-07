@@ -10,8 +10,9 @@
 # Why ReadWritePaths=%h/go/bin: ProtectHome=read-only would otherwise make the binary's own
 # directory read-only, and the replacement could not be written. Only that directory opens up.
 #
-# Why EnvironmentFile: an optional GH_TOKEN in ~/.config/lighthouse/forge.env lifts the GitHub
-# rate limit for the release lookup. The leading dash lets the unit run without the file.
+# Why EnvironmentFile: it reuses the forge token in ~/.config/lighthouse/forge.env when that file
+# has one (GH_TOKEN). The token is sent to api.github.com for the release lookup only, never to
+# the downloads. Keep the file mode 0600. The leading dash lets the unit run without the file.
 #
 # Every release goes live here without a review: a bad release reaches this machine at the next
 # tick. Disable the timer to hold a version (docs/install.md, "Upgrade automatically").

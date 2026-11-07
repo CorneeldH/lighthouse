@@ -85,6 +85,10 @@ func Run(ctx context.Context, o Options) (Result, error) {
 	if o.GOOS == "windows" {
 		return res, errors.New("self-update is not supported on windows")
 	}
+	cur, err := parseTag(o.Current)
+	if err != nil {
+		return res, fmt.Errorf("current: %w", err)
+	}
 	client := o.Client
 	if client == nil {
 		client = http.DefaultClient
@@ -97,10 +101,6 @@ func Run(ctx context.Context, o Options) (Result, error) {
 	latest, err := parseTag(tag)
 	if err != nil {
 		return res, fmt.Errorf("latest release: %w", err)
-	}
-	cur, err := parseTag(o.Current)
-	if err != nil {
-		return res, fmt.Errorf("current: %w", err)
 	}
 	res.To = tag
 	if !newer(latest, cur) {
@@ -122,7 +122,7 @@ func Run(ctx context.Context, o Options) (Result, error) {
 
 	if o.Restart != nil {
 		if err := o.Restart(); err != nil {
-			return res, fmt.Errorf("restart after update: %w", err)
+			return res, fmt.Errorf("restart after update (replaced %s with %s): %w", res.From, res.To, err)
 		}
 	}
 	return res, nil
@@ -210,6 +210,9 @@ func install(ctx context.Context, c *http.Client, url, want, target string) (err
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); got != want {
 		return fmt.Errorf("checksum mismatch for %s: got %s, want %s", url, got, want)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("sync temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file: %w", err)
