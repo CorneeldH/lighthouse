@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -195,20 +194,48 @@ func (a *Adapter) followRemote(ctx context.Context, ws workplace.Workspace, crea
 			return fmt.Errorf("git merge-base --is-ancestor: exit code %d", code)
 		}
 	}
-	// On another branch (main, say) a fast-forward would move that branch: only switch
-	// when HEAD holds nothing that is not on origin.
-	n, err := a.gitOK(ctx, ws.Path, "rev-list", "--count", "HEAD", "--not", "--remotes=origin")
+	// On another branch (main, say) a fast-forward would move that branch, and after a
+	// rebase and force-push of the branch HEAD is no ancestor: only switch when HEAD holds
+	// nothing origin lacks. Otherwise the run must not start silently on the old HEAD.
+	own, err := a.ownCommits(ctx, ws.Path, remote)
 	if err != nil {
 		return err
 	}
-	own, err := strconv.Atoi(n)
+	status, err := a.gitOK(ctx, ws.Path, "status", "--porcelain", "--untracked-files=no")
 	if err != nil {
-		return fmt.Errorf("git rev-list --count: unreadable answer %q", n)
+		return err
 	}
-	if own > 0 {
-		return nil
+	if own > 0 || status != "" {
+		return &workplace.OwnWorkError{Workspace: ws, Commits: own, Dirty: status != ""}
 	}
 	return a.checkoutRemote(ctx, ws, remote, want)
+}
+
+// ownCommits counts the commits of HEAD that are on no origin ref and have no patch-equal
+// commit on remote: a rebase gives the commits of an earlier run new SHAs on origin, and
+// those are no own work. A merge commit git cherry does not list counts as own.
+func (a *Adapter) ownCommits(ctx context.Context, dir, remote string) (int, error) {
+	out, err := a.gitOK(ctx, dir, "rev-list", "HEAD", "--not", "--remotes=origin")
+	if err != nil || out == "" {
+		return 0, err
+	}
+	cherry, err := a.gitOK(ctx, dir, "cherry", remote, "HEAD")
+	if err != nil {
+		return 0, err
+	}
+	onRemote := map[string]bool{}
+	for line := range strings.Lines(cherry) {
+		if sha, ok := strings.CutPrefix(strings.TrimSpace(line), "- "); ok {
+			onRemote[sha] = true
+		}
+	}
+	own := 0
+	for sha := range strings.Lines(out) {
+		if !onRemote[strings.TrimSpace(sha)] {
+			own++
+		}
+	}
+	return own, nil
 }
 
 func (a *Adapter) checkoutRemote(ctx context.Context, ws workplace.Workspace, remote, want string) error {

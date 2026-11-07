@@ -103,6 +103,23 @@ var (
 	ErrGone = errors.New("workplace: workspace is gone")
 )
 
+// OwnWorkError: Prepare found a workspace that holds work origin does not have, so it left
+// HEAD where it was. Commits counts the commits on no origin ref without a patch-equal
+// commit on origin/<branch>; Dirty is a tracked change in the work tree.
+type OwnWorkError struct {
+	Workspace Workspace
+	Commits   int
+	Dirty     bool
+}
+
+func (e *OwnWorkError) Error() string {
+	text := fmt.Sprintf("workspace %s: %d commits not on origin/%s", e.Workspace.ID, e.Commits, e.Workspace.Branch)
+	if e.Dirty {
+		text += ", uncommitted changes"
+	}
+	return text
+}
+
 // Runner runs one subprocess. err is non-nil only when the command could not
 // run or timed out; otherwise code is the exit code and a non-zero code is no
 // error.
