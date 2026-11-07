@@ -147,3 +147,10 @@ git commit -m "feat(config): Go weigert een onbekend forge.kind; docs voor GitLa
 | Subgroepen voor GitLab, GitHub precies één `/` | 1 |
 | `init` herkent https, scp, `ssh://`, gitlab.com en self-hosted; de test die gitlab.com afwees herkent hem nu | 2, 3 |
 | Self-hosted host in de configuratie, niet in code | 1 (`forge.host`), 3 (vlag en bestaande toml) |
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Task 1 Files (config.json forge.host entry) / Step 4-5; Task 3 Interfaces): The diff sets the Task 1 readers of forge.host to ["pack/core/lib/config.py"], and Task 3 only adds initcmd.go to that list. config.py is in SKIPPED_READERS, so the test never counts it as a reader, and listing it is always a problem. test_every_key_is_on_the_map still fails at Task 1 Step 5, and also after Task 3.
