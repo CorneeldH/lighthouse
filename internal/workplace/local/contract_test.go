@@ -14,22 +14,8 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/workplace/workplacetest"
 )
 
-// pending lists the cases whose methods are not built yet; task 9 deletes it.
-var pending = map[string]bool{
-	"RemoveDirtyKeeps":        true,
-	"RemoveForgottenAndTwice": true,
-	"DiscardIdempotent":       true,
-}
-
 func TestContract(t *testing.T) {
-	for _, c := range workplacetest.Cases {
-		t.Run(c.Name, func(t *testing.T) {
-			if pending[c.Name] {
-				t.Skip("method not built yet")
-			}
-			c.Run(t, newLocalFixture(t))
-		})
-	}
+	workplacetest.Run(t, newLocalFixture)
 }
 
 // localFixture is a real repo with a bare origin, git that runs for real, and fake processes.

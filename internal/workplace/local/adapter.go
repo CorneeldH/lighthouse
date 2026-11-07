@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -34,9 +33,6 @@ var (
 
 // gitTimeout applies to every git command of the adapter, FollowRemote included.
 const gitTimeout = 60 * time.Second
-
-// errNotBuilt marks a method that a later task of #253 builds.
-var errNotBuilt = errors.New("local: not built yet")
 
 var localID = regexp.MustCompile(`^` + regexp.QuoteMeta(workplace.LocalIDPrefix) + `[A-Za-z0-9._-]+$`)
 
@@ -112,28 +108,4 @@ func (a *Adapter) Lookup(ctx context.Context, workspaceID string) (workplace.Wor
 		branch = wt.Branch
 	}
 	return workplace.Workspace{ID: rec.ID, Path: rec.Path, Branch: branch}, nil
-}
-
-// Remove is built in a later task.
-func (a *Adapter) Remove(_ context.Context, workspaceID string) error {
-	if err := checkLocal(workspaceID); err != nil {
-		return err
-	}
-	return errNotBuilt
-}
-
-// Discard is built in a later task.
-func (a *Adapter) Discard(_ context.Context, workspaceID string) error {
-	if err := checkLocal(workspaceID); err != nil {
-		return err
-	}
-	return errNotBuilt
-}
-
-// Transcript is built in a later task.
-func (a *Adapter) Transcript(_ context.Context, workspaceID, _ string) (workplace.Transcript, error) {
-	if err := checkLocal(workspaceID); err != nil {
-		return workplace.Transcript{}, err
-	}
-	return workplace.Transcript{}, errNotBuilt
 }
