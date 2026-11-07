@@ -542,3 +542,13 @@ def test_handoff_board_and_host_from_config():
         assert "the always-on host (`host.toml`)" in body
         assert "LIGHTHOUSE_CONTROLLER_RUN" in body
         assert "identity" not in body and "controller_tick" not in body
+
+
+def test_handoff_prints_the_block_after_the_question():
+    """The question dialog hides text written before it: the block comes after the answer."""
+    for body in skill("write-handoff"):
+        step6 = _flat(_step(body, "6. **Print the block", "7. **Read your own block back"))
+        assert "never before an `AskUserQuestion`" in step6
+        assert "in your last message of the turn" in step6
+        offer = _flat(_step(body, "Only at `offer`", "3. **`next:` is exactly one command"))
+        assert "Ask before you print the block" in offer
