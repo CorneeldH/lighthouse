@@ -55,7 +55,8 @@ jobs:
             echo "|---|---|---|"
             for t in go-test go-e2e; do
               if [ "$t" = go-test ]; then o=$GOTEST; else o=$GOE2E; fi
-              f=$(grep -E '^(--- FAIL|FAIL)' "$RUNNER_TEMP/measure/$t.txt" 2>/dev/null | head -8 | tr '\n' ' ' | tr '|' '/')
+              # `shell: bash` runs with -e -o pipefail: no FAIL line (a green run) must not end the step.
+              f=$({ grep -E '^(--- FAIL|FAIL)' "$RUNNER_TEMP/measure/$t.txt" 2>/dev/null || true; } | head -8 | tr '\n' ' ' | tr '|' '/')
               echo "| \`$t\` | $o | ${f:+\`$f\`} |"
             done
           } >> "$GITHUB_STEP_SUMMARY"
