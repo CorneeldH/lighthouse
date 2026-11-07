@@ -119,6 +119,16 @@ row "9. pr-create-gate, body without issue line" "rc 2" "$RC" "$(mark ok 2)" "$E
 hook PreToolUse pr-create-gate.sh "gh pr create --title x --body 'No issue: a measurement on Windows'"
 row "10. pr-create-gate, \`No issue:\` body" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 
+# With a [test_gate] command, post runs it on the commit's files, inside a gate slot.
+printf '\n[test_gate]\ncommand = "git --version"\n' >>"$REPO/lighthouse.toml"
+git -C "$REPO" commit -q -am "test gate" >/dev/null 2>&1
+hook PreToolUse "commit-test-gate.sh pre" "git commit -m x"
+echo c >"$REPO/c.txt"
+git -C "$REPO" add c.txt
+git -C "$REPO" commit -q -m "c" >/dev/null 2>&1
+hook PostToolUse "commit-test-gate.sh post" "git commit -m x"
+row "11. commit-test-gate post, with \`[test_gate] command\`" "rc 0, \`git version\`" "$RC" "$(mark ok 0 'git version')" "$ERR"
+
 echo "### Host"
 echo
 echo '```'
