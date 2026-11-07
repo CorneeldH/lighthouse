@@ -201,7 +201,8 @@ func (a *Adapter) followRemote(ctx context.Context, ws workplace.Workspace, crea
 	if err != nil {
 		return err
 	}
-	status, err := a.gitOK(ctx, ws.Path, "status", "--porcelain", "--untracked-files=no")
+	// Untracked files count, as in workplace.Dirty: checkout -B refuses one the branch tracks.
+	status, err := a.gitOK(ctx, ws.Path, "status", "--porcelain")
 	if err != nil {
 		return err
 	}

@@ -105,7 +105,7 @@ var (
 
 // OwnWorkError: Prepare found a workspace that holds work origin does not have, so it left
 // HEAD where it was. Commits counts the commits on no origin ref without a patch-equal
-// commit on origin/<branch>; Dirty is a tracked change in the work tree.
+// commit on origin/<branch>; Dirty is an uncommitted change, untracked files included.
 type OwnWorkError struct {
 	Workspace Workspace
 	Commits   int

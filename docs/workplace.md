@@ -43,8 +43,9 @@ De regel voor eigen werk: een eigen commit staat op geen enkele `origin`-ref
 (`rev-list HEAD --not --remotes=origin`) en heeft geen patch-gelijke commit op `origin/<branch>`
 (`git cherry`). Na een rebase krijgen de commits van een eerdere run een nieuwe SHA op origin; die
 zijn dus geen eigen werk. Een merge-commit telt wel als eigen werk, want `git cherry` toont die niet.
-Een gewijzigd bijgehouden bestand (`status --porcelain --untracked-files=no`) telt ook als eigen
-werk. Een ongevolgd bestand telt niet, want dat blijft bij een checkout staan.
+Een vuile werkboom (`status --porcelain`, ongevolgde bestanden inbegrepen, net als
+`workplace.Dirty`) telt ook als eigen werk. Een ongevolgd bestand dat de branch wel volgt, zou
+`checkout -B` bovendien weigeren.
 
 - Geen eigen werk: `Prepare` schakelt om met `checkout -B <branch> --track origin/<branch>`.
 - Wel eigen werk: `HEAD` blijft staan en `Prepare` geeft een `*workplace.OwnWorkError`. Die noemt de

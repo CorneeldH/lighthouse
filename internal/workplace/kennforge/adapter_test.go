@@ -438,19 +438,26 @@ func TestPrepareFoundRebasedDirtyHandsBack(t *testing.T) {
 	}
 }
 
-// An untracked file survives a checkout, so it is no own work.
-func TestPrepareFoundRebasedUntrackedFollowsRemote(t *testing.T) {
+// An untracked file is own work too: checkout -B would refuse one the branch tracks, and
+// workplace.Dirty counts it.
+func TestPrepareFoundRebasedUntrackedHandsBack(t *testing.T) {
 	w := newGitWorld(t)
-	want := w.rebase(t)
-	if err := os.WriteFile(filepath.Join(w.ws, "scratch"), []byte("x"), 0o644); err != nil {
+	w.rebase(t)
+	head := git(t, w.ws, "rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(w.ws, "m2"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	a := gitAdapter(t, w.ws)
-	if _, err := a.Prepare(context.Background(), "issue-1-x"); err != nil {
-		t.Fatal(err)
+	_, err := a.Prepare(context.Background(), "issue-1-x")
+	var own *workplace.OwnWorkError
+	if !errors.As(err, &own) {
+		t.Fatalf("err = %v, want an OwnWorkError", err)
 	}
-	if got := git(t, w.ws, "rev-parse", "HEAD"); got != want {
-		t.Errorf("HEAD = %s, want rebased %s", got, want)
+	if own.Commits != 0 || !own.Dirty {
+		t.Errorf("own = %+v, want 0 commits, dirty", own)
+	}
+	if got := git(t, w.ws, "rev-parse", "HEAD"); got != head {
+		t.Errorf("HEAD = %s, want unmoved %s", got, head)
 	}
 }
 
