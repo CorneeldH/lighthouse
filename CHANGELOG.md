@@ -4,6 +4,17 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.10.0] - 2026-11-07
+
+### Changed
+
+- `/lighthouse-close-issue` entry B closes an issue in the same turn once the verdict table is shown with every criterion `demonstrably done` and the DoD met, without a confirmation question. Every other outcome still stops before the close.
+- `/lighthouse-write-pr` now always links the issue with `Refs #N`, with an Evidence table of the proven criteria, and `/lighthouse-close-issue` runs that table after the merge and closes the issue. A controller run that finishes a build pushes and hands the PR to a fresh `/lighthouse-write-pr` session, and the controller starts the close check after every merged PR it opened.
+
+### Fixed
+
+- The shell package verifies its pinned `shellcheck` download with `shasum -a 256` when `sha256sum` is missing, as on macOS. CI now runs the Go and Python tests on macOS as well.
+
 ## [v0.9.0] - 2026-11-07
 
 ### Added
