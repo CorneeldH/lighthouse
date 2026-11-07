@@ -344,10 +344,10 @@ func TestApplyStartWithoutTriggerCommentPostsNoRocket(t *testing.T) {
 func TestApplyStartRelocatesAPlanFromAnotherCheckout(t *testing.T) {
 	h := newHarness(t)
 	h.wp.root = t.TempDir()
-	plan := h.wp.root + "/forge/issue-7-x/docs/plans/p.md"
+	plan := h.wp.root + "/forge/issue-7-x/design/plans/p.md"
 	writeEmpty(t, plan)
 	a := startAction()
-	a.Command = "/lighthouse-review-plan /home/u/repo/.claude/worktrees/issue-7-x/docs/plans/p.md"
+	a.Command = "/lighthouse-review-plan /home/u/repo/.claude/worktrees/issue-7-x/design/plans/p.md"
 	a.Prompt = a.Command + " (issue #7, controller-run)"
 	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
 		t.Fatalf("Apply: %v", err)
@@ -370,7 +370,7 @@ func TestApplyStartPlanNotInTheWorktreeFails(t *testing.T) {
 	h := newHarness(t)
 	h.wp.root = t.TempDir()
 	a := startAction()
-	a.Command = "/lighthouse-review-plan /home/u/repo/docs/plans/p.md"
+	a.Command = "/lighthouse-review-plan /home/u/repo/design/plans/p.md"
 	a.Prompt = a.Command + " (issue #7, controller-run)"
 	if _, err := Apply(context.Background(), h.env, []Action{a}); err == nil {
 		t.Fatal("Apply: want an error")
@@ -380,8 +380,8 @@ func TestApplyStartPlanNotInTheWorktreeFails(t *testing.T) {
 	}
 	rows := h.history(t)
 	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed ||
-		!strings.HasPrefix(rows[0].Reason, "handoff path: /home/u/repo/docs/plans/p.md ") {
-		t.Errorf("rows = %+v, want one closed start_failed with reason handoff path: /home/u/repo/docs/plans/p.md …", rows)
+		!strings.HasPrefix(rows[0].Reason, "handoff path: /home/u/repo/design/plans/p.md ") {
+		t.Errorf("rows = %+v, want one closed start_failed with reason handoff path: /home/u/repo/design/plans/p.md …", rows)
 	}
 }
 
