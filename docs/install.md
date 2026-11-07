@@ -216,12 +216,14 @@ Two choices in the unit are on purpose:
 Put `GH_TOKEN` in `~/.config/lighthouse/forge.env` (mode `0600`), the file `lighthouse.service` also
 reads (see *Connect the forge*). The runs inherit the token, so a run has the rights of the dispatcher.
 `claude` must be on the unit's `PATH`; the unit adds `%h/.local/bin`, where the claude installer puts it.
+It also adds `/usr/local/go/bin`, where the official Go distribution puts `go`, which runs and the test
+gate need.
 
 Without systemd, run the tick from cron. Cron sets no `XDG_RUNTIME_DIR`, which the tick needs, so the
 line sets it:
 
 ```text
-*/5 * * * * export XDG_RUNTIME_DIR=/run/user/$(id -u) PATH="$HOME/.local/bin:$HOME/go/bin:/usr/bin:/bin"; set -a; . "$HOME/.config/lighthouse/forge.env"; set +a; lighthouse tick
+*/5 * * * * export XDG_RUNTIME_DIR=/run/user/$(id -u) PATH="$HOME/.local/bin:$HOME/go/bin:/usr/local/bin:/usr/local/go/bin:/usr/bin:/bin"; set -a; . "$HOME/.config/lighthouse/forge.env"; set +a; lighthouse tick
 ```
 
 ## Reach it from your tailnet

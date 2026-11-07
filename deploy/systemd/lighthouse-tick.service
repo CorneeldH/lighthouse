@@ -43,6 +43,6 @@ Description=lighthouse — dispatcher tick
 Type=oneshot
 KillMode=process
 EnvironmentFile=%h/.config/lighthouse/forge.env
-Environment=PATH=%h/.local/bin:%h/go/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=%h/.local/bin:%h/go/bin:/usr/local/bin:/usr/local/go/bin:/usr/bin:/bin
 ExecStart=%h/go/bin/lighthouse tick
 SyslogIdentifier=lighthouse-tick
