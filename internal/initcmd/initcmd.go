@@ -477,10 +477,11 @@ func configTables(root string, chosen []packs.Pack, extraHosts []string) ([]proj
 	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
 		forge, haveRepo = projectconfig.ForgeFromRemote(strings.TrimSpace(string(url)), hosts)
 	}
-	// AppendMissing never overwrites: a host next to an existing kind = "github" would
-	// be rejected by config.py, so it is only proposed beside gitlab or no kind.
-	if ex.Forge.Kind != "" && ex.Forge.Kind != "gitlab" {
-		forge.Host = ""
+	// AppendMissing never overwrites: next to an existing kind that differs from the
+	// remote's, a proposed repo or host would give a config the reader rejects or one
+	// that points at the wrong forge. Propose no forge then.
+	if ex.Forge.Kind != "" && ex.Forge.Kind != forge.Kind {
+		forge, haveRepo = projectconfig.Forge{}, false
 	}
 	tables, err := mergeTables(projectconfig.CoreTables(forge, haveRepo), chosen)
 	return tables, haveRepo, err

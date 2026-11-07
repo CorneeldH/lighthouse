@@ -20,7 +20,8 @@ func newInitCommand() *cobra.Command {
 			"init installs core plus every language package that fits the repository. Add\n" +
 			"or leave out a package with --pack and --no-pack, also later:\n" +
 			"  lighthouse init --upgrade --pack python\n" +
-			"  lighthouse init --upgrade --no-pack shell",
+			"  lighthouse init --upgrade --no-pack shell\n\n" +
+			"A remote on a self-hosted GitLab is recognised with --forge-host <host>.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := os.Getwd()

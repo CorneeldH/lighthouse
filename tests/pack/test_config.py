@@ -837,6 +837,14 @@ def test_forge_host_rejected(tmp_path, kind, host):
         load(_write(tmp_path, data))
 
 
+def test_forge_host_without_kind_rejected(tmp_path):
+    data = _with(("forge", "kind"), "github")
+    del data["forge"]["kind"]
+    data["forge"]["host"] = "git.example.org"
+    with pytest.raises(ConfigError, match=r"forge\.host"):
+        load(_write(tmp_path, data))
+
+
 def test_forge_with_only_default_branch_load(tmp_path, monkeypatch):
     cfg = load(_forge_only_branch(tmp_path, monkeypatch))
     assert (cfg.kind, cfg.repo, cfg.board) == (None, None, None)

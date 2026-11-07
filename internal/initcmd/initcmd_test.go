@@ -742,6 +742,25 @@ func TestNoHostIntoGitHubForge(t *testing.T) {
 	}
 }
 
+func TestNoMismatchedForgeProposed(t *testing.T) {
+	cases := []struct{ name, existing, remote string }{
+		{"github kind, gitlab remote", "[forge]\nkind = \"github\"\n", "git@gitlab.com:g/s/r.git"},
+		{"gitlab kind, github remote", "[forge]\nkind = \"gitlab\"\n", "git@github.com:acme/widgets.git"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			gitIn(t, root, "remote", "add", "origin", c.remote)
+			write(t, root, "lighthouse.toml", c.existing)
+			initYes(t, root)
+			r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+			if got := read(t, root, "lighthouse.toml"); r.code != 0 || strings.Contains(got, "repo =") || strings.Contains(got, "host =") {
+				t.Fatalf("rc %d toml %q err %q", r.code, got, r.err)
+			}
+		})
+	}
+}
+
 func TestNoForgeForUnknownHost(t *testing.T) {
 	root := newRepo(t)
 	gitIn(t, root, "remote", "add", "origin", "git@git.example.org:g/s/r.git")
