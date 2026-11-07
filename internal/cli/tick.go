@@ -27,6 +27,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 	"github.com/CorneeldH/lighthouse/internal/workplace/kennforge"
+	"github.com/CorneeldH/lighthouse/internal/workplace/local"
 )
 
 // tickEnv is what tick and gather read from the machine: the environment, the path of
@@ -38,8 +39,9 @@ type tickEnv struct {
 	HostToml string
 	ForgeURL string           // "" is forge.DefaultBaseURL
 	Now      func() time.Time // nil is time.Now
-	// Workplace is the forge workplace of a repo; nil is a kennforge.Adapter from
-	// [dispatch.forge], [dispatch.profiles] and the repo.
+	// Workplace is the workplace of a repo; nil follows [dispatch] workplace: "local" is a
+	// local.Adapter, any other value a kennforge.Adapter from [dispatch.forge],
+	// [dispatch.profiles] and the repo.
 	Workplace func(repo repoconfig.Repo) workplace.Workplace
 	StateDir  string // run instructions, carriers and permission notes; "" is ${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/dispatch
 	// Meter measures the usage windows; nil is a meter on usage.DefaultPaths and the [usage] table of HostToml.
@@ -90,10 +92,16 @@ func (e tickEnv) stateDir() (string, error) {
 	return filepath.Join(base, "lighthouse", "dispatch"), nil
 }
 
-// workplace returns the forge workplace of repo; stateDir is where its carriers go.
+// workplace returns the workplace of repo; stateDir is where its carriers go.
 func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateDir string) workplace.Workplace {
 	if e.Workplace != nil {
 		return e.Workplace(repo)
+	}
+	if cfg.Workplace == hostconfig.WorkplaceLocal {
+		return &local.Adapter{
+			RepoDir: repo.Dir, DefaultBranch: repo.DefaultBranch, Repo: repo.Slug,
+			StateDir: stateDir, Run: e.runner(), Home: e.Getenv("HOME"),
+		}
 	}
 	targets := make(map[string]string, len(cfg.Profiles))
 	for name, p := range cfg.Profiles {
