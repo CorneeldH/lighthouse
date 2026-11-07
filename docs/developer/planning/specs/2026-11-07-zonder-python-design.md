@@ -28,7 +28,9 @@ bewijst dat (zie *Bewijs*).
 - De taalpakketten `go`, `node`, `shell` en `expo` hebben geen Python meer nodig.
 - De binary roept zelf geen `python3` meer aan (`internal/initcmd/workflows.go`,
   `internal/deps`).
-- `init --upgrade` ruimt `.lighthouse/lib/` en `.lighthouse/scripts/` op in elke repo.
+- `init --upgrade` ruimt in elke repo op wat `pack/core` onder `.lighthouse/lib/` en
+  `.lighthouse/scripts/` installeerde. Wat `pack/shell` en `pack/python` daar zetten, blijft.
+  *(eigen keuze na spec-review, r1-f13)*
 
 **Niet-doelen**
 
@@ -36,18 +38,23 @@ bewijst dat (zie *Bewijs*).
   toch al. Alleen zijn aanroepen van de core-lib gaan over op de binary (§5).
 - Python in deze repo die niet wordt geïnstalleerd: `tests/` (pytest mag blijven), `tools/`,
   `ci/` en de site-tests.
-- De hooks van `pack/go`, `pack/shell` en `pack/node` die al geen Python gebruiken
-  (`gofmt-check`, `go-lint-gate`). Die blijven bash. Ze gebruiken wel `config.py`; die aanroep
-  gaat over (zie *Taalpakketten*).
+- De bash-hooks van de taalpakketten worden geen Go: `gofmt-check`, `go-lint-gate`,
+  `shell-lint-check`. Ze roepen vooral een linter aan. Wat ze nu met Python doen, gaat over op
+  de binary (§5): `go-lint-gate` gebruikt `python3` voor `turn_roots.py` en leest
+  `usage-gate/alarm.sh`, `shell-lint-check` gebruikt `config.py` en `python3 -c`.
 - Nieuwe checks of ander gedrag. Een hook geeft na de ombouw hetzelfde oordeel als ervoor.
 
 **Anti-doelen.** Dit telt als mislukt, ook als het technisch werkt:
 
 - Een gate die stil verdwijnt. Kan een hook niet checken (geen binary, kapotte config), dan zegt
   hij `COULD NOT CHECK`, zoals nu.
-- Een tijdelijke stand waarin dezelfde logica in Go én in Python staat en beide worden
-  onderhouden. Elke PR zet een module over en haalt de Python-versie in dezelfde PR weg.
-  `internal/protocol` en `protocol.py` zijn nu al zo'n tweeling; die verdwijnt in deze milestone.
+- Een Python-module die na de milestone naast zijn Go-versie blijft bestaan. Tijdens de
+  milestone mag dat alleen zo: een PR zet een module over naar Go; heeft de Python-versie daarna
+  nog Python-afnemers, dan blijft hij **bevroren** staan. Bevroren betekent: geen wijziging,
+  behalve een fix die in dezelfde PR ook in Go landt, met een gedeelde fixture als bewijs. De
+  PR die de laatste Python-afnemer omzet, haalt de module weg. `internal/protocol` en
+  `protocol.py` zijn nu al zo'n tweeling. *(eigen keuze na spec-review, r1-f1: de importgraaf
+  laat "weg in dezelfde PR" niet toe)*
 - Een host die na een upgrade van de binary met andere gates werkt dan de repo verwacht, zonder
   dat iemand het ziet.
 
@@ -64,9 +71,28 @@ bewijst dat (zie *Bewijs*).
 | Gates van taalpakketten | `pack/go/scripts/gate_go.py`, `pack/node/scripts/gate_node.py` | 335 regels | `[test_gate] command` |
 | Workflow | `pack/core/workflows/unblock-dependents.yml` | `uv run … python unblock_dependents.py` | GitHub-runner |
 | Binary | `internal/initcmd/workflows.go:117`, `internal/deps/deps.go:55` | 2 plekken | `init` |
+| Hooks van taalpakketten | `pack/go/hooks/go-lint-gate.sh` (`turn_roots.py`, `alarm.sh`), `pack/python/hooks/ty-gate.sh` (idem), `pack/shell/hooks/shell-lint-check.sh` (`config.py`, `python3 -c`) | 3 hooks | Claude Code |
+| Overige `python3` in geïnstalleerde tekst | `write-pr` (pipe naar `pr_body_gate.py`), `place-instruction` (`config.py`, `scripts/measure_skill_surface.py`), `shell-standard` (`realpath`-recept met `python3 -c`), `go-standard` (`python3` als vereiste tool) | 4 skills | agents |
 
 `pack/*/requires.toml` houdt per unit bij welke tool hij nodig heeft. Nu staat `python3` bij
 bijna elke unit van `core` en bij drie van `go`.
+
+De inventaris is pas volledig met `grep -rn python3` over wat een verse `init` met `core`, `go`,
+`node`, `shell` en `expo` installeert. Stap 1 draait die grep en zet elke treffer in het issue van
+de stap die hem weghaalt (zie *Opdeling*). *(eigen keuze na spec-review, r1-f4)*
+
+**Importgraaf** (bepaalt de volgorde, zie *Opdeling*). Bladeren zonder lighthouse-import:
+`config`, `datadir`, `deadline`, `filelock`, `gate_slot`, `git_invocations`, `host_memory`,
+`md_links`, `repo_identity`, `code_language_score`. Daarboven:
+
+| Module | Importeert | Python-afnemers |
+|---|---|---|
+| `headings` | `config` | bijna alles |
+| `protocol` | `config`, `headings` | `artefacts`, `post_artefact` |
+| `git_invocations` | — | `bash_writes`, `turn_roots`, `pr_body_gate`, `no_verify` |
+| `bash_writes` | `config`, `deadline`, `git_invocations`, `repo_identity` | `commit_base`, `turn_roots` |
+| `pr_body_gate` | `config`, `git_invocations`, `headings`, `repo_identity` | `evidence`, `worktree_audit` |
+| `usage_guard` | `config` | `usage-gate/controller.py`, `usage-gate/resume.py` |
 
 ## Aanpakken
 
@@ -85,13 +111,21 @@ Windows-issue van M3 kleiner.
 
 Wie in een lighthouse-repo werkt, heeft de binary op het PATH. Hij installeert die met de
 release-download of bouwt hem met `go install github.com/CorneeldH/lighthouse/cmd/lighthouse@<versie>`.
-Ontbreekt de binary, dan blokkeert een hook niet maar meldt hij:
+Ontbreekt de binary, dan meldt een hook:
 
 ```
 COULD NOT CHECK: lighthouse not on PATH — install v<versie>: go install github.com/CorneeldH/lighthouse/cmd/lighthouse@v<versie>, or download it from the release
 ```
 
-`<versie>` komt uit `.lighthouse/manifest.toml`.
+`<versie>` komt uit `.lighthouse/manifest.toml`. Bij `version = "dev"` noemt de melding
+`go install ./cmd/lighthouse` vanuit de checkout.
+
+**Blokkeren gaat zoals nu** (besluit gebruiker na spec-review, r1-f5). Een hook die nu blokkeert
+als zijn tooling ontbreekt, blokkeert ook zonder binary: exit 2, de melding op stderr. Dat zijn
+`main-commit-gate`, `commit-test-gate`, `pr-create-gate`, `bash-write-check`, `md-link-check` en
+`code-language-check`. Een hook die nooit blokkeert (`worktree-check`, `permission-check`,
+`usage-gate` bij `prompt`), geeft de melding zonder te blokkeren. Gevolg: zonder binary blokkeert
+`main-commit-gate` elke Bash-call. Dat is bedoeld: de melding zegt hoe je hem installeert.
 
 ### 2. Hoe Claude Code een hook aanroept
 
@@ -101,9 +135,13 @@ COULD NOT CHECK: lighthouse not on PATH — install v<versie>: go install github
 .claude/hooks/lighthouse/run.sh <naam> [stand]
 ```
 
-`run.sh` is het enige stuk shell dat overblijft: POSIX `sh`, rond de tien regels. Het zoekt
-`lighthouse` op het PATH. Ontbreekt die, dan print het de melding van §1 en sluit het af met 0.
-Anders doet het `exec lighthouse hook "$@"`. Zo'n vast stuk is nodig, want zonder binary geeft een
+`run.sh` is het enige stuk shell dat overblijft: POSIX `sh`, rond de twintig regels. Het kent
+de lijst van blokkerende hooks uit §1; die lijst wordt met de pakketten geïnstalleerd en loopt
+dus gelijk met de registraties. Het zoekt `lighthouse` op het PATH. Ontbreekt die, dan geeft het
+de melding van §1 volgens die lijst: exit 2 met stderr, of exit 0 met de melding als
+`systemMessage`. Anders roept het `lighthouse hook "$@"` aan en geeft de exitcode door, met één
+uitzondering: exit 3 betekent *onbekende hook* (§3) en wordt volgens dezelfde lijst exit 2 of
+exit 0 met melding. Zo'n vast stuk is nodig, want zonder binary geeft een
 kale `lighthouse hook …` in `settings.json` alleen een hookfout met `command not found`, zonder
 uitleg hoe je de binary krijgt. *(Mijn keuze; een inline `command -v … ||` in de registratie kan ook, maar is
 slechter te testen.)*
@@ -119,12 +157,16 @@ De logica zit in de binary. Wat de repo installeert, is alleen nog registraties,
 tekst (skills, AGENTS.md). Een andere binary-versie dan in de manifest is daarom geen reden om
 niet te checken. De hook draait gewoon, en zet een `systemMessage` met
 `lighthouse v<binary> ≠ v<manifest> in this repo — run lighthouse init --upgrade`, één keer per
-sessie. *(Mijn keuze. Dit verandert wat ik eerder voorstelde, namelijk COULD NOT CHECK bij een
-verschil: dan zou elke upgrade van de binary alle gates stilzetten tot `init --upgrade`, en dat
-botst met het eerste anti-doel.)*
+sessie. *(Mijn keuze: COULD NOT CHECK bij elk verschil zou elke upgrade van de binary alle gates
+stilzetten tot `init --upgrade`.)* Bij `version = "dev"` komt die melding niet.
 
-Een hook die de binary niet kent (registratie nieuwer dan de binary) geeft `COULD NOT CHECK:
-unknown hook <naam> — update lighthouse to v<manifest>`.
+"Eén keer per sessie" houdt een marker bij in de state-dir van lighthouse, per `session_id` uit
+de payload. De marker wordt pas gezet als de melding echt meegaat op een call die niet blokkeert,
+want bij exit 2 negeert Claude Code de JSON op stdout. *(eigen keuze na spec-review, r1-f11)*
+
+Een hook die de binary niet kent (registratie nieuwer dan de binary) geeft exit 3 met
+`COULD NOT CHECK: unknown hook <naam> — update lighthouse to v<manifest>`; `run.sh` maakt daar
+exit 2 of een melding van (§2).
 
 ### 4. Subcommando's voor skills
 
@@ -140,25 +182,48 @@ script, de vlaggen en uitvoer blijven gelijk, zodat de skilltekst alleen het com
 | `python3 .lighthouse/scripts/gate_go.py -- …` | `lighthouse gate go -- …` |
 | `.lighthouse/scripts/check-instructions.sh` | `lighthouse check-instructions` |
 | `.claude/skills/lighthouse-review-spec/review.sh` | `lighthouse review-run` (de hele runner, ook de inline Python) |
+| `… \| python3 .lighthouse/lib/lighthouse_lib/pr_body_gate.py "$PWD"` (`write-pr`) | `… \| lighthouse pr-body-gate "$PWD"` |
+| `python3 -c '…realpath…'` (`shell-standard`) | een recept zonder Python (`realpath -m`, anders `lighthouse path realpath`) |
+| `python3 scripts/measure_skill_surface.py` (`place-instruction`) | `lighthouse measure-skill-surface`, of de regel weg als het script alleen in deze repo bestaat |
 
 `lighthouse config` geeft dezelfde exitcodes als `config.py`: 0 met waarde, 1 als de sleutel niet
 gezet is, 2 bij een fout. Skills leunen op dat onderscheid.
 
+**Toestemming.** `pack/core/permissions.json` geeft nu vooraf toestemming voor
+`review.sh` en `verify.sh`, en `IsLighthouseRule` (`internal/packs/packs.go:147`) kent alleen
+regels in `.claude/skills/lighthouse-*` en de hook-map. Die functie gaat ook regels van de vorm
+`Bash(lighthouse <subcommando>:*)` herkennen, zodat `permissions.json` ze kan meeleveren en `init`
+ze beheert. Anders wacht een review-run zonder toezicht op een prompt. *(eigen keuze na
+spec-review, r1-f9)*
+
 ### 5. Taalpakketten
 
-- `gate_go.py` en `gate_node.py` worden `lighthouse gate go` en `lighthouse gate node`. In
-  `lighthouse.toml` van deze repo en in de fragmenten van de pakketten verandert
-  `[test_gate] command` mee. `init --upgrade` herschrijft een `command` van een gebruiker niet;
-  het meldt het oude commando, zoals nu bij sleutels die blijven staan.
-- `go-lint-gate.sh`, `shell-lint-check.sh` en `shellcheck-repo.sh` lezen hun config met
-  `lighthouse config`. `shell-lint-check.sh` leest de payload met `jq` of `python3`; dat wordt
-  alleen `jq`, en zonder `jq` meldt hij `COULD NOT CHECK`. *(Mijn keuze: deze hooks blijven
-  bash, want ze roepen vooral een linter aan.)*
+- `gate_go.py` en `gate_node.py` worden `lighthouse gate go` en `lighthouse gate node`.
+  `pack/go` en `pack/node` hebben geen `lighthouse.toml.fragment`. Dat blijft zo, want `init`
+  weigert een `test_gate.command` uit twee pakketten (`internal/initcmd/fragment_test.go:54`).
+  `[test_gate] command` blijft van de gebruiker. *(r1-f2)*
+- **Migratie van dat commando.** Een bestaand `command` roept nog `python3
+  .lighthouse/scripts/gate_go.py` of `gate_node.py` aan, en die bestanden verdwijnen. Daarom
+  herschrijft `init --upgrade` precies die twee vormen: `python3 .lighthouse/scripts/gate_go.py`
+  wordt `lighthouse gate go`, `python3 .lighthouse/scripts/gate_node.py` wordt `lighthouse gate
+  node`. De rest van het commando blijft letterlijk staan, en `init` toont de oude en de nieuwe
+  regel. Verwijst het commando op een andere manier naar `.lighthouse/scripts/` of
+  `lighthouse_lib`, dan herschrijft `init` niets en meldt het luid welk commando kapot gaat. De
+  upgrade gaat door. *(eigen keuze na spec-review, r1-f3)*
+- `go-lint-gate.sh` en `ty-gate.sh` (`pack/python`) gaan over op `lighthouse turn-roots` in de
+  stap van `turn_roots` (r1-f6), en op `lighthouse usage alarm` (exit 0 = alarm actief) in de stap
+  van `usage-gate`. In die stap verdwijnt `usage-gate/alarm.sh`. *(r1-f7)*
+- `shell-lint-check.sh` en `shellcheck-repo.sh` lezen hun config met `lighthouse config`.
+  `shell-lint-check.sh` leest de payload alleen nog met `jq` (zonder `jq`: `COULD NOT CHECK`) en
+  bouwt zijn `systemMessage` met `jq -n` in plaats van `python3 -c`.
 - `pack/python` gebruikt de core-lib op vier plekken: `config.py` in skills en hooks,
   `turn_roots.py` in `ty-gate.sh`, `config`, `headings` en `protocol` als import in
   `quality/prcov_issues.py`, en `config` in `quality/ratchet.py`. Die roepen voortaan de binary
   aan: `lighthouse config`, `lighthouse headings`, `lighthouse protocol …` en `lighthouse
-  turn-roots` (besluit gebruiker). Zo staat elke regel logica één keer in Go. De rest van
+  turn-roots` (besluit gebruiker). Voor `prcov_issues.py` zijn dat: `lighthouse protocol
+  parse-header` (comment op stdin, JSON op stdout), `lighthouse protocol robot` (de
+  robotmarkering), `lighthouse headings <key>` en `lighthouse config --json forge.board` (de
+  board-tabel als JSON). *(eigen keuze na spec-review, r1-f14)* Zo staat elke regel logica één keer in Go. De rest van
   `pack/python` (`gate_python.py`, `quality/`) blijft Python. De PR die een module weghaalt, zet
   ook de aanroep in `pack/python` om.
 
@@ -171,8 +236,13 @@ workflow de binary uit de checkout met `go build`. *(Mijn keuze.)*
 
 ### 7. De binary zelf
 
-- `internal/initcmd/workflows.go` vult de workflow-sleutels met de Go-configlezer
-  (`internal/repoconfig`) in plaats van `python3 -m lighthouse_lib.config`.
+- Stap 1 zet `config.py` helemaal over naar Go, met zijn schema en defaults (zoals
+  `ci.runs_on` = `ubuntu-latest`, `config.py:142`). Dat wordt de enige lezer van
+  `lighthouse.toml`. `internal/repoconfig` leest nu alleen wat de dispatcher nodig heeft en faalt
+  op een ontbrekende `[forge] repo` (`repoconfig.go:125`); hij bouwt voortaan op die lezer. Hoe
+  precies, is aan de bouwer, zolang schema en defaults op één plek staan.
+- `internal/initcmd/workflows.go` kopieert nu `core/lib/*.py` naar een tijdelijke map en draait
+  `config.py`. In stap 1 vult hij de workflow-sleutels met de nieuwe Go-lezer. *(r1-f8)*
 - `internal/deps` controleert `python3` niet meer voor `core`; `requires.toml` van `core`, `go`,
   `node`, `shell` en `expo` noemt `python3` niet meer. `pack/python` houdt het.
 - `internal/protocol` wordt de enige lezer van het protocol; `protocol.py` verdwijnt.
@@ -187,7 +257,12 @@ zoals nu. `pack/python` installeert zijn eigen scripts nog wel onder `.lighthous
 ### 9. Tests
 
 - Een module die naar Go gaat, neemt zijn unittests mee. De Go-tests lezen dezelfde fixtures in
-  `tests/pack/fixtures/`, zodat het oordeel aantoonbaar gelijk blijft.
+  `tests/pack/fixtures/`, zodat het oordeel aantoonbaar gelijk blijft. Nu hebben alleen
+  `code_language`, `codex_usage`, `protocol` en `roborev` fixture-bestanden. Bij de andere
+  modules staan de gevallen inline in pytest. Die haalt de PR eerst naar gedeelde fixtures, en
+  zet daarna pas over. *(r1-f15)*
+- `internal/initcmd/budget_parity_test.go` draait `.lighthouse/scripts/check-instructions.sh`.
+  Die test gaat mee in de stap van `check-instructions`.
 - De black-box-tests van de hooks (`tests/pack/test_*_gate.py`, `test_*_check.py`) blijven pytest.
   Ze roepen voortaan `run.sh` aan, met een binary die de testsuite één keer bouwt. Zo bewijzen
   dezelfde tests dat het gedrag van voor en na de ombouw gelijk is. *(Mijn keuze.)*
@@ -201,53 +276,81 @@ Lighthouse draait zijn eigen hooks, dus in deze repo roept `run.sh` de geïnstal
 `lighthouse` aan, niet de code van de branch. Een PR die een hook ombouwt, test die hook daarom
 via de pytest-tests met de gebouwde binary, niet via de hooks van de eigen sessie. *(Mijn keuze.)*
 
-Deze repo heeft `version = "dev"` in de manifest. Daarvoor gelden twee regels *(mijn keuze)*:
+Deze repo heeft `version = "dev"` in de manifest; §1 en §3 noemen wat daarbij anders is.
 
-- Bij `dev` geeft §3 geen versiemelding, en §1 noemt geen versie maar
-  `go install ./cmd/lighthouse` vanuit de checkout.
-- Een PR die een hook ombouwt, zet een nieuwe registratie in de eigen `.claude/settings.json`.
-  Tot de volgende release op de host staat, kent de geïnstalleerde binary die hook niet en zegt
-  de eigen gate `COULD NOT CHECK: unknown hook`. Dat gat accepteren we: releases gaan vaak, en de
-  always-on host werkt zichzelf bij. Wie eerder wil, draait `go install ./cmd/lighthouse` na de
-  merge.
+Een PR van deze milestone verandert wat de eigen sessies aanroepen: een nieuwe hookregistratie,
+`lighthouse config` in de skills, `lighthouse gate go` in `[test_gate] command`. De
+geïnstalleerde binary kent die pas na de volgende release. Zonder maatregel blokkeert
+`main-commit-gate` dan elke Bash-call (§1), en een release met alleen een patch-fragment wacht
+tot de wekelijkse cron (`.github/workflows/release.yml:2-3`). Daarom:
+
+- Elke PR van deze milestone krijgt een `minor`-fragment in `changelog.d/`, zodat de release
+  direct op de merge volgt.
+- Na de merge draait wie in deze repo werkt `go install ./cmd/lighthouse` op `main`, of wacht
+  op de release. De melding van §1 en §3 zegt dat.
+
+*(eigen keuze na spec-review, r1-f10)*
 
 Elke PR draait `go run ./cmd/lighthouse init --upgrade` en commit het resultaat, zoals AGENTS.md
 voorschrijft.
 
 ## Opdeling in issues
 
-Volgorde is afhankelijkheid. Elke PR haalt de Python weg die hij vervangt.
+De volgorde volgt de importgraaf (*Inventaris*): eerst wat andere modules gebruiken. Elke stap
+noemt wat hij in Go bouwt, welke Python hij **weghaalt** (de laatste Python-afnemer is om) en wat
+**bevroren** blijft (§ *Anti-doelen*). *(eigen keuze na spec-review, r1-f1)*
 
-1. **Fundament.** `lighthouse config`, `lighthouse headings`, de hook-runtime (`lighthouse hook`,
-   `run.sh`, versiemelding), `lighthouse protocol` voor `prcov_issues.py`, `protocol.py` weg. De skill-aanroepen van `config.py` en `headings.py`
-   in alle pakketten gaan in dezelfde PR over (mechanisch, ~200 regels).
-2. **Kleine hooks**: `permission-check`, `usage-gate`, `md-link-check`.
-3. **`code-language-check`** (met `code_language*.py` en de frequentietabel).
-4. **`bash-write-check`** (met `bash_writes.py`, 1.7k regels, en `turn_roots.py`; `ty-gate.sh`
-   van `pack/python` gaat mee over op `lighthouse turn-roots`).
-5. **`pr-create-gate`** (met `pr_body_gate.py`, `evidence.py`, `artefacts.py`).
-6. **`worktree-check` en `main-commit-gate`** (met `git_invocations.py`).
-7. **`commit-test-gate`** (met `commit_base`, `deadline`, `gate_slot`, `host_memory`, `no_verify`,
-   `repo_identity`). Mag in twee PR's: `pre` en `post`. `systemd-run` blijft achter
-   `host.gate_slice`, alleen op Linux.
-8. **Skill-scripts, deel 1**: `worktree-audit`, `board-start`, `post-artefact`,
-   `unblock-dependents` (+ de workflow, §6).
-9. **Skill-scripts, deel 2**: `plan-review-record`, `review-pair`, `roborev-gate`,
-   `roborev-comment`, `codex-usage`, en `review.sh` als `lighthouse review-run`.
-   `check-instructions.sh` wordt `lighthouse check-instructions`.
-10. **KPI-scripts**: `measure-start-issue-kpi`, `measure-fix-pr-kpi`.
-11. **Taalpakketten**: `lighthouse gate go|node`, de bash-hooks van §5.
-12. **Afronden**: `internal/initcmd`, `internal/deps`, `requires.toml`, opruimen (§8), de CI-job
-    van *Bewijs*, en de M3-spec en de installatiegids zonder Python-eis.
+1. **Fundament.** Go: `config` (heel `config.py`, schema en defaults, §7), `headings`, `datadir`,
+   de hook-runtime (`lighthouse hook`, `run.sh`, de lijst van blokkerende hooks, de
+   versiemelding), `lighthouse protocol` (§5), de toestemmingsregel (§4), `workflows.go` op de
+   Go-lezer. De skill-aanroepen van `config.py` en `headings.py` in alle pakketten gaan over
+   (mechanisch, ~220 regels), en `prcov_issues.py` en `ratchet.py` van `pack/python` ook. De
+   volledige `python3`-grep (*Inventaris*) komt in de issues. Weg: niets. Bevroren: `config.py`,
+   `headings.py`, `datadir.py`, `protocol.py`.
+2. **`usage-gate`, `permission-check`, `md-link-check`.** Go: `usage_guard`, `md_links`,
+   `lighthouse usage alarm`. `go-lint-gate.sh` en `ty-gate.sh` gaan op `lighthouse usage alarm`
+   over. Weg: `usage_guard.py`, `md_links.py`, de drie `.py` onder de hooks, `alarm.sh`.
+3. **`code-language-check`.** Weg: `code_language.py`, `code_language_llm.py`,
+   `code_language_score.py`.
+4. **`main-commit-gate` en `worktree-check`.** Go: `git_invocations`. Bevroren:
+   `git_invocations.py`.
+5. **`bash-write-check`** (na 4). Go: `bash_writes`, `turn_roots`, `deadline`, `repo_identity`,
+   `filelock`; `lighthouse turn-roots`. `go-lint-gate.sh` en `ty-gate.sh` gaan op `lighthouse
+   turn-roots` over. Weg: `turn_roots.py`. Bevroren: `bash_writes.py` (voor `commit_base`),
+   `deadline.py`, `repo_identity.py`.
+6. **`pr-create-gate`** (na 4 en 5). Go: `pr_body_gate`, `evidence`; `lighthouse pr-body-gate`,
+   `lighthouse evidence`. `write-pr` gaat over. Weg: `evidence.py`. Bevroren: `pr_body_gate.py`
+   (voor `worktree_audit`).
+7. **`commit-test-gate`** (na 5). Go: `commit_base`, `gate_slot`, `host_memory`, `no_verify`.
+   Mag in twee PR's: `pre` en `post`. `systemd-run` blijft achter `host.gate_slice`, alleen op
+   Linux. Weg: `commit_base.py`, `bash_writes.py`, `gate_slot.py`, `host_memory.py`,
+   `no_verify.py`, `deadline.py`.
+8. **Skill-scripts, deel 1** (na 6 en 7). `post-artefact`, `board-start`, `unblock-dependents`
+   (+ de workflow, §6), `worktree-audit`. Weg: de vier scripts, `artefacts.py`, `protocol.py`,
+   `pr_body_gate.py`, `git_invocations.py`, `repo_identity.py`.
+9. **Skill-scripts, deel 2.** `plan-review-record`, `review-pair`, `roborev-gate`,
+   `roborev-comment`, `codex-usage`, `review.sh` als `lighthouse review-run`, en
+   `check-instructions.sh` als `lighthouse check-instructions` (met
+   `budget_parity_test.go`).
+10. **KPI-scripts.** `measure-start-issue-kpi`, `measure-fix-pr-kpi`.
+11. **Taalpakketten.** `lighthouse gate go|node`, de migratie van `[test_gate] command` (§5),
+    `shell-lint-check.sh`, `shellcheck-repo.sh`, de Python-vrije tekst in `shell-standard`,
+    `go-standard` en `place-instruction`.
+12. **Afronden** (als laatste). Weg: `config.py`, `headings.py`, `datadir.py` en wat er nog
+    bevroren staat. `internal/deps`, `requires.toml`, opruimen (§8), de CI-job van *Bewijs*, en
+    de M3-spec en de installatiegids zonder Python-eis.
 
-Stap 2 tot en met 10 hangen alleen af van stap 1 en kunnen parallel. Stap 12 komt als laatste.
+Na stap 1 kunnen 2, 3, 4, 9, 10 en 11 parallel. 5 wacht op 4; 6 op 4 en 5; 7 op 5; 8 op 6 en 7.
+Elke PR krijgt een `minor`-fragment (§10).
 
 ## Bewijs
 
-- Een CI-job (Linux) haalt `python3` uit het PATH, doet een verse `lighthouse init` met `core`,
-  `go`, `node`, `shell` en `expo`, en voert elke hook uit met de payloads van `tests/pack`. Er
-  verschijnt nergens `COULD NOT CHECK` of `command not found`.
-- `grep -rn python3` op de geïnstalleerde bestanden van die init geeft niets.
+- Een CI-job (Linux) haalt `python3` uit het PATH en doet een verse `lighthouse init` met `core`,
+  `go`, `node`, `shell` en `expo`. Daarna voert hij per hookregistratie één geldige payload uit
+  (een vaste set onder `tests/pack/fixtures/hooks/`, het gewone pad per hook). Geen van die calls
+  geeft `COULD NOT CHECK` of `command not found`. *(eigen keuze na spec-review, r1-f12: de
+  pytest-tests sturen bewust ook kapotte payloads, die wel `COULD NOT CHECK` horen te geven)*
+- `grep -rn python3` op de geïnstalleerde bestanden van die init geeft niets, ook niet in tekst.
 - `windows-measure.yml` draait opnieuw. De uitkomst gaat als meting naar #90, niet als gate.
 
 ## Gevolgen voor M3
