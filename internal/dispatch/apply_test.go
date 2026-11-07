@@ -405,6 +405,54 @@ func TestApplyPostFailsReleases(t *testing.T) {
 	}
 }
 
+// A workspace with own work origin lacks never starts on its old HEAD: the run is claimed,
+// closed as returned and handed back with the workspace and the number of own commits, so
+// its trigger is spent and no later tick starts it again.
+func TestApplyOwnWorkReturns(t *testing.T) {
+	h := newHarness(t)
+	h.wp.prepareErr = fmt.Errorf("follow remote: %w", &workplace.OwnWorkError{
+		Workspace: workplace.Workspace{ID: "9c5c2b84ce761720", Path: "/forge/issue-7-x", Branch: "issue-7-x"},
+		Commits:   7,
+	})
+	res, err := Apply(context.Background(), h.env, []Action{startAction()})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	want := []string{"Prepare", "Sessions 9c5c2b84ce761720", "CreateComment"}
+	if got := h.log.all(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls = %q, want %q", got, want)
+	}
+	reason := "werkplek heeft eigen werk dat niet op origin staat: workspace 9c5c2b84ce761720: 7 commits not on origin/issue-7-x"
+	body := "🤖 Teruggegeven\nreason: " + reason + "\nsession: " + freshSession + "\n\n<sub>session " + freshSession + "</sub>"
+	if p := h.poster(applyRepo); !reflect.DeepEqual(p.bodies, []string{body}) {
+		t.Errorf("posted %q, want %q", p.bodies, body)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned || rows[0].Reason != reason ||
+		rows[0].TriggerKey != "handoff:55" {
+		t.Errorf("rows = %+v, want one closed returned run of handoff:55 with reason %q", rows, reason)
+	}
+	if res.Started != 0 || len(h.wp.spawned) != 0 {
+		t.Errorf("Started = %d, spawned = %d; want no start", res.Started, len(h.wp.spawned))
+	}
+}
+
+// A failed post of the hand-back closes the run as start_failed, so retry tries once more.
+func TestApplyOwnWorkPostFailsStartFailed(t *testing.T) {
+	h := newHarness(t)
+	h.wp.prepareErr = &workplace.OwnWorkError{
+		Workspace: workplace.Workspace{ID: "ws-issue-7-x", Path: "/forge/issue-7-x", Branch: "issue-7-x"}, Dirty: true,
+	}
+	h.poster(applyRepo).postErr = errors.New("502 bad gateway")
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err == nil {
+		t.Fatal("Apply: want an error")
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed || rows[0].Reason != "post: 502 bad gateway" {
+		t.Errorf("rows = %+v, want one closed start_failed with reason %q", rows, "post: 502 bad gateway")
+	}
+}
+
 func TestApplyInstructionsFailReleases(t *testing.T) {
 	h := newHarness(t)
 	file := filepath.Join(t.TempDir(), "state")
