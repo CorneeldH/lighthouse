@@ -134,6 +134,17 @@ export interface RunsOutputBody {
   runs: RunView[] | null;
 }
 
+export type GetLatestCommentParams = {
+/**
+ * Slug of a served repo, owner/name
+ */
+repo: string;
+/**
+ * @minimum 1
+ */
+issue: number;
+};
+
 export type HTTPStatusCode1xx = 100 | 101 | 102 | 103;
 export type HTTPStatusCode2xx = 200 | 201 | 202 | 203 | 204 | 205 | 206 | 207;
 export type HTTPStatusCode3xx = 300 | 301 | 302 | 303 | 304 | 305 | 307 | 308;
@@ -237,6 +248,61 @@ export const getHealth = async ( options?: RequestInit): Promise<getHealthRespon
 
   const data: getHealthResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as getHealthResponse
+}
+
+
+
+export type getLatestCommentResponse302 = {
+  data: void
+  status: 302
+}
+
+export type getLatestCommentResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 302>
+}
+
+;
+export type getLatestCommentResponseError = (getLatestCommentResponse302 | getLatestCommentResponseDefault) & {
+  headers: Headers;
+};
+
+export type getLatestCommentResponse = (getLatestCommentResponseError)
+
+export const getGetLatestCommentUrl = (params: GetLatestCommentParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/latest-comment?${stringifiedParams}` : `/api/latest-comment`
+}
+
+/**
+ * @summary Get API latest comment
+ */
+export const getLatestComment = async (params: GetLatestCommentParams, options?: RequestInit): Promise<getLatestCommentResponse> => {
+
+  const res = await fetch(getGetLatestCommentUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getLatestCommentResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getLatestCommentResponse
 }
 
 

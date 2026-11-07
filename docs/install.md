@@ -150,12 +150,14 @@ The API is read-only. Its routes:
 | `GET /api/questions` | the open questions, from the forge |
 | `GET /api/returned` | the returned issues, from the forge |
 | `GET /api/cleanup` | the workspaces to clean up, from the database |
+| `GET /api/latest-comment?repo=owner/name&issue=N` | the comments of one issue, from the forge; redirects (302) to the newest comment, or to the issue page when it has none or the read fails. A repo `serve` does not serve gets 404 |
 
 ## Connect the forge
 
 `GET /api/questions` and `GET /api/returned` read the open questions and returned issues of
 the served GitHub repositories. Every item carries its `repo` (`owner/name`), and the UI shows
-it as `owner/name#number`. Which repositories `serve` reads:
+it as `owner/name#number`. Every `owner/name#number` in the UI links to
+`/api/latest-comment`, so a click lands on the newest comment of the issue. Which repositories `serve` reads:
 
 - With `[dispatch] repos` in `host.toml`: every repository listed there, in that order. A repo
   whose `lighthouse.toml` does not load is skipped with a line on stderr. `--repo` is then

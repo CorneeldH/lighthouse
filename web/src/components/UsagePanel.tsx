@@ -5,10 +5,16 @@ import { Panel } from './Panel'
 import { UsageWindow } from './UsageWindow'
 
 export function UsagePanel(): JSX.Element {
-  const { data, error, isPending, dataUpdatedAt } = useUsage()
+  const { data, error, isPending, isFetching, dataUpdatedAt } = useUsage()
   const now = new Date(useNow())
   return (
-    <Panel title="Usage" updatedAt={dataUpdatedAt} error={error} loading={isPending && !error}>
+    <Panel
+      title="Usage"
+      updatedAt={dataUpdatedAt}
+      error={error}
+      loading={isPending && !error}
+      refreshing={isFetching && !isPending}
+    >
       {data && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <UsageWindow label="Claude session" window={data.claude.session} now={now} />

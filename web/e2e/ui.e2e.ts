@@ -22,7 +22,7 @@ test('full: both lists and the usage windows', async ({ page, github, lighthouse
   const first = questions.getByRole('listitem').filter({ hasText: 'test/repo#11' })
   await expect(first.getByRole('link', { name: 'First question' })).toHaveAttribute(
     'href',
-    'https://github.com/test/repo/issues/11',
+    '/api/latest-comment?repo=test%2Frepo&issue=11',
   )
   await expect(first.getByText('Kies A of B?')).toBeVisible()
   await expect(first.getByRole('link', { name: 'Answer' })).toHaveAttribute(
@@ -32,7 +32,7 @@ test('full: both lists and the usage windows', async ({ page, github, lighthouse
   const second = questions.getByRole('listitem').filter({ hasText: 'test/repo#12' })
   await expect(second.getByRole('link', { name: 'Second question' })).toHaveAttribute(
     'href',
-    'https://github.com/test/repo/issues/12',
+    '/api/latest-comment?repo=test%2Frepo&issue=12',
   )
   await expect(second.getByText('Kies C of D?')).toBeVisible()
 
@@ -40,7 +40,7 @@ test('full: both lists and the usage windows', async ({ page, github, lighthouse
   const handedBack = returned.getByRole('listitem').filter({ hasText: 'test/repo#13' })
   await expect(handedBack.getByRole('link', { name: 'Handed back' })).toHaveAttribute(
     'href',
-    'https://github.com/test/repo/issues/13',
+    '/api/latest-comment?repo=test%2Frepo&issue=13',
   )
   await expect(handedBack.getByText('geen worktree')).toBeVisible()
 
@@ -51,6 +51,18 @@ test('full: both lists and the usage windows', async ({ page, github, lighthouse
   const codexSession = page.getByRole('group', { name: 'Codex session' })
   await expect(codexSession).toContainText('not measurable')
   await expect(codexSession).not.toContainText(/%/)
+})
+
+test('an issue link redirects to the newest comment of the issue', async ({ page, github, lighthouse }) => {
+  github.set({ issues: [{ number: 11, title: 'First question', comments: ['eerste', QUESTION_AB] }] })
+  await page.goto(await lighthouse.start({ token: true, cache: 'fresh' }))
+  const link = page.getByRole('region', { name: 'Open questions' }).getByRole('link', { name: 'test/repo#11' })
+  const href = await link.getAttribute('href')
+  expect(href).toBe('/api/latest-comment?repo=test%2Frepo&issue=11')
+
+  const res = await page.request.get(new URL(href!, page.url()).href, { maxRedirects: 0 })
+  expect(res.status()).toBe(302)
+  expect(res.headers()['location']).toBe('https://github.com/test/repo/issues/11#issuecomment-1102')
 })
 
 test('empty: no issues and an old Claude cache', async ({ page, github, lighthouse }) => {

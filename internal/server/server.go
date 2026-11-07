@@ -53,6 +53,7 @@ func New(site fs.FS, d Deps) http.Handler {
 	}, func(op *huma.Operation) { op.OperationID = "get-usage" })
 
 	registerForge(api, d.Forge)
+	registerLatestComment(api, d.Forge)
 	registerCleanup(api, d.Leftovers)
 	registerRuns(api, d.Runs)
 
