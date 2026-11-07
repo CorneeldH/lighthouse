@@ -1,6 +1,7 @@
 package workplace
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -210,5 +211,36 @@ func TestForeignLiveRecordedKeyWithOtherSessionID(t *testing.T) {
 	s := sess("kf", "idle", "x", now0)
 	if got, ok := ForeignLive([]Session{s}, Own{"kf": "mine"}); !ok || got.Key != "kf" {
 		t.Fatalf("got %v %v, want live kf", got, ok)
+	}
+}
+
+// A claude outlives its run (#206), also in forge state done, and while one lives forge refuses a
+// new start in the worktree (#263): every own session of a closed run counts, in any state.
+func TestEarlier(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		sessions []Session
+		own      Own
+		open     map[string]bool
+		want     []string
+	}{
+		{"returned run waiting on a permission", []Session{sess("k1", "approval", "s1", now0)}, Own{"k1": "s1"}, nil, []string{"s1"}},
+		{"closed run in forge state done", []Session{sess("k1", "done", "s1", now0)}, Own{"k1": "s1"}, nil, []string{"s1"}},
+		{"forge sent no session id", []Session{sess("k1", "idle", "", now0)}, Own{"k1": "s1"}, nil, []string{"s1"}},
+		{"open run of the issue", []Session{sess("k1", "working", "s1", now0)}, Own{"k1": "s1"}, map[string]bool{"s1": true}, nil},
+		{"open run, forge sent no session id", []Session{sess("k1", "working", "", now0)}, Own{"k1": "s1"}, map[string]bool{"s1": true}, nil},
+		{"foreign session", []Session{sess("x", "working", "f1", now0)}, Own{"k1": "s1"}, nil, nil},
+		{"recorded key with another session id", []Session{sess("k1", "working", "f1", now0)}, Own{"k1": "s1"}, nil, nil},
+		{"resume shares the session id", []Session{sess("k1", "done", "s1", now0), sess("k2", "approval", "s1", now0)}, Own{"k1": "s1", "k2": "s1"}, nil, []string{"s1"}},
+		{"list order", []Session{sess("k2", "idle", "s2", now0), sess("x", "idle", "f1", now0), sess("k1", "done", "s1", now0)}, Own{"k1": "s1", "k2": "s2"}, nil, []string{"s2", "s1"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := Earlier(tc.sessions, tc.own, tc.open); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("Earlier = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

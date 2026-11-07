@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -239,7 +240,7 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	if err != nil {
 		return ap.returnFixPR(ctx, a, fmt.Errorf("prepare: %w", err))
 	}
-	busy, err := ap.busy(ctx, w, ws, a, now)
+	busy, earlier, err := ap.busy(ctx, w, ws, a, now)
 	if err != nil {
 		return ap.returnFixPR(ctx, a, err)
 	}
@@ -279,10 +280,15 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	if relocErr != nil {
 		return ap.startFailed(ctx, run.ID, "handoff path", relocErr)
 	}
-	// A resume reuses the session: while the claude of the earlier run still lives, forge
-	// refuses the handoff. Only after the claim, so a process that lost it kills nothing.
-	if a.Kind == KindResume {
-		if err := w.Kill(ctx, ws.ID, []string{session}); err != nil {
+	// While a claude of an earlier run of the issue still lives in the workspace, forge refuses
+	// the handoff: a resume reuses its session (#206), and a run handed back while waiting on a
+	// permission keeps its session alive, which the new handoff replaces (#263). Only after the
+	// claim, so a process that lost it kills nothing.
+	if a.Kind == KindResume && !slices.Contains(earlier, session) {
+		earlier = append(earlier, session)
+	}
+	if len(earlier) > 0 {
+		if err := w.Kill(ctx, ws.ID, earlier); err != nil {
 			return ap.startFailed(ctx, run.ID, "end earlier claude", err)
 		}
 	}
@@ -393,19 +399,20 @@ func (ap applier) removeMarker(a Action) {
 	}
 }
 
-// busy returns why the workplace cannot take the run, or "" when it can.
-func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.Workspace, a Action, now time.Time) (string, error) {
+// busy returns why the workplace cannot take the run, or "" when it can, and the session ids of
+// the claudes of the issue's closed runs in the workspace (workplace.Earlier).
+func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.Workspace, a Action, now time.Time) (string, []string, error) {
 	sessions, err := w.Sessions(ctx, ws.ID)
 	if err != nil {
-		return "", fmt.Errorf("sessions: %w", err)
+		return "", nil, fmt.Errorf("sessions: %w", err)
 	}
 	keys, err := runs.SessionKeys(ctx, ap.env.DB, a.Repo, a.Issue)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	open, err := runs.Open(ctx, ap.env.DB, a.Repo)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	openSessions := map[string]bool{}
 	for _, r := range open {
@@ -413,11 +420,12 @@ func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.
 			openSessions[r.SessionID] = true
 		}
 	}
-	s, busy := workplace.Busy(sessions, workplace.Own(keys), openSessions, nil, now, ap.env.MaxWait)
+	own := workplace.Own(keys)
+	s, busy := workplace.Busy(sessions, own, openSessions, nil, now, ap.env.MaxWait)
 	if !busy {
-		return "", nil
+		return "", workplace.Earlier(sessions, own, openSessions), nil
 	}
-	return workplace.BusyReason(s), nil
+	return workplace.BusyReason(s), nil, nil
 }
 
 // startFailed closes a claimed run as start_failed with reason "<step>: <cause>". The release

@@ -173,7 +173,10 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 
 Verschillen met de spec-tabel, bewust:
 
-- Wacht op permissie (16) stopt de sessie niet: de prompt kan nog beantwoord worden. Alleen
+- Wacht op permissie (16) stopt de sessie niet: de prompt kan nog beantwoord worden. Een nieuwe
+  start van het issue in dezelfde workspace beëindigt haar claude wel, na de claim: de nieuwe
+  Handoff vervangt de openstaande prompt, en zolang die claude leeft weigert forge de start (#263,
+  zie *Afloop*). Alleen
   activiteit van de draad van de prompt, nieuwer dan de prompt, telt als beantwoord; een subagent die
   verder werkt houdt de hoofdthread niet in leven. De hook schrijft `at` in milliseconden, zoals het
   transcript: de `tool_use` achter de prompt valt meestal in dezelfde seconde. Zolang een prompt
@@ -202,9 +205,11 @@ hervatting van zijn sessie zolang hij leeft (#206). Een run die sluit als `done`
 beëindigt met `Kill` alleen de claude van die sessie-id, nooit de unit, zodat een interactieve sessie in
 dezelfde worktree doordraait. Een run zonder sessie-id slaat apply over. Mislukt `Kill`, dan blijft de
 rij open en probeert de volgende tick het opnieuw; een 🤖 Klaar staat er dan al, en regel 1 sluit. Een
-hervatting doet na de claim nog een `Kill` op haar sessie, vóór de 🤖 Hervat en de launch: ook een
-geparkeerde run of een eerdere mislukte `Kill` laat zo geen claude achter die de handoff blokkeert.
-Mislukt die `Kill`, dan sluit de run als `start_failed` (*end earlier claude: …*), zonder post.
+start of hervatting doet na de claim nog een `Kill`, vóór de 🤖 Gestart of Hervat en de launch: op
+elke sessie in de workspace van een gesloten eigen run, in welke forge-stand ook, en bij een
+hervatting ook op haar eigen sessie. Ook een geparkeerde run, een eerdere mislukte `Kill` of een run
+die met *wacht op permissie* (16) is teruggegeven laat zo geen claude achter die de handoff blokkeert
+(#263). Mislukt die `Kill`, dan sluit de run als `start_failed` (*end earlier claude: …*), zonder post.
 
 ## Exitcodes
 
