@@ -59,19 +59,30 @@ func TestReadTranscriptSubagentCounts(t *testing.T) {
 // end (#270). In background-pending a Bash task ends by a task-notification, one by TaskStop,
 // an assistant line quoting the agent's task id ends nothing, and a launch in a subagent
 // transcript does not count: the async agent itself is the main transcript's task.
+//
+// TurnOpen is a main-thread user or assistant line after the last stop_hook_summary: in
+// turn-after-notification claude took a turn on the notification of its subagent after the Stop
+// that made the forge report done. Without a summary, as in main-ended-subagent-working, no turn
+// counts as open.
 func TestReadTranscriptBackground(t *testing.T) {
 	cases := []struct {
-		dir  string
-		want int
+		dir        string
+		background int
+		turnOpen   bool
 	}{
-		{"background-pending", 1},
-		{"background-bash-running", 1},
-		{"background-ended", 0},
-		{"main-ended-subagent-working", 0},
+		{"background-pending", 1, false},
+		{"background-bash-running", 1, false},
+		{"background-ended", 0, false},
+		{"turn-after-notification", 0, true},
+		{"main-ended-subagent-working", 0, false},
 	}
 	for _, c := range cases {
-		if got := read(t, c.dir, "s").Background; got != c.want {
-			t.Errorf("%s: Background = %d, want %d", c.dir, got, c.want)
+		tr := read(t, c.dir, "s")
+		if tr.Background != c.background {
+			t.Errorf("%s: Background = %d, want %d", c.dir, tr.Background, c.background)
+		}
+		if tr.TurnOpen != c.turnOpen {
+			t.Errorf("%s: TurnOpen = %v, want %v", c.dir, tr.TurnOpen, c.turnOpen)
 		}
 	}
 }

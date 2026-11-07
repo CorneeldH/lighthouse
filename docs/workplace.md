@@ -173,7 +173,12 @@ async_launched` en een `agentId`. Een einde is een `<task-id>` in een regel die 
 (de `<task-notification>`), of het resultaat van een `TaskStop` (`task_id` met `message`). Starts in
 een subagent-transcript tellen niet: de async subagent zelf is al een taak van het hoofdtranscript.
 Een taak die tot het einde van de sessie doorloopt zonder melding (een server op de achtergrond) blijft
-tellen; dan beslissen de stilte- en looptijdregels van de tick. Ontbreekt het hoofdtranscript, dan wikkelt de fout `fs.ErrNotExist`; heeft geen
+tellen; dan beslissen de stilte- en looptijdregels van de tick.
+
+`TurnOpen` is waar als er na de laatste `stop_hook_summary` van het hoofdtranscript nog een user- of
+assistent-regel staat: claude nam na haar Stop een nieuwe beurt, op de melding van achtergrondwerk,
+en de forge-stand van die Stop is verouderd. Een sessie die midden in een beurt stopte, telt ook als
+open. Zonder `stop_hook_summary` (geen Stop-hooks) blijft het onwaar. Ontbreekt het hoofdtranscript, dan wikkelt de fout `fs.ErrNotExist`; heeft geen
 draad een regel met tijd, dan is het `ErrNotMeasurable`.
 
 ## Stop

@@ -41,6 +41,11 @@ type Transcript struct {
 	// TaskStop names them. Claude ends its turn while they run, and a Stop hook can then make
 	// the forge report the session done (#270).
 	Background int `json:"background,omitempty"`
+	// TurnOpen is true when a user or assistant line follows the last stop_hook_summary of the
+	// main transcript: claude took a turn after its Stop, on the notification of a background
+	// task, and the forge stand from that Stop is stale. Without a stop_hook_summary (no Stop
+	// hooks) it stays false.
+	TurnOpen bool `json:"turn_open,omitempty"`
 }
 
 // ProjectDir is the directory Claude Code keeps the transcripts of cwd in:
@@ -96,7 +101,7 @@ func ReadTranscript(dir, sessionID string) (Transcript, error) {
 	if t.AssistantTurn, t.UnknownCommand, err = scanStart(main); err != nil {
 		return Transcript{}, err
 	}
-	if t.Background, err = scanBackground(main); err != nil {
+	if t.Background, t.TurnOpen, err = scanWork(main); err != nil {
 		return Transcript{}, err
 	}
 	return t, nil
@@ -104,58 +109,78 @@ func ReadTranscript(dir, sessionID string) (Transcript, error) {
 
 var taskID = regexp.MustCompile(`<task-id>([^<\s]+)</task-id>`)
 
-// backgroundMarks are the strings a line needs to launch or end a background task; a line
-// without any of them is not decoded.
-var backgroundMarks = [][]byte{
+// workMarks are the strings a line needs to matter to scanWork; a line without any of them is
+// not decoded.
+var workMarks = [][]byte{
 	[]byte(`"backgroundTaskId"`), []byte(`"async_launched"`), []byte(`<task-id>`), []byte(`"task_id"`),
+	[]byte(`"stop_hook_summary"`), []byte(`"type":"user"`), []byte(`"type":"assistant"`),
 }
 
-// scanBackground streams the main transcript and counts the background tasks that were
-// launched and did not end. A launch is the tool result of a Bash call with a backgroundTaskId,
+// work is what scanWork gathers from the lines of the main transcript.
+type work struct {
+	launched, ended map[string]bool
+	summary         bool // a stop_hook_summary was seen
+	turnOpen        bool // a user or assistant line follows the last stop_hook_summary
+}
+
+// scanWork streams the main transcript for the work that still runs after a Stop: the
+// background tasks that were launched and did not end, and whether a turn opened after the
+// last stop_hook_summary. A launch is the tool result of a Bash call with a backgroundTaskId,
 // or of an Agent call with status async_launched. An end is a <task-id> in any line but an
 // assistant line (the task-notification), or the result of a TaskStop. A subagent's own
 // launches stay out: the async agent is already a task of the main transcript.
-func scanBackground(path string) (int, error) {
+func scanWork(path string) (background int, turnOpen bool, err error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
 	defer func() { _ = f.Close() }()
-	launched := map[string]bool{}
-	ended := map[string]bool{}
+	w := work{launched: map[string]bool{}, ended: map[string]bool{}}
 	r := bufio.NewReader(f)
 	for {
 		line, rerr := r.ReadBytes('\n')
-		if hasAny(line, backgroundMarks) {
-			readBackground(line, launched, ended)
+		if hasAny(line, workMarks) {
+			w.read(line)
 		}
 		if rerr != nil {
 			if !errors.Is(rerr, io.EOF) {
-				return 0, rerr
+				return 0, false, rerr
 			}
 			break
 		}
 	}
-	n := 0
-	for id := range launched {
-		if !ended[id] {
-			n++
+	for id := range w.launched {
+		if !w.ended[id] {
+			background++
 		}
 	}
-	return n, nil
+	return background, w.turnOpen, nil
 }
 
-// readBackground adds the task that line launches to launched, and the tasks it ends to ended.
-func readBackground(line []byte, launched, ended map[string]bool) {
+// read takes in one line: a turn boundary, the task it launches, or the tasks it ends.
+func (w *work) read(line []byte) {
 	var v struct {
 		Type          string          `json:"type"`
+		Subtype       string          `json:"subtype"`
 		ToolUseResult json.RawMessage `json:"toolUseResult"`
 	}
-	if json.Unmarshal(line, &v) != nil || v.Type == "assistant" {
+	if json.Unmarshal(line, &v) != nil {
 		return
 	}
+	switch v.Type {
+	case "system":
+		if v.Subtype == "stop_hook_summary" {
+			w.summary, w.turnOpen = true, false
+		}
+		return
+	case "assistant":
+		w.turnOpen = w.summary
+		return
+	case "user":
+		w.turnOpen = w.summary
+	}
 	for _, m := range taskID.FindAllSubmatch(line, -1) {
-		ended[string(m[1])] = true
+		w.ended[string(m[1])] = true
 	}
 	var res struct {
 		BackgroundTaskID string `json:"backgroundTaskId"`
@@ -169,11 +194,11 @@ func readBackground(line []byte, launched, ended map[string]bool) {
 	}
 	switch {
 	case res.BackgroundTaskID != "":
-		launched[res.BackgroundTaskID] = true
+		w.launched[res.BackgroundTaskID] = true
 	case res.Status == "async_launched" && res.AgentID != "":
-		launched[res.AgentID] = true
+		w.launched[res.AgentID] = true
 	case res.TaskID != "" && res.Message != "":
-		ended[res.TaskID] = true
+		w.ended[res.TaskID] = true
 	}
 }
 
