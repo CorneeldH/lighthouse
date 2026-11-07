@@ -24,7 +24,12 @@ NOT_FOUND_EXIT = 127
 
 # Signals that can stop the hook itself. The child runs in its own session and so
 # does not get them by itself: without forwarding, the suite kept running as an orphan.
-FORWARDED = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+# Windows has no SIGHUP: forward what the platform has (#90).
+FORWARDED = tuple(
+    getattr(signal, name) for name in ("SIGTERM", "SIGINT", "SIGHUP") if hasattr(signal, name)
+)
+# Windows has no SIGKILL either; there _kill_group kills the tree whatever the signal.
+HARD_KILL = getattr(signal, "SIGKILL", signal.SIGTERM)
 
 USAGE = "usage: deadline.py <epoch-seconds> -- <cmd> [args...]"
 
@@ -67,7 +72,7 @@ class _Forwarder:
     def __call__(self, signum: int, _frame: object) -> None:
         if self.signum is not None:
             if self.proc is not None:
-                _kill_group(self.proc.pid, signal.SIGKILL)
+                _kill_group(self.proc.pid, HARD_KILL)
             return
         self.signum = signum
         if self.waiting:
@@ -86,6 +91,16 @@ class _Forwarder:
 
 
 def _kill_group(pgid: int, sig: int) -> None:
+    if not hasattr(os, "killpg"):
+        # Windows: no process groups to signal. `taskkill /T` ends the child and
+        # everything it started, `/F` at once; a child already gone is no error.
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(pgid)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return
     try:
         os.killpg(pgid, sig)
     except ProcessLookupError:
@@ -101,7 +116,7 @@ def _stop_group(proc: subprocess.Popen, grace: float) -> None:
     try:
         proc.wait(timeout=grace)
     except subprocess.TimeoutExpired:
-        _kill_group(pgid, signal.SIGKILL)
+        _kill_group(pgid, HARD_KILL)
         proc.wait()
 
 
