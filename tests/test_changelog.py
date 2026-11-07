@@ -1,6 +1,7 @@
 """ci/changelog.py: the fragment parser and the `check` command."""
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -152,6 +153,10 @@ def test_check_bad_base_cannot_check(git_repo, capsys):
     assert "COULD NOT CHECK" in capsys.readouterr().err
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="APFS rejects non-UTF-8 file names: the case cannot occur on macOS (#90)",
+)
 def test_added_fragments_non_utf8_name_cannot_check(git_repo, capsys):
     """Fails when an undecodable file name escapes as a traceback instead of COULD NOT CHECK."""
     root, c1 = git_repo
