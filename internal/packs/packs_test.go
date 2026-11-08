@@ -389,6 +389,11 @@ func TestIsLighthouseRule(t *testing.T) {
 		"Bash(.claude/skills/other/review.sh:*)":                  false,
 		"Bash(.agents/skills/lighthouse-x/review.sh:*)":           false,
 		"Bash(.claude/hooks/x.sh)":                                false,
+		"Bash(lighthouse config:*)":                               true,
+		"Bash(lighthouse headings)":                               true,
+		"Bash(lighthouse:*)":                                      false,
+		"Bash(lighthousex foo:*)":                                 false,
+		"Bash(lighthouse Config:*)":                               false,
 	} {
 		if got := IsLighthouseRule(rule); got != want {
 			t.Errorf("IsLighthouseRule(%q) = %v", rule, got)

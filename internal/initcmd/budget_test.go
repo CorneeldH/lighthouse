@@ -1,6 +1,7 @@
 package initcmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -115,7 +116,7 @@ func TestBudgetSilentWhenInstructionsUnchanged(t *testing.T) {
 func TestBudgetNotMeasurableWithoutPython(t *testing.T) {
 	root := newRepo(t)
 	r := run(t, root, "y\n", func(o *Options) {
-		o.Lookup = func(string) (string, bool, error) { return "", false, errNoPython }
+		o.Lookup = func(string) (string, bool, error) { return "", false, errors.New("python3 is not available") }
 	})
 	if r.code != 0 || !exists(root, "AGENTS.md") {
 		t.Fatalf("rc %d\n%s", r.code, r.err)

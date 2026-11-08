@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/config"
 )
 
 const full = `[forge]
@@ -339,5 +341,27 @@ func TestTriageable(t *testing.T) {
 				t.Errorf("Triageable = %v, want %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+// Red when Load keeps its own literal defaults instead of config.Default.
+func TestLoadDefaultsFromConfig(t *testing.T) {
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, got := range map[string]string{
+		"forge.default_branch":    r.DefaultBranch,
+		"labels.blocked_issue":    r.Labels.BlockedIssue,
+		"labels.blocked_external": r.Labels.BlockedExternal,
+		"labels.needs_shaping":    r.Labels.NeedsShaping,
+		"labels.needs_decision":   r.Labels.NeedsDecision,
+		"labels.needs_hands":      r.Labels.NeedsHands,
+		"labels.needs_testing":    r.Labels.NeedsTesting,
+	} {
+		want, ok := config.Default(key)
+		if !ok || got != want {
+			t.Errorf("%s: Load %q, config.Default %v (%v)", key, got, want, ok)
+		}
 	}
 }
