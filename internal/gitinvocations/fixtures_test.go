@@ -33,6 +33,8 @@ type fixtureCase struct {
 	Command string            `json:"command"`
 	CWD     string            `json:"cwd"`
 	Path    string            `json:"path"`
+	Default string            `json:"default_branch"`
+	Report  bool              `json:"report_new_dirs"`
 	Expect  json.RawMessage   `json:"expect"`
 }
 
@@ -117,9 +119,6 @@ func TestFixtures(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			if c.Kind != "walk" && c.Kind != "repo_of" {
-				t.Skip("taak 3")
-			}
 			root := t.TempDir() // deliberately without EvalSymlinks
 			t.Setenv("LH_UNSET_VAR", "")
 			if err := os.Unsetenv("LH_UNSET_VAR"); err != nil {
@@ -150,6 +149,51 @@ func TestFixtures(t *testing.T) {
 			cwd := root
 			if c.CWD != "" {
 				cwd = filepath.Join(root, c.CWD)
+			}
+			if c.Kind == "find" {
+				got, err := Find(command, cwd, Options{DefaultBranch: c.Default, ReportNewDirs: c.Report})
+				var word string
+				if json.Unmarshal(c.Expect, &word) == nil && word == "unparseable" {
+					if !errors.Is(err, ErrUnparseable) {
+						t.Fatalf("err = %v, want ErrUnparseable", err)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				var want [][4]string
+				if err := json.Unmarshal(c.Expect, &want); err != nil {
+					t.Fatal(err)
+				}
+				if len(got) != len(want) {
+					t.Fatalf("got %d invocations, want %d: %+v", len(got), len(want), got)
+				}
+				for i, inv := range got {
+					w := Invocation{want[i][0], fill(t, want[i][1], root), want[i][2], fill(t, want[i][3], root)}
+					if inv != w {
+						t.Errorf("invocation %d = %+v, want %+v", i, inv, w)
+					}
+				}
+				return
+			}
+			if c.Kind == "git_target" {
+				var want struct {
+					Target     string `json:"target"`
+					ActionWord string `json:"action_word"`
+				}
+				if err := json.Unmarshal(c.Expect, &want); err != nil {
+					t.Fatal(err)
+				}
+				steps, err := Walk(command, cwd)
+				if err != nil || len(steps) != 1 {
+					t.Fatalf("Walk = %v, %v; want one step", steps, err)
+				}
+				target, known, _, _, actionIdx := GitTarget(steps[0])
+				if !known || target != fill(t, want.Target, root) || steps[0].Words[actionIdx] != want.ActionWord {
+					t.Fatalf("GitTarget = %q, %v, word %q; want %q, %q", target, known, steps[0].Words[actionIdx], fill(t, want.Target, root), want.ActionWord)
+				}
+				return
 			}
 			steps, err := Walk(command, cwd)
 			var word string
