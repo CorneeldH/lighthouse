@@ -94,6 +94,30 @@ en = "PR red"
 nl = "PR rood na 3 fix-pr-runs"
 en = "PR red after 3 fix-pr runs"
 
+[reason_pr_conflict]
+nl = "PR heeft een merge-conflict"
+en = "PR has a merge conflict"
+
+[reason_pr_conflict_ceiling]
+nl = "PR heeft een merge-conflict na 3 fix-pr-runs"
+en = "PR has a merge conflict after 3 fix-pr runs"
+
+[reason_pr_roborev]
+nl = "PR heeft een onverwerkte roborev-review"
+en = "PR has an unprocessed roborev review"
+
+[reason_pr_roborev_ceiling]
+nl = "onverwerkte roborev-review na 3 fix-pr-runs"
+en = "unprocessed roborev review after 3 fix-pr runs"
+
+[reason_merge_failed]
+nl = "merge mislukt"
+en = "merge failed"
+
+[reason_merge_failed_ceiling]
+nl = "merge mislukt na 3 fix-pr-runs"
+en = "merge failed after 3 fix-pr runs"
+
 [reason_no_handoff]
 nl = "geen handoff of vraag"
 en = "no handoff or question"
@@ -129,6 +153,10 @@ en = "plan review skipped (config)"
 [note_done]
 nl = "Checks groen, klaar voor review. Mergen blijft bij jou; na de merge toetst de controller het issue opnieuw als het nog open staat."
 en = "Checks green, ready for review. Merging stays with you; after the merge the controller checks the issue again if it is still open."
+
+[note_merged]
+nl = "Checks groen, door de controller gesquasht en gemerged. Staat het issue nog open, dan toetst de controller het opnieuw."
+en = "Checks green, squashed and merged by the controller. If the issue is still open, the controller checks it again."
 
 [prompt_usage_resume]
 nl = "ga verder"
