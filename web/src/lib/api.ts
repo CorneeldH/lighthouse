@@ -67,10 +67,27 @@ export async function fetchCleanup(signal?: AbortSignal): Promise<Leftover[]> {
   return (res.data as { cleanup: Leftover[] | null }).cleanup ?? []
 }
 
-export async function fetchRuns(signal?: AbortSignal): Promise<{ runs: RunView[]; deferred: DeferredView[] }> {
+export interface RunsData {
+  runs: RunView[]
+  deferred: DeferredView[]
+  workspaceUrl: string
+  night: string
+}
+
+export async function fetchRuns(signal?: AbortSignal): Promise<RunsData> {
   const res = await call(() => getRuns({ signal }))
-  const body = res.data as { runs: RunView[] | null; deferred: DeferredView[] | null }
-  return { runs: body.runs ?? [], deferred: body.deferred ?? [] }
+  const body = res.data as {
+    runs: RunView[] | null
+    deferred: DeferredView[] | null
+    workspace_url?: string
+    night?: string
+  }
+  return {
+    runs: body.runs ?? [],
+    deferred: body.deferred ?? [],
+    workspaceUrl: body.workspace_url ?? '',
+    night: body.night ?? '',
+  }
 }
 
 export async function fetchUsage(signal?: AbortSignal): Promise<Report> {

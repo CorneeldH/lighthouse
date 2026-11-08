@@ -18,3 +18,16 @@ export function formatReset(resetAt: string, now: Date): string {
 export function formatPct(pct: number, lowerBound: boolean): string {
   return `${lowerBound ? '≥ ' : ''}${pct}%`
 }
+
+export function formatDuration(ageS: number): string {
+  if (ageS < 60) return '< 1 min'
+  if (ageS < 3600) return `${Math.floor(ageS / 60)} min`
+  const h = Math.floor(ageS / 3600)
+  const m = Math.floor((ageS % 3600) / 60)
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
+
+// Clock time "HH:MM" of an ISO timestamp, in local time.
+export function formatClock(iso: string): string {
+  return hhmm(new Date(iso))
+}

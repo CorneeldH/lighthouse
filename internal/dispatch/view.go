@@ -20,6 +20,10 @@ type RunView struct {
 	Title       string    `json:"title"`
 	State       string    `json:"state"` // "open" or "parked"
 	Command     string    `json:"command"`
+	Phase       string    `json:"phase"` // see Phase; "" for an empty command
+	Task        int       `json:"task"`  // current plan task of a subagent-driven run; 0 without progress
+	Tasks       int       `json:"tasks"` // number of tasks in that plan; 0 without progress
+	Step        string    `json:"step"`  // "build", "review", "final-review"; "" without progress
 	Trigger     string    `json:"trigger"`
 	Profile     string    `json:"profile"`
 	WorkspaceID string    `json:"workspace_id"`
@@ -38,7 +42,8 @@ type DeferredView struct {
 }
 
 // RunViews turns the open and parked runs of one repo into views, sorted by issue. An issue in
-// both lists is shown once, as open. The stand comes from pre.Stands and stays "" when the run
+// both lists is shown once, as open. The phase comes from the command and the task progress from
+// the plan and ledger of an sdd run, left zero when they cannot be read. The stand comes from pre.Stands and stays "" when the run
 // was not measured; At stays zero for SaveRunView to set.
 func RunViews(pre Pre, open, parked []runs.Brief) []RunView {
 	titles := make(map[int]string, len(pre.Items))
@@ -51,7 +56,10 @@ func RunViews(pre Pre, open, parked []runs.Brief) []RunView {
 		v := RunView{
 			Repo: b.Repo, Issue: b.Issue, Title: titles[b.Issue], State: state,
 			Command: b.Command, Trigger: b.Trigger, Profile: b.Profile,
-			WorkspaceID: b.WorkspaceID, StartedAt: b.StartedAt,
+			WorkspaceID: b.WorkspaceID, StartedAt: b.StartedAt, Phase: Phase(b.Command),
+		}
+		if p, ok := ReadProgress(b.Command); ok {
+			v.Task, v.Tasks, v.Step = p.Task, p.Tasks, p.Step
 		}
 		if stand, ok := pre.Stands[b.ID]; ok {
 			v.Stand = stand.String()

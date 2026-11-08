@@ -252,7 +252,7 @@ func TestRunsList(t *testing.T) {
 	d := testDeps(stubSource{}, nil)
 	d.Runs = func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
 		return []dispatch.RunView{{Repo: "o/r", Issue: 7, Title: "zeven", State: "open", Command: "/lighthouse-start-issue 7",
-				Trigger: "board", Profile: "software", WorkspaceID: "ws-7", StartedAt: at, Stand: "working", At: at}},
+				Phase: "start-issue", Trigger: "board", Profile: "software", WorkspaceID: "ws-7", StartedAt: at, Stand: "working", At: at}},
 			[]dispatch.DeferredView{{Repo: "o/r", Issue: 8, Title: "acht", Reason: "no slot", At: at}}, nil
 	}
 	rec := get(New(testSite(), d), "/api/runs")
@@ -261,6 +261,7 @@ func TestRunsList(t *testing.T) {
 	}
 	body := decode(t, rec.Body.Bytes())
 	const wantRuns = `[{"repo":"o/r","issue":7,"title":"zeven","state":"open","command":"/lighthouse-start-issue 7",` +
+		`"phase":"start-issue","task":0,"tasks":0,"step":"",` +
 		`"trigger":"board","profile":"software","workspace_id":"ws-7","started_at":"2026-11-01T09:00:00Z",` +
 		`"stand":"working","at":"2026-11-01T09:00:00Z"}]`
 	if got := string(body["runs"]); got != wantRuns {
@@ -272,13 +273,29 @@ func TestRunsList(t *testing.T) {
 	}
 }
 
+func TestRunsMeta(t *testing.T) {
+	d := testDeps(stubSource{}, nil)
+	d.RunsMeta = RunsMeta{WorkspaceURL: "http://127.0.0.1:8091", Night: "21:00-08:00"}
+	rec := get(New(testSite(), d), "/api/runs")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	body := decode(t, rec.Body.Bytes())
+	if got := string(body["workspace_url"]); got != `"http://127.0.0.1:8091"` {
+		t.Errorf("workspace_url = %s", got)
+	}
+	if got := string(body["night"]); got != `"21:00-08:00"` {
+		t.Errorf("night = %s", got)
+	}
+}
+
 func TestRunsEmpty(t *testing.T) {
 	rec := get(New(testSite(), testDeps(stubSource{}, nil)), "/api/runs")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	if got := strings.TrimSpace(rec.Body.String()); got != `{"runs":[],"deferred":[]}` {
-		t.Errorf("body = %s, want {\"runs\":[],\"deferred\":[]}", got)
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"runs":[],"deferred":[],"workspace_url":"","night":""}` {
+		t.Errorf("body = %s, want empty runs, deferred, workspace_url and night", got)
 	}
 }
 

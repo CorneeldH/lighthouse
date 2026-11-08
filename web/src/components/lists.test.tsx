@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { splitDeferred } from '@/lib/deferred'
 import { newQueryClient } from '@/lib/queries'
 import { CleanupList } from './CleanupList'
 import { QuestionList } from './QuestionList'
+import { Summary } from './Summary'
 import { ReturnedList } from './ReturnedList'
-import { RunsList } from './RunsList'
+import { NightBlock, ParkedBlock, QueueBlock, RunningBlock } from './RunBlocks'
 
 let client: QueryClient | undefined
 
@@ -43,7 +45,9 @@ describe('QuestionList', () => {
     renderWithClient(<QuestionList />)
 
     expect(await screen.findByText('o/a#7')).toBeTruthy()
-    expect(within(screen.getByRole('region', { name: 'Open questions' })).getByText('updated < 1 min ago')).toBeTruthy()
+    const region = screen.getByRole('region', { name: 'Open questions' })
+    expect(region.id).toBe('questions')
+    expect(within(region).getByText('2')).toBeTruthy()
     expect(screen.getByText('o/b#9')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'First' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=7')
     expect(screen.getByRole('link', { name: 'o/a#7' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=7')
@@ -52,6 +56,11 @@ describe('QuestionList', () => {
     expect(screen.getByText('how?')).toBeTruthy()
     const answers = screen.getAllByRole('link', { name: 'Answer' })
     expect(answers.map((a) => a.getAttribute('href'))).toEqual(['https://x/7#a', 'https://x/9#a'])
+    for (const a of answers) {
+      expect(a.getAttribute('target')).toBe('_blank')
+      expect(a.getAttribute('rel')).toBe('noopener noreferrer')
+    }
+    expect(screen.getByRole('link', { name: 'First' }).getAttribute('target')).toBe('_blank')
   })
 
   it('renders question text as text, never as markup', async () => {
@@ -62,6 +71,14 @@ describe('QuestionList', () => {
     const el = await screen.findByText((_, node) => node?.textContent === text && node.children.length === 0)
     expect(el.className).toContain('whitespace-pre-wrap')
     expect(container.querySelector('script')).toBeNull()
+  })
+
+  it('shows the count pill 1 for a single question', async () => {
+    stubFetch(() => json({ questions: [questions[0]] }))
+    renderWithClient(<QuestionList />)
+    const region = screen.getByRole('region', { name: 'Open questions' })
+    await within(region).findByText('o/a#7')
+    expect(within(region).getByText('1')).toBeTruthy()
   })
 
   it('shows the empty text', async () => {
@@ -79,34 +96,6 @@ describe('QuestionList', () => {
     expect(screen.queryByText('No open questions')).toBeNull()
   })
 
-  it('shows refreshing while a refetch of shown data runs, and not after', async () => {
-    let release: () => void = () => {}
-    let hold = false
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation(() =>
-        hold
-          ? new Promise<Response>((resolve) => {
-              release = () => resolve(json({ questions }))
-            })
-          : Promise.resolve(json({ questions })),
-      ),
-    )
-    renderWithClient(<QuestionList />)
-    const region = screen.getByRole('region', { name: 'Open questions' })
-    await within(region).findByText('o/a#7')
-    expect(within(region).queryByText(/refreshing/)).toBeNull()
-
-    hold = true
-    act(() => {
-      void client?.refetchQueries()
-    })
-
-    expect(await within(region).findByText('updated < 1 min ago · refreshing…')).toBeTruthy()
-    release()
-    expect(await within(region).findByText('updated < 1 min ago')).toBeTruthy()
-  })
-
   it('keeps old items and shows an alert when a refetch fails with 502', async () => {
     let res = () => json({ questions })
     stubFetch(() => res())
@@ -120,7 +109,6 @@ describe('QuestionList', () => {
 
     expect(screen.getByText('o/a#7')).toBeTruthy()
     expect((await screen.findByRole('alert')).textContent).toMatch(/^Forge unreachable: /)
-    expect(within(screen.getByRole('region', { name: 'Open questions' })).getByText('updated < 1 min ago')).toBeTruthy()
   })
 })
 
@@ -135,6 +123,7 @@ describe('ReturnedList', () => {
     expect(screen.getByRole('link', { name: 'Back' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=3')
     expect(screen.getByRole('link', { name: 'o/a#3' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=3')
     expect(screen.getByText('unclear AC')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Back' }).getAttribute('target')).toBe('_blank')
   })
 
   it('shows the empty text', async () => {
@@ -165,6 +154,7 @@ describe('CleanupList', () => {
 
     expect(await screen.findByText('o/r#7')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'o/r#7' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fr&issue=7')
+    expect(screen.getByRole('link', { name: 'o/r#7' }).getAttribute('target')).toBe('_blank')
     expect(screen.getByText('ws-1')).toBeTruthy()
     const path = screen.getByText('/w/ws-1')
     expect(path.tagName).toBe('CODE')
@@ -197,83 +187,262 @@ const run = {
   profile: 'software',
   workspace_id: 'ws-3',
   started_at: '2026-11-01T09:00:00Z',
-  stand: 'waiting',
+  stand: 'working',
   at: '2026-11-01T09:05:00Z',
+  phase: 'build',
+  task: 3,
+  tasks: 7,
+  step: 'build',
 }
 
-describe('RunsList', () => {
-  it('shows repo, issue, title, state, stand, command, trigger, profile and workspace', async () => {
-    stubFetch(() => json({ runs: [run], deferred: [] }))
-    renderWithClient(<RunsList />)
+function body(over: Record<string, unknown> = {}) {
+  return { runs: [run], deferred: [], workspace_url: 'http://127.0.0.1:8091', night: '21:00-08:00', ...over }
+}
 
-    const region = screen.getByRole('region', { name: 'Running runs' })
-    await within(region).findByText('o/a#3')
-    const [item] = within(region).getAllByRole('listitem')
-    const texts = ['o/a#3', 'Add the runs card', 'open', 'waiting', '/lighthouse-start-issue', 'board', 'software', 'ws-3']
-    for (const text of texts) {
-      expect(within(item).getByText(text)).toBeTruthy()
-    }
-    expect(screen.queryByText('No running runs')).toBeNull()
-    expect(within(item).getByRole('link', { name: 'o/a#3' }).getAttribute('href')).toBe(
-      '/api/latest-comment?repo=o%2Fa&issue=3',
-    )
+function deferred(issue: number, reason: string) {
+  return { repo: 'o/a', issue, title: `Deferred ${issue}`, reason, at: '2026-11-01T09:05:00Z' }
+}
+
+async function renderRunning(b: unknown = body()) {
+  stubFetch(() => json(b))
+  renderWithClient(<RunningBlock />)
+  const region = screen.getByRole('region', { name: 'Running runs' })
+  await within(region).findByText('Add the runs card').catch(() => undefined)
+  return region
+}
+
+function segmentKinds(el: HTMLElement): Array<string | null> {
+  return Array.from(el.querySelectorAll('[data-segment]')).map((n) => n.getAttribute('data-segment'))
+}
+
+describe('RunningBlock', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-01T11:05:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
-  it('shows a parked run without a stand as not measured', async () => {
-    stubFetch(() => json({ runs: [{ ...run, issue: 5, state: 'parked', stand: '' }], deferred: [] }))
-    renderWithClient(<RunsList />)
-
-    expect(await screen.findByText('o/a#5')).toBeTruthy()
-    expect(screen.getByText('parked')).toBeTruthy()
-    expect(screen.getByText('not measured')).toBeTruthy()
+  it('shows progress, stand badge and duration of an SDD run', async () => {
+    const region = await renderRunning()
+    expect(within(region).getByText('3/7')).toBeTruthy()
+    expect(segmentKinds(within(region).getByLabelText('task 3 of 7 · build'))).toEqual([
+      'done', 'done', 'build', 'pending', 'pending', 'pending', 'pending',
+    ])
+    expect(within(region).getByText('working')).toBeTruthy()
+    expect(within(region).getByText('2 h 5 min')).toBeTruthy()
+    expect(within(region).getByText('2 h 5 min').closest('[title]')?.getAttribute('title')).toMatch(/^running since \d\d:\d\d$/)
   })
 
-  it('shows a deferred start with its title and reason under Deferred starts', async () => {
-    stubFetch(() =>
-      json({
-        runs: [run],
-        deferred: [{ repo: 'o/a', issue: 4, title: 'Wait for night', reason: 'slots full', at: '2026-11-01T09:05:00Z' }],
-      }),
+  it('shows review and final review progress', async () => {
+    const region = await renderRunning(
+      body({ runs: [{ ...run, step: 'final-review', task: 5, tasks: 5 }] }),
     )
-    renderWithClient(<RunsList />)
-
-    const deferred = await screen.findByRole('list', { name: 'Deferred starts' })
-    expect(within(deferred).getByRole('link', { name: 'o/a#4' }).getAttribute('href')).toBe(
-      '/api/latest-comment?repo=o%2Fa&issue=4',
-    )
-    expect(within(deferred).getByText('Wait for night')).toBeTruthy()
-    expect(within(deferred).getByText('slots full')).toBeTruthy()
-    expect(within(deferred).queryByText('o/a#3')).toBeNull()
+    expect(within(region).getByText('5/5')).toBeTruthy()
+    expect(segmentKinds(within(region).getByLabelText('final review'))).toEqual(Array(5).fill('final'))
   })
 
-  it('shows the age of the tick that wrote each run and deferred start', async () => {
-    // A margin of 30 s keeps the floored age stable while the test runs.
-    const ago = (ms: number) => new Date(Date.now() - ms - 30_000).toISOString()
-    stubFetch(() =>
-      json({
-        runs: [{ ...run, at: ago(2 * 3_600_000) }],
-        deferred: [{ repo: 'o/a', issue: 4, title: 'Wait for night', reason: 'slots full', at: ago(5 * 60_000) }],
-      }),
-    )
-    renderWithClient(<RunsList />)
-
-    const deferred = await screen.findByRole('list', { name: 'Deferred starts' })
-    const [item] = within(screen.getByRole('region', { name: 'Running runs' })).getAllByRole('listitem')
-    expect(within(item).getByText('tick 2 h ago')).toBeTruthy()
-    expect(within(deferred).getByText('tick 5 min ago')).toBeTruthy()
+  it('labels a review step', async () => {
+    const region = await renderRunning(body({ runs: [{ ...run, step: 'review', task: 5, tasks: 6 }] }))
+    expect(segmentKinds(within(region).getByLabelText('task 5 of 6 · review'))).toEqual([
+      'done', 'done', 'done', 'done', 'review', 'pending',
+    ])
   })
 
-  it('shows the empty text when there are no runs and no deferred starts', async () => {
-    stubFetch(() => json({ runs: [], deferred: [] }))
-    renderWithClient(<RunsList />)
+  it('shows only the phase when there are no tasks', async () => {
+    const region = await renderRunning(body({ runs: [{ ...run, tasks: 0, task: 0, step: '', phase: 'plan-review' }] }))
+    expect(within(region).getByText('plan-review')).toBeTruthy()
+    expect(within(region).queryByText(/^\d+\/\d+$/)).toBeNull()
+  })
+
+  it('shows the done and not-measured stands', async () => {
+    const region = await renderRunning(
+      body({ runs: [{ ...run, stand: 'done' }, { ...run, issue: 4, stand: '' }] }),
+    )
+    const done = within(region).getByText('done · next tick decides')
+    expect(done.closest('[title]')?.getAttribute('title')).toBe(
+      'Claude finished its turn; the next tick decides: handoff, done, question or returned',
+    )
+    expect(within(region).getByText('not measured')).toBeTruthy()
+  })
+
+  it('shows the waiting stand', async () => {
+    const region = await renderRunning(body({ runs: [{ ...run, stand: 'waiting' }] }))
+    expect(within(region).getByText('waiting')).toBeTruthy()
+    expect(within(region).queryByText('working')).toBeNull()
+  })
+
+  it('links the workspace in a new tab', async () => {
+    const region = await renderRunning()
+    const link = within(region).getByRole('link', { name: 'ws-3, opens kenn-forge in a new tab' })
+    expect(link.getAttribute('href')).toBe('http://127.0.0.1:8091/workspaces/ws-3')
+    expect(link.getAttribute('target')).toBe('_blank')
+  })
+
+  it('shows the workspace without a link when there is no url', async () => {
+    const region = await renderRunning(body({ workspace_url: '' }))
+    const code = within(region).getByText('ws-3')
+    expect(code.tagName).toBe('CODE')
+    expect(within(region).queryByRole('link', { name: /ws-3/ })).toBeNull()
+  })
+
+  it('keeps the command in the tooltip, not in the visible row', async () => {
+    const region = await renderRunning()
+    const tip = within(region).getByRole('tooltip')
+    expect(within(tip).getByText('/lighthouse-start-issue')).toBeTruthy()
+    expect(tip.textContent).toContain('board')
+    expect(tip.textContent).toContain('software')
+    expect(tip.textContent).toMatch(/started \d\d:\d\d/)
+    expect(within(region).getByRole('button', { name: 'Run details' }).getAttribute('aria-describedby')).toBe(tip.id)
+    const row = within(region).getByRole('listitem')
+    const clone = row.cloneNode(true) as HTMLElement
+    clone.querySelector('[role="tooltip"]')?.remove()
+    expect(clone.textContent).not.toContain('/lighthouse-start-issue')
+  })
+
+  it('shows no open or parked chip', async () => {
+    const region = await renderRunning()
+    const row = within(region).getByRole('listitem')
+    expect(within(row).queryByText('open')).toBeNull()
+    expect(within(row).queryByText('parked')).toBeNull()
+  })
+
+  it('keeps a parked run out of Running and in Parked', async () => {
+    stubFetch(() => json(body({ runs: [{ ...run, state: 'parked' }] })))
+    renderWithClient(
+      <>
+        <RunningBlock />
+        <ParkedBlock />
+      </>,
+    )
+    const parked = screen.getByRole('region', { name: 'Parked runs' })
+    expect(await within(parked).findByText('o/a#3')).toBeTruthy()
+    const running = screen.getByRole('region', { name: 'Running runs' })
+    expect(within(running).queryByText('o/a#3')).toBeNull()
+    expect(within(running).getByText('No running runs')).toBeTruthy()
+    expect(within(parked).getByText(/Stopped mid-run by the usage brake/)).toBeTruthy()
+  })
+
+  it('shows the empty texts', async () => {
+    stubFetch(() => json(body({ runs: [] })))
+    renderWithClient(
+      <>
+        <RunningBlock />
+        <ParkedBlock />
+        <QueueBlock />
+        <NightBlock />
+      </>,
+    )
     expect(await screen.findByText('No running runs')).toBeTruthy()
-    expect(screen.queryByRole('list', { name: 'Deferred starts' })).toBeNull()
+    expect(screen.getByText('No parked runs')).toBeTruthy()
+    expect(screen.getByText('Nothing in the queue')).toBeTruthy()
+    expect(screen.getByText('Nothing waiting for the night')).toBeTruthy()
   })
 
-  it('shows a neutral alert on a 500, not the forge text', async () => {
+  it('shows the runs error in Running and a short text elsewhere', async () => {
     stubFetch(() => json({ detail: 'db closed' }, 500))
-    renderWithClient(<RunsList />)
-    const alert = await screen.findByRole('alert')
-    expect(alert.textContent).toBe('Runs unavailable: db closed')
+    renderWithClient(
+      <>
+        <RunningBlock />
+        <QueueBlock />
+      </>,
+    )
+    expect(await within(screen.getByRole('region', { name: 'Running runs' })).findByRole('alert')).toBeTruthy()
+    expect(screen.getAllByRole('alert').map((a) => a.textContent)).toEqual([
+      'Runs unavailable: db closed',
+      'Runs unavailable',
+    ])
+  })
+})
+
+describe('Queue and Night', () => {
+  const list = [deferred(4, 'night'), deferred(5, 'night window'), deferred(6, 'slots: 4 of 4 in use')]
+
+  it('splits deferred on the exact reason night', () => {
+    const { queue, night } = splitDeferred(list)
+    expect(night.map((d) => d.issue)).toEqual([4])
+    expect(queue.map((d) => d.issue)).toEqual([5, 6])
+  })
+
+  it('shows queue rows with the reason badge and night rows apart', async () => {
+    stubFetch(() => json(body({ deferred: list })))
+    renderWithClient(
+      <>
+        <QueueBlock />
+        <NightBlock />
+      </>,
+    )
+    const queue = screen.getByRole('region', { name: 'Queue' })
+    const night = screen.getByRole('region', { name: 'Night' })
+    expect(await within(queue).findAllByRole('listitem')).toHaveLength(2)
+    expect(within(night).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(queue).getByText('slots: 4 of 4 in use')).toBeTruthy()
+    expect(within(queue).getByText('night window')).toBeTruthy()
+    expect(within(queue).getByText('Ready to start, held by a brake. The next tick with room starts it.')).toBeTruthy()
+    expect(within(night).getByText('Deferred 4')).toBeTruthy()
+    expect(within(night).getByText('Handed off for the night window. Starts from 21:00.')).toBeTruthy()
+  })
+
+  it('omits the start time when night is empty', async () => {
+    stubFetch(() => json(body({ deferred: list, night: '' })))
+    renderWithClient(<NightBlock />)
+    expect(await screen.findByText('Handed off for the night window.')).toBeTruthy()
+  })
+})
+
+describe('Summary', () => {
+  function stubRoutes(cleanup: () => Response) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/api/questions')) return Promise.resolve(json({ questions: [questions[0]] }))
+        if (url.includes('/api/returned')) return Promise.resolve(json({ returned: [] }))
+        if (url.includes('/api/cleanup')) return Promise.resolve(cleanup())
+        return Promise.resolve(
+          json(
+            body({
+              runs: [run, { ...run, issue: 4 }, { ...run, issue: 5, state: 'parked' }],
+              deferred: [deferred(6, 'slots: 4 of 4 in use'), deferred(7, 'night')],
+            }),
+          ),
+        )
+      }),
+    )
+  }
+
+  it('shows a summary tile per block', async () => {
+    stubRoutes(() => json({ cleanup: [] }))
+    renderWithClient(<Summary />)
+    const nav = screen.getByRole('navigation', { name: 'Summary' })
+    const expected: Array<[string, string, string]> = [
+      ['Questions', '1', '#questions'],
+      ['Returned', '0', '#returned'],
+      ['Running', '2', '#running'],
+      ['Parked', '1', '#parked'],
+      ['Queue', '1', '#queue'],
+      ['Night', '1', '#night'],
+      ['To clean up', '0', '#cleanup'],
+    ]
+    const links = within(nav).getAllByRole('link')
+    expect(links.map((l) => l.getAttribute('href'))).toEqual(expected.map((e) => e[2]))
+    for (const [label, count, href] of expected) {
+      const link = within(nav).getByRole('link', { name: new RegExp(`^${label}: `) })
+      expect(link.getAttribute('href')).toBe(href)
+      expect(link.getAttribute('target')).toBeNull()
+      await waitFor(() => expect(link.textContent).toBe(`${count}${label}`))
+      expect(link.getAttribute('aria-label')).toBe(`${label}: ${count}`)
+    }
+  })
+
+  it('shows a dash instead of the number when a query fails', async () => {
+    stubRoutes(() => json({ detail: 'db closed' }, 500))
+    renderWithClient(<Summary />)
+    const nav = screen.getByRole('navigation', { name: 'Summary' })
+    const clean = within(nav).getByRole('link', { name: /^To clean up: / })
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Questions: / }).textContent).toBe('1Questions'))
+    await waitFor(() => expect(clean.textContent).toBe('–To clean up'))
+    expect(clean.getAttribute('aria-label')).toBe('To clean up: unavailable')
   })
 })

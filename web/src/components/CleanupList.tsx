@@ -1,3 +1,4 @@
+import { Trash2 } from 'lucide-react'
 import type { JSX } from 'react'
 import { ApiError } from '@/lib/api'
 import { useCleanup } from '@/lib/queries'
@@ -12,15 +13,17 @@ function cleanupErrorText(err: unknown): string {
 }
 
 export function CleanupList(): JSX.Element {
-  const { data, error, isPending, isFetching, dataUpdatedAt } = useCleanup()
+  const { data, error, isPending } = useCleanup()
   return (
     <Panel
+      id="cleanup"
       title="Workspaces to clean up"
-      updatedAt={dataUpdatedAt}
+      icon={Trash2}
+      tone="green"
+      count={data?.length}
       error={error}
       errorText={cleanupErrorText}
       loading={isPending && !error}
-      refreshing={isFetching && !isPending}
     >
       {data && data.length === 0 && <p>No workspaces to clean up</p>}
       {data && data.length > 0 && (

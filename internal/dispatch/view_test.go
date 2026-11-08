@@ -27,16 +27,19 @@ func TestRunViews(t *testing.T) {
 		Items:  []Item{{Issue: 3, Title: "Drie"}, {Issue: 5, Title: "Vijf"}},
 		Stands: map[int64]workplace.Stand{10: workplace.Waiting},
 	}
-	open := []runs.Brief{{ID: 10, Issue: 3, Command: "start", Trigger: "board", Profile: "p", WorkspaceID: "w"}}
-	parked := []runs.Brief{{ID: 7, Issue: 5}}
+	_, _, sdd := sddWorktree(t, "Task 1: complete\nTask 2: complete\n")
+	open := []runs.Brief{{ID: 10, Issue: 3, Command: sdd, Trigger: "board", Profile: "p", WorkspaceID: "w"}}
+	parked := []runs.Brief{{ID: 7, Issue: 5, Command: "/lighthouse-review-plan /x/y.md"}}
 	got := RunViews(pre, open, parked)
 	if len(got) != 2 {
 		t.Fatalf("RunViews = %+v, want 2 views", got)
 	}
-	if v := got[0]; v.Issue != 3 || v.State != "open" || v.Title != "Drie" || v.Stand != "waiting" || v.Command != "start" || v.WorkspaceID != "w" {
+	if v := got[0]; v.Issue != 3 || v.State != "open" || v.Title != "Drie" || v.Stand != "waiting" || v.Command != sdd || v.WorkspaceID != "w" ||
+		v.Phase != "sdd" || v.Task != 3 || v.Tasks != 4 || v.Step != "build" {
 		t.Errorf("view 0 = %+v", v)
 	}
-	if v := got[1]; v.Issue != 5 || v.State != "parked" || v.Title != "Vijf" || v.Stand != "" {
+	if v := got[1]; v.Issue != 5 || v.State != "parked" || v.Title != "Vijf" || v.Stand != "" ||
+		v.Phase != "plan-review" || v.Task != 0 || v.Tasks != 0 || v.Step != "" {
 		t.Errorf("view 1 = %+v", v)
 	}
 }
@@ -86,7 +89,7 @@ func TestSaveRunViewRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	st := openViewStore(t)
 	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.FixedZone("CET", 3600))
-	if err := SaveRunView(ctx, st.DB, "o/a", []RunView{{Issue: 10, State: "open"}, {Issue: 9, State: "parked"}}, now); err != nil {
+	if err := SaveRunView(ctx, st.DB, "o/a", []RunView{{Issue: 10, State: "open", Phase: "sdd", Task: 3, Tasks: 4, Step: "review"}, {Issue: 9, State: "parked"}}, now); err != nil {
 		t.Fatal(err)
 	}
 	if err := SaveRunView(ctx, st.DB, "o/b", []RunView{{Issue: 1, State: "open"}}, now); err != nil {
@@ -109,6 +112,11 @@ func TestSaveRunViewRoundTrip(t *testing.T) {
 		}
 	}
 	got, _, err = LoadView(ctx, st.DB, []string{"o/a"})
+	if err == nil && len(got) == 2 {
+		if v := got[1]; v.Phase != "sdd" || v.Task != 3 || v.Tasks != 4 || v.Step != "review" {
+			t.Errorf("progress did not round-trip: %+v", v)
+		}
+	}
 	if err != nil || len(got) != 2 {
 		t.Errorf("LoadView(o/a) = %+v, %v, want only o/a", got, err)
 	}

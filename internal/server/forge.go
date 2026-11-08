@@ -46,16 +46,24 @@ func registerCleanup(api huma.API, leftovers func(context.Context) ([]workplace.
 	}, func(op *huma.Operation) { op.OperationID = "get-cleanup" })
 }
 
+// RunsMeta is the host configuration /api/runs repeats for the page.
+type RunsMeta struct {
+	WorkspaceURL string // kenn-forge base URL without a trailing slash; "" when unset
+	Night        string // night window as "HH:MM-HH:MM"
+}
+
 type runsOutput struct {
 	Body struct {
-		Runs     []dispatch.RunView      `json:"runs"`
-		Deferred []dispatch.DeferredView `json:"deferred"`
+		Runs         []dispatch.RunView      `json:"runs"`
+		Deferred     []dispatch.DeferredView `json:"deferred"`
+		WorkspaceURL string                  `json:"workspace_url"`
+		Night        string                  `json:"night"`
 	}
 }
 
 // registerRuns adds the endpoint that lists the open and parked runs and the deferred starts,
 // as the last tick wrote them.
-func registerRuns(api huma.API, list func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)) {
+func registerRuns(api huma.API, list func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error), meta RunsMeta) {
 	huma.Get(api, "/api/runs", func(ctx context.Context, _ *struct{}) (*runsOutput, error) {
 		runViews, deferred, err := list(ctx)
 		if err != nil {
@@ -70,6 +78,8 @@ func registerRuns(api huma.API, list func(context.Context) ([]dispatch.RunView, 
 		out := &runsOutput{}
 		out.Body.Runs = runViews
 		out.Body.Deferred = deferred
+		out.Body.WorkspaceURL = meta.WorkspaceURL
+		out.Body.Night = meta.Night
 		return out, nil
 	}, func(op *huma.Operation) { op.OperationID = "get-runs" })
 }
