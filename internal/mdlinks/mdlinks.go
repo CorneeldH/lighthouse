@@ -41,7 +41,7 @@ func splitLines(s string) []string {
 	for i := 0; i < len(s); {
 		r, size := utf8.DecodeRuneInString(s[i:])
 		switch r {
-		case '\n', '\v', '\f', '\x1c', '\x1d', '\x1e', '\u0085', ' ', ' ':
+		case '\n', '\v', '\f', '\x1c', '\x1d', '\x1e', '\u0085', '\u2028', '\u2029':
 		case '\r':
 			lines = append(lines, s[start:i])
 			if i+1 < len(s) && s[i+1] == '\n' {

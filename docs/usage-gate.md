@@ -18,8 +18,8 @@ van een meting) doet elke stand niets.
 | Stand | Event | Zonder alarm | Met alarm |
 |---|---|---|---|
 | `prompt` | `UserPromptSubmit` | start de verversing, exit 0 | start de verversing; `additionalContext` met soort, pct, reset en de afrondopdracht; nooit blokkerend |
-| `tool` | `PostToolUse`, matcher leeg | één bestandscheck, exit 0 | één keer per venster `{"decision":"block"}`: commit het werk-in-uitvoering, schrijf een handoff, begin geen nieuwe stap |
-| `subagent` | `SubagentStop`, en `PostToolUse` met `agent_id` | één bestandscheck, exit 0 | één keer per subagent `{"decision":"block"}` met een eigen reden: stop, meld de hoofdthread wat je deed en wat er nog open staat; commit niets, geen wekker, geen handoff |
+| `tool` | `PostToolUse`, matcher leeg | leest alleen het alarm, exit 0 | één keer per venster `{"decision":"block"}`: commit het werk-in-uitvoering, schrijf een handoff, begin geen nieuwe stap |
+| `subagent` | `SubagentStop`, en `PostToolUse` met `agent_id` | leest alleen het alarm, exit 0 | één keer per subagent `{"decision":"block"}` met een eigen reden: stop, meld de hoofdthread wat je deed en wat er nog open staat; commit niets, geen wekker, geen handoff |
 | `stop` | `Stop` | exit 0 | één keer per venster `{"decision":"block"}`: commit niets meer, schrijf de handoff, stop |
 
 - **Wanneer telt het alarm.** Het alarm is `${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse/usage-window.alarm`.
@@ -33,9 +33,10 @@ van een meting) doet elke stand niets.
   exit; de hook en de blokkerende Stop-gates lezen het zo.
 - **Tijd.** `reset_at` wordt in Go gelezen als `2006-01-02T15:04:05Z`; dat hangt niet van de
   `date` van de host af. Een onleesbare tijd telt het alarm niet.
-- **Snelle pad.** In `tool` en `subagent` is het pad zonder alarm een bestandscheck in de
-  binary, zonder stdin te lezen. Alleen een controller-run toetst eerst de pauzevlag. Pas bij een
-  geldig alarm of een geldige vlag leest de hook de payload van stdin.
+- **Snelle pad.** In `tool` en `subagent` doet de hook zonder alarm niets meer dan het alarm
+  lezen (elke call loopt via `run.sh` en de binary, en `hook.Run` leest altijd stdin). Alleen een
+  controller-run toetst eerst de pauzevlag. Pas bij een geldig alarm of een geldige vlag verwerkt
+  de hook de payload.
 - **Subagent-calls.** Een `PostToolUse` met `agent_id` komt uit een subagent. De hook ziet dat pas
   op het trage pad en behandelt de call dan als stand `subagent`. De `tool`-sleutel blijft zo voor
   de hoofdthread.
@@ -43,9 +44,9 @@ van een meting) doet elke stand niets.
   `resume` of `controller` aan, en schrijft nooit een marker. Marker, wekker en handoff komen
   alleen uit `tool` en `stop`.
 - **Eén keer per venster.** Zie *Sleutels*. `tool` en `subagent` claimen de sleutel exclusief
-  vóór ze spreken; lukt dat niet, dan zwijgt de call. Faalt daarna de module, of geeft ze iets
-  anders terug dan een JSON-object, dan haalt de hook de claim weg en zwijgt hij: de volgende
-  call kan opnieuw spreken. `stop` zet de sleutel pas nadat de blokkade is uitgezonden.
+  vóór ze spreken; lukt dat niet, dan zwijgt de call. Faalt daarna het schrijven van de reactie, of is de uitvoer
+  geen JSON-object, dan haalt de hook de claim weg en zwijgt hij: de volgende
+  call kan opnieuw spreken. `stop` zet de sleutel zodra de blokkade is besloten, vóór het uitzenden.
 - **`stop` zwijgt** bij `stop_hook_active`, bij een onleesbare payload (`not json`, `[]`) en
   als de sleutelmap niet te maken is (één regel `usage-gate: ` op stderr). Anders blokkeerde hij
   bij elke beurt opnieuw. `tool` zonder leesbare payload blokkeert wel, zonder sessiedeel in de
@@ -56,7 +57,7 @@ van een meting) doet elke stand niets.
 - **Afronden.** Zonder optie `resume` noemt de reden `/lighthouse-write-handoff <pad>` als afrondstap,
   met het pad `<resume-map>/<session_id>.handoff.md` (zonder `session_id`:
   `no-session-<epoch>.handoff.md`). Dat schrijft en toont alleen het blok. Met `resume` neemt de
-  module de stappen over.
+  hook de stappen over.
 
 ## Opties
 
@@ -97,7 +98,7 @@ Voor een gewone sessie, en voor een controller-run met `controller = false`:
 Alleen als `LIGHTHOUSE_CONTROLLER_RUN` gezet is en volledig overeenkomt met `[0-9a-f-]+`. Anders
 gedraagt de sessie zich als een gewone.
 
-- **Alarm.** In `tool` en `stop` parkeert de module de run: een marker met `"controller": true` en
+- **Alarm.** In `tool` en `stop` parkeert de hook de run: een marker met `"controller": true` en
   een reden die zegt: commit het werk-in-uitvoering, stop, geen nieuwe stap, geen subagent, geen
   wekker, geen handoff. De controller hervat na de reset. Zonder `session_id` in de payload is
   de run-id de `session_id`. `prompt` waarschuwt dat de run bij de volgende call parkeert.
@@ -105,7 +106,7 @@ gedraagt de sessie zich als een gewone.
 
 ## Contract
 
-Dit is wat de modules schrijven en wat een poller of controller leest.
+Dit is wat de hook schrijft en wat een poller of controller leest.
 
 | Wat | Pad of naam |
 |---|---|
@@ -130,7 +131,7 @@ Een leeg bestand `<soort>-<reset_at>.<stand>[.<session_id>][.<run-id>|.<agent_id
 de pauze `pause-<tot>.<run-id>.done`, in de sleutelmap. `<stand>` is `tool`, `subagent` of
 `stop`. Zonder `session_id` vervalt dat deel. Een controller-run voegt `.<run-id>` toe,
 `subagent` voegt `.<agent_id>` toe. `stop` ruimt sleutels ouder dan 14 dagen op, best-effort. De
-lib schrijft de sleutels, ook die van de pauze; geen module doet dat.
+hook schrijft de sleutels, ook die van de pauze; geen ander onderdeel doet dat.
 
 ### Marker
 
@@ -177,14 +178,14 @@ Alleen `tool` toetst het, alleen in een controller-run, in deze volgorde. De sta
 5. de payload heeft geen `agent_id`: een call in een subagent parkeert niet, de run parkeert bij de
    volgende call van de hoofdthread.
 
-Gelden alle vijf en staat `controller` aan, dan schrijft de lib de sleutel, schrijft de module een
+Gelden alle vijf en staat `controller` aan, dan schrijft de hook de sleutel en een
 marker met `"window": "pause"` en `"pause": true`, en blokkeert ze: commit het werk-in-uitvoering,
 stop, de controller hervat na `<tot>`. De pauzetoets gaat vóór de alarmtoets. Een ongeldige vlag
 (stap 1 tot en met 3) valt door naar het alarmpad; faalt stap 4 of 5, of staat `controller` uit,
 dan valt de hook met dezelfde payload door naar het alarmpad.
 
 Gelden een geldige vlag en een geldig alarm tegelijk, dan blijft er één marker per sessie: de
-module voegt samen met de bestaande marker en het latere hervatmoment (`reset_at`) wint, met
+hook voegt samen met de bestaande marker en het latere hervatmoment (`reset_at`) wint, met
 zijn `window` en zijn `pause`-veld. `cwd`, `created_at` en `source` volgen de laatste schrijver.
 De reden noemt het winnende hervatmoment. Een onleesbare of ongeldige marker wordt overschreven.
 
