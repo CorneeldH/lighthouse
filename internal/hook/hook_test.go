@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -243,5 +244,59 @@ func TestPanickingHookExits3(t *testing.T) {
 	code, out, errOut := call(t, "boom", "s1", newEnv(t, "v0.12.1", "v0.13.0"))
 	if code != ExitUnknown || out != "" || errOut != "COULD NOT CHECK: hook boom: panic: nil map\n" {
 		t.Errorf("code %d out %q err %q", code, out, errOut)
+	}
+}
+
+// Parallel hook calls of one session claim the notice once: the claim is one atomic create.
+func TestConcurrentCallsShowNoticeOnce(t *testing.T) {
+	register(t, "ok", okHook("ok"))
+	env := newEnv(t, "v0.12.1", "v0.13.0")
+	const n = 64
+	var (
+		wg    sync.WaitGroup
+		start = make(chan struct{})
+		shown = make(chan string, n)
+	)
+	for range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			var out, errOut bytes.Buffer
+			Run(context.Background(), "ok", "", strings.NewReader(`{"session_id":"s1"}`), &out, &errOut, env)
+			if out.Len() > 0 {
+				shown <- out.String()
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(shown)
+	if got := len(shown); got != 1 {
+		t.Errorf("notice shown %d times, want 1", got)
+	}
+}
+
+// When the marker cannot be written the notice still shows, every time.
+func TestNoticeShowsWhenMarkerCannotBeWritten(t *testing.T) {
+	register(t, "ok", okHook("ok"))
+	env := newEnv(t, "v0.12.1", "v0.13.0")
+	env.StateDir = filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(env.StateDir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		if _, out, _ := call(t, "ok", "s1", env); message(t, out) != versionNotice {
+			t.Errorf("call %d: message %q, want %q", i, message(t, out), versionNotice)
+		}
+	}
+}
+
+// A binary built from source reports "dev", which is no tag and gets no v.
+func TestVersionNoticeNamesDevBinaryWithoutV(t *testing.T) {
+	register(t, "ok", okHook("ok"))
+	_, out, _ := call(t, "ok", "s1", newEnv(t, "v0.12.1", "dev"))
+	if got, want := message(t, out), "lighthouse dev ≠ v0.12.1 in this repo — run lighthouse init --upgrade"; got != want {
+		t.Errorf("message %q, want %q", got, want)
 	}
 }

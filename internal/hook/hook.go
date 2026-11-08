@@ -8,8 +8,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -138,8 +140,9 @@ func hasSource(root string) bool {
 	return err == nil
 }
 
+// tag is v with a v prefix; "dev", the version of a binary built from source, is no tag.
 func tag(v string) string {
-	if strings.HasPrefix(v, "v") {
+	if v == devVersion || strings.HasPrefix(v, "v") {
 		return v
 	}
 	return "v" + v
@@ -184,16 +187,21 @@ func buildHasFailed(root string) bool {
 }
 
 // firstInSession reports whether kind was not yet shown in session, and records that it now is.
-// When the marker cannot be written the notice is shown anyway: a repeated notice is better
-// than a silent one.
+// The claim is one exclusive create, so parallel calls of one session show it once. When the
+// marker cannot be written the notice is shown anyway: a repeated notice is better than a
+// silent one.
 func firstInSession(stateDir, session, kind string) bool {
 	sum := sha256.Sum256([]byte(session))
 	marker := filepath.Join(stateDir, hex.EncodeToString(sum[:8])+"-"+kind)
-	if _, err := os.Stat(marker); err == nil {
+	if err := os.MkdirAll(stateDir, 0o750); err != nil {
+		return true
+	}
+	f, err := os.OpenFile(marker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if errors.Is(err, fs.ErrExist) {
 		return false
 	}
-	if err := os.MkdirAll(stateDir, 0o750); err == nil {
-		_ = os.WriteFile(marker, nil, 0o600)
+	if err == nil {
+		_ = f.Close()
 	}
 	return true
 }
