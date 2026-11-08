@@ -183,13 +183,16 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 10 | Klaar, maar nooit een assistent-beurt | rij `start_failed` | |
 | 11 | PR van deze run gesloten zonder merge, en geen open PR | Teruggegeven, sessie stoppen als ze niet klaar is | PR gesloten |
 | 12 | Open PR is draft | Teruggegeven, sessie stoppen als ze niet klaar is | PR is draft |
-| 13 | Klaar en een eigen PR met een van vier oorzaken: rode checks, een merge-conflict, een onverwerkte roborev-review of een mislukte merge | fix-pr-start (sleutel `fixpr:<pr>:<sha>`, plafond 3 runs per PR); is het plafond bereikt, of houdt de rem de start tegen, dan Teruggegeven | per oorzaak *PR rood*, *PR heeft een merge-conflict*, *PR heeft een onverwerkte roborev-review* of *merge mislukt*; bij het plafond met ` na 3 fix-pr-runs` erachter (*onverwerkte roborev-review na 3 fix-pr-runs*) |
+| 13 | Klaar en een eigen PR met een van vier oorzaken: rode checks, een merge-conflict, een onverwerkte roborev-review of een mislukte merge | fix-pr-start (sleutel `fixpr:<pr>:<sha>`, plafond 3 runs per PR); is het plafond bereikt, of is de sleutel al gebruikt, of is er een actieve blokkade, dan Teruggegeven; houdt de rem de start tegen, dan blijft de run open (zie hieronder) | per oorzaak *PR rood*, *PR heeft een merge-conflict*, *PR heeft een onverwerkte roborev-review* of *merge mislukt*; bij het plafond met ` na 3 fix-pr-runs` erachter (*onverwerkte roborev-review na 3 fix-pr-runs*) |
+| 13b | Klaar en alleen een vreemde PR die rood is of een merge-conflict heeft (geen eigen open PR met een oorzaak) | Teruggegeven, sessie stoppen als ze niet klaar is | *PR rood* resp. *PR heeft een merge-conflict* |
 | 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
 | 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
 | 17 | `max_wait` > 0, niet klaar, geen openstaande permissie-prompt, geen activiteit in `max_wait` (geteld vanaf `started_at` op zijn vroegst) | Teruggegeven, sessie stoppen | geen activiteit in max_wait |
 | 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud, ook geteld vanaf `started_at` op zijn vroegst (zonder forge-tijd niet) | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
 | 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
+
+Regel 13: houdt de rem de fix-pr-start tegen (uitstel of weigering), dan vervalt de afsluiting van de run: ze blijft open en de volgende tick vindt dezelfde oorzaak opnieuw. Alleen een actieve blokkade (de issue-blokkade van de start), een al gebruikte sleutel of het plafond geeft Teruggegeven.
 
 Verschillen met de spec-tabel, bewust:
 
