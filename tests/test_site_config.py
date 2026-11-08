@@ -63,12 +63,11 @@ INDIRECT_READERS = {
     ("forge.board.project_number", "pack/python/scripts/quality/prcov_issues.py"): ".project_number",
     ("forge.board.status_field_id", "pack/python/scripts/quality/prcov_issues.py"): ".status_field_id",
     ("forge.board.status_options", "pack/python/scripts/quality/prcov_issues.py"): ".status_options",
-    ("forge.owner", "pack/python/scripts/quality/prcov_issues.py"): ".owner",
-    ("forge.name", "pack/python/scripts/quality/prcov_issues.py"): ".name",
 }
-# Each value is the attribute that file reads: board_start.py and prcov_issues.py use repo.board.*
-# and repo.owner of the loaded Config.
-LOADS_CONFIG = re.compile(r"config\.load\(|\bload\(config_path\(\)\)")
+# Each value is the attribute that file reads: board_start.py uses repo.board.* and repo.owner of
+# the loaded Config, prcov_issues.py the fields of the `forge.board` table it reads whole through
+# `lighthouse config --json` (#274).
+LOADS_CONFIG = re.compile(r"config\.load\(|\bload\(config_path\(\)\)|lookup\(\"forge\.board\"\)")
 _texts: dict[str, str] = {}
 _files: list[str] = []
 

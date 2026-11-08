@@ -11,6 +11,7 @@ fixture repository (`ROOT`) here.
 
 import atexit
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -226,6 +227,20 @@ def test_a_garbled_complexipy_pin_is_an_error(tmp_path):
         ratchet.complexipy_pin(tmp_path)
 
 
+_REAL_RUN = subprocess.run
+
+
+def _keep_lighthouse(fake):
+    """A fake `subprocess.run` for the tools; the config read through `lighthouse` stays real."""
+
+    def run(argv, **kwargs):
+        if argv[0] == "lighthouse":
+            return _REAL_RUN(argv, **kwargs)
+        return fake(argv, **kwargs)
+
+    return run
+
+
 class _FakeComplexipy:
     """A fake `subprocess.run` that plays complexipy: records the call and
     writes the JSON to the path after `--output`, like the real tool."""
@@ -271,7 +286,7 @@ def test_count_complexipy_runs_pinned_without_ignores_in_a_temp_dir(
     """Review Focus 2 and 3: no `# noqa` escape, and no litter in the working tree."""
     root = _complexipy_root(tmp_path)
     fake = _FakeComplexipy([_entry("src/a.py", "f", 3)])
-    monkeypatch.setattr(ratchet.subprocess, "run", fake)
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(fake))
 
     assert ratchet.count_complexipy(root) == [("src/a.py::f", 3)]
 
@@ -295,7 +310,7 @@ def test_count_complexipy_runs_outside_the_repo_so_its_config_cannot_exclude(
     fake = _FakeComplexipy(
         [_entry(str(root / "src" / "a.py"), "f", 30), _entry("/elders/b.py", "g", 1)]
     )
-    monkeypatch.setattr(ratchet.subprocess, "run", fake)
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(fake))
 
     assert ratchet.count_complexipy(root) == [
         ("src/a.py::f", 30),
@@ -314,7 +329,7 @@ def test_count_complexipy_keeps_duplicate_names(tmp_path, monkeypatch):
         _entry("src/c.py", "C::run", 22),
         _entry("src/c.py", "C::run", 23),
     ]
-    monkeypatch.setattr(ratchet.subprocess, "run", _FakeComplexipy(entries))
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(_FakeComplexipy(entries)))
     result = ratchet.count_complexipy(_complexipy_root(tmp_path))
     assert result == [
         ("src/a.py::C::run", 20),
@@ -332,13 +347,13 @@ def test_count_complexipy_is_red_when_a_file_failed(tmp_path, monkeypatch):
         returncode=1,
         stdout="Failed to process /x/src/broken.py\n",
     )
-    monkeypatch.setattr(ratchet.subprocess, "run", fake)
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(fake))
     with pytest.raises(SystemExit, match=r"broken\.py"):
         ratchet.count_complexipy(_complexipy_root(tmp_path))
 
 
 def test_count_complexipy_is_red_without_output(tmp_path, monkeypatch):
-    monkeypatch.setattr(ratchet.subprocess, "run", _FakeComplexipy(write=False))
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(_FakeComplexipy(write=False)))
     with pytest.raises(SystemExit, match="complexipy"):
         ratchet.count_complexipy(_complexipy_root(tmp_path))
 
@@ -347,7 +362,7 @@ def test_count_complexipy_is_red_on_a_tool_failure_without_a_failed_file(
     tmp_path, monkeypatch
 ):
     fake = _FakeComplexipy(returncode=2, stderr="boem")
-    monkeypatch.setattr(ratchet.subprocess, "run", fake)
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(fake))
     with pytest.raises(SystemExit, match=r"rc=2"):
         ratchet.count_complexipy(_complexipy_root(tmp_path))
 
@@ -363,7 +378,7 @@ def test_count_complexipy_is_red_on_a_tool_failure_without_a_failed_file(
     ],
 )
 def test_count_complexipy_is_red_on_a_malformed_entry(tmp_path, monkeypatch, entry):
-    monkeypatch.setattr(ratchet.subprocess, "run", _FakeComplexipy([entry]))
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(_FakeComplexipy([entry])))
     with pytest.raises(SystemExit, match="complexipy"):
         ratchet.count_complexipy(_complexipy_root(tmp_path))
 
@@ -498,7 +513,7 @@ def _fake_ruff(monkeypatch, tmp_path, findings):
         stderr = ""
 
     monkeypatch.setattr(
-        ratchet.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess()
+        ratchet.subprocess, "run", _keep_lighthouse(lambda *args, **kwargs: FakeCompletedProcess())
     )
 
 
@@ -531,7 +546,7 @@ def test_ruff_runs_pinned_with_the_mccabe_threshold_fixed_at_10(tmp_path, monkey
         seen["argv"] = list(argv)
         return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
 
-    monkeypatch.setattr(ratchet.subprocess, "run", fake_run)
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(fake_run))
     ratchet.count_ruff(tmp_path)
 
     argv = seen["argv"]
@@ -644,7 +659,7 @@ def test_an_invalid_syntax_finding_makes_the_arm_red(tmp_path, monkeypatch):
         stderr = ""
 
     monkeypatch.setattr(
-        ratchet.subprocess, "run", lambda *args, **kwargs: FakeCompletedProcess()
+        ratchet.subprocess, "run", _keep_lighthouse(lambda *args, **kwargs: FakeCompletedProcess())
     )
     with pytest.raises(SystemExit, match="invalid-syntax"):
         ratchet.count_ruff(tmp_path)
@@ -976,7 +991,7 @@ def test_the_coverage_suite_is_spawned_with_the_cleaned_env(monkeypatch, tmp_pat
         raise SystemExit("stopped after the spawn")
 
     monkeypatch.setenv("GIT_DIR", "/repo/.git")
-    monkeypatch.setattr(ratchet.subprocess, "run", fake_run)
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(fake_run))
     with pytest.raises(SystemExit):
         ratchet._acquire_report(tmp_path, None)
 
@@ -1174,6 +1189,9 @@ def test_tighten_does_both_axes_in_one_pass():
 
 from tests.pack._testkit import MINIMAL_TOML
 
+# ratchet reads lighthouse.toml through the binary of this checkout (#274).
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
+
 
 def _config(tmp_path: Path, monkeypatch, extra: str) -> None:
     path = tmp_path / "lighthouse.toml"
@@ -1196,7 +1214,7 @@ def test_dirs_from_config(tmp_path, monkeypatch):
             Path(argv[argv.index("--output") + 1]).write_text("[]", encoding="utf-8")
         return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
 
-    monkeypatch.setattr(ratchet.subprocess, "run", fake_run)
+    monkeypatch.setattr(ratchet.subprocess, "run", _keep_lighthouse(fake_run))
     ratchet.count_ruff(root)
     ratchet.count_complexipy(root)
     ruff, complexipy = seen
@@ -1292,6 +1310,48 @@ def test_an_empty_dir_list_is_red(tmp_path, monkeypatch, key):
     _config(tmp_path, monkeypatch, f"\n[python]\n{key} = []\n")
     with pytest.raises(SystemExit, match=f"ratchet: python.{key} is empty"):
         ratchet._dirs(f"python.{key}")
+
+
+def test_a_dir_list_comes_back_as_a_list(tmp_path, monkeypatch):
+    """`lighthouse config --json` keeps a list key a list; plain output would be one string."""
+    _config(tmp_path, monkeypatch, '\n[python]\nsource_dirs = ["a b", "c"]\n')
+    assert ratchet._dirs("python.source_dirs") == ["a b", "c"]
+
+
+def test_an_unset_key_names_the_key(tmp_path, monkeypatch):
+    _config(tmp_path, monkeypatch, "")
+    with pytest.raises(SystemExit, match="ratchet: python.nightly_workflow is not set in lighthouse.toml"):
+        ratchet.setting("python.nightly_workflow")
+
+
+def test_a_missing_binary_says_so(tmp_path, monkeypatch):
+    _config(tmp_path, monkeypatch, DIRS)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    with pytest.raises(SystemExit, match="`lighthouse` is not on the PATH"):
+        ratchet.setting("python.source_dirs")
+
+
+def test_an_older_binary_is_not_read_as_unset(tmp_path, monkeypatch):
+    """A binary without `config` exits 1 too; its message comes through, not "is not set"."""
+    _config(tmp_path, monkeypatch, DIRS)
+    stub = tmp_path / "bin" / "lighthouse"
+    stub.parent.mkdir()
+    stub.write_text('#!/bin/sh\necho \'Error: unknown command "config" for "lighthouse"\' >&2\nexit 1\n')
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{stub.parent}{os.pathsep}{os.environ['PATH']}")
+    with pytest.raises(SystemExit, match="unknown command"):
+        ratchet.setting("python.source_dirs")
+
+
+def test_repo_root_from_env_or_git(tmp_path, monkeypatch):
+    monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", "/elsewhere")
+    assert ratchet.repo_root() == Path("/elsewhere")
+    monkeypatch.delenv("LIGHTHOUSE_REPO_ROOT")
+    repo = tmp_path / "repo"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "sub").mkdir()
+    monkeypatch.chdir(repo / "sub")
+    assert ratchet.repo_root().resolve() == repo.resolve()
 
 
 def test_complexity_skill_path():
