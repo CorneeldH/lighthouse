@@ -9,6 +9,7 @@
 - With `[project] code_language` set, names, comments, docstrings, file names and everything under `code_language_paths` are English.
 - Finish what you are already authorised to do; never end on an offer to do it ("ready to push if you want" is not done).
 - `heading:<key>` in a skill names a contract heading in `.lighthouse/headings.toml`. Write what `lighthouse headings <key>` prints, never the literal `heading:<key>`; reading accepts every language variant.
+- `lighthouse config` exits 1 with `unknown command` on stderr: the binary is too old. Stop and say so; that is not "not set".
 
 Skills:
 
