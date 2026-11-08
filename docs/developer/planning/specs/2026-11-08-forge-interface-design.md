@@ -137,14 +137,27 @@ Wat verandert ten opzichte van `*forge.Client` nu:
   naam. De vertaling van naam naar Projects v2-option-ID (nu `dispatch.NewBoard` en
   `optionName` in `internal/cli/triage_gather.go`) verhuist naar de GitHub-client.
   `BoardItem.SingleSelect` en het project-ID als argument verdwijnen.
+  **Status leeg betekent "geen status"**, en alleen dat. Een status die de config niet kent,
+  wordt `unknown:<ruwe waarde>` (option-ID op GitHub, statusnaam op GitLab), zoals triage nu al
+  doet (`internal/cli/triage_gather.go:64-72`). Zo blijft een issue in een niet-gekoppelde kolom
+  geen triagekandidaat. De dispatcher behandelt `unknown:…` als een status die hij niet kent,
+  net als nu een lege naam uit `invert` in `internal/dispatch/gather.go:73-77`
+  *(eigen keuze na spec-review, r1-f3)*.
+- **`BoardItems` geeft het hele board.** Op GitHub zijn dat de items van alle repo's op het
+  Projects v2-board, zoals nu; afnemers blijven filteren op `Repo` en gebruiken de andere items
+  voor de status van een blokkeerder. Op GitLab is het board het project
+  *(eigen keuze na spec-review, r1-f9)*.
 - **`AddToBoard` neemt een issuenummer**, geen GraphQL-node-ID. De GitHub-client zoekt het
   node-ID zelf op. `Issue.NodeID` verdwijnt uit het neutrale type als niets anders het nog
   gebruikt.
 - **`AddRocket`/`RocketLogins` heten `Acknowledge`/`Acknowledgers`** en krijgen het issuenummer
   mee, omdat GitLab een award emoji op een note alleen via het issue kan zetten.
-- **`RoleName` wordt `Role`** en geeft een neutrale rol terug (zie *Rechtentoets*).
+- **`RoleName` wordt `Role`** en geeft een rolnaam als string terug (zie *Rechtentoets*).
 - **`ClosedInMilestone` neemt een `Milestone`**, geen nummer. GitLab filtert op titel; de
-  GitHub-client gebruikt het nummer.
+  GitHub-client gebruikt het nummer. Op GitLab is `Milestone.Number` het globale milestone-ID,
+  niet het `iid`: een project- en een groepsmilestone kunnen hetzelfde `iid` hebben, en triage
+  cachet per nummer (`internal/cli/triage_gather.go:163-178`)
+  *(eigen keuze na spec-review, r1-f12)*.
 - `Kind()` is er voor meldingen en voor de paar plekken die tekst per forge kiezen (`#N` tegen
   `!N` voor een MR).
 
@@ -157,6 +170,16 @@ func Open(cfg Config) (Forge, error)
 `Config` bevat `Kind`, `Repo`, `Host`, `Token`, `BaseURL` (leeg is de standaard), het board uit
 `[forge.board]` en een `*http.Client`. `Open` kiest de GitHub- of de GitLab-client. Tot #259
 klaar is, geeft `kind = "gitlab"` een duidelijke fout ("GitLab client not implemented yet").
+Beide clients staan in package `forge` (bijvoorbeeld `github.go` en `gitlab.go`), zodat `Open`
+geen importcyclus maakt *(eigen keuze na spec-review, r1-f11)*.
+
+**Basis-URL.** Een token gaat nooit naar een host van een andere forge. De GitHub-basis is
+`https://api.github.com`; de GitLab-basis is `https://<[forge] host>/api/v4`, zonder `host`
+`https://gitlab.com/api/v4`. Een override (`--forge-url`, `LIGHTHOUSE_FORGE_URL`,
+`tickEnv.ForgeURL`, `askEnv.ForgeURL`) geldt alleen voor repo's van één soort: de flag krijgt een
+lege default en een soort-specifieke tegenhanger, of geldt alleen voor GitHub. Nu krijgt elke
+repo in `serve` de basis `https://api.github.com` (`internal/cli/serve.go:58`, `:72-75`); een
+GitLab-repo zou daar `GITLAB_TOKEN` naartoe sturen *(eigen keuze na spec-review, r1-f7)*.
 
 Alle plekken die nu `forge.New` aanroepen (`internal/cli/serve.go:73`, `ask.go:153`,
 `tick.go:71`) gaan via `forge.Open`.
@@ -170,21 +193,31 @@ commando die repo over met een melding en gaat het door met de rest. Alleen zond
 bruikbaar token faalt het hele commando. `repoconfig.Repo` krijgt het veld `Host` uit
 `[forge] host` (#257 heeft de sleutel in Python en `init` gelegd, nog niet in `repoconfig`).
 
+**De slug blijft de identiteit.** Run-rijen, markers, `Env.Poster(slug)` en `Env.Board(slug)`
+sleutelen op het repo-pad (`internal/store/migrations/0004_runs_fixpr.sql:23`,
+`internal/dispatch/apply.go:34-35`, `internal/cli/tick.go:390-392`). Twee repo's met hetzelfde pad
+op verschillende hosts in één installatie weigert lighthouse bij het laden van `host.toml`, met
+een melding die beide noemt. Een hostbewuste identiteit met een migratie van de runs-database is
+pas nodig als dat echt voorkomt *(eigen keuze na spec-review, r1-f1)*.
+
 ### Hoe GitLab elk begrip invult
 
 | Begrip | GitHub (nu) | GitLab |
 |---|---|---|
 | Issue | issue, `number` | issue, `iid` (`#N`); project-ID is het URL-gecodeerde pad |
+| `Issue.State` | `open`, `closed` (REST) | `opened`→`open`, `closed`→`closed` |
+| `BoardItem.IssueState`, `Blocker.State` | `OPEN`, `CLOSED` (GraphQL) | `opened`→`OPEN`, `closed`→`CLOSED` |
+| `Milestone.State` | `open`, `closed` | `active`→`open`, `closed`→`closed` |
 | Comment | issue comment | note op het issue; **systeemnotes (`system: true`) tellen niet mee** |
 | PR | pull request | merge request (`!N`) |
 | `PR.State` | OPEN/CLOSED/MERGED | `opened`→OPEN, `closed`→CLOSED, `merged`→MERGED; `locked` als OPEN |
 | `PR.Checks` | `statusCheckRollup.state` | status van `head_pipeline`: `success`, `skipped`→SUCCESS; `failed`, `canceled`→FAILURE; `running`, `pending`, `created`, `preparing`, `waiting_for_resource`, `scheduled`, `manual`→PENDING; geen pipeline → "" |
-| `PR.Mergeable` | MERGEABLE/CONFLICTING/UNKNOWN | betekent alleen "geen conflicten", zoals op GitHub: `has_conflicts` → CONFLICTING; `detailed_merge_status` `checking`/`unchecked` → UNKNOWN; anders MERGEABLE. Goedkeuringen en open threads tellen niet mee |
+| `PR.Mergeable` | MERGEABLE/CONFLICTING/UNKNOWN | betekent alleen "geen conflicten", zoals op GitHub: `has_conflicts` → CONFLICTING; `detailed_merge_status` `unchecked`, `checking`, `preparing` en elke andere status waarin de conflictcontrole nog niet klaar is → UNKNOWN; anders MERGEABLE. Goedkeuringen en open threads tellen niet mee *(r1-f5)* |
 | `PR.Closes` | `closedByPullRequestsReferences` | het issue staat in `closes_issues` van de MR (of de MR in `closed_by` van het issue) |
 | `PR.CrossRepo` | head in een fork | `source_project_id` ≠ `target_project_id` |
 | Status | Projects v2 single-select-veld | ingebouwde issuestatus (work item status), via GraphQL; de config koppelt elke lighthouse-statusnaam aan een GitLab-statusnaam |
 | Prioriteit | Projects v2 single-select-veld | scoped label `priority::<naam>` (GitLab heeft geen prioriteitsveld) |
-| Board | Projects v2-project | alle issues van het project: elk issue heeft een status; `ItemID` is het `iid` |
+| Board | Projects v2-project | alle issues van het project: elk issue heeft een status; `ItemID` is het `iid`. `BoardItems` geeft open issues én gesloten issues: minstens elk issue met een open run en elk issue dat sinds de vorige tick sloot. De dispatcher sluit een run alleen af via zijn board-item (`internal/dispatch/gather.go:88-98`, `decide.go:494-497`); zonder gesloten issues blijft een run open. Het aanroepbudget geldt voor open issues plus dat venster, niet voor alle gesloten issues ooit *(eigen keuze na spec-review, r1-f2)* |
 | `BoardItem.ItemUpdatedAt` | `updatedAt` van het project-item | `updated_at` van het issue. Die schuift ook bij een comment, dus de volgorde van starts binnen één prioriteit kan verschillen van GitHub (*mijn keuze*: geen extra aanroep per issue) |
 | `AddToBoard` | item toevoegen aan het project | niets te doen: elk issue staat al op het board. `IssueItem` geeft op GitLab dus altijd `ok = true` |
 | Blokkades | issue-dependencies (`blocked_by`) | issue-links met `link_type = is_blocked_by`, ook naar andere projecten |
@@ -216,9 +249,12 @@ een script (*mijn keuze*).
 
 ### Rechtentoets
 
-`Role` geeft een neutrale rol uit de woorden die `[dispatch] answer_permissions` nu al gebruikt:
-`read`, `triage`, `write`, `maintain`, `admin`, of leeg voor geen toegang. Zo blijft de bestaande
-configuratie geldig.
+`Role` geeft een rolnaam als string, vergeleken met `[dispatch] answer_permissions`. Op GitHub
+blijft dat de `role_name` zoals nu, ook een custom role (`internal/forge/people.go:53-70`); zo
+blijft de bestaande configuratie geldig. Op GitLab vertaalt de client het `access_level` naar de
+woorden hieronder. Omdat `/members/all/:id` een numeriek user-ID neemt, zoekt de client het ID
+eerst op bij de gebruikersnaam (`GET /users?username=`), met een cache per tick
+*(eigen keuze na spec-review, r1-f4)*.
 
 | GitLab `access_level` | Rol |
 |---|---|
@@ -262,6 +298,12 @@ herhaald). Die functie krijgt de soort forge en de sleutel mee.
   die test gebruikt. Een aanroep van een niet-ingevulde methode geeft dan een panic, dus een test
   die iets onverwachts aanroept, faalt luid. De type-assertions op `*forge.Client` in
   `internal/cli/serve_test.go:395` en `:441` worden mechanisch aangepast.
+  Twee soorten wijziging gelden niet als inhoudelijk *(eigen keuze na spec-review, r1-f10)*:
+  een test die met zijn code verhuist (`internal/dispatch/board_test.go` met `NewBoard` naar de
+  GitHub-client; `SingleSelect` in `internal/overview/overview_test.go:238-250` wordt
+  `Status`/`Priority`), en een test die een exacte melding toetst die dit ontwerp verandert (de
+  tokenmelding in `internal/cli/triage_brake_test.go:146` en `internal/cli/tick_test.go:185`).
+  Het plan noemt elke zo'n test bij naam.
 - **Conformiteitssuite:** één gedeelde suite in een pakket naast `internal/forge/forgetest`, naar
   het model van `internal/workplace/workplacetest`. Die draait dezelfde gedragstests tegen de
   GitHub-client (met `forgetest.Server`) en de GitLab-client (met een nieuwe nep-GitLab-server,
@@ -295,7 +337,10 @@ dezelfde interface. Dat is het voordeel van aanpak A.
 2. De nep-GitLab-server en de conformiteitssuite tegen GitLab.
 3. De GitLab-vorm van `[forge.board]` en de validatie per soort forge, in de Go-lezer van #274.
 4. `serve` toont een GitLab-repo.
-5. Het AC van #259 zegt nu "status als scoped label `status::<naam>`". Dat wordt de ingebouwde
+5. `lighthouse run` accepteert een pad met subgroepen (`groep/sub/project#5`): de parser in
+   `internal/cli/run.go:47` neemt nu precies twee segmenten; hij splitst op de laatste `#`
+   *(eigen keuze na spec-review, r1-f8)*.
+6. Het AC van #259 zegt nu "status als scoped label `status::<naam>`". Dat wordt de ingebouwde
    issuestatus; het AC wordt aangepast bij de start van #259.
 
 ## Aan de bouwer
@@ -304,8 +349,8 @@ dezelfde interface. Dat is het voordeel van aanpak A.
 - Hoe het aantal raketten per note op GitLab efficiënt wordt gelezen: elke note, of alleen notes
   die in de dispatcher een rol spelen. Let op het aantal API-aanroepen per tick.
 - Het formaat van statussen en prioriteiten voor GitLab in `[forge.board]`.
-- Of `BoardItems` op GitLab ook gesloten issues meeneemt. GitHub geeft nu alle items van het
-  project, open en gesloten; de dispatcher verwacht dat gedrag.
+- Hoe `BoardItems` op GitLab het venster van gesloten issues afbakent (zie de tabel, *Board*),
+  zolang elk issue met een open run erin zit.
 - De commitvolgorde binnen #258, zolang elke commit groen is.
 
 ## Keuzes van de schrijver
