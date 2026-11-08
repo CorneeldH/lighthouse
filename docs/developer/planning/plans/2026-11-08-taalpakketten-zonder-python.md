@@ -58,11 +58,14 @@ zin over `python3` in `go-standard` (`SKILL.md:148`/`:152`) blijft dan ook.
 ## Dogfood-risico (spec §10)
 
 Na Task 8 roept `[test_gate] command` van deze repo `lighthouse gate go` aan, en
-`shell-lint-check.sh` roept `lighthouse config` aan. De `lighthouse` op het PATH (v0.13.2) kent
+`shell-lint-check.sh` zou `lighthouse config` aanroepen (in repo's met `pack/shell`). De `lighthouse` op het PATH (v0.13.2) kent
 beide niet: `unknown command "gate"`, rc 1. Gevolg in deze worktree tot de release:
 
 - de test-gate na de dogfood-commit is rood met `unknown command "gate"`;
-- `shell-lint-check` blokkeert elke `.sh`-edit met `COULD NOT CHECK`.
+- `shell-lint-check` blokkeert elke `.sh`-edit met `COULD NOT CHECK` — alleen in een repo die
+  `pack/shell` installeert; deze repo doet dat niet (`.lighthouse/manifest.toml`:
+  `packages = ["core", "go", "node"]`), dus hier blokkeert die hook niets en bestaat
+  `.lighthouse/scripts/shellcheck-repo.sh` niet.
 
 Daarom zit elke `.sh`-edit vóór Task 8, en draait Task 8 de gate met de branch-binary vooraan op
 het PATH als bewijs. Zet nooit `go install` van de branch op de host: andere sessies draaien die
@@ -76,9 +79,9 @@ binary ook.
    (`TestGoSymlinkedCwdSelectsPackage`).
 2. **cobra slikt vlaggen.** `lighthouse gate node --dir web -- lint` en
    `lighthouse gate go -- go test -race` moeten hun argumenten ongeschonden krijgen, `--` en
-   `-race` inbegrepen. Test in Task 2 en 3 via `newRootCommand` (`TestGateCommandPassesFlags`).
+   `-race` inbegrepen. Test in Task 2 en 3 via `NewRoot` (`internal/cli/root.go:57`, `TestGateCommandPassesFlags`).
 3. **Een CMD die door een signaal stopt** mag nooit exit 0 of 3 geven. Go geeft `ExitCode() == -1`;
-   zet dat om naar `128 + signaalnummer`. Test in Task 2 (`TestGoSignalledCommandIsRed`).
+   zet dat om naar `128 + signaalnummer`. Dat is een bewuste afwijking van `gate_go.py` (`sys.exit(-15)` = exit 241): beide zijn rood, geen van beide 3; noem het in de PR. Test in Task 2 (`TestGoSignalledCommandIsRed`).
 4. **Een commando dat de oude scripts op een andere manier aanroept** (`python .lighthouse/…`,
    `./.lighthouse/scripts/gate_go.py`, `lighthouse_lib`) wordt niet herschreven maar luid gemeld.
    Een verwijzing naar een bestand dat de upgrade wél installeert (`gate_python.py` van
@@ -125,6 +128,10 @@ fixtures, die pytest tegen de `.py` draait; Task 2 en 3 lezen dezelfde bestanden
 - Create: `internal/gate/go_test.go`
 - Create: `internal/cli/gate.go`
 - Modify: `internal/cli/root.go:67-80` (`root.AddCommand(newGateCommand())`)
+- Modify: `docs/site/data/config.json` (sleutel `test_gate.unchecked_exit_codes`, `readers`): voeg
+  `internal/gate/gate.go` toe als lezer; `tests/test_site_config.py` eist dat elk bestand dat de
+  sleutel noemt op de kaart staat (`reader_names_key`, `:114-117`) en dat elke lezer bestaat.
+  Draai `uv run pytest -q tests/test_site_config.py`.
 - Test: `internal/cli/gate_test.go`
 
 **Interfaces:**
@@ -136,7 +143,11 @@ fixtures, die pytest tegen de `.py` draait; Task 2 en 3 lezen dezelfde bestanden
   - `func GoPackages(files []string, listing []GoPackage, root string) []string`
   - `func Go(args []string, env Env) int` — `args` is alles na `gate go`, `--` inbegrepen.
   - `func newGateCommand() *cobra.Command` met subcommando `go`; `DisableFlagParsing: true`;
-    een rc ≠ 0 als `&exitError{code: rc, err: errSilent}`.
+    een rc ≠ 0 als `&exitError{code: rc, err: errSilent}`. Het ouder-commando `gate` heeft zelf
+    een `RunE` en `Args: cobra.ArbitraryArgs`: `lighthouse gate` zonder subcommando of met een
+    onbekende naam (`gate nod -- lint`) print `gate: COULD NOT CHECK — unknown gate <x>` op
+    stderr en geeft rc 3. Zonder `RunE` print cobra de help en geeft 0 (cobra v1.10.2
+    `command.go:955`, `:1152`), een stil groene gate.
 
 - [ ] **Step 1: Falende tests.** In `go_test.go`:
   - `TestGoPackagesFixtures`: leest `../../tests/pack/fixtures/gate_go/select.json`, bouwt
@@ -149,7 +160,9 @@ fixtures, die pytest tegen de `.py` draait; Task 2 en 3 lezen dezelfde bestanden
     PATH geeft 3 met `go not on PATH`; een CMD die niet start geeft 3, met en zonder FilesPath.
   - `TestGoSymlinkedCwdSelectsPackage` (Review Focus 1) en `TestGoSignalledCommandIsRed`
     (CMD `sh -c 'kill -TERM $$'`, eist rc 143) (Review Focus 3).
-  - In `internal/cli/gate_test.go`: `TestGateCommandPassesFlags` — `lighthouse gate go -- sh -c
+  - In `internal/cli/gate_test.go`: `TestGateUnknownSubcommandIsUnchecked` (`lighthouse gate` en
+    `lighthouse gate bogus -- x` geven rc 3 en `COULD NOT CHECK`, nooit 0), en
+    `TestGateCommandPassesFlags` — `lighthouse gate go -- sh -c
     'echo "$@"' x -race` zonder FilesPath print `-race ./...` (Review Focus 2).
 - [ ] **Step 2:** `go test ./internal/gate/ ./internal/cli/ -run 'Go|Gate'` → FAIL (undefined).
 - [ ] **Step 3: Implementeer** `GoPackages` als `packages_for`/`_belongs`
@@ -157,7 +170,7 @@ fixtures, die pytest tegen de `.py` draait; Task 2 en 3 lezen dezelfde bestanden
   `Dir` via `filepath.EvalSymlinks`, bij een fout `filepath.Abs`; eerste padsegment `testdata`
   telt; een pad in een van de acht lijsten telt; een `.go`-bestand direct in `Dir` telt.
   Resultaat gesorteerd en uniek. `Go` als `_select_and_run` + `main` (`:109-136`); `go list -json
-  ./...` decodeer je met een `json.Decoder`-lus. CMD erft stdin/stdout/stderr van het proces.
+  ./...` decodeer je met een `json.Decoder`-lus. CMD schrijft naar `env.Stdout` en `env.Stderr` (in productie `os.Stdout`/`os.Stderr`) en erft stdin; anders kan `TestGateCommandPassesFlags` de uitvoer niet opvangen.
 - [ ] **Step 4:** `go test -race ./internal/gate/ ./internal/cli/` → PASS.
 - [ ] **Step 5:** Commit: `feat(gate): lighthouse gate go kiest de Go-pakketten van de commit (#284)`.
 
@@ -196,6 +209,9 @@ fixtures, die pytest tegen de `.py` draait; Task 2 en 3 lezen dezelfde bestanden
 - Create: `internal/initcmd/gatecommand.go`
 - Create: `internal/initcmd/gatecommand_test.go`
 - Modify: `internal/initcmd/initcmd.go:570-591` (`planConfig`)
+- Modify: `docs/site/data/config.json`: als `gatecommand.go` of zijn meldingstekst
+  `[test_gate] command` of `unchecked_exit_codes` letterlijk noemt, staat het bestand als lezer
+  op de kaart. Draai `uv run pytest -q tests/test_site_config.py`.
 
 **Interfaces:**
 - Produces: `func migrateGateCommand(old []byte, installed func(rel string) bool) (out []byte, before, after string, stale []string)`.
@@ -211,8 +227,10 @@ fixtures, die pytest tegen de `.py` draait; Task 2 en 3 lezen dezelfde bestanden
 - Meldingen op `o.Err`, letterlijk:
   - `lighthouse.toml: [test_gate] command rewritten` / `  old: <before>` / `  new: <after>`
   - `warning: lighthouse.toml: [test_gate] command calls <pad>, which lighthouse no longer installs; the test gate breaks until you change it`
+  - voor een `lighthouse_lib`-verwijzing (core installeert `lighthouse_lib` nog, bevroren) een
+    neutrale tekst: `warning: lighthouse.toml: [test_gate] command uses lighthouse_lib, which lighthouse is phasing out; move it to a lighthouse command`
 
-- [ ] **Step 1: Falende tests** in `gatecommand_test.go`, met de helpers van `fragment_test.go`
+- [ ] **Step 1: Falende tests** in `gatecommand_test.go`, met de helpers van `initcmd_test.go`
   (`newRepo`, `run`, `all(upgrade, yes, …)`, `read`):
   - `TestUpgradeRewritesGateGo` (AC 1): `command = "python3 .lighthouse/scripts/gate_go.py -- go test -race && make lint"`
     wordt `command = "lighthouse gate go -- go test -race && make lint"`; stderr bevat `old:` en
@@ -222,7 +240,9 @@ fixtures, die pytest tegen de `.py` draait; Task 2 en 3 lezen dezelfde bestanden
     erboven blijft staan.
   - `TestUpgradeWarnsOnOtherScriptRef` (Review Focus 4): `python .lighthouse/scripts/gate_go.py
     -- go test` en `python3 -m lighthouse_lib.x` blijven letterlijk, stderr bevat de warning, rc 0.
-  - `TestUpgradeKeepsInstalledRefQuiet`: met pack `python` en
+  - `TestUpgradeKeepsInstalledRefQuiet` (helpers in `initcmd_test.go`/`select_test.go`; de stub
+    `withPython` (`select_test.go:22-30`) installeert geen `scripts/gate_python.py`: voeg dat
+    bestand toe aan de MapFS van `o.Packs`, anders is `installed(...)` false): met pack `python` en
     `python3 .lighthouse/scripts/gate_python.py -- pytest` geen warning.
   - `TestUpgradeGateCommandIsIdempotent` (Review Focus 5): tweede upgrade → `No changes.`, geen
     melding.
@@ -238,6 +258,9 @@ Eerst: is #278 gemerged? Zie *Randvoorwaarde*.
 
 **Files:**
 - Delete: `pack/go/scripts/gate_go.py`, `pack/node/scripts/gate_node.py`
+- Modify: `docs/site/data/config.json:396-402`: de lezers `pack/go/scripts/gate_go.py` en
+  `pack/node/scripts/gate_node.py` weg (anders `reader … does not exist` in
+  `tests/test_site_config.py`); voeg de `internal/gate`-bestanden toe die de sleutel noemen
 - Delete: `tests/pack/go/test_gate_go.py`, `tests/pack/node/test_gate_node.py` (de fixtures
   blijven; Go leest ze)
 - Modify: `pack/go/requires.toml` → `go = ["go-lint-gate", "go-standard"]`,
@@ -250,14 +273,20 @@ Eerst: is #278 gemerged? Zie *Randvoorwaarde*.
 - Modify: `internal/packs/core_test.go:181-192` (bestanden en tools van `go` en `node`)
 - Modify: `tests/pack/go/test_go_writing.py:123`, `tests/test_ci_go_test_pin.py:10-15`
   (regex op `lighthouse gate go --`), `docs/getting-started.md:27-28`
-- Test: `go test ./internal/packs/`, `uv run pytest -q tests/pack/go tests/pack/node tests/test_ci_go_test_pin.py`
+- Test: `go test ./internal/packs/`, `uv run pytest -q tests/pack/go tests/pack/node tests/test_ci_go_test_pin.py tests/test_site_config.py`
 
 - [ ] **Step 1:** Pas `core_test.go` aan op de nieuwe bestanden en tools → `go test ./internal/packs/` FAIL.
 - [ ] **Step 2:** Voer de deletes en wijzigingen uit.
 - [ ] **Step 3:** `go test -race ./internal/packs/` en de pytest-selectie → PASS. Check:
   `grep -rn "python3\|gate_go\.py\|gate_node\.py" pack/go pack/node` geeft alleen
-  `go-lint-gate.sh` en zijn `requires.toml`-regel (of niets, na #278).
+  `go-lint-gate.sh`, zijn `requires.toml`-regel en — zolang #278 open is — de twee regels
+  `python3` in `go-standard` `claude/SKILL.md:148` en `agents/SKILL.md:152` (of niets, na #278).
+  Haal die twee regels niet weg: de tekst is waar zolang `go-lint-gate` `python3` aanroept.
 - [ ] **Step 4:** Commit: `feat(pack): go en node gebruiken lighthouse gate, zonder Python (#284)`.
+
+`tests/test_dogfood.py::test_node_pack_installed` (`:185-197`) leest `pack/node/scripts/gate_node.py`
+en is dus rood van Task 5 tot Task 8, waar het wordt omgezet; het hoort niet in de selecties
+van Task 5 tot 7 en is geen reden voor een eerder herstel.
 
 `test_ci_go_test_pin.py` leest `lighthouse.toml` van deze repo; die verandert pas in Task 8. Laat
 de regex daarom beide vormen accepteren (`(?:gate_go\.py|lighthouse gate go) --`) en haal de oude
@@ -291,20 +320,29 @@ vorm weg in Task 8.
 - [ ] **Step 2:** `uv run pytest -q tests/pack/shell` → FAIL.
 - [ ] **Step 3:** Pas de hook, het script en `requires.toml` aan. In `shell-standard` wordt de
   regel met `python3 -c '…realpath…'` het recept `realpath -m -- "$p"`; met de opmerking dat
-  BSD/macOS `realpath` geen `-m` kent, en dan `lighthouse path realpath` (spec §4) — bestaat dat
-  subcommando niet, noem dan alleen `realpath -m` en `grealpath -m` (coreutils).
+  BSD/macOS `realpath` geen `-m` kent. `lighthouse path realpath` bestaat niet en hoort niet in
+  deze PR; geef daarom een POSIX-recept dat overal werkt: `realpath -m -- "$p" 2>/dev/null`,
+  anders de bovenliggende map oplossen met `d=$(cd -P -- "$(dirname -- "$p")" 2>/dev/null && pwd -P)
+  && printf '%s/%s\n' "$d" "$(basename -- "$p")"` (het doelpad van een `Write` hoeft nog niet te
+  bestaan). Geen `python3`. Dit wijkt licht af van de spec-parenthese (§4: "anders `lighthouse
+  path realpath`"), die een voorbeeld is van "een recept zonder Python"; noem het in de PR.
 - [ ] **Step 4:** `uv run pytest -q tests/pack/shell` en `go test ./internal/packs/` → PASS;
-  `.lighthouse/scripts/shellcheck-repo.sh pack/shell/hooks/shell-lint-check.sh pack/shell/scripts/shellcheck-repo.sh` → schoon.
+  `pack/shell/scripts/shellcheck-repo.sh pack/shell/hooks/shell-lint-check.sh pack/shell/scripts/shellcheck-repo.sh` → schoon (het pad in `pack/`: deze repo installeert `pack/shell` niet; met expliciete bestanden roept het script `lighthouse config` niet aan).
 - [ ] **Step 5:** Commit: `feat(shell): shell-lint-check en shellcheck-repo lezen config met lighthouse (#284)`.
 
 ### Task 7: `place-instruction` zonder Python
 
 **Files:**
 - Modify: `pack/core/skills/place-instruction/SKILL.md:247`
+- Modify: `tests/pack/test_place_instruction_skill.py:40-44`
 
-- [ ] **Step 1:** `ls scripts/measure_skill_surface.py`. Bestaat het alleen in deze repo (niet
-  onder `pack/`), dan gaat de KPI-regel weg (spec §4, tweede optie). Pas de KPI-telling in de
-  tekst aan als die het aantal rijen noemt.
+`scripts/measure_skill_surface.py` bestaat in deze repo niet (geen map `scripts/`; het script
+leeft in een andere repo), dus de KPI-regel gaat weg (spec §4, tweede optie). Geen voorwaarde
+om te evalueren.
+
+- [ ] **Step 1:** Vervang `test_surface_measurement_only_if_present` door
+  `test_skill_has_no_python3` (`assert "python3" not in SKILL`) → FAIL. Verwijder de KPI-regel;
+  pas de KPI-telling in de tekst aan als die het aantal rijen noemt.
 - [ ] **Step 2:** `uv run pytest -q tests -k place_instruction` → PASS.
 - [ ] **Step 3:** Commit: `docs(place-instruction): KPI-regel zonder python3 (#284)`.
 
@@ -325,12 +363,16 @@ vorm weg in Task 8.
 - [ ] **Step 3:** Fragment, `type: changed`, met: `[test_gate] command` roept
   `lighthouse gate go` en `lighthouse gate node` aan; `init --upgrade` zet het oude commando om
   en meldt andere verwijzingen; de `lighthouse`-binary op het PATH moet deze release zijn
-  (`changed` → minor bij de wekelijkse release; zie `docs/releasing.md:15`).
+  (`changed` → minor bij de wekelijkse release; zie `docs/releasing.md:15`). Noem in de PR dat tot de release (of een `go install ./cmd/lighthouse` op main door de eigenaar) elke commit op main een rode of onbeslist gate geeft (`unknown command "gate"`).
 - [ ] **Step 4:** `go run ./cmd/lighthouse init --upgrade` nog eens → `No changes.`
-- [ ] **Step 5:** Bewijs van de gate met de branch-binary:
-  `go build -o "$T/lighthouse" ./cmd/lighthouse && PATH="$T:$PATH" bash -c "$(lighthouse config test_gate.command)"`
-  met `LIGHTHOUSE_GATE_FILES` op de bestanden van de branch (`git diff --name-only origin/main`).
-  Verwacht rc 0.
+- [ ] **Step 5:** Bewijs van de gate met de branch-binary. De `$(…)` wordt door de buitenste shell
+  uitgebreid, vóór een `PATH=` op `bash` geldt; zet daarom eerst het PATH en haal het commando
+  daarna op:
+  `T=$(mktemp -d) && go build -o "$T/lighthouse" ./cmd/lighthouse && export PATH="$T:$PATH" && (cd web && npm ci) && cmd=$(lighthouse config test_gate.command) && [ -n "$cmd" ] && LIGHTHOUSE_GATE_FILES=<bestand met git diff --name-only origin/main> bash -c "$cmd"`.
+  `web/node_modules` moet bestaan (`lighthouse.toml:44` heeft `--also lighthouse.toml`, dus
+  `gate node --dir web` draait in de branch-diff; zonder `node_modules` geeft het rc 3). Eis
+  naast rc 0 dat de uitvoer de regels `gate-go:` en `gate-node:` bevat; een lege `$cmd` of rc 0
+  zonder die regels is geen bewijs.
 - [ ] **Step 6:** Volledige run: `go test -race ./...` en `uv run pytest -q`. Check AC 3 en
   AC 4: `grep -n python3 pack/{go,node,shell,expo}/requires.toml` (alleen `go-lint-gate`, of
   niets na #278); `git diff --stat origin/main -- pack/core/lib .lighthouse/lib` toont geen
