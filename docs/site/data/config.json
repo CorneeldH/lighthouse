@@ -142,6 +142,7 @@
               "example": "owner/name",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/workplace/local/adapter.go",
                 "pack/core/lib/artefacts.py",
                 "pack/core/lib/pr_body_gate.py",
                 "pack/core/scripts/board_start.py",
@@ -167,6 +168,7 @@
               "about": "The branch that work is merged into and that commits are guarded on.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/workplace/local/adapter.go",
                 "pack/core/hooks/commit-test-gate.sh",
                 "pack/core/hooks/main-commit-gate.sh",
                 "pack/core/hooks/worktree-check.sh",
