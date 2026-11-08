@@ -8,6 +8,7 @@
 package config
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -44,8 +45,25 @@ var requiredStatusOptions = []string{"To do", "In progress", "Done", "On hold"}
 
 var languages = []string{"nl", "en"}
 
-// repoRE holds the characters GitHub allows in owner and name.
-var repoRE = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\z`)
+// forgeKinds are the values forge.kind may have.
+var forgeKinds = []string{"github", "gitlab"}
+
+// segment is the characters a path segment may hold (an owner, a GitLab group or a name). A
+// quote or `<` never reaches a URL or a regex this way.
+const segment = `[A-Za-z0-9._-]+`
+
+// repoRE is the form of forge.repo per kind: GitHub owner/name, GitLab group/name with any
+// number of subgroups between; repoForm names that form in an error.
+var (
+	repoRE = map[string]*regexp.Regexp{
+		"github": regexp.MustCompile(`^` + segment + `/` + segment + `\z`),
+		"gitlab": regexp.MustCompile(`^` + segment + `(?:/` + segment + `)+\z`),
+	}
+	repoForm = map[string]string{"github": "owner/name", "gitlab": "group/name or group/subgroup/.../name"}
+)
+
+// hostRE is a bare host name: no scheme, port or path.
+var hostRE = regexp.MustCompile(`^[A-Za-z0-9.-]+\z`)
 
 const (
 	kStr  = "str"
@@ -159,6 +177,7 @@ var baseKeys = []string{
 	"forge.repo",
 	"forge.owner",
 	"forge.name",
+	"forge.host",
 	"forge.board.project_number",
 	"forge.board.project_id",
 	"forge.board.status_field_id",
@@ -222,6 +241,7 @@ type Board struct {
 type Config struct {
 	Kind     string // "" when absent
 	Repo     string // "" when absent
+	Host     string // "" when absent; set only with kind gitlab
 	Language string
 	Board    *Board
 	Raw      map[string]any
@@ -232,15 +252,17 @@ type Config struct {
 	order map[string]int
 }
 
-// Owner is the part of Repo before the slash, and false without a repo.
+// owner is everything in Repo before the last slash (group/sub for a GitLab subgroup repo),
+// and false without a repo.
 func (c *Config) owner() (string, bool) {
-	owner, _, ok := strings.Cut(c.Repo, "/")
-	return owner, c.Repo != "" && ok
+	i := strings.LastIndex(c.Repo, "/")
+	return c.Repo[:max(i, 0)], c.Repo != "" && i >= 0
 }
 
+// name is everything in Repo after the last slash, and false without a repo.
 func (c *Config) name() (string, bool) {
-	_, name, ok := strings.Cut(c.Repo, "/")
-	return name, c.Repo != "" && ok
+	i := strings.LastIndex(c.Repo, "/")
+	return c.Repo[i+1:], c.Repo != "" && i >= 0
 }
 
 // RepoRoot is LIGHTHOUSE_REPO_ROOT, else the top level of the git checkout around the cwd.
@@ -532,22 +554,35 @@ func build(data map[string]any, md toml.MetaData, rawPath string) (*Config, erro
 		if err != nil {
 			return nil, err
 		}
-		// kind and repo are optional too: a repo without a GitHub remote may hold only
+		// kind, repo and host are optional too: a repo without a remote may hold only
 		// default_branch here.
 		if _, ok := forge["kind"]; ok {
 			if c.Kind, err = getString(forge, "kind", "forge.", path); err != nil {
 				return nil, err
 			}
-			if c.Kind != "github" {
-				return nil, errf("%s: key forge.kind must be 'github', not %s", path, pyStrRepr(c.Kind))
+			if !contains(forgeKinds, c.Kind) {
+				return nil, errf("%s: key forge.kind must be 'github' or 'gitlab', not %s", path, pyStrRepr(c.Kind))
 			}
 		}
+		// Without a kind the repo is a GitHub one.
+		repoKind := cmp.Or(c.Kind, "github")
 		if _, ok := forge["repo"]; ok {
 			if c.Repo, err = getString(forge, "repo", "forge.", path); err != nil {
 				return nil, err
 			}
-			if !repoRE.MatchString(c.Repo) {
-				return nil, errf("%s: key forge.repo must have the form owner/name: %s", path, pyStrRepr(c.Repo))
+			if !repoRE[repoKind].MatchString(c.Repo) {
+				return nil, errf("%s: key forge.repo must have the form %s: %s", path, repoForm[repoKind], pyStrRepr(c.Repo))
+			}
+		}
+		if _, ok := forge["host"]; ok {
+			if c.Host, err = getString(forge, "host", "forge.", path); err != nil {
+				return nil, err
+			}
+			if c.Kind != "gitlab" {
+				return nil, errf("%s: key forge.host is only valid with kind = 'gitlab'", path)
+			}
+			if !hostRE.MatchString(c.Host) {
+				return nil, errf("%s: key forge.host must be a bare host name, not %s", path, pyStrRepr(c.Host))
 			}
 		}
 		if _, ok := forge["board"]; ok {

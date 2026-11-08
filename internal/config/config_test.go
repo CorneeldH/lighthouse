@@ -112,7 +112,7 @@ func TestLookupErrorKinds(t *testing.T) {
 	if !errors.As(err, &cerr) || errors.Is(err, ErrNotSet) {
 		t.Fatalf("Parse error = %v, want an *Error that is not ErrNotSet", err)
 	}
-	if want := "a/b/lighthouse.toml: key forge.kind must be 'github', not 'x'"; cerr.Msg != want {
+	if want := "a/b/lighthouse.toml: key forge.kind must be 'github' or 'gitlab', not 'x'"; cerr.Msg != want {
 		t.Errorf("Error.Msg = %q, want %q", cerr.Msg, want)
 	}
 }
@@ -148,6 +148,18 @@ High = "p1"
 	}
 	if c.Board == nil || !reflect.DeepEqual(*c.Board, want) {
 		t.Errorf("Board = %+v, want %+v", c.Board, want)
+	}
+}
+
+// TestParseFillsGitLabHost pins Config.Host, which the fixtures cannot see: they read
+// forge.host through the raw document.
+func TestParseFillsGitLabHost(t *testing.T) {
+	c, err := Parse([]byte("[forge]\nkind = \"gitlab\"\nrepo = \"g/s/n\"\nhost = \"git.example.org\"\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Kind != "gitlab" || c.Repo != "g/s/n" || c.Host != "git.example.org" {
+		t.Errorf("Kind, Repo, Host = %q, %q, %q", c.Kind, c.Repo, c.Host)
 	}
 }
 

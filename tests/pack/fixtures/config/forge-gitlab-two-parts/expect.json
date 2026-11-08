@@ -1,0 +1,26 @@
+[
+ {
+  "args": [
+   "forge.owner"
+  ],
+  "rc": 0,
+  "stdout": "group\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.name"
+  ],
+  "rc": 0,
+  "stdout": "name\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.host"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.host is not set\n"
+ }
+]

@@ -5,6 +5,6 @@
   ],
   "rc": 2,
   "stdout": "",
-  "stderr": "config: lighthouse.toml: key forge.kind must be 'github', not \"it's\"\n"
+  "stderr": "config: lighthouse.toml: key forge.kind must be 'github' or 'gitlab', not \"it's\"\n"
  }
 ]

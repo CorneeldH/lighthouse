@@ -1,0 +1,4 @@
+[forge]
+kind = "gitlab"
+repo = "name"
+host = "https://x"

@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key forge.repo must have the form owner/name: 'owner/sub/name'\n"
+ }
+]

@@ -261,6 +261,7 @@
   "forge.repo",
   "forge.owner",
   "forge.name",
+  "forge.host",
   "forge.board.project_number",
   "forge.board.project_id",
   "forge.board.status_field_id",

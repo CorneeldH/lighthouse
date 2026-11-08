@@ -1,0 +1,42 @@
+[
+ {
+  "args": [
+   "forge.kind"
+  ],
+  "rc": 0,
+  "stdout": "gitlab\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 0,
+  "stdout": "group/sub.1/deep_2/name-3\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.owner"
+  ],
+  "rc": 0,
+  "stdout": "group/sub.1/deep_2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.name"
+  ],
+  "rc": 0,
+  "stdout": "name-3\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.host"
+  ],
+  "rc": 0,
+  "stdout": "git.example.org\n",
+  "stderr": ""
+ }
+]

@@ -1,0 +1,3 @@
+[forge]
+repo = "owner/name"
+host = "git.example.org"

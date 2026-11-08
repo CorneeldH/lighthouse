@@ -20,7 +20,7 @@ import (
 // Host is a validated host.toml.
 type Host struct {
 	Name        string
-	TailscaleIP string
+	TailscaleIP *string // nil without tailscale_ip: the host is not the always-on host
 
 	GateSlice             *string
 	ScanMemoryMax         *string
@@ -86,15 +86,13 @@ func LoadHost(path string) (*Host, error) {
 		h.Name = name
 	}
 
-	rawIP, ok := host["tailscale_ip"]
-	if !ok {
-		return nil, errf("%s: missing key host.tailscale_ip", p)
+	if rawIP, ok := host["tailscale_ip"]; ok {
+		ip, isStr := rawIP.(string)
+		if !isStr || !hostAddress(ip) {
+			return nil, errf("%s: key host.tailscale_ip must be an IPv4 address: %s", p, pyRepr(rawIP))
+		}
+		h.TailscaleIP = &ip
 	}
-	ip, isStr := rawIP.(string)
-	if !isStr || !hostAddress(ip) {
-		return nil, errf("%s: key host.tailscale_ip must be an IPv4 address: %s", p, pyRepr(rawIP))
-	}
-	h.TailscaleIP = ip
 
 	if v, ok := host["gate_slice"]; ok {
 		s, isStr := v.(string)
@@ -206,7 +204,7 @@ func HostValue(key string) (string, error) {
 	case "host.name":
 		return h.Name, nil
 	case "host.tailscale_ip":
-		return h.TailscaleIP, nil
+		return optString(key, h.TailscaleIP)
 	case "host.gate_slice":
 		return optString(key, h.GateSlice)
 	case "host.scan_memory_max":
@@ -245,7 +243,8 @@ func optFloat(key string, f *float64) (string, error) {
 }
 
 // HostCheck reports whether this machine is the host that host.toml names: rc 0 and
-// "host: <name>" on out, rc 1 when the address is not on this machine, rc 2 on an error.
+// "host: <name>" on out, rc 1 when host.toml has no tailscale_ip or the address is not on
+// this machine, rc 2 on an error.
 func HostCheck(out, errOut io.Writer) int {
 	path, err := hostPath()
 	var host *Host
@@ -253,8 +252,13 @@ func HostCheck(out, errOut io.Writer) int {
 	if err == nil {
 		host, err = LoadHost(path)
 	}
+	if err == nil && host.TailscaleIP == nil {
+		_, _ = fmt.Fprintf(errOut, "config: host %s (%s) has no tailscale_ip, so it is not the always-on host\n",
+			host.Name, pyPath(path))
+		return 1
+	}
 	if err == nil {
-		local, err = isLocal(host.TailscaleIP)
+		local, err = isLocal(*host.TailscaleIP)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "config: %v\n", err)
@@ -262,7 +266,7 @@ func HostCheck(out, errOut io.Writer) int {
 	}
 	if !local {
 		_, _ = fmt.Fprintf(errOut, "config: host %s (%s) has tailscale_ip %s, but that address is not on this machine\n",
-			host.Name, pyPath(path), host.TailscaleIP)
+			host.Name, pyPath(path), *host.TailscaleIP)
 		return 1
 	}
 	_, _ = fmt.Fprintf(out, "host: %s\n", host.Name)
