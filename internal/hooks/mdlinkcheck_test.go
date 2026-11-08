@@ -20,7 +20,7 @@ const (
 	blockHead      = "Linkcheck: markdown link(s) that are not relative-and-existing.\n\n"
 )
 
-// gitRepo makes a git repository with docs/exists.md; it returns its resolved root.
+// gitRepo makes a git repository with notes/exists.md; it returns its resolved root.
 func gitRepo(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -30,7 +30,7 @@ func gitRepo(t *testing.T) string {
 	if out, err := exec.Command("git", "init", "-q", root).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
-	writeFile(t, filepath.Join(root, "docs", "exists.md"), "# exists\n")
+	writeFile(t, filepath.Join(root, "notes", "exists.md"), "# exists\n")
 	t.Setenv("LIGHTHOUSE_LINKCHECK_TRACE", "")
 	return root
 }
@@ -45,7 +45,7 @@ func linkPayload(path, cwd string) map[string]any {
 
 func TestLinkCheckVerdicts(t *testing.T) {
 	root := gitRepo(t)
-	note := filepath.Join(root, "docs", "note.md")
+	note := filepath.Join(root, "notes", "note.md")
 	tests := []struct {
 		name, text string
 		code       int
@@ -72,7 +72,7 @@ func TestLinkCheckVerdicts(t *testing.T) {
 
 func TestLinkCheckPasses(t *testing.T) {
 	root := gitRepo(t)
-	writeFile(t, filepath.Join(root, "docs", "dead.txt"), "[x](gone.md)\n")
+	writeFile(t, filepath.Join(root, "notes", "dead.txt"), "[x](gone.md)\n")
 	outside := realDir(t, t.TempDir())
 	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(outside))
 	writeFile(t, filepath.Join(outside, "note.md"), "[x](gone.md)\n")
@@ -80,11 +80,11 @@ func TestLinkCheckPasses(t *testing.T) {
 		name    string
 		payload any
 	}{
-		{"not markdown", linkPayload(filepath.Join(root, "docs", "dead.txt"), "")},
+		{"not markdown", linkPayload(filepath.Join(root, "notes", "dead.txt"), "")},
 		{"no file_path", map[string]any{"tool_input": map[string]any{}}},
 		{"empty payload", ""},
 		{"null payload", "null"},
-		{"file does not exist", linkPayload(filepath.Join(root, "docs", "new.md"), "")},
+		{"file does not exist", linkPayload(filepath.Join(root, "notes", "new.md"), "")},
 		{"a directory", linkPayload(filepath.Join(root, "dir.md"), "")},
 		{"outside git", linkPayload(filepath.Join(outside, "note.md"), "")},
 	}
@@ -103,7 +103,7 @@ func TestLinkCheckPasses(t *testing.T) {
 
 func TestLinkCheckMarkdownSuffix(t *testing.T) {
 	root := gitRepo(t)
-	note := writeFile(t, filepath.Join(root, "docs", "note.markdown"), "[x](gone.md)\n")
+	note := writeFile(t, filepath.Join(root, "notes", "note.markdown"), "[x](gone.md)\n")
 	res := call(t, mdLinkCheck, "", linkPayload(note, ""))
 	if res.Code != 2 || res.Stderr != blockHead+"  gone.md"+deadReason+"In: "+note+"\n" {
 		t.Errorf("code %d stderr %q", res.Code, res.Stderr)
@@ -114,17 +114,17 @@ func TestLinkCheckMarkdownSuffix(t *testing.T) {
 // hook; a symlink is reported by its target.
 func TestLinkCheckResolvesThePath(t *testing.T) {
 	root := gitRepo(t)
-	note := writeFile(t, filepath.Join(root, "docs", "note.md"), "[x](gone.md)\n")
+	note := writeFile(t, filepath.Join(root, "notes", "note.md"), "[x](gone.md)\n")
 	want := blockHead + "  gone.md" + deadReason + "In: " + note + "\n"
 
 	t.Run("cwd in payload", func(t *testing.T) {
-		res := call(t, mdLinkCheck, "", linkPayload("docs/note.md", root))
+		res := call(t, mdLinkCheck, "", linkPayload("notes/note.md", root))
 		if res.Code != 2 || res.Stderr != want {
 			t.Errorf("code %d stderr %q", res.Code, res.Stderr)
 		}
 	})
 	t.Run("working directory", func(t *testing.T) {
-		t.Chdir(filepath.Join(root, "docs"))
+		t.Chdir(filepath.Join(root, "notes"))
 		res := call(t, mdLinkCheck, "", linkPayload("note.md", ""))
 		if res.Code != 2 || res.Stderr != want {
 			t.Errorf("code %d stderr %q", res.Code, res.Stderr)
@@ -148,7 +148,7 @@ func TestLinkCheckResolvesThePath(t *testing.T) {
 func TestLinkCheckTrace(t *testing.T) {
 	root := gitRepo(t)
 	t.Setenv("LIGHTHOUSE_LINKCHECK_TRACE", "1")
-	note := writeFile(t, filepath.Join(root, "docs", "note.md"), "[x](exists.md)\n")
+	note := writeFile(t, filepath.Join(root, "notes", "note.md"), "[x](exists.md)\n")
 	res := call(t, mdLinkCheck, "", linkPayload(note, ""))
 	if res.Code != 0 || res.Stderr != "linkcheck: checking in "+root+"\n" {
 		t.Errorf("code %d stderr %q", res.Code, res.Stderr)
@@ -177,8 +177,8 @@ func fakeGit(t *testing.T) {
 
 func TestLinkCheckCouldNotCheck(t *testing.T) {
 	root := gitRepo(t)
-	note := writeFile(t, filepath.Join(root, "docs", "note.md"), "[x](exists.md)\n")
-	docs := filepath.Join(root, "docs")
+	note := writeFile(t, filepath.Join(root, "notes", "note.md"), "[x](exists.md)\n")
+	notesDir := filepath.Join(root, "notes")
 
 	t.Run("no git", func(t *testing.T) {
 		emptyPath(t)
@@ -198,7 +198,7 @@ func TestLinkCheckCouldNotCheck(t *testing.T) {
 	t.Run("git fails", func(t *testing.T) {
 		fakeGit(t)
 		res := call(t, mdLinkCheck, "", linkPayload(note, ""))
-		want := "Linkcheck: COULD NOT CHECK — git could not read '" + docs + "'." + unchecked + "\nfatal: broken\n"
+		want := "Linkcheck: COULD NOT CHECK — git could not read '" + notesDir + "'." + unchecked + "\nfatal: broken\n"
 		if res.Code != 2 || res.Stderr != want {
 			t.Errorf("code %d stderr %q\nwant %q", res.Code, res.Stderr, want)
 		}
@@ -222,7 +222,7 @@ func TestLinkCheckCouldNotCheck(t *testing.T) {
 // Python crashed on invalid UTF-8; the Go parser reads on and still finds the dead link.
 func TestLinkCheckInvalidUTF8ReadsOn(t *testing.T) {
 	root := gitRepo(t)
-	note := writeFile(t, filepath.Join(root, "docs", "note.md"), "\xff\xfe [x](gone.md)\n")
+	note := writeFile(t, filepath.Join(root, "notes", "note.md"), "\xff\xfe [x](gone.md)\n")
 	res := call(t, mdLinkCheck, "", linkPayload(note, ""))
 	if want := blockHead + "  gone.md" + deadReason + "In: " + note + "\n"; res.Code != 2 || res.Stderr != want {
 		t.Errorf("code %d stderr %q", res.Code, res.Stderr)

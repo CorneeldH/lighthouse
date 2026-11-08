@@ -25,7 +25,7 @@ var uuidShape = regexp.MustCompile(`^[0-9a-f-]+$`)
 var gateStands = map[string]bool{"prompt": true, "tool": true, "subagent": true, "stop": true}
 
 // usageGate wraps the session up once per window when the usage alarm of `lighthouse usage` is
-// up (docs/usage-gate.md). Stands: prompt (UserPromptSubmit), tool (PostToolUse), subagent
+// up (see the usage-gate contract document). Stands: prompt (UserPromptSubmit), tool (PostToolUse), subagent
 // (SubagentStop), stop (Stop). Fail-open: always code 0, at most one JSON object, and an error
 // is one `usage-gate: ` line on stderr.
 func usageGate(_ context.Context, _ string, stand string, p hook.Payload) hook.Result {

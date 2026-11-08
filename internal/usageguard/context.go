@@ -1,6 +1,6 @@
 // Package usageguard is the decider of the usage-gate hook: who speaks, once per window, when
 // the usage alarm is up or the controller's PAUSE flag holds. It reads the hook payload into a
-// Context, builds the paths and keys of the contract (docs/usage-gate.md), claims the "once per
+// Context, builds the paths and keys of the usage-gate contract document, claims the "once per
 // window" key and picks the speaker: the base reasons, the subagent reason, the resume speaker
 // or the controller speaker. An error never blocks: it is a warning and silence.
 package usageguard
