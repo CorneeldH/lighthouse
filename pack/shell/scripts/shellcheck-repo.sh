@@ -55,7 +55,7 @@ if [ "${#files[@]}" -eq 0 ]; then
   # The directories where the bar is highest, because a bug in a gate is quieter
   # than a bug in ordinary code: it reports green.
   LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$REPO_ROOT}"
-  if ! dirs_out="$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/config.py" shell.strict_dirs 2>&1)"; then
+  if ! dirs_out="$(cd "$LIB_ROOT" && lighthouse config shell.strict_dirs 2>&1)"; then
     echo "shellcheck-repo: shell.strict_dirs could not be read: $dirs_out" >&2
     exit "$SHELLCHECK_UNAVAILABLE"
   fi

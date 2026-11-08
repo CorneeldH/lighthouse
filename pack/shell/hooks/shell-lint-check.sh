@@ -23,19 +23,11 @@ fail() { # reason...
 
 INPUT=$(cat)
 
-# Two parsers, because this hook runs on EVERY Edit/Write - also on .py and .md.
-# Failing loudly because jq is missing would then block the whole session on
-# something that has nothing to do with shell. Picking JSON apart with grep
-# yourself is the other side of the same error, so: jq, else python3, and only
-# when both are missing fail loudly.
-if command -v jq >/dev/null 2>&1; then
-  FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')
-elif command -v python3 >/dev/null 2>&1; then
-  FILE_PATH=$(printf '%s' "$INPUT" |
-    python3 -c 'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))')
-else
-  fail "neither jq nor python3 is present, so the edited path cannot be read."
-fi
+# jq reads the payload. Without it the edited path cannot be read, and failing
+# loudly is the only honest answer: guessing at JSON with grep is the other side
+# of the same error.
+command -v jq >/dev/null 2>&1 || fail "jq is not present, so the edited path cannot be read."
+FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')
 
 # No path in the payload: this tool call touched no file. Nothing to do.
 [ -n "$FILE_PATH" ] || exit 0
@@ -80,7 +72,8 @@ SCRIPT="$ROOT/.lighthouse/scripts/shellcheck-repo.sh"
 
 # The strict directories are repo-relative: compare the path within the git tree
 # of the file, else within the lighthouse root.
-if ! STRICT_DIRS=$(LIGHTHOUSE_REPO_ROOT="$ROOT" python3 "$ROOT/.lighthouse/lib/lighthouse_lib/config.py" shell.strict_dirs 2>&1); then
+command -v lighthouse >/dev/null 2>&1 || fail "lighthouse not on PATH"
+if ! STRICT_DIRS=$(cd "$ROOT" && lighthouse config shell.strict_dirs 2>&1); then
   fail "shell.strict_dirs could not be read: ${STRICT_DIRS:-no message}"
 fi
 ABS="$(cd "$FILE_DIR" && pwd -P)/${FILE_PATH##*/}"
@@ -116,11 +109,7 @@ case "$rc" in
     # Clean, but possibly with a different version than the pin: not silent.
     if [ -n "$err" ]; then
       msg="shell-lint-check: $err"
-      if command -v jq >/dev/null 2>&1; then
-        jq -cn --arg m "$msg" '{systemMessage: $m}'
-      else
-        MSG="$msg" python3 -c 'import json,os; print(json.dumps({"systemMessage": os.environ["MSG"]}))'
-      fi
+      jq -cn --arg m "$msg" '{systemMessage: $m}'
     fi
     exit 0
     ;;

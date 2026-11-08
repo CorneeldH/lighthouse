@@ -387,26 +387,56 @@ def test_divergent_version_notice_reaches_the_session(tmp_path):
     assert "differs from the pin" in message
 
 
-def test_shellcheck_hook_reads_the_path_without_jq(tmp_path, pinned_shellcheck):
-    """The hook runs on EVERY Edit/Write. Without jq it must not block the whole
-    session on a .py or .md edit; python3 is the second parser.
-
-    Removing jq cannot be done by cutting its directory from PATH: bash lives there
-    too. So a PATH of symlinks only, with everything except jq.
-    """
-    target = _repo_file(tmp_path, "broken.sh", BROKEN_SH)
+def _shim_path(tmp_path: Path, names: list[str]) -> Path:
+    """A PATH of symlinks only: cutting a directory from PATH would remove bash too."""
     shim = tmp_path / "bin"
     shim.mkdir()
-    needed = ["env", "bash", "python3", "git", "dirname", "sed", "grep", "cut", "uname", "cat", "mktemp", "rm"]
-    for name in needed:
+    for name in names:
         found = shutil.which(name)
         assert found, name
         (shim / name).symlink_to(found)
+    return shim
+
+
+HOOK_TOOLS = ["env", "bash", "git", "dirname", "sed", "grep", "cut", "uname", "cat", "mktemp", "rm"]
+
+
+def test_without_jq_could_not_check(tmp_path, pinned_shellcheck, lighthouse_bin):
+    """No second parser: without jq the edited path cannot be read, and that is said loudly."""
+    target = _repo_file(tmp_path, "broken.sh", BROKEN_SH)
+    shim = _shim_path(tmp_path, [*HOOK_TOOLS, "python3"])
+    (shim / "lighthouse").symlink_to(lighthouse_bin)
     assert shutil.which("jq", path=str(shim)) is None
 
     result = _run_shellcheck_hook(target, PATH=str(shim), SHELLCHECK_BIN=pinned_shellcheck)
     assert result.returncode == 2, result.stdout + result.stderr
-    assert "SC2034" in result.stderr
+    assert _first_line(result).startswith("shell-lint-check: COULD NOT CHECK — "), result.stderr
+    assert "jq is not present" in result.stderr
+
+
+def test_without_lighthouse_could_not_check(tmp_path, pinned_shellcheck):
+    target = _repo_file(tmp_path, "broken.sh", BROKEN_SH)
+    shim = _shim_path(tmp_path, [*HOOK_TOOLS, "jq"])
+    assert shutil.which("lighthouse", path=str(shim)) is None
+
+    result = _run_shellcheck_hook(target, PATH=str(shim), SHELLCHECK_BIN=pinned_shellcheck)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert _first_line(result).startswith("shell-lint-check: COULD NOT CHECK — "), result.stderr
+    assert "lighthouse not on PATH" in result.stderr
+
+
+def test_strict_dirs_from_lighthouse_config(tmp_path, pinned_shellcheck, lighthouse_bin):
+    """The strict set comes from `lighthouse config`, not from Python: the binary of this checkout."""
+    toml = _toml(tmp_path, '[shell]\nstrict_dirs = ["ops"]\n')
+    probe = subprocess.run(
+        [str(lighthouse_bin), "config", "shell.strict_dirs"],
+        capture_output=True, text=True, check=False, env=dict(os.environ, LIGHTHOUSE_TOML=toml),
+    )
+    assert probe.stdout.strip() == "ops", probe.stderr
+    inside = _repo_file(tmp_path, "ops/styleonly.sh", STYLE_ONLY_SH)
+    result = _run_shellcheck_hook(inside, SHELLCHECK_BIN=pinned_shellcheck, LIGHTHOUSE_TOML=toml)
+    assert result.returncode == 2, result.stdout
+    assert "SC2001" in result.stderr
 
 
 # --- shellcheck-repo.sh -------------------------------------------------------
