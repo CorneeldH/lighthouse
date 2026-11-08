@@ -59,18 +59,37 @@ func okHook(string) Func {
 	return func(context.Context, string, string, Payload) Result { return Result{} }
 }
 
+// writeSource gives root the layout of lighthouse's own checkout, the only place `dev` builds.
+func writeSource(t *testing.T, root string) {
+	t.Helper()
+	dir := filepath.Join(root, "cmd", "lighthouse")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestUnknownHookExits3(t *testing.T) {
 	tests := []struct {
 		manifest string
+		source   bool
 		want     string
 	}{
-		{"v0.12.1", "COULD NOT CHECK: unknown hook nope — update lighthouse to v0.12.1\n"},
-		{"dev", "COULD NOT CHECK: unknown hook nope — go build -o .lighthouse/bin/lighthouse ./cmd/lighthouse\n"},
+		{"v0.12.1", true, "COULD NOT CHECK: unknown hook nope — update lighthouse to v0.12.1\n"},
+		{"dev", true, "COULD NOT CHECK: unknown hook nope — go build -o .lighthouse/bin/lighthouse ./cmd/lighthouse\n"},
+		{"dev", false, "COULD NOT CHECK: unknown hook nope — install the latest lighthouse release\n"},
+		{"", false, "COULD NOT CHECK: unknown hook nope — install the latest lighthouse release\n"},
 	}
 	for _, tt := range tests {
-		code, out, errOut := call(t, "nope", "s1", newEnv(t, tt.manifest, "v0.13.0"))
+		env := newEnv(t, tt.manifest, "v0.13.0")
+		if tt.source {
+			writeSource(t, env.Root)
+		}
+		code, out, errOut := call(t, "nope", "s1", env)
 		if code != ExitUnknown || out != "" || errOut != tt.want {
-			t.Errorf("manifest %s: code %d out %q err %q, want %d %q", tt.manifest, code, out, errOut, ExitUnknown, tt.want)
+			t.Errorf("manifest %q source %v: code %d out %q err %q, want %d %q", tt.manifest, tt.source, code, out, errOut, ExitUnknown, tt.want)
 		}
 	}
 }
@@ -142,6 +161,7 @@ const buildNotice = "lighthouse build failed — see .lighthouse/bin/build.log; 
 func TestBuildFailedNotice(t *testing.T) {
 	register(t, "ok", okHook("ok"))
 	env := newEnv(t, "dev", "dev")
+	writeSource(t, env.Root)
 	writeBuildFailed(t, env.Root)
 	steps := []struct{ session, want string }{{"s1", buildNotice}, {"s1", ""}, {"s2", buildNotice}}
 	for i, s := range steps {
@@ -159,11 +179,22 @@ func TestNoBuildNoticeWithoutMarker(t *testing.T) {
 	}
 }
 
+// A build.failed outside lighthouse's own checkout is not ours to report: nothing builds there.
+func TestNoBuildNoticeWithoutSource(t *testing.T) {
+	register(t, "ok", okHook("ok"))
+	env := newEnv(t, "dev", "dev")
+	writeBuildFailed(t, env.Root)
+	if _, out, _ := call(t, "ok", "s1", env); out != "" {
+		t.Errorf("no cmd/lighthouse/main.go: stdout %q", out)
+	}
+}
+
 func TestTwoNoticesJoin(t *testing.T) {
 	register(t, "msg", func(context.Context, string, string, Payload) Result {
 		return Result{Output: map[string]any{"systemMessage": "from hook", "other": 1.0}}
 	})
 	env := newEnv(t, "v0.12.1", "v0.13.0")
+	writeSource(t, env.Root)
 	writeBuildFailed(t, env.Root)
 	code, out, _ := call(t, "msg", "s1", env)
 	if code != 0 {

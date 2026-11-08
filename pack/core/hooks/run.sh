@@ -1,8 +1,9 @@
 #!/bin/sh
 # run.sh <hook> [stand]: runs `lighthouse hook <hook> [stand]` with the payload on stdin.
 #
-# At `version = "dev"` it prefers .lighthouse/bin/lighthouse, built from this checkout in the
-# background whenever the binary is missing or its stamp is not HEAD. A hook never waits for
+# At `version = "dev"` in lighthouse's own checkout (cmd/lighthouse/main.go exists) it prefers
+# .lighthouse/bin/lighthouse, built from this checkout in the background whenever the binary is
+# missing or its stamp is not HEAD; `dev` elsewhere counts as a release. A hook never waits for
 # that build: it runs on the previous checkout binary, or on `lighthouse` from the PATH.
 # Without any binary, or when the binary does not know the hook, the hooks in `blocking`
 # block (exit 2, message on stderr) and the others pass with a systemMessage.
@@ -16,7 +17,7 @@ hook="${1:-}"
 
 dev=false
 never_block=false
-if grep -q '^version = "dev"' "$manifest" 2>/dev/null; then
+if grep -q '^version = "dev"' "$manifest" 2>/dev/null && [ -f "$root/cmd/lighthouse/main.go" ]; then
   dev=true
 fi
 
@@ -52,7 +53,7 @@ remedy() {
   # The one place the module path stands, allowed in ci/literal-allowlist.txt.
   module=github.com/CorneeldH/lighthouse/cmd/lighthouse
   version=$(sed -n 's/^version = "v*\([^"]*\)"$/\1/p' "$manifest" 2>/dev/null | head -n 1)
-  if [ -n "$version" ]; then
+  if [ -n "$version" ] && [ "$version" != dev ]; then
     printf '%s' "install v$version: go install $module@v$version, or download it from the release"
   else
     printf '%s' "install it: go install $module@latest, or download it from the release"

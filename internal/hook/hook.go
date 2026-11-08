@@ -25,6 +25,8 @@ const (
 	buildFailed  = ".lighthouse/bin/build.failed"
 	buildLog     = ".lighthouse/bin/build.log"
 	devVersion   = "dev"
+	// sourceMain marks lighthouse's own checkout: only there does a `dev` repo build its binary.
+	sourceMain = "cmd/lighthouse/main.go"
 )
 
 // Payload is what the harness writes to stdin.
@@ -71,7 +73,7 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 	f, ok := registry[name]
 	mu.Unlock()
 	if !ok {
-		_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: unknown hook %s — %s\n", name, remedy(env.ManifestVersion))
+		_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: unknown hook %s — %s\n", name, remedy(env))
 		return ExitUnknown
 	}
 	raw, err := io.ReadAll(in)
@@ -101,11 +103,24 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 	return res.Code
 }
 
-func remedy(manifest string) string {
-	if manifest == "" || manifest == devVersion {
+func remedy(env Env) string {
+	switch {
+	case env.ManifestVersion != "" && env.ManifestVersion != devVersion:
+		return "update lighthouse to " + tag(env.ManifestVersion)
+	case hasSource(env.Root):
 		return buildCommand
+	default:
+		return "install the latest lighthouse release"
 	}
-	return "update lighthouse to " + tag(manifest)
+}
+
+// hasSource reports whether root is lighthouse's own checkout, the one place a binary is built.
+func hasSource(root string) bool {
+	if root == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(root, filepath.FromSlash(sourceMain)))
+	return err == nil
 }
 
 func tag(v string) string {
@@ -129,8 +144,7 @@ func withNotices(output map[string]any, env Env, session string) map[string]any 
 			tag(env.BinaryVersion), tag(env.ManifestVersion)))
 		due++
 	}
-	if _, err := os.Stat(filepath.Join(env.Root, filepath.FromSlash(buildFailed))); env.Root != "" && err == nil &&
-		firstInSession(env.StateDir, session, "build") {
+	if buildHasFailed(env.Root) && firstInSession(env.StateDir, session, "build") {
 		messages = append(messages, fmt.Sprintf("lighthouse build failed — see %s; build it by hand with %s", buildLog, buildCommand))
 		due++
 	}
@@ -143,6 +157,15 @@ func withNotices(output map[string]any, env Env, session string) map[string]any 
 	}
 	merged["systemMessage"] = strings.Join(messages, "\n")
 	return merged
+}
+
+// buildHasFailed reports whether the build from lighthouse's own checkout at root failed.
+func buildHasFailed(root string) bool {
+	if !hasSource(root) {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(root, filepath.FromSlash(buildFailed)))
+	return err == nil
 }
 
 // firstInSession reports whether kind was not yet shown in session, and records that it now is.

@@ -267,7 +267,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/run.sh"
 package = "core"
 version = "dev"
-sha256 = "46ee4f41c3a2d15b9384c0a3b770973e330be3c416ad8b4e76e9d108c2f96021"
+sha256 = "d8871894177925a0bdf2d56d8d7bac8ab4b1c1edb022476de94baf370ec001b3"
 
 [[unit]]
 kind = "file"

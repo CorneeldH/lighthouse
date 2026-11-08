@@ -13,7 +13,7 @@ func TestHookCommandUnknown(t *testing.T) {
 	root := NewRoot(bytes.NewReader([]byte(`{"session_id":"s"}`)), &out, &errOut)
 	root.SetArgs([]string{"hook", "nope", "pre"})
 	code := execute(root, &errOut)
-	want := "COULD NOT CHECK: unknown hook nope — go build -o .lighthouse/bin/lighthouse ./cmd/lighthouse\n"
+	want := "COULD NOT CHECK: unknown hook nope — install the latest lighthouse release\n"
 	if code != 3 || out.String() != "" || errOut.String() != want {
 		t.Errorf("code %d out %q err %q, want 3 %q", code, out.String(), errOut.String(), want)
 	}

@@ -53,7 +53,8 @@ NON_BLOCKING = "worktree-check"
 
 class Repo:
     def __init__(self, tmp: Path, *, version: str = "dev", go: bool = True,
-                 lighthouse: bool = True, setsid: bool = True, parent: str = "") -> None:
+                 lighthouse: bool = True, setsid: bool = True, parent: str = "",
+                 source: bool = True) -> None:
         self.tmp = tmp
         self.root = tmp / parent / "repo" if parent else tmp / "repo"
         self.root.mkdir(parents=True)
@@ -64,6 +65,10 @@ class Repo:
         (self.root / "README").write_text("x\n")
         self.git("add", "README")
         self.git("commit", "-q", "-m", "init")
+        if source:
+            # The layout of lighthouse's own checkout: only there does `dev` build.
+            (self.root / "cmd" / "lighthouse").mkdir(parents=True)
+            (self.root / "cmd" / "lighthouse" / "main.go").write_text("package main\n")
         hooks = self.root / ".claude" / "hooks" / "lighthouse"
         hooks.mkdir(parents=True)
         shutil.copy2(RUN_SH, hooks / "run.sh")
@@ -386,6 +391,33 @@ def test_not_dev_never_builds(tmp_path):
     assert r.stdout == f"path-binary hook {NON_BLOCKING}\n"
     time.sleep(0.5)
     assert repo.go_calls() == []
+
+
+def test_dev_without_source_never_builds(tmp_path):
+    """`dev` in a repo that is not lighthouse's own checkout: nothing to build from."""
+    repo = Repo(tmp_path, source=False)
+    old_checkout_binary(repo)
+    r = repo.call(NON_BLOCKING)
+    assert r.stdout == f"path-binary hook {NON_BLOCKING}\n"
+    time.sleep(0.5)
+    assert repo.go_calls() == []
+    assert not (repo.bin / "build.lock").exists()
+
+
+def test_missing_binary_at_dev_without_source_names_release(tmp_path):
+    repo = Repo(tmp_path, lighthouse=False, source=False)
+    r = repo.call(BLOCKING)
+    assert r.returncode == 2
+    assert r.stderr == ("COULD NOT CHECK: lighthouse not on PATH — install it: go install "
+                        "github.com/CorneeldH/lighthouse/cmd/lighthouse@latest, or download it "
+                        "from the release\n")
+
+
+def test_unknown_hook_at_dev_without_source_blocks(tmp_path):
+    """Without a build from the checkout an old PATH binary stays old: map it like a release."""
+    repo = Repo(tmp_path, source=False)
+    r = repo.call(BLOCKING, FAKE_LH_ERR=UNKNOWN, FAKE_LH_RC="3", FAKE_LH_OUT="")
+    assert (r.returncode, r.stdout, r.stderr) == (2, "", UNKNOWN)
 
 
 def test_run_sh_from_subdir_with_space(tmp_path):
