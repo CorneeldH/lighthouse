@@ -69,7 +69,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    de gemeten forge-stand (`working`, `waiting` of `done`; leeg als tick hem niet kon meten) en de
    tijd van de tick. Een issue met een open én een geparkeerde run staat er één keer, als `open`.
    Mislukt de precheck, dan blijven de rijen van de vorige tick staan. `serve` leest ze voor
-   `GET /api/runs` en de kaart *Running runs*, zonder de forge (zie [install.md](install.md)).
+   `GET /api/runs` en de blokken *Running runs*, *Parked runs*, *Queue* en *Night*, zonder de forge (zie [install.md](install.md)).
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
    de items in Controller of On hold, plus elk item met een open run in een andere status, met hun velden, voorgangers en PR's (de PR's die het issue sluiten
    plus de PR's op de branch van de laatste run van het issue, ook als die run al dicht is, met hun
@@ -325,7 +325,7 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
   issue is gesloten of uit Controller en On hold) ruimt tick op, anders bleef hij in
   `in_use` tellen. Een marker van een repo die deze tick niet gathert, blijft staan.
 - De uitgestelde starts staan met hun titel en reden in de tickstand (`tick_state`, soort
-  `deferred`); de kaart *Running runs* toont ze onder *Deferred starts*. Bij een
+  `deferred`); de blokken *Queue* (elke reden behalve `night`) en *Night* tonen ze. Bij een
   pauze valt de start weg zonder defer, zodat tick zijn vingerafdruk bewaart; de pauzevlag zit zelf
   in de vingerafdruk.
 - [`lighthouse run`](#lighthouse-run) toetst alleen Pauze en Usage. Geheugen, Plekken en Software
@@ -345,7 +345,7 @@ lopende controller-run gaat niet door: de usage-gate-hook toetst de vlag in stan
 parkeert bij zijn volgende tool-call van de hoofdthread (zie
 [usage-gate.md](usage-gate.md#de-pauzevlag)). Een geparkeerde run hervat na het einde van de pauze
 (of na `pause off`). Tot die tijd staat hij als `parked` in
-`GET /api/runs` en op de kaart *Running runs* (zie [install.md](install.md#running-runs)).
+`GET /api/runs` en in het blok *Parked runs* (zie [install.md](install.md#running-runs)).
 
 - Zonder `--until` duurt de pauze tot het eerstvolgende begin van `[dispatch] night` (21:00 bij de
   standaard): vandaag, of morgen als dat begin vandaag al voorbij is. Een lege `night` (begin gelijk
@@ -397,6 +397,6 @@ Ontbreekt iets, dan staan alle ontbrekende sleutels, bij naam, in één `skip`-r
 
 ## Zicht
 
-Wat de tick gestart heeft, zie je terug in `GET /api/runs` en op de kaart *Running runs* van
+Wat de tick gestart heeft, zie je terug in `GET /api/runs` en in de blokken *Running runs*, *Parked runs*, *Queue* en *Night* van
 `lighthouse serve`: de open en geparkeerde runs en de uitgestelde starts, uit de tickstand. Zie
 [install.md](install.md#running-runs) voor het gebruik.
