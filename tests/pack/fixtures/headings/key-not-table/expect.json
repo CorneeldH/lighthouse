@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "a"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "headings: headings.toml: key a must be a table\n"
+ }
+]

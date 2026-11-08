@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "a"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr_prefix": "headings: headings.toml: unreadable or not valid TOML: "
+ }
+]

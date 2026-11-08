@@ -60,6 +60,34 @@ def test_python_matches_fixtures(case):
             assert result.stderr == expect["stderr"], where
 
 
+HEADINGS_FIXTURES = FIXTURES.parent / "headings"
+HEADINGS_CASES = sorted(p.name for p in HEADINGS_FIXTURES.iterdir() if p.is_dir())
+
+
+@pytest.mark.parametrize("case", HEADINGS_CASES)
+def test_python_matches_headings_fixtures(case):
+    """`lighthouse headings` is compared with `headings.py` on `fixtures/headings/`."""
+    env = _env()
+    env["LIGHTHOUSE_HEADINGS"] = "headings.toml"
+    expects = json.loads((HEADINGS_FIXTURES / case / "expect.json").read_text(encoding="utf-8"))
+    for expect in expects:
+        result = subprocess.run(
+            [sys.executable, "-m", "lighthouse_lib.headings", *expect["args"]],
+            cwd=HEADINGS_FIXTURES / case,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        where = f"{case} {expect['args']}"
+        assert result.returncode == expect["rc"], where
+        assert result.stdout == expect["stdout"], where
+        if "stderr_prefix" in expect:
+            assert result.stderr.startswith(expect["stderr_prefix"]), where
+        else:
+            assert result.stderr == expect["stderr"], where
+
+
 def test_fixtures_cover_every_key():
     covered = {a for case in CASES for expect in _expectations(case) for a in expect["args"][:1]}
     known = (

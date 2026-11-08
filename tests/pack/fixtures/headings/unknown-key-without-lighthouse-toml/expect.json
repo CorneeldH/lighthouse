@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "nope"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "headings: unknown key nope\n"
+ }
+]

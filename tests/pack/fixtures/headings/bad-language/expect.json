@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "kind_handoff"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "headings: lighthouse.toml: key project.language must be one of nl, en, not 'de'\n"
+ }
+]
