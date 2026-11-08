@@ -109,6 +109,14 @@ def test_config_example_loads(tmp_path, lighthouse_bin):
         assert out.stdout.strip() == want
 
 
+def test_config_keys_point_to_the_go_reader():
+    """The list of every key, type and default is the Go reader's `schema` and `defaults`."""
+    text = " ".join(section("Configure lighthouse.toml").split())
+    assert "`schema` and `defaults` of [`internal/config/config.go`](../internal/config/config.go)" in text
+    source = (ROOT / "internal" / "config" / "config.go").read_text(encoding="utf-8")
+    assert "\nvar schema = " in source and "\nvar defaults = " in source
+
+
 CHAIN = ["/lighthouse-write-issue", "/lighthouse-start-issue", "/lighthouse-write-pr"]
 
 
