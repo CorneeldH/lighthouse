@@ -1,0 +1,48 @@
+# lighthouse — dispatcher tick (systemd user unit, started by lighthouse-tick.timer)
+#
+# Runs `lighthouse tick` once: it reads the board, decides, and starts or stops runs. With
+# [dispatch] workplace = "local" a run is `claude -p` in a git worktree of this host, which the
+# tick starts detached (setsid -f) and leaves running when it exits.
+#
+# Why KillMode=process: a detached run still lives in this unit's cgroup. The default
+# KillMode=control-group kills every process in the cgroup when the oneshot ends, so each run
+# would die with the tick that started it. KillMode=process stops only the tick itself; the
+# runs outlive it, and the next tick finds them by their mark (LIGHTHOUSE_CONTROLLER_RUN).
+#
+# Why no hardening: unlike lighthouse.service, the tick starts the runs, and a run must do
+# everything a developer does in the repository: write the worktree and ~/.claude, run git,
+# go and the test gate, reach the network. ProtectSystem=, ProtectHome= or NoNewPrivileges=
+# on this unit would hold for every run it starts, so none is set.
+#
+# Where HOME and XDG_RUNTIME_DIR come from: the user manager (systemctl --user) sets both for
+# every unit it starts, so the unit sets neither. The tick needs HOME for its state directory
+# (~/.local/state without XDG_STATE_HOME) and the transcripts, and XDG_RUNTIME_DIR for
+# tick.lock: without it the tick refuses to start.
+#
+# Why EnvironmentFile: the forge token (GH_TOKEN) lives in ~/.config/lighthouse/forge.env,
+# outside the unit, because it is a secret: keep the file mode 0600. lighthouse.service reads
+# the same file. There is no leading dash: a tick without its token cannot read the board, so
+# a missing file fails the start, visible in the journal.
+#
+# Why PATH: a user unit gets the manager's PATH, without ~/.local/bin or ~/go/bin, and the
+# tick and its runs look up claude, git, setsid and go on it. %h/.local/bin is where the
+# claude installer puts claude.
+#
+# Install (details in docs/install.md): with the binary in ~/go/bin/lighthouse, fetch this
+# unit and lighthouse-tick.timer for the same tag into ~/.config/systemd/user, then:
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now lighthouse-tick.timer
+#   loginctl enable-linger "$USER"
+#
+# %h/go/bin is where the install guide puts the binary; edit ExecStart if yours lives elsewhere.
+
+[Unit]
+Description=lighthouse — dispatcher tick
+
+[Service]
+Type=oneshot
+KillMode=process
+EnvironmentFile=%h/.config/lighthouse/forge.env
+Environment=PATH=%h/.local/bin:%h/go/bin:/usr/local/bin:/usr/local/go/bin:/usr/bin:/bin
+ExecStart=%h/go/bin/lighthouse tick
+SyslogIdentifier=lighthouse-tick

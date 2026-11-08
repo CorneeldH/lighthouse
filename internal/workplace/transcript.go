@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -59,6 +60,28 @@ func ProjectDir(home, cwd string) string {
 		}
 	}
 	return filepath.Join(home, ".claude", "projects", string(b))
+}
+
+// HostTranscriptDir is the directory Claude Code keeps the transcripts of worktree in, under
+// home ("": os.UserHomeDir). A directory that is not on this host is ErrNotMeasurable.
+func HostTranscriptDir(home, workspaceID, worktree string) (string, error) {
+	if home == "" {
+		var err error
+		if home, err = os.UserHomeDir(); err != nil {
+			return "", fmt.Errorf("transcripts of %s: %w", workspaceID, err)
+		}
+	}
+	dir := ProjectDir(home, worktree)
+	st, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", fmt.Errorf("transcripts of %s: %s is not on this host: %w", workspaceID, dir, ErrNotMeasurable)
+	case err != nil:
+		return "", fmt.Errorf("transcripts of %s: %w", workspaceID, err)
+	case !st.IsDir():
+		return "", fmt.Errorf("transcripts of %s: %s is no directory: %w", workspaceID, dir, ErrNotMeasurable)
+	}
+	return dir, nil
 }
 
 const tailWindow = 64 << 10

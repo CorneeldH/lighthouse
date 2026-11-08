@@ -142,9 +142,12 @@ PAIR_FILES = (
 def recognize() -> Host | None:
     """The host from `host.toml` if this is that machine, otherwise `None`.
 
+    A `host.toml` without `tailscale_ip` is another host: `None`, without asking `is_local`.
     `HostError` if `host.toml` is missing or broken, or the address is not measurable.
     """
     host = load_host(host_path())
+    if host.tailscale_ip is None:
+        return None
     return host if is_local(host.tailscale_ip) else None
 
 

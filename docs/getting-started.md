@@ -121,8 +121,28 @@ Each of these places, and whether `init` adds it or edits a file of yours, is on
 
 On a machine with Tailscale, the first `init` also offers to write
 `~/.config/lighthouse/host.toml`; `--yes` writes it without asking. Without Tailscale you see
-`warning: host.toml not proposed: tailscale ip unavailable; skills that check the host will
-report it`.
+`warning: host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml.
+For the gate_* keys (memory brake, slots) write it by hand: see "A host.toml without Tailscale" in
+the lighthouse getting-started guide`: the next section.
+
+## A host.toml without Tailscale
+
+The chain works without a `host.toml`. You only need one for the `gate_*` keys (memory brake,
+slots) or `[usage]`. On a plain Linux server, this is enough:
+
+```toml
+[host]
+name = "server"
+gate_slots = 2
+gate_min_mem_available_gb = 4
+```
+
+`gate_slice` asks for a systemd slice, and the `gate_min_*` keys only measure on Linux. All keys
+are in [test-gate.md](test-gate.md).
+
+First run `lighthouse init --upgrade` in every repository on this host, on a release with this
+change. Only then write a `host.toml` without `tailscale_ip`: an older copy of `config.py`
+rejects it, and then the test gate blocks every commit in that repository.
 
 ## Configure lighthouse.toml
 

@@ -192,7 +192,7 @@ In the root of the repository:
    Tailscale, `init` asks a second question after the diff: `Write ~/.config/lighthouse/host.toml?
    [y/N]`. The dry run never reaches it, so the user has not seen it, and `--yes` would write
    `host.toml` without asking. With one `y`, the second question reads the end of stdin, and that
-   counts as no. `host.toml` is for `lighthouse serve`, which this guide does not set up.
+   counts as no. `host.toml` is for `lighthouse serve` and the test gate's `gate_*` keys; this guide does not write it.
 5. Write the answers of choices 5a, 5b and 7 into `lighthouse.toml`, under `[project]` and
    `[test_gate]`. Show the user the change. Choice 8 writes nothing here.
 6. If `init` printed
@@ -276,7 +276,7 @@ here.
   and do not switch to `--yes`.
 - `lighthouse: unknown flag: --<name>`: the release lacks a flag from this guide. Stop and report
   it (see [Ground rules](#ground-rules)).
-- `warning: host.toml not proposed: …`: harmless for this guide. Mention it in the final report.
+- `warning: host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml. …`: harmless for this guide. Mention it in the final report.
 - `note: host.toml is missing (…); skills that check the host will report it`, on `--upgrade`:
   expected, because this guide leaves `host.toml` unwritten. Mention it in the final report.
 - `package <name> fits this repository (found …); add it with: lighthouse init --upgrade --pack <name>`,

@@ -32,7 +32,6 @@ REQUIRED = {
     "code_language_llm.url": "with [code_language_llm]",
     "code_language_llm.models": "with [code_language_llm]",
     "host.name": "yes",
-    "host.tailscale_ip": "yes",
     "forge.owner": "derived",
     "forge.name": "derived",
 }

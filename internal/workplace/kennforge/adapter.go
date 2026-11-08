@@ -4,10 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -92,7 +90,7 @@ func (a *Adapter) Prepare(ctx context.Context, branch string) (workplace.Workspa
 		return workplace.Workspace{}, err
 	}
 	ws := workplace.Workspace{ID: id, Path: w.WorktreeDir, Branch: branch}
-	if err := a.followRemote(ctx, ws, created); err != nil {
+	if err := workplace.FollowRemote(ctx, a.Run, gitTimeout, ws, created); err != nil {
 		return workplace.Workspace{}, err
 	}
 	return ws, nil
@@ -123,136 +121,6 @@ func (a *Adapter) waitReady(ctx context.Context, id string) (wireWorkspace, erro
 	}
 }
 
-// git runs one git command in dir and returns trimmed stdout and the exit code. A
-// command that could not run or timed out is an error, never a negative answer.
-func (a *Adapter) git(ctx context.Context, dir string, args ...string) (string, int, error) {
-	out, code, err := a.Run(ctx, gitTimeout, "git", append([]string{"-C", dir}, args...)...)
-	if err != nil {
-		return "", code, fmt.Errorf("git %s: %w", args[0], err)
-	}
-	return strings.TrimSpace(out), code, nil
-}
-
-func (a *Adapter) gitOK(ctx context.Context, dir string, args ...string) (string, error) {
-	out, code, err := a.git(ctx, dir, args...)
-	if err != nil {
-		return "", err
-	}
-	if code != 0 {
-		return "", fmt.Errorf("git %s: exit code %d", strings.Join(args, " "), code)
-	}
-	return out, nil
-}
-
-// followRemote moves the workspace onto origin/<branch> when that branch exists, without
-// ever dropping commits of its own.
-func (a *Adapter) followRemote(ctx context.Context, ws workplace.Workspace, created bool) error {
-	ref := "refs/heads/" + ws.Branch
-	remote := "origin/" + ws.Branch
-	out, err := a.gitOK(ctx, ws.Path, "ls-remote", "origin", ref)
-	if err != nil {
-		return err
-	}
-	if out == "" {
-		return nil
-	}
-	if _, err := a.gitOK(ctx, ws.Path, "fetch", "origin", "--", ws.Branch); err != nil {
-		return err
-	}
-	head, err := a.gitOK(ctx, ws.Path, "rev-parse", "HEAD")
-	if err != nil {
-		return err
-	}
-	want, err := a.gitOK(ctx, ws.Path, "rev-parse", remote)
-	if err != nil {
-		return err
-	}
-	if head == want {
-		return nil
-	}
-	if created {
-		// Forge puts a new workspace on an existing remote branch at origin/HEAD, not at the
-		// branch (measured in paia, controller-forge-verification.md row (i)).
-		return a.checkoutRemote(ctx, ws, remote, want)
-	}
-	// A found workspace can hold work of an earlier run: never checkout -B over it.
-	cur, err := a.gitOK(ctx, ws.Path, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil {
-		return err
-	}
-	if cur == ws.Branch {
-		_, code, err := a.git(ctx, ws.Path, "merge-base", "--is-ancestor", "HEAD", remote)
-		if err != nil {
-			return err
-		}
-		switch code {
-		case 0:
-			_, err := a.gitOK(ctx, ws.Path, "merge", "--ff-only", remote)
-			return err
-		case 1:
-		default:
-			return fmt.Errorf("git merge-base --is-ancestor: exit code %d", code)
-		}
-	}
-	// On another branch (main, say) a fast-forward would move that branch, and after a
-	// rebase and force-push of the branch HEAD is no ancestor: only switch when HEAD holds
-	// nothing origin lacks. Otherwise the run must not start silently on the old HEAD.
-	own, err := a.ownCommits(ctx, ws.Path, remote)
-	if err != nil {
-		return err
-	}
-	// Untracked files count, as in workplace.Dirty: checkout -B refuses one the branch tracks.
-	status, err := a.gitOK(ctx, ws.Path, "status", "--porcelain")
-	if err != nil {
-		return err
-	}
-	if own > 0 || status != "" {
-		return &workplace.OwnWorkError{Workspace: ws, Commits: own, Dirty: status != ""}
-	}
-	return a.checkoutRemote(ctx, ws, remote, want)
-}
-
-// ownCommits counts the commits of HEAD that are on no origin ref and have no patch-equal
-// commit on remote: a rebase gives the commits of an earlier run new SHAs on origin, and
-// those are no own work. A merge commit git cherry does not list counts as own.
-func (a *Adapter) ownCommits(ctx context.Context, dir, remote string) (int, error) {
-	out, err := a.gitOK(ctx, dir, "rev-list", "HEAD", "--not", "--remotes=origin")
-	if err != nil || out == "" {
-		return 0, err
-	}
-	cherry, err := a.gitOK(ctx, dir, "cherry", remote, "HEAD")
-	if err != nil {
-		return 0, err
-	}
-	onRemote := map[string]bool{}
-	for line := range strings.Lines(cherry) {
-		if sha, ok := strings.CutPrefix(strings.TrimSpace(line), "- "); ok {
-			onRemote[sha] = true
-		}
-	}
-	own := 0
-	for sha := range strings.Lines(out) {
-		if !onRemote[strings.TrimSpace(sha)] {
-			own++
-		}
-	}
-	return own, nil
-}
-
-func (a *Adapter) checkoutRemote(ctx context.Context, ws workplace.Workspace, remote, want string) error {
-	if _, err := a.gitOK(ctx, ws.Path, "checkout", "-B", ws.Branch, "--track", remote); err != nil {
-		return err
-	}
-	head, err := a.gitOK(ctx, ws.Path, "rev-parse", "HEAD")
-	if err != nil {
-		return err
-	}
-	if head != want {
-		return fmt.Errorf("workspace %s: HEAD %s is not %s after checkout", ws.ID, head, remote)
-	}
-	return nil
-}
-
 // Spawn starts the agent through a forge handoff. It has three outcomes: accepted
 // (a session), workplace.ErrNotAccepted (no agent runs, the carrier is gone) and
 // workplace.ErrUncertain (an agent may run, the carrier stays). It never sends a second POST.
@@ -261,6 +129,9 @@ func (a *Adapter) checkoutRemote(ctx context.Context, ws workplace.Workspace, re
 // sessions once more and takes a new key of this run. After a 5xx, no such key is
 // ErrNotAccepted; a failed re-read is ErrUncertain.
 func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace.LaunchSpec) (workplace.Session, error) {
+	if err := notForge(ws.ID); err != nil {
+		return workplace.Session{}, fmt.Errorf("%w: %w", err, workplace.ErrNotAccepted)
+	}
 	target, ok := a.Targets[l.Profile]
 	if !ok {
 		return workplace.Session{}, fmt.Errorf("no forge target for profile %q: %w", l.Profile, workplace.ErrNotAccepted)
@@ -364,8 +235,20 @@ func (a *Adapter) appeared(ctx context.Context, ws workplace.Workspace, l workpl
 	return workplace.Session{}, false, nil
 }
 
+// notForge refuses the ID of a workspace the local adapter made: kenn-forge would answer 404
+// and the caller would read that as workplace.ErrGone.
+func notForge(id string) error {
+	if strings.HasPrefix(id, workplace.LocalIDPrefix) {
+		return fmt.Errorf("workspace %s is a local workspace, not a kenn-forge one", id)
+	}
+	return nil
+}
+
 // Sessions lists the agent sessions of a workspace. A 404 is workplace.ErrGone.
 func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace.Session, error) {
+	if err := notForge(workspaceID); err != nil {
+		return nil, err
+	}
 	var out struct {
 		Sessions *[]struct {
 			Key       string  `json:"runtime_session_key"`
@@ -404,6 +287,9 @@ func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace
 // Lookup reads the workspace: Path from worktree_path, Branch from git_head_ref. A 404 is
 // workplace.ErrGone; a workspace without worktree_path is an error.
 func (a *Adapter) Lookup(ctx context.Context, workspaceID string) (workplace.Workspace, error) {
+	if err := notForge(workspaceID); err != nil {
+		return workplace.Workspace{}, err
+	}
 	w, err := a.readWorkspace(ctx, workspaceID)
 	if err != nil {
 		return workplace.Workspace{}, err
@@ -427,32 +313,12 @@ func (a *Adapter) readWorkspace(ctx context.Context, workspaceID string) (wireWo
 	return w, nil
 }
 
-// hostTranscriptDir is the directory Claude Code keeps the transcripts of worktree in, under
-// Home. A directory that is not on this host is workplace.ErrNotMeasurable.
-func (a *Adapter) hostTranscriptDir(workspaceID, worktree string) (string, error) {
-	home := a.Home
-	if home == "" {
-		var err error
-		if home, err = os.UserHomeDir(); err != nil {
-			return "", fmt.Errorf("transcripts of %s: %w", workspaceID, err)
-		}
-	}
-	dir := workplace.ProjectDir(home, worktree)
-	st, err := os.Stat(dir)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return "", fmt.Errorf("transcripts of %s: %s is not on this host: %w", workspaceID, dir, workplace.ErrNotMeasurable)
-	case err != nil:
-		return "", fmt.Errorf("transcripts of %s: %w", workspaceID, err)
-	case !st.IsDir():
-		return "", fmt.Errorf("transcripts of %s: %s is no directory: %w", workspaceID, dir, workplace.ErrNotMeasurable)
-	}
-	return dir, nil
-}
-
 // Remove deletes the workspace and then its carrier. A workspace that is already gone is
 // no error; one with work in it is workplace.ErrDirty. A carrier it cannot wipe is an error.
 func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
+	if err := notForge(workspaceID); err != nil {
+		return err
+	}
 	err := a.Client.do(ctx, http.MethodDelete, wsPath(workspaceID), nil, 0, nil)
 	var se *StatusError
 	if errors.As(err, &se) && se.Status == http.StatusConflict {
@@ -466,6 +332,9 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 
 // Discard wipes the carrier of the workspace; a missing carrier is no error.
 func (a *Adapter) Discard(_ context.Context, workspaceID string) error {
+	if err := notForge(workspaceID); err != nil {
+		return err
+	}
 	if err := workplace.RemoveCarrier(a.StateDir, workspaceID); err != nil {
 		return fmt.Errorf("remove carrier of %s: %w", workspaceID, err)
 	}

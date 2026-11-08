@@ -28,6 +28,12 @@ func Path() string {
 	return filepath.Join(home, filepath.FromSlash(HomeRel))
 }
 
+// Workplace adapters a host.toml [dispatch] workplace key can choose.
+const (
+	WorkplaceKennForge = "kenn-forge"
+	WorkplaceLocal     = "local"
+)
+
 // Dispatch holds the [dispatch] settings of host.toml that lighthouse tick reads.
 type Dispatch struct {
 	Repos             []string // absolute paths of the repositories the tick serves
@@ -39,6 +45,7 @@ type Dispatch struct {
 	MaxRuntime        time.Duration
 	MaxWait           time.Duration
 	AnswerPermissions []string // forge permissions allowed to answer a run
+	Workplace         string   // workplace adapter: WorkplaceKennForge or WorkplaceLocal
 	Forge             DispatchForge
 	Profiles          map[string]Profile
 }
@@ -66,6 +73,7 @@ func DefaultDispatch() Dispatch {
 		MaxRuntime:        8 * time.Hour,
 		MaxWait:           time.Hour,
 		AnswerPermissions: []string{"admin", "maintain"},
+		Workplace:         WorkplaceKennForge,
 		Forge:             DispatchForge{URL: "http://127.0.0.1:8091"},
 	}
 	if home, err := os.UserHomeDir(); err == nil {
@@ -94,6 +102,7 @@ func LoadDispatch(path string) (Dispatch, error) {
 			MaxRuntime        *string  `toml:"max_runtime"`
 			MaxWait           *string  `toml:"max_wait"`
 			AnswerPermissions []string `toml:"answer_permissions"`
+			Workplace         *string  `toml:"workplace"`
 			Forge             struct {
 				URL       *string `toml:"url"`
 				TokenFile *string `toml:"token_file"`
@@ -120,6 +129,14 @@ func LoadDispatch(path string) (Dispatch, error) {
 		}
 	}
 	d.Repos = r.Repos
+	if r.Workplace != nil {
+		switch *r.Workplace {
+		case WorkplaceKennForge, WorkplaceLocal:
+			d.Workplace = *r.Workplace
+		default:
+			return DefaultDispatch(), fmt.Errorf("dispatch.workplace: %q is neither %q nor %q", *r.Workplace, WorkplaceKennForge, WorkplaceLocal)
+		}
+	}
 	if err := setMin1("dispatch.slots", r.Slots, &d.Slots); err != nil {
 		return DefaultDispatch(), err
 	}

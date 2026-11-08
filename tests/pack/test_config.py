@@ -413,6 +413,20 @@ def test_load_host_valid(tmp_path):
     assert (host.name, host.tailscale_ip) == ("box", "100.64.0.1")
 
 
+def test_load_host_without_tailscale_ip(tmp_path):
+    host = load_host(_host(tmp_path, '[host]\nname = "box"\ngate_slots = 2\n'))
+    assert (host.name, host.tailscale_ip, host.gate_slots) == ("box", None, 2)
+
+
+def test_cli_tailscale_ip_absent_is_rc_1(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv(
+        "LIGHTHOUSE_HOST_TOML", str(_host(tmp_path, '[host]\nname = "box"\ngate_slots = 2\n'))
+    )
+    assert main(["host.tailscale_ip"]) == 1
+    assert main(["host.gate_slots"]) == 0
+    assert capsys.readouterr().out == "2\n"
+
+
 def test_load_host_missing_file(tmp_path):
     with pytest.raises(ConfigError, match="host.toml"):
         load_host(tmp_path / "host.toml")
@@ -422,10 +436,9 @@ def test_load_host_missing_file(tmp_path):
     ("text", "needle"),
     [
         ('[host]\ntailscale_ip = "100.64.0.1"\n', "missing key host.name"),
-        ('[host]\nname = "box"\n', "missing key host.tailscale_ip"),
         ('[other]\nname = "box"\n', "missing key host"),
     ],
-    ids=["name", "tailscale_ip", "host"],
+    ids=["name", "host"],
 )
 def test_load_host_missing_key(tmp_path, text, needle):
     path = _host(tmp_path, text)
@@ -554,6 +567,15 @@ def test_host_check_rc(tmp_path, monkeypatch, capsys, ip, rc):
         assert main(["host-check"]) == rc
     captured = capsys.readouterr()
     assert ("host: box" in captured.out) if rc == 0 else ("not on this machine" in captured.err)
+
+
+def test_host_check_without_tailscale_ip_is_rc_1(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(_host(tmp_path, '[host]\nname = "box"\n')))
+    with patch.object(cfgmod, "is_local", side_effect=AssertionError("is_local called")):
+        assert main(["host-check"]) == 1
+    err = capsys.readouterr().err
+    assert "no tailscale_ip" in err
+    assert "Traceback" not in err
 
 
 def test_host_check_missing_is_rc_2(tmp_path, monkeypatch, capsys):

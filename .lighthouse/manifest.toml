@@ -730,7 +730,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
-sha256 = "0ea00cea4d5da495167e5b69dbd5e9d6639e405dbd537fce34eaa31270853c14"
+sha256 = "cc8b2f4d64c96ea156bad6c4888cb27f4f06d6e652f41fe981163e1e566453c8"
 
 [[unit]]
 kind = "file"
@@ -898,7 +898,7 @@ kind = "file"
 path = ".lighthouse/scripts/plan_review_record.py"
 package = "core"
 version = "dev"
-sha256 = "448bc90e891912c7f6c5252b234e743aa4637d3279efc4082bda0100af0884fe"
+sha256 = "4e1cdd8a8acf3a6c372cd086c10c5353bb0974bbe368c338df44dc4f44e6201d"
 
 [[unit]]
 kind = "file"

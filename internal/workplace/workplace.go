@@ -13,6 +13,10 @@ import (
 	"unicode/utf8"
 )
 
+// LocalIDPrefix starts the ID of every workspace the local adapter makes; no forge
+// hands out such an ID.
+const LocalIDPrefix = "local-"
+
 // Workspace is one forge workspace.
 type Workspace struct{ ID, Path, Branch string }
 

@@ -246,7 +246,7 @@ class Config:
 @dataclass(frozen=True)
 class Host:
     name: str
-    tailscale_ip: str
+    tailscale_ip: str | None = None
     gate_slice: str | None = None
     scan_memory_max: str | None = None
     scan_cpu_quota: str | None = None
@@ -505,19 +505,18 @@ def load_host(path: Path) -> Host:
     name = host["name"]
     if not isinstance(name, str) or not name:
         raise ConfigError(f"{path}: key host.name must be a non-empty string")
-    if "tailscale_ip" not in host:
-        raise ConfigError(f"{path}: missing key host.tailscale_ip")
-    tailscale_ip = host["tailscale_ip"]
-    try:
-        if not isinstance(tailscale_ip, str):
-            raise TypeError("not a string")
-        address = ipaddress.IPv4Address(tailscale_ip)
-        if address.is_unspecified or address.is_loopback or address.is_multicast:
-            raise ValueError("not a host address")
-    except (TypeError, ValueError) as exc:
-        raise ConfigError(
-            f"{path}: key host.tailscale_ip must be an IPv4 address: {tailscale_ip!r}"
-        ) from exc
+    tailscale_ip = host.get("tailscale_ip")
+    if "tailscale_ip" in host:
+        try:
+            if not isinstance(tailscale_ip, str):
+                raise TypeError("not a string")
+            address = ipaddress.IPv4Address(tailscale_ip)
+            if address.is_unspecified or address.is_loopback or address.is_multicast:
+                raise ValueError("not a host address")
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(
+                f"{path}: key host.tailscale_ip must be an IPv4 address: {tailscale_ip!r}"
+            ) from exc
     gate_slice = host.get("gate_slice")
     if gate_slice is not None and (not isinstance(gate_slice, str) or not gate_slice):
         raise ConfigError(f"{path}: key host.gate_slice must be a non-empty string")
@@ -631,6 +630,13 @@ def _host_check() -> int:
     path = host_path()
     try:
         host = load_host(path)
+        if host.tailscale_ip is None:
+            print(
+                f"config: host {host.name} ({path}) has no tailscale_ip, "
+                "so it is not the always-on host",
+                file=sys.stderr,
+            )
+            return 1
         local = is_local(host.tailscale_ip)
     except ConfigError as exc:
         print(f"config: {exc}", file=sys.stderr)
