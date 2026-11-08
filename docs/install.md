@@ -216,8 +216,8 @@ the blocks refresh every 30 seconds. Per run: `repo`, `issue`, `title`, `state` 
 `final-review` for a subagent-driven run; `0`, `0` and empty without progress), `trigger`,
 `profile`, `workspace_id`, `started_at`, `stand` (`working`, `waiting` or `done`; empty when the
 tick could not measure the session, shown as *not measured*) and `at`, the tick that wrote it. Per
-deferred start: `repo`, `issue`, `title`, `reason` and `at`. The rows do not show `at`; the page
-header shows the age of the newest tick as *tick … ago*, so a row is at most one tick behind.
+deferred start: `repo`, `issue`, `title`, `reason` and `at`. The rows do not show `at`; the Controller
+section heading shows the age of the newest tick as *tick … ago*, so a row is at most one tick behind.
 Without a tick both lists are empty. Next to `runs` and `deferred` the body carries two settings
 of host.toml: `workspace_url`, the kenn-forge base URL from `[dispatch.forge] url` without a
 trailing slash (`http://127.0.0.1:8091` without a host.toml), and `night`, the night window from
