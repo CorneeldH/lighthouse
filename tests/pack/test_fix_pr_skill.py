@@ -184,9 +184,13 @@ def test_roborev_section_stops_on_an_unreadable_ci_review() -> None:
         assert "render and post nothing" in s6
 
 
-def test_only_a_red_pr_is_started_by_the_dispatcher() -> None:
-    """The dispatcher starts fix-pr on a red PR only and never reads the roborev marker."""
+def test_dispatcher_contract() -> None:
+    """The dispatcher starts fix-pr on four causes and reads the marker; the tick merges, not the skill."""
     for text in TEXTS:
         flat = " ".join(text.split())
-        assert "starts this skill only on a red PR after a finished run" in flat
-        assert "does not read the marker" in flat
+        assert "the merge itself — the tick does that after a finished run, never this skill" in flat
+        assert "the dispatcher reads the marker" in flat
+        domain = text[text.index("## Domain") : text.index("## 1.")]
+        domain_flat = " ".join(domain.split())
+        for word in ("conflict", "unprocessed roborev review", "merge that failed"):
+            assert word in domain_flat
