@@ -93,13 +93,13 @@ def test_init_flags_exist():
     assert used <= init_flags(), f"guide names unknown init flags {sorted(used - init_flags())}"
 
 
-def test_config_example_loads(tmp_path):
+def test_config_example_loads(tmp_path, lighthouse_bin):
     block = re.search(r"```toml\n(.*?)```", section("Configure lighthouse.toml"), re.S).group(1)
     (tmp_path / "lighthouse.toml").write_text(block, encoding="utf-8")
     env = {**os.environ, "LIGHTHOUSE_REPO_ROOT": str(tmp_path)}
     for key, want in [("project.language", "en"), ("forge.kind", "github")]:
         out = subprocess.run(
-            ["python3", str(ROOT / ".lighthouse/lib/lighthouse_lib/config.py"), key],
+            [str(lighthouse_bin), "config", key],
             env=env,
             capture_output=True,
             text=True,
@@ -107,6 +107,14 @@ def test_config_example_loads(tmp_path):
         )
         assert out.returncode == 0, out.stderr
         assert out.stdout.strip() == want
+
+
+def test_config_keys_point_to_the_go_reader():
+    """The list of every key, type and default is the Go reader's `schema` and `defaults`."""
+    text = " ".join(section("Configure lighthouse.toml").split())
+    assert "`schema` and `defaults` of [`internal/config/config.go`](../internal/config/config.go)" in text
+    source = (ROOT / "internal" / "config" / "config.go").read_text(encoding="utf-8")
+    assert "\nvar schema = " in source and "\nvar defaults = " in source
 
 
 CHAIN = ["/lighthouse-write-issue", "/lighthouse-start-issue", "/lighthouse-write-pr"]

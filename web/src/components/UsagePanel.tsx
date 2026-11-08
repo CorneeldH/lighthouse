@@ -1,3 +1,4 @@
+import { Gauge } from 'lucide-react'
 import type { JSX } from 'react'
 import { useUsage } from '@/lib/queries'
 import { useNow } from '@/lib/now'
@@ -5,15 +6,16 @@ import { Panel } from './Panel'
 import { UsageWindow } from './UsageWindow'
 
 export function UsagePanel(): JSX.Element {
-  const { data, error, isPending, isFetching, dataUpdatedAt } = useUsage()
+  const { data, error, isPending } = useUsage()
   const now = new Date(useNow())
   return (
     <Panel
+      id="usage"
       title="Usage"
-      updatedAt={dataUpdatedAt}
+      icon={Gauge}
+      tone="navy"
       error={error}
       loading={isPending && !error}
-      refreshing={isFetching && !isPending}
     >
       {data && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

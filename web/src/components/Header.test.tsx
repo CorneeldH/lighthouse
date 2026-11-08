@@ -35,7 +35,7 @@ describe('Header', () => {
 
     renderHeader()
 
-    expect(await screen.findByText('lighthouse 1.2.3')).toBeTruthy()
+    expect(await screen.findByText('1.2.3')).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith('/api/health', expect.anything())
   })
 
@@ -61,7 +61,7 @@ describe('Header', () => {
     renderHeader()
 
     expect((await screen.findByRole('alert')).textContent).toContain('API unreachable')
-    expect(screen.queryByText(/lighthouse undefined/)).toBeNull()
+    expect(screen.queryByText(/undefined/)).toBeNull()
   })
 
   it('shows Refreshing… and is disabled until the refetch settles', async () => {
@@ -69,7 +69,8 @@ describe('Header', () => {
     let calls = 0
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockImplementation(() => {
+      vi.fn().mockImplementation((url: string) => {
+        if (url !== '/api/health') return Promise.resolve(json('{"runs":[],"deferred":[]}'))
         calls++
         if (calls === 1) return Promise.resolve(json('{"version":"1.2.3"}'))
         return new Promise<Response>((resolve) => {
@@ -78,7 +79,7 @@ describe('Header', () => {
       }),
     )
     renderHeader()
-    await screen.findByText('lighthouse 1.2.3')
+    await screen.findByText('1.2.3')
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
 
@@ -100,7 +101,7 @@ describe('Header', () => {
       queryKey: queryKeys.questions,
       queryFn: ({ signal }) => fetchQuestions(signal),
     })
-    await screen.findByText('lighthouse 1.2.3')
+    await screen.findByText('1.2.3')
     const count = (path: string) => fetchMock.mock.calls.filter((c) => c[0] === path).length
     expect(count('/api/questions')).toBe(1)
     expect(count('/api/health')).toBe(1)
@@ -109,5 +110,43 @@ describe('Header', () => {
 
     await vi.waitFor(() => expect(count('/api/questions')).toBe(2))
     await vi.waitFor(() => expect(count('/api/health')).toBe(2))
+  })
+
+  it('shows the age of the newest tick over runs and deferred starts', async () => {
+    const ago = (ms: number) => new Date(Date.now() - ms - 30_000).toISOString()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(
+          url === '/api/runs'
+            ? json(
+                JSON.stringify({
+                  runs: [{ repo: 'o/a', issue: 3, at: ago(2 * 60_000) }],
+                  deferred: [{ repo: 'o/a', issue: 4, at: ago(10 * 60_000) }],
+                }),
+              )
+            : json('{"version":"1.2.3"}'),
+        ),
+      ),
+    )
+
+    renderHeader()
+
+    expect(await screen.findByText('tick 2 min ago')).toBeTruthy()
+  })
+
+  it('shows no tick without runs or deferred starts', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(url === '/api/runs' ? json('{"runs":[],"deferred":[]}') : json('{"version":"1.2.3"}')),
+      ),
+    )
+
+    const client = renderHeader()
+
+    await screen.findByText('1.2.3')
+    await vi.waitFor(() => expect(client.getQueryData(queryKeys.runs)).toMatchObject({ runs: [], deferred: [] }))
+    expect(screen.queryByText(/tick/)).toBeNull()
   })
 })

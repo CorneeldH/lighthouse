@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "host.scan_memory_max"
+  ],
+  "rc": 0,
+  "stdout": "512\n",
+  "stderr": ""
+ }
+]

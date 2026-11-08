@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "labels.blocked_issue"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key labels.blocked_issue is empty\n"
+ }
+]

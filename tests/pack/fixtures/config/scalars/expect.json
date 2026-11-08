@@ -1,0 +1,250 @@
+[
+ {
+  "args": [
+   "x.dt"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.dt is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x.odt"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.odt is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x.ldt"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.ldt is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x.ld"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.ld is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x.lt"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.lt is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x.t"
+  ],
+  "rc": 0,
+  "stdout": "true\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.f"
+  ],
+  "rc": 0,
+  "stdout": "false\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.i"
+  ],
+  "rc": 0,
+  "stdout": "-42\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.big"
+  ],
+  "rc": 0,
+  "stdout": "9007199254740993\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.s"
+  ],
+  "rc": 0,
+  "stdout": "text\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.nan"
+  ],
+  "rc": 0,
+  "stdout": "nan\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.pnan"
+  ],
+  "rc": 0,
+  "stdout": "nan\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.inf"
+  ],
+  "rc": 0,
+  "stdout": "inf\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.pinf"
+  ],
+  "rc": 0,
+  "stdout": "inf\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.ninf"
+  ],
+  "rc": 0,
+  "stdout": "-inf\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.mixed"
+  ],
+  "rc": 0,
+  "stdout": "1\na\ntrue\n2.5\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.nested"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.nested is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x.withdt"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.withdt is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x.empty"
+  ],
+  "rc": 0,
+  "stdout": "",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.inline"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.inline is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x.inline.a"
+  ],
+  "rc": 0,
+  "stdout": "1\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.sub"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.sub is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x.sub.k"
+  ],
+  "rc": 0,
+  "stdout": "v\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x is a table, not a value\n"
+ },
+ {
+  "args": [
+   "arr"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: arr is a table, not a value\n"
+ },
+ {
+  "args": [
+   "arr.n"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: arr.n is not set\n"
+ },
+ {
+  "args": [
+   "test_gate.command"
+  ],
+  "rc": 0,
+  "stdout": "\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: test_gate is a table, not a value\n"
+ },
+ {
+  "args": [
+   "test_gate.slots"
+  ],
+  "rc": 0,
+  "stdout": "2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "usage_guard.resume"
+  ],
+  "rc": 0,
+  "stdout": "false\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: project is a table, not a value\n"
+ }
+]

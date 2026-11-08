@@ -51,7 +51,7 @@ def test_optional_refs_guarded():
 def test_write_issue_link():
     text = _text()
     assert "/lighthouse-write-issue" in text
-    assert "python3 .lighthouse/lib/lighthouse_lib/config.py labels.area_prefix" in text
+    assert "lighthouse config labels.area_prefix" in text
     assert config.is_known_key("labels.area_prefix")
     assert "2-area:" not in text
 

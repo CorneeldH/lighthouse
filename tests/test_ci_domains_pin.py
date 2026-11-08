@@ -105,6 +105,15 @@ def test_python_job_shows_the_pytest_header():
     assert runs == ["uv run pytest -n auto"], runs
 
 
+def test_python_job_sets_up_go_before_pytest():
+    """Fails when the python job loses Go: the `lighthouse_bin` fixture builds the binary the
+    skills and pack/python scripts call (#274)."""
+    python = _jobs()["python"]
+    setup = re.search(r"uses: actions/setup-go@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+go-version-file: go.mod", python)
+    assert setup, python
+    assert setup.start() < python.index("run: uv run pytest -n auto")
+
+
 def test_node_jobs_cache_npm():
     """Fails when web or binary stops caching the npm download for npm ci."""
     jobs = _jobs()
@@ -180,7 +189,7 @@ def test_no_measurement_step():
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert len(uses) == 20, uses
+    assert len(uses) == 21, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)

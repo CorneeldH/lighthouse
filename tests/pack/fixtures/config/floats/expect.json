@@ -1,0 +1,146 @@
+[
+ {
+  "args": [
+   "x.a"
+  ],
+  "rc": 0,
+  "stdout": "123456789.0\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.b"
+  ],
+  "rc": 0,
+  "stdout": "1e+16\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.c"
+  ],
+  "rc": 0,
+  "stdout": "1e-05\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.d"
+  ],
+  "rc": 0,
+  "stdout": "0.0001\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.e"
+  ],
+  "rc": 0,
+  "stdout": "1.5\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.f"
+  ],
+  "rc": 0,
+  "stdout": "-0.0\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.g"
+  ],
+  "rc": 0,
+  "stdout": "1.5e+16\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.h"
+  ],
+  "rc": 0,
+  "stdout": "1.2345678901234568e+17\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.i"
+  ],
+  "rc": 0,
+  "stdout": "1000000000000000.0\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.j"
+  ],
+  "rc": 0,
+  "stdout": "1e+22\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.k"
+  ],
+  "rc": 0,
+  "stdout": "5e-324\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.l"
+  ],
+  "rc": 0,
+  "stdout": "0.1\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.m"
+  ],
+  "rc": 0,
+  "stdout": "100.0\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.n"
+  ],
+  "rc": 0,
+  "stdout": "1.7976931348623157e+308\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.o"
+  ],
+  "rc": 0,
+  "stdout": "0.00012345\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.fl"
+  ],
+  "rc": 0,
+  "stdout": "1.0\n2.5\n1e-07\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.gate_min_mem_available_gb"
+  ],
+  "rc": 0,
+  "stdout": "2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.gate_min_swap_free_gb"
+  ],
+  "rc": 0,
+  "stdout": "1.5\n",
+  "stderr": ""
+ }
+]

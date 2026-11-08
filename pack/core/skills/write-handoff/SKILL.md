@@ -61,9 +61,9 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    ```
    Name uncommitted work explicitly — the next session must not trip over it.
 3. **Decide the anchor.** Exactly one of: issue number, plan/spec path, or PR number.
-   If there is a plan in the plans folder (`python3 .lighthouse/lib/lighthouse_lib/config.py paths.plans`),
+   If there is a plan in the plans folder (`lighthouse config paths.plans`),
    use that path; otherwise the spec in the specs folder
-   (`python3 .lighthouse/lib/lighthouse_lib/config.py paths.specs`); otherwise the issue.
+   (`lighthouse config paths.specs`); otherwise the issue.
 
    **If the anchor is a spec or plan path and the issue number is known** (from the prompt or the
    branch `issue-<nr>-…`), post it on the issue,
@@ -147,9 +147,9 @@ tick starts the next phase itself. Two entries:
    a status change. At rc 2, stop.
    ```bash
    set -o pipefail
-   O=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.owner) || exit 2
-   NAME=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.name) || exit 2
-   N=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_number) || exit $?
+   O=$(lighthouse config forge.owner) || exit 2
+   NAME=$(lighthouse config forge.name) || exit 2
+   N=$(lighthouse config forge.board.project_number) || exit $?
    gh api graphql -f owner="$O" -f name="$NAME" -F nr=<nr> -f query='query($owner: String!, $name: String!, $nr: Int!) {
      repository(owner: $owner, name: $name) { issue(number: $nr) {
        projectItems(first: 20) { nodes { id project { number }
@@ -169,7 +169,7 @@ tick starts the next phase itself. Two entries:
    spec (pause, context full) falls under `no`. If the user gave an opt-out in this conversation before the
    commit ("interactive", "review myself"), it is `no`: only the plain block, no post,
    no Status change. It also holds only on the always-on host (`host.toml`)
-   (`python3 .lighthouse/lib/lighthouse_lib/config.py host-check`, exit 0). Elsewhere: the plain block plus one
+   (`lighthouse config host-check`, exit 0). Elsewhere: the plain block plus one
    line why: the worktree does not exist there for the controller, and the controller would
    return the issue. Back after the commit: the user moves the Status off `Controller`. That
    only stops the next phase; a running run finishes its phase
@@ -241,15 +241,15 @@ tick starts the next phase itself. Two entries:
    | context full, same phase | the same command as this phase, and `lane: native` if the previous handoff carried it |
 
    A path is absolute and without spaces. At `/lighthouse-start-issue <nr>`, `worktree:` is the
-   main checkout and `branch:` `main` (the default branch, `config.py forge.default_branch`). Exception: the blocked restart from
+   main checkout and `branch:` `main` (the default branch, `lighthouse config forge.default_branch`). Exception: the blocked restart from
    `lighthouse-start-issue` (controller run, the gate-0 line carries `— blocker #<x> open`) —
    then `worktree:` and `branch:` are the own worktree and branch of the issue. From `main`
    the controller puts an executing handoff on hold and never stacks.
 4. **`when:`** is `now`, unless the user chooses or asks for `night`.
 5. **Post** the block:
    ```bash
-   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
-   H=$(python3 .lighthouse/lib/lighthouse_lib/headings.py kind_handoff) || exit 2
+   R=$(lighthouse config forge.repo) || exit 2
+   H=$(lighthouse headings kind_handoff) || exit 2
    { printf '🤖 %s\n' "$H"; cat <<'EOF'
    issue: #<nr>
    worktree: <absolute path>
@@ -273,11 +273,11 @@ tick starts the next phase itself. Two entries:
 6. **Status on `Controller`** (only interactive, also at `default`, after the comment; only with a
    board, otherwise skipped). Without an item ID from step 2
    first
-   `N=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_number) && O=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.owner) && gh project item-add "$N" --owner "$O" --url <issue-url> --format json --jq .id`.
+   `N=$(lighthouse config forge.board.project_number) && O=$(lighthouse config forge.owner) && gh project item-add "$N" --owner "$O" --url <issue-url> --format json --jq .id`.
    ```bash
-   P=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_id) || exit 2
-   F=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.status_field_id) || exit 2
-   S=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.status_options.Controller) || exit 2
+   P=$(lighthouse config forge.board.project_id) || exit 2
+   F=$(lighthouse config forge.board.status_field_id) || exit 2
+   S=$(lighthouse config forge.board.status_options.Controller) || exit 2
    gh project item-edit --id <item-id> --project-id "$P" --field-id "$F" --single-select-option-id "$S"
    ```
    Then report in one line that the controller picks it up within ten minutes; the

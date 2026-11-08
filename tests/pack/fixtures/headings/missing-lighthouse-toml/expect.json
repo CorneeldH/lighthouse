@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "kind_handoff"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "headings: lighthouse.toml: file is missing\n"
+ }
+]

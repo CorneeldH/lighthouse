@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "test_gate.unchecked_exit_codes"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key test_gate.unchecked_exit_codes must be of type list[int]\n"
+ }
+]

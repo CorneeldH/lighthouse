@@ -117,11 +117,15 @@ export interface RunView {
   at: string;
   command: string;
   issue: number;
+  phase: string;
   profile: string;
   repo: string;
   stand: string;
   started_at: string;
   state: string;
+  step: string;
+  task: number;
+  tasks: number;
   title: string;
   trigger: string;
   workspace_id: string;
@@ -130,8 +134,10 @@ export interface RunView {
 export interface RunsOutputBody {
   /** @nullable */
   deferred: DeferredView[] | null;
+  night: string;
   /** @nullable */
   runs: RunView[] | null;
+  workspace_url: string;
 }
 
 export type GetLatestCommentParams = {

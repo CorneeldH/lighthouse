@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr_prefix": "config: host.toml: unreadable or not valid TOML: "
+ }
+]

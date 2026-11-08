@@ -1,0 +1,4 @@
+[forge]
+kind = "gitlab"
+repo = "group/sub.1/deep_2/name-3"
+host = "git.example.org"

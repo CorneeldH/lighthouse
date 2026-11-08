@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "test_gate.slots"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key test_gate.slots must be of type int\n"
+ }
+]

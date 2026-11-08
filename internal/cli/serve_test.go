@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/CorneeldH/lighthouse/internal/server"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,7 +112,7 @@ func startServe(t *testing.T) (addr string, stop func() error) {
 	errOut := &syncBuf{}
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, errOut)
+		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, server.RunsMeta{}, errOut)
 	}()
 
 	addr = waitListening(t, errOut, done)
@@ -555,8 +556,10 @@ func TestServeRunsWithoutDispatch(t *testing.T) {
 	noHostToml(t)
 	t.Setenv("LIGHTHOUSE_FORGE_REPO", "")
 	addr, stop := startServeCommand(t, "--db", filepath.Join(t.TempDir(), "l.db"))
-	if code, body := getBody(t, addr, "/api/runs"); code != http.StatusOK || strings.TrimSpace(body) != `{"runs":[],"deferred":[]}` {
-		t.Errorf("runs = %d %s, want 200 {\"runs\":[],\"deferred\":[]}", code, body)
+	// A missing host.toml gives the defaults of hostconfig.LoadDispatch.
+	const want = `{"runs":[],"deferred":[],"workspace_url":"http://127.0.0.1:8091","night":"21:00-08:00"}`
+	if code, body := getBody(t, addr, "/api/runs"); code != http.StatusOK || strings.TrimSpace(body) != want {
+		t.Errorf("runs = %d %s, want 200 %s", code, body, want)
 	}
 	if code, body := getBody(t, addr, "/api/questions"); code != http.StatusServiceUnavailable {
 		t.Errorf("questions = %d %s, want 503", code, body)

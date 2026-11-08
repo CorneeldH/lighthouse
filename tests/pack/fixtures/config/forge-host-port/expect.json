@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "forge.host"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key forge.host must be a bare host name, not 'git.example.org:8443'\n"
+ }
+]

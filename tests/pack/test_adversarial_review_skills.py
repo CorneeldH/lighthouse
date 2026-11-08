@@ -369,7 +369,7 @@ def test_claude_skills_name_the_always_on_host(name):
 @pytest.mark.parametrize("variant", BOTH)
 def test_spec_dir_from_config(variant):
     text = skill("review-spec", variant)
-    assert "python3 .lighthouse/lib/lighthouse_lib/config.py paths.specs" in text
+    assert "lighthouse config paths.specs" in text
     assert "docs/developer/planning/specs/" not in text
 
 

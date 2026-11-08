@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "usage_guard.resume"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key usage_guard.resume must be of type bool\n"
+ }
+]

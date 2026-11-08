@@ -1,0 +1,26 @@
+[
+ {
+  "args": [
+   "host.gate_min_mem_available_gb"
+  ],
+  "rc": 0,
+  "stdout": "16\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.gate_min_swap_free_gb"
+  ],
+  "rc": 0,
+  "stdout": "3\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.gate_slots"
+  ],
+  "rc": 0,
+  "stdout": "1\n",
+  "stderr": ""
+ }
+]

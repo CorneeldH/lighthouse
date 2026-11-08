@@ -139,9 +139,9 @@ def test_kpi_rows():
 
 
 def test_config_keys_are_known():
-    """Every `config.py <key>` the skill runs is a key the config reader knows."""
+    """Every `lighthouse config <key>` the skill runs is a key the config reader knows."""
     for path in VARIANTS:
-        keys = re.findall(r"config\.py ([a-z_][a-z_.]*)", path.read_text(encoding="utf-8"))
+        keys = re.findall(r"lighthouse config ([a-z_][a-z_.]*)", path.read_text(encoding="utf-8"))
         assert keys, path
         for key in keys:
             assert config.is_known_key(key), f"{path}: unknown config key {key}"

@@ -4,6 +4,20 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.13.2] - 2026-11-08
+
+### Fixed
+
+- The controller no longer hands back a run as "no handoff or question" while the session waits on a subagent it resumed with `SendMessage`, as a subagent-driven-development fix round does.
+
+## [v0.13.1] - 2026-11-08
+
+### Fixed
+
+- `lighthouse tick` now cleans up a workspace whose HEAD is behind the head of its merged PR, for
+  example after a fix pushed from another session, instead of keeping it as `unpushed commits`.
+  When that PR head cannot be fetched, the workspace stays as `not measurable`.
+
 ## [v0.13.0] - 2026-11-08
 
 ### Added

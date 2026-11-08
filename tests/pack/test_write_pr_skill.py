@@ -103,7 +103,7 @@ def test_allowlist_table_covers_the_code():
 
 def test_pytest_dir_comes_from_config():
     section = _section(TEXT, "## Evidence allowlist")
-    assert "config.py test_gate.evidence_test_dir" in section
+    assert "lighthouse config test_gate.evidence_test_dir" in section
     assert "tests/unit" not in TEXT
 
 
@@ -186,7 +186,7 @@ def test_v5_hands_off_to_close_issue():
 def test_v4_gives_a_title_and_writes_the_body_separately():
     v4 = _section(TEXT, "## V4.")
     assert "gh pr create --repo <forge.repo> --title '<title>' --body-file <path>" in v4
-    assert "config.py forge.repo" in v4
+    assert "lighthouse config forge.repo" in v4
     assert "Write tool" in v4
     assert "python3 .lighthouse/scripts/plan_review_record.py pr-open-points <path>..." in v4
 
@@ -200,7 +200,7 @@ def test_dod_does_not_run_the_suite_by_hand_in_claude_code():
     assert "`suite: CI`" in flat
     assert "last outcome of the commit gate" not in flat
     assert "Outside Claude Code" in dod
-    assert dod.index("Outside Claude Code") < dod.index("config.py test_gate.command")
+    assert dod.index("Outside Claude Code") < dod.index("lighthouse config test_gate.command")
 
 
 def test_gh_view_demands_a_number():
@@ -268,7 +268,7 @@ def test_v4_writes_the_marker_and_posts_the_comment():
 
 def test_documents_of_the_linked_issues():
     s = " ".join(_section(TEXT, "## Documents of the linked issues").split())
-    assert "python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels" in s
+    assert "lighthouse config paths.labels" in s
     assert "every `Closes #N` and every `Refs #N`" in s
     assert "gh issue view" in s and "--json labels" in s
     assert "does the branch deliver" in s

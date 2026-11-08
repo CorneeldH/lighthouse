@@ -28,7 +28,7 @@ The order *is* the design: the worktree stands before the first write, not after
 ### 1. One read call
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/issues/<nr>"
 ```
 
@@ -36,7 +36,7 @@ Delivers `title`, `body`, `labels`, `milestone` and `comments` (the *count*) in 
 that count is > 0 does a second call follow:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/issues/<nr>/comments"
 ```
 
@@ -49,12 +49,12 @@ From the labels:
 
 | Axis | Label | What it says |
 |---|---|---|
-| where you pick it up | prefix `config.py labels.location_prefix` | the environment |
-| where it belongs | prefix `config.py labels.area_prefix` | the lasting axis |
+| where you pick it up | prefix `lighthouse config labels.location_prefix` | the environment |
+| where it belongs | prefix `lighthouse config labels.area_prefix` | the lasting axis |
 | what blocks | a label from `[labels]`, at most one | the next step |
 
-The prefixes come from `python3 .lighthouse/lib/lighthouse_lib/config.py labels.location_prefix`
-and `python3 .lighthouse/lib/lighthouse_lib/config.py labels.area_prefix`. Gives one of them rc 1
+The prefixes come from `lighthouse config labels.location_prefix`
+and `lighthouse config labels.area_prefix`. Gives one of them rc 1
 (not set), report `<axis>: skipped — no labels.<key> configured` for that axis.
 
 Report all three, also when they do not change the route. If one is missing, report *that* — then
@@ -74,11 +74,11 @@ branch. It is a targeted search on *this* issue, not a bulk scan. Pick a core te
 `leadin` counts every call before the first route call):
 
 ```bash
-B=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.default_branch) || exit 2
+B=$(lighthouse config forge.default_branch) || exit 2
 git fetch origin "$B" || echo "FETCH FAILED: origin/$B may be stale"
 git log --oneline "origin/$B" -E --grep '#<nr>([^0-9]|$)'
 git log --oneline -S '<core term>' "origin/$B"
-git grep -l '<core term>' "origin/$B" -- $(python3 .lighthouse/lib/lighthouse_lib/config.py paths.search_dirs)
+git grep -l '<core term>' "origin/$B" -- $(lighthouse config paths.search_dirs)
 ```
 
 `git grep` gives exit 1 on zero hits; only exit ≥ 2 (e.g. 128) is an error. Precision goes before
@@ -120,7 +120,7 @@ python3 .lighthouse/scripts/board_start.py <nr>
 ```
 
 Report the one `board:` line the script prints. Only `To do` and `On hold` become `In progress`.
-Without `[forge.board]` (`python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_number`
+Without `[forge.board]` (`lighthouse config forge.board.project_number`
 gives rc 1) the script prints `board: skipped — no [forge.board] configured`. A `board: skipped`
 line is not a stop: picking up goes on. A `board: ERROR` line (rc 2, broken config) is reported
 and picking up goes on as well. Skip the step on a `labels.blocked_*` label from step 2: gate 0
@@ -256,8 +256,8 @@ That lets the user choose: plan review, controller (SDD, if present) or interact
 own or through the controller.
 
 When handing on, name the **project path explicitly**, because it overrules the default of the
-superpowers skills: specs to `python3 .lighthouse/lib/lighthouse_lib/config.py paths.specs`,
-plans to `python3 .lighthouse/lib/lighthouse_lib/config.py paths.plans` — not the superpowers
+superpowers skills: specs to `lighthouse config paths.specs`,
+plans to `lighthouse config paths.plans` — not the superpowers
 plugin's own folder.
 
 ## Non-negotiable

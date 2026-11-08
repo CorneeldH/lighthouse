@@ -4,6 +4,8 @@ Without the variable every test runs: locally and in the test gate nothing chang
 """
 
 import os
+import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -39,3 +41,25 @@ def pytest_collection_modifyitems(config, items):
     items[:] = kept
     if dropped:
         config.hook.pytest_deselected(items=dropped)
+
+
+REPO = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(scope="session")
+def _lighthouse_build_dir(tmp_path_factory) -> Path:
+    """`go build` the binary once per session (once per xdist worker)."""
+    out = tmp_path_factory.mktemp("lighthouse-bin")
+    subprocess.run(
+        ["go", "build", "-o", str(out / "lighthouse"), "./cmd/lighthouse"],
+        cwd=REPO,
+        check=True,
+    )
+    return out
+
+
+@pytest.fixture
+def lighthouse_bin(_lighthouse_build_dir, monkeypatch) -> Path:
+    """The binary of this checkout, with its directory first on the PATH."""
+    monkeypatch.setenv("PATH", f"{_lighthouse_build_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    return _lighthouse_build_dir / "lighthouse"

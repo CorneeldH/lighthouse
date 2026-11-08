@@ -1,0 +1,3 @@
+[forge]
+kind = "github"
+repo = "owner/sub/name"

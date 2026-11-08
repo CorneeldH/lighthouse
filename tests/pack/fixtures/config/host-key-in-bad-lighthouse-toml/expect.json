@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 0,
+  "stdout": "box\n",
+  "stderr": ""
+ }
+]

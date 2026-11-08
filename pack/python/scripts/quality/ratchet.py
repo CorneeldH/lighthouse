@@ -36,12 +36,6 @@ from types import ModuleType
 _SCRIPTS = Path(__file__).resolve().parents[1]
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
-# `.lighthouse/lib` next to `.lighthouse/scripts` (design choice 6 of (b)).
-_LIB = Path(__file__).resolve().parents[2] / "lib"
-if _LIB.is_dir() and str(_LIB) not in sys.path:
-    sys.path.insert(0, str(_LIB))
-
-from lighthouse_lib import config
 
 from quality import diffcov
 from quality.baseline import (
@@ -89,20 +83,37 @@ C901_NAME = re.compile(r"`([^`]+)`")
 
 def repo_root() -> Path:
     """LIGHTHOUSE_REPO_ROOT, otherwise `git rev-parse --show-toplevel`."""
-    try:
-        return config.repo_root()
-    except config.ConfigError as exc:
-        raise SystemExit(f"ratchet: {exc}") from exc
+    override = os.environ.get("LIGHTHOUSE_REPO_ROOT")
+    if override:
+        return Path(override)
+    proc = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        reason = proc.stderr.strip() or "git rev-parse failed"
+        raise SystemExit(f"ratchet: repository root not found: {reason}")
+    return Path(proc.stdout.strip())
 
 
 def setting(key: str) -> object:
-    """A key from lighthouse.toml, with the default of the config reader."""
+    """A key from lighthouse.toml, with the default of the config reader: `lighthouse config
+    --json`, so a list key stays a list."""
     try:
-        return config.lookup(config.load(config.config_path()), key)
-    except config.ConfigError as exc:
-        raise SystemExit(f"ratchet: {exc}") from exc
-    except KeyError as exc:
-        raise SystemExit(f"ratchet: {key} is not set in lighthouse.toml") from exc
+        proc = subprocess.run(
+            ["lighthouse", "config", "--json", key], capture_output=True, text=True, check=False
+        )
+    except FileNotFoundError as exc:
+        raise SystemExit(
+            "ratchet: `lighthouse` is not on the PATH; the ratchet reads lighthouse.toml through "
+            "the binary (go install ./cmd/lighthouse, or a release)"
+        ) from exc
+    stderr = proc.stderr.strip()
+    if proc.returncode == 0:
+        return json.loads(proc.stdout)
+    # An older binary without `config` also exits 1: only the reader's own message means unset.
+    if proc.returncode == 1 and stderr.endswith("is not set"):
+        raise SystemExit(f"ratchet: {key} is not set in lighthouse.toml")
+    raise SystemExit(f"ratchet: {stderr or f'lighthouse config {key}: exit {proc.returncode}'}")
 
 
 def _dirs(key: str) -> list[str]:
@@ -749,7 +760,7 @@ def cmd_nightly(
             OSError,
             ValueError,
             KeyError,
-            config.ConfigError,
+            prcov_issues.ConfigError,
         ) as exc:
             print(f"ratchet: the watermark cannot be determined: {exc}", file=sys.stderr)
             return 1
@@ -791,7 +802,7 @@ def cmd_nightly(
             OSError,
             ValueError,
             KeyError,
-            config.ConfigError,
+            prcov_issues.ConfigError,
         ) as exc:
             print(f"ratchet: PR #{pr}: {exc}", file=sys.stderr)
             step5_failed = True

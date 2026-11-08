@@ -48,7 +48,12 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return serve(ctx, addr, dbPath, repos, cmd.ErrOrStderr())
+			cfg, err := hostconfig.LoadDispatch(hostconfig.Path())
+			if err != nil {
+				return err
+			}
+			meta := server.RunsMeta{WorkspaceURL: strings.TrimRight(cfg.Forge.URL, "/"), Night: cfg.Night}
+			return serve(ctx, addr, dbPath, repos, meta, cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
@@ -127,7 +132,7 @@ func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, err
 // serve opens the store, listens on addr and serves until ctx is done, then shuts down
 // within shutdownTimeout. An empty dbPath means the default path. repos feed the forge endpoints,
 // and their slugs pick the rows of the tick state that /api/runs shows.
-func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, errOut io.Writer) error {
+func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, meta server.RunsMeta, errOut io.Writer) error {
 	if dbPath == "" {
 		p, err := store.DefaultPath()
 		if err != nil {
@@ -160,6 +165,7 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 		Leftovers: func(ctx context.Context) ([]workplace.Leftover, error) {
 			return workplace.Leftovers(ctx, st.DB)
 		},
+		RunsMeta: meta,
 		Runs: func(ctx context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
 			return dispatch.LoadView(ctx, st.DB, slugs)
 		},

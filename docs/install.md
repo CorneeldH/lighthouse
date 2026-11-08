@@ -204,15 +204,24 @@ answered with an error for one of the repositories; the response body names it.
 
 ## Running runs
 
-`GET /api/runs` and the *Running runs* card show the open and parked runs and the deferred
-starts of the served repositories. `serve` reads them from the tick state in its database, the
-one `lighthouse tick` writes (see [tick.md](tick.md)): no forge call and no token, so the card
-refreshes every 30 seconds. Per run: `repo`, `issue`, `title`, `state` (`open` or `parked`),
-`command`, `trigger`, `profile`, `workspace_id`, `started_at`, `stand` (`working`, `waiting` or
-`done`; empty when the tick could not measure the session, shown as *not measured*) and `at`, the
-tick that wrote it. Per deferred start: `repo`, `issue`, `title`, `reason` and `at`. The card
-shows the age of `at` on every row as *tick … ago*: a row is at most one tick behind. Without a
-tick both lists are empty. A `500` means the database could not be read.
+`GET /api/runs` and the page blocks *Running runs*, *Parked runs*, *Queue* and *Night* show the open
+and parked runs and the deferred starts of the served repositories. A row of summary tiles above the
+blocks counts each block and links to it; a tile shows `–` while its data is loading or has never
+loaded (a failed refresh keeps the last number, like the panels). A deferred start with reason
+`night` goes to *Night*, every other one to *Queue*. `serve` reads them from the tick state in its
+database, the one `lighthouse tick` writes (see [tick.md](tick.md)): no forge call and no token, so
+the blocks refresh every 30 seconds. Per run: `repo`, `issue`, `title`, `state` (`open` or
+`parked`), `command`, `phase` (the skill the command starts, empty for an empty command), `task`,
+`tasks` and `step` (the current plan task, the number of tasks and `build`, `review` or
+`final-review` for a subagent-driven run; `0`, `0` and empty without progress), `trigger`,
+`profile`, `workspace_id`, `started_at`, `stand` (`working`, `waiting` or `done`; empty when the
+tick could not measure the session, shown as *not measured*) and `at`, the tick that wrote it. Per
+deferred start: `repo`, `issue`, `title`, `reason` and `at`. The rows do not show `at`; the page
+header shows the age of the newest tick as *tick … ago*, so a row is at most one tick behind.
+Without a tick both lists are empty. Next to `runs` and `deferred` the body carries two settings
+of host.toml: `workspace_url`, the kenn-forge base URL from `[dispatch.forge] url` without a
+trailing slash (`http://127.0.0.1:8091` without a host.toml), and `night`, the night window from
+`[dispatch] night` as `HH:MM-HH:MM`. A `500` means the database could not be read.
 
 ## Run the tick
 

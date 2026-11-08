@@ -1,0 +1,85 @@
+[forge]
+kind = "github"
+repo = "acme/widgets"
+default_branch = "trunk"
+[forge.board]
+project_number = 7
+project_id = "PVT_x"
+status_field_id = "PVTSSF_s"
+priority_field_id = "PVTSSF_p"
+[forge.board.status_options]
+"To do" = "a1"
+"In progress" = "a2"
+Done = "a3"
+"On hold" = "a4"
+Controller = "a5"
+[forge.board.priority_options]
+High = "p1"
+"Very low" = "p2"
+[controller]
+x = 1
+[project]
+language = "nl"
+code_language = "en"
+instructions_word_ceiling = 1234
+skill_prefix = "lh"
+milestone_prefix = "M"
+code_language_exempt = ["a", "b"]
+code_language_paths = ["src/", "pkg/"]
+[paths]
+specs = "s"
+plans = "p"
+tenets = "t"
+areas = "a"
+history = "h"
+labels = "l"
+search_dirs = ["x", "y z"]
+mirror_exceptions = "m"
+[labels]
+blocked_issue = "bi"
+blocked_external = "be"
+needs_shaping = "ns"
+needs_decision = "nd"
+needs_hands = "nh"
+needs_testing = "nt"
+location_prefix = "loc:"
+area_prefix = "area:"
+[test_gate]
+command = "go test ./..."
+deadline_seconds = 11
+slots = 3
+slot_wait_seconds = 12
+unchecked_exit_codes = [3, 4]
+evidence_test_dir = "t/"
+[ci]
+runs_on = "macos-latest"
+bot_client_id_var = "ID"
+bot_private_key_secret = "KEY"
+bot_login = "bot[bot]"
+[codex_usage]
+halt_pct_session = 1
+vraag_pct_week = 2
+app_server_timeout_seconds = 3
+review_pct_session = 4
+review_pct_week = 5
+[worktree_audit]
+protected_refs = ["main", "dev"]
+protected_paths = ["/a"]
+[python]
+source_dirs = ["lib"]
+lint_dirs = ["lib", "t"]
+coverage_command = "pytest"
+nightly_workflow = "nightly.yml"
+coverage_issue_labels = ["cov"]
+[shell]
+strict_dirs = ["hooks"]
+[usage_guard]
+resume = true
+controller = true
+[code_language_llm]
+url = "http://x"
+models = ["m1", "m2"]
+key_env = "K"
+env_file = ".env"
+[review]
+roborev = "local"

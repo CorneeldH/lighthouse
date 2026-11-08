@@ -16,7 +16,7 @@ import re
 from tests.pack._testkit import CORE
 
 SKILL_DIR = CORE / "skills" / "write-issue"
-CONFIG = "python3 .lighthouse/lib/lighthouse_lib/config.py"
+CONFIG = "lighthouse config"
 
 
 def skill() -> tuple[str, str]:
@@ -186,8 +186,9 @@ cat "$GH_PAGE"
 """
 
 
-def test_invariant_check_runs_against_gh(tmp_path):
-    """Step 6 runs as written: two blocking labels on one issue is reported, a clean one not."""
+def test_invariant_check_runs_against_gh(tmp_path, lighthouse_bin):
+    """Step 6 runs as written: two blocking labels on one issue is reported, a clean one not.
+    The PATH has the binary and no python3: the step reads the config through `lighthouse`."""
     from tests.pack._testkit import MINIMAL_TOML, install_core, tool_bin
 
     install_core(tmp_path, MINIMAL_TOML + '\n[labels]\nlocation_prefix = "loc-"\narea_prefix = "area-"\n')
@@ -198,7 +199,7 @@ def test_invariant_check_runs_against_gh(tmp_path):
         ' {"number": 2, "labels": [{"name": "loc-a"}, {"name": "area-b"}]}]',
         encoding="utf-8",
     )
-    path = tool_bin(tmp_path / "bin", ("python3", "jq", "sh", "cat"), stubs={"gh": _STRICT_GH})
+    path = tool_bin(tmp_path / "bin", ("lighthouse", "jq", "sh", "cat"), stubs={"gh": _STRICT_GH})
     script = _bash_block(_between(skill()[0], "### 6. Check the invariants", "## Milestones"))
     import subprocess
 

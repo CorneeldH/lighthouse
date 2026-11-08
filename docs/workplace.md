@@ -192,8 +192,10 @@ draad een regel met tijd, dan is het `ErrNotMeasurable`.
 
 `Background` telt het achtergrondwerk van het hoofdtranscript dat nog loopt (#270). Een start is het
 `toolUseResult` van een Bash-call met `backgroundTaskId`, of van een Agent-call met `status:
-async_launched` en een `agentId`. Een einde is een `<task-id>` in een regel die geen assistent-regel is
-(de `<task-notification>`), of het resultaat van een `TaskStop` (`task_id` met `message`). Starts in
+async_launched` en een `agentId`, of van een `SendMessage` die een subagent hervat (`resumedAgentId`):
+die loopt weer, ook na een eerdere `<task-notification>` (#299). Een einde is een `<task-id>` in een
+regel die geen assistent-regel is (de `<task-notification>`), of het resultaat van een `TaskStop`
+(`task_id` met `message`). Een taak telt als hij na zijn laatste start geen einde had. Starts in
 een subagent-transcript tellen niet: de async subagent zelf is al een taak van het hoofdtranscript.
 Een taak die tot het einde van de sessie doorloopt zonder melding (een server op de achtergrond) blijft
 tellen; dan beslissen de stilte- en looptijdregels van de tick.

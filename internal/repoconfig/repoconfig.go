@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/CorneeldH/lighthouse/internal/config"
 )
 
 // Repo is the dispatch-relevant view of one lighthouse.toml.
@@ -113,6 +115,18 @@ type rawFile struct {
 	} `toml:"usage_guard"`
 }
 
+// defaultString is the default of key from internal/config, the one source of defaults.
+// Every key asked for has a string default there; one without is a programming error, so it
+// panics instead of turning into an empty default.
+func defaultString(key string) string {
+	v, _ := config.Default(key)
+	s, ok := v.(string)
+	if !ok {
+		panic("repoconfig: " + key + " has no string default in internal/config")
+	}
+	return s
+}
+
 // Load reads <dir>/lighthouse.toml.
 func Load(dir string) (Repo, error) {
 	path := filepath.Join(dir, "lighthouse.toml")
@@ -131,17 +145,17 @@ func Load(dir string) (Repo, error) {
 		Dir:                  dir,
 		Slug:                 raw.Forge.Repo,
 		Kind:                 cmp.Or(raw.Forge.Kind, "github"),
-		DefaultBranch:        cmp.Or(raw.Forge.DefaultBranch, "main"),
+		DefaultBranch:        cmp.Or(raw.Forge.DefaultBranch, defaultString("forge.default_branch")),
 		Language:             cmp.Or(raw.Project.Language, "en"),
 		Board:                raw.Forge.Board,
 		UsageGuardController: raw.UsageGuard.Controller,
 		Labels: Labels{
-			BlockedIssue:    cmp.Or(raw.Labels.BlockedIssue, "blocked-issue"),
-			BlockedExternal: cmp.Or(raw.Labels.BlockedExternal, "blocked-external"),
-			NeedsShaping:    cmp.Or(raw.Labels.NeedsShaping, "needs-shaping"),
-			NeedsDecision:   cmp.Or(raw.Labels.NeedsDecision, "needs-decision"),
-			NeedsHands:      cmp.Or(raw.Labels.NeedsHands, "needs-hands"),
-			NeedsTesting:    cmp.Or(raw.Labels.NeedsTesting, "needs-testing"),
+			BlockedIssue:    cmp.Or(raw.Labels.BlockedIssue, defaultString("labels.blocked_issue")),
+			BlockedExternal: cmp.Or(raw.Labels.BlockedExternal, defaultString("labels.blocked_external")),
+			NeedsShaping:    cmp.Or(raw.Labels.NeedsShaping, defaultString("labels.needs_shaping")),
+			NeedsDecision:   cmp.Or(raw.Labels.NeedsDecision, defaultString("labels.needs_decision")),
+			NeedsHands:      cmp.Or(raw.Labels.NeedsHands, defaultString("labels.needs_hands")),
+			NeedsTesting:    cmp.Or(raw.Labels.NeedsTesting, defaultString("labels.needs_testing")),
 			LocationPrefix:  raw.Labels.LocationPrefix,
 			AreaPrefix:      raw.Labels.AreaPrefix,
 		},

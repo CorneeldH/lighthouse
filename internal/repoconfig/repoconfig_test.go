@@ -354,3 +354,38 @@ func TestTriageable(t *testing.T) {
 		})
 	}
 }
+
+// Red when a default goes missing or changes: the literal values are the documented defaults.
+func TestLoadDefaultsFromConfig(t *testing.T) {
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct{ key, got, want string }{
+		{"forge.default_branch", r.DefaultBranch, "main"},
+		{"labels.blocked_issue", r.Labels.BlockedIssue, "blocked-issue"},
+		{"labels.blocked_external", r.Labels.BlockedExternal, "blocked-external"},
+		{"labels.needs_shaping", r.Labels.NeedsShaping, "needs-shaping"},
+		{"labels.needs_decision", r.Labels.NeedsDecision, "needs-decision"},
+		{"labels.needs_hands", r.Labels.NeedsHands, "needs-hands"},
+		{"labels.needs_testing", r.Labels.NeedsTesting, "needs-testing"},
+	} {
+		if tt.got != tt.want {
+			t.Errorf("%s: Load %q, want %q", tt.key, tt.got, tt.want)
+		}
+	}
+}
+
+// Red when a key renamed in internal/config silently turns into an empty default.
+func TestDefaultStringPanicsWithoutStringDefault(t *testing.T) {
+	for _, key := range []string{"labels.no_such_label", "usage_guard.resume", "test_gate.slots"} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("defaultString(%q) did not panic", key)
+				}
+			}()
+			_ = defaultString(key)
+		}()
+	}
+}

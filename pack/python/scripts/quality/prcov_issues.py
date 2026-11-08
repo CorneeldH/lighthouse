@@ -2,7 +2,7 @@
 
 Feeds the nightly arm of `ratchet.py`: for every PR with too low diff coverage
 this module opens (or repairs) a GitHub issue, pastes the `🤖 Handoff` comment
-of the comment protocol (`lighthouse_lib.protocol`), and puts the issue on the
+of the comment protocol (`lighthouse protocol`), and puts the issue on the
 board with status `Controller`. An issue goes through four steps, in this
 order: (1) `issue create` with the labels from `python.coverage_issue_labels`,
 (2) the handoff comment, (3) on the board, (4) status `Controller`. The comment
@@ -13,7 +13,8 @@ goes through the same four steps, but skips every step that is already done
 
 The board is optional (decision 16): without `[forge.board]` only the
 issue and the handoff come. Without a status option `Controller` the item stays on `To do`.
-Repo, language, board and default branch come from `lighthouse.toml`.
+Repo, language, board and default branch come from `lighthouse.toml`, read through the
+`lighthouse` binary (`lighthouse config`), so the nightly needs it on the PATH.
 The text of issue and handoff is English, also with `[project] language = "nl"`;
 only the heading follows the project language (decision 7 of the M0 package spec).
 """
@@ -26,18 +27,14 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
-# `quality.diffcov` needs the scripts/ directory on sys.path (one directory above this one),
-# `lighthouse_lib` the lib/ directory beside it: installed `.lighthouse/scripts/quality/`
-# next to `.lighthouse/lib/` (design choice 6 of (b), for a script in a subdirectory).
+# `quality.diffcov` needs the scripts/ directory on sys.path (one directory above this one).
 _SCRIPTS = Path(__file__).resolve().parents[1]
-_LIB = Path(__file__).resolve().parents[2] / "lib"
-for _path in (_SCRIPTS, _LIB):
-    if _path.is_dir() and str(_path) not in sys.path:
-        sys.path.insert(0, str(_path))
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
 
-from lighthouse_lib import config, headings, protocol
 from quality.diffcov import DiffCoverage
 
 Gh = Callable[[Sequence[str], Mapping[str, str] | None, str | None], str]
@@ -54,39 +51,129 @@ START_COMMAND = "/lighthouse-start-issue"
 # issue. Every other status (`Controller`, `In progress`, `On hold`,
 # `Done`) stays.
 NOT_TAKEN_OVER = (None, "To do")
-
-def _config() -> config.Config:
-    """`lighthouse.toml`, re-read on every call; `forge.repo` is required."""
-    cfg = config.load(config.config_path())
-    if cfg.repo is None:
-        raise config.ConfigError(f"{config.config_path()}: forge.repo is not set")
-    return cfg
+# The status option the controller watches; without it the item stays on `To do`.
+CONTROLLER_STATUS_OPTION = "Controller"
 
 
-def _setting(key: str) -> object:
-    return config.lookup(_config(), key)
+class ConfigError(Exception):
+    """`lighthouse` could not read the config (rc 2), or is not on the PATH."""
 
 
-def board() -> config.Board | None:
+@dataclass(frozen=True)
+class Board:
+    """The part of `[forge.board]` this module uses."""
+
+    project_number: int
+    project_id: str
+    status_field_id: str
+    status_options: dict[str, str]
+
+
+def _lh(*args: str, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+    """Run the `lighthouse` binary; a missing binary is a `ConfigError`."""
+    try:
+        return subprocess.run(
+            ["lighthouse", *args], input=stdin, capture_output=True, text=True, check=False
+        )
+    except FileNotFoundError as error:
+        raise ConfigError(
+            "`lighthouse` is not on the PATH; the nightly reads lighthouse.toml through the "
+            "binary, so install it first (go install ./cmd/lighthouse, or a release)"
+        ) from error
+
+
+def lookup(key: str) -> object | None:
+    """`key` from `lighthouse.toml` as JSON, with the default of the config reader; `None`
+    when it is not set (rc 1). Every other failure is a `ConfigError` with the stderr."""
+    proc = _lh("config", "--json", key)
+    if proc.returncode == 0:
+        return json.loads(proc.stdout)
+    stderr = proc.stderr.strip()
+    # An older binary without `config` also exits 1 ("unknown command"): only the
+    # reader's own "is not set" means the key is absent.
+    if proc.returncode == 1 and stderr.endswith("is not set"):
+        return None
+    raise ConfigError(stderr or f"lighthouse config {key}: exit {proc.returncode}")
+
+
+def _required(key: str) -> object:
+    value = lookup(key)
+    if value is None:
+        raise ConfigError(f"{key} is not set in lighthouse.toml")
+    return value
+
+
+def _repo() -> str:
+    """`forge.repo`, re-read on every call; it is required."""
+    return str(_required("forge.repo"))
+
+
+def repo_root() -> Path:
+    """`LIGHTHOUSE_REPO_ROOT`, otherwise `git rev-parse --show-toplevel`."""
+    override = os.environ.get("LIGHTHOUSE_REPO_ROOT")
+    if override:
+        return Path(override)
+    proc = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        raise ConfigError(
+            f"repository root not found: {proc.stderr.strip() or 'git rev-parse failed'}"
+        )
+    return Path(proc.stdout.strip())
+
+
+def board() -> Board | None:
     """The board from `[forge.board]`, or `None` if the repo has none."""
-    return _config().board
+    value = lookup("forge.board")
+    if not isinstance(value, dict):
+        return None
+    return Board(
+        project_number=int(value["project_number"]),
+        project_id=str(value["project_id"]),
+        status_field_id=str(value["status_field_id"]),
+        status_options={str(k): str(v) for k, v in (value.get("status_options") or {}).items()},
+    )
+
+
+def robot() -> str:
+    """The robot that opens every protocol comment."""
+    proc = _lh("protocol", "robot")
+    if proc.returncode != 0:
+        raise ConfigError(proc.stderr.strip() or "lighthouse protocol robot failed")
+    return proc.stdout.strip()
+
+
+def parse_header(body: str) -> dict | None:
+    """The protocol header of a comment (`kind`, `fields`, `session`), or `None`."""
+    proc = _lh("protocol", "parse-header", stdin=body)
+    if proc.returncode != 0:
+        raise ConfigError(proc.stderr.strip() or "lighthouse protocol parse-header failed")
+    header = json.loads(proc.stdout)
+    return header if isinstance(header, dict) else None
+
+
+def heading(key: str) -> str:
+    """A heading of `headings.toml` in `[project] language`."""
+    proc = _lh("headings", key)
+    if proc.returncode != 0:
+        raise ConfigError(proc.stderr.strip() or f"lighthouse headings {key} failed")
+    return proc.stdout.strip()
 
 
 def default_branch() -> str:
-    return str(_setting("forge.default_branch"))
+    return str(_required("forge.default_branch"))
 
 
 def labels() -> list[str]:
-    value = _setting("python.coverage_issue_labels")
+    value = lookup("python.coverage_issue_labels")
     return [str(label) for label in value] if isinstance(value, list) else []
 
 
 def nightly_workflow() -> str | None:
     """The workflow of the watermark (`python.nightly_workflow`), or `None`."""
-    try:
-        return str(_setting("python.nightly_workflow"))
-    except KeyError:
-        return None
+    value = lookup("python.nightly_workflow")
+    return None if value is None else str(value)
 
 
 def handoff_worktree() -> str:
@@ -97,13 +184,13 @@ def handoff_worktree() -> str:
         return override
     proc = subprocess.run(
         ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-        cwd=config.repo_root(),
+        cwd=repo_root(),
         capture_output=True,
         text=True,
         check=False,
     )
     if proc.returncode != 0 or not proc.stdout.strip():
-        raise config.ConfigError(
+        raise ConfigError(
             f"the main checkout is not found ({proc.stderr.strip() or 'git rev-parse failed'}); "
             f"set {HANDOFF_WORKTREE_ENV}"
         )
@@ -307,12 +394,11 @@ def ensure_issue(
 def handoff_comment(issue_number: int, pr: int, threshold: int) -> str:
     """The `🤖 Handoff` comment of the protocol: the heading in `[project] language`, the
     keys in English (decision 21), so the controller parses and starts it."""
-    cfg = _config()
     worktree = handoff_worktree()
-    branch = str(config.lookup(cfg, "forge.default_branch"))
+    branch = default_branch()
     start = f"{START_COMMAND} {issue_number}"
     return (
-        f"{protocol.ROBOT} {headings.heading('kind_handoff', cfg.language)}\n"
+        f"{robot()} {heading('kind_handoff')}\n"
         f"issue: #{issue_number}\n"
         f"worktree: {worktree}\n"
         f"branch: {branch}\n"
@@ -335,7 +421,7 @@ def ensure_handoff(gh: Gh, issue_number: int, pr: int, threshold: int) -> bool:
     """Step 2: paste the handoff comment, unless it is already there.
 
     `--jq '.[].body | @json'` gives one line per comment: its whole body as a
-    JSON string. `protocol.parse_header` reads the first line of that, so a
+    JSON string. `lighthouse protocol parse-header` reads the first line of that, so a
     comment that starts with `🤖 Handoff · …` counts, and so does a handoff from before
     the move (`volgende:`, `wanneer:`), but a comment that quotes the heading somewhere
     in the middle does not. `--paginate`: an issue with many comments otherwise returns
@@ -345,7 +431,7 @@ def ensure_handoff(gh: Gh, issue_number: int, pr: int, threshold: int) -> bool:
         [
             "api",
             "--paginate",
-            f"repos/{_config().repo}/issues/{issue_number}/comments",
+            f"repos/{_repo()}/issues/{issue_number}/comments",
             "--jq",
             ".[].body | @json",
         ],
@@ -355,8 +441,8 @@ def ensure_handoff(gh: Gh, issue_number: int, pr: int, threshold: int) -> bool:
     for line in output.splitlines():
         if not line.strip():
             continue
-        header = protocol.parse_header(str(json.loads(line)))
-        if header is not None and header.kind == "handoff":
+        header = parse_header(str(json.loads(line)))
+        if header is not None and header.get("kind") == "handoff":
             return False
     gh(
         ["issue", "comment", str(issue_number), "--body-file", "-"],
@@ -370,8 +456,9 @@ def _read_status(
     gh: Gh, token: str, issue_number: int
 ) -> tuple[str, str | None] | None:
     """`(item_id, status)` of this issue on our board, or `None` if it is not on it."""
-    repo = _config()
-    assert repo.board is not None
+    owner, name = str(_required("forge.owner")), str(_required("forge.name"))
+    project = board()
+    assert project is not None
     output = gh(
         [
             "api",
@@ -379,9 +466,9 @@ def _read_status(
             "-f",
             f"query={_STATUS_QUERY}",
             "-f",
-            f"owner={repo.owner}",
+            f"owner={owner}",
             "-f",
-            f"name={repo.name}",
+            f"name={name}",
             "-F",
             f"number={issue_number}",
         ],
@@ -391,13 +478,13 @@ def _read_status(
     data = json.loads(output)
     nodes = data["data"]["repository"]["issue"]["projectItems"]["nodes"]
     for node in nodes:
-        if node["project"]["id"] == repo.board.project_id:
+        if node["project"]["id"] == project.project_id:
             value = node.get("fieldValueByName") or {}
             return str(node["id"]), value.get("name")
     return None
 
 
-def _set_controller(gh: Gh, token: str, item_id: str, board: config.Board) -> None:
+def _set_controller(gh: Gh, token: str, item_id: str, board: Board) -> None:
     gh(
         [
             "project",
@@ -409,7 +496,7 @@ def _set_controller(gh: Gh, token: str, item_id: str, board: config.Board) -> No
             "--field-id",
             board.status_field_id,
             "--single-select-option-id",
-            board.status_options[config.CONTROLLER_STATUS_OPTION],
+            board.status_options[CONTROLLER_STATUS_OPTION],
         ],
         {"GH_TOKEN": token},
         None,
@@ -452,17 +539,18 @@ def ensure_on_board(
     `Controller` it does go on the board, but the status stays. Both cases
     are in the returned line, neither is an error.
     """
-    repo = _config()
-    if repo.board is None:
+    project = board()
+    if project is None:
         return "board: skipped — no [forge.board] configured"
+    owner = str(_required("forge.owner"))
     env = {"GH_TOKEN": token}
     added = gh(
         [
             "project",
             "item-add",
-            str(repo.board.project_number),
+            str(project.project_number),
             "--owner",
-            repo.owner,
+            owner,
             "--url",
             issue_url,
             "--format",
@@ -485,13 +573,13 @@ def ensure_on_board(
         if attempt < 4:
             sleep(3)
 
-    if status in NOT_TAKEN_OVER and config.CONTROLLER_STATUS_OPTION not in repo.board.status_options:
+    if status in NOT_TAKEN_OVER and CONTROLLER_STATUS_OPTION not in project.status_options:
         return (
             f"#{issue_number} on board, status {status or 'none'}; "
             "board: status Controller skipped — no such status option"
         )
     if status in NOT_TAKEN_OVER:
-        _set_controller(gh, token, item_id, repo.board)
+        _set_controller(gh, token, item_id, project)
         status = "Controller"
         sleep(3)
         found = _read_status(gh, token, issue_number)
@@ -500,7 +588,7 @@ def ensure_on_board(
             if found_id:
                 item_id = found_id
         if status == "To do":
-            _set_controller(gh, token, item_id, repo.board)
+            _set_controller(gh, token, item_id, project)
             status = "Controller"
 
     return f"#{issue_number} on board, status {status}"

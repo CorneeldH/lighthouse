@@ -290,6 +290,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "phase": {
+            "type": "string"
+          },
           "profile": {
             "type": "string"
           },
@@ -305,6 +308,17 @@
           },
           "state": {
             "type": "string"
+          },
+          "step": {
+            "type": "string"
+          },
+          "task": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tasks": {
+            "format": "int64",
+            "type": "integer"
           },
           "title": {
             "type": "string"
@@ -322,6 +336,10 @@
           "title",
           "state",
           "command",
+          "phase",
+          "task",
+          "tasks",
+          "step",
           "trigger",
           "profile",
           "workspace_id",
@@ -343,6 +361,9 @@
               "null"
             ]
           },
+          "night": {
+            "type": "string"
+          },
           "runs": {
             "items": {
               "$ref": "#/components/schemas/RunView"
@@ -351,11 +372,16 @@
               "array",
               "null"
             ]
+          },
+          "workspace_url": {
+            "type": "string"
           }
         },
         "required": [
           "runs",
-          "deferred"
+          "deferred",
+          "workspace_url",
+          "night"
         ],
         "type": "object"
       },

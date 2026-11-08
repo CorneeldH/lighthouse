@@ -1,0 +1,3 @@
+[host]
+name = 1
+tailscale_ip = "100.64.0.1"
