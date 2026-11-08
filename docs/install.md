@@ -204,10 +204,12 @@ answered with an error for one of the repositories; the response body names it.
 
 ## Running runs
 
-`GET /api/runs` and the *Running runs* card show the open and parked runs and the deferred
-starts of the served repositories. `serve` reads them from the tick state in its database, the
-one `lighthouse tick` writes (see [tick.md](tick.md)): no forge call and no token, so the card
-refreshes every 30 seconds. Per run: `repo`, `issue`, `title`, `state` (`open` or `parked`),
+`GET /api/runs` and the page blocks *Running runs*, *Parked runs*, *Queue* and *Night* show the open
+and parked runs and the deferred starts of the served repositories. A row of summary tiles above the
+blocks counts each block and links to it; a tile shows `–` while its data is loading or failed. A
+deferred start with reason `night` goes to *Night*, every other one to *Queue*. `serve` reads them from the tick state in its database, the
+one `lighthouse tick` writes (see [tick.md](tick.md)): no forge call and no token, so the blocks
+refresh every 30 seconds. Per run: `repo`, `issue`, `title`, `state` (`open` or `parked`),
 `command`, `phase` (the skill the command starts, empty for an empty command), `task`, `tasks` and
 `step` (the current plan task, the number of tasks and `build`, `review` or `final-review` for a
 subagent-driven run; `0`, `0` and empty without progress), `trigger`, `profile`, `workspace_id`,

@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { splitDeferred } from '@/lib/deferred'
 import { newQueryClient } from '@/lib/queries'
 import { CleanupList } from './CleanupList'
 import { QuestionList } from './QuestionList'
+import { Summary } from './Summary'
 import { ReturnedList } from './ReturnedList'
 import { NightBlock, ParkedBlock, QueueBlock, RunningBlock } from './RunBlocks'
 
@@ -373,5 +374,59 @@ describe('Queue and Night', () => {
     stubFetch(() => json(body({ deferred: list, night: '' })))
     renderWithClient(<NightBlock />)
     expect(await screen.findByText('Handed off for the night window.')).toBeTruthy()
+  })
+})
+
+describe('Summary', () => {
+  function stubRoutes(cleanup: () => Response) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url.includes('/api/questions')) return Promise.resolve(json({ questions: [questions[0]] }))
+        if (url.includes('/api/returned')) return Promise.resolve(json({ returned: [] }))
+        if (url.includes('/api/cleanup')) return Promise.resolve(cleanup())
+        return Promise.resolve(
+          json(
+            body({
+              runs: [run, { ...run, issue: 4 }, { ...run, issue: 5, state: 'parked' }],
+              deferred: [deferred(6, 'slots: 4 of 4 in use'), deferred(7, 'night')],
+            }),
+          ),
+        )
+      }),
+    )
+  }
+
+  it('shows a summary tile per block', async () => {
+    stubRoutes(() => json({ cleanup: [] }))
+    renderWithClient(<Summary />)
+    const nav = screen.getByRole('navigation', { name: 'Summary' })
+    const expected: Array<[string, string, string]> = [
+      ['Questions', '1', '#questions'],
+      ['Returned', '0', '#returned'],
+      ['Running', '2', '#running'],
+      ['Parked', '1', '#parked'],
+      ['Queue', '1', '#queue'],
+      ['Night', '1', '#night'],
+      ['To clean up', '0', '#cleanup'],
+    ]
+    const links = within(nav).getAllByRole('link')
+    expect(links.map((l) => l.getAttribute('href'))).toEqual(expected.map((e) => e[2]))
+    for (const [label, count, href] of expected) {
+      const link = within(nav).getByRole('link', { name: new RegExp(`${label}$`) })
+      expect(link.getAttribute('href')).toBe(href)
+      expect(link.getAttribute('target')).toBeNull()
+      await waitFor(() => expect(link.textContent).toBe(`${count}${label}`))
+    }
+  })
+
+  it('shows a dash instead of the number when a query fails', async () => {
+    stubRoutes(() => json({ detail: 'db closed' }, 500))
+    renderWithClient(<Summary />)
+    const nav = screen.getByRole('navigation', { name: 'Summary' })
+    const clean = within(nav).getByRole('link', { name: /To clean up/ })
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /Questions/ }).textContent).toBe('1Questions'))
+    await waitFor(() => expect(clean.textContent).toBe('–To clean up'))
   })
 })
