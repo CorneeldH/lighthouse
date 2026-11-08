@@ -1,6 +1,7 @@
-"""pack/core main-commit-gate.sh, as installed: does it block `git commit`/`git push` on `main`?
+"""pack/core main-commit-gate, as installed: does it block `git commit`/`git push` on `main`?
 
-The hook is bash and reads its payload as JSON on stdin. These tests run it
+The hook runs as `lighthouse hook main-commit-gate` behind run.sh and reads its payload as JSON
+on stdin. These tests run it
 as a subprocess with real temporary paths, so that the contract (exit code +
 stderr/stdout) is tested and not a reimplementation of it.
 """

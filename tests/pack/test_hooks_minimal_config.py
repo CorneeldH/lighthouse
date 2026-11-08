@@ -60,7 +60,7 @@ def _edit_payload(event: str, path: Path, cwd: Path) -> dict:
 def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
     """The payload that really touches this hook, up to and including its config read."""
     name = _name(script)
-    if name == "worktree-check.sh":
+    if name == "worktree-check":
         # A write in the main checkout on main: only there does the guard read
         # forge.default_branch, and warn (without blocking).
         doc = project / "doc.md"
@@ -91,7 +91,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
             "notification_type": "permission_prompt",
             "message": "Claude needs your permission to use Write",
         }
-    if name == "main-commit-gate.sh":
+    if name == "main-commit-gate":
         # A commit on a feature branch: the guard reads forge.default_branch.
         cmd = "git commit -m x"
     elif name == "commit-test-gate.sh":
@@ -113,7 +113,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
     ids=[f"{e}:{m}:{s}" for e, m, s in REGISTRATIONS],
 )
 def test_hooks_with_minimal_config(
-    tmp_path: Path, event: str, matcher: str, script: str
+    tmp_path: Path, event: str, matcher: str, script: str, lighthouse_bin: Path
 ) -> None:
     root = tmp_path / "lighthouse"
     install_core(root, toml=MINIMAL_TOML)
@@ -123,8 +123,14 @@ def test_hooks_with_minimal_config(
     git(project, "worktree", "add", "-q", "-b", "feature", str(worktree))
     payload = _payload(event, script, worktree, project)
     name, *args = script.split()
+    # guard_env takes every `lighthouse` off the PATH; a Go hook behind run.sh needs
+    # the binary of this checkout.
+    go_hook = {}
+    if name == "run.sh":
+        go_hook["PATH"] = f"{lighthouse_bin.parent}{os.pathsep}{os.environ['PATH']}"
     env = guard_env(
         tmp_path,
+        **go_hook,
         LIGHTHOUSE_REPO_ROOT=str(root),
         CLAUDE_PROJECT_DIR=str(project),
         LIGHTHOUSE_HOST_TOML=str(tmp_path / "no-host.toml"),
@@ -153,11 +159,11 @@ def test_hooks_with_minimal_config(
 
 def test_every_registration_has_a_payload() -> None:
     assert {_name(s) for _, _, s in REGISTRATIONS} == {
-        "main-commit-gate.sh",
+        "main-commit-gate",
         "commit-test-gate.sh",
         "bash-write-check.sh",
         "pr-create-gate.sh",
-        "worktree-check.sh",
+        "worktree-check",
         "md-link-check",
         "code-language-check.sh",
         "usage-gate",
@@ -170,19 +176,23 @@ PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
 # Per PreToolUse-Bash hook: the command it guards. `bash-write-check.sh
 # pre` never blocks (a PreToolUse exit 2 blocks the call itself).
 GUARDED = {
-    "main-commit-gate.sh": "git commit -m x",
+    "run.sh main-commit-gate": "git commit -m x",
     "commit-test-gate.sh pre": "git commit -m x",
     "pr-create-gate.sh": "gh pr create --repo Acme/widgets --body x",
 }
+# A Go hook behind run.sh reads no `.lighthouse/lib`: only the others can miss it.
+LIB_GUARDED = {s: cmd for s, cmd in GUARDED.items() if not s.startswith("run.sh ")}
 
 
-def _without_lib(tmp_path: Path, script: str, cmd: str) -> subprocess.CompletedProcess:
+def _without_lib(
+    tmp_path: Path, script: str, cmd: str, branch: str = "feature"
+) -> subprocess.CompletedProcess:
     """The hook from an installation whose `.lighthouse/lib` is missing."""
     root = tmp_path / "lighthouse"
     install_core(root, toml=MINIMAL_TOML)
     shutil.rmtree(root / ".lighthouse" / "lib")
     project = tmp_path / "project"
-    init_repo(project, branch="feature")
+    init_repo(project, branch=branch)
     name, *args = script.split()
     return subprocess.run(
         [str(root / ".claude" / "hooks" / "lighthouse" / name), *args],
@@ -195,6 +205,7 @@ def _without_lib(tmp_path: Path, script: str, cmd: str) -> subprocess.CompletedP
     )
 
 
+@pytest.mark.usefixtures("lighthouse_bin")
 @pytest.mark.parametrize("script", PRE_BASH)
 def test_without_lib_a_plain_command_passes(tmp_path: Path, script: str) -> None:
     # A gitignore with `lib/` leaves `.lighthouse/lib/` out of a clone: that
@@ -204,13 +215,24 @@ def test_without_lib_a_plain_command_passes(tmp_path: Path, script: str) -> None
     assert result.returncode == 0, (result.stdout, result.stderr)
 
 
-@pytest.mark.parametrize("script", sorted(GUARDED))
+@pytest.mark.parametrize("script", sorted(LIB_GUARDED))
 def test_without_lib_the_guarded_command_blocks(tmp_path: Path, script: str) -> None:
-    result = _without_lib(tmp_path, script, GUARDED[script])
+    result = _without_lib(tmp_path, script, LIB_GUARDED[script])
 
     assert result.returncode == 2, (result.stdout, result.stderr)
     assert "COULD NOT CHECK" in result.stderr
     assert ".lighthouse/lib" in result.stderr
+
+
+@pytest.mark.usefixtures("lighthouse_bin")
+def test_without_lib_the_go_gate_still_blocks_a_commit_on_main(tmp_path: Path) -> None:
+    # The Go main-commit-gate needs no `.lighthouse/lib`: a missing one changes nothing.
+    script = "run.sh main-commit-gate"
+    result = _without_lib(tmp_path, script, GUARDED[script], branch="main")
+
+    assert result.returncode == 2, (result.stdout, result.stderr)
+    assert "Main-commit gate: blocked" in result.stderr
+    assert "COULD NOT CHECK" not in result.stderr
 
 
 def test_guarded_covers_every_blocking_bash_hook() -> None:

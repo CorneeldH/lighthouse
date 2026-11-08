@@ -2,12 +2,7 @@
 # exactly one entry (tests/test_sources.py). A file taken over has source_path (the
 # path in the source repository; a list when it merges several) and source_sha (the
 # commit it was taken from). A file written for lighthouse has new = true.
-# The first two files reached lighthouse through the English bootstrap of M0 (a0).
-
-[[file]]
-path = "pack/core/hooks/main-commit-gate.sh"
-source_path = ".claude/hooks/main-commit-guard.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+# The first file reached lighthouse through the English bootstrap of M0 (a0).
 
 [[file]]
 path = "pack/core/lib/git_invocations.py"
@@ -104,11 +99,6 @@ source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 [[file]]
 path = "pack/core/lib/commit_base.py"
 new = true
-
-[[file]]
-path = "pack/core/hooks/worktree-check.sh"
-source_path = ".claude/hooks/worktree-guard.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/hooks/pr-create-gate.sh"
