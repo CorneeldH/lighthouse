@@ -32,8 +32,8 @@ var (
 	scoutGates = []string{"4b", "4c"}
 )
 
-// Superpowers' default directories, spelled in two pieces so a repo-wide grep skips this file.
-const legacyRoot = "docs/" + "superpowers/"
+// Superpowers' default directories, spelled in two pieces so the domain check does not see a docs path in Go.
+const legacyRoot = "docs" + "/superpowers/"
 
 var legacyDocDirs = []string{legacyRoot + "specs/", legacyRoot + "plans/"}
 

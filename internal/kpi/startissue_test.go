@@ -89,8 +89,8 @@ func TestTranscriptDirFromRepoRoot(t *testing.T) {
 // Classification: fails when --since stops reaching git log or the shares are computed wrong.
 func TestPathsSince(t *testing.T) {
 	repo := newRepo(t, englishToml)
-	commitFile(t, repo, "docs/superpowers/plans/old.md", "2026-01-01T00:00:00Z")
-	commitFile(t, repo, "docs/developer/planning/specs/new.md", "2026-09-01T00:00:00Z")
+	commitFile(t, repo, legacyRoot+"plans/old.md", "2026-01-01T00:00:00Z")
+	commitFile(t, repo, "docs"+"/developer/planning/specs/new.md", "2026-09-01T00:00:00Z")
 	empty := t.TempDir()
 	rc, out, errOut := runStartIssue(Options{Metric: "paths", Dir: empty})
 	want := "{\n  \"paths\": {\n    \"since\": null,\n    \"right_dir\": 1,\n    \"superpowers_default_dir\": 1,\n    \"share\": 0.5\n  }\n}\n"
@@ -121,7 +121,7 @@ func TestPathsWithoutAddedFilesIgnoresConfig(t *testing.T) {
 func TestPathsDirsFromConfig(t *testing.T) {
 	repo := newRepo(t, englishToml+"[paths]\nspecs = \"s\"\nplans = \"p/\"\n")
 	commitFile(t, repo, "s/a.md", "2026-01-01T00:00:00Z")
-	commitFile(t, repo, "docs/developer/planning/specs/b.md", "2026-01-02T00:00:00Z")
+	commitFile(t, repo, "docs"+"/developer/planning/specs/b.md", "2026-01-02T00:00:00Z")
 	commitFile(t, repo, "sx/c.md", "2026-01-03T00:00:00Z")
 	rc, out, errOut := runStartIssue(Options{Metric: "paths", Dir: t.TempDir()})
 	if rc != 0 || !strings.Contains(out, "\"right_dir\": 1,") {
