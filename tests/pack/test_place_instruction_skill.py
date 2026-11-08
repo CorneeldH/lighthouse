@@ -37,11 +37,8 @@ def test_prefix_and_ceiling_from_config():
     assert "paia-" not in SKILL
 
 
-def test_surface_measurement_only_if_present():
-    lines = [line for line in SKILL.splitlines() if "measure_skill_surface" in line]
-    assert lines
-    for line in lines:
-        assert "if present" in line, line
+def test_skill_has_no_python3():
+    assert "python3" not in SKILL
 
 
 def test_bounding_clause_matches_check_4():
