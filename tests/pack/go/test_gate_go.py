@@ -2,6 +2,7 @@
 tested on a fixed `go list` listing; the CLI on a mini module with the real `go`."""
 
 import importlib.util
+import json
 import os
 import shutil
 import subprocess
@@ -18,74 +19,21 @@ _spec.loader.exec_module(gate_go)
 ROOT = Path("/repo")
 
 
-def pkg(rel, **lists):
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "gate_go"
+SELECT_CASES = json.loads((FIXTURES / "select.json").read_text())
+
+
+def pkg(entry):
+    rel = entry["rel"]
     path = "example.com/m" + (f"/{rel}" if rel else "")
+    lists = {k: v for k, v in entry.items() if k != "rel"}
     return {"ImportPath": path, "Dir": str(ROOT / rel) if rel else str(ROOT), **lists}
 
 
-def select(files, listing):
-    return gate_go.packages_for(files, listing, ROOT)
-
-
-def test_go_file_maps_to_its_package():
-    listing = [pkg("a", GoFiles=["a.go"]), pkg("b", GoFiles=["b.go"])]
-    assert select(["a/a.go"], listing) == ["example.com/m/a"]
-
-
-def test_test_file_maps_to_its_package():
-    listing = [pkg("a", GoFiles=["a.go"], TestGoFiles=["a_test.go"])]
-    assert select(["a/a_test.go"], listing) == ["example.com/m/a"]
-
-
-def test_embedded_file_maps_to_embedding_package():
-    listing = [pkg("pack", GoFiles=["pack.go"], EmbedFiles=["core/hooks/x.sh"])]
-    assert select(["pack/core/hooks/x.sh"], listing) == ["example.com/m/pack"]
-
-
-def test_testdata_maps_to_package():
-    listing = [pkg("a", GoFiles=["a.go"])]
-    assert select(["a/testdata/in/case.txt"], listing) == ["example.com/m/a"]
-
-
-def test_go_mod_alone_selects_nothing():
-    listing = [pkg("", GoFiles=["main.go"])]
-    assert select(["go.mod", "go.sum"], listing) == []
-
-
-def test_unrelated_file_selects_nothing():
-    listing = [pkg("a", GoFiles=["a.go"])]
-    assert select(["a/README.md", "docs/x.md"], listing) == []
-
-
-def test_importers_are_not_selected():
-    listing = [
-        pkg("a", GoFiles=["a.go"], Imports=["example.com/m/b"]),
-        pkg("b", GoFiles=["b.go"]),
-    ]
-    assert select(["b/b.go"], listing) == ["example.com/m/b"]
-
-
-def test_deleted_go_file_maps_to_its_directory():
-    listing = [pkg("a", GoFiles=["a.go"])]
-    assert select(["a/gone.go"], listing) == ["example.com/m/a"]
-
-
-def test_deleted_go_file_in_removed_directory_selects_nothing():
-    listing = [pkg("a", GoFiles=["a.go"])]
-    assert select(["old/gone.go"], listing) == []
-
-
-def test_gate_go_path_with_space():
-    listing = [pkg("dir x", GoFiles=["y.go"])]
-    assert select(["dir x/y.go"], listing) == ["example.com/m/dir x"]
-
-
-def test_result_is_sorted_and_unique():
-    listing = [pkg("b", GoFiles=["b.go"]), pkg("a", GoFiles=["a.go"])]
-    assert select(["b/b.go", "a/a.go", "b/b.go"], listing) == [
-        "example.com/m/a",
-        "example.com/m/b",
-    ]
+@pytest.mark.parametrize("case", SELECT_CASES, ids=[c["name"] for c in SELECT_CASES])
+def test_select_fixture(case):
+    listing = [pkg(entry) for entry in case["listing"]]
+    assert gate_go.packages_for(case["files"], listing, ROOT) == case["want"]
 
 
 def run_cli(cwd, files_env, *cmd):

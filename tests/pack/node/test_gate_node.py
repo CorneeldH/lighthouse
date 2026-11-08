@@ -2,6 +2,7 @@
 `touches` is tested directly; the CLI runs with a fake `npm` and `node` in `tmp_path/bin`."""
 
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -70,17 +71,14 @@ def run(argv):
     return gate_node.main(["gate_node.py", *argv])
 
 
-def test_touches():
-    assert gate_node.touches(["web/a.ts"], "web", [])
-    assert not gate_node.touches(["pack/x.go"], "web", [])
-    assert gate_node.touches(["x"], ".", [])
-    assert gate_node.touches(["lighthouse.toml"], "web", ["lighthouse.toml"])
-    assert not gate_node.touches([""], "web", [])
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "gate_node"
+TOUCHES_CASES = json.loads((FIXTURES / "touches.json").read_text())
+USAGE_CASES = json.loads((FIXTURES / "usage.json").read_text())
 
 
-def test_dir_is_a_directory_boundary():
-    assert not gate_node.touches(["website/a.ts"], "web", [])
-    assert not gate_node.touches(["web"], "web", [])
+@pytest.mark.parametrize("case", TOUCHES_CASES, ids=[c["name"] for c in TOUCHES_CASES])
+def test_touches_fixture(case):
+    assert gate_node.touches(case["files"], case["dir"], case["also"]) is case["want"]
 
 
 def test_skips_when_commit_touches_nothing_under_dir(project, monkeypatch, capsys):
@@ -191,30 +189,10 @@ def test_unreadable_list_is_unchecked(project, monkeypatch):
     assert run(["--dir", "web", "--", "lint"]) == 3
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [
-        [],
-        ["--"],
-        ["--dir"],
-        ["--drift", "gen", "--", "lint"],
-        ["--dir", "a", "--dir", "b", "--", "lint"],
-        ["--bogus", "--", "lint"],
-        ["--dir", "--", "lint"],
-        ["--drift", "=x", "--", "lint"],
-        ["--drift", "gen=", "--", "lint"],
-        ["--dir", "", "--", "lint"],
-        ["--dir", "/abs", "--", "lint"],
-        ["--dir", "..", "--", "lint"],
-        ["--dir", "../x", "--", "lint"],
-        ["--dir", "web", "--also", "/abs", "--", "lint"],
-        ["--dir", "web", "--also", "../x", "--", "lint"],
-        ["--dir", "web", "--drift", "gen=../x", "--", "lint"],
-    ],
-)
-def test_usage_errors_are_unchecked(argv, capsys):
-    assert run(argv) == 3
-    assert "usage: gate_node.py" in capsys.readouterr().err
+@pytest.mark.parametrize("case", USAGE_CASES, ids=[c["name"] for c in USAGE_CASES])
+def test_usage_fixture(case, capsys):
+    assert run(case["argv"]) == 3
+    assert "usage:" in capsys.readouterr().err
 
 
 def test_dir_with_dot_prefix_is_normalised(project, monkeypatch):
