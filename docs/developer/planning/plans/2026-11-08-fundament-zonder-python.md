@@ -116,8 +116,9 @@ Zo staan in `expect.json` alleen relatieve paden.
   - `host-check` alleen met rc 2 (het rc 0/1-pad hangt van de machine af).
 - [ ] **Stap 2: schrijf `tests/pack/test_config_fixtures.py`.**
   - `test_python_matches_fixtures[<geval>]` draait `python3 -m lighthouse_lib.config <args>`
-    met `PYTHONPATH=pack/core/lib/..` zoals `tests/pack/test_config.py` (`IMPORT_ROOT`; `config.py` direct
-    aanroepen faalt met `ModuleNotFoundError: lighthouse_lib`) per verwachting en assert rc, stdout en stderr (of `stderr_prefix`).
+    met `PYTHONPATH=str(IMPORT_ROOT)` (absoluut pad, `IMPORT_ROOT` uit `tests/pack/_testkit.py`: een
+    tempdir met de symlink `lighthouse_lib -> pack/core/lib`, zoals `tests/pack/test_config.py:519`;
+    `config.py` direct aanroepen faalt met `ModuleNotFoundError: lighthouse_lib`) per verwachting en assert rc, stdout en stderr (of `stderr_prefix`).
   - `test_fixtures_cover_every_key` assert dat de vereniging van de `args` uit alle
     `expect.json` een superset is van `SCHEMA | DEFAULTS | _BASE_KEYS | HOST_KEYS`,
     geïmporteerd uit `config.py`, plus minstens één sleutel per `_OPTION_PREFIXES`.
