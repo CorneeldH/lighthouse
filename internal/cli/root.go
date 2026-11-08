@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/version"
 )
 
@@ -70,6 +71,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newProtocolCommand())
 	root.AddCommand(newHookCommand())
 	root.AddCommand(newUsageCommand())
+	root.AddCommand(newCodexUsageCommand(usage.ReadCodexStrict))
 	root.AddCommand(newServeCommand())
 	root.AddCommand(newTickCommand())
 	root.AddCommand(newGatherCommand())

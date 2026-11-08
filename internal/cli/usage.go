@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 
@@ -98,11 +97,11 @@ func printCodex(ctx context.Context, out, errOut io.Writer, read func(context.Co
 		_, _ = fmt.Fprintf(errOut, "not measurable: %v\n", err)
 		return errSilent
 	}
-	data, err := json.MarshalIndent(state, "", "  ")
+	data, err := marshalNoEscape(state, "  ")
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "not measurable: %v\n", err)
 		return errSilent
 	}
-	_, err = fmt.Fprintf(out, "%s\n", data)
+	_, err = out.Write(data)
 	return err
 }
