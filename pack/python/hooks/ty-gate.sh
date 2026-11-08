@@ -23,8 +23,8 @@
 # silent would read as "type-clean".
 # While the usage alarm is up (#74) the gate says `not checked` and exits 0: the
 # usage gate has the session wrap up, and fixing a diagnostic costs budget that is
-# no longer there. Without `usage-gate/alarm.sh` next to this file (no pack/core)
-# there is no alarm to read and the check runs as before.
+# no longer there. The alarm is read with `lighthouse usage alarm`; without `lighthouse` on the
+# PATH there is no alarm to read and the check runs as before.
 # `python.source_dirs = []` turns the check off, without a message, alarm or not: the
 # alarm is read after that exit.
 
@@ -99,15 +99,11 @@ if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$L
   cannot_check "the checkout of this turn cannot be determined: $(printf '%s' "$ROOTS" | tr '\n"\134' "   ")"
 fi
 
-# The usage alarm (#74): the rules live in usage-gate/alarm.sh, installed by
-# pack/core next to this file. A missing helper or an invalid alarm checks as usual.
-case "${BASH_SOURCE[0]}" in
-  */*) HOOKS_DIR="${BASH_SOURCE[0]%/*}" ;;
-  *) HOOKS_DIR="." ;;
-esac
-# shellcheck source=/dev/null
-if [ -f "$HOOKS_DIR/usage-gate/alarm.sh" ] && . "$HOOKS_DIR/usage-gate/alarm.sh" && usage_alarm_valid; then
-  report "$HOOK_NAME: not checked — the usage alarm is up until $USAGE_ALARM_LOCAL; the usage gate wraps up this session."
+# The usage alarm (#74): `lighthouse usage alarm` prints the valid alarm and exits 0.
+# Without `lighthouse` on the PATH, or without a valid alarm, the check runs as usual.
+if command -v lighthouse >/dev/null 2>&1 && ALARM_LINE=$(lighthouse usage alarm 2>/dev/null); then
+  read -r _ _ ALARM_LOCAL _ <<<"$ALARM_LINE"
+  report "$HOOK_NAME: not checked — the usage alarm is up until ${ALARM_LOCAL//_/ }; the usage gate wraps up this session."
 fi
 
 # One checkout, in a subshell: `report` and `cannot_check` end only that one.

@@ -14,6 +14,7 @@ blocks.
 """
 
 import atexit
+import functools
 import importlib.util
 import json
 import os
@@ -26,7 +27,8 @@ import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-PACKS = Path(__file__).resolve().parents[2] / "pack"
+REPO = Path(__file__).resolve().parents[2]
+PACKS = REPO / "pack"
 CORE = PACKS / "core"
 LIB = CORE / "lib"
 
@@ -241,6 +243,25 @@ def _path_without_lighthouse(shadow: Path) -> str:
                 link.symlink_to(item)
         dirs.append(str(copy))
     return os.pathsep.join(dirs)
+
+
+@functools.cache
+def lighthouse_dir() -> Path:
+    """The directory with `lighthouse` built from this checkout: built once per process,
+    removed at exit. `tests/conftest.py` hands out the same directory."""
+    out = Path(tempfile.mkdtemp(prefix="lighthouse-bin-"))
+    atexit.register(shutil.rmtree, out, True)
+    subprocess.run(
+        ["go", "build", "-o", str(out / "lighthouse"), "./cmd/lighthouse"],
+        cwd=REPO,
+        check=True,
+    )
+    return out
+
+
+def path_with_lighthouse() -> str:
+    """The current PATH with the built `lighthouse` first."""
+    return f"{lighthouse_dir()}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
 def guard_env(tmp_path: Path, **extra: str) -> dict[str, str]:

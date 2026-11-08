@@ -16,10 +16,11 @@ from pathlib import Path
 import pytest
 
 from tests.pack._testkit import (
-    CORE,
     alarm_line,
+    _path_without_lighthouse,
     git,
     install_pack,
+    path_with_lighthouse,
     past_this_second,
     prompt_entry,
     result_entry,
@@ -76,7 +77,7 @@ def _env(tmp_path: Path, **extra: str) -> dict:
         tmp_path / "bin", TOOLS, stubs={"go": GO_STUB, "golangci-lint": LINT_STUB}
     )
     return {
-        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "PATH": f"{bin_dir}:{path_with_lighthouse()}",
         "STUB_LOG": str(tmp_path / "stub.log"),
         **extra,
     }
@@ -104,6 +105,9 @@ def _run(
         env={
             **os.environ,
             "CLAUDE_PROJECT_DIR": str(root),
+            # The gate reads the alarm with `lighthouse usage alarm`: the one built from
+            # this checkout, never an older one installed on the machine.
+            "PATH": path_with_lighthouse(),
             # Never the real alarm of the machine running the tests.
             "XDG_CACHE_HOME": str(root.parent / "xdg-cache"),
             **(env or {}),
@@ -361,12 +365,31 @@ def test_unreadable_usage_alarm_still_blocks(tmp_path, kind):
     assert _run(_repo(tmp_path), env).returncode == 2
 
 
-def test_without_core_a_valid_alarm_still_blocks(tmp_path):
+def test_without_lighthouse_a_valid_alarm_still_blocks(tmp_path):
     env = _alarm_env(tmp_path, alarm_line())
-    source = CORE.parent / "go" / "hooks" / "go-lint-gate.sh"
-    result = _run(_repo(tmp_path), env, hook=source)
+    env["PATH"] = f"{tmp_path / 'bin'}:{_path_without_lighthouse(tmp_path / 'path-shadow')}"
+    result = _run(_repo(tmp_path), env)
     assert result.returncode == 2
     assert LINT_FINDING in result.stderr
+
+
+def test_alarm_is_read_with_lighthouse_usage_alarm(tmp_path):
+    env = _alarm_env(tmp_path)
+    fake = tool_bin(
+        tmp_path / "fake-lighthouse",
+        (),
+        stubs={
+            "lighthouse": '#!/bin/bash\n'
+            '[ "$*" = "usage alarm" ] || exit 1\n'
+            "echo 'venster 92 9_15 2099-01-01T00:00:00Z'\n"
+        },
+    )
+    env["PATH"] = f"{fake}:{env['PATH']}"
+    result = _run(_repo(tmp_path), env)
+    assert _message(result) == (
+        "go-lint-gate: not checked — the usage alarm is up until 9 15; "
+        "the usage gate wraps up this session."
+    )
 
 
 def test_stop_hook_active_with_alarm_is_silent(tmp_path):
