@@ -113,15 +113,15 @@ func TestBudgetSilentWhenInstructionsUnchanged(t *testing.T) {
 }
 
 // Red when a lookup error is skipped silently.
-func TestBudgetNotMeasurableWithoutPython(t *testing.T) {
+func TestBudgetNotMeasurableWhenLookupFails(t *testing.T) {
 	root := newRepo(t)
 	r := run(t, root, "y\n", func(o *Options) {
-		o.Lookup = func(string) (string, bool, error) { return "", false, errors.New("python3 is not available") }
+		o.Lookup = func(string) (string, bool, error) { return "", false, errors.New("lighthouse.toml: cannot read") }
 	})
 	if r.code != 0 || !exists(root, "AGENTS.md") {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
-	if !strings.Contains(r.err, "instruction blocks: budget not measurable: python3 is not available") {
+	if !strings.Contains(r.err, "instruction blocks: budget not measurable: lighthouse.toml: cannot read") {
 		t.Fatalf("stderr:\n%s", r.err)
 	}
 }
