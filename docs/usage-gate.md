@@ -6,7 +6,7 @@ De usage-gate bewaakt het Claude-venster in een lopende sessie. Hij leest alleen
 een vol venster doorloopt en dwingt hij bij `Stop` een afronding af. De drempels staan in
 `host.toml` en gelden in de meter; de hook kent er zelf geen.
 
-`pack/core/hooks/usage-gate.sh` is de enige geregistreerde hook. Hij eindigt altijd met exitcode 0
+`lighthouse hook usage-gate`, aangeroepen als `run.sh usage-gate <stand>`, is de enige geregistreerde hook. Hij eindigt altijd met exitcode 0
 en zet hooguit één JSON-object op stdout. Een fout geeft geen blokkade en geen rode hook, alleen
 een regel op stderr die met `usage-gate: ` begint.
 
@@ -18,8 +18,8 @@ van een meting) doet elke stand niets.
 | Stand | Event | Zonder alarm | Met alarm |
 |---|---|---|---|
 | `prompt` | `UserPromptSubmit` | start de verversing, exit 0 | start de verversing; `additionalContext` met soort, pct, reset en de afrondopdracht; nooit blokkerend |
-| `tool` | `PostToolUse`, matcher leeg | één `[ -f ]`, exit 0 | één keer per venster `{"decision":"block"}`: commit het werk-in-uitvoering, schrijf een handoff, begin geen nieuwe stap |
-| `subagent` | `SubagentStop`, en `PostToolUse` met `agent_id` | één `[ -f ]`, exit 0 | één keer per subagent `{"decision":"block"}` met een eigen reden: stop, meld de hoofdthread wat je deed en wat er nog open staat; commit niets, geen wekker, geen handoff |
+| `tool` | `PostToolUse`, matcher leeg | één bestandscheck, exit 0 | één keer per venster `{"decision":"block"}`: commit het werk-in-uitvoering, schrijf een handoff, begin geen nieuwe stap |
+| `subagent` | `SubagentStop`, en `PostToolUse` met `agent_id` | één bestandscheck, exit 0 | één keer per subagent `{"decision":"block"}` met een eigen reden: stop, meld de hoofdthread wat je deed en wat er nog open staat; commit niets, geen wekker, geen handoff |
 | `stop` | `Stop` | exit 0 | één keer per venster `{"decision":"block"}`: commit niets meer, schrijf de handoff, stop |
 
 - **Wanneer telt het alarm.** Het alarm is `${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse/usage-window.alarm`.
@@ -28,13 +28,14 @@ van een meting) doet elke stand niets.
   cijfers bevat en `reset_at` de vorm `2006-01-02T15:04:05Z` heeft en in de toekomst ligt. Een
   vijfde veld, een `\r` aan het eind, een `?` als `reset_at`, een verlopen tijd of een onleesbaar
   bestand telt als geen alarm. De hook verwijdert het alarm nooit: alleen de meter schrijft en
-  ruimt. `_` in `reset_local` wordt een spatie. Deze regels staan in `usage-gate/alarm.sh`
-  (`USAGE_ALARM`, `usage_alarm_valid`), die de hook en de blokkerende Stop-gates sourcen.
-- **Tijd.** `reset_at` wordt epoch via GNU `date -d`, en anders via BSD `date -j -u -f`. Faalt
-  beide, dan telt het alarm niet.
-- **Snelle pad.** In `tool` en `subagent` is het pad zonder alarm één `[ -f ]`, zonder fork en
-  zonder stdin te lezen. Alleen een controller-run toetst eerst de pauzevlag. Pas bij een geldig
-  alarm of een geldige vlag start `python3`; de payload gaat dan op stdin mee.
+  ruimt. `_` in `reset_local` wordt een spatie. Deze regels staan in Go (`internal/usage`).
+  `lighthouse usage alarm` drukt het geldige alarm af en eindigt met exit 0, anders met een andere
+  exit; de hook en de blokkerende Stop-gates lezen het zo.
+- **Tijd.** `reset_at` wordt in Go gelezen als `2006-01-02T15:04:05Z`; dat hangt niet van de
+  `date` van de host af. Een onleesbare tijd telt het alarm niet.
+- **Snelle pad.** In `tool` en `subagent` is het pad zonder alarm een bestandscheck in de
+  binary, zonder stdin te lezen. Alleen een controller-run toetst eerst de pauzevlag. Pas bij een
+  geldig alarm of een geldige vlag leest de hook de payload van stdin.
 - **Subagent-calls.** Een `PostToolUse` met `agent_id` komt uit een subagent. De hook ziet dat pas
   op het trage pad en behandelt de call dan als stand `subagent`. De `tool`-sleutel blijft zo voor
   de hoofdthread.
@@ -165,12 +166,12 @@ Een controller-marker heeft geen `handoff_path`: de controller-reden vraagt geen
 
 De controller kan een run laten parkeren zonder alarm, met het bestand `PAUSE` (pad in *Contract*). Je zet de vlag met `lighthouse pause [--until HH:MM]` en haalt hem weg met `lighthouse pause off` (zie [tick.md](tick.md#pauze)).
 Alleen `tool` toetst het, alleen in een controller-run, in deze volgorde. De stappen 1 tot en met
-3 draaien in shell, zonder Python:
+3 draaien in Go:
 
 1. de vlag is een gewoon bestand en geen symlink;
 2. de eerste regel is een ISO-tijd met offset (`2026-10-03T21:00:00+02:00` of `…Z`), alleen de
    tekens `0-9T:+Z-`;
-3. de tijd ligt in de toekomst (GNU `date -d`, anders BSD `date -j -f`); onleesbaar telt als
+3. de tijd ligt in de toekomst (gelezen in Go); onleesbaar telt als
    verlopen;
 4. de sleutel `pause-<tot>.<run-id>.done` ontbreekt, of is ouder dan de vlag;
 5. de payload heeft geen `agent_id`: een call in een subagent parkeert niet, de run parkeert bij de
@@ -220,10 +221,10 @@ betekent dat de gate niets afdwingt, niet dat hij niets zegt.
   rond af en stop, en herstel eerst de bevinding. Dat kost bovendien budget dat er niet meer is.
 - **Volgorde.** De alarmcheck staat ná de `stop_hook_active`-exit: een herhaalde `Stop` zwijgt
   al stil en krijgt geen tweede melding.
-- **Zonder helper.** De gate leest de regels uit `usage-gate/alarm.sh` naast zichzelf. Staat die
-  er niet (het pakket zonder `pack/core`), dan gedraagt de gate zich als altijd en blokkeert hij.
+- **Zonder binary.** De gate leest het alarm met `lighthouse usage alarm`. Staat `lighthouse` niet
+  op het `PATH`, dan gedraagt de gate zich als altijd en blokkeert hij.
 - **Wat niet telt.** Een verlopen of onleesbaar alarm (symlink, drie velden) telt als geen
   alarm: de gate blokkeert gewoon.
 - **Een nieuwe blokkerende Stop-gate** in een pakket volgt hetzelfde patroon: na
-  `stop_hook_active` de helper sourcen als hij er is, bij `usage_alarm_valid` een
-  `systemMessage` en exit 0.
+  `stop_hook_active` `lighthouse usage alarm` aanroepen als `lighthouse` er is, bij een geldig
+  alarm een `systemMessage` en exit 0.
