@@ -50,11 +50,11 @@ func sddWorktree(t *testing.T, ledger string) (root, work, command string) {
 	t.Helper()
 	root = t.TempDir()
 	write(t, filepath.Join(root, ".git"), "gitdir: elsewhere\n")
-	write(t, filepath.Join(root, "docs/p/plan.md"), "# Plan\n\n### Task 1: a\n\n### Task 2: b\n\n### Task 3: c\n\n## Task 4: d\n\n### Task 4: d again\n")
+	write(t, filepath.Join(root, "plans/p/plan.md"), "# Plan\n\n### Task 1: a\n\n### Task 2: b\n\n### Task 3: c\n\n## Task 4: d\n\n### Task 4: d again\n")
 	work = filepath.Join(root, ".superpowers/sdd/plan")
-	write(t, filepath.Join(work, "plan-path"), "docs/p/plan.md\n")
+	write(t, filepath.Join(work, "plan-path"), "plans/p/plan.md\n")
 	write(t, filepath.Join(work, "progress.md"), ledger)
-	return root, work, sddCommand + filepath.Join(root, "docs/p/plan.md")
+	return root, work, sddCommand + filepath.Join(root, "plans/p/plan.md")
 }
 
 func checkProgress(t *testing.T, command string, want Progress) {
@@ -109,7 +109,7 @@ func TestReadProgressMissingWorktree(t *testing.T) {
 func TestReadProgressOtherPlanIgnored(t *testing.T) {
 	root, _, cmd := sddWorktree(t, "Task 1: complete\n")
 	other := filepath.Join(root, ".superpowers/sdd/other")
-	write(t, filepath.Join(other, "plan-path"), "docs/p/other.md\n")
+	write(t, filepath.Join(other, "plan-path"), "plans/p/other.md\n")
 	write(t, filepath.Join(other, "progress.md"), "Task 1: complete\nTask 2: complete\nTask 3: complete\nTask 4: complete\n")
 	checkProgress(t, cmd, Progress{Task: 2, Tasks: 4, Step: "build"})
 }
@@ -124,7 +124,7 @@ func TestReadProgressNoRepo(t *testing.T) {
 
 func TestReadProgressOtherCommand(t *testing.T) {
 	root, _, _ := sddWorktree(t, "Task 1: complete\n")
-	if p, ok := ReadProgress("/lighthouse-review-plan " + filepath.Join(root, "docs/p/plan.md")); ok {
+	if p, ok := ReadProgress("/lighthouse-review-plan " + filepath.Join(root, "plans/p/plan.md")); ok {
 		t.Errorf("ReadProgress = %+v, true, want false", p)
 	}
 }
