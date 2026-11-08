@@ -11,7 +11,8 @@ dispatcher (`tick`). Er draait niets bínnen GitLab, zoals GitLab CI.
 
 De eerste gebruiker is de eigenaar zelf, op het werk. Daar draait een interne, self-hosted GitLab
 19.4 EE met minstens een Premium-licentie: de keuze *relates to / blocks / is blocked by* bij
-*Linked items* is er. Daarmee zijn scoped labels en blokkade-links beschikbaar. Lukt het niet op
+*Linked items* is er. Daarmee zijn de ingebouwde issuestatus, scoped labels en blokkade-links
+beschikbaar. Lukt het niet op
 die server, dan wacht dit werk tot het bedrijf naar een publieke GitLab gaat. gitlab.com moet
 ook werken, maar is niet het eerste doel.
 
@@ -60,8 +61,19 @@ dragen GitHub-begrippen: Projects v2-ID's, raket-reacties, collaborator-rollen.
   `serve`. Op GitLab kost het een vast aantal pagina's, niet een aantal aanroepen per issue. De
   bouwer kiest hoe (GraphQL, of REST met batching); een ontwerp met aanroepen per issue per tick
   voldoet niet (*mijn keuze*).
-- Premium-functies mogen gebruikt worden: scoped labels (`status::…`, één per scope, door GitLab
-  afgedwongen) en issue-links van het type `is_blocked_by`.
+- Premium-functies mogen gebruikt worden: de ingebouwde issuestatus (work item status), scoped
+  labels (`priority::…`, één per scope, door GitLab afgedwongen) en issue-links van het type
+  `is_blocked_by`.
+- **De ingebouwde status kent alleen GraphQL.** Lezen via de widget `WorkItemWidgetStatus`,
+  zetten via `workItemUpdate` met `statusWidget: {name: …}` (naam, hoofdletterongevoelig). In
+  GitLab 19.3 heet die widget nog *Experiment*: de API kan veranderen. De conformiteitssuite moet
+  zo'n wijziging vangen.
+- **Eigen statussen staan op de bovenste groep.** GitLab levert standaard *To do*, *In progress*,
+  *Done*, *Won't do* en *Duplicate*. Lighthouse gebruikt ook *On hold* en *Controller*. Die moet
+  iemand met de rol Maintainer of Owner op de **bovenste** groep toevoegen (*Settings → Work
+  items → Statuses*). Zonder die twee werkt de handmatige keten wel, de dispatcher niet.
+- **De configuratie leest Go, niet Python.** #274 maakt Go de enige lezer van `lighthouse.toml`
+  (milestone *Lighthouse zonder Python*). Wat deze spec aan configuratie toevoegt, landt daar.
 - Een GitLab-pad kan subgroepen hebben (`groep/sub/project`); in de API wordt het URL-gecodeerd
   als project-ID gebruikt. `[forge] host` uit #257 geeft de self-hosted host.
 - Code, namen en commentaar in het Engels; deze spec in het Nederlands.
@@ -170,11 +182,11 @@ bruikbaar token faalt het hele commando. `repoconfig.Repo` krijgt het veld `Host
 | `PR.Mergeable` | MERGEABLE/CONFLICTING/UNKNOWN | betekent alleen "geen conflicten", zoals op GitHub: `has_conflicts` → CONFLICTING; `detailed_merge_status` `checking`/`unchecked` → UNKNOWN; anders MERGEABLE. Goedkeuringen en open threads tellen niet mee |
 | `PR.Closes` | `closedByPullRequestsReferences` | het issue staat in `closes_issues` van de MR (of de MR in `closed_by` van het issue) |
 | `PR.CrossRepo` | head in een fork | `source_project_id` ≠ `target_project_id` |
-| Status | Projects v2 single-select-veld | scoped label `status::<naam>`; GitLab houdt er één per issue |
-| Prioriteit | Projects v2 single-select-veld | scoped label `priority::<naam>` |
-| Board | Projects v2-project | alle issues met een `status::`-label; `ItemID` is het `iid` |
+| Status | Projects v2 single-select-veld | ingebouwde issuestatus (work item status), via GraphQL; de config koppelt elke lighthouse-statusnaam aan een GitLab-statusnaam |
+| Prioriteit | Projects v2 single-select-veld | scoped label `priority::<naam>` (GitLab heeft geen prioriteitsveld) |
+| Board | Projects v2-project | alle issues van het project: elk issue heeft een status; `ItemID` is het `iid` |
 | `BoardItem.ItemUpdatedAt` | `updatedAt` van het project-item | `updated_at` van het issue. Die schuift ook bij een comment, dus de volgorde van starts binnen één prioriteit kan verschillen van GitHub (*mijn keuze*: geen extra aanroep per issue) |
-| `AddToBoard` | item toevoegen aan het project | label `status::<eerste status>` zetten (de status die nu `To do` is) |
+| `AddToBoard` | item toevoegen aan het project | niets te doen: elk issue staat al op het board. `IssueItem` geeft op GitLab dus altijd `ok = true` |
 | Blokkades | issue-dependencies (`blocked_by`) | issue-links met `link_type = is_blocked_by`, ook naar andere projecten |
 | `Blocker.MergedPR` | blijft `false` (REST zegt het niet) | `true` als een MR uit `closed_by` van de blokkeerder gemerged is |
 | Milestone | repo-milestone, nummer | project- of groepsmilestone; filter op titel |
@@ -182,18 +194,25 @@ bruikbaar token faalt het hele commando. `repoconfig.Repo` krijgt het veld `Host
 | Login | `GET /user` → `login` | `GET /user` → `username` |
 | Rechtentoets | collaborator-rol | `access_level` van het lid, inclusief geërfd (`/members/all/:id`) |
 
-Statusnamen en prioriteitsnamen komen uit de configuratie (AC van #259). Voor GitLab is dat een
-lijst namen in `[forge.board]`, zonder ID's. Het precieze formaat is aan de bouwer, met één eis:
-`repoconfig` én `pack/core/lib/config.py` valideren per soort forge. De huidige controles
-(`project_number`, `project_id`, `status_field_id`, option-ID's) gelden alleen voor GitHub;
-anders breekt elke hook op een GitLab-repo. Een nieuwe sleutel (`[forge] token_env`, de
-GitLab-vorm van `[forge.board]`) komt ook in `docs/site/data/config.json`. Omdat dat `pack/`
-raakt, volgt de dogfood-stap `init --upgrade` (*mijn keuze*: Python hoort erbij).
+Statusnamen en prioriteitsnamen komen uit de configuratie (AC van #259). Voor GitLab koppelt
+`[forge.board.status_options]` elke lighthouse-statusnaam aan een GitLab-statusnaam in plaats van
+een option-ID (bijvoorbeeld `"To do" = "To do"`, `"Controller" = "Controller"`); prioriteiten
+worden labelnamen. Het precieze formaat is aan de bouwer, met één eis: de Go-lezer van
+`lighthouse.toml` uit #274 valideert per soort forge. De huidige controles (`project_number`,
+`project_id`, `status_field_id`, option-ID's) gelden alleen voor GitHub; anders breekt elke hook
+op een GitLab-repo. Een nieuwe sleutel (`[forge] token_env`, de GitLab-vorm van `[forge.board]`)
+komt ook in `docs/site/data/config.json`. `pack/core/lib/config.py` is na #274 bevroren en krijgt
+niets. Daarmee hangt #259 af van #274; #258 niet, want `token_env` en `Host` kunnen in
+`internal/repoconfig`.
+
+**Een statuskoppeling die niet bestaat.** Bestaat een gekoppelde GitLab-status niet in de
+lifecycle van de bovenste groep, dan geeft `SetStatus` een fout met de naam van de status en de
+plek waar je hem toevoegt. Een controle bij het openen van de forge is aan de bouwer.
 
 **Labels aanmaken.** GitLab maakt een projectlabel aan zodra de API het voor het eerst op een
-issue zet. De client hoeft labels dus niet vooraf te maken. Labels met kleur en beschrijving
-aanmaken bij `init` hoort bij de wrapper (#260), net als het aanmaken voor GitHub via een script
-(*mijn keuze*).
+issue zet. De client hoeft `priority::`-labels dus niet vooraf te maken. Labels met kleur en
+beschrijving aanmaken bij `init` hoort bij de wrapper (#260), net als het aanmaken voor GitHub via
+een script (*mijn keuze*).
 
 ### Rechtentoets
 
@@ -274,8 +293,10 @@ dezelfde interface. Dat is het voordeel van aanpak A.
 
 1. De GitLab-client volgens de tabel hierboven.
 2. De nep-GitLab-server en de conformiteitssuite tegen GitLab.
-3. De GitLab-vorm van `[forge.board]` en de validatie per soort forge.
+3. De GitLab-vorm van `[forge.board]` en de validatie per soort forge, in de Go-lezer van #274.
 4. `serve` toont een GitLab-repo.
+5. Het AC van #259 zegt nu "status als scoped label `status::<naam>`". Dat wordt de ingebouwde
+   issuestatus; het AC wordt aangepast bij de start van #259.
 
 ## Aan de bouwer
 
@@ -289,9 +310,10 @@ dezelfde interface. Dat is het voordeel van aanpak A.
 
 ## Keuzes van de schrijver
 
-- Status via scoped labels, niet via de nieuwe ingebouwde issuestatus van GitLab. Die laatste is
-  alleen via GraphQL te zetten en is nieuw; scoped labels werken via REST, zijn zichtbaar op elk
-  GitLab-board en staan al in het AC van #259.
-- Prioriteit ook als scoped label (`priority::…`), naar hetzelfde patroon.
+- Status via de ingebouwde issuestatus van GitLab: keuze van de eigenaar, omdat dat het logische
+  GitLab-begrip is. Het risico (alleen GraphQL, nog *Experiment*, eigen statussen op de bovenste
+  groep) staat bij *Randvoorwaarden*.
+- Prioriteit als scoped label (`priority::…`): GitLab heeft geen prioriteitsveld, en `weight` is
+  een getal zonder namen.
 - De typenamen `PR` en `OpenPR` blijven; ze staan voor een PR én een MR.
 - De rolwoorden van GitHub worden de neutrale rollen, zodat `answer_permissions` niet verandert.
