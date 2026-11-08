@@ -121,8 +121,66 @@ func TestUnpushedSquashMergedPruned(t *testing.T) {
 		t.Errorf("without mergedHead: got %v %v, want true nil", got, err)
 	}
 	got, err = Unpushed(ctx, ExecRunner(), repo, strings.Repeat("0", 40))
+	if err == nil {
+		t.Errorf("unfetchable mergedHead: got %v nil, want error", got)
+	}
+}
+
+// mergedElsewhere gives repo a pushed branch feature with one commit, then a commit on that
+// branch from another clone, as a fix from another session does. The PR head is kept under
+// refs/pull/1/head, as GitHub does, and the branch is deleted and pruned. fetched says whether
+// repo fetched the PR head before the prune. It returns the PR head.
+func mergedElsewhere(t *testing.T, fetched bool) (repo, mergedHead string) {
+	t.Helper()
+	repo, bare := newRepo(t)
+	git(t, repo, "checkout", "-b", "feature")
+	commitFile(t, repo, "b.txt")
+	git(t, repo, "push", "origin", "feature")
+	other := filepath.Join(t.TempDir(), "other")
+	git(t, repo, "clone", "-b", "feature", bare, other)
+	commitFile(t, other, "c.txt")
+	git(t, other, "push", "origin", "feature")
+	mergedHead = git(t, other, "rev-parse", "HEAD")
+	if fetched {
+		git(t, repo, "fetch", "origin")
+	}
+	git(t, bare, "update-ref", "refs/pull/1/head", mergedHead)
+	git(t, bare, "branch", "-D", "feature")
+	git(t, repo, "fetch", "--prune", "origin")
+	return repo, mergedHead
+}
+
+func TestUnpushedBehindMergedHead(t *testing.T) {
+	t.Parallel()
+	for _, fetched := range []bool{true, false} {
+		repo, mergedHead := mergedElsewhere(t, fetched)
+		got, err := Unpushed(context.Background(), ExecRunner(), repo, mergedHead)
+		if err != nil || got {
+			t.Errorf("fetched=%v: got %v %v, want false nil", fetched, got, err)
+		}
+	}
+}
+
+func TestUnpushedOwnCommitAfterMergedHead(t *testing.T) {
+	t.Parallel()
+	repo, mergedHead := mergedElsewhere(t, true)
+	git(t, repo, "merge", "--ff-only", mergedHead)
+	commitFile(t, repo, "d.txt")
+	got, err := Unpushed(context.Background(), ExecRunner(), repo, mergedHead)
 	if err != nil || !got {
-		t.Errorf("other mergedHead: got %v %v, want true nil", got, err)
+		t.Errorf("got %v %v, want true nil", got, err)
+	}
+}
+
+func TestUnpushedOwnCommitBesideMergedHead(t *testing.T) {
+	t.Parallel()
+	for _, fetched := range []bool{true, false} {
+		repo, mergedHead := mergedElsewhere(t, fetched)
+		commitFile(t, repo, "d.txt")
+		got, err := Unpushed(context.Background(), ExecRunner(), repo, mergedHead)
+		if err != nil || !got {
+			t.Errorf("fetched=%v: got %v %v, want true nil", fetched, got, err)
+		}
 	}
 }
 
