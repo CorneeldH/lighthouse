@@ -397,9 +397,7 @@
               "readers": [
                 "internal/gate/gate.go",
                 "pack/core/hooks/commit-test-gate.sh",
-                "pack/go/scripts/gate_go.py",
                 "pack/go/skills/go-standard",
-                "pack/node/scripts/gate_node.py",
                 "pack/python/scripts/gate_python.py",
                 "pack/python/skills/python-standard"
               ]

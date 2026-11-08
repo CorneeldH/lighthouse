@@ -120,7 +120,7 @@ def test_gate_command_uses_the_selector_without_shuffle():
     for path in VARIANTS:
         text = " ".join(path.read_text(encoding="utf-8").split())
         assert (
-            '`[test_gate] command = "python3 .lighthouse/scripts/gate_go.py -- go test -race"`'
+            '`[test_gate] command = "lighthouse gate go -- go test -race"`'
             in text
         ), path
         assert 'command = "go test -shuffle=on' not in text, path

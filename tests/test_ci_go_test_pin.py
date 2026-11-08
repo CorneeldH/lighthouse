@@ -8,11 +8,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _gate_go_command():
-    """The `go test ...` words after `gate_go.py --`, up to the next `&&`."""
+    """The `go test ...` words after `lighthouse gate go --`, up to the next `&&`."""
     toml = tomllib.loads((ROOT / "lighthouse.toml").read_text(encoding="utf-8"))
     command = toml["test_gate"]["command"]
-    match = re.search(r"gate_go\.py --\s+(go test[^&]*?)\s*(?:&&|$)", command)
-    assert match, f"no `gate_go.py -- go test ...` in [test_gate] command: {command}"
+    match = re.search(r"(?:gate_go\.py|lighthouse gate go) --\s+(go test[^&]*?)\s*(?:&&|$)", command)
+    assert match, f"no `lighthouse gate go -- go test ...` in [test_gate] command: {command}"
     return match.group(1)
 
 
