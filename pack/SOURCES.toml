@@ -19,6 +19,14 @@ path = "pack/core/hooks/hooks.json"
 new = true
 
 [[file]]
+path = "pack/core/hooks/run.sh"
+new = true
+
+[[file]]
+path = "pack/core/hooks/blocking"
+new = true
+
+[[file]]
 path = "pack/core/instructions/AGENTS.md"
 new = true
 

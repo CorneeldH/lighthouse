@@ -194,6 +194,13 @@ sha256 = "e701bea23d75d924f505f005d343676470ecd4078e51aa401ee4254abad93824"
 
 [[unit]]
 kind = "file"
+path = ".claude/hooks/lighthouse/blocking"
+package = "core"
+version = "dev"
+sha256 = "1eb912125809c6f094a284ecfe7e05d160fee7f0ff1a178bef631411d7ef9f51"
+
+[[unit]]
+kind = "file"
 path = ".claude/hooks/lighthouse/code-language-check.sh"
 package = "core"
 version = "dev"
@@ -254,6 +261,13 @@ path = ".claude/hooks/lighthouse/pr-create-gate.sh"
 package = "core"
 version = "dev"
 sha256 = "80e3cd63d184adffe3007c040eff24d6876964c92962775eb3f1f2a2ddf65748"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/run.sh"
+package = "core"
+version = "dev"
+sha256 = "46ee4f41c3a2d15b9384c0a3b770973e330be3c416ad8b4e76e9d108c2f96021"
 
 [[unit]]
 kind = "file"
