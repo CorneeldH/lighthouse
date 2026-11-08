@@ -214,6 +214,52 @@ tick that wrote it. Per deferred start: `repo`, `issue`, `title`, `reason` and `
 shows the age of `at` on every row as *tick … ago*: a row is at most one tick behind. Without a
 tick both lists are empty. A `500` means the database could not be read.
 
+## Run the tick
+
+`lighthouse tick` is the dispatcher. With `[dispatch] workplace = "local"` in `host.toml` it needs no
+kenn-forge: each run gets a git worktree and a detached `claude -p` on this host (see
+[workplace.md](workplace.md#lokaal) and [tick.md](tick.md)). The host needs Linux with `/proc`, `git`,
+`setsid` from util-linux and `claude` on the `PATH` of the tick.
+
+Fetch the unit, [lighthouse-tick.service](../deploy/systemd/lighthouse-tick.service), and its timer,
+[lighthouse-tick.timer](../deploy/systemd/lighthouse-tick.timer), the way you fetched `lighthouse.service`:
+the tag of your binary for `<tag>`, and an `ExecStart` path that matches where the binary lives.
+
+```bash
+curl -fsSLo ~/.config/systemd/user/lighthouse-tick.service https://raw.githubusercontent.com/CorneeldH/lighthouse/<tag>/deploy/systemd/lighthouse-tick.service
+curl -fsSLo ~/.config/systemd/user/lighthouse-tick.timer https://raw.githubusercontent.com/CorneeldH/lighthouse/<tag>/deploy/systemd/lighthouse-tick.timer
+systemctl --user daemon-reload
+systemctl --user enable --now lighthouse-tick.timer
+loginctl enable-linger "$USER"
+```
+
+With a clone, copy both files from `deploy/systemd/` instead. Enable the timer, not the service; it runs
+the tick two minutes after boot and every five minutes after. `enable-linger` keeps the timer running
+when you are not logged in.
+
+Two choices in the unit are on purpose:
+
+- `KillMode=process`. A detached run lives in the cgroup of the unit. With the default
+  `KillMode=control-group` systemd kills every process of the cgroup when the tick ends, so each run
+  would die with the tick that started it. While runs live, systemd logs `Found left-over process … in
+  control group while starting unit. Ignoring.` on each tick; that is expected.
+- No hardening (`ProtectHome=`, `ProtectSystem=`, `NoNewPrivileges=`). The runs inherit the unit's
+  namespace and must write the worktree, `~/.claude` and the state directory, and run git, go and the
+  test gate.
+
+Put `GH_TOKEN` in `~/.config/lighthouse/forge.env` (mode `0600`), the file `lighthouse.service` also
+reads (see *Connect the forge*). The runs inherit the token, so a run has the rights of the dispatcher.
+`claude` must be on the unit's `PATH`; the unit adds `%h/.local/bin`, where the claude installer puts it.
+It also adds `/usr/local/go/bin`, where the official Go distribution puts `go`, which runs and the test
+gate need.
+
+Without systemd, run the tick from cron. Cron sets no `XDG_RUNTIME_DIR`, which the tick needs, so the
+line sets it:
+
+```text
+*/5 * * * * export XDG_RUNTIME_DIR=/run/user/$(id -u) PATH="$HOME/.local/bin:$HOME/go/bin:/usr/local/bin:/usr/local/go/bin:/usr/bin:/bin"; set -a; . "$HOME/.config/lighthouse/forge.env"; set +a; lighthouse tick
+```
+
 ## Reach it from your tailnet
 
 [tailscale-serve.sh](../deploy/tailscale-serve.sh) exposes the local server over HTTPS on the
