@@ -213,16 +213,6 @@ source_path = "scripts/codex_usage.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/scripts/measure_start_issue_kpi.py"
-source_path = "scripts/measure_start_issue_kpi.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/measure_fix_pr_kpi.py"
-source_path = "scripts/measure_fix_pr_kpi.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/scripts/worktree_audit.py"
 source_path = "scripts/worktree_audit.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"

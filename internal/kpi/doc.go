@@ -1,6 +1,6 @@
 // Package kpi measures how well the lighthouse-start-issue and lighthouse-fix-pr skills
 // behave, from the Claude Code session transcripts on disk. It is a Go port of the two
-// Python scripts measure_start_issue_kpi.py and measure_fix_pr_kpi.py: the output is
+// Python measurement scripts it replaced: the output is
 // byte-identical to Python's json.dumps(table, indent=2, ensure_ascii=False).
 //
 // Deliberate deviations from the Python, none of which occurs in real transcripts:

@@ -460,7 +460,6 @@
               "about": "Where plans are written.",
               "readers": [
                 "internal/kpi/startissue.go",
-                "pack/core/scripts/measure_start_issue_kpi.py",
                 "pack/core/scripts/plan_review_record.py",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/skills/review-plan",
@@ -489,7 +488,6 @@
               "about": "Where specs are written.",
               "readers": [
                 "internal/kpi/startissue.go",
-                "pack/core/scripts/measure_start_issue_kpi.py",
                 "pack/core/scripts/plan_review_record.py",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/skills/review-spec",

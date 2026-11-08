@@ -895,20 +895,6 @@ sha256 = "b333b7e2d9feca85cc3859e7fadd3df1549d741c76c8da4aa35ec59aec46faac"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/scripts/measure_fix_pr_kpi.py"
-package = "core"
-version = "dev"
-sha256 = "ca1fbe02169938a4348085d8681e98865cbdfe2f0a423b1effea7c8ec16fe2d8"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/measure_start_issue_kpi.py"
-package = "core"
-version = "dev"
-sha256 = "f065b5f10e5d13691c1a1458ddf3d37a475edbd73f1baf62f60052ec8ed84f48"
-
-[[unit]]
-kind = "file"
 path = ".lighthouse/scripts/plan_review_record.py"
 package = "core"
 version = "dev"
