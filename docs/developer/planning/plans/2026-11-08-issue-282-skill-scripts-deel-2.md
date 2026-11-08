@@ -151,9 +151,12 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
   verandert ook `lighthouse usage codex`; zijn test past mee. Dat is een bewuste gedragswijziging
   (`source_file: null`, een `reset_credits`-sleutel, timeout uit config): werk
   `docs/usage-venster.md:110-119` mee bij (de zinnen over `source_file`, `reset_credits` en de vaste
-  20 s) en noem het in het changelog-fragment. Controleer dat een onleesbare `rateLimitResetCredits`
-  de meting niet onmeetbaar maakt voor `serve` (`internal/cli/serve.go:154`): dan blijft
-  `reset_credits` `null` en de rest van de stand geldig; zet daar een test op. De timeout per home komt uit
+  20 s) en noem het in het changelog-fragment. Een onleesbare `rateLimitResetCredits` behandelen
+  de twee kanten verschillend. De gedeelde parser geeft de credits-fout apart terug (naast een
+  geldige stand met `reset_credits` `null`). `codex-usage read` en `budget` maken er
+  `not measurable: reset credits unreadable: …` van (exit 1, bij budget `not_measurable`), zoals
+  `codex_usage.py:205-213,235`. `usage codex` en `serve` (`internal/cli/serve.go:154`) negeren die fout
+  en houden de stand geldig. Zet één test op elke kant. De timeout per home komt uit
   `codex_usage.app_server_timeout_seconds` (default 20). De drempels komen uit
   `codex_usage.review_pct_session` (90) en `review_pct_week` (95). De volgorde en de redenteksten
   van `decide_budget` zijn letterlijk (`codex_usage.py:355-412`).
