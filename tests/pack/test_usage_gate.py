@@ -115,7 +115,7 @@ def test_alarm_cases(tmp_path: Path, stand: str, case: dict) -> None:
     assert _speaks(stand, result.stdout) is case["valid"], result.stdout
     if case["valid"]:
         _, pct, local, _ = case["fields"]
-        assert f"{int(pct)}%" in result.stdout
+        assert f"at {int(pct)}% of" in result.stdout
         assert local in result.stdout
 
 

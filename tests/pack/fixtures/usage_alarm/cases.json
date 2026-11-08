@@ -218,14 +218,14 @@
   {
     "name": "reset_at without Z",
     "setup": "file",
-    "line": "venster 92 14:30 {future_noz}",
+    "line": "venster 92 14:30 2099-01-01T00:00:00",
     "valid": false,
     "fields": null
   },
   {
     "name": "reset_at with offset",
     "setup": "file",
-    "line": "venster 92 14:30 {future_offset}",
+    "line": "venster 92 14:30 2099-01-01T00:00:00+00:00",
     "valid": false,
     "fields": null
   },

@@ -82,6 +82,9 @@ def _parse_utc(text):
     return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
 
 
+FIXTURE_AT = "2026-09-06T12:30:00Z"
+
+
 def _fixture_ctx(case):
     """The `Context` a keys or speech case describes."""
     payload = dict(case.get("payload") or {})
@@ -105,9 +108,6 @@ def _load_module(name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-FIXTURE_AT = "2026-09-06T12:30:00Z"
 
 
 @pytest.mark.parametrize("case", _fixture("keys"))
@@ -140,7 +140,6 @@ def test_speech_fixtures(case, monkeypatch):
         out = _load_module("controller").pause(c)
     expect = json.loads(json.dumps(case["expect"]).replace("{resume}", str(ug.resume_dir())))
     assert out == expect
-
 
 
 def test_paths_follow_xdg(tmp_path):
