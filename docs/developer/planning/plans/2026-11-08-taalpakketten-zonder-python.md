@@ -368,13 +368,13 @@ om te evalueren.
 - [ ] **Step 5:** Bewijs van de gate met de branch-binary. De `$(…)` wordt door de buitenste shell
   uitgebreid, vóór een `PATH=` op `bash` geldt; zet daarom eerst het PATH en haal het commando
   daarna op:
-  `T=$(mktemp -d) && go build -o "$T/lighthouse" ./cmd/lighthouse && export PATH="$T:$PATH" && (cd web && npm ci) && cmd=$(lighthouse config test_gate.command) && [ -n "$cmd" ] && f=$(mktemp) && t=$(mktemp -d) && git -c core.quotePath=false diff --name-only --no-renames origin/main HEAD > "$f" && LIGHTHOUSE_GATE_FILES="$f" LIGHTHOUSE_GATE_TMP="$t" bash -c "$cmd"`
-  (zoals de repro-regel van `commit-test-gate.sh:198`). `LIGHTHOUSE_GATE_TMP` is verplicht: het
+  `T=$(mktemp -d) && go build -o "$T/lighthouse" ./cmd/lighthouse && export PATH="$T:$PATH" && (cd web && npm ci) && cmd=$(lighthouse config test_gate.command) && [ -n "$cmd" ] && f=$(mktemp) && t=$(mktemp -d) && git -c core.quotePath=false diff --name-only --no-renames origin/main > "$f" && LIGHTHOUSE_GATE_FILES="$f" LIGHTHOUSE_GATE_TMP="$t" bash -c "$cmd"`
+  (zoals de repro-regel van `commit-test-gate.sh:198`, maar zonder `HEAD`: Step 5 draait vóór de commit van Step 7, dus de werkboom-wijzigingen aan `lighthouse.toml` moeten in de lijst staan; anders slaat `gate node` over met rc 0 en de regel `gate-node: skipped`, en dat is geen bewijs). `LIGHTHOUSE_GATE_TMP` is verplicht: het
   commando van deze repo heeft `--basetemp="$LIGHTHOUSE_GATE_TMP"` tussen het go- en het
   node-deel, en een lege waarde laat pytest met een usage-fout stoppen vóór `gate node`.
   `web/node_modules` moet bestaan (`lighthouse.toml:44` heeft `--also lighthouse.toml`, dus
   `gate node --dir web` draait in de branch-diff; zonder `node_modules` geeft het rc 3). Eis
-  naast rc 0 dat de uitvoer de regels `gate-go:` en `gate-node:` bevat; een lege `$cmd` of rc 0
+  naast rc 0 dat de uitvoer de regels `gate-go:` en `gate-node:` bevat, geen van beide met `skipped`; een lege `$cmd` of rc 0
   zonder die regels is geen bewijs.
 - [ ] **Step 6:** Volledige run: `go test -race ./...` en `uv run pytest -q`. Check AC 3 en
   AC 4: `grep -n python3 pack/{go,node,shell,expo}/requires.toml` (alleen `go-lint-gate`, of
@@ -383,3 +383,10 @@ om te evalueren.
 - [ ] **Step 7:** Commit: `chore(dogfood): init --upgrade met lighthouse gate (#284)`. De
   test-gate op deze commit is rood met `unknown command "gate"` zolang de PATH-binary v0.13.2 is
   (zie *Dogfood-risico*); stap 5 is het bewijs. Meld dat in de PR.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Task 8 Step 5 (bewijs van de gate met de branch-binary)): The fix builds LIGHTHOUSE_GATE_FILES from `git diff --name-only --no-renames origin/main HEAD`, which lists committed changes only. Step 5 runs before the Task 8 commit (Step 7), so the uncommitted lighthouse.toml changes from Steps 1-2 are missing. No earlier task commits anything under web/, .github/workflows/ci.yml or lighthouse.toml. gate node then skips with rc 0 and prints `gate-node: skipped — ...`, which still meets the step's check for a `gate-node:` line. The step's reasoning that `--also lighthouse.toml` makes gate node run is false under the new command.
