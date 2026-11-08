@@ -38,6 +38,7 @@ HOOK = INSTALLED_HOOKS / "commit-test-gate.sh"
 HOOKS_JSON = CORE / "hooks" / "hooks.json"
 REAL_GIT = shutil.which("git")
 REAL_PYTHON3 = shutil.which("python3")
+REAL_DATE = shutil.which("date")
 SESSION = "s1"
 
 # The test command of a project the way paia would set it; the fake `uv`
@@ -992,38 +993,50 @@ def test_memory_wait_stays_within_deadline(gate: Gate) -> None:
     elapsed = time.monotonic() - start
 
     assert result.returncode == 2, result.stdout
-    assert elapsed < 6
+    # The stderr line checks the clip; the bound only that the hook waited no 30 s. It counts
+    # from the test start, so the hook-start lag (>3 s on macOS CI, #303) needs room.
+    assert elapsed < 20
     assert re.search(r"host memory below threshold after [12] s", result.stderr), result.stderr
     assert not gate.mark.exists()
 
 
+def _release_after_deadline_set(started: Path, fds: list[int], done: threading.Event) -> None:
+    """Release the slots 4 s after the hook set its deadline, or at once when `done` is set."""
+    give_up = time.monotonic() + 60
+    while not started.exists() and time.monotonic() < give_up:
+        if done.wait(0.05):
+            break
+    done.wait(4.0)
+    release(fds)
+
+
 def test_memory_wait_gets_what_the_slot_wait_left(gate: Gate) -> None:
-    # Slot wait ~4 s of an 8 s deadline: the memory wait gets the rest, not slot_wait_seconds.
-    # The slots are released 4 s after the test starts, not after the hook starts: a loaded
-    # runner starts the hook seconds late (measured: >2 s on macOS CI), which shortens the
-    # slot wait by that much. The 4 s margin keeps the clipped wait below 8 s up to a 3 s lag.
+    # Slot wait ~4 s of an 8 s deadline: the memory wait gets the rest (3-4 s), not
+    # slot_wait_seconds (8 s). The 4 s count from the hook's first `date` call, which sets
+    # the deadline, not from the start of the test: a loaded runner starts the hook seconds
+    # late (measured: >3 s on macOS CI), and a slot wait counted from the test start shrinks
+    # by that lag until the clipped wait is 8 s as well (#303). No wall-clock bound: the
+    # whole run takes lag + 8 s, so any bound has only the gap between 8 and 12 s as margin.
     gate.configure(
         TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 8")
         + "deadline_seconds = 8\n"
     )
     gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
+    started = gate.tmp / "deadline-set"
+    gate.add_stub("date", f'#!/bin/sh\n: > "{started}"\nexec "{REAL_DATE}" "$@"\n')
     fds = hold_slots(gate, "slot-1", "slot-2")
-    timer = threading.Timer(4.0, release, (fds,))
-    timer.start()
+    done = threading.Event()
+    releaser = threading.Thread(target=_release_after_deadline_set, args=(started, fds, done))
+    releaser.start()
     try:
-        start = time.monotonic()
         result = gate.run("git commit -m x", gate.project, **meminfo(gate, LOW_AVAIL_KB, LOW_SWAP_KB))
-        elapsed = time.monotonic() - start
     finally:
-        timer.cancel()
-        timer.join()
+        done.set()
+        releaser.join()
 
     assert result.returncode == 2, result.stdout
-    # Up to 7 s when a loaded host starts the hook late and the slot wait ends sooner;
-    # without the deadline clip it is slot_wait_seconds, 8 s.
-    assert re.search(r"host memory below threshold after [1-7] s", result.stderr), result.stderr
-    # Without the clip: ~4 s slot wait + 8 s memory wait = ~12 s.
-    assert elapsed < 10.5
+    # The wait the hook gave the memory check; without the deadline clip it is 8 s.
+    assert re.search(r"host memory below threshold after [1-6] s", result.stderr), result.stderr
 
 
 def test_no_swap_notice_in_gate(gate: Gate) -> None:
@@ -1104,16 +1117,16 @@ def test_foreign_commit_takes_no_slot(gate: Gate) -> None:
     foreign = gate.tmp / "Y"
     init_repo(foreign)
 
+    # Both slots held: a gate that took a slot here would block after slot_wait_seconds
+    # (exit 2), so the exit code proves it; no wall-clock bound, which a late hook start
+    # on a loaded runner can break (#303).
     fds = hold_slots(gate, "slot-1", "slot-2")
     try:
-        start = time.monotonic()
         result = gate.run(f"cd {foreign} && git commit -m x", gate.tmp)
-        elapsed = time.monotonic() - start
     finally:
         release(fds)
 
     assert result.returncode == 0, result.stderr
-    assert elapsed < 5
     assert "skipped — other project" in result.stdout
     assert not gate.mark.exists()
 
@@ -1505,8 +1518,10 @@ def test_slot_wait_is_capped_by_the_deadline(gate: Gate) -> None:
         release(fds)
 
     assert result.returncode == 2, result.stdout
-    assert "all gate slots busy" in result.stderr
-    assert elapsed < 10
+    # The cap itself, free of the hook-start lag; the bound only guards that the wait
+    # really ended, with room for that lag (>3 s on macOS CI, #303).
+    assert "all gate slots busy after 2 s" in result.stderr, result.stderr
+    assert elapsed < 30
     assert not gate.mark.exists()
 
 
