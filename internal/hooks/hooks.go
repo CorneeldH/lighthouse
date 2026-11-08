@@ -17,6 +17,7 @@ import (
 
 func init() {
 	hook.Register("main-commit-gate", MainCommitGate)
+	hook.Register("worktree-check", WorktreeCheck)
 }
 
 // runGit runs `git -C dir args…`, with LC_ALL=C when cLocale is set: a message matched as text
