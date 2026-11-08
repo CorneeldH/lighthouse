@@ -195,9 +195,12 @@ bruikbaar token faalt het hele commando. `repoconfig.Repo` krijgt het veld `Host
 
 **De slug blijft de identiteit.** Run-rijen, markers, `Env.Poster(slug)` en `Env.Board(slug)`
 sleutelen op het repo-pad (`internal/store/migrations/0004_runs_fixpr.sql:23`,
-`internal/dispatch/apply.go:34-35`, `internal/cli/tick.go:390-392`). Twee repo's met hetzelfde pad
-op verschillende hosts in één installatie weigert lighthouse bij het laden van `host.toml`, met
-een melding die beide noemt. Een hostbewuste identiteit met een migratie van de runs-database is
+`internal/dispatch/apply.go:34-35`, `internal/cli/tick.go:390-392`). Een slug komt daarom
+hoogstens één keer voor per installatie, welke soort forge of host het ook is: ook een
+GitHub-repo en een gitlab.com-repo met hetzelfde pad botsen (`Host` is voor beide leeg).
+Lighthouse controleert dat bij het laden van de `lighthouse.toml` van elke repo uit
+`host.toml` (`host.toml` zelf bevat alleen paden, `internal/hostconfig/hostconfig.go:39`) en
+weigert een dubbele slug met een melding die beide repo's noemt *(r2-f1)*. Een hostbewuste identiteit met een migratie van de runs-database is
 pas nodig als dat echt voorkomt *(eigen keuze na spec-review, r1-f1)*.
 
 ### Hoe GitLab elk begrip invult
@@ -217,7 +220,7 @@ pas nodig als dat echt voorkomt *(eigen keuze na spec-review, r1-f1)*.
 | `PR.CrossRepo` | head in een fork | `source_project_id` ≠ `target_project_id` |
 | Status | Projects v2 single-select-veld | ingebouwde issuestatus (work item status), via GraphQL; de config koppelt elke lighthouse-statusnaam aan een GitLab-statusnaam |
 | Prioriteit | Projects v2 single-select-veld | scoped label `priority::<naam>` (GitLab heeft geen prioriteitsveld) |
-| Board | Projects v2-project | alle issues van het project: elk issue heeft een status; `ItemID` is het `iid`. `BoardItems` geeft open issues én gesloten issues: minstens elk issue met een open run en elk issue dat sinds de vorige tick sloot. De dispatcher sluit een run alleen af via zijn board-item (`internal/dispatch/gather.go:88-98`, `decide.go:494-497`); zonder gesloten issues blijft een run open. Het aanroepbudget geldt voor open issues plus dat venster, niet voor alle gesloten issues ooit *(eigen keuze na spec-review, r1-f2)* |
+| Board | Projects v2-project | alle issues van het project: elk issue heeft een status; `ItemID` is het `iid`. `BoardItems` geeft open issues plus gesloten issues uit een venster dat de bouwer kiest. De dispatcher sluit een run alleen af via zijn board-item (`internal/dispatch/gather.go:88-98`, `decide.go:494-497`). Daarom haalt `dispatch.Prepare`, forge-neutraal, met `IssueItem` het item op van elk issue met een open run dat niet in `BoardItems` zit. Op GitHub kost dat niets extra, want daar staat zo'n issue al op het board. Een dispatch-test dekt een gesloten issue met een open run dat buiten het venster valt: de run wordt afgesloten. Het aanroepbudget geldt voor open issues plus het venster, plus één aanroep per open run die buiten het board valt *(eigen keuze na spec-review, r1-f2, r2-f2)* |
 | `BoardItem.ItemUpdatedAt` | `updatedAt` van het project-item | `updated_at` van het issue. Die schuift ook bij een comment, dus de volgorde van starts binnen één prioriteit kan verschillen van GitHub (*mijn keuze*: geen extra aanroep per issue) |
 | `AddToBoard` | item toevoegen aan het project | niets te doen: elk issue staat al op het board. `IssueItem` geeft op GitLab dus altijd `ok = true` |
 | Blokkades | issue-dependencies (`blocked_by`) | issue-links met `link_type = is_blocked_by`, ook naar andere projecten |
@@ -349,8 +352,8 @@ dezelfde interface. Dat is het voordeel van aanpak A.
 - Hoe het aantal raketten per note op GitLab efficiënt wordt gelezen: elke note, of alleen notes
   die in de dispatcher een rol spelen. Let op het aantal API-aanroepen per tick.
 - Het formaat van statussen en prioriteiten voor GitLab in `[forge.board]`.
-- Hoe `BoardItems` op GitLab het venster van gesloten issues afbakent (zie de tabel, *Board*),
-  zolang elk issue met een open run erin zit.
+- Hoe `BoardItems` op GitLab het venster van gesloten issues afbakent (zie de tabel, *Board*);
+  `Prepare` vangt een open run buiten dat venster op.
 - De commitvolgorde binnen #258, zolang elke commit groen is.
 
 ## Keuzes van de schrijver
