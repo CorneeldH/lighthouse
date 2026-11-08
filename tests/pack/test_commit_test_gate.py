@@ -998,14 +998,17 @@ def test_memory_wait_stays_within_deadline(gate: Gate) -> None:
 
 
 def test_memory_wait_gets_what_the_slot_wait_left(gate: Gate) -> None:
-    # Slot wait ~2 s of a 4 s deadline: the memory wait gets the rest, not slot_wait_seconds.
+    # Slot wait ~4 s of an 8 s deadline: the memory wait gets the rest, not slot_wait_seconds.
+    # The slots are released 4 s after the test starts, not after the hook starts: a loaded
+    # runner starts the hook seconds late (measured: >2 s on macOS CI), which shortens the
+    # slot wait by that much. The 4 s margin keeps the clipped wait below 8 s up to a 3 s lag.
     gate.configure(
-        TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 4")
-        + "deadline_seconds = 4\n"
+        TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 8")
+        + "deadline_seconds = 8\n"
     )
     gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
     fds = hold_slots(gate, "slot-1", "slot-2")
-    timer = threading.Timer(2.0, release, (fds,))
+    timer = threading.Timer(4.0, release, (fds,))
     timer.start()
     try:
         start = time.monotonic()
@@ -1016,10 +1019,11 @@ def test_memory_wait_gets_what_the_slot_wait_left(gate: Gate) -> None:
         timer.join()
 
     assert result.returncode == 2, result.stdout
-    # 3 s when a loaded host starts the hook late and the slot wait ends sooner;
-    # without the deadline clip it is slot_wait_seconds, 4 s.
-    assert re.search(r"host memory below threshold after [1-3] s", result.stderr), result.stderr
-    assert elapsed < 6.5
+    # Up to 7 s when a loaded host starts the hook late and the slot wait ends sooner;
+    # without the deadline clip it is slot_wait_seconds, 8 s.
+    assert re.search(r"host memory below threshold after [1-7] s", result.stderr), result.stderr
+    # Without the clip: ~4 s slot wait + 8 s memory wait = ~12 s.
+    assert elapsed < 10.5
 
 
 def test_no_swap_notice_in_gate(gate: Gate) -> None:
