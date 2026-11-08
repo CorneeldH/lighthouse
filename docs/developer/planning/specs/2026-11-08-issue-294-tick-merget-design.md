@@ -101,20 +101,24 @@ heeft een open run. De andere PR's houden `""`. Meting:
    andere auteur telt niet.
 3. De review telt alleen mee als aan dezelfde voorwaarden is voldaan als in fix-pr §6, voor zover de
    tick die kan meten:
-   - de repo heeft een `.roborev.toml` in de main checkout. Zonder dat bestand blijft de stand `""`,
-     en dan leest de tick ook geen comments;
    - de kop is `` ## roborev: <kind> (`<sha>`) ``, met als kind `Review Complete` of
      `Combined Review`;
    - de body bevat `Changes require fixes`.
 
    Een andere kop, geen kop of een ander oordeel geeft `""`.
 
+   De tick kijkt niet of er een `.roborev.toml` is. Hij leest de comments van elke mergeklare PR. Een
+   check op de main checkout mist een PR die roborev zelf invoert. Fix-pr kijkt op de worktree van
+   de head, en ziet het bestand daar wel. *(eigen keuze na spec-review, r1-f2)*
+
    Of de bevindingen leesbaar zijn (`roborev_gate.py classify`), meet de tick niet. Bij een
    onleesbare review post fix-pr geen marker. De sleutel is dan gebruikt, en de volgende tick geeft
    het issue terug met `reason_pr_roborev`. Dat kost één fix-pr-run (eigen keuze).
 4. **De marker** is een regel `<!-- roborev-verwerkt: <sha> -->` in een comment van een
    **vertrouwde** auteur (`Trust.Trusted`, dezelfde `answer_permissions`). De SHA is gelijk aan die
-   van de review. Bij een verschil in lengte (kort tegen lang) telt een prefix. Zonder deze
+   van de review. Bij een verschil in lengte (kort tegen lang) telt een prefix, maar alleen als
+   beide kanten minstens 7 hex-tekens hebben. Een marker met een lege of korte SHA telt nooit
+   *(eigen keuze na spec-review, r1-f5)*. Zonder deze
    vertrouwenscheck kan iedereen op een publieke repo een review wegstrepen en een merge uitlokken.
 
 Een mislukte call laat de hele gather falen, zoals de comments van een issue nu.
@@ -146,7 +150,8 @@ voldoet aan alle voorwaarden:
 - `Roborev != "open"`;
 - er staat geen merge-fout op deze head: `row.MergeSHA != pr.HeadSHA` (zie §4);
 - **de rem staat de merge toe** (keuze van de gebruiker): het item staat in `Controller`, en er
-  geldt geen pauze (`in.Brake == nil || !in.Brake.Paused`).
+  geldt geen pauze (`in.Brake == nil || !in.Brake.Paused`). Ook een actieve blokkeerder houdt de
+  merge tegen, net als de fix-pr-start (`issueCtx.active`) *(eigen keuze na spec-review, r1-f6)*.
 
 Uitkomst: een nieuwe actie `KindMerge` met `RunID`, `SessionID` (die van de rij), `PR` (nummer),
 `HeadSHA`, `PRURL` en `End: true`. `Action` krijgt de velden `PR int` en `HeadSHA string`.
@@ -203,16 +208,23 @@ volgende tick meet opnieuw. Hetzelfde geldt voor checks `PENDING` of `""`. Dat i
 fout onderscheidt twee gevallen:
 
 - `ErrHeadMoved`: status 409. Volgens GitHub is dat alleen "head branch was modified" bij een
-  meegegeven `sha`.
-- `*MergeRefused` met de `message` van GitHub: status 405 of 422. Dat is "not mergeable", branch
-  protection, of squash staat uit.
+  meegegeven `sha`. Ook een 405 met "Base branch was modified" valt hieronder. Die ontstaat als
+  twee merges in dezelfde tick naar dezelfde base gaan, en verdwijnt bij de volgende tick
+  *(eigen keuze na spec-review, r1-f4)*.
+- `*MergeRefused` met de `message` van GitHub: elke andere 405. Dat is "not mergeable", branch
+  protection (ook "not up to date"), of squash staat uit. Een 422 ("Validation failed, or the
+  endpoint has been spammed") is geen weigering. Die valt onder de gewone fouten en de tick
+  probeert opnieuw *(spec-review, r1-f1)*.
 
 Ook een 403 zonder teken van een rate limit telt als `MergeRefused`. Een fine-grained token zonder
-*Contents: write* en *Pull requests: write* geeft dan geen eindeloos rode tick. Na één fix-pr-run
+*Contents: write* (het recht dat het merge-endpoint vraagt, r1-f3) geeft dan geen eindeloos rode
+tick. De headers van de response moeten `MergePR` bereiken. `do` en `httpStatusError` in
+`internal/forge/github.go` bewaren nu alleen de status en de message. Óf de statusfout krijgt de
+rate-limit-headers erbij, óf `MergePR` doet een eigen request *(spec-review, r1-f8)*. Na één fix-pr-run
 gaat het issue terug met "merge mislukt: Resource not accessible …" (eigen keuze). Tekenen van een
 rate limit: `x-ratelimit-remaining: 0`, `retry-after`, of "rate limit" in de `message`.
-`docs/tick.md` stap 2 noemt de nieuwe eisen aan het token. Andere fouten (netwerk, 5xx, 401, 404, een
-403 door een rate limit) blijven gewone fouten. Een 200 zonder `merged: true` telt
+`docs/tick.md` stap 2 noemt de nieuwe eisen aan het token. Andere fouten (netwerk, 5xx, 401, 404,
+422, een 403 door een rate limit) blijven gewone fouten. Een 200 zonder `merged: true` telt
 als `MergeRefused`. De commentaar bij de package (`It never merges`) gaat eruit.
 
 `apply` voor `KindMerge`:
@@ -314,11 +326,12 @@ daar nog.
   - stap 7 *Gather* noemt het lezen van de PR-comments;
   - *Apply* beschrijft de merge en de drie soorten fout;
   - *De rem* zegt dat een pauze en een item buiten `Controller` ook de merge tegenhouden;
-  - stap 2 *Token* noemt de rechten om te mergen (*Contents: write*, *Pull requests: write*);
+  - stap 2 *Token* noemt het recht om te mergen (*Contents: write*);
   - de alinea over `End` noemt de merge.
 - **`docs/site/data/loop.json`**: de fix-pr-node en de tekst bij regel 580 ("fix-pr repairs a red
   PR …") noemen conflict, roborev en de mislukte merge, en noemen dat de tick merget.
-- **`pack/core/skills/fix-pr/SKILL.md`**, de passages die zeggen dat de dispatcher alleen op rood
+- **`pack/core/skills/fix-pr/claude/SKILL.md` en `pack/core/skills/fix-pr/agents/SKILL.md`** (beide
+  varianten, r1-f7), de passages die zeggen dat de dispatcher alleen op rood
   start en dat de merge een menselijke beslissing is:
   - *Domain*: "The dispatcher … starts this skill only on a red PR … never for a roborev review on a
     green PR" en "the merge itself — that is a human decision";
@@ -341,7 +354,8 @@ moet falen als de genoemde regel wegvalt:
   - `MergeSHA` gelijk aan de head;
   - geen eigen PR (andere branch, fork, default branch);
   - pauze;
-  - item niet in `Controller`.
+  - item niet in `Controller`;
+  - een actieve blokkeerder.
 
   Een tegengehouden merge sluit de run niet.
 
@@ -360,9 +374,12 @@ moet falen als de genoemde regel wegvalt:
   - een review van een andere auteur: blijft `""`;
   - `Review Passed`: blijft `""`;
   - een review zonder `Changes require fixes`: blijft `""`;
-  - een repo zonder `.roborev.toml`: blijft `""`, zonder comment-call.
-- `apply`: een 403 met `x-ratelimit-remaining: 0` geeft een mislukte actie, een 403 zonder dat
-  teken een notitie.
+  - een marker met een SHA korter dan 7 tekens: blijft `open`.
+- `apply`:
+  - een 403 met `x-ratelimit-remaining: 0` geeft een mislukte actie, een 403 zonder dat teken een
+    notitie;
+  - een 422 geeft een mislukte actie zonder notitie;
+  - een 405 "Base branch was modified" geeft geen notitie.
 - Na de merge van een `Refs`-PR start `closeCheck` `/lighthouse-close-issue N`. Dat dekken de
   bestaande tests al. Er komt een fixture bij met een gemergde PR en een gesloten rij `done`.
 
@@ -391,8 +408,7 @@ Eigen keuzes in dit ontwerp, aan de gebruiker voorgelegd bij de overdracht:
 - een gelukte merge met een mislukte post laat de afsluiting aan regel 6 over;
 - een prefix-match van de SHA in de marker;
 - een onleesbare roborev-review kost één fix-pr-run;
-- een 403 zonder rate limit gaat naar fix-pr;
-- de tick leest PR-comments alleen in een repo met `.roborev.toml`.
+- een 403 zonder rate limit gaat naar fix-pr.
 
 Vrij voor de builder: de precieze namen van functies en velden, de vorm van de foutwaarden in
 `forge`, en of `Roborev` een string of een eigen type is. Blijf wel bij de drie waarden.
