@@ -252,7 +252,7 @@ func TestRunsList(t *testing.T) {
 	d := testDeps(stubSource{}, nil)
 	d.Runs = func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
 		return []dispatch.RunView{{Repo: "o/r", Issue: 7, Title: "zeven", State: "open", Command: "/lighthouse-start-issue 7",
-				Trigger: "board", Profile: "software", WorkspaceID: "ws-7", StartedAt: at, Stand: "working", At: at}},
+				Phase: "start-issue", Trigger: "board", Profile: "software", WorkspaceID: "ws-7", StartedAt: at, Stand: "working", At: at}},
 			[]dispatch.DeferredView{{Repo: "o/r", Issue: 8, Title: "acht", Reason: "no slot", At: at}}, nil
 	}
 	rec := get(New(testSite(), d), "/api/runs")
@@ -261,6 +261,7 @@ func TestRunsList(t *testing.T) {
 	}
 	body := decode(t, rec.Body.Bytes())
 	const wantRuns = `[{"repo":"o/r","issue":7,"title":"zeven","state":"open","command":"/lighthouse-start-issue 7",` +
+		`"phase":"start-issue","task":0,"tasks":0,"step":"",` +
 		`"trigger":"board","profile":"software","workspace_id":"ws-7","started_at":"2026-11-01T09:00:00Z",` +
 		`"stand":"working","at":"2026-11-01T09:00:00Z"}]`
 	if got := string(body["runs"]); got != wantRuns {
