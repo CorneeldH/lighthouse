@@ -20,5 +20,10 @@
 //     code is the same, 2.
 //   - Go rejects NaN and Infinity in a transcript line (Python's json accepts them), and
 //     turns a lone surrogate escape into U+FFFD.
+//   - An empty git stderr prints Go's own error text (for example "exit status 128") where
+//     Python prints nothing; a missing git binary is exit code 2 (Python crashes with 1).
+//   - A JSON true is not accepted as an integer count (Python takes it as 1).
+//   - The gate metric also needs the scout_skipped heading to load; Python needs only
+//     gate_line.
 //   - A truthy tool input that is not an object counts as {} (Python crashes on it).
 package kpi

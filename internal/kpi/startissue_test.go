@@ -105,6 +105,18 @@ func TestPathsSince(t *testing.T) {
 	}
 }
 
+// Classification: fails when paths reads the config although no file was added; the Python
+// only reads it inside the loop over added files.
+func TestPathsWithoutAddedFilesIgnoresConfig(t *testing.T) {
+	repo := newRepo(t, "not = [valid toml")
+	commitFile(t, repo, "a.md", "2026-01-01T00:00:00Z")
+	since := "2099-01-01"
+	rc, out, errOut := runStartIssue(Options{Metric: "paths", Dir: t.TempDir(), Since: &since})
+	if rc != 0 || !strings.Contains(out, "\"right_dir\": 0,") {
+		t.Fatalf("rc %d stderr %q\n%s", rc, errOut, out)
+	}
+}
+
 // Classification: fails when paths.specs/plans are not read from the config or get no trailing slash.
 func TestPathsDirsFromConfig(t *testing.T) {
 	repo := newRepo(t, englishToml+"[paths]\nspecs = \"s\"\nplans = \"p/\"\n")

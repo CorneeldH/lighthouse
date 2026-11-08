@@ -2,6 +2,9 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -42,13 +45,38 @@ func TestMeasureStartIssueCommand(t *testing.T) {
 	}
 }
 
-// Classification: fails when --since is not passed on: the paths row prints it.
+// Classification: fails when --since is not passed on to git log: the paths row prints it and
+// counts only the files added after it.
 func TestMeasureStartIssueSince(t *testing.T) {
+	repo := t.TempDir()
+	toml := filepath.Join(t.TempDir(), "lighthouse.toml")
+	if err := os.WriteFile(toml, []byte("[project]\nlanguage = \"en\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", repo)
+	t.Setenv("LIGHTHOUSE_TOML", toml)
+	for _, args := range [][]string{{"init", "-q"}, {"add", "f.md"}, {"commit", "-q", "-m", "x"}} {
+		if args[0] == "add" {
+			if err := os.WriteFile(filepath.Join(repo, "f.md"), []byte("x\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com",
+			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
 	var out, errOut bytes.Buffer
 	root := NewRoot(bytes.NewReader(nil), &out, &errOut)
-	root.SetArgs([]string{"measure-start-issue-kpi", "worktree-first", "--dir", t.TempDir(), "--since", "2026-01-01"})
+	root.SetArgs([]string{"measure-start-issue-kpi", "paths", "--dir", t.TempDir(), "--since", "2099-01-01"})
 	if code := execute(root, &errOut); code != 0 {
 		t.Fatalf("code %d stderr %q", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "\"since\": \"2099-01-01\"") || !strings.Contains(out.String(), "\"share\": null") {
+		t.Errorf("stdout %q", out.String())
 	}
 }
 

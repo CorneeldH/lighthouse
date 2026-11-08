@@ -507,9 +507,12 @@ func (m *measurer) paths() (object, error) {
 			added = append(added, line)
 		}
 	}
-	dirs, err := correctDocDirs()
-	if err != nil {
-		return nil, err
+	// Like the Python, read the config only when there is a file to classify.
+	var dirs []string
+	if len(added) > 0 {
+		if dirs, err = correctDocDirs(); err != nil {
+			return nil, err
+		}
 	}
 	correct, legacy := countPrefixed(added, dirs), countPrefixed(added, legacyDocDirs)
 	var since any
