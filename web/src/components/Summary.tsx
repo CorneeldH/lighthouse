@@ -32,6 +32,7 @@ export function Summary(): JSX.Element {
         <a
           key={t.id}
           href={`#${t.id}`}
+          aria-label={`${t.label}: ${t.count ?? 'unavailable'}`}
           className="flex flex-col items-center gap-1 rounded-lg border border-border bg-card px-1 py-2 text-center text-xs"
         >
           <span className={`min-w-8 rounded-md px-2 py-0.5 text-base font-semibold ${toneClass[t.tone]}`}>

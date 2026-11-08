@@ -48,7 +48,7 @@ type Segment = 'done' | 'build' | 'review' | 'final' | 'pending'
 
 const segmentClass: Record<Segment, string> = {
   done: 'bg-lh-blue',
-  build: 'bg-lh-yellow',
+  build: 'bg-lh-yellow bg-[repeating-linear-gradient(135deg,transparent_0_3px,rgb(20_33_61/0.35)_3px_5px)]',
   review: 'bg-lh-purple',
   final: 'bg-lh-green',
   pending: 'bg-border',
@@ -76,7 +76,7 @@ function Progress({ run }: { run: RunView }): JSX.Element | null {
       <span>{finalReview ? `${run.tasks}/${run.tasks}` : `${run.task}/${run.tasks}`}</span>
       <span aria-hidden className="inline-flex gap-0.5">
         {segments(run).map((s, i) => (
-          <span key={i} className={`h-2 w-3 rounded-sm ${segmentClass[s]}`} />
+          <span key={i} data-segment={s} className={`h-2 w-3 rounded-sm ${segmentClass[s]}`} />
         ))}
       </span>
     </span>
@@ -88,7 +88,7 @@ export function RunRow({ run, workspaceUrl }: { run: RunView; workspaceUrl: stri
   const tipId = useId()
   const started = formatClock(run.started_at)
   return (
-    <li className="space-y-1">
+    <li className="relative space-y-1">
       <p>
         <IssueLink repo={run.repo} issue={run.issue} /> <span>{run.title}</span>
       </p>
@@ -110,14 +110,14 @@ export function RunRow({ run, workspaceUrl }: { run: RunView; workspaceUrl: stri
           ) : (
             <code>{run.workspace_id}</code>
           ))}
-        <span className="group relative inline-flex">
+        <span className="group inline-flex">
           <button type="button" aria-label="Run details" aria-describedby={tipId} className="rounded-full">
             <Info aria-hidden className="size-4" />
           </button>
           <span
             id={tipId}
             role="tooltip"
-            className="invisible absolute left-0 top-full z-10 mt-1 w-max max-w-xs space-y-0.5 rounded-md border bg-card p-2 text-xs shadow-md group-hover:visible group-focus-within:visible"
+            className="invisible absolute left-0 top-full z-10 mt-1 w-max max-w-[min(20rem,100%)] space-y-0.5 rounded-md border bg-card p-2 text-xs shadow-md group-hover:visible group-focus-within:visible"
           >
             <span className="block">
               command <code>{run.command}</code>

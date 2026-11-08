@@ -211,6 +211,10 @@ async function renderRunning(b: unknown = body()) {
   return region
 }
 
+function segmentKinds(el: HTMLElement): Array<string | null> {
+  return Array.from(el.querySelectorAll('[data-segment]')).map((n) => n.getAttribute('data-segment'))
+}
+
 describe('RunningBlock', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
@@ -223,7 +227,9 @@ describe('RunningBlock', () => {
   it('shows progress, stand badge and duration of an SDD run', async () => {
     const region = await renderRunning()
     expect(within(region).getByText('3/7')).toBeTruthy()
-    expect(within(region).getByLabelText('task 3 of 7 · build')).toBeTruthy()
+    expect(segmentKinds(within(region).getByLabelText('task 3 of 7 · build'))).toEqual([
+      'done', 'done', 'build', 'pending', 'pending', 'pending', 'pending',
+    ])
     expect(within(region).getByText('working')).toBeTruthy()
     expect(within(region).getByText('2 h 5 min')).toBeTruthy()
     expect(within(region).getByText('2 h 5 min').closest('[title]')?.getAttribute('title')).toMatch(/^running since \d\d:\d\d$/)
@@ -234,12 +240,14 @@ describe('RunningBlock', () => {
       body({ runs: [{ ...run, step: 'final-review', task: 5, tasks: 5 }] }),
     )
     expect(within(region).getByText('5/5')).toBeTruthy()
-    expect(within(region).getByLabelText('final review')).toBeTruthy()
+    expect(segmentKinds(within(region).getByLabelText('final review'))).toEqual(Array(5).fill('final'))
   })
 
   it('labels a review step', async () => {
     const region = await renderRunning(body({ runs: [{ ...run, step: 'review', task: 5, tasks: 6 }] }))
-    expect(within(region).getByLabelText('task 5 of 6 · review')).toBeTruthy()
+    expect(segmentKinds(within(region).getByLabelText('task 5 of 6 · review'))).toEqual([
+      'done', 'done', 'done', 'done', 'review', 'pending',
+    ])
   })
 
   it('shows only the phase when there are no tasks', async () => {
@@ -257,6 +265,12 @@ describe('RunningBlock', () => {
       'Claude finished its turn; the next tick decides: handoff, done, question or returned',
     )
     expect(within(region).getByText('not measured')).toBeTruthy()
+  })
+
+  it('shows the waiting stand', async () => {
+    const region = await renderRunning(body({ runs: [{ ...run, stand: 'waiting' }] }))
+    expect(within(region).getByText('waiting')).toBeTruthy()
+    expect(within(region).queryByText('working')).toBeNull()
   })
 
   it('links the workspace in a new tab', async () => {
@@ -414,10 +428,11 @@ describe('Summary', () => {
     const links = within(nav).getAllByRole('link')
     expect(links.map((l) => l.getAttribute('href'))).toEqual(expected.map((e) => e[2]))
     for (const [label, count, href] of expected) {
-      const link = within(nav).getByRole('link', { name: new RegExp(`${label}$`) })
+      const link = within(nav).getByRole('link', { name: new RegExp(`^${label}: `) })
       expect(link.getAttribute('href')).toBe(href)
       expect(link.getAttribute('target')).toBeNull()
       await waitFor(() => expect(link.textContent).toBe(`${count}${label}`))
+      expect(link.getAttribute('aria-label')).toBe(`${label}: ${count}`)
     }
   })
 
@@ -425,8 +440,9 @@ describe('Summary', () => {
     stubRoutes(() => json({ detail: 'db closed' }, 500))
     renderWithClient(<Summary />)
     const nav = screen.getByRole('navigation', { name: 'Summary' })
-    const clean = within(nav).getByRole('link', { name: /To clean up/ })
-    await waitFor(() => expect(within(nav).getByRole('link', { name: /Questions/ }).textContent).toBe('1Questions'))
+    const clean = within(nav).getByRole('link', { name: /^To clean up: / })
+    await waitFor(() => expect(within(nav).getByRole('link', { name: /^Questions: / }).textContent).toBe('1Questions'))
     await waitFor(() => expect(clean.textContent).toBe('–To clean up'))
+    expect(clean.getAttribute('aria-label')).toBe('To clean up: unavailable')
   })
 })

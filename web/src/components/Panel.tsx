@@ -31,7 +31,7 @@ export function Panel({
 }: PanelProps): JSX.Element {
   const hasError = error !== null && error !== undefined
   return (
-    <Card id={id} role="region" aria-label={title} className="scroll-mt-4">
+    <Card id={id} role="region" aria-label={title} className="scroll-mt-4 overflow-visible">
       <CardHeader>
         <div className="flex items-center gap-3">
           <span className={`inline-flex size-8 items-center justify-center rounded-md ${toneClass[tone]}`}>
