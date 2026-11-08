@@ -27,6 +27,7 @@ func testPacks() fstest.MapFS {
 		"core/hooks/hooks.json":       file(hooksJSON),
 		"core/lib/a.py":               file("x = 1\n"),
 		"core/instructions/AGENTS.md": file("## core\n\n- rule\n"),
+		"core/templates/labels.md":    file("# Labels\n\n| `blocked-issue` | x |\n"),
 		"core/requires.toml":          file("jq = [\"main-commit-gate\"]\n"),
 	}
 }

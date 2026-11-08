@@ -860,6 +860,13 @@ sha256 = "75d077bc7ced2c9563cc2e37073cb4c2303cf69b67deeb082a9617c31602ea5f"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/scripts/create_labels.py"
+package = "core"
+version = "dev"
+sha256 = "cf79f3adc5339bbb0d1b3a768b270707eefeaebfd177f1e5d6f20cfdd263eb49"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/scripts/gate_go.py"
 package = "go"
 version = "dev"

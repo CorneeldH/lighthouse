@@ -95,6 +95,10 @@ and goes on (see [Requirements](#requirements)).
   self-hosted GitLab, so it proposes `[forge]` with `kind = "gitlab"` and `host`.
 - `lighthouse init --pack python` adds a package, `lighthouse init --no-pack shell` leaves one
   out. Both work later with `--upgrade`, and both repeat.
+- `lighthouse init --labels` also proposes a label taxonomy, with `[labels]` and `[paths] labels`
+  in `lighthouse.toml`, in the same diff and under the same approval. `--create-labels`, only
+  with `--labels`, then creates the missing labels on the GitHub remote and asks nothing more: the
+  flag is the approval, also when there is nothing to apply (`No changes.`).
 
 What `init` writes, all of it on the diff first:
 
