@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "leadin",
+      "--dir",
+      "./gone/"
+    ],
+    "rc": 2,
+    "stdout": "",
+    "stderr": "transcript directory does not exist: gone\n",
+    "from": [
+      "test_missing_transcript_dir_is_rc_2"
+    ]
+  }
+]

@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "scout",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"scout\": {\n    \"triggered\": 0,\n    \"skipped_with_reason\": 0,\n    \"silent\": 0,\n    \"mistrigger\": 0,\n    \"gate_unknown\": 1,\n    \"share\": null,\n    \"runtime_seconds\": {\n      \"n\": 0,\n      \"median\": null,\n      \"max\": null\n    },\n    \"tool_calls\": {\n      \"n\": 0,\n      \"median\": null,\n      \"max\": null\n    },\n    \"over_budget\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_a_scout_call_after_a_silent_route_is_unknown_not_mistrigger"
+    ]
+  }
+]
