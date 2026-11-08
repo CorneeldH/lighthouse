@@ -178,6 +178,10 @@ source_path = "scripts/board_start.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
+path = "pack/core/scripts/create_labels.py"
+new = true
+
+[[file]]
 path = "pack/core/scripts/plan_review_record.py"
 source_path = "scripts/plan_review_record.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
@@ -229,6 +233,10 @@ source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 path = "pack/core/scripts/check-instructions.sh"
 source_path = "scripts/hooks/check-instructies.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+
+[[file]]
+path = "pack/core/templates/labels.md"
+new = true
 
 [[file]]
 path = "pack/core/templates/pull_request_template.md"

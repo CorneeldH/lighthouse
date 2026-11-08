@@ -145,6 +145,7 @@
                 "pack/core/lib/artefacts.py",
                 "pack/core/lib/pr_body_gate.py",
                 "pack/core/scripts/board_start.py",
+                "pack/core/scripts/create_labels.py",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/scripts/worktree_audit.py",
                 "pack/core/skills/audit-worktrees",
@@ -420,6 +421,10 @@
               "about": "The file that lists the labels of the project, and the document a free label's PR updates.",
               "example": "docs/labels.md",
               "readers": [
+                "internal/cli/init.go",
+                "internal/initcmd/initcmd.go",
+                "internal/projectconfig/projectconfig.go",
+                "pack/core/scripts/create_labels.py",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr"
               ]
