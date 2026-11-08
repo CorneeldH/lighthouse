@@ -119,7 +119,7 @@ def _kpi_rows(text: str) -> list[tuple[str, str]]:
     return rows
 
 
-def test_kpi_commands_run(tmp_path, pinned_shellcheck):
+def test_kpi_commands_run(tmp_path, pinned_shellcheck, lighthouse_bin):
     """Each KPI command runs in a repo with pack/shell installed and meets its target
     there: a KPI row nobody can run measures nothing."""
     repo = tmp_path / "repo"
