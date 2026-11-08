@@ -98,11 +98,9 @@ func TestGoTouchedPackageIsSelected(t *testing.T) {
 	if rc != 0 {
 		t.Fatalf("rc=%d stderr=%q", rc, errOut)
 	}
-	if !strings.Contains(out, "gate-go: example.com/m/a\n") || !strings.Contains(out, "example.com/m/a\n") {
-		t.Errorf("stdout = %q", out)
-	}
-	if strings.Contains(out, "example.com/m/b") {
-		t.Errorf("untouched package b selected: %q", out)
+	// The first line is the gate's announcement, the second what CMD (echo) received.
+	if want := "gate-go: example.com/m/a\nexample.com/m/a\n"; out != want {
+		t.Errorf("stdout = %q, want %q", out, want)
 	}
 }
 
