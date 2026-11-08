@@ -86,6 +86,7 @@ test in de taak die de code bezit.
   func Lines(key string, v any) ([]string, error)  // one line per list element
   func HostValue(key string) (string, error)
   func HostCheck(out, errOut io.Writer) int
+  func Run(args []string, out, errOut io.Writer) int // port of main(): rc 0/1/2, shared by CLI and parity test
   func IsKnownKey(key string) bool
   const ControllerStatusOption = "Controller"
   ```
@@ -95,7 +96,10 @@ test in de taak die de code bezit.
 `{"args": [...], "rc": n, "stdout": "...", "stderr": "..."}`. Een geval met
 `"stderr_prefix"` in plaats van `"stderr"` vergelijkt alleen het begin. Dat is nodig bij een
 TOML-parsefout, omdat tomllib en BurntSushi die anders verwoorden. Ontbreekt `host.toml`, dan
-wijst `LIGHTHOUSE_HOST_TOML` naar een pad dat niet bestaat.
+wijst `LIGHTHOUSE_HOST_TOML` naar een pad dat niet bestaat. Foutmeldingen bevatten het pad van
+het bestand. Daarom draaien beide kanten (pytest en `go test`) met cwd = de fixturemap en
+relatieve `LIGHTHOUSE_TOML`, `LIGHTHOUSE_HOST_TOML` en `LIGHTHOUSE_HEADINGS` (Go: `t.Chdir`).
+Zo staan in `expect.json` alleen relatieve paden.
 
 - [ ] **Stap 1: zet de fixtures neer.** Minimaal deze gevallen:
   - `minimal`: geen `[forge]`.
@@ -103,15 +107,17 @@ wijst `LIGHTHOUSE_HOST_TOML` naar een pad dat niet bestaat.
   - `defaults`: elke sleutel uit `DEFAULTS`, afwezig in de toml.
   - `options`: spaties, punten, een exacte sleutel die wint.
   - `floats`: Review-focus 1, plus host-floats `2.0` → `2` en `1.5`.
-  - `scalars`: datetime, table, bool, lege `test_gate.command`.
+  - `scalars`: datetime, table, bool, lege `test_gate.command`, `inf`, `-inf`, `nan` en een
+    array of tables (`[[x]]`).
   - Één geval per `ConfigError`-melding in `load` en `load_host`: forge.kind, repo-regex,
     language, code_language, roborev, ontbrekende statusoptie, Controller met en zonder
     `[controller]`, verkeerd type, lege string, priority_options geen table, de host-validaties.
   - `bad-toml`, `missing-file`.
   - `host-check` alleen met rc 2 (het rc 0/1-pad hangt van de machine af).
 - [ ] **Stap 2: schrijf `tests/pack/test_config_fixtures.py`.**
-  - `test_python_matches_fixtures[<geval>]` draait `python3 pack/core/lib/config.py <args>`
-    per verwachting en assert rc, stdout en stderr (of `stderr_prefix`).
+  - `test_python_matches_fixtures[<geval>]` draait `python3 -m lighthouse_lib.config <args>`
+    met `PYTHONPATH=pack/core/lib/..` zoals `tests/pack/test_config.py` (`IMPORT_ROOT`; `config.py` direct
+    aanroepen faalt met `ModuleNotFoundError: lighthouse_lib`) per verwachting en assert rc, stdout en stderr (of `stderr_prefix`).
   - `test_fixtures_cover_every_key` assert dat de vereniging van de `args` uit alle
     `expect.json` een superset is van `SCHEMA | DEFAULTS | _BASE_KEYS | HOST_KEYS`,
     geïmporteerd uit `config.py`, plus minstens één sleutel per `_OPTION_PREFIXES`.
@@ -120,10 +126,11 @@ wijst `LIGHTHOUSE_HOST_TOML` naar een pad dat niet bestaat.
   fixture, nooit `config.py`.
 - [ ] **Stap 4: schrijf `internal/config/parity_test.go`.**
   `TestParityWithConfigPy` loopt over dezelfde mappen (pad `../../tests/pack/fixtures/config`),
-  zet de env met `t.Setenv`, roept `run(args, out, errOut) int` aan (een niet-geëxporteerde helper
-  in de test, die `Lookup`, `Lines` en `HostCheck` aanroept zoals `main()` in Python) en assert
-  hetzelfde. Ook `TestFormatFloat` met de tabel `123456789.0→"123456789.0"`, `1e16→"1e+16"`,
-  `1e-5→"1e-05"`, `0.0001→"0.0001"`, `1.5→"1.5"`, `-0.0→"-0.0"`.
+  zet de env met `t.Setenv`, roept `config.Run(args, out, errOut) int` aan (geëxporteerd, de port van `main()` in Python:
+  `Lookup`, `Lines`, `HostCheck`, ook de omleiding van `host.*`-sleutels zonder `lighthouse.toml`
+  te laden) en assert hetzelfde. `lighthouse config` in taak 2 is een dunne schil om dezelfde
+  `config.Run`, zodat de parity-test de CLI-logica echt dekt. Ook `TestFormatFloat` met de tabel `123456789.0→"123456789.0"`, `1e16→"1e+16"`,
+  `1e-5→"1e-05"`, `+Inf→"inf"`, `-Inf→"-inf"`, `NaN→"nan"`, `0.0001→"0.0001"`, `1.5→"1.5"`, `-0.0→"-0.0"`.
 - [ ] **Stap 5:** `go test ./internal/config/`. Verwacht: FAIL, het pakket bestaat nog niet.
 - [ ] **Stap 6: implementeer het pakket.** Schema en defaults als Go-maps, letterlijk overgenomen
   uit `config.py:66-161`. TOML decoderen in `map[string]any`. `_walk` bewaart de volgorde niet,
@@ -154,7 +161,8 @@ wijst `LIGHTHOUSE_HOST_TOML` naar een pad dat niet bestaat.
     `project_id`, `status_field_id` en `status_options` (object). `--json paths.search_dirs` op
     zijn default geeft `["."]`. Een niet-gezette sleutel met `--json` geeft rc 1, zonder stdout.
 - [ ] **Stap 2:** `go test ./internal/cli/ -run Config`. Verwacht: FAIL.
-- [ ] **Stap 3: implementeer.** `--json` schrijft de waarde van `Lookup` als JSON met
+- [ ] **Stap 3: implementeer.** `lighthouse config` roept `config.Run` aan; alleen `--json` is
+  nieuw in de CLI-laag. `--json` schrijft de waarde van `Lookup` als JSON met
   `encoding/json`. Een table mag hier wel (in tegenstelling tot zonder `--json`). Datetime wordt
   een RFC 3339-string. Fouten gaan via `exitError{code, err}`, met de tekst letterlijk op stderr.
   Zorg dat `execute` er geen `lighthouse: ` voor zet; gebruik daarvoor `errSilent` plus een eigen
@@ -208,7 +216,7 @@ wijst `LIGHTHOUSE_HOST_TOML` naar een pad dat niet bestaat.
   `{"kind": "...", "fields": {...}, "session": "..." | null}` of `null`, rc 0).
 
 - [ ] **Stap 1: test** `TestProtocolParseHeaderFixtures` loopt over
-  `tests/pack/fixtures/protocol/headers.json` en assert dat `kind` gelijk is aan de fixture. Een
+  `tests/pack/fixtures/protocol/headers.json` en assert dat `kind`, `fields` (ook met legacy-sleutels) en `session` (ook met sessie-footer) gelijk zijn aan de fixture, die uit `protocol.py` komt. Een
   body zonder header geeft `null`. `session` is `null` als er geen footer is.
 - [ ] **Stap 2:** FAIL, dan implementeren, dan `go test -race ./internal/cli/`. PASS.
 - [ ] **Stap 3: commit** `feat(cli): lighthouse protocol parse-header en robot (#274)`.
@@ -224,13 +232,20 @@ wijst `LIGHTHOUSE_HOST_TOML` naar een pad dat niet bestaat.
   `internal/packs/packs_test.go:384`
 
 **Interfaces:**
-- Gebruikt: `config.Parse`, `config.Lookup`.
+- Gebruikt: `config.Default` (voor `repoconfig`); `config.Parse`, `config.Lookup` (alleen voor
+  de init-lookup).
 - `repoconfig.Repo` en `repoconfig.Load(dir)` houden hun signatuur. De dispatch- en
   triage-afnemers veranderen niet. `Load` blijft falen op een ontbrekende `[forge] repo`.
+- `Load` houdt zijn eigen soepele decodering en zijn eigen meldingen (`config.Parse` valideert
+  streng en wijst repo's af die `Load` nu laadt; tests als `triage_test.go`, `tick_test.go` en
+  `serve_test.go` hangen daaraan). `Load` haalt alleen de **defaults** uit `internal/config`
+  (een geëxporteerde `config.Default(key string) (any, bool)`, gevuld uit dezelfde tabel als
+  `Lookup`). De foutmeldingen van `Load` veranderen niet.
 
 - [ ] **Stap 1: tests.**
   - `TestLoadDefaultsFromConfig`: zonder `[labels]` en `default_branch` geeft `Load` dezelfde
-    waarden als `config.Lookup` (één bron).
+    waarden als `config.Default` (één bron). De bestaande tests van `Load`, tick, triage en serve
+    blijven ongewijzigd groen.
   - `TestFillWorkflowsWithoutPython`: `PATH` zonder `python3` (`t.Setenv("PATH", tmp)`), een
     `lighthouse.toml` zonder `[ci]`. De workflow krijgt `ubuntu-latest` voor `@@ci.runs_on@@`.
     Dit is AC 5.
@@ -238,8 +253,8 @@ wijst `LIGHTHOUSE_HOST_TOML` naar een pad dat niet bestaat.
     `Bash(lighthouse:*)` → false en `Bash(lighthousex foo:*)` → false.
 - [ ] **Stap 2:** `go test ./internal/repoconfig/ ./internal/initcmd/ ./internal/packs/`.
   Verwacht: FAIL op de nieuwe tests.
-- [ ] **Stap 3: implementeer.** Labels, `default_branch` en `language` in `repoconfig` komen uit
-  `config.Lookup`, en de `cmp.Or`-defaults gaan weg. `forge.kind` houdt `"github"` als default,
+- [ ] **Stap 3: implementeer.** Labels, `default_branch` en `language` in `repoconfig` krijgen hun
+  default uit `config.Default`, en de letterlijke `cmp.Or`-defaults gaan weg. Geen validatie erbij. `forge.kind` houdt `"github"` als default,
   want `config.py` heeft er geen. De nieuwe lookup voor init is
   `func goLookup(toml []byte) packs.Lookup`, gebouwd op `config.Parse` van de voorgestelde config
   (`proposeConfig`). Bij een `config.Error` wordt de workflow overgeslagen met de melding, zoals
@@ -298,6 +313,12 @@ wijst `LIGHTHOUSE_HOST_TOML` naar een pad dat niet bestaat.
 - Wijzig: `.gitignore` (`.lighthouse/bin/`), `pack/core/requires.toml` als een unit `run.sh`
   daar een regel nodig heeft (`sh`, `git`)
 - Nieuw: `tests/pack/test_run_sh.py`
+- Wijzig: `pack/SOURCES.toml` (entries `new = true` voor `run.sh` en `blocking`:
+  `tests/test_sources.py` eist er een per bestand onder `pack/`). `run.sh` is geen geregistreerde
+  hook en `tests/test_site_packs.py` eist precies 9 core-hooks: sluit `run.sh` en `blocking` uit
+  van de hooklijst van de site (`docs/site/data/packs.json`) en pas `tests/test_site_reference.py`
+  zo aan dat het die twee overslaat. Draai `uv run pytest -q tests/test_sources.py
+  tests/test_site_packs.py tests/test_site_reference.py` in stap 4.
 
 **Gedrag** (spec §1, §2, §10). Dit algoritme ligt niet vast in de tests, daarom staat het hier:
 
@@ -313,13 +334,19 @@ LH = LH, anders `command -v lighthouse`
 geen LH:  blokkerend → stderr §1-melding, exit 2;  anders → {"systemMessage": melding}, exit 0
           bij dev noemt de melding `go install ./cmd/lighthouse` en `.lighthouse/bin/use-path`
 "$LH" hook "$@";  rc
-rc = 3:   dev of niet-blokkerend → {"systemMessage": stderr-tekst}, exit 0;  anders exit 2
-anders:   exit rc   (stdout van LH ongemoeid; run.sh schrijft dan zelf niets)
+rc = 3, of rc 1 met `unknown command "hook"` op stderr (oude PATH-binary): dev of niet-blokkerend → {"systemMessage": stderr-tekst}, exit 0;  anders exit 2
+anders:   exit rc   (stdout én stderr van LH ongemoeid; run.sh schrijft dan zelf niets)
+          stderr van LH gaat naar een tijdelijk bestand en wordt daarna met `cat >&2` doorgegeven;
+          bij rc 3 wordt de tekst als JSON-string geëscaped (backslash, aanhalingsteken, nieuwe
+          regel) met `sed`/`awk`, zonder jq of Python
 
 start_build:
     "$bin/build.failed" bevat head en is jonger dan 60 s → niets
+        (meten met `find "$bin/build.failed" -newer "$bin/pause.ref"`; `pause.ref` wordt bij elke
+        mislukking met `touch -t` op nu min 60 s gezet. Geen `stat -c` of `date -d`:
+        `test_portable_shell.py` verbiedt ze)
     mkdir "$bin/build.lock" mislukt:
-        lock ouder dan 120 s (find -prune -mmin +2) → rm -rf, één nieuwe poging; anders niets
+        lock ouder dan 120 s (find -prune -mmin +1; `+2` rondt op naar >180 s) → rm -rf, één nieuwe poging; anders niets
     los proces (setsid als het bestaat, anders nohup), stdin, stdout en stderr naar /dev/null:
         cd "$root" && go build -o "$bin/lighthouse.tmp.$$" ./cmd/lighthouse >"$bin/build.log" 2>&1
         gelukt: mv tmp → lighthouse; echo head > stamp.tmp; mv → stamp; rm -f build.failed
@@ -340,13 +367,14 @@ start_build:
   - `test_unknown_hook_maps_per_list`: nep-binary rc 3. Blokkerend rc 2, anders rc 0 met
     melding. Bij dev altijd rc 0 met melding.
   - `test_binary_output_passes_untouched`: nep-binary print `{"decision":"block"}` en rc 2.
-    run.sh geeft byte voor byte dezelfde stdout en rc 2.
+    run.sh geeft byte voor byte dezelfde stdout en stderr en rc 2. Een tweede test: rc 3 met
+    aanhalingstekens, backslash en nieuwe regel in de tekst geeft geldige JSON.
   - `test_parallel_calls_build_once_and_never_wait`: dev, `FAKE_GO_SLEEP=3`, 8 parallelle
-    aanroepen. Elke aanroep is binnen 1 s klaar. Na ≤ 5 s is de teller 1,
+    aanroepen. Elke aanroep is binnen 2 s klaar (ruim onder de 3 s van de nep-build; spec: ruim binnen 5 s). Na ≤ 5 s is de teller 1,
     `.lighthouse/bin/lighthouse` uitvoerbaar, `stamp` = `HEAD` en de lock weg.
   - `test_runs_previous_binary_during_build`: oude checkout-binary aanwezig, stempel
     verouderd. De aanroep draait de oude binary (te zien aan de uitvoer) terwijl de build loopt.
-  - `test_stale_lock_is_removed`: `build.lock` met mtime 200 s geleden. Er start een build.
+  - `test_stale_lock_is_removed`: `build.lock` met mtime 150 s geleden. Er start een build.
     `test_fresh_lock_starts_nothing`: lock van nu, teller blijft 0.
   - `test_failed_build_pauses_60s`: nep-`go` faalt. Een tweede aanroep start niets
     (teller 1), behalve met `build.failed` 61 s oud (teller 2) of na een nieuwe commit.
@@ -366,7 +394,8 @@ start_build:
 - [ ] **Stap 3:** implementeer `run.sh` en `blocking`, voeg `.lighthouse/bin/` toe aan
   `.gitignore`, en draai `go run ./cmd/lighthouse init --upgrade`.
 - [ ] **Stap 4:** run de tests opnieuw. Verwacht: PASS. Draai ook
-  `go test -race ./internal/initcmd/ ./internal/packs/` (golden en core-units). Is
+  `go test -race ./internal/initcmd/ ./internal/packs/` (golden en core-units) en de drie
+  site-/sources-tests uit *Bestanden*. Is
   `places.golden` veranderd, gebruik dan `-update`.
 - [ ] **Stap 5: commit** `feat(hooks): run.sh met bouw uit de checkout bij dev (#274)`, inclusief
   de geïnstalleerde kopie.
@@ -381,13 +410,18 @@ start_build:
 - Nieuw: een sessie-fixture in `tests/conftest.py` (of `tests/pack/conftest.py`) die
   `go build -o <tmp>/lighthouse ./cmd/lighthouse` één keer draait en `<tmp>` vooraan op het PATH
   zet voor tests die hem vragen (`lighthouse_bin`)
+- Wijzig: `tests/pack/test_skill_contracts.py` (`_CONFIG_RE` en `test_config_keys_known`, en de
+  `tomllib`-eis rond regel 326), `tests/pack/go/test_go_writing.py` (:142-147) en
+  `tests/pack/python/test_python_writing.py` (:90-95): zet `config\.py` om naar
+  `lighthouse config`. Elke test asserteert ook dat er minstens één treffer is, anders slaagt hij
+  leeg.
 - Wijzig: de tests uit
-  `grep -rlE 'lighthouse_lib/(config|headings)\.py' tests internal` die tekst van skills
+  `grep -rlE '(lighthouse_lib/)?(config|headings)\.py' tests internal` die tekst van skills
   asserteren (`test_*_skill.py`, `test_getting_started.py`, `test_instruction_files.py`,
   `internal/packs/core_test.go`, `internal/initcmd/{initcmd,places}_test.go`), en de tests van
   `prcov_issues` en `ratchet`
 - Niet: de bash-hooks, `check-instructions.sh`, `shell-lint-check.sh`, `shellcheck-repo.sh`,
-  `ty-gate.sh` (die horen bij stap 2–11) en `pack/SOURCES.toml`
+  `ty-gate.sh` (die horen bij stap 2–11). `pack/SOURCES.toml` alleen voor nieuwe bestanden (taak 7).
 
 **Interfaces:**
 - Gebruikt: `lighthouse config [--json] <key>`, `lighthouse headings <key>`,
@@ -410,15 +444,25 @@ start_build:
   aanroept.
   - `board()` gebruikt `lighthouse config --json forge.board`, met rc 1 → `None`.
   - `CONTROLLER_STATUS_OPTION` wordt de constante `"Controller"`.
-  - `repo_root()` gebruikt `git rev-parse --show-toplevel`.
+  - `repo_root()`: eerst `LIGHTHOUSE_REPO_ROOT`, anders `git rev-parse --show-toplevel` (zoals
+    `config.repo_root`; `test_worktree_from_env_or_main_checkout` bewaakt dit).
   - `protocol.ROBOT` gebruikt `lighthouse protocol robot`.
   - `protocol.parse_header` gebruikt `lighthouse protocol parse-header`.
   - `headings.heading('kind_handoff', lang)` gebruikt `lighthouse headings kind_handoff`.
-  - In `ratchet.py` wordt `config.lookup` `lighthouse config`.
-  - Rc 2 wordt een eigen `ConfigError` met de stderr-tekst.
+  - In `ratchet.py` wordt `config.lookup` `lighthouse config --json` (lijstsleutels als
+    `python.source_dirs` blijven zo een lijst; `_dirs` asserteert dat).
+  - Rc 2 wordt een eigen `ConfigError` met de stderr-tekst. Ontbreekt `lighthouse` op het PATH
+    (`FileNotFoundError`), dan ook een `ConfigError`, met uitleg dat de nightly de binary nodig heeft.
   - De `sys.path`-truc voor `lighthouse_lib` (`prcov_issues.py:32-40`) gaat weg.
+- [ ] **Stap 4b:** controleer `.github/workflows/ci.yml`: heeft de Python-job `actions/setup-go`
+  (go.mod eist `go 1.26.4`)? Zo niet, voeg het toe, en laat Go-only wijzigingen ook de
+  Python-job draaien als tests de binary gebruiken (`ci/domains.py`).
 - [ ] **Stap 5:** werk de tekst-asserties in de tests bij en geef de prcov- en ratchet-tests de
   fixture `lighthouse_bin`. Draai `go run ./cmd/lighthouse init --upgrade`.
+- [ ] **Stap 5b:** de geïnstalleerde skills roepen nu `lighthouse config` aan, en de binary op het
+  PATH kent dat subcommando nog niet (`unknown command`, rc 1, door skills gelezen als "niet
+  gezet"). Draai `go install ./cmd/lighthouse` en controleer `lighthouse config forge.repo`
+  (rc 0) vóór je een skill start. Zet deze stap ook in de PR-tekst voor gebruikers op `main`.
 - [ ] **Stap 6:** `go test -race ./...` en `uv run pytest -q`. Verwacht: PASS, de guard-test
   ook.
 - [ ] **Stap 7: commits**, één per logische wijziging:
