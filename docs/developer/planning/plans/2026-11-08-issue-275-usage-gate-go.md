@@ -49,6 +49,9 @@
 | `pack/core/hooks/hooks.json`, `pack/core/requires.toml`, `pack/SOURCES.toml` | registraties en inventaris |
 | `pack/go/hooks/go-lint-gate.sh`, `pack/python/hooks/ty-gate.sh` | alarm via `lighthouse usage alarm` |
 | `tests/pack/_testkit.py`, `tests/conftest.py` | binary één keer bouwen, hooks via `run.sh` draaien |
+| `pack/core/lib/bash_writes.py`, `tests/pack/test_bash_writes.py`, `tests/pack/test_bash_write_check.py` | `bash-write-check` draait de linkcheck via `run.sh md-link-check` |
+| `docs/site/data/{session,loop,config,packs}.json`, `docs/site/map.js` | sitekaarten volgen `hooks.json` en de nieuwe bronnen |
+| `pack/core/skills/start-issue/agents/SKILL.md`, `pack/core/skills/fix-pr/**/SKILL.md` | verwijzing naar `md-link-check.sh` |
 | `CLAUDE.md`, `docs/usage-gate.md`, `docs/host-assumptions.md`, `changelog.d/issue-275-usage-gate-go.md` | tekst |
 
 ---
@@ -88,7 +91,7 @@ Spec §9: eerst de gevallen naar fixtures, en pas daarna overzetten. In deze taa
 
 - [ ] **Stap 1: test.** `TestFixtures` leest `../../tests/pack/fixtures/md_links/links.json` (het patroon van `internal/config/parity_test.go`). Per sectie één subtest per geval. Voor `problems` bouwt de test `files` en `dirs` in `t.TempDir()`, en vergelijkt hij `FindProblems(<tmp>/<md>, <tmp>)` met `expect`.
 - [ ] **Stap 2: draaien.** `go test ./internal/mdlinks/` → FAIL (pakket bestaat niet).
-- [ ] **Stap 3: implementeer.** Neem de regex `LINK` uit `pack/core/lib/md_links.py` letterlijk over: RE2 kent benoemde groepen, en lookaround is niet nodig. Fences wisselen per regel, net als in `strip_code`. Decodeer met `url.PathUnescape`. Valt het doel buiten `root`, dan slaat de functie het over: `filepath.Rel` mag niet met `..` beginnen. Een map telt als bestaand.
+- [ ] **Stap 3: implementeer.** Neem de regex `LINK` uit `pack/core/lib/md_links.py` letterlijk over: RE2 kent benoemde groepen, en lookaround is niet nodig. Fences wisselen per regel, net als in `strip_code`. Decodeer met `url.PathUnescape`; geeft dat een fout (`100%.md`), gebruik dan het ruwe doel, zoals `unquote` in Python. Voeg in taak 1 gevallen toe aan `links.json` voor een ongeldige `%`, CRLF en NBSP, zodat beide kanten ze pinnen. Valt het doel buiten `root`, dan slaat de functie het over: `filepath.Rel` mag niet met `..` beginnen. Een map telt als bestaand.
 - [ ] **Stap 4: draaien.** `go test -race ./internal/mdlinks/` → PASS.
 - [ ] **Stap 5: commit.** `feat(mdlinks): linkextractie voor markdown in Go (#275)`
 
@@ -101,7 +104,7 @@ Spec §9: eerst de gevallen naar fixtures, en pas daarna overzetten. In deze taa
 - Produceert:
   - `type Alarm struct{ Kind string; Pct int; ResetLocal string; ResetAt string }`; `ResetLocal` heeft spaties
   - `func ReadAlarm(path string, now time.Time) (Alarm, bool)`
-  - het commando `lighthouse usage alarm`: exit 0 bij een geldig alarm, met op stdout de regel `<kind> <pct> <reset_local met _> <reset_at>\n`; exit 1 zonder uitvoer bij elk ander geval. Kan `DefaultPaths` geen pad maken, dan volgt één regel `usage: <fout>` op stderr en exit 1.
+  - het commando `lighthouse usage alarm`: exit 0 bij een geldig alarm, met op stdout de regel `<kind> <pct> <reset_local met _> <reset_at>\n`; exit 1 zonder uitvoer bij elk ander geval. Hook en commando lezen beide `usage.DefaultPaths().Alarm()`, hetzelfde pad als waar de meter schrijft (ook bij een relatieve `XDG_CACHE_HOME`). Kan `DefaultPaths` geen pad maken, dan volgt één regel `usage: <fout>` op stderr en exit 1.
 
 De regels van `alarm.sh`:
 - alleen een gewoon bestand (`os.Lstat`, geen symlink);
@@ -127,8 +130,8 @@ Zet `usage_guard.py` en de modules `resume.py` en `controller.py` over. De woord
 **Interfaces:**
 - Gebruikt: `usage.Alarm` (taak 3); `park.MarkerDir`, `park.Marker`; `config.Path`, `config.Load`, `config.Lookup`.
 - Produceert:
-  - `type Context struct{ Stand string; Alarm *usage.Alarm; SessionID, AgentID, Cwd, RunID, PauseUntil, PauseFlag string; StopHookActive, PayloadOK bool; Now time.Time }`
-  - `func BuildContext(stand string, alarm *usage.Alarm, pauseUntil, pauseFlag string, payload []byte, now time.Time, getenv func(string) string) Context`. `RunID` komt uit `LIGHTHOUSE_CONTROLLER_RUN` als die op `^[0-9a-f-]+$` past. Ids passen op `^[A-Za-z0-9_-]{1,128}$`, anders zijn ze `""`. `Cwd` valt terug op `os.Getwd()`. Bij een payload die niet te lezen is, is `StopHookActive` waar.
+  - `type Context struct{ Stand string; Alarm *usage.Alarm; SessionID, AgentID, Cwd, RunID, PauseUntil, PauseFlag string; StopHookActive, PayloadOK bool; Now time.Time; Loc *time.Location }`
+  - `func BuildContext(stand string, alarm *usage.Alarm, pauseUntil, pauseFlag string, payload []byte, now time.Time, getenv func(string) string) Context`. `RunID` komt uit `LIGHTHOUSE_CONTROLLER_RUN` als die op `^[0-9a-f-]+$` past. Ids passen op `^[A-Za-z0-9_-]{1,128}$`, anders zijn ze `""`. `Loc` is `time.Local`; de sprekers resume (wekcron) en controller (klok van een bestaande alarmmarker) gebruiken `c.Loc`, zoals `wake_cron(…, None)` en `at.astimezone()` lokale tijd gebruikten. `Cwd` valt terug op `os.Getwd()`. Bij een payload die niet te lezen is, is `StopHookActive` waar.
   - `type Dirs struct{ State, Resume string }` en `func DirsFromEnv(getenv func(string) string) (Dirs, error)`. `State` is `<XDG_STATE_HOME|$HOME/.local/state>/lighthouse/usage-guard`; `Resume` is `park.MarkerDir`.
   - `func EffectiveStand(c Context) string`
   - `func AlarmKey(c Context, stand string, d Dirs) string`
@@ -142,8 +145,9 @@ Zet `usage_guard.py` en de modules `resume.py` en `controller.py` over. De woord
   - De sprekers zijn intern: base, subagent, resume (schrijft een marker met `handoff_path`), controller en pause (schrijft een marker met `"controller": true`; het latere hervatmoment wint, volgens `_park`). Markers worden atomair geschreven: tmp in dezelfde map en dan rename, JSON met inspringing 2 en een newline aan het eind.
 
 - [ ] **Stap 1: tests.**
-  - `TestKeysFixtures`, `TestSpeechFixtures` en `TestWakeCronFixtures` lezen de fixtures van taak 1. `{resume}` wordt de resume-map van `t.TempDir()`; `TZ` is UTC via `time.UTC` als `loc`.
+  - `TestKeysFixtures`, `TestSpeechFixtures` en `TestWakeCronFixtures` lezen de fixtures van taak 1. `{resume}` wordt de resume-map van `t.TempDir()`; de tests zetten `Context.Loc = time.UTC`. De Python-fixtures uit taak 1 draaien met `TZ=UTC` én `time.tzset()` (monkeypatch), want de tests draaien in-process.
   - Zet elke toestandstest uit `test_usage_gate_lib.py` en `test_usage_gate_controller.py` die niet op een fixture leunt, over als Go-test met dezelfde naam in CamelCase en dezelfde asserts. Daaronder vallen claim, prune ouder dan 14 dagen, stop met en zonder `stop_hook_active`, pause vóór alarm, een later pause-einde dat wint, en een onleesbare marker die overschreven wordt.
+  - Spreker faalt: maak de resume-map onschrijfbaar (`XDG_DATA_HOME` wijst naar een bestand). Voor resume, controller en pause geldt: de claimsleutel is weg, `Output` is nil (bij een falende pause spreekt daarna het alarm) en `warn` is precies één keer geroepen. Dit vervangt `test_failing_module_releases_key`, `test_bad_module_output_releases_key`, `test_failing_pause_falls_through_to_alarm` en `test_bad_pause_output_falls_through_to_alarm`. De tests die Python-modules injecteren of `main(argv)` aanroepen (`test_module_output_is_the_only_output`, `test_module_may_define_a_dataclass`, `test_subagent_never_loads_a_module`, `test_main_never_fails`) vervallen met hun premisse; noem ze in de commit.
   - `TestParallelToolSpeaksOnce` (aandachtspunt 2): twee goroutines, één `Output`.
   - `TestRelativeXDGIsIgnored`: `XDG_STATE_HOME=rel` geeft een `State` onder `$HOME/.local/state`.
 - [ ] **Stap 2: draaien.** `go test ./internal/usageguard/` → FAIL.
@@ -166,7 +170,7 @@ Gedrag per hook, telkens zoals de voorganger:
 - **`usage-gate`**
   - Met `LIGHTHOUSE_USAGE_REFRESH=1` of een onbekende stand: code 0, niets.
   - Bij `prompt` zoekt de hook `lighthouse` op het PATH (`exec.LookPath`, niet `os.Executable`: zo werkt het zoals bash en zoals de testcode met een nep-binary). Hij start `lighthouse usage refresh` los van zichzelf, met `LIGHTHOUSE_USAGE_REFRESH=1` en stdin, stdout en stderr op nil, en wacht niet (`Process.Release`).
-  - De pauzevlag telt alleen in `tool` met een `RunID`: `park.PauseFile` plus `park.ReadPause`. `PauseUntil` is de eerste regel van de vlag zoals hij er staat.
+  - De pauzevlag telt alleen in `tool` met een `RunID`: `park.PauseFile` plus `park.ReadPause`. `PauseUntil` is de eerste regel van de vlag zoals hij er staat. `park.ReadPause` leest alleen RFC 3339 met seconden; de bash-versie accepteerde meer (`date -d`). Dat is een technische wijziging van de overstap (`WritePause` schrijft altijd RFC 3339): zet het in de commit.
   - Daarna leest de hook het alarm en geldt het snelle pad. Dan volgen `usageguard.Decide` en `KeyAfter`, dat de hook schrijft voordat hij teruggeeft.
   - Elke waarschuwing wordt `usage-gate: <tekst>\n` in `Result.Stderr`.
 - **`permission-check`**
@@ -229,11 +233,15 @@ fi
   - `pack/SOURCES.toml`: haal de verwijderde bestanden weg.
   - `internal/packs/core_test.go`: de lijst van geïnstalleerde bestanden.
   - `tests/pack/_testkit.py`:
-    - `run_guard` draait `run.sh usage-gate <stand>` met `lighthouse_dir()` vooraan op het PATH.
+    - `run_guard` draait `run.sh usage-gate <stand>` met een shimmap vooraan op het PATH. Daarin staat een `lighthouse` die voor `hook …` de gebouwde binary uitvoert en voor al het andere (`usage refresh`) zijn argv en `LIGHTHOUSE_USAGE_REFRESH` in een traceboek schrijft en niets doet. De refreshtests (`test_refresh_is_detached`, `test_refresh_only_at_prompt`, `test_usage_refresh_env_silences`) lezen dat traceboek in plaats van hun eigen stub. Zo start een test nooit een echte `claude -p /usage` (`guard_env`: "no real `lighthouse` on PATH").
+    - `run_sh_hook` zet `lighthouse_dir()` altijd vooraan op het PATH (parameter `with_binary=False` voor de test zonder binary), ook in de tests die het PATH zelf vervangen (`test_linkcheck_without_git`, `test_linkcheck_git_failure_is_unchecked`, `test_linkcheck_invalid_json_is_unchecked`, `test_hooks_minimal_config`), plus `RUN_SH_TOOLS`.
     - Er komt `def run_sh_hook(root: Path, name: str, payload: dict | str, *, cwd: Path, env: dict | None = None, args: tuple[str, ...] = ()) -> subprocess.CompletedProcess`.
     - Er komt `RUN_SH_TOOLS = ("sh", "dirname", "grep", "sed", "awk", "cat", "mktemp", "rm")`, voor tests met een kaal PATH.
+  - `pack/core/lib/bash_writes.py`: `GATES` (regels 53–54) en `GATE_PACKS` (regel 66) noemen `md-link-check.sh` en `run_gate` draait `.claude/hooks/lighthouse/<gate>` als bestand. Laat de linkcheck draaien als `run.sh md-link-check` (argv in plaats van bestandsnaam; pas `gate_path`, `run_gate` en het label aan, hou de labeltekst die gebruikers zien gelijk). Anders meldt `bash-write-check` na het verwijderen alleen "not checked — no core check installed" en verdwijnt de gate stil. Pas `tests/pack/test_bash_writes.py` (57–58, 1326) en `tests/pack/test_bash_write_check.py` (88–113, 463, 514, 768) aan op de nieuwe aanroep, en voeg een test toe dat een met Bash geschreven `.md` met een dode link nog steeds blokkeert.
+  - Sitekaarten: `docs/site/data/session.json` (registraties `usage-gate.sh <stand>`, `md-link-check.sh`, `permission-check.sh` worden `run.sh <naam> [stand]`; `source` wordt `internal/hooks/<naam>.go`), `docs/site/data/loop.json` (220–227, 463), `docs/site/data/config.json` (687–703: de lezers van `usage_guard.*` worden `internal/usageguard/*.go`), `docs/site/data/packs.json` en `docs/site/map.js:216` (href naar een Go-hook). Pas `tests/test_site_session.py` (`hook_problems`, bron moet eindigen op `hooks/<command.split()[0]>`) aan op de nieuwe vorm.
+  - `pack/core/skills/start-issue/agents/SKILL.md:312` en `pack/core/skills/fix-pr/*/SKILL.md:273`: de verwijzing naar `md-link-check.sh` wordt `run.sh md-link-check`.
   - `tests/pack/test_md_link_check.py`, `test_permission_check.py`, `test_usage_gate*.py`, `test_hooks_minimal_config.py`: alles via `run.sh` en de hooknaam in plaats van het `.sh`-pad.
-  - `tests/pack/test_check_instructions.py` en `pack/core/scripts/check-instructions.sh`: alleen als hun registratiecheck de nieuwe vorm afwijst.
+  - `pack/core/scripts/check-instructions.sh` (regex regel 715, `suffix` regel 748) en `tests/pack/test_check_instructions.py`: onvoorwaardelijk. Bij `run.sh <naam>` is de hooknaam het eerste argument, anders faalt de check op `'run' ends on neither -gate nor -check`. Voeg een testgeval voor die vorm toe.
 - Verwijder:
   - `pack/core/lib/usage_guard.py`, `pack/core/lib/md_links.py`
   - `pack/core/hooks/usage-gate.sh`, `usage-gate/alarm.sh`, `usage-gate/controller.py`, `usage-gate/resume.py`
@@ -251,6 +259,8 @@ fi
 | `test_usage_gate.py::test_refresh_without_lighthouse` | geen binary maar wel een hook | taak 5 (Go) en `test_run_sh.py` |
 | `test_md_link_check.py::test_linkcheck_unresolvable_path` | `realpath`/`python3 -c` | n.v.t. |
 | de assert `load_hook_lib("md_links").absolute_links(...)` in `test_linkcheck_allows_link_to_branch_only_spec` (regel 95) | `md_links.py` | fixture `md_links` in taak 2; de hook-assert van die test blijft |
+| `test_usage_gate_resume.py::test_wake_cron` en de regel `cron = _load().wake_cron(...)` in `test_tool_window_writes_marker` | `resume.py` | fixture `wake_cron.json` (taak 4); de marker-asserts van die test blijven en lezen de cron uit de fixture |
+| `test_usage_gate_controller.py::test_pause_invalid_flag_without_alarm_runs_nothing` | `usage-gate.sh` rechtstreeks en `python3` niet forken | een variant via `run.sh` houdt de asserts op lege stdout/stderr en geen marker |
 | `test_skills_issue_flow.py::test_guard_names_the_pause_form` | brontekst van `usage_guard.py` en `resume.py` | `speech.json` bevat `/lighthouse-write-handoff ` en `.handoff.md` |
 | `test_usage_gate_lib.py`, `test_md_links.py` (hele bestanden) | de Python-module | taken 2 en 4 |
 
@@ -258,22 +268,23 @@ fi
 
 - [ ] **Stap 1: omschakelen.** Pas de tests aan zoals hierboven, wijzig `hooks.json` en verwijder de bestanden.
 - [ ] **Stap 2: draaien.**
-  - `uv run pytest -q tests/pack -k "usage or md_link or permission or run_sh or minimal_config or check_instructions or skills_issue_flow"` → groen.
-  - Leg daarna `git diff origin/main -- tests/pack` naast de tabel. Elke gewijzigde regel met `assert` hoort bij een rij van de tabel. Anders is er een verwachting aangepast (AC 1), en dat is rood.
+  - `uv run pytest -q tests/test_site_session.py tests/test_site_loop.py tests/test_site_config.py tests/test_site_reference.py` → groen.
+  - `uv run pytest -q tests/pack -k "bash_write or usage or md_link or permission or run_sh or minimal_config or check_instructions or skills_issue_flow"` → groen.
+  - Leg daarna `git diff <commit vóór taak 7> -- tests/pack` naast de tabel; de aanpassingen van taak 1 en 6 horen daar niet bij en zijn eerder gecommit met hun reden. Elke gewijzigde regel met `assert` hoort bij een rij van de tabel. Anders is er een verwachting aangepast (AC 1), en dat is rood.
 - [ ] **Stap 3: Go en dogfood.**
   - `go test -race ./...` → PASS.
   - `go run ./cmd/lighthouse init --upgrade` gevolgd door `git status`: de geïnstalleerde kopieën verdwijnen en `.claude/settings.json` noemt `run.sh`.
   - `go run ./cmd/lighthouse init --upgrade` nogmaals → `No changes.`
-- [ ] **Stap 4: grep.** `git grep -n -e usage_guard.py -e md_links.py -e alarm.sh -e note.py -- pack internal .claude .lighthouse` → alleen treffers in `docs/` (taak 8) of geen.
+- [ ] **Stap 4: grep.** `git grep -n -e usage_guard.py -e md_links.py -e alarm.sh -e note.py -e md-link-check.sh -e usage-gate.sh -e permission-check.sh -- pack internal .claude .lighthouse docs/site` → alleen treffers in `docs/*.md` (taak 8) of geen.
 - [ ] **Stap 5: commit.** `feat(core): usage-gate, permission-check en md-link-check via run.sh; Python weg (#275)`
 
 ### Taak 8: tekst en changelog
 
-**Bestanden:** wijzig `CLAUDE.md` (de drie hookregels: `run.sh <naam>` in plaats van `<naam>.sh`, met hetzelfde gedrag), `docs/usage-gate.md` (regels 9, 31, 223: `lighthouse hook usage-gate` en `lighthouse usage alarm` in plaats van `usage-gate.sh` en `alarm.sh`) en `docs/host-assumptions.md` (de rij van regel 32: de datumparsing gebeurt nu in Go). Maak `changelog.d/issue-275-usage-gate-go.md`.
+**Bestanden:** wijzig `CLAUDE.md` (de drie hookregels: `run.sh <naam>` in plaats van `<naam>.sh`, met hetzelfde gedrag), `docs/usage-gate.md` (regels 9, 31, 223: `lighthouse hook usage-gate` en `lighthouse usage alarm` in plaats van `usage-gate.sh` en `alarm.sh`) en `docs/host-assumptions.md` (de rij van regel 32: de datumparsing gebeurt nu in Go; de rij van regel 33 linkt naar het verdwenen `usage_guard.py`). `docs/usage-gate.md` regels 33, 37 en 173 noemen `date -d` en `python3`: pas ze aan. Maak `changelog.d/issue-275-usage-gate-go.md`.
 
 - [ ] **Stap 1: schrijf de tekst.** Het fragment krijgt `type: added` en één alinea in het Engels, zoals de andere fragmenten: `lighthouse usage alarm` is nieuw, de drie hooks draaien via `run.sh` op de binary, en de stop-gates van `go` en `python` lezen het alarm via de binary.
 - [ ] **Stap 2: controleren.**
-  - `rg -n "usage-gate\.sh|md-link-check\.sh|permission-check\.sh|alarm\.sh" CLAUDE.md docs/*.md` → geen treffers buiten de historische plannen en specs.
+  - `rg -n "usage-gate\.sh|md-link-check\.sh|permission-check\.sh|alarm\.sh|usage_guard\.py" CLAUDE.md docs/*.md pack --glob '*.md'` → geen treffers buiten de historische plannen en specs.
   - `uv run pytest -q tests/test_site_reference.py tests/test_dogfood.py` → groen.
   - `md-link-check` blokkeert niets: de hook draait nu zelf in Go.
 - [ ] **Stap 3: commit.** `docs(usage-gate): hooks via run.sh en lighthouse usage alarm (#275)`
