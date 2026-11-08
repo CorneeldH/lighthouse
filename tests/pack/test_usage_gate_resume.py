@@ -1,16 +1,12 @@
-"""The usage-gate module `resume` (#66): wording, marker and wake-up of an ordinary session."""
+"""The usage gate with `[usage_guard] resume` (#66): wording, marker and wake-up of an ordinary
+session."""
 
-import importlib.util
 import json
 import re
-from datetime import timezone
+from datetime import datetime, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
-
-import pytest
 
 from tests.pack._testkit import (
-    CORE,
     MINIMAL_TOML,
     alarm_line,
     guard_env,
@@ -21,16 +17,6 @@ from tests.pack._testkit import (
 
 TOML = MINIMAL_TOML + "\n[usage_guard]\nresume = true\n"
 EVENTS = {"prompt": "UserPromptSubmit", "tool": "PostToolUse", "stop": "Stop"}
-
-
-def _load():
-    # The lib is on sys.path through the conftest. Not registered in sys.modules: resume.py
-    # defines no dataclass, so nothing looks it up there.
-    path = CORE / "hooks" / "usage-gate" / "resume.py"
-    spec = importlib.util.spec_from_file_location("usage_guard_resume_test", path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
 
 
 def _payload(tmp_path: Path, stand: str, **extra: object) -> dict:
@@ -66,17 +52,17 @@ WAKE_CRON = json.loads(
 )
 
 
-@pytest.mark.parametrize(
-    "case", [pytest.param(c, id=f"{c['reset_at']} {c['tz']}") for c in WAKE_CRON]
-)
-def test_wake_cron(case: dict) -> None:
-    tz = timezone.utc if case["tz"] == "UTC" else ZoneInfo(case["tz"])
-    assert _load().wake_cron(case["reset_at"], tz) == case["expect"]
+def _future_wake_case() -> tuple[str, str]:
+    """A UTC case of `wake_cron.json` moved to next year, as (reset_at, cron): the cron names
+    no year, and a case outside February keeps its cron in every year."""
+    case = next(c for c in WAKE_CRON if c["tz"] == "UTC" and c["reset_at"][5:7] != "02")
+    year = datetime.now(timezone.utc).year + 1
+    return f"{year}{case['reset_at'][4:]}", case["expect"]
 
 
 def test_tool_window_writes_marker(tmp_path: Path) -> None:
-    line = alarm_line()
-    at = line.split()[3]
+    at, cron = _future_wake_case()
+    line = f"venster 92 14:30 {at}"
     result, resume = _run(tmp_path, "tool", line)
 
     reason = _reason(result)
@@ -96,7 +82,6 @@ def test_tool_window_writes_marker(tmp_path: Path) -> None:
     assert fields["reset_at"] == at
     assert fields["handoff_path"] == str(resume / "s1.handoff.md")
     assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", fields["created_at"])
-    cron = _load().wake_cron(at, timezone.utc)
     assert f'cron "{cron}"' in reason
     assert "recurring false" in reason
     assert "CronList" in reason

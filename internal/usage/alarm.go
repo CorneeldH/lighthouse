@@ -83,7 +83,7 @@ type Alarm struct {
 
 var resetAtPattern = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`)
 
-// ReadAlarm reads the alarm file with the rules of the former alarm.sh: a
+// ReadAlarm reads the alarm file with the rules of the former shell alarm helper: a
 // regular file (no symlink), only the first line, four fields split on space
 // and tab only (a "\r" stays in its field and makes it invalid), kind "venster"
 // or "week", pct digits that fit an int, and a reset_at in the strict UTC form

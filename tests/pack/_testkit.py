@@ -200,22 +200,6 @@ def tool_bin(
     return path
 
 
-def trace_bin(path: Path, trace: Path, tools: tuple[str, ...]) -> Path:
-    """A PATH directory of stubs that append their name to `trace`, then run the
-    real tool (looked up now, on the current PATH) when there is one.
-
-    With only this directory on PATH, an empty `trace` proves the script forked
-    none of `tools`.
-    """
-    stubs = {}
-    for tool in tools:
-        real = shutil.which(tool)
-        run = f'exec {shlex.quote(real)} "$@"\n' if real else "exit 0\n"
-        log = f"printf '%s\\n' {tool} >> {shlex.quote(str(trace))}\n"
-        stubs[tool] = f"#!/bin/bash\n{log}{run}"
-    return tool_bin(path, (), stubs=stubs)
-
-
 # The usage gate (#66): every test that runs it uses `guard_env`, so a test run
 # inside a session with a full window never writes real keys, markers or refreshes.
 _GUARD_ENV_DROP = (
@@ -304,51 +288,83 @@ def write_alarm(env: dict, line: str) -> Path:
     return path
 
 
-def run_guard(
-    root: Path, stand: str, payload: dict | str, env: dict
+# The tools `run.sh` needs, for a test that runs it on a bare PATH.
+RUN_SH_TOOLS = ("sh", "dirname", "grep", "sed", "awk", "cat", "mktemp", "rm")
+
+# A `lighthouse` for the hook tests: `hook ...` runs the binary built from this checkout, every
+# other call (the detached `usage refresh` of `usage-gate prompt`) does nothing but write its
+# argv and LIGHTHOUSE_USAGE_REFRESH as `<argv>|<value>` to $LIGHTHOUSE_SHIM_TRACE, after
+# sleeping $LIGHTHOUSE_SHIM_DELAY seconds. So no test ever starts a real `claude -p /usage`.
+_SHIM = """#!/bin/sh
+if [ "${{1:-}}" = hook ]; then
+  exec {binary} "$@"
+fi
+if [ -n "${{LIGHTHOUSE_SHIM_DELAY:-}}" ]; then
+  sleep "$LIGHTHOUSE_SHIM_DELAY"
+fi
+if [ -n "${{LIGHTHOUSE_SHIM_TRACE:-}}" ]; then
+  printf '%s|%s' "$*" "${{LIGHTHOUSE_USAGE_REFRESH:-}}" > "$LIGHTHOUSE_SHIM_TRACE"
+fi
+exit 0
+"""
+
+
+@functools.cache
+def shim_dir() -> Path:
+    """A directory with only the `lighthouse` shim (`_SHIM`), made once per process."""
+    out = Path(tempfile.mkdtemp(prefix="lighthouse-shim-"))
+    atexit.register(shutil.rmtree, out, True)
+    shim = out / "lighthouse"
+    shim.write_text(_SHIM.format(binary=shlex.quote(str(lighthouse_dir() / "lighthouse"))))
+    shim.chmod(0o755)
+    return out
+
+
+def refresh_trace(env: dict) -> Path:
+    """Where the shim of `run_guard` writes what a non-hook `lighthouse` call got."""
+    return Path(env["HOME"]).parent / "lighthouse-shim.trace"
+
+
+def run_sh_hook(
+    root: Path,
+    name: str,
+    payload: dict | str,
+    *,
+    cwd: Path,
+    env: dict | None = None,
+    args: tuple[str, ...] = (),
+    with_binary: bool = True,
 ) -> subprocess.CompletedProcess:
-    """Run the installed `usage-gate.sh <stand>` of `root` with `payload` on stdin."""
+    """Run the installed `run.sh <name> [args]` of `root` with `payload` on stdin.
+
+    `env` is the whole environment (default `os.environ`). With `with_binary` the shim
+    directory goes first on its PATH, so `run.sh` finds the binary of this checkout and a
+    `lighthouse usage refresh` never runs for real; LIGHTHOUSE_REPO_ROOT defaults to `root`.
+    """
+    full = dict(os.environ if env is None else env)
+    full.setdefault("LIGHTHOUSE_REPO_ROOT", str(root))
+    if with_binary:
+        full["PATH"] = f"{shim_dir()}{os.pathsep}{full.get('PATH', '')}"
     return subprocess.run(
-        [str(root / _INSTALL_DIRS["hooks"] / "usage-gate.sh"), stand],
+        [str(root / _INSTALL_DIRS["hooks"] / "run.sh"), name, *args],
         input=payload if isinstance(payload, str) else json.dumps(payload),
         capture_output=True,
         text=True,
-        cwd=str(root),
-        env=dict(env, LIGHTHOUSE_REPO_ROOT=str(root)),
+        cwd=str(cwd),
+        env=full,
         check=False,
-        timeout=30,
+        timeout=60,
     )
 
 
-# A BSD `date` on top of the real date (GNU or BSD): `-d` is rejected, and
-# `-j [-u] -f FMT VALUE [+OUT]` parses VALUE. With a GNU real date the parse is done
-# by `-d` (the format itself is not checked); with a BSD one it is passed on as it is.
-# `DATE_STUB_LOG`, when set, collects every argument, one per line.
-BSD_DATE_STUB = f"""#!/bin/bash
-real={shutil.which("date")}
-[ -n "${{DATE_STUB_LOG:-}}" ] && printf '%s\\n' "$@" >> "$DATE_STUB_LOG"
-utc=""
-value=""
-fmt=""
-parse=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -d) echo "date: illegal option -- d" >&2; exit 1 ;;
-    -j) parse=1 ;;
-    -u) utc=-u ;;
-    -f) shift; fmt="$1"; shift; value="$1" ;;
-    *) break ;;
-  esac
-  shift
-done
-if [ -n "$parse" ]; then
-  if "$real" --version >/dev/null 2>&1; then
-    exec "$real" $utc -d "$value" "$@"
-  fi
-  exec "$real" -j $utc -f "$fmt" "$value" "$@"
-fi
-exec "$real" $utc "$@"
-"""
+def run_guard(
+    root: Path, stand: str, payload: dict | str, env: dict
+) -> subprocess.CompletedProcess:
+    """Run the installed `run.sh usage-gate <stand>` of `root` with `payload` on stdin; the
+    shim records a refresh in `refresh_trace(env)`."""
+    env = dict(env, LIGHTHOUSE_REPO_ROOT=str(root))
+    env.setdefault("LIGHTHOUSE_SHIM_TRACE", str(refresh_trace(env)))
+    return run_sh_hook(root, "usage-gate", payload, cwd=root, env=env, args=(stand,))
 
 
 def load_hook_lib(name: str) -> types.ModuleType:

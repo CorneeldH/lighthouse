@@ -1,5 +1,6 @@
-// Package mdlinks extracts markdown links the way pack/core/lib/md_links.py does: a link in a
-// file is relative and points to an existing target, an absolute link is always a problem.
+// Package mdlinks extracts markdown links the way the former Python link parser of pack/core did:
+// a link in a file is relative and points to an existing target, an absolute link is always a
+// problem.
 //
 // Python's \s, splitlines and unquote are wider or more lenient than Go's \s, bufio.Scanner and
 // url.PathUnescape; this package spells those out so both sides give one verdict.

@@ -52,7 +52,8 @@ func sameList(got, want []string) bool {
 	return len(got) == 0 && len(want) == 0 || reflect.DeepEqual(got, want)
 }
 
-// TestFixtures runs the cases that tests/pack/test_md_links_fixtures.py runs against md_links.py.
+// TestFixtures runs the cases of tests/pack/fixtures/md_links, written with the former Python link
+// parser as the oracle.
 func TestFixtures(t *testing.T) {
 	f := loadFixtures(t)
 	t.Run("strip_code", func(t *testing.T) {

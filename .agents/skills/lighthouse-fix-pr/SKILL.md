@@ -271,6 +271,6 @@ Row 4 sees only a `Skill` call; a review done by hand in the same turn does not 
 - **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
   only on the branch must carry the full absolute worktree path: the IDE resolves chat links
   against the main checkout. In a `.md` file, relative instead;
-  `.claude/hooks/lighthouse/md-link-check.sh` blocks an absolute path there.
+  `.claude/hooks/lighthouse/run.sh md-link-check` blocks an absolute path there.
 - **In auto mode the permission classifier refuses `git worktree unlock` and `git worktree remove`
   on a locked worktree.** Do not clean up then; report it.
