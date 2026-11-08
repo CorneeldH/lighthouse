@@ -136,7 +136,13 @@ func (m *measurer) pickupTurns() ([]Turn, error) {
 }
 
 func (m *measurer) eachTurn(fn func(Turn)) error {
-	files, err := sessionFiles(m.dir, true)
+	return eachTurnIn(m.dir, true, m.since, fn)
+}
+
+// eachTurnIn calls fn for every turn of the session files in dir (and, with siblings, the
+// worktree sibling directories), after the --since cut.
+func eachTurnIn(dir string, withSiblings bool, since *string, fn func(Turn)) error {
+	files, err := sessionFiles(dir, withSiblings)
 	if err != nil {
 		return err
 	}
@@ -147,7 +153,7 @@ func (m *measurer) eachTurn(fn func(Turn)) error {
 		}
 		var records []map[string]any
 		for _, r := range all {
-			if after(r, m.since) {
+			if after(r, since) {
 				records = append(records, r)
 			}
 		}

@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"io"
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/kpi"
@@ -9,27 +12,36 @@ import (
 // newMeasureStartIssueKPICommand is `lighthouse measure-start-issue-kpi [metric]`. The package
 // kpi writes the table and the messages; the exit code is returned silently.
 func newMeasureStartIssueKPICommand() *cobra.Command {
+	return newMeasureCommand("measure-start-issue-kpi", "lighthouse-start-issue", kpi.StartIssueMetrics, kpi.RunStartIssue)
+}
+
+// newMeasureFixPRKPICommand is `lighthouse measure-fix-pr-kpi [metric]`.
+func newMeasureFixPRKPICommand() *cobra.Command {
+	return newMeasureCommand("measure-fix-pr-kpi", "lighthouse-fix-pr", kpi.FixPRMetrics, kpi.RunFixPR)
+}
+
+func newMeasureCommand(name, skill string, metrics []string, run func(kpi.Options, io.Writer, io.Writer) int) *cobra.Command {
 	var dir, since string
 	cmd := &cobra.Command{
-		Use:   "measure-start-issue-kpi [leadin|worktree-first|mistrigger|paths|gate|scout]",
-		Short: "Measure the lighthouse-start-issue skill from the Claude Code transcripts",
+		Use:   name + " [" + strings.Join(metrics, "|") + "]",
+		Short: "Measure the " + skill + " skill from the Claude Code transcripts",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			errOut := cmd.ErrOrStderr()
 			opts := kpi.Options{Dir: dir}
 			if len(args) > 1 {
-				return &exitError{code: kpi.RejectMetric(args[1], kpi.StartIssueMetrics, errOut), err: errSilent}
+				return &exitError{code: kpi.RejectMetric(args[1], metrics, errOut), err: errSilent}
 			}
 			if len(args) == 1 {
 				if args[0] == "" {
-					return &exitError{code: kpi.RejectMetric("", kpi.StartIssueMetrics, errOut), err: errSilent}
+					return &exitError{code: kpi.RejectMetric("", metrics, errOut), err: errSilent}
 				}
 				opts.Metric = args[0]
 			}
 			if cmd.Flags().Changed("since") {
 				opts.Since = &since
 			}
-			if code := kpi.RunStartIssue(opts, cmd.OutOrStdout(), errOut); code != 0 {
+			if code := run(opts, cmd.OutOrStdout(), errOut); code != 0 {
 				return &exitError{code: code, err: errSilent}
 			}
 			return nil

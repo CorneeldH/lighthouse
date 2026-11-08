@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -48,5 +49,18 @@ func TestMeasureStartIssueSince(t *testing.T) {
 	root.SetArgs([]string{"measure-start-issue-kpi", "worktree-first", "--dir", t.TempDir(), "--since", "2026-01-01"})
 	if code := execute(root, &errOut); code != 0 {
 		t.Fatalf("code %d stderr %q", code, errOut.String())
+	}
+}
+
+// Classification: fails when measure-fix-pr-kpi is not registered or prints no scope row.
+func TestMeasureCommandsRun(t *testing.T) {
+	var out, errOut bytes.Buffer
+	root := NewRoot(bytes.NewReader(nil), &out, &errOut)
+	root.SetArgs([]string{"measure-fix-pr-kpi", "scope", "--dir", t.TempDir()})
+	if code := execute(root, &errOut); code != 0 {
+		t.Fatalf("code %d stderr %q", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "\"past_the_boundary\": 0") {
+		t.Errorf("stdout %q", out.String())
 	}
 }
