@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAge, formatPct, formatReset } from './format'
+import { formatAge, formatDuration, formatPct, formatReset } from './format'
 
 describe('formatAge', () => {
   it('rounds down to the unit', () => {
@@ -35,5 +35,14 @@ describe('formatReset', () => {
   it('adds the weekday on another day', () => {
     // 2026-10-29 is a Thursday.
     expect(formatReset(new Date(2026, 9, 29, 16, 59).toISOString(), now)).toBe('Thu 16:59')
+  })
+})
+
+describe('formatDuration', () => {
+  it('shows hours and minutes', () => {
+    expect(formatDuration(30)).toBe('< 1 min')
+    expect(formatDuration(300)).toBe('5 min')
+    expect(formatDuration(7200)).toBe('2 h')
+    expect(formatDuration(7500)).toBe('2 h 5 min')
   })
 })
