@@ -338,6 +338,7 @@
               "about": "The command the test gate runs after a commit; empty turns the gate off.",
               "example": "uv run pytest -q",
               "readers": [
+                "internal/initcmd/gatecommand.go",
                 "pack/core/hooks/commit-test-gate.sh",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/skills/fix-pr",

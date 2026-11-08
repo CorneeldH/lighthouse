@@ -428,7 +428,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		_, _ = fmt.Fprintln(o.Err, "warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules")
 	}
 
-	if err := planConfig(o, load, tables, haveRepo); err != nil {
+	if err := planConfig(o, load, desired, tables, haveRepo); err != nil {
 		return nil, err
 	}
 
@@ -567,12 +567,26 @@ func proposeConfig(old []byte, tables []projectconfig.Table) (out []byte, manual
 	return out, manual, err
 }
 
-func planConfig(o Options, load func(string) (*planned, error), tables []projectconfig.Table, haveRepo bool) error {
+func planConfig(o Options, load func(string) (*planned, error), desired []packs.Unit, tables []projectconfig.Table, haveRepo bool) error {
 	p, err := load(configPath)
 	if err != nil {
 		return err
 	}
-	out, manual, err := proposeConfig(p.old, tables)
+	base := p.old
+	if o.Upgrade {
+		installed := func(rel string) bool {
+			for _, u := range desired {
+				if u.Kind == packs.KindFile && u.Path == rel {
+					return true
+				}
+			}
+			return false
+		}
+		migrated, before, after, stale := migrateGateCommand(p.old, installed)
+		reportGateCommand(o.Err, before, after, stale)
+		base = migrated
+	}
+	out, manual, err := proposeConfig(base, tables)
 	if err != nil {
 		return err
 	}
