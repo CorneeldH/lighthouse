@@ -36,7 +36,8 @@ REQUIRED = {
     "forge.owner": "derived",
     "forge.name": "derived",
 }
-SKIPPED_READERS = {"pack/core/lib/config.py"}
+# config.py and its Go port (internal/config/config.go, host.go) hold the key lists; they read no key for a purpose.
+SKIPPED_READERS = {"pack/core/lib/config.py", "internal/config/config.go", "internal/config/host.go"}
 # found_readers is a text match. These two dicts correct it, each entry with its reason: a file that
 # names a key without reading it, and a file that reads it through the attributes of the loaded
 # Config (cfg.language, repo.board.project_id) so no text names it.
