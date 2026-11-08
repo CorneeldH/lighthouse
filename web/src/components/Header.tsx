@@ -34,10 +34,14 @@ export function Header(): JSX.Element {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b-4 border-lh-yellow bg-lh-navy px-4 py-3 text-white">
       <div>
-        <h1 className="text-xl font-semibold">
-          lighthouse
-          {data && <span className="ml-2 text-base font-normal opacity-80">{data}</span>}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold">lighthouse</h1>
+          {data && (
+            <span className="rounded-full bg-lh-yellow px-2 py-0.5 text-xs font-medium text-lh-navy" title="version">
+              {data}
+            </span>
+          )}
+        </div>
         {error && <p role="alert">API unreachable</p>}
       </div>
       <div className="flex flex-wrap items-center gap-4 text-sm">

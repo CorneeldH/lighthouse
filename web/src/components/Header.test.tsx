@@ -36,6 +36,7 @@ describe('Header', () => {
     renderHeader()
 
     expect(await screen.findByText('1.2.3')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('lighthouse')
     expect(fetchMock).toHaveBeenCalledWith('/api/health', expect.anything())
   })
 
