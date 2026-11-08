@@ -64,6 +64,10 @@ func TestReadTranscriptSubagentCounts(t *testing.T) {
 // turn-after-notification claude took a turn on the notification of its subagent after the Stop
 // that made the forge report done. Without a summary, as in main-ended-subagent-working, no turn
 // counts as open.
+//
+// A SendMessage that resumes a subagent starts it again (#299): in background-resumed the agent
+// ended by its first notification, was resumed, and runs at the Stop; in
+// background-resumed-ended its second notification ends it.
 func TestReadTranscriptBackground(t *testing.T) {
 	cases := []struct {
 		dir        string
@@ -75,6 +79,8 @@ func TestReadTranscriptBackground(t *testing.T) {
 		{"background-ended", 0, false},
 		{"turn-after-notification", 0, true},
 		{"main-ended-subagent-working", 0, false},
+		{"background-resumed", 1, false},
+		{"background-resumed-ended", 0, false},
 	}
 	for _, c := range cases {
 		tr := read(t, c.dir, "s")
