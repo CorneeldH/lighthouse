@@ -1,0 +1,825 @@
+[
+ {
+  "name": "commit-plain",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "commit-after-cd-and",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/x && git commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "commit-after-cd-semicolon",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/x; git commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "commit-after-pipe",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "true | git commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "commit-after-or",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "false || git commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-dash-c",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git -C {root}/x commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-rtk",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "rtk git commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "commit-amend",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git commit --amend --no-edit",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "commit-all",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git commit -a",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "heredoc-body-is-no-commit",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "cat <<'EOF'\ngit commit -m x\nEOF",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "double-quoted-is-no-commit",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "echo \"git commit\"",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "comment-is-no-commit",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "# git commit",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "heredoc-in-command-substitution-is-no-commit",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "gh issue create --body \"$(cat <<'EOF'\nstap 1: git commit -m x\nEOF\n)\"",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "open-quote-is-unparseable",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "git commit -m 'x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": "unparseable"
+ },
+ {
+  "name": "new-dir-outside-repo-report-false",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/nieuw && git commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "new-dir-outside-repo-report-true",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/nieuw && git commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": true,
+  "expect": [
+   [
+    "commit",
+    "<new>",
+    "no",
+    "{root}/nieuw"
+   ]
+  ]
+ },
+ {
+  "name": "new-dir-inside-repo-report-false",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/x/sub && git commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x/sub"
+   ]
+  ]
+ },
+ {
+  "name": "new-dir-inside-repo-report-true",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/x/sub && git commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": true,
+  "expect": [
+   [
+    "commit",
+    "<new>",
+    "no",
+    "{root}/x/sub"
+   ]
+  ]
+ },
+ {
+  "name": "push-to-default-trunk",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin HEAD:trunk",
+  "cwd": "x",
+  "default_branch": "trunk",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "yes",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-plus-refspec-to-default-trunk",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin +refs/heads/trunk",
+  "cwd": "x",
+  "default_branch": "trunk",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "yes",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-to-main-while-default-is-trunk",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin HEAD:main",
+  "cwd": "x",
+  "default_branch": "trunk",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-to-main-default-main",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin HEAD:main",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "yes",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "repo-of-skips-dot-git-dir-without-head",
+  "setup": [
+   {
+    "dir": "home/.git/workflow-audit-tools"
+   },
+   {
+    "dir": "home/.claude/skills"
+   }
+  ],
+  "env": {},
+  "kind": "repo_of",
+  "path": "home/.claude/skills",
+  "expect": null
+ },
+ {
+  "name": "repo-of-walks-past-empty-dot-git-to-outer-repo",
+  "setup": [
+   {
+    "repo": "outer",
+    "branch": "main"
+   },
+   {
+    "dir": "outer/inner/.git"
+   }
+  ],
+  "env": {},
+  "kind": "repo_of",
+  "path": "outer/inner",
+  "expect": "{root}/outer"
+ },
+ {
+  "name": "repo-of-keeps-a-gitfile",
+  "setup": [
+   {
+    "file": "wt/.git",
+    "text": "gitdir: /nergens/.git/worktrees/wt\n"
+   }
+  ],
+  "env": {},
+  "kind": "repo_of",
+  "path": "wt",
+  "expect": "{root}/wt"
+ },
+ {
+  "name": "repo-of-keeps-a-broken-head",
+  "setup": [
+   {
+    "repo": "broken",
+    "branch": "main"
+   },
+   {
+    "overwrite": "broken/.git/HEAD",
+    "text": "garbage\n"
+   }
+  ],
+  "env": {},
+  "kind": "repo_of",
+  "path": "broken",
+  "expect": "{root}/broken"
+ },
+ {
+  "name": "walk-yields-dir-in-effect",
+  "setup": [
+   {
+    "dir": "a"
+   }
+  ],
+  "env": {},
+  "kind": "walk",
+  "command": "cd {root}/a && touch x; (cd /; ls); pwd",
+  "cwd": "",
+  "expect": [
+   [
+    "cd",
+    "{root}"
+   ],
+   [
+    "touch",
+    "{root}/a"
+   ],
+   [
+    "cd",
+    "{root}/a"
+   ],
+   [
+    "ls",
+    "/"
+   ],
+   [
+    "pwd",
+    "{root}/a"
+   ]
+  ]
+ },
+ {
+  "name": "walk-recurses-into-bash-c",
+  "setup": [],
+  "env": {},
+  "kind": "walk",
+  "command": "bash -c 'cd / && ls'; pwd",
+  "cwd": "",
+  "expect": [
+   [
+    "bash",
+    "{root}"
+   ],
+   [
+    "cd",
+    "{root}"
+   ],
+   [
+    "ls",
+    "/"
+   ],
+   [
+    "pwd",
+    "{root}"
+   ]
+  ]
+ },
+ {
+  "name": "walk-open-quote-is-unparseable",
+  "setup": [],
+  "env": {},
+  "kind": "walk",
+  "command": "echo 'open",
+  "cwd": "",
+  "expect": "unparseable"
+ },
+ {
+  "name": "git-target-follows-dash-c",
+  "setup": [],
+  "env": {},
+  "kind": "git_target",
+  "command": "git -C {root}/x status",
+  "cwd": "/",
+  "expect": {
+   "target": "{root}/x",
+   "action_word": "status"
+  }
+ },
+ {
+  "name": "non-ascii-before-commit",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo 'café — ok' && git commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "crlf-commit",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git status\r\ngit commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "vertical-tab-commit",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git status\u000bgit commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "form-feed-commit",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git status\fgit commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "unicode-line-separator-commit",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git status git commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "cwd-is-symlink-to-repo",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   },
+   {
+    "symlink": "link",
+    "to": "x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git commit -m x",
+  "cwd": "link",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/link",
+    "no",
+    "{root}/link"
+   ]
+  ]
+ },
+ {
+  "name": "dash-c-through-symlink",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "main"
+   },
+   {
+    "symlink": "link",
+    "to": "x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git -C {root}/link commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/link",
+    "no",
+    "{root}/link"
+   ]
+  ]
+ },
+ {
+  "name": "tilde-home-override",
+  "setup": [
+   {
+    "repo": "home/r",
+    "branch": "main"
+   }
+  ],
+  "env": {
+   "HOME": "{root}/home"
+  },
+  "kind": "find",
+  "command": "git -C ~/r commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/home/r",
+    "no",
+    "~/r"
+   ]
+  ]
+ },
+ {
+  "name": "tilde-quoted-is-relative",
+  "setup": [
+   {
+    "repo": "home/r",
+    "branch": "main"
+   }
+  ],
+  "env": {
+   "HOME": "{root}/home"
+  },
+  "kind": "find",
+  "command": "git -C '~/r' commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "home-variable-override",
+  "setup": [
+   {
+    "repo": "home/r",
+    "branch": "main"
+   }
+  ],
+  "env": {
+   "HOME": "{root}/home"
+  },
+  "kind": "find",
+  "command": "git -C $HOME/r commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/home/r",
+    "no",
+    "$HOME/r"
+   ]
+  ]
+ },
+ {
+  "name": "tilde-other-user",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "git -C ~root commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{home:root}",
+    "no",
+    "~root"
+   ]
+  ]
+ },
+ {
+  "name": "unset-variable-path",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "git -C $LH_UNSET_VAR commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "<unknown>",
+    "no",
+    "$LH_UNSET_VAR"
+   ]
+  ]
+ }
+]
