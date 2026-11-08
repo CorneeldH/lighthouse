@@ -85,7 +85,10 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 	// A payload that is not JSON still reaches the hook, which decides what it needs.
 	_ = json.Unmarshal(raw, &p)
 
-	res := f(ctx, env.Root, stand, p)
+	res, ok := invoke(ctx, name, f, env.Root, stand, p, errOut)
+	if !ok {
+		return ExitUnknown
+	}
 	if res.Code == 0 {
 		res.Output = withNotices(res.Output, env, p.SessionID)
 	}
@@ -101,6 +104,18 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 		}
 	}
 	return res.Code
+}
+
+// invoke runs f and turns a panic into a COULD NOT CHECK on errOut: a gate that crashed did not
+// check, and exit 3 lets run.sh apply the blocking list.
+func invoke(ctx context.Context, name string, f Func, root, stand string, p Payload, errOut io.Writer) (res Result, ok bool) {
+	defer func() {
+		if v := recover(); v != nil {
+			_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: hook %s: panic: %v\n", name, v)
+			res, ok = Result{}, false
+		}
+	}()
+	return f(ctx, root, stand, p), true
 }
 
 func remedy(env Env) string {

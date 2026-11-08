@@ -234,3 +234,14 @@ func TestRegisterTwicePanics(t *testing.T) {
 	}()
 	Register("dup", okHook("dup"))
 }
+
+// A panicking hook could not check: exit 3, so run.sh applies the blocking list, and no notice.
+func TestPanickingHookExits3(t *testing.T) {
+	register(t, "boom", func(context.Context, string, string, Payload) Result {
+		panic("nil map")
+	})
+	code, out, errOut := call(t, "boom", "s1", newEnv(t, "v0.12.1", "v0.13.0"))
+	if code != ExitUnknown || out != "" || errOut != "COULD NOT CHECK: hook boom: panic: nil map\n" {
+		t.Errorf("code %d out %q err %q", code, out, errOut)
+	}
+}
