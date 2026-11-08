@@ -1,0 +1,4 @@
+[host]
+name = "box"
+tailscale_ip = "100.64.0.1"
+scan_memory_max = "2g"

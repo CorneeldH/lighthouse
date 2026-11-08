@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "host-check"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host.toml: missing key host\n"
+ }
+]

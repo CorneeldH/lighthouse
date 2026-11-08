@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key forge.kind must be 'github', not \"it's\"\n"
+ }
+]

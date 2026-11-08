@@ -1,0 +1,74 @@
+[
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host unknown: no host.toml (host.toml)\n"
+ },
+ {
+  "args": [
+   "host.tailscale_ip"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host unknown: no host.toml (host.toml)\n"
+ },
+ {
+  "args": [
+   "host.gate_slice"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.gate_slice is not set\n"
+ },
+ {
+  "args": [
+   "host.scan_memory_max"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.scan_memory_max is not set\n"
+ },
+ {
+  "args": [
+   "host.scan_cpu_quota"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.scan_cpu_quota is not set\n"
+ },
+ {
+  "args": [
+   "host.gate_slots"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.gate_slots is not set\n"
+ },
+ {
+  "args": [
+   "host.gate_min_mem_available_gb"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.gate_min_mem_available_gb is not set\n"
+ },
+ {
+  "args": [
+   "host.gate_min_swap_free_gb"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.gate_min_swap_free_gb is not set\n"
+ },
+ {
+  "args": [
+   "host.bogus"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.bogus is not set\n"
+ }
+]

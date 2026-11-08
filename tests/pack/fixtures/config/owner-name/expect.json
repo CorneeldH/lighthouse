@@ -1,0 +1,26 @@
+[
+ {
+  "args": [
+   "forge.owner"
+  ],
+  "rc": 0,
+  "stdout": "Acme-1\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.name"
+  ],
+  "rc": 0,
+  "stdout": "wid.get_2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 0,
+  "stdout": "Acme-1/wid.get_2\n",
+  "stderr": ""
+ }
+]

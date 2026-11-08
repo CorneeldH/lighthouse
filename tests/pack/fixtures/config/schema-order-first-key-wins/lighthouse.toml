@@ -1,0 +1,6 @@
+[test_gate]
+slots = "x"
+[paths]
+specs = 5
+[ci]
+runs_on = 1

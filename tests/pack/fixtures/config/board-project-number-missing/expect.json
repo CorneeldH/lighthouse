@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "forge.board.project_id"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: missing key forge.board.project_number\n"
+ }
+]

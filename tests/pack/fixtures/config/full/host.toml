@@ -1,0 +1,9 @@
+[host]
+name = "box"
+tailscale_ip = "100.64.0.1"
+gate_slice = "gate.slice"
+scan_memory_max = "2G"
+scan_cpu_quota = "200%"
+gate_slots = 3
+gate_min_mem_available_gb = 8
+gate_min_swap_free_gb = 4.5

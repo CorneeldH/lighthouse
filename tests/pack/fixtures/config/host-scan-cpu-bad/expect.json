@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host.toml: key host.scan_cpu_quota must be a string like 200%: '200'\n"
+ }
+]

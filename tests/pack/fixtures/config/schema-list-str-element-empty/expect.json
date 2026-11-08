@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "paths.search_dirs"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key paths.search_dirs must be of type list[str]\n"
+ }
+]

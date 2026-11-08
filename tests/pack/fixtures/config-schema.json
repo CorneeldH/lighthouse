@@ -1,0 +1,284 @@
+{
+ "schema": [
+  [
+   "forge.default_branch",
+   "str"
+  ],
+  [
+   "paths.specs",
+   "str"
+  ],
+  [
+   "paths.plans",
+   "str"
+  ],
+  [
+   "paths.tenets",
+   "str"
+  ],
+  [
+   "paths.areas",
+   "str"
+  ],
+  [
+   "paths.history",
+   "str"
+  ],
+  [
+   "paths.labels",
+   "str"
+  ],
+  [
+   "paths.search_dirs",
+   "list[str]"
+  ],
+  [
+   "paths.mirror_exceptions",
+   "str"
+  ],
+  [
+   "labels.blocked_issue",
+   "str"
+  ],
+  [
+   "labels.blocked_external",
+   "str"
+  ],
+  [
+   "labels.needs_shaping",
+   "str"
+  ],
+  [
+   "labels.needs_decision",
+   "str"
+  ],
+  [
+   "labels.needs_hands",
+   "str"
+  ],
+  [
+   "labels.needs_testing",
+   "str"
+  ],
+  [
+   "labels.location_prefix",
+   "str"
+  ],
+  [
+   "labels.area_prefix",
+   "str"
+  ],
+  [
+   "test_gate.command",
+   "str"
+  ],
+  [
+   "test_gate.deadline_seconds",
+   "int"
+  ],
+  [
+   "test_gate.slots",
+   "int"
+  ],
+  [
+   "test_gate.slot_wait_seconds",
+   "int"
+  ],
+  [
+   "test_gate.unchecked_exit_codes",
+   "list[int]"
+  ],
+  [
+   "test_gate.evidence_test_dir",
+   "str"
+  ],
+  [
+   "ci.runs_on",
+   "str"
+  ],
+  [
+   "ci.bot_client_id_var",
+   "str"
+  ],
+  [
+   "ci.bot_private_key_secret",
+   "str"
+  ],
+  [
+   "ci.bot_login",
+   "str"
+  ],
+  [
+   "codex_usage.halt_pct_session",
+   "int"
+  ],
+  [
+   "codex_usage.vraag_pct_week",
+   "int"
+  ],
+  [
+   "codex_usage.app_server_timeout_seconds",
+   "int"
+  ],
+  [
+   "codex_usage.review_pct_session",
+   "int"
+  ],
+  [
+   "codex_usage.review_pct_week",
+   "int"
+  ],
+  [
+   "worktree_audit.protected_refs",
+   "list[str]"
+  ],
+  [
+   "worktree_audit.protected_paths",
+   "list[str]"
+  ],
+  [
+   "project.instructions_word_ceiling",
+   "int"
+  ],
+  [
+   "project.skill_prefix",
+   "str"
+  ],
+  [
+   "project.milestone_prefix",
+   "str"
+  ],
+  [
+   "python.source_dirs",
+   "list[str]"
+  ],
+  [
+   "python.lint_dirs",
+   "list[str]"
+  ],
+  [
+   "python.coverage_command",
+   "str"
+  ],
+  [
+   "python.nightly_workflow",
+   "str"
+  ],
+  [
+   "python.coverage_issue_labels",
+   "list[str]"
+  ],
+  [
+   "shell.strict_dirs",
+   "list[str]"
+  ],
+  [
+   "project.code_language",
+   "str"
+  ],
+  [
+   "project.code_language_exempt",
+   "list[str]"
+  ],
+  [
+   "usage_guard.resume",
+   "bool"
+  ],
+  [
+   "usage_guard.controller",
+   "bool"
+  ],
+  [
+   "project.code_language_paths",
+   "list[str]"
+  ],
+  [
+   "code_language_llm.url",
+   "str"
+  ],
+  [
+   "code_language_llm.models",
+   "list[str]"
+  ],
+  [
+   "code_language_llm.key_env",
+   "str"
+  ],
+  [
+   "code_language_llm.env_file",
+   "str"
+  ],
+  [
+   "review.roborev",
+   "str"
+  ]
+ ],
+ "defaults": {
+  "forge.default_branch": "main",
+  "paths.specs": "docs/developer/planning/specs",
+  "paths.plans": "docs/developer/planning/plans",
+  "paths.search_dirs": [
+   "."
+  ],
+  "labels.blocked_issue": "blocked-issue",
+  "labels.blocked_external": "blocked-external",
+  "labels.needs_shaping": "needs-shaping",
+  "labels.needs_decision": "needs-decision",
+  "labels.needs_hands": "needs-hands",
+  "labels.needs_testing": "needs-testing",
+  "test_gate.deadline_seconds": 270,
+  "test_gate.slots": 2,
+  "test_gate.slot_wait_seconds": 180,
+  "test_gate.unchecked_exit_codes": [],
+  "test_gate.evidence_test_dir": "tests/",
+  "ci.runs_on": "ubuntu-latest",
+  "codex_usage.halt_pct_session": 85,
+  "codex_usage.vraag_pct_week": 80,
+  "codex_usage.app_server_timeout_seconds": 20,
+  "codex_usage.review_pct_session": 90,
+  "codex_usage.review_pct_week": 95,
+  "worktree_audit.protected_refs": [],
+  "worktree_audit.protected_paths": [],
+  "project.instructions_word_ceiling": 3000,
+  "python.source_dirs": [
+   "src"
+  ],
+  "python.lint_dirs": [
+   "src",
+   "tests"
+  ],
+  "python.coverage_command": "uv run pytest -q",
+  "python.coverage_issue_labels": [],
+  "shell.strict_dirs": [
+   ".claude/hooks"
+  ],
+  "usage_guard.resume": false,
+  "usage_guard.controller": false,
+  "review.roborev": "off"
+ },
+ "base_keys": [
+  "forge.kind",
+  "forge.repo",
+  "forge.owner",
+  "forge.name",
+  "forge.board.project_number",
+  "forge.board.project_id",
+  "forge.board.status_field_id",
+  "forge.board.priority_field_id",
+  "project.language"
+ ],
+ "host_keys": [
+  "host.name",
+  "host.tailscale_ip",
+  "host.gate_slice",
+  "host.scan_memory_max",
+  "host.scan_cpu_quota",
+  "host.gate_slots",
+  "host.gate_min_mem_available_gb",
+  "host.gate_min_swap_free_gb"
+ ],
+ "option_prefixes": [
+  "forge.board.status_options.",
+  "forge.board.priority_options."
+ ]
+}

@@ -1,0 +1,3 @@
+[host]
+name = "b"
+tailscale_ip = "256.1.1.1"

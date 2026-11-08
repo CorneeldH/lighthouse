@@ -1,0 +1,26 @@
+[
+ {
+  "args": [
+   "project.language"
+  ],
+  "rc": 0,
+  "stdout": "en\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.repo is not set\n"
+ },
+ {
+  "args": [
+   "forge.default_branch"
+  ],
+  "rc": 0,
+  "stdout": "main\n",
+  "stderr": ""
+ }
+]

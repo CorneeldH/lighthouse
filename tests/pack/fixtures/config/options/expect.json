@@ -1,0 +1,114 @@
+[
+ {
+  "args": [
+   "forge.board.status_options.In progress"
+  ],
+  "rc": 0,
+  "stdout": "a2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.status_options.a.b"
+  ],
+  "rc": 0,
+  "stdout": "dotted\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.status_options.x y.z"
+  ],
+  "rc": 0,
+  "stdout": "both\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.priority_options.P 0"
+  ],
+  "rc": 0,
+  "stdout": "q0\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.priority_options.p.1"
+  ],
+  "rc": 0,
+  "stdout": "q1\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.status_options.missing"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.board.status_options.missing is not set\n"
+ },
+ {
+  "args": [
+   "x.a.b"
+  ],
+  "rc": 0,
+  "stdout": "exact\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.a.c"
+  ],
+  "rc": 0,
+  "stdout": "viaprefix\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "x.a"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: x.a is a table, not a value\n"
+ },
+ {
+  "args": [
+   "x2.a.b.c"
+  ],
+  "rc": 0,
+  "stdout": "dotted-first\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "y.a.b.c"
+  ],
+  "rc": 0,
+  "stdout": "nested-first\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "z.k.i.j"
+  ],
+  "rc": 0,
+  "stdout": "inline\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "z.k"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: z.k is a table, not a value\n"
+ },
+ {
+  "args": [
+   "forge.board.status_options"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: forge.board.status_options is a table, not a value\n"
+ }
+]

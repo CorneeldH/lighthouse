@@ -1,0 +1,6 @@
+[host]
+name = "box"
+tailscale_ip = "100.64.0.1"
+gate_min_mem_available_gb = 16
+gate_min_swap_free_gb = 3
+gate_slots = 1
