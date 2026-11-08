@@ -259,7 +259,7 @@ fi
 | `test_usage_gate.py::test_refresh_without_lighthouse` | geen binary maar wel een hook | taak 5 (Go) en `test_run_sh.py` |
 | `test_md_link_check.py::test_linkcheck_unresolvable_path` | `realpath`/`python3 -c` | n.v.t. |
 | de assert `load_hook_lib("md_links").absolute_links(...)` in `test_linkcheck_allows_link_to_branch_only_spec` (regel 95) | `md_links.py` | fixture `md_links` in taak 2; de hook-assert van die test blijft |
-| `test_bash_write_check.py::test_linkcheck_unchecked_form_is_on_the_first_line` | de premisse "jq ontbreekt" (88–113) | de test laat de binary van het PATH weg; `run.sh` meldt dan `COULD NOT CHECK`, en de assert dat de eerste regel met `Linkcheck: COULD NOT CHECK — ` begint (de vorm), blijft staan |
+| `test_bash_write_check.py::test_linkcheck_unchecked_form_is_on_the_first_line` | de premisse "jq ontbreekt" (88–113) | de test houdt de binary (`lighthouse_bin`) en `RUN_SH_TOOLS` op het PATH maar laat `git` weg, zoals `test_linkcheck_without_git`; dan draait de Go-hook zelf en meldt `Linkcheck: COULD NOT CHECK — <reden>` met exit 2. Beide asserts (rc 2, eerste regel met `Linkcheck: COULD NOT CHECK — `) blijven staan. Laat de binary niet weg: `run.sh` meldt dan zijn eigen `COULD NOT CHECK: lighthouse not on PATH` zonder `Linkcheck:` |
 | `test_usage_gate_resume.py::test_wake_cron` en de regel `cron = _load().wake_cron(...)` in `test_tool_window_writes_marker` | `resume.py` | fixture `wake_cron.json` (taak 4); de marker-asserts van die test blijven en lezen de cron uit de fixture |
 | `test_usage_gate_controller.py::test_pause_invalid_flag_without_alarm_runs_nothing` | `usage-gate.sh` rechtstreeks en `python3` niet forken | een variant via `run.sh` houdt de asserts op lege stdout/stderr en geen marker |
 | `test_skills_issue_flow.py::test_guard_names_the_pause_form` | brontekst van `usage_guard.py` en `resume.py` | `speech.json` bevat `/lighthouse-write-handoff ` en `.handoff.md` |
@@ -296,3 +296,10 @@ fi
 - `go run ./cmd/lighthouse init --upgrade` → `No changes.`
 - `ls .claude/hooks/lighthouse/usage-gate* .claude/hooks/lighthouse/permission-check* .claude/hooks/lighthouse/md-link-check.sh .lighthouse/lib/lighthouse_lib/usage_guard.py .lighthouse/lib/lighthouse_lib/md_links.py` → elk pad `No such file or directory`.
 - `grep -n python3 .claude/hooks/lighthouse/go-lint-gate.sh` → alleen de regels van `turn_roots.py` (stap 5 van de spec), niet meer die van het alarm.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Taak 7, table 'Tests die verdwijnen', row test_bash_write_check.py::test_linkcheck_unchecked_form_is_on_the_first_line): The new row has the test drop the lighthouse binary from the PATH and keeps the assert that the first line starts with `Linkcheck: COULD NOT CHECK — `. run.sh without a binary prints `COULD NOT CHECK: lighthouse not on PATH — …` with no `Linkcheck:` prefix, because only the Go hook writes that prefix. The test's stripped PATH also lacks grep, sed, awk and mktemp, so run.sh takes the non-blocking branch and exits 0.
