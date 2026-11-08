@@ -1,0 +1,32 @@
+[forge]
+kind = "github"
+repo = "acme/widgets"
+[forge.board]
+project_number = 7
+project_id = "PVT_x"
+status_field_id = "PVTSSF_s"
+[forge.board.status_options]
+"To do" = "a1"
+"In progress" = "a2"
+Done = "a3"
+"On hold" = "a4"
+"a.b" = "dotted"
+"x y.z" = "both"
+[forge.board.priority_options]
+"P 0" = "q0"
+"p.1" = "q1"
+[x]
+"a.b" = "exact"
+[x.a]
+b = "nested"
+c = "viaprefix"
+[x2."a.b"]
+c = "dotted-first"
+[x2.a.b]
+c = "nested-second"
+[y.a.b]
+c = "nested-first"
+[y."a.b"]
+c = "dotted-second"
+[z]
+k = {"i.j" = "inline"}

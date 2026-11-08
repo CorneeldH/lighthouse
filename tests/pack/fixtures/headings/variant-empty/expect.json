@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "a"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "headings: headings.toml: key a.en must be a non-empty string\n"
+ }
+]

@@ -1,0 +1,274 @@
+[
+ {
+  "args": [
+   "forge.default_branch"
+  ],
+  "rc": 0,
+  "stdout": "main\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.specs"
+  ],
+  "rc": 0,
+  "stdout": "docs/developer/planning/specs\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.plans"
+  ],
+  "rc": 0,
+  "stdout": "docs/developer/planning/plans\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.search_dirs"
+  ],
+  "rc": 0,
+  "stdout": ".\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.blocked_issue"
+  ],
+  "rc": 0,
+  "stdout": "blocked-issue\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.blocked_external"
+  ],
+  "rc": 0,
+  "stdout": "blocked-external\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.needs_shaping"
+  ],
+  "rc": 0,
+  "stdout": "needs-shaping\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.needs_decision"
+  ],
+  "rc": 0,
+  "stdout": "needs-decision\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.needs_hands"
+  ],
+  "rc": 0,
+  "stdout": "needs-hands\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.needs_testing"
+  ],
+  "rc": 0,
+  "stdout": "needs-testing\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.deadline_seconds"
+  ],
+  "rc": 0,
+  "stdout": "270\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.slots"
+  ],
+  "rc": 0,
+  "stdout": "2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.slot_wait_seconds"
+  ],
+  "rc": 0,
+  "stdout": "180\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.unchecked_exit_codes"
+  ],
+  "rc": 0,
+  "stdout": "",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.evidence_test_dir"
+  ],
+  "rc": 0,
+  "stdout": "tests/\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "ci.runs_on"
+  ],
+  "rc": 0,
+  "stdout": "ubuntu-latest\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.halt_pct_session"
+  ],
+  "rc": 0,
+  "stdout": "85\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.vraag_pct_week"
+  ],
+  "rc": 0,
+  "stdout": "80\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.app_server_timeout_seconds"
+  ],
+  "rc": 0,
+  "stdout": "20\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.review_pct_session"
+  ],
+  "rc": 0,
+  "stdout": "90\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.review_pct_week"
+  ],
+  "rc": 0,
+  "stdout": "95\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "worktree_audit.protected_refs"
+  ],
+  "rc": 0,
+  "stdout": "",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "worktree_audit.protected_paths"
+  ],
+  "rc": 0,
+  "stdout": "",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project.instructions_word_ceiling"
+  ],
+  "rc": 0,
+  "stdout": "3000\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "python.source_dirs"
+  ],
+  "rc": 0,
+  "stdout": "src\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "python.lint_dirs"
+  ],
+  "rc": 0,
+  "stdout": "src\ntests\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "python.coverage_command"
+  ],
+  "rc": 0,
+  "stdout": "uv run pytest -q\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "python.coverage_issue_labels"
+  ],
+  "rc": 0,
+  "stdout": "",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "shell.strict_dirs"
+  ],
+  "rc": 0,
+  "stdout": ".claude/hooks\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "usage_guard.resume"
+  ],
+  "rc": 0,
+  "stdout": "false\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "usage_guard.controller"
+  ],
+  "rc": 0,
+  "stdout": "false\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "review.roborev"
+  ],
+  "rc": 0,
+  "stdout": "off\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.tenets"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: paths.tenets is not set\n"
+ },
+ {
+  "args": [
+   "review.roborev"
+  ],
+  "rc": 0,
+  "stdout": "off\n",
+  "stderr": ""
+ }
+]

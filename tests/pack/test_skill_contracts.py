@@ -7,7 +7,7 @@ that before a user runs the skill, so every reference is checked here, per skill
 agent.
 
 A skill names a heading as `heading:<key>` (design choice 19) and a config key as the
-argument of `config.py` (design choice 6 and 7). Steps that depend on something that stays
+argument of `lighthouse config` (design choice 6 and 7; the binary since #274). Steps that depend on something that stays
 in paia (backlog-stand, board-sweep, the controller, the release flow, the pre-push chain)
 run only "if present" and otherwise report "skipped" (design choice 16).
 
@@ -90,7 +90,7 @@ def _pack_of(unit: Path) -> Path:
 def _visible(unit: Path) -> tuple[Path, ...]:
     """The packages whose files a unit may name without "if present": core and its own."""
     return tuple(dict.fromkeys((CORE, _pack_of(unit))))
-_CONFIG_RE = re.compile(r"config\.py\s+(\"[^\"]+\"|'[^']+'|[^\s`\"')|;]+)")
+_CONFIG_RE = re.compile(r"\blighthouse config\s+(?:--json\s+)?(\"[^\"]+\"|'[^']+'|[^\s`\"')|;]+)")
 _HEADING_RE = re.compile(r"heading:([A-Za-z0-9_]+)")
 # Not followed by `/`: `<git-common-dir>/lighthouse-tools/` is a path, not a skill.
 _LIGHTHOUSE_SKILL_RE = re.compile(r"(?<![\w./-])/lighthouse-([a-z0-9-]+)(?![a-z0-9/-])")
@@ -196,6 +196,15 @@ def test_config_keys_known(unit):
             if not config.is_known_key(key):
                 unknown.append(f"{rel}: {key}")
     assert not unknown, "\n".join(unknown)
+
+
+def test_config_re_finds_the_keys():
+    """Without hits `test_config_keys_known` passes empty: the regex must see the calls."""
+    text = "\n".join(_texts(CORE / "skills" / "route-issue").values())
+    keys = {m[1] for m in _CONFIG_RE.finditer(text)}
+    assert {"labels.blocked_issue", "labels.needs_shaping", "forge.repo"} <= keys, keys
+    assert [m[1] for m in _CONFIG_RE.finditer("x `lighthouse config --json forge.board` y")] == ["forge.board"]
+    assert not _CONFIG_RE.search("python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo")
 
 
 @pytest.mark.parametrize("unit", UNITS)
@@ -323,7 +332,9 @@ _TOOL_USES = {
     "git": r"\bgit (-C|worktree|log|fetch|diff|status|rev-parse|branch|push|commit|grep|show"
     r"|merge-base|checkout|switch|ls-files|add)\b",
     "python3": r"\bpython3\b",
-    "tomllib": r"lighthouse_lib/config\.py|tomllib",
+    # A lighthouse Python module reads lighthouse.toml through tomllib; `lighthouse config`
+    # does not (#274).
+    "tomllib": r"python3 \.lighthouse/(lib/lighthouse_lib|scripts)/|tomllib",
 }
 
 
@@ -339,6 +350,30 @@ def test_requires_names_the_skill_per_tool(skill):
         if re.search(pattern, text, re.M) and skill.name not in requires.get(tool, [])
     ]
     assert not missing, f"requires.toml lacks {skill.name} under {missing}"
+
+
+@pytest.mark.parametrize("skill", SKILL_PARAMS)
+def test_requires_python_only_where_the_skill_uses_it(skill):
+    """`init` reports a missing python3 or tomllib per unit: a skill that only calls the binary
+    is not named there (#274)."""
+    path = _pack_of(skill) / "requires.toml"
+    requires = tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    text = "\n".join(_texts(skill).values())
+    stale = [
+        tool
+        for tool in ("python3", "tomllib")
+        if skill.name in requires.get(tool, []) and not re.search(_TOOL_USES[tool], text, re.MULTILINE)
+    ]
+    assert not stale, f"requires.toml names {skill.name} under {stale}, the skill does not use it"
+
+
+def test_tool_patterns_see_python_and_tomllib():
+    """Both directions pass empty when the patterns miss: they must hit a real skill."""
+    text = "\n".join(_texts(CORE / "skills" / "close-issue").values())
+    assert re.search(_TOOL_USES["tomllib"], text, re.MULTILINE)
+    assert re.search(_TOOL_USES["python3"], text, re.MULTILINE)
+    route = "\n".join(_texts(CORE / "skills" / "route-issue").values())
+    assert not re.search(_TOOL_USES["tomllib"], route, re.MULTILINE)
 
 
 def test_every_writing_gh_command_in_the_skills_names_the_repo():

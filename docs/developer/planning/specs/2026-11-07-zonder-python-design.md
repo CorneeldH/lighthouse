@@ -135,7 +135,8 @@ als zijn tooling ontbreekt, blokkeert ook zonder binary: exit 2, de melding op s
 .claude/hooks/lighthouse/run.sh <naam> [stand]
 ```
 
-`run.sh` is het enige stuk shell dat overblijft: POSIX `sh`, rond de twintig regels. Het kent
+`run.sh` is het enige stuk shell dat overblijft: POSIX `sh` en kort. Het grootste deel is de
+bouw bij `version = "dev"` (§10). Het kent
 de lijst van blokkerende hooks uit §1; die lijst wordt met de pakketten geïnstalleerd en loopt
 dus gelijk met de registraties. Het zoekt `lighthouse` op het PATH. Ontbreekt die, dan geeft het
 de melding van §1 volgens die lijst: exit 2 met stderr, of exit 0 met de melding als
@@ -298,24 +299,52 @@ release is. Een sessie in die worktree (fix-pr, een roborev-ronde, een handoff) 
 Bash-call vastlopen op `main-commit-gate`. Daarom, alleen bij `version = "dev"` *(eigen keuze na
 spec-review, r2-f1)*:
 
-- `run.sh` gebruikt `.lighthouse/bin/lighthouse` uit de checkout (in `.gitignore`). Is die er
-  niet, of is hij gebouwd op een andere `HEAD` dan nu (een stempelbestand ernaast), dan bouwt
-  `run.sh` hem eerst met `go build ./cmd/lighthouse`. Zo draaien de hooks van een worktree altijd
-  de code van die branch.
-- Claude Code start meerdere hooks tegelijk, dus de build gaat onder een lock (`mkdir`-lock
-  naast de binary; wie hem niet krijgt, wacht tot de stempel klopt). De build schrijft naar een
-  tijdelijk bestand in dezelfde map, `mv` zet het op zijn plek, en pas daarna komt de stempel.
-  Een hook voert dus nooit een half geschreven binary uit. *(eigen keuze na spec-review, r3-f2)*
-- **Nooduitgang.** Bestaat `.lighthouse/bin/use-path` (in `.gitignore`), dan slaat `run.sh` de
-  checkout-binary over en gebruikt `lighthouse` van het PATH. Een agent maakt dat bestand met de
-  Write-tool, die geen Bash-gate passeert. Zo komt een sessie ook uit een branch waarvan de
-  gate compileert maar elke Bash-call blokkeert. De blokkademelding van een hook in een
-  `dev`-checkout noemt die uitgang. *(eigen keuze na spec-review, r3-f1)*
-- Lukt die build niet (de branch compileert niet), dan valt `run.sh` terug op `lighthouse` van
-  het PATH. Kent die binary de hook niet, dan wordt de onbekende hook bij `dev` een melding en
-  geen blokkade. Een worktree met kapotte Go-code sluit de agent dus niet buiten Bash; de
-  melding noemt de build-fout en het commando van §3.
+- `run.sh` gebruikt `.lighthouse/bin/lighthouse` uit de checkout. De hele map `.lighthouse/bin/`
+  staat in `.gitignore`. Naast de binary staat een stempel met de `HEAD` waarop hij is gebouwd.
+  Zo draaien de hooks van een worktree de code van die branch.
+- **Een hook wacht nooit op de build** *(besluit gebruiker, #274)*. Ontbreekt de binary, of
+  klopt de stempel niet met `HEAD`, dan start `run.sh` de build los van zichzelf en draait de
+  hook meteen verder. Ruimte om te wachten is er niet: de timeouts in `settings.json` zijn 5 tot
+  15 seconden, en een build met een koude Go-cache duurt rond 11 seconden (gemeten op deze repo,
+  #274). Een hook die over zijn timeout gaat, breekt Claude Code af als fout die niet blokkeert.
+  Een gate die op de build wacht, laat de call dus ongecontroleerd door.
+- Zolang de build loopt, draait de hook op de vorige checkout-binary. Is die er niet, dan op
+  `lighthouse` van het PATH, en is die er ook niet, dan geldt §1. Een gate draait de eerste
+  seconden na een commit dus de code van vlak ervoor. Dat is de prijs. Kent die binary de hook
+  niet, dan wordt de onbekende hook bij `dev` een melding en geen blokkade.
+- **De build.** Er is een `mkdir`-lock in `.lighthouse/bin/`. Wie de lock niet krijgt, start niets
+  en wacht niet. Een lock die ouder is dan 120 seconden geldt als achtergelaten en wordt
+  opgeruimd. De build schrijft naar een tijdelijk bestand in dezelfde map. `mv` zet het op zijn
+  plek, daarna komt de stempel, en tot slot gaat de lock weg. Een hook voert dus nooit een half
+  geschreven binary uit. *(eigen keuze na spec-review, r3-f2; opnieuw na #274)*
+- Het buildproces hangt niet aan stdin, stdout of stderr van de hook (die gaan naar `/dev/null`
+  en een logbestand). Het overleeft ook het einde van `run.sh`. Anders wacht Claude Code op de
+  pijp en is de build toch synchroon. Hoe het proces loskomt (`setsid` waar het bestaat,
+  anders `nohup`), is aan de bouwer.
+- **Een mislukte build** (de branch compileert niet) schrijft zijn uitvoer naar
+  `.lighthouse/bin/build.log`, met daarbij een marker met de `HEAD`. Voor die `HEAD` start
+  `run.sh` pas na 60 seconden een nieuwe build, en meteen weer bij een nieuwe `HEAD`. Zonder die
+  pauze start elke hook-call op een kapotte branch opnieuw een build. De binary leest die marker
+  zelf. Eén keer per sessie (de marker van §3) zet hij een `systemMessage` met het pad van het
+  log en het commando van §3. `run.sh` schrijft zelf niets naar stdout zodra hij een binary
+  aanroept, want dan staan er twee JSON-antwoorden door elkaar. Een PATH-binary van vóór deze
+  milestone kent de marker niet en zwijgt. Dat duurt tot de eerste release.
+- Een wijziging die nog niet gecommit is, komt pas in de binary bij de volgende `HEAD`. Dat is
+  bewust zo: de stempel volgt `HEAD` en niet de working tree. Een hash van de working tree bij elke
+  hook-call kost meer dan hij oplevert.
+- **Nooduitgang.** Bestaat `.lighthouse/bin/use-path`, dan bouwt `run.sh` niets en gebruikt hij
+  `lighthouse` van het PATH. Een agent maakt dat bestand met de Write-tool, en die passeert geen
+  Bash-gate. Zo komt een sessie ook uit een branch waarvan de gate compileert maar elke Bash-call
+  blokkeert. De blokkademelding van een hook in een `dev`-checkout noemt die uitgang. *(eigen
+  keuze na spec-review, r3-f1)*
+- Zonder `go` op het PATH bouwt `run.sh` niet en gebruikt hij `lighthouse` van het PATH.
 - Buiten `dev` bouwt `run.sh` nooit iets.
+
+De test van #274 bewijst het met een nep-`go` die slaapt en zijn aanroepen telt.
+Parallelle `run.sh`-aanroepen op een verouderde stempel starten precies één build. Elke aanroep
+is klaar ruim binnen 5 seconden, terwijl de build nog loopt. Na de build staat de nieuwe binary
+op zijn plek en klopt de stempel. Een lock ouder dan 120 seconden blokkeert de volgende build
+niet. Met `use-path` draait het PATH en start geen build.
 
 Elke PR draait `go run ./cmd/lighthouse init --upgrade` en commit het resultaat, zoals AGENTS.md
 voorschrijft.
@@ -395,8 +424,19 @@ past de M3-spec daarop aan. Het Windows-issue begint pas na deze milestone.
 
 ## Open na review
 
-Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
-de volgende fase of de PR-review weegt ze opnieuw.
+Ronde 3 haalde de rondegrens met deze twee punten nog open. Ze werden aanvaard als
+`accepted_open`. #274 heeft ze opnieuw gewogen tegen metingen op deze repo, en beide zijn nu
+gesloten.
+
+- r3-f1 is gesloten met de nooduitgang `use-path` (§10). Het opvolgende punt over de lengte van
+  `run.sh` in §2 is ook bijgewerkt. De oude regel dat `run.sh` de geïnstalleerde binary aanroept,
+  staat niet meer in §10.
+- r3-f2 is gesloten met de bouw in de achtergrond (§10). Een lock waarop gewacht wordt, lost r3-f2
+  in de praktijk niet op. De hooktimeouts (5 tot 15 s) zijn korter dan een koude build (rond
+  11 s), dus de wachtende gate werd afgebroken en de call ging ongecontroleerd door. Een
+  afgebroken build liet bovendien de lock achter.
+
+De oorspronkelijke bevindingen, ter verwijzing:
 
 - **r3-f1** (MAJOR, §10 Dogfood (new r2-f1 block) / §10 opening paragraph): The diff makes dev hooks run the branch's own code, and falls back to the PATH binary only when `go build` fails. A branch whose code compiles but whose hook misbehaves (e.g. `main-commit-gate` blocking every Bash call) has no exit. The binary is rebuilt only on a HEAD change, and a commit needs Bash. The diff also leaves the opposite rule in place a few lines up: 'in deze repo roept `run.sh` de geïnstalleerde `lighthouse` aan, niet de code van de branch'. The PR test strategy rests on that rule. The implementer must pick one of the two.
 - **r3-f2** (MAJOR, §10 Dogfood (new r2-f1 block), the rebuild in `run.sh`): Several Claude Code hooks fire in parallel on one event. Each one runs its own `run.sh`, so after every HEAD change they all see a stale stamp at the same moment. They then all run `go build -o .lighthouse/bin/lighthouse` into the same path and write the same stamp. The spec defines no lock, and no build-to-temp-then-rename. One `run.sh` can exec the binary while another is still rewriting it. The exec then fails with exit 126/ENOEXEC or crashes. Claude Code treats that as a non-blocking hook error, so a blocking gate passes unchecked.

@@ -7,13 +7,16 @@ from tests._site_node import run_map
 from tests.test_site_loop import REPO_BLOB, REPO_TREE, ROOT, SITE, load
 
 PARTS = ["skills", "agents", "hooks", "workflows"]
+RUNTIME = {"run.sh", "blocking"}
 
 
 def pack_parts() -> set[str]:
     """Every skill, agent, workflow and hook script under pack/, repo-relative."""
     pack = ROOT / "pack"
     parts = [p for p in pack.glob("*/skills/*") if p.is_dir()]
-    parts += [*pack.glob("*/agents/*.md"), *pack.glob("*/workflows/*"), *pack.glob("*/hooks/*.sh")]
+    parts += [*pack.glob("*/agents/*.md"), *pack.glob("*/workflows/*")]
+    # run.sh and blocking are the runtime of the hooks, not hooks: they are not on the reference.
+    parts += [p for p in pack.glob("*/hooks/*.sh") if p.name not in RUNTIME]
     return {p.relative_to(ROOT).as_posix() for p in parts}
 
 

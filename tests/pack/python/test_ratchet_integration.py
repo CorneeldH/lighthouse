@@ -28,6 +28,9 @@ import pytest
 
 from tests.pack._testkit import GIT_ENV, git, install_pack
 
+# ratchet reads lighthouse.toml through the binary of this checkout (#274).
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
+
 if shutil.which("uv") is None:
     if os.environ.get("CI"):
         pytest.fail("uv not on PATH; CI must install it before running this test", pytrace=False)

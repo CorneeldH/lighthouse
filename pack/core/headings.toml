@@ -1,7 +1,7 @@
 # The heading table (besluit 8): every heading that code or a skill reads as a
 # contract, with one variant per language. Writing uses `[project] language`;
 # reading accepts every variant. A skill names a heading as `heading:<key>`.
-# Read it with `python3 .lighthouse/lib/lighthouse_lib/headings.py <key>`.
+# Read it with `lighthouse headings <key>`.
 
 # Issues
 [acceptance_criteria]

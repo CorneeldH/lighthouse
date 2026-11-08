@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "forge.host"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key forge.host is only valid with kind = 'gitlab'\n"
+ }
+]

@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host.toml: key host.tailscale_ip must be an IPv4 address: '100.064.0.1'\n"
+ }
+]

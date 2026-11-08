@@ -2,6 +2,9 @@
 .claude/worktrees/
 .claude/settings.local.json
 
+# The checkout binary of run.sh at version = "dev" (spec zonder-python §10).
+.lighthouse/bin/
+
 # Python
 __pycache__/
 .venv/

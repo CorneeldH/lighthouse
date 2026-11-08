@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: option forge.board.priority_options.High must be a non-empty string\n"
+ }
+]

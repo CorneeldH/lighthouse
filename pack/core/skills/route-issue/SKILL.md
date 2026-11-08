@@ -28,13 +28,13 @@ present).
 ## Labels
 
 The label names come from `[labels]` in `lighthouse.toml`. Read each one with
-`python3 .lighthouse/lib/lighthouse_lib/config.py labels.<key>`; below, `labels.<key>` stands for
+`lighthouse config labels.<key>`; below, `labels.<key>` stands for
 the name that call prints:
 
-- `config.py labels.blocked_issue`, `config.py labels.blocked_external`: waits on something
+- `lighthouse config labels.blocked_issue`, `lighthouse config labels.blocked_external`: waits on something
   outside the session;
-- `config.py labels.needs_shaping`, `config.py labels.needs_decision`,
-  `config.py labels.needs_hands`, `config.py labels.needs_testing`: what has to happen in the
+- `lighthouse config labels.needs_shaping`, `lighthouse config labels.needs_decision`,
+  `lighthouse config labels.needs_hands`, `lighthouse config labels.needs_testing`: what has to happen in the
   session.
 
 ## Input
@@ -46,12 +46,12 @@ One or more issue numbers. Per number:
 - Otherwise one read call, with `dangerouslyDisableSandbox: true`:
 
   ```bash
-  R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+  R=$(lighthouse config forge.repo) || exit 2
   gh api "repos/$R/issues/<nr>"
   ```
 
   Only if `comments` > 0 follows
-  `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues/<nr>/comments"`.
+  `R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>/comments"`.
   Never `gh issue list --json` — that breaks under the rtk proxy.
 
 ## Output
@@ -97,7 +97,7 @@ Two entries: the label, or a blocker without a label.
 not from the body:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/issues/<nr>/dependencies/blocked_by" \
   --jq '.[] | "#\(.number) \(.state)"'
 ```

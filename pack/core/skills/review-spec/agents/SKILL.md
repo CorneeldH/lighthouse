@@ -32,7 +32,7 @@ round 2 and later only verify whether the fixes of the previous round hold.
 
 ## When
 
-- Spec written (in `python3 .lighthouse/lib/lighthouse_lib/config.py paths.specs`), before
+- Spec written (in `lighthouse config paths.specs`), before
   `superpowers:writing-plans`.
 - Also fine: a spec that comes from someone else and that you have to build on.
 
@@ -140,7 +140,7 @@ outcome is `aborted`, as with the limit.
 ### 1. Pick the spec
 
 Argument given → that path. No argument → the newest file in the spec directory
-(`python3 .lighthouse/lib/lighthouse_lib/config.py paths.specs`), and confirm which one you
+(`lighthouse config paths.specs`), and confirm which one you
 take.
 
 Then start an attempt, outside the sandbox of your harness (or ask for escalation): the script

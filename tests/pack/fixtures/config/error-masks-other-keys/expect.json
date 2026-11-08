@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key paths.specs must be of type str\n"
+ }
+]

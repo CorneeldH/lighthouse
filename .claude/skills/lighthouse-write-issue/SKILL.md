@@ -9,9 +9,9 @@ metadata:
 
 Standards for the issues of this repository. Pull requests follow
 `.github/pull_request_template.md` (`lighthouse-write-pr`). Issues and milestones are artefacts:
-write them in the project language (`python3 .lighthouse/lib/lighthouse_lib/config.py project.language`).
+write them in the project language (`lighthouse config project.language`).
 Headings that code or a skill reads are written as `heading:<key>`: write the variant that
-`python3 .lighthouse/lib/lighthouse_lib/headings.py <key>` prints.
+`lighthouse headings <key>` prints.
 
 ## Tool: use `gh api`, not `gh issue list --json`
 
@@ -22,7 +22,7 @@ Failed to parse gh issue list output / expected value at line 1 column 1
 ```
 
 For everything you have to read, use
-`R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues?..."`.
+`R=$(lighthouse config forge.repo) && gh api "repos/$R/issues?..."`.
 `gh issue create` and `gh issue edit` do work as usual.
 
 Second trap: **an unknown `--label` filter is silently ignored** instead of failing. You then get
@@ -43,7 +43,7 @@ needs network).
 Search in issues, open and closed, bounded to five:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 T='<key term>'
 gh api -X GET search/issues -f q="repo:$R is:issue $T" \
   --jq '.items[:5][] | "#\(.number) \(.state) \(.title)"'
@@ -52,7 +52,7 @@ gh api -X GET search/issues -f q="repo:$R is:issue $T" \
 Then look in the codebase and docs, whether the work is already there:
 
 ```bash
-B=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.default_branch) || exit 2
+B=$(lighthouse config forge.default_branch) || exit 2
 git fetch origin "$B" || echo 'FETCH FAILED: origin/'"$B"' may be stale'
 git grep -l '<key term>' "origin/$B" -- .
 ```
@@ -95,7 +95,7 @@ the codebase where needed.
 The label taxonomy of the project lives in one file, not in this skill:
 
 ```bash
-python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels
+lighthouse config paths.labels
 ```
 
 rc 0: read that file and follow it — which axes exist, which labels each axis has, the
@@ -104,13 +104,13 @@ boundaries between them. rc 1 (not set): only the `[labels]` keys and the GitHub
 
 #### 3a. Location axis
 
-`python3 .lighthouse/lib/lighthouse_lib/config.py labels.location_prefix`. rc 0: every issue
+`lighthouse config labels.location_prefix`. rc 0: every issue
 carries exactly one label with that prefix; the taxonomy file says which ones and when. rc 1: the
 project has no location axis, skip this step.
 
 #### 3b. Area axis
 
-`python3 .lighthouse/lib/lighthouse_lib/config.py labels.area_prefix`. rc 0: every issue carries
+`lighthouse config labels.area_prefix`. rc 0: every issue carries
 exactly one label with that prefix. If two fit, choose the centre of gravity — with two labels the
 issue counts in two axis views and the axis can no longer be audited. rc 1: no area axis.
 
@@ -125,7 +125,7 @@ label means it can be picked up; that is the ready queue.
 
 At most one. If two apply, the **lowest rank** wins — you cannot connect what has not been
 delivered yet, and not judge what has not been built yet. The names come from `[labels]`
-(`python3 .lighthouse/lib/lighthouse_lib/config.py labels.<key>`):
+(`lighthouse config labels.<key>`):
 
 | Rank | Key | Binds when |
 |---|---|---|
@@ -153,7 +153,7 @@ relation, and that comes first. See 3e.
 Fetch the open milestones, with description:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/milestones?state=open&per_page=100" \
   --jq '.[] | "\(.title)\t\(.open_issues) open\n\(.description)\n---"'
 ```
@@ -208,7 +208,7 @@ on the green PR of its predecessor. The invariant and the steps below stay the s
 2. **Set the relation.** `issue_id` is the numeric id of the blocker, not its issue number:
 
    ```bash
-   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+   R=$(lighthouse config forge.repo) || exit 2
    ID=$(gh api "repos/$R/issues/<blocker-nr>" --jq .id)
    gh api -X POST "repos/$R/issues/<nr>/dependencies/blocked_by" -F issue_id="$ID"
    ```
@@ -217,7 +217,7 @@ on the green PR of its predecessor. The invariant and the steps below stay the s
    behind and then reports a successful POST as failed. The blocker must be here:
 
    ```bash
-   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+   R=$(lighthouse config forge.repo) || exit 2
    gh api "repos/$R/issues/<nr>/dependencies/blocked_by" --jq '.[].number'
    ```
 
@@ -226,13 +226,13 @@ on the green PR of its predecessor. The invariant and the steps below stay the s
    rank comes off in the same edit (`--remove-label <label>`):
 
    ```bash
-   BLOCKED=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_issue) || exit 2
-   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+   BLOCKED=$(lighthouse config labels.blocked_issue) || exit 2
+   R=$(lighthouse config forge.repo) || exit 2
    gh issue edit <nr> --repo "$R" --add-label "$BLOCKED"
    ```
 
 5. **Final check**: the list from step 3 and
-   `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues/<nr>" --jq '[.labels[].name]'`.
+   `R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>" --jq '[.labels[].name]'`.
    Only when relation and winning blocking label stand there together, report success.
 
 At every error you never derive the state from which step failed: you read it and report what
@@ -241,7 +241,7 @@ compensate; a relation without a label is caught by the sweep as **label missing
 
 | Failure point | Read | Report |
 |---|---|---|
-| `gh issue create` fails or gives no URL | `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && T='<title>' && gh api "search/issues?q=repo:$R+in:title+\"$T\""` | exactly one hit with `created_at` after the noted start time (the literal ISO value from step 1, not `$START`) and the same body: go on with that number. No hit: error, stop. More than one, an older one, another body, or the search call fails: **unknown** + the search call, stop before every mutation. Never create again blindly |
+| `gh issue create` fails or gives no URL | `R=$(lighthouse config forge.repo) && T='<title>' && gh api "search/issues?q=repo:$R+in:title+\"$T\""` | exactly one hit with `created_at` after the noted start time (the literal ISO value from step 1, not `$START`) and the same body: go on with that number. No hit: error, stop. More than one, an older one, another body, or the search call fails: **unknown** + the search call, stop before every mutation. Never create again blindly |
 | POST fails | the list from step 3 | the relation stands: on to the label. It does not: one retry, then "#N stands without relation and without label" + the POST command |
 | the verification misses the blocker | the same | as above; the summary does not count |
 | setting the label fails | the label command from step 5 | the label stands: go on. It does not: "relation stands, label missing" + `gh issue edit <nr> --repo "$R" --add-label "$BLOCKED"` |
@@ -262,7 +262,7 @@ this step.
 `--label` always carries one label per axis the project has (3a, 3b) plus every free label from 3f.
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh issue create \
   --repo "$R" \
   --title "<title>" \
@@ -290,15 +290,15 @@ issue waits on another issue: first run 3e steps 2–5 and report the final chec
 After bulk work on labels, with the prefixes from 3a and 3b and the blocking labels from 3c:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
-LOC=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.location_prefix)
-AREA=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.area_prefix)
-BLK=$({ python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_shaping
-  python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_decision
-  python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_issue
-  python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_external
-  python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_hands
-  python3 .lighthouse/lib/lighthouse_lib/config.py labels.needs_testing; } | jq -R . | jq -sc .)
+R=$(lighthouse config forge.repo) || exit 2
+LOC=$(lighthouse config labels.location_prefix)
+AREA=$(lighthouse config labels.area_prefix)
+BLK=$({ lighthouse config labels.needs_shaping
+  lighthouse config labels.needs_decision
+  lighthouse config labels.blocked_issue
+  lighthouse config labels.blocked_external
+  lighthouse config labels.needs_hands
+  lighthouse config labels.needs_testing; } | jq -R . | jq -sc .)
 gh api "repos/$R/issues?state=open&per_page=100" --paginate |
   jq -c --arg loc "$LOC" --arg area "$AREA" --argjson blk "$BLK" '.[] | select(.pull_request|not) |
     {n:.number,
@@ -329,12 +329,12 @@ workflow above. Do not guess which part:
 | 5. Report the result | the final state as read, not the command that was sent |
 
 **Title and body** go through `gh api`. Read the current body first
-(`R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues/<nr>" --jq .body`),
+(`R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>" --jq .body`),
 write the *whole* new body with your write tool to a temporary file, and send that file along;
 never the body itself as a shell argument, because backticks and `$` are executed then:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api -X PATCH "repos/$R/issues/<nr>" -f title='<title>' -F body=@<file>
 ```
 
@@ -345,7 +345,7 @@ as what it names is done. Read first what stands: the labels, and for `labels.bl
 `blocked_by` list from 3e step 3. Then one of two paths:
 
 - **Nothing blocks any more**: label off, nothing on.
-  `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && OLD=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<old key>) && gh issue edit <nr> --repo "$R" --remove-label "$OLD"`.
+  `R=$(lighthouse config forge.repo) && OLD=$(lighthouse config labels.<old key>) && gh issue edit <nr> --repo "$R" --remove-label "$OLD"`.
   For `labels.blocked_issue` only when the 3e invariant says **lapsed** or **unlinked**: with an
   open blocker the label holds.
 - **Another label takes over** (a decision is taken, but now the issue waits on another one):
@@ -354,9 +354,9 @@ as what it names is done. Read first what stands: the labels, and for `labels.bl
   without a blocking label (the ready queue) or with two:
 
   ```bash
-  OLD=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<old key>) || exit 2
-  NEW=$(python3 .lighthouse/lib/lighthouse_lib/config.py labels.<new key>) || exit 2
-  R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+  OLD=$(lighthouse config labels.<old key>) || exit 2
+  NEW=$(lighthouse config labels.<new key>) || exit 2
+  R=$(lighthouse config forge.repo) || exit 2
   gh issue edit <nr> --repo "$R" --remove-label "$OLD" --add-label "$NEW"
   ```
 
@@ -381,7 +381,7 @@ the reason and the local workaround are. Post upstream only when the user asks f
 - **Naming**: `<project.milestone_prefix> <name>`, for example `LH M0 — Package` or
   `WEB infra: security hygiene of the standing state`. The repo prefix goes in the title, because
   a project board over several repos slices on milestone or on repo, never on both. Read it with
-  `MP=$(python3 .lighthouse/lib/lighthouse_lib/config.py project.milestone_prefix)`; rc 1 means no
+  `MP=$(lighthouse config project.milestone_prefix)`; rc 1 means no
   prefix: the title gets none, and the report says
   `milestone prefix: none — no [project] milestone_prefix set`. The form after the prefix
   (`M<n> — …` or `<area>: …`) is project content and lives in the file under `[paths] labels`.
@@ -391,7 +391,7 @@ the reason and the local workaround are. Post upstream only when the user asks f
   See `lighthouse-close-issue`.
 - **Description**: the pitch from "Pitch (Shape Up)" below, with its seven headings in that
   order. The ID of a milestone is its number in the URL. If the project has tenets
-  (`python3 .lighthouse/lib/lighthouse_lib/config.py paths.tenets`, only if present), the pitch
+  (`lighthouse config paths.tenets`, only if present), the pitch
   names the crux of its main area under *Problem / Opportunity*.
 - **Hard rule**: *a milestone without DoD text in its description does not exist.* Without that
   rule blocks grow into eternal bins again.
@@ -402,8 +402,8 @@ the reason and the local workaround are. Post upstream only when the user asks f
 Creating goes through the REST API; `gh` has no `milestone create`:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
-MP=$(python3 .lighthouse/lib/lighthouse_lib/config.py project.milestone_prefix); rc=$?
+R=$(lighthouse config forge.repo) || exit 2
+MP=$(lighthouse config project.milestone_prefix); rc=$?
 [ "$rc" -eq 1 ] && echo "milestone prefix: none — no [project] milestone_prefix set"
 [ "$rc" -ge 2 ] && exit 2
 gh api --method POST "repos/$R/milestones" \
@@ -418,13 +418,13 @@ structure above the milestone. Linking goes through the REST API; `sub_issue_id`
 `id` of the child, not the number:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 CHILD_DBID=$(gh api "repos/$R/issues/<child-nr>" --jq '.id')
 gh api --method POST "repos/$R/issues/<parent-nr>/sub_issues" -F sub_issue_id="$CHILD_DBID"
 ```
 
 Verify with
-`R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues/<parent-nr>/sub_issues" --jq '.[].number'`.
+`R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<parent-nr>/sub_issues" --jq '.[].number'`.
 
 ## The board (only if configured)
 
@@ -442,14 +442,14 @@ The board can also have a field **Priority** (`P0` · `P1` · `P2`, no value = a
 Setting it goes in the board UI, or like this:
 
 ```bash
-P=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_id) || exit $?
-F=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.priority_field_id) || exit $?
-S=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.priority_options.<P0|P1|P2>) || exit $?
+P=$(lighthouse config forge.board.project_id) || exit $?
+F=$(lighthouse config forge.board.priority_field_id) || exit $?
+S=$(lighthouse config forge.board.priority_options.<P0|P1|P2>) || exit $?
 gh project item-edit --id <item-id> --project-id "$P" --field-id "$F" --single-select-option-id "$S"
 ```
 
 An item id you read with
-`N=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.board.project_number) && O=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.owner) && gh project item-list "$N" --owner "$O" --format json --jq '.items[] | select(.content.number==<nr>) | .id'`.
+`N=$(lighthouse config forge.board.project_number) && O=$(lighthouse config forge.owner) && gh project item-list "$N" --owner "$O" --format json --jq '.items[] | select(.content.number==<nr>) | .id'`.
 
 `On hold` is the place for work parked on purpose; there is no on-hold label. Setting it goes in
 the board UI, or through `gh project item-edit` (requires the `project` scope plus project, item,
@@ -468,7 +468,7 @@ AC = WHAT this specific task must do. DoD = HOW we secure quality.
 ## Issue Templates
 
 **IMPORTANT**: every template has fixed sections. Do not mix them. Write the plain headings in
-the project language; a `heading:<key>` heading in the variant `headings.py <key>` prints.
+the project language; a `heading:<key>` heading in the variant `lighthouse headings <key>` prints.
 
 ### Bug
 
@@ -551,7 +551,7 @@ Write "None.".
   `→ #<nr>`. A bullet without `→ #<nr>` is open. That issue may be the current issue, if its spec
   answered the question. Updating: write the *whole* pitch, only that bullet changed, with your
   write tool (not through `echo` or a heredoc) to a temporary file, and send that file along:
-  `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api -X PATCH "repos/$R/milestones/<n>" -F description=@<file>`.
+  `R=$(lighthouse config forge.repo) && gh api -X PATCH "repos/$R/milestones/<n>" -F description=@<file>`.
   Never the pitch itself as a shell argument: backticks and `$` are executed then.
 - **Timebox**: the fog gets no timebox of its own. If the answer does not fit in the appetite, it
   becomes a no-go or a next milestone. No label and no issue above the milestone.

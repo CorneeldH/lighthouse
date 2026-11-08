@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host.toml: key host must be a table\n"
+ }
+]

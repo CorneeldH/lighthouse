@@ -1,0 +1,31 @@
+[project]
+language = "en"
+[test_gate]
+command = ""
+[x]
+dt = 2020-01-02T03:04:05Z
+odt = 2020-01-02T03:04:05+01:00
+ldt = 2020-01-02T03:04:05
+ld = 2020-01-02
+lt = 03:04:05
+t = true
+f = false
+i = -42
+big = 9007199254740993
+s = "text"
+nan = nan
+pnan = +nan
+inf = inf
+pinf = +inf
+ninf = -inf
+mixed = [1, "a", true, 2.5]
+nested = [[1], [2]]
+withdt = [2020-01-02T03:04:05Z]
+empty = []
+inline = {a = 1}
+[x.sub]
+k = "v"
+[[arr]]
+n = 1
+[[arr]]
+n = 2

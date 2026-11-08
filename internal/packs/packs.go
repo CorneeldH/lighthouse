@@ -32,6 +32,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -147,8 +148,12 @@ func IsLighthouseCommand(command string) bool {
 // into .claude/skills/lighthouse-* or HookDir (spec, decision 22). Every other rule is
 // the project's, whatever the manifest says.
 func IsLighthouseRule(rule string) bool {
-	return strings.Contains(rule, skillDirs[0]) || strings.Contains(rule, HookDir)
+	return strings.Contains(rule, skillDirs[0]) || strings.Contains(rule, HookDir) || binaryRule.MatchString(rule)
 }
+
+// binaryRule is a permission for the lighthouse binary itself: one subcommand, never the
+// bare binary or another program whose name starts with "lighthouse".
+var binaryRule = regexp.MustCompile(`^Bash\(lighthouse [a-z-]+(:\*)?\)$`)
 
 // installDirs are the directories a file unit may live in; agents are files named
 // .claude/agents/lighthouse-<name>.md directly.
@@ -514,7 +519,7 @@ func parsePermissions(name string, data []byte) ([]Unit, error) {
 			return nil, fail("allow[%d] %q appears twice", i, rule)
 		}
 		if !IsLighthouseRule(rule) {
-			return nil, fail("allow[%d] %q does not point into %s* or %s", i, rule, skillDirs[0], HookDir)
+			return nil, fail("allow[%d] %q is not a lighthouse rule: it must point into %s* or %s, or be Bash(lighthouse <subcommand>)", i, rule, skillDirs[0], HookDir)
 		}
 		seen[rule] = true
 		units = append(units, Unit{Kind: KindPermission, Package: name, Path: settingsPath, ID: rule, Content: []byte(rule)})

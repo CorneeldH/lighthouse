@@ -1019,19 +1019,9 @@ func TestInitReportsLookupError(t *testing.T) {
 }
 
 func TestDefaultLookupReadsProposedConfig(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
 	root := newRepo(t)
 	gitIn(t, root, "remote", "add", "origin", "git@github.com:acme/widgets.git")
 	m := testPacks()
-	for _, f := range []string{"__init__.py", "config.py"} {
-		b, err := fs.ReadFile(pack.Files, "core/lib/"+f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		m["core/lib/"+f] = &fstest.MapFile{Data: b}
-	}
 	m["core/workflows/x.yml"] = file("repo: @@forge.repo@@\n")
 	r := run(t, root, "", all(yes, func(o *Options) { o.Packs = m }))
 	if r.code != 0 {
@@ -1042,7 +1032,8 @@ func TestDefaultLookupReadsProposedConfig(t *testing.T) {
 	}
 }
 
-func TestWorkflowSkippedWithoutPython(t *testing.T) {
+// AC 5: a PATH without python3 still fills the workflow from the Go reader.
+func TestFillWorkflowsWithoutPython(t *testing.T) {
 	gitPath, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
@@ -1051,14 +1042,17 @@ func TestWorkflowSkippedWithoutPython(t *testing.T) {
 	if err := os.Symlink(gitPath, filepath.Join(bin, "git")); err != nil {
 		t.Fatal(err)
 	}
-	root := newRepo(t)
 	t.Setenv("PATH", bin)
+	if _, err := exec.LookPath("python3"); err == nil {
+		t.Fatal("python3 is still on PATH")
+	}
+	root := newRepo(t)
 	r := run(t, root, "", all(yes, withWorkflow("a: @@ci.runs_on@@\n")))
-	if r.code != 0 || exists(root, ".github/workflows/lighthouse-x.yml") {
+	if r.code != 0 {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
-	if !strings.Contains(r.err, "workflow lighthouse-x.yml not installed: python3 is not available") {
-		t.Fatalf("err = %q", r.err)
+	if got := read(t, root, ".github/workflows/lighthouse-x.yml"); got != "# lighthouse: core@dev\na: ubuntu-latest\n" {
+		t.Fatalf("workflow = %q\n%s", got, r.err)
 	}
 }
 
@@ -1239,42 +1233,16 @@ func TestUpgradeKeepsWorkflowItCannotFill(t *testing.T) {
 	}
 }
 
-// Finding 2: a crashing config reader is an error, not "not set".
-func TestDefaultLookupCrashIsNotNotSet(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
+// Finding 2: a config that cannot be read is an error naming the key, not "not set".
+func TestDefaultLookupConfigErrorIsNotNotSet(t *testing.T) {
 	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "[ci]\nruns_on = 5\n")
 	m := testPacks()
-	m["core/lib/__init__.py"] = file("")
-	m["core/lib/config.py"] = file("raise RuntimeError('crash')\n")
 	m["core/workflows/x.yml"] = file("a: @@ci.runs_on@@\n")
 	r := run(t, root, "", all(yes, func(o *Options) { o.Packs = m }))
-	if strings.Contains(r.err, "is not set") || !strings.Contains(r.err, "crash") {
+	if exists(root, ".github/workflows/lighthouse-x.yml") ||
+		strings.Contains(r.err, "is not set") || !strings.Contains(r.err, "ci.runs_on") {
 		t.Fatalf("err = %q", r.err)
-	}
-}
-
-// Finding 2: the user's PYTHON* environment does not break the lookup.
-func TestDefaultLookupIgnoresPythonEnv(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-	t.Setenv("PYTHONSAFEPATH", "1")
-	t.Setenv("PYTHONPATH", t.TempDir())
-	root := newRepo(t)
-	gitIn(t, root, "remote", "add", "origin", "git@github.com:acme/widgets.git")
-	m := testPacks()
-	for _, f := range []string{"__init__.py", "config.py"} {
-		b, err := fs.ReadFile(pack.Files, "core/lib/"+f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		m["core/lib/"+f] = &fstest.MapFile{Data: b}
-	}
-	m["core/workflows/x.yml"] = file("repo: @@forge.repo@@\n")
-	if r := run(t, root, "", all(yes, func(o *Options) { o.Packs = m })); r.code != 0 || !exists(root, ".github/workflows/lighthouse-x.yml") {
-		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
 }
 

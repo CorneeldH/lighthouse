@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "paths.specs"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key ci must be a table\n"
+ }
+]

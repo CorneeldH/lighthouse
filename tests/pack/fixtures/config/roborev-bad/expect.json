@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "review.roborev"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key review.roborev must be 'local' or 'off', not 'remote'\n"
+ }
+]

@@ -24,6 +24,7 @@
                 "en"
               ],
               "readers": [
+                "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/judgment.go",

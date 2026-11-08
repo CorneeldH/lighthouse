@@ -2,7 +2,8 @@
 
 From the source repository's `test_quality_prcov_issues.py`. The identity comes from
 `lighthouse.toml` (the `lighthouse_toml` fixture, with a board) instead of the source
-repository's controller; the handoff is checked with `protocol` from `pack/core`.
+repository's controller, read through the `lighthouse` binary of this checkout; the handoff is
+checked with `protocol` from `pack/core`, independent of the binary.
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ LEGACY_HANDOFF = (
 
 
 @pytest.fixture(autouse=True)
-def _board(lighthouse_toml, monkeypatch):
+def _board(lighthouse_toml, lighthouse_bin, monkeypatch):
     monkeypatch.setenv("LIGHTHOUSE_HANDOFF_WORKTREE", "/srv/checkout")
     return lighthouse_toml
 
@@ -334,7 +335,7 @@ def test_no_board_section_means_no_board(lighthouse_toml):
     assert pi.board() is None
 
 
-def test_prcov_issues_finds_lighthouse_lib_from_its_own_path(tmp_path):
+def test_prcov_issues_imports_from_its_own_path(tmp_path):
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     proc = subprocess.run(
         [sys.executable, str(PY_SCRIPTS / "quality" / "prcov_issues.py")],
@@ -345,6 +346,33 @@ def test_prcov_issues_finds_lighthouse_lib_from_its_own_path(tmp_path):
         check=False,
     )
     assert proc.returncode == 0, proc.stderr
+
+
+def test_a_broken_config_is_a_config_error(lighthouse_toml):
+    """Rc 2 of `lighthouse config` carries its stderr into the error."""
+    lighthouse_toml('[forge]\nrepo = "not-a-repo"\n')
+    with pytest.raises(pi.ConfigError, match="forge.repo"):
+        pi.default_branch()
+
+
+def test_a_missing_binary_is_a_config_error(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(pi.ConfigError, match="not on the PATH"):
+        pi.board()
+
+
+def test_an_older_binary_is_not_read_as_unset(monkeypatch, tmp_path):
+    """A binary without `config` exits 1 too ("unknown command"); that is no missing key."""
+    stub = tmp_path / "lighthouse"
+    stub.write_text('#!/bin/sh\necho \'Error: unknown command "config" for "lighthouse"\' >&2\nexit 1\n')
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    with pytest.raises(pi.ConfigError, match="unknown command"):
+        pi.nightly_workflow()
+
+
+def test_the_controller_option_is_a_constant():
+    assert pi.CONTROLLER_STATUS_OPTION == "Controller"
 
 
 def test_handoff_parses_with_protocol():

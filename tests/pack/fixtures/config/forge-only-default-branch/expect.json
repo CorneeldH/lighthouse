@@ -1,0 +1,34 @@
+[
+ {
+  "args": [
+   "forge.default_branch"
+  ],
+  "rc": 0,
+  "stdout": "dev\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.repo is not set\n"
+ },
+ {
+  "args": [
+   "forge.owner"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.owner is not set\n"
+ },
+ {
+  "args": [
+   "project.language"
+  ],
+  "rc": 0,
+  "stdout": "en\n",
+  "stderr": ""
+ }
+]

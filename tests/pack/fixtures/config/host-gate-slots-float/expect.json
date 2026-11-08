@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host.toml: key host.gate_slots must be a whole number of at least 1: 2.0\n"
+ }
+]

@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host.toml: key host.gate_min_mem_available_gb must be a finite number above 0: nan\n"
+ }
+]

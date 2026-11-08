@@ -126,13 +126,13 @@ def test_route_issue_reads_labels_from_config():
             "needs_hands",
             "needs_testing",
         ):
-            assert f"config.py labels.{key}" in body
+            assert f"lighthouse config labels.{key}" in body
         assert "3-blocked" not in body and "3-needs" not in body
 
 
 def test_route_issue_reads_the_repo_from_config():
     for body in skill("route-issue"):
-        assert "python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo" in body
+        assert "lighthouse config forge.repo" in body
         assert "identity" not in body
 
 
@@ -188,9 +188,9 @@ def test_start_issue_asks_already_done_before_the_worktree():
     for body in skill("start-issue"):
         step2 = _step(body, "### 2.", "### 3.")
         recipe = _bash_block(body, "**Already done?**")
-        assert "config.py forge.default_branch" in recipe
+        assert "lighthouse config forge.default_branch" in recipe
         assert "FETCH FAILED" in recipe
-        assert "config.py paths.search_dirs" in recipe
+        assert "lighthouse config paths.search_dirs" in recipe
         assert "already done? no — searched for " in step2
         assert "does not cover the AC" in step2  # variant of the no line
         assert "carry on anyway" in step2
@@ -216,8 +216,8 @@ def test_start_issue_reads_fog_from_the_milestone():
 def test_start_issue_reads_axes_from_config():
     for body in skill("start-issue"):
         step2 = _step(body, "### 2.", "### 3.")
-        assert "config.py labels.location_prefix" in step2
-        assert "config.py labels.area_prefix" in step2
+        assert "lighthouse config labels.location_prefix" in step2
+        assert "lighthouse config labels.area_prefix" in step2
         assert "1-loc" not in body and "2-area" not in body
 
 
@@ -226,7 +226,7 @@ def test_start_issue_skips_board_without_config():
     for body in skill("start-issue"):
         step3 = _step(body, "### 3.", "### 4.")
         assert "python3 .lighthouse/scripts/board_start.py <nr>" in step3
-        assert "config.py forge.board.project_number" in step3 and "rc 1" in step3
+        assert "lighthouse config forge.board.project_number" in step3 and "rc 1" in step3
         assert "board: skipped" in step3
         assert "is not a stop" in step3
 
@@ -242,7 +242,7 @@ def test_start_issue_forbids_skipping_without_a_decision():
 
 def test_start_issue_names_the_project_paths():
     for body in skill("start-issue"):
-        assert "config.py paths.specs" in body and "config.py paths.plans" in body
+        assert "lighthouse config paths.specs" in body and "lighthouse config paths.plans" in body
 
 
 def test_start_issue_keeps_the_measurements_not_the_numbers():
@@ -521,7 +521,7 @@ def test_handoff_writes_new_tokens():
         post = body[body.index("5. **Post**") : body.index("6. **Status")]
         for token in ("anchor: <anchor>", "next: <command> <argument>", "when: now"):
             assert token in post, token
-        assert "headings.py kind_handoff" in post
+        assert "lighthouse headings kind_handoff" in post
         for old in ("volgende:", "wanneer:", "anker:", "`nu`", "`nacht`"):
             assert old not in body, old
         assert "`when:`** is `now`, unless the user chooses or asks for `night`" in body
@@ -537,8 +537,8 @@ def test_handoff_board_and_host_from_config():
             "forge.board.status_field_id",
             "forge.board.status_options.Controller",
         ):
-            assert f"config.py {key}" in body, key
-        assert "config.py host-check" in body
+            assert f"lighthouse config {key}" in body, key
+        assert "lighthouse config host-check" in body
         assert "the always-on host (`host.toml`)" in body
         assert "LIGHTHOUSE_CONTROLLER_RUN" in body
         assert "identity" not in body and "controller_tick" not in body

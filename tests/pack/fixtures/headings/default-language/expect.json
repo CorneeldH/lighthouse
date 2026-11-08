@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "kind_handoff"
+  ],
+  "rc": 0,
+  "stdout": "Handoff\n",
+  "stderr": ""
+ }
+]

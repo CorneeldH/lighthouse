@@ -1,0 +1,82 @@
+[
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.repo is not set\n"
+ },
+ {
+  "args": [
+   "forge.owner"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.owner is not set\n"
+ },
+ {
+  "args": [
+   "forge.name"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.name is not set\n"
+ },
+ {
+  "args": [
+   "forge.kind"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.kind is not set\n"
+ },
+ {
+  "args": [
+   "forge.default_branch"
+  ],
+  "rc": 0,
+  "stdout": "main\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project.language"
+  ],
+  "rc": 0,
+  "stdout": "en\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.project_number"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.board.project_number is not set\n"
+ },
+ {
+  "args": [
+   "forge.board.status_options.Done"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: forge.board.status_options.Done is not set\n"
+ },
+ {
+  "args": [
+   "nope.nothing"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: nope.nothing is not set\n"
+ },
+ {
+  "args": [
+   "host.bogus"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.bogus is not set\n"
+ }
+]

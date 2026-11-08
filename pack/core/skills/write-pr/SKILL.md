@@ -25,7 +25,7 @@ question: interactive and headless (controller run, if present) the outcome is t
 ## V1. Read the issue
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/issues/<nr>" \
   --jq '{title, milestone: .milestone.title, body}'
 ```
@@ -160,7 +160,7 @@ merge would close the issue before the check after the merge.
 
 ## Documents of the linked issues
 
-Read the taxonomy file with `python3 .lighthouse/lib/lighthouse_lib/config.py paths.labels`.
+Read the taxonomy file with `lighthouse config paths.labels`.
 rc 1 (not set), or a path to a file that does not exist: there is no taxonomy file; skip this
 section, with no note in the body. The same when the file has no label with a `Document` column
 entry. rc 2: the configuration is broken; stop and report it, no PR.
@@ -237,12 +237,12 @@ option not on the list is refused, an option with `=` and an empty value too.
 | `git grep` | the flags of `grep` without `-r`/`-R`/`-s`; as a value option only `-e`; `--`, refs and paths | `-O`, `--open-files-in-pager`, `--include`, `--exclude`, `--regexp` (write `-e`), branch-relative refs |
 | `test`, `ls`, `wc`, `cat` | `test`: any expression; `ls`: `-l`, `-a`, `-A`, `-1`, `-d`, `-R`, `-h`; `wc`: `-l`, `-w`, `-c`, `-m`; `cat`: `-n`; paths | any other option |
 | `git log`, `git show`, `git ls-files` | only `--oneline`, `--stat`, `--name-only`, `-n <number>`, `--format=`/`--pretty=` (only with `=`), `--grep=`, `--`, refs and paths | any other option (among them `--output`, which writes); `%G` in `--format`/`--pretty` (starts gpg); branch-relative refs (`..`, `@{`, `~`, `^`); global git options before the subcommand (`git -c`, `git -C`, `--git-dir`) |
-| `uv run pytest` | only paths under the test directory `config.py test_gate.evidence_test_dir` (default `tests/`, with `::<test>`), plus `-q`/`-v` | any other option (`-m`, `-p`, `-o`, `-k`, `--`), any path outside that directory, options between `run` and `pytest` |
+| `uv run pytest` | only paths under the test directory `lighthouse config test_gate.evidence_test_dir` (default `tests/`, with `::<test>`), plus `-q`/`-v` | any other option (`-m`, `-p`, `-o`, `-k`, `--`), any path outside that directory, options between `run` and `pytest` |
 | `gh api <path>` | GET with `--jq`/`-q`; a path, not a URL | `-X`/`--method`, `-f`/`-F`/`--field`/`--raw-field`, `--input`, `-H`/`--header` |
 | `gh api graphql` | exactly one `-f query=…` without `mutation`, plus `--jq` | any other field flag |
 | `gh issue view`, `gh pr view` | exactly one number or github.com URL, `--json`, `--jq`/`-q`, `--repo`/`-R`, `--comments`/`-c` | `--web`/`-w` (starts a browser); no number (gh then falls back on the branch of the cwd) |
 
-The test directory is `python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.evidence_test_dir`.
+The test directory is `lighthouse config test_gate.evidence_test_dir`.
 A `--jq` expression may not contain `env`, `$ENV` or `input`/`inputs`. Extending the list is a
 change of this skill *and* of `evidence.py`, never something a PR body can do.
 
@@ -286,7 +286,7 @@ suite. The suite evidence is CI on the PR: write `suite: CI` in `## Verification
 full suite by hand. A red or `COULD NOT CHECK` outcome of the gate on this branch that no later
 commit fixed means the tests are not green. Only Outside Claude Code (OpenCode, Codex) do you run
 the suite yourself, with the command from
-`python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command` (rc 1: no test command
+`lighthouse config test_gate.command` (rc 1: no test command
 configured; say so in `## Verification`).
 
 ## V4. Body file and command
@@ -312,7 +312,7 @@ empty with `off` (then no line).
 Then read the repo:
 
 ```bash
-python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo
+lighthouse config forge.repo
 ```
 
 Then give the command, with that output spelled out literally as `<forge.repo>`:
@@ -337,7 +337,7 @@ python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron lokaal --
 ```
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh pr comment <nr> --repo "$R" --body-file <file>
+R=$(lighthouse config forge.repo) && gh pr comment <nr> --repo "$R" --body-file <file>
 ```
 
 `gh` outside the sandbox. If `gh pr comment` fails, report it: the state and the raw output stay
