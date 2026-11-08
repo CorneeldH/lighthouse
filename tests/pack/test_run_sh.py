@@ -42,6 +42,7 @@ chmod +x "$3"
 
 FAKE_LIGHTHOUSE = r"""#!/bin/sh
 cat >"$FAKE_LH_STDIN"
+if [ -n "${FAKE_LH_SHOW_ROOT:-}" ]; then printf 'root=%s\n' "${LIGHTHOUSE_REPO_ROOT-unset}"; fi
 if [ -n "${FAKE_LH_OUT+x}" ]; then printf '%s' "$FAKE_LH_OUT"; else echo "path-binary $*"; fi
 printf '%s' "${FAKE_LH_ERR:-}" >&2
 exit "${FAKE_LH_RC:-0}"
@@ -418,6 +419,22 @@ def test_unknown_hook_at_dev_without_source_blocks(tmp_path):
     repo = Repo(tmp_path, source=False)
     r = repo.call(BLOCKING, FAKE_LH_ERR=UNKNOWN, FAKE_LH_RC="3", FAKE_LH_OUT="")
     assert (r.returncode, r.stdout, r.stderr) == (2, "", UNKNOWN)
+
+
+# --- the repo root for the binary -------------------------------------------------------------
+
+def test_binary_gets_repo_root_from_outside_cwd(tmp_path):
+    repo = Repo(tmp_path, version="v0.12.1")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    r = repo.call(NON_BLOCKING, cwd=elsewhere, FAKE_LH_SHOW_ROOT="1")
+    assert r.stdout == f"root={repo.root.resolve()}\npath-binary hook {NON_BLOCKING}\n"
+
+
+def test_binary_keeps_a_set_repo_root(tmp_path):
+    repo = Repo(tmp_path, version="v0.12.1")
+    r = repo.call(NON_BLOCKING, FAKE_LH_SHOW_ROOT="1", LIGHTHOUSE_REPO_ROOT="/given")
+    assert r.stdout == f"root=/given\npath-binary hook {NON_BLOCKING}\n"
 
 
 def test_run_sh_from_subdir_with_space(tmp_path):

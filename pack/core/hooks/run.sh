@@ -118,6 +118,9 @@ fi
 if [ -z "$LH" ]; then
   fail "COULD NOT CHECK: lighthouse not on PATH — $(remedy)"
 fi
+# The binary finds the repo by its cwd otherwise, and a hook may run from anywhere.
+LIGHTHOUSE_REPO_ROOT="${LIGHTHOUSE_REPO_ROOT:-$root}"
+export LIGHTHOUSE_REPO_ROOT
 
 err=$(mktemp "${TMPDIR:-/tmp}/lighthouse-run.XXXXXX" 2>/dev/null) || err=
 if [ -z "$err" ]; then
