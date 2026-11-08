@@ -36,7 +36,12 @@ fixtures en de skilltekst-tests.
 - Exitcodes: 0 met tabel. 2 met `transcript directory does not exist: <dir>`,
   `measure: <config-fout>` of `measure: git log failed: <stderr>` op stderr. Een onbekende metric
   of een extra argument geeft rc 2 met `measure: unknown metric "<x>" (choose from <lijst>)`.
-  Die tekst wijkt bewust af van argparse; de exitcode niet.
+  Die tekst wijkt bewust af van argparse; de exitcode niet. Ook bewuste afwijkingen (in `doc.go`):
+  een onbekende of afgekorte vlag geeft via cobra rc 1 (argparse: rc 2) en `--sin` is geen
+  `--since`; `--dir ""` valt terug op de standaardmap (Python: de cwd); ongeldige UTF-8 wordt
+  per `strings.ToValidUTF8`-run één `U+FFFD` (Python: één per ongeldige byte-reeks); een
+  JSON-regel die geen object is valt weg (Python crasht); `35.0` telt als geheel getal voor
+  `totalToolUseCount` (Python: niet).
 - `<dir>` in de foutmelding print zoals Python's `Path`: dubbele `/` samen, `.`-delen en een
   slash aan het eind weg, `..` blijft (`./gone/` → `gone`, `a/../b` → `a/../b`).
 - Standaardmap zonder `--dir`: `$HOME/.claude/projects/<root>`. `<root>` is `config.RepoRoot()`,
@@ -55,8 +60,10 @@ fixtures en de skilltekst-tests.
 - Regex-tekenklassen zoals Python 3 op `str`: `\s` wordt
   `[\t\n\v\f\r\x{1c}-\x{1f}\x{85}\p{Z}]`, `\S` de negatie daarvan, `\d` wordt `\p{Nd}`, en `\w`
   in de lookaround-functies is `unicode.IsLetter || unicode.IsNumber || '_'`. Go's `\b` blijft
-  ASCII. Dat wijkt alleen af als een niet-ASCII letter of cijfer direct tegen de match aan
-  staat; dat staat in het package-commentaar, niet in een test.
+  ASCII. Dat wijkt af als een niet-ASCII letter of cijfer direct tegen de match aan staat, of als
+  de match zelf op een niet-ASCII cijfer eindigt (`FIXPR_RE` eindigt op `\d{2,4}\b`: `fix ١٢٣` is
+  in Python een fixverzoek, in Go niet); dat staat in het package-commentaar en als rij in
+  `classify.json` (fix_pr), niet als aparte test.
 - Een niet-string `command` in een Bash-input telt als `""`. Een timestamp die geen RFC 3339 en
   geen naïeve `2006-01-02T15:04:05[.ffffff]` is, geeft geen looptijd (Python's `fromisoformat`
   accepteert meer vormen, die niet in transcripten voorkomen).
@@ -84,7 +91,10 @@ een fixture of test in de taak die de code bezit.
    een half-even grens (`[1, 2, 2, 4]` → `2.2`). → fixture-case `start-issue/leadin-even` (taak 1)
    en `TestSummary` (taak 2).
 3. **Een prompt met niet-ASCII-tekst, een U+2028, een tab en meer dan 120 runes** in
-   `examples`. Go's `encoding/json` escapet U+2028, Python niet. → fixture-case
+   `examples`. Go's `encoding/json` escapet U+2028, Python niet. De `.jsonl`-fixture schrijft ook
+   één transcriptregel met een ruwe U+2028 in de prompt (`ensure_ascii=False`): Python laat die
+   regel vallen (beide helften zijn ongeldige JSON), en Go moet dat ook doen. De `expect.json`
+   komt uit de Python, de executor beslist niet zelf welke kant klopt. → fixture-case
    `fix-pr/mistrigger-unicode` (taak 1) en `TestEncode` (taak 2).
 4. **Lookaround-randen**: `/ab-_` (backtrack tot `/ab`), `a#12`, `12345`, `v1.23`, `١٢ x`
    (Arabisch-Indische cijfers), `é/foo`. → rijen in `classify.json` (taak 1, gedraaid in taak 3).
@@ -171,7 +181,7 @@ een fixture of test in de taak die de code bezit.
 ### Taak 2: transcriptlaag en Python-gelijke uitvoer
 
 **Files:**
-- Modify: `internal/config/pyfloat.go` (`formatFloat` → `FormatFloat`), `internal/config/config.go:723`, `internal/config/host.go:242`
+- Modify: `internal/config/pyfloat.go` (`formatFloat` → `FormatFloat`, ook de aanroep op regel 70), `internal/config/config.go:723`, `internal/config/host.go:242`, `internal/config/parity_test.go:108-109`
 - Create: `internal/kpi/doc.go`, `internal/kpi/transcript.go`, `internal/kpi/pyout.go`
 - Test: `internal/kpi/transcript_test.go`, `internal/kpi/pyout_test.go`
 
@@ -225,7 +235,7 @@ een fixture of test in de taak die de code bezit.
 - [ ] **Stap 3: implementeer**
 
   `encode` is een eigen recursieve schrijver, geen `json.MarshalIndent`: die escapet U+2028 en
-  `<>&`. Een `pyFloat` print via `config.FormatFloat`. `readSession` splitst op `\n`, trimt,
+  `<>&`. Een `pyFloat` print via `config.FormatFloat`. `readSession` splitst zoals Python's `str.splitlines()` (dus ook op `\r`, `\v`, `\f`, `\x1c`-`\x1e`, `\x85`, U+2028 en U+2029, `\r\n` als één scheiding), niet op `\n` alleen; Python leest de regels zo en een ruwe U+2028 staat legaal in een JSON-string. Daarna trimt hij,
   decodeert elke regel met `json.Unmarshal` naar `map[string]any` (een regel die geen object is,
   valt weg) en zet eerst ongeldige UTF-8 om. `doc.go` noemt de afwijkingen uit *Globale eisen*
   (ASCII `\b`, timestampvormen, niet-string `command`).
@@ -310,7 +320,7 @@ een fixture of test in de taak die de code bezit.
 
 **Files:**
 - Create: `internal/kpi/startissue.go`, `internal/kpi/run.go`, `internal/cli/measure.go`
-- Modify: `internal/cli/root.go:67-80` (registratie)
+- Modify: `internal/cli/root.go:67-80` (registratie), `docs/site/data/config.json` (lezers van `paths.specs` en `paths.plans`)
 - Test: `internal/kpi/startissue_test.go`, `internal/kpi/parity_test.go`, `internal/cli/measure_test.go`
 
 **Interfaces:**
@@ -365,7 +375,9 @@ een fixture of test in de taak die de code bezit.
   draait `git -C <root> log --diff-filter=A --name-only --pretty=format: [--since <since>]`
   (`--since` alleen bij een niet-lege `since`) en leest `paths.specs` en `paths.plans` via
   `config.Lookup`, met `/` erachter na `strings.TrimRight(v, "/")`. De twee sleutels staan
-  letterlijk als string in `startissue.go`: `tests/test_site_config.py` vindt zo de lezer (taak 6). Rijen rekenen eerst allemaal;
+  letterlijk als string in `startissue.go`: `tests/test_site_config.py` vindt zo de lezer (taak 6). Volgorde zoals de Python: eerst `git log`, dan pas de config (`correct_doc_dirs`), en de headings
+  alleen laden als een beurt ze nodig heeft (lazy), zodat `gate`/`scout` op een lege map zonder
+  `.lighthouse/headings.toml` rc 0 geven. Rijen rekenen eerst allemaal;
   pas dan printen. Een fout in een rij geeft rc 2 en geen stdout. `RunStartIssue` controleert
   eerst de metric, dan de map, dan rekent hij. Het cobra-commando (`Args: cobra.ArbitraryArgs`,
   vlaggen `--dir` en `--since`, `Short` in het Engels) zet `Since` alleen als de vlag gezet is,
@@ -379,7 +391,7 @@ een fixture of test in de taak die de code bezit.
 - [ ] **Stap 5: commit**
 
   ```bash
-  git add internal/kpi internal/cli
+  git add internal/kpi internal/cli docs/site
   git commit -m "feat(cli): lighthouse measure-start-issue-kpi (#283)"
   ```
 
@@ -488,7 +500,7 @@ een fixture of test in de taak die de code bezit.
 
 - [ ] **Stap 3: haal de Python en zijn sporen weg**
 
-  Verwijder de vijf bestanden. Haal de twee `[[file]]`-blokken uit `pack/SOURCES.toml`, en
+  Verwijder de vijf bestanden met `git rm` (niet `rm`: `tests/test_site_config.py` leest `git ls-files` en zou anders op een verdwenen bestand falen). Haal de twee `[[file]]`-blokken uit `pack/SOURCES.toml`, en
   `measure_start_issue_kpi` en `measure_fix_pr_kpi` uit de lijsten `git`, `python3` en `tomllib`
   in `pack/core/requires.toml`. Haal de twee regels uit `internal/packs/core_test.go`. In
   `docs/site/data/config.json` gaat `pack/core/scripts/measure_start_issue_kpi.py` uit de
@@ -509,7 +521,9 @@ een fixture of test in de taak die de code bezit.
 
   Run: `go run ./cmd/lighthouse init --upgrade && go run ./cmd/lighthouse init --upgrade`
   Verwacht: de eerste run meldt de twee verwijderde scripts; de tweede `No changes.`
-  Daarna: `test ! -e .lighthouse/scripts/measure_start_issue_kpi.py && test ! -e .lighthouse/scripts/measure_fix_pr_kpi.py && ! grep -rn 'measure_\(start_issue\|fix_pr\)_kpi' .claude .agents .lighthouse pack internal tests docs/site`
+  Daarna: `test ! -e .lighthouse/scripts/measure_start_issue_kpi.py && test ! -e .lighthouse/scripts/measure_fix_pr_kpi.py && ! grep -rn 'measure_\(start_issue\|fix_pr\)_kpi' .claude .agents .lighthouse pack internal tests docs/site --exclude=test_skills_issue_flow.py --exclude=test_fix_pr_skill.py`
+  (die twee tests noemen de oude naam juist in hun `not in`-controle; ook de commentaren in
+  `internal/kpi` noemen het Python-bestand niet bij naam)
   Verwacht: rc 0, geen uitvoer.
 
 - [ ] **Stap 5: volledige verificatie**
