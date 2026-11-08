@@ -1,9 +1,7 @@
 package hooks
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -51,6 +49,7 @@ func MainCommitGate(ctx context.Context, _, _ string, p hook.Payload) hook.Resul
 		return hook.Result{}
 	}
 	if cwd == "" {
+		// When Getwd fails cwd stays "", and `git -C ""` is the process cwd: bash's $PWD.
 		cwd, _ = os.Getwd()
 	}
 
@@ -163,41 +162,19 @@ func checkInvocation(ctx context.Context, inv gitinvocations.Invocation, protect
 		"     touch '" + root + "/.claude/allow-main'   # and remove it afterwards\n"), true
 }
 
-// readGatePayload reads `.tool_input.command` and `.cwd` the way `jq -r '.x // empty'` does: null
-// and false are empty, a string is its text, any other value its JSON text. ok is false when the
-// payload has no such fields to read (not JSON, or not an object where one is needed); an empty
-// payload gives jq nothing to read and so an empty command.
+// readGatePayload reads `.tool_input.command` and `.cwd` the way `jq -r '.x // empty'` does. ok is
+// false when jq could not index the payload: not JSON, or a value that is no object or null where
+// a field is looked up.
 func readGatePayload(raw []byte) (command, cwd string, ok bool) {
-	if len(bytes.TrimSpace(raw)) == 0 {
-		return "", "", true
-	}
-	var in struct {
-		ToolInput *struct {
-			Command json.RawMessage `json:"command"`
-		} `json:"tool_input"`
-		Cwd json.RawMessage `json:"cwd"`
-	}
-	if err := json.Unmarshal(raw, &in); err != nil {
+	top, ok := jqFields(raw)
+	if !ok {
 		return "", "", false
 	}
-	if in.ToolInput != nil {
-		command = jqText(in.ToolInput.Command)
+	toolInput, ok := jqFields(top["tool_input"])
+	if !ok {
+		return "", "", false
 	}
-	return command, jqText(in.Cwd), true
-}
-
-// jqText is the output of `jq -r '.x // empty'` for one value, without the trailing newline.
-func jqText(v json.RawMessage) string {
-	text := string(bytes.TrimSpace(v))
-	switch text {
-	case "", "null", "false":
-		return ""
-	}
-	var s string
-	if json.Unmarshal(v, &s) == nil {
-		return s
-	}
-	return text
+	return jqText(toolInput["command"]), jqText(top["cwd"]), true
 }
 
 // mayCommit reports whether the raw text holds `git` together with `commit` or `push`.

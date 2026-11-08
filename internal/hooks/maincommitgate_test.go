@@ -125,6 +125,13 @@ func TestReadGatePayload(t *testing.T) {
 		{`[]`, "", "", false},
 		{`{"tool_input": "git commit"}`, "", "", false},
 		{`not json`, "", "", false},
+		// jq indexes by exact key; a key in another case is another field.
+		{`{"tool_input": {"command": "git commit -m x"}, "Tool_Input": null}`, "git commit -m x", "", true},
+		{`{"tool_input": {"command": "git commit -m x", "Command": null}}`, "git commit -m x", "", true},
+		{`{"cwd": "/r", "CWD": "/other"}`, "", "/r", true},
+		// A duplicate key: the last one wins, as in jq.
+		{`{"tool_input": {"command": "ls", "command": "git push"}}`, "git push", "", true},
+		{`{"tool_input": false}`, "", "", false},
 	}
 	for _, c := range cases {
 		command, cwd, ok := readGatePayload([]byte(c.raw))

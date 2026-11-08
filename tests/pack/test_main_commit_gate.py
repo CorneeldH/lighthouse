@@ -202,10 +202,6 @@ def _tool_bin(
     return path
 
 
-
-
-
-
 def test_commit_guard_fails_loud_without_git(tmp_path):
     """C3: without git the hook cannot see the branch — that is no green light."""
     repo = tmp_path / "repo"
@@ -256,8 +252,6 @@ def test_commit_guard_passes_when_target_is_simply_not_a_repo(tmp_path):
     result = _run(COMMIT_GUARD, _bash('git commit -m "iets"', los), cwd=los)
 
     assert result.returncode == 0, result.stderr
-
-
 
 
 def test_commit_guard_blocks_unparseable_command(tmp_path):
@@ -391,6 +385,27 @@ def test_commit_guard_payload_shapes(tmp_path, payload, code):
         assert "COULD NOT CHECK" in result.stderr
     else:
         assert result.stderr == ""
+
+
+def test_commit_guard_reads_payload_keys_exactly(tmp_path):
+    """jq indexes by exact key: a `Tool_Input` or `Command` beside the real key hides nothing."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    for payload in (
+        {"tool_input": {"command": "git commit -m x"}, "Tool_Input": None, "cwd": str(repo)},
+        {"tool_input": {"command": "git commit -m x", "Command": None}, "cwd": str(repo)},
+    ):
+        result = subprocess.run(
+            [str(COMMIT_GUARD)],
+            input=json.dumps(payload),
+            capture_output=True,
+            text=True,
+            cwd=str(repo),
+            check=False,
+        )
+        assert result.returncode == 2, f"{payload!r} passed: {result.stderr}"
+        assert "blocked" in result.stderr
 
 
 # --- C1: newline is a command separator -----------------------------------
@@ -800,8 +815,6 @@ def test_commit_guard_unresolvable_push_honours_the_sentinel(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-
-
 # --- N6: cd that fails, cd -, pushd/popd -------------------------------------
 
 
@@ -1172,8 +1185,6 @@ def test_guard_finds_its_lib_via_git_without_env(tmp_path):
         check=False,
     )
     assert result.returncode == 0, result.stderr
-
-
 
 
 def _trunk_toml(tmp_path: Path) -> dict:
