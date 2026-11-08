@@ -943,7 +943,7 @@
         {
           "table": "host",
           "title": "Host",
-          "about": "Who this machine is. lighthouse init writes name and tailscale_ip on a machine with Tailscale.",
+          "about": "Who this machine is. lighthouse init writes name and tailscale_ip on a machine with Tailscale; without Tailscale, write it by hand only for the gate_* keys or [usage].",
           "keys": [
             {
               "key": "host.name",
@@ -956,8 +956,8 @@
             {
               "key": "host.tailscale_ip",
               "level": "set",
-              "required": "yes",
-              "about": "The Tailscale address of this workstation; init writes it.",
+              "required": "no",
+              "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it, host-check reports another host.",
               "example": "100.64.0.1",
               "readers": [
                 "pack/core/scripts/plan_review_record.py"
