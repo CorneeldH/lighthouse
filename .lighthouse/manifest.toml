@@ -337,6 +337,14 @@ version = "dev"
 sha256 = "2bb7011332c21ef34d7114405e7bbe81b843ee8c906e0c6e081b3e605a24bfcc"
 
 [[unit]]
+kind = "permission"
+path = ".claude/settings.json"
+id = "Bash(lighthouse review-run:*)"
+package = "core"
+version = "dev"
+sha256 = "b0b83c7e4e80c23da891908eba3766ea005a3d51b18bc3e0507121284b1db28f"
+
+[[unit]]
 kind = "hook"
 path = ".claude/settings.json"
 id = "Notification|permission_prompt|worker_permission_prompt|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/permission-check.sh"
