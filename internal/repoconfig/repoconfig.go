@@ -124,6 +124,9 @@ func Load(dir string) (Repo, error) {
 	if raw.Forge.Repo == "" {
 		return Repo{}, fmt.Errorf("%s: missing [forge] repo", path)
 	}
+	if k := raw.Forge.Kind; k != "" && k != "github" && k != "gitlab" {
+		return Repo{}, fmt.Errorf("%s: [forge] kind %q is not github or gitlab (forge.kind)", path, k)
+	}
 	r := Repo{
 		Dir:                  dir,
 		Slug:                 raw.Forge.Repo,

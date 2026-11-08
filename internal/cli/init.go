@@ -24,7 +24,8 @@ func newInitCommand() *cobra.Command {
 			"--labels proposes a label taxonomy, [labels] and [paths] labels in the same diff,\n" +
 			"under the same single approval. --create-labels, only with --labels, then creates\n" +
 			"the missing labels on the GitHub remote and asks nothing: the flag is the approval,\n" +
-			"also with nothing to apply (No changes.): it still creates the missing labels.",
+			"also with nothing to apply (No changes.): it still creates the missing labels.\n\n" +
+			"A remote on a self-hosted GitLab is recognised with --forge-host <host>.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := os.Getwd()
@@ -48,6 +49,7 @@ func newInitCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.CreateLabels, "create-labels", false, "with --labels: create the missing labels on the remote; this flag is the approval")
 	cmd.Flags().StringArrayVar(&o.AddPacks, "pack", nil, "add a package (repeatable)")
 	cmd.Flags().StringArrayVar(&o.DropPacks, "no-pack", nil, "leave a package out (repeatable)")
+	cmd.Flags().StringArrayVar(&o.ForgeHosts, "forge-host", nil, "host of a self-hosted GitLab (repeatable)")
 	return cmd
 }
 

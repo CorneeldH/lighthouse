@@ -1,6 +1,7 @@
 package projectconfig
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -27,7 +28,7 @@ func appendMissing(t *testing.T, in string, want []Table) (string, []string, []s
 }
 
 func TestAppendToEmpty(t *testing.T) {
-	out, added, _ := appendMissing(t, "", CoreTables("acme/w", true))
+	out, added, _ := appendMissing(t, "", CoreTables(Forge{Kind: "github", Repo: "acme/w"}, true))
 	if want := "[project]\nlanguage = \"en\"\n\n[forge]\nkind = \"github\"\nrepo = \"acme/w\"\n"; out != want {
 		t.Fatalf("got %q", out)
 	}
@@ -51,7 +52,7 @@ plekken = 4
 `
 
 func TestAppendKeepsEverything(t *testing.T) {
-	out, added, manual := appendMissing(t, paiaShaped, CoreTables("acme/w", true))
+	out, added, manual := appendMissing(t, paiaShaped, CoreTables(Forge{Kind: "github", Repo: "acme/w"}, true))
 	want := strings.Replace(paiaShaped, "repo = \"acme/w\"   # the repo\n", "repo = \"acme/w\"   # the repo\nkind = \"github\"\n", 1) + "\n[project]\nlanguage = \"en\"\n"
 	if out != want {
 		t.Fatalf("got\n%s\nwant\n%s", out, want)
@@ -85,7 +86,7 @@ func TestAppendWithoutFinalNewline(t *testing.T) {
 
 func TestAppendNothingMissing(t *testing.T) {
 	in := "[project]\nlanguage = \"nl\"\n\n[forge]\nkind = \"github\"\nrepo = \"x/y\"\n"
-	out, added, manual := appendMissing(t, in, CoreTables("acme/w", true))
+	out, added, manual := appendMissing(t, in, CoreTables(Forge{Kind: "github", Repo: "acme/w"}, true))
 	if out != in || len(added) != 0 || len(manual) != 0 {
 		t.Fatalf("out %q added %v manual %v", out, added, manual)
 	}
@@ -105,36 +106,85 @@ func TestManual(t *testing.T) {
 }
 
 func TestInvalidTOML(t *testing.T) {
-	out, _, _, err := AppendMissing([]byte("[forge\n"), CoreTables("a/b", true))
+	out, _, _, err := AppendMissing([]byte("[forge\n"), CoreTables(Forge{Kind: "github", Repo: "a/b"}, true))
 	if err == nil || out != nil {
 		t.Fatalf("err %v out %q", err, out)
 	}
 }
 
-func TestForgeRepo(t *testing.T) {
-	for in, want := range map[string]string{
-		"https://github.com/acme/w.git":         "acme/w",
-		"https://github.com/acme/w":             "acme/w",
-		"https://github.com/acme/w/":            "acme/w",
-		"git@github.com:acme/w.git":             "acme/w",
-		"ssh://git@github.com/acme/w":           "acme/w",
-		"https://github.com/Acme-1/my.repo.git": "Acme-1/my.repo",
-	} {
-		if got, ok := ForgeRepo(in); !ok || got != want {
-			t.Errorf("ForgeRepo(%q) = %q %v", in, got, ok)
-		}
+func TestForgeFromRemote(t *testing.T) {
+	const own = "git.example.org"
+	cases := []struct {
+		name, in string
+		hosts    []string
+		want     Forge
+		ok       bool
+	}{
+		{"github https .git", "https://github.com/acme/w.git", nil, Forge{"github", "acme/w", ""}, true},
+		{"github https", "https://github.com/acme/w", nil, Forge{"github", "acme/w", ""}, true},
+		{"github slash", "https://github.com/acme/w/", nil, Forge{"github", "acme/w", ""}, true},
+		{"github scp", "git@github.com:acme/w.git", nil, Forge{"github", "acme/w", ""}, true},
+		{"github ssh", "ssh://git@github.com/acme/w", nil, Forge{"github", "acme/w", ""}, true},
+		{"github chars", "https://github.com/Acme-1/my.repo.git", nil, Forge{"github", "Acme-1/my.repo", ""}, true},
+		{"gitlab https subgroup", "https://gitlab.com/g/s/r.git/", nil, Forge{"gitlab", "g/s/r", ""}, true},
+		{"gitlab scp", "git@gitlab.com:g/s/r.git", nil, Forge{"gitlab", "g/s/r", ""}, true},
+		{"gitlab ssh", "ssh://git@gitlab.com/g/s/r", nil, Forge{"gitlab", "g/s/r", ""}, true},
+		{"gitlab two segments", "https://gitlab.com/g/r", nil, Forge{"gitlab", "g/r", ""}, true},
+		{"gitlab host case", "https://GitLab.com/g/r", nil, Forge{"gitlab", "g/r", ""}, true},
+		{"own https", "https://git.example.org/g/s/r", []string{own}, Forge{"gitlab", "g/s/r", own}, true},
+		{"own scp", "git@git.example.org:g/r.git", []string{own}, Forge{"gitlab", "g/r", own}, true},
+		{"own ssh port", "ssh://git@git.example.org:2222/g/s/r.git", []string{own}, Forge{"gitlab", "g/s/r", own}, true},
+		{"own https port", "https://git.example.org:8443/g/r", []string{own}, Forge{"gitlab", "g/r", own}, true},
+		{"own mixed case", "https://Git.Example.org/g/r", []string{"GIT.example.org"}, Forge{"gitlab", "g/r", own}, true},
+		{"own after junk host", "https://git.example.org/g/r", []string{"bad host", "", own}, Forge{"gitlab", "g/r", own}, true},
+		{"gitlab.com in list", "https://gitlab.com/g/r", []string{"gitlab.com"}, Forge{"gitlab", "g/r", ""}, true},
+		{"gitlab one segment", "https://gitlab.com/solo", nil, Forge{}, false},
+		{"github three segments", "https://github.com/a/b/c", nil, Forge{}, false},
+		{"github one segment", "https://github.com/a", nil, Forge{}, false},
+		{"unknown host", "git@git.example.org:g/s/r.git", nil, Forge{}, false},
+		{"other known host", "git@git.example.org:g/r.git", []string{"other.org"}, Forge{}, false},
+		{"quote in segment", "https://gitlab.com/g/s\"/r", nil, Forge{}, false},
+		{"angle in segment", "git@gitlab.com:g/<x>/r", nil, Forge{}, false},
+		{"github quote", "git@github.com:a/b\"c", nil, Forge{}, false},
+		{"empty segment", "https://gitlab.com/g//r", nil, Forge{}, false},
+		{"regex host not a wildcard", "https://gitXexample.org/g/r", []string{own}, Forge{}, false},
+		{"hostile host entry ignored", "https://gitlab.com/g/r", []string{"a\"b"}, Forge{"gitlab", "g/r", ""}, true},
+		{"empty", "", nil, Forge{}, false},
 	}
-	for _, in := range []string{"https://gitlab.com/a/b", "", "https://github.com/a", "https://github.com/a/b/c", "git@github.com:a/b\"c"} {
-		if got, ok := ForgeRepo(in); ok {
-			t.Errorf("ForgeRepo(%q) = %q, want false", in, got)
-		}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, ok := ForgeFromRemote(c.in, c.hosts)
+			if ok != c.ok || got != c.want {
+				t.Errorf("ForgeFromRemote(%q, %v) = %+v %v, want %+v %v", c.in, c.hosts, got, ok, c.want, c.ok)
+			}
+		})
 	}
 }
 
 func TestCoreTablesWithoutRepo(t *testing.T) {
-	tables := CoreTables("", false)
+	tables := CoreTables(Forge{}, false)
 	if len(tables) != 1 || tables[0].Name != "project" {
 		t.Fatalf("tables %+v", tables)
+	}
+}
+
+func TestCoreTablesForge(t *testing.T) {
+	cases := []struct {
+		name string
+		f    Forge
+		want []KV
+	}{
+		{"github", Forge{"github", "a/b", ""}, []KV{{"kind", `"github"`}, {"repo", `"a/b"`}}},
+		{"gitlab.com", Forge{"gitlab", "g/s/r", ""}, []KV{{"kind", `"gitlab"`}, {"repo", `"g/s/r"`}}},
+		{"own host", Forge{"gitlab", "g/r", "git.example.org"}, []KV{{"kind", `"gitlab"`}, {"repo", `"g/r"`}, {"host", `"git.example.org"`}}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tables := CoreTables(c.f, true)
+			if len(tables) != 2 || tables[1].Name != "forge" || !slices.Equal(tables[1].Keys, c.want) {
+				t.Fatalf("tables %+v, want forge keys %v", tables, c.want)
+			}
+		})
 	}
 }
 

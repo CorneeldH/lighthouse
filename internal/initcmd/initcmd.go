@@ -52,6 +52,7 @@ type Options struct {
 	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
 	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil runs the installed create_labels.py
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
+	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Version             string                                                    // "" means version.String()
 	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
 	Deps                deps.Checker                                              // nil fields mean deps.Default()
@@ -158,7 +159,7 @@ func execute(o Options) error {
 			return err
 		}
 	}
-	tables, haveRepo, err := configTables(root, chosenPacks, labelsPath)
+	tables, haveRepo, err := configTables(root, chosenPacks, labelsPath, o.ForgeHosts)
 	if err != nil {
 		return err
 	}
@@ -483,15 +484,41 @@ func hasLine(b []byte, line string) bool {
 	return false
 }
 
+// existingForge is the part of an existing lighthouse.toml that decides which hosts are known.
+type existingForge struct {
+	Forge struct {
+		Kind string `toml:"kind"`
+		Host string `toml:"host"`
+	} `toml:"forge"`
+}
+
 // configTables are the tables lighthouse.toml should have: the core tables, then the
 // fragments of the chosen packages in their order (plan M0 (c), design choice 4). A
-// non-empty labelsPath adds the label tables, with that path in [paths] labels.
-func configTables(root string, chosen []packs.Pack, labelsPath string) ([]projectconfig.Table, bool, error) {
-	repo, haveRepo := "", false
-	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
-		repo, haveRepo = projectconfig.ForgeRepo(strings.TrimSpace(string(url)))
+// non-empty labelsPath adds the label tables, with that path in [paths] labels. A GitLab
+// host is known from extraHosts or from forge.host of an existing lighthouse.toml.
+func configTables(root string, chosen []packs.Pack, labelsPath string, extraHosts []string) ([]projectconfig.Table, bool, error) {
+	var ex existingForge
+	if b, err := os.ReadFile(filepath.Join(root, configPath)); err == nil {
+		if _, err := toml.Decode(string(b), &ex); err != nil {
+			ex = existingForge{}
+		}
 	}
-	core := projectconfig.CoreTables(repo, haveRepo)
+	hosts := append([]string{}, extraHosts...)
+	if ex.Forge.Host != "" {
+		hosts = append(hosts, ex.Forge.Host)
+	}
+	var forge projectconfig.Forge
+	haveRepo := false
+	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
+		forge, haveRepo = projectconfig.ForgeFromRemote(strings.TrimSpace(string(url)), hosts)
+	}
+	// AppendMissing never overwrites: next to an existing kind that differs from the
+	// remote's, a proposed repo or host would give a config the reader rejects or one
+	// that points at the wrong forge. Propose no forge then.
+	if ex.Forge.Kind != "" && ex.Forge.Kind != forge.Kind {
+		forge, haveRepo = projectconfig.Forge{}, false
+	}
+	core := projectconfig.CoreTables(forge, haveRepo)
 	if labelsPath != "" {
 		core = append(core, projectconfig.LabelTables(labelsPath)...)
 	}
@@ -556,7 +583,7 @@ func planConfig(o Options, load func(string) (*planned, error), tables []project
 		var v map[string]any
 		md, err := toml.Decode(string(out), &v)
 		if err == nil && !md.IsDefined("forge", "repo") {
-			_, _ = fmt.Fprintln(o.Err, "warning: no GitHub remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it")
+			_, _ = fmt.Fprintln(o.Err, "warning: no GitHub or GitLab remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it")
 		}
 	}
 	for _, k := range manual {

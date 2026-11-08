@@ -132,35 +132,72 @@ func insertInSection(text, name string, keys []KV) (string, bool) {
 	return out, true
 }
 
+// Forge is the forge a remote points at. Host is empty for github.com and gitlab.com;
+// it is the hostname (no port) of a self-hosted GitLab otherwise.
+type Forge struct{ Kind, Repo, Host string }
+
 var (
-	githubRepo = []*regexp.Regexp{
-		regexp.MustCompile(`^https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$`),
-		regexp.MustCompile(`^git@github\.com:([^/]+)/([^/]+?)(?:\.git)?$`),
-		regexp.MustCompile(`^ssh://git@github\.com(?::\d+)?/([^/]+)/([^/]+?)(?:\.git)?/?$`),
-	}
 	repoPart = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	hostName = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
+	// remoteForms split a remote URL into host and path: https (optional port), scp and
+	// ssh:// (optional port). The host is compared afterwards, never put in a pattern.
+	remoteForms = []*regexp.Regexp{
+		regexp.MustCompile(`^https?://([^/@:]+)(?::\d+)?/(.+?)(?:\.git)?/?$`),
+		regexp.MustCompile(`^git@([^/:]+):(.+?)(?:\.git)?$`),
+		regexp.MustCompile(`^ssh://git@([^/:]+)(?::\d+)?/(.+?)(?:\.git)?/?$`),
+	}
 )
 
-// ForgeRepo returns owner/name for a GitHub remote URL.
-func ForgeRepo(remoteURL string) (string, bool) {
-	for _, re := range githubRepo {
+// ForgeFromRemote reads the forge and repo path from a remote URL. A GitHub path is
+// exactly owner/name; a GitLab path (gitlab.com or a host in gitlabHosts) has at least
+// two segments. Every segment must match repoPart. Hosts compare case-insensitively; an
+// entry of gitlabHosts that is not a hostname is ignored.
+func ForgeFromRemote(remoteURL string, gitlabHosts []string) (Forge, bool) {
+	for _, re := range remoteForms {
 		m := re.FindStringSubmatch(remoteURL)
-		if m != nil && repoPart.MatchString(m[1]) && repoPart.MatchString(m[2]) {
-			return m[1] + "/" + m[2], true
+		if m == nil {
+			continue
 		}
+		host := strings.ToLower(m[1])
+		segments := strings.Split(m[2], "/")
+		for _, seg := range segments {
+			if !repoPart.MatchString(seg) {
+				return Forge{}, false
+			}
+		}
+		switch {
+		case host == "github.com":
+			if len(segments) != 2 {
+				return Forge{}, false
+			}
+			return Forge{Kind: "github", Repo: m[2]}, true
+		case host == "gitlab.com" && len(segments) >= 2:
+			return Forge{Kind: "gitlab", Repo: m[2]}, true
+		case len(segments) >= 2:
+			for _, h := range gitlabHosts {
+				if hostName.MatchString(h) && strings.ToLower(h) == host {
+					return Forge{Kind: "gitlab", Repo: m[2], Host: host}, true
+				}
+			}
+		}
+		return Forge{}, false
 	}
-	return "", false
+	return Forge{}, false
 }
 
 // CoreTables are the tables pack/core proposes: [project] always, [forge] when the
-// repo has a GitHub remote.
-func CoreTables(repo string, haveRepo bool) []Table {
+// repo has a recognised remote.
+func CoreTables(f Forge, haveRepo bool) []Table {
 	tables := []Table{{Name: "project", Keys: []KV{{Key: "language", Value: `"en"`}}}}
 	if haveRepo {
-		tables = append(tables, Table{Name: "forge", Keys: []KV{
-			{Key: "kind", Value: `"github"`},
-			{Key: "repo", Value: strconv.Quote(repo)},
-		}})
+		keys := []KV{
+			{Key: "kind", Value: strconv.Quote(f.Kind)},
+			{Key: "repo", Value: strconv.Quote(f.Repo)},
+		}
+		if f.Host != "" {
+			keys = append(keys, KV{Key: "host", Value: strconv.Quote(f.Host)})
+		}
+		tables = append(tables, Table{Name: "forge", Keys: keys})
 	}
 	return tables
 }
