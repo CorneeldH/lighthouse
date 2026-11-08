@@ -4,6 +4,29 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.13.0] - 2026-11-08
+
+### Added
+
+- `forge.kind = "gitlab"` is valid in `lighthouse.toml`, with repository paths that have subgroups (`group/subgroup/name`) and an optional `forge.host` for a self-hosted GitLab. `lighthouse init` recognises GitLab remotes (https, scp and `ssh://`, gitlab.com and self-hosted via `--forge-host`) and proposes `[forge]`. There is no GitLab client yet.
+- In the `lighthouse serve` UI the Refresh button spins and each card shows `refreshing…` while a
+  refresh runs. Every `owner/name#number` links to the newest comment of that issue on GitHub.
+- `lighthouse tick` can run without kenn-forge: with `[dispatch] workplace = "local"` in `host.toml`
+  each run gets a git worktree and a detached `claude -p` on the host. `deploy/systemd/` has a tick
+  unit and timer for it.
+- `lighthouse init --labels` proposes a label taxonomy file, `[labels]` and `[paths] labels` in the usual diff, under the same single approval. Add `--create-labels` to create the missing labels on the GitHub remote afterwards, or leave it out to get the `gh label create` lines to run yourself.
+
+### Changed
+
+- `host.tailscale_ip` is optional in `host.toml`, so a host without Tailscale can set the `gate_*` keys. Run `lighthouse init --upgrade` in every repository on the host first: an older copy rejects a `host.toml` without `tailscale_ip`, and its test gate then blocks every commit.
+
+### Fixed
+
+- Een fix-pr-start die de rem uitstelt of de pauze tegenhoudt, wacht nu in de wachtrij zoals elke
+  andere start. De run blijft open en er volgt geen 🤖 Teruggegeven "PR rood" meer; gaat de rem open
+  en is de PR nog rood, dan start `/lighthouse-fix-pr` in die tick. Een actieve blokkeerder, het
+  plafond en een gebruikte SHA geven het issue nog steeds terug.
+
 ## [v0.12.1] - 2026-11-07
 
 ### Fixed

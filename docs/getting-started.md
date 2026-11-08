@@ -91,8 +91,14 @@ and goes on (see [Requirements](#requirements)).
 - `lighthouse init --upgrade` replaces what an earlier `init` installed. A second `init`
   without `--upgrade` refuses. A unit you changed locally makes the whole run refuse, and nothing
   is written, unless you add `--force`.
+- `lighthouse init --forge-host <host>` tells `init` that your `origin` remote is on a
+  self-hosted GitLab, so it proposes `[forge]` with `kind = "gitlab"` and `host`.
 - `lighthouse init --pack python` adds a package, `lighthouse init --no-pack shell` leaves one
   out. Both work later with `--upgrade`, and both repeat.
+- `lighthouse init --labels` also proposes a label taxonomy, with `[labels]` and `[paths] labels`
+  in `lighthouse.toml`, in the same diff and under the same approval. `--create-labels`, only
+  with `--labels`, then creates the missing labels on the GitHub remote and asks nothing more: the
+  flag is the approval, also when there is nothing to apply (`No changes.`).
 
 What `init` writes, all of it on the diff first:
 
@@ -115,13 +121,33 @@ Each of these places, and whether `init` adds it or edits a file of yours, is on
 
 On a machine with Tailscale, the first `init` also offers to write
 `~/.config/lighthouse/host.toml`; `--yes` writes it without asking. Without Tailscale you see
-`warning: host.toml not proposed: tailscale ip unavailable; skills that check the host will
-report it`.
+`warning: host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml.
+For the gate_* keys (memory brake, slots) write it by hand: see "A host.toml without Tailscale" in
+the lighthouse getting-started guide`: the next section.
+
+## A host.toml without Tailscale
+
+The chain works without a `host.toml`. You only need one for the `gate_*` keys (memory brake,
+slots) or `[usage]`. On a plain Linux server, this is enough:
+
+```toml
+[host]
+name = "server"
+gate_slots = 2
+gate_min_mem_available_gb = 4
+```
+
+`gate_slice` asks for a systemd slice, and the `gate_min_*` keys only measure on Linux. All keys
+are in [test-gate.md](test-gate.md).
+
+First run `lighthouse init --upgrade` in every repository on this host, on a release with this
+change. Only then write a `host.toml` without `tailscale_ip`: an older copy of `config.py`
+rejects it, and then the test gate blocks every commit in that repository.
 
 ## Configure lighthouse.toml
 
 `init` proposes `[project] language`, and `[forge]` from your `origin` remote when it is on
-GitHub. Only the `python` package proposes a test gate. Until you set `[test_gate] command`,
+GitHub or GitLab. Only the `python` package proposes a test gate. Until you set `[test_gate] command`,
 `commit-test-gate` passes every commit with `no test command configured, nothing was tested`.
 Every key and what reads it is on [the configuration map](site/config.html) (also online:
 [The configuration](https://corneeldh.github.io/lighthouse/config.html)).
@@ -144,8 +170,9 @@ command = "<your test command>"
 | `project.language` | The language of your artefacts: issues, PRs, comments, commit messages. `nl` or `en`; default `en`. |
 | `project.code_language` | Set it to `en` to keep names, comments and file names in English while artefacts follow `project.language`. |
 | `project.code_language_paths` | The globs that `project.code_language` covers. |
-| `forge.kind` | `github`, the only forge so far. |
-| `forge.repo` | `owner/name` of the repository on GitHub. |
+| `forge.kind` | `github` or `gitlab`; default `github`. |
+| `forge.repo` | `owner/name` on GitHub, `group/subgroup/name` on GitLab. |
+| `forge.host` | The hostname of a self-hosted GitLab. `lighthouse init --forge-host <host>` writes it. |
 | `forge.default_branch` | The branch nothing lands on directly; default `main`. |
 | `test_gate.command` | What `commit-test-gate` runs before every commit. An empty `command = ""` turns the gate off. The `python` package sets `uv run pytest -q`. |
 | `paths.specs`, `paths.plans` | Where specs and plans go; default `docs/developer/planning/specs` and `docs/developer/planning/plans`. |

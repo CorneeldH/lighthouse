@@ -159,7 +159,7 @@ func TestFixPRRuns(t *testing.T) {
 
 // Only a fix-pr start of the same repo and issue keeps a fix-pr close a handoff; any other
 // close passes untouched.
-func TestReturnUnstartedFixPR(t *testing.T) {
+func TestSettleUnstartedFixPR(t *testing.T) {
 	const session = "11111111-2222-4333-8444-555555555555"
 	fixClose := Action{Kind: KindClose, Repo: "o/r", Issue: 7, RunID: 5, Outcome: runs.Handoff,
 		SessionID: session, ReasonArg: "fixpr:12:abc123", Language: "nl"}
@@ -196,12 +196,31 @@ func TestReturnUnstartedFixPR(t *testing.T) {
 				ps = append(ps, planned{Action: a})
 			}
 			var got []Action
-			for _, p := range returnUnstartedFixPR(ps) {
+			for _, p := range settleUnstartedFixPR(ps, nil) {
 				got = append(got, p.Action)
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("got  %+v\nwant %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+// A fix-pr start decideIssue planned that the brake deferred or dropped leaves its run open:
+// the close is dropped, no Returned follows, and the defer stays.
+func TestSettleUnstartedFixPRKeepsRunOpenWhenBraked(t *testing.T) {
+	fixClose := Action{Kind: KindClose, Repo: "o/r", Issue: 7, RunID: 5, Outcome: runs.Handoff,
+		ReasonArg: "fixpr:12:abc123", Language: "nl"}
+	deferred := Action{Kind: KindDefer, Repo: "o/r", Issue: 7, Reason: "slots: 4 of 4 in use"}
+	other := Action{Kind: KindClose, Repo: "o/r", Issue: 8, RunID: 6, Outcome: runs.Handoff, ReasonArg: "fixpr:3:def"}
+	wanted := map[issueKey]bool{{"o/r", 7}: true}
+	ps := []planned{{Action: fixClose}, {Action: deferred}, {Action: other}}
+	var got []Action
+	for _, p := range settleUnstartedFixPR(ps, wanted) {
+		got = append(got, p.Action)
+	}
+	want := []Action{deferred, {Kind: KindReturn, Repo: "o/r", Issue: 8, RunID: 6, Reason: "reason_pr_red"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 }

@@ -96,8 +96,8 @@ type Action struct {
 // the settlement of the item's open runs, then the 🚀 repair, then at most one start,
 // resume, park or hold (a fix-pr start, else next), or for an item in On hold at most one
 // unpark; per repo also the markers that will never resume. After the brake, a run closed for
-// a fix-pr start that did not survive (a closed gate, a defer, a pause) is handed back as
-// "PR red" instead. The result is ordered: the actions without a start or resume (park, hold
+// a fix-pr start whose start the brake deferred or dropped stays open, so the start waits like
+// any other; one for which no start was planned (an active blocker) is handed back as "PR red". The result is ordered: the actions without a start or resume (park, hold
 // and unpark among them) by repo and issue, then the defers, then the starts and resumes by
 // priority, trigger time, repo and issue.
 func Decide(in Input) []Action {
@@ -111,10 +111,11 @@ func Decide(in Input) []Action {
 		}
 	}
 	slices.SortStableFunc(ps, comparePlanned)
+	wanted := fixPRStarts(ps)
 	if in.Brake != nil {
 		ps = in.Brake.apply(ps)
 	}
-	ps = returnUnstartedFixPR(ps)
+	ps = settleUnstartedFixPR(ps, wanted)
 	slices.SortStableFunc(ps, comparePlanned)
 	out := make([]Action, 0, len(ps))
 	for _, p := range ps {
@@ -123,32 +124,49 @@ func Decide(in Input) []Action {
 	return out
 }
 
-// returnUnstartedFixPR hands back every run settle closed for a fix-pr start (a handoff close
-// whose ReasonArg is the fixpr: key) when ps holds no fix-pr start for its issue: decideIssue
-// did not plan one, or the brake deferred or dropped it. The run then closes as Returned "PR
-// red" with its own session, as before fix-pr existed: a handoff without a start would leave
-// the issue silent on a red PR.
-func returnUnstartedFixPR(ps []planned) []planned {
-	type issueKey struct {
-		repo  string
-		issue int
-	}
+// issueKey names one issue of one repo.
+type issueKey struct {
+	repo  string
+	issue int
+}
+
+// fixPRStarts is the set of issues ps holds a fix-pr start for.
+func fixPRStarts(ps []planned) map[issueKey]bool {
 	started := map[issueKey]bool{}
 	for _, p := range ps {
 		if p.Kind == KindStart && p.Trigger == triggerFixPR {
 			started[issueKey{p.Repo, p.Issue}] = true
 		}
 	}
-	for i, p := range ps {
+	return started
+}
+
+// settleUnstartedFixPR decides every run settle closed for a fix-pr start (a handoff close whose
+// ReasonArg is the fixpr: key) when ps holds no fix-pr start for its issue after the brake.
+// wanted is the set of issues decideIssue planned a start for, before the brake. When the brake
+// deferred or dropped that start, the close is dropped: the run stays open and the next tick
+// finds the red PR again, as a start of any other trigger waits as a defer. When decideIssue
+// planned none (an active blocker), the run closes as Returned "PR red" with its own session:
+// a handoff without a start would leave the issue silent on a red PR. The gates that stay
+// (ceiling, spent SHA, foreign PR) are Returned by settle itself and not handled here.
+func settleUnstartedFixPR(ps []planned, wanted map[issueKey]bool) []planned {
+	started := fixPRStarts(ps)
+	out := ps[:0:0]
+	for _, p := range ps {
+		key := issueKey{p.Repo, p.Issue}
 		if p.Kind != KindClose || p.Outcome != runs.Handoff || !strings.HasPrefix(p.ReasonArg, triggerFixPR+":") ||
-			started[issueKey{p.Repo, p.Issue}] {
+			started[key] {
+			out = append(out, p)
+			continue
+		}
+		if wanted[key] {
 			continue
 		}
 		a := p.Action
 		a.Kind, a.Reason, a.Outcome, a.ReasonArg = KindReturn, "reason_pr_red", "", ""
-		ps[i] = planned{Action: a}
+		out = append(out, planned{Action: a})
 	}
-	return ps
+	return out
 }
 
 // planned is an action with what orders it; priority and at count for a start or resume.
@@ -192,7 +210,7 @@ func comparePlanned(a, b planned) int {
 // issue back: a start next to that Returned would contradict it. The same holds for the
 // unpark rule of an open issue in On hold. When settle closed a run for a fix-pr start and no
 // blocker is active, that start is the item's one start in this tick and next does not run;
-// in every other case Decide hands the run back (returnUnstartedFixPR).
+// with an active blocker Decide hands the run back (settleUnstartedFixPR).
 func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	hs := headers(it)
 	base := Action{Repo: repo.Snapshot.Repo, Issue: it.Issue, Language: repo.Language}

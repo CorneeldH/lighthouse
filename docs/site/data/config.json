@@ -124,12 +124,14 @@
               "key": "forge.kind",
               "level": "set",
               "required": "no",
-              "about": "Which forge hosts the repo. Only github is accepted for now.",
+              "about": "Which forge hosts the repo: github or gitlab. Without it the repo is read as a GitHub one.",
               "options": [
-                "github"
+                "github",
+                "gitlab"
               ],
               "example": "github",
               "readers": [
+                "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/kennforge/adapter.go"
               ]
@@ -138,13 +140,15 @@
               "key": "forge.repo",
               "level": "set",
               "required": "no",
-              "about": "The repository as owner/name.",
+              "about": "The repository as owner/name. With kind gitlab, group/name or group/subgroup/.../name.",
               "example": "owner/name",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/workplace/local/adapter.go",
                 "pack/core/lib/artefacts.py",
                 "pack/core/lib/pr_body_gate.py",
                 "pack/core/scripts/board_start.py",
+                "pack/core/scripts/create_labels.py",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/scripts/worktree_audit.py",
                 "pack/core/skills/audit-worktrees",
@@ -160,6 +164,14 @@
               ]
             },
             {
+              "key": "forge.host",
+              "level": "set",
+              "required": "no",
+              "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
+              "example": "git.example.org",
+              "readers": ["internal/initcmd/initcmd.go"]
+            },
+            {
               "key": "forge.default_branch",
               "level": "advanced",
               "required": "no",
@@ -167,6 +179,7 @@
               "about": "The branch that work is merged into and that commits are guarded on.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/workplace/local/adapter.go",
                 "pack/core/hooks/commit-test-gate.sh",
                 "pack/core/hooks/main-commit-gate.sh",
                 "pack/core/hooks/worktree-check.sh",
@@ -420,6 +433,10 @@
               "about": "The file that lists the labels of the project, and the document a free label's PR updates.",
               "example": "docs/labels.md",
               "readers": [
+                "internal/cli/init.go",
+                "internal/initcmd/initcmd.go",
+                "internal/projectconfig/projectconfig.go",
+                "pack/core/scripts/create_labels.py",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr"
               ]
@@ -938,7 +955,7 @@
         {
           "table": "host",
           "title": "Host",
-          "about": "Who this machine is. lighthouse init writes name and tailscale_ip on a machine with Tailscale.",
+          "about": "Who this machine is. lighthouse init writes name and tailscale_ip on a machine with Tailscale; without Tailscale, write it by hand only for the gate_* keys or [usage].",
           "keys": [
             {
               "key": "host.name",
@@ -951,8 +968,8 @@
             {
               "key": "host.tailscale_ip",
               "level": "set",
-              "required": "yes",
-              "about": "The Tailscale address of this workstation; init writes it.",
+              "required": "no",
+              "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it, host-check reports another host.",
               "example": "100.64.0.1",
               "readers": [
                 "pack/core/scripts/plan_review_record.py"
