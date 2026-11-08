@@ -6,7 +6,7 @@
 
 **Architecture:** `internal/forge.Client` wordt `forge.GitHub` en krijgt het board uit `[forge.board]` mee, zodat de vertaling van statusnaam naar Projects v2-option-ID in de client zit. Daarna schuiven de afnemers één voor één van het concrete type naar `forge.Forge`; elke commit compileert en is groen. `internal/cli` krijgt één opener die per repo een forge opent, met het token van die repo en een gedeelde login per soort, host en token.
 
-**Tech Stack:** Go (stdlib `net/http`, `testing`), bestaande nepserver `internal/forge/forgetest`, Python alleen voor `pack/core/lib/config.py` en `tests/test_site_config.py`.
+**Tech Stack:** Go (stdlib `net/http`, `testing`), bestaande nepserver `internal/forge/forgetest`, Python alleen voor één `SCHEMA`-regel in `pack/core/lib/config.py` en voor de tests `tests/test_site_config.py` en `tests/pack/test_config_fixtures.py`.
 
 **Spec:** [2026-11-08-forge-interface-design.md](../specs/2026-11-08-forge-interface-design.md). Dit plan dekt alleen *#258 levert*.
 
@@ -22,6 +22,8 @@
 - Tokenvariabelen: github `GH_TOKEN`, dan `GITHUB_TOKEN`; gitlab `GITLAB_TOKEN`. `[forge] token_env = "NAAM"` vervangt die lijst door één variabele.
 - Een slug komt hoogstens één keer voor over de repo's van `host.toml`.
 - Werk in de worktree `/home/corneel/repositories/lighthouse/.claude/worktrees/issue-258-forge-interface`. Draai `git` als losse opdracht met `git -C <worktree>`, niet in een samengestelde opdracht.
+- De branch bevat `origin/main` met #274 (`f4e01acc`, gemerged op 2026-11-08). De branch staat op origin, dus nooit rebasen. Controleer vóór taak 1 met `git -C <worktree> fetch origin` en daarna `git -C <worktree> merge-base --is-ancestor origin/main HEAD`. Bij exit 1: `git -C <worktree> merge --no-edit origin/main`.
+- Na #274 is `internal/config` de lezer van `lighthouse.toml` voor hooks en skills. `pack/core/lib/config.py` krijgt alleen nog een `SCHEMA`-regel per nieuwe sleutel: pariteitstests houden die twee en `tests/pack/fixtures/config-schema.json` gelijk.
 - Testgate na elke commit: `go test -race ./...` moet groen zijn. Voor het einde ook `golangci-lint run ./...`.
 - Niet in dit plan (dat is #259): de GitLab-client, de nep-GitLab-server, de GitLab-vorm van `[forge.board]` en validatie per soort, `IssueItem` in `dispatch.Prepare` voor een open run buiten het board, en de parser van `lighthouse run` voor subgroepen. Op de interne GitLab komen **geen** eigen statussen *On hold* en *Controller* (besluit van de eigenaar, 2026-11-08). #259 moet die twee dus anders invullen. `SetStatus(item, naam)` laat daar ruimte voor; dit plan legt niets vast dat de ingebouwde status veronderstelt.
 
@@ -40,15 +42,18 @@
 **Files:**
 - Modify: `internal/repoconfig/repoconfig.go` (`Repo`, `rawFile.Forge`, `Load`), new func `LoadAll`
 - Test: `internal/repoconfig/repoconfig_test.go`
-- Modify: `pack/core/lib/config.py` (`SCHEMA`: `"forge.token_env": _STR`)
+- Modify: `internal/config/config.go` (`schema`: `{"forge.token_env", kStr}` direct na `forge.default_branch`)
+- Modify: `pack/core/lib/config.py` (`SCHEMA`: `"forge.token_env": _STR` op dezelfde plek)
+- Modify: `tests/pack/fixtures/config-schema.json` (dezelfde regel op dezelfde plek in `schema`)
+- Modify: `tests/pack/fixtures/config/full/lighthouse.toml` en `expect.json` (de sleutel en zijn verwachting)
 - Modify: `docs/site/data/config.json` (nieuw item `forge.token_env`; reader `internal/repoconfig/repoconfig.go` bij `forge.host`)
-- Modify: geïnstalleerde kopie na `init --upgrade` (`.lighthouse/lib/lighthouse_lib/config.py`)
+- Modify: geïnstalleerde kopie na `init --upgrade`, als `config.py` daar staat
 
 **Interfaces:**
 - Produces:
   - `repoconfig.Repo.Host string` (`[forge] host`, `""` zonder) en `repoconfig.Repo.TokenEnv string` (`[forge] token_env`, `""` zonder).
   - `type Loaded struct { Path string; Repo Repo; Err error }`
-  - `func LoadAll(paths []string) []Loaded`: één `Loaded` per pad, in volgorde. `Err` is de fout van `Load`, of bij een dubbele slug de fout `"%s: [forge] repo %s is also the repo of %s"` (eigen pad, slug, het andere pad). Beide repo's met die slug krijgen zo'n fout.
+  - `func LoadAll(paths []string) []Loaded`: één `Loaded` per pad, in volgorde. `Err` is de fout van `Load`, of bij een dubbele slug de fout `"%s: [forge] repo %s is also the repo of %s"` (eigen pad, slug, het andere pad). Beide repo's met die slug krijgen zo'n fout. Bij een dubbele slug blijft `Repo` gevuld, zodat een aanroeper ziet welke slug het is; bij een fout van `Load` is `Repo` leeg.
 
 - [ ] **Step 1: Schrijf de falende tests**
 
@@ -57,12 +62,9 @@ func TestLoadReadsHostAndTokenEnv(t *testing.T) {
 	// lighthouse.toml met [forge] kind = "gitlab", repo = "g/sub/p", host = "git.example.org", token_env = "WORK_GITLAB"
 	// want r.Host == "git.example.org", r.TokenEnv == "WORK_GITLAB"
 }
-func TestLoadRefusesBadTokenEnv(t *testing.T) {
-	// token_env = "1 bad" → err contains "token_env"
-}
 func TestLoadAllRefusesDuplicateSlug(t *testing.T) {
 	// drie dirs: a en c met repo "o/r", b met "o/x"
-	// want got[0].Err and got[2].Err non-nil, got[1].Err nil
+	// want got[0].Err and got[2].Err non-nil, got[1].Err nil; got[0].Repo.Slug == "o/r"
 	// got[0].Err.Error() contains dirA and dirC; got[2].Err.Error() contains dirC and dirA
 }
 func TestLoadAllKeepsLoadError(t *testing.T) {
@@ -72,12 +74,12 @@ func TestLoadAllKeepsLoadError(t *testing.T) {
 
 - [ ] **Step 2: Draai de tests en zie ze falen**
 
-Run: `go test ./internal/repoconfig/ -run 'TestLoadReadsHostAndTokenEnv|TestLoadRefusesBadTokenEnv|TestLoadAll'`
+Run: `go test ./internal/repoconfig/ -run 'TestLoadReadsHostAndTokenEnv|TestLoadAll'`
 Expected: FAIL (`r.Host undefined`, `undefined: LoadAll`)
 
 - [ ] **Step 3: Implementeer**
 
-`Host` en `TokenEnv` als velden op `rawFile.Forge` (`toml:"host"`, `toml:"token_env"`). `Load` weigert een `token_env` die niet aan `^[A-Za-z_][A-Za-z0-9_]*$` voldoet, met `"%s: [forge] token_env %q is not an environment variable name"`. `LoadAll` laadt elk pad en zoekt dan dubbele slugs over de pads zonder fout.
+`Host` en `TokenEnv` worden velden op `rawFile.Forge` (`toml:"host"`, `toml:"token_env"`). `repoconfig` valideert de waarden niet: dat doet `internal/config`, net als bij `host`. `LoadAll` laadt elk pad en zoekt daarna dubbele slugs onder de pads die zonder fout laadden.
 
 - [ ] **Step 4: Run de tests**
 
@@ -86,12 +88,15 @@ Expected: PASS
 
 - [ ] **Step 5: Zet `forge.token_env` op de configkaart**
 
-Voeg `"forge.token_env": _STR` toe aan `SCHEMA` in `pack/core/lib/config.py`. Dat is de enige wijziging daar: #274 is nog open. Is #274 al gemerged, dan landt de sleutel in de Go-lezer van #274 en blijft `config.py` ongewijzigd. Voeg in `docs/site/data/config.json`, na `forge.host`, toe: `"key": "forge.token_env"`, `"level": "advanced"`, `"required": "no"`, about `"The name of the environment variable that holds the forge token, instead of GH_TOKEN and GITHUB_TOKEN (github) or GITLAB_TOKEN (gitlab). The token itself never goes in lighthouse.toml."`, example `"WORK_GITLAB_TOKEN"`, readers `["internal/repoconfig/repoconfig.go"]`. Voeg `internal/repoconfig/repoconfig.go` toe aan de readers van `forge.host`.
+Voeg dezelfde regel op dezelfde plek, direct na `forge.default_branch`, toe aan drie bestanden: `schema` in `internal/config/config.go` (`{"forge.token_env", kStr}`), `SCHEMA` in `pack/core/lib/config.py` (`"forge.token_env": _STR`) en `schema` in `tests/pack/fixtures/config-schema.json` (`["forge.token_env", "str"]`). In `config.py` verandert verder niets. Zet `token_env = "WORK_TOKEN"` onder `[forge]` in `tests/pack/fixtures/config/full/lighthouse.toml`. Voeg in `full/expect.json`, direct na het item van `forge.default_branch`, `{"args": ["forge.token_env"], "rc": 0, "stdout": "WORK_TOKEN\n", "stderr": ""}` toe. Verandert daardoor de uitvoer van een ander item in `full/expect.json` (bijvoorbeeld een dump van de hele tabel), neem dan over wat `config.py` nu geeft. Voeg in `docs/site/data/config.json`, na `forge.host`, toe: `"key": "forge.token_env"`, `"level": "advanced"`, `"required": "no"`, about `"The name of the environment variable that holds the forge token, instead of GH_TOKEN and GITHUB_TOKEN (github) or GITLAB_TOKEN (gitlab). The token itself never goes in lighthouse.toml."`, example `"WORK_GITLAB_TOKEN"`, readers `["internal/repoconfig/repoconfig.go"]`. Voeg `internal/repoconfig/repoconfig.go` toe aan de readers van `forge.host`.
 
-- [ ] **Step 6: Draai de kaarttest**
+- [ ] **Step 6: Draai de pariteits- en kaarttests**
 
-Run: `uv run pytest -q tests/test_site_config.py`
-Expected: PASS. Noemt de test nog een reader of een veld, neem dat dan exact over.
+Run: `go test ./internal/config/ ./internal/repoconfig/`
+Expected: PASS (`TestSchemaMatchesSnapshot`, `TestParityWithConfigPy` inbegrepen)
+
+Run: `uv run pytest -q tests/pack/test_config_fixtures.py tests/test_site_config.py`
+Expected: PASS. Noemt de kaarttest nog een reader of een veld, neem dat dan exact over.
 
 - [ ] **Step 7: Dogfood**
 
@@ -101,7 +106,7 @@ Expected: de tweede run meldt `No changes.`
 - [ ] **Step 8: Commit**
 
 ```bash
-git -C <worktree> add internal/repoconfig pack/core/lib/config.py docs/site/data/config.json .lighthouse
+git -C <worktree> add internal/repoconfig internal/config pack/core/lib/config.py tests/pack/fixtures docs/site/data/config.json .lighthouse
 git -C <worktree> commit -m "feat(repoconfig): forge host, token_env en weigering van dubbele slug (#258)"
 ```
 
@@ -161,7 +166,7 @@ Dit is de grootste taak. Een methodesignatuur wijzigen breekt elke aanroeper, du
 - Create: `internal/forge/forge.go` (`Forge`, `Config`, `Open`, de compile-check)
 - Modify: `internal/forge/github.go` (`Client` → `GitHub`, veld `Board`, `Kind`, cache van node-ID's; `Issue.NodeID` weg)
 - Modify: `internal/forge/board.go` (`BoardItem`, board-methoden), `issues.go` (`ClosedInMilestone`), `people.go` (`Role`, `Acknowledgers`), `write.go` (`Acknowledge`)
-- Modify (tests, mechanisch): `internal/forge/*_test.go`
+- Modify (tests, mechanisch): `internal/forge/*_test.go` en `internal/forge/forgetest/server_test.go`. Dat laatste gebruikt `*forge.Client`, `RoleName`, `AddRocket` en `RocketLogins` (`:18-113`).
 - Delete: `internal/dispatch/board.go`, `internal/dispatch/board_test.go` (de tests verhuizen naar `internal/forge/board_test.go`)
 - Modify: `internal/dispatch/apply.go`, `gather.go`, `trust.go`, `apply_test.go`, `gather_test.go`, `trust_test.go`
 - Modify: `internal/overview/overview.go`, `overview_test.go`
@@ -325,7 +330,8 @@ Fakes en tests:
 - `apply_test.go`:
   - `fakePoster.AddRocket` wordt `Acknowledge(_ context.Context, number int, commentID int64)`. Het logwoord `"AddRocket"` wordt `"Acknowledge"` in de fake en in de verwachte volgordes (`:279`, `:506`, `:1214`, `:1276`).
   - `fakeBoard.SetStatus` neemt `item forge.BoardItem` en logt `item.ItemID`, zoals nu de `itemID`.
-- `gather_test.go` en `trust_test.go`: `client(t)` zet `c.Board = testRepo.Board`. `TestPrepareBlockerStatus` zet daarnaast `c.Board = &board`.
+- `gather_test.go` en `trust_test.go`: `client(t)` zet `c.Board = testRepo.Board`. `TestPrepareBlockerStatus` en `TestPrepareStatuses` (`gather_test.go:133-151`, met *In progress*) bouwen hun eigen `board`. Die twee zetten daarnaast `c.Board = &board`.
+- `forgetest/server_test.go`: `client(srv)` geeft `*forge.GitHub`. `RoleName`, `AddRocket(40)` en `RocketLogins(40)` worden `Role`, `Acknowledge(ctx, 0, 40)` en `Acknowledgers(ctx, 0, 40)`.
 - `overview_test.go:227-265`:
   - `fakeBoard.BoardItems(ctx)`.
   - Items met `Status: "Controller"`, `"In progress"`, `""` in plaats van `SingleSelect`.
@@ -399,16 +405,21 @@ git -C <worktree> commit -m "refactor(dispatch): gebruik forge.Forge (#258)"
   - `func ControllerIssues(f forge.Forge, slug string) Filter`
   - `Source` en `BoardReader` verdwijnen.
 
-- [ ] **Step 1: Pas de fakes aan**
+Dit is een mechanische typeverbreding zonder nieuw gedrag. `Source` is een deelverzameling van `Forge`, dus er is geen falende test om eerst te schrijven. De bestaande tests zijn het bewijs, vóór en na de wijziging.
 
-Elke fake bedt `forge.Forge` in en houdt zijn eigen methoden: `overview_test.fakeSource`, `overview_test.fakeBoard`, `server/forge_test.fakeSource`, `latest_test.failingComments` (bedt `fakeSource` in, zoals nu) en `server_test.stubSource`. `testDeps(src forge.Forge, …)` en het tabelveld `src` in `latest_test.go:48` krijgen het type `forge.Forge`.
-
-- [ ] **Step 2: Draai en zie falen**
+- [ ] **Step 1: Draai de tests vooraf**
 
 Run: `go test ./internal/overview/ ./internal/server/`
-Expected: FAIL (compile)
+Expected: PASS
 
-- [ ] **Step 3: Implementeer de signaturen**
+- [ ] **Step 2: Implementeer de signaturen en pas de fakes aan**
+
+Elke fake bedt `forge.Forge` in en houdt zijn eigen methoden: `overview_test.fakeSource`, `overview_test.fakeBoard`, `server/forge_test.fakeSource`, `latest_test.failingComments` (bedt `fakeSource` in, zoals nu) en `server_test.stubSource`. `testDeps(src forge.Forge, …)` en het tabelveld `src` in `latest_test.go:48` krijgen het type `forge.Forge`. Haal `Source` en `BoardReader` weg.
+
+- [ ] **Step 3: Controleer dat de oude interfaces weg zijn**
+
+Run: `test -z "$(grep -rn 'overview\.Source\|overview\.BoardReader\|type Source interface\|type BoardReader interface' internal --include=*.go)"`
+Expected: exit 0
 
 - [ ] **Step 4: Run**
 
@@ -465,6 +476,7 @@ func tokenLogin(ctx context.Context, f forge.Forge) (string, error) // as today,
   - Daarna volgt de bestaande lus in de bestaande volgorde. Een repo met een fout bij het laden, een dubbele slug, een fout van `Dispatchable`, een token- of `Open`-fout krijgt `lighthouse: skip <path>: <err>`.
 - `gatherRepo`, `sweepOne`, `decideAndApply` en `applyActions` krijgen `map[string]forge.Forge` of `repoForge` in plaats van `token string`.
 - `gather` en `run` openen de forge van hun ene repo. Een tokenfout geeft `"gather: " + err` en `"run: " + err`, met dezelfde teksten als nu.
+- `findRepo` (`run.go:138-150`) laadt via `repoconfig.LoadAll`. Een item met een lege `Repo.Slug` (fout van `Load`) slaat het over, zoals nu. Een item met de gevraagde slug en een `Err` (dubbele slug) geeft die fout terug; `run` werkt dan niet door op de eerste match.
 
 - [ ] **Step 1: Schrijf de falende tests**
 
@@ -491,13 +503,17 @@ func TestTickOneLoginForSharedToken(t *testing.T) {
 func TestTickSkipsDuplicateSlug(t *testing.T) {
 	// two repo dirs with the same slug → two skip lines, each naming both dirs; no gather
 }
+func TestRunRefusesDuplicateSlug(t *testing.T) {
+	// two [dispatch] dirs with slug o/r → runIssue(…, "o/r#7", …) fails with an error naming both dirs;
+	// srv.Count("Board") == 0 and no launch
+}
 ```
 
 `TestNewForgeTrimsSlash` en `TestGithubToken` in `serve_test.go` gaan op in `TestOpenerOverrideOnlyForGitHub` en in `forge.TestTokenGitHubOrder` (taak 2); verwijder ze in taak 7, samen met `newForge` en `githubToken`.
 
 - [ ] **Step 2: Draai en zie falen**
 
-Run: `go test ./internal/cli/ -run 'TestOpener|TestTickSkips|TestTickOneLogin'`
+Run: `go test ./internal/cli/ -run 'TestOpener|TestTickSkips|TestTickOneLogin|TestRunRefuses'`
 Expected: FAIL (`undefined: newForgeOpener`)
 
 - [ ] **Step 3: Implementeer `forges.go` en zet `tick`, `gather`, `run` om**
@@ -532,17 +548,19 @@ git -C <worktree> commit -m "feat(cli): één forge per repo in tick, gather en 
 - Consumes: `forgeOpener`, `repoForge` (taak 6); `repoconfig.LoadAll` (taak 1).
 - Produces:
   - `repoGather.c forge.Forge`; `readWork(ctx, f forge.Forge, db, repo)`.
-  - `forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, errOut io.Writer) ([]overview.RepoSource, error)` houdt zijn signatuur.
+  - `forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, errOut io.Writer) (sources []overview.RepoSource, slugs []string, err error)`. `slugs` bevat elke repo uit `[dispatch]` die laadt, ook zonder token: `/api/runs` leest alleen de database en toont nu de runs van elke repo. Bij een dubbele slug staat die slug er één keer in. Zonder `[dispatch]` repos is `slugs` de slug van `--repo`, of leeg.
+  - `serve(ctx, addr, dbPath string, repos []overview.RepoSource, slugs []string, meta server.RunsMeta, errOut io.Writer) error` neemt `slugs` voor `dispatch.LoadView` in plaats van de slugs uit `repos` af te leiden (`serve.go`, na de merge van #274 met `meta`).
   - Flag `--forge-url` met default `envOr("LIGHTHOUSE_FORGE_URL", "")`. Helptekst: `"GitHub API base URL for GitHub repos (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); the GitHub token is sent there, never a GitLab one"`.
 - Gedrag:
-  - `triage` laadt met `LoadAll`, opent per repo met `[controller.triage]` en geeft een skip-regel per repo zonder token. Opent geen enkele repo, dan geeft `triage` `&exitError{code: 2, err: "triage: " + <eerste *TokenError>}`, vóór andere uitvoer. Daarmee blijft `triage_brake_test.go:146` letterlijk gelijk.
+  - `triage` laadt met `LoadAll`, opent per repo met `[controller.triage]` en geeft een skip-regel per repo zonder token. Opent geen enkele repo, dan geeft `triage` `&exitError{code: 2, err: "triage: " + <eerste *TokenError>}`, vóór andere uitvoer. Daarmee blijft `triage_brake_test.go:146` letterlijk gelijk. Had geen repo een forge nodig, dan volgt dezelfde terugval als bij `tick`: `forge.Token("github", "", getenv)`, en een fout daarvan geeft exit 2 met `"triage: " + err`. Zo blijft triage zonder token en zonder triage-repo op exit 2, zoals nu.
   - `serve` faalt nooit op een token. Een repo zonder token, met een dubbele slug of met een `Open`-fout krijgt `lighthouse: skip <path>: <err>` en wordt overgeslagen. `--repo` zonder `[dispatch]` is een GitHub-repo (`repoconfig.Repo{Slug: repo, Kind: "github"}`); zonder token krijgt die ook een skip-regel, en de endpoints geven dan 503 zoals nu.
   - `ask` gebruikt een opener met `ghToken: env.GhToken` en `githubURL: env.ForgeURL`. Bij een tokenfout geeft het `<err>; nothing posted`, met dezelfde tekst als nu. `askEnv.token()` verdwijnt.
 
 - [ ] **Step 1: Schrijf de falende tests**
 
 ```go
-func TestServeSkipsRepoWithoutToken(t *testing.T) // two [dispatch] repos, one with token_env "MISSING" → one RepoSource, errOut "lighthouse: skip <dir>: no GitHub token: set MISSING\n"
+func TestServeSkipsRepoWithoutToken(t *testing.T) // two [dispatch] repos, one with token_env "MISSING" → one RepoSource, errOut "lighthouse: skip <dir>: no GitHub token: set MISSING\n"; slugs holds both slugs
+func TestServeRunsOfTokenlessRepo(t *testing.T)    // no token at all, one [dispatch] repo with an open run in the db → GET /api/runs lists that run; GET /api/questions answers 503
 func TestServeForgeURLDefaultEmpty(t *testing.T)   // serve --help still has "https://api.github.com"; flag default value == ""
 func TestAskGhTokenOnlyForGitHub(t *testing.T)    // kind gitlab repo, no GITLAB_TOKEN, GhToken returns "x" → error contains "GITLAB_TOKEN" and "nothing posted", no POST
 func TestTriageSkipsRepoWithoutToken(t *testing.T) // two triage repos, one without token → skip line for it, the other gets its summary line
@@ -552,15 +570,18 @@ func TestTriageSkipsRepoWithoutToken(t *testing.T) // two triage repos, one with
 
 - [ ] **Step 2: Draai en zie falen**
 
-Run: `go test ./internal/cli/ -run 'TestServeSkips|TestServeForgeURL|TestAskGhToken|TestTriageSkips'`
+Run: `go test ./internal/cli/ -run 'TestServeSkips|TestServeRuns|TestServeForgeURL|TestAskGhToken|TestTriageSkips'`
 Expected: FAIL
 
 - [ ] **Step 3: Implementeer**
 
 - [ ] **Step 4: Run**
 
-Run: `go test -race ./... && grep -rn 'forge\.Client\|githubToken\|forge\.New(' internal cmd --include=*.go | grep -v '^internal/forge/'`
-Expected: de tests PASS en grep vindt niets.
+Run: `go test -race ./...`
+Expected: PASS
+
+Run: `test -z "$(grep -rn 'forge\.Client\|githubToken\|forge\.New(' internal cmd --include=*.go | grep -v '^internal/forge/' | grep -v '_test\.go:')"`
+Expected: exit 0. Geen productiecode buiten `internal/forge` gebruikt het concrete type of de oude tokenfunctie; tests mogen `forge.New` houden.
 
 - [ ] **Step 5: Commit**
 
@@ -590,6 +611,7 @@ type Fixture interface {
 	Login() string // the token's user
 	AddIssue(t *testing.T, is forge.Issue)          // Number, Title, Body, Author, State ("open"/"closed"), Labels, Milestone, ClosedAt
 	AddComment(t *testing.T, number int, author, body string) int64
+	AddAcknowledgement(t *testing.T, number int, commentID int64, login string) // login acknowledged the comment
 	SetRole(t *testing.T, user, role string)        // a neutral role word
 	AddBlocker(t *testing.T, number int, b forge.Blocker)
 	AddOpenPR(t *testing.T, pr forge.OpenPR)
@@ -621,6 +643,7 @@ Elk geval is een sub-test met een nieuwe fixture. Alle asserts gaan over neutral
 | `IssueItem` | `PutOnBoard(7,"On hold","")` → `IssueItem(7)` `ok`, `Status "On hold"`, `Issue 7` |
 | `AddToBoardThenSetStatus` | issue 7 niet op het board → `AddToBoard(7)`: `Issue == 7`, `ItemID != ""`; `SetStatus(item,"Controller")` → `StatusOf(7) == "Controller"` |
 | `SetStatusUnknownName` | `SetStatus(item,"Nope")` → err bevat `"Nope"`; `StatusOf` ongewijzigd |
+| `Pagination` | per lijstmethode een sub-test met 101 records, één meer dan een pagina van 100: `OpenIssues` (101 open), `ClosedInMilestone` (101 gesloten in M), `Comments` (101 op één issue), `Acknowledgers` (101 logins op één comment), `BlockedBy` (101 blokkeerders), `OpenPRs` (101), `BoardItems` (101 issues op het board). Elke sub-test verwacht precies 101 en elk nummer of elke login één keer. `BranchPRs` valt erbuiten: daar is een lijst van meer dan 20 een fout, geen pagina |
 | `PRFields` | `AddBranchPR("issue-7-x", PR{Number 12, State "MERGED", HeadSHA, HeadRef, Checks "SUCCESS", Mergeable "MERGEABLE", MergedAt})` → `BranchPRs("issue-7-x")` geeft die velden, `Closes == false`; `AddOpenPR` → `OpenPRs` geeft Number, Title, Body, HeadRef |
 
 - [ ] **Step 2: Schrijf de GitHub-fixture in `github_contract_test.go`**
@@ -628,7 +651,7 @@ Elk geval is een sub-test met een nieuwe fixture. Alle asserts gaan over neutral
 `func TestGitHubConformance(t *testing.T) { forgesuite.Run(t, newGitHubFixture) }`. De fixture vertaalt naar de velden van `forgetest.Server`:
 - `Issues[n]` met `node_id "I_<n>"`.
 - Blokkeerders in `BlockedBy` en ook in de `blockedBy` van het board-node.
-- `Roles`, `Pulls`, `Branches`.
+- `Roles`, `Pulls`, `Branches`, en `Rockets[id]` voor `AddAcknowledgement`.
 - `BoardNodes` met item-ID `"item-<n>"` en option-ID's uit een vaste `repoconfig.Board`.
 - `PutOnBoardUnmapped` gebruikt option `"opt-unmapped"`.
 
@@ -637,11 +660,11 @@ Elk geval is een sub-test met een nieuwe fixture. Alle asserts gaan over neutral
 - [ ] **Step 3: Run**
 
 Run: `go test -race ./internal/forge/...`
-Expected: PASS, alle 13 gevallen.
+Expected: PASS, alle 14 gevallen.
 
 - [ ] **Step 4: Mutatiecheck**
 
-Breek in `GitHub.BoardItems` tijdelijk de `unknown:`-prefix en, apart, de omzetting van `Acknowledge` naar de rocket-POST. Draai de suite; elk geval dat bij die code hoort moet falen. Draai dat terug.
+Breek tijdelijk, telkens apart: de `unknown:`-prefix in `GitHub.BoardItems`, de omzetting van `Acknowledge` naar de rocket-POST, en het volgen van de volgende pagina in `do` (geef `""` terug in plaats van `next`). Draai de suite na elke breuk. Het geval dat bij die code hoort moet falen; bij de laatste breuk elke sub-test van `Pagination` behalve `BoardItems`, dat GraphQL-cursors gebruikt. Draai elke breuk terug.
 
 - [ ] **Step 5: Commit**
 
@@ -655,13 +678,14 @@ git -C <worktree> commit -m "test(forge): conformiteitssuite, eerst tegen GitHub
 ### Task 9: Documentatie en eindcontrole
 
 **Files:**
-- Modify: `docs/tick.md:15-16`, `docs/triage.md:75`, `docs/ask.md:23`
+- Modify: `docs/tick.md:15-16`, `docs/triage.md:75`, `docs/ask.md:23`, `docs/install.md` (de alinea's over het token van `serve` en `--forge-url`, rond `:155-171`)
 - Create: `changelog.d/issue-258-forge-interface.md` (door `/lighthouse-write-pr`)
 
 - [ ] **Step 1: Pas de docs aan (in het Nederlands, zoals die pagina's)**
 
 - `tick.md`, stap 2 *Token*: het token komt per repo uit `GH_TOKEN`/`GITHUB_TOKEN` (github) of `GITLAB_TOKEN` (gitlab), of uit de variabele die `[forge] token_env` noemt. Een repo zonder token krijgt een skip-regel. Zonder enig token stopt tick met `tick: no GitHub token: set GH_TOKEN or GITHUB_TOKEN`. `--forge-url` en `LIGHTHOUSE_FORGE_URL` gelden alleen voor GitHub-repo's.
 - `triage.md:75` en `ask.md:23`: hetzelfde, in één zin. Bij `ask` blijft `gh auth token` de laatste bron, alleen voor GitHub.
+- `install.md` (Engels, zoals die pagina): `serve` slaat een repo zonder token over voor vragen en teruggegeven issues, maar toont zijn runs. `[forge] token_env` kiest een andere variabele. `--forge-url` geldt alleen voor GitHub-repo's.
 
 - [ ] **Step 2: Volledige verificatie**
 
@@ -671,14 +695,14 @@ Expected: PASS
 Run: `golangci-lint run ./...`
 Expected: `0 issues.`
 
-Run: `uv run pytest -q tests/test_site_config.py`
-Expected: PASS
+Run: `uv run pytest -q tests/test_site_config.py tests/pack/test_config_fixtures.py`
+Expected: PASS. Meldt de kaarttest `reader <file> missing from the map` voor `forge.token_env` (bijvoorbeeld `internal/forge/token.go` of `internal/cli/forges.go`, die de sleutel in commentaar noemen), voeg dat bestand dan toe aan de readers van `forge.token_env` in `docs/site/data/config.json`.
 
 Run: `go run ./cmd/lighthouse init --upgrade`
 Expected: `No changes.`
 
-Run: `grep -rn 'SingleSelect\|NodeID\|RoleName\|RocketLogins\|AddRocket\|NewBoard\|StatusSetter' internal --include=*.go | grep -v '_test.go'`
-Expected: niets, behalve het interne `issueItem.NodeID` in `internal/forge/issues.go`.
+Run: `test -z "$(grep -rn 'SingleSelect\|NodeID\|RoleName\|RocketLogins\|AddRocket\|NewBoard\|StatusSetter' internal cmd --include=*.go | grep -v '^internal/forge/' | grep -v '_test\.go:')"`
+Expected: exit 0. Binnen `internal/forge` blijft het node-ID intern (`issueItem.NodeID`, de cache in `github.go`).
 
 - [ ] **Step 3: Commit**
 

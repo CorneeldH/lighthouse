@@ -238,8 +238,10 @@ worden labelnamen. Het precieze formaat is aan de bouwer, met één eis: de Go-l
 `project_id`, `status_field_id`, option-ID's) gelden alleen voor GitHub; anders breekt elke hook
 op een GitLab-repo. Een nieuwe sleutel (`[forge] token_env`, de GitLab-vorm van `[forge.board]`)
 komt ook in `docs/site/data/config.json`. `pack/core/lib/config.py` is na #274 bevroren en krijgt
-niets. Daarmee hangt #259 af van #274; #258 niet, want `token_env` en `Host` kunnen in
-`internal/repoconfig`.
+geen eigen logica meer. Een nieuwe sleutel komt er alleen in als regel in `SCHEMA`: de
+pariteitstests van #274 houden `config.py`, `tests/pack/fixtures/config-schema.json` en
+`internal/config` gelijk *(keuze van de eigenaar na plan-review, r1-f6)*. Daarmee hangt #259 af van #274;
+#258 niet, want `token_env` en `Host` kunnen in `internal/repoconfig`.
 
 **Een statuskoppeling die niet bestaat.** Bestaat een gekoppelde GitLab-status niet in de
 lifecycle van de bovenste groep, dan geeft `SetStatus` een fout met de naam van de status en de
