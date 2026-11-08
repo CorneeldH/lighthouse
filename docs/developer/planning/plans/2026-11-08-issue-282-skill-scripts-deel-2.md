@@ -67,7 +67,9 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
   `reden`, `Codex-budget: onleesbaar - exit 1`, `… ingekort tot de limiet van GitHub`. Commits, PR's
   en dit plan zijn Nederlands.
 - Elke PR draait `go run ./cmd/lighthouse init --upgrade`, commit de geïnstalleerde kopie en krijgt
-  een fragment `changelog.d/<branch>.md` met `type: changed` (minor, spec §10).
+  een fragment `changelog.d/<branch>.md` met `type: changed` (minor, spec §10). Een `changed`-fragment
+  start geen release bij een push (`ci/changelog.py:147`): de release volgt de wekelijkse cron of een
+  handmatige `workflow_dispatch`. Tot dan draait wie nieuwe subcommando's nodig heeft `go install`.
 - **Na elke merge** draait wie in deze repo werkt `go install ./cmd/lighthouse` op `main`. Skills
   roepen `lighthouse` van het PATH aan, en de vorige release kent de nieuwe subcommando's niet
   (spec §10).
@@ -79,8 +81,9 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
    (taak 7): raw van 70.000 × `é` geeft een comment van precies 65.536 runes, en de marker, het log
    en de tabel staan er heel in.
 2. **Bytegelijke JSON waar het telt.** Het `roborev-log`-blok escapet `<`, `>` en `-` als
-   `<`, `>` en `-`. Python schrijft niet-ASCII daar als `\uXXXX`, omdat
-   `json.dumps` `ensure_ascii=True` gebruikt. → `TestLogLineEscapesHostileReason` (taak 7) met de
+   `<`, `>` en `-`. `roborev_comment.py:35-39` roept `json.dumps` aan met
+   `separators=(",", ":")` en `ensure_ascii=False`: geen spaties na `,` en `:`, en niet-ASCII
+   (`é`) blijft rauwe UTF-8. → `TestLogLineEscapesHostileReason` (taak 7) met de
    reden `a --> b <x> é\n`: één regel, gelijk aan de fixture die pytest nu met de Python-versie
    vastlegt, en terug te parsen met `encoding/json`.
 3. **De prompt blijft byte voor byte gelijk.** Zonder `--context` en zonder sidecar mag de prompt
@@ -92,10 +95,18 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
    of exit 1 geeft, schrijft `review-run` het synthetische `not_measurable`-object en gaat Codex
    gewoon door. Hetzelfde geldt voor een panic in de in-process check. →
    `TestBudgetPanicIsNotMeasurable` (taak 2) naast de bestaande pytest-gevallen.
-5. **`check-instructions` blijft hetzelfde bij mirror-uitzonderingen.** Het verschil moet
-   bytegelijk blijven aan het vastgelegde bestand `[paths] mirror_exceptions` van deze repo. Anders
-   wordt check 11 na de port rood in elke repo met uitzonderingen. → `TestMirrorContentMatchesThisRepo`
-   (taak 9): `lighthouse check-instructions` op deze checkout geeft `ok    mirror-content matches`.
+5. **`check-instructions` blijft hetzelfde bij mirror-uitzonderingen.** Deze repo heeft geen
+   `[paths] mirror_exceptions` (`lighthouse.toml`), dus de gelijkheid bewijs je met fixtures die het
+   huidige bash-script vastlegt (`--print-mirror-exceptions`), niet met een bestand van deze repo.
+   Anders wordt check 11 na de port rood in elke repo met uitzonderingen. → `TestMirrorFixtures`
+   (taak 9 stap 1): de Go-uitvoer is byte voor byte gelijk aan de bash-fixtures voor een gewijzigde
+   regel, een ontbrekende slotnewline, een binair bestand, een bestand aan één kant en een
+   gemarkeerde skill.
+6. **Gedeelde fixtures vóór de port (spec §9, r1-f15).** Modules met inline pytest-gevallen
+   (`plan_review_record`, `review_pair`, `roborev_gate`) krijgen eerst fixtures in
+   `tests/pack/fixtures/<module>/`, groen met pytest tegen Python; de Go-tests lezen dezelfde
+   fixtures. Het Python-orakel gaat pas weg ná die stap.
+7. **De productie-budgetroute blijft getest zonder seam.** Zie taak 2 stap 1.
 
 ---
 
@@ -109,6 +120,7 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
 - Nieuw: `internal/cli/codexusage.go`, `internal/cli/scripts.go` (`usageErr`)
 - Wijzig: `internal/cli/root.go` (registratie)
 - Test: `internal/usage/codex_budget_test.go`, `internal/cli/codexusage_test.go`
+- Wijzig: `docs/usage-venster.md:110-119` (uitvoer van `usage codex`, zie stap 3)
 
 **Interfaces:**
 - Produceert:
@@ -136,7 +148,12 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
 - [ ] **Stap 3: implementeer.** `CodexState` krijgt `ResetCredits json.RawMessage` met de tag
   `json:"reset_credits"`: `null` bij het rollout-log, anders het object dat `_reset_credits` bouwt.
   `SourceFile` wordt `*string` zonder `omitempty`, zodat er `null` staat zoals in Python. Daarmee
-  verandert ook `lighthouse usage codex`; zijn test past mee. De timeout per home komt uit
+  verandert ook `lighthouse usage codex`; zijn test past mee. Dat is een bewuste gedragswijziging
+  (`source_file: null`, een `reset_credits`-sleutel, timeout uit config): werk
+  `docs/usage-venster.md:110-119` mee bij (de zinnen over `source_file`, `reset_credits` en de vaste
+  20 s) en noem het in het changelog-fragment. Controleer dat een onleesbare `rateLimitResetCredits`
+  de meting niet onmeetbaar maakt voor `serve` (`internal/cli/serve.go:154`): dan blijft
+  `reset_credits` `null` en de rest van de stand geldig; zet daar een test op. De timeout per home komt uit
   `codex_usage.app_server_timeout_seconds` (default 20). De drempels komen uit
   `codex_usage.review_pct_session` (90) en `review_pct_week` (95). De volgorde en de redenteksten
   van `decide_budget` zijn letterlijk (`codex_usage.py:355-412`).
@@ -160,11 +177,13 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
                         [--prompt F] [--schema F] [--context PATH]... <DOC> <ROUND> <OUT> [PRIOR] [LEVEL]
   ```
   `--kind` is standaard `spec`. `--skill-dir` is standaard `.claude/skills/lighthouse-review-<kind>`
-  (repo-relatief). Zonder `--verify` zijn de defaults `reviewer-prompt.md` en
+  (repo-relatief). Exit 1 komt voor bij de fouten die het script nu ook met 1 meldt: een prompt
+  die niet te bouwen is (`--context given…`, `unsubstituted placeholder`) en `incomplete result`
+  (`review.sh:162-164,168-169,220-222`). Zonder `--verify` zijn de defaults `reviewer-prompt.md` en
   `findings.schema.json` in die map, met `--verify` `verifier-prompt.md` en
   `verification.schema.json`. `--prompt` en `--schema` gaan voor. Vlaggen mogen overal staan
-  (`cmd.Flags().SetInterspersed(true)`). Exit 0, 2, 3, 4, 5 en 6 en elke stderr-tekst komen uit
-  `review.sh:1-36`. De `ok | reviewer: …`-regel blijft letterlijk.
+  (`cmd.Flags().SetInterspersed(true)`). Exit 0, 2, 3, 4, 5 en 6 komen uit de kop `review.sh:1-36`,
+  de stderr-teksten uit `review.sh:63-200`. De `ok | reviewer: …`-regel blijft letterlijk.
   ```go
   func BuildPrompt(template []byte, doc, repo, round, prior string, contexts []string) (string, error)
   ```
@@ -175,7 +194,15 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
   `Bash(lighthouse review-run:*)` in `pack/core/permissions.json`. Zet een agents-geval erbij,
   `test_agents_skill_dir_reads_its_own_templates`: `--skill-dir .agents/skills/lighthouse-review-plan`
   stuurt de prompt uit die map. Zet ook
-  `test_doc_path_with_space_reaches_codex_verbatim` erbij (Review-focus 3).
+  `test_doc_path_with_space_reaches_codex_verbatim` erbij (Review-focus 3). De twee tests
+  `test_production_path_calls_codex_usage_budget` en `test_repo_root_from_lighthouse_repo_root`
+  (`:495-545`) eisen `codex_usage.py` en kunnen niet blijven. Vervang ze door seam-vrije
+  versies: een nep-`codex` op het PATH die `app-server` beantwoordt met een
+  `account/rateLimits/read`-stand boven `review_pct_session`, en `LIGHTHOUSE_REPO_ROOT` op een
+  repo waarvan `lighthouse.toml` de drempel verlaagt. Eis exit 6, de regel
+  `CODEX_BUDGET: fallback — …`, een `budget.json` met `decision=fallback` en de drempels uit die
+  `lighthouse.toml`, en dat `codex exec` niet is aangeroepen. Mutatiecheck: laat `ReadBudget`
+  altijd een fout geven; de test moet rood worden.
 - [ ] **Stap 2:** `uv run pytest tests/pack/test_adversarial_review_sh.py -q` → FAIL (unknown
   command).
 - [ ] **Stap 3: Go-unittests.** `TestBuildPromptByteIdentical` legt de prompt vast die `review.sh`
@@ -189,7 +216,8 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
   `~/.codex-specreview`): `auth.json` kopiëren (exit 4 als `~/.codex/auth.json` ontbreekt) en
   `config.toml` maken met precies `model = "gpt-5.6-sol"\nmodel_reasoning_effort = "high"\n` als
   hij leeg is. Dan het budget. `LIGHTHOUSE_CODEX_BUDGET_CMD` blijft de test-seam (op spaties
-  gesplitst), anders `usage.ReadBudget` in-process, met `recover`. Het budget gaat naar
+  gesplitst), anders `usage.ReadBudget` in-process, met `recover`. Het pad-controleren van document
+  en context gebeurt na de `codex`-check, zoals in `review.sh:71-82`. Het budget gaat naar
   `<OUT>.budget.json`, bij code 6 met `CODEX_BUDGET: fallback — <reason>` en exit 6. Daarna komen de
   prompt en `codex exec` met dezelfde argv: `--sandbox read-only`, het optionele
   `-c model_reasoning_effort=<LEVEL>`, `--cd`, `--output-schema`, `-o`, `--json` en de prompt.
@@ -218,11 +246,18 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
   type Deps struct{ HostRefusal func(kind string) *string; CodexVersion func() *string; Now func() time.Time }
   ```
 
-- [ ] **Stap 1: Go-tests uit `tests/pack/test_plan_review_record.py`.** Alle 72 gevallen, één
+- [ ] **Stap 0: gedeelde fixtures eerst (spec §9, Review-focus 6).** Verplaats de invoer en de
+  verwachte uitvoer van de inline gevallen uit `tests/pack/test_plan_review_record.py` naar
+  `tests/pack/fixtures/plan_review_record/` (JSON per geval), laat pytest die fixtures lezen en
+  draai pytest groen tegen Python. Commit dat apart (`test(plan-review-record): …`).
+- [ ] **Stap 1: Go-tests op dezelfde fixtures.** Alle 72 gevallen, één
   Go-test per geval. `monkeypatch.setattr(rec, "host_refusal"|"codex_version", …)` wordt een
-  `Deps`-veld. `rec.main([...])` wordt een aanroep van de cobra-wrapper met een buffer
-  (`execute(args, in, out, errOut)`), zodat exitcode en stderr mee getest worden. Hashes en record
-  vergelijk je na parsen met de verwachte waarden uit de pytest-asserts.
+  `Deps`-veld. `rec.main([...])` wordt een CLI-test in `internal/cli/planreviewrecord_test.go`
+  (`NewRoot(in, out, errOut)`, `SetArgs`, `execute(root, errOut)` uit `internal/cli/root.go:37-53`),
+  zodat exitcode en stderr mee getest worden; `internal/review` kan `internal/cli` niet importeren.
+  Elke literale stderr-regel (zoals `roborev_gate: …`) schrijft het commando zelf, en het geeft
+  `&exitError{code, errSilent}` terug, zodat `lighthouse: ` er niet voor komt. Hashes en record
+  vergelijk je na parsen met de verwachte waarden uit de fixtures.
 - [ ] **Stap 2:** `go test ./internal/review -run 'Record|OpenPoints|AcceptOpen|Start'` → FAIL.
 - [ ] **Stap 3: implementeer.** Het data-pad komt uit `datadir.Dir`, het host-oordeel uit
   `config.LoadHost` met dezelfde stderr-regel als `host_refusal`. De headings komen uit
@@ -246,7 +281,9 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
   (`SHADOW-PAIR FAILED: <reden>`). Bij 4 schrijft het geen uitvoerbestand. Seams:
   `type PairDeps struct{ Coin func() bool; TreeState func(root string) (head string, clean bool, err error) }`.
 
-- [ ] **Stap 1: Go-tests uit `tests/pack/test_review_pair.py`.** Alle 20 gevallen, met `_coin` en
+- [ ] **Stap 0: gedeelde fixtures eerst.** Zoals taak 3 stap 0, voor `tests/pack/test_review_pair.py`
+  naar `tests/pack/fixtures/review_pair/`; pytest groen tegen Python; apart committen.
+- [ ] **Stap 1: Go-tests op die fixtures.** Alle 20 gevallen, met `_coin` en
   `_tree_state` als `PairDeps`. De schemavalidatie zonder `jsonschema` port je als
   `validateFindings` met precies de foutteksten van `review_pair.py:96-160`.
 - [ ] **Stap 2:** `go test ./internal/review -run Pair` → FAIL.
@@ -292,8 +329,10 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
   defect in de opruimroute van `reconcile` en een eigen fix met test in deze taak.
 - [ ] **Stap 4: opruimen.** Haal de bestanden onder *Weg* weg. Werk dan alles bij dat ze noemt: de
   lijsten in `core_test.go`, `SOURCES.toml` (de entries van de weggehaalde bestanden),
-  `requires.toml` (de unitnamen `plan_review_record` en `review_pair` uit `git`, `python3` en
-  `tomllib`) en de site-data (`readers`/links naar de Go-bestanden; `uv run pytest
+  `requires.toml` (de unitnamen `plan_review_record` en `review_pair`, en `review-spec` en
+  `review-plan` zelf, uit `git`, `python3` en `tomllib`; zie `pack/core/requires.toml:7,9` en
+  `tests/pack/test_skill_contracts.py:355-367`), de promptsjablonen `reviewer-prompt.md` en
+  `verifier-prompt.md` van beide skills (de kop noemt `review.sh`/`verify.sh`) en de site-data (`readers`/links naar de Go-bestanden; `uv run pytest
   tests/test_site_config.py tests/test_site_reference.py` wijst aan wat nog niet klopt). Werk ook
   de PR-templates bij (`lighthouse plan-review-record pr-open-points`). `codex_usage.py` blijft
   staan (bevroren, afnemer `roborev_gate.py`).
@@ -309,8 +348,11 @@ C eerder, dan krijgt C `Refs` en de laatste van A en B `Closes`.
   `python3` op. Op een klein spec-document in een tijdelijke repo draait de test dan
   `lighthouse plan-review-record start --kind spec`, twee keer `lighthouse review-run`
   (`round-1.codex.json` en `round-1.fallback.json`), `lighthouse review-pair blind`, een
-  blind-decisions-bestand en `lighthouse review-pair merge`. Elke stap moet exit 0 geven, en
-  `round-1.json` moet bestaan. Mutatiecheck: zet in `RunRound` een `exec.Command("python3", …)`.
+  blind-decisions-bestand en `lighthouse review-pair merge`. De tijdelijke repo bevat beide
+  skills (met `findings.schema.json`) en is gecommit en schoon, anders weigert `blind`
+  (`review_pair.py:72-77,149-152`). Elke stap moet exit 0 geven, en
+  `round-1.json` moet bestaan. Mutatiecheck: zet in de promptbouw van `RunRound` (niet in de
+  budgetroute, die `recover` slikt) een `exec.Command("python3", …)`.
   De test wordt rood. Haal die regel weer weg.
 - [ ] **Stap 8: changelog en commit.** Maak `changelog.d/issue-282-review-keten.md` met
   `type: changed` en de tekst: "The spec and plan reviews run through `lighthouse review-run`,
@@ -339,7 +381,10 @@ Nieuwe worktree vanaf `main` na de merge van A, branch `issue-282-roborev`.
   func Gate(root string, budget Budget) (map[string]any, error) // ordered
   ```
 
-- [ ] **Stap 1: Go-tests uit `tests/pack/test_roborev_gate.py`.** Alle 57 gevallen. De `budget`-lambda
+- [ ] **Stap 0: gedeelde fixtures eerst.** Zoals taak 3 stap 0, voor `tests/pack/test_roborev_gate.py`
+  naar `tests/pack/fixtures/roborev_gate/` (let op: `parametrize`-rijen zijn aparte gevallen);
+  pytest groen tegen Python; apart committen.
+- [ ] **Stap 1: Go-tests op die fixtures.** Alle 57 gevallen. De `budget`-lambda
   wordt een `Budget`. De nep-binaries `roborev`/`codex` op het PATH blijven: een helper zet ze in
   `t.TempDir()`, met `t.Setenv("PATH", …)`. Neem de tabel uit `test_gate_skips_on_the_budget`
   letterlijk over, dus ook `Codex-budget: onleesbaar - exit 0` bij geen JSON.
@@ -369,8 +414,10 @@ Nieuwe worktree vanaf `main` na de merge van A, branch `issue-282-roborev`.
   `TestRenderCutsOnRunesNotBytes` en `TestLogLineEscapesHostileReason` (Review-focus 1 en 2), die de
   fixtures byte voor byte vergelijken.
 - [ ] **Stap 2:** FAIL. **Stap 3:** implementeer. `LIMIT` is 65536 runes. Alleen raw wordt
-  ingekort, met `… ingekort tot de limiet van GitHub`. De logregel volgt Python `json.dumps`:
-  `ensure_ascii`, `", "`/`": "` als scheidingstekens, en daarna de drie escapes.
+  ingekort, met `… ingekort tot de limiet van GitHub`. De logregel volgt `roborev_comment.py:35-39`:
+  compacte scheidingstekens `,` en `:` zonder spaties, niet-ASCII rauw (geen `\uXXXX`; `SetEscapeHTML(false)`),
+  en daarna de drie escapes `<`, `>` en `-`. De verwachting van `TestLogLineEscapesHostileReason`
+  heeft dus een rauwe `é`.
 - [ ] **Stap 4:** PASS. Mutatiecheck: `len(raw)` in bytes. `TestRenderCutsOnRunesNotBytes` wordt
   rood.
 - [ ] **Stap 5: commit** `feat(roborev-comment): PR-comment van roborev in Go (#282)`.
@@ -383,7 +430,8 @@ Nieuwe worktree vanaf `main` na de merge van A, branch `issue-282-roborev`.
 - Weg: `pack/core/scripts/{roborev_gate,roborev_comment,codex_usage}.py`,
   `tests/pack/test_{roborev_gate,roborev_comment,codex_usage}.py`
 - Wijzig: `core_test.go`, `SOURCES.toml`, `requires.toml` (`codex = [...]` zonder `codex_usage`),
-  `docs/site/data/{config,loop}.json`, `tests/pack/test_{write_pr,fix_pr}_skill.py`
+  `docs/site/data/{config,loop}.json`, `tests/pack/test_{write_pr,fix_pr}_skill.py`,
+  `tests/test_site_config.py:250-252` (leest `codex_usage.py`)
 - Geïnstalleerd: uitvoer van `init --upgrade`
 
 - [ ] **Stap 1: skilltekst-tests eerst.** `test_write_pr_skill.py` en `test_fix_pr_skill.py`
@@ -431,7 +479,16 @@ Eigen worktree vanaf `main`, branch `issue-282-check-instructions`. Kan parallel
   heeft die tools niet nodig, dus die SKIPPED/FAIL-takken bestaan niet meer. Noem ze bij naam in de
   commitbody als bewuste afwijking. `git` blijft nodig: zonder `git` geeft check 11 SKIPPED
   `mirror-content: diff could not compare a skill pair, so the content was not measured`, zoals nu.
-  Zet `TestMirrorContentMatchesThisRepo` erbij als Go-test (Review-focus 5).
+  Leg vóór de port met het bash-script vast (`--print-mirror-exceptions`, en de check-11-uitvoer)
+  fixtures onder `tests/pack/fixtures/check_instructions/` voor: een gewijzigde regel, een
+  ontbrekende slotnewline, een binair bestand, een bestand aan één kant en een gemarkeerde skill.
+  Zet `TestMirrorFixtures` erbij als Go-test die de Go-uitvoer byte voor byte met die fixtures
+  vergelijkt (Review-focus 5). `_record_current_differences` (`:220-229`) mag niet meer zelf de
+  verwachting uit de binary halen. De interface krijgt `--print-mirror-exceptions` (exit 0; exit 4
+  met `SKIPPED  diff could not compare a skill pair` op stderr). De FAIL-hint van check 11 noemt
+  `lighthouse check-instructions --print-mirror-exceptions > <rel>`; pas
+  `tests/pack/test_check_instructions.py:1164,1174` aan en noem dit in de commitbody als bewuste
+  afwijking.
 - [ ] **Stap 2:** `uv run pytest tests/pack/test_check_instructions.py -q` → FAIL.
 - [ ] **Stap 3: implementeer per check, in de volgorde van het script.** Een paar regels zijn
   niet-triviaal:
@@ -441,7 +498,7 @@ Eigen worktree vanaf `main`, branch `issue-282-check-instructions`. Kan parallel
   - **Check 2.** De directory-hash over het relatieve pad plus de inhoud, met `crypto/sha256`.
   - **Check 11.** Shell uit naar `git diff --no-index --no-color --no-ext-diff --no-textconv -U0
     --diff-algorithm=myers --no-indent-heuristic` en zet om naar `<`/`>` zoals de awk het doet.
-    Alleen zo blijft de uitvoer bytegelijk aan het vastgelegde `mirror_exceptions`-bestand. De
+    Alleen zo blijft de uitvoer bytegelijk aan wat het bash-script vastlegde (de fixtures). De
     FAIL-weergave (nu `diff -u … | tail -n +3`) wordt `git diff --no-index --no-color -U3
     --diff-algorithm=myers` tussen twee tijdelijke bestanden (vastgelegd, nu). Alles vóór de eerste
     `@@` valt weg, en elke regel krijgt zes spaties ervoor. Dit is alleen weergave: het oordeel
@@ -480,8 +537,8 @@ Eigen worktree vanaf `main`, branch `issue-282-check-instructions`. Kan parallel
   (`No changes.`) en `go test ./... && uv run pytest -q` → groen.
 - [ ] **Stap 4: grep van het issue.** Doe een verse `lighthouse init` met `core`, `go`, `node`,
   `shell` en `expo` in een tijdelijke repo, en draai daar `grep -rn python3 .`. Geen van de 67
-  treffers uit de issue-comment van #282 komt nog terug, behalve die van stap 6, 8 en 10
-  (`pr_body_gate.py`, `evidence.py`, `measure_fix_pr_kpi.py`). Zet de uitvoer in de PR.
+  treffers uit de issue-comment van #282 komt nog terug, behalve die van stap 6, 8 en 10/11
+  (`pr_body_gate.py`, `evidence.py`, `measure_fix_pr_kpi.py`, `measure_skill_surface.py`). Zet de uitvoer in de PR.
 - [ ] **Stap 5: changelog en commit.** Maak `changelog.d/issue-282-check-instructions.md` met
   `type: changed`: "`lighthouse check-instructions` replaces `.lighthouse/scripts/check-instructions.sh`
   and no longer needs `python3`, `wc` or `sha256sum`." Open PR C.
