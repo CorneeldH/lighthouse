@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -36,5 +38,30 @@ func TestGateGoPassesExitCode(t *testing.T) {
 	code, _, errOut := runGate(t, "go", "--", "sh", "-c", "exit 5")
 	if code != 5 || errOut != "" {
 		t.Errorf("code=%d stderr=%q", code, errOut)
+	}
+}
+
+func TestGateNodePassesFlags(t *testing.T) {
+	root := t.TempDir()
+	web := filepath.Join(root, "web")
+	for path, body := range map[string]string{
+		filepath.Join(web, "node_modules", ".keep"): "",
+		filepath.Join(web, "package.json"):          `{"scripts": {"lint": "x"}}`,
+		filepath.Join(root, "bin", "npm"):           "#!/bin/sh\necho \"npm $*\"\n",
+		filepath.Join(root, "bin", "node"):          "#!/bin/sh\nexit 0\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", filepath.Join(root, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Chdir(root)
+	code, out, errOut := runGate(t, "node", "--dir", "web", "--", "lint")
+	want := "gate-node: web — npm run lint\nnpm run --silent lint\ngate-node: passed — lint\n"
+	if code != 0 || out != want {
+		t.Errorf("code=%d stdout=%q stderr=%q, want stdout %q", code, out, errOut, want)
 	}
 }

@@ -57,5 +57,21 @@ func newGateCommand() *cobra.Command {
 			return nil
 		},
 	})
+	gateCmd.AddCommand(&cobra.Command{
+		Use:                "node [--dir DIR] [--also PATH]... [--drift SCRIPT=PATH]... -- SCRIPT...",
+		Short:              "Run npm scripts when the commit touches a package directory",
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			env, err := gateEnv(cmd)
+			if err != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "gate-node: COULD NOT CHECK — %s\n", err)
+				return &exitError{code: gate.Unchecked, err: errSilent}
+			}
+			if rc := gate.Node(args, env); rc != 0 {
+				return &exitError{code: rc, err: errSilent}
+			}
+			return nil
+		},
+	})
 	return gateCmd
 }
