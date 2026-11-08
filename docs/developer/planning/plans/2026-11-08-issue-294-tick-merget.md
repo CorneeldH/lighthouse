@@ -24,7 +24,7 @@ die notitie als oorzaak voor fix-pr.
 - Alleen squash (`"merge_method": "squash"`), altijd met `"sha": <gemeten head>`. Geen commit-titel, geen branch-opruiming.
 - Code, comments en skilltekst in het Engels. Docs, headings-`nl`, changelog en commitberichten in het Nederlands.
 - Migratie heet `internal/store/migrations/0006_runs_merge.sql`.
-- Elke commit die `pack/` raakt, draait eerst `go run ./cmd/lighthouse init --upgrade` en neemt de geïnstalleerde kopie mee. Een tweede run moet `No changes.` geven.
+- Elke commit die `pack/` raakt, draait eerst `go run ./cmd/lighthouse init --upgrade` en neemt de geïnstalleerde kopie mee, plus `.lighthouse/manifest.toml`. Een tweede run moet `No changes.` geven, en `git status --porcelain` is daarna leeg.
 - Go volgt `/lighthouse-go-standard`. Tests volgen `/lighthouse-test-standard`: elke test faalt als zijn regel wegvalt.
 - Roborev-waarden zijn precies `""`, `"processed"` en `"open"`.
 
@@ -56,7 +56,7 @@ die notitie als oorzaak voor fix-pr.
 **Files:**
 - Create: `internal/store/migrations/0006_runs_merge.sql`
 - Modify: `internal/runs/history.go` (`Row`, `rowColumns`, `scanRow`), `internal/runs/runs.go` (`OpenRun`, `openColumns`, `scanOpen`, nieuwe `NoteMergeFailed`), `internal/dispatch/fingerprint.go` (`fpRun`)
-- Test: `internal/store/migrate_test.go`, `internal/runs/runs_test.go`, `internal/dispatch/fingerprint_test.go`
+- Test: `internal/store/migrate_test.go`, `internal/runs/runs_test.go`, `internal/dispatch/fingerprint_test.go`, `internal/cli/tick_test.go` (alleen de verwachte `user_version`)
 
 **Interfaces:**
 - Produces:
@@ -69,7 +69,9 @@ die notitie als oorzaak voor fix-pr.
     - `user_version` is 6;
     - `merge_sha` en `merge_error` van rij 41 zijn `""`;
     - de andere kolommen zijn ongewijzigd.
-  - Pas `TestMigrate0005KeepsRuns` aan: hij migreert naar `embeddedUpTo(... "0005_workspace_removed.sql")` en verwacht nog steeds 5. Pas de `want 5` op regel 81 aan naar 6.
+  - In `TestMigrate0005KeepsRuns`: de aanroep `migrate(ctx, db, migrationFS)` op regel 422 wordt `migrate(ctx, db, embeddedUpTo(t, …, "0005_workspace_removed.sql"))`. De test verwacht nog steeds 5.
+  - In `TestMigrateTwice` (`migrate_test.go:81-82`) wordt `want 5` 6.
+  - In `TestTickNoRepos` (`internal/cli/tick_test.go:227-228`) wordt `want 5` ook 6.
   - `TestNoteMergeFailed` in `runs_test.go`:
     - na `Take` geeft `NoteMergeFailed(ctx, db, id, "abc1234", "Pull Request is not mergeable")` nil;
     - `Open` geeft `MergeSHA == "abc1234"` en `MergeError == "Pull Request is not mergeable"`, en `History` ook;
@@ -92,12 +94,12 @@ die notitie als oorzaak voor fix-pr.
   - `fpRun` krijgt `MergeSHA string \`json:"merge_sha,omitempty"\``, gevuld uit `r.MergeSHA`.
 
 - [ ] **Stap 4: Run de tests en zie ze slagen**
-  Run: `go test -race ./internal/store ./internal/runs ./internal/dispatch`
+  Run: `go test -race ./internal/store ./internal/runs ./internal/dispatch ./internal/cli`
   Verwacht: PASS.
 
 - [ ] **Stap 5: Commit**
   ```bash
-  git add internal/store internal/runs internal/dispatch/fingerprint.go internal/dispatch/fingerprint_test.go
+  git add internal/store internal/runs internal/dispatch/fingerprint.go internal/dispatch/fingerprint_test.go internal/cli/tick_test.go
   git commit -m "feat(runs): noteer een geweigerde merge op de open run (#294)"
   ```
 
@@ -406,7 +408,7 @@ die notitie als oorzaak voor fix-pr.
 
 - [ ] **Stap 6: Commit**
   ```bash
-  git add internal/dispatch pack/core/headings.toml .lighthouse/headings.toml
+  git add internal/dispatch pack/core/headings.toml .lighthouse/headings.toml .lighthouse/manifest.toml
   git commit -m "feat(dispatch): de tick plant de merge van een groene eigen PR, en fix-pr bij conflict, roborev of mislukte merge (#294, #295)"
   ```
 
@@ -423,7 +425,7 @@ die notitie als oorzaak voor fix-pr.
   - `forge.ErrHeadMoved` en `*forge.MergeRefused` (Taak 2);
   - `runs.NoteMergeFailed` (Taak 1);
   - `KindMerge`, `Action.PR` en `Action.HeadSHA` (Taak 4).
-- Produces: `Poster.MergePR(ctx context.Context, number int, sha string) error`, plus `func (ap applier) merge(ctx context.Context, a Action) error`.
+- Produces: `Poster.MergePR(ctx context.Context, number int, sha string) error`, plus `func (ap applier) merge(ctx context.Context, a Action, res *Result) error`.
 
 - [ ] **Stap 1: Schrijf de falende tests.** `fakePoster` krijgt:
   - `mergeErr error`;
@@ -435,7 +437,7 @@ die notitie als oorzaak voor fix-pr.
   | Test | `mergeErr` | Verwacht |
   |---|---|---|
   | `TestApplyMergeSucceeds` | nil | De calls zijn `MergePR`, `CreateComment` en `Kill`, in die volgorde. `merges == ["12 abc1234"]`. De body bevat de nl-tekst van `note_merged` en de PR-URL. De rij is gesloten als `done`. Geen fout. |
-  | `TestApplyMergeHeadMoved` | `forge.ErrHeadMoved` | Geen post en geen `Kill`. De rij blijft open met een lege `MergeSHA`. `h.out` bevat `o/r#7: merge of PR #12 skipped: head moved`. Geen fout. |
+  | `TestApplyMergeHeadMoved` | `forge.ErrHeadMoved` | Geen post en geen `Kill`. De rij blijft open met een lege `MergeSHA`. `res.Deferred == ["o/r#7: merge of PR #12 skipped: head moved"]`, en `res.Failed` heeft geen `applyRepo`. Geen fout. |
   | `TestApplyMergeRefusedNotes` | `&forge.MergeRefused{Message: "Pull Request is not mergeable"}` | Geen post en geen `Kill`. De rij is open, met `MergeSHA "abc1234"` en `MergeError "Pull Request is not mergeable"`. Een logregel met `refused`. Geen fout. |
   | `TestApplyMergeOtherErrorFails` | `errors.New("status 500")` | Een fout, en `res.Failed[applyRepo]` is gezet. Geen post. De rij is open, zonder notitie. |
   | `TestApplyMergePostFailsKeepsRowOpen` | nil, met `postErr` gezet | Een fout. `merges` heeft één element. Geen `Kill`. De rij is open, zonder notitie. |
@@ -449,10 +451,15 @@ die notitie als oorzaak voor fix-pr.
 
 - [ ] **Stap 3: Implementeer**
   - `Poster` krijgt `MergePR`.
-  - `apply` krijgt `case KindMerge: return ap.merge(ctx, a)`.
+  - `apply` krijgt `case KindMerge: return ap.merge(ctx, a, res)`.
   - `merge` volgt spec §3 stap 1–5:
     - gelukt: `RenderDone(a.SessionID, a.PRURL, Heading("note_merged"), a.Language)`, dan `release`, dan `closeRun(Done, "")`;
-    - `errors.Is(err, forge.ErrHeadMoved)`: `ap.logf("%s#%d: merge of PR #%d skipped: head moved", …)`, en nil. `prefixed` in de CLI zet `lighthouse: ` ervoor;
+    - `errors.Is(err, forge.ErrHeadMoved)`: `res.Deferred = append(res.Deferred, deferral(a, fmt.Sprintf("merge of PR #%d skipped: head moved", a.PR)))`, en nil. `merge` krijgt daarvoor `res *Result` als parameter. Waarom geen gewone logregel:
+      - `internal/cli/tick.go:353` bewaart de vingerafdruk niet voor een repo met een `Deferred`-regel;
+      - een 405 "Base branch was modified" verandert niets in de vingerafdruk;
+      - zonder deze regel zou de volgende tick de gather overslaan tot `FullGatherAfter` (`precheck.go:177`), in plaats van opnieuw te meten zoals spec §3 vraagt.
+
+      Een uitgestelde regel geeft geen exitcode 1. Tick drukt hem af als `lighthouse: deferred o/r#7: merge of PR #12 skipped: head moved`;
     - `errors.As(err, &refused)`: `runs.NoteMergeFailed(ctx, db, a.RunID, a.HeadSHA, refused.Message)`, dan `ap.logf("%s#%d: merge of PR #%d refused: %s", …, oneLine(refused.Message))`. De fout van `NoteMergeFailed` gaat terug;
     - anders: `fmt.Errorf("merge: %w", err)`.
   - `returnFixPR`: de reden is `cmp.Or(a.Reason, "reason_pr_red")` met `a.ReasonArg`, via `reasonText`.
@@ -478,7 +485,8 @@ die notitie als oorzaak voor fix-pr.
   - `docs/site/data/loop.json`;
   - `docs/developer/planning/specs/2026-10-27-m2-dispatcher-design.md` (*No-Gos*, regel 34);
   - `docs/developer/planning/specs/2026-11-01-issue-119-roborev-lokaal-design.md` (*Niet-doelen*);
-  - `pack/core/skills/fix-pr/claude/SKILL.md` en `pack/core/skills/fix-pr/agents/SKILL.md`.
+  - `pack/core/skills/fix-pr/claude/SKILL.md` en `pack/core/skills/fix-pr/agents/SKILL.md`;
+  - `tests/pack/test_fix_pr_skill.py`.
 - Create: `changelog.d/issue-294-tick-merget.md`
 - Installed: de kopieën onder `.claude/skills/lighthouse-fix-pr/` en `.agents/skills/lighthouse-fix-pr/` (via `init --upgrade`)
 
@@ -489,10 +497,14 @@ die notitie als oorzaak voor fix-pr.
     - 13: klaar en een eigen PR met een van de vier oorzaken → fix-pr, met per oorzaak de reden en de plafondreden uit spec §2.
   - Bij 13 komt ook de vreemde PR erbij: rood geeft *PR rood*, `CONFLICTING` geeft *PR heeft een merge-conflict*.
   - Stap 7 *Gather* noemt het lezen van de PR-comments van een mergeklare PR bij een open run.
-  - *Apply* beschrijft de merge en de drie soorten fout: 409/"Base branch was modified" geeft een logregel; een weigering een notitie; een andere fout exitcode 1.
+  - *Apply* beschrijft de merge en de drie soorten fout:
+    - 409 of "Base branch was modified": een `deferred`-regel, en de volgende tick meet opnieuw;
+    - een weigering: een notitie;
+    - een andere fout: exitcode 1.
   - *De rem* zegt dat een pauze, een item buiten `Controller` en een actieve blokkeerder de merge tegenhouden, en dat de run dan open blijft.
   - Stap 2 *Token* noemt *Contents: write* voor het mergen.
-  - De alinea over `End` noemt de merge.
+  - De alinea over `End` (`docs/tick.md:210`): "regels 1-3, 6, 6b, 7 en de fix-pr-handoff van een rode PR" wordt "regels 1-3, 6, 6b, 7 (merge), 7b en de fix-pr-handoff van regel 13".
+  - De tabel *Afloop met de lokale werkplek* (`docs/tick.md:227`): de rij "1-3, 6, 6b, 7" wordt "1-3, 6, 6b, 7, 7b".
 
 - [ ] **Stap 2: `loop.json`.** Regel 580 en de fix-pr-node noemen:
   - dat de tick merget;
@@ -510,6 +522,13 @@ die notitie als oorzaak voor fix-pr.
   - §6 punt 4: "does not read the marker … only on a red PR" wordt: "the dispatcher reads the marker: a review without one keeps the PR from merging and starts this skill, at most three times per PR".
   - Een nieuwe zin bij "stop at green" in §1: "A dispatcher start after a failed merge finds the PR green: report that and stop; the failure itself is in the 🤖 Returned that follows."
 
+  `tests/pack/test_fix_pr_skill.py:187-192` (`test_only_a_red_pr_is_started_by_the_dispatcher`) toetst de oude zinnen letterlijk. Hernoem hem naar `test_dispatcher_contract`. Per variant asserts hij, op de platgeslagen tekst:
+  - `"the merge itself — the tick does that after a finished run, never this skill"`;
+  - `"the dispatcher reads the marker"`;
+  - de woorden `conflict`, `unprocessed roborev review` en `merge that failed` in *Domain*.
+
+  Zie hem eerst falen. Pas dan de skill aan.
+
   Run `go run ./cmd/lighthouse init --upgrade`. Daarna geeft een tweede run `No changes.`.
 
 - [ ] **Stap 5: Changelog.** Maak `changelog.d/issue-294-tick-merget.md` met `type: added`. Twee tot vier zinnen in het Nederlands:
@@ -520,10 +539,12 @@ die notitie als oorzaak voor fix-pr.
 - [ ] **Stap 6: Verifieer.**
   - Run: `go run ./cmd/lighthouse init --upgrade` (verwacht `No changes.`).
   - Run: `go test -race ./...` (verwacht PASS).
+  - Run: `uv run pytest -q tests/pack/test_fix_pr_skill.py` (verwacht PASS).
   - Run: `golangci-lint run ./...` (verwacht geen bevindingen).
 
 - [ ] **Stap 7: Commit**
   ```bash
-  git add docs changelog.d pack/core/skills/fix-pr .claude/skills/lighthouse-fix-pr .agents/skills/lighthouse-fix-pr
+  git add docs changelog.d pack/core/skills/fix-pr tests/pack/test_fix_pr_skill.py .claude/skills/lighthouse-fix-pr .agents/skills/lighthouse-fix-pr .lighthouse/manifest.toml
   git commit -m "docs: de tick merget, fix-pr start bij vier oorzaken (#294)"
+  git status --porcelain   # verwacht: leeg
   ```
