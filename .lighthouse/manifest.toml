@@ -744,7 +744,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
-sha256 = "9fd85e52b06c50f75fa1d9805f161b834c84d9ce4540aae6b88db8a9f192176d"
+sha256 = "cc8b2f4d64c96ea156bad6c4888cb27f4f06d6e652f41fe981163e1e566453c8"
 
 [[unit]]
 kind = "file"
@@ -874,6 +874,13 @@ sha256 = "75d077bc7ced2c9563cc2e37073cb4c2303cf69b67deeb082a9617c31602ea5f"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/scripts/create_labels.py"
+package = "core"
+version = "dev"
+sha256 = "cf79f3adc5339bbb0d1b3a768b270707eefeaebfd177f1e5d6f20cfdd263eb49"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/scripts/gate_go.py"
 package = "go"
 version = "dev"
@@ -905,7 +912,7 @@ kind = "file"
 path = ".lighthouse/scripts/plan_review_record.py"
 package = "core"
 version = "dev"
-sha256 = "448bc90e891912c7f6c5252b234e743aa4637d3279efc4082bda0100af0884fe"
+sha256 = "4e1cdd8a8acf3a6c372cd086c10c5353bb0974bbe368c338df44dc4f44e6201d"
 
 [[unit]]
 kind = "file"

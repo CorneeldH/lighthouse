@@ -1,9 +1,11 @@
 # Werkplek
 
-De werkplek is de kant van de dispatcher die met kenn-forge praat: een workspace klaarzetten, daar
-een agent in starten, de sessies lezen, alles stoppen en de workspace opruimen. De code staat in
-`internal/workplace` (interface, regels, levenscyclus) en `internal/workplace/kennforge` (de
-HTTP-adapter). Het ontwerp staat in de [dispatcher-spec](developer/planning/specs/2026-10-27-m2-dispatcher-design.md)
+De werkplek is de kant van de dispatcher die een run een plek geeft: een workspace klaarzetten, daar
+een agent in starten, de sessies lezen, alles stoppen en de workspace opruimen. Er zijn twee adapters,
+gekozen met `[dispatch] workplace` in `host.toml` (zie [tick.md](tick.md)): `kenn-forge` (standaard)
+praat met kenn-forge, `local` werkt met een git worktree en een losgekoppelde `claude -p` op deze host.
+De code staat in `internal/workplace` (interface, regels, levenscyclus), `internal/workplace/kennforge`
+(de HTTP-adapter) en `internal/workplace/local` (de lokale adapter). Het ontwerp staat in de [dispatcher-spec](developer/planning/specs/2026-10-27-m2-dispatcher-design.md)
 (§6); de tick zelf staat in [tick.md](tick.md).
 
 ## De interface
@@ -20,7 +22,11 @@ subprocess-aanroep (git, systemctl, podman) loopt via een injecteerbare
 `workplace.Runner`. Een onbekende exitcode of time-out is een fout, nooit een negatief signaal:
 onmeetbaar is niet "weg" en niet "schoon".
 
-## Prepare
+## kenn-forge
+
+De rest van dit deel geldt alleen voor de kenn-forge-adapter.
+
+### Prepare
 
 `Prepare` leest alle workspaces van forge. Forge toont die van elke repo, dus een bestaande workspace
 telt alleen als `repo.provider` gelijk is aan `[forge] kind` en `repo.repo_path` gelijk aan
@@ -28,7 +34,8 @@ telt alleen als `repo.provider` gelijk is aan `[forge] kind` en `repo.repo_path`
 telt de workspace waarvan `git_head_ref` de issue-branch is. Is er geen, dan maakt `Prepare` er een met
 `POST /api/v1/repo/<kind>/<repo>/workspaces` en wacht tot de status `ready` is (standaard 60 s).
 
-Daarna volgt de workspace `origin/<branch>`, als die branch bestaat:
+Daarna volgt de workspace `origin/<branch>`, als die branch bestaat. Dat doet
+`workplace.FollowRemote`, dat de lokale adapter ook gebruikt (zie [Lokaal](#lokaal)):
 
 - Een nieuwe workspace komt bij forge op `origin/HEAD`, niet op de branch: `Prepare` doet
   `checkout -B <branch> --track origin/<branch>`.
@@ -55,7 +62,7 @@ Een vuile werkboom (`status --porcelain`, ongevolgde bestanden inbegrepen, net a
   verouderde `HEAD`, en geen latere tick start dezelfde trigger opnieuw. Lukt de post niet, dan
   sluit de run als `start_failed` en probeert `retry` het nog één keer.
 
-## Het dragercontract (paia#1661)
+### Het dragercontract (paia#1661)
 
 `Spawn` schrijft vóór de handoff een drager: een JSON-bestand dat het forge-target leest om de agent te
 starten. Het contract:
@@ -95,7 +102,7 @@ starten. Het contract:
 
   Na een onzekere spawn (`ErrUncertain`) blijft de drager staan: er kan een agent draaien.
 
-## Spawn: drie uitkomsten
+### Spawn: drie uitkomsten
 
 `Spawn` stuurt `POST /api/v1/workspaces/{id}/runtime/agent-handoffs` met `{"target_key", "message"}` en
 verstuurt nooit een tweede POST. Er zijn drie uitkomsten:
@@ -132,7 +139,7 @@ rij al `start_failed` (of door decide teruggegeven als "start onzeker"), zonder
 zolang ze `working` is of binnen `max_wait` actief, en `ForeignLive` houdt de workspace staan. Het
 opruimen stopt haar nooit.
 
-## Launch en AdoptSessions
+### Launch en AdoptSessions
 
 `Launch` loopt na `runs.Take`: `Prepare`, `runs.SetWorkplace`, `Spawn`, `runs.SetSession`. De uitkomst:
 
@@ -156,7 +163,7 @@ de fouten worden samengevoegd en de andere runs worden wel opgezocht. Wat er met
 niet verschijnt (start onzeker) of die te lang loopt (`max_runtime`), beslist decide; zie *Afloop* in
 [tick.md](tick.md).
 
-## Transcripten
+### Transcripten
 
 `workplace.Transcripts` is een optionele interface naast `Workplace`:
 `Transcript(ctx, workspaceID, sessionID)` leest het transcript van één sessie, zoals
@@ -180,7 +187,8 @@ niet verschijnt (start onzeker) of die te lang loopt (`max_runtime`), beslist de
 `<sessie>/subagents` en geeft een `Transcript`: de laatste gebeurtenis over alle draden (`LastEvent`),
 per draad de laatste (`Threads`; `""` is de hoofdthread), het commando waarop de sessie niet startte
 (`UnknownCommand`) en of er een assistent-beurt was (`AssistantTurn`). Een kapotte of afgebroken laatste
-regel telt niet mee.
+regel telt niet mee. Ontbreekt het hoofdtranscript, dan wikkelt de fout `fs.ErrNotExist`; heeft geen
+draad een regel met tijd, dan is het `ErrNotMeasurable`.
 
 `Background` telt het achtergrondwerk van het hoofdtranscript dat nog loopt (#270). Een start is het
 `toolUseResult` van een Bash-call met `backgroundTaskId`, of van een Agent-call met `status:
@@ -193,10 +201,9 @@ tellen; dan beslissen de stilte- en looptijdregels van de tick.
 `TurnOpen` is waar als er na de laatste `stop_hook_summary` van het hoofdtranscript nog een user- of
 assistent-regel staat: claude nam na haar Stop een nieuwe beurt, op de melding van achtergrondwerk,
 en de forge-stand van die Stop is verouderd. Een sessie die midden in een beurt stopte, telt ook als
-open. Zonder `stop_hook_summary` (geen Stop-hooks) blijft het onwaar. Ontbreekt het hoofdtranscript, dan wikkelt de fout `fs.ErrNotExist`; heeft geen
-draad een regel met tijd, dan is het `ErrNotMeasurable`.
+open. Zonder `stop_hook_summary` (geen Stop-hooks) blijft het onwaar.
 
-## Stop
+### Stop
 
 `Stop(workspaceID, sessionIDs)` leest het `worktree_path` van de workspace en bepaalt de unit:
 `paia-forge-<profiel>-<basename van het pad>`, waarbij elke byte buiten `[A-Za-z0-9_-]` een streepje
@@ -217,7 +224,7 @@ wordt (een multibyte teken geeft er dus meer). Dan:
 `Stop` weigert een leeg sessie-id vóór elke aanroep: `pgrep -f ""` en `pkill -f ""` raken elk proces in
 de gedeelde devcontainer, ook vreemde sessies.
 
-## Kill
+### Kill
 
 Een claude blijft na zijn laatste antwoord draaien, ook als forge zijn sessie `done` noemt. Een hervatting
 van dezelfde sessie (`--resume <sessie>`) weigert forge zolang die oude claude leeft: een 500
@@ -239,7 +246,7 @@ De tick roept `Kill` op twee plekken aan (zie *Afloop* in [tick.md](tick.md)): b
 als `done`, `handoff` of `question`, en vlak vóór de handoff van een start of hervatting, na de
 claim, op de claudes van de gesloten eigen runs in de workspace (`workplace.Earlier`).
 
-## Eigen en vreemd
+### Eigen en vreemd
 
 `runs.SessionKeys` geeft per rij van het issue (open en gesloten) met een `workplace_session` die key en
 het `session_id` van de rij. `workplace.Own.Has` beslist daarmee of een sessie **eigen** is. Daarvoor
@@ -262,7 +269,7 @@ startte, dan vult forge later haar eigen `session_id` in. Dat wijkt af van dat v
 vanaf dan als vreemd. Op de key alleen bleef ze voor altijd eigen, en `Cleanup` zou de hele unit met de
 vreemde agent erin stoppen.
 
-## Bezet (#31)
+### Bezet (#31)
 
 `workplace.Busy(sessions, own, open, activity, now, maxWait)` geeft de eerste sessie die de werkplek
 bezet maakt. `own` komt uit `runs.SessionKeys`; `open` bevat de `session_id`'s van de open runs.
@@ -280,7 +287,7 @@ een tweede agent in dezelfde worktree het werk van de eerste stuk kan maken.
 
 `ForeignLive(sessions, own)` geeft de eerste sessie die niet eigen is en niet `done`, ook een stille.
 
-## Opruimen (#85)
+### Opruimen (#85)
 
 `Cleanup(candidate)` verwijdert een workspace alleen als er niets mee verloren gaat. Een kandidaat zonder
 workspace-id is een fout van de aanroeper: `Cleanup` geeft een fout en legt niets vast. Het doet niets bij
@@ -324,6 +331,114 @@ lopende run wordt nooit afgebroken. Daarna, in deze volgorde, en elke stap die d
 
 Een vuile of niet-gepushte workspace heeft dus zijn eigen sessies gestopt en blijft staan. Is de
 workspace verwijderd, dan verdwijnt ook zijn achterblijver-record.
+
+## Lokaal
+
+`workplace = "local"` laat de tick draaien zonder kenn-forge: geen `[dispatch.forge]`, geen `target_key`.
+Een run is een git worktree onder `<repo>/.claude/worktrees/` en een `claude -p` die de adapter
+losgekoppeld start (`setsid -f` van util-linux) en laat doorlopen als de tick klaar is. De adapter werkt
+alleen op Linux: hij leest `/proc/<pid>/environ` en `/proc/<pid>/stat`. Op een andere host geven de
+methoden van `Procs` de fout `local workplace: needs /proc, which only linux has`. De eisen aan de host
+staan in [host-assumptions.md](host-assumptions.md); `claude`, `git` en `setsid` moeten op het `PATH`
+van de tick staan.
+
+### De acht methoden
+
+- `Prepare(branch)`: de worktree die git al voor de branch heeft, of een nieuwe onder
+  `<repo>/.claude/worktrees/<id>`. Een bestaande worktree die de adapter niet zelf maakte, wordt
+  *adopted*: hij blijft van de gebruiker en `Remove` verwijdert hem nooit van schijf. Een lege branchnaam
+  of een naam die met `-` begint, weigert `Prepare`; een branch die in de hoofdcheckout staat ook. Daarna
+  volgt `workplace.FollowRemote` de `origin/<branch>`, met dezelfde regels als bij kenn-forge (zie
+  [Prepare](#prepare)). Nieuw is een worktree alleen als de branch hier nog niet bestond; een gevonden
+  worktree of een bestaande lokale branch met eigen werk dat origin mist, houdt zijn `HEAD`, en
+  `Prepare` geeft de `*workplace.OwnWorkError` ongewijzigd door, zodat de dispatcher de run teruggeeft
+  (#269). Om de checkout van de gebruiker schoon te houden zet `Prepare` `/.claude/worktrees/` in
+  `<git-common-dir>/info/exclude`, als het er nog niet staat.
+- `Spawn(ws, launch)`: bouwt de drager (`workplace.NewCarrier`, dezelfde `args` als bij kenn-forge) zonder
+  er een bestand van te schrijven, en start `claude -p` met die `args` en de `env` van de drager. Een
+  fout vóór de start is `ErrNotAccepted` en start niets, ook een onschrijfbare statemap of een `claude`
+  buiten het `PATH`. De start gaat één keer; het kind schrijft
+  zelf zijn pid-bestand. Verschijnt dat binnen 10 s niet, dan is de uitkomst `ErrUncertain`.
+- `Sessions(workspaceID)`: per launch met een pid-bestand `working` zolang de pid bestaat met dezelfde
+  starttijd, anders `done`. Een gebruiker die `claude --resume` draait of het transcript volgt, houdt de
+  run dus niet in leven. Zolang `claude -p` leeft, is de stand `working`, ook als hij op
+  achtergrondwerk wacht; de regel van #270 (`Background` en `TurnOpen`, zie
+  [Transcripten](#transcripten)) leest het transcript en geldt hier ongewijzigd.
+- `Stop` en `Kill(workspaceID, sessionIDs)`: doen hetzelfde, want een lokale run heeft geen zachtere
+  stop. Ze beëindigen elk gemerkt proces van de sessie-id's: SIGTERM, tot 5 s wachten, dan SIGKILL. Een
+  leeg sessie-id weigeren ze vóór elk signaal. Elk signaal gaat via een pidfd (`os.FindProcess`), en pas
+  nadat het merk en de uid van die pid opnieuw gelezen zijn; zo raakt een signaal nooit een proces dat de
+  pid intussen hergebruikt. Zonder pidfd (een oude kernel) blijft alleen die herlezing vlak voor het
+  signaal.
+- `Remove(workspaceID)`: beëindigt elk gemerkt proces van de sessies van de workspace. Bij een eigen
+  worktree gebeurt dat na de `Dirty`-check en vóór `git worktree remove`; een vuile worktree is `ErrDirty`
+  en er wordt niets beëindigd. Een worktree waarin een run zelf een worktree aanlegde, is ook `ErrDirty`:
+  `info/exclude` verbergt `.claude/worktrees/` voor `Dirty`, en `git worktree remove` zou de geneste
+  worktree met zijn werk wissen. Bij een adopted of verdwenen worktree beëindigt `Remove` alleen de
+  processen en wist de records, zonder `Dirty`-check en zonder `git worktree remove`. `Cleanup` slaat een
+  sessie over die `done` is, terwijl een klare claude een dev-server kan achterlaten; het merk vindt die
+  nog. De lokale branch blijft staan.
+- `Lookup(workspaceID)`: het pad uit het record en de branch uit `git worktree list`, zodat een branch die
+  met de hand is gewisseld zichtbaar is. Alleen bij een verdwenen worktree met nog gemerkte processen
+  komt de branch uit het record.
+- `Discard(workspaceID)`: vergeet de launches zonder pid-bestand, na het beëindigen van de processen
+  die hun merk dragen.
+- `Transcript(workspaceID, sessionID)`: leest `~/.claude/projects/<map>` op deze host, zoals
+  `workplace.ReadTranscript`.
+
+Een worktree die git niet meer kent (na `git worktree prune`) is `ErrGone`, behalve zolang er nog een
+gemerkt proces van een sessie van de workspace draait: dan blijft de workspace bestaan, zodat decide de
+run kan stoppen.
+
+### Bestanden
+
+Onder `StateDir/local/<owner>/<name>/` (de statemap is `${XDG_STATE_HOME:-~/.local/state}/lighthouse/dispatch`):
+
+- `workspaces/<id>.json`: `{id, path, branch, adopted, created_at}`.
+- `sessions/<id>/<key>.json`: per launch `{key, session_id, mode, started_at}`.
+- `sessions/<id>/<key>.pid`: de pid en de starttijd van claude (veld 22 van `/proc/<pid>/stat`).
+- `logs/<key>.log`: stdout en stderr van `claude -p`.
+
+Elk bestand wordt atomair geschreven (tempbestand en rename), met mode `0600`; de mappen zijn `0700`.
+Het workspace-ID is `local-<slug>-<6 hex>`, de sessiesleutel `<session_id>.<8 hex>`.
+
+### Het merk en zijn grens
+
+Claude Code start elk Bash-commando in een eigen sessie, dus een sessie of procesgroep van claude
+bereikt niet wat claude startte. Wel erft elk kind de omgeving. `Spawn` zet daarin
+`LIGHTHOUSE_CONTROLLER_RUN=<session_id>`: het merk van de run. De processen van een run zijn alle
+processen van deze gebruiker met dat merk in hun omgeving: claude, zijn Bash-commando's, testruns,
+dev-servers en MCP-servers, ook als claude zelf al weg is. De tick slaat zijn eigen pid over.
+
+De grens: een proces dat zijn omgeving wist (`env -i`) of naar een andere gebruiker of container gaat,
+ontsnapt aan het merk en wordt nooit beëindigd. Een interactieve sessie van de gebruiker draagt het
+merk niet en valt er buiten. Andersom houdt een tmux-server (of iets vergelijkbaars) die een run start
+het merk, en ook elke latere sessie op die server, dus `Kill` bereikt die ook; onder `-p` is dat
+onwaarschijnlijk.
+
+### De omgeving van de run
+
+De run erft de omgeving en de umask van de tick, met `HOME`, `PATH` en `GH_TOKEN`, plus het merk en
+`LIGHTHOUSE_STATE_DIR` (daarmee schrijft de hook `permission-check` zijn bestand). De run heeft dus de
+rechten van de dispatcher: wie `GH_TOKEN` heeft, heeft ze ook in `claude`. Geef die token alleen de rechten
+die een run mag hebben. De run erft de omgeving van wie hem start: een `lighthouse run` die je met de hand
+vanuit een Claude Code-sessie start, geeft de variabelen `CLAUDECODE` en `CLAUDE_CODE_*` van die sessie
+door aan de run, dus start hem vanuit een gewone shell. Een tick onder systemd of cron heeft ze niet.
+
+### Overstap tussen adapters
+
+Elke methode met een workspace-ID zonder voorvoegsel `local-` geeft een gewone fout:
+`workspace <id> is not a local workspace`. Dat is geen `ErrGone`, anders zou `Cleanup` de workspace van
+kenn-forge als verwijderd markeren. Omgekeerd weigert `kennforge.Adapter` een ID dat met `local-`
+begint. Wie `workplace` omzet op een host met open runs of workspaces, sluit die runs en ruimt die
+workspaces met de hand op.
+
+### De gedeelde contract-suite
+
+`internal/workplace/workplacetest` is het contract dat elke `workplace.Workplace`-adapter houdt. Elke
+adapter draait dezelfde gevallen (`workplacetest.Run`) tegen een eigen `Fixture`: de lokale adapter in
+`internal/workplace/local/contract_test.go`, kenn-forge in `internal/workplace/kennforge/contract_test.go`.
+Een gedrag dat de ene adapter heeft en de andere niet, valt daar op.
 
 ## Wie roept dit aan
 

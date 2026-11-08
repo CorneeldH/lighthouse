@@ -124,6 +124,7 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/scripts/board_start.py",
 		".lighthouse/scripts/check-instructions.sh",
 		".lighthouse/scripts/codex_usage.py",
+		".lighthouse/scripts/create_labels.py",
 		".lighthouse/scripts/measure_fix_pr_kpi.py",
 		".lighthouse/scripts/measure_start_issue_kpi.py",
 		".lighthouse/scripts/plan_review_record.py",

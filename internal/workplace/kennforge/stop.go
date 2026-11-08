@@ -38,6 +38,9 @@ func UnitName(profile, worktreePath string) string {
 // profile, the claude processes of the given sessions in the shared devcontainer.
 // Anything it cannot measure is an error, never "gone".
 func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []string) error {
+	if err := notForge(workspaceID); err != nil {
+		return err
+	}
 	// An empty id would make pgrep -f and pkill -f match every process in the shared
 	// devcontainer, foreign sessions included.
 	for _, sid := range sessionIDs {
@@ -77,6 +80,9 @@ func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []str
 // run in the shared devcontainer, with any other profile on this host. A session without a
 // process is no error; anything it cannot measure is.
 func (a *Adapter) Kill(ctx context.Context, workspaceID string, sessionIDs []string) error {
+	if err := notForge(workspaceID); err != nil {
+		return err
+	}
 	// An empty id would make pgrep -f and pkill -f match every process, foreign sessions included.
 	for _, sid := range sessionIDs {
 		if sid == "" {

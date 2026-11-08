@@ -135,6 +135,32 @@ func TestLoadRejects(t *testing.T) {
 	}
 }
 
+func TestLoadKeepsLabelsTemplateOutOfUnits(t *testing.T) {
+	m := basePack()
+	m["templates/labels.md"] = file("# Labels\n")
+	p, err := Load(m, "core", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(p.LabelsTemplate) != "# Labels\n" {
+		t.Fatalf("LabelsTemplate = %q", p.LabelsTemplate)
+	}
+	for _, u := range p.Units {
+		if strings.HasSuffix(u.Path, "labels.md") {
+			t.Fatalf("labels.md became a unit: %s", u.Path)
+		}
+	}
+}
+
+func TestLoadRejectsOtherTemplate(t *testing.T) {
+	m := basePack()
+	m["templates/x.md"] = file("x\n")
+	_, err := Load(m, "core", "dev")
+	if err == nil || !strings.Contains(err.Error(), "templates/ holds only") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestLoadSkipsJunk(t *testing.T) {
 	m := basePack()
 	m["lib/__pycache__/a.cpython-314.pyc"] = file("x")

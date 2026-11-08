@@ -23,7 +23,7 @@ NO_DEFAULT = object()
 # Keys nothing in the repo reads: only config.py checks them (spec section 2).
 UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
           "host.scan_memory_max", "host.scan_cpu_quota"}
-SET = {"project.language", "forge.kind", "forge.repo", "test_gate.command", "host.name", "host.tailscale_ip", "review.roborev"}
+SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.tailscale_ip", "review.roborev"}
 REQUIRED = {
     "forge.board.project_number": "with [forge.board]",
     "forge.board.project_id": "with [forge.board]",
@@ -32,7 +32,6 @@ REQUIRED = {
     "code_language_llm.url": "with [code_language_llm]",
     "code_language_llm.models": "with [code_language_llm]",
     "host.name": "yes",
-    "host.tailscale_ip": "yes",
     "forge.owner": "derived",
     "forge.name": "derived",
 }
@@ -457,8 +456,13 @@ def test_toml_block_links_every_key_but_the_derived_ones():
 def test_toml_examples_pass_config_py(tmp_path):
     text, _ = config_toml("lighthouse.toml")
     path = tmp_path / "lighthouse.toml"
-    path.write_text(uncommented(text), encoding="utf-8")
+    text = uncommented(text)
+    # The published example is `kind = "github"`; `host` is valid only with gitlab.
+    gitlab = text.replace('kind = "github"', 'kind = "gitlab"')
+    assert gitlab != text
+    path.write_text(gitlab, encoding="utf-8")
     cfg = config.load(path)
+    assert cfg.raw["forge"]["host"] == "git.example.org"
     assert cfg.board is not None and cfg.repo == "owner/name"
     assert cfg.raw["code_language_llm"]["models"] == ["model-a", "model-b"]
     text, _ = config_toml("host.toml")
@@ -472,7 +476,7 @@ def test_options_are_the_values_config_py_accepts():
     expected = {
         "project.language": list(config.LANGUAGES),
         "project.code_language": ["en"],
-        "forge.kind": ["github"],
+        "forge.kind": ["github", "gitlab"],
         "review.roborev": ["local", "off"],
         **{key: [True, False] for key, kind in config.SCHEMA.items() if kind == config._BOOL},
     }

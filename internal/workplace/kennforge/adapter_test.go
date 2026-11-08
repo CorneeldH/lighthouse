@@ -716,14 +716,6 @@ func TestSessionsWithoutListUncertain(t *testing.T) {
 	}
 }
 
-func TestSessions404Gone(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.sessionsStatus = 404
-	if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrGone) {
-		t.Fatalf("err = %v, want ErrGone", err)
-	}
-}
-
 func TestSessionsOtherStatusNotGone(t *testing.T) {
 	for _, status := range []int{403, 500} {
 		f, a := newFakeForge(t)
@@ -731,23 +723,6 @@ func TestSessionsOtherStatusNotGone(t *testing.T) {
 		if _, err := a.Sessions(context.Background(), "ws1"); err == nil || errors.Is(err, workplace.ErrGone) {
 			t.Fatalf("%d: err = %v, want an error that is not ErrGone", status, err)
 		}
-	}
-}
-
-func TestLookup(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.path, f.headRef = "/w/1", "issue-7"
-	got, err := a.Lookup(context.Background(), "ws1")
-	if want := (workplace.Workspace{ID: "ws1", Path: "/w/1", Branch: "issue-7"}); err != nil || got != want {
-		t.Fatalf("Lookup = %+v, %v; want %+v", got, err, want)
-	}
-}
-
-func TestLookupGone(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.getStatus = 404
-	if _, err := a.Lookup(context.Background(), "ws1"); !errors.Is(err, workplace.ErrGone) {
-		t.Fatalf("err = %v, want ErrGone", err)
 	}
 }
 
@@ -764,22 +739,6 @@ func TestLookupNoPath(t *testing.T) {
 	f.headRef = "issue-7"
 	if got, err := a.Lookup(context.Background(), "ws1"); err == nil || errors.Is(err, workplace.ErrGone) {
 		t.Fatalf("Lookup = %+v, %v; want an error that is not ErrGone", got, err)
-	}
-}
-
-func TestRemove409Dirty(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.deleteStatus = 409
-	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, workplace.ErrDirty) {
-		t.Fatalf("err = %v, want ErrDirty", err)
-	}
-}
-
-func TestRemove404Gone(t *testing.T) {
-	f, a := newFakeForge(t)
-	f.deleteStatus = 404
-	if err := a.Remove(context.Background(), "ws1"); err != nil {
-		t.Fatalf("err = %v, want nil", err)
 	}
 }
 
@@ -1017,5 +976,44 @@ func TestSpawnNotAcceptedReportsFailedCarrierRemoval(t *testing.T) {
 	}
 	if !errors.Is(err, os.ErrPermission) {
 		t.Errorf("err = %v, want the removal error joined", err)
+	}
+}
+
+func TestLocalIDIsNoForgeWorkspace(t *testing.T) {
+	const id = "local-issue-1-x-a1b2c3"
+	calls := map[string]func(*Adapter) error{
+		"Sessions":   func(a *Adapter) error { _, err := a.Sessions(context.Background(), id); return err },
+		"Stop":       func(a *Adapter) error { return a.Stop(context.Background(), id, []string{testSessionID}) },
+		"Kill":       func(a *Adapter) error { return a.Kill(context.Background(), id, []string{testSessionID}) },
+		"Remove":     func(a *Adapter) error { return a.Remove(context.Background(), id) },
+		"Lookup":     func(a *Adapter) error { _, err := a.Lookup(context.Background(), id); return err },
+		"Discard":    func(a *Adapter) error { return a.Discard(context.Background(), id) },
+		"Transcript": func(a *Adapter) error { _, err := a.Transcript(context.Background(), id, testSessionID); return err },
+	}
+	for name, call := range calls {
+		f, a := newFakeForge(t)
+		ran := 0
+		a.Run = func(context.Context, time.Duration, string, ...string) (string, int, error) { ran++; return "", 0, nil }
+		err := call(a)
+		if err == nil || errors.Is(err, workplace.ErrGone) {
+			t.Errorf("%s: err = %v, want an error that is not ErrGone", name, err)
+		}
+		if f.total() != 0 || ran != 0 {
+			t.Errorf("%s: requests = %d, commands = %d, want none", name, f.total(), ran)
+		}
+	}
+
+	f, a := newFakeForge(t)
+	ran := 0
+	a.Run = func(context.Context, time.Duration, string, ...string) (string, int, error) { ran++; return "", 0, nil }
+	_, err := a.Spawn(context.Background(), workplace.Workspace{ID: id}, spec())
+	if !errors.Is(err, workplace.ErrNotAccepted) {
+		t.Errorf("Spawn: err = %v, want ErrNotAccepted", err)
+	}
+	if f.total() != 0 || ran != 0 {
+		t.Errorf("Spawn: requests = %d, commands = %d, want none", f.total(), ran)
+	}
+	if _, statErr := os.Stat(workplace.CarrierPath(a.StateDir, id)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("Spawn: carrier for %s exists (stat err = %v)", id, statErr)
 	}
 }

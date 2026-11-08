@@ -26,6 +26,8 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
+	"github.com/CorneeldH/lighthouse/internal/workplace/kennforge"
+	"github.com/CorneeldH/lighthouse/internal/workplace/local"
 )
 
 const completeRepo = `[forge]
@@ -1688,5 +1690,45 @@ func TestTickSweepRemoveFails(t *testing.T) {
 	}
 	if ls := leftovers(t, db); len(ls) != 1 || !strings.HasPrefix(ls[0].Reason, "not measurable: remove: ") {
 		t.Errorf("leftovers = %+v, want one with not measurable: remove", ls)
+	}
+}
+
+func TestTickWorkplaceFollowsHostToml(t *testing.T) {
+	repo := repoconfig.Repo{Dir: "/srv/r", Slug: "o/r", Kind: "github", DefaultBranch: "trunk",
+		Controller: &repoconfig.Controller{Profile: "software"}}
+	env := tickEnv{Getenv: func(k string) string { return map[string]string{"HOME": "/home/u"}[k] }}
+	load := func(body string) hostconfig.Dispatch {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "host.toml")
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := hostconfig.LoadDispatch(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+
+	t.Run("local", func(t *testing.T) {
+		cfg := load("[dispatch]\nworkplace = \"local\"\n")
+		a, ok := env.workplace(cfg, repo, "/state").(*local.Adapter)
+		if !ok {
+			t.Fatalf("workplace = %T, want *local.Adapter", env.workplace(cfg, repo, "/state"))
+		}
+		if a.RepoDir != "/srv/r" || a.DefaultBranch != "trunk" || a.Repo != "o/r" ||
+			a.StateDir != "/state" || a.Home != "/home/u" || a.Run == nil {
+			t.Errorf("adapter = %+v", a)
+		}
+	})
+	for name, cfg := range map[string]hostconfig.Dispatch{
+		"forge url only": load("[dispatch.forge]\nurl = \"http://localhost:1\"\n"),
+		"zero dispatch":  {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, ok := env.workplace(cfg, repo, "/state").(*kennforge.Adapter); !ok {
+				t.Errorf("workplace = %T, want *kennforge.Adapter", env.workplace(cfg, repo, "/state"))
+			}
+		})
 	}
 }

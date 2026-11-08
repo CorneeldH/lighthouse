@@ -148,11 +148,11 @@ func TestOwnLighthouseToml(t *testing.T) {
 }
 
 func TestLoadKindAndLanguage(t *testing.T) {
-	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\nkind = \"forgejo\"\ndefault_branch = \"trunk\"\n[project]\nlanguage = \"nl\"\n"))
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\nkind = \"gitlab\"\ndefault_branch = \"trunk\"\n[project]\nlanguage = \"nl\"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Kind != "forgejo" || r.Language != "nl" || r.DefaultBranch != "trunk" {
+	if r.Kind != "gitlab" || r.Language != "nl" || r.DefaultBranch != "trunk" {
 		t.Errorf("kind/language/default branch: %q %q %q", r.Kind, r.Language, r.DefaultBranch)
 	}
 	d, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
@@ -161,6 +161,19 @@ func TestLoadKindAndLanguage(t *testing.T) {
 	}
 	if d.Kind != "github" || d.Language != "en" || d.DefaultBranch != "main" {
 		t.Errorf("defaults: %q %q %q", d.Kind, d.Language, d.DefaultBranch)
+	}
+}
+
+func TestLoadRejectsUnknownKind(t *testing.T) {
+	_, err := Load(write(t, "[forge]\nrepo = \"o/r\"\nkind = \"forgejo\"\n"))
+	if err == nil || !strings.Contains(err.Error(), "forge.kind") {
+		t.Fatalf("want an error naming forge.kind, got %v", err)
+	}
+	for _, body := range []string{"[forge]\nrepo = \"o/r\"\nkind = \"\"\n", "[forge]\nrepo = \"o/r\"\n"} {
+		r, err := Load(write(t, body))
+		if err != nil || r.Kind != "github" {
+			t.Errorf("%q: kind %q, err %v; want github", body, r.Kind, err)
+		}
 	}
 }
 

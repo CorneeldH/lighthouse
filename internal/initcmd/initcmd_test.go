@@ -27,6 +27,7 @@ func testPacks() fstest.MapFS {
 		"core/hooks/hooks.json":       file(hooksJSON),
 		"core/lib/a.py":               file("x = 1\n"),
 		"core/instructions/AGENTS.md": file("## core\n\n- rule\n"),
+		"core/templates/labels.md":    file("# Labels\n\n| `blocked-issue` | x |\n"),
 		"core/requires.toml":          file("jq = [\"main-commit-gate\"]\n"),
 	}
 }
@@ -696,6 +697,80 @@ func TestForgeFromGitHubRemote(t *testing.T) {
 	}
 }
 
+func TestForgeFromGitLabRemote(t *testing.T) {
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "git@gitlab.com:groep/sub/repo.git")
+	if r := run(t, root, "", yes); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	got := read(t, root, "lighthouse.toml")
+	if !strings.Contains(got, "[forge]\nkind = \"gitlab\"\nrepo = \"groep/sub/repo\"\n") || strings.Contains(got, "host =") {
+		t.Fatalf("toml %q", got)
+	}
+}
+
+func TestForgeFromSelfHostedGitLabFlag(t *testing.T) {
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "https://git.example.org/g/s/r")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.ForgeHosts = []string{"git.example.org"} })
+	got := read(t, root, "lighthouse.toml")
+	for _, want := range []string{`kind = "gitlab"`, `repo = "g/s/r"`, `host = "git.example.org"`} {
+		if r.code != 0 || !strings.Contains(got, want) {
+			t.Fatalf("rc %d want %q in %q (%s)", r.code, want, got, r.err)
+		}
+	}
+}
+
+func TestForgeHostFromExistingToml(t *testing.T) {
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "git@git.example.org:g/s/r.git")
+	write(t, root, "lighthouse.toml", "[forge]\nkind = \"gitlab\"\nhost = \"git.example.org\"\n")
+	initYes(t, root)
+	r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+	if got := read(t, root, "lighthouse.toml"); r.code != 0 || !strings.Contains(got, `repo = "g/s/r"`) {
+		t.Fatalf("rc %d toml %q err %q", r.code, got, r.err)
+	}
+}
+
+func TestNoHostIntoGitHubForge(t *testing.T) {
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "https://git.example.org/g/r")
+	write(t, root, "lighthouse.toml", "[forge]\nkind = \"github\"\nrepo = \"a/b\"\n")
+	initYes(t, root)
+	r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true; o.ForgeHosts = []string{"git.example.org"} })
+	if got := read(t, root, "lighthouse.toml"); r.code != 0 || strings.Contains(got, "host =") {
+		t.Fatalf("rc %d toml %q err %q", r.code, got, r.err)
+	}
+}
+
+func TestNoMismatchedForgeProposed(t *testing.T) {
+	cases := []struct{ name, existing, remote string }{
+		{"github kind, gitlab remote", "[forge]\nkind = \"github\"\n", "git@gitlab.com:g/s/r.git"},
+		{"gitlab kind, github remote", "[forge]\nkind = \"gitlab\"\n", "git@github.com:acme/widgets.git"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			gitIn(t, root, "remote", "add", "origin", c.remote)
+			write(t, root, "lighthouse.toml", c.existing)
+			initYes(t, root)
+			r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+			if got := read(t, root, "lighthouse.toml"); r.code != 0 || strings.Contains(got, "repo =") || strings.Contains(got, "host =") {
+				t.Fatalf("rc %d toml %q err %q", r.code, got, r.err)
+			}
+		})
+	}
+}
+
+func TestNoForgeForUnknownHost(t *testing.T) {
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "git@git.example.org:g/s/r.git")
+	r := run(t, root, "", yes)
+	if got := read(t, root, "lighthouse.toml"); strings.Contains(got, "[forge]") || !strings.Contains(r.err, "[forge]") {
+		t.Fatalf("toml %q err %q", got, r.err)
+	}
+}
+
 func TestRestoresExecBit(t *testing.T) {
 	root := newRepo(t)
 	initYes(t, root)
@@ -1102,7 +1177,7 @@ func TestInitDeclinedWritesNoHostTOML(t *testing.T) {
 func TestInitSkipsHostTOMLWithoutTailscale(t *testing.T) {
 	root := newRepo(t)
 	r := run(t, root, "", yes)
-	if !strings.Contains(r.err, "host.toml not proposed: tailscale ip unavailable; skills that check the host will report it") {
+	if !strings.Contains(r.err, "host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml. For the gate_* keys (memory brake, slots) write it by hand: see \"A host.toml without Tailscale\" in the lighthouse getting-started guide") {
 		t.Fatalf("err = %q", r.err)
 	}
 	if _, err := os.Stat(hostTOMLFor(t)); err == nil {

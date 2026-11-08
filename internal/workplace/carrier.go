@@ -113,31 +113,7 @@ func WriteCarrier(stateDir, workspaceID string, c Carrier) (string, error) {
 		return "", err
 	}
 	path := CarrierPath(stateDir, workspaceID)
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
-	}
-	// MkdirAll leaves an existing directory as it is.
-	if err := os.Chmod(dir, 0o700); err != nil {
-		return "", err
-	}
-	tmp, err := os.CreateTemp(dir, ".carrier-*.tmp")
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = os.Remove(tmp.Name()) }() // no-op after the rename
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return "", err
-	}
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return "", err
-	}
-	if err := tmp.Close(); err != nil {
-		return "", err
-	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
+	if err := WriteFileAtomic(path, data); err != nil {
 		return "", err
 	}
 	return path, nil

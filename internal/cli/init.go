@@ -20,7 +20,12 @@ func newInitCommand() *cobra.Command {
 			"init installs core plus every language package that fits the repository. Add\n" +
 			"or leave out a package with --pack and --no-pack, also later:\n" +
 			"  lighthouse init --upgrade --pack python\n" +
-			"  lighthouse init --upgrade --no-pack shell",
+			"  lighthouse init --upgrade --no-pack shell\n\n" +
+			"--labels proposes a label taxonomy, [labels] and [paths] labels in the same diff,\n" +
+			"under the same single approval. --create-labels, only with --labels, then creates\n" +
+			"the missing labels on the GitHub remote and asks nothing: the flag is the approval,\n" +
+			"also with nothing to apply (No changes.): it still creates the missing labels.\n\n" +
+			"A remote on a self-hosted GitLab is recognised with --forge-host <host>.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			dir, err := os.Getwd()
@@ -40,8 +45,11 @@ func newInitCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.Upgrade, "upgrade", false, "replace what an earlier init installed")
 	cmd.Flags().BoolVar(&o.Force, "force", false, "overwrite locally changed units")
 	cmd.Flags().BoolVar(&o.Yes, "yes", false, "approve every change without asking")
+	cmd.Flags().BoolVar(&o.Labels, "labels", false, "propose a label taxonomy, [labels] and [paths] labels")
+	cmd.Flags().BoolVar(&o.CreateLabels, "create-labels", false, "with --labels: create the missing labels on the remote; this flag is the approval")
 	cmd.Flags().StringArrayVar(&o.AddPacks, "pack", nil, "add a package (repeatable)")
 	cmd.Flags().StringArrayVar(&o.DropPacks, "no-pack", nil, "leave a package out (repeatable)")
+	cmd.Flags().StringArrayVar(&o.ForgeHosts, "forge-host", nil, "host of a self-hosted GitLab (repeatable)")
 	return cmd
 }
 

@@ -48,15 +48,19 @@ const (
 type Options struct {
 	Dir                 string // working directory; the root comes from git rev-parse --show-toplevel
 	Upgrade, Force, Yes bool
-	AddPacks, DropPacks []string                  // --pack and --no-pack (plan M0 (c), design choice 6)
-	Version             string                    // "" means version.String()
-	Packs               fs.FS                     // holds <name>/...; nil means pack.Files
-	Deps                deps.Checker              // nil fields mean deps.Default()
-	Lookup              packs.Lookup              // config values for workflow placeholders; nil reads the proposed lighthouse.toml with internal/config
-	CountWords          func([]byte) (int, error) // nil means wordcount.Count
-	HostTOML            string                    // "" means $LIGHTHOUSE_HOST_TOML, else ~/.config/lighthouse/host.toml
-	Hostname            func() (string, error)    // nil means os.Hostname
-	TailscaleIP         func() (string, error)    // nil runs `tailscale ip -4`
+	Labels              bool                                                      // --labels: propose the label taxonomy file, [labels] and [paths] labels
+	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
+	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil runs the installed create_labels.py
+	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
+	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
+	Version             string                                                    // "" means version.String()
+	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
+	Deps                deps.Checker                                              // nil fields mean deps.Default()
+	Lookup              packs.Lookup                                              // config values for workflow placeholders; nil reads the proposed lighthouse.toml with internal/config
+	CountWords          func([]byte) (int, error)                                 // nil means wordcount.Count
+	HostTOML            string                                                    // "" means $LIGHTHOUSE_HOST_TOML, else ~/.config/lighthouse/host.toml
+	Hostname            func() (string, error)                                    // nil means os.Hostname
+	TailscaleIP         func() (string, error)                                    // nil runs `tailscale ip -4`
 	In                  io.Reader
 	Out, Err            io.Writer
 }
@@ -107,6 +111,9 @@ func Run(o Options) int {
 var errDeclined = errors.New("nothing written")
 
 func execute(o Options) error {
+	if o.CreateLabels && !o.Labels {
+		return errors.New("--create-labels needs --labels")
+	}
 	root, err := repoRoot(o.Dir)
 	if err != nil {
 		return err
@@ -146,7 +153,13 @@ func execute(o Options) error {
 	for _, c := range chosen {
 		chosenPacks = append(chosenPacks, all[c.Name])
 	}
-	tables, haveRepo, err := configTables(root, chosenPacks)
+	var labelsPath string
+	if o.Labels {
+		if labelsPath, err = labelsTarget(root); err != nil {
+			return err
+		}
+	}
+	tables, haveRepo, err := configTables(root, chosenPacks, labelsPath, o.ForgeHosts)
 	if err != nil {
 		return err
 	}
@@ -185,7 +198,7 @@ func execute(o Options) error {
 		}
 	}
 
-	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo)
+	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo, labelsPath, all["core"].LabelsTemplate)
 	if err != nil {
 		return err
 	}
@@ -217,6 +230,15 @@ func execute(o Options) error {
 	}
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
+	if o.Labels {
+		sync := o.SyncLabels
+		if sync == nil {
+			sync = runLabelScript
+		}
+		if err := sync(root, o.CreateLabels, o.Out, o.Err); err != nil {
+			_, _ = fmt.Fprintf(o.Err, "warning: labels: %v\n", err)
+		}
+	}
 	return offerHost(o, in)
 }
 
@@ -290,7 +312,7 @@ func writes(a reconcile.Action, force bool) bool {
 	return a == reconcile.Add || a == reconcile.Replace || (force && a == reconcile.Conflict)
 }
 
-func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool) (map[string]*planned, error) {
+func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool, labelsPath string, labelsTemplate []byte) (map[string]*planned, error) {
 	plan := map[string]*planned{}
 	load := func(rel string) (*planned, error) {
 		if p, ok := plan[rel]; ok {
@@ -410,6 +432,19 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		return nil, err
 	}
 
+	if labelsPath != "" && labelsTemplate != nil {
+		// Seed once: the file is the project's after this, so it is not in the manifest.
+		p, err := load(labelsPath)
+		if err != nil {
+			return nil, err
+		}
+		if p.existed {
+			_, _ = fmt.Fprintf(o.Err, "labels: %s exists; left as it is\n", labelsPath)
+		} else {
+			p.new, p.mode = labelsTemplate, 0o644
+		}
+	}
+
 	mp, err := load(manifest.Path)
 	if err != nil {
 		return nil, err
@@ -447,14 +482,45 @@ func hasLine(b []byte, line string) bool {
 	return false
 }
 
+// existingForge is the part of an existing lighthouse.toml that decides which hosts are known.
+type existingForge struct {
+	Forge struct {
+		Kind string `toml:"kind"`
+		Host string `toml:"host"`
+	} `toml:"forge"`
+}
+
 // configTables are the tables lighthouse.toml should have: the core tables, then the
-// fragments of the chosen packages in their order (plan M0 (c), design choice 4).
-func configTables(root string, chosen []packs.Pack) ([]projectconfig.Table, bool, error) {
-	repo, haveRepo := "", false
-	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
-		repo, haveRepo = projectconfig.ForgeRepo(strings.TrimSpace(string(url)))
+// fragments of the chosen packages in their order (plan M0 (c), design choice 4). A
+// non-empty labelsPath adds the label tables, with that path in [paths] labels. A GitLab
+// host is known from extraHosts or from forge.host of an existing lighthouse.toml.
+func configTables(root string, chosen []packs.Pack, labelsPath string, extraHosts []string) ([]projectconfig.Table, bool, error) {
+	var ex existingForge
+	if b, err := os.ReadFile(filepath.Join(root, configPath)); err == nil {
+		if _, err := toml.Decode(string(b), &ex); err != nil {
+			ex = existingForge{}
+		}
 	}
-	tables, err := mergeTables(projectconfig.CoreTables(repo, haveRepo), chosen)
+	hosts := append([]string{}, extraHosts...)
+	if ex.Forge.Host != "" {
+		hosts = append(hosts, ex.Forge.Host)
+	}
+	var forge projectconfig.Forge
+	haveRepo := false
+	if url, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output(); err == nil {
+		forge, haveRepo = projectconfig.ForgeFromRemote(strings.TrimSpace(string(url)), hosts)
+	}
+	// AppendMissing never overwrites: next to an existing kind that differs from the
+	// remote's, a proposed repo or host would give a config the reader rejects or one
+	// that points at the wrong forge. Propose no forge then.
+	if ex.Forge.Kind != "" && ex.Forge.Kind != forge.Kind {
+		forge, haveRepo = projectconfig.Forge{}, false
+	}
+	core := projectconfig.CoreTables(forge, haveRepo)
+	if labelsPath != "" {
+		core = append(core, projectconfig.LabelTables(labelsPath)...)
+	}
+	tables, err := mergeTables(core, chosen)
 	return tables, haveRepo, err
 }
 
@@ -515,7 +581,7 @@ func planConfig(o Options, load func(string) (*planned, error), tables []project
 		var v map[string]any
 		md, err := toml.Decode(string(out), &v)
 		if err == nil && !md.IsDefined("forge", "repo") {
-			_, _ = fmt.Fprintln(o.Err, "warning: no GitHub remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it")
+			_, _ = fmt.Fprintln(o.Err, "warning: no GitHub or GitLab remote 'origin': [forge] not proposed in lighthouse.toml; skills that need the forge will fail until you add it")
 		}
 	}
 	for _, k := range manual {
@@ -733,4 +799,35 @@ func warnIgnored(w io.Writer, root string, desired []packs.Unit, plan map[string
 		}
 		_, _ = fmt.Fprintf(w, "warning: %s is ignored by git (%s:%s:%s)%s; it will not be committed, so other clones lack it\n", ps[0], r.src, r.line, r.pattern, more)
 	}
+}
+
+// labelsTarget is where the taxonomy file goes: [paths] labels of an existing
+// lighthouse.toml, else the default. A path that leaves the repo or is not clean is an
+// error, so nothing is written outside it.
+func labelsTarget(root string) (string, error) {
+	target := projectconfig.DefaultLabelsPath
+	b, ok, err := readFile(root, configPath)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		var cfg struct {
+			Paths struct {
+				Labels string `toml:"labels"`
+			} `toml:"paths"`
+		}
+		md, err := toml.Decode(string(b), &cfg)
+		if err != nil {
+			return "", fmt.Errorf("lighthouse.toml: %w", err)
+		}
+		// A key that is set but empty is an error, not "absent": AppendMissing keeps it,
+		// and the label script would reject it after the seed.
+		if md.IsDefined("paths", "labels") {
+			target = cfg.Paths.Labels
+		}
+	}
+	if filepath.IsAbs(target) || path.IsAbs(target) || path.Clean(target) != target || slices.Contains(strings.Split(target, "/"), "..") {
+		return "", fmt.Errorf("lighthouse.toml: paths.labels %q must be a clean relative path inside the repository", target)
+	}
+	return target, nil
 }
