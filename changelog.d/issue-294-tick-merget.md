@@ -1,4 +1,4 @@
 ---
 type: added
 ---
-De tick squash-merget een groene eigen PR van een klare run, op de gemeten head. Fix-pr start nu ook bij een merge-conflict, een onverwerkte roborev-review en een mislukte merge, niet alleen bij een rode PR. Het token van de tick heeft daarvoor *Contents: write* nodig.
+The tick squash-merges a green own PR of a finished run, on the measured head. Fix-pr now also starts on a merge conflict, an unprocessed roborev review and a failed merge, not only on a red PR. The tick's token needs *Contents: write* for this.
