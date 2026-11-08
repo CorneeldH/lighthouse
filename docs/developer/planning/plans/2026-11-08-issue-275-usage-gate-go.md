@@ -12,6 +12,7 @@
 
 ## Globale eisen
 
+- **AC 1 "zonder dat er een verwachting is aangepast"** betekent: de functionaliteit blijft gelijk (besluit gebruiker, 2026-11-08). Een technische wijziging die de overstap van bash en Python naar Go meebrengt, mag wel. Voorbeelden: hoe een test de hook aanroept, een test op een tool die verdwijnt (`date`, `python3`, `alarm.sh`), of JSON-opmaak die een lezer toch parseert. Zo'n wijziging moet in de commit staan, met wat er technisch verandert en waarom het gedrag gelijk blijft. Een assert op wat de gebruiker of de harness ziet (oordeel, exitcode, tekst van de melding, bestanden die worden geschreven) blijft staan.
 - Elke hook geeft hetzelfde oordeel en dezelfde tekst als zijn voorganger, op dezelfde payloads (spec §2). Exitcodes: `usage-gate` en `permission-check` altijd 0; `md-link-check` exit 2 met de reden op stderr.
 - `COULD NOT CHECK` blijft: `md-link-check` blokkeert met `Linkcheck: COULD NOT CHECK — <reden>` op de eerste regel (anti-doel *een gate die stil verdwijnt*).
 - `usage-gate` geeft hoogstens één JSON-object op stdout; een fout is één regel op stderr die met `usage-gate: ` begint.
