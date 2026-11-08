@@ -179,3 +179,50 @@ func TestTail(t *testing.T) {
 		t.Errorf("short tail = %q", got)
 	}
 }
+
+func TestRoundFailureExits(t *testing.T) {
+	budgetOK := func(context.Context) (usage.BudgetOutcome, int, string) {
+		return usage.BudgetOutcome{Decision: "codex", Reason: "ok"}, 0, ""
+	}
+	cases := []struct {
+		name   string
+		setup  func(t *testing.T, r *round)
+		code   int
+		stderr string
+	}{
+		{"not logged in", func(t *testing.T, _ *round) {
+			if err := os.Remove(filepath.Join(os.Getenv("HOME"), ".codex", "auth.json")); err != nil {
+				t.Fatal(err)
+			}
+		}, ExitNoLogin, "CODEX_UNAUTHENTICATED: ~/.codex/auth.json missing\n"},
+		{"codex fails", func(t *testing.T, _ *round) {
+			bin := t.TempDir()
+			script := "#!/bin/sh\necho boom >&2\nexit 7\n"
+			if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		}, ExitRunFailed, "boom\n"},
+		{"incomplete result", func(t *testing.T, _ *round) {
+			bin := t.TempDir()
+			script := "#!/bin/sh\nwhile [ \"$1\" != -o ]; do shift; done\necho '{\"status\":\"x\"}' > \"$2\"\n"
+			if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		}, ExitFailed, "incomplete result, missing ['findings', 'review_markdown']\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newRound(t)
+			r.opts.ReadBudget = budgetOK
+			c.setup(t, r)
+			if code := r.run(); code != c.code {
+				t.Fatalf("exit %d, want %d; stderr: %s", code, c.code, r.stderr.String())
+			}
+			if !strings.Contains(r.stderr.String(), c.stderr) {
+				t.Errorf("stderr = %q, want it to contain %q", r.stderr.String(), c.stderr)
+			}
+		})
+	}
+}

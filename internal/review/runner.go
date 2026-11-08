@@ -286,17 +286,16 @@ func runCodex(ctx context.Context, o Options, codexHome, repo, schema, prompt st
 	if err != nil {
 		return 0, err
 	}
-	defer events.Close()
 	errFile, err := os.Create(o.Out + ".err")
 	if err != nil {
-		return 0, err
+		return 0, errors.Join(err, events.Close())
 	}
-	defer errFile.Close()
 
 	cmd := exec.CommandContext(ctx, "codex", args...)
 	cmd.Env = append(os.Environ(), "CODEX_HOME="+codexHome)
 	cmd.Stdout, cmd.Stderr = events, errFile // stdin stays empty: /dev/null
-	return exitCode(cmd.Run()), nil
+	code := exitCode(cmd.Run())
+	return code, errors.Join(events.Close(), errFile.Close())
 }
 
 // tail is the last n lines of data, as `tail -n`.
