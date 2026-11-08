@@ -491,6 +491,19 @@ def test_alarm_is_read_with_lighthouse_usage_alarm(tmp_path):
     )
 
 
+def test_help_text_from_an_old_lighthouse_is_no_alarm(tmp_path):
+    root, env = _alarm_repo(tmp_path)
+    fake = tool_bin(
+        tmp_path / "old-lighthouse",
+        (),
+        stubs={"lighthouse": "#!/bin/bash\necho 'Usage:'\necho '  lighthouse usage [command]'\n"},
+    )
+    env["PATH"] = f"{fake}:{path_with_lighthouse()}"
+    result = _run(root, env=env)
+    assert result.returncode == 2, result.stdout
+    assert "invalid-assignment" in result.stderr
+
+
 def test_stop_hook_active_with_alarm_is_silent(tmp_path):
     root, env = _alarm_repo(tmp_path, alarm_line())
     result = _run(root, {"stop_hook_active": True, "cwd": str(root)}, env=env)

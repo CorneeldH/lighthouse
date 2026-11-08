@@ -70,8 +70,12 @@ fi
 
 # The usage alarm (#74): `lighthouse usage alarm` prints the valid alarm and exits 0.
 # Without `lighthouse` on the PATH, or without a valid alarm, the check runs as usual.
-if command -v lighthouse >/dev/null 2>&1 && ALARM_LINE=$(lighthouse usage alarm 2>/dev/null); then
-  read -r _ _ ALARM_LOCAL _ <<<"$ALARM_LINE"
+# An older lighthouse prints help and exits 0 for an unknown subcommand: only a line with
+# exactly the alarm shape counts, anything else is no alarm.
+if command -v lighthouse >/dev/null 2>&1 && ALARM_LINE=$(lighthouse usage alarm 2>/dev/null) \
+  && read -r ALARM_KIND _ ALARM_LOCAL ALARM_AT ALARM_REST <<<"$ALARM_LINE" \
+  && [[ "$ALARM_KIND" =~ ^(venster|week)$ && -n "$ALARM_LOCAL" && -z "$ALARM_REST" \
+    && "$ALARM_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
   report "$HOOK_NAME: not checked — the usage alarm is up until ${ALARM_LOCAL//_/ }; the usage gate wraps up this session."
 fi
 

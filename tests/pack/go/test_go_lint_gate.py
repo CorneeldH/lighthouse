@@ -392,6 +392,19 @@ def test_alarm_is_read_with_lighthouse_usage_alarm(tmp_path):
     )
 
 
+def test_help_text_from_an_old_lighthouse_is_no_alarm(tmp_path):
+    env = _alarm_env(tmp_path)
+    fake = tool_bin(
+        tmp_path / "old-lighthouse",
+        (),
+        stubs={"lighthouse": "#!/bin/bash\necho 'Usage:'\necho '  lighthouse usage [command]'\n"},
+    )
+    env["PATH"] = f"{fake}:{env['PATH']}"
+    result = _run(_repo(tmp_path), env)
+    assert result.returncode == 2
+    assert LINT_FINDING in result.stderr
+
+
 def test_stop_hook_active_with_alarm_is_silent(tmp_path):
     root = _repo(tmp_path)
     transcript = write_transcript(tmp_path / "transcript.jsonl", [prompt_entry(root)])

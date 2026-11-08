@@ -218,7 +218,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/go-lint-gate.sh"
 package = "go"
 version = "dev"
-sha256 = "6aa378b95d75a2304e097d54107871ef4f1097e16cfb4d368429fab3563fcbcc"
+sha256 = "093f18d4f69d122d3f8cb5c3869088d513c1aa4c74253c86b7c9a1d5291e926d"
 
 [[unit]]
 kind = "file"
