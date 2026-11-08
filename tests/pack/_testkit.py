@@ -413,10 +413,38 @@ def _install_dirs(pack_dir: Path, root: Path) -> None:
                 dest.chmod(0o755)
 
 
+# Everything the installed `run.sh` calls: a test that narrows the PATH keeps these on it.
+RUN_SH_TOOLS: tuple[str, ...] = (
+    "dirname",
+    "grep",
+    "sed",
+    "awk",
+    "cat",
+    "mktemp",
+    "rm",
+    "head",
+    "mkdir",
+    "find",
+    "touch",
+    "date",
+)
+
+
+def hook_shim(root: Path, name: str) -> Path:
+    """An executable `root/.lighthouse/test-shims/<name>` that runs the installed
+    `run.sh <name>` of `root`, so a test starts a Go hook the way the harness does."""
+    shim = root / ".lighthouse" / "test-shims" / name
+    shim.parent.mkdir(parents=True, exist_ok=True)
+    run_sh = root / _INSTALL_DIRS["hooks"] / "run.sh"
+    shim.write_text(f"#!/bin/sh\nexec '{run_sh}' {name} \"$@\"\n", encoding="utf-8")
+    shim.chmod(0o755)
+    return shim
+
+
 def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
     """Copy `pack/core` into `root` the way `lighthouse init` lays it out, with a
-    `lighthouse.toml` unless `toml` is None or one is there, and return the path of
-    the installed main-commit-gate."""
+    `lighthouse.toml` unless `toml` is None or one is there, and return the shim
+    that runs the installed main-commit-gate through `run.sh`."""
     if toml is not None and not (root / "lighthouse.toml").exists():
         root.mkdir(parents=True, exist_ok=True)
         (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
@@ -425,7 +453,7 @@ def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
     if headings.is_file():
         (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(headings, root / ".lighthouse" / "headings.toml")
-    return root / _INSTALL_DIRS["hooks"] / "main-commit-gate.sh"
+    return hook_shim(root, "main-commit-gate")
 
 
 def install_pack(name: str, root: Path, toml: str | None = MINIMAL_TOML) -> Path:

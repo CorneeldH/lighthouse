@@ -13,7 +13,10 @@ import subprocess
 import pytest
 from pathlib import Path
 
-from tests.pack._testkit import GUARD, bash_payload, init_repo, install_core, run_hook
+from tests.pack._testkit import GUARD, RUN_SH_TOOLS, bash_payload, init_repo, install_core
+
+# The hook runs as `lighthouse hook main-commit-gate` behind run.sh: the binary of this checkout.
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
 
 def _run(
@@ -172,7 +175,7 @@ def test_commit_guard_fails_loud_without_tooling(tmp_path):
 
 # --- toolkit for the sharper cases below -------------------
 
-_REAL_TOOLS = ("jq", "python3", "git", "cat", "mktemp", "rm", "sh")
+_REAL_TOOLS = (*RUN_SH_TOOLS, "git", "lighthouse", "sh")
 
 
 def _tool_bin(
@@ -199,41 +202,8 @@ def _tool_bin(
     return path
 
 
-def test_commit_guard_fails_loud_without_jq(tmp_path):
-    """M11: the jq limb separately, not hidden behind an empty PATH."""
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-
-    result = _run(
-        COMMIT_GUARD,
-        _bash('git commit -m "iets"', repo),
-        cwd=repo,
-        env={"PATH": str(_tool_bin(tmp_path / "zonder-jq", drop="jq"))},
-    )
-
-    assert result.returncode == 2, result.stdout
-    assert "COULD NOT CHECK" in result.stderr
-    # Precisely this limb: the preflight itself, not the safety net behind it.
-    assert "missing tooling" in result.stderr
-    assert "jq" in result.stderr
 
 
-def test_commit_guard_fails_loud_without_python3(tmp_path):
-    """M11: the python3 limb on its own."""
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-
-    result = _run(
-        COMMIT_GUARD,
-        _bash('git commit -m "iets"', repo),
-        cwd=repo,
-        env={"PATH": str(_tool_bin(tmp_path / "zonder-py", drop="python3"))},
-    )
-
-    assert result.returncode == 2, result.stdout
-    assert "COULD NOT CHECK" in result.stderr
-    assert "missing tooling" in result.stderr
-    assert "python3" in result.stderr
 
 
 def test_commit_guard_fails_loud_without_git(tmp_path):
@@ -288,31 +258,6 @@ def test_commit_guard_passes_when_target_is_simply_not_a_repo(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_commit_guard_blocks_when_the_parser_crashes(tmp_path):
-    """I8: a parser that does not end with 0 or 3 must not become a silent pass."""
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-    # Only the parser crashes; the config read before it uses the real python3.
-    real = shutil.which("python3")
-    broken_parser = _tool_bin(
-        tmp_path / "kapotte-python",
-        stubs={
-            "python3": "#!/bin/sh\ncase \"$1\" in *git_invocations.py) "
-            "echo 'Traceback: stuk' >&2; exit 1;; esac\n"
-            f'exec {real} "$@"\n'
-        },
-    )
-
-    result = _run(
-        COMMIT_GUARD,
-        _bash('git commit -m "iets"', repo),
-        cwd=repo,
-        env={"PATH": str(broken_parser)},
-    )
-
-    assert result.returncode == 2, result.stdout
-    assert "COULD NOT CHECK" in result.stderr
-    assert "parser" in result.stderr
 
 
 def test_commit_guard_blocks_unparseable_command(tmp_path):
@@ -413,6 +358,39 @@ def test_commit_guard_never_writes_to_stdout(tmp_path):
 
     assert result.returncode == 2
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    ("payload", "code"),
+    [
+        # An array is JSON, but has no `.tool_input`: no command could be read.
+        ("[]", 2),
+        # No tool_input at all: there is no command, so nothing to guard.
+        ("null", 0),
+        ("{cwd}", 0),
+        # A number as the command is the text `5`: no git in it.
+        ('{"tool_input": {"command": 5}}', 0),
+    ],
+)
+def test_commit_guard_payload_shapes(tmp_path, payload, code):
+    """Review focus 5: an odd payload shape gets the verdict of the jq-based bash hook."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+
+    result = subprocess.run(
+        [str(COMMIT_GUARD)],
+        input=payload.replace("{cwd}", json.dumps({"cwd": str(repo)})),
+        capture_output=True,
+        text=True,
+        cwd=str(repo),
+        check=False,
+    )
+
+    assert result.returncode == code, result.stderr
+    if code == 2:
+        assert "COULD NOT CHECK" in result.stderr
+    else:
+        assert result.stderr == ""
 
 
 # --- C1: newline is a command separator -----------------------------------
@@ -822,29 +800,6 @@ def test_commit_guard_unresolvable_push_honours_the_sentinel(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-# --- N5: the fourth preflight limb -------------------------------------------
-
-
-def test_commit_guard_fails_loud_without_cat(tmp_path):
-    """N5: `cat` reads the payload from stdin; without it there is no command.
-
-    The same requirement as for jq/python3/git — otherwise nothing pins this limb and it can
-    silently go away (I8 again).
-    """
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-
-    result = _run(
-        COMMIT_GUARD,
-        _bash('git commit -m "iets"', repo),
-        cwd=repo,
-        env={"PATH": str(_tool_bin(tmp_path / "zonder-cat", drop="cat"))},
-    )
-
-    assert result.returncode == 2, result.stdout
-    assert "COULD NOT CHECK" in result.stderr
-    assert "missing tooling" in result.stderr
-    assert "cat" in result.stderr
 
 
 # --- N6: cd that fails, cd -, pushd/popd -------------------------------------
@@ -1219,17 +1174,6 @@ def test_guard_finds_its_lib_via_git_without_env(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_guard_blocks_when_its_lib_is_missing(tmp_path):
-    repo = tmp_path / "repo"
-    init_repo(repo)
-    result = run_hook(
-        COMMIT_GUARD,
-        bash_payload("git commit -m x", repo),
-        repo,
-        env={"LIGHTHOUSE_REPO_ROOT": str(tmp_path / "nowhere")},
-    )
-    assert result.returncode == 2
-    assert "COULD NOT CHECK" in result.stderr
 
 
 def _trunk_toml(tmp_path: Path) -> dict:
@@ -1299,21 +1243,3 @@ def test_guard_reads_not_a_repo_under_other_locale(tmp_path):
     result = _run(COMMIT_GUARD, _bash(f"git -C {outside} commit -m x", repo), repo, env)
     assert result.returncode == 0, result.stderr
 
-
-def test_guard_names_the_python_cause_without_tomllib(tmp_path):
-    # macOS' /usr/bin/python3 is 3.9: no tomllib. A tomllib that cannot be
-    # imported, at the front of PYTHONPATH, imitates that python.
-    shadow = tmp_path / "shadow"
-    shadow.mkdir()
-    (shadow / "tomllib.py").write_text("raise ImportError('no tomllib')\n", encoding="utf-8")
-    repo = tmp_path / "repo"
-    init_repo(repo, branch="feature")
-
-    result = _run(
-        GUARD, bash_payload("git commit -m x", repo), repo, {"PYTHONPATH": str(shadow)}
-    )
-
-    assert result.returncode == 2, result.stdout
-    assert "COULD NOT CHECK" in result.stderr
-    assert "python3 >= 3.11 is required" in result.stderr
-    assert "Fix lighthouse.toml" not in result.stderr
