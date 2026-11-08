@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/CorneeldH/lighthouse/internal/config"
 )
 
 const full = `[forge]
@@ -357,24 +355,37 @@ func TestTriageable(t *testing.T) {
 	}
 }
 
-// Red when Load keeps its own literal defaults instead of config.Default.
+// Red when a default goes missing or changes: the literal values are the documented defaults.
 func TestLoadDefaultsFromConfig(t *testing.T) {
 	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for key, got := range map[string]string{
-		"forge.default_branch":    r.DefaultBranch,
-		"labels.blocked_issue":    r.Labels.BlockedIssue,
-		"labels.blocked_external": r.Labels.BlockedExternal,
-		"labels.needs_shaping":    r.Labels.NeedsShaping,
-		"labels.needs_decision":   r.Labels.NeedsDecision,
-		"labels.needs_hands":      r.Labels.NeedsHands,
-		"labels.needs_testing":    r.Labels.NeedsTesting,
+	for _, tt := range []struct{ key, got, want string }{
+		{"forge.default_branch", r.DefaultBranch, "main"},
+		{"labels.blocked_issue", r.Labels.BlockedIssue, "blocked-issue"},
+		{"labels.blocked_external", r.Labels.BlockedExternal, "blocked-external"},
+		{"labels.needs_shaping", r.Labels.NeedsShaping, "needs-shaping"},
+		{"labels.needs_decision", r.Labels.NeedsDecision, "needs-decision"},
+		{"labels.needs_hands", r.Labels.NeedsHands, "needs-hands"},
+		{"labels.needs_testing", r.Labels.NeedsTesting, "needs-testing"},
 	} {
-		want, ok := config.Default(key)
-		if !ok || got != want {
-			t.Errorf("%s: Load %q, config.Default %v (%v)", key, got, want, ok)
+		if tt.got != tt.want {
+			t.Errorf("%s: Load %q, want %q", tt.key, tt.got, tt.want)
 		}
+	}
+}
+
+// Red when a key renamed in internal/config silently turns into an empty default.
+func TestDefaultStringPanicsWithoutStringDefault(t *testing.T) {
+	for _, key := range []string{"labels.no_such_label", "usage_guard.resume", "test_gate.slots"} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("defaultString(%q) did not panic", key)
+				}
+			}()
+			_ = defaultString(key)
+		}()
 	}
 }

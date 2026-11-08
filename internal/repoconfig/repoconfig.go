@@ -116,10 +116,14 @@ type rawFile struct {
 }
 
 // defaultString is the default of key from internal/config, the one source of defaults.
-// Every key asked for has a string default there.
+// Every key asked for has a string default there; one without is a programming error, so it
+// panics instead of turning into an empty default.
 func defaultString(key string) string {
 	v, _ := config.Default(key)
-	s, _ := v.(string)
+	s, ok := v.(string)
+	if !ok {
+		panic("repoconfig: " + key + " has no string default in internal/config")
+	}
 	return s
 }
 
