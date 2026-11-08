@@ -368,7 +368,10 @@ om te evalueren.
 - [ ] **Step 5:** Bewijs van de gate met de branch-binary. De `$(…)` wordt door de buitenste shell
   uitgebreid, vóór een `PATH=` op `bash` geldt; zet daarom eerst het PATH en haal het commando
   daarna op:
-  `T=$(mktemp -d) && go build -o "$T/lighthouse" ./cmd/lighthouse && export PATH="$T:$PATH" && (cd web && npm ci) && cmd=$(lighthouse config test_gate.command) && [ -n "$cmd" ] && LIGHTHOUSE_GATE_FILES=<bestand met git diff --name-only origin/main> bash -c "$cmd"`.
+  `T=$(mktemp -d) && go build -o "$T/lighthouse" ./cmd/lighthouse && export PATH="$T:$PATH" && (cd web && npm ci) && cmd=$(lighthouse config test_gate.command) && [ -n "$cmd" ] && f=$(mktemp) && t=$(mktemp -d) && git -c core.quotePath=false diff --name-only --no-renames origin/main HEAD > "$f" && LIGHTHOUSE_GATE_FILES="$f" LIGHTHOUSE_GATE_TMP="$t" bash -c "$cmd"`
+  (zoals de repro-regel van `commit-test-gate.sh:198`). `LIGHTHOUSE_GATE_TMP` is verplicht: het
+  commando van deze repo heeft `--basetemp="$LIGHTHOUSE_GATE_TMP"` tussen het go- en het
+  node-deel, en een lege waarde laat pytest met een usage-fout stoppen vóór `gate node`.
   `web/node_modules` moet bestaan (`lighthouse.toml:44` heeft `--also lighthouse.toml`, dus
   `gate node --dir web` draait in de branch-diff; zonder `node_modules` geeft het rc 3). Eis
   naast rc 0 dat de uitvoer de regels `gate-go:` en `gate-node:` bevat; een lege `$cmd` of rc 0
