@@ -232,10 +232,10 @@ func TestPyPath(t *testing.T) {
 }
 
 func TestIsLocal(t *testing.T) {
-	if local, err := isLocal("127.0.0.1"); err != nil || !local {
-		t.Errorf("isLocal(127.0.0.1) = %v, %v; want true", local, err)
+	if local, err := IsLocal("127.0.0.1"); err != nil || !local {
+		t.Errorf("IsLocal(127.0.0.1) = %v, %v; want true", local, err)
 	}
-	local, err := isLocal("192.0.2.1") // TEST-NET-1: on no interface
+	local, err := IsLocal("192.0.2.1") // TEST-NET-1: on no interface
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestIsLocal(t *testing.T) {
 }
 
 func TestHostCheckNotLocal(t *testing.T) {
-	if local, _ := isLocal("192.0.2.1"); local {
+	if local, _ := IsLocal("192.0.2.1"); local {
 		t.Skip("net.ipv4.ip_nonlocal_bind is set")
 	}
 	dir := t.TempDir()
