@@ -394,6 +394,7 @@
               "default": [],
               "about": "Exit codes of the test command that mean the tests could not run; the gate reports COULD NOT CHECK instead of failed tests.",
               "readers": [
+                "internal/gate/gate.go",
                 "pack/core/hooks/commit-test-gate.sh",
                 "pack/go/scripts/gate_go.py",
                 "pack/go/skills/go-standard",
