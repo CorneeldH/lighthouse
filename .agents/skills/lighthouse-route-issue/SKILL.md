@@ -68,7 +68,7 @@ Per issue exactly one line, in the order of the input:
 `heading:gate_line 4: ...`. If the triage fell through gate 3, the layer follows:
 `… — <reason> · layer: <layer> (<file>)`. An accompanying skill from gate 1 goes in the reason.
 
-The form is a contract. `.lighthouse/scripts/measure_start_issue_kpi.py` counts the gate line and
+The form is a contract. `lighthouse measure-start-issue-kpi` counts the gate line and
 the sub-letter; the backlog-stand skill, if present, sorts *Ready* on the gate from this line.
 
 ## Triage: five gates, first hit wins
