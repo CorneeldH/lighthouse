@@ -62,7 +62,10 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    Na de precheck schrijft tick per bedienbare repo ook de stand van zijn runs in `tick_state`
    (soort `run`, sleutel het issuenummer), elke tick, ook als de gather niet aan de beurt is: per
    open run en per geparkeerde run (met een marker die hem nog hervat) de titel van het issue van
-   het board, `open` of `parked`, het commando, de trigger, het profiel, de workspace, `started_at`,
+   het board, `open` of `parked`, het commando, de fase (afgeleid uit het commando, bijvoorbeeld `sdd` of `spec-review`), voor een
+   subagent-driven-development-run de huidige taak, het aantal taken en de stap (`build`, `review` of
+   `final-review`, gelezen uit het plan en het ledger `progress.md` in de werkmap van de run; leeg als
+   die niet te lezen zijn), de trigger, het profiel, de workspace, `started_at`,
    de gemeten forge-stand (`working`, `waiting` of `done`; leeg als tick hem niet kon meten) en de
    tijd van de tick. Een issue met een open én een geparkeerde run staat er één keer, als `open`.
    Mislukt de precheck, dan blijven de rijen van de vorige tick staan. `serve` leest ze voor
