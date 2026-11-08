@@ -22,7 +22,7 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 
 `lighthouse serve` starts the API and web UI on `127.0.0.1:8127`. Install it as a systemd user service: [install](docs/install.md).
 
-The page shows the Claude and Codex usage windows, the open questions and the returned issues of one GitHub repository.
+The page has the Claude and Codex usage windows on top, and below them the Controller section: the open questions, the returned issues and the runs of the dispatcher.
 
 ![lighthouse UI](docs/images/ui-m2.png)
 
