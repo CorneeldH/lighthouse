@@ -556,3 +556,10 @@ Eigen worktree vanaf `main`, branch `issue-282-check-instructions`. Kan parallel
 | Weg is weg, bevroren is ongewijzigd | `git diff --stat main -- pack/core/lib/` leeg; de bestanden onder *Weg* bestaan niet meer |
 | `init --upgrade` gecommit, CI `No changes.` | taak 5, 8 en 10 |
 | `minor`-fragment | drie `changelog.d/issue-282-*.md` met `type: changed` |
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Taak 1 stap 3 (credits-fout, read/budget-kant)): The split is named, but the diff pins codex-usage read/budget to exit 1 with "not measurable: reset credits unreadable: …" as in codex_usage.py. In Python that NotMeasurable is raised inside read_usage's per-home loop, so it only fails that home: the next home, then the rollout log, are tried, and the final message is "app-server: <home>: …; rollout-log: …". The diff's shared parser returns a valid state plus a separate error, and Go CodexReader.Read returns at the first nil-error state, so the loop stops before home b and the rollout log. The diff does not say where read/budget apply the error.
