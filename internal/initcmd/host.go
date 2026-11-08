@@ -81,7 +81,7 @@ func proposeHost(o Options) []byte {
 		}
 	}
 	if err != nil {
-		_, _ = fmt.Fprintln(o.Err, "warning: host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml. For the gate_* keys (memory brake, slots) write it by hand: see \"A host.toml without Tailscale\" in docs/getting-started.md")
+		_, _ = fmt.Fprintln(o.Err, "warning: host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml. For the gate_* keys (memory brake, slots) write it by hand: see \"A host.toml without Tailscale\" in the lighthouse getting-started guide")
 		return nil
 	}
 	name, err := o.Hostname()

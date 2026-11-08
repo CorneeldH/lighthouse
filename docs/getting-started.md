@@ -117,7 +117,7 @@ On a machine with Tailscale, the first `init` also offers to write
 `~/.config/lighthouse/host.toml`; `--yes` writes it without asking. Without Tailscale you see
 `warning: host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml.
 For the gate_* keys (memory brake, slots) write it by hand: see "A host.toml without Tailscale" in
-docs/getting-started.md`.
+the lighthouse getting-started guide`: the next section.
 
 ## A host.toml without Tailscale
 
