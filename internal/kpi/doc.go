@@ -1,0 +1,18 @@
+// Package kpi measures how well the lighthouse-start-issue and lighthouse-fix-pr skills
+// behave, from the Claude Code session transcripts on disk. It is a Go port of the two
+// Python scripts measure_start_issue_kpi.py and measure_fix_pr_kpi.py: the output is
+// byte-identical to Python's json.dumps(table, indent=2, ensure_ascii=False).
+//
+// Deliberate deviations from the Python, none of which occurs in real transcripts:
+//
+//   - Invalid UTF-8 becomes one U+FFFD per strings.ToValidUTF8 run, not one per invalid
+//     byte sequence.
+//   - A JSON line that is not an object is dropped (Python crashes on it).
+//   - A whole number written as 35.0 counts as an integer for totalToolUseCount.
+//   - A timestamp yields a duration only when it is RFC 3339 or a naive
+//     2006-01-02T15:04:05[.ffffff]; Python's fromisoformat accepts more forms.
+//   - A non-string Bash command counts as "".
+//   - Go's regexp \b is ASCII-only, so a non-ASCII letter or digit next to a match
+//     differs from Python 3 (see the fix_pr rows in classify.json).
+//   - An empty --dir falls back to the default directory (Python: the cwd).
+package kpi
