@@ -32,7 +32,8 @@ is_blocking() {
 # json_string: stdin as one JSON string, without the trailing newline.
 json_string() {
   tab=$(printf '\t')
-  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$tab/\\\\t/g" |
+  cr=$(printf '\r')
+  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e "s/$tab/\\\\t/g" -e "s/$cr/\\\\r/g" |
     awk 'BEGIN { printf "%s", "\"" } NR > 1 { printf "%s", "\\n" } { printf "%s", $0 } END { printf "%s", "\"" }'
 }
 
@@ -123,26 +124,33 @@ fi
 LIGHTHOUSE_REPO_ROOT="${LIGHTHOUSE_REPO_ROOT:-$root}"
 export LIGHTHOUSE_REPO_ROOT
 
+err=
+trap 'rm -f "$err"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 err=$(mktemp "${TMPDIR:-/tmp}/lighthouse-run.XXXXXX" 2>/dev/null) || err=
 if [ -z "$err" ]; then
-  # No place for stderr: run without the mapping rather than not at all.
-  exec "$LH" hook "$@"
+  # No place for stderr: it passes through, and exit 3 still maps per the list.
+  "$LH" hook "$@"
+  rc=$?
+  if [ "$rc" -eq 3 ]; then
+    never_block=$dev
+    fail "COULD NOT CHECK: hook $hook exited 3 (no temporary file for its stderr)"
+  fi
+  exit "$rc"
 fi
 "$LH" hook "$@" 2>"$err"
 rc=$?
 # An unknown hook: the binary is older than the registration. At dev that is the checkout
 # binary of the previous HEAD, or the PATH binary while the first build runs: warn, never block.
 if [ "$rc" -eq 3 ]; then
-  text=$(cat "$err")
-  rm -f "$err"
   never_block=$dev
-  fail "$text"
+  fail "$(cat "$err")"
 fi
 if [ "$rc" -eq 1 ] && grep -q 'unknown command "hook"' "$err"; then
-  rm -f "$err"
   never_block=$dev
   fail "COULD NOT CHECK: lighthouse has no hook command ($LH is older than this repo) — $(remedy)"
 fi
 cat "$err" >&2
-rm -f "$err"
 exit "$rc"

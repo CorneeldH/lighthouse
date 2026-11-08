@@ -11,6 +11,7 @@ PATH `lighthouse` echoes its arguments and has its rc, stdout and stderr set by 
 import json
 import os
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -42,6 +43,7 @@ chmod +x "$3"
 
 FAKE_LIGHTHOUSE = r"""#!/bin/sh
 cat >"$FAKE_LH_STDIN"
+sleep "${FAKE_LH_SLEEP:-0}"
 if [ -n "${FAKE_LH_SHOW_ROOT:-}" ]; then printf 'root=%s\n' "${LIGHTHOUSE_REPO_ROOT-unset}"; fi
 if [ -n "${FAKE_LH_OUT+x}" ]; then printf '%s' "$FAKE_LH_OUT"; else echo "path-binary $*"; fi
 printf '%s' "${FAKE_LH_ERR:-}" >&2
@@ -238,6 +240,62 @@ def test_unknown_hook_message_is_valid_json(tmp_path):
     assert json.loads(r.stdout) == {"systemMessage": text}
 
 
+def test_unknown_hook_message_with_cr_is_valid_json(tmp_path):
+    repo = Repo(tmp_path, version="v0.12.1")
+    text = "COULD NOT CHECK: line one\r\nline two"
+    r = repo.call(NON_BLOCKING, FAKE_LH_ERR=text + "\n", FAKE_LH_RC="3", FAKE_LH_OUT="")
+    assert r.returncode == 0
+    assert json.loads(r.stdout) == {"systemMessage": text}
+
+
+# --- no temporary file for stderr -------------------------------------------------------------
+
+NO_TMP = f"COULD NOT CHECK: hook {BLOCKING} exited 3 (no temporary file for its stderr)"
+
+
+def test_no_tmp_still_maps_unknown_hook_per_list(tmp_path):
+    """mktemp fails: the binary still runs, and its exit 3 still blocks a blocking hook."""
+    repo = Repo(tmp_path, version="v0.12.1")
+    r = repo.call(BLOCKING, TMPDIR=str(tmp_path / "missing"), FAKE_LH_ERR=UNKNOWN,
+                  FAKE_LH_RC="3", FAKE_LH_OUT="")
+    assert (r.returncode, r.stdout, r.stderr) == (2, "", UNKNOWN + NO_TMP + "\n")
+
+
+def test_no_tmp_warns_for_other_hook(tmp_path):
+    repo = Repo(tmp_path, version="v0.12.1")
+    r = repo.call(NON_BLOCKING, TMPDIR=str(tmp_path / "missing"), FAKE_LH_ERR=UNKNOWN,
+                  FAKE_LH_RC="3", FAKE_LH_OUT="")
+    assert r.returncode == 0
+    assert r.stderr == UNKNOWN
+    assert json.loads(r.stdout) == {"systemMessage": NO_TMP.replace(BLOCKING, NON_BLOCKING)}
+
+
+def test_no_tmp_passes_other_exit_untouched(tmp_path):
+    repo = Repo(tmp_path, version="v0.12.1")
+    r = repo.call(BLOCKING, TMPDIR=str(tmp_path / "missing"), FAKE_LH_ERR="blocked\n",
+                  FAKE_LH_RC="2", FAKE_LH_OUT="")
+    assert (r.returncode, r.stdout, r.stderr) == (2, "", "blocked\n")
+
+
+def _tmp_files(tmp: Path) -> list[str]:
+    return sorted(p.name for p in tmp.iterdir() if p.name.startswith("lighthouse-run."))
+
+
+def test_terminated_run_removes_its_tmp_file(tmp_path):
+    repo = Repo(tmp_path, version="v0.12.1")
+    p = subprocess.Popen([str(repo.run_sh), NON_BLOCKING], stdin=subprocess.DEVNULL,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=str(repo.root),
+                         env={**repo.env, "FAKE_LH_SLEEP": "1"}, text=True)
+    deadline = time.monotonic() + 5
+    while not _tmp_files(tmp_path) and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert _tmp_files(tmp_path), "run.sh made no temporary file"
+    p.send_signal(signal.SIGTERM)
+    p.communicate(timeout=10)
+    time.sleep(1.5)
+    assert _tmp_files(tmp_path) == []
+
+
 OLD_BINARY = 'Error: unknown command "hook" for "lighthouse"\nRun \'lighthouse --help\' for usage.\n'
 
 
@@ -268,7 +326,6 @@ def _parallel_calls_build_once(repo: Repo) -> None:
         assert time.monotonic() - start < 2.0, "run.sh waited for the build"
         assert p.returncode == 0
         assert out == f"path-binary hook {NON_BLOCKING}\n"
-    assert len(repo.go_calls()) == 1
     repo.wait_built(1, timeout=5.0)
     assert len(repo.go_calls()) == 1
     assert os.access(repo.bin / "lighthouse", os.X_OK)
