@@ -66,7 +66,7 @@ func pushDestination(words []string, literal []bool, defaultBranch string) strin
 // None). actionIdx is the word after the last global option, so len(s.Words) if no subcommand
 // follows.
 func GitTarget(s Step) (target string, known bool, raw string, fromNewDir bool, actionIdx int) {
-	words := s.Words
+	words := s.Words // Walk guarantees s.Idx < len(words)
 	target, known = s.Here, s.Here != ""
 	raw, fromNewDir = s.Raw, s.NewDir
 	idx := s.Idx + 1
@@ -153,7 +153,7 @@ func Find(command, cwd string, opts Options) ([]Invocation, error) {
 	var found []Invocation
 	for _, step := range steps {
 		words := step.Words
-		if basename(words[step.Idx]) != "git" {
+		if basename(words[step.Idx]) != "git" { // Walk guarantees step.Idx < len(words)
 			continue
 		}
 		target, known, raw, fromNewDir, idx := GitTarget(step)

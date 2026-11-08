@@ -90,6 +90,11 @@ def test_fixture_case(case, tmp_path, monkeypatch):
     elif kind == "git_target":
         step = next(gi.walk(command, cwd))
         target, _raw, _new, action_idx = gi.git_target(step)
-        assert {"target": target, "action_word": step.words[action_idx]} == expect
+        # `known: false` (optional, default true) is a target that is None.
+        assert {
+            "target": target,
+            "known": target is not None,
+            "action_word": step.words[action_idx],
+        } == {"known": True, **expect}
     else:
         raise AssertionError(f"unknown kind {kind}")

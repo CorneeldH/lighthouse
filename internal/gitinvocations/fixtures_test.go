@@ -179,8 +179,9 @@ func TestFixtures(t *testing.T) {
 			}
 			if c.Kind == "git_target" {
 				var want struct {
-					Target     string `json:"target"`
-					ActionWord string `json:"action_word"`
+					Target     *string `json:"target"`
+					Known      *bool   `json:"known"`
+					ActionWord string  `json:"action_word"`
 				}
 				if err := json.Unmarshal(c.Expect, &want); err != nil {
 					t.Fatal(err)
@@ -190,8 +191,13 @@ func TestFixtures(t *testing.T) {
 					t.Fatalf("Walk = %v, %v; want one step", steps, err)
 				}
 				target, known, _, _, actionIdx := GitTarget(steps[0])
-				if !known || target != fill(t, want.Target, root) || steps[0].Words[actionIdx] != want.ActionWord {
-					t.Fatalf("GitTarget = %q, %v, word %q; want %q, %q", target, known, steps[0].Words[actionIdx], fill(t, want.Target, root), want.ActionWord)
+				wantKnown := want.Known == nil || *want.Known
+				wantTarget := ""
+				if want.Target != nil {
+					wantTarget = fill(t, *want.Target, root)
+				}
+				if known != wantKnown || target != wantTarget || steps[0].Words[actionIdx] != want.ActionWord {
+					t.Fatalf("GitTarget = %q, %v, word %q; want %q, %v, %q", target, known, steps[0].Words[actionIdx], wantTarget, wantKnown, want.ActionWord)
 				}
 				return
 			}

@@ -821,5 +821,548 @@
     "$LH_UNSET_VAR"
    ]
   ]
+ },
+ {
+  "name": "push-all-flag",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push --all origin",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "all",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-mirror-then-literal-main",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push --mirror origin main",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "yes",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-mirror-flag",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push --mirror",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "all",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-unresolved-destination",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin $BR",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "unresolved",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-unresolved-remote-known-branch",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push \"$REMOTE\" feature",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-known-then-unresolved",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin feature $BR",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "unresolved",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-all-beats-unresolved",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push --all origin $BR",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "all",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-redirect-breaks-destination",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin feat > main",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-colon-main",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin :main",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "yes",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-tag-keyword-no-main",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin tag v1",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-plus-head-refs-heads-main",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin +HEAD:refs/heads/main",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "yes",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-nonliteral-main",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin \"$X\"",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "unresolved",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-quoted-literal-main",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin 'main'",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "yes",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "push-new-dir-outside-repo-to-main",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/nieuw && git push origin main",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "<unknown>",
+    "yes",
+    "{root}/nieuw"
+   ]
+  ]
+ },
+ {
+  "name": "push-new-dir-inside-repo-report-true-stays-ancestor",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/x/sub && git push origin feature",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": true,
+  "expect": [
+   [
+    "push",
+    "{root}/x",
+    "no",
+    "{root}/x/sub"
+   ]
+  ]
+ },
+ {
+  "name": "push-new-dir-outside-repo-not-main-dropped",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/nieuw && git push origin feature",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "dash-c-relative-chain",
+  "setup": [
+   {
+    "repo": "a/b",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git -C a -C b commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/a/b",
+    "no",
+    "{root}/a/b"
+   ]
+  ]
+ },
+ {
+  "name": "dash-c-inline-equals",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git -C={root}/x commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "git-dir-inline",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git --git-dir={root}/x commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "dash-lowercase-c-config",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git -c k=v commit -m x",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/x",
+    "no",
+    "{root}/x"
+   ]
+  ]
+ },
+ {
+  "name": "untraceable-then-relative-dash-c",
+  "setup": [
+   {
+    "repo": "a/b",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git -C $LH_UNSET_VAR -C b commit -m x",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "<unknown>",
+    "no",
+    "b"
+   ]
+  ]
+ },
+ {
+  "name": "dash-c-without-value",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git -C",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "git-status-skipped",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git status",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "git-log-skipped",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git log -1",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "open-quote-after-commit-is-unparseable",
+  "setup": [
+   {
+    "repo": "x",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git commit -m x && echo 'y",
+  "cwd": "x",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": "unparseable"
+ },
+ {
+  "name": "git-target-unknown",
+  "setup": [],
+  "env": {},
+  "kind": "git_target",
+  "command": "git -C $LH_UNSET_VAR status",
+  "cwd": "/",
+  "expect": {
+   "target": null,
+   "known": false,
+   "action_word": "status"
+  }
  }
 ]
