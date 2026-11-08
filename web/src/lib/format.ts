@@ -4,6 +4,11 @@ export function formatAge(ageS: number): string {
   return `${Math.floor(ageS / 3600)} h`
 }
 
+// The age from then to now (both in ms) as "<age> ago"; a future then reads as zero.
+export function formatAgo(now: number, then: number): string {
+  return `${formatAge(Math.max(0, (now - then) / 1000))} ago`
+}
+
 function hhmm(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
