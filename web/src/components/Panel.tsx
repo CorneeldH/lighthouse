@@ -1,44 +1,60 @@
+import type { LucideIcon } from 'lucide-react'
 import type { JSX, ReactNode } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { forgeErrorText } from '@/lib/api'
-import { formatAge } from '@/lib/format'
-import { useNow } from '@/lib/now'
+
+export type Tone = 'purple' | 'orange' | 'blue' | 'grey' | 'yellow' | 'navy' | 'green'
+
+const toneClass: Record<Tone, string> = {
+  purple: 'bg-lh-purple text-white',
+  orange: 'bg-lh-orange text-lh-navy',
+  blue: 'bg-lh-blue text-white',
+  grey: 'bg-lh-grey text-white',
+  yellow: 'bg-lh-yellow text-lh-navy',
+  navy: 'bg-lh-navy text-white',
+  green: 'bg-lh-green text-white',
+}
 
 interface PanelProps {
+  // Anchor for the overview.
+  id: string
   title: string
-  // dataUpdatedAt of the query; 0 means never.
-  updatedAt: number
+  icon: LucideIcon
+  tone: Tone
+  count?: number
   error: unknown
   loading: boolean
-  // A refetch of data already shown is running.
-  refreshing?: boolean
   // Formats the error; defaults to the forge wording.
   errorText?: (error: unknown) => string
   children: ReactNode
 }
 
 export function Panel({
+  id,
   title,
-  updatedAt,
+  icon: Icon,
+  tone,
+  count,
   error,
   loading,
-  refreshing = false,
   errorText = forgeErrorText,
   children,
 }: PanelProps): JSX.Element {
-  const now = useNow()
   const hasError = error !== null && error !== undefined
   return (
-    <Card role="region" aria-label={title}>
+    <Card id={id} role="region" aria-label={title} className="scroll-mt-4">
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {(updatedAt > 0 || refreshing) && (
-          <p className="text-sm text-muted-foreground" aria-live="polite">
-            {updatedAt > 0 && `updated ${formatAge(Math.max(0, (now - updatedAt) / 1000))} ago`}
-            {updatedAt > 0 && refreshing && ' · '}
-            {refreshing && 'refreshing…'}
-          </p>
-        )}
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex size-8 items-center justify-center rounded-md ${toneClass[tone]}`}>
+            <Icon aria-hidden className="size-4" />
+          </span>
+          <CardTitle>{title}</CardTitle>
+          {count !== undefined && (
+            <span className="rounded-full bg-lh-navy px-2 py-0.5 text-xs font-medium text-white" aria-label={`${count} items`}>
+              {count}
+            </span>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {hasError && <p role="alert">{errorText(error)}</p>}

@@ -1,3 +1,4 @@
+import { Play } from 'lucide-react'
 import { type JSX, useId } from 'react'
 import { ApiError } from '@/lib/api'
 import { formatAge } from '@/lib/format'
@@ -32,17 +33,18 @@ function Field({ label, children }: { label: string; children: JSX.Element | str
 }
 
 export function RunsList(): JSX.Element {
-  const { data, error, isPending, isFetching, dataUpdatedAt } = useRuns()
+  const { data, error, isPending, } = useRuns()
   const deferredId = useId()
   const now = useNow()
   return (
     <Panel
+      id="running"
       title="Running runs"
-      updatedAt={dataUpdatedAt}
+      icon={Play}
+      tone="blue"
       error={error}
       errorText={runsErrorText}
       loading={isPending && !error}
-      refreshing={isFetching && !isPending}
     >
       {data && data.runs.length === 0 && <p>No running runs</p>}
       {data && data.runs.length > 0 && (

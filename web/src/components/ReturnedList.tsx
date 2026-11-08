@@ -1,13 +1,14 @@
+import { Undo2 } from 'lucide-react'
 import type { JSX } from 'react'
 import { useReturned } from '@/lib/queries'
 import { IssueLink } from './IssueLink'
 import { Panel } from './Panel'
 
 export function ReturnedList(): JSX.Element {
-  const { data, error, isPending, isFetching, dataUpdatedAt } = useReturned()
+  const { data, error, isPending, } = useReturned()
   return (
-    <Panel title="Returned" updatedAt={dataUpdatedAt} error={error} loading={isPending && !error}
-      refreshing={isFetching && !isPending}
+    <Panel id="returned" title="Returned" icon={Undo2} tone="orange" count={data?.length}
+      error={error} loading={isPending && !error}
     >
       {data && data.length === 0 && <p>No returned issues</p>}
       {data && data.length > 0 && (

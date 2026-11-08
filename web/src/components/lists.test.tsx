@@ -43,7 +43,9 @@ describe('QuestionList', () => {
     renderWithClient(<QuestionList />)
 
     expect(await screen.findByText('o/a#7')).toBeTruthy()
-    expect(within(screen.getByRole('region', { name: 'Open questions' })).getByText('updated < 1 min ago')).toBeTruthy()
+    const region = screen.getByRole('region', { name: 'Open questions' })
+    expect(region.id).toBe('questions')
+    expect(within(region).getByText('2')).toBeTruthy()
     expect(screen.getByText('o/b#9')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'First' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=7')
     expect(screen.getByRole('link', { name: 'o/a#7' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=7')
@@ -52,6 +54,11 @@ describe('QuestionList', () => {
     expect(screen.getByText('how?')).toBeTruthy()
     const answers = screen.getAllByRole('link', { name: 'Answer' })
     expect(answers.map((a) => a.getAttribute('href'))).toEqual(['https://x/7#a', 'https://x/9#a'])
+    for (const a of answers) {
+      expect(a.getAttribute('target')).toBe('_blank')
+      expect(a.getAttribute('rel')).toBe('noopener noreferrer')
+    }
+    expect(screen.getByRole('link', { name: 'First' }).getAttribute('target')).toBe('_blank')
   })
 
   it('renders question text as text, never as markup', async () => {
@@ -62,6 +69,14 @@ describe('QuestionList', () => {
     const el = await screen.findByText((_, node) => node?.textContent === text && node.children.length === 0)
     expect(el.className).toContain('whitespace-pre-wrap')
     expect(container.querySelector('script')).toBeNull()
+  })
+
+  it('shows the count pill 1 for a single question', async () => {
+    stubFetch(() => json({ questions: [questions[0]] }))
+    renderWithClient(<QuestionList />)
+    const region = screen.getByRole('region', { name: 'Open questions' })
+    await within(region).findByText('o/a#7')
+    expect(within(region).getByText('1')).toBeTruthy()
   })
 
   it('shows the empty text', async () => {
@@ -79,34 +94,6 @@ describe('QuestionList', () => {
     expect(screen.queryByText('No open questions')).toBeNull()
   })
 
-  it('shows refreshing while a refetch of shown data runs, and not after', async () => {
-    let release: () => void = () => {}
-    let hold = false
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockImplementation(() =>
-        hold
-          ? new Promise<Response>((resolve) => {
-              release = () => resolve(json({ questions }))
-            })
-          : Promise.resolve(json({ questions })),
-      ),
-    )
-    renderWithClient(<QuestionList />)
-    const region = screen.getByRole('region', { name: 'Open questions' })
-    await within(region).findByText('o/a#7')
-    expect(within(region).queryByText(/refreshing/)).toBeNull()
-
-    hold = true
-    act(() => {
-      void client?.refetchQueries()
-    })
-
-    expect(await within(region).findByText('updated < 1 min ago · refreshing…')).toBeTruthy()
-    release()
-    expect(await within(region).findByText('updated < 1 min ago')).toBeTruthy()
-  })
-
   it('keeps old items and shows an alert when a refetch fails with 502', async () => {
     let res = () => json({ questions })
     stubFetch(() => res())
@@ -120,7 +107,6 @@ describe('QuestionList', () => {
 
     expect(screen.getByText('o/a#7')).toBeTruthy()
     expect((await screen.findByRole('alert')).textContent).toMatch(/^Forge unreachable: /)
-    expect(within(screen.getByRole('region', { name: 'Open questions' })).getByText('updated < 1 min ago')).toBeTruthy()
   })
 })
 
@@ -135,6 +121,7 @@ describe('ReturnedList', () => {
     expect(screen.getByRole('link', { name: 'Back' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=3')
     expect(screen.getByRole('link', { name: 'o/a#3' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=3')
     expect(screen.getByText('unclear AC')).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Back' }).getAttribute('target')).toBe('_blank')
   })
 
   it('shows the empty text', async () => {
@@ -165,6 +152,7 @@ describe('CleanupList', () => {
 
     expect(await screen.findByText('o/r#7')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'o/r#7' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fr&issue=7')
+    expect(screen.getByRole('link', { name: 'o/r#7' }).getAttribute('target')).toBe('_blank')
     expect(screen.getByText('ws-1')).toBeTruthy()
     const path = screen.getByText('/w/ws-1')
     expect(path.tagName).toBe('CODE')
