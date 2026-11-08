@@ -49,7 +49,10 @@ type Func func(ctx context.Context, root string, stand string, p Payload) Result
 
 // Env is the repository and binary state a run needs.
 type Env struct {
-	Root, ManifestVersion, BinaryVersion, StateDir string
+	Root, ManifestVersion, BinaryVersion string
+	// StateDir holds the once-per-session markers; empty means none is known, and the
+	// notices stay quiet.
+	StateDir string
 }
 
 var (
@@ -189,8 +192,12 @@ func buildHasFailed(root string) bool {
 // firstInSession reports whether kind was not yet shown in session, and records that it now is.
 // The claim is one exclusive create, so parallel calls of one session show it once. When the
 // marker cannot be written the notice is shown anyway: a repeated notice is better than a
-// silent one.
+// silent one. Without a state directory there is no private place for a marker at all, and
+// a notice on every hook call would drown the session: then it stays quiet.
 func firstInSession(stateDir, session, kind string) bool {
+	if stateDir == "" {
+		return false
+	}
 	sum := sha256.Sum256([]byte(session))
 	marker := filepath.Join(stateDir, hex.EncodeToString(sum[:8])+"-"+kind)
 	if err := os.MkdirAll(stateDir, 0o750); err != nil {

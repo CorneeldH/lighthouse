@@ -300,3 +300,14 @@ func TestVersionNoticeNamesDevBinaryWithoutV(t *testing.T) {
 		t.Errorf("message %q, want %q", got, want)
 	}
 }
+
+// Without a state directory there is no private place for the marker: no notice at all, rather
+// than one per hook call or a marker in a shared directory.
+func TestNoNoticeWithoutStateDir(t *testing.T) {
+	register(t, "ok", okHook("ok"))
+	env := newEnv(t, "v0.12.1", "v0.13.0")
+	env.StateDir = ""
+	if _, out, _ := call(t, "ok", "s1", env); out != "" {
+		t.Errorf("stdout %q, want none", out)
+	}
+}
