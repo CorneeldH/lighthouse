@@ -174,24 +174,17 @@ def test_test_gate_uses_selectors():
         check=False,
     )
     assert result.stdout.strip() == (
-        "python3 .lighthouse/scripts/gate_go.py -- go test -race"
+        "lighthouse gate go -- go test -race"
         # --basetemp: pytest's tmp lands in the gate's own dir, which the hook removes (#171).
         ' && python3 pack/python/scripts/gate_python.py -- uv run pytest -q --basetemp="$LIGHTHOUSE_GATE_TMP"'
-        " && python3 .lighthouse/scripts/gate_node.py --dir web --also .github/workflows/ci.yml"
+        " && lighthouse gate node --dir web --also .github/workflows/ci.yml"
         " --also lighthouse.toml --drift gen=src/api -- lint typecheck test"
     ), result.stdout + result.stderr
 
 
 def test_node_pack_installed():
-    """Fails when the node pack is not recorded in the manifest or its script drifts from the pack."""
+    """Fails when the node pack is not recorded in the manifest or still installs the Python gate."""
     manifest = tomllib.loads((ROOT / ".lighthouse" / "manifest.toml").read_text())
     assert "node" in manifest["packages"]
-    # init stamps the installed copy with a "# lighthouse: node@<version>" line.
-    installed = [
-        line
-        for line in (ROOT / ".lighthouse" / "scripts" / "gate_node.py")
-        .read_text(encoding="utf-8")
-        .splitlines(True)
-        if not line.startswith("# lighthouse: node@")
-    ]
-    assert "".join(installed) == (ROOT / "pack" / "node" / "scripts" / "gate_node.py").read_text()
+    # `lighthouse gate node` replaced the script (#284); an upgrade must not leave it behind.
+    assert not (ROOT / ".lighthouse" / "scripts" / "gate_node.py").exists()
