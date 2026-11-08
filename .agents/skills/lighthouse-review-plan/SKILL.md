@@ -25,7 +25,7 @@ round 2 and later only verify whether the fixes of the previous round hold.
 ## When
 
 A fixed seam: plan committed in the plan directory
-(`python3 .lighthouse/lib/lighthouse_lib/config.py paths.plans`) → this skill →
+(`lighthouse config paths.plans`) → this skill →
 `/superpowers:subagent-driven-development`. For *every* plan, also a plan without a separate
 spec ("issue #N is the spec"), unless the user chose to skip at the plan seam
 (`lighthouse-write-handoff`).
@@ -120,7 +120,7 @@ From the `**Spec:**` line of the plan:
 Issue as spec — the reviewer has no GitHub, so the body goes along as a file:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/issues/<N>" --jq .body > <ATTEMPT>/issue-<N>.md
 date -u +%Y-%m-%dT%H:%M:%SZ
 ```

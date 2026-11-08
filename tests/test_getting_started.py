@@ -93,13 +93,13 @@ def test_init_flags_exist():
     assert used <= init_flags(), f"guide names unknown init flags {sorted(used - init_flags())}"
 
 
-def test_config_example_loads(tmp_path):
+def test_config_example_loads(tmp_path, lighthouse_bin):
     block = re.search(r"```toml\n(.*?)```", section("Configure lighthouse.toml"), re.S).group(1)
     (tmp_path / "lighthouse.toml").write_text(block, encoding="utf-8")
     env = {**os.environ, "LIGHTHOUSE_REPO_ROOT": str(tmp_path)}
     for key, want in [("project.language", "en"), ("forge.kind", "github")]:
         out = subprocess.run(
-            ["python3", str(ROOT / ".lighthouse/lib/lighthouse_lib/config.py"), key],
+            [str(lighthouse_bin), "config", key],
             env=env,
             capture_output=True,
             text=True,

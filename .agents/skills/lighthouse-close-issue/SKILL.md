@@ -36,13 +36,13 @@ and what closed it the last time (`closer`, for C1)? Then a second one: which op
 the issue by its head branch or by `Refs #<nr>` in its body?
 
 ```bash
-O=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.owner) || exit 2
-NAME=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.name) || exit 2
+O=$(lighthouse config forge.owner) || exit 2
+NAME=$(lighthouse config forge.name) || exit 2
 gh api graphql -f owner="$O" -f name="$NAME" -F nr=<nr> -f query='query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){state closedByPullRequestsReferences(first:10,includeClosedPrs:true){nodes{number state}} timelineItems(itemTypes:[CLOSED_EVENT],last:1){nodes{... on ClosedEvent{closer{__typename ... on PullRequest{number}}}}}}}}'
 ```
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh pr list --repo "$R" --state open --limit 9999 --json number,headRefName,body \
   --jq '.[] | select((.headRefName | startswith("issue-<nr>-")) or (.body | gsub("<!--[\\s\\S]*?-->"; "") | test("(^|[^\\w/])Refs[ \\t]+#<nr>([^\\w/]|$)"; "i"))) | .number'
 ```
@@ -84,7 +84,7 @@ here.
 ### B1. Read the issue and take out the anchors
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/issues/<nr>" --jq '{created_at, title, body}'
 ```
 
@@ -98,7 +98,7 @@ anchors. The subject of the issue is not an anchor.
 Three moves, in this order. The first two deliver candidates, the third delivers evidence.
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 # 1. merged PRs since the creation date of the issue
 gh pr list --repo "$R" --state merged --limit 100 \
   --json number,title,mergedAt,url \
@@ -127,7 +127,7 @@ criterion it proves. List those PRs, newest first, in a block of their own (vari
 on into the next tool call):
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh pr list --repo "$R" --state merged --limit 9999 --json number,headRefName,body,mergedAt \
   --jq '[.[] | (.body | gsub("<!--[\\s\\S]*?-->"; "")) as $b | select((.headRefName | startswith("issue-<nr>-")) or ($b | test("(^|[^\\w/])Refs[ \\t]+#<nr>([^\\w/]|$)"; "i"))) | select($b | test("(?m)^### Evidence #<nr>[ \t\r]*$"))] | sort_by(.mergedAt) | reverse | .[] | "\(.number)\t\(.mergedAt)"'
 ```
@@ -149,7 +149,7 @@ Run that file the way C2 does, in one shell call, chained with `&&` up to the ru
 sandbox:
 
 ```bash
-B=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.default_branch) &&
+B=$(lighthouse config forge.default_branch) &&
 git fetch origin "$B" &&
 git worktree add --detach "<scratch>/after-merge-<nr>" "origin/$B" &&
 { python3 .lighthouse/lib/lighthouse_lib/evidence.py run --issue <nr> --body-file "<scratch>/evidence.md" --cwd "<scratch>/after-merge-<nr>" > "<scratch>/run.txt" 2> "<scratch>/run.err"; rc=$?; echo "rc=$rc"; git worktree remove --force "<scratch>/after-merge-<nr>"; }
@@ -283,7 +283,7 @@ into the next; every step before the runner is chained with `&&`, so a failed `g
 `fetch` or `worktree add` does not run the runner:
 
 ```bash
-B=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.default_branch) &&
+B=$(lighthouse config forge.default_branch) &&
 scratch=$(mktemp -d) && echo "scratch=$scratch" &&
 gh pr view <pr> --json body --jq .body > "$scratch/body.md" &&
 git fetch origin "$B" &&
@@ -316,7 +316,7 @@ counts.
 
 | Exit | Output in `run.txt` | Meaning | What now |
 |---|---|---|---|
-| `0` | table | all rows `heading:evidence_holds` | `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh issue comment <nr> --repo "$R" --body "after-merge check: $(python3 .lighthouse/lib/lighthouse_lib/headings.py evidence_holds)"`, then step 6 (released issues) and *Close the milestone*, after that *Clean up the worktree* |
+| `0` | table | all rows `heading:evidence_holds` | `R=$(lighthouse config forge.repo) && gh issue comment <nr> --repo "$R" --body "after-merge check: $(lighthouse headings evidence_holds)"`, then step 6 (released issues) and *Close the milestone*, after that *Clean up the worktree* |
 | `4` | table | `heading:evidence_unmeasurable` from here | comment through `--body-file` (see below); **do not reopen**; report the rows to the user, then step 6 (released issues) and *Close the milestone* |
 | `1` | the table head `heading:evidence_table_head` is in it | `heading:evidence_fails` / `heading:evidence_invalid` | reopen, see below |
 | `2` | starts with `heading:evidence_closes_without_block` | no evidence block in the PR body | reopen, see below |
@@ -330,14 +330,14 @@ file; the unmeasurable rows do not count as proved at *Close the milestone*:
 
 ```bash
 { printf '%s\n\n' 'after-merge check: holds, except for rows that are not measurable from here'; cat <scratch>/run.txt; } > <scratch>/comment.md
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh issue comment <nr> --repo "$R" --body-file <scratch>/comment.md
 ```
 
 **Exit `1` or `2` with recognised output — reopen, fail-closed.** First the issue, then the board:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh issue reopen <nr> --repo "$R" --comment "$(cat <scratch>/run.txt)"
 python3 .lighthouse/scripts/board_start.py --reopen <nr>
 ```
@@ -371,7 +371,7 @@ the merge of the next `Closes` PR (or by the user).
 Is the issue already closed? Then entry C.
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh issue view <number> --repo "$R"
 ```
 
@@ -408,7 +408,7 @@ Standard DoD items:
 
 ```bash
 # Repo from lighthouse.toml, never from the git remote of the cwd
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 
 # Close with the full commit URL
 # printf sets the URL; the rest in a quoted heredoc, so backticks and $ in the AC text do not run
@@ -430,15 +430,15 @@ EOF
 )"
 ```
 
-Write the comment in the project language (`config.py project.language`); the headings come from
+Write the comment in the project language (`lighthouse config project.language`); the headings come from
 `.lighthouse/headings.toml`.
 
 ### 6. Released issues
 
 Unblocking is done by the unblock lane (`.github/workflows/lighthouse-unblock-dependents.yml`), as
-the bot from `[ci]` (`python3 .lighthouse/lib/lighthouse_lib/config.py ci.bot_login`), at every
+the bot from `[ci]` (`lighthouse config ci.bot_login`), at every
 close as `completed`: every open issue that waited on this issue and has no other open blocker
-any more loses the label `labels.blocked_issue` (`python3 .lighthouse/lib/lighthouse_lib/config.py labels.blocked_issue`)
+any more loses the label `labels.blocked_issue` (`lighthouse config labels.blocked_issue`)
 and gets a comment. The closed issue gets one comment back (`Released lane after this close:`)
 with what was released and what still waits. A session does not unblock itself: the bot token
 exists only in Actions. You check afterwards, also in entry C (after `heading:evidence_holds` or
@@ -452,7 +452,7 @@ fallback below.
 Which open issues waited on this issue?
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/issues/<nr>/dependencies/blocking" \
   --jq '.[] | select(.state=="open") | .number'
 ```
@@ -463,7 +463,7 @@ moment, then the newest run of the lane for this issue (the run name carries `#<
 after it, the reply comments after that moment, and per hit `<m>` the labels:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh issue view <nr> --repo "$R" --json closedAt -q .closedAt
 gh run list --workflow lighthouse-unblock-dependents.yml --limit 20 --json databaseId,conclusion,displayTitle,createdAt \
   --jq '[.[] | select((.displayTitle | endswith(" #<nr>")) and .createdAt >= "<closedAt>")] | first'
@@ -491,7 +491,7 @@ If the lane does not work (the bot without Issues: write, workflow disabled, or 
 the fallback is by hand, per `<m>` with `0` open blockers, also by the user:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh issue edit <m> --repo "$R" --remove-label <labels.blocked_issue>
 ```
 
@@ -568,7 +568,7 @@ evidence lines into the close comment. There is no question, in any mode.
 
 ## Template: Close Comment
 
-`<forge.repo>` is the output of `python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo`.
+`<forge.repo>` is the output of `lighthouse config forge.repo`.
 
 ```markdown
 Completed in commit: https://github.com/<forge.repo>/commit/<hash>
@@ -597,7 +597,7 @@ COMMIT=$(git rev-parse HEAD)
 # Output: 26948cd1234567890abcdef...
 
 # Close with the full URL
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh issue close 58 --repo "$R" --comment "$(printf 'Completed in commit: https://github.com/%s/commit/%s\n\n' "$R" "$COMMIT"; cat <<'EOF'
 ## Verification
 
@@ -632,17 +632,17 @@ that stays at 100% without being closed is exactly the eternal bin the taxonomy 
 Does the issue have no milestone? Skip this whole section ("Close the milestone").
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh issue view <number> --repo "$R" --json milestone -q '.milestone.number'
 gh api "repos/$R/milestones/<nr>" -q '"open=\(.open_issues)"'
 ```
 
-`open=1` means: this issue is the last one. Did you already close the issue? Then it says `open=0` — check with `R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh issue view <number> --repo "$R" --json milestone -q '.milestone.number'` whether the issue belonged to this block and just go on with step 2.
+`open=1` means: this issue is the last one. Did you already close the issue? Then it says `open=0` — check with `R=$(lighthouse config forge.repo) && gh issue view <number> --repo "$R" --json milestone -q '.milestone.number'` whether the issue belonged to this block and just go on with step 2.
 
 ### Step 2. Go through the DoD of the milestone
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/milestones/<nr>" -q '.description'
 ```
 
@@ -657,7 +657,7 @@ The board shows a closed milestone no differently from an open one — without t
 block stays on the kanban as if it is still running.
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 # fetch the current title
 gh api "repos/$R/milestones/<nr>" -q '.title'
 # close + rename (copy the title exactly, then " - DONE" after it)
@@ -670,7 +670,7 @@ If the title already ends on ` - DONE`, leave it (no second suffix).
 Check afterwards:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh api "repos/$R/milestones/<nr>" -q '"\(.state) — \(.title)"'
 ```
 
@@ -719,7 +719,7 @@ gh workflow run chore-merge.yml
 Evidence that it worked:
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh run list --workflow chore-merge.yml --limit 1
 git ls-remote --tags origin | grep <version>
 gh release view <version> --repo "$R" --json tagName,publishedAt
@@ -737,7 +737,7 @@ git ls-remote --tags origin <version>
 ```
 
 ```bash
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 gh release view <version> --repo "$R"
 ```
 
@@ -788,7 +788,7 @@ gh release view <version> --repo "$R"
 
 ### Step 5. Update the near goal of the area
 
-Only with an areas folder: `python3 .lighthouse/lib/lighthouse_lib/config.py paths.areas` (rc 1:
+Only with an areas folder: `lighthouse config paths.areas` (rc 1:
 report `areas: skipped — no paths.areas` and stop here).
 
 If you closed a milestone in this repo, update the *near goal* in `<paths.areas>/<area>.md`, with
@@ -799,7 +799,7 @@ present): the release flow branches from `origin/<default branch>` and stages on
 and `publiccode.yml`. Take a worktree and branch of your own from `origin/<default branch>`:
 
 ```bash
-B=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.default_branch) || exit 2
+B=$(lighthouse config forge.default_branch) || exit 2
 git fetch origin "$B"
 git worktree add .claude/worktrees/areas-<area>-near-goal -b areas-<area>-near-goal "origin/$B"
 ```

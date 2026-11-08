@@ -32,8 +32,8 @@ def test_validates_with_the_installed_script():
 
 
 def test_prefix_and_ceiling_from_config():
-    assert "python3 .lighthouse/lib/lighthouse_lib/config.py project.skill_prefix" in SKILL
-    assert "python3 .lighthouse/lib/lighthouse_lib/config.py project.instructions_word_ceiling" in SKILL
+    assert "lighthouse config project.skill_prefix" in SKILL
+    assert "lighthouse config project.instructions_word_ceiling" in SKILL
     assert "paia-" not in SKILL
 
 

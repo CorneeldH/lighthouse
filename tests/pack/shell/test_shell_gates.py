@@ -16,7 +16,7 @@ SKILL_DIR = SHELL / "skills" / "shell-standard"
 VARIANTS = {"claude": SKILL_DIR / "claude" / "SKILL.md", "agents": SKILL_DIR / "agents" / "SKILL.md"}
 BLOCK = SHELL / "instructions" / "AGENTS.md"
 
-STRICT_LOOKUP = "python3 .lighthouse/lib/lighthouse_lib/config.py shell.strict_dirs"
+STRICT_LOOKUP = "lighthouse config shell.strict_dirs"
 
 
 def _text(variant: str) -> str:
@@ -55,7 +55,7 @@ def test_paths_are_the_installed_ones(variant):
         assert source.is_file(), source
     for ref in re.findall(r"\.lighthouse/[\w./-]+|\.claude/hooks/lighthouse/[\w.-]+", text):
         ref = ref.rstrip(".")
-        assert ref in installed or ref.startswith(".lighthouse/lib/lighthouse_lib/config.py"), ref
+        assert ref in installed, ref
 
 
 def test_variants_keep_their_difference():
@@ -170,7 +170,7 @@ def _run_kpi(repo: Path, command: str, env: dict) -> int:
     ).returncode
 
 
-def test_kpi_rows_go_red(tmp_path, pinned_shellcheck):
+def test_kpi_rows_go_red(tmp_path, pinned_shellcheck, lighthouse_bin):
     """Each row misses its target once the thing it measures is broken."""
     (strict, _), (all_shell, _), (ignored, _) = _kpi_rows(_text("claude"))
     repo, env = _kpi_fixture(tmp_path)
@@ -188,7 +188,7 @@ def test_kpi_rows_go_red(tmp_path, pinned_shellcheck):
     assert _run_kpi(repo, ignored, env) != 1
 
 
-def test_kpi_gitignore_row_is_not_green_on_broken_config(tmp_path):
+def test_kpi_gitignore_row_is_not_green_on_broken_config(tmp_path, lighthouse_bin):
     (_, _), (_, _), (ignored, _) = _kpi_rows(_text("claude"))
     repo, env = _kpi_fixture(tmp_path)
     toml = tmp_path / "broken.toml"
@@ -197,7 +197,7 @@ def test_kpi_gitignore_row_is_not_green_on_broken_config(tmp_path):
     assert _run_kpi(repo, ignored, env) != 1
 
 
-def test_kpi_gitignore_row_handles_a_space(tmp_path):
+def test_kpi_gitignore_row_handles_a_space(tmp_path, lighthouse_bin):
     (_, _), (_, _), (ignored, _) = _kpi_rows(_text("claude"))
     repo, env = _kpi_fixture(tmp_path)
     toml = tmp_path / "space.toml"

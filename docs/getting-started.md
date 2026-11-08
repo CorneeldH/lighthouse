@@ -157,7 +157,7 @@ command = "<your test command>"
 
 Every other key, with its type and default, is in `SCHEMA` and `DEFAULTS` of
 `.lighthouse/lib/lighthouse_lib/config.py`. A key with a wrong type or value is an error that
-names the file and the key.
+names the file and the key. `lighthouse config <key>` prints the value a skill reads.
 
 ## Your first issue
 

@@ -168,7 +168,7 @@ func TestLanguagePacks(t *testing.T) {
 				".claude/skills/lighthouse-refresh-expo-lockfiles/SKILL.md",
 			},
 			detect: true,
-			tools:  "git,python3,superpowers,tomllib",
+			tools:  "git,superpowers",
 		},
 		{
 			name: "go",

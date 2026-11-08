@@ -10,7 +10,7 @@ description: Use when writing or changing shell that guards something — hooks 
 Shell whose exit code another person or another agent believes: the hooks in
 `.claude/hooks/`, the gate scripts, and the tests that assert on them. Which directories
 count as gate shell is set in `lighthouse.toml` under `[shell] strict_dirs` (default
-`.claude/hooks`); ask with `python3 .lighthouse/lib/lighthouse_lib/config.py shell.strict_dirs`.
+`.claude/hooks`); ask with `lighthouse config shell.strict_dirs`.
 Ordinary helper scripts fall half under it: only the warning bar applies there, see KPI
 row 2.
 
@@ -59,7 +59,7 @@ Run each row from the repository root.
 |---|---|---|
 | Gate shell is clean down to `style` | `bash .lighthouse/scripts/shellcheck-repo.sh` | rc 0 |
 | All shell in the repo is clean on `error`+`warning` | `git ls-files -z --cached --others --exclude-standard '*.sh' '*.bash' \| xargs -0 bash .lighthouse/scripts/shellcheck-repo.sh --severity warning --` | rc 0 |
-| No gate shell falls outside git | `dirs=$(python3 .lighthouse/lib/lighthouse_lib/config.py shell.strict_dirs) && printf '%s\n' "$dirs" \| while IFS= read -r d; do [ -n "$d" ] && find "$d" \( -name '*.sh' -o -name '*.bash' \) 2>/dev/null; done \| git check-ignore --stdin` | rc 1 |
+| No gate shell falls outside git | `dirs=$(lighthouse config shell.strict_dirs) && printf '%s\n' "$dirs" \| while IFS= read -r d; do [ -n "$d" ] && find "$d" \( -name '*.sh' -o -name '*.bash' \) 2>/dev/null; done \| git check-ignore --stdin` | rc 1 |
 
 `shellcheck-repo.sh` without files checks the strict set, at `style`; finding no file
 there is rc 2, not green. Without shellcheck it is rc 4: nothing was checked.
@@ -131,7 +131,7 @@ exit 2 with the reason, never exit 0. Its first line is then
 > to a shell script, run by hand:
 > `bash .lighthouse/scripts/shellcheck-repo.sh --severity warning -- <file>`, and for a
 > file in one of the strict directories
-> (`python3 .lighthouse/lib/lighthouse_lib/config.py shell.strict_dirs`) without
+> (`lighthouse config shell.strict_dirs`) without
 > `--severity` (then the stricter bar applies). That is a deliberate asymmetry, not an
 > omission: do not "fix" it by deleting the reference to the hook.
 
