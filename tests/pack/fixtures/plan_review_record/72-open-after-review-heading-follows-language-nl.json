@@ -1,0 +1,16 @@
+{
+  "kind": "render_open",
+  "description": "The block heading and sentence follow [project] language; open_section finds the block again.",
+  "language": "nl",
+  "round": 3,
+  "point": {
+    "finding_id": "r3-f1",
+    "severity": "MAJOR",
+    "section": "§1",
+    "problem": "p"
+  },
+  "starts_with": "## Open na review\n\nRonde 3 haalde de rondegrens",
+  "contains": [
+    "- **r3-f1** (MAJOR, §1): p"
+  ]
+}

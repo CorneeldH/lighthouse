@@ -1,0 +1,114 @@
+{
+  "description": "Only round-1 findings carry a source; round 2 gets null.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accept",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.sources.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "source": "codex",
+          "blind_ids": [
+            "A"
+          ],
+          "severity_by_source": {
+            "codex": "MAJOR"
+          }
+        }
+      ]
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 2,
+      "severities": [
+        "MINOR"
+      ],
+      "verified": [
+        "r1-f1"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-2.decisions.json",
+      "json": [
+        {
+          "finding_id": "r2-f1",
+          "decision": "minor_no",
+          "reason": "y"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}",
+        "--shadow-model",
+        "claude-opus-5-5"
+      ],
+      "expect": {
+        "record": {
+          "findings": [
+            {
+              "finding_id": "r1-f1",
+              "round": 1,
+              "severity": "MAJOR",
+              "cat": "code",
+              "decision": "accept",
+              "same_as": null,
+              "source": "codex",
+              "severity_by_source": {
+                "codex": "MAJOR"
+              }
+            },
+            {
+              "finding_id": "r2-f1",
+              "round": 2,
+              "severity": "MINOR",
+              "cat": "code",
+              "decision": "minor_no",
+              "same_as": null,
+              "source": null,
+              "severity_by_source": null
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "description": "A committed fix of the spec: reviewed and final hashes differ, final_sha is the new HEAD.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "--kind",
+        "spec",
+        "${SPEC}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "commit",
+      "files": {
+        "${SPEC}": "# spec v2\n"
+      },
+      "message": "fix spec"
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex"
+      ],
+      "expect": {
+        "record": {
+          "spec_sha256_reviewed": "1b355baa30768cee67e2f1f9ff2d45584cb42f9413881d9104579d26cff1d2e8",
+          "spec_sha256_final": "c86e7bf723833a81afa35b2801f1d960930fcc792a34ac35a0a016578acf62bd",
+          "final_sha": "${head}"
+        }
+      }
+    }
+  ]
+}
