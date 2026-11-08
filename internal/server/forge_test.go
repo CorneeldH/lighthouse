@@ -273,13 +273,29 @@ func TestRunsList(t *testing.T) {
 	}
 }
 
+func TestRunsMeta(t *testing.T) {
+	d := testDeps(stubSource{}, nil)
+	d.RunsMeta = RunsMeta{WorkspaceURL: "http://127.0.0.1:8091", Night: "21:00-08:00"}
+	rec := get(New(testSite(), d), "/api/runs")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	body := decode(t, rec.Body.Bytes())
+	if got := string(body["workspace_url"]); got != `"http://127.0.0.1:8091"` {
+		t.Errorf("workspace_url = %s", got)
+	}
+	if got := string(body["night"]); got != `"21:00-08:00"` {
+		t.Errorf("night = %s", got)
+	}
+}
+
 func TestRunsEmpty(t *testing.T) {
 	rec := get(New(testSite(), testDeps(stubSource{}, nil)), "/api/runs")
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 	}
-	if got := strings.TrimSpace(rec.Body.String()); got != `{"runs":[],"deferred":[]}` {
-		t.Errorf("body = %s, want {\"runs\":[],\"deferred\":[]}", got)
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"runs":[],"deferred":[],"workspace_url":"","night":""}` {
+		t.Errorf("body = %s, want empty runs, deferred, workspace_url and night", got)
 	}
 }
 

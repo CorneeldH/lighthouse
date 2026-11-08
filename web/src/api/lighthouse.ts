@@ -134,8 +134,10 @@ export interface RunView {
 export interface RunsOutputBody {
   /** @nullable */
   deferred: DeferredView[] | null;
+  night: string;
   /** @nullable */
   runs: RunView[] | null;
+  workspace_url: string;
 }
 
 export type GetLatestCommentParams = {

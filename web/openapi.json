@@ -361,6 +361,9 @@
               "null"
             ]
           },
+          "night": {
+            "type": "string"
+          },
           "runs": {
             "items": {
               "$ref": "#/components/schemas/RunView"
@@ -369,11 +372,16 @@
               "array",
               "null"
             ]
+          },
+          "workspace_url": {
+            "type": "string"
           }
         },
         "required": [
           "runs",
-          "deferred"
+          "deferred",
+          "workspace_url",
+          "night"
         ],
         "type": "object"
       },
