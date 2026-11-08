@@ -8,16 +8,18 @@ module (`resume`, `controller`). See the spec
 """
 
 import dataclasses
+import importlib.util
 import io
 import json
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
 from lighthouse_lib import usage_guard as ug
-from tests.pack._testkit import MINIMAL_TOML
+from tests.pack._testkit import CORE, MINIMAL_TOML
 
 NOW = datetime(2026, 9, 6, 11, 58, tzinfo=timezone.utc)
 ALARM = ug.Alarm("venster", 92, "14:30", "2026-09-06T12:30:00Z")
@@ -66,26 +68,84 @@ def write_module(tmp_path, name, body):
 
 FAILING = "def speak(ctx, stand):\n    raise RuntimeError('x')\n"
 
+# The keys, the handoff path and the exact words of each speaker live in fixtures the Go port
+# (`internal/usageguard`) reads too; this lib is the reference. They run with TZ=UTC.
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "usage_guard"
+
+
+def _fixture(name):
+    cases = json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+    return [pytest.param(case, id=case["name"]) for case in cases]
+
+
+def _parse_utc(text):
+    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def _fixture_ctx(case):
+    """The `Context` a keys or speech case describes."""
+    payload = dict(case.get("payload") or {})
+    for field in ("session_id", "agent_id"):
+        if case.get(field) is not None:
+            payload[field] = case[field]
+    alarm = case.get("alarm")
+    if case.get("kind") == "alarm":
+        alarm = {"kind": "venster", "pct": "92", "reset_local": "14:30", "reset_at": FIXTURE_AT}
+    if alarm:
+        alarm = ug.Alarm(alarm["kind"], int(alarm["pct"]), alarm["reset_local"], alarm["reset_at"])
+    c = ug.build_context(
+        case["stand"], alarm or None, case["pause_until"], "", json.dumps(payload), _parse_utc(case["now"])
+    )
+    return dataclasses.replace(c, run_id=case["run_id"])
+
+
+def _load_module(name):
+    path = CORE / "hooks" / "usage-gate" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"usage_guard_fixture_{name}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+FIXTURE_AT = "2026-09-06T12:30:00Z"
+
+
+@pytest.mark.parametrize("case", _fixture("keys"))
+def test_keys_fixtures(case):
+    c = _fixture_ctx(case)
+    if case["kind"] == "alarm":
+        path, base = ug.alarm_key(c, case["stand"]), ug.state_dir()
+    elif case["kind"] == "pause":
+        path, base = ug.pause_key(c), ug.state_dir()
+    else:
+        path, base = ug.handoff_path(c), ug.resume_dir()
+    assert str(path.relative_to(base)) == case["expect"]
+
+
+@pytest.mark.parametrize("case", _fixture("speech"))
+def test_speech_fixtures(case, monkeypatch):
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    c = _fixture_ctx(case)
+    speaker = case["speaker"]
+    if speaker == "base":
+        out = ug.base_speak(c, case["stand"])
+    elif speaker == "subagent":
+        out = ug.subagent_speak(c)
+    elif speaker == "resume":
+        out = _load_module("resume").speak(c, case["stand"])
+    elif speaker == "controller":
+        out = _load_module("controller").speak(c, case["stand"])
+    else:
+        out = _load_module("controller").pause(c)
+    expect = json.loads(json.dumps(case["expect"]).replace("{resume}", str(ug.resume_dir())))
+    assert out == expect
+
+
 
 def test_paths_follow_xdg(tmp_path):
     assert ug.state_dir() == tmp_path / "state" / "lighthouse" / "usage-guard"
     assert ug.resume_dir() == tmp_path / "data" / "lighthouse" / "resume"
-
-
-def test_alarm_key_forms():
-    base = "venster-2026-09-06T12:30:00Z"
-    d = ug.state_dir()
-    assert ug.alarm_key(ctx("tool", {"session_id": "s1"}), "tool") == d / f"{base}.tool.s1.done"
-    assert ug.alarm_key(ctx("tool", {}), "tool") == d / f"{base}.tool.done"
-    c = ctx("tool", {"session_id": "s1"}, run_id="R")
-    assert ug.alarm_key(c, "tool") == d / f"{base}.tool.s1.R.done"
-    c = ctx("subagent", {"session_id": "s1", "agent_id": "a1"}, run_id="R")
-    assert ug.alarm_key(c, "subagent") == d / f"{base}.subagent.s1.a1.done"
-
-
-def test_pause_key():
-    c = ctx("tool", {"session_id": "s1"}, pause_until="2026-10-03T21:00:00+02:00", run_id="R")
-    assert ug.pause_key(c) == ug.state_dir() / "pause-2026-10-03T21:00:00+02:00.R.done"
 
 
 def test_run_id_from_env(monkeypatch):
@@ -113,13 +173,6 @@ def test_safe_ids_are_kept():
 def test_cwd_from_payload_else_hook(tmp_path):
     assert ctx("tool", {"cwd": "/repo"}).cwd == "/repo"
     assert ctx("tool", {}).cwd == os.getcwd()
-
-
-def test_handoff_path():
-    assert ug.handoff_path(ctx("tool", {"session_id": "s1"})) == ug.resume_dir() / "s1.handoff.md"
-    assert ug.handoff_path(ctx("tool", {})) == (
-        ug.resume_dir() / f"no-session-{int(NOW.timestamp())}.handoff.md"
-    )
 
 
 @pytest.mark.parametrize("text", ["not json", "[]"])

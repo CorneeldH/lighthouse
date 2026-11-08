@@ -10,7 +10,7 @@ import os
 import shutil
 import subprocess
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -61,49 +61,62 @@ def _speaks(stand: str, stdout: str) -> bool:
     return True
 
 
-def _symlink_alarm(env: dict) -> None:
-    real = Path(env["HOME"]) / "elsewhere.alarm"
-    real.write_text(alarm_line() + "\n", encoding="utf-8")
-    link = write_alarm(env, "")
-    link.unlink()
-    link.symlink_to(real)
+# The alarm cases live in a fixture the Go reader of the alarm reads too
+# (`internal/usage`); `alarm.sh` is the reference for `valid` and `fields`.
+ALARM_CASES = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "usage_alarm" / "cases.json").read_text(
+        encoding="utf-8"
+    )
+)
+ALARM_IDS = [case["name"] for case in ALARM_CASES]
 
 
-VALID = "valid"
-ALARMS = {
-    "no file": None,
-    VALID: lambda env: write_alarm(env, alarm_line(local="Tue_14:30")),
-    "expired": lambda env: write_alarm(env, alarm_line(delta=-timedelta(minutes=1))),
-    "three fields": lambda env: write_alarm(env, "venster 92 14:30"),
-    "question marks": lambda env: write_alarm(env, "venster 92 ? ?"),
-    "five fields": lambda env: write_alarm(env, alarm_line() + " extra"),
-    "carriage return": lambda env: write_alarm(env, alarm_line() + "\r"),
-    "kind dag": lambda env: write_alarm(env, alarm_line(kind="dag")),
-    "pct 9x": lambda env: write_alarm(env, alarm_line().replace(" 92 ", " 9x ")),
-    "symlink": _symlink_alarm,
-    "unreadable": lambda env: write_alarm(env, alarm_line()).chmod(0o000),
-}
+def _expand(text: str, now: datetime) -> str:
+    """Fill `{future}` (now + 1 hour) and `{past}` (now - 1 minute) in a fixture text."""
+    stamp = "%Y-%m-%dT%H:%M:%SZ"
+    return text.replace("{future}", (now + timedelta(hours=1)).strftime(stamp)).replace(
+        "{past}", (now - timedelta(minutes=1)).strftime(stamp)
+    )
 
 
-@pytest.mark.parametrize("case", ALARMS)
+def _write_case(env: dict, case: dict, now: datetime) -> None:
+    """Build the alarm file a fixture case describes."""
+    line = _expand(case["line"], now)
+    if case["setup"] == "absent":
+        return
+    if case["setup"] == "symlink":
+        real = Path(env["HOME"]) / "elsewhere.alarm"
+        real.write_text(line + "\n", encoding="utf-8")
+        link = write_alarm(env, "")
+        link.unlink()
+        link.symlink_to(real)
+        return
+    # Bytes, not `write_alarm`: a `\r` in the line must reach the file unchanged.
+    path = write_alarm(env, "")
+    path.write_bytes((line + "\n").encode("utf-8"))
+    if case["setup"] == "unreadable":
+        path.chmod(0o000)
+
+
+@pytest.mark.parametrize("case", ALARM_CASES, ids=ALARM_IDS)
 @pytest.mark.parametrize("stand", STANDS)
-def test_alarm_cases(tmp_path: Path, stand: str, case: str) -> None:
-    if case == "unreadable" and os.geteuid() == 0:
+def test_alarm_cases(tmp_path: Path, stand: str, case: dict) -> None:
+    if case["setup"] == "unreadable" and os.geteuid() == 0:
         pytest.skip("root reads a mode-000 file")
     root = tmp_path / "root"
     install_core(root)
     env = guard_env(tmp_path)
-    if ALARMS[case] is not None:
-        ALARMS[case](env)
+    _write_case(env, case, datetime.now(timezone.utc))
 
     result = run_guard(root, stand, _payload(tmp_path, stand), env)
 
     assert result.returncode == 0, result.stderr
     assert result.stderr == ""
-    assert _speaks(stand, result.stdout) is (case == VALID), result.stdout
-    if case == VALID:
-        assert "92%" in result.stdout
-        assert "Tue 14:30" in result.stdout
+    assert _speaks(stand, result.stdout) is case["valid"], result.stdout
+    if case["valid"]:
+        _, pct, local, _ = case["fields"]
+        assert f"{int(pct)}%" in result.stdout
+        assert local in result.stdout
 
 
 def test_unreadable_pause_flag_is_silent(tmp_path: Path) -> None:
@@ -394,10 +407,15 @@ def _helper_fields(env: dict) -> str:
     return result.stdout.strip()
 
 
-def test_alarm_helper_fields_under_set_u(tmp_path: Path) -> None:
+@pytest.mark.parametrize("case", ALARM_CASES, ids=ALARM_IDS)
+def test_alarm_helper_fields_under_set_u(tmp_path: Path, case: dict) -> None:
+    if case["setup"] == "unreadable" and os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 file")
     env = guard_env(tmp_path)
-    assert _helper_fields(env) == "1 |||"
-    line = alarm_line(local="14_30")
-    write_alarm(env, line)
-    at = line.split()[3]
-    assert _helper_fields(env) == f"0 venster|92|14 30|{at}"
+    now = datetime.now(timezone.utc)
+    _write_case(env, case, now)
+    if case["valid"]:
+        kind, pct, local, at = (_expand(field, now) for field in case["fields"])
+        assert _helper_fields(env) == f"0 {kind}|{pct}|{local}|{at}"
+    else:
+        assert _helper_fields(env) == "1 |||"

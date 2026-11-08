@@ -7,6 +7,8 @@ from datetime import timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from tests.pack._testkit import (
     CORE,
     MINIMAL_TOML,
@@ -57,12 +59,19 @@ def _reason(result) -> str:
     return out["hookSpecificOutput"]["additionalContext"]
 
 
-def test_wake_cron() -> None:
-    resume = _load()
-    assert (
-        resume.wake_cron("2026-09-06T12:30:00Z", ZoneInfo("Europe/Amsterdam")) == "32 14 6 9 *"
+WAKE_CRON = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "usage_guard" / "wake_cron.json").read_text(
+        encoding="utf-8"
     )
-    assert resume.wake_cron("2026-12-31T23:59:00Z", timezone.utc) == "1 0 1 1 *"
+)
+
+
+@pytest.mark.parametrize(
+    "case", [pytest.param(c, id=f"{c['reset_at']} {c['tz']}") for c in WAKE_CRON]
+)
+def test_wake_cron(case: dict) -> None:
+    tz = timezone.utc if case["tz"] == "UTC" else ZoneInfo(case["tz"])
+    assert _load().wake_cron(case["reset_at"], tz) == case["expect"]
 
 
 def test_tool_window_writes_marker(tmp_path: Path) -> None:

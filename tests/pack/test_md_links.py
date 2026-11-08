@@ -8,96 +8,51 @@ latter replaces its own `_strip_code_fences` in `test_docs_planning.py` with
 this module.
 """
 
+import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from tests.pack._testkit import INSTALLED_LIB, load_hook_lib
 
 ml = load_hook_lib("md_links")
-FENCE = "`" * 3  # a literal three backticks in this plan breaks the old link hook
+# The cases live in a fixture the Go port of this module reads too (`internal/mdlinks`).
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "md_links" / "links.json"
 
 
-def test_strip_code_removes_both_fence_styles_and_inline_code():
-    text = (
-        f"a\n{FENCE}\n[x](f1.md)\n{FENCE}\n~~~markdown\n"
-        f"[y](f2.md)\n~~~\n`[z](f3.md)` [w](ok.md)\n"
-    )
-    assert ml.relative_links(text) == ["ok.md"]
+def _cases(section: str) -> list:
+    cases = json.loads(FIXTURES.read_text(encoding="utf-8"))[section]
+    return [pytest.param(case, id=case["name"]) for case in cases]
 
 
-def test_fence_marker_inside_a_line_does_not_toggle():
-    text = f's = "{FENCE}"\n[x](echt.md)\n'
-    assert ml.relative_links(text) == ["echt.md"]
+@pytest.mark.parametrize("case", _cases("strip_code"))
+def test_strip_code(case):
+    assert ml.strip_code(case["text"]) == case["expect"]
 
 
-@pytest.mark.parametrize(
-    "link,expected",
-    [
-        ("[a](b.md)", ["b.md"]),
-        ("[a](b.md#kop)", ["b.md"]),
-        ("[a](#kop)", []),
-        ("[a](https://x.nl)", []),
-        ("[a](obsidian://x)", []),
-        ("[a](mailto:iemand)", []),
-        ("[a](/abs.md)", []),
-        ('[a](c.md "titel")', ["c.md"]),
-        ("[a](b.md) [c](b.md)", ["b.md"]),
-        ("[a](<pad met spaties.md>)", ["pad met spaties.md"]),
-        ("[a](<p.md> 'titel')", ["p.md"]),
-        ("[a](d.md 'titel')", ["d.md"]),
-        ("[a](e.md (titel))", ["e.md"]),
-        ('[a](f.md "titel") [b](g.md (t))', ["f.md", "g.md"]),
-    ],
-)
-def test_relative_links(link, expected):
-    assert ml.relative_links(link) == expected
+@pytest.mark.parametrize("case", _cases("relative"))
+def test_relative_links(case):
+    assert ml.relative_links(case["text"]) == case["expect"]
 
 
-def test_absolute_links_in_new_link_forms():
-    text = "[a](</home/x y.md>) [b](/abs.md 'titel') [c](/p.md (titel))"
-    assert ml.absolute_links(text) == ["/home/x y.md", "/abs.md", "/p.md"]
+@pytest.mark.parametrize("case", _cases("absolute"))
+def test_absolute_links(case):
+    assert ml.absolute_links(case["text"]) == case["expect"]
 
 
-def test_find_problems_angle_link_with_spaces(tmp_path):
-    (tmp_path / "a b.md").write_text("x")
-    doc = tmp_path / "doc.md"
-    doc.write_text("[ok](<a b.md>) [weg](<c d.md>) [t](weg.md 'titel')\n")
-    assert ml.find_problems(doc, tmp_path) == [("dead", "c d.md"), ("dead", "weg.md")]
-
-
-def test_absolute_links_outside_code_only():
-    text = f"[a](/home/x.md)\n{FENCE}\n[b](/home/y.md)\n{FENCE}\n"
-    assert ml.absolute_links(text) == ["/home/x.md"]
-
-
-def test_find_problems(tmp_path):
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "er.md").write_text("x")
-    md = tmp_path / "docs" / "n.md"
-    md.write_text("[a](er.md) [b](weg.md) [c](/home/z.md) [d](../../buiten.md)\n")
-    assert ml.find_problems(md, tmp_path) == [
-        ("dead", "weg.md"),
-        ("absolute", "/home/z.md"),
-    ]
-
-
-def test_find_problems_accepts_existing_directory(tmp_path):
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "sub").mkdir()
-    md = tmp_path / "docs" / "n.md"
-    md.write_text("[h](sub/)\n")
-    assert ml.find_problems(md, tmp_path) == []
-
-
-def test_find_problems_decodes_percent_escapes(tmp_path):
-    (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "a b.md").write_text("x")
-    md = tmp_path / "docs" / "n.md"
-    md.write_text("[x](a%20b.md)\n")
-    assert ml.find_problems(md, tmp_path) == []
+@pytest.mark.parametrize("case", _cases("problems"))
+def test_find_problems(case, tmp_path):
+    for rel, content in case["files"].items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8", newline="")
+    for rel in case["dirs"]:
+        (tmp_path / rel).mkdir(parents=True, exist_ok=True)
+    found = ml.find_problems(tmp_path / case["md"], tmp_path)
+    assert [list(problem) for problem in found] == case["expect"]
 
 
 def test_cli_prints_tab_lines_and_fails_on_unreadable(tmp_path):
