@@ -459,6 +459,7 @@
               "default": "docs/developer/planning/plans",
               "about": "Where plans are written.",
               "readers": [
+                "internal/kpi/startissue.go",
                 "pack/core/scripts/measure_start_issue_kpi.py",
                 "pack/core/scripts/plan_review_record.py",
                 "pack/core/scripts/post_artefact.py",
@@ -487,6 +488,7 @@
               "default": "docs/developer/planning/specs",
               "about": "Where specs are written.",
               "readers": [
+                "internal/kpi/startissue.go",
                 "pack/core/scripts/measure_start_issue_kpi.py",
                 "pack/core/scripts/plan_review_record.py",
                 "pack/core/scripts/post_artefact.py",

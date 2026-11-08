@@ -125,7 +125,7 @@ func pyRound(x float64, n int) float64 {
 	return f
 }
 
-// medianOf returns the median of a sorted-copy of values; ok is false for an even count.
+// medianOf is the median of values: the middle one, or the mean of the two middle ones.
 func medianOf(values []float64) float64 {
 	s := slices.Clone(values)
 	slices.Sort(s)

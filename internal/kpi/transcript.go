@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"unicode"
 )
 
@@ -80,7 +81,7 @@ func readSession(path string) ([]map[string]any, error) {
 func jsonlIn(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrInvalid) {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrInvalid) || errors.Is(err, syscall.ENOTDIR) {
 			return nil, nil
 		}
 		return nil, err
@@ -97,6 +98,7 @@ func jsonlIn(dir string) ([]string, error) {
 // sessionFiles lists the .jsonl files of dir and, with withSiblings, of every
 // <dir>--claude-worktrees-* sibling, sorted like pathlib.
 func sessionFiles(dir string, withSiblings bool) ([]string, error) {
+	dir = pyPath(dir) // "a/" must have parent ".", as for pathlib
 	dirs := []string{dir}
 	if withSiblings {
 		parent := filepath.Dir(dir)

@@ -67,6 +67,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newInitCommand())
 	root.AddCommand(newConfigCommand())
 	root.AddCommand(newHeadingsCommand())
+	root.AddCommand(newMeasureStartIssueKPICommand())
 	root.AddCommand(newProtocolCommand())
 	root.AddCommand(newHookCommand())
 	root.AddCommand(newUsageCommand())

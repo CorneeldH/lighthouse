@@ -15,4 +15,10 @@
 //   - Go's regexp \b is ASCII-only, so a non-ASCII letter or digit next to a match
 //     differs from Python 3 (see the fix_pr rows in classify.json).
 //   - An empty --dir falls back to the default directory (Python: the cwd).
+//   - An unknown or abbreviated flag ends in exit code 1 through cobra (argparse: 2), and
+//     --sin is not --since. An unknown metric prints its own text, not argparse's; the exit
+//     code is the same, 2.
+//   - Go rejects NaN and Infinity in a transcript line (Python's json accepts them), and
+//     turns a lone surrogate escape into U+FFFD.
+//   - A truthy tool input that is not an object counts as {} (Python crashes on it).
 package kpi
