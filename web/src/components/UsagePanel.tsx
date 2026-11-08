@@ -6,7 +6,7 @@ import { Panel } from './Panel'
 import { UsageWindow } from './UsageWindow'
 
 export function UsagePanel(): JSX.Element {
-  const { data, error, isPending, } = useUsage()
+  const { data, error, isPending } = useUsage()
   const now = new Date(useNow())
   return (
     <Panel

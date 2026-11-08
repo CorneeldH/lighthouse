@@ -33,7 +33,7 @@ function Field({ label, children }: { label: string; children: JSX.Element | str
 }
 
 export function RunsList(): JSX.Element {
-  const { data, error, isPending, } = useRuns()
+  const { data, error, isPending } = useRuns()
   const deferredId = useId()
   const now = useNow()
   return (

@@ -6,13 +6,14 @@ import { forgeErrorText } from '@/lib/api'
 export type Tone = 'purple' | 'orange' | 'blue' | 'grey' | 'yellow' | 'navy' | 'green'
 
 const toneClass: Record<Tone, string> = {
-  purple: 'bg-lh-purple text-white',
-  orange: 'bg-lh-orange text-lh-navy',
-  blue: 'bg-lh-blue text-white',
-  grey: 'bg-lh-grey text-white',
-  yellow: 'bg-lh-yellow text-lh-navy',
-  navy: 'bg-lh-navy text-white',
-  green: 'bg-lh-green text-white',
+  // Icon contrast vs tile is >= 3:1 in both themes; dark tints take dark ink.
+  purple: 'bg-lh-purple text-white dark:text-[#0b1020]',
+  orange: 'bg-lh-orange text-[#14213d] dark:text-[#0b1020]',
+  blue: 'bg-lh-blue text-white dark:text-[#0b1020]',
+  grey: 'bg-lh-grey text-white dark:text-[#0b1020]',
+  yellow: 'bg-lh-yellow text-[#14213d]',
+  navy: 'bg-lh-navy text-white ring-1 ring-border',
+  green: 'bg-lh-green text-white dark:text-[#0b1020]',
 }
 
 interface PanelProps {
@@ -50,7 +51,7 @@ export function Panel({
           </span>
           <CardTitle>{title}</CardTitle>
           {count !== undefined && (
-            <span className="rounded-full bg-lh-navy px-2 py-0.5 text-xs font-medium text-white" aria-label={`${count} items`}>
+            <span className="rounded-full bg-lh-navy px-2 py-0.5 text-xs font-medium text-white ring-1 ring-border" title={`${count} items`}>
               {count}
             </span>
           )}

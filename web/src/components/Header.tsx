@@ -47,7 +47,8 @@ export function Header(): JSX.Element {
         </h1>
         {error && <p role="alert">API unreachable</p>}
       </div>
-      <div className="flex flex-wrap items-center gap-4 text-sm" aria-live="polite">
+      <div className="flex flex-wrap items-center gap-4 text-sm">
+        <div className="flex flex-wrap items-center gap-4" aria-live="polite">
         {(updatedAt > 0 || refreshing) && (
           <span>
             {updatedAt > 0 && `updated ${age(now, updatedAt)}`}
@@ -56,6 +57,7 @@ export function Header(): JSX.Element {
           </span>
         )}
         {tickAt > 0 && <span>{`tick ${age(now, tickAt)}`}</span>}
+        </div>
         <button
           type="button"
           className="inline-flex items-center gap-2 rounded-md bg-lh-yellow px-3 py-1 text-sm font-medium text-lh-navy hover:brightness-95 disabled:opacity-60"

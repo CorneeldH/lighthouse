@@ -6,7 +6,7 @@ import { IssueLink } from './IssueLink'
 import { Panel } from './Panel'
 
 export function QuestionList(): JSX.Element {
-  const { data, error, isPending, } = useQuestions()
+  const { data, error, isPending } = useQuestions()
   return (
     <Panel id="questions" title="Open questions" icon={MessageCircleQuestion} tone="purple" count={data?.length}
       error={error} loading={isPending && !error}

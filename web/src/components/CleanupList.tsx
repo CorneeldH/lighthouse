@@ -13,7 +13,7 @@ function cleanupErrorText(err: unknown): string {
 }
 
 export function CleanupList(): JSX.Element {
-  const { data, error, isPending, } = useCleanup()
+  const { data, error, isPending } = useCleanup()
   return (
     <Panel
       id="cleanup"

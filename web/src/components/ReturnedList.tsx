@@ -5,7 +5,7 @@ import { IssueLink } from './IssueLink'
 import { Panel } from './Panel'
 
 export function ReturnedList(): JSX.Element {
-  const { data, error, isPending, } = useReturned()
+  const { data, error, isPending } = useReturned()
   return (
     <Panel id="returned" title="Returned" icon={Undo2} tone="orange" count={data?.length}
       error={error} loading={isPending && !error}

@@ -143,10 +143,10 @@ describe('Header', () => {
       ),
     )
 
-    renderHeader()
+    const client = renderHeader()
 
     await screen.findByText('1.2.3')
-    await screen.findByText(/^updated /)
+    await vi.waitFor(() => expect(client.getQueryData(queryKeys.runs)).toEqual({ runs: [], deferred: [] }))
     expect(screen.queryByText(/tick/)).toBeNull()
   })
 })
