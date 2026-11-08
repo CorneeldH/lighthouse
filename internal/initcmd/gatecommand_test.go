@@ -150,3 +150,32 @@ func TestInitDoesNotRewrite(t *testing.T) {
 		t.Fatalf("stderr:\n%s", r.err)
 	}
 }
+
+func TestUpgradeRewritesOnlyTheStringBeforeAnInlineComment(t *testing.T) {
+	body := "[test_gate]\ncommand = \"python3 .lighthouse/scripts/gate_go.py -- go test\"  # was python3 .lighthouse/scripts/gate_go.py, see .lighthouse/scripts/foo.py\n"
+	root := gateRepo(t, body)
+	r := run(t, root, "", all(upgrade, yes))
+	if r.code != 0 {
+		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+	want := "command = \"lighthouse gate go -- go test\"  # was python3 .lighthouse/scripts/gate_go.py, see .lighthouse/scripts/foo.py\n"
+	if got := read(t, root, "lighthouse.toml"); !strings.Contains(got, want) {
+		t.Fatalf("lighthouse.toml lacks %q:\n%s", want, got)
+	}
+	if strings.Contains(r.err, "warning: lighthouse.toml") || strings.Contains(r.err, "# was") {
+		t.Fatalf("the comment reached the report:\n%s", r.err)
+	}
+}
+
+func TestUpgradeRewritesMultiLineGateCommand(t *testing.T) {
+	body := "[test_gate]\ncommand = \"\"\"\npython3 .lighthouse/scripts/gate_go.py -- x\n\"\"\"\ndeadline_seconds = 5\n"
+	root := gateRepo(t, body)
+	r := run(t, root, "", all(upgrade, yes))
+	if r.code != 0 {
+		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+	want := "command = \"\"\"\nlighthouse gate go -- x\n\"\"\"\ndeadline_seconds = 5\n"
+	if got := read(t, root, "lighthouse.toml"); !strings.Contains(got, want) {
+		t.Fatalf("lighthouse.toml lacks %q:\n%s", want, read(t, root, "lighthouse.toml"))
+	}
+}

@@ -42,13 +42,14 @@ func migrateGateCommand(old []byte, installed func(rel string) bool) (out []byte
 		}
 		end := valueEnd(lines, i, rest)
 		block := strings.Join(lines[i:end+1], "")
-		head, raw, _ := strings.Cut(block, "=")
+		head, all, _ := strings.Cut(block, "=")
+		raw, tail := splitValue(all)
 		rewritten := raw
 		for _, r := range gateRewrites {
 			rewritten = strings.ReplaceAll(rewritten, r.from, r.to)
 		}
 		if rewritten != raw {
-			lines[i] = head + "=" + rewritten
+			lines[i] = head + "=" + rewritten + tail
 			for j := i + 1; j <= end; j++ {
 				lines[j] = ""
 			}
@@ -104,4 +105,31 @@ func valueEnd(lines []string, i int, rest string) int {
 		}
 	}
 	return len(lines) - 1
+}
+
+// splitValue splits the text after the equals sign into the TOML string and what follows
+// it (an inline comment, the line end), so only the string is rewritten and scanned.
+func splitValue(s string) (value, tail string) {
+	t := strings.TrimLeft(s, " \t")
+	if t == "" || (t[0] != '"' && t[0] != '\'') {
+		v, _, _ := strings.Cut(s, "#")
+		return v, s[len(v):]
+	}
+	lead := len(s) - len(t)
+	delim := t[:1]
+	skip := 1
+	if strings.HasPrefix(t, strings.Repeat(delim, 3)) {
+		delim, skip = strings.Repeat(delim, 3), 3
+	}
+	for i := skip; i < len(t); i++ {
+		if t[i] == '\\' && delim[0] == '"' {
+			i++
+			continue
+		}
+		if strings.HasPrefix(t[i:], delim) {
+			end := lead + i + len(delim)
+			return s[:end], s[end:]
+		}
+	}
+	return s, ""
 }
