@@ -14,7 +14,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 )
 
-// The cases shared with tests/pack/test_review_pair.py: one JSON file per case, run through Run
+// The cases shared with tests/pack/fixtures/review_pair/: one JSON file per case, run through Run
 // with the coin and the tree state as seams, exactly as pytest patches `_coin` and `_tree_state`.
 const pairFixtureDir = "../../tests/pack/fixtures/review_pair"
 

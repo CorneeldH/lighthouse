@@ -14,7 +14,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 )
 
-// The cases of test_plan_review_record.py that patch the module itself: the host judgment, a
+// The cases that patch the code itself: the host judgment, a
 // failing rename and the skill directories. Hosts come from a real host.toml here, where
 // pytest patched `recognize`.
 

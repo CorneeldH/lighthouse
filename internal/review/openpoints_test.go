@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// fixtureDir holds the cases shared with tests/pack/test_plan_review_record.py.
+// fixtureDir holds the cases shared with tests/pack/fixtures/plan_review_record/.
 const fixtureDir = "../../tests/pack/fixtures/plan_review_record"
 
 // useHeadings points the config at the nl headings table and a lighthouse.toml of language.

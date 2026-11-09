@@ -19,8 +19,8 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/review"
 )
 
-// The cases of tests/pack/test_plan_review_record.py that carry data live as JSON in
-// tests/pack/fixtures/plan_review_record/, one file per case; pytest and this file read the
+// The cases that carry data live as JSON in
+// tests/pack/fixtures/plan_review_record/, one file per case; internal/review and this file read the
 // same files. A scenario is a list of steps against a throwaway repo (_world.json). In every
 // string `${name}` is a variable of the scenario: repo, tmp, tmpdir, data, home, root, PLAN,
 // SPEC, base_sha (HEAD before the steps), head (HEAD now), stdout (of the last run), and per
