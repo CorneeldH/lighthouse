@@ -4,30 +4,17 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
-	"os/user"
 	"path/filepath"
-	"regexp"
-	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
 )
 
 const casesFile = "../../tests/pack/fixtures/git_invocations/cases.json"
 
-type setupStep struct {
-	Repo      *string `json:"repo"`
-	Branch    string  `json:"branch"`
-	Dir       *string `json:"dir"`
-	File      *string `json:"file"`
-	Text      string  `json:"text"`
-	Symlink   *string `json:"symlink"`
-	To        string  `json:"to"`
-	Overwrite *string `json:"overwrite"`
-}
-
 type fixtureCase struct {
 	Name    string            `json:"name"`
-	Setup   []setupStep       `json:"setup"`
+	Setup   []map[string]any  `json:"setup"`
 	Env     map[string]string `json:"env"`
 	Kind    string            `json:"kind"`
 	Command string            `json:"command"`
@@ -36,73 +23,6 @@ type fixtureCase struct {
 	Default string            `json:"default_branch"`
 	Report  bool              `json:"report_new_dirs"`
 	Expect  json.RawMessage   `json:"expect"`
-}
-
-var homePlaceholder = regexp.MustCompile(`\{home:([^}]+)\}`)
-
-// fill replaces {root} and {home:<name>}, the placeholders the Python runner fills too.
-func fill(t *testing.T, value, root string) string {
-	t.Helper()
-	value = strings.ReplaceAll(value, "{root}", root)
-	return homePlaceholder.ReplaceAllStringFunc(value, func(m string) string {
-		u, err := user.Lookup(homePlaceholder.FindStringSubmatch(m)[1])
-		if err != nil {
-			t.Fatalf("lookup user: %v", err)
-		}
-		return u.HomeDir
-	})
-}
-
-func git(t *testing.T, dir string, args ...string) {
-	t.Helper()
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
-		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-}
-
-func build(t *testing.T, setup []setupStep, root string) {
-	t.Helper()
-	write := func(rel, text string) {
-		path := filepath.Join(root, rel)
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, step := range setup {
-		switch {
-		case step.Repo != nil:
-			dir := filepath.Join(root, *step.Repo)
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				t.Fatal(err)
-			}
-			git(t, dir, "init", "-q", "-b", step.Branch)
-			write(filepath.Join(*step.Repo, "README.md"), "# repo\n")
-			git(t, dir, "add", "README.md")
-			git(t, dir, "commit", "-qm", "init")
-		case step.Dir != nil:
-			if err := os.MkdirAll(filepath.Join(root, *step.Dir), 0o755); err != nil {
-				t.Fatal(err)
-			}
-		case step.File != nil:
-			write(*step.File, step.Text)
-		case step.Symlink != nil:
-			if err := os.Symlink(filepath.Join(root, step.To), filepath.Join(root, *step.Symlink)); err != nil {
-				t.Fatal(err)
-			}
-		case step.Overwrite != nil:
-			write(*step.Overwrite, step.Text)
-		default:
-			t.Fatalf("unknown setup step %+v", step)
-		}
-	}
 }
 
 func TestFixtures(t *testing.T) {
@@ -124,9 +44,9 @@ func TestFixtures(t *testing.T) {
 			if err := os.Unsetenv("LH_UNSET_VAR"); err != nil {
 				t.Fatal(err)
 			}
-			build(t, c.Setup, root)
+			fixturesetup.Build(t, root, c.Setup)
 			for key, value := range c.Env {
-				t.Setenv(key, fill(t, value, root))
+				t.Setenv(key, fixturesetup.Fill(t, value, root))
 			}
 			if c.Kind == "repo_of" {
 				var want *string
@@ -140,12 +60,12 @@ func TestFixtures(t *testing.T) {
 					}
 					return
 				}
-				if !ok || got != fill(t, *want, root) {
-					t.Fatalf("RepoOf = %q, %v; want %q", got, ok, fill(t, *want, root))
+				if !ok || got != fixturesetup.Fill(t, *want, root) {
+					t.Fatalf("RepoOf = %q, %v; want %q", got, ok, fixturesetup.Fill(t, *want, root))
 				}
 				return
 			}
-			command := fill(t, c.Command, root)
+			command := fixturesetup.Fill(t, c.Command, root)
 			cwd := root
 			if c.CWD != "" {
 				cwd = filepath.Join(root, c.CWD)
@@ -170,7 +90,7 @@ func TestFixtures(t *testing.T) {
 					t.Fatalf("got %d invocations, want %d: %+v", len(got), len(want), got)
 				}
 				for i, inv := range got {
-					w := Invocation{want[i][0], fill(t, want[i][1], root), want[i][2], fill(t, want[i][3], root)}
+					w := Invocation{want[i][0], fixturesetup.Fill(t, want[i][1], root), want[i][2], fixturesetup.Fill(t, want[i][3], root)}
 					if inv != w {
 						t.Errorf("invocation %d = %+v, want %+v", i, inv, w)
 					}
@@ -194,7 +114,7 @@ func TestFixtures(t *testing.T) {
 				wantKnown := want.Known == nil || *want.Known
 				wantTarget := ""
 				if want.Target != nil {
-					wantTarget = fill(t, *want.Target, root)
+					wantTarget = fixturesetup.Fill(t, *want.Target, root)
 				}
 				if known != wantKnown || target != wantTarget || steps[0].Words[actionIdx] != want.ActionWord {
 					t.Fatalf("GitTarget = %q, %v, word %q; want %q, %v, %q", target, known, steps[0].Words[actionIdx], wantTarget, wantKnown, want.ActionWord)
@@ -223,7 +143,7 @@ func TestFixtures(t *testing.T) {
 				if got := step.Words[step.Idx]; got != want[i][0] {
 					t.Errorf("step %d command = %q, want %q", i, got, want[i][0])
 				}
-				if wantHere := fill(t, want[i][1], root); step.Here != wantHere {
+				if wantHere := fixturesetup.Fill(t, want[i][1], root); step.Here != wantHere {
 					t.Errorf("step %d here = %q, want %q", i, step.Here, wantHere)
 				}
 			}
