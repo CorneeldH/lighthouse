@@ -1,7 +1,8 @@
 """Read layer and state of `pack/core/lib/bash_writes.py` (#871, task 5+6).
 
 Task 5: roots, git records (porcelain, diff-tree, reflog) and which commits
-a post has to check. Task 6: signatures, the session directory, the
+a post has to check. (The cases that are data live in
+`fixtures/bash_writes/cases.json`, run by `test_bash_writes_fixtures.py`.) Task 6: signatures, the session directory, the
 locked ledger, seeding a root, markers and `run_pre`. See
 `docs/developer/planning/specs/2026-09-26-bash-write-gates-design.md`,
 the sections on data flow, state, lock and pre, and the accompanying
@@ -21,8 +22,6 @@ import pytest
 
 from tests.pack._testkit import (
     GIT_ENV,
-    ORIGIN,
-    forge_worktree,
     git,
     init_repo,
     load_hook_lib,
@@ -88,146 +87,6 @@ def test_git_raises_giterror_on_timeout(tmp_path, monkeypatch):
         bw.git(str(tmp_path), "status", deadline=time.time() + 5)
     assert exc_info.value.returncode is None
     assert "git read past the deadline" in str(exc_info.value)
-
-
-# --- parse_porcelain / parse_diff_tree ------------------------------------
-
-
-def test_porcelain_reports_the_old_path_of_a_rename_as_removed():
-    # The source of a rename is gone (net filter: deleted, not unchecked);
-    # the source of a copy still exists and is skipped. Neither is
-    # ever a candidate.
-    assert bw.parse_porcelain(
-        b" M a.py\0R  new.sh\0old.sh\0C  cp.sh\0src.sh\0 D gone.sh\0?? sp ace.sh\0"
-    ) == (
-        {"a.py", "new.sh", "cp.sh", "sp ace.sh"},
-        {"gone.sh", "old.sh"},
-    )
-
-
-def test_porcelain_keeps_newlines_and_non_ascii_in_names():
-    assert bw.parse_porcelain("?? a\nb.sh\0?? ü.sh\0".encode()) == (
-        {"a\nb.sh", "ü.sh"},
-        set(),
-    )
-
-
-def test_diff_tree_combined_status_with_a_d_is_deleted():
-    assert bw.parse_diff_tree(b"MM\0c.py\0DM\0x.sh\0A\0n.md\0") == (
-        {"c.py", "n.md"},
-        {"x.sh"},
-    )
-
-
-# --- parse_reflog / commits_to_check --------------------------------------
-
-
-def test_reflog_stops_at_the_ledger_head_and_reports_a_checkout():
-    e = [
-        E("c3", 30, "commit: c"),
-        E("b2", 20, "checkout: moving from x to main"),
-        E("a1", 10, "commit (initial): a"),
-    ]
-    assert bw.commits_to_check(e, "b2", None) == ([("c3", False)], [])
-    shas, notes = bw.commits_to_check(
-        [E("b2", 20, "pull: Fast-forward"), *e[2:]], "a1", None
-    )
-    assert shas == [] and "without a commit" in notes[0]
-
-
-def test_reflog_empty_subject_does_not_hide_a_later_movement():
-    # The first entry of a new worktree has an empty subject: it must not
-    # suppress the notice of a real movement behind it.
-    e = [
-        E("c3", 30, "commit: y"),
-        E("e2", 20, ""),
-        E("b1", 15, "checkout: moving from a to b"),
-        E("s0", 10, "commit: base"),
-    ]
-    shas, notes = bw.commits_to_check(e, "s0", None)
-    assert shas == [("c3", False)]
-    assert len(notes) == 1 and "checkout: moving from a to b" in notes[0]
-    assert bw.commits_to_check(
-        [E("e2", 20, ""), E("s0", 10, "commit: base")], "s0", None
-    ) == ([], [])
-
-
-def test_reflog_without_the_ledger_head_is_skipped_with_a_note():
-    entries = [E("c3", 30, "commit: c"), E("b2", 20, "commit: b")]
-    shas, notes = bw.commits_to_check(entries, "gone", None)
-    assert shas == []
-    assert len(notes) == 1
-    assert "gone" in notes[0]
-
-
-def test_reflog_with_a_start_time_also_walks_past_a_return_to_the_stop():
-    # Commit on `feat`, then back to main: the newest entry already has the
-    # sha of the ledger `head`, the stop walk sees nothing. The walk
-    # since the start does find c3; checkout lines do not count.
-    e = [
-        E("b2", 30, "checkout: moving from feat to main"),
-        E("c3", 30, "commit: x"),
-        E("b2", 29, "checkout: moving from main to feat"),
-        E("a1", 10, "commit (initial): a"),
-    ]
-    assert bw.commits_to_check(e, "b2", None) == ([], [])
-    assert bw.commits_to_check(e, "b2", 29) == ([("c3", False)], [])
-
-
-def test_reflog_with_a_start_time_dedups_and_survives_a_gap():
-    e = [E("c3", 30, "commit: c"), E("b2", 20, "commit: b"), E("a1", 5, "commit: a")]
-    # c3 is in both walks: once.
-    assert bw.commits_to_check(e, "b2", 10) == ([("c3", False), ("b2", False)], [])
-    # Reflog gap: the notice stays, the walk since the start runs anyway.
-    shas, notes = bw.commits_to_check(e, "gone", 10)
-    assert shas == [("c3", False), ("b2", False)]
-    assert len(notes) == 1 and "gone" in notes[0]
-
-
-def test_reflog_from_unborn_counts_every_commit():
-    entries = [
-        E("c3", 30, "commit: c"),
-        E("b2", 20, "checkout: moving from x to main"),
-        E("a1", 10, "commit (initial): a"),
-    ]
-    shas, notes = bw.commits_to_check(entries, "unborn", None)
-    assert shas == [("c3", False), ("a1", False)]
-    assert notes == []
-
-
-def test_reflog_fallback_counts_commits_since_the_start_time():
-    entries = [
-        E("c3", 30, "commit: c"),
-        E("b2", 20, "checkout: moving from x to main"),
-        E("a1", 10, "commit (initial): a"),
-    ]
-    shas, notes = bw.commits_to_check(entries, None, 15)
-    assert shas == [("c3", False)]
-    assert notes == []
-
-
-def test_reflog_fallback_marks_a_merge_commit():
-    entries = [E("m1", 30, "commit (merge): Merge branch 'x'")]
-    shas, notes = bw.commits_to_check(entries, None, 0)
-    assert shas == [("m1", True)]
-    assert notes == []
-
-
-def test_parse_reflog_reads_the_epoch_from_gd():
-    text = "aaa\x1fHEAD@{100}\x1fcommit: a\nbbb\x1fHEAD@{50}\x1fcommit: b\n"
-    assert bw.parse_reflog(text) == [
-        E("aaa", 100, "commit: a"),
-        E("bbb", 50, "commit: b"),
-    ]
-
-
-def test_parse_reflog_keeps_exotic_control_chars_in_the_subject():
-    # `str.splitlines()` also breaks on \x1c-\x1e, \x0c, \x85, U+2028/2029 — a
-    # subject with such a character must not unravel the record. `.split("\n")`
-    # does not.
-    subject = "a\x1cb   c\x0cd"
-    text = f"aaa\x1fHEAD@{{5}}\x1f{subject}\n"
-    assert bw.parse_reflog(text) == [E("aaa", 5, subject)]
 
 
 # --- head_of ---------------------------------------------------------------
@@ -308,152 +167,6 @@ def test_diff_commit_on_a_real_conflict_merge_names_only_the_resolution(tmp_path
     assert bw.diff_commit(str(repo), sha, True, deadline=deadline) == ({"c.txt"}, set())
 
 
-# --- derive_roots ------------------------------------------------------
-
-
-def test_derive_roots_covers_cwd_cd_git_dash_c_and_literal_paths(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    a = tmp_path / "a"
-    b = a / "b"
-    c = a / "c"
-    d = a / "d"
-    e = tmp_path / "e"
-    for repo in (a, b, c, d, e):
-        init_repo(repo)
-
-    command = (
-        "(cd b && true); git -C c status; "
-        "cat > d/x.sh <<'EOF'\necho x\nEOF\n"
-        "cat > ~/e/z.sh <<'EOF'\necho x\nEOF"
-    )
-    roots = bw.derive_roots(command, str(a))
-    assert roots == {os.path.realpath(str(p)) for p in (a, b, c, d, e)}
-
-
-def test_derive_roots_finds_a_relative_gitignored_nested_worktree(tmp_path):
-    main = tmp_path / "main"
-    init_repo(main)
-    (main / ".gitignore").write_text("wt/\n", encoding="utf-8")
-    git(main, "add", ".gitignore")
-    git(main, "commit", "-qm", "gitignore")
-    git(main, "worktree", "add", "-q", "wt", "-b", "wt-branch")
-
-    roots = bw.derive_roots("cat > wt/x.sh <<'EOF'\necho x\nEOF", str(main))
-    assert os.path.realpath(str(main / "wt")) in roots
-
-
-def test_derive_roots_on_an_open_quote_still_finds_an_absolute_path(tmp_path):
-    a = tmp_path / "a"
-    b = tmp_path / "b"
-    init_repo(a)
-    init_repo(b)
-
-    command = f"echo 'open; cat > {b}/x.sh"
-    roots = bw.derive_roots(command, str(a))
-    assert os.path.realpath(str(b)) in roots
-
-
-# Regression: `Step.dirs` is the LIVE directory state of `walk` (outside a
-# sub-shell all Steps share the same dict object). A `list(walk(...))`
-# that reads `step.dirs["here"]` only afterwards sees for every Step the
-# FINAL state of the whole walk — here always `other` — instead of the
-# state at the moment of that Step. Every test therefore ends with a `cd`
-# to a directory outside all repos, so that an implementation that does not
-# read per Step loses the earlier root.
-
-
-def test_derive_roots_reads_the_dir_state_per_step_for_cd(tmp_path):
-    a = tmp_path / "a"
-    b = a / "b"
-    other = tmp_path / "other"
-    init_repo(a)
-    init_repo(b)
-    other.mkdir()
-
-    command = f"cd b && echo hi > x.sh; cd {other}"
-    roots = bw.derive_roots(command, str(a))
-    assert os.path.realpath(str(b)) in roots
-
-
-def test_derive_roots_reads_the_dir_state_per_step_for_a_relative_word(tmp_path):
-    a = tmp_path / "a"
-    d = a / "d"
-    other = tmp_path / "other"
-    init_repo(a)
-    init_repo(d)
-    other.mkdir()
-
-    command = f"echo x > d/x.sh; cd {other}"
-    roots = bw.derive_roots(command, str(a))
-    assert os.path.realpath(str(d)) in roots
-
-
-def test_derive_roots_reads_the_dir_state_per_step_for_git_dash_c(tmp_path):
-    a = tmp_path / "a"
-    d = a / "d"
-    other = tmp_path / "other"
-    init_repo(a)
-    init_repo(d)
-    other.mkdir()
-
-    command = f"git -C d commit -m x; cd {other}"
-    roots = bw.derive_roots(command, str(a))
-    assert os.path.realpath(str(d)) in roots
-
-
-# --- project_filter ------------------------------------------------------
-
-
-def test_project_filter_drops_a_foreign_repo_and_flags_a_broken_one(tmp_path):
-    main = tmp_path / "main"
-    init_repo(main)
-    git(main, "worktree", "add", "-q", "wt", "-b", "wt-branch")
-    wt = main / "wt"
-
-    foreign = tmp_path / "foreign"
-    init_repo(foreign)
-
-    broken = tmp_path / "broken"
-    init_repo(broken)
-    (broken / ".git" / "HEAD").write_text("garbage\n", encoding="utf-8")
-
-    roots = {
-        os.path.realpath(str(main)),
-        os.path.realpath(str(wt)),
-        os.path.realpath(str(foreign)),
-        os.path.realpath(str(broken)),
-    }
-    deadline = time.time() + 5
-    kept, errors = bw.project_filter(roots, str(main), deadline=deadline)
-
-    assert kept == {os.path.realpath(str(main)), os.path.realpath(str(wt))}
-    assert len(errors) == 1
-    assert errors[0].startswith(
-        f"COULD NOT CHECK: {os.path.realpath(str(broken))}"
-    )
-
-
-def test_project_filter_keeps_a_forge_worktree_of_the_same_repo(tmp_path):
-    """A worktree of a separate clone with the same `origin` belongs too (#36)."""
-    main = tmp_path / "main"
-    init_repo(main)
-    git(main, "remote", "add", "origin", ORIGIN)
-    work = os.path.realpath(str(forge_worktree(main, tmp_path)))
-
-    kept, errors = bw.project_filter({work}, str(main), deadline=time.time() + 5)
-
-    assert (kept, errors) == ({work}, [])
-
-
-def test_project_filter_raises_when_project_dir_itself_is_broken(tmp_path):
-    broken = tmp_path / "broken"
-    init_repo(broken)
-    (broken / ".git" / "HEAD").write_text("garbage\n", encoding="utf-8")
-
-    with pytest.raises(bw.GitError):
-        bw.project_filter(set(), str(broken), deadline=time.time() + 5)
-
-
 # --- signature -------------------------------------------------------------
 
 
@@ -486,24 +199,6 @@ def test_state_dir_rejects_a_traversal_session_id(tmp_path, monkeypatch):
         bw.state_dir("../evil")
     with pytest.raises(ValueError):
         bw.state_dir("..")
-
-
-# --- marker_key --------------------------------------------------------
-
-
-def test_marker_key_uses_the_tool_use_id_when_present():
-    payload = {
-        "tool_use_id": "toolu_abc",
-        "session_id": "s",
-        "tool_input": {"command": "ls"},
-    }
-    assert bw.marker_key(payload) == "toolu_abc"
-
-
-def test_marker_key_falls_back_to_a_command_hash():
-    assert bw.marker_key(
-        {"session_id": "s", "tool_input": {"command": "ls"}}
-    ).startswith("s-")
 
 
 # --- write_marker / read_marker / prune_markers -----------------------------
@@ -855,32 +550,6 @@ def test_run_pre_seeds_a_fresh_root_and_writes_a_marker(tmp_path, monkeypatch):
     assert marker is not None
     assert marker["roots"] == [root]
     assert isinstance(marker["start_ns"], int)
-
-
-# --- classify (task 7) ---------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("rc", "output", "verdict"),
-    [
-        (0, b"", "ok"),
-        # One token for every gate, only on the first line.
-        (
-            2,
-            b"shellcheck-gate: COULD NOT CHECK \xe2\x80\x94 shellcheck-repo.sh gave rc=4\n",
-            "unchecked",
-        ),
-        (2, b"ruff-format-check: COULD NOT CHECK \xe2\x80\x94 ruff is missing\n", "unchecked"),
-        (2, b"Linkcheck: COULD NOT CHECK \xe2\x80\x94 jq\n", "unchecked"),
-        (2, b"Linkcheck: markdown-link bestaat niet: x.md\n", "finding"),
-        # ruff-format-check.sh: pass 1 comes before `Lint-gate:`, never an unchecked form.
-        (2, b"1 file left unchanged\nLint-gate: los dit op\n", "finding"),
-        (124, b"shellcheck-gate: halverwege afgebroken\n", "unchecked"),
-        (1, b"Linkcheck: markdown-link bestaat niet: x.md\n", "unchecked"),
-    ],
-)
-def test_classify(rc, output, verdict):
-    assert bw.classify(rc, output) == verdict
 
 
 # --- run_post (task 7) ---------------------------------------------------
@@ -1311,12 +980,6 @@ def test_pre_stops_seeding_at_its_deadline(tmp_path, monkeypatch):
 
 
 # --- lighthouse: one token, missing language packs (decision 18, 19) --------
-
-
-def test_classify_first_line_only():
-    """A finding that quotes `COULD NOT CHECK` on a later line stays a finding."""
-    output = b"SC2034: x appears unused\necho 'COULD NOT CHECK'\n"
-    assert bw.classify(2, output) == "finding"
 
 
 def test_gate_packs_name_every_gate():

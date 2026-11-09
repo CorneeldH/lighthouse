@@ -18,6 +18,8 @@ import functools
 import importlib.util
 import json
 import os
+import pwd
+import re
 import shlex
 import shutil
 import subprocess
@@ -75,6 +77,63 @@ def init_repo(path: Path, branch: str = "main") -> None:
     (path / "README.md").write_text("# repo\n", encoding="utf-8")
     git(path, "add", "README.md")
     git(path, "commit", "-qm", "init")
+
+
+def build_fixture_setup(root: Path, steps: list[dict]) -> None:
+    """Build the directory tree of a shared-fixture `setup` under `root`.
+
+    The steps are the ones of `fixtures/git_invocations/cases.json` (`repo`,
+    `dir`, `file`, `symlink`, `overwrite`), plus `worktree` (`{"worktree":
+    "x/wt", "of": "x", "branch": "wt"}`: a linked worktree of repo `x`) and
+    `origin` (`{"origin": "x", "url": ...}`: remote `origin` of repo `x`).
+    """
+    for step in steps:
+        if "repo" in step:
+            init_repo(root / step["repo"], branch=step["branch"])
+        elif "dir" in step:
+            (root / step["dir"]).mkdir(parents=True, exist_ok=True)
+        elif "file" in step:
+            path = root / step["file"]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(step["text"], encoding="utf-8")
+        elif "symlink" in step:
+            (root / step["symlink"]).symlink_to(root / step["to"])
+        elif "overwrite" in step:
+            (root / step["overwrite"]).write_text(step["text"], encoding="utf-8")
+        elif "worktree" in step:
+            git(
+                root / step["of"],
+                "worktree",
+                "add",
+                "-q",
+                str(root / step["worktree"]),
+                "-b",
+                step["branch"],
+            )
+        elif "origin" in step:
+            git(root / step["origin"], "remote", "add", "origin", step["url"])
+        else:
+            raise AssertionError(f"unknown setup step {step}")
+
+
+def fill_fixture(value, root: str):
+    """Fill the placeholders of a shared fixture, recursively.
+
+    `{root}` is the temporary directory (not passed through realpath),
+    `{real:<path>}` is the realpath of `{root}/<path>` and `{home:<name>}` is
+    the home directory of user `<name>`.
+    """
+    if isinstance(value, str):
+        value = re.sub(
+            r"\{real:([^}]+)\}", lambda m: os.path.realpath(f"{root}/{m[1]}"), value
+        )
+        value = value.replace("{root}", root)
+        return re.sub(r"\{home:([^}]+)\}", lambda m: pwd.getpwnam(m[1]).pw_dir, value)
+    if isinstance(value, list):
+        return [fill_fixture(v, root) for v in value]
+    if isinstance(value, dict):
+        return {k: fill_fixture(v, root) for k, v in value.items()}
+    return value
 
 
 # The `origin` of a forge worktree and of its main checkout in #36.

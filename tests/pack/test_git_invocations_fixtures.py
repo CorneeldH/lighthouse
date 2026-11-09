@@ -8,13 +8,11 @@ equal. The format is described in the plan of #277 (task 1). Placeholders:
 
 import json
 import os
-import pwd
-import re
 from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import init_repo, load_hook_lib
+from tests.pack._testkit import build_fixture_setup, fill_fixture, load_hook_lib
 
 gi = load_hook_lib("git_invocations")
 
@@ -25,48 +23,19 @@ CASES = json.loads(
 )
 
 
-def _fill(value, root):
-    if isinstance(value, str):
-        value = value.replace("{root}", root)
-        return re.sub(r"\{home:([^}]+)\}", lambda m: pwd.getpwnam(m[1]).pw_dir, value)
-    if isinstance(value, list):
-        return [_fill(v, root) for v in value]
-    if isinstance(value, dict):
-        return {k: _fill(v, root) for k, v in value.items()}
-    return value
-
-
-def _build(setup, root: Path):
-    for step in setup:
-        if "repo" in step:
-            init_repo(root / step["repo"], branch=step["branch"])
-        elif "dir" in step:
-            (root / step["dir"]).mkdir(parents=True, exist_ok=True)
-        elif "file" in step:
-            path = root / step["file"]
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(step["text"], encoding="utf-8")
-        elif "symlink" in step:
-            (root / step["symlink"]).symlink_to(root / step["to"])
-        elif "overwrite" in step:
-            (root / step["overwrite"]).write_text(step["text"], encoding="utf-8")
-        else:
-            raise AssertionError(f"unknown setup step {step}")
-
-
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["name"])
 def test_fixture_case(case, tmp_path, monkeypatch):
     root = str(tmp_path)  # deliberately without realpath
     monkeypatch.delenv("LH_UNSET_VAR", raising=False)
-    _build(case["setup"], tmp_path)
+    build_fixture_setup(tmp_path, case["setup"])
     for key, value in case["env"].items():
-        monkeypatch.setenv(key, _fill(value, root))
-    expect = _fill(case["expect"], root)
+        monkeypatch.setenv(key, fill_fixture(value, root))
+    expect = fill_fixture(case["expect"], root)
     kind = case["kind"]
     if kind == "repo_of":
         assert gi.repo_of(os.path.join(root, case["path"])) == expect
         return
-    command = _fill(case["command"], root)
+    command = fill_fixture(case["command"], root)
     cwd = os.path.join(root, case["cwd"]) if case["cwd"] else root
     if expect == "unparseable":
         with pytest.raises(gi.Unparseable):
