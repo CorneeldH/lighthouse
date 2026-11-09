@@ -643,6 +643,9 @@ def test_paired_round_one_without_python3(sandbox, lighthouse_bin, tmp_path):
     (only / "lighthouse").symlink_to(lighthouse_bin)
     (only / "codex").symlink_to(pathlib.Path(env["PATH"].split(os.pathsep)[0]) / "codex")
     env["PATH"] = str(only)
+    # No budget stub (a Python script): the binary reads the fake codex's app-server itself.
+    env.pop("LIGHTHOUSE_CODEX_BUDGET_CMD", None)
+    env["FAKE_CODEX_SESSION_PCT"] = "5"
     assert shutil.which("python3", path=env["PATH"]) is None
 
     def lh(*args: str) -> str:
