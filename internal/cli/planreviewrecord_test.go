@@ -73,6 +73,10 @@ func newScenario(t *testing.T, c map[string]any) *scenario {
 	t.Helper()
 	w := loadWorld(t)
 	tmp := t.TempDir()
+	// macOS: TempDir sits behind the /var -> /private/var symlink; the binary prints the resolved path.
+	if real, err := filepath.EvalSymlinks(tmp); err == nil {
+		tmp = real
+	}
 	s := &scenario{t: t, w: w, saved: map[string]string{}, shots: map[string][]byte{}, vars: map[string]string{
 		"PLAN": w.PlanPath, "SPEC": w.SpecPath, "tmp": tmp, "tmpdir": filepath.Join(tmp, "tmp"),
 		"data": filepath.Join(tmp, "data"), "home": filepath.Join(tmp, "home"),
