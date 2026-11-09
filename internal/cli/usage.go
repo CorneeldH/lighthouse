@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -119,16 +121,17 @@ func printCodex(ctx context.Context, out, errOut io.Writer, read func(context.Co
 	return err
 }
 
-// printAlarm prints the valid alarm of the default alarm file on out, with
-// reset_local joined by "_". Without a valid alarm it prints nothing and returns
-// errSilent (exit 1); when no path can be made it prints one line on errOut first.
+// printAlarm prints the valid alarm on out, with reset_local joined by "_": that
+// of the default alarm file, and in a controller run else that of its copy.
+// Without a valid alarm it prints nothing and returns errSilent (exit 1); when no
+// path can be made it prints one line on errOut first.
 func printAlarm(out, errOut io.Writer, now time.Time) error {
 	paths, err := usage.DefaultPaths()
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "usage: %v\n", err)
 		return errSilent
 	}
-	a, ok := usage.ReadAlarm(paths.Alarm(), now)
+	a, ok := paths.CurrentAlarm(now, park.ControllerRun(os.Getenv))
 	if !ok {
 		return errSilent
 	}

@@ -40,7 +40,7 @@ func usageGate(_ context.Context, _ string, stand string, p hook.Payload) hook.R
 	until, flag := pauseFlag(stand, now)
 	var alarm *usage.Alarm
 	if paths, err := usage.DefaultPaths(); err == nil {
-		if a, ok := usage.ReadAlarm(paths.Alarm(), now); ok {
+		if a, ok := paths.CurrentAlarm(now, park.ControllerRun(os.Getenv)); ok {
 			alarm = &a
 		}
 	}

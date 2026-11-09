@@ -239,6 +239,51 @@ func TestUsageGatePause(t *testing.T) {
 	}
 }
 
+// writeMirroredAlarm writes the alarm only as the copy in the controller state directory, as a
+// container sees it that mounts that directory but not the host cache (#314).
+func writeMirroredAlarm(t *testing.T, g gateDirs) {
+	t.Helper()
+	at := time.Now().Add(time.Hour).UTC().Format("2006-01-02T15:04:05Z")
+	writeFile(t, filepath.Join(g.ctl, "usage-window.alarm"), "venster 92 14:30 "+at+"\n")
+}
+
+// A controller run parks on the alarm copy next to the pause flag when its own cache has no
+// alarm; any other session does not read the copy.
+func TestUsageGateMirroredAlarm(t *testing.T) {
+	parks := "Usage is at 92% of the session window, which resets at 14:30. Now " + parkSteps +
+		". The controller resumes this session after 14:30."
+	tests := []struct {
+		name, stand, run string
+		want             string // "" is no output
+	}{
+		{"controller run tool", "tool", gateRun, parks},
+		{"controller run stop", "stop", gateRun, parks},
+		{"no controller run", "tool", "", ""},
+		{"run not uuid", "tool", "../x", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := gateEnv(t)
+			setOptions(t, g, "false", "true")
+			t.Setenv("LIGHTHOUSE_CONTROLLER_RUN", tt.run)
+			writeMirroredAlarm(t, g)
+			res := call(t, usageGate, tt.stand, session(nil))
+			if res.Stderr != "" || res.Code != 0 {
+				t.Fatalf("stderr %q code %d", res.Stderr, res.Code)
+			}
+			if tt.want == "" {
+				if res.Output != nil {
+					t.Errorf("output %v, want none", res.Output)
+				}
+				return
+			}
+			if got := reason(t, res); got != tt.want {
+				t.Errorf("reason %q\nwant   %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // The pause marker carries the first line of the flag as written.
 func TestUsageGatePauseOncePerFlag(t *testing.T) {
 	g := gateEnv(t)

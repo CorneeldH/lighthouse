@@ -6,30 +6,48 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/park"
 )
 
 // Paths locates the files of the usage meter.
-type Paths struct{ Dir string } // the lighthouse cache directory
+type Paths struct {
+	Dir string // the lighthouse cache directory
+	// Mirror is the copy of the alarm next to the controller's pause flag, or "" for none. A
+	// controller run in a container that mounts the controller state but not the host cache
+	// reads the alarm there.
+	Mirror string
+}
 
 // DefaultPaths returns ${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse, as the
 // shell guard computes it. A non-empty XDG_CACHE_HOME wins, even a relative
 // one. os.UserCacheDir is not used: on macOS it points elsewhere than the guard.
+// Mirror is usage-window.alarm in the directory of the pause flag; without a place for that
+// flag there is no copy.
 func DefaultPaths() (Paths, error) {
+	var p Paths
+	if pause, err := park.PauseFile(os.Getenv); err == nil {
+		p.Mirror = filepath.Join(filepath.Dir(pause), alarmFile)
+	}
 	if xdg := os.Getenv("XDG_CACHE_HOME"); xdg != "" {
-		return Paths{Dir: filepath.Join(xdg, "lighthouse")}, nil
+		p.Dir = filepath.Join(xdg, "lighthouse")
+		return p, nil
 	}
 	home := os.Getenv("HOME")
 	if home == "" {
 		return Paths{}, errors.New("neither XDG_CACHE_HOME nor HOME is set")
 	}
-	return Paths{Dir: filepath.Join(home, ".cache", "lighthouse")}, nil
+	p.Dir = filepath.Join(home, ".cache", "lighthouse")
+	return p, nil
 }
+
+const alarmFile = "usage-window.alarm"
 
 // Cache is the JSON cache of the last measurement.
 func (p Paths) Cache() string { return filepath.Join(p.Dir, "usage-window.json") }
 
 // Alarm is the file the shell guard reads.
-func (p Paths) Alarm() string { return filepath.Join(p.Dir, "usage-window.alarm") }
+func (p Paths) Alarm() string { return filepath.Join(p.Dir, alarmFile) }
 
 // Lock serialises refreshes.
 func (p Paths) Lock() string { return filepath.Join(p.Dir, "usage-window.lock") }

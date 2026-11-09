@@ -32,6 +32,15 @@ ook een relatieve. Zonder beide eindigt het commando met `usage: failed: ...`.
 | `usage-window.lock` | lock die gelijktijdige verversingen uitsluit |
 | `usage-refresh/` | werkmap van de `claude`-aanroep |
 
+De meter schrijft het alarm ook als kopie in de map van de pauzevlag:
+`${LIGHTHOUSE_CONTROLLER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/controller}/usage-window.alarm`.
+Hij schrijft en verwijdert die kopie samen met het alarm, en `tick` ruimt een verlopen kopie op. Een
+controller-run in een container die die map wel mount en de cache van de host niet, ziet zo toch het
+alarm (zie [usage-gate.md](usage-gate.md#de-standen)). Lukt het schrijven van de kopie niet, dan
+faalt de verversing net als bij het alarm zelf: `usage: failed: <fout>`, en de oude cache blijft.
+Zonder plek voor de pauzevlag (geen absolute `LIGHTHOUSE_CONTROLLER_STATE`, `XDG_STATE_HOME` of
+`HOME`) is er geen kopie.
+
 De meting is `claude -p /usage --output-format json`, met `usage-refresh/` als werkmap en een
 timeout van 60 seconden. De kindsessie krijgt `LIGHTHOUSE_USAGE_REFRESH=1` in zijn omgeving, zodat
 hooks kunnen zien dat het om een meting gaat en niet om echt werk.

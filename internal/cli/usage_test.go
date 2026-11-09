@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -123,6 +124,42 @@ func TestUsageAlarmCommand(t *testing.T) {
 	out, errOut, err = run()
 	if err != nil || out != line || errOut != "" {
 		t.Errorf("valid: got (%v, %q, %q), want (nil, %q, empty)", err, out, errOut, line)
+	}
+}
+
+// A controller run also prints the alarm copy next to the pause flag, so a blocking Stop gate in
+// a container without the host cache steps aside like the usage gate does (#314). Any other
+// session does not read the copy.
+func TestUsageAlarmCommandReadsCopyInControllerRun(t *testing.T) {
+	const line = "venster 92 Tue_14:30 2099-01-01T00:00:00Z\n"
+	cases := []struct {
+		name, run, wantOut string
+		wantErr            error
+	}{
+		{"controller run", "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f", line, nil},
+		{"no controller run", "", "", errSilent},
+		{"run not uuid", "../x", "", errSilent},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			t.Setenv("XDG_CACHE_HOME", filepath.Join(tmp, "cache"))
+			t.Setenv("LIGHTHOUSE_CONTROLLER_STATE", filepath.Join(tmp, "ctl"))
+			t.Setenv("LIGHTHOUSE_CONTROLLER_RUN", c.run)
+			if err := os.MkdirAll(filepath.Join(tmp, "ctl"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(tmp, "ctl", "usage-window.alarm"), []byte(line), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var out, errOut bytes.Buffer
+			root := NewRoot(strings.NewReader(""), &out, &errOut)
+			root.SetArgs([]string{"usage", "alarm"})
+			err := root.Execute()
+			if !errors.Is(err, c.wantErr) || out.String() != c.wantOut || errOut.Len() != 0 {
+				t.Errorf("got (%v, %q, %q), want (%v, %q, empty)", err, out.String(), errOut.String(), c.wantErr, c.wantOut)
+			}
+		})
 	}
 }
 
