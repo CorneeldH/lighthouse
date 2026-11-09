@@ -52,7 +52,7 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			meta := server.RunsMeta{WorkspaceURL: strings.TrimRight(cfg.Forge.URL, "/"), Night: cfg.Night}
+			meta := server.RunsMeta{WorkspaceURL: strings.TrimRight(cfg.Forge.LinkURL(), "/"), Night: cfg.Night}
 			return serve(ctx, addr, dbPath, repos, meta, cmd.ErrOrStderr())
 		},
 	}

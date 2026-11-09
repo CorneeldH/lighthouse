@@ -1,0 +1,28 @@
+[
+  {
+    "args": [
+      "gate",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"gate\": {\n    \"reported\": 1,\n    \"not_reported\": 0,\n    \"share\": 1.0,\n    \"distribution\": {\n      \"gate_4\": 1\n    },\n    \"pickup_without_skill\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_the_worktree_skill_is_not_the_route_boundary"
+    ]
+  },
+  {
+    "args": [
+      "scout",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"scout\": {\n    \"triggered\": 0,\n    \"skipped_with_reason\": 0,\n    \"silent\": 1,\n    \"mistrigger\": 0,\n    \"gate_unknown\": 0,\n    \"share\": 0.0,\n    \"runtime_seconds\": {\n      \"n\": 0,\n      \"median\": null,\n      \"max\": null\n    },\n    \"tool_calls\": {\n      \"n\": 0,\n      \"median\": null,\n      \"max\": null\n    },\n    \"over_budget\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_the_worktree_skill_is_not_the_route_boundary"
+    ]
+  }
+]

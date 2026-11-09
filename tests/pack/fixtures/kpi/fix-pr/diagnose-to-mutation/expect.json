@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "diagnose",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"diagnose\": {\n    \"n\": 1,\n    \"min\": 2,\n    \"median\": 2,\n    \"max\": 2,\n    \"mean\": 2.0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_diagnostics_are_counted_up_to_the_mutation"
+    ]
+  }
+]

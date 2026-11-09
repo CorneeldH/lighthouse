@@ -3,7 +3,7 @@
 // for agents. Without this script every block stays folded in; it writes text and attributes
 // only, never HTML.
 
-import { choosePlatform, releaseLabel } from "./platform.js?v=548ba90f";
+import { choosePlatform, releaseLabel } from "./platform.js?v=d8f9721d";
 
 const API = "https://api.github.com/repos/CorneeldH/lighthouse/releases/latest";
 

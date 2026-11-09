@@ -4,12 +4,12 @@ Without the variable every test runs: locally and in the test gate nothing chang
 """
 
 import os
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from tests._shard import ENV, in_shard, parse_shard
+from tests.pack._testkit import lighthouse_dir
 
 SHARD = pytest.StashKey[tuple[int, int] | None]()
 
@@ -43,19 +43,10 @@ def pytest_collection_modifyitems(config, items):
         config.hook.pytest_deselected(items=dropped)
 
 
-REPO = Path(__file__).resolve().parents[1]
-
-
 @pytest.fixture(scope="session")
-def _lighthouse_build_dir(tmp_path_factory) -> Path:
-    """`go build` the binary once per session (once per xdist worker)."""
-    out = tmp_path_factory.mktemp("lighthouse-bin")
-    subprocess.run(
-        ["go", "build", "-o", str(out / "lighthouse"), "./cmd/lighthouse"],
-        cwd=REPO,
-        check=True,
-    )
-    return out
+def _lighthouse_build_dir() -> Path:
+    """The binary is built once per process by `lighthouse_dir`; the fixture shares that build."""
+    return lighthouse_dir()
 
 
 @pytest.fixture

@@ -9,7 +9,7 @@
 #
 # The gate runs after the commit. `pre` blocks `--no-verify`, runs the tests
 # up front only for a commit to the default branch (`forge.default_branch`, the
-# branch main-commit-gate.sh protects), and for every other root of this
+# branch main-commit-gate protects), and for every other root of this
 # project records the HEAD before the commit (lighthouse_lib/commit_base.py);
 # `post` tests what the commit touched: per recorded root whose HEAD moved, it
 # runs the command with LIGHTHOUSE_GATE_BASE, LIGHTHOUSE_GATE_HEAD and
@@ -25,7 +25,7 @@
 # `--basetemp="$LIGHTHOUSE_GATE_TMP"`). Without a command the commit passes
 # with a note: nothing was tested, and the hook says so (decision 20).
 #
-# The commit detection is that of main-commit-gate.sh
+# The commit detection is that of main-commit-gate
 # (lighthouse_lib/git_invocations.py): a commit after `cd`, `;`, `|`, `&&` or
 # with `git -C <path>` is seen, and the tree that is committed is the tree that
 # is tested — not the `.cwd` of the payload and not $CLAUDE_PROJECT_DIR. Only
@@ -40,7 +40,7 @@
 # is no green light. Those cases block loudly with COULD NOT CHECK.
 #
 # Deliberate asymmetry with the guard, now only for a commit to the default
-# branch: main-commit-gate.sh honours `.claude/allow-main` for an unresolvable
+# branch: main-commit-gate honours `.claude/allow-main` for an unresolvable
 # path or a broken git; this hook does not. `allow-main` allows a commit on the
 # default branch, not a commit without tests. The same parser thus deliberately
 # gives two outcomes on one input.
@@ -881,7 +881,7 @@ if [ -z "$PROJECT_ROOTS" ]; then
   emit_message_and_exit PreToolUse
 fi
 
-# Which roots go to the default branch: the branch main-commit-gate.sh
+# Which roots go to the default branch: the branch main-commit-gate
 # protects. `TO_MAIN` of git_invocations.py is always `no` for a commit and does
 # not count here. A detached HEAD is not the default branch.
 if ! read_config forge.default_branch || [ -z "$CONFIG_VALUE" ]; then

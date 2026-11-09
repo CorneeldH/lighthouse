@@ -31,8 +31,8 @@
 # from stopping; staying silent would read as "lint-clean".
 # While the usage alarm is up (#74) the gate says `not checked` and exits 0: the
 # usage gate has the session wrap up, and fixing a finding costs budget that is
-# no longer there. Without `usage-gate/alarm.sh` next to this file (no pack/core)
-# there is no alarm to read and the check runs as before.
+# no longer there. The alarm is read with `lighthouse usage alarm`; without `lighthouse` on the
+# PATH there is no alarm to read and the check runs as before.
 # `go` is required but never called here: golangci-lint needs it to load packages.
 # A checkout without a root go.mod reports `not checked` and exits 0, before the
 # go and golangci-lint check, so it never blocks and is never silently green.
@@ -69,15 +69,15 @@ if [ "$ACTIVE" = "true" ]; then
   exit 0
 fi
 
-# The usage alarm (#74): the rules live in usage-gate/alarm.sh, installed by
-# pack/core next to this file. A missing helper or an invalid alarm checks as usual.
-case "${BASH_SOURCE[0]}" in
-  */*) HOOKS_DIR="${BASH_SOURCE[0]%/*}" ;;
-  *) HOOKS_DIR="." ;;
-esac
-# shellcheck source=/dev/null
-if [ -f "$HOOKS_DIR/usage-gate/alarm.sh" ] && . "$HOOKS_DIR/usage-gate/alarm.sh" && usage_alarm_valid; then
-  report "$HOOK_NAME: not checked — the usage alarm is up until $USAGE_ALARM_LOCAL; the usage gate wraps up this session."
+# The usage alarm (#74): `lighthouse usage alarm` prints the valid alarm and exits 0.
+# Without `lighthouse` on the PATH, or without a valid alarm, the check runs as usual.
+# An older lighthouse prints help and exits 0 for an unknown subcommand: only a line with
+# exactly the alarm shape counts, anything else is no alarm.
+if command -v lighthouse >/dev/null 2>&1 && ALARM_LINE=$(lighthouse usage alarm 2>/dev/null) \
+  && read -r ALARM_KIND _ ALARM_LOCAL ALARM_AT ALARM_REST <<<"$ALARM_LINE" \
+  && [[ "$ALARM_KIND" =~ ^(venster|week)$ && -n "$ALARM_LOCAL" && -z "$ALARM_REST" \
+    && "$ALARM_AT" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+  report "$HOOK_NAME: not checked — the usage alarm is up until ${ALARM_LOCAL//_/ }; the usage gate wraps up this session."
 fi
 
 # The lib lives in the lighthouse lib of this repo. Found through

@@ -132,6 +132,57 @@ func TestRefreshRemovesAlarmBelowThreshold(t *testing.T) {
 	assertAbsent(t, p.Alarm())
 }
 
+// The alarm copy in the controller state directory follows the alarm: written with it, in a
+// directory that does not exist yet, and removed with it below the threshold. A run in a
+// container that mounts only that directory reads the copy (#314).
+func TestRefreshMirrorsAlarm(t *testing.T) {
+	cases := []struct {
+		name, fixture, oldMirror, want string // want "" is no copy
+	}{
+		{"over threshold", "usage_full.json", "", "venster 99 14:30 2026-09-06T12:30:00Z\n"},
+		{"below threshold removes copy", "usage_no_model.json", "venster 99 14:30 2026-09-06T12:30:00Z\n", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			p := Paths{Dir: filepath.Join(tmp, "cache"), Mirror: filepath.Join(tmp, "ctl", "new", "usage-window.alarm")}
+			if c.oldMirror != "" {
+				if err := os.MkdirAll(filepath.Dir(p.Mirror), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				writeFile(t, p.Mirror, c.oldMirror)
+			}
+			m, _ := newTestMeter(t, p, fixture(t, c.fixture), true)
+
+			if got, err := m.Refresh(false); err != nil || got != Refreshed {
+				t.Fatalf("Refresh = %q, %v; want refreshed", got, err)
+			}
+			if c.want == "" {
+				assertAbsent(t, p.Mirror)
+				return
+			}
+			if got := readFile(t, p.Mirror); got != c.want {
+				t.Errorf("copy = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// A copy that cannot be written fails the refresh and leaves the cache as it was, like the alarm.
+func TestRefreshMirrorWriteFails(t *testing.T) {
+	tmp := t.TempDir()
+	p := Paths{Dir: filepath.Join(tmp, "cache"), Mirror: filepath.Join(tmp, "ctl", "usage-window.alarm")}
+	if err := os.MkdirAll(p.Mirror, 0o755); err != nil { // a directory on the copy's path
+		t.Fatal(err)
+	}
+	m, _ := newTestMeter(t, p, fixture(t, "usage_full.json"), true)
+
+	if got, err := m.Refresh(false); err == nil || got != Failed {
+		t.Fatalf("Refresh = %q, %v; want failed with an error", got, err)
+	}
+	assertAbsent(t, p.Cache())
+}
+
 func TestRefreshTTL(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -269,9 +320,11 @@ func TestTick(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			p := Paths{Dir: t.TempDir()}
+			tmp := t.TempDir()
+			p := Paths{Dir: tmp, Mirror: filepath.Join(tmp, "usage-window.copy")}
 			if c.alarm != "" {
 				writeFile(t, p.Alarm(), c.alarm)
+				writeFile(t, p.Mirror, c.alarm)
 			}
 			m, f := newTestMeter(t, p, fixture(t, "usage_no_model.json"), c.running)
 
@@ -284,6 +337,7 @@ func TestTick(t *testing.T) {
 			}
 			if c.alarm != "" {
 				assertAbsent(t, p.Alarm())
+				assertAbsent(t, p.Mirror)
 			}
 		})
 	}

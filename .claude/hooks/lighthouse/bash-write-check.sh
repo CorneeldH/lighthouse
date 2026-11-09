@@ -2,7 +2,7 @@
 # lighthouse: core@dev
 # Pre/PostToolUse hook on matcher Bash: the Edit|Write checks (shell-lint-check.sh,
 # ruff-format-check.sh, code-language-check.sh for .py, .sh, .bash and .go, and
-# md-link-check.sh) also see what a Bash call writes (#871). Thin wrapper; the logic is in
+# `run.sh md-link-check`) also see what a Bash call writes (#871). Thin wrapper; the logic is in
 # lighthouse_lib/bash_writes.py.
 #
 # Counterpart: the norms of the checks carry their own counterparts up front

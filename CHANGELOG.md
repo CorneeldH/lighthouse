@@ -4,6 +4,41 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.15.0] - 2026-11-09
+
+### Changed
+
+- `main-commit-gate` and `worktree-check` run in the `lighthouse` binary through `.claude/hooks/lighthouse/run.sh`. They no longer need `python3` or `jq`. Update the binary on your PATH before `lighthouse init --upgrade`: an older binary does not know these hooks, and `main-commit-gate` then blocks every Bash call.
+
+### Fixed
+
+- A controller run in a container that mounts the controller state but not the host's `~/.cache/lighthouse` now parks when the usage window is full. The meter also writes the usage alarm next to the pause flag, and in a controller run the usage gate and `lighthouse usage alarm` read that copy when their own alarm is missing.
+
+## [v0.14.0] - 2026-11-09
+
+### Added
+
+- The `lighthouse serve` page now has separate Running, Parked, Queue and Night blocks and a summary
+  row of tiles that jump to each block. Every run shows its phase, task progress, duration and stand
+  (working, waiting or done). While a refresh runs, the page header shows `refreshing…` instead of
+  each card.
+- `lighthouse config`, `lighthouse headings` and `lighthouse protocol` replace the Python config readers in skills: `lighthouse config <key>`, `lighthouse config --json <key>` and `lighthouse config host-check` read `lighthouse.toml` and `host.toml` with the exit codes and output of `config.py`. Hooks can run through `.claude/hooks/lighthouse/run.sh`.
+- `lighthouse usage alarm` prints the valid usage alarm and replaces `alarm.sh`. The hooks `usage-gate`, `permission-check` and `md-link-check` now run through `run.sh <name>` on the lighthouse binary with the same verdicts as before, and the stop gates of the `go` and `python` packs read the alarm through the binary.
+
+### Changed
+
+- Skills and `AGENTS.md` read `lighthouse.toml` and the headings through `lighthouse config` and `lighthouse headings` instead of `config.py` and `headings.py`, and the `python` pack's `ratchet.py` and `prcov_issues.py` call the binary too. Update the `lighthouse` binary on your PATH before you run a skill: an older binary does not know `config` and the skill reads every key as unset.
+  CI jobs that run `ratchet.py` (`pack/python`) must now install the `lighthouse` binary, since it reads its config through `lighthouse config --json`.
+- The `lighthouse serve` page is named lighthouse, with the version as a badge in the header.
+  Everything about the automatic runs sits under the Controller section heading, which also shows
+  the age of the last tick. The browser title is `lighthouse · Controller`.
+
+### Fixed
+
+- The kenn-forge link in the Controller section can point elsewhere than the forge API lighthouse
+  talks to: set `[dispatch.forge] web_url` in `host.toml`, for instance to the tailscale serve
+  address. Without `web_url` the link stays `[dispatch.forge] url`.
+
 ## [v0.13.2] - 2026-11-08
 
 ### Fixed

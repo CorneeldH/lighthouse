@@ -31,8 +31,16 @@ runs.
 - **Werkplek:** een kenn-forge-workspace is de eerste adapter. Elke run krijgt
   `--strict-mcp-config` (geen `merge_pull_request` voor een run) en een bovengrens op de looptijd
   (8 uur).
-- **No-Gos** van de pitch: lighthouse merget nooit, schrijft nooit zonder akkoord in
+- **No-Gos** van de pitch: schrijft nooit zonder akkoord in
   `AGENTS.md`/`CLAUDE.md` van een projectrepo, geen tweede database, geen tweede harness.
+- **Mergen (omgekeerd door #294).** "Lighthouse merget nooit" is vervallen, zie
+  [de spec van #294](2026-11-08-issue-294-tick-merget-design.md):
+  - de tick merget alleen een groene eigen PR van een klare run;
+  - de merge is deterministisch, met de gemeten SHA;
+  - geen sessie krijgt merge-rechten;
+  - de nacontrole toetst het bewijs na de merge en heropent het issue als het niet houdt;
+  - de mens was de enige rem op een keten die hij verder niet bijstuurt, en hij toetste niets wat de
+    tick niet kan meten.
 
 ## Scope
 

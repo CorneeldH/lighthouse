@@ -720,7 +720,7 @@ func scalar(key string, v any) (string, error) {
 	case int:
 		return strconv.Itoa(x), nil
 	case float64:
-		return formatFloat(x), nil
+		return FormatFloat(x), nil
 	case *big.Int:
 		return x.String(), nil
 	case time.Time, map[string]any, []any, []map[string]any:
