@@ -106,11 +106,13 @@
   },
   "want": [
     {
-      "kind": "done",
+      "kind": "merge",
       "repo": "o/r",
       "issue": 7,
       "run_id": 5,
       "session_id": "11111111-2222-4333-8444-555555555555",
+      "pr": 12,
+      "head_sha": "abc123",
       "pr_url": "https://github.com/o/r/pull/12",
       "language": "nl",
       "end": true

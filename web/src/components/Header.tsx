@@ -1,9 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { RefreshCw } from 'lucide-react'
 import { type JSX, useState, useSyncExternalStore } from 'react'
-import { formatAge } from '@/lib/format'
+import { formatAgo } from '@/lib/format'
 import { useNow } from '@/lib/now'
-import { useRuns, useVersion } from '@/lib/queries'
+import { useVersion } from '@/lib/queries'
 
 // The oldest dataUpdatedAt > 0 over every query in the cache; 0 when none has data.
 function useOldestUpdate(): number {
@@ -20,18 +20,11 @@ function useOldestUpdate(): number {
   )
 }
 
-function age(now: number, then: number): string {
-  return `${formatAge(Math.max(0, (now - then) / 1000))} ago`
-}
-
 export function Header(): JSX.Element {
   const queryClient = useQueryClient()
   const { data, error } = useVersion()
-  const { data: runs } = useRuns()
   const now = useNow()
   const updatedAt = useOldestUpdate()
-  const ticks = [...(runs?.runs ?? []), ...(runs?.deferred ?? [])].map((r) => Date.parse(r.at)).filter((t) => !Number.isNaN(t))
-  const tickAt = ticks.length === 0 ? 0 : Math.max(...ticks)
   // True from the click until every refetch has settled, failed ones included.
   const [refreshing, setRefreshing] = useState(false)
   const refresh = () => {
@@ -41,22 +34,25 @@ export function Header(): JSX.Element {
   return (
     <header className="flex flex-wrap items-center justify-between gap-4 border-b-4 border-lh-yellow bg-lh-navy px-4 py-3 text-white">
       <div>
-        <h1 className="text-xl font-semibold">
-          lighthouse
-          {data && <span className="ml-2 text-base font-normal opacity-80">{data}</span>}
-        </h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold">lighthouse</h1>
+          {data && (
+            <span className="rounded-full bg-lh-yellow px-2 py-0.5 text-xs font-medium text-lh-navy" title="version">
+              {data}
+            </span>
+          )}
+        </div>
         {error && <p role="alert">API unreachable</p>}
       </div>
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <div className="flex flex-wrap items-center gap-4" aria-live="polite">
         {(updatedAt > 0 || refreshing) && (
           <span>
-            {updatedAt > 0 && `updated ${age(now, updatedAt)}`}
+            {updatedAt > 0 && `updated ${formatAgo(now, updatedAt)}`}
             {updatedAt > 0 && refreshing && ' · '}
             {refreshing && 'refreshing…'}
           </span>
         )}
-        {tickAt > 0 && <span>{`tick ${age(now, tickAt)}`}</span>}
         </div>
         <button
           type="button"

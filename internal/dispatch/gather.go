@@ -158,9 +158,30 @@ func mergePRs(closing, onBranch []forge.PR) []forge.PR {
 // untrusted author drop out; a dropped 🤖-comment gets one line in log. A comment's Rocket is
 // set only when tokenLogin put a 🚀 on it. Any failed request fails the whole gather. Every
 // list in the snapshot is non-nil, so its JSON has [] where a list is empty, never null.
+// For an item with an open run, every merge-ready PR gets its roborev state from the PR's
+// comments; the PRs of Pre stay untouched.
 func Complete(ctx context.Context, c *forge.Client, pre Pre, trust *Trust, tokenLogin string, log io.Writer, now time.Time) (Snapshot, error) {
 	items := make([]Item, 0, len(pre.Items))
+	hasRun := make(map[int]bool, len(pre.OpenRuns))
+	for _, r := range pre.OpenRuns {
+		hasRun[r.Issue] = true
+	}
 	for _, it := range pre.Items {
+		if hasRun[it.Issue] {
+			it.PRs = slices.Clone(it.PRs)
+			for i, pr := range it.PRs {
+				if !mergeCandidate(pr) {
+					continue
+				}
+				prc, err := c.Comments(ctx, pr.Number)
+				if err != nil {
+					return Snapshot{}, err
+				}
+				if it.PRs[i].Roborev, err = roborevState(ctx, prc, trust); err != nil {
+					return Snapshot{}, err
+				}
+			}
+		}
 		all, err := c.Comments(ctx, it.Issue)
 		if err != nil {
 			return Snapshot{}, err

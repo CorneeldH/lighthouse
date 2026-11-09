@@ -13,6 +13,7 @@ the start-issue half of `test_issue_impact_scout.py`. Tests of skills that stay 
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from tests.pack._testkit import CORE
 
@@ -506,12 +507,12 @@ def test_handoff_pause_form_skips_phase_side_effects():
 
 
 def test_guard_names_the_pause_form():
-    lib = (CORE / "lib/usage_guard.py").read_text(encoding="utf-8")
-    resume = (CORE / "hooks/usage-gate/resume.py").read_text(encoding="utf-8")
-    assert "/lighthouse-write-handoff " in lib
-    # resume.py builds on base_speak (refactor 00c4090), so its reasons carry the same call
-    assert "base_speak(" in resume
-    assert ".handoff.md" in lib
+    # The usage gate speaks the texts of this fixture (`internal/usageguard` reads it in its tests).
+    speech = (Path(__file__).resolve().parent / "fixtures/usage_guard/speech.json").read_text(
+        encoding="utf-8"
+    )
+    assert "/lighthouse-write-handoff " in speech
+    assert ".handoff.md" in speech
 
 
 def test_handoff_knows_lane_native():

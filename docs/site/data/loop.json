@@ -150,7 +150,7 @@
       "when": "Before each Edit or Write.",
       "without": "A write into the main checkout on main passes without a warning.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/worktreecheck.go"
     },
     {
       "id": "using-git-worktrees",
@@ -217,14 +217,14 @@
       "what": "Blocks a markdown link that is absolute or points nowhere.",
       "how": [
         "It runs on PostToolUse for Edit and Write and checks only .md and .markdown files.",
-        "It finds the git root of the written file, and md_links.py resolves each relative link against the directory of that file.",
+        "It finds the git root of the written file and resolves each relative link against the directory of that file.",
         "A dead or absolute link blocks with exit 2 and a list of the bad targets.",
-        "When jq, git or python3 is missing, or the parser fails, it blocks with COULD NOT CHECK."
+        "When git is missing, the payload is not valid JSON, or the file cannot be read, it blocks with COULD NOT CHECK."
       ],
       "when": "After each Edit or Write.",
       "without": "A broken or absolute link in a .md file is committed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/md-link-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/mdlinkcheck.go"
     },
     {
       "id": "review-spec",
@@ -460,7 +460,7 @@
       "what": "Runs the write checks on what a Bash call wrote.",
       "how": [
         "The pre mode runs on PreToolUse for Bash, records a baseline and always exits 0.",
-        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, ruff-format-check.sh, code-language-check.sh or md-link-check.sh.",
+        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, ruff-format-check.sh, code-language-check.sh or run.sh md-link-check.",
         "A finding blocks with exit 2, and a gate whose pack is not installed is reported per file without blocking.",
         "When python3 or the dispatcher fails, it blocks with COULD NOT CHECK."
       ],
@@ -486,7 +486,7 @@
       "when": "Before each Bash call.",
       "without": "A commit or push on main goes through.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/maincommitgate.go"
     },
     {
       "id": "commit-test-gate",
@@ -577,7 +577,7 @@
         "The template has sections for what and why, changes, related issues, open review points, before and after, and verification, and write-pr writes the related issues part.",
         "In lighthouse's own repo the ci workflow runs on every pull request: a changelog fragment check, a job per changed domain for Python, Go and web, and a binary build with smoke and end-to-end tests.",
         "The Go job also checks that the installed pack/core matches pack/, and a CLA workflow runs on every PR to main.",
-        "fix-pr repairs a red PR, and after the merge close-issue checks the evidence again."
+        "The tick squash-merges a green PR of a finished run itself, fix-pr repairs a PR that is red, conflicting, carries an unprocessed roborev review or failed to merge, and after the merge close-issue checks the evidence again."
       ],
       "when": "When the PR is opened and on each push to it.",
       "without": "Nothing checks the change before it merges.",
@@ -595,10 +595,10 @@
       "how": [
         "It opens with one read-only Bash call that shows the PR state, the checks, the worktree of the head branch, the error lines of the failed runs and any roborev comment.",
         "It then reuses or creates a worktree on the head branch, never a new branch from main, and reproduces the failing gate locally before it pushes.",
-        "It pushes once when the fix is done and reports as soon as the checks are green and the PR is mergeable, without merging or closing the issue.",
+        "It pushes once when the fix is done and reports as soon as the checks are green and the PR is mergeable, without merging or closing the issue; the tick does the merge after a finished run.",
         "For a roborev review it handles each finding through receiving-code-review and always posts one comment with a roborev-verwerkt marker."
       ],
-      "when": "When a PR is red, has merge conflicts or carries an unprocessed review comment.",
+      "when": "When a PR is red, has merge conflicts, carries an unprocessed review comment or the tick failed to merge it.",
       "without": "A red PR is fixed without a fixed diagnosis first.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/fix-pr"

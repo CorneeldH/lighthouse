@@ -202,3 +202,28 @@ func TestLoadDispatchWorkplace(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadDispatchForgeWebURL(t *testing.T) {
+	cases := []struct {
+		name, body, wantURL, wantLink string
+	}{
+		{"default", "", "http://127.0.0.1:8091", "http://127.0.0.1:8091"},
+		{"only url", "[dispatch.forge]\nurl = \"http://x:1\"\n", "http://x:1", "http://x:1"},
+		{"web_url apart", "[dispatch.forge]\nweb_url = \"https://h.ts.net:8091\"\n",
+			"http://127.0.0.1:8091", "https://h.ts.net:8091"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := LoadDispatch(writeHost(t, c.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Forge.URL != c.wantURL {
+				t.Errorf("Forge.URL = %q, want %q", got.Forge.URL, c.wantURL)
+			}
+			if link := got.Forge.LinkURL(); link != c.wantLink {
+				t.Errorf("Forge.LinkURL() = %q, want %q", link, c.wantLink)
+			}
+		})
+	}
+}
