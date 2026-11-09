@@ -742,6 +742,7 @@
               "about": "How long to wait for the Codex app server.",
               "readers": [
                 "internal/usage/codex.go",
+                "internal/usage/codex_budget.go",
                 "pack/core/scripts/codex_usage.py"
               ]
             },
@@ -760,6 +761,7 @@
               "default": 90,
               "about": "The Codex 5-hour usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
+                "internal/usage/codex_budget.go",
                 "pack/core/scripts/codex_usage.py"
               ]
             },
@@ -770,6 +772,7 @@
               "default": 95,
               "about": "The Codex week usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
+                "internal/usage/codex_budget.go",
                 "pack/core/scripts/codex_usage.py"
               ]
             },

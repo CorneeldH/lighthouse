@@ -102,14 +102,15 @@ func LoadBudgetConfig() (BudgetConfig, error) {
 		return BudgetConfig{}, err
 	}
 	var n [3]int
-	for i, name := range []string{"app_server_timeout_seconds", "review_pct_session", "review_pct_week"} {
-		v, err := config.Lookup(c, "codex_usage."+name)
+	keys := [3]string{"codex_usage.app_server_timeout_seconds", "codex_usage.review_pct_session", "codex_usage.review_pct_week"}
+	for i, key := range keys {
+		v, err := config.Lookup(c, key)
 		if err != nil {
 			return BudgetConfig{}, err
 		}
 		got, ok := v.(int64)
 		if !ok {
-			return BudgetConfig{}, fmt.Errorf("codex_usage.%s: not an integer", name)
+			return BudgetConfig{}, fmt.Errorf("%s: not an integer", key)
 		}
 		n[i] = int(got)
 	}
