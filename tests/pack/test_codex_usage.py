@@ -590,7 +590,7 @@ def test_budget_app_server_window_still_rolling(s, w, side, stamp):
     assert f"window still rolling (reset {stamp} has passed)" in u.reason
 
 
-# The budget JSON is a contract: `review.sh` and `plan_review_record` read these keys.
+# The budget JSON is a contract: `lighthouse review-run` and the review skills read these keys.
 NINE_KEYS = [
     "decision",
     "reason",

@@ -1,0 +1,160 @@
+{
+  "description": "One budget_checks entry per budget file, sorted; unreadable and non-object files become 'unreadable'.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.codex.json.budget.json",
+      "json": {
+        "decision": "fallback",
+        "reason": "5u 92% ≥ 90%",
+        "window": "codex-5u",
+        "reset_at": "2026-10-03T19:06:00Z",
+        "session_pct": 92,
+        "week_pct": 41,
+        "source": "app-server",
+        "thresholds": {
+          "session": 90,
+          "week": 95
+        }
+      }
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.json.budget.json",
+      "json": {
+        "decision": "not_measurable",
+        "reason": "budgetcheck faalde: exit 1",
+        "window": null,
+        "reset_at": null,
+        "session_pct": null,
+        "week_pct": null,
+        "source": null,
+        "thresholds": null
+      }
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-2.json.budget.json",
+      "text": "geen json"
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-3.json.budget.json",
+      "json": []
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 2,
+      "severities": [],
+      "verified": []
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 3,
+      "severities": [],
+      "verified": []
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "fallback",
+        "--reviewer-model",
+        "opus",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "record": {
+          "schema_version": 5,
+          "budget_checks": [
+            {
+              "round": 1,
+              "file": "round-1.codex.json.budget.json",
+              "decision": "fallback",
+              "reason": "5u 92% ≥ 90%",
+              "session_pct": 92,
+              "week_pct": 41,
+              "source": "app-server",
+              "thresholds": {
+                "session": 90,
+                "week": 95
+              }
+            },
+            {
+              "round": 1,
+              "file": "round-1.json.budget.json",
+              "decision": "not_measurable",
+              "reason": "budgetcheck faalde: exit 1",
+              "session_pct": null,
+              "week_pct": null,
+              "source": null,
+              "thresholds": null
+            },
+            {
+              "round": 2,
+              "file": "round-2.json.budget.json",
+              "decision": "unreadable",
+              "reason": null,
+              "session_pct": null,
+              "week_pct": null,
+              "source": null,
+              "thresholds": null
+            },
+            {
+              "round": 3,
+              "file": "round-3.json.budget.json",
+              "decision": "unreadable",
+              "reason": null,
+              "session_pct": null,
+              "week_pct": null,
+              "source": null,
+              "thresholds": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}/round-1.codex.json.budget.json",
+      "exists": true
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}/round-1.json.budget.json",
+      "exists": true
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}/round-2.json.budget.json",
+      "exists": true
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}/round-3.json.budget.json",
+      "exists": true
+    }
+  ]
+}

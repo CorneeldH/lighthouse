@@ -24,16 +24,17 @@
                 "en"
               ],
               "readers": [
+                "internal/cli/planreviewrecord.go",
                 "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
                 "internal/repoconfig/repoconfig.go",
+                "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/lib/artefacts.py",
                 "pack/core/lib/evidence.py",
                 "pack/core/lib/headings.py",
                 "pack/core/lib/protocol.py",
-                "pack/core/scripts/plan_review_record.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -461,7 +462,7 @@
               "about": "Where plans are written.",
               "readers": [
                 "internal/kpi/startissue.go",
-                "pack/core/scripts/plan_review_record.py",
+                "internal/review/openpoints.go",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/skills/review-plan",
                 "pack/core/skills/start-issue",
@@ -489,7 +490,7 @@
               "about": "Where specs are written.",
               "readers": [
                 "internal/kpi/startissue.go",
-                "pack/core/scripts/plan_review_record.py",
+                "internal/review/openpoints.go",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/skills/review-spec",
                 "pack/core/skills/start-issue",
@@ -740,6 +741,8 @@
               "default": 20,
               "about": "How long to wait for the Codex app server.",
               "readers": [
+                "internal/usage/codex.go",
+                "internal/usage/codex_budget.go",
                 "pack/core/scripts/codex_usage.py"
               ]
             },
@@ -758,6 +761,7 @@
               "default": 90,
               "about": "The Codex 5-hour usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
+                "internal/usage/codex_budget.go",
                 "pack/core/scripts/codex_usage.py"
               ]
             },
@@ -768,6 +772,7 @@
               "default": 95,
               "about": "The Codex week usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
+                "internal/usage/codex_budget.go",
                 "pack/core/scripts/codex_usage.py"
               ]
             },
@@ -973,7 +978,7 @@
               "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it, host-check reports another host.",
               "example": "100.64.0.1",
               "readers": [
-                "pack/core/scripts/plan_review_record.py"
+                "internal/review/record.go"
               ]
             },
             {

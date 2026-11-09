@@ -35,14 +35,13 @@ here *report and stop* holds headless too.
 
 ## What it shares with the spec review
 
-One runner. `review.sh` here is a wrapper around
-`../lighthouse-review-spec/review.sh`, with the plan prompt (`reviewer-prompt.md`)
-and the plan schema (`findings.schema.json`, with a required `cat` field). The clean
+One runner: `lighthouse review-run --kind plan` is the runner of the spec review, with the plan
+prompt (`reviewer-prompt.md`) and the plan schema (`findings.schema.json`, with a required `cat` field). The clean
 `CODEX_HOME` (`~/.codex-specreview/`), `--sandbox read-only`, exit codes 2/3/4/5 and the choice
 of level (`high`; `max` per run when a missed blocker is expensive, never `xhigh`) are in
 `lighthouse-review-spec`, *Prerequisites*. Read that when Codex stalls.
 
-From round 2 on a second wrapper runs on the same runner: `verify.sh`, with the verification
+From round 2 on the same runner runs with `--verify`, with the verification
 prompt (`verifier-prompt.md`) and the verification schema (`verification.schema.json`). It does
 not search for problems again; it only verifies whether the fixes of the previous round hold
 (see *Workflow*, step 5).
@@ -93,7 +92,7 @@ Argument → that path, repo-relative. No argument → the newest file in the pl
 ### 3. Start an attempt
 
 ```bash
-python3 .lighthouse/scripts/plan_review_record.py start <plan>
+lighthouse plan-review-record start <plan>
 ```
 
 Prints the attempt directory `${TMPDIR:-/tmp}/plan-review/<chain-key>/<attempt>/` (below
@@ -141,7 +140,8 @@ cp <plan> <ATTEMPT>/round-<n>.snapshot.md
 **Only round 1 is a review:**
 
 ```bash
-.agents/skills/lighthouse-review-plan/review.sh <plan> 1 <ATTEMPT>/round-1.json \
+lighthouse review-run --kind plan --skill-dir .agents/skills/lighthouse-review-plan \
+  <plan> 1 <ATTEMPT>/round-1.json \
   none [max] --context <spec path> [--context <spec path 2>]
 ```
 
@@ -157,7 +157,8 @@ git diff --no-index <ATTEMPT>/round-<n-1>.snapshot.md <plan> > <ATTEMPT>/round-<
 round (the same `gh api` line as step 4). Then run:
 
 ```bash
-.agents/skills/lighthouse-review-plan/verify.sh <plan> <n> <ATTEMPT>/round-<n>.json \
+lighthouse review-run --kind plan --verify --skill-dir .agents/skills/lighthouse-review-plan \
+  <plan> <n> <ATTEMPT>/round-<n>.json \
   <ATTEMPT>/round-<n-1>.json [max] --context <spec path> [--context <spec path 2>] \
   --context <ATTEMPT>/round-<n>.fixes.diff
 ```
@@ -249,7 +250,7 @@ refuses a record with a finding without a decision (exit 4); only `aborted` may 
   `accept-open` in step 8, never by hand), `minor_yes`, `minor_no`.
 - `same_as`: the ID of the same finding in an earlier round; otherwise leave it out.
 
-`review.sh` names the sidecar in the prior block of the next round.
+`lighthouse review-run` names the sidecar in the prior block of the next round.
 
 ### 7. Fix
 
@@ -274,7 +275,7 @@ was fixed in step 7, because no reviewer saw that fix any more. `converged` mean
 last round nothing is open. At `round_limit` you record the open points and go on, in this
 order:
 
-1. `python3 .lighthouse/scripts/plan_review_record.py accept-open <ATTEMPT> --doc <plan>`
+1. `lighthouse plan-review-record accept-open <ATTEMPT> --doc <plan>`
    (outside the sandbox, as with `start` and `write`). This rewrites `round-3.decisions.json`
    (every open point becomes `accepted_open`) and puts the block `heading:open_after_review` at
    the bottom of the plan; an existing block is replaced, never doubled. Exit 2 with on stderr
@@ -296,7 +297,7 @@ always comes first.
 After the last fix commit, at every outcome:
 
 ```bash
-python3 .lighthouse/scripts/plan_review_record.py write <ATTEMPT> \
+lighthouse plan-review-record write <ATTEMPT> \
   --outcome <converged|round_limit|aborted> --review-mode codex \
   --spec <spec path> [--spec <spec path 2>] [--level max] \
   --skill-dir .agents/skills/lighthouse-review-plan
@@ -341,5 +342,5 @@ The banner for a review within one model family (see step 5):
   sidecar.
 - **Resuming an old attempt.** A new review is a new `start`; the measurement counts only the
   newest attempt per chain.
-- **Running a verification round with `review.sh`.** That starts discovery again, and that is
+- **Running a verification round without `--verify`.** That starts discovery again, and that is
   exactly the loop the verification rounds closed.

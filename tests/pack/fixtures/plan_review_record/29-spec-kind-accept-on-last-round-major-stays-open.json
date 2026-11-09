@@ -1,0 +1,52 @@
+{
+  "description": "On a spec review, 'accept' on a last-round MAJOR is still open.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "--kind",
+        "spec",
+        "${SPEC}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accept",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_contains": [
+          "is still open"
+        ]
+      }
+    }
+  ]
+}

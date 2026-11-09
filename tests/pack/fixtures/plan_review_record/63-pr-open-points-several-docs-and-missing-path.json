@@ -1,0 +1,28 @@
+{
+  "description": "Several documents in argument order; a missing path is skipped.",
+  "world": "bare",
+  "steps": [
+    {
+      "op": "file",
+      "path": "${root}/spec.md",
+      "text": "# Spec\n\n## Open na review\n\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n"
+    },
+    {
+      "op": "file",
+      "path": "${root}/plan.md",
+      "text": "# Plan\n\n## Open na review\n\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n"
+    },
+    {
+      "op": "run",
+      "args": [
+        "pr-open-points",
+        "${root}/spec.md",
+        "${root}/weg.md",
+        "${root}/plan.md"
+      ],
+      "expect": {
+        "stdout_equals": "## Open review points\n\nFrom spec.md:\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n\nFrom plan.md:\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n"
+      }
+    }
+  ]
+}

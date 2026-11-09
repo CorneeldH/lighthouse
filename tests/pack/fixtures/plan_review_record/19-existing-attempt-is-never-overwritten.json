@@ -1,0 +1,53 @@
+{
+  "description": "A second write of the same attempt exits 4 and leaves the first.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {}
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_contains": [
+          "already exists"
+        ]
+      }
+    }
+  ]
+}

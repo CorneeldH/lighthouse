@@ -167,10 +167,10 @@ func positiveNumber(path string, host map[string]any, name string) (*float64, er
 	return &f, nil
 }
 
-// isLocal reports whether ip is on an interface of this machine. A bind measures that; a
+// IsLocal reports whether ip is on an interface of this machine. A bind measures that; a
 // connect or ping says nothing about locality. With net.ipv4.ip_nonlocal_bind=1 every bind
 // succeeds, and every machine recognises itself as the host.
-func isLocal(ip string) (bool, error) {
+func IsLocal(ip string) (bool, error) {
 	conn, err := net.ListenPacket("udp4", net.JoinHostPort(ip, "0"))
 	if err != nil {
 		if errors.Is(err, syscall.EADDRNOTAVAIL) {
@@ -180,6 +180,25 @@ func isLocal(ip string) (bool, error) {
 	}
 	_ = conn.Close()
 	return true, nil
+}
+
+// Recognize reports whether this machine is the host that host.toml names: true only when
+// host.toml has a tailscale_ip and that address is on this machine. A host.toml without
+// tailscale_ip is another host (false, nil, and the address is not asked for). An error when
+// host.toml is missing or broken, or the address is not measurable.
+func Recognize() (bool, error) {
+	path, err := hostPath()
+	if err != nil {
+		return false, err
+	}
+	host, err := LoadHost(path)
+	if err != nil {
+		return false, err
+	}
+	if host.TailscaleIP == nil {
+		return false, nil
+	}
+	return IsLocal(*host.TailscaleIP)
 }
 
 // HostValue is the text of one `host.<key>`, or an error wrapping ErrNotSet.
@@ -258,7 +277,7 @@ func HostCheck(out, errOut io.Writer) int {
 		return 1
 	}
 	if err == nil {
-		local, err = isLocal(*host.TailscaleIP)
+		local, err = IsLocal(*host.TailscaleIP)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "config: %v\n", err)

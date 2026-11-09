@@ -1,0 +1,72 @@
+{
+  "description": "Unparsable codex file, then a missing one: both exit 4 naming the file.",
+  "kind": "plan",
+  "coin": true,
+  "tree": {
+    "head": "abc123",
+    "clean": true
+  },
+  "attempt": {
+    "round-1.codex.json": {
+      "text": "{niet json"
+    },
+    "round-1.fallback.json": {
+      "review_markdown": "# review f",
+      "status": "Majors only",
+      "findings": [
+        {
+          "severity": "MAJOR",
+          "cat": "missing_artifact",
+          "plan_section": "Task 1",
+          "problem": "zelfde x",
+          "evidence": "scripts/x.py:1 zelfde x",
+          "failure_scenario": "faalt omdat zelfde x",
+          "proposed_fix": "los zelfde x op"
+        },
+        {
+          "severity": "BLOCKER",
+          "cat": "missing_artifact",
+          "plan_section": "Task 1",
+          "problem": "y",
+          "evidence": "scripts/x.py:1 y",
+          "failure_scenario": "faalt omdat y",
+          "proposed_fix": "los y op"
+        }
+      ],
+      "top3": [
+        "top f"
+      ],
+      "verdict": "verdict f",
+      "could_not_verify": [
+        "gedeeld",
+        "alleen f"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "cmd": "blind",
+      "exit": 4,
+      "stderr_contains": [
+        "SHADOW-PAIR FAILED: round-1.codex.json: "
+      ],
+      "absent": [
+        "round-1.blind.md",
+        "pair.json"
+      ]
+    },
+    {
+      "cmd": "blind",
+      "write": {
+        "round-1.codex.json": null
+      },
+      "exit": 4,
+      "stderr_contains": [
+        "SHADOW-PAIR FAILED: round-1.codex.json is missing"
+      ],
+      "absent": [
+        "pair.json"
+      ]
+    }
+  ]
+}

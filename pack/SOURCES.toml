@@ -140,16 +140,6 @@ path = "pack/core/scripts/create_labels.py"
 new = true
 
 [[file]]
-path = "pack/core/scripts/plan_review_record.py"
-source_path = "scripts/plan_review_record.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/review_pair.py"
-source_path = "scripts/review_pair.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/scripts/roborev_comment.py"
 new = true
 
@@ -285,16 +275,6 @@ source_path = [".claude/skills/paia-spec-adversarial-review/verifier-prompt.md",
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/review-spec/review.sh"
-source_path = [".claude/skills/paia-spec-adversarial-review/review.sh", ".agents/skills/paia-spec-adversarial-review/review.sh"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/skills/review-spec/verify.sh"
-source_path = [".claude/skills/paia-spec-adversarial-review/verify.sh", ".agents/skills/paia-spec-adversarial-review/verify.sh"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/permissions.json"
 source_path = ".claude/settings.json"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
@@ -327,16 +307,6 @@ source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 [[file]]
 path = "pack/core/skills/review-plan/verifier-prompt.md"
 source_path = [".claude/skills/paia-plan-adversarial-review/verifier-prompt.md", ".agents/skills/paia-plan-adversarial-review/verifier-prompt.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/skills/review-plan/review.sh"
-source_path = [".claude/skills/paia-plan-adversarial-review/review.sh", ".agents/skills/paia-plan-adversarial-review/review.sh"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/skills/review-plan/verify.sh"
-source_path = [".claude/skills/paia-plan-adversarial-review/verify.sh", ".agents/skills/paia-plan-adversarial-review/verify.sh"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]

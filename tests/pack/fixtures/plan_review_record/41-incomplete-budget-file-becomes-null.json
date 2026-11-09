@@ -1,0 +1,56 @@
+{
+  "description": "A budget file with only a decision: the other fields are null.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.json.budget.json",
+      "json": {
+        "decision": "codex"
+      }
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "record": {
+          "budget_checks": [
+            {
+              "round": 1,
+              "file": "round-1.json.budget.json",
+              "decision": "codex",
+              "reason": null,
+              "session_pct": null,
+              "week_pct": null,
+              "source": null,
+              "thresholds": null
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -297,7 +297,7 @@ reads the file before the command runs.
 
 Open review points: give the spec and plan documents the branch touches
 (`git diff --name-only origin/<default branch>...HEAD -- '<paths.specs>/*.md' '<paths.plans>/*.md'`)
-to `python3 .lighthouse/scripts/plan_review_record.py pr-open-points <path>...`; the script follows the spec
+to `lighthouse plan-review-record pr-open-points <path>...`; the script follows the spec
 from the **Spec:** line of a plan itself, also when that spec is already on the default branch. If
 the output is not empty, put it unchanged as a section of its own `## Open review points` in the
 body; if it is empty, leave the section out. It is no Evidence row and does not count in the AC
