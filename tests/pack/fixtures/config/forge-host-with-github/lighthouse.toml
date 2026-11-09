@@ -1,0 +1,3 @@
+[forge]
+kind = "github"
+host = "git.example.org"

@@ -77,13 +77,13 @@ def test_the_diagnosis_block_is_read_only() -> None:
 def test_the_diagnosis_reads_the_repo_from_config() -> None:
     for text in TEXTS:
         block = _diagnose_block(text)
-        assert "python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo" in block
+        assert "lighthouse config forge.repo" in block
         assert "identity" not in text
 
 
 # (label in the FIRST cell of the row, command in that same row) — in table order.
 GATE_ROWS = (
-    ("Tests", "config.py test_gate.command"),
+    ("Tests", "lighthouse config test_gate.command"),
     ("Quality ratchet (ruff)", ".lighthouse/scripts/quality/ratchet.py ruff"),
     ("Expo lockfiles", "/lighthouse-refresh-expo-lockfiles"),
     ("Any other step", ".github/workflows/"),
@@ -110,7 +110,7 @@ def test_fix_pr_uses_test_gate_command() -> None:
     present (Kruisverwijzingen)."""
     for text in TEXTS:
         rows = _gate_table_rows(text)
-        assert "python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command" in rows[0]
+        assert "lighthouse config test_gate.command" in rows[0]
         assert "if present" in rows[1] and "test -e .lighthouse/scripts/quality/ratchet.py" in rows[1]
         assert "if present" in rows[2]
         assert "tests/unit" not in text

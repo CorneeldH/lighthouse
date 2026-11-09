@@ -1,0 +1,34 @@
+[
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 0,
+  "stdout": "b\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.tailscale_ip"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.tailscale_ip is not set\n"
+ },
+ {
+  "args": [
+   "host-check"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host b (host.toml) has no tailscale_ip, so it is not the always-on host\n"
+ },
+ {
+  "args": [
+   "host.gate_slots"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.gate_slots is not set\n"
+ }
+]

@@ -1,0 +1,18 @@
+[
+ {
+  "args": [
+   "acceptance_criteria"
+  ],
+  "rc": 0,
+  "stdout": "Acceptance criteria\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "kind_handoff"
+  ],
+  "rc": 0,
+  "stdout": "Handoff\n",
+  "stderr": ""
+ }
+]

@@ -15,35 +15,35 @@ kind = "file"
 path = ".agents/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "acb06b72575430806e3a2fdbc3ad963c5a1536d6e82ef3be4ff1c10a6e770d45"
+sha256 = "f49a3995f5b7c8279a1fd97938428ccae1c2bdc4a63102fa11acb2b07f0def18"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "600d034b65e7d516e6d4568c3416d76cbeb32cff938bb81c841fd217c14e823e"
+sha256 = "22121227023a489a1f1b5ce456c2e5a6c67407dfd7bd29938ea089b7b621b0aa"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-go-standard/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "097465cc30a200d9c0186791ebd40dc5c36b1161198ce5ae371ee0cd0dcf1f2c"
+sha256 = "d675c4ce37ee9b98ffe3b5934ea0369aca769aae4c6c9217f4bab7b910147400"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-place-instruction/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "7cd36329377a20f22550d13e5ec6d20a5485df0e886d533529fbc7df40e4d7c5"
+sha256 = "144f7f4dc292b57f0eaeaadfaf2ede216f7ed6f16dac386206dfadbf7694b821"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-review-plan/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "1b28b90962d65ffb556cd7391c873f26e41da51b58c7c3fd4fcbc01bec104d64"
+sha256 = "2a2d2e63efbdbd2ab1f7978df4a2e1603cd0e47c8da0e0d7acdf186c30070170"
 
 [[unit]]
 kind = "file"
@@ -92,7 +92,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-review-spec/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "76fbac65d1295dc9a8d44d0840e5a42d81ce2a95504e0d3276ea3fa6a7604c97"
+sha256 = "50eceeb8d22e60071620b1b0d75c71322ee69d621bfe4d19ff50be486e10df7a"
 
 [[unit]]
 kind = "file"
@@ -141,14 +141,14 @@ kind = "file"
 path = ".agents/skills/lighthouse-route-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "528d5cdd48c5265fbbde435e44e5bc84a917abb2f29cb6e3f5d0b6f9ad273c66"
+sha256 = "4fef40a6eee42678b1bd8dd204fddf218e6f0ea9665a855f277e0142453528f7"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-start-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "0ed8d4628251845a88b60306e905b4180668da5c291c2d8229df2d480f267d93"
+sha256 = "e250b2d5e4bad910fe6433db79b84b74f7bde3d0de6e40d0a08fc4fd389a2fd1"
 
 [[unit]]
 kind = "file"
@@ -162,21 +162,21 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "40ab62210ed97e62ada4975eae4e5b56a1ff3e1a4722259f11b07a65b73b6962"
+sha256 = "053b87adf26f0b59bafe30a1e89a661950916b589b573b899892f10485837c5e"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "6f6306b07fb56f8b2a3f73d8321d4dd98a99dabe4a32634432c18b46397cf030"
+sha256 = "b1e164bfe3055297ebcfa7afd26189afd0c69d4dd2f374eff68d5bbce3348777"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "5b087fee4b25835e2faa1d4b63638eb84d81aa4ca5228dce80fa7c4c285d68a2"
+sha256 = "a21d64f2be4c35f1528b537d1a520a21083dd7bafa3c5be2384f448d21dc5022"
 
 [[unit]]
 kind = "file"
@@ -190,7 +190,14 @@ kind = "file"
 path = ".claude/hooks/lighthouse/bash-write-check.sh"
 package = "core"
 version = "dev"
-sha256 = "e701bea23d75d924f505f005d343676470ecd4078e51aa401ee4254abad93824"
+sha256 = "44ed93053653f1b4b2508c260968efea1c1cf35125d7855c1ea4b83fe090e038"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/blocking"
+package = "core"
+version = "dev"
+sha256 = "1eb912125809c6f094a284ecfe7e05d160fee7f0ff1a178bef631411d7ef9f51"
 
 [[unit]]
 kind = "file"
@@ -211,7 +218,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/go-lint-gate.sh"
 package = "go"
 version = "dev"
-sha256 = "b6885b6417c2d90c2822fefd46c8c69313cb98530f0b3eefdb0c3c09987a97d0"
+sha256 = "093f18d4f69d122d3f8cb5c3869088d513c1aa4c74253c86b7c9a1d5291e926d"
 
 [[unit]]
 kind = "file"
@@ -229,27 +236,6 @@ sha256 = "5b33f0bd1c583a5ecaf43a6916606a6d18d980bddd0d4be864de327363295cba"
 
 [[unit]]
 kind = "file"
-path = ".claude/hooks/lighthouse/md-link-check.sh"
-package = "core"
-version = "dev"
-sha256 = "a4b307aa70b003cd9d5e883f76f1b30f30cf3d2fee2177032faa262cba46971d"
-
-[[unit]]
-kind = "file"
-path = ".claude/hooks/lighthouse/permission-check.sh"
-package = "core"
-version = "dev"
-sha256 = "ae21e354e8154879f3db203bddadd1e42e242203913c94817347e8dbfbfaaa2b"
-
-[[unit]]
-kind = "file"
-path = ".claude/hooks/lighthouse/permission-check/note.py"
-package = "core"
-version = "dev"
-sha256 = "da392368b225660a2b091d2024a98109dbf95b7180c3fa181da8cab7ecdbede5"
-
-[[unit]]
-kind = "file"
 path = ".claude/hooks/lighthouse/pr-create-gate.sh"
 package = "core"
 version = "dev"
@@ -257,31 +243,10 @@ sha256 = "80e3cd63d184adffe3007c040eff24d6876964c92962775eb3f1f2a2ddf65748"
 
 [[unit]]
 kind = "file"
-path = ".claude/hooks/lighthouse/usage-gate.sh"
+path = ".claude/hooks/lighthouse/run.sh"
 package = "core"
 version = "dev"
-sha256 = "0580a9bb095f6ec7fc4f193644c2a4d352dff83c190bd0a076dee4858bf767e6"
-
-[[unit]]
-kind = "file"
-path = ".claude/hooks/lighthouse/usage-gate/alarm.sh"
-package = "core"
-version = "dev"
-sha256 = "f71b332021a0434f1afdfd5403038a713570b094edc2e66b0a2b49dd54769794"
-
-[[unit]]
-kind = "file"
-path = ".claude/hooks/lighthouse/usage-gate/controller.py"
-package = "core"
-version = "dev"
-sha256 = "4abe5317b841f8ec542f5d141ff8b3251a9725caa6e3492f5a93a2a463a3b4d3"
-
-[[unit]]
-kind = "file"
-path = ".claude/hooks/lighthouse/usage-gate/resume.py"
-package = "core"
-version = "dev"
-sha256 = "e0c0d4d6aaa185360aafbb535031c67f8b03db905942dc33d0dd22cb191aff4c"
+sha256 = "c88c515572536d5315da1733027818a28a8c7a5d54311d2534aa4dc0ad3b0de7"
 
 [[unit]]
 kind = "file"
@@ -325,10 +290,10 @@ sha256 = "2bb7011332c21ef34d7114405e7bbe81b843ee8c906e0c6e081b3e605a24bfcc"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "Notification|permission_prompt|worker_permission_prompt|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/permission-check.sh"
+id = "Notification|permission_prompt|worker_permission_prompt|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh permission-check"
 package = "core"
 version = "dev"
-sha256 = "9b0d5f7a870497a413ab161bf977ab70bacf054132ebde35e542dd4fe4e7921e"
+sha256 = "d5a07d8e2679b78558ecab5647cc52bfa55150b917bbdeb529d80699c8678694"
 
 [[unit]]
 kind = "hook"
@@ -381,18 +346,18 @@ sha256 = "275c3b11c4be96611ae70f5cebb57683eb94ad524969f562c60f8d62962ba607"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/md-link-check.sh"
+id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh md-link-check"
 package = "core"
 version = "dev"
-sha256 = "1573a15bed0bcd21e658a3a0934ab398bcd178e44b5ab7098322a0b1baa9d182"
+sha256 = "717bed1b21f9c15214ca1942684b7f651aca0d9c8d3e64a518d0f27e094ff825"
 
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "PostToolUse||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-gate.sh tool"
+id = "PostToolUse||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh usage-gate tool"
 package = "core"
 version = "dev"
-sha256 = "b6ee607a21631903908396dd4c2c7eb8a7180bf46d8c5a7d830b8e266e20df5f"
+sha256 = "8561be36a50f3c6e69c5edc791865c7916d6126e95be1e5cafd0da5a92c00bc2"
 
 [[unit]]
 kind = "hook"
@@ -445,26 +410,26 @@ sha256 = "c1cf2dc8a27d1d896da557fda731bb616c01fd0afe3f31e0d8042a1bf6b6385a"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-gate.sh stop"
+id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh usage-gate stop"
 package = "core"
 version = "dev"
-sha256 = "b08ab677831cc8bcffee398f3362aaa273ecf9bc2b5ea326e4c6d6e267709e19"
+sha256 = "d1382627dfded229b0f77c6c676cc9ccb22aa23a460902a31d4f448c7dbfb3cf"
 
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "SubagentStop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-gate.sh subagent"
+id = "SubagentStop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh usage-gate subagent"
 package = "core"
 version = "dev"
-sha256 = "6687a50e7b8a2e25b192a642e6cd618901fdf3f79ddb017eb7b98dc9ca4a7755"
+sha256 = "d76a2c1ab87ed60efa9654a8538eb6acc7a52c80b337ee6eda48d8d85f99a0c8"
 
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "UserPromptSubmit||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/usage-gate.sh prompt"
+id = "UserPromptSubmit||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh usage-gate prompt"
 package = "core"
 version = "dev"
-sha256 = "8366e37c16e4567e6d29dcdc9878f451d3200b12f07bdc0bc98a00480871802b"
+sha256 = "d5ab47d5af8dfec5a3c8aa1ef64555bce9bb5fac3cce1ffa8a4d5e72f68e689d"
 
 [[unit]]
 kind = "file"
@@ -478,35 +443,35 @@ kind = "file"
 path = ".claude/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "effaff481f23de5344d1920aadb9861d27f5f6cb1906cb1ecb465447b493d1f2"
+sha256 = "f35ff1f99472c02d36a2e64f1d2847f2d3e7182e9555d363d8c891099ea36f06"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "415b2528c4696b5f259f42f119fd51120f374937ca01f4652dd6205731d79482"
+sha256 = "83cc4bcb6717b8cc8f1e5ffba93158fe6c0ee294998311ff7ef0346bea4e4b1a"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-go-standard/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "2a385e4520183182986984c29ef3e1c5bc840783537c3b99ac84ae27685173fe"
+sha256 = "5f69fc40c15414e6e8584d7b60dc193cfd2493bd9a4d1a76881bdb74805e8045"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-place-instruction/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "7cd36329377a20f22550d13e5ec6d20a5485df0e886d533529fbc7df40e4d7c5"
+sha256 = "144f7f4dc292b57f0eaeaadfaf2ede216f7ed6f16dac386206dfadbf7694b821"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-review-plan/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "bb3928b06c31250c39fd61afb080a588a6b828989ac86fb79ec3d60438e81d24"
+sha256 = "9588ab452236addbafed272b6033a23b501ac03c3f3d425c2b8ee902db387e0c"
 
 [[unit]]
 kind = "file"
@@ -555,7 +520,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-review-spec/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "334f373ca9d5053efeaa5bb68e74b7c2ab1aca75970b5c10fc55ee47076a43cd"
+sha256 = "fd007bc860424deed7ae95e0de5fe2e363e758392161560fe9b4ade8fe29da15"
 
 [[unit]]
 kind = "file"
@@ -604,14 +569,14 @@ kind = "file"
 path = ".claude/skills/lighthouse-route-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "528d5cdd48c5265fbbde435e44e5bc84a917abb2f29cb6e3f5d0b6f9ad273c66"
+sha256 = "4fef40a6eee42678b1bd8dd204fddf218e6f0ea9665a855f277e0142453528f7"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-start-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "4a8eb16c4d85e87fcd94795782a64b596879062ad6e2b9fdbf63a3825caa3986"
+sha256 = "ca29f0eb42cf16597dfece488345719cda496ddeffb8367deb8806dcb8769c63"
 
 [[unit]]
 kind = "file"
@@ -625,21 +590,21 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "40ab62210ed97e62ada4975eae4e5b56a1ff3e1a4722259f11b07a65b73b6962"
+sha256 = "053b87adf26f0b59bafe30a1e89a661950916b589b573b899892f10485837c5e"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "784aa40571756b4ce4ebafb95ec24e89a5db03e1e8f5cb09384197ee06607feb"
+sha256 = "5596a4b3f01e9680db38513ebb5ffcd199584dd75cf4578c6671168895e1d4e3"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "5b087fee4b25835e2faa1d4b63638eb84d81aa4ca5228dce80fa7c4c285d68a2"
+sha256 = "a21d64f2be4c35f1528b537d1a520a21083dd7bafa3c5be2384f448d21dc5022"
 
 [[unit]]
 kind = "file"
@@ -653,7 +618,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "e3c8c7fe31e5a707ce8be388ab30fa956f62e039f87f0716e33734fce75a6639"
+sha256 = "3fd20cc381b75418127fd3a44c39a24a28636af9b1b1875d1f54465b0783e9ad"
 
 [[unit]]
 kind = "file"
@@ -674,7 +639,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "b8c69f755499656cd46f9b49df6c80b4859b187d016ae748242bb048840b8f92"
+sha256 = "c319f22e6ff7d02f7a9b905a164fd8601e33e52a5289316bf9470e0181ab7760"
 
 [[unit]]
 kind = "file"
@@ -790,13 +755,6 @@ sha256 = "280e54c84a708fd8f3c73dcb1cbea25f638b49e45cb6a977c9ff36d6606cab06"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/md_links.py"
-package = "core"
-version = "dev"
-sha256 = "92f2a715cdf8604af029424c5db9cc979652427d3b34053cb345612a36563b32"
-
-[[unit]]
-kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/no_verify.py"
 package = "core"
 version = "dev"
@@ -832,13 +790,6 @@ sha256 = "7a1766f4d23a0be508ec6df491627e89826305cf308f904a5eac4c2ec28ed466"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/usage_guard.py"
-package = "core"
-version = "dev"
-sha256 = "aa838ea6ded2fe0609c20e1a576c4239f6ee2f811b09ae9f81a2de09e233caa8"
-
-[[unit]]
-kind = "file"
 path = ".lighthouse/scripts/board_start.py"
 package = "core"
 version = "dev"
@@ -849,7 +800,7 @@ kind = "file"
 path = ".lighthouse/scripts/check-instructions.sh"
 package = "core"
 version = "dev"
-sha256 = "24a9cac2a50de22f752e93b9c9c52998259cab21c7ba59b221ac61aedfb9a6ec"
+sha256 = "d8ba746d1dad1b7074f6c2541cde14801cf3d7d5cd3736af6c60a6c5a8289e13"
 
 [[unit]]
 kind = "file"
@@ -948,7 +899,7 @@ path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "714386f63ea1357b85edcb425d81fd49489757027c936dc8905e097d302e351b"
+sha256 = "0163baefd80baba6820e42f49b1414b6a9ae8a579156e233fd97527916f86ac6"
 
 [[unit]]
 kind = "block"

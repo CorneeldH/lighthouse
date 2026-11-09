@@ -19,6 +19,14 @@ path = "pack/core/hooks/hooks.json"
 new = true
 
 [[file]]
+path = "pack/core/hooks/run.sh"
+new = true
+
+[[file]]
+path = "pack/core/hooks/blocking"
+new = true
+
+[[file]]
 path = "pack/core/instructions/AGENTS.md"
 new = true
 
@@ -36,36 +44,6 @@ new = true
 
 [[file]]
 path = "pack/core/lib/config.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/usage_guard.py"
-source_path = ".claude/hooks/usage-guard.sh"
-source_sha = "5e1165861bf6f13385e6c5c390e20c95cf2cadc0"
-
-[[file]]
-path = "pack/core/hooks/permission-check.sh"
-new = true
-
-[[file]]
-path = "pack/core/hooks/permission-check/note.py"
-new = true
-
-[[file]]
-path = "pack/core/hooks/usage-gate.sh"
-source_path = ".claude/hooks/usage-guard.sh"
-source_sha = "5e1165861bf6f13385e6c5c390e20c95cf2cadc0"
-
-[[file]]
-path = "pack/core/hooks/usage-gate/alarm.sh"
-new = true
-
-[[file]]
-path = "pack/core/hooks/usage-gate/controller.py"
-new = true
-
-[[file]]
-path = "pack/core/hooks/usage-gate/resume.py"
 new = true
 
 [[file]]
@@ -104,11 +82,6 @@ path = "pack/core/lib/host_memory.py"
 new = true
 
 [[file]]
-path = "pack/core/lib/md_links.py"
-source_path = ".claude/hooks/lib/md_links.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/lib/no_verify.py"
 source_path = ".claude/hooks/lib/no_verify.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
@@ -135,11 +108,6 @@ new = true
 [[file]]
 path = "pack/core/hooks/worktree-check.sh"
 source_path = ".claude/hooks/worktree-guard.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/hooks/md-link-check.sh"
-source_path = ".claude/hooks/worktree-linkcheck.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]

@@ -1,0 +1,602 @@
+[
+ {
+  "args": [
+   "forge.default_branch"
+  ],
+  "rc": 0,
+  "stdout": "trunk\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.specs"
+  ],
+  "rc": 0,
+  "stdout": "s\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.plans"
+  ],
+  "rc": 0,
+  "stdout": "p\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.tenets"
+  ],
+  "rc": 0,
+  "stdout": "t\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.areas"
+  ],
+  "rc": 0,
+  "stdout": "a\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.history"
+  ],
+  "rc": 0,
+  "stdout": "h\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.labels"
+  ],
+  "rc": 0,
+  "stdout": "l\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.search_dirs"
+  ],
+  "rc": 0,
+  "stdout": "x\ny z\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "paths.mirror_exceptions"
+  ],
+  "rc": 0,
+  "stdout": "m\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.blocked_issue"
+  ],
+  "rc": 0,
+  "stdout": "bi\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.blocked_external"
+  ],
+  "rc": 0,
+  "stdout": "be\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.needs_shaping"
+  ],
+  "rc": 0,
+  "stdout": "ns\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.needs_decision"
+  ],
+  "rc": 0,
+  "stdout": "nd\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.needs_hands"
+  ],
+  "rc": 0,
+  "stdout": "nh\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.needs_testing"
+  ],
+  "rc": 0,
+  "stdout": "nt\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.location_prefix"
+  ],
+  "rc": 0,
+  "stdout": "loc:\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "labels.area_prefix"
+  ],
+  "rc": 0,
+  "stdout": "area:\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.command"
+  ],
+  "rc": 0,
+  "stdout": "go test ./...\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.deadline_seconds"
+  ],
+  "rc": 0,
+  "stdout": "11\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.slots"
+  ],
+  "rc": 0,
+  "stdout": "3\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.slot_wait_seconds"
+  ],
+  "rc": 0,
+  "stdout": "12\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.unchecked_exit_codes"
+  ],
+  "rc": 0,
+  "stdout": "3\n4\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "test_gate.evidence_test_dir"
+  ],
+  "rc": 0,
+  "stdout": "t/\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "ci.runs_on"
+  ],
+  "rc": 0,
+  "stdout": "macos-latest\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "ci.bot_client_id_var"
+  ],
+  "rc": 0,
+  "stdout": "ID\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "ci.bot_private_key_secret"
+  ],
+  "rc": 0,
+  "stdout": "KEY\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "ci.bot_login"
+  ],
+  "rc": 0,
+  "stdout": "bot[bot]\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.halt_pct_session"
+  ],
+  "rc": 0,
+  "stdout": "1\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.vraag_pct_week"
+  ],
+  "rc": 0,
+  "stdout": "2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.app_server_timeout_seconds"
+  ],
+  "rc": 0,
+  "stdout": "3\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.review_pct_session"
+  ],
+  "rc": 0,
+  "stdout": "4\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "codex_usage.review_pct_week"
+  ],
+  "rc": 0,
+  "stdout": "5\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "worktree_audit.protected_refs"
+  ],
+  "rc": 0,
+  "stdout": "main\ndev\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "worktree_audit.protected_paths"
+  ],
+  "rc": 0,
+  "stdout": "/a\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project.instructions_word_ceiling"
+  ],
+  "rc": 0,
+  "stdout": "1234\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project.skill_prefix"
+  ],
+  "rc": 0,
+  "stdout": "lh\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project.milestone_prefix"
+  ],
+  "rc": 0,
+  "stdout": "M\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "python.source_dirs"
+  ],
+  "rc": 0,
+  "stdout": "lib\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "python.lint_dirs"
+  ],
+  "rc": 0,
+  "stdout": "lib\nt\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "python.coverage_command"
+  ],
+  "rc": 0,
+  "stdout": "pytest\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "python.nightly_workflow"
+  ],
+  "rc": 0,
+  "stdout": "nightly.yml\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "python.coverage_issue_labels"
+  ],
+  "rc": 0,
+  "stdout": "cov\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "shell.strict_dirs"
+  ],
+  "rc": 0,
+  "stdout": "hooks\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project.code_language"
+  ],
+  "rc": 0,
+  "stdout": "en\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project.code_language_exempt"
+  ],
+  "rc": 0,
+  "stdout": "a\nb\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "usage_guard.resume"
+  ],
+  "rc": 0,
+  "stdout": "true\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "usage_guard.controller"
+  ],
+  "rc": 0,
+  "stdout": "true\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project.code_language_paths"
+  ],
+  "rc": 0,
+  "stdout": "src/\npkg/\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "code_language_llm.url"
+  ],
+  "rc": 0,
+  "stdout": "http://x\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "code_language_llm.models"
+  ],
+  "rc": 0,
+  "stdout": "m1\nm2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "code_language_llm.key_env"
+  ],
+  "rc": 0,
+  "stdout": "K\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "code_language_llm.env_file"
+  ],
+  "rc": 0,
+  "stdout": ".env\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "review.roborev"
+  ],
+  "rc": 0,
+  "stdout": "local\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.kind"
+  ],
+  "rc": 0,
+  "stdout": "github\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 0,
+  "stdout": "acme/widgets\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.owner"
+  ],
+  "rc": 0,
+  "stdout": "acme\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.name"
+  ],
+  "rc": 0,
+  "stdout": "widgets\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.project_number"
+  ],
+  "rc": 0,
+  "stdout": "7\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.project_id"
+  ],
+  "rc": 0,
+  "stdout": "PVT_x\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.status_field_id"
+  ],
+  "rc": 0,
+  "stdout": "PVTSSF_s\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.priority_field_id"
+  ],
+  "rc": 0,
+  "stdout": "PVTSSF_p\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "project.language"
+  ],
+  "rc": 0,
+  "stdout": "nl\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.name"
+  ],
+  "rc": 0,
+  "stdout": "box\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.tailscale_ip"
+  ],
+  "rc": 0,
+  "stdout": "100.64.0.1\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.gate_slice"
+  ],
+  "rc": 0,
+  "stdout": "gate.slice\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.scan_memory_max"
+  ],
+  "rc": 0,
+  "stdout": "2G\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.scan_cpu_quota"
+  ],
+  "rc": 0,
+  "stdout": "200%\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.gate_slots"
+  ],
+  "rc": 0,
+  "stdout": "3\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.gate_min_mem_available_gb"
+  ],
+  "rc": 0,
+  "stdout": "8\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.gate_min_swap_free_gb"
+  ],
+  "rc": 0,
+  "stdout": "4.5\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.status_options.In progress"
+  ],
+  "rc": 0,
+  "stdout": "a2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.status_options.Controller"
+  ],
+  "rc": 0,
+  "stdout": "a5\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.priority_options.Very low"
+  ],
+  "rc": 0,
+  "stdout": "p2\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board.priority_options.High"
+  ],
+  "rc": 0,
+  "stdout": "p1\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "forge.board"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: forge.board is a table, not a value\n"
+ }
+]

@@ -1,0 +1,18 @@
+[
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: file is missing\n"
+ },
+ {
+  "args": [
+   "project.language"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: file is missing\n"
+ }
+]

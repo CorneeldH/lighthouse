@@ -4,6 +4,11 @@ export function formatAge(ageS: number): string {
   return `${Math.floor(ageS / 3600)} h`
 }
 
+// The age from then to now (both in ms) as "<age> ago"; a future then reads as zero.
+export function formatAgo(now: number, then: number): string {
+  return `${formatAge(Math.max(0, (now - then) / 1000))} ago`
+}
+
 function hhmm(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
@@ -17,4 +22,17 @@ export function formatReset(resetAt: string, now: Date): string {
 
 export function formatPct(pct: number, lowerBound: boolean): string {
   return `${lowerBound ? '≥ ' : ''}${pct}%`
+}
+
+export function formatDuration(ageS: number): string {
+  if (ageS < 60) return '< 1 min'
+  if (ageS < 3600) return `${Math.floor(ageS / 60)} min`
+  const h = Math.floor(ageS / 3600)
+  const m = Math.floor((ageS % 3600) / 60)
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
+
+// Clock time "HH:MM" of an ISO timestamp, in local time.
+export function formatClock(iso: string): string {
+  return hhmm(new Date(iso))
 }

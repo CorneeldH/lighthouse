@@ -7,7 +7,7 @@ description: Use when writing or changing Python in this repository's source or 
 
 ## Domain
 
-Python in the source directories (`python3 .lighthouse/lib/lighthouse_lib/config.py python.source_dirs`)
+Python in the source directories (`lighthouse config python.source_dirs`)
 and the tests, and the checks on them: `ruff`, `ty`, pytest. Also applies when no file is open yet —
 while brainstorming or planning, when you decide *how* you will test something. That is why this
 is a skill and not a rule.
@@ -33,9 +33,9 @@ Every row is a command that runs in this repository.
 
 | Norm | Command | Target |
 |---|---|---|
-| The blocking ruff rules are at zero | `uvx ruff@"$(cat .ruff-version)" check --select E722,B006,F403,F811,B023,PT012,PGH003,PGH004 $(python3 .lighthouse/lib/lighthouse_lib/config.py python.lint_dirs)` | rc 0 |
-| The source directories are type-clean | `uvx ty@0.0.72 check $(python3 .lighthouse/lib/lighthouse_lib/config.py python.source_dirs)` | 0 diagnostics, naming the extras |
-| The test suite is green | `bash -c "$(python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command)"` | rc 0 |
+| The blocking ruff rules are at zero | `uvx ruff@"$(cat .ruff-version)" check --select E722,B006,F403,F811,B023,PT012,PGH003,PGH004 $(lighthouse config python.lint_dirs)` | rc 0 |
+| The source directories are type-clean | `uvx ty@0.0.72 check $(lighthouse config python.source_dirs)` | 0 diagnostics, naming the extras |
+| The test suite is green | `bash -c "$(lighthouse config test_gate.command)"` | rc 0 |
 | Diff coverage on your new source lines | `python3 .lighthouse/scripts/quality/ratchet.py coverage` (optional, when in doubt) | ≥ 90% |
 
 Without a `.ruff-version`, drop the pin: `uvx ruff check …`. Row 3 is the command the test gate
@@ -43,7 +43,7 @@ runs after every commit, on the files of that commit;
 `python3 .lighthouse/scripts/gate_python.py -- uv run pytest -q` picks the tests of the commit. A red
 run comes back to you: fix it in a new commit. The selector exits 3 when it could not check (a
 list it cannot read, a command that cannot start): list 3 in `[test_gate] unchecked_exit_codes`.
-When `config.py test_gate.command` gives rc 1 or an empty line, the project has none
+When `lighthouse config test_gate.command` gives rc 1 or an empty line, the project has none
 (`command = ""` turns the gate off).
 
 Row 4 is not a required step before the PR. When the repository runs the nightly ratchet

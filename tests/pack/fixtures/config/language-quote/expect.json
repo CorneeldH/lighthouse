@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "project.language"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key project.language must be one of nl, en, not \"n'l\"\n"
+ }
+]

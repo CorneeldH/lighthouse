@@ -39,7 +39,7 @@ def test_close_issue_reports_released_issues():
     for body in skill():
         assert "dependencies/blocking" in body
         assert "--remove-label <labels.blocked_issue>" in body
-        assert "config.py labels.blocked_issue" in body
+        assert "lighthouse config labels.blocked_issue" in body
 
 
 def test_close_issue_finds_lighthouse_workflow():
@@ -55,7 +55,7 @@ def test_close_issue_finds_lighthouse_workflow():
 def test_close_issue_bot_from_config():
     for body in skill():
         released = _section(body, "### 6.")
-        assert "config.py ci.bot_login" in released
+        assert "lighthouse config ci.bot_login" in released
         assert "skipped" in released
 
 
@@ -103,7 +103,7 @@ def test_step_zero_open_pr_stop_is_scoped_to_an_open_issue():
 def test_entry_b_runs_the_evidence_of_merged_refs_prs():
     for body in skill():
         b2a = _b2a(body)
-        repo = "R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo)"
+        repo = "R=$(lighthouse config forge.repo)"
         assert repo in b2a
         assert b2a.index(repo) < b2a.index('--repo "$R"')
         assert b2a.count("mktemp -d") == 1
@@ -118,7 +118,7 @@ def test_entry_b_runs_the_evidence_of_merged_refs_prs():
             "### Evidence #<nr>",
             "python3 .lighthouse/lib/lighthouse_lib/evidence.py run",
             "git worktree add --detach",
-            "config.py forge.default_branch",
+            "lighthouse config forge.default_branch",
             "only the row of the latest merged PR",
             "the number the AC cell starts with",
             "`demonstrably done`",
@@ -158,7 +158,7 @@ def test_entry_c_runs_only_the_runner():
     for body in skill():
         assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py run" in body
         assert "git worktree add --detach" in body
-        assert "config.py forge.default_branch" in _entry_c(body)
+        assert "lighthouse config forge.default_branch" in _entry_c(body)
 
 
 def test_entry_c_reopens_fail_closed():
@@ -168,7 +168,7 @@ def test_entry_c_reopens_fail_closed():
         assert "issue reopened, board not updated" in body
         assert "heading:evidence_closes_without_block" in body
         assert "Evidence outside the allowlist" in body
-        assert "headings.py evidence_holds" in body
+        assert "lighthouse headings evidence_holds" in body
 
 
 def test_close_issue_board_skip():

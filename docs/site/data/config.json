@@ -24,6 +24,7 @@
                 "en"
               ],
               "readers": [
+                "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/judgment.go",
@@ -683,8 +684,7 @@
               ],
               "readers": [
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/hooks/usage-gate/controller.py",
-                "pack/core/lib/usage_guard.py"
+                "internal/usageguard/context.go"
               ]
             },
             {
@@ -698,8 +698,8 @@
                 false
               ],
               "readers": [
-                "pack/core/hooks/usage-gate/resume.py",
-                "pack/core/lib/usage_guard.py"
+                "internal/usageguard/context.go",
+                "internal/usageguard/speak.go"
               ]
             }
           ]

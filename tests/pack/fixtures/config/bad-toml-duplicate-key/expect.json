@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "forge.repo"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr_prefix": "config: lighthouse.toml: unreadable or not valid TOML: "
+ }
+]

@@ -21,6 +21,9 @@ if str(_SCRIPTS) not in sys.path:
 
 from quality import prcov_issues, ratchet
 
+# ratchet reads lighthouse.toml through the binary of this checkout (#274).
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
+
 NO_BOARD_TOML = BOARD_TOML[: BOARD_TOML.index("[forge.board]")]
 
 

@@ -22,6 +22,7 @@ from tests.pack._testkit import (
     guard_env,
     init_repo,
     install_core,
+    shim_dir,
 )
 
 HOOKS_JSON = CORE / "hooks" / "hooks.json"
@@ -41,6 +42,12 @@ def _registrations() -> list[tuple[str, str, str]]:
 REGISTRATIONS = _registrations()
 
 
+def _name(script: str) -> str:
+    """The hook a registration runs: `<name>` for `run.sh <name> [stand]`, else the script."""
+    words = script.split()
+    return words[1] if words[0] == "run.sh" else words[0]
+
+
 def _edit_payload(event: str, path: Path, cwd: Path) -> dict:
     return {
         "hook_event_name": event,
@@ -52,14 +59,14 @@ def _edit_payload(event: str, path: Path, cwd: Path) -> dict:
 
 def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
     """The payload that really touches this hook, up to and including its config read."""
-    name = script.split()[0]
+    name = _name(script)
     if name == "worktree-check.sh":
         # A write in the main checkout on main: only there does the guard read
         # forge.default_branch, and warn (without blocking).
         doc = project / "doc.md"
         doc.write_text("# doc\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
-    if name == "md-link-check.sh":
+    if name == "md-link-check":
         doc = worktree / "doc.md"
         doc.write_text("# doc\n\nSee [the readme](README.md).\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
@@ -68,7 +75,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         code = worktree / "mod.py"
         code.write_text("x = 1\n", encoding="utf-8")
         return _edit_payload(event, code, worktree)
-    if name == "usage-gate.sh":
+    if name == "usage-gate":
         return {
             "hook_event_name": event,
             "session_id": "s1",
@@ -76,7 +83,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
             "tool_name": "Bash",
             "tool_input": {"command": "ls"},
         }
-    if name == "permission-check.sh":
+    if name == "permission-check":
         return {
             "hook_event_name": event,
             "session_id": "s1",
@@ -125,6 +132,10 @@ def test_hooks_with_minimal_config(
         XDG_RUNTIME_DIR=str(tmp_path),
     )
 
+    # `run.sh` and the gates of `bash-write-check` need `lighthouse`: the shim of `_testkit`
+    # runs the binary of this checkout and never starts a real `lighthouse usage refresh`.
+    env["PATH"] = f"{shim_dir()}{os.pathsep}{env['PATH']}"
+
     result = subprocess.run(
         [str(root / ".claude" / "hooks" / "lighthouse" / name), *args],
         input=json.dumps(payload),
@@ -141,16 +152,16 @@ def test_hooks_with_minimal_config(
 
 
 def test_every_registration_has_a_payload() -> None:
-    assert {s.split()[0] for _, _, s in REGISTRATIONS} == {
+    assert {_name(s) for _, _, s in REGISTRATIONS} == {
         "main-commit-gate.sh",
         "commit-test-gate.sh",
         "bash-write-check.sh",
         "pr-create-gate.sh",
         "worktree-check.sh",
-        "md-link-check.sh",
+        "md-link-check",
         "code-language-check.sh",
-        "usage-gate.sh",
-        "permission-check.sh",
+        "usage-gate",
+        "permission-check",
     }
 
 

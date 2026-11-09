@@ -35,7 +35,8 @@ describe('Header', () => {
 
     renderHeader()
 
-    expect(await screen.findByText('lighthouse 1.2.3')).toBeTruthy()
+    expect(await screen.findByText('1.2.3')).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('lighthouse')
     expect(fetchMock).toHaveBeenCalledWith('/api/health', expect.anything())
   })
 
@@ -61,7 +62,7 @@ describe('Header', () => {
     renderHeader()
 
     expect((await screen.findByRole('alert')).textContent).toContain('API unreachable')
-    expect(screen.queryByText(/lighthouse undefined/)).toBeNull()
+    expect(screen.queryByText(/undefined/)).toBeNull()
   })
 
   it('shows Refreshing… and is disabled until the refetch settles', async () => {
@@ -69,7 +70,8 @@ describe('Header', () => {
     let calls = 0
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockImplementation(() => {
+      vi.fn().mockImplementation((url: string) => {
+        if (url !== '/api/health') return Promise.resolve(json('{"runs":[],"deferred":[]}'))
         calls++
         if (calls === 1) return Promise.resolve(json('{"version":"1.2.3"}'))
         return new Promise<Response>((resolve) => {
@@ -78,7 +80,7 @@ describe('Header', () => {
       }),
     )
     renderHeader()
-    await screen.findByText('lighthouse 1.2.3')
+    await screen.findByText('1.2.3')
 
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
 
@@ -100,7 +102,7 @@ describe('Header', () => {
       queryKey: queryKeys.questions,
       queryFn: ({ signal }) => fetchQuestions(signal),
     })
-    await screen.findByText('lighthouse 1.2.3')
+    await screen.findByText('1.2.3')
     const count = (path: string) => fetchMock.mock.calls.filter((c) => c[0] === path).length
     expect(count('/api/questions')).toBe(1)
     expect(count('/api/health')).toBe(1)
@@ -109,5 +111,26 @@ describe('Header', () => {
 
     await vi.waitFor(() => expect(count('/api/questions')).toBe(2))
     await vi.waitFor(() => expect(count('/api/health')).toBe(2))
+  })
+
+  it('shows no tick, even with runs', async () => {
+    const ago = (ms: number) => new Date(Date.now() - ms - 30_000).toISOString()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(
+          url === '/api/runs'
+            ? json(JSON.stringify({ runs: [{ repo: 'o/a', issue: 3, at: ago(2 * 60_000) }], deferred: [] }))
+            : json('{"version":"1.2.3"}'),
+        ),
+      ),
+    )
+
+    const client = renderHeader()
+    // The header no longer reads runs; seed them so the cache holds runs anyway.
+    client.setQueryData(queryKeys.runs, { runs: [{ repo: 'o/a', issue: 3, at: ago(2 * 60_000) }], deferred: [] })
+
+    await screen.findByText('1.2.3')
+    expect(screen.queryByText(/tick/)).toBeNull()
   })
 })

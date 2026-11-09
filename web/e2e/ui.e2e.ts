@@ -17,6 +17,8 @@ const NOT_CONFIGURED = 'Forge not configured — set GH_TOKEN, and --repo or [di
 test('full: both lists and the usage windows', async ({ page, github, lighthouse }) => {
   github.set({ issues: FULL })
   await page.goto(await lighthouse.start({ token: true, cache: 'fresh' }))
+  await expect(page).toHaveTitle('lighthouse · Controller')
+  await expect(page.getByRole('region', { name: 'Controller' })).toBeVisible()
 
   const questions = page.getByRole('region', { name: 'Open questions' })
   const first = questions.getByRole('listitem').filter({ hasText: 'test/repo#11' })

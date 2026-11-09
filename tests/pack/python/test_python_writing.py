@@ -72,9 +72,9 @@ def test_kpi_rows_all_carry_a_command():
 def test_kpi_commands_from_config():
     for path in VARIANTS:
         text = path.read_text(encoding="utf-8")
-        assert "config.py test_gate.command" in text, path
-        assert "config.py python.source_dirs" in text, path
-        assert "config.py python.lint_dirs" in text, path
+        assert "lighthouse config test_gate.command" in text, path
+        assert "lighthouse config python.source_dirs" in text, path
+        assert "lighthouse config python.lint_dirs" in text, path
         assert "src/" not in text, path
         assert "tests/unit" not in text, path
 
@@ -87,9 +87,9 @@ def test_selector_unchecked_exit_code():
         assert "list 3 in `[test_gate] unchecked_exit_codes`" in text, path
 
 def test_config_keys_known():
-    """Every `config.py <key>` the skill runs is a key the config reader knows."""
+    """Every `lighthouse config <key>` the skill runs is a key the config reader knows."""
     for path in VARIANTS:
-        keys = re.findall(r"config\.py ([a-z_][a-z_.]*)", path.read_text(encoding="utf-8"))
+        keys = re.findall(r"lighthouse config ([a-z_][a-z_.]*)", path.read_text(encoding="utf-8"))
         assert keys, path
         for key in keys:
             assert config.is_known_key(key), f"{path}: unknown config key {key}"

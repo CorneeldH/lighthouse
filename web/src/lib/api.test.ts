@@ -56,7 +56,12 @@ describe('fetchQuestions', () => {
 describe('fetchRuns', () => {
   it('returns empty lists when the API sends null', async () => {
     stubResponse('{"runs":null,"deferred":null}', 200, 'application/json')
-    expect(await fetchRuns()).toEqual({ runs: [], deferred: [] })
+    expect(await fetchRuns()).toEqual({ runs: [], deferred: [], workspaceUrl: '', night: '' })
+  })
+
+  it('passes the workspace url and the night window on', async () => {
+    stubResponse('{"runs":[],"deferred":[],"workspace_url":"http://h","night":"21:00-08:00"}', 200, 'application/json')
+    expect(await fetchRuns()).toMatchObject({ workspaceUrl: 'http://h', night: '21:00-08:00' })
   })
 })
 

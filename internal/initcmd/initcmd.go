@@ -56,7 +56,7 @@ type Options struct {
 	Version             string                                                    // "" means version.String()
 	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
 	Deps                deps.Checker                                              // nil fields mean deps.Default()
-	Lookup              packs.Lookup                                              // config values for workflow placeholders; nil runs the package's config reader
+	Lookup              packs.Lookup                                              // config values for workflow placeholders; nil reads the proposed lighthouse.toml with internal/config
 	CountWords          func([]byte) (int, error)                                 // nil means wordcount.Count
 	HostTOML            string                                                    // "" means $LIGHTHOUSE_HOST_TOML, else ~/.config/lighthouse/host.toml
 	Hostname            func() (string, error)                                    // nil means os.Hostname
@@ -165,9 +165,7 @@ func execute(o Options) error {
 	}
 	lookup := o.Lookup
 	if lookup == nil {
-		pl := &pythonLookup{packs: o.Packs, root: root, tables: tables}
-		defer pl.close()
-		lookup = pl.lookup
+		lookup = (&goLookup{root: root, tables: tables}).lookup
 	}
 	desired = fillWorkflows(o.Err, desired, lookup, func(rel string) ([]byte, bool) {
 		if _, listed := m.Lookup(packs.Key{Kind: packs.KindFile, Path: rel}); !listed {

@@ -41,11 +41,11 @@ func Dirty(ctx context.Context, run Runner, path string) (bool, error) {
 // Without this exception every finished workspace would stay.
 func Unpushed(ctx context.Context, run Runner, path, mergedHead string) (bool, error) {
 	if mergedHead != "" {
-		head, err := runGit(ctx, run, "-C", path, "rev-parse", "HEAD")
+		merged, err := inMergedPR(ctx, run, path, mergedHead)
 		if err != nil {
 			return false, err
 		}
-		if strings.TrimSpace(head) == mergedHead {
+		if merged {
 			return false, nil
 		}
 	}
@@ -58,4 +58,39 @@ func Unpushed(ctx context.Context, run Runner, path, mergedHead string) (bool, e
 		return false, fmt.Errorf("git rev-list: unexpected output %q", out)
 	}
 	return n > 0, nil
+}
+
+// inMergedPR reports whether HEAD is mergedHead or one of its ancestors. Those commits are in
+// the merged PR, also when the PR got commits from elsewhere after the last one of this
+// workspace. A mergedHead this clone lacks is fetched first: GitHub serves it through
+// refs/pull/N/head. When that fails the answer is an error, never a guess.
+func inMergedPR(ctx context.Context, run Runner, path, mergedHead string) (bool, error) {
+	head, err := runGit(ctx, run, "-C", path, "rev-parse", "HEAD")
+	if err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(head) == mergedHead {
+		return true, nil
+	}
+	_, code, err := run(ctx, gitTimeout, "git", "-C", path, "cat-file", "-e", mergedHead+"^{commit}")
+	if err != nil {
+		return false, fmt.Errorf("git cat-file: %w", err)
+	}
+	if code != 0 {
+		if _, err := runGit(ctx, run, "-C", path, "fetch", "--no-tags", "origin", mergedHead); err != nil {
+			return false, fmt.Errorf("merged PR head %s: %w", mergedHead, err)
+		}
+	}
+	_, code, err = run(ctx, gitTimeout, "git", "-C", path, "merge-base", "--is-ancestor", "HEAD", mergedHead)
+	if err != nil {
+		return false, fmt.Errorf("git merge-base: %w", err)
+	}
+	switch code {
+	case 0:
+		return true, nil
+	case 1:
+		return false, nil
+	default:
+		return false, fmt.Errorf("git merge-base --is-ancestor: exit code %d", code)
+	}
 }

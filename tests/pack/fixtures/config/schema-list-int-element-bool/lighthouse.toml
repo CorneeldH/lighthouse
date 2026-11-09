@@ -1,0 +1,2 @@
+[test_gate]
+unchecked_exit_codes = [1, true]

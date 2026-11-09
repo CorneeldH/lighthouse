@@ -34,7 +34,7 @@ One Bash call, read-only, `dangerouslyDisableSandbox: true`. Replace `<nr>`.
 ```bash
 set -uo pipefail
 N=<nr>
-R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) || exit 2
+R=$(lighthouse config forge.repo) || exit 2
 
 PR=$(gh pr view "$N" --repo "$R" --json number,title,state,isDraft,mergeable,mergeStateStatus,headRefName,url 2>&1)
 RC=$?
@@ -137,7 +137,7 @@ gate failed.
 
 | Red check | What fails | Reproduce locally |
 |---|---|---|
-| Tests | the test command of the repo | `python3 .lighthouse/lib/lighthouse_lib/config.py test_gate.command` prints it; run it with `bash -c` (rc 1: no test command configured, read it from the workflow) |
+| Tests | the test command of the repo | `lighthouse config test_gate.command` prints it; run it with `bash -c` (rc 1: no test command configured, read it from the workflow) |
 | Quality ratchet (ruff) | a ruff counter in the baseline went up; pack/python, only if present | `test -e .lighthouse/scripts/quality/ratchet.py && uv run python .lighthouse/scripts/quality/ratchet.py ruff` |
 | Expo lockfiles | patch drift in the Expo lockfiles; pack/expo, only if present | `/lighthouse-refresh-expo-lockfiles` |
 | Any other step | lint, type check, scan, licence | the command of that step in `.github/workflows/`; a step that cannot run locally (a signature) the contributor fixes themselves |
@@ -156,7 +156,7 @@ report with which extras you measure.
 
 If a host-wide OOM kills a self-hosted runner, the job fails without a single test failing.
 Recognition: in
-`R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/actions/runs/<id>/jobs"` the
+`R=$(lighthouse config forge.repo) && gh api "repos/$R/actions/runs/<id>/jobs"` the
 test step is at `"completed_at": null` while the job is `failure`, and the log is empty or 404s.
 
 Linux only (systemd journal). On macOS: `log show --last 1h --predicate 'eventMessage CONTAINS "memorystatus"'`;
@@ -206,7 +206,7 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    the diagnosis shows:
 
    ```bash
-   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh api "repos/$R/issues/<nr>/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' | tail -1 | jq -r . > <scratch>/roborev-ci.md
+   R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' | tail -1 | jq -r . > <scratch>/roborev-ci.md
    python3 .lighthouse/scripts/roborev_gate.py classify <scratch>/roborev-ci.md
    ```
 
@@ -222,7 +222,7 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    ```bash
    python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
    python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
-   R=$(python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo) && gh pr comment <nr> --repo "$R" --body-file <scratch>/comment.md
+   R=$(lighthouse config forge.repo) && gh pr comment <nr> --repo "$R" --body-file <scratch>/comment.md
    ```
 
    `record` exits 2 when the decisions do not match the findings one to one; the message says
@@ -274,6 +274,6 @@ Row 4 sees only a `Skill` call; a review done by hand in the same turn does not 
 - **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
   only on the branch must carry the full absolute worktree path: the IDE resolves chat links
   against the main checkout. In a `.md` file, relative instead;
-  `.claude/hooks/lighthouse/md-link-check.sh` blocks an absolute path there.
+  `.claude/hooks/lighthouse/run.sh md-link-check` blocks an absolute path there.
 - **In auto mode the permission classifier refuses `git worktree unlock` and `git worktree remove`
   on a locked worktree.** Do not clean up then; report it.

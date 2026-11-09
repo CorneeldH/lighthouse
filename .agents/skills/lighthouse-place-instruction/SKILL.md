@@ -201,7 +201,7 @@ places, the provenance gate, the pairing rule, the name contract and the fields.
 Demands that come on top:
 
 - **The project's skill prefix**, always:
-  `python3 .lighthouse/lib/lighthouse_lib/config.py project.skill_prefix` (rc 1: no prefix set —
+  `lighthouse config project.skill_prefix` (rc 1: no prefix set —
   choose one and set it in `[project]`). Personal skills in `~/.claude/skills/` shadow project
   skills of the same name — the reverse of `settings.json` — and that happens silently (check 5).
   Exception: a vendored `origin: external` skill, because renaming breaks the update route and
@@ -244,7 +244,7 @@ Plus the project's own tests on its instruction layer, if it has any.
 |---|---:|---|
 | Rules without `paths:` | 0 | `.lighthouse/scripts/check-instructions.sh` (check 7) |
 | Skills with `binding: hard` without a registered hook | 0 | `.lighthouse/scripts/check-instructions.sh` (check 8) |
-| Words in `CLAUDE.md` + `AGENTS.md` | ≤ the ceiling (`python3 .lighthouse/lib/lighthouse_lib/config.py project.instructions_word_ceiling`, default 3000) | `.lighthouse/scripts/check-instructions.sh` (check 10); `lighthouse init` and `init --upgrade` report the budget before writing |
+| Words in `CLAUDE.md` + `AGENTS.md` | ≤ the ceiling (`lighthouse config project.instructions_word_ceiling`, default 3000) | `.lighthouse/scripts/check-instructions.sh` (check 10); `lighthouse init` and `init --upgrade` report the budget before writing |
 | Ambient skill surface (characters name+description) | falling | `python3 scripts/measure_skill_surface.py --ambient .claude/skills` (only if present) |
 | Mirror break `.claude/skills` ↔ `.agents/skills` | 0 | `.lighthouse/scripts/check-instructions.sh` (check 3) |
 | Personal skills that shadow a project skill | 0 | `.lighthouse/scripts/check-instructions.sh` (check 5) |

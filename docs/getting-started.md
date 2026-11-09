@@ -182,9 +182,10 @@ command = "<your test command>"
 `status_field_id`, and `status_options` with an option ID for each of `To do`, `In progress`,
 `Done` and `On hold`.
 
-Every other key, with its type and default, is in `SCHEMA` and `DEFAULTS` of
-`.lighthouse/lib/lighthouse_lib/config.py`. A key with a wrong type or value is an error that
-names the file and the key.
+Every other key, with its type and default, is in `schema` and `defaults` of
+[`internal/config/config.go`](../internal/config/config.go). A key with a wrong type or value is
+an error that names the file and the key. `lighthouse config <key>` prints the value a skill
+reads, its default included.
 
 ## Your first issue
 

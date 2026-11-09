@@ -68,6 +68,7 @@
       },
       {
         "name": "md-link-check",
+        "source": "internal/hooks/mdlinkcheck.go",
         "events": [
           "PostToolUse"
         ],
@@ -82,6 +83,7 @@
       },
       {
         "name": "usage-gate",
+        "source": "internal/hooks/usagegate.go",
         "events": [
           "PostToolUse",
           "Stop",
@@ -92,6 +94,7 @@
       },
       {
         "name": "permission-check",
+        "source": "internal/hooks/permissioncheck.go",
         "events": [
           "Notification"
         ],

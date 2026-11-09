@@ -4,10 +4,12 @@ Without the variable every test runs: locally and in the test gate nothing chang
 """
 
 import os
+from pathlib import Path
 
 import pytest
 
 from tests._shard import ENV, in_shard, parse_shard
+from tests.pack._testkit import lighthouse_dir
 
 SHARD = pytest.StashKey[tuple[int, int] | None]()
 
@@ -39,3 +41,16 @@ def pytest_collection_modifyitems(config, items):
     items[:] = kept
     if dropped:
         config.hook.pytest_deselected(items=dropped)
+
+
+@pytest.fixture(scope="session")
+def _lighthouse_build_dir() -> Path:
+    """The binary is built once per process by `lighthouse_dir`; the fixture shares that build."""
+    return lighthouse_dir()
+
+
+@pytest.fixture
+def lighthouse_bin(_lighthouse_build_dir, monkeypatch) -> Path:
+    """The binary of this checkout, with its directory first on the PATH."""
+    monkeypatch.setenv("PATH", f"{_lighthouse_build_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    return _lighthouse_build_dir / "lighthouse"

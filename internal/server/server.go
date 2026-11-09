@@ -30,6 +30,7 @@ type Deps struct {
 	Forge     []overview.RepoSource // the repos of the forge endpoints, in the order shown
 	Leftovers func(context.Context) ([]workplace.Leftover, error)
 	Runs      func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)
+	RunsMeta  RunsMeta
 }
 
 // New returns the handler: the JSON API under /api/ and site as SPA elsewhere, behind the Host check.
@@ -55,7 +56,7 @@ func New(site fs.FS, d Deps) http.Handler {
 	registerForge(api, d.Forge)
 	registerLatestComment(api, d.Forge)
 	registerCleanup(api, d.Leftovers)
-	registerRuns(api, d.Runs)
+	registerRuns(api, d.Runs, d.RunsMeta)
 
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spa(site))

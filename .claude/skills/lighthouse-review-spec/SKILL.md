@@ -38,7 +38,7 @@ security among them. The verification rounds run on Opus, so that Codex is spare
 
 ## When
 
-- Spec written (in `python3 .lighthouse/lib/lighthouse_lib/config.py paths.specs`), before
+- Spec written (in `lighthouse config paths.specs`), before
   `superpowers:writing-plans`.
 - Also fine: a spec that comes from someone else and that you have to build on.
 
@@ -183,7 +183,7 @@ or "in the middle of the round (exit 5)". (`.err` shows only
 ### 1. Pick the spec
 
 Argument given → that path. No argument → the newest file in the spec directory
-(`python3 .lighthouse/lib/lighthouse_lib/config.py paths.specs`), and confirm which one you
+(`lighthouse config paths.specs`), and confirm which one you
 take.
 
 Then start an attempt (`dangerouslyDisableSandbox: true`, the script writes outside the working

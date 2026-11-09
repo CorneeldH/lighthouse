@@ -1,0 +1,3 @@
+[forge]
+kind = "gitlab"
+repo = "group/name/"

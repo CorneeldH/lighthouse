@@ -27,10 +27,10 @@ CORE = ROOT / "pack" / "core"
 
 def test_core_block_word_budget():
     """The core block lands in every repo's AGENTS.md, next to the repo's own rules: at most
-    290 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
+    303 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
     notation, the rule for the language of code, and one line per skill."""
     text = (CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
-    assert len(text.split()) <= 290, len(text.split())
+    assert len(text.split()) <= 303, len(text.split())
     for token in (
         "main-commit-gate",
         ".claude/allow-main",
@@ -52,9 +52,19 @@ def test_core_block_says_how_to_read_a_heading():
     """Design choice 19: the block explains `heading:<key>` once — the command that prints the
     heading, and that reading accepts every language variant."""
     text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
-    assert "python3 .lighthouse/lib/lighthouse_lib/headings.py <key>" in text
+    assert "lighthouse headings <key>" in text
     assert "never the literal `heading:<key>`" in text
     assert "reading accepts every language variant" in text
+
+
+def test_core_block_says_an_old_binary_is_no_unset_key():
+    """#274: an older `lighthouse` without `config` exits 1 like an unset key does; the block
+    tells the agent to tell the two apart by `unknown command` and to stop."""
+    text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
+    assert (
+        "`lighthouse config` exits 1 with `unknown command` on stderr: the binary is too old. "
+        'Stop and say so; that is not "not set".'
+    ) in text
 
 
 def test_core_block_says_finish_what_is_authorised():

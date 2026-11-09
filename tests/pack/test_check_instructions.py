@@ -1303,6 +1303,24 @@ def test_hook_names_ok(tmp_path):
     assert "every lighthouse hook is named" in result.stdout
 
 
+def test_hook_name_of_run_sh_is_its_argument(tmp_path):
+    """`run.sh <name>` runs `lighthouse hook <name>`: the name is the argument, not `run`."""
+    _lighthouse_settings(
+        tmp_path,
+        {"run.sh md-link-check": ["PostToolUse"], "run.sh usage-gate": ["Stop", "PostToolUse"]},
+    )
+    result = _run(tmp_path)
+    assert result.returncode == 0, result.stdout
+    assert "every lighthouse hook is named" in result.stdout
+
+
+def test_run_sh_gate_only_after_the_fact_fails(tmp_path):
+    _lighthouse_settings(tmp_path, {"run.sh foo-gate": ["PostToolUse"]})
+    result = _run(tmp_path)
+    assert result.returncode == 1
+    assert "'foo-gate' is a gate but" in result.stdout
+
+
 def test_hook_name_without_suffix_fails(tmp_path):
     _lighthouse_settings(tmp_path, {"worktree-guard.sh": ["PreToolUse"]})
     result = _run(tmp_path)

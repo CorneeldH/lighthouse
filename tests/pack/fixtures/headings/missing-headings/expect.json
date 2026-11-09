@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "acceptance_criteria"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "headings: headings.toml: file is missing\n"
+ }
+]
