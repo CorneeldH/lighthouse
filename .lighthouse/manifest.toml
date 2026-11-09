@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "d784f0b22f418d70c5966f201fa12f5b3d28685c8c40b679fe05178c3964eb7a"
+sha256 = "21dc9744f22fb62c1e44748dfeddcfb15bab17d2754074ef7ef4401887b5dc37"
 
 [[unit]]
 kind = "file"
@@ -141,14 +141,14 @@ kind = "file"
 path = ".agents/skills/lighthouse-route-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "4fef40a6eee42678b1bd8dd204fddf218e6f0ea9665a855f277e0142453528f7"
+sha256 = "8f3128e99c52c051cfc22f320b7cef3e1cb1bbfdd97bb030dcd7000e0d9e8a30"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-start-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "e250b2d5e4bad910fe6433db79b84b74f7bde3d0de6e40d0a08fc4fd389a2fd1"
+sha256 = "2ea9adc9c9a5acb45c2e42af3d9f9daffc76cf6cc7da4df9caab00373f901e09"
 
 [[unit]]
 kind = "file"
@@ -436,7 +436,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "5ad5a61458e49defae227c3848eb21ca3c854bdb16a15233fe52b69e6331151d"
+sha256 = "ae55d2ca9c893de5b89200af4e6cc889969f44cda229cb55643be2f133fb6f98"
 
 [[unit]]
 kind = "file"
@@ -555,14 +555,14 @@ kind = "file"
 path = ".claude/skills/lighthouse-route-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "4fef40a6eee42678b1bd8dd204fddf218e6f0ea9665a855f277e0142453528f7"
+sha256 = "8f3128e99c52c051cfc22f320b7cef3e1cb1bbfdd97bb030dcd7000e0d9e8a30"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-start-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "ca29f0eb42cf16597dfece488345719cda496ddeffb8367deb8806dcb8769c63"
+sha256 = "6616e4ef1151a5d76de7f4e74eff12bf4bebfdf2057aa08edd87e4dbe2f14836"
 
 [[unit]]
 kind = "file"
@@ -815,20 +815,6 @@ path = ".lighthouse/scripts/gate_node.py"
 package = "node"
 version = "dev"
 sha256 = "b333b7e2d9feca85cc3859e7fadd3df1549d741c76c8da4aa35ec59aec46faac"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/measure_fix_pr_kpi.py"
-package = "core"
-version = "dev"
-sha256 = "ca1fbe02169938a4348085d8681e98865cbdfe2f0a423b1effea7c8ec16fe2d8"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/measure_start_issue_kpi.py"
-package = "core"
-version = "dev"
-sha256 = "f065b5f10e5d13691c1a1458ddf3d37a475edbd73f1baf62f60052ec8ed84f48"
 
 [[unit]]
 kind = "file"

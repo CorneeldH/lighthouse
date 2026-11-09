@@ -250,12 +250,12 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 
 | Metric | Target | Measurement |
 |---|---:|---|
-| Tool calls between fix prompt and the first mutating call | ≤ 2 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py leadin` |
-| Read-only `gh`/`git` diagnosis calls before that mutation | ≤ 1 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py diagnose` |
-| Turns in which this skill loaded without a fix request in the prompt | 0 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py mistrigger` |
-| Turns in which the skill ran on into `lighthouse-close-issue` or `caveman-review` | 0 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py scope` |
+| Tool calls between fix prompt and the first mutating call | ≤ 2 | `lighthouse measure-fix-pr-kpi leadin` |
+| Read-only `gh`/`git` diagnosis calls before that mutation | ≤ 1 | `lighthouse measure-fix-pr-kpi diagnose` |
+| Turns in which this skill loaded without a fix request in the prompt | 0 | `lighthouse measure-fix-pr-kpi mistrigger` |
+| Turns in which the skill ran on into `lighthouse-close-issue` or `caveman-review` | 0 | `lighthouse measure-fix-pr-kpi scope` |
 
-The script is the source of the numbers, not this text.
+The command is the source of the numbers, not this text.
 
 Row 3 is the bill for the ambient choice. Without that row "a sharp negative boundary" is a claim;
 with that row it is a number that rises at the next measurement or does not.

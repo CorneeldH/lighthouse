@@ -239,7 +239,7 @@ func optFloat(key string, f *float64) (string, error) {
 	if *f == math.Trunc(*f) {
 		return new(big.Float).SetFloat64(*f).Text('f', 0), nil
 	}
-	return formatFloat(*f), nil
+	return FormatFloat(*f), nil
 }
 
 // HostCheck reports whether this machine is the host that host.toml names: rc 0 and
