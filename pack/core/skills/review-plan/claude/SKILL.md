@@ -80,7 +80,8 @@ search for problems again; it only verifies whether the fixes of the previous ro
 
 So Codex runs only in round 1, and there always next to Opus: the two reviewers complement each
 other in round 1, and the verification rounds on Opus spare the Codex quota. Outside Claude Code
-there is no Opus subagent; there `lighthouse review-run --kind plan --verify <plan> <n> <OUT> <PRIOR> --context <spec path>`
+there is no Opus subagent; there `lighthouse review-run --kind plan --verify <plan> <n> <OUT> <PRIOR> --context <spec path>
+--context <ATTEMPT>/round-<n>.fixes.diff`
 (the same runner) verifies through Codex.
 
 The review prompt (round 1) sets seven categories, each a `cat`:

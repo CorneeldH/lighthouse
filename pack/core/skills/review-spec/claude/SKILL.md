@@ -248,7 +248,7 @@ sorting. Decisions refer only to that ID (step 3); a verification round also car
 Codex runs through `lighthouse review-run --kind spec`: one fixed command shape that handles the
 prompt substitution, the clean `CODEX_HOME`, `--sandbox read-only` and `--output-schema`. The raw
 review stays in `OUT`; read it only when a finding is unclear. `lighthouse review-run --kind spec
---verify <spec> <n> <OUT> <PRIOR> --context <diff>` runs it with the verification prompt and the verification schema; only the `.agents`
+--verify <spec> <n> <OUT> <PRIOR> --context <ATTEMPT>/round-<n>.fixes.diff` runs it with the verification prompt and the verification schema; only the `.agents`
 variant uses it, where no Opus subagent exists.
 
 **The allowlist, or the background round stalls on a prompt.** Codex cannot run inside the
@@ -504,7 +504,7 @@ jq -r '.verified // empty | "VERIFIED: " + (if length == 0 then "none" else join
 - Plans: `/lighthouse-review-plan`. Same runner, with its own prompt and schema
   through `--kind plan` (or `--prompt`/`--schema`) and the spec(s) through `--context` (see
   `lighthouse review-run --help`).
-- Verification: `lighthouse review-run --kind spec --verify <spec> <n> <OUT> <PRIOR>` is the same runner, with
+- Verification: `lighthouse review-run --kind spec --verify <spec> <n> <OUT> <PRIOR> --context <ATTEMPT>/round-<n>.fixes.diff` is the same runner, with
   `verifier-prompt.md` and `verification.schema.json` instead of the round-1 prompt and schema.
   Only the `.agents` variant uses it; in Claude Code Opus verifies (step 2).
 - Tune the prompt in `reviewer-prompt.md` — this SKILL.md never reads the content, only the
