@@ -31,6 +31,7 @@ row() {
 # hook <event> <registration substring> <bash command in the payload>: runs the one registered
 # command through bash with CLAUDE_PROJECT_DIR set, the directory of BIN first on the PATH and the
 # payload on stdin; sets RC, OUT, ERR.
+# The payload cwd is $REPO, or $HOOK_CWD when set.
 hook() {
   local cmd payload
   OUT="$WORK/out.txt"
@@ -45,7 +46,7 @@ hook() {
     RC=127
     return
   fi
-  payload=$(jq -cn --arg ev "$1" --arg cwd "$REPO" --arg c "$3" \
+  payload=$(jq -cn --arg ev "$1" --arg cwd "${HOOK_CWD:-$REPO}" --arg c "$3" \
     '{session_id: "measure", hook_event_name: $ev, tool_name: "Bash", cwd: $cwd, tool_input: {command: $c}, tool_response: {stdout: "", stderr: "", interrupted: false}}')
   (cd "$REPO" && printf '%s' "$payload" | PATH="$BIN_DIR:$PATH" CLAUDE_PROJECT_DIR="$REPO" \
     LIGHTHOUSE_HOST_TOML="$WORK/host.toml" XDG_RUNTIME_DIR="$WORK" \
@@ -95,6 +96,13 @@ git -C "$REPO" commit -q -m "lighthouse init" >/dev/null 2>&1
 
 hook PreToolUse "run.sh main-commit-gate" "git commit -m x"
 row "2. main-commit-gate, commit on \`main\`" "rc 2, blocked" "$RC" "$(mark ok 2 'Main-commit gate: blocked')" "$ERR"
+
+# Claude Code on Windows sends the cwd as `C:\...`: a directory the command creates below it is
+# still in the repo, so a commit there is on main too.
+HOOK_CWD=$(cygpath -w "$REPO" 2>/dev/null || printf '%s' "$REPO")
+hook PreToolUse "run.sh main-commit-gate" "mkdir new && cd new && git commit -m x"
+HOOK_CWD=
+row "2b. main-commit-gate, commit in a fresh dir, Windows cwd" "rc 2, blocked" "$RC" "$(mark ok 2 'Main-commit gate: blocked')" "$ERR"
 
 hook PreToolUse "commit-test-gate.sh pre" "git commit -m x"
 row "3. commit-test-gate pre, on \`main\`" "rc 0, \`nothing was tested\`" "$RC" "$(mark ok 0 'nothing was tested')" "$ERR"

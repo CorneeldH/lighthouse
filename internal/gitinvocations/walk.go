@@ -3,6 +3,7 @@ package gitinvocations
 import (
 	"os"
 	"os/user"
+	"path"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -43,20 +44,30 @@ var shellWrappers = set("bash", "sh", "zsh", "dash", "ksh")
 var skipWords = set("{", "}", "!", "if", "then", "else", "elif", "fi", "while", "until", "do",
 	"done", "for", "case", "esac")
 
-// pyNormpath is Python's os.path.normpath: filepath.Clean, but a leading `//` (exactly two
-// slashes) is kept, as POSIX allows.
-func pyNormpath(path string) string {
-	cleaned := filepath.Clean(path)
-	if strings.HasPrefix(path, "//") && !strings.HasPrefix(path, "///") {
+// The path helpers below work on `/` only, as the shell command does. On Windows a path is
+// turned to `/` first (filepath.ToSlash); filepath.Clean would turn it back to `\`, after which
+// pyDirname finds no parent and a fresh directory falls outside every repo.
+
+// pyNormpath is Python's os.path.normpath: path.Clean on the `/` form, but a leading `//`
+// (exactly two slashes) is kept, as POSIX allows.
+func pyNormpath(p string) string {
+	p = filepath.ToSlash(p)
+	cleaned := path.Clean(p)
+	if strings.HasPrefix(p, "//") && !strings.HasPrefix(p, "///") {
 		return "/" + cleaned
 	}
 	return cleaned
 }
 
+// isAbs is an absolute path: `/…`, or on Windows also a path with a drive (`C:/…`, `C:\…`).
+func isAbs(p string) bool {
+	return strings.HasPrefix(p, "/") || filepath.IsAbs(p)
+}
+
 // pyJoin is Python's os.path.join for two parts.
 func pyJoin(a, b string) string {
 	switch {
-	case strings.HasPrefix(b, "/"):
+	case isAbs(b):
 		return b
 	case a == "" || strings.HasSuffix(a, "/"):
 		return a + b
@@ -287,6 +298,7 @@ type dirState struct {
 }
 
 func newDirs(cwd string) *dirState {
+	cwd = filepath.ToSlash(cwd) // a no-op outside Windows
 	return &dirState{here: &cwd, raw: cwd}
 }
 
@@ -343,7 +355,7 @@ func (d *dirState) cdTo(w string, literal, tilde bool) {
 		return
 	}
 	switch {
-	case strings.HasPrefix(target, "/"):
+	case isAbs(target):
 		target = pyNormpath(target)
 	case d.here != nil:
 		target = pyNormpath(pyJoin(*d.here, target))

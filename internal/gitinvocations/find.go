@@ -1,9 +1,6 @@
 package gitinvocations
 
-import (
-	"path/filepath"
-	"strings"
-)
+import "strings"
 
 // Options tunes Find. An empty DefaultBranch means "main". With ReportNewDirs a `commit` in a
 // directory that does not exist yet is reported with NewDir as its target, instead of the
@@ -94,7 +91,7 @@ func GitTarget(s Step) (target string, known bool, raw string, fromNewDir bool, 
 		switch {
 		case !ok:
 			target, known, raw, fromNewDir = "", false, value, false
-		case filepath.IsAbs(resolved):
+		case isAbs(resolved):
 			target, known, raw = pyNormpath(resolved), true, value
 		case known:
 			target = pyNormpath(pyJoin(target, resolved))
