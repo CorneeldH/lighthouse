@@ -74,7 +74,7 @@ func DefaultDeps() Deps {
 	return Deps{HostRefusal: HostRefusal, CodexVersion: CodexVersion, Now: time.Now}
 }
 
-// HostRefusal is nil on the host from host.toml, otherwise the stderr line that refuses the
+// HostRefusal is nil on the host whose host.tailscale_ip is on this machine (host.toml), otherwise the stderr line that refuses the
 // measurement.
 func HostRefusal(kind string) *string { return hostRefusalWith(kind, config.Recognize) }
 
@@ -780,7 +780,7 @@ func BuildRecord(attemptDir string, in RecordInput, deps Deps) (*orderedjson.Obj
 			strings.Join(stillOpen, ", "))
 	}
 	if in.Outcome == "round_limit" && len(unaccepted) > 0 {
-		return nil, fmt.Errorf("round_limit, but %s carries no accepted_open: run 'plan_review_record.py accept-open <ATTEMPT> --doc <DOC>' first",
+		return nil, fmt.Errorf("round_limit, but %s carries no accepted_open: run 'lighthouse plan-review-record accept-open <ATTEMPT> --doc <DOC>' first",
 			strings.Join(unaccepted, ", "))
 	}
 

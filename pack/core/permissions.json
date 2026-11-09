@@ -1,9 +1,1 @@
-{
-  "allow": [
-    "Bash(.claude/skills/lighthouse-review-spec/review.sh:*)",
-    "Bash(.claude/skills/lighthouse-review-spec/verify.sh:*)",
-    "Bash(.claude/skills/lighthouse-review-plan/review.sh:*)",
-    "Bash(.claude/skills/lighthouse-review-plan/verify.sh:*)",
-    "Bash(lighthouse review-run:*)"
-  ]
-}
+{"allow": ["Bash(lighthouse review-run:*)"]}

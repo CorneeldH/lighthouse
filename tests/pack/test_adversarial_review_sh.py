@@ -609,3 +609,54 @@ def test_runner_messages_are_english(root, sandbox):
     res = run(skill, sandbox, "--bogus")
     assert res.returncode == 2
     assert "unknown flag: --bogus" in res.stderr
+
+
+# --- the paired round 1 without Python ---------------------------------------------------------
+
+
+def _git_env(env: dict) -> dict:
+    return {
+        **env,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.com",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@example.com",
+    }
+
+
+def test_paired_round_one_without_python3(sandbox, lighthouse_bin, tmp_path):
+    """Round 1 of the spec review, start to merge, on a PATH with git, sh, cat, mkdir, the
+    binary and a fake codex: no python3 anywhere on it (#282)."""
+    repo, env = sandbox["repo"], _git_env(sandbox["env"])
+    install_skills(repo)
+    for part in (".claude", ".agents"):  # the same skills `init` installs, committed and clean
+        assert (repo / part / "skills" / "lighthouse-review-spec" / "findings.schema.json").is_file()
+    subprocess.run(["git", "add", "-A"], cwd=repo, env=env, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "docs: spec"], cwd=repo, env=env, check=True)
+
+    only = tmp_path / "only-bin"
+    only.mkdir()
+    for tool in ("git", "sh", "cat", "mkdir"):
+        target = shutil.which(tool)
+        assert target, tool
+        (only / tool).symlink_to(target)
+    (only / "lighthouse").symlink_to(lighthouse_bin)
+    (only / "codex").symlink_to(pathlib.Path(env["PATH"].split(os.pathsep)[0]) / "codex")
+    env["PATH"] = str(only)
+    assert shutil.which("python3", path=env["PATH"]) is None
+
+    def lh(*args: str) -> str:
+        res = subprocess.run(
+            ["lighthouse", *args], cwd=repo, env=env, capture_output=True, text=True, check=False
+        )
+        assert res.returncode == 0, (args, res.stdout, res.stderr)
+        return res.stdout
+
+    attempt = pathlib.Path(lh("plan-review-record", "start", "--kind", "spec", "docs/spec.md").strip())
+    for name in ("round-1.codex.json", "round-1.fallback.json"):
+        lh("review-run", "--kind", "spec", "docs/spec.md", "1", str(attempt / name), "none")
+        assert (attempt / name).is_file(), name
+    lh("review-pair", "blind", str(attempt))
+    (attempt / "round-1.blind-decisions.json").write_text("[]")
+    lh("review-pair", "merge", str(attempt))
+    assert json.loads((attempt / "round-1.json").read_text())["findings"] == []

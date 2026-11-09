@@ -238,7 +238,7 @@
         "Round 1 runs Codex in a read-only sandbox with a clean CODEX_HOME next to an Opus subagent, and the session decides blind on the merged table.",
         "Per finding it decides accept, reject with a reason, or defer to the plan, following receiving-code-review, and only accepted findings change the spec.",
         "Rounds 2 and 3 run on Opus and only check whether the accepted fixes hold; the review ends as converged, round_limit or aborted.",
-        "It records the outcome with plan_review_record.py and ends with a handoff to writing-plans."
+        "It records the outcome with lighthouse plan-review-record and ends with a handoff to writing-plans."
       ],
       "when": "After writing a spec and before writing-plans.",
       "without": "The spec is only checked by the model that wrote it.",
