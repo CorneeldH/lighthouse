@@ -44,7 +44,7 @@ func TestWorktreeCheckWarnsOnTheMainCheckoutOnMain(t *testing.T) {
 		"branch (git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>).\n" +
 		"Exception: read-only work, or an explicit 'on main' from the user.\n" +
 		"\n" +
-		"Note: committing on 'main' is blocked (main-commit-gate.sh). Move\n" +
+		"Note: committing on 'main' is blocked (main-commit-gate). Move\n" +
 		"this work now, not later."
 	if res.Code != 0 || res.Stderr != "" || res.Output["systemMessage"] != want {
 		t.Fatalf("got code %d, stderr %q, output %q; want 0 and systemMessage %q", res.Code, res.Stderr, res.Output, want)

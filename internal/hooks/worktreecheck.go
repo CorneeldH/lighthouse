@@ -104,7 +104,7 @@ func WorktreeCheck(ctx context.Context, _, _ string, p hook.Payload) hook.Result
 		"branch (git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>).\n" +
 		"Exception: read-only work, or an explicit 'on main' from the user.\n" +
 		"\n" +
-		"Note: committing on '" + protected + "' is blocked (main-commit-gate.sh). Move\n" +
+		"Note: committing on '" + protected + "' is blocked (main-commit-gate). Move\n" +
 		"this work now, not later.")
 }
 
