@@ -202,3 +202,74 @@ func TestMergeReadyAction(t *testing.T) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 }
+
+// openBrake is a brake with every gate open: usage measured and low, ample memory, free slots.
+func openBrake() *Brake {
+	mem := 32.0
+	return &Brake{
+		UsageMeasured: true, SessionPct: 10, WeekPct: 10, HaltPctSession: 85, HaltPctWeek: 90,
+		MemAvailableGiB: &mem, MinMemAvailableGB: 8, ReservePerRunGB: 3, Slots: 4, MaxSoftware: 2,
+	}
+}
+
+// A fix-pr start the brake holds back in one tick starts in the tick the brake opens. Tick 1
+// leaves run 5 untouched (only the defer, or nothing under a pause), so tick 2 reads the same
+// open run and the same PR, and plans the close and the fix-pr start on the same key.
+func TestFixPRStartsInTickAfterBrakeOpens(t *testing.T) {
+	low := 4.0
+	brakes := []struct {
+		name   string
+		closed func(*Brake)
+		tick1  []string
+	}{
+		{"slots", func(b *Brake) { b.InUse = 4 }, []string{"defer:slots: 4 of 4 in use:"}},
+		{"usage", func(b *Brake) { b.SessionPct = 90 }, []string{"defer:usage: session 90%, week 10%:"}},
+		{"memory", func(b *Brake) { b.MemAvailableGiB = &low },
+			[]string{"defer:memory: MemAvailable 4.0 GiB - 0 x 3 GiB < 8 GiB:"}},
+		{"pause", func(b *Brake) { b.Paused = true }, []string{}},
+	}
+	causes := []struct {
+		name   string
+		mutate func(*Input)
+		start  string
+	}{
+		{"red", red, "start:reason_pr_red:"},
+		{"conflict", conflict, "start:reason_pr_conflict:"},
+		{"roborev", roborev, "start:reason_pr_roborev:"},
+		{"merge failed", mergeNote, "start:reason_merge_failed:Pull Request is not mergeable"},
+	}
+	for _, br := range brakes {
+		for _, c := range causes {
+			t.Run(br.name+"/"+c.name, func(t *testing.T) {
+				in := loadInput(t, "settle-green-pr-done")
+				c.mutate(&in)
+				in.Brake = openBrake()
+				br.closed(in.Brake)
+				got := Decide(in)
+				if s := summary(got); !reflect.DeepEqual(s, br.tick1) {
+					t.Fatalf("tick 1 summary = %q, want %q", s, br.tick1)
+				}
+				for _, a := range got {
+					if a.RunID == 5 {
+						t.Fatalf("tick 1 touches run 5: %+v", a)
+					}
+				}
+
+				in.Now = in.Now.Add(5 * time.Minute)
+				in.Brake = openBrake()
+				got = Decide(in)
+				if s, want := summary(got), []string{fixClose12, c.start}; !reflect.DeepEqual(s, want) {
+					t.Fatalf("tick 2 summary = %q, want %q", s, want)
+				}
+				start := got[1]
+				if start.TriggerKey != "fixpr:12:abc123" || start.Command != "/lighthouse-fix-pr 12" ||
+					start.Trigger != "fixpr" {
+					t.Errorf("tick 2 start = %+v, want the fix-pr start of PR 12 on abc123", start)
+				}
+				if got[0].RunID != 5 {
+					t.Errorf("tick 2 close = %+v, want run 5", got[0])
+				}
+			})
+		}
+	}
+}

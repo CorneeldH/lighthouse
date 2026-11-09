@@ -344,10 +344,12 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
 
 - De rem houdt alleen starts en hervattingen tegen. De afloop van open runs (sluiten, Teruggegeven,
   stoppen, 🤖 Klaar, zie *Afloop*) gaat door, ook tijdens een pauze of bij een dichte usage-rem.
-  Eén uitzondering: de merge van regel 7. Een pauze, een item buiten `Controller` en een actieve
-  blokkeerder houden de merge tegen (net als `UNKNOWN` of checks `PENDING`), en de run blijft dan
-  open. Alleen de time-out (regel 19, bij `max_runtime` > 0) geeft hem dan nog terug, met
-  *time-out (max_runtime)*.
+  Twee uitzonderingen. De eerste is de merge van regel 7. Een pauze, een item buiten `Controller`
+  en een actieve blokkeerder houden de merge tegen (net als `UNKNOWN` of checks `PENDING`), en de
+  run blijft dan open. Alleen de time-out (regel 19, bij `max_runtime` > 0) geeft hem dan nog
+  terug, met *time-out (max_runtime)*. De tweede is de fix-pr-handoff van regel 13. Stelt de rem
+  de fix-pr-start uit, of houdt de pauze hem tegen, dan sluit de run niet. Hij blijft open tot de
+  start doorgaat, in de tick waarin de rem opengaat.
 - `n` bij Geheugen is het aantal starts en hervattingen dat deze tick al door de rem kwam: een net
   gestarte run reserveert van dezelfde meting.
 - `in_use` komt uit de database en geldt voor de hele host: de open runs over alle repo's, plus de
