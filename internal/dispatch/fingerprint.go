@@ -42,6 +42,7 @@ type fpRun struct {
 	Issue     int              `json:"issue"`
 	StartedAt time.Time        `json:"started_at"`
 	Stand     *workplace.Stand `json:"stand"` // nil: not measurable
+	MergeSHA  string           `json:"merge_sha,omitempty"`
 }
 
 type fpMarker struct {
@@ -60,7 +61,7 @@ func Fingerprint(pre Pre) string {
 	runsIn := make([]fpRun, 0, len(pre.OpenRuns))
 	for _, r := range pre.OpenRuns {
 		hasRun[r.Issue] = true
-		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC()}
+		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC(), MergeSHA: r.MergeSHA}
 		if stand, ok := pre.Stands[r.ID]; ok {
 			f.Stand = &stand
 		}

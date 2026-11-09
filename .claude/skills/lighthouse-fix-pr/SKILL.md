@@ -19,12 +19,13 @@ worktree of the head branch, the fix, getting it green.
 
 Second entry: a **green** PR with an unprocessed roborev review (section 6, only if present) —
 the user starts it: "process the roborev review on 1407". The dispatcher (controller run, if
-present) starts this skill only on a red PR after a finished run, never for a roborev review on
-a green PR.
+present) starts this skill after a finished run not only on a red PR but also on a conflict, an
+unprocessed roborev review and a merge that failed. The tick merges a green PR of its own; this
+skill never merges.
 
 Not here: closing the issue (`/lighthouse-close-issue`), a review of the diff on content (a review
 skill such as `caveman:caveman-review`), starting new work on an issue (`/lighthouse-start-issue`),
-opening a PR (`/lighthouse-write-pr`), and the merge itself — that is a human decision.
+opening a PR (`/lighthouse-write-pr`), and the merge itself — the tick does that after a finished run, never this skill.
 
 ## 1. Diagnosis in one block
 
@@ -181,6 +182,8 @@ history unreadable. Exception: a fix on a *red* check — that one does belong o
 As soon as `gh pr checks <nr>` is green and `mergeable` is `MERGEABLE`: **report and stop**.
 Do not merge, do not review, do not close the issue. That "stop at green" does not hold while
 section 6 is open: a green PR with an unprocessed roborev review is not done yet.
+A dispatcher start after a failed merge finds the PR green: report that and stop; the failure
+itself is in the 🤖 Returned that follows.
 
 ## 6. Process a roborev review (only if present)
 
@@ -196,8 +199,8 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    there is nothing to push and you skip this step.
 4. Post **always** one answer comment, also if you pushed nothing and also if you refuted every
    finding: the marker is the signal that the round is done; without it a later fix-pr run
-   processes the same review again. The dispatcher (controller run, if present) does not read the
-   marker: it starts fix-pr only on a red PR after a finished run, at most three times per PR.
+   processes the same review again. Under a controller run the dispatcher reads the marker: a
+   review without one keeps the PR from merging and starts this skill, at most three times per PR.
    The comment comes from the renderer `lighthouse-write-pr` uses too, so both routes leave the
    same log. `<scratch>` is the scratchpad or `$TMPDIR`. Save the roborev comment, the same one
    the diagnosis shows:

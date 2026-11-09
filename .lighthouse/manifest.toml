@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "b8471deb2c2121e042c8941b8c97c0bb1c33bb4a6282c3f82a76947347bc8f4f"
+sha256 = "d784f0b22f418d70c5966f201fa12f5b3d28685c8c40b679fe05178c3964eb7a"
 
 [[unit]]
 kind = "file"
@@ -436,7 +436,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "1d58a7c2135469ea19befeda330abb152eb6d4e9ef6bed16c426a3277d1929f9"
+sha256 = "5ad5a61458e49defae227c3848eb21ca3c854bdb16a15233fe52b69e6331151d"
 
 [[unit]]
 kind = "file"
@@ -604,7 +604,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "4385e20b1059251eacc921694fcc8a13e2cc74f78fe300411c5485b28437d0ca"
+sha256 = "3fd20cc381b75418127fd3a44c39a24a28636af9b1b1875d1f54465b0783e9ad"
 
 [[unit]]
 kind = "file"
