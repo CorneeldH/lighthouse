@@ -15,8 +15,16 @@ case $0 in
 */*) dir=${0%/*} ;;
 *) dir=. ;;
 esac
-here=$(cd -P "$dir" && pwd) || exit 1
-root=$(cd -P "$here/../../.." && pwd) || exit 1
+# CDPATH empty: otherwise `cd` prints the directory too. Without its own directory run.sh cannot
+# read the list of blocking hooks: it blocks, as a missing list does.
+here=$(CDPATH='' cd -P "$dir" && pwd) || {
+  printf '%s\n' "COULD NOT CHECK: run.sh cannot find its own directory ($0)" >&2
+  exit 2
+}
+root=$(CDPATH='' cd -P "$here/../../.." && pwd) || {
+  printf '%s\n' "COULD NOT CHECK: run.sh cannot find the repository root above $here" >&2
+  exit 2
+}
 bin="$root/.lighthouse/bin"
 manifest="$root/.lighthouse/manifest.toml"
 hook="${1:-}"
