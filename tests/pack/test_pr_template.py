@@ -40,7 +40,7 @@ def test_template_puts_refs_first() -> None:
 
 
 def test_template_names_the_english_subcommand() -> None:
-    assert "plan_review_record.py pr-open-points" in _text()
+    assert "lighthouse plan-review-record pr-open-points" in _text()
 
 
 def test_template_open_after_review_is_the_english_heading() -> None:
