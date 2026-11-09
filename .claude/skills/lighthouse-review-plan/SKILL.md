@@ -69,9 +69,8 @@ answer, because that prompt does not carry the suffix. Then, above the steps bel
 
 ## What it shares with the spec review
 
-One runner. `review.sh` here is a wrapper around
-`../lighthouse-review-spec/review.sh`, with the plan prompt (`reviewer-prompt.md`)
-and the plan schema (`findings.schema.json`, with a required `cat` field). The clean
+One runner: `lighthouse review-run --kind plan` is the runner of the spec review, with the plan
+prompt (`reviewer-prompt.md`) and the plan schema (`findings.schema.json`, with a required `cat` field). The clean
 `CODEX_HOME` (`~/.codex-specreview/`), `--sandbox read-only`, exit codes 2/3/4/5 and the choice
 of level (`high`; `max` per run when a missed blocker is expensive, never `xhigh`) are in
 `lighthouse-review-spec`, *Prerequisites*. Read that when Codex stalls.
@@ -83,7 +82,8 @@ search for problems again; it only verifies whether the fixes of the previous ro
 
 So Codex runs only in round 1, and there always next to Opus: the two reviewers complement each
 other in round 1, and the verification rounds on Opus spare the Codex quota. Outside Claude Code
-there is no Opus subagent; there `verify.sh` (the same runner) verifies through Codex.
+there is no Opus subagent; there `lighthouse review-run --kind plan --verify <plan> <n> <OUT> <PRIOR> --context <spec path>`
+(the same runner) verifies through Codex.
 
 The review prompt (round 1) sets seven categories, each a `cat`:
 
@@ -130,7 +130,7 @@ Argument → that path, repo-relative. No argument → the newest file in the pl
 ### 3. Start an attempt
 
 ```bash
-python3 .lighthouse/scripts/plan_review_record.py start <plan>
+lighthouse plan-review-record start <plan>
 ```
 
 Prints the attempt directory `${TMPDIR:-/tmp}/plan-review/<chain-key>/<attempt>/` (below
@@ -170,11 +170,11 @@ Before *every* dispatch a snapshot of the plan: `cp <plan> <ATTEMPT>/round-<n>.s
 **Only round 1 is a review**, and it is always paired: Codex and Opus side by side (*Round 1:
 Codex and Opus*, below). Only the retry from the table there runs Codex alone. Do it yourself, as
 a Bash call with `run_in_background: true` and `dangerouslyDisableSandbox: true`; the command
-stays on one line, and `review.sh` is called by exactly this repo-relative path, so the allowlist
-rule in `.claude/settings.json` (from `lighthouse init`) matches on that prefix:
+stays on one line, and the runner is called in exactly this form, `lighthouse review-run`, so the allowlist
+rule `Bash(lighthouse review-run:*)` in `.claude/settings.json` (from `lighthouse init`) matches on that prefix:
 
 ```bash
-.claude/skills/lighthouse-review-plan/review.sh <plan> 1 <ATTEMPT>/round-1.json none [max] --context <spec path> [--context <spec path 2>] > <ATTEMPT>/round-1.retry.log 2>&1; echo "exit=$?"
+lighthouse review-run --kind plan <plan> 1 <ATTEMPT>/round-1.json none [max] --context <spec path> [--context <spec path 2>] > <ATTEMPT>/round-1.retry.log 2>&1; echo "exit=$?"
 ```
 
 `[max]` is the level slot: leave it out, or write `max` if you want it. The `--context` paths are
@@ -236,7 +236,7 @@ answer dies with the session.
    `dangerouslyDisableSandbox: true`:
 
    ```bash
-   .claude/skills/lighthouse-review-plan/review.sh <plan> 1 <ATTEMPT>/round-1.codex.json \
+   lighthouse review-run --kind plan <plan> 1 <ATTEMPT>/round-1.codex.json \
      none [max] --context <spec path> [--context <spec path 2>] > <ATTEMPT>/round-1.codex.log 2>&1; echo "exit=$?"
    ```
 
@@ -244,7 +244,7 @@ answer dies with the session.
    above. Then the record in step 9 gets `--level max`.
 
    No ID table for this run: it would show the findings, and then deciding is no longer blind. The
-   redirect is required for the same reason. On success `review.sh` prints the number of
+   redirect is required for the same reason. On success `lighthouse review-run` prints the number of
    findings and the severity split (the `ok | reviewer: …` line). That count next to the A/B
    table betrays which letter Codex is. Read only the exit code, never `round-1.codex.log`.
 2. **Opus**: the subagent from *Opus dispatch*, with `OUT` = `<ATTEMPT>/round-1.fallback.json`.
@@ -259,7 +259,7 @@ reviewers read the live work tree. `blind` refuses when `HEAD` moved or the work
 clean, untracked files included. A change you revert before `blind` it does not see. So the rule
 holds also when you put something back "for a moment".
 
-When both are done, run `python3 .lighthouse/scripts/review_pair.py blind <ATTEMPT>`
+When both are done, run `lighthouse review-pair blind <ATTEMPT>`
 (`dangerouslyDisableSandbox: true`) and decide on the A/B table. Do not read `pair.json`, the
 raw files or `round-1.codex.log`. Step 6 holds unchanged, with the blind IDs.
 
@@ -337,7 +337,7 @@ refuses a record with a finding without a decision (exit 4); only `aborted` may 
   `accept-open` in step 8, never by hand), `minor_yes`, `minor_no`.
 - `same_as`: the ID of the same finding in an earlier round; otherwise leave it out.
 
-`review.sh` names the sidecar in the prior block of the next round.
+`lighthouse review-run` names the sidecar in the prior block of the next round.
 
 **Paired round 1** (step 5, *Round 1: Codex and Opus*):
 
@@ -345,7 +345,7 @@ refuses a record with a finding without a decision (exit 4); only `aborted` may 
   blind IDs (`A-f<i>`, `B-f<i>`).
 - A duplicate finding (the same failure in the same place, by both reviewers) is one row with
   `also`: `{"finding_id": "A-f2", "also": "B-f1", "decision": "accept", "reason": "…"}`.
-- Then run `python3 .lighthouse/scripts/review_pair.py merge <ATTEMPT>`
+- Then run `lighthouse review-pair merge <ATTEMPT>`
   (`dangerouslyDisableSandbox: true`). It writes `round-1.json`, `round-1.decisions.json` and
   `round-1.sources.json`, and shows the unblinded table with the `r1-f<i>` IDs.
 - Exit 4 on a decision: repair the sidecar and run `merge` again. Exit 4 on a broken raw file:
@@ -375,7 +375,7 @@ was fixed in step 7, because no reviewer saw that fix any more. `converged` mean
 last round nothing is open. At `round_limit` you record the open points and go on, in this
 order:
 
-1. `python3 .lighthouse/scripts/plan_review_record.py accept-open <ATTEMPT> --doc <plan>`
+1. `lighthouse plan-review-record accept-open <ATTEMPT> --doc <plan>`
    (outside the sandbox, as with `start` and `write`). This rewrites `round-3.decisions.json`
    (every open point becomes `accepted_open`) and puts the block `heading:open_after_review` at
    the bottom of the plan; an existing block is replaced, never doubled. Exit 2 with on stderr
@@ -398,7 +398,7 @@ always comes first; for a controller run (if present) see *Controller run*. Inte
 After the last fix commit, at every outcome:
 
 ```bash
-python3 .lighthouse/scripts/plan_review_record.py write <ATTEMPT> \
+lighthouse plan-review-record write <ATTEMPT> \
   --outcome <converged|round_limit|aborted> --review-mode codex \
   --spec <spec path> [--spec <spec path 2>] [--level max]
 ```
@@ -473,7 +473,7 @@ Dispatch a `general-purpose` subagent with `model: "opus"` and the text between
 `---BEGIN PROMPT---` and `---END PROMPT---` from `reviewer-prompt.md` (round 1) or
 `verifier-prompt.md` (round ≥ 2), the placeholders filled in by hand: `{{CONTEXT_PATHS}}` as
 lines `- <path>`, and `{{PRIOR_REVIEW_BLOCK}}` empty in round 1 and from round 2 on the paragraph
-that `review.sh` builds as `prior_block`, with `PRIOR` and its `.decisions.json` sidecar filled
+that `lighthouse review-run` builds as `prior_block`, with `PRIOR` and its `.decisions.json` sidecar filled
 in. Instruct it to write the JSON answer following `findings.schema.json` or
 `verification.schema.json` to `OUT`. Compute the
 `ID` column yourself, **before** sorting. In a paired round 1 you skip this table
@@ -503,11 +503,12 @@ jq -r '.verified // empty | "VERIFIED: " + (if length == 0 then "none" else join
   record is wrong. Take the ID from the table.
 - **Writing decisions into the round JSON.** Makes it invalid against the schema; always the
   sidecar.
-- **Making the `review.sh` path absolute.** The allowlist matches on the repo-relative prefix; an
-  absolute path makes the background round wait for an approval.
+- **Changing the form of the runner call.** The allowlist matches on the fixed form
+  `lighthouse review-run`; never a path to the binary, which makes the background round wait for
+  an approval.
 - **Resuming an old attempt.** A new review is a new `start`; the measurement counts only the
   newest attempt per chain.
-- **Dispatching a verification round with `reviewer-prompt.md` or `review.sh`.** That starts
+- **Dispatching a verification round with `reviewer-prompt.md` or without `--verify`.** That starts
   discovery again, and that is exactly the loop the verification rounds closed.
 - **Sending a verification round to Codex.** Codex is for round 1; the verification runs on
   Opus, also when the Codex budget is still ample.

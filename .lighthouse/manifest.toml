@@ -43,7 +43,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-review-plan/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "2a2d2e63efbdbd2ab1f7978df4a2e1603cd0e47c8da0e0d7acdf186c30070170"
+sha256 = "104ce7502a4a27f30dc5b63d0d89e6ff3aaccd9693bd5030c8c55b29d2201dbe"
 
 [[unit]]
 kind = "file"
@@ -54,17 +54,10 @@ sha256 = "f3bb78dd7713f47e067ddabd039e005a8bb022ac84da9122599eb6f1684b17cd"
 
 [[unit]]
 kind = "file"
-path = ".agents/skills/lighthouse-review-plan/review.sh"
-package = "core"
-version = "dev"
-sha256 = "a205e95e383f99e0834a03f8600f496dd907dd1c66b39048b5242e5f1e6ebf95"
-
-[[unit]]
-kind = "file"
 path = ".agents/skills/lighthouse-review-plan/reviewer-prompt.md"
 package = "core"
 version = "dev"
-sha256 = "47d1bb4f3f1aa512d9e9dc46127267bcf42f14e65e024baac5dde2864af36e40"
+sha256 = "8e51e48663bf5b2dce51ded3f1205171d303b7c6496c3fd858294df3d68a2d1e"
 
 [[unit]]
 kind = "file"
@@ -78,21 +71,14 @@ kind = "file"
 path = ".agents/skills/lighthouse-review-plan/verifier-prompt.md"
 package = "core"
 version = "dev"
-sha256 = "f21ba1ad0324731b4a81750e5683d39c8b99423117c3a31509ef64afb8e86ef0"
-
-[[unit]]
-kind = "file"
-path = ".agents/skills/lighthouse-review-plan/verify.sh"
-package = "core"
-version = "dev"
-sha256 = "fe2712f20ef0e34ade5524548eefd65f55c29f8a70164a5d5011440d071842d9"
+sha256 = "1b0009cb5f23e7470fa7ed44f4b35696be655fc704ba611fbaa5aa7644002e51"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-review-spec/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "50eceeb8d22e60071620b1b0d75c71322ee69d621bfe4d19ff50be486e10df7a"
+sha256 = "4d0f528fdf62a9102775857d208ff3fd58f1be26ff1265e1a745a5bc1605dd55"
 
 [[unit]]
 kind = "file"
@@ -100,13 +86,6 @@ path = ".agents/skills/lighthouse-review-spec/findings.schema.json"
 package = "core"
 version = "dev"
 sha256 = "fc390e7bdb6bcb3c6156d64abbc4dbcac8f84aeca7fe08e35150daef11b6f3da"
-
-[[unit]]
-kind = "file"
-path = ".agents/skills/lighthouse-review-spec/review.sh"
-package = "core"
-version = "dev"
-sha256 = "e3b7fbcc916a1d3bc5fd369f10c7535f3a14468499094998a882523604b54b7e"
 
 [[unit]]
 kind = "file"
@@ -127,14 +106,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-review-spec/verifier-prompt.md"
 package = "core"
 version = "dev"
-sha256 = "36bdb71302849f32d27de31688e42c8a086d40ce8daec2a879a7c9c7a312e069"
-
-[[unit]]
-kind = "file"
-path = ".agents/skills/lighthouse-review-spec/verify.sh"
-package = "core"
-version = "dev"
-sha256 = "9317fffe7e05ae1f781ef153aa63923fd5e97556f83b1480e7b9812c0690ca54"
+sha256 = "525ce3b0ba1dd8a45a919c4cd771e7e33ae68c4fa1b26389edaad3ce633bdbb4"
 
 [[unit]]
 kind = "file"
@@ -176,7 +148,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "a21d64f2be4c35f1528b537d1a520a21083dd7bafa3c5be2384f448d21dc5022"
+sha256 = "ac673b0596d0fa894ea604c06933254faa6431c05d6a2ff87116f6e2c848650c"
 
 [[unit]]
 kind = "file"
@@ -303,38 +275,6 @@ path = ".claude/hooks/lighthouse/worktree-check.sh"
 package = "core"
 version = "dev"
 sha256 = "6e5f3bf5597a4bfbd404c3c568bec13880689561107a1146c41218099e741685"
-
-[[unit]]
-kind = "permission"
-path = ".claude/settings.json"
-id = "Bash(.claude/skills/lighthouse-review-plan/review.sh:*)"
-package = "core"
-version = "dev"
-sha256 = "a7219ff5bbb925b18b05ad787ac22ed6637f443e452bbc64c09e19e22f6026f4"
-
-[[unit]]
-kind = "permission"
-path = ".claude/settings.json"
-id = "Bash(.claude/skills/lighthouse-review-plan/verify.sh:*)"
-package = "core"
-version = "dev"
-sha256 = "5b71d9729b7b2b738dc72cca5458d6a418a8c074e2888afbb63559767e91082d"
-
-[[unit]]
-kind = "permission"
-path = ".claude/settings.json"
-id = "Bash(.claude/skills/lighthouse-review-spec/review.sh:*)"
-package = "core"
-version = "dev"
-sha256 = "c8fabb1c430950fafe7e8c6f1f3c8ea0c4d30bfbe49778ade17cdaf4f8672d9c"
-
-[[unit]]
-kind = "permission"
-path = ".claude/settings.json"
-id = "Bash(.claude/skills/lighthouse-review-spec/verify.sh:*)"
-package = "core"
-version = "dev"
-sha256 = "2bb7011332c21ef34d7114405e7bbe81b843ee8c906e0c6e081b3e605a24bfcc"
 
 [[unit]]
 kind = "permission"
@@ -528,7 +468,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-review-plan/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "9588ab452236addbafed272b6033a23b501ac03c3f3d425c2b8ee902db387e0c"
+sha256 = "a34b3984a9c0adbbb325ecb052a9a694ee43873936c472e620e3fc4cbd8870e3"
 
 [[unit]]
 kind = "file"
@@ -539,17 +479,10 @@ sha256 = "f3bb78dd7713f47e067ddabd039e005a8bb022ac84da9122599eb6f1684b17cd"
 
 [[unit]]
 kind = "file"
-path = ".claude/skills/lighthouse-review-plan/review.sh"
-package = "core"
-version = "dev"
-sha256 = "a205e95e383f99e0834a03f8600f496dd907dd1c66b39048b5242e5f1e6ebf95"
-
-[[unit]]
-kind = "file"
 path = ".claude/skills/lighthouse-review-plan/reviewer-prompt.md"
 package = "core"
 version = "dev"
-sha256 = "47d1bb4f3f1aa512d9e9dc46127267bcf42f14e65e024baac5dde2864af36e40"
+sha256 = "8e51e48663bf5b2dce51ded3f1205171d303b7c6496c3fd858294df3d68a2d1e"
 
 [[unit]]
 kind = "file"
@@ -563,21 +496,14 @@ kind = "file"
 path = ".claude/skills/lighthouse-review-plan/verifier-prompt.md"
 package = "core"
 version = "dev"
-sha256 = "f21ba1ad0324731b4a81750e5683d39c8b99423117c3a31509ef64afb8e86ef0"
-
-[[unit]]
-kind = "file"
-path = ".claude/skills/lighthouse-review-plan/verify.sh"
-package = "core"
-version = "dev"
-sha256 = "fe2712f20ef0e34ade5524548eefd65f55c29f8a70164a5d5011440d071842d9"
+sha256 = "1b0009cb5f23e7470fa7ed44f4b35696be655fc704ba611fbaa5aa7644002e51"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-review-spec/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "fd007bc860424deed7ae95e0de5fe2e363e758392161560fe9b4ade8fe29da15"
+sha256 = "9c4da10c938b874cbe58ff565dbc69acd28cad944ab4dc3fef377a7b219bdd92"
 
 [[unit]]
 kind = "file"
@@ -585,13 +511,6 @@ path = ".claude/skills/lighthouse-review-spec/findings.schema.json"
 package = "core"
 version = "dev"
 sha256 = "fc390e7bdb6bcb3c6156d64abbc4dbcac8f84aeca7fe08e35150daef11b6f3da"
-
-[[unit]]
-kind = "file"
-path = ".claude/skills/lighthouse-review-spec/review.sh"
-package = "core"
-version = "dev"
-sha256 = "e3b7fbcc916a1d3bc5fd369f10c7535f3a14468499094998a882523604b54b7e"
 
 [[unit]]
 kind = "file"
@@ -612,14 +531,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-review-spec/verifier-prompt.md"
 package = "core"
 version = "dev"
-sha256 = "36bdb71302849f32d27de31688e42c8a086d40ce8daec2a879a7c9c7a312e069"
-
-[[unit]]
-kind = "file"
-path = ".claude/skills/lighthouse-review-spec/verify.sh"
-package = "core"
-version = "dev"
-sha256 = "9317fffe7e05ae1f781ef153aa63923fd5e97556f83b1480e7b9812c0690ca54"
+sha256 = "525ce3b0ba1dd8a45a919c4cd771e7e33ae68c4fa1b26389edaad3ce633bdbb4"
 
 [[unit]]
 kind = "file"
@@ -661,14 +573,14 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "a21d64f2be4c35f1528b537d1a520a21083dd7bafa3c5be2384f448d21dc5022"
+sha256 = "ac673b0596d0fa894ea604c06933254faa6431c05d6a2ff87116f6e2c848650c"
 
 [[unit]]
 kind = "file"
 path = ".github/pull_request_template.md"
 package = "core"
 version = "dev"
-sha256 = "397352839501809e80d28fb2a78905ab3ba076896e68646a9a272ff2ad55828d"
+sha256 = "56b0c996093f744dca94b7a1000db6964e1294af9b6e15c4b378132359d1e1d2"
 
 [[unit]]
 kind = "file"
@@ -917,24 +829,10 @@ sha256 = "f065b5f10e5d13691c1a1458ddf3d37a475edbd73f1baf62f60052ec8ed84f48"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/scripts/plan_review_record.py"
-package = "core"
-version = "dev"
-sha256 = "4e1cdd8a8acf3a6c372cd086c10c5353bb0974bbe368c338df44dc4f44e6201d"
-
-[[unit]]
-kind = "file"
 path = ".lighthouse/scripts/post_artefact.py"
 package = "core"
 version = "dev"
 sha256 = "872ab4821a4063f7234b4d6000ae6c607c2e5f8a51afc560d81651c92f445903"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/review_pair.py"
-package = "core"
-version = "dev"
-sha256 = "28782793f9134e554fbe64578d4b49d50f5386fcaf4bd6fbb46ace1e9927f797"
 
 [[unit]]
 kind = "file"
