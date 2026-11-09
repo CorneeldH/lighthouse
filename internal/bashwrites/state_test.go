@@ -99,7 +99,10 @@ func TestWriteMarkerThenReadMarkerRoundTrips(t *testing.T) {
 	if !ok {
 		t.Fatal("marker not read")
 	}
-	eq(t, "marker", m, Marker{StartNS: 123, Roots: []string{"/a", "/b"}})
+	eq(t, "roots", m.Roots(), []string{"/a", "/b"})
+	ns, ok := m.startNS()
+	eq(t, "start_ns", ns, int64(123))
+	eq(t, "start_ns ok", ok, true)
 }
 
 func TestReadMarkerMissingOrBrokenIsNone(t *testing.T) {

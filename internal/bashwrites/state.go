@@ -195,30 +195,68 @@ func seedRoot(root string, startNS int64, deadline time.Time) (map[string]any, e
 
 func isUTF8(s string) bool { return strings.ToValidUTF8(s, "") == s }
 
-// Marker is `<state>/<key>.json`: the start time of pre and the roots it derived.
-type Marker struct {
-	StartNS int64    `json:"start_ns"`
-	Roots   []string `json:"roots"`
-}
+// marker is `<state>/<key>.json`: the start time of pre (`start_ns`) and the roots it derived
+// (`roots`). It is read field by field, as the Python does: a mistyped field drops only itself.
+type marker map[string]json.RawMessage
 
 func writeMarker(state, key string, startNS int64, roots []string) error {
 	if roots == nil {
 		roots = []string{}
 	}
-	return atomicWriteJSON(state, filepath.Join(state, key+".json"), Marker{StartNS: startNS, Roots: roots})
+	return atomicWriteJSON(state, filepath.Join(state, key+".json"), map[string]any{"start_ns": startNS, "roots": roots})
 }
 
-// readMarker is the marker of key, false if it is missing or not a valid JSON object of that shape.
-func readMarker(state, key string) (Marker, bool) {
+// readMarker is the marker of key, false if it is missing or not a JSON object.
+func readMarker(state, key string) (marker, bool) {
 	raw, err := os.ReadFile(filepath.Join(state, key+".json"))
 	if err != nil || !isObject(raw) {
-		return Marker{}, false
+		return nil, false
 	}
-	var m Marker
+	var m marker
 	if json.Unmarshal(raw, &m) != nil {
-		return Marker{}, false
+		return nil, false
 	}
 	return m, true
+}
+
+// Roots are the string entries of `roots`; nil if it is not a list.
+func (m marker) Roots() []string {
+	var entries []json.RawMessage
+	if json.Unmarshal(m["roots"], &entries) != nil {
+		return nil
+	}
+	roots := []string{}
+	for _, entry := range entries {
+		var root string
+		if json.Unmarshal(entry, &root) == nil {
+			roots = append(roots, root)
+		}
+	}
+	return roots
+}
+
+// startNS is `start_ns`, false if it is missing or not an integer.
+func (m marker) startNS() (int64, bool) {
+	var ns int64
+	if json.Unmarshal(m["start_ns"], &ns) != nil {
+		return 0, false
+	}
+	return ns, true
+}
+
+// since is the pre start time in whole epoch seconds, rounded down: the reflog epoch is in whole
+// seconds, and rounding up would drop a commit from the same second as pre. Nil without a valid
+// start_ns.
+func (m marker) since() *int64 {
+	ns, ok := m.startNS()
+	if !ok {
+		return nil
+	}
+	s := ns / 1e9
+	if ns%1e9 < 0 {
+		s-- // floor, as Python's //
+	}
+	return &s
 }
 
 // pruneMarkers removes marker files older than an hour. ledger.json, ledger.lock and the sentinel

@@ -123,7 +123,7 @@ func TestPreDoesNotSeedPastAReplacedLedger(t *testing.T) {
 	if !ok {
 		t.Fatal("no marker")
 	}
-	eq(t, "marker roots", m.Roots, []string{repo})
+	eq(t, "marker roots", m.Roots(), []string{repo})
 }
 
 func TestPreSeedsAFreshRootAndWritesAMarker(t *testing.T) {
@@ -142,9 +142,9 @@ func TestPreSeedsAFreshRootAndWritesAMarker(t *testing.T) {
 	if !ok {
 		t.Fatal("no marker")
 	}
-	eq(t, "marker roots", m.Roots, []string{repo})
-	if m.StartNS <= 0 {
-		t.Fatalf("start_ns = %d", m.StartNS)
+	eq(t, "marker roots", m.Roots(), []string{repo})
+	if ns, ok := m.startNS(); !ok || ns <= 0 {
+		t.Fatalf("start_ns = %d, %v", ns, ok)
 	}
 }
 
@@ -181,7 +181,8 @@ func TestPreHonoursTheStartNSSeam(t *testing.T) {
 	if !ok {
 		t.Fatal("no marker")
 	}
-	eq(t, "start_ns", m.StartNS, int64(424242))
+	ns, _ := m.startNS()
+	eq(t, "start_ns", ns, int64(424242))
 }
 
 func TestPreWritesTheMarkerBeforeSeeding(t *testing.T) {
@@ -195,9 +196,9 @@ func TestPreWritesTheMarkerBeforeSeeding(t *testing.T) {
 	if !ok {
 		t.Fatal("no marker")
 	}
-	eq(t, "marker roots", m.Roots, []string{repo})
-	if m.StartNS <= 0 {
-		t.Fatalf("start_ns = %d", m.StartNS)
+	eq(t, "marker roots", m.Roots(), []string{repo})
+	if ns, ok := m.startNS(); !ok || ns <= 0 {
+		t.Fatalf("start_ns = %d, %v", ns, ok)
 	}
 }
 
