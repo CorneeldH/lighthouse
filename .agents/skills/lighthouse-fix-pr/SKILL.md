@@ -146,7 +146,7 @@ Gates before CI break the commit or the push, not the PR: `.claude/hooks/lightho
 (per edit, with the gates of the language packs that are installed),
 `.claude/hooks/lighthouse/commit-test-gate.sh` (after each commit, on its files) and a pre-push hook, if present
 (`test -x "$(git rev-parse --git-path hooks/pre-push)"`).
-`.claude/hooks/lighthouse/main-commit-gate.sh` blocks a commit that lands on the default branch.
+The `main-commit-gate` hook blocks a commit that lands on the default branch.
 
 **With pack/python (if present): a `ty` zero without extras is no zero.** A module `ty` cannot
 resolve makes *every* symbol from it `Unknown`, and on `Unknown` no type error is possible. Always

@@ -112,15 +112,15 @@ def test_every_hook_is_on_its_event():
 def test_hook_problems_flags_a_removed_hook():
     data = copy.deepcopy(load("session.json"))
     data["chips"] = [c for c in data["chips"] if c["id"] != "main-commit-gate"]
-    assert hook_problems(data, ROOT / "pack") == ["not on the map: core PreToolUse Bash main-commit-gate.sh"]
+    assert hook_problems(data, ROOT / "pack") == ["not on the map: core PreToolUse Bash run.sh main-commit-gate"]
 
 
 def test_hook_problems_flags_another_matcher():
     data = copy.deepcopy(load("session.json"))
     chip(data, "worktree-check")["matcher"] = "Bash"
     assert hook_problems(data, ROOT / "pack") == [
-        "not in hooks.json: core PreToolUse Bash worktree-check.sh",
-        "not on the map: core PreToolUse Edit|Write worktree-check.sh",
+        "not in hooks.json: core PreToolUse Bash run.sh worktree-check",
+        "not on the map: core PreToolUse Edit|Write run.sh worktree-check",
     ]
 
 

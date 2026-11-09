@@ -72,6 +72,19 @@ func PruneAlarm(path string, now time.Time) (removed bool, err error) {
 	return true, nil
 }
 
+// CurrentAlarm reads the alarm file, and in a controller run then the copy next to the pause
+// flag: in a container that mounts the controller state but not the host cache, the copy is
+// the only alarm the run sees.
+func (p Paths) CurrentAlarm(now time.Time, controllerRun bool) (Alarm, bool) {
+	if a, ok := ReadAlarm(p.Alarm(), now); ok {
+		return a, true
+	}
+	if !controllerRun || p.Mirror == "" {
+		return Alarm{}, false
+	}
+	return ReadAlarm(p.Mirror, now)
+}
+
 // Alarm is a valid alarm file: the window that is over its threshold.
 // ResetLocal has real spaces, not the "_" of the file.
 type Alarm struct {

@@ -1293,7 +1293,7 @@ def test_hook_names_ok(tmp_path):
     _lighthouse_settings(
         tmp_path,
         {
-            "main-commit-gate.sh": ["PreToolUse"],
+            "run.sh main-commit-gate": ["PreToolUse"],
             "md-link-check.sh": ["PostToolUse"],
             "go-lint-gate.sh": ["Stop"],
         },
@@ -1328,6 +1328,15 @@ def test_hook_name_without_suffix_fails(tmp_path):
     assert "'worktree-guard' ends on neither -gate nor -check" in result.stdout
 
 
+def test_hook_name_behind_run_sh_is_its_argument(tmp_path):
+    # `run.sh <name>`: the hook is <name>; the script `run` is not judged on its suffix.
+    _lighthouse_settings(tmp_path, {"run.sh worktree-guard": ["PreToolUse"]})
+    result = _run(tmp_path)
+    assert result.returncode == 1
+    assert "'worktree-guard' ends on neither -gate nor -check" in result.stdout
+    assert "'run'" not in result.stdout
+
+
 def test_gate_only_after_the_fact_fails(tmp_path):
     _lighthouse_settings(tmp_path, {"foo-gate.sh": ["PostToolUse"]})
     result = _run(tmp_path)
@@ -1343,7 +1352,7 @@ def test_check_on_stop_fails(tmp_path):
 
 
 def test_hook_names_ignore_project_hooks(tmp_path):
-    _lighthouse_settings(tmp_path, {"main-commit-gate.sh": ["PreToolUse"]})
+    _lighthouse_settings(tmp_path, {"run.sh main-commit-gate": ["PreToolUse"]})
     path = tmp_path / "repo" / ".claude" / "settings.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     data["hooks"]["PostToolUse"] = [

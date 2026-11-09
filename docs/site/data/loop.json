@@ -150,7 +150,7 @@
       "when": "Before each Edit or Write.",
       "without": "A write into the main checkout on main passes without a warning.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/worktreecheck.go"
     },
     {
       "id": "using-git-worktrees",
@@ -486,7 +486,7 @@
       "when": "Before each Bash call.",
       "without": "A commit or push on main goes through.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/maincommitgate.go"
     },
     {
       "id": "commit-test-gate",

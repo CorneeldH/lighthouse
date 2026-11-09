@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "22121227023a489a1f1b5ce456c2e5a6c67407dfd7bd29938ea089b7b621b0aa"
+sha256 = "d784f0b22f418d70c5966f201fa12f5b3d28685c8c40b679fe05178c3964eb7a"
 
 [[unit]]
 kind = "file"
@@ -211,7 +211,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/commit-test-gate.sh"
 package = "core"
 version = "dev"
-sha256 = "aa27ab63f8abb49d03b0e9d60045744597868a7158149cd16f4559abdd7a453c"
+sha256 = "4321c07567906fd0ba540fca60fefc7ebd8b9104dd1670aa0758cb6ef2b98dd6"
 
 [[unit]]
 kind = "file"
@@ -229,13 +229,6 @@ sha256 = "e71c699f7c0050fecd5d09d65e235179192b5ad489b918797236e00ea536f87d"
 
 [[unit]]
 kind = "file"
-path = ".claude/hooks/lighthouse/main-commit-gate.sh"
-package = "core"
-version = "dev"
-sha256 = "5b33f0bd1c583a5ecaf43a6916606a6d18d980bddd0d4be864de327363295cba"
-
-[[unit]]
-kind = "file"
 path = ".claude/hooks/lighthouse/pr-create-gate.sh"
 package = "core"
 version = "dev"
@@ -246,14 +239,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/run.sh"
 package = "core"
 version = "dev"
-sha256 = "c88c515572536d5315da1733027818a28a8c7a5d54311d2534aa4dc0ad3b0de7"
-
-[[unit]]
-kind = "file"
-path = ".claude/hooks/lighthouse/worktree-check.sh"
-package = "core"
-version = "dev"
-sha256 = "6e5f3bf5597a4bfbd404c3c568bec13880689561107a1146c41218099e741685"
+sha256 = "73a0635ca00c03d84f8c06aa4d052efbb9e10d8128bbc5fca88276c94d7bd84f"
 
 [[unit]]
 kind = "permission"
@@ -378,14 +364,6 @@ sha256 = "68857bfbd5624f8fd74aaffa251adbb150f3a6bb027a1304a940000dda8a2657"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/main-commit-gate.sh"
-package = "core"
-version = "dev"
-sha256 = "76ac6f696a95523aff67099f078504778978342306b16a6bdcf20e211ff615dd"
-
-[[unit]]
-kind = "hook"
-path = ".claude/settings.json"
 id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/pr-create-gate.sh"
 package = "core"
 version = "dev"
@@ -394,10 +372,18 @@ sha256 = "40f6017a438a83b00d6940e010d43dae72fe12eb7996b232e99779afa4a069a0"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "PreToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/worktree-check.sh"
+id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh main-commit-gate"
 package = "core"
 version = "dev"
-sha256 = "c21c1b8c61439c78f4b0a2b241805e13650b4e914a7f9f1ef30500f5acfcab29"
+sha256 = "6c5c8508589f3e46c35c0693c769f01aa446d945632378d6c08870ce4e270630"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PreToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh worktree-check"
+package = "core"
+version = "dev"
+sha256 = "0beb56d2df533c013dbfda8012394fb8e31267a30d5018fcbef2d164af4c2609"
 
 [[unit]]
 kind = "hook"
@@ -450,7 +436,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "83cc4bcb6717b8cc8f1e5ffba93158fe6c0ee294998311ff7ef0346bea4e4b1a"
+sha256 = "5ad5a61458e49defae227c3848eb21ca3c854bdb16a15233fe52b69e6331151d"
 
 [[unit]]
 kind = "file"

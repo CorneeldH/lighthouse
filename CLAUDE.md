@@ -12,8 +12,8 @@ knows. Never duplicate, in either direction.
 `pack/core/hooks/` instead. Other entries in `.claude/settings.json` are the project's. When a
 hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never blocks.
 
-- `main-commit-gate.sh` — PreToolUse `Bash`. Blocks (exit 2) a commit or push on `main`,
-  also through `git -C <path>` and a preceding `cd`.
+- `main-commit-gate` (`run.sh main-commit-gate`) — PreToolUse `Bash`. Blocks (exit 2) a commit or
+  push on `main`, also through `git -C <path>` and a preceding `cd`.
 - `commit-test-gate.sh` — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. `pre` blocks
   `--no-verify` and tests a commit to `main` before it; `post` runs `[test_gate] command` on the
   files of the commit and reports red.
@@ -21,8 +21,8 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
   write checks on what a Bash call wrote.
 - `pr-create-gate.sh` — PreToolUse `Bash`. Blocks a `gh pr create` whose body lacks
   `Closes #N` with evidence, `Refs #N — <reason>` or `No issue: <reason>`.
-- `worktree-check.sh` — PreToolUse `Edit|Write`. Warns (never blocks) at a write into the main
-  checkout on `main`.
+- `worktree-check` (`run.sh worktree-check`) — PreToolUse `Edit|Write`. Warns (never blocks) at a
+  write into the main checkout on `main`.
 - `md-link-check` (`run.sh md-link-check`) — PostToolUse `Edit|Write`. Blocks a markdown link that is absolute
   or points nowhere.
 - `permission-check` (`run.sh permission-check`) — Notification `permission_prompt`. Notes the prompt in

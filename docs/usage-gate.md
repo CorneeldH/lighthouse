@@ -31,6 +31,11 @@ van een meting) doet elke stand niets.
   ruimt. `_` in `reset_local` wordt een spatie. Deze regels staan in Go (`internal/usage`).
   `lighthouse usage alarm` drukt het geldige alarm af en eindigt met exit 0, anders met een andere
   exit; de hook en de blokkerende Stop-gates lezen het zo.
+- **De kopie in een controller-run.** Telt het alarm niet, dan leest een controller-run (zie
+  *Controller*) ook de kopie die de meter naast de pauzevlag schrijft (pad in *Contract*), met
+  dezelfde regels. Een container die de controller-statusmap mount maar de cache van de host niet,
+  ziet het alarm zo toch, en de run parkeert. `lighthouse usage alarm` leest de kopie op dezelfde
+  manier. Een gewone sessie leest de kopie niet.
 - **Tijd.** `reset_at` wordt in Go gelezen als `2006-01-02T15:04:05Z`; dat hangt niet van de
   `date` van de host af. Een onleesbare tijd telt het alarm niet.
 - **Snelle pad.** In `tool` en `subagent` doet de hook zonder alarm niets meer dan het alarm
@@ -111,6 +116,7 @@ Dit is wat de hook schrijft en wat een poller of controller leest.
 | Wat | Pad of naam |
 |---|---|
 | alarm (lezen) | `${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse/usage-window.alarm` |
+| kopie van het alarm (lezen, alleen een controller-run) | `${LIGHTHOUSE_CONTROLLER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/controller}/usage-window.alarm` |
 | sleutels "één keer per venster" | `${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/usage-guard/` |
 | resume-markers | `${XDG_DATA_HOME:-$HOME/.local/share}/lighthouse/resume/<session_id>.json` |
 | handoff | `${XDG_DATA_HOME:-$HOME/.local/share}/lighthouse/resume/<session_id>.handoff.md` |
