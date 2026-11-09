@@ -414,7 +414,8 @@ max_wait = "1h"              # grens voor een stille run, een onzekere start of 
 answer_permissions = ["admin", "maintain"]
 
 [dispatch.forge]
-url = "http://127.0.0.1:8091"
+url = "http://127.0.0.1:8091"  # waar lighthouse de forge-API aanspreekt
+web_url = ""                   # link naar het forge-dashboard op de webpagina, bv. een tailscale-serve-adres; leeg: url
 token_file = "/home/me/.kenn/forge/auth_token"   # standaard: <home>/.kenn/forge/auth_token
 ```
 
