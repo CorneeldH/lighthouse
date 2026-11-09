@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/main-commit-gate.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh main-commit-gate",
             "timeout": 15
           },
           {
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/worktree-check.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh worktree-check",
             "timeout": 15
           }
         ]

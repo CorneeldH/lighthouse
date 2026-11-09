@@ -346,9 +346,9 @@ def test_problems_flag_a_stale_not_readers_entry(monkeypatch):
 
 
 def test_problems_flag_an_indirect_entry_of_a_file_without_the_config(monkeypatch):
-    monkeypatch.setitem(INDIRECT_READERS, ("forge.owner", "pack/core/hooks/main-commit-gate.sh"), ".owner")
+    monkeypatch.setitem(INDIRECT_READERS, ("forge.owner", "pack/core/hooks/run.sh"), ".owner")
     problems = config_problems(load("config.json"), ROOT)
-    assert ("forge.owner: INDIRECT_READERS pack/core/hooks/main-commit-gate.sh "
+    assert ("forge.owner: INDIRECT_READERS pack/core/hooks/run.sh "
             "no longer loads the config or uses .owner") in problems
 
 
