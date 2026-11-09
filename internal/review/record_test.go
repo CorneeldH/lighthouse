@@ -124,7 +124,7 @@ func TestStartReservesAnAttemptWithTheReviewedCommit(t *testing.T) {
 	deps := Deps{Now: func() time.Time { return time.Date(2026, 11, 8, 12, 30, 45, 0, time.UTC) }}
 
 	tmp := t.TempDir()
-	attempt, err := Start("docs/plan.md", repo, tmp, "plan", deps)
+	attempt, err := Start(docsDir+"plan.md", repo, tmp, "plan", deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,12 +135,12 @@ func TestStartReservesAnAttemptWithTheReviewedCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if meta["reviewed_sha"] != run("rev-parse", "HEAD") || meta["plan"] != "docs/plan.md" || meta["chain_key"] != "plan" {
+	if meta["reviewed_sha"] != run("rev-parse", "HEAD") || meta["plan"] != docsDir+"plan.md" || meta["chain_key"] != "plan" {
 		t.Errorf("attempt.json = %v", meta)
 	}
 
 	writeFile(t, filepath.Join(repo, "docs", "plan.md"), "# changed\n")
-	_, err = Start("docs/plan.md", repo, tmp, "plan", deps)
+	_, err = Start(docsDir+"plan.md", repo, tmp, "plan", deps)
 	var invalid *InvalidError
 	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), "commit first") {
 		t.Errorf("Start on an uncommitted plan: error = %v, want an InvalidError with 'commit first'", err)

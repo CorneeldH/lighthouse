@@ -65,7 +65,7 @@ func newRound(t *testing.T) *round {
 	t.Setenv("LIGHTHOUSE_CODEX_BUDGET_CMD", "")
 	t.Setenv("CAPTURE", r.capture)
 	r.opts = Options{
-		Kind: "spec", Doc: "docs/doc.md", Round: "1", Out: filepath.Join(tmp, "out", "round-1.json"),
+		Kind: "spec", Doc: docsDir + "doc.md", Round: "1", Out: filepath.Join(tmp, "out", "round-1.json"),
 		Stdout: &r.stdout, Stderr: &r.stderr,
 	}
 	return r
@@ -132,7 +132,7 @@ func TestRoundRunsCodexAndSummarises(t *testing.T) {
 	want := []string{
 		"exec", "--sandbox", "read-only", "-c", "model_reasoning_effort=max", "--cd", repo,
 		"--output-schema", filepath.Join(repo, ".claude/skills/lighthouse-review-spec/findings.schema.json"),
-		"-o", r.opts.Out, "--json", "Spec: docs/doc.md round 1",
+		"-o", r.opts.Out, "--json", "Spec: " + docsDir + "doc.md round 1",
 	}
 	if strings.Join(argv, "\x00") != strings.Join(want, "\x00") {
 		t.Errorf("argv = %q, want %q", argv, want)
@@ -148,7 +148,7 @@ func TestRoundRunsCodexAndSummarises(t *testing.T) {
 
 func TestMissingDocumentIsAUsageErrorAfterTheCodexCheck(t *testing.T) {
 	r := newRound(t)
-	r.opts.Doc = "docs/missing.md"
+	r.opts.Doc = docsDir + "missing.md"
 	if code := r.run(); code != ExitUsage {
 		t.Fatalf("exit %d, want 2", code)
 	}

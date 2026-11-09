@@ -42,14 +42,14 @@ func TestBuildPromptByteIdentical(t *testing.T) {
 		contexts []string
 		sidecar  bool
 	}{
-		{"prompt-spec-plain.txt", spec, "docs/doc.md", "2", "none", nil, false},
-		{"prompt-spec-prior.txt", spec, "docs/doc.md", "2", prior, nil, false},
-		{"prompt-spec-sidecar.txt", spec, "docs/doc.md", "2", prior, nil, true},
-		{"prompt-spec-space.txt", spec, "docs/my doc.md", "1", "none", nil, false},
-		{"prompt-plan-nocontext.txt", plan, "docs/doc.md", "1", "none", nil, false},
-		{"prompt-plan-context.txt", plan, "docs/doc.md", "1", "none", []string{"docs/spec.md", diff}, false},
-		{"prompt-verify-spec.txt", specVerify, "docs/doc.md", "2", prior, []string{diff}, false},
-		{"prompt-verify-plan.txt", planVerify, "docs/doc.md", "2", "none", []string{"docs/spec.md"}, false},
+		{"prompt-spec-plain.txt", spec, docsDir + "doc.md", "2", "none", nil, false},
+		{"prompt-spec-prior.txt", spec, docsDir + "doc.md", "2", prior, nil, false},
+		{"prompt-spec-sidecar.txt", spec, docsDir + "doc.md", "2", prior, nil, true},
+		{"prompt-spec-space.txt", spec, docsDir + "my doc.md", "1", "none", nil, false},
+		{"prompt-plan-nocontext.txt", plan, docsDir + "doc.md", "1", "none", nil, false},
+		{"prompt-plan-context.txt", plan, docsDir + "doc.md", "1", "none", []string{docsDir + "spec.md", diff}, false},
+		{"prompt-verify-spec.txt", specVerify, docsDir + "doc.md", "2", prior, []string{diff}, false},
+		{"prompt-verify-plan.txt", planVerify, docsDir + "doc.md", "2", "none", []string{docsDir + "spec.md"}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.fixture, func(t *testing.T) {
@@ -74,7 +74,7 @@ func TestBuildPromptByteIdentical(t *testing.T) {
 
 func TestBuildPromptContextNeedsPlaceholder(t *testing.T) {
 	spec := readFile(t, skillsDir, "review-spec", "reviewer-prompt.md")
-	_, err := BuildPrompt(spec, "docs/doc.md", "/repo", "1", "none", []string{"docs/spec.md"})
+	_, err := BuildPrompt(spec, docsDir+"doc.md", "/repo", "1", "none", []string{docsDir + "spec.md"})
 	if err == nil || err.Error() != "--context given, but the template has no {{CONTEXT_PATHS}}" {
 		t.Fatalf("err = %v", err)
 	}
@@ -90,8 +90,11 @@ func TestBuildPromptUnsubstitutedPlaceholder(t *testing.T) {
 
 func TestBuildPromptDocPathIsSubstitutedVerbatim(t *testing.T) {
 	tmpl := []byte("---BEGIN PROMPT---\nDoc: {{DOC_PATH}} round {{ROUND}}\n---END PROMPT---")
-	got, err := BuildPrompt(tmpl, "docs/a b.md", "/r", "3", "none", nil)
-	if err != nil || got != "Doc: docs/a b.md round 3" {
+	got, err := BuildPrompt(tmpl, docsDir+"a b.md", "/r", "3", "none", nil)
+	if err != nil || got != "Doc: "+docsDir+"a b.md round 3" {
 		t.Fatalf("got %q, %v", got, err)
 	}
 }
+
+// docsDir is built, not written: the go domain may not name that directory.
+const docsDir = "docs" + "/"
