@@ -252,7 +252,7 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 | Turns in which this skill loaded without a fix request in the prompt | 0 | `lighthouse measure-fix-pr-kpi mistrigger` |
 | Turns in which the skill ran on into `lighthouse-close-issue` or `caveman-review` | 0 | `lighthouse measure-fix-pr-kpi scope` |
 
-The script is the source of the numbers, not this text.
+The command is the source of the numbers, not this text.
 
 Row 3 is the bill for the ambient choice. Without that row "a sharp negative boundary" is a claim;
 with that row it is a number that rises at the next measurement or does not.

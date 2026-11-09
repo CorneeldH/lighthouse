@@ -78,6 +78,9 @@ func TestClassifyParity(t *testing.T) {
 		}
 		want := r.Want
 		if v, ok := knownDivergence[r.Fn+"\x00"+r.Input]; ok {
+			if r.Want != true {
+				t.Errorf("%s(%q): row says %v, a divergence must start from Python's true", r.Fn, r.Input, r.Want)
+			}
 			want = v
 			exempt++
 		}

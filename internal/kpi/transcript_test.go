@@ -22,7 +22,7 @@ func TestSessionFilesOrder(t *testing.T) {
 	p := filepath.Join(root, "P")
 	write(t, filepath.Join(p, "b.jsonl"), "")
 	write(t, p+"--claude-worktrees-x/a.jsonl", "")
-	write(t, p+"-ander/c.jsonl", "")
+	write(t, p+"-other/c.jsonl", "")
 	write(t, filepath.Join(p, "skip.txt"), "")
 	got, err := sessionFiles(p, true)
 	if err != nil {

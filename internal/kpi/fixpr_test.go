@@ -73,6 +73,18 @@ func TestScoutBudgetMatchesPersona(t *testing.T) {
 	}
 }
 
+// Classification: fails when the persona is renamed and the Agent calls stop being counted as scouts.
+func TestScoutNameMatchesPersona(t *testing.T) {
+	data, err := os.ReadFile("../../pack/core/agents/issue-impact-scout.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	front, _, _ := strings.Cut(strings.TrimPrefix(string(data), "---\n"), "\n---")
+	if !strings.Contains("\n"+front+"\n", "\nname: "+scoutAgent+"\n") {
+		t.Errorf("persona frontmatter does not say name: %s", scoutAgent)
+	}
+}
+
 // Classification: fails when the diagnosis block of the skill gains a mutating command, or
 // the block is moved out of its section.
 func TestFixPRDiagnosisBlockIsReadOnly(t *testing.T) {

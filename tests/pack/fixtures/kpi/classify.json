@@ -115,5 +115,7 @@
   {"fn": "skip_reason", "input": "Scout: skipped \u2014 duidelijk.", "want": false, "from": "test_scout_skip_any_language"},
   {"fn": "skip_reason", "input": "Poort 4b: writing-plans", "want": false, "from": "test_gate_four_b_without_any_scout_line_is_silent"},
   {"fn": "skip_reason", "input": "Scout: overgeslagen \u2014 xxxxxxxxxxxxxxxxxxx .", "want": false, "from": "test_scout_skip_any_language"},
-  {"fn": "skip_reason", "input": "Scout: overgeslagen \u2014 xxxxxxxxxxxxxxxxxxxx", "want": true, "from": "test_scout_skip_any_language"}
+  {"fn": "skip_reason", "input": "Scout: overgeslagen \u2014 xxxxxxxxxxxxxxxxxxxx", "want": true, "from": "test_scout_skip_any_language"},
+  {"fn": "skip_reason", "input": "Scout: overgeslagen \u2014 \u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9", "want": false, "from": "scout-skip-reason-runes"},
+  {"fn": "skip_reason", "input": "Scout: overgeslagen \u2014 \u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9\u00e9", "want": true, "from": "scout-skip-reason-runes"}
 ]

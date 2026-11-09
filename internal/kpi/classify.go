@@ -193,7 +193,7 @@ func loadHeadingRes() (headingRes, error) {
 	return headingRes{
 		gateRe:      pyRe(`\b` + gate + `⟨ws⟩*(?P<gate>[0-4])[abc]?\b`),
 		subgateRe:   pyRe(`\b` + gate + `⟨ws⟩*(?P<gate>[0-4])⟨ws⟩*(?P<sub>[abc])?\b`),
-		scoutSkipRe: pyRe(`(?m)^` + skip + `⟨ws⟩*—⟨ws⟩*(?P<reden>.+?)⟨ws⟩*$`),
+		scoutSkipRe: pyRe(`(?m)^` + skip + `⟨ws⟩*—⟨ws⟩*(?P<reason>.+?)⟨ws⟩*$`),
 	}, nil
 }
 
@@ -225,6 +225,6 @@ func (h headingRes) skipReasonOK(text string) bool {
 	if m == nil {
 		return false
 	}
-	reason := strings.Trim(m[h.scoutSkipRe.SubexpIndex("reden")], " .")
+	reason := strings.Trim(m[h.scoutSkipRe.SubexpIndex("reason")], " .")
 	return utf8.RuneCountInString(reason) >= scoutMinReason
 }
