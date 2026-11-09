@@ -71,14 +71,15 @@ func Origin(ctx context.Context, root string) (url string, set bool, err error) 
 	switch {
 	case runErr == nil:
 		return pyStrip(stdout.String()), true, nil
+	case ctx.Err() != nil:
+		// Before the ExitError case: the context kills git, which then looks like a failed exit.
+		return "", false, &OriginError{"git timeout reading the origin of " + root}
 	case errors.As(runErr, &exitErr):
 		msg := pyStrip(stderr.String())
 		if exitErr.ExitCode() == 1 && msg == "" {
 			return "", false, nil
 		}
 		return "", false, &OriginError{fmt.Sprintf("git failed (rc %d): %s", exitErr.ExitCode(), msg)}
-	case ctx.Err() != nil:
-		return "", false, &OriginError{"git timeout reading the origin of " + root}
 	default:
 		return "", false, &OriginError{runErr.Error()}
 	}

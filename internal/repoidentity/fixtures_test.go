@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
 )
@@ -104,5 +105,22 @@ func TestOriginNotARepoIsAnError(t *testing.T) {
 	var oe *OriginError
 	if !errors.As(err, &oe) {
 		t.Fatalf("err = %v, want *OriginError", err)
+	}
+}
+
+func TestOriginTimeoutText(t *testing.T) {
+	// A git that outlives the deadline is killed by the context: that must read as a timeout,
+	// not as "git failed (rc -1)".
+	bin := t.TempDir()
+	if err := os.WriteFile(bin+"/git", []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	_, _, err := Origin(ctx, "/some/root")
+	var oe *OriginError
+	if !errors.As(err, &oe) || oe.Error() != "git timeout reading the origin of /some/root" {
+		t.Fatalf("err = %v, want the timeout text", err)
 	}
 }
