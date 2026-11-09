@@ -43,8 +43,21 @@ def hook_entries(pack_root: Path) -> set[Entry]:
 
 
 def source_pack(chip: dict) -> str:
-    """The pack named by a hook chip's source: pack/<pack>/hooks/<script>."""
-    return chip["source"].removeprefix(REPO_BLOB).split("/")[1]
+    """The pack named by a hook chip's source: pack/<pack>/hooks/<script>. A hook in Go
+    (internal/hooks/) runs as `run.sh <name>` from pack/core, so it counts as core."""
+    path = chip["source"].removeprefix(REPO_BLOB)
+    if path.startswith("internal/hooks/"):
+        return "core"
+    return path.split("/")[1]
+
+
+def expected_source(chip: dict) -> str:
+    """Where a hook chip's source must end: internal/hooks/<name without dashes>.go for
+    `run.sh <name>`, <pack>/hooks/<script> for a script."""
+    script, *args = chip["command"].split()
+    if script == "run.sh" and args:
+        return f"internal/hooks/{args[0].replace('-', '')}.go"
+    return f"{source_pack(chip)}/hooks/{script}"
 
 
 def drawn_entries(data: dict) -> set[Entry]:
@@ -75,9 +88,9 @@ def hook_problems(data: dict, pack_root: Path) -> list[str]:
         for event in c["events"]:
             if c["phase"] != EVENT_PHASE[event]:
                 problems.append(f"{c['id']}: {event} belongs in column {EVENT_PHASE[event]}, not {c['phase']}")
-        script = c["command"].split()[0]
-        if not c["source"].endswith(f"{source_pack(c)}/hooks/{script}"):
-            problems.append(f"{c['id']}: source does not match {source_pack(c)}/hooks/{script}")
+        expected = expected_source(c)
+        if not c["source"].endswith(expected):
+            problems.append(f"{c['id']}: source does not match {expected}")
     return sorted(problems)
 
 
@@ -127,6 +140,14 @@ def test_hook_problems_flags_a_source_of_another_script():
     data = copy.deepcopy(load("session.json"))
     chip(data, "gofmt-check")["source"] = chip(data, "go-lint-gate")["source"]
     assert hook_problems(data, ROOT / "pack") == ["gofmt-check: source does not match go/hooks/gofmt-check.sh"]
+
+
+def test_hook_problems_flags_a_go_hook_with_the_source_of_another():
+    data = copy.deepcopy(load("session.json"))
+    chip(data, "md-link-check")["source"] = chip(data, "permission-check")["source"]
+    assert hook_problems(data, ROOT / "pack") == [
+        "md-link-check: source does not match internal/hooks/mdlinkcheck.go"
+    ]
 
 
 def test_hook_problems_flags_a_hook_chip_without_effects():

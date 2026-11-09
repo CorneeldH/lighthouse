@@ -1,29 +1,27 @@
-"""The usage-gate hook (#66): `usage-gate.sh` checks the alarm in shell, refreshes
-the meter at `prompt`, and hands a valid alarm to `usage_guard.py`.
+"""The usage-gate hook (#66): `run.sh usage-gate <stand>` reads the alarm, refreshes
+the meter at `prompt`, and speaks on a valid alarm.
 
 Every run goes through `guard_env`: a tmp HOME and XDG dirs, no controller or
-refresh variables, no real `lighthouse` on PATH.
+refresh variables, no real `lighthouse` on PATH; `run_guard` puts the shim of
+`_testkit` first, which records a `lighthouse usage refresh` in `refresh_trace`.
 """
 
 import json
 import os
-import shutil
 import subprocess
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from tests.pack._testkit import (
-    BSD_DATE_STUB,
     CORE,
     alarm_line,
     guard_env,
     install_core,
+    refresh_trace,
     run_guard,
-    tool_bin,
-    trace_bin,
     write_alarm,
 )
 
@@ -45,10 +43,6 @@ def _payload(tmp_path: Path, stand: str, **extra: object) -> dict:
     )
 
 
-def _hook(root: Path) -> Path:
-    return root / ".claude" / "hooks" / "lighthouse" / "usage-gate.sh"
-
-
 def _speaks(stand: str, stdout: str) -> bool:
     """True when the output is the stand's own speech; fails on any other JSON."""
     if stdout == "":
@@ -61,49 +55,62 @@ def _speaks(stand: str, stdout: str) -> bool:
     return True
 
 
-def _symlink_alarm(env: dict) -> None:
-    real = Path(env["HOME"]) / "elsewhere.alarm"
-    real.write_text(alarm_line() + "\n", encoding="utf-8")
-    link = write_alarm(env, "")
-    link.unlink()
-    link.symlink_to(real)
+# The alarm cases live in a fixture the Go reader of the alarm reads too
+# (`internal/usage`); the former `alarm.sh` was the reference for `valid` and `fields`.
+ALARM_CASES = json.loads(
+    (Path(__file__).resolve().parent / "fixtures" / "usage_alarm" / "cases.json").read_text(
+        encoding="utf-8"
+    )
+)
+ALARM_IDS = [case["name"] for case in ALARM_CASES]
 
 
-VALID = "valid"
-ALARMS = {
-    "no file": None,
-    VALID: lambda env: write_alarm(env, alarm_line(local="Tue_14:30")),
-    "expired": lambda env: write_alarm(env, alarm_line(delta=-timedelta(minutes=1))),
-    "three fields": lambda env: write_alarm(env, "venster 92 14:30"),
-    "question marks": lambda env: write_alarm(env, "venster 92 ? ?"),
-    "five fields": lambda env: write_alarm(env, alarm_line() + " extra"),
-    "carriage return": lambda env: write_alarm(env, alarm_line() + "\r"),
-    "kind dag": lambda env: write_alarm(env, alarm_line(kind="dag")),
-    "pct 9x": lambda env: write_alarm(env, alarm_line().replace(" 92 ", " 9x ")),
-    "symlink": _symlink_alarm,
-    "unreadable": lambda env: write_alarm(env, alarm_line()).chmod(0o000),
-}
+def _expand(text: str, now: datetime) -> str:
+    """Fill `{future}` (now + 1 hour) and `{past}` (now - 1 minute) in a fixture text."""
+    stamp = "%Y-%m-%dT%H:%M:%SZ"
+    return text.replace("{future}", (now + timedelta(hours=1)).strftime(stamp)).replace(
+        "{past}", (now - timedelta(minutes=1)).strftime(stamp)
+    )
 
 
-@pytest.mark.parametrize("case", ALARMS)
+def _write_case(env: dict, case: dict, now: datetime) -> None:
+    """Build the alarm file a fixture case describes."""
+    line = _expand(case["line"], now)
+    if case["setup"] == "absent":
+        return
+    if case["setup"] == "symlink":
+        real = Path(env["HOME"]) / "elsewhere.alarm"
+        real.write_text(line + "\n", encoding="utf-8")
+        link = write_alarm(env, "")
+        link.unlink()
+        link.symlink_to(real)
+        return
+    # Bytes, not `write_alarm`: a `\r` in the line must reach the file unchanged.
+    path = write_alarm(env, "")
+    path.write_bytes((line + "\n").encode("utf-8"))
+    if case["setup"] == "unreadable":
+        path.chmod(0o000)
+
+
+@pytest.mark.parametrize("case", ALARM_CASES, ids=ALARM_IDS)
 @pytest.mark.parametrize("stand", STANDS)
-def test_alarm_cases(tmp_path: Path, stand: str, case: str) -> None:
-    if case == "unreadable" and os.geteuid() == 0:
+def test_alarm_cases(tmp_path: Path, stand: str, case: dict) -> None:
+    if case["setup"] == "unreadable" and os.geteuid() == 0:
         pytest.skip("root reads a mode-000 file")
     root = tmp_path / "root"
     install_core(root)
     env = guard_env(tmp_path)
-    if ALARMS[case] is not None:
-        ALARMS[case](env)
+    _write_case(env, case, datetime.now(timezone.utc))
 
     result = run_guard(root, stand, _payload(tmp_path, stand), env)
 
     assert result.returncode == 0, result.stderr
     assert result.stderr == ""
-    assert _speaks(stand, result.stdout) is (case == VALID), result.stdout
-    if case == VALID:
-        assert "92%" in result.stdout
-        assert "Tue 14:30" in result.stdout
+    assert _speaks(stand, result.stdout) is case["valid"], result.stdout
+    if case["valid"]:
+        _, pct, local, _ = case["fields"]
+        assert f"at {int(pct)}% of" in result.stdout
+        assert local in result.stdout
 
 
 def test_unreadable_pause_flag_is_silent(tmp_path: Path) -> None:
@@ -143,70 +150,11 @@ def test_alarm_fields_are_not_globbed(tmp_path: Path) -> None:
     assert "resets at ?." in result.stdout
 
 
-@pytest.mark.parametrize("run", ["", RUN], ids=["plain", "controller-run"])
-@pytest.mark.parametrize("stand", ["tool", "subagent"])
-def test_fast_path_runs_nothing(tmp_path: Path, stand: str, run: str) -> None:
-    root = tmp_path / "root"
-    install_core(root)
-    trace = tmp_path / "trace"
-    stubs = trace_bin(
-        tmp_path / "stubs", trace, ("python3", "jq", "date", "git", "cat", "dirname")
-    )
-    env = guard_env(tmp_path, PATH=str(stubs), LIGHTHOUSE_REPO_ROOT=str(root))
-    if run:
-        env["LIGHTHOUSE_CONTROLLER_RUN"] = run
-
-    result = subprocess.run(
-        [shutil.which("bash"), str(_hook(root)), stand],
-        input=json.dumps(_payload(tmp_path, stand)),
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
-    )
-
-    assert result.returncode == 0
-    assert result.stderr == ""
-    assert result.stdout == ""
-    assert not trace.exists(), trace.read_text(encoding="utf-8")
-
-
-@pytest.mark.parametrize(
-    ("delta", "speaks"),
-    [(timedelta(hours=1), True), (-timedelta(minutes=1), False)],
-    ids=["valid", "expired"],
-)
-def test_bsd_date(tmp_path: Path, delta: timedelta, speaks: bool) -> None:
-    root = tmp_path / "root"
-    install_core(root)
-    stubs = tool_bin(tmp_path / "stubs", (), stubs={"date": BSD_DATE_STUB})
-    env = guard_env(tmp_path)
-    env["PATH"] = f"{stubs}:{env['PATH']}"
-    write_alarm(env, alarm_line(delta=delta))
-
-    result = run_guard(root, "tool", _payload(tmp_path, "tool"), env)
-
-    assert result.returncode == 0
-    assert result.stderr == ""
-    assert _speaks("tool", result.stdout) is speaks
-
-
-def _lighthouse_stub(tmp_path: Path, trace: Path, delay: str = "") -> Path:
-    script = (
-        "#!/bin/bash\n"
-        f"{delay}"
-        f"printf '%s|%s' \"$*\" \"${{LIGHTHOUSE_USAGE_REFRESH:-}}\" > {trace}\n"
-    )
-    return tool_bin(tmp_path / "lh", (), stubs={"lighthouse": script})
-
-
 def test_refresh_is_detached(tmp_path: Path) -> None:
     root = tmp_path / "root"
     install_core(root)
-    trace = tmp_path / "refresh"
-    stub = _lighthouse_stub(tmp_path, trace, delay="sleep 2\n")
-    env = guard_env(tmp_path)
-    env["PATH"] = f"{stub}:{env['PATH']}"
+    env = guard_env(tmp_path, LIGHTHOUSE_SHIM_DELAY="2")
+    trace = refresh_trace(env)
     write_alarm(env, alarm_line())
 
     start = time.monotonic()
@@ -215,7 +163,7 @@ def test_refresh_is_detached(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     assert elapsed < 1.5, elapsed
-    # The payload still reached the lib: the handoff path carries the session id.
+    # The payload still reached the hook: the handoff path carries the session id.
     context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "s1.handoff.md" in context
     # `> trace` creates the file before printf writes: poll for the content.
@@ -230,10 +178,8 @@ def test_refresh_is_detached(tmp_path: Path) -> None:
 def test_refresh_only_at_prompt(tmp_path: Path) -> None:
     root = tmp_path / "root"
     install_core(root)
-    trace = tmp_path / "refresh"
-    stub = _lighthouse_stub(tmp_path, trace)
     env = guard_env(tmp_path)
-    env["PATH"] = f"{stub}:{env['PATH']}"
+    trace = refresh_trace(env)
     write_alarm(env, alarm_line())
 
     for stand in ("tool", "subagent", "stop"):
@@ -243,26 +189,12 @@ def test_refresh_only_at_prompt(tmp_path: Path) -> None:
     assert not trace.exists()
 
 
-def test_refresh_without_lighthouse(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    install_core(root)
-    env = guard_env(tmp_path)
-
-    result = run_guard(root, "prompt", _payload(tmp_path, "prompt"), env)
-
-    assert result.returncode == 0
-    assert result.stderr == ""
-    assert result.stdout == ""
-
-
 @pytest.mark.parametrize("stand", STANDS)
 def test_usage_refresh_env_silences(tmp_path: Path, stand: str) -> None:
     root = tmp_path / "root"
     install_core(root)
-    trace = tmp_path / "refresh"
-    stub = _lighthouse_stub(tmp_path, trace)
     env = guard_env(tmp_path, LIGHTHOUSE_USAGE_REFRESH="1")
-    env["PATH"] = f"{stub}:{env['PATH']}"
+    trace = refresh_trace(env)
     write_alarm(env, alarm_line())
 
     result = run_guard(root, stand, _payload(tmp_path, stand), env)
@@ -305,28 +237,6 @@ def test_no_table_no_marker(tmp_path: Path) -> None:
     assert not (Path(env["XDG_DATA_HOME"]) / "lighthouse" / "resume").exists()
 
 
-def test_missing_python(tmp_path: Path) -> None:
-    root = tmp_path / "root"
-    install_core(root)
-    env = guard_env(tmp_path)
-    write_alarm(env, alarm_line())
-    env["PATH"] = str(tool_bin(tmp_path / "bin", ("date", "git", "cat")))
-
-    result = subprocess.run(
-        [shutil.which("bash"), str(_hook(root)), "tool"],
-        input=json.dumps(_payload(tmp_path, "tool")),
-        capture_output=True,
-        text=True,
-        env=dict(env, LIGHTHOUSE_REPO_ROOT=str(root)),
-        check=False,
-    )
-
-    assert result.returncode == 0
-    assert result.stdout == ""
-    assert result.stderr.startswith("usage-gate: "), result.stderr
-    assert "COULD NOT CHECK" in result.stderr
-
-
 def test_unknown_stand(tmp_path: Path) -> None:
     root = tmp_path / "root"
     install_core(root)
@@ -349,9 +259,9 @@ def test_no_paia_in_guard_files() -> None:
             "-i",
             "paia",
             "--",
-            "pack/core/hooks/usage-gate.sh",
-            "pack/core/hooks/usage-gate",
-            "pack/core/lib/usage_guard.py",
+            "internal/usageguard",
+            "internal/hooks/usagegate.go",
+            "docs/usage-gate.md",
         ],
         capture_output=True,
         text=True,
@@ -360,44 +270,3 @@ def test_no_paia_in_guard_files() -> None:
     )
 
     assert result.returncode == 1, result.stdout + result.stderr
-
-
-def test_guard_without_alarm_helper_cannot_check(tmp_path: Path) -> None:
-    root = tmp_path / "repo"
-    install_core(root)
-    (root / ".claude/hooks/lighthouse/usage-gate/alarm.sh").unlink()
-    env = guard_env(tmp_path)
-    write_alarm(env, alarm_line())
-    result = run_guard(root, "stop", {}, env)
-    assert result.returncode == 0
-    assert result.stdout == ""
-    assert result.stderr == "usage-gate: COULD NOT CHECK — usage-gate/alarm.sh is missing\n"
-
-
-def test_guard_without_alarm_helper_and_without_alarm_is_silent(tmp_path: Path) -> None:
-    root = tmp_path / "repo"
-    install_core(root)
-    (root / ".claude/hooks/lighthouse/usage-gate/alarm.sh").unlink()
-    result = run_guard(root, "tool", {}, guard_env(tmp_path))
-    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
-
-
-def _helper_fields(env: dict) -> str:
-    script = (
-        f"set -u; . {CORE}/hooks/usage-gate/alarm.sh; usage_alarm_valid; rc=$?; "
-        'echo "$rc $USAGE_ALARM_KIND|$USAGE_ALARM_PCT|$USAGE_ALARM_LOCAL|$USAGE_ALARM_AT"'
-    )
-    result = subprocess.run(
-        ["bash", "-c", script], capture_output=True, text=True, env=env, check=False
-    )
-    assert result.stderr == ""
-    return result.stdout.strip()
-
-
-def test_alarm_helper_fields_under_set_u(tmp_path: Path) -> None:
-    env = guard_env(tmp_path)
-    assert _helper_fields(env) == "1 |||"
-    line = alarm_line(local="14_30")
-    write_alarm(env, line)
-    at = line.split()[3]
-    assert _helper_fields(env) == f"0 venster|92|14 30|{at}"

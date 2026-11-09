@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -51,7 +53,17 @@ func newUsageCommand() *cobra.Command {
 			return printCodex(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), usage.ReadCodex)
 		},
 	}
-	cmd.AddCommand(refresh, tick, codex)
+	alarm := &cobra.Command{
+		Use:   "alarm",
+		Short: "Print the alarm line when a usage window is over its threshold",
+		Long: "Print `<kind> <pct> <reset_local> <reset_at>` when the alarm file holds a valid,\n" +
+			"unexpired alarm and exit 0. Exit 1 without output in every other case.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return printAlarm(cmd.OutOrStdout(), cmd.ErrOrStderr(), time.Now())
+		},
+	}
+	cmd.AddCommand(refresh, tick, codex, alarm)
 	return cmd
 }
 
@@ -104,5 +116,22 @@ func printCodex(ctx context.Context, out, errOut io.Writer, read func(context.Co
 		return errSilent
 	}
 	_, err = fmt.Fprintf(out, "%s\n", data)
+	return err
+}
+
+// printAlarm prints the valid alarm of the default alarm file on out, with
+// reset_local joined by "_". Without a valid alarm it prints nothing and returns
+// errSilent (exit 1); when no path can be made it prints one line on errOut first.
+func printAlarm(out, errOut io.Writer, now time.Time) error {
+	paths, err := usage.DefaultPaths()
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "usage: %v\n", err)
+		return errSilent
+	}
+	a, ok := usage.ReadAlarm(paths.Alarm(), now)
+	if !ok {
+		return errSilent
+	}
+	_, err = fmt.Fprintf(out, "%s %d %s %s\n", a.Kind, a.Pct, strings.ReplaceAll(a.ResetLocal, " ", "_"), a.ResetAt)
 	return err
 }

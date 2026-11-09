@@ -20,11 +20,12 @@ from pathlib import Path
 import pytest
 
 from tests.pack._testkit import (
-    CORE,
     MINIMAL_TOML,
     alarm_line,
+    _path_without_lighthouse,
     git,
     install_pack,
+    path_with_lighthouse,
     past_this_second,
     prompt_entry,
     result_entry,
@@ -90,6 +91,9 @@ def _run(
         # Never the real alarm of the machine running the tests.
         XDG_CACHE_HOME=str(root.parent / "xdg-cache"),
         UV_CACHE_DIR=UV_CACHE,
+        # The gate reads the alarm with `lighthouse usage alarm`: the one built from this
+        # checkout, never an older one installed on the machine.
+        PATH=path_with_lighthouse(),
     )
     full_env.update(env or {})
     return subprocess.run(
@@ -460,9 +464,42 @@ def test_unreadable_usage_alarm_still_blocks(tmp_path, kind):
     assert _run(root, env=env).returncode == 2
 
 
-def test_without_core_a_valid_alarm_still_blocks(tmp_path):
+def test_without_lighthouse_a_valid_alarm_still_blocks(tmp_path):
     root, env = _alarm_repo(tmp_path, alarm_line())
-    result = _run(root, env=env, hook=CORE.parent / "python" / "hooks" / "ty-gate.sh")
+    env["PATH"] = _path_without_lighthouse(tmp_path / "path-shadow")
+    result = _run(root, env=env)
+    assert result.returncode == 2, result.stdout
+    assert "invalid-assignment" in result.stderr
+
+
+def test_alarm_is_read_with_lighthouse_usage_alarm(tmp_path):
+    root, env = _alarm_repo(tmp_path)
+    fake = tool_bin(
+        tmp_path / "fake-lighthouse",
+        (),
+        stubs={
+            "lighthouse": '#!/bin/bash\n'
+            '[ "$*" = "usage alarm" ] || exit 1\n'
+            "echo 'venster 92 9_15 2099-01-01T00:00:00Z'\n"
+        },
+    )
+    env["PATH"] = f"{fake}:{path_with_lighthouse()}"
+    result = _run(root, env=env)
+    assert _message(result) == (
+        "ty-gate: not checked — the usage alarm is up until 9 15; "
+        "the usage gate wraps up this session."
+    )
+
+
+def test_help_text_from_an_old_lighthouse_is_no_alarm(tmp_path):
+    root, env = _alarm_repo(tmp_path)
+    fake = tool_bin(
+        tmp_path / "old-lighthouse",
+        (),
+        stubs={"lighthouse": "#!/bin/bash\necho 'Usage:'\necho '  lighthouse usage [command]'\n"},
+    )
+    env["PATH"] = f"{fake}:{path_with_lighthouse()}"
+    result = _run(root, env=env)
     assert result.returncode == 2, result.stdout
     assert "invalid-assignment" in result.stderr
 

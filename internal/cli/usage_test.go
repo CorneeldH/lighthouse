@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -90,4 +91,49 @@ func TestPrintCodex(t *testing.T) {
 			t.Errorf("err = %v, stdout = %q, stderr = %q", err, out.String(), errOut.String())
 		}
 	})
+}
+
+func TestUsageAlarmCommand(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", dir)
+	run := func() (string, string, error) {
+		var out, errOut bytes.Buffer
+		root := NewRoot(strings.NewReader(""), &out, &errOut)
+		root.SetArgs([]string{"usage", "alarm"})
+		err := root.Execute()
+		return out.String(), errOut.String(), err
+	}
+
+	out, errOut, err := run()
+	if !errors.Is(err, errSilent) || out != "" || errOut != "" {
+		t.Errorf("no file: got (%v, %q, %q), want errSilent and empty output", err, out, errOut)
+	}
+
+	paths, perr := usage.DefaultPaths()
+	if perr != nil {
+		t.Fatal(perr)
+	}
+	if err := os.MkdirAll(paths.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const line = "venster 92 Tue_14:30 2099-01-01T00:00:00Z\n"
+	if err := os.WriteFile(paths.Alarm(), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, err = run()
+	if err != nil || out != line || errOut != "" {
+		t.Errorf("valid: got (%v, %q, %q), want (nil, %q, empty)", err, out, errOut, line)
+	}
+}
+
+func TestUsageAlarmCommandWithoutHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CACHE_HOME", "")
+	var out, errOut bytes.Buffer
+	root := NewRoot(strings.NewReader(""), &out, &errOut)
+	root.SetArgs([]string{"usage", "alarm"})
+	err := root.Execute()
+	if !errors.Is(err, errSilent) || out.Len() != 0 || !strings.HasPrefix(errOut.String(), "usage: ") || strings.Count(errOut.String(), "\n") != 1 {
+		t.Errorf("got (%v, %q, %q), want errSilent and one usage: line on stderr", err, out.String(), errOut.String())
+	}
 }
