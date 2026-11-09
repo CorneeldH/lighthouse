@@ -219,9 +219,11 @@ tick could not measure the session, shown as *not measured*) and `at`, the tick 
 deferred start: `repo`, `issue`, `title`, `reason` and `at`. The rows do not show `at`; the Controller
 section heading shows the age of the newest tick as *tick … ago*, so a row is at most one tick behind.
 Without a tick both lists are empty. Next to `runs` and `deferred` the body carries two settings
-of host.toml: `workspace_url`, the kenn-forge base URL from `[dispatch.forge] url` without a
-trailing slash (`http://127.0.0.1:8091` without a host.toml), and `night`, the night window from
-`[dispatch] night` as `HH:MM-HH:MM`. A `500` means the database could not be read.
+of host.toml: `workspace_url`, the kenn-forge address a browser opens, without a trailing slash.
+It is `[dispatch.forge] web_url`, else `[dispatch.forge] url` (`http://127.0.0.1:8091` without a
+host.toml). Set `web_url` to the tailscale serve address when you open the page from another
+machine; lighthouse itself keeps talking to the forge API on `url`. The other setting is `night`,
+the night window from `[dispatch] night` as `HH:MM-HH:MM`. A `500` means the database could not be read.
 
 ## Run the tick
 
