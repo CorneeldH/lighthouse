@@ -104,7 +104,7 @@ markdown/JSON-docs.
 
 **Files:**
 - Modify: `pack/core/skills/write-handoff/SKILL.md:171-172` (uitleg "always-on host" noemt `host.controller`; de aanroep `lighthouse config host-check` blijft letterlijk)
-- Modify: `docs/host-assumptions.md:25,43`, `docs/test-gate.md:55,62`, `docs/getting-started.md:144` (Compatibiliteit uit Task 1 Step 1; voorbeeld `host.toml` met `controller = true` voor een host zonder Tailscale), `docs/site/data/config.json:964,975-978` (nieuwe sleutel; readers: `internal/review/record.go` en `pack/core/skills/write-handoff/SKILL.md`, want `internal/config/host.go` staat in `SKIPPED_READERS` van de site-test en telt niet; beide bestanden moeten de sleutel letterlijk noemen)
+- Modify: `docs/host-assumptions.md:25,43`, `docs/test-gate.md:55,62`, `docs/getting-started.md:144` (Compatibiliteit uit Task 1 Step 1; voorbeeld `host.toml` met `controller = true` voor een host zonder Tailscale), `docs/site/data/config.json:964,975-978` (nieuwe sleutel; readers: `internal/review/record.go` en `pack/core/skills/write-handoff` (mapvorm: de skill-map, zonder `/SKILL.md`), want `internal/config/host.go` staat in `SKIPPED_READERS` van de site-test en telt niet; beide bestanden moeten de sleutel letterlijk noemen)
 - Modify: `tests/test_site_config.py:26` (SET-lijst krijgt `host.controller`)
 - Create: `changelog.d/issue-256-host-check-met-een-expliciete-sleutel.md` (naam = branch, `type: added` front matter; Engels; noemt de upgrade-volgorde: eerst elke repo op de host `lighthouse init --upgrade`, dan pas de sleutel zetten)
 - Modify: `internal/initcmd/host.go:67-92` **niet**: `init` blijft alleen met Tailscale voorstellen en schrijft de sleutel niet (AC 2 kiest voor "dezelfde uitkomst", niet voor een voorstel).
