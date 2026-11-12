@@ -111,7 +111,7 @@ func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateD
 		Client: kennforge.New(cfg.Forge.URL, cfg.Forge.TokenFile),
 		Kind:   repo.Kind, Repo: repo.Slug, StateDir: stateDir,
 		Targets: targets, Profile: repo.Controller.Profile, Run: e.runner(),
-		Home: e.Getenv("HOME"),
+		Home: e.Getenv("HOME"), UnitPrefix: cfg.Forge.UnitPrefix,
 	}
 }
 

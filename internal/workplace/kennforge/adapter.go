@@ -26,6 +26,7 @@ type Adapter struct {
 	StateDir   string            // where carriers go
 	Targets    map[string]string // profile -> forge target_key
 	Profile    string            // the repo profile ([controller] profile)
+	UnitPrefix string            // [dispatch.forge] unit_prefix, no default: "" makes Stop fail
 	Run        workplace.Runner
 	Home       string              // where ~/.claude/projects lives; "": os.UserHomeDir
 	Sleep      func(time.Duration) // nil: time.Sleep

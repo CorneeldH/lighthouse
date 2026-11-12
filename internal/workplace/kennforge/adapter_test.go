@@ -71,7 +71,8 @@ func newFakeForge(t *testing.T) (*fakeForge, *Adapter) {
 	a := &Adapter{
 		Client: New(srv.URL, tok), Kind: "github", Repo: "CorneeldH/lighthouse",
 		StateDir: t.TempDir(), Targets: map[string]string{"software": "paia-software"},
-		Sleep: func(time.Duration) { f.mu.Lock(); f.counts["sleep"]++; f.mu.Unlock() },
+		UnitPrefix: "paia-forge-",
+		Sleep:      func(time.Duration) { f.mu.Lock(); f.counts["sleep"]++; f.mu.Unlock() },
 	}
 	return f, a
 }

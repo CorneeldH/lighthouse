@@ -1721,6 +1721,16 @@ func TestTickWorkplaceFollowsHostToml(t *testing.T) {
 			t.Errorf("adapter = %+v", a)
 		}
 	})
+	t.Run("unit prefix", func(t *testing.T) {
+		cfg := load("[dispatch.forge]\nurl = \"http://localhost:1\"\nunit_prefix = \"other-\"\n")
+		a, ok := env.workplace(cfg, repo, "/state").(*kennforge.Adapter)
+		if !ok {
+			t.Fatalf("workplace = %T, want *kennforge.Adapter", env.workplace(cfg, repo, "/state"))
+		}
+		if a.UnitPrefix != "other-" {
+			t.Errorf("UnitPrefix = %q, want %q", a.UnitPrefix, "other-")
+		}
+	})
 	for name, cfg := range map[string]hostconfig.Dispatch{
 		"forge url only": load("[dispatch.forge]\nurl = \"http://localhost:1\"\n"),
 		"zero dispatch":  {},

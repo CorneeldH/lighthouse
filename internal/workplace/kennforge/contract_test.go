@@ -68,7 +68,8 @@ func newForgeFixture(t *testing.T) workplacetest.Fixture {
 	f.a = &Adapter{
 		Client: New(srv.URL, tok), Kind: "github", Repo: "CorneeldH/lighthouse",
 		StateDir: t.TempDir(), Targets: map[string]string{"infra": "paia-infra"}, Profile: "infra",
-		Run: f.run, Sleep: func(time.Duration) {}, spawnTimeout: 100 * time.Millisecond,
+		UnitPrefix: "paia-forge-",
+		Run:        f.run, Sleep: func(time.Duration) {}, spawnTimeout: 100 * time.Millisecond,
 	}
 	return f
 }
