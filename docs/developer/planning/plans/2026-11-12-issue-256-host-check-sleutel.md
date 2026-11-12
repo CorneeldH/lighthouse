@@ -48,14 +48,15 @@ markdown/JSON-docs.
 ### Task 1: Go — sleutel, validatie en beslissing
 
 **Files:**
-- Modify: `internal/config/host.go` (struct `Host`, `hostKeys`, `LoadHost`, `HostValue`, `Recognize`, `HostCheck`)
+- Modify: `internal/config/host.go` (struct `Host`, `hostKeys`, `LoadHost`, `HostValue`, `Recognize`, `HostCheck`, seam `var isLocal = IsLocal`)
+- Modify: `internal/review/record.go:77` (doc-comment van `HostRefusal` noemt nu alleen `host.tailscale_ip`; laat hem `host.controller` noemen — de site-test telt dit bestand als lezer)
 - Test: `internal/config/config_test.go` (naast `TestHostCheckNotLocal`, :247), `internal/review/record_test.go` (hostToml-helper, :38-77)
 - Test: `tests/pack/fixtures/config-schema.json` (snapshot van de sleutellijst)
 
 **Interfaces:**
 - Produces: `Host.Controller *bool`; `func (h *Host) isController() (is bool, err error)` — `true` bij
   `Controller == &true`, `false` bij `&false`, anders `TailscaleIP != nil` en `IsLocal(*TailscaleIP)`.
-  `HostCheck` en `Recognize` roepen alleen deze aan. `host.controller` staat in `hostKeys` en is
+  `HostCheck` en `Recognize` roepen alleen deze aan. Het adres loopt via een package-variabele `var isLocal = IsLocal` (naad voor tests, zoals Python `patch.object(cfgmod, "is_local", …)`); `HostCheck` mag `h.Controller` en `h.TailscaleIP` zelf inspecteren om uit de drie rc-1-meldingen (controller=false, geen ip, niet lokaal) te kiezen. `host.controller` staat in `hostKeys` en is
   optioneel (`optionalHostKeys` blijft `hostKeys[2:]`, dus de sleutel komt na `host.tailscale_ip`).
 
 - [ ] **Step 1: Controleer onbekende sleutels.** Lees `LoadHost` en de fixtures `host-bad-in-other-key`,
@@ -68,7 +69,7 @@ markdown/JSON-docs.
   bestaande tekst `has no tailscale_ip, so it is not the always-on host`; `controller="yes"` en
   `controller=1` → rc 2 met `key host.controller must be true or false`), en in
   `internal/review/record_test.go` `TestRecognizeController` met dezelfde gevallen via `Recognize()`
-  (true / false / afwezig-zonder-ip). Draai `go test ./internal/config/ ./internal/review/` — verwacht FAIL.
+  (true / false / afwezig-zonder-ip). De gevallen met een lokaal ip stubben `isLocal` (loopback is door `LoadHost` verboden, dus geen echt lokaal adres bruikbaar). Voeg ook toe: `controller=true` met ongeldig `tailscale_ip` → rc 2. Draai `go test ./internal/config/ ./internal/review/` — verwacht FAIL.
 - [ ] **Step 3: Implementeer** `Host.Controller`, de sleutel in `hostKeys`, validatie in `LoadHost`
   (`bool`-assertion, foutmelding hierboven), de `HostValue`-tak (`"true"`/`"false"`, anders `notSet`),
   `isController()` en laat `HostCheck` en `Recognize` die gebruiken. Pas de doc-comments aan
@@ -82,7 +83,8 @@ markdown/JSON-docs.
 ### Task 2: Python-tweeling
 
 **Files:**
-- Modify: `pack/core/lib/config.py` (`load_host` ~:508-534, key-lijst ~:190/249, `_host_check` :629-650, usage-tekst :19)
+- Modify: `pack/core/lib/config.py` (`load_host` ~:508-534, `HOST_KEYS` en `_OPTIONAL_HOST_KEYS` (:199, apart van Go: voeg `host.controller` aan beide toe, anders rc 2 i.p.v. rc 1 'not set' zonder host.toml), `_host_value` (render bool als `true`/`false`, niet `True`), `_host_check` :629-650, usage-tekst :19)
+- Modify: `tests/pack/fixtures/config/host-missing-file/expect.json` (entry `host.controller`: rc 1, not set)
 - Test: `tests/pack/test_config.py` (:563-583), fixtures onder `tests/pack/fixtures/config/` (`host-check-controller-true`, `-false`, `-invalid`, elk met `expect.json` in het bestaande formaat van `host-check-no-tailscale-ip`)
 - Test: `tests/pack/test_config_fixtures.py` (snapshot :105-107 volgt de Go-schema-fixture)
 
@@ -90,21 +92,21 @@ markdown/JSON-docs.
 - Consumes: de semantiek en meldingen uit Task 1 (gelijke rc en stderr per geval).
 - Produces: `Host.controller: bool | None` in de Python-dataclass.
 
-- [ ] **Step 1: Schrijf de fixtures en tests**: dezelfde zes gevallen als Task 1, met de exacte stderr van Go.
+- [ ] **Step 1: Schrijf de fixtures en tests**: dezelfde gevallen als Task 1, met de exacte stderr van Go. Gevallen met een lokaal ip horen in `test_config.py` met `patch(is_local)` (de fixtures draaien ook in de Go-pariteitstest met de echte `IsLocal`); fixtures alleen voor adres-onafhankelijke gevallen, plus `["host.controller"]`-verwachtingen (de dekkingstest eist een fixture-arg per sleutel).
   Draai `python3 -m pytest tests/pack/test_config.py tests/pack/test_config_fixtures.py -q` — verwacht FAIL.
 - [ ] **Step 2: Implementeer** de sleutel in `load_host`, de key-lijst en `_host_check` (zelfde volgorde
   van beslissen als `isController`). Werk het gebruik in de moduledocstring bij.
-- [ ] **Step 3: Draai** `python3 -m pytest tests/pack/test_config.py tests/pack/test_config_fixtures.py tests/test_site_config.py -q` — verwacht PASS
-  (de site-test volgt in Task 3; zet de key daar vóór deze run in `docs/site/data/config.json` als hij faalt).
+- [ ] **Step 3: Draai** `python3 -m pytest tests/pack/test_config.py tests/pack/test_config_fixtures.py -q` — verwacht PASS
+  (de site-test verwacht pas groen na Task 3; draai hem in Task 2 niet mee — verwijder `tests/test_site_config.py` uit dit commando).
 - [ ] **Step 4: Commit** — `feat(config): Python-tweeling van host.controller (#256)`
 
 ### Task 3: Skill, docs, kaart, init-voorstel, changelog
 
 **Files:**
 - Modify: `pack/core/skills/write-handoff/SKILL.md:171-172` (uitleg "always-on host" noemt `host.controller`; de aanroep `lighthouse config host-check` blijft letterlijk)
-- Modify: `docs/host-assumptions.md:25,43`, `docs/test-gate.md:55,62`, `docs/getting-started.md:144` (Compatibiliteit uit Task 1 Step 1; voorbeeld `host.toml` met `controller = true` voor een host zonder Tailscale), `docs/site/data/config.json:964,975-978` (nieuwe sleutel, `yes` gelezen door `host-check`/`Recognize`)
+- Modify: `docs/host-assumptions.md:25,43`, `docs/test-gate.md:55,62`, `docs/getting-started.md:144` (Compatibiliteit uit Task 1 Step 1; voorbeeld `host.toml` met `controller = true` voor een host zonder Tailscale), `docs/site/data/config.json:964,975-978` (nieuwe sleutel; readers: `internal/review/record.go` en `pack/core/skills/write-handoff/SKILL.md`, want `internal/config/host.go` staat in `SKIPPED_READERS` van de site-test en telt niet; beide bestanden moeten de sleutel letterlijk noemen)
 - Modify: `tests/test_site_config.py:26` (SET-lijst krijgt `host.controller`)
-- Create: `changelog.d/issue-256-host-controller.md` (Engels; noemt de upgrade-volgorde: eerst elke repo op de host `lighthouse init --upgrade`, dan pas de sleutel zetten)
+- Create: `changelog.d/issue-256-host-check-met-een-expliciete-sleutel.md` (naam = branch, `type: added` front matter; Engels; noemt de upgrade-volgorde: eerst elke repo op de host `lighthouse init --upgrade`, dan pas de sleutel zetten)
 - Modify: `internal/initcmd/host.go:67-92` **niet**: `init` blijft alleen met Tailscale voorstellen en schrijft de sleutel niet (AC 2 kiest voor "dezelfde uitkomst", niet voor een voorstel).
 
 **Interfaces:**
@@ -114,8 +116,7 @@ markdown/JSON-docs.
 - [ ] **Step 2: Dogfood**: `go run ./cmd/lighthouse init --upgrade`, commit `.claude/skills`, `.agents/skills`,
   `.lighthouse/lib`-kopieën mee; draai het nogmaals — verwacht `No changes.`
 - [ ] **Step 3: Bewijs AC 3**: `python3 -m pytest tests/pack/test_skills_issue_flow.py tests/pack/test_skill_contracts.py -q`
-  — PASS (de skill bevat nog `lighthouse config host-check`); `lighthouse config host-check` op deze
-  (Beelink-achtige) host geeft dezelfde rc als vóór de wijziging (noteer vóór/ná in de PR).
+  — PASS (de skill bevat nog `lighthouse config host-check`); `lighthouse config host-check` (geïnstalleerde binary) vóór de wijziging en `go run ./cmd/lighthouse config host-check` ná de wijziging geven dezelfde rc (noteer vóór/ná in de PR; de geïnstalleerde binary draait de nieuwe code niet).
 - [ ] **Step 4: Volledige run**: `go test ./...` en `python3 -m pytest tests -q` — verwacht PASS.
 - [ ] **Step 5: Commit** — `docs(config): host.controller in skill, gids, kaart en changelog (#256)`
 
