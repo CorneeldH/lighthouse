@@ -227,3 +227,27 @@ func TestLoadDispatchForgeWebURL(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadDispatchUnitPrefix(t *testing.T) {
+	cases := map[string]string{
+		"kenn-forge": "[dispatch.forge]\nunit_prefix = \"x-\"\n",
+		"local":      "[dispatch]\nworkplace = \"local\"\n[dispatch.forge]\nunit_prefix = \"x-\"\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			d, err := LoadDispatch(writeHost(t, body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Forge.UnitPrefix != "x-" {
+				t.Errorf("Forge.UnitPrefix = %q, want %q", d.Forge.UnitPrefix, "x-")
+			}
+		})
+	}
+}
+
+func TestDefaultDispatchHasNoUnitPrefix(t *testing.T) {
+	if got := DefaultDispatch().Forge.UnitPrefix; got != "" {
+		t.Errorf("DefaultDispatch().Forge.UnitPrefix = %q, want empty", got)
+	}
+}
