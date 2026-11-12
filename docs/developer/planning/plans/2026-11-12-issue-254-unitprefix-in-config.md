@@ -14,7 +14,7 @@
 
 - Het prefix is een volledige tekenreeks inclusief slotstreepje (`paia-forge-`); `UnitName` plakt `prefix + profile + "-" + base`.
 - Geen default voor het prefix in de code (`DefaultDispatch` laat het leeg); `ci/literal-denylist-go.txt` houdt `paia-forge-` buiten de Go-code.
-- Go-namen en -commentaar in het Engels; docs, changelog en commitberichten in het Nederlands.
+- Go-namen en -commentaar in het Engels; docs en commitberichten in het Nederlands; het changelog-fragment in het Engels (`docs/releasing.md`).
 - Tests volgen `/lighthouse-test-standard`: elke test faalt als het gedrag breekt (mutatiecontrole in Taak 3).
 - Alleen het prefix. `podman`, `systemctl --user` en forge-targets vallen buiten dit issue.
 
@@ -68,21 +68,21 @@
   - `TestStopWithoutUnitPrefixFails`: `UnitPrefix == ""` geeft een fout die `dispatch.forge.unit_prefix` bevat en voert géén `systemctl` uit (runner zonder verwachte calls).
   - In `tick_test.go`: test dat de gebouwde `*kennforge.Adapter` `UnitPrefix` uit `[dispatch.forge] unit_prefix` krijgt (patroon: r. ~1729, `appendHostToml`).
 - [ ] **Stap 2: Draai** `go test ./internal/workplace/kennforge/ ./internal/cli/ -run 'UnitName|ConfiguredPrefix|WithoutUnitPrefix|UnitPrefix' -v`; verwacht FAIL (compilatiefout of rode assert).
-- [ ] **Stap 3: Implementeer** `UnitName(prefix, profile, worktreePath)` (`return prefix + profile + "-" + string(b)`, zonder literal); `Adapter.UnitPrefix`; in `Stop`: lege `a.UnitPrefix` geeft `fmt.Errorf("stop workspace %s: dispatch.forge.unit_prefix is not set", workspaceID)` vóór elke runner-aanroep; `tick.go` zet `UnitPrefix: cfg.Forge.UnitPrefix`. Pas bestaande tests aan: `Adapter`-literals in `stop_test.go` (`newFakeForge`, r. ~216), `stop_systemd_test.go:30,49` (`UnitName("lhtest-", ...)` / prefix `"lhtest-"` zodat de unit-naam gelijk blijft) en `contract_test.go:68` krijgen `UnitPrefix: "paia-forge-"`.
+- [ ] **Stap 3: Implementeer** `UnitName(prefix, profile, worktreePath)` (`return prefix + profile + "-" + string(b)`, zonder literal); `Adapter.UnitPrefix`; in `Stop`: lege `a.UnitPrefix` geeft `fmt.Errorf("stop workspace %s: dispatch.forge.unit_prefix is not set", workspaceID)` vóór elke runner-aanroep; `tick.go` zet `UnitPrefix: cfg.Forge.UnitPrefix`. Pas bestaande tests aan: `Adapter`-literal in `adapter_test.go:71` (`newFakeForge`; `stop_test.go` gebruikt die via `stopAdapter`), `stop_systemd_test.go:30` (`UnitName("lhtest-", "lhtest", dir)`) én `stop_systemd_test.go:49` (`a.UnitPrefix = "lhtest-"`, zodat `Stop` dezelfde unit stopt die `systemd-run` startte) en `contract_test.go:68` krijgen `UnitPrefix: "paia-forge-"`.
 - [ ] **Stap 4: Draai** `go test ./internal/workplace/... ./internal/cli/... ./internal/hostconfig/...`; verwacht PASS.
 - [ ] **Stap 5: Commit** — `feat(kennforge): unitprefix uit de configuratie, geen default in de code`.
 
 ### Taak 3: Allowlist weg, CI-check, docs, changelog
 
 **Bestanden:**
-- Wijzig: `ci/literal-allowlist.txt` (r. 11-13 weg), `tests/test_literal_grep.py:179` (docstring: "Pins that the Go code holds no allowlisted literal."), `docs/tick.md` (blok `[dispatch.forge]`: `unit_prefix = "paia-forge-"  # prefix van de systemd-unit per run; verplicht met kenn-forge, geen standaard` en een zin onder het blok dat de sleutel bij `workplace = "local"` niet wordt gelezen), `docs/workplace.md` (§ Stop, r. ~209: `<unit_prefix><profiel>-<basename>`), `docs/host-assumptions.md` (rij #254: verwijs naar de config-sleutel, kolom klasse/opvolger bijwerken zoals de overige opgeloste rijen), `docs/developer/planning/plans/2026-11-07-issue-250-host-aannames.md` laat je staan (historie).
-- Maak: `changelog.d/issue-254-unitprefix-config.md` (front matter `type: internal`; tekst: het unitprefix staat nu in `[dispatch.forge] unit_prefix`; bestaande hosts met kenn-forge moeten `unit_prefix = "paia-forge-"` toevoegen).
+- Wijzig: `ci/literal-allowlist.txt` (r. 11-13 weg), `tests/test_literal_grep.py:179` (docstring: "Pins that the Go code holds no allowlisted literal."), `docs/tick.md` (blok `[dispatch.forge]`: `unit_prefix = "paia-forge-"  # prefix van de systemd-unit per run; verplicht met kenn-forge, geen standaard` en een zin onder het blok dat de sleutel bij `workplace = "local"` niet wordt gelezen), `docs/workplace.md` (§ Stop, r. ~209: `<unit_prefix><profiel>-<basename>`), `docs/host-assumptions.md` (rij #254: verwijs naar de config-sleutel, werk de regelankers `stop.go#L34`/`workplace.md#L209` en de naburige `hostconfig.go#L69`-rij bij, kolom klasse/opvolger bijwerken zoals de overige opgeloste rijen), `docs/developer/planning/plans/2026-11-07-issue-250-host-aannames.md` laat je staan (historie).
+- Maak: `changelog.d/issue-254-unitprefix-config.md` (Engels; front matter `type: changed`, want breaking voor bestaande kenn-forge-hosts; tekst: het unitprefix staat nu in `[dispatch.forge] unit_prefix`; hosts met kenn-forge moeten `unit_prefix = "paia-forge-"` toevoegen, anders faalt elke `Stop`).
 - Test: `tests/test_literal_grep.py`, `ci/literal-grep.sh`.
 
-- [ ] **Stap 1: Verwijder** de allowlist-regel en het commentaar; draai `python -m pytest tests/test_literal_grep.py -v` en `ci/literal-grep.sh`; verwacht PASS en geen `stop.go`-hit.
+- [ ] **Stap 1: Verwijder** de allowlist-regel en het commentaar; draai `uv run pytest tests/test_literal_grep.py -v` en `LITERAL_DENYLIST=ci/literal-denylist-go.txt LITERAL_SKIP_TESTS=1 ci/literal-grep.sh internal cmd` (zonder argumenten scant `ci/literal-grep.sh` alleen `pack/`); verwacht PASS en geen `stop.go`-hit.
 - [ ] **Stap 2: Mutatiecontrole** — zet tijdelijk `"paia-forge-" +` terug in `UnitName`: `TestStopUsesConfiguredPrefix` en `test_go_is_clean` moeten falen. Draai ze, zie rood, herstel.
 - [ ] **Stap 3: Docs en changelog** bijwerken zoals hierboven; `.claude/hooks/lighthouse/run.sh md-link-check` blokkeert kapotte links, controleer dat de edits groen blijven.
-- [ ] **Stap 4: Volledige verificatie** — `go build ./... && go vet ./... && go test ./...`, `golangci-lint run`, pytest-suite van `tests/test_literal_grep.py`, `ci/literal-grep.sh`; alles groen. `init --upgrade` is niet nodig (geen wijziging onder `pack/` of in wat `init` schrijft); controleer met `go run ./cmd/lighthouse init --upgrade` dat het `No changes.` meldt.
+- [ ] **Stap 4: Volledige verificatie** — `go build ./... && go vet ./... && go test ./...`, `golangci-lint run`, `uv run pytest tests/test_literal_grep.py`, `LITERAL_DENYLIST=ci/literal-denylist-go.txt LITERAL_SKIP_TESTS=1 ci/literal-grep.sh internal cmd`; alles groen. `init --upgrade` is niet nodig (geen wijziging onder `pack/` of in wat `init` schrijft); controleer met `go run ./cmd/lighthouse init --upgrade` dat het `No changes.` meldt.
 - [ ] **Stap 5: Commit** — `docs(kennforge): allowlist-regel weg, unit_prefix gedocumenteerd`.
 
 ## Dekking van de acceptatiecriteria
