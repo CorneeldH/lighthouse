@@ -264,6 +264,50 @@ func TestHostCheckNotLocal(t *testing.T) {
 	}
 }
 
+func TestHostCheckController(t *testing.T) {
+	orig := isLocal
+	t.Cleanup(func() { isLocal = orig })
+	tests := []struct {
+		name    string
+		body    string
+		local   bool
+		wantRC  int
+		wantOut string
+		wantErr string // substring
+	}{
+		{"true without ip", "controller = true\n", false, 0, "host: box\n", ""},
+		{"true with non-local ip", "controller = true\ntailscale_ip = \"192.0.2.1\"\n", false, 0, "host: box\n", ""},
+		{"false with local ip", "controller = false\ntailscale_ip = \"192.0.2.1\"\n", true, 1, "",
+			"has host.controller = false, so it is not the controller host"},
+		{"absent with local ip", "tailscale_ip = \"192.0.2.1\"\n", true, 0, "host: box\n", ""},
+		{"absent without ip", "", false, 1, "", "has no tailscale_ip, so it is not the always-on host"},
+		{"string", "controller = \"yes\"\n", false, 2, "", "key host.controller must be true or false: 'yes'"},
+		{"integer", "controller = 1\n", false, 2, "", "key host.controller must be true or false: 1"},
+		{"true with invalid ip", "controller = true\ntailscale_ip = \"nope\"\n", false, 2, "",
+			"key host.tailscale_ip must be an IPv4 address"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isLocal = func(string) (bool, error) { return tt.local, nil }
+			path := t.TempDir() + "/host.toml"
+			if err := os.WriteFile(path, []byte("[host]\nname = \"box\"\n"+tt.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("LIGHTHOUSE_HOST_TOML", path)
+			var out, errOut bytes.Buffer
+			if rc := HostCheck(&out, &errOut); rc != tt.wantRC {
+				t.Errorf("rc = %d, want %d (stderr %q)", rc, tt.wantRC, errOut.String())
+			}
+			if out.String() != tt.wantOut {
+				t.Errorf("stdout = %q, want %q", out.String(), tt.wantOut)
+			}
+			if !strings.Contains(errOut.String(), tt.wantErr) || (tt.wantErr == "" && errOut.Len() != 0) {
+				t.Errorf("stderr = %q, want it to contain %q", errOut.String(), tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestRunWithoutKey(t *testing.T) {
 	var out, errOut bytes.Buffer
 	if rc := Run(nil, &out, &errOut); rc != 2 || !strings.HasPrefix(errOut.String(), "config: usage") {

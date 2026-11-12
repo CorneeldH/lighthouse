@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 )
 
@@ -75,6 +76,27 @@ func TestRecordHostRefusalRecognizedHost(t *testing.T) {
 	}
 	if got := hostRefusalWith("plan", func() (bool, error) { return false, nil }); got == nil {
 		t.Error("HostRefusal on another host = nil, want a refusal")
+	}
+}
+
+func TestRecognizeController(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"true", "controller = true\n", true},
+		{"false", "controller = false\ntailscale_ip = \"192.0.2.1\"\n", false},
+		{"absent without ip", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hostToml(t, "[host]\nname = \"box\"\n"+tt.body)
+			got, err := config.Recognize()
+			if err != nil || got != tt.want {
+				t.Errorf("Recognize() = %v, %v; want %v, nil", got, err, tt.want)
+			}
+		})
 	}
 }
 
