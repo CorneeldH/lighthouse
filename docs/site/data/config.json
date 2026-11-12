@@ -972,6 +972,17 @@
               "readers": []
             },
             {
+              "key": "host.controller",
+              "level": "set",
+              "required": "no",
+              "about": "true: this machine is the controller host, the address is not measured; false: it is not. Without it, host-check uses tailscale_ip. An older reader ignores it.",
+              "example": true,
+              "readers": [
+                "internal/review/record.go",
+                "pack/core/skills/write-handoff"
+              ]
+            },
+            {
               "key": "host.tailscale_ip",
               "level": "set",
               "required": "no",
