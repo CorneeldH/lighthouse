@@ -177,7 +177,7 @@ def test_go_denylist_has_no_bare_paia():
 
 
 def test_go_is_clean():
-    """Pins the allowlist line for internal/workplace/kennforge/stop.go."""
+    """Pins that the Go code holds no allowlisted literal."""
     import os
 
     env = dict(os.environ, LITERAL_DENYLIST=str(GO_DENYLIST), LITERAL_SKIP_TESTS="1")

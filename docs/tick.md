@@ -440,9 +440,11 @@ answer_permissions = ["admin", "maintain"]
 url = "http://127.0.0.1:8091"  # waar lighthouse de forge-API aanspreekt
 web_url = ""                   # link naar het forge-dashboard op de webpagina, bv. een tailscale-serve-adres; leeg: url
 token_file = "/home/me/.kenn/forge/auth_token"   # standaard: <home>/.kenn/forge/auth_token
+unit_prefix = "paia-forge-"    # prefix van de systemd-unit per run; verplicht met kenn-forge, geen standaard
 ```
 
-Met `workplace = "local"` leest tick `[dispatch.forge]` niet en is `target_key` onder
+`unit_prefix` is letterlijk (met slotstreepje); zonder de sleutel faalt elke `Stop` met een fout die
+`dispatch.forge.unit_prefix` noemt. Met `workplace = "local"` leest tick `[dispatch.forge]` niet en is `target_key` onder
 `[dispatch.profiles.<naam>]` niet nodig; `mcp_config` van het profiel geldt wel. Een andere waarde dan
 `kenn-forge` of `local` stopt tick met een fout die de sleutel noemt. Zie *Lokaal* in
 [workplace.md](workplace.md#lokaal), *Afloop met de lokale werkplek* hierboven en, voor de tick als systemd-unit of cron-taak,
