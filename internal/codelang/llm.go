@@ -39,8 +39,9 @@ const (
 	maxReply = 1 << 20
 )
 
-// Chain is the [code_language_llm] table of the session's lighthouse.toml. KeyEnv and
-// EnvFile are "" when absent; EnvFile is absolute, with ~ expanded.
+// Chain is the [code_language_llm] table of the session's lighthouse.toml. KeyEnv
+// (code_language_llm.key_env) and EnvFile are "" when absent; EnvFile is absolute, with ~
+// expanded.
 type Chain struct {
 	URL     string
 	Models  []string

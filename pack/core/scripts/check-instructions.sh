@@ -712,7 +712,11 @@ with open(sys.argv[1], encoding="utf-8") as f:
 hooks = data.get("hooks", {})
 if not isinstance(hooks, dict):
     raise AttributeError
-path = re.compile(r"\.claude/hooks/lighthouse/(?:[A-Za-z0-9_-]+/)*([A-Za-z0-9_-]+)\.sh")
+# A script hook is named after its script; a hook of the binary after the word that follows run.sh.
+path = re.compile(
+    r"\.claude/hooks/lighthouse/(?:[A-Za-z0-9_-]+/)*"
+    r"(?:run\.sh\s+([A-Za-z0-9_-]+)|([A-Za-z0-9_-]+)\.sh)"
+)
 events = {}
 
 
@@ -722,7 +726,7 @@ def walk(node, event):
             if key == "command" and isinstance(value, str):
                 match = path.search(value)
                 if match:
-                    events.setdefault(match.group(1), set()).add(event)
+                    events.setdefault(match.group(1) or match.group(2), set()).add(event)
             else:
                 walk(value, event)
     elif isinstance(node, list):

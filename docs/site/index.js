@@ -1,7 +1,7 @@
 // The entry page: the theme button, the old "#download" link sent on to the install page, and
 // "Who it is for" opened when a link points at it.
 
-import { initTheme } from "./map.js?v=548ba90f";
+import { initTheme } from "./map.js?v=bffdfde0";
 
 initTheme(document.getElementById("theme-toggle"));
 

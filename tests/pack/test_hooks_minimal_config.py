@@ -41,6 +41,12 @@ def _registrations() -> list[tuple[str, str, str]]:
 REGISTRATIONS = _registrations()
 
 
+def _hook_name(script: str) -> str:
+    """The hook of a registration: the script, or the hook after `run.sh`."""
+    words = script.split()
+    return words[1] if words[0] == "run.sh" else words[0]
+
+
 def _edit_payload(event: str, path: Path, cwd: Path) -> dict:
     return {
         "hook_event_name": event,
@@ -52,7 +58,7 @@ def _edit_payload(event: str, path: Path, cwd: Path) -> dict:
 
 def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
     """The payload that really touches this hook, up to and including its config read."""
-    name = script.split()[0]
+    name = _hook_name(script)
     if name == "worktree-check.sh":
         # A write in the main checkout on main: only there does the guard read
         # forge.default_branch, and warn (without blocking).
@@ -63,7 +69,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         doc = worktree / "doc.md"
         doc.write_text("# doc\n\nSee [the readme](README.md).\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
-    if name == "code-language-check.sh":
+    if name == "code-language-check":
         # Without `code_language` in MINIMAL_TOML the hook is off: exit 0.
         code = worktree / "mod.py"
         code.write_text("x = 1\n", encoding="utf-8")
@@ -106,7 +112,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
     ids=[f"{e}:{m}:{s}" for e, m, s in REGISTRATIONS],
 )
 def test_hooks_with_minimal_config(
-    tmp_path: Path, event: str, matcher: str, script: str
+    tmp_path: Path, event: str, matcher: str, script: str, lighthouse_bin: Path
 ) -> None:
     root = tmp_path / "lighthouse"
     install_core(root, toml=MINIMAL_TOML)
@@ -124,6 +130,9 @@ def test_hooks_with_minimal_config(
         LIGHTHOUSE_GATE_SLOT_DIR=str(tmp_path / "slots"),
         XDG_RUNTIME_DIR=str(tmp_path),
     )
+    if name == "run.sh":
+        # guard_env keeps the real `lighthouse` off the PATH; run.sh needs the one of this checkout.
+        env["PATH"] = f"{lighthouse_bin.parent}{os.pathsep}{env['PATH']}"
 
     result = subprocess.run(
         [str(root / ".claude" / "hooks" / "lighthouse" / name), *args],
@@ -141,14 +150,14 @@ def test_hooks_with_minimal_config(
 
 
 def test_every_registration_has_a_payload() -> None:
-    assert {s.split()[0] for _, _, s in REGISTRATIONS} == {
+    assert {_hook_name(s) for _, _, s in REGISTRATIONS} == {
         "main-commit-gate.sh",
         "commit-test-gate.sh",
         "bash-write-check.sh",
         "pr-create-gate.sh",
         "worktree-check.sh",
         "md-link-check.sh",
-        "code-language-check.sh",
+        "code-language-check",
         "usage-gate.sh",
         "permission-check.sh",
     }

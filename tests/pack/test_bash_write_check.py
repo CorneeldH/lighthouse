@@ -35,6 +35,10 @@ from tests.pack._testkit import (
     tool_bin,
 )
 
+# code-language-check runs as `run.sh code-language-check`, on the `lighthouse` on the PATH:
+# the binary of this checkout, not an older one that does not know the hook.
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
+
 CLEAN_SH = '#!/usr/bin/env bash\nset -euo pipefail\necho "hallo"\n'
 # SC2034: `x` is never used. Warning severity, so it blocks everywhere.
 BROKEN_SH = '#!/usr/bin/env bash\nf() {\n  local x=1\n  echo "hoi"\n}\nf\n'

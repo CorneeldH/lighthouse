@@ -54,7 +54,7 @@ GATES: dict[str, tuple[str, ...]] = {
     ".markdown": ("md-link-check.sh",),
 }
 
-# Set for every gate `run_gate` runs; `code_language.UNDER_GATES_ENV` reads it and
+# Set for every gate `run_gate` runs; `lighthouse hook code-language-check` reads it and
 # then skips layer 2 (#37, decision 19).
 UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"
 
@@ -65,6 +65,13 @@ GATE_PACKS: dict[str, str] = {
     "gofmt-check.sh": "go",
     "md-link-check.sh": "core",
     "code-language-check.sh": "core",
+}
+
+# The command line of a gate that the `lighthouse` binary runs through `run.sh`; any other
+# gate is its own script. The gate keeps its `.sh` name in `GATES`, `GATE_PACKS` and the
+# labels of the output.
+GATE_ARGV: dict[str, tuple[str, ...]] = {
+    "code-language-check.sh": ("run.sh", "code-language-check"),
 }
 
 
@@ -923,7 +930,8 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
     output)`, or `(_STOPPED, output)` when a forwarded signal stopped the gate,
     or `(_MISSING, message)` when the gate is not under the repo root.
     """
-    path = gate_path(str(config.repo_root()), gate)
+    argv = GATE_ARGV.get(gate, (gate,))
+    path = gate_path(str(config.repo_root()), argv[0])
     if not path.is_file():
         return _MISSING, f"no {GATE_PACKS[gate]} check installed".encode()
     payload = {
@@ -934,7 +942,7 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
     try:
         rc, output = run_until(
             deadline,
-            [str(path)],
+            [str(path), *argv[1:]],
             grace=_GATE_GRACE_S,
             cwd=root,
             stdin_bytes=json.dumps(payload).encode("utf-8"),

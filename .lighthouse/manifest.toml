@@ -190,7 +190,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/bash-write-check.sh"
 package = "core"
 version = "dev"
-sha256 = "e701bea23d75d924f505f005d343676470ecd4078e51aa401ee4254abad93824"
+sha256 = "a632acc08b7d0397f635bc94afbb8b5e987320245cb80a006f3bc068a6484902"
 
 [[unit]]
 kind = "file"
@@ -379,14 +379,6 @@ sha256 = "a06b32504891f860058fd3dd3519eec0086dd5c1d3c8cb8c0425bb8316f6f586"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/code-language-check.sh"
-package = "core"
-version = "dev"
-sha256 = "de5386a3b78270ebc79728775a4cd43eae5a04b539807c516604624c45096f55"
-
-[[unit]]
-kind = "hook"
-path = ".claude/settings.json"
 id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/gofmt-check.sh"
 package = "go"
 version = "dev"
@@ -399,6 +391,14 @@ id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/md
 package = "core"
 version = "dev"
 sha256 = "1573a15bed0bcd21e658a3a0934ab398bcd178e44b5ab7098322a0b1baa9d182"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh code-language-check"
+package = "core"
+version = "dev"
+sha256 = "4318f7ae91e1fc6f65d6aef75ec2872ce260dbb927e8448a152dddf60364da23"
 
 [[unit]]
 kind = "hook"
@@ -688,7 +688,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "b8c69f755499656cd46f9b49df6c80b4859b187d016ae748242bb048840b8f92"
+sha256 = "ab4aa3dfcfa8f851a547a1e15d0ec0710e2541019d1bed6a0d4c8dbc74219a50"
 
 [[unit]]
 kind = "file"
@@ -863,7 +863,7 @@ kind = "file"
 path = ".lighthouse/scripts/check-instructions.sh"
 package = "core"
 version = "dev"
-sha256 = "24a9cac2a50de22f752e93b9c9c52998259cab21c7ba59b221ac61aedfb9a6ec"
+sha256 = "9bf9b330389ad2f39f95efb68adfdc715c6415454e99bb11bb20c429afac2bcb"
 
 [[unit]]
 kind = "file"

@@ -51,6 +51,7 @@
               ],
               "example": "en",
               "readers": [
+                "internal/codelang/check.go",
                 "pack/core/hooks/code-language-check.sh",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/lib/code_language.py"
@@ -65,6 +66,7 @@
                 "tests/fixtures/**"
               ],
               "readers": [
+                "internal/codelang/check.go",
                 "pack/core/lib/code_language.py"
               ]
             },
@@ -77,6 +79,7 @@
                 "docs/**"
               ],
               "readers": [
+                "internal/codelang/check.go",
                 "pack/core/hooks/code-language-check.sh",
                 "pack/core/lib/code_language.py"
               ]
@@ -170,7 +173,9 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": ["internal/initcmd/initcmd.go"]
+              "readers": [
+                "internal/initcmd/initcmd.go"
+              ]
             },
             {
               "key": "forge.default_branch",
@@ -907,6 +912,7 @@
               "about": "The file the API key is read from when the variable is not set.",
               "example": ".env",
               "readers": [
+                "internal/codelang/llm.go",
                 "pack/core/lib/code_language_llm.py"
               ]
             },
@@ -917,6 +923,7 @@
               "about": "The environment variable that holds the API key.",
               "example": "OPENROUTER_API_KEY",
               "readers": [
+                "internal/codelang/llm.go",
                 "pack/core/lib/code_language_llm.py"
               ]
             },
@@ -930,6 +937,7 @@
                 "model-b"
               ],
               "readers": [
+                "internal/codelang/llm.go",
                 "pack/core/lib/code_language_llm.py"
               ]
             },
@@ -940,6 +948,7 @@
               "about": "The endpoint of the model that judges the code language.",
               "example": "https://openrouter.ai/api/v1/chat/completions",
               "readers": [
+                "internal/codelang/llm.go",
                 "pack/core/lib/code_language_llm.py"
               ]
             }

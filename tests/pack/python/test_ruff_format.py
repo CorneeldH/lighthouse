@@ -176,7 +176,7 @@ def test_registered_after_edit_and_write():
     ]
 
 
-def test_bash_write_through_gate(tmp_path):
+def test_bash_write_through_gate(tmp_path, lighthouse_bin):
     """With core and python installed, a Bash write of a `.py` with `except:` is a
     finding via `bash-write-check post`, not `no python check installed`."""
     from tests.pack.test_bash_write_check import _Session, context, heredoc
@@ -190,7 +190,7 @@ def test_bash_write_through_gate(tmp_path):
     assert "no python check installed" not in out.stderr + context(out)
 
 
-def test_bash_write_leaves_a_managed_file_alone(tmp_path):
+def test_bash_write_leaves_a_managed_file_alone(tmp_path, lighthouse_bin):
     """`lighthouse init` in a Bash call writes package code (#88). A path that
     `.lighthouse/manifest.toml` names as a file unit does not go to ruff, so
     `init --upgrade` still finds it unchanged; an unmanaged file with the same text does."""

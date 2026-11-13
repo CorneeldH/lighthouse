@@ -31,6 +31,14 @@ def packs() -> list[dict]:
     return load("packs.json")
 
 
+def hook_name(command: str) -> str:
+    """The hook of a registration: `hooks/<name>.sh`, or the word after `hooks/run.sh`."""
+    via_runtime = re.search(r"hooks/run\.sh\s+(\S+)", command)
+    if via_runtime:
+        return via_runtime.group(1)
+    return re.search(r"hooks/([^/\s]+)\.sh", command).group(1)
+
+
 def registered(name: str) -> dict[str, set[tuple[str, str]]]:
     """script stem -> {(event, matcher)} from pack/<name>/hooks/hooks.json."""
     path = PACK / name / "hooks" / "hooks.json"
@@ -40,7 +48,7 @@ def registered(name: str) -> dict[str, set[tuple[str, str]]]:
     for event, groups in json.loads(path.read_text(encoding="utf-8"))["hooks"].items():
         for group in groups:
             for hook in group["hooks"]:
-                stem = re.search(r"hooks/([^/\s]+)\.sh", hook["command"]).group(1)
+                stem = hook_name(hook["command"])
                 found.setdefault(stem, set()).add((event, group.get("matcher", "")))
     return found
 

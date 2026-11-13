@@ -1303,6 +1303,20 @@ def test_hook_names_ok(tmp_path):
     assert "every lighthouse hook is named" in result.stdout
 
 
+def test_hook_name_through_run_sh_is_the_hook_after_it(tmp_path):
+    _lighthouse_settings(tmp_path, {"run.sh code-language-check": ["PostToolUse"]})
+    result = _run(tmp_path)
+    assert result.returncode == 0, result.stdout
+    assert "every lighthouse hook is named" in result.stdout
+
+
+def test_hook_through_run_sh_is_judged_by_its_own_name(tmp_path):
+    _lighthouse_settings(tmp_path, {"run.sh foo-check": ["Stop"]})
+    result = _run(tmp_path)
+    assert result.returncode == 1
+    assert "'foo-check' is a check but" in result.stdout
+
+
 def test_hook_name_without_suffix_fails(tmp_path):
     _lighthouse_settings(tmp_path, {"worktree-guard.sh": ["PreToolUse"]})
     result = _run(tmp_path)

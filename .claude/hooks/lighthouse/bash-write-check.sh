@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lighthouse: core@dev
 # Pre/PostToolUse hook on matcher Bash: the Edit|Write checks (shell-lint-check.sh,
-# ruff-format-check.sh, code-language-check.sh for .py, .sh, .bash and .go, and
+# ruff-format-check.sh, `run.sh code-language-check` for .py, .sh, .bash and .go, and
 # md-link-check.sh) also see what a Bash call writes (#871). Thin wrapper; the logic is in
 # lighthouse_lib/bash_writes.py.
 #

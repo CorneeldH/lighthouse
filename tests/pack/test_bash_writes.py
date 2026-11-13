@@ -39,9 +39,9 @@ def gate_root(tmp_path, monkeypatch):
     root = tmp_path / "lighthouse-root"
     hooks = root / ".claude" / "hooks" / "lighthouse"
     hooks.mkdir(parents=True)
-    for gate in {g for gates in bw.GATES.values() for g in gates}:
-        (hooks / gate).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        (hooks / gate).chmod(0o755)
+    for script in {g for gates in bw.GATES.values() for g in gates} | {"run.sh"}:
+        (hooks / script).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (hooks / script).chmod(0o755)
     monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(root))
     return root
 
@@ -1464,12 +1464,16 @@ def test_dispatch_signature_after_rewriting_gate(tmp_path, monkeypatch, gates, s
 
 def test_run_gate_sets_under_gates_env(tmp_path, monkeypatch, gate_root):
     monkeypatch.delenv("LIGHTHOUSE_UNDER_BASH_WRITE_CHECK", raising=False)
-    gate = gate_root / ".claude" / "hooks" / "lighthouse" / "code-language-check.sh"
-    gate.write_text('#!/bin/sh\necho "$LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"\n', encoding="utf-8")
+    run_sh = gate_root / ".claude" / "hooks" / "lighthouse" / "run.sh"
+    run_sh.write_text('#!/bin/sh\necho "$* $LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"\n', encoding="utf-8")
     repo = tmp_path / "repo"
     init_repo(repo)
     (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
-    assert bw.run_gate(str(repo), "a.py", "code-language-check.sh", time.time() + 10) == ("ok", b"1\n")
+    # The Go hook runs through `run.sh`, with its name as the first argument.
+    assert bw.run_gate(str(repo), "a.py", "code-language-check.sh", time.time() + 10) == (
+        "ok",
+        b"code-language-check 1\n",
+    )
     assert "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK" not in os.environ
 
 
