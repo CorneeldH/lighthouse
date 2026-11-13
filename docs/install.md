@@ -147,8 +147,8 @@ The API is read-only. Its routes:
 | `GET /api/health` | the version of the binary |
 | `GET /api/usage` | the Claude and Codex usage windows |
 | `GET /api/runs` | the open and parked runs and the deferred starts, from the tick state |
-| `GET /api/questions` | the open questions, from the forge |
-| `GET /api/returned` | the returned issues, from the forge |
+| `GET /api/questions` | the open questions, from the overview `serve` keeps in memory (see below) |
+| `GET /api/returned` | the returned issues, from the same overview |
 | `GET /api/cleanup` | the workspaces to clean up, from the database |
 | `GET /api/latest-comment?repo=owner/name&issue=N` | the comments of one issue, from the forge; redirects (302) to the newest comment, or to the issue page when it has none or the read fails. A repo `serve` does not serve gets 404 |
 
@@ -165,6 +165,22 @@ it as `owner/name#number`. Every `owner/name#number` in the UI links to
   it is not among them.
 - Without `[dispatch] repos`: the one repository of `--repo owner/name` on `lighthouse serve`, or
   `LIGHTHOUSE_FORGE_REPO=owner/name`.
+
+`/api/questions` and `/api/returned` do not call GitHub per request: they show one shared overview
+that `serve` builds at start and then every 2 minutes (start to start, never two builds at once,
+a time-out of 90 s per build). A build that fails is retried after 20 s, and until one succeeds
+both endpoints answer 502 (503 without repositories) instead of old data. The first request after
+a start waits for the first build. So `serve` reads GitHub also when nobody looks: 30 builds an
+hour per set of repositories.
+
+A build costs, per repository, 1 call for the open issues (more when they span several pages of
+100), 1 GraphQL call for the board items (only with the Controller filter; more pages for a
+large board) and 1 call per Controller issue that has comments (more for over 100 comments). At
+30 builds an hour that must fit, together with the tick, in the 5000 requests an hour of one
+token. A repository without the Controller filter reads the comments of every open issue that
+has comments, so it weighs most and reaches the budget first. That is a deliberately accepted
+risk, with no code to guard it; when the budget runs out both endpoints answer 502 through the
+existing `forgeError`.
 
 Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment. Create a fine-grained
 personal access token for those repositories with only the *Issues: read* permission. The
