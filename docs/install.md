@@ -245,7 +245,7 @@ loginctl enable-linger "$USER"
 ```
 
 With a clone, copy both files from `deploy/systemd/` instead. Enable the timer, not the service; it runs
-the tick two minutes after boot and every five minutes after. `enable-linger` keeps the timer running
+the tick two minutes after boot and every three minutes after. `enable-linger` keeps the timer running
 when you are not logged in.
 
 Two choices in the unit are on purpose:

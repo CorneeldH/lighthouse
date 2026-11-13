@@ -407,7 +407,7 @@ Met de lokale werkplek start de tick de runs zelf, losgekoppeld, en laat ze door
 Draait de tick in een systemd-service met de standaard `KillMode=control-group`, dan doodt systemd na
 afloop elk proces in de cgroup van de unit, en `setsid` ontsnapt daar niet aan: elke run zou met de tick
 sterven. De tick-unit [`lighthouse-tick.service`](../deploy/systemd/lighthouse-tick.service) (met de
-[timer](../deploy/systemd/lighthouse-tick.timer), elke 5 minuten) staat daarom op `KillMode=process`: alleen
+[timer](../deploy/systemd/lighthouse-tick.timer), elke 3 minuten) staat daarom op `KillMode=process`: alleen
 de tick zelf wordt gestopt. Ze heeft ook geen hardening (`ProtectHome`, `ProtectSystem`,
 `NoNewPrivileges`), want die zou voor elke run gelden. Een operator ziet bij elke tick terwijl er runs
 leven in de journal `Found left-over process … in control group while starting unit. Ignoring.`: dat is
