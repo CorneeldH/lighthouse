@@ -106,7 +106,9 @@ legt beide vast in de runstaat, en bedient elke node via de fleet-routes van de 
 **Bestanden:**
 - Maak: `internal/store/migrations/0007_runs_node.sql`
 - Wijzig: `internal/runs/runs.go`, `internal/runs/history.go`, `internal/runs/workspaces.go`
-- Test: `internal/runs/runs_test.go`, `internal/runs/workspaces_test.go`
+- Test: `internal/runs/runs_test.go`, `internal/runs/workspaces_test.go`, `internal/store/migrate_test.go`
+  (pint `user_version` op 6, `migrate_test.go:81`: wordt 7; `TestMigrationNodeDefault` hoort hier, want
+  hij heeft de niet-geëxporteerde `store.migrate` nodig)
 
 **Interfaces:**
 - Produceert:
@@ -140,8 +142,9 @@ legt beide vast in de runstaat, en bedient elke node via de fleet-routes van de 
 - [ ] **Stap 1: falende tests.** Board: een GraphQL-antwoord met `labels.nodes [{name:"1-loc:mac"}]`
   geeft `Labels == []string{"1-loc:mac"}`. Gather: dat label komt in `Item.Labels`.
 - [ ] **Stap 2:** draai beide — FAIL.
-- [ ] **Stap 3:** `labels(first: 20) { nodes { name } }` in de `... on Issue`-selectie; doorgeven in
-  `gather.go`.
+- [ ] **Stap 3:** `labels(first: 20) { nodes { name } pageInfo { hasNextPage } }` in de
+  `... on Issue`-selectie (elke geneste lijst vraagt `pageInfo`, `board.go:76-78`); `hasNextPage` is een
+  fout, geen stille afkap, zoals bij de andere lijsten. Doorgeven in `gather.go`.
 - [ ] **Stap 4:** `go test -race ./internal/forge/ ./internal/dispatch/` — PASS.
 - [ ] **Stap 5:** commit `feat(dispatch): labels van het issue in de snapshot (#187)`.
 
@@ -170,7 +173,11 @@ Regel van `placement`, in deze volgorde:
    `Controller.Locations`, of `deferReason = "locatie <waarde> onbekend"`.
 4. `node = ProfileNodes[profile]`.
 
-`issueCtx.planned` roept `placement` aan. Bij een `deferReason` geeft hij `c.deferred(reason)`, anders
+`issueCtx.planned` roept `placement` aan. Bij een `deferReason` geeft hij `c.deferred(reason)`; een
+plaatsings-defer van een fix-pr-start telt toch mee in `wanted` van `Decide` (`decide.go:119-123`, de
+rem doet dit ook), anders sluit `settleUnstartedFixPR` de run als Returned 'PR red' in plaats van hem
+open te houden. Voeg een test toe: fix-pr-start met twee locatielabels → defer, run blijft open.
+Anders
 zet hij `a.Profile`, `a.Node` en `software: a.Profile == ProfileSoftware`, en `node: a.Node` op een
 nieuw veld `planned.node`.
 
@@ -210,7 +217,9 @@ Regels voor `closed` en `apply`:
 - `p.node != ""`: geen geheugenrem. `n, ok := b.Nodes[p.node]`; niet ok →
   `fmt.Sprintf("slots: node %s not configured", p.node)`; anders
   `n.InUse+admittedOn[p.node] >= n.Slots` → `fmt.Sprintf("slots: %d of %d in use on %s",
-  n.InUse+admittedOn[p.node], n.Slots, n.Name)`.
+  n.InUse+admittedOn[p.node], n.Slots, n.Name)`. De lokale uitsteltekst is al Engels
+  (`slots: n of m in use`); de nodevariant volgt die vorm en noemt de node, wat de spec vraagt
+  (`slots vol op <naam>`), in de bestaande taal van de uitsteltekst.
 - Usage, pauze en `max_software` gelden zoals nu voor elke node.
 
 - [ ] **Stap 1: falende tests.** Fixture `brake-node-full.json`: node `node-a` met `slots 1`,
@@ -227,7 +236,10 @@ Regels voor `closed` en `apply`:
 
 **Bestanden:**
 - Wijzig: `internal/workplace/carrier.go`, `leftovers.go`, `lifecycle.go` (`Candidate`, `Cleanup`,
-  `AdoptSessions`), `sweep.go`, `internal/workplace/local/adapter.go` (aanroepen met node `""`)
+  `AdoptSessions`), `sweep.go`, `internal/workplace/local/adapter.go` (aanroepen met node `""`), en `internal/cli/tick.go`
+  (de aanroepen op regel 303 en 514 krijgen hier een tussenliggende `Place`:
+  `func(node, profile string) workplace.Workplace { return env.workplace(cfg, repo, dir) }`, zodat
+  `internal/cli` compileert; taak 9 vervangt die door de echte keuze per node)
 - Test: de bijbehorende `_test.go`
 
 **Interfaces:**
@@ -248,7 +260,8 @@ Regels voor `closed` en `apply`:
 
 - [ ] **Stap 1: falende tests.** `TestCarrierPathPerNode`; `TestRemoveCarrierOtherNodeUntouched`
   (zelfde id op `""` en `node-a`); `TestLeftoverPerNode` (zelfde id, twee rijen, `ClearLeftover` op
-  één); `TestCleanupRemoteSkipsGit`: `Candidate.Node = "node-a"` met een `Runner` die faalt op elke
+  één); `TestCleanupRemoteSkipsGit` (de remote-controle staat direct na de `hasOpenRun`-guard, vóór `Lookup`,
+  `Sessions` en `Stop`; `hasOpenRun` vergelijkt `(node, workspace_id)`, `lifecycle.go:123`): `Candidate.Node = "node-a"` met een `Runner` die faalt op elke
   aanroep → geen aanroep, niet verwijderd, leftover met reden `not measurable: node node-a: no local
   git`; `TestSweepUsesNodeOfRef`: een `Place` die per node een andere fake teruggeeft; Remove komt bij
   de fake van de node van de ref.
@@ -284,10 +297,15 @@ Per methode bij `a.Node != ""`:
   (`internal/server/workspaceapi`, de handler van `GET /workspaces/{id}/runtime`). Leg veldnamen en
   een voorbeeldantwoord vast in een commentaar boven de wire-struct, met het bronpad.
 - Stop en Kill: per session-id de `key` via Sessions; `DELETE
-  path(wsPath(id))+"/runtime/sessions/"+url.PathEscape(key)`; een session-id zonder sessie is al weg;
-  een mislukte Sessions is een fout.
+  path(wsPath(id))+"/runtime/sessions/"+url.PathEscape(key)`; een session-id zonder sessie is al weg
+  (de spec accepteert dit: tot #327 ziet lighthouse zijn eigen agent op een andere node als vreemd en
+  stuurt Stop geen DELETE). Geeft `/runtime` in v0.7.0 geen `session_id` per sessie, leg dat vast in
+  het commentaar boven de wire-struct en laat `Sessions` een lege `SessionID` geven. Dan toetst
+  `TestRemoteStopDeletesSession` dat er géén DELETE gaat; heeft de gemeten vorm het veld wel, dan
+  toetst hij de DELETE met de juiste key. Een mislukte Sessions is een fout.
 - Een 404 van `Sessions`, `Lookup` of `Remove`: alleen `ErrGone` of "al weg" als `nodeReachable`
-  `true` geeft; anders `fmt.Errorf("node %s: 404 not confirmed: %w", a.Node, workplace.ErrUncertain)`.
+  `true` geeft (meet ook de route `/api/v1/fleet/snapshot` en het bereikbaarheidsveld in forge v0.7.0 en
+  leg ze vast in een commentaar, zoals voor `/runtime`); anders `fmt.Errorf("node %s: 404 not confirmed: %w", a.Node, workplace.ErrUncertain)`.
 - Transcript: `fmt.Errorf("transcript on node %s: %w", a.Node, workplace.ErrNotMeasurable)`.
 
 - [ ] **Stap 1: falende tests.** `TestFleetPath`. Met `newFakeHub` en twee nodes `node-a`, `node-b`:
@@ -298,7 +316,10 @@ Per methode bij `a.Node != ""`:
   `ErrUncertain`, niet `ErrGone`); `TestRemoteNotFoundReachableIsGone`;
   `TestRemoteTranscriptNotMeasurable`. Contract-suite: draai `workplacetest` ook tegen een adapter met
   `Node: "node-a"` achter de fake hub; de suite-gevallen die lokale git of een transcript vragen,
-  worden voor die variant overgeslagen met `t.Skip` en een reden die naar #327 wijst.
+  worden voor die variant overgeslagen met `t.Skip` en een reden die naar #327 wijst. Dat zijn ook de
+  gevallen die op `SessionID` in `Sessions` (`suite.go:145`, `:279-314`) of op processignalen,
+  overlevenden en niet-meetbare processen (`suite.go:196-236`) leunen, voor zover forge's
+  `/runtime` die niet geeft. Maak de nep-hub nooit rijker dan de gemeten v0.7.0-vorm.
 - [ ] **Stap 2:** `go test ./internal/workplace/kennforge/` — FAIL.
 - [ ] **Stap 3:** implementeer in `fleet.go` (`path`, `nodeReachable`, de 404-regel) en de
   methoden.
@@ -310,8 +331,9 @@ Per methode bij `a.Node != ""`:
 **Bestanden:**
 - Wijzig: `internal/dispatch/apply.go` (`Env`, `release`, `start`), `internal/cli/tick.go`
   (`tickEnv.Workplace`, `workplace`, `places`, sweep op regel 303, `AdoptSessions` op regel 514,
-  `decideInput`)
-- Test: `internal/dispatch/apply_test.go`, `internal/cli/tick_test.go`
+  `measure` op regel 529-538, `decideInput`, `repoInput`)
+- Test: `internal/dispatch/apply_test.go`, `internal/cli/tick_test.go`, `internal/cli/run_test.go`
+  (`env.Workplace` op regel 227 en 277 krijgt de nieuwe signatuur)
 
 **Interfaces:**
 - Consumeert: alles hierboven.
@@ -325,14 +347,20 @@ Per methode bij `a.Node != ""`:
 `start` gebruikt `a.Profile` en `a.Node` voor `Workplace`, `MCPConfig` en `runs.Claim`. `release`
 gebruikt `r.Node` en `r.Profile` van de open run. `tick` bouwt de adapters lazy in een map met sleutel
 `struct{ repo, node, profile string }`. `decideInput` vult `ProfileNodes` uit `cfg.Profiles` en
-`cfg.NodeID`, en `LocationPrefix` uit `repo.Labels.LocationPrefix`.
+`cfg.NodeID`. `repoInput` (regel 612-631) vult `RepoInput.LocationPrefix` uit
+`pre.Repo.Labels.LocationPrefix`; `decideInput` krijgt alleen `[]dispatch.RepoInput` en kan het niet
+lezen. `measure` bouwt één `runProbe` per `(r.Node, r.Profile)` via dezelfde lazy `places`-map, niet
+één per repo: een run op `node-a` meten tegen `self` geeft 404, dus `ErrGone` en `RunState.Gone`, en
+`Decide` sluit de open run en start het issue opnieuw.
 
 - [ ] **Stap 1: falende tests.** `TestApplyStartOnNode`: een start-actie met `Node: "node-a"` vraagt
   `Workplace(repo, "node-a", "mac")` en de run heeft `Node == "node-a"`. `TestTickRestartStopsOnNode`:
   tick 1 start een run op `node-a` (fake hub, twee nodes); de database wordt gesloten en opnieuw
   geopend; tick 2 met een time-out stuurt de DELETE naar `node-a` en niets naar `node-b` of naar
   `self`. `TestTickUnreachableNodeDoesNotBlockOther`: fake `node-a` geeft 503 op Prepare; een start op
-  `""` in dezelfde tick slaagt; de run op `node-a` sluit als `start_failed`. `TestTickSpawnTimeoutNoSecondPost`:
+  `""` in dezelfde tick slaagt; er is geen run op `node-a` (`apply.start` roept `Prepare` aan vóór `runs.Take`,
+  `apply.go:263-307`), de repo staat als apply-fout in de uitvoer en de fingerprint is niet opgeslagen. `TestMeasureUsesNodeOfRun`: een open run op `node-a` waarvan de workspace op `self` ontbreekt wordt
+  niet `Gone`. `TestTickSpawnTimeoutNoSecondPost`:
   time-out op de handoff bij `node-a` → één POST in die tick en in de volgende.
 - [ ] **Stap 2:** `go test ./internal/dispatch/ ./internal/cli/` — FAIL.
 - [ ] **Stap 3:** implementeer; pas de typeassertie op `*kennforge.Adapter` in `tick_test.go:1726,1739`
@@ -344,9 +372,9 @@ gebruikt `r.Node` en `r.Profile` van de open run. `tick` bouwt de adapters lazy 
 
 **Bestanden:**
 - Wijzig: `docs/workplace.md`, `docs/tick.md` (rond regel 342 en 428-453), `docs/host-assumptions.md`
-  (rond regel 35-37), de doc die `[controller] profile` beschrijft (`grep -rln 'controller\] profile'
-  docs`)
-- Maak: `changelog.d/<datum>-issue-187-forge-nodes.md` (volg het formaat van een bestaand fragment)
+  (rond regel 35-37), `docs/tick.md` (sectie `[controller]` rond regel 461) voor `[controller.locations]`
+- Maak: `changelog.d/issue-187-forge-nodes.md` (naam `<branch>.md` en Engels, `docs/releasing.md:57`; er is
+  geen bestaand fragment om te kopiëren)
 
 - [ ] **Stap 1:** `docs/tick.md`: `[dispatch.nodes.<naam>]`, `node` in een profiel, de keuzeregel
   (locatielabel → profiel → node; hervatten en retry erven), de rem per node, de uitstelteksten.
