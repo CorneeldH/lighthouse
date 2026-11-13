@@ -179,12 +179,17 @@ Wat op een node anders werkt:
   bereikt. Die eigen 404 is altijd onzeker (`workplace.ErrUncertain`): de tunnel kan terug zijn voor de
   snapshot gelezen is, en "weg" zou de run sluiten en een tweede start toelaten. Een andere 404 telt
   alleen als `workplace.ErrGone` als de node bereikbaar is; anders onzeker.
-- **Sessies.** `/runtime` kent geen `session_id`. Lighthouse kan op een node een eigen agent niet van een
-  vreemde scheiden. `Stop` en `Kill` sturen daarom geen `DELETE` en beëindigen niets; zij kunnen de
+- **Sessies.** `/runtime` kent geen `session_id`. Lighthouse herkent een eigen agent op een node toch:
+  aan de forge-key die `Spawn` vastlegt (`Own`), en daar steunt `liveOwn` op. Alleen een onzekere spawn
+  blijft vreemd: `AdoptSessions` neemt hem nooit over, want het zoeken vraagt een `session_id`. `Stop`
+  en `Kill` zoeken op `session_id`, sturen daarom geen `DELETE` en beëindigen niets; zij kunnen de
   claude op een node niet stoppen.
 - **Bezet.** Een sessie van de eigen runs van het issue die niet `exited` is, maakt een start én een
   hervatting bezet (`liveOwn` in `apply.go`) tot forge haar als `exited` meldt. Echte runs op een andere
   node wachten dus op #327.
+- **Stand.** Op een node wordt elke status behalve `exited` `Waiting` (nooit `Working`), en `SessionAt`
+  is nul. Een run op een node eindigt dus alleen via `max_runtime`; `liveOwn` houdt de volgende start
+  intussen tegen.
 - **Transcript.** Niet meetbaar op een node (`workplace.ErrNotMeasurable`), en er is geen `FollowRemote`.
 - **Opruimen.** `Cleanup` en de sweep verwijderen nooit een workspace op een andere node; een
   achterblijver blijft staan.

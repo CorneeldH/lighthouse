@@ -243,8 +243,9 @@ node.
 
 **Sessie-identiteit blijft de claude-`session_id`.** De regels voor eigenaarschap (`Own`, `Busy`,
 `Earlier`, `AdoptSessions`) en de `Workplace`-interface blijven op `session_id` werken. Op een andere
-node krijgt de agent pas een `--session-id` als de drager daar aankomt (het vervolg). Tot dan ziet
-lighthouse de eigen agent op een andere node als vreemd: `busy` stelt latere starts uit, de sweep
+node krijgt de agent pas een `--session-id` als de drager daar aankomt (het vervolg). Tot dan herkent
+lighthouse de eigen agent op een andere node alleen aan de forge-key van `Spawn` (een onzekere spawn
+blijft vreemd): `busy` stelt latere starts uit, de sweep
 laat de workspace staan, en Stop vindt niets om te stoppen. Dat is veilig, en het is de reden dat
 een andere node pas na het vervolg echte runs draait. *(Keuze van de ontwerper: geen tweede
 identiteit naast `session_id` voor een overgangsfase.)*

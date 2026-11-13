@@ -475,10 +475,12 @@ fout bij het laden van `host.toml`. De hub (forge v0.7.0 of later) bereikt de no
 
 **Keuzeregel.** Een nieuwe start kiest locatielabel, dan profiel, dan node:
 
-1. De repo heeft `[labels] location_prefix` en het issue draagt precies één label met die prefix: de
-   waarde erna (exact, hoofdlettergevoelig) wordt opgezocht in `[controller.locations]` van
-   `lighthouse.toml` (`<waarde> = "<profiel>"`). Dat profiel is het profiel van de run.
-2. Zonder locatielabel, of zonder `location_prefix`, is het profiel `[controller] profile`.
+1. De repo heeft `[labels] location_prefix` én `[controller.locations]`, en het issue draagt precies
+   één label met die prefix: de waarde erna (exact, hoofdlettergevoelig) wordt opgezocht in
+   `[controller.locations]` van `lighthouse.toml` (`<waarde> = "<profiel>"`). Dat profiel is het
+   profiel van de run.
+2. Zonder locatielabel, zonder `location_prefix` of zonder `[controller.locations]`, is het profiel
+   `[controller] profile`.
 3. De node is de `node` van dat profiel in `host.toml`; geen `node` is `self`.
 
 Een hervatting en een retry kiezen niet opnieuw: ze erven profiel en node van de rij van hun eerdere run
@@ -511,7 +513,9 @@ mac = "mac-software"   # waarde na de prefix = profiel uit [dispatch.profiles] v
 ```
 
 Een lege profielnaam is een fout; de tabel vereist `[controller]`. Een repo zonder `location_prefix`
-gedraagt zich als voorheen.
+gedraagt zich als voorheen, en een repo met `location_prefix` maar zonder `[controller.locations]` ook:
+hij negeert locatielabels, ook twee tegelijk. Een upgrade is daarom veilig. Pas de tabel maakt het
+label bindend: een onbekende waarde of twee labels stellen de start dan uit.
 
 ## Zicht
 
