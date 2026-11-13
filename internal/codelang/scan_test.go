@@ -125,3 +125,54 @@ func TestMarkdownUnitShape(t *testing.T) {
 		t.Errorf("got %+v, want %+v", units, want)
 	}
 }
+
+// The hand-written lookarounds and offsets, as a table with literal expectations.
+func TestScanLookaroundEdges(t *testing.T) {
+	tests := []struct {
+		name string
+		scan func(string) []Unit
+		src  string
+		want []string // names, in order
+	}{
+		{"qualified assignment is no new name", scanGo, "package p\n\nfunc f() {\n\ta.b := 1\n}\n", []string{"p", "f"}},
+		{"multibyte rune before :=", scanGo, "package p\n\nfunc f() {\n\té x := 1\n}\n", []string{"p", "f", "x"}},
+		{"xfunc( is no func literal", scanGo, "package p\n\nvar v = xfunc(a b)\n", []string{"p", "v"}},
+		{"xstruct{ is no struct", scanGo, "package p\n\nvar v = xstruct{\n\ta b\n}\n", []string{"p", "v"}},
+		{"struct{ has fields", scanGo, "package p\n\nvar v = struct{\n\ta int\n}{}\n", []string{"p", "v", "a"}},
+		{"localx is no declaration", scanShell, "localx=1\n", []string{"localx"}},
+		{"local declares", scanShell, "local abc def=1\n", []string{"abc", "def"}},
+		{"unterminated block comment", scanGo, "package p\n\nvar a int\n/* open", []string{"p", "a"}},
+		{"CRLF input", scanShell, "abc=1\r\ndef=2\r\n", []string{"abc", "def"}},
+		{"CRLF input in Go", scanGo, "package p\r\n\r\nvar a int\r\n", []string{"p", "a"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := []string{}
+			for _, u := range tt.scan(tt.src) {
+				if u.Name {
+					got = append(got, u.Text)
+				}
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("names = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFindingBodyFallsBackToText(t *testing.T) {
+	scorer, err := DefaultScorer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := judge(scorer, []Unit{
+		{Line: 1, Kind: "name", Text: "lees_bestand", Name: true},
+		{Line: 2, Kind: "comment", Text: "dit is niet goed", Body: "dit is niet goed", LineBreaks: true},
+	})
+	if len(found) != 2 {
+		t.Fatalf("found %d, want 2", len(found))
+	}
+	if found[0].Body != "lees_bestand" || found[1].Body != "dit is niet goed" {
+		t.Errorf("bodies = %q, %q", found[0].Body, found[1].Body)
+	}
+}

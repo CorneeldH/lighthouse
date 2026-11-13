@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -33,7 +34,7 @@ type Unit struct {
 }
 
 // Finding is a unit that layer 1 did not find clean. Body is what a later layer gets to see
-// (empty for a name; the caller falls back to Text).
+// (the text of the unit, or its name).
 type Finding struct {
 	Line                    int
 	Kind, Text, Body, Layer string
@@ -51,10 +52,8 @@ func lineOf(text string, offset int) int {
 	return strings.Count(text[:offset], "\n") + 1
 }
 
-var wordRuneRE = regexp.MustCompile(`^[\p{L}\p{N}_]$`)
-
-// isWordRune is Python's \w.
-func isWordRune(r rune) bool { return wordRuneRE.MatchString(string(r)) }
+// isWordRune is Python's \w: letters, numbers (Nd, Nl, No) and "_".
+func isWordRune(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsNumber(r) }
 
 // commentUnits makes one unit per comment block; every line is a sentence boundary there.
 // Marked lines stay out of the body, but the first line names the block.
@@ -106,8 +105,12 @@ func judge(s *Scorer, units []Unit) []Finding {
 		if verdict == VerdictClean {
 			continue
 		}
+		body := u.Body
+		if body == "" {
+			body = u.Text // Python's d.unit or d.text
+		}
 		found = append(found, Finding{
-			Line: u.Line, Kind: u.Kind, Text: u.Text, Body: u.Body,
+			Line: u.Line, Kind: u.Kind, Text: u.Text, Body: body,
 			Layer: "layer 1", Doubt: verdict == VerdictDoubt,
 		})
 	}

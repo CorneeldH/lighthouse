@@ -8,10 +8,12 @@ import (
 	"embed"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -25,18 +27,21 @@ const (
 	VerdictFinding Verdict = "finding"
 )
 
-// Thresholds from the Python original. Scores are kept in whole tenths (zipf nl minus en, so
-// 10 is 1.0): a float sum can round differently on the boundary, an integer sum cannot.
+// Thresholds from the Python original. Scores are floats ((nl - en) / 10), summed like
+// Python's sum, so a sum on the boundary rounds as it does there.
 const (
-	thresholdTenths = 10 // a unit is a finding when its sum is strictly above this
-	compoundTenths  = 30 // score of an unlisted word that splits into Dutch words
-	partMin         = 3  // letters of a part of a compound
-	partNLFloor     = 25 // zipf x 10 NL a part of a compound needs
-	doubtLean       = 20 // nl - en of a word that makes a unit doubtful
-	doubtNL         = 30 // nl of a word that makes a unit doubtful
-	nameMin         = 4  // shortest word counted in a name
-	splitMax        = 40 // longest word DutchSplit tries
-	textMin         = 2  // shortest word counted in prose
+	threshold     = 1.0 // a unit is a finding when its sum is strictly above this
+	compoundScore = 3.0 // score of an unlisted word that splits into Dutch words
+	doubtLean     = 2.0 // (nl - en) / 10 of a word that makes a unit doubtful
+	doubtNL       = 3.0 // nl / 10 of a word that makes a unit doubtful
+)
+
+const (
+	partMin     = 3  // letters of a part of a compound
+	partNLFloor = 25 // zipf x 10 NL a part of a compound needs
+	nameMin     = 4  // shortest word counted in a name
+	splitMax    = 40 // longest word DutchSplit tries
+	textMin     = 2  // shortest word counted in prose
 )
 
 //go:embed data/freq.tsv.gz data/jargon.txt
@@ -200,6 +205,8 @@ var (
 
 // lowerPython lower-cases like Python's str.lower where it matters for Words: U+0130 becomes
 // "i" plus a combining dot, which is no letter.
+//
+// Known and accepted: Python lower-cases a final capital sigma to the final form, Go does not.
 func lowerPython(s string) string {
 	return strings.ToLower(strings.ReplaceAll(s, "İ", "i̇"))
 }
@@ -213,7 +220,10 @@ func Words(text string) []string {
 	return found
 }
 
-func isLetter(r rune) bool { return wordRE.MatchString(string(r)) }
+// isLetter is [^\W\d_] without the Nd digits: letters plus the Nl and No numbers, as wordRE.
+func isLetter(r rune) bool {
+	return unicode.IsLetter(r) || unicode.Is(unicode.Nl, r) || unicode.Is(unicode.No, r)
+}
 
 // splitSentences splits text where a run of whitespace follows ".", "!" or "?", unless the
 // three runes before that run are "." letter ".". With lineBreaks every "\n" splits as well.
@@ -247,21 +257,35 @@ func splitSentences(text string, lineBreaks bool) []string {
 	return append(parts, string(runes[start:]))
 }
 
-// scoreTenths is (nl - en) for a listed word and compoundTenths for an unlisted Dutch
-// compound or participle.
-func (s *Scorer) scoreTenths(w string) int {
-	if e, ok := s.freq[w]; ok {
-		return e[1] - e[0]
-	}
-	if s.DutchSplit(w) || s.DutchParticiple(w) {
-		return compoundTenths
-	}
-	return 0
-}
-
 // WordScore is (nl - en) / 10; an unlisted word scores 3.0 if it is a Dutch compound or the
 // Dutch participle of an English verb.
-func (s *Scorer) WordScore(w string) float64 { return float64(s.scoreTenths(w)) / 10 }
+func (s *Scorer) WordScore(w string) float64 {
+	if e, ok := s.freq[w]; ok {
+		return float64(e[1]-e[0]) / 10
+	}
+	if s.DutchSplit(w) || s.DutchParticiple(w) {
+		return compoundScore
+	}
+	return 0.0
+}
+
+// pySum is Python 3.12's sum() over floats: Neumaier compensated, starting from 0.
+func pySum(xs []float64) float64 {
+	f, c := 0.0, 0.0
+	for _, x := range xs {
+		t := f + x
+		if math.Abs(f) >= math.Abs(x) {
+			c += (f - t) + x
+		} else {
+			c += (x - t) + f
+		}
+		f = t
+	}
+	if math.IsInf(c, 0) || math.IsNaN(c) {
+		return f
+	}
+	return f + c
+}
 
 func (s *Scorer) isDutchPart(part []rune) bool {
 	if len(part) < partMin {
@@ -318,21 +342,21 @@ func (s *Scorer) judge(candidates []string, minimum int, sentences [][]string) V
 		}
 		return kept
 	}
-	sum := func(group []string) int {
-		total := 0
+	sum := func(group []string) float64 {
+		var scores []float64
 		for _, w := range counted(group) {
-			total += s.scoreTenths(w)
+			scores = append(scores, s.WordScore(w))
 		}
-		return total
+		return pySum(scores)
 	}
 	groups := append([][]string{candidates}, sentences...)
 	for _, g := range groups {
-		if sum(g) > thresholdTenths {
+		if sum(g) > threshold {
 			return VerdictFinding
 		}
 	}
 	for _, w := range counted(candidates) {
-		if e, ok := s.freq[w]; ok && e[1]-e[0] >= doubtLean && e[1] >= doubtNL {
+		if e, ok := s.freq[w]; ok && float64(e[1]-e[0])/10 >= doubtLean && float64(e[1])/10 >= doubtNL {
 			return VerdictDoubt
 		}
 	}
