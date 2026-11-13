@@ -135,11 +135,15 @@ func TestScanLookaroundEdges(t *testing.T) {
 		want []string // names, in order
 	}{
 		{"qualified assignment is no new name", scanGo, "package p\n\nfunc f() {\n\ta.b := 1\n}\n", []string{"p", "f"}},
-		{"multibyte rune before :=", scanGo, "package p\n\nfunc f() {\n\té x := 1\n}\n", []string{"p", "f", "x"}},
+		{"multibyte word rune before :=", scanGo, "package p\n\nfunc f() {\n\téx := 1\n}\n", []string{"p", "f"}},
+		{"ASCII start after a space is a name", scanGo, "package p\n\nfunc f() {\n\té x := 1\n}\n", []string{"p", "f", "x"}},
+		{"multibyte word rune before func(", scanGo, "package p\n\nvar v = éfunc(a b)\n", []string{"p", "v"}},
+		{"multibyte word rune before struct{", scanGo, "package p\n\nvar v = éstruct{\n\ta b\n}\n", []string{"p", "v"}},
 		{"xfunc( is no func literal", scanGo, "package p\n\nvar v = xfunc(a b)\n", []string{"p", "v"}},
 		{"xstruct{ is no struct", scanGo, "package p\n\nvar v = xstruct{\n\ta b\n}\n", []string{"p", "v"}},
 		{"struct{ has fields", scanGo, "package p\n\nvar v = struct{\n\ta int\n}{}\n", []string{"p", "v", "a"}},
 		{"localx is no declaration", scanShell, "localx=1\n", []string{"localx"}},
+		{"keyword inside a longer word", scanShell, "localx abc=1\nlocalé=2\n", []string{"localé"}},
 		{"local declares", scanShell, "local abc def=1\n", []string{"abc", "def"}},
 		{"unterminated block comment", scanGo, "package p\n\nvar a int\n/* open", []string{"p", "a"}},
 		{"CRLF input", scanShell, "abc=1\r\ndef=2\r\n", []string{"abc", "def"}},

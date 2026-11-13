@@ -127,9 +127,8 @@ func scanShell(source string) []Unit {
 	}
 	for _, d := range shellDeclareRE.FindAllStringIndex(code, -1) {
 		position := d[1]
-		if r, ok := runeAt(code, position); ok && isWordRune(r) {
-			continue // \b after the keyword
-		}
+		// The \b after the keyword needs no check: shellDeclaredRE starts with a blank, which no
+		// word rune is.
 		for {
 			m := shellDeclaredRE.FindStringSubmatchIndex(code[position:])
 			if m == nil {
