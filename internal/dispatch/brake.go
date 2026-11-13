@@ -120,16 +120,17 @@ func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int, admitt
 // nodeClosed is closed for a run on a node: no memory brake (the memory is not this host's), the
 // slots of the node, then the software limit, which is host-wide.
 func (b *Brake) nodeClosed(p planned, admitted, admittedSoftware int) string {
-	if !p.parked {
-		n, ok := b.Nodes[p.node]
-		if !ok {
-			return fmt.Sprintf("slots: node %s not configured", p.node)
-		}
-		if n.InUse+admitted >= n.Slots {
-			return fmt.Sprintf("slots: %d of %d in use on %s", n.InUse+admitted, n.Slots, n.Name)
-		}
+	if p.parked {
+		return ""
 	}
-	if !p.parked && p.software && b.SoftwareInUse+admittedSoftware >= b.MaxSoftware {
+	n, ok := b.Nodes[p.node]
+	if !ok {
+		return fmt.Sprintf("slots: node %s not configured", p.node)
+	}
+	if n.InUse+admitted >= n.Slots {
+		return fmt.Sprintf("slots: %d of %d in use on %s", n.InUse+admitted, n.Slots, n.Name)
+	}
+	if p.software && b.SoftwareInUse+admittedSoftware >= b.MaxSoftware {
 		return fmt.Sprintf("software: %d of %d in use", b.SoftwareInUse+admittedSoftware, b.MaxSoftware)
 	}
 	return ""
