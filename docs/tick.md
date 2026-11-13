@@ -69,7 +69,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    `final-review`, gelezen uit het plan en het ledger `progress.md` in de werkmap van de run; leeg als
    die niet te lezen zijn), de trigger, het profiel, de workspace, `started_at`,
    de forge-stand die de precheck mat (`working`, `waiting` of `done`; leeg als tick hem niet kon
-   meten, en voor een run die deze tick startte) en de
+   meten, voor een run die deze tick startte en voor een geparkeerde run) en de
    tijd van de tick. Een issue met een open én een geparkeerde run staat er één keer, als `open`.
    Mislukt de precheck, dan blijven de rijen van de vorige tick staan. `serve` leest ze voor
    `GET /api/runs` en de blokken *Running runs*, *Parked runs*, *Queue* en *Night*, zonder de forge (zie [install.md](install.md)).
