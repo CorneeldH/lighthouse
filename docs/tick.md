@@ -14,7 +14,8 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    relatief pad met `tick: XDG_RUNTIME_DIR is not an absolute path: cannot take tick.lock`.
 2. **Token.** Vereist `GH_TOKEN` of `GITHUB_TOKEN`. Zonder stopt tick met
    `tick: no GitHub token: set GH_TOKEN or GITHUB_TOKEN`. Het token heeft de scopes `repo` en
-   `project` nodig: lighthouse leest en schrijft er comments, reacties en het board mee. Gebruik een
+   `project` nodig: lighthouse leest en schrijft er comments, reacties en het board mee. Om een
+   groene eigen PR te mergen (regel 7) heeft het token ook *Contents: write* nodig. Gebruik een
    classic token, of een fine-grained token dat elke repo dekt waarvan issues op het board staan:
    een item dat het token niet mag lezen kan een GraphQL-fout geven, en die slaat de hele repo over. De
    login van het token zelf heeft push-toegang tot de repo nodig (anders is de collaborator-permissie
@@ -59,21 +60,24 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    Activiteit en prompts staan niet in de vingerafdruk: ze veranderen elke tick, en deze grenzen laten
    tick kijken als hun `max_wait` verloopt.
    Vingerafdruk en tijd van de laatste volledige gather staan in de tabel `tick_state` van de database.
-   Na de precheck schrijft tick per bedienbare repo ook de stand van zijn runs in `tick_state`
-   (soort `run`, sleutel het issuenummer), elke tick, ook als de gather niet aan de beurt is: per
+   Na apply schrijft tick per repo waarvan de precheck slaagde ook de stand van zijn runs in `tick_state`
+   (soort `run`, sleutel het issuenummer), elke tick, ook als de gather niet aan de beurt is. Een
+   run die apply in deze tick start of afsluit, staat er dus na deze tick al in of al niet meer in. Per
    open run en per geparkeerde run (met een marker die hem nog hervat) de titel van het issue van
    het board, `open` of `parked`, het commando, de fase (afgeleid uit het commando, bijvoorbeeld `sdd` of `spec-review`), voor een
    subagent-driven-development-run de huidige taak, het aantal taken en de stap (`build`, `review` of
    `final-review`, gelezen uit het plan en het ledger `progress.md` in de werkmap van de run; leeg als
    die niet te lezen zijn), de trigger, het profiel, de workspace, `started_at`,
-   de gemeten forge-stand (`working`, `waiting` of `done`; leeg als tick hem niet kon meten) en de
+   de forge-stand die de precheck mat (`working`, `waiting` of `done`; leeg als tick hem niet kon
+   meten, voor een run die deze tick startte en voor een geparkeerde run) en de
    tijd van de tick. Een issue met een open én een geparkeerde run staat er één keer, als `open`.
    Mislukt de precheck, dan blijven de rijen van de vorige tick staan. `serve` leest ze voor
    `GET /api/runs` en de blokken *Running runs*, *Parked runs*, *Queue* en *Night*, zonder de forge (zie [install.md](install.md)).
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
    de items in Controller of On hold, plus elk item met een open run in een andere status, met hun velden, voorgangers en PR's (de PR's die het issue sluiten
    plus de PR's op de branch van de laatste run van het issue, ook als die run al dicht is, met hun
-   checks), hun comments en de open runs. Zo blijft een gemergde PR die het issue niet sluit zichtbaar.
+   checks), hun comments en de open runs. Van een mergeklare PR bij een open run leest tick ook de
+   PR-comments, voor de roborev-stand (`""`, `processed` of `open`). Zo blijft een gemergde PR die het issue niet sluit zichtbaar.
    Een item met een open run buiten Controller en On hold doet mee om die run af te sluiten:
    `lighthouse-close-issue` zet het item op Done voordat tick de closecheck-run ziet eindigen. Voor
    zo'n item start of hervat tick niets, en hij zet het niet terug naar Controller. Alleen comments van vertrouwde auteurs komen erin: hun rol op de repo (`role_name` van de
@@ -107,6 +111,17 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
     (een `Remove` die geen 409 is, een record dat niet weg te schrijven is) geeft
     `lighthouse: cleanup <repo>: <fouten>`, en tick eindigt met exitcode 1. De regels staan in
     [workplace.md](workplace.md), *Opruimen* en *Wie roept dit aan*.
+
+**De merge.** Regel 7 voert apply uit als een squash-merge (`merge_method: squash`) met de gemeten
+head-SHA, zonder commit-titel en zonder branch-opruiming. Gaat de merge door, dan volgt de 🤖 Klaar met
+`note_merged`. Drie soorten fout:
+
+- 409 of "Base branch was modified": de head verschoof. Apply schrijft een `deferred`-regel en doet niets;
+  de volgende tick meet opnieuw.
+- Een weigering van GitHub (een verplichte review, een branch-bescherming): apply noteert de fout met de
+  head-SHA op de open run (`MergeSHA`, `MergeError`). De volgende tick kiest fix-pr (regel 13, oorzaak
+  *merge mislukt*), en is de sleutel gebruikt, dan gaat het issue terug.
+- Een andere fout (netwerk, 5xx): een mislukte actie, dus exitcode 1.
 
 **De vingerafdruk na apply.** Tick bewaart de vingerafdruk van de precheck pas na apply, en alleen
 voor een repo zonder uitgestelde en zonder mislukte actie (spec §3 stap 2). Zo probeert de volgende
@@ -166,19 +181,23 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 5 | Resume-marker (`controller: true`) van deze sessie, geschreven op of na `started_at` van de run | rij `parked`, sessie blijft staan | |
 | 6 | PR van deze run gemerged | rij `done`, de claude van de run beëindigen | |
 | 6b | Klaar en het issue is `CLOSED` | rij `done`, geen post (een close-check-run die zijn issue sloot), de claude van de run beëindigen | |
-| 7 | Groene PR en klaar | 🤖 Klaar, de claude van de run beëindigen | |
+| 7 | Klaar en een groene eigen PR (niet draft, `MERGEABLE`, checks groen, roborev verwerkt of afwezig), de rem open (zie *De rem*) | squash-merge op de gemeten head, 🤖 Klaar met `note_merged`, de claude van de run beëindigen | |
+| 7b | Klaar en een groene vreemde PR, geen open eigen PR | 🤖 Klaar zoals voorheen, de claude van de run beëindigen | |
 | 8 | Werkplek verdwenen | Teruggegeven | werkplek verdwenen |
 | 9 | `Unknown command:` in het transcript | rij `start_failed`, sessie stoppen als ze niet klaar is | |
 | 10 | Klaar, maar nooit een assistent-beurt | rij `start_failed` | |
 | 11 | PR van deze run gesloten zonder merge, en geen open PR | Teruggegeven, sessie stoppen als ze niet klaar is | PR gesloten |
 | 12 | Open PR is draft | Teruggegeven, sessie stoppen als ze niet klaar is | PR is draft |
-| 13 | Klaar en een open PR met rode checks | Teruggegeven | PR rood |
+| 13 | Klaar en een eigen PR met een van vier oorzaken: rode checks, een merge-conflict, een onverwerkte roborev-review of een mislukte merge | fix-pr-start (sleutel `fixpr:<pr>:<sha>`, plafond 3 runs per PR); is het plafond bereikt, of is de sleutel al gebruikt, of is er een actieve blokkade, dan Teruggegeven; houdt de rem de start tegen, dan blijft de run open (zie hieronder) | per oorzaak *PR rood*, *PR heeft een merge-conflict*, *PR heeft een onverwerkte roborev-review* of *merge mislukt*; bij het plafond met ` na 3 fix-pr-runs` erachter (*onverwerkte roborev-review na 3 fix-pr-runs*) |
+| 13b | Klaar en alleen een vreemde PR die rood is of een merge-conflict heeft (geen eigen open PR met een oorzaak) | Teruggegeven, sessie stoppen als ze niet klaar is | *PR rood* resp. *PR heeft een merge-conflict* |
 | 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
 | 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
 | 17 | `max_wait` > 0, niet klaar, geen openstaande permissie-prompt, geen activiteit in `max_wait` (geteld vanaf `started_at` op zijn vroegst) | Teruggegeven, sessie stoppen | geen activiteit in max_wait |
 | 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud, ook geteld vanaf `started_at` op zijn vroegst (zonder forge-tijd niet) | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
 | 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
+
+Regel 13: houdt de rem de fix-pr-start tegen (uitstel of weigering), dan vervalt de afsluiting van de run: ze blijft open en de volgende tick vindt dezelfde oorzaak opnieuw. Alleen een actieve blokkade (de issue-blokkade van de start), een al gebruikte sleutel of het plafond geeft Teruggegeven.
 
 Verschillen met de spec-tabel, bewust:
 
@@ -210,7 +229,7 @@ de post van apply mislukte.
 
 Een claude blijft na zijn laatste antwoord draaien, ook bij een forge-stand `done`, en forge weigert een
 hervatting van zijn sessie zolang hij leeft (#206). Een run die sluit als `done`, `handoff` of
-`question` (regels 1-3, 6, 6b, 7 en de fix-pr-handoff van een rode PR) draagt daarom `End`: apply
+`question` (regels 1-3, 6, 6b, 7 (merge), 7b en de fix-pr-handoff van regel 13) draagt daarom `End`: apply
 beëindigt met `Kill` alleen de claude van die sessie-id, nooit de unit, zodat een interactieve sessie in
 dezelfde worktree doordraait. Een run zonder sessie-id slaat apply over. Mislukt `Kill`, dan blijft de
 rij open en probeert de volgende tick het opnieuw; een 🤖 Klaar staat er dan al, en regel 1 sluit. Een
@@ -227,7 +246,7 @@ Decide verandert niet, maar `claude -p` loopt anders dan een interactieve claude
 
 | Regel | Bij de lokale adapter |
 |---|---|
-| 1-3, 6, 6b, 7 (`End`, `Kill`) | Claude is meestal al weg; `Kill` ruimt op wat hij achterliet. |
+| 1-3, 6, 6b, 7, 7b (`End`, `Kill`) | Claude is meestal al weg; `Kill` ruimt op wat hij achterliet. |
 | 9 `Unknown command:` | Vuurt niet. `-p` antwoordt op een onbekend commando met gewone tekst. De run eindigt `done` zonder PR of handoff, en regel 14 geeft *geen handoff of vraag*. |
 | 10 nooit een assistent-beurt | Vangt een claude die direct na de start sterft. |
 | 16 permissie-prompt | Vuurt niet. In `-p` wordt een permissie geweigerd in plaats van gevraagd; de hook `permission-check` schrijft niets. Een run die daarna vastloopt, valt onder 17. |
@@ -327,6 +346,12 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
 
 - De rem houdt alleen starts en hervattingen tegen. De afloop van open runs (sluiten, Teruggegeven,
   stoppen, 🤖 Klaar, zie *Afloop*) gaat door, ook tijdens een pauze of bij een dichte usage-rem.
+  Twee uitzonderingen. De eerste is de merge van regel 7. Een pauze, een item buiten `Controller`
+  en een actieve blokkeerder houden de merge tegen (net als `UNKNOWN` of checks `PENDING`), en de
+  run blijft dan open. Alleen de time-out (regel 19, bij `max_runtime` > 0) geeft hem dan nog
+  terug, met *time-out (max_runtime)*. De tweede is de fix-pr-handoff van regel 13. Stelt de rem
+  de fix-pr-start uit, of houdt de pauze hem tegen, dan sluit de run niet. Hij blijft open tot de
+  start doorgaat, in de tick waarin de rem opengaat.
 - `n` bij Geheugen is het aantal starts en hervattingen dat deze tick al door de rem kwam: een net
   gestarte run reserveert van dezelfde meting.
 - `in_use` komt uit de database en geldt voor de hele host: de open runs over alle repo's, plus de
@@ -382,7 +407,7 @@ Met de lokale werkplek start de tick de runs zelf, losgekoppeld, en laat ze door
 Draait de tick in een systemd-service met de standaard `KillMode=control-group`, dan doodt systemd na
 afloop elk proces in de cgroup van de unit, en `setsid` ontsnapt daar niet aan: elke run zou met de tick
 sterven. De tick-unit [`lighthouse-tick.service`](../deploy/systemd/lighthouse-tick.service) (met de
-[timer](../deploy/systemd/lighthouse-tick.timer), elke 5 minuten) staat daarom op `KillMode=process`: alleen
+[timer](../deploy/systemd/lighthouse-tick.timer), elke 3 minuten) staat daarom op `KillMode=process`: alleen
 de tick zelf wordt gestopt. Ze heeft ook geen hardening (`ProtectHome`, `ProtectSystem`,
 `NoNewPrivileges`), want die zou voor elke run gelden. Een operator ziet bij elke tick terwijl er runs
 leven in de journal `Found left-over process … in control group while starting unit. Ignoring.`: dat is
@@ -417,9 +442,11 @@ answer_permissions = ["admin", "maintain"]
 url = "http://127.0.0.1:8091"  # waar lighthouse de forge-API aanspreekt
 web_url = ""                   # link naar het forge-dashboard op de webpagina, bv. een tailscale-serve-adres; leeg: url
 token_file = "/home/me/.kenn/forge/auth_token"   # standaard: <home>/.kenn/forge/auth_token
+unit_prefix = "paia-forge-"    # prefix van de systemd-unit per run; verplicht met kenn-forge, geen standaard
 ```
 
-Met `workplace = "local"` leest tick `[dispatch.forge]` niet en is `target_key` onder
+`unit_prefix` is letterlijk (met slotstreepje); zonder de sleutel faalt elke `Stop` met een fout die
+`dispatch.forge.unit_prefix` noemt. Met `workplace = "local"` leest tick `[dispatch.forge]` niet en is `target_key` onder
 `[dispatch.profiles.<naam>]` niet nodig; `mcp_config` van het profiel geldt wel. Een andere waarde dan
 `kenn-forge` of `local` stopt tick met een fout die de sleutel noemt. Zie *Lokaal* in
 [workplace.md](workplace.md#lokaal), *Afloop met de lokale werkplek* hierboven en, voor de tick als systemd-unit of cron-taak,

@@ -1,0 +1,46 @@
+{
+  "description": "host.toml missing: write exits 3 with the config error in the refusal.",
+  "host": "unknown",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "code": 3,
+        "stderr_contains": [
+          "PLAN-REVIEW NOT RECORDED",
+          "host unknown: no host.toml"
+        ]
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review",
+      "exists": false
+    }
+  ]
+}

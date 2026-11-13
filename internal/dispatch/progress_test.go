@@ -128,3 +128,14 @@ func TestReadProgressOtherCommand(t *testing.T) {
 		t.Errorf("ReadProgress = %+v, true, want false", p)
 	}
 }
+
+// A directory whose name starts with ".." is inside the worktree, not above it.
+func TestReadProgressDotDotDirectoryInsideRoot(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, ".git"), "gitdir: elsewhere\n")
+	write(t, filepath.Join(root, "..plans/plan.md"), "# Plan\n\n### Task 1: a\n\n### Task 2: b\n")
+	work := filepath.Join(root, ".superpowers/sdd/plan")
+	write(t, filepath.Join(work, "plan-path"), "..plans/plan.md\n")
+	write(t, filepath.Join(work, "progress.md"), "Task 1: complete\n")
+	checkProgress(t, sddCommand+filepath.Join(root, "..plans/plan.md"), Progress{Task: 2, Tasks: 2, Step: "build"})
+}

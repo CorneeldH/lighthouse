@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "leadin",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"leadin\": {\n    \"n\": 0,\n    \"without_mutation\": 1\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_leadin_is_none_when_the_turn_never_mutates"
+    ]
+  }
+]

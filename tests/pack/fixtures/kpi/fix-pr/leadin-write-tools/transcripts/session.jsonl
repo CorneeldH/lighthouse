@@ -1,0 +1,5 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "fix pr 585"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "src/x.py"}}]}}
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "fix pr 586"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "src/x.py"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "src/x.py"}}]}}

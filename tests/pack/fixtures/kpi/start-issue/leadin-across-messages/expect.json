@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "leadin",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"leadin\": {\n    \"routed\": {\n      \"n\": 0\n    },\n    \"unrouted\": {\n      \"n\": 1,\n      \"min\": 3,\n      \"median\": 3,\n      \"max\": 3,\n      \"mean\": 3.0\n    },\n    \"no_route\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_counting_continues_across_consecutive_assistant_messages"
+    ]
+  }
+]

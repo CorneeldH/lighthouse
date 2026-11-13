@@ -152,6 +152,13 @@ func setOpen(ctx context.Context, db *sql.DB, id int64, query string, args ...an
 	return nil
 }
 
+// NoteMergeFailed records on an open run the head sha whose merge GitHub
+// refused, and GitHub's message. It returns ErrNotOpen for a closed or unknown run.
+func NoteMergeFailed(ctx context.Context, db *sql.DB, id int64, sha, message string) error {
+	return setOpen(ctx, db, id, `UPDATE runs SET merge_sha = ?, merge_error = ?
+		WHERE id = ? AND ended_at IS NULL`, sha, message, id)
+}
+
 // OpenRun is an open run with its workplace columns.
 type OpenRun struct {
 	ID               int64     `json:"id"`
@@ -163,6 +170,8 @@ type OpenRun struct {
 	WorkspaceID      string    `json:"workspace_id"`
 	WorkplaceSession string    `json:"workplace_session"`
 	StartedAt        time.Time `json:"started_at"`
+	MergeSHA         string    `json:"merge_sha,omitempty"`
+	MergeError       string    `json:"merge_error,omitempty"`
 }
 
 // Open returns the open runs of repo, ordered by id.
@@ -189,7 +198,7 @@ func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
 
 // openColumns are the runs columns scanOpen reads, in order.
 const openColumns = `id, issue, session_id, trigger_key, profile, branch,
-	workspace_id, workplace_session, started_at`
+	workspace_id, workplace_session, started_at, merge_sha, merge_error`
 
 // scanOpen reads a row selected with openColumns, after any lead destinations
 // for columns selected before them.
@@ -197,7 +206,7 @@ func scanOpen(rows interface{ Scan(...any) error }, lead ...any) (OpenRun, error
 	var r OpenRun
 	var started string
 	dest := append(lead, &r.ID, &r.Issue, &r.SessionID, &r.TriggerKey, &r.Profile, &r.Branch,
-		&r.WorkspaceID, &r.WorkplaceSession, &started)
+		&r.WorkspaceID, &r.WorkplaceSession, &started, &r.MergeSHA, &r.MergeError)
 	if err := rows.Scan(dest...); err != nil {
 		return OpenRun{}, fmt.Errorf("runs: scan open run: %w", err)
 	}

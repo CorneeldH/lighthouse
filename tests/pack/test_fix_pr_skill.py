@@ -5,7 +5,6 @@ is a wish:
 
 - the description carries the triggers AND an explicit negative boundary;
 - the diagnosis is ONE block, not three blocks under each other;
-- that block is read-only — it diagnoses, it does not fix;
 - every known gate is in the table with a command that reproduces it locally.
 
 Both variants are checked on content; they differ only in how they say "outside the sandbox".
@@ -13,9 +12,7 @@ Both variants are checked on content; they differ only in how they say "outside 
 
 from __future__ import annotations
 
-import importlib.util
 import re
-import sys
 
 from tests.pack._testkit import CORE
 
@@ -23,14 +20,6 @@ SKILL_DIR = CORE / "skills" / "fix-pr"
 CLAUDE = (SKILL_DIR / "claude" / "SKILL.md").read_text(encoding="utf-8")
 AGENTS = (SKILL_DIR / "agents" / "SKILL.md").read_text(encoding="utf-8")
 TEXTS = (CLAUDE, AGENTS)
-
-_SPEC = importlib.util.spec_from_file_location(
-    "measure_fix_pr_kpi", CORE / "scripts" / "measure_fix_pr_kpi.py"
-)
-assert _SPEC and _SPEC.loader
-kpi = importlib.util.module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = kpi
-_SPEC.loader.exec_module(kpi)
 
 DIAGNOSE_HEADING = "## 1. Diagnosis in one block"
 GATE_HEADING = "## 3. The gates, and how to reproduce them locally"
@@ -66,12 +55,6 @@ def test_description_carries_an_explicit_negative_boundary() -> None:
         assert "note" in lower
         assert "lighthouse-close-issue" in lower
         assert "caveman-review" in lower
-
-
-def test_the_diagnosis_block_is_read_only() -> None:
-    for text in TEXTS:
-        hit = kpi.MUTATING_BASH_RE.search(_diagnose_block(text))
-        assert hit is None, f"diagnosis block holds a mutating command: {hit.group(0)!r}"
 
 
 def test_the_diagnosis_reads_the_repo_from_config() -> None:
@@ -136,7 +119,8 @@ def test_the_worktree_step_uses_the_head_branch_form() -> None:
 def test_the_kpi_table_names_the_measuring_script() -> None:
     for text in TEXTS:
         for metric in ("leadin", "diagnose", "mistrigger", "scope"):
-            assert f"python3 .lighthouse/scripts/measure_fix_pr_kpi.py {metric}" in text
+            assert f"lighthouse measure-fix-pr-kpi {metric}" in text
+        assert "measure_fix_pr_kpi" not in text
         assert "n=9" not in text
 
 
@@ -184,9 +168,13 @@ def test_roborev_section_stops_on_an_unreadable_ci_review() -> None:
         assert "render and post nothing" in s6
 
 
-def test_only_a_red_pr_is_started_by_the_dispatcher() -> None:
-    """The dispatcher starts fix-pr on a red PR only and never reads the roborev marker."""
+def test_dispatcher_contract() -> None:
+    """The dispatcher starts fix-pr on four causes and reads the marker; the tick merges, not the skill."""
     for text in TEXTS:
         flat = " ".join(text.split())
-        assert "starts this skill only on a red PR after a finished run" in flat
-        assert "does not read the marker" in flat
+        assert "the merge itself — the tick does that after a finished run, never this skill" in flat
+        assert "the dispatcher reads the marker" in flat
+        domain = text[text.index("## Domain") : text.index("## 1.")]
+        domain_flat = " ".join(domain.split())
+        for word in ("conflict", "unprocessed roborev review", "merge that failed"):
+            assert word in domain_flat

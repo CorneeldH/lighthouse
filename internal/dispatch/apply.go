@@ -1,6 +1,7 @@
 package dispatch
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -10,16 +11,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
-// Poster is the forge side apply writes to: one repo's comments and reactions.
+// Poster is the forge side apply writes to: one repo's comments, reactions and merges.
 type Poster interface {
 	CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	AddRocket(ctx context.Context, commentID int64) error
+	// MergePR squash-merges pull request number, only while its head is still sha.
+	MergePR(ctx context.Context, number int, sha string) error
 }
 
 // Board is the board side apply writes to: the Status of one repo's board items, by option
@@ -119,6 +123,8 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 			return err
 		}
 		return ap.closeRun(ctx, a.RunID, runs.Done, "")
+	case KindMerge:
+		return ap.merge(ctx, a, res)
 	case KindClose:
 		if err := ap.release(ctx, a); err != nil {
 			return err
@@ -146,6 +152,37 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		return nil
 	}
 	return fmt.Errorf("unknown action kind %q", a.Kind)
+}
+
+// merge squash-merges PR a.PR on head a.HeadSHA, posts the 🤖 Done and ends the run as done.
+// A head that moved since the measurement is deferred, so the next tick gathers and measures
+// again. A merge GitHub refuses is noted on the open run, so decide plans a fix-pr for that
+// head instead of merging again; the run stays open. Any other failure is an action error.
+func (ap applier) merge(ctx context.Context, a Action, res *Result) error {
+	err := ap.env.Poster(a.Repo).MergePR(ctx, a.PR, a.HeadSHA)
+	var refused *forge.MergeRefused
+	switch {
+	case errors.Is(err, forge.ErrHeadMoved):
+		res.Deferred = append(res.Deferred, deferral(a, fmt.Sprintf("merge of PR #%d skipped: head moved", a.PR)))
+		return nil
+	case errors.As(err, &refused):
+		if err := runs.NoteMergeFailed(ctx, ap.env.DB, a.RunID, a.HeadSHA, refused.Message); err != nil {
+			return err
+		}
+		ap.logf("%s#%d: merge of PR #%d refused: %s", a.Repo, a.Issue, a.PR, oneLine(refused.Message))
+		return nil
+	case err != nil:
+		return fmt.Errorf("merge: %w", err)
+	}
+	note := protocol.Heading("note_merged", a.Language)
+	body := protocol.RenderDone(a.SessionID, a.PRURL, note, a.Language)
+	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		return fmt.Errorf("post: %w", err)
+	}
+	if err := ap.release(ctx, a); err != nil {
+		return err
+	}
+	return ap.closeRun(ctx, a.RunID, runs.Done, "")
 }
 
 // setStatus moves the board item of a to status.
@@ -345,16 +382,19 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	return nil
 }
 
-// returnFixPR posts a 🤖 Returned "PR red" without a run for a first fix-pr start that stops
-// before its claim, and returns cause, joined with a failed post. The run that found the red
-// PR already closed as a handoff, so without it the issue would sit silent on a red PR. A
+// returnFixPR posts a 🤖 Returned without a run for a first fix-pr start that stops before its
+// claim, and returns cause, joined with a failed post. The reason is the one decide gave the
+// start (a.Reason with a.ReasonArg), "PR red" when it gave none. The run that found the PR
+// already closed as a handoff, so without it the issue would sit silent on that PR. A
 // trigger key another run already spent needs nothing; a second attempt comes from retry, which
 // plans it every tick and hands the issue back itself; any other start posts nothing.
 func (ap applier) returnFixPR(ctx context.Context, a Action, cause error) error {
 	if a.Trigger != triggerFixPR || a.Attempt != 1 {
 		return cause
 	}
-	body := protocol.RenderReturned(protocol.Heading("reason_pr_red", a.Language), "", "", a.Language)
+	ra := a
+	ra.Reason = cmp.Or(a.Reason, "reason_pr_red")
+	body := protocol.RenderReturned(reasonText(ra), "", "", a.Language)
 	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 		return errors.Join(cause, fmt.Errorf("post returned: %w", err))
 	}

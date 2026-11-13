@@ -40,6 +40,35 @@ describe('Header', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/health', expect.anything())
   })
 
+  it('names the version badge for a screen reader', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(json('{"version":"1.2.3"}'))))
+
+    renderHeader()
+
+    expect((await screen.findByText('1.2.3')).textContent).toBe('version 1.2.3')
+  })
+
+  it('announces refreshing, not the age that changes every minute', async () => {
+    let release: () => void = () => {}
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() => {
+        calls++
+        if (calls === 1) return Promise.resolve(json('{"version":"1.2.3"}'))
+        return new Promise<Response>((resolve) => {
+          release = () => resolve(json('{"version":"1.2.3"}'))
+        })
+      }),
+    )
+    renderHeader()
+
+    expect((await screen.findByText(/^updated /)).closest('[aria-live]')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect((await screen.findByText('refreshing…')).closest('[aria-live]')).not.toBeNull()
+    release()
+  })
+
   it('shows an alert when fetch fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
 

@@ -1,0 +1,128 @@
+{
+  "description": "write round_limit is refused, accept-open repairs it, write then succeeds.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\nTekst.\n"
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accept",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 2,
+      "severities": [
+        "MAJOR"
+      ],
+      "verified": []
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-2.decisions.json",
+      "json": [
+        {
+          "finding_id": "r2-f1",
+          "decision": "accept",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 3,
+      "severities": [
+        "MAJOR"
+      ],
+      "verified": []
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-3.decisions.json",
+      "json": [
+        {
+          "finding_id": "r3-f1",
+          "decision": "accept",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "round_limit",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "code": 4
+      }
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}",
+        "--doc",
+        "${tmp}/plan.md"
+      ],
+      "expect": {}
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "round_limit",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "record": {
+          "last_round_open": [
+            {
+              "finding_id": "r3-f1",
+              "severity": "MAJOR",
+              "decision": "accepted_open"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

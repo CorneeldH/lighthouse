@@ -1,0 +1,21 @@
+{
+  "description": "A spec line naming a spec that does not exist is skipped.",
+  "world": "bare",
+  "steps": [
+    {
+      "op": "file",
+      "path": "${root}/docs/developer/planning/plans/p.md",
+      "text": "**Spec:** `docs/developer/planning/specs/weg.md`\n"
+    },
+    {
+      "op": "run",
+      "args": [
+        "pr-open-points",
+        "${root}/docs/developer/planning/plans/p.md"
+      ],
+      "expect": {
+        "stdout_equals": ""
+      }
+    }
+  ]
+}

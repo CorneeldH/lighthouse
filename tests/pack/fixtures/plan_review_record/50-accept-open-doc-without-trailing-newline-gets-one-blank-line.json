@@ -1,0 +1,83 @@
+{
+  "description": "A document without a final newline gets exactly one blank line before the block.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan"
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 2,
+      "severities": [
+        "MAJOR"
+      ],
+      "verified": []
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 3,
+      "severities": [
+        "MAJOR",
+        "BLOCKER",
+        "MINOR"
+      ],
+      "verified": []
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-3.decisions.json",
+      "json": [
+        {
+          "finding_id": "r3-f1",
+          "decision": "accept",
+          "reason": "fix in Taak 2"
+        },
+        {
+          "finding_id": "r3-f2",
+          "decision": "reject",
+          "reason": "klopt niet"
+        },
+        {
+          "finding_id": "r3-f3",
+          "decision": "minor_no",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}",
+        "--doc",
+        "${tmp}/plan.md"
+      ],
+      "expect": {}
+    },
+    {
+      "op": "expect_file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\n${stdout}"
+    }
+  ]
+}

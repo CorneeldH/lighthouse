@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "leadin",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"leadin\": {\n    \"n\": 1,\n    \"min\": 2,\n    \"median\": 2,\n    \"max\": 2,\n    \"mean\": 2.0,\n    \"without_mutation\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_leadin_counts_calls_before_the_first_mutation_exclusive"
+    ]
+  }
+]
