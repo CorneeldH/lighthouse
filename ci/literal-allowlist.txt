@@ -7,7 +7,3 @@ pack/core/lib/protocol.py:LEGACY_MARKERS = ("<!-- paia:",)
 # The install command run.sh names when no binary is found (spec zonder-python §1).
 # Pinned by tests/pack/test_run_sh.py::test_missing_binary_blocks_blocking_hook.
 pack/core/hooks/run.sh:  module=github.com/CorneeldH/lighthouse/cmd/lighthouse
-
-# kenn-forge unit name, class Beelink; #254 moves it into configuration.
-# Pinned by tests/test_literal_grep.py::test_go_is_clean.
-internal/workplace/kennforge/stop.go:	return "paia-forge-" + profile + "-" + string(b)
