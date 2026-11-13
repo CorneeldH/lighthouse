@@ -20,7 +20,6 @@ type hostFacts struct {
 	PauseUntil time.Time                // zero: no active pause
 	Markers    map[string][]park.Marker // per repo slug: controller markers whose last run is there
 	MarkerDir  string
-	Parked     map[string][]int64 // per repo slug: ids of the last runs that are resumable for their marker
 }
 
 // meter is env.Meter, or a meter on the default cache directory and the [usage] table of host.toml.
@@ -89,26 +88,13 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 			b.SoftwareInUse++
 		}
 	}
-	markers, err := park.ReadMarkers(f.MarkerDir)
+	markers, parked, err := controllerMarkers(ctx, db, f.MarkerDir)
 	if err != nil {
-		return hostFacts{}, fmt.Errorf("resume markers: %w", err)
+		return hostFacts{}, err
 	}
-	f.Markers = map[string][]park.Marker{}
-	f.Parked = map[string][]int64{}
-	for _, m := range markers {
-		if !m.Controller {
-			continue
-		}
-		repo, last, ok, err := runs.LastOfSession(ctx, db, m.SessionID)
-		if err != nil {
-			return hostFacts{}, err
-		}
-		if !ok {
-			continue
-		}
-		f.Markers[repo] = append(f.Markers[repo], m)
-		if runs.Resumable(last, m.Key()) {
-			f.Parked[repo] = append(f.Parked[repo], last.ID)
+	f.Markers = markers
+	for _, rows := range parked {
+		for _, last := range rows {
 			b.InUse++
 			if last.Profile == dispatch.ProfileSoftware {
 				b.SoftwareInUse++
@@ -117,4 +103,34 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 	}
 	f.Brake = b
 	return f, nil
+}
+
+// controllerMarkers reads the controller markers in markerDir, per repo slug of the last run of
+// their session, and per repo slug the last runs that are resumable for their marker: the parked
+// runs. A marker whose session has no run counts for nothing. An unreadable marker directory or
+// database is an error.
+func controllerMarkers(ctx context.Context, db *sql.DB, markerDir string) (markers map[string][]park.Marker,
+	parked map[string][]runs.Row, err error) {
+	all, err := park.ReadMarkers(markerDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resume markers: %w", err)
+	}
+	markers, parked = map[string][]park.Marker{}, map[string][]runs.Row{}
+	for _, m := range all {
+		if !m.Controller {
+			continue
+		}
+		repo, last, ok, err := runs.LastOfSession(ctx, db, m.SessionID)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !ok {
+			continue
+		}
+		markers[repo] = append(markers[repo], m)
+		if runs.Resumable(last, m.Key()) {
+			parked[repo] = append(parked[repo], last)
+		}
+	}
+	return markers, parked, nil
 }

@@ -60,14 +60,16 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    Activiteit en prompts staan niet in de vingerafdruk: ze veranderen elke tick, en deze grenzen laten
    tick kijken als hun `max_wait` verloopt.
    Vingerafdruk en tijd van de laatste volledige gather staan in de tabel `tick_state` van de database.
-   Na de precheck schrijft tick per bedienbare repo ook de stand van zijn runs in `tick_state`
-   (soort `run`, sleutel het issuenummer), elke tick, ook als de gather niet aan de beurt is: per
+   Na apply schrijft tick per repo waarvan de precheck slaagde ook de stand van zijn runs in `tick_state`
+   (soort `run`, sleutel het issuenummer), elke tick, ook als de gather niet aan de beurt is. Een
+   run die apply in deze tick start of afsluit, staat er dus na deze tick al in of al niet meer in. Per
    open run en per geparkeerde run (met een marker die hem nog hervat) de titel van het issue van
    het board, `open` of `parked`, het commando, de fase (afgeleid uit het commando, bijvoorbeeld `sdd` of `spec-review`), voor een
    subagent-driven-development-run de huidige taak, het aantal taken en de stap (`build`, `review` of
    `final-review`, gelezen uit het plan en het ledger `progress.md` in de werkmap van de run; leeg als
    die niet te lezen zijn), de trigger, het profiel, de workspace, `started_at`,
-   de gemeten forge-stand (`working`, `waiting` of `done`; leeg als tick hem niet kon meten) en de
+   de forge-stand die de precheck mat (`working`, `waiting` of `done`; leeg als tick hem niet kon
+   meten, en voor een run die deze tick startte) en de
    tijd van de tick. Een issue met een open én een geparkeerde run staat er één keer, als `open`.
    Mislukt de precheck, dan blijven de rijen van de vorige tick staan. `serve` leest ze voor
    `GET /api/runs` en de blokken *Running runs*, *Parked runs*, *Queue* en *Night*, zonder de forge (zie [install.md](install.md)).
