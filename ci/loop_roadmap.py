@@ -4,9 +4,10 @@
 The label marks an issue that adds or changes a step, a handoff or a route of the loop (see
 docs/developer/labels.md); explaining the controller is not one. Two modes:
 
-`python3 ci/loop_roadmap.py` (main mode) checks that every planned step or handoff in
-docs/site/data/loop.json names an open issue with the label. An open issue missing from the map
-is fine: the PR that delivers it adds it.
+`python3 ci/loop_roadmap.py` (main mode) checks both directions. Every planned step or handoff in
+docs/site/data/loop.json names an open issue with the label. And every open issue with the label
+that sits on a milestone is named by a planned item of the map. An open issue without a milestone
+may be missing from the map: the PR that delivers it adds it.
 
 `python3 ci/loop_roadmap.py --pr <n>` (PR mode) checks that a PR closing a `loop` issue also
 updates the map: no closed issue is still planned on it, and the map file is touched. A PR that
@@ -44,14 +45,20 @@ MAP = "docs/site/data/loop.json"
 SCRIPT = "ci/loop_roadmap.py"
 
 
-def problems(chain: dict, open_issues: set[int]) -> list[str]:
-    """Planned items of the map without an open `loop` issue."""
+def problems(chain: dict, open_issues: dict[int, str | None]) -> list[str]:
+    """Planned items without an open `loop` issue, and milestoned open `loop` issues not on the map."""
     items = planned(chain)
     found = [f"{name}: planned without an issue" for name, nr in items.items() if nr is None]
     found += [
         f"{name}: #{nr} is not an open issue labelled {LABEL} {HINT}"
         for name, nr in items.items()
         if nr is not None and nr not in open_issues
+    ]
+    on_map = set(items.values())
+    found += [
+        f"#{nr}: open issue labelled {LABEL} on milestone {title} is not on the map {HINT}"
+        for nr, title in sorted(open_issues.items())
+        if title is not None and nr not in on_map
     ]
     return found
 
@@ -72,14 +79,21 @@ def pr_problems(chain: dict, closed: set[int], touched: set[str]) -> list[str]:
     return found
 
 
-def open_loop_issues(repo: str) -> set[int]:
-    """The open issues (no PRs) of `repo` with the label; raises CalledProcessError when gh fails."""
+def open_loop_issues(repo: str) -> dict[int, str | None]:
+    """The open issues (no PRs) of `repo` with the label, each with its milestone title (None: none).
+
+    Raises CalledProcessError when gh fails."""
     out = subprocess.run(
         ["gh", "api", f"repos/{repo}/issues?labels={LABEL}&state=open&per_page=100", "--paginate",
-         "--jq", ".[] | select(.pull_request | not) | .number"],
+         "--jq", '.[] | select(.pull_request | not) | "\\(.number)\\t\\(.milestone.title // "")"'],
         check=True, capture_output=True, text=True,
     ).stdout
-    return {int(line) for line in out.split()}
+    issues: dict[int, str | None] = {}
+    for line in out.splitlines():
+        if line.strip():
+            number, _, title = line.partition("\t")
+            issues[int(number)] = title or None
+    return issues
 
 
 def closed_loop_issues(repo: str, pr: int) -> set[int]:
@@ -125,13 +139,16 @@ def main(argv: list[str] | None = None) -> int:
         if pr is None:
             issues = open_loop_issues(repo)
             found = problems(chain, issues)
-            ok = f"loop roadmap: {len(issues)} open {LABEL} issues, planned items all open"
+            ok = (f"loop roadmap: {len(issues)} open {LABEL} issues, planned items all open, "
+                  "milestoned issues all on the map")
         else:
             closed = closed_loop_issues(repo, pr)
             touched = touched_files(repo, pr)
             found = pr_problems(chain, closed, touched) if closed else []
             if MAP in touched or SCRIPT in touched:
-                found += problems(chain, open_loop_issues(repo))
+                # The issues this PR closes are still open while it runs and are no longer on the map.
+                found += problems(chain, {nr: m for nr, m in open_loop_issues(repo).items()
+                                          if nr not in closed})
             ok = f"loop roadmap: PR #{pr} closes {len(closed)} loop issues, map in step"
             if not closed:
                 ok = f"loop roadmap: PR #{pr} closes no loop issue"
