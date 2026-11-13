@@ -9,10 +9,18 @@ import (
 	"testing"
 )
 
-// hubNode is one node behind the fake hub: a fake forge that says whether the hub reaches it.
+// hubNode is one node behind the fake hub: a fake forge that says whether the hub reaches it
+// now (routable) and what the next snapshot reports (reachable).
 type hubNode interface {
 	http.Handler
+	routable() bool
 	reachable() bool
+}
+
+func (f *fakeForge) routable() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return !f.offline && !f.back
 }
 
 func (f *fakeForge) reachable() bool {
@@ -52,10 +60,11 @@ func newFakeHub(t *testing.T, nodes map[string]hubNode) *httptest.Server {
 			return
 		}
 		node, known := nodes[id]
-		if !known || !node.reachable() {
+		if !known || !node.routable() {
+			// The body of fleetHostNotFoundProblem through writeProblemResponse (fleet_proxy.go).
 			w.Header().Set("Content-Type", "application/problem+json")
 			w.WriteHeader(http.StatusNotFound)
-			_, _ = fmt.Fprintf(w, `{"title":"Not Found","status":404,"detail":"fleet host not found","hostKey":%q}`, id)
+			_, _ = fmt.Fprintf(w, `{"title":"Not Found","status":404,"detail":"fleet host not found","code":"notFound","details":{"hostKey":%q}}`, id)
 			return
 		}
 		u, err := url.Parse("/api/v1/" + tail)

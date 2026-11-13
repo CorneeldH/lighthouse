@@ -22,7 +22,9 @@ import (
 //     (resolveFleetHostTarget). The hub sends the node's answer through unchanged.
 //   - The hub answers 404 "fleet host not found" itself for a host_key it does not know, and
 //     for an enrolled spoke it cannot reach (no tunnel, outbound disabled; memberReachable).
-//     That 404 looks the same as the node's own "workspace not found"; see confirmGone.
+//     Its body is fleetHostNotFoundProblem through writeProblemResponse:
+//     {"title":"Not Found","status":404,"detail":"fleet host not found","code":"notFound",
+//     "details":{"hostKey":"node-a"}}. See confirmGone.
 //   - There is no /workspaces/{id}/agent-sessions route on the hub: Sessions reads /runtime.
 
 // path routes p, an /api/v1 path of forge, to a.Node: unchanged for self.
@@ -75,12 +77,20 @@ func (a *Adapter) nodeReachable(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// confirmGone decides what a 404 means. For self it is "gone". For another node the hub
-// answers 404 also when it does not reach the node, so it is "gone" only while the snapshot
-// reports the node reachable; otherwise confirmGone returns an error wrapping ErrUncertain.
-func (a *Adapter) confirmGone(ctx context.Context) error {
+// hubNotFound is the detail of the hub's own 404 for a host it does not know or reach.
+const hubNotFound = "fleet host not found"
+
+// confirmGone decides what the 404 se means. For self it is "gone". For another node the hub
+// answers 404 also when it does not reach the node. Its own 404 is never "gone": the tunnel
+// may be back by the time the snapshot is read. Any other 404 is "gone" only while the
+// snapshot reports the node reachable. Otherwise confirmGone returns an error wrapping
+// ErrUncertain.
+func (a *Adapter) confirmGone(ctx context.Context, se *StatusError) error {
 	if a.Node == "" {
 		return nil
+	}
+	if strings.Contains(se.Detail, hubNotFound) {
+		return fmt.Errorf("node %s: 404 not confirmed: %w", a.Node, workplace.ErrUncertain)
 	}
 	ok, err := a.nodeReachable(ctx)
 	if err != nil {
@@ -100,7 +110,7 @@ func (a *Adapter) notFound(ctx context.Context, err error, what string) error {
 	if !errors.As(err, &se) || se.Status != http.StatusNotFound {
 		return nil
 	}
-	if cerr := a.confirmGone(ctx); cerr != nil {
+	if cerr := a.confirmGone(ctx, se); cerr != nil {
 		return fmt.Errorf("%s: %v: %w", what, se, cerr)
 	}
 	return fmt.Errorf("%s: %v: %w", what, se, workplace.ErrGone)

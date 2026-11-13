@@ -122,7 +122,8 @@ func (f *forgeFixture) adapter(t *testing.T, url, node string) *Adapter {
 	}
 }
 
-// reachable: the fake hub always reaches this forge.
+// routable and reachable: the fake hub always reaches this forge.
+func (f *forgeFixture) routable() bool  { return true }
 func (f *forgeFixture) reachable() bool { return true }
 
 func (f *forgeFixture) Workplace() workplace.Workplace { return f.a }

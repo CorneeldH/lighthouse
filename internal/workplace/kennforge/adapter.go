@@ -341,7 +341,7 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 		return fmt.Errorf("remove workspace %s: %w", workspaceID, err)
 	}
 	if err != nil {
-		if cerr := a.confirmGone(ctx); cerr != nil {
+		if cerr := a.confirmGone(ctx, se); cerr != nil {
 			return fmt.Errorf("remove workspace %s: %v: %w", workspaceID, se, cerr)
 		}
 	}

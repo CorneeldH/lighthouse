@@ -250,6 +250,57 @@ func TestRemoteNotFoundUnreachableIsUncertain(t *testing.T) {
 	}
 }
 
+// Review focus 2, the race: the hub answers its own 404 for a spoke it does not reach, and the
+// tunnel is back before the snapshot is read. The hub's own 404 is never "gone", whatever the
+// snapshot says.
+func TestRemoteHubNotFoundIsUncertainWhileSnapshotReachable(t *testing.T) {
+	fa, _, a := twoNodes(t, "node-a")
+	fa.back = true
+	writeCarrierOn(t, a, "node-a")
+	if _, err := a.Lookup(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrGone) {
+		t.Errorf("Lookup: err = %v, want ErrUncertain and not ErrGone", err)
+	}
+	if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrGone) {
+		t.Errorf("Sessions: err = %v, want ErrUncertain and not ErrGone", err)
+	}
+	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) {
+		t.Errorf("Remove: err = %v, want ErrUncertain", err)
+	}
+	if _, err := os.Stat(workplace.CarrierPath(a.StateDir, "node-a", "ws1")); err != nil {
+		t.Errorf("carrier after the hub's own 404: %v, want it kept", err)
+	}
+	if n := fa.total(); n != 0 {
+		t.Errorf("requests on node-a = %d, want 0", n)
+	}
+}
+
+// A node id with a space and a slash reaches its node through the hub, escaped as one segment.
+func TestRemoteNodeIDEscaped(t *testing.T) {
+	fn := newForgeNode(t)
+	other := newForgeNode(t)
+	hub := newFakeHub(t, map[string]hubNode{"node a/b": fn, "node a": other})
+	tok := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tok, []byte("secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fn.path = "/srv/ws1"
+	fn.headRef = "issue-1-x"
+	a := &Adapter{Client: New(hub.URL, tok), Node: "node a/b", StateDir: t.TempDir()}
+	got, err := a.Lookup(context.Background(), "ws1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != "/srv/ws1" {
+		t.Errorf("Lookup = %+v, want the workspace of node a/b", got)
+	}
+	if n := fn.count("GET /api/v1/workspaces/ws1"); n != 1 {
+		t.Errorf("reads on node a/b = %d, want 1", n)
+	}
+	if n := other.total(); n != 0 {
+		t.Errorf("requests on node a = %d, want 0", n)
+	}
+}
+
 // A hub whose snapshot fails cannot confirm a 404: uncertain, never gone.
 func TestRemoteNotFoundSnapshotFailsIsUncertain(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

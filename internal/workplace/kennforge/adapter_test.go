@@ -57,6 +57,9 @@ type fakeForge struct {
 	runtimeStatus int
 	// offline makes the fake hub answer this node as a spoke without a tunnel.
 	offline bool
+	// back: the hub answers this node as offline, but the next snapshot already reports it
+	// reachable again, as when the tunnel comes back between the two requests.
+	back bool
 }
 
 // newForgeNode is a fake forge without a server of its own, as a node behind newFakeHub.
