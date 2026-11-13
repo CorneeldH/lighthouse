@@ -241,3 +241,73 @@ func writeCompact(w *bytes.Buffer, v any) error {
 	}
 	return nil
 }
+
+// newRoborevCommentCommand is `lighthouse roborev-comment`, the port of roborev_comment.py: the
+// PR comment of the roborev review, the same for write-pr (lokaal) and fix-pr (ci).
+func newRoborevCommentCommand() *cobra.Command {
+	cmd := scriptCommand(&cobra.Command{
+		Use:   "roborev-comment",
+		Short: "The PR comment of the roborev review",
+		Long:  "Exit: 0 ok | 2 wrong usage, a state that is not `done`, or a comment that cannot fit (`roborev_comment: <error>`).",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return usageErr(fmt.Errorf("%s: a subcommand is required: render", cmd.CommandPath()))
+		},
+	})
+	cmd.AddCommand(newRoborevCommentRender())
+	return cmd
+}
+
+func newRoborevCommentRender() *cobra.Command {
+	var pr int
+	var source, state, raw string
+	cmd := scriptCommand(&cobra.Command{
+		Use:   "render --pr <nr> --bron lokaal|ci --state <path> --raw <path>",
+		Short: "Print the comment: marker, log block, table and raw output",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			for _, name := range []string{"pr", "bron", "state", "raw"} {
+				if !cmd.Flags().Changed(name) {
+					return usageErr(fmt.Errorf("%s: the following arguments are required: --%s", cmd.CommandPath(), name))
+				}
+			}
+			if source != "lokaal" && source != "ci" {
+				return usageErr(fmt.Errorf("%s: --bron must be lokaal or ci, not %q", cmd.CommandPath(), source))
+			}
+			text, err := renderComment(pr, source, state, raw)
+			if err != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "roborev_comment: %v\n", err)
+				return &exitError{code: 2, err: errSilent}
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), text)
+			return err
+		},
+	})
+	f := cmd.Flags()
+	f.IntVar(&pr, "pr", 0, "number of the PR")
+	f.StringVar(&source, "bron", "", "lokaal or ci")
+	f.StringVar(&state, "state", "", "state file of the review")
+	f.StringVar(&raw, "raw", "", "raw roborev output")
+	return cmd
+}
+
+func renderComment(pr int, source, statePath, rawPath string) (string, error) {
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return "", err
+	}
+	parsed, err := orderedjson.Parse(data)
+	if err != nil {
+		return "", err
+	}
+	state, ok := parsed.(*orderedjson.Object)
+	if !ok {
+		return "", errors.New("state is not a done review: nothing to render")
+	}
+	if outcome, _ := state.Get("uitkomst"); outcome != "done" {
+		return "", errors.New("state is not a done review: nothing to render")
+	}
+	raw, err := os.ReadFile(rawPath)
+	if err != nil {
+		return "", err
+	}
+	return roborev.Render(state, string(raw), pr, source)
+}
