@@ -50,7 +50,11 @@ black-box-tests via `run.sh` en voor de overgang van de fixtures.
   Het verandert alleen in hoe het de gate start (taak 8).
 - Python-regex naar RE2: `\w` en `[^\W\d_]` zijn in Python Unicode. Schrijf ze uit als
   `[\p{L}\p{N}_]` en `[\p{L}\p{Nl}\p{No}]`. Lookbehind en lookahead bestaan niet in RE2.
-  Schrijf ze met de hand uit (taak 2 en 3 noemen waar).
+  Schrijf ze met de hand uit (taak 2 en 3 noemen waar). Ook `\s`, `\S` en `\b` zijn in Python
+  Unicode, in RE2 alleen ASCII: `\s` wordt `[\p{Z}\t\n\v\f\r\x1c-\x1f\x85]`, `\S` het complement
+  daarvan, en `\b` schrijf je uit met de Unicode-`\w`-klasse. Dat geldt ook voor `str.strip()` en
+  `str.split()`: `strings.TrimSpace` en `strings.Fields` kennen `\x1c`–`\x1f` niet, dus gebruik
+  een eigen helper met dezelfde witruimteverzameling.
 - `str.splitlines()` splitst ook op `\r`, `\r\n`, `\v`, `\f`, `\x1c`–`\x1e`, `\x85`, ` ` en
   ` `. Daarvoor komt één helper `splitLines(s string) []string` in `internal/codelang`. Waar
   Python `"\n"` telt (`_line_of`, `source.count("\n")`), telt Go ook alleen `\n`.
@@ -114,9 +118,11 @@ verwachtingen zijn.
   weglaten.
 - `llm.json`: `{"prompt": [{"items": [[kind, text]], "want"}], "parse": [{"content", "n", "want": [bool] | null}]}`.
   `null` betekent `ValueError`.
-- `units/<naam>.json`: `{"source": "<pad onder fixtures/code_language>", "lang", "units": [[line, kind, text, verdict]]}`.
-  Dit is **elke** eenheid die de scanner aan `judge_name` en `judge_text` gaf, de schone
-  inbegrepen, gesorteerd op `(line, kind, text)`.
+- `units/<pad>.json`: `{"source": "<repo-pad>", "lang", "units": [[call, text, verdict]], "found": [[line, kind, text, doubt]]}`.
+  `units` is **elke** eenheid die de scanner aan `judge_name` (`call` = `name`) en `judge_text`
+  (`call` = `text`) gaf, de schone inbegrepen, als gesorteerde multiset. `found` is de uitvoer van
+  de scanner zelf, in volgorde, dus met regelnummers en volgorde binnen een regel. `<pad>` is het
+  bronpad met `/` vervangen door `__`, zodat bestanden met dezelfde stam niet overschrijven.
 
 - [ ] **Stap 1: zet de inline gevallen om.** Doe dit per testfunctie in `test_code_language.py`,
   `test_code_language_score.py` en `test_code_language_llm.py`. Is een geval data (bron →
@@ -130,7 +136,9 @@ verwachtingen zijn.
   `shell_crlf`, `go_crlf` (een bron met `\r\n` en een Nederlandse comment op regel 3) en
   `python_fstring_nested` (`x = f"{d["a"]}"\n# lees het bestand\n`). In `score.json` komen
   `unicode_name` (`naïef_bestand`) en `unicode_prose` (`Dit is İstanbul ½ niet goed.`). De
-  verwachting is wat Python nu geeft, één keer met de hand nagekeken.
+  verwachting is wat Python nu geeft, één keer met de hand nagekeken. In `score_table.json`
+  komt een `judge_text`-geval met een tabel waarin drie woorden scoren `0.4`, `0.8` en `-0.2`
+  (som precies 1.0, dus `clean`; Python 3.12 geeft dat, naïeve optelling in Go niet).
 - [ ] **Stap 3: draai pytest.**
   `uv run pytest -q tests/pack/test_code_language.py tests/pack/test_code_language_score.py tests/pack/test_code_language_llm.py`.
   Verwacht: alles groen. Het aantal testgevallen is minstens zo groot als vóór de omzetting.
@@ -146,12 +154,15 @@ verwachtingen zijn.
   # dump_units.py <out-dir> <file>...: every unit the scanner judges, with its verdict.
   # Run from the repo root: uv run python dump_units.py <out-dir> <file>...
   import json, sys
+  sys.path.insert(0, ".")
   from pathlib import Path
-  from tests.pack._testkit import load_hook_lib
+  from tests.pack._testkit import IMPORT_ROOT, load_hook_lib
+  sys.path.insert(0, str(IMPORT_ROOT))
   cl = load_hook_lib("code_language")
   score = cl.code_language_score
   LANG = {".py": ("python", cl.scan_python), ".sh": ("shell", cl.scan_shell),
-          ".txt": ("go", cl.scan_go), ".md": ("markdown", cl.scan_markdown)}
+          ".bash": ("shell", cl.scan_shell), ".txt": ("go", cl.scan_go),
+          ".go": ("go", cl.scan_go), ".md": ("markdown", cl.scan_markdown)}
   out = Path(sys.argv[1])
   for name in sys.argv[2:]:
       path = Path(name)
@@ -163,17 +174,17 @@ verwachtingen zijn.
           found = scan(path.read_text(encoding="utf-8"))
       finally:
           score.judge_name, score.judge_text = real_name, real_text
-      # The scanner's own line per unit comes from the findings; for clean units the
-      # Go test compares the multiset of (kind, text, verdict), see Task 5.
-      (out / f"{path.stem}.json").write_text(json.dumps(
-          {"source": str(path), "lang": lang,
-           "units": sorted(units)}, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+      # `found` keeps the scanner's own order and lines; Task 5 compares it in order.
+      (out / (str(path).replace("/", "__") + ".json")).write_text(json.dumps(
+          {"source": str(path), "lang": lang, "units": sorted(units),
+           "found": [list(f) for f in found]},
+          ensure_ascii=False, indent=2, sort_keys=True) + "\n")
   ```
 
   Draai het op de tien bestanden van `stdlib/*.py`, op `bash_writes_nl.py` en op de drie
   corpus-bestanden. De uitvoer gaat naar `tests/pack/fixtures/code_language/units/`. Met
-  `units` gaat het dus om de multiset `[soort-aanroep, tekst, oordeel]`. Regelnummers staan al
-  in `scan.json`, en de bevindingen met regel zie je in `want`.
+  `units` gaat het dus om de multiset `[aanroep, tekst, oordeel]`, en `found` legt regel en
+  volgorde vast.
 - [ ] **Stap 5: commit.**
   `test(code-language): inline gevallen naar gedeelde fixtures (#276)`.
 
@@ -225,6 +236,12 @@ verwachtingen zijn.
     op een reeks Unicode-witruimte die begint direct na `.`, `!` of `?`. Doe dat niet als de drie
     tekens ervoor `.`, een letter en `.` zijn. Met `lineBreaks` splitst ook elke `\n`.
   - `DutchSplit`: dezelfde recursie met memo als Python, op runes en niet op bytes.
+  - De drempel `sum(map(word_score, …)) > THRESHOLD`: Python 3.12 telt floats met gecompenseerde
+    sommatie, een naïeve Go-lus rondt op de grens anders af (`0.4 + 0.8 + -0.2` is in Python
+    `1.0`, schoon, en in Go `1.0000000000000002`, een bevinding). Tel daarom in gehele tienden
+    (`nl - en` per woord, `COMPOUND_SCORE` als 30) en vergelijk met `10 * THRESHOLD`. Idem voor
+    `DOUBT_LEAN` en `DOUBT_NL`. `score_table.json` krijgt een geval waarvan de som precies 1.0 is
+    (taak 1, stap 2).
 
   `Words` is `[\p{L}\p{Nl}\p{No}]+` over `strings.ToLower(text)`. Laat `unicode_prose` beslissen
   of `strings.ToLower` volstaat. Zo niet, dan gebruik je een map met de uitzonderingen die Python
@@ -343,7 +360,13 @@ verwachtingen zijn.
 
 **Interfaces:**
 - Consumes: `Scan` en de scanners (taak 3 en 4), `config.Load` en `config.Lookup`
-  (`internal/config`), `manifest.Read` (`internal/manifest`).
+  (`internal/config`), BurntSushi/toml (al een
+  afhankelijkheid). Niet `manifest.Read`: die valideert strikt (kind, package, version, sha256,
+  installpad, onbekende sleutels), terwijl Python alleen `unit[*].path` leest. De fixtures
+  schrijven een manifest met alleen `[[unit]] path = …`, en een strikte lezer geeft daar
+  `COULD NOT CHECK` waar Python overslaat. `managedPaths(root)` decodeert alleen
+  `[[unit]] path`; een ontbrekend manifest is leeg, en een TOML- of vormfout (of een unit zonder
+  `path`) wordt `cannot read <manifest>: <fout>`.
 - Produces:
   - `type Inspection struct{ Findings, Doubts []Finding; Chain *Chain }`. `Chain` komt uit taak
     6; tot dan alleen het type.
@@ -362,8 +385,10 @@ verwachtingen zijn.
   `t.TempDir()`. `TestScopeDirsFixture` leest `scope_dirs.json`. `TestMatchGlob` is een tabel met
   `pack/**` tegen `pack/a/b.md`, `*.py` tegen `a/b.py` (true, omdat `*` ook `/` matcht),
   `[!a]x` en `x[`. `TestUnitsFixture` leest `units/*.json`, scant de bron, roept per eenheid de
-  echte scorer aan en vergelijkt de multiset `[soort-aanroep, tekst, oordeel]`. Voor een naam
-  is de tekst `Unit.Text`, anders `Unit.Body`. `TestOutOfScopeDoesNotLoadData` laat `Check` een
+  echte scorer aan en vergelijkt de multiset `[aanroep, tekst, oordeel]`, en daarnaast
+  `Scan`'s bevindingen in volgorde met `found` (regel, soort, tekst, twijfel). Voor een naam
+  is de tekst `Unit.Text`, anders `Unit.Body`. De bestandsnaam is `<pad met / als __>.json`;
+  `source` geeft de bron, relatief aan de reporoot. `TestOutOfScopeDoesNotLoadData` laat `Check` een
   `.toml` buiten de scope lezen met een scorer-functie die `t.Fatal` aanroept.
 - [ ] **Stap 2: schrijf** `corpus_test.go` met dezelfde vijf gevallen als
   `test_code_language_corpus.py`: de tien bestanden in `stdlib/` zijn schoon, de Go-bestanden
@@ -375,9 +400,9 @@ verwachtingen zijn.
 - [ ] **Stap 3: draai** `go test -run 'TestCheck|TestScope|TestMatch|TestUnits|TestOutOfScope|TestCorpus' ./internal/codelang/`.
   Verwacht: FAIL, en daarna PASS na de implementatie.
 - [ ] **Stap 4: pariteitsrun over de hele repo** (eenmalig, als bewijs, niet gecommit). Draai
-  het script van taak 1, stap 4 op elk bestand uit `git ls-files` met de extensie `.py`, `.sh`,
-  `.bash` of `.go`, en op elk `.md`-bestand onder `pack/`. Zet `.go` daarvoor in `LANG` naast
-  `.txt`. Schrijf het resultaat naar een scratchmap. Draai daarna
+  het script van taak 1, stap 4 (zijn `LANG` kent al `.go` en `.bash`) op elk bestand uit
+  `git ls-files` met de extensie `.py`, `.sh`, `.bash` of `.go`, en op elk `.md`-bestand onder
+  `pack/`. Schrijf het resultaat naar een scratchmap. Draai daarna
   `LIGHTHOUSE_CODELANG_UNITS=<scratchmap> go test -run TestUnitsFixture ./internal/codelang/`.
   `TestUnitsFixture` leest die variabele als alternatieve map. Verwacht: PASS. Elk verschil los
   je op in de scanner, niet in de fixture. Zet het aantal bestanden en de uitkomst in de PR-body.
@@ -480,8 +505,10 @@ verwachtingen zijn.
 - [ ] **Stap 3: implementeer**, plus `import _ "github.com/CorneeldH/lighthouse/internal/codelang"`
   in `internal/cli/hook.go`.
 - [ ] **Stap 4: draai** `go test -race ./...`. Verwacht: PASS. Proef met de hand:
-  `printf '{"tool_input":{"file_path":"%s"}}' "$PWD/x.py" | go run ./cmd/lighthouse hook code-language-check`
-  met een Nederlandse comment in `x.py`. Verwacht: rc 2 en het rapport. Ruim `x.py` daarna op.
+  `go build -o <scratchpad>/lighthouse ./cmd/lighthouse`, dan
+  `printf '{"tool_input":{"file_path":"%s"}}' "$PWD/x.py" | <scratchpad>/lighthouse hook code-language-check`
+  met een Nederlandse comment in `x.py` (`go run` geeft zelf exit 1, niet de 2 van het programma).
+  Verwacht: rc 2 en het rapport. Ruim `x.py` daarna op.
 - [ ] **Stap 5: commit.** `feat(codelang): hook code-language-check in Go (#276)`.
 
 ### Taak 8: de registratie om naar `run.sh`
@@ -491,7 +518,8 @@ verwachtingen zijn.
   timeout 15 blijft), `pack/core/lib/bash_writes.py`, `tests/pack/test_code_language_hook.py`,
   `tests/pack/test_hooks_minimal_config.py`, `tests/pack/test_bash_write_check.py`,
   `pack/core/hooks/bash-write-check.sh:3` (de comment), `docs/site/data/packs.json`,
-  `docs/site/map.js:216`
+  `docs/site/map.js:216`, `tests/test_site_packs.py:43`, `docs/site/data/session.json:330,346`,
+  `docs/site/data/loop.json:451`, `docs/site/data/config.json:54-81,910-943`
 
 **Interfaces:**
 - Produces: `bash_writes.GATE_ARGV: dict[str, tuple[str, ...]] = {"code-language-check.sh": ("run.sh", "code-language-check")}`.
@@ -511,8 +539,10 @@ verwachtingen zijn.
 
   Noem beide met hun reden in de PR-body.
 - [ ] **Stap 2: draai** `uv run pytest -q tests/pack/test_code_language_hook.py`. Verwacht:
-  FAIL, want de registratie en de installatie lopen nog via de `.sh`, en `run.sh` vindt de hook
-  pas na stap 3.
+  FAIL alleen waar de test de registratie of de hooknaam raakt (de hook zelf draait al via de
+  PATH-binary `lighthouse` van `lighthouse_bin`, want `INSTALL_ROOT` heeft geen dev-manifest:
+  `run.sh:20`). Er is dus geen rode stap voor de hooktests zelf; de rode test is
+  `test_hooks_minimal_config.py` na de aanpassing van de payloadkeuze.
 - [ ] **Stap 3: zet om.** Pas `hooks.json` en `GATE_ARGV` aan, en draai daarna
   `go run ./cmd/lighthouse init --upgrade`. Verwacht in de uitvoer: de oude registratie weg, de
   nieuwe `run.sh code-language-check` erbij. `test_hooks_minimal_config.py` kiest de payload
@@ -522,8 +552,24 @@ verwachtingen zijn.
   `test_go_write_is_checked_for_code_language`, krijgen de fixture `lighthouse_bin`. In `packs.json` krijgt de hook `"source": "internal/codelang"`.
   `map.js:216` gebruikt voortaan `entry.source ? REPO_TREE + entry.source : …/hooks/<naam>.sh`.
   Pas `hooks` in `referenceEntries` aan zodat hij `entry` doorgeeft.
+  De site-kaarten en hun tests hangen aan de `.sh`-registratie en aan de Python-lezers; zonder
+  deze aanpassing staat taak 8 of 9 rood:
+  - `tests/test_site_packs.py:43` haalt de hooknaam uit `hooks/<naam>.sh`, en `run.sh
+    code-language-check` geeft dan de stam `run`. Neem de naam uit het woord na `run.sh` als het
+    commando daarmee begint.
+  - `tests/test_site_reference.py` vergelijkt `map.js` met de bestanden onder `pack/`: zolang
+    `code-language-check.sh` bestaat (tot taak 9) wijst de kaart naar `internal/codelang`,
+    en dat moet die test toelaten. Laat de test een hook met `source` onder `internal/` toe.
+  - `docs/site/data/session.json:330,346` en `loop.json:451`: `command` wordt
+    `run.sh code-language-check` en `source` `…/blob/main/internal/codelang`;
+    `tests/test_site_session.py:53,79` en `tests/test_site_loop.py:121` lezen dat. Pas hun
+    verwachting aan op de nieuwe vorm als ze `core/hooks/<eerste woord>` eisen.
+  - `docs/site/data/config.json:54-81,910-943`: de lezers `pack/core/lib/code_language*.py` en
+    `code-language-check.sh` worden `internal/codelang/<bestand>.go` (`check.go` voor
+    `project.code_language*`, `chain.go` voor `code_language_llm.*`; gebruik de echte namen uit
+    taak 5 en 6). `tests/test_site_config.py:208-214` eist dat de lezers bestaan.
 - [ ] **Stap 4: draai**
-  `uv run pytest -q tests/pack/test_code_language_hook.py tests/pack/test_hooks_minimal_config.py tests/pack/test_bash_write_check.py tests/pack/test_bash_writes.py tests/test_site_reference.py tests/test_site_packs.py`.
+  `uv run pytest -q tests/pack/test_code_language_hook.py tests/pack/test_hooks_minimal_config.py tests/pack/test_bash_write_check.py tests/pack/test_bash_writes.py tests/test_site_reference.py tests/test_site_packs.py tests/test_site_session.py tests/test_site_loop.py tests/test_site_config.py`.
   Verwacht: PASS.
 - [ ] **Stap 5: commit**, inclusief de geïnstalleerde kopie.
   `feat(code-language-check): registratie via run.sh en de Go-hook (#276)`.
@@ -537,8 +583,11 @@ verwachtingen zijn.
   `test_code_language_score.py`, `test_code_language_llm.py`, `test_code_language_corpus.py`
 - Modify: `pack/SOURCES.toml:547-573` (de zes entries weg; de comment over wordfreq en de
   attributie gaan mee naar een `README` in `internal/codelang/data/`, die `NOTICE.txt` noemt),
-  `pack/core/requires.toml` (`code-language-check` uit `jq` en `python3`; `git` erbij als hij er
-  nog niet staat), `internal/packs/core_test.go:58,101-106`, `tools/gen_code_language_freq.py:1,20`
+  `pack/core/requires.toml` (`code-language-check` uit `jq`, `python3` en `tomllib`, en
+  `lighthouse_lib.code_language`, `lighthouse_lib.code_language_score` en
+  `lighthouse_lib.code_language_llm` uit `python3` en `tomllib`; `git` heeft hem al),
+  `docs/site/data/config.json` en `tests/test_site_config.py` als de lezers daar nog naar de
+  Python-bestanden wijzen, `internal/packs/core_test.go:58,101-106`, `tools/gen_code_language_freq.py:1,20`
   (de uitvoer naar `internal/codelang/data/freq.tsv.gz`), `tests/test_gen_code_language_freq.py`
   (als die het pad pint), `docs/host-assumptions.md:33`
   (de link naar `code_language.py` weg), `changelog.d/issue-276-code-language-check-go.md` (nieuw)
@@ -567,7 +616,7 @@ verwachtingen zijn.
   `code-language-check` runs in the `lighthouse` binary (`lighthouse hook code-language-check`) instead of bash and Python; the verdicts are unchanged. Python that tokenizes but does not parse (`x = = 1`) is now scanned instead of reported as `COULD NOT CHECK`. Update the `lighthouse` binary on your PATH and run `lighthouse init --upgrade`.
   ```
 - [ ] **Stap 5: de volledige KPI-tabel van `/lighthouse-go-standard`**, plus
-  `uv run pytest -q`. Rapporteer per rij de omgeving (GOOS, `-race`, `GOWORK`).
+  `uv run pytest -q` (inclusief `tests/test_site_*.py`). Rapporteer per rij de omgeving (GOOS, `-race`, `GOWORK`).
 - [ ] **Stap 6: commit.**
   `refactor(code-language-check): Python-checker en bash-hook weg (#276)`.
 
