@@ -76,7 +76,7 @@ func Sweep(ctx context.Context, db *sql.DB, w Workplace, run Runner, in SweepInp
 			continue
 		}
 		// Also after an error: clearing the record can fail once the workspace is gone.
-		if err := runs.MarkWorkspaceRemoved(ctx, db, in.Repo, ref.WorkspaceID, now); err != nil {
+		if err := runs.MarkWorkspaceRemoved(ctx, db, in.Repo, ref.Node, ref.WorkspaceID, now); err != nil {
 			fail(err)
 		}
 		removed = append(removed, Leftover{Repo: in.Repo, Issue: ref.Issue, WorkspaceID: ref.WorkspaceID})
