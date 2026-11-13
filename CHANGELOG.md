@@ -4,6 +4,23 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.16.0] - 2026-11-13
+
+### Added
+
+- `host.toml` gets an optional boolean key `host.controller`. `true` makes `lighthouse config host-check` and `plan-review-record` treat this machine as the controller host without measuring an address (for a host without Tailscale); `false` says it is not. Without the key nothing changes: `host.tailscale_ip` bound on this machine decides. Upgrade order: run `lighthouse init --upgrade` in every repository on the host first, then set the key.
+- `lighthouse measure-start-issue-kpi` and `lighthouse measure-fix-pr-kpi` replace `.lighthouse/scripts/measure_start_issue_kpi.py` and `measure_fix_pr_kpi.py`, with the same metrics, flags and JSON output. `lighthouse init --upgrade` removes the two scripts; update the `lighthouse` binary on your PATH before you run the measurements in the `start-issue` and `fix-pr` skills.
+- The tick squash-merges a green own PR of a finished run, on the measured head. Fix-pr now also starts on a merge conflict, an unprocessed roborev review and a failed merge, not only on a red PR. The tick's token needs *Contents: write* for this.
+
+### Changed
+
+- The systemd unit prefix of kenn-forge runs now comes from `[dispatch.forge] unit_prefix` in `host.toml`, with no default in the code. Hosts that use kenn-forge must add `unit_prefix = "paia-forge-"`, otherwise every `Stop` fails with an error naming the key.
+- The spec and plan reviews run through `lighthouse review-run`, `lighthouse plan-review-record` and `lighthouse review-pair`; they no longer need `python3`. New: `lighthouse codex-usage read|budget`. `lighthouse usage codex` changes its JSON: `source_file` is now always present (`null` when unset), there is a new `reset_credits` key, and the time per Codex home comes from `[codex_usage] app_server_timeout_seconds` instead of a fixed 20 s.
+
+### Fixed
+
+- `lighthouse serve` no longer shows `done · next tick decides` for a run whose session still has background work or an open turn after its Stop. The page now shows such a run as `working`, the same measure the tick uses to decide a run is done.
+
 ## [v0.15.0] - 2026-11-09
 
 ### Changed
