@@ -874,6 +874,41 @@ func TestPostPayloadThatIsNotAnObject(t *testing.T) {
 	}
 }
 
+func TestPostPayloadShapes(t *testing.T) {
+	// Review-focus 5: a missing tool_input runs on with "" as command; a command that is a number
+	// runs on with a tool_use_id, and without one is COULD NOT CHECK (MarkerKey).
+	e := utf8Env(t)
+	run := func(payload map[string]any) postResult {
+		payload["session_id"] = e.session
+		payload["cwd"] = e.repo
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		code, output, stderr := Post(raw, e.gates)
+		return postResult{code, output, stderr}
+	}
+	// Without a pre, post notes that source 2 is skipped: exit 0, nothing on stderr.
+	if r := run(map[string]any{"tool_use_id": "toolu_shape_1"}); r.code != 0 || r.stderr != "" {
+		t.Fatalf("missing tool_input: post = %+v", r)
+	}
+	if r := run(map[string]any{"tool_use_id": "toolu_shape_2", "tool_input": map[string]any{"command": 5}}); r.code != 0 || r.stderr != "" {
+		t.Fatalf("number command with tool_use_id: post = %+v", r)
+	}
+	r := run(map[string]any{"tool_input": map[string]any{"command": 5}})
+	if r.code != 2 || !strings.HasPrefix(r.stderr, "bash-write-check: COULD NOT CHECK: ") {
+		t.Fatalf("number command without tool_use_id: post = %+v", r)
+	}
+}
+
+func TestGatePathFromRepoRoot(t *testing.T) {
+	// Twin of test_hook_dir_from_repo_root.
+	root := filepath.Join("/x", "root")
+	hooks := filepath.Join(root, ".claude", "hooks", "lighthouse")
+	eq(t, "shell-lint-check.sh", GatePath(root, "shell-lint-check.sh"), filepath.Join(hooks, "shell-lint-check.sh"))
+	eq(t, "code-language-check.sh", GatePath(root, "code-language-check.sh"), filepath.Join(hooks, "code-language-check.sh"))
+}
+
 func TestPostWithoutAProjectDirCannotCheck(t *testing.T) {
 	t.Setenv("CLAUDE_PROJECT_DIR", "")
 	code, _, stderr := Post([]byte(`{"hook_event_name": "PostToolUseFailure"}`), t.TempDir())
