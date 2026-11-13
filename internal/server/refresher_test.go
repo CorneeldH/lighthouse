@@ -218,28 +218,83 @@ func TestRefresherRunRetriesSoonerAfterFailure(t *testing.T) {
 	}
 }
 
-func TestRefresherNoOverlappingBuilds(t *testing.T) {
-	second := make(chan struct{})
-	var once sync.Once
-	fb := &fakeBuild{fn: func(_ context.Context, call int) (overview.Overview, error) {
-		time.Sleep(30 * time.Millisecond)
-		if call >= 2 {
-			once.Do(func() { close(second) })
+// buildSpan is when one build started and ended.
+type buildSpan struct{ start, end time.Time }
+
+// sleepingBuild returns a BuildFunc that takes d per build and records its spans; the channel
+// closes after n builds have ended.
+func sleepingBuild(d time.Duration, n int) (*fakeBuild, func() []buildSpan, <-chan struct{}) {
+	var mu sync.Mutex
+	var spans []buildSpan
+	enough := make(chan struct{})
+	fb := &fakeBuild{fn: func(ctx context.Context, _ int) (overview.Overview, error) {
+		start := time.Now()
+		select {
+		case <-time.After(d):
+		case <-ctx.Done():
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		spans = append(spans, buildSpan{start, time.Now()})
+		if len(spans) == n {
+			close(enough)
 		}
 		return ovWith("ok"), nil
 	}}
-	r := NewRefresher(fb.build, 5*time.Millisecond, time.Hour, time.Minute)
+	get := func() []buildSpan {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]buildSpan(nil), spans...)
+	}
+	return fb, get, enough
+}
+
+func runUntil(t *testing.T, r *Refresher, enough <-chan struct{}) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { r.Run(ctx); close(done) }()
-
 	select {
-	case <-second:
-	case <-time.After(time.Second):
-		t.Fatal("fewer than 2 builds within 1s")
+	case <-enough:
+	case <-time.After(10 * time.Second):
+		t.Fatal("not enough builds within 10s")
 	}
 	cancel()
 	<-done
+}
+
+// A build shorter than the interval: the next one starts one interval after the START of the
+// previous, not one interval after its end.
+func TestRefresherRunMeasuresIntervalFromBuildStart(t *testing.T) {
+	const interval, buildTime = 300 * time.Millisecond, 150 * time.Millisecond
+	fb, spans, enough := sleepingBuild(buildTime, 2)
+	r := NewRefresher(fb.build, interval, time.Hour, time.Minute)
+	runUntil(t, r, enough)
+
+	s := spans()
+	gap := s[1].start.Sub(s[0].start)
+	// Start to start is ~300ms; sleeping a full interval after the build would give ~450ms.
+	if gap < interval-20*time.Millisecond || gap > interval+75*time.Millisecond {
+		t.Fatalf("start-to-start gap = %v, want about %v", gap, interval)
+	}
+}
+
+// A build slower than the interval: the next build starts right away, and never overlaps it.
+func TestRefresherRunStartsNextBuildImmediatelyAfterOverrun(t *testing.T) {
+	const interval, buildTime = 300 * time.Millisecond, 450 * time.Millisecond
+	fb, spans, enough := sleepingBuild(buildTime, 2)
+	r := NewRefresher(fb.build, interval, time.Hour, time.Minute)
+	runUntil(t, r, enough)
+
+	s := spans()
+	gap := s[1].start.Sub(s[0].end)
+	if gap < 0 {
+		t.Fatalf("second build started %v before the first ended", -gap)
+	}
+	// Waiting a full interval after the build would give ~300ms.
+	if gap > 150*time.Millisecond {
+		t.Fatalf("gap between end and next start = %v, want near 0", gap)
+	}
 	if m := fb.maxSeen.Load(); m != 1 {
 		t.Fatalf("max builds in flight = %d, want 1", m)
 	}

@@ -335,7 +335,8 @@ func TestEndpointsShareOneBuild(t *testing.T) {
 	}, time.Hour, time.Hour, time.Minute)
 	r.refresh(context.Background())
 
-	d := testDeps(populated(), nil)
+	// d.Forge shares the counting source, so a handler that builds per request is counted too.
+	d := testDeps(src, nil)
 	d.Overview = r.Overview
 	h := New(testSite(), d)
 	for _, path := range []string{"/api/questions", "/api/returned", "/api/questions", "/api/returned"} {
