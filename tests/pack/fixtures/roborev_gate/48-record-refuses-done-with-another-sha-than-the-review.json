@@ -1,0 +1,38 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "fixture": "review-complete.md"
+    }
+  ],
+  "steps": [
+    {
+      "op": "record",
+      "sha": "0000000",
+      "decisions": [
+        [
+          "scripts/forge_drager.py",
+          93,
+          "medium",
+          "fixed",
+          "abc1234",
+          null
+        ],
+        [
+          "scripts/forge_agent.sh",
+          612,
+          "medium",
+          "refuted",
+          null,
+          "klopt niet"
+        ]
+      ],
+      "error": "bf1eb24",
+      "absent": [
+        "feat"
+      ]
+    }
+  ]
+}

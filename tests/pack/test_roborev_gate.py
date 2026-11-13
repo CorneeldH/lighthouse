@@ -1,9 +1,11 @@
-"""Tests for `.lighthouse/scripts/roborev_gate.py gate` (#119): threshold, Codex budget and
-the per-branch state files of the local roborev review.
+"""Tests for `.lighthouse/scripts/roborev_gate.py` (#119): threshold, Codex budget, the per-branch
+state files, classify, record and body-line of the local roborev review.
 
-Each test builds a temporary git repo with `refs/remotes/origin/main`, a `lighthouse.toml`, a
-`.roborev.toml` and fake `roborev`/`codex` binaries on `PATH`. The budget is a lambda: the real
-`codex_usage.py` never runs here.
+The cases are shared with the Go port (`internal/cli/roborev_fixture_test.go`): one JSON file per
+case in `tests/pack/fixtures/roborev_gate/`. Each case builds a temporary git repo with
+`refs/remotes/origin/main` (branch `feat`, 100 added code lines), a `lighthouse.toml`, a
+`.roborev.toml` and fake `roborev`/`codex` binaries on `PATH`, then runs its steps. The budget of
+a `gate` step is given by the case: the real `codex_usage.py` never runs here.
 """
 
 from __future__ import annotations
@@ -27,7 +29,8 @@ rg = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = rg
 _SPEC.loader.exec_module(rg)
 
-CODEX_OK = (0, '{"decision":"codex","reason":"ok"}')
+FIXTURES = Path(__file__).parent / "fixtures" / "roborev"
+CASES = Path(__file__).parent / "fixtures" / "roborev_gate"
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -46,552 +49,231 @@ def _commit_lines(repo: Path, count: int, name: str = "x.go") -> None:
     _git(repo, "commit", "-m", f"add {name}")
 
 
-@pytest.fixture
-def repo(tmp_path, monkeypatch) -> Path:
-    """Repo on branch `feat` with 100 added code lines on top of origin/main."""
-    root = tmp_path / "repo"
-    root.mkdir()
-    _git(root, "init", "-b", "main")
-    (root / "lighthouse.toml").write_text('[project]\nlanguage = "nl"\n[review]\nroborev = "local"\n')
-    (root / ".roborev.toml").write_text("")
-    _git(root, "add", ".")
-    _git(root, "commit", "-m", "base")
-    _git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
-    _git(root, "checkout", "-b", "feat")
-    _commit_lines(root, 100)
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    for tool in ("roborev", "codex"):
-        (bin_dir / tool).write_text("#!/bin/sh\n")
-        (bin_dir / tool).chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
-    monkeypatch.delenv("LIGHTHOUSE_TOML", raising=False)
-    return root
+class Run:
+    """One case: the repo, the variables of the placeholders, and the steps."""
+
+    def __init__(self, tmp_path: Path, monkeypatch, case: dict):
+        self.tmp = tmp_path / "tmp"
+        self.tmp.mkdir()
+        self.repo = tmp_path / "repo"
+        self.vars: dict[str, str] = {"tmp": str(self.tmp), "fixtures": str(FIXTURES)}
+        self.monkeypatch = monkeypatch
+        self.has_repo = case.get("repo", True)
+        if not self.has_repo:
+            self.repo.mkdir()
+            self.vars["repo"] = str(self.repo)
+            return
+        self.repo.mkdir()
+        _git(self.repo, "init", "-b", "main")
+        (self.repo / "lighthouse.toml").write_text('[project]\nlanguage = "nl"\n[review]\nroborev = "local"\n')
+        (self.repo / ".roborev.toml").write_text("")
+        _git(self.repo, "add", ".")
+        _git(self.repo, "commit", "-m", "base")
+        _git(self.repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+        _git(self.repo, "checkout", "-b", "feat")
+        _commit_lines(self.repo, 100)
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        for tool in ("roborev", "codex"):
+            (bin_dir / tool).write_text("#!/bin/sh\n")
+            (bin_dir / tool).chmod(0o755)
+        monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+        monkeypatch.delenv("LIGHTHOUSE_TOML", raising=False)
+        self.vars.update(repo=str(self.repo), base=_git(self.repo, "rev-parse", "origin/main"))
+
+    def sub(self, value):
+        if isinstance(value, str):
+            self.vars["head"] = _git(self.repo, "rev-parse", "HEAD") if self.has_repo else ""
+            if self.has_repo:
+                self.vars["state"] = str(rg.state_dir(self.repo))
+            for key in sorted(self.vars, key=len, reverse=True):
+                value = value.replace(f"${key}", self.vars[key])
+            return value
+        if isinstance(value, list):
+            return [self.sub(v) for v in value]
+        if isinstance(value, dict):
+            return {k: self.sub(v) for k, v in value.items()}
+        return value
+
+    def setup(self, actions: list[dict]) -> None:
+        for act in actions:
+            act = self.sub(act)
+            do = act["do"]
+            if do == "toml":
+                (self.repo / "lighthouse.toml").write_text(act["text"])
+            elif do == "remove":
+                (self.repo / act["path"]).unlink()
+            elif do == "path":
+                only_git = self.tmp / "only-git"
+                only_git.mkdir()
+                (only_git / "git").symlink_to(shutil.which("git"))
+                self.monkeypatch.setenv("PATH", str(only_git))
+            elif do == "git":
+                _git(self.repo, *act["args"])
+            elif do == "commit_lines":
+                _commit_lines(self.repo, act["count"], act["name"])
+            elif do == "commit_files":
+                for name, spec in act["files"].items():
+                    (self.repo / name).parent.mkdir(parents=True, exist_ok=True)
+                    (self.repo / name).write_text("x\n" * spec["lines"])
+                _git(self.repo, "add", ".")
+                _git(self.repo, "commit", "-m", act["message"])
+            elif do == "fix_commit":
+                _commit_lines(self.repo, 1, act["name"])
+                _git(self.repo, "commit", "--amend", "-m", act["subject"])
+                self.vars[act["as"]] = _git(self.repo, "rev-parse", "HEAD")
+            elif do == "raw":
+                text = act["text"] if "text" in act else (FIXTURES / act["fixture"]).read_text()
+                path = rg.state_dir(self.repo) / f"{act['name']}.md"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+            elif do == "state":
+                rg.write_state(rg.state_dir(self.repo) / f"{act['name']}.json", act["json"])
+            elif do == "remove_state":
+                (rg.state_dir(self.repo) / f"{act['name']}.json").unlink()
+            elif do == "file":
+                path = Path(act["path"])
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(act["text"] if "text" in act else json.dumps(act["json"]))
+            elif do == "worktree":
+                wt = self.tmp / act["name"]
+                _git(self.repo, "worktree", "add", str(wt), "-b", act["branch"])
+                self.vars["wt"] = str(wt)
+            else:
+                raise AssertionError(f"unknown setup action {do}")
+
+    def check_state_file(self, spec: dict) -> None:
+        path = Path(self.sub(spec["path"])) if "path" in spec else rg.state_dir(self.repo) / f"{spec['name']}.json"
+        data = json.loads(path.read_text())
+        if "equals" in spec:
+            assert data == self.sub(spec["equals"])
+        for key, want in self.sub(spec.get("subset", {})).items():
+            assert data[key] == want
+
+    def check_absent(self, step: dict) -> None:
+        for name in step.get("absent", []):
+            assert not (rg.state_dir(self.repo) / f"{name}.json").exists()
+        for path in self.sub(step.get("absent_path", [])):
+            assert not Path(path).exists()
 
 
-def _must_not_run() -> tuple[int, str]:
-    raise AssertionError("budget must not be consulted")
-
-
-def test_count_code_lines_follows_the_paia_size_rule():
-    numstat = (
-        "10\t2\tinternal/x.go\0" "5\t5\tdocs/a.go\0" "-\t-\tlogo.png\0" "7\t0\tREADME.md\0"
-        "3\t1\t.github/workflows/ci.yml\0" "4\t0\tpack/x.toml\0"
-    )
-    assert rg.count_code_lines(numstat) == 16
-
-
-def test_gate_is_off_without_the_setting(repo):
-    (repo / "lighthouse.toml").write_text('[project]\nlanguage = "nl"\n')
-    assert rg.gate(repo, _must_not_run) == {"verdict": "off"}
-
-
-def test_gate_skips_without_roborev_toml(repo):
-    (repo / ".roborev.toml").unlink()
-    out = rg.gate(repo, _must_not_run)
-    assert (out["verdict"], out["reason"]) == ("skip", "geen .roborev.toml")
-
-
-def test_gate_skips_without_roborev_on_path(repo, monkeypatch, tmp_path):
-    only_git = tmp_path / "only-git"
-    only_git.mkdir()
-    (only_git / "git").symlink_to(shutil.which("git"))
-    monkeypatch.setenv("PATH", str(only_git))
-    out = rg.gate(repo, _must_not_run)
-    assert (out["verdict"], out["reason"]) == ("skip", "geen roborev of codex op PATH")
-
-
-def test_gate_skips_below_the_threshold(repo):
-    _git(repo, "reset", "--hard", "origin/main")
-    _commit_lines(repo, 99)
-    out = rg.gate(repo, _must_not_run)
-    assert (out["verdict"], out["reason"]) == ("skip", "99 coderegels (drempel 100)")
-
-
-def test_gate_runs_at_the_threshold(repo):
-    out = rg.gate(repo, lambda: CODEX_OK)
-    base = _git(repo, "rev-parse", "origin/main")
-    head = _git(repo, "rev-parse", "HEAD")
-    assert out["verdict"] == "run"
-    assert out["range"] == f"{base}..{head}"
-    assert out["lines"] == 100
-
-
-@pytest.mark.parametrize(
-    "budget,reason",
-    [
-        ((6, '{"decision":"fallback","reason":"5h 93%"}'), "Codex-budget: fallback - 5h 93%"),
-        (
-            (0, '{"decision":"not_measurable","reason":"not measurable"}'),
-            "Codex-budget: not_measurable - not measurable",
-        ),
-        ((1, "Traceback"), "Codex-budget: onleesbaar - exit 1"),
-        ((0, "not json"), "Codex-budget: onleesbaar - exit 0"),
-    ],
-)
-def test_gate_skips_on_the_budget(repo, budget, reason):
-    out = rg.gate(repo, lambda: budget)
-    assert (out["verdict"], out["reason"]) == ("skip", reason)
-
-
-def test_gate_records_its_skip_and_repeats_it(repo):
-    first = rg.gate(repo, lambda: (6, '{"decision":"fallback","reason":"5h 93%"}'))
-    written = json.loads(Path(first["state"]).read_text())
-    base = _git(repo, "rev-parse", "origin/main")
-    head = _git(repo, "rev-parse", "HEAD")
-    assert written == {
-        "range": f"{base}..{head}",
-        "uitkomst": "skip",
-        "reden": "Codex-budget: fallback - 5h 93%",
-    }
-    again = rg.gate(repo, lambda: CODEX_OK)
-    assert (again["verdict"], again["reason"]) == ("skip", "Codex-budget: fallback - 5h 93%")
-
-
-def test_gate_reads_a_done_record(repo):
-    state = rg.state_dir(repo) / "feat.json"
-    state.parent.mkdir(parents=True)
-    state.write_text(json.dumps({"range": "a..b", "uitkomst": "done", "sha": "abc", "bevindingen": []}))
-    out = rg.gate(repo, _must_not_run)
-    assert (out["verdict"], out["sha"]) == ("done", "abc")
-
-
-def test_gate_asks_to_classify_raw_output_without_a_record(repo):
-    raw = rg.state_dir(repo) / "feat.md"
-    raw.parent.mkdir(parents=True)
-    raw.write_text("findings")
-    out = rg.gate(repo, _must_not_run)
-    assert out["verdict"] == "classify"
-    assert out["raw"] == str(raw)
-
-
-def test_state_files_of_a_slashed_branch(repo):
-    _git(repo, "checkout", "-b", "fix/x")
-    out = rg.gate(repo, lambda: CODEX_OK)
-    assert out["state"] == str(rg.state_dir(repo) / "fix-x.json")
-    assert out["raw"] == str(rg.state_dir(repo) / "fix-x.md")
-
-
-def test_every_verdict_names_state_and_raw(repo):
-    sd = rg.state_dir(repo)
-    run = rg.gate(repo, lambda: CODEX_OK)
-    skip = rg.gate(repo, lambda: (6, '{"decision":"fallback","reason":"r"}'))
-    (sd / "feat.json").unlink()
-    (sd / "feat.md").parent.mkdir(parents=True, exist_ok=True)
-    (sd / "feat.md").write_text("x")
-    classify = rg.gate(repo, _must_not_run)
-    (sd / "feat.json").write_text(json.dumps({"range": "a..b", "uitkomst": "done", "sha": "s"}))
-    done = rg.gate(repo, _must_not_run)
-    for out in (run, skip, classify, done):
-        assert out["state"] == str(sd / "feat.json")
-        assert out["raw"] == str(sd / "feat.md")
-        assert Path(out["state"]).is_absolute()
-
-
-def test_state_dir_is_per_worktree(repo, tmp_path):
-    other = tmp_path / "wt"
-    _git(repo, "worktree", "add", str(other), "-b", "other")
-    assert rg.state_dir(other) != rg.state_dir(repo)
-    assert rg.state_dir(other).is_absolute()
-    assert rg.state_dir(repo) == repo / ".git" / "lighthouse" / "roborev"
-
-
-def test_cli_prints_the_verdict_as_json(repo):
-    (repo / ".roborev.toml").unlink()  # skips before the budget: codex_usage never runs
-    result = subprocess.run(
-        [sys.executable, str(SCRIPT), "gate"],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        env={"PATH": os.environ["PATH"], **GIT_ENV},
-    )
-    assert result.returncode == 0
-    out = json.loads(result.stdout)
-    assert (out["verdict"], out["reason"]) == ("skip", "geen .roborev.toml")
-
-
-def test_run_verdict_raw_path_is_writable_at_once(repo):
-    out = rg.gate(repo, lambda: CODEX_OK)
-    assert out["verdict"] == "run"
-    with open(out["raw"], "w") as handle:
-        handle.write("review")
-
-
-def test_quoted_non_ascii_paths_are_not_counted(repo):
-    (repo / "docs").mkdir()
-    (repo / "docs" / "café.md").write_text("x\n" * 50)
-    (repo / "café.md").write_text("x\n" * 50)
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-m", "prose with non-ascii names")
-    out = rg.gate(repo, lambda: CODEX_OK)
-    assert (out["verdict"], out["lines"]) == ("run", 100)
-
-
-def test_cli_cannot_check_outside_a_repo(tmp_path):
-    result = subprocess.run(
-        [sys.executable, str(SCRIPT), "gate"],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        env={"PATH": os.environ["PATH"], "GIT_CEILING_DIRECTORIES": str(tmp_path.parent)},
-    )
-    assert result.returncode == 3
-    assert result.stderr.startswith("COULD NOT CHECK:")
-
-
-# --- classify, fixed_findings, record, body_line (#119 task 3) ---
-
-FIXTURES = Path(__file__).parent / "fixtures" / "roborev"
-
-
-def FIX(name: str) -> str:
-    return (FIXTURES / name).read_text()
-
-
-def _triples(got: dict) -> list[tuple]:
-    return [(f["path"], f["line"], f["severity"]) for f in got["findings"]]
-
-
-def test_classify_reads_the_measured_local_output():
-    got = rg.classify(FIX("review-local.md"))
-    assert got["verdict"] == "done" and got["sha"] == "803c1a6"
-    assert _triples(got) == [
-        ("pack/core/scripts/roborev_gate.py", 184, "medium"),
-        ("pack/core/scripts/roborev_gate.py", 169, "medium"),
-    ]
-    assert got["findings"][0]["text"].startswith("Bij de eerste uitkomst `run`")
-
-
-def test_classify_reads_a_local_pass():
-    got = rg.classify(FIX("review-local-passed.md"))
-    assert (got["verdict"], got["sha"], got["findings"]) == ("done", "HEAD", [])
-
-
-def test_classify_reads_sha_and_findings_of_a_complete_review():
-    got = rg.classify(FIX("review-complete.md"))
-    assert got["verdict"] == "done" and got["sha"] == "bf1eb24"
-    assert _triples(got) == [
-        ("scripts/forge_drager.py", 93, "medium"),
-        ("scripts/forge_agent.sh", 612, "medium"),
-    ]
-
-
-def test_classify_passed_is_done_without_findings():
-    got = rg.classify(FIX("review-passed.md"))
-    assert (got["verdict"], got["sha"], got["findings"]) == ("done", "bf1eb24", [])
-
-
-def test_classify_combined_review_is_done():
-    got = rg.classify("## roborev: Combined Review (`abc1234`)\n\n### High\n\n- a.py:3: bad\n")
-    assert (got["verdict"], got["kind"]) == ("done", "Combined Review")
-    assert _triples(got) == [("a.py", 3, "high")]
-
-
-def test_classify_bullet_without_location_has_no_path():
-    got = rg.classify("## roborev: Review Complete (`abc1234`)\n\n### Low\n\n- no location here\n")
-    assert _triples(got) == [(None, None, "low")]
-
-
-def test_classify_local_finding_without_location_has_no_path():
-    raw = "## roborev: Review Complete (`abc`)\n\n## Findings\n\n### 1. High\n\n**Problem:** vague\n"
-    assert _triples(rg.classify(raw)) == [(None, None, "high")]
-
-
-@pytest.mark.parametrize(
-    "body,expected",
-    [
-        ("### Major\n\n- a.py:3: bad\n", ("a.py", 3, "major")),
-        (
-            "## Findings\n\n### 1. Warning\n\n**Location:** b.py:7\n\n**Problem:** bad\n",
-            ("b.py", 7, "warning"),
-        ),
-    ],
-)
-def test_classify_keeps_a_finding_under_an_unknown_severity(body, expected):
-    got = rg.classify(f"## roborev: Review Complete (`abc1234`)\n\n{body}")
-    assert got["verdict"] == "done" and _triples(got) == [expected]
-
-
-@pytest.mark.parametrize("kind", ["Review Complete", "Combined Review"])
-def test_classify_complete_review_without_readable_findings_is_a_skip(kind):
-    got = rg.classify(f"## roborev: {kind} (`abc1234`)\n\n**Verdict:** 2 findings.\n\nSomething odd.\n")
-    assert got == {"verdict": "skip", "reason": "review faalde: bevindingen onleesbaar"}
-
-
-@pytest.mark.parametrize("kind", ["Review Failed", "Review Skipped"])
-def test_classify_failed_heads_skip(kind):
-    got = rg.classify(FIX("review-failed.md").replace("Review Failed", kind))
-    assert got == {"verdict": "skip", "reason": f"review faalde: {kind}"}
-
-
-def test_classify_without_heading_names_the_first_line():
-    got = rg.classify("\nError: codex: 401\nmore\n")
-    assert got == {"verdict": "skip", "reason": "review faalde: Error: codex: 401"}
-
-
-def test_classify_without_heading_skips_roborev_log_lines():
-    raw = "2026/11/01 15:04:29 ci review: ref=a..b agents=[codex]\nError: codex: 401 unauthorized\n"
-    assert rg.classify(raw) == {"verdict": "skip", "reason": "review faalde: Error: codex: 401 unauthorized"}
-
-
-def test_classify_with_only_log_lines_names_the_first():
-    raw = "2026/11/01 15:04:29 ci review: ref=a..b agents=[codex]\n2026/11/01 15:04:30 done\n"
-    assert rg.classify(raw) == {
-        "verdict": "skip",
-        "reason": "review faalde: 2026/11/01 15:04:29 ci review: ref=a..b agents=[codex]",
-    }
-
-
-def test_classify_cuts_a_long_first_line_at_200_chars():
-    got = rg.classify("x" * 500)
-    assert got["reason"] == "review faalde: " + "x" * 200
-
-
-@pytest.mark.parametrize("raw", ["", "  \n\n"])
-def test_classify_empty_output(raw):
-    assert rg.classify(raw) == {"verdict": "skip", "reason": "review faalde: geen output"}
-
-
-def _fix_commit(repo: Path, name: str, subject: str) -> str:
-    _commit_lines(repo, 1, name)
-    _git(repo, "commit", "--amend", "-m", subject)
-    return _git(repo, "rev-parse", "HEAD")
-
-
-def _write_raw(repo: Path, text: str) -> Path:
-    raw = rg.state_dir(repo) / "feat.md"
-    raw.parent.mkdir(parents=True, exist_ok=True)
-    raw.write_text(text)
-    return raw
-
-
-def test_resume_after_abort_routes_to_classify_and_recovers_fixes(repo):
-    _write_raw(repo, FIX("review-complete.md"))
-    c1 = _fix_commit(repo, "a.py", "fix: a\n\nroborev: scripts/forge_drager.py:93 (medium)")
-    c2 = _fix_commit(repo, "b.py", "fix: b\n\nroborev: scripts/forge_agent.sh:612 (medium)")
-    _fix_commit(repo, "c.py", "fix: unrelated")
-    assert rg.gate(repo, _must_not_run)["verdict"] == "classify"
-    assert [(f["path"], f["line"], f["severity"], f["commit"]) for f in rg.fixed_findings(repo)] == [
-        ("scripts/forge_drager.py", 93, "medium", c1),
-        ("scripts/forge_agent.sh", 612, "medium", c2),
-    ]
-
-
-def _decisions(*rows: tuple) -> list[dict]:
+def _rows(rows) -> list[dict]:
     return [
         {"path": p, "line": ln, "severity": s, "uitkomst": o, "commit": c, "reden": r}
         for p, ln, s, o, c, r in rows
     ]
 
 
-COMPLETE_DECISIONS = (
-    ("scripts/forge_drager.py", 93, "medium", "fixed", "abc1234", None),
-    ("scripts/forge_agent.sh", 612, "medium", "refuted", None, "klopt niet"),
-)
+def _budget(spec):
+    if spec == "forbidden":
+
+        def forbidden() -> tuple[int, str]:
+            raise AssertionError("budget must not be consulted")
+
+        return forbidden
+    return lambda: tuple(spec)
 
 
-def test_record_refuses_a_missing_decision(repo):
-    _write_raw(repo, FIX("review-complete.md"))
-    with pytest.raises(ValueError):
-        rg.record(repo, sha="bf1eb24", decisions=_decisions(COMPLETE_DECISIONS[0]))
+def _expect_subset(got: dict, want: dict) -> None:
+    for key, value in want.items():
+        assert got[key] == value, key
 
 
-def test_record_refuses_a_double_decision(repo):
-    _write_raw(repo, FIX("review-complete.md"))
-    with pytest.raises(ValueError):
-        rg.record(repo, sha="bf1eb24", decisions=_decisions(*COMPLETE_DECISIONS, COMPLETE_DECISIONS[0]))
+def _step(run: Run, step: dict) -> None:
+    op = step["op"]
+    root = Path(run.sub(step["root"])) if "root" in step else run.repo
+    if op == "prepare":
+        run.setup(step["setup"])
+    elif op == "count_lines":
+        assert rg.count_code_lines(step["numstat"]) == step["expect"]
+    elif op == "gate":
+        out = rg.gate(root, _budget(step["budget"]))
+        if "expect_exact" in step:
+            assert out == step["expect_exact"]
+        _expect_subset(out, run.sub(step.get("expect", {})))
+        for key in step.get("absolute", []):
+            assert Path(out[key]).is_absolute()
+        if step.get("raw_writable"):
+            with open(out["raw"], "w") as handle:
+                handle.write("review")
+        for key, var in step.get("save", {}).items():
+            run.vars[var] = out[key]
+        if "state_file" in step:
+            run.check_state_file(step["state_file"])
+    elif op == "classify":
+        text = step["text"] if "text" in step else (FIXTURES / step["fixture"]).read_text()
+        if "replace" in step:
+            text = text.replace(*step["replace"])
+        got = rg.classify(text)
+        if "expect_exact" in step:
+            assert got == step["expect_exact"]
+        _expect_subset(got, step.get("expect", {}))
+        if "triples" in step:
+            assert [[f["path"], f["line"], f["severity"]] for f in got["findings"]] == step["triples"]
+        if "text_prefix" in step:
+            index, prefix = step["text_prefix"]
+            assert got["findings"][index]["text"].startswith(prefix)
+    elif op == "fixed":
+        got = rg.fixed_findings(root)
+        assert [[f["path"], f["line"], f["severity"], f["commit"]] for f in got] == run.sub(step["expect"])
+    elif op == "body_line":
+        assert rg.body_line(root) == step["expect"]
+    elif op == "record":
+        kwargs = {
+            "skip": step.get("skip"),
+            "sha": step.get("sha"),
+            "decisions": _rows(step["decisions"]) if "decisions" in step else None,
+            "out": Path(run.sub(step["out"])) if "out" in step else None,
+            "raw": Path(run.sub(step["raw"])) if "raw" in step else None,
+            "range_": run.sub(step["range"]) if "range" in step else None,
+        }
+        if "error" in step:
+            with pytest.raises(ValueError, match=step["error"].replace(".", r"\.") or None):
+                rg.record(root, **kwargs)
+        else:
+            written = rg.record(root, **kwargs)
+            if "returns" in step:
+                assert str(written) == run.sub(step["returns"])
+        run.check_absent(step)
+        if "state_file" in step:
+            run.check_state_file(step["state_file"])
+    elif op == "cli":
+        _cli(run, step)
+    else:
+        raise AssertionError(f"unknown op {op}")
 
 
-@pytest.mark.parametrize(
-    "row",
-    [
-        ("scripts/forge_drager.py", 93, "medium", "fixed", None, None),
-        ("scripts/forge_drager.py", 93, "medium", "fixed", "abc", "why"),
-        ("scripts/forge_drager.py", 93, "medium", "refuted", None, None),
-        ("scripts/forge_drager.py", 93, "medium", "left", "abc", "why"),
-        ("scripts/forge_drager.py", 93, "medium", "maybe", None, "why"),
-    ],
-)
-def test_record_refuses_an_inconsistent_decision(repo, row):
-    with pytest.raises(ValueError):
-        rg.record(repo, sha="s", decisions=_decisions(row))
-
-
-def test_record_refuses_done_with_another_sha_than_the_review(repo):
-    _write_raw(repo, FIX("review-complete.md"))
-    with pytest.raises(ValueError, match="bf1eb24"):
-        rg.record(repo, sha="0000000", decisions=_decisions(*COMPLETE_DECISIONS))
-    assert not (rg.state_dir(repo) / "feat.json").exists()
-
-
-def test_record_refuses_done_on_a_failed_review(repo):
-    _write_raw(repo, "Error: codex: 401 unauthorized\n")
-    with pytest.raises(ValueError, match="review faalde: Error: codex: 401 unauthorized"):
-        rg.record(repo, sha="bf1eb24", decisions=[])
-    assert not (rg.state_dir(repo) / "feat.json").exists()
-
-
-def test_record_done_then_gate_says_done(repo):
-    _write_raw(repo, FIX("review-complete.md"))
-    out = rg.record(repo, sha="bf1eb24", decisions=_decisions(*COMPLETE_DECISIONS))
-    assert out == rg.state_dir(repo) / "feat.json"
-    written = json.loads(out.read_text())
-    base, head = _git(repo, "rev-parse", "origin/main"), _git(repo, "rev-parse", "HEAD")
-    assert written["range"] == f"{base}..{head}"
-    assert (written["uitkomst"], written["sha"]) == ("done", "bf1eb24")
-    assert written["bevindingen"] == _decisions(*COMPLETE_DECISIONS)
-    gated = rg.gate(repo, _must_not_run)
-    assert (gated["verdict"], gated["sha"]) == ("done", "bf1eb24")
-
-
-def test_record_done_keeps_the_reviewed_range_after_fix_commits(repo):
-    reviewed_head = _git(repo, "rev-parse", "HEAD")
-    base = _git(repo, "rev-parse", "origin/main")
-    reviewed = rg.gate(repo, lambda: CODEX_OK)["range"]
-    _write_raw(repo, FIX("review-complete.md"))
-    _fix_commit(repo, "a.py", "fix: a\n\nroborev: scripts/forge_drager.py:93 (medium)")
-    out = rg.record(repo, sha="bf1eb24", decisions=_decisions(*COMPLETE_DECISIONS), range_=reviewed)
-    assert json.loads(out.read_text())["range"] == f"{base}..{reviewed_head}"
-
-
-@pytest.mark.parametrize("bad", ["", "abc", "abc..", "..abc", "abc...def", "--all..abc", "abc..def ghi"])
-def test_record_refuses_a_malformed_range(repo, bad):
-    with pytest.raises(ValueError):
-        rg.record(repo, sha="s", decisions=_decisions(COMPLETE_DECISIONS[0]), range_=bad)
-    assert not (rg.state_dir(repo) / "feat.json").exists()
-
-
-def test_record_without_raw_accepts_decisions_unchecked(repo):
-    out = rg.record(repo, sha="s", decisions=_decisions(COMPLETE_DECISIONS[0]))
-    assert json.loads(out.read_text())["uitkomst"] == "done"
-
-
-def test_record_skip_then_gate_says_skip(repo):
-    rg.record(repo, skip="review faalde: timeout na 9 min")
-    gated = rg.gate(repo, _must_not_run)
-    assert (gated["verdict"], gated["reason"]) == ("skip", "review faalde: timeout na 9 min")
-
-
-def test_record_honours_out(repo, tmp_path):
-    target = tmp_path / "elsewhere" / "r.json"
-    assert rg.record(repo, skip="x", out=target) == target
-    assert json.loads(target.read_text())["reden"] == "x"
-
-
-def test_record_out_validates_against_the_given_raw_not_the_local_review(repo, tmp_path):
-    # The branch has its own local review (two findings); the CI review has one other finding.
-    _write_raw(repo, FIX("review-complete.md"))
-    ci = tmp_path / "ci.md"
-    ci.write_text("## roborev: Review Complete (`abc1234`)\n\n### High\n\n- a.py:3: bad\n")
-    target = tmp_path / "ci.json"
-    decision = _decisions(("a.py", 3, "high", "refuted", None, "geen probleem"))
-    assert rg.record(repo, sha="abc1234", decisions=decision, out=target, raw=ci) == target
-    assert json.loads(target.read_text())["bevindingen"] == decision
-    with pytest.raises(ValueError):
-        rg.record(repo, sha="abc1234", decisions=_decisions(*COMPLETE_DECISIONS), out=target, raw=ci)
-
-
-def test_record_out_without_raw_ignores_the_local_review(repo, tmp_path):
-    _write_raw(repo, FIX("review-complete.md"))
-    target = tmp_path / "ci.json"
-    decision = _decisions(("a.py", 3, "high", "refuted", None, "geen probleem"))
-    rg.record(repo, sha="abc1234", decisions=decision, out=target)
-    assert json.loads(target.read_text())["bevindingen"] == decision
-
-
-def test_record_refuses_a_missing_raw(repo, tmp_path):
-    decision = _decisions(("a.py", 3, "high", "refuted", None, "geen probleem"))
-    with pytest.raises(ValueError):
-        rg.record(repo, sha="abc1234", decisions=decision, out=tmp_path / "ci.json", raw=tmp_path / "nope.md")
-    assert not (tmp_path / "ci.json").exists()
-
-
-def test_cli_record_out_and_raw(repo, tmp_path):
-    _write_raw(repo, FIX("review-complete.md"))
-    ci = tmp_path / "ci.md"
-    ci.write_text("## roborev: Review Complete (`abc1234`)\n\n### High\n\n- a.py:3: bad\n")
-    good, bad = tmp_path / "good.json", tmp_path / "bad.json"
-    good.write_text(json.dumps(_decisions(("a.py", 3, "high", "left", None, "later"))))
-    bad.write_text(json.dumps(_decisions(*COMPLETE_DECISIONS)))
-    args = ("record", "--done", "abc1234", "--out", str(tmp_path / "ci.json"), "--raw", str(ci))
-    assert _cli(repo, *args, "--decisions", str(good)).returncode == 0
-    assert _cli(repo, *args, "--decisions", str(bad)).returncode == 2
-
-
-def test_record_needs_skip_or_sha(repo):
-    with pytest.raises(ValueError):
-        rg.record(repo)
-
-
-@pytest.mark.parametrize(
-    "state,line",
-    [
-        (None, "Roborev overgeslagen: geen reviewuitkomst vastgelegd"),
-        ({"uitkomst": "done", "sha": "bf1eb24"}, "<!-- roborev-lokaal: bf1eb24 -->"),
-        ({"uitkomst": "skip", "reden": "geen .roborev.toml"}, "Roborev overgeslagen: geen .roborev.toml"),
-    ],
-)
-def test_body_line(repo, state, line):
-    if state is not None:
-        rg.write_state(rg.state_dir(repo) / "feat.json", {"range": "a..b", **state})
-    assert rg.body_line(repo) == line
-
-
-def test_body_line_is_empty_when_off(repo):
-    (repo / "lighthouse.toml").write_text('[project]\nlanguage = "nl"\n')
-    assert rg.body_line(repo) == ""
-
-
-def _cli(repo: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(SCRIPT), *args],
-        cwd=repo,
-        capture_output=True,
-        text=True,
-        env={"PATH": os.environ["PATH"], **GIT_ENV},
+def _cli(run: Run, step: dict) -> None:
+    cwd = run.tmp if step.get("cwd") == "tmp" else run.repo
+    env = {"PATH": os.environ["PATH"], **GIT_ENV}
+    if step.get("cwd") == "tmp":
+        env = {"PATH": os.environ["PATH"], "GIT_CEILING_DIRECTORIES": str(run.tmp.parent)}
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), *run.sub(step["args"])],
+        cwd=cwd, capture_output=True, text=True, env=env,
     )
+    assert result.returncode == step["exit"], result.stderr
+    if "stdout_json" in step:
+        got, want = json.loads(result.stdout), run.sub(step["stdout_json"])
+        if step.get("subset"):
+            _expect_subset(got, want)
+        else:
+            assert got == want
+    if "stdout" in step:
+        assert result.stdout.strip() == step["stdout"]
+    if "stderr_starts" in step:
+        assert result.stderr.startswith(step["stderr_starts"])
+    if step.get("stderr_nonempty"):
+        assert result.stderr.strip()
+    run.check_absent(step)
+    if "state_file" in step:
+        run.check_state_file(step["state_file"])
 
 
-def test_cli_classify_skip_also_records(repo):
-    raw = _write_raw(repo, "Error: codex: 401\n")
-    result = _cli(repo, "classify")
-    assert result.returncode == 0
-    assert json.loads(result.stdout) == {"verdict": "skip", "reason": "review faalde: Error: codex: 401"}
-    assert json.loads((raw.with_suffix(".json")).read_text())["reden"] == "review faalde: Error: codex: 401"
-
-
-def test_cli_classify_takes_a_path_and_prints_findings(repo):
-    result = _cli(repo, "classify", str(FIXTURES / "review-complete.md"))
-    assert json.loads(result.stdout)["sha"] == "bf1eb24"
-    assert not (rg.state_dir(repo) / "feat.json").exists()
-
-
-def test_cli_record_done_and_body_line(repo, tmp_path):
-    _write_raw(repo, FIX("review-complete.md"))
-    decisions = tmp_path / "d.json"
-    decisions.write_text(json.dumps(_decisions(*COMPLETE_DECISIONS)))
-    assert _cli(repo, "record", "--done", "bf1eb24", "--decisions", str(decisions)).returncode == 0
-    assert _cli(repo, "body-line").stdout.strip() == "<!-- roborev-lokaal: bf1eb24 -->"
-
-
-def test_cli_record_done_stores_the_given_range(repo, tmp_path):
-    decisions = tmp_path / "d.json"
-    decisions.write_text(json.dumps(_decisions(COMPLETE_DECISIONS[0])))
-    args = ("record", "--done", "s", "--decisions", str(decisions), "--range")
-    assert _cli(repo, *args, "1111111..2222222").returncode == 0
-    assert json.loads((rg.state_dir(repo) / "feat.json").read_text())["range"] == "1111111..2222222"
-    assert _cli(repo, *args, "HEAD").returncode == 2
-
-
-def test_cli_record_refusal_exits_2(repo, tmp_path):
-    _write_raw(repo, FIX("review-complete.md"))
-    decisions = tmp_path / "d.json"
-    decisions.write_text("[]")
-    result = _cli(repo, "record", "--done", "s", "--decisions", str(decisions))
-    assert result.returncode == 2 and result.stderr.strip()
-
-
-def test_cli_fixed_prints_json(repo):
-    c1 = _fix_commit(repo, "a.py", "fix: a\n\nroborev: p.py:1 (high)")
-    out = json.loads(_cli(repo, "fixed").stdout)
-    assert out == [{"path": "p.py", "line": 1, "severity": "high", "commit": c1}]
+@pytest.mark.parametrize("path", sorted(CASES.glob("*.json")), ids=lambda p: p.stem)
+def test_case(path, tmp_path, monkeypatch):
+    case = json.loads(path.read_text())
+    run = Run(tmp_path, monkeypatch, case)
+    run.setup(case["setup"])
+    for step in case["steps"]:
+        _step(run, step)

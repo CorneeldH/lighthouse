@@ -1,0 +1,64 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "{\"decision\":\"codex\",\"reason\":\"ok\"}"
+      ],
+      "expect": {
+        "verdict": "run"
+      },
+      "save": {
+        "range": "r0"
+      }
+    },
+    {
+      "op": "prepare",
+      "setup": [
+        {
+          "do": "raw",
+          "name": "feat",
+          "fixture": "review-complete.md"
+        },
+        {
+          "do": "fix_commit",
+          "name": "a.py",
+          "subject": "fix: a\n\nroborev: scripts/forge_drager.py:93 (medium)",
+          "as": "c1"
+        }
+      ]
+    },
+    {
+      "op": "record",
+      "sha": "bf1eb24",
+      "decisions": [
+        [
+          "scripts/forge_drager.py",
+          93,
+          "medium",
+          "fixed",
+          "abc1234",
+          null
+        ],
+        [
+          "scripts/forge_agent.sh",
+          612,
+          "medium",
+          "refuted",
+          null,
+          "klopt niet"
+        ]
+      ],
+      "range": "$r0",
+      "state_file": {
+        "name": "feat",
+        "subset": {
+          "range": "$r0"
+        }
+      }
+    }
+  ]
+}
