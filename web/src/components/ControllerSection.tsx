@@ -11,8 +11,8 @@ export function ControllerSection({ children }: { children: ReactNode }): JSX.El
   const tickAt = ticks.length === 0 ? 0 : Math.max(...ticks)
   return (
     <section aria-labelledby="controller-heading" className="space-y-6">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-lh-navy pb-1">
-        <h2 id="controller-heading" className="text-lg font-semibold text-lh-navy">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b-2 border-lh-navy pb-1 dark:border-lh-yellow">
+        <h2 id="controller-heading" className="text-lg font-semibold text-lh-navy dark:text-foreground">
           Controller
         </h2>
         <span className="text-sm" aria-live="polite">
