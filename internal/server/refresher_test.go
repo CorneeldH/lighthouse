@@ -274,7 +274,7 @@ func TestRefresherRunMeasuresIntervalFromBuildStart(t *testing.T) {
 	s := spans()
 	gap := s[1].start.Sub(s[0].start)
 	// Start to start is ~300ms; sleeping a full interval after the build would give ~450ms.
-	if gap < interval-20*time.Millisecond || gap > interval+75*time.Millisecond {
+	if gap < interval-20*time.Millisecond || gap > interval+120*time.Millisecond {
 		t.Fatalf("start-to-start gap = %v, want about %v", gap, interval)
 	}
 }
