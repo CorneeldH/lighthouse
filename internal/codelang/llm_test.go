@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -76,6 +77,14 @@ func newFakeLLM(t *testing.T, modes map[string]string, fallback string) *fakeLLM
 		case "http500":
 			w.Header().Set("Content-Length", "0")
 			w.WriteHeader(http.StatusInternalServerError)
+		case "huge":
+			// a readable answer behind more than 1 MiB of content
+			content := `{"1": "NOT-EN"}` + strings.Repeat("x", 1<<20)
+			reply, _ := json.Marshal(map[string]any{
+				"choices": []any{map[string]any{"message": map[string]any{"content": content}}},
+			})
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(reply)
 		case "garbage":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, "<html>not json</html>")
@@ -396,11 +405,11 @@ func TestAskEveryFailureKind(t *testing.T) {
 		{"drip", "m1: no answer within 0.5 s"},
 		{"http500", "m1: HTTP 500"},
 		{"garbage", "m1: unreadable answer"},
-		{"invalid", "m1: "},
+		{"refused", "m1: "},
 	} {
 		t.Run(c.mode, func(t *testing.T) {
-			url := "http://lighthouse-test.invalid/v1"
-			if c.mode != "invalid" {
+			url := closedPortURL(t)
+			if c.mode != "refused" {
 				url = newFakeLLM(t, map[string]string{"m1": c.mode}, "answer").url
 			}
 			start := time.Now()
@@ -413,8 +422,9 @@ func TestAskEveryFailureKind(t *testing.T) {
 				t.Fatalf("reply %+v, want one failure and no answer", reply)
 			}
 			got := reply.Failures[0]
-			if c.mode == "invalid" {
-				if !strings.HasPrefix(got, c.want) || strings.Contains(got, "lighthouse-test.invalid/v1") {
+			if c.mode == "refused" {
+				if !strings.HasPrefix(got, c.want) || strings.Contains(got, "chat/completions") ||
+					strings.Contains(got, "Post ") {
 					t.Errorf("failure %q, want prefix %q without the URL", got, c.want)
 				}
 				return
@@ -423,6 +433,30 @@ func TestAskEveryFailureKind(t *testing.T) {
 				t.Errorf("failure %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// closedPortURL is an endpoint on 127.0.0.1 where nothing listens: the transport fails at once,
+// without DNS.
+func closedPortURL(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return "http://" + addr + "/v1"
+}
+
+func TestAskHugeReplyIsUnreadable(t *testing.T) {
+	withKey(t)
+	fake := newFakeLLM(t, map[string]string{"m1": "huge"}, "answer")
+	reply := ask(testChain(fake.url), t.TempDir())
+	if reply.NotEnglish != nil || !reflect.DeepEqual(reply.Failures, []string{"m1: unreadable answer"}) {
+		t.Errorf("reply %+v, want m1: unreadable answer", reply)
 	}
 }
 

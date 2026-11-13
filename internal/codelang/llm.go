@@ -34,6 +34,9 @@ const (
 	// maxTokensFloor leaves a reasoning model room before its answer; the wall clock, not
 	// this number, bounds the cost.
 	maxTokensFloor = 512
+
+	// maxReply bounds what Ask reads of one reply.
+	maxReply = 1 << 20
 )
 
 // Chain is the [code_language_llm] table of the session's lighthouse.toml. KeyEnv and
@@ -336,7 +339,8 @@ func call(ctx context.Context, ch *Chain, model, prompt string, n int, apiKey st
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, fmt.Sprintf("HTTP %d", resp.StatusCode)
 	}
-	raw, err := io.ReadAll(resp.Body)
+	// A reply is a few hundred bytes; one past maxReply is cut off and so unreadable.
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxReply))
 	if err != nil {
 		return nil, transportReason(ctx, err, wait)
 	}

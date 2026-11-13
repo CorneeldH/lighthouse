@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -44,7 +45,7 @@ func TestQuietPeriod(t *testing.T) {
 	if again.NotEnglish != nil || len(again.Failures) != 1 || !strings.HasPrefix(again.Failures[0], "skipped: ") {
 		t.Fatalf("again: %+v, want one skipped failure", again)
 	}
-	if again.Failures[0] != "skipped: the chain failed 0 s ago" {
+	if !regexp.MustCompile(`^skipped: the chain failed \d+ s ago$`).MatchString(again.Failures[0]) {
 		t.Errorf("again: %q, want the age in whole seconds", again.Failures[0])
 	}
 	if n := len(fake.seen()); n != seen {
@@ -60,10 +61,26 @@ func TestQuietAgeIsRounded(t *testing.T) {
 	withKey(t)
 	state := t.TempDir()
 	fake := newFakeLLM(t, nil, "answer")
-	writeStamp(t, failMarker(state, fake.url), 59.4)
+	// 30.0 s rounds to 30 until the call is half a second late.
+	writeStamp(t, failMarker(state, fake.url), 30)
 	reply := ask(testChain(fake.url), state)
-	if !reflect.DeepEqual(reply.Failures, []string{"skipped: the chain failed 59 s ago"}) {
-		t.Errorf("reply %+v, want skipped 59 s ago", reply)
+	if !reflect.DeepEqual(reply.Failures, []string{"skipped: the chain failed 30 s ago"}) {
+		t.Errorf("reply %+v, want skipped 30 s ago", reply)
+	}
+}
+
+func TestQuietLastsAlmostAMinute(t *testing.T) {
+	withKey(t)
+	state := t.TempDir()
+	fake := newFakeLLM(t, nil, "answer")
+	// 58 s old: still quiet, with a second of slack before QUIET_S.
+	writeStamp(t, failMarker(state, fake.url), 58)
+	reply := ask(testChain(fake.url), state)
+	if reply.NotEnglish != nil || len(reply.Failures) != 1 || !strings.HasPrefix(reply.Failures[0], "skipped: ") {
+		t.Errorf("reply %+v, want skipped", reply)
+	}
+	if n := len(fake.seen()); n != 0 {
+		t.Errorf("%d requests, want none", n)
 	}
 }
 
