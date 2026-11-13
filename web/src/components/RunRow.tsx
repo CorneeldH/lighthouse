@@ -54,8 +54,7 @@ const segmentClass: Record<Segment, string> = {
   pending: 'bg-border',
 }
 
-function segments(run: RunView): Segment[] {
-  const finalReview = run.step === 'final-review'
+function segments(run: RunView, finalReview: boolean): Segment[] {
   return Array.from({ length: run.tasks }, (_, i): Segment => {
     if (finalReview) return 'final'
     const n = i + 1
@@ -75,7 +74,7 @@ function Progress({ run }: { run: RunView }): JSX.Element | null {
     <span className="inline-flex items-center gap-2" role="img" title={label} aria-label={label}>
       <span>{finalReview ? `${run.tasks}/${run.tasks}` : `${run.task}/${run.tasks}`}</span>
       <span aria-hidden className="inline-flex gap-0.5">
-        {segments(run).map((s, i) => (
+        {segments(run, finalReview).map((s, i) => (
           <span key={i} data-segment={s} className={`h-2 w-3 rounded-sm ${segmentClass[s]}`} />
         ))}
       </span>

@@ -250,7 +250,7 @@ async function renderRunning(b: unknown = body()) {
   stubFetch(() => json(b))
   renderWithClient(<RunningBlock />)
   const region = screen.getByRole('region', { name: 'Running runs' })
-  await within(region).findByText('Add the runs card').catch(() => undefined)
+  await waitFor(() => expect(within(region).queryByText('Loading…')).toBeNull())
   return region
 }
 
