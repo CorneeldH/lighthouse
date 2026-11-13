@@ -259,7 +259,8 @@ func sessionChain(sessionTOML string) (*Chain, error) {
 // bom is the UTF-8 byte order mark, which is not content.
 var bom = []byte{0xef, 0xbb, 0xbf}
 
-// readUnits reads the file at path as UTF-8, without a leading BOM, and scans it.
+// readUnits reads the file at path as UTF-8, without a leading BOM and with universal
+// newlines ("\r\n" and a bare "\r" become "\n", as Path.read_text does), and scans it.
 func readUnits(path, language string) ([]Unit, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -269,7 +270,8 @@ func readUnits(path, language string) ([]Unit, error) {
 	if reason, bad := invalidUTF8(raw); bad {
 		return nil, &CannotCheckError{Reason: fmt.Sprintf("%s is not valid UTF-8: %s", path, reason)}
 	}
-	return scanUnits(language, string(raw))
+	src := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	return scanUnits(language, strings.ReplaceAll(src, "\r", "\n"))
 }
 
 // invalidUTF8 describes the first invalid sequence of raw the way Python's decoder does.

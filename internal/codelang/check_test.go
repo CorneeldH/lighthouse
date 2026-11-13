@@ -82,8 +82,8 @@ func TestCheckFixture(t *testing.T) {
 		CannotCheck  bool              `json:"cannot_check"`
 	}
 	readFixture(t, "check.json", &cases)
-	if len(cases) != 28 {
-		t.Fatalf("check.json has %d cases, want 28", len(cases))
+	if len(cases) != 31 {
+		t.Fatalf("check.json has %d cases, want 31", len(cases))
 	}
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {

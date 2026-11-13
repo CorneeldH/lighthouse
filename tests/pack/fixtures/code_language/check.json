@@ -365,5 +365,56 @@
     "path": "vendor/lees.py",
     "session_table": "\n[code_language_llm]\nurl = \"http://h/v1\"\nmodels = [\"m1\"]\nenv_file = \"/nonexistent/lighthouse-test.env\"\n",
     "toml_extra": "code_language_exempt = [\"vendor/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "a.py": "eCA9IDENIyBkaXQgaXMgbmlldCBnb2VkDXkgPSAyDQ=="
+    },
+    "findings": [
+      [
+        2,
+        "comment",
+        "dit is niet goed"
+      ]
+    ],
+    "name": "python_bare_cr",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "a.py": "eCA9IDENCiMgZGl0IGlzIG5pZXQgZ29lZA0KeSA9IDINCg=="
+    },
+    "findings": [
+      [
+        2,
+        "comment",
+        "dit is niet goed"
+      ]
+    ],
+    "name": "python_crlf",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "a.sh": "eD0xDSMgZGl0IGlzIG5pZXQgZ29lZA15PTIN"
+    },
+    "findings": [
+      [
+        2,
+        "comment",
+        "dit is niet goed"
+      ]
+    ],
+    "name": "shell_bare_cr",
+    "path": "a.sh",
+    "toml_extra": ""
   }
 ]
