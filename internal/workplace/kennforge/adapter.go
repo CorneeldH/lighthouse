@@ -141,14 +141,14 @@ func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace
 	if err != nil {
 		return workplace.Session{}, fmt.Errorf("%w: %w", err, workplace.ErrNotAccepted)
 	}
-	if _, err := workplace.WriteCarrier(a.StateDir, ws.ID, c); err != nil {
+	if _, err := workplace.WriteCarrier(a.StateDir, "", ws.ID, c); err != nil {
 		return workplace.Session{}, fmt.Errorf("write carrier: %w: %w", err, workplace.ErrNotAccepted)
 	}
 	notAccepted := func(err error) (workplace.Session, error) {
 		if !errors.Is(err, workplace.ErrNotAccepted) {
 			err = fmt.Errorf("%v: %w", err, workplace.ErrNotAccepted)
 		}
-		if rmErr := workplace.RemoveCarrier(a.StateDir, ws.ID); rmErr != nil {
+		if rmErr := workplace.RemoveCarrier(a.StateDir, "", ws.ID); rmErr != nil {
 			err = errors.Join(err, fmt.Errorf("remove carrier: %w", rmErr))
 		}
 		return workplace.Session{}, err
@@ -336,7 +336,7 @@ func (a *Adapter) Discard(_ context.Context, workspaceID string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
 	}
-	if err := workplace.RemoveCarrier(a.StateDir, workspaceID); err != nil {
+	if err := workplace.RemoveCarrier(a.StateDir, "", workspaceID); err != nil {
 		return fmt.Errorf("remove carrier of %s: %w", workspaceID, err)
 	}
 	return nil

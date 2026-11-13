@@ -300,7 +300,7 @@ func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispa
 			return dispatch.MergedHead(prs), nil
 		},
 	}
-	return workplace.Sweep(ctx, db, env.workplace(cfg, sr.repo, dir), env.runner(), in, env.now())
+	return workplace.Sweep(ctx, db, func(node, profile string) workplace.Workplace { return env.workplace(cfg, sr.repo, dir) }, env.runner(), in, env.now())
 }
 
 // decideAndApply decides once over the gathered repos and applies the actions. Each deferral
@@ -511,7 +511,7 @@ func adopt(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch
 	if err != nil {
 		return err
 	}
-	if err := workplace.AdoptSessions(ctx, db, env.workplace(cfg, repo, dir), repo.Slug); err != nil {
+	if err := workplace.AdoptSessions(ctx, db, func(node, profile string) workplace.Workplace { return env.workplace(cfg, repo, dir) }, repo.Slug); err != nil {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: measure %s: %s\n", repo.Slug, oneLine(err))
 	}
 	return nil

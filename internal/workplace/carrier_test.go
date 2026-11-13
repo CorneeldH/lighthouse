@@ -124,7 +124,7 @@ func TestWriteCarrierTightensExistingDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := WriteCarrier(dir, "ws-1", c); err != nil {
+	if _, err := WriteCarrier(dir, "", "ws-1", c); err != nil {
 		t.Fatal(err)
 	}
 	fi, err := os.Stat(carriers)
@@ -142,12 +142,12 @@ func TestWriteCarrierAtomic0600(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := WriteCarrier(dir, "ws-1", c)
+	path, err := WriteCarrier(dir, "", "ws-1", c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(dir, "carriers", "ws-1.json"); path != want || CarrierPath(dir, "ws-1") != want {
-		t.Errorf("path %q, CarrierPath %q, want %q", path, CarrierPath(dir, "ws-1"), want)
+	if want := filepath.Join(dir, "carriers", "ws-1.json"); path != want || CarrierPath(dir, "", "ws-1") != want {
+		t.Errorf("path %q, CarrierPath %q, want %q", path, CarrierPath(dir, "", "ws-1"), want)
 	}
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -165,13 +165,13 @@ func TestWriteCarrierAtomic0600(t *testing.T) {
 	if len(entries) != 1 {
 		t.Errorf("want only the carrier in the dir, got %d entries", len(entries))
 	}
-	if err := RemoveCarrier(dir, "ws-1"); err != nil {
+	if err := RemoveCarrier(dir, "", "ws-1"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Errorf("carrier still present: %v", err)
 	}
-	if err := RemoveCarrier(dir, "ws-1"); err != nil {
+	if err := RemoveCarrier(dir, "", "ws-1"); err != nil {
 		t.Errorf("removing a missing carrier: %v", err)
 	}
 }
@@ -180,10 +180,10 @@ func TestWriteCarrierRejectsWorkspaceID(t *testing.T) {
 	dir := t.TempDir()
 	c, _ := NewCarrier(baseSpec(), dir, testNow)
 	for _, id := range []string{"../x", ".x", "a/b", ""} {
-		if _, err := WriteCarrier(dir, id, c); err == nil {
+		if _, err := WriteCarrier(dir, "", id, c); err == nil {
 			t.Errorf("id %q: want error", id)
 		}
-		if err := RemoveCarrier(dir, id); err == nil {
+		if err := RemoveCarrier(dir, "", id); err == nil {
 			t.Errorf("remove id %q: want error", id)
 		}
 	}
@@ -197,7 +197,7 @@ func TestCarrierHasNoToken(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "gho_secret")
 	dir := t.TempDir()
 	c, _ := NewCarrier(baseSpec(), dir, testNow)
-	path, err := WriteCarrier(dir, "ws-1", c)
+	path, err := WriteCarrier(dir, "", "ws-1", c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,5 +215,49 @@ func TestCarrierHasNoToken(t *testing.T) {
 		if strings.Contains(strings.ToUpper(k), "TOKEN") {
 			t.Errorf("carrier env has a token key %q", k)
 		}
+	}
+}
+
+func TestCarrierPathPerNode(t *testing.T) {
+	dir := t.TempDir()
+	if got, want := CarrierPath(dir, "", "ws-1"), filepath.Join(dir, "carriers", "ws-1.json"); got != want {
+		t.Errorf("self path %q, want %q", got, want)
+	}
+	if got, want := CarrierPath(dir, "node-a", "ws-1"), filepath.Join(dir, "carriers", "node-a", "ws-1.json"); got != want {
+		t.Errorf("node path %q, want %q", got, want)
+	}
+	c := Carrier{Version: CarrierVersion}
+	for _, node := range []string{"../x", "a/b", ".", "-x"} {
+		if _, err := WriteCarrier(dir, node, "ws-1", c); err == nil {
+			t.Errorf("WriteCarrier accepted node %q", node)
+		}
+		if err := RemoveCarrier(dir, node, "ws-1"); err == nil {
+			t.Errorf("RemoveCarrier accepted node %q", node)
+		}
+	}
+}
+
+func TestRemoveCarrierOtherNodeUntouched(t *testing.T) {
+	dir := t.TempDir()
+	c := Carrier{Version: CarrierVersion}
+	for _, node := range []string{"", "node-a"} {
+		if _, err := WriteCarrier(dir, node, "ws-1", c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := RemoveCarrier(dir, "node-a", "ws-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(CarrierPath(dir, "", "ws-1")); err != nil {
+		t.Errorf("self carrier gone after removing node-a's: %v", err)
+	}
+	if _, err := os.Stat(CarrierPath(dir, "node-a", "ws-1")); !os.IsNotExist(err) {
+		t.Errorf("node-a carrier still there: %v", err)
+	}
+	if err := RemoveCarrier(dir, "", "ws-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(CarrierPath(dir, "", "ws-1")); !os.IsNotExist(err) {
+		t.Errorf("self carrier still there: %v", err)
 	}
 }

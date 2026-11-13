@@ -493,7 +493,7 @@ var ws1 = workplace.Workspace{ID: "ws1", Path: "/x", Branch: "issue-1-x"}
 const handoffKey = "POST /api/v1/workspaces/ws1/runtime/agent-handoffs"
 
 func carrierExists(a *Adapter) bool {
-	_, err := os.Stat(workplace.CarrierPath(a.StateDir, "ws1"))
+	_, err := os.Stat(workplace.CarrierPath(a.StateDir, "", "ws1"))
 	return err == nil
 }
 
@@ -541,7 +541,7 @@ func TestSpawn5xxRemovesCarrier(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.handoffStatus = 503
 	_, _ = a.Spawn(context.Background(), ws1, spec())
-	_, err := os.Stat(workplace.CarrierPath(a.StateDir, "ws1"))
+	_, err := os.Stat(workplace.CarrierPath(a.StateDir, "", "ws1"))
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("stat carrier = %v, want ErrNotExist", err)
 	}
@@ -750,7 +750,7 @@ func writeCarrier(t *testing.T, a *Adapter) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workplace.WriteCarrier(a.StateDir, "ws1", c); err != nil {
+	if _, err := workplace.WriteCarrier(a.StateDir, "", "ws1", c); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -789,7 +789,7 @@ func TestRemoveReportsFailedCarrierWipe(t *testing.T) {
 	}
 	_, a := newFakeForge(t)
 	writeCarrier(t, a)
-	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "ws1"))
+	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "", "ws1"))
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
@@ -968,7 +968,7 @@ func TestSpawnNotAcceptedReportsFailedCarrierRemoval(t *testing.T) {
 	}
 	f, a := newFakeForge(t)
 	f.handoffStatus = 422
-	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "ws1"))
+	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "", "ws1"))
 	f.onHandoff = func() { _ = os.Chmod(dir, 0o500) }
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 	_, err := a.Spawn(context.Background(), ws1, spec())
@@ -1014,7 +1014,7 @@ func TestLocalIDIsNoForgeWorkspace(t *testing.T) {
 	if f.total() != 0 || ran != 0 {
 		t.Errorf("Spawn: requests = %d, commands = %d, want none", f.total(), ran)
 	}
-	if _, statErr := os.Stat(workplace.CarrierPath(a.StateDir, id)); !errors.Is(statErr, os.ErrNotExist) {
+	if _, statErr := os.Stat(workplace.CarrierPath(a.StateDir, "", id)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Errorf("Spawn: carrier for %s exists (stat err = %v)", id, statErr)
 	}
 }

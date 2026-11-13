@@ -306,7 +306,7 @@ func (f *forgeFixture) handoff(w http.ResponseWriter, r *http.Request, id string
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	raw, err := os.ReadFile(workplace.CarrierPath(f.a.StateDir, id))
+	raw, err := os.ReadFile(workplace.CarrierPath(f.a.StateDir, "", id))
 	var c workplace.Carrier
 	if err == nil {
 		err = json.Unmarshal(raw, &c)
