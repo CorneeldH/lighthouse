@@ -71,6 +71,9 @@ type Controller struct {
 	SpecReview   bool
 	PlanReview   bool
 	AtRoundLimit string
+	// Locations maps the value after [labels] location_prefix to a profile name; nil without
+	// the [controller.locations] table.
+	Locations map[string]string
 }
 
 type rawController struct {
@@ -79,6 +82,8 @@ type rawController struct {
 	PlanReview   *bool      `toml:"plan_review"`
 	AtRoundLimit string     `toml:"bij_rondegrens"`
 	Triage       *rawTriage `toml:"triage"`
+
+	Locations map[string]string `toml:"locations"`
 }
 
 type rawTriage struct {
@@ -167,6 +172,12 @@ func Load(dir string) (Repo, error) {
 			SpecReview:   c.SpecReview == nil || *c.SpecReview,
 			PlanReview:   c.PlanReview == nil || *c.PlanReview,
 			AtRoundLimit: c.AtRoundLimit,
+			Locations:    c.Locations,
+		}
+		for value, profile := range c.Locations {
+			if profile == "" {
+				return Repo{}, fmt.Errorf("controller.locations.%s: empty profile name", value)
+			}
 		}
 		if r.Controller.Profile == "" {
 			r.Controller.Profile = "software"
