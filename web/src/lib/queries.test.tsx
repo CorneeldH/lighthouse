@@ -110,3 +110,43 @@ describe('forge page polling', () => {
     client.clear()
   })
 })
+
+describe('forge page staleTime', () => {
+  it.each([
+    ['useQuestions', useQuestions],
+    ['useReturned', useReturned],
+  ])('%s refetches on remount only after the questions interval', async (_name, hook) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response('{}', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const client = newQueryClient()
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+
+    // Unmounted, nothing polls: only staleTime decides what a remount does.
+    const first = renderHook(() => hook(), { wrapper })
+    await vi.waitFor(() => expect(first.result.current.isSuccess).toBe(true))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    first.unmount()
+
+    await vi.advanceTimersByTimeAsync(QUESTIONS_INTERVAL_MS - 5_000)
+    const early = renderHook(() => hook(), { wrapper })
+    await vi.advanceTimersByTimeAsync(100)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    early.unmount()
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    const late = renderHook(() => hook(), { wrapper })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    late.unmount()
+    client.clear()
+  })
+})

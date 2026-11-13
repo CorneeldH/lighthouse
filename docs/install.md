@@ -169,7 +169,7 @@ it as `owner/name#number`. Every `owner/name#number` in the UI links to
 `/api/questions` and `/api/returned` do not call GitHub per request: they show one shared overview
 that `serve` builds at start and then every 2 minutes (start to start, never two builds at once,
 a time-out of 90 s per build). A build that fails is retried after 20 s, and until one succeeds
-both endpoints answer 502 (503 without repositories) instead of old data. The first request after
+both endpoints answer 502 (503 without repositories or without a token) instead of old data. The first request after
 a start waits for the first build. So `serve` reads GitHub also when nobody looks: 30 builds an
 hour per set of repositories.
 
