@@ -2,7 +2,14 @@ import { focusManager, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { newQueryClient, USAGE_INTERVAL_MS, useQuestions, useUsage } from './queries'
+import {
+  newQueryClient,
+  QUESTIONS_INTERVAL_MS,
+  USAGE_INTERVAL_MS,
+  useQuestions,
+  useReturned,
+  useUsage,
+} from './queries'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -67,6 +74,39 @@ describe('useQuestions', () => {
     await new Promise((resolve) => setTimeout(resolve, 50))
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    client.clear()
+  })
+})
+
+describe('forge page polling', () => {
+  it.each([
+    ['useQuestions', '/api/questions', useQuestions],
+    ['useReturned', '/api/returned', useReturned],
+  ])('%s refetches %s after the questions interval', async (_name, path, hook) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response('{}', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const client = newQueryClient()
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+
+    renderHook(() => hook(), { wrapper })
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(fetchMock.mock.calls[0][0]).toBe(path)
+
+    await vi.advanceTimersByTimeAsync(QUESTIONS_INTERVAL_MS)
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(fetchMock.mock.calls[1][0]).toBe(path)
     client.clear()
   })
 })
