@@ -56,7 +56,7 @@ toont (criterium 4). De standaard van `push` blijft stil over RSS, zoals #198 he
 ### Task 1: `push --report-rss`
 
 **Files:**
-- Modify: `tools/hooks/checkpoint_scan.py` (`_push_cli` ~l.880, parser `push` ~l.958-960)
+- Modify: `tools/hooks/checkpoint_scan.py` (`_push_cli` ~l.880, parser `push` ~l.958-960, module-docstring l.29 `push <remote> [--full] [--report-rss]`)
 - Test: `tests/test_checkpoint_scan.py` (na `test_push_chunks_refspecs`, ~l.1215)
 - Modify: `docs/secret-scan.md` (sectie *De eerste push: `push`*, ~l.116-150)
 
@@ -118,6 +118,9 @@ git commit -m "feat(secret-scan): push --report-rss meldt piek-RSS per batch (#2
 **Files:**
 - Modify: `docs/secret-scan.md` (nieuwe `## Host-deploy` na `## Een vuile checkpoint vrijgeven`,
   vóór `## De begrensde volledige scan`)
+- Modify: `docs/host-assumptions.md` (één rij: `secret-scan.md#Host-deploy`, systemd user-service en -timer
+  voor checkpoint-push, Linux-only, *Example; use the scheduler of the host*, —; naar het model van de
+  triage-rij)
 - Create: `changelog.d/issue-228-checkpoint-push-timer.md`
 
 **Interfaces:**
@@ -206,18 +209,27 @@ vrijgeven* en *De begrensde volledige scan*. `git diff --stat .entire/` is leeg.
 - [ ] **Stap 4: commit**
 
 ```bash
-git add docs/secret-scan.md changelog.d/issue-228-checkpoint-push-timer.md
+git add docs/secret-scan.md docs/host-assumptions.md changelog.d/issue-228-checkpoint-push-timer.md
 git commit -m "docs(secret-scan): host-deploy met user-timer voor checkpoint-push (#228)"
 ```
 
 ### Task 3: deploy en bewijs op de always-on host (handen)
 
-Geen repo-wijziging; levert het bewijs voor criteria 2–4 in de PR-body. Draait op de always-on
+**Niet voor de onbewaakte uitvoerder.** Geen repo-wijziging; vereist een mens (token) en de
+always-on host. Een uitvoerder zonder mens stopt na Task 2, draait hier geen `systemctl` en
+schrijft de PR-body als `Refs #228 — host-deploy en bewijs voor criteria 2–4 volgen op de
+always-on host`, niet `Closes #228`; die criteria worden later bewezen via
+`/lighthouse-close-issue` (entry B). Levert het bewijs voor criteria 2–4. Draait op de always-on
 host, na merge van Task 1 op `main` (de unit draait het script van de hoofdcheckout). Vóór de
 merge kan het tegen deze worktree: zet dan tijdelijk `WorkingDirectory` op het worktree-pad en
 zeg dat in het bewijs.
 
 - [ ] **Stap 1: token en units neerzetten**
+
+Eerst de omgeving van de unit controleren: `systemctl --user show-environment`,
+`loginctl show-user $USER -p Linger` (moet `yes`; anders `loginctl enable-linger`) en
+`command -v entire gitleaks python3` onder het PATH van de unit (`entire` moet erop staan: de
+pre-push-hook draait zijn regel na het scanblok).
 
 Mens: fine-grained token aanmaken (alleen `CorneeldH/lighthouse-checkpoints`, *Contents: read
 and write*), in `~/.config/lighthouse/checkpoint-push.env` als `GH_TOKEN=…`, `chmod 600`.
@@ -245,10 +257,12 @@ Een lokale testref met een nep-PAT, die nooit de remote haalt omdat hij vastgeho
 
 ```bash
 cd ~/repositories/lighthouse
-blob=$(printf '{"text": "GITHUB_PAT=ghp_%s"}\n' "$(head -c 27 /dev/urandom | base64 | tr -dc A-Za-z0-9 | head -c 36)" | git hash-object -w --stdin)
+blob=$(printf '{"text": "GITHUB_PAT=ghp_%s"}\n' "$(tr -dc A-Za-z0-9 </dev/urandom | head -c 36)" | git hash-object -w --stdin)
 tree=$(printf '100644 blob %s\tfull.jsonl\n' "$blob" | git mktree)
 commit=$(git commit-tree "$tree" -m "test #228 held")
 git update-ref refs/entire/checkpoints/zz/test-228-held "$commit"
+# Eerst bewijzen dat de blob gevlagd wordt (verwacht exit 1), anders is de test leeg:
+python3 -I tools/hooks/checkpoint_scan.py scan --remote https://github.com/CorneeldH/lighthouse-checkpoints.git "refs/entire/checkpoints/zz/test-228-held=$commit"; echo "scan rc=$?"
 systemctl --user start lighthouse-checkpoint-push.service; echo "rc=$?"
 systemctl --user status lighthouse-checkpoint-push.service --no-pager | head -5
 ```
