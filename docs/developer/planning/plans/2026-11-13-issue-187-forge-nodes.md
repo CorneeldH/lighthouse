@@ -356,8 +356,10 @@ lezen. `measure` bouwt één `runProbe` per `(r.Node, r.Profile)` via dezelfde l
 - [ ] **Stap 1: falende tests.** `TestApplyStartOnNode`: een start-actie met `Node: "node-a"` vraagt
   `Workplace(repo, "node-a", "mac")` en de run heeft `Node == "node-a"`. `TestTickRestartStopsOnNode`:
   tick 1 start een run op `node-a` (fake hub, twee nodes); de database wordt gesloten en opnieuw
-  geopend; tick 2 met een time-out stuurt de DELETE naar `node-a` en niets naar `node-b` of naar
-  `self`. `TestTickUnreachableNodeDoesNotBlockOther`: fake `node-a` geeft 503 op Prepare; een start op
+  geopend; tick 2 met een time-out sluit de run en stuurt niets naar `node-b` of naar `self`. Heeft de
+  gemeten `/runtime`-vorm een `session_id` per sessie, dan gaat de DELETE naar `node-a`; heeft ze die
+  niet (zie taak 8), dan gaat er geen DELETE naar `node-a` en toetst de test dat. Zelfde voorwaarde
+  als `TestRemoteStopDeletesSession`; de nep-hub blijft op de gemeten vorm. `TestTickUnreachableNodeDoesNotBlockOther`: fake `node-a` geeft 503 op Prepare; een start op
   `""` in dezelfde tick slaagt; er is geen run op `node-a` (`apply.start` roept `Prepare` aan vóór `runs.Take`,
   `apply.go:263-307`), de repo staat als apply-fout in de uitvoer en de fingerprint is niet opgeslagen. `TestMeasureUsesNodeOfRun`: een open run op `node-a` waarvan de workspace op `self` ontbreekt wordt
   niet `Gone`. `TestTickSpawnTimeoutNoSecondPost`:
