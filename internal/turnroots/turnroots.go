@@ -264,6 +264,7 @@ func Classify(raw []byte, projectDir string, patterns []string) ([]Verdict, erro
 		return verdicts, nil
 	}
 	since := state.start.Unix()
+	compiled := compilePatterns(patterns)
 	// A path belongs only to its own checkout: a worktree lies under the main checkout, so a
 	// prefix test on the path would give it to both.
 	owners := map[string]string{}
@@ -293,16 +294,28 @@ func Classify(raw []byte, projectDir string, patterns []string) ([]Verdict, erro
 		for rel := range changed {
 			rels[rel] = true
 		}
-		verdicts = append(verdicts, Verdict{Root: root, Touched: matchesAny(rels, patterns)})
+		verdicts = append(verdicts, Verdict{Root: root, Touched: matchesAny(rels, compiled)})
 	}
 	return verdicts, nil
 }
 
-// matchesAny says whether one of rels matches one of patterns.
-func matchesAny(rels map[string]bool, patterns []string) bool {
+// compilePatterns is each pattern as fnmatchCase's regexp, compiled once. A pattern that does not
+// compile is left out: fnmatchCase matches nothing with it.
+func compilePatterns(patterns []string) []*regexp.Regexp {
+	compiled := make([]*regexp.Regexp, 0, len(patterns))
+	for _, pattern := range patterns {
+		if re, err := regexp.Compile(translate(pattern)); err == nil {
+			compiled = append(compiled, re)
+		}
+	}
+	return compiled
+}
+
+// matchesAny says whether one of rels matches one of the patterns compiled by compilePatterns.
+func matchesAny(rels map[string]bool, patterns []*regexp.Regexp) bool {
 	for rel := range rels {
-		for _, pattern := range patterns {
-			if fnmatchCase(rel, pattern) {
+		for _, re := range patterns {
+			if re.MatchString(rel) {
 				return true
 			}
 		}
@@ -314,8 +327,7 @@ func matchesAny(rels map[string]bool, patterns []string) bool {
 // sensitive. `*` matches anything, `/` included; `?` one character; `[...]` a set, `[!...]` its
 // negation, with ranges. An unclosed `[` is a literal. path.Match differs: its `*` stops at `/`.
 func fnmatchCase(name, pattern string) bool {
-	re, err := regexp.Compile(translate(pattern))
-	return err == nil && re.MatchString(name)
+	return matchesAny(map[string]bool{name: true}, compilePatterns([]string{pattern}))
 }
 
 // translate is fnmatch.translate as a Go regexp.

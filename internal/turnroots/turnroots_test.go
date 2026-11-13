@@ -53,6 +53,35 @@ func TestFnmatchCase(t *testing.T) {
 	}
 }
 
+// Classification: pure-logic. TestMatchesAnyCompiled fails when the patterns compiled once in
+// Classify match differently from fnmatchCase: a `*` that stops at `/` (path.Match), a case-blind
+// match, or an empty set of rels that still matches.
+func TestMatchesAnyCompiled(t *testing.T) {
+	tests := []struct {
+		rels     []string
+		patterns []string
+		want     bool
+	}{
+		{[]string{"a/b.go"}, []string{"*.go"}, true},
+		{[]string{"src/pkg/a.py"}, []string{"src/*.py"}, true},
+		{[]string{"README.md", "go.sum"}, []string{"*.go", "go.sum"}, true},
+		{[]string{"Go.mod"}, []string{"go.mod"}, false},
+		{[]string{"a.gox"}, []string{"*.go"}, false},
+		{[]string{"]"}, []string{"[]]"}, true},
+		{nil, []string{"*"}, false},
+		{[]string{"a.go"}, nil, false},
+	}
+	for _, tt := range tests {
+		rels := map[string]bool{}
+		for _, rel := range tt.rels {
+			rels[rel] = true
+		}
+		if got := matchesAny(rels, compilePatterns(tt.patterns)); got != tt.want {
+			t.Errorf("matchesAny(%q, %q) = %v, want %v", tt.rels, tt.patterns, got, tt.want)
+		}
+	}
+}
+
 // Classification: pure-logic. TestIsPrompt fails when a meta entry, a compaction summary or a
 // tool result starts a new turn, or when a text prompt no longer does.
 func TestIsPrompt(t *testing.T) {
