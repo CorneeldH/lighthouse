@@ -26,3 +26,22 @@ func TryLock(path string) (*os.File, error) {
 	}
 	return f, nil
 }
+
+// Lock is TryLock that waits for the holder instead of failing with ErrHeld.
+func Lock(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("open lock file: %w", err)
+	}
+	for {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
+		if !errors.Is(err, syscall.EINTR) {
+			break
+		}
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("lock %s: %w", path, err)
+	}
+	return f, nil
+}

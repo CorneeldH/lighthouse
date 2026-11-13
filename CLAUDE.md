@@ -17,7 +17,7 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
 - `commit-test-gate.sh` — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. `pre` blocks
   `--no-verify` and tests a commit to `main` before it; `post` runs `[test_gate] command` on the
   files of the commit and reports red.
-- `bash-write-check.sh` — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. Runs the
+- `bash-write-check` (`run.sh bash-write-check`) — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. Runs the
   write checks on what a Bash call wrote.
 - `pr-create-gate.sh` — PreToolUse `Bash`. Blocks a `gh pr create` whose body lacks
   `Closes #N` with evidence, `Refs #N — <reason>` or `No issue: <reason>`.
