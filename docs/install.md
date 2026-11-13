@@ -173,11 +173,12 @@ both endpoints answer 502 (503 without repositories) instead of old data. The fi
 a start waits for the first build. So `serve` reads GitHub also when nobody looks: 30 builds an
 hour per set of repositories.
 
-A build costs, per repository, 1 call for the open issues (more when they span several pages of
-100), 1 GraphQL call for the board items (only with the Controller filter; more pages for a
-large board) and 1 call per Controller issue that has comments (more for over 100 comments). At
-30 builds an hour that must fit, together with the tick, in the 5000 requests an hour of one
-token. A repository without the Controller filter reads the comments of every open issue that
+A build costs, per repository, 1 REST call for the open issues (more when they span several pages
+of 100) and 1 REST call per Controller issue that has comments (more for over 100 comments). The
+board items (only with the Controller filter) are 1 GraphQL call, more for a large board, which
+counts against GitHub's separate GraphQL limit, not against the 5000 REST requests an hour. At 30
+builds an hour (the steady state; during an outage the 20 s retry can raise that to 180 an hour)
+the REST calls must fit, together with the tick, in the 5000 requests an hour of one token. A repository without the Controller filter reads the comments of every open issue that
 has comments, so it weighs most and reaches the budget first. That is a deliberately accepted
 risk, with no code to guard it; when the budget runs out both endpoints answer 502 through the
 existing `forgeError`.
