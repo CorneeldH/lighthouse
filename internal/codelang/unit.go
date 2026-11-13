@@ -121,19 +121,24 @@ func judge(s *Scorer, units []Unit) []Finding {
 // Scan judges the comments, prose and names of src; language is "python", "shell", "go" or
 // "markdown".
 func Scan(s *Scorer, language, src string) ([]Finding, error) {
+	units, err := scanUnits(language, src)
+	if err != nil {
+		return nil, err
+	}
+	return judge(s, units), nil
+}
+
+// scanUnits is every unit the scanner of language hands to the judge.
+func scanUnits(language, src string) ([]Unit, error) {
 	switch language {
 	case "shell":
-		return judge(s, scanShell(src)), nil
+		return scanShell(src), nil
 	case "go":
-		return judge(s, scanGo(src)), nil
+		return scanGo(src), nil
 	case "markdown":
-		return judge(s, scanMarkdown(src)), nil
+		return scanMarkdown(src), nil
 	case "python":
-		units, err := scanPython(src)
-		if err != nil {
-			return nil, err
-		}
-		return judge(s, units), nil
+		return scanPython(src)
 	}
 	return nil, fmt.Errorf("unknown language %q", language)
 }
