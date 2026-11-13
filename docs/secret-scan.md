@@ -142,7 +142,7 @@ mag pushen: er is een `.entire/settings*.json` gelezen, `enabled` is daarin niet
 
 Met `--report-rss` meldt `push` per batch `secret-scan: batch <i>/<n> peak RSS <m> MB` op stderr
 (`unknown` als de piek niet te meten is). De vlag is bedoeld voor de journal van de timer (zie
-*Host-deploy*); zonder vlag blijft die regel weg.
+[Host-deploy](#host-deploy)); zonder vlag blijft die regel weg.
 
 `push` stopt niet bij het findings-plafond: de blobs met een finding blijven uit de ledger, hun
 refs gaan naar `held.txt`, de melding staat bovenaan het overzicht, en de schone refs gaan uit de
@@ -165,6 +165,83 @@ meldingen van het findings-plafond, dan één blok per vuile ref: de ref, daarna
 - **Vals-positief:** zet een allowlist op de `match` in `.gitleaks.toml`, nooit op `paths`. De
   sleutel van de ledger verandert dan, dus de volgende run herscant alles; draai `push` opnieuw.
 - **Echt secret:** roteer het secret en drop de checkpoint.
+
+## Host-deploy
+
+De timer en de unit horen bij de host-deploy, net als die van de triage, en staan niet in de repo.
+Dit is het voorbeeld. De unit heeft twee repo-specifieke waarden, `WorkingDirectory` en de URL; de
+rest is per host gelijk.
+
+```ini
+# ~/.config/systemd/user/lighthouse-checkpoint-push.service
+[Unit]
+Description=Lighthouse: checkpoints gescand pushen
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/repositories/lighthouse
+EnvironmentFile=%h/.config/lighthouse/checkpoint-push.env
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=GIT_TERMINAL_PROMPT=0
+ExecStart=/usr/bin/python3 -I tools/hooks/checkpoint_scan.py push --report-rss https://github.com/CorneeldH/lighthouse-checkpoints.git
+TimeoutStartSec=30min
+```
+
+```ini
+# ~/.config/systemd/user/lighthouse-checkpoint-push.timer
+[Unit]
+Description=Lighthouse: checkpoints elk uur gescand pushen
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+- `--user`: de unit draait onder het account dat de checkout en het token heeft.
+- `WorkingDirectory`: de hoofdcheckout, op `main`. `push` draait het script en de pre-push-hook
+  van die checkout, zie [De eerste push: `push`](#de-eerste-push-push); een checkout op een
+  oudere branch draait oudere code.
+- `EnvironmentFile`: een bestand met `GH_TOKEN` (`chmod 600`). Maak een fine-grained token met
+  alleen *Contents: write* op `lighthouse-checkpoints`; lekt het, dan is de schade daartoe
+  beperkt. Niet de keyring: `gh` leest daar zijn token uit, en die is in een user-service zonder
+  ingelogde desktop op slot. `gh auth git-credential` geeft `GH_TOKEN` voorrang.
+- `Environment=PATH`: systemd geeft een user-unit een kaal `PATH`. `gitleaks` staat in
+  `~/.local/bin`; `git`, `systemctl`, `systemd-run` en `choom` in `/usr/bin`. Ontbreekt een van
+  die laatste drie, dan draait de scan zonder geheugenplafond (`no memory ceiling`).
+- `GIT_TERMINAL_PROMPT=0`: bij een ontbrekend token faalt `git push` met exitcode 2, in plaats
+  van op een prompt te wachten die niemand beantwoordt.
+- `ExecStart`: een absoluut pad naar `python3`, dus geen venv uit `PATH`, met `-I` zoals elders in
+  dit document; het script gebruikt alleen stdlib. `--report-rss` zet de piek-RSS per batch in de
+  journal.
+- Geen `SuccessExitStatus`: exitcode 1 (er zijn vuile refs vastgehouden) zet de unit op
+  `failed`, net als exitcode 2 (niets of niet alles gepusht). Een vastgehouden ref vraagt een
+  mens. `systemctl --user --failed` toont hem; `status=1/FAILURE` is vastgehouden,
+  `status=2` is dat de scan of de push niet kon. Zolang de ref niet is vrijgegeven (zie
+  [Een vuile checkpoint vrijgeven](#een-vuile-checkpoint-vrijgeven)) faalt elke run opnieuw,
+  dus het signaal dooft niet uit.
+- `TimeoutStartSec`: een eerste run zonder ledger scant alles. 30 minuten ligt ruim boven de
+  gemeten duur in [De begrensde volledige scan](#de-begrensde-volledige-scan).
+- `OnCalendar=hourly`, `Persistent=true`, `RandomizedDelaySec=5min`: de ledger maakt een run
+  zonder nieuwe blobs goedkoop, dus een uur is betaalbaar en begrenst hoe lang een checkpoint
+  alleen lokaal staat. `Persistent` haalt een gemiste run in na suspend; de vertraging spreidt
+  de run weg van het hele uur.
+
+Controleren:
+
+```
+systemctl --user enable --now lighthouse-checkpoint-push.timer
+systemctl --user start lighthouse-checkpoint-push.service   # een run nu
+journalctl --user -u lighthouse-checkpoint-push.service -n 50
+systemctl --user --failed
+```
+
+Start een handmatige run met `systemctl --user start`, niet met het script, zodat nooit twee
+pushes tegelijk lopen. Wil je een melding bij een mislukte run, hang dan een eigen unit aan
+`OnFailure=`; dat is host-keuze en niet nodig voor het signaal.
 
 ## De begrensde volledige scan
 
