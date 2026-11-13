@@ -32,6 +32,14 @@ Bugs and questions go in an issue; pull requests need a signed [CLA](CLA.md). Se
 [CONTRIBUTING.md](CONTRIBUTING.md). Report a vulnerability privately, as described in
 [SECURITY.md](SECURITY.md).
 
+## Third-party data
+
+The `lighthouse` binary embeds a word-frequency list derived from
+[wordfreq](https://github.com/rspeer/wordfreq) 3.1.1 by Robyn Speer, which is licensed under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). That licence covers this data
+only, not the rest of lighthouse. The attribution and the changes made to the data are in
+[NOTICE.txt](internal/codelang/data/NOTICE.txt).
+
 ## License
 
 [FSL-1.1-ALv2](LICENSE) — the Functional Source License with an Apache-2.0 future
