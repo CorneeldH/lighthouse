@@ -50,11 +50,12 @@ var runGateFunc = runGate
 // directory (ruff-format-check.sh looks for its .ruff-version from there) and with
 // LIGHTHOUSE_UNDER_BASH_WRITE_CHECK=1. The verdict is Classify's, "stopped" when a signal to this
 // process stopped the gate, or "missing" with a notice when the gate is not under repoRoot. A gate
-// that exists but cannot start is a panic, as in the Python: post turns it into COULD NOT CHECK.
-func runGate(repoRoot, root, rel, gate string, until time.Time) (string, []byte) {
+// that exists but cannot start (EACCES) is an error, as the exception in the Python: Post turns it
+// into `internal error in the dispatcher (<error>)`, COULD NOT CHECK.
+func runGate(repoRoot, root, rel, gate string, until time.Time) (string, []byte, error) {
 	path := GatePath(repoRoot, gate)
 	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
-		return verdictMissing, []byte("no " + GatePacks[gate] + " check installed")
+		return verdictMissing, []byte("no " + GatePacks[gate] + " check installed"), nil
 	}
 	argv := []string{path}
 	if extra, ok := GateArgv[gate]; ok {
@@ -73,12 +74,12 @@ func runGate(repoRoot, root, rel, gate string, until time.Time) (string, []byte)
 	})
 	var stopped *deadline.Interrupted
 	if errors.As(err, &stopped) {
-		return verdictStopped, stopped.Output
+		return verdictStopped, stopped.Output, nil
 	}
 	if err != nil {
-		panic(err)
+		return "", nil, err
 	}
-	return Classify(code, output), output
+	return Classify(code, output), output, nil
 }
 
 // printable is text with every byte that is not valid UTF-8 written as \xNN, the way Python
@@ -234,7 +235,10 @@ func dispatch(files []claimed, state, key, repoRoot string, until time.Time, o *
 			label = path
 		}
 		for _, gate := range Gates[splitExt(c.rel)] {
-			verdict, output := runGateFunc(repoRoot, c.view.root, c.rel, gate, until)
+			verdict, output, err := runGateFunc(repoRoot, c.view.root, c.rel, gate, until)
+			if err != nil {
+				return err
+			}
 			if verdict == verdictStopped {
 				if err := recordVerdict(state, key, c.view, c.rel, "unchecked", nil); err != nil {
 					return err

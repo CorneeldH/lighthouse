@@ -170,8 +170,11 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-func gateFake(f func(rel, gate string) (string, []byte)) func(string, string, string, string, time.Time) (string, []byte) {
-	return func(_, _, rel, gate string, _ time.Time) (string, []byte) { return f(rel, gate) }
+func gateFake(f func(rel, gate string) (string, []byte)) func(string, string, string, string, time.Time) (string, []byte, error) {
+	return func(_, _, rel, gate string, _ time.Time) (string, []byte, error) {
+		verdict, output := f(rel, gate)
+		return verdict, output, nil
+	}
 }
 
 // lateNow is a clock whose first call is now and every later call far past the deadline: only the
@@ -589,7 +592,10 @@ func TestRunShGateRunsThroughRunSh(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFile(t, filepath.Join(repo, "x.md"), "[x](weg.md)\n")
-	verdict, output := runGate(gates, repo, "x.md", "md-link-check", time.Now().Add(10*time.Second))
+	verdict, output, err := runGate(gates, repo, "x.md", "md-link-check", time.Now().Add(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
 	eq(t, "verdict", verdict, "finding")
 	eq(t, "output", string(output), "args: md-link-check\n")
 }
@@ -599,7 +605,10 @@ func TestRunGateFindsTheGateUnderTheRepoRoot(t *testing.T) {
 	writeFile(t, filepath.Join(gates, hookDir, "shell-lint-check.sh"), "#!/bin/sh\necho stub-ran\nexit 2\n")
 	repo := newRepo(t)
 	writeFile(t, filepath.Join(repo, "a.sh"), "echo a\n")
-	verdict, output := runGate(gates, repo, "a.sh", "shell-lint-check.sh", time.Now().Add(10*time.Second))
+	verdict, output, err := runGate(gates, repo, "a.sh", "shell-lint-check.sh", time.Now().Add(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
 	eq(t, "verdict", verdict, "finding")
 	eq(t, "output", string(output), "stub-ran\n")
 }
@@ -611,7 +620,10 @@ func TestMissingLanguagePackIsReportedNotBlocked(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	verdict, output := runGate(e.gates, e.repo, "a.py", "ruff-format-check.sh", time.Now().Add(10*time.Second))
+	verdict, output, err := runGate(e.gates, e.repo, "a.py", "ruff-format-check.sh", time.Now().Add(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
 	eq(t, "verdict", verdict, "missing")
 	eq(t, "output", string(output), "no python check installed")
 	e.dirtyCalls(t, "a.py", "b.sh")
@@ -744,7 +756,10 @@ func TestRunGateSetsUnderGatesEnv(t *testing.T) {
 	writeFile(t, filepath.Join(gates, hookDir, "code-language-check.sh"), "#!/bin/sh\necho \"$LIGHTHOUSE_UNDER_BASH_WRITE_CHECK\"\n")
 	repo := newRepo(t)
 	writeFile(t, filepath.Join(repo, "a.py"), "x = 1\n")
-	verdict, output := runGate(gates, repo, "a.py", "code-language-check.sh", time.Now().Add(10*time.Second))
+	verdict, output, err := runGate(gates, repo, "a.py", "code-language-check.sh", time.Now().Add(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
 	eq(t, "verdict", verdict, "ok")
 	eq(t, "output", string(output), "1\n")
 	if _, ok := os.LookupEnv(underGatesEnv); ok {
@@ -928,6 +943,21 @@ func TestPostTurnsAPanicIntoCouldNotCheck(t *testing.T) {
 	if _, ok := readMarker(stateOf(t, e.session), e.prefix+"0"); ok {
 		t.Fatal("the marker survived the panic")
 	}
+}
+
+func TestGateThatCannotStartIsAnErrorNotAPanic(t *testing.T) {
+	// A gate that exists but has no execute bit: the start error goes up as an error, like
+	// Python's `(PermissionError: …)`, not through the panic path.
+	e := utf8Env(t)
+	gate := GatePath(e.gates, "shell-lint-check.sh")
+	if err := os.Chmod(gate, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.dirtyCalls(t, "a.sh")
+	r := e.post(t, 0)
+	eq(t, "code", r.code, 2)
+	eq(t, "stderr", r.stderr, "bash-write-check: COULD NOT CHECK: internal error in the dispatcher (fork/exec "+gate+": permission denied)\n")
+	eq(t, "claims", len(e.ledgerRoot(t).claims), 0)
 }
 
 func TestOutcomeRender(t *testing.T) {

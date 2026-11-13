@@ -218,7 +218,7 @@ func Post(raw []byte, repoRoot string) (code int, output map[string]any, stderr 
 			}
 		}()
 		if err := post(payload, repoRoot, o); err != nil {
-			o.cannot(fmt.Sprintf("internal error in the dispatcher (error: %v)", err))
+			o.cannot(fmt.Sprintf("internal error in the dispatcher (%v)", err))
 		}
 	}()
 	return o.Render(event)
