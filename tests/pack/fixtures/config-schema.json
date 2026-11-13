@@ -5,6 +5,10 @@
    "str"
   ],
   [
+   "forge.token_env",
+   "str"
+  ],
+  [
    "paths.specs",
    "str"
   ],

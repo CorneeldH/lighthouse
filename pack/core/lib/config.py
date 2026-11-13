@@ -78,6 +78,7 @@ _BOOL = "bool"
 SCHEMA: Mapping[str, str] = MappingProxyType(
     {
         "forge.default_branch": _STR,
+        "forge.token_env": _STR,
         "paths.specs": _STR,
         "paths.plans": _STR,
         "paths.tenets": _STR,
