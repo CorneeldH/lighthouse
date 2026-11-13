@@ -17,20 +17,6 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/config"
 )
 
-// Chain is the [code_language_llm] table of the session's lighthouse.toml.
-//
-// Placeholder until layer 2 lands (Task 6 of #276), which moves Chain and ChainFrom to llm.go
-// and gives ChainFrom its checks.
-type Chain struct {
-	URL     string
-	Models  []string
-	KeyEnv  string
-	EnvFile string
-}
-
-// ChainFrom reads the chain from c; nil without a table. Placeholder, see Chain.
-func ChainFrom(c *config.Config) (*Chain, error) { return nil, nil }
-
 // Inspection is what Check found in one file: findings, doubts for a later layer, and the
 // chain of that layer (nil when the session has none).
 type Inspection struct {

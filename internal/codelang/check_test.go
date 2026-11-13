@@ -15,9 +15,6 @@ import (
 // minimalTOML is MINIMAL_TOML of tests/pack/_testkit.py.
 const minimalTOML = "[project]\nlanguage = \"en\"\n\n[forge]\nkind = \"github\"\nrepo = \"Acme/widgets\"\n"
 
-// chainPending are the check.json cases that need ChainFrom to refuse a bad table (Task 6).
-var chainPending = map[string]bool{"bad_chain_with_doubt": true, "bad_chain_clean_file": true}
-
 // row is one [line, kind, text] of check.json.
 type row struct {
 	Line int
@@ -87,9 +84,6 @@ func TestCheckFixture(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
-			if chainPending[c.Name] {
-				t.Skip("needs ChainFrom to refuse the table (Task 6)")
-			}
 			tmp := t.TempDir()
 			root := filepath.Join(tmp, "repo")
 			on := "code_language = \"en\"\n"
@@ -152,6 +146,21 @@ func TestCheckOffWithoutTOML(t *testing.T) {
 	}
 	if len(got.Findings) != 0 || len(got.Doubts) != 0 {
 		t.Errorf("got %+v, want nothing", got)
+	}
+}
+
+func TestBadChainNamesTheMissingEnvFile(t *testing.T) {
+	root := repoWith(t, "")
+	path := filepath.Join(root, "a.py")
+	writeFile(t, path, []byte("x = 1\n"))
+	session := filepath.Join(t.TempDir(), "session", "lighthouse.toml")
+	writeFile(t, session, []byte(minimalTOML+"\n[code_language_llm]\nurl = \"http://h/v1\"\nmodels = [\"m1\"]\n"+
+		"env_file = \"/nonexistent/lighthouse-test.env\"\n"))
+	_, err := Check(DefaultScorer, path, root, session)
+	var cc *CannotCheckError
+	want := "code_language_llm.env_file does not exist: /nonexistent/lighthouse-test.env"
+	if !errors.As(err, &cc) || cc.Reason != want {
+		t.Fatalf("err = %v, want CannotCheckError %q", err, want)
 	}
 }
 
