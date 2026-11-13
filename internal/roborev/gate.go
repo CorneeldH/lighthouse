@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"path/filepath"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
@@ -19,14 +20,17 @@ type Budget func() (code int, stdout string)
 
 // DefaultBudget asks usage.ReadBudget in-process. A panic is an unreadable budget, as a
 // crashing subprocess was.
-func DefaultBudget() Budget {
+func DefaultBudget() Budget { return budgetFrom(usage.ReadCodexStrict) }
+
+// budgetFrom is DefaultBudget with the Codex reading as a parameter.
+func budgetFrom(read func(context.Context, time.Duration) (usage.CodexState, error)) Budget {
 	return func() (code int, stdout string) {
 		defer func() {
 			if recover() != nil {
 				code, stdout = 1, ""
 			}
 		}()
-		outcome, code, _ := usage.ReadBudget(context.Background(), usage.ReadCodexStrict)
+		outcome, code, _ := usage.ReadBudget(context.Background(), read)
 		var buf bytes.Buffer
 		enc := json.NewEncoder(&buf)
 		enc.SetEscapeHTML(false)

@@ -547,8 +547,8 @@ func (r *gateRun) cli(step map[string]any) {
 
 func TestRoborevGateFixtures(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(gateCaseDir, "*.json"))
-	if err != nil || len(files) < 57 {
-		t.Fatalf("fixtures: %d files, %v; want at least 57", len(files), err)
+	if err != nil || len(files) != 76 {
+		t.Fatalf("fixtures: %d files, %v; want 76", len(files), err)
 	}
 	for _, file := range files {
 		name := strings.TrimSuffix(filepath.Base(file), ".json")
@@ -613,5 +613,31 @@ func TestRoborevGateStdoutIsOneOrderedLine(t *testing.T) {
 	want := `{"verdict": "skip", "reason": "geen .roborev.toml", "state": "` + r.stateDir() + `/feat.json", "raw": "` + r.stateDir() + `/feat.md"}` + "\n"
 	if out.String() != want {
 		t.Errorf("stdout = %q, want %q", out.String(), want)
+	}
+}
+
+// The production budget route, without the Budget seam: the fake codex exits at once, so the
+// strict Codex read fails and the gate skips as not measurable.
+func TestRoborevGateProductionBudgetNotMeasurable(t *testing.T) {
+	r := newGateRun(t, gateCase{})
+	t.Setenv("HOME", filepath.Join(r.tmp, "home"))
+	t.Setenv("CODEX_HOME", filepath.Join(r.tmp, "codex-home"))
+	t.Chdir(r.repo)
+	var out, errOut bytes.Buffer
+	cmd := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.AddCommand(newRoborevGateCommand(roborev.DefaultBudget()))
+	cmd.SetArgs([]string{"roborev-gate", "gate"})
+	if code := execute(cmd, &errOut); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("stdout %q: %v", out.String(), err)
+	}
+	reason, _ := got["reason"].(string)
+	if got["verdict"] != "skip" || !strings.HasPrefix(reason, "Codex-budget: not_measurable - not measurable") {
+		t.Errorf("gate = %#v, want a not_measurable skip", got)
 	}
 }
