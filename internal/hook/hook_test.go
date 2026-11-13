@@ -311,3 +311,37 @@ func TestNoNoticeWithoutStateDir(t *testing.T) {
 		t.Errorf("stdout %q, want none", out)
 	}
 }
+
+// A hook with plain text writes it to stdout as it is, not as JSON.
+func TestRunWritesText(t *testing.T) {
+	register(t, "text", func(context.Context, string, string, Payload) Result {
+		return Result{Text: "code-language-check: NOTICE — x\n"}
+	})
+	code, out, errOut := call(t, "text", "s1", newEnv(t, "dev", "dev"))
+	if code != 0 || out != "code-language-check: NOTICE — x\n" || errOut != "" {
+		t.Errorf("code %d out %q err %q", code, out, errOut)
+	}
+}
+
+// Under bash-write-check the outer hook owns the notices: a nested call adds none and spends
+// no marker, so the outer call still shows it.
+func TestRunNestedSkipsNotices(t *testing.T) {
+	register(t, "text", func(context.Context, string, string, Payload) Result {
+		return Result{Text: "plain\n"}
+	})
+	env := newEnv(t, "v0.12.1", "v0.13.0")
+	writeSource(t, env.Root)
+	writeBuildFailed(t, env.Root)
+	env.Nested = true
+	code, out, errOut := call(t, "text", "s1", env)
+	if code != 0 || out != "plain\n" || errOut != "" {
+		t.Errorf("nested: code %d out %q err %q, want 0 %q", code, out, errOut, "plain\n")
+	}
+	if entries, err := os.ReadDir(env.StateDir); err != nil || len(entries) != 0 {
+		t.Errorf("state dir after a nested call: %v, %v; want empty", entries, err)
+	}
+	env.Nested = false
+	if _, out, _ := call(t, "text", "s1", env); message(t, out) != versionNotice+"\n"+buildNotice {
+		t.Errorf("outer call after nested: stdout %q, want both notices", out)
+	}
+}

@@ -25,7 +25,7 @@ import (
 var items = [][2]string{{"name", "werkboom"}}
 
 // fakeLLM is tests/pack/_fake_llm.py: an OpenAI-compatible /v1/chat/completions. Mode per
-// model: answer (verdict for each numbered item), silent (never replies), drip (headers, then
+// model: answer (NOT-EN for each numbered item), en (EN for each), silent (never replies), drip (headers, then
 // one byte per 0.5 s), http500, garbage (a reply that is no JSON). It checks the parts of the
 // request that belong to the contract.
 type fakeLLM struct {
@@ -108,9 +108,13 @@ func newFakeLLM(t *testing.T, modes map[string]string, fallback string) *fakeLLM
 			messages, _ := body["messages"].([]any)
 			first, _ := messages[0].(map[string]any)
 			prompt, _ := first["content"].(string)
+			verdict := "NOT-EN"
+			if mode == "en" {
+				verdict = "EN"
+			}
 			answer := map[string]string{}
 			for i := range itemLine.FindAllStringIndex(prompt, -1) {
-				answer[fmt.Sprint(i+1)] = "NOT-EN"
+				answer[fmt.Sprint(i+1)] = verdict
 			}
 			content, _ := json.Marshal(answer)
 			reply, _ := json.Marshal(map[string]any{
