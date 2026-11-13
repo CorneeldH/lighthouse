@@ -4,6 +4,7 @@ The endpoint is a local fake server (`_fake_llm`); the key, the marker file and 
 are real.
 """
 
+import json
 import time
 from pathlib import Path
 
@@ -58,18 +59,22 @@ def test_chain_from(tmp_path, monkeypatch):
     assert bare.key_env is None and bare.env_file is None
 
 
-def test_prompt_and_parse():
-    prompt = llm.build_prompt([("name", "a"), ("comment", "x\ny")])
-    assert "1. name: a" in prompt
-    assert "2. comment: x y" in prompt
-    assert "abbreviations and code jargon" in prompt.lower()
-    assert "NOT-EN" in prompt and "JSON" in prompt
-    assert llm.parse_answer('{"1":"EN","2":"NOT-EN"}', 2) == [False, True]
-    assert llm.parse_answer('```json\n{"1":"EN","2":"NOT-EN"}\n```', 2) == [False, True]
-    assert llm.parse_answer('Sure! {"1": "EN", "2": "NOT-EN"} Done.', 2) == [False, True]
-    for bad in ('{"1":"EN"}', '{"1":"maybe","2":"EN"}', "nee"):
+FIXTURES = Path(__file__).resolve().parents[2] / "tests" / "pack" / "fixtures" / "code_language"
+LLM = json.loads((FIXTURES / "llm.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("case", LLM["prompt"], ids=lambda case: str(case["items"]))
+def test_prompt(case):
+    assert llm.build_prompt([tuple(item) for item in case["items"]]) == case["want"]
+
+
+@pytest.mark.parametrize("case", LLM["parse"], ids=lambda case: repr(case["content"]))
+def test_parse(case):
+    if case["want"] is None:
         with pytest.raises(ValueError):
-            llm.parse_answer(bad, 2)
+            llm.parse_answer(case["content"], case["n"])
+    else:
+        assert llm.parse_answer(case["content"], case["n"]) == case["want"]
 
 
 def test_answer_used(tmp_path):
