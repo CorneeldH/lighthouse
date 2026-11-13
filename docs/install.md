@@ -222,7 +222,8 @@ Without a tick both lists are empty. Next to `runs` and `deferred` the body carr
 of host.toml: `workspace_url`, the kenn-forge address a browser opens, without a trailing slash.
 It is `[dispatch.forge] web_url`, else `[dispatch.forge] url` (`http://127.0.0.1:8091` without a
 host.toml). Set `web_url` to the tailscale serve address when you open the page from another
-machine; lighthouse itself keeps talking to the forge API on `url`. The other setting is `night`,
+machine; lighthouse itself keeps talking to the forge API on `url`. The page links the workspace id in
+a run row and in *Workspaces to clean up* to `<workspace_url>/workspaces/<id>`, in a new tab. The other setting is `night`,
 the night window from `[dispatch] night` as `HH:MM-HH:MM`. A `500` means the database could not be read.
 
 ## Run the tick
