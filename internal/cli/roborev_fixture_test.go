@@ -18,7 +18,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/roborev"
 )
 
-// The cases shared with tests/pack/test_roborev_gate.py: one JSON file per case in
+// The roborev-gate cases: one JSON file per case in
 // tests/pack/fixtures/roborev_gate/. A case builds a repo on branch `feat` with 100 added code
 // lines on top of origin/main and fake roborev/codex binaries on PATH, then runs its steps.
 const (
