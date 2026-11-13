@@ -125,6 +125,9 @@ describe('ReturnedList', () => {
     expect(screen.getByRole('link', { name: 'o/a#3' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=3')
     expect(screen.getByText('unclear AC')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'Back' }).getAttribute('target')).toBe('_blank')
+    const pill = within(screen.getByRole('region', { name: 'Returned' })).getByText('1')
+    expect(pill.textContent).toBe('1 item')
+    expect(pill.getAttribute('title')).toBe('1 item')
   })
 
   it('shows the empty text', async () => {
