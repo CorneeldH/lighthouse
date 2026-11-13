@@ -290,21 +290,39 @@ func isStringPrefix(word string) bool {
 	return false
 }
 
-// number reads a number literal loosely: digits, letters, "_", "." and an exponent sign.
+// number reads a number literal. Like CPython's tokenizer it stops before letters that are
+// no part of it, so "1for" is a number and the keyword "for".
 func (l *pyLexer) number() {
 	start := l.pos
-	based := len(l.src) > l.pos+1 && l.src[l.pos] == '0' && strings.ContainsRune("xXoObB", rune(l.src[l.pos+1]))
-	for l.pos < len(l.src) {
-		c := l.src[l.pos]
-		switch {
-		case c >= '0' && c <= '9', c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c == '_', c == '.':
+	digits := func(set string) {
+		for l.pos < len(l.src) && strings.IndexByte(set, l.src[l.pos]) >= 0 {
 			l.pos++
-		case (c == '+' || c == '-') && !based && (l.src[l.pos-1] == 'e' || l.src[l.pos-1] == 'E'):
-			l.pos++
-		default:
-			l.emit(pyNumber, l.src[start:l.pos], l.line)
-			return
 		}
+	}
+	const decimal = "0123456789_"
+	if rest := l.src[l.pos:]; len(rest) > 1 && rest[0] == '0' && strings.IndexByte("xXoObB", rest[1]) >= 0 {
+		l.pos += 2
+		digits(decimal + "abcdefABCDEF") // the hex set; the octal and binary digits are in it
+		l.emit(pyNumber, l.src[start:l.pos], l.line)
+		return
+	}
+	digits(decimal)
+	if l.pos < len(l.src) && l.src[l.pos] == '.' {
+		l.pos++
+		digits(decimal)
+	}
+	if rest := l.src[l.pos:]; len(rest) > 1 && (rest[0] == 'e' || rest[0] == 'E') {
+		exponent := rest[1:]
+		if exponent[0] == '+' || exponent[0] == '-' {
+			exponent = exponent[1:]
+		}
+		if exponent != "" && exponent[0] >= '0' && exponent[0] <= '9' {
+			l.pos += len(rest) - len(exponent)
+			digits(decimal)
+		}
+	}
+	if l.pos < len(l.src) && (l.src[l.pos] == 'j' || l.src[l.pos] == 'J') {
+		l.pos++
 	}
 	l.emit(pyNumber, l.src[start:l.pos], l.line)
 }
@@ -424,9 +442,11 @@ func unterminated(quote, what string, line int) error {
 // replacement field or the end of the string or spec.
 func (l *pyLexer) fstringText() error {
 	top := len(l.frames) - 1
+	// a spec sits above its field, which may sit in another spec: the quote and the r prefix
+	// are those of the nearest f-string below
 	literal := l.frames[top]
-	if literal.kind == fSpec {
-		literal = l.frames[top-2] // spec above its field above the f-string
+	for i := top; literal.kind != fLiteral; i-- {
+		literal = l.frames[i-1]
 	}
 	for {
 		if l.pos >= len(l.src) {

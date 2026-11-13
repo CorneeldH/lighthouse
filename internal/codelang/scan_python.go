@@ -47,6 +47,11 @@ type lineToken struct {
 // placedName is a name with the estimated AST depth of the node that stores it, relative to
 // its statement, and the index of its token. ast.walk visits a line by depth, so the names of
 // one line are ordered by (level, pos).
+//
+// The levels (here, in bracketWeight, targets, header, statement and expressions) only
+// approximate the breadth-first order of ast.walk: operators add AST levels that no token
+// shows. Any change to them needs the differential against code_language.py run again, on
+// the repository's Python files at least.
 type placedName struct {
 	numbered
 	level, pos int
@@ -223,8 +228,16 @@ func compoundKeyword(line []lineToken) string {
 		if colon < 0 {
 			return ""
 		}
-		for _, t := range line[:colon] {
+		// a match body never shares its line, so "match(x).y: int = 3" is an annotation
+		if first.text == "match" && colon != len(line)-1 {
+			return ""
+		}
+		for i, t := range line[:colon] {
 			if t.depth == 0 && (isOp(t, "=") || t.kind == pyOp && pyAugOps[t.text]) {
+				return ""
+			}
+			// no pattern has an attribute after a call or subscript: "case(x).y" is a target
+			if first.text == "case" && t.depth == 0 && isOp(t, ".") && isOp(line[i-1], ")", "]") {
 				return ""
 			}
 		}

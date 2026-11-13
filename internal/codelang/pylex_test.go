@@ -164,6 +164,26 @@ func TestScanPythonUnits(t *testing.T) {
 			[]string{"1 name s", "2 comment \"lees het bestand\" body \"lees het bestand\""},
 		},
 		{
+			"a format spec nested in a format spec",
+			"x = f\"{v:{w:>3}}\"\n",
+			[]string{"1 name x"},
+		},
+		{
+			"an f-string with nested specs inside the field of another",
+			"x = f\"{f'{v:{w:>{(c := 1)}}}':{u:{t}}}\"\n",
+			[]string{"1 name x", "1 name c"},
+		},
+		{
+			"match and case as names of an annotated attribute",
+			"match(x).y: int = 3\ncase(x).y: int = 3\nmatch x:\n    case (a): b = 1\n",
+			[]string{"1 name y", "2 name y", "4 name b"},
+		},
+		{
+			"a number ends before a keyword",
+			"v = [1for y in z] + [0x1for w in q] + [1if k else 2]\nn = 1.5e-3j + 1_0.0_1 + 0b1_0 + 0o7 + .5 + 1.e5\n",
+			[]string{"1 name v", "1 name y", "2 name n"},
+		},
+		{
 			"continuation lines",
 			"x = 1 + \\\n    2\ny = (1,\n     2)\n",
 			[]string{"1 name x", "3 name y"},
