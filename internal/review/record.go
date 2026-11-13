@@ -74,7 +74,7 @@ func DefaultDeps() Deps {
 	return Deps{HostRefusal: HostRefusal, CodexVersion: CodexVersion, Now: time.Now}
 }
 
-// HostRefusal is nil on the host whose host.tailscale_ip is on this machine (host.toml), otherwise the stderr line that refuses the
+// HostRefusal is nil on the controller host: host.controller is true, or without it host.tailscale_ip is on this machine (host.toml), otherwise the stderr line that refuses the
 // measurement.
 func HostRefusal(kind string) *string { return hostRefusalWith(kind, config.Recognize) }
 

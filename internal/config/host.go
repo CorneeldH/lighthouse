@@ -20,7 +20,8 @@ import (
 // Host is a validated host.toml.
 type Host struct {
 	Name        string
-	TailscaleIP *string // nil without tailscale_ip: the host is not the always-on host
+	TailscaleIP *string // nil without tailscale_ip: with no host.controller either, the host is not the controller host
+	Controller  *bool   // host.controller: nil when absent; then tailscale_ip decides
 
 	GateSlice             *string
 	ScanMemoryMax         *string
@@ -34,6 +35,7 @@ type Host struct {
 var hostKeys = []string{
 	"host.name",
 	"host.tailscale_ip",
+	"host.controller",
 	"host.gate_slice",
 	"host.scan_memory_max",
 	"host.scan_cpu_quota",
@@ -92,6 +94,14 @@ func LoadHost(path string) (*Host, error) {
 			return nil, errf("%s: key host.tailscale_ip must be an IPv4 address: %s", p, pyRepr(rawIP))
 		}
 		h.TailscaleIP = &ip
+	}
+
+	if v, ok := host["controller"]; ok {
+		b, isBool := v.(bool)
+		if !isBool {
+			return nil, errf("%s: key host.controller must be true or false: %s", p, pyRepr(v))
+		}
+		h.Controller = &b
 	}
 
 	if v, ok := host["gate_slice"]; ok {
@@ -182,10 +192,27 @@ func IsLocal(ip string) (bool, error) {
 	return true, nil
 }
 
-// Recognize reports whether this machine is the host that host.toml names: true only when
-// host.toml has a tailscale_ip and that address is on this machine. A host.toml without
-// tailscale_ip is another host (false, nil, and the address is not asked for). An error when
-// host.toml is missing or broken, or the address is not measurable.
+// isLocal is the seam for tests: a loopback address is forbidden in host.toml, so no real
+// local address can be used.
+var isLocal = IsLocal
+
+// isController reports whether this host is the controller host: host.controller when set
+// (the address is not asked for), otherwise true only when tailscale_ip is on this machine.
+func (h *Host) isController() (bool, error) {
+	if h.Controller != nil {
+		return *h.Controller, nil
+	}
+	if h.TailscaleIP == nil {
+		return false, nil
+	}
+	return isLocal(*h.TailscaleIP)
+}
+
+// Recognize reports whether this machine is the controller host that host.toml names:
+// host.controller when set, otherwise true only when host.toml has a tailscale_ip and that
+// address is on this machine. A host.toml with neither is another host (false, nil, and the
+// address is not asked for). An error when host.toml is missing or broken, or the address is
+// not measurable.
 func Recognize() (bool, error) {
 	path, err := hostPath()
 	if err != nil {
@@ -195,10 +222,7 @@ func Recognize() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if host.TailscaleIP == nil {
-		return false, nil
-	}
-	return IsLocal(*host.TailscaleIP)
+	return host.isController()
 }
 
 // HostValue is the text of one `host.<key>`, or an error wrapping ErrNotSet.
@@ -224,6 +248,11 @@ func HostValue(key string) (string, error) {
 		return h.Name, nil
 	case "host.tailscale_ip":
 		return optString(key, h.TailscaleIP)
+	case "host.controller":
+		if h.Controller == nil {
+			return "", notSet(key)
+		}
+		return strconv.FormatBool(*h.Controller), nil
 	case "host.gate_slice":
 		return optString(key, h.GateSlice)
 	case "host.scan_memory_max":
@@ -261,31 +290,35 @@ func optFloat(key string, f *float64) (string, error) {
 	return FormatFloat(*f), nil
 }
 
-// HostCheck reports whether this machine is the host that host.toml names: rc 0 and
-// "host: <name>" on out, rc 1 when host.toml has no tailscale_ip or the address is not on
-// this machine, rc 2 on an error.
+// HostCheck reports whether this machine is the controller host that host.toml names: rc 0
+// and "host: <name>" on out; rc 1 when host.controller is false, or when it is absent and
+// host.toml has no tailscale_ip or the address is not on this machine; rc 2 on an error.
 func HostCheck(out, errOut io.Writer) int {
 	path, err := hostPath()
 	var host *Host
-	local := false
+	is := false
 	if err == nil {
 		host, err = LoadHost(path)
 	}
-	if err == nil && host.TailscaleIP == nil {
-		_, _ = fmt.Fprintf(errOut, "config: host %s (%s) has no tailscale_ip, so it is not the always-on host\n",
-			host.Name, pyPath(path))
-		return 1
-	}
 	if err == nil {
-		local, err = IsLocal(*host.TailscaleIP)
+		is, err = host.isController()
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "config: %v\n", err)
 		return 2
 	}
-	if !local {
-		_, _ = fmt.Fprintf(errOut, "config: host %s (%s) has tailscale_ip %s, but that address is not on this machine\n",
-			host.Name, pyPath(path), *host.TailscaleIP)
+	if !is {
+		switch {
+		case host.Controller != nil:
+			_, _ = fmt.Fprintf(errOut, "config: host %s (%s) has host.controller = false, so it is not the controller host\n",
+				host.Name, pyPath(path))
+		case host.TailscaleIP == nil:
+			_, _ = fmt.Fprintf(errOut, "config: host %s (%s) has no tailscale_ip, so it is not the always-on host\n",
+				host.Name, pyPath(path))
+		default:
+			_, _ = fmt.Fprintf(errOut, "config: host %s (%s) has tailscale_ip %s, but that address is not on this machine\n",
+				host.Name, pyPath(path), *host.TailscaleIP)
+		}
 		return 1
 	}
 	_, _ = fmt.Fprintf(out, "host: %s\n", host.Name)

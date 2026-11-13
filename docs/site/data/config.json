@@ -961,7 +961,7 @@
         {
           "table": "host",
           "title": "Host",
-          "about": "Who this machine is. lighthouse init writes name and tailscale_ip on a machine with Tailscale; without Tailscale, write it by hand only for the gate_* keys or [usage].",
+          "about": "Who this machine is. lighthouse init writes name and tailscale_ip on a machine with Tailscale; without Tailscale, write it by hand for host.controller, the gate_* keys or [usage].",
           "keys": [
             {
               "key": "host.name",
@@ -972,10 +972,21 @@
               "readers": []
             },
             {
+              "key": "host.controller",
+              "level": "set",
+              "required": "no",
+              "about": "true: this machine is the controller host, the address is not measured; false: it is not. Without it, host-check uses tailscale_ip. An older reader ignores it.",
+              "example": true,
+              "readers": [
+                "internal/review/record.go",
+                "pack/core/skills/write-handoff"
+              ]
+            },
+            {
               "key": "host.tailscale_ip",
               "level": "set",
               "required": "no",
-              "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it, host-check reports another host.",
+              "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it and without host.controller, host-check reports another host.",
               "example": "100.64.0.1",
               "readers": [
                 "internal/review/record.go"
