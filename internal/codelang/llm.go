@@ -63,8 +63,9 @@ func ChainFrom(c *config.Config) (*Chain, error) {
 	if _, ok := c.Raw["code_language_llm"]; !ok {
 		return nil, nil
 	}
+	// Full key names, so each key this reads is spelled out here.
 	get := func(key string) any {
-		v, err := config.Lookup(c, "code_language_llm."+key)
+		v, err := config.Lookup(c, key)
 		if err != nil {
 			return nil
 		}
@@ -74,12 +75,14 @@ func ChainFrom(c *config.Config) (*Chain, error) {
 		s, _ := get(key).(string)
 		return s
 	}
-	address, keyEnv, envFile := text("url"), text("key_env"), text("env_file")
+	address := text("code_language_llm.url")
+	keyEnv := text("code_language_llm.key_env")
+	envFile := text("code_language_llm.env_file")
 	if address == "" {
 		return nil, &config.Error{Msg: "key code_language_llm.url is missing"}
 	}
 	var models []string
-	if list, ok := get("models").([]any); ok {
+	if list, ok := get("code_language_llm.models").([]any); ok {
 		for _, m := range list {
 			if s, ok := m.(string); ok {
 				models = append(models, s)
