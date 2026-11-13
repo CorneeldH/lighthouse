@@ -6,8 +6,10 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -166,6 +168,9 @@ func Load(dir string) (Repo, error) {
 		},
 	}
 	// [controller.triage] alone makes an implicit [controller] table, of type "" and not "Hash".
+	if c := raw.Controller; c != nil && len(c.Locations) > 0 && md.Type("controller") != "Hash" {
+		return Repo{}, errors.New("controller.locations: [controller] table required")
+	}
 	if c := raw.Controller; c != nil && md.Type("controller") == "Hash" {
 		r.Controller = &Controller{
 			Profile:      c.Profile,
@@ -174,8 +179,8 @@ func Load(dir string) (Repo, error) {
 			AtRoundLimit: c.AtRoundLimit,
 			Locations:    c.Locations,
 		}
-		for value, profile := range c.Locations {
-			if profile == "" {
+		for _, value := range slices.Sorted(maps.Keys(c.Locations)) {
+			if c.Locations[value] == "" {
 				return Repo{}, fmt.Errorf("controller.locations.%s: empty profile name", value)
 			}
 		}

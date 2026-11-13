@@ -413,8 +413,14 @@ func TestControllerLocations(t *testing.T) {
 	})
 	t.Run("empty profile", func(t *testing.T) {
 		_, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n[controller.locations]\nmac = \"\"\n"))
-		if err == nil || !strings.Contains(err.Error(), "controller.locations.mac") {
-			t.Errorf("err = %v, want one naming controller.locations.mac", err)
+		if err == nil || !strings.Contains(err.Error(), "controller.locations.mac") || !strings.Contains(err.Error(), "empty") {
+			t.Errorf("err = %v, want one naming controller.locations.mac and empty", err)
+		}
+	})
+	t.Run("without controller table", func(t *testing.T) {
+		_, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller.locations]\nmac = \"mac\"\n"))
+		if err == nil || !strings.Contains(err.Error(), "[controller] table required") {
+			t.Errorf("err = %v, want [controller] table required", err)
 		}
 	})
 }
