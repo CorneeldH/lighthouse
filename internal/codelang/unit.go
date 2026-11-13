@@ -129,7 +129,11 @@ func Scan(s *Scorer, language, src string) ([]Finding, error) {
 	case "markdown":
 		return judge(s, scanMarkdown(src)), nil
 	case "python":
-		return nil, fmt.Errorf("python scanner not yet implemented")
+		units, err := scanPython(src)
+		if err != nil {
+			return nil, err
+		}
+		return judge(s, units), nil
 	}
 	return nil, fmt.Errorf("unknown language %q", language)
 }

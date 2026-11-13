@@ -45,9 +45,6 @@ func TestScanFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range cases {
-		if c.Language == "python" {
-			continue // the Python scanner arrives in a later task
-		}
 		t.Run(c.Language+"/"+c.Name, func(t *testing.T) {
 			found, err := Scan(scorer, c.Language, c.Source)
 			if c.CannotCheck {
