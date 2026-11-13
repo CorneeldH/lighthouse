@@ -171,7 +171,8 @@ tick starts the next phase itself. Two entries:
    spec (pause, context full) falls under `no`. If the user gave an opt-out in this conversation before the
    commit ("interactive", "review myself"), it is `no`: only the plain block, no post,
    no Status change. It also holds only on the always-on host (`host.toml`)
-   (`lighthouse config host-check`, exit 0). Elsewhere: the plain block plus one
+   (`lighthouse config host-check`, exit 0: `host.controller = true`, or without that key a
+   `tailscale_ip` bound on this machine). Elsewhere: the plain block plus one
    line why: the worktree does not exist there for the controller, and the controller would
    return the issue. Back after the commit: the user moves the Status off `Controller`. That
    only stops the next phase; a running run finishes its phase

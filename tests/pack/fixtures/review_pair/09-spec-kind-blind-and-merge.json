@@ -1,0 +1,90 @@
+{
+  "description": "Spec kind: section column from spec_section, no cat column value; merge works.",
+  "kind": "spec",
+  "coin": true,
+  "tree": {
+    "head": "abc123",
+    "clean": true
+  },
+  "attempt": {
+    "round-1.codex.json": {
+      "review_markdown": "# review c",
+      "status": "Majors only",
+      "findings": [
+        {
+          "severity": "MAJOR",
+          "spec_section": "Sectie 2",
+          "problem": "spec x",
+          "evidence": "docs/x.md:3 spec x",
+          "failure_scenario": "faalt omdat spec x",
+          "proposed_fix": "los spec x op"
+        }
+      ],
+      "top3": [
+        "top c"
+      ],
+      "verdict": "verdict c",
+      "could_not_verify": [
+        "gedeeld",
+        "alleen c"
+      ]
+    },
+    "round-1.fallback.json": {
+      "review_markdown": "# review f",
+      "status": "Majors only",
+      "findings": [
+        {
+          "severity": "MINOR",
+          "spec_section": "Sectie 2",
+          "problem": "spec y",
+          "evidence": "docs/x.md:3 spec y",
+          "failure_scenario": "faalt omdat spec y",
+          "proposed_fix": "los spec y op"
+        }
+      ],
+      "top3": [
+        "top f"
+      ],
+      "verdict": "verdict f",
+      "could_not_verify": [
+        "gedeeld",
+        "alleen f"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "cmd": "blind",
+      "exit": 0,
+      "cell_of": {
+        "A-f1": [
+          3,
+          "-"
+        ]
+      }
+    },
+    {
+      "cmd": "merge",
+      "write": {
+        "round-1.blind-decisions.json": [
+          {
+            "finding_id": "A-f1",
+            "decision": "defer",
+            "reason": "reden A-f1"
+          },
+          {
+            "finding_id": "B-f1",
+            "decision": "minor_yes",
+            "reason": "reden B-f1"
+          }
+        ]
+      },
+      "exit": 0,
+      "present": [
+        "round-1.json",
+        "round-1.decisions.json",
+        "round-1.sources.json"
+      ]
+    }
+  ]
+}

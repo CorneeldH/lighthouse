@@ -1,0 +1,4 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "pak 621 op"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-start-issue"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "text", "text": "Poort 4b: writing-plans\nScout: issue-impact-scout"}, {"type": "tool_use", "name": "Agent", "input": {"subagent_type": "lighthouse-issue-impact-scout", "prompt": "..."}, "id": "s1"}]}, "timestamp": "2026-09-11T10:00:00Z"}
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "tool_result", "tool_use_id": "s1"}]}, "timestamp": "2026-09-11T10:01:30Z", "toolUseResult": {"agentType": "lighthouse-issue-impact-scout", "totalToolUseCount": 35}}

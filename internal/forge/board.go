@@ -20,11 +20,19 @@ type PR struct {
 	Checks    string `json:"checks"` // statusCheckRollup.state, "" without checks
 	Closes    bool   `json:"closes"` // in closedByPullRequestsReferences
 	URL       string `json:"url"`
+	// Roborev is "" without a roborev review, RoborevProcessed or RoborevOpen.
+	Roborev string `json:"roborev,omitempty"`
 	// MergedAt is the zero time for a PR that is not merged.
 	MergedAt time.Time `json:"merged_at"`
 	// ClosedAt is the zero time for an open PR; a merged PR has one too.
 	ClosedAt time.Time `json:"closed_at"`
 }
+
+// Roborev states of a PR.
+const (
+	RoborevProcessed = "processed"
+	RoborevOpen      = "open"
+)
 
 // Blocker is an issue that blocks a board item.
 type Blocker struct {

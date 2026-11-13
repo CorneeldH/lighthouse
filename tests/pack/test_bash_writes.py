@@ -40,8 +40,9 @@ def gate_root(tmp_path, monkeypatch):
     hooks = root / ".claude" / "hooks" / "lighthouse"
     hooks.mkdir(parents=True)
     for gate in {g for gates in bw.GATES.values() for g in gates}:
-        (hooks / gate).write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-        (hooks / gate).chmod(0o755)
+        path = bw.gate_path(str(root), gate)
+        path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        path.chmod(0o755)
     monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(root))
     return root
 
@@ -54,8 +55,8 @@ def test_gates_maps_known_extensions():
     assert bw.GATES[".bash"] == ("shell-lint-check.sh", "code-language-check.sh")
     assert bw.GATES[".py"] == ("ruff-format-check.sh", "code-language-check.sh")
     assert bw.GATES[".go"] == ("gofmt-check.sh", "code-language-check.sh")
-    assert bw.GATES[".md"] == ("md-link-check.sh",)
-    assert bw.GATES[".markdown"] == ("md-link-check.sh",)
+    assert bw.GATES[".md"] == ("md-link-check",)
+    assert bw.GATES[".markdown"] == ("md-link-check",)
 
 
 def test_rewriting_gate_runs_before_code_language():
@@ -1323,7 +1324,7 @@ def test_gate_packs_name_every_gate():
         "shell-lint-check.sh": "shell",
         "ruff-format-check.sh": "python",
         "gofmt-check.sh": "go",
-        "md-link-check.sh": "core",
+        "md-link-check": "core",
         "code-language-check.sh": "core",
     }
     assert set(bw.GATE_PACKS) == {g for gates in bw.GATES.values() for g in gates}
@@ -1333,6 +1334,23 @@ def test_hook_dir_from_repo_root(gate_root):
     hooks = gate_root / ".claude" / "hooks" / "lighthouse"
     assert bw.gate_path(str(gate_root), "shell-lint-check.sh") == hooks / "shell-lint-check.sh"
     assert bw.gate_path(str(gate_root), "code-language-check.sh") == hooks / "code-language-check.sh"
+
+
+def test_run_sh_gate_runs_through_run_sh(tmp_path, gate_root):
+    """`md-link-check` has no script of its own: `run.sh md-link-check` runs it, and the
+    output still names it `md-link-check.sh`."""
+    hooks = gate_root / ".claude" / "hooks" / "lighthouse"
+    assert bw.gate_path(str(gate_root), "md-link-check") == hooks / "run.sh"
+    (hooks / "run.sh").write_text('#!/bin/sh\necho "args: $*"\nexit 2\n', encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "x.md").write_text("[x](weg.md)\n", encoding="utf-8")
+
+    verdict, output = bw.run_gate(str(repo), "x.md", "md-link-check", time.time() + 10)
+
+    assert (verdict, output) == ("finding", b"args: md-link-check\n")
+    assert bw.gate_label("md-link-check") == "md-link-check.sh"
+    assert bw.gate_label("gofmt-check.sh") == "gofmt-check.sh"
 
 
 def test_gofmt_signs_after_gate():

@@ -1,0 +1,293 @@
+[
+  {
+    "name": "no file",
+    "setup": "absent",
+    "line": "",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "valid",
+    "setup": "file",
+    "line": "venster 92 Tue_14:30 {future}",
+    "valid": true,
+    "fields": [
+      "venster",
+      "92",
+      "Tue 14:30",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid week",
+    "setup": "file",
+    "line": "week 7 Sep_6_14:30 {future}",
+    "valid": true,
+    "fields": [
+      "week",
+      "7",
+      "Sep 6 14:30",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid underscore in local",
+    "setup": "file",
+    "line": "venster 92 14_30 {future}",
+    "valid": true,
+    "fields": [
+      "venster",
+      "92",
+      "14 30",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid question mark local",
+    "setup": "file",
+    "line": "venster 92 ? {future}",
+    "valid": true,
+    "fields": [
+      "venster",
+      "92",
+      "?",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid pct zero",
+    "setup": "file",
+    "line": "venster 0 14:30 {future}",
+    "valid": true,
+    "fields": [
+      "venster",
+      "0",
+      "14:30",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid pct with leading zeros",
+    "setup": "file",
+    "line": "venster 007 14:30 {future}",
+    "valid": true,
+    "fields": [
+      "venster",
+      "007",
+      "14:30",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid pct over 100",
+    "setup": "file",
+    "line": "week 250 14:30 {future}",
+    "valid": true,
+    "fields": [
+      "week",
+      "250",
+      "14:30",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid tab separated",
+    "setup": "file",
+    "line": "venster\t92\t14:30\t{future}",
+    "valid": true,
+    "fields": [
+      "venster",
+      "92",
+      "14:30",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid repeated spaces",
+    "setup": "file",
+    "line": "venster  92   14:30  {future}",
+    "valid": true,
+    "fields": [
+      "venster",
+      "92",
+      "14:30",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid leading and trailing spaces",
+    "setup": "file",
+    "line": "  venster 92 14:30 {future}  ",
+    "valid": true,
+    "fields": [
+      "venster",
+      "92",
+      "14:30",
+      "{future}"
+    ]
+  },
+  {
+    "name": "valid glob character in local",
+    "setup": "file",
+    "line": "venster 92 * {future}",
+    "valid": true,
+    "fields": [
+      "venster",
+      "92",
+      "*",
+      "{future}"
+    ]
+  },
+  {
+    "name": "expired",
+    "setup": "file",
+    "line": "venster 92 14:30 {past}",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "three fields",
+    "setup": "file",
+    "line": "venster 92 14:30",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "question marks",
+    "setup": "file",
+    "line": "venster 92 ? ?",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "five fields",
+    "setup": "file",
+    "line": "venster 92 14:30 {future} extra",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "carriage return",
+    "setup": "file",
+    "line": "venster 92 14:30 {future}\r",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "kind dag",
+    "setup": "file",
+    "line": "dag 92 14:30 {future}",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "kind uppercase",
+    "setup": "file",
+    "line": "Venster 92 14:30 {future}",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "pct 9x",
+    "setup": "file",
+    "line": "venster 9x 14:30 {future}",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "pct negative",
+    "setup": "file",
+    "line": "venster -5 14:30 {future}",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "pct field missing",
+    "setup": "file",
+    "line": "venster  14:30 {future}",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "pct fullwidth digits",
+    "setup": "file",
+    "line": "venster \uff19\uff12 14:30 {future}",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "reset_at without Z",
+    "setup": "file",
+    "line": "venster 92 14:30 2099-01-01T00:00:00",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "reset_at with offset",
+    "setup": "file",
+    "line": "venster 92 14:30 2099-01-01T00:00:00+00:00",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "reset_at with space",
+    "setup": "file",
+    "line": "venster 92 14:30 2099-01-01 00:00:00Z",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "reset_at date only",
+    "setup": "file",
+    "line": "venster 92 14:30 2099-01-01",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "reset_at far future",
+    "setup": "file",
+    "line": "venster 92 14:30 2099-01-01T00:00:00Z",
+    "valid": true,
+    "fields": [
+      "venster",
+      "92",
+      "14:30",
+      "2099-01-01T00:00:00Z"
+    ]
+  },
+  {
+    "name": "reset_at impossible date",
+    "setup": "file",
+    "line": "venster 92 14:30 2099-13-45T00:00:00Z",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "empty file",
+    "setup": "file",
+    "line": "",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "blank line",
+    "setup": "file",
+    "line": "   ",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "symlink",
+    "setup": "symlink",
+    "line": "venster 92 14:30 {future}",
+    "valid": false,
+    "fields": null
+  },
+  {
+    "name": "unreadable",
+    "setup": "unreadable",
+    "line": "venster 92 14:30 {future}",
+    "valid": false,
+    "fields": null
+  }
+]

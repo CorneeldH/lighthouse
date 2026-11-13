@@ -1,0 +1,7 @@
+[gate_line]
+nl = "Poort"
+en = "Gate"
+
+[scout_skipped]
+nl = "Scout: overgeslagen"
+en = "Scout: skipped"

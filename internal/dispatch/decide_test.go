@@ -206,6 +206,20 @@ func TestSettleUnstartedFixPR(t *testing.T) {
 	}
 }
 
+// A fix-pr close without a planned start hands the issue back with the cause of the fix-pr
+// start, not always "PR red".
+func TestSettleUnstartedFixPRCarriesCause(t *testing.T) {
+	fixClose := Action{Kind: KindClose, Repo: "o/r", Issue: 7, RunID: 5, Outcome: runs.Handoff,
+		ReasonArg: "fixpr:12:abc123", Language: "nl"}
+	ps := []planned{{Action: fixClose, fixReason: "reason_merge_failed", fixReasonArg: "x"}}
+	got := settleUnstartedFixPR(ps, nil)
+	want := Action{Kind: KindReturn, Repo: "o/r", Issue: 7, RunID: 5, Reason: "reason_merge_failed",
+		ReasonArg: "x", Language: "nl"}
+	if len(got) != 1 || !reflect.DeepEqual(got[0].Action, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
 // A fix-pr start decideIssue planned that the brake deferred or dropped leaves its run open:
 // the close is dropped, no Returned follows, and the defer stays.
 func TestSettleUnstartedFixPRKeepsRunOpenWhenBraked(t *testing.T) {

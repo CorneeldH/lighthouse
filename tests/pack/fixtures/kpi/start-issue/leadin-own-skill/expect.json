@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "leadin",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"leadin\": {\n    \"routed\": {\n      \"n\": 0\n    },\n    \"unrouted\": {\n      \"n\": 2,\n      \"min\": 0,\n      \"median\": 1.0,\n      \"max\": 2,\n      \"mean\": 1.0\n    },\n    \"no_route\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_own_skill_load_is_skipped_but_not_counted"
+    ]
+  }
+]

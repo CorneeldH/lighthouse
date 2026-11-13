@@ -1,0 +1,91 @@
+{
+  "description": "A spec review may also end at round_limit with accepted_open.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "--kind",
+        "spec",
+        "${SPEC}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accept",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 2,
+      "severities": [
+        "MAJOR"
+      ],
+      "verified": []
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-2.decisions.json",
+      "json": [
+        {
+          "finding_id": "r2-f1",
+          "decision": "accept",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 3,
+      "severities": [
+        "MAJOR"
+      ],
+      "verified": []
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-3.decisions.json",
+      "json": [
+        {
+          "finding_id": "r3-f1",
+          "decision": "accepted_open",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "round_limit",
+        "--review-mode",
+        "codex"
+      ],
+      "expect": {
+        "record": {
+          "outcome": "round_limit"
+        }
+      }
+    }
+  ]
+}

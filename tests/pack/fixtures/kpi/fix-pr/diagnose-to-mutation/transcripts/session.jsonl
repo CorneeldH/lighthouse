@@ -1,0 +1,4 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "fix 596"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "gh pr view 596 --json state"}}, {"type": "tool_use", "name": "Bash", "input": {"command": "node -v"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "git worktree list"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "git rebase origin/main"}}, {"type": "tool_use", "name": "Bash", "input": {"command": "git status"}}]}}

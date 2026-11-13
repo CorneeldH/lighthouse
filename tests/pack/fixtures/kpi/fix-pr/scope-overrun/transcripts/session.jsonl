@@ -1,0 +1,6 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "fix pr 585"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-fix-pr"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-close-issue"}}]}}
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "fix pr 586"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-fix-pr"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "git rebase"}}]}}

@@ -47,7 +47,7 @@ func readRollout(homes []string, now time.Time) (CodexState, error) {
 			scanRollout(path, func(at time.Time, session, week CodexWindow) {
 				if bestTime.IsZero() || at.After(bestTime) {
 					bestTime = at
-					best = CodexState{SourceFile: path, Session: session, Week: week}
+					best = CodexState{SourceFile: &path, Session: session, Week: week}
 				}
 			})
 			return nil

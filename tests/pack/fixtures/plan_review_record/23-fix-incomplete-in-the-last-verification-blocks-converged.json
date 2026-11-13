@@ -1,0 +1,72 @@
+{
+  "description": "A verified-round MAJOR with 'accept' is unverified: open, not converged.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accept",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 2,
+      "severities": [
+        "MAJOR"
+      ],
+      "verified": []
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-2.decisions.json",
+      "json": [
+        {
+          "finding_id": "r2-f1",
+          "decision": "accept",
+          "reason": "y"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_contains": [
+          "r2-f1 is still open"
+        ]
+      }
+    }
+  ]
+}

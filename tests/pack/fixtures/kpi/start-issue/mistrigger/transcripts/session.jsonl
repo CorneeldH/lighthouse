@@ -1,0 +1,4 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "schrijf een issue over de gateway"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-start-issue"}}]}}
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "pak 610 op"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-start-issue"}}]}}

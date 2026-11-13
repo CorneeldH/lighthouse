@@ -1,0 +1,6 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "h\u00e9\u00e9l lang\t\u2028 \ud83d\ude00 \u00fcn\u00ef h\u00e9\u00e9l lang\t\u2028 \ud83d\ude00 \u00fcn\u00ef h\u00e9\u00e9l lang\t\u2028 \ud83d\ude00 \u00fcn\u00ef h\u00e9\u00e9l lang\t\u2028 \ud83d\ude00 \u00fcn\u00ef h\u00e9\u00e9l lang\t\u2028 \ud83d\ude00 \u00fcn\u00ef h\u00e9\u00e9l lang\t\u2028 \ud83d\ude00 \u00fcn\u00ef h\u00e9\u00e9l lang\t\u2028 \ud83d\ude00 \u00fcn\u00ef h\u00e9\u00e9l"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-fix-pr"}}]}}
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "ruwe regel zonder fixverzoek"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-fix-pr"}}]}}
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "fix pr 585"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-fix-pr"}}]}}

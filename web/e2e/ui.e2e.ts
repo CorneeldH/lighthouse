@@ -17,6 +17,8 @@ const NOT_CONFIGURED = 'Forge not configured — set GH_TOKEN, and --repo or [di
 test('full: both lists and the usage windows', async ({ page, github, lighthouse }) => {
   github.set({ issues: FULL })
   await page.goto(await lighthouse.start({ token: true, cache: 'fresh' }))
+  await expect(page).toHaveTitle('lighthouse · Controller')
+  await expect(page.getByRole('region', { name: 'Controller' })).toBeVisible()
 
   const questions = page.getByRole('region', { name: 'Open questions' })
   const first = questions.getByRole('listitem').filter({ hasText: 'test/repo#11' })
@@ -133,4 +135,21 @@ test('old data stays when the forge fails on refresh', async ({ page, github, li
 
   await expect(questions.getByRole('alert')).toContainText('Forge unreachable')
   await expect(questions.getByText('Kies A of B?')).toBeVisible()
+})
+
+test('the colour scheme of the system picks light or dark', async ({ page, github, lighthouse }) => {
+  github.set({ issues: [] })
+  const url = await lighthouse.start({ token: true, cache: 'fresh' })
+  const body = page.locator('body')
+  const heading = page.getByRole('heading', { level: 2, name: 'Controller' })
+
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.goto(url)
+  await expect(body).toHaveCSS('background-color', 'oklch(1 0 0)')
+  await expect(heading).toHaveCSS('color', 'rgb(20, 33, 61)')
+
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await expect(body).toHaveCSS('background-color', 'rgb(15, 20, 32)')
+  // The dark navy (#26335a) on the dark page is unreadable; the heading takes the foreground.
+  await expect(heading).toHaveCSS('color', 'rgb(232, 234, 240)')
 })

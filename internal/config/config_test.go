@@ -232,10 +232,10 @@ func TestPyPath(t *testing.T) {
 }
 
 func TestIsLocal(t *testing.T) {
-	if local, err := isLocal("127.0.0.1"); err != nil || !local {
-		t.Errorf("isLocal(127.0.0.1) = %v, %v; want true", local, err)
+	if local, err := IsLocal("127.0.0.1"); err != nil || !local {
+		t.Errorf("IsLocal(127.0.0.1) = %v, %v; want true", local, err)
 	}
-	local, err := isLocal("192.0.2.1") // TEST-NET-1: on no interface
+	local, err := IsLocal("192.0.2.1") // TEST-NET-1: on no interface
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestIsLocal(t *testing.T) {
 }
 
 func TestHostCheckNotLocal(t *testing.T) {
-	if local, _ := isLocal("192.0.2.1"); local {
+	if local, _ := IsLocal("192.0.2.1"); local {
 		t.Skip("net.ipv4.ip_nonlocal_bind is set")
 	}
 	dir := t.TempDir()
@@ -261,6 +261,50 @@ func TestHostCheckNotLocal(t *testing.T) {
 	want := "config: host box (" + path + ") has tailscale_ip 192.0.2.1, but that address is not on this machine\n"
 	if errOut.String() != want || out.Len() != 0 {
 		t.Errorf("stderr = %q, stdout = %q; want %q and nothing", errOut.String(), out.String(), want)
+	}
+}
+
+func TestHostCheckController(t *testing.T) {
+	orig := isLocal
+	t.Cleanup(func() { isLocal = orig })
+	tests := []struct {
+		name    string
+		body    string
+		local   bool
+		wantRC  int
+		wantOut string
+		wantErr string // substring
+	}{
+		{"true without ip", "controller = true\n", false, 0, "host: box\n", ""},
+		{"true with non-local ip", "controller = true\ntailscale_ip = \"192.0.2.1\"\n", false, 0, "host: box\n", ""},
+		{"false with local ip", "controller = false\ntailscale_ip = \"192.0.2.1\"\n", true, 1, "",
+			"has host.controller = false, so it is not the controller host"},
+		{"absent with local ip", "tailscale_ip = \"192.0.2.1\"\n", true, 0, "host: box\n", ""},
+		{"absent without ip", "", false, 1, "", "has no tailscale_ip, so it is not the always-on host"},
+		{"string", "controller = \"yes\"\n", false, 2, "", "key host.controller must be true or false: 'yes'"},
+		{"integer", "controller = 1\n", false, 2, "", "key host.controller must be true or false: 1"},
+		{"true with invalid ip", "controller = true\ntailscale_ip = \"nope\"\n", false, 2, "",
+			"key host.tailscale_ip must be an IPv4 address"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isLocal = func(string) (bool, error) { return tt.local, nil }
+			path := t.TempDir() + "/host.toml"
+			if err := os.WriteFile(path, []byte("[host]\nname = \"box\"\n"+tt.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("LIGHTHOUSE_HOST_TOML", path)
+			var out, errOut bytes.Buffer
+			if rc := HostCheck(&out, &errOut); rc != tt.wantRC {
+				t.Errorf("rc = %d, want %d (stderr %q)", rc, tt.wantRC, errOut.String())
+			}
+			if out.String() != tt.wantOut {
+				t.Errorf("stdout = %q, want %q", out.String(), tt.wantOut)
+			}
+			if !strings.Contains(errOut.String(), tt.wantErr) || (tt.wantErr == "" && errOut.Len() != 0) {
+				t.Errorf("stderr = %q, want it to contain %q", errOut.String(), tt.wantErr)
+			}
+		})
 	}
 }
 

@@ -1,0 +1,57 @@
+{
+  "description": "--issue with body and fetched-at: the body lands in the record dir, hashed in issue_spec.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "file",
+      "path": "${tmp}/issue-body.md",
+      "text": "## AC\n- x\n"
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--issue",
+        "972",
+        "--issue-body",
+        "${tmp}/issue-body.md",
+        "--issue-fetched-at",
+        "2026-09-25T12:00:00Z"
+      ],
+      "expect": {
+        "record": {
+          "issue_spec": {
+            "issue": 972,
+            "fetched_at": "2026-09-25T12:00:00Z",
+            "sha256": "d0579cc4163ed2e21aa308d85377ddfa3e1561864f1c76f0e0cb94adfecbc37a",
+            "file": "issue-972.md"
+          }
+        }
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}/issue-972.md",
+      "text": "## AC\n- x\n"
+    }
+  ]
+}

@@ -9,10 +9,10 @@ import (
 	"unicode/utf8"
 )
 
-// formatFloat renders f the way Python's str() and repr() do for a float: the shortest
+// FormatFloat renders f the way Python's str() and repr() do for a float: the shortest
 // round-trip digits, positional notation for a decimal exponent in [-4, 16), otherwise
 // scientific with a signed, at least two digit exponent ("1e+16", "1e-05").
-func formatFloat(f float64) string {
+func FormatFloat(f float64) string {
 	switch {
 	case math.IsNaN(f):
 		return "nan"
@@ -67,7 +67,7 @@ func pyRepr(v any) string {
 	case int:
 		return strconv.Itoa(x)
 	case float64:
-		return formatFloat(x)
+		return FormatFloat(x)
 	case []any:
 		parts := make([]string, len(x))
 		for i, e := range x {

@@ -1,7 +1,7 @@
 """pack/core bash-write-check.sh, as installed (#871).
 
-First the not-looked-at contract of `md-link-check.sh`, the only gate in
-`pack/core`: `COULD NOT CHECK` on the first line (decision 18). `_gate` merges
+First the not-looked-at contract of `md-link-check`, the only gate in `pack/core`
+(`run.sh md-link-check`): `COULD NOT CHECK` on the first line (decision 18). `_gate` merges
 stdout+stderr, the way the dispatcher reads the output.
 
 Then the end-to-end tests of `bash-write-check.sh`: `_Session` installs
@@ -10,6 +10,8 @@ Then the end-to-end tests of `bash-write-check.sh`: `_Session` installs
 pre, the Bash call and post against a tmp repo, via the real wrapper. The stubs
 report a fixed finding (`SC2034`, `E722`) and then quote the file, the way
 shellcheck and ruff quote source lines.
+
+`run.sh` runs the binary of this checkout: `_gate` and `_Session` put it first on the PATH.
 """
 
 import functools
@@ -30,8 +32,11 @@ from tests.pack._testkit import (
     MINIMAL_TOML,
     git,
     init_repo,
+    RUN_SH_TOOLS,
     install_core,
+    lighthouse_dir,
     past_this_second,
+    path_with_lighthouse,
     tool_bin,
 )
 
@@ -53,7 +58,7 @@ def _gate(
     cwd: Path,
     env: dict | None = None,
 ) -> subprocess.CompletedProcess:
-    """Run `.claude/hooks/<name>` with the faked payload.
+    """Run `.claude/hooks/lighthouse/run.sh <name>` with the faked payload.
 
     Payload: `{"tool_name": "Bash", "cwd": <cwd>, "tool_input": {"file_path":
     <absolute path>}}`, process cwd = `cwd`. stdout+stderr merged so that the
@@ -71,10 +76,11 @@ def _gate(
         **GIT_ENV,
         CLAUDE_PROJECT_DIR=str(cwd),
         XDG_RUNTIME_DIR=str(xdg),
+        PATH=path_with_lighthouse(),
     )
     full_env.update(env or {})
     return subprocess.run(
-        [str(INSTALLED_HOOKS / name)],
+        [str(INSTALLED_HOOKS / "run.sh"), name],
         input=json.dumps(payload),
         cwd=str(cwd),
         env=full_env,
@@ -85,18 +91,16 @@ def _gate(
     )
 
 
-# --- md-link-check.sh ----------------------------------------------------
+# --- md-link-check -------------------------------------------------------
 
 
 def test_linkcheck_unchecked_form_is_on_the_first_line(tmp_path):
-    bin_dir = tool_bin(
-        tmp_path / "bin",
-        ("jq", "python3", "git", "realpath", "dirname", "cat"),
-        drop="jq",
-    )
+    # Without git the hook itself cannot look: the binary and the tools of `run.sh` stay.
+    bin_dir = tool_bin(tmp_path / "bin", RUN_SH_TOOLS)
     note = tmp_path / "note.md"
     note.write_text("# hoi\n", encoding="utf-8")
-    out = _gate("md-link-check.sh", note, tmp_path, {"PATH": str(bin_dir)})
+    path = f"{lighthouse_dir()}{os.pathsep}{bin_dir}"
+    out = _gate("md-link-check", note, tmp_path, {"PATH": path})
     first = out.stdout.splitlines()[0]
     assert out.returncode == 2, out.stdout
     assert first.startswith("Linkcheck: COULD NOT CHECK")
@@ -110,7 +114,7 @@ def test_linkcheck_finding_first_line(tmp_path):
     git(repo, "add", "note.md")
     git(repo, "commit", "-qm", "note")
 
-    out = _gate("md-link-check.sh", note, repo)
+    out = _gate("md-link-check", note, repo)
     first = out.stdout.splitlines()[0]
     assert out.returncode == 2, out.stdout
     assert first.startswith("Linkcheck: markdown link")
@@ -208,6 +212,7 @@ class _Session:
             XDG_RUNTIME_DIR=str(xdg),
             SHELLCHECK_BIN=shellcheck,
             LIGHTHOUSE_REPO_ROOT=str(self.root),
+            PATH=path_with_lighthouse(),
         )
         for seam in ("LIGHTHOUSE_BASH_GATES_DEADLINE", "LIGHTHOUSE_BASH_GATES_START_NS"):
             self.env.pop(seam, None)
@@ -461,6 +466,17 @@ def test_md_dead_link(tmp_path):
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "Linkcheck" in out.stderr
     assert "== note.md (md-link-check.sh) ==" in out.stderr
+
+
+def test_md_dead_link_is_judged_by_the_hook(tmp_path):
+    """The gate of a `.md` is `run.sh md-link-check`: a dead link written by Bash blocks
+    with the verdict of the hook itself, not with "not checked"."""
+    s = _Session(tmp_path)
+    out = s.call(heredoc("note.md", "[x](nergens.md)\n"))
+    assert out.returncode == 2, (out.stdout, out.stderr)
+    assert "nergens.md — does not exist" in out.stderr
+    assert "not checked" not in out.stderr
+    assert "COULD NOT CHECK" not in out.stderr
 
 
 def managed_script(installed: str) -> str:

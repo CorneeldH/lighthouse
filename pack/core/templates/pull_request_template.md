@@ -21,7 +21,7 @@
 
 ## Open review points
 
-<!-- Written by /lighthouse-write-pr from `plan_review_record.py pr-open-points` when a spec or plan
+<!-- Written by /lighthouse-write-pr from `lighthouse plan-review-record pr-open-points` when a spec or plan
      on this branch ends in an `Open after review` section (an adversarial review that hit its
      round limit). Delete this section otherwise. -->
 

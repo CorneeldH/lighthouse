@@ -1,0 +1,24 @@
+{
+  "description": "accept-open without --doc is a usage error: exit 2.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}"
+      ],
+      "expect": {
+        "code": 2
+      }
+    }
+  ]
+}

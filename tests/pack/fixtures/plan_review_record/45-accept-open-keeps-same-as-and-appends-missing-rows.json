@@ -1,0 +1,78 @@
+{
+  "description": "same_as survives; rows without an earlier decision come last; a reject stays.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\nTekst.\n"
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR",
+        "MAJOR",
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f2",
+          "decision": "accept",
+          "reason": "dubbel",
+          "same_as": "r1-f1"
+        },
+        {
+          "finding_id": "r1-f3",
+          "decision": "reject",
+          "reason": "nee"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}",
+        "--doc",
+        "${tmp}/plan.md"
+      ],
+      "expect": {}
+    },
+    {
+      "op": "expect_file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f2",
+          "decision": "accepted_open",
+          "reason": "round_limit; was accept: dubbel",
+          "same_as": "r1-f1"
+        },
+        {
+          "finding_id": "r1-f3",
+          "decision": "reject",
+          "reason": "nee"
+        },
+        {
+          "finding_id": "r1-f1",
+          "decision": "accepted_open",
+          "reason": "round_limit; without an earlier decision"
+        }
+      ]
+    }
+  ]
+}

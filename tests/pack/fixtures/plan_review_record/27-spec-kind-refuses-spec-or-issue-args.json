@@ -1,0 +1,38 @@
+{
+  "description": "--spec on a spec attempt is a usage error: exit 2.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "--kind",
+        "spec",
+        "${SPEC}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "code": 2
+      }
+    }
+  ]
+}

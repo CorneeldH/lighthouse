@@ -1,0 +1,23 @@
+{
+  "description": "start on a plan with uncommitted changes: exit 2, 'commit first'.",
+  "steps": [
+    {
+      "op": "file",
+      "path": "${repo}/${PLAN}",
+      "text": "# plan, niet gecommit\n"
+    },
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "expect": {
+        "code": 2,
+        "stderr_contains": [
+          "commit first"
+        ]
+      }
+    }
+  ]
+}

@@ -3,7 +3,8 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *));
+/* Dark follows the colour scheme of the system; the page has no toggle. */
+@custom-variant dark (@media (prefers-color-scheme: dark));
 
 @theme inline {
     --font-heading: var(--font-sans);
@@ -99,7 +100,9 @@
     --lh-grey: #6b7280;
 }
 
-.dark {
+@media (prefers-color-scheme: dark) {
+:root {
+    color-scheme: dark;
     --background: #0f1420;
     --foreground: #e8eaf0;
     --card: #171d2b;
@@ -138,6 +141,7 @@
     --lh-green: #2fb68f;
     --lh-orange: #ef9a73;
     --lh-grey: #9aa3b5;
+}
 }
 
 @layer base {

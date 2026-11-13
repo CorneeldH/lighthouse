@@ -139,7 +139,7 @@
         "UserPromptSubmit"
       ],
       "matcher": "",
-      "command": "usage-gate.sh prompt",
+      "command": "run.sh usage-gate prompt",
       "effects": [
         "warns"
       ],
@@ -154,7 +154,7 @@
       "when": "When you submit a prompt.",
       "without": "The session runs into the limit without a warning, and the meter is not refreshed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/usagegate.go"
     },
     {
       "id": "worktree-check",
@@ -166,7 +166,7 @@
         "PreToolUse"
       ],
       "matcher": "Edit|Write",
-      "command": "worktree-check.sh",
+      "command": "run.sh worktree-check",
       "effects": [
         "warns"
       ],
@@ -181,7 +181,7 @@
       "when": "Before each Edit or Write.",
       "without": "A write into the main checkout on main passes without a warning.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/worktreecheck.go"
     },
     {
       "id": "main-commit-gate",
@@ -193,7 +193,7 @@
         "PreToolUse"
       ],
       "matcher": "Bash",
-      "command": "main-commit-gate.sh",
+      "command": "run.sh main-commit-gate",
       "effects": [
         "blocks"
       ],
@@ -208,7 +208,7 @@
       "when": "Before each Bash call.",
       "without": "A commit or push lands directly on main.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/maincommitgate.go"
     },
     {
       "id": "commit-test-gate-pre",
@@ -300,7 +300,7 @@
         "PostToolUse"
       ],
       "matcher": "Edit|Write",
-      "command": "md-link-check.sh",
+      "command": "run.sh md-link-check",
       "effects": [
         "blocks"
       ],
@@ -308,14 +308,14 @@
       "what": "Blocks a markdown link that is absolute or points nowhere.",
       "how": [
         "It checks only .md and .markdown files.",
-        "It finds the git root of the written file, and md_links.py resolves each relative link against the directory of that file.",
+        "It finds the git root of the written file and resolves each relative link against the directory of that file.",
         "A dead or absolute link blocks with exit 2 and a list of the bad targets.",
-        "When jq, git or python3 is missing, or the parser fails, it blocks with COULD NOT CHECK."
+        "When git is missing, the payload is not valid JSON, or the file cannot be read, it blocks with COULD NOT CHECK."
       ],
       "when": "After each Edit or Write.",
       "without": "A broken or absolute link in a .md file is committed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/md-link-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/mdlinkcheck.go"
     },
     {
       "id": "code-language-check",
@@ -495,7 +495,7 @@
         "PostToolUse"
       ],
       "matcher": "",
-      "command": "usage-gate.sh tool",
+      "command": "run.sh usage-gate tool",
       "effects": [
         "blocks"
       ],
@@ -510,7 +510,7 @@
       "when": "After each tool call.",
       "without": "The session runs into the limit instead of wrapping up.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/usagegate.go"
     },
     {
       "id": "usage-gate-subagent",
@@ -522,7 +522,7 @@
         "SubagentStop"
       ],
       "matcher": "",
-      "command": "usage-gate.sh subagent",
+      "command": "run.sh usage-gate subagent",
       "effects": [
         "blocks"
       ],
@@ -537,7 +537,7 @@
       "when": "When a subagent stops.",
       "without": "A subagent runs into the limit instead of wrapping up.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/usagegate.go"
     },
     {
       "id": "go-lint-gate",
@@ -605,7 +605,7 @@
         "Stop"
       ],
       "matcher": "",
-      "command": "usage-gate.sh stop",
+      "command": "run.sh usage-gate stop",
       "effects": [
         "blocks"
       ],
@@ -620,7 +620,7 @@
       "when": "At the end of each turn.",
       "without": "The session ends without wrapping up, and the next one runs into the limit.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/usage-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/usagegate.go"
     },
     {
       "id": "permission-check",
@@ -632,7 +632,7 @@
         "Notification"
       ],
       "matcher": "permission_prompt|worker_permission_prompt",
-      "command": "permission-check.sh",
+      "command": "run.sh permission-check",
       "effects": [
         "records"
       ],
@@ -647,7 +647,7 @@
       "when": "When Claude asks for a permission in a controller run.",
       "without": "The dispatcher cannot tell a session waiting for a permission from a silent one.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/permission-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/permissioncheck.go"
     }
   ],
   "handoffs": [],

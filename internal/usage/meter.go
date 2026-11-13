@@ -94,9 +94,11 @@ func (m Meter) Refresh(force bool) (out Outcome, err error) {
 		return Failed, err
 	}
 	s := NewState(w, now, m.Loc)
-	// The alarm before the cache: if the alarm fails, the cache is untouched.
-	if err := WriteAlarm(m.Paths.Alarm(), s, m.Config); err != nil {
-		return Failed, err
+	// The alarm and its copy before the cache: if either fails, the cache is untouched.
+	for _, path := range m.alarms() {
+		if err := WriteAlarm(path, s, m.Config); err != nil {
+			return Failed, err
+		}
 	}
 	if err := WriteState(m.Paths.Cache(), s); err != nil {
 		return Failed, err
@@ -104,10 +106,20 @@ func (m Meter) Refresh(force bool) (out Outcome, err error) {
 	return Refreshed, nil
 }
 
-// Tick prunes an expired alarm, then refreshes only while a claude process
-// runs. Pruning comes before that gate and its error does not stop the tick.
+// alarms is the alarm file and, when there is one, its copy.
+func (m Meter) alarms() []string {
+	if m.Paths.Mirror == "" {
+		return []string{m.Paths.Alarm()}
+	}
+	return []string{m.Paths.Alarm(), m.Paths.Mirror}
+}
+
+// Tick prunes an expired alarm and copy, then refreshes only while a claude
+// process runs. Pruning comes before that gate and its error does not stop the tick.
 func (m Meter) Tick() (Outcome, error) {
-	_, _ = PruneAlarm(m.Paths.Alarm(), m.Now())
+	for _, path := range m.alarms() {
+		_, _ = PruneAlarm(path, m.Now())
+	}
 	if !m.ClaudeRunning() {
 		return Idle, nil
 	}

@@ -1,0 +1,24 @@
+{
+  "description": "A file that is not UTF-8 text: exit 4, PR-OPEN-POINTS FAILED.",
+  "world": "bare",
+  "steps": [
+    {
+      "op": "file",
+      "path": "${root}/plaatje.png",
+      "bytes_hex": "89504e47fffe"
+    },
+    {
+      "op": "run",
+      "args": [
+        "pr-open-points",
+        "${root}/plaatje.png"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_contains": [
+          "PR-OPEN-POINTS FAILED"
+        ]
+      }
+    }
+  ]
+}

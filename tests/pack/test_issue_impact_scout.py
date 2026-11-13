@@ -10,12 +10,10 @@ belongs to that skill and is tested there (task 24).
 
 from __future__ import annotations
 
-import importlib.util
 import re
-import sys
 import tomllib
 
-from tests.pack._testkit import CORE, INSTALL_ROOT
+from tests.pack._testkit import CORE
 
 AGENT = CORE / "agents" / "issue-impact-scout.md"
 
@@ -56,12 +54,6 @@ def test_frontmatter_pins_name_and_model() -> None:
         "D-4: waarde zit in cross-file impact, niet in zoekwerk"
     )
     assert fields["maxTurns"] == "12", "D-6: begrensde tijd en hoofdagentcontext"
-
-
-def test_name_is_what_the_kpi_counts() -> None:
-    kpi = _kpi()
-    fields = frontmatter(AGENT.read_text(encoding="utf-8"))
-    assert fields["name"] == kpi.SCOUT_AGENT
 
 
 def test_toolallowlist_is_read_only() -> None:
@@ -154,25 +146,6 @@ def test_prompt_names_no_source_repo_layout() -> None:
     body = AGENT.read_text(encoding="utf-8")
     for path in ("src/cli/", "src/web/", "services.py", "-m src."):
         assert path not in body, path
-
-
-def _kpi():
-    path = INSTALL_ROOT / ".lighthouse" / "scripts" / "measure_start_issue_kpi.py"
-    spec = importlib.util.spec_from_file_location("measure_start_issue_kpi", path)
-    assert spec and spec.loader
-    kpi = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = kpi
-    spec.loader.exec_module(kpi)
-    return kpi
-
-
-def test_prompt_caps_the_number_of_searches() -> None:
-    """`maxTurns` bounds turns, not search actions (one turn carries several parallel calls),
-    so the calls limit is in the prompt itself. The number must equal the budget that
-    `measure_start_issue_kpi.py` counts, otherwise the KPI measures a different norm than the agent
-    follows."""
-    body = AGENT.read_text(encoding="utf-8").lower()
-    assert f"at most {_kpi().SCOUT_TOOL_CALL_BUDGET} searches" in body
 
 
 def test_only_the_scout_is_an_agent() -> None:

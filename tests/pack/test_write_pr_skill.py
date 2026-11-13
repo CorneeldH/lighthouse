@@ -188,7 +188,7 @@ def test_v4_gives_a_title_and_writes_the_body_separately():
     assert "gh pr create --repo <forge.repo> --title '<title>' --body-file <path>" in v4
     assert "lighthouse config forge.repo" in v4
     assert "Write tool" in v4
-    assert "python3 .lighthouse/scripts/plan_review_record.py pr-open-points <path>..." in v4
+    assert "lighthouse plan-review-record pr-open-points <path>..." in v4
 
 
 def test_dod_does_not_run_the_suite_by_hand_in_claude_code():

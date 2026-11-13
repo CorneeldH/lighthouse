@@ -13,6 +13,7 @@ the start-issue half of `test_issue_impact_scout.py`. Tests of skills that stay 
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from tests.pack._testkit import CORE
 
@@ -248,8 +249,15 @@ def test_start_issue_names_the_project_paths():
 def test_start_issue_keeps_the_measurements_not_the_numbers():
     for body in skill("start-issue"):
         for sub in ("leadin", "worktree-first", "mistrigger", "paths", "gate", "scout"):
-            assert f"python3 .lighthouse/scripts/measure_start_issue_kpi.py {sub}" in body
+            assert f"lighthouse measure-start-issue-kpi {sub}" in body
+        assert "measure_start_issue_kpi" not in body
         assert "n=11" not in body and "78,6%" not in body and "2026-08-02" not in body
+
+
+def test_route_issue_names_the_subcommand():
+    for body in skill("route-issue"):
+        assert "lighthouse measure-start-issue-kpi" in body
+        assert "measure_start_issue_kpi.py" not in body
 
 
 def test_start_issue_controller_run_env():
@@ -257,7 +265,7 @@ def test_start_issue_controller_run_env():
         assert "PAIA_CONTROLLER_RUN" not in body
 
 
-# The three report lines are a contract: measure_start_issue_kpi.py counts on them.
+# The three report lines are a contract: `lighthouse measure-start-issue-kpi` counts on them.
 TRIGGER_LINE = "Scout: lighthouse-issue-impact-scout"
 SKIP_PREFIX = "heading:scout_skipped — "
 FAIL_PREFIX = "Scout: failed — "
@@ -499,12 +507,12 @@ def test_handoff_pause_form_skips_phase_side_effects():
 
 
 def test_guard_names_the_pause_form():
-    lib = (CORE / "lib/usage_guard.py").read_text(encoding="utf-8")
-    resume = (CORE / "hooks/usage-gate/resume.py").read_text(encoding="utf-8")
-    assert "/lighthouse-write-handoff " in lib
-    # resume.py builds on base_speak (refactor 00c4090), so its reasons carry the same call
-    assert "base_speak(" in resume
-    assert ".handoff.md" in lib
+    # The usage gate speaks the texts of this fixture (`internal/usageguard` reads it in its tests).
+    speech = (Path(__file__).resolve().parent / "fixtures/usage_guard/speech.json").read_text(
+        encoding="utf-8"
+    )
+    assert "/lighthouse-write-handoff " in speech
+    assert ".handoff.md" in speech
 
 
 def test_handoff_knows_lane_native():

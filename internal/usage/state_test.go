@@ -8,24 +8,32 @@ import (
 
 func TestDefaultPaths(t *testing.T) {
 	cases := []struct {
-		name, xdg, home, want string
-		wantErr               bool
+		name, xdg, home, ctl, xdgState, want, wantMirror string
+		wantErr                                          bool
 	}{
-		{"xdg wins", "/x", "/h", "/x/lighthouse", false},
-		{"home fallback", "", "/h", "/h/.cache/lighthouse", false},
-		{"relative xdg kept", "rel", "/h", "rel/lighthouse", false},
-		{"both empty", "", "", "", true},
+		{"xdg wins", "/x", "/h", "", "", "/x/lighthouse", "/h/.local/state/lighthouse/controller/usage-window.alarm", false},
+		{"home fallback", "", "/h", "", "", "/h/.cache/lighthouse", "/h/.local/state/lighthouse/controller/usage-window.alarm", false},
+		{"relative xdg kept", "rel", "/h", "", "", "rel/lighthouse", "/h/.local/state/lighthouse/controller/usage-window.alarm", false},
+		{"copy next to the pause flag", "", "/h", "/ctl", "/s", "/h/.cache/lighthouse", "/ctl/usage-window.alarm", false},
+		{"copy under XDG_STATE_HOME", "", "/h", "", "/s", "/h/.cache/lighthouse", "/s/lighthouse/controller/usage-window.alarm", false},
+		{"no place for a copy", "/x", "", "", "", "/x/lighthouse", "", false},
+		{"both empty", "", "", "", "", "", "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("XDG_CACHE_HOME", c.xdg)
 			t.Setenv("HOME", c.home)
+			t.Setenv("LIGHTHOUSE_CONTROLLER_STATE", c.ctl)
+			t.Setenv("XDG_STATE_HOME", c.xdgState)
 			p, err := DefaultPaths()
 			if (err != nil) != c.wantErr {
 				t.Fatalf("err = %v, wantErr %v", err, c.wantErr)
 			}
 			if p.Dir != c.want {
 				t.Errorf("Dir = %q, want %q", p.Dir, c.want)
+			}
+			if p.Mirror != c.wantMirror {
+				t.Errorf("Mirror = %q, want %q", p.Mirror, c.wantMirror)
 			}
 		})
 	}

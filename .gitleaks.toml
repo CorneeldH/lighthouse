@@ -61,3 +61,12 @@ regexes = [
   '''^GITHUB_TOKEN=ghp_secret123`$''',
   '''^_gateway_creds':\ complexity=14\ $''',
 ]
+
+# generic-api-key reads `chain_key": "2026-09-25-voorbeeld"` as a key with a value: it is
+# the chain name of the plan-review-record fixtures (a date and "voorbeeld"). Scoped to the
+# rule, to that field name and to that placeholder value, so another chain_key stays red.
+[[allowlists]]
+description = "chain_key placeholder 2026-09-25-voorbeeld in plan-review-record fixtures, not a secret"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''chain_key"\s*:\s*"2026-09-25-voorbeeld(?:-design)?"?$''']

@@ -27,7 +27,7 @@ func TestStopKillsRealUnit(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	unit := UnitName("lhtest", dir)
+	unit := UnitName("lhtest-", "lhtest", dir)
 	t.Cleanup(func() { _ = exec.Command("systemctl", "--user", "stop", unit).Run() })
 	if out, err := exec.Command("systemd-run", "--user", "--unit="+unit, "sleep", "600").CombinedOutput(); err != nil {
 		t.Fatalf("systemd-run: %v: %s", err, out)
@@ -47,6 +47,7 @@ func TestStopKillsRealUnit(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.path = dir
 	a.Profile = "lhtest"
+	a.UnitPrefix = "lhtest-"
 	a.Run = workplace.ExecRunner()
 	if err := a.Stop(context.Background(), "ws1", nil); err != nil {
 		t.Fatal(err)

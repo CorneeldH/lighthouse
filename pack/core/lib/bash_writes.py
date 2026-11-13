@@ -50,8 +50,8 @@ GATES: dict[str, tuple[str, ...]] = {
     ".bash": ("shell-lint-check.sh", "code-language-check.sh"),
     ".py": ("ruff-format-check.sh", "code-language-check.sh"),
     ".go": ("gofmt-check.sh", "code-language-check.sh"),
-    ".md": ("md-link-check.sh",),
-    ".markdown": ("md-link-check.sh",),
+    ".md": ("md-link-check",),
+    ".markdown": ("md-link-check",),
 }
 
 # Set for every gate `run_gate` runs; `code_language.UNDER_GATES_ENV` reads it and
@@ -63,14 +63,27 @@ GATE_PACKS: dict[str, str] = {
     "shell-lint-check.sh": "shell",
     "ruff-format-check.sh": "python",
     "gofmt-check.sh": "go",
-    "md-link-check.sh": "core",
+    "md-link-check": "core",
     "code-language-check.sh": "core",
 }
 
 
+# A gate that runs as `lighthouse hook <name>` has no script of its own: `run.sh <name>`
+# in the same directory runs it. Every other gate is the script named by the gate.
+GATE_ARGV: dict[str, tuple[str, ...]] = {
+    "md-link-check": ("run.sh", "md-link-check"),
+}
+
+
 def gate_path(root: str, gate: str) -> Path:
-    """The path of `gate` under `root`."""
-    return Path(root) / HOOK_DIR / gate
+    """The path of the file that runs `gate` under `root`."""
+    return Path(root) / HOOK_DIR / GATE_ARGV.get(gate, (gate,))[0]
+
+
+def gate_label(gate: str) -> str:
+    """The name of `gate` in the output: the script name, `<name>.sh` for a `run.sh` gate,
+    so the text a user sees did not change when the gate moved into `lighthouse hook`."""
+    return gate if gate.endswith(".sh") else f"{gate}.sh"
 
 
 # Fallback tokenizer for an Unparseable command (open quote): no real
@@ -926,6 +939,7 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
     path = gate_path(str(config.repo_root()), gate)
     if not path.is_file():
         return _MISSING, f"no {GATE_PACKS[gate]} check installed".encode()
+    argv = [str(path), *GATE_ARGV.get(gate, (gate,))[1:]]
     payload = {
         "tool_name": "Bash",
         "cwd": root,
@@ -934,7 +948,7 @@ def run_gate(root: str, rel: str, gate: str, deadline: float) -> tuple[str, byte
     try:
         rc, output = run_until(
             deadline,
-            [str(path)],
+            argv,
             grace=_GATE_GRACE_S,
             cwd=root,
             stdin_bytes=json.dumps(payload).encode("utf-8"),
@@ -1393,22 +1407,23 @@ def _release_claims(state: Path, key: str) -> None:
 def _report_verdict(
     outcome: _Outcome, label: str, gate: str, verdict: str, output: bytes
 ) -> None:
-    """One gate in the bundle: `== <label> (<gate>) ==` plus its output.
+    """One gate in the bundle: `== <label> (<gate label>) ==` plus its output.
 
     `label` is the repo-relative path, or the absolute path if the post covers more
     than one root — two roots can have the same relative path.
     """
+    name = gate_label(gate)
     if verdict == "ok":
         text = output.decode(errors="replace").rstrip("\n")
         if _NOTICE in text.split("\n", 1)[0]:
-            outcome.note(f"== {label} ({gate}) ==\n{text}", notice=True)
+            outcome.note(f"== {label} ({name}) ==\n{text}", notice=True)
         return
     if verdict == _MISSING:
         outcome.note(f"{_PREFIX} {label} not checked — {output.decode()}")
         return
-    lines = [f"== {label} ({gate}) =="]
+    lines = [f"== {label} ({name}) =="]
     if verdict == "unchecked":
-        lines.append(f"{_PREFIX} {_CANNOT}: {label} — {gate} gave no verdict")
+        lines.append(f"{_PREFIX} {_CANNOT}: {label} — {name} gave no verdict")
     text = output.decode(errors="replace").rstrip("\n")
     if text:
         lines.append(text)

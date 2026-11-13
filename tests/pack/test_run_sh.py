@@ -509,6 +509,26 @@ def test_run_sh_from_subdir_with_space(tmp_path):
     assert r.stdout == f"built-binary hook {NON_BLOCKING}\n"
 
 
+
+def test_relative_run_sh_with_cdpath(tmp_path):
+    # With CDPATH set, `cd` on a relative path prints the directory: `here` must not take it.
+    repo = Repo(tmp_path, version="v0.12.1")
+    script = os.path.join(".claude", "hooks", "lighthouse", "run.sh")
+    r = repo.call(NON_BLOCKING, script=script, CDPATH=str(repo.root))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout == f"path-binary hook {NON_BLOCKING}\n"
+
+
+@pytest.mark.parametrize("tool", ["grep", "dirname"])
+def test_missing_tool_still_blocks_blocking_hook(tmp_path, tool):
+    # Without grep the list cannot be read, without dirname run.sh used to lose itself:
+    # both must fail closed for a blocking hook, not pass it.
+    repo = Repo(tmp_path, version="v0.12.1", lighthouse=False)
+    (tmp_path / "path" / tool).unlink()
+    r = repo.call(BLOCKING)
+    assert r.returncode == 2, (r.stdout, r.stderr)
+    assert "COULD NOT CHECK" in r.stderr
+
 SHELLCHECK_LIB = HOOKS.parents[1] / "shell" / "scripts" / "lib" / "shellcheck-bin.sh"
 
 

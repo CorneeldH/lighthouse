@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
@@ -51,7 +52,9 @@ type fakePoster struct {
 	log       *callLog
 	postErr   error
 	rocketErr error
-	onPost    func() // runs at the start of CreateComment
+	mergeErr  error
+	merges    []string // "<pr> <sha>" per MergePR
+	onPost    func()   // runs at the start of CreateComment
 	nextID    int64
 	issues    []int
 	bodies    []string
@@ -76,6 +79,12 @@ func (p *fakePoster) AddRocket(_ context.Context, commentID int64) error {
 	p.log.add("AddRocket")
 	p.rockets = append(p.rockets, commentID)
 	return p.rocketErr
+}
+
+func (p *fakePoster) MergePR(_ context.Context, number int, sha string) error {
+	p.log.add("MergePR")
+	p.merges = append(p.merges, fmt.Sprintf("%d %s", number, sha))
+	return p.mergeErr
 }
 
 // fakeBoard keeps every status set as "<itemID> <status>"; err makes the call fail.
@@ -1672,5 +1681,146 @@ func TestApplyFixPRSecondAttemptBusyPostsNothing(t *testing.T) {
 	}
 	if want := []string{"o/r#7: workplace busy: session other, working since unknown"}; !reflect.DeepEqual(res.Deferred, want) {
 		t.Errorf("Deferred = %q, want %q", res.Deferred, want)
+	}
+}
+
+// mergeAction is the merge Decide plans for a green own PR of the open run runID.
+func mergeAction(runID int64) Action {
+	return Action{Kind: KindMerge, Repo: applyRepo, Issue: 7, RunID: runID, SessionID: oldSession, PR: 12,
+		HeadSHA: "abc1234", PRURL: "https://github.com/o/r/pull/12", Language: "nl", End: true}
+}
+
+func TestApplyMergeSucceeds(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	if _, err := Apply(context.Background(), h.env, []Action{mergeAction(id)}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"MergePR", "CreateComment", "Kill"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	p := h.poster(applyRepo)
+	if !reflect.DeepEqual(p.merges, []string{"12 abc1234"}) {
+		t.Errorf("merges = %q, want [12 abc1234]", p.merges)
+	}
+	if len(p.bodies) != 1 ||
+		!strings.Contains(p.bodies[0], "Checks groen, door de controller gesquasht en gemerged.") ||
+		!strings.Contains(p.bodies[0], "pr: https://github.com/o/r/pull/12") {
+		t.Errorf("posted %q, want one Klaar with note_merged and the PR url", p.bodies)
+	}
+	if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Done {
+		t.Errorf("row = %+v, want closed as done", rows[0])
+	}
+}
+
+func TestApplyMergeHeadMoved(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	h.poster(applyRepo).mergeErr = forge.ErrHeadMoved
+	res, err := Apply(context.Background(), h.env, []Action{mergeAction(id)})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got := h.log.all(); !reflect.DeepEqual(got, []string{"MergePR"}) {
+		t.Errorf("calls = %q, want only MergePR", got)
+	}
+	if rows := h.history(t); !rows[0].Open || rows[0].MergeSHA != "" {
+		t.Errorf("row = %+v, want open without a merge note", rows[0])
+	}
+	if want := []string{"o/r#7: merge of PR #12 skipped: head moved"}; !reflect.DeepEqual(res.Deferred, want) {
+		t.Errorf("Deferred = %q, want %q", res.Deferred, want)
+	}
+	if _, ok := res.Failed[applyRepo]; ok {
+		t.Errorf("Failed = %v, want no %s", res.Failed, applyRepo)
+	}
+}
+
+func TestApplyMergeRefusedNotes(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	h.poster(applyRepo).mergeErr = &forge.MergeRefused{Message: "Pull Request is not mergeable"}
+	if _, err := Apply(context.Background(), h.env, []Action{mergeAction(id)}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got := h.log.all(); !reflect.DeepEqual(got, []string{"MergePR"}) {
+		t.Errorf("calls = %q, want only MergePR", got)
+	}
+	row := h.history(t)[0]
+	if !row.Open || row.MergeSHA != "abc1234" || row.MergeError != "Pull Request is not mergeable" {
+		t.Errorf("row = %+v, want open with merge note abc1234 / Pull Request is not mergeable", row)
+	}
+	if want := "o/r#7: merge of PR #12 refused: Pull Request is not mergeable"; !strings.Contains(h.out.String(), want) {
+		t.Errorf("log %q, want %q", h.out.String(), want)
+	}
+}
+
+func TestApplyMergeOtherErrorFails(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	h.poster(applyRepo).mergeErr = errors.New("status 500")
+	res, err := Apply(context.Background(), h.env, []Action{mergeAction(id)})
+	if err == nil || !strings.Contains(err.Error(), "merge: status 500") {
+		t.Fatalf("Apply: %v, want the merge error", err)
+	}
+	if res.Failed[applyRepo] == nil {
+		t.Errorf("Failed = %v, want %s", res.Failed, applyRepo)
+	}
+	if bodies := h.poster(applyRepo).bodies; len(bodies) != 0 {
+		t.Errorf("posted %q, want nothing", bodies)
+	}
+	if row := h.history(t)[0]; !row.Open || row.MergeSHA != "" || row.MergeError != "" {
+		t.Errorf("row = %+v, want open without a merge note", row)
+	}
+}
+
+func TestApplyMergePostFailsKeepsRowOpen(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	h.poster(applyRepo).postErr = errors.New("502")
+	if _, err := Apply(context.Background(), h.env, []Action{mergeAction(id)}); err == nil {
+		t.Fatal("Apply: want an error")
+	}
+	if got := h.poster(applyRepo).merges; len(got) != 1 {
+		t.Errorf("merges = %q, want one", got)
+	}
+	if len(h.wp.killed) != 0 {
+		t.Errorf("killed = %q, want none", h.wp.killed)
+	}
+	if row := h.history(t)[0]; !row.Open || row.MergeSHA != "" {
+		t.Errorf("row = %+v, want open without a merge note", row)
+	}
+}
+
+func TestApplyMergeRefusedOnClosedRunFails(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", runs.Handoff)
+	h.poster(applyRepo).mergeErr = &forge.MergeRefused{Message: "Pull Request is not mergeable"}
+	_, err := Apply(context.Background(), h.env, []Action{mergeAction(id)})
+	if !errors.Is(err, runs.ErrNotOpen) {
+		t.Errorf("Apply: %v, want ErrNotOpen", err)
+	}
+}
+
+// A first fix-pr start that stops before its claim names the cause decide gave it.
+func TestApplyFixPRReturnCarriesCause(t *testing.T) {
+	cases := []struct {
+		name, reason, want string
+	}{
+		{"conflict", "reason_pr_conflict", "🤖 Teruggegeven\nreason: PR heeft een merge-conflict"},
+		{"no reason", "", fixPRReturned},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.wp.sessions = []workplace.Session{{Key: "other", WorkspaceID: "ws-issue-7-x", State: "working", SessionID: "x"}}
+			a := fixPRAction(1)
+			a.Reason = tc.reason
+			if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if got := h.poster(applyRepo).bodies; !reflect.DeepEqual(got, []string{tc.want}) {
+				t.Errorf("posted %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

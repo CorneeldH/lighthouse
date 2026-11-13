@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "leadin",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"leadin\": {\n    \"routed\": {\n      \"n\": 0\n    },\n    \"unrouted\": {\n      \"n\": 4,\n      \"min\": 1,\n      \"median\": 2.0,\n      \"max\": 4,\n      \"mean\": 2.2\n    },\n    \"no_route\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "review-focus-2"
+    ]
+  }
+]

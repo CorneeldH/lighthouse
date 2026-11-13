@@ -1,0 +1,17 @@
+{
+  "description": "The base world of every scenario: a committed repo, an environment outside it, a codex home.",
+  "plan_path": "docs/developer/planning/plans/2026-09-25-voorbeeld.md",
+  "spec_path": "docs/developer/planning/specs/2026-09-25-voorbeeld-design.md",
+  "repo_files": {
+    "docs/developer/planning/plans/2026-09-25-voorbeeld.md": "# plan v1\n",
+    "docs/developer/planning/specs/2026-09-25-voorbeeld-design.md": "# spec\n",
+    ".claude/skills/lighthouse-review-plan/reviewer-prompt.md": "prompt\n",
+    ".claude/skills/lighthouse-review-plan/findings.schema.json": "{}\n",
+    ".claude/skills/lighthouse-review-spec/reviewer-prompt.md": "spec prompt\n",
+    ".claude/skills/lighthouse-review-spec/findings.schema.json": "{}\n"
+  },
+  "codex_config": "model = \"gpt-5.6-sol\"\nmodel_reasoning_effort = \"high\"\n",
+  "codex_version": "codex-cli 9.9.9",
+  "language": "nl",
+  "refusal": "${KIND}-REVIEW NOT RECORDED: test"
+}

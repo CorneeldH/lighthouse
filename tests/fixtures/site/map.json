@@ -19,7 +19,7 @@
       "label": "main-commit-gate", "what": "A hook that exists.", "how": "It works.",
       "when": "On a commit.",
       "without": "A commit lands on main.", "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/maincommitgate.go"
     },
     {
       "id": "planned-issue", "phase": "two", "row": 0, "kind": "superpowers", "trigger": "skill",

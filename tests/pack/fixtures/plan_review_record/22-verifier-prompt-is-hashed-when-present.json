@@ -1,0 +1,46 @@
+{
+  "description": "verifier-prompt.md and verification.schema.json present: both hashed; round_kinds review.",
+  "world_commit": {
+    ".claude/skills/lighthouse-review-plan/verifier-prompt.md": "verify\n",
+    ".claude/skills/lighthouse-review-plan/verification.schema.json": "{}\n"
+  },
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "record": {
+          "verifier_prompt_sha256": "b749d167d8e0f38416943430adfa89509826c07b8e95d43f0f3bea9294362ebf",
+          "verification_schema_sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+          "round_kinds": [
+            "review"
+          ]
+        }
+      }
+    }
+  ]
+}

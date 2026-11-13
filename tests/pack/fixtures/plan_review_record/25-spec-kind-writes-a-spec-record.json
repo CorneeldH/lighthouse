@@ -1,0 +1,66 @@
+{
+  "description": "A spec record: spec key, no plan key, empty specs, own prompt hash.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "--kind",
+        "spec",
+        "${SPEC}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR",
+        "MINOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "defer",
+          "reason": "hoort in het plan"
+        },
+        {
+          "finding_id": "r1-f2",
+          "decision": "minor_no",
+          "reason": "nee"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex"
+      ],
+      "expect": {
+        "stdout_equals": "${data}/spec-review/2026-09-25-voorbeeld-design/${a.name}\n",
+        "record": {
+          "kind": "spec",
+          "spec": "docs/developer/planning/specs/2026-09-25-voorbeeld-design.md",
+          "specs": [],
+          "issue_spec": null,
+          "schema_version": 5,
+          "prompt_sha256": "86083453f88c7d066c07f78e5ed336b5fbaf735a4887d5cef248803aaf6503ed"
+        },
+        "record_absent": [
+          "plan"
+        ]
+      }
+    }
+  ]
+}

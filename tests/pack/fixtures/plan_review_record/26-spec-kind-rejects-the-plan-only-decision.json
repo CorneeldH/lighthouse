@@ -1,0 +1,99 @@
+{
+  "description": "'spec' is not a spec decision and 'defer' is not a plan decision: both exit 4.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "--kind",
+        "spec",
+        "${SPEC}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "spec",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_contains": [
+          "unknown decision"
+        ]
+      }
+    },
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "b",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "b",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${b}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "defer",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${b}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_contains": [
+          "unknown decision"
+        ]
+      }
+    }
+  ]
+}

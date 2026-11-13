@@ -358,7 +358,7 @@ func TestDetectIgnoresInstalledFiles(t *testing.T) {
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core\n") {
 		t.Fatalf("init: rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
-	if !exists(root, ".claude/hooks/lighthouse/main-commit-gate.sh") {
+	if !exists(root, ".claude/hooks/lighthouse/commit-test-gate.sh") {
 		t.Fatal("core hooks not installed")
 	}
 	r = run(t, root, "", all(upgrade, realPacks))

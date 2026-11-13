@@ -24,16 +24,17 @@
                 "en"
               ],
               "readers": [
+                "internal/cli/planreviewrecord.go",
                 "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
                 "internal/repoconfig/repoconfig.go",
+                "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/lib/artefacts.py",
                 "pack/core/lib/evidence.py",
                 "pack/core/lib/headings.py",
                 "pack/core/lib/protocol.py",
-                "pack/core/scripts/plan_review_record.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -179,11 +180,12 @@
               "default": "main",
               "about": "The branch that work is merged into and that commits are guarded on.",
               "readers": [
+                "internal/hooks/hooks.go",
+                "internal/hooks/maincommitgate.go",
+                "internal/hooks/worktreecheck.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "pack/core/hooks/commit-test-gate.sh",
-                "pack/core/hooks/main-commit-gate.sh",
-                "pack/core/hooks/worktree-check.sh",
                 "pack/core/lib/protocol.py",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/scripts/roborev_gate.py",
@@ -459,8 +461,8 @@
               "default": "docs/developer/planning/plans",
               "about": "Where plans are written.",
               "readers": [
-                "pack/core/scripts/measure_start_issue_kpi.py",
-                "pack/core/scripts/plan_review_record.py",
+                "internal/kpi/startissue.go",
+                "internal/review/openpoints.go",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/skills/review-plan",
                 "pack/core/skills/start-issue",
@@ -487,8 +489,8 @@
               "default": "docs/developer/planning/specs",
               "about": "Where specs are written.",
               "readers": [
-                "pack/core/scripts/measure_start_issue_kpi.py",
-                "pack/core/scripts/plan_review_record.py",
+                "internal/kpi/startissue.go",
+                "internal/review/openpoints.go",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/skills/review-spec",
                 "pack/core/skills/start-issue",
@@ -684,8 +686,7 @@
               ],
               "readers": [
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/hooks/usage-gate/controller.py",
-                "pack/core/lib/usage_guard.py"
+                "internal/usageguard/context.go"
               ]
             },
             {
@@ -699,8 +700,8 @@
                 false
               ],
               "readers": [
-                "pack/core/hooks/usage-gate/resume.py",
-                "pack/core/lib/usage_guard.py"
+                "internal/usageguard/context.go",
+                "internal/usageguard/speak.go"
               ]
             }
           ]
@@ -740,6 +741,8 @@
               "default": 20,
               "about": "How long to wait for the Codex app server.",
               "readers": [
+                "internal/usage/codex.go",
+                "internal/usage/codex_budget.go",
                 "pack/core/scripts/codex_usage.py"
               ]
             },
@@ -758,6 +761,7 @@
               "default": 90,
               "about": "The Codex 5-hour usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
+                "internal/usage/codex_budget.go",
                 "pack/core/scripts/codex_usage.py"
               ]
             },
@@ -768,6 +772,7 @@
               "default": 95,
               "about": "The Codex week usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
+                "internal/usage/codex_budget.go",
                 "pack/core/scripts/codex_usage.py"
               ]
             },
@@ -956,7 +961,7 @@
         {
           "table": "host",
           "title": "Host",
-          "about": "Who this machine is. lighthouse init writes name and tailscale_ip on a machine with Tailscale; without Tailscale, write it by hand only for the gate_* keys or [usage].",
+          "about": "Who this machine is. lighthouse init writes name and tailscale_ip on a machine with Tailscale; without Tailscale, write it by hand for host.controller, the gate_* keys or [usage].",
           "keys": [
             {
               "key": "host.name",
@@ -967,13 +972,24 @@
               "readers": []
             },
             {
+              "key": "host.controller",
+              "level": "set",
+              "required": "no",
+              "about": "true: this machine is the controller host, the address is not measured; false: it is not. Without it, host-check uses tailscale_ip. An older reader ignores it.",
+              "example": true,
+              "readers": [
+                "internal/review/record.go",
+                "pack/core/skills/write-handoff"
+              ]
+            },
+            {
               "key": "host.tailscale_ip",
               "level": "set",
               "required": "no",
-              "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it, host-check reports another host.",
+              "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it and without host.controller, host-check reports another host.",
               "example": "100.64.0.1",
               "readers": [
-                "pack/core/scripts/plan_review_record.py"
+                "internal/review/record.go"
               ]
             },
             {

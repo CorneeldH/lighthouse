@@ -1,0 +1,21 @@
+{
+  "description": "A block inside a code fence is no block: nothing printed.",
+  "world": "bare",
+  "steps": [
+    {
+      "op": "file",
+      "path": "${root}/plan.md",
+      "text": "# Plan\n\n```markdown\n## Open na review\n\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n```\n"
+    },
+    {
+      "op": "run",
+      "args": [
+        "pr-open-points",
+        "${root}/plan.md"
+      ],
+      "expect": {
+        "stdout_equals": ""
+      }
+    }
+  ]
+}

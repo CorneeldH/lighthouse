@@ -1,7 +1,8 @@
 //go:build e2e
 
 // Package e2e proves the DoD of M0 (a) on a fresh repository: `lighthouse init --yes`
-// installs main-commit-gate, the command registered in .claude/settings.json blocks a
+// installs main-commit-gate, the command registered in .claude/settings.json (`run.sh
+// main-commit-gate`, which runs the lighthouse on the PATH: the binary built here) blocks a
 // commit on main, and `lighthouse init --upgrade` right after gives an empty diff. For
 // M0 (c) it proves the same for pack/python: in a repository with a pyproject.toml the
 // registered `commit-test-gate.sh pre` blocks a commit to the default branch with a red
@@ -40,6 +41,18 @@ func cleanEnv() []string {
 		}
 	}
 	return env
+}
+
+// hookEnv is cleanEnv with the directory of bin first on PATH: run.sh looks up
+// `lighthouse` there. Windows spells the key Path: compare it without case.
+func hookEnv(bin string) []string {
+	var env []string
+	for _, kv := range cleanEnv() {
+		if key, _, _ := strings.Cut(kv, "="); !strings.EqualFold(key, "PATH") {
+			env = append(env, kv)
+		}
+	}
+	return append(env, "PATH="+filepath.Dir(bin)+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func buildLighthouse(t *testing.T) string {
@@ -144,8 +157,9 @@ func eventHookCommand(t *testing.T, repo, event, name string) string {
 }
 
 // runHook runs command the way Claude Code does: through a shell, with
-// CLAUDE_PROJECT_DIR set, and the PreToolUse payload on stdin.
-func runHook(t *testing.T, repo, command, bashCmd string) (int, string) {
+// CLAUDE_PROJECT_DIR set, the directory of bin first on PATH, and the PreToolUse payload
+// on stdin.
+func runHook(t *testing.T, bin, repo, command, bashCmd string) (int, string) {
 	t.Helper()
 	payload, _ := json.Marshal(map[string]any{
 		"tool_name":  "Bash",
@@ -154,7 +168,7 @@ func runHook(t *testing.T, repo, command, bashCmd string) (int, string) {
 	})
 	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = repo
-	cmd.Env = append(cleanEnv(), "CLAUDE_PROJECT_DIR="+repo)
+	cmd.Env = append(hookEnv(bin), "CLAUDE_PROJECT_DIR="+repo)
 	cmd.Stdin = bytes.NewReader(payload)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -202,13 +216,13 @@ func TestFreshRepoBlocksCommitOnMain(t *testing.T) {
 	run(t, repo, bin, "init", "--yes")
 
 	cmd := guardCommand(t, repo)
-	code, stderr := runHook(t, repo, cmd, "git commit -m x")
+	code, stderr := runHook(t, bin, repo, cmd, "git commit -m x")
 	if code != 2 || !strings.Contains(stderr, "Main-commit gate: blocked") || strings.Contains(stderr, "COULD NOT CHECK") {
 		t.Fatalf("main: rc %d\n%s", code, stderr)
 	}
 
 	git(t, repo, "checkout", "-q", "-b", "issue-1-x")
-	if code, stderr := runHook(t, repo, cmd, "git commit -m x"); code != 0 {
+	if code, stderr := runHook(t, bin, repo, cmd, "git commit -m x"); code != 0 {
 		t.Fatalf("feature branch: rc %d\n%s", code, stderr)
 	}
 	git(t, repo, "checkout", "-q", "main")
@@ -237,7 +251,7 @@ func TestFreshRepoGetsFullCore(t *testing.T) {
 	}
 
 	// On the default branch: only there does `pre` test before the commit.
-	code, stdout, stderr := runGate(t, repo, bashHookCommand(t, repo, "commit-test-gate.sh pre"))
+	code, stdout, stderr := runGate(t, bin, repo, bashHookCommand(t, repo, "commit-test-gate.sh pre"))
 	if code != 0 || !strings.Contains(stdout, "nothing was tested") {
 		t.Fatalf("commit without [test_gate]: rc %d\n%s\n%s", code, stdout, stderr)
 	}
@@ -246,15 +260,15 @@ func TestFreshRepoGetsFullCore(t *testing.T) {
 // runGate runs the registered `commit-test-gate.sh pre` like runHook, with host.toml next to the
 // repo (never ~/.config, whose gate_slice would wrap the run in systemd-run), and gives
 // stdout too: a passed gate reports there.
-func runGate(t *testing.T, repo, command string) (int, string, string) {
+func runGate(t *testing.T, bin, repo, command string) (int, string, string) {
 	t.Helper()
-	return runGateEvent(t, repo, command, "PreToolUse")
+	return runGateEvent(t, bin, repo, command, "PreToolUse")
 }
 
 // runGateEvent is runGate for hook event event, with the markers of `pre` in the
 // test's own temporary directory (XDG_RUNTIME_DIR next to the repo, like host.toml), so
 // `post` of the same call finds them and no run touches the real state dir.
-func runGateEvent(t *testing.T, repo, command, event string) (int, string, string) {
+func runGateEvent(t *testing.T, bin, repo, command, event string) (int, string, string) {
 	t.Helper()
 	payload, _ := json.Marshal(map[string]any{
 		"session_id":      "e2e",
@@ -265,7 +279,7 @@ func runGateEvent(t *testing.T, repo, command, event string) (int, string, strin
 	})
 	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = repo
-	cmd.Env = append(cleanEnv(), "CLAUDE_PROJECT_DIR="+repo,
+	cmd.Env = append(hookEnv(bin), "CLAUDE_PROJECT_DIR="+repo,
 		"LIGHTHOUSE_HOST_TOML="+filepath.Join(filepath.Dir(repo), "host.toml"),
 		"XDG_RUNTIME_DIR="+filepath.Dir(repo))
 	cmd.Stdin = bytes.NewReader(payload)
@@ -325,7 +339,7 @@ func TestRedTestBlocksCommit(t *testing.T) {
 	writeFile(t, repo, "tests/test_x.py", "def test_x():\n    assert 1 == 2\n")
 	cmd := bashHookCommand(t, repo, "commit-test-gate.sh pre")
 
-	code, _, stderr := runGate(t, repo, cmd)
+	code, _, stderr := runGate(t, bin, repo, cmd)
 	if code != 2 || !strings.Contains(stderr, "commit-test-gate: tests failed") {
 		t.Fatalf("red test: rc %d\n%s", code, stderr)
 	}
@@ -333,7 +347,7 @@ func TestRedTestBlocksCommit(t *testing.T) {
 	// Another size than the red file: a rewrite in the same second with the same size
 	// would leave the stale .pyc of the red run valid.
 	writeFile(t, repo, "tests/test_x.py", "def test_x():\n    assert 1 + 1 == 2\n")
-	if code, stdout, stderr := runGate(t, repo, cmd); code != 0 {
+	if code, stdout, stderr := runGate(t, bin, repo, cmd); code != 0 {
 		t.Fatalf("green test: rc %d\n%s\n%s", code, stdout, stderr)
 	}
 }
@@ -347,14 +361,14 @@ func TestRedCommitComesBackAfter(t *testing.T) {
 	git(t, repo, "checkout", "-q", "-b", "issue-1-x")
 	writeFile(t, repo, "tests/test_x.py", "def test_x():\n    assert 1 == 2\n")
 
-	if code, stdout, stderr := runGate(t, repo, bashHookCommand(t, repo, "commit-test-gate.sh pre")); code != 0 {
+	if code, stdout, stderr := runGate(t, bin, repo, bashHookCommand(t, repo, "commit-test-gate.sh pre")); code != 0 {
 		t.Fatalf("pre on a feature branch: rc %d\n%s\n%s", code, stdout, stderr)
 	}
 	git(t, repo, "add", "-A")
 	git(t, repo, "commit", "-qm", "red")
 
 	post := eventHookCommand(t, repo, "PostToolUse", "commit-test-gate.sh post")
-	code, _, stderr := runGateEvent(t, repo, post, "PostToolUse")
+	code, _, stderr := runGateEvent(t, bin, repo, post, "PostToolUse")
 	if code != 2 || !strings.Contains(stderr, "commit-test-gate: tests failed on the commit you just made") {
 		t.Fatalf("post after a red commit: rc %d\n%s", code, stderr)
 	}
@@ -366,7 +380,7 @@ func TestDefaultCommandWithoutPytest(t *testing.T) {
 	repo := pythonRepo(t, bin, pyprojectHead)
 	cmd := bashHookCommand(t, repo, "commit-test-gate.sh pre")
 
-	code, _, stderr := runGate(t, repo, cmd)
+	code, _, stderr := runGate(t, bin, repo, cmd)
 	if code != 2 || !strings.Contains(stderr, "[test_gate] command") || !strings.Contains(stderr, "lighthouse.toml") || !strings.Contains(stderr, `command = ""`) {
 		t.Fatalf("without pytest: rc %d\n%s", code, stderr)
 	}
@@ -377,7 +391,7 @@ func TestDefaultCommandWithoutPytest(t *testing.T) {
 	}
 	off := strings.Replace(string(toml), `command = "uv run pytest -q"`, `command = ""`, 1)
 	writeFile(t, repo, "lighthouse.toml", off)
-	code, stdout, stderr := runGate(t, repo, cmd)
+	code, stdout, stderr := runGate(t, bin, repo, cmd)
 	if code != 0 || !strings.Contains(stdout, "no test command configured, nothing was tested") {
 		t.Fatalf("command = \"\": rc %d\n%s\n%s", code, stdout, stderr)
 	}

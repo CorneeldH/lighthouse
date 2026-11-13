@@ -144,6 +144,11 @@ First run `lighthouse init --upgrade` in every repository on this host, on a rel
 change. Only then write a `host.toml` without `tailscale_ip`: an older copy of `config.py`
 rejects it, and then the test gate blocks every commit in that repository.
 
+On a host without Tailscale that is the controller host, set `controller = true` (a TOML boolean) in
+`[host]`: `host-check` then answers without measuring an address. `controller = false` says it is
+not the controller host. Without the key the old rule holds: a `tailscale_ip` that is bound on this
+machine. An older reader ignores `controller` and falls back to `tailscale_ip`.
+
 ## Configure lighthouse.toml
 
 `init` proposes `[project] language`, and `[forge]` from your `origin` remote when it is on

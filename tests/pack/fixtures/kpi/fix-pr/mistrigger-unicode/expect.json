@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "mistrigger",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"mistrigger\": {\n    \"loaded\": 2,\n    \"without_fix_request\": 1,\n    \"examples\": [\n      \"héél lang\\t  😀 ünï héél lang\\t  😀 ünï héél lang\\t  😀 ünï héél lang\\t  😀 ünï héél lang\\t  😀 ünï héél lang\\t  😀 ünï héél lang\\t  \"\n    ]\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "review-focus-3"
+    ]
+  }
+]

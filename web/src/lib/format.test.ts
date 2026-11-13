@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAge, formatDuration, formatPct, formatReset } from './format'
+import { formatAge, formatAgo, formatDuration, formatPct, formatReset } from './format'
 
 describe('formatAge', () => {
   it('rounds down to the unit', () => {
@@ -9,6 +9,15 @@ describe('formatAge', () => {
     expect(formatAge(3599)).toBe('59 min')
     expect(formatAge(3600)).toBe('1 h')
     expect(formatAge(10800)).toBe('3 h')
+  })
+})
+
+describe('formatAgo', () => {
+  it('formats the age between two instants in ms', () => {
+    expect(formatAgo(130_000, 10_000)).toBe('2 min ago')
+  })
+  it('clamps a future instant to zero', () => {
+    expect(formatAgo(0, 5_000)).toBe('< 1 min ago')
   })
 })
 
