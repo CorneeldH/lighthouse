@@ -92,6 +92,7 @@
 - Modify: `internal/server/server.go` (`Deps`, `New`)
 - Modify: `internal/server/forge.go` (`registerForge`)
 - Modify: `internal/server/forge_test.go` (`testDeps`, nieuwe test)
+- Modify: `internal/cli/serve.go` (tijdelijke `Overview`-closure)
 
 **Interfaces:**
 - Consumes: `BuildFunc`-vorm uit Task 1 (`func(context.Context) (overview.Overview, error)`).
@@ -101,13 +102,13 @@
 
 - [ ] **Step 2: Run** `go test ./internal/server -run 'Endpoints|Endpoint' -v` — FAIL (`Deps` heeft geen veld `Overview`).
 
-- [ ] **Step 3: Implementeer.** `Deps.Overview` toevoegen; `New` roept `registerForge(api, d.Overview)`; beide handlers vervangen `overview.BuildAll(ctx, repos)` door `read(ctx)`; `forgeError` blijft ongewijzigd. `testDeps` zet `Overview` op `func(ctx) { return overview.BuildAll(ctx, repos) }` over dezelfde `[]overview.RepoSource`, zodat de bestaande tests (`TestQuestionsEndpoint`, `TestReturnedEndpoint`, `TestEmptyListIsArray`, `TestEndpointNotConfigured`, `TestEndpointForgeDown`, snapshot) ongewijzigd blijven slagen.
+- [ ] **Step 3: Implementeer.** `Deps.Overview` toevoegen; `New` roept `registerForge(api, d.Overview)`; beide handlers vervangen `overview.BuildAll(ctx, repos)` door `read(ctx)`; `forgeError` blijft ongewijzigd. `testDeps` zet `Overview` op `func(ctx) { return overview.BuildAll(ctx, repos) }` over dezelfde `[]overview.RepoSource`, `internal/cli/serve.go` zet in dezelfde commit tijdelijk `Overview` op dezelfde `BuildAll`-closure over `repos` (Task 3 vervangt die door `read`), zodat `./internal/cli` na deze commit niet op een nil-functie paniekt. De bestaande tests (`TestQuestionsEndpoint`, `TestReturnedEndpoint`, `TestEmptyListIsArray`, `TestEndpointNotConfigured`, `TestEndpointForgeDown`, snapshot) ongewijzigd blijven slagen.
 
-- [ ] **Step 4: Run** `go test -race ./internal/server -v` — alles PASS, ook `openapi_snapshot_test.go` (de vorm van de responses is niet veranderd).
+- [ ] **Step 4: Run** `go test -race ./internal/server ./internal/cli -v` — alles PASS, ook `openapi_snapshot_test.go` (de vorm van de responses is niet veranderd).
 
 - [ ] **Step 5: Commit**
   ```bash
-  git add internal/server/server.go internal/server/forge.go internal/server/forge_test.go
+  git add internal/server/server.go internal/server/forge.go internal/server/forge_test.go internal/cli/serve.go
   git commit -m "feat(server): questions en returned lezen één gedeeld overzicht (#307)"
   ```
 
@@ -169,9 +170,9 @@
 
 - [ ] **Step 1: Pas `docs/install.md` aan.** Taal van het bestand blijft zoals het is (Engels); beschrijf: `/api/questions` en `/api/returned` tonen een overzicht dat `serve` bij de start en daarna elke 2 minuten ververst (start tot start, nooit twee tegelijk, time-out 90 s per verversing); een mislukte verversing wordt na 20 s herhaald en beide endpoints geven dan 502 (503 zonder repo's) in plaats van oude data; het eerste request na een start wacht op de eerste verversing; `serve` leest GitHub ook als niemand kijkt (30 verversingen per uur per repo-set). Noem dat een repo zonder Controller-filter van het bord de comments van elk open issue met comments leest en dus zwaarder meetelt in de rate limit.
 
-- [ ] **Step 2: Rate-limit-telling** (de spec zet die in de plan-fase): voeg in `docs/install.md` één zin toe met het aantal calls per build = per repo 1 (open issues, evt. meerdere pagina's) + 1 (board-items, alleen met bord) + 1 per Controller-issue met comments; bij 30 builds per uur tegen 5000 per uur samen met de tick. Controleer de aantallen in `internal/overview/overview.go` (`Build`, `fetchStatuses`) en `internal/forge` (paginering) vóór je ze opschrijft.
+- [ ] **Step 2: Rate-limit-telling** (de spec zet die in de plan-fase): voeg in `docs/install.md` één zin toe met het aantal calls per build = per repo 1 (open issues, evt. meerdere pagina's) + 1 (board-items, alleen met bord) + 1 per Controller-issue met comments; bij 30 builds per uur tegen 5000 per uur samen met de tick. Controleer de aantallen in `internal/overview/overview.go` (`Build`, `fetchStatuses`) en `internal/forge` (paginering) vóór je ze opschrijft. Geen code of beslisregel in deze PR als het budget niet houdt: schrijf in dezelfde zin op dat een repo zonder Controller-filter het budget het eerst raakt en dat dit een bewust geaccepteerd risico is (eigen keuze, spec *Mijn keuzes*); bij overschrijding geven beide endpoints 502 via de bestaande `forgeError`.
 
-- [ ] **Step 3: Schrijf het changelog-fragment** `changelog.d/issue-307-forge-blokken-cache.md` met frontmatter `type: changed` (zie `changelog.d/issue-254-unitprefix-config.md`) en een Nederlandse zin: Open questions en Returned antwoorden direct uit een overzicht dat serve elke 2 minuten ververst; de pagina pollt elke minuut; bij een fout van de forge toont de pagina een fout in plaats van oude data.
+- [ ] **Step 3: Schrijf het changelog-fragment** `changelog.d/issue-307-forge-blokken-cache.md` met frontmatter `type: changed` (zie `changelog.d/issue-254-unitprefix-config.md`) en één Engelse zin (`docs/releasing.md`: fragmenten zijn Engels; de overige artefacten blijven Nederlands): Open questions en Returned antwoorden direct uit een overzicht dat serve elke 2 minuten ververst; de pagina pollt elke minuut; bij een fout van de forge toont de pagina een fout in plaats van oude data.
 
 - [ ] **Step 4: Run** de linkcheck/markdown-hook door de bestanden te schrijven (de `md-link-check`-hook draait bij Edit/Write); `git diff --stat` toont alleen deze twee bestanden.
 
