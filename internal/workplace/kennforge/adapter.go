@@ -25,7 +25,7 @@ type Adapter struct {
 	Kind, Repo string            // [forge] kind and repo of the repository
 	StateDir   string            // where carriers go
 	Targets    map[string]string // profile -> forge target_key
-	Profile    string            // the repo profile ([controller] profile)
+	Profile    string            // the profile of the run: Stop, Kill and Transcript pick the container by it
 	Node       string            // forge node_id of the workspace; "": self, the forge at Client
 	UnitPrefix string            // [dispatch.forge] unit_prefix, no default: "" makes Stop fail
 	Run        workplace.Runner

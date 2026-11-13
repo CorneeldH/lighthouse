@@ -42,7 +42,7 @@ type tickEnv struct {
 	// Workplace is the workplace of a repo; nil follows [dispatch] workplace: "local" is a
 	// local.Adapter, any other value a kennforge.Adapter from [dispatch.forge],
 	// [dispatch.profiles] and the repo.
-	Workplace func(repo repoconfig.Repo) workplace.Workplace
+	Workplace func(repo repoconfig.Repo, node, profile string) workplace.Workplace
 	StateDir  string // run instructions, carriers and permission notes; "" is ${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/dispatch
 	// Meter measures the usage windows; nil is a meter on usage.DefaultPaths and the [usage] table of HostToml.
 	Meter *usage.Meter
@@ -92,10 +92,11 @@ func (e tickEnv) stateDir() (string, error) {
 	return filepath.Join(base, "lighthouse", "dispatch"), nil
 }
 
-// workplace returns the workplace of repo; stateDir is where its carriers go.
-func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateDir string) workplace.Workplace {
+// workplace returns the workplace of repo on node ("" is self) for profile; stateDir is where
+// its carriers go. The local workplace has no nodes and no profile of its own.
+func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateDir, node, profile string) workplace.Workplace {
 	if e.Workplace != nil {
-		return e.Workplace(repo)
+		return e.Workplace(repo, node, profile)
 	}
 	if cfg.Workplace == hostconfig.WorkplaceLocal {
 		return &local.Adapter{
@@ -110,9 +111,33 @@ func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateD
 	return &kennforge.Adapter{
 		Client: kennforge.New(cfg.Forge.URL, cfg.Forge.TokenFile),
 		Kind:   repo.Kind, Repo: repo.Slug, StateDir: stateDir,
-		Targets: targets, Profile: repo.Controller.Profile, Run: e.runner(),
+		Targets: targets, Profile: profile, Node: node, Run: e.runner(),
 		Home: e.Getenv("HOME"), UnitPrefix: cfg.Forge.UnitPrefix,
 	}
+}
+
+// placeKey is one workplace of a tick: a repo, a node ("" is self) and a profile.
+type placeKey struct{ repo, node, profile string }
+
+// places returns the workplaces of repos, built lazily, one per (repo, node, profile): a run
+// is measured, stopped and removed on the node and in the profile its row holds.
+func (e tickEnv) places(cfg hostconfig.Dispatch, stateDir string) func(repo repoconfig.Repo, node, profile string) workplace.Workplace {
+	built := map[placeKey]workplace.Workplace{}
+	return func(repo repoconfig.Repo, node, profile string) workplace.Workplace {
+		k := placeKey{repo.Slug, node, profile}
+		w, ok := built[k]
+		if !ok {
+			w = e.workplace(cfg, repo, stateDir, node, profile)
+			built[k] = w
+		}
+		return w
+	}
+}
+
+// place is the workplace.Place of one repo.
+func (e tickEnv) place(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateDir string) workplace.Place {
+	places := e.places(cfg, stateDir)
+	return func(node, profile string) workplace.Workplace { return places(repo, node, profile) }
 }
 
 func newTickCommand() *cobra.Command {
@@ -300,7 +325,7 @@ func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispa
 			return dispatch.MergedHead(prs), nil
 		},
 	}
-	return workplace.Sweep(ctx, db, func(node, profile string) workplace.Workplace { return env.workplace(cfg, sr.repo, dir) }, env.runner(), in, env.now())
+	return workplace.Sweep(ctx, db, env.place(cfg, sr.repo, dir), env.runner(), in, env.now())
 }
 
 // decideAndApply decides once over the gathered repos and applies the actions. Each deferral
@@ -378,10 +403,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	if err != nil {
 		return dispatch.Result{}, err
 	}
-	places := make(map[string]workplace.Workplace, len(repos))
-	for slug, repo := range repos {
-		places[slug] = env.workplace(cfg, repo, dir)
-	}
+	places := env.places(cfg, dir)
 	// Apply's joined error is dropped on purpose: the same errors are in res.Failed, per
 	// repo: the callers write their apply lines from it, and tick decides which fingerprints
 	// it saves.
@@ -391,11 +413,8 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		Board: func(slug string) dispatch.Board {
 			return dispatch.NewBoard(env.client(slug, token), *repos[slug].Board)
 		},
-		Workplace: func(slug string) workplace.Workplace { return places[slug] },
-		Profile: func(slug string) (string, string) {
-			name := repos[slug].Controller.Profile
-			return name, cfg.Profiles[name].MCPConfig
-		},
+		Workplace:  func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
+		MCPConfig:  func(profile string) string { return cfg.Profiles[profile].MCPConfig },
 		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		StateDir:   dir,
 		MarkerDir:  markerDir,
@@ -511,32 +530,34 @@ func adopt(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch
 	if err != nil {
 		return err
 	}
-	if err := workplace.AdoptSessions(ctx, db, func(node, profile string) workplace.Workplace { return env.workplace(cfg, repo, dir) }, repo.Slug); err != nil {
+	if err := workplace.AdoptSessions(ctx, db, env.place(cfg, repo, dir), repo.Slug); err != nil {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: measure %s: %s\n", repo.Slug, oneLine(err))
 	}
 	return nil
 }
 
-// measure measures each open run that has a workspace: the stand of its session (only with a
-// session key) and its RunState. A run it cannot measure has neither, and gets a measure line
+// measure measures each open run that has a workspace, on the node and in the profile of the run:
+// the stand of its session (only with a session key) and its RunState. A run it cannot measure has neither, and gets a measure line
 // on errOut; the other runs are still measured. The error is only for a missing state
 // directory.
 func measure(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo repoconfig.Repo,
 	open []runs.OpenRun, errOut io.Writer) (map[int64]workplace.Stand, map[int64]dispatch.RunState, error) {
 	stands := map[int64]workplace.Stand{}
 	states := map[int64]dispatch.RunState{}
-	var m *runProbe
+	var place workplace.Place
+	var dir string
 	for _, r := range open {
 		if r.WorkspaceID == "" {
 			continue
 		}
-		if m == nil {
-			dir, err := env.stateDir()
-			if err != nil {
+		if place == nil {
+			var err error
+			if dir, err = env.stateDir(); err != nil {
 				return nil, nil, err
 			}
-			m = &runProbe{w: env.workplace(cfg, repo, dir), stateDir: dir}
+			place = env.place(cfg, repo, dir)
 		}
+		m := runProbe{w: place(r.Node, r.Profile), stateDir: dir}
 		stand, measured, state, err := m.measure(ctx, r)
 		if err != nil {
 			_, _ = fmt.Fprintf(errOut, "lighthouse: measure %s: run %d: %s\n", repo.Slug, r.ID, oneLine(err))
@@ -607,11 +628,30 @@ func (m *runProbe) transcript(ctx context.Context, r runs.OpenRun) (*workplace.T
 	return &t, nil
 }
 
-// decideInput is the Input of one decide over repos, with the limits of host.toml [dispatch]
-// and brake; a nil brake is no brake.
+// decideInput is the Input of one decide over repos, with the limits of host.toml [dispatch],
+// the node of each profile, and brake; a nil brake is no brake.
 func decideInput(env tickEnv, cfg hostconfig.Dispatch, repos []dispatch.RepoInput, brake *dispatch.Brake) dispatch.Input {
 	return dispatch.Input{Now: env.now(), Night: cfg.Night, Repos: repos, Brake: brake,
-		MaxWait: dispatch.Duration(cfg.MaxWait), MaxRuntime: dispatch.Duration(cfg.MaxRuntime)}
+		MaxWait: dispatch.Duration(cfg.MaxWait), MaxRuntime: dispatch.Duration(cfg.MaxRuntime),
+		ProfileNodes: profileNodes(cfg)}
+}
+
+// profileNodes maps each profile that names a node to that node's node_id; nil when none
+// does. The local workplace has no nodes: every run of it is on this host.
+func profileNodes(cfg hostconfig.Dispatch) map[string]string {
+	if cfg.Workplace == hostconfig.WorkplaceLocal {
+		return nil
+	}
+	var out map[string]string
+	for name := range cfg.Profiles {
+		if id := cfg.NodeID(name); id != "" {
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[name] = id
+		}
+	}
+	return out
 }
 
 // repoInput completes the gather of pre and returns what Decide knows of the repo. It reads
@@ -638,7 +678,8 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, c *forg
 	}
 	return dispatch.RepoInput{
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
-		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
+		LocationPrefix: pre.Repo.Labels.LocationPrefix,
+		DefaultBranch:  pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
 		Markers: pre.Markers,
 	}, nil
 }
