@@ -140,6 +140,10 @@ mag pushen: er is een `.entire/settings*.json` gelezen, `enabled` is daarin niet
    `held.txt` van een eerdere run; de volgende run gaat verder vanaf de ledger en schrijft
    `held.txt` opnieuw.
 
+Met `--report-rss` meldt `push` per batch `secret-scan: batch <i>/<n> peak RSS <m> MB` op stderr
+(`unknown` als de piek niet te meten is). De vlag is bedoeld voor de journal van de timer (zie
+*Host-deploy*); zonder vlag blijft die regel weg.
+
 `push` stopt niet bij het findings-plafond: de blobs met een finding blijven uit de ledger, hun
 refs gaan naar `held.txt`, de melding staat bovenaan het overzicht, en de schone refs gaan uit de
 deur.
