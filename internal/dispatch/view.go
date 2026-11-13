@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/runs"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 // RunView is the tick_state row of one open or parked run, as the UI reads it.
@@ -45,7 +46,8 @@ type DeferredView struct {
 // both lists is shown once, as open. The phase comes from the command and the task progress from
 // the plan and ledger of an sdd run, left zero when they cannot be read. The stand of an open run
 // comes from pre.Stands and stays "" when the run was not measured; a parked run has none, also
-// when apply parked it after the precheck measured it. At stays zero for SaveRunView to set.
+// when apply parked it after the precheck measured it. A done with work after the Stop in pre.Runs
+// is working, as runCtx.done counts it. At stays zero for SaveRunView to set.
 func RunViews(pre Pre, open, parked []runs.Brief) []RunView {
 	titles := make(map[int]string, len(pre.Items))
 	for _, it := range pre.Items {
@@ -63,6 +65,9 @@ func RunViews(pre Pre, open, parked []runs.Brief) []RunView {
 			v.Task, v.Tasks, v.Step = p.Task, p.Tasks, p.Step
 		}
 		if stand, ok := pre.Stands[b.ID]; ok && state == "open" {
+			if stand == workplace.Done && workAfterStop(pre.Runs[b.ID].Transcript) {
+				stand = workplace.Working
+			}
 			v.Stand = stand.String()
 		}
 		out = append(out, v)
