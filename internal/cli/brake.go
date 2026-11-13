@@ -83,11 +83,9 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 	if err != nil {
 		return hostFacts{}, err
 	}
+	b.Nodes = nodeSlots(cfg)
 	for _, r := range open {
-		b.InUse++
-		if r.Profile == dispatch.ProfileSoftware {
-			b.SoftwareInUse++
-		}
+		b.CountRun(r.Node, r.Profile)
 	}
 	markers, err := park.ReadMarkers(f.MarkerDir)
 	if err != nil {
@@ -109,12 +107,21 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 		f.Markers[repo] = append(f.Markers[repo], m)
 		if runs.Resumable(last, m.Key()) {
 			f.Parked[repo] = append(f.Parked[repo], last.ID)
-			b.InUse++
-			if last.Profile == dispatch.ProfileSoftware {
-				b.SoftwareInUse++
-			}
+			b.CountRun(last.Node, last.Profile)
 		}
 	}
 	f.Brake = b
 	return f, nil
+}
+
+// nodeSlots lists the nodes of host.toml by node_id; nil without nodes.
+func nodeSlots(cfg hostconfig.Dispatch) map[string]dispatch.NodeSlots {
+	if len(cfg.Nodes) == 0 {
+		return nil
+	}
+	out := make(map[string]dispatch.NodeSlots, len(cfg.Nodes))
+	for name, n := range cfg.Nodes {
+		out[n.NodeID] = dispatch.NodeSlots{Name: name, Slots: n.Slots}
+	}
+	return out
 }

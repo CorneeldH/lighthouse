@@ -24,6 +24,15 @@ type Brake struct {
 	MaxSoftware       int      `json:"max_software"`
 	InUse             int      `json:"in_use"`          // open plus parked runs on the host
 	SoftwareInUse     int      `json:"software_in_use"` // of those, profile "software"
+	// Nodes are the slots of the nodes of host.toml, per node_id; InUse and Slots above are of this host.
+	Nodes map[string]NodeSlots `json:"nodes,omitempty"`
+}
+
+// NodeSlots is the slot state of one node: its name in host.toml, its slots and its open runs.
+type NodeSlots struct {
+	Name  string `json:"name"`
+	Slots int    `json:"slots"`
+	InUse int    `json:"in_use"`
 }
 
 // apply walks the starts and resumes of ps in order and lets each through, drops it (pause)
@@ -33,6 +42,7 @@ type Brake struct {
 func (b *Brake) apply(ps []planned) []planned {
 	out := make([]planned, 0, len(ps))
 	passed, admitted, admittedSoftware := 0, 0, 0
+	admittedOn := map[string]int{}
 	for _, p := range ps {
 		if p.group() != 2 {
 			out = append(out, p)
@@ -41,15 +51,21 @@ func (b *Brake) apply(ps []planned) []planned {
 		if b.Paused {
 			continue
 		}
-		if reason := b.closed(p, passed, admitted, admittedSoftware); reason != "" {
+		if reason := b.closed(p, passed, admitted, admittedSoftware, admittedOn); reason != "" {
 			out = append(out, planned{Action: Action{
 				Kind: KindDefer, Repo: p.Repo, Issue: p.Issue, Language: p.Language, Reason: reason,
 			}})
 			continue
 		}
-		passed++
+		if p.node == "" {
+			passed++
+		}
 		if !p.parked {
-			admitted++
+			if p.node == "" {
+				admitted++
+			} else {
+				admittedOn[p.node]++
+			}
 			if p.software {
 				admittedSoftware++
 			}
@@ -72,12 +88,15 @@ func (b *Brake) UsageClosed() string {
 }
 
 // closed returns the defer text of the first closed brake for p, or "" when all are open.
-func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int) string {
+func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int, admittedOn map[string]int) string {
 	if reason := b.UsageClosed(); reason != "" {
 		return reason
 	}
 	if b.Manual {
 		return ""
+	}
+	if p.node != "" {
+		return b.nodeClosed(p, admittedOn[p.node], admittedSoftware)
 	}
 	if b.MemAvailableGiB == nil {
 		return "memory: MemAvailable not measured"
@@ -96,4 +115,37 @@ func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int) string
 		return fmt.Sprintf("software: %d of %d in use", b.SoftwareInUse+admittedSoftware, b.MaxSoftware)
 	}
 	return ""
+}
+
+// nodeClosed is closed for a run on a node: no memory brake (the memory is not this host's), the
+// slots of the node, then the software limit, which is host-wide.
+func (b *Brake) nodeClosed(p planned, admitted, admittedSoftware int) string {
+	if !p.parked {
+		n, ok := b.Nodes[p.node]
+		if !ok {
+			return fmt.Sprintf("slots: node %s not configured", p.node)
+		}
+		if n.InUse+admitted >= n.Slots {
+			return fmt.Sprintf("slots: %d of %d in use on %s", n.InUse+admitted, n.Slots, n.Name)
+		}
+	}
+	if !p.parked && p.software && b.SoftwareInUse+admittedSoftware >= b.MaxSoftware {
+		return fmt.Sprintf("software: %d of %d in use", b.SoftwareInUse+admittedSoftware, b.MaxSoftware)
+	}
+	return ""
+}
+
+// CountRun counts one open or parked run on node ("" is this host) of profile: a run on this host
+// takes one of its slots, a run on a node one of that node's, and a software run counts toward the
+// host-wide software limit either way. A run on a node that is not in Nodes is not counted there.
+func (b *Brake) CountRun(node, profile string) {
+	if node == "" {
+		b.InUse++
+	} else if n, ok := b.Nodes[node]; ok {
+		n.InUse++
+		b.Nodes[node] = n
+	}
+	if profile == ProfileSoftware {
+		b.SoftwareInUse++
+	}
 }
