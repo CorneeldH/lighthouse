@@ -74,6 +74,7 @@
   "want": [
     {
       "kind": "start",
+      "profile": "infra",
       "repo": "o/r",
       "issue": 7,
       "trigger": "handoff",
