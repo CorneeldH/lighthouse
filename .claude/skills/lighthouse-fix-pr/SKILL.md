@@ -207,7 +207,7 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 
    ```bash
    R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' | tail -1 | jq -r . > <scratch>/roborev-ci.md
-   python3 .lighthouse/scripts/roborev_gate.py classify <scratch>/roborev-ci.md
+   lighthouse roborev-gate classify <scratch>/roborev-ci.md
    ```
 
    If `classify` prints `verdict` `skip` (for instance `review faalde: bevindingen onleesbaar`),
@@ -220,8 +220,8 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    (the reason, `null` with `fixed`; for a low that is not trivial: `low, not trivial`). Then:
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
-   python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
+   lighthouse roborev-gate record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
+   lighthouse roborev-comment render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
    R=$(lighthouse config forge.repo) && gh pr comment <nr> --repo "$R" --body-file <scratch>/comment.md
    ```
 

@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "21dc9744f22fb62c1e44748dfeddcfb15bab17d2754074ef7ef4401887b5dc37"
+sha256 = "1e11f9bf883e1124b4770b43330766692d294737b9e1948297b43534ab943755"
 
 [[unit]]
 kind = "file"
@@ -148,7 +148,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "ac673b0596d0fa894ea604c06933254faa6431c05d6a2ff87116f6e2c848650c"
+sha256 = "724cdd30ef36a474ade492bdffc3daf9e08dc75c1ea9e7edb51a28e280c3279f"
 
 [[unit]]
 kind = "file"
@@ -384,7 +384,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "ae55d2ca9c893de5b89200af4e6cc889969f44cda229cb55643be2f133fb6f98"
+sha256 = "2d69d6ba493957e686498f73bbcaebb4c5fe113ddf31c015e4b8deedcd0952b8"
 
 [[unit]]
 kind = "file"
@@ -510,7 +510,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "ac673b0596d0fa894ea604c06933254faa6431c05d6a2ff87116f6e2c848650c"
+sha256 = "724cdd30ef36a474ade492bdffc3daf9e08dc75c1ea9e7edb51a28e280c3279f"
 
 [[unit]]
 kind = "file"
@@ -710,13 +710,6 @@ sha256 = "d8ba746d1dad1b7074f6c2541cde14801cf3d7d5cd3736af6c60a6c5a8289e13"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/scripts/codex_usage.py"
-package = "core"
-version = "dev"
-sha256 = "75d077bc7ced2c9563cc2e37073cb4c2303cf69b67deeb082a9617c31602ea5f"
-
-[[unit]]
-kind = "file"
 path = ".lighthouse/scripts/create_labels.py"
 package = "core"
 version = "dev"
@@ -742,20 +735,6 @@ path = ".lighthouse/scripts/post_artefact.py"
 package = "core"
 version = "dev"
 sha256 = "872ab4821a4063f7234b4d6000ae6c607c2e5f8a51afc560d81651c92f445903"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/roborev_comment.py"
-package = "core"
-version = "dev"
-sha256 = "c58d028c2f2ee2199680af41499aa15704e767210a176457afbf46c0b1c7d000"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/roborev_gate.py"
-package = "core"
-version = "dev"
-sha256 = "e5eb877fc9681cb79f179eb54faad43b8c61efdd3114762f507b9aae2efdb2c0"
 
 [[unit]]
 kind = "file"
