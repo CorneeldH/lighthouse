@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +14,15 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
 )
+
+// eq fails the test when got is not deeply equal to want. It lives in this file, without a build
+// tag, because pre_test.go and state_test.go use it on every OS.
+func eq(t *testing.T, what string, got, want any) {
+	t.Helper()
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("%s = %#v, want %#v", what, got, want)
+	}
+}
 
 // newRepo builds a repo with one commit under a fresh temp dir and returns its realpath.
 func newRepo(t *testing.T) string {

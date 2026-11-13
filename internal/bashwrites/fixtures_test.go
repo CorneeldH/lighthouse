@@ -1,3 +1,5 @@
+//go:build !windows
+
 package bashwrites
 
 import (
@@ -47,13 +49,6 @@ func sortedCopy(in []string) []string {
 	out := append([]string{}, in...)
 	sort.Strings(out)
 	return out
-}
-
-func eq(t *testing.T, what string, got, want any) {
-	t.Helper()
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("%s = %#v, want %#v", what, got, want)
-	}
 }
 
 func TestFixtures(t *testing.T) {
