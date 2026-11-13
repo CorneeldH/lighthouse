@@ -56,6 +56,22 @@ func TestPlacement(t *testing.T) {
 	}
 }
 
+// A repo that had location_prefix before [controller.locations] existed keeps dispatching on
+// upgrade: without the table a location label is ignored, two labels included.
+func TestPlacementWithoutLocationsIgnoresLabels(t *testing.T) {
+	for _, locations := range []map[string]string{nil, {}} {
+		for _, labels := range [][]string{{"1-loc:mac"}, {"1-loc:beelink"}, {"1-loc:mac", "1-loc:container"}} {
+			c := placementCtx(labels, nil)
+			c.repo.Controller.Locations = locations
+			profile, node, deferReason := c.placement(Action{Kind: KindStart, TriggerKey: "start:7"})
+			if profile != "software" || node != "" || deferReason != "" {
+				t.Errorf("locations %v, labels %q: placement = (%q, %q, %q), want (\"software\", \"\", \"\")",
+					locations, labels, profile, node, deferReason)
+			}
+		}
+	}
+}
+
 // A label that changes during a run moves neither the run nor its resume: the session goes on
 // where it started.
 func TestPlacementResumeKeepsNode(t *testing.T) {

@@ -9,9 +9,10 @@ import (
 // placement is the profile and the node a start or resume runs on, or the reason it waits.
 // A run that exists keeps its place: a resume goes where its session ran, a retry where its
 // failed start went, whatever the issue's labels say now. A new run follows the location
-// label: no label is the repo's own profile, one label a profile of [controller.locations],
-// more than one or an unknown value a deferral. The node is the one the profile has in
-// host.toml; "" is this host.
+// label once the repo has [controller.locations]: no label is the repo's own profile, one
+// label a profile of [controller.locations], more than one or an unknown value a deferral.
+// Without the table the label is ignored. The node is the one the profile has in host.toml;
+// "" is this host.
 func (c issueCtx) placement(a Action) (profile, node, deferReason string) {
 	if a.Kind == KindResume {
 		for _, row := range c.repo.History {
@@ -30,7 +31,9 @@ func (c issueCtx) placement(a Action) (profile, node, deferReason string) {
 		return c.rowPlacement(*last)
 	}
 	profile = c.repo.Controller.Profile
-	if prefix := c.repo.LocationPrefix; prefix != "" {
+	// Without [controller.locations] the label binds nothing: a repo that set location_prefix
+	// before the table existed dispatches as it did.
+	if prefix := c.repo.LocationPrefix; prefix != "" && len(c.repo.Controller.Locations) > 0 {
 		var values []string
 		for _, label := range c.it.Labels {
 			if value, ok := strings.CutPrefix(label, prefix); ok {

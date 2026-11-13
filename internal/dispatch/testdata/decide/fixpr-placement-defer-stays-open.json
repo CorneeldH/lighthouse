@@ -56,7 +56,11 @@
           "Profile": "",
           "SpecReview": true,
           "PlanReview": true,
-          "AtRoundLimit": ""
+          "AtRoundLimit": "",
+          "Locations": {
+            "mac": "mac",
+            "container": "container"
+          }
         },
         "language": "nl",
         "default_branch": "main",
