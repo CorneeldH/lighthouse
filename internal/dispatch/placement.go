@@ -1,7 +1,6 @@
 package dispatch
 
 import (
-	"cmp"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -53,8 +52,8 @@ func (c issueCtx) placement(a Action) (profile, node, deferReason string) {
 	return profile, c.profileNodes[profile], ""
 }
 
-// rowPlacement is the place a run of the history took; a row from before profiles were kept
-// has the repo's own profile.
+// rowPlacement is the place a run of the history took: its profile and its node, as the claim
+// recorded them. Apply has written the profile of every run since the runs table exists.
 func (c issueCtx) rowPlacement(row runs.Row) (profile, node, deferReason string) {
-	return cmp.Or(row.Profile, c.repo.Controller.Profile), row.Node, ""
+	return row.Profile, row.Node, ""
 }
