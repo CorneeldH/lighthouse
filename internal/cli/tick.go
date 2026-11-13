@@ -138,8 +138,9 @@ func newTickCommand() *cobra.Command {
 
 // tick takes tick.lock, loads the repos of host.toml and skips, loudly, each one that is not
 // dispatchable or whose gather fails; the others get gatherRepo, the gathered ones
-// decideAndApply, and every repo whose precheck passed saveRunViews and sweepRepos, due or not.
-// The run views follow apply, so a run this tick starts or closes shows at once. A busy lock is
+// decideAndApply, every repo whose precheck passed saveRunViews, also when its full gather
+// failed, and every repo that was not skipped sweepRepos, due or not. The run views follow
+// apply, so a run this tick starts or closes shows at once. A busy lock is
 // not an error. At least one skip, failed action, unsaved run view or failed cleanup returns
 // errSilent: the reasons are already on errOut.
 func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) error {
@@ -199,7 +200,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	// repo, so the client of the first dispatchable repo serves every repo.
 	var login func() (string, error)
 	var gathered []gatheredRepo
-	var checked []checkedRepo
+	var checked, viewed []checkedRepo
 	skipped := false
 	for _, path := range cfg.Repos {
 		repo, err := repoconfig.Load(path)
@@ -208,7 +209,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 		}
 		var in *dispatch.RepoInput
 		var fp string
-		var pre dispatch.Pre
+		var pre *dispatch.Pre
 		if err == nil {
 			if login == nil {
 				c := env.client(repo.Slug, token)
@@ -216,12 +217,15 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 			}
 			in, fp, pre, err = gatherRepo(ctx, env, st.DB, cfg, facts, repo, token, login, errOut)
 		}
+		if pre != nil {
+			viewed = append(viewed, checkedRepo{repo: repo, pre: *pre})
+		}
 		if err != nil {
 			skipped = true
 			_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 			continue
 		}
-		checked = append(checked, checkedRepo{repo: repo, pre: pre})
+		checked = append(checked, checkedRepo{repo: repo, pre: *pre})
 		if in != nil {
 			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp})
 		}
@@ -230,7 +234,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	if err != nil {
 		return err
 	}
-	if saveRunViews(ctx, env, st.DB, checked, errOut) {
+	if saveRunViews(ctx, env, st.DB, viewed, errOut) {
 		failed = true
 	}
 	if sweepRepos(ctx, env, st.DB, cfg, token, checked, errOut) {
@@ -466,32 +470,33 @@ func (p prefixed) Write(b []byte) (int, error) {
 
 // gatherRepo runs the precheck for repo and, when it is due, the full gather; in is nil when
 // the repo is not due. fp is the fingerprint of the precheck: tick saves it after apply.
-// pre is the precheck, also when the repo is not due: tick builds the run view and the sweep
-// from it after apply. A full gather writes one gathered line to errOut.
+// pre is the precheck, also when the repo is not due or its full gather fails: tick builds the
+// run view and the sweep from it after apply; it is nil only when the precheck failed. A full
+// gather writes one gathered line to errOut.
 func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, repo repoconfig.Repo,
-	token string, login func() (string, error), errOut io.Writer) (in *dispatch.RepoInput, fp string, pre dispatch.Pre, err error) {
+	token string, login func() (string, error), errOut io.Writer) (in *dispatch.RepoInput, fp string, _ *dispatch.Pre, err error) {
 	c := env.client(repo.Slug, token)
-	pre, err = measuredPre(ctx, env, db, cfg, c, repo, errOut)
+	pre, err := measuredPre(ctx, env, db, cfg, c, repo, errOut)
 	if err != nil {
-		return nil, "", dispatch.Pre{}, err
+		return nil, "", nil, err
 	}
 	pre.Markers, pre.PauseUntil = facts.Markers[repo.Slug], facts.PauseUntil
 	fp = dispatch.Fingerprint(pre)
 	prev, err := dispatch.LoadTickState(ctx, db, repo.Slug)
 	if err != nil {
-		return nil, "", dispatch.Pre{}, err
+		return nil, "", &pre, err
 	}
 	now := env.now()
 	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, pre.OpenRuns, pre.Runs, pre.Markers, now))
 	if !due {
-		return nil, "", pre, nil
+		return nil, "", &pre, nil
 	}
 	ri, err := repoInput(ctx, db, cfg, c, pre, login, errOut, now)
 	if err != nil {
-		return nil, "", dispatch.Pre{}, err
+		return nil, "", &pre, err
 	}
 	_, _ = fmt.Fprintf(errOut, "lighthouse: gathered %s: %d items (%s)\n", repo.Slug, len(ri.Snapshot.Items), reason)
-	return &ri, fp, pre, nil
+	return &ri, fp, &pre, nil
 }
 
 // prepare is the board half of a gather: the open runs, the branch of each issue's last run,

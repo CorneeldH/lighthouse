@@ -1396,6 +1396,35 @@ func TestTickRunViewFollowsApply(t *testing.T) {
 	}
 }
 
+// A repo whose precheck passes but whose full gather fails still gets its run view: only a
+// failed precheck keeps the rows of the previous tick.
+func TestTickRunViewWhenGatherFails(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("first tick = %v\n%s", err, errOut.String())
+	}
+	// The stand changes, so the repo is due; the permission read inside the full gather fails.
+	w.setState("idle")
+	srv.Comments = map[int][]map[string]any{7: {{"id": 1, "body": "Hoi",
+		"created_at": "2026-10-30T11:00:00Z", "html_url": "https://github.com/o/r/issues/7#issuecomment-1",
+		"user": map[string]any{"login": "owner"}}}}
+	srv.RoleStatus = 500
+	at := t0.Add(3 * time.Minute)
+	env.Now = func() time.Time { return at }
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("second tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "lighthouse: skip ") {
+		t.Fatalf("errOut = %q, want a skip line for the failed gather", errOut.String())
+	}
+	if rv, _ := loadView(t, db); len(rv) != 1 || !rv[0].At.Equal(at) || rv[0].Stand != "waiting" {
+		t.Errorf("views = %+v, want one waiting view of this tick (At %v)", rv, at)
+	}
+}
+
 // A run that is parked for its resume marker is a view in state parked, without a stand.
 func TestTickWritesParkedRunView(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, completeRepo))
