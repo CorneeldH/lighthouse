@@ -15,7 +15,8 @@ export function ControllerSection({ children }: { children: ReactNode }): JSX.El
         <h2 id="controller-heading" className="text-lg font-semibold text-lh-navy dark:text-foreground">
           Controller
         </h2>
-        <span className="text-sm" aria-live="polite">
+        {/* No aria-live: the age changes every minute and would be read out each time. */}
+        <span className="text-sm">
           {tickAt > 0 && `tick ${formatAgo(now, tickAt)}`}
         </span>
       </div>

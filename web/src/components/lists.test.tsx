@@ -47,7 +47,8 @@ describe('QuestionList', () => {
     expect(await screen.findByText('o/a#7')).toBeTruthy()
     const region = screen.getByRole('region', { name: 'Open questions' })
     expect(region.id).toBe('questions')
-    expect(within(region).getByText('2')).toBeTruthy()
+    // The pill reads "2 items" to a screen reader, not a bare number.
+    expect(within(region).getByText('2').textContent).toBe('2 items')
     expect(screen.getByText('o/b#9')).toBeTruthy()
     expect(screen.getByRole('link', { name: 'First' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=7')
     expect(screen.getByRole('link', { name: 'o/a#7' }).getAttribute('href')).toBe('/api/latest-comment?repo=o%2Fa&issue=7')
