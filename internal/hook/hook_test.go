@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -343,5 +344,21 @@ func TestRunNestedSkipsNotices(t *testing.T) {
 	env.Nested = false
 	if _, out, _ := call(t, "text", "s1", env); message(t, out) != versionNotice+"\n"+buildNotice {
 		t.Errorf("outer call after nested: stdout %q, want both notices", out)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("pipe closed") }
+
+// Text that cannot reach stdout was not delivered: COULD NOT CHECK, not a silent pass.
+func TestRunTextWriteFails(t *testing.T) {
+	register(t, "text", func(context.Context, string, string, Payload) Result {
+		return Result{Text: "plain\n"}
+	})
+	var errOut bytes.Buffer
+	code := Run(context.Background(), "text", "", strings.NewReader(`{}`), failingWriter{}, &errOut, newEnv(t, "dev", "dev"))
+	if want := "COULD NOT CHECK: hook text: writing output: pipe closed\n"; code != ExitUnknown || errOut.String() != want {
+		t.Errorf("code %d err %q, want %d %q", code, errOut.String(), ExitUnknown, want)
 	}
 }

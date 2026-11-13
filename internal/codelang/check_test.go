@@ -266,7 +266,7 @@ func TestMatchGlob(t *testing.T) {
 		want       bool
 	}{
 		{"pack/**", "pack/a/b.md", true},
-		{"pack/**", "docs/a.md", false},
+		{"pack/**", "notes/a.md", false},
 		{"*.py", "a/b.py", true}, // fnmatch: * also crosses /
 		{"*.py", "a.pyc", false},
 		{"?.md", "a.md", true},

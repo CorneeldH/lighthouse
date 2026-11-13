@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -153,8 +152,9 @@ func text(v any) string {
 	return string(out)
 }
 
-// canonical is `realpath -m`: the absolute path with the symlinks of its longest existing
-// part resolved, and the rest, which need not exist, after it.
+// canonical is `realpath -m`: the absolute path with the symlinks of its longest part that
+// resolves, and the rest, which need not exist, after it. Like `realpath -m`, any failure (a
+// missing part, a part that is a file, a symlink loop) steps up one directory.
 func canonical(abs string) (string, error) {
 	abs, err := filepath.Abs(abs)
 	if err != nil {
@@ -166,7 +166,7 @@ func canonical(abs string) (string, error) {
 		if err == nil {
 			return filepath.Join(resolved, rest), nil
 		}
-		if !errors.Is(err, fs.ErrNotExist) || head == filepath.Dir(head) {
+		if head == filepath.Dir(head) {
 			return "", err
 		}
 		rest = filepath.Join(filepath.Base(head), rest)

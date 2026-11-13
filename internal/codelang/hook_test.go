@@ -113,6 +113,37 @@ func TestHookCanonicalPath(t *testing.T) {
 	if got := hookOn(t, filepath.Join(root, "gone", "deeper", "missing.py")); !reflect.DeepEqual(got, emptyResult()) {
 		t.Errorf("missing directory: %+v, want nothing", got)
 	}
+	writeFile(t, filepath.Join(root, "regular"), []byte("x = 1\n"))
+	if got := hookOn(t, filepath.Join(root, "regular", "x.py")); !reflect.DeepEqual(got, emptyResult()) {
+		t.Errorf("a path below a regular file: %+v, want nothing", got)
+	}
+	if err := os.Symlink("loop", filepath.Join(root, "loop")); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"loop", filepath.Join("loop", "x.py")} {
+		if got := hookOn(t, filepath.Join(root, p)); !reflect.DeepEqual(got, emptyResult()) {
+			t.Errorf("symlink loop %s: %+v, want nothing", p, got)
+		}
+	}
+}
+
+// The layer 2 chain comes from the runtime root's lighthouse.toml, never from the repo of the
+// written file: that repo must not choose where the session's key goes (R7).
+func TestHookChainFromRuntimeRoot(t *testing.T) {
+	withKey(t)
+	foreign := newFakeLLM(t, nil, "en")
+	own := newFakeLLM(t, nil, "en")
+	root := gitRepo(t, llmTable(foreign.url))
+	path := filepath.Join(root, "a.py")
+	writeFile(t, path, []byte(doubtLine))
+	runtime := t.TempDir()
+	writeFile(t, filepath.Join(runtime, "lighthouse.toml"), []byte(minimalTOML+llmTable(own.url)))
+	raw, _ := json.Marshal(map[string]any{"tool_input": map[string]any{"file_path": path}})
+	got := runHook(context.Background(), runtime, "", hook.Payload{Raw: raw})
+	if !reflect.DeepEqual(got, emptyResult()) || len(foreign.seen()) != 0 || len(own.seen()) != 1 {
+		t.Errorf("result %+v, foreign requests %d, own requests %d; want nothing, 0, 1",
+			got, len(foreign.seen()), len(own.seen()))
+	}
 }
 
 // A relative path without a cwd in the payload resolves against the working directory.

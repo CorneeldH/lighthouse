@@ -43,7 +43,8 @@ type Result struct {
 	Code   int
 	Output map[string]any
 	Stderr string
-	Text   string
+	// Text is dropped when Run adds notices to Output, so only a nested hook may rely on it.
+	Text string
 }
 
 // Func is one hook. stand is the optional second argument (for example pre or post).
@@ -113,7 +114,10 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 			return ExitUnknown
 		}
 	} else if res.Text != "" {
-		_, _ = io.WriteString(out, res.Text)
+		if _, err := io.WriteString(out, res.Text); err != nil {
+			_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: hook %s: writing output: %v\n", name, err)
+			return ExitUnknown
+		}
 	}
 	return res.Code
 }
