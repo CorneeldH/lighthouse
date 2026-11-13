@@ -1,5 +1,11 @@
 # Dispatcher over meerdere kenn-forge-nodes — implementatieplan
 
+> **Correctie na meting aan forge v0.7.0:** de snapshotroute is `/api/v1/snapshot?include_peers=true`, niet
+> `/api/v1/fleet/snapshot`. Een node is bereikbaar als zijn `nodeID` in `hosts` staat en `reachable` waar
+> is; ontbreekt hij, dan is hij onbereikbaar. Verder: `/runtime` kent geen `session_id`, dus `Stop` en
+> `Kill` sturen op een node geen `DELETE` en een levende sessie laat start en hervatting wachten (#327).
+> Zie [workplace.md](../../../workplace.md#een-run-op-een-andere-node).
+
 > **Voor agentische uitvoerders:** VERPLICHTE SUB-SKILL: gebruik superpowers:subagent-driven-development
 > (aanbevolen) of superpowers:executing-plans om dit plan taak voor taak uit te voeren. Stappen gebruiken
 > checkboxen (`- [ ]`).
@@ -28,7 +34,7 @@ legt beide vast in de runstaat, en bedient elke node via de fleet-routes van de 
 - Geen hostnaam, node-ID of machine-opzet in code of fixtures. Gebruik in tests id's als `node-a`,
   `node-b`.
 - Fleet-pad: `/api/v1/fleet/hosts/{url.PathEscape(node_id)}` + het pad na `/api/v1`.
-- Een 404 op een node die niet `self` is, telt alleen als weg als `/api/v1/fleet/snapshot` die node
+- Een 404 op een node die niet `self` is, telt alleen als weg als `/api/v1/snapshot?include_peers=true` die node
   bereikbaar meldt; anders `workplace.ErrUncertain` of `workplace.ErrNotMeasurable`.
 - Uitsteltekst bij een onbekende locatie: `locatie <waarde> onbekend`; bij meer dan één label:
   `meer dan één locatielabel`.
@@ -286,10 +292,10 @@ Regels voor `closed` en `apply`:
     `"/api/v1/fleet/hosts/" + url.PathEscape(a.Node) + strings.TrimPrefix(p, "/api/v1")`. Elke
     `a.Client.do` gebruikt `a.path(…)`.
   - `func (a *Adapter) nodeReachable(ctx context.Context) (bool, error)` — leest
-    `/api/v1/fleet/snapshot` (altijd zonder `path`).
+    `/api/v1/snapshot?include_peers=true` (altijd zonder `path`).
   - `func newFakeHub(t *testing.T, nodes map[string]*fakeForge) *httptest.Server` — stuurt
     `/api/v1/fleet/hosts/{id}/…` door naar `nodes[id]`, met het pad terug onder `/api/v1`, en
-    serveert `/api/v1/fleet/snapshot` met een bereikbaarheid per node die de test kan zetten.
+    serveert `/api/v1/snapshot?include_peers=true` met een bereikbaarheid per node die de test kan zetten.
 
 Per methode bij `a.Node != ""`:
 - Prepare: lijst en maak via `path`; **geen** `FollowRemote`.
@@ -304,7 +310,7 @@ Per methode bij `a.Node != ""`:
   `TestRemoteStopDeletesSession` dat er géén DELETE gaat; heeft de gemeten vorm het veld wel, dan
   toetst hij de DELETE met de juiste key. Een mislukte Sessions is een fout.
 - Een 404 van `Sessions`, `Lookup` of `Remove`: alleen `ErrGone` of "al weg" als `nodeReachable`
-  `true` geeft (meet ook de route `/api/v1/fleet/snapshot` en het bereikbaarheidsveld in forge v0.7.0 en
+  `true` geeft (meet ook de route `/api/v1/snapshot?include_peers=true` en het bereikbaarheidsveld in forge v0.7.0 en
   leg ze vast in een commentaar, zoals voor `/runtime`); anders `fmt.Errorf("node %s: 404 not confirmed: %w", a.Node, workplace.ErrUncertain)`.
 - Transcript: `fmt.Errorf("transcript on node %s: %w", a.Node, workplace.ErrNotMeasurable)`.
 

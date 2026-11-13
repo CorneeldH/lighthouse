@@ -1,5 +1,11 @@
 # Ontwerp: dispatcher en werkplek over meerdere kenn-forge-nodes
 
+> **Correctie na meting aan forge v0.7.0:** de snapshotroute is `/api/v1/snapshot?include_peers=true`, niet
+> `/api/v1/fleet/snapshot`. Een node is bereikbaar als zijn `nodeID` in `hosts` staat en `reachable` waar
+> is; ontbreekt hij, dan is hij onbereikbaar. Verder: `/runtime` kent geen `session_id`, dus `Stop` en
+> `Kill` sturen op een node geen `DELETE` en een levende sessie laat start en hervatting wachten (#327).
+> Zie [workplace.md](../../../workplace.md#een-run-op-een-andere-node).
+
 Issue: [#187](https://github.com/CorneeldH/lighthouse/issues/187) · Datum: 2026-11-13 · Bouwt op
 [#113](https://github.com/CorneeldH/lighthouse/issues/113) (de werkplek-adapter voor één forge).
 
@@ -41,7 +47,7 @@ de hub. Stoppen, hervatten en opruimen gaan naar dezelfde node, ook na een herst
 - **Spokes achter NAT** (zoals de Mac) houden een tunnel naar de hub open (v0.6). De hub bereikt ze
   dus wel; lighthouse hoeft een spoke nooit rechtstreeks te bereiken.
 - **Workspaces aanmaken op een andere node** vanuit de hub kan vanaf v0.7.0. Hier draait nu v0.5.1.
-- **De snapshot per node** (`/api/v1/fleet/snapshot`) geeft platform (`linux`/`macos`),
+- **De snapshot per node** (`/api/v1/snapshot?include_peers=true`) geeft platform (`linux`/`macos`),
   bereikbaarheid en tmux-sessies. **Geen geheugen of CPU.**
 - **De handoff** draagt alleen `target_key`, `message` en `acp_options`. `message` gaat als prompt
   naar de agent, niet naar de target-launcher.
@@ -245,7 +251,7 @@ identiteit naast `session_id` voor een overgangsfase.)*
 
 **404 op een fleet-route.** Forge kan via de hub "workspace weg" en "node onbereikbaar" niet altijd
 onderscheiden. Op een node die niet `self` is, geldt een 404 daarom alleen als weg (`ErrGone`, "al
-verwijderd") als `/api/v1/fleet/snapshot` die node op dat moment als bereikbaar meldt. Anders is de
+verwijderd") als `/api/v1/snapshot?include_peers=true` die node op dat moment als bereikbaar meldt. Anders is de
 uitkomst onzeker (`ErrUncertain` of "niet meetbaar"), nooit weg. *(Keuze van de ontwerper.)*
 
 **Sweep op een andere node.** `workplace.Cleanup` meet `Dirty` en `Unpushed` met lokale git op het
