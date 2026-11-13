@@ -1277,6 +1277,11 @@ def test_gate_leaving_a_background_child_does_not_stall_post(tmp_path):
 
 
 def test_non_utf8_and_non_ascii_names_in_the_bundle(tmp_path):
+    # APFS (macOS) refuses a name that is not valid UTF-8 with EILSEQ: there the case cannot occur.
+    try:
+        (tmp_path / os.fsdecode(b"probe\xff")).touch()
+    except OSError as e:
+        pytest.skip(f"filesystem refuses a non-UTF-8 name: {e}")
     s = _Session(tmp_path)
     # A gate that blocks on every file: whether jq can name a non-UTF-8 path does not matter.
     gate = s.root / ".claude" / "hooks" / "lighthouse" / "shell-lint-check.sh"
