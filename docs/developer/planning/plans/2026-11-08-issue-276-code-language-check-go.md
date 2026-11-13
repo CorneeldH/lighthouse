@@ -177,7 +177,7 @@ verwachtingen zijn.
       # `found` keeps the scanner's own order and lines; Task 5 compares it in order.
       (out / (str(path).replace("/", "__") + ".json")).write_text(json.dumps(
           {"source": str(path), "lang": lang, "units": sorted(units),
-           "found": [list(f) for f in found]},
+           "found": [[f.line, f.kind, f.text, f.doubt] for f in found]},
           ensure_ascii=False, indent=2, sort_keys=True) + "\n")
   ```
 
@@ -561,9 +561,11 @@ verwachtingen zijn.
     `code-language-check.sh` bestaat (tot taak 9) wijst de kaart naar `internal/codelang`,
     en dat moet die test toelaten. Laat de test een hook met `source` onder `internal/` toe.
   - `docs/site/data/session.json:330,346` en `loop.json:451`: `command` wordt
-    `run.sh code-language-check` en `source` `…/blob/main/internal/codelang`;
-    `tests/test_site_session.py:53,79` en `tests/test_site_loop.py:121` lezen dat. Pas hun
-    verwachting aan op de nieuwe vorm als ze `core/hooks/<eerste woord>` eisen.
+    `run.sh code-language-check`. `source` blijft `…/blob/main/pack/core/hooks/run.sh`:
+    `tests/test_site_session.py:45-47,79` leidt de pack uit `source` af (`split("/")[1]`, dus
+    `core`) en eist `<pack>/hooks/<eerste woord van command>` aan het eind, en
+    `tests/test_site_loop.py:121` leest dat ook. Zet de verwijzing naar `internal/codelang` in een
+    bullet van de chip, niet in `source`. Er is geen testwijziging nodig.
   - `docs/site/data/config.json:54-81,910-943`: de lezers `pack/core/lib/code_language*.py` en
     `code-language-check.sh` worden `internal/codelang/<bestand>.go` (`check.go` voor
     `project.code_language*`, `chain.go` voor `code_language_llm.*`; gebruik de echte namen uit
