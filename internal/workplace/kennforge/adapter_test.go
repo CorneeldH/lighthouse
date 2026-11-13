@@ -51,19 +51,34 @@ type fakeForge struct {
 	release      chan struct{}
 	// onHandoff runs when the handoff POST arrives.
 	onHandoff func()
+	// runtime answers GET /workspaces/ws1/runtime, one entry per call; the last repeats.
+	runtime []string
+	// runtimeStatus, when set, answers the runtime reads instead.
+	runtimeStatus int
+	// offline makes the fake hub answer this node as a spoke without a tunnel.
+	offline bool
 }
 
-func newFakeForge(t *testing.T) (*fakeForge, *Adapter) {
+// newForgeNode is a fake forge without a server of its own, as a node behind newFakeHub.
+func newForgeNode(t *testing.T) *fakeForge {
 	t.Helper()
 	f := &fakeForge{
 		t: t, counts: map[string]int{}, bodies: map[string]string{},
 		listBody: `{"workspaces":[]}`, createBody: `{"id":"ws1"}`,
 		statuses: []string{"ready"}, sessions: []string{`{"sessions":[]}`},
+		runtime:       []string{`{"launch_targets":[],"sessions":[]}`},
 		handoffStatus: 200, handoffBody: `{"session":{"key":"k-new"}}`,
 		deleteStatus: 204, release: make(chan struct{}),
 	}
+	t.Cleanup(func() { close(f.release) })
+	return f
+}
+
+func newFakeForge(t *testing.T) (*fakeForge, *Adapter) {
+	t.Helper()
+	f := newForgeNode(t)
 	srv := httptest.NewServer(f)
-	t.Cleanup(func() { close(f.release); srv.Close() })
+	t.Cleanup(srv.Close)
 	tok := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(tok, []byte("secret\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -144,6 +159,12 @@ func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(f.handoffStatus)
 		_, _ = w.Write([]byte(f.handoffBody))
+	case "GET /api/v1/workspaces/ws1/runtime":
+		if f.runtimeStatus != 0 {
+			w.WriteHeader(f.runtimeStatus)
+			return
+		}
+		_, _ = w.Write([]byte(next(f.runtime, n)))
 	case "DELETE /api/v1/workspaces/ws1":
 		w.WriteHeader(f.deleteStatus)
 	default:
