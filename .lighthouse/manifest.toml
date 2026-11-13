@@ -201,13 +201,6 @@ sha256 = "1eb912125809c6f094a284ecfe7e05d160fee7f0ff1a178bef631411d7ef9f51"
 
 [[unit]]
 kind = "file"
-path = ".claude/hooks/lighthouse/code-language-check.sh"
-package = "core"
-version = "dev"
-sha256 = "eec0be79449765623b8eabc1ec0ffe9141a8e6d2bf191f8adad673bea133d756"
-
-[[unit]]
-kind = "file"
 path = ".claude/hooks/lighthouse/commit-test-gate.sh"
 package = "core"
 version = "dev"
@@ -689,48 +682,6 @@ path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
 sha256 = "ab4aa3dfcfa8f851a547a1e15d0ec0710e2541019d1bed6a0d4c8dbc74219a50"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language.py"
-package = "core"
-version = "dev"
-sha256 = "063f2bcd82e8d04648bfa539d36ac3a784c8e035049bcfdbed0dd170e5efb9ff"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_freq.tsv.gz"
-package = "core"
-version = "dev"
-sha256 = "dd0c3cbb67ee9930aebb829111b930d02d082d2de00f74132e328410f0ad3544"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_freq_NOTICE.txt"
-package = "core"
-version = "dev"
-sha256 = "e94cdf3880fedb22b3f3aef9794e7910664c762626f2f4ec088a3cc8684cb6fb"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_jargon.txt"
-package = "core"
-version = "dev"
-sha256 = "d5e390fdd0e06aa03467b883ee1694c64369855c7c6acd1d7e9afbd2abc76a12"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_llm.py"
-package = "core"
-version = "dev"
-sha256 = "05b9398644fca4d93e90f2dc1dbb928e82358ba8fc7afab09a309106ee34581b"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_score.py"
-package = "core"
-version = "dev"
-sha256 = "be0ebea84ffdaa86c739ff5805477902ea7bbe6505f3b2ae44a62d471d2ae6cd"
 
 [[unit]]
 kind = "file"

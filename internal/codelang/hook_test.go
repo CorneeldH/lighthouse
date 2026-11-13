@@ -60,7 +60,7 @@ func hookOn(t *testing.T, path string) hook.Result {
 
 func emptyResult() hook.Result { return hook.Result{} }
 
-// cannotCheckBlock is the block of cannot_check() in code-language-check.sh.
+// cannotCheckBlock is the block of cannot_check() in the bash hook this replaced (#276).
 func cannotCheckBlock(reason, detail string) string {
 	s := "code-language-check: COULD NOT CHECK — " + reason + "\n\n" +
 		"This hook checks that code is written in English.\n" +

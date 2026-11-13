@@ -8,7 +8,7 @@ import (
 )
 
 // scanPython returns the comment blocks, docstrings and new names of Python src, in the
-// order code_language.py found them: comments, docstrings, names. There is no parser: the
+// order the Python checker (gone since #276) found them: comments, docstrings, names. There is no parser: the
 // names come from reading the tokens statement by statement, so a grammar error that
 // tokenizes fine is scanned, where ast.parse would refuse it.
 func scanPython(src string) ([]Unit, error) {
@@ -50,8 +50,8 @@ type lineToken struct {
 //
 // The levels (here, in bracketWeight, targets, header, statement and expressions) only
 // approximate the breadth-first order of ast.walk: operators add AST levels that no token
-// shows. Any change to them needs the differential against code_language.py run again, on
-// the repository's Python files at least.
+// shows. Any change to them needs the differential against the Python checker run again (from
+// git history before #276), on the repository's Python files at least.
 type placedName struct {
 	numbered
 	level, pos int

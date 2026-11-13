@@ -21,7 +21,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/config"
 )
 
-// items is ITEMS of tests/pack/test_code_language_llm.py.
+// items is ITEMS of the pytest suite of the Python model chain (gone since #276).
 var items = [][2]string{{"name", "werkboom"}}
 
 // fakeLLM is tests/pack/_fake_llm.py: an OpenAI-compatible /v1/chat/completions. Mode per

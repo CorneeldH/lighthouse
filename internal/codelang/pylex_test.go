@@ -43,7 +43,7 @@ func TestPyLexErrors(t *testing.T) {
 }
 
 // Review focus 1, a deliberate deviation: Python's ast.parse refuses "x = = 1", so
-// code_language.py reports COULD NOT CHECK. The Go scanner has no parser, only a tokenizer,
+// the Python checker (gone since #276) reported COULD NOT CHECK. The Go scanner has no parser, only a tokenizer,
 // so a grammar error that tokenizes fine is scanned like any other source.
 func TestPythonGrammarErrorIsScanned(t *testing.T) {
 	units, err := scanPython("x = = 1\n# lees het bestand\n")
@@ -62,7 +62,7 @@ func TestPythonGrammarErrorIsScanned(t *testing.T) {
 	}
 }
 
-// The expected rows come from code_language.py on Python 3.12 (comments, ast.get_docstring and
+// The expected rows come from the Python checker (gone since #276) on Python 3.12 (comments, ast.get_docstring and
 // _name_nodes), in the order its scan_python sorts them: by line, stable.
 func TestScanPythonUnits(t *testing.T) {
 	tests := []struct {

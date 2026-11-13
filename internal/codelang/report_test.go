@@ -10,8 +10,8 @@ import (
 )
 
 // Classification: this is a hook/gate change; the likely regression surface is the report on
-// stderr, the notice and the findings layer 2 adds (the tests of code_language.py that ran
-// main() and resolve()).
+// stderr, the notice and the findings layer 2 adds (the tests of the Python checker, gone
+// since #276, that ran main() and resolve()).
 
 const (
 	dutchComment = "# dit is niet goed\nx = 1\n"

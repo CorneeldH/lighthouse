@@ -22,6 +22,7 @@ import pytest
 from tests.pack._testkit import (
     GIT_ENV,
     ORIGIN,
+    PACKS,
     forge_worktree,
     git,
     init_repo,
@@ -1542,5 +1543,9 @@ def test_chatter_on_rc0_stays_silent(tmp_path, monkeypatch):
 
 
 def test_under_gates_env_matches():
-    cl = load_hook_lib("code_language")
-    assert bw.UNDER_GATES_ENV == cl.UNDER_GATES_ENV == "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"
+    # The Go side (the hook runtime and code-language-check) reads the same name.
+    assert bw.UNDER_GATES_ENV == "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"
+    root = PACKS.parent
+    literal = f'"{bw.UNDER_GATES_ENV}"'
+    assert literal in (root / "internal" / "cli" / "hook.go").read_text(encoding="utf-8")
+    assert literal in (root / "internal" / "codelang" / "hook.go").read_text(encoding="utf-8")
