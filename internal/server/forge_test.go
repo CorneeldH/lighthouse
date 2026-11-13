@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,9 +25,11 @@ func noRuns(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error
 
 // testDeps serves src as the one repo o/r, narrowed by inController, with no leftovers and no runs.
 func testDeps(src overview.Source, inController overview.Filter) Deps {
+	repos := []overview.RepoSource{{Slug: "o/r", Src: src, InController: inController}}
 	return Deps{
 		Report:    fakeReport,
-		Forge:     []overview.RepoSource{{Slug: "o/r", Src: src, InController: inController}},
+		Forge:     repos,
+		Overview:  func(ctx context.Context) (overview.Overview, error) { return overview.BuildAll(ctx, repos) },
 		Leftovers: noLeftovers,
 		Runs:      noRuns,
 	}
@@ -310,5 +313,71 @@ func TestRunsError(t *testing.T) {
 	}
 	if _, ok := decode(t, rec.Body.Bytes())["runs"]; ok {
 		t.Errorf("error body has key runs: %s", rec.Body)
+	}
+}
+
+// countingSource counts OpenIssues calls and otherwise serves populated().
+type countingSource struct {
+	fakeSource
+	calls atomic.Int32
+}
+
+func (c *countingSource) OpenIssues(ctx context.Context) ([]forge.Issue, error) {
+	c.calls.Add(1)
+	return c.fakeSource.OpenIssues(ctx)
+}
+
+func TestEndpointsShareOneBuild(t *testing.T) {
+	src := &countingSource{fakeSource: populated()}
+	repos := []overview.RepoSource{{Slug: "o/r", Src: src}}
+	r := NewRefresher(func(ctx context.Context) (overview.Overview, error) {
+		return overview.BuildAll(ctx, repos)
+	}, time.Hour, time.Hour, time.Minute)
+	r.refresh(context.Background())
+
+	d := testDeps(populated(), nil)
+	d.Overview = r.Overview
+	h := New(testSite(), d)
+	for _, path := range []string{"/api/questions", "/api/returned", "/api/questions", "/api/returned"} {
+		rec := get(h, path)
+		if rec.Code != 200 {
+			t.Fatalf("%s: status %d, body %s", path, rec.Code, rec.Body)
+		}
+	}
+	rec := get(h, "/api/questions")
+	if !strings.Contains(rec.Body.String(), "Which port?") {
+		t.Errorf("questions body lacks the question: %s", rec.Body)
+	}
+	if got := src.calls.Load(); got != 1 {
+		t.Errorf("OpenIssues calls = %d, want 1", got)
+	}
+}
+
+func TestEndpointFailureAfterSuccessIs502(t *testing.T) {
+	builds := 0
+	r := NewRefresher(func(context.Context) (overview.Overview, error) {
+		builds++
+		if builds == 1 {
+			return overview.Overview{Questions: []overview.Question{{}}}, nil
+		}
+		return overview.Overview{}, errors.New("dial tcp: connection refused")
+	}, time.Hour, time.Hour, time.Minute)
+	r.refresh(context.Background())
+	r.refresh(context.Background())
+
+	d := testDeps(populated(), nil)
+	d.Overview = r.Overview
+	h := New(testSite(), d)
+	for _, path := range []string{"/api/questions", "/api/returned"} {
+		rec := get(h, path)
+		if rec.Code != 502 {
+			t.Errorf("%s: status %d, want 502", path, rec.Code)
+		}
+		body := decode(t, rec.Body.Bytes())
+		for _, key := range []string{"questions", "returned"} {
+			if _, ok := body[key]; ok {
+				t.Errorf("%s: body has %q: %s", path, key, rec.Body)
+			}
+		}
 	}
 }

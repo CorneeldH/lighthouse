@@ -162,6 +162,8 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	srv := &http.Server{Handler: server.New(web.FS(), server.Deps{
 		Report: rep.Report,
 		Forge:  repos,
+		// Temporary: a later change replaces this by the Refresher.
+		Overview: func(ctx context.Context) (overview.Overview, error) { return overview.BuildAll(ctx, repos) },
 		Leftovers: func(ctx context.Context) ([]workplace.Leftover, error) {
 			return workplace.Leftovers(ctx, st.DB)
 		},
