@@ -1,10 +1,14 @@
-// Package turnroots is the Go port of pack/core/lib/turn_roots.py (#54, #80): in which checkouts
-// of this project did the turn write, and did it touch a path that matches a pattern there?
+// Package turnroots is the Go port of pack/core/lib/turn_roots.py (#54, #80; the Python is gone
+// since #278): in which checkouts of this project did the turn write, and did it touch a path
+// that matches a pattern there?
 //
 // The Stop gates check a checkout. The `cwd` of the Stop payload is the shell's directory at that
 // moment, not where the turn changed files, so the turn is read from `transcript_path` instead:
-// from the last prompt on, plus the subagent entries since that moment. See turn_roots.py for the
-// measurement behind it.
+// from the last prompt on, plus the subagent entries since that moment. Measured in #54 (Claude
+// Code 2.1.310, a headless session started in the main checkout, a Stop hook that logs its
+// payload): after a write into the worktree by absolute path and `ls <worktree>`, `cwd` is the
+// main checkout; after `cd <worktree> && pwd` it is the worktree. The `cwd` follows the Bash
+// tool's `cd`, and Claude Code resets it to the start directory after a `cd` outside the project.
 package turnroots
 
 import (

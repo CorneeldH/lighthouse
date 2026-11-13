@@ -34,10 +34,6 @@ path = "pack/core/lib/repo_identity.py"
 new = true
 
 [[file]]
-path = "pack/core/lib/turn_roots.py"
-new = true
-
-[[file]]
 path = "pack/core/lib/config.py"
 new = true
 
@@ -103,11 +99,6 @@ new = true
 [[file]]
 path = "pack/core/hooks/pr-create-gate.sh"
 source_path = ".claude/hooks/pr-create-gate.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/hooks/bash-write-check.sh"
-source_path = ".claude/hooks/bash-write-gates.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]

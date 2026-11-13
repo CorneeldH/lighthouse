@@ -1,4 +1,4 @@
-"""pack/core bash-write-check.sh, as installed (#871).
+"""pack/core bash-write-check (`run.sh bash-write-check`), as installed (#871).
 
 First the not-looked-at contract of `md-link-check`, the only gate in `pack/core`
 (`run.sh md-link-check`): `COULD NOT CHECK` on the first line (decision 18). `_gate` merges
@@ -122,7 +122,7 @@ def test_linkcheck_finding_first_line(tmp_path):
     assert first.startswith("Linkcheck: markdown link")
 
 
-# --- bash-write-check.sh: end-to-end (task 7, source 1) ---------------------
+# --- bash-write-check: end-to-end (task 7, source 1) -------------------------
 
 # Stubs for the gates of pack/shell and pack/python. Each reads the payload like
 # the real gate, reports one fixed finding and then cites the file. The shell
@@ -1194,9 +1194,9 @@ def test_hooks_registered_pre_post_and_failure() -> None:
     """Pre before the Bash call, post after a successful AND a failed call."""
     registered = json.loads((CORE / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     want = {
-        "PreToolUse": ("bash-write-check.sh pre", 5),
-        "PostToolUse": ("bash-write-check.sh post", 120),
-        "PostToolUseFailure": ("bash-write-check.sh post", 120),
+        "PreToolUse": ("run.sh bash-write-check pre", 5),
+        "PostToolUse": ("run.sh bash-write-check post", 120),
+        "PostToolUseFailure": ("run.sh bash-write-check post", 120),
     }
     for event, (script, timeout) in want.items():
         entries = [
@@ -1207,7 +1207,7 @@ def test_hooks_registered_pre_post_and_failure() -> None:
             if h["command"].endswith("/" + script)
         ]
         assert [h["timeout"] for h in entries] == [timeout], (event, entries)
-    assert os.access(INSTALLED_HOOKS / "bash-write-check.sh", os.X_OK)
+    assert os.access(INSTALLED_HOOKS / "run.sh", os.X_OK)
 
 
 # --- inputs a port to Go meets first --------------------------------------------------

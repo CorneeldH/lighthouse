@@ -140,7 +140,7 @@ gate failed.
 | Expo lockfiles | patch drift in the Expo lockfiles; pack/expo, only if present | `/lighthouse-refresh-expo-lockfiles` |
 | Any other step | lint, type check, scan, licence | the command of that step in `.github/workflows/`; a step that cannot run locally (a signature) the contributor fixes themselves |
 
-Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/bash-write-check.sh`
+Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/run.sh bash-write-check`
 (per edit, with the gates of the language packs that are installed),
 `.claude/hooks/lighthouse/commit-test-gate.sh` (after each commit, on its files) and a pre-push hook, if present
 (`test -x "$(git rev-parse --git-path hooks/pre-push)"`).

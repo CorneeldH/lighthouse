@@ -169,7 +169,7 @@ def bash_payload(cmd: str, cwd: Path) -> dict:
     return {"tool_name": "Bash", "cwd": str(cwd), "tool_input": {"command": cmd}}
 
 
-# A Claude Code transcript, as far as `turn_roots.py` (#54) reads it: one JSON
+# A Claude Code transcript, as far as `lighthouse turn-roots` (#54) reads it: one JSON
 # object per line, a prompt as a `user` entry with text, a tool call as an
 # `assistant` entry with a `tool_use` block.
 PROMPT_TS = "2026-10-25T10:00:00.000Z"
