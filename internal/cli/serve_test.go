@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
@@ -604,5 +606,56 @@ func TestServeRunsFromTickState(t *testing.T) {
 	}
 	if err := stop(); err != nil {
 		t.Fatalf("serve = %v, want nil", err)
+	}
+}
+
+// countingSource is an overview.Source without issues that counts its OpenIssues calls.
+type countingSource struct{ calls atomic.Int32 }
+
+func (c *countingSource) OpenIssues(context.Context) ([]forge.Issue, error) {
+	c.calls.Add(1)
+	return nil, nil
+}
+
+func (c *countingSource) Comments(context.Context, int) ([]protocol.Comment, error) {
+	return nil, nil
+}
+
+func TestStartOverviewNoReposIsNotConfigured(t *testing.T) {
+	read, stopped := startOverview(context.Background(), nil)
+	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
+		t.Fatalf("err = %v, want forge.ErrNotConfigured", err)
+	}
+	done := make(chan struct{})
+	go func() { stopped(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stopped() blocked without repos")
+	}
+}
+
+func TestStartOverviewBuildsOnceAndStops(t *testing.T) {
+	src := &countingSource{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	read, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}})
+	ov, err := read(ctx)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if ov.Questions == nil || len(ov.Questions) != 0 || ov.Returned == nil || len(ov.Returned) != 0 {
+		t.Fatalf("overview = %+v, want empty non-nil lists", ov)
+	}
+	if n := src.calls.Load(); n != 1 {
+		t.Fatalf("OpenIssues calls = %d, want 1", n)
+	}
+	cancel()
+	done := make(chan struct{})
+	go func() { stopped(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stopped() did not return within 1s of cancel")
 	}
 }

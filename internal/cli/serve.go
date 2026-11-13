@@ -159,11 +159,13 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	for i, r := range repos {
 		slugs[i] = r.Slug
 	}
+	refreshCtx, cancelRefresh := context.WithCancel(ctx)
+	defer cancelRefresh()
+	read, stopped := startOverview(refreshCtx, repos)
 	srv := &http.Server{Handler: server.New(web.FS(), server.Deps{
-		Report: rep.Report,
-		Forge:  repos,
-		// Temporary: a later change replaces this by the Refresher.
-		Overview: func(ctx context.Context) (overview.Overview, error) { return overview.BuildAll(ctx, repos) },
+		Report:   rep.Report,
+		Forge:    repos,
+		Overview: read,
 		Leftovers: func(ctx context.Context) ([]workplace.Leftover, error) {
 			return workplace.Leftovers(ctx, st.DB)
 		},
@@ -188,8 +190,28 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 			runErr = err
 		}
 	}
+	// The refresher stops before the store closes, also when serve ended on a serve error.
+	cancelRefresh()
+	stopped()
 	if err := st.Close(); err != nil && runErr == nil {
 		runErr = err
 	}
 	return runErr
+}
+
+// startOverview returns the reader of the forge overview. Without repos it builds on every read
+// (which reports forge.ErrNotConfigured), starts nothing and stopped is a no-op. With repos it
+// starts a Refresher on ctx; stopped blocks until its goroutine has returned.
+func startOverview(ctx context.Context, repos []overview.RepoSource) (read func(context.Context) (overview.Overview, error), stopped func()) {
+	build := func(ctx context.Context) (overview.Overview, error) { return overview.BuildAll(ctx, repos) }
+	if len(repos) == 0 {
+		return build, func() {}
+	}
+	r := server.NewRefresher(build, server.RefreshInterval, server.RefreshRetry, server.BuildTimeout)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.Run(ctx)
+	}()
+	return r.Overview, func() { <-done }
 }
