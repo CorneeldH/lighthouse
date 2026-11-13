@@ -13,12 +13,13 @@ type WorkspaceRef struct {
 	Node        string // "" is self
 	WorkspaceID string
 	Branch      string
+	Profile     string
 }
 
 // Workspaces returns one ref per (node, workspace id) of repo that no row marks removed. Issue and Branch
 // come from the row with the highest id. Ordered by issue, then workspace id; never nil.
 func Workspaces(ctx context.Context, db *sql.DB, repo string) ([]WorkspaceRef, error) {
-	rows, err := db.QueryContext(ctx, `SELECT r.issue, r.node, r.workspace_id, r.branch FROM runs r
+	rows, err := db.QueryContext(ctx, `SELECT r.issue, r.node, r.workspace_id, r.branch, r.profile FROM runs r
 		JOIN (SELECT node, workspace_id, MAX(id) AS id FROM runs
 			WHERE repo = ? AND workspace_id != ''
 			GROUP BY node, workspace_id
@@ -31,7 +32,7 @@ func Workspaces(ctx context.Context, db *sql.DB, repo string) ([]WorkspaceRef, e
 	out := []WorkspaceRef{}
 	for rows.Next() {
 		var w WorkspaceRef
-		if err := rows.Scan(&w.Issue, &w.Node, &w.WorkspaceID, &w.Branch); err != nil {
+		if err := rows.Scan(&w.Issue, &w.Node, &w.WorkspaceID, &w.Branch, &w.Profile); err != nil {
 			return nil, fmt.Errorf("runs: workspaces: %w", err)
 		}
 		out = append(out, w)

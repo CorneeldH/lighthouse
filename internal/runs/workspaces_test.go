@@ -114,6 +114,7 @@ func TestWorkspacesPerNode(t *testing.T) {
 	closedRun(t, db, "o/r", 7, "start:7", "w1", "issue-7")
 	c := claim("o/r", 8, "start:8")
 	c.Node = "node-a"
+	c.Profile = "prof-b"
 	r, err := Take(ctx, db, c)
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +127,7 @@ func TestWorkspacesPerNode(t *testing.T) {
 	}
 	want := []WorkspaceRef{
 		{Issue: 7, WorkspaceID: "w1", Branch: "issue-7"},
-		{Issue: 8, Node: "node-a", WorkspaceID: "w1", Branch: "issue-8"},
+		{Issue: 8, Node: "node-a", WorkspaceID: "w1", Branch: "issue-8", Profile: "prof-b"},
 	}
 	if got := workspaces(t, db, "o/r"); !reflect.DeepEqual(got, want) {
 		t.Fatalf("Workspaces = %+v, want %+v", got, want)
