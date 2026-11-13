@@ -252,11 +252,11 @@ func TestDefaultScorerLoadsEmbeddedData(t *testing.T) {
 	if s != again {
 		t.Error("DefaultScorer must load once and return the same Scorer")
 	}
-	if got := s.JudgeText("Het bestand wordt niet gelezen.", false); got != Finding {
+	if got := s.JudgeText("Het bestand wordt niet gelezen.", false); got != VerdictFinding {
 		t.Errorf("Dutch sentence = %q, want finding", got)
 	}
 	// "gids" is on the jargon list: judged as English.
-	if got := s.JudgeName("gids"); got != Clean {
+	if got := s.JudgeName("gids"); got != VerdictClean {
 		t.Errorf("jargon name = %q, want clean", got)
 	}
 }
@@ -276,11 +276,11 @@ func TestScoreBoundaries(t *testing.T) {
 		{"compound part must lean Dutch (nl == en)", map[string][2]int{"werk": {25, 25}, "boom": {0, 25}},
 			func(s *Scorer) any { return s.DutchSplit("werkboom") }, false},
 		{"doubt at lean 20 and nl 30", map[string][2]int{"legacy": {40, 10}, "lijst": {10, 30}},
-			func(s *Scorer) any { return s.JudgeName("legacy_lijst") }, Doubt},
+			func(s *Scorer) any { return s.JudgeName("legacy_lijst") }, VerdictDoubt},
 		{"no doubt at lean 19", map[string][2]int{"legacy": {40, 10}, "lijst": {21, 40}},
-			func(s *Scorer) any { return s.JudgeName("legacy_lijst") }, Clean},
+			func(s *Scorer) any { return s.JudgeName("legacy_lijst") }, VerdictClean},
 		{"no doubt at nl 29", map[string][2]int{"legacy": {40, 10}, "lijst": {0, 29}},
-			func(s *Scorer) any { return s.JudgeName("legacy_lijst") }, Clean},
+			func(s *Scorer) any { return s.JudgeName("legacy_lijst") }, VerdictClean},
 		{"participle of a word that is not English-leaning", map[string][2]int{"parsed": {20, 20}},
 			func(s *Scorer) any { return s.DutchParticiple("geparsed") }, false},
 		{"participle of an English-leaning word", map[string][2]int{"parsed": {21, 20}},

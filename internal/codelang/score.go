@@ -20,9 +20,9 @@ type Verdict string
 
 // The three verdicts.
 const (
-	Clean   Verdict = "clean"
-	Doubt   Verdict = "doubt"
-	Finding Verdict = "finding"
+	VerdictClean   Verdict = "clean"
+	VerdictDoubt   Verdict = "doubt"
+	VerdictFinding Verdict = "finding"
 )
 
 // Thresholds from the Python original. Scores are kept in whole tenths (zipf nl minus en, so
@@ -328,15 +328,15 @@ func (s *Scorer) judge(candidates []string, minimum int, sentences [][]string) V
 	groups := append([][]string{candidates}, sentences...)
 	for _, g := range groups {
 		if sum(g) > thresholdTenths {
-			return Finding
+			return VerdictFinding
 		}
 	}
 	for _, w := range counted(candidates) {
 		if e, ok := s.freq[w]; ok && e[1]-e[0] >= doubtLean && e[1] >= doubtNL {
-			return Doubt
+			return VerdictDoubt
 		}
 	}
-	return Clean
+	return VerdictClean
 }
 
 // JudgeName judges an identifier or a file name.
