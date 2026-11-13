@@ -307,6 +307,13 @@ def path_with_lighthouse() -> str:
     return f"{lighthouse_dir()}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
+def lighthouse_stub(body: str) -> str:
+    """A fake `lighthouse` that runs `body` for every call but `turn-roots`, which goes
+    to the binary built from this checkout: a Stop gate needs that one to find its roots."""
+    real = shlex.quote(str(lighthouse_dir() / "lighthouse"))
+    return f'#!/bin/bash\n[ "$1" = turn-roots ] && exec {real} "$@"\n{body}'
+
+
 def guard_env(tmp_path: Path, **extra: str) -> dict[str, str]:
     """`os.environ` with HOME and the XDG dirs under `tmp_path`, the controller and
     refresh variables and LIGHTHOUSE_TOML removed, no real `lighthouse` on PATH and
