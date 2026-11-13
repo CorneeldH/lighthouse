@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { splitDeferred } from '@/lib/deferred'
-import { newQueryClient } from '@/lib/queries'
+import { newQueryClient, queryKeys } from '@/lib/queries'
 import { CleanupList } from './CleanupList'
 import { QuestionList } from './QuestionList'
 import { Summary } from './Summary'
@@ -160,6 +160,48 @@ describe('CleanupList', () => {
     expect(path.tagName).toBe('CODE')
     expect(screen.getByText('dirty worktree')).toBeTruthy()
     expect(screen.getByRole('region', { name: 'Workspaces to clean up' })).toBeTruthy()
+  })
+
+  function stubCleanup(workspaceUrl: string, workspaceId: string) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string) =>
+        Promise.resolve(
+          url === '/api/runs'
+            ? json({ runs: [], deferred: [], workspace_url: workspaceUrl, night: '' })
+            : json({ cleanup: [{ repo: 'o/r', issue: 7, workspace_id: workspaceId, path: '/w/x', reason: 'merged' }] }),
+        ),
+      ),
+    )
+  }
+
+  it('links the workspace id to kenn-forge in a new tab', async () => {
+    stubCleanup('http://127.0.0.1:8091', 'ws 1')
+    renderWithClient(<CleanupList />)
+
+    const link = await screen.findByRole('link', { name: 'ws 1, opens kenn-forge in a new tab' })
+    expect(link.getAttribute('href')).toBe('http://127.0.0.1:8091/workspaces/ws%201')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  })
+
+  it('shows the workspace id without a link when there is no forge url', async () => {
+    stubCleanup('', 'ws-1')
+    renderWithClient(<CleanupList />)
+
+    expect(await screen.findByText('o/r#7')).toBeTruthy()
+    await waitFor(() => expect(client?.getQueryState(queryKeys.runs)?.status).toBe('success'))
+    expect(screen.getByText('ws-1').tagName).toBe('CODE')
+    expect(screen.queryByRole('link', { name: /ws-1/ })).toBeNull()
+  })
+
+  it('shows no workspace link without a workspace id', async () => {
+    stubCleanup('http://127.0.0.1:8091', '')
+    renderWithClient(<CleanupList />)
+
+    expect(await screen.findByText('o/r#7')).toBeTruthy()
+    await waitFor(() => expect(client?.getQueryState(queryKeys.runs)?.status).toBe('success'))
+    expect(screen.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual(['/api/latest-comment?repo=o%2Fr&issue=7'])
   })
 
   it('shows the empty text', async () => {

@@ -3,8 +3,8 @@ import { type JSX, useId } from 'react'
 import type { RunView } from '@/api/lighthouse'
 import { formatClock, formatDuration } from '@/lib/format'
 import { useNow } from '@/lib/now'
-import { ExternalLink } from './ExternalLink'
 import { IssueLink } from './IssueLink'
+import { WorkspaceLink } from './WorkspaceLink'
 
 const DONE_TITLE = 'Claude finished its turn; the next tick decides: handoff, done, question or returned'
 
@@ -99,17 +99,7 @@ export function RunRow({ run, workspaceUrl }: { run: RunView; workspaceUrl: stri
           <Clock aria-hidden className="size-3.5" />
           {formatDuration(Math.max(0, (now - Date.parse(run.started_at)) / 1000))}
         </span>
-        {run.workspace_id !== '' &&
-          (workspaceUrl !== '' ? (
-            <ExternalLink
-              href={`${workspaceUrl}/workspaces/${encodeURIComponent(run.workspace_id)}`}
-              label={`${run.workspace_id}, opens kenn-forge in a new tab`}
-            >
-              {run.workspace_id}
-            </ExternalLink>
-          ) : (
-            <code>{run.workspace_id}</code>
-          ))}
+        <WorkspaceLink id={run.workspace_id} forgeUrl={workspaceUrl} />
         <span className="group inline-flex">
           <button type="button" aria-label="Run details" aria-describedby={tipId} className="rounded-full">
             <Info aria-hidden className="size-4" />
