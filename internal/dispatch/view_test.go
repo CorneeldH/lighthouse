@@ -29,6 +29,8 @@ func TestRunViews(t *testing.T) {
 	}
 	_, _, sdd := sddWorktree(t, "Task 1: complete\nTask 2: complete\n")
 	open := []runs.Brief{{ID: 10, Issue: 3, Command: sdd, Trigger: "board", Profile: "p", WorkspaceID: "w"}}
+	// Run 7 was measured open in the precheck and parked by apply: a parked view has no stand.
+	pre.Stands[7] = workplace.Done
 	parked := []runs.Brief{{ID: 7, Issue: 5, Command: "/lighthouse-review-plan /x/y.md"}}
 	got := RunViews(pre, open, parked)
 	if len(got) != 2 {
