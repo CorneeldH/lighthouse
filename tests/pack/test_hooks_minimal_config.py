@@ -69,7 +69,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         doc = worktree / "doc.md"
         doc.write_text("# doc\n\nSee [the readme](README.md).\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
-    if name == "code-language-check.sh":
+    if name == "code-language-check":
         # Without `code_language` in MINIMAL_TOML the hook is off: exit 0.
         code = worktree / "mod.py"
         code.write_text("x = 1\n", encoding="utf-8")
@@ -136,6 +136,9 @@ def test_hooks_with_minimal_config(
         LIGHTHOUSE_GATE_SLOT_DIR=str(tmp_path / "slots"),
         XDG_RUNTIME_DIR=str(tmp_path),
     )
+    if name == "run.sh":
+        # guard_env keeps the real `lighthouse` off the PATH; run.sh needs the one of this checkout.
+        env["PATH"] = f"{lighthouse_bin.parent}{os.pathsep}{env['PATH']}"
 
     # `run.sh` and the gates of `bash-write-check` need `lighthouse`: the shim of `_testkit`
     # runs the binary of this checkout and never starts a real `lighthouse usage refresh`.
@@ -164,7 +167,7 @@ def test_every_registration_has_a_payload() -> None:
         "pr-create-gate.sh",
         "worktree-check",
         "md-link-check",
-        "code-language-check.sh",
+        "code-language-check",
         "usage-gate",
         "permission-check",
     }

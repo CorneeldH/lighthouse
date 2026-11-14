@@ -1,0 +1,15 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "fixture": "review-passed.md",
+      "expect": {
+        "verdict": "done",
+        "sha": "bf1eb24",
+        "findings": []
+      }
+    }
+  ]
+}

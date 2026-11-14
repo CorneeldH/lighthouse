@@ -105,7 +105,7 @@ elif mode == "list6":
     sys.exit(6)
 """
 
-# The fields of `codex_usage.py budget`, in its JSON order.
+# The fields of `lighthouse codex-usage budget`, in its JSON order.
 NINE = [
     "decision",
     "reason",

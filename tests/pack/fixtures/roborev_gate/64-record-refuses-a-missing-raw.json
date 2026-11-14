@@ -1,0 +1,26 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "record",
+      "sha": "abc1234",
+      "decisions": [
+        [
+          "a.py",
+          3,
+          "high",
+          "refuted",
+          null,
+          "geen probleem"
+        ]
+      ],
+      "out": "$tmp/ci.json",
+      "raw": "$tmp/nope.md",
+      "error": "no such raw review",
+      "absent_path": [
+        "$tmp/ci.json"
+      ]
+    }
+  ]
+}

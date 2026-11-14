@@ -83,7 +83,8 @@
         "events": [
           "PostToolUse"
         ],
-        "when": "after every edit"
+        "when": "after every edit",
+        "source": "internal/codelang/hook.go"
       },
       {
         "name": "usage-gate",

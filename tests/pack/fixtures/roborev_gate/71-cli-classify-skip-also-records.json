@@ -1,0 +1,30 @@
+{
+  "description": "",
+  "level": "cli",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "text": "Error: codex: 401\n"
+    }
+  ],
+  "steps": [
+    {
+      "op": "cli",
+      "args": [
+        "classify"
+      ],
+      "exit": 0,
+      "stdout_json": {
+        "verdict": "skip",
+        "reason": "review faalde: Error: codex: 401"
+      },
+      "state_file": {
+        "name": "feat",
+        "subset": {
+          "reden": "review faalde: Error: codex: 401"
+        }
+      }
+    }
+  ]
+}

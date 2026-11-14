@@ -1,0 +1,19 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "remove",
+      "path": ".roborev.toml"
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect": {
+        "verdict": "skip",
+        "reason": "geen .roborev.toml"
+      }
+    }
+  ]
+}

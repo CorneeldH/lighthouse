@@ -206,7 +206,7 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 
    ```bash
    R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' | tail -1 | jq -r . > <scratch>/roborev-ci.md
-   python3 .lighthouse/scripts/roborev_gate.py classify <scratch>/roborev-ci.md
+   lighthouse roborev-gate classify <scratch>/roborev-ci.md
    ```
 
    If `classify` prints `verdict` `skip` (for instance `review faalde: bevindingen onleesbaar`),
@@ -219,8 +219,8 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    (the reason, `null` with `fixed`; for a low that is not trivial: `low, not trivial`). Then:
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
-   python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
+   lighthouse roborev-gate record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
+   lighthouse roborev-comment render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
    R=$(lighthouse config forge.repo) && gh pr comment <nr> --repo "$R" --body-file <scratch>/comment.md
    ```
 
@@ -270,6 +270,8 @@ Row 4 sees only a `Skill` call; a review done by hand in the same turn does not 
 - **`gh issue list --json` breaks under the rtk proxy.** Use `gh api`.
 - **A merge conflict gives no fail check.** `mergeStateStatus: DIRTY` is the signal; the
   failure-log part of the diagnosis block stays empty then and that is correct.
+  A PR always has a pushed branch, so resolve it with `git merge origin/<default branch>` per the
+  update rule in *Lighthouse: core*: resolve the conflicts once, commit the merge, push without force.
 - **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
   only on the branch must carry the full absolute worktree path: the IDE resolves chat links
   against the main checkout. In a `.md` file, relative instead;

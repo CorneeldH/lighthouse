@@ -245,9 +245,9 @@ def test_reader_names_key_needs_the_table_tag_in_go():
 
 
 def test_reader_names_key_finds_a_dynamic_python_reader():
-    text = (ROOT / "pack/core/scripts/codex_usage.py").read_text(encoding="utf-8")
-    assert reader_names_key(text, "codex_usage.review_pct_week", "pack/core/scripts/codex_usage.py")
-    assert not reader_names_key(text, "codex_usage.vraag_pct_week", "pack/core/scripts/codex_usage.py")
+    text = 'for name in ("review_pct_week",):\n    value = config.lookup(cfg, f"codex_usage.{name}")\n'
+    assert reader_names_key(text, "codex_usage.review_pct_week", "a/reader.py")
+    assert not reader_names_key(text, "codex_usage.vraag_pct_week", "a/reader.py")
 
 
 def test_found_readers_skips_go_tests():

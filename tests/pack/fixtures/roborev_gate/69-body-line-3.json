@@ -1,0 +1,20 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "state",
+      "name": "feat",
+      "json": {
+        "range": "a..b",
+        "uitkomst": "skip",
+        "reden": "geen .roborev.toml"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "op": "body_line",
+      "expect": "Roborev overgeslagen: geen .roborev.toml"
+    }
+  ]
+}

@@ -79,7 +79,7 @@ func tickFixture(t *testing.T, repos ...string) (tickEnv, string) {
 	vars := map[string]string{"XDG_RUNTIME_DIR": runtime, "GH_TOKEN": "tok",
 		"XDG_DATA_HOME": t.TempDir(), "XDG_STATE_HOME": t.TempDir()}
 	env := tickEnv{Getenv: func(k string) string { return vars[k] }, HostToml: host, StateDir: t.TempDir(),
-		Workplace: func(r repoconfig.Repo) workplace.Workplace {
+		Workplace: func(r repoconfig.Repo, _, _ string) workplace.Workplace {
 			t.Errorf("unexpected workplace for %s: this test starts nothing", r.Slug)
 			return newFakeWorkplace(t, r.Slug)
 		}}
@@ -224,8 +224,8 @@ func TestTickNoRepos(t *testing.T) {
 	if err := conn.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 6 {
-		t.Errorf("user_version = %d, want 6", v)
+	if v != 7 {
+		t.Errorf("user_version = %d, want 7", v)
 	}
 }
 
@@ -555,7 +555,7 @@ func (w *fakeWorkplace) spawned() []workplace.LaunchSpec {
 
 // useWorkplaces gives each repo slug its fake workplace; any other repo is an error.
 func useWorkplaces(t *testing.T, env *tickEnv, places map[string]*fakeWorkplace) {
-	env.Workplace = func(r repoconfig.Repo) workplace.Workplace {
+	env.Workplace = func(r repoconfig.Repo, _, _ string) workplace.Workplace {
 		w, ok := places[r.Slug]
 		if !ok {
 			t.Errorf("workplace for unknown repo %s", r.Slug)
@@ -977,7 +977,7 @@ func TestTickMeasuresRunState(t *testing.T) {
 		},
 		dirs: map[string]string{"ws-1": transcripts, "ws-6": transcripts},
 	}
-	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
+	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo, string, string) workplace.Workplace { return w }}
 	writeTestFile(t, filepath.Join(env.StateDir, "runs", sidMeasured, "permission.json"),
 		`{"version":1,"at":"2026-10-31T11:56:00Z","tool":"Bash","path":"rm -rf build","thread":"","message":"m"}`+"\n")
 	open := []runs.OpenRun{
@@ -1025,7 +1025,7 @@ func TestMeasureFileErrorLeavesRunUnmeasured(t *testing.T) {
 	w := &measureWorkplace{sessions: map[string][]workplace.Session{
 		"ws-1": {{Key: "mine", WorkspaceID: "ws-1", State: "working"}},
 	}}
-	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo) workplace.Workplace { return w }}
+	env := tickEnv{StateDir: t.TempDir(), Workplace: func(repoconfig.Repo, string, string) workplace.Workplace { return w }}
 	writeTestFile(t, filepath.Join(env.StateDir, "runs", sidMeasured, "permission.json"), `{"version":1,"at":`)
 	open := []runs.OpenRun{{ID: 1, Issue: 7, SessionID: sidMeasured, WorkspaceID: "ws-1", WorkplaceSession: "mine"}}
 	var errOut bytes.Buffer
@@ -1050,7 +1050,7 @@ func TestTickAdoptFailureIsLoudNotFatal(t *testing.T) {
 	srv.Roles = map[string]string{"lh-bot": "admin"}
 	env.Now = func() time.Time { return t0 }
 	w := &measureWorkplace{errs: map[string]error{"ws-7": errors.New("forge down")}}
-	env.Workplace = func(repoconfig.Repo) workplace.Workplace { return w }
+	env.Workplace = func(repoconfig.Repo, string, string) workplace.Workplace { return w }
 	conn := openStore(t, db)
 	ctx := context.Background()
 	run, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 7, SessionID: sidUncertain, Mode: "start",
@@ -1771,9 +1771,9 @@ func TestTickWorkplaceFollowsHostToml(t *testing.T) {
 
 	t.Run("local", func(t *testing.T) {
 		cfg := load("[dispatch]\nworkplace = \"local\"\n")
-		a, ok := env.workplace(cfg, repo, "/state").(*local.Adapter)
+		a, ok := env.workplace(cfg, repo, "/state", "", "").(*local.Adapter)
 		if !ok {
-			t.Fatalf("workplace = %T, want *local.Adapter", env.workplace(cfg, repo, "/state"))
+			t.Fatalf("workplace = %T, want *local.Adapter", env.workplace(cfg, repo, "/state", "", ""))
 		}
 		if a.RepoDir != "/srv/r" || a.DefaultBranch != "trunk" || a.Repo != "o/r" ||
 			a.StateDir != "/state" || a.Home != "/home/u" || a.Run == nil {
@@ -1782,12 +1782,12 @@ func TestTickWorkplaceFollowsHostToml(t *testing.T) {
 	})
 	t.Run("unit prefix", func(t *testing.T) {
 		cfg := load("[dispatch.forge]\nurl = \"http://localhost:1\"\nunit_prefix = \"other-\"\n")
-		a, ok := env.workplace(cfg, repo, "/state").(*kennforge.Adapter)
+		a, ok := env.workplace(cfg, repo, "/state", "node-a", "mac").(*kennforge.Adapter)
 		if !ok {
-			t.Fatalf("workplace = %T, want *kennforge.Adapter", env.workplace(cfg, repo, "/state"))
+			t.Fatalf("workplace = %T, want *kennforge.Adapter", env.workplace(cfg, repo, "/state", "node-a", "mac"))
 		}
-		if a.UnitPrefix != "other-" {
-			t.Errorf("UnitPrefix = %q, want %q", a.UnitPrefix, "other-")
+		if a.UnitPrefix != "other-" || a.Node != "node-a" || a.Profile != "mac" {
+			t.Errorf("UnitPrefix, Node, Profile = %q, %q, %q; want %q, %q, %q", a.UnitPrefix, a.Node, a.Profile, "other-", "node-a", "mac")
 		}
 	})
 	for name, cfg := range map[string]hostconfig.Dispatch{
@@ -1795,8 +1795,8 @@ func TestTickWorkplaceFollowsHostToml(t *testing.T) {
 		"zero dispatch":  {},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, ok := env.workplace(cfg, repo, "/state").(*kennforge.Adapter); !ok {
-				t.Errorf("workplace = %T, want *kennforge.Adapter", env.workplace(cfg, repo, "/state"))
+			if _, ok := env.workplace(cfg, repo, "/state", "", "").(*kennforge.Adapter); !ok {
+				t.Errorf("workplace = %T, want *kennforge.Adapter", env.workplace(cfg, repo, "/state", "", ""))
 			}
 		})
 	}

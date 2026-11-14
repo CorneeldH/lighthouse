@@ -1,0 +1,17 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "{\"decision\":\"codex\",\"reason\":\"ok\"}"
+      ],
+      "expect": {
+        "verdict": "run"
+      },
+      "raw_writable": true
+    }
+  ]
+}

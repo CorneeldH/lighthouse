@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "e25bc904dbd6f92210feac1261f10ab411be8f0c72176d9bd88a761deb1c162d"
+sha256 = "db20dbf76dffc695e44207ca7d4c71b8ecab6253e449e1d5d3dd88471ce24112"
 
 [[unit]]
 kind = "file"
@@ -134,7 +134,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "22155957ca1e7a0b86e7f53f9c8283e18a5c6a8f6981a47f95d680e1f6928225"
+sha256 = "d7b897d5ec92a4dd206f9779da9a67c4ca038e0997893a9a6a63f36d96ea585f"
 
 [[unit]]
 kind = "file"
@@ -148,7 +148,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "215be1992f7fac8cf0002730985e2a2f2491eda7bd8a47f30f98c6c6700f53c5"
+sha256 = "fe250860c1a44186991e4c088eb4c078a35be2ff62951cd31bf27e5fdb220657"
 
 [[unit]]
 kind = "file"
@@ -163,13 +163,6 @@ path = ".claude/hooks/lighthouse/blocking"
 package = "core"
 version = "dev"
 sha256 = "1eb912125809c6f094a284ecfe7e05d160fee7f0ff1a178bef631411d7ef9f51"
-
-[[unit]]
-kind = "file"
-path = ".claude/hooks/lighthouse/code-language-check.sh"
-package = "core"
-version = "dev"
-sha256 = "dc846351fd43ca6b47610363b8ffb4ddde23d93dcdfad1eff02b1b9f7c66b26b"
 
 [[unit]]
 kind = "file"
@@ -250,18 +243,18 @@ sha256 = "9f3438516b778d53e2b4318110eb64094eb4804013271ac7496800944cf2dd86"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/code-language-check.sh"
-package = "core"
-version = "dev"
-sha256 = "de5386a3b78270ebc79728775a4cd43eae5a04b539807c516604624c45096f55"
-
-[[unit]]
-kind = "hook"
-path = ".claude/settings.json"
 id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/gofmt-check.sh"
 package = "go"
 version = "dev"
 sha256 = "275c3b11c4be96611ae70f5cebb57683eb94ad524969f562c60f8d62962ba607"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh code-language-check"
+package = "core"
+version = "dev"
+sha256 = "4318f7ae91e1fc6f65d6aef75ec2872ce260dbb927e8448a152dddf60364da23"
 
 [[unit]]
 kind = "hook"
@@ -370,7 +363,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "43e957424d0153857d28b3ca13d65fd05472aa42056aa8cdfe46eed7fc844894"
+sha256 = "ab380c5ee1288a94d4bf74967020f027b15929d294e0d84a3c83ba549968965c"
 
 [[unit]]
 kind = "file"
@@ -482,7 +475,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "22155957ca1e7a0b86e7f53f9c8283e18a5c6a8f6981a47f95d680e1f6928225"
+sha256 = "d7b897d5ec92a4dd206f9779da9a67c4ca038e0997893a9a6a63f36d96ea585f"
 
 [[unit]]
 kind = "file"
@@ -496,7 +489,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "215be1992f7fac8cf0002730985e2a2f2491eda7bd8a47f30f98c6c6700f53c5"
+sha256 = "fe250860c1a44186991e4c088eb4c078a35be2ff62951cd31bf27e5fdb220657"
 
 [[unit]]
 kind = "file"
@@ -525,48 +518,6 @@ path = ".lighthouse/lib/lighthouse_lib/artefacts.py"
 package = "core"
 version = "dev"
 sha256 = "efc4ab647dd4651ea496fd584f76ec63b126552aa03ec0abeef36a73c944bbdb"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language.py"
-package = "core"
-version = "dev"
-sha256 = "063f2bcd82e8d04648bfa539d36ac3a784c8e035049bcfdbed0dd170e5efb9ff"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_freq.tsv.gz"
-package = "core"
-version = "dev"
-sha256 = "dd0c3cbb67ee9930aebb829111b930d02d082d2de00f74132e328410f0ad3544"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_freq_NOTICE.txt"
-package = "core"
-version = "dev"
-sha256 = "e94cdf3880fedb22b3f3aef9794e7910664c762626f2f4ec088a3cc8684cb6fb"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_jargon.txt"
-package = "core"
-version = "dev"
-sha256 = "d5e390fdd0e06aa03467b883ee1694c64369855c7c6acd1d7e9afbd2abc76a12"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_llm.py"
-package = "core"
-version = "dev"
-sha256 = "05b9398644fca4d93e90f2dc1dbb928e82358ba8fc7afab09a309106ee34581b"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_score.py"
-package = "core"
-version = "dev"
-sha256 = "be0ebea84ffdaa86c739ff5805477902ea7bbe6505f3b2ae44a62d471d2ae6cd"
 
 [[unit]]
 kind = "file"
@@ -640,13 +591,6 @@ sha256 = "d8ba746d1dad1b7074f6c2541cde14801cf3d7d5cd3736af6c60a6c5a8289e13"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/scripts/codex_usage.py"
-package = "core"
-version = "dev"
-sha256 = "75d077bc7ced2c9563cc2e37073cb4c2303cf69b67deeb082a9617c31602ea5f"
-
-[[unit]]
-kind = "file"
 path = ".lighthouse/scripts/create_labels.py"
 package = "core"
 version = "dev"
@@ -675,20 +619,6 @@ sha256 = "872ab4821a4063f7234b4d6000ae6c607c2e5f8a51afc560d81651c92f445903"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/scripts/roborev_comment.py"
-package = "core"
-version = "dev"
-sha256 = "c58d028c2f2ee2199680af41499aa15704e767210a176457afbf46c0b1c7d000"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/roborev_gate.py"
-package = "core"
-version = "dev"
-sha256 = "e5eb877fc9681cb79f179eb54faad43b8c61efdd3114762f507b9aae2efdb2c0"
-
-[[unit]]
-kind = "file"
 path = ".lighthouse/scripts/unblock_dependents.py"
 package = "core"
 version = "dev"
@@ -707,7 +637,7 @@ path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "0163baefd80baba6820e42f49b1414b6a9ae8a579156e233fd97527916f86ac6"
+sha256 = "c0bf39786f2f63c7a435f6f0894788bd30eeb12a63e53e79d4d652eb344e03b6"
 
 [[unit]]
 kind = "block"

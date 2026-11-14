@@ -443,12 +443,13 @@
         "It runs on PostToolUse for Edit and Write, and bash-write-check calls it for files a Bash call wrote.",
         "It always reads .py, .sh, .bash and .go files and reads other files only inside [project] code_language_paths, with the config taken from the git root of the written file.",
         "A finding blocks with exit 2, and a line marked lighthouse: allow-language is allowed.",
-        "With [code_language_llm] set, it asks a chain of models about doubtful units, and when that chain gives no verdict it prints a notice that never blocks."
+        "With [code_language_llm] set, it asks a chain of models about doubtful units, and when that chain gives no verdict it prints a notice that never blocks.",
+        "run.sh starts lighthouse hook code-language-check; the check itself is the Go package internal/codelang."
       ],
       "when": "After each Edit or Write, when [project] code_language is set.",
       "without": "Code comments and names drift into the wrong language.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/run.sh"
     },
     {
       "id": "bash-write-check",
@@ -460,7 +461,7 @@
       "what": "Runs the write checks on what a Bash call wrote.",
       "how": [
         "The pre mode runs on PreToolUse for Bash, records a baseline and always exits 0.",
-        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, ruff-format-check.sh, code-language-check.sh or run.sh md-link-check.",
+        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, ruff-format-check.sh, run.sh code-language-check or run.sh md-link-check.",
         "A finding blocks with exit 2, and a gate whose pack is not installed is reported per file without blocking.",
         "When the lighthouse binary is missing or the dispatcher fails, it blocks with COULD NOT CHECK."
       ],
@@ -544,7 +545,7 @@
       "when": "Before every gh pr create above the threshold.",
       "without": "The review at the end runs in CI only, after the PR is open, and costs a second CI run.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/scripts/roborev_gate.py"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/cli/roborev.go"
     },
     {
       "id": "pr-create-gate",

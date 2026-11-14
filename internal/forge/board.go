@@ -54,6 +54,7 @@ type BoardItem struct {
 	Title          string
 	IssueState     string
 	IssueUpdatedAt time.Time
+	Labels         []string // label names of the issue
 	BlockedBy      []Blocker
 	ClosingPRs     []PR
 	// Archived is an archived item. Only IssueItem reads it: BoardItems lists no archived item.
@@ -89,6 +90,7 @@ const BoardQuery = `query Board($project: ID!, $after: String) {
             ... on Issue {
               number title state updatedAt
               repository { nameWithOwner }
+              labels(first: 20) { nodes { name } pageInfo { hasNextPage } }
               blockedBy(first: 10) {
                 pageInfo { hasNextPage }
                 nodes {
@@ -204,7 +206,13 @@ type itemNode struct {
 		State      string    `json:"state"`
 		UpdatedAt  time.Time `json:"updatedAt"`
 		Repository repoRef   `json:"repository"`
-		BlockedBy  struct {
+		Labels     struct {
+			PageInfo pageInfo `json:"pageInfo"`
+			Nodes    []struct {
+				Name string `json:"name"`
+			} `json:"nodes"`
+		} `json:"labels"`
+		BlockedBy struct {
 			PageInfo pageInfo `json:"pageInfo"`
 			Nodes    []struct {
 				Number     int     `json:"number"`
@@ -285,6 +293,12 @@ func (n itemNode) item() (BoardItem, error) {
 	}
 	it.Repo, it.Issue, it.Title = ct.Repository.NameWithOwner, ct.Number, ct.Title
 	it.IssueState, it.IssueUpdatedAt = ct.State, ct.UpdatedAt
+	if ct.Labels.PageInfo.HasNextPage {
+		return BoardItem{}, truncated("labels", len(ct.Labels.Nodes))
+	}
+	for _, l := range ct.Labels.Nodes {
+		it.Labels = append(it.Labels, l.Name)
+	}
 	if ct.BlockedBy.PageInfo.HasNextPage {
 		return BoardItem{}, truncated("blockedBy", len(ct.BlockedBy.Nodes))
 	}

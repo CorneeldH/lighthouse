@@ -389,3 +389,38 @@ func TestDefaultStringPanicsWithoutStringDefault(t *testing.T) {
 		}()
 	}
 }
+
+func TestControllerLocations(t *testing.T) {
+	t.Run("map", func(t *testing.T) {
+		r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n[controller.locations]\nmac = \"mac\"\ncontainer = \"software\"\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]string{"mac": "mac", "container": "software"}
+		got := r.Controller.Locations
+		if len(got) != len(want) || got["mac"] != "mac" || got["container"] != "software" {
+			t.Errorf("Locations = %v, want %v", got, want)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Controller.Locations != nil {
+			t.Errorf("Locations = %v, want nil", r.Controller.Locations)
+		}
+	})
+	t.Run("empty profile", func(t *testing.T) {
+		_, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n[controller.locations]\nmac = \"\"\n"))
+		if err == nil || !strings.Contains(err.Error(), "controller.locations.mac") || !strings.Contains(err.Error(), "empty") {
+			t.Errorf("err = %v, want one naming controller.locations.mac and empty", err)
+		}
+	})
+	t.Run("without controller table", func(t *testing.T) {
+		_, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller.locations]\nmac = \"mac\"\n"))
+		if err == nil || !strings.Contains(err.Error(), "[controller] table required") {
+			t.Errorf("err = %v, want [controller] table required", err)
+		}
+	})
+}

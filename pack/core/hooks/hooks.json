@@ -48,7 +48,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/code-language-check.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh code-language-check",
             "timeout": 15
           }
         ]

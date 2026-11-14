@@ -1,0 +1,20 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "state",
+      "name": "feat",
+      "json": {
+        "range": "a..b",
+        "uitkomst": "done",
+        "sha": "bf1eb24"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "op": "body_line",
+      "expect": "<!-- roborev-lokaal: bf1eb24 -->"
+    }
+  ]
+}

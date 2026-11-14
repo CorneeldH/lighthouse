@@ -1,0 +1,25 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "state",
+      "name": "feat",
+      "json": {
+        "range": "a..b",
+        "uitkomst": "done",
+        "sha": "abc",
+        "bevindingen": []
+      }
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect": {
+        "verdict": "done",
+        "sha": "abc"
+      }
+    }
+  ]
+}

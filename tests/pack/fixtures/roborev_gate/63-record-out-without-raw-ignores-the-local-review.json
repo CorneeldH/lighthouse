@@ -1,0 +1,33 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "fixture": "review-complete.md"
+    }
+  ],
+  "steps": [
+    {
+      "op": "record",
+      "sha": "abc1234",
+      "decisions": [
+        [
+          "a.py",
+          3,
+          "high",
+          "refuted",
+          null,
+          "geen probleem"
+        ]
+      ],
+      "out": "$tmp/ci.json",
+      "state_file": {
+        "path": "$tmp/ci.json",
+        "subset": {
+          "uitkomst": "done"
+        }
+      }
+    }
+  ]
+}

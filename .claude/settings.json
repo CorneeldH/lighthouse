@@ -6,17 +6,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/code-language-check.sh",
-            "timeout": 15
-          },
-          {
-            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/gofmt-check.sh",
             "timeout": 15
           },
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh md-link-check",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh code-language-check",
             "timeout": 15
           }
         ]

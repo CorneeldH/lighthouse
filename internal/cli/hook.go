@@ -7,6 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	// The hooks register themselves in init.
+	_ "github.com/CorneeldH/lighthouse/internal/codelang"
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/hook"
 	// The hooks register themselves with the runtime.
@@ -38,9 +40,10 @@ func newHookCommand() *cobra.Command {
 
 // hookEnv gathers the state of the repository and the binary. What cannot be read stays empty:
 // a hook outside a repository still runs, and the notices that need the manifest stay quiet.
-// Without a state directory the notices stay quiet too.
+// Without a state directory the notices stay quiet too. Under bash-write-check the call is
+// nested and the outer hook owns the notices.
 func hookEnv() hook.Env {
-	env := hook.Env{BinaryVersion: version.String()}
+	env := hook.Env{BinaryVersion: version.String(), Nested: os.Getenv("LIGHTHOUSE_UNDER_BASH_WRITE_CHECK") != ""}
 	if dir, err := hookStateDir(); err == nil {
 		env.StateDir = dir
 	}
