@@ -18,26 +18,11 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
-// Poster is the forge side apply writes to: one repo's comments, reactions and merges.
-type Poster interface {
-	CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error)
-	// Acknowledge puts the token's 🚀 on comment commentID of issue number.
-	Acknowledge(ctx context.Context, number int, commentID int64) error
-	// MergePR squash-merges pull request number, only while its head is still sha.
-	MergePR(ctx context.Context, number int, sha string) error
-}
-
-// Board is the board side apply writes to: the Status of one repo's board items, by option
-// name.
-type Board interface {
-	SetStatus(ctx context.Context, item forge.BoardItem, status string) error
-}
-
 // Env is what Apply needs from the outside, per repo where it differs.
 type Env struct {
-	DB     *sql.DB
-	Poster func(repo string) Poster
-	Board  func(repo string) Board
+	DB *sql.DB
+	// Forge is the forge of a repo: its comments, reactions, merges and board.
+	Forge func(repo string) forge.Forge
 	// Workplace is the workplace of a repo on a node ("" is self) for a profile.
 	Workplace  func(repo, node, profile string) workplace.Workplace
 	MCPConfig  func(profile string) string // the mcp_config of a profile; "" is none
@@ -105,7 +90,7 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		return ap.start(ctx, a, res)
 	case KindReturn:
 		body := protocol.RenderReturned(reasonText(a), a.SessionID, "", a.Language)
-		if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 			return fmt.Errorf("post: %w", err)
 		}
 		if a.RunID == 0 {
@@ -118,7 +103,7 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 	case KindDone:
 		note := protocol.Heading("note_done", a.Language)
 		body := protocol.RenderDone(a.SessionID, a.PRURL, note, a.Language)
-		if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 			return fmt.Errorf("post: %w", err)
 		}
 		if err := ap.release(ctx, a); err != nil {
@@ -133,7 +118,7 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		}
 		return ap.closeRun(ctx, a.RunID, a.Outcome, closeReason(a))
 	case KindRocket:
-		return ap.env.Poster(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID)
+		return ap.env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID)
 	case KindDefer:
 		res.Deferred = append(res.Deferred, deferral(a, a.Reason))
 		return nil
@@ -141,7 +126,7 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		// The comment first: a failed board change leaves a Parked that the next tick sees,
 		// and holds without posting a second one.
 		body := protocol.RenderParked(a.Blockers, a.Language)
-		if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 			return fmt.Errorf("post: %w", err)
 		}
 		return ap.setStatus(ctx, a, statusOnHold)
@@ -161,7 +146,7 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 // again. A merge GitHub refuses is noted on the open run, so decide plans a fix-pr for that
 // head instead of merging again; the run stays open. Any other failure is an action error.
 func (ap applier) merge(ctx context.Context, a Action, res *Result) error {
-	err := ap.env.Poster(a.Repo).MergePR(ctx, a.PR, a.HeadSHA)
+	err := ap.env.Forge(a.Repo).MergePR(ctx, a.PR, a.HeadSHA)
 	var refused *forge.MergeRefused
 	switch {
 	case errors.Is(err, forge.ErrHeadMoved):
@@ -178,7 +163,7 @@ func (ap applier) merge(ctx context.Context, a Action, res *Result) error {
 	}
 	note := protocol.Heading("note_merged", a.Language)
 	body := protocol.RenderDone(a.SessionID, a.PRURL, note, a.Language)
-	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 		return fmt.Errorf("post: %w", err)
 	}
 	if err := ap.release(ctx, a); err != nil {
@@ -190,7 +175,7 @@ func (ap applier) merge(ctx context.Context, a Action, res *Result) error {
 // setStatus moves the board item of a to status.
 func (ap applier) setStatus(ctx context.Context, a Action, status string) error {
 	item := forge.BoardItem{ItemID: a.ItemID, Repo: a.Repo, Issue: a.Issue}
-	if err := ap.env.Board(a.Repo).SetStatus(ctx, item, status); err != nil {
+	if err := ap.env.Forge(a.Repo).SetStatus(ctx, item, status); err != nil {
 		return fmt.Errorf("board: %w", err)
 	}
 	return nil
@@ -401,7 +386,7 @@ func (ap applier) returnFixPR(ctx context.Context, a Action, cause error) error 
 	ra := a
 	ra.Reason = cmp.Or(a.Reason, "reason_pr_red")
 	body := protocol.RenderReturned(reasonText(ra), "", "", a.Language)
-	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 		return errors.Join(cause, fmt.Errorf("post returned: %w", err))
 	}
 	return cause
@@ -416,7 +401,7 @@ func (ap applier) returnOwnWork(ctx context.Context, a Action, runID int64, sess
 	ra.Reason, ra.ReasonArg = "reason_own_work", own.Error()
 	reason := reasonText(ra)
 	body := protocol.RenderReturned(reason, session, "", a.Language)
-	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 		return ap.startFailed(ctx, runID, "post", err)
 	}
 	ap.logf("%s#%d: run %d returned: %s", a.Repo, a.Issue, runID, reason)
@@ -431,7 +416,7 @@ func (ap applier) returnStartFailed(ctx context.Context, a Action, runID int64, 
 	ra := a
 	ra.Reason, ra.ReasonArg = "reason_start_failed", reason
 	body := protocol.RenderReturned(reasonText(ra), session, "", a.Language)
-	if _, err := ap.env.Poster(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 		ap.logf("%s#%d: post Returned of run %d: %v", a.Repo, a.Issue, runID, err)
 	}
 }
@@ -439,7 +424,7 @@ func (ap applier) returnStartFailed(ctx context.Context, a Action, runID int64, 
 // announce posts the 🤖 Started or Resumed and the 🚀; a failed post closes the run as
 // start_failed.
 func (ap applier) announce(ctx context.Context, a Action, runID int64, session string, ws workplace.Workspace, now time.Time) error {
-	poster := ap.env.Poster(a.Repo)
+	poster := ap.env.Forge(a.Repo)
 	if _, err := poster.CreateComment(ctx, a.Issue, startBody(a, session, ws, now)); err != nil {
 		return ap.startFailed(ctx, runID, "post", err)
 	}

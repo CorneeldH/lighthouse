@@ -12,14 +12,14 @@ import (
 // in the allowed set ([dispatch] answer_permissions). It asks once per login and keeps the
 // answer, so one Trust lives for one repo in one tick. It is not safe for concurrent use.
 type Trust struct {
-	client  *forge.GitHub
+	forge   forge.Forge
 	allowed map[string]bool
 	cache   map[string]bool
 }
 
-// NewTrust returns a Trust for the repo of c that trusts the roles in allowed.
-func NewTrust(c *forge.GitHub, allowed []string) *Trust {
-	t := &Trust{client: c, allowed: map[string]bool{}, cache: map[string]bool{}}
+// NewTrust returns a Trust for the repo of f that trusts the roles in allowed.
+func NewTrust(f forge.Forge, allowed []string) *Trust {
+	t := &Trust{forge: f, allowed: map[string]bool{}, cache: map[string]bool{}}
 	for _, role := range allowed {
 		t.allowed[role] = true
 	}
@@ -35,7 +35,7 @@ func (t *Trust) Trusted(ctx context.Context, login string) (bool, error) {
 	if ok, found := t.cache[login]; found {
 		return ok, nil
 	}
-	role, err := t.client.Role(ctx, login)
+	role, err := t.forge.Role(ctx, login)
 	if err != nil {
 		return false, fmt.Errorf("dispatch: role of %s: %w", login, err)
 	}

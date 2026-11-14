@@ -59,11 +59,11 @@ type Pre struct {
 // Controller or On hold, or that have an open run in open, sorted by issue. branches is per issue the branch of its last run,
 // open or closed: such an item also gets the PRs of that branch, merged with its closing PRs,
 // so a merged PR that does not close the issue stays visible after its run closed.
-func Prepare(ctx context.Context, c *forge.GitHub, repo repoconfig.Repo, open []runs.OpenRun, branches map[int]string) (Pre, error) {
+func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []runs.OpenRun, branches map[int]string) (Pre, error) {
 	if repo.Board == nil {
 		return Pre{}, fmt.Errorf("dispatch: %s: missing [forge.board]", repo.Slug)
 	}
-	board, err := c.BoardItems(ctx)
+	board, err := f.BoardItems(ctx)
 	if err != nil {
 		return Pre{}, err
 	}
@@ -105,7 +105,7 @@ func Prepare(ctx context.Context, c *forge.GitHub, repo repoconfig.Repo, open []
 			PRs:       bi.ClosingPRs,
 		}
 		if br := branches[bi.Issue]; br != "" {
-			onBranch, err := c.BranchPRs(ctx, br)
+			onBranch, err := f.BranchPRs(ctx, br)
 			if err != nil {
 				return Pre{}, err
 			}
@@ -158,7 +158,7 @@ func mergePRs(closing, onBranch []forge.PR) []forge.PR {
 // list in the snapshot is non-nil, so its JSON has [] where a list is empty, never null.
 // For an item with an open run, every merge-ready PR gets its roborev state from the PR's
 // comments; the PRs of Pre stay untouched.
-func Complete(ctx context.Context, c *forge.GitHub, pre Pre, trust *Trust, tokenLogin string, log io.Writer, now time.Time) (Snapshot, error) {
+func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLogin string, log io.Writer, now time.Time) (Snapshot, error) {
 	items := make([]Item, 0, len(pre.Items))
 	hasRun := make(map[int]bool, len(pre.OpenRuns))
 	for _, r := range pre.OpenRuns {
@@ -171,7 +171,7 @@ func Complete(ctx context.Context, c *forge.GitHub, pre Pre, trust *Trust, token
 				if !mergeCandidate(pr) {
 					continue
 				}
-				prc, err := c.Comments(ctx, pr.Number)
+				prc, err := f.Comments(ctx, pr.Number)
 				if err != nil {
 					return Snapshot{}, err
 				}
@@ -180,7 +180,7 @@ func Complete(ctx context.Context, c *forge.GitHub, pre Pre, trust *Trust, token
 				}
 			}
 		}
-		all, err := c.Comments(ctx, it.Issue)
+		all, err := f.Comments(ctx, it.Issue)
 		if err != nil {
 			return Snapshot{}, err
 		}
@@ -199,7 +199,7 @@ func Complete(ctx context.Context, c *forge.GitHub, pre Pre, trust *Trust, token
 				}
 				continue
 			}
-			rocket, err := tokenRocket(ctx, c, it.Issue, pc, tokenLogin)
+			rocket, err := tokenRocket(ctx, f, it.Issue, pc, tokenLogin)
 			if err != nil {
 				return Snapshot{}, err
 			}
@@ -228,11 +228,11 @@ func nonNil[T any](s []T) []T {
 
 // tokenRocket reports whether tokenLogin put a 🚀 on comment pc of issue. A comment without any
 // 🚀 costs no request.
-func tokenRocket(ctx context.Context, c *forge.GitHub, issue int, pc protocol.Comment, tokenLogin string) (bool, error) {
+func tokenRocket(ctx context.Context, f forge.Forge, issue int, pc protocol.Comment, tokenLogin string) (bool, error) {
 	if pc.Rockets == 0 {
 		return false, nil
 	}
-	logins, err := c.Acknowledgers(ctx, issue, pc.ID)
+	logins, err := f.Acknowledgers(ctx, issue, pc.ID)
 	if err != nil {
 		return false, err
 	}

@@ -460,8 +460,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	// it saves.
 	res, _ := dispatch.Apply(ctx, dispatch.Env{
 		DB:         db,
-		Poster:     func(slug string) dispatch.Poster { return env.client(repos[slug], token) },
-		Board:      func(slug string) dispatch.Board { return env.client(repos[slug], token) },
+		Forge:      func(slug string) forge.Forge { return env.client(repos[slug], token) },
 		Workplace:  func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
 		MCPConfig:  func(profile string) string { return cfg.Profiles[profile].MCPConfig },
 		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },

@@ -30,6 +30,9 @@ type Forge interface {
 	Acknowledge(ctx context.Context, number int, commentID int64) error
 	// Acknowledgers lists the logins that marked comment commentID on issue number as seen.
 	Acknowledgers(ctx context.Context, number int, commentID int64) ([]string, error)
+	// MergePR squash-merges pull request number, only while its head is still sha. It fails
+	// with ErrHeadMoved when the head moved, and with *MergeRefused when the forge declines.
+	MergePR(ctx context.Context, number int, sha string) error
 	OpenPRs(ctx context.Context) ([]OpenPR, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)
