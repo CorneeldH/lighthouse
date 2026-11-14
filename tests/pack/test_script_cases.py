@@ -25,6 +25,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "scripts"
 COMMANDS: dict[str, list[str]] = {
     "_self": [],
     "board-start": [str(lighthouse_dir() / "lighthouse"), "board-start"],
+    "unblock-dependents": [str(lighthouse_dir() / "lighthouse"), "unblock-dependents"],
 }
 
 
@@ -34,7 +35,7 @@ def _cases() -> list:
         for case in json.loads(path.read_text(encoding="utf-8")):
             if case.get("only") == "go":
                 continue
-            params.append(pytest.param(path.parent.name, case, id=case["name"]))
+            params.append(pytest.param(path.parent.name, case, id=f"{path.parent.name}::{case['name']}"))
     return params
 
 

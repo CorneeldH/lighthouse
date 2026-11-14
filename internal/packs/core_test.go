@@ -86,7 +86,6 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/scripts/check-instructions.sh",
 		".lighthouse/scripts/create_labels.py",
 		".lighthouse/scripts/post_artefact.py",
-		".lighthouse/scripts/unblock_dependents.py",
 		".lighthouse/scripts/worktree_audit.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {

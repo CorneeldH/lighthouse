@@ -7,7 +7,8 @@
 # A workflow and not a step in `lighthouse-close-issue`: an issue also closes through a
 # PR merge or by hand, and a session has no bot token. The skill checks afterwards.
 # `workflow_dispatch` with an issue number is the fallback for a missed or red run. The
-# logic lives in `.lighthouse/scripts/unblock_dependents.py`; the YAML stays thin.
+# logic lives in `lighthouse unblock-dependents`; the YAML stays thin and only fetches the binary
+# (`Get lighthouse`).
 #
 # `lighthouse init` fills every `@@<key>@@` from `lighthouse.toml`; without the `[ci]`
 # bot keys it does not install this workflow.
@@ -48,11 +49,66 @@ jobs:
         with:
           persist-credentials: false
 
-      # No enable-cache and an exact `version:`.
-      - name: Install uv
-        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      # Which lighthouse this project runs: the first `version =` of the manifest. `dev` with a
+      # `cmd/lighthouse` in the checkout is lighthouse itself: it builds its own binary, so Go
+      # is needed only then.
+      - name: Which lighthouse
+        id: lighthouse
+        run: |
+          version=$(sed -n 's/^version = "v*\([^"]*\)"$/\1/p' .lighthouse/manifest.toml | head -n 1)
+          if [ "$version" = dev ] && [ -f cmd/lighthouse/main.go ]; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Go
+        if: steps.lighthouse.outputs.build == 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          version: "0.12.24"
+          go-version-file: go.mod
+
+      # The binary of the release the manifest names, checked against SHA256SUMS; a runner
+      # that is not Linux or macOS on x64 or arm64, or a `dev` manifest without the source to
+      # build, is an error: a lane that runs nothing leaves the labels on. The release is
+      # public, so GITHUB_TOKEN is enough; the App token below only writes.
+      - name: Get lighthouse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "v*\([^"]*\)"$/\1/p' .lighthouse/manifest.toml | head -n 1 || true)
+          if [ -z "$version" ]; then
+            echo "::error::no version = line in .lighthouse/manifest.toml"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/bin"
+          if [ "$version" = dev ]; then
+            if [ ! -f cmd/lighthouse/main.go ]; then
+              echo "::error::.lighthouse/manifest.toml says version = \"dev\", but this checkout has no cmd/lighthouse to build"
+              exit 1
+            fi
+            go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
+          else
+            case "$RUNNER_OS" in
+              Linux) os=linux ;;
+              macOS) os=darwin ;;
+              *) echo "::error::no lighthouse binary for runner OS $RUNNER_OS"; exit 1 ;;
+            esac
+            case "$RUNNER_ARCH" in
+              X64) arch=amd64 ;;
+              ARM64) arch=arm64 ;;
+              *) echo "::error::no lighthouse binary for runner architecture $RUNNER_ARCH"; exit 1 ;;
+            esac
+            gh release download "v$version" \
+              --repo CorneeldH/lighthouse \
+              --pattern "lighthouse_${os}_${arch}" --pattern SHA256SUMS \
+              --dir "$RUNNER_TEMP/bin"
+            (cd "$RUNNER_TEMP/bin" && sha256sum --check --ignore-missing SHA256SUMS)
+            mv "$RUNNER_TEMP/bin/lighthouse_${os}_${arch}" "$RUNNER_TEMP/bin/lighthouse"
+            chmod +x "$RUNNER_TEMP/bin/lighthouse"
+          fi
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
       - name: App token for labels and comments
         id: app-token
@@ -62,12 +118,10 @@ jobs:
           private-key: ${{ secrets.@@ci.bot_private_key_secret@@ }}
           permission-issues: write
 
-      # The script needs only the standard library and `.lighthouse/lib`: no `uv sync`,
-      # `--python 3.12` fetches the interpreter itself. The issue number goes through
-      # env, never as `${{ }}` in `run:`.
+      # The issue number goes through env, never as `${{ }}` in `run:`.
       - name: Release dependents
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
           ISSUE: ${{ github.event.issue.number || inputs.issue }}
-        run: uv run --no-project --python 3.12 python .lighthouse/scripts/unblock_dependents.py --issue "$ISSUE"
+        run: lighthouse unblock-dependents --issue "$ISSUE"

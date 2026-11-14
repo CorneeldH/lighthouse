@@ -84,11 +84,6 @@ source_path = "scripts/worktree_audit.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/scripts/unblock_dependents.py"
-source_path = "scripts/unblock_dependents.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/workflows/unblock-dependents.yml"
 source_path = ".github/workflows/unblock-dependents.yml"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"

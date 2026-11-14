@@ -496,7 +496,7 @@ kind = "file"
 path = ".github/workflows/lighthouse-unblock-dependents.yml"
 package = "core"
 version = "dev"
-sha256 = "944d430c5429b71ee07fab588e2ad32dfdd474ccb83090d15fbd202da308990e"
+sha256 = "275bb4b288c13125fcbd7d58a43c0c5556da56e0b1cb1f2e0c018f3816c7b027"
 
 [[unit]]
 kind = "file"
@@ -602,13 +602,6 @@ path = ".lighthouse/scripts/post_artefact.py"
 package = "core"
 version = "dev"
 sha256 = "872ab4821a4063f7234b4d6000ae6c607c2e5f8a51afc560d81651c92f445903"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/unblock_dependents.py"
-package = "core"
-version = "dev"
-sha256 = "188332aca3c8ac369560ae8df0341a049b6d911c1da4a6195297142d11693612"
 
 [[unit]]
 kind = "file"

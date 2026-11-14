@@ -554,9 +554,9 @@
               "default": "blocked-issue",
               "about": "The label for an issue blocked by another issue.",
               "readers": [
+                "internal/cli/unblockdependents.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
-                "pack/core/scripts/unblock_dependents.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
