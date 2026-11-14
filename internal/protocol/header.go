@@ -1,5 +1,5 @@
-// Package protocol reads the `🤖 <kind>` comments of the lighthouse protocol. It is the Go
-// twin of pack/core/lib/protocol.py; tests/pack/fixtures/protocol holds the cases both share.
+// Package protocol reads and renders the `🤖 <kind>` comments of the lighthouse protocol. The
+// cases it is tested on are in tests/pack/fixtures/protocol.
 package protocol
 
 import (

@@ -72,7 +72,7 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    ```bash
    cd <worktree> && lighthouse post-artefact <nr> <absolute path>
    ```
-   The script is idempotent: without a content change it posts nothing. If GitHub does not know
+   The command is idempotent: without a content change it posts nothing. If GitHub does not know
    the commit yet, it pushes the branch itself (only without an open PR, never the default
    branch). Put the `artefact:` line in the block under `State:`.
    An error does not block the handoff: the error line goes under `Watch out:`.

@@ -22,8 +22,8 @@ import (
 // `<sub>` line, a blank line and the content. Readers accept the legacy marker and the legacy
 // keys; writers use the new ones.
 //
-// This file is the port of pack/core/lib/artefacts.py. Where Python and Go word a text rule
-// differently, the Python wording wins (package pytext): the comment is compared byte for byte.
+// This file is the port of the former pack/core/lib/artefacts.py. Where Python and Go word a text
+// rule differently, the Python wording wins (package pytext): the comment is compared byte for byte.
 
 // GithubLimit is the maximum length of a GitHub comment, in characters.
 const GithubLimit = 65_536

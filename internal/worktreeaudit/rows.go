@@ -1,7 +1,6 @@
 // Package worktreeaudit is `lighthouse worktree-audit`: one join over worktrees, PR state,
-// branches and sessions, judged on a ladder whose first hit wins and whose top is safety. It ports
-// worktree_audit.py; the fixtures in tests/pack/fixtures/worktree_audit hold both to the same
-// output.
+// branches and sessions, judged on a ladder whose first hit wins and whose top is safety. The cases it
+// is tested on are in tests/pack/fixtures/worktree_audit.
 //
 // The row is a branch, not a worktree: most cleanable things on origin have no worktree. An
 // orphan directory under `.claude/worktrees/` and a detached worktree get a row of their own.
