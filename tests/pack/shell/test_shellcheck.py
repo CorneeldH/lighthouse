@@ -412,6 +412,18 @@ def test_without_jq_could_not_check(tmp_path, pinned_shellcheck, lighthouse_bin)
     assert "jq is not present" in result.stderr
 
 
+def test_without_jq_a_non_shell_edit_passes(tmp_path):
+    """Without jq an edit that names no shell file is not blocked: COULD NOT CHECK is only for
+    a payload that may hold a shell path, or the session stops on every .md edit."""
+    target = _repo_file(tmp_path, "notes.md", "# notes\n")
+    shim = _shim_path(tmp_path, HOOK_TOOLS)
+    assert shutil.which("jq", path=str(shim)) is None
+
+    result = _run_shellcheck_hook(target, PATH=str(shim))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stderr == ""
+
+
 def test_without_lighthouse_could_not_check(tmp_path, pinned_shellcheck):
     target = _repo_file(tmp_path, "broken.sh", BROKEN_SH)
     shim = _shim_path(tmp_path, [*HOOK_TOOLS, "jq"])

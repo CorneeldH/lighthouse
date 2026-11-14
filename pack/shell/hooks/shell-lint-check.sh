@@ -23,6 +23,14 @@ fail() { # reason...
 
 INPUT=$(cat)
 
+# A payload without `.sh"` or `.bash"` cannot name a shell file: nothing to check,
+# with or without jq. This filter only skips; whatever it lets through is read by
+# jq below, so a stray match costs at most a COULD NOT CHECK, never a missed file.
+case "$INPUT" in
+  *'.sh"'*|*'.bash"'*) ;;
+  *) exit 0 ;;
+esac
+
 # jq reads the payload. Without it the edited path cannot be read, and failing
 # loudly is the only honest answer: guessing at JSON with grep is the other side
 # of the same error.
