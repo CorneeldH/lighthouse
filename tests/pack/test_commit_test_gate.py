@@ -1,9 +1,10 @@
-"""End-to-end tests for pack/core `commit-test-gate.sh pre`, as installed (#884, #80).
+"""End-to-end tests for pack/core `commit-test-gate` (`run.sh commit-test-gate pre|post`), as
+installed (#884, #80, #280).
 
-The hook runs as a subprocess, with real git repos in `tmp_path` and a
-fake `uv` at the front of `PATH`. The test command comes from `[test_gate] command`
-(via `LIGHTHOUSE_TOML`), the slice from `[host] gate_slice` (via
-`LIGHTHOUSE_HOST_TOML`). Safety: every test sets `CLAUDE_PROJECT_DIR` to a
+The hook runs as a subprocess through `run.sh`, on the binary of this checkout,
+with real git repos in `tmp_path` and a fake `uv` at the front of `PATH`. The
+test command comes from `[test_gate] command` (via `LIGHTHOUSE_TOML`), the slice
+from `[host] gate_slice` (via `LIGHTHOUSE_HOST_TOML`). Safety: every test sets `CLAUDE_PROJECT_DIR` to a
 temporary repo and puts the stub directory with the fake `uv` first on `PATH`.
 """
 
@@ -23,23 +24,26 @@ import pytest
 
 from tests.pack._testkit import (
     CORE,
-    INSTALLED_HOOKS,
+    INSTALL_ROOT,
     MINIMAL_TOML,
     ORIGIN,
+    RUN_SH_TOOLS,
     bash_payload,
     forge_worktree,
     git,
+    hook_shim,
     init_repo,
+    lighthouse_dir,
     run_hook,
     tool_bin,
 )
 
-HOOK = INSTALLED_HOOKS / "commit-test-gate.sh"
+HOOK = hook_shim(INSTALL_ROOT, "commit-test-gate")
 HOOKS_JSON = CORE / "hooks" / "hooks.json"
 REAL_GIT = shutil.which("git")
-REAL_PYTHON3 = shutil.which("python3")
-REAL_DATE = shutil.which("date")
 SESSION = "s1"
+
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
 # The test command of a project the way paia would set it; the fake `uv`
 # records its arguments. `slot_wait_seconds = 1`: no test waits 180 s.
@@ -618,18 +622,6 @@ def test_gate_loud_when_common_dir_fails_for_reference(gate: Gate) -> None:
     assert not gate.mark.exists()
 
 
-def test_gate_loud_without_cat(gate: Gate) -> None:
-    bin_dir = tool_bin(gate.tmp / "bin", ("jq", "python3", "git", "cat"), drop="cat")
-
-    # The stub directory stays at the front (Gate.run puts it before `path`).
-    result = gate.run("git commit -m x", gate.project, path=str(bin_dir))
-
-    assert result.returncode == 2, result.stdout
-    assert "missing tooling" in result.stderr
-    assert "cat" in result.stderr
-    assert not gate.mark.exists()
-
-
 def test_gate_loud_without_uv(gate: Gate) -> None:
     # No `uv` to be found: then nothing was tested, and that is something other than
     # "tests failed". No fake `uv` in the stub directory, and the rest of PATH
@@ -637,10 +629,12 @@ def test_gate_loud_without_uv(gate: Gate) -> None:
     (gate.stub / "uv").unlink()
     bin_dir = tool_bin(
         gate.tmp / "bin",
-        ("jq", "python3", "git", "cat", "dirname", "mktemp", "rm", "date", "mkdir"),
+        ("git", "bash", *RUN_SH_TOOLS),
     )
 
-    result = gate.run("git commit -m x", gate.project, path=str(bin_dir))
+    result = gate.run(
+        "git commit -m x", gate.project, path=f"{lighthouse_dir()}{os.pathsep}{bin_dir}"
+    )
 
     assert result.returncode == 2, result.stdout
     assert "commit-test-gate: COULD NOT CHECK" in result.stderr
@@ -674,28 +668,25 @@ def test_gate_runs_once_per_root(gate: Gate) -> None:
 def test_gate_uses_one_deadline_for_two_roots(gate: Gate) -> None:
     second = gate.tmp / "X2"
     _worktree_on_default(gate.project, second)
-    # Fake `date`: the deadline (now + 270) thus falls ~5 s after now. The first root
-    # makes that easily, even on a busy runner; the second sleeps 8 s and so
+    # LIGHTHOUSE_GATE_START: the deadline (start + 270) thus falls ~5 s after now. The
+    # first root makes that easily, even on a busy runner; the second sleeps 8 s and so
     # runs over the same deadline.
-    # Every invocation goes into DATE_LOG: exactly one invocation proves that the
-    # deadline is shared — a deadline recalculated per root would expire here too,
-    # so rc 2 alone does not distinguish those two.
-    date_log = gate.tmp / "date-log"
-    gate.add_stub(
-        "date",
-        '#!/bin/sh\necho call >> "$DATE_LOG"\necho $(( $(/bin/date +%s) - 265 ))\n',
-    )
+    # Every time the hook sets the deadline goes into LIGHTHOUSE_GATE_TRACE: exactly one
+    # line proves that the deadline is shared — a deadline recalculated per root would
+    # expire here too, so rc 2 alone does not distinguish those two.
+    trace = gate.tmp / "trace"
 
     result = gate.run(
         f"git commit -m a && cd {second} && git commit -m b",
         gate.project,
         UV_SLOW_SECOND="1",
-        DATE_LOG=str(date_log),
+        LIGHTHOUSE_GATE_START=str(int(time.time()) - 265),
+        LIGHTHOUSE_GATE_TRACE=str(trace),
     )
 
     assert result.returncode == 2, result.stdout
     assert "deadline of 270 s" in result.stderr
-    assert date_log.read_text(encoding="utf-8").splitlines() == ["call"]
+    assert trace.read_text(encoding="utf-8").splitlines() == ["deadline"]
     assert gate.marks() == [str(gate.project.resolve()), str(second.resolve())]
 
 
@@ -1012,24 +1003,29 @@ def _release_after_deadline_set(started: Path, fds: list[int], done: threading.E
 
 def test_memory_wait_gets_what_the_slot_wait_left(gate: Gate) -> None:
     # Slot wait ~4 s of an 8 s deadline: the memory wait gets the rest (3-4 s), not
-    # slot_wait_seconds (8 s). The 4 s count from the hook's first `date` call, which sets
-    # the deadline, not from the start of the test: a loaded runner starts the hook seconds
-    # late (measured: >3 s on macOS CI), and a slot wait counted from the test start shrinks
-    # by that lag until the clipped wait is 8 s as well (#303). No wall-clock bound: the
-    # whole run takes lag + 8 s, so any bound has only the gap between 8 and 12 s as margin.
+    # slot_wait_seconds (8 s). The 4 s count from the moment the hook sets the deadline
+    # (its line in LIGHTHOUSE_GATE_TRACE), not from the start of the test: a loaded runner
+    # starts the hook seconds late (measured: >3 s on macOS CI), and a slot wait counted
+    # from the test start shrinks by that lag until the clipped wait is 8 s as well (#303).
+    # No wall-clock bound: the whole run takes lag + 8 s, so any bound has only the gap
+    # between 8 and 12 s as margin.
     gate.configure(
         TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 8")
         + "deadline_seconds = 8\n"
     )
     gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
     started = gate.tmp / "deadline-set"
-    gate.add_stub("date", f'#!/bin/sh\n: > "{started}"\nexec "{REAL_DATE}" "$@"\n')
     fds = hold_slots(gate, "slot-1", "slot-2")
     done = threading.Event()
     releaser = threading.Thread(target=_release_after_deadline_set, args=(started, fds, done))
     releaser.start()
     try:
-        result = gate.run("git commit -m x", gate.project, **meminfo(gate, LOW_AVAIL_KB, LOW_SWAP_KB))
+        result = gate.run(
+            "git commit -m x",
+            gate.project,
+            LIGHTHOUSE_GATE_TRACE=str(started),
+            **meminfo(gate, LOW_AVAIL_KB, LOW_SWAP_KB),
+        )
     finally:
         done.set()
         releaser.join()
@@ -1096,23 +1092,6 @@ def test_gate_blocks_when_a_lock_file_cannot_be_opened(gate: Gate) -> None:
     assert not gate.mark.exists()
 
 
-def test_gate_blocks_when_gate_slot_breaks(gate: Gate) -> None:
-    # A python3 that stops with exit 2 only for gate_slot.py, without a
-    # slot number; config, parser and no_verify run as normal.
-    gate.add_stub(
-        "python3",
-        "#!/bin/sh\n"
-        'case "$1" in *gate_slot.py) echo kapot >&2; exit 2 ;; esac\n'
-        f'exec "{REAL_PYTHON3}" "$@"\n',
-    )
-
-    result = gate.run("git commit -m x", gate.project)
-
-    assert result.returncode == 2, result.stdout
-    assert "cannot take a gate slot: gate_slot.py gave exit 2" in result.stderr
-    assert not gate.mark.exists()
-
-
 def test_foreign_commit_takes_no_slot(gate: Gate) -> None:
     foreign = gate.tmp / "Y"
     init_repo(foreign)
@@ -1132,9 +1111,8 @@ def test_foreign_commit_takes_no_slot(gate: Gate) -> None:
 
 
 def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
-    # Fake `date`: the deadline falls 8 s after now. Fake `uv` records that it runs
-    # and then sleeps long; that way `deadline.py` lives until that deadline.
-    gate.add_stub("date", "#!/bin/sh\necho $(( $(/bin/date +%s) - 262 ))\n")
+    # LIGHTHOUSE_GATE_START: the deadline falls 8 s after now. Fake `uv` records that it
+    # runs and then sleeps long; that way the run lives until that deadline.
     gate.add_stub("uv", '#!/bin/sh\npwd >> "$UV_MARK"\nsleep 30\n')
     tmpdir = gate.tmp / "tmpdir"
     tmpdir.mkdir()
@@ -1148,6 +1126,7 @@ def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
         LIGHTHOUSE_GATE_SLOT_DIR=str(gate.slot_dir),
         LIGHTHOUSE_GATE_CGROUP_ROOT=str(gate.cgroup),
         TMPDIR=str(tmpdir),
+        LIGHTHOUSE_GATE_START=str(int(time.time()) - 262),
     )
     payload = json.dumps(bash_payload("git commit -m x", gate.project))
     start = time.monotonic()
@@ -1168,7 +1147,7 @@ def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
             assert time.monotonic() - start < 15, "nep-uv startte niet"
             time.sleep(0.05)
 
-        # The hook (bash) dies while pytest runs: deadline.py holds the
+        # `run.sh` dies while pytest runs: the binary lives on and holds the
         # slot until the deadline plus its grace of 10 s.
         os.kill(hook.pid, signal.SIGKILL)
         hook.wait()
@@ -1182,24 +1161,6 @@ def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
         if hook.poll() is None:
             hook.kill()
             hook.wait()
-
-
-BRACE_FD = re.compile(r"\{[A-Za-z_][A-Za-z0-9_]*\}[<>]")
-
-
-def test_hook_has_no_bash4_fd_variables() -> None:
-    # Bash 3.2 (macOS /bin/bash) does not know `exec {var}>>`: the hook would die there on
-    # that line with an exit that is not 2, and the commit goes through untested.
-    # First prove that the pattern finds the form.
-    assert BRACE_FD.search("exec {S1}>>f") is not None
-
-    hits = [
-        line
-        for line in HOOK.read_text(encoding="utf-8").splitlines()
-        if not line.lstrip().startswith("#") and BRACE_FD.search(line)
-    ]
-
-    assert hits == []
 
 
 # --- The brake (#1184, Task 3) ---------------------------------------------------
@@ -1328,10 +1289,12 @@ def test_gate_reports_a_missing_choom(gate: Gate) -> None:
     # Without /usr/bin, so without the real `choom` of the host.
     bin_dir = tool_bin(
         gate.tmp / "bin",
-        ("jq", "python3", "git", "cat", "dirname", "mktemp", "rm", "date", "mkdir"),
+        ("git", "bash", *RUN_SH_TOOLS),
     )
 
-    result = gate.run("git commit -m x", gate.project, path=str(bin_dir))
+    result = gate.run(
+        "git commit -m x", gate.project, path=f"{lighthouse_dir()}{os.pathsep}{bin_dir}"
+    )
 
     assert result.returncode == 0, result.stderr
     assert gate.marks() == [str(gate.project.resolve())]
@@ -1907,6 +1870,37 @@ def test_post_could_not_check_names_the_commit_and_the_rerun(gate: Gate) -> None
     names, files = gate.seen()
     assert (names["BASE"], names["HEAD"]) == (base, head)
     assert files == "a.py\nb/c.sh\n"
+
+
+# Review-focus 3 (#280): a `'` and a newline in the command survive the pasted line.
+QUOTE_GATE = (
+    "[test_gate]\n"
+    'command = "echo \'it is\' > \\"$UV_MARK.quote\\"\\nuv run pytest -q"\n'
+    "slot_wait_seconds = 1\n"
+    "unchecked_exit_codes = [5]\n"
+)
+
+
+def test_rerun_line_survives_a_quote_in_the_command(gate: Gate) -> None:
+    gate.configure(QUOTE_GATE)
+    base = _pre_on_feature(gate)
+    _commit(gate.project, "a.py")
+    head = _head(gate.project)
+
+    result = gate.post("git commit -m x", gate.project, UV_EXIT="5")
+
+    assert result.returncode == 2, result.stdout
+    # The line spans two lines of stderr (the newline of the command) and ends at the
+    # blank line before the output.
+    line = result.stderr[result.stderr.index("  cd ") + 2 :].split("\n\n")[0]
+    quote = Path(f"{gate.mark}.quote")
+    quote.unlink()
+    rerun = _run_rerun_line(gate, line)
+    assert rerun.returncode == 0, rerun.stderr
+    assert quote.read_text(encoding="utf-8") == "it is\n"
+    names, files = gate.seen()
+    assert (names["BASE"], names["HEAD"]) == (base, head)
+    assert files == "a.py\n"
 
 
 def test_post_busy_slots_do_not_advise_another_commit(gate: Gate) -> None:

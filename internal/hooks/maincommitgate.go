@@ -166,15 +166,15 @@ func checkInvocation(ctx context.Context, inv gitinvocations.Invocation, protect
 // false when jq could not index the payload: not JSON, or a value that is no object or null where
 // a field is looked up.
 func readGatePayload(raw []byte) (command, cwd string, ok bool) {
-	top, ok := jqFields(raw)
+	top, ok := hook.JQFields(raw)
 	if !ok {
 		return "", "", false
 	}
-	toolInput, ok := jqFields(top["tool_input"])
+	toolInput, ok := hook.JQFields(top["tool_input"])
 	if !ok {
 		return "", "", false
 	}
-	return jqText(toolInput["command"]), jqText(top["cwd"]), true
+	return hook.JQText(toolInput["command"]), hook.JQText(top["cwd"]), true
 }
 
 // mayCommit reports whether the raw text holds `git` together with `commit` or `push`.

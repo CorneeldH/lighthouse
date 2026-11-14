@@ -4,6 +4,7 @@
 package hook
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -211,4 +212,34 @@ func firstInSession(stateDir, session, kind string) bool {
 		_ = f.Close()
 	}
 	return true
+}
+
+// JQFields is the fields of one JSON value as jq indexes them: by exact key, the last of a
+// duplicate key winning. A missing value, empty input and null have no fields; ok is false for
+// anything that is not JSON or not an object, where jq fails on `.key`. (encoding/json into a
+// struct matches keys case-insensitively, so `Tool_Input` would shadow `tool_input`.)
+func JQFields(raw []byte) (fields map[string]json.RawMessage, ok bool) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return nil, true
+	}
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, false
+	}
+	return fields, true
+}
+
+// JQText is the output of `jq -r '.key // empty'` for one value, without the trailing newline:
+// a missing value, null and false are empty, a string is its text, any other value its JSON text.
+func JQText(v json.RawMessage) string {
+	text := string(bytes.TrimSpace(v))
+	switch text {
+	case "", "null", "false":
+		return ""
+	}
+	var s string
+	if json.Unmarshal(v, &s) == nil {
+		return s
+	}
+	return text
 }

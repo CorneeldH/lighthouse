@@ -62,6 +62,8 @@ type Gate struct {
 	command string
 	// showRun runs `systemctl --user show` (default runCommand).
 	showRun func(argv, env []string) (string, string, error)
+	// acquire takes a slot (default Acquire).
+	acquire func(files []*os.File, wait, interval time.Duration) (int, error)
 }
 
 // settings are the [test_gate] and [host] values of one run.
@@ -283,7 +285,11 @@ func (g *Gate) takeSlot(s *settings) (*os.File, *Result) {
 		res := g.slotFailed(err.Error())
 		return nil, &res
 	}
-	slot, err := Acquire(files, time.Duration(s.slotWait)*time.Second, slotInterval)
+	acquire := g.acquire
+	if acquire == nil {
+		acquire = Acquire
+	}
+	slot, err := acquire(files, time.Duration(s.slotWait)*time.Second, slotInterval)
 	if err == nil {
 		return files[slot-1], nil
 	}
