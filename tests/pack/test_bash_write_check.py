@@ -1,18 +1,19 @@
-"""pack/core bash-write-check.sh, as installed (#871).
+"""pack/core bash-write-check (`run.sh bash-write-check`), as installed (#871).
 
-First the not-looked-at contract of `md-link-check.sh`, the only gate in
-`pack/core`: `COULD NOT CHECK` on the first line (decision 18). `_gate` merges
+First the not-looked-at contract of `md-link-check`, the only gate in `pack/core`
+(`run.sh md-link-check`): `COULD NOT CHECK` on the first line (decision 18). `_gate` merges
 stdout+stderr, the way the dispatcher reads the output.
 
-Then the end-to-end tests of `bash-write-check.sh`: `_Session` installs
+Then the end-to-end tests of `bash-write-check`: `_Session` installs
 `pack/core` in a lighthouse root of its own, with stubs for `shell-lint-check.sh` and
 `ruff-format-check.sh` (those gates come with `pack/shell` and `pack/python`), and runs
-pre, the Bash call and post against a tmp repo, via the real wrapper. The stubs
+pre, the Bash call and post against a tmp repo, via the installed `run.sh bash-write-check`. The stubs
 report a fixed finding (`SC2034`, `E722`) and then quote the file, the way
 shellcheck and ruff quote source lines.
+
+`run.sh` runs the binary of this checkout: `_gate` and `_Session` put it first on the PATH.
 """
 
-import functools
 import hashlib
 import json
 import os
@@ -29,15 +30,25 @@ from tests.pack._testkit import (
     INSTALLED_HOOKS,
     MINIMAL_TOML,
     git,
+    hook_shim,
     init_repo,
+    RUN_SH_TOOLS,
     install_core,
+    lighthouse_dir,
     past_this_second,
+    path_with_lighthouse,
     tool_bin,
 )
+
+# code-language-check runs as `run.sh code-language-check`, on the `lighthouse` on the PATH:
+# the binary of this checkout, not an older one that does not know the hook.
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
 CLEAN_SH = '#!/usr/bin/env bash\nset -euo pipefail\necho "hallo"\n'
 # SC2034: `x` is never used. Warning severity, so it blocks everywhere.
 BROKEN_SH = '#!/usr/bin/env bash\nf() {\n  local x=1\n  echo "hoi"\n}\nf\n'
+
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
 
 def sh(dir_: Path, text: str) -> Path:
@@ -53,7 +64,7 @@ def _gate(
     cwd: Path,
     env: dict | None = None,
 ) -> subprocess.CompletedProcess:
-    """Run `.claude/hooks/<name>` with the faked payload.
+    """Run `.claude/hooks/lighthouse/run.sh <name>` with the faked payload.
 
     Payload: `{"tool_name": "Bash", "cwd": <cwd>, "tool_input": {"file_path":
     <absolute path>}}`, process cwd = `cwd`. stdout+stderr merged so that the
@@ -71,10 +82,11 @@ def _gate(
         **GIT_ENV,
         CLAUDE_PROJECT_DIR=str(cwd),
         XDG_RUNTIME_DIR=str(xdg),
+        PATH=path_with_lighthouse(),
     )
     full_env.update(env or {})
     return subprocess.run(
-        [str(INSTALLED_HOOKS / name)],
+        [str(INSTALLED_HOOKS / "run.sh"), name],
         input=json.dumps(payload),
         cwd=str(cwd),
         env=full_env,
@@ -85,18 +97,16 @@ def _gate(
     )
 
 
-# --- md-link-check.sh ----------------------------------------------------
+# --- md-link-check -------------------------------------------------------
 
 
 def test_linkcheck_unchecked_form_is_on_the_first_line(tmp_path):
-    bin_dir = tool_bin(
-        tmp_path / "bin",
-        ("jq", "python3", "git", "realpath", "dirname", "cat"),
-        drop="jq",
-    )
+    # Without git the hook itself cannot look: the binary and the tools of `run.sh` stay.
+    bin_dir = tool_bin(tmp_path / "bin", RUN_SH_TOOLS)
     note = tmp_path / "note.md"
     note.write_text("# hoi\n", encoding="utf-8")
-    out = _gate("md-link-check.sh", note, tmp_path, {"PATH": str(bin_dir)})
+    path = f"{lighthouse_dir()}{os.pathsep}{bin_dir}"
+    out = _gate("md-link-check", note, tmp_path, {"PATH": path})
     first = out.stdout.splitlines()[0]
     assert out.returncode == 2, out.stdout
     assert first.startswith("Linkcheck: COULD NOT CHECK")
@@ -110,13 +120,13 @@ def test_linkcheck_finding_first_line(tmp_path):
     git(repo, "add", "note.md")
     git(repo, "commit", "-qm", "note")
 
-    out = _gate("md-link-check.sh", note, repo)
+    out = _gate("md-link-check", note, repo)
     first = out.stdout.splitlines()[0]
     assert out.returncode == 2, out.stdout
     assert first.startswith("Linkcheck: markdown link")
 
 
-# --- bash-write-check.sh: end-to-end (task 7, source 1) ---------------------
+# --- bash-write-check: end-to-end (task 7, source 1) -------------------------
 
 # Stubs for the gates of pack/shell and pack/python. Each reads the payload like
 # the real gate, reports one fixed finding and then cites the file. The shell
@@ -190,7 +200,7 @@ class _Session:
             for name, stub in (("shell-lint-check.sh", SHELLCHECK_STUB), ("ruff-format-check.sh", RUFF_STUB)):
                 (hooks / name).write_text(stub, encoding="utf-8")
                 (hooks / name).chmod(0o755)
-        self.wrapper = hooks / "bash-write-check.sh"
+        self.wrapper = hook_shim(self.root, "bash-write-check")
         self.repo = tmp_path / "repo"
         if unborn:
             # Only `git init`: HEAD points to `main`, but there is no commit yet.
@@ -208,6 +218,7 @@ class _Session:
             XDG_RUNTIME_DIR=str(xdg),
             SHELLCHECK_BIN=shellcheck,
             LIGHTHOUSE_REPO_ROOT=str(self.root),
+            PATH=path_with_lighthouse(),
         )
         for seam in ("LIGHTHOUSE_BASH_GATES_DEADLINE", "LIGHTHOUSE_BASH_GATES_START_NS"):
             self.env.pop(seam, None)
@@ -399,68 +410,23 @@ def test_py_blocking_rule(tmp_path):
     assert "== bad.py (ruff-format-check.sh) ==" in out.stderr
 
 
-def test_wrapper_without_python3_is_loud(tmp_path):
-    s = _Session(tmp_path)
-    bin_dir = tool_bin(
-        tmp_path / "bin",
-        ("bash", "cat", "dirname", "sed", "python3"),
-        drop="python3",
-    )
-    out = s.call("true", env={"PATH": str(bin_dir)}, event="PostToolUseFailure")
-    assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "python3 is missing" in out.stderr
-    assert "python3 is missing" in context(out)
-    assert "COULD NOT CHECK" in context(out)
-    assert event_of(out) == "PostToolUseFailure"
-
-
-def test_wrapper_dispatcher_crash_is_loud(tmp_path):
-    s = _Session(tmp_path)
-    stub_dir = tool_bin(
-        tmp_path / "stubs", (), stubs={"python3": "#!/bin/sh\nexit 7\n"}
-    )
-    path = f"{stub_dir}{os.pathsep}{os.environ['PATH']}"
-    out = s.call("true", env={"PATH": path})
-    assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "dispatcher failed (rc=7)" in out.stderr
-    assert "dispatcher failed (rc=7)" in context(out)
-    assert event_of(out) == "PostToolUse"
-
-
-def test_wrapper_without_the_lib_is_loud(tmp_path):
-    # Without lib/bash_writes.py python3 ends with rc 2 — that must not pass as
-    # a verdict. Pre stays exit 0: it would otherwise block the call.
-    s = _Session(tmp_path)
-    wrapper = s.wrapper
-    payload = s.payload("true", "toolu_nolib", s.repo, "PostToolUseFailure")
-    nolib = tmp_path / "nolib"
-    nolib.mkdir()
-    run = functools.partial(
-        subprocess.run,
-        capture_output=True,
-        text=True,
-        cwd=str(s.repo),
-        env=dict(s.env, LIGHTHOUSE_REPO_ROOT=str(nolib)),
-        check=False,
-    )
-    pre = run(
-        [str(wrapper), "pre"],
-        input=json.dumps(dict(payload, hook_event_name="PreToolUse")),
-    )
-    assert pre.returncode == 0, pre.stderr
-    out = run([str(wrapper), "post"], input=json.dumps(payload))
-    assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "bash_writes.py is missing" in out.stderr
-    assert "COULD NOT CHECK" in context(out)
-    assert event_of(out) == "PostToolUseFailure"
-
-
 def test_md_dead_link(tmp_path):
     s = _Session(tmp_path)
     out = s.call(heredoc("note.md", "[x](nergens.md)\n"))
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "Linkcheck" in out.stderr
     assert "== note.md (md-link-check.sh) ==" in out.stderr
+
+
+def test_md_dead_link_is_judged_by_the_hook(tmp_path):
+    """The gate of a `.md` is `run.sh md-link-check`: a dead link written by Bash blocks
+    with the verdict of the hook itself, not with "not checked"."""
+    s = _Session(tmp_path)
+    out = s.call(heredoc("note.md", "[x](nergens.md)\n"))
+    assert out.returncode == 2, (out.stdout, out.stderr)
+    assert "nergens.md — does not exist" in out.stderr
+    assert "not checked" not in out.stderr
+    assert "COULD NOT CHECK" not in out.stderr
 
 
 def managed_script(installed: str) -> str:
@@ -1217,26 +1183,24 @@ def test_post_without_language_packs(tmp_path):
     assert "b.sh not checked — no shell check installed" in context(out)
 
 
-def test_pre_without_python_is_silent_post_is_loud(tmp_path):
+def test_pre_without_lighthouse_blocks_like_every_gate(tmp_path):
+    # run.sh blocks every hook in `blocking` without a binary, pre included: without a binary
+    # main-commit-gate blocks every Bash call anyway.
     s = _Session(tmp_path)
-    bin_dir = tool_bin(
-        tmp_path / "bin", ("bash", "cat", "dirname", "sed", "git", "python3"), drop="python3"
-    )
-    payload = s.payload("true", "toolu_nopy", s.repo, "PreToolUse")
+    bin_dir = tool_bin(tmp_path / "bin", ("sh", *RUN_SH_TOOLS))
+    payload = s.payload("true", "toolu_nolh", s.repo, "PreToolUse")
     pre = s.hook("pre", payload, env={"PATH": str(bin_dir)})
-    assert (pre.returncode, pre.stdout, pre.stderr) == (0, "", "")
-    post = s.hook("post", dict(payload, hook_event_name="PostToolUse"), env={"PATH": str(bin_dir)})
-    assert post.returncode == 2
-    assert "COULD NOT CHECK" in post.stderr and "python3 is missing" in context(post)
+    assert pre.returncode == 2, (pre.stdout, pre.stderr)
+    assert "lighthouse not on PATH" in pre.stderr
 
 
 def test_hooks_registered_pre_post_and_failure() -> None:
     """Pre before the Bash call, post after a successful AND a failed call."""
     registered = json.loads((CORE / "hooks" / "hooks.json").read_text(encoding="utf-8"))
     want = {
-        "PreToolUse": ("bash-write-check.sh pre", 5),
-        "PostToolUse": ("bash-write-check.sh post", 120),
-        "PostToolUseFailure": ("bash-write-check.sh post", 120),
+        "PreToolUse": ("run.sh bash-write-check pre", 5),
+        "PostToolUse": ("run.sh bash-write-check post", 120),
+        "PostToolUseFailure": ("run.sh bash-write-check post", 120),
     }
     for event, (script, timeout) in want.items():
         entries = [
@@ -1247,7 +1211,112 @@ def test_hooks_registered_pre_post_and_failure() -> None:
             if h["command"].endswith("/" + script)
         ]
         assert [h["timeout"] for h in entries] == [timeout], (event, entries)
-    assert os.access(INSTALLED_HOOKS / "bash-write-check.sh", os.X_OK)
+    assert os.access(INSTALLED_HOOKS / "run.sh", os.X_OK)
+
+
+# --- inputs a port to Go meets first --------------------------------------------------
+
+
+def _raw_hook(s: _Session, mode: str, text: str) -> subprocess.CompletedProcess:
+    """Run the hook with `text` as stdin, verbatim: no JSON encoding in between."""
+    return subprocess.run(
+        [str(s.wrapper), mode],
+        input=text,
+        capture_output=True,
+        text=True,
+        cwd=str(s.repo),
+        env=s.env,
+        check=False,
+    )
+
+
+@pytest.mark.parametrize(
+    "mode, shape, rc, words",
+    [
+        ("post", "array", 2, "the hook payload on stdin is not a JSON object"),
+        ("post", "null", 2, "the hook payload on stdin is not a JSON object"),
+        ("post", "no tool_input", 0, ""),
+        ("post", "numeric command", 0, ""),
+        ("post", "numeric command, no tool_use_id", 2, "COULD NOT CHECK"),
+        ("foo", "object", 2, "bash-write-check: COULD NOT CHECK — unknown mode, expected pre or post"),
+    ],
+)
+def test_post_payload_shapes(session, mode, shape, rc, words):
+    base = session.payload("true", "toolu_shape", session.repo, "PostToolUseFailure")
+    texts = {
+        "array": "[]",
+        "null": "null",
+        "no tool_input": json.dumps({k: v for k, v in base.items() if k != "tool_input"}),
+        "numeric command": json.dumps(dict(base, tool_input={"command": 7})),
+        "numeric command, no tool_use_id": json.dumps(
+            {k: v for k, v in dict(base, tool_input={"command": 7}).items() if k != "tool_use_id"}
+        ),
+        "object": json.dumps(base),
+    }
+    out = _raw_hook(session, mode, texts[shape])
+    assert out.returncode == rc, (out.stdout, out.stderr)
+    if rc == 2:
+        assert words in out.stderr
+        assert words in context(out)
+        assert "COULD NOT CHECK" in context(out)
+    if shape == "object":
+        # The unknown mode reads the event from the payload, like every other loud message.
+        assert event_of(out) == "PostToolUseFailure"
+
+
+def test_gate_leaving_a_background_child_does_not_stall_post(tmp_path):
+    s = _Session(tmp_path)
+    pid_file = tmp_path / "child.pid"
+    gate = s.root / ".claude" / "hooks" / "lighthouse" / "shell-lint-check.sh"
+    gate.write_text(f"#!/bin/sh\nsleep 60 &\necho $! > '{pid_file}'\nexit 0\n", encoding="utf-8")
+    try:
+        started = time.monotonic()
+        out = s.call(heredoc("x.sh", CLEAN_SH))
+        took = time.monotonic() - started
+    finally:
+        if pid_file.exists():
+            subprocess.run(["kill", pid_file.read_text(encoding="utf-8").strip()], check=False)
+    assert out.returncode == 0, (out.stdout, out.stderr)
+    assert took < 20, took
+
+
+def test_non_utf8_and_non_ascii_names_in_the_bundle(tmp_path):
+    # APFS (macOS) refuses a name that is not valid UTF-8 with EILSEQ: there the case cannot occur.
+    try:
+        (tmp_path / os.fsdecode(b"probe\xff")).touch()
+    except OSError as e:
+        pytest.skip(f"filesystem refuses a non-UTF-8 name: {e}")
+    s = _Session(tmp_path)
+    # A gate that blocks on every file: whether jq can name a non-UTF-8 path does not matter.
+    gate = s.root / ".claude" / "hooks" / "lighthouse" / "shell-lint-check.sh"
+    gate.write_text('#!/bin/sh\necho "SC2034 (stub): x appears unused." >&2\nexit 2\n', encoding="utf-8")
+    src = tmp_path / "broken-src.sh"
+    src.write_text(BROKEN_SH, encoding="utf-8")
+    cmd = f"cp {src} café.sh && cp {src} $'bad\\xff.sh'"
+    tool_use_id = "toolu_names"
+    pre = s.hook("pre", s.payload(cmd, tool_use_id, s.repo, "PreToolUse"))
+    assert pre.returncode == 0, pre.stderr
+    subprocess.run(["bash", "-c", cmd], cwd=str(s.repo), env=s.env, check=True)
+    assert (s.repo / os.fsdecode(b"bad\xff.sh")).exists()
+    out = subprocess.run(
+        [str(s.wrapper), "post"],
+        input=json.dumps(s.payload(cmd, tool_use_id, s.repo, "PostToolUse")),
+        capture_output=True,
+        text=True,
+        errors="surrogateescape",
+        cwd=str(s.repo),
+        env=s.env,
+        check=False,
+    )
+    assert out.returncode == 2, (out.stdout, out.stderr)
+    assert "== café.sh (shell-lint-check.sh) ==" in out.stderr
+    # A gate gets the path as JSON, which cannot carry the byte: the name is unchecked, printed
+    # with the byte as \xff, never as the raw byte.
+    bad = f"bash-write-check: COULD NOT CHECK: {s.repo}/bad\\xff.sh (name is not valid UTF-8)"
+    assert bad in out.stderr
+    assert "\udcff" not in out.stderr
+    assert "== café.sh (shell-lint-check.sh) ==" in context(out)
+    assert bad in context(out)
 
 
 # --- code-language-check.sh after the gates of an extension (#26) -------------------

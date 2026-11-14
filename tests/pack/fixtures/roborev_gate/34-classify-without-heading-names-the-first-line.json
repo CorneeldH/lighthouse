@@ -1,0 +1,14 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "text": "\nError: codex: 401\nmore\n",
+      "expect_exact": {
+        "verdict": "skip",
+        "reason": "review faalde: Error: codex: 401"
+      }
+    }
+  ]
+}

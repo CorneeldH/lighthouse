@@ -1,0 +1,18 @@
+[
+ {
+  "args": [
+   "host-check"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host.toml: key host.controller must be true or false: 'yes'\n"
+ },
+ {
+  "args": [
+   "host.controller"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: host.toml: key host.controller must be true or false: 'yes'\n"
+ }
+]

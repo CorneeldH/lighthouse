@@ -1,0 +1,31 @@
+{
+  "description": "start --kind spec: spec-review dir and a spec key in attempt.json.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "--kind",
+        "spec",
+        "${SPEC}"
+      ],
+      "bind": "a",
+      "expect": {
+        "stdout_contains": [
+          "/spec-review/2026-09-25-voorbeeld-design/"
+        ]
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${a}/attempt.json",
+      "json": {
+        "kind": "spec",
+        "chain_key": "2026-09-25-voorbeeld-design",
+        "attempt": "${a.name}",
+        "spec": "docs/developer/planning/specs/2026-09-25-voorbeeld-design.md",
+        "reviewed_sha": "${base_sha}"
+      }
+    }
+  ]
+}

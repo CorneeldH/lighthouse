@@ -105,8 +105,8 @@ func TestFormatFloat(t *testing.T) {
 		{1e100, "1e+100"},
 	}
 	for _, tt := range tests {
-		if got := formatFloat(tt.in); got != tt.want {
-			t.Errorf("formatFloat(%v) = %q, want %q", tt.in, got, tt.want)
+		if got := FormatFloat(tt.in); got != tt.want {
+			t.Errorf("FormatFloat(%v) = %q, want %q", tt.in, got, tt.want)
 		}
 	}
 }

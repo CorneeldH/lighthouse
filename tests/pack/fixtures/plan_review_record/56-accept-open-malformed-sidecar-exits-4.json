@@ -1,0 +1,55 @@
+{
+  "description": "A sidecar that is {}: exit 4, sidecar and document untouched.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\nTekst.\n"
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "text": "{}"
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}",
+        "--doc",
+        "${tmp}/plan.md"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_starts_with": "ACCEPT-OPEN FAILED:"
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${a}/round-1.decisions.json",
+      "text": "{}"
+    },
+    {
+      "op": "expect_file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\nTekst.\n"
+    }
+  ]
+}

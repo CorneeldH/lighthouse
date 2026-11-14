@@ -1,0 +1,14 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "text": "2026/11/01 15:04:29 ci review: ref=a..b agents=[codex]\n2026/11/01 15:04:30 done\n",
+      "expect_exact": {
+        "verdict": "skip",
+        "reason": "review faalde: 2026/11/01 15:04:29 ci review: ref=a..b agents=[codex]"
+      }
+    }
+  ]
+}

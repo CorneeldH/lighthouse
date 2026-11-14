@@ -29,6 +29,8 @@ func TestRunViews(t *testing.T) {
 	}
 	_, _, sdd := sddWorktree(t, "Task 1: complete\nTask 2: complete\n")
 	open := []runs.Brief{{ID: 10, Issue: 3, Command: sdd, Trigger: "board", Profile: "p", WorkspaceID: "w"}}
+	// Run 7 was measured open in the precheck and parked by apply: a parked view has no stand.
+	pre.Stands[7] = workplace.Done
 	parked := []runs.Brief{{ID: 7, Issue: 5, Command: "/lighthouse-review-plan /x/y.md"}}
 	got := RunViews(pre, open, parked)
 	if len(got) != 2 {
@@ -41,6 +43,35 @@ func TestRunViews(t *testing.T) {
 	if v := got[1]; v.Issue != 5 || v.State != "parked" || v.Title != "Vijf" || v.Stand != "" ||
 		v.Phase != "plan-review" || v.Task != 0 || v.Tasks != 0 || v.Step != "" {
 		t.Errorf("view 1 = %+v", v)
+	}
+}
+
+// #309: a forge stand done with background work or an open turn in the transcript is not done
+// for the tick (runCtx.done), so the view shows it as working.
+func TestRunViewsDoneWithWorkAfterStop(t *testing.T) {
+	cases := []struct {
+		name       string
+		transcript *workplace.Transcript
+		measured   bool
+		want       string
+	}{
+		{"background work", &workplace.Transcript{Background: 1}, true, "working"},
+		{"open turn", &workplace.Transcript{TurnOpen: true}, true, "working"},
+		{"settled transcript", &workplace.Transcript{}, true, "done"},
+		{"transcript not measurable", nil, true, "done"},
+		{"run not measured", nil, false, "done"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pre := Pre{Stands: map[int64]workplace.Stand{4: workplace.Done}}
+			if tc.measured {
+				pre.Runs = map[int64]RunState{4: {Transcript: tc.transcript}}
+			}
+			got := RunViews(pre, []runs.Brief{{ID: 4, Issue: 9}}, nil)
+			if len(got) != 1 || got[0].Stand != tc.want {
+				t.Errorf("RunViews = %+v, want one view with stand %q", got, tc.want)
+			}
+		})
 	}
 }
 

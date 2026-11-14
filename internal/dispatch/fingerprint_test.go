@@ -215,3 +215,21 @@ func TestFingerprintMarkersAndPause(t *testing.T) {
 		}
 	}
 }
+
+// A refused merge is noted on the open run; the note must wake the tick, and an empty note must
+// hash like a run from before the field existed.
+func TestFingerprintChangesOnMergeSHA(t *testing.T) {
+	t0 := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	mk := func(sha string) Pre {
+		return Pre{
+			Items:    []Item{{Issue: 1, Status: "Controller"}},
+			OpenRuns: []runs.OpenRun{{ID: 1, Issue: 1, StartedAt: t0, MergeSHA: sha}},
+		}
+	}
+	if Fingerprint(mk("")) == Fingerprint(mk("abc1234")) {
+		t.Error("a merge note on the open run did not change the fingerprint")
+	}
+	if Fingerprint(mk("abc1234")) == Fingerprint(mk("def5678")) {
+		t.Error("a different merge sha hashed the same")
+	}
+}

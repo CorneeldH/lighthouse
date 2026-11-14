@@ -1,0 +1,17 @@
+{
+  "description": "",
+  "level": "cli",
+  "repo": false,
+  "setup": [],
+  "steps": [
+    {
+      "op": "cli",
+      "args": [
+        "gate"
+      ],
+      "cwd": "tmp",
+      "exit": 3,
+      "stderr_starts": "COULD NOT CHECK:"
+    }
+  ]
+}

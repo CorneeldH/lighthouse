@@ -47,6 +47,7 @@ type Claim struct {
 	Command    string
 	Prompt     string
 	Profile    string
+	Node       string // "" is self
 	Branch     string // written at claim time, so a run that closes before launch still has it
 	Now        time.Time
 }
@@ -81,10 +82,10 @@ func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
 	attempt := failed + 1
 
 	res, err := tx.ExecContext(ctx, `INSERT INTO runs
-		(repo, issue, session_id, mode, trigger, trigger_key, attempt, command, prompt, profile, branch, started_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(repo, issue, session_id, mode, trigger, trigger_key, attempt, command, prompt, profile, node, branch, started_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.Repo, c.Issue, c.SessionID, c.Mode, c.Trigger, c.TriggerKey, attempt,
-		c.Command, c.Prompt, c.Profile, c.Branch, stamp(c.Now))
+		c.Command, c.Prompt, c.Profile, c.Node, c.Branch, stamp(c.Now))
 	if err != nil {
 		var se *sqlite.Error
 		if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
@@ -152,6 +153,13 @@ func setOpen(ctx context.Context, db *sql.DB, id int64, query string, args ...an
 	return nil
 }
 
+// NoteMergeFailed records on an open run the head sha whose merge GitHub
+// refused, and GitHub's message. It returns ErrNotOpen for a closed or unknown run.
+func NoteMergeFailed(ctx context.Context, db *sql.DB, id int64, sha, message string) error {
+	return setOpen(ctx, db, id, `UPDATE runs SET merge_sha = ?, merge_error = ?
+		WHERE id = ? AND ended_at IS NULL`, sha, message, id)
+}
+
 // OpenRun is an open run with its workplace columns.
 type OpenRun struct {
 	ID               int64     `json:"id"`
@@ -159,10 +167,13 @@ type OpenRun struct {
 	SessionID        string    `json:"session_id"`
 	TriggerKey       string    `json:"trigger_key"`
 	Profile          string    `json:"profile"`
+	Node             string    `json:"node,omitempty"`
 	Branch           string    `json:"branch"`
 	WorkspaceID      string    `json:"workspace_id"`
 	WorkplaceSession string    `json:"workplace_session"`
 	StartedAt        time.Time `json:"started_at"`
+	MergeSHA         string    `json:"merge_sha,omitempty"`
+	MergeError       string    `json:"merge_error,omitempty"`
 }
 
 // Open returns the open runs of repo, ordered by id.
@@ -188,16 +199,16 @@ func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
 }
 
 // openColumns are the runs columns scanOpen reads, in order.
-const openColumns = `id, issue, session_id, trigger_key, profile, branch,
-	workspace_id, workplace_session, started_at`
+const openColumns = `id, issue, session_id, trigger_key, profile, node, branch,
+	workspace_id, workplace_session, started_at, merge_sha, merge_error`
 
 // scanOpen reads a row selected with openColumns, after any lead destinations
 // for columns selected before them.
 func scanOpen(rows interface{ Scan(...any) error }, lead ...any) (OpenRun, error) {
 	var r OpenRun
 	var started string
-	dest := append(lead, &r.ID, &r.Issue, &r.SessionID, &r.TriggerKey, &r.Profile, &r.Branch,
-		&r.WorkspaceID, &r.WorkplaceSession, &started)
+	dest := append(lead, &r.ID, &r.Issue, &r.SessionID, &r.TriggerKey, &r.Profile, &r.Node, &r.Branch,
+		&r.WorkspaceID, &r.WorkplaceSession, &started, &r.MergeSHA, &r.MergeError)
 	if err := rows.Scan(dest...); err != nil {
 		return OpenRun{}, fmt.Errorf("runs: scan open run: %w", err)
 	}

@@ -1,0 +1,68 @@
+{
+  "description": "additionalProperties false: a spec finding with cat is rejected.",
+  "kind": "spec",
+  "coin": true,
+  "tree": {
+    "head": "abc123",
+    "clean": true
+  },
+  "attempt": {
+    "round-1.codex.json": {
+      "review_markdown": "# review c",
+      "status": "Majors only",
+      "findings": [
+        {
+          "severity": "MAJOR",
+          "spec_section": "Sectie 2",
+          "problem": "a",
+          "evidence": "docs/x.md:3 a",
+          "failure_scenario": "faalt omdat a",
+          "proposed_fix": "los a op"
+        }
+      ],
+      "top3": [
+        "top c"
+      ],
+      "verdict": "verdict c",
+      "could_not_verify": [
+        "gedeeld",
+        "alleen c"
+      ]
+    },
+    "round-1.fallback.json": {
+      "review_markdown": "# review f",
+      "status": "Majors only",
+      "findings": [
+        {
+          "severity": "MAJOR",
+          "spec_section": "Sectie 2",
+          "problem": "spec z",
+          "evidence": "docs/x.md:3 spec z",
+          "failure_scenario": "faalt omdat spec z",
+          "proposed_fix": "los spec z op",
+          "cat": "repo_falsehood"
+        }
+      ],
+      "top3": [
+        "top f"
+      ],
+      "verdict": "verdict f",
+      "could_not_verify": [
+        "gedeeld",
+        "alleen f"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "cmd": "blind",
+      "exit": 4,
+      "stderr_contains": [
+        "round-1.fallback.json"
+      ],
+      "absent": [
+        "round-1.blind.md"
+      ]
+    }
+  ]
+}

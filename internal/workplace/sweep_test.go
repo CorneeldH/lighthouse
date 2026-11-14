@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -71,7 +72,7 @@ func TestSweepRemovesOffController(t *testing.T) {
 	fixture945(t, db)
 	w := &fakeWP{lookupPath: "/p/945"}
 	var asked []string
-	removed, err := Sweep(context.Background(), db, w, cleanRunner(), sweepIn(false, "", &asked), lcNow)
+	removed, err := Sweep(context.Background(), db, only(w), cleanRunner(), sweepIn(false, "", &asked), lcNow)
 	if err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestSweepKeepsDirty(t *testing.T) {
 	fixture945(t, db)
 	w := &fakeWP{lookupPath: "/p/945"}
 	var asked []string
-	removed, err := Sweep(context.Background(), db, w, gitRunner(" M x.go", "abc", "0"), sweepIn(false, "", &asked), lcNow)
+	removed, err := Sweep(context.Background(), db, only(w), gitRunner(" M x.go", "abc", "0"), sweepIn(false, "", &asked), lcNow)
 	if err != nil || len(removed) != 0 || w.removes != 0 {
 		t.Fatalf("Sweep = %+v, %v, removes %d", removed, err, w.removes)
 	}
@@ -116,7 +117,7 @@ func TestSweepKeepsUnpushed(t *testing.T) {
 	fixture945(t, db)
 	w := &fakeWP{lookupPath: "/p/945"}
 	var asked []string
-	if _, err := Sweep(context.Background(), db, w, gitRunner("", "abc", "2"), sweepIn(false, "", &asked), lcNow); err != nil {
+	if _, err := Sweep(context.Background(), db, only(w), gitRunner("", "abc", "2"), sweepIn(false, "", &asked), lcNow); err != nil {
 		t.Fatal(err)
 	}
 	if w.removes != 0 {
@@ -133,7 +134,7 @@ func TestSweepPassesMergedHead(t *testing.T) {
 	fixture945(t, db)
 	w := &fakeWP{lookupPath: "/p/945"}
 	var asked []string
-	removed, err := Sweep(context.Background(), db, w, gitRunner("", "abc", "2"), sweepIn(false, "abc", &asked), lcNow)
+	removed, err := Sweep(context.Background(), db, only(w), gitRunner("", "abc", "2"), sweepIn(false, "abc", &asked), lcNow)
 	if err != nil || len(removed) != 1 || w.removes != 1 {
 		t.Fatalf("Sweep = %+v, %v, removes %d", removed, err, w.removes)
 	}
@@ -144,7 +145,7 @@ func TestSweepSkipsController(t *testing.T) {
 	fixture945(t, db)
 	w := &fakeWP{lookupPath: "/p/945", sessionsErr: errors.New("unexpected Sessions")}
 	var asked []string
-	removed, err := Sweep(context.Background(), db, w, noRunner(t), sweepIn(true, "", &asked), lcNow)
+	removed, err := Sweep(context.Background(), db, only(w), noRunner(t), sweepIn(true, "", &asked), lcNow)
 	if err != nil || len(removed) != 0 {
 		t.Fatalf("Sweep = %+v, %v", removed, err)
 	}
@@ -167,7 +168,7 @@ func TestSweepSkipsOpenRun(t *testing.T) {
 	}
 	w := &fakeWP{lookupPath: "/p/945", sessions: []Session{{Key: "k", SessionID: "sid-945", State: "working"}}}
 	var asked []string
-	removed, err := Sweep(context.Background(), db, w, noRunner(t), sweepIn(false, "", &asked), lcNow)
+	removed, err := Sweep(context.Background(), db, only(w), noRunner(t), sweepIn(false, "", &asked), lcNow)
 	if err != nil || len(removed) != 0 {
 		t.Fatalf("Sweep = %+v, %v", removed, err)
 	}
@@ -184,7 +185,7 @@ func TestSweepClearsLeftoverInController(t *testing.T) {
 	}
 	w := &fakeWP{lookupPath: "/p/945"}
 	var asked []string
-	if _, err := Sweep(context.Background(), db, w, noRunner(t), sweepIn(true, "", &asked), lcNow); err != nil {
+	if _, err := Sweep(context.Background(), db, only(w), noRunner(t), sweepIn(true, "", &asked), lcNow); err != nil {
 		t.Fatal(err)
 	}
 	if got := leftoverReasons(t, db); len(got) != 0 {
@@ -206,7 +207,7 @@ func TestSweepMergedHeadFails(t *testing.T) {
 			return "", errors.New("graphql: rate limited")
 		},
 	}
-	removed, err := Sweep(context.Background(), db, w, noRunner(t), in, lcNow)
+	removed, err := Sweep(context.Background(), db, only(w), noRunner(t), in, lcNow)
 	if err != nil || len(removed) != 0 || w.removes != 0 {
 		t.Fatalf("Sweep = %+v, %v, removes %d", removed, err, w.removes)
 	}
@@ -221,7 +222,7 @@ func TestSweepEmptyBranchNoMergedHead(t *testing.T) {
 	doneRuns(t, db, 7, "ws-7", "", "start:7")
 	w := &fakeWP{lookupPath: "/p/7"}
 	var asked []string
-	removed, err := Sweep(context.Background(), db, w, cleanRunner(), sweepIn(false, "", &asked), lcNow)
+	removed, err := Sweep(context.Background(), db, only(w), cleanRunner(), sweepIn(false, "", &asked), lcNow)
 	if err != nil || len(removed) != 1 || len(asked) != 0 {
 		t.Fatalf("Sweep = %+v, %v, MergedHead asked %v", removed, err, asked)
 	}
@@ -246,7 +247,7 @@ func TestSweepRemoveErrorKeepsGoing(t *testing.T) {
 	doneRuns(t, db, 8, "ws-8", "issue-8", "start:8")
 	w := &removeFails{fakeWP: fakeWP{lookupPath: "/p/x"}, fail: "ws-7"}
 	var asked []string
-	removed, err := Sweep(context.Background(), db, w, cleanRunner(), sweepIn(false, "", &asked), lcNow)
+	removed, err := Sweep(context.Background(), db, only(w), cleanRunner(), sweepIn(false, "", &asked), lcNow)
 	if err == nil || !strings.Contains(err.Error(), "status 500") {
 		t.Fatalf("Sweep err = %v, want the remove error of ws-7", err)
 	}
@@ -266,7 +267,7 @@ func TestSweepGoneMarksRemoved(t *testing.T) {
 	fixture945(t, db)
 	w := &fakeWP{lookupErr: fmt.Errorf("404: %w", ErrGone)}
 	var asked []string
-	removed, err := Sweep(context.Background(), db, w, noRunner(t), sweepIn(false, "", &asked), lcNow)
+	removed, err := Sweep(context.Background(), db, only(w), noRunner(t), sweepIn(false, "", &asked), lcNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,5 +279,55 @@ func TestSweepGoneMarksRemoved(t *testing.T) {
 	}
 	if got := candidates(t, db); len(got) != 0 {
 		t.Errorf("candidates = %+v, want none", got)
+	}
+}
+
+// Two nodes with the same workspace id: Remove goes to the fake of the node of the ref, and
+// marking one removed leaves the other ref.
+func TestSweepUsesNodeOfRef(t *testing.T) {
+	db := openLeftoverDB(t)
+	ctx := context.Background()
+	for i, node := range []string{"", "node-a"} {
+		r, err := runs.Take(ctx, db, runs.Claim{
+			Repo: lcRepo, Issue: 40 + i, SessionID: fmt.Sprintf("sid-%d", i), Mode: "start", Trigger: "handoff",
+			TriggerKey: fmt.Sprintf("start:%d", 40+i), Node: node, Profile: "pr-" + node, Now: lcNow,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runs.SetWorkplace(ctx, db, r.ID, "w1", ""); err != nil {
+			t.Fatal(err)
+		}
+		if err := runs.Release(ctx, db, r.ID, runs.Done, "", lcNow); err != nil {
+			t.Fatal(err)
+		}
+	}
+	self := &fakeWP{lookupPath: "/p/self"}
+	nodeA := &fakeWP{lookupPath: "/p/a"}
+	var asked [][2]string
+	place := func(node, profile string) Workplace {
+		asked = append(asked, [2]string{node, profile})
+		if node == "node-a" {
+			return nodeA
+		}
+		return self
+	}
+	var branches []string
+	removed, err := Sweep(ctx, db, place, cleanRunner(), sweepIn(false, "", &branches), lcNow)
+	if err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	// node-a is remote: its workspace is kept without a Remove; self is removed.
+	if !reflect.DeepEqual(self.removed, []string{"w1"}) || len(nodeA.removed) != 0 || nodeA.removes != 0 {
+		t.Errorf("self removed %v, node-a removed %v (%d)", self.removed, nodeA.removed, nodeA.removes)
+	}
+	if want := []Leftover{{Repo: lcRepo, Issue: 40, WorkspaceID: "w1"}}; !reflect.DeepEqual(removed, want) {
+		t.Errorf("removed = %+v, want %+v", removed, want)
+	}
+	if got := candidates(t, db); len(got) != 1 || got[0].Node != "node-a" {
+		t.Errorf("candidates = %+v, want only node-a's w1", got)
+	}
+	if len(asked) == 0 || !slices.Contains(asked, [2]string{"node-a", "pr-node-a"}) {
+		t.Errorf("place asked %v, want (node-a, pr-node-a) among them", asked)
 	}
 }

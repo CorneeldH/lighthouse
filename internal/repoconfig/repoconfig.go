@@ -6,8 +6,10 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
@@ -71,6 +73,9 @@ type Controller struct {
 	SpecReview   bool
 	PlanReview   bool
 	AtRoundLimit string
+	// Locations maps the value after [labels] location_prefix to a profile name; nil without
+	// the [controller.locations] table.
+	Locations map[string]string
 }
 
 type rawController struct {
@@ -79,6 +84,8 @@ type rawController struct {
 	PlanReview   *bool      `toml:"plan_review"`
 	AtRoundLimit string     `toml:"bij_rondegrens"`
 	Triage       *rawTriage `toml:"triage"`
+
+	Locations map[string]string `toml:"locations"`
 }
 
 type rawTriage struct {
@@ -161,12 +168,21 @@ func Load(dir string) (Repo, error) {
 		},
 	}
 	// [controller.triage] alone makes an implicit [controller] table, of type "" and not "Hash".
+	if c := raw.Controller; c != nil && len(c.Locations) > 0 && md.Type("controller") != "Hash" {
+		return Repo{}, errors.New("controller.locations: [controller] table required")
+	}
 	if c := raw.Controller; c != nil && md.Type("controller") == "Hash" {
 		r.Controller = &Controller{
 			Profile:      c.Profile,
 			SpecReview:   c.SpecReview == nil || *c.SpecReview,
 			PlanReview:   c.PlanReview == nil || *c.PlanReview,
 			AtRoundLimit: c.AtRoundLimit,
+			Locations:    c.Locations,
+		}
+		for _, value := range slices.Sorted(maps.Keys(c.Locations)) {
+			if c.Locations[value] == "" {
+				return Repo{}, fmt.Errorf("controller.locations.%s: empty profile name", value)
+			}
 		}
 		if r.Controller.Profile == "" {
 			r.Controller.Profile = "software"

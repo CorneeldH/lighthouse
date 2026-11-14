@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -100,6 +101,8 @@ func fakeAnswer(t *testing.T, mode string, out func(string)) {
 		answer(func(r map[string]any) {
 			everyLimit(r, func(l map[string]any) { l["primary"].(map[string]any)["resetsAt"] = nil })
 		})
+	case "badcredits":
+		answer(func(r map[string]any) { delete(r["rateLimitResetCredits"].(map[string]any), "availableCount") })
 	case "error":
 		out(`{"id":2,"error":{"message":"x"}}`)
 	case "noresult":
@@ -171,10 +174,11 @@ func fakeReader(t *testing.T, mode string, homes ...string) (CodexReader, string
 
 func wantFixtureState() CodexState {
 	return CodexState{
-		Source:      "app-server",
-		GeneratedAt: "2026-09-28T22:00:00Z",
-		Session:     CodexWindow{Pct: 55, ResetAt: "2026-09-28T23:23:29Z"},
-		Week:        CodexWindow{Pct: 66, ResetAt: "2026-10-03T17:17:59Z"},
+		Source:       "app-server",
+		GeneratedAt:  "2026-09-28T22:00:00Z",
+		Session:      CodexWindow{Pct: 55, ResetAt: "2026-09-28T23:23:29Z"},
+		Week:         CodexWindow{Pct: 66, ResetAt: "2026-10-03T17:17:59Z"},
+		ResetCredits: json.RawMessage(`{"available":2,"expires":["2026-10-04T23:53:00Z","2026-10-22T20:18:18Z"]}`),
 	}
 }
 
@@ -188,7 +192,7 @@ func TestCodexAppServerReadsFixture(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got != wantFixtureState() {
+			if !reflect.DeepEqual(got, wantFixtureState()) {
 				t.Errorf("got %+v, want %+v", got, wantFixtureState())
 			}
 		})
@@ -233,7 +237,7 @@ func TestCodexAppServerRejects(t *testing.T) {
 			if err == nil {
 				t.Fatalf("want an error, got %+v", got)
 			}
-			if got != (CodexState{}) {
+			if !reflect.DeepEqual(got, CodexState{}) {
 				t.Errorf("state = %+v, want zero", got)
 			}
 			if time.Since(start) > 3*time.Second {
@@ -290,7 +294,7 @@ func TestCodexReaderSecondHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != wantFixtureState() {
+	if !reflect.DeepEqual(got, wantFixtureState()) {
 		t.Errorf("got %+v, want %+v", got, wantFixtureState())
 	}
 }
@@ -346,7 +350,7 @@ func TestParseAppServerLimitSelection(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := parseAppServer([]byte(tc.result), codexFixedNow)
+			got, _, err := parseAppServer([]byte(tc.result), codexFixedNow)
 			if err != nil {
 				t.Fatal(err)
 			}

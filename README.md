@@ -22,7 +22,7 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 
 `lighthouse serve` starts the API and web UI on `127.0.0.1:8127`. Install it as a systemd user service: [install](docs/install.md).
 
-The page shows the Claude and Codex usage windows, the open questions and the returned issues of one GitHub repository.
+The page has the Claude and Codex usage windows on top, and below them the Controller section: the open questions, the returned issues and the runs of the dispatcher. It follows the light or dark colour scheme of the system.
 
 ![lighthouse UI](docs/images/ui-m2.png)
 
@@ -31,6 +31,14 @@ The page shows the Claude and Codex usage windows, the open questions and the re
 Bugs and questions go in an issue; pull requests need a signed [CLA](CLA.md). See
 [CONTRIBUTING.md](CONTRIBUTING.md). Report a vulnerability privately, as described in
 [SECURITY.md](SECURITY.md).
+
+## Third-party data
+
+The `lighthouse` binary embeds a word-frequency list derived from
+[wordfreq](https://github.com/rspeer/wordfreq) 3.1.1 by Robyn Speer, which is licensed under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). That licence covers this data
+only, not the rest of lighthouse. The attribution and the changes made to the data are in
+[NOTICE.txt](internal/codelang/data/NOTICE.txt).
 
 ## License
 

@@ -1,7 +1,7 @@
 # Adversarial Plan Reviewer Prompt
 
 This file is sent verbatim to the external reviewer. `SKILL.md` never parses the content;
-`../lighthouse-review-spec/review.sh` only substitutes `{{DOC_PATH}}`,
+`lighthouse review-run` only substitutes `{{DOC_PATH}}`,
 `{{CONTEXT_PATHS}}`, `{{REPO}}`, `{{ROUND}}` and `{{PRIOR_REVIEW_BLOCK}}`.
 
 Derived from the spec prompt in `../lighthouse-review-spec/reviewer-prompt.md`.

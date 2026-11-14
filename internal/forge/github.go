@@ -1,4 +1,4 @@
-// Package forge reads and writes GitHub issues, comments, reactions and the Projects v2 board. It never merges.
+// Package forge reads and writes GitHub issues, comments, reactions and the Projects v2 board, and squash-merges a pull request at a measured head.
 package forge
 
 import (
@@ -187,13 +187,21 @@ func statusError(method, url string, resp *http.Response) error {
 	if json.Unmarshal(data, &body) == nil && body.Message != "" {
 		msg += ": " + body.Message
 	}
-	return &httpStatusError{Code: resp.StatusCode, msg: msg}
+	rateLimited := resp.Header.Get("x-ratelimit-remaining") == "0" ||
+		resp.Header.Get("retry-after") != "" ||
+		strings.Contains(strings.ToLower(body.Message), "rate limit")
+	return &httpStatusError{Code: resp.StatusCode, msg: msg, Message: body.Message, RateLimited: rateLimited}
 }
 
 // httpStatusError is a non-2xx response; callers read Code with errors.As.
 type httpStatusError struct {
 	Code int
 	msg  string
+	// Message is GitHub's own message, "" when the body has none.
+	Message string
+	// RateLimited is true when the response signals a rate limit: no requests remaining, a
+	// retry-after header, or "rate limit" in the message.
+	RateLimited bool
 }
 
 func (e *httpStatusError) Error() string { return e.msg }

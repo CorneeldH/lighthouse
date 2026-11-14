@@ -83,6 +83,7 @@ func TestBoardItemsMapsFields(t *testing.T) {
 		"content": map[string]any{
 			"number": 7, "title": "Iets doen", "state": "OPEN", "updatedAt": "2026-10-30T10:00:00Z",
 			"repository": map[string]any{"nameWithOwner": "o/r"},
+			"labels":     map[string]any{"nodes": []any{map[string]any{"name": "1-loc:mac"}}},
 			"blockedBy": map[string]any{"nodes": []any{map[string]any{
 				"number": 5, "state": "CLOSED", "repository": map[string]any{"nameWithOwner": "o/x"},
 				"closedByPullRequestsReferences": map[string]any{"nodes": []any{
@@ -112,6 +113,7 @@ func TestBoardItemsMapsFields(t *testing.T) {
 		Title:          "Iets doen",
 		IssueState:     "OPEN",
 		IssueUpdatedAt: time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC),
+		Labels:         []string{"1-loc:mac"},
 		BlockedBy:      []Blocker{{Repo: "o/x", Issue: 5, State: "CLOSED", MergedPR: true}},
 		ClosingPRs: []PR{
 			{Number: 12, State: "OPEN", Draft: true, Mergeable: "UNKNOWN", HeadSHA: "abc", HeadRef: "issue-7-x", Checks: "", Closes: true},
@@ -159,6 +161,9 @@ func TestBoardItemsTruncatedNestedFails(t *testing.T) {
 		{"closing PRs of a blocker", func(_, _, b map[string]any) {
 			b["closedByPullRequestsReferences"].(map[string]any)["pageInfo"] = more
 		}, "board item PVTI_1: blocker o/r#5 closedByPullRequestsReferences truncated at 1"},
+		{"labels", func(_, c, _ map[string]any) {
+			c["labels"] = map[string]any{"pageInfo": more, "nodes": []any{map[string]any{"name": "a"}}}
+		}, "board item PVTI_1: labels truncated at 1"},
 		{"closing PRs of the issue", func(_, c, _ map[string]any) {
 			c["closedByPullRequestsReferences"].(map[string]any)["pageInfo"] = more
 		}, "board item PVTI_1: closedByPullRequestsReferences truncated at 1"},

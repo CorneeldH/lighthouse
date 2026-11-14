@@ -1,4 +1,4 @@
-"""The usage-gate module `controller` (#66): parking of a controller run at an alarm or a
+"""The usage gate in a controller run (#66): parking of a controller run at an alarm or a
 PAUSE flag, with a marker the controller reads.
 
 Every run goes through `guard_env`.
@@ -6,22 +6,17 @@ Every run goes through `guard_env`.
 
 import json
 import os
-import shutil
-import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 from tests.pack._testkit import (
-    BSD_DATE_STUB,
     MINIMAL_TOML,
     alarm_line,
     guard_env,
     install_core,
     run_guard,
-    tool_bin,
-    trace_bin,
     write_alarm,
 )
 
@@ -212,39 +207,6 @@ def test_pause_parks_once(tmp_path: Path) -> None:
     assert _marker(env)["created_at"] != "2000-01-01T00:00:00Z"  # refreshed
 
 
-def test_pause_bsd_date(tmp_path: Path) -> None:
-    root, env = _setup(tmp_path, flag=_flag_text())
-    stubs = tool_bin(tmp_path / "stubs", (), stubs={"date": BSD_DATE_STUB})
-    env["PATH"] = f"{stubs}:{env['PATH']}"
-
-    result = _run(root, env, "tool", _payload(tmp_path, "tool"))
-
-    assert _is_controller_reason(_reason(result))
-
-
-@pytest.mark.parametrize("form", ["Z", "+01:00"])
-def test_usage_gate_parses_until_with_bsd_date_only(tmp_path: Path, form: str) -> None:
-    """Fails when the gate hands BSD `date -j -f` a value it cannot parse (#90)."""
-    until = datetime.now(timezone.utc) + timedelta(hours=1)
-    if form == "Z":
-        flag = until.strftime("%Y-%m-%dT%H:%M:%SZ")
-    else:
-        flag = until.astimezone(timezone(timedelta(hours=1))).strftime("%Y-%m-%dT%H:%M:%S+01:00")
-    bsd_form = until.astimezone(timezone.utc if form == "Z" else timezone(timedelta(hours=1)))
-    expected = bsd_form.strftime("%Y-%m-%dT%H:%M:%S%z")  # +0000 / +0100: no colon
-
-    root, env = _setup(tmp_path, flag=flag)
-    log = tmp_path / "date.log"
-    stubs = tool_bin(tmp_path / "stubs", (), stubs={"date": BSD_DATE_STUB})
-    env["DATE_STUB_LOG"] = str(log)
-    env["PATH"] = f"{stubs}:{env['PATH']}"
-
-    result = _run(root, env, "tool", _payload(tmp_path, "tool"))
-
-    assert expected in log.read_text().splitlines()
-    assert _is_controller_reason(_reason(result))
-
-
 def _invalid_flag(case: str, state: Path) -> None:
     flag = state / "PAUSE"
     if case == "expired":
@@ -266,27 +228,13 @@ INVALID = ["expired", "garbage", "naive", "symlink"]
 def test_pause_invalid_flag_without_alarm_runs_nothing(tmp_path: Path, case: str) -> None:
     root, env = _setup(tmp_path)
     _invalid_flag(case, Path(env["LIGHTHOUSE_CONTROLLER_STATE"]))
-    trace = tmp_path / "trace"
-    stubs = trace_bin(
-        tmp_path / "trace-stubs", trace, ("python3", "jq", "date", "git", "cat", "dirname")
-    )
-    env["PATH"] = str(stubs)
-    env["LIGHTHOUSE_REPO_ROOT"] = str(root)
-    hook = root / ".claude" / "hooks" / "lighthouse" / "usage-gate.sh"
 
-    result = subprocess.run(
-        [shutil.which("bash"), str(hook), "tool"],
-        input=json.dumps(_payload(tmp_path, "tool")),
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
-    )
+    result = run_guard(root, "tool", _payload(tmp_path, "tool"), env)
 
     assert result.returncode == 0
     assert result.stderr == ""
     assert result.stdout == ""
-    assert "python3" not in (trace.read_text(encoding="utf-8") if trace.exists() else "")
+    assert not _resume(env).exists()
 
 
 @pytest.mark.parametrize("case", INVALID)

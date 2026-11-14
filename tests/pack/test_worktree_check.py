@@ -1,5 +1,5 @@
-"""pack/core worktree-check.sh, as installed: warns at a write into the main checkout
-on the default branch.
+"""pack/core worktree-check, as installed (`lighthouse hook worktree-check` behind
+run.sh): warns at a write into the main checkout on the default branch.
 
 The six copied tests pin the behaviour from paia. The tests below them pin
 the fix for the fail-open gap (M0 spec, risk *Fail-open guards*): a guard
@@ -15,16 +15,18 @@ import shutil
 
 import pytest
 
-from tests.pack._testkit import INSTALLED_HOOKS
+from tests.pack._testkit import INSTALL_ROOT, RUN_SH_TOOLS, hook_shim
 from tests.pack._testkit import git as _git
 from tests.pack._testkit import init_repo as _init_repo
 from tests.pack._testkit import run_hook as _run
 from tests.pack._testkit import tool_bin
 
-WORKTREE_GUARD = INSTALLED_HOOKS / "worktree-check.sh"
+# The hook runs as `lighthouse hook worktree-check` behind run.sh: the binary of this checkout.
+WORKTREE_GUARD = hook_shim(INSTALL_ROOT, "worktree-check")
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
-# Everything worktree-check.sh calls, so a test can drop exactly one of them.
-_TOOLS = ("jq", "git", "cat", "python3", "realpath", "dirname")
+# Everything run.sh and the hook call, so a test can drop exactly one of them.
+_TOOLS = (*RUN_SH_TOOLS, "git", "lighthouse", "sh")
 
 
 def test_worktree_check_warns_on_main_checkout_on_main(tmp_path):
@@ -86,6 +88,31 @@ def test_worktree_check_silent_for_worktree_branch_literally_named_main(tmp_path
             "tool_input": {"file_path": str(wt / "src" / "nieuw.py")},
         },
         cwd=wt,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == ""
+
+
+def test_worktree_check_silent_in_worktree_subdir(tmp_path):
+    """In a subdirectory of a linked worktree, `rev-parse` prints absolute git dirs; they must
+    still compare unequal. The worktree branch is `main` (default branch `trunk` in the repo,
+    protected `main`), so only the worktree detection can yield silence."""
+    repo = tmp_path / "repo"
+    _init_repo(repo, branch="trunk")
+    wt = repo / ".claude" / "worktrees" / "main"
+    _git(repo, "worktree", "add", "-q", "-b", "main", str(wt))
+    sub = wt / "src" / "pkg"
+    sub.mkdir(parents=True)
+
+    result = _run(
+        WORKTREE_GUARD,
+        {
+            "tool_name": "Write",
+            "cwd": str(sub),
+            "tool_input": {"file_path": str(sub / "nieuw" / "x.py")},
+        },
+        cwd=sub,
     )
 
     assert result.returncode == 0
@@ -160,23 +187,6 @@ def _write_payload(repo: Path) -> dict:
     }
 
 
-def test_worktree_check_warns_without_jq(tmp_path):
-    repo = tmp_path / "repo"
-    _init_repo(repo)
-
-    result = _run(
-        WORKTREE_GUARD,
-        _write_payload(repo),
-        cwd=repo,
-        env={"PATH": str(tool_bin(tmp_path / "no-jq", _TOOLS, drop="jq"))},
-    )
-
-    assert result.returncode == 0, result.stderr
-    message = json.loads(result.stdout)["systemMessage"]
-    assert "COULD NOT CHECK" in message
-    assert "jq" in message
-
-
 def test_worktree_check_warns_without_git(tmp_path):
     repo = tmp_path / "repo"
     _init_repo(repo)
@@ -211,23 +221,35 @@ def test_worktree_check_warns_on_invalid_json_payload(tmp_path):
     assert "COULD NOT CHECK" in json.loads(result.stdout)["systemMessage"]
 
 
-def test_worktree_check_warns_when_the_path_cannot_be_resolved(tmp_path):
-    """No `realpath` and no `python3`: canon_path has nothing to resolve with."""
+@pytest.mark.parametrize(
+    ("payload", "warns"),
+    [
+        # An array is JSON, but jq cannot index it: the path could not be read.
+        ("[]", True),
+        # No tool_input at all: there is no path, so nothing to check.
+        ("null", False),
+        ('{"tool_input": {}}', False),
+    ],
+)
+def test_worktree_check_payload_shapes(tmp_path, payload, warns):
+    """Review focus 5: an odd payload shape gets the verdict of the jq-based bash hook."""
     repo = tmp_path / "repo"
     _init_repo(repo)
-    bare = tool_bin(tmp_path / "no-canon", ("jq", "git", "cat", "dirname"))
 
-    result = _run(
-        WORKTREE_GUARD,
-        _write_payload(repo),
-        cwd=repo,
-        env={"PATH": str(bare)},
+    result = subprocess.run(
+        [str(WORKTREE_GUARD)],
+        input=payload,
+        capture_output=True,
+        text=True,
+        cwd=str(repo),
+        check=False,
     )
 
     assert result.returncode == 0, result.stderr
-    message = json.loads(result.stdout)["systemMessage"]
-    assert "COULD NOT CHECK" in message
-    assert str(repo / "x.py") in message
+    if warns:
+        assert "COULD NOT CHECK" in json.loads(result.stdout)["systemMessage"]
+    else:
+        assert result.stdout == ""
 
 
 # --- no silent exits (inventory §6) and the default branch (decision 23) -----

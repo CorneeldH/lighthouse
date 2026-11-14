@@ -224,7 +224,7 @@ func TestRunClaimLostPostsNothing(t *testing.T) {
 			t.Errorf("claim of the concurrent tick: %v", err)
 		}
 	}}
-	env.Workplace = func(repoconfig.Repo) workplace.Workplace { return cw }
+	env.Workplace = func(repoconfig.Repo, string, string) workplace.Workplace { return cw }
 	var errOut bytes.Buffer
 	if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
 		t.Fatalf("run = %v\n%s", err, errOut.String())
@@ -274,7 +274,7 @@ func (refusingWorkplace) Spawn(context.Context, workplace.Workspace, workplace.L
 func TestRunNotAccepted(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, completeRepo))
 	srv, w := startable(t, &env)
-	env.Workplace = func(repoconfig.Repo) workplace.Workplace { return refusingWorkplace{w} }
+	env.Workplace = func(repoconfig.Repo, string, string) workplace.Workplace { return refusingWorkplace{w} }
 	var errOut bytes.Buffer
 	if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
 		t.Fatalf("run = %v\n%s", err, errOut.String())

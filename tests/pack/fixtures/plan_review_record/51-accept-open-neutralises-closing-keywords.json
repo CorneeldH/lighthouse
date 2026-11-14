@@ -1,0 +1,50 @@
+{
+  "description": "'fix #2', 'Closes #7' and 'resolved: #9' in a problem text become 'issue N'; '(zie #5)' stays.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\nTekst.\n"
+    },
+    {
+      "op": "round_raw",
+      "attempt": "a",
+      "n": 1,
+      "findings": [
+        {
+          "severity": "MAJOR",
+          "cat": "code",
+          "plan_section": "Taak 3",
+          "problem": "de fix #2 in Taak 3\n  en Closes #7, resolved: #9 (zie #5)",
+          "evidence": "e",
+          "proposed_fix": "f"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}",
+        "--doc",
+        "${tmp}/plan.md"
+      ],
+      "expect": {
+        "stdout_contains": [
+          "- **r1-f1** (MAJOR, Taak 3): de fix issue 2 in Taak 3 en Closes issue 7,",
+          "resolved: issue 9 (zie #5)"
+        ],
+        "stdout_not_matches": "(?i)\\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+#\\d"
+      }
+    }
+  ]
+}

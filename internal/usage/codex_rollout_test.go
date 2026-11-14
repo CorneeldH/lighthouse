@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -38,7 +39,7 @@ func wantRolloutState(path string) CodexState {
 		Source:      "rollout-log",
 		GeneratedAt: "2026-09-28T22:00:00Z",
 		AgeS:        2100,
-		SourceFile:  path,
+		SourceFile:  &path,
 		LowerBound:  true,
 		Session:     CodexWindow{Pct: 54, ResetAt: "2026-09-28T23:23:29Z"},
 		Week:        CodexWindow{Pct: 66, ResetAt: "2026-10-03T17:17:59Z"},
@@ -52,7 +53,7 @@ func TestReadRolloutFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != wantRolloutState(path) {
+	if !reflect.DeepEqual(got, wantRolloutState(path)) {
 		t.Errorf("got %+v, want %+v", got, wantRolloutState(path))
 	}
 }
@@ -65,7 +66,7 @@ func TestReadRolloutNewestOverHomes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Session.Pct != 70 || got.Week.Pct != 80 || got.AgeS != 1200 || got.SourceFile != pathB {
+	if got.Session.Pct != 70 || got.Week.Pct != 80 || got.AgeS != 1200 || got.SourceFile == nil || *got.SourceFile != pathB {
 		t.Errorf("got %+v, want pct 70/80, age 1200, file %s", got, pathB)
 	}
 }
@@ -78,7 +79,7 @@ func TestReadRolloutLongLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != wantRolloutState(path) {
+	if !reflect.DeepEqual(got, wantRolloutState(path)) {
 		t.Errorf("got %+v, want %+v", got, wantRolloutState(path))
 	}
 }
@@ -123,7 +124,7 @@ func TestCodexReadFallsBackToRollout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != wantRolloutState(path) {
+	if !reflect.DeepEqual(got, wantRolloutState(path)) {
 		t.Errorf("got %+v, want %+v", got, wantRolloutState(path))
 	}
 }
@@ -140,7 +141,7 @@ func TestCodexReadNotMeasurable(t *testing.T) {
 			t.Errorf("error %q lacks %q", err, want)
 		}
 	}
-	if got != (CodexState{}) {
+	if !reflect.DeepEqual(got, CodexState{}) {
 		t.Errorf("got %+v, want zero state", got)
 	}
 }

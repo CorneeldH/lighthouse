@@ -52,7 +52,7 @@ BOTH = [pytest.param(v, id=v) for v in VARIANTS]
 @pytest.mark.parametrize(("name", "variant"), ALL)
 def test_review_verifies_instead_of_rereviewing(name, variant):
     text = skill(name, variant)
-    assert "verify.sh" in text
+    assert "--verify" in text
     assert "Only round 1 is a review" in text
     assert "No fixes, no round" in text
     assert "MINORs never start a round" in text
@@ -110,11 +110,11 @@ def test_no_skill_names_the_adversary(name, variant):
 
 RETRY_COMMANDS = {
     "review-spec": (
-        ".claude/skills/lighthouse-review-spec/review.sh <spec> 1 "
+        "lighthouse review-run --kind spec <spec> 1 "
         "<ATTEMPT>/round-1.json none [max] > <ATTEMPT>/round-1.retry.log 2>&1; echo \"exit=$?\""
     ),
     "review-plan": (
-        ".claude/skills/lighthouse-review-plan/review.sh <plan> 1 "
+        "lighthouse review-run --kind plan <plan> 1 "
         "<ATTEMPT>/round-1.json none [max] --context <spec path> [--context <spec path 2>] "
         "> <ATTEMPT>/round-1.retry.log 2>&1; echo \"exit=$?\""
     ),
@@ -187,8 +187,8 @@ def test_claude_spec_gate_asks_through_the_controller_only_if_present():
 def test_claude_plan_skill_runs_the_pair_in_round_one():
     text = skill("review-plan", "claude")
     for needle in (
-        "python3 .lighthouse/scripts/review_pair.py blind",
-        "python3 .lighthouse/scripts/review_pair.py merge",
+        "lighthouse review-pair blind",
+        "lighthouse review-pair merge",
         "round-1.blind-decisions.json",
         "--shadow-model",
         "pair.json",
@@ -201,8 +201,8 @@ def test_claude_plan_skill_runs_the_pair_in_round_one():
 def test_claude_spec_skill_records_and_pairs():
     text = skill("review-spec", "claude")
     for needle in (
-        "python3 .lighthouse/scripts/plan_review_record.py start --kind spec",
-        "python3 .lighthouse/scripts/plan_review_record.py write",
+        "lighthouse plan-review-record start --kind spec",
+        "lighthouse plan-review-record write",
         "minor_yes",
         "defer",
         "blind-decisions",
@@ -214,12 +214,12 @@ def test_claude_spec_skill_records_and_pairs():
 def test_agents_skills_say_the_pair_is_claude_code_only(name):
     text = skill(name, "agents")
     assert "Paired round 1: Claude Code only" in text
-    assert "review_pair.py blind" not in text
+    assert "lighthouse review-pair blind" not in text
 
 
 def test_agents_spec_skill_records_with_its_own_skill_dir():
     text = skill("review-spec", "agents")
-    assert "python3 .lighthouse/scripts/plan_review_record.py start --kind spec" in text
+    assert "lighthouse plan-review-record start --kind spec" in text
     assert "--skill-dir .agents/skills/lighthouse-review-spec" in text
 
 
@@ -233,7 +233,7 @@ def test_claude_skills_pair_and_verify_on_opus(name):
         "verifier-prompt.md",
     ):
         assert needle in text, needle
-    assert "review_pair.py status" not in text
+    assert "lighthouse review-pair status" not in text
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -254,7 +254,7 @@ def test_variants_keep_their_difference(name):
 @pytest.mark.parametrize(("name", "variant"), ALL)
 def test_round_limit_records_and_carries_on(name, variant):
     text = skill(name, variant)
-    assert "python3 .lighthouse/scripts/plan_review_record.py accept-open <ATTEMPT> --doc" in text
+    assert "lighthouse plan-review-record accept-open <ATTEMPT> --doc" in text
     assert "heading:open_after_review" in text
     assert "never a question" in text
     assert "ACCEPT-OPEN FAILED" in text
@@ -358,7 +358,7 @@ def test_skill_is_detached_from_the_source_repo(name, variant):
     ):
         assert gone not in text, gone
     assert not re.search(r"\(#\d+\)|#\d{3,}", text)
-    assert "python3 .lighthouse/scripts/plan_review_record.py" in text
+    assert "lighthouse plan-review-record" in text
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -376,28 +376,24 @@ def test_spec_dir_from_config(variant):
 # --- permissions ---------------------------------------------------------------------------------
 
 
-def test_permissions_cover_scripts():
-    """Every runner a skill starts in the background has its allowlist rule (decision 14):
+def test_permissions_cover_the_runner():
+    """The one runner a skill starts in the background has its allowlist rule (decision 14):
     without it an unattended round waits on an approval prompt."""
     allow = json.loads((CORE / "permissions.json").read_text())["allow"]
-    scripts = sorted(SKILLS.glob("*/review.sh")) + sorted(SKILLS.glob("*/verify.sh"))
-    want = {f"Bash(.claude/skills/lighthouse-{p.parent.name}/{p.name}:*)" for p in scripts}
-    assert len(scripts) == 4
-    assert set(allow) == want
-    assert len(allow) == len(want)
+    assert allow == ["Bash(lighthouse review-run:*)"]
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_scripts_are_executable(name):
+def test_no_wrapper_scripts_remain(name):
     for script in ("review.sh", "verify.sh"):
-        assert (SKILLS / name / script).stat().st_mode & 0o111, script
+        assert not (SKILLS / name / script).exists(), script
 
 
 @pytest.mark.parametrize(("name", "variant"), ALL)
 def test_prompts_and_schemas_shared(name, variant):
     """The prompts, schemas and runners are one file per skill, not one per variant."""
     for f in ("reviewer-prompt.md", "verifier-prompt.md", "findings.schema.json",
-              "verification.schema.json", "review.sh", "verify.sh"):
+              "verification.schema.json"):
         assert (SKILLS / name / f).is_file(), f
         assert not (SKILLS / name / variant / f).exists(), f
 
@@ -408,7 +404,7 @@ def _no_dutch(text: str) -> list[str]:
 
 @pytest.mark.parametrize("name", NAMES)
 def test_shared_files_are_english(name):
-    for f in ("reviewer-prompt.md", "verifier-prompt.md", "review.sh", "verify.sh"):
+    for f in ("reviewer-prompt.md", "verifier-prompt.md"):
         text = (SKILLS / name / f).read_text()
         assert not _no_dutch(text), (f, _no_dutch(text))
 
@@ -422,3 +418,30 @@ def test_pinned_paths_exist():
     for p in (SKILLS / n / v / "SKILL.md" for n in NAMES for v in VARIANTS):
         assert p.is_file(), p
     assert Path(CORE / "permissions.json").is_file()
+
+
+# --- no Python, one Go runner --------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("name", "variant"), ALL)
+def test_review_skill_needs_no_python_and_no_wrapper(name, variant):
+    text = skill(name, variant)
+    for gone in ("python3", "review.sh", "verify.sh", "review_pair.py", "plan_review_record.py"):
+        assert gone not in text, gone
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_claude_skill_calls_the_runner_with_kind_and_verify(name):
+    kind = name.removeprefix("review-")
+    text = flat(skill(name, "claude"))
+    assert f"lighthouse review-run --kind {kind} " in text
+    assert f"lighthouse review-run --kind {kind} --verify " in text
+
+
+@pytest.mark.parametrize("name", NAMES)
+def test_agents_skill_passes_its_own_skill_dir(name):
+    kind = name.removeprefix("review-")
+    text = flat(skill(name, "agents"))
+    skill_dir = f"--skill-dir .agents/skills/lighthouse-review-{kind}"
+    assert f"lighthouse review-run --kind {kind} {skill_dir}" in text
+    assert f"lighthouse review-run --kind {kind} --verify {skill_dir}" in text

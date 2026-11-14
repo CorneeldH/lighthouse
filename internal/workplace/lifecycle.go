@@ -11,6 +11,9 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/runs"
 )
 
+// Place gives the Workplace of a node and a profile. Node "" is self.
+type Place func(node, profile string) Workplace
+
 // Outcome is what Launch made of a start.
 type Outcome int
 
@@ -69,7 +72,7 @@ func releaseFailed(ctx context.Context, db *sql.DB, runID int64, reason string, 
 // the workplace. It never closes, stops or discards a run: what to do with a
 // session that does not show up is Decide's. A run it cannot look up keeps no
 // key; the errors are joined and the other runs are still looked up.
-func AdoptSessions(ctx context.Context, db *sql.DB, w Workplace, repo string) error {
+func AdoptSessions(ctx context.Context, db *sql.DB, place Place, repo string) error {
 	open, err := runs.Open(ctx, db, repo)
 	if err != nil {
 		return err
@@ -79,7 +82,7 @@ func AdoptSessions(ctx context.Context, db *sql.DB, w Workplace, repo string) er
 		if run.WorkspaceID == "" || run.WorkplaceSession != "" {
 			continue
 		}
-		sessions, err := w.Sessions(ctx, run.WorkspaceID)
+		sessions, err := place(run.Node, run.Profile).Sessions(ctx, run.WorkspaceID)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("sessions of run %d: %w", run.ID, err))
 			continue
@@ -113,14 +116,15 @@ func findSession(sessions []Session, sessionID string, taken Own) (key string, o
 	return "", false
 }
 
-// hasOpenRun reports whether an open run of c.Repo belongs to the issue of c or uses its workspace.
+// hasOpenRun reports whether an open run of c.Repo belongs to the issue of c or uses its workspace
+// (same node and workspace id).
 func hasOpenRun(ctx context.Context, db *sql.DB, c Candidate) (bool, error) {
 	open, err := runs.Open(ctx, db, c.Repo)
 	if err != nil {
 		return false, err
 	}
 	for _, r := range open {
-		if r.Issue == c.Issue || r.WorkspaceID == c.Workspace.ID {
+		if r.Issue == c.Issue || (r.Node == c.Node && r.WorkspaceID == c.Workspace.ID) {
 			return true, nil
 		}
 	}
@@ -130,8 +134,10 @@ func hasOpenRun(ctx context.Context, db *sql.DB, c Candidate) (bool, error) {
 // Candidate is a workspace that may be removed. InController and MergedHead
 // come from the board and the PR.
 type Candidate struct {
-	Repo         string
-	Issue        int
+	Repo  string
+	Issue int
+	// Node is the node of the workspace; "" is self. Cleanup measures git only on self.
+	Node         string
 	InController bool
 	MergedHead   string
 	Workspace    Workspace
@@ -142,7 +148,7 @@ type Candidate struct {
 // never removed on an unmeasurable check. A running run is never touched.
 //
 // The order: in the controller or an open run of the issue or on the workspace
-// (nothing), the workspace path (looked up when the candidate has none), the
+// (nothing), a workspace of another node (keep: no local git), the workspace path (looked up when the candidate has none), the
 // sessions (a workspace forge no longer knows counts as removed), a live foreign
 // session (keep), an open run again (nothing), stop the own sessions, dirty,
 // unpushed, an open run again (nothing), remove.
@@ -157,15 +163,19 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		return false, err
 	}
 	keep := func(reason string) (bool, error) {
-		l := Leftover{Repo: c.Repo, Issue: c.Issue, WorkspaceID: c.Workspace.ID, Path: c.Workspace.Path, Reason: reason}
+		l := Leftover{Repo: c.Repo, Issue: c.Issue, Node: c.Node, WorkspaceID: c.Workspace.ID, Path: c.Workspace.Path, Reason: reason}
 		return false, RecordLeftover(ctx, db, l, now)
+	}
+	// Dirty and Unpushed run git on this host: they cannot measure a workspace of another node.
+	if c.Node != "" {
+		return keep("not measurable: node " + c.Node + ": no local git")
 	}
 	// Forge no longer knows the workspace: removed, as after a 404 on Remove.
 	gone := func() (bool, error) {
 		if err := w.Discard(ctx, c.Workspace.ID); err != nil {
 			return keep("not measurable: discard: " + err.Error())
 		}
-		if err := ClearLeftover(ctx, db, c.Repo, c.Workspace.ID); err != nil {
+		if err := ClearLeftover(ctx, db, c.Repo, c.Node, c.Workspace.ID); err != nil {
 			return true, err
 		}
 		return true, nil
@@ -261,7 +271,7 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		}
 		return false, fmt.Errorf("remove workspace %s: %w", c.Workspace.ID, err)
 	}
-	if err := ClearLeftover(ctx, db, c.Repo, c.Workspace.ID); err != nil {
+	if err := ClearLeftover(ctx, db, c.Repo, c.Node, c.Workspace.ID); err != nil {
 		return true, err
 	}
 	return true, nil

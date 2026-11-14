@@ -4,6 +4,7 @@ over a small fixture map and every map in the data directory; the loop-specific 
 loop.json only."""
 
 import copy
+import importlib.util
 import json
 import re
 from pathlib import Path
@@ -23,6 +24,11 @@ STATUSES = {"works", "planned", "idea"}
 EFFECTS = {"blocks", "warns", "formats", "records"}
 # An optional `form` names a part that is no skill, agent, hook or workflow of a pack.
 FORMS = {"tool", "dispatcher"}
+ROADMAP_PATH = ROOT / "ci" / "loop_roadmap.py"
+_spec = importlib.util.spec_from_file_location("lighthouse_ci_loop_roadmap_site", ROADMAP_PATH)
+assert _spec is not None and _spec.loader is not None
+roadmap = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(roadmap)
 REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "how", "when", "without", "status"]
 
 
@@ -131,9 +137,9 @@ def planned_problems(chain: dict) -> list[str]:
     items = [(c["id"], c) for c in chain["chips"]]
     items += [(f"{h['from']}->{h['to']}", h) for h in chain["handoffs"]]
     return [
-        f"{name}: planned without issue or milestone"
+        f"{name}: planned without an issue"
         for name, item in items
-        if item["status"] == "planned" and "issue" not in item and "milestone" not in item
+        if item["status"] == "planned" and "issue" not in item
     ]
 
 
@@ -181,7 +187,7 @@ def test_every_source_exists(path):
 
 
 @pytest.mark.parametrize("path", MAPS)
-def test_planned_has_an_issue_or_milestone(path):
+def test_planned_has_an_issue(path):
     assert planned_problems(load_map(path)) == []
 
 
@@ -200,18 +206,30 @@ def test_every_chip_is_on_a_route(path):
     assert coverage_problems(load_map(path)) == []
 
 
+@pytest.mark.parametrize("fields, flagged", [
+    ({"issue": 7}, False),
+    ({"issue": 7, "milestone": "M9"}, False),
+    ({"milestone": "M9"}, True),
+    ({}, True),
+])
+def test_site_and_roadmap_agree_on_a_planned_item(fields, flagged):
+    chain = {"chips": [{"id": "x", "status": "planned", **fields}], "handoffs": []}
+    assert bool(planned_problems(chain)) is flagged
+    assert bool(roadmap.problems(chain, {7: "M9"})) is flagged
+
+
 def test_fixture_planned_without_issue_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
     for chip in chain["chips"]:
         if chip["id"] == "planned-issue":
             del chip["issue"]
-    assert planned_problems(chain) == ["planned-issue: planned without issue or milestone"]
+    assert planned_problems(chain) == ["planned-issue: planned without an issue"]
 
 
-def test_fixture_planned_handoff_without_milestone_is_flagged():
+def test_fixture_planned_handoff_with_only_a_milestone_is_flagged():
     chain = copy.deepcopy(load_map(FIXTURE))
-    del chain["handoffs"][0]["milestone"]
-    assert planned_problems(chain) == ["main-commit-gate->planned-issue: planned without issue or milestone"]
+    del chain["handoffs"][0]["issue"]
+    assert planned_problems(chain) == ["main-commit-gate->planned-issue: planned without an issue"]
 
 
 def test_fixture_source_pointing_nowhere_is_flagged():

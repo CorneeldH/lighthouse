@@ -1,0 +1,18 @@
+[
+ {
+  "args": [
+   "host-check"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host box (host.toml) has host.controller = false, so it is not the controller host\n"
+ },
+ {
+  "args": [
+   "host.controller"
+  ],
+  "rc": 0,
+  "stdout": "false\n",
+  "stderr": ""
+ }
+]

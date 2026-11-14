@@ -4,6 +4,7 @@
 package hook
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -37,11 +39,14 @@ type Payload struct {
 	Raw       []byte `json:"-"`
 }
 
-// Result is the outcome of a hook. Output is printed as JSON on stdout when it is not empty.
+// Result is the outcome of a hook. Output is printed as JSON on stdout when it is not empty;
+// otherwise Text, when set, goes to stdout as it is.
 type Result struct {
 	Code   int
 	Output map[string]any
 	Stderr string
+	// Text is dropped when Run adds notices to Output, so only a nested hook may rely on it.
+	Text string
 }
 
 // Func is one hook. stand is the optional second argument (for example pre or post).
@@ -53,6 +58,9 @@ type Env struct {
 	// StateDir holds the once-per-session markers; empty means none is known, and the
 	// notices stay quiet.
 	StateDir string
+	// Nested marks a call from inside another hook (bash-write-check): the outer call owns
+	// the notices, so this one adds none and spends no marker.
+	Nested bool
 }
 
 var (
@@ -72,7 +80,7 @@ func Register(name string, f Func) {
 
 // Run runs hook name and returns the exit code. A result with code 0 gets the version and
 // build notices added, once per session; a blocking result gets none, so the notice is not
-// spent on a message the user reads next to a block.
+// spent on a message the user reads next to a block, and a nested call gets none either.
 func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.Writer, env Env) int {
 	mu.Lock()
 	f, ok := registry[name]
@@ -94,7 +102,7 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 	if !ok {
 		return ExitUnknown
 	}
-	if res.Code == 0 {
+	if res.Code == 0 && !env.Nested {
 		res.Output = withNotices(res.Output, env, p.SessionID)
 	}
 	if res.Stderr != "" {
@@ -104,6 +112,11 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 		enc := json.NewEncoder(out)
 		enc.SetEscapeHTML(false)
 		if err := enc.Encode(res.Output); err != nil {
+			_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: hook %s: writing output: %v\n", name, err)
+			return ExitUnknown
+		}
+	} else if res.Text != "" {
+		if _, err := io.WriteString(out, res.Text); err != nil {
 			_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: hook %s: writing output: %v\n", name, err)
 			return ExitUnknown
 		}
@@ -211,4 +224,54 @@ func firstInSession(stateDir, session, kind string) bool {
 		_ = f.Close()
 	}
 	return true
+}
+
+// JQFields is the fields of one JSON value as jq indexes them: by exact key, the last of a
+// duplicate key winning. A missing value, empty input and null have no fields; ok is false for
+// anything that is not JSON or not an object, where jq fails on `.key`. (encoding/json into a
+// struct matches keys case-insensitively, so `Tool_Input` would shadow `tool_input`.)
+func JQFields(raw []byte) (fields map[string]json.RawMessage, ok bool) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return nil, true
+	}
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return nil, false
+	}
+	return fields, true
+}
+
+// JQText is the output of `jq -r '.key // empty'` for one value, without the trailing newline:
+// a missing value, null and false are empty, a string is its text, any other value its JSON text.
+func JQText(v json.RawMessage) string {
+	text := string(bytes.TrimSpace(v))
+	switch text {
+	case "", "null", "false":
+		return ""
+	}
+	var s string
+	if json.Unmarshal(v, &s) == nil {
+		return s
+	}
+	return text
+}
+
+// RunGit runs `git -C dir args…`, with LC_ALL=C when cLocale is set: a message matched as text
+// must not be translated. The output comes back untrimmed; each caller trims it the way its
+// shell original did. When git does not start at all and wrote nothing but newlines, stderr
+// carries the reason, as a shell would print it.
+func RunGit(ctx context.Context, dir string, cLocale bool, args ...string) (stdout, stderr []byte, err error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	if cLocale {
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+	}
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	err = cmd.Run()
+	stdout, stderr = out.Bytes(), errOut.Bytes()
+	var exit *exec.ExitError
+	if err != nil && !errors.As(err, &exit) && len(bytes.TrimRight(stderr, "\n")) == 0 {
+		stderr = []byte(err.Error())
+	}
+	return stdout, stderr, err
 }

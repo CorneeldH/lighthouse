@@ -1,0 +1,41 @@
+{
+  "description": "LIGHTHOUSE_DATA wins; without it the reservation lands under ~/.local/share/lighthouse/review-records.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/.${a.name}.tmp/attempt.json",
+      "exists": true
+    },
+    {
+      "op": "unset_env",
+      "name": "LIGHTHOUSE_DATA"
+    },
+    {
+      "op": "unset_env",
+      "name": "XDG_DATA_HOME"
+    },
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "b",
+      "expect": {}
+    },
+    {
+      "op": "expect_file",
+      "path": "${home}/.local/share/lighthouse/review-records/plan-review/2026-09-25-voorbeeld/.${b.name}.tmp/attempt.json",
+      "exists": true
+    }
+  ]
+}

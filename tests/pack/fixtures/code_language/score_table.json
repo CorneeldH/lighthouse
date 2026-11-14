@@ -1,0 +1,429 @@
+[
+  {
+    "cases": [
+      {
+        "arg": "alpha",
+        "fn": "judge_name",
+        "want": "clean"
+      },
+      {
+        "arg": "beta",
+        "fn": "judge_name",
+        "want": "finding"
+      }
+    ],
+    "jargon": [],
+    "name": "threshold_is_strict",
+    "table": {
+      "alpha": [
+        10,
+        20
+      ],
+      "beta": [
+        10,
+        21
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "legacy_lijst",
+        "fn": "judge_name",
+        "want": "doubt"
+      }
+    ],
+    "jargon": [],
+    "name": "doubt_needs_strongly_dutch_word_doubt",
+    "table": {
+      "legacy": [
+        40,
+        10
+      ],
+      "lijst": [
+        20,
+        50
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "legacy_lijst",
+        "fn": "judge_name",
+        "want": "clean"
+      }
+    ],
+    "jargon": [],
+    "name": "doubt_needs_strongly_dutch_word_clean",
+    "table": {
+      "legacy": [
+        40,
+        10
+      ],
+      "lijst": [
+        20,
+        35
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "val_typ_ver",
+        "fn": "judge_name",
+        "want": "clean"
+      },
+      {
+        "arg": "de van een",
+        "fn": "judge_text",
+        "want": "finding"
+      }
+    ],
+    "jargon": [],
+    "name": "short_parts_skipped_in_names_not_in_prose",
+    "table": {
+      "de": [
+        10,
+        60
+      ],
+      "een": [
+        10,
+        60
+      ],
+      "typ": [
+        10,
+        60
+      ],
+      "val": [
+        10,
+        60
+      ],
+      "van": [
+        10,
+        60
+      ],
+      "ver": [
+        10,
+        60
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "gids",
+        "fn": "judge_name",
+        "want": "finding"
+      }
+    ],
+    "jargon": [],
+    "name": "jargon_off",
+    "table": {
+      "gids": [
+        10,
+        40
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "gids",
+        "fn": "judge_name",
+        "want": "clean"
+      }
+    ],
+    "jargon": [
+      "gids"
+    ],
+    "name": "jargon_on",
+    "table": {
+      "gids": [
+        10,
+        40
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "werkboom",
+        "fn": "dutch_split",
+        "want": true
+      },
+      {
+        "arg": "werkboom",
+        "fn": "word_score",
+        "want": 3.0
+      }
+    ],
+    "jargon": [],
+    "name": "dutch_split_dutch",
+    "table": {
+      "boom": [
+        25,
+        40
+      ],
+      "werk": [
+        30,
+        50
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "werkboom",
+        "fn": "dutch_split",
+        "want": false
+      },
+      {
+        "arg": "werkboom",
+        "fn": "word_score",
+        "want": 0.0
+      }
+    ],
+    "jargon": [],
+    "name": "dutch_split_english_split",
+    "table": {
+      "boom": [
+        45,
+        40
+      ],
+      "werk": [
+        30,
+        50
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "abcdef",
+        "fn": "dutch_split",
+        "want": false
+      }
+    ],
+    "jargon": [],
+    "name": "dutch_split_empty_table",
+    "table": {}
+  },
+  {
+    "cases": [
+      {
+        "arg": "geparsed",
+        "fn": "word_score",
+        "want": 3.0
+      },
+      {
+        "arg": "`git reflog`, geparsed.",
+        "fn": "judge_text",
+        "want": "finding"
+      },
+      {
+        "arg": "getout",
+        "fn": "word_score",
+        "want": 0.0
+      },
+      {
+        "arg": "gebloated",
+        "fn": "word_score",
+        "want": 0.0
+      },
+      {
+        "arg": "gefrobbed",
+        "fn": "word_score",
+        "want": 0.0
+      },
+      {
+        "arg": "parsed",
+        "fn": "word_score",
+        "want": -2.4
+      }
+    ],
+    "jargon": [],
+    "name": "dutch_participle_of_english_verb",
+    "table": {
+      "bloated": [
+        20,
+        25
+      ],
+      "parsed": [
+        24,
+        0
+      ],
+      "tout": [
+        30,
+        10
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "werkwerkwerkwerkwerkwerkwerkwerkwerkwerk",
+        "fn": "dutch_split",
+        "want": true
+      },
+      {
+        "arg": "werkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkqxq",
+        "fn": "dutch_split",
+        "want": false
+      },
+      {
+        "arg": "werkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkqxq",
+        "fn": "word_score",
+        "want": 0.0
+      },
+      {
+        "arg": "werkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkwerkqxq",
+        "fn": "judge_name",
+        "want": "clean"
+      }
+    ],
+    "jargon": [],
+    "name": "dutch_split_long_letter_run",
+    "table": {
+      "werk": [
+        30,
+        50
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "see `lees_bestand` at https://x.nl/van",
+        "fn": "judge_text",
+        "want": "clean"
+      }
+    ],
+    "jargon": [],
+    "name": "prose_drops_inline_code_and_urls",
+    "table": {
+      "at": [
+        60,
+        10
+      ],
+      "see": [
+        60,
+        10
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "beta beta alpha",
+        "fn": "judge_text",
+        "want": "clean"
+      },
+      {
+        "arg": "beta beta. alpha",
+        "fn": "judge_text",
+        "want": "finding"
+      },
+      {
+        "arg": "beta beta! alpha?",
+        "fn": "judge_text",
+        "want": "finding"
+      },
+      {
+        "arg": "beta beta? alpha.",
+        "fn": "judge_text",
+        "want": "finding"
+      }
+    ],
+    "jargon": [],
+    "name": "prose_judged_per_sentence",
+    "table": {
+      "alpha": [
+        10,
+        25
+      ],
+      "beta": [
+        40,
+        10
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "gamma. gamma.",
+        "fn": "judge_text",
+        "want": "finding"
+      }
+    ],
+    "jargon": [],
+    "name": "whole_unit_still_counts",
+    "table": {
+      "gamma": [
+        10,
+        18
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "beta beta in config.alpha",
+        "fn": "judge_text",
+        "want": "clean"
+      },
+      {
+        "arg": "beta beta e.g. alpha",
+        "fn": "judge_text",
+        "want": "clean"
+      },
+      {
+        "arg": "beta beta i.e. alpha",
+        "fn": "judge_text",
+        "want": "clean"
+      }
+    ],
+    "jargon": [],
+    "name": "period_inside_a_token_is_no_boundary",
+    "table": {
+      "alpha": [
+        10,
+        25
+      ],
+      "beta": [
+        40,
+        10
+      ]
+    }
+  },
+  {
+    "cases": [
+      {
+        "arg": "alpha beta gamma",
+        "fn": "judge_text",
+        "want": "clean"
+      },
+      {
+        "arg": "alpha beta",
+        "fn": "judge_text",
+        "want": "finding"
+      }
+    ],
+    "jargon": [],
+    "name": "sum_exactly_one_is_clean",
+    "table": {
+      "alpha": [
+        10,
+        14
+      ],
+      "beta": [
+        10,
+        18
+      ],
+      "gamma": [
+        10,
+        8
+      ]
+    }
+  }
+]

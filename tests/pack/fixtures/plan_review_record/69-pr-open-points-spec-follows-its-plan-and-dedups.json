@@ -1,0 +1,33 @@
+{
+  "description": "A plan pulls in its spec right after itself; the spec named again later is not repeated.",
+  "world": "bare",
+  "steps": [
+    {
+      "op": "file",
+      "path": "${root}/docs/developer/planning/plans/p.md",
+      "text": "**Spec:** [s](../specs/x.md)\n\n## Open na review\n\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n"
+    },
+    {
+      "op": "file",
+      "path": "${root}/docs/developer/planning/specs/x.md",
+      "text": "# S\n\n## Open na review\n\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n"
+    },
+    {
+      "op": "file",
+      "path": "${root}/o.md",
+      "text": "# O\n\n## Open na review\n\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n"
+    },
+    {
+      "op": "run",
+      "args": [
+        "pr-open-points",
+        "${root}/docs/developer/planning/plans/p.md",
+        "${root}/o.md",
+        "${root}/docs/developer/planning/specs/x.md"
+      ],
+      "expect": {
+        "stdout_equals": "## Open review points\n\nFrom docs/developer/planning/plans/p.md:\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n\nFrom docs/developer/planning/specs/x.md:\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n\nFrom o.md:\n- **r3-f1** (MAJOR, §1): eerste\n- **r3-f2** (MAJOR, §2): tweede\n"
+      }
+    }
+  ]
+}

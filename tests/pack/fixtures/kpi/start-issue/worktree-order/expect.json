@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "mistrigger",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"mistrigger\": {\n    \"loaded\": 3,\n    \"without_issue_number\": 3,\n    \"examples\": [\n      \"hoofdmap zonder nummer\",\n      \"zustermap a zonder nummer\",\n      \"zustermap b zonder nummer\"\n    ]\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "review-focus-1"
+    ]
+  }
+]

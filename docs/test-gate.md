@@ -1,9 +1,9 @@
 # De test-gate op de host
 
-De test-gate (`commit-test-gate.sh`) draait `[test_gate] command` uit `lighthouse.toml` bij een
-commit. Hoeveel gates tegelijk draaien en hoeveel geheugen ze krijgen, is een eigenschap van de
-machine, niet van het project. Daarom staan die grenzen in `[host]` van `host.toml`, en het project
-vraagt alleen.
+De test-gate (`commit-test-gate`, via `run.sh commit-test-gate pre|post`) draait
+`[test_gate] command` uit `lighthouse.toml` bij een commit. Hoeveel gates tegelijk draaien en
+hoeveel geheugen ze krijgen, is een eigenschap van de machine, niet van het project. Daarom staan
+die grenzen in `[host]` van `host.toml`, en het project vraagt alleen.
 
 ## Sleutels in `[host]`
 
@@ -52,14 +52,15 @@ ze niet op een host zonder `/proc/meminfo` (macOS): daar blokkeert elke commit m
 ```toml
 [host]
 name = "thuisserver"            # verplicht in elke host.toml
-tailscale_ip = "100.64.0.1"     # optioneel; zonder deze sleutel is dit voor host-check een andere host
+controller = true               # optioneel; true: dit is de controller-host, het adres wordt niet gemeten
+tailscale_ip = "100.64.0.1"     # optioneel; zonder controller en zonder deze sleutel is dit voor host-check een andere host
 gate_slice = "gates.slice"
 gate_slots = 2
 gate_min_mem_available_gb = 6
 gate_min_swap_free_gb = 4
 ```
 
-Een host zonder Tailscale laat `tailscale_ip` weg. Zet eerst elke repo op de host op een release met
+Een host zonder Tailscale laat `tailscale_ip` weg en zet `controller = true` als hij de controller-host is; `controller = false` zegt het omgekeerde. Een oudere lezer negeert `controller` en valt terug op `tailscale_ip`. Zet eerst elke repo op de host op een release met
 deze wijziging (zie [getting-started](getting-started.md#a-hosttoml-without-tailscale)).
 
 `gates.slice` heeft `MemoryHigh=7G` en één gate piekt op 2,3 GB, dus passen er twee slots in; de

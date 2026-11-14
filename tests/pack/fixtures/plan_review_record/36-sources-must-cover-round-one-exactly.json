@@ -1,0 +1,161 @@
+{
+  "description": "A sources file that misses r1-f2, or names a non-existent r1-f3: exit 4.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR",
+        "MINOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accept",
+          "reason": "x"
+        },
+        {
+          "finding_id": "r1-f2",
+          "decision": "minor_no",
+          "reason": "y"
+        }
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.sources.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "source": "codex",
+          "blind_ids": [
+            "A"
+          ],
+          "severity_by_source": {
+            "codex": "MAJOR"
+          }
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "aborted",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}",
+        "--shadow-model",
+        "claude-opus-5-5"
+      ],
+      "expect": {
+        "code": 4
+      }
+    },
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "b",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "b",
+      "n": 1,
+      "severities": [
+        "MAJOR",
+        "MINOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${b}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accept",
+          "reason": "x"
+        },
+        {
+          "finding_id": "r1-f2",
+          "decision": "minor_no",
+          "reason": "y"
+        }
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${b}/round-1.sources.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "source": "codex",
+          "blind_ids": [
+            "A"
+          ],
+          "severity_by_source": {
+            "codex": "MAJOR"
+          }
+        },
+        {
+          "finding_id": "r1-f2",
+          "source": "fallback",
+          "blind_ids": [
+            "B"
+          ],
+          "severity_by_source": {
+            "fallback": "MINOR"
+          }
+        },
+        {
+          "finding_id": "r1-f3",
+          "source": "codex",
+          "blind_ids": [
+            "C"
+          ],
+          "severity_by_source": {
+            "codex": "MINOR"
+          }
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${b}",
+        "--outcome",
+        "aborted",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}",
+        "--shadow-model",
+        "claude-opus-5-5"
+      ],
+      "expect": {
+        "code": 4
+      }
+    }
+  ]
+}

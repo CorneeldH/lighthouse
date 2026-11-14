@@ -9,8 +9,21 @@
 # block (exit 2, message on stderr) and the others pass with a systemMessage.
 # Once the binary runs, its stdout, stderr and exit code pass through untouched.
 
-here=$(cd -P "$(dirname "$0")" && pwd) || exit 1
-root=$(cd -P "$here/../../.." && pwd) || exit 1
+# Parameter expansion, not dirname: a hook on a PATH without tooling must still find itself.
+case $0 in
+*/*) dir=${0%/*} ;;
+*) dir=. ;;
+esac
+# CDPATH empty: otherwise `cd` prints the directory too. Without its own directory run.sh cannot
+# read the list of blocking hooks: it blocks, as a missing list does.
+here=$(CDPATH='' cd -P "$dir" && pwd) || {
+  printf '%s\n' "COULD NOT CHECK: run.sh cannot find its own directory ($0)" >&2
+  exit 2
+}
+root=$(CDPATH='' cd -P "$here/../../.." && pwd) || {
+  printf '%s\n' "COULD NOT CHECK: run.sh cannot find the repository root above $here" >&2
+  exit 2
+}
 bin="$root/.lighthouse/bin"
 manifest="$root/.lighthouse/manifest.toml"
 hook="${1:-}"
@@ -25,7 +38,9 @@ is_blocking() {
   [ "$never_block" = true ] && return 1
   # Without the list every hook counts as blocking: fail closed.
   [ -f "$here/blocking" ] || return 0
+  # Only a clean "no match" (1) lets a hook pass: a grep that cannot run fails closed.
   grep -qxF -- "$hook" "$here/blocking"
+  [ $? -ne 1 ]
 }
 
 # json_string: stdin as one JSON string, without the trailing newline.

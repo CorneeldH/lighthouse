@@ -149,7 +149,7 @@ same way. It lints every checkout the turn wrote in, read from the transcript, a
 touched a Go path there (a `.go` file, `go.mod`, `go.sum`, `go.work`, or a `.golangci` file or pin:
 an edit, a Bash write or a commit in the turn); any other checkout gets `not checked`. A worktree
 you edit from a session in the main checkout is linted, not the main checkout. When a hook cannot
-check — `gofmt-check.sh` needs `jq` and `gofmt`; `go-lint-gate.sh` needs `jq`, `git`, `python3`, `go` and
+check — `gofmt-check.sh` needs `jq` and `gofmt`; `go-lint-gate.sh` needs `jq`, `git`, `lighthouse`, `go` and
 `golangci-lint`, at the version in `.golangci-version`, and a transcript that names the turn's
 checkout — it says so with `COULD NOT CHECK` instead of passing silently. `gofmt-check.sh` then blocks:
 an unchecked file must not read as a clean one. `go-lint-gate.sh` runs at `Stop`, where blocking would

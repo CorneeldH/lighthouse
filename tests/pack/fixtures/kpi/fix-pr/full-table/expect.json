@@ -1,0 +1,14 @@
+[
+  {
+    "args": [
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"leadin\": {\n    \"n\": 1,\n    \"min\": 2,\n    \"median\": 2,\n    \"max\": 2,\n    \"mean\": 2.0,\n    \"without_mutation\": 2\n  },\n  \"diagnose\": {\n    \"n\": 3,\n    \"min\": 1,\n    \"median\": 1,\n    \"max\": 2,\n    \"mean\": 1.3\n  },\n  \"mistrigger\": {\n    \"loaded\": 3,\n    \"without_fix_request\": 1,\n    \"examples\": [\n      \"ik had gewoon een vraag\"\n    ]\n  },\n  \"scope\": {\n    \"loaded\": 3,\n    \"past_the_boundary\": 1\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "review-focus"
+    ]
+  }
+]

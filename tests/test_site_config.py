@@ -23,7 +23,7 @@ NO_DEFAULT = object()
 # Keys nothing in the repo reads: only config.py checks them (spec section 2).
 UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
           "host.scan_memory_max", "host.scan_cpu_quota"}
-SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.tailscale_ip", "review.roborev"}
+SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.controller", "host.tailscale_ip", "review.roborev"}
 REQUIRED = {
     "forge.board.project_number": "with [forge.board]",
     "forge.board.project_id": "with [forge.board]",
@@ -49,8 +49,6 @@ NOT_READERS = {
         "the name of a unit in a list of tools, not a read of the command",
     ("python.source_dirs", "pack/python/scripts/quality/prcov.py"):
         "its docstring names the key; the directories arrive as an argument from ratchet.py",
-    ("host.gate_min_mem_available_gb", "pack/core/lib/host_memory.py"):
-        "its docstring names the key; the thresholds arrive as arguments from commit-test-gate.sh",
 }
 INDIRECT_READERS = {
     ("forge.board.project_id", "pack/core/scripts/board_start.py"): ".project_id",
@@ -247,9 +245,9 @@ def test_reader_names_key_needs_the_table_tag_in_go():
 
 
 def test_reader_names_key_finds_a_dynamic_python_reader():
-    text = (ROOT / "pack/core/scripts/codex_usage.py").read_text(encoding="utf-8")
-    assert reader_names_key(text, "codex_usage.review_pct_week", "pack/core/scripts/codex_usage.py")
-    assert not reader_names_key(text, "codex_usage.vraag_pct_week", "pack/core/scripts/codex_usage.py")
+    text = 'for name in ("review_pct_week",):\n    value = config.lookup(cfg, f"codex_usage.{name}")\n'
+    assert reader_names_key(text, "codex_usage.review_pct_week", "a/reader.py")
+    assert not reader_names_key(text, "codex_usage.vraag_pct_week", "a/reader.py")
 
 
 def test_found_readers_skips_go_tests():
@@ -312,9 +310,9 @@ def test_problems_flag_a_reader_that_does_not_name_it():
 
 def test_problems_flag_a_missing_reader():
     data = copy.deepcopy(load("config.json"))
-    entry_of(data, "test_gate.command")["readers"].remove("pack/core/hooks/commit-test-gate.sh")
+    entry_of(data, "test_gate.command")["readers"].remove("internal/commitgate/gate.go")
     assert config_problems(data, ROOT) == [
-        "test_gate.command: reader pack/core/hooks/commit-test-gate.sh missing from the map"]
+        "test_gate.command: reader internal/commitgate/gate.go missing from the map"]
 
 
 def test_problems_flag_an_empty_reader_list():
@@ -346,9 +344,9 @@ def test_problems_flag_a_stale_not_readers_entry(monkeypatch):
 
 
 def test_problems_flag_an_indirect_entry_of_a_file_without_the_config(monkeypatch):
-    monkeypatch.setitem(INDIRECT_READERS, ("forge.owner", "pack/core/hooks/main-commit-gate.sh"), ".owner")
+    monkeypatch.setitem(INDIRECT_READERS, ("forge.owner", "pack/core/hooks/run.sh"), ".owner")
     problems = config_problems(load("config.json"), ROOT)
-    assert ("forge.owner: INDIRECT_READERS pack/core/hooks/main-commit-gate.sh "
+    assert ("forge.owner: INDIRECT_READERS pack/core/hooks/run.sh "
             "no longer loads the config or uses .owner") in problems
 
 
@@ -372,7 +370,7 @@ def test_config_reader_marks_the_sort():
     assert read("pack/core/skills/write-issue") == {
         "name": "write-issue", "sort": "workflow-skill",
         "href": REPO_TREE + "pack/core/skills/write-issue"}
-    assert read("pack/core/hooks/commit-test-gate.sh")["sort"] == "hook"
+    assert read("pack/core/hooks/pr-create-gate.sh")["sort"] == "hook"
     assert read("pack/core/workflows/unblock-dependents.yml")["sort"] == "github"
     assert read("internal/usage/config.go") == {
         "name": "config.go", "sort": "program", "href": REPO_BLOB + "internal/usage/config.go"}

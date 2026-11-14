@@ -140,6 +140,9 @@
             "format": "int64",
             "type": "integer"
           },
+          "node": {
+            "type": "string"
+          },
           "path": {
             "type": "string"
           },

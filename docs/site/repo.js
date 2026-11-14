@@ -1,6 +1,6 @@
 // The repo page: the tree of a repo after init, from data/repo.json.
 
-import { initTheme, loadJson, renderRepo } from "./map.js?v=548ba90f";
+import { initTheme, loadJson, renderRepo } from "./map.js?v=d8f9721d";
 
 initTheme(document.getElementById("theme-toggle"));
 

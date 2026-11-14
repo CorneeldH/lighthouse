@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -309,5 +310,55 @@ func TestNoNoticeWithoutStateDir(t *testing.T) {
 	env.StateDir = ""
 	if _, out, _ := call(t, "ok", "s1", env); out != "" {
 		t.Errorf("stdout %q, want none", out)
+	}
+}
+
+// A hook with plain text writes it to stdout as it is, not as JSON.
+func TestRunWritesText(t *testing.T) {
+	register(t, "text", func(context.Context, string, string, Payload) Result {
+		return Result{Text: "code-language-check: NOTICE — x\n"}
+	})
+	code, out, errOut := call(t, "text", "s1", newEnv(t, "dev", "dev"))
+	if code != 0 || out != "code-language-check: NOTICE — x\n" || errOut != "" {
+		t.Errorf("code %d out %q err %q", code, out, errOut)
+	}
+}
+
+// Under bash-write-check the outer hook owns the notices: a nested call adds none and spends
+// no marker, so the outer call still shows it.
+func TestRunNestedSkipsNotices(t *testing.T) {
+	register(t, "text", func(context.Context, string, string, Payload) Result {
+		return Result{Text: "plain\n"}
+	})
+	env := newEnv(t, "v0.12.1", "v0.13.0")
+	writeSource(t, env.Root)
+	writeBuildFailed(t, env.Root)
+	env.Nested = true
+	code, out, errOut := call(t, "text", "s1", env)
+	if code != 0 || out != "plain\n" || errOut != "" {
+		t.Errorf("nested: code %d out %q err %q, want 0 %q", code, out, errOut, "plain\n")
+	}
+	if entries, err := os.ReadDir(env.StateDir); err != nil || len(entries) != 0 {
+		t.Errorf("state dir after a nested call: %v, %v; want empty", entries, err)
+	}
+	env.Nested = false
+	if _, out, _ := call(t, "text", "s1", env); message(t, out) != versionNotice+"\n"+buildNotice {
+		t.Errorf("outer call after nested: stdout %q, want both notices", out)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("pipe closed") }
+
+// Text that cannot reach stdout was not delivered: COULD NOT CHECK, not a silent pass.
+func TestRunTextWriteFails(t *testing.T) {
+	register(t, "text", func(context.Context, string, string, Payload) Result {
+		return Result{Text: "plain\n"}
+	})
+	var errOut bytes.Buffer
+	code := Run(context.Background(), "text", "", strings.NewReader(`{}`), failingWriter{}, &errOut, newEnv(t, "dev", "dev"))
+	if want := "COULD NOT CHECK: hook text: writing output: pipe closed\n"; code != ExitUnknown || errOut.String() != want {
+		t.Errorf("code %d err %q, want %d %q", code, errOut.String(), ExitUnknown, want)
 	}
 }

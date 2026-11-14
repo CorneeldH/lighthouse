@@ -1,0 +1,50 @@
+{
+  "description": "start twice: two distinct attempt dirs under TMPDIR, attempt.json content, and a reservation in the data directory at once.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "save_stdout": "first",
+      "expect": {
+        "stdout_matches": "^${tmpdir}/plan-review/2026-09-25-voorbeeld/\\d{8}T\\d{6}Z-[0-9a-f]{6}\\n$"
+      }
+    },
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "b",
+      "expect": {
+        "stdout_matches": "^${tmpdir}/plan-review/2026-09-25-voorbeeld/\\d{8}T\\d{6}Z-[0-9a-f]{6}\\n$",
+        "stdout_differs_from_saved": "first"
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${a}/attempt.json",
+      "json": {
+        "kind": "plan",
+        "chain_key": "2026-09-25-voorbeeld",
+        "attempt": "${a.name}",
+        "plan": "docs/developer/planning/plans/2026-09-25-voorbeeld.md",
+        "reviewed_sha": "${base_sha}"
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/.${a.name}.tmp/attempt.json",
+      "json_equals_file": "${a}/attempt.json"
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/.${b.name}.tmp/attempt.json",
+      "json_equals_file": "${b}/attempt.json"
+    }
+  ]
+}

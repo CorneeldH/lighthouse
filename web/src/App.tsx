@@ -1,4 +1,5 @@
 import { CleanupList } from '@/components/CleanupList'
+import { ControllerSection } from '@/components/ControllerSection'
 import { Header } from '@/components/Header'
 import { QuestionList } from '@/components/QuestionList'
 import { ReturnedList } from '@/components/ReturnedList'
@@ -11,14 +12,16 @@ export default function App() {
     <main className="mx-auto max-w-3xl space-y-6 p-6">
       <Header />
       <UsagePanel />
-      <Summary />
-      <QuestionList />
-      <ReturnedList />
-      <RunningBlock />
-      <ParkedBlock />
-      <QueueBlock />
-      <NightBlock />
-      <CleanupList />
+      <ControllerSection>
+        <Summary />
+        <QuestionList />
+        <ReturnedList />
+        <RunningBlock />
+        <ParkedBlock />
+        <QueueBlock />
+        <NightBlock />
+        <CleanupList />
+      </ControllerSection>
     </main>
   )
 }

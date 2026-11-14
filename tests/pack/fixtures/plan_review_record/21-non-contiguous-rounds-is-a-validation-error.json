@@ -1,0 +1,47 @@
+{
+  "description": "round-2.json missing between 1 and 3: exit 4, names round 2.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 3,
+      "severities": []
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "aborted",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_contains": [
+          "PLAN-REVIEW-RECORD FAILED",
+          "missing round",
+          "2"
+        ]
+      }
+    }
+  ]
+}

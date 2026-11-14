@@ -14,9 +14,12 @@ blocks.
 """
 
 import atexit
+import functools
 import importlib.util
 import json
 import os
+import pwd
+import re
 import shlex
 import shutil
 import subprocess
@@ -26,9 +29,13 @@ import types
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-PACKS = Path(__file__).resolve().parents[2] / "pack"
+REPO = Path(__file__).resolve().parents[2]
+PACKS = REPO / "pack"
 CORE = PACKS / "core"
 LIB = CORE / "lib"
+
+# The tree git hashes for an empty repository.
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 GIT_ENV = {
     "GIT_AUTHOR_NAME": "t",
@@ -75,6 +82,87 @@ def init_repo(path: Path, branch: str = "main") -> None:
     git(path, "commit", "-qm", "init")
 
 
+def build_fixture_setup(root: Path, steps: list[dict]) -> None:
+    """Build the directory tree of a shared-fixture `setup` under `root`.
+
+    The steps are the ones of `fixtures/git_invocations/cases.json` (`repo`,
+    `dir`, `file`, `symlink`, `overwrite`), plus `worktree` (`{"worktree":
+    "x/wt", "of": "x", "branch": "wt"}`: a linked worktree of repo `x`) and
+    `origin` (`{"origin": "x", "url": ...}`: remote `origin` of repo `x`),
+    `unborn` (`{"unborn": "x"}`: `git init -b main` without a commit),
+    `commit` (`{"commit": "x", "message": "m"}`: `add -A` and commit; the files
+    come in before, through `file`) and `mv` (`{"mv": "x", "from": "a", "to": "b"}`).
+    """
+    for step in steps:
+        if "repo" in step:
+            init_repo(root / step["repo"], branch=step["branch"])
+        elif "dir" in step:
+            (root / step["dir"]).mkdir(parents=True, exist_ok=True)
+        elif "file" in step:
+            path = root / step["file"]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(step["text"], encoding="utf-8")
+        elif "symlink" in step:
+            (root / step["symlink"]).symlink_to(root / step["to"])
+        elif "overwrite" in step:
+            (root / step["overwrite"]).write_text(step["text"], encoding="utf-8")
+        elif "worktree" in step:
+            git(
+                root / step["of"],
+                "worktree",
+                "add",
+                "-q",
+                str(root / step["worktree"]),
+                "-b",
+                step["branch"],
+            )
+        elif "origin" in step:
+            git(root / step["origin"], "remote", "add", "origin", step["url"])
+        elif "unborn" in step:
+            (root / step["unborn"]).mkdir(parents=True, exist_ok=True)
+            git(root / step["unborn"], "init", "-q", "-b", "main")
+        elif "commit" in step:
+            git(root / step["commit"], "add", "-A")
+            git(root / step["commit"], "commit", "-qm", step["message"])
+        elif "mv" in step:
+            git(root / step["mv"], "mv", step["from"], step["to"])
+        else:
+            raise AssertionError(f"unknown setup step {step}")
+
+
+def fill_fixture(value, root: str):
+    """Fill the placeholders of a shared fixture, recursively.
+
+    `{root}` is the temporary directory (not passed through realpath),
+    `{real:<path>}` is the realpath of `{root}/<path>` and `{home:<name>}` is
+    the home directory of user `<name>`, `{rev:<path>:<rev>}` the output of
+    `git -C {root}/<path> rev-parse <rev>` and `{empty_tree}` the empty tree.
+    Fill them after the last step of the case. The keys of a dict are filled too.
+    """
+    if isinstance(value, str):
+        value = re.sub(
+            r"\{rev:([^:}]+):([^}]+)\}",
+            lambda m: subprocess.run(
+                ["git", "-C", f"{root}/{m[1]}", "rev-parse", m[2]],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip(),
+            value,
+        )
+        value = value.replace("{empty_tree}", EMPTY_TREE)
+        value = re.sub(
+            r"\{real:([^}]+)\}", lambda m: os.path.realpath(f"{root}/{m[1]}"), value
+        )
+        value = value.replace("{root}", root)
+        return re.sub(r"\{home:([^}]+)\}", lambda m: pwd.getpwnam(m[1]).pw_dir, value)
+    if isinstance(value, list):
+        return [fill_fixture(v, root) for v in value]
+    if isinstance(value, dict):
+        return {fill_fixture(k, root): fill_fixture(v, root) for k, v in value.items()}
+    return value
+
+
 # The `origin` of a forge worktree and of its main checkout in #36.
 ORIGIN = "https://github.com/Acme/widgets.git"
 
@@ -108,7 +196,7 @@ def bash_payload(cmd: str, cwd: Path) -> dict:
     return {"tool_name": "Bash", "cwd": str(cwd), "tool_input": {"command": cmd}}
 
 
-# A Claude Code transcript, as far as `turn_roots.py` (#54) reads it: one JSON
+# A Claude Code transcript, as far as `lighthouse turn-roots` (#54) reads it: one JSON
 # object per line, a prompt as a `user` entry with text, a tool call as an
 # `assistant` entry with a `tool_use` block.
 PROMPT_TS = "2026-10-25T10:00:00.000Z"
@@ -198,22 +286,6 @@ def tool_bin(
     return path
 
 
-def trace_bin(path: Path, trace: Path, tools: tuple[str, ...]) -> Path:
-    """A PATH directory of stubs that append their name to `trace`, then run the
-    real tool (looked up now, on the current PATH) when there is one.
-
-    With only this directory on PATH, an empty `trace` proves the script forked
-    none of `tools`.
-    """
-    stubs = {}
-    for tool in tools:
-        real = shutil.which(tool)
-        run = f'exec {shlex.quote(real)} "$@"\n' if real else "exit 0\n"
-        log = f"printf '%s\\n' {tool} >> {shlex.quote(str(trace))}\n"
-        stubs[tool] = f"#!/bin/bash\n{log}{run}"
-    return tool_bin(path, (), stubs=stubs)
-
-
 # The usage gate (#66): every test that runs it uses `guard_env`, so a test run
 # inside a session with a full window never writes real keys, markers or refreshes.
 _GUARD_ENV_DROP = (
@@ -241,6 +313,32 @@ def _path_without_lighthouse(shadow: Path) -> str:
                 link.symlink_to(item)
         dirs.append(str(copy))
     return os.pathsep.join(dirs)
+
+
+@functools.cache
+def lighthouse_dir() -> Path:
+    """The directory with `lighthouse` built from this checkout: built once per process,
+    removed at exit. `tests/conftest.py` hands out the same directory."""
+    out = Path(tempfile.mkdtemp(prefix="lighthouse-bin-"))
+    atexit.register(shutil.rmtree, out, True)
+    subprocess.run(
+        ["go", "build", "-o", str(out / "lighthouse"), "./cmd/lighthouse"],
+        cwd=REPO,
+        check=True,
+    )
+    return out
+
+
+def path_with_lighthouse() -> str:
+    """The current PATH with the built `lighthouse` first."""
+    return f"{lighthouse_dir()}{os.pathsep}{os.environ.get('PATH', '')}"
+
+
+def lighthouse_stub(body: str) -> str:
+    """A fake `lighthouse` that runs `body` for every call but `turn-roots`, which goes
+    to the binary built from this checkout: a Stop gate needs that one to find its roots."""
+    real = shlex.quote(str(lighthouse_dir() / "lighthouse"))
+    return f'#!/bin/bash\n[ "$1" = turn-roots ] && exec {real} "$@"\n{body}'
 
 
 def guard_env(tmp_path: Path, **extra: str) -> dict[str, str]:
@@ -283,51 +381,98 @@ def write_alarm(env: dict, line: str) -> Path:
     return path
 
 
-def run_guard(
-    root: Path, stand: str, payload: dict | str, env: dict
+# The tools `run.sh` needs, for a test that runs it on a bare PATH.
+RUN_SH_TOOLS = ("sh", "dirname", "grep", "sed", "awk", "cat", "mktemp", "rm")
+
+# A `lighthouse` for the hook tests: `hook ...` runs the binary built from this checkout, every
+# other call (the detached `usage refresh` of `usage-gate prompt`) does nothing but write its
+# argv and LIGHTHOUSE_USAGE_REFRESH as `<argv>|<value>` to $LIGHTHOUSE_SHIM_TRACE, after
+# sleeping $LIGHTHOUSE_SHIM_DELAY seconds. So no test ever starts a real `claude -p /usage`.
+_SHIM = """#!/bin/sh
+if [ "${{1:-}}" = hook ]; then
+  exec {binary} "$@"
+fi
+if [ -n "${{LIGHTHOUSE_SHIM_DELAY:-}}" ]; then
+  sleep "$LIGHTHOUSE_SHIM_DELAY"
+fi
+if [ -n "${{LIGHTHOUSE_SHIM_TRACE:-}}" ]; then
+  printf '%s|%s' "$*" "${{LIGHTHOUSE_USAGE_REFRESH:-}}" > "$LIGHTHOUSE_SHIM_TRACE"
+fi
+exit 0
+"""
+
+
+@functools.cache
+def shim_dir() -> Path:
+    """A directory with only the `lighthouse` shim (`_SHIM`), made once per process."""
+    out = Path(tempfile.mkdtemp(prefix="lighthouse-shim-"))
+    atexit.register(shutil.rmtree, out, True)
+    shim = out / "lighthouse"
+    shim.write_text(_SHIM.format(binary=shlex.quote(str(lighthouse_dir() / "lighthouse"))))
+    shim.chmod(0o755)
+    return out
+
+
+def refresh_trace(env: dict) -> Path:
+    """Where the shim of `run_guard` writes what a non-hook `lighthouse` call got."""
+    return Path(env["HOME"]).parent / "lighthouse-shim.trace"
+
+
+def run_sh_hook(
+    root: Path,
+    name: str,
+    payload: dict | str,
+    *,
+    cwd: Path,
+    env: dict | None = None,
+    args: tuple[str, ...] = (),
+    with_binary: bool = True,
 ) -> subprocess.CompletedProcess:
-    """Run the installed `usage-gate.sh <stand>` of `root` with `payload` on stdin."""
+    """Run the installed `run.sh <name> [args]` of `root` with `payload` on stdin.
+
+    `env` is the whole environment (default `os.environ`). With `with_binary` the shim
+    directory goes first on its PATH, so `run.sh` finds the binary of this checkout and a
+    `lighthouse usage refresh` never runs for real; LIGHTHOUSE_REPO_ROOT defaults to `root`.
+    """
+    full = dict(os.environ if env is None else env)
+    full.setdefault("LIGHTHOUSE_REPO_ROOT", str(root))
+    if with_binary:
+        full["PATH"] = f"{shim_dir()}{os.pathsep}{full.get('PATH', '')}"
     return subprocess.run(
-        [str(root / _INSTALL_DIRS["hooks"] / "usage-gate.sh"), stand],
+        [str(root / _INSTALL_DIRS["hooks"] / "run.sh"), name, *args],
         input=payload if isinstance(payload, str) else json.dumps(payload),
         capture_output=True,
         text=True,
-        cwd=str(root),
-        env=dict(env, LIGHTHOUSE_REPO_ROOT=str(root)),
+        cwd=str(cwd),
+        env=full,
         check=False,
-        timeout=30,
+        timeout=60,
     )
 
 
-# A BSD `date` on top of the real date (GNU or BSD): `-d` is rejected, and
-# `-j [-u] -f FMT VALUE [+OUT]` parses VALUE. With a GNU real date the parse is done
-# by `-d` (the format itself is not checked); with a BSD one it is passed on as it is.
-# `DATE_STUB_LOG`, when set, collects every argument, one per line.
-BSD_DATE_STUB = f"""#!/bin/bash
-real={shutil.which("date")}
-[ -n "${{DATE_STUB_LOG:-}}" ] && printf '%s\\n' "$@" >> "$DATE_STUB_LOG"
-utc=""
-value=""
-fmt=""
-parse=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    -d) echo "date: illegal option -- d" >&2; exit 1 ;;
-    -j) parse=1 ;;
-    -u) utc=-u ;;
-    -f) shift; fmt="$1"; shift; value="$1" ;;
-    *) break ;;
-  esac
-  shift
-done
-if [ -n "$parse" ]; then
-  if "$real" --version >/dev/null 2>&1; then
-    exec "$real" $utc -d "$value" "$@"
-  fi
-  exec "$real" -j $utc -f "$fmt" "$value" "$@"
-fi
-exec "$real" $utc "$@"
-"""
+def run_guard(
+    root: Path, stand: str, payload: dict | str, env: dict
+) -> subprocess.CompletedProcess:
+    """Run the installed `run.sh usage-gate <stand>` of `root` with `payload` on stdin; the
+    shim records a refresh in `refresh_trace(env)`."""
+    env = dict(env, LIGHTHOUSE_REPO_ROOT=str(root))
+    env.setdefault("LIGHTHOUSE_SHIM_TRACE", str(refresh_trace(env)))
+    return run_sh_hook(root, "usage-gate", payload, cwd=root, env=env, args=(stand,))
+
+
+def classify(rc: int, output: bytes) -> str:
+    """The verdict of a gate: `"ok"`, `"finding"` or `"unchecked"`.
+
+    The rule of `bash_writes.classify`, for the language-pack tests that read
+    the result of one gate: rc 0 is ok, rc 2 is a finding unless the FIRST
+    output line holds `COULD NOT CHECK`, every other rc is unchecked.
+    """
+    if rc == 0:
+        return "ok"
+    if rc != 2:
+        return "unchecked"
+    first = output.decode(errors="replace").split("\n", 1)[0]
+    return "unchecked" if "COULD NOT CHECK" in first else "finding"
 
 
 def load_hook_lib(name: str) -> types.ModuleType:
@@ -376,10 +521,38 @@ def _install_dirs(pack_dir: Path, root: Path) -> None:
                 dest.chmod(0o755)
 
 
+# Everything the installed `run.sh` calls: a test that narrows the PATH keeps these on it.
+RUN_SH_TOOLS: tuple[str, ...] = (
+    "dirname",
+    "grep",
+    "sed",
+    "awk",
+    "cat",
+    "mktemp",
+    "rm",
+    "head",
+    "mkdir",
+    "find",
+    "touch",
+    "date",
+)
+
+
+def hook_shim(root: Path, name: str) -> Path:
+    """An executable `root/.lighthouse/test-shims/<name>` that runs the installed
+    `run.sh <name>` of `root`, so a test starts a Go hook the way the harness does."""
+    shim = root / ".lighthouse" / "test-shims" / name
+    shim.parent.mkdir(parents=True, exist_ok=True)
+    run_sh = root / _INSTALL_DIRS["hooks"] / "run.sh"
+    shim.write_text(f"#!/bin/sh\nexec '{run_sh}' {name} \"$@\"\n", encoding="utf-8")
+    shim.chmod(0o755)
+    return shim
+
+
 def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
     """Copy `pack/core` into `root` the way `lighthouse init` lays it out, with a
-    `lighthouse.toml` unless `toml` is None or one is there, and return the path of
-    the installed main-commit-gate."""
+    `lighthouse.toml` unless `toml` is None or one is there, and return the shim
+    that runs the installed main-commit-gate through `run.sh`."""
     if toml is not None and not (root / "lighthouse.toml").exists():
         root.mkdir(parents=True, exist_ok=True)
         (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
@@ -388,7 +561,7 @@ def install_core(root: Path, toml: str | None = MINIMAL_TOML) -> Path:
     if headings.is_file():
         (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
         shutil.copyfile(headings, root / ".lighthouse" / "headings.toml")
-    return root / _INSTALL_DIRS["hooks"] / "main-commit-gate.sh"
+    return hook_shim(root, "main-commit-gate")
 
 
 def install_pack(name: str, root: Path, toml: str | None = MINIMAL_TOML) -> Path:
@@ -412,3 +585,25 @@ INSTALLED_HOOKS = INSTALL_ROOT / _INSTALL_DIRS["hooks"]
 IMPORT_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-lib-"))
 atexit.register(shutil.rmtree, IMPORT_ROOT, True)
 (IMPORT_ROOT / "lighthouse_lib").symlink_to(LIB, target_is_directory=True)
+
+
+DEFAULT_FIXTURE_REPO = "Acme/widgets"
+
+
+def write_fixture_config(
+    root: Path, repo: str | None = DEFAULT_FIXTURE_REPO, test_dir: str | None = None
+) -> None:
+    """The config of a `pr_body_gate` or `evidence` fixture case, under `root`.
+
+    A `lighthouse.toml` with `forge.repo = repo` (no key when `repo` is None) and,
+    with `test_dir`, `[test_gate] evidence_test_dir`; plus the headings table the
+    AC count reads. The caller points `LIGHTHOUSE_REPO_ROOT` at `root`.
+    """
+    toml = '[project]\nlanguage = "en"\n\n[forge]\nkind = "github"\n'
+    if repo is not None:
+        toml += f'repo = "{repo}"\n'
+    if test_dir is not None:
+        toml += f'\n[test_gate]\nevidence_test_dir = "{test_dir}"\n'
+    (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
+    (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(CORE / "headings.toml", root / ".lighthouse" / "headings.toml")

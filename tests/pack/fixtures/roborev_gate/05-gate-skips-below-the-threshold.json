@@ -1,0 +1,28 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "git",
+      "args": [
+        "reset",
+        "--hard",
+        "origin/main"
+      ]
+    },
+    {
+      "do": "commit_lines",
+      "count": 99,
+      "name": "x.go"
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect": {
+        "verdict": "skip",
+        "reason": "99 coderegels (drempel 100)"
+      }
+    }
+  ]
+}

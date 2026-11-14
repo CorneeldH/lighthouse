@@ -1,25 +1,22 @@
-"""`pack/core/lib/turn_roots.py` (#54): in which checkouts did this turn write?
+"""`lighthouse turn-roots` (#54): in which checkouts did this turn write?
 
 The Stop hooks check those checkouts instead of the payload `cwd`, which is the
 shell's directory at Stop: a session in the main checkout that edits a worktree
 through absolute paths stops with `cwd` = the main checkout.
 
-The script runs as a subprocess against real repositories and a transcript on
+The command runs as a subprocess against real repositories and a transcript on
 disk, the way the hooks call it.
 """
 
-import io
 import json
 import os
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 import pytest
 
 from tests.pack._testkit import (
-    INSTALLED_LIB,
     git,
     init_repo,
     past_this_second,
@@ -31,7 +28,8 @@ from tests.pack._testkit import (
     write_transcript,
 )
 
-SCRIPT = INSTALLED_LIB / "turn_roots.py"
+# The binary of this checkout, first on the PATH.
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
 
 @pytest.fixture
@@ -50,7 +48,7 @@ def wt(main):
 
 def _run(main: Path, payload: dict | str, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(SCRIPT), *args],
+        ["lighthouse", "turn-roots", *args],
         input=payload if isinstance(payload, str) else json.dumps(payload),
         capture_output=True,
         text=True,
@@ -339,17 +337,3 @@ def test_match_a_root_git_cannot_read_is_touched(tmp_path, main):
     (main / ".git" / "index").write_bytes(b"garbage")
     entries = [prompt_entry(main, stamp(time.time())), _bash("ls", main)]
     assert _classify(main, main, entries, tmp_path, "*.go") == [f"touched\t{main.resolve()}"]
-
-
-def test_only_a_json_error_is_reported_as_invalid_json(monkeypatch, capsys):
-    # A ValueError from git output (`bash_writes.parse_reflog`) is no JSON error.
-    from lighthouse_lib import turn_roots
-
-    def broken(payload, patterns):
-        raise ValueError("not enough values to unpack")
-
-    monkeypatch.setattr(turn_roots, "classify", broken)
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({"cwd": "/x"})))
-    with pytest.raises(ValueError, match="unpack"):
-        turn_roots.main(["--match", "*.go"])
-    assert "not valid JSON" not in capsys.readouterr().out

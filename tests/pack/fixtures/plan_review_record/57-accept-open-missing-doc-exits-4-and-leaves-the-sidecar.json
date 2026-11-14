@@ -1,0 +1,40 @@
+{
+  "description": "A document that does not exist: exit 4, no sidecar written.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}",
+        "--doc",
+        "${tmp}/bestaat-niet.md"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_starts_with": "ACCEPT-OPEN FAILED:"
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${a}/round-1.decisions.json",
+      "exists": false
+    }
+  ]
+}

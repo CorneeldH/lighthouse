@@ -1,0 +1,18 @@
+{
+  "description": "no [review] roborev: off, budget untouched",
+  "setup": [
+    {
+      "do": "toml",
+      "text": "[project]\nlanguage = \"nl\"\n"
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect_exact": {
+        "verdict": "off"
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "scope",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"scope\": {\n    \"loaded\": 2,\n    \"past_the_boundary\": 1\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_scope_sees_the_skill_running_past_green"
+    ]
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "description": "A directory as document: exit 4, PR-OPEN-POINTS FAILED.",
+  "world": "bare",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "pr-open-points",
+        "${root}"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_contains": [
+          "PR-OPEN-POINTS FAILED"
+        ]
+      }
+    }
+  ]
+}

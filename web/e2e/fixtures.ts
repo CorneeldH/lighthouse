@@ -111,7 +111,20 @@ export const test = base.extend<{ github: FakeGitHub; lighthouse: Lighthouse }>(
 
         const proc = spawn(
           bin,
-          ['serve', '--addr', '127.0.0.1:0', '--db', join(root, 'l.db'), '--repo', 'test/repo', '--forge-url', github.url],
+          // A short overview interval: serve rebuilds from the fake forge within a test, not after 2 minutes.
+          [
+            'serve',
+            '--addr',
+            '127.0.0.1:0',
+            '--db',
+            join(root, 'l.db'),
+            '--repo',
+            'test/repo',
+            '--forge-url',
+            github.url,
+            '--overview-interval',
+            '200ms',
+          ],
           { env, stdio: ['ignore', 'ignore', 'pipe'] },
         )
         procs.push(proc)

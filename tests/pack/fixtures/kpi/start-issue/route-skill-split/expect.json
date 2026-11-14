@@ -1,0 +1,42 @@
+[
+  {
+    "args": [
+      "leadin",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"leadin\": {\n    \"routed\": {\n      \"n\": 0\n    },\n    \"unrouted\": {\n      \"n\": 1,\n      \"min\": 0,\n      \"median\": 0,\n      \"max\": 0,\n      \"mean\": 0.0\n    },\n    \"no_route\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_route_skill_is_skipped_like_the_start_skill"
+    ]
+  },
+  {
+    "args": [
+      "gate",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"gate\": {\n    \"reported\": 1,\n    \"not_reported\": 0,\n    \"share\": 1.0,\n    \"distribution\": {\n      \"gate_4\": 1\n    },\n    \"pickup_without_skill\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_route_skill_is_skipped_like_the_start_skill",
+      "test_measure_gate_counts_a_gate_reported_after_the_route_skill"
+    ]
+  },
+  {
+    "args": [
+      "scout",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"scout\": {\n    \"triggered\": 0,\n    \"skipped_with_reason\": 0,\n    \"silent\": 1,\n    \"mistrigger\": 0,\n    \"gate_unknown\": 0,\n    \"share\": 0.0,\n    \"runtime_seconds\": {\n      \"n\": 0,\n      \"median\": null,\n      \"max\": null\n    },\n    \"tool_calls\": {\n      \"n\": 0,\n      \"median\": null,\n      \"max\": null\n    },\n    \"over_budget\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_route_skill_is_skipped_like_the_start_skill"
+    ]
+  }
+]

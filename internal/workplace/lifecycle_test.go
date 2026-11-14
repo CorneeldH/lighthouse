@@ -239,7 +239,7 @@ func TestAdoptSessionsRecordsKey(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, sid := openRunWithWorkspace(t, db, 7, lcNow.Add(-time.Minute), "")
 	w := &fakeWP{sessions: []Session{{Key: "other", SessionID: "x"}, {Key: "k9", SessionID: sid}}}
-	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
+	if err := AdoptSessions(context.Background(), db, only(w), lcRepo); err != nil {
 		t.Fatal(err)
 	}
 	if got := rowOf(t, db, run.ID); got.outcome != "" || got.session != "k9" {
@@ -253,7 +253,7 @@ func TestAdoptSessionsNotFoundLeavesRow(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-9*time.Hour), "")
 	w := &fakeWP{sessions: []Session{{Key: "other", SessionID: "x"}}}
-	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
+	if err := AdoptSessions(context.Background(), db, only(w), lcRepo); err != nil {
 		t.Fatal(err)
 	}
 	if got := rowOf(t, db, run.ID); got != (runRow{workspace: "w1"}) {
@@ -268,7 +268,7 @@ func TestAdoptSessionsSessionsFailsLeavesRow(t *testing.T) {
 	db := openLeftoverDB(t)
 	run, _ := openRunWithWorkspace(t, db, 7, lcNow.Add(-time.Hour), "")
 	w := &fakeWP{sessionsErr: errors.New("forge down")}
-	err := AdoptSessions(context.Background(), db, w, lcRepo)
+	err := AdoptSessions(context.Background(), db, only(w), lcRepo)
 	if err == nil || !strings.Contains(err.Error(), "forge down") {
 		t.Fatalf("AdoptSessions = %v, want the sessions error", err)
 	}
@@ -284,7 +284,7 @@ func TestAdoptSessionsSkipsSettledAndUnplacedRows(t *testing.T) {
 	held, sid := openRunWithWorkspace(t, db, 7, lcNow.Add(-time.Hour), "k1")
 	unplaced, _ := takeRun(t, db, 8, lcNow.Add(-time.Hour))
 	w := &fakeWP{sessions: []Session{{Key: "k2", SessionID: sid}}, sessionsErr: errors.New("unexpected Sessions")}
-	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
+	if err := AdoptSessions(context.Background(), db, only(w), lcRepo); err != nil {
 		t.Fatalf("AdoptSessions = %v, want no lookup", err)
 	}
 	if got := rowOf(t, db, held.ID); got.session != "k1" {
@@ -320,7 +320,7 @@ func TestAdoptSessionsOneFailureDoesNotBlockTheNext(t *testing.T) {
 		}
 	}
 	w := &sessionsByWorkspace{per: map[string][]Session{"w2": {{Key: "k2", SessionID: sid}}}, fail: "w1"}
-	err := AdoptSessions(ctx, db, w, lcRepo)
+	err := AdoptSessions(ctx, db, only(w), lcRepo)
 	if err == nil || !strings.Contains(err.Error(), "sessions of w1 failed") {
 		t.Fatalf("AdoptSessions = %v, want the error of w1", err)
 	}
@@ -796,7 +796,7 @@ func TestAdoptSessionsIgnoresSessionOfEarlierRow(t *testing.T) {
 	db := openLeftoverDB(t)
 	sid, resume := resumeRows(t, db, lcNow.Add(-11*time.Minute))
 	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "done"}}}
-	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
+	if err := AdoptSessions(context.Background(), db, only(w), lcRepo); err != nil {
 		t.Fatal(err)
 	}
 	if got := rowOf(t, db, resume.ID); got.session != "" || got.outcome != "" {
@@ -808,7 +808,7 @@ func TestAdoptSessionsResumeFindsItsNewSession(t *testing.T) {
 	db := openLeftoverDB(t)
 	sid, resume := resumeRows(t, db, lcNow.Add(-time.Minute))
 	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "done"}, {Key: "k2", SessionID: sid, State: "working"}}}
-	if err := AdoptSessions(context.Background(), db, w, lcRepo); err != nil {
+	if err := AdoptSessions(context.Background(), db, only(w), lcRepo); err != nil {
 		t.Fatal(err)
 	}
 	if got := rowOf(t, db, resume.ID); got.session != "k2" || got.outcome != "" {
@@ -1002,5 +1002,99 @@ func TestCleanupDoneForeignWithRecordedKeyNotStopped(t *testing.T) {
 	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), cand(7), lcNow)
 	if err != nil || !removed || w.stops != 0 {
 		t.Fatalf("Cleanup = %v, %v, stops %d (%v); want removed without stop", removed, err, w.stops, w.stopped)
+	}
+}
+
+// only is a Place that hands out w for every node and profile.
+func only(w Workplace) Place {
+	return func(string, string) Workplace { return w }
+}
+
+func TestCleanupRemoteSkipsGit(t *testing.T) {
+	db := openLeftoverDB(t)
+	w := &fakeWP{}
+	c := cand(7)
+	c.Node = "node-a"
+	removed, err := Cleanup(context.Background(), db, w, noRunner(t), c, lcNow)
+	if err != nil || removed {
+		t.Fatalf("Cleanup = %v, %v, want kept without error", removed, err)
+	}
+	if w.removes != 0 || w.stops != 0 || len(w.looked) != 0 {
+		t.Errorf("remote candidate touched the workplace: removes %d, stops %d, looked %v", w.removes, w.stops, w.looked)
+	}
+	ls, err := Leftovers(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Leftover{{Repo: lcRepo, Issue: 7, Node: "node-a", WorkspaceID: "w1", Path: "/p/w1", Reason: "not measurable: node node-a: no local git"}}
+	if !reflect.DeepEqual(ls, want) {
+		t.Errorf("leftovers = %+v, want %+v", ls, want)
+	}
+}
+
+// An open run on the same workspace id on another node does not hold this node's workspace.
+func TestCleanupOpenRunMatchesNode(t *testing.T) {
+	db := openLeftoverDB(t)
+	ctx := context.Background()
+	r, err := runs.Take(ctx, db, runs.Claim{
+		Repo: lcRepo, Issue: 99, SessionID: "sid-99", Mode: "start", Trigger: "handoff",
+		TriggerKey: "start:99", Node: "node-a", Now: lcNow,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, db, r.ID, "w1", "issue-99"); err != nil {
+		t.Fatal(err)
+	}
+	// Same id "w1" on self: the open run of node-a must not block it.
+	w := &fakeWP{}
+	removed, err := Cleanup(ctx, db, w, cleanRunner(), cand(7), lcNow)
+	if err != nil || !removed {
+		t.Fatalf("Cleanup self = %v, %v, want removed", removed, err)
+	}
+	// The same workspace on node-a is held by its open run.
+	c := cand(7)
+	c.Node = "node-a"
+	w2 := &fakeWP{}
+	removed, err = Cleanup(ctx, db, w2, noRunner(t), c, lcNow)
+	if err != nil || removed {
+		t.Fatalf("Cleanup node-a = %v, %v, want nothing", removed, err)
+	}
+	if ls, _ := Leftovers(ctx, db); len(ls) != 0 {
+		t.Errorf("leftovers = %+v, want none (open run guard comes first)", ls)
+	}
+}
+
+func TestAdoptSessionsUsesNodeOfRun(t *testing.T) {
+	db := openLeftoverDB(t)
+	ctx := context.Background()
+	r, err := runs.Take(ctx, db, runs.Claim{
+		Repo: lcRepo, Issue: 7, SessionID: "sid-7", Mode: "start", Trigger: "handoff",
+		TriggerKey: "start:7", Node: "node-a", Profile: "p1", Now: lcNow,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, db, r.ID, "w1", "issue-7"); err != nil {
+		t.Fatal(err)
+	}
+	self := &fakeWP{}
+	nodeA := &fakeWP{sessions: []Session{{Key: "k1", SessionID: "sid-7"}}}
+	var gotNode, gotProfile string
+	place := func(node, profile string) Workplace {
+		gotNode, gotProfile = node, profile
+		if node == "node-a" {
+			return nodeA
+		}
+		return self
+	}
+	if err := AdoptSessions(ctx, db, place, lcRepo); err != nil {
+		t.Fatal(err)
+	}
+	if gotNode != "node-a" || gotProfile != "p1" {
+		t.Errorf("place(%q, %q), want (node-a, p1)", gotNode, gotProfile)
+	}
+	if got := rowOf(t, db, r.ID); got.session != "k1" {
+		t.Errorf("session = %q, want k1", got.session)
 	}
 }

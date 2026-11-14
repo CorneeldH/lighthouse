@@ -1,0 +1,18 @@
+[
+ {
+  "args": [
+   "host-check"
+  ],
+  "rc": 0,
+  "stdout": "host: box\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "host.controller"
+  ],
+  "rc": 0,
+  "stdout": "true\n",
+  "stderr": ""
+ }
+]

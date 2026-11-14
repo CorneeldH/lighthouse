@@ -1,6 +1,6 @@
 ---
 name: lighthouse-write-pr
-description: 'Use before every `gh pr create` in this repo — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate.sh blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Refs #N — <reason>` with an Evidence table of the proven criteria, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — not for closing an issue or checking after the merge: use lighthouse-close-issue instead; repairing a red PR is lighthouse-fix-pr.'
+description: 'Use before every `gh pr create` in this repo — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Refs #N — <reason>` with an Evidence table of the proven criteria, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — not for closing an issue or checking after the merge: use lighthouse-close-issue instead; repairing a red PR is lighthouse-fix-pr.'
 metadata:
   lighthouse: "core@dev"
   binding: hard
@@ -18,7 +18,7 @@ question: interactive and headless (controller run, if present) the outcome is t
 
 - Before every `gh pr create`, also "make a PR" and the choice push + PR in
   `finishing-a-development-branch`.
-- When `.claude/hooks/lighthouse/pr-create-gate.sh` blocks a `gh pr create`.
+- When `.claude/hooks/lighthouse/run.sh pr-create-gate` blocks a `gh pr create`.
 - `/lighthouse-write-pr <nr>`. Without an argument the number comes from the branch
   `issue-<nr>-…` (`git branch --show-current`). No issue: the body gets `No issue: <reason>`
   (≥10 characters) and no milestone; skip V1–V3 (V2b still runs).
@@ -48,10 +48,10 @@ the findings are already processed. In a controller run the **build session** re
 before its push and its handoff; the write-pr run never reviews: the run that starts with
 `/lighthouse-write-pr <nr>` finds `done` at step 0 and changes no code. If the gate says `run` or
 `classify` there, the build skipped V2b: no review and no processing, but
-`python3 .lighthouse/scripts/roborev_gate.py record --skip "build session ran no review"` and on to
+`lighthouse roborev-gate record --skip "build session ran no review"` and on to
 V4. This step also runs with `No issue:`, where V1–V3 are skipped. One command per step, in this
 order. Every command here runs outside the sandbox (`dangerouslyDisableSandbox: true`): the gate
-reads the Codex budget, the review needs the network. Any other non-zero exit of `roborev_gate.py` than exit 3 of `gate` (step 0) and exit 2
+reads the Codex budget, the review needs the network. Any other non-zero exit of `lighthouse roborev-gate` than exit 3 of `gate` (step 0) and exit 2
 of `record` (step 3), such as `gate` exit 1 or a failing `classify`, `fixed` or `record`: report
 it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
@@ -59,7 +59,7 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
    ```bash
    git fetch origin <default branch>
-   python3 .lighthouse/scripts/roborev_gate.py gate
+   lighthouse roborev-gate gate
    ```
 
    One JSON object. Every `verdict` except `off` carries `state` and `raw`, absolute paths: take
@@ -74,7 +74,7 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    | `run` | step 1 |
 
    In a run started with `/lighthouse-write-pr <nr>`, `run` or `classify` do not mean step 1 or 2:
-   `python3 .lighthouse/scripts/roborev_gate.py record --skip "build session ran no review"`, on
+   `lighthouse roborev-gate record --skip "build session ran no review"`, on
    to V4.
 
    Exit 3 (`COULD NOT CHECK`): no PR; report the message.
@@ -86,13 +86,13 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
    In the foreground, with Bash timeout `600000`: start no background work (controller run, if
    present). Exit 124 is the timeout:
-   `python3 .lighthouse/scripts/roborev_gate.py record --skip "review faalde: timeout na 9 min"`,
+   `lighthouse roborev-gate record --skip "review faalde: timeout na 9 min"`,
    then V4. Every other exit code goes to step 2: roborev exits 0 also with findings, so the exit
    code alone is no failure signal.
 2. **Classify.**
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py classify
+   lighthouse roborev-gate classify
    ```
 
    `verdict` `skip`: on to V4; the script recorded the reason. `done`: step 3, with `sha` and
@@ -101,7 +101,7 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    fixed (a run broken off halfway):
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py fixed
+   lighthouse roborev-gate fixed
    ```
 
    Each one listed is `fixed` in that commit; do not judge it again. For every other finding
@@ -118,7 +118,7 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    that `gate` printed at step 0, the reviewed range (the fix commits came after it):
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <file> --range <range>
+   lighthouse roborev-gate record --done <sha> --decisions <file> --range <range>
    ```
 
    After a `classify` verdict at step 0 (a restart, no review in this run) there is no `range`:
@@ -153,7 +153,7 @@ The reason says that `/lighthouse-close-issue` runs the rows after the merge and
 Below it a heading `### Evidence #N` with one row per AC that is `demonstrably done`; the AC cell starts with
 the number of the criterion in the issue (`1. …`). Below the table each open criterion (`partly`,
 `not`, `after merge`) with its verdict and what is still needed. A row for an open criterion does
-not exist: `evidence.py run --before-pr` fails on a row that does not hold. Every criterion open:
+not exist: `lighthouse evidence run --before-pr` fails on a row that does not hold. Every criterion open:
 no table.
 
 `Closes` stays valid for a PR a person opens without this skill. This skill never writes it: the
@@ -228,7 +228,7 @@ stays a pipe and the row is invalid.
 
 ## Evidence allowlist
 
-At argv level, complete; the same list as `.lighthouse/lib/lighthouse_lib/evidence.py` (the
+At argv level, complete; the same list as `lighthouse evidence` (the
 source) and `/lighthouse-close-issue`. Always: `argv[0]` is the bare name (no `/usr/bin/grep`, no `FOO=1 grep`), an
 option not on the list is refused, an option with `=` and an empty value too.
 
@@ -245,12 +245,12 @@ option not on the list is refused, an option with `=` and an empty value too.
 
 The test directory is `lighthouse config test_gate.evidence_test_dir`.
 A `--jq` expression may not contain `env`, `$ENV` or `input`/`inputs`. Extending the list is a
-change of this skill *and* of `evidence.py`, never something a PR body can do.
+change of this skill *and* of `lighthouse evidence`, never something a PR body can do.
 
 Check each row as soon as you write it:
 
 ```bash
-python3 .lighthouse/lib/lighthouse_lib/evidence.py check '<Command cell>'
+lighthouse evidence check '<Command cell>'
 ```
 
 Exit 0 (silent) = allowed; exit 1 + reason = choose another command.
@@ -259,7 +259,7 @@ Before the PR, only if the body has a table, run all rows together, outside the 
 (`dangerouslyDisableSandbox: true`, otherwise every `gh` row is `heading:evidence_unmeasurable`):
 
 ```bash
-python3 .lighthouse/lib/lighthouse_lib/evidence.py run --issue <nr> --body-file <path> --cwd . --before-pr
+lighthouse evidence run --issue <nr> --body-file <path> --cwd . --before-pr
 ```
 
 Output (stderr included): a table `heading:evidence_table_head`. Every row must be
@@ -281,7 +281,7 @@ Goes to `## Verification` and does not decide which criteria get a row ("code re
 be true before the merge). Exception: if the tests are not green, the skill makes no PR and
 reports that.
 
-In Claude Code the commit gate (`.claude/hooks/lighthouse/commit-test-gate.sh` runs the test command
+In Claude Code the commit gate (`.claude/hooks/lighthouse/run.sh commit-test-gate` runs the test command
 after every `git commit`, on the files of that commit) proves only the files of each commit, not the
 suite. The suite evidence is CI on the PR: write `suite: CI` in `## Verification`, and do not run the
 full suite by hand. A red or `COULD NOT CHECK` outcome of the gate on this branch that no later
@@ -298,14 +298,14 @@ reads the file before the command runs.
 
 Open review points: give the spec and plan documents the branch touches
 (`git diff --name-only origin/<default branch>...HEAD -- '<paths.specs>/*.md' '<paths.plans>/*.md'`)
-to `python3 .lighthouse/scripts/plan_review_record.py pr-open-points <path>...`; the script follows the spec
+to `lighthouse plan-review-record pr-open-points <path>...`; the script follows the spec
 from the **Spec:** line of a plan itself, also when that spec is already on the default branch. If
 the output is not empty, put it unchanged as a section of its own `## Open review points` in the
 body; if it is empty, leave the section out. It is no Evidence row and does not count in the AC
-count of `pr-create-gate.sh`. Name the headings here only inline between backticks: a line that
+count of `pr-create-gate`. Name the headings here only inline between backticks: a line that
 starts with `## ` breaks the V4 section the tests cut out.
 
-Roborev line (V2b ran): add the output of `python3 .lighthouse/scripts/roborev_gate.py body-line`
+Roborev line (V2b ran): add the output of `lighthouse roborev-gate body-line`
 to the body as a line of its own, outside the Evidence block. It is the marker
 `<!-- roborev-lokaal: <sha> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
 empty with `off` (then no line).
@@ -330,11 +330,11 @@ Never `--body "$(…)"`, `--fill` or `--web`: the hook blocks them.
 
 Roborev comment, only after a `done` outcome of V2b (also when every finding was refuted). Right
 after `gh pr create`, with `<nr>` the number at the end of the URL it printed, and `<state>` and
-`<raw>` literally from the output of `roborev_gate.py gate` (after a restart, run `gate` again;
+`<raw>` literally from the output of `lighthouse roborev-gate gate` (after a restart, run `gate` again;
 never build a path yourself):
 
 ```bash
-python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron lokaal --state <state> --raw <raw> > <file>
+lighthouse roborev-comment render --pr <nr> --bron lokaal --state <state> --raw <raw> > <file>
 ```
 
 ```bash
@@ -375,7 +375,7 @@ Refs #1091 — /lighthouse-close-issue runs these rows after the merge and close
 
 ## Counterpart
 
-`.claude/hooks/lighthouse/pr-create-gate.sh` (PreToolUse on `Bash`) enforces the form at every
+`.claude/hooks/lighthouse/run.sh pr-create-gate` (PreToolUse on `Bash`) enforces the form at every
 `gh pr create`/`gh pr new`: no valid form, or a body that does not come from a literal value or
 `--body-file` → block. Under `Closes #N` the hook counts the rows against the criteria; under
 `Refs #N` it checks a table on form and does not count. If it cannot count the ACs of a `Closes`
@@ -387,7 +387,7 @@ pass, name it in `## Verification`.
 OpenCode and Codex do not run the hook. Check the body yourself then:
 
 ```bash
-printf '%s' "gh pr create --repo <forge.repo> --body-file <path>" | python3 .lighthouse/lib/lighthouse_lib/pr_body_gate.py "$PWD"
+printf '%s' "gh pr create --repo <forge.repo> --body-file <path>" | lighthouse pr-body-gate "$PWD"
 ```
 
 Exit 0 = fine (read the messages on stdout); 2 = blocked (reason on stderr); 3 = open quote; any

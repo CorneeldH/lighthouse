@@ -171,7 +171,8 @@ tick starts the next phase itself. Two entries:
    spec (pause, context full) falls under `no`. If the user gave an opt-out in this conversation before the
    commit ("interactive", "review myself"), it is `no`: only the plain block, no post,
    no Status change. It also holds only on the always-on host (`host.toml`)
-   (`lighthouse config host-check`, exit 0). Elsewhere: the plain block plus one
+   (`lighthouse config host-check`, exit 0: `host.controller = true`, or without that key a
+   `tailscale_ip` bound on this machine). Elsewhere: the plain block plus one
    line why: the worktree does not exist there for the controller, and the controller would
    return the issue. Back after the commit: the user moves the Status off `Controller`. That
    only stops the next phase; a running run finishes its phase
@@ -326,7 +327,10 @@ Below it, outside the block, one line: `Run /clear first, then paste the block.`
   `Auto: <category> — <question in one sentence> → <chosen option>`. No choices = no lines.
 - **One goal per hand-off.** Two goals = two blocks = two sessions.
 - **No assumptions about the branch.** If the branch is behind `origin/<default branch>`, say
-  so with the rebase command; do not pretend it will be fine.
+  so with the command that fits the update rule in *Lighthouse: core*: `git merge
+  origin/<default branch>` when the branch is on origin, `git rebase origin/<default branch>`
+  when it is not. Check with `git ls-remote --exit-code --heads origin <branch>` (exit 0 =
+  pushed). Do not pretend it will be fine.
 - **Uncommitted work is a blocker.** Report it, or commit it first — a fresh
   session that finds a dirty tree starts guessing.
 - **Every hand-off carries a command.** The `First step:` line contains a slash command

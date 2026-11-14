@@ -84,6 +84,22 @@ func TestPrepareBlockerStatus(t *testing.T) {
 	}
 }
 
+func TestPrepareCarriesLabels(t *testing.T) {
+	srv, c := client(t)
+	srv.BoardNodes = []map[string]any{
+		node("I7", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 7, map[string]any{
+			"labels": map[string]any{"nodes": []any{map[string]any{"name": "1-loc:mac"}}},
+		})),
+	}
+	pre, err := Prepare(context.Background(), c, testRepo, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pre.Items) != 1 || !reflect.DeepEqual(pre.Items[0].Labels, []string{"1-loc:mac"}) {
+		t.Fatalf("Items = %+v, want issue 7 with label 1-loc:mac", pre.Items)
+	}
+}
+
 func TestPrepareFiltersBoard(t *testing.T) {
 	srv, c := client(t)
 	srv.BoardNodes = []map[string]any{
@@ -450,5 +466,61 @@ func TestReadSnapshotChecksVersion(t *testing.T) {
 		if _, err := ReadSnapshot(path); err == nil {
 			t.Errorf("ReadSnapshot(%s) gave no error", body)
 		}
+	}
+}
+
+func preWithRun(prs ...forge.PR) Pre {
+	p := pre7()
+	p.Items[0].PRs = prs
+	p.OpenRuns = []runs.OpenRun{{ID: 5, Issue: 7}}
+	return p
+}
+
+func readyPR(n int) forge.PR {
+	return forge.PR{Number: n, State: "OPEN", Mergeable: "MERGEABLE", Checks: "SUCCESS"}
+}
+
+func TestCompleteMeasuresRoborev(t *testing.T) {
+	srv, c := client(t)
+	srv.Roles = map[string]string{"owner": "admin"}
+	pending := readyPR(13)
+	pending.Checks = "PENDING"
+	srv.Comments = map[int][]map[string]any{12: {
+		comment(1, "github-actions[bot]", review("abc1234def", "Changes require fixes")),
+	}, 13: {
+		comment(2, "github-actions[bot]", review("abc1234def", "Changes require fixes")),
+	}}
+	pre := preWithRun(readyPR(12), pending)
+	snap, err := Complete(context.Background(), c, pre, NewTrust(c, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	prs := snap.Items[0].PRs
+	if prs[0].Roborev != forge.RoborevOpen || prs[1].Roborev != "" {
+		t.Errorf("Roborev = %q, %q; want open, empty", prs[0].Roborev, prs[1].Roborev)
+	}
+	if got := pre.Items[0].PRs[0].Roborev; got != "" {
+		t.Errorf("Pre PR Roborev = %q, want it untouched", got)
+	}
+}
+
+func TestCompleteReadsPRCommentsOnlyWhenMergeReady(t *testing.T) {
+	conflicting := readyPR(12)
+	conflicting.Mergeable = "CONFLICTING"
+	draft := readyPR(12)
+	draft.Draft = true
+	noRun := preWithRun(readyPR(12))
+	noRun.OpenRuns = nil
+	cases := map[string]Pre{"no open run": noRun, "conflicting": preWithRun(conflicting), "draft": preWithRun(draft)}
+	for name, pre := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv, c := client(t)
+			if _, err := Complete(context.Background(), c, pre, NewTrust(c, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			if n := srv.Count("/repos/o/r/issues/12/comments"); n != 0 {
+				t.Errorf("PR comment requests = %d, want 0", n)
+			}
+		})
 	}
 }

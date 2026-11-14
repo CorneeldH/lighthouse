@@ -1,0 +1,15 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "toml",
+      "text": "[project]\nlanguage = \"nl\"\n"
+    }
+  ],
+  "steps": [
+    {
+      "op": "body_line",
+      "expect": ""
+    }
+  ]
+}

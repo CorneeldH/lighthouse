@@ -1,0 +1,69 @@
+{
+  "description": "Nothing open: exit 2, no stdout, sidecar and document untouched.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\nTekst.\n"
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "reject",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "snapshot",
+      "path": "${a}/round-1.decisions.json",
+      "as": "sidecar"
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}",
+        "--doc",
+        "${tmp}/plan.md"
+      ],
+      "expect": {
+        "code": 2,
+        "stdout_equals": "",
+        "stderr_contains": [
+          "no open"
+        ]
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${a}/round-1.decisions.json",
+      "same_as": "sidecar"
+    },
+    {
+      "op": "expect_file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\nTekst.\n"
+    }
+  ]
+}

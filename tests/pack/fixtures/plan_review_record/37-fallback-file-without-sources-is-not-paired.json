@@ -1,0 +1,78 @@
+{
+  "description": "round-1.fallback.json without sources: copied, but the record is not paired.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MINOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "minor_no",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.fallback.json",
+      "json": {
+        "findings": []
+      }
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "fallback",
+        "--reviewer-model",
+        "m",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "record": {
+          "paired": false,
+          "shadow": null,
+          "findings": [
+            {
+              "finding_id": "r1-f1",
+              "round": 1,
+              "severity": "MINOR",
+              "cat": "code",
+              "decision": "minor_no",
+              "same_as": null,
+              "source": null,
+              "severity_by_source": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}/round-1.fallback.json",
+      "exists": true
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "description": "a second worktree writes under its own git dir",
+  "setup": [
+    {
+      "do": "worktree",
+      "name": "wt",
+      "branch": "other"
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "{\"decision\":\"codex\",\"reason\":\"ok\"}"
+      ],
+      "expect": {
+        "state": "$repo/.git/worktrees/wt/lighthouse/roborev/other.json"
+      },
+      "root": "$wt"
+    },
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "{\"decision\":\"codex\",\"reason\":\"ok\"}"
+      ],
+      "expect": {
+        "state": "$repo/.git/lighthouse/roborev/feat.json"
+      }
+    }
+  ]
+}

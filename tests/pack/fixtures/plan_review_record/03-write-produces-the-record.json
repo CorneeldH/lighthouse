@@ -1,0 +1,137 @@
+{
+  "description": "A full write: dir listing, hashes, reviewer, findings, round kinds; .events files stay behind.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR",
+        "MINOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accept",
+          "reason": "klopt"
+        },
+        {
+          "finding_id": "r1-f2",
+          "decision": "minor_yes",
+          "reason": "batch"
+        }
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.json.events",
+      "text": "groot\n"
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-2.json",
+      "json": {
+        "review_markdown": "x",
+        "status": "Majors only",
+        "findings": [],
+        "verified": [
+          "r1-f1"
+        ]
+      }
+    },
+    {
+      "op": "commit",
+      "files": {
+        "${PLAN}": "# plan v2\n"
+      },
+      "message": "fix"
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "stdout_equals": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}\n",
+        "dir_files": [
+          "attempt.json",
+          "record.json",
+          "round-1.decisions.json",
+          "round-1.json",
+          "round-2.json"
+        ],
+        "record": {
+          "reviewed_sha": "${base_sha}",
+          "final_sha": "${head}",
+          "plan_sha256_reviewed": "c6d6fd0a1650d01493f5b00bc2740a1de7a8c5353d913c7176afa19cb1047802",
+          "plan_sha256_final": "1c3dfba396998c69abed13e8ac4bef681f5e4cce2587e0a9f850bc04734ba469",
+          "specs": [
+            {
+              "path": "docs/developer/planning/specs/2026-09-25-voorbeeld-design.md",
+              "sha256": "1b355baa30768cee67e2f1f9ff2d45584cb42f9413881d9104579d26cff1d2e8"
+            }
+          ],
+          "reviewer": {
+            "model": "gpt-5.6-sol",
+            "codex_version": "codex-cli 9.9.9",
+            "same_family": false
+          },
+          "level": "high",
+          "rounds": 2,
+          "outcome": "converged",
+          "schema_version": 5,
+          "round_kinds": [
+            "review",
+            "verify"
+          ],
+          "verifier_prompt_sha256": null,
+          "verification_schema_sha256": null,
+          "findings": [
+            {
+              "finding_id": "r1-f1",
+              "round": 1,
+              "severity": "MAJOR",
+              "cat": "code",
+              "decision": "accept",
+              "same_as": null,
+              "source": null,
+              "severity_by_source": null
+            },
+            {
+              "finding_id": "r1-f2",
+              "round": 1,
+              "severity": "MINOR",
+              "cat": "code",
+              "decision": "minor_yes",
+              "same_as": null,
+              "source": null,
+              "severity_by_source": null
+            }
+          ],
+          "last_round_open": [],
+          "issue_spec": null
+        }
+      }
+    }
+  ]
+}

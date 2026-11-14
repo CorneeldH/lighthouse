@@ -1,0 +1,19 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "path",
+      "mode": "git_only"
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect": {
+        "verdict": "skip",
+        "reason": "geen roborev of codex op PATH"
+      }
+    }
+  ]
+}

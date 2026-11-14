@@ -13,10 +13,15 @@ import subprocess
 import tomllib
 from pathlib import Path
 
-from tests.pack._testkit import bash_payload, git, init_repo
+import pytest
+
+from tests.pack._testkit import RUN_SH_TOOLS, bash_payload, git, init_repo, tool_bin
 
 ROOT = Path(__file__).resolve().parents[1]
 SETTINGS = ROOT / ".claude" / "settings.json"
+
+# The Go hooks run as `lighthouse hook <name>` behind run.sh: the binary of this checkout.
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
 # entire's own hooks (#194), each a no-op when entire is not installed. The project
 # owns them; init does not manage them.
@@ -43,10 +48,15 @@ def _registered(matcher: str, script: str) -> str:
     return commands[0]
 
 
-def _run_registered(command: str, payload: dict, cwd: Path) -> subprocess.CompletedProcess:
+def _run_registered(
+    command: str, payload: dict, cwd: Path, tmp_path: Path
+) -> subprocess.CompletedProcess:
     # Without the LIGHTHOUSE_* overrides of the test session, the hook finds its lib
     # the way it does in this repo.
     env = {k: v for k, v in os.environ.items() if not k.startswith("LIGHTHOUSE_")}
+    # Without `go` on the PATH, run.sh in this `dev` checkout builds nothing and takes
+    # the `lighthouse` of the test session (the lighthouse_bin fixture).
+    env["PATH"] = str(tool_bin(tmp_path / "bin", (*RUN_SH_TOOLS, "git", "lighthouse", "sh")))
     return subprocess.run(
         ["sh", "-c", command],
         input=json.dumps(payload),
@@ -63,9 +73,10 @@ def test_registered_bash_hook_blocks_a_commit_on_main(tmp_path):
     init_repo(repo)
 
     result = _run_registered(
-        _registered("Bash", "main-commit-gate.sh"),
+        _registered("Bash", "run.sh main-commit-gate"),
         bash_payload('git commit -m "x"', repo),
         cwd=repo,
+        tmp_path=tmp_path,
     )
 
     assert result.returncode == 2, result.stdout
@@ -79,9 +90,10 @@ def test_registered_bash_hook_allows_a_commit_on_a_branch(tmp_path):
     git(repo, "checkout", "-q", "-b", "issue-1-x")
 
     result = _run_registered(
-        _registered("Bash", "main-commit-gate.sh"),
+        _registered("Bash", "run.sh main-commit-gate"),
         bash_payload('git commit -m "x"', repo),
         cwd=repo,
+        tmp_path=tmp_path,
     )
 
     assert result.returncode == 0, result.stderr
@@ -97,7 +109,7 @@ def test_registered_edit_hook_warns_in_main_checkout(tmp_path):
     }
 
     result = _run_registered(
-        _registered("Edit|Write", "worktree-check.sh"), payload, cwd=repo
+        _registered("Edit|Write", "run.sh worktree-check"), payload, cwd=repo, tmp_path=tmp_path
     )
 
     assert result.returncode == 0, result.stderr

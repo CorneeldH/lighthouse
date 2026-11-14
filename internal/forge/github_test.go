@@ -314,6 +314,20 @@ func TestErrorIncludesGitHubMessage(t *testing.T) {
 	}
 }
 
+func TestStatusErrorKeepsMessage(t *testing.T) {
+	c, _ := newTestClient(t, map[string]fakeResponse{
+		issuesURL1: {status: 404, body: `{"message":"Not Found"}`},
+	})
+	_, err := c.OpenIssues(context.Background())
+	var se *httpStatusError
+	if !errors.As(err, &se) {
+		t.Fatalf("err = %v, want *httpStatusError", err)
+	}
+	if se.Code != 404 || se.Message != "Not Found" || se.RateLimited {
+		t.Fatalf("got %+v, want 404, Not Found, not rate limited", se)
+	}
+}
+
 func TestIssueReadsTitleAndURL(t *testing.T) {
 	srv, c := boardClient(t)
 	srv.Issues = map[int]map[string]any{

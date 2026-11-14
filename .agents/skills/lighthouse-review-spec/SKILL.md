@@ -149,7 +149,7 @@ Then start an attempt, outside the sandbox of your harness (or ask for escalatio
 writes outside the working directory.
 
 ```bash
-python3 .lighthouse/scripts/plan_review_record.py start --kind spec <spec>
+lighthouse plan-review-record start --kind spec <spec>
 ```
 
 It prints the attempt directory (below `<ATTEMPT>`) and records the commit that round 1 reads.
@@ -178,7 +178,7 @@ cp <spec> <ATTEMPT>/round-<n>.snapshot.md
 **Only round 1 is a review:**
 
 ```bash
-.agents/skills/lighthouse-review-spec/review.sh \
+lighthouse review-run --kind spec --skill-dir .agents/skills/lighthouse-review-spec \
   <spec> 1 <ATTEMPT>/round-1.json none [max]
 ```
 
@@ -192,7 +192,7 @@ git diff --no-index <ATTEMPT>/round-<n-1>.snapshot.md <spec> > <ATTEMPT>/round-<
 `git diff --no-index` exits 1 when there is a difference; that is no error. Then run:
 
 ```bash
-.agents/skills/lighthouse-review-spec/verify.sh \
+lighthouse review-run --kind spec --verify --skill-dir .agents/skills/lighthouse-review-spec \
   <spec> <n> <ATTEMPT>/round-<n>.json \
   <ATTEMPT>/round-<n-1>.json [max] --context <ATTEMPT>/round-<n>.fixes.diff
 ```
@@ -277,7 +277,7 @@ may have gaps.
   `accept-open` in step 5, never by hand), `minor_yes` or `minor_no`.
 - `same_as`: the ID of the same finding in an earlier round; otherwise leave it out.
 
-`review.sh` names the sidecar in the prior block of round N+1, so that it sees what was
+`lighthouse review-run` names the sidecar in the prior block of round N+1, so that it sees what was
 rejected and why.
 
 ### 4. Fix
@@ -314,7 +314,7 @@ No fixes = no commit; never make an empty commit.
 
 **At `round_limit` you record the open points and go on**, in this order:
 
-1. `python3 .lighthouse/scripts/plan_review_record.py accept-open <ATTEMPT> --doc <spec>`
+1. `lighthouse plan-review-record accept-open <ATTEMPT> --doc <spec>`
    (outside the sandbox, as with `start` and `write`). This rewrites `round-3.decisions.json`
    (every open point becomes `accepted_open`) and puts the block `heading:open_after_review` at
    the bottom of the spec; an existing block is replaced, never doubled. Exit 2 with on stderr
@@ -331,7 +331,7 @@ No fixes = no commit; never make an empty commit.
 Then the record, at every outcome (outside the sandbox, see step 2):
 
 ```bash
-python3 .lighthouse/scripts/plan_review_record.py write <ATTEMPT> \
+lighthouse plan-review-record write <ATTEMPT> \
   --outcome <converged|round_limit|aborted> --review-mode codex [--level max] \
   --skill-dir .agents/skills/lighthouse-review-spec
 ```
@@ -369,10 +369,10 @@ A clean context still helps; other blind spots you do not get for free.
 ## Extensions
 
 - Plans: `/lighthouse-review-plan`. Same runner, with its own prompt and schema
-  through `--prompt`/`--schema` and the spec(s) through `--context` (see the head of
-  `review.sh`).
-- Verification: `verify.sh` (next to this file) is a second wrapper on the same runner, with
+  through `--kind plan` (or `--prompt`/`--schema`) and the spec(s) through `--context` (see
+  `lighthouse review-run --help`).
+- Verification: `lighthouse review-run --kind spec --verify` is the same runner, with
   `verifier-prompt.md` and `verification.schema.json` instead of the round-1 prompt and schema.
-  From round 2 on it runs instead of `review.sh` (step 2).
+  From round 2 on it runs instead of the round-1 call (step 2).
 - Tune the prompt in `reviewer-prompt.md` — this SKILL.md never reads the content, only the
   placeholders.

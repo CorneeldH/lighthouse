@@ -1,0 +1,17 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "not json"
+      ],
+      "expect": {
+        "verdict": "skip",
+        "reason": "Codex-budget: onleesbaar - exit 0"
+      }
+    }
+  ]
+}

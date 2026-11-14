@@ -1,0 +1,54 @@
+{
+  "description": "No sidecar file: accept-open creates it with a row per open point.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\nTekst.\n"
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "BLOCKER",
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}",
+        "--doc",
+        "${tmp}/plan.md"
+      ],
+      "expect": {}
+    },
+    {
+      "op": "expect_file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accepted_open",
+          "reason": "round_limit; without an earlier decision"
+        },
+        {
+          "finding_id": "r1-f2",
+          "decision": "accepted_open",
+          "reason": "round_limit; without an earlier decision"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "record",
+      "error": "give either skip or sha"
+    }
+  ]
+}

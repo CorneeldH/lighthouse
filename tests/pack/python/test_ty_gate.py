@@ -20,11 +20,13 @@ from pathlib import Path
 import pytest
 
 from tests.pack._testkit import (
-    CORE,
     MINIMAL_TOML,
     alarm_line,
+    _path_without_lighthouse,
     git,
     install_pack,
+    lighthouse_stub,
+    path_with_lighthouse,
     past_this_second,
     prompt_entry,
     result_entry,
@@ -38,6 +40,10 @@ from tests.pack._testkit import (
 
 PACK = Path(__file__).resolve().parents[3] / "pack" / "python"
 UNCHECKED = "ty-gate: COULD NOT CHECK — "
+
+# `tool_bin` links the `lighthouse` built from this checkout: the gate finds its roots
+# with `lighthouse turn-roots`.
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 UNDETERMINED = UNCHECKED + "the checkout of this turn cannot be determined: "
 
 # The real uv cache, fixed once at import: `_run` moves XDG_CACHE_HOME, which uv
@@ -90,6 +96,9 @@ def _run(
         # Never the real alarm of the machine running the tests.
         XDG_CACHE_HOME=str(root.parent / "xdg-cache"),
         UV_CACHE_DIR=UV_CACHE,
+        # The gate reads the alarm with `lighthouse usage alarm`: the one built from this
+        # checkout, never an older one installed on the machine.
+        PATH=path_with_lighthouse(),
     )
     full_env.update(env or {})
     return subprocess.run(
@@ -257,7 +266,7 @@ def test_ty_skipped_root_needs_no_uvx(tmp_path):
     payload = _turn(tmp_path, root, "README.md", committed=True)
     bin_dir = tool_bin(
         tmp_path / "bin",
-        ("bash", "jq", "git", "python3", "cat", "sort", "sed", "mktemp", "rm", "tr", "head", "dirname"),
+        ("bash", "jq", "git", "python3", "lighthouse", "cat", "sort", "sed", "mktemp", "rm", "tr", "head", "dirname"),
     )
     message = _message(_run(root, payload, env={"PATH": str(bin_dir)}))
     assert message == _skip_message(root)
@@ -296,12 +305,12 @@ def test_ty_unchecked_without_venv(tmp_path):
     assert message.startswith(UNCHECKED + "no .venv"), message
 
 
-@pytest.mark.parametrize("tool", ["jq", "uvx"])
+@pytest.mark.parametrize("tool", ["jq", "uvx", "lighthouse"])
 def test_ty_unchecked_without_tool(tmp_path, tool):
     root = _fake_repo(tmp_path)
     bin_dir = tool_bin(
         tmp_path / "bin",
-        ("bash", "jq", "git", "uvx", "python3", "cat", "sort", "sed", "mktemp", "rm"),
+        ("bash", "jq", "git", "uvx", "python3", "lighthouse", "cat", "sort", "sed", "mktemp", "rm"),
         drop=tool,
     )
     message = _message(_run(root, env={"PATH": str(bin_dir)}))
@@ -460,9 +469,44 @@ def test_unreadable_usage_alarm_still_blocks(tmp_path, kind):
     assert _run(root, env=env).returncode == 2
 
 
-def test_without_core_a_valid_alarm_still_blocks(tmp_path):
+def test_without_lighthouse_a_valid_alarm_could_not_check(tmp_path):
     root, env = _alarm_repo(tmp_path, alarm_line())
-    result = _run(root, env=env, hook=CORE.parent / "python" / "hooks" / "ty-gate.sh")
+    env["PATH"] = _path_without_lighthouse(tmp_path / "path-shadow")
+    message = _message(_run(root, env=env))
+    assert message == (
+        UNCHECKED + "lighthouse is missing. Nothing was type-checked; that is not a green light."
+    )
+
+
+def test_alarm_is_read_with_lighthouse_usage_alarm(tmp_path):
+    root, env = _alarm_repo(tmp_path)
+    fake = tool_bin(
+        tmp_path / "fake-lighthouse",
+        (),
+        stubs={
+            "lighthouse": lighthouse_stub(
+                '[ "$*" = "usage alarm" ] || exit 1\n'
+                "echo 'venster 92 9_15 2099-01-01T00:00:00Z'\n"
+            )
+        },
+    )
+    env["PATH"] = f"{fake}:{path_with_lighthouse()}"
+    result = _run(root, env=env)
+    assert _message(result) == (
+        "ty-gate: not checked — the usage alarm is up until 9 15; "
+        "the usage gate wraps up this session."
+    )
+
+
+def test_help_text_from_an_old_lighthouse_is_no_alarm(tmp_path):
+    root, env = _alarm_repo(tmp_path)
+    fake = tool_bin(
+        tmp_path / "old-lighthouse",
+        (),
+        stubs={"lighthouse": lighthouse_stub("echo 'Usage:'\necho '  lighthouse usage [command]'\n")},
+    )
+    env["PATH"] = f"{fake}:{path_with_lighthouse()}"
+    result = _run(root, env=env)
     assert result.returncode == 2, result.stdout
     assert "invalid-assignment" in result.stderr
 

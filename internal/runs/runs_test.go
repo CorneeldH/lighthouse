@@ -358,3 +358,63 @@ func TestTakeFixPR(t *testing.T) {
 		t.Errorf("history = %+v, want one row with trigger fixpr and key fixpr:12:abc123", rows)
 	}
 }
+
+func TestNoteMergeFailed(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	r, err := Take(ctx, db, claim("owner/a", 7, "start:7"))
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := NoteMergeFailed(ctx, db, r.ID, "abc1234", "Pull Request is not mergeable"); err != nil {
+		t.Fatalf("NoteMergeFailed: %v", err)
+	}
+	open, err := Open(ctx, db, "owner/a")
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if len(open) != 1 || open[0].MergeSHA != "abc1234" || open[0].MergeError != "Pull Request is not mergeable" {
+		t.Fatalf("Open = %+v, want merge note abc1234 / Pull Request is not mergeable", open)
+	}
+	hist, err := History(ctx, db, "owner/a")
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if len(hist) != 1 || hist[0].MergeSHA != "abc1234" || hist[0].MergeError != "Pull Request is not mergeable" {
+		t.Fatalf("History = %+v, want merge note abc1234 / Pull Request is not mergeable", hist)
+	}
+	if err := Release(ctx, db, r.ID, Done, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if err := NoteMergeFailed(ctx, db, r.ID, "def5678", "other"); !errors.Is(err, ErrNotOpen) {
+		t.Errorf("NoteMergeFailed on closed run = %v, want ErrNotOpen", err)
+	}
+	if err := NoteMergeFailed(ctx, db, r.ID+99, "def5678", "other"); !errors.Is(err, ErrNotOpen) {
+		t.Errorf("NoteMergeFailed on unknown run = %v, want ErrNotOpen", err)
+	}
+	hist, err = History(ctx, db, "owner/a")
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if hist[0].MergeSHA != "abc1234" || hist[0].MergeError != "Pull Request is not mergeable" {
+		t.Errorf("closed row changed: %+v", hist[0])
+	}
+}
+
+func TestTakeStoresNode(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c := claim("o/r", 7, "start:7")
+	c.Node = "node-a"
+	if _, err := Take(ctx, db, c); err != nil {
+		t.Fatal(err)
+	}
+	open, err := Open(ctx, db, "o/r")
+	if err != nil || len(open) != 1 || open[0].Node != "node-a" {
+		t.Errorf("Open = %+v, %v; want one run on node-a", open, err)
+	}
+	hist, err := History(ctx, db, "o/r")
+	if err != nil || len(hist) != 1 || hist[0].Node != "node-a" {
+		t.Errorf("History = %+v, %v; want one row on node-a", hist, err)
+	}
+}

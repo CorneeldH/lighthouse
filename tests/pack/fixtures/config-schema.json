@@ -271,6 +271,7 @@
  "host_keys": [
   "host.name",
   "host.tailscale_ip",
+  "host.controller",
   "host.gate_slice",
   "host.scan_memory_max",
   "host.scan_cpu_quota",

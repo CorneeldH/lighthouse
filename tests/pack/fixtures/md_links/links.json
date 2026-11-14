@@ -1,0 +1,807 @@
+{
+  "strip_code": [
+    {
+      "name": "both fence styles and inline code",
+      "text": "a\n\u0060\u0060\u0060\n[x](f1.md)\n\u0060\u0060\u0060\n~~~markdown\n[y](f2.md)\n~~~\n`[z](f3.md)` [w](ok.md)\n",
+      "expect": "a\n [w](ok.md)"
+    },
+    {
+      "name": "fence marker inside a line",
+      "text": "s = \"\u0060\u0060\u0060\"\n[x](echt.md)\n",
+      "expect": "s = \"`\"\n[x](echt.md)"
+    },
+    {
+      "name": "indented fence",
+      "text": "  \u0060\u0060\u0060\n[x](f.md)\n  \u0060\u0060\u0060\n[y](ok.md)\n",
+      "expect": "[y](ok.md)"
+    },
+    {
+      "name": "unclosed fence swallows the rest",
+      "text": "[a](ok.md)\n\u0060\u0060\u0060\n[b](weg.md)\n",
+      "expect": "[a](ok.md)"
+    },
+    {
+      "name": "crlf line endings",
+      "text": "[a](b.md)\r\n`[c](d.md)` [e](f.md)\r\n",
+      "expect": "[a](b.md)\n [e](f.md)"
+    },
+    {
+      "name": "no trailing newline",
+      "text": "[a](b.md)",
+      "expect": "[a](b.md)"
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "expect": ""
+    },
+    {
+      "name": "nbsp before fence",
+      "text": "\u00a0\u0060\u0060\u0060\n[x](f.md)\n\u0060\u0060\u0060\n[y](ok.md)\n",
+      "expect": "[y](ok.md)"
+    },
+    {
+      "name": "line separator splits a line",
+      "text": "[a](b.md)\u2028[c](d.md)",
+      "expect": "[a](b.md)\n[c](d.md)"
+    },
+    {
+      "name": "form feed splits a line",
+      "text": "x\f~~~\n[a](b.md)\n~~~\n",
+      "expect": "x"
+    },
+    {
+      "name": "inline code does not span lines",
+      "text": "`[a](b.md)\n[c](d.md)`",
+      "expect": "`[a](b.md)\n[c](d.md)`"
+    }
+  ],
+  "relative": [
+    {
+      "name": "plain",
+      "text": "[a](b.md)",
+      "expect": [
+        "b.md"
+      ]
+    },
+    {
+      "name": "anchor cut off",
+      "text": "[a](b.md#kop)",
+      "expect": [
+        "b.md"
+      ]
+    },
+    {
+      "name": "bare anchor",
+      "text": "[a](#kop)",
+      "expect": []
+    },
+    {
+      "name": "https",
+      "text": "[a](https://x.nl)",
+      "expect": []
+    },
+    {
+      "name": "obsidian",
+      "text": "[a](obsidian://x)",
+      "expect": []
+    },
+    {
+      "name": "mailto",
+      "text": "[a](mailto:iemand)",
+      "expect": []
+    },
+    {
+      "name": "absolute",
+      "text": "[a](/abs.md)",
+      "expect": []
+    },
+    {
+      "name": "double slash",
+      "text": "[a](//x.md)",
+      "expect": []
+    },
+    {
+      "name": "double quoted title",
+      "text": "[a](c.md \"titel\")",
+      "expect": [
+        "c.md"
+      ]
+    },
+    {
+      "name": "deduplicated",
+      "text": "[a](b.md) [c](b.md)",
+      "expect": [
+        "b.md"
+      ]
+    },
+    {
+      "name": "angle with spaces",
+      "text": "[a](<pad met spaties.md>)",
+      "expect": [
+        "pad met spaties.md"
+      ]
+    },
+    {
+      "name": "angle with single quoted title",
+      "text": "[a](<p.md> 'titel')",
+      "expect": [
+        "p.md"
+      ]
+    },
+    {
+      "name": "single quoted title",
+      "text": "[a](d.md 'titel')",
+      "expect": [
+        "d.md"
+      ]
+    },
+    {
+      "name": "parenthesised title",
+      "text": "[a](e.md (titel))",
+      "expect": [
+        "e.md"
+      ]
+    },
+    {
+      "name": "two links with titles",
+      "text": "[a](f.md \"titel\") [b](g.md (t))",
+      "expect": [
+        "f.md",
+        "g.md"
+      ]
+    },
+    {
+      "name": "windows drive counts as scheme",
+      "text": "[a](c:/x.md)",
+      "expect": []
+    },
+    {
+      "name": "empty destination",
+      "text": "[a]()",
+      "expect": []
+    },
+    {
+      "name": "empty angle destination",
+      "text": "[a](<>)",
+      "expect": []
+    },
+    {
+      "name": "anchor only after path-less angle",
+      "text": "[a](<#kop>)",
+      "expect": []
+    },
+    {
+      "name": "empty text",
+      "text": "[](b.md)",
+      "expect": [
+        "b.md"
+      ]
+    },
+    {
+      "name": "text with brackets inside link",
+      "text": "[a [b]](c.md)",
+      "expect": []
+    },
+    {
+      "name": "space before close",
+      "text": "[a]( b.md )",
+      "expect": []
+    },
+    {
+      "name": "newline before close",
+      "text": "[a](b.md\n)",
+      "expect": [
+        "b.md"
+      ]
+    },
+    {
+      "name": "unclosed",
+      "text": "[a](b.md",
+      "expect": []
+    },
+    {
+      "name": "image link",
+      "text": "![alt](img.png)",
+      "expect": [
+        "img.png"
+      ]
+    },
+    {
+      "name": "order kept",
+      "text": "[a](z.md) [b](a.md) [c](z.md)",
+      "expect": [
+        "z.md",
+        "a.md"
+      ]
+    },
+    {
+      "name": "both fence styles and inline code",
+      "text": "a\n\u0060\u0060\u0060\n[x](f1.md)\n\u0060\u0060\u0060\n~~~markdown\n[y](f2.md)\n~~~\n`[z](f3.md)` [w](ok.md)\n",
+      "expect": [
+        "ok.md"
+      ]
+    },
+    {
+      "name": "fence marker inside a line",
+      "text": "s = \"\u0060\u0060\u0060\"\n[x](echt.md)\n",
+      "expect": [
+        "echt.md"
+      ]
+    },
+    {
+      "name": "crlf",
+      "text": "[a](b.md)\r\n[c](weg.md)\r\n",
+      "expect": [
+        "b.md",
+        "weg.md"
+      ]
+    },
+    {
+      "name": "crlf in fence",
+      "text": "\u0060\u0060\u0060\r\n[x](f.md)\r\n\u0060\u0060\u0060\r\n[y](ok.md)\r\n",
+      "expect": [
+        "ok.md"
+      ]
+    },
+    {
+      "name": "nbsp separates a title",
+      "text": "[a](b.md\u00a0\"titel\")",
+      "expect": [
+        "b.md"
+      ]
+    },
+    {
+      "name": "nbsp before close",
+      "text": "[a](b.md\u00a0)",
+      "expect": [
+        "b.md"
+      ]
+    },
+    {
+      "name": "nbsp after open",
+      "text": "[a](\u00a0b.md)",
+      "expect": []
+    },
+    {
+      "name": "nbsp inside bare target",
+      "text": "[a](b\u00a0c.md)",
+      "expect": []
+    },
+    {
+      "name": "nbsp inside angle target",
+      "text": "[a](<b\u00a0c.md>)",
+      "expect": [
+        "b\u00a0c.md"
+      ]
+    },
+    {
+      "name": "nbsp between links",
+      "text": "[a](b.md)\u00a0[c](d.md)",
+      "expect": [
+        "b.md",
+        "d.md"
+      ]
+    },
+    {
+      "name": "nbsp before fence",
+      "text": "\u00a0\u0060\u0060\u0060\n[x](f.md)\n\u0060\u0060\u0060\n[y](ok.md)\n",
+      "expect": [
+        "ok.md"
+      ]
+    },
+    {
+      "name": "line separator between links",
+      "text": "[a](b.md)\u2028[c](d.md)",
+      "expect": [
+        "b.md",
+        "d.md"
+      ]
+    },
+    {
+      "name": "ideographic space as title separator",
+      "text": "[a](b.md\u3000\"t\")",
+      "expect": [
+        "b.md"
+      ]
+    },
+    {
+      "name": "tab before title",
+      "text": "[a](b.md\t\"t\")",
+      "expect": [
+        "b.md"
+      ]
+    },
+    {
+      "name": "percent escape kept",
+      "text": "[a](a%20b.md)",
+      "expect": [
+        "a%20b.md"
+      ]
+    },
+    {
+      "name": "invalid percent kept",
+      "text": "[a](100%.md)",
+      "expect": [
+        "100%.md"
+      ]
+    },
+    {
+      "name": "uppercase scheme",
+      "text": "[a](HTTP://x)",
+      "expect": []
+    },
+    {
+      "name": "scheme-like with digits",
+      "text": "[a](a1+b.c-d:x)",
+      "expect": []
+    },
+    {
+      "name": "path with colon later",
+      "text": "[a](dir/a:b.md)",
+      "expect": [
+        "dir/a:b.md"
+      ]
+    }
+  ],
+  "absolute": [
+    {
+      "name": "new link forms",
+      "text": "[a](</home/x y.md>) [b](/abs.md 'titel') [c](/p.md (titel))",
+      "expect": [
+        "/home/x y.md",
+        "/abs.md",
+        "/p.md"
+      ]
+    },
+    {
+      "name": "outside code only",
+      "text": "[a](/home/x.md)\n\u0060\u0060\u0060\n[b](/home/y.md)\n\u0060\u0060\u0060\n",
+      "expect": [
+        "/home/x.md"
+      ]
+    },
+    {
+      "name": "relative links are not absolute",
+      "text": "[a](b.md) [c](#kop) [d](https://x.nl)",
+      "expect": []
+    },
+    {
+      "name": "anchor on absolute target kept",
+      "text": "[a](/x.md#kop)",
+      "expect": [
+        "/x.md#kop"
+      ]
+    },
+    {
+      "name": "double slash",
+      "text": "[a](//x.md)",
+      "expect": [
+        "//x.md"
+      ]
+    },
+    {
+      "name": "duplicates kept",
+      "text": "[a](/x.md) [b](/x.md)",
+      "expect": [
+        "/x.md",
+        "/x.md"
+      ]
+    },
+    {
+      "name": "in inline code",
+      "text": "`[a](/x.md)` [b](/y.md)",
+      "expect": [
+        "/y.md"
+      ]
+    },
+    {
+      "name": "crlf",
+      "text": "[a](/x.md)\r\n[b](/y.md)\r\n",
+      "expect": [
+        "/x.md",
+        "/y.md"
+      ]
+    },
+    {
+      "name": "nbsp separates a title",
+      "text": "[a](/x.md\u00a0\"titel\")",
+      "expect": [
+        "/x.md"
+      ]
+    },
+    {
+      "name": "nbsp inside angle target",
+      "text": "[a](</x\u00a0y.md>)",
+      "expect": [
+        "/x\u00a0y.md"
+      ]
+    },
+    {
+      "name": "angle with trailing space",
+      "text": "[a](</x.md >)",
+      "expect": [
+        "/x.md "
+      ]
+    },
+    {
+      "name": "root only",
+      "text": "[a](/)",
+      "expect": [
+        "/"
+      ]
+    }
+  ],
+  "problems": [
+    {
+      "name": "angle link with spaces",
+      "files": {
+        "a b.md": "x",
+        "doc.md": "[ok](<a b.md>) [weg](<c d.md>) [t](weg.md 'titel')\n"
+      },
+      "dirs": [],
+      "md": "doc.md",
+      "expect": [
+        [
+          "dead",
+          "c d.md"
+        ],
+        [
+          "dead",
+          "weg.md"
+        ]
+      ]
+    },
+    {
+      "name": "dead absolute and outside root",
+      "files": {
+        "docs/er.md": "x",
+        "docs/n.md": "[a](er.md) [b](weg.md) [c](/home/z.md) [d](../../buiten.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "weg.md"
+        ],
+        [
+          "absolute",
+          "/home/z.md"
+        ]
+      ]
+    },
+    {
+      "name": "existing directory",
+      "files": {
+        "docs/n.md": "[h](sub/)\n"
+      },
+      "dirs": [
+        "docs/sub"
+      ],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "directory without trailing slash",
+      "files": {
+        "docs/n.md": "[h](sub)\n"
+      },
+      "dirs": [
+        "docs/sub"
+      ],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "percent escapes decoded",
+      "files": {
+        "docs/a b.md": "x",
+        "docs/n.md": "[x](a%20b.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "percent escapes decoded, dead",
+      "files": {
+        "docs/n.md": "[x](a%20b.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "a%20b.md"
+        ]
+      ]
+    },
+    {
+      "name": "invalid percent is kept literally",
+      "files": {
+        "docs/100%.md": "x",
+        "docs/n.md": "[x](100%.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "invalid percent, dead",
+      "files": {
+        "docs/n.md": "[x](100%.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "100%.md"
+        ]
+      ]
+    },
+    {
+      "name": "percent followed by non-hex",
+      "files": {
+        "docs/a%zz.md": "x",
+        "docs/n.md": "[x](a%zz.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "percent with one hex digit",
+      "files": {
+        "docs/a%2.md": "x",
+        "docs/n.md": "[x](a%2.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "utf-8 percent escape",
+      "files": {
+        "docs/\u00e9.md": "x",
+        "docs/n.md": "[x](%C3%A9.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "invalid utf-8 percent escape",
+      "files": {
+        "docs/n.md": "[x](%FF.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "%FF.md"
+        ]
+      ]
+    },
+    {
+      "name": "encoded slash",
+      "files": {
+        "docs/a/b.md": "x",
+        "docs/n.md": "[x](a%2Fb.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "plus is not a space",
+      "files": {
+        "docs/a+b.md": "x",
+        "docs/n.md": "[x](a+b.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "encoded dotdot leaves the root",
+      "files": {
+        "docs/n.md": "[x](..%2F..%2Fbuiten.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "parent inside root",
+      "files": {
+        "top.md": "x",
+        "docs/n.md": "[x](../top.md) [y](../weg.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "../weg.md"
+        ]
+      ]
+    },
+    {
+      "name": "anchor on existing file",
+      "files": {
+        "docs/er.md": "x",
+        "docs/n.md": "[x](er.md#kop) [y](weg.md#kop)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "weg.md"
+        ]
+      ]
+    },
+    {
+      "name": "dead links deduplicated",
+      "files": {
+        "docs/n.md": "[a](weg.md) [b](weg.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "weg.md"
+        ]
+      ]
+    },
+    {
+      "name": "absolute links not deduplicated",
+      "files": {
+        "docs/n.md": "[a](/x.md) [b](/x.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "absolute",
+          "/x.md"
+        ],
+        [
+          "absolute",
+          "/x.md"
+        ]
+      ]
+    },
+    {
+      "name": "dead before absolute",
+      "files": {
+        "docs/n.md": "[a](/x.md) [b](weg.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "weg.md"
+        ],
+        [
+          "absolute",
+          "/x.md"
+        ]
+      ]
+    },
+    {
+      "name": "links in code are ignored",
+      "files": {
+        "docs/n.md": "`[a](weg.md)`\n\u0060\u0060\u0060\n[b](/x.md)\n\u0060\u0060\u0060\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "crlf",
+      "files": {
+        "docs/er.md": "x",
+        "docs/n.md": "[a](er.md)\r\n[b](weg.md)\r\n[c](/x.md)\r\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "weg.md"
+        ],
+        [
+          "absolute",
+          "/x.md"
+        ]
+      ]
+    },
+    {
+      "name": "nbsp separates a title",
+      "files": {
+        "docs/er.md": "x",
+        "docs/n.md": "[a](er.md\u00a0\"titel\") [b](weg.md\u00a0\"t\")\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "weg.md"
+        ]
+      ]
+    },
+    {
+      "name": "nbsp in a file name",
+      "files": {
+        "docs/a\u00a0b.md": "x",
+        "docs/n.md": "[a](<a\u00a0b.md>) [b](<c\u00a0d.md>)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": [
+        [
+          "dead",
+          "c\u00a0d.md"
+        ]
+      ]
+    },
+    {
+      "name": "empty file",
+      "files": {
+        "docs/n.md": ""
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "scheme links are ignored",
+      "files": {
+        "docs/n.md": "[a](https://x.nl) [b](mailto:a@b.nl) [c](obsidian://x)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "target is the document itself",
+      "files": {
+        "docs/n.md": "[a](n.md) [b](./n.md) [c](../docs/n.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "dot segments",
+      "files": {
+        "docs/er.md": "x",
+        "docs/n.md": "[a](./er.md) [b](sub/../er.md)\n"
+      },
+      "dirs": [],
+      "md": "docs/n.md",
+      "expect": []
+    },
+    {
+      "name": "root document with parent link",
+      "files": {
+        "n.md": "[a](../buiten.md) [b](weg.md)\n"
+      },
+      "dirs": [],
+      "md": "n.md",
+      "expect": [
+        [
+          "dead",
+          "weg.md"
+        ]
+      ]
+    }
+  ]
+}

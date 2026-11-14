@@ -131,6 +131,7 @@
     },
     {
       "kind": "start",
+      "profile": "software",
       "repo": "o/b",
       "issue": 2,
       "trigger": "handoff",

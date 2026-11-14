@@ -1,0 +1,138 @@
+{
+  "description": "A paired round 1: per-finding source and severity_by_source, shadow, pair files copied.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR",
+        "MINOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "accept",
+          "reason": "x"
+        },
+        {
+          "finding_id": "r1-f2",
+          "decision": "minor_no",
+          "reason": "y"
+        }
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.sources.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "source": "both",
+          "blind_ids": [
+            "A",
+            "B"
+          ],
+          "severity_by_source": {
+            "codex": "MAJOR",
+            "fallback": "MINOR"
+          }
+        },
+        {
+          "finding_id": "r1-f2",
+          "source": "fallback",
+          "blind_ids": [
+            "C"
+          ],
+          "severity_by_source": {
+            "fallback": "MINOR"
+          }
+        }
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/pair.json",
+      "json": {
+        "r1-f1": [
+          "A",
+          "C"
+        ]
+      }
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "aborted",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}",
+        "--shadow-model",
+        "claude-opus-5-5"
+      ],
+      "expect": {
+        "record": {
+          "paired": true,
+          "shadow": {
+            "model": "claude-opus-5-5",
+            "same_family": true
+          },
+          "findings": [
+            {
+              "finding_id": "r1-f1",
+              "round": 1,
+              "severity": "MAJOR",
+              "cat": "code",
+              "decision": "accept",
+              "same_as": null,
+              "source": "both",
+              "severity_by_source": {
+                "codex": "MAJOR",
+                "fallback": "MINOR"
+              }
+            },
+            {
+              "finding_id": "r1-f2",
+              "round": 1,
+              "severity": "MINOR",
+              "cat": "code",
+              "decision": "minor_no",
+              "same_as": null,
+              "source": "fallback",
+              "severity_by_source": {
+                "fallback": "MINOR"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}/pair.json",
+      "exists": true
+    },
+    {
+      "op": "expect_file",
+      "path": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}/round-1.sources.json",
+      "exists": true
+    }
+  ]
+}

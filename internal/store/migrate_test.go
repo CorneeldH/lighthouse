@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 5 {
-		t.Errorf("user_version = %d, want 5", v2)
+	if v2 != 7 {
+		t.Errorf("user_version = %d, want 7", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -419,7 +419,7 @@ func TestMigrate0005KeepsRuns(t *testing.T) {
 		VALUES (41, 'o/r', 7, 's', 'start', 'fixpr', 'fixpr:7:abc', 1, 'c', 'b', 'w', 'k', 't0', 't1', 'done', 'why')`); err != nil {
 		t.Fatalf("insert row at v4: %v", err)
 	}
-	if err := migrate(ctx, db, migrationFS); err != nil {
+	if err := migrate(ctx, db, embeddedUpTo(t, "0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql", "0004_runs_fixpr.sql", "0005_workspace_removed.sql")); err != nil {
 		t.Fatalf("migrate to 5: %v", err)
 	}
 	if v := userVersion(t, db); v != 5 {
@@ -438,5 +438,60 @@ func TestMigrate0005KeepsRuns(t *testing.T) {
 	}
 	if removed.Valid {
 		t.Errorf("workspace_removed_at = %q, want NULL", removed.String)
+	}
+}
+
+// 0006 adds merge_sha and merge_error to runs: every row from before keeps its columns and has empty notes.
+func TestMigrate0006KeepsRuns(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	upTo5 := []string{"0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql", "0004_runs_fixpr.sql", "0005_workspace_removed.sql"}
+	if err := migrate(ctx, db, embeddedUpTo(t, upTo5...)); err != nil {
+		t.Fatalf("migrate to 5: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command,
+		branch, workspace_id, workplace_session, started_at, ended_at, outcome, reason)
+		VALUES (41, 'o/r', 7, 's', 'start', 'fixpr', 'fixpr:7:abc', 1, 'c', 'b', 'w', 'k', 't0', 't1', 'done', 'why')`); err != nil {
+		t.Fatalf("insert row at v5: %v", err)
+	}
+	if err := migrate(ctx, db, embeddedUpTo(t, append(upTo5, "0006_runs_merge.sql")...)); err != nil {
+		t.Fatalf("migrate to 6: %v", err)
+	}
+	if v := userVersion(t, db); v != 6 {
+		t.Errorf("user_version = %d, want 6", v)
+	}
+	var trigger, key, branch, workspace, session, ended, outcome, reason, mergeSHA, mergeError string
+	err := db.QueryRow(`SELECT trigger, trigger_key, branch, workspace_id, workplace_session, ended_at, outcome, reason,
+		merge_sha, merge_error FROM runs WHERE id = 41`).Scan(&trigger, &key, &branch, &workspace, &session, &ended, &outcome, &reason, &mergeSHA, &mergeError)
+	if err != nil {
+		t.Fatalf("read row after migration: %v", err)
+	}
+	got := []string{trigger, key, branch, workspace, session, ended, outcome, reason, mergeSHA, mergeError}
+	if want := []string{"fixpr", "fixpr:7:abc", "b", "w", "k", "t1", "done", "why", "", ""}; !reflect.DeepEqual(got, want) {
+		t.Errorf("row after migration = %q, want %q", got, want)
+	}
+}
+
+// A run from before 0007 reads node "": that is self.
+func TestMigrationNodeDefault(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	upTo6 := []string{"0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql", "0004_runs_fixpr.sql", "0005_workspace_removed.sql", "0006_runs_merge.sql"}
+	if err := migrate(ctx, db, embeddedUpTo(t, upTo6...)); err != nil {
+		t.Fatalf("migrate to 6: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO runs (repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at)
+		VALUES ('o/r', 7, 's', 'start', 'handoff', 'start:7', 1, 'c', 't0')`); err != nil {
+		t.Fatalf("insert at v6: %v", err)
+	}
+	if err := migrate(ctx, db, embeddedUpTo(t, append(upTo6, "0007_runs_node.sql")...)); err != nil {
+		t.Fatalf("migrate to 7: %v", err)
+	}
+	var node string
+	if err := db.QueryRow(`SELECT node FROM runs WHERE issue = 7`).Scan(&node); err != nil {
+		t.Fatalf("read node: %v", err)
+	}
+	if node != "" {
+		t.Errorf("node = %q, want the empty string (self)", node)
 	}
 }

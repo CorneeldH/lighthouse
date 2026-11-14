@@ -1,14 +1,14 @@
 # lighthouse — dispatcher tick timer (systemd user unit)
 #
-# Starts lighthouse-tick.service two minutes after boot and then every five minutes after the
+# Starts lighthouse-tick.service two minutes after boot and then every three minutes after the
 # last start. Enable this timer, not the service.
 
 [Unit]
-Description=lighthouse — dispatcher tick, every 5 minutes
+Description=lighthouse — dispatcher tick, every 3 minutes
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=5min
+OnUnitActiveSec=3min
 
 [Install]
 WantedBy=timers.target

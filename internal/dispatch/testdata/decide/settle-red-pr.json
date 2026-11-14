@@ -105,6 +105,7 @@
       "repo": "o/r",
       "issue": 7,
       "trigger": "fixpr",
+      "reason": "reason_pr_red",
       "trigger_key": "fixpr:12:abc123",
       "attempt": 1,
       "mode": "start",

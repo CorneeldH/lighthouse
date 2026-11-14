@@ -1,0 +1,73 @@
+{
+  "description": "On a spec attempt the section comes from spec_section; 'defer' closes.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "--kind",
+        "spec",
+        "${SPEC}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "file",
+      "path": "${tmp}/plan.md",
+      "text": "# Plan\n\nTekst.\n"
+    },
+    {
+      "op": "round_raw",
+      "attempt": "a",
+      "n": 1,
+      "findings": [
+        {
+          "severity": "MAJOR",
+          "cat": "x",
+          "spec_section": "§1",
+          "problem": "een"
+        },
+        {
+          "severity": "MAJOR",
+          "cat": "x",
+          "spec_section": "§2",
+          "problem": "twee"
+        }
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": [
+        {
+          "finding_id": "r1-f1",
+          "decision": "defer",
+          "reason": "x"
+        },
+        {
+          "finding_id": "r1-f2",
+          "decision": "accept",
+          "reason": "x"
+        }
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "accept-open",
+        "${a}",
+        "--doc",
+        "${tmp}/plan.md"
+      ],
+      "expect": {
+        "stdout_contains": [
+          "- **r1-f2** (MAJOR, §2): twee"
+        ],
+        "stdout_not_contains": [
+          "r1-f1"
+        ]
+      }
+    }
+  ]
+}

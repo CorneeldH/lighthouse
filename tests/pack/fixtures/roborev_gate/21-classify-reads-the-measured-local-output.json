@@ -1,0 +1,30 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "fixture": "review-local.md",
+      "expect": {
+        "verdict": "done",
+        "sha": "803c1a6"
+      },
+      "triples": [
+        [
+          "pack/core/scripts/roborev_gate.py",
+          184,
+          "medium"
+        ],
+        [
+          "pack/core/scripts/roborev_gate.py",
+          169,
+          "medium"
+        ]
+      ],
+      "text_prefix": [
+        0,
+        "Bij de eerste uitkomst `run`"
+      ]
+    }
+  ]
+}

@@ -39,8 +39,9 @@ export function Panel({
           </span>
           <CardTitle>{title}</CardTitle>
           {count !== undefined && (
-            <span className="rounded-full bg-lh-navy px-2 py-0.5 text-xs font-medium text-white ring-1 ring-border" title={`${count} items`}>
+            <span className="rounded-full bg-lh-navy px-2 py-0.5 text-xs font-medium text-white ring-1 ring-border" title={`${count} ${count === 1 ? 'item' : 'items'}`}>
               {count}
+              <span className="sr-only"> {count === 1 ? 'item' : 'items'}</span>
             </span>
           )}
         </div>

@@ -1,0 +1,27 @@
+{
+  "description": "Documents without a block: empty output, exit 0.",
+  "world": "bare",
+  "steps": [
+    {
+      "op": "file",
+      "path": "${root}/a.md",
+      "text": "# A\n"
+    },
+    {
+      "op": "file",
+      "path": "${root}/b.md",
+      "text": "# B\n\n## Iets\n\n- punt\n"
+    },
+    {
+      "op": "run",
+      "args": [
+        "pr-open-points",
+        "${root}/a.md",
+        "${root}/b.md"
+      ],
+      "expect": {
+        "stdout_equals": ""
+      }
+    }
+  ]
+}
