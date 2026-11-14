@@ -56,6 +56,8 @@
 {"name": "count-acs-counts-checkboxes", "kind": "count_acs", "body": "### Acceptatiecriteria\n- [ ] a\n- [x] b\n### Definition of Done\n- [ ] c", "expect": 2},
 {"name": "count-acs-heading-##", "kind": "count_acs", "body": "## Acceptatiecriteria\n- [ ] a", "expect": 1},
 {"name": "count-acs-heading-####", "kind": "count_acs", "body": "#### Acceptatiecriteria\n- [ ] a", "expect": 1},
+{"name": "count-acs-english-heading", "kind": "count_acs", "body": "### Acceptance criteria\n- [ ] a\n- [x] b\n### Next\n- [ ] c", "expect": 2},
+{"name": "count-acs-heading-any-case", "kind": "count_acs", "body": "### ACCEPTANCE CRITERIA\n- [ ] a", "expect": 1},
 {"name": "count-acs-no-heading", "kind": "count_acs", "body": "- [ ] a", "expect": null},
 {"name": "count-acs-zero-checkboxes", "kind": "count_acs", "body": "### Acceptatiecriteria\ntekst", "expect": null},
 {"name": "count-acs-crlf", "kind": "count_acs", "body": "## Context\r\n\r\ntekst\r\n\r\n### Acceptatiecriteria\r\n- [ ] a\r\n- [x] b\r\n- [X] c\r\n\r\n### Definition of Done\r\n- [ ] d\r\n", "expect": 3},

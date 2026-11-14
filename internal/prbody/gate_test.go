@@ -9,7 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -124,12 +126,10 @@ func TestFetchACCountNoACHeading(t *testing.T) {
 func TestFetchACCountTimeout(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	setTimeouts(t, 300*time.Millisecond, gateDeadline)
-	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\nsleep 30 &\nsleep 30\n"}))
+	pidFile := hangingGH(t)
 	start := time.Now()
 	eq(t, "fetch", fetch(t, context.Background(), "Acme/widgets", 5), fetched{0, false, "timeout after 0.3 s"})
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
-		t.Errorf("took %v, the timeout is 0.3 s", elapsed)
-	}
+	assertGroupGone(t, start, pidFile)
 }
 
 func TestFetchACCountDeadlineExpired(t *testing.T) {
@@ -606,17 +606,81 @@ func TestDeadlineUnderHookTimeout(t *testing.T) {
 	}
 }
 
-// A gh that hangs past the deadline, with a grandchild on stdout, ends within the deadline.
+// hangingGH puts a gh first on PATH that hangs and leaves a background child holding stdout open;
+// the child's pid lands in the returned file. The child is killed at cleanup whatever happens.
+func hangingGH(t *testing.T) string {
+	t.Helper()
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
+	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\nsleep 30 &\necho $! > \"" + pidFile + "\"\nsleep 30\n"}))
+	t.Cleanup(func() {
+		if pid, err := readPid(pidFile); err == nil {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+	})
+	return pidFile
+}
+
+func readPid(path string) (int, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(string(raw)))
+}
+
+// alive reports a process that exists and is no zombie (a container's init may not reap it).
+func alive(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return false
+	}
+	stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return true // no /proc (darwin): kill -0 is the answer
+	}
+	fields := strings.Fields(string(stat[bytes.LastIndexByte(stat, ')')+1:]))
+	return len(fields) == 0 || fields[0] != "Z"
+}
+
+// assertGroupGone fails unless the run ended before waitDelay could end it, and the background
+// child of the stub is gone: the kill reached the whole group, not only gh.
+func assertGroupGone(t *testing.T, start time.Time, pidFile string) {
+	t.Helper()
+	if elapsed := time.Since(start); elapsed >= waitDelay {
+		t.Errorf("took %v: the wait ended through WaitDelay (%v), not through the group kill", elapsed, waitDelay)
+	}
+	pid, err := readPid(pidFile)
+	if err != nil {
+		t.Fatalf("pid of the background child: %v", err)
+	}
+	for end := time.Now().Add(500 * time.Millisecond); alive(pid) && time.Now().Before(end); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if alive(pid) {
+		t.Errorf("background child %d of gh still runs: the group was not killed", pid)
+	}
+}
+
+// A gh that hangs past the deadline, with a grandchild on stdout: the whole group goes.
 func TestRunGHKillsTheGroup(t *testing.T) {
-	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\nsleep 30 &\nsleep 30\n"}))
+	pidFile := hangingGH(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	start := time.Now()
-	_, _, err := RunGH(ctx, "api")
-	if err == nil {
+	if _, _, err := RunGH(ctx, "api"); err == nil {
 		t.Fatal("want an error after the timeout")
 	}
-	if elapsed := time.Since(start); elapsed > 3*time.Second {
-		t.Errorf("took %v, the timeout is 0.3 s", elapsed)
-	}
+	assertGroupGone(t, start, pidFile)
+}
+
+func TestStripCommentsCRLFAndComment(t *testing.T) {
+	eq(t, "strip", StripComments("a\r\n<!-- x\r\ny -->b"), "a\nb")
+}
+
+func TestHasEvidenceBlock(t *testing.T) {
+	refs := "Refs #5 — close-issue toetst na de merge\n\n### Evidence #5\n\n" +
+		"| AC | Command | Result |\n|---|---|---|\n| 1. een | `grep -F a f` | a |\n"
+	eq(t, "block of #5", HasEvidenceBlock(refs, 5), true)
+	eq(t, "no block of #6", HasEvidenceBlock(refs, 6), false)
+	eq(t, "no heading", HasEvidenceBlock("Refs #5 — een reden genoeg", 5), false)
+	eq(t, "heading in a comment", HasEvidenceBlock("Refs #5 — een reden genoeg\n<!--\n### Evidence #5\n-->", 5), false)
 }
