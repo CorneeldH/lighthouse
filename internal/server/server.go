@@ -27,7 +27,8 @@ type healthOutput struct {
 // Deps are the sources the API reads from.
 type Deps struct {
 	Report    func(context.Context) usage.Report
-	Forge     []overview.RepoSource // the repos of the forge endpoints, in the order shown
+	Forge     []overview.RepoSource                            // the repos of the forge endpoints, in the order shown
+	Overview  func(context.Context) (overview.Overview, error) // the forge overview the questions and returned endpoints read
 	Leftovers func(context.Context) ([]workplace.Leftover, error)
 	Runs      func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)
 	RunsMeta  RunsMeta
@@ -53,7 +54,7 @@ func New(site fs.FS, d Deps) http.Handler {
 		return &usageOutput{Body: d.Report(ctx)}, nil
 	}, func(op *huma.Operation) { op.OperationID = "get-usage" })
 
-	registerForge(api, d.Forge)
+	registerForge(api, d.Overview)
 	registerLatestComment(api, d.Forge)
 	registerCleanup(api, d.Leftovers)
 	registerRuns(api, d.Runs, d.RunsMeta)
