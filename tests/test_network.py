@@ -103,7 +103,7 @@ def _check(ok: bool, out: str) -> None:
 
 def test_hook_skips_a_network_failure_and_keeps_the_rest_red(tmp_path):
     (tmp_path / "conftest.py").write_text(
-        "from tests.conftest import pytest_configure, pytest_runtest_makereport  # noqa: F401\n",
+        "from tests.conftest import pytest_runtest_makereport  # noqa: F401\n",
         encoding="utf-8",
     )
     (tmp_path / "test_x.py").write_text(INNER, encoding="utf-8")

@@ -16,9 +16,6 @@ SHARD = pytest.StashKey[tuple[int, int] | None]()
 
 
 def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "network_stays_red: a network error in this test's failure is no skip (#338)"
-    )
     # Checked here, not during collection: pytest_configure runs in the main process before the
     # xdist workers start, so a bad value gives one clean error (exit 4), not crashing workers.
     try:
