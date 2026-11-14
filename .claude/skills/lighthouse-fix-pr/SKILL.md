@@ -144,7 +144,7 @@ gate failed.
 
 Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/run.sh bash-write-check`
 (per edit, with the gates of the language packs that are installed),
-`.claude/hooks/lighthouse/commit-test-gate.sh` (after each commit, on its files) and a pre-push hook, if present
+`.claude/hooks/lighthouse/run.sh commit-test-gate` (after each commit, on its files) and a pre-push hook, if present
 (`test -x "$(git rev-parse --git-path hooks/pre-push)"`).
 The `main-commit-gate` hook blocks a commit that lands on the default branch.
 

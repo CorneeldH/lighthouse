@@ -117,7 +117,7 @@ func runPre(raw []byte, now func() time.Time) error {
 			}
 		}
 	}
-	pruneMarkers(state, now())
+	PruneMarkers(state, now())
 	return nil
 }
 

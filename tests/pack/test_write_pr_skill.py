@@ -193,7 +193,7 @@ def test_v4_gives_a_title_and_writes_the_body_separately():
 
 def test_dod_does_not_run_the_suite_by_hand_in_claude_code():
     dod = _section(TEXT, "## DoD")
-    assert ".claude/hooks/lighthouse/commit-test-gate.sh" in dod
+    assert ".claude/hooks/lighthouse/run.sh commit-test-gate" in dod
     # #80: the gate tests only the files of each commit; CI on the PR is the suite evidence.
     flat = " ".join(dod.split())
     assert "proves only the files of each commit" in flat

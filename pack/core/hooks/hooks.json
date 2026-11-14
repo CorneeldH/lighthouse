@@ -11,7 +11,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-test-gate.sh pre",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh commit-test-gate pre",
             "timeout": 300
           },
           {
@@ -63,7 +63,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-test-gate.sh post",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh commit-test-gate post",
             "timeout": 300
           }
         ]
@@ -89,7 +89,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/commit-test-gate.sh post",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh commit-test-gate post",
             "timeout": 300
           }
         ]

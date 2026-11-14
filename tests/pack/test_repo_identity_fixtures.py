@@ -7,8 +7,8 @@ in the plan of #278 (task 1): a JSON array of objects with `name`, `kind`,
 - `remote_key`: `url` -> the key, or `null`.
 - `same_origin`: `setup`, `project`, `root` -> `[bool, reason]`, or `"raises"`.
 
-`setup` is built by `build_fixture_setup`; placeholders as in
-`test_bash_writes_fixtures.py`.
+`setup` is built by `build_fixture_setup`; placeholders as `fill_fixture` in
+`_testkit.py` fills them.
 """
 
 import json

@@ -16,3 +16,8 @@ func TryLock(string) (*os.File, error) {
 func Lock(string) (*os.File, error) {
 	return nil, errors.New("file lock not supported on this platform")
 }
+
+// TryFile has no flock here.
+func TryFile(*os.File) (bool, error) {
+	return false, errors.New("file lock not supported on this platform")
+}

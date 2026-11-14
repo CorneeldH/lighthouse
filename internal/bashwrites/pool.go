@@ -16,7 +16,7 @@ import (
 
 // The pool and the claims of post: which paths of a root go to the gates, and the ledger rows that
 // record what this post claims and judged. Port of `_RootView` to `_release_claims` in
-// pack/core/lib/bash_writes.py.
+// the former pack/core/lib/bash_writes.py.
 
 // diffCommit is DiffCommit; a test swaps it.
 var diffCommit = DiffCommit

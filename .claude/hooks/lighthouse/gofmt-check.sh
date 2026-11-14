@@ -8,7 +8,7 @@
 # NOT fail-open: without jq, with a payload that is not JSON, or without gofmt,
 # nothing was checked; a silent exit 0 would read as "the file is clean". Every such
 # exit is exit 2 with `gofmt-check: COULD NOT CHECK — <reason>` on the first line (the
-# token bash_writes.classify reads). No file path, another extension or a file that
+# token bashwrites.Classify reads). No file path, another extension or a file that
 # does not exist leave nothing to check: exit 0, without looking for gofmt.
 
 HOOK_NAME="gofmt-check"

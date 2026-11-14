@@ -1,4 +1,5 @@
-"""The --no-verify refusal of pack/core `commit-test-gate.sh pre`, as installed.
+"""The --no-verify refusal of pack/core `commit-test-gate pre` (`run.sh commit-test-gate`),
+as installed.
 
 From paia's `test_quality_hooks.py`: the hook runs as a subprocess with the JSON
 on stdin, so that the contract (exit code + stderr) is tested and not a
@@ -11,7 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import INSTALLED_HOOKS
+from tests.pack._testkit import INSTALL_ROOT, hook_shim
+
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
 
 def _run(hook: Path, payload: dict, cwd: Path) -> subprocess.CompletedProcess:
@@ -25,7 +28,7 @@ def _run(hook: Path, payload: dict, cwd: Path) -> subprocess.CompletedProcess:
     )
 
 
-PRECOMMIT_HOOK = INSTALLED_HOOKS / "commit-test-gate.sh"
+PRECOMMIT_HOOK = hook_shim(INSTALL_ROOT, "commit-test-gate")
 
 
 def test_precommit_hook_blocks_no_verify(tmp_path):

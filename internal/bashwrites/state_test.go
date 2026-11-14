@@ -140,7 +140,7 @@ func TestPruneRemovesOnlyMarkersOlderThanAnHour(t *testing.T) {
 	if err := os.Chtimes(filepath.Join(state, "old.json"), old, old); err != nil {
 		t.Fatal(err)
 	}
-	pruneMarkers(state, now)
+	PruneMarkers(state, now)
 	if _, err := os.Stat(filepath.Join(state, "old.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("old marker survived")
 	}
@@ -160,7 +160,7 @@ func TestPruneKeepsTheLedgerResetSentinel(t *testing.T) {
 	if err := os.Chtimes(sentinel, old, old); err != nil {
 		t.Fatal(err)
 	}
-	pruneMarkers(state, now)
+	PruneMarkers(state, now)
 	if _, err := os.Stat(sentinel); err != nil {
 		t.Fatal("sentinel was pruned")
 	}
