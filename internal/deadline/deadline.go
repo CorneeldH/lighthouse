@@ -100,7 +100,7 @@ func RunCapture(deadline time.Time, argv []string, o Options) (code int, output 
 		}
 		cmd.Stdin = in
 	}
-	inOwnGroup(cmd)
+	InOwnGroup(cmd)
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
 			return NotFoundExit, nil, nil
@@ -127,10 +127,10 @@ func RunCapture(deadline time.Time, argv []string, o Options) (code int, output 
 	select {
 	case <-done:
 	case <-graceTimer.C:
-		hardKill(cmd)
+		KillGroup(cmd)
 		<-done
 	case <-stop:
-		hardKill(cmd)
+		KillGroup(cmd)
 		<-done
 	}
 	if got != nil {
