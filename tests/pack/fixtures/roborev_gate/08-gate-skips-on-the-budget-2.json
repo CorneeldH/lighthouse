@@ -1,0 +1,17 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "{\"decision\":\"not_measurable\",\"reason\":\"not measurable\"}"
+      ],
+      "expect": {
+        "verdict": "skip",
+        "reason": "Codex-budget: not_measurable - not measurable"
+      }
+    }
+  ]
+}

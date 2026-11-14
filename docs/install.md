@@ -147,8 +147,8 @@ The API is read-only. Its routes:
 | `GET /api/health` | the version of the binary |
 | `GET /api/usage` | the Claude and Codex usage windows |
 | `GET /api/runs` | the open and parked runs and the deferred starts, from the tick state |
-| `GET /api/questions` | the open questions, from the forge |
-| `GET /api/returned` | the returned issues, from the forge |
+| `GET /api/questions` | the open questions, from the overview `serve` keeps in memory (see below) |
+| `GET /api/returned` | the returned issues, from the same overview |
 | `GET /api/cleanup` | the workspaces to clean up, from the database |
 | `GET /api/latest-comment?repo=owner/name&issue=N` | the comments of one issue, from the forge; redirects (302) to the newest comment, or to the issue page when it has none or the read fails. A repo `serve` does not serve gets 404 |
 
@@ -165,6 +165,24 @@ it as `owner/name#number`. Every `owner/name#number` in the UI links to
   it is not among them.
 - Without `[dispatch] repos`: the one repository of `--repo owner/name` on `lighthouse serve`, or
   `LIGHTHOUSE_FORGE_REPO=owner/name`.
+
+`/api/questions` and `/api/returned` do not call GitHub per request: they show one shared overview
+that `serve` builds at start and then every 2 minutes (start to start, never two builds at once,
+a time-out of 90 s per build). A build that fails is retried after 20 s, and until one succeeds
+both endpoints answer 502 (503 without repositories or without a token) instead of old data. The first request after
+a start waits for the first build. So `serve` reads GitHub also when nobody looks: 30 builds an
+hour per set of repositories. The Refresh button of the page re-reads that overview; it does not
+start a build, so a new question can take up to 2 minutes to appear after a click.
+
+A build costs, per repository, 1 REST call for the open issues (more when they span several pages
+of 100) and 1 REST call per Controller issue that has comments (more for over 100 comments). The
+board items (only with the Controller filter) are 1 GraphQL call, more for a large board, which
+counts against GitHub's separate GraphQL limit, not against the 5000 REST requests an hour. At 30
+builds an hour (the steady state; during an outage the 20 s retry can raise that to 180 an hour)
+the REST calls must fit, together with the tick, in the 5000 requests an hour of one token. A repository without the Controller filter reads the comments of every open issue that
+has comments, so it weighs most and reaches the budget first. That is a deliberately accepted
+risk, with no code to guard it; when the budget runs out both endpoints answer 502 through the
+existing `forgeError`.
 
 Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment. Create a fine-grained
 personal access token for those repositories with only the *Issues: read* permission. The
@@ -216,12 +234,15 @@ the blocks refresh every 30 seconds. Per run: `repo`, `issue`, `title`, `state` 
 `final-review` for a subagent-driven run; `0`, `0` and empty without progress), `trigger`,
 `profile`, `workspace_id`, `started_at`, `stand` (`working`, `waiting` or `done`; empty when the
 tick could not measure the session, shown as *not measured*) and `at`, the tick that wrote it. Per
-deferred start: `repo`, `issue`, `title`, `reason` and `at`. The rows do not show `at`; the page
-header shows the age of the newest tick as *tick … ago*, so a row is at most one tick behind.
+deferred start: `repo`, `issue`, `title`, `reason` and `at`. The rows do not show `at`; the Controller
+section heading shows the age of the newest tick as *tick … ago*, so a row is at most one tick behind.
 Without a tick both lists are empty. Next to `runs` and `deferred` the body carries two settings
-of host.toml: `workspace_url`, the kenn-forge base URL from `[dispatch.forge] url` without a
-trailing slash (`http://127.0.0.1:8091` without a host.toml), and `night`, the night window from
-`[dispatch] night` as `HH:MM-HH:MM`. A `500` means the database could not be read.
+of host.toml: `workspace_url`, the kenn-forge address a browser opens, without a trailing slash.
+It is `[dispatch.forge] web_url`, else `[dispatch.forge] url` (`http://127.0.0.1:8091` without a
+host.toml). Set `web_url` to the tailscale serve address when you open the page from another
+machine; lighthouse itself keeps talking to the forge API on `url`. The page links the workspace id in
+a run row and in *Workspaces to clean up* to `<workspace_url>/workspaces/<id>`, in a new tab. The other setting is `night`,
+the night window from `[dispatch] night` as `HH:MM-HH:MM`. A `500` means the database could not be read.
 
 ## Run the tick
 
@@ -243,7 +264,7 @@ loginctl enable-linger "$USER"
 ```
 
 With a clone, copy both files from `deploy/systemd/` instead. Enable the timer, not the service; it runs
-the tick two minutes after boot and every five minutes after. `enable-linger` keeps the timer running
+the tick two minutes after boot and every three minutes after. `enable-linger` keeps the timer running
 when you are not logged in.
 
 Two choices in the unit are on purpose:

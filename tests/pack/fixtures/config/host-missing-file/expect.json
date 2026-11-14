@@ -17,6 +17,14 @@
  },
  {
   "args": [
+   "host.controller"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: host.controller is not set\n"
+ },
+ {
+  "args": [
    "host.gate_slice"
   ],
   "rc": 1,

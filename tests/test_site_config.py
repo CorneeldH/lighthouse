@@ -23,7 +23,7 @@ NO_DEFAULT = object()
 # Keys nothing in the repo reads: only config.py checks them (spec section 2).
 UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
           "host.scan_memory_max", "host.scan_cpu_quota"}
-SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.tailscale_ip", "review.roborev"}
+SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.controller", "host.tailscale_ip", "review.roborev"}
 REQUIRED = {
     "forge.board.project_number": "with [forge.board]",
     "forge.board.project_id": "with [forge.board]",
@@ -247,9 +247,9 @@ def test_reader_names_key_needs_the_table_tag_in_go():
 
 
 def test_reader_names_key_finds_a_dynamic_python_reader():
-    text = (ROOT / "pack/core/scripts/codex_usage.py").read_text(encoding="utf-8")
-    assert reader_names_key(text, "codex_usage.review_pct_week", "pack/core/scripts/codex_usage.py")
-    assert not reader_names_key(text, "codex_usage.vraag_pct_week", "pack/core/scripts/codex_usage.py")
+    text = 'for name in ("review_pct_week",):\n    value = config.lookup(cfg, f"codex_usage.{name}")\n'
+    assert reader_names_key(text, "codex_usage.review_pct_week", "a/reader.py")
+    assert not reader_names_key(text, "codex_usage.vraag_pct_week", "a/reader.py")
 
 
 def test_found_readers_skips_go_tests():
@@ -346,9 +346,9 @@ def test_problems_flag_a_stale_not_readers_entry(monkeypatch):
 
 
 def test_problems_flag_an_indirect_entry_of_a_file_without_the_config(monkeypatch):
-    monkeypatch.setitem(INDIRECT_READERS, ("forge.owner", "pack/core/hooks/main-commit-gate.sh"), ".owner")
+    monkeypatch.setitem(INDIRECT_READERS, ("forge.owner", "pack/core/hooks/run.sh"), ".owner")
     problems = config_problems(load("config.json"), ROOT)
-    assert ("forge.owner: INDIRECT_READERS pack/core/hooks/main-commit-gate.sh "
+    assert ("forge.owner: INDIRECT_READERS pack/core/hooks/run.sh "
             "no longer loads the config or uses .owner") in problems
 
 

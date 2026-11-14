@@ -10,6 +10,17 @@ PARTS = ["skills", "agents", "hooks", "workflows"]
 RUNTIME = {"run.sh", "blocking"}
 
 
+def go_hook_scripts() -> set[str]:
+    """The script path of each hook that packs.json places in a Go package under internal/: the
+    reference links the package, also while the old script is still there."""
+    return {
+        f"pack/{pack['name']}/hooks/{hook['name']}.sh"
+        for pack in load("packs.json")
+        for hook in pack["hooks"]
+        if hook.get("source", "").startswith("internal/")
+    }
+
+
 def pack_parts() -> set[str]:
     """Every skill, agent, workflow and hook script under pack/, repo-relative."""
     pack = ROOT / "pack"
@@ -17,7 +28,7 @@ def pack_parts() -> set[str]:
     parts += [*pack.glob("*/agents/*.md"), *pack.glob("*/workflows/*")]
     # run.sh and blocking are the runtime of the hooks, not hooks: they are not on the reference.
     parts += [p for p in pack.glob("*/hooks/*.sh") if p.name not in RUNTIME]
-    return {p.relative_to(ROOT).as_posix() for p in parts}
+    return {p.relative_to(ROOT).as_posix() for p in parts} - go_hook_scripts()
 
 
 def reference_paths() -> set[str]:
@@ -39,6 +50,13 @@ def test_every_pack_part_is_on_the_reference():
 
 def test_every_reference_link_exists():
     assert [p for p in sorted(reference_paths()) if not (ROOT / p).exists()] == []
+
+
+def test_reference_links_a_go_hook_to_its_source():
+    entries = run_map(f"m.referenceEntries({json.dumps(load('packs.json'))}, 'hooks')")
+    hrefs = {i["name"]: i["href"] for e in entries for i in e["items"]}
+    assert hrefs["code-language-check"] == REPO_BLOB + "internal/codelang/hook.go"
+    assert hrefs["commit-test-gate"] == REPO_BLOB + "pack/core/hooks/commit-test-gate.sh"
 
 
 def test_reference_marks_standard_skills():

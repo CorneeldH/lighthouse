@@ -40,6 +40,7 @@ gebeurde, moet per commit terug te vinden zijn, en een script moet het later kun
   write-pr die comment altijd zelf, dus een onverwerkte comment ontstaat niet meer. In paia kan
   het nog, bij een PR die niet via write-pr ging. Daar start de gebruiker fix-pr zelf. Dit wijkt
   af van AC 5 in het issue, zie *Afwijkingen van het issue*.
+- #294 draait de uitsluiting van een trigger op een onverwerkte roborev-comment om: de dispatcher start fix-pr nu ook daarvoor. De tekst hierboven blijft als geschiedenis staan.
 
 ## Anti-doelen
 

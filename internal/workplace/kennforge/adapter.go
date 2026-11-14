@@ -25,7 +25,9 @@ type Adapter struct {
 	Kind, Repo string            // [forge] kind and repo of the repository
 	StateDir   string            // where carriers go
 	Targets    map[string]string // profile -> forge target_key
-	Profile    string            // the repo profile ([controller] profile)
+	Profile    string            // the profile of the run: Stop, Kill and Transcript pick the container by it
+	Node       string            // forge node_id of the workspace; "": self, the forge at Client
+	UnitPrefix string            // [dispatch.forge] unit_prefix, no default: "" makes Stop fail
 	Run        workplace.Runner
 	Home       string              // where ~/.claude/projects lives; "": os.UserHomeDir
 	Sleep      func(time.Duration) // nil: time.Sleep
@@ -55,12 +57,13 @@ type wireWorkspace struct {
 	} `json:"repo"`
 }
 
-// Prepare returns the ready workspace for branch: an existing one, or a new one.
+// Prepare returns the ready workspace for branch: an existing one, or a new one. On another
+// node it skips FollowRemote: the worktree path is the node's, not this host's (#327).
 func (a *Adapter) Prepare(ctx context.Context, branch string) (workplace.Workspace, error) {
 	var list struct {
 		Workspaces []wireWorkspace `json:"workspaces"`
 	}
-	if err := a.Client.do(ctx, http.MethodGet, "/api/v1/workspaces", nil, 0, &list); err != nil {
+	if err := a.Client.do(ctx, http.MethodGet, a.path("/api/v1/workspaces"), nil, 0, &list); err != nil {
 		return workplace.Workspace{}, fmt.Errorf("list workspaces: %w", err)
 	}
 	id, created := "", false
@@ -76,7 +79,7 @@ func (a *Adapter) Prepare(ctx context.Context, branch string) (workplace.Workspa
 	}
 	if id == "" {
 		var w wireWorkspace
-		path := "/api/v1/repo/" + a.Kind + "/" + a.Repo + "/workspaces"
+		path := a.path("/api/v1/repo/" + a.Kind + "/" + a.Repo + "/workspaces")
 		if err := a.Client.do(ctx, http.MethodPost, path, map[string]string{"branch": branch}, 0, &w); err != nil {
 			return workplace.Workspace{}, fmt.Errorf("create workspace: %w", err)
 		}
@@ -90,6 +93,9 @@ func (a *Adapter) Prepare(ctx context.Context, branch string) (workplace.Workspa
 		return workplace.Workspace{}, err
 	}
 	ws := workplace.Workspace{ID: id, Path: w.WorktreeDir, Branch: branch}
+	if a.Node != "" {
+		return ws, nil
+	}
 	if err := workplace.FollowRemote(ctx, a.Run, gitTimeout, ws, created); err != nil {
 		return workplace.Workspace{}, err
 	}
@@ -105,7 +111,7 @@ func (a *Adapter) waitReady(ctx context.Context, id string) (wireWorkspace, erro
 	polls := int(wait / readyPoll)
 	for i := 0; ; i++ {
 		var w wireWorkspace
-		if err := a.Client.do(ctx, http.MethodGet, wsPath(id), nil, 0, &w); err != nil {
+		if err := a.Client.do(ctx, http.MethodGet, a.path(wsPath(id)), nil, 0, &w); err != nil {
 			return w, fmt.Errorf("read workspace %s: %w", id, err)
 		}
 		if w.Status == "ready" {
@@ -140,14 +146,14 @@ func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace
 	if err != nil {
 		return workplace.Session{}, fmt.Errorf("%w: %w", err, workplace.ErrNotAccepted)
 	}
-	if _, err := workplace.WriteCarrier(a.StateDir, ws.ID, c); err != nil {
+	if _, err := workplace.WriteCarrier(a.StateDir, a.Node, ws.ID, c); err != nil {
 		return workplace.Session{}, fmt.Errorf("write carrier: %w: %w", err, workplace.ErrNotAccepted)
 	}
 	notAccepted := func(err error) (workplace.Session, error) {
 		if !errors.Is(err, workplace.ErrNotAccepted) {
 			err = fmt.Errorf("%v: %w", err, workplace.ErrNotAccepted)
 		}
-		if rmErr := workplace.RemoveCarrier(a.StateDir, ws.ID); rmErr != nil {
+		if rmErr := workplace.RemoveCarrier(a.StateDir, a.Node, ws.ID); rmErr != nil {
 			err = errors.Join(err, fmt.Errorf("remove carrier: %w", rmErr))
 		}
 		return workplace.Session{}, err
@@ -170,7 +176,7 @@ func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace
 		} `json:"session"`
 	}
 	body := map[string]string{"target_key": target, "message": l.Prompt}
-	path := wsPath(ws.ID) + "/runtime/agent-handoffs"
+	path := a.path(wsPath(ws.ID)) + "/runtime/agent-handoffs"
 	err = a.Client.do(ctx, http.MethodPost, path, body, timeout, &out)
 	if err == nil && out.Session.Key != "" {
 		return workplace.Session{Key: out.Session.Key, WorkspaceID: ws.ID, SessionID: l.SessionID}, nil
@@ -244,10 +250,14 @@ func notForge(id string) error {
 	return nil
 }
 
-// Sessions lists the agent sessions of a workspace. A 404 is workplace.ErrGone.
+// Sessions lists the agent sessions of a workspace. A 404 is workplace.ErrGone. On another
+// node they come from /runtime, without session_id (see remoteSessions).
 func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace.Session, error) {
 	if err := notForge(workspaceID); err != nil {
 		return nil, err
+	}
+	if a.Node != "" {
+		return a.remoteSessions(ctx, workspaceID)
 	}
 	var out struct {
 		Sessions *[]struct {
@@ -257,7 +267,7 @@ func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace
 			UpdatedAt string  `json:"updated_at"`
 		} `json:"sessions"`
 	}
-	if err := a.Client.do(ctx, http.MethodGet, wsPath(workspaceID)+"/agent-sessions", nil, 0, &out); err != nil {
+	if err := a.Client.do(ctx, http.MethodGet, a.path(wsPath(workspaceID))+"/agent-sessions", nil, 0, &out); err != nil {
 		var se *StatusError
 		if errors.As(err, &se) && se.Status == http.StatusNotFound {
 			return nil, fmt.Errorf("read sessions of %s: %v: %w", workspaceID, se, workplace.ErrGone)
@@ -285,7 +295,8 @@ func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace
 }
 
 // Lookup reads the workspace: Path from worktree_path, Branch from git_head_ref. A 404 is
-// workplace.ErrGone; a workspace without worktree_path is an error.
+// workplace.ErrGone (on another node only as confirmGone allows); a workspace without
+// worktree_path is an error.
 func (a *Adapter) Lookup(ctx context.Context, workspaceID string) (workplace.Workspace, error) {
 	if err := notForge(workspaceID); err != nil {
 		return workplace.Workspace{}, err
@@ -297,13 +308,13 @@ func (a *Adapter) Lookup(ctx context.Context, workspaceID string) (workplace.Wor
 	return workplace.Workspace{ID: workspaceID, Path: w.WorktreeDir, Branch: w.GitHeadRef}, nil
 }
 
-// readWorkspace reads one workspace that has a worktree_path. A 404 is workplace.ErrGone.
+// readWorkspace reads one workspace that has a worktree_path. A 404 is workplace.ErrGone,
+// as notFound decides.
 func (a *Adapter) readWorkspace(ctx context.Context, workspaceID string) (wireWorkspace, error) {
 	var w wireWorkspace
-	if err := a.Client.do(ctx, http.MethodGet, wsPath(workspaceID), nil, 0, &w); err != nil {
-		var se *StatusError
-		if errors.As(err, &se) && se.Status == http.StatusNotFound {
-			return w, fmt.Errorf("read workspace %s: %v: %w", workspaceID, se, workplace.ErrGone)
+	if err := a.Client.do(ctx, http.MethodGet, a.path(wsPath(workspaceID)), nil, 0, &w); err != nil {
+		if nf := a.notFound(ctx, err, "read workspace "+workspaceID); nf != nil {
+			return w, nf
 		}
 		return w, fmt.Errorf("read workspace %s: %w", workspaceID, err)
 	}
@@ -315,17 +326,24 @@ func (a *Adapter) readWorkspace(ctx context.Context, workspaceID string) (wireWo
 
 // Remove deletes the workspace and then its carrier. A workspace that is already gone is
 // no error; one with work in it is workplace.ErrDirty. A carrier it cannot wipe is an error.
+// On another node a 404 is "already gone" only as confirmGone allows; otherwise the carrier
+// stays and the error wraps workplace.ErrUncertain.
 func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
 	}
-	err := a.Client.do(ctx, http.MethodDelete, wsPath(workspaceID), nil, 0, nil)
+	err := a.Client.do(ctx, http.MethodDelete, a.path(wsPath(workspaceID)), nil, 0, nil)
 	var se *StatusError
 	if errors.As(err, &se) && se.Status == http.StatusConflict {
 		return fmt.Errorf("remove workspace %s: %v: %w", workspaceID, se, workplace.ErrDirty)
 	}
 	if err != nil && (se == nil || se.Status != http.StatusNotFound) {
 		return fmt.Errorf("remove workspace %s: %w", workspaceID, err)
+	}
+	if err != nil {
+		if cerr := a.confirmGone(ctx, se); cerr != nil {
+			return fmt.Errorf("remove workspace %s: %v: %w", workspaceID, se, cerr)
+		}
 	}
 	return a.Discard(ctx, workspaceID)
 }
@@ -335,7 +353,7 @@ func (a *Adapter) Discard(_ context.Context, workspaceID string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
 	}
-	if err := workplace.RemoveCarrier(a.StateDir, workspaceID); err != nil {
+	if err := workplace.RemoveCarrier(a.StateDir, a.Node, workspaceID); err != nil {
 		return fmt.Errorf("remove carrier of %s: %w", workspaceID, err)
 	}
 	return nil

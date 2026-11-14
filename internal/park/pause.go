@@ -29,6 +29,14 @@ func PauseFile(getenv func(string) string) (string, error) {
 	return filepath.Join(base, "lighthouse", "controller", "PAUSE"), nil
 }
 
+var runShape = regexp.MustCompile(`^[0-9a-f-]+$`)
+
+// ControllerRun reports whether LIGHTHOUSE_CONTROLLER_RUN marks this process as a controller run:
+// set, and only the characters of a uuid.
+func ControllerRun(getenv func(string) string) bool {
+	return runShape.MatchString(getenv("LIGHTHOUSE_CONTROLLER_RUN"))
+}
+
 var flagChars = regexp.MustCompile(`^[0-9T:+Z-]+$`)
 
 // ReadPause returns the end of an active pause. The flag counts only as a regular file, not a

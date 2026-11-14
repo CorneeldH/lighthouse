@@ -1,0 +1,835 @@
+[
+  {
+    "name": "base prompt",
+    "speaker": "base",
+    "stand": "prompt",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "Usage is at 92% of the session window, which resets at 14:30. Wrap up: finish only the current step, commit the work in progress, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and do not start a new step."
+      }
+    }
+  },
+  {
+    "name": "base prompt week",
+    "speaker": "base",
+    "stand": "prompt",
+    "alarm": {
+      "kind": "week",
+      "pct": "92",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "Usage is at 92% of the weekly window, which resets at Sep 6 14:30. Wrap up: finish only the current step, commit the work in progress, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and do not start a new step."
+      }
+    }
+  },
+  {
+    "name": "base prompt without session",
+    "speaker": "base",
+    "stand": "prompt",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "Usage is at 92% of the session window, which resets at 14:30. Wrap up: finish only the current step, commit the work in progress, run `/lighthouse-write-handoff {resume}/no-session-1788695880.handoff.md`, and do not start a new step."
+      }
+    }
+  },
+  {
+    "name": "resume prompt venster",
+    "speaker": "resume",
+    "stand": "prompt",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "Usage is at 92% of the session window, which resets at 14:30. Wrap up: finish only the current step, commit the work in progress, schedule one wake-up with CronCreate (cron \"32 12 6 9 *\", recurring false, prompt = the first step from the handoff); if you already set a wake-up in this window, check with CronList and take over that job ID instead of setting a second one, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and do not start a new step. Name the wake-up's job ID in the handoff."
+      }
+    }
+  },
+  {
+    "name": "resume prompt week",
+    "speaker": "resume",
+    "stand": "prompt",
+    "alarm": {
+      "kind": "week",
+      "pct": "92",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "Usage is at 92% of the weekly window, which resets at Sep 6 14:30. Wrap up: finish only the current step, commit the work in progress, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and do not start a new step."
+      }
+    }
+  },
+  {
+    "name": "resume prompt venster without session",
+    "speaker": "resume",
+    "stand": "prompt",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "Usage is at 92% of the session window, which resets at 14:30. Wrap up: finish only the current step, commit the work in progress, schedule one wake-up with CronCreate (cron \"32 12 6 9 *\", recurring false, prompt = the first step from the handoff); if you already set a wake-up in this window, check with CronList and take over that job ID instead of setting a second one, run `/lighthouse-write-handoff {resume}/no-session-1788695880.handoff.md`, and do not start a new step. Name the wake-up's job ID in the handoff."
+      }
+    }
+  },
+  {
+    "name": "controller prompt",
+    "speaker": "controller",
+    "stand": "prompt",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "Usage is at 92% of the session window, which resets at 14:30. This controller run parks at the next tool call: finish only the current step and commit the work in progress."
+      }
+    }
+  },
+  {
+    "name": "controller prompt week",
+    "speaker": "controller",
+    "stand": "prompt",
+    "alarm": {
+      "kind": "week",
+      "pct": "80",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "Usage is at 80% of the weekly window, which resets at Sep 6 14:30. This controller run parks at the next tool call: finish only the current step and commit the work in progress."
+      }
+    }
+  },
+  {
+    "name": "controller prompt without session",
+    "speaker": "controller",
+    "stand": "prompt",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": "Usage is at 92% of the session window, which resets at 14:30. This controller run parks at the next tool call: finish only the current step and commit the work in progress."
+      }
+    }
+  },
+  {
+    "name": "base tool",
+    "speaker": "base",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Before anything else: commit the work in progress, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and report where the work stands (worktree, branch, what is still open). Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "base tool week",
+    "speaker": "base",
+    "stand": "tool",
+    "alarm": {
+      "kind": "week",
+      "pct": "92",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the weekly window, which resets at Sep 6 14:30. Before anything else: commit the work in progress, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and report where the work stands (worktree, branch, what is still open). Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "base tool without session",
+    "speaker": "base",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Before anything else: commit the work in progress, run `/lighthouse-write-handoff {resume}/no-session-1788695880.handoff.md`, and report where the work stands (worktree, branch, what is still open). Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "resume tool venster",
+    "speaker": "resume",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Before anything else: commit the work in progress, schedule one wake-up with CronCreate (cron \"32 12 6 9 *\", recurring false, prompt = the first step from the handoff); if you already set a wake-up in this window, check with CronList and take over that job ID instead of setting a second one, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and report where the work stands (worktree, branch, what is still open). Name the wake-up's job ID in the handoff. Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "resume tool week",
+    "speaker": "resume",
+    "stand": "tool",
+    "alarm": {
+      "kind": "week",
+      "pct": "92",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the weekly window, which resets at Sep 6 14:30. Before anything else: commit the work in progress, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and report where the work stands (worktree, branch, what is still open). Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "resume tool venster without session",
+    "speaker": "resume",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Before anything else: commit the work in progress, schedule one wake-up with CronCreate (cron \"32 12 6 9 *\", recurring false, prompt = the first step from the handoff); if you already set a wake-up in this window, check with CronList and take over that job ID instead of setting a second one, run `/lighthouse-write-handoff {resume}/no-session-1788695880.handoff.md`, and report where the work stands (worktree, branch, what is still open). Name the wake-up's job ID in the handoff. Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "controller tool",
+    "speaker": "controller",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after 14:30."
+    }
+  },
+  {
+    "name": "controller tool week",
+    "speaker": "controller",
+    "stand": "tool",
+    "alarm": {
+      "kind": "week",
+      "pct": "80",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 80% of the weekly window, which resets at Sep 6 14:30. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after Sep 6 14:30."
+    }
+  },
+  {
+    "name": "controller tool without session",
+    "speaker": "controller",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after 14:30."
+    }
+  },
+  {
+    "name": "base stop",
+    "speaker": "base",
+    "stand": "stop",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Commit nothing more. Run `/lighthouse-write-handoff {resume}/s1.handoff.md` and note in it what is uncommitted and when to resume (after 14:30). Then stop."
+    }
+  },
+  {
+    "name": "base stop week",
+    "speaker": "base",
+    "stand": "stop",
+    "alarm": {
+      "kind": "week",
+      "pct": "92",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the weekly window, which resets at Sep 6 14:30. Commit nothing more. Run `/lighthouse-write-handoff {resume}/s1.handoff.md` and note in it what is uncommitted and when to resume (after Sep 6 14:30). Then stop."
+    }
+  },
+  {
+    "name": "base stop without session",
+    "speaker": "base",
+    "stand": "stop",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Commit nothing more. Run `/lighthouse-write-handoff {resume}/no-session-1788695880.handoff.md` and note in it what is uncommitted and when to resume (after 14:30). Then stop."
+    }
+  },
+  {
+    "name": "resume stop venster",
+    "speaker": "resume",
+    "stand": "stop",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Commit nothing more. Schedule one wake-up with CronCreate (cron \"32 12 6 9 *\", recurring false, prompt = the first step from the handoff); if you already set a wake-up in this window, check with CronList and take over that job ID instead of setting a second one. Run `/lighthouse-write-handoff {resume}/s1.handoff.md` and note in it what is uncommitted and when to resume (after 14:30). Name the wake-up's job ID in the handoff. Then stop."
+    }
+  },
+  {
+    "name": "resume stop week",
+    "speaker": "resume",
+    "stand": "stop",
+    "alarm": {
+      "kind": "week",
+      "pct": "92",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the weekly window, which resets at Sep 6 14:30. Commit nothing more. Run `/lighthouse-write-handoff {resume}/s1.handoff.md` and note in it what is uncommitted and when to resume (after Sep 6 14:30). Then stop."
+    }
+  },
+  {
+    "name": "resume stop venster without session",
+    "speaker": "resume",
+    "stand": "stop",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Commit nothing more. Schedule one wake-up with CronCreate (cron \"32 12 6 9 *\", recurring false, prompt = the first step from the handoff); if you already set a wake-up in this window, check with CronList and take over that job ID instead of setting a second one. Run `/lighthouse-write-handoff {resume}/no-session-1788695880.handoff.md` and note in it what is uncommitted and when to resume (after 14:30). Name the wake-up's job ID in the handoff. Then stop."
+    }
+  },
+  {
+    "name": "controller stop",
+    "speaker": "controller",
+    "stand": "stop",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after 14:30."
+    }
+  },
+  {
+    "name": "controller stop week",
+    "speaker": "controller",
+    "stand": "stop",
+    "alarm": {
+      "kind": "week",
+      "pct": "80",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 80% of the weekly window, which resets at Sep 6 14:30. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after Sep 6 14:30."
+    }
+  },
+  {
+    "name": "controller stop without session",
+    "speaker": "controller",
+    "stand": "stop",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after 14:30."
+    }
+  },
+  {
+    "name": "base tool pct 100",
+    "speaker": "base",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "100",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 100% of the session window, which resets at 14:30. Before anything else: commit the work in progress, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and report where the work stands (worktree, branch, what is still open). Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "base tool local with a question mark",
+    "speaker": "base",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "?",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at ?. Before anything else: commit the work in progress, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and report where the work stands (worktree, branch, what is still open). Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "base tool unknown kind label",
+    "speaker": "base",
+    "stand": "tool",
+    "alarm": {
+      "kind": "dag",
+      "pct": "50",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 50% of the dag, which resets at 14:30. Before anything else: commit the work in progress, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and report where the work stands (worktree, branch, what is still open). Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "resume tool wake crosses midnight",
+    "speaker": "resume",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T23:59:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Before anything else: commit the work in progress, schedule one wake-up with CronCreate (cron \"1 0 7 9 *\", recurring false, prompt = the first step from the handoff); if you already set a wake-up in this window, check with CronList and take over that job ID instead of setting a second one, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and report where the work stands (worktree, branch, what is still open). Name the wake-up's job ID in the handoff. Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "resume tool wake crosses the year",
+    "speaker": "resume",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "Dec 31 23:59",
+      "reset_at": "2026-12-31T23:59:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at Dec 31 23:59. Before anything else: commit the work in progress, schedule one wake-up with CronCreate (cron \"1 0 1 1 *\", recurring false, prompt = the first step from the handoff); if you already set a wake-up in this window, check with CronList and take over that job ID instead of setting a second one, run `/lighthouse-write-handoff {resume}/s1.handoff.md`, and report where the work stands (worktree, branch, what is still open). Name the wake-up's job ID in the handoff. Do not start a new step and do not dispatch a subagent."
+    }
+  },
+  {
+    "name": "resume stop session id of 128 chars",
+    "speaker": "resume",
+    "stand": "stop",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+    "agent_id": null,
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Commit nothing more. Schedule one wake-up with CronCreate (cron \"32 12 6 9 *\", recurring false, prompt = the first step from the handoff); if you already set a wake-up in this window, check with CronList and take over that job ID instead of setting a second one. Run `/lighthouse-write-handoff {resume}/ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss.handoff.md` and note in it what is uncommitted and when to resume (after 14:30). Name the wake-up's job ID in the handoff. Then stop."
+    }
+  },
+  {
+    "name": "subagent",
+    "speaker": "subagent",
+    "stand": "subagent",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": "a1",
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Stop now and report to the main thread what you did and what is still open. Do not commit, do not schedule a wake-up and do not write a handoff: the main thread wraps up the session."
+    }
+  },
+  {
+    "name": "subagent week",
+    "speaker": "subagent",
+    "stand": "subagent",
+    "alarm": {
+      "kind": "week",
+      "pct": "92",
+      "reset_local": "Sep 6 14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": "a1",
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the weekly window, which resets at Sep 6 14:30. Stop now and report to the main thread what you did and what is still open. Do not commit, do not schedule a wake-up and do not write a handoff: the main thread wraps up the session."
+    }
+  },
+  {
+    "name": "subagent without session",
+    "speaker": "subagent",
+    "stand": "subagent",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": null,
+    "agent_id": "a1",
+    "run_id": "",
+    "pause_until": "",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "Usage is at 92% of the session window, which resets at 14:30. Stop now and report to the main thread what you did and what is still open. Do not commit, do not schedule a wake-up and do not write a handoff: the main thread wraps up the session."
+    }
+  },
+  {
+    "name": "pause with offset",
+    "speaker": "pause",
+    "stand": "tool",
+    "alarm": null,
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "2026-10-03T21:00:00+02:00",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "The controller has paused this run until 21:00. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after 21:00."
+    }
+  },
+  {
+    "name": "pause with Z",
+    "speaker": "pause",
+    "stand": "tool",
+    "alarm": null,
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "2026-10-03T19:05:00Z",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "The controller has paused this run until 19:05. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after 19:05."
+    }
+  },
+  {
+    "name": "pause with negative offset",
+    "speaker": "pause",
+    "stand": "tool",
+    "alarm": null,
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "2026-10-03T08:15:00-05:00",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "The controller has paused this run until 08:15. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after 08:15."
+    }
+  },
+  {
+    "name": "pause that does not parse",
+    "speaker": "pause",
+    "stand": "tool",
+    "alarm": null,
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "morgen 9 uur",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "The controller has paused this run until morgen 9 uur. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after morgen 9 uur."
+    }
+  },
+  {
+    "name": "pause without session uses the run id",
+    "speaker": "pause",
+    "stand": "tool",
+    "alarm": null,
+    "session_id": null,
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "2026-10-03T21:00:00+02:00",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "The controller has paused this run until 21:00. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after 21:00."
+    }
+  },
+  {
+    "name": "pause with an alarm too",
+    "speaker": "pause",
+    "stand": "tool",
+    "alarm": {
+      "kind": "venster",
+      "pct": "92",
+      "reset_local": "14:30",
+      "reset_at": "2026-09-06T12:30:00Z"
+    },
+    "session_id": "s1",
+    "agent_id": null,
+    "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
+    "pause_until": "2026-10-03T21:00:00+02:00",
+    "now": "2026-09-06T11:58:00Z",
+    "expect": {
+      "decision": "block",
+      "reason": "The controller has paused this run until 21:00. Now commit the work in progress, then stop: do not start a new step, do not dispatch a subagent, do not schedule a wake-up and do not write a handoff. The controller resumes this session after 21:00."
+    }
+  }
+]

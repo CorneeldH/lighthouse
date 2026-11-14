@@ -1,0 +1,54 @@
+{
+  "description": "Fallback review mode: reviewer from --reviewer-model, no codex version, level null.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "BLOCKER"
+      ]
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "aborted",
+        "--review-mode",
+        "fallback",
+        "--reviewer-model",
+        "claude-opus-5-5",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "record": {
+          "reviewer": {
+            "model": "claude-opus-5-5",
+            "codex_version": null,
+            "same_family": true
+          },
+          "level": null,
+          "last_round_open": [
+            {
+              "finding_id": "r1-f1",
+              "severity": "BLOCKER",
+              "decision": null
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

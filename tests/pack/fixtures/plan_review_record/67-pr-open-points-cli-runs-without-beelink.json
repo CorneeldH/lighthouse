@@ -1,0 +1,23 @@
+{
+  "description": "pr-open-points needs no host: a refused host still exits 0.",
+  "world": "bare",
+  "host": "refuse",
+  "steps": [
+    {
+      "op": "file",
+      "path": "${root}/plan.md",
+      "text": "# Plan\n\n## Iets\n\n- punt\n"
+    },
+    {
+      "op": "run",
+      "args": [
+        "pr-open-points",
+        "${root}/plan.md",
+        "${root}/weg.md"
+      ],
+      "expect": {
+        "stdout_equals": ""
+      }
+    }
+  ]
+}

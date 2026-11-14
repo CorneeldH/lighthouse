@@ -188,7 +188,7 @@ def test_v4_gives_a_title_and_writes_the_body_separately():
     assert "gh pr create --repo <forge.repo> --title '<title>' --body-file <path>" in v4
     assert "lighthouse config forge.repo" in v4
     assert "Write tool" in v4
-    assert "python3 .lighthouse/scripts/plan_review_record.py pr-open-points <path>..." in v4
+    assert "lighthouse plan-review-record pr-open-points <path>..." in v4
 
 
 def test_dod_does_not_run_the_suite_by_hand_in_claude_code():
@@ -240,15 +240,15 @@ def test_roborev_step_sits_between_v2_and_the_verdicts():
 def test_roborev_step_carries_the_contract():
     s = _section(TEXT, "## V2b.")
     for needle in (
-        "roborev_gate.py gate",
+        "lighthouse roborev-gate gate",
         "git fetch origin",
         "timeout 540 roborev ci review --agent codex --ref",
         "600000",
         "dangerouslyDisableSandbox: true",
         "superpowers:receiving-code-review",
         "roborev: <path>:<line> (<severity>)",
-        "roborev_gate.py fixed",
-        "roborev_gate.py record",
+        "lighthouse roborev-gate fixed",
+        "lighthouse roborev-gate record",
         "classify",
         "No issue",
         "git ls-remote --exit-code origin <branch>",
@@ -262,7 +262,7 @@ def test_roborev_step_carries_the_contract():
 
 def test_v4_writes_the_marker_and_posts_the_comment():
     v4 = _section(TEXT, "## V4.")
-    for needle in ("roborev_gate.py body-line", "roborev_comment.py render", "--bron lokaal", "gh pr comment"):
+    for needle in ("lighthouse roborev-gate body-line", "lighthouse roborev-comment render", "--bron lokaal", "gh pr comment"):
         assert needle in v4, needle
 
 

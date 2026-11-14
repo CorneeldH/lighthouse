@@ -1,0 +1,47 @@
+{
+  "description": "An attempt.json without kind (v1/v2) is a plan.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "edit_json",
+      "path": "${a}/attempt.json",
+      "delete": [
+        "kind"
+      ]
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "record": {
+          "kind": "plan",
+          "plan": "docs/developer/planning/plans/2026-09-25-voorbeeld.md",
+          "schema_version": 5
+        }
+      }
+    }
+  ]
+}

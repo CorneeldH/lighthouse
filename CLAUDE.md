@@ -12,23 +12,23 @@ knows. Never duplicate, in either direction.
 `pack/core/hooks/` instead. Other entries in `.claude/settings.json` are the project's. When a
 hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never blocks.
 
-- `main-commit-gate.sh` — PreToolUse `Bash`. Blocks (exit 2) a commit or push on `main`,
-  also through `git -C <path>` and a preceding `cd`.
+- `main-commit-gate` (`run.sh main-commit-gate`) — PreToolUse `Bash`. Blocks (exit 2) a commit or
+  push on `main`, also through `git -C <path>` and a preceding `cd`.
 - `commit-test-gate.sh` — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. `pre` blocks
   `--no-verify` and tests a commit to `main` before it; `post` runs `[test_gate] command` on the
   files of the commit and reports red.
-- `bash-write-check.sh` — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. Runs the
+- `bash-write-check` (`run.sh bash-write-check`) — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. Runs the
   write checks on what a Bash call wrote.
 - `pr-create-gate.sh` — PreToolUse `Bash`. Blocks a `gh pr create` whose body lacks
   `Closes #N` with evidence, `Refs #N — <reason>` or `No issue: <reason>`.
-- `worktree-check.sh` — PreToolUse `Edit|Write`. Warns (never blocks) at a write into the main
-  checkout on `main`.
-- `md-link-check.sh` — PostToolUse `Edit|Write`. Blocks a markdown link that is absolute
+- `worktree-check` (`run.sh worktree-check`) — PreToolUse `Edit|Write`. Warns (never blocks) at a
+  write into the main checkout on `main`.
+- `md-link-check` (`run.sh md-link-check`) — PostToolUse `Edit|Write`. Blocks a markdown link that is absolute
   or points nowhere.
-- `permission-check.sh` — Notification `permission_prompt`. Notes the prompt in
+- `permission-check` (`run.sh permission-check`) — Notification `permission_prompt`. Notes the prompt in
   `<LIGHTHOUSE_STATE_DIR>/runs/<run>/permission.json`, only inside a controller run, so the dispatcher can
   tell a session waiting for a permission from a silent one. Never blocks; says `COULD NOT CHECK` when it
   cannot write.
-- `usage-gate.sh` — UserPromptSubmit, PostToolUse, SubagentStop and Stop. Reads only the alarm
+- `usage-gate` (`run.sh usage-gate`) — UserPromptSubmit, PostToolUse, SubagentStop and Stop. Reads only the alarm
   of `lighthouse usage`: warns at a prompt, blocks once per window in `tool` and `stop`, once per
   subagent in `subagent`, never fails red. See `docs/usage-gate.md`.

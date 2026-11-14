@@ -1,0 +1,54 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "fixture": "review-complete.md"
+    },
+    {
+      "do": "fix_commit",
+      "name": "a.py",
+      "subject": "fix: a\n\nroborev: scripts/forge_drager.py:93 (medium)",
+      "as": "c1"
+    },
+    {
+      "do": "fix_commit",
+      "name": "b.py",
+      "subject": "fix: b\n\nroborev: scripts/forge_agent.sh:612 (medium)",
+      "as": "c2"
+    },
+    {
+      "do": "fix_commit",
+      "name": "c.py",
+      "subject": "fix: unrelated",
+      "as": "c3"
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect": {
+        "verdict": "classify"
+      }
+    },
+    {
+      "op": "fixed",
+      "expect": [
+        [
+          "scripts/forge_drager.py",
+          93,
+          "medium",
+          "$c1"
+        ],
+        [
+          "scripts/forge_agent.sh",
+          612,
+          "medium",
+          "$c2"
+        ]
+      ]
+    }
+  ]
+}

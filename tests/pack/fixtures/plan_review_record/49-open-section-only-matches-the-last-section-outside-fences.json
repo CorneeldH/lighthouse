@@ -1,0 +1,37 @@
+{
+  "kind": "open_section",
+  "description": "open_section finds the block only when it is the last '## ' section outside code fences; the span runs to the end.",
+  "cases": [
+    {
+      "text": "# T\n\n## A\n\n## Open na review\n\n- x\n",
+      "span": [
+        11,
+        34
+      ]
+    },
+    {
+      "text": "## Open na review\n\n- x\n\n## Daarna\n\ny\n",
+      "span": null
+    },
+    {
+      "text": "# T\n\n~~~\n## Open na review\n~~~\n",
+      "span": null
+    },
+    {
+      "text": "# T\n\n```\n## Open na review\n",
+      "span": null
+    },
+    {
+      "text": "# T\n\n### Open na review\n",
+      "span": null
+    },
+    {
+      "text": "# T\n\n## Open na review extra\n",
+      "span": null
+    },
+    {
+      "text": "# T\n",
+      "span": null
+    }
+  ]
+}

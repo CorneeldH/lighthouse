@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -48,18 +49,68 @@ type Dispatch struct {
 	Workplace         string   // workplace adapter: WorkplaceKennForge or WorkplaceLocal
 	Forge             DispatchForge
 	Profiles          map[string]Profile
+	Nodes             map[string]Node // [dispatch.nodes.<name>]; nil without nodes
 }
 
-// DispatchForge locates the forge and its token.
+// Node is a kenn-forge node under [dispatch.nodes.<name>]: the node's id on the fleet hub and
+// the number of concurrent runs it takes. The node of [dispatch.forge] itself is "self", the
+// empty node id, and is not listed here.
+type Node struct {
+	NodeID string
+	Slots  int
+}
+
+// SelfNode is the reserved name of the node of [dispatch.forge].
+const SelfNode = "self"
+
+// DispatchForge locates the forge and its token. URL is where lighthouse talks to the forge
+// API; WebURL is where a browser opens the forge dashboard, for instance a tailscale serve
+// address, and is empty when unset. UnitPrefix is the systemd unit-name prefix of the
+// kenn-forge adapter, including the trailing dash; it has no default, and the adapter fails
+// when it is empty.
 type DispatchForge struct {
-	URL       string
-	TokenFile string
+	URL        string
+	WebURL     string
+	TokenFile  string
+	UnitPrefix string
+}
+
+// LinkURL returns the forge address for a link in the browser: WebURL, else URL.
+func (f DispatchForge) LinkURL() string {
+	if f.WebURL != "" {
+		return f.WebURL
+	}
+	return f.URL
 }
 
 // Profile is a run profile under [dispatch.profiles.<name>].
 type Profile struct {
 	TargetKey string `toml:"target_key"`
 	MCPConfig string `toml:"mcp_config"`
+	Node      string `toml:"node"` // name of a [dispatch.nodes] entry; "" is self
+}
+
+// NodeID returns the node_id of the node of profile, "" for self or an unknown profile.
+func (d Dispatch) NodeID(profile string) string {
+	p, ok := d.Profiles[profile]
+	if !ok || p.Node == "" {
+		return ""
+	}
+	return d.Nodes[p.Node].NodeID
+}
+
+// NodeName returns the name of the node with nodeID: "self" for "", and nodeID itself when
+// no node has that id.
+func (d Dispatch) NodeName(nodeID string) string {
+	if nodeID == "" {
+		return SelfNode
+	}
+	for name, n := range d.Nodes {
+		if n.NodeID == nodeID {
+			return name
+		}
+	}
+	return nodeID
 }
 
 // DefaultDispatch returns the built-in settings of spec section 2.
@@ -104,10 +155,16 @@ func LoadDispatch(path string) (Dispatch, error) {
 			AnswerPermissions []string `toml:"answer_permissions"`
 			Workplace         *string  `toml:"workplace"`
 			Forge             struct {
-				URL       *string `toml:"url"`
-				TokenFile *string `toml:"token_file"`
+				URL        *string `toml:"url"`
+				WebURL     *string `toml:"web_url"`
+				TokenFile  *string `toml:"token_file"`
+				UnitPrefix *string `toml:"unit_prefix"`
 			} `toml:"forge"`
 			Profiles map[string]Profile `toml:"profiles"`
+			Nodes    map[string]struct {
+				NodeID *string `toml:"node_id"`
+				Slots  *int    `toml:"slots"`
+			} `toml:"nodes"`
 		} `toml:"dispatch"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
@@ -167,10 +224,61 @@ func LoadDispatch(path string) (Dispatch, error) {
 	if r.Forge.URL != nil {
 		d.Forge.URL = *r.Forge.URL
 	}
+	if r.Forge.WebURL != nil {
+		d.Forge.WebURL = *r.Forge.WebURL
+	}
 	if r.Forge.TokenFile != nil {
 		d.Forge.TokenFile = *r.Forge.TokenFile
 	}
+	if r.Forge.UnitPrefix != nil {
+		d.Forge.UnitPrefix = *r.Forge.UnitPrefix
+	}
 	d.Profiles = r.Profiles
+	names := make([]string, 0, len(r.Nodes))
+	for name := range r.Nodes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	ids := map[string]string{}
+	for _, name := range names {
+		n := r.Nodes[name]
+		key := "dispatch.nodes." + name
+		if name == SelfNode {
+			return DefaultDispatch(), fmt.Errorf("%s: the name %q is reserved", key, SelfNode)
+		}
+		if n.NodeID == nil || *n.NodeID == "" {
+			return DefaultDispatch(), fmt.Errorf("%s.node_id: missing", key)
+		}
+		if *n.NodeID == SelfNode {
+			return DefaultDispatch(), fmt.Errorf("%s.node_id: %q is reserved", key, SelfNode)
+		}
+		if other, dup := ids[*n.NodeID]; dup {
+			return DefaultDispatch(), fmt.Errorf("%s.node_id: %q is also the node_id of dispatch.nodes.%s", key, *n.NodeID, other)
+		}
+		ids[*n.NodeID] = name
+		if n.Slots == nil {
+			return DefaultDispatch(), fmt.Errorf("%s.slots: missing", key)
+		}
+		if err := setMin1(key+".slots", n.Slots, new(int)); err != nil {
+			return DefaultDispatch(), err
+		}
+		if d.Nodes == nil {
+			d.Nodes = map[string]Node{}
+		}
+		d.Nodes[name] = Node{NodeID: *n.NodeID, Slots: *n.Slots}
+	}
+	profiles := make([]string, 0, len(d.Profiles))
+	for name := range d.Profiles {
+		profiles = append(profiles, name)
+	}
+	sort.Strings(profiles)
+	for _, name := range profiles {
+		if node := d.Profiles[name].Node; node != "" {
+			if _, ok := d.Nodes[node]; !ok {
+				return DefaultDispatch(), fmt.Errorf("dispatch.profiles.%s.node: %q is not a node in dispatch.nodes", name, node)
+			}
+		}
+	}
 	return d, nil
 }
 

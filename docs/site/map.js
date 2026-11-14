@@ -213,7 +213,11 @@ const REFERENCE_PARTS = {
     href: `${REPO_TREE}pack/${pack.name}/skills/${name}`,
   }),
   agents: (pack, name) => ({ sort: "agent", href: `${REPO_BLOB}pack/${pack.name}/agents/${name}.md` }),
-  hooks: (pack, name) => ({ sort: "hook", href: `${REPO_BLOB}pack/${pack.name}/hooks/${name}.sh` }),
+  // A hook that runs as `lighthouse hook <name>` names its Go source; any other is a script.
+  hooks: (pack, name, entry) => ({
+    sort: "hook",
+    href: entry.source ? `${REPO_BLOB}${entry.source}` : `${REPO_BLOB}pack/${pack.name}/hooks/${name}.sh`,
+  }),
   workflows: (pack, name) => ({
     sort: "github",
     href: `${REPO_BLOB}pack/${pack.name}/workflows/${name}.yml`,
@@ -232,7 +236,7 @@ export function referenceEntries(packs, part) {
       pack: pack.name,
       items: pack[part].map((entry) => {
         const name = part === "hooks" ? entry.name : entry;
-        return { name, ...make(pack, name) };
+        return { name, ...make(pack, name, entry) };
       }),
     }))
     .filter((entry) => entry.items.length > 0);

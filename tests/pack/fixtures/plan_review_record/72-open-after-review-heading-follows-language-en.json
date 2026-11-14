@@ -1,0 +1,16 @@
+{
+  "kind": "render_open",
+  "description": "The block heading and sentence follow [project] language; open_section finds the block again.",
+  "language": "en",
+  "round": 3,
+  "point": {
+    "finding_id": "r3-f1",
+    "severity": "MAJOR",
+    "section": "§1",
+    "problem": "p"
+  },
+  "starts_with": "## Open after review\n\nRound 3 reached the round limit",
+  "contains": [
+    "- **r3-f1** (MAJOR, §1): p"
+  ]
+}

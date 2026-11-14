@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "gate",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"gate\": {\n    \"reported\": 1,\n    \"not_reported\": 1,\n    \"share\": 0.5,\n    \"distribution\": {\n      \"gate_2\": 1\n    },\n    \"pickup_without_skill\": 1\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_measure_gate_splits_reported_unreported_and_skill_less"
+    ]
+  }
+]

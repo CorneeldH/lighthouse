@@ -18,6 +18,10 @@ CLI, as a file on its path or with `.lighthouse/lib` on `PYTHONPATH`:
     python3 -m lighthouse_lib.config <key>     rc 0 value, rc 1 not set, rc 2 config error
     python3 -m lighthouse_lib.config host-check rc 0 this host, rc 1 another host, rc 2 error
 
+`host-check` asks whether this machine is the controller host: `host.controller` (a TOML
+boolean) decides when set, without measuring the address; absent, `host.tailscale_ip` must be
+present and on this machine.
+
 A key is a dotted path into `lighthouse.toml` (`forge.repo`,
 `forge.board.status_options.In progress`), one of the derived keys
 `forge.owner` and `forge.name`, or `host.<key>` from `host.toml`. A list value
@@ -188,6 +192,7 @@ _OPTION_PREFIXES = ("forge.board.status_options.", "forge.board.priority_options
 HOST_KEYS = (
     "host.name",
     "host.tailscale_ip",
+    "host.controller",
     "host.gate_slice",
     "host.scan_memory_max",
     "host.scan_cpu_quota",
@@ -197,6 +202,7 @@ HOST_KEYS = (
 )
 # Host keys a host without `host.toml` simply does not have (rc 1, not rc 2).
 _OPTIONAL_HOST_KEYS = (
+    "host.controller",
     "host.gate_slice",
     "host.scan_memory_max",
     "host.scan_cpu_quota",
@@ -247,6 +253,7 @@ class Config:
 class Host:
     name: str
     tailscale_ip: str | None = None
+    controller: bool | None = None
     gate_slice: str | None = None
     scan_memory_max: str | None = None
     scan_cpu_quota: str | None = None
@@ -517,6 +524,9 @@ def load_host(path: Path) -> Host:
             raise ConfigError(
                 f"{path}: key host.tailscale_ip must be an IPv4 address: {tailscale_ip!r}"
             ) from exc
+    controller = host.get("controller")
+    if "controller" in host and not isinstance(controller, bool):
+        raise ConfigError(f"{path}: key host.controller must be true or false: {controller!r}")
     gate_slice = host.get("gate_slice")
     if gate_slice is not None and (not isinstance(gate_slice, str) or not gate_slice):
         raise ConfigError(f"{path}: key host.gate_slice must be a non-empty string")
@@ -532,6 +542,7 @@ def load_host(path: Path) -> Host:
     return Host(
         name=name,
         tailscale_ip=tailscale_ip,
+        controller=controller,
         gate_slice=gate_slice,
         scan_memory_max=scan_memory_max,
         scan_cpu_quota=scan_cpu_quota,
@@ -596,6 +607,7 @@ def _host_value(key: str) -> str:
     values = {
         "host.name": host.name,
         "host.tailscale_ip": host.tailscale_ip,
+        "host.controller": host.controller,
         "host.gate_slice": host.gate_slice,
         "host.scan_memory_max": host.scan_memory_max,
         "host.scan_cpu_quota": host.scan_cpu_quota,
@@ -606,6 +618,8 @@ def _host_value(key: str) -> str:
     value = values[key]
     if value is None:
         raise KeyError(key)
+    if isinstance(value, bool):
+        return "true" if value else "false"
     if isinstance(value, float):
         return str(int(value)) if value.is_integer() else str(value)
     return str(value)
@@ -630,6 +644,16 @@ def _host_check() -> int:
     path = host_path()
     try:
         host = load_host(path)
+        if host.controller is True:
+            print(f"host: {host.name}")
+            return 0
+        if host.controller is False:
+            print(
+                f"config: host {host.name} ({path}) has host.controller = false, "
+                "so it is not the controller host",
+                file=sys.stderr,
+            )
+            return 1
         if host.tailscale_ip is None:
             print(
                 f"config: host {host.name} ({path}) has no tailscale_ip, "

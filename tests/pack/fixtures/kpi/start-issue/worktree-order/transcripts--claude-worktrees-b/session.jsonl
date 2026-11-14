@@ -1,0 +1,2 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "zustermap b zonder nummer"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-start-issue"}}]}}

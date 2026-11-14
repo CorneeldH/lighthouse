@@ -47,10 +47,10 @@ the findings are already processed. In a controller run the **build session** re
 before its push and its handoff; the write-pr run never reviews: the run that starts with
 `/lighthouse-write-pr <nr>` finds `done` at step 0 and changes no code. If the gate says `run` or
 `classify` there, the build skipped V2b: no review and no processing, but
-`python3 .lighthouse/scripts/roborev_gate.py record --skip "build session ran no review"` and on to
+`lighthouse roborev-gate record --skip "build session ran no review"` and on to
 V4. This step also runs with `No issue:`, where V1–V3 are skipped. One command per step, in this
 order. Every command here runs outside the sandbox (`dangerouslyDisableSandbox: true`): the gate
-reads the Codex budget, the review needs the network. Any other non-zero exit of `roborev_gate.py` than exit 3 of `gate` (step 0) and exit 2
+reads the Codex budget, the review needs the network. Any other non-zero exit of `lighthouse roborev-gate` than exit 3 of `gate` (step 0) and exit 2
 of `record` (step 3), such as `gate` exit 1 or a failing `classify`, `fixed` or `record`: report
 it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
@@ -58,7 +58,7 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
    ```bash
    git fetch origin <default branch>
-   python3 .lighthouse/scripts/roborev_gate.py gate
+   lighthouse roborev-gate gate
    ```
 
    One JSON object. Every `verdict` except `off` carries `state` and `raw`, absolute paths: take
@@ -73,7 +73,7 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    | `run` | step 1 |
 
    In a run started with `/lighthouse-write-pr <nr>`, `run` or `classify` do not mean step 1 or 2:
-   `python3 .lighthouse/scripts/roborev_gate.py record --skip "build session ran no review"`, on
+   `lighthouse roborev-gate record --skip "build session ran no review"`, on
    to V4.
 
    Exit 3 (`COULD NOT CHECK`): no PR; report the message.
@@ -85,13 +85,13 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
    In the foreground, with Bash timeout `600000`: start no background work (controller run, if
    present). Exit 124 is the timeout:
-   `python3 .lighthouse/scripts/roborev_gate.py record --skip "review faalde: timeout na 9 min"`,
+   `lighthouse roborev-gate record --skip "review faalde: timeout na 9 min"`,
    then V4. Every other exit code goes to step 2: roborev exits 0 also with findings, so the exit
    code alone is no failure signal.
 2. **Classify.**
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py classify
+   lighthouse roborev-gate classify
    ```
 
    `verdict` `skip`: on to V4; the script recorded the reason. `done`: step 3, with `sha` and
@@ -100,7 +100,7 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    fixed (a run broken off halfway):
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py fixed
+   lighthouse roborev-gate fixed
    ```
 
    Each one listed is `fixed` in that commit; do not judge it again. For every other finding
@@ -117,7 +117,7 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    that `gate` printed at step 0, the reviewed range (the fix commits came after it):
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <file> --range <range>
+   lighthouse roborev-gate record --done <sha> --decisions <file> --range <range>
    ```
 
    After a `classify` verdict at step 0 (a restart, no review in this run) there is no `range`:
@@ -297,14 +297,14 @@ reads the file before the command runs.
 
 Open review points: give the spec and plan documents the branch touches
 (`git diff --name-only origin/<default branch>...HEAD -- '<paths.specs>/*.md' '<paths.plans>/*.md'`)
-to `python3 .lighthouse/scripts/plan_review_record.py pr-open-points <path>...`; the script follows the spec
+to `lighthouse plan-review-record pr-open-points <path>...`; the script follows the spec
 from the **Spec:** line of a plan itself, also when that spec is already on the default branch. If
 the output is not empty, put it unchanged as a section of its own `## Open review points` in the
 body; if it is empty, leave the section out. It is no Evidence row and does not count in the AC
 count of `pr-create-gate.sh`. Name the headings here only inline between backticks: a line that
 starts with `## ` breaks the V4 section the tests cut out.
 
-Roborev line (V2b ran): add the output of `python3 .lighthouse/scripts/roborev_gate.py body-line`
+Roborev line (V2b ran): add the output of `lighthouse roborev-gate body-line`
 to the body as a line of its own, outside the Evidence block. It is the marker
 `<!-- roborev-lokaal: <sha> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
 empty with `off` (then no line).
@@ -329,11 +329,11 @@ Never `--body "$(…)"`, `--fill` or `--web`: the hook blocks them.
 
 Roborev comment, only after a `done` outcome of V2b (also when every finding was refuted). Right
 after `gh pr create`, with `<nr>` the number at the end of the URL it printed, and `<state>` and
-`<raw>` literally from the output of `roborev_gate.py gate` (after a restart, run `gate` again;
+`<raw>` literally from the output of `lighthouse roborev-gate gate` (after a restart, run `gate` again;
 never build a path yourself):
 
 ```bash
-python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron lokaal --state <state> --raw <raw> > <file>
+lighthouse roborev-comment render --pr <nr> --bron lokaal --state <state> --raw <raw> > <file>
 ```
 
 ```bash

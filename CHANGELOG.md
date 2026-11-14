@@ -4,6 +4,88 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.17.0] - 2026-11-14
+
+### Added
+
+- The dispatcher can place a run on another kenn-forge node. `[dispatch.nodes.<name>]` in `host.toml` names a node and its slots, a profile gets a `node`, and `[controller.locations]` with `[labels] location_prefix` in `lighthouse.toml` lets an issue's location label pick the profile. The brake counts slots per node, and a resume or retry stays on the node of its run. A repo that already has `location_prefix` is unaffected until it adds `[controller.locations]`: without that table location labels are ignored. Real runs on another node still wait for #327, because forge reports no session id there.
+- `checkpoint_scan.py push --report-rss` reports gitleaks' peak RSS per batch. `docs/secret-scan.md` gets a *Host-deploy* section with an example systemd user service and hourly timer that push checkpoints scanned; a held ref leaves the unit `failed`.
+
+### Changed
+
+- `code-language-check` runs in the `lighthouse` binary (`lighthouse hook code-language-check`) instead of bash and Python; the verdicts are unchanged. Python that tokenizes but does not parse (`x = = 1`) is now scanned instead of reported as `COULD NOT CHECK`. Update the `lighthouse` binary on your PATH and run `lighthouse init --upgrade`.
+- `bash-write-check` runs in the `lighthouse` binary through `.claude/hooks/lighthouse/run.sh`, and `go-lint-gate` and `ty-gate` find the checkouts of a turn with `lighthouse turn-roots`. Update the binary on your PATH before `lighthouse init --upgrade`: an older binary does not know these commands.
+- `lighthouse roborev-gate`, `lighthouse roborev-comment` and `lighthouse codex-usage` replace the Python scripts in `write-pr` and `fix-pr`.
+- Open questions and Returned now answer straight from an overview that serve refreshes every 2 minutes, the page polls every minute, and on a forge failure the page shows an error instead of old data.
+
+### Fixed
+
+- A fix-pr start no longer waits for a free slot: it replaces the run that closes in the same tick, which already holds one. With all slots held by runs on a red PR, the tick started nothing and those runs stayed open.
+
+## [v0.16.2] - 2026-11-13
+
+### Fixed
+
+- `lighthouse tick` writes the run view after apply: a run the tick starts shows in `GET /api/runs` and *Running runs* after that same tick, and a run it closes is gone after that same tick, instead of one tick later. The tick timer in `deploy/systemd/lighthouse-tick.timer` now starts the tick every 3 minutes instead of every 5; hosts that copied the unit copy it again.
+
+## [v0.16.1] - 2026-11-13
+
+### Fixed
+
+- The `lighthouse serve` page now follows the dark colour scheme of the system; before, it always stayed light. The workspace id in *Workspaces to clean up* links to kenn-forge, as it already did in a run row. Screen readers no longer hear the tick age every minute, only the refresh.
+
+## [v0.16.0] - 2026-11-13
+
+### Added
+
+- `host.toml` gets an optional boolean key `host.controller`. `true` makes `lighthouse config host-check` and `plan-review-record` treat this machine as the controller host without measuring an address (for a host without Tailscale); `false` says it is not. Without the key nothing changes: `host.tailscale_ip` bound on this machine decides. Upgrade order: run `lighthouse init --upgrade` in every repository on the host first, then set the key.
+- `lighthouse measure-start-issue-kpi` and `lighthouse measure-fix-pr-kpi` replace `.lighthouse/scripts/measure_start_issue_kpi.py` and `measure_fix_pr_kpi.py`, with the same metrics, flags and JSON output. `lighthouse init --upgrade` removes the two scripts; update the `lighthouse` binary on your PATH before you run the measurements in the `start-issue` and `fix-pr` skills.
+- The tick squash-merges a green own PR of a finished run, on the measured head. Fix-pr now also starts on a merge conflict, an unprocessed roborev review and a failed merge, not only on a red PR. The tick's token needs *Contents: write* for this.
+
+### Changed
+
+- The systemd unit prefix of kenn-forge runs now comes from `[dispatch.forge] unit_prefix` in `host.toml`, with no default in the code. Hosts that use kenn-forge must add `unit_prefix = "paia-forge-"`, otherwise every `Stop` fails with an error naming the key.
+- The spec and plan reviews run through `lighthouse review-run`, `lighthouse plan-review-record` and `lighthouse review-pair`; they no longer need `python3`. New: `lighthouse codex-usage read|budget`. `lighthouse usage codex` changes its JSON: `source_file` is now always present (`null` when unset), there is a new `reset_credits` key, and the time per Codex home comes from `[codex_usage] app_server_timeout_seconds` instead of a fixed 20 s.
+
+### Fixed
+
+- `lighthouse serve` no longer shows `done · next tick decides` for a run whose session still has background work or an open turn after its Stop. The page now shows such a run as `working`, the same measure the tick uses to decide a run is done.
+
+## [v0.15.0] - 2026-11-09
+
+### Changed
+
+- `main-commit-gate` and `worktree-check` run in the `lighthouse` binary through `.claude/hooks/lighthouse/run.sh`. They no longer need `python3` or `jq`. Update the binary on your PATH before `lighthouse init --upgrade`: an older binary does not know these hooks, and `main-commit-gate` then blocks every Bash call.
+
+### Fixed
+
+- A controller run in a container that mounts the controller state but not the host's `~/.cache/lighthouse` now parks when the usage window is full. The meter also writes the usage alarm next to the pause flag, and in a controller run the usage gate and `lighthouse usage alarm` read that copy when their own alarm is missing.
+
+## [v0.14.0] - 2026-11-09
+
+### Added
+
+- The `lighthouse serve` page now has separate Running, Parked, Queue and Night blocks and a summary
+  row of tiles that jump to each block. Every run shows its phase, task progress, duration and stand
+  (working, waiting or done). While a refresh runs, the page header shows `refreshing…` instead of
+  each card.
+- `lighthouse config`, `lighthouse headings` and `lighthouse protocol` replace the Python config readers in skills: `lighthouse config <key>`, `lighthouse config --json <key>` and `lighthouse config host-check` read `lighthouse.toml` and `host.toml` with the exit codes and output of `config.py`. Hooks can run through `.claude/hooks/lighthouse/run.sh`.
+- `lighthouse usage alarm` prints the valid usage alarm and replaces `alarm.sh`. The hooks `usage-gate`, `permission-check` and `md-link-check` now run through `run.sh <name>` on the lighthouse binary with the same verdicts as before, and the stop gates of the `go` and `python` packs read the alarm through the binary.
+
+### Changed
+
+- Skills and `AGENTS.md` read `lighthouse.toml` and the headings through `lighthouse config` and `lighthouse headings` instead of `config.py` and `headings.py`, and the `python` pack's `ratchet.py` and `prcov_issues.py` call the binary too. Update the `lighthouse` binary on your PATH before you run a skill: an older binary does not know `config` and the skill reads every key as unset.
+  CI jobs that run `ratchet.py` (`pack/python`) must now install the `lighthouse` binary, since it reads its config through `lighthouse config --json`.
+- The `lighthouse serve` page is named lighthouse, with the version as a badge in the header.
+  Everything about the automatic runs sits under the Controller section heading, which also shows
+  the age of the last tick. The browser title is `lighthouse · Controller`.
+
+### Fixed
+
+- The kenn-forge link in the Controller section can point elsewhere than the forge API lighthouse
+  talks to: set `[dispatch.forge] web_url` in `host.toml`, for instance to the tailscale serve
+  address. Without `web_url` the link stays `[dispatch.forge] url`.
+
 ## [v0.13.2] - 2026-11-08
 
 ### Fixed

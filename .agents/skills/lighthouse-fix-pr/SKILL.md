@@ -19,12 +19,13 @@ worktree of the head branch, the fix, getting it green.
 
 Second entry: a **green** PR with an unprocessed roborev review (section 6, only if present) —
 the user starts it: "process the roborev review on 1407". The dispatcher (controller run, if
-present) starts this skill only on a red PR after a finished run, never for a roborev review on
-a green PR.
+present) starts this skill after a finished run not only on a red PR but also on a conflict, an
+unprocessed roborev review and a merge that failed. The tick merges a green PR of its own; this
+skill never merges.
 
 Not here: closing the issue (`/lighthouse-close-issue`), a review of the diff on content (a review
 skill such as `caveman:caveman-review`), starting new work on an issue (`/lighthouse-start-issue`),
-opening a PR (`/lighthouse-write-pr`), and the merge itself — that is a human decision.
+opening a PR (`/lighthouse-write-pr`), and the merge itself — the tick does that after a finished run, never this skill.
 
 ## 1. Diagnosis in one block
 
@@ -141,11 +142,11 @@ gate failed.
 | Expo lockfiles | patch drift in the Expo lockfiles; pack/expo, only if present | `/lighthouse-refresh-expo-lockfiles` |
 | Any other step | lint, type check, scan, licence | the command of that step in `.github/workflows/`; a step that cannot run locally (a signature) the contributor fixes themselves |
 
-Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/bash-write-check.sh`
+Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/run.sh bash-write-check`
 (per edit, with the gates of the language packs that are installed),
 `.claude/hooks/lighthouse/commit-test-gate.sh` (after each commit, on its files) and a pre-push hook, if present
 (`test -x "$(git rev-parse --git-path hooks/pre-push)"`).
-`.claude/hooks/lighthouse/main-commit-gate.sh` blocks a commit that lands on the default branch.
+The `main-commit-gate` hook blocks a commit that lands on the default branch.
 
 **With pack/python (if present): a `ty` zero without extras is no zero.** A module `ty` cannot
 resolve makes *every* symbol from it `Unknown`, and on `Unknown` no type error is possible. Always
@@ -181,6 +182,8 @@ history unreadable. Exception: a fix on a *red* check — that one does belong o
 As soon as `gh pr checks <nr>` is green and `mergeable` is `MERGEABLE`: **report and stop**.
 Do not merge, do not review, do not close the issue. That "stop at green" does not hold while
 section 6 is open: a green PR with an unprocessed roborev review is not done yet.
+A dispatcher start after a failed merge finds the PR green: report that and stop; the failure
+itself is in the 🤖 Returned that follows.
 
 ## 6. Process a roborev review (only if present)
 
@@ -196,15 +199,15 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    there is nothing to push and you skip this step.
 4. Post **always** one answer comment, also if you pushed nothing and also if you refuted every
    finding: the marker is the signal that the round is done; without it a later fix-pr run
-   processes the same review again. The dispatcher (controller run, if present) does not read the
-   marker: it starts fix-pr only on a red PR after a finished run, at most three times per PR.
+   processes the same review again. Under a controller run the dispatcher reads the marker: a
+   review without one keeps the PR from merging and starts this skill, at most three times per PR.
    The comment comes from the renderer `lighthouse-write-pr` uses too, so both routes leave the
    same log. `<scratch>` is the scratchpad or `$TMPDIR`. Save the roborev comment, the same one
    the diagnosis shows:
 
    ```bash
    R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' | tail -1 | jq -r . > <scratch>/roborev-ci.md
-   python3 .lighthouse/scripts/roborev_gate.py classify <scratch>/roborev-ci.md
+   lighthouse roborev-gate classify <scratch>/roborev-ci.md
    ```
 
    If `classify` prints `verdict` `skip` (for instance `review faalde: bevindingen onleesbaar`),
@@ -217,8 +220,8 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    (the reason, `null` with `fixed`; for a low that is not trivial: `low, not trivial`). Then:
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
-   python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
+   lighthouse roborev-gate record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
+   lighthouse roborev-comment render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
    R=$(lighthouse config forge.repo) && gh pr comment <nr> --repo "$R" --body-file <scratch>/comment.md
    ```
 
@@ -248,12 +251,12 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 
 | Metric | Target | Measurement |
 |---|---:|---|
-| Tool calls between fix prompt and the first mutating call | ≤ 2 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py leadin` |
-| Read-only `gh`/`git` diagnosis calls before that mutation | ≤ 1 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py diagnose` |
-| Turns in which this skill loaded without a fix request in the prompt | 0 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py mistrigger` |
-| Turns in which the skill ran on into `lighthouse-close-issue` or `caveman-review` | 0 | `python3 .lighthouse/scripts/measure_fix_pr_kpi.py scope` |
+| Tool calls between fix prompt and the first mutating call | ≤ 2 | `lighthouse measure-fix-pr-kpi leadin` |
+| Read-only `gh`/`git` diagnosis calls before that mutation | ≤ 1 | `lighthouse measure-fix-pr-kpi diagnose` |
+| Turns in which this skill loaded without a fix request in the prompt | 0 | `lighthouse measure-fix-pr-kpi mistrigger` |
+| Turns in which the skill ran on into `lighthouse-close-issue` or `caveman-review` | 0 | `lighthouse measure-fix-pr-kpi scope` |
 
-The script is the source of the numbers, not this text.
+The command is the source of the numbers, not this text.
 
 Row 3 is the bill for the ambient choice. Without that row "a sharp negative boundary" is a claim;
 with that row it is a number that rises at the next measurement or does not.
@@ -271,6 +274,6 @@ Row 4 sees only a `Skill` call; a review done by hand in the same turn does not 
 - **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
   only on the branch must carry the full absolute worktree path: the IDE resolves chat links
   against the main checkout. In a `.md` file, relative instead;
-  `.claude/hooks/lighthouse/md-link-check.sh` blocks an absolute path there.
+  `.claude/hooks/lighthouse/run.sh md-link-check` blocks an absolute path there.
 - **In auto mode the permission classifier refuses `git worktree unlock` and `git worktree remove`
   on a locked worktree.** Do not clean up then; report it.

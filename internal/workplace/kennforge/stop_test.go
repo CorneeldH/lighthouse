@@ -9,16 +9,44 @@ import (
 )
 
 func TestUnitName(t *testing.T) {
-	cases := []struct{ profile, path, want string }{
-		{"software", "/w/issue-7-x", "paia-forge-software-issue-7-x"},
-		{"software", "/w/a.b", "paia-forge-software-a-b"},
-		{"infra", "/w/é", "paia-forge-infra---"},
-		{"software", "/w/a_b-C9", "paia-forge-software-a_b-C9"},
+	cases := []struct{ prefix, profile, path, want string }{
+		{"paia-forge-", "software", "/w/issue-7-x", "paia-forge-software-issue-7-x"},
+		{"paia-forge-", "software", "/w/a.b", "paia-forge-software-a-b"},
+		{"paia-forge-", "infra", "/w/é", "paia-forge-infra---"},
+		{"paia-forge-", "software", "/w/a_b-C9", "paia-forge-software-a_b-C9"},
+		{"other-", "software", "/w/issue-7-x", "other-software-issue-7-x"},
+		{"foo", "infra", "/w/a", "fooinfra-a"},
 	}
 	for _, c := range cases {
-		if got := UnitName(c.profile, c.path); got != c.want {
-			t.Errorf("UnitName(%q, %q) = %q, want %q", c.profile, c.path, got, c.want)
+		if got := UnitName(c.prefix, c.profile, c.path); got != c.want {
+			t.Errorf("UnitName(%q, %q, %q) = %q, want %q", c.prefix, c.profile, c.path, got, c.want)
 		}
+	}
+}
+
+func TestStopUsesConfiguredPrefix(t *testing.T) {
+	a, _, calls := stopAdapter(t, "infra", []step{
+		{cmd: "systemctl --user stop other-infra-issue-7-x", code: 5},
+		{cmd: "systemctl --user is-active other-infra-issue-7-x", out: "inactive\n", code: 3},
+	})
+	a.UnitPrefix = "other-"
+	if err := a.Stop(context.Background(), "ws1", []string{testSessionID}); err != nil {
+		t.Fatal(err)
+	}
+	if len(*calls) != 2 {
+		t.Errorf("calls = %v, want only stop and is-active", *calls)
+	}
+}
+
+func TestStopWithoutUnitPrefixFails(t *testing.T) {
+	a, _, calls := stopAdapter(t, "infra", nil)
+	a.UnitPrefix = ""
+	err := a.Stop(context.Background(), "ws1", []string{testSessionID})
+	if err == nil || !strings.Contains(err.Error(), "dispatch.forge.unit_prefix") {
+		t.Fatalf("err = %v, want one naming dispatch.forge.unit_prefix", err)
+	}
+	if len(*calls) != 0 {
+		t.Errorf("calls = %v, want none", *calls)
 	}
 }
 

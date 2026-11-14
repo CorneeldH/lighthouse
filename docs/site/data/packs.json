@@ -29,6 +29,7 @@
     "hooks": [
       {
         "name": "main-commit-gate",
+        "source": "internal/hooks/maincommitgate.go",
         "events": [
           "PreToolUse"
         ],
@@ -45,6 +46,7 @@
       },
       {
         "name": "bash-write-check",
+        "source": "internal/hooks/bashwritecheck.go",
         "events": [
           "PreToolUse",
           "PostToolUse",
@@ -61,6 +63,7 @@
       },
       {
         "name": "worktree-check",
+        "source": "internal/hooks/worktreecheck.go",
         "events": [
           "PreToolUse"
         ],
@@ -68,6 +71,7 @@
       },
       {
         "name": "md-link-check",
+        "source": "internal/hooks/mdlinkcheck.go",
         "events": [
           "PostToolUse"
         ],
@@ -78,10 +82,12 @@
         "events": [
           "PostToolUse"
         ],
-        "when": "after every edit"
+        "when": "after every edit",
+        "source": "internal/codelang/hook.go"
       },
       {
         "name": "usage-gate",
+        "source": "internal/hooks/usagegate.go",
         "events": [
           "PostToolUse",
           "Stop",
@@ -92,6 +98,7 @@
       },
       {
         "name": "permission-check",
+        "source": "internal/hooks/permissioncheck.go",
         "events": [
           "Notification"
         ],

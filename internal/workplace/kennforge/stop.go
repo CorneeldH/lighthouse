@@ -20,8 +20,9 @@ const (
 )
 
 // UnitName is the systemd unit forge_agent.sh gives a worktree: every byte outside
-// [A-Za-z0-9_-] becomes a dash, so a multibyte character gives several.
-func UnitName(profile, worktreePath string) string {
+// [A-Za-z0-9_-] becomes a dash, so a multibyte character gives several. The prefix is
+// taken literally (trailing dash included) and comes from [dispatch.forge] unit_prefix.
+func UnitName(prefix, profile, worktreePath string) string {
 	base := filepath.Base(worktreePath)
 	b := []byte(base)
 	for i, c := range b {
@@ -31,15 +32,22 @@ func UnitName(profile, worktreePath string) string {
 			b[i] = '-'
 		}
 	}
-	return "paia-forge-" + profile + "-" + string(b)
+	return prefix + profile + "-" + string(b)
 }
 
 // Stop ends the processes of a workspace: its systemd unit and, for the software
 // profile, the claude processes of the given sessions in the shared devcontainer.
-// Anything it cannot measure is an error, never "gone".
+// Anything it cannot measure is an error, never "gone". On another node see remoteStop.
 func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
+	}
+	if a.Node != "" {
+		return a.remoteStop(ctx, workspaceID, sessionIDs)
+	}
+	// No default: a host without the key must fail, not stop a wrong unit.
+	if a.UnitPrefix == "" {
+		return fmt.Errorf("stop workspace %s: dispatch.forge.unit_prefix is not set", workspaceID)
 	}
 	// An empty id would make pgrep -f and pkill -f match every process in the shared
 	// devcontainer, foreign sessions included.
@@ -49,13 +57,13 @@ func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []str
 		}
 	}
 	var w wireWorkspace
-	if err := a.Client.do(ctx, http.MethodGet, wsPath(workspaceID), nil, 0, &w); err != nil {
+	if err := a.Client.do(ctx, http.MethodGet, a.path(wsPath(workspaceID)), nil, 0, &w); err != nil {
 		return fmt.Errorf("read workspace %s: %w", workspaceID, err)
 	}
 	if w.WorktreeDir == "" {
 		return fmt.Errorf("workspace %s has no worktree_path", workspaceID)
 	}
-	unit := UnitName(a.Profile, w.WorktreeDir)
+	unit := UnitName(a.UnitPrefix, a.Profile, w.WorktreeDir)
 	// The exit code of stop is ignored: a unit that is not there fails, and is-active decides.
 	if _, _, err := a.Run(ctx, stopTimeout, "systemctl", "--user", "stop", unit); err != nil {
 		return fmt.Errorf("systemctl stop %s: %w", unit, err)
@@ -78,10 +86,13 @@ func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []str
 // Kill ends only the claude processes of the given sessions, found by session id, and never the
 // systemd unit: a foreign session in the same worktree runs on. With the software profile they
 // run in the shared devcontainer, with any other profile on this host. A session without a
-// process is no error; anything it cannot measure is.
+// process is no error; anything it cannot measure is. On another node see remoteStop.
 func (a *Adapter) Kill(ctx context.Context, workspaceID string, sessionIDs []string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
+	}
+	if a.Node != "" {
+		return a.remoteStop(ctx, workspaceID, sessionIDs)
 	}
 	// An empty id would make pgrep -f and pkill -f match every process, foreign sessions included.
 	for _, sid := range sessionIDs {

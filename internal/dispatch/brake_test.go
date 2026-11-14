@@ -31,7 +31,7 @@ func TestBrakeParkedResume(t *testing.T) {
 		MemAvailableGiB: &gib, MinMemAvailableGB: 8, ReservePerRunGB: 3,
 		Slots: 1, MaxSoftware: 1, InUse: 1, SoftwareInUse: 1,
 	}
-	parked := planned{Action: Action{Kind: KindResume, Repo: "o/a", Issue: 1, Trigger: triggerUsage}, software: true, parked: true}
+	parked := planned{Action: Action{Kind: KindResume, Repo: "o/a", Issue: 1, Trigger: triggerUsage}, software: true, holdsSlot: true}
 	fresh := planned{Action: Action{Kind: KindStart, Repo: "o/b", Issue: 2}, software: true}
 	got := b.apply([]planned{parked, fresh})
 	if len(got) != 2 || got[0].Kind != KindResume {

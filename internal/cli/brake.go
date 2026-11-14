@@ -20,7 +20,6 @@ type hostFacts struct {
 	PauseUntil time.Time                // zero: no active pause
 	Markers    map[string][]park.Marker // per repo slug: controller markers whose last run is there
 	MarkerDir  string
-	Parked     map[string][]int64 // per repo slug: ids of the last runs that are resumable for their marker
 }
 
 // meter is env.Meter, or a meter on the default cache directory and the [usage] table of host.toml.
@@ -83,38 +82,62 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 	if err != nil {
 		return hostFacts{}, err
 	}
+	b.Nodes = nodeSlots(cfg)
 	for _, r := range open {
-		b.InUse++
-		if r.Profile == dispatch.ProfileSoftware {
-			b.SoftwareInUse++
+		b.CountRun(r.Node, r.Profile)
+	}
+	markers, parked, err := controllerMarkers(ctx, db, f.MarkerDir)
+	if err != nil {
+		return hostFacts{}, err
+	}
+	f.Markers = markers
+	for _, rows := range parked {
+		for _, last := range rows {
+			b.CountRun(last.Node, last.Profile)
 		}
 	}
-	markers, err := park.ReadMarkers(f.MarkerDir)
-	if err != nil {
-		return hostFacts{}, fmt.Errorf("resume markers: %w", err)
+	f.Brake = b
+	return f, nil
+}
+
+// nodeSlots lists the nodes of host.toml by node_id; nil without nodes.
+func nodeSlots(cfg hostconfig.Dispatch) map[string]dispatch.NodeSlots {
+	if len(cfg.Nodes) == 0 {
+		return nil
 	}
-	f.Markers = map[string][]park.Marker{}
-	f.Parked = map[string][]int64{}
-	for _, m := range markers {
+	out := make(map[string]dispatch.NodeSlots, len(cfg.Nodes))
+	for name, n := range cfg.Nodes {
+		out[n.NodeID] = dispatch.NodeSlots{Name: name, Slots: n.Slots}
+	}
+	return out
+}
+
+// controllerMarkers reads the controller markers in markerDir, per repo slug of the last run of
+// their session, and per repo slug the last runs that are resumable for their marker: the parked
+// runs. A marker whose session has no run counts for nothing. An unreadable marker directory or
+// database is an error.
+func controllerMarkers(ctx context.Context, db *sql.DB, markerDir string) (markers map[string][]park.Marker,
+	parked map[string][]runs.Row, err error) {
+	all, err := park.ReadMarkers(markerDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resume markers: %w", err)
+	}
+	markers, parked = map[string][]park.Marker{}, map[string][]runs.Row{}
+	for _, m := range all {
 		if !m.Controller {
 			continue
 		}
 		repo, last, ok, err := runs.LastOfSession(ctx, db, m.SessionID)
 		if err != nil {
-			return hostFacts{}, err
+			return nil, nil, err
 		}
 		if !ok {
 			continue
 		}
-		f.Markers[repo] = append(f.Markers[repo], m)
+		markers[repo] = append(markers[repo], m)
 		if runs.Resumable(last, m.Key()) {
-			f.Parked[repo] = append(f.Parked[repo], last.ID)
-			b.InUse++
-			if last.Profile == dispatch.ProfileSoftware {
-				b.SoftwareInUse++
-			}
+			parked[repo] = append(parked[repo], last)
 		}
 	}
-	f.Brake = b
-	return f, nil
+	return markers, parked, nil
 }

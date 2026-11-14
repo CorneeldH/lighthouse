@@ -1,0 +1,8 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "pak 619 op"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-start-issue"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "text", "text": "Poort 4c: brainstorming"}, {"type": "tool_use", "name": "Agent", "input": {"subagent_type": "lighthouse-issue-impact-scout", "prompt": "..."}, "id": "s1"}]}, "timestamp": "2026-09-11T10:00:00Z"}
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "tool_result", "tool_use_id": "s1"}]}, "timestamp": "2026-09-11T10:00:02Z", "toolUseResult": {"isAsync": true, "status": "async_launched"}}
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "pak 620 op"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-start-issue"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "text", "text": "Poort 4b: writing-plans"}, {"type": "tool_use", "name": "Agent", "input": {"subagent_type": "lighthouse-issue-impact-scout", "prompt": "..."}, "id": "s2"}]}, "timestamp": "2026-09-11T11:00:00Z"}
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "tool_result", "tool_use_id": "s2"}]}, "timestamp": "2026-09-11T11:00:10Z", "toolUseResult": "User rejected tool use"}

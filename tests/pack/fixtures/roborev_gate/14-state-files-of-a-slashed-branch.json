@@ -1,0 +1,26 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "git",
+      "args": [
+        "checkout",
+        "-b",
+        "fix/x"
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "{\"decision\":\"codex\",\"reason\":\"ok\"}"
+      ],
+      "expect": {
+        "state": "$state/fix-x.json",
+        "raw": "$state/fix-x.md"
+      }
+    }
+  ]
+}

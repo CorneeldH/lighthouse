@@ -84,10 +84,10 @@ func registerRuns(api huma.API, list func(context.Context) ([]dispatch.RunView, 
 	}, func(op *huma.Operation) { op.OperationID = "get-runs" })
 }
 
-// registerForge adds the endpoints that read the forge of repos, each narrowed by its filter.
-func registerForge(api huma.API, repos []overview.RepoSource) {
+// registerForge adds the endpoints that serve the forge overview read returns.
+func registerForge(api huma.API, read func(context.Context) (overview.Overview, error)) {
 	huma.Get(api, "/api/questions", func(ctx context.Context, _ *struct{}) (*questionsOutput, error) {
-		o, err := overview.BuildAll(ctx, repos)
+		o, err := read(ctx)
 		if err != nil {
 			return nil, forgeError(err)
 		}
@@ -97,7 +97,7 @@ func registerForge(api huma.API, repos []overview.RepoSource) {
 	}, func(op *huma.Operation) { op.OperationID = "get-questions" })
 
 	huma.Get(api, "/api/returned", func(ctx context.Context, _ *struct{}) (*returnedOutput, error) {
-		o, err := overview.BuildAll(ctx, repos)
+		o, err := read(ctx)
 		if err != nil {
 			return nil, forgeError(err)
 		}

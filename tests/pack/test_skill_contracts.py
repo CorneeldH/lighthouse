@@ -326,7 +326,7 @@ def test_descriptions_pass_the_overlap_check(tmp_path):
 _TOOL_USES = {
     "superpowers": r"superpowers:",
     "gh": r"\bgh (pr|issue|api|project|run|repo|search|label|workflow)\b",
-    "codex": r"(^|[\s`$(])codex (exec|review)\b|codex_usage",
+    "codex": r"(^|[\s`$(])codex (exec|review)\b|codex-usage",
     # A call (`jq -r`, `| jq '.x'`), not a mention like "no `jq`".
     "jq": r"\bjq\s+[-'\".]",
     "git": r"\bgit (-C|worktree|log|fetch|diff|status|rev-parse|branch|push|commit|grep|show"
@@ -402,3 +402,14 @@ def test_write_pr_creates_the_pr_with_the_forge_repo():
     creates = [line for line in text.splitlines() if line.startswith("gh pr create ")]
     assert creates, "write-pr has no fenced `gh pr create` command"
     assert all(line.startswith("gh pr create --repo <forge.repo> ") for line in creates), creates
+
+
+@pytest.mark.parametrize("name", ["review-spec", "review-plan"])
+def test_review_skills_call_the_binary_not_python_or_a_wrapper(name):
+    """#282: the spec and plan reviews run through `lighthouse review-run`, `plan-review-record`
+    and `review-pair`; neither variant needs python3 or a review.sh / verify.sh next to it."""
+    texts = _texts(CORE / "skills" / name)
+    assert texts
+    for where, text in texts.items():
+        for gone in ("python3", "review.sh", "verify.sh"):
+            assert gone not in text, (where, gone)

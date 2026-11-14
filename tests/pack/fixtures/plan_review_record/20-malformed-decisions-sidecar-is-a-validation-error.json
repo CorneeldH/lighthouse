@@ -1,0 +1,49 @@
+{
+  "description": "A sidecar that is one bare object, not a list: exit 4 with the file name.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": [
+        "MAJOR"
+      ]
+    },
+    {
+      "op": "file",
+      "path": "${a}/round-1.decisions.json",
+      "json": {
+        "finding_id": "r1-f1"
+      }
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "aborted",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "code": 4,
+        "stderr_contains": [
+          "PLAN-REVIEW-RECORD FAILED",
+          "round-1.decisions.json"
+        ]
+      }
+    }
+  ]
+}

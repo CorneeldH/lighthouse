@@ -32,6 +32,15 @@ ook een relatieve. Zonder beide eindigt het commando met `usage: failed: ...`.
 | `usage-window.lock` | lock die gelijktijdige verversingen uitsluit |
 | `usage-refresh/` | werkmap van de `claude`-aanroep |
 
+De meter schrijft het alarm ook als kopie in de map van de pauzevlag:
+`${LIGHTHOUSE_CONTROLLER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/controller}/usage-window.alarm`.
+Hij schrijft en verwijdert die kopie samen met het alarm, en `tick` ruimt een verlopen kopie op. Een
+controller-run in een container die die map wel mount en de cache van de host niet, ziet zo toch het
+alarm (zie [usage-gate.md](usage-gate.md#de-standen)). Lukt het schrijven van de kopie niet, dan
+faalt de verversing net als bij het alarm zelf: `usage: failed: <fout>`, en de oude cache blijft.
+Zonder plek voor de pauzevlag (geen absolute `LIGHTHOUSE_CONTROLLER_STATE`, `XDG_STATE_HOME` of
+`HOME`) is er geen kopie.
+
 De meting is `claude -p /usage --output-format json`, met `usage-refresh/` als werkmap en een
 timeout van 60 seconden. De kindsessie krijgt `LIGHTHOUSE_USAGE_REFRESH=1` in zijn omgeving, zodat
 hooks kunnen zien dat het om een meting gaat en niet om echt werk.
@@ -109,14 +118,28 @@ Anders dan `refresh` en `tick` schrijft dit commando niets: geen alarm, geen cac
   `age_s`. Alleen `GET /api/usage` kent de toestand `stale` (meting ouder dan 900 s, voor beide
   bronnen).
 - **Uitvoer.** Een JSON-object met `source` (`app-server` of `rollout-log`), `generated_at` (UTC),
-  `age_s` (leeftijd van de meting op `generated_at`), `source_file` (alleen bij `rollout-log`),
-  `lower_bound`, en `session` en `week`, elk met `pct` en `reset_at` (UTC). `reset_credits`, dat
-  `codex_usage.py read` wel uitvoert, staat niet in deze uitvoer.
+  `age_s` (leeftijd van de meting op `generated_at`), `source_file` (het pad bij `rollout-log`, anders
+  `null`), `lower_bound`, `session` en `week`, elk met `pct` en `reset_at` (UTC), en `reset_credits`.
+  `reset_credits` is `{"available": N, "expires": [...]}` (de vervaldata van de beschikbare credits,
+  oudste eerst) bij `app-server`, en `null` bij `rollout-log` of als de app-server geen credits
+  meldt. Is `rateLimitResetCredits` onleesbaar, dan blijft de stand geldig met `reset_credits`
+  `null`. `lighthouse codex-usage read` print dezelfde stand, maar behandelt dat als een fout van die
+  home: de volgende home, dan het sessielog.
 - **Niet meetbaar.** Eén regel `not measurable: <reden>` op stderr, niets op stdout, exitcode 1.
   Nooit een stand met 0%.
-- **Wachttijd.** De binary wacht vast 20 s per home. De sleutel
-  `[codex_usage] app_server_timeout_seconds` uit `lighthouse.toml` leest hij niet, anders dan
-  `codex_usage.py`.
+- **Wachttijd.** De binary wacht per home zo lang als `[codex_usage] app_server_timeout_seconds` uit
+  `lighthouse.toml` zegt (standaard 20 s; zonder leesbare config ook 20 s).
+
+### `lighthouse codex-usage`
+
+- `codex-usage read` print de stand als hierboven (JSON met inspringing 2, exitcode 0). Niet
+  meetbaar, ook bij een configfout: `not measurable: <reden>` op stderr en exitcode 1.
+- `codex-usage budget` beslist vóór een review-ronde of Codex nog past, en print één regel JSON met
+  `decision` (`codex`, `fallback` of `not_measurable`), `reason`, `window`, `reset_at`,
+  `session_pct`, `week_pct`, `source`, `lower_bound` en `thresholds`. Exitcode 6 bij `fallback`,
+  anders 0. De drempels komen uit `[codex_usage] review_pct_session` (90) en `review_pct_week` (95).
+  Bij een configfout staat `codex-usage: config: <fout>` op stderr en is de uitkomst `not_measurable`.
+- Een gebruiksfout (onbekend subcommando, extra argument) is exitcode 2.
 
 ## API
 

@@ -84,10 +84,10 @@ func TestClearLeftover(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := ClearLeftover(ctx, db, "o/a", "w1"); err != nil {
+	if err := ClearLeftover(ctx, db, "o/a", "", "w1"); err != nil {
 		t.Fatalf("ClearLeftover: %v", err)
 	}
-	if err := ClearLeftover(ctx, db, "o/a", "missing"); err != nil {
+	if err := ClearLeftover(ctx, db, "o/a", "", "missing"); err != nil {
 		t.Fatalf("ClearLeftover of an absent row: %v", err)
 	}
 	got, err := Leftovers(ctx, db)
@@ -121,5 +121,37 @@ func TestLeftoversEmptyNotNil(t *testing.T) {
 	}
 	if got == nil || len(got) != 0 {
 		t.Errorf("Leftovers = %#v, want empty non-nil slice", got)
+	}
+}
+
+func TestLeftoverPerNode(t *testing.T) {
+	ctx := context.Background()
+	db := openLeftoverDB(t)
+	self := Leftover{Repo: "o/a", Issue: 3, WorkspaceID: "w1", Path: "/p/1", Reason: "dirty"}
+	other := Leftover{Repo: "o/a", Issue: 3, Node: "node-a", WorkspaceID: "w1", Path: "/p/a", Reason: "busy"}
+	for _, l := range []Leftover{self, other} {
+		if err := RecordLeftover(ctx, db, l, leftoverNow); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := Leftovers(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []Leftover{self, other}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Leftovers = %+v, want %+v", got, want)
+	}
+	if err := ClearLeftover(ctx, db, "o/a", "node-a", "w1"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = Leftovers(ctx, db)
+	if want := []Leftover{self}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("after clearing node-a: %+v, want %+v", got, want)
+	}
+	if err := ClearLeftover(ctx, db, "o/a", "", "w1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = Leftovers(ctx, db); len(got) != 0 {
+		t.Errorf("after clearing self: %+v, want none", got)
 	}
 }

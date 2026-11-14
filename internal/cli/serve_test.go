@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/CorneeldH/lighthouse/internal/server"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +21,8 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
@@ -112,7 +114,7 @@ func startServe(t *testing.T) (addr string, stop func() error) {
 	errOut := &syncBuf{}
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, server.RunsMeta{}, errOut)
+		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, server.RunsMeta{}, server.RefreshInterval, errOut)
 	}()
 
 	addr = waitListening(t, errOut, done)
@@ -604,5 +606,85 @@ func TestServeRunsFromTickState(t *testing.T) {
 	}
 	if err := stop(); err != nil {
 		t.Fatalf("serve = %v, want nil", err)
+	}
+}
+
+// countingSource is an overview.Source without issues that counts its OpenIssues calls.
+type countingSource struct{ calls atomic.Int32 }
+
+func (c *countingSource) OpenIssues(context.Context) ([]forge.Issue, error) {
+	c.calls.Add(1)
+	return nil, nil
+}
+
+func (c *countingSource) Comments(context.Context, int) ([]protocol.Comment, error) {
+	return nil, nil
+}
+
+func TestStartOverviewNoReposIsNotConfigured(t *testing.T) {
+	read, stopped := startOverview(context.Background(), nil, server.RefreshInterval)
+	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
+		t.Fatalf("err = %v, want forge.ErrNotConfigured", err)
+	}
+	done := make(chan struct{})
+	go func() { stopped(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stopped() blocked without repos")
+	}
+}
+
+func TestStartOverviewRebuildsOnTheInterval(t *testing.T) {
+	src := &countingSource{}
+	ctx, cancel := context.WithCancel(context.Background())
+	read, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}}, 20*time.Millisecond)
+	defer func() { cancel(); stopped() }()
+	if _, err := read(ctx); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for src.calls.Load() < 3 {
+		if time.Now().After(deadline) {
+			t.Fatalf("OpenIssues calls = %d after 5s at a 20ms interval, want at least 3", src.calls.Load())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestServeRefusesANonPositiveOverviewInterval(t *testing.T) {
+	for _, v := range []string{"0s", "-1s"} {
+		errOut := &syncBuf{}
+		root := NewRoot(strings.NewReader(""), io.Discard, errOut)
+		root.SetArgs([]string{"serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"),
+			"--overview-interval", v})
+		if err := root.ExecuteContext(context.Background()); err == nil || !strings.Contains(err.Error(), "--overview-interval must be positive") {
+			t.Errorf("%s: err = %v, want the positive-interval refusal", v, err)
+		}
+	}
+}
+
+func TestStartOverviewBuildsOnceAndStops(t *testing.T) {
+	src := &countingSource{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	read, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}}, server.RefreshInterval)
+	ov, err := read(ctx)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if ov.Questions == nil || len(ov.Questions) != 0 || ov.Returned == nil || len(ov.Returned) != 0 {
+		t.Fatalf("overview = %+v, want empty non-nil lists", ov)
+	}
+	if n := src.calls.Load(); n != 1 {
+		t.Fatalf("OpenIssues calls = %d, want 1", n)
+	}
+	cancel()
+	done := make(chan struct{})
+	go func() { stopped(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stopped() did not return within 1s of cancel")
 	}
 }

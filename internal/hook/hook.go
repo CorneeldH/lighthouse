@@ -37,11 +37,14 @@ type Payload struct {
 	Raw       []byte `json:"-"`
 }
 
-// Result is the outcome of a hook. Output is printed as JSON on stdout when it is not empty.
+// Result is the outcome of a hook. Output is printed as JSON on stdout when it is not empty;
+// otherwise Text, when set, goes to stdout as it is.
 type Result struct {
 	Code   int
 	Output map[string]any
 	Stderr string
+	// Text is dropped when Run adds notices to Output, so only a nested hook may rely on it.
+	Text string
 }
 
 // Func is one hook. stand is the optional second argument (for example pre or post).
@@ -53,6 +56,9 @@ type Env struct {
 	// StateDir holds the once-per-session markers; empty means none is known, and the
 	// notices stay quiet.
 	StateDir string
+	// Nested marks a call from inside another hook (bash-write-check): the outer call owns
+	// the notices, so this one adds none and spends no marker.
+	Nested bool
 }
 
 var (
@@ -72,7 +78,7 @@ func Register(name string, f Func) {
 
 // Run runs hook name and returns the exit code. A result with code 0 gets the version and
 // build notices added, once per session; a blocking result gets none, so the notice is not
-// spent on a message the user reads next to a block.
+// spent on a message the user reads next to a block, and a nested call gets none either.
 func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.Writer, env Env) int {
 	mu.Lock()
 	f, ok := registry[name]
@@ -94,7 +100,7 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 	if !ok {
 		return ExitUnknown
 	}
-	if res.Code == 0 {
+	if res.Code == 0 && !env.Nested {
 		res.Output = withNotices(res.Output, env, p.SessionID)
 	}
 	if res.Stderr != "" {
@@ -104,6 +110,11 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 		enc := json.NewEncoder(out)
 		enc.SetEscapeHTML(false)
 		if err := enc.Encode(res.Output); err != nil {
+			_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: hook %s: writing output: %v\n", name, err)
+			return ExitUnknown
+		}
+	} else if res.Text != "" {
+		if _, err := io.WriteString(out, res.Text); err != nil {
 			_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: hook %s: writing output: %v\n", name, err)
 			return ExitUnknown
 		}

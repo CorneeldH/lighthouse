@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "mistrigger",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"mistrigger\": {\n    \"loaded\": 2,\n    \"without_issue_number\": 1,\n    \"examples\": [\n      \"schrijf een issue over de gateway\"\n    ]\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_mistrigger_needs_a_loaded_skill_without_an_issue_number"
+    ]
+  }
+]

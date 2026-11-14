@@ -11,12 +11,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
 )
 
-const codexTimeout = 20 * time.Second            // per home, for both app-server answers together
+const codexTimeout = 20 * time.Second            // default per home, for both app-server answers together
 const codexWaitDelay = 2 * time.Second           // cmd.WaitDelay: SIGTERM, then kill
 const codexClientName = "lighthouse-codex-usage" // clientInfo.name in the initialize call
 
@@ -30,11 +31,13 @@ type CodexWindow struct {
 type CodexState struct {
 	Source      string      `json:"source"` // "app-server" or "rollout-log"
 	GeneratedAt string      `json:"generated_at"`
-	AgeS        int         `json:"age_s"` // age of the reading at GeneratedAt
-	SourceFile  string      `json:"source_file,omitempty"`
+	AgeS        int         `json:"age_s"`       // age of the reading at GeneratedAt
+	SourceFile  *string     `json:"source_file"` // rollout-log only, else null
 	LowerBound  bool        `json:"lower_bound"`
 	Session     CodexWindow `json:"session"`
 	Week        CodexWindow `json:"week"`
+	// ResetCredits is {"available":N,"expires":[...]} from the app-server, else null.
+	ResetCredits json.RawMessage `json:"reset_credits"`
 }
 
 // CodexReader reads the Codex windows from `codex app-server`.
@@ -60,13 +63,29 @@ func NewCodexReader() (CodexReader, error) {
 	}, nil
 }
 
-// ReadCodex reads the Codex windows from the default homes.
+// ReadCodex reads the Codex windows from the default homes. The time per home is
+// [codex_usage] app_server_timeout_seconds, or 20 s when the config cannot be read. An
+// unreadable rateLimitResetCredits does not fail a home.
 func ReadCodex(ctx context.Context) (CodexState, error) {
 	r, err := NewCodexReader()
 	if err != nil {
 		return CodexState{}, err
 	}
+	if cfg, err := LoadBudgetConfig(); err == nil {
+		r.Timeout = cfg.Timeout
+	}
 	return r.Read(ctx)
+}
+
+// ReadCodexStrict is ReadCodex for `codex-usage`: timeout is the time per home, and an
+// unreadable rateLimitResetCredits fails that home (see CodexReader.ReadStrict).
+func ReadCodexStrict(ctx context.Context, timeout time.Duration) (CodexState, error) {
+	r, err := NewCodexReader()
+	if err != nil {
+		return CodexState{}, err
+	}
+	r.Timeout = timeout
+	return r.ReadStrict(ctx)
 }
 
 func codexCommand(ctx context.Context, home string) *exec.Cmd {
@@ -76,11 +95,25 @@ func codexCommand(ctx context.Context, home string) *exec.Cmd {
 }
 
 // Read returns the reading of the first home that has one. When every home
-// fails, the error lists the reason per home.
+// fails, the error lists the reason per home. An unreadable
+// rateLimitResetCredits is ignored: the reading stays valid, with reset_credits null.
 func (r CodexReader) Read(ctx context.Context) (CodexState, error) {
+	return r.read(ctx, false)
+}
+
+// ReadStrict is Read, except that an unreadable rateLimitResetCredits fails that
+// home, as `codex_usage.py` did: the next home is tried, then the rollout log.
+func (r CodexReader) ReadStrict(ctx context.Context) (CodexState, error) {
+	return r.read(ctx, true)
+}
+
+func (r CodexReader) read(ctx context.Context, strictCredits bool) (CodexState, error) {
 	var reasons []string
 	for _, home := range r.Homes {
-		state, err := r.readHome(ctx, home)
+		state, creditsErr, err := r.readHome(ctx, home)
+		if err == nil && strictCredits {
+			err = creditsErr
+		}
 		if err == nil {
 			return state, nil
 		}
@@ -97,11 +130,11 @@ func (r CodexReader) Read(ctx context.Context) (CodexState, error) {
 	return CodexState{}, fmt.Errorf("app-server: %s; rollout-log: %w", appServer, err)
 }
 
-func (r CodexReader) readHome(parent context.Context, home string) (CodexState, error) {
+func (r CodexReader) readHome(parent context.Context, home string) (state CodexState, creditsErr, err error) {
 	ctx, cancel := context.WithTimeout(parent, r.Timeout)
 	result, err := readAppServer(ctx, cancel, r.Command(ctx, home))
 	if err != nil {
-		return CodexState{}, err
+		return CodexState{}, nil, err
 	}
 	return parseAppServer(result, r.Now())
 }
@@ -224,40 +257,95 @@ type appServerLimits struct {
 
 // parseAppServer turns the result of account/rateLimits/read into a state:
 // rateLimitsByLimitId.codex, else rateLimits. Nothing else is taken over.
-func parseAppServer(result []byte, now time.Time) (CodexState, error) {
+// An unreadable rateLimitResetCredits is not an error of the reading: it comes
+// back as creditsErr beside a valid state whose ResetCredits is null.
+func parseAppServer(result []byte, now time.Time) (state CodexState, creditsErr, err error) {
 	var res struct {
 		RateLimits          *appServerLimits           `json:"rateLimits"`
 		RateLimitsByLimitID map[string]json.RawMessage `json:"rateLimitsByLimitId"`
+		ResetCredits        json.RawMessage            `json:"rateLimitResetCredits"`
 	}
 	if err := json.Unmarshal(result, &res); err != nil {
-		return CodexState{}, fmt.Errorf("app-server answer unreadable: %w", err)
+		return CodexState{}, nil, fmt.Errorf("app-server answer unreadable: %w", err)
 	}
 	limits := res.RateLimits
 	// Only the codex entry is parsed; an odd shape under another id is not our concern.
 	if raw, ok := res.RateLimitsByLimitID["codex"]; ok && !bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		var l appServerLimits
 		if err := json.Unmarshal(raw, &l); err != nil {
-			return CodexState{}, fmt.Errorf("app-server answer unreadable: %w", err)
+			return CodexState{}, nil, fmt.Errorf("app-server answer unreadable: %w", err)
 		}
 		limits = &l
 	}
 	if limits == nil {
-		return CodexState{}, errors.New("no rateLimits in the app-server answer")
+		return CodexState{}, nil, errors.New("no rateLimits in the app-server answer")
 	}
 	session, err := appServerWindowState(limits.Primary, "primary")
 	if err != nil {
-		return CodexState{}, err
+		return CodexState{}, nil, err
 	}
 	week, err := appServerWindowState(limits.Secondary, "secondary")
 	if err != nil {
-		return CodexState{}, err
+		return CodexState{}, nil, err
 	}
+	credits, creditsErr := resetCredits(res.ResetCredits)
 	return CodexState{
-		Source:      "app-server",
-		GeneratedAt: now.UTC().Format(timeLayout),
-		Session:     session,
-		Week:        week,
-	}, nil
+		Source:       "app-server",
+		GeneratedAt:  now.UTC().Format(timeLayout),
+		Session:      session,
+		Week:         week,
+		ResetCredits: credits,
+	}, creditsErr, nil
+}
+
+// resetCredits builds {"available":N,"expires":[...]}: the expiry of every credit with status
+// "available", oldest first. Anything but an object (or none) is null; an object that does not
+// have the shape gives an error and null.
+func resetCredits(raw json.RawMessage) (json.RawMessage, error) {
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(raw, &obj) != nil || obj == nil {
+		return nil, nil
+	}
+	fail := func(why string) (json.RawMessage, error) {
+		return nil, fmt.Errorf("reset credits unreadable: %s", why)
+	}
+	var count *float64
+	if json.Unmarshal(obj["availableCount"], &count) != nil || count == nil {
+		return fail("availableCount is missing or not a number")
+	}
+	var credits []struct {
+		Status    string   `json:"status"`
+		ExpiresAt *float64 `json:"expiresAt"`
+	}
+	if c, ok := obj["credits"]; ok && json.Unmarshal(c, &credits) != nil {
+		return fail("credits is not a list of objects with a numeric expiresAt")
+	}
+	if c, ok := obj["credits"]; ok && bytes.Equal(bytes.TrimSpace(c), []byte("null")) {
+		return fail("credits is null")
+	}
+	var stamps []float64
+	for _, c := range credits {
+		if c.Status != "available" {
+			continue
+		}
+		if c.ExpiresAt == nil {
+			return fail("an available credit has no expiresAt")
+		}
+		stamps = append(stamps, *c.ExpiresAt)
+	}
+	sort.Float64s(stamps)
+	expires := make([]string, len(stamps))
+	for i, t := range stamps {
+		expires[i] = time.Unix(int64(t), 0).UTC().Format(timeLayout)
+	}
+	out, err := json.Marshal(struct {
+		Available int      `json:"available"`
+		Expires   []string `json:"expires"`
+	}{int(*count), expires})
+	if err != nil {
+		return fail(err.Error())
+	}
+	return out, nil
 }
 
 func appServerWindowState(w *appServerWindow, name string) (CodexWindow, error) {

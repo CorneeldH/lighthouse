@@ -35,6 +35,7 @@ type Item struct {
 	Priority       string          `json:"priority"` // option name, "" when unset
 	ItemUpdatedAt  time.Time       `json:"item_updated_at"`
 	IssueUpdatedAt time.Time       `json:"issue_updated_at"`
+	Labels         []string        `json:"labels,omitempty"` // label names of the issue
 	BlockedBy      []forge.Blocker `json:"blocked_by"`
 	PRs            []forge.PR      `json:"prs"`      // closing PRs plus PRs on the open run's branch, by number
 	Comments       []Comment       `json:"comments"` // trusted authors only, oldest first
