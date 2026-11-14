@@ -102,11 +102,8 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/repo_identity.py",
 		".lighthouse/scripts/board_start.py",
 		".lighthouse/scripts/check-instructions.sh",
-		".lighthouse/scripts/codex_usage.py",
 		".lighthouse/scripts/create_labels.py",
 		".lighthouse/scripts/post_artefact.py",
-		".lighthouse/scripts/roborev_comment.py",
-		".lighthouse/scripts/roborev_gate.py",
 		".lighthouse/scripts/unblock_dependents.py",
 		".lighthouse/scripts/worktree_audit.py",
 	}

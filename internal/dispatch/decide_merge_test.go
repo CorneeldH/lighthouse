@@ -240,6 +240,7 @@ func TestFixPRStartPassesFullSlots(t *testing.T) {
 				in := loadInput(t, "settle-green-pr-done")
 				c.mutate(&in)
 				in.Repos[0].Controller.Profile = ProfileSoftware
+				row5(&in).Profile = ProfileSoftware
 				in.Brake = openBrake()
 				f.set(in.Brake)
 				if s, want := summary(Decide(in)), []string{fixClose12, c.start}; !reflect.DeepEqual(s, want) {
@@ -247,6 +248,49 @@ func TestFixPRStartPassesFullSlots(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// The fix-pr start takes the slot of run 5 only where run 5 runs. On run 5's node it passes the
+// full node; when the profile now places it on another node, run 5's slot frees nothing there,
+// so the full node defers it. Making holdsSlot unconditional fails the second case.
+func TestFixPRStartHoldsSlotOnlyOnItsNode(t *testing.T) {
+	tests := []struct {
+		name    string
+		runNode string
+		want    []string
+	}{
+		{"same node", "node-a", []string{fixClose12, "start:reason_pr_red:"}},
+		{"other node", "", []string{"defer:slots: 1 of 1 in use on a:"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := loadInput(t, "settle-green-pr-done")
+			red(&in)
+			in.Repos[0].Controller.Profile = "mac"
+			row5(&in).Profile, row5(&in).Node = "mac", tt.runNode
+			in.ProfileNodes = map[string]string{"mac": "node-a"}
+			in.Brake = openBrake()
+			in.Brake.Nodes = map[string]NodeSlots{"node-a": {Name: "a", Slots: 1, InUse: 1}}
+			if s := summary(Decide(in)); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+		})
+	}
+}
+
+// Run 5 is not a software run, so SoftwareInUse does not count it: a software fix-pr start in
+// its place takes a new software slot, and the full software limit defers it. Dropping the
+// profile condition of holdsSlot fails this test.
+func TestFixPRStartCountsSoftwareWhenRunWasNot(t *testing.T) {
+	in := loadInput(t, "settle-green-pr-done")
+	red(&in)
+	in.Repos[0].Controller.Profile = ProfileSoftware
+	row5(&in).Profile = ""
+	in.Brake = openBrake()
+	in.Brake.InUse, in.Brake.SoftwareInUse = 3, 2
+	if s, want := summary(Decide(in)), []string{"defer:software: 2 of 2 in use:"}; !reflect.DeepEqual(s, want) {
+		t.Fatalf("summary = %q, want %q", s, want)
 	}
 }
 

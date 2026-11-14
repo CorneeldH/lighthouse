@@ -163,6 +163,40 @@ de fouten worden samengevoegd en de andere runs worden wel opgezocht. Wat er met
 niet verschijnt (start onzeker) of die te lang loopt (`max_runtime`), beslist decide; zie *Afloop* in
 [tick.md](tick.md).
 
+### Een run op een andere node
+
+Een profiel met `node` in `host.toml` (zie *Nodes* in [tick.md](tick.md#nodes)) draait op een andere
+forge-node dan die van `[dispatch.forge]`. De adapter spreekt dan de hub aan via de fleet-routes: elk
+forge-pad `/api/v1/<pad>` wordt `/api/v1/fleet/hosts/<node_id>/<pad>` (het node-id met `url.PathEscape`).
+Voor `self` blijft elk pad zoals het was. Gemeten aan forge v0.7.0.
+
+Wat op een node anders werkt:
+
+- **Bereikbaarheid.** `GET /api/v1/snapshot?include_peers=true` van de hub (niet `/fleet/snapshot`, die
+  bestaat niet) lijst de leden. Een node is bereikbaar als zijn `nodeID` in `hosts` staat en `reachable`
+  waar is; een node die er niet staat, is onbereikbaar.
+- **404.** De hub antwoordt zelf 404 `fleet host not found` voor een node die hij niet kent of niet
+  bereikt. Die eigen 404 is altijd onzeker (`workplace.ErrUncertain`): de tunnel kan terug zijn voor de
+  snapshot gelezen is, en "weg" zou de run sluiten en een tweede start toelaten. Een andere 404 telt
+  alleen als `workplace.ErrGone` als de node bereikbaar is; anders onzeker.
+- **Sessies.** `/runtime` kent geen `session_id`. Lighthouse herkent een eigen agent op een node toch:
+  aan de forge-key die `Spawn` vastlegt (`Own`), en daar steunt `liveOwn` op. Alleen een onzekere spawn
+  blijft vreemd: `AdoptSessions` neemt hem nooit over, want het zoeken vraagt een `session_id`. `Stop`
+  en `Kill` zoeken op `session_id`, sturen daarom geen `DELETE` en beëindigen niets; zij kunnen de
+  claude op een node niet stoppen.
+- **Bezet.** Een sessie van de eigen runs van het issue die niet `exited` is, maakt een start én een
+  hervatting bezet (`liveOwn` in `apply.go`) tot forge haar als `exited` meldt. Echte runs op een andere
+  node wachten dus op #327.
+- **Stand.** Op een node wordt elke status behalve `exited` `Waiting` (nooit `Working`), en `SessionAt`
+  is nul. Een run op een node eindigt dus alleen via `max_runtime`; `liveOwn` houdt de volgende start
+  intussen tegen.
+- **Transcript.** Niet meetbaar op een node (`workplace.ErrNotMeasurable`), en er is geen `FollowRemote`.
+- **Opruimen.** `Cleanup` en de sweep verwijderen nooit een workspace op een andere node; een
+  achterblijver blijft staan.
+- **Drager.** Het pad is `<statemap>/carriers/<node>/<workspace-id>.json` (node = het `node_id`), zodat
+  twee nodes met hetzelfde workspace-id elkaars drager en achterblijver niet raken. Voor `self` is het
+  pad `<statemap>/carriers/<workspace-id>.json`.
+
 ### Transcripten
 
 `workplace.Transcripts` is een optionele interface naast `Workplace`:

@@ -183,6 +183,7 @@ type harness struct {
 	posters map[string]*fakePoster
 	board   *fakeBoard
 	wp      *fakeWorkplace
+	places  []string // "<repo> <node> <profile>" per Env.Workplace call
 	out     *bytes.Buffer
 	env     Env
 }
@@ -217,9 +218,12 @@ func newHarnessOn(t *testing.T, db *sql.DB) *harness {
 			}
 			return p
 		},
-		Board:      func(string) Board { return h.board },
-		Workplace:  func(string) workplace.Workplace { return h.wp },
-		Profile:    func(string) (string, string) { return "writing", "/etc/lighthouse/mcp.json" },
+		Board: func(string) Board { return h.board },
+		Workplace: func(repo, node, profile string) workplace.Workplace {
+			h.places = append(h.places, repo+" "+node+" "+profile)
+			return h.wp
+		},
+		MCPConfig:  func(profile string) string { return "/etc/lighthouse/" + profile + ".json" },
 		RoundLimit: func(string) string { return "stop" },
 		StateDir:   t.TempDir(),
 		MaxWait:    10 * time.Minute,
@@ -268,6 +272,7 @@ func startAction() Action {
 		TriggerKey: "handoff:55", Attempt: 1, Command: "/lighthouse-review-spec /forge/issue-7-x/spec.md",
 		Prompt: "/lighthouse-review-spec /forge/issue-7-x/spec.md (issue #7, controller-run)",
 		Branch: "issue-7-x", Native: true, Skip: "skip_plan_review", CommentID: 55, Language: "nl",
+		Profile: "writing",
 	}
 }
 
@@ -275,7 +280,7 @@ func resumeAction() Action {
 	return Action{
 		Kind: KindResume, Repo: applyRepo, Issue: 7, Mode: "resume", Trigger: "answer",
 		TriggerKey: "answer:88", Attempt: 1, SessionID: oldSession, Command: "/lighthouse-start-issue 7",
-		Prompt: "the answer", Branch: "issue-7-x", CommentID: 88, Language: "nl",
+		Prompt: "the answer", Branch: "issue-7-x", CommentID: 88, Language: "nl", Profile: "writing",
 	}
 }
 
@@ -322,7 +327,7 @@ func TestApplyStartOrder(t *testing.T) {
 	wantSpec := workplace.LaunchSpec{
 		Repo: applyRepo, Issue: 7, SessionID: freshSession, Mode: "start", Profile: "writing",
 		Prompt: "/lighthouse-review-spec /forge/issue-7-x/spec.md (issue #7, controller-run)", Native: true,
-		InstructionsFile: instructions, MCPConfig: "/etc/lighthouse/mcp.json",
+		InstructionsFile: instructions, MCPConfig: "/etc/lighthouse/writing.json",
 	}
 	if !reflect.DeepEqual(h.wp.spawned, []workplace.LaunchSpec{wantSpec}) {
 		t.Errorf("spawned %+v, want %+v", h.wp.spawned, wantSpec)
@@ -1403,7 +1408,7 @@ func usageResumeAction() Action {
 	return Action{
 		Kind: KindResume, Repo: applyRepo, Issue: 7, Mode: "resume", Trigger: "usage", TriggerKey: usageKey,
 		Attempt: 1, SessionID: oldSession, Command: "/lighthouse-start-issue 7", Prompt: "ga verder",
-		Branch: "issue-7-x", Language: "nl",
+		Branch: "issue-7-x", Language: "nl", Profile: "writing",
 	}
 }
 
@@ -1591,6 +1596,7 @@ func fixPRAction(attempt int) Action {
 		Kind: KindStart, Repo: applyRepo, Issue: 7, Mode: "start", Trigger: "fixpr",
 		TriggerKey: "fixpr:12:abc123", Attempt: attempt, Command: "/lighthouse-fix-pr 12",
 		Prompt: "/lighthouse-fix-pr 12 (issue #7, controller-run)", Branch: "issue-7-x", Language: "nl",
+		Profile: "writing",
 	}
 }
 
@@ -1822,5 +1828,134 @@ func TestApplyFixPRReturnCarriesCause(t *testing.T) {
 				t.Errorf("posted %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// A start on another node asks the workplace of that node and profile, and claims the run there:
+// a later tick finds its node in the run row, whatever host.toml says by then.
+func TestApplyStartOnNode(t *testing.T) {
+	h := newHarness(t)
+	a := startAction()
+	a.Node, a.Profile = "node-a", "mac"
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if want := []string{"o/r node-a mac"}; !reflect.DeepEqual(h.places, want) {
+		t.Errorf("workplaces = %q, want %q", h.places, want)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Node != "node-a" || rows[0].Profile != "mac" {
+		t.Errorf("rows = %+v, want one on node node-a with profile mac", rows)
+	}
+	if len(h.wp.spawned) != 1 || h.wp.spawned[0].Profile != "mac" || h.wp.spawned[0].MCPConfig != "/etc/lighthouse/mac.json" {
+		t.Errorf("spawned %+v, want one with profile mac and its mcp config", h.wp.spawned)
+	}
+}
+
+// seedOn claims an open run of issue 7 on node with profile, on workspace ws with forge key key.
+func (h *harness) seedOn(t *testing.T, node, profile, ws, key string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	run, err := runs.Take(ctx, h.db, runs.Claim{
+		Repo: applyRepo, Issue: 7, SessionID: oldSession, Mode: "start", Trigger: "handoff",
+		TriggerKey: "start:7", Command: "/lighthouse-start-issue 7", Branch: "issue-7-x",
+		Profile: profile, Node: node, Now: applyNow.Add(-time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := runs.SetWorkplace(ctx, h.db, run.ID, ws, "issue-7-x"); err != nil {
+		t.Fatalf("SetWorkplace: %v", err)
+	}
+	if err := runs.SetSession(ctx, h.db, run.ID, key); err != nil {
+		t.Fatalf("SetSession: %v", err)
+	}
+	return run.ID
+}
+
+// Stop, Kill and Discard of a run go to the node and profile its row holds, not to self or
+// to the repo's profile.
+func TestApplyReleaseUsesNodeOfRun(t *testing.T) {
+	for name, a := range map[string]Action{
+		"stop":    {Kind: KindClose, Outcome: runs.Returned, Reason: "reason_silent", Stop: true},
+		"end":     {Kind: KindClose, Outcome: runs.Question, End: true},
+		"discard": {Kind: KindClose, Outcome: runs.Returned, Reason: "reason_silent", Discard: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			a.Repo, a.Issue, a.Language = applyRepo, 7, "nl"
+			a.RunID = h.seedOn(t, "node-a", "mac", "ws-1", "key-1")
+			if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if want := []string{"o/r node-a mac"}; !reflect.DeepEqual(h.places, want) {
+				t.Errorf("workplaces = %q, want %q", h.places, want)
+			}
+			if got := len(h.wp.stopped) + len(h.wp.killed) + len(h.wp.forgot); got != 1 {
+				t.Errorf("stopped %q, killed %q, discarded %q; want one release", h.wp.stopped, h.wp.killed, h.wp.forgot)
+			}
+		})
+	}
+}
+
+// On another node Kill cannot end a claude (forge's /runtime has no session id, #327): a live
+// session of the issue's closed run there defers the start, so no second agent joins it.
+// On self the same session is killed and the start goes on.
+func TestApplyStartOnNodeWithLiveEarlierSessionDefers(t *testing.T) {
+	for _, tc := range []struct {
+		name, node, state string
+		wantSpawns        int
+		wantDeferred      []string
+	}{
+		{name: "node, running", node: "node-a", state: "running",
+			wantDeferred: []string{"o/r#7: workplace busy: session key-old, running since unknown"}},
+		{name: "node, exited", node: "node-a", state: "done", wantSpawns: 1},
+		{name: "self, running", node: "", state: "running", wantSpawns: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			id := h.seedOn(t, tc.node, "mac", "ws-issue-7-x", "key-old")
+			if err := runs.Release(context.Background(), h.db, id, runs.Returned, "", applyNow.Add(-time.Minute)); err != nil {
+				t.Fatal(err)
+			}
+			// A session of a node carries no session_id.
+			sid := oldSession
+			if tc.node != "" {
+				sid = ""
+			}
+			h.wp.sessions = []workplace.Session{{Key: "key-old", WorkspaceID: "ws-issue-7-x", State: tc.state, SessionID: sid}}
+			a := startAction()
+			a.Node, a.Profile = tc.node, "mac"
+			res, err := Apply(context.Background(), h.env, []Action{a})
+			if err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if len(h.wp.spawned) != tc.wantSpawns {
+				t.Errorf("spawned %d, want %d", len(h.wp.spawned), tc.wantSpawns)
+			}
+			if !reflect.DeepEqual(res.Deferred, tc.wantDeferred) {
+				t.Errorf("Deferred = %q, want %q", res.Deferred, tc.wantDeferred)
+			}
+		})
+	}
+}
+
+// The worktree of a run on another node is not on this host: apply does not look for the
+// plan there, and launches the command as decided.
+func TestApplyStartOnNodeKeepsCommand(t *testing.T) {
+	h := newHarness(t)
+	h.wp.root = t.TempDir()
+	a := startAction()
+	a.Node, a.Profile = "node-a", "mac"
+	a.Command = "/lighthouse-review-plan /home/u/repo/design/plans/p.md"
+	a.Prompt = a.Command + " (issue #7, controller-run)"
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(h.wp.spawned) != 1 || h.wp.spawned[0].Prompt != a.Prompt {
+		t.Fatalf("spawned %+v, want one with prompt %q", h.wp.spawned, a.Prompt)
+	}
+	if rows := h.history(t); len(rows) != 1 || !rows[0].Open || rows[0].Command != a.Command {
+		t.Errorf("rows = %+v, want one open with command %q", rows, a.Command)
 	}
 }

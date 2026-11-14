@@ -1,0 +1,14 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "text": "  \n\n",
+      "expect_exact": {
+        "verdict": "skip",
+        "reason": "review faalde: geen output"
+      }
+    }
+  ]
+}

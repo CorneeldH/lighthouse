@@ -26,18 +26,23 @@ type Input struct {
 	MaxWait    Duration `json:"max_wait,omitempty"`
 	MaxRuntime Duration `json:"max_runtime,omitempty"`
 	Brake      *Brake   `json:"brake,omitempty"` // nil: no brake
+	// ProfileNodes maps a profile to the node_id its host.toml [dispatch.nodes] entry names;
+	// a profile without an entry runs on this host.
+	ProfileNodes map[string]string `json:"profile_nodes,omitempty"`
 }
 
 // RepoInput is what Decide knows about one repo.
 type RepoInput struct {
-	Snapshot      Snapshot                  `json:"snapshot"`
-	Controller    repoconfig.Controller     `json:"controller"`
-	Language      string                    `json:"language"`
-	DefaultBranch string                    `json:"default_branch"`
-	Installed     map[string]bool           `json:"installed"`
-	History       []runs.Row                `json:"history"`
-	Stands        map[int64]workplace.Stand `json:"stands"`         // per open run id; missing = not measurable
-	Runs          map[int64]RunState        `json:"runs,omitempty"` // per open run id; missing = not measured
+	Snapshot      Snapshot              `json:"snapshot"`
+	Controller    repoconfig.Controller `json:"controller"`
+	Language      string                `json:"language"`
+	DefaultBranch string                `json:"default_branch"`
+	// LocationPrefix is [labels] location_prefix; "" turns the location label off.
+	LocationPrefix string                    `json:"location_prefix,omitempty"`
+	Installed      map[string]bool           `json:"installed"`
+	History        []runs.Row                `json:"history"`
+	Stands         map[int64]workplace.Stand `json:"stands"`         // per open run id; missing = not measurable
+	Runs           map[int64]RunState        `json:"runs,omitempty"` // per open run id; missing = not measured
 	// Markers are the controller markers whose session's last run is in this repo, resumable
 	// or not.
 	Markers []park.Marker `json:"markers"`
@@ -76,6 +81,8 @@ type Action struct {
 	TriggerKey string       `json:"trigger_key,omitempty"`
 	Attempt    int          `json:"attempt,omitempty"`
 	Mode       string       `json:"mode,omitempty"`
+	Profile    string       `json:"profile,omitempty"`    // start, resume: the profile the run takes
+	Node       string       `json:"node,omitempty"`       // start, resume: the node_id it runs on; "" is self
 	SessionID  string       `json:"session_id,omitempty"` // resume: the session; start: "" (apply makes one)
 	Command    string       `json:"command,omitempty"`
 	Prompt     string       `json:"prompt,omitempty"`
@@ -118,6 +125,11 @@ func Decide(in Input) []Action {
 	}
 	slices.SortStableFunc(ps, comparePlanned)
 	wanted := fixPRStarts(ps)
+	for _, p := range ps {
+		if p.fixDeferred {
+			wanted[issueKey{p.Repo, p.Issue}] = true
+		}
+	}
 	if in.Brake != nil {
 		ps = in.Brake.apply(ps)
 	}
@@ -181,9 +193,14 @@ type planned struct {
 	Action
 	priority int
 	at       time.Time
-	software bool // the repo profile is "software"
-	// holdsSlot: the run it continues already holds a slot, counted in Brake.InUse. A usage
-	// resume of a parked run, or a fix-pr start that replaces the run settle closes in this tick.
+	software bool   // the run's profile is "software"
+	node     string // the node_id the run goes to; "" is self
+	// fixDeferred marks the defer of a fix-pr start whose placement deferred it: the start was
+	// wanted, so the close of its run stays open.
+	fixDeferred bool
+	// holdsSlot: the run it continues already holds its slot, counted in the brake's InUse. A
+	// usage resume of a parked run, or a fix-pr start on the node and profile of the run settle
+	// closes in this tick.
 	holdsSlot bool
 	// fixReason and fixReasonArg are the cause of the fix-pr start a fix-pr close stands for.
 	fixReason    string
@@ -233,6 +250,7 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	}
 	free := !orphaned
 	var fix *fixPRStart
+	var fixRow runs.Row // the run the fix-pr start replaces
 	for _, row := range repo.History {
 		if !row.Open || row.Issue != it.Issue {
 			continue
@@ -241,7 +259,7 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		if closes {
 			p := planned{Action: a}
 			if f != nil {
-				fix = f
+				fix, fixRow = f, row
 				p.fixReason, p.fixReasonArg = f.reason, f.arg
 			}
 			out = append(out, p)
@@ -254,14 +272,17 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	if !free || it.State != "OPEN" {
 		return out
 	}
-	c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night}
+	c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night, profileNodes: in.ProfileNodes}
 	switch it.Status {
 	case statusController:
 		if fix != nil && !c.active() {
 			a := c.fresh(triggerFixPR, fix.key, cmdFixPR+" "+strconv.Itoa(fix.pr.Number), fix.pr.HeadRef)
 			a.Reason, a.ReasonArg = fix.reason, fix.arg
 			p := c.planned(a, c.now)
-			p.holdsSlot = true
+			// The start replaces fixRow, which closes in this tick and still counts in the
+			// brake: on its node and its profile the start takes no new slot.
+			p.holdsSlot = p.Kind == KindStart && p.node == fixRow.Node &&
+				p.software == (fixRow.Profile == ProfileSoftware)
 			out = append(out, p)
 		} else if p, ok := c.next(); ok {
 			out = append(out, p)
@@ -922,6 +943,8 @@ type issueCtx struct {
 	base  Action
 	now   time.Time
 	night string
+	// profileNodes is Input.ProfileNodes.
+	profileNodes map[string]string
 }
 
 // next returns the one start, resume, return, defer, park or hold the item gets in this tick:
@@ -1311,12 +1334,21 @@ func (c issueCtx) deferred(reason string) planned {
 }
 
 // planned orders a start or resume by the item's priority and the time of its trigger.
+// It places the run first: a placement that cannot be made defers the start instead.
 func (c issueCtx) planned(a Action, at time.Time) planned {
+	profile, node, reason := c.placement(a)
+	if reason != "" {
+		d := c.deferred(reason)
+		d.fixDeferred = a.Trigger == triggerFixPR
+		return d
+	}
+	a.Profile, a.Node = profile, node
 	return planned{
 		Action:    a,
 		priority:  priorityRank(c.it.Priority),
 		at:        at,
-		software:  c.repo.Controller.Profile == ProfileSoftware,
+		software:  a.Profile == ProfileSoftware,
+		node:      a.Node,
 		holdsSlot: a.Trigger == triggerUsage,
 	}
 }

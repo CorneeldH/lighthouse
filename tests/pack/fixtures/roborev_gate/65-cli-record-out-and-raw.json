@@ -1,0 +1,84 @@
+{
+  "description": "a matching decisions file exits 0, a mismatching one exits 2",
+  "level": "cli",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "fixture": "review-complete.md"
+    },
+    {
+      "do": "file",
+      "path": "$tmp/ci.md",
+      "text": "## roborev: Review Complete (`abc1234`)\n\n### High\n\n- a.py:3: bad\n"
+    },
+    {
+      "do": "file",
+      "path": "$tmp/good.json",
+      "json": [
+        {
+          "path": "a.py",
+          "line": 3,
+          "severity": "high",
+          "uitkomst": "left",
+          "commit": null,
+          "reden": "later"
+        }
+      ]
+    },
+    {
+      "do": "file",
+      "path": "$tmp/bad.json",
+      "json": [
+        {
+          "path": "scripts/forge_drager.py",
+          "line": 93,
+          "severity": "medium",
+          "uitkomst": "fixed",
+          "commit": "abc1234",
+          "reden": null
+        },
+        {
+          "path": "scripts/forge_agent.sh",
+          "line": 612,
+          "severity": "medium",
+          "uitkomst": "refuted",
+          "commit": null,
+          "reden": "klopt niet"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "op": "cli",
+      "args": [
+        "record",
+        "--done",
+        "abc1234",
+        "--out",
+        "$tmp/ci.json",
+        "--raw",
+        "$tmp/ci.md",
+        "--decisions",
+        "$tmp/good.json"
+      ],
+      "exit": 0
+    },
+    {
+      "op": "cli",
+      "args": [
+        "record",
+        "--done",
+        "abc1234",
+        "--out",
+        "$tmp/ci.json",
+        "--raw",
+        "$tmp/ci.md",
+        "--decisions",
+        "$tmp/bad.json"
+      ],
+      "exit": 2
+    }
+  ]
+}

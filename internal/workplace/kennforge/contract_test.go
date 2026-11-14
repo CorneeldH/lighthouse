@@ -22,6 +22,28 @@ import (
 
 func TestContract(t *testing.T) { workplacetest.Run(t, newForgeFixture) }
 
+// onNodeSkips are the cases a node behind the hub cannot keep until #327: forge's /runtime has
+// no session_id, and lighthouse sends no process signal to another node.
+var onNodeSkips = map[string]string{
+	"SpawnAcceptedShowsSession": "#327: Sessions on a node has no session_id (forge v0.7.0 /runtime)",
+	"KillSurvivorIsError":       "#327: no process signals on a node",
+	"KillUnmeasurableIsError":   "#327: no process measurement on a node",
+	"KillLeavesOtherSession":    "#327: stands by session_id; Sessions on a node has none",
+	"EndedSessionIsDone":        "#327: stands by session_id; Sessions on a node has none",
+}
+
+// TestContractOnNode runs the suite against an adapter on node-a behind the fake hub.
+func TestContractOnNode(t *testing.T) {
+	for _, c := range workplacetest.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			if reason, ok := onNodeSkips[c.Name]; ok {
+				t.Skip(reason)
+			}
+			c.Run(t, newForgeNodeFixture(t))
+		})
+	}
+}
+
 // forgeFixture is a stateful forge: workspaces are real clones of a bare origin, sessions
 // come from the carriers of the handoffs, and the Runner plays the processes of the host.
 type forgeFixture struct {
@@ -29,6 +51,7 @@ type forgeFixture struct {
 	a      *Adapter
 	origin string
 	root   string
+	onNode bool // behind the fake hub: sessions come from /runtime
 
 	mu         sync.Mutex
 	workspaces map[string]*forgeWorkspace
@@ -54,25 +77,54 @@ type forgeSession struct{ key, sid string }
 const createPath = "/api/v1/repo/github/CorneeldH/lighthouse/workspaces"
 
 func newForgeFixture(t *testing.T) workplacetest.Fixture {
-	f := &forgeFixture{
+	f := newForgeState(t)
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	f.a = f.adapter(t, srv.URL, "")
+	return f
+}
+
+// newForgeNodeFixture is the same forge as node-a behind the fake hub. Its Runner counts every
+// call as a process call, git included: nothing may run on the tick host for a node.
+func newForgeNodeFixture(t *testing.T) workplacetest.Fixture {
+	f := newForgeState(t)
+	f.onNode = true
+	hub := newFakeHub(t, map[string]hubNode{"node-a": f, "node-b": newForgeNode(t)})
+	f.a = f.adapter(t, hub.URL, "node-a")
+	f.a.Run = func(_ context.Context, _ time.Duration, name string, args ...string) (string, int, error) {
+		f.mu.Lock()
+		f.procCalls++
+		f.mu.Unlock()
+		t.Errorf("Runner called on a node: %s %v", name, args)
+		return "", -1, errors.New("no runner on a node")
+	}
+	return f
+}
+
+func newForgeState(t *testing.T) *forgeFixture {
+	return &forgeFixture{
 		t: t, origin: newGitWorld(t).origin, root: t.TempDir(),
 		workspaces: map[string]*forgeWorkspace{},
 		live:       map[string]bool{}, survivors: map[string]bool{},
 	}
-	srv := httptest.NewServer(f)
-	t.Cleanup(srv.Close)
+}
+
+func (f *forgeFixture) adapter(t *testing.T, url, node string) *Adapter {
 	tok := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(tok, []byte("secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f.a = &Adapter{
-		Client: New(srv.URL, tok), Kind: "github", Repo: "CorneeldH/lighthouse",
+	return &Adapter{
+		Client: New(url, tok), Kind: "github", Repo: "CorneeldH/lighthouse", Node: node,
 		StateDir: t.TempDir(), Targets: map[string]string{"infra": "paia-infra"}, Profile: "infra",
 		UnitPrefix: "paia-forge-",
 		Run:        f.run, Sleep: func(time.Duration) {}, spawnTimeout: 100 * time.Millisecond,
 	}
-	return f
 }
+
+// routable and reachable: the fake hub always reaches this forge.
+func (f *forgeFixture) routable() bool  { return true }
+func (f *forgeFixture) reachable() bool { return true }
 
 func (f *forgeFixture) Workplace() workplace.Workplace { return f.a }
 
@@ -233,7 +285,9 @@ func (f *forgeFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		ws.gone = true
 		w.WriteHeader(http.StatusNoContent)
-	case rest == "agent-sessions" && r.Method == http.MethodGet:
+	case rest == "runtime" && r.Method == http.MethodGet && f.onNode:
+		writeJSON(w, map[string]any{"launch_targets": []any{}, "sessions": f.runtimeSessions(id, ws)})
+	case rest == "agent-sessions" && r.Method == http.MethodGet && !f.onNode:
 		out := []wireSession{}
 		for _, s := range ws.sessions {
 			state := "done"
@@ -306,7 +360,7 @@ func (f *forgeFixture) handoff(w http.ResponseWriter, r *http.Request, id string
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	raw, err := os.ReadFile(workplace.CarrierPath(f.a.StateDir, id))
+	raw, err := os.ReadFile(workplace.CarrierPath(f.a.StateDir, f.a.Node, id))
 	var c workplace.Carrier
 	if err == nil {
 		err = json.Unmarshal(raw, &c)
@@ -322,6 +376,24 @@ func (f *forgeFixture) handoff(w http.ResponseWriter, r *http.Request, id string
 	ws.sessions = append(ws.sessions, forgeSession{key: key, sid: c.SessionID})
 	f.mu.Unlock()
 	writeJSON(w, map[string]any{"session": map[string]string{"key": key}})
+}
+
+// runtimeSessions is the sessions list of forge v0.7.0's /runtime (see wireRuntime): an agent
+// whose process lives runs, any other has exited. It carries no session_id. Callers hold f.mu.
+func (f *forgeFixture) runtimeSessions(id string, ws *forgeWorkspace) []map[string]any {
+	out := []map[string]any{}
+	for _, s := range ws.sessions {
+		status := "exited"
+		if f.live[s.sid] {
+			status = "running"
+		}
+		out = append(out, map[string]any{
+			"key": s.key, "workspace_id": id, "target_key": "paia-infra", "label": "Claude",
+			"kind": "agent", "status": status, "display_region": "main",
+			"created_at": "2026-11-13T10:00:00Z",
+		})
+	}
+	return out
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
