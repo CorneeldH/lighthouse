@@ -4,6 +4,24 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.17.0] - 2026-11-14
+
+### Added
+
+- The dispatcher can place a run on another kenn-forge node. `[dispatch.nodes.<name>]` in `host.toml` names a node and its slots, a profile gets a `node`, and `[controller.locations]` with `[labels] location_prefix` in `lighthouse.toml` lets an issue's location label pick the profile. The brake counts slots per node, and a resume or retry stays on the node of its run. A repo that already has `location_prefix` is unaffected until it adds `[controller.locations]`: without that table location labels are ignored. Real runs on another node still wait for #327, because forge reports no session id there.
+- `checkpoint_scan.py push --report-rss` reports gitleaks' peak RSS per batch. `docs/secret-scan.md` gets a *Host-deploy* section with an example systemd user service and hourly timer that push checkpoints scanned; a held ref leaves the unit `failed`.
+
+### Changed
+
+- `code-language-check` runs in the `lighthouse` binary (`lighthouse hook code-language-check`) instead of bash and Python; the verdicts are unchanged. Python that tokenizes but does not parse (`x = = 1`) is now scanned instead of reported as `COULD NOT CHECK`. Update the `lighthouse` binary on your PATH and run `lighthouse init --upgrade`.
+- `bash-write-check` runs in the `lighthouse` binary through `.claude/hooks/lighthouse/run.sh`, and `go-lint-gate` and `ty-gate` find the checkouts of a turn with `lighthouse turn-roots`. Update the binary on your PATH before `lighthouse init --upgrade`: an older binary does not know these commands.
+- `lighthouse roborev-gate`, `lighthouse roborev-comment` and `lighthouse codex-usage` replace the Python scripts in `write-pr` and `fix-pr`.
+- Open questions and Returned now answer straight from an overview that serve refreshes every 2 minutes, the page polls every minute, and on a forge failure the page shows an error instead of old data.
+
+### Fixed
+
+- A fix-pr start no longer waits for a free slot: it replaces the run that closes in the same tick, which already holds one. With all slots held by runs on a red PR, the tick started nothing and those runs stayed open.
+
 ## [v0.16.2] - 2026-11-13
 
 ### Fixed
