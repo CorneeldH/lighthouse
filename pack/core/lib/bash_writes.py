@@ -54,7 +54,7 @@ GATES: dict[str, tuple[str, ...]] = {
     ".markdown": ("md-link-check",),
 }
 
-# Set for every gate `run_gate` runs; `code_language.UNDER_GATES_ENV` reads it and
+# Set for every gate `run_gate` runs; `lighthouse hook code-language-check` reads it and
 # then skips layer 2 (#37, decision 19).
 UNDER_GATES_ENV = "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"
 
@@ -72,6 +72,7 @@ GATE_PACKS: dict[str, str] = {
 # in the same directory runs it. Every other gate is the script named by the gate.
 GATE_ARGV: dict[str, tuple[str, ...]] = {
     "md-link-check": ("run.sh", "md-link-check"),
+    "code-language-check.sh": ("run.sh", "code-language-check"),
 }
 
 

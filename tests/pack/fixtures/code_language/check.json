@@ -1,0 +1,420 @@
+[
+  {
+    "doubts": [],
+    "files": {
+      "a.py": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [
+      [
+        1,
+        "comment",
+        "dit is niet goed"
+      ]
+    ],
+    "name": "finds_dutch",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [
+      [
+        1,
+        "name",
+        "legacy_processed_lijst_weg"
+      ]
+    ],
+    "files": {
+      "a.py": "legacy_processed_lijst_weg = 1\n"
+    },
+    "findings": [],
+    "name": "doubt_is_not_a_finding",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {
+      "a.py": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [],
+    "name": "off_without_key",
+    "off": true,
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {
+      "a.txt": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [],
+    "name": "other_extension",
+    "path": "a.txt",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {
+      "tests/fixtures/a/b.py": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [],
+    "name": "exempt_glob_exempt",
+    "path": "tests/fixtures/a/b.py",
+    "toml_extra": "code_language_exempt = [\"tests/fixtures/*\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      "tests/other/b.py": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [
+      [
+        1,
+        "comment",
+        "dit is niet goed"
+      ]
+    ],
+    "name": "exempt_glob_other",
+    "path": "tests/other/b.py",
+    "toml_extra": "code_language_exempt = [\"tests/fixtures/*\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      ".lighthouse/lib/lighthouse_lib/x.py": "# dit is niet goed\nx = 1\n",
+      ".lighthouse/manifest.toml": "[[unit]]\npath = \".lighthouse/lib/lighthouse_lib/x.py\"\n"
+    },
+    "findings": [],
+    "name": "manifest_skips_managed",
+    "path": ".lighthouse/lib/lighthouse_lib/x.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {
+      ".lighthouse/lib/lighthouse_lib/y.py": "# dit is niet goed\nx = 1\n",
+      ".lighthouse/manifest.toml": "[[unit]]\npath = \".lighthouse/lib/lighthouse_lib/x.py\"\n"
+    },
+    "findings": [
+      [
+        1,
+        "comment",
+        "dit is niet goed"
+      ]
+    ],
+    "name": "manifest_does_not_skip_other",
+    "path": ".lighthouse/lib/lighthouse_lib/y.py",
+    "toml_extra": ""
+  },
+  {
+    "cannot_check": true,
+    "doubts": [],
+    "files": {
+      ".lighthouse/manifest.toml": "[[unit\n",
+      "a.py": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [],
+    "name": "unreadable_manifest",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "cannot_check": true,
+    "doubts": [],
+    "files": {
+      "a.py": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [],
+    "name": "config_error",
+    "off": true,
+    "path": "a.py",
+    "toml_extra": "code_language = \"nl\"\n"
+  },
+  {
+    "cannot_check": true,
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "a.py": "IyD//go="
+    },
+    "findings": [],
+    "name": "not_utf8",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "a.py": "77u/IyByZWFkIHRoZSBmaWxlCnggPSAxCg=="
+    },
+    "findings": [],
+    "name": "bom_english",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "a.py": "77u/IyBsZWVzIGhldCBiZXN0YW5kCnggPSAxCg=="
+    },
+    "findings": [
+      [
+        1,
+        "comment",
+        "lees het bestand"
+      ]
+    ],
+    "name": "bom_dutch",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {
+      "lees_bestand.py": "x = 1\n"
+    },
+    "findings": [
+      [
+        1,
+        "name",
+        "lees_bestand"
+      ]
+    ],
+    "name": "module_name",
+    "path": "lees_bestand.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {
+      "pack/a.md": "Dit is niet goed en het bestand is niet gevonden.\n"
+    },
+    "findings": [
+      [
+        1,
+        "prose",
+        "Dit is niet goed en het bestand is niet gevonden."
+      ]
+    ],
+    "name": "scope_markdown",
+    "path": "pack/a.md",
+    "toml_extra": "code_language_paths = [\"pack/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      "pack/notulen.toml": "a = \"niet goed\"\n"
+    },
+    "findings": [
+      [
+        1,
+        "name",
+        "notulen"
+      ]
+    ],
+    "name": "scope_toml_name",
+    "path": "pack/notulen.toml",
+    "toml_extra": "code_language_paths = [\"pack/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      "pack/bestanden/a.toml": "x = 1\n"
+    },
+    "findings": [
+      [
+        1,
+        "directory",
+        "bestanden"
+      ]
+    ],
+    "name": "scope_directory",
+    "path": "pack/bestanden/a.toml",
+    "toml_extra": "code_language_paths = [\"pack/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      "docs/a.md": "Dit is niet goed en het bestand is niet gevonden.\n"
+    },
+    "findings": [],
+    "name": "scope_markdown_outside",
+    "path": "docs/a.md",
+    "toml_extra": "code_language_paths = [\"pack/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      "docs/notulen.toml": "x = 1\n"
+    },
+    "findings": [],
+    "name": "scope_toml_outside",
+    "path": "docs/notulen.toml",
+    "toml_extra": "code_language_paths = [\"pack/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      "docs/lees_bestand.py": "x = 1\n"
+    },
+    "findings": [
+      [
+        1,
+        "name",
+        "lees_bestand"
+      ]
+    ],
+    "name": "scope_python_module_name_outside",
+    "path": "docs/lees_bestand.py",
+    "toml_extra": "code_language_paths = [\"pack/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "pack/plaatje.png": "/9g="
+    },
+    "findings": [
+      [
+        1,
+        "name",
+        "plaatje"
+      ]
+    ],
+    "name": "scope_binary_dutch_name",
+    "path": "pack/plaatje.png",
+    "toml_extra": "code_language_paths = [\"pack/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "pack/logo.png": "/9g="
+    },
+    "findings": [],
+    "name": "scope_binary_english_name",
+    "path": "pack/logo.png",
+    "toml_extra": "code_language_paths = [\"pack/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      "pack/a.md": "Dit is niet goed en het bestand is niet gevonden.\n"
+    },
+    "findings": [],
+    "name": "scope_off_without_code_language",
+    "off": true,
+    "path": "pack/a.md",
+    "toml_extra": "code_language_paths = [\"pack/**\"]\n"
+  },
+  {
+    "cannot_check": true,
+    "doubts": [],
+    "files": {
+      "a.py": "lees_bestand = 1\nlegacy_processed_lijst_weg = 2\n"
+    },
+    "findings": [],
+    "name": "bad_chain_with_doubt",
+    "path": "a.py",
+    "session_table": "\n[code_language_llm]\nurl = \"http://h/v1\"\nmodels = []\n",
+    "toml_extra": ""
+  },
+  {
+    "cannot_check": true,
+    "doubts": [],
+    "files": {
+      "a.py": "x = 1\n"
+    },
+    "findings": [],
+    "name": "bad_chain_clean_file",
+    "path": "a.py",
+    "session_table": "\n[code_language_llm]\nurl = \"http://h/v1\"\nmodels = []\n",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {
+      "docs/notes.md": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [],
+    "name": "bad_chain_spares_docs_notes.md",
+    "path": "docs/notes.md",
+    "session_table": "\n[code_language_llm]\nurl = \"http://h/v1\"\nmodels = [\"m1\"]\nenv_file = \"/nonexistent/lighthouse-test.env\"\n",
+    "toml_extra": "code_language_exempt = [\"vendor/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      "notes.toml": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [],
+    "name": "bad_chain_spares_notes.toml",
+    "path": "notes.toml",
+    "session_table": "\n[code_language_llm]\nurl = \"http://h/v1\"\nmodels = [\"m1\"]\nenv_file = \"/nonexistent/lighthouse-test.env\"\n",
+    "toml_extra": "code_language_exempt = [\"vendor/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {
+      "vendor/lees.py": "# dit is niet goed\nx = 1\n"
+    },
+    "findings": [],
+    "name": "bad_chain_spares_vendor_lees.py",
+    "path": "vendor/lees.py",
+    "session_table": "\n[code_language_llm]\nurl = \"http://h/v1\"\nmodels = [\"m1\"]\nenv_file = \"/nonexistent/lighthouse-test.env\"\n",
+    "toml_extra": "code_language_exempt = [\"vendor/**\"]\n"
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "a.py": "eCA9IDENIyBkaXQgaXMgbmlldCBnb2VkDXkgPSAyDQ=="
+    },
+    "findings": [
+      [
+        2,
+        "comment",
+        "dit is niet goed"
+      ]
+    ],
+    "name": "python_bare_cr",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "a.py": "eCA9IDENCiMgZGl0IGlzIG5pZXQgZ29lZA0KeSA9IDINCg=="
+    },
+    "findings": [
+      [
+        2,
+        "comment",
+        "dit is niet goed"
+      ]
+    ],
+    "name": "python_crlf",
+    "path": "a.py",
+    "toml_extra": ""
+  },
+  {
+    "doubts": [],
+    "files": {},
+    "files_b64": {
+      "a.sh": "eD0xDSMgZGl0IGlzIG5pZXQgZ29lZA15PTIN"
+    },
+    "findings": [
+      [
+        2,
+        "comment",
+        "dit is niet goed"
+      ]
+    ],
+    "name": "shell_bare_cr",
+    "path": "a.sh",
+    "toml_extra": ""
+  }
+]

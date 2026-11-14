@@ -39,7 +39,8 @@ var GatePacks = map[string]string{
 // GateArgv holds a gate that runs as `lighthouse hook <name>`: it has no script of its own, and
 // `run.sh <name>` in the same directory runs it. Every other gate is the script named by the gate.
 var GateArgv = map[string][]string{
-	"md-link-check": {"run.sh", "md-link-check"},
+	"md-link-check":          {"run.sh", "md-link-check"},
+	"code-language-check.sh": {"run.sh", "code-language-check"},
 }
 
 // GatePath is the path of the file that runs gate under repoRoot.

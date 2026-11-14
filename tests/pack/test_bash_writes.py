@@ -22,6 +22,7 @@ import pytest
 
 from tests.pack._testkit import (
     GIT_ENV,
+    PACKS,
     git,
     init_repo,
     load_hook_lib,
@@ -996,7 +997,8 @@ def test_gate_packs_name_every_gate():
 def test_hook_dir_from_repo_root(gate_root):
     hooks = gate_root / ".claude" / "hooks" / "lighthouse"
     assert bw.gate_path(str(gate_root), "shell-lint-check.sh") == hooks / "shell-lint-check.sh"
-    assert bw.gate_path(str(gate_root), "code-language-check.sh") == hooks / "code-language-check.sh"
+    assert bw.gate_path(str(gate_root), "gofmt-check.sh") == hooks / "gofmt-check.sh"
+    assert bw.gate_path(str(gate_root), "code-language-check.sh") == hooks / "run.sh"
 
 
 def test_run_sh_gate_runs_through_run_sh(tmp_path, gate_root):
@@ -1145,12 +1147,16 @@ def test_dispatch_signature_after_rewriting_gate(tmp_path, monkeypatch, gates, s
 
 def test_run_gate_sets_under_gates_env(tmp_path, monkeypatch, gate_root):
     monkeypatch.delenv("LIGHTHOUSE_UNDER_BASH_WRITE_CHECK", raising=False)
-    gate = gate_root / ".claude" / "hooks" / "lighthouse" / "code-language-check.sh"
-    gate.write_text('#!/bin/sh\necho "$LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"\n', encoding="utf-8")
+    run_sh = gate_root / ".claude" / "hooks" / "lighthouse" / "run.sh"
+    run_sh.write_text('#!/bin/sh\necho "$* $LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"\n', encoding="utf-8")
     repo = tmp_path / "repo"
     init_repo(repo)
     (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
-    assert bw.run_gate(str(repo), "a.py", "code-language-check.sh", time.time() + 10) == ("ok", b"1\n")
+    # The Go hook runs through `run.sh`, with its name as the first argument.
+    assert bw.run_gate(str(repo), "a.py", "code-language-check.sh", time.time() + 10) == (
+        "ok",
+        b"code-language-check 1\n",
+    )
     assert "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK" not in os.environ
 
 
@@ -1219,5 +1225,9 @@ def test_chatter_on_rc0_stays_silent(tmp_path, monkeypatch):
 
 
 def test_under_gates_env_matches():
-    cl = load_hook_lib("code_language")
-    assert bw.UNDER_GATES_ENV == cl.UNDER_GATES_ENV == "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"
+    # The Go side (the hook runtime and code-language-check) reads the same name.
+    assert bw.UNDER_GATES_ENV == "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"
+    root = PACKS.parent
+    literal = f'"{bw.UNDER_GATES_ENV}"'
+    assert literal in (root / "internal" / "cli" / "hook.go").read_text(encoding="utf-8")
+    assert literal in (root / "internal" / "codelang" / "hook.go").read_text(encoding="utf-8")

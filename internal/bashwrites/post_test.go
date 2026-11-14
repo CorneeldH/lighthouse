@@ -755,10 +755,10 @@ func TestRunGateSetsUnderGatesEnv(t *testing.T) {
 	t.Setenv(underGatesEnv, "")
 	_ = os.Unsetenv(underGatesEnv)
 	gates := gateRoot(t)
-	writeFile(t, filepath.Join(gates, hookDir, "code-language-check.sh"), "#!/bin/sh\necho \"$LIGHTHOUSE_UNDER_BASH_WRITE_CHECK\"\n")
+	writeFile(t, filepath.Join(gates, hookDir, "ruff-format-check.sh"), "#!/bin/sh\necho \"$LIGHTHOUSE_UNDER_BASH_WRITE_CHECK\"\n")
 	repo := newRepo(t)
 	writeFile(t, filepath.Join(repo, "a.py"), "x = 1\n")
-	verdict, output, err := runGate(gates, repo, "a.py", "code-language-check.sh", time.Now().Add(10*time.Second))
+	verdict, output, err := runGate(gates, repo, "a.py", "ruff-format-check.sh", time.Now().Add(10*time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -923,7 +923,8 @@ func TestGatePathFromRepoRoot(t *testing.T) {
 	root := filepath.Join("/x", "root")
 	hooks := filepath.Join(root, ".claude", "hooks", "lighthouse")
 	eq(t, "shell-lint-check.sh", GatePath(root, "shell-lint-check.sh"), filepath.Join(hooks, "shell-lint-check.sh"))
-	eq(t, "code-language-check.sh", GatePath(root, "code-language-check.sh"), filepath.Join(hooks, "code-language-check.sh"))
+	eq(t, "gofmt-check.sh", GatePath(root, "gofmt-check.sh"), filepath.Join(hooks, "gofmt-check.sh"))
+	eq(t, "code-language-check.sh", GatePath(root, "code-language-check.sh"), filepath.Join(hooks, "run.sh"))
 }
 
 func TestPostWithoutAProjectDirCannotCheck(t *testing.T) {

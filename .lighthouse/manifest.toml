@@ -166,13 +166,6 @@ sha256 = "1eb912125809c6f094a284ecfe7e05d160fee7f0ff1a178bef631411d7ef9f51"
 
 [[unit]]
 kind = "file"
-path = ".claude/hooks/lighthouse/code-language-check.sh"
-package = "core"
-version = "dev"
-sha256 = "eec0be79449765623b8eabc1ec0ffe9141a8e6d2bf191f8adad673bea133d756"
-
-[[unit]]
-kind = "file"
 path = ".claude/hooks/lighthouse/commit-test-gate.sh"
 package = "core"
 version = "dev"
@@ -257,18 +250,18 @@ sha256 = "c44cc53348a62913ba64508d528b4694c07a6ba31c4bbd3ad6f34bb40e7d0062"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/code-language-check.sh"
-package = "core"
-version = "dev"
-sha256 = "de5386a3b78270ebc79728775a4cd43eae5a04b539807c516604624c45096f55"
-
-[[unit]]
-kind = "hook"
-path = ".claude/settings.json"
 id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/gofmt-check.sh"
 package = "go"
 version = "dev"
 sha256 = "275c3b11c4be96611ae70f5cebb57683eb94ad524969f562c60f8d62962ba607"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PostToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh code-language-check"
+package = "core"
+version = "dev"
+sha256 = "4318f7ae91e1fc6f65d6aef75ec2872ce260dbb927e8448a152dddf60364da23"
 
 [[unit]]
 kind = "hook"
@@ -538,49 +531,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/bash_writes.py"
 package = "core"
 version = "dev"
-sha256 = "c319f22e6ff7d02f7a9b905a164fd8601e33e52a5289316bf9470e0181ab7760"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language.py"
-package = "core"
-version = "dev"
-sha256 = "063f2bcd82e8d04648bfa539d36ac3a784c8e035049bcfdbed0dd170e5efb9ff"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_freq.tsv.gz"
-package = "core"
-version = "dev"
-sha256 = "dd0c3cbb67ee9930aebb829111b930d02d082d2de00f74132e328410f0ad3544"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_freq_NOTICE.txt"
-package = "core"
-version = "dev"
-sha256 = "e94cdf3880fedb22b3f3aef9794e7910664c762626f2f4ec088a3cc8684cb6fb"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_jargon.txt"
-package = "core"
-version = "dev"
-sha256 = "d5e390fdd0e06aa03467b883ee1694c64369855c7c6acd1d7e9afbd2abc76a12"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_llm.py"
-package = "core"
-version = "dev"
-sha256 = "05b9398644fca4d93e90f2dc1dbb928e82358ba8fc7afab09a309106ee34581b"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/code_language_score.py"
-package = "core"
-version = "dev"
-sha256 = "be0ebea84ffdaa86c739ff5805477902ea7bbe6505f3b2ae44a62d471d2ae6cd"
+sha256 = "c17bf6d3d1ce6987a9e9e65741c55a17d28d2f990b1374588220c812d628b482"
 
 [[unit]]
 kind = "file"

@@ -1,0 +1,180 @@
+{
+  "dutch_participle": {
+    "gebeld": false,
+    "gebloated": true,
+    "gecommitted": true,
+    "gedaan": false,
+    "gefrobbed": false,
+    "gemerged": true,
+    "geparsed": true,
+    "getout": false,
+    "parsed": false
+  },
+  "dutch_split": {
+    "dataclass": false,
+    "maxsize": false,
+    "padpatronen": true,
+    "schrijfpoorten": true,
+    "werkboom": true,
+    "worktree": false
+  },
+  "names": {
+    "BestandNietGevonden": "finding",
+    "FileNotFound": "clean",
+    "ParserError": "clean",
+    "SCHEMA": "clean",
+    "VerwerkerFout": "finding",
+    "aantal_regels": "finding",
+    "afhankelijkheden": "finding",
+    "agenda_bijwerken": "finding",
+    "anno": "clean",
+    "arg_vals": "clean",
+    "bereken_dekking": "finding",
+    "bewaar_resultaat": "finding",
+    "blocked_label": "clean",
+    "blokkade_label": "finding",
+    "board_status": "clean",
+    "bord_status": "finding",
+    "checkLanguage": "clean",
+    "check_gate": "clean",
+    "cleanup": "clean",
+    "close_issue": "clean",
+    "codetaal_hook": "clean",
+    "compute_coverage": "clean",
+    "controleerTaal": "finding",
+    "controleer_poort": "finding",
+    "could_not_check": "clean",
+    "current_branch": "clean",
+    "dagelijkse_samenvatting": "finding",
+    "default_branch": "clean",
+    "dependencies": "clean",
+    "drain_queue": "clean",
+    "exceptions_list": "clean",
+    "fallback_wordlist": "clean",
+    "fetch_labels": "clean",
+    "find_issue": "clean",
+    "findings": "clean",
+    "gebruiker_naam": "finding",
+    "geinstalleerde_bestanden": "finding",
+    "getint": "clean",
+    "gids": "clean",
+    "haal_labels_op": "finding",
+    "hook_message": "clean",
+    "hookmelding_tekst": "finding",
+    "huidige_tak": "finding",
+    "input_check": "clean",
+    "installed_files": "clean",
+    "invoer_controle": "finding",
+    "key_value": "clean",
+    "kon_niet_controleren": "finding",
+    "laatste_wijziging": "finding",
+    "last_change": "clean",
+    "leesConfiguratie": "finding",
+    "lees_bestand": "finding",
+    "legacy_processed_lijst_weg": "doubt",
+    "line_count": "clean",
+    "maak_handoff": "finding",
+    "make_handoff": "clean",
+    "meeting_notes": "clean",
+    "naïef_bestand": "finding",
+    "new_version": "clean",
+    "nieuwe_versie": "finding",
+    "notulen_verwerken": "finding",
+    "old_copy": "clean",
+    "opname": "clean",
+    "opschonen": "finding",
+    "opvolger": "finding",
+    "oude_kopie": "finding",
+    "padpatronen": "finding",
+    "path_patterns": "clean",
+    "predecessor_pr": "clean",
+    "process_transcript": "clean",
+    "readConfig": "clean",
+    "read_file": "clean",
+    "save_result": "clean",
+    "schrijf_uitvoer": "finding",
+    "schrijfpoorten": "finding",
+    "send_message": "clean",
+    "sleutel_waarde": "finding",
+    "sluit_issue": "finding",
+    "spraak_naar_tekst": "finding",
+    "standaard_tak": "finding",
+    "stuur_bericht": "finding",
+    "successor": "clean",
+    "taak_lijst": "finding",
+    "task_list": "clean",
+    "terugval_woordenlijst": "finding",
+    "tijdslimiet": "finding",
+    "timeout": "clean",
+    "uitzonderingen_lijst": "finding",
+    "user_name": "clean",
+    "vergadering_notities": "finding",
+    "vergaderingen_als_data": "finding",
+    "verwerk_transcript": "finding",
+    "verzamelbump_container_images": "clean",
+    "vondsten": "finding",
+    "voorganger_pr": "finding",
+    "wachtrij_leegmaken": "finding",
+    "werkboom_audit": "finding",
+    "worktree_audit": "clean",
+    "write_gates": "clean",
+    "write_output": "clean",
+    "zoek_issue": "finding"
+  },
+  "split_name": {
+    "HTTPServer": [
+      "http",
+      "server"
+    ],
+    "leesBestand": [
+      "lees",
+      "bestand"
+    ],
+    "read_file_2": [
+      "read",
+      "file"
+    ]
+  },
+  "texts": [
+    {
+      "line_breaks": false,
+      "text": "Het bestand wordt niet gelezen.",
+      "want": "finding"
+    },
+    {
+      "line_breaks": false,
+      "text": "Read the file and return its lines.",
+      "want": "clean"
+    },
+    {
+      "line_breaks": false,
+      "text": "This function reads the configuration file from disk and returns all of its lines as a list of strings. It raises an error when the file does not exist or cannot be read. Dit is een tijdelijke oplossing.",
+      "want": "finding"
+    },
+    {
+      "line_breaks": false,
+      "text": "Read the file. Return its lines! Is it empty? Then stop.",
+      "want": "clean"
+    },
+    {
+      "line_breaks": false,
+      "text": "Werkt niet",
+      "want": "finding"
+    },
+    {
+      "line_breaks": false,
+      "text": "Nog doen",
+      "want": "finding"
+    },
+    {
+      "line_breaks": true,
+      "text": "This function reads the configuration file from disk and returns all of its lines as a list of strings. It raises an error when the file does not exist or cannot be read. \nWerkt niet",
+      "want": "finding"
+    },
+    {
+      "line_breaks": false,
+      "text": "Dit is İstanbul ½ niet goed.",
+      "want": "finding"
+    }
+  ]
+}

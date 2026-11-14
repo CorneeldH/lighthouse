@@ -327,7 +327,7 @@
         "PostToolUse"
       ],
       "matcher": "Edit|Write",
-      "command": "code-language-check.sh",
+      "command": "run.sh code-language-check",
       "effects": [
         "blocks",
         "warns"
@@ -338,12 +338,13 @@
         "It is on only with `[project] code_language` in the lighthouse.toml of the git root of the written file.",
         "It always reads .py, .sh, .bash and .go files; anything else only inside `[project] code_language_paths`.",
         "A finding blocks with exit 2 and stderr; a line marked `lighthouse: allow-language` is skipped.",
-        "When the optional model check gives no verdict, it prints a notice without a judgment and does not block; when it cannot check at all, it blocks with COULD NOT CHECK."
+        "When the optional model check gives no verdict, it prints a notice without a judgment and does not block; when it cannot check at all, it blocks with COULD NOT CHECK.",
+        "run.sh starts `lighthouse hook code-language-check`; the check itself is the Go package internal/codelang."
       ],
       "when": "After each Edit or Write.",
       "without": "Dutch comments, docstrings and names land in code that must be English.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/code-language-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/codelang/hook.go"
     },
     {
       "id": "commit-test-gate-post",

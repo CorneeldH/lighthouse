@@ -1,8 +1,9 @@
-"""pack/core code-language-check.sh, as installed (#26): blocks a non-English comment,
+"""pack/core code-language-check, as installed (#26, #276): blocks a non-English comment,
 docstring or name in a written .py/.sh/.bash/.go file, and says so when it could not look.
 
-The hook is bash and reads its payload as JSON on stdin. These tests run it as a
-subprocess against real temporary git repos, so the contract (exit code + stderr)
+The hook is `lighthouse hook code-language-check`, started through the installed `run.sh`
+with its payload as JSON on stdin. These tests run it as a subprocess against real temporary
+git repos, with the binary of this checkout on the PATH, so the contract (exit code + stderr)
 is tested and not a reimplementation of it.
 """
 
@@ -17,10 +18,15 @@ import pytest
 from tests.pack._fake_llm import FakeEndpoint
 from tests.pack._testkit import GIT_ENV, INSTALLED_HOOKS, MINIMAL_TOML, git
 
-HOOK = INSTALLED_HOOKS / "code-language-check.sh"
+HOOK = INSTALLED_HOOKS / "run.sh"
 ON_TOML = MINIMAL_TOML.replace('language = "en"\n', 'language = "en"\ncode_language = "en"\n')
 DUTCH = "# lees het bestand en geef de regels terug\nx = 1\n"
 COULD_NOT = "code-language-check: COULD NOT CHECK — "
+
+
+@pytest.fixture(autouse=True)
+def _binary(lighthouse_bin):
+    """`run.sh` runs the `lighthouse` on the PATH: the binary of this checkout."""
 
 
 def _repo(path: Path, toml: str | None = ON_TOML) -> Path:
@@ -45,7 +51,7 @@ def _run(
         {"tool_name": "Edit", "cwd": str(cwd), "tool_input": {"file_path": file_path}}
     )
     return subprocess.run(
-        [str(HOOK)],
+        [str(HOOK), "code-language-check"],
         input=payload,
         capture_output=True,
         text=True,
@@ -149,29 +155,6 @@ def test_hook_marker_skips(tmp_path):
     text = "# lees het bestand en geef de regels terug  lighthouse: allow-language\nx = 1\n"
     result = _run(str(_write(root, "a.py", text)), root)
     assert result.returncode == 0
-
-
-def test_hook_cannot_check_without_tomllib(tmp_path):
-    shadow = tmp_path / "shadow"
-    shadow.mkdir()
-    (shadow / "tomllib.py").write_text("raise ImportError('no tomllib')\n", encoding="utf-8")
-    root = _repo(tmp_path / "r")
-    result = _run(str(_write(root, "a.py")), root, env={"PYTHONPATH": str(shadow)})
-    assert result.returncode == 2
-    assert result.stderr.splitlines()[0].startswith(COULD_NOT)
-    assert "python3 >= 3.11" in result.stderr.splitlines()[0]
-
-
-def test_hook_broken_import_is_never_an_empty_block(tmp_path):
-    shadow = tmp_path / "shadow"
-    shadow.mkdir()
-    (shadow / "fnmatch.py").write_text("raise RuntimeError('boom at import')\n", encoding="utf-8")
-    root = _repo(tmp_path / "r")
-    result = _run(str(_write(root, "a.py")), root, env={"PYTHONPATH": str(shadow)})
-    assert result.returncode == 2
-    assert result.stderr.splitlines()[0].startswith(COULD_NOT)
-    assert "exit 1" in result.stderr
-    assert "boom at import" in result.stderr
 
 
 SCOPED_TOML = ON_TOML.replace(
