@@ -90,7 +90,7 @@ func fullmatchPadded(cell, v string) bool {
 			return false
 		}
 	}
-	return v == "" && cell == ""
+	return false // a variant is never empty: headings.toml requires non-empty strings
 }
 
 // OutcomeOf is the outcome key a table cell names, in any language; "" when it names none, or
@@ -421,8 +421,10 @@ func runRow(row prbody.Row, cwd string, ghOK bool, timeout time.Duration) (strin
 
 // RunRow runs one Evidence row: (outcome, detail). The outcome is Holds, Fails, Invalid (outside
 // the allowlist, does not run) or Unmeasurable (binary missing, timeout, gh unreachable). A
-// configuration that cannot be read, where Python raises, is Unmeasurable with
-// `COULD NOT CHECK: <error>`.
+// configuration that cannot be read, where Python raises, folds into Unmeasurable with
+// `COULD NOT CHECK: <error>`: a caller that aggregates outcomes must not use RunRow, because that
+// would turn a configuration error into exit 4 instead of exit 3. Run uses runRow, which returns
+// the error.
 func RunRow(row prbody.Row, cwd string, ghOK bool, timeout time.Duration) (outcome, detail string) {
 	outcome, detail, err := runRow(row, cwd, ghOK, timeout)
 	if err != nil {
@@ -465,7 +467,9 @@ func readBody(bodyFile string) (string, string) {
 		return "", "body file unreadable (" + pyOSError(err, bodyFile) + ")"
 	}
 	if !utf8.Valid(raw) {
-		// Python raises UnicodeDecodeError here, outside its OSError branch: a traceback.
+		// A deliberate deviation (ruling of the task 3 review, #279): Python's strict open() raises
+		// UnicodeDecodeError here, outside its OSError branch, which is a traceback with rc 1. rc 1
+		// means FAILS/INVALID, so Go says COULD NOT CHECK with rc 3. Do not "restore" Python's rc.
 		return "", "body file unreadable (not valid UTF-8)"
 	}
 	return strings.ReplaceAll(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\r", "\n"), ""

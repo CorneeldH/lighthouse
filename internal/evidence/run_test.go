@@ -505,3 +505,17 @@ func TestCheckCellReadsConfigOnlyForPytest(t *testing.T) {
 		t.Errorf("pytest: rc %d, stdout %q", rc, out.String())
 	}
 }
+
+// A body file that is not valid UTF-8: Python's strict read raises (a traceback, rc 1); Go says
+// COULD NOT CHECK with rc 3, a deliberate deviation. Nothing runs, and no gh probe either.
+func TestRunBodyFileNotUTF8(t *testing.T) {
+	withConfig(t, "[project]\nlanguage = \"en\"\n")
+	text := body(5, []row3{{"1. een", "`gh pr view 1`", "x"}}) + "\xff\n"
+	rc, out, marker := runCLI(t, text, false, "x")
+	if rc != 3 || out != "COULD NOT CHECK: body file unreadable (not valid UTF-8)\n" {
+		t.Errorf("rc %d, stdout %q", rc, out)
+	}
+	if exists(marker) {
+		t.Error("gh ran for a body that could not be read")
+	}
+}
