@@ -518,7 +518,7 @@
       "what": "Verifies each acceptance criterion of the issue on the branch and writes the PR body: Refs #N with an Evidence table of the proven criteria, or No issue.",
       "how": [
         "It reads the issue with gh api and looks for evidence per criterion in the branch diff, in commands it runs and in files it opens.",
-        "Every Evidence row is one allowlisted command with a stable output fragment, checked with evidence.py check and run together with evidence.py run before the PR.",
+        "Every Evidence row is one allowlisted command with a stable output fragment, checked with lighthouse evidence check and run together with lighthouse evidence run before the PR.",
         "Every criterion proven or not, the body says Refs #N: close-issue runs the rows after the merge and closes the issue.",
         "It adds a changelog fragment when the repo uses them, writes the body from the PR template to a file and runs gh pr create with --body-file."
       ],
@@ -557,14 +557,14 @@
       "what": "Blocks a gh pr create whose body lacks Closes #N with evidence, Refs #N with a reason or No issue with a reason.",
       "how": [
         "It runs on PreToolUse for Bash and finds each gh pr create or gh pr new in the command.",
-        "pr_body_gate.py checks the body from a literal value or a --body-file, and for Closes #N it fetches the issue and requires one Evidence row per acceptance criterion.",
+        "It checks the body from a literal value or a --body-file, and for Closes #N it fetches the issue and requires one Evidence row per acceptance criterion.",
         "A table under Refs #N is checked on form, not counted. A wrong form, a wrong row count or a body built with command substitution, --fill or --web blocks with exit 2.",
         "When it cannot count the criteria it lets the PR through with the note AC count not measurable; when it cannot parse the command it blocks with COULD NOT CHECK."
       ],
       "when": "Before each Bash call.",
       "without": "A PR opens without a traceable issue or evidence.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/pr-create-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/prcreategate.go"
     },
     {
       "id": "pr-and-ci",
@@ -633,7 +633,7 @@
       "how": [
         "It first queries whether the issue is open and whether a Closes PR or a Refs PR refers to it, and stops to wait for the merge when that PR is still open.",
         "Entry A uses the work of the session itself; entry B digs up evidence from git log, merged PRs and the files, and shows a table per criterion before any close.",
-        "Entry B runs the Evidence table of the merged Refs PRs and entry C that of a Closes PR a person opened, with evidence.py in a throwaway worktree on a fresh default branch; a failing row leaves the issue open or reopens it.",
+        "Entry B runs the Evidence table of the merged Refs PRs and entry C that of a Closes PR a person opened, with lighthouse evidence run in a throwaway worktree on a fresh default branch; a failing row leaves the issue open or reopens it.",
         "It ends by cleaning up the worktrees and branches of the issue with worktree_audit.py, and closes the milestone when it becomes empty and its definition of done holds."
       ],
       "when": "After the merge of a PR for the issue, or when you ask to close an issue.",

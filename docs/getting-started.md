@@ -14,9 +14,9 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | Requirement | Package | Needed for | Without it |
 |---|---|---|---|
 | Claude Code | all | running the skills and the hooks | The hooks do not run. Codex and OpenCode read `AGENTS.md`, but nothing enforces it: run the test gate yourself. |
-| Python 3.11+ (`python3`, `tomllib`) | all | `pr-create-gate` and `code-language-check`, the helper scripts of the skills, reading `lighthouse.toml` from them | Those hooks report `COULD NOT CHECK`, and the blocking one, `pr-create-gate`, blocks. `main-commit-gate`, `commit-test-gate`, `bash-write-check`, `worktree-check` and `md-link-check` run in the `lighthouse` binary and need no Python. |
+| Python 3.11+ (`python3`, `tomllib`) | all | the helper scripts of the skills, reading `lighthouse.toml` from them | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no Python. |
 | `git` | core, expo, go, shell | worktrees, the commit gates, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-check` only warns. |
-| `jq` | core, go, python, shell | reading the payload of `pr-create-gate` and `code-language-check` | Those hooks report `COULD NOT CHECK`; `pr-create-gate` blocks. The hooks that run in the `lighthouse` binary need no `jq`. |
+| `jq` | core, go, python, shell | the helper commands of the skills | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no `jq`. |
 | `gh` | core, python | reading and writing issues and PRs | The issue and PR skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. |
 | `superpowers` (Claude Code plugin) | core, expo | the steps the skills hand off: worktrees, brainstorming, plans, debugging | The skills cannot hand off; `/lighthouse-start-issue` loses its worktree, spec and plan steps. |
 | `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-review-spec` and `/lighthouse-review-plan` stop with `CODEX_MISSING`. |

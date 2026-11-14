@@ -95,7 +95,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         cmd = "git commit -m x"
     elif name == "commit-test-gate":
         cmd = "git commit -m x"
-    elif name == "pr-create-gate.sh":
+    elif name == "pr-create-gate":
         cmd = "gh pr create --repo Acme/widgets --body 'Refs #5 — waiting for the deploy'"
     elif name == "bash-write-check":
         cmd = "echo x > a.md"
@@ -164,7 +164,7 @@ def test_every_registration_has_a_payload() -> None:
         "main-commit-gate",
         "commit-test-gate",
         "bash-write-check",
-        "pr-create-gate.sh",
+        "pr-create-gate",
         "worktree-check",
         "md-link-check",
         "code-language-check",
@@ -180,10 +180,8 @@ PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
 GUARDED = {
     "run.sh main-commit-gate": "git commit -m x",
     "run.sh commit-test-gate pre": "git commit -m x",
-    "pr-create-gate.sh": "gh pr create --repo Acme/widgets --body x",
+    "run.sh pr-create-gate": "gh pr create --repo Acme/widgets --body x",
 }
-# A Go hook behind run.sh reads no `.lighthouse/lib`: only the others can miss it.
-LIB_GUARDED = {s: cmd for s, cmd in GUARDED.items() if not s.startswith("run.sh ")}
 
 
 def _without_lib(
@@ -215,15 +213,6 @@ def test_without_lib_a_plain_command_passes(tmp_path: Path, script: str) -> None
     result = _without_lib(tmp_path, script, "ls")
 
     assert result.returncode == 0, (result.stdout, result.stderr)
-
-
-@pytest.mark.parametrize("script", sorted(LIB_GUARDED))
-def test_without_lib_the_guarded_command_blocks(tmp_path: Path, script: str) -> None:
-    result = _without_lib(tmp_path, script, LIB_GUARDED[script])
-
-    assert result.returncode == 2, (result.stdout, result.stderr)
-    assert "COULD NOT CHECK" in result.stderr
-    assert ".lighthouse/lib" in result.stderr
 
 
 @pytest.mark.usefixtures("lighthouse_bin")

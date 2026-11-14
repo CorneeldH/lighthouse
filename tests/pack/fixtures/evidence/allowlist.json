@@ -1,0 +1,140 @@
+{
+ "GREP_FLAGS": [
+  "--basic-regexp",
+  "--count",
+  "--dereference-recursive",
+  "--extended-regexp",
+  "--files-with-matches",
+  "--files-without-match",
+  "--fixed-strings",
+  "--ignore-case",
+  "--invert-match",
+  "--line-number",
+  "--line-regexp",
+  "--no-filename",
+  "--no-messages",
+  "--only-matching",
+  "--quiet",
+  "--recursive",
+  "--with-filename",
+  "--word-regexp",
+  "-E",
+  "-F",
+  "-G",
+  "-H",
+  "-L",
+  "-R",
+  "-c",
+  "-h",
+  "-i",
+  "-l",
+  "-n",
+  "-o",
+  "-q",
+  "-r",
+  "-s",
+  "-v",
+  "-w",
+  "-x"
+ ],
+ "GREP_VAL": [
+  "--exclude",
+  "--include",
+  "--regexp",
+  "-e"
+ ],
+ "GIT_GREP_FLAGS": [
+  "--basic-regexp",
+  "--count",
+  "--extended-regexp",
+  "--files-with-matches",
+  "--files-without-match",
+  "--fixed-strings",
+  "--ignore-case",
+  "--invert-match",
+  "--line-number",
+  "--line-regexp",
+  "--no-filename",
+  "--only-matching",
+  "--quiet",
+  "--with-filename",
+  "--word-regexp",
+  "-E",
+  "-F",
+  "-G",
+  "-H",
+  "-L",
+  "-c",
+  "-h",
+  "-i",
+  "-l",
+  "-n",
+  "-o",
+  "-q",
+  "-v",
+  "-w",
+  "-x"
+ ],
+ "GIT_GREP_VAL": [
+  "-e"
+ ],
+ "LS_FLAGS": [
+  "-1",
+  "-A",
+  "-R",
+  "-a",
+  "-d",
+  "-h",
+  "-l"
+ ],
+ "WC_FLAGS": [
+  "-c",
+  "-l",
+  "-m",
+  "-w"
+ ],
+ "CAT_FLAGS": [
+  "-n"
+ ],
+ "GIT_LOG_FLAGS": [
+  "--",
+  "--name-only",
+  "--oneline",
+  "--stat"
+ ],
+ "GIT_LOG_VAL": [
+  "--format",
+  "--grep",
+  "--pretty",
+  "-n"
+ ],
+ "GIT_LOG_EQUALS_ONLY": [
+  "--format",
+  "--pretty"
+ ],
+ "GIT_SUBS": [
+  "grep",
+  "log",
+  "ls-files",
+  "show"
+ ],
+ "PYTEST_FLAGS": [
+  "-q",
+  "-v"
+ ],
+ "GH_API_VAL": [
+  "--jq",
+  "-q"
+ ],
+ "GH_VIEW_FLAGS": [
+  "--comments",
+  "-c"
+ ],
+ "GH_VIEW_VAL": [
+  "--jq",
+  "--json",
+  "--repo",
+  "-R",
+  "-q"
+ ]
+}
