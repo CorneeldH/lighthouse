@@ -271,6 +271,8 @@ Row 4 sees only a `Skill` call; a review done by hand in the same turn does not 
 - **`gh issue list --json` breaks under the rtk proxy.** Use `gh api`.
 - **A merge conflict gives no fail check.** `mergeStateStatus: DIRTY` is the signal; the
   failure-log part of the diagnosis block stays empty then and that is correct.
+  A PR always has a pushed branch, so resolve it with `git merge origin/<default branch>` per the
+  update rule in *Lighthouse: core*: resolve the conflicts once, commit the merge, push without force.
 - **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
   only on the branch must carry the full absolute worktree path: the IDE resolves chat links
   against the main checkout. In a `.md` file, relative instead;

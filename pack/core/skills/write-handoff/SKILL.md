@@ -325,7 +325,10 @@ Below it, outside the block, one line: `Run /clear first, then paste the block.`
   `Auto: <category> — <question in one sentence> → <chosen option>`. No choices = no lines.
 - **One goal per hand-off.** Two goals = two blocks = two sessions.
 - **No assumptions about the branch.** If the branch is behind `origin/<default branch>`, say
-  so with the rebase command; do not pretend it will be fine.
+  so with the command that fits the update rule in *Lighthouse: core*: `git merge
+  origin/<default branch>` when the branch is on origin, `git rebase origin/<default branch>`
+  when it is not. Check with `git ls-remote --exit-code --heads origin <branch>` (exit 0 =
+  pushed). Do not pretend it will be fine.
 - **Uncommitted work is a blocker.** Report it, or commit it first — a fresh
   session that finds a dirty tree starts guessing.
 - **Every hand-off carries a command.** The `First step:` line contains a slash command
