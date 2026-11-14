@@ -51,20 +51,20 @@ NOT_READERS = {
         "its docstring names the key; the directories arrive as an argument from ratchet.py",
 }
 INDIRECT_READERS = {
-    ("forge.board.project_id", "pack/core/scripts/board_start.py"): ".project_id",
-    ("forge.board.status_field_id", "pack/core/scripts/board_start.py"): ".status_field_id",
-    ("forge.board.status_options", "pack/core/scripts/board_start.py"): ".status_options",
-    ("forge.owner", "pack/core/scripts/board_start.py"): ".owner",
-    ("forge.name", "pack/core/scripts/board_start.py"): ".name",
+    ("forge.board.project_id", "internal/boardstart/boardstart.go"): ".ProjectID",
+    ("forge.board.status_field_id", "internal/boardstart/boardstart.go"): ".StatusFieldID",
+    ("forge.board.status_options", "internal/boardstart/boardstart.go"): ".StatusOptions",
+    ("forge.owner", "internal/boardstart/boardstart.go"): ".owner",
+    ("forge.name", "internal/boardstart/boardstart.go"): ".name",
     ("forge.board.project_id", "pack/python/scripts/quality/prcov_issues.py"): ".project_id",
     ("forge.board.project_number", "pack/python/scripts/quality/prcov_issues.py"): ".project_number",
     ("forge.board.status_field_id", "pack/python/scripts/quality/prcov_issues.py"): ".status_field_id",
     ("forge.board.status_options", "pack/python/scripts/quality/prcov_issues.py"): ".status_options",
 }
-# Each value is the attribute that file reads: board_start.py uses repo.board.* and repo.owner of
-# the loaded Config, prcov_issues.py the fields of the `forge.board` table it reads whole through
+# Each value is the attribute that file reads: boardstart.go uses cfg.Board.* of the loaded Config
+# and splits cfg.Repo into owner and name, prcov_issues.py the fields of the `forge.board` table it reads whole through
 # `lighthouse config --json` (#274).
-LOADS_CONFIG = re.compile(r"config\.load\(|\bload\(config_path\(\)\)|lookup\(\"forge\.board\"\)")
+LOADS_CONFIG = re.compile(r"config\.load\(|config\.Load\(|\bload\(config_path\(\)\)|lookup\(\"forge\.board\"\)")
 _texts: dict[str, str] = {}
 _files: list[str] = []
 
@@ -326,9 +326,9 @@ def test_problems_flag_an_empty_reader_list():
 
 def test_problems_flag_an_indirect_reader_left_off_the_map():
     data = copy.deepcopy(load("config.json"))
-    entry_of(data, "forge.board.project_id")["readers"].remove("pack/core/scripts/board_start.py")
+    entry_of(data, "forge.board.project_id")["readers"].remove("internal/boardstart/boardstart.go")
     assert config_problems(data, ROOT) == [
-        "forge.board.project_id: reader pack/core/scripts/board_start.py missing from the map"]
+        "forge.board.project_id: reader internal/boardstart/boardstart.go missing from the map"]
 
 
 def test_problems_flag_a_not_reader_that_is_dropped_from_the_exceptions(monkeypatch):

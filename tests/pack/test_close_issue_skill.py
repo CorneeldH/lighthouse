@@ -164,7 +164,7 @@ def test_entry_c_runs_only_the_runner():
 def test_entry_c_reopens_fail_closed():
     for body in skill():
         assert "gh issue reopen" in body
-        assert "python3 .lighthouse/scripts/board_start.py --reopen <nr>" in body
+        assert "lighthouse board-start --reopen <nr>" in body
         assert "issue reopened, board not updated" in body
         assert "heading:evidence_closes_without_block" in body
         assert "Evidence outside the allowlist" in body
@@ -172,7 +172,7 @@ def test_entry_c_reopens_fail_closed():
 
 
 def test_close_issue_board_skip():
-    """Without `[forge.board]` board_start says `board: skipped` (rc 0, decision 24): that is
+    """Without `[forge.board]` board-start says `board: skipped` (rc 0, decision 24): that is
     no failure and is never reported as one."""
     for body in skill():
         c = _entry_c(body)

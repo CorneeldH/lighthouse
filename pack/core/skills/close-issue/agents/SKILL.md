@@ -338,7 +338,7 @@ gh issue comment <nr> --repo "$R" --body-file <scratch>/comment.md
 ```bash
 R=$(lighthouse config forge.repo) || exit 2
 gh issue reopen <nr> --repo "$R" --comment "$(cat <scratch>/run.txt)"
-python3 .lighthouse/scripts/board_start.py --reopen <nr>
+lighthouse board-start --reopen <nr>
 ```
 
 At `2` the comment (`run.txt`) starts with `heading:evidence_closes_without_block`; at
@@ -347,7 +347,7 @@ in the command line yourself: what belongs to it is already in the file.
 
 `board: skipped` (no `[forge.board]`, rc 0) is no error: report the line as it is and go on.
 
-If `board_start.py --reopen` ends with exit 1 or 2 (output `board: ERROR — <cause>`), report
+If `lighthouse board-start --reopen` ends with exit 1 or 2 (output `board: ERROR — <cause>`), report
 loudly `issue reopened, board not updated` with the hand command, and do not wait for it to come
 right by itself:
 

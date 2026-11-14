@@ -23,6 +23,12 @@ type KeyError struct{ Key string }
 
 func (e *KeyError) Error() string { return fmt.Sprintf("missing key %q", e.Key) }
 
+// TypeError is the error of a JSON value of another type than the script expected (a subscript of
+// null, a string where an object was read).
+type TypeError struct{ Msg string }
+
+func (e *TypeError) Error() string { return e.Msg }
+
 // ConfigError is a configuration error; the message always names the file.
 type ConfigError struct{ Msg string }
 
@@ -40,6 +46,7 @@ func PyName(err error) string {
 		key     *KeyError
 		syntax  *json.SyntaxError
 		typ     *json.UnmarshalTypeError
+		pyType  *TypeError
 	)
 	switch {
 	case errors.As(err, &cfg):
@@ -54,7 +61,7 @@ func PyName(err error) string {
 		return "KeyError"
 	case errors.As(err, &syntax):
 		return "JSONDecodeError"
-	case errors.As(err, &typ):
+	case errors.As(err, &pyType), errors.As(err, &typ):
 		return "TypeError"
 	}
 	return fmt.Sprintf("%T", err)

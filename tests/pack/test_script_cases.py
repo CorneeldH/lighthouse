@@ -19,10 +19,13 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import build_fixture_setup, fake_gh_bin, fill_fixture
+from tests.pack._testkit import build_fixture_setup, fake_gh_bin, fill_fixture, lighthouse_dir
 
 FIXTURES = Path(__file__).parent / "fixtures" / "scripts"
-COMMANDS: dict[str, list[str]] = {"_self": []}
+COMMANDS: dict[str, list[str]] = {
+    "_self": [],
+    "board-start": [str(lighthouse_dir() / "lighthouse"), "board-start"],
+}
 
 
 def _cases() -> list:

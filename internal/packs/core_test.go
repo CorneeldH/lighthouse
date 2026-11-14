@@ -83,7 +83,6 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/pr_body_gate.py",
 		".lighthouse/lib/lighthouse_lib/protocol.py",
 		".lighthouse/lib/lighthouse_lib/repo_identity.py",
-		".lighthouse/scripts/board_start.py",
 		".lighthouse/scripts/check-instructions.sh",
 		".lighthouse/scripts/create_labels.py",
 		".lighthouse/scripts/post_artefact.py",

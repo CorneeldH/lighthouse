@@ -75,11 +75,6 @@ source_path = "scripts/post_artefact.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/scripts/board_start.py"
-source_path = "scripts/board_start.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/scripts/create_labels.py"
 new = true
 

@@ -116,12 +116,12 @@ Exceptions: read-only work, and the user who explicitly says "on main".
 Then update the board, from the worktree and with `dangerouslyDisableSandbox: true`:
 
 ```bash
-python3 .lighthouse/scripts/board_start.py <nr>
+lighthouse board-start <nr>
 ```
 
-Report the one `board:` line the script prints. Only `To do` and `On hold` become `In progress`.
+Report the one `board:` line the command prints. Only `To do` and `On hold` become `In progress`.
 Without `[forge.board]` (`lighthouse config forge.board.project_number`
-gives rc 1) the script prints `board: skipped — no [forge.board] configured`. A `board: skipped`
+gives rc 1) the command prints `board: skipped — no [forge.board] configured`. A `board: skipped`
 line is not a stop: picking up goes on. A `board: ERROR` line (rc 2, broken config) is reported
 and picking up goes on as well. Skip the step on a `labels.blocked_*` label from step 2: gate 0
 stops then, and the board would show `In progress` for work that stands still.
@@ -264,7 +264,7 @@ plugin's own folder.
 - ✅ Name the project path when handing on · ❌ let superpowers choose its own default folder
 - ✅ At 4b/4c call the scout or skip it with a concrete reason · ❌ skip it silently
 - ✅ Leave the pack in context and refer to it with `IMPACT PACK: in context, do not repeat` · ❌ summarise, paraphrase or repeat the pack in the Skill args
-- ✅ After the worktree `board_start.py` · ❌ overwrite a status other than `To do` or `On hold`
+- ✅ After the worktree `lighthouse board-start` · ❌ overwrite a status other than `To do` or `On hold`
 
 ## KPIs
 

@@ -143,6 +143,7 @@
               "about": "The repository as owner/name. With kind gitlab, group/name or group/subgroup/.../name.",
               "example": "owner/name",
               "readers": [
+                "internal/boardstart/boardstart.go",
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/prbody/scope.go",
@@ -150,7 +151,6 @@
                 "internal/workplace/local/adapter.go",
                 "pack/core/lib/artefacts.py",
                 "pack/core/lib/pr_body_gate.py",
-                "pack/core/scripts/board_start.py",
                 "pack/core/scripts/create_labels.py",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/scripts/worktree_audit.py",
@@ -210,7 +210,7 @@
               "required": "derived",
               "about": "The name part of forge.repo, derived by config.py.",
               "readers": [
-                "pack/core/scripts/board_start.py",
+                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -222,7 +222,7 @@
               "required": "derived",
               "about": "The owner part of forge.repo, derived by config.py.",
               "readers": [
-                "pack/core/scripts/board_start.py",
+                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -269,9 +269,9 @@
               "about": "The node id of the GitHub project board.",
               "example": "PVT_...",
               "readers": [
+                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -299,9 +299,9 @@
               "about": "The id of the board's Status field.",
               "example": "PVTSSF_...",
               "readers": [
+                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -319,11 +319,11 @@
                 "On hold": "..."
               },
               "readers": [
+                "internal/boardstart/boardstart.go",
                 "internal/cli/serve.go",
                 "internal/cli/triage.go",
                 "internal/dispatch/board.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/scripts/board_start.py",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"

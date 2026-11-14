@@ -226,7 +226,7 @@ def test_start_issue_skips_board_without_config():
     """Without `[forge.board]` the board step reports and goes on (decision 16, 24)."""
     for body in skill("start-issue"):
         step3 = _step(body, "### 3.", "### 4.")
-        assert "python3 .lighthouse/scripts/board_start.py <nr>" in step3
+        assert "lighthouse board-start <nr>" in step3
         assert "lighthouse config forge.board.project_number" in step3 and "rc 1" in step3
         assert "board: skipped" in step3
         assert "is not a stop" in step3
