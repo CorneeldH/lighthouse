@@ -9,6 +9,7 @@ without `gh`), so no test reaches the real `gh`.
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -256,17 +257,56 @@ def test_hook_registered_and_executable() -> None:
     assert "# Counterpart: /lighthouse-write-pr" in HOOK.read_text(encoding="utf-8")
 
 
-def run_hook_raw(gate: Gate):
-    """The hook with a payload that is not JSON."""
+def run_hook_raw(gate: Gate, payload: str = "geen json {"):
+    """The hook with a raw payload, by default one that is not JSON."""
     return subprocess.run(
         [str(HOOK)],
-        input="geen json {",
+        input=payload,
         capture_output=True,
         text=True,
         cwd=str(gate.project),
         env=dict(os.environ, PATH=f"{gate.stub}{os.pathsep}{os.environ['PATH']}"),
         check=False,
     )
+
+
+# Review focus 5: payloads of a strange shape. The verdicts are those of the bash hook
+# (`jq -r '.tool_input.command // empty'`), the Go hook must give the same.
+PAYLOAD_SHAPES = {
+    "array": ("[1]", 2),
+    "null": ("null", 0),
+    "tool_input_string": ('{"tool_input": "gh pr create"}', 2),
+    "command_number": ('{"tool_input": {"command": 5}}', 0),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(PAYLOAD_SHAPES))
+def test_payload_shapes(gate: Gate, shape: str) -> None:
+    payload, code = PAYLOAD_SHAPES[shape]
+
+    result = run_hook_raw(gate, payload)
+
+    assert result.returncode == code, (result.stdout, result.stderr)
+    if code == 2:
+        assert "COULD NOT CHECK — the payload is not valid JSON." in result.stderr
+    else:
+        assert (result.stdout, result.stderr) == ("", "")
+
+
+def test_slow_gh_passes_loudly_within_the_deadline(gate: Gate) -> None:
+    """Review focus 2: a `gh` that hangs at the AC count passes loudly, well before the hook timeout."""
+    tool_bin(gate.stub, (), stubs={"gh": "#!/bin/sh\nexec sleep 30\n"})
+    (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
+
+    start = time.monotonic()
+    result = gate.run("gh pr create --repo Acme/widgets -F body.md")
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 10, elapsed
+    assert result.returncode == 0, result.stderr
+    out = json.loads(result.stdout)
+    assert "AC count not measurable for #5 (timeout after 5 s)" in out["systemMessage"]
+    assert out["hookSpecificOutput"]["additionalContext"] == out["systemMessage"]
 
 
 def test_fork_clone_without_repo_blocks_with_the_exact_flag(gate: Gate) -> None:
