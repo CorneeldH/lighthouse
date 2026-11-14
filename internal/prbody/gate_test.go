@@ -90,18 +90,21 @@ func fetch(t *testing.T, ctx context.Context, repo string, nr int) fetched {
 
 // --- fetch_ac_count -----------------------------------------------------------
 
+// twin of test_fetch_ac_count_without_gh
 func TestFetchACCountWithoutGH(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	t.Setenv("PATH", t.TempDir())
 	eq(t, "fetch", fetch(t, context.Background(), "Acme/widgets", 5), fetched{0, false, "gh is missing"})
 }
 
+// twin of test_fetch_ac_count_gh_fails
 func TestFetchACCountGHFails(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	t.Setenv("PATH", stubBin(t, map[string]string{"gh": "#!/bin/sh\nexit 1\n"}))
 	eq(t, "fetch", fetch(t, context.Background(), "Acme/widgets", 5), fetched{0, false, "gh api failed (rc 1)"})
 }
 
+// twin of test_fetch_ac_count_counts
 func TestFetchACCountCounts(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	callLog := filepath.Join(t.TempDir(), "aanroep.txt")
@@ -116,6 +119,7 @@ func TestFetchACCountCounts(t *testing.T) {
 	eq(t, "argv", strings.Fields(string(got)), []string{"api", "repos/Acme/widgets/issues/5", "--jq", ".body"})
 }
 
+// twin of test_fetch_ac_count_no_ac_heading
 func TestFetchACCountNoACHeading(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	t.Setenv("PATH", stubBin(t, map[string]string{"gh": "#!/bin/sh\nprintf 'geen kop hier\\n'\n"}))
@@ -123,6 +127,7 @@ func TestFetchACCountNoACHeading(t *testing.T) {
 }
 
 // A gh that hangs, with a grandchild that holds stdout open: the whole group goes at the timeout.
+// twin of test_fetch_ac_count_timeout
 func TestFetchACCountTimeout(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	setTimeouts(t, 300*time.Millisecond, gateDeadline)
@@ -132,6 +137,7 @@ func TestFetchACCountTimeout(t *testing.T) {
 	assertGroupGone(t, start, pidFile)
 }
 
+// twin of test_fetch_ac_count_deadline_expired
 func TestFetchACCountDeadlineExpired(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
@@ -174,6 +180,7 @@ func decision(t *testing.T, pc PrCreate, project, repo string) string {
 	return d
 }
 
+// twin of test_scope_own_repo
 func TestScopeOwnRepo(t *testing.T) {
 	base, project := newProject(t)
 	wt := filepath.Join(base, "wt")
@@ -185,12 +192,14 @@ func TestScopeOwnRepo(t *testing.T) {
 	eq(t, "new dir", decision(t, pcAt(filepath.Join(wt, "nieuw")), project, "Acme/widgets"), "block")
 }
 
+// twin of test_scope_other_repo_flag
 func TestScopeOtherRepoFlag(t *testing.T) {
 	_, project := newProject(t)
 	d, reason := InScope(context.Background(), pcAt(project, "x/y"), project, "Acme/widgets")
 	eq(t, "scope", [2]string{d, reason}, [2]string{"skip", "skipped — other repo x/y"})
 }
 
+// twin of test_scope_outside_repo
 func TestScopeOutsideRepo(t *testing.T) {
 	base, project := newProject(t)
 	outside := filepath.Join(base, "buiten")
@@ -201,6 +210,7 @@ func TestScopeOutsideRepo(t *testing.T) {
 	eq(t, "scope", [2]string{d, reason}, [2]string{"skip", "skipped — outside this repo"})
 }
 
+// twin of test_scope_non_literal_repo_blocks_also_outside_the_repo
 func TestScopeNonLiteralRepoBlocksAlsoOutsideTheRepo(t *testing.T) {
 	base, project := newProject(t)
 	outside := filepath.Join(base, "buiten")
@@ -215,6 +225,7 @@ func TestScopeNonLiteralRepoBlocksAlsoOutsideTheRepo(t *testing.T) {
 	eq(t, "scope", [2]string{d, reason}, [2]string{"block", "non-literal --repo — spell the repo out"})
 }
 
+// twin of test_scope_outside_repo_with_R
 func TestScopeOutsideRepoWithR(t *testing.T) {
 	base, project := newProject(t)
 	outside := filepath.Join(base, "buiten")
@@ -224,6 +235,7 @@ func TestScopeOutsideRepoWithR(t *testing.T) {
 	eq(t, "decision", decision(t, pcAt(outside, "Acme/widgets"), project, "Acme/widgets"), "check")
 }
 
+// twin of test_scope_other_git_repo
 func TestScopeOtherGitRepo(t *testing.T) {
 	base, project := newProject(t)
 	fixturesetup.Build(t, base, []map[string]any{{"repo": "ander", "branch": "main"}})
@@ -242,6 +254,7 @@ func forgeWorktree(t *testing.T, project, base, originURL string) string {
 	return work
 }
 
+// twin of test_scope_forge_worktree_of_the_same_repo
 func TestScopeForgeWorktreeOfTheSameRepo(t *testing.T) {
 	base, project := newProject(t)
 	fixturesetup.Git(t, project, "remote", "add", "origin", origin)
@@ -251,6 +264,7 @@ func TestScopeForgeWorktreeOfTheSameRepo(t *testing.T) {
 		"`gh pr create` without --repo: in a clone of a fork gh then opens the PR in the upstream repo. Add `--repo Acme/widgets`."})
 }
 
+// twin of test_scope_other_origin_names_common_dirs_and_remotes
 func TestScopeOtherOriginNamesCommonDirsAndRemotes(t *testing.T) {
 	base, project := newProject(t)
 	fixturesetup.Git(t, project, "remote", "add", "origin", origin)
@@ -269,12 +283,14 @@ func TestScopeOtherOriginNamesCommonDirsAndRemotes(t *testing.T) {
 			"; origin https://github.com/Acme/gadgets.git vs " + origin + ")"})
 }
 
+// twin of test_scope_unknown_cwd_blocks
 func TestScopeUnknownCwdBlocks(t *testing.T) {
 	_, project := newProject(t)
 	d, reason := InScope(context.Background(), pcAt(""), project, "Acme/widgets")
 	eq(t, "scope", [2]string{d, reason}, [2]string{"block", "working directory of `gh pr create` cannot be resolved"})
 }
 
+// twin of test_scope_other_git_error_blocks
 func TestScopeOtherGitErrorBlocks(t *testing.T) {
 	_, project := newProject(t)
 	// A git that fails without "not a git repository" is no proof of "outside".
@@ -283,6 +299,7 @@ func TestScopeOtherGitErrorBlocks(t *testing.T) {
 	eq(t, "scope", [2]string{d, reason}, [2]string{"block", "repo of the project cannot be determined (git failed (rc 128): kapot)"})
 }
 
+// twin of test_not_a_git_repository_under_other_locale
 func TestNotAGitRepositoryUnderOtherLocale(t *testing.T) {
 	base, project := newProject(t)
 	outside := filepath.Join(base, "buiten")
@@ -303,12 +320,14 @@ func TestNotAGitRepositoryUnderOtherLocale(t *testing.T) {
 	eq(t, "scope", [2]string{d, reason}, [2]string{"skip", "skipped — outside this repo"})
 }
 
+// twin of test_without_repo_passes_with_repo_flag
 func TestWithoutRepoPassesWithRepoFlag(t *testing.T) {
 	_, project := newProject(t)
 	d, reason := InScope(context.Background(), pcAt(project, "Acme/widgets"), project, "Acme/widgets")
 	eq(t, "scope", [2]string{d, reason}, [2]string{"check", ""})
 }
 
+// twin of test_without_repo_not_blocked_without_forge_repo
 func TestWithoutRepoNotBlockedWithoutForgeRepo(t *testing.T) {
 	_, project := newProject(t)
 	d, reason := InScope(context.Background(), pcAt(project), project, "")
@@ -344,6 +363,7 @@ func writeFile(t *testing.T, path, text string) {
 	}
 }
 
+// twin of test_main_body_file_does_not_exist
 func TestMainBodyFileDoesNotExist(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -358,18 +378,21 @@ func TestMainBodyFileIsADirectory(t *testing.T) {
 	eq(t, "main", got, mainResult{2, "", blocked("body file " + project + " cannot be read (Is a directory)")})
 }
 
+// twin of test_main_no_gh_pr_create
 func TestMainNoGHPrCreate(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
 	eq(t, "main", runMain(t, project, "git status", project), mainResult{0, "", ""})
 }
 
+// twin of test_main_open_quote
 func TestMainOpenQuote(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
 	eq(t, "main", runMain(t, project, "gh pr create --repo Acme/widgets --body 'x", project), mainResult{3, "", ""})
 }
 
+// twin of test_main_problem_blocks
 func TestMainProblemBlocks(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -377,6 +400,7 @@ func TestMainProblemBlocks(t *testing.T) {
 	eq(t, "main", got, mainResult{2, "", blocked("--fill gives no body to check")})
 }
 
+// twin of test_main_no_issue_passes
 func TestMainNoIssuePasses(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -384,6 +408,7 @@ func TestMainNoIssuePasses(t *testing.T) {
 	eq(t, "main", got, mainResult{0, "pr-create-gate: body checked — No issue\n", ""})
 }
 
+// twin of test_main_non_literal_repo_outside_repo_blocks
 func TestMainNonLiteralRepoOutsideRepoBlocks(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	base, project := newProject(t)
@@ -395,6 +420,7 @@ func TestMainNonLiteralRepoOutsideRepoBlocks(t *testing.T) {
 	eq(t, "main", got, mainResult{2, "", blocked("non-literal GH_REPO — spell the repo out")})
 }
 
+// twin of test_main_other_repo_skipped
 func TestMainOtherRepoSkipped(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -402,6 +428,7 @@ func TestMainOtherRepoSkipped(t *testing.T) {
 	eq(t, "main", got, mainResult{0, "pr-create-gate: skipped — other repo x/y\n", ""})
 }
 
+// twin of test_main_closes_passes_with_count
 func TestMainClosesPassesWithCount(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -411,6 +438,7 @@ func TestMainClosesPassesWithCount(t *testing.T) {
 	eq(t, "main", got, mainResult{0, "pr-create-gate: body checked — Closes #9 (2 AC, 2 rows)\n", ""})
 }
 
+// twin of test_main_closes_ac_mismatch_blocks
 func TestMainClosesACMismatchBlocks(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -420,6 +448,7 @@ func TestMainClosesACMismatchBlocks(t *testing.T) {
 	eq(t, "main", got, mainResult{2, "", blocked("Closes #9: the issue has 3 acceptance criteria, the Evidence block 2 rows — one row per AC")})
 }
 
+// twin of test_main_several_creates_one_blocker_blocks
 func TestMainSeveralCreatesOneBlockerBlocks(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -434,6 +463,7 @@ func TestMainSeveralBlockersJoined(t *testing.T) {
 	eq(t, "main", runMain(t, project, cmd, project), mainResult{2, "", blocked("--fill gives no body to check; no body")})
 }
 
+// twin of test_main_fallback_without_gh_notices_and_passes
 func TestMainFallbackWithoutGHNoticesAndPasses(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -460,6 +490,7 @@ func threeCloses(withEvidence ...string) string {
 	return body
 }
 
+// twin of test_main_deadline_bounds_slow_gh_fallback
 func TestMainDeadlineBoundsSlowGHFallback(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -479,6 +510,7 @@ func TestMainDeadlineBoundsSlowGHFallback(t *testing.T) {
 		notice("5") + notice("6") + notice("7"), ""})
 }
 
+// twin of test_main_deadline_keeps_blocker_of_earlier_target
 func TestMainDeadlineKeepsBlockerOfEarlierTarget(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -493,6 +525,7 @@ func TestMainDeadlineKeepsBlockerOfEarlierTarget(t *testing.T) {
 	eq(t, "main", got, mainResult{2, "", blocked("Closes #5: heading `### Evidence #5` is missing")})
 }
 
+// twin of test_main_deadline_git_blocks_loudly
 func TestMainDeadlineGitBlocksLoudly(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -507,6 +540,7 @@ func TestMainDeadlineGitBlocksLoudly(t *testing.T) {
 	eq(t, "main", got, mainResult{2, "", blocked("repo of the project cannot be determined (COULD NOT CHECK: git timeout or deadline reached)")})
 }
 
+// twin of test_main_deadline_expired_before_git_blocks
 func TestMainDeadlineExpiredBeforeGitBlocks(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -515,6 +549,7 @@ func TestMainDeadlineExpiredBeforeGitBlocks(t *testing.T) {
 	eq(t, "main", got, mainResult{2, "", blocked("repo of the project cannot be determined (COULD NOT CHECK: deadline reached)")})
 }
 
+// twin of test_missing_toml_fails_loud
 func TestMainMissingTomlFailsLoud(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -532,6 +567,7 @@ func TestMainMissingTomlWithoutPrCreatePasses(t *testing.T) {
 	eq(t, "main", runMain(t, project, "git status", project), mainResult{0, "", ""})
 }
 
+// twin of test_without_repo_passes_with_gh_repo_env
 func TestMainUsesGHRepoOfTheProcess(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -544,6 +580,7 @@ func TestMainUsesGHRepoOfTheProcess(t *testing.T) {
 	eq(t, "other", runMain(t, project, body, project), mainResult{0, "pr-create-gate: skipped — other repo x/y\n", ""})
 }
 
+// twin of test_without_repo_block_names_the_exact_repo
 func TestMainWithoutRepoBlockNamesTheExactRepo(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
@@ -676,10 +713,12 @@ func TestRunGHKillsTheGroup(t *testing.T) {
 	assertGroupGone(t, start, pidFile)
 }
 
+// twin of test_strip_comments_crlf_and_comment
 func TestStripCommentsCRLFAndComment(t *testing.T) {
 	eq(t, "strip", StripComments("a\r\n<!-- x\r\ny -->b"), "a\nb")
 }
 
+// twin of test_has_evidence_block
 func TestHasEvidenceBlock(t *testing.T) {
 	refs := "Refs #5 — close-issue toetst na de merge\n\n### Evidence #5\n\n" +
 		"| AC | Command | Result |\n|---|---|---|\n| 1. een | `grep -F a f` | a |\n"

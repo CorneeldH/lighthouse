@@ -1,0 +1,1571 @@
+[
+ {
+  "name": "test_parses_path_branch_and_lock_pid",
+  "fn": "parse_worktrees",
+  "input": {
+   "porcelain": "worktree /home/corneel/repositories/personal_ai_agent\nHEAD 403fde27bb494d3939b1c95238c07f11eb30b5ba\nbranch refs/heads/main\n\nworktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/cla-before-public\nHEAD 35b1d89e6fe88664b3123bb7f9d5fff47923b307\nbranch refs/heads/worktree-cla-before-public\nlocked claude session cla-before-public (pid 1900436 start 21227068)\n\nworktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/detached-spike\nHEAD d94950273bf1dda2a6df2dcb4fd03e5851b94e89\ndetached\nlocked\n"
+  },
+  "expect": [
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent",
+    "branch": "main",
+    "locked": false,
+    "lock_pid": null,
+    "lock_reason": null
+   },
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/cla-before-public",
+    "branch": "worktree-cla-before-public",
+    "locked": true,
+    "lock_pid": 1900436,
+    "lock_reason": "claude session cla-before-public (pid 1900436 start 21227068)"
+   },
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/detached-spike",
+    "branch": null,
+    "locked": true,
+    "lock_pid": null,
+    "lock_reason": null
+   }
+  ]
+ },
+ {
+  "name": "test_detached_worktree_has_no_branch",
+  "fn": "parse_worktrees",
+  "input": {
+   "porcelain": "worktree /home/corneel/repositories/personal_ai_agent\nHEAD 403fde27bb494d3939b1c95238c07f11eb30b5ba\nbranch refs/heads/main\n\nworktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/cla-before-public\nHEAD 35b1d89e6fe88664b3123bb7f9d5fff47923b307\nbranch refs/heads/worktree-cla-before-public\nlocked claude session cla-before-public (pid 1900436 start 21227068)\n\nworktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/detached-spike\nHEAD d94950273bf1dda2a6df2dcb4fd03e5851b94e89\ndetached\nlocked\n"
+  },
+  "expect": [
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent",
+    "branch": "main",
+    "locked": false,
+    "lock_pid": null,
+    "lock_reason": null
+   },
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/cla-before-public",
+    "branch": "worktree-cla-before-public",
+    "locked": true,
+    "lock_pid": 1900436,
+    "lock_reason": "claude session cla-before-public (pid 1900436 start 21227068)"
+   },
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/detached-spike",
+    "branch": null,
+    "locked": true,
+    "lock_pid": null,
+    "lock_reason": null
+   }
+  ]
+ },
+ {
+  "name": "test_bare_locked_line_gives_no_pid",
+  "fn": "parse_worktrees",
+  "input": {
+   "porcelain": "worktree /home/corneel/repositories/personal_ai_agent\nHEAD 403fde27bb494d3939b1c95238c07f11eb30b5ba\nbranch refs/heads/main\n\nworktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/cla-before-public\nHEAD 35b1d89e6fe88664b3123bb7f9d5fff47923b307\nbranch refs/heads/worktree-cla-before-public\nlocked claude session cla-before-public (pid 1900436 start 21227068)\n\nworktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/detached-spike\nHEAD d94950273bf1dda2a6df2dcb4fd03e5851b94e89\ndetached\nlocked\n"
+  },
+  "expect": [
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent",
+    "branch": "main",
+    "locked": false,
+    "lock_pid": null,
+    "lock_reason": null
+   },
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/cla-before-public",
+    "branch": "worktree-cla-before-public",
+    "locked": true,
+    "lock_pid": 1900436,
+    "lock_reason": "claude session cla-before-public (pid 1900436 start 21227068)"
+   },
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/detached-spike",
+    "branch": null,
+    "locked": true,
+    "lock_pid": null,
+    "lock_reason": null
+   }
+  ]
+ },
+ {
+  "name": "test_bare_locked_line_gives_no_lock_reason",
+  "fn": "parse_worktrees",
+  "input": {
+   "porcelain": "worktree /home/corneel/repositories/personal_ai_agent\nHEAD 403fde27bb494d3939b1c95238c07f11eb30b5ba\nbranch refs/heads/main\n\nworktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/cla-before-public\nHEAD 35b1d89e6fe88664b3123bb7f9d5fff47923b307\nbranch refs/heads/worktree-cla-before-public\nlocked claude session cla-before-public (pid 1900436 start 21227068)\n\nworktree /home/corneel/repositories/personal_ai_agent/.claude/worktrees/detached-spike\nHEAD d94950273bf1dda2a6df2dcb4fd03e5851b94e89\ndetached\nlocked\n"
+  },
+  "expect": [
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent",
+    "branch": "main",
+    "locked": false,
+    "lock_pid": null,
+    "lock_reason": null
+   },
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/cla-before-public",
+    "branch": "worktree-cla-before-public",
+    "locked": true,
+    "lock_pid": 1900436,
+    "lock_reason": "claude session cla-before-public (pid 1900436 start 21227068)"
+   },
+   {
+    "path": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/detached-spike",
+    "branch": null,
+    "locked": true,
+    "lock_pid": null,
+    "lock_reason": null
+   }
+  ]
+ },
+ {
+  "name": "test_bridge_lock_reason_is_captured_verbatim",
+  "fn": "parse_worktrees",
+  "input": {
+   "porcelain": "worktree /repo/.claude/worktrees/bridge-cse_X\nHEAD deadbeef\nbranch refs/heads/worktree-bridge-cse_X\nlocked claude agent bridge-cse_X (pid 1 start 2)\n"
+  },
+  "expect": [
+   {
+    "path": "/repo/.claude/worktrees/bridge-cse_X",
+    "branch": "worktree-bridge-cse_X",
+    "locked": true,
+    "lock_pid": 1,
+    "lock_reason": "claude agent bridge-cse_X (pid 1 start 2)"
+   }
+  ]
+ },
+ {
+  "name": "test_parse_worktrees_python_line_and_digit_rules",
+  "fn": "parse_worktrees",
+  "input": {
+   "porcelain": "worktree /r\r\nbranch refs/heads/a\r\nlocked x (pid ١٢)\n\nworktree /r/w x\nbranch refs/heads/\nworktree /r/v\nlocked (pid 12abc) (pid 7)\n"
+  },
+  "expect": [
+   {
+    "path": "/r",
+    "branch": "a",
+    "locked": true,
+    "lock_pid": 12,
+    "lock_reason": "x (pid ١٢)"
+   },
+   {
+    "path": "/r/w",
+    "branch": "",
+    "locked": false,
+    "lock_pid": null,
+    "lock_reason": null
+   },
+   {
+    "path": "/r/v",
+    "branch": null,
+    "locked": true,
+    "lock_pid": 12,
+    "lock_reason": "(pid 12abc) (pid 7)"
+   }
+  ]
+ },
+ {
+  "name": "test_local_branches_pass_through",
+  "fn": "parse_branches",
+  "input": {
+   "text": "main\nissue-665-worktree-audit\n",
+   "remote": false
+  },
+  "expect": [
+   "main",
+   "issue-665-worktree-audit"
+  ]
+ },
+ {
+  "name": "test_remote_branches_lose_the_origin_prefix",
+  "fn": "parse_branches",
+  "input": {
+   "text": "origin/HEAD\norigin/main\norigin/worktree-issue-681\nupstream/x\n",
+   "remote": true
+  },
+  "expect": [
+   "main",
+   "worktree-issue-681"
+  ]
+ },
+ {
+  "name": "test_parse_branches_strips_python_whitespace",
+  "fn": "parse_branches",
+  "input": {
+   "text": "  origin/a  \n\norigin/\norigin/b/c\norigin\n　origin/d　\n",
+   "remote": true
+  },
+  "expect": [
+   "a",
+   "b/c",
+   "d"
+  ]
+ },
+ {
+  "name": "test_rest_payload_with_merged_at_counts_as_merged",
+  "fn": "parse_pulls",
+  "input": {
+   "payload": [
+    {
+     "number": 721,
+     "state": "closed",
+     "merged_at": "2026-08-24T18:05:13Z",
+     "head": {
+      "ref": "worktree-issue-713-osor-artefacten"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "worktree-issue-713-osor-artefacten": {
+    "number": 721,
+    "state": "merged",
+    "merged_at": 1787594713.0
+   }
+  }
+ },
+ {
+  "name": "test_highest_number_wins_within_the_same_state",
+  "fn": "parse_pulls",
+  "input": {
+   "payload": [
+    {
+     "number": 300,
+     "state": "open",
+     "merged_at": null,
+     "head": {
+      "ref": "feat-tie"
+     }
+    },
+    {
+     "number": 400,
+     "state": "open",
+     "merged_at": null,
+     "head": {
+      "ref": "feat-tie"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "feat-tie": {
+    "number": 400,
+    "state": "open",
+    "merged_at": null
+   }
+  }
+ },
+ {
+  "name": "test_open_wins_over_an_older_merged_pr_on_the_same_head",
+  "fn": "parse_pulls",
+  "input": {
+   "payload": [
+    {
+     "number": 100,
+     "state": "closed",
+     "merged_at": "2026-01-01T00:00:00Z",
+     "head": {
+      "ref": "feat-x"
+     }
+    },
+    {
+     "number": 200,
+     "state": "open",
+     "merged_at": null,
+     "head": {
+      "ref": "feat-x"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "feat-x": {
+    "number": 200,
+    "state": "open",
+    "merged_at": null
+   }
+  }
+ },
+ {
+  "name": "test_closed_unmerged_pr_is_not_merged",
+  "fn": "parse_pulls",
+  "input": {
+   "payload": [
+    {
+     "number": 5,
+     "state": "closed",
+     "merged_at": null,
+     "head": {
+      "ref": "feat-y"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "feat-y": {
+    "number": 5,
+    "state": "closed",
+    "merged_at": null
+   }
+  }
+ },
+ {
+  "name": "test_merged_wins_over_a_closed_unmerged_pr",
+  "fn": "parse_pulls",
+  "input": {
+   "payload": [
+    {
+     "number": 5,
+     "state": "closed",
+     "merged_at": null,
+     "head": {
+      "ref": "feat-z"
+     }
+    },
+    {
+     "number": 6,
+     "state": "closed",
+     "merged_at": "2026-02-02T00:00:00Z",
+     "head": {
+      "ref": "feat-z"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "feat-z": {
+    "number": 6,
+    "state": "merged",
+    "merged_at": 1769990400.0
+   }
+  }
+ },
+ {
+  "name": "test_merged_at_reaches_pullinfo_as_epoch",
+  "fn": "parse_pulls",
+  "input": {
+   "payload": [
+    {
+     "number": 457,
+     "state": "closed",
+     "merged_at": "2026-08-02T08:08:31Z",
+     "head": {
+      "ref": "worktree-441-besluithistorie-docs"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "worktree-441-besluithistorie-docs": {
+    "number": 457,
+    "state": "merged",
+    "merged_at": 1785658111.0
+   }
+  }
+ },
+ {
+  "name": "test_an_open_pr_has_no_merge_moment",
+  "fn": "parse_pulls",
+  "input": {
+   "payload": [
+    {
+     "number": 542,
+     "state": "open",
+     "merged_at": null,
+     "head": {
+      "ref": "spike"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "spike": {
+    "number": 542,
+    "state": "open",
+    "merged_at": null
+   }
+  }
+ },
+ {
+  "name": "test_parse_pulls_skips_a_pull_without_head_ref",
+  "fn": "parse_pulls",
+  "input": {
+   "payload": [
+    {
+     "number": 1,
+     "state": "open",
+     "merged_at": null,
+     "head": {
+      "ref": null
+     }
+    },
+    {
+     "number": 2,
+     "state": "open",
+     "merged_at": null,
+     "head": {}
+    },
+    {
+     "number": 3,
+     "state": "open",
+     "merged_at": null
+    },
+    {
+     "number": 4,
+     "state": "closed",
+     "merged_at": "garbage",
+     "head": {
+      "ref": "g"
+     }
+    }
+   ]
+  },
+  "expect": {
+   "g": {
+    "number": 4,
+    "state": "merged",
+    "merged_at": null
+   }
+  }
+ },
+ {
+  "name": "test_reads_key_value_pairs",
+  "fn": "parse_port_registry",
+  "input": {
+   "text": "304=24280\n390=26860\n\n"
+  },
+  "expect": {
+   "304": "24280",
+   "390": "26860"
+  }
+ },
+ {
+  "name": "test_port_registry_python_partition_and_strip",
+  "fn": "parse_port_registry",
+  "input": {
+   "text": " 7 = 1 = 2 \n=9\nno-sep\n 8 = x \r\n8=y\n"
+  },
+  "expect": {
+   "7": "1 = 2",
+   "8": "y"
+  }
+ },
+ {
+  "name": "test_keys_on_cwd_and_keeps_pid_and_session_id",
+  "fn": "parse_sessions",
+  "input": {
+   "records": [
+    {
+     "pid": 1844413,
+     "sessionId": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/issue-625",
+     "startedAt": 1787583127360
+    },
+    {
+     "pid": 999,
+     "cwd": "/repo"
+    }
+   ]
+  },
+  "expect": {
+   "/repo/.claude/worktrees/issue-625": {
+    "pid": 1844413,
+    "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+    "cwd": "/repo/.claude/worktrees/issue-625"
+   }
+  }
+ },
+ {
+  "name": "test_parse_sessions_skips_falsy_fields_and_last_wins",
+  "fn": "parse_sessions",
+  "input": {
+   "records": [
+    {
+     "pid": 0,
+     "sessionId": "a",
+     "cwd": "/a"
+    },
+    {
+     "pid": 5,
+     "sessionId": "",
+     "cwd": "/b"
+    },
+    {
+     "pid": 6,
+     "sessionId": "c",
+     "cwd": ""
+    },
+    {
+     "pid": 7,
+     "sessionId": "d",
+     "cwd": "/d"
+    },
+    {
+     "pid": 8,
+     "sessionId": "e",
+     "cwd": "/d"
+    }
+   ]
+  },
+  "expect": {
+   "/d": {
+    "pid": 8,
+    "session_id": "e",
+    "cwd": "/d"
+   }
+  }
+ },
+ {
+  "name": "test_encoding_replaces_slash_underscore_and_dot",
+  "fn": "encode_project_dir",
+  "input": {
+   "path": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/cla-before-public"
+  },
+  "expect": "-home-corneel-repositories-personal-ai-agent--claude-worktrees-cla-before-public"
+ },
+ {
+  "name": "test_github_utc_iso_becomes_epoch",
+  "fn": "epoch",
+  "input": {
+   "stamp": "2026-08-02T08:08:31Z"
+  },
+  "expect": 1785658111.0
+ },
+ {
+  "name": "test_a_local_offset_is_honoured_not_ignored[offset]",
+  "fn": "epoch",
+  "input": {
+   "stamp": "2026-08-02T08:24:00+02:00"
+  },
+  "expect": 1785651840.0
+ },
+ {
+  "name": "test_a_local_offset_is_honoured_not_ignored[utc]",
+  "fn": "epoch",
+  "input": {
+   "stamp": "2026-08-02T08:08:31Z"
+  },
+  "expect": 1785658111.0
+ },
+ {
+  "name": "test_none_and_garbage_stay_none[none]",
+  "fn": "epoch",
+  "input": {
+   "stamp": null
+  },
+  "expect": null
+ },
+ {
+  "name": "test_none_and_garbage_stay_none[empty]",
+  "fn": "epoch",
+  "input": {
+   "stamp": ""
+  },
+  "expect": null
+ },
+ {
+  "name": "test_none_and_garbage_stay_none[word]",
+  "fn": "epoch",
+  "input": {
+   "stamp": "gisteren"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_none_and_garbage_stay_none[number]",
+  "fn": "epoch",
+  "input": {
+   "stamp": 12345
+  },
+  "expect": null
+ },
+ {
+  "name": "test_epoch_reads_a_fraction",
+  "fn": "epoch",
+  "input": {
+   "stamp": "2026-08-02T08:08:31.5Z"
+  },
+  "expect": 1785658111.5
+ },
+ {
+  "name": "test_epoch_reads_a_naive_stamp_as_local_time",
+  "fn": "epoch",
+  "input": {
+   "stamp": "2026-08-02T08:08:31"
+  },
+  "expect": 1785658111.0
+ },
+ {
+  "name": "test_epoch_reads_a_date_as_local_midnight",
+  "fn": "epoch",
+  "input": {
+   "stamp": "2026-08-02"
+  },
+  "expect": 1785628800.0
+ },
+ {
+  "name": "test_epoch_reads_a_space_separator",
+  "fn": "epoch",
+  "input": {
+   "stamp": "2026-08-02 08:08:31+00:00"
+  },
+  "expect": 1785658111.0
+ },
+ {
+  "name": "test_commit_with_a_parent",
+  "fn": "tip_shape",
+  "input": {
+   "output": "1787932083 3d7145fc dc6f198c\n"
+  },
+  "expect": [
+   1787932083.0,
+   false
+  ]
+ },
+ {
+  "name": "test_root_commit_has_no_parent_field",
+  "fn": "tip_shape",
+  "input": {
+   "output": "1787900000 254decd7\n"
+  },
+  "expect": [
+   1787900000.0,
+   true
+  ]
+ },
+ {
+  "name": "test_merge_commit_has_two_parents",
+  "fn": "tip_shape",
+  "input": {
+   "output": "1787932083 aaaaaaa bbbbbbb ccccccc\n"
+  },
+  "expect": [
+   1787932083.0,
+   false
+  ]
+ },
+ {
+  "name": "test_a_failed_call_measures_nothing[none]",
+  "fn": "tip_shape",
+  "input": {
+   "output": null
+  },
+  "expect": [
+   null,
+   null
+  ]
+ },
+ {
+  "name": "test_a_failed_call_measures_nothing[empty]",
+  "fn": "tip_shape",
+  "input": {
+   "output": ""
+  },
+  "expect": [
+   null,
+   null
+  ]
+ },
+ {
+  "name": "test_a_failed_call_measures_nothing[blank]",
+  "fn": "tip_shape",
+  "input": {
+   "output": "   "
+  },
+  "expect": [
+   null,
+   null
+  ]
+ },
+ {
+  "name": "test_a_failed_call_measures_nothing[garbage]",
+  "fn": "tip_shape",
+  "input": {
+   "output": "geen-getal abc"
+  },
+  "expect": [
+   null,
+   null
+  ]
+ },
+ {
+  "name": "test_a_failed_call_measures_nothing[one field]",
+  "fn": "tip_shape",
+  "input": {
+   "output": "1787900000\n"
+  },
+  "expect": [
+   null,
+   null
+  ]
+ },
+ {
+  "name": "test_parse_keeps_merged_same_repo_heads",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": {
+        "nodes": [
+         {
+          "headRefName": "issue-9-x",
+          "merged": true,
+          "isCrossRepository": false,
+          "repository": {
+           "nameWithOwner": "o/r"
+          }
+         }
+        ]
+       },
+       "timelineItems": {
+        "nodes": [
+         {
+          "source": {
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": "Refs #9 — deel 1"
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": [
+   "issue-9-x",
+   "fix-y"
+  ]
+ },
+ {
+  "name": "test_parse_cross_ref_needs_refs_line[0]",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": {
+        "nodes": []
+       },
+       "timelineItems": {
+        "nodes": [
+         {
+          "source": {
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": "zie #9"
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": []
+ },
+ {
+  "name": "test_parse_cross_ref_needs_refs_line[1]",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": {
+        "nodes": []
+       },
+       "timelineItems": {
+        "nodes": [
+         {
+          "source": {
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": "Refs #93"
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": []
+ },
+ {
+  "name": "test_parse_cross_ref_needs_refs_line[2]",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": {
+        "nodes": []
+       },
+       "timelineItems": {
+        "nodes": [
+         {
+          "source": {
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "o/r"
+           }
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": []
+ },
+ {
+  "name": "test_parse_cross_ref_refs_in_comment_does_not_count",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": {
+        "nodes": []
+       },
+       "timelineItems": {
+        "nodes": [
+         {
+          "source": {
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": "<!-- Refs #9 — voorbeeld uit het template -->\nzie #9"
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": []
+ },
+ {
+  "name": "test_parse_cross_ref_refs_without_reason_counts",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": {
+        "nodes": []
+       },
+       "timelineItems": {
+        "nodes": [
+         {
+          "source": {
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": "Refs #9"
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": [
+   "fix-y"
+  ]
+ },
+ {
+  "name": "test_parse_skips_cross_repository_prs",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": {
+        "nodes": [
+         {
+          "headRefName": "patch-1",
+          "merged": true,
+          "isCrossRepository": true,
+          "repository": {
+           "nameWithOwner": "o/r"
+          }
+         }
+        ]
+       },
+       "timelineItems": {
+        "nodes": [
+         {
+          "source": {
+           "headRefName": "patch-2",
+           "merged": true,
+           "isCrossRepository": true,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": "Refs #9"
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": []
+ },
+ {
+  "name": "test_parse_skips_unmerged_and_non_pr",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": {
+        "nodes": [
+         {
+          "headRefName": "issue-9-x",
+          "merged": false,
+          "isCrossRepository": false,
+          "repository": {
+           "nameWithOwner": "o/r"
+          }
+         }
+        ]
+       },
+       "timelineItems": {
+        "nodes": [
+         {
+          "source": {}
+         },
+         {
+          "source": {
+           "headRefName": "fix-y",
+           "merged": false,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": "Refs #9"
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": []
+ },
+ {
+  "name": "test_parse_skips_other_repos",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": {
+        "nodes": [
+         {
+          "headRefName": "issue-9-x",
+          "merged": true,
+          "isCrossRepository": false,
+          "repository": {
+           "nameWithOwner": "x/fork"
+          }
+         }
+        ]
+       },
+       "timelineItems": {
+        "nodes": [
+         {
+          "source": {
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "x/fork"
+           },
+           "body": "Refs #9"
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": []
+ },
+ {
+  "name": "test_parse_null_issue_is_failure[null issue]",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": null
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": null
+ },
+ {
+  "name": "test_parse_null_issue_is_failure[errors]",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "errors": [
+     {
+      "message": "x"
+     }
+    ]
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": null
+ },
+ {
+  "name": "test_parse_issue_pr_heads_shapes[no data]",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": null
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": null
+ },
+ {
+  "name": "test_parse_issue_pr_heads_shapes[list]",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": [],
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": null
+ },
+ {
+  "name": "test_parse_issue_pr_heads_shapes[empty errors]",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "errors": [],
+    "data": {
+     "repository": {
+      "issue": {}
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": []
+ },
+ {
+  "name": "test_parse_issue_pr_heads_shapes[null nodes and dedupe]",
+  "fn": "parse_issue_pr_heads",
+  "input": {
+   "payload": {
+    "data": {
+     "repository": {
+      "issue": {
+       "closedByPullRequestsReferences": null,
+       "timelineItems": {
+        "nodes": [
+         null,
+         {
+          "source": null
+         },
+         {
+          "headRefName": "a",
+          "merged": true,
+          "isCrossRepository": false,
+          "repository": {
+           "nameWithOwner": "o/r"
+          },
+          "body": "Refs #9"
+         },
+         {
+          "headRefName": "a",
+          "merged": true,
+          "isCrossRepository": false,
+          "repository": {
+           "nameWithOwner": "o/r"
+          },
+          "body": "Refs #9"
+         },
+         {
+          "source": {
+           "headRefName": "b",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": "Closes #9\nRefs #9"
+          }
+         }
+        ]
+       }
+      }
+     }
+    }
+   },
+   "slug": "o/r",
+   "nr": 9
+  },
+  "expect": [
+   "b"
+  ]
+ },
+ {
+  "name": "test_prefix_needs_the_dash",
+  "fn": "issue_branches",
+  "input": {
+   "rows": [
+    {
+     "name": "issue-3-a",
+     "local": true,
+     "remote": true,
+     "dirty": false,
+     "unpushed": 0,
+     "unique_files": [],
+     "pr_lookup_ok": true
+    },
+    {
+     "name": "issue-32-b",
+     "local": true,
+     "remote": true,
+     "dirty": false,
+     "unpushed": 0,
+     "unique_files": [],
+     "pr_lookup_ok": true
+    }
+   ],
+   "nr": 3,
+   "pr_heads": []
+  },
+  "expect": [
+   "issue-3-a"
+  ]
+ },
+ {
+  "name": "test_pr_head_and_prefix_dedupe",
+  "fn": "issue_branches",
+  "input": {
+   "rows": [
+    {
+     "name": "issue-9-x",
+     "local": true,
+     "remote": true,
+     "dirty": false,
+     "unpushed": 0,
+     "unique_files": [],
+     "pr_lookup_ok": true
+    }
+   ],
+   "nr": 9,
+   "pr_heads": [
+    "issue-9-x",
+    "fix-y"
+   ]
+  },
+  "expect": [
+   "fix-y",
+   "issue-9-x"
+  ]
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[0]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "worktree",
+    "unlock",
+    "/repo"
+   ]
+  },
+  "expect": {
+   "error": "git worktree unlock: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[1]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "branch",
+    "-D",
+    "x"
+   ]
+  },
+  "expect": {
+   "error": "git branch: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[2]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "push",
+    "origin",
+    "--delete",
+    "x"
+   ]
+  },
+  "expect": {
+   "error": "git push: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[3]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "branch",
+    "nieuwe-branch"
+   ]
+  },
+  "expect": {
+   "error": "git branch: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[4]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "branch",
+    "-f",
+    "main",
+    "deadbeef"
+   ]
+  },
+  "expect": {
+   "error": "git branch: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[5]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "branch",
+    "-u",
+    "origin/main"
+   ]
+  },
+  "expect": {
+   "error": "git branch: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[6]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "worktree",
+    "prune"
+   ]
+  },
+  "expect": {
+   "error": "git worktree prune: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[7]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "worktree"
+   ]
+  },
+  "expect": {
+   "error": "git worktree <none>: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[8]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "branch",
+    "--merged"
+   ]
+  },
+  "expect": {
+   "error": "git branch: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[9]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": []
+  },
+  "expect": {
+   "error": "git : read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[10]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "remote"
+   ]
+  },
+  "expect": {
+   "error": "git remote: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[11]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "remote",
+    "add",
+    "x",
+    "y"
+   ]
+  },
+  "expect": {
+   "error": "git remote: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_refuses_a_mutating_verb[12]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "-C",
+    "/x",
+    "status"
+   ]
+  },
+  "expect": {
+   "error": "git -C: read-only commands only"
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[0]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "worktree",
+    "list",
+    "--porcelain"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[1]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "branch",
+    "--format=%(refname:short)"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[2]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "branch",
+    "-r",
+    "--format=%(refname:short)"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[3]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "status",
+    "--porcelain"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[4]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "rev-list",
+    "--count",
+    "feat-x",
+    "--not",
+    "--remotes"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[5]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "diff",
+    "--name-only",
+    "main...feat-x"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[6]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "cat-file",
+    "-e",
+    "main:pad/naar/bestand.py"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[7]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "remote",
+    "get-url",
+    "origin"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[8]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "remote",
+    "-v"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[9]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "branch"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ },
+ {
+  "name": "test_assert_readonly_accepts_the_real_read_only_calls[10]",
+  "fn": "assert_readonly",
+  "input": {
+   "argv": [
+    "branch",
+    "--sort=-committerdate",
+    "-vv"
+   ]
+  },
+  "expect": {
+   "ok": true
+  }
+ }
+]
