@@ -1214,6 +1214,17 @@ def test_push_chunks_refspecs(px, tmp_path):
     assert "peak RSS" not in result.stderr
 
 
+def test_push_report_rss_reports_peak_rss_per_batch(px):
+    refs = _three_batches(px)
+
+    result = px.push("ckpt", "--report-rss")
+
+    assert result.returncode == 0, result.stderr
+    assert px.pushed() == set(refs)
+    for i in (1, 2, 3):
+        assert re.search(rf"secret-scan: batch {i}/3 peak RSS (\d+|unknown) MB", result.stderr)
+
+
 def test_push_sends_the_scanned_commit(px):
     """A ref that moves after the scan read it: push sends the commit it scanned,
     not what the ref holds by the time of the push."""

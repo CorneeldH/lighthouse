@@ -87,7 +87,7 @@ func GitTarget(s Step) (target string, known bool, raw string, fromNewDir bool, 
 		if !has {
 			continue
 		}
-		resolved, ok := resolve(value, s.Literal[valueIdx], s.Tildes[valueIdx])
+		resolved, ok := Resolve(value, s.Literal[valueIdx], s.Tildes[valueIdx])
 		switch {
 		case !ok:
 			target, known, raw, fromNewDir = "", false, value, false
@@ -150,7 +150,7 @@ func Find(command, cwd string, opts Options) ([]Invocation, error) {
 	var found []Invocation
 	for _, step := range steps {
 		words := step.Words
-		if basename(words[step.Idx]) != "git" { // Walk guarantees step.Idx < len(words)
+		if Basename(words[step.Idx]) != "git" { // Walk guarantees step.Idx < len(words)
 			continue
 		}
 		target, known, raw, fromNewDir, idx := GitTarget(step)

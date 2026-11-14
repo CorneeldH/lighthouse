@@ -46,6 +46,7 @@
       },
       {
         "name": "bash-write-check",
+        "source": "internal/hooks/bashwritecheck.go",
         "events": [
           "PreToolUse",
           "PostToolUse",

@@ -1366,6 +1366,65 @@ func TestTickWritesRunView(t *testing.T) {
 	}
 }
 
+// The run view is written after apply: a run the tick starts is a view after that same tick,
+// and a run it closes is gone after that same tick.
+func TestTickRunViewFollowsApply(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	_, w := startable(t, &env)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("first tick = %v\n%s", err, errOut.String())
+	}
+	if len(w.spawned()) != 1 {
+		t.Fatalf("spawns = %+v, want one", w.spawned())
+	}
+	if rv, _ := loadView(t, db); len(rv) != 1 || rv[0].Issue != 7 || rv[0].State != "open" {
+		t.Errorf("views after the tick that starts #7 = %+v, want one open view of issue 7", rv)
+	}
+
+	w.setState("done") // without a handoff or question: apply closes the run as returned
+	env.Now = func() time.Time { return t0.Add(3 * time.Minute) }
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("second tick = %v\n%s", err, errOut.String())
+	}
+	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 1 || rows[0].Open {
+		t.Fatalf("runs = %+v, want the one run closed", rows)
+	}
+	if rv, _ := loadView(t, db); len(rv) != 0 {
+		t.Errorf("views after the tick that closes #7 = %+v, want none", rv)
+	}
+}
+
+// A repo whose precheck passes but whose full gather fails still gets its run view: only a
+// failed precheck keeps the rows of the previous tick.
+func TestTickRunViewWhenGatherFails(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("first tick = %v\n%s", err, errOut.String())
+	}
+	// The stand changes, so the repo is due; the permission read inside the full gather fails.
+	w.setState("idle")
+	srv.Comments = map[int][]map[string]any{7: {{"id": 1, "body": "Hoi",
+		"created_at": "2026-10-30T11:00:00Z", "html_url": "https://github.com/o/r/issues/7#issuecomment-1",
+		"user": map[string]any{"login": "owner"}}}}
+	srv.RoleStatus = 500
+	at := t0.Add(3 * time.Minute)
+	env.Now = func() time.Time { return at }
+	errOut.Reset()
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("second tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "lighthouse: skip ") {
+		t.Fatalf("errOut = %q, want a skip line for the failed gather", errOut.String())
+	}
+	if rv, _ := loadView(t, db); len(rv) != 1 || !rv[0].At.Equal(at) || rv[0].Stand != "waiting" {
+		t.Errorf("views = %+v, want one waiting view of this tick (At %v)", rv, at)
+	}
+}
+
 // A run that is parked for its resume marker is a view in state parked, without a stand.
 func TestTickWritesParkedRunView(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, completeRepo))

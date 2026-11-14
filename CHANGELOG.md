@@ -4,6 +4,18 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.16.2] - 2026-11-13
+
+### Fixed
+
+- `lighthouse tick` writes the run view after apply: a run the tick starts shows in `GET /api/runs` and *Running runs* after that same tick, and a run it closes is gone after that same tick, instead of one tick later. The tick timer in `deploy/systemd/lighthouse-tick.timer` now starts the tick every 3 minutes instead of every 5; hosts that copied the unit copy it again.
+
+## [v0.16.1] - 2026-11-13
+
+### Fixed
+
+- The `lighthouse serve` page now follows the dark colour scheme of the system; before, it always stayed light. The workspace id in *Workspaces to clean up* links to kenn-forge, as it already did in a run row. Screen readers no longer hear the tick age every minute, only the refresh.
+
 ## [v0.16.0] - 2026-11-13
 
 ### Added

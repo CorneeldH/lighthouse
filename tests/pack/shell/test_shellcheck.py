@@ -452,7 +452,7 @@ def test_repo_script_unchecked_is_rc_4(tmp_path):
     assert "is not executable" in result.stderr
 
 
-# --- through bash-write-check.sh ---------------------------------------------
+# --- through bash-write-check ------------------------------------------------
 
 
 def test_bash_write_through_gate(tmp_path, pinned_shellcheck):

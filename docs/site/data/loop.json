@@ -462,12 +462,12 @@
         "The pre mode runs on PreToolUse for Bash, records a baseline and always exits 0.",
         "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, ruff-format-check.sh, code-language-check.sh or run.sh md-link-check.",
         "A finding blocks with exit 2, and a gate whose pack is not installed is reported per file without blocking.",
-        "When python3 or the dispatcher fails, it blocks with COULD NOT CHECK."
+        "When the lighthouse binary is missing or the dispatcher fails, it blocks with COULD NOT CHECK."
       ],
       "when": "Before and after each Bash call, and after a failed one.",
       "without": "A file written through Bash skips the gates that Edit and Write get.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/bashwritecheck.go"
     },
     {
       "id": "main-commit-gate",

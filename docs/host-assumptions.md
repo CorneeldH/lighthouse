@@ -44,6 +44,7 @@ One row per file and assumption. The `Where` column links to the file and names 
 | [`test-gate.md:14-62`](test-gate.md#L14) | The example `host.toml` with `gates.slice`, thresholds and `tailscale_ip` | Host feature | Every key is optional except `name`; see the rows above | — |
 | [`install.md`](install.md#L8) | `lighthouse serve` as a systemd user unit, `journalctl --user`, `systemctl --user` | Linux-only | Already a stated requirement; macOS runs the CLI but not the server unit | — |
 | [`releasing.md:101`](releasing.md#L101), [`triage.md:191-220`](triage.md#L191) | `systemctl --user` restart of the service, a systemd user timer for triage | Linux-only | Examples; use the scheduler of the host | — |
+| [`secret-scan.md`](secret-scan.md#host-deploy) | a systemd user service and timer for the checkpoint push | Linux-only | Example; use the scheduler of the host | — |
 | [`secret-scan.md:25,91-108`](secret-scan.md#L91) | The secret scan runs `gitleaks` in a `systemd-run` scope with `choom` | Host feature | Without systemd, the user bus or `choom` the scan runs without a ceiling and says so | — |
 | [`install.md`](install.md#L8) (hooks) | Hooks on native Windows | Linux-only | The hooks need WSL; the binary itself runs on Windows | #90 |
 

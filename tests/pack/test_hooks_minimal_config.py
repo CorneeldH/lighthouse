@@ -98,7 +98,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         cmd = "git commit -m x"
     elif name == "pr-create-gate.sh":
         cmd = "gh pr create --repo Acme/widgets --body 'Refs #5 — waiting for the deploy'"
-    elif name == "bash-write-check.sh":
+    elif name == "bash-write-check":
         cmd = "echo x > a.md"
         if script.endswith(" post"):
             (worktree / "a.md").write_text("x\n", encoding="utf-8")
@@ -161,7 +161,7 @@ def test_every_registration_has_a_payload() -> None:
     assert {_name(s) for _, _, s in REGISTRATIONS} == {
         "main-commit-gate",
         "commit-test-gate.sh",
-        "bash-write-check.sh",
+        "bash-write-check",
         "pr-create-gate.sh",
         "worktree-check",
         "md-link-check",
@@ -173,7 +173,7 @@ def test_every_registration_has_a_payload() -> None:
 
 
 PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
-# Per PreToolUse-Bash hook: the command it guards. `bash-write-check.sh
+# Per PreToolUse-Bash hook: the command it guards. `run.sh bash-write-check
 # pre` never blocks (a PreToolUse exit 2 blocks the call itself).
 GUARDED = {
     "run.sh main-commit-gate": "git commit -m x",
@@ -236,7 +236,7 @@ def test_without_lib_the_go_gate_still_blocks_a_commit_on_main(tmp_path: Path) -
 
 
 def test_guarded_covers_every_blocking_bash_hook() -> None:
-    blocking = {s for s in PRE_BASH if s != "bash-write-check.sh pre"}
+    blocking = {s for s in PRE_BASH if s != "run.sh bash-write-check pre"}
     assert blocking == set(GUARDED)
 
 

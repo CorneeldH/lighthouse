@@ -64,7 +64,8 @@ func ReadProgress(command string) (Progress, bool) {
 		return Progress{}, false
 	}
 	id := plan
-	if rel, err := filepath.Rel(root, plan); err == nil && !strings.HasPrefix(rel, "..") {
+	// IsLocal, not a ".." prefix: a directory named "..plans" is inside the root.
+	if rel, err := filepath.Rel(root, plan); err == nil && filepath.IsLocal(rel) {
 		id = rel
 	}
 	work, ok := workDir(root, id)

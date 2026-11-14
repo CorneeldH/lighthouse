@@ -37,7 +37,8 @@ export function Header(): JSX.Element {
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold">lighthouse</h1>
           {data && (
-            <span className="rounded-full bg-lh-yellow px-2 py-0.5 text-xs font-medium text-lh-navy" title="version">
+            <span className="rounded-full bg-lh-yellow px-2 py-0.5 text-xs font-medium text-lh-navy">
+              <span className="sr-only">version </span>
               {data}
             </span>
           )}
@@ -45,15 +46,12 @@ export function Header(): JSX.Element {
         {error && <p role="alert">API unreachable</p>}
       </div>
       <div className="flex flex-wrap items-center gap-4 text-sm">
-        <div className="flex flex-wrap items-center gap-4" aria-live="polite">
-        {(updatedAt > 0 || refreshing) && (
-          <span>
-            {updatedAt > 0 && `updated ${formatAgo(now, updatedAt)}`}
-            {updatedAt > 0 && refreshing && ' · '}
-            {refreshing && 'refreshing…'}
-          </span>
-        )}
-        </div>
+        <span>
+          {updatedAt > 0 && `updated ${formatAgo(now, updatedAt)}`}
+          {updatedAt > 0 && refreshing && ' · '}
+          {/* Only the refresh is announced; the age changes every minute and stays silent. */}
+          <span aria-live="polite">{refreshing && 'refreshing…'}</span>
+        </span>
         <button
           type="button"
           className="inline-flex items-center gap-2 rounded-md bg-lh-yellow px-3 py-1 text-sm font-medium text-lh-navy hover:brightness-95 disabled:opacity-60"
