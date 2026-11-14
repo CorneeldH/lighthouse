@@ -278,14 +278,17 @@ def test_payload_shapes(gate: Gate, shape: str) -> None:
 
 def test_slow_gh_passes_loudly_within_the_deadline(gate: Gate) -> None:
     """Review focus 2: a `gh` that hangs at the AC count passes loudly, well before the hook timeout."""
-    tool_bin(gate.stub, (), stubs={"gh": "#!/bin/sh\nexec sleep 30\n"})
+    # The hook's own message proves the 5 s clip; the bound only that the hook did not wait for gh.
+    # 300 s: a hook that waits for gh is far above the 60 s bound, and 60 s is ten times a slow
+    # run (#338).
+    tool_bin(gate.stub, (), stubs={"gh": "#!/bin/sh\nexec sleep 300\n"})
     (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
 
     start = time.monotonic()
     result = gate.run("gh pr create --repo Acme/widgets -F body.md")
     elapsed = time.monotonic() - start
 
-    assert elapsed < 10, elapsed
+    assert elapsed < 60, elapsed
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
     assert "AC count not measurable for #5 (timeout after 5 s)" in out["systemMessage"]

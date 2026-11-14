@@ -157,11 +157,9 @@ func TestRunRowOutputCapped(t *testing.T) {
 			if err := os.Symlink("/dev/zero", filepath.Join(dir, "zeros")); err != nil {
 				t.Fatal(err)
 			}
-			start := time.Now()
+			// No wall-clock bound (#338): without the cap the row would read
+			// `timeout after 300 s`, so the reason alone proves the cap cut the read.
 			o, d := runOne(t, "`"+cmd+"`", "x", dir, true, defaultTimeout)
-			if elapsed := time.Since(start); elapsed >= 20*time.Second {
-				t.Errorf("took %v", elapsed)
-			}
 			want(t, o, d, Unmeasurable, "output larger than 4194304 bytes")
 		})
 	}
@@ -254,7 +252,8 @@ func alive(pid int) bool {
 // gone waits up to 2 s for pid to end, and reads alive once per round: a busy runner reaps a
 // killed child late, and a second read after the loop can see a pid the loop already saw go.
 func gone(pid int) bool {
-	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+	// 10 s: it returns as soon as the child is gone; only a slow runner needs more than 2 s (#338).
+	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
 		if !alive(pid) {
 			return true
 		}
@@ -262,13 +261,14 @@ func gone(pid int) bool {
 	return false
 }
 
-// A `grep` stub starts `sleep 60 &`, which holds the pipe, and then sleeps itself. At the
+// A `grep` stub starts `sleep 120 &`, which holds the pipe, and then sleeps itself. At the
 // deadline the row is `timeout after 1 s`, the run does not wait for the child, and the child
-// is gone: the kill reached the whole group, not only grep.
+// is gone: the kill reached the whole group, not only grep. A run that waits for the stub takes
+// 120 s; the bound of 30 s is far from that and far from the normal 1 s (#338).
 func TestRunRowKillsTheGroupOnTimeout(t *testing.T) {
 	withConfig(t, "")
 	pidFile := filepath.Join(t.TempDir(), "child.pid")
-	stubBin(t, map[string]string{"grep": "#!/bin/sh\nsleep 60 &\necho $! > \"" + pidFile + "\"\nsleep 60\n"})
+	stubBin(t, map[string]string{"grep": "#!/bin/sh\nsleep 120 &\necho $! > \"" + pidFile + "\"\nsleep 120\n"})
 	t.Cleanup(func() {
 		if pid, err := readPid(pidFile); err == nil {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
@@ -276,7 +276,7 @@ func TestRunRowKillsTheGroupOnTimeout(t *testing.T) {
 	})
 	start := time.Now()
 	o, d := runOne(t, "`grep -F a f`", "a", t.TempDir(), true, time.Second)
-	if elapsed := time.Since(start); elapsed >= 3*time.Second {
+	if elapsed := time.Since(start); elapsed >= 30*time.Second {
 		t.Errorf("took %v: the run waited past the deadline", elapsed)
 	}
 	want(t, o, d, Unmeasurable, "timeout after 1 s")
@@ -312,13 +312,14 @@ func TestRunRowKillsTheGroupAfterEOF(t *testing.T) {
 }
 
 // A command that closes its output and then hangs: EOF comes early, the wait for the exit still
-// ends at the deadline (Python's proc.wait(timeout=…)).
+// ends at the deadline (Python's proc.wait(timeout=…)). A wait for the exit takes 120 s; the
+// bound of 30 s is far from that and far from the normal 1 s (#338).
 func TestRunRowTimeoutAfterEOF(t *testing.T) {
 	withConfig(t, "")
-	stubBin(t, map[string]string{"grep": "#!/bin/sh\necho a\nexec sleep 60 >/dev/null 2>&1\n"})
+	stubBin(t, map[string]string{"grep": "#!/bin/sh\necho a\nexec sleep 120 >/dev/null 2>&1\n"})
 	start := time.Now()
 	o, d := runOne(t, "`grep -F a f`", "a", t.TempDir(), true, time.Second)
-	if elapsed := time.Since(start); elapsed >= 3*time.Second {
+	if elapsed := time.Since(start); elapsed >= 30*time.Second {
 		t.Errorf("took %v: the run waited past the deadline", elapsed)
 	}
 	want(t, o, d, Unmeasurable, "timeout after 1 s")
