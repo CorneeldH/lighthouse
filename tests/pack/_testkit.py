@@ -90,6 +90,7 @@ def build_fixture_setup(root: Path, steps: list[dict]) -> None:
     "x/wt", "of": "x", "branch": "wt"}`: a linked worktree of repo `x`) and
     `origin` (`{"origin": "x", "url": ...}`: remote `origin` of repo `x`),
     `unborn` (`{"unborn": "x"}`: `git init -b main` without a commit),
+    `bare` (`{"bare": "x"}`: `git init --bare`),
     `commit` (`{"commit": "x", "message": "m"}`: `add -A` and commit; the files
     come in before, through `file`) and `mv` (`{"mv": "x", "from": "a", "to": "b"}`).
     """
@@ -121,6 +122,9 @@ def build_fixture_setup(root: Path, steps: list[dict]) -> None:
         elif "unborn" in step:
             (root / step["unborn"]).mkdir(parents=True, exist_ok=True)
             git(root / step["unborn"], "init", "-q", "-b", "main")
+        elif "bare" in step:
+            (root / step["bare"]).mkdir(parents=True, exist_ok=True)
+            git(root / step["bare"], "init", "-q", "--bare")
         elif "commit" in step:
             git(root / step["commit"], "add", "-A")
             git(root / step["commit"], "commit", "-qm", step["message"])
@@ -128,6 +132,36 @@ def build_fixture_setup(root: Path, steps: list[dict]) -> None:
             git(root / step["mv"], "mv", step["from"], step["to"])
         else:
             raise AssertionError(f"unknown setup step {step}")
+
+
+def fake_gh_bin(tmp_path: Path, calls: list[dict]) -> tuple[Path, Path]:
+    """A fake `gh` on a bin dir that replays `calls` in order.
+
+    Returns `(bin_dir, log)`: put `bin_dir` first on PATH; `log` stays empty
+    unless a call deviated (the fake then exits 97 and writes the expected and
+    the actual argv to it), and the fake leaves a `count` file next to it with
+    the number of calls made. A call has `argv`, `stdin`, `stdout`, `stderr`,
+    `code` and optionally `timeout`.
+    """
+    bin_dir = tmp_path / "fakegh-bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    calls_file = tmp_path / "fakegh-calls.json"
+    count = tmp_path / "fakegh-count"
+    log = tmp_path / "fakegh-log"
+    calls_file.write_text(json.dumps(calls), encoding="utf-8")
+    count.write_text("0", encoding="utf-8")
+    log.write_text("", encoding="utf-8")
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/bin/sh\n"
+        f"FAKE_CALLS={shlex.quote(str(calls_file))} "
+        f"FAKE_COUNT={shlex.quote(str(count))} "
+        f"FAKE_LOG={shlex.quote(str(log))} "
+        f'exec python3 -I {shlex.quote(str(Path(__file__).with_name("_fakegh.py")))} "$@"\n',
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    return bin_dir, log
 
 
 def fill_fixture(value, root: str):

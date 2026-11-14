@@ -81,7 +81,7 @@ func str(t *testing.T, step map[string]any, key string) string {
 
 // Build creates the tree of steps under root. A step is one of repo (+branch), dir, file (+text),
 // symlink (+to), overwrite (+text), worktree (+of, +branch: a linked worktree of repo `of`) and
-// origin (+url: remote origin of that repo), unborn (a repo on main without a commit), commit
+// origin (+url: remote origin of that repo), unborn (a repo on main without a commit), bare (a bare repository, `git init --bare`), commit
 // (+message: `add -A` and commit in that repo) and mv (+from, +to: `git mv` in that repo).
 func Build(t *testing.T, root string, steps []map[string]any) {
 	t.Helper()
@@ -129,6 +129,12 @@ func Build(t *testing.T, root string, steps []map[string]any) {
 				t.Fatal(err)
 			}
 			Git(t, dir, "init", "-q", "-b", "main")
+		case step["bare"] != nil:
+			dir := filepath.Join(root, str(t, step, "bare"))
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			Git(t, dir, "init", "-q", "--bare")
 		case step["commit"] != nil:
 			dir := filepath.Join(root, str(t, step, "commit"))
 			Git(t, dir, "add", "-A")
