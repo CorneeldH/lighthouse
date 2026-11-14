@@ -101,8 +101,8 @@ func readLedger(path string) *Ledger {
 	return &Ledger{Roots: rows}
 }
 
-// atomicWriteJSON writes v as JSON to target through a temporary file in dir and a rename.
-func atomicWriteJSON(dir, target string, v any) (err error) {
+// AtomicWriteJSON writes v as JSON to target through a temporary file in dir and a rename.
+func AtomicWriteJSON(dir, target string, v any) (err error) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		return err
@@ -147,7 +147,7 @@ func withLedger(state string, body func(*Ledger) error) error {
 	if ledger.Unreadable {
 		return nil
 	}
-	return atomicWriteJSON(state, ledgerPath, ledger.Roots)
+	return AtomicWriteJSON(state, ledgerPath, ledger.Roots)
 }
 
 // splitExt is Python's os.path.splitext(name)[1]: leading dots of the base name do not start an
@@ -203,7 +203,7 @@ func writeMarker(state, key string, startNS int64, roots []string) error {
 	if roots == nil {
 		roots = []string{}
 	}
-	return atomicWriteJSON(state, filepath.Join(state, key+".json"), map[string]any{"start_ns": startNS, "roots": roots})
+	return AtomicWriteJSON(state, filepath.Join(state, key+".json"), map[string]any{"start_ns": startNS, "roots": roots})
 }
 
 // readMarker is the marker of key, false if it is missing or not a JSON object.
@@ -259,9 +259,9 @@ func (m marker) since() *int64 {
 	return &s
 }
 
-// pruneMarkers removes marker files older than an hour. ledger.json, ledger.lock and the sentinel
+// PruneMarkers removes marker files older than an hour. ledger.json, ledger.lock and the sentinel
 // ledger.reset stay.
-func pruneMarkers(state string, now time.Time) {
+func PruneMarkers(state string, now time.Time) {
 	entries, err := os.ReadDir(state)
 	if err != nil {
 		return

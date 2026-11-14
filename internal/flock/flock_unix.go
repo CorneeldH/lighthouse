@@ -17,14 +17,30 @@ func TryLock(path string) (*os.File, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open lock file: %w", err)
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	held, err := TryFile(f)
+	if err != nil || !held {
 		_ = f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, fmt.Errorf("lock %s: %w", path, ErrHeld)
+		if err == nil {
+			err = ErrHeld
 		}
 		return nil, fmt.Errorf("lock %s: %w", path, err)
 	}
 	return f, nil
+}
+
+// TryFile takes an exclusive, non-blocking flock on the open file f. A lock held by another open
+// file description is not an error: it gives false, nil. Any other failure gives false and the error.
+func TryFile(f *os.File) (held bool, err error) {
+	for {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if !errors.Is(err, syscall.EINTR) {
+			break
+		}
+	}
+	if errors.Is(err, syscall.EWOULDBLOCK) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // Lock is TryLock that waits for the holder instead of failing with ErrHeld.
