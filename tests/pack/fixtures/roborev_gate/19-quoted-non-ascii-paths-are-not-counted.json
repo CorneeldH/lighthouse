@@ -1,0 +1,30 @@
+{
+  "description": "-z keeps docs/cafe.md and cafe.md out of the count",
+  "setup": [
+    {
+      "do": "commit_files",
+      "files": {
+        "docs/café.md": {
+          "lines": 50
+        },
+        "café.md": {
+          "lines": 50
+        }
+      },
+      "message": "prose with non-ascii names"
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "{\"decision\":\"codex\",\"reason\":\"ok\"}"
+      ],
+      "expect": {
+        "verdict": "run",
+        "lines": 100
+      }
+    }
+  ]
+}

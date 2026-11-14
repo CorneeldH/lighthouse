@@ -156,7 +156,7 @@ def test_variants_differ_only_in_the_sandbox_wording() -> None:
 def test_roborev_section_renders_the_shared_log() -> None:
     for text in TEXTS:
         s6 = text[text.index("## 6.") : text.index("## Non-negotiable")]
-        for needle in ("roborev_comment.py render", "--bron ci", "roborev_gate.py record", "--raw"):
+        for needle in ("lighthouse roborev-comment render", "--bron ci", "lighthouse roborev-gate record", "--raw"):
             assert needle in s6, needle
 
 

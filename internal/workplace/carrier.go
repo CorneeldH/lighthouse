@@ -91,28 +91,37 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 	}, nil
 }
 
-// CarrierPath is <stateDir>/carriers/<workspaceID>.json.
-func CarrierPath(stateDir, workspaceID string) string {
-	return filepath.Join(stateDir, "carriers", workspaceID+".json")
+// CarrierPath is <stateDir>/carriers/<workspaceID>.json on self (node ""), and
+// <stateDir>/carriers/<node>/<workspaceID>.json on another node: two nodes can hand out the same
+// workspace id.
+func CarrierPath(stateDir, node, workspaceID string) string {
+	if node == "" {
+		return filepath.Join(stateDir, "carriers", workspaceID+".json")
+	}
+	return filepath.Join(stateDir, "carriers", node, workspaceID+".json")
 }
 
-func checkWorkspaceID(id string) error {
+// checkCarrierKey checks that the workspace id, and a node other than self, are safe file names.
+func checkCarrierKey(node, id string) error {
 	if !safeIDPattern.MatchString(id) {
 		return fmt.Errorf("carrier: workspace id %q is not a safe file name", id)
+	}
+	if node != "" && !safeIDPattern.MatchString(node) {
+		return fmt.Errorf("carrier: node %q is not a safe file name", node)
 	}
 	return nil
 }
 
 // WriteCarrier writes c atomically with mode 0600 and returns its path.
-func WriteCarrier(stateDir, workspaceID string, c Carrier) (string, error) {
-	if err := checkWorkspaceID(workspaceID); err != nil {
+func WriteCarrier(stateDir, node, workspaceID string, c Carrier) (string, error) {
+	if err := checkCarrierKey(node, workspaceID); err != nil {
 		return "", err
 	}
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return "", err
 	}
-	path := CarrierPath(stateDir, workspaceID)
+	path := CarrierPath(stateDir, node, workspaceID)
 	if err := WriteFileAtomic(path, data); err != nil {
 		return "", err
 	}
@@ -120,11 +129,11 @@ func WriteCarrier(stateDir, workspaceID string, c Carrier) (string, error) {
 }
 
 // RemoveCarrier deletes the carrier; a missing file is no error.
-func RemoveCarrier(stateDir, workspaceID string) error {
-	if err := checkWorkspaceID(workspaceID); err != nil {
+func RemoveCarrier(stateDir, node, workspaceID string) error {
+	if err := checkCarrierKey(node, workspaceID); err != nil {
 		return err
 	}
-	if err := os.Remove(CarrierPath(stateDir, workspaceID)); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(CarrierPath(stateDir, node, workspaceID)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil

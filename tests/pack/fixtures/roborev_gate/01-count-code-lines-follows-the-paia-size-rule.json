@@ -1,0 +1,11 @@
+{
+  "description": "docs/, binaries, prose and data extensions do not count; workflows do",
+  "setup": [],
+  "steps": [
+    {
+      "op": "count_lines",
+      "numstat": "10\t2\tinternal/x.go\u00005\t5\tdocs/a.go\u0000-\t-\tlogo.png\u00007\t0\tREADME.md\u00003\t1\t.github/workflows/ci.yml\u00004\t0\tpack/x.toml\u0000",
+      "expect": 16
+    }
+  ]
+}

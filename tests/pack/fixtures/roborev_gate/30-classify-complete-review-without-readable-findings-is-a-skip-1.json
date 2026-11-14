@@ -1,0 +1,14 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "text": "## roborev: Review Complete (`abc1234`)\n\n**Verdict:** 2 findings.\n\nSomething odd.\n",
+      "expect_exact": {
+        "verdict": "skip",
+        "reason": "review faalde: bevindingen onleesbaar"
+      }
+    }
+  ]
+}

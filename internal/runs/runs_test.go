@@ -400,3 +400,21 @@ func TestNoteMergeFailed(t *testing.T) {
 		t.Errorf("closed row changed: %+v", hist[0])
 	}
 }
+
+func TestTakeStoresNode(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c := claim("o/r", 7, "start:7")
+	c.Node = "node-a"
+	if _, err := Take(ctx, db, c); err != nil {
+		t.Fatal(err)
+	}
+	open, err := Open(ctx, db, "o/r")
+	if err != nil || len(open) != 1 || open[0].Node != "node-a" {
+		t.Errorf("Open = %+v, %v; want one run on node-a", open, err)
+	}
+	hist, err := History(ctx, db, "o/r")
+	if err != nil || len(hist) != 1 || hist[0].Node != "node-a" {
+		t.Errorf("History = %+v, %v; want one row on node-a", hist, err)
+	}
+}

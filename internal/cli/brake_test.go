@@ -7,9 +7,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -203,5 +205,39 @@ func TestReadHostFactsUsageNotMeasured(t *testing.T) {
 	env.Meter.RunUsage = func(context.Context, string) ([]byte, error) { return nil, errors.New("claude is down") }
 	if f := facts(t, env, openStore(t, dbPath)); f.Brake.UsageMeasured {
 		t.Error("UsageMeasured = true without a cache")
+	}
+}
+
+// Open runs count per node_id and the local slots count only runs on this host; a node without runs is listed with 0.
+func TestReadHostFactsPerNode(t *testing.T) {
+	env, dbPath := tickFixture(t)
+	db := openStore(t, dbPath)
+	claim(t, db, "o/a", 1, "sess-a", "software", "handoff", "start:1", "")
+	for issue, node := range map[int]string{2: "node-a", 3: "node-a"} {
+		if _, err := runs.Take(context.Background(), db, runs.Claim{Repo: "o/a", Issue: issue,
+			SessionID: "sess-" + node + string(rune('0'+issue)), Mode: "start", Trigger: "handoff",
+			TriggerKey: "start:" + string(rune('0'+issue)), Command: "c", Prompt: "p", Profile: "mac", Node: node,
+			Branch: "b", Now: t0.Add(-3 * time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg := hostconfig.DefaultDispatch()
+	cfg.Nodes = map[string]hostconfig.Node{
+		"alpha": {NodeID: "node-a", Slots: 2},
+		"beta":  {NodeID: "node-b", Slots: 1},
+	}
+	f, err := readHostFacts(context.Background(), env, db, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]dispatch.NodeSlots{
+		"node-a": {Name: "alpha", Slots: 2, InUse: 2},
+		"node-b": {Name: "beta", Slots: 1, InUse: 0},
+	}
+	if !reflect.DeepEqual(f.Brake.Nodes, want) {
+		t.Errorf("Nodes = %+v, want %+v", f.Brake.Nodes, want)
+	}
+	if f.Brake.InUse != 1 || f.Brake.SoftwareInUse != 1 {
+		t.Errorf("InUse %d, SoftwareInUse %d; want 1 and 1: runs on a node take no local slot", f.Brake.InUse, f.Brake.SoftwareInUse)
 	}
 }

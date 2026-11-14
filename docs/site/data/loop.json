@@ -545,7 +545,7 @@
       "when": "Before every gh pr create above the threshold.",
       "without": "The review at the end runs in CI only, after the PR is open, and costs a second CI run.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/scripts/roborev_gate.py"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/cli/roborev.go"
     },
     {
       "id": "pr-create-gate",
