@@ -2,19 +2,18 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"regexp"
 	"slices"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -65,15 +64,15 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	if err != nil {
 		return fmt.Errorf("run: %s is not <owner/name>#<issue>", target)
 	}
-	token := githubToken(env.Getenv)
-	if token == "" {
-		return errors.New("run: no GitHub token: set GH_TOKEN or GITHUB_TOKEN")
-	}
 	cfg, err := hostconfig.LoadDispatch(env.HostToml)
 	if err != nil {
 		return err
 	}
 	repo, err := findRepo(cfg, slug, env.HostToml)
+	if err != nil {
+		return fmt.Errorf("run: %w", err)
+	}
+	rf, err := newForgeOpener(env.Getenv, env.ForgeURL).forRepo(ctx, repo)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
@@ -94,14 +93,12 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	}
 	facts.Brake.Manual = true // a person who runs an issue decides on memory, slots and software
 
-	c := env.client(repo, token)
-	pre, err := measuredPre(ctx, env, st.DB, cfg, c, repo, errOut)
+	pre, err := measuredPre(ctx, env, st.DB, cfg, rf.Forge, repo, errOut)
 	if err != nil {
 		return err
 	}
 	pre.Markers = facts.Markers[slug]
-	login := sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
-	in, err := repoInput(ctx, st.DB, cfg, c, pre, login, errOut, env.now())
+	in, err := repoInput(ctx, st.DB, cfg, rf.Forge, pre, rf.who, errOut, env.now())
 	if err != nil {
 		return err
 	}
@@ -118,7 +115,8 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 			actions = append(actions, a)
 		}
 	}
-	res, err := applyActions(ctx, env, st.DB, cfg, token, map[string]repoconfig.Repo{repo.Slug: repo}, actions, errOut)
+	res, err := applyActions(ctx, env, st.DB, cfg, map[string]forge.Forge{repo.Slug: rf.Forge},
+		map[string]repoconfig.Repo{repo.Slug: repo}, actions, errOut)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
@@ -136,17 +134,20 @@ func lastIssueOfSession(history []runs.Row, session string) int {
 }
 
 // findRepo returns the repo of [dispatch] repos with slug; it must be dispatchable. A repo
-// that does not load is skipped: it may be another one. hostToml names host.toml in the error.
+// that does not load is skipped: it may be another one. A slug that two paths share is an
+// error naming both. hostToml names host.toml in the error.
 func findRepo(cfg hostconfig.Dispatch, slug, hostToml string) (repoconfig.Repo, error) {
-	for _, path := range cfg.Repos {
-		repo, err := repoconfig.Load(path)
-		if err != nil || repo.Slug != slug {
+	for _, l := range repoconfig.LoadAll(cfg.Repos) {
+		if l.Repo.Slug != slug { // a path that does not load has no slug
 			continue
 		}
-		if err := repoconfig.Dispatchable(repo); err != nil {
-			return repoconfig.Repo{}, fmt.Errorf("%s: %w", path, err)
+		if l.Err != nil {
+			return repoconfig.Repo{}, l.Err
 		}
-		return repo, nil
+		if err := repoconfig.Dispatchable(l.Repo); err != nil {
+			return repoconfig.Repo{}, fmt.Errorf("%s: %w", l.Path, err)
+		}
+		return l.Repo, nil
 	}
 	return repoconfig.Repo{}, fmt.Errorf("%s is not in [dispatch] repos of %s", slug, hostToml)
 }

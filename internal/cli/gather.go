@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -38,10 +37,6 @@ func newGatherCommand() *cobra.Command {
 // gather writes the snapshot of the repo in dir to out as JSON, indented by two spaces and
 // ending in a newline. Ignored 🤖-comments go to errOut, as in tick.
 func gather(ctx context.Context, env tickEnv, dir, dbPath string, out, errOut io.Writer) error {
-	token := githubToken(env.Getenv)
-	if token == "" {
-		return errors.New("gather: no GitHub token: set GH_TOKEN or GITHUB_TOKEN")
-	}
 	cfg, err := hostconfig.LoadDispatch(env.HostToml)
 	if err != nil {
 		return err
@@ -50,6 +45,10 @@ func gather(ctx context.Context, env tickEnv, dir, dbPath string, out, errOut io
 	if err == nil {
 		err = repoconfig.Dispatchable(repo)
 	}
+	if err != nil {
+		return fmt.Errorf("gather: %w", err)
+	}
+	rf, err := newForgeOpener(env.Getenv, env.ForgeURL).forRepo(ctx, repo)
 	if err != nil {
 		return fmt.Errorf("gather: %w", err)
 	}
@@ -64,16 +63,15 @@ func gather(ctx context.Context, env tickEnv, dir, dbPath string, out, errOut io
 	}
 	defer func() { _ = st.Close() }()
 
-	c := env.client(repo, token)
-	pre, err := prepare(ctx, st.DB, c, repo)
+	pre, err := prepare(ctx, st.DB, rf.Forge, repo)
 	if err != nil {
 		return err
 	}
-	who, err := tokenLogin(ctx, c)
+	who, err := rf.who()
 	if err != nil {
 		return err
 	}
-	snap, err := dispatch.Complete(ctx, c, pre, dispatch.NewTrust(c, cfg.AnswerPermissions), who, errOut, env.now())
+	snap, err := dispatch.Complete(ctx, rf.Forge, pre, dispatch.NewTrust(rf.Forge, cfg.AnswerPermissions), who, errOut, env.now())
 	if err != nil {
 		return err
 	}

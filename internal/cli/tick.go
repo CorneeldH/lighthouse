@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -66,7 +65,8 @@ func (e tickEnv) now() time.Time {
 	return e.Now()
 }
 
-// client returns a GitHub client for repo, with its board, at ForgeURL.
+// client returns a GitHub client for repo, with its board, at ForgeURL. Only triage still
+// uses it; tick, gather and run open their forges with a forgeOpener.
 func (e tickEnv) client(repo repoconfig.Repo, token string) *forge.GitHub {
 	c := forge.New(repo.Slug, token)
 	c.Board = repo.Board
@@ -162,8 +162,9 @@ func newTickCommand() *cobra.Command {
 	return cmd
 }
 
-// tick takes tick.lock, loads the repos of host.toml and skips, loudly, each one that is not
-// dispatchable or whose gather fails; the others get gatherRepo, the gathered ones
+// tick takes tick.lock, loads the repos of host.toml, opens the forge of each with its own token
+// (openForges) and skips, loudly, each one that does not load, shares its slug, is not
+// dispatchable, has no forge or whose gather fails; the others get gatherRepo, the gathered ones
 // decideAndApply, every repo whose precheck passed saveRunViews, also when its full gather
 // failed, and every repo that was not skipped sweepRepos, due or not. The run views follow
 // apply, so a run this tick starts or closes shows at once. A busy lock is
@@ -191,13 +192,14 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	}
 	defer func() { _ = lock.Close() }()
 
-	token := githubToken(env.Getenv)
-	if token == "" {
-		return errors.New("tick: no GitHub token: set GH_TOKEN or GITHUB_TOKEN")
-	}
 	cfg, err := hostconfig.LoadDispatch(env.HostToml)
 	if err != nil {
 		return err
+	}
+	loaded := repoconfig.LoadAll(cfg.Repos)
+	forges, err := openForges(ctx, env, loaded)
+	if err != nil {
+		return fmt.Errorf("tick: %w", err)
 	}
 	if len(cfg.Repos) == 0 {
 		if env.HostToml == "" {
@@ -222,26 +224,22 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 		return fmt.Errorf("tick: the brake cannot check: %w", err)
 	}
 
-	// One GET /user per tick, and none when no repo is due. /user does not depend on the
-	// repo, so the client of the first dispatchable repo serves every repo.
-	var login func() (string, error)
+	// One GET /user per tick for each kind, host, base URL and token (forgeOpener), and none
+	// when no repo is due.
 	var gathered []gatheredRepo
 	var checked, viewed []checkedRepo
+	ticked := map[string]forge.Forge{}
 	skipped := false
-	for _, path := range cfg.Repos {
-		repo, err := repoconfig.Load(path)
-		if err == nil {
-			err = repoconfig.Dispatchable(repo)
-		}
+	for i, l := range loaded {
+		path, repo := l.Path, l.Repo
+		of := forges[i]
 		var in *dispatch.RepoInput
 		var fp string
 		var pre *dispatch.Pre
+		err := of.err
 		if err == nil {
-			if login == nil {
-				c := env.client(repo, token)
-				login = sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
-			}
-			in, fp, pre, err = gatherRepo(ctx, env, st.DB, cfg, facts, repo, token, login, errOut)
+			ticked[repo.Slug] = of.rf.Forge
+			in, fp, pre, err = gatherRepo(ctx, env, st.DB, cfg, facts, repo, of.rf, errOut)
 		}
 		if pre != nil {
 			viewed = append(viewed, checkedRepo{repo: repo, pre: *pre})
@@ -256,20 +254,66 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp})
 		}
 	}
-	failed, err := decideAndApply(ctx, env, st.DB, cfg, facts, token, gathered, errOut)
+	failed, err := decideAndApply(ctx, env, st.DB, cfg, facts, ticked, gathered, errOut)
 	if err != nil {
 		return err
 	}
 	if saveRunViews(ctx, env, st.DB, viewed, errOut) {
 		failed = true
 	}
-	if sweepRepos(ctx, env, st.DB, cfg, token, checked, errOut) {
+	if sweepRepos(ctx, env, st.DB, cfg, ticked, checked, errOut) {
 		failed = true
 	}
 	if skipped || failed {
 		return errSilent
 	}
 	return nil
+}
+
+// openedForge is the forge of one loaded repo, or why it has none.
+type openedForge struct {
+	rf  repoForge
+	err error
+}
+
+// openForges opens, without output, the forge of each repo in loaded that loaded and is
+// dispatchable; the others carry their load, duplicate-slug or Dispatchable error. When no repo
+// gets a forge it returns the first token error. When no repo needed a forge, a GitHub token
+// must still be set, as before forges were per repo.
+func openForges(ctx context.Context, env tickEnv, loaded []repoconfig.Loaded) ([]openedForge, error) {
+	o := newForgeOpener(env.Getenv, env.ForgeURL)
+	out := make([]openedForge, len(loaded))
+	var tokenErr *forge.TokenError
+	tried, opened := false, false
+	for i, l := range loaded {
+		err := l.Err
+		if err == nil {
+			err = repoconfig.Dispatchable(l.Repo)
+		}
+		if err != nil {
+			out[i].err = err
+			continue
+		}
+		tried = true
+		out[i].rf, out[i].err = o.forRepo(ctx, l.Repo)
+		var te *forge.TokenError
+		switch {
+		case out[i].err == nil:
+			opened = true
+		case tokenErr == nil && errors.As(out[i].err, &te):
+			tokenErr = te
+		}
+	}
+	switch {
+	case opened:
+	case tokenErr != nil:
+		return nil, tokenErr
+	case !tried:
+		if _, err := forge.Token("github", "", env.Getenv); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 // oneLine is the text of err on one line.
@@ -337,11 +381,11 @@ func saveRunView(ctx context.Context, env tickEnv, db *sql.DB, cr checkedRepo, p
 // workspace gets a removed line on errOut, each repo whose sweep failed a cleanup line; a
 // workspace it keeps gets no line: it is in Workspaces to clean up. A repo without a
 // workspace to sweep builds no workplace. failed reports a cleanup line.
-func sweepRepos(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
+func sweepRepos(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, forges map[string]forge.Forge,
 	repos []checkedRepo, errOut io.Writer) (failed bool) {
 	for _, sr := range repos {
 		slug := sr.repo.Slug
-		removed, err := sweepOne(ctx, env, db, cfg, token, sr)
+		removed, err := sweepOne(ctx, env, db, cfg, forges[slug], sr)
 		for _, l := range removed {
 			_, _ = fmt.Fprintf(errOut, "lighthouse: removed workspace %s of %s#%d\n", l.WorkspaceID, slug, l.Issue)
 		}
@@ -353,8 +397,8 @@ func sweepRepos(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 	return failed
 }
 
-// sweepOne sweeps one repo; see sweepRepos.
-func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
+// sweepOne sweeps one repo, whose forge is f; see sweepRepos.
+func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, f forge.Forge,
 	sr checkedRepo) ([]workplace.Leftover, error) {
 	refs, err := runs.Workspaces(ctx, db, sr.repo.Slug)
 	if err != nil || len(refs) == 0 {
@@ -364,12 +408,11 @@ func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispa
 	if err != nil {
 		return nil, err
 	}
-	c := env.client(sr.repo, token)
 	in := workplace.SweepInput{
 		Repo:         sr.repo.Slug,
 		InController: dispatch.InController(sr.pre.Statuses),
 		MergedHead: func(ctx context.Context, branch string) (string, error) {
-			prs, err := c.BranchPRs(ctx, branch)
+			prs, err := f.BranchPRs(ctx, branch)
 			if err != nil {
 				return "", err
 			}
@@ -383,8 +426,9 @@ func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispa
 // gets a deferred line on errOut, each repo with a failed action an apply line. It saves the
 // fingerprint of a repo only when none of its actions was deferred or failed, so the next tick
 // tries again (spec §3 step 2), and replaces the deferred rows of each gathered repo with the
-// deferrals of Decide. failed reports an apply line or a state that was not saved.
-func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, token string,
+// deferrals of Decide. forges holds the forge of each gathered repo. failed reports an apply
+// line or a state that was not saved.
+func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, forges map[string]forge.Forge,
 	gathered []gatheredRepo, errOut io.Writer) (failed bool, err error) {
 	if len(gathered) == 0 {
 		return false, nil
@@ -396,7 +440,7 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		repos[g.repo.Slug] = g.repo
 	}
 	actions := dispatch.Decide(decideInput(env, cfg, inputs, &facts.Brake))
-	res, err := applyActions(ctx, env, db, cfg, token, repos, actions, errOut)
+	res, err := applyActions(ctx, env, db, cfg, forges, repos, actions, errOut)
 	if err != nil {
 		return false, fmt.Errorf("tick: %w", err)
 	}
@@ -438,10 +482,10 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 	return failed, nil
 }
 
-// applyActions applies actions to repos, each with its forge workplace; apply logs to errOut
-// with the "lighthouse: " of every tick line. Without actions it applies nothing. tick and
-// `lighthouse run` share it. Every repo in repos has a board: Dispatchable guarantees it.
-func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, token string,
+// applyActions applies actions to repos, each with its forge in forges and its workplace; apply
+// logs to errOut with the "lighthouse: " of every tick line. Without actions it applies nothing.
+// tick and `lighthouse run` share it. Every repo in repos has a board: Dispatchable guarantees it.
+func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, forges map[string]forge.Forge,
 	repos map[string]repoconfig.Repo, actions []dispatch.Action, errOut io.Writer) (dispatch.Result, error) {
 	if len(actions) == 0 {
 		return dispatch.Result{}, nil
@@ -460,7 +504,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	// it saves.
 	res, _ := dispatch.Apply(ctx, dispatch.Env{
 		DB:         db,
-		Forge:      func(slug string) forge.Forge { return env.client(repos[slug], token) },
+		Forge:      func(slug string) forge.Forge { return forges[slug] },
 		Workplace:  func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
 		MCPConfig:  func(profile string) string { return cfg.Profiles[profile].MCPConfig },
 		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
@@ -489,11 +533,10 @@ func (p prefixed) Write(b []byte) (int, error) {
 // the repo is not due. fp is the fingerprint of the precheck: tick saves it after apply.
 // pre is the precheck, also when the repo is not due or its full gather fails: tick builds the
 // run view and the sweep from it after apply; it is nil only when the precheck failed. A full
-// gather writes one gathered line to errOut.
+// gather writes one gathered line to errOut. rf is the forge of repo.
 func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, repo repoconfig.Repo,
-	token string, login func() (string, error), errOut io.Writer) (in *dispatch.RepoInput, fp string, _ *dispatch.Pre, err error) {
-	c := env.client(repo, token)
-	pre, err := measuredPre(ctx, env, db, cfg, c, repo, errOut)
+	rf repoForge, errOut io.Writer) (in *dispatch.RepoInput, fp string, _ *dispatch.Pre, err error) {
+	pre, err := measuredPre(ctx, env, db, cfg, rf.Forge, repo, errOut)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -508,7 +551,7 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 	if !due {
 		return nil, "", &pre, nil
 	}
-	ri, err := repoInput(ctx, db, cfg, c, pre, login, errOut, now)
+	ri, err := repoInput(ctx, db, cfg, rf.Forge, pre, rf.who, errOut, now)
 	if err != nil {
 		return nil, "", &pre, err
 	}
@@ -518,7 +561,7 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 
 // prepare is the board half of a gather: the open runs, the branch of each issue's last run,
 // and the board with the PRs of those branches.
-func prepare(ctx context.Context, db *sql.DB, c *forge.GitHub, repo repoconfig.Repo) (dispatch.Pre, error) {
+func prepare(ctx context.Context, db *sql.DB, f forge.Forge, repo repoconfig.Repo) (dispatch.Pre, error) {
 	open, err := runs.Open(ctx, db, repo.Slug)
 	if err != nil {
 		return dispatch.Pre{}, err
@@ -531,19 +574,19 @@ func prepare(ctx context.Context, db *sql.DB, c *forge.GitHub, repo repoconfig.R
 	for _, r := range history { // ordered by id: the last run of an issue wins
 		branches[r.Issue] = r.Branch
 	}
-	return dispatch.Prepare(ctx, c, repo, open, branches)
+	return dispatch.Prepare(ctx, f, repo, open, branches)
 }
 
 // measuredPre is the precheck half of a gather that tick and `lighthouse run` share: it
 // adopts the sessions of uncertain starts, reads the board half (prepare), and measures the
 // open runs. Adoption comes first, so the open runs prepare reads already hold a session that
 // showed up in this tick.
-func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, c *forge.GitHub,
+func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, f forge.Forge,
 	repo repoconfig.Repo, errOut io.Writer) (dispatch.Pre, error) {
 	if err := adopt(ctx, env, db, cfg, repo, errOut); err != nil {
 		return dispatch.Pre{}, err
 	}
-	pre, err := prepare(ctx, db, c, repo)
+	pre, err := prepare(ctx, db, f, repo)
 	if err != nil {
 		return dispatch.Pre{}, err
 	}
@@ -696,13 +739,13 @@ func profileNodes(cfg hostconfig.Dispatch) map[string]string {
 // the history only after the comments: `lighthouse run` takes no tick.lock and writes its
 // run row before its Started, so a Started in the snapshot always has its row in the history
 // and the orphan rule never hands back a fresh run.
-func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, c *forge.GitHub, pre dispatch.Pre,
+func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge.Forge, pre dispatch.Pre,
 	login func() (string, error), errOut io.Writer, now time.Time) (dispatch.RepoInput, error) {
 	who, err := login()
 	if err != nil {
 		return dispatch.RepoInput{}, err
 	}
-	snap, err := dispatch.Complete(ctx, c, pre, dispatch.NewTrust(c, cfg.AnswerPermissions), who, errOut, now)
+	snap, err := dispatch.Complete(ctx, f, pre, dispatch.NewTrust(f, cfg.AnswerPermissions), who, errOut, now)
 	if err != nil {
 		return dispatch.RepoInput{}, err
 	}
@@ -720,17 +763,4 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, c *forg
 		DefaultBranch:  pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
 		Markers: pre.Markers,
 	}, nil
-}
-
-// tokenLogin returns the login of the token. A 🚀 counts only from this login, so an empty
-// login is an error rather than a gather in which no 🚀 counts.
-func tokenLogin(ctx context.Context, c *forge.GitHub) (string, error) {
-	login, err := c.Login(ctx)
-	if err != nil {
-		return "", err
-	}
-	if login == "" {
-		return "", errors.New("GET /user: token has no login")
-	}
-	return login, nil
 }
