@@ -169,9 +169,9 @@ func expandUser(path string) string {
 	return "/"
 }
 
-// resolve resolves a path word. ok is false when it cannot be resolved with certainty. The tilde
+// Resolve resolves a path word. ok is false when it cannot be resolved with certainty. The tilde
 // expands only if it was unquoted.
-func resolve(w string, literal, tilde bool) (string, bool) {
+func Resolve(w string, literal, tilde bool) (string, bool) {
 	text := w
 	if !literal {
 		text = expandVars(w)
@@ -185,7 +185,8 @@ func resolve(w string, literal, tilde bool) (string, bool) {
 	return text, true
 }
 
-func basename(w string) string {
+// Basename is the last path component of a word, as a shell sees a command name.
+func Basename(w string) string {
 	return w[strings.LastIndex(w, "/")+1:]
 }
 
@@ -220,7 +221,7 @@ func commandStart(words []string) int {
 			moved = true
 		}
 		if idx < len(words) {
-			w, ok := wrappers[basename(words[idx])]
+			w, ok := wrappers[Basename(words[idx])]
 			if !ok {
 				continue
 			}
@@ -349,7 +350,7 @@ func (d *dirState) stackMove(verb string, words []string, args []int) bool {
 
 // cdTo moves to w: resolve, join with here, and note a directory that does not exist yet.
 func (d *dirState) cdTo(w string, literal, tilde bool) {
-	target, ok := resolve(w, literal, tilde)
+	target, ok := Resolve(w, literal, tilde)
 	if !ok {
 		d.applyCd(nil, w)
 		return
@@ -529,7 +530,7 @@ func (s *walkState) settleNewDir() {
 
 // applyEffect applies the effect of a `cd`/`pushd`/`popd` or a shell (`bash -c`).
 func (s *walkState) applyEffect(words []string, literal, tildes []bool, idx int) error {
-	verb := basename(words[idx])
+	verb := Basename(words[idx])
 	switch {
 	case verb == "cd" || verb == "pushd" || verb == "popd":
 		s.dirs.changeDir(verb, words, literal, tildes, idx)

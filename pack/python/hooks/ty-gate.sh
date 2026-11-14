@@ -9,22 +9,21 @@
 # several files are done, so per-edit feedback would burn turns on half-finished
 # state.
 #
-# Looks at every checkout the turn wrote in (turn_roots.py, #54), not the `cwd` of
+# Looks at every checkout the turn wrote in (`lighthouse turn-roots`, #54), not the `cwd` of
 # the payload: that is the shell's directory at Stop, and a session in the main
 # checkout that edits a worktree stops there. It checks only a checkout in which
 # the turn touched a Python path: a `.py` or `.pyi` file in a source dir, or
 # pyproject.toml, ty.toml or uv.lock (an edit, a Bash write or a commit in the turn,
-# `turn_roots.py --match`, #80). The rest gets `not checked`.
+# `lighthouse turn-roots --match`, #80). The rest gets `not checked`.
 #
-# Could not check (no jq or uvx, no repository, no venv, a ty that does not
+# Could not check (no jq, git, python3, lighthouse or uvx, no repository, no venv, a ty that does not
 # start, a configuration that cannot be read, a turn whose checkout cannot be
 # determined): exit 0 with a systemMessage `ty-gate: COULD NOT CHECK — <reason>`
 # (design choice 13). Blocking there would keep the session from stopping; staying
 # silent would read as "type-clean".
 # While the usage alarm is up (#74) the gate says `not checked` and exits 0: the
 # usage gate has the session wrap up, and fixing a diagnostic costs budget that is
-# no longer there. The alarm is read with `lighthouse usage alarm`; without `lighthouse` on the
-# PATH there is no alarm to read and the check runs as before.
+# no longer there. The alarm is read with `lighthouse usage alarm`.
 # `python.source_dirs = []` turns the check off, without a message, alarm or not: the
 # alarm is read after that exit.
 
@@ -48,7 +47,7 @@ cannot_check() {
 }
 
 # uvx is checked per checkout, after the skip: an untouched root needs none.
-for tool in jq git python3; do
+for tool in jq git python3 lighthouse; do
   command -v "$tool" >/dev/null 2>&1 || cannot_check "$tool is missing."
 done
 
@@ -94,13 +93,13 @@ EOF
 
 # The checkouts this turn wrote in, one per line: `touched<TAB>root` or
 # `untouched<TAB>root` (#54, #80).
-if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB/turn_roots.py" "${MATCH_ARGS[@]}" 2>&1); then
+if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" lighthouse turn-roots "${MATCH_ARGS[@]}" 2>&1); then
   # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
   cannot_check "the checkout of this turn cannot be determined: $(printf '%s' "$ROOTS" | tr '\n"\134' "   ")"
 fi
 
 # The usage alarm (#74): `lighthouse usage alarm` prints the valid alarm and exits 0.
-# Without `lighthouse` on the PATH, or without a valid alarm, the check runs as usual.
+# Without a valid alarm the check runs as usual.
 # An older lighthouse prints help and exits 0 for an unknown subcommand: only a line with
 # exactly the alarm shape counts, anything else is no alarm.
 if command -v lighthouse >/dev/null 2>&1 && ALARM_LINE=$(lighthouse usage alarm 2>/dev/null) \

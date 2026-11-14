@@ -1,0 +1,205 @@
+[
+ {
+  "name": "remote-key-normalises-https-dot-git",
+  "kind": "remote_key",
+  "url": "https://github.com/Acme/widgets.git",
+  "expect": "github.com/acme/widgets"
+ },
+ {
+  "name": "remote-key-normalises-https-plain",
+  "kind": "remote_key",
+  "url": "https://github.com/acme/widgets",
+  "expect": "github.com/acme/widgets"
+ },
+ {
+  "name": "remote-key-normalises-https-userinfo-port-trailing-slash",
+  "kind": "remote_key",
+  "url": "https://user@github.com:443/Acme/widgets.git/",
+  "expect": "github.com/acme/widgets"
+ },
+ {
+  "name": "remote-key-normalises-ssh-url",
+  "kind": "remote_key",
+  "url": "ssh://git@github.com/Acme/widgets.git",
+  "expect": "github.com/acme/widgets"
+ },
+ {
+  "name": "remote-key-normalises-scp-like",
+  "kind": "remote_key",
+  "url": "git@github.com:Acme/widgets.git",
+  "expect": "github.com/acme/widgets"
+ },
+ {
+  "name": "remote-key-without-host-and-path-is-null-local-path",
+  "kind": "remote_key",
+  "url": "/srv/git/widgets.git",
+  "expect": null
+ },
+ {
+  "name": "remote-key-without-host-and-path-is-null-file-url",
+  "kind": "remote_key",
+  "url": "file:///srv/git/widgets.git",
+  "expect": null
+ },
+ {
+  "name": "remote-key-without-host-and-path-is-null-empty",
+  "kind": "remote_key",
+  "url": "",
+  "expect": null
+ },
+ {
+  "name": "remote-key-without-host-and-path-is-null-host-only",
+  "kind": "remote_key",
+  "url": "https://github.com",
+  "expect": null
+ },
+ {
+  "name": "remote-key-keeps-the-host",
+  "kind": "remote_key",
+  "url": "https://gitlab.com/Acme/widgets",
+  "expect": "gitlab.com/acme/widgets"
+ },
+ {
+  "name": "same-origin-forge-worktree",
+  "kind": "same_origin",
+  "setup": [
+   {
+    "repo": "project",
+    "branch": "main"
+   },
+   {
+    "origin": "project",
+    "url": "git@github.com:Acme/widgets.git"
+   },
+   {
+    "repo": "clone",
+    "branch": "main"
+   },
+   {
+    "origin": "clone",
+    "url": "git@github.com:Acme/widgets.git"
+   },
+   {
+    "worktree": "clone/work",
+    "of": "clone",
+    "branch": "work"
+   }
+  ],
+  "project": "{root}/project",
+  "root": "{root}/clone/work",
+  "expect": [
+   true,
+   ""
+  ]
+ },
+ {
+  "name": "same-origin-other-repo-names-both-remotes",
+  "kind": "same_origin",
+  "setup": [
+   {
+    "repo": "project",
+    "branch": "main"
+   },
+   {
+    "origin": "project",
+    "url": "git@github.com:Acme/widgets.git"
+   },
+   {
+    "repo": "clone",
+    "branch": "main"
+   },
+   {
+    "origin": "clone",
+    "url": "https://github.com/Acme/gadgets.git"
+   },
+   {
+    "worktree": "clone/work",
+    "of": "clone",
+    "branch": "work"
+   }
+  ],
+  "project": "{root}/project",
+  "root": "{root}/clone/work",
+  "expect": [
+   false,
+   "origin https://github.com/Acme/gadgets.git vs git@github.com:Acme/widgets.git"
+  ]
+ },
+ {
+  "name": "same-origin-without-origin",
+  "kind": "same_origin",
+  "setup": [
+   {
+    "repo": "project",
+    "branch": "main"
+   },
+   {
+    "origin": "project",
+    "url": "git@github.com:Acme/widgets.git"
+   },
+   {
+    "repo": "ander",
+    "branch": "main"
+   }
+  ],
+  "project": "{root}/project",
+  "root": "{root}/ander",
+  "expect": [
+   false,
+   "origin none vs git@github.com:Acme/widgets.git"
+  ]
+ },
+ {
+  "name": "same-origin-two-local-paths-are-not-the-same-repo",
+  "kind": "same_origin",
+  "setup": [
+   {
+    "repo": "a",
+    "branch": "main"
+   },
+   {
+    "origin": "a",
+    "url": "/srv/git/widgets.git"
+   },
+   {
+    "repo": "b",
+    "branch": "main"
+   },
+   {
+    "origin": "b",
+    "url": "/srv/git/widgets.git"
+   }
+  ],
+  "project": "{root}/a",
+  "root": "{root}/b",
+  "expect": [
+   false,
+   "origin /srv/git/widgets.git vs /srv/git/widgets.git"
+  ]
+ },
+ {
+  "name": "same-origin-broken-repo-raises",
+  "kind": "same_origin",
+  "setup": [
+   {
+    "repo": "project",
+    "branch": "main"
+   },
+   {
+    "origin": "project",
+    "url": "git@github.com:Acme/widgets.git"
+   },
+   {
+    "repo": "broken",
+    "branch": "main"
+   },
+   {
+    "overwrite": "broken/.git/config",
+    "text": "[kapot\n"
+   }
+  ],
+  "project": "{root}/project",
+  "root": "{root}/broken",
+  "expect": "raises"
+ }
+]
