@@ -1,15 +1,25 @@
 """Contract of the skill `lighthouse-write-pr`.
 
-The skill is the counterpart of `.claude/hooks/lighthouse/pr-create-gate.sh`: it writes the PR
-body (`Closes #N` + Evidence table, `Refs #N — <reason>` or `No issue: <reason>`) the hook
-enforces. These tests bind the skill text to the hook, to the CLI of `evidence.py` and to its
-allowlist constants. The template itself is tested in `test_pr_template.py`.
+The skill is the counterpart of the hook `pr-create-gate` (`.claude/hooks/lighthouse/run.sh
+pr-create-gate`): it writes the PR body (`Closes #N` + Evidence table, `Refs #N — <reason>` or
+`No issue: <reason>`) the hook enforces. These tests bind the skill text to the hook, to
+`lighthouse evidence` and `lighthouse pr-body-gate`, and to the allowlist constants in
+`fixtures/evidence/allowlist.json`. The template itself is tested in `test_pr_template.py`.
 """
 
+import json
 import re
 import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
 
 from tests.pack._testkit import CORE, load_hook_lib
+
+ALLOWLIST = json.loads(
+    (Path(__file__).parent / "fixtures" / "evidence" / "allowlist.json").read_text(encoding="utf-8")
+)
 
 SKILL = CORE / "skills" / "write-pr" / "SKILL.md"
 TEXT = SKILL.read_text(encoding="utf-8")
@@ -46,7 +56,7 @@ def test_skill_runs_before_pr():
 
 def test_names_the_hook():
     """Check 8 binds `binding: hard` to the hook through this name."""
-    assert ".claude/hooks/lighthouse/pr-create-gate.sh" in TEXT
+    assert ".claude/hooks/lighthouse/run.sh pr-create-gate" in TEXT
 
 
 def test_after_pr_is_gone():
@@ -56,17 +66,17 @@ def test_after_pr_is_gone():
         assert gone not in TEXT, gone
 
 
-def test_verify_pr_evidence_by_path():
-    """The evidence CLI runs as a file on its installed path (design choice 6)."""
-    assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py check" in TEXT
-    assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py run" in TEXT
+def test_verify_pr_evidence_through_the_binary():
+    """The evidence checker and the body check run through the `lighthouse` binary."""
+    assert "\nlighthouse evidence check '<Command cell>'\n" in TEXT
+    assert "\nlighthouse evidence run --issue <nr> --body-file <path> --cwd . --before-pr\n" in TEXT
+    assert '--body-file <path>" | lighthouse pr-body-gate "$PWD"\n' in TEXT
     assert ".claude/hooks/lib/" not in TEXT
 
 
 def test_allowlist_table_covers_the_code():
     """The skill table names every command, every refusal and every flag from the allowlist
-    constants of `evidence.py`."""
-    ev = load_hook_lib("evidence")
+    constants in `allowlist.json`, which `TestAllowlistMatchesFixture` binds to the code."""
     for cmd in (
         "`grep`",
         "`git grep`",
@@ -79,25 +89,29 @@ def test_allowlist_table_covers_the_code():
         assert cmd in TEXT
     for refused in ("--web", "--output", "-H", "%G"):
         assert refused in TEXT
-    flags = (
-        ev.GIT_LOG_FLAGS
-        | ev.GIT_LOG_VAL
-        | ev.PYTEST_FLAGS
-        | ev.GH_API_VAL
-        | ev.GH_VIEW_FLAGS
-        | ev.GH_VIEW_VAL
-        | ev.LS_FLAGS
-        | ev.WC_FLAGS
-        | ev.CAT_FLAGS
-        | ev.GIT_GREP_VAL
-    )
+    flags = {
+        flag
+        for name in (
+            "GIT_LOG_FLAGS",
+            "GIT_LOG_VAL",
+            "PYTEST_FLAGS",
+            "GH_API_VAL",
+            "GH_VIEW_FLAGS",
+            "GH_VIEW_VAL",
+            "LS_FLAGS",
+            "WC_FLAGS",
+            "CAT_FLAGS",
+            "GIT_GREP_VAL",
+        )
+        for flag in ALLOWLIST[name]
+    }
     section = TEXT[TEXT.index("## Evidence allowlist") :]
     section = section[: section.index("```")]  # only the table and its prose
     in_code = {re.sub(r"[`=]", "", v) for v in re.findall(r"`[^`]*`", section)}
     tokens = {t for cell in in_code for t in re.split(r"[\s/,]+", cell)}
     missing = sorted(v for v in flags if v not in tokens)
-    assert not missing, f"flags from evidence.py missing in the skill table: {missing}"
-    for sub in ev.GIT_SUBS:
+    assert not missing, f"allowlist flags missing in the skill table: {missing}"
+    for sub in ALLOWLIST["GIT_SUBS"]:
         assert f"git {sub}" in TEXT
 
 
@@ -107,11 +121,11 @@ def test_pytest_dir_comes_from_config():
     assert "tests/unit" not in TEXT
 
 
+@pytest.mark.usefixtures("lighthouse_bin")
 def test_example_row_holds_against_the_template(tmp_path):
     """Row 1 of the example block, copied, must give `holds` in a repo with the installed
     template (grep, no network)."""
     gate = load_hook_lib("pr_body_gate")
-    ev = load_hook_lib("evidence")
     (tmp_path / ".github").mkdir()
     shutil.copyfile(
         CORE / "templates" / "pull_request_template.md",
@@ -121,7 +135,22 @@ def test_example_row_holds_against_the_template(tmp_path):
     block = TEXT[TEXT.index("## Shape of the evidence block") : TEXT.index("## Counterpart")]
     rows = gate.evidence_rows(block, 1091)
     assert isinstance(rows, list), rows
-    assert ev.run_row(rows[0], str(tmp_path), gh_ok=False)[0] == ev.HOLDS
+    row = rows[0]
+    body = tmp_path / "body.md"
+    body.write_text(
+        "Refs #1091 — close-issue runs the rows\n\n### Evidence #1091\n\n"
+        "| AC | Command | Result |\n|---|---|---|\n"
+        f"| {row.ac} | {row.command} | {row.result} |\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        ["lighthouse", "evidence", "run", "--issue", "1091", "--body-file", str(body), "--cwd", str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "| holds |" in proc.stdout or "| klopt |" in proc.stdout
 
 
 def test_description_names_refs_not_closes():
@@ -209,11 +238,10 @@ def test_gh_view_demands_a_number():
 
 def test_git_grep_row_names_what_evidence_refuses():
     """`git grep` knows only `-e` as a value option; the rest of grep's value options not."""
-    ev = load_hook_lib("evidence")
     [row] = [r for r in TEXT.splitlines() if r.startswith("| `git grep` |")]
     _, allowed, refused = (c.strip() for c in row.strip("|").split(" | "))
     assert "as `grep`" not in allowed
-    for option in ev.GREP_VAL - ev.GIT_GREP_VAL:
+    for option in set(ALLOWLIST["GREP_VAL"]) - set(ALLOWLIST["GIT_GREP_VAL"]):
         assert f"`{option}`" in refused
 
 

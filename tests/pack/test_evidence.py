@@ -1,132 +1,20 @@
-"""`pack/core/lib/evidence.py` (#1091): argv allowlist and runner for Evidence rows.
+"""`lighthouse evidence` (#1091, #279): argv allowlist and runner for Evidence rows.
 
 A PR body is untrusted text: what falls outside the allowlist never runs,
-and there is no shell. Network ban: every test that can reach `gh` puts a
-stub `gh` first on `PATH`; no real `uv` runs anywhere.
+and there is no shell. Black-box tests of the binary; the `run_row` tests are
+Go twins in `internal/evidence`. Network ban: every test that can reach `gh`
+puts a stub `gh` first on `PATH`; no real `uv` runs anywhere.
 """
 
 import os
 import subprocess
-import sys
-import time
 
 import pytest
 
-from tests.pack._testkit import INSTALLED_LIB, git, load_hook_lib, tool_bin
+from tests.pack._testkit import tool_bin
 
-ev = load_hook_lib("evidence")
-Row = ev.Row
-LIB = INSTALLED_LIB / "evidence.py"
-
-# --- run_row -----------------------------------------------------------------
-
-
-def test_run_row_holds(tmp_path):
-    (tmp_path / "f").write_text("hallo wereld\n")
-    out = ev.run_row(Row("1", "`grep -F hallo f`", "wereld"), str(tmp_path), True)
-    assert out[0] == ev.HOLDS
-
-
-def test_run_row_substring_missing(tmp_path):
-    (tmp_path / "f").write_text("hallo wereld\n")
-    outcome, detail = ev.run_row(
-        Row("1", "`grep -F hallo f`", "nope"), str(tmp_path), True
-    )
-    assert outcome == ev.FAILS
-    assert "nope" in detail
-
-
-def test_run_row_exit_code(tmp_path):
-    outcome, detail = ev.run_row(
-        Row("1", "`test -f bestaatniet`", "x"), str(tmp_path), True
-    )
-    assert outcome == ev.FAILS
-    assert "1" in detail
-
-
-def test_run_row_after_pr_prefix(tmp_path):
-    (tmp_path / "f").write_text("hallo wereld\n")
-    out = ev.run_row(
-        Row("1", "`grep -F hallo f`", "na PR: wereld"), str(tmp_path), True
-    )
-    assert out[0] == ev.HOLDS
-
-
-def test_run_row_result_with_backticks(tmp_path):
-    (tmp_path / "f").write_text("hallo wereld\n")
-    out = ev.run_row(Row("1", "`grep -F hallo f`", "`wereld`"), str(tmp_path), True)
-    assert out[0] == ev.HOLDS
-
-
-def test_run_row_empty_expectation_is_invalid(tmp_path):
-    out = ev.run_row(Row("1", "`ls`", "``"), str(tmp_path), True)
-    assert out[0] == ev.INVALID
-
-
-def test_run_row_outside_allowlist_does_not_run(tmp_path):
-    out = ev.run_row(Row("1", "`git show --output=x HEAD`", "x"), str(tmp_path), True)
-    assert out[0] == ev.INVALID and not (tmp_path / "x").exists()
-    assert "Evidence outside the allowlist" in out[1]
-
-
-def test_run_row_gh_not_reachable(tmp_path):
-    out = ev.run_row(Row("1", "`gh pr view 1`", "x"), str(tmp_path), False)
-    assert out[0] == ev.UNMEASURABLE
-
-
-def test_run_row_binary_missing(tmp_path, monkeypatch):
-    monkeypatch.setenv("PATH", str(tmp_path))
-    out = ev.run_row(Row("1", "`grep -F a f`", "a"), str(tmp_path), True)
-    assert out[0] == ev.UNMEASURABLE
-
-
-def test_run_row_timeout(tmp_path):
-    # A deadline of 0 s has already passed before the first read: deterministic.
-    out = ev.run_row(Row("1", "`ls`", "x"), str(tmp_path), True, timeout=0)
-    assert out[0] == ev.UNMEASURABLE
-    assert "timeout" in out[1]
-
-
-@pytest.mark.parametrize("cmd", ["cat /dev/zero", "cat zeros"])
-def test_run_row_output_capped(tmp_path, cmd):
-    (tmp_path / "zeros").symlink_to("/dev/zero")
-    t0 = time.monotonic()
-    outcome, detail = ev.run_row(Row("1", f"`{cmd}`", "x"), str(tmp_path), True)
-    assert time.monotonic() - t0 < 20
-    assert outcome == ev.UNMEASURABLE
-    assert "output larger than" in detail
-
-
-def test_run_row_output_cap_smaller(tmp_path, monkeypatch):
-    monkeypatch.setattr(ev, "MAX_OUTPUT", 10)
-    (tmp_path / "f").write_text("een hele lange regel van meer dan tien bytes\n")
-    out = ev.run_row(Row("1", "`cat f`", "regel"), str(tmp_path), True)
-    assert out[0] == ev.UNMEASURABLE
-
-
-def test_run_row_output_under_cap_holds(tmp_path):
-    (tmp_path / "f").write_text("hallo wereld\n")
-    assert ev.run_row(Row("1", "`cat f`", "wereld"), str(tmp_path), True)[0] == ev.HOLDS
-
-
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        "git log -n1 --format= --output={path}",
-        "git show --pretty= --output={path} HEAD",
-        "git log --pretty --output={path}",
-    ],
-)
-def test_run_row_empty_option_writes_nothing(tmp_path, cmd):
-    git(tmp_path, "init", "-q")
-    git(tmp_path, "commit", "-q", "--allow-empty", "-m", "x")
-    pwn = tmp_path / "pwn"
-    out = ev.run_row(Row("1", f"`{cmd.format(path=pwn)}`", "x"), str(tmp_path), True)
-    assert out[0] == ev.INVALID
-    assert not pwn.exists()
-
-
-# --- CLI ---------------------------------------------------------------------
+# The binary of this checkout, first on the PATH.
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
 GH_STUB = """#!/bin/sh
 touch "$GH_MARKER"
@@ -135,6 +23,16 @@ case "$1 $2" in
 esac
 echo "${GH_STUB_OUT:-y}"
 """
+
+
+def _evidence(*args, env=None):
+    return subprocess.run(
+        ["lighthouse", "evidence", *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
 
 
 def _cli(tmp_path, *args, gh_out="y", with_stub=True):
@@ -150,14 +48,7 @@ def _cli(tmp_path, *args, gh_out="y", with_stub=True):
         GH_MARKER=str(marker),
         GH_STUB_OUT=gh_out,
     )
-    proc = subprocess.run(
-        [sys.executable, str(LIB), *args],
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
-    )
-    return proc, marker
+    return _evidence(*args, env=env), marker
 
 
 def _body(nr, rows):
@@ -232,22 +123,15 @@ def test_cli_run_gh_not_reachable_is_exit_4(tmp_path):
     body.write_text(_body(5, [("1. een", "`gh pr view 1`", "x")]))
     failing = "#!/bin/sh\nexit 1\n"
     bindir = tool_bin(tmp_path / "bin", ("ls",), stubs={"gh": failing})
-    proc = subprocess.run(
-        [
-            sys.executable,
-            str(LIB),
-            "run",
-            "--issue",
-            "5",
-            "--body-file",
-            str(body),
-            "--cwd",
-            str(tmp_path),
-        ],
-        capture_output=True,
-        text=True,
+    proc = _evidence(
+        "run",
+        "--issue",
+        "5",
+        "--body-file",
+        str(body),
+        "--cwd",
+        str(tmp_path),
         env=dict(os.environ, PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}"),
-        check=False,
     )
     assert proc.returncode == 4, proc.stdout + proc.stderr
     assert "not measurable" in proc.stdout
@@ -289,19 +173,9 @@ def test_cli_run_detail_does_not_break_the_table(tmp_path):
 
 
 def test_cli_check():
-    ok = subprocess.run(
-        [sys.executable, str(LIB), "check", "`grep -F x f`"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    ok = _evidence("check", "`grep -F x f`")
     assert ok.returncode == 0 and ok.stdout == ""
-    nok = subprocess.run(
-        [sys.executable, str(LIB), "check", "`rm -rf x`"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    nok = _evidence("check", "`rm -rf x`")
     assert nok.returncode == 1 and nok.stdout.strip()
 
 
@@ -316,13 +190,16 @@ def _toml(tmp_path, body):
 
 def test_pytest_path_from_config(tmp_path, monkeypatch):
     monkeypatch.setenv("LIGHTHOUSE_TOML", str(_toml(tmp_path, '[test_gate]\nevidence_test_dir = "t/"\n')))
-    assert ev.check(["uv", "run", "pytest", "t/x.py"]) is None
-    assert "`t/`" in ev.check(["uv", "run", "pytest", "tests/x.py"])
+    allowed = _evidence("check", "`uv run pytest t/x.py`")
+    assert allowed.returncode == 0 and allowed.stdout == ""
+    refused = _evidence("check", "`uv run pytest tests/x.py`")
+    assert refused.returncode == 1 and "`t/`" in refused.stdout
 
 
 def test_pytest_path_default_is_tests(tmp_path):
-    assert ev.check(["uv", "run", "pytest", "tests/x.py::test_y"]) is None
-    assert ev.check(["uv", "run", "pytest", "src/x.py"]) is not None
+    allowed = _evidence("check", "`uv run pytest tests/x.py::test_y`")
+    assert allowed.returncode == 0 and allowed.stdout == ""
+    assert _evidence("check", "`uv run pytest src/x.py`").returncode == 1
 
 
 def test_run_accepts_a_refs_body(tmp_path):
@@ -351,5 +228,3 @@ def test_outcomes_follow_language(tmp_path, monkeypatch, language, holds, head):
     proc, _ = _run(tmp_path, [("1. een", "`grep -F hallo f`", "wereld")])
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert head in proc.stdout and holds in proc.stdout
-
-

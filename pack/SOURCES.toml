@@ -78,11 +78,6 @@ source_path = ".claude/hooks/lib/no_verify.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/lib/evidence.py"
-source_path = ".claude/hooks/lib/evidence.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/lib/pr_body_gate.py"
 source_path = ".claude/hooks/lib/pr_body_gate.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
