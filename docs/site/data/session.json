@@ -247,7 +247,7 @@
         "PreToolUse"
       ],
       "matcher": "Bash",
-      "command": "pr-create-gate.sh",
+      "command": "run.sh pr-create-gate",
       "effects": [
         "blocks"
       ],
@@ -256,13 +256,13 @@
       "how": [
         "It checks the body of the `gh pr create` call.",
         "The body must hold `Closes #N` with an Evidence table, `Refs #N — <reason>` or `No issue: <reason>`.",
-        "Otherwise it blocks with exit 2 and a message on stderr; the check is in lighthouse_lib/pr_body_gate.py.",
+        "Otherwise it blocks with exit 2 and a message on stderr; the check is in the lighthouse binary.",
         "When it cannot check, it blocks with COULD NOT CHECK."
       ],
       "when": "Before each Bash call that runs gh pr create.",
       "without": "A PR opens without a Closes line and evidence.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/pr-create-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/prcreategate.go"
     },
     {
       "id": "bash-write-check-pre",

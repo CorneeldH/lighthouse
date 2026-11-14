@@ -27,12 +27,12 @@
                 "internal/cli/planreviewrecord.go",
                 "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
+                "internal/evidence/run.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/lib/artefacts.py",
-                "pack/core/lib/evidence.py",
                 "pack/core/lib/headings.py",
                 "pack/core/lib/protocol.py",
                 "pack/core/skills/close-issue",
@@ -143,6 +143,9 @@
               "about": "The repository as owner/name. With kind gitlab, group/name or group/subgroup/.../name.",
               "example": "owner/name",
               "readers": [
+                "internal/prbody/form.go",
+                "internal/prbody/gate.go",
+                "internal/prbody/scope.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "pack/core/lib/artefacts.py",
@@ -365,7 +368,8 @@
               "default": "tests/",
               "about": "The directory where tests live, searched for evidence in a PR body.",
               "readers": [
-                "pack/core/lib/evidence.py",
+                "internal/evidence/allowlist.go",
+                "internal/evidence/run.go",
                 "pack/core/skills/write-pr"
               ]
             },
