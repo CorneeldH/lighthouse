@@ -3,7 +3,9 @@
 Some tests reach the network through a tool: `uvx` fetches ruff or ty, the shellcheck lib
 downloads its pinned release with curl. On a runner without DNS for a moment, such a test
 fails on the runner, not on lighthouse. `tests/conftest.py` turns such a failure into a skip
-whose reason is the line of the tool that names the network error.
+whose reason is the line of the tool that names the network error, but only when the runner
+is offline at that moment: `offline()` must fail to reach a probe target. With the network up,
+a failure that names a network error stays red: then it is no blip of the runner.
 
 Only the transport errors of the tools themselves count. A message of lighthouse's own
 ("download failed (offline?)", "does not start (offline, or the pin does not resolve)") does
@@ -13,7 +15,14 @@ pytest writes compared values into the explanation as well. A test that compares
 such a line as a value carries the marker `network_stays_red`, or its failure is a skip.
 """
 
+import os
 import re
+import socket
+
+# `host:port,host:port`: what `offline()` tries to reach. A test points it elsewhere.
+PROBE_ENV = "LIGHTHOUSE_TEST_NETWORK_PROBE"
+_PROBES = "pypi.org:443,github.com:443"
+_PROBE_TIMEOUT_S = 5.0
 
 # One pattern per transport error, as the tool prints it.
 _PATTERNS = (
@@ -40,3 +49,15 @@ def network_error(longrepr: str) -> str | None:
             if match:
                 return match.group(0).strip()
     return None
+
+
+def offline() -> bool:
+    """True when a probe target (`PROBE_ENV`, default pypi.org and github.com, the hosts uv
+    and the shellcheck lib fetch from) cannot be reached over TCP within 5 s."""
+    for target in os.environ.get(PROBE_ENV, _PROBES).split(","):
+        host, _, port = target.strip().rpartition(":")
+        try:
+            socket.create_connection((host, int(port)), timeout=_PROBE_TIMEOUT_S).close()
+        except OSError:
+            return True
+    return False
