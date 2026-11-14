@@ -41,11 +41,12 @@ run no macOS job (#337).
 
 - macOS is red: no tag and no release commit; the fragments stay open. While `main` is still at
   the run's commit, choose *Re-run failed jobs* on the run: it tests the same commit again. Once
-  `main` has moved, a re-run releases nothing (see below) and may replace the pending run of the
-  newer commit; let that run release, or start `release` by hand from `main`.
+  `main` has moved, do not re-run: start `release` by hand from `main`. A re-run there releases
+  nothing and fails, and it can replace the pending run of the newer commit, which then never
+  runs.
 - `main` moved during the macOS run: a push or cron run stops green without a release. The run of
-  the newer commit releases. A run started by hand fails instead, so a forced bump never ends
-  green without a release: start it again from `main`.
+  the newer commit releases. A run started by hand, or a re-run, fails instead, so it never ends
+  green without a release: start `release` by hand from `main`.
 - A Monday cron that stops this way leaves fragments with only `added`, `changed` or `removed`
   waiting a week. Run the `release` workflow by hand from `main` with `bump: auto` instead.
 - A `release` run started by hand from a branch other than `main` fails without a release.

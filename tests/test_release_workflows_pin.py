@@ -330,11 +330,14 @@ def test_release_only_releases_the_tested_commit():
     assert re.search(r'^              echo "release: [^"]+"; exit 0$', block, re.MULTILINE), block
 
 
-def test_overtaken_dispatch_fails():
-    """Fails when a release started by hand ends green without releasing because main moved on."""
-    block = _tested_commit_check(_jobs(RELEASE)["release"])
+def test_overtaken_dispatch_or_rerun_fails():
+    """Fails when a run started by hand, or a re-run, ends green without releasing because main
+    moved on: a re-run can replace the pending run of the newer commit, so nobody would release."""
+    release = _jobs(RELEASE)["release"]
+    assert "ATTEMPT: ${{ github.run_attempt }}" in release
+    block = _tested_commit_check(release)
     line = re.search(
-        r'^              if \[ "\$EVENT" = workflow_dispatch \]; then echo "release: [^"]+" >&2; exit 1; fi$',
+        r'^              if \[ "\$EVENT" = workflow_dispatch \] \|\| \[ "\$ATTEMPT" != 1 \]; then echo "release: [^"]+" >&2; exit 1; fi$',
         block,
         re.MULTILINE,
     )
