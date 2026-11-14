@@ -40,10 +40,10 @@ tests on `macos-latest`) on the commit that started the release run, `github.sha
 run no macOS job (#337).
 
 - macOS is red: no tag and no release commit; the fragments stay open. While `main` is still at
-  the run's commit, choose *Re-run failed jobs* on the run: it tests the same commit again. Once
-  `main` has moved, do not re-run: start `release` by hand from `main`. A re-run there releases
-  nothing and fails, and it can replace the pending run of the newer commit, which then never
-  runs.
+  the run's commit, choose *Re-run failed jobs* on the run (`gh run rerun <run-id> --failed`):
+  it tests the same commit again. Once `main` has moved, do not re-run: start `release` by hand
+  from `main`. A re-run there releases nothing and fails, and it can replace the pending run of
+  the newer commit, which then never runs.
 - `main` moved during the macOS run: a push or cron run stops green without a release. The run of
   the newer commit releases. A run started by hand, or a re-run, fails instead, so it never ends
   green without a release: start `release` by hand from `main`.
