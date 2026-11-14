@@ -3,6 +3,7 @@ package worktreeaudit
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -393,6 +394,54 @@ func TestUnmeasurablePidBlocksCleanup(t *testing.T) {
 	text, ok := View{Policy: mainPolicy, Alive: unmeasurable}.Only(rows, "issue-9-x", "/elders")
 	if ok || !strings.HasSuffix(text, "cleanup: no — ⛔ running session\n") {
 		t.Fatalf("Only = %q %v, want cleanup: no", text, ok)
+	}
+}
+
+// Review focus 5: a session record whose pid or session id has an odd type is kept, never
+// dropped; a pid that cannot be signalled is unmeasurable, so the row is live and never
+// `cleanup: yes` (Python: a huge pid is an OverflowError, None; `true` is pid 1; a garbage string
+// stops the whole run, which here becomes a blocking session).
+func TestOddSessionRecordsBlockCleanup(t *testing.T) {
+	wt := "/repo/.claude/worktrees/issue-9-x"
+	for _, record := range []string{
+		`{"pid": 1e20, "sessionId": "s", "cwd": "` + wt + `"}`,
+		`{"pid": "x", "sessionId": "s", "cwd": "` + wt + `"}`,
+		`{"pid": true, "sessionId": "s", "cwd": "` + wt + `"}`,
+		`{"pid": 99999999999, "sessionId": 42, "cwd": "` + wt + `"}`,
+	} {
+		t.Run(record, func(t *testing.T) {
+			var v any
+			if err := json.Unmarshal([]byte(record), &v); err != nil {
+				t.Fatal(err)
+			}
+			sessions := ParseSessions([]any{v})
+			if len(sessions) != 1 {
+				t.Fatalf("sessions = %v, want the record kept", sessions)
+			}
+			rows := BuildRows(Inputs{
+				Worktrees:     []WorktreeInfo{{Path: wt, Branch: ptr("issue-9-x")}},
+				LocalBranches: []string{"issue-9-x"},
+				Pulls:         map[string]PullInfo{"issue-9-x": {Number: 9, State: "merged"}},
+				Probes:        map[string]BranchProbe{"issue-9-x": {Dirty: ptr(false), Unpushed: ptr(0)}},
+				Sessions:      sessions,
+				PRLookupOK:    true,
+			}, PidAlive)
+			text, ok := View{Policy: mainPolicy, Alive: PidAlive}.Only(rows, "issue-9-x", "/elders")
+			if ok || !strings.HasSuffix(text, "cleanup: no — ⛔ running session\n") {
+				t.Fatalf("Only = %q %v, want cleanup: no — running session", text, ok)
+			}
+		})
+	}
+}
+
+func TestSessionPIDLikePython(t *testing.T) {
+	for _, tt := range []struct {
+		in   any
+		want int
+	}{{float64(4242), 4242}, {12.7, 12}, {"77", 77}, {true, 1}, {1e20, unmeasurablePID}, {"x", unmeasurablePID}} {
+		if got := sessionPID(tt.in); got != tt.want {
+			t.Errorf("sessionPID(%v) = %d, want %d", tt.in, got, tt.want)
+		}
 	}
 }
 

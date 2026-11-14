@@ -1,6 +1,7 @@
 package worktreeaudit
 
 import (
+	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -118,22 +119,39 @@ func pyStr(v any) string {
 	return ""
 }
 
+// unmeasurablePID stands for a pid that cannot be read as a process id: PidAlive gives nil for
+// it, so the session counts as live and its row blocks.
+const unmeasurablePID = -1
+
+// sessionPID is int(pid) of a truthy JSON value. `true` is 1, as in Python. A pid Python could
+// not signal (beyond an int) or could not read at all (a non-decimal string, where Python stops
+// the whole run) becomes unmeasurablePID: kept and blocking, never dropped.
+func sessionPID(v any) int {
+	if b, ok := v.(bool); ok && b {
+		return 1
+	}
+	if pid, ok := jsonInt(v); ok {
+		return pid
+	}
+	return unmeasurablePID
+}
+
 // ParseSessions keys running sessions on their cwd; a record without a cwd, pid or session id is
-// skipped, and a later record for the same cwd wins.
+// skipped, and a later record for the same cwd wins. Whatever the type of the pid and the session
+// id, a record that has them is kept: a dropped session would let its worktree read as unused.
 func ParseSessions(records []any) map[string]SessionInfo {
 	out := map[string]SessionInfo{}
 	for _, item := range records {
 		record := object(item)
 		cwd, _ := record["cwd"].(string)
-		sid, _ := record["sessionId"].(string)
-		if cwd == "" || sid == "" || !truthy(record["pid"]) {
+		if cwd == "" || !truthy(record["sessionId"]) || !truthy(record["pid"]) {
 			continue
 		}
-		pid, ok := jsonInt(record["pid"])
-		if !ok {
-			continue
+		sid := pyStr(record["sessionId"])
+		if _, isScalar := record["sessionId"].(string); !isScalar && sid == "" {
+			sid = fmt.Sprint(record["sessionId"]) // a list or object: str() of it, roughly
 		}
-		out[cwd] = SessionInfo{PID: pid, SessionID: sid, Cwd: cwd}
+		out[cwd] = SessionInfo{PID: sessionPID(record["pid"]), SessionID: sid, Cwd: cwd}
 	}
 	return out
 }
