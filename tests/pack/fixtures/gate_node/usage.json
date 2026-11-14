@@ -1,0 +1,141 @@
+[
+  {
+    "name": "argv []",
+    "argv": []
+  },
+  {
+    "name": "argv [\"--\"]",
+    "argv": [
+      "--"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\"]",
+    "argv": [
+      "--dir"
+    ]
+  },
+  {
+    "name": "argv [\"--drift\", \"gen\", \"--\", \"lint\"]",
+    "argv": [
+      "--drift",
+      "gen",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\", \"a\", \"--dir\", \"b\", \"--\", \"lint\"]",
+    "argv": [
+      "--dir",
+      "a",
+      "--dir",
+      "b",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--bogus\", \"--\", \"lint\"]",
+    "argv": [
+      "--bogus",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\", \"--\", \"lint\"]",
+    "argv": [
+      "--dir",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--drift\", \"=x\", \"--\", \"lint\"]",
+    "argv": [
+      "--drift",
+      "=x",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--drift\", \"gen=\", \"--\", \"lint\"]",
+    "argv": [
+      "--drift",
+      "gen=",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\", \"\", \"--\", \"lint\"]",
+    "argv": [
+      "--dir",
+      "",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\", \"/abs\", \"--\", \"lint\"]",
+    "argv": [
+      "--dir",
+      "/abs",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\", \"..\", \"--\", \"lint\"]",
+    "argv": [
+      "--dir",
+      "..",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\", \"../x\", \"--\", \"lint\"]",
+    "argv": [
+      "--dir",
+      "../x",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\", \"web\", \"--also\", \"/abs\", \"--\", \"lint\"]",
+    "argv": [
+      "--dir",
+      "web",
+      "--also",
+      "/abs",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\", \"web\", \"--also\", \"../x\", \"--\", \"lint\"]",
+    "argv": [
+      "--dir",
+      "web",
+      "--also",
+      "../x",
+      "--",
+      "lint"
+    ]
+  },
+  {
+    "name": "argv [\"--dir\", \"web\", \"--drift\", \"gen=../x\", \"--\", \"lint\"]",
+    "argv": [
+      "--dir",
+      "web",
+      "--drift",
+      "gen=../x",
+      "--",
+      "lint"
+    ]
+  }
+]

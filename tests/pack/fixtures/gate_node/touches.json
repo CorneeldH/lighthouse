@@ -1,0 +1,67 @@
+[
+  {
+    "name": "web file under dir",
+    "files": [
+      "web/a.ts"
+    ],
+    "dir": "web",
+    "also": [],
+    "want": true
+  },
+  {
+    "name": "file outside dir",
+    "files": [
+      "pack/x.go"
+    ],
+    "dir": "web",
+    "also": [],
+    "want": false
+  },
+  {
+    "name": "root dir touches everything",
+    "files": [
+      "x"
+    ],
+    "dir": ".",
+    "also": [],
+    "want": true
+  },
+  {
+    "name": "also path counts",
+    "files": [
+      "lighthouse.toml"
+    ],
+    "dir": "web",
+    "also": [
+      "lighthouse.toml"
+    ],
+    "want": true
+  },
+  {
+    "name": "empty path touches nothing",
+    "files": [
+      ""
+    ],
+    "dir": "web",
+    "also": [],
+    "want": false
+  },
+  {
+    "name": "dir is a directory boundary",
+    "files": [
+      "website/a.ts"
+    ],
+    "dir": "web",
+    "also": [],
+    "want": false
+  },
+  {
+    "name": "the dir itself is not under it",
+    "files": [
+      "web"
+    ],
+    "dir": "web",
+    "also": [],
+    "want": false
+  }
+]

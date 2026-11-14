@@ -345,6 +345,7 @@
               "readers": [
                 "internal/commitgate/gate.go",
                 "internal/commitgate/message.go",
+                "internal/initcmd/gatecommand.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/write-pr",
@@ -402,9 +403,8 @@
               "about": "Exit codes of the test command that mean the tests could not run; the gate reports COULD NOT CHECK instead of failed tests.",
               "readers": [
                 "internal/commitgate/gate.go",
-                "pack/go/scripts/gate_go.py",
+                "internal/gate/gate.go",
                 "pack/go/skills/go-standard",
-                "pack/node/scripts/gate_node.py",
                 "pack/python/scripts/gate_python.py",
                 "pack/python/skills/python-standard"
               ]
