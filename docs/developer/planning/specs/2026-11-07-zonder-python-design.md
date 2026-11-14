@@ -43,6 +43,9 @@ bewijst dat (zie *Bewijs*).
   de binary (§5): `go-lint-gate` gebruikt `python3` voor `turn_roots.py` en leest
   `usage-gate/alarm.sh`, `shell-lint-check` gebruikt `config.py` en `python3 -c`.
 - Nieuwe checks of ander gedrag. Een hook geeft na de ombouw hetzelfde oordeel als ervoor.
+  Eén uitzondering: gate-slots op Windows. `gate_slot.py` weigerde daar, omdat de lock met het
+  Python-proces stierf; de Go-hook houdt de lock zelf vast en neemt er wel een.
+  *(besluit gebruiker na plan-review #280, r1-f2)*
 
 **Anti-doelen.** Dit telt als mislukt, ook als het technisch werkt:
 
