@@ -193,13 +193,15 @@
   "name": "test_parse_branches_strips_python_whitespace",
   "fn": "parse_branches",
   "input": {
-   "text": "  origin/a  \n\norigin/\norigin/b/c\norigin\n　origin/d　\n",
+   "text": "  origin/a  \n\norigin/\norigin/b/c\norigin\n　origin/d　\n\u001forigin/e\u001f\norigin/f\u001cg\n",
    "remote": true
   },
   "expect": [
    "a",
    "b/c",
-   "d"
+   "d",
+   "e",
+   "f"
   ]
  },
  {
