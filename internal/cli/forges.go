@@ -19,7 +19,8 @@ type forgeOpener struct {
 	ghToken   func() string                           // last resort for a GitHub token (ask); nil is none
 	open      func(forge.Config) (forge.Forge, error) // forge.Open; tests replace it
 	http      *http.Client
-	logins    map[loginKey]func() (string, error)
+	mu        sync.Mutex // guards logins
+	logins    map[loginKey]*tokenLoginOnce
 }
 
 // loginKey is what the token login of a forge depends on.
@@ -39,13 +40,13 @@ func newForgeOpener(getenv func(string) string, githubURL string) *forgeOpener {
 		githubURL: githubURL,
 		open:      forge.Open,
 		http:      &http.Client{Timeout: 30 * time.Second},
-		logins:    map[loginKey]func() (string, error){},
+		logins:    map[loginKey]*tokenLoginOnce{},
 	}
 }
 
 // forRepo opens the forge of repo. A token that is not set is a *forge.TokenError, also after
 // ghToken for a GitHub repo gave nothing. The login of the forge is asked once per loginKey,
-// on the first call of who.
+// on the first call of who, with ctx; see tokenLoginOnce for a cancelled ctx.
 func (o *forgeOpener) forRepo(ctx context.Context, repo repoconfig.Repo) (repoForge, error) {
 	token, err := forge.Token(repo.Kind, repo.TokenEnv, o.getenv)
 	var te *forge.TokenError
@@ -67,12 +68,38 @@ func (o *forgeOpener) forRepo(ctx context.Context, repo repoconfig.Repo) (repoFo
 		return repoForge{}, err
 	}
 	key := loginKey{kind: f.Kind(), host: cfg.Host, baseURL: cfg.BaseURL, token: token}
-	who, ok := o.logins[key]
+	o.mu.Lock()
+	l, ok := o.logins[key]
 	if !ok {
-		who = sync.OnceValues(func() (string, error) { return tokenLogin(ctx, f) })
-		o.logins[key] = who
+		l = &tokenLoginOnce{}
+		o.logins[key] = l
 	}
-	return repoForge{Forge: f, who: who}, nil
+	o.mu.Unlock()
+	return repoForge{Forge: f, who: func() (string, error) { return l.get(ctx, f) }}, nil
+}
+
+// tokenLoginOnce is the token login of one loginKey, asked once and then kept, a failure too.
+// Only a failure while the ctx of the asker is done is not kept: it says nothing of the token,
+// and an opener that outlives one request (serve) must not keep it for the next.
+type tokenLoginOnce struct {
+	mu    sync.Mutex
+	done  bool
+	login string
+	err   error
+}
+
+func (l *tokenLoginOnce) get(ctx context.Context, f forge.Forge) (string, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.done {
+		return l.login, l.err
+	}
+	login, err := tokenLogin(ctx, f)
+	if err != nil && ctx.Err() != nil {
+		return "", err
+	}
+	l.done, l.login, l.err = true, login, err
+	return login, err
 }
 
 // tokenLogin returns the login of the token. A 🚀 counts only from this login, so an empty

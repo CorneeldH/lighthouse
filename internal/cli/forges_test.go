@@ -114,3 +114,54 @@ func TestOpenerSharesLogin(t *testing.T) {
 		}
 	}
 }
+
+// A login that failed because the ctx of its forRepo call was cancelled is not kept: a later
+// forRepo with the same token, on a live ctx, asks GET /user again. serve keeps one opener for
+// its whole run, so one cancelled request must not fail every later login.
+func TestOpenerLoginForgetsCancelledCtx(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.Login = "lh-bot"
+	o := newForgeOpener(func(k string) string { return map[string]string{"GH_TOKEN": "tok"}[k] }, srv.URL())
+	repo := repoconfig.Repo{Slug: "o/r", Kind: "github"}
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	rf, err := o.forRepo(cancelled, repo)
+	if err != nil {
+		t.Fatalf("forRepo = %v", err)
+	}
+	if _, err := rf.who(); !errors.Is(err, context.Canceled) {
+		t.Fatalf("who on a cancelled ctx = %v, want context.Canceled", err)
+	}
+
+	rf, err = o.forRepo(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("forRepo = %v", err)
+	}
+	if who, err := rf.who(); err != nil || who != "lh-bot" {
+		t.Fatalf("who on a live ctx = %q, %v; want lh-bot", who, err)
+	}
+	if n := srv.Count("/user"); n != 1 {
+		t.Errorf("/user requests = %d, want 1: the cancelled one never reached the server", n)
+	}
+}
+
+// A login that failed on a live ctx is kept: the tick asks GET /user once per token, also when
+// it fails.
+func TestOpenerLoginKeepsFailure(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.Login = ""
+	o := newForgeOpener(func(k string) string { return map[string]string{"GH_TOKEN": "tok"}[k] }, srv.URL())
+	for _, slug := range []string{"o/r", "o/s"} {
+		rf, err := o.forRepo(context.Background(), repoconfig.Repo{Slug: slug, Kind: "github"})
+		if err != nil {
+			t.Fatalf("forRepo(%s) = %v", slug, err)
+		}
+		if _, err := rf.who(); err == nil {
+			t.Fatalf("who(%s) = nil error, want the empty-login error", slug)
+		}
+	}
+	if n := srv.Count("/user"); n != 1 {
+		t.Errorf("/user requests = %d, want 1", n)
+	}
+}
