@@ -187,13 +187,6 @@ sha256 = "e71c699f7c0050fecd5d09d65e235179192b5ad489b918797236e00ea536f87d"
 
 [[unit]]
 kind = "file"
-path = ".claude/hooks/lighthouse/pr-create-gate.sh"
-package = "core"
-version = "dev"
-sha256 = "80e3cd63d184adffe3007c040eff24d6876964c92962775eb3f1f2a2ddf65748"
-
-[[unit]]
-kind = "file"
 path = ".claude/hooks/lighthouse/run.sh"
 package = "core"
 version = "dev"
@@ -290,14 +283,6 @@ sha256 = "68857bfbd5624f8fd74aaffa251adbb150f3a6bb027a1304a940000dda8a2657"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/pr-create-gate.sh"
-package = "core"
-version = "dev"
-sha256 = "40f6017a438a83b00d6940e010d43dae72fe12eb7996b232e99779afa4a069a0"
-
-[[unit]]
-kind = "hook"
-path = ".claude/settings.json"
 id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh bash-write-check pre"
 package = "core"
 version = "dev"
@@ -310,6 +295,14 @@ id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh ma
 package = "core"
 version = "dev"
 sha256 = "6c5c8508589f3e46c35c0693c769f01aa446d945632378d6c08870ce4e270630"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh pr-create-gate"
+package = "core"
+version = "dev"
+sha256 = "e9da9f161d3c13995b7298b501c55201711809b4e477abefea2b4f8be6884964"
 
 [[unit]]
 kind = "hook"

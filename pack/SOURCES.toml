@@ -97,11 +97,6 @@ path = "pack/core/lib/commit_base.py"
 new = true
 
 [[file]]
-path = "pack/core/hooks/pr-create-gate.sh"
-source_path = ".claude/hooks/pr-create-gate.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/hooks/commit-test-gate.sh"
 source_path = ".claude/hooks/pre-commit-tests.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"

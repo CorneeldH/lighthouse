@@ -51,7 +51,6 @@ func TestCorePack(t *testing.T) {
 		".claude/agents/lighthouse-issue-impact-scout.md",
 		".claude/hooks/lighthouse/blocking",
 		".claude/hooks/lighthouse/commit-test-gate.sh",
-		".claude/hooks/lighthouse/pr-create-gate.sh",
 		".claude/hooks/lighthouse/run.sh",
 		".claude/skills/lighthouse-audit-worktrees/SKILL.md",
 		".claude/skills/lighthouse-close-issue/SKILL.md",

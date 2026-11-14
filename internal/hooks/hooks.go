@@ -18,6 +18,7 @@ import (
 func init() {
 	hook.Register("bash-write-check", BashWriteCheck)
 	hook.Register("main-commit-gate", MainCommitGate)
+	hook.Register("pr-create-gate", PrCreateGate)
 	hook.Register("worktree-check", WorktreeCheck)
 }
 

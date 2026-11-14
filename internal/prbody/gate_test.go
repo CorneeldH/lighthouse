@@ -593,7 +593,7 @@ func TestDeadlineUnderHookTimeout(t *testing.T) {
 	var timeouts []float64
 	for _, group := range doc.Hooks["PreToolUse"] {
 		for _, h := range group.Hooks {
-			if strings.HasSuffix(h.Command, "/run.sh pr-create-gate") || strings.HasSuffix(h.Command, "/pr-create-gate.sh") {
+			if strings.HasSuffix(h.Command, "/run.sh pr-create-gate") {
 				timeouts = append(timeouts, h.Timeout)
 			}
 		}
