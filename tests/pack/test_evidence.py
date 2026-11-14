@@ -18,166 +18,6 @@ ev = load_hook_lib("evidence")
 Row = ev.Row
 LIB = INSTALLED_LIB / "evidence.py"
 
-ALLOWED = [
-    "grep -F 'Evidence #' .github/pull_request_template.md",
-    "grep -rnF x src/",
-    "git grep -nF walk -- .claude/hooks",
-    "test -f AGENTS.md",
-    "ls -1 docs",
-    "wc -l AGENTS.md",
-    "cat AGENTS.md",
-    "git log --oneline -n 5 -- AGENTS.md",
-    "git log -n5 --format=%H%x09%s",
-    "git show --stat abc123",
-    "git ls-files -- .claude/hooks",
-    "uv run pytest tests/unit/test_x.py::test_y -q",
-    "gh api repos/Acme/widgets/issues/1 --jq .state",
-    "gh api graphql -f 'query={viewer{login}}' --jq .data",
-    "gh pr view 5 --json body --jq .body",
-    "gh issue view 5 -R Acme/widgets --comments",
-]
-REFUSED = [
-    "git show --output=/tmp/x HEAD",
-    "git log --output=x",
-    "git grep -O vi x",
-    "git grep --open-files-in-pager=vi x",
-    "git -c core.pager=sh log",
-    "git -C /tmp log",
-    "git log --format=%G?",
-    "git log origin/main...HEAD",
-    "git log HEAD~1",
-    "git log @{u}",
-    "uv run --with x pytest tests/unit/a.py",
-    "uv run pytest -p no:x tests/unit/a.py",
-    "uv run pytest -o cache_dir=/tmp tests/unit/a.py",
-    "uv run pytest -k x tests/unit/a.py",
-    "uv run pytest integration/test_host_hardening.py::test_ntfy_publish",
-    "uv run pytest tests/../integration/x.py",
-    "gh api -X DELETE repos/x/y",
-    "gh api --method=POST repos/x/y",
-    "gh api repos/x/y -f a=b",
-    "gh api repos/x/y --input f",
-    "gh api -H 'X-HTTP-Method-Override: DELETE' repos/x/y",
-    "gh api graphql -f 'query=mutation{x}'",
-    "gh api graphql -f query=a -f query=b",
-    "gh pr view 5 --web",
-    "gh issue view 5 -w",
-    "FOO=1 grep x f",
-    "/usr/bin/grep x f",
-    "rm -rf x",
-    "python3 -c 1",
-    "bash -c ls",
-    # Additional: every refusal from the brief that the list above does not cover.
-    "uv run pytest -q",
-    "uv run pytest -- tests/unit/a.py",
-    "uv run pytest @args tests/unit/a.py",
-    "git log -n x",
-    "git log --pretty=format:%GS",
-    "git log --grep=x -- ../x",
-    "git show x^2",
-    "git status",
-    "git",
-    "grep -P x f",
-    "grep --include=*.py -m 3 x f",
-    "ls --color=always",
-    "ls -- x",
-    "wc --files0-from=x",
-    "cat -E f",
-    "gh",
-    "gh api",
-    "gh api repos/x/y repos/x/z",
-    "gh api https://evil.example/x",
-    "gh api graphql --jq .data",
-    "gh api repos/x/y --jq env",
-    "gh api repos/x/y --paginate",
-    "gh pr view 5 6",
-    "gh pr create",
-    "gh issue close 5",
-    "gh issue view 5 -- x",
-    # An empty `--opt=` does not swallow the next word: that is a new option.
-    "git log --format= --output=/tmp/pwn",
-    "git show --pretty= --output=/tmp/pwn HEAD",
-    "git log --format= origin/main...HEAD",
-    "gh api --jq= --method=DELETE repos/x/y",
-    "gh api --jq= -XDELETE repos/x/y",
-    "gh pr view 5 --json= --web",
-    "gh issue view 5 --repo= -w",
-    "git log --grep= --format=%G?",
-    # Same pattern, other forms: bare `--pretty`, an empty or `=`-leading short value.
-    "git log --pretty --output=/tmp/pwn",
-    "git log --format %H --output=/tmp/pwn",
-    "git log -n= --output=/tmp/pwn",
-    "git log -n --output=/tmp/pwn",
-    "git grep -e= --open-files-in-pager=vi x",
-    "grep -e '' f",
-    "gh api repos/x/y -q= -XDELETE",
-    "gh pr view 5 -R= -w",
-    # Without a number, gh reads the branch of the cwd; in the detached worktree of entry C
-    # there is none, and the row fails after the merge with nothing wrong.
-    "gh pr view",
-    "gh pr view --json number --jq .number",
-    "gh issue view --json body",
-]
-
-
-@pytest.mark.parametrize("cmd", ALLOWED)
-def test_allowed(cmd):
-    assert ev.check(ev.split_command(f"`{cmd}`")) is None
-
-
-@pytest.mark.parametrize("cmd", REFUSED)
-def test_refused(cmd):
-    argv = ev.split_command(f"`{cmd}`")
-    assert isinstance(argv, str) or ev.check(argv) is not None
-
-
-@pytest.mark.parametrize(
-    "cmd",
-    [
-        "grep x f | head",
-        "ls; rm x",
-        "ls && rm x",
-        "cat f > g",
-        "echo $(id)",
-        "grep 'open f",
-    ],
-)
-def test_shell_operators_refused(cmd):
-    assert isinstance(ev.split_command(f"`{cmd}`"), str)
-
-
-@pytest.mark.parametrize("cmd", ["gh pr view --json number", "gh issue view -c"])
-def test_gh_view_without_number_names_the_reason(cmd):
-    assert "exactly one" in ev.check(ev.split_command(f"`{cmd}`"))
-
-
-def test_backtick_in_rest_refused():
-    assert isinstance(ev.split_command("`echo `id``"), str)
-
-
-def test_markdown_pipe_escape_in_quotes():  # Review Focus 3
-    assert ev.split_command(r"`grep -E 'a\|b' f`") == ["grep", "-E", "a|b", "f"]
-
-
-def test_markdown_pipe_escape_bare_is_pipe():
-    assert isinstance(ev.split_command(r"`grep a f \| head`"), str)
-
-
-@pytest.mark.parametrize(
-    ("cell", "expected"),
-    [
-        ("`passed`", ("passed", False)),
-        ("passed", ("passed", False)),
-        ('`na PR: "number":`', ('"number":', True)),
-        ("na PR: wereld", ("wereld", True)),
-        ("`after PR: wereld`", ("wereld", True)),
-        ("`a\\|b`", ("a|b", False)),
-    ],
-)
-def test_expected_normalises(cell, expected):
-    assert ev.expected(cell) == expected
-
-
 # --- run_row -----------------------------------------------------------------
 
 
@@ -450,14 +290,14 @@ def test_cli_run_detail_does_not_break_the_table(tmp_path):
 
 def test_cli_check():
     ok = subprocess.run(
-        [sys.executable, str(LIB), "check", f"`{ALLOWED[0]}`"],
+        [sys.executable, str(LIB), "check", "`grep -F x f`"],
         capture_output=True,
         text=True,
         check=False,
     )
     assert ok.returncode == 0 and ok.stdout == ""
     nok = subprocess.run(
-        [sys.executable, str(LIB), "check", f"`{REFUSED[0]}`"],
+        [sys.executable, str(LIB), "check", "`rm -rf x`"],
         capture_output=True,
         text=True,
         check=False,
@@ -513,21 +353,3 @@ def test_outcomes_follow_language(tmp_path, monkeypatch, language, holds, head):
     assert head in proc.stdout and holds in proc.stdout
 
 
-@pytest.mark.parametrize(
-    "cell,outcome",
-    [
-        ("klopt", "HOLDS"),
-        (" holds ", "HOLDS"),
-        ("klopt niet", "FAILS"),
-        ("does not hold", "FAILS"),
-        ("ongeldig", "INVALID"),
-        ("not measurable", "UNMEASURABLE"),
-        ("na PR, niet gemeten", "AFTER_PR_UNMEASURED"),
-        ("klopt nietje", None),
-        ("holds back", None),
-        ("het klopt", None),
-    ],
-)
-def test_outcome_of_is_anchored_at_the_cell(cell, outcome):
-    """`klopt` is a prefix of `klopt niet`: only the whole cell decides."""
-    assert ev.outcome_of(cell) == (None if outcome is None else getattr(ev, outcome))

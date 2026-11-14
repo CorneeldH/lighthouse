@@ -543,3 +543,25 @@ INSTALLED_HOOKS = INSTALL_ROOT / _INSTALL_DIRS["hooks"]
 IMPORT_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-lib-"))
 atexit.register(shutil.rmtree, IMPORT_ROOT, True)
 (IMPORT_ROOT / "lighthouse_lib").symlink_to(LIB, target_is_directory=True)
+
+
+DEFAULT_FIXTURE_REPO = "Acme/widgets"
+
+
+def write_fixture_config(
+    root: Path, repo: str | None = DEFAULT_FIXTURE_REPO, test_dir: str | None = None
+) -> None:
+    """The config of a `pr_body_gate` or `evidence` fixture case, under `root`.
+
+    A `lighthouse.toml` with `forge.repo = repo` (no key when `repo` is None) and,
+    with `test_dir`, `[test_gate] evidence_test_dir`; plus the headings table the
+    AC count reads. The caller points `LIGHTHOUSE_REPO_ROOT` at `root`.
+    """
+    toml = '[project]\nlanguage = "en"\n\n[forge]\nkind = "github"\n'
+    if repo is not None:
+        toml += f'repo = "{repo}"\n'
+    if test_dir is not None:
+        toml += f'\n[test_gate]\nevidence_test_dir = "{test_dir}"\n'
+    (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
+    (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(CORE / "headings.toml", root / ".lighthouse" / "headings.toml")
