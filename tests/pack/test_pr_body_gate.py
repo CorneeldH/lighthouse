@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -797,10 +798,17 @@ def _reset_deadline(monkeypatch):
     monkeypatch.setattr(gate, "_deadline", None)
 
 
-def _slow_gh(monkeypatch, tmp_path, sleep_s=3):
-    stub = f"#!/bin/sh\nsleep {sleep_s}\n"
+def _slow_gh(monkeypatch, tmp_path, sleep_s=3) -> Path:
+    """A `gh` that hangs; returns the log with one line per start."""
+    log = tmp_path / "gh-calls"
+    stub = f"#!/bin/sh\necho start >>'{log}'\nsleep {sleep_s}\n"
     bin_dir = tool_bin(tmp_path / "bin", (), stubs={"gh": stub})
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    return log
+
+
+def _starts(log: Path) -> int:
+    return len(log.read_text().splitlines()) if log.exists() else 0
 
 
 def _three_closes(with_evidence: tuple[int, ...]) -> str:
@@ -815,15 +823,15 @@ def test_main_deadline_bounds_slow_gh_fallback(
     project, monkeypatch, capsys, tmp_path
 ):
     # Three Closes targets, gh hangs: without a total deadline this costs 3 x timeout.
+    # No wall-clock bound (#338): the deadline is total when the hung gh of the first
+    # target is the only one started; the later targets find the budget spent.
     monkeypatch.setattr(gate, "DEADLINE_S", 1)
-    _slow_gh(monkeypatch, tmp_path)
+    log = _slow_gh(monkeypatch, tmp_path)
     (project / "body.md").write_text(_three_closes((5, 6, 7)), encoding="utf-8")
-    start = time.monotonic()
     rc = _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets -F body.md", project)
-    elapsed = time.monotonic() - start
     out = capsys.readouterr().out
     assert rc == 0
-    assert elapsed < 2.5
+    assert _starts(log) <= 1
     for nr in (5, 6, 7):
         assert f"AC count not measurable for #{nr} (deadline reached)" in out
 
@@ -834,14 +842,13 @@ def test_main_deadline_keeps_blocker_of_earlier_target(
     # #5 lacks its Evidence block: that stays a blocker, even if the deadline
     # expires during the AC fetch of #6 and #7.
     monkeypatch.setattr(gate, "DEADLINE_S", 1)
-    _slow_gh(monkeypatch, tmp_path)
+    log = _slow_gh(monkeypatch, tmp_path)
     (project / "body.md").write_text(_three_closes((6, 7)), encoding="utf-8")
-    start = time.monotonic()
     rc = _run_main(monkeypatch, project, "gh pr create --repo Acme/widgets -F body.md", project)
-    elapsed = time.monotonic() - start
     err = capsys.readouterr().err
     assert rc == 2
-    assert elapsed < 2.5
+    # The total deadline, without a wall-clock bound (#338): one hung gh at most.
+    assert _starts(log) <= 1
     assert "### Evidence #5" in err
 
 
@@ -851,12 +858,13 @@ def test_main_deadline_git_blocks_loudly(project, monkeypatch, capsys, tmp_path)
     bin_dir = tool_bin(tmp_path / "bin", (), stubs={"git": "#!/bin/sh\nsleep 3\n"})
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     (project / "body.md").write_text(closes_body(9, ROWS1), encoding="utf-8")
-    start = time.monotonic()
     rc = _run_main(monkeypatch, project, "gh pr create -F body.md", project)
-    elapsed = time.monotonic() - start
     assert rc == 2
-    assert elapsed < 2.5
-    assert "COULD NOT CHECK" in capsys.readouterr().err
+    # The gate's own report, not a wall-clock bound (#338): git ran into the 1 s
+    # deadline, not into its own 10 s timeout (a git that finishes says neither).
+    err = capsys.readouterr().err
+    assert "COULD NOT CHECK" in err
+    assert "deadline reached" in err
 
 
 def test_main_deadline_expired_before_git_blocks(project, monkeypatch, capsys):

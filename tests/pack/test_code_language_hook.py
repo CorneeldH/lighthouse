@@ -10,7 +10,6 @@ is tested and not a reimplementation of it.
 import json
 import os
 import subprocess
-import time
 from pathlib import Path
 
 import pytest
@@ -263,13 +262,15 @@ def test_hook_ends_within_deadline(tmp_path, mode):
     with FakeEndpoint(default=mode if not mode.startswith("http") else "answer") as fake:
         root = _llm_repo(tmp_path, mode if mode.startswith("http") else fake.url)
         file = _write(root, "a.py", DOUBT_LINE)
-        start = time.monotonic()
         result = _run(str(file), root, env=_llm_env(tmp_path))
-        elapsed = time.monotonic() - start
-    assert elapsed < 10, elapsed
     assert result.returncode == 0, result.stderr
     system, _context = _notice_json(result.stdout)
     assert "layer 2 did not answer (m1: " in system
+    # The hook's own report of the clip, not a wall-clock bound (#338): a server that
+    # never answers or drips is cut off at PerModel (4 s), not at the fake's 30 s. The
+    # unresolvable host fails on its own, or at the same clip.
+    if mode in ("silent", "drip"):
+        assert "(m1: no answer within 4.0 s)" in system
 
 
 def test_hook_under_gates(tmp_path):

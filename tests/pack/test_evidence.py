@@ -8,7 +8,6 @@ stub `gh` first on `PATH`; no real `uv` runs anywhere.
 import os
 import subprocess
 import sys
-import time
 
 import pytest
 
@@ -250,9 +249,9 @@ def test_run_row_timeout(tmp_path):
 @pytest.mark.parametrize("cmd", ["cat /dev/zero", "cat zeros"])
 def test_run_row_output_capped(tmp_path, cmd):
     (tmp_path / "zeros").symlink_to("/dev/zero")
-    t0 = time.monotonic()
-    outcome, detail = ev.run_row(Row("1", f"`{cmd}`", "x"), str(tmp_path), True)
-    assert time.monotonic() - t0 < 20
+    # No wall-clock bound (#338): the cap proves itself in the detail. Without it the
+    # endless read ends at the 60 s timeout instead, with "timeout after 60 s".
+    outcome, detail = ev.run_row(Row("1", f"`{cmd}`", "x"), str(tmp_path), True, timeout=60)
     assert outcome == ev.UNMEASURABLE
     assert "output larger than" in detail
 
