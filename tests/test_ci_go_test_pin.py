@@ -16,9 +16,9 @@ def _gate_go_command():
     return match.group(1)
 
 
-def _ci_go_commands():
-    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    return re.findall(r"^\s*- run: (go test .*?)\s*$", ci, re.MULTILINE)
+def _go_commands(path: Path) -> list[str]:
+    text = path.read_text(encoding="utf-8")
+    return re.findall(r"^\s*- run: (go test .*?)\s*$", text, re.MULTILINE)
 
 
 def test_ci_builds_without_cgo():
@@ -31,7 +31,7 @@ def test_every_ci_go_test_has_gate_flags():
     """Fails when a `go test` step in CI, the e2e step included, drops a flag of the gate."""
     flags = [token for token in _gate_go_command().split() if token.startswith("-")]
     assert flags, "the Go part of the gate has no flags to pin"
-    runs = _ci_go_commands()
+    runs = _go_commands(ROOT / ".github" / "workflows" / "ci.yml")
     assert len(runs) == 2, runs
     for run in runs:
         assert all(flag in run.split() for flag in flags), run
@@ -43,3 +43,12 @@ def test_ci_cross_builds_release_targets():
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     for target in ("GOOS=windows GOARCH=amd64", "GOOS=darwin GOARCH=arm64"):
         assert re.search(rf"^\s*- run: {target} CGO_ENABLED=0 go build \./\.\.\.\s*$", ci, re.MULTILINE), target
+
+
+def test_every_macos_go_test_has_gate_flags():
+    """Fails when a `go test` step in the macOS gate drops a flag of the gate."""
+    flags = [token for token in _gate_go_command().split() if token.startswith("-")]
+    runs = _go_commands(ROOT / ".github" / "workflows" / "macos.yml")
+    assert len(runs) == 2, runs
+    for run in runs:
+        assert all(flag in run.split() for flag in flags), run

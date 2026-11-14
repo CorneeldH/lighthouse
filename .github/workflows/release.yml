@@ -1,6 +1,7 @@
 # Release for lighthouse: decides the bump from changelog.d, writes CHANGELOG.md, commits, tags
 # and pushes both atomically, then calls build.yml for the tag. Runs on every push to main, on a
-# weekly cron (patch-only fragments wait for it) and by hand.
+# weekly cron (patch-only fragments wait for it) and by hand. The release waits for a green run of
+# macos.yml on its commit (#337).
 name: release
 
 on:
@@ -24,7 +25,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # macOS runs only here, not on a PR (#337): a release needs a green macOS run of its commit.
+  macos:
+    uses: ./.github/workflows/macos.yml
+
   release:
+    needs: macos
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -42,6 +48,9 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           BUMP: ${{ inputs.bump || 'auto' }}
+          # The commit the macos job tested; a re-run of failed jobs keeps it.
+          TESTED: ${{ github.sha }}
+          ATTEMPT: ${{ github.run_attempt }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -49,6 +58,14 @@ jobs:
           for attempt in 1 2 3; do
             git fetch --force --tags origin main
             git reset --hard origin/main
+            # Release only what macOS tested. A push or cron run that was overtaken ends green: the
+            # newer commit on main has its own release run. A run started by hand fails instead, so
+            # a forced bump never ends green without a release. So does a re-run: it can replace the
+            # pending run of the newer commit in the concurrency group, and then nobody releases.
+            if [ "$(git rev-parse HEAD)" != "$TESTED" ]; then
+              if [ "$EVENT" = workflow_dispatch ] || [ "$ATTEMPT" != 1 ]; then echo "release: started for $TESTED, but main is at $(git rev-parse HEAD); start release by hand from main" >&2; exit 1; fi
+              echo "release: main moved past $TESTED, the commit macOS tested; the run of the newer commit releases it"; exit 0
+            fi
             tag=$(python3 ci/changelog.py release --event "$EVENT" --bump "$BUMP")
             if [ -z "$tag" ]; then echo "nothing to release"; exit 0; fi
             git add -A CHANGELOG.md changelog.d
