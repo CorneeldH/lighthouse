@@ -1,4 +1,4 @@
-# macOS-tests van de PR naar de releasepoort
+# macOS-tests van de PR naar de releasepoort (#337)
 
 ## Doel en waarom
 
@@ -30,7 +30,7 @@ mac-regressie mag `main` halen, maar geen release.
 
 ## Non-goals
 
-- De vier bekende flake-soorten oplossen. Dat is een eigen issue, direct na dit issue.
+- De bekende flake-soorten oplossen: #338, direct na dit issue.
 - Windows: `windows-measure.yml` blijft zoals het is.
 - Een native smoke-test van de darwin-binary in `build.yml`.
 
