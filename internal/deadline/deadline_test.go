@@ -54,20 +54,24 @@ func TestPassesExitCodeThrough(t *testing.T) {
 
 func TestExpiredDeadlineReturns124AndKillsTheGroup(t *testing.T) {
 	pidfile := filepath.Join(t.TempDir(), "pid")
+	// Wrong outcomes take 61 s (only the kill after the grace) or 120 s (no signal at
+	// all); the bound is half of the nearest, far above a slow runner's few seconds (#338).
 	start := time.Now()
-	code, _, err := RunCapture(in(time.Second), sh("sleep 30 & echo $! > "+pidfile+"; wait"), Options{Grace: 10 * time.Second})
-	if err != nil || code != TimeoutExit || time.Since(start) > 10*time.Second {
+	code, _, err := RunCapture(in(time.Second), sh("sleep 120 & echo $! > "+pidfile+"; wait"), Options{Grace: 60 * time.Second})
+	if err != nil || code != TimeoutExit || time.Since(start) > 30*time.Second {
 		t.Fatalf("code, err = %d, %v after %v", code, err, time.Since(start))
 	}
-	if !goneWithin(pidWithin(t, pidfile, time.Second), 5*time.Second) {
+	if !goneWithin(pidWithin(t, pidfile, time.Second), 30*time.Second) {
 		t.Fatal("grandchild survived the deadline")
 	}
 }
 
 func TestSigtermIgnorerIsKilledAfterGrace(t *testing.T) {
+	// Without the kill after the grace the child sleeps 120 s; the bound is half of
+	// that, far above the 2 s deadline plus grace on a slow runner (#338).
 	start := time.Now()
-	code, _, err := RunCapture(in(time.Second), sh("trap '' TERM; sleep 30"), Options{Grace: time.Second})
-	if err != nil || code != TimeoutExit || time.Since(start) > 6*time.Second {
+	code, _, err := RunCapture(in(time.Second), sh("trap '' TERM; sleep 120"), Options{Grace: time.Second})
+	if err != nil || code != TimeoutExit || time.Since(start) > 60*time.Second {
 		t.Fatalf("code, err = %d, %v after %v", code, err, time.Since(start))
 	}
 }
@@ -191,9 +195,11 @@ func TestRunCaptureStopsTheGroupOnASignal(t *testing.T) {
 }
 
 func TestRunCaptureDoesNotWaitForAGrandchild(t *testing.T) {
+	// Waiting for the grandchild runs into the 30 s deadline; the bound is half of that,
+	// far above the few milliseconds of `echo ok` on a slow runner (#338).
 	start := time.Now()
 	code, out, err := RunCapture(in(30*time.Second), sh("sleep 60 & echo ok"), Options{})
-	if err != nil || code != 0 || string(out) != "ok\n" || time.Since(start) > 2*time.Second {
+	if err != nil || code != 0 || string(out) != "ok\n" || time.Since(start) > 15*time.Second {
 		t.Fatalf("got %d, %q, %v after %v", code, out, err, time.Since(start))
 	}
 }

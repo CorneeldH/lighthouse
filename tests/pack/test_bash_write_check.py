@@ -1268,16 +1268,20 @@ def test_gate_leaving_a_background_child_does_not_stall_post(tmp_path):
     s = _Session(tmp_path)
     pid_file = tmp_path / "child.pid"
     gate = s.root / ".claude" / "hooks" / "lighthouse" / "shell-lint-check.sh"
-    gate.write_text(f"#!/bin/sh\nsleep 60 &\necho $! > '{pid_file}'\nexit 0\n", encoding="utf-8")
+    gate.write_text(f"#!/bin/sh\nsleep 120 &\necho $! > '{pid_file}'\nexit 0\n", encoding="utf-8")
+    # A synchronisation point, not a wall-clock bound (#338): post returned while the
+    # gate's child still ran. A post that waits for the child's pipes returns only when
+    # the child is gone.
     try:
-        started = time.monotonic()
         out = s.call(heredoc("x.sh", CLEAN_SH))
-        took = time.monotonic() - started
+        child_alive = subprocess.run(
+            ["kill", "-0", pid_file.read_text(encoding="utf-8").strip()], check=False
+        ).returncode == 0
     finally:
         if pid_file.exists():
             subprocess.run(["kill", pid_file.read_text(encoding="utf-8").strip()], check=False)
     assert out.returncode == 0, (out.stdout, out.stderr)
-    assert took < 20, took
+    assert child_alive
 
 
 def test_non_utf8_and_non_ascii_names_in_the_bundle(tmp_path):

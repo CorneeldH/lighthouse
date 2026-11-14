@@ -229,6 +229,10 @@ func TestCodexAppServerRejects(t *testing.T) {
 	for _, mode := range []string{"error", "noresult", "eof", "nowindow", "nullreset", "hang"} {
 		t.Run(mode, func(t *testing.T) {
 			r, _ := fakeReader(t, mode, "h")
+			// A bad answer is rejected on what the reader read, never by its timeout: the
+			// error says which. hang has nothing to read: its 300 ms timeout plus the 2 s
+			// WaitDelay must win from the 20 s default (#338).
+			r.Timeout = time.Minute
 			if mode == "hang" {
 				r.Timeout = 300 * time.Millisecond
 			}
@@ -240,8 +244,12 @@ func TestCodexAppServerRejects(t *testing.T) {
 			if !reflect.DeepEqual(got, CodexState{}) {
 				t.Errorf("state = %+v, want zero", got)
 			}
-			if time.Since(start) > 3*time.Second {
-				t.Errorf("took %v, want under 3s", time.Since(start))
+			timedOut := strings.Contains(err.Error(), "no answer within the timeout")
+			if timedOut != (mode == "hang") {
+				t.Errorf("error = %q: a timeout for mode %s", err, mode)
+			}
+			if mode == "hang" && time.Since(start) > 10*time.Second {
+				t.Errorf("took %v, want far under the 20 s default", time.Since(start))
 			}
 		})
 	}
@@ -255,8 +263,10 @@ func TestCodexAppServerStubborn(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	if took := time.Since(start); took > 300*time.Millisecond+2*time.Second+time.Second {
-		t.Errorf("took %v, want within timeout + WaitDelay + 1s", took)
+	// The fake sleeps an hour; the right outcome is the timeout plus the WaitDelay.
+	// 20 s of room keeps a slow runner green and an hour-long wait red (#338).
+	if took := time.Since(start); took > r.Timeout+codexWaitDelay+20*time.Second {
+		t.Errorf("took %v, want within timeout + WaitDelay + 20s", took)
 	}
 	if !strings.Contains(err.Error(), "no answer within the timeout") {
 		t.Errorf("error = %q, want the timeout reason", err)
