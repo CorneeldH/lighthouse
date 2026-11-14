@@ -171,7 +171,8 @@ that `serve` builds at start and then every 2 minutes (start to start, never two
 a time-out of 90 s per build). A build that fails is retried after 20 s, and until one succeeds
 both endpoints answer 502 (503 without repositories or without a token) instead of old data. The first request after
 a start waits for the first build. So `serve` reads GitHub also when nobody looks: 30 builds an
-hour per set of repositories.
+hour per set of repositories. The Refresh button of the page re-reads that overview; it does not
+start a build, so a new question can take up to 2 minutes to appear after a click.
 
 A build costs, per repository, 1 REST call for the open issues (more when they span several pages
 of 100) and 1 REST call per Controller issue that has comments (more for over 100 comments). The
