@@ -57,8 +57,13 @@ jobs:
           for attempt in 1 2 3; do
             git fetch --force --tags origin main
             git reset --hard origin/main
-            # Release only what macOS tested. A newer commit on main has its own release run.
-            if [ "$(git rev-parse HEAD)" != "$TESTED" ]; then echo "release: main moved past $TESTED, the commit macOS tested; the run of the newer commit releases it"; exit 0; fi
+            # Release only what macOS tested. A push or cron run that was overtaken ends green: the
+            # newer commit on main has its own release run. A run started by hand fails instead, so
+            # a forced bump never ends green without a release.
+            if [ "$(git rev-parse HEAD)" != "$TESTED" ]; then
+              if [ "$EVENT" = workflow_dispatch ]; then echo "release: started for $TESTED, but main is at $(git rev-parse HEAD); start release again from main" >&2; exit 1; fi
+              echo "release: main moved past $TESTED, the commit macOS tested; the run of the newer commit releases it"; exit 0
+            fi
             tag=$(python3 ci/changelog.py release --event "$EVENT" --bump "$BUMP")
             if [ -z "$tag" ]; then echo "nothing to release"; exit 0; fi
             git add -A CHANGELOG.md changelog.d

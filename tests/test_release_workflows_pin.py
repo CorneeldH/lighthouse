@@ -308,17 +308,35 @@ def test_release_waits_for_macos():
     assert re.search(r"^    needs: macos\s*$", jobs["release"], re.MULTILINE)
 
 
+def _tested_commit_check(release: str) -> str:
+    """The `if` block in the release loop that compares HEAD with the commit macOS tested."""
+    head = '            if [ "$(git rev-parse HEAD)" != "$TESTED" ]; then\n'
+    assert head in release, "no tested-commit check"
+    start = release.index(head)
+    end = release.index("\n            fi\n", start)
+    return release[start:end]
+
+
 def test_release_only_releases_the_tested_commit():
     """Fails when release can tag a commit macOS did not test, or turns red when main moved on."""
     release = _jobs(RELEASE)["release"]
     assert "TESTED: ${{ github.sha }}" in release
-    line = re.search(
-        r'^\s*if \[ "\$\(git rev-parse HEAD\)" != "\$TESTED" \]; then echo "release: [^"]+"; exit 0; fi\s*$',
-        release,
-        re.MULTILINE,
-    )
-    assert line, "no tested-commit check that exits 0"
-    check = line.start()
+    block = _tested_commit_check(release)
+    check = release.index(block)
     assert release.index("for attempt in 1 2 3") < check
     assert release.index("git reset --hard origin/main") < check
     assert check < release.index("ci/changelog.py release")
+    # A push or cron run that was overtaken ends green: the run of the newer commit releases.
+    assert re.search(r'^              echo "release: [^"]+"; exit 0$', block, re.MULTILINE), block
+
+
+def test_overtaken_dispatch_fails():
+    """Fails when a release started by hand ends green without releasing because main moved on."""
+    block = _tested_commit_check(_jobs(RELEASE)["release"])
+    line = re.search(
+        r'^              if \[ "\$EVENT" = workflow_dispatch \]; then echo "release: [^"]+" >&2; exit 1; fi$',
+        block,
+        re.MULTILINE,
+    )
+    assert line, block
+    assert line.start() < block.index("exit 0")

@@ -39,13 +39,16 @@ A release waits for a green run of `macos.yml` (the pytest suite, the Go race te
 tests on `macos-latest`) on the commit that started the release run, `github.sha`. Pull requests
 run no macOS job (#337).
 
-- macOS is red: no tag and no release commit; the fragments stay open. Choose *Re-run failed
-  jobs* on the run: it tests the same commit again.
-- `main` moved during the macOS run: the run stops green without a release. The run of the newer
-  commit releases.
+- macOS is red: no tag and no release commit; the fragments stay open. While `main` is still at
+  the run's commit, choose *Re-run failed jobs* on the run: it tests the same commit again. Once
+  `main` has moved, a re-run releases nothing (see below) and may replace the pending run of the
+  newer commit; let that run release, or start `release` by hand from `main`.
+- `main` moved during the macOS run: a push or cron run stops green without a release. The run of
+  the newer commit releases. A run started by hand fails instead, so a forced bump never ends
+  green without a release: start it again from `main`.
 - A Monday cron that stops this way leaves fragments with only `added`, `changed` or `removed`
   waiting a week. Run the `release` workflow by hand from `main` with `bump: auto` instead.
-- A `release` run started by hand from a branch other than `main` releases nothing.
+- A `release` run started by hand from a branch other than `main` fails without a release.
 - To test a branch on macOS before its merge, run `macos.yml` by hand (`workflow_dispatch`) on
   that branch.
 
@@ -87,15 +90,17 @@ The workflow commits `CHANGELOG.md` and the removal of the released fragments to
 commit and tag in one atomic push. This is the only exception to "nothing lands on `main`
 directly". If `main` gets a ruleset, give the bot a bypass for it.
 
-A refused push (someone merged in the meantime) lands nothing; the workflow fetches `main` and
-retries, three times at most.
+A refused push lands nothing. If someone merged in the meantime, the run ends as in "main moved"
+under [The macOS gate](#the-macos-gate): that newer commit has its own run. Otherwise (a network
+error) the workflow fetches `main` and retries, three times at most.
 
 ## Recovering a failed release
 
 - The workflow failed before or during the push: nothing landed, or the fragments are still
-  open. Choose *Re-run failed jobs* on the failed run first: it keeps the event, so a failed
-  push run follows the push rule again, and it runs the failed macOS jobs again too. Only then dispatch the `release` workflow with
-  `bump: auto`. A dispatch follows the schedule rule: with only `added` open it releases a minor
+  open. If `main` is still at the run's commit, choose *Re-run failed jobs* on the failed run
+  first: it keeps the event, so a failed push run follows the push rule again, and it runs the
+  failed macOS jobs again too. Otherwise, or if that fails, dispatch the `release` workflow with
+  `bump: auto` from `main`. A dispatch follows the schedule rule: with only `added` open it releases a minor
   at once, where the failed push run would have waited for Monday.
 - The tag exists but the build failed: run the `build` workflow by hand (`workflow_dispatch`)
   with that tag. It builds the five binaries again. If the GitHub release exists, it uploads the
