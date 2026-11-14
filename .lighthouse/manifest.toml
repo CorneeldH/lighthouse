@@ -514,6 +514,13 @@ sha256 = "56b0c996093f744dca94b7a1000db6964e1294af9b6e15c4b378132359d1e1d2"
 
 [[unit]]
 kind = "file"
+path = ".github/workflows/lighthouse-unblock-dependents.yml"
+package = "core"
+version = "dev"
+sha256 = "944d430c5429b71ee07fab588e2ad32dfdd474ccb83090d15fbd202da308990e"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
