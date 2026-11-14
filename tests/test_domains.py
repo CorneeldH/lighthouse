@@ -87,6 +87,10 @@ def _without_default_paths(rel: str, text: str) -> str:
     """
     if rel == "internal/config/config.go":
         return _DEFAULT_PATH_LINE.sub("", text)
+    if rel == "internal/roborev/size.go":
+        # The size rule of roborev-gate classifies a changed path as code or not (docs/ is not);
+        # it reads no file there.
+        return text.replace("docs/", "")
     return text
 
 

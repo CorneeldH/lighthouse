@@ -34,12 +34,13 @@ type Board interface {
 
 // Env is what Apply needs from the outside, per repo where it differs.
 type Env struct {
-	DB         *sql.DB
-	Poster     func(repo string) Poster
-	Board      func(repo string) Board
-	Workplace  func(repo string) workplace.Workplace
-	Profile    func(repo string) (name, mcpConfig string)
-	RoundLimit func(repo string) string // what a run does at an adversarial round limit
+	DB     *sql.DB
+	Poster func(repo string) Poster
+	Board  func(repo string) Board
+	// Workplace is the workplace of a repo on a node ("" is self) for a profile.
+	Workplace  func(repo, node, profile string) workplace.Workplace
+	MCPConfig  func(profile string) string // the mcp_config of a profile; "" is none
+	RoundLimit func(repo string) string    // what a run does at an adversarial round limit
 	StateDir   string
 	MarkerDir  string // the resume markers; "" removes none
 	MaxWait    time.Duration
@@ -217,7 +218,7 @@ func closeReason(a Action) string {
 }
 
 // release stops the session of run a.RunID (a.Stop), ends only its claude (a.End) or forgets its
-// workspace (a.Discard). Stop and End take the claude session id, which the workplace finds the
+// workspace (a.Discard), in the workplace of the run's node and profile. Stop and End take the claude session id, which the workplace finds the
 // process by, never the forge key; a run the workplace never adopted (no forge key) has nothing
 // to stop, a run without a session id nothing to stop or end. A row without a workspace has
 // nothing to forget. None of these is an error. A run no longer open has no row to read, and
@@ -234,7 +235,7 @@ func (ap applier) release(ctx context.Context, a Action) error {
 		if r.ID != a.RunID {
 			continue
 		}
-		w := ap.env.Workplace(a.Repo)
+		w := ap.env.Workplace(a.Repo, r.Node, r.Profile)
 		switch {
 		case a.Stop && r.WorkplaceSession != "" && r.SessionID != "":
 			if err := w.Stop(ctx, r.WorkspaceID, []string{r.SessionID}); err != nil {
@@ -271,7 +272,7 @@ func (ap applier) closeRun(ctx context.Context, runID int64, o runs.Outcome, rea
 // (returnFixPR).
 func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	env := ap.env
-	w := env.Workplace(a.Repo)
+	w := env.Workplace(a.Repo, a.Node, a.Profile)
 	now := env.Now()
 	ws, err := w.Prepare(ctx, a.Branch)
 	// A workspace with own work goes through the busy check and the claim like any other, so
@@ -297,17 +298,20 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	var relocErr error
 	if a.Kind == KindStart {
 		session = env.NewSession()
+	}
+	// The worktree of another node is not on this host: Relocate has nothing to look in (#327).
+	if a.Kind == KindStart && a.Node == "" {
 		var command string
 		if command, relocErr = Relocate(a.Command, ws.Path); relocErr == nil && command != a.Command {
 			a.Prompt = strings.Replace(a.Prompt, a.Command, command, 1)
 			a.Command = command
 		}
 	}
-	profile, mcpConfig := env.Profile(a.Repo)
+	profile, mcpConfig := a.Profile, env.MCPConfig(a.Profile)
 	run, err := runs.Take(ctx, env.DB, runs.Claim{
 		Repo: a.Repo, Issue: a.Issue, SessionID: session, Mode: a.Mode, Trigger: a.Trigger,
 		TriggerKey: a.TriggerKey, Command: a.Command, Prompt: a.Prompt, Profile: profile,
-		Branch: a.Branch, Now: now,
+		Node: a.Node, Branch: a.Branch, Now: now,
 	})
 	if errors.Is(err, runs.ErrClaimed) || errors.Is(err, runs.ErrTriggerSpent) {
 		ap.logf("%s#%d: %s not claimed: %v", a.Repo, a.Issue, a.TriggerKey, err)
@@ -465,7 +469,8 @@ func (ap applier) removeMarker(a Action) {
 }
 
 // busy returns why the workplace cannot take the run, or "" when it can, and the session ids of
-// the claudes of the issue's closed runs in the workspace (workplace.Earlier).
+// the claudes of the issue's closed runs in the workspace (workplace.Earlier). On another node a
+// live session of the issue's own runs is busy too (liveOwn).
 func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.Workspace, a Action, now time.Time) (string, []string, error) {
 	sessions, err := w.Sessions(ctx, ws.ID)
 	if err != nil {
@@ -487,10 +492,25 @@ func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.
 	}
 	own := workplace.Own(keys)
 	s, busy := workplace.Busy(sessions, own, openSessions, nil, now, ap.env.MaxWait)
+	if !busy && a.Node != "" {
+		s, busy = liveOwn(sessions, own)
+	}
 	if !busy {
 		return "", workplace.Earlier(sessions, own, openSessions), nil
 	}
 	return workplace.BusyReason(s), nil, nil
+}
+
+// liveOwn returns the first session of the issue's own runs that has not exited. On another
+// node Kill cannot end its claude (forge's runtime knows no session id, #327), so a start there
+// waits for it instead of joining a second agent to it.
+func liveOwn(sessions []workplace.Session, own workplace.Own) (workplace.Session, bool) {
+	for _, s := range sessions {
+		if own.Has(s) && s.Stand() != workplace.Done {
+			return s, true
+		}
+	}
+	return workplace.Session{}, false
 }
 
 // startFailed closes a claimed run as start_failed with reason "<step>: <cause>". The release

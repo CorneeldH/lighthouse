@@ -42,3 +42,35 @@ func TestHookStateDir(t *testing.T) {
 		})
 	}
 }
+
+// Classification: a config change; the surface is whether a hook call under bash-write-check
+// is nested, so the outer call keeps the notices.
+func TestHookEnvNested(t *testing.T) {
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", t.TempDir())
+	for _, tt := range []struct {
+		value string
+		want  bool
+	}{{"", false}, {"1", true}} {
+		t.Setenv("LIGHTHOUSE_UNDER_BASH_WRITE_CHECK", tt.value)
+		if got := hookEnv().Nested; got != tt.want {
+			t.Errorf("LIGHTHOUSE_UNDER_BASH_WRITE_CHECK=%q: Nested %v, want %v", tt.value, got, tt.want)
+		}
+	}
+}
+
+// Classification: a cli-output change; the surface is that this binary knows
+// code-language-check (exit 3 would mean unknown) and that a bad payload blocks.
+func TestHookCodeLanguageCheckRegistered(t *testing.T) {
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	var out, errOut bytes.Buffer
+	root := NewRoot(bytes.NewReader([]byte(`{`)), &out, &errOut)
+	root.SetArgs([]string{"hook", "code-language-check"})
+	code := execute(root, &errOut)
+	want := "code-language-check: COULD NOT CHECK — the payload is not valid JSON.\n\n" +
+		"This hook checks that code is written in English.\n" +
+		"Nothing was checked; that is not a green light.\n"
+	if code != 2 || out.String() != "" || errOut.String() != want {
+		t.Errorf("code %d out %q err %q, want 2 %q", code, out.String(), errOut.String(), want)
+	}
+}

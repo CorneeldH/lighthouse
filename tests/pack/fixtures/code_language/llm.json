@@ -1,0 +1,58 @@
+{
+  "parse": [
+    {
+      "content": "{\"1\":\"EN\",\"2\":\"NOT-EN\"}",
+      "n": 2,
+      "want": [
+        false,
+        true
+      ]
+    },
+    {
+      "content": "```json\n{\"1\":\"EN\",\"2\":\"NOT-EN\"}\n```",
+      "n": 2,
+      "want": [
+        false,
+        true
+      ]
+    },
+    {
+      "content": "Sure! {\"1\": \"EN\", \"2\": \"NOT-EN\"} Done.",
+      "n": 2,
+      "want": [
+        false,
+        true
+      ]
+    },
+    {
+      "content": "{\"1\":\"EN\"}",
+      "n": 2,
+      "want": null
+    },
+    {
+      "content": "{\"1\":\"maybe\",\"2\":\"EN\"}",
+      "n": 2,
+      "want": null
+    },
+    {
+      "content": "nee",
+      "n": 2,
+      "want": null
+    }
+  ],
+  "prompt": [
+    {
+      "items": [
+        [
+          "name",
+          "a"
+        ],
+        [
+          "comment",
+          "x\ny"
+        ]
+      ],
+      "want": "For each numbered item (a code identifier, a file name or a comment), decide whether it is English. Abbreviations and code jargon (getint, asctime, gids, val) count as English. Any word of another language, such as Dutch, makes the item NOT-EN. Reply with JSON only, for example {\"1\": \"EN\", \"2\": \"NOT-EN\"}.\n1. name: a\n2. comment: x y"
+    }
+  ]
+}

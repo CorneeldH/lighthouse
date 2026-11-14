@@ -3,6 +3,7 @@ import { fetchCleanup, fetchQuestions, fetchReturned, fetchRuns, fetchUsage, fet
 
 export const USAGE_INTERVAL_MS = 30_000
 export const FORGE_INTERVAL_MS = 300_000
+export const QUESTIONS_INTERVAL_MS = 60_000
 
 export const queryKeys = {
   questions: ['questions'],
@@ -17,8 +18,8 @@ export function useQuestions() {
   return useQuery({
     queryKey: queryKeys.questions,
     queryFn: ({ signal }) => fetchQuestions(signal),
-    refetchInterval: FORGE_INTERVAL_MS,
-    staleTime: FORGE_INTERVAL_MS,
+    refetchInterval: QUESTIONS_INTERVAL_MS,
+    staleTime: QUESTIONS_INTERVAL_MS,
   })
 }
 
@@ -26,8 +27,8 @@ export function useReturned() {
   return useQuery({
     queryKey: queryKeys.returned,
     queryFn: ({ signal }) => fetchReturned(signal),
-    refetchInterval: FORGE_INTERVAL_MS,
-    staleTime: FORGE_INTERVAL_MS,
+    refetchInterval: QUESTIONS_INTERVAL_MS,
+    staleTime: QUESTIONS_INTERVAL_MS,
   })
 }
 

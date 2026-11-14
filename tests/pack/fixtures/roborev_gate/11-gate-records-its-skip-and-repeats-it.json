@@ -1,0 +1,35 @@
+{
+  "description": "the skip is written at once; a later gate repeats it even if the budget moved",
+  "setup": [],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        6,
+        "{\"decision\":\"fallback\",\"reason\":\"5h 93%\"}"
+      ],
+      "expect": {
+        "verdict": "skip"
+      },
+      "state_file": {
+        "name": "feat",
+        "equals": {
+          "range": "$base..$head",
+          "uitkomst": "skip",
+          "reden": "Codex-budget: fallback - 5h 93%"
+        }
+      }
+    },
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "{\"decision\":\"codex\",\"reason\":\"ok\"}"
+      ],
+      "expect": {
+        "verdict": "skip",
+        "reason": "Codex-budget: fallback - 5h 93%"
+      }
+    }
+  ]
+}

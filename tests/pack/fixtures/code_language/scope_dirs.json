@@ -1,0 +1,65 @@
+[
+  {
+    "globs": [
+      "pack/**"
+    ],
+    "relative": "pack/core/skills/x/SKILL.md",
+    "want": [
+      "core",
+      "skills",
+      "x"
+    ]
+  },
+  {
+    "globs": [
+      "pack/core/skills/*/SKILL.md"
+    ],
+    "relative": "pack/core/skills/x/SKILL.md",
+    "want": [
+      "x"
+    ]
+  },
+  {
+    "globs": [
+      "pack/**"
+    ],
+    "relative": "docs/a.md",
+    "want": null
+  },
+  {
+    "globs": [
+      "pack/**"
+    ],
+    "relative": "pack/notulen.md",
+    "want": []
+  },
+  {
+    "globs": [
+      "docs/x.md"
+    ],
+    "relative": "docs/x.md",
+    "want": []
+  },
+  {
+    "globs": [
+      "pack/core/**",
+      "pack/**"
+    ],
+    "relative": "pack/core/a/b.md",
+    "want": [
+      "core",
+      "a"
+    ]
+  },
+  {
+    "globs": [
+      "pack/**",
+      "pack/core/**"
+    ],
+    "relative": "pack/core/a/b.md",
+    "want": [
+      "core",
+      "a"
+    ]
+  }
+]

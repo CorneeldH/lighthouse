@@ -118,9 +118,11 @@ test('refresh: a new question appears without a reload', async ({ page, github, 
   })
 
   github.set({ issues: [FULL[0]] })
-  await page.getByRole('button', { name: 'Refresh' }).click()
-
-  await expect(questions.getByText('Kies A of B?')).toBeVisible()
+  // Refresh reads the overview serve rebuilds in the background: click until that rebuild is in.
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Refresh' }).click()
+    await expect(questions.getByText('Kies A of B?')).toBeVisible({ timeout: 500 })
+  }).toPass()
   expect(await page.evaluate(() => (globalThis as unknown as Record<string, unknown>).e2eSamePage)).toBe(true)
 })
 
@@ -131,9 +133,11 @@ test('old data stays when the forge fails on refresh', async ({ page, github, li
   await expect(questions.getByText('Kies A of B?')).toBeVisible()
 
   github.set({ status: 500 })
-  await page.getByRole('button', { name: 'Refresh' }).click()
-
-  await expect(questions.getByRole('alert')).toContainText('Forge unreachable')
+  // As above: click until the failed background rebuild reaches the page.
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Refresh' }).click()
+    await expect(questions.getByRole('alert')).toContainText('Forge unreachable', { timeout: 500 })
+  }).toPass()
   await expect(questions.getByText('Kies A of B?')).toBeVisible()
 })
 

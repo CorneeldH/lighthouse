@@ -9,11 +9,11 @@
 # through a change, so per-edit feedback would burn turns on half-finished state.
 #
 # Runs on every Stop, but lints only a checkout in which the turn touched a Go
-# path: an edit, a Bash write or a commit in the turn (`turn_roots.py --match`,
-# #80). The rest gets `not checked`. Go work may already be committed in the turn,
+# path: an edit, a Bash write or a commit in the turn (`lighthouse turn-roots
+# --match`, #80). The rest gets `not checked`. Go work may already be committed in the turn,
 # and then no edit is left to hook on: the commit counts.
 #
-# Looks at every checkout the turn wrote in (turn_roots.py, #54), not the `cwd` of
+# Looks at every checkout the turn wrote in (`lighthouse turn-roots`, #54), not the `cwd` of
 # the payload: that is the shell's directory at Stop, and a session in the main
 # checkout that edits a worktree stops there.
 #
@@ -24,15 +24,14 @@
 # A build that fails blocks too: golangci-lint exits 1 for it, the same code as for
 # a finding, and it is mostly code that does not compile.
 #
-# Could not check (no jq, git, python3, go or golangci-lint, a pin that does not
+# Could not check (no jq, git, lighthouse, go or golangci-lint, a pin that does not
 # match, a configuration that does not verify, a golangci-lint that could not lint,
 # a turn whose checkout cannot be determined): exit 0 with a systemMessage
 # `go-lint-gate: COULD NOT CHECK — <reason>`. Blocking there would keep the session
 # from stopping; staying silent would read as "lint-clean".
 # While the usage alarm is up (#74) the gate says `not checked` and exits 0: the
 # usage gate has the session wrap up, and fixing a finding costs budget that is
-# no longer there. The alarm is read with `lighthouse usage alarm`; without `lighthouse` on the
-# PATH there is no alarm to read and the check runs as before.
+# no longer there. The alarm is read with `lighthouse usage alarm`.
 # `go` is required but never called here: golangci-lint needs it to load packages.
 # A checkout without a root go.mod reports `not checked` and exits 0, before the
 # go and golangci-lint check, so it never blocks and is never silently green.
@@ -54,7 +53,7 @@ cannot_check() {
   report "$HOOK_NAME: COULD NOT CHECK — $1 Nothing was linted; that is not a green light."
 }
 
-for tool in jq git python3; do
+for tool in jq git lighthouse; do
   command -v "$tool" >/dev/null 2>&1 || cannot_check "$tool is missing."
 done
 
@@ -70,7 +69,7 @@ if [ "$ACTIVE" = "true" ]; then
 fi
 
 # The usage alarm (#74): `lighthouse usage alarm` prints the valid alarm and exits 0.
-# Without `lighthouse` on the PATH, or without a valid alarm, the check runs as usual.
+# Without a valid alarm the check runs as usual.
 # An older lighthouse prints help and exits 0 for an unknown subcommand: only a line with
 # exactly the alarm shape counts, anything else is no alarm.
 if command -v lighthouse >/dev/null 2>&1 && ALARM_LINE=$(lighthouse usage alarm 2>/dev/null) \
@@ -80,7 +79,7 @@ if command -v lighthouse >/dev/null 2>&1 && ALARM_LINE=$(lighthouse usage alarm 
   report "$HOOK_NAME: not checked — the usage alarm is up until ${ALARM_LOCAL//_/ }; the usage gate wraps up this session."
 fi
 
-# The lib lives in the lighthouse lib of this repo. Found through
+# The repository of this hook, for `lighthouse turn-roots`. Found through
 # LIGHTHOUSE_REPO_ROOT or git, never from this file's own path.
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
 
@@ -97,7 +96,7 @@ done
 
 # The checkouts this turn wrote in, one per line: `touched<TAB>root` or
 # `untouched<TAB>root` (#54, #80).
-if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB_ROOT/.lighthouse/lib/lighthouse_lib/turn_roots.py" "${MATCH_ARGS[@]}" 2>&1); then
+if ! ROOTS=$(printf '%s' "$INPUT" | LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" lighthouse turn-roots "${MATCH_ARGS[@]}" 2>&1); then
   # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
   cannot_check "the checkout of this turn cannot be determined: $(printf '%s' "$ROOTS" | tr '\n"\134' '   ')"
 fi

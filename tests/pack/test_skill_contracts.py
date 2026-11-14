@@ -326,7 +326,7 @@ def test_descriptions_pass_the_overlap_check(tmp_path):
 _TOOL_USES = {
     "superpowers": r"superpowers:",
     "gh": r"\bgh (pr|issue|api|project|run|repo|search|label|workflow)\b",
-    "codex": r"(^|[\s`$(])codex (exec|review)\b|codex_usage",
+    "codex": r"(^|[\s`$(])codex (exec|review)\b|codex-usage",
     # A call (`jq -r`, `| jq '.x'`), not a mention like "no `jq`".
     "jq": r"\bjq\s+[-'\".]",
     "git": r"\bgit (-C|worktree|log|fetch|diff|status|rev-parse|branch|push|commit|grep|show"

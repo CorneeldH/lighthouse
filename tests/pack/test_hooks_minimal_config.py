@@ -70,7 +70,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         doc = worktree / "doc.md"
         doc.write_text("# doc\n\nSee [the readme](README.md).\n", encoding="utf-8")
         return _edit_payload(event, doc, worktree)
-    if name == "code-language-check.sh":
+    if name == "code-language-check":
         # Without `code_language` in MINIMAL_TOML the hook is off: exit 0.
         code = worktree / "mod.py"
         code.write_text("x = 1\n", encoding="utf-8")
@@ -98,7 +98,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         cmd = "git commit -m x"
     elif name == "pr-create-gate.sh":
         cmd = "gh pr create --repo Acme/widgets --body 'Refs #5 — waiting for the deploy'"
-    elif name == "bash-write-check.sh":
+    elif name == "bash-write-check":
         cmd = "echo x > a.md"
         if script.endswith(" post"):
             (worktree / "a.md").write_text("x\n", encoding="utf-8")
@@ -137,6 +137,9 @@ def test_hooks_with_minimal_config(
         LIGHTHOUSE_GATE_SLOT_DIR=str(tmp_path / "slots"),
         XDG_RUNTIME_DIR=str(tmp_path),
     )
+    if name == "run.sh":
+        # guard_env keeps the real `lighthouse` off the PATH; run.sh needs the one of this checkout.
+        env["PATH"] = f"{lighthouse_bin.parent}{os.pathsep}{env['PATH']}"
 
     # `run.sh` and the gates of `bash-write-check` need `lighthouse`: the shim of `_testkit`
     # runs the binary of this checkout and never starts a real `lighthouse usage refresh`.
@@ -161,11 +164,11 @@ def test_every_registration_has_a_payload() -> None:
     assert {_name(s) for _, _, s in REGISTRATIONS} == {
         "main-commit-gate",
         "commit-test-gate.sh",
-        "bash-write-check.sh",
+        "bash-write-check",
         "pr-create-gate.sh",
         "worktree-check",
         "md-link-check",
-        "code-language-check.sh",
+        "code-language-check",
         "usage-gate",
         "permission-check",
     }
@@ -173,7 +176,7 @@ def test_every_registration_has_a_payload() -> None:
 
 
 PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
-# Per PreToolUse-Bash hook: the command it guards. `bash-write-check.sh
+# Per PreToolUse-Bash hook: the command it guards. `run.sh bash-write-check
 # pre` never blocks (a PreToolUse exit 2 blocks the call itself).
 GUARDED = {
     "run.sh main-commit-gate": "git commit -m x",
@@ -236,7 +239,7 @@ def test_without_lib_the_go_gate_still_blocks_a_commit_on_main(tmp_path: Path) -
 
 
 def test_guarded_covers_every_blocking_bash_hook() -> None:
-    blocking = {s for s in PRE_BASH if s != "bash-write-check.sh pre"}
+    blocking = {s for s in PRE_BASH if s != "run.sh bash-write-check pre"}
     assert blocking == set(GUARDED)
 
 

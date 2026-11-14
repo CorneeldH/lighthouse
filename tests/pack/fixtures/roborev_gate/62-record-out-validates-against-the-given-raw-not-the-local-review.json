@@ -1,0 +1,74 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "fixture": "review-complete.md"
+    },
+    {
+      "do": "file",
+      "path": "$tmp/ci.md",
+      "text": "## roborev: Review Complete (`abc1234`)\n\n### High\n\n- a.py:3: bad\n"
+    }
+  ],
+  "steps": [
+    {
+      "op": "record",
+      "sha": "abc1234",
+      "decisions": [
+        [
+          "a.py",
+          3,
+          "high",
+          "refuted",
+          null,
+          "geen probleem"
+        ]
+      ],
+      "out": "$tmp/ci.json",
+      "raw": "$tmp/ci.md",
+      "returns": "$tmp/ci.json",
+      "state_file": {
+        "path": "$tmp/ci.json",
+        "subset": {
+          "bevindingen": [
+            {
+              "path": "a.py",
+              "line": 3,
+              "severity": "high",
+              "uitkomst": "refuted",
+              "commit": null,
+              "reden": "geen probleem"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "record",
+      "sha": "abc1234",
+      "decisions": [
+        [
+          "scripts/forge_drager.py",
+          93,
+          "medium",
+          "fixed",
+          "abc1234",
+          null
+        ],
+        [
+          "scripts/forge_agent.sh",
+          612,
+          "medium",
+          "refuted",
+          null,
+          "klopt niet"
+        ]
+      ],
+      "out": "$tmp/ci.json",
+      "raw": "$tmp/ci.md",
+      "error": ""
+    }
+  ]
+}

@@ -212,6 +212,88 @@ func openBrake() *Brake {
 	}
 }
 
+// A fix-pr start replaces run 5, which settle closes in the same tick and which InUse and
+// SoftwareInUse already count, so it passes full slots and a full software limit (#334).
+// Counted as a new run it defers, settleUnstartedFixPR keeps run 5 open, and with every slot
+// held by such a run no run ever closes.
+func TestFixPRStartPassesFullSlots(t *testing.T) {
+	causes := []struct {
+		name   string
+		mutate func(*Input)
+		start  string
+	}{
+		{"red", red, "start:reason_pr_red:"},
+		{"conflict", conflict, "start:reason_pr_conflict:"},
+		{"roborev", roborev, "start:reason_pr_roborev:"},
+		{"merge failed", mergeNote, "start:reason_merge_failed:Pull Request is not mergeable"},
+	}
+	full := []struct {
+		name string
+		set  func(*Brake)
+	}{
+		{"slots", func(b *Brake) { b.InUse = 4 }},
+		{"software", func(b *Brake) { b.InUse, b.SoftwareInUse = 2, 2 }},
+	}
+	for _, f := range full {
+		for _, c := range causes {
+			t.Run(f.name+"/"+c.name, func(t *testing.T) {
+				in := loadInput(t, "settle-green-pr-done")
+				c.mutate(&in)
+				in.Repos[0].Controller.Profile = ProfileSoftware
+				row5(&in).Profile = ProfileSoftware
+				in.Brake = openBrake()
+				f.set(in.Brake)
+				if s, want := summary(Decide(in)), []string{fixClose12, c.start}; !reflect.DeepEqual(s, want) {
+					t.Fatalf("summary = %q, want %q", s, want)
+				}
+			})
+		}
+	}
+}
+
+// The fix-pr start takes the slot of run 5 only where run 5 runs. On run 5's node it passes the
+// full node; when the profile now places it on another node, run 5's slot frees nothing there,
+// so the full node defers it. Making holdsSlot unconditional fails the second case.
+func TestFixPRStartHoldsSlotOnlyOnItsNode(t *testing.T) {
+	tests := []struct {
+		name    string
+		runNode string
+		want    []string
+	}{
+		{"same node", "node-a", []string{fixClose12, "start:reason_pr_red:"}},
+		{"other node", "", []string{"defer:slots: 1 of 1 in use on a:"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := loadInput(t, "settle-green-pr-done")
+			red(&in)
+			in.Repos[0].Controller.Profile = "mac"
+			row5(&in).Profile, row5(&in).Node = "mac", tt.runNode
+			in.ProfileNodes = map[string]string{"mac": "node-a"}
+			in.Brake = openBrake()
+			in.Brake.Nodes = map[string]NodeSlots{"node-a": {Name: "a", Slots: 1, InUse: 1}}
+			if s := summary(Decide(in)); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+		})
+	}
+}
+
+// Run 5 is not a software run, so SoftwareInUse does not count it: a software fix-pr start in
+// its place takes a new software slot, and the full software limit defers it. Dropping the
+// profile condition of holdsSlot fails this test.
+func TestFixPRStartCountsSoftwareWhenRunWasNot(t *testing.T) {
+	in := loadInput(t, "settle-green-pr-done")
+	red(&in)
+	in.Repos[0].Controller.Profile = ProfileSoftware
+	row5(&in).Profile = ""
+	in.Brake = openBrake()
+	in.Brake.InUse, in.Brake.SoftwareInUse = 3, 2
+	if s, want := summary(Decide(in)), []string{"defer:software: 2 of 2 in use:"}; !reflect.DeepEqual(s, want) {
+		t.Fatalf("summary = %q, want %q", s, want)
+	}
+}
+
 // A fix-pr start the brake holds back in one tick starts in the tick the brake opens. Tick 1
 // leaves run 5 untouched (only the defer, or nothing under a pause), so tick 2 reads the same
 // open run and the same PR, and plans the close and the fix-pr start on the same key.
@@ -222,7 +304,6 @@ func TestFixPRStartsInTickAfterBrakeOpens(t *testing.T) {
 		closed func(*Brake)
 		tick1  []string
 	}{
-		{"slots", func(b *Brake) { b.InUse = 4 }, []string{"defer:slots: 4 of 4 in use:"}},
 		{"usage", func(b *Brake) { b.SessionPct = 90 }, []string{"defer:usage: session 90%, week 10%:"}},
 		{"memory", func(b *Brake) { b.MemAvailableGiB = &low },
 			[]string{"defer:memory: MemAvailable 4.0 GiB - 0 x 3 GiB < 8 GiB:"}},

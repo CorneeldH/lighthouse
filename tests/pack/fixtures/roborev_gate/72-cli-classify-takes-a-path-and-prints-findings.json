@@ -1,0 +1,22 @@
+{
+  "description": "",
+  "level": "cli",
+  "setup": [],
+  "steps": [
+    {
+      "op": "cli",
+      "args": [
+        "classify",
+        "$fixtures/review-complete.md"
+      ],
+      "exit": 0,
+      "stdout_json": {
+        "sha": "bf1eb24"
+      },
+      "subset": true,
+      "absent": [
+        "feat"
+      ]
+    }
+  ]
+}

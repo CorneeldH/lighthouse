@@ -119,10 +119,10 @@ git -C "$REPO" commit -q -m "a" >/dev/null 2>&1
 hook PostToolUse "commit-test-gate.sh post" "git commit -m x"
 row "6. commit-test-gate post, after a commit" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 
-hook PreToolUse "bash-write-check.sh pre" "echo z > b.txt"
+hook PreToolUse "run.sh bash-write-check pre" "echo z > b.txt"
 row "7. bash-write-check pre" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 echo z >"$REPO/b.txt"
-hook PostToolUse "bash-write-check.sh post" "echo z > b.txt"
+hook PostToolUse "run.sh bash-write-check post" "echo z > b.txt"
 row "8. bash-write-check post" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 
 hook PreToolUse pr-create-gate.sh "gh pr create --title x --body x"

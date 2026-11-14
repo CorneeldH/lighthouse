@@ -1,0 +1,20 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "text": "findings"
+    }
+  ],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect": {
+        "verdict": "classify",
+        "raw": "$state/feat.md"
+      }
+    }
+  ]
+}

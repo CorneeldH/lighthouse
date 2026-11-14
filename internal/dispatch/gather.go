@@ -103,6 +103,7 @@ func Prepare(ctx context.Context, c *forge.Client, repo repoconfig.Repo, open []
 			Issue: bi.Issue, Title: bi.Title, State: bi.IssueState, ItemID: bi.ItemID,
 			Status: status, Priority: priorityName[bi.SingleSelect[b.PriorityFieldID]],
 			ItemUpdatedAt: bi.ItemUpdatedAt, IssueUpdatedAt: bi.IssueUpdatedAt,
+			Labels:    bi.Labels,
 			BlockedBy: withStatus(bi.BlockedBy, func(bl forge.Blocker) string { return boardStatus[ref{bl.Repo, bl.Issue}] }),
 			PRs:       bi.ClosingPRs,
 		}

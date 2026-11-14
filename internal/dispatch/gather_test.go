@@ -84,6 +84,22 @@ func TestPrepareBlockerStatus(t *testing.T) {
 	}
 }
 
+func TestPrepareCarriesLabels(t *testing.T) {
+	srv, c := client(t)
+	srv.BoardNodes = []map[string]any{
+		node("I7", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 7, map[string]any{
+			"labels": map[string]any{"nodes": []any{map[string]any{"name": "1-loc:mac"}}},
+		})),
+	}
+	pre, err := Prepare(context.Background(), c, testRepo, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pre.Items) != 1 || !reflect.DeepEqual(pre.Items[0].Labels, []string{"1-loc:mac"}) {
+		t.Fatalf("Items = %+v, want issue 7 with label 1-loc:mac", pre.Items)
+	}
+}
+
 func TestPrepareFiltersBoard(t *testing.T) {
 	srv, c := client(t)
 	srv.BoardNodes = []map[string]any{

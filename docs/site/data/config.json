@@ -52,9 +52,8 @@
               ],
               "example": "en",
               "readers": [
-                "pack/core/hooks/code-language-check.sh",
-                "pack/core/instructions/AGENTS.md",
-                "pack/core/lib/code_language.py"
+                "internal/codelang/check.go",
+                "pack/core/instructions/AGENTS.md"
               ]
             },
             {
@@ -66,7 +65,7 @@
                 "tests/fixtures/**"
               ],
               "readers": [
-                "pack/core/lib/code_language.py"
+                "internal/codelang/check.go"
               ]
             },
             {
@@ -78,8 +77,7 @@
                 "docs/**"
               ],
               "readers": [
-                "pack/core/hooks/code-language-check.sh",
-                "pack/core/lib/code_language.py"
+                "internal/codelang/check.go"
               ]
             },
             {
@@ -192,11 +190,11 @@
                 "internal/hooks/maincommitgate.go",
                 "internal/hooks/worktreecheck.go",
                 "internal/repoconfig/repoconfig.go",
+                "internal/roborev/gate.go",
                 "internal/workplace/local/adapter.go",
                 "pack/core/hooks/commit-test-gate.sh",
                 "pack/core/lib/protocol.py",
                 "pack/core/scripts/post_artefact.py",
-                "pack/core/scripts/roborev_gate.py",
                 "pack/core/scripts/worktree_audit.py",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
@@ -574,6 +572,7 @@
               "about": "The prefix of location labels.",
               "example": "location:",
               "readers": [
+                "internal/dispatch/decide.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/prompt.go",
                 "pack/core/skills/start-issue",
@@ -731,7 +730,7 @@
                 "off"
               ],
               "readers": [
-                "pack/core/scripts/roborev_gate.py",
+                "internal/roborev/gate.go",
                 "pack/core/skills/write-pr"
               ]
             }
@@ -750,8 +749,7 @@
               "about": "How long to wait for the Codex app server.",
               "readers": [
                 "internal/usage/codex.go",
-                "internal/usage/codex_budget.go",
-                "pack/core/scripts/codex_usage.py"
+                "internal/usage/codex_budget.go"
               ]
             },
             {
@@ -769,8 +767,7 @@
               "default": 90,
               "about": "The Codex 5-hour usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
-                "internal/usage/codex_budget.go",
-                "pack/core/scripts/codex_usage.py"
+                "internal/usage/codex_budget.go"
               ]
             },
             {
@@ -780,8 +777,7 @@
               "default": 95,
               "about": "The Codex week usage percentage at or above which a spec or plan review runs without Codex.",
               "readers": [
-                "internal/usage/codex_budget.go",
-                "pack/core/scripts/codex_usage.py"
+                "internal/usage/codex_budget.go"
               ]
             },
             {
@@ -920,7 +916,7 @@
               "about": "The file the API key is read from when the variable is not set.",
               "example": ".env",
               "readers": [
-                "pack/core/lib/code_language_llm.py"
+                "internal/codelang/llm.go"
               ]
             },
             {
@@ -930,7 +926,7 @@
               "about": "The environment variable that holds the API key.",
               "example": "OPENROUTER_API_KEY",
               "readers": [
-                "pack/core/lib/code_language_llm.py"
+                "internal/codelang/llm.go"
               ]
             },
             {
@@ -943,7 +939,7 @@
                 "model-b"
               ],
               "readers": [
-                "pack/core/lib/code_language_llm.py"
+                "internal/codelang/llm.go"
               ]
             },
             {
@@ -953,7 +949,7 @@
               "about": "The endpoint of the model that judges the code language.",
               "example": "https://openrouter.ai/api/v1/chat/completions",
               "readers": [
-                "pack/core/lib/code_language_llm.py"
+                "internal/codelang/llm.go"
               ]
             }
           ]

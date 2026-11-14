@@ -35,8 +35,9 @@ krijgt het label `loop` niet.
 
 Bijwerken van `loop.json` betekent: een `planned` item met het issuenummer wordt `works` en
 verliest `issue`; een nieuwe stap of handoff komt erbij als `works`, met `source`. Een nieuw
-`loop`-issue krijgt alleen het label en komt pas met de leverende PR op de kaart
-(`docs/site/loop.html`).
+`loop`-issue zonder milestone krijgt alleen het label en komt pas met de leverende PR op de kaart
+(`docs/site/loop.html`). Krijgt het issue een milestone, dan komt het als `planned` item met
+`issue` op de kaart (`milestone` mag erbij staan). Een `planned` item zonder `issue` mag niet.
 
 `ci/loop_roadmap.py` en de workflow `loop-roadmap` (`.github/workflows/loop-roadmap.yml`)
 controleren dit in twee standen:
@@ -48,8 +49,10 @@ controleren dit in twee standen:
   open staat (het `issues`-event draait de hoofdmodus op de default branch): push een nieuwe
   commit of bewerk de PR-body om de PR-modus opnieuw te starten.
 - Hoofdmodus (bij push naar main, issues-events en workflow_dispatch), als vangnet: elk
-  `planned` item noemt een open issue met `loop`. De omgekeerde richting, elk open `loop`-issue
-  op de kaart, wordt niet gecontroleerd.
+  `planned` item noemt een open issue met `loop`, en elk open `loop`-issue met een milestone
+  staat als `planned` item op de kaart. De omgekeerde richting geldt alleen voor issues met een
+  milestone; een `loop`-issue zonder milestone hoeft niet op de kaart. Een issue dat de PR sluit
+  telt in PR-modus niet mee. De workflow draait ook bij `milestoned` en `demilestoned`.
 
 ## 2-area: — waar hoort het bij
 

@@ -1,10 +1,10 @@
-"""Generate pack/core/lib/code_language_freq.tsv.gz from wordfreq.
+"""Generate internal/codelang/data/freq.tsv.gz from wordfreq.
 
 Run from the repository root:
 
     uv run --with wordfreq==3.1.1 python tools/gen_code_language_freq.py
 
-Data version: wordfreq 3.1.1 (CC BY-SA 4.0 data, see code_language_freq_NOTICE.txt).
+Data version: wordfreq 3.1.1 (CC BY-SA 4.0 data, see internal/codelang/data/NOTICE.txt).
 Output: gzip of UTF-8 lines "word<TAB>en<TAB>nl", sorted by word, with en and nl as
 round(zipf * 10) (0 = absent). Only English and Dutch, only all-letter words, and only
 words whose unrounded zipf is at least 1.5 in either language.
@@ -17,7 +17,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 DENYLIST = REPO / "ci" / "literal-denylist.txt"
-OUTPUT = REPO / "pack" / "core" / "lib" / "code_language_freq.tsv.gz"
+OUTPUT = REPO / "internal" / "codelang" / "data" / "freq.tsv.gz"
 MIN_ZIPF = 1.5
 LEVELS = (9, 8, 7, 6)
 

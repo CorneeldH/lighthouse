@@ -16,7 +16,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-check.sh pre",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh bash-write-check pre",
             "timeout": 5
           },
           {
@@ -48,7 +48,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/code-language-check.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh code-language-check",
             "timeout": 15
           }
         ]
@@ -58,7 +58,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-check.sh post",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh bash-write-check post",
             "timeout": 120
           },
           {
@@ -84,7 +84,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/bash-write-check.sh post",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh bash-write-check post",
             "timeout": 120
           },
           {

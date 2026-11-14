@@ -1,0 +1,30 @@
+{
+  "description": "",
+  "level": "cli",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "fixture": "review-complete.md"
+    },
+    {
+      "do": "file",
+      "path": "$tmp/d.json",
+      "json": []
+    }
+  ],
+  "steps": [
+    {
+      "op": "cli",
+      "args": [
+        "record",
+        "--done",
+        "s",
+        "--decisions",
+        "$tmp/d.json"
+      ],
+      "exit": 2,
+      "stderr_nonempty": true
+    }
+  ]
+}

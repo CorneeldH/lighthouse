@@ -42,21 +42,25 @@ def hook_entries(pack_root: Path) -> set[Entry]:
     return found
 
 
+# A Go hook whose source is a package of its own, not internal/hooks/<name>.go.
+GO_HOOK_SOURCES = {"code-language-check": "internal/codelang/hook.go"}
+
+
 def source_pack(chip: dict) -> str:
     """The pack named by a hook chip's source: pack/<pack>/hooks/<script>. A hook in Go
-    (internal/hooks/) runs as `run.sh <name>` from pack/core, so it counts as core."""
+    (internal/) runs as `run.sh <name>` from pack/core, so it counts as core."""
     path = chip["source"].removeprefix(REPO_BLOB)
-    if path.startswith("internal/hooks/"):
+    if path.startswith("internal/"):
         return "core"
     return path.split("/")[1]
 
 
 def expected_source(chip: dict) -> str:
     """Where a hook chip's source must end: internal/hooks/<name without dashes>.go for
-    `run.sh <name>`, <pack>/hooks/<script> for a script."""
+    `run.sh <name>` (or its entry in GO_HOOK_SOURCES), <pack>/hooks/<script> for a script."""
     script, *args = chip["command"].split()
     if script == "run.sh" and args:
-        return f"internal/hooks/{args[0].replace('-', '')}.go"
+        return GO_HOOK_SOURCES.get(args[0], f"internal/hooks/{args[0].replace('-', '')}.go")
     return f"{source_pack(chip)}/hooks/{script}"
 
 

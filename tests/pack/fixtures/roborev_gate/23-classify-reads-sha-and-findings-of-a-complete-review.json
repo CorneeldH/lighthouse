@@ -1,0 +1,26 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "fixture": "review-complete.md",
+      "expect": {
+        "verdict": "done",
+        "sha": "bf1eb24"
+      },
+      "triples": [
+        [
+          "scripts/forge_drager.py",
+          93,
+          "medium"
+        ],
+        [
+          "scripts/forge_agent.sh",
+          612,
+          "medium"
+        ]
+      ]
+    }
+  ]
+}

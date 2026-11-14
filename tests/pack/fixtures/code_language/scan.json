@@ -1,0 +1,482 @@
+[
+  {
+    "lang": "python",
+    "name": "python_comment_block",
+    "source": "x = 1\n# first line\n# dit is niet goed\ny = 2\n",
+    "want": [
+      [
+        2,
+        "comment",
+        "first line",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "python",
+    "name": "python_dutch_comment_line_in_english_block",
+    "source": "# Read the configuration file from disk and return all of its lines\n# Raise an error when the file does not exist or cannot be read\n# dit werkt niet\nx = 1\n",
+    "want": [
+      [
+        1,
+        "comment",
+        "Read the configuration file from disk and return all of its lines",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "python",
+    "name": "python_docstring",
+    "source": "def f():\n    \"\"\"Lees het bestand.\"\"\"\n    return 1\n",
+    "want": [
+      [
+        2,
+        "docstring",
+        "Lees het bestand.",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "python",
+    "name": "python_names",
+    "source": "def lees_bestand(pad_naam):\n    resultaat = 1\n\n\nclass Gevonden:\n    pass\n",
+    "want": [
+      [
+        1,
+        "name",
+        "lees_bestand",
+        false
+      ],
+      [
+        1,
+        "name",
+        "pad_naam",
+        false
+      ],
+      [
+        2,
+        "name",
+        "resultaat",
+        false
+      ],
+      [
+        5,
+        "name",
+        "Gevonden",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "python",
+    "name": "python_strings_are_not_read",
+    "source": "x = \"het bestand\"\n",
+    "want": []
+  },
+  {
+    "lang": "python",
+    "name": "python_use_site_is_not_a_finding",
+    "source": "from elders import lees_bestand\nlees_bestand()\n",
+    "want": []
+  },
+  {
+    "lang": "python",
+    "name": "python_marker_comment",
+    "source": "# niet goed  lighthouse: allow-language\n",
+    "want": []
+  },
+  {
+    "lang": "python",
+    "name": "python_marker_name",
+    "source": "lees_bestand = 1  # lighthouse: allow-language\n",
+    "want": []
+  },
+  {
+    "lang": "python",
+    "name": "python_marker_docstring",
+    "source": "def f():\n    \"\"\"Lees het bestand.\n\n    lighthouse: allow-language\n    \"\"\"\n",
+    "want": []
+  },
+  {
+    "cannot_check": true,
+    "lang": "python",
+    "name": "python_syntax_error",
+    "source": "def f(:\n"
+  },
+  {
+    "cannot_check": true,
+    "lang": "python",
+    "name": "python_nul_byte",
+    "source": "x = 1\u0000\n"
+  },
+  {
+    "lang": "python",
+    "name": "python_crlf",
+    "source": "x = 1\r\ny = 2\r\n# lees het bestand\r\n",
+    "want": [
+      [
+        3,
+        "comment",
+        "lees het bestand",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "python",
+    "name": "python_fstring_nested",
+    "source": "x = f\"{d[\"a\"]}\"\n# lees het bestand\n",
+    "want": [
+      [
+        2,
+        "comment",
+        "lees het bestand",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "shell",
+    "name": "shell_comment",
+    "source": "echo hi\n# lees het bestand\n",
+    "want": [
+      [
+        2,
+        "comment",
+        "lees het bestand",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "shell",
+    "name": "shell_shebang_skipped",
+    "source": "#!/usr/bin/env bash\n# read the file\n",
+    "want": []
+  },
+  {
+    "lang": "shell",
+    "name": "shell_hash_in_string_and_param",
+    "source": "echo \"# het bestand\"\necho '# het bestand'\nn=${#lines}\necho $#\n",
+    "want": []
+  },
+  {
+    "lang": "shell",
+    "name": "shell_heredoc_plain",
+    "source": "cat <<EOF\n# het bestand\nEOF\n",
+    "want": []
+  },
+  {
+    "lang": "shell",
+    "name": "shell_heredoc_dash_quoted",
+    "source": "cat <<-'EOF'\n\t# het bestand\n\tEOF\n",
+    "want": []
+  },
+  {
+    "lang": "shell",
+    "name": "shell_heredoc_then_comment",
+    "source": "cat <<EOF\n# het bestand\nEOF\n# het bestand\n",
+    "want": [
+      [
+        4,
+        "comment",
+        "het bestand",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "shell",
+    "name": "shell_names",
+    "source": "lees_bestand() {\n  local bestand\n  regels=3\n}\nfunction controleer {\n  export NAAM_BESTAND=x\n}\n",
+    "want": [
+      [
+        1,
+        "name",
+        "lees_bestand",
+        false
+      ],
+      [
+        2,
+        "name",
+        "bestand",
+        false
+      ],
+      [
+        3,
+        "name",
+        "regels",
+        false
+      ],
+      [
+        5,
+        "name",
+        "controleer",
+        false
+      ],
+      [
+        6,
+        "name",
+        "NAAM_BESTAND",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "shell",
+    "name": "shell_use_site_is_not_a_finding",
+    "source": "echo \"$regels\" lees_bestand\n",
+    "want": []
+  },
+  {
+    "lang": "shell",
+    "name": "shell_marker_comment",
+    "source": "# niet goed  lighthouse: allow-language\n",
+    "want": []
+  },
+  {
+    "lang": "shell",
+    "name": "shell_marker_name",
+    "source": "regels=3  # lighthouse: allow-language\n",
+    "want": []
+  },
+  {
+    "lang": "shell",
+    "name": "shell_crlf",
+    "source": "echo hi\r\necho ho\r\n# lees het bestand\r\n",
+    "want": [
+      [
+        3,
+        "comment",
+        "lees het bestand",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "go",
+    "name": "go_line_comment",
+    "source": "// lees het bestand\nx := 1\n",
+    "want": [
+      [
+        1,
+        "comment",
+        "lees het bestand",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "go",
+    "name": "go_block_comment",
+    "source": "/* niet\n gelezen */\nx := 1\n",
+    "want": [
+      [
+        1,
+        "comment",
+        "niet",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "go",
+    "name": "go_comment_in_string",
+    "source": "a := \"http://x\"\nb := `// niet het bestand`\nc := '/'\nd := \"/* het bestand\"\n",
+    "want": []
+  },
+  {
+    "lang": "go",
+    "name": "go_names",
+    "source": "package bestanden\nfunc leesBestand(regel string) {}\nfunc (r *T) Controleer() {}\ntype Melding struct { Naam string }\nvar leeg error\nconst Leeg = 0\ngevonden := 1\nvar (\n\tbron int\n)\n",
+    "want": [
+      [
+        1,
+        "name",
+        "bestanden",
+        false
+      ],
+      [
+        2,
+        "name",
+        "leesBestand",
+        false
+      ],
+      [
+        2,
+        "name",
+        "regel",
+        false
+      ],
+      [
+        3,
+        "name",
+        "Controleer",
+        false
+      ],
+      [
+        4,
+        "name",
+        "Melding",
+        false
+      ],
+      [
+        4,
+        "name",
+        "Naam",
+        false
+      ],
+      [
+        5,
+        "name",
+        "leeg",
+        false
+      ],
+      [
+        6,
+        "name",
+        "Leeg",
+        false
+      ],
+      [
+        7,
+        "name",
+        "gevonden",
+        false
+      ],
+      [
+        9,
+        "name",
+        "bron",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "go",
+    "name": "go_multiline_params_and_fields",
+    "source": "func f(\n\tregel string,\n\ta, b int,\n) {}\ntype T struct {\n\tNaam string\n}\n",
+    "want": [
+      [
+        2,
+        "name",
+        "regel",
+        false
+      ],
+      [
+        6,
+        "name",
+        "Naam",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "go",
+    "name": "go_marker_comment",
+    "source": "// niet goed  lighthouse: allow-language\n",
+    "want": []
+  },
+  {
+    "lang": "go",
+    "name": "go_marker_name",
+    "source": "gevonden := 1 // lighthouse: allow-language\n",
+    "want": []
+  },
+  {
+    "lang": "go",
+    "name": "go_crlf",
+    "source": "package x\r\nvar a = 1\r\n// lees het bestand\r\n",
+    "want": [
+      [
+        3,
+        "comment",
+        "lees het bestand",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "markdown",
+    "name": "markdown_units_dutch",
+    "source": "---\ndescription: Lees het bestand en geef de regels terug.\n---\n\n# Het bestand lezen\n\nDit is niet goed en het\nbestand is niet gevonden.\n\n- Lees het bestand en geef de regels terug.\n\n| name | explanation |\n| --- | --- |\n| a | niet gevonden |\n",
+    "want": [
+      [
+        2,
+        "prose",
+        "Lees het bestand en geef de regels terug.",
+        false
+      ],
+      [
+        5,
+        "prose",
+        "Het bestand lezen",
+        false
+      ],
+      [
+        7,
+        "prose",
+        "Dit is niet goed en het bestand is niet gevonden.",
+        false
+      ],
+      [
+        10,
+        "prose",
+        "Lees het bestand en geef de regels terug.",
+        false
+      ],
+      [
+        14,
+        "prose",
+        "niet gevonden",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "markdown",
+    "name": "markdown_units_english",
+    "source": "---\ndescription: Read the file and return the lines.\n---\n\n# Reading the file\n\nThis is not good and the\nfile was not found.\n\n- Read the file and return the lines.\n\n| name | explanation |\n| --- | --- |\n| a | not found |\n",
+    "want": []
+  },
+  {
+    "lang": "markdown",
+    "name": "markdown_dutch_sentence_in_english_paragraph",
+    "source": "This function reads the configuration file from disk and returns all of its lines\nas a list of strings. It raises an error when the file does not exist or cannot\nbe read. Dit is een tijdelijke oplossing. The caller handles the error.\n",
+    "want": [
+      [
+        1,
+        "prose",
+        "This function reads the configuration file from disk and returns all of its lines as a list of strings. It raises an error when the file does not exist or cannot be read. Dit is een tijdelijke oplossing. The caller handles the error.",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "markdown",
+    "name": "markdown_folded_frontmatter",
+    "source": "---\ndescription: >\n  Lees het bestand en\n  geef de regels terug.\n---\n",
+    "want": [
+      [
+        2,
+        "prose",
+        "Lees het bestand en geef de regels terug.",
+        false
+      ]
+    ]
+  },
+  {
+    "lang": "markdown",
+    "name": "markdown_code_is_not_language",
+    "source": "```\nlees_bestand = 1\n```\n\n~~~\nlees_bestand = 1\n~~~\n\nIntro line:\n\n    controleer_poort(invoer)\n\nCall `lees_bestand` in this sentence and read [the file](docs/lees-bestand.md).\n\nSee https://example.com/lees-het-bestand-en-geef-de-regels-terug for details.\n",
+    "want": []
+  },
+  {
+    "lang": "markdown",
+    "name": "markdown_marker",
+    "source": "Dit is niet goed. <!-- lighthouse: allow-language -->\n",
+    "want": []
+  }
+]

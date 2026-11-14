@@ -18,24 +18,49 @@ def chain(*items: dict, handoffs: tuple[dict, ...] = ()) -> dict:
 
 def test_matching_map_and_issues_have_no_problems():
     data = chain({"id": "a", "status": "works"}, {"id": "b", "status": "planned", "issue": 7})
-    assert roadmap.problems(data, {7}) == []
+    assert roadmap.problems(data, {7: None}) == []
 
 
 def test_planned_item_without_issue_is_flagged():
     data = chain(handoffs=({"from": "a", "to": "b", "status": "planned", "milestone": "M2"},))
-    assert roadmap.problems(data, set()) == ["a->b: planned without an issue"]
+    assert roadmap.problems(data, {}) == ["a->b: planned without an issue"]
 
 
 def test_planned_item_on_a_closed_or_unlabelled_issue_is_flagged():
     data = chain({"id": "b", "status": "idea", "issue": 7})
-    assert roadmap.problems(data, set()) == [
+    assert roadmap.problems(data, {}) == [
         "b: #7 is not an open issue labelled loop (see docs/developer/labels.md)"
     ]
 
 
-def test_open_issue_missing_from_the_map_is_not_flagged():
+def test_open_issue_on_a_milestone_missing_from_the_map_is_flagged():
     data = chain({"id": "b", "status": "planned", "issue": 7})
-    assert roadmap.problems(data, {7, 9}) == []
+    assert roadmap.problems(data, {7: "M2", 9: "M2 later"}) == [
+        "#9: open issue labelled loop on milestone M2 later is not on the map "
+        "(see docs/developer/labels.md)"
+    ]
+
+
+def test_open_issue_without_milestone_missing_from_the_map_is_not_flagged():
+    assert roadmap.problems(chain({"id": "a", "status": "works"}), {9: None}) == []
+
+
+def test_open_issue_on_a_milestone_planned_on_the_map_is_clean():
+    data = chain(handoffs=({"from": "a", "to": "b", "status": "planned", "issue": 9, "milestone": "M2"},))
+    assert roadmap.problems(data, {9: "M2"}) == []
+
+
+def test_open_loop_issues_reads_number_and_milestone(monkeypatch):
+    out = "7\tM2 later\n9\t\n\n"
+    monkeypatch.setattr(roadmap.subprocess, "run",
+                        lambda *_a, **_k: subprocess.CompletedProcess([], 0, stdout=out))
+    assert roadmap.open_loop_issues("o/r") == {7: "M2 later", 9: None}
+
+
+def test_open_loop_issues_empty_output_is_empty(monkeypatch):
+    monkeypatch.setattr(roadmap.subprocess, "run",
+                        lambda *_a, **_k: subprocess.CompletedProcess([], 0, stdout=""))
+    assert roadmap.open_loop_issues("o/r") == {}
 
 
 MAP = "docs/site/data/loop.json"
@@ -81,7 +106,7 @@ def _pr_mode(monkeypatch, tmp_path, data, closed, touched):
     monkeypatch.setattr(roadmap, "closed_loop_issues", lambda *_a: closed)
     monkeypatch.setattr(roadmap, "touched_files", touched)
     # Never reach GitHub from a test: the issues a PR closes are still open while it runs.
-    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: set(closed))
+    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: dict.fromkeys(closed))
 
 
 def test_pr_mode_gh_failure_could_not_check(monkeypatch, tmp_path, capsys):
@@ -107,7 +132,7 @@ def test_pr_mode_closing_no_loop_issue_and_not_touching_the_map_is_green(monkeyp
 def test_pr_mode_touching_the_map_also_runs_the_main_check(monkeypatch, tmp_path, capsys):
     data = chain({"id": "b", "status": "planned", "issue": 7})
     _pr_mode(monkeypatch, tmp_path, data, set(), lambda *_a: {MAP})
-    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: {9})
+    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: {9: None})
     assert roadmap.main(["--pr", "5"]) == 1
     assert "b: #7 is not an open issue labelled loop" in capsys.readouterr().out
 
@@ -115,7 +140,7 @@ def test_pr_mode_touching_the_map_also_runs_the_main_check(monkeypatch, tmp_path
 def test_pr_mode_touching_the_script_also_runs_the_main_check(monkeypatch, tmp_path, capsys):
     data = chain({"id": "b", "status": "planned", "issue": 7})
     _pr_mode(monkeypatch, tmp_path, data, set(), lambda *_a: {"ci/loop_roadmap.py"})
-    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: {9})
+    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: {9: None})
     assert roadmap.main(["--pr", "5"]) == 1
     assert "b: #7 is not an open issue labelled loop" in capsys.readouterr().out
 
@@ -125,6 +150,22 @@ def test_pr_mode_verdict_exits_1(monkeypatch, tmp_path, capsys):
     _pr_mode(monkeypatch, tmp_path, data, {7}, lambda *_a: {MAP})
     assert roadmap.main(["--pr", "5"]) == 1
     assert "b: still planned, but this PR closes #7" in capsys.readouterr().out
+
+
+def test_pr_mode_closing_a_milestoned_issue_is_green(monkeypatch, tmp_path, capsys):
+    _pr_mode(monkeypatch, tmp_path, chain({"id": "b", "status": "works"}), {7}, lambda *_a: {MAP})
+    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: {7: "M2"})
+    assert roadmap.main(["--pr", "5"]) == 0
+    assert "map in step" in capsys.readouterr().out
+
+
+def test_main_mode_flags_a_milestoned_issue_missing_from_the_map(monkeypatch, tmp_path, capsys):
+    path = tmp_path / "loop.json"
+    path.write_text(json.dumps(chain({"id": "a", "status": "works"})), encoding="utf-8")
+    monkeypatch.setattr(roadmap, "LOOP", path)
+    monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: {9: "M2"})
+    assert roadmap.main([]) == 1
+    assert "#9: open issue labelled loop on milestone M2" in capsys.readouterr().out
 
 
 def test_pr_mode_clean_exits_0(monkeypatch, tmp_path, capsys):

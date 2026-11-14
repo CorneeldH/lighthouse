@@ -91,7 +91,7 @@
       "paused": false,
       "manual": false,
       "usage_measured": true,
-      "session_pct": 10,
+      "session_pct": 90,
       "week_pct": 10,
       "halt_pct_session": 85,
       "halt_pct_week": 90,
@@ -100,7 +100,7 @@
       "reserve_per_run_gb": 3,
       "slots": 4,
       "max_software": 2,
-      "in_use": 4,
+      "in_use": 0,
       "software_in_use": 0
     }
   },
@@ -109,7 +109,7 @@
       "kind": "defer",
       "repo": "o/r",
       "issue": 7,
-      "reason": "slots: 4 of 4 in use",
+      "reason": "usage: session 90%, week 10%",
       "language": "nl"
     }
   ]

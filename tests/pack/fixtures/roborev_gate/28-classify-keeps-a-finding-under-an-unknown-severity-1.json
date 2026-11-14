@@ -1,0 +1,20 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "text": "## roborev: Review Complete (`abc1234`)\n\n### Major\n\n- a.py:3: bad\n",
+      "expect": {
+        "verdict": "done"
+      },
+      "triples": [
+        [
+          "a.py",
+          3,
+          "major"
+        ]
+      ]
+    }
+  ]
+}

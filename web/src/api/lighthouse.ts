@@ -6,6 +6,7 @@
  */
 export interface Leftover {
   issue: number;
+  node?: string;
   path: string;
   reason: string;
   repo: string;

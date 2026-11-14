@@ -1,0 +1,25 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "record",
+      "sha": "s",
+      "decisions": [
+        [
+          "scripts/forge_drager.py",
+          93,
+          "medium",
+          "fixed",
+          "abc1234",
+          null
+        ]
+      ],
+      "range": "..abc",
+      "error": "--range",
+      "absent": [
+        "feat"
+      ]
+    }
+  ]
+}

@@ -37,10 +37,13 @@ func UnitName(prefix, profile, worktreePath string) string {
 
 // Stop ends the processes of a workspace: its systemd unit and, for the software
 // profile, the claude processes of the given sessions in the shared devcontainer.
-// Anything it cannot measure is an error, never "gone".
+// Anything it cannot measure is an error, never "gone". On another node see remoteStop.
 func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
+	}
+	if a.Node != "" {
+		return a.remoteStop(ctx, workspaceID, sessionIDs)
 	}
 	// No default: a host without the key must fail, not stop a wrong unit.
 	if a.UnitPrefix == "" {
@@ -54,7 +57,7 @@ func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []str
 		}
 	}
 	var w wireWorkspace
-	if err := a.Client.do(ctx, http.MethodGet, wsPath(workspaceID), nil, 0, &w); err != nil {
+	if err := a.Client.do(ctx, http.MethodGet, a.path(wsPath(workspaceID)), nil, 0, &w); err != nil {
 		return fmt.Errorf("read workspace %s: %w", workspaceID, err)
 	}
 	if w.WorktreeDir == "" {
@@ -83,10 +86,13 @@ func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []str
 // Kill ends only the claude processes of the given sessions, found by session id, and never the
 // systemd unit: a foreign session in the same worktree runs on. With the software profile they
 // run in the shared devcontainer, with any other profile on this host. A session without a
-// process is no error; anything it cannot measure is.
+// process is no error; anything it cannot measure is. On another node see remoteStop.
 func (a *Adapter) Kill(ctx context.Context, workspaceID string, sessionIDs []string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
+	}
+	if a.Node != "" {
+		return a.remoteStop(ctx, workspaceID, sessionIDs)
 	}
 	// An empty id would make pgrep -f and pkill -f match every process, foreign sessions included.
 	for _, sid := range sessionIDs {

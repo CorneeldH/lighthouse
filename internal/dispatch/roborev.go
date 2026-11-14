@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	// reviewHeading is the heading of a roborev comment, as HEADING in roborev_gate.py.
+	// reviewHeading is the heading of a roborev comment, same pattern as the heading regex in internal/roborev/classify.go; keep the two in step.
 	reviewHeading = regexp.MustCompile("(?m)^## roborev: (.+?) \\(`([^`]+)`\\)\\s*$")
 	// processedMarker is the marker a processed review leaves behind.
 	processedMarker = regexp.MustCompile(`<!-- roborev-verwerkt: ([^ >]*) -->`)

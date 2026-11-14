@@ -251,3 +251,74 @@ func TestDefaultDispatchHasNoUnitPrefix(t *testing.T) {
 		t.Errorf("DefaultDispatch().Forge.UnitPrefix = %q, want empty", got)
 	}
 }
+
+func TestLoadDispatchNodes(t *testing.T) {
+	d, err := LoadDispatch(writeHost(t, `[dispatch.nodes.a]
+node_id = "node-a"
+slots = 1
+[dispatch.nodes.b]
+node_id = "node-b"
+slots = 2
+[dispatch.profiles.p]
+node = "a"
+[dispatch.profiles.software]
+target_key = "x"
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := d.Nodes["a"]; got != (Node{"node-a", 1}) {
+		t.Errorf("Nodes[a] = %+v", got)
+	}
+	if got := d.Nodes["b"]; got != (Node{"node-b", 2}) {
+		t.Errorf("Nodes[b] = %+v", got)
+	}
+	if got := d.NodeID("p"); got != "node-a" {
+		t.Errorf("NodeID(p) = %q", got)
+	}
+	if got := d.NodeID("software"); got != "" {
+		t.Errorf("NodeID(software) = %q, want empty", got)
+	}
+	if got := d.NodeID("unknown"); got != "" {
+		t.Errorf("NodeID(unknown) = %q, want empty", got)
+	}
+	names := map[string]string{"": "self", "node-a": "a", "node-b": "b", "node-z": "node-z"}
+	for id, want := range names {
+		if got := d.NodeName(id); got != want {
+			t.Errorf("NodeName(%q) = %q, want %q", id, got, want)
+		}
+	}
+}
+
+func TestLoadDispatchWithoutNodes(t *testing.T) {
+	d, err := LoadDispatch(writeHost(t, "[dispatch]\nslots = 2\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Nodes != nil {
+		t.Errorf("Nodes = %v, want nil", d.Nodes)
+	}
+}
+
+func TestLoadDispatchNodeErrors(t *testing.T) {
+	cases := []struct{ name, body, key string }{
+		{"missing node_id", "[dispatch.nodes.a]\nslots = 1\n", "dispatch.nodes.a.node_id"},
+		{"zero slots", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 0\n", "dispatch.nodes.a.slots"},
+		{"duplicate node_id", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\n[dispatch.nodes.b]\nnode_id = \"node-a\"\nslots = 1\n", "node_id"},
+		{"reserved name", "[dispatch.nodes.self]\nnode_id = \"node-a\"\nslots = 1\n", "dispatch.nodes.self"},
+		{"node_id self", "[dispatch.nodes.a]\nnode_id = \"self\"\nslots = 1\n", "dispatch.nodes.a.node_id"},
+		{"unknown key", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\nhost = \"h\"\n", "dispatch.nodes.a.host"},
+		{"unknown node of profile", "[dispatch.profiles.p]\nnode = \"x\"\n", "dispatch.profiles.p.node"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := LoadDispatch(writeHost(t, c.body))
+			if err == nil {
+				t.Fatal("want error")
+			}
+			if !strings.Contains(err.Error(), c.key) {
+				t.Errorf("error %q lacks %q", err, c.key)
+			}
+		})
+	}
+}

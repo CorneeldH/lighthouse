@@ -35,6 +35,7 @@ const (
 
 func newServeCommand() *cobra.Command {
 	var addr, dbPath, repo, forgeURL string
+	var overviewInterval time.Duration
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the lighthouse server",
@@ -42,6 +43,9 @@ func newServeCommand() *cobra.Command {
 			"stop it cleanly; only one server runs per database.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if overviewInterval <= 0 {
+				return fmt.Errorf("--overview-interval must be positive, got %s", overviewInterval)
+			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 			repos, err := forgeRepos(hostconfig.Path(), repo, forgeURL, os.Getenv, cmd.ErrOrStderr())
@@ -53,7 +57,7 @@ func newServeCommand() *cobra.Command {
 				return err
 			}
 			meta := server.RunsMeta{WorkspaceURL: strings.TrimRight(cfg.Forge.LinkURL(), "/"), Night: cfg.Night}
-			return serve(ctx, addr, dbPath, repos, meta, cmd.ErrOrStderr())
+			return serve(ctx, addr, dbPath, repos, meta, overviewInterval, cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
@@ -62,6 +66,10 @@ func newServeCommand() *cobra.Command {
 		"GitHub repository to read questions and returned issues from, as owner/name (default: $LIGHTHOUSE_FORGE_REPO); the token comes from GH_TOKEN or GITHUB_TOKEN; ignored when host.toml has [dispatch] repos")
 	cmd.Flags().StringVar(&forgeURL, "forge-url", envOr("LIGHTHOUSE_FORGE_URL", forge.DefaultBaseURL),
 		"GitHub API base URL (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); the token is sent there")
+	// Hidden: only the e2e tests shorten it, so Refresh shows a forge change within a second.
+	cmd.Flags().DurationVar(&overviewInterval, "overview-interval", server.RefreshInterval,
+		"time from the start of one forge overview build to the next")
+	_ = cmd.Flags().MarkHidden("overview-interval")
 	return cmd
 }
 
@@ -132,7 +140,8 @@ func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, err
 // serve opens the store, listens on addr and serves until ctx is done, then shuts down
 // within shutdownTimeout. An empty dbPath means the default path. repos feed the forge endpoints,
 // and their slugs pick the rows of the tick state that /api/runs shows.
-func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, meta server.RunsMeta, errOut io.Writer) error {
+func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, meta server.RunsMeta,
+	interval time.Duration, errOut io.Writer) error {
 	if dbPath == "" {
 		p, err := store.DefaultPath()
 		if err != nil {
@@ -159,9 +168,13 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	for i, r := range repos {
 		slugs[i] = r.Slug
 	}
+	refreshCtx, cancelRefresh := context.WithCancel(ctx)
+	defer cancelRefresh()
+	read, stopped := startOverview(refreshCtx, repos, interval)
 	srv := &http.Server{Handler: server.New(web.FS(), server.Deps{
-		Report: rep.Report,
-		Forge:  repos,
+		Report:   rep.Report,
+		Forge:    repos,
+		Overview: read,
 		Leftovers: func(ctx context.Context) ([]workplace.Leftover, error) {
 			return workplace.Leftovers(ctx, st.DB)
 		},
@@ -186,8 +199,30 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 			runErr = err
 		}
 	}
+	// The refresher stops before the store closes, also when serve ended on a serve error.
+	cancelRefresh()
+	stopped()
 	if err := st.Close(); err != nil && runErr == nil {
 		runErr = err
 	}
 	return runErr
+}
+
+// startOverview returns the reader of the forge overview. Without repos it builds on every read
+// (which reports forge.ErrNotConfigured), starts nothing and stopped is a no-op. With repos it
+// starts a Refresher on ctx that builds every interval, and retries a failed build after
+// server.RefreshRetry or interval, whichever is shorter; stopped blocks until its goroutine has
+// returned.
+func startOverview(ctx context.Context, repos []overview.RepoSource, interval time.Duration) (read func(context.Context) (overview.Overview, error), stopped func()) {
+	build := func(ctx context.Context) (overview.Overview, error) { return overview.BuildAll(ctx, repos) }
+	if len(repos) == 0 {
+		return build, func() {}
+	}
+	r := server.NewRefresher(build, interval, min(server.RefreshRetry, interval), server.BuildTimeout)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.Run(ctx)
+	}()
+	return r.Overview, func() { <-done }
 }

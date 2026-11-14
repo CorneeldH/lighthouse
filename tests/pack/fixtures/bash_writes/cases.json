@@ -1,0 +1,827 @@
+[
+ {
+  "name": "porcelain-rename-source-is-removed",
+  "kind": "porcelain",
+  "input": " M a.py\u0000R  new.sh\u0000old.sh\u0000C  cp.sh\u0000src.sh\u0000 D gone.sh\u0000?? sp ace.sh\u0000",
+  "expect": {
+   "changed": [
+    "a.py",
+    "cp.sh",
+    "new.sh",
+    "sp ace.sh"
+   ],
+   "deleted": [
+    "gone.sh",
+    "old.sh"
+   ]
+  }
+ },
+ {
+  "name": "porcelain-keeps-newlines-and-non-ascii",
+  "kind": "porcelain",
+  "input": "?? a\nb.sh\u0000?? ü.sh\u0000",
+  "expect": {
+   "changed": [
+    "a\nb.sh",
+    "ü.sh"
+   ],
+   "deleted": []
+  }
+ },
+ {
+  "name": "diff-tree-combined-status-with-d-is-deleted",
+  "kind": "diff_tree",
+  "input": "MM\u0000c.py\u0000DM\u0000x.sh\u0000A\u0000n.md\u0000",
+  "expect": {
+   "changed": [
+    "c.py",
+    "n.md"
+   ],
+   "deleted": [
+    "x.sh"
+   ]
+  }
+ },
+ {
+  "name": "parse-reflog-reads-the-epoch-from-gd",
+  "kind": "reflog",
+  "input": "aaa\u001fHEAD@{100}\u001fcommit: a\nbbb\u001fHEAD@{50}\u001fcommit: b\n",
+  "expect": [
+   [
+    "aaa",
+    100,
+    "commit: a"
+   ],
+   [
+    "bbb",
+    50,
+    "commit: b"
+   ]
+  ]
+ },
+ {
+  "name": "parse-reflog-keeps-exotic-control-chars-in-the-subject",
+  "kind": "reflog",
+  "input": "aaa\u001fHEAD@{5}\u001fa\u001cb   c\fd\n",
+  "expect": [
+   [
+    "aaa",
+    5,
+    "a\u001cb   c\fd"
+   ]
+  ]
+ },
+ {
+  "name": "reflog-stops-at-the-ledger-head",
+  "kind": "commits",
+  "entries": [
+   [
+    "c3",
+    30,
+    "commit: c"
+   ],
+   [
+    "b2",
+    20,
+    "checkout: moving from x to main"
+   ],
+   [
+    "a1",
+    10,
+    "commit (initial): a"
+   ]
+  ],
+  "stop": "b2",
+  "since": null,
+  "expect": {
+   "commits": [
+    [
+     "c3",
+     false
+    ]
+   ],
+   "notes": []
+  }
+ },
+ {
+  "name": "reflog-reports-a-pull-without-a-commit",
+  "kind": "commits",
+  "entries": [
+   [
+    "b2",
+    20,
+    "pull: Fast-forward"
+   ],
+   [
+    "a1",
+    10,
+    "commit (initial): a"
+   ]
+  ],
+  "stop": "a1",
+  "since": null,
+  "expect": {
+   "commits": [],
+   "notes": [
+    "HEAD moved without a commit (pull: Fast-forward)"
+   ]
+  }
+ },
+ {
+  "name": "reflog-empty-subject-does-not-hide-a-later-movement",
+  "kind": "commits",
+  "entries": [
+   [
+    "c3",
+    30,
+    "commit: y"
+   ],
+   [
+    "e2",
+    20,
+    ""
+   ],
+   [
+    "b1",
+    15,
+    "checkout: moving from a to b"
+   ],
+   [
+    "s0",
+    10,
+    "commit: base"
+   ]
+  ],
+  "stop": "s0",
+  "since": null,
+  "expect": {
+   "commits": [
+    [
+     "c3",
+     false
+    ]
+   ],
+   "notes": [
+    "HEAD moved without a commit (checkout: moving from a to b)"
+   ]
+  }
+ },
+ {
+  "name": "reflog-only-an-empty-subject-is-no-movement",
+  "kind": "commits",
+  "entries": [
+   [
+    "e2",
+    20,
+    ""
+   ],
+   [
+    "s0",
+    10,
+    "commit: base"
+   ]
+  ],
+  "stop": "s0",
+  "since": null,
+  "expect": {
+   "commits": [],
+   "notes": []
+  }
+ },
+ {
+  "name": "reflog-without-the-ledger-head-is-skipped-with-a-note",
+  "kind": "commits",
+  "entries": [
+   [
+    "c3",
+    30,
+    "commit: c"
+   ],
+   [
+    "b2",
+    20,
+    "commit: b"
+   ]
+  ],
+  "stop": "gone",
+  "since": null,
+  "expect": {
+   "commits": [],
+   "notes": [
+    "reflog gap: ledger HEAD gone not found"
+   ]
+  }
+ },
+ {
+  "name": "reflog-return-to-the-stop-without-a-start-time",
+  "kind": "commits",
+  "entries": [
+   [
+    "b2",
+    30,
+    "checkout: moving from feat to main"
+   ],
+   [
+    "c3",
+    30,
+    "commit: x"
+   ],
+   [
+    "b2",
+    29,
+    "checkout: moving from main to feat"
+   ],
+   [
+    "a1",
+    10,
+    "commit (initial): a"
+   ]
+  ],
+  "stop": "b2",
+  "since": null,
+  "expect": {
+   "commits": [],
+   "notes": []
+  }
+ },
+ {
+  "name": "reflog-start-time-walks-past-a-return-to-the-stop",
+  "kind": "commits",
+  "entries": [
+   [
+    "b2",
+    30,
+    "checkout: moving from feat to main"
+   ],
+   [
+    "c3",
+    30,
+    "commit: x"
+   ],
+   [
+    "b2",
+    29,
+    "checkout: moving from main to feat"
+   ],
+   [
+    "a1",
+    10,
+    "commit (initial): a"
+   ]
+  ],
+  "stop": "b2",
+  "since": 29,
+  "expect": {
+   "commits": [
+    [
+     "c3",
+     false
+    ]
+   ],
+   "notes": []
+  }
+ },
+ {
+  "name": "reflog-start-time-dedups",
+  "kind": "commits",
+  "entries": [
+   [
+    "c3",
+    30,
+    "commit: c"
+   ],
+   [
+    "b2",
+    20,
+    "commit: b"
+   ],
+   [
+    "a1",
+    5,
+    "commit: a"
+   ]
+  ],
+  "stop": "b2",
+  "since": 10,
+  "expect": {
+   "commits": [
+    [
+     "c3",
+     false
+    ],
+    [
+     "b2",
+     false
+    ]
+   ],
+   "notes": []
+  }
+ },
+ {
+  "name": "reflog-start-time-survives-a-gap",
+  "kind": "commits",
+  "entries": [
+   [
+    "c3",
+    30,
+    "commit: c"
+   ],
+   [
+    "b2",
+    20,
+    "commit: b"
+   ],
+   [
+    "a1",
+    5,
+    "commit: a"
+   ]
+  ],
+  "stop": "gone",
+  "since": 10,
+  "expect": {
+   "commits": [
+    [
+     "c3",
+     false
+    ],
+    [
+     "b2",
+     false
+    ]
+   ],
+   "notes": [
+    "reflog gap: ledger HEAD gone not found"
+   ]
+  }
+ },
+ {
+  "name": "reflog-from-unborn-counts-every-commit",
+  "kind": "commits",
+  "entries": [
+   [
+    "c3",
+    30,
+    "commit: c"
+   ],
+   [
+    "b2",
+    20,
+    "checkout: moving from x to main"
+   ],
+   [
+    "a1",
+    10,
+    "commit (initial): a"
+   ]
+  ],
+  "stop": "unborn",
+  "since": null,
+  "expect": {
+   "commits": [
+    [
+     "c3",
+     false
+    ],
+    [
+     "a1",
+     false
+    ]
+   ],
+   "notes": []
+  }
+ },
+ {
+  "name": "reflog-fallback-counts-commits-since-the-start-time",
+  "kind": "commits",
+  "entries": [
+   [
+    "c3",
+    30,
+    "commit: c"
+   ],
+   [
+    "b2",
+    20,
+    "checkout: moving from x to main"
+   ],
+   [
+    "a1",
+    10,
+    "commit (initial): a"
+   ]
+  ],
+  "stop": null,
+  "since": 15,
+  "expect": {
+   "commits": [
+    [
+     "c3",
+     false
+    ]
+   ],
+   "notes": []
+  }
+ },
+ {
+  "name": "reflog-fallback-marks-a-merge-commit",
+  "kind": "commits",
+  "entries": [
+   [
+    "m1",
+    30,
+    "commit (merge): Merge branch 'x'"
+   ]
+  ],
+  "stop": null,
+  "since": 0,
+  "expect": {
+   "commits": [
+    [
+     "m1",
+     true
+    ]
+   ],
+   "notes": []
+  }
+ },
+ {
+  "name": "reflog-merge-commit-is-only-commit-merge",
+  "kind": "commits",
+  "entries": [
+   [
+    "m1",
+    30,
+    "commit (merged): x"
+   ],
+   [
+    "m2",
+    29,
+    "commit (amend): y"
+   ]
+  ],
+  "stop": null,
+  "since": 0,
+  "expect": {
+   "commits": [
+    [
+     "m1",
+     false
+    ],
+    [
+     "m2",
+     false
+    ]
+   ],
+   "notes": []
+  }
+ },
+ {
+  "name": "marker-key-uses-the-tool-use-id",
+  "kind": "marker_key",
+  "payload": {
+   "tool_use_id": "toolu_abc",
+   "session_id": "s",
+   "tool_input": {
+    "command": "ls"
+   }
+  },
+  "expect": "toolu_abc"
+ },
+ {
+  "name": "marker-key-falls-back-to-a-command-hash",
+  "kind": "marker_key",
+  "payload": {
+   "session_id": "s",
+   "tool_input": {
+    "command": "ls"
+   }
+  },
+  "expect": "s-c7b68ac37f364473"
+ },
+ {
+  "name": "marker-key-replaces-a-slash",
+  "kind": "marker_key",
+  "payload": {
+   "tool_use_id": "a/b"
+  },
+  "expect": "a_b"
+ },
+ {
+  "name": "classify-rc0-is-ok",
+  "kind": "classify",
+  "rc": 0,
+  "output": "",
+  "expect": "ok"
+ },
+ {
+  "name": "classify-shellcheck-could-not-check",
+  "kind": "classify",
+  "rc": 2,
+  "output": "shellcheck-gate: COULD NOT CHECK — shellcheck-repo.sh gave rc=4\n",
+  "expect": "unchecked"
+ },
+ {
+  "name": "classify-ruff-could-not-check",
+  "kind": "classify",
+  "rc": 2,
+  "output": "ruff-format-check: COULD NOT CHECK — ruff is missing\n",
+  "expect": "unchecked"
+ },
+ {
+  "name": "classify-linkcheck-could-not-check",
+  "kind": "classify",
+  "rc": 2,
+  "output": "Linkcheck: COULD NOT CHECK — jq\n",
+  "expect": "unchecked"
+ },
+ {
+  "name": "classify-linkcheck-finding",
+  "kind": "classify",
+  "rc": 2,
+  "output": "Linkcheck: markdown-link bestaat niet: x.md\n",
+  "expect": "finding"
+ },
+ {
+  "name": "classify-pass-one-before-lint-gate-is-a-finding",
+  "kind": "classify",
+  "rc": 2,
+  "output": "1 file left unchanged\nLint-gate: los dit op\n",
+  "expect": "finding"
+ },
+ {
+  "name": "classify-deadline-124-is-unchecked",
+  "kind": "classify",
+  "rc": 124,
+  "output": "shellcheck-gate: halverwege afgebroken\n",
+  "expect": "unchecked"
+ },
+ {
+  "name": "classify-rc1-is-unchecked",
+  "kind": "classify",
+  "rc": 1,
+  "output": "Linkcheck: markdown-link bestaat niet: x.md\n",
+  "expect": "unchecked"
+ },
+ {
+  "name": "classify-first-line-only",
+  "kind": "classify",
+  "rc": 2,
+  "output": "SC2034: x appears unused\necho 'COULD NOT CHECK'\n",
+  "expect": "finding"
+ },
+ {
+  "name": "derive-roots-covers-cwd-cd-git-dash-c-and-literal-paths",
+  "kind": "derive_roots",
+  "setup": [
+   {
+    "repo": "a",
+    "branch": "main"
+   },
+   {
+    "repo": "a/b",
+    "branch": "main"
+   },
+   {
+    "repo": "a/c",
+    "branch": "main"
+   },
+   {
+    "repo": "a/d",
+    "branch": "main"
+   },
+   {
+    "repo": "e",
+    "branch": "main"
+   }
+  ],
+  "env": {
+   "HOME": "{root}"
+  },
+  "command": "(cd b && true); git -C c status; cat > d/x.sh <<'EOF'\necho x\nEOF\ncat > ~/e/z.sh <<'EOF'\necho x\nEOF",
+  "cwd": "{root}/a",
+  "expect": [
+   "{real:a/b}",
+   "{real:a/c}",
+   "{real:a/d}",
+   "{real:a}",
+   "{real:e}"
+  ]
+ },
+ {
+  "name": "derive-roots-finds-a-relative-gitignored-nested-worktree",
+  "kind": "derive_roots",
+  "setup": [
+   {
+    "repo": "main",
+    "branch": "main"
+   },
+   {
+    "file": "main/.gitignore",
+    "text": "wt/\n"
+   },
+   {
+    "worktree": "main/wt",
+    "of": "main",
+    "branch": "wt-branch"
+   }
+  ],
+  "env": {},
+  "command": "cat > wt/x.sh <<'EOF'\necho x\nEOF",
+  "cwd": "{root}/main",
+  "expect": [
+   "{real:main/wt}",
+   "{real:main}"
+  ]
+ },
+ {
+  "name": "derive-roots-on-an-open-quote-still-finds-an-absolute-path",
+  "kind": "derive_roots",
+  "setup": [
+   {
+    "repo": "a",
+    "branch": "main"
+   },
+   {
+    "repo": "b",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "command": "echo 'open; cat > {root}/b/x.sh",
+  "cwd": "{root}/a",
+  "expect": [
+   "{real:a}",
+   "{real:b}"
+  ]
+ },
+ {
+  "name": "derive-roots-reads-the-dir-state-per-step-for-cd",
+  "kind": "derive_roots",
+  "setup": [
+   {
+    "repo": "a",
+    "branch": "main"
+   },
+   {
+    "repo": "a/b",
+    "branch": "main"
+   },
+   {
+    "dir": "other"
+   }
+  ],
+  "env": {},
+  "command": "cd b && echo hi > x.sh; cd {root}/other",
+  "cwd": "{root}/a",
+  "expect": [
+   "{real:a/b}",
+   "{real:a}"
+  ]
+ },
+ {
+  "name": "derive-roots-reads-the-dir-state-per-step-for-a-relative-word",
+  "kind": "derive_roots",
+  "setup": [
+   {
+    "repo": "a",
+    "branch": "main"
+   },
+   {
+    "repo": "a/d",
+    "branch": "main"
+   },
+   {
+    "dir": "other"
+   }
+  ],
+  "env": {},
+  "command": "echo x > d/x.sh; cd {root}/other",
+  "cwd": "{root}/a",
+  "expect": [
+   "{real:a/d}",
+   "{real:a}"
+  ]
+ },
+ {
+  "name": "derive-roots-reads-the-dir-state-per-step-for-git-dash-c",
+  "kind": "derive_roots",
+  "setup": [
+   {
+    "repo": "a",
+    "branch": "main"
+   },
+   {
+    "repo": "a/d",
+    "branch": "main"
+   },
+   {
+    "dir": "other"
+   }
+  ],
+  "env": {},
+  "command": "git -C d commit -m x; cd {root}/other",
+  "cwd": "{root}/a",
+  "expect": [
+   "{real:a/d}",
+   "{real:a}"
+  ]
+ },
+ {
+  "name": "project-filter-drops-a-foreign-repo-and-flags-a-broken-one",
+  "kind": "project_filter",
+  "setup": [
+   {
+    "repo": "main",
+    "branch": "main"
+   },
+   {
+    "worktree": "main/wt",
+    "of": "main",
+    "branch": "wt-branch"
+   },
+   {
+    "repo": "foreign",
+    "branch": "main"
+   },
+   {
+    "repo": "broken",
+    "branch": "main"
+   },
+   {
+    "overwrite": "broken/.git/HEAD",
+    "text": "garbage\n"
+   }
+  ],
+  "roots": [
+   "{real:main}",
+   "{real:main/wt}",
+   "{real:foreign}",
+   "{real:broken}"
+  ],
+  "project": "{root}/main",
+  "expect": {
+   "kept": [
+    "{real:main}",
+    "{real:main/wt}"
+   ],
+   "error_prefixes": [
+    "COULD NOT CHECK: {real:broken} ("
+   ]
+  }
+ },
+ {
+  "name": "project-filter-keeps-a-forge-worktree-of-the-same-repo",
+  "kind": "project_filter",
+  "setup": [
+   {
+    "repo": "main",
+    "branch": "main"
+   },
+   {
+    "origin": "main",
+    "url": "https://github.com/Acme/widgets.git"
+   },
+   {
+    "repo": "clone",
+    "branch": "main"
+   },
+   {
+    "origin": "clone",
+    "url": "https://github.com/Acme/widgets.git"
+   },
+   {
+    "worktree": "clone/work",
+    "of": "clone",
+    "branch": "work"
+   }
+  ],
+  "roots": [
+   "{real:clone/work}"
+  ],
+  "project": "{root}/main",
+  "expect": {
+   "kept": [
+    "{real:clone/work}"
+   ],
+   "error_prefixes": []
+  }
+ },
+ {
+  "name": "project-filter-raises-when-the-project-dir-is-broken",
+  "kind": "project_filter",
+  "setup": [
+   {
+    "repo": "broken",
+    "branch": "main"
+   },
+   {
+    "overwrite": "broken/.git/HEAD",
+    "text": "garbage\n"
+   }
+  ],
+  "roots": [],
+  "project": "{root}/broken",
+  "expect": "raises"
+ }
+]

@@ -1,0 +1,17 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        6,
+        "{\"decision\":\"fallback\",\"reason\":\"5h 93%\"}"
+      ],
+      "expect": {
+        "verdict": "skip",
+        "reason": "Codex-budget: fallback - 5h 93%"
+      }
+    }
+  ]
+}

@@ -36,10 +36,14 @@ var safeSession = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 // workplace.ReadTranscript does. With the software profile claude runs in the shared
 // devcontainer and keeps its transcripts in a volume the host cannot read (#237): the session's
 // files then come out of the container, and a transcript in no container wraps fs.ErrNotExist.
-// With any other profile they are on this host, under Home. A 404 is workplace.ErrGone.
+// With any other profile they are on this host, under Home. A 404 is workplace.ErrGone. On
+// another node the transcript is not on this host: workplace.ErrNotMeasurable (#327).
 func (a *Adapter) Transcript(ctx context.Context, workspaceID, sessionID string) (workplace.Transcript, error) {
 	if err := notForge(workspaceID); err != nil {
 		return workplace.Transcript{}, err
+	}
+	if a.Node != "" {
+		return workplace.Transcript{}, fmt.Errorf("transcript on node %s: %w", a.Node, workplace.ErrNotMeasurable)
 	}
 	if !safeSession.MatchString(sessionID) {
 		return workplace.Transcript{}, fmt.Errorf("transcript in workspace %s: unsafe session id %q", workspaceID, sessionID)

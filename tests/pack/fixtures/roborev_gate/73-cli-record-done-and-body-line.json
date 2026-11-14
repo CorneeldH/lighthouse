@@ -1,0 +1,54 @@
+{
+  "description": "",
+  "level": "cli",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "fixture": "review-complete.md"
+    },
+    {
+      "do": "file",
+      "path": "$tmp/d.json",
+      "json": [
+        {
+          "path": "scripts/forge_drager.py",
+          "line": 93,
+          "severity": "medium",
+          "uitkomst": "fixed",
+          "commit": "abc1234",
+          "reden": null
+        },
+        {
+          "path": "scripts/forge_agent.sh",
+          "line": 612,
+          "severity": "medium",
+          "uitkomst": "refuted",
+          "commit": null,
+          "reden": "klopt niet"
+        }
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "op": "cli",
+      "args": [
+        "record",
+        "--done",
+        "bf1eb24",
+        "--decisions",
+        "$tmp/d.json"
+      ],
+      "exit": 0
+    },
+    {
+      "op": "cli",
+      "args": [
+        "body-line"
+      ],
+      "exit": 0,
+      "stdout": "<!-- roborev-lokaal: bf1eb24 -->"
+    }
+  ]
+}

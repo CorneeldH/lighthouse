@@ -142,7 +142,7 @@ gate failed.
 | Expo lockfiles | patch drift in the Expo lockfiles; pack/expo, only if present | `/lighthouse-refresh-expo-lockfiles` |
 | Any other step | lint, type check, scan, licence | the command of that step in `.github/workflows/`; a step that cannot run locally (a signature) the contributor fixes themselves |
 
-Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/bash-write-check.sh`
+Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/run.sh bash-write-check`
 (per edit, with the gates of the language packs that are installed),
 `.claude/hooks/lighthouse/commit-test-gate.sh` (after each commit, on its files) and a pre-push hook, if present
 (`test -x "$(git rev-parse --git-path hooks/pre-push)"`).
@@ -207,7 +207,7 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 
    ```bash
    R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' | tail -1 | jq -r . > <scratch>/roborev-ci.md
-   python3 .lighthouse/scripts/roborev_gate.py classify <scratch>/roborev-ci.md
+   lighthouse roborev-gate classify <scratch>/roborev-ci.md
    ```
 
    If `classify` prints `verdict` `skip` (for instance `review faalde: bevindingen onleesbaar`),
@@ -220,8 +220,8 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    (the reason, `null` with `fixed`; for a low that is not trivial: `low, not trivial`). Then:
 
    ```bash
-   python3 .lighthouse/scripts/roborev_gate.py record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
-   python3 .lighthouse/scripts/roborev_comment.py render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
+   lighthouse roborev-gate record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
+   lighthouse roborev-comment render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
    R=$(lighthouse config forge.repo) && gh pr comment <nr> --repo "$R" --body-file <scratch>/comment.md
    ```
 
