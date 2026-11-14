@@ -1,5 +1,6 @@
 """ci/changelog.py: the fragment parser and the `check` command."""
 
+import errno
 import subprocess
 from pathlib import Path
 
@@ -161,7 +162,9 @@ def test_added_fragments_non_utf8_name_cannot_check(git_repo, capsys):
             fh.write(GOOD)
     except OSError as e:
         # APFS (macOS) refuses a name that is not valid UTF-8 with EILSEQ: there the case
-        # cannot occur (#90, #338).
+        # cannot occur (#90, #338). Any other OSError is a failure.
+        if e.errno != errno.EILSEQ:
+            raise
         pytest.skip(f"the filesystem refuses a non-UTF-8 name: {e}")
     c2 = _commit(root, "two")
     assert _check(root, c1, c2) == 2
