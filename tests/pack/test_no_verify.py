@@ -1,6 +1,7 @@
 """`pack/core/lib/no_verify.py`, as installed: the lib runs as a file on its path.
 
-The cases for the flag itself run against the commit-test-gate hook (`test_commit_test_gate_no_verify.py`).
+The cases for the flag itself are in `fixtures/no_verify/cases.json` (`test_commit_gate_fixtures.py`);
+the hook has its own in `test_commit_test_gate_no_verify.py`.
 """
 
 import subprocess
@@ -15,9 +16,7 @@ from tests.pack._testkit import INSTALLED_LIB
     "command,rc",
     [
         ("git commit -n -m x", 2),
-        ("git commit --no-verify -m x", 2),
         ("git commit -m x", 0),
-        ("git log -n 1", 0),
     ],
 )
 def test_no_verify_runs_as_file(tmp_path, command, rc):

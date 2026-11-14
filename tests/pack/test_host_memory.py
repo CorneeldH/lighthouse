@@ -1,5 +1,8 @@
 """Tests for `pack/core/lib/host_memory.py`, the host memory check of the test gate (#171).
 
+The cases of `read_meminfo` and `shortfalls` are in `fixtures/host_memory/cases.json`
+(`test_commit_gate_fixtures.py`); this file keeps the CLI and its waiting loop.
+
 A made-up meminfo in `tmp_path` stands in for `/proc/meminfo`; the CLI runs as
 installed, the way the hook calls it.
 """
@@ -11,11 +14,8 @@ import threading
 import time
 from pathlib import Path
 
-import pytest
+from tests.pack._testkit import INSTALLED_LIB
 
-from tests.pack._testkit import INSTALLED_LIB, load_hook_lib
-
-host_memory = load_hook_lib("host_memory")
 HOST_MEMORY = INSTALLED_LIB / "host_memory.py"
 
 GIB_KB = 1024 * 1024
@@ -39,41 +39,6 @@ def _cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(HOST_MEMORY), *args], capture_output=True, text=True, timeout=30
     )
-
-
-def test_shortfalls_both_low(tmp_path):
-    info = host_memory.read_meminfo(_meminfo(tmp_path / "meminfo", 734003, 524288))
-    assert host_memory.shortfalls(info, 4, 2) == (
-        ["MemAvailable 0.7 GiB < 4 GiB", "SwapFree 0.5 GiB < 2 GiB"],
-        [],
-    )
-
-
-def test_shortfalls_only_set_threshold_counts(tmp_path):
-    info = host_memory.read_meminfo(_meminfo(tmp_path / "meminfo", 734003, 524288))
-    assert host_memory.shortfalls(info, 4, None) == (["MemAvailable 0.7 GiB < 4 GiB"], [])
-
-
-def test_shortfalls_enough_is_empty(tmp_path):
-    info = host_memory.read_meminfo(_meminfo(tmp_path / "meminfo", 8 * GIB_KB, 4 * GIB_KB))
-    assert host_memory.shortfalls(info, 4, 2) == ([], [])
-
-
-def test_no_swap_skips_swap_check(tmp_path):
-    info = host_memory.read_meminfo(_meminfo(tmp_path / "meminfo", 8 * GIB_KB, 0, swap_total_kb=0))
-    assert host_memory.shortfalls(info, None, 2) == (
-        [],
-        ["no swap on this host, SwapFree not checked"],
-    )
-
-
-def test_read_meminfo_missing_memavailable(tmp_path):
-    path = tmp_path / "meminfo"
-    path.write_text("MemTotal:       16000000 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n")
-    with pytest.raises(ValueError):
-        host_memory.read_meminfo(path)
-    with pytest.raises(OSError):
-        host_memory.read_meminfo(tmp_path / "absent")
 
 
 def test_cli_ok(tmp_path):

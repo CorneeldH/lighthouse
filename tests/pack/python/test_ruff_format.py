@@ -17,8 +17,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from lighthouse_lib import bash_writes
-from tests.pack._testkit import install_pack, tool_bin
+from tests.pack._testkit import classify, install_pack, tool_bin
 from tests.pack.python.conftest import PY_HOOKS
 
 RUFF_HOOK = PY_HOOKS / "ruff-format-check.sh"
@@ -93,14 +92,14 @@ def test_ruff_hook_does_not_block_on_unselected_rule(tmp_path):
 
 
 def test_ruff_finding_first_line(tmp_path):
-    """A finding starts with `ruff-format:`, is a `finding` for `bash_writes.classify`,
+    """A finding starts with `ruff-format:`, is a `finding` for `classify`,
     and pass 1 (format, --fix) puts nothing on stdout."""
     result = _run(_file(tmp_path, "bad.py", "import os,sys\n" + BARE_EXCEPT_PY), tmp_path)
     assert result.returncode == 2, result.stdout
     assert result.stdout == ""
     assert result.stderr.startswith("ruff-format-check: "), result.stderr
     assert "COULD NOT CHECK" not in result.stderr.splitlines()[0]
-    assert bash_writes.classify(2, result.stderr.encode()) == "finding"
+    assert classify(2, result.stderr.encode()) == "finding"
 
 
 def test_ruff_unchecked_when_tool_unresolvable(tmp_path):
@@ -108,7 +107,7 @@ def test_ruff_unchecked_when_tool_unresolvable(tmp_path):
     result = _run(_file(tmp_path, "clean.py", CLEAN_PY), tmp_path, _offline(tmp_path))
     assert result.returncode == 2, result.stdout
     assert result.stderr.startswith(UNCHECKED), result.stderr
-    assert bash_writes.classify(2, result.stderr.encode()) == "unchecked"
+    assert classify(2, result.stderr.encode()) == "unchecked"
 
 
 def test_ruff_unchecked_without_tool(tmp_path):
@@ -218,7 +217,7 @@ def test_ruff_unchecked_on_a_broken_config(tmp_path):
     assert result.returncode == 2, result.stdout
     assert result.stderr.startswith(UNCHECKED + "ruff exited 2"), result.stderr
     assert "fix this in the code" not in result.stderr
-    assert bash_writes.classify(2, result.stderr.encode()) == "unchecked"
+    assert classify(2, result.stderr.encode()) == "unchecked"
 
 
 def test_ruff_unchecked_on_an_empty_payload(tmp_path):
