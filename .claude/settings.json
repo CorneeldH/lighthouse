@@ -26,13 +26,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/commit-test-gate.sh post",
-            "timeout": 300
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh bash-write-check post",
+            "timeout": 120
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh bash-write-check post",
-            "timeout": 120
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh commit-test-gate post",
+            "timeout": 300
           }
         ]
       },
@@ -70,13 +70,13 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/commit-test-gate.sh post",
-            "timeout": 300
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh bash-write-check post",
+            "timeout": 120
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh bash-write-check post",
-            "timeout": 120
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh commit-test-gate post",
+            "timeout": 300
           }
         ]
       }
@@ -92,11 +92,6 @@
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/commit-test-gate.sh pre",
-            "timeout": 300
-          },
-          {
-            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh main-commit-gate",
             "timeout": 15
           },
@@ -104,6 +99,11 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh bash-write-check pre",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh commit-test-gate pre",
+            "timeout": 300
           }
         ]
       },

@@ -9,7 +9,6 @@ import json
 import os
 import shutil
 import subprocess
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -94,7 +93,7 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
     if name == "main-commit-gate":
         # A commit on a feature branch: the guard reads forge.default_branch.
         cmd = "git commit -m x"
-    elif name == "commit-test-gate.sh":
+    elif name == "commit-test-gate":
         cmd = "git commit -m x"
     elif name == "pr-create-gate.sh":
         cmd = "gh pr create --repo Acme/widgets --body 'Refs #5 — waiting for the deploy'"
@@ -160,7 +159,7 @@ def test_hooks_with_minimal_config(
 def test_every_registration_has_a_payload() -> None:
     assert {_name(s) for _, _, s in REGISTRATIONS} == {
         "main-commit-gate",
-        "commit-test-gate.sh",
+        "commit-test-gate",
         "bash-write-check",
         "pr-create-gate.sh",
         "worktree-check",
@@ -177,7 +176,7 @@ PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
 # pre` never blocks (a PreToolUse exit 2 blocks the call itself).
 GUARDED = {
     "run.sh main-commit-gate": "git commit -m x",
-    "commit-test-gate.sh pre": "git commit -m x",
+    "run.sh commit-test-gate pre": "git commit -m x",
     "pr-create-gate.sh": "gh pr create --repo Acme/widgets --body x",
 }
 # A Go hook behind run.sh reads no `.lighthouse/lib`: only the others can miss it.
@@ -238,16 +237,3 @@ def test_without_lib_the_go_gate_still_blocks_a_commit_on_main(tmp_path: Path) -
 def test_guarded_covers_every_blocking_bash_hook() -> None:
     blocking = {s for s in PRE_BASH if s != "run.sh bash-write-check pre"}
     assert blocking == set(GUARDED)
-
-
-def test_hooks_that_read_config_require_tomllib() -> None:
-    # config.py needs tomllib (Python 3.11+); `lighthouse init` reports a
-    # missing tool only for the units that requires.toml names.
-    requires = tomllib.loads((CORE / "requires.toml").read_text(encoding="utf-8"))
-    readers = {
-        hook.stem
-        for hook in (CORE / "hooks").glob("*.sh")
-        if "config.py" in hook.read_text(encoding="utf-8")
-    }
-    assert readers
-    assert readers <= set(requires["tomllib"]), readers - set(requires["tomllib"])

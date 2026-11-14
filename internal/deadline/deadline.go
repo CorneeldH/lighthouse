@@ -1,5 +1,5 @@
 // Package deadline runs a command until an absolute deadline, then stops its process group. It
-// ports pack/core/lib/deadline.py (`run_until` with capture and raise_on_signal).
+// ports the former pack/core/lib/deadline.py (`run_until` with capture and raise_on_signal).
 //
 // A PreToolUse hook that hits its own timeout is fail-open: Claude sees silence, and the gate is
 // skipped unnoticed. By ending the gate itself on a deadline, well within the hook timeout, and

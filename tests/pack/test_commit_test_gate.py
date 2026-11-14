@@ -25,6 +25,7 @@ import pytest
 from tests.pack._testkit import (
     CORE,
     INSTALL_ROOT,
+    INSTALLED_HOOKS,
     MINIMAL_TOML,
     ORIGIN,
     RUN_SH_TOOLS,
@@ -360,7 +361,7 @@ def test_deadline_from_config(gate: Gate) -> None:
 
 @pytest.mark.parametrize("seconds", [0, 281])
 def test_deadline_outside_the_hook_timeout_blocks(gate: Gate, seconds: int) -> None:
-    # The hook timeout is 300 s, the grace of deadline.py 10 s: a deadline
+    # The hook timeout is 300 s, the grace of the deadline 10 s: a deadline
     # above 280 s lets the timeout expire first, and a timeout is fail-open.
     gate.configure(TEST_GATE + f"deadline_seconds = {seconds}\n")
 
@@ -706,13 +707,13 @@ def test_hook_timeout_exceeds_deadline() -> None:
         for block in registered["hooks"]["PreToolUse"]
         if block.get("matcher") == "Bash"
         for hook in block["hooks"]
-        if hook["command"].endswith("commit-test-gate.sh pre")
+        if hook["command"].endswith("run.sh commit-test-gate pre")
     ]
 
     assert len(entries) == 1
     assert entries[0]["timeout"] == 300
     assert entries[0]["timeout"] > 280 + 10
-    assert os.access(HOOK, os.X_OK)
+    assert os.access(INSTALLED_HOOKS / "run.sh", os.X_OK)
 
 
 def hold_slots(gate: Gate, *names: str) -> list[int]:
@@ -1646,16 +1647,16 @@ def test_hooks_json_registers_pre_and_post() -> None:
             for block in registered[event]
             if block.get("matcher") == "Bash"
             for hook in block["hooks"]
-            if "commit-test-gate.sh" in hook["command"]
+            if "commit-test-gate" in hook["command"]
         ]
 
     pre = entries("PreToolUse")
-    assert [h["command"] for h in pre] == ["${CLAUDE_PLUGIN_ROOT}/hooks/commit-test-gate.sh pre"]
+    assert [h["command"] for h in pre] == ["${CLAUDE_PLUGIN_ROOT}/hooks/run.sh commit-test-gate pre"]
     assert pre[0]["timeout"] == 300
     for event in ("PostToolUse", "PostToolUseFailure"):
         post = entries(event)
         assert [h["command"] for h in post] == [
-            "${CLAUDE_PLUGIN_ROOT}/hooks/commit-test-gate.sh post"
+            "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh commit-test-gate post"
         ], event
         assert post[0]["timeout"] == 300, event
 

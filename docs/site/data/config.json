@@ -171,7 +171,9 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": ["internal/initcmd/initcmd.go"]
+              "readers": [
+                "internal/initcmd/initcmd.go"
+              ]
             },
             {
               "key": "forge.default_branch",
@@ -180,12 +182,12 @@
               "default": "main",
               "about": "The branch that work is merged into and that commits are guarded on.",
               "readers": [
+                "internal/commitgate/pre.go",
                 "internal/hooks/hooks.go",
                 "internal/hooks/maincommitgate.go",
                 "internal/hooks/worktreecheck.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
-                "pack/core/hooks/commit-test-gate.sh",
                 "pack/core/lib/protocol.py",
                 "pack/core/scripts/post_artefact.py",
                 "pack/core/scripts/roborev_gate.py",
@@ -340,7 +342,8 @@
               "about": "The command the test gate runs after a commit; empty turns the gate off.",
               "example": "uv run pytest -q",
               "readers": [
-                "pack/core/hooks/commit-test-gate.sh",
+                "internal/commitgate/gate.go",
+                "internal/commitgate/message.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/write-pr",
@@ -355,7 +358,7 @@
               "default": 270,
               "about": "How long the test gate may run before it gives up.",
               "readers": [
-                "pack/core/hooks/commit-test-gate.sh"
+                "internal/commitgate/gate.go"
               ]
             },
             {
@@ -376,7 +379,7 @@
               "default": 180,
               "about": "How long a test gate waits for a free slot.",
               "readers": [
-                "pack/core/hooks/commit-test-gate.sh"
+                "internal/commitgate/gate.go"
               ]
             },
             {
@@ -386,7 +389,7 @@
               "default": 2,
               "about": "How many test gates may run at the same time on this machine.",
               "readers": [
-                "pack/core/hooks/commit-test-gate.sh"
+                "internal/commitgate/gate.go"
               ]
             },
             {
@@ -396,7 +399,7 @@
               "default": [],
               "about": "Exit codes of the test command that mean the tests could not run; the gate reports COULD NOT CHECK instead of failed tests.",
               "readers": [
-                "pack/core/hooks/commit-test-gate.sh",
+                "internal/commitgate/gate.go",
                 "pack/go/scripts/gate_go.py",
                 "pack/go/skills/go-standard",
                 "pack/node/scripts/gate_node.py",
@@ -999,7 +1002,7 @@
               "about": "The systemd slice the test gate runs in.",
               "example": "lighthouse-gate.slice",
               "readers": [
-                "pack/core/hooks/commit-test-gate.sh"
+                "internal/commitgate/gate.go"
               ]
             },
             {
@@ -1025,7 +1028,7 @@
               "about": "The ceiling on the test gate slots of every project on this host; without the key the ceiling is 7.",
               "example": 2,
               "readers": [
-                "pack/core/hooks/commit-test-gate.sh"
+                "internal/commitgate/gate.go"
               ]
             },
             {
@@ -1035,7 +1038,7 @@
               "about": "The minimum MemAvailable in GiB before the test gate starts a run.",
               "example": 6,
               "readers": [
-                "pack/core/hooks/commit-test-gate.sh"
+                "internal/commitgate/gate.go"
               ]
             },
             {
@@ -1045,7 +1048,7 @@
               "about": "The minimum SwapFree in GiB before the test gate starts a run.",
               "example": 4,
               "readers": [
-                "pack/core/hooks/commit-test-gate.sh"
+                "internal/commitgate/gate.go"
               ]
             }
           ]

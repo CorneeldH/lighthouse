@@ -14,7 +14,7 @@ import (
 
 // The dispatch of post: a gate per claimed file, its verdict, and the bundle that post reports.
 // Port of `run_gate`, `_printable`, `_Outcome`, `_report_verdict`, `_cannot_left`, `_vanished` and
-// `_dispatch` in pack/core/lib/bash_writes.py.
+// `_dispatch` in the former pack/core/lib/bash_writes.py.
 
 const (
 	prefix = "bash-write-check:"

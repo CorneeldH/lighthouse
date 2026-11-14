@@ -55,29 +55,6 @@ path = "pack/core/lib/headings.py"
 new = true
 
 [[file]]
-path = "pack/core/lib/deadline.py"
-source_path = ".claude/hooks/lib/deadline.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/lib/filelock.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/gate_slot.py"
-source_path = ".claude/hooks/lib/gate_slot.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/lib/host_memory.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/no_verify.py"
-source_path = ".claude/hooks/lib/no_verify.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/lib/evidence.py"
 source_path = ".claude/hooks/lib/evidence.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
@@ -88,22 +65,8 @@ source_path = ".claude/hooks/lib/pr_body_gate.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/lib/bash_writes.py"
-source_path = ".claude/hooks/lib/bash_writes.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/lib/commit_base.py"
-new = true
-
-[[file]]
 path = "pack/core/hooks/pr-create-gate.sh"
 source_path = ".claude/hooks/pr-create-gate.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/hooks/commit-test-gate.sh"
-source_path = ".claude/hooks/pre-commit-tests.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]

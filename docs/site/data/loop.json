@@ -505,7 +505,7 @@
       "when": "Before and after each Bash call, and after a failed one.",
       "without": "Red tests on a commit go unnoticed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-test-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/committestgate.go"
     },
     {
       "id": "write-pr",

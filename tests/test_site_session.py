@@ -133,7 +133,7 @@ def test_hook_problems_flags_another_column():
 def test_hook_problems_flags_a_dropped_event():
     data = copy.deepcopy(load("session.json"))
     chip(data, "commit-test-gate-post")["events"] = ["PostToolUse"]
-    assert hook_problems(data, ROOT / "pack") == ["not on the map: core PostToolUseFailure Bash commit-test-gate.sh post"]
+    assert hook_problems(data, ROOT / "pack") == ["not on the map: core PostToolUseFailure Bash run.sh commit-test-gate post"]
 
 
 def test_hook_problems_flags_a_source_of_another_script():

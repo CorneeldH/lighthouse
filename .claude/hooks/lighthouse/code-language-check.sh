@@ -12,7 +12,7 @@
 # (`systemMessage`) and to the agent (`additionalContext`) and never blocks.
 # Under bash-write-check (LIGHTHOUSE_UNDER_BASH_WRITE_CHECK set) layer 2 does not run
 # and the notice goes to stdout as plain text, `code-language-check: NOTICE — ` first;
-# bash_writes.py passes it on.
+# bash-write-check passes it on.
 #
 # Norm and rationale: docs/developer/planning/specs/2026-10-24-codetaal-hook-design.md.
 # This hook checks the written file afterwards. Dutch
@@ -30,7 +30,7 @@
 # (a file with a syntax error, bad config, not UTF-8), nothing was checked; a
 # silent exit 0 would read as "the code is English". Every such exit is exit 2
 # with `code-language-check: COULD NOT CHECK — <reason>` on the first line (the token
-# bash_writes.classify reads, decision 18).
+# bashwrites.Classify reads, decision 18).
 
 cannot_check() {
   {

@@ -71,7 +71,7 @@ def test_hook_lib_stays_importable_on_python_39(lib):
     """Pin: the hooks run under the host's `python3` — on macOS 3.9.6.
 
     There `list[str] | None` in an annotation is a TypeError at import,
-    and then commit-test-gate.sh ends in exit 2 for
+    and then a hook that imports the lib ends in exit 2 for
     EVERY Bash command. So: 3.9 syntax, and `X | Y` in an annotation
     only under `from __future__ import annotations`.
     """
