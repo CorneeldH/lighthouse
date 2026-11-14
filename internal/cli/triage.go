@@ -108,7 +108,8 @@ func triage(ctx context.Context, env triageEnv, opts triageOpts, dbPath string, 
 		}
 	}
 	for _, ref := range opts.Issues {
-		if !slices.ContainsFunc(repos, func(e triageRepo) bool { return e.repo.Slug == ref.Repo }) {
+		// An enabled repo whose forge failed to open is there: it got its skip line above.
+		if !slices.ContainsFunc(loaded, func(e triageRepo) bool { return e.enabled && e.repo.Slug == ref.Repo }) {
 			failed = true
 			_, _ = fmt.Fprintf(errOut, "lighthouse: triage %s#%d: no repo %s with [controller.triage] in [dispatch] repos\n", ref.Repo, ref.Number, ref.Repo)
 		}

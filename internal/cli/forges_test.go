@@ -116,8 +116,8 @@ func TestOpenerSharesLogin(t *testing.T) {
 }
 
 // A login that failed because the ctx of its forRepo call was cancelled is not kept: a later
-// forRepo with the same token, on a live ctx, asks GET /user again. serve keeps one opener for
-// its whole run, so one cancelled request must not fail every later login.
+// forRepo with the same token, on a live ctx, asks GET /user again. The opener is shared across
+// the tick and triage calls, so one cancelled call must not fail every later login.
 func TestOpenerLoginForgetsCancelledCtx(t *testing.T) {
 	srv := forgetest.New(t)
 	srv.Login = "lh-bot"
