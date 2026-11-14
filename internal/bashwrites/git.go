@@ -1,6 +1,6 @@
-// Package bashwrites is the Go port of pack/core/lib/bash_writes.py: what a Bash call wrote, found
-// from the git state, and the gates that judge it. This part holds the git readers, the roots of a
-// command and the parsers.
+// Package bashwrites is the Go port of the former pack/core/lib/bash_writes.py: what a Bash call
+// wrote, found from the git state, and the gates that judge it. This part holds the git readers,
+// the roots of a command and the parsers.
 package bashwrites
 
 import (

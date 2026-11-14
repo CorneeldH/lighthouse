@@ -170,7 +170,7 @@ def _repair_runtime_dir() -> None:
     # VS Code `claude` runs in the logind scope without XDG_RUNTIME_DIR and
     # sometimes without DBUS_SESSION_BUS_ADDRESS; without a bus `systemctl --user`
     # fails and the ceiling drops out on exactly the path that needs it.
-    # Same repair as `commit-test-gate.sh`.
+    # Same repair as the commit-test-gate (`internal/commitgate/gate.go`).
     runtime = f"/run/user/{os.getuid()}"
     if (
         not os.environ.get("XDG_RUNTIME_DIR")

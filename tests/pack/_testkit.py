@@ -34,6 +34,9 @@ PACKS = REPO / "pack"
 CORE = PACKS / "core"
 LIB = CORE / "lib"
 
+# The tree git hashes for an empty repository.
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
 GIT_ENV = {
     "GIT_AUTHOR_NAME": "t",
     "GIT_AUTHOR_EMAIL": "t@example.com",
@@ -85,7 +88,10 @@ def build_fixture_setup(root: Path, steps: list[dict]) -> None:
     The steps are the ones of `fixtures/git_invocations/cases.json` (`repo`,
     `dir`, `file`, `symlink`, `overwrite`), plus `worktree` (`{"worktree":
     "x/wt", "of": "x", "branch": "wt"}`: a linked worktree of repo `x`) and
-    `origin` (`{"origin": "x", "url": ...}`: remote `origin` of repo `x`).
+    `origin` (`{"origin": "x", "url": ...}`: remote `origin` of repo `x`),
+    `unborn` (`{"unborn": "x"}`: `git init -b main` without a commit),
+    `commit` (`{"commit": "x", "message": "m"}`: `add -A` and commit; the files
+    come in before, through `file`) and `mv` (`{"mv": "x", "from": "a", "to": "b"}`).
     """
     for step in steps:
         if "repo" in step:
@@ -112,6 +118,14 @@ def build_fixture_setup(root: Path, steps: list[dict]) -> None:
             )
         elif "origin" in step:
             git(root / step["origin"], "remote", "add", "origin", step["url"])
+        elif "unborn" in step:
+            (root / step["unborn"]).mkdir(parents=True, exist_ok=True)
+            git(root / step["unborn"], "init", "-q", "-b", "main")
+        elif "commit" in step:
+            git(root / step["commit"], "add", "-A")
+            git(root / step["commit"], "commit", "-qm", step["message"])
+        elif "mv" in step:
+            git(root / step["mv"], "mv", step["from"], step["to"])
         else:
             raise AssertionError(f"unknown setup step {step}")
 
@@ -121,9 +135,22 @@ def fill_fixture(value, root: str):
 
     `{root}` is the temporary directory (not passed through realpath),
     `{real:<path>}` is the realpath of `{root}/<path>` and `{home:<name>}` is
-    the home directory of user `<name>`.
+    the home directory of user `<name>`, `{rev:<path>:<rev>}` the output of
+    `git -C {root}/<path> rev-parse <rev>` and `{empty_tree}` the empty tree.
+    Fill them after the last step of the case. The keys of a dict are filled too.
     """
     if isinstance(value, str):
+        value = re.sub(
+            r"\{rev:([^:}]+):([^}]+)\}",
+            lambda m: subprocess.run(
+                ["git", "-C", f"{root}/{m[1]}", "rev-parse", m[2]],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip(),
+            value,
+        )
+        value = value.replace("{empty_tree}", EMPTY_TREE)
         value = re.sub(
             r"\{real:([^}]+)\}", lambda m: os.path.realpath(f"{root}/{m[1]}"), value
         )
@@ -132,7 +159,7 @@ def fill_fixture(value, root: str):
     if isinstance(value, list):
         return [fill_fixture(v, root) for v in value]
     if isinstance(value, dict):
-        return {k: fill_fixture(v, root) for k, v in value.items()}
+        return {fill_fixture(k, root): fill_fixture(v, root) for k, v in value.items()}
     return value
 
 
@@ -431,6 +458,21 @@ def run_guard(
     env = dict(env, LIGHTHOUSE_REPO_ROOT=str(root))
     env.setdefault("LIGHTHOUSE_SHIM_TRACE", str(refresh_trace(env)))
     return run_sh_hook(root, "usage-gate", payload, cwd=root, env=env, args=(stand,))
+
+
+def classify(rc: int, output: bytes) -> str:
+    """The verdict of a gate: `"ok"`, `"finding"` or `"unchecked"`.
+
+    The rule of `bash_writes.classify`, for the language-pack tests that read
+    the result of one gate: rc 0 is ok, rc 2 is a finding unless the FIRST
+    output line holds `COULD NOT CHECK`, every other rc is unchecked.
+    """
+    if rc == 0:
+        return "ok"
+    if rc != 2:
+        return "unchecked"
+    first = output.decode(errors="replace").split("\n", 1)[0]
+    return "unchecked" if "COULD NOT CHECK" in first else "finding"
 
 
 def load_hook_lib(name: str) -> types.ModuleType:

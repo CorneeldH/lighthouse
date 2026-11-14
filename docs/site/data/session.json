@@ -220,13 +220,14 @@
         "PreToolUse"
       ],
       "matcher": "Bash",
-      "command": "commit-test-gate.sh pre",
+      "command": "run.sh commit-test-gate pre",
       "effects": [
         "blocks"
       ],
       "label": "commit-test-gate pre",
       "what": "Blocks a commit with --no-verify and tests a commit to the default branch before it happens.",
       "how": [
+        "It runs in the lighthouse binary, through run.sh.",
         "It sees a commit after `cd`, `;`, `|`, `&&` or with `git -C <path>`, and tests the tree that is committed.",
         "For a commit to the default branch it runs the test gate up front; red blocks with exit 2.",
         "For every other commit it records the HEAD before the commit, so `post` knows what the commit touched.",
@@ -235,7 +236,7 @@
       "when": "Before each Bash call.",
       "without": "A commit skips the gate with --no-verify, and a commit to main goes in untested.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-test-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/committestgate.go"
     },
     {
       "id": "pr-create-gate",
@@ -357,13 +358,14 @@
         "PostToolUseFailure"
       ],
       "matcher": "Bash",
-      "command": "commit-test-gate.sh post",
+      "command": "run.sh commit-test-gate post",
       "effects": [
         "blocks"
       ],
       "label": "commit-test-gate post",
       "what": "Tests what a commit touched with the test gate, and reports red.",
       "how": [
+        "It runs in the lighthouse binary, through run.sh.",
         "Per recorded root whose HEAD moved, it runs `[test_gate] command` from lighthouse.toml with the changed files in LIGHTHOUSE_GATE_FILES.",
         "Red is exit 2 after the commit: the commit stays and the fix comes in a new commit.",
         "Without a command the commit passes with a note that nothing was tested.",
@@ -372,7 +374,7 @@
       "when": "After each Bash call, also one that failed.",
       "without": "A commit with red tests goes unnoticed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/commit-test-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/committestgate.go"
     },
     {
       "id": "gofmt-check",

@@ -19,9 +19,9 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
 )
 
-// The twins of the run_post, dispatch and pool tests in tests/pack/test_bash_writes.py. Where the
-// Python replaces run_gate, _now, _claim, diff_commit or run_until, these replace the package
-// variable of the same role.
+// The twins of the run_post, dispatch and pool tests in the former tests/pack/test_bash_writes.py.
+// Where the Python replaced run_gate, _now, _claim, diff_commit or run_until, these replace the
+// package variable of the same role.
 
 const badName = "bad\xff.sh"
 

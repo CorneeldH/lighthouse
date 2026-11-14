@@ -13,9 +13,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from lighthouse_lib import bash_writes
 
-from tests.pack._testkit import tool_bin
+from tests.pack._testkit import classify, tool_bin
 from tests.pack.go.conftest import GO_HOOKS
 
 GOFMT_HOOK = GO_HOOKS / "gofmt-check.sh"
@@ -103,14 +102,14 @@ def test_classify_reads_the_parse_error_as_a_finding(tmp_path):
     result = _run(_file(tmp_path, "x.go", "package m\n\nfunc F( {\n"), tmp_path)
     assert result.returncode == 2, result.stdout
     assert result.stderr.startswith("gofmt-check: "), result.stderr
-    assert bash_writes.classify(2, result.stderr.encode()) == "finding"
+    assert classify(2, result.stderr.encode()) == "finding"
 
 
 def test_without_gofmt_could_not_check(tmp_path):
     result = _run(_file(tmp_path, "a.go"), tmp_path, _without(tmp_path, "gofmt"))
     assert result.returncode == 2, result.stdout
     assert result.stderr.splitlines()[0].startswith(UNCHECKED), result.stderr
-    assert bash_writes.classify(2, result.stderr.encode()) == "unchecked"
+    assert classify(2, result.stderr.encode()) == "unchecked"
 
 
 def test_without_gofmt_other_extension_passes(tmp_path):

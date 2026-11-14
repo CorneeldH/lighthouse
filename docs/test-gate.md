@@ -1,9 +1,9 @@
 # De test-gate op de host
 
-De test-gate (`commit-test-gate.sh`) draait `[test_gate] command` uit `lighthouse.toml` bij een
-commit. Hoeveel gates tegelijk draaien en hoeveel geheugen ze krijgen, is een eigenschap van de
-machine, niet van het project. Daarom staan die grenzen in `[host]` van `host.toml`, en het project
-vraagt alleen.
+De test-gate (`commit-test-gate`, via `run.sh commit-test-gate pre|post`) draait
+`[test_gate] command` uit `lighthouse.toml` bij een commit. Hoeveel gates tegelijk draaien en
+hoeveel geheugen ze krijgen, is een eigenschap van de machine, niet van het project. Daarom staan
+die grenzen in `[host]` van `host.toml`, en het project vraagt alleen.
 
 ## Sleutels in `[host]`
 

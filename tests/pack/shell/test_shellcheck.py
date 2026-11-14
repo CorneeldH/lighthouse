@@ -22,10 +22,10 @@ import pytest
 from tests.pack._testkit import (
     GIT_ENV,
     INSTALL_ROOT,
+    classify,
     git,
     init_repo,
     install_pack,
-    load_hook_lib,
 )
 from tests.pack.shell.conftest import SHELL_HOOKS, SHELL_SCRIPTS, SHELLCHECK_LIB
 
@@ -33,8 +33,6 @@ from tests.pack.shell.conftest import SHELL_HOOKS, SHELL_SCRIPTS, SHELLCHECK_LIB
 # shellcheck-repo.sh. Both come from the installation (conftest).
 SHELLCHECK_HOOK = SHELL_HOOKS / "shell-lint-check.sh"
 REPO_SCRIPT = SHELL_SCRIPTS / "shellcheck-repo.sh"
-
-bw = load_hook_lib("bash_writes")
 
 CLEAN_SH = '#!/usr/bin/env bash\nset -euo pipefail\necho "hallo"\n'
 # SC2034: `x` is never used. Warning severity, so it blocks everywhere.
@@ -87,13 +85,13 @@ def test_shellcheck_hook_passes_clean_script(tmp_path, pinned_shellcheck):
 
 def test_shellcheck_hook_blocks_a_deliberately_broken_script(tmp_path, pinned_shellcheck):
     """The proof that the gate bites: red for the right reason, with the SC code,
-    and a finding for `bash_writes.classify`."""
+    and a finding for `classify`."""
     target = _repo_file(tmp_path, "broken.sh", BROKEN_SH)
     result = _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck)
     assert result.returncode == 2, result.stdout
     assert "SC2034" in result.stderr
     assert _first_line(result).startswith("shell-lint-check: fix this in the code")
-    assert bw.classify(result.returncode, result.stderr.encode()) == "finding"
+    assert classify(result.returncode, result.stderr.encode()) == "finding"
 
 
 def test_shellcheck_hook_ignores_non_shell(tmp_path):
@@ -152,7 +150,7 @@ def test_shellcheck_hook_fails_loud_when_the_tool_is_missing(tmp_path):
     result = _run_shellcheck_hook(target, SHELLCHECK_BIN="/nowhere/shellcheck")
     assert result.returncode == 2, result.stdout
     assert _first_line(result).startswith("shell-lint-check: COULD NOT CHECK — "), result.stderr
-    assert bw.classify(result.returncode, result.stderr.encode()) == "unchecked"
+    assert classify(result.returncode, result.stderr.encode()) == "unchecked"
 
 
 def test_unchecked_first_line(tmp_path):
@@ -162,7 +160,7 @@ def test_unchecked_first_line(tmp_path):
     assert result.returncode == 2, result.stdout
     assert _first_line(result).startswith("shell-lint-check: COULD NOT CHECK — "), result.stderr
     assert ".lighthouse/scripts/shellcheck-repo.sh" in result.stderr
-    assert bw.classify(result.returncode, result.stderr.encode()) == "unchecked"
+    assert classify(result.returncode, result.stderr.encode()) == "unchecked"
 
 
 def test_script_found_in_the_file_root_without_env(tmp_path, pinned_shellcheck):
@@ -495,4 +493,4 @@ def test_hook_shellcheck_failure_is_unchecked(tmp_path):
     result = _run_shellcheck_hook(target, SHELLCHECK_BIN=_crashing_shellcheck(tmp_path, 3))
     assert result.returncode == 2, result.stdout
     assert _first_line(result).startswith("shell-lint-check: COULD NOT CHECK — "), result.stderr
-    assert bw.classify(result.returncode, result.stderr.encode()) == "unchecked"
+    assert classify(result.returncode, result.stderr.encode()) == "unchecked"

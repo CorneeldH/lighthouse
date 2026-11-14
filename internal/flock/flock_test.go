@@ -3,6 +3,7 @@ package flock
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -54,5 +55,56 @@ func TestTryLockOpenErrorNamesPath(t *testing.T) {
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("err = %v, want fs.ErrNotExist", err)
+	}
+}
+
+func openRW(t *testing.T, path string) *os.File {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	return f
+}
+
+// Twin of test_posix_lock_is_exclusive_until_unlocked: closing the file is the unlock.
+func TestTryFileIsExclusiveUntilTheHolderCloses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "slot")
+	a, b := openRW(t, path), openRW(t, path)
+	if held, err := TryFile(a); err != nil || !held {
+		t.Fatalf("first TryFile = %v, %v; want held", held, err)
+	}
+	if held, err := TryFile(b); err != nil || held {
+		t.Fatalf("second TryFile = %v, %v; want busy (false, nil)", held, err)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if held, err := TryFile(b); err != nil || !held {
+		t.Fatalf("TryFile after the holder closed = %v, %v; want held", held, err)
+	}
+}
+
+// Twin of test_posix_blocking_lock_holds_the_file: a lock taken with Lock is busy for TryFile.
+func TestTryFileSeesALockTakenWithLock(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "slot")
+	locked, err := Lock(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = locked.Close() }()
+	if held, err := TryFile(openRW(t, path)); err != nil || held {
+		t.Fatalf("TryFile = %v, %v; want busy (false, nil)", held, err)
+	}
+}
+
+func TestTryFileOnAClosedFileIsAnError(t *testing.T) {
+	f := openRW(t, filepath.Join(t.TempDir(), "slot"))
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if held, err := TryFile(f); err == nil || held {
+		t.Fatalf("TryFile on a closed file = %v, %v; want an error", held, err)
 	}
 }

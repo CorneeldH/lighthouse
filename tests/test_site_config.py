@@ -49,8 +49,6 @@ NOT_READERS = {
         "the name of a unit in a list of tools, not a read of the command",
     ("python.source_dirs", "pack/python/scripts/quality/prcov.py"):
         "its docstring names the key; the directories arrive as an argument from ratchet.py",
-    ("host.gate_min_mem_available_gb", "pack/core/lib/host_memory.py"):
-        "its docstring names the key; the thresholds arrive as arguments from commit-test-gate.sh",
 }
 INDIRECT_READERS = {
     ("forge.board.project_id", "pack/core/scripts/board_start.py"): ".project_id",
@@ -312,9 +310,9 @@ def test_problems_flag_a_reader_that_does_not_name_it():
 
 def test_problems_flag_a_missing_reader():
     data = copy.deepcopy(load("config.json"))
-    entry_of(data, "test_gate.command")["readers"].remove("pack/core/hooks/commit-test-gate.sh")
+    entry_of(data, "test_gate.command")["readers"].remove("internal/commitgate/gate.go")
     assert config_problems(data, ROOT) == [
-        "test_gate.command: reader pack/core/hooks/commit-test-gate.sh missing from the map"]
+        "test_gate.command: reader internal/commitgate/gate.go missing from the map"]
 
 
 def test_problems_flag_an_empty_reader_list():
@@ -372,7 +370,7 @@ def test_config_reader_marks_the_sort():
     assert read("pack/core/skills/write-issue") == {
         "name": "write-issue", "sort": "workflow-skill",
         "href": REPO_TREE + "pack/core/skills/write-issue"}
-    assert read("pack/core/hooks/commit-test-gate.sh")["sort"] == "hook"
+    assert read("pack/core/hooks/pr-create-gate.sh")["sort"] == "hook"
     assert read("pack/core/workflows/unblock-dependents.yml")["sort"] == "github"
     assert read("internal/usage/config.go") == {
         "name": "config.go", "sort": "program", "href": REPO_BLOB + "internal/usage/config.go"}

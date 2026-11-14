@@ -37,6 +37,7 @@
       },
       {
         "name": "commit-test-gate",
+        "source": "internal/hooks/committestgate.go",
         "events": [
           "PreToolUse",
           "PostToolUse",

@@ -104,19 +104,19 @@ hook PreToolUse "run.sh main-commit-gate" "mkdir new && cd new && git commit -m 
 HOOK_CWD=
 row "2b. main-commit-gate, commit in a fresh dir, Windows cwd" "rc 2, blocked" "$RC" "$(mark ok 2 'Main-commit gate: blocked')" "$ERR"
 
-hook PreToolUse "commit-test-gate.sh pre" "git commit -m x"
+hook PreToolUse "run.sh commit-test-gate pre" "git commit -m x"
 row "3. commit-test-gate pre, on \`main\`" "rc 0, \`nothing was tested\`" "$RC" "$(mark ok 0 'nothing was tested')" "$ERR"
 
 git -C "$REPO" checkout -q -b issue-1-x
 hook PreToolUse "run.sh main-commit-gate" "git commit -m x"
 row "4. main-commit-gate, commit on a branch" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 
-hook PreToolUse "commit-test-gate.sh pre" "git commit -m x"
+hook PreToolUse "run.sh commit-test-gate pre" "git commit -m x"
 row "5. commit-test-gate pre, on a branch" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 echo y >"$REPO/a.txt"
 git -C "$REPO" add a.txt
 git -C "$REPO" commit -q -m "a" >/dev/null 2>&1
-hook PostToolUse "commit-test-gate.sh post" "git commit -m x"
+hook PostToolUse "run.sh commit-test-gate post" "git commit -m x"
 row "6. commit-test-gate post, after a commit" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 
 hook PreToolUse "run.sh bash-write-check pre" "echo z > b.txt"
@@ -133,11 +133,11 @@ row "10. pr-create-gate, \`No issue:\` body" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 # With a [test_gate] command, post runs it on the commit's files, inside a gate slot.
 printf '\n[test_gate]\ncommand = "git --version"\n' >>"$REPO/lighthouse.toml"
 git -C "$REPO" commit -q -am "test gate" >/dev/null 2>&1
-hook PreToolUse "commit-test-gate.sh pre" "git commit -m x"
+hook PreToolUse "run.sh commit-test-gate pre" "git commit -m x"
 echo c >"$REPO/c.txt"
 git -C "$REPO" add c.txt
 git -C "$REPO" commit -q -m "c" >/dev/null 2>&1
-hook PostToolUse "commit-test-gate.sh post" "git commit -m x"
+hook PostToolUse "run.sh commit-test-gate post" "git commit -m x"
 row "11. commit-test-gate post, with \`[test_gate] command\`" "rc 0, \`git version\`" "$RC" "$(mark ok 0 'git version')" "$ERR"
 
 echo "### Host"

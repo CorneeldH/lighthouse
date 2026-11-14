@@ -111,15 +111,15 @@ func WorktreeCheck(ctx context.Context, _, _ string, p hook.Payload) hook.Result
 // readWritePayload reads `.tool_input.file_path` and `.cwd` the way `jq -r '.x // empty'` does.
 // ok is false when jq could not index the payload.
 func readWritePayload(raw []byte) (filePath, cwd string, ok bool) {
-	top, ok := jqFields(raw)
+	top, ok := hook.JQFields(raw)
 	if !ok {
 		return "", "", false
 	}
-	toolInput, ok := jqFields(top["tool_input"])
+	toolInput, ok := hook.JQFields(top["tool_input"])
 	if !ok {
 		return "", "", false
 	}
-	return jqText(toolInput["file_path"]), jqText(top["cwd"]), true
+	return hook.JQText(toolInput["file_path"]), hook.JQText(top["cwd"]), true
 }
 
 // canonMissing is GNU `realpath -m path`: the components are walked from left to right; a

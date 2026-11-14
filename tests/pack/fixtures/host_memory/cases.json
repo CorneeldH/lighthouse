@@ -1,0 +1,23 @@
+[
+  {"name": "reads-every-field", "kind": "meminfo", "text": "MemTotal:       16777216 kB\nMemFree:          123456 kB\nMemAvailable:   734003 kB\nSwapTotal:      25165824 kB\nSwapFree:       524288 kB\n", "expect": {"MemTotal": 16777216, "MemFree": 123456, "MemAvailable": 734003, "SwapTotal": 25165824, "SwapFree": 524288}},
+  {"name": "missing-memavailable-raises", "kind": "meminfo", "text": "MemTotal:       16000000 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n", "expect": "raises"},
+  {"name": "empty-text-raises", "kind": "meminfo", "text": "", "expect": "raises"},
+  {"name": "skips-lines-without-colon-or-number", "kind": "meminfo", "text": "garbage\nHugepagesize:   x kB\nEmpty:\nMemAvailable:   5 kB\n", "expect": {"MemAvailable": 5}},
+  {"name": "field-without-unit", "kind": "meminfo", "text": "MemAvailable: 7\n", "expect": {"MemAvailable": 7}},
+  {"name": "last-duplicate-wins", "kind": "meminfo", "text": "MemAvailable: 1 kB\nMemAvailable: 2 kB\n", "expect": {"MemAvailable": 2}},
+  {"name": "name-and-value-with-spaces", "kind": "meminfo", "text": "  MemAvailable  :   9 kB\n", "expect": {"MemAvailable": 9}},
+  {"name": "both-low", "kind": "shortfalls", "info": {"MemAvailable": 734003, "SwapTotal": 25165824, "SwapFree": 524288}, "min_available_gib": 4, "min_swap_free_gib": 2, "expect": {"found": ["MemAvailable 0.7 GiB < 4 GiB", "SwapFree 0.5 GiB < 2 GiB"], "notes": []}},
+  {"name": "only-set-threshold-counts", "kind": "shortfalls", "info": {"MemAvailable": 734003, "SwapTotal": 25165824, "SwapFree": 524288}, "min_available_gib": 4, "min_swap_free_gib": null, "expect": {"found": ["MemAvailable 0.7 GiB < 4 GiB"], "notes": []}},
+  {"name": "only-swap-threshold-set", "kind": "shortfalls", "info": {"MemAvailable": 734003, "SwapTotal": 25165824, "SwapFree": 524288}, "min_available_gib": null, "min_swap_free_gib": 2, "expect": {"found": ["SwapFree 0.5 GiB < 2 GiB"], "notes": []}},
+  {"name": "no-thresholds-is-empty", "kind": "shortfalls", "info": {"MemAvailable": 734003, "SwapTotal": 25165824, "SwapFree": 524288}, "min_available_gib": null, "min_swap_free_gib": null, "expect": {"found": [], "notes": []}},
+  {"name": "enough-is-empty", "kind": "shortfalls", "info": {"MemAvailable": 8388608, "SwapTotal": 25165824, "SwapFree": 4194304}, "min_available_gib": 4, "min_swap_free_gib": 2, "expect": {"found": [], "notes": []}},
+  {"name": "exactly-the-threshold-passes", "kind": "shortfalls", "info": {"MemAvailable": 4194304, "SwapTotal": 1048576, "SwapFree": 2097152}, "min_available_gib": 4, "min_swap_free_gib": 2, "expect": {"found": [], "notes": []}},
+  {"name": "one-kb-below-the-threshold", "kind": "shortfalls", "info": {"MemAvailable": 4194303, "SwapTotal": 1048576, "SwapFree": 2097152}, "min_available_gib": 4, "min_swap_free_gib": 2, "expect": {"found": ["MemAvailable 4.0 GiB < 4 GiB"], "notes": []}},
+  {"name": "no-swap-skips-swap-check", "kind": "shortfalls", "info": {"MemAvailable": 8388608, "SwapTotal": 0, "SwapFree": 0}, "min_available_gib": null, "min_swap_free_gib": 2, "expect": {"found": [], "notes": ["no swap on this host, SwapFree not checked"]}},
+  {"name": "no-swap-note-also-with-memory-short", "kind": "shortfalls", "info": {"MemAvailable": 1, "SwapTotal": 0, "SwapFree": 0}, "min_available_gib": 4, "min_swap_free_gib": 2, "expect": {"found": ["MemAvailable 0.0 GiB < 4 GiB"], "notes": ["no swap on this host, SwapFree not checked"]}},
+  {"name": "swaptotal-absent-counts-as-no-swap", "kind": "shortfalls", "info": {"MemAvailable": 8388608}, "min_available_gib": null, "min_swap_free_gib": 2, "expect": {"found": [], "notes": ["no swap on this host, SwapFree not checked"]}},
+  {"name": "swapfree-absent-counts-as-zero", "kind": "shortfalls", "info": {"MemAvailable": 8388608, "SwapTotal": 1048576}, "min_available_gib": null, "min_swap_free_gib": 2, "expect": {"found": ["SwapFree 0.0 GiB < 2 GiB"], "notes": []}},
+  {"name": "fractional-threshold-uses-g-format", "kind": "shortfalls", "info": {"MemAvailable": 734003, "SwapTotal": 25165824, "SwapFree": 524288}, "min_available_gib": 0.75, "min_swap_free_gib": null, "expect": {"found": ["MemAvailable 0.7 GiB < 0.75 GiB"], "notes": []}},
+  {"name": "large-threshold-uses-exponent-format", "kind": "shortfalls", "info": {"MemAvailable": 734003, "SwapTotal": 25165824, "SwapFree": 524288}, "min_available_gib": 1234567, "min_swap_free_gib": null, "expect": {"found": ["MemAvailable 0.7 GiB < 1.23457e+06 GiB"], "notes": []}},
+  {"name": "very-large-threshold-keeps-exponent", "kind": "shortfalls", "info": {"MemAvailable": 734003, "SwapTotal": 25165824, "SwapFree": 524288}, "min_available_gib": 1e+16, "min_swap_free_gib": null, "expect": {"found": ["MemAvailable 0.7 GiB < 1e+16 GiB"], "notes": []}}
+]
