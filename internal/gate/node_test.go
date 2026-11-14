@@ -333,3 +333,24 @@ func TestNodeUnreadableListIsUnchecked(t *testing.T) {
 		t.Errorf("rc=%d stderr=%q", rc, errOut)
 	}
 }
+
+// A drift target that is a symlink to a directory is read through the link: WalkDir does not
+// descend into a symlinked root, and an empty snapshot before and after gen would pass stale code.
+func TestSnapshotFollowsSymlinkedDir(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "api.ts"), []byte("v1"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err := snapshot(link)
+	if err != nil || got["api.ts"] != "v1" || len(got) != 1 {
+		t.Fatalf("snapshot(link) = %v, %v; want {api.ts: v1}", got, err)
+	}
+}

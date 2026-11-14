@@ -45,6 +45,10 @@ func snapshot(p string) (map[string]string, error) {
 		data, err := os.ReadFile(p)
 		return map[string]string{".": string(data)}, err
 	}
+	// WalkDir does not descend into a symlinked root: walk the directory it points to.
+	if p, err = filepath.EvalSymlinks(p); err != nil {
+		return nil, err
+	}
 	out := map[string]string{}
 	err = filepath.WalkDir(p, func(file string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
