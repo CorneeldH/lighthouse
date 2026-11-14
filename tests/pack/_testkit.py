@@ -170,10 +170,21 @@ def fill_fixture(value, root: str):
     `{root}` is the temporary directory (not passed through realpath),
     `{real:<path>}` is the realpath of `{root}/<path>` and `{home:<name>}` is
     the home directory of user `<name>`, `{rev:<path>:<rev>}` the output of
-    `git -C {root}/<path> rev-parse <rev>` and `{empty_tree}` the empty tree.
+    `git -C {root}/<path> rev-parse <rev>`, `{short:<path>:<rev>}` the same with
+    `--short=7` and `{empty_tree}` the empty tree.
     Fill them after the last step of the case. The keys of a dict are filled too.
     """
     if isinstance(value, str):
+        value = re.sub(
+            r"\{short:([^:}]+):([^}]+)\}",
+            lambda m: subprocess.run(
+                ["git", "-C", f"{root}/{m[1]}", "rev-parse", "--short=7", m[2]],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip(),
+            value,
+        )
         value = re.sub(
             r"\{rev:([^:}]+):([^}]+)\}",
             lambda m: subprocess.run(

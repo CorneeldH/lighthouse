@@ -665,7 +665,7 @@
     "what": "Writes one copy-paste-ready block with worktree, branch, goal, background and the first step, for a fresh session to start from.",
     "how": [
       "It reads the worktree path, the branch, git status and the last commits, and picks one anchor: a plan, a spec, an issue or a PR.",
-      "For a spec or plan anchor with a known issue, it posts the artefact on the issue with post_artefact.py.",
+      "For a spec or plan anchor with a known issue, it posts the artefact on the issue with lighthouse post-artefact.",
       "It picks the first step from a routing table, such as plan review for an unreviewed plan or fix-pr for a red PR, and that line always starts with a slash command.",
       "It prints the block, reads it back to check for that slash command and suggests /clear."
     ],

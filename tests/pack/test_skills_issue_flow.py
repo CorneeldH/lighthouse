@@ -2,7 +2,7 @@
 
 What lives only in skill text and no runtime enforces: gate 0 reads the blocker from the
 relation, the gates moved to route-issue, start-issue reports one gate line and runs the
-scout at 4b/4c, and handoff writes the protocol tokens of `lighthouse_lib.protocol`. Both
+scout at 4b/4c, and handoff writes the protocol tokens of `lighthouse protocol`. Both
 variants (Claude and Agents) are checked on content.
 
 From paia's `test_issue_skills_contract.py`, `test_instructielagen.py` (the handoff rows) and
@@ -447,11 +447,11 @@ def test_handoff_post_artefact():
     for body in skill("write-handoff"):
         flat = " ".join(body.split())
         for phrase in (
-            "python3 .lighthouse/scripts/post_artefact.py <nr> <absolute path>",
+            "lighthouse post-artefact <nr> <absolute path>",
             "with `dangerouslyDisableSandbox: true` (Go TLS of `gh`):",
             "also in controller mode (if present) before the `🤖 heading:kind_handoff`",
             "An error does not block the handoff",
-            "artefact: <the line from post_artefact.py>",
+            "artefact: <the line from lighthouse post-artefact>",
         ):
             assert phrase in flat, phrase
 
@@ -467,7 +467,7 @@ def test_handoff_post_artefact_is_in_step_3():
     for body in skill("write-handoff"):
         assert (
             body.index("3. **Decide the anchor.**")
-            < body.index(".lighthouse/scripts/post_artefact.py")
+            < body.index("lighthouse post-artefact <nr>")
             < body.index("4. **Decide the first step")
         )
 
@@ -496,7 +496,7 @@ def test_handoff_pause_form_skips_phase_side_effects():
         section = body[body.index("## Pause form") : body.index("## Workflow")]
         flat = " ".join(section.split())
         for phrase in (
-            "post_artefact.py",
+            "lighthouse post-artefact",
             "no push",
             "Controller mode",
             "no question to the user",
@@ -523,7 +523,7 @@ def test_handoff_knows_lane_native():
 
 
 def test_handoff_writes_new_tokens():
-    """The handoff block writes the tokens of `lighthouse_lib.protocol` (Protocoltokens):
+    """The handoff block writes the tokens of `lighthouse protocol` (Protocoltokens):
     `next:`, `when: now|night`, `anchor:`, under the heading from headings.toml."""
     for body in skill("write-handoff"):
         post = body[body.index("5. **Post**") : body.index("6. **Status")]

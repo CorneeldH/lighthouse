@@ -60,21 +60,6 @@ source_path = ".claude/hooks/lib/pr_body_gate.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/lib/protocol.py"
-source_path = "src/controller/comments.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/lib/artefacts.py"
-source_path = "src/controller/artefacten.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/post_artefact.py"
-source_path = "scripts/post_artefact.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/scripts/create_labels.py"
 new = true
 

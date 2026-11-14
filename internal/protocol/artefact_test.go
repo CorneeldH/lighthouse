@@ -262,7 +262,7 @@ func runArtefactCase(t *testing.T, c artefactCase) any {
 func fits(t *testing.T, parts []string) bool {
 	t.Helper()
 	url := "https://github.com/Owner/repo/issues/1#issuecomment-1234567890"
-	m := ArtefactMeta{Kind: "plan", Version: 99, Part: 99, Parts: 99, File: "docs/x.md",
+	m := ArtefactMeta{Kind: "plan", Version: 99, Part: 99, Parts: 99, File: "plans/x.md",
 		Commit: strings.Repeat("a", 40), Hash: strings.Repeat("0", 12), Replaces: &url}
 	for _, p := range parts {
 		body, err := RenderArtefact(m, p, "nl", "Owner/repo")

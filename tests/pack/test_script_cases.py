@@ -26,6 +26,7 @@ COMMANDS: dict[str, list[str]] = {
     "_self": [],
     "board-start": [str(lighthouse_dir() / "lighthouse"), "board-start"],
     "unblock-dependents": [str(lighthouse_dir() / "lighthouse"), "unblock-dependents"],
+    "post-artefact": [str(lighthouse_dir() / "lighthouse"), "post-artefact"],
 }
 
 
