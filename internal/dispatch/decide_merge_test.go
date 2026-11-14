@@ -212,6 +212,44 @@ func openBrake() *Brake {
 	}
 }
 
+// A fix-pr start replaces run 5, which settle closes in the same tick and which InUse and
+// SoftwareInUse already count, so it passes full slots and a full software limit (#334).
+// Counted as a new run it defers, settleUnstartedFixPR keeps run 5 open, and with every slot
+// held by such a run no run ever closes.
+func TestFixPRStartPassesFullSlots(t *testing.T) {
+	causes := []struct {
+		name   string
+		mutate func(*Input)
+		start  string
+	}{
+		{"red", red, "start:reason_pr_red:"},
+		{"conflict", conflict, "start:reason_pr_conflict:"},
+		{"roborev", roborev, "start:reason_pr_roborev:"},
+		{"merge failed", mergeNote, "start:reason_merge_failed:Pull Request is not mergeable"},
+	}
+	full := []struct {
+		name string
+		set  func(*Brake)
+	}{
+		{"slots", func(b *Brake) { b.InUse = 4 }},
+		{"software", func(b *Brake) { b.InUse, b.SoftwareInUse = 2, 2 }},
+	}
+	for _, f := range full {
+		for _, c := range causes {
+			t.Run(f.name+"/"+c.name, func(t *testing.T) {
+				in := loadInput(t, "settle-green-pr-done")
+				c.mutate(&in)
+				in.Repos[0].Controller.Profile = ProfileSoftware
+				in.Brake = openBrake()
+				f.set(in.Brake)
+				if s, want := summary(Decide(in)), []string{fixClose12, c.start}; !reflect.DeepEqual(s, want) {
+					t.Fatalf("summary = %q, want %q", s, want)
+				}
+			})
+		}
+	}
+}
+
 // A fix-pr start the brake holds back in one tick starts in the tick the brake opens. Tick 1
 // leaves run 5 untouched (only the defer, or nothing under a pause), so tick 2 reads the same
 // open run and the same PR, and plans the close and the fix-pr start on the same key.
@@ -222,7 +260,6 @@ func TestFixPRStartsInTickAfterBrakeOpens(t *testing.T) {
 		closed func(*Brake)
 		tick1  []string
 	}{
-		{"slots", func(b *Brake) { b.InUse = 4 }, []string{"defer:slots: 4 of 4 in use:"}},
 		{"usage", func(b *Brake) { b.SessionPct = 90 }, []string{"defer:usage: session 90%, week 10%:"}},
 		{"memory", func(b *Brake) { b.MemAvailableGiB = &low },
 			[]string{"defer:memory: MemAvailable 4.0 GiB - 0 x 3 GiB < 8 GiB:"}},

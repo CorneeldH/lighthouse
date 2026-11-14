@@ -182,7 +182,9 @@ type planned struct {
 	priority int
 	at       time.Time
 	software bool // the repo profile is "software"
-	parked   bool // a usage resume: its run already holds a slot
+	// holdsSlot: the run it continues already holds a slot, counted in Brake.InUse. A usage
+	// resume of a parked run, or a fix-pr start that replaces the run settle closes in this tick.
+	holdsSlot bool
 	// fixReason and fixReasonArg are the cause of the fix-pr start a fix-pr close stands for.
 	fixReason    string
 	fixReasonArg string
@@ -258,7 +260,9 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		if fix != nil && !c.active() {
 			a := c.fresh(triggerFixPR, fix.key, cmdFixPR+" "+strconv.Itoa(fix.pr.Number), fix.pr.HeadRef)
 			a.Reason, a.ReasonArg = fix.reason, fix.arg
-			out = append(out, c.planned(a, c.now))
+			p := c.planned(a, c.now)
+			p.holdsSlot = true
+			out = append(out, p)
 		} else if p, ok := c.next(); ok {
 			out = append(out, p)
 		}
@@ -1309,11 +1313,11 @@ func (c issueCtx) deferred(reason string) planned {
 // planned orders a start or resume by the item's priority and the time of its trigger.
 func (c issueCtx) planned(a Action, at time.Time) planned {
 	return planned{
-		Action:   a,
-		priority: priorityRank(c.it.Priority),
-		at:       at,
-		software: c.repo.Controller.Profile == ProfileSoftware,
-		parked:   a.Trigger == triggerUsage,
+		Action:    a,
+		priority:  priorityRank(c.it.Priority),
+		at:        at,
+		software:  c.repo.Controller.Profile == ProfileSoftware,
+		holdsSlot: a.Trigger == triggerUsage,
 	}
 }
 

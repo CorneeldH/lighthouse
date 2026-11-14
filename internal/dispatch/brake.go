@@ -28,8 +28,9 @@ type Brake struct {
 
 // apply walks the starts and resumes of ps in order and lets each through, drops it (pause)
 // or turns it into a defer with the text of the first closed brake: pause, usage, memory,
-// slots, software. Other actions pass untouched. A parked resume skips slots and software and
-// does not count in their totals, but counts for memory.
+// slots, software. Other actions pass untouched. A start or resume whose run already holds a
+// slot (planned.holdsSlot) skips slots and software and does not count in their totals, but
+// counts for memory.
 func (b *Brake) apply(ps []planned) []planned {
 	out := make([]planned, 0, len(ps))
 	passed, admitted, admittedSoftware := 0, 0, 0
@@ -48,7 +49,7 @@ func (b *Brake) apply(ps []planned) []planned {
 			continue
 		}
 		passed++
-		if !p.parked {
+		if !p.holdsSlot {
 			admitted++
 			if p.software {
 				admittedSoftware++
@@ -86,7 +87,7 @@ func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int) string
 		return fmt.Sprintf("memory: MemAvailable %.1f GiB - %d x %d GiB < %d GiB",
 			*b.MemAvailableGiB, passed, b.ReservePerRunGB, b.MinMemAvailableGB)
 	}
-	if p.parked {
+	if p.holdsSlot {
 		return ""
 	}
 	if b.InUse+admitted >= b.Slots {
