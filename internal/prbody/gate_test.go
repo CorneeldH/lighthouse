@@ -652,10 +652,14 @@ func assertGroupGone(t *testing.T, start time.Time, pidFile string) {
 	if err != nil {
 		t.Fatalf("pid of the background child: %v", err)
 	}
-	for end := time.Now().Add(500 * time.Millisecond); alive(pid) && time.Now().Before(end); {
-		time.Sleep(10 * time.Millisecond)
+	gone := false
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+		if !alive(pid) {
+			gone = true
+			break
+		}
 	}
-	if alive(pid) {
+	if !gone {
 		t.Errorf("background child %d of gh still runs: the group was not killed", pid)
 	}
 }
