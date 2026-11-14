@@ -198,7 +198,10 @@ type planned struct {
 	// fixDeferred marks the defer of a fix-pr start whose placement deferred it: the start was
 	// wanted, so the close of its run stays open.
 	fixDeferred bool
-	parked      bool // a usage resume: its run already holds a slot
+	// holdsSlot: the run it continues already holds its slot, counted in the brake's InUse. A
+	// usage resume of a parked run, or a fix-pr start on the node and profile of the run settle
+	// closes in this tick.
+	holdsSlot bool
 	// fixReason and fixReasonArg are the cause of the fix-pr start a fix-pr close stands for.
 	fixReason    string
 	fixReasonArg string
@@ -247,6 +250,7 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	}
 	free := !orphaned
 	var fix *fixPRStart
+	var fixRow runs.Row // the run the fix-pr start replaces
 	for _, row := range repo.History {
 		if !row.Open || row.Issue != it.Issue {
 			continue
@@ -255,7 +259,7 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		if closes {
 			p := planned{Action: a}
 			if f != nil {
-				fix = f
+				fix, fixRow = f, row
 				p.fixReason, p.fixReasonArg = f.reason, f.arg
 			}
 			out = append(out, p)
@@ -274,7 +278,12 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		if fix != nil && !c.active() {
 			a := c.fresh(triggerFixPR, fix.key, cmdFixPR+" "+strconv.Itoa(fix.pr.Number), fix.pr.HeadRef)
 			a.Reason, a.ReasonArg = fix.reason, fix.arg
-			out = append(out, c.planned(a, c.now))
+			p := c.planned(a, c.now)
+			// The start replaces fixRow, which closes in this tick and still counts in the
+			// brake: on its node and its profile the start takes no new slot.
+			p.holdsSlot = p.Kind == KindStart && p.node == fixRow.Node &&
+				p.software == (fixRow.Profile == ProfileSoftware)
+			out = append(out, p)
 		} else if p, ok := c.next(); ok {
 			out = append(out, p)
 		}
@@ -1335,12 +1344,12 @@ func (c issueCtx) planned(a Action, at time.Time) planned {
 	}
 	a.Profile, a.Node = profile, node
 	return planned{
-		Action:   a,
-		priority: priorityRank(c.it.Priority),
-		at:       at,
-		software: a.Profile == ProfileSoftware,
-		node:     a.Node,
-		parked:   a.Trigger == triggerUsage,
+		Action:    a,
+		priority:  priorityRank(c.it.Priority),
+		at:        at,
+		software:  a.Profile == ProfileSoftware,
+		node:      a.Node,
+		holdsSlot: a.Trigger == triggerUsage,
 	}
 }
 

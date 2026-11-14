@@ -365,6 +365,12 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
   tick sluit, telt nog mee; de volgende tick ziet de plek vrij.
 - Een usage-hervatting (de geparkeerde run na de reset, trigger `usage`) slaat Plekken en Software
   over en telt er niet in mee: de run zit al in `in_use`. Hij telt wel mee in `n` van Geheugen.
+- Hetzelfde geldt voor de fix-pr-start van regel 13, als hij op de node en met het profiel van de
+  run komt die in dezelfde tick sluit: die run zit al in `in_use` (of in de plekken van zijn
+  node). Telde hij als nieuwe run, dan hielden open runs die op een rode PR wachten bij volle
+  plekken elkaars plek vast: geen start, dus geen afsluiting (#334). Plaatst de keuzeregel de
+  start op een andere node, of met een ander profiel (software of niet), dan telt hij als nieuwe
+  run: de plek van de sluitende run komt daar niet vrij.
 - Een marker met `pause: true` hervat zodra er geen pauze meer geldt, ook vóór zijn `reset_at`; de
   toets `reset_at <= nu` slaat tick bij hem over.
 - Een marker die nooit meer hervat (de laatste run sloot als Handoff, Vraag of Klaar, de herkansing
