@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -61,9 +62,10 @@ func TestHelperTake(t *testing.T) {
 // TestClaimTwoProcesses lets two processes claim the same issue at the same
 // moment: exactly one wins, the other gets ErrClaimed.
 //
-// A helper that dies from a signal (exit -1, empty stderr: seen once on a
-// macOS runner, #338) says nothing about the claim: that try is logged and run
-// again, at most claimTries times. Every other outcome is a verdict.
+// A helper killed by SIGKILL (exit -1, empty stderr: seen once on a macOS
+// runner, #338) says nothing about the claim: that try is logged and run again,
+// at most claimTries times. Every other outcome, another signal included, is a
+// verdict.
 func TestClaimTwoProcesses(t *testing.T) {
 	for i := range 20 {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
@@ -132,8 +134,9 @@ func claimRace(t *testing.T) string {
 		} else if err != nil {
 			t.Fatalf("helper %d: %v", n+1, err)
 		}
-		// ExitCode is -1 only for a process that a signal ended.
-		if code == -1 {
+		// Only SIGKILL counts as the runner's doing: it leaves no trace. A crash
+		// (SIGABRT, SIGSEGV) prints its stack and stays a failure below.
+		if ws, ok := cmd.ProcessState.Sys().(syscall.WaitStatus); ok && ws.Signaled() && ws.Signal() == syscall.SIGKILL {
 			killed = fmt.Sprintf("helper %d ended by %s; stderr: %q", n+1, ee.ProcessState, stderrs[n])
 		}
 		codes[code]++
