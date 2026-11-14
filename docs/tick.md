@@ -12,8 +12,11 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    tick `lighthouse: previous tick still running` naar stderr en eindigt met exitcode 0. Zonder
    `XDG_RUNTIME_DIR` stopt tick met `tick: XDG_RUNTIME_DIR is not set: cannot take tick.lock`; bij een
    relatief pad met `tick: XDG_RUNTIME_DIR is not an absolute path: cannot take tick.lock`.
-2. **Token.** Vereist `GH_TOKEN` of `GITHUB_TOKEN`. Zonder stopt tick met
-   `tick: no GitHub token: set GH_TOKEN or GITHUB_TOKEN`. Het token heeft de scopes `repo` en
+2. **Token.** Het token komt per repo uit `GH_TOKEN` of `GITHUB_TOKEN` (github) of uit
+   `GITLAB_TOKEN` (gitlab), of uit de variabele die `[forge] token_env` van die repo noemt. Een repo
+   zonder token krijgt een skip-regel. Heeft geen enkele repo een token, dan stopt tick met
+   `tick: no GitHub token: set GH_TOKEN or GITHUB_TOKEN`. `--forge-url` en `LIGHTHOUSE_FORGE_URL`
+   gelden alleen voor GitHub-repo's. Het token heeft de scopes `repo` en
    `project` nodig: lighthouse leest en schrijft er comments, reacties en het board mee. Om een
    groene eigen PR te mergen (regel 7) heeft het token ook *Contents: write* nodig. Gebruik een
    classic token, of een fine-grained token dat elke repo dekt waarvan issues op het board staan:

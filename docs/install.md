@@ -184,7 +184,11 @@ has comments, so it weighs most and reaches the budget first. That is a delibera
 risk, with no code to guard it; when the budget runs out both endpoints answer 502 through the
 existing `forgeError`.
 
-Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment. Create a fine-grained
+Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment, or `GITLAB_TOKEN` for a
+GitLab repository. `[forge] token_env` in a repository's `lighthouse.toml` names another variable
+instead. A repository without a token is skipped for questions and returned issues, with a line on
+stderr, but `serve` still shows its runs. `--forge-url` (`LIGHTHOUSE_FORGE_URL`) sets the API base
+URL for GitHub repositories only; the GitHub token is never sent to a GitLab host. Create a fine-grained
 personal access token for those repositories with only the *Issues: read* permission. The
 server only reads. With the Controller filter described below it also needs the `project` scope.
 

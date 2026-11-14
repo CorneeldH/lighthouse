@@ -273,6 +273,7 @@
               "example": "PVT_...",
               "readers": [
                 "internal/cli/triage.go",
+                "internal/forge/board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
@@ -324,7 +325,9 @@
               "readers": [
                 "internal/cli/serve.go",
                 "internal/cli/triage.go",
-                "internal/dispatch/board.go",
+                "internal/dispatch/gather.go",
+                "internal/forge/board.go",
+                "internal/forge/forge.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
                 "pack/core/skills/write-handoff",
