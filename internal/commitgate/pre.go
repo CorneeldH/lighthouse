@@ -1,11 +1,9 @@
 package commitgate
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
@@ -24,23 +22,10 @@ const noVerifyBlock = HookName + ": --no-verify is not allowed in this repo.\n" 
 // nothing to test, unlike a git that breaks.
 var notARepo = []string{"not a git repository", "Not a git repository", "No such file or directory", "cannot change to"}
 
-// gitRun runs `git -C dir args…`, with LC_ALL=C when cLocale is set: a message matched as text
-// must not be translated. Trailing newlines go off both strings, as `$(…)` takes them off. When git
-// does not start at all, stderr carries the reason.
+// gitRun is hook.RunGit with the output as `$(…)` leaves it.
 func gitRun(ctx context.Context, dir string, cLocale bool, args ...string) (stdout, stderr string, err error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
-	if cLocale {
-		cmd.Env = append(os.Environ(), "LC_ALL=C")
-	}
-	var out, errOut bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errOut
-	err = cmd.Run()
-	stdout, stderr = captured(out.Bytes()), captured(errOut.Bytes())
-	var exit *exec.ExitError
-	if err != nil && !errors.As(err, &exit) && stderr == "" {
-		stderr = err.Error()
-	}
-	return stdout, stderr, err
+	out, errOut, err := hook.RunGit(ctx, dir, cLocale, args...)
+	return captured(out), captured(errOut), err
 }
 
 func orNoMessage(s string) string {

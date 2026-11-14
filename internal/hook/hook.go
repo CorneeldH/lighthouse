@@ -14,6 +14,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -242,4 +243,24 @@ func JQText(v json.RawMessage) string {
 		return s
 	}
 	return text
+}
+
+// RunGit runs `git -C dir args…`, with LC_ALL=C when cLocale is set: a message matched as text
+// must not be translated. The output comes back untrimmed; each caller trims it the way its
+// shell original did. When git does not start at all and wrote nothing but newlines, stderr
+// carries the reason, as a shell would print it.
+func RunGit(ctx context.Context, dir string, cLocale bool, args ...string) (stdout, stderr []byte, err error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	if cLocale {
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+	}
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	err = cmd.Run()
+	stdout, stderr = out.Bytes(), errOut.Bytes()
+	var exit *exec.ExitError
+	if err != nil && !errors.As(err, &exit) && len(bytes.TrimRight(stderr, "\n")) == 0 {
+		stderr = []byte(err.Error())
+	}
+	return stdout, stderr, err
 }
