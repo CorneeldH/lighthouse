@@ -684,3 +684,15 @@ func TestHasEvidenceBlock(t *testing.T) {
 	eq(t, "no heading", HasEvidenceBlock("Refs #5 — een reden genoeg", 5), false)
 	eq(t, "heading in a comment", HasEvidenceBlock("Refs #5 — een reden genoeg\n<!--\n### Evidence #5\n-->", 5), false)
 }
+
+// A U+FFFD in the text is printable, as in Python; an invalid byte is escaped the way Python's
+// surrogateescape shows it.
+func TestRepoReprInBlocker(t *testing.T) {
+	for value, want := range map[string]string{
+		"a\uFFFDb": "--repo 'a\uFFFDb' does not have the form [HOST/]OWNER/REPO",
+		"a\xffb":   `--repo 'a\udcffb' does not have the form [HOST/]OWNER/REPO`,
+	} {
+		_, reason := InScope(context.Background(), PrCreate{Repo: &value}, t.TempDir(), "Acme/widgets")
+		eq(t, value, reason, want)
+	}
+}

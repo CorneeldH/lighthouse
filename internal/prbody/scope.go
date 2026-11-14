@@ -141,7 +141,12 @@ func pyStrRepr(s string) string {
 	}
 	var b strings.Builder
 	b.WriteByte(quote)
-	for _, r := range s {
+	for i, r := range s {
+		if _, size := utf8.DecodeRuneInString(s[i:]); r == utf8.RuneError && size == 1 {
+			// An invalid byte: Python's surrogateescape makes it U+DC80–U+DCFF.
+			fmt.Fprintf(&b, `\udc%02x`, s[i])
+			continue
+		}
 		switch {
 		case r == rune(quote) || r == '\\':
 			b.WriteByte('\\')
@@ -152,7 +157,7 @@ func pyStrRepr(s string) string {
 			b.WriteString(`\r`)
 		case r == '\t':
 			b.WriteString(`\t`)
-		case r == utf8.RuneError || !unicode.IsPrint(r):
+		case !unicode.IsPrint(r):
 			switch {
 			case r < 0x100:
 				fmt.Fprintf(&b, `\x%02x`, r)
