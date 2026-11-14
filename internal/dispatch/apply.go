@@ -21,7 +21,8 @@ import (
 // Poster is the forge side apply writes to: one repo's comments, reactions and merges.
 type Poster interface {
 	CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error)
-	AddRocket(ctx context.Context, commentID int64) error
+	// Acknowledge puts the token's 🚀 on comment commentID of issue number.
+	Acknowledge(ctx context.Context, number int, commentID int64) error
 	// MergePR squash-merges pull request number, only while its head is still sha.
 	MergePR(ctx context.Context, number int, sha string) error
 }
@@ -29,7 +30,7 @@ type Poster interface {
 // Board is the board side apply writes to: the Status of one repo's board items, by option
 // name.
 type Board interface {
-	SetStatus(ctx context.Context, itemID, status string) error
+	SetStatus(ctx context.Context, item forge.BoardItem, status string) error
 }
 
 // Env is what Apply needs from the outside, per repo where it differs.
@@ -132,7 +133,7 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		}
 		return ap.closeRun(ctx, a.RunID, a.Outcome, closeReason(a))
 	case KindRocket:
-		return ap.env.Poster(a.Repo).AddRocket(ctx, a.CommentID)
+		return ap.env.Poster(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID)
 	case KindDefer:
 		res.Deferred = append(res.Deferred, deferral(a, a.Reason))
 		return nil
@@ -188,7 +189,8 @@ func (ap applier) merge(ctx context.Context, a Action, res *Result) error {
 
 // setStatus moves the board item of a to status.
 func (ap applier) setStatus(ctx context.Context, a Action, status string) error {
-	if err := ap.env.Board(a.Repo).SetStatus(ctx, a.ItemID, status); err != nil {
+	item := forge.BoardItem{ItemID: a.ItemID, Repo: a.Repo, Issue: a.Issue}
+	if err := ap.env.Board(a.Repo).SetStatus(ctx, item, status); err != nil {
 		return fmt.Errorf("board: %w", err)
 	}
 	return nil
@@ -442,7 +444,7 @@ func (ap applier) announce(ctx context.Context, a Action, runID int64, session s
 		return ap.startFailed(ctx, runID, "post", err)
 	}
 	if a.CommentID > 0 {
-		if err := poster.AddRocket(ctx, a.CommentID); err != nil {
+		if err := poster.Acknowledge(ctx, a.Issue, a.CommentID); err != nil {
 			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)
 		}
 	}

@@ -9,13 +9,12 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
-	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // maxConcurrent caps the comment fetches that run at the same time.
 const maxConcurrent = 8
 
-// Source is where the open issues and their comments come from; *forge.Client satisfies it.
+// Source is where the open issues and their comments come from; *forge.GitHub satisfies it.
 type Source interface {
 	OpenIssues(ctx context.Context) ([]forge.Issue, error)
 	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
@@ -25,24 +24,22 @@ type Source interface {
 // open issue, as without [dispatch].
 type Filter func(ctx context.Context) (map[int]bool, error)
 
-// BoardReader lists the items of a Projects v2 board; *forge.Client satisfies it.
+// BoardReader lists the items of one repo's board; *forge.GitHub satisfies it.
 type BoardReader interface {
-	BoardItems(ctx context.Context, projectID string) ([]forge.BoardItem, error)
+	BoardItems(ctx context.Context) ([]forge.BoardItem, error)
 }
 
-// ControllerIssues is the Filter of the issues of slug whose Status on board b is the option
-// b.StatusOptions["Controller"]. The caller makes sure that option is set: an empty option ID
-// would match every item without a Status.
-func ControllerIssues(r BoardReader, slug string, b repoconfig.Board) Filter {
-	controller := b.StatusOptions["Controller"]
+// ControllerIssues is the Filter of the issues of slug whose Status on the board of r is
+// Controller.
+func ControllerIssues(r BoardReader, slug string) Filter {
 	return func(ctx context.Context) (map[int]bool, error) {
-		items, err := r.BoardItems(ctx, b.ProjectID)
+		items, err := r.BoardItems(ctx)
 		if err != nil {
 			return nil, err
 		}
 		in := map[int]bool{}
 		for _, it := range items {
-			if it.Repo == slug && it.SingleSelect[b.StatusFieldID] == controller {
+			if it.Repo == slug && it.Status == "Controller" {
 				in[it.Issue] = true
 			}
 		}

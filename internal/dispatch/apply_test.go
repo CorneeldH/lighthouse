@@ -75,8 +75,8 @@ func (p *fakePoster) CreateComment(_ context.Context, number int, body string) (
 	return protocol.Comment{ID: 1000 + p.nextID, Body: body}, nil
 }
 
-func (p *fakePoster) AddRocket(_ context.Context, commentID int64) error {
-	p.log.add("AddRocket")
+func (p *fakePoster) Acknowledge(_ context.Context, _ int, commentID int64) error {
+	p.log.add("Acknowledge")
 	p.rockets = append(p.rockets, commentID)
 	return p.rocketErr
 }
@@ -94,12 +94,12 @@ type fakeBoard struct {
 	sets []string
 }
 
-func (b *fakeBoard) SetStatus(_ context.Context, itemID, status string) error {
+func (b *fakeBoard) SetStatus(_ context.Context, item forge.BoardItem, status string) error {
 	b.log.add("SetStatus")
 	if b.err != nil {
 		return b.err
 	}
-	b.sets = append(b.sets, itemID+" "+status)
+	b.sets = append(b.sets, item.ItemID+" "+status)
 	return nil
 }
 
@@ -290,7 +290,7 @@ func TestApplyStartOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	wantCalls := []string{"Prepare", "Sessions ws-issue-7-x", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	wantCalls := []string{"Prepare", "Sessions ws-issue-7-x", "CreateComment", "Acknowledge", "Prepare", "Spawn"}
 	if got := h.log.all(); !reflect.DeepEqual(got, wantCalls) {
 		t.Fatalf("calls = %q, want %q", got, wantCalls)
 	}
@@ -517,7 +517,7 @@ func TestApplyRocketFailsStillLaunches(t *testing.T) {
 	if len(res.Failed) != 0 {
 		t.Errorf("Failed = %v, want none", res.Failed)
 	}
-	want := []string{"Prepare", "Sessions ws-issue-7-x", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "CreateComment", "Acknowledge", "Prepare", "Spawn"}
 	if got := h.log.all(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("calls = %q, want %q", got, want)
 	}
@@ -1225,7 +1225,7 @@ func TestApplyResumeKillsEarlierClaudeAfterTheClaim(t *testing.T) {
 	if openAtKill != 1 {
 		t.Errorf("open runs at Kill = %d, want 1: the resume's own claim", openAtKill)
 	}
-	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "Acknowledge", "Prepare", "Spawn"}
 	if got := h.log.all(); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
@@ -1287,7 +1287,7 @@ func TestApplyStartKillsClaudeOfReturnedRunAfterTheClaim(t *testing.T) {
 	if openAtKill != 1 {
 		t.Errorf("open runs at Kill = %d, want 1: the start's own claim", openAtKill)
 	}
-	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "Acknowledge", "Prepare", "Spawn"}
 	if got := h.log.all(); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}

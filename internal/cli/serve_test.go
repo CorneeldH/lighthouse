@@ -22,6 +22,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
@@ -166,7 +167,7 @@ func TestNewForgeTrimsSlash(t *testing.T) {
 		}
 		return ""
 	}
-	c := newForge("o/r", "http://x/", getenv)
+	c := newForge(repoconfig.Repo{Slug: "o/r"}, "http://x/", getenv)
 	if c.BaseURL != "http://x" {
 		t.Errorf("BaseURL = %q, want http://x", c.BaseURL)
 	}
@@ -395,7 +396,7 @@ func TestForgeReposDispatchClientPerRepo(t *testing.T) {
 	}
 	wantFilter := []bool{true, false}
 	for i, g := range got {
-		c, ok := g.Src.(*forge.Client)
+		c, ok := g.Src.(*forge.GitHub)
 		if !ok || c.Repo != g.Slug {
 			t.Errorf("source %s: Src = %+v, want the forge client of %s", g.Slug, g.Src, g.Slug)
 		}
@@ -441,7 +442,7 @@ func TestForgeReposWithoutDispatch(t *testing.T) {
 	if len(got) != 1 || got[0].Slug != "o/r" || got[0].InController != nil {
 		t.Fatalf("forgeRepos = %+v, want one source o/r without filter", got)
 	}
-	c, ok := got[0].Src.(*forge.Client)
+	c, ok := got[0].Src.(*forge.GitHub)
 	if !ok || c.Repo != "o/r" || c.Token != "tok" || c.BaseURL != "http://forge" {
 		t.Errorf("Src = %+v, want the forge client of o/r at http://forge with token tok", got[0].Src)
 	}

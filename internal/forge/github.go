@@ -1,4 +1,6 @@
-// Package forge reads and writes GitHub issues, comments, reactions and the Projects v2 board, and squash-merges a pull request at a measured head.
+// Package forge reads and writes issues, comments, acknowledgements and the board of a forge;
+// GitHub is the one implementation so far. The GitHub client also squash-merges a pull request
+// at a measured head.
 package forge
 
 import (
@@ -11,9 +13,11 @@ import (
 	"net/http"
 	neturl "net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // ErrNotConfigured means the client has no repo or no token, so no request was made.
@@ -30,23 +34,27 @@ type Issue struct {
 	Author    string // user.login
 	Labels    []string
 	UpdatedAt time.Time
-	ClosedAt  time.Time // zero while open
-	NodeID    string
+	ClosedAt  time.Time  // zero while open
 	Milestone *Milestone // nil: none
 }
 
-// Client is a GitHub REST client.
-type Client struct {
+// GitHub is a GitHub REST and GraphQL client for one repository.
+type GitHub struct {
 	Repo, Token, BaseURL string
 	HTTP                 *http.Client
+	// Board is the [forge.board] of the repo; nil makes every board method fail.
+	Board *repoconfig.Board
+
+	mu      sync.Mutex
+	nodeIDs map[int]string // issue number → node ID, filled by Issue and OpenIssues
 }
 
 // DefaultBaseURL is the GitHub API root.
 const DefaultBaseURL = "https://api.github.com"
 
 // New returns a client for repo ("owner/name") with the given token.
-func New(repo, token string) *Client {
-	return &Client{
+func New(repo, token string) *GitHub {
+	return &GitHub{
 		Repo:    repo,
 		Token:   token,
 		BaseURL: DefaultBaseURL,
@@ -54,7 +62,41 @@ func New(repo, token string) *Client {
 	}
 }
 
-func (c *Client) configured() error {
+// Kind is "github".
+func (c *GitHub) Kind() string { return "github" }
+
+// remember keeps the node ID of an issue for AddToBoard.
+func (c *GitHub) remember(it issueItem) {
+	if it.NodeID == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.nodeIDs == nil {
+		c.nodeIDs = map[int]string{}
+	}
+	c.nodeIDs[it.Number] = it.NodeID
+}
+
+// nodeID is the node ID of issue number: from the cache, else from one read of the issue.
+func (c *GitHub) nodeID(ctx context.Context, number int) (string, error) {
+	c.mu.Lock()
+	id := c.nodeIDs[number]
+	c.mu.Unlock()
+	if id != "" {
+		return id, nil
+	}
+	is, err := c.readIssue(ctx, number)
+	if err != nil {
+		return "", err
+	}
+	if is.NodeID == "" {
+		return "", fmt.Errorf("forge: issue %s#%d: no node ID", c.Repo, number)
+	}
+	return is.NodeID, nil
+}
+
+func (c *GitHub) configured() error {
 	if c.Repo == "" || c.Token == "" {
 		return ErrNotConfigured
 	}
@@ -62,7 +104,7 @@ func (c *Client) configured() error {
 }
 
 // OpenIssues lists all open issues of the repo, following every page, without pull requests.
-func (c *Client) OpenIssues(ctx context.Context) ([]Issue, error) {
+func (c *GitHub) OpenIssues(ctx context.Context) ([]Issue, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
@@ -78,6 +120,7 @@ func (c *Client) OpenIssues(ctx context.Context) ([]Issue, error) {
 			if it.PullRequest != nil {
 				continue
 			}
+			c.remember(it)
 			out = append(out, it.issue())
 		}
 		url = next
@@ -86,20 +129,30 @@ func (c *Client) OpenIssues(ctx context.Context) ([]Issue, error) {
 }
 
 // Issue reads one issue by number, whether it is open or closed.
-func (c *Client) Issue(ctx context.Context, number int) (Issue, error) {
-	if err := c.configured(); err != nil {
-		return Issue{}, err
-	}
-	var it issueItem
-	url := fmt.Sprintf("%s/repos/%s/issues/%d", c.BaseURL, c.Repo, number)
-	if _, err := c.do(ctx, http.MethodGet, url, nil, &it); err != nil {
+func (c *GitHub) Issue(ctx context.Context, number int) (Issue, error) {
+	it, err := c.readIssue(ctx, number)
+	if err != nil {
 		return Issue{}, err
 	}
 	return it.issue(), nil
 }
 
+// readIssue reads one issue in REST shape and remembers its node ID.
+func (c *GitHub) readIssue(ctx context.Context, number int) (issueItem, error) {
+	if err := c.configured(); err != nil {
+		return issueItem{}, err
+	}
+	var it issueItem
+	url := fmt.Sprintf("%s/repos/%s/issues/%d", c.BaseURL, c.Repo, number)
+	if _, err := c.do(ctx, http.MethodGet, url, nil, &it); err != nil {
+		return issueItem{}, err
+	}
+	c.remember(it)
+	return it, nil
+}
+
 // Comments lists all comments of one issue, following every page.
-func (c *Client) Comments(ctx context.Context, number int) ([]protocol.Comment, error) {
+func (c *GitHub) Comments(ctx context.Context, number int) ([]protocol.Comment, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
@@ -137,7 +190,7 @@ func (c *Client) Comments(ctx context.Context, number int) ([]protocol.Comment, 
 
 // do is the only place that makes a request. A non-nil body is sent as JSON; a non-nil into
 // receives the decoded JSON response. It returns the URL of the next page, or "" when there is none.
-func (c *Client) do(ctx context.Context, method, url string, body, into any) (string, error) {
+func (c *GitHub) do(ctx context.Context, method, url string, body, into any) (string, error) {
 	var rd io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -209,7 +262,7 @@ func (e *httpStatusError) Error() string { return e.msg }
 // sameOrigin refuses a next-page URL whose scheme or host differs from BaseURL, so the
 // token never goes to another host. Only scheme and host count: GitHub's Link URLs use
 // /repositories/<id>/..., not /repos/owner/name/....
-func (c *Client) sameOrigin(next string) error {
+func (c *GitHub) sameOrigin(next string) error {
 	if next == "" {
 		return nil
 	}

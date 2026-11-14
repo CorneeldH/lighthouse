@@ -64,7 +64,7 @@ func gather(ctx context.Context, env tickEnv, dir, dbPath string, out, errOut io
 	}
 	defer func() { _ = st.Close() }()
 
-	c := env.client(repo.Slug, token)
+	c := env.client(repo, token)
 	pre, err := prepare(ctx, st.DB, c, repo)
 	if err != nil {
 		return err

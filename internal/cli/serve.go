@@ -80,11 +80,12 @@ func envOr(key, def string) string {
 	return def
 }
 
-// newForge builds the GitHub client for repo against baseURL (trailing slashes dropped), with
-// the token from the environment.
-func newForge(repo, baseURL string, getenv func(string) string) *forge.Client {
-	c := forge.New(repo, githubToken(getenv))
+// newForge builds the GitHub client for repo, with its board, against baseURL (trailing
+// slashes dropped), with the token from the environment.
+func newForge(repo repoconfig.Repo, baseURL string, getenv func(string) string) *forge.GitHub {
+	c := forge.New(repo.Slug, githubToken(getenv))
 	c.BaseURL = strings.TrimRight(baseURL, "/")
+	c.Board = repo.Board
 	return c
 }
 
@@ -111,7 +112,7 @@ func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, err
 		if repo == "" {
 			return nil, nil
 		}
-		return []overview.RepoSource{{Slug: repo, Src: newForge(repo, forgeURL, getenv)}}, nil
+		return []overview.RepoSource{{Slug: repo, Src: newForge(repoconfig.Repo{Slug: repo}, forgeURL, getenv)}}, nil
 	}
 	var out []overview.RepoSource
 	for _, path := range cfg.Repos {
@@ -120,14 +121,14 @@ func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, err
 			_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 			continue
 		}
-		c := newForge(r.Slug, forgeURL, getenv)
+		c := newForge(r, forgeURL, getenv)
 		src := overview.RepoSource{Slug: r.Slug, Src: c}
 		switch {
 		case r.Board == nil:
 		case r.Board.StatusOptions["Controller"] == "":
 			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: missing forge.board.status_options.Controller: overview shows every open issue\n", path)
 		default:
-			src.InController = overview.ControllerIssues(c, r.Slug, *r.Board)
+			src.InController = overview.ControllerIssues(c, r.Slug)
 		}
 		out = append(out, src)
 	}

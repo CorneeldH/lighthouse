@@ -66,9 +66,10 @@ func (e tickEnv) now() time.Time {
 	return e.Now()
 }
 
-// client returns a GitHub client for repo at ForgeURL.
-func (e tickEnv) client(repo, token string) *forge.Client {
-	c := forge.New(repo, token)
+// client returns a GitHub client for repo, with its board, at ForgeURL.
+func (e tickEnv) client(repo repoconfig.Repo, token string) *forge.GitHub {
+	c := forge.New(repo.Slug, token)
+	c.Board = repo.Board
 	if e.ForgeURL != "" {
 		c.BaseURL = e.ForgeURL
 	}
@@ -237,7 +238,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 		var pre *dispatch.Pre
 		if err == nil {
 			if login == nil {
-				c := env.client(repo.Slug, token)
+				c := env.client(repo, token)
 				login = sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
 			}
 			in, fp, pre, err = gatherRepo(ctx, env, st.DB, cfg, facts, repo, token, login, errOut)
@@ -363,7 +364,7 @@ func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispa
 	if err != nil {
 		return nil, err
 	}
-	c := env.client(sr.repo.Slug, token)
+	c := env.client(sr.repo, token)
 	in := workplace.SweepInput{
 		Repo:         sr.repo.Slug,
 		InController: dispatch.InController(sr.pre.Statuses),
@@ -458,11 +459,9 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	// repo: the callers write their apply lines from it, and tick decides which fingerprints
 	// it saves.
 	res, _ := dispatch.Apply(ctx, dispatch.Env{
-		DB:     db,
-		Poster: func(slug string) dispatch.Poster { return env.client(slug, token) },
-		Board: func(slug string) dispatch.Board {
-			return dispatch.NewBoard(env.client(slug, token), *repos[slug].Board)
-		},
+		DB:         db,
+		Poster:     func(slug string) dispatch.Poster { return env.client(repos[slug], token) },
+		Board:      func(slug string) dispatch.Board { return env.client(repos[slug], token) },
 		Workplace:  func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
 		MCPConfig:  func(profile string) string { return cfg.Profiles[profile].MCPConfig },
 		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
@@ -494,7 +493,7 @@ func (p prefixed) Write(b []byte) (int, error) {
 // gather writes one gathered line to errOut.
 func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, repo repoconfig.Repo,
 	token string, login func() (string, error), errOut io.Writer) (in *dispatch.RepoInput, fp string, _ *dispatch.Pre, err error) {
-	c := env.client(repo.Slug, token)
+	c := env.client(repo, token)
 	pre, err := measuredPre(ctx, env, db, cfg, c, repo, errOut)
 	if err != nil {
 		return nil, "", nil, err
@@ -520,7 +519,7 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 
 // prepare is the board half of a gather: the open runs, the branch of each issue's last run,
 // and the board with the PRs of those branches.
-func prepare(ctx context.Context, db *sql.DB, c *forge.Client, repo repoconfig.Repo) (dispatch.Pre, error) {
+func prepare(ctx context.Context, db *sql.DB, c *forge.GitHub, repo repoconfig.Repo) (dispatch.Pre, error) {
 	open, err := runs.Open(ctx, db, repo.Slug)
 	if err != nil {
 		return dispatch.Pre{}, err
@@ -540,7 +539,7 @@ func prepare(ctx context.Context, db *sql.DB, c *forge.Client, repo repoconfig.R
 // adopts the sessions of uncertain starts, reads the board half (prepare), and measures the
 // open runs. Adoption comes first, so the open runs prepare reads already hold a session that
 // showed up in this tick.
-func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, c *forge.Client,
+func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, c *forge.GitHub,
 	repo repoconfig.Repo, errOut io.Writer) (dispatch.Pre, error) {
 	if err := adopt(ctx, env, db, cfg, repo, errOut); err != nil {
 		return dispatch.Pre{}, err
@@ -698,7 +697,7 @@ func profileNodes(cfg hostconfig.Dispatch) map[string]string {
 // the history only after the comments: `lighthouse run` takes no tick.lock and writes its
 // run row before its Started, so a Started in the snapshot always has its row in the history
 // and the orphan rule never hands back a fresh run.
-func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, c *forge.Client, pre dispatch.Pre,
+func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, c *forge.GitHub, pre dispatch.Pre,
 	login func() (string, error), errOut io.Writer, now time.Time) (dispatch.RepoInput, error) {
 	who, err := login()
 	if err != nil {
@@ -726,7 +725,7 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, c *forg
 
 // tokenLogin returns the login of the token. A 🚀 counts only from this login, so an empty
 // login is an error rather than a gather in which no 🚀 counts.
-func tokenLogin(ctx context.Context, c *forge.Client) (string, error) {
+func tokenLogin(ctx context.Context, c *forge.GitHub) (string, error) {
 	login, err := c.Login(ctx)
 	if err != nil {
 		return "", err

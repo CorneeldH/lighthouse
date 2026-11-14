@@ -274,7 +274,7 @@ func (r *round) prepare(ctx context.Context, path string, repo repoconfig.Repo) 
 		}
 		_, _ = fmt.Fprintf(r.errOut, "lighthouse: warning: %s: %s\n", path, oneLine(err))
 	}
-	c := r.env.client(repo.Slug, r.token)
+	c := r.env.client(repo, r.token)
 	if r.login == nil {
 		r.login = sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
 	}
@@ -460,7 +460,7 @@ var errChanged = errors.New("changed since gather")
 // issue the board item and the Controller status, in that order (spec "Volgorde per issue").
 // step names the step that failed; it is "" for errChanged.
 func (r *round) apply(ctx context.Context, g *repoGather, f tri.Facts, o tri.Outcome) (step string, err error) {
-	after, nodeID, err := g.recheck(ctx, f.Number)
+	after, err := g.recheck(ctx, f.Number)
 	if err != nil {
 		return "gather", err
 	}
@@ -478,14 +478,13 @@ func (r *round) apply(ctx context.Context, g *repoGather, f tri.Facts, o tri.Out
 	if o.Row != tri.RowForward {
 		return "", nil
 	}
-	b := g.repo.Board
-	item := after.ItemID
-	if item == "" {
-		if item, err = g.c.AddToBoard(ctx, b.ProjectID, nodeID); err != nil {
+	item := forge.BoardItem{ItemID: after.ItemID, Repo: g.repo.Slug, Issue: f.Number}
+	if item.ItemID == "" {
+		if item, err = g.c.AddToBoard(ctx, f.Number); err != nil {
 			return "board", err
 		}
 	}
-	if err := g.c.SetStatus(ctx, b.ProjectID, item, b.StatusFieldID, b.StatusOptions["Controller"]); err != nil {
+	if err := g.c.SetStatus(ctx, item, "Controller"); err != nil {
 		return "status", err
 	}
 	return "", nil

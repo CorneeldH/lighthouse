@@ -21,7 +21,7 @@ import (
 // with. It lives for one repo in one round.
 type repoGather struct {
 	repo  repoconfig.Repo
-	c     *forge.Client
+	c     *forge.GitHub
 	db    *sql.DB
 	login string          // the token login: its comments are trusted (decision 2)
 	trust *dispatch.Trust // answer_permissions
@@ -43,7 +43,7 @@ func readRepo(ctx context.Context, g *repoGather) error {
 	if _, err := gitOut(ctx, r.Dir, "fetch", "--quiet", "origin", r.DefaultBranch); err != nil {
 		return err
 	}
-	items, err := g.c.BoardItems(ctx, r.Board.ProjectID)
+	items, err := g.c.BoardItems(ctx)
 	if err != nil {
 		return err
 	}
@@ -62,28 +62,10 @@ func readRepo(ctx context.Context, g *repoGather) error {
 }
 
 // boardFields are status and priority of an item, by option name. A status option that
-// status_options does not list is "unknown:<id>", not "": a column such as In progress or Done
-// is no "no status", so candidate rule 2 rejects it and Changed sees a move into it.
+// status_options does not list stays "unknown:<id>", not "": a column such as In progress or
+// Done is no "no status", so candidate rule 2 rejects it and Changed sees a move into it.
 func (g *repoGather) boardFields(it forge.BoardItem) (status, priority string) {
-	b := g.repo.Board
-	id := it.SingleSelect[b.StatusFieldID]
-	if status = optionName(b.StatusOptions, id); status == "" && id != "" {
-		status = "unknown:" + id
-	}
-	return status, optionName(b.PriorityOptions, it.SingleSelect[b.PriorityFieldID])
-}
-
-// optionName is the name of option id in options; "" for an unknown or empty id.
-func optionName(options map[string]string, id string) string {
-	if id == "" {
-		return ""
-	}
-	for name, oid := range options {
-		if oid == id {
-			return name
-		}
-	}
-	return ""
+	return it.Status, it.Priority
 }
 
 // itemFunc returns the board item of issue n; ok is false when n is not on the board.
@@ -96,7 +78,7 @@ func (g *repoGather) boardItem(ctx context.Context, n int) (forge.BoardItem, boo
 	if it, ok := g.board[n]; ok {
 		return it, true, nil
 	}
-	return g.c.IssueItem(ctx, g.repo.Board.ProjectID, n)
+	return g.c.IssueItem(ctx, n)
 }
 
 // gatherFacts reads the facts of issue is, in this order: the comments, the author's trust,
@@ -162,7 +144,7 @@ func (g *repoGather) gatherFacts(ctx context.Context, is forge.Issue, item itemF
 				f.MilestoneOpen = append(f.MilestoneOpen, tri.Ref{Number: o.Number, Title: o.Title})
 			}
 		}
-		if f.MilestoneClosed, err = g.closedIn(ctx, m.Number); err != nil {
+		if f.MilestoneClosed, err = g.closedIn(ctx, *m); err != nil {
 			return tri.Facts{}, err
 		}
 	}
@@ -171,8 +153,8 @@ func (g *repoGather) gatherFacts(ctx context.Context, is forge.Issue, item itemF
 
 // closedIn lists the issues closed in milestone m within tri.ClosedWindow, read once per
 // milestone.
-func (g *repoGather) closedIn(ctx context.Context, m int) ([]tri.Ref, error) {
-	if refs, ok := g.closed[m]; ok {
+func (g *repoGather) closedIn(ctx context.Context, m forge.Milestone) ([]tri.Ref, error) {
+	if refs, ok := g.closed[m.Number]; ok {
 		return refs, nil
 	}
 	issues, err := g.c.ClosedInMilestone(ctx, m, g.now.Add(-tri.ClosedWindow))
@@ -183,22 +165,21 @@ func (g *repoGather) closedIn(ctx context.Context, m int) ([]tri.Ref, error) {
 	for _, is := range issues {
 		refs = append(refs, tri.Ref{Number: is.Number, Title: is.Title})
 	}
-	g.closed[m] = refs
+	g.closed[m.Number] = refs
 	return refs, nil
 }
 
 // recheck reads issue n afresh, just before the first write (spec "Hercontrole"): the issue, its
 // comments, its board item and fresh lists of running work. Nothing of the first gather is
-// reused. nodeID is the issue's node ID, for AddToBoard.
-func (g *repoGather) recheck(ctx context.Context, n int) (f tri.Facts, nodeID string, err error) {
+// reused. Reading the issue leaves its node ID in the client, for AddToBoard.
+func (g *repoGather) recheck(ctx context.Context, n int) (tri.Facts, error) {
 	is, err := g.c.Issue(ctx, n)
 	if err != nil {
-		return tri.Facts{}, "", err
+		return tri.Facts{}, err
 	}
-	item := func(n int) (forge.BoardItem, bool, error) { return g.c.IssueItem(ctx, g.repo.Board.ProjectID, n) }
+	item := func(n int) (forge.BoardItem, bool, error) { return g.c.IssueItem(ctx, n) }
 	work := func() (workLists, error) { return readWork(ctx, g.c, g.db, g.repo) }
-	f, err = g.gatherFacts(ctx, is, item, work, false)
-	return f, is.NodeID, err
+	return g.gatherFacts(ctx, is, item, work, false)
 }
 
 // workLists are the lists running work is read from (candidate rule 5).
@@ -212,7 +193,7 @@ type workLists struct {
 
 // readWork reads the open PRs, the open runs, the branches on origin, the local branches and
 // the worktrees of repo.
-func readWork(ctx context.Context, c *forge.Client, db *sql.DB, repo repoconfig.Repo) (workLists, error) {
+func readWork(ctx context.Context, c *forge.GitHub, db *sql.DB, repo repoconfig.Repo) (workLists, error) {
 	var w workLists
 	var err error
 	if w.prs, err = c.OpenPRs(ctx); err != nil {

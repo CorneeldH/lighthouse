@@ -9,7 +9,7 @@ import (
 
 // graphql posts query with vars to BaseURL/graphql and decodes data into into. GitHub answers
 // 200 with an errors list on a failed query; that is an error here, never empty data.
-func (c *Client) graphql(ctx context.Context, query string, vars map[string]any, into any) error {
+func (c *GitHub) graphql(ctx context.Context, query string, vars map[string]any, into any) error {
 	var resp struct {
 		Data   json.RawMessage `json:"data"`
 		Errors []struct {

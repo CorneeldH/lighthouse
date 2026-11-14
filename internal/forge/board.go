@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // PR is a pull request as the snapshot holds it.
@@ -44,12 +46,21 @@ type Blocker struct {
 	Status string `json:"status,omitempty"`
 }
 
+// UnknownStatusPrefix starts the Status of an item whose option [forge.board] status_options does not
+// list: "unknown:<option ID>". Such a column (In progress, Done) is not "no status".
+const UnknownStatusPrefix = "unknown:"
+
 // BoardItem is one item of a Projects v2 board.
 type BoardItem struct {
-	ItemID         string
-	ItemUpdatedAt  time.Time
-	SingleSelect   map[string]string // field ID → option ID
-	Repo           string            // nameWithOwner; "" when the content is no issue
+	ItemID        string
+	ItemUpdatedAt time.Time
+	// Status is the option name of the Status field; "" without a status, and
+	// "unknown:<option ID>" for an option that status_options does not list.
+	Status string
+	// Priority is the option name of the Priority field; "" without a priority or for an
+	// option that priority_options does not list.
+	Priority       string
+	Repo           string // nameWithOwner; "" when the content is no issue
 	Issue          int
 	Title          string
 	IssueState     string
@@ -65,7 +76,7 @@ type BoardItem struct {
 const prFields = `number state isDraft mergeable headRefOid headRefName isCrossRepository mergedAt closedAt url statusCheckRollup { state }`
 
 // fieldValuesSelection is the single-select values of a project item, shared by the board and
-// the one-issue query so both fill BoardItem.SingleSelect the same way.
+// the one-issue query so both fill BoardItem.Status and Priority the same way.
 const fieldValuesSelection = `fieldValues(first: 50) {
             pageInfo { hasNextPage }
             nodes {
@@ -233,13 +244,56 @@ type itemNode struct {
 	} `json:"content"`
 }
 
-// BoardItems lists every item of a Projects v2 board, following every page. A nested list
-// that GitHub cut off is an error and gives no items: a missing blocker PR or Status value
-// would change what the dispatcher decides.
-func (c *Client) BoardItems(ctx context.Context, projectID string) ([]BoardItem, error) {
+// board is the [forge.board] of the repo, or an error when there is none.
+func (c *GitHub) board() (*repoconfig.Board, error) {
+	if c.Board == nil {
+		return nil, fmt.Errorf("forge: %s: missing [forge.board]", c.Repo)
+	}
+	return c.Board, nil
+}
+
+// named sets Status and Priority of it from its single-select values, by option name of b.
+func named(it BoardItem, values map[string]string, b *repoconfig.Board) BoardItem {
+	if id := values[b.StatusFieldID]; id != "" {
+		it.Status = optionName(b.StatusOptions, id)
+		if it.Status == "" {
+			it.Status = UnknownStatusPrefix + id
+		}
+	}
+	it.Priority = optionName(b.PriorityOptions, values[b.PriorityFieldID])
+	return it
+}
+
+// optionName is the name of option id in options; "" for an unknown or empty id.
+func optionName(options map[string]string, id string) string {
+	if id == "" {
+		return ""
+	}
+	for name, oid := range options {
+		if oid == id {
+			return name
+		}
+	}
+	return ""
+}
+
+// BoardItems lists every item of the board of [forge.board] project_id, following every page.
+// A nested list that GitHub cut off is an error and gives no items: a missing blocker PR or
+// Status value would change what the dispatcher decides.
+func (c *GitHub) BoardItems(ctx context.Context) ([]BoardItem, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
+	b, err := c.board()
+	if err != nil {
+		return nil, err
+	}
+	return c.boardItems(ctx, b)
+}
+
+// boardItems reads the items of project b.ProjectID.
+func (c *GitHub) boardItems(ctx context.Context, b *repoconfig.Board) ([]BoardItem, error) {
+	projectID := b.ProjectID
 	var out []BoardItem
 	var after any // null on the first page
 	for {
@@ -258,11 +312,11 @@ func (c *Client) BoardItems(ctx context.Context, projectID string) ([]BoardItem,
 			return nil, fmt.Errorf("forge: board %s: not a ProjectV2", projectID)
 		}
 		for _, n := range data.Node.Items.Nodes {
-			it, err := n.item()
+			it, values, err := n.item()
 			if err != nil {
 				return nil, fmt.Errorf("forge: board item %s: %w", n.ID, err)
 			}
-			out = append(out, it)
+			out = append(out, named(it, values, b))
 		}
 		if !data.Node.Items.PageInfo.HasNextPage {
 			return out, nil
@@ -276,35 +330,37 @@ func (c *Client) BoardItems(ctx context.Context, projectID string) ([]BoardItem,
 	}
 }
 
-// item maps one node, refusing any nested connection with more pages.
-func (n itemNode) item() (BoardItem, error) {
-	it := BoardItem{ItemID: n.ID, ItemUpdatedAt: n.UpdatedAt, SingleSelect: map[string]string{}, Archived: n.IsArchived}
+// item maps one node, refusing any nested connection with more pages. values are its
+// single-select values, field ID → option ID.
+func (n itemNode) item() (it BoardItem, values map[string]string, err error) {
+	it = BoardItem{ItemID: n.ID, ItemUpdatedAt: n.UpdatedAt, Archived: n.IsArchived}
 	if n.FieldValues.PageInfo.HasNextPage {
-		return BoardItem{}, truncated("fieldValues", len(n.FieldValues.Nodes))
+		return BoardItem{}, nil, truncated("fieldValues", len(n.FieldValues.Nodes))
 	}
+	values = map[string]string{}
 	for _, v := range n.FieldValues.Nodes {
 		if v.OptionID != "" && v.Field.ID != "" {
-			it.SingleSelect[v.Field.ID] = v.OptionID
+			values[v.Field.ID] = v.OptionID
 		}
 	}
 	ct := n.Content
 	if ct == nil || ct.Number == 0 {
-		return it, nil // a draft issue, a pull request, or content the token cannot see
+		return it, values, nil // a draft issue, a pull request, or content the token cannot see
 	}
 	it.Repo, it.Issue, it.Title = ct.Repository.NameWithOwner, ct.Number, ct.Title
 	it.IssueState, it.IssueUpdatedAt = ct.State, ct.UpdatedAt
 	if ct.Labels.PageInfo.HasNextPage {
-		return BoardItem{}, truncated("labels", len(ct.Labels.Nodes))
+		return BoardItem{}, nil, truncated("labels", len(ct.Labels.Nodes))
 	}
 	for _, l := range ct.Labels.Nodes {
 		it.Labels = append(it.Labels, l.Name)
 	}
 	if ct.BlockedBy.PageInfo.HasNextPage {
-		return BoardItem{}, truncated("blockedBy", len(ct.BlockedBy.Nodes))
+		return BoardItem{}, nil, truncated("blockedBy", len(ct.BlockedBy.Nodes))
 	}
 	for _, b := range ct.BlockedBy.Nodes {
 		if b.ClosedBy.PageInfo.HasNextPage {
-			return BoardItem{}, truncated(fmt.Sprintf("blocker %s#%d closedByPullRequestsReferences", b.Repository.NameWithOwner, b.Number), len(b.ClosedBy.Nodes))
+			return BoardItem{}, nil, truncated(fmt.Sprintf("blocker %s#%d closedByPullRequestsReferences", b.Repository.NameWithOwner, b.Number), len(b.ClosedBy.Nodes))
 		}
 		bl := Blocker{Repo: b.Repository.NameWithOwner, Issue: b.Number, State: b.State}
 		for _, p := range b.ClosedBy.Nodes {
@@ -313,12 +369,12 @@ func (n itemNode) item() (BoardItem, error) {
 		it.BlockedBy = append(it.BlockedBy, bl)
 	}
 	if ct.ClosedBy.PageInfo.HasNextPage {
-		return BoardItem{}, truncated("closedByPullRequestsReferences", len(ct.ClosedBy.Nodes))
+		return BoardItem{}, nil, truncated("closedByPullRequestsReferences", len(ct.ClosedBy.Nodes))
 	}
 	for _, p := range ct.ClosedBy.Nodes {
 		it.ClosingPRs = append(it.ClosingPRs, p.pr(true))
 	}
-	return it, nil
+	return it, values, nil
 }
 
 func truncated(connection string, n int) error {
@@ -327,7 +383,7 @@ func truncated(connection string, n int) error {
 
 // BranchPRs lists the pull requests whose head is branch, open, closed and merged. Closes is
 // false on each: the branch says nothing about which issue a PR closes.
-func (c *Client) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
+func (c *GitHub) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
@@ -361,20 +417,41 @@ func (c *Client) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	return out, nil
 }
 
-// SetStatus sets the single-select field fieldID of a board item to optionID.
-func (c *Client) SetStatus(ctx context.Context, projectID, itemID, fieldID, optionID string) error {
+// SetStatus moves item to status, an option name of [forge.board] status_options. A name it
+// does not list, or an item without an ItemID, is an error before any request.
+func (c *GitHub) SetStatus(ctx context.Context, item BoardItem, status string) error {
 	if err := c.configured(); err != nil {
 		return err
 	}
+	b, err := c.board()
+	if err != nil {
+		return err
+	}
+	option, ok := b.StatusOptions[status]
+	if !ok {
+		return fmt.Errorf("status %q is not in [forge.board] status_options", status)
+	}
+	if item.ItemID == "" {
+		return fmt.Errorf("forge: %s#%d: no board item to set the status of", item.Repo, item.Issue)
+	}
+	return c.setOption(ctx, b.ProjectID, item.ItemID, b.StatusFieldID, option)
+}
+
+// setOption sets the single-select field fieldID of a board item to optionID.
+func (c *GitHub) setOption(ctx context.Context, projectID, itemID, fieldID, optionID string) error {
 	vars := map[string]any{"project": projectID, "item": itemID, "field": fieldID, "option": optionID}
 	return c.graphql(ctx, SetStatusMutation, vars, nil)
 }
 
-// IssueItem returns the item of issue number on project projectID; ok is false when the issue
-// is not on that board. SingleSelect is filled as in BoardItems; a cut list is an error. An
-// archived item counts as an item, with Archived set.
-func (c *Client) IssueItem(ctx context.Context, projectID string, number int) (item BoardItem, ok bool, err error) {
+// IssueItem returns the item of issue number on the board of [forge.board]; ok is false when
+// the issue is not on that board. Status and Priority are filled as in BoardItems; a cut list
+// is an error. An archived item counts as an item, with Archived set.
+func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error) {
 	if err := c.configured(); err != nil {
+		return BoardItem{}, false, err
+	}
+	b, err := c.board()
+	if err != nil {
 		return BoardItem{}, false, err
 	}
 	owner, name, found := strings.Cut(c.Repo, "/")
@@ -408,25 +485,44 @@ func (c *Client) IssueItem(ctx context.Context, projectID string, number int) (i
 		return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d: %w", c.Repo, number, truncated("projectItems", len(items.Nodes)))
 	}
 	for _, n := range items.Nodes {
-		if n.Project.ID != projectID {
+		if n.Project.ID != b.ProjectID {
 			continue
 		}
-		it, err := n.item()
+		it, values, err := n.item()
 		if err != nil {
 			return BoardItem{}, false, fmt.Errorf("forge: board item %s: %w", n.ID, err)
 		}
 		it.Repo, it.Issue = c.Repo, number // the query selects no content: the issue is the one asked for
-		return it, true, nil
+		return named(it, values, b), true, nil
 	}
 	return BoardItem{}, false, nil
 }
 
-// AddToBoard adds the issue with node ID contentID to project projectID and returns the ID of
-// the new project item.
-func (c *Client) AddToBoard(ctx context.Context, projectID, contentID string) (itemID string, err error) {
+// AddToBoard adds issue number to the board of [forge.board] and returns the new item, without
+// a status. The issue's node ID comes from the cache Issue and OpenIssues fill, else from one
+// read of the issue.
+func (c *GitHub) AddToBoard(ctx context.Context, number int) (BoardItem, error) {
 	if err := c.configured(); err != nil {
-		return "", err
+		return BoardItem{}, err
 	}
+	b, err := c.board()
+	if err != nil {
+		return BoardItem{}, err
+	}
+	contentID, err := c.nodeID(ctx, number)
+	if err != nil {
+		return BoardItem{}, err
+	}
+	itemID, err := c.addToBoard(ctx, b.ProjectID, contentID)
+	if err != nil {
+		return BoardItem{}, err
+	}
+	return BoardItem{ItemID: itemID, Repo: c.Repo, Issue: number}, nil
+}
+
+// addToBoard adds the issue with node ID contentID to project projectID and returns the ID of
+// the new project item.
+func (c *GitHub) addToBoard(ctx context.Context, projectID, contentID string) (string, error) {
 	var data struct {
 		AddProjectV2ItemByID *struct {
 			Item struct {

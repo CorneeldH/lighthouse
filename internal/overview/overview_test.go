@@ -11,7 +11,6 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
-	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 type fakeSource struct {
@@ -227,41 +226,33 @@ func TestBuildFilterFails(t *testing.T) {
 type fakeBoard struct {
 	items []forge.BoardItem
 	err   error
-	asked string
 }
 
-func (f *fakeBoard) BoardItems(_ context.Context, projectID string) ([]forge.BoardItem, error) {
-	f.asked = projectID
+func (f *fakeBoard) BoardItems(_ context.Context) ([]forge.BoardItem, error) {
 	return f.items, f.err
 }
 
 func TestControllerIssues(t *testing.T) {
-	b := repoconfig.Board{ProjectID: "PVT_x", StatusFieldID: "SF",
-		StatusOptions: map[string]string{"Controller": "c1", "In progress": "p1"}}
 	board := &fakeBoard{items: []forge.BoardItem{
-		{Repo: "o/r", Issue: 12, SingleSelect: map[string]string{"SF": "c1"}},
-		{Repo: "o/r", Issue: 945, SingleSelect: map[string]string{"SF": "p1"}},
-		{Repo: "x/y", Issue: 12, SingleSelect: map[string]string{"SF": "c1"}},
-		{Repo: "x/y", Issue: 14, SingleSelect: map[string]string{"SF": "c1"}},
-		{Repo: "o/r", Issue: 20, SingleSelect: map[string]string{"PF": "c1"}},
+		{Repo: "o/r", Issue: 12, Status: "Controller"},
+		{Repo: "o/r", Issue: 945, Status: "In progress"},
+		{Repo: "x/y", Issue: 12, Status: "Controller"},
+		{Repo: "x/y", Issue: 14, Status: "Controller"},
+		{Repo: "o/r", Issue: 20, Status: ""},
 	}}
 
-	got, err := ControllerIssues(board, "o/r", b)(context.Background())
+	got, err := ControllerIssues(board, "o/r")(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !maps.Equal(got, map[int]bool{12: true}) {
 		t.Errorf("got %v, want map[12:true]", got)
 	}
-	if board.asked != "PVT_x" {
-		t.Errorf("project = %q, want PVT_x", board.asked)
-	}
 }
 
 func TestControllerIssuesBoardFails(t *testing.T) {
 	boom := errors.New("graphql down")
-	b := repoconfig.Board{ProjectID: "PVT_x", StatusFieldID: "SF", StatusOptions: map[string]string{"Controller": "c1"}}
-	if _, err := ControllerIssues(&fakeBoard{err: boom}, "o/r", b)(context.Background()); !errors.Is(err, boom) {
+	if _, err := ControllerIssues(&fakeBoard{err: boom}, "o/r")(context.Background()); !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want graphql down", err)
 	}
 }
