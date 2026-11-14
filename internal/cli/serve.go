@@ -17,7 +17,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
-	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -48,7 +47,7 @@ func newServeCommand() *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			repos, err := forgeRepos(hostconfig.Path(), repo, forgeURL, os.Getenv, cmd.ErrOrStderr())
+			repos, slugs, err := forgeRepos(hostconfig.Path(), repo, forgeURL, os.Getenv, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -57,15 +56,15 @@ func newServeCommand() *cobra.Command {
 				return err
 			}
 			meta := server.RunsMeta{WorkspaceURL: strings.TrimRight(cfg.Forge.LinkURL(), "/"), Night: cfg.Night}
-			return serve(ctx, addr, dbPath, repos, meta, overviewInterval, cmd.ErrOrStderr())
+			return serve(ctx, addr, dbPath, repos, slugs, meta, overviewInterval, cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
 	cmd.Flags().StringVar(&dbPath, "db", "", "path of the SQLite database (default: the lighthouse data directory)")
 	cmd.Flags().StringVar(&repo, "repo", os.Getenv("LIGHTHOUSE_FORGE_REPO"),
 		"GitHub repository to read questions and returned issues from, as owner/name (default: $LIGHTHOUSE_FORGE_REPO); the token comes from GH_TOKEN or GITHUB_TOKEN; ignored when host.toml has [dispatch] repos")
-	cmd.Flags().StringVar(&forgeURL, "forge-url", envOr("LIGHTHOUSE_FORGE_URL", forge.DefaultBaseURL),
-		"GitHub API base URL (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); the token is sent there")
+	cmd.Flags().StringVar(&forgeURL, "forge-url", envOr("LIGHTHOUSE_FORGE_URL", ""),
+		"GitHub API base URL for GitHub repos (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); the GitHub token is sent there, never a GitLab one")
 	// Hidden: only the e2e tests shorten it, so Refresh shows a forge change within a second.
 	cmd.Flags().DurationVar(&overviewInterval, "overview-interval", server.RefreshInterval,
 		"time from the start of one forge overview build to the next")
@@ -80,68 +79,70 @@ func envOr(key, def string) string {
 	return def
 }
 
-// newForge builds the GitHub client for repo, with its board, against baseURL (trailing
-// slashes dropped), with the token from the environment.
-func newForge(repo repoconfig.Repo, baseURL string, getenv func(string) string) *forge.GitHub {
-	c := forge.New(repo.Slug, githubToken(getenv))
-	c.BaseURL = strings.TrimRight(baseURL, "/")
-	c.Board = repo.Board
-	return c
-}
-
-// githubToken returns GH_TOKEN, else GITHUB_TOKEN, else "".
-func githubToken(getenv func(string) string) string {
-	if t := getenv("GH_TOKEN"); t != "" {
-		return t
-	}
-	return getenv("GITHUB_TOKEN")
-}
-
-// forgeRepos returns the repos serve shows. With [dispatch] repos in the host.toml at hostToml,
-// those that load, in that order, each narrowed to the issues in Controller when its board has
-// that option; repo is then ignored, with one line on errOut when it is not among them. Without
-// [dispatch] repos, repo alone without a filter, as in M1, and none without repo. A host.toml
-// that does not load is an error; a served repo that does not load gets one line on errOut and
-// is skipped.
-func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, errOut io.Writer) ([]overview.RepoSource, error) {
+// forgeRepos returns the repos serve shows the forge of, and the slugs whose runs /api/runs
+// shows. With [dispatch] repos in the host.toml at hostToml, the sources are those that load
+// and open, in that order, each narrowed to the issues in Controller when its board has that
+// option; slugs holds every repo that loads, also one without a token, each slug once. repo is
+// then ignored, with one line on errOut when it is not among them. Without [dispatch] repos,
+// repo alone as a GitHub repo without a filter, as in M1, and nothing without repo. A host.toml
+// that does not load is an error; a served repo that does not load, has a duplicate slug or
+// has no forge (no token, an Open error) gets one line on errOut and is skipped.
+func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, errOut io.Writer) (sources []overview.RepoSource, slugs []string, err error) {
 	cfg, err := hostconfig.LoadDispatch(hostToml)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	// serve never asks the token login, so no ctx of a request reaches the opener.
+	ctx := context.Background()
+	o := newForgeOpener(getenv, forgeURL)
+	skip := func(path string, err error) {
+		_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 	}
 	if len(cfg.Repos) == 0 {
 		if repo == "" {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return []overview.RepoSource{{Slug: repo, Src: newForge(repoconfig.Repo{Slug: repo}, forgeURL, getenv)}}, nil
-	}
-	var out []overview.RepoSource
-	for _, path := range cfg.Repos {
-		r, err := repoconfig.Load(path)
+		rf, err := o.forRepo(ctx, repoconfig.Repo{Slug: repo, Kind: "github"})
 		if err != nil {
-			_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
+			skip(repo, err)
+			return nil, []string{repo}, nil
+		}
+		return []overview.RepoSource{{Slug: repo, Src: rf.Forge}}, []string{repo}, nil
+	}
+	for _, l := range repoconfig.LoadAll(cfg.Repos) {
+		path, r := l.Path, l.Repo
+		if r.Slug != "" && !slices.Contains(slugs, r.Slug) {
+			slugs = append(slugs, r.Slug)
+		}
+		if l.Err != nil {
+			skip(path, l.Err)
 			continue
 		}
-		c := newForge(r, forgeURL, getenv)
-		src := overview.RepoSource{Slug: r.Slug, Src: c}
+		rf, err := o.forRepo(ctx, r)
+		if err != nil {
+			skip(path, err)
+			continue
+		}
+		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge}
 		switch {
 		case r.Board == nil:
 		case r.Board.StatusOptions["Controller"] == "":
 			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: missing forge.board.status_options.Controller: overview shows every open issue\n", path)
 		default:
-			src.InController = overview.ControllerIssues(c, r.Slug)
+			src.InController = overview.ControllerIssues(rf.Forge, r.Slug)
 		}
-		out = append(out, src)
+		sources = append(sources, src)
 	}
-	if repo != "" && !slices.ContainsFunc(out, func(s overview.RepoSource) bool { return s.Slug == repo }) {
+	if repo != "" && !slices.Contains(slugs, repo) {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: --repo %s ignored: serving the repos of [dispatch]\n", repo)
 	}
-	return out, nil
+	return sources, slugs, nil
 }
 
 // serve opens the store, listens on addr and serves until ctx is done, then shuts down
 // within shutdownTimeout. An empty dbPath means the default path. repos feed the forge endpoints,
-// and their slugs pick the rows of the tick state that /api/runs shows.
-func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, meta server.RunsMeta,
+// and slugs pick the rows of the tick state that /api/runs shows.
+func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, slugs []string, meta server.RunsMeta,
 	interval time.Duration, errOut io.Writer) error {
 	if dbPath == "" {
 		p, err := store.DefaultPath()
@@ -164,10 +165,6 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	rep := &usage.Reporter{ReadCodex: usage.ReadCodex, Now: time.Now}
 	if paths, err := usage.DefaultPaths(); err == nil {
 		rep.Cache = paths.Cache()
-	}
-	slugs := make([]string, len(repos))
-	for i, r := range repos {
-		slugs[i] = r.Slug
 	}
 	refreshCtx, cancelRefresh := context.WithCancel(ctx)
 	defer cancelRefresh()

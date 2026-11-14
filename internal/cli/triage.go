@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -88,37 +87,28 @@ func triage(ctx context.Context, env triageEnv, opts triageOpts, dbPath string, 
 	}
 	defer func() { _ = lock.Close() }()
 
-	token := githubToken(env.Getenv)
-	if token == "" {
-		return &exitError{code: 2, err: errors.New("triage: no GitHub token: set GH_TOKEN or GITHUB_TOKEN")}
-	}
 	cfg, err := hostconfig.LoadDispatch(env.HostToml)
 	if err != nil {
 		return &exitError{code: 2, err: err}
 	}
-	failed := false
-	type enabled struct {
-		path string
-		repo repoconfig.Repo
+	loaded, err := openTriageForges(ctx, env, opts, repoconfig.LoadAll(cfg.Repos))
+	if err != nil {
+		return &exitError{code: 2, err: fmt.Errorf("triage: %w", err)}
 	}
-	var repos []enabled
-	for _, path := range cfg.Repos {
-		repo, err := repoconfig.Load(path)
-		if err != nil {
+	failed := false
+	var repos []triageRepo
+	for _, l := range loaded {
+		if l.err != nil {
 			failed = true
-			_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
+			_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", l.path, oneLine(l.err))
 			continue
 		}
-		if repo.Triage == nil {
-			continue
+		if l.enabled {
+			repos = append(repos, l)
 		}
-		if len(opts.Issues) > 0 && !slices.ContainsFunc(opts.Issues, func(r issueRef) bool { return r.Repo == repo.Slug }) {
-			continue
-		}
-		repos = append(repos, enabled{path, repo})
 	}
 	for _, ref := range opts.Issues {
-		if !slices.ContainsFunc(repos, func(e enabled) bool { return e.repo.Slug == ref.Repo }) {
+		if !slices.ContainsFunc(repos, func(e triageRepo) bool { return e.repo.Slug == ref.Repo }) {
 			failed = true
 			_, _ = fmt.Fprintf(errOut, "lighthouse: triage %s#%d: no repo %s with [controller.triage] in [dispatch] repos\n", ref.Repo, ref.Number, ref.Repo)
 		}
@@ -146,12 +136,12 @@ func triage(ctx context.Context, env triageEnv, opts triageOpts, dbPath string, 
 	}
 	defer func() { _ = st.Close() }()
 
-	r := &round{env: env, opts: opts, cfg: cfg, token: token, db: st, out: out, errOut: errOut}
+	r := &round{env: env, opts: opts, cfg: cfg, db: st, out: out, errOut: errOut}
 	if r.env.Judge == nil {
 		r.env.Judge = execJudge
 	}
 	for _, e := range repos {
-		if r.repo(ctx, e.path, e.repo) {
+		if r.repo(ctx, e.path, e.repo, e.rf) {
 			failed = true
 		}
 		if r.stopped {
@@ -162,6 +152,43 @@ func triage(ctx context.Context, env triageEnv, opts triageOpts, dbPath string, 
 		return &exitError{code: 2}
 	}
 	return nil
+}
+
+// triageRepo is a repo of [dispatch] repos in a round: enabled when it has [controller.triage]
+// and, under --issue, is named by one; err is why it is skipped.
+type triageRepo struct {
+	path    string
+	repo    repoconfig.Repo
+	enabled bool
+	rf      repoForge
+	err     error
+}
+
+// openTriageForges opens, without output, the forge of each enabled repo in loaded; a repo
+// that did not load, or has no forge, carries its error. When no enabled repo gets a forge it
+// returns the first token error, and when no repo is enabled, a GitHub token must still be
+// set, as in tick.
+func openTriageForges(ctx context.Context, env triageEnv, opts triageOpts, loaded []repoconfig.Loaded) ([]triageRepo, error) {
+	o := newForgeOpener(env.Getenv, env.ForgeURL)
+	out := make([]triageRepo, len(loaded))
+	var tally openTally
+	for i, l := range loaded {
+		out[i] = triageRepo{path: l.Path, repo: l.Repo, err: l.Err}
+		repo := l.Repo
+		if l.Err != nil || repo.Triage == nil {
+			continue
+		}
+		if len(opts.Issues) > 0 && !slices.ContainsFunc(opts.Issues, func(r issueRef) bool { return r.Repo == repo.Slug }) {
+			continue
+		}
+		out[i].enabled = true
+		out[i].rf, out[i].err = o.forRepo(ctx, repo)
+		tally.add(out[i].err)
+	}
+	if err := tally.err(env.Getenv); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // triageLock takes triage.lock in $XDG_RUNTIME_DIR/lighthouse, beside tick.lock.
@@ -185,11 +212,9 @@ type round struct {
 	env         triageEnv
 	opts        triageOpts
 	cfg         hostconfig.Dispatch
-	token       string
 	db          *store.Store
 	out, errOut io.Writer
-	login       func() (string, error) // GET /user, once per round
-	stopped     bool                   // the brake closed: no repo goes on
+	stopped     bool // the brake closed: no repo goes on
 }
 
 // counts are the numbers of the summary line of one repo.
@@ -201,12 +226,12 @@ type counts struct {
 // issue that failed. Every judgment of the repo runs in one export of origin/<default_branch>
 // with one judge config; the export is removed when repo returns, also after an error or the
 // brake.
-func (r *round) repo(ctx context.Context, path string, repo repoconfig.Repo) (failed bool) {
+func (r *round) repo(ctx context.Context, path string, repo repoconfig.Repo, rf repoForge) (failed bool) {
 	skip := func(err error) bool {
 		_, _ = fmt.Fprintf(r.errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 		return true
 	}
-	g, err := r.prepare(ctx, path, repo)
+	g, err := r.prepare(ctx, path, repo, rf)
 	if err != nil {
 		return skip(err)
 	}
@@ -261,7 +286,7 @@ func (r *round) settingsFile() string {
 // prepare checks the conditions of a repo (steps 1 and 2) and reads its lists (steps 3 and 4).
 // Under --dry-run only [controller], the usage guard and answer_permissions are a warning
 // line (decision 7): an error in [controller.triage], the board or its To do option still skips.
-func (r *round) prepare(ctx context.Context, path string, repo repoconfig.Repo) (*repoGather, error) {
+func (r *round) prepare(ctx context.Context, path string, repo repoconfig.Repo, rf repoForge) (*repoGather, error) {
 	if repo.TriageErr != nil {
 		return nil, repo.TriageErr
 	}
@@ -274,11 +299,8 @@ func (r *round) prepare(ctx context.Context, path string, repo repoconfig.Repo) 
 		}
 		_, _ = fmt.Fprintf(r.errOut, "lighthouse: warning: %s: %s\n", path, oneLine(err))
 	}
-	c := r.env.client(repo, r.token)
-	if r.login == nil {
-		r.login = sync.OnceValues(func() (string, error) { return tokenLogin(ctx, c) })
-	}
-	login, err := r.login()
+	c := rf.Forge
+	login, err := rf.who()
 	if err != nil {
 		return nil, err
 	}

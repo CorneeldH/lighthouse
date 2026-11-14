@@ -1405,3 +1405,48 @@ func TestTriageEvidenceFromLog(t *testing.T) {
 		})
 	}
 }
+
+// A triage repo without its token is skipped with one line; the round goes on with the other
+// repo, and ends with exit code 2.
+func TestTriageSkipsRepoWithoutToken(t *testing.T) {
+	fx := triageFixture(t, triageToml)
+	fx.issue(7, "2-area:cli")
+	fx.onBoard(7, "t1", nil)
+	fx.judge.answers[7] = stopAt1(7)
+	without := repoDir(t, strings.Replace(strings.Replace(triageToml, `repo = "o/r"`, `repo = "o/s"`, 1),
+		"[forge.board]", "token_env = \"MISSING\"\n\n[forge.board]", 1))
+	host := fmt.Sprintf("[dispatch]\nrepos = [%q, %q]\n", fx.dir, without)
+	if err := os.WriteFile(fx.env.HostToml, []byte(host), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, errOut, err := fx.run(triageOpts{})
+	if exitCode(err) != 2 {
+		t.Fatalf("triage = %v, want exit code 2\n%s", err, errOut)
+	}
+	for _, want := range []string{"lighthouse: skip " + without + ": no GitHub token: set MISSING\n", summary(1, 1, 0, 0, 1, 0, 0, 0, 0)} {
+		if !strings.Contains(errOut, want) {
+			t.Errorf("errOut = %q, want it to contain %q", errOut, want)
+		}
+	}
+	if got := fx.judge.called(); !slices.Equal(got, []int{7}) {
+		t.Errorf("judged %v, want [7]", got)
+	}
+}
+
+// Without a token and without a triage repo, triage still fails with exit code 2, as before
+// forges were per repo, and not with the exit code 1 of "no repo".
+func TestTriageNoRepoNoToken(t *testing.T) {
+	fx := triageFixture(t, strings.Replace(triageToml, "[controller.triage]\n", "", 1))
+	base := fx.env.Getenv
+	fx.env.Getenv = func(k string) string {
+		if k == "GH_TOKEN" || k == "GITHUB_TOKEN" {
+			return ""
+		}
+		return base(k)
+	}
+	_, errOut, err := fx.run(triageOpts{})
+	if exitCode(err) != 2 || err.Error() != "triage: no GitHub token: set GH_TOKEN or GITHUB_TOKEN" || errOut != "" {
+		t.Errorf("triage = %v (exit %d), errOut %q; want exit 2 with the token error and no other output", err, exitCode(err), errOut)
+	}
+}

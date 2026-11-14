@@ -114,3 +114,37 @@ func tokenLogin(ctx context.Context, f forge.Forge) (string, error) {
 	}
 	return login, nil
 }
+
+// openTally counts what a command opened, to decide whether it can go on: when no repo got a
+// forge it fails on the first token error, and when no repo needed a forge, a GitHub token
+// must still be set, as before forges were per repo.
+type openTally struct {
+	tried, opened bool
+	tokenErr      *forge.TokenError
+}
+
+// add counts one forRepo outcome.
+func (t *openTally) add(err error) {
+	t.tried = true
+	var te *forge.TokenError
+	switch {
+	case err == nil:
+		t.opened = true
+	case t.tokenErr == nil && errors.As(err, &te):
+		t.tokenErr = te
+	}
+}
+
+// err is why the command cannot go on, or nil.
+func (t openTally) err(getenv func(string) string) error {
+	switch {
+	case t.opened:
+	case t.tokenErr != nil:
+		return t.tokenErr
+	case !t.tried:
+		if _, err := forge.Token("github", "", getenv); err != nil {
+			return err
+		}
+	}
+	return nil
+}

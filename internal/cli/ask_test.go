@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,8 +12,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 const askSession = "3f2b8c1e-5d4a-4e7b-9c10-0a1b2c3d4e5f"
@@ -238,8 +241,14 @@ func TestAskTokenOrder(t *testing.T) {
 			Getenv:  func(k string) string { return map[string]string{"GH_TOKEN": tc.gh, "GITHUB_TOKEN": tc.github}[k] },
 			GhToken: func() string { return tc.ghCLI },
 		}
-		if got := env.token(); got != tc.want {
-			t.Errorf("token(%+v) = %q, want %q", tc, got, tc.want)
+		o := askOpener(env)
+		var got string
+		o.open = func(cfg forge.Config) (forge.Forge, error) {
+			got = cfg.Token
+			return forge.New(cfg.Repo, cfg.Token), nil
+		}
+		if _, err := o.forRepo(context.Background(), repoconfig.Repo{Slug: "o/r", Kind: "github"}); err != nil || got != tc.want {
+			t.Errorf("token(%+v) = %q, %v; want %q", tc, got, err, tc.want)
 		}
 	}
 }
@@ -364,5 +373,21 @@ func TestAskFlagErrorNothingPosted(t *testing.T) {
 				t.Errorf("%d POSTs, want none", len(srv.Posts))
 			}
 		})
+	}
+}
+
+// The `gh auth token` fallback is for GitHub only: a GitLab repo without GITLAB_TOKEN posts
+// nothing, also when gh has a token.
+func TestAskGhTokenOnlyForGitHub(t *testing.T) {
+	srv, env, _ := askFixture(t)
+	env.Cwd = repoDir(t, "[forge]\nrepo = \"o/r\"\nkind = \"gitlab\"\n\n[project]\nlanguage = \"nl\"\n")
+	env.Getenv = func(k string) string { return map[string]string{"LIGHTHOUSE_CONTROLLER_RUN": askSession}[k] }
+	env.GhToken = func() string { return "x" }
+	code, _, errOut := runAsk(env, askArgs(oneQuestion...)...)
+	if code != 1 || !strings.Contains(errOut, "GITLAB_TOKEN") || !strings.Contains(errOut, "nothing posted") {
+		t.Errorf("exit %d, stderr %q; want 1 and a GITLAB_TOKEN error ending in nothing posted", code, errOut)
+	}
+	if len(srv.Posts) != 0 {
+		t.Errorf("%d POSTs, want none", len(srv.Posts))
 	}
 }

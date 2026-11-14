@@ -21,7 +21,7 @@ import (
 // with. It lives for one repo in one round.
 type repoGather struct {
 	repo  repoconfig.Repo
-	c     *forge.GitHub
+	c     forge.Forge
 	db    *sql.DB
 	login string          // the token login: its comments are trusted (decision 2)
 	trust *dispatch.Trust // answer_permissions
@@ -193,10 +193,10 @@ type workLists struct {
 
 // readWork reads the open PRs, the open runs, the branches on origin, the local branches and
 // the worktrees of repo.
-func readWork(ctx context.Context, c *forge.GitHub, db *sql.DB, repo repoconfig.Repo) (workLists, error) {
+func readWork(ctx context.Context, f forge.Forge, db *sql.DB, repo repoconfig.Repo) (workLists, error) {
 	var w workLists
 	var err error
-	if w.prs, err = c.OpenPRs(ctx); err != nil {
+	if w.prs, err = f.OpenPRs(ctx); err != nil {
 		return workLists{}, err
 	}
 	if w.runs, err = runs.Open(ctx, db, repo.Slug); err != nil {

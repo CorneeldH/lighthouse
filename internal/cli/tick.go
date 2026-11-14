@@ -36,7 +36,7 @@ import (
 type tickEnv struct {
 	Getenv   func(string) string
 	HostToml string
-	ForgeURL string           // "" is forge.DefaultBaseURL
+	ForgeURL string           // the API root of GitHub repos; "" is forge.DefaultBaseURL
 	Now      func() time.Time // nil is time.Now
 	// Workplace is the workplace of a repo; nil follows [dispatch] workplace: "local" is a
 	// local.Adapter, any other value a kennforge.Adapter from [dispatch.forge],
@@ -63,17 +63,6 @@ func (e tickEnv) now() time.Time {
 		return time.Now()
 	}
 	return e.Now()
-}
-
-// client returns a GitHub client for repo, with its board, at ForgeURL. Only triage still
-// uses it; tick, gather and run open their forges with a forgeOpener.
-func (e tickEnv) client(repo repoconfig.Repo, token string) *forge.GitHub {
-	c := forge.New(repo.Slug, token)
-	c.Board = repo.Board
-	if e.ForgeURL != "" {
-		c.BaseURL = e.ForgeURL
-	}
-	return c
 }
 
 // stateDir is StateDir, or lighthouse/dispatch under XDG_STATE_HOME, or under
@@ -283,8 +272,7 @@ type openedForge struct {
 func openForges(ctx context.Context, env tickEnv, loaded []repoconfig.Loaded) ([]openedForge, error) {
 	o := newForgeOpener(env.Getenv, env.ForgeURL)
 	out := make([]openedForge, len(loaded))
-	var tokenErr *forge.TokenError
-	tried, opened := false, false
+	var tally openTally
 	for i, l := range loaded {
 		err := l.Err
 		if err == nil {
@@ -294,24 +282,11 @@ func openForges(ctx context.Context, env tickEnv, loaded []repoconfig.Loaded) ([
 			out[i].err = err
 			continue
 		}
-		tried = true
 		out[i].rf, out[i].err = o.forRepo(ctx, l.Repo)
-		var te *forge.TokenError
-		switch {
-		case out[i].err == nil:
-			opened = true
-		case tokenErr == nil && errors.As(out[i].err, &te):
-			tokenErr = te
-		}
+		tally.add(out[i].err)
 	}
-	switch {
-	case opened:
-	case tokenErr != nil:
-		return nil, tokenErr
-	case !tried:
-		if _, err := forge.Token("github", "", env.Getenv); err != nil {
-			return nil, err
-		}
+	if err := tally.err(env.Getenv); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
