@@ -57,7 +57,7 @@ func TestWorkspacesSkipsEmptyAndRemoved(t *testing.T) {
 	closedRun(t, db, "o/r", 1, "start:1", "", "")
 	closedRun(t, db, "o/r", 2, "start:2", "ws-2", "issue-2")
 	closedRun(t, db, "o/other", 3, "start:3", "ws-3", "issue-3")
-	if err := MarkWorkspaceRemoved(ctx, db, "o/r", "ws-2", time.Now()); err != nil {
+	if err := MarkWorkspaceRemoved(ctx, db, "o/r", "", "ws-2", time.Now()); err != nil {
 		t.Fatalf("MarkWorkspaceRemoved: %v", err)
 	}
 	if got := workspaces(t, db, "o/r"); got == nil || len(got) != 0 {
@@ -84,7 +84,7 @@ func TestMarkWorkspaceRemovedOnlyThatWorkspace(t *testing.T) {
 	other := closedRun(t, db, "o/r", 8, "start:8", "ws-8", "b")
 	otherRepo := closedRun(t, db, "o/x", 7, "start:7", "ws-7", "b")
 
-	if err := MarkWorkspaceRemoved(ctx, db, "o/r", "ws-7", time.Date(2026, 11, 1, 10, 0, 0, 0, time.FixedZone("CET", 3600))); err != nil {
+	if err := MarkWorkspaceRemoved(ctx, db, "o/r", "", "ws-7", time.Date(2026, 11, 1, 10, 0, 0, 0, time.FixedZone("CET", 3600))); err != nil {
 		t.Fatalf("MarkWorkspaceRemoved: %v", err)
 	}
 	want := map[int64]string{a1: "2026-11-01T09:00:00Z", a2: "2026-11-01T09:00:00Z", other: "", otherRepo: ""}
@@ -104,5 +104,38 @@ func TestMarkWorkspaceRemovedOnlyThatWorkspace(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("workspace_removed_at per row = %v, want %v", got, want)
+	}
+}
+
+// The same workspace id on two nodes is two workspaces; removing one leaves the other.
+func TestWorkspacesPerNode(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	closedRun(t, db, "o/r", 7, "start:7", "w1", "issue-7")
+	c := claim("o/r", 8, "start:8")
+	c.Node = "node-a"
+	c.Profile = "prof-b"
+	r, err := Take(ctx, db, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SetWorkplace(ctx, db, r.ID, "w1", "issue-8"); err != nil {
+		t.Fatal(err)
+	}
+	if err := Release(ctx, db, r.ID, Done, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	want := []WorkspaceRef{
+		{Issue: 7, WorkspaceID: "w1", Branch: "issue-7"},
+		{Issue: 8, Node: "node-a", WorkspaceID: "w1", Branch: "issue-8", Profile: "prof-b"},
+	}
+	if got := workspaces(t, db, "o/r"); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Workspaces = %+v, want %+v", got, want)
+	}
+	if err := MarkWorkspaceRemoved(ctx, db, "o/r", "node-a", "w1", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if got := workspaces(t, db, "o/r"); !reflect.DeepEqual(got, want[:1]) {
+		t.Errorf("after remove on node-a: %+v, want %+v", got, want[:1])
 	}
 }

@@ -51,19 +51,37 @@ type fakeForge struct {
 	release      chan struct{}
 	// onHandoff runs when the handoff POST arrives.
 	onHandoff func()
+	// runtime answers GET /workspaces/ws1/runtime, one entry per call; the last repeats.
+	runtime []string
+	// runtimeStatus, when set, answers the runtime reads instead.
+	runtimeStatus int
+	// offline makes the fake hub answer this node as a spoke without a tunnel.
+	offline bool
+	// back: the hub answers this node as offline, but the next snapshot already reports it
+	// reachable again, as when the tunnel comes back between the two requests.
+	back bool
 }
 
-func newFakeForge(t *testing.T) (*fakeForge, *Adapter) {
+// newForgeNode is a fake forge without a server of its own, as a node behind newFakeHub.
+func newForgeNode(t *testing.T) *fakeForge {
 	t.Helper()
 	f := &fakeForge{
 		t: t, counts: map[string]int{}, bodies: map[string]string{},
 		listBody: `{"workspaces":[]}`, createBody: `{"id":"ws1"}`,
 		statuses: []string{"ready"}, sessions: []string{`{"sessions":[]}`},
+		runtime:       []string{`{"launch_targets":[],"sessions":[]}`},
 		handoffStatus: 200, handoffBody: `{"session":{"key":"k-new"}}`,
 		deleteStatus: 204, release: make(chan struct{}),
 	}
+	t.Cleanup(func() { close(f.release) })
+	return f
+}
+
+func newFakeForge(t *testing.T) (*fakeForge, *Adapter) {
+	t.Helper()
+	f := newForgeNode(t)
 	srv := httptest.NewServer(f)
-	t.Cleanup(func() { close(f.release); srv.Close() })
+	t.Cleanup(srv.Close)
 	tok := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(tok, []byte("secret\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -144,6 +162,12 @@ func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(f.handoffStatus)
 		_, _ = w.Write([]byte(f.handoffBody))
+	case "GET /api/v1/workspaces/ws1/runtime":
+		if f.runtimeStatus != 0 {
+			w.WriteHeader(f.runtimeStatus)
+			return
+		}
+		_, _ = w.Write([]byte(next(f.runtime, n)))
 	case "DELETE /api/v1/workspaces/ws1":
 		w.WriteHeader(f.deleteStatus)
 	default:
@@ -493,7 +517,7 @@ var ws1 = workplace.Workspace{ID: "ws1", Path: "/x", Branch: "issue-1-x"}
 const handoffKey = "POST /api/v1/workspaces/ws1/runtime/agent-handoffs"
 
 func carrierExists(a *Adapter) bool {
-	_, err := os.Stat(workplace.CarrierPath(a.StateDir, "ws1"))
+	_, err := os.Stat(workplace.CarrierPath(a.StateDir, "", "ws1"))
 	return err == nil
 }
 
@@ -541,7 +565,7 @@ func TestSpawn5xxRemovesCarrier(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.handoffStatus = 503
 	_, _ = a.Spawn(context.Background(), ws1, spec())
-	_, err := os.Stat(workplace.CarrierPath(a.StateDir, "ws1"))
+	_, err := os.Stat(workplace.CarrierPath(a.StateDir, "", "ws1"))
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("stat carrier = %v, want ErrNotExist", err)
 	}
@@ -750,7 +774,7 @@ func writeCarrier(t *testing.T, a *Adapter) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := workplace.WriteCarrier(a.StateDir, "ws1", c); err != nil {
+	if _, err := workplace.WriteCarrier(a.StateDir, "", "ws1", c); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -789,7 +813,7 @@ func TestRemoveReportsFailedCarrierWipe(t *testing.T) {
 	}
 	_, a := newFakeForge(t)
 	writeCarrier(t, a)
-	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "ws1"))
+	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "", "ws1"))
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatal(err)
 	}
@@ -968,7 +992,7 @@ func TestSpawnNotAcceptedReportsFailedCarrierRemoval(t *testing.T) {
 	}
 	f, a := newFakeForge(t)
 	f.handoffStatus = 422
-	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "ws1"))
+	dir := filepath.Dir(workplace.CarrierPath(a.StateDir, "", "ws1"))
 	f.onHandoff = func() { _ = os.Chmod(dir, 0o500) }
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
 	_, err := a.Spawn(context.Background(), ws1, spec())
@@ -1014,7 +1038,7 @@ func TestLocalIDIsNoForgeWorkspace(t *testing.T) {
 	if f.total() != 0 || ran != 0 {
 		t.Errorf("Spawn: requests = %d, commands = %d, want none", f.total(), ran)
 	}
-	if _, statErr := os.Stat(workplace.CarrierPath(a.StateDir, id)); !errors.Is(statErr, os.ErrNotExist) {
+	if _, statErr := os.Stat(workplace.CarrierPath(a.StateDir, "", id)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Errorf("Spawn: carrier for %s exists (stat err = %v)", id, statErr)
 	}
 }

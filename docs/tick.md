@@ -344,6 +344,11 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
 | Plekken | `in_use` plus de al toegelaten starts >= `slots` | `slots: 4 of 4 in use` |
 | Software | profiel `software`, en `software_in_use` plus de al toegelaten software-starts >= `max_software` | `software: 2 of 2 in use` |
 
+- Een run op een node (zie *Nodes* hieronder) kent een eigen rem: geen geheugentoets (het geheugen is
+  niet van deze host) en de plekken van die node in plaats van `slots`. De pauze, usage en software
+  gelden voor elke run. Uitstelteksten: `slots: 2 of 2 in use on <naam>` en, als het profiel zijn node
+  uit `host.toml` kwijt is terwijl er nog runs op staan, `slots: node <node_id> not configured`. Een
+  geparkeerde hervatting op een node telt mee maar wordt niet door de plekkenrem tegengehouden.
 - De rem houdt alleen starts en hervattingen tegen. De afloop van open runs (sluiten, Teruggegeven,
   stoppen, 🤖 Klaar, zie *Afloop*) gaat door, ook tijdens een pauze of bij een dichte usage-rem.
   Twee uitzonderingen. De eerste is de merge van regel 7. Een pauze, een item buiten `Controller`
@@ -452,6 +457,41 @@ unit_prefix = "paia-forge-"    # prefix van de systemd-unit per run; verplicht m
 [workplace.md](workplace.md#lokaal), *Afloop met de lokale werkplek* hierboven en, voor de tick als systemd-unit of cron-taak,
 *De tick onder systemd of cron* hieronder.
 
+### Nodes
+
+Met `[dispatch.nodes.<naam>]` draait een run op een andere kenn-forge-node dan die van `[dispatch.forge]`.
+Die eigen node heet `self` (in code en database de lege string); de naam `self` is gereserveerd.
+
+```toml
+[dispatch.nodes.mac]
+node_id = "node-a"   # het node-id op de fleet-hub; verplicht, uniek, niet "self"
+slots = 2            # runs tegelijk op deze node; verplicht, minstens 1
+
+[dispatch.profiles.mac-software]
+node = "mac"         # naam van een [dispatch.nodes]-tabel; leeg: self
+```
+
+Zonder `[dispatch.nodes]` is er niets anders dan voorheen. Een `node` die geen tabel heeft, is een
+fout bij het laden van `host.toml`. De hub (forge v0.7.0 of later) bereikt de node via de fleet-routes
+`/api/v1/fleet/hosts/<node_id>/...`; zie *kenn-forge* in [workplace.md](workplace.md#een-run-op-een-andere-node).
+
+**Keuzeregel.** Een nieuwe start kiest locatielabel, dan profiel, dan node:
+
+1. De repo heeft `[labels] location_prefix` én `[controller.locations]`, en het issue draagt precies
+   één label met die prefix: de waarde erna (exact, hoofdlettergevoelig) wordt opgezocht in
+   `[controller.locations]` van `lighthouse.toml` (`<waarde> = "<profiel>"`). Dat profiel is het
+   profiel van de run.
+2. Zonder locatielabel, zonder `location_prefix` of zonder `[controller.locations]`, is het profiel
+   `[controller] profile`.
+3. De node is de `node` van dat profiel in `host.toml`; geen `node` is `self`.
+
+Een hervatting en een retry kiezen niet opnieuw: ze erven profiel en node van de rij van hun eerdere run
+(de hervatting van de rij met hetzelfde `session_id`, de retry van de rij met dezelfde trigger). Een label
+dat tijdens een run wijzigt, verplaatst die run dus niet. Een locatielabel dat niet in
+`[controller.locations]` staat, en meer dan één locatielabel, stellen de start uit, met
+`locatie <waarde> onbekend` en `meer dan één locatielabel`. `[controller.locations]` zonder
+`[controller]` is een fout.
+
 `slots` en `max_software` zijn minstens 1, `min_mem_available_gb` en `reserve_per_run_gb` minstens 0.
 `repos` mag alleen absolute paden bevatten. Per rechtenprofiel kan `[dispatch.profiles.<naam>]` staan;
 de spec beschrijft de sleutels.
@@ -466,6 +506,18 @@ Het `lighthouse.toml` van elke repo in `repos` heeft:
   `priority_field_id`, en onder `status_options` minstens `Controller` en `On hold`.
 
 Ontbreekt iets, dan staan alle ontbrekende sleutels, bij naam, in één `skip`-regel.
+
+Optioneel, voor een run op een andere node (zie *Nodes*): `[labels] location_prefix` (bv. `"loc:"`) en
+
+```toml
+[controller.locations]
+mac = "mac-software"   # waarde na de prefix = profiel uit [dispatch.profiles] van host.toml
+```
+
+Een lege profielnaam is een fout; de tabel vereist `[controller]`. Een repo zonder `location_prefix`
+gedraagt zich als voorheen, en een repo met `location_prefix` maar zonder `[controller.locations]` ook:
+hij negeert locatielabels, ook twee tegelijk. Een upgrade is daarom veilig. Pas de tabel maakt het
+label bindend: een onbekende waarde of twee labels stellen de start dan uit.
 
 ## Zicht
 

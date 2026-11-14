@@ -566,6 +566,7 @@
               "about": "The prefix of location labels.",
               "example": "location:",
               "readers": [
+                "internal/dispatch/decide.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/prompt.go",
                 "pack/core/skills/start-issue",

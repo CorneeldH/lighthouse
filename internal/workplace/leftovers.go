@@ -6,16 +6,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 )
 
 const leftoverKind = "cleanup"
 
 // Leftover is a workspace that cleanup could not remove. It lives in
-// tick_state as kind 'cleanup', keyed by (repo, workspace id).
+// tick_state as kind 'cleanup', keyed by (repo, node, workspace id): the key is the workspace id
+// on self (node ""), else node + "/" + workspace id.
 type Leftover struct {
 	Repo        string `json:"repo"`
 	Issue       int    `json:"issue"`
+	Node        string `json:"node,omitempty"`
 	WorkspaceID string `json:"workspace_id"`
 	Path        string `json:"path"`
 	Reason      string `json:"reason"`
@@ -27,6 +30,22 @@ type leftoverValue struct {
 	Reason string `json:"reason"`
 }
 
+// leftoverKey is the tick_state key of a workspace on node.
+func leftoverKey(node, workspaceID string) string {
+	if node == "" {
+		return workspaceID
+	}
+	return node + "/" + workspaceID
+}
+
+// splitLeftoverKey is the inverse of leftoverKey. A workspace id holds no "/".
+func splitLeftoverKey(key string) (node, workspaceID string) {
+	if i := strings.LastIndex(key, "/"); i >= 0 {
+		return key[:i], key[i+1:]
+	}
+	return "", key
+}
+
 // RecordLeftover stores l, replacing an earlier record of the same workspace.
 func RecordLeftover(ctx context.Context, db *sql.DB, l Leftover, now time.Time) error {
 	value, err := json.Marshal(leftoverValue{Issue: l.Issue, Path: l.Path, Reason: l.Reason})
@@ -36,7 +55,7 @@ func RecordLeftover(ctx context.Context, db *sql.DB, l Leftover, now time.Time) 
 	_, err = db.ExecContext(ctx, `
 INSERT INTO tick_state (repo, kind, key, value, updated_at) VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (repo, kind, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-		l.Repo, leftoverKind, l.WorkspaceID, string(value), now.UTC().Format(time.RFC3339))
+		l.Repo, leftoverKind, leftoverKey(l.Node, l.WorkspaceID), string(value), now.UTC().Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("record leftover %s: %w", l.WorkspaceID, err)
 	}
@@ -44,9 +63,9 @@ ON CONFLICT (repo, kind, key) DO UPDATE SET value = excluded.value, updated_at =
 }
 
 // ClearLeftover removes the record of a workspace; an absent record is not an error.
-func ClearLeftover(ctx context.Context, db *sql.DB, repo, workspaceID string) error {
+func ClearLeftover(ctx context.Context, db *sql.DB, repo, node, workspaceID string) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM tick_state WHERE repo = ? AND kind = ? AND key = ?`,
-		repo, leftoverKind, workspaceID)
+		repo, leftoverKind, leftoverKey(node, workspaceID))
 	if err != nil {
 		return fmt.Errorf("clear leftover %s: %w", workspaceID, err)
 	}
@@ -65,9 +84,11 @@ func Leftovers(ctx context.Context, db *sql.DB) ([]Leftover, error) {
 	for rows.Next() {
 		var l Leftover
 		var raw string
-		if err := rows.Scan(&l.Repo, &l.WorkspaceID, &raw); err != nil {
+		var key string
+		if err := rows.Scan(&l.Repo, &key, &raw); err != nil {
 			return nil, fmt.Errorf("scan leftover: %w", err)
 		}
+		l.Node, l.WorkspaceID = splitLeftoverKey(key)
 		var v leftoverValue
 		if err := json.Unmarshal([]byte(raw), &v); err != nil {
 			return nil, fmt.Errorf("decode leftover %s: %w", l.WorkspaceID, err)
@@ -86,7 +107,10 @@ func Leftovers(ctx context.Context, db *sql.DB) ([]Leftover, error) {
 		if a.Issue != b.Issue {
 			return a.Issue < b.Issue
 		}
-		return a.WorkspaceID < b.WorkspaceID
+		if a.WorkspaceID != b.WorkspaceID {
+			return a.WorkspaceID < b.WorkspaceID
+		}
+		return a.Node < b.Node
 	})
 	return list, nil
 }
