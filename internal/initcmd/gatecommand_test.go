@@ -179,3 +179,19 @@ func TestUpgradeRewritesMultiLineGateCommand(t *testing.T) {
 		t.Fatalf("lighthouse.toml lacks %q:\n%s", want, read(t, root, "lighthouse.toml"))
 	}
 }
+
+// TOML allows whitespace and a quoted key in a table header: `[ test_gate ]` is the same table.
+func TestUpgradeRewritesGateCommandUnderSpacedHeader(t *testing.T) {
+	for _, header := range []string{"[ test_gate ]", `["test_gate"]`, "[test_gate] # gate"} {
+		t.Run(header, func(t *testing.T) {
+			root := gateRepo(t, header+"\ncommand = \"python3 .lighthouse/scripts/gate_go.py -- go test\"\n")
+			r := run(t, root, "", all(upgrade, yes))
+			if r.code != 0 {
+				t.Fatalf("rc %d err %q", r.code, r.err)
+			}
+			if got := read(t, root, "lighthouse.toml"); !strings.Contains(got, `command = "lighthouse gate go -- go test"`) {
+				t.Fatalf("lighthouse.toml:\n%s", got)
+			}
+		})
+	}
+}

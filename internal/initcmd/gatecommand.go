@@ -30,7 +30,7 @@ func migrateGateCommand(old []byte, installed func(rel string) bool) (out []byte
 		t := strings.TrimSpace(lines[i])
 		if strings.HasPrefix(t, "[") {
 			name, _, _ := strings.Cut(t, "#")
-			inGate = strings.TrimSpace(name) == "[test_gate]"
+			inGate = isGateHeader(strings.TrimSpace(name))
 			continue
 		}
 		if !inGate {
@@ -72,6 +72,19 @@ func migrateGateCommand(old []byte, installed func(rel string) bool) (out []byte
 		}
 	}
 	return out, before, after, stale
+}
+
+// isGateHeader says whether h, a table header without its comment, opens [test_gate]. TOML
+// allows whitespace inside the brackets and a quoted key: `[ test_gate ]`, `["test_gate"]`.
+func isGateHeader(h string) bool {
+	if strings.HasPrefix(h, "[[") || !strings.HasPrefix(h, "[") || !strings.HasSuffix(h, "]") {
+		return false
+	}
+	key := strings.TrimSpace(h[1 : len(h)-1])
+	if len(key) >= 2 && (key[0] == '"' || key[0] == '\'') && key[len(key)-1] == key[0] {
+		key = key[1 : len(key)-1]
+	}
+	return key == "test_gate"
 }
 
 // reportGateCommand tells what migrateGateCommand did.
