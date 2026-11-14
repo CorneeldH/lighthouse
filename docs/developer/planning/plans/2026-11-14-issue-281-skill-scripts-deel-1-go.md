@@ -99,7 +99,7 @@ Geen bestaande test dekt deze zes inputs. Elk krijgt een test in de taak die de 
 - Create: `internal/boardstart/boardstart.go`, `internal/boardstart/fixtures_test.go`, `internal/cli/boardstart.go`
 - Create: `tests/pack/fixtures/scripts/board-start/cases.json`
 - Modify: `internal/cli/root.go:70-94` (AddCommand)
-- Modify: `pack/core/skills/start-issue/{claude,agents}/SKILL.md:119`, `pack/core/skills/close-issue/{claude,agents}/SKILL.md:341`
+- Modify: `pack/core/requires.toml` (`start-issue` uit de rijen `python3` en `tomllib`, want zijn laatste `python3`-regel gaat weg), `pack/core/skills/start-issue/{claude,agents}/SKILL.md:119`, `pack/core/skills/close-issue/{claude,agents}/SKILL.md:341`
 - Modify: `tests/test_site_config.py:54-64,329-331` en de lezerskaart in `docs/site/data/config.json` (lezer wordt `internal/boardstart/boardstart.go`), `tests/pack/test_skills_issue_flow.py:229` (de `board_start.py`-tekst in step 3), `tests/pack/test_close_issue_skill.py:167`, en de losse vermeldingen van `board_start.py` in `pack/core/skills/start-issue/{claude,agents}/SKILL.md:267,274` en `close-issue/*/SKILL.md:350`
 - Delete: `pack/core/scripts/board_start.py`, `tests/pack/test_board_start.py` (+ geïnstalleerde kopie via `init --upgrade`)
 
@@ -140,7 +140,7 @@ Geen bestaande test dekt deze zes inputs. Elk krijgt een test in de taak die de 
 **Files:**
 - Create: `internal/protocol/artefact.go`, `internal/protocol/artefact_test.go`, `tests/pack/fixtures/artefacts/cases.json`
 - Create: `internal/postartefact/postartefact.go`, `internal/postartefact/fixtures_test.go`, `internal/cli/postartefact.go`, `tests/pack/fixtures/scripts/post-artefact/cases.json`
-- Modify: `pack/core/skills/write-handoff/SKILL.md:40,73,272,301`, `tests/pack/python/test_prcov_issues.py:19,378-405`, `tests/pack/test_skills_issue_flow.py:5,446-470,499,526`, `ci/literal-allowlist.txt:5`, `internal/protocol/header_test.go:19` en `internal/protocol/question_test.go:20` (noemen `tests/pack/test_protocol.py`)
+- Modify: `pack/core/requires.toml` (`write-handoff` uit de rijen `python3` en `tomllib`), `pack/core/skills/write-handoff/SKILL.md:40,73,272,301`, `tests/pack/python/test_prcov_issues.py:19,378-405`, `tests/pack/test_skills_issue_flow.py:5,446-470,499,526`, `ci/literal-allowlist.txt:5`, `internal/protocol/header_test.go:19` en `internal/protocol/question_test.go:20` (noemen `tests/pack/test_protocol.py`)
 - Delete: `pack/core/scripts/post_artefact.py`, `pack/core/lib/artefacts.py`, `pack/core/lib/protocol.py`, `tests/pack/test_post_artefact.py`, `tests/pack/test_artefacts.py`, `tests/pack/test_protocol.py`, `tests/pack/test_artefact_cases.py` (de Python-runner uit stap 1; daarna dragen de Go-tests de fixtures)
 
 **Interfaces:**
@@ -160,7 +160,7 @@ Geen bestaande test dekt deze zes inputs. Elk krijgt een test in de taak die de 
 **Files:**
 - Create: `internal/worktreeaudit/{rows.go,judge.go,collect.go,render.go,pid_unix.go,pid_windows.go}`, plus de tests; `internal/cli/worktreeaudit.go`
 - Create: `tests/pack/fixtures/worktree_audit/{judge,rows,parse,render}.json`, `tests/pack/fixtures/scripts/worktree-audit/cases.json` (`--issue`: de GraphQL-call en de PR-lookup)
-- Modify: `pack/core/skills/audit-worktrees/SKILL.md:12-17,159`, `pack/core/skills/close-issue/{claude,agents}/SKILL.md:502,518`, `docs/host-assumptions.md:28`, de doc-comments in `internal/prbody/form.go:2`, `internal/repoidentity/repoidentity.go:4` en `internal/gitinvocations` (geen "frozen"-zin meer), `tests/pack/test_pr_create_gate.py:26`, `tests/pack/test_write_pr_skill.py:128,178`, `tests/pack/test_close_issue_skill.py:254,349`, `tests/pack/test_audit_worktrees_skill.py:20,34-36` (laadt `worktree_audit.py` op moduleniveau: laat de skilltekst controleren zonder de module), `tests/pack/test_skill_contracts.py:337,370-374` (`test_tool_patterns_see_python_and_tomllib`: `close-issue` heeft na deze taak geen `python3`/`tomllib` meer en geen kernskill noemt `tomllib` dan nog. De `python3`-positieve check gaat naar `place-instruction` (`SKILL.md:247`), de `tomllib`-positieve check draait op een synthetische tekst `python3 .lighthouse/lib/lighthouse_lib/config.py` tegen `_TOOL_USES["tomllib"]`, en de negatieve check op `route-issue` blijft. `pack/core/requires.toml` verliest `close-issue` onder `python3` en `tomllib` in deze taak), `tests/pack/_testkit.py`
+- Modify: `pack/core/skills/audit-worktrees/SKILL.md:12-17,159`, `pack/core/skills/close-issue/{claude,agents}/SKILL.md:502,518`, `docs/host-assumptions.md:28`, de doc-comments in `internal/prbody/form.go:2`, `internal/repoidentity/repoidentity.go:4` en `internal/gitinvocations` (geen "frozen"-zin meer), `tests/pack/test_pr_create_gate.py:26`, `tests/pack/test_write_pr_skill.py:128,178`, `tests/pack/test_close_issue_skill.py:254,349`, `tests/pack/test_audit_worktrees_skill.py:20,34-36` (laadt `worktree_audit.py` op moduleniveau: laat de skilltekst controleren zonder de module), `tests/pack/test_skill_contracts.py:337,370-374` (`test_tool_patterns_see_python_and_tomllib`: `close-issue` heeft na deze taak geen `python3`/`tomllib` meer en geen kernskill noemt `tomllib` dan nog. De `python3`-positieve check gaat naar `place-instruction` (`SKILL.md:247`), de `tomllib`-positieve check draait op een synthetische tekst `python3 .lighthouse/lib/lighthouse_lib/config.py` tegen `_TOOL_USES["tomllib"]`, en de negatieve check op `route-issue` blijft. `pack/core/requires.toml` verliest `close-issue` en `audit-worktrees` onder `python3` en `tomllib` in deze taak), `tests/pack/_testkit.py`
 - Delete: `pack/core/scripts/worktree_audit.py`, `pack/core/lib/{pr_body_gate,git_invocations,repo_identity}.py`, `tests/pack/test_worktree_audit.py`, `tests/pack/test_worktree_audit_cases.py` (de Python-runner uit stap 1; daarna dragen de Go-tests de fixtures), `tests/pack/test_pr_body_gate.py`, `tests/pack/test_pr_body_gate_fixtures.py`, `tests/pack/test_repo_identity.py`, `tests/pack/test_repo_identity_fixtures.py`, `tests/pack/test_git_invocations.py`, `tests/pack/test_git_invocations_fixtures.py`
 
 **Interfaces:**
@@ -191,3 +191,10 @@ Geen bestaande test dekt deze zes inputs. Elk krijgt een test in de taak die de 
 - [ ] **Step 4: Dogfood.** Run: `go run ./cmd/lighthouse init --upgrade`. Verwacht: `No changes.`
 - [ ] **Step 5: Volledige gate.** Run het `[test_gate] command` uit `lighthouse.toml` en `GOOS=windows go vet ./... && GOOS=darwin go vet ./...`. Verwacht: groen.
 - [ ] **Step 6: Commit** `docs(core): changelog en opruiming van skill-scripts deel 1`.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Taak 2 / Taak 4 / Taak 5 Files (pack/core/requires.toml)): The guard split is coherent, but the accepted fix ('split as proposed') also included: the task that removes a skill's last python3/tomllib use drops that skill from the python3/tomllib rows of requires.toml. The diff applies that only to close-issue in Task 5. start-issue (Task 2), write-handoff (Task 4) and audit-worktrees (Task 5) lose their last python3 use too and stay listed.
