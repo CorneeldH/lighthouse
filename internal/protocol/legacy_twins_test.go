@@ -11,7 +11,20 @@ import (
 // The twins of the tests of pack/core/lib/protocol.py, which went away with the module. Each
 // test names the Python tests it replaces with `twin of <name>`; the ones whose subject has no
 // Go counterpart (stack_base, active_stack, fill_started, render_rebased, Comment.from_gh,
-// questions_of and the old Dutch question fields) went with the code: nothing used them.
+// questions_of and the old Dutch question fields) went with the code: nothing used them. These
+// 23 tests of Python-only dead code have no twin on purpose: test_from_gh, test_without_reactions,
+// test_render_started_with_stack, test_render_started_with_blocker,
+// test_fill_started_sets_runner_workspace_and_fallback_and_keeps_the_footer,
+// test_fill_started_puts_a_new_field_at_the_end_of_the_header,
+// test_render_rebased_parses_as_header, test_render_rebased_follows_default_branch,
+// test_render_rebased_without_session_has_no_footer, test_active_stack,
+// test_active_stack_without_base_is_no_stack, test_active_stack_closed_by_rebased_or_returned,
+// test_active_stack_ignores_ordinary_comments_after, test_active_stack_empty,
+// test_stack_base_whatever_comes_after, test_stack_base_without_started_with_base,
+// test_stack_base_last_started_with_base_wins, test_reads_legacy_started_stack,
+// test_reads_english_started_stack, test_questions_of_reads_old_classification,
+// test_questions_of_reads_old_bundle, test_render_question_reads_old_fields and
+// test_missing_heading_table_is_loud.
 
 const (
 	twinUUID  = "0b7e3c1a-1111-4222-8333-444455556666"

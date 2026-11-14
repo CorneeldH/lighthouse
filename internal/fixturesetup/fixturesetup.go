@@ -27,8 +27,8 @@ var (
 const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 // Fill replaces {root}, {real:<path>} (the realpath of {root}/<path>), {home:<name>} (the home
-// directory of user <name>), {rev:<path>:<rev>} (`git rev-parse <rev>` in {root}/<path>), {short:<path>:<rev>}
-// (`git rev-parse --short=7 <rev>` there) and
+// directory of user <name>), {rev:<path>:<rev>} (`git rev-parse <rev>` in {root}/<path>),
+// {short:<path>:<rev>} (`git rev-parse --short=7 <rev>` there) and
 // {empty_tree} in value. Call it after the last step of the case. The keys of a map are the
 // caller's to fill, as fill_fixture does.
 func Fill(t *testing.T, value, root string) string {

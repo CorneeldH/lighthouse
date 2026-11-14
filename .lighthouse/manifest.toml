@@ -8,7 +8,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-audit-worktrees/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "d337b5ebf6b3aa43630b8e09e44c41ab340c02d3672b0e30bc99a3fd46053dbf"
+sha256 = "4c3cb721582f88c65990d62e64ba811e5c45c929d9a1c9a0c06d1e9f9849a4ea"
 
 [[unit]]
 kind = "file"
@@ -342,7 +342,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-audit-worktrees/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "d337b5ebf6b3aa43630b8e09e44c41ab340c02d3672b0e30bc99a3fd46053dbf"
+sha256 = "4c3cb721582f88c65990d62e64ba811e5c45c929d9a1c9a0c06d1e9f9849a4ea"
 
 [[unit]]
 kind = "file"
