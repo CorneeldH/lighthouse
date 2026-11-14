@@ -12,7 +12,7 @@
 
 ## Beslissing: laag en woordbudget
 
-De bullet komt in het managed block. Het `core`-blok staat op 303 woorden bij een plafond van 311; de bullet kost ± 30 woorden. Het plafond omhoog is een bewuste keuze in deze PR (zie de comment in `budget_test.go`): `blockCeilings["core"]` en `blocksCeiling` gaan allebei met het gemeten aantal extra woorden omhoog, niet met een ruime marge.
+De bullet komt in het managed block. Het `core`-blok staat op 303 woorden bij een plafond van 311; de bullet kost 42 woorden (`wc -w`). Het plafond omhoog is een bewuste keuze in deze PR (zie de comment in `budget_test.go`): `blockCeilings["core"]` en `blocksCeiling` gaan allebei met het gemeten aantal extra woorden omhoog, niet met een ruime marge.
 
 ## Globale randvoorwaarden
 
@@ -35,6 +35,7 @@ De bullet komt in het managed block. Het `core`-blok staat op 303 woorden bij ee
 **Bestanden:**
 - Wijzig: `pack/core/instructions/AGENTS.md` (na de bullet over de test gate)
 - Wijzig: `internal/packs/budget_test.go:15,18`
+- Wijzig: `tests/test_instruction_files.py:28-33` (tweede woordbudget: `<= 303` en de docstring)
 - Gegenereerd: `AGENTS.md` (managed block), via `init --upgrade`
 
 **Interfaces:**
@@ -43,9 +44,10 @@ De bullet komt in het managed block. Het `core`-blok staat op 303 woorden bij ee
 - [ ] **Stap 1: zet de regel uit Globale randvoorwaarden als bullet in `pack/core/instructions/AGENTS.md`**, direct na de `Test gate`-bullet.
 - [ ] **Stap 2: draai `go test ./internal/packs/...`.** Verwacht: `TestInstructionBlocksWithinCeiling` faalt op het `core`-blok (rood bewijst dat de test de bullet ziet).
 - [ ] **Stap 3: verhoog `blockCeilings["core"]` en `blocksCeiling` met het verschil tussen het gemeten en het oude aantal** (`wc -w pack/core/instructions/AGENTS.md` plus de markers die de test telt; lees het aantal uit de testmelding).
-- [ ] **Stap 4: `go test ./internal/packs/...`** → PASS.
+- [ ] **Stap 3b: verhoog ook de `303` in `tests/test_instruction_files.py` (assert en docstring)** met het aantal toegevoegde woorden volgens `wc -w pack/core/instructions/AGENTS.md` (nu 303; dit is een ander telsysteem dan de Go-test, die ook markers telt).
+- [ ] **Stap 4: `go test ./internal/packs/...` en `uv run pytest -q tests/test_instruction_files.py`** → PASS.
 - [ ] **Stap 5: `go run ./cmd/lighthouse init --upgrade`**, daarna nogmaals → `No changes.`
-- [ ] **Stap 6: commit** `feat(core): een gepushte branch werk je bij met merge, niet met rebase en force-push (#179)` met `pack/core/instructions/AGENTS.md`, `internal/packs/budget_test.go` en de gegenereerde kopieën.
+- [ ] **Stap 6: commit** `feat(core): een gepushte branch werk je bij met merge, niet met rebase en force-push (#179)` met `pack/core/instructions/AGENTS.md`, `internal/packs/budget_test.go`, `tests/test_instruction_files.py` en de gegenereerde kopieën.
 
 ## Taak 2: `lighthouse-write-handoff`
 
@@ -63,7 +65,7 @@ De bullet komt in het managed block. Het `core`-blok staat op 303 woorden bij ee
 ## Taak 3: `lighthouse-fix-pr`
 
 **Bestanden:**
-- Wijzig: `pack/core/skills/fix-pr/claude/SKILL.md` en `pack/core/skills/fix-pr/agents/SKILL.md`: sectie *2. Work in the worktree* (na het worktree-blok) en de bullet *A merge conflict gives no fail check* in *Known pitfalls*
+- Wijzig: `pack/core/skills/fix-pr/claude/SKILL.md` en `pack/core/skills/fix-pr/agents/SKILL.md`: alleen de bullet *A merge conflict gives no fail check* in *Known pitfalls*
 - Gegenereerd: `.claude/skills/lighthouse-fix-pr/SKILL.md`, `.agents/skills/lighthouse-fix-pr/SKILL.md`
 
 **Interfaces:**
@@ -80,7 +82,7 @@ De bullet komt in het managed block. Het `core`-blok staat op 303 woorden bij ee
 - Maak: `changelog.d/issue-179-een-gepushte-branch-bijwerken-met-main.md`
 
 - [ ] **Stap 1: schrijf het fragment**: `type:` `changed`, in het Engels, 1–2 zinnen (een gepushte branch wordt bijgewerkt met merge, niet rebase; handoff en fix-pr volgen). Formaat uit `docs/releasing.md`.
-- [ ] **Stap 2: `go test ./...`, `go run ./cmd/lighthouse init --upgrade` (→ `No changes.`) en `.lighthouse/scripts/check-instructions.sh`** allemaal groen.
+- [ ] **Stap 2: `go test ./...`, `uv run pytest -q`, `go run ./cmd/lighthouse init --upgrade` (→ `No changes.`) en `.lighthouse/scripts/check-instructions.sh`** allemaal groen.
 - [ ] **Stap 3: commit** `docs(changelog): fragment voor #179`.
 
 ## Zelfreview
