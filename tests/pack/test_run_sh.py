@@ -4,7 +4,8 @@ ever waiting for that build, and maps a missing binary or an unknown hook per th
 
 Every test runs the script from a temporary repo with a PATH of symlinks to the tools it needs,
 so no real `go` or `lighthouse` of the host leaks in. The fake `go` logs each call (its cwd and
-arguments), sleeps `FAKE_GO_SLEEP` seconds and writes a fake binary to its `-o` path; the fake
+arguments), waits until the file `FAKE_GO_GATE` exists when that is set, and writes a fake
+binary to its `-o` path; the fake
 PATH `lighthouse` echoes its arguments and has its rc, stdout and stderr set by the environment.
 """
 
@@ -32,7 +33,16 @@ if [ "$1" != build ] || [ "$2" != -o ] || [ "$4" != ./cmd/lighthouse ]; then
   echo "fake go: unexpected arguments: $*" >&2
   exit 99
 fi
-sleep "${FAKE_GO_SLEEP:-0}"
+# A build the test holds open until it creates the gate file: a run.sh that waits for the
+# build then hangs on the call's timeout, whatever the speed of the runner. 2400 x 0.05 s caps
+# a gate nobody opens at 120 s.
+if [ -n "${FAKE_GO_GATE:-}" ]; then
+  n=0
+  while [ ! -e "$FAKE_GO_GATE" ] && [ "$n" -lt 2400 ]; do
+    sleep 0.05
+    n=$((n + 1))
+  done
+fi
 if [ -n "${FAKE_GO_FAIL:-}" ]; then
   echo "compile error: boom"
   exit 1
@@ -129,8 +139,9 @@ class Repo:
             env={**self.env, **env}, timeout=20, check=False,
         )
 
-    def wait_built(self, calls: int, timeout: float = 5.0) -> None:
-        """Wait until the go log has `calls` entries and the lock is gone."""
+    def wait_built(self, calls: int, timeout: float = 60.0) -> None:
+        """Wait until the go log has `calls` entries and the lock is gone. The deadline only
+        catches a build that never ends: a slow runner needed more than 5 s (#338)."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if len(self.go_calls()) >= calls and not (self.bin / "build.lock").exists():
@@ -313,20 +324,24 @@ def test_path_binary_without_hook_command_maps_per_list(tmp_path):
 # --- the build from the checkout --------------------------------------------------------------
 
 def _parallel_calls_build_once(repo: Repo) -> None:
-    env = {**repo.env, "FAKE_GO_SLEEP": "3"}
+    # The build stays blocked until every call has returned: a call that waited for it
+    # would hit the timeout instead of a wall-clock bound (#338).
+    gate = repo.tmp / "go-gate"
+    env = {**repo.env, "FAKE_GO_GATE": str(gate)}
     procs = []
     for _ in range(8):
-        start = time.monotonic()
         p = subprocess.Popen([str(repo.run_sh), NON_BLOCKING], stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=str(repo.root),
                              env=env, text=True)
-        procs.append((p, start))
-    for p, start in procs:
-        out, _ = p.communicate("{}", timeout=10)
-        assert time.monotonic() - start < 2.0, "run.sh waited for the build"
-        assert p.returncode == 0
-        assert out == f"path-binary hook {NON_BLOCKING}\n"
-    repo.wait_built(1, timeout=5.0)
+        procs.append(p)
+    try:
+        for p in procs:
+            out, _ = p.communicate("{}", timeout=60)
+            assert p.returncode == 0
+            assert out == f"path-binary hook {NON_BLOCKING}\n"
+    finally:
+        gate.touch()
+    repo.wait_built(1)
     assert len(repo.go_calls()) == 1
     assert os.access(repo.bin / "lighthouse", os.X_OK)
     assert (repo.bin / "stamp").read_text().strip() == repo.head()
@@ -350,9 +365,13 @@ def test_build_detaches_without_setsid(tmp_path):
 def test_runs_previous_binary_during_build(tmp_path):
     repo = Repo(tmp_path)
     old_checkout_binary(repo)
-    start = time.monotonic()
-    r = repo.call(NON_BLOCKING, FAKE_GO_SLEEP="3")
-    assert time.monotonic() - start < 2.0
+    # The build stays blocked until the call has returned: a run.sh that waited for it
+    # hits the call's timeout instead of a wall-clock bound (#338).
+    gate = repo.tmp / "go-gate"
+    try:
+        r = repo.call(NON_BLOCKING, FAKE_GO_GATE=str(gate))
+    finally:
+        gate.touch()
     assert r.stdout == f"old-binary hook {NON_BLOCKING}\n"
     repo.wait_built(1)
     assert repo.call(NON_BLOCKING).stdout == f"built-binary hook {NON_BLOCKING}\n"
