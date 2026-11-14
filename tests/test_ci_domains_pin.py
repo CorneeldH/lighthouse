@@ -79,7 +79,7 @@ def test_python_job_runs_in_three_shards():
     grep = [s for s in steps if "ci/literal-grep.sh" in s]
     assert len(grep) == 1, grep
     assert re.match(
-        r"if: matrix\.shard == 1 && matrix\.os == 'ubuntu-latest'\n"
+        r"if: matrix\.shard == 1\n"
         r"        run: \|\n"
         r"          ci/literal-grep\.sh\n"
         r"          LITERAL_DENYLIST=ci/literal-denylist-go\.txt LITERAL_SKIP_TESTS=1 ci/literal-grep\.sh internal cmd$",
@@ -89,13 +89,13 @@ def test_python_job_runs_in_three_shards():
     assert python.count("ci/literal-grep.sh") == 2
 
 
-def test_tests_run_on_linux_and_macos():
-    """Fails when the Go race tests, the e2e tests or the pytest suite stop running on macOS (#90)."""
+def test_pr_runs_no_macos_job():
+    """Fails when a PR job runs on macOS again: macOS is the gate before the release (#337)."""
+    assert "macos-latest" not in _text()
     jobs = _jobs()
     for name in ("python", "go-test", "go-e2e"):
-        job = jobs[name]
-        assert "runs-on: ${{ matrix.os }}" in job, name
-        assert re.search(r"^        os: \[ubuntu-latest, macos-latest\]\s*$", job, re.MULTILINE), name
+        assert re.search(r"^    runs-on: ubuntu-latest\s*$", jobs[name], re.MULTILINE), name
+        assert "matrix.os" not in jobs[name], name
 
 
 def test_python_job_shows_the_pytest_header():
