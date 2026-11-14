@@ -19,7 +19,7 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
   files of the commit and reports red.
 - `bash-write-check` (`run.sh bash-write-check`) — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. Runs the
   write checks on what a Bash call wrote.
-- `pr-create-gate.sh` — PreToolUse `Bash`. Blocks a `gh pr create` whose body lacks
+- `pr-create-gate` (`run.sh pr-create-gate`) — PreToolUse `Bash`. Blocks a `gh pr create` whose body lacks
   `Closes #N` with evidence, `Refs #N — <reason>` or `No issue: <reason>`.
 - `worktree-check` (`run.sh worktree-check`) — PreToolUse `Edit|Write`. Warns (never blocks) at a
   write into the main checkout on `main`.

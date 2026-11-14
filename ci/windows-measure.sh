@@ -125,9 +125,9 @@ echo z >"$REPO/b.txt"
 hook PostToolUse "run.sh bash-write-check post" "echo z > b.txt"
 row "8. bash-write-check post" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 
-hook PreToolUse pr-create-gate.sh "gh pr create --title x --body x"
+hook PreToolUse "run.sh pr-create-gate" "gh pr create --title x --body x"
 row "9. pr-create-gate, body without issue line" "rc 2" "$RC" "$(mark ok 2)" "$ERR"
-hook PreToolUse pr-create-gate.sh "gh pr create --title x --body 'No issue: a measurement on Windows'"
+hook PreToolUse "run.sh pr-create-gate" "gh pr create --title x --body 'No issue: a measurement on Windows'"
 row "10. pr-create-gate, \`No issue:\` body" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 
 # With a [test_gate] command, post runs it on the commit's files, inside a gate slot.

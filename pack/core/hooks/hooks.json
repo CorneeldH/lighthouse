@@ -21,7 +21,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pr-create-gate.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh pr-create-gate",
             "timeout": 15
           }
         ]

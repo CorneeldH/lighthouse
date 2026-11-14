@@ -129,7 +129,7 @@ func TestRunInstructionsPinnedText(t *testing.T) {
 		"push the branch yourself with `git push -u origin HEAD`, then post the handoff `next: /lighthouse-write-pr <nr>` and stop.",
 		"At `finishing-a-development-branch` this replaces push + PR.",
 		"A run started with `/lighthouse-write-pr <nr>` verifies the acceptance criteria and opens the PR, the body through `--body-file`.",
-		"When it opens no PR (red tests, `evidence.py` exit 3 or 4, a block of `pr-create-gate`, a PR that already exists), it posts no handoff",
+		"When it opens no PR (red tests, `lighthouse evidence` exit 3 or 4, a block of `pr-create-gate`, a PR that already exists), it posts no handoff",
 		"after the merge it starts `/lighthouse-close-issue`",
 		"End every phase with `/lighthouse-write-handoff`, except a phase that ends with `lighthouse ask` (see above) or a `/lighthouse-write-pr` run that opened no PR",
 	} {

@@ -1,4 +1,4 @@
-"""End-to-end tests for pack/core `pr-create-gate.sh`, as installed (#1091).
+"""End-to-end tests for pack/core `pr-create-gate` (`run.sh pr-create-gate`), as installed (#1091).
 
 The hook runs as a subprocess with a real project repo in `tmp_path` as
 `CLAUDE_PROJECT_DIR`. No network: a stub `gh` is always first on
@@ -9,6 +9,7 @@ without `gh`), so no test reaches the real `gh`.
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ import pytest
 from tests.pack._testkit import (
     CORE,
     INSTALLED_HOOKS,
+    RUN_SH_TOOLS,
     bash_payload,
     init_repo,
     run_hook,
@@ -29,8 +31,13 @@ from tests.pack.test_pr_body_gate import (
     closes_body,
 )
 
-HOOK = INSTALLED_HOOKS / "pr-create-gate.sh"
+# The hook runs as `lighthouse hook pr-create-gate` behind run.sh: the binary of this checkout.
+pytestmark = pytest.mark.usefixtures("lighthouse_bin")
+
+HOOK = INSTALLED_HOOKS / "run.sh"
+HOOK_ARGS = ("pr-create-gate",)
 HOOKS_JSON = CORE / "hooks" / "hooks.json"
+GO_HOOK = CORE.parents[1] / "internal" / "hooks" / "prcreategate.go"
 # `forge.repo` of the lighthouse.toml that install_core leaves behind.
 REPO = "Acme/widgets"
 
@@ -44,7 +51,7 @@ FAKE_GH = (
     "fi\n"
     "exit 1\n"
 )
-BASE_TOOLS = ("jq", "python3", "git", "cat", "dirname", "bash")
+BASE_TOOLS = (*RUN_SH_TOOLS, "git", "bash", "sh", "lighthouse")
 
 
 class Gate:
@@ -77,7 +84,7 @@ class Gate:
             "GH_ISSUE_BODY": ISSUE_WITH_THREE_AC,
             **env,
         }
-        return run_hook(HOOK, bash_payload(cmd, cwd), cwd, full_env)
+        return run_hook(HOOK, bash_payload(cmd, cwd), cwd, full_env, args=HOOK_ARGS)
 
 
 @pytest.fixture
@@ -197,29 +204,6 @@ def test_gh_missing_passes_loudly(gate: Gate, tmp_path: Path) -> None:
     assert "gh is missing" in out["hookSpecificOutput"]["additionalContext"]
 
 
-@pytest.mark.parametrize("drop", ["jq", "python3"])
-def test_without_tooling_blocks(gate: Gate, tmp_path: Path, drop: str) -> None:
-    bare = tool_bin(tmp_path / "kaal", BASE_TOOLS, drop=drop)
-
-    result = gate.run("gh pr create --repo Acme/widgets --body 'zie titel'", path=str(bare), stub=False)
-
-    assert result.returncode == 2, result.stdout
-    assert "COULD NOT CHECK" in result.stderr
-    assert drop in result.stderr
-
-
-def test_parser_with_unexpected_rc_blocks(gate: Gate) -> None:
-    # A lib that ends with a code other than 0/2/3 (traceback: rc 1) is
-    # no green light. A fake python3 first on PATH forces that.
-    tool_bin(gate.stub, (), stubs={"python3": "#!/bin/sh\nexit 1\n"})
-
-    result = gate.run("gh pr create --repo Acme/widgets --body 'Refs #5 — wacht op deploy op de Beelink'")
-
-    assert result.returncode == 2, result.stdout
-    assert "COULD NOT CHECK" in result.stderr
-    assert "the body parser failed (rc 1)" in result.stderr
-
-
 def test_invalid_payload_blocks(gate: Gate) -> None:
     result = run_hook_raw(gate)
 
@@ -248,25 +232,64 @@ def test_hook_registered_and_executable() -> None:
     ]
     assert len(bash_blocks) == 1
     entries = [
-        h for h in bash_blocks[0]["hooks"] if "pr-create-gate.sh" in h["command"]
+        h for h in bash_blocks[0]["hooks"] if h["command"].endswith("/run.sh pr-create-gate")
     ]
     assert len(entries) == 1, bash_blocks[0]["hooks"]
     assert entries[0]["timeout"] == 15
     assert os.access(HOOK, os.X_OK)
-    assert "# Counterpart: /lighthouse-write-pr" in HOOK.read_text(encoding="utf-8")
+    assert "Counterpart: /lighthouse-write-pr" in GO_HOOK.read_text(encoding="utf-8")
 
 
-def run_hook_raw(gate: Gate):
-    """The hook with a payload that is not JSON."""
+def run_hook_raw(gate: Gate, payload: str = "geen json {"):
+    """The hook with a raw payload, by default one that is not JSON."""
     return subprocess.run(
-        [str(HOOK)],
-        input="geen json {",
+        [str(HOOK), *HOOK_ARGS],
+        input=payload,
         capture_output=True,
         text=True,
         cwd=str(gate.project),
         env=dict(os.environ, PATH=f"{gate.stub}{os.pathsep}{os.environ['PATH']}"),
         check=False,
     )
+
+
+# Review focus 5: payloads of a strange shape. The verdicts are those of the bash hook
+# (`jq -r '.tool_input.command // empty'`), the Go hook must give the same.
+PAYLOAD_SHAPES = {
+    "array": ("[1]", 2),
+    "null": ("null", 0),
+    "tool_input_string": ('{"tool_input": "gh pr create"}', 2),
+    "command_number": ('{"tool_input": {"command": 5}}', 0),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(PAYLOAD_SHAPES))
+def test_payload_shapes(gate: Gate, shape: str) -> None:
+    payload, code = PAYLOAD_SHAPES[shape]
+
+    result = run_hook_raw(gate, payload)
+
+    assert result.returncode == code, (result.stdout, result.stderr)
+    if code == 2:
+        assert "COULD NOT CHECK — the payload is not valid JSON." in result.stderr
+    else:
+        assert (result.stdout, result.stderr) == ("", "")
+
+
+def test_slow_gh_passes_loudly_within_the_deadline(gate: Gate) -> None:
+    """Review focus 2: a `gh` that hangs at the AC count passes loudly, well before the hook timeout."""
+    tool_bin(gate.stub, (), stubs={"gh": "#!/bin/sh\nexec sleep 30\n"})
+    (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
+
+    start = time.monotonic()
+    result = gate.run("gh pr create --repo Acme/widgets -F body.md")
+    elapsed = time.monotonic() - start
+
+    assert elapsed < 10, elapsed
+    assert result.returncode == 0, result.stderr
+    out = json.loads(result.stdout)
+    assert "AC count not measurable for #5 (timeout after 5 s)" in out["systemMessage"]
+    assert out["hookSpecificOutput"]["additionalContext"] == out["systemMessage"]
 
 
 def test_fork_clone_without_repo_blocks_with_the_exact_flag(gate: Gate) -> None:

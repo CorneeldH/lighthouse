@@ -1,6 +1,6 @@
 ---
 name: lighthouse-write-pr
-description: 'Use before every `gh pr create` in this repo — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate.sh blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Refs #N — <reason>` with an Evidence table of the proven criteria, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — not for closing an issue or checking after the merge: use lighthouse-close-issue instead; repairing a red PR is lighthouse-fix-pr.'
+description: 'Use before every `gh pr create` in this repo — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Refs #N — <reason>` with an Evidence table of the proven criteria, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — not for closing an issue or checking after the merge: use lighthouse-close-issue instead; repairing a red PR is lighthouse-fix-pr.'
 metadata:
   lighthouse: "core@dev"
   binding: hard
@@ -18,7 +18,7 @@ question: interactive and headless (controller run, if present) the outcome is t
 
 - Before every `gh pr create`, also "make a PR" and the choice push + PR in
   `finishing-a-development-branch`.
-- When `.claude/hooks/lighthouse/pr-create-gate.sh` blocks a `gh pr create`.
+- When `.claude/hooks/lighthouse/run.sh pr-create-gate` blocks a `gh pr create`.
 - `/lighthouse-write-pr <nr>`. Without an argument the number comes from the branch
   `issue-<nr>-…` (`git branch --show-current`). No issue: the body gets `No issue: <reason>`
   (≥10 characters) and no milestone; skip V1–V3 (V2b still runs).
@@ -153,7 +153,7 @@ The reason says that `/lighthouse-close-issue` runs the rows after the merge and
 Below it a heading `### Evidence #N` with one row per AC that is `demonstrably done`; the AC cell starts with
 the number of the criterion in the issue (`1. …`). Below the table each open criterion (`partly`,
 `not`, `after merge`) with its verdict and what is still needed. A row for an open criterion does
-not exist: `evidence.py run --before-pr` fails on a row that does not hold. Every criterion open:
+not exist: `lighthouse evidence run --before-pr` fails on a row that does not hold. Every criterion open:
 no table.
 
 `Closes` stays valid for a PR a person opens without this skill. This skill never writes it: the
@@ -228,7 +228,7 @@ stays a pipe and the row is invalid.
 
 ## Evidence allowlist
 
-At argv level, complete; the same list as `.lighthouse/lib/lighthouse_lib/evidence.py` (the
+At argv level, complete; the same list as `lighthouse evidence` (the
 source) and `/lighthouse-close-issue`. Always: `argv[0]` is the bare name (no `/usr/bin/grep`, no `FOO=1 grep`), an
 option not on the list is refused, an option with `=` and an empty value too.
 
@@ -245,12 +245,12 @@ option not on the list is refused, an option with `=` and an empty value too.
 
 The test directory is `lighthouse config test_gate.evidence_test_dir`.
 A `--jq` expression may not contain `env`, `$ENV` or `input`/`inputs`. Extending the list is a
-change of this skill *and* of `evidence.py`, never something a PR body can do.
+change of this skill *and* of `lighthouse evidence`, never something a PR body can do.
 
 Check each row as soon as you write it:
 
 ```bash
-python3 .lighthouse/lib/lighthouse_lib/evidence.py check '<Command cell>'
+lighthouse evidence check '<Command cell>'
 ```
 
 Exit 0 (silent) = allowed; exit 1 + reason = choose another command.
@@ -259,7 +259,7 @@ Before the PR, only if the body has a table, run all rows together, outside the 
 (`dangerouslyDisableSandbox: true`, otherwise every `gh` row is `heading:evidence_unmeasurable`):
 
 ```bash
-python3 .lighthouse/lib/lighthouse_lib/evidence.py run --issue <nr> --body-file <path> --cwd . --before-pr
+lighthouse evidence run --issue <nr> --body-file <path> --cwd . --before-pr
 ```
 
 Output (stderr included): a table `heading:evidence_table_head`. Every row must be
@@ -302,7 +302,7 @@ to `lighthouse plan-review-record pr-open-points <path>...`; the script follows 
 from the **Spec:** line of a plan itself, also when that spec is already on the default branch. If
 the output is not empty, put it unchanged as a section of its own `## Open review points` in the
 body; if it is empty, leave the section out. It is no Evidence row and does not count in the AC
-count of `pr-create-gate.sh`. Name the headings here only inline between backticks: a line that
+count of `pr-create-gate`. Name the headings here only inline between backticks: a line that
 starts with `## ` breaks the V4 section the tests cut out.
 
 Roborev line (V2b ran): add the output of `lighthouse roborev-gate body-line`
@@ -375,7 +375,7 @@ Refs #1091 — /lighthouse-close-issue runs these rows after the merge and close
 
 ## Counterpart
 
-`.claude/hooks/lighthouse/pr-create-gate.sh` (PreToolUse on `Bash`) enforces the form at every
+`.claude/hooks/lighthouse/run.sh pr-create-gate` (PreToolUse on `Bash`) enforces the form at every
 `gh pr create`/`gh pr new`: no valid form, or a body that does not come from a literal value or
 `--body-file` → block. Under `Closes #N` the hook counts the rows against the criteria; under
 `Refs #N` it checks a table on form and does not count. If it cannot count the ACs of a `Closes`
@@ -387,7 +387,7 @@ pass, name it in `## Verification`.
 OpenCode and Codex do not run the hook. Check the body yourself then:
 
 ```bash
-printf '%s' "gh pr create --repo <forge.repo> --body-file <path>" | python3 .lighthouse/lib/lighthouse_lib/pr_body_gate.py "$PWD"
+printf '%s' "gh pr create --repo <forge.repo> --body-file <path>" | lighthouse pr-body-gate "$PWD"
 ```
 
 Exit 0 = fine (read the messages on stdout); 2 = blocked (reason on stderr); 3 = open quote; any
