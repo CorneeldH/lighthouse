@@ -500,7 +500,7 @@ If a call fails, report "released issues not read" with that command, never "non
 ## Clean up the worktree — the last step
 
 After the close the worktree and the local branch of the issue otherwise stay. The verdict comes
-from `.lighthouse/scripts/worktree_audit.py`, the same ladder as `/lighthouse-audit-worktrees`: no
+from `lighthouse worktree-audit`, the same ladder as `/lighthouse-audit-worktrees`: no
 second set of rules here.
 
 **When.**
@@ -513,15 +513,15 @@ second set of rules here.
 | C with reopening, `COULD NOT CHECK` or `closed without a closing PR`; A, B or B7 without a close | no |
 
 **Branches.** All branches of the issue: the head branch of every merged PR that refers to it
-(`Closes` and `Refs`), plus every local branch `issue-<nr>-*`. The script finds them itself:
+(`Closes` and `Refs`), plus every local branch `issue-<nr>-*`. The command finds them itself:
 
 ```bash
-python3 .lighthouse/scripts/worktree_audit.py --issue <nr>; echo "exit=$?"
+lighthouse worktree-audit --issue <nr>; echo "exit=$?"
 ```
 
-The script runs outside the sandbox (`dangerouslyDisableSandbox: true`): it calls `gh` for the PR
+The command runs outside the sandbox (`dangerouslyDisableSandbox: true`): it calls `gh` for the PR
 status. Run it without `cd`, from the directory where the session started: the cwd test measures
-the cwd of the script, and Codex and OpenCode write no session file that sets `live`. A branch
+the cwd of the command, and Codex and OpenCode write no session file that sets `live`. A branch
 without a merged PR gets `cleanup: no — no merged PR`.
 
 **Verdict.** Only exit `0` plus, in a branch's block, a line `cleanup: yes` can be cleaned up.

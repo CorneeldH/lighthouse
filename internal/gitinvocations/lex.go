@@ -1,7 +1,7 @@
 // Package gitinvocations finds `git commit` and `git push` inside an arbitrary shell command.
 //
-// It is the Go twin of pack/core/lib/git_invocations.py, which stays frozen. The two must say
-// the same thing: tests/pack/fixtures/git_invocations/cases.json is read by both.
+// It is the port of git_invocations.py; tests/pack/fixtures/git_invocations/cases.json holds its
+// behaviour.
 package gitinvocations
 
 import (

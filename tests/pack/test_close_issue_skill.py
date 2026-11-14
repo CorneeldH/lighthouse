@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 
-from tests.pack._testkit import CORE, load_hook_lib
+from tests.pack._testkit import CORE
 
 SKILL_DIR = CORE / "skills" / "close-issue"
 _STRIP_COMMENTS = 'gsub("<!--[\\\\s\\\\S]*?-->"; "")'
@@ -251,7 +251,7 @@ def test_entry_c_exit_4_writes_a_comment_file():
 def test_cleanup_reads_the_audit_token():
     for body in skill():
         cleanup = _section(body, "## Clean up the worktree")
-        assert "python3 .lighthouse/scripts/worktree_audit.py --issue <nr>" in cleanup
+        assert "lighthouse worktree-audit --issue <nr>" in cleanup
         assert "`cleanup: yes`" in cleanup and "`cleanup: no — <reason>`" in cleanup
 
 
@@ -332,35 +332,3 @@ def test_area_of_a_milestone_after_the_prefix():
         flat = " ".join(step.split())
         assert "the title prefix of the milestone" not in flat
         assert "the part before `:` after `project.milestone_prefix`" in flat
-
-
-def _refs_regex(section: str) -> re.Pattern[str]:
-    """The `Refs` regex of a jq filter in the skill, as Python sees it, for issue 147."""
-    m = re.search(r'test\("([^"]*Refs[^"]*)"; "i"\)', section)
-    assert m, "no case-insensitive Refs test in the jq filter"
-    return re.compile(m.group(1).replace("\\\\", "\\").replace("<nr>", "147"), re.IGNORECASE)
-
-
-_TEMPLATE = (CORE / "templates" / "pull_request_template.md").read_text(encoding="utf-8")
-
-
-def test_the_refs_filters_find_what_the_gate_parser_finds():
-    """A PR in the jq filters is a PR the gate counts as `Refs #147`: comments out, any case."""
-    gate = load_hook_lib("pr_body_gate")
-    bodies = (
-        _TEMPLATE.replace("#123", "#147"),
-        "refs #147 — lowercase reason",
-        "Refs\t#147: reason after a tab",
-        "Refs #1470 — another issue",
-        "Refs #147_x — not this number",
-        "see a/Refs #147 in a path",
-        "xRefs #147 glued to a word",
-        "<!-- Refs #147 — only in a comment -->\nNo issue: nothing here at all",
-    )
-    for body in skill():
-        for section in (_section(body, "## Step 0"), _b2a(body)):
-            assert _STRIP_COMMENTS in section
-            rx = _refs_regex(section)
-            for text in bodies:
-                found = bool(rx.search(re.sub(r"<!--[\s\S]*?-->", "", text)))
-                assert found == (147 in gate.refs_targets(text)), text

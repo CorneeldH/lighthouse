@@ -17,18 +17,16 @@ import pytest
 from tests.pack._testkit import (
     CORE,
     INSTALLED_HOOKS,
-    RUN_SH_TOOLS,
-    bash_payload,
-    init_repo,
-    run_hook,
-    tool_bin,
-)
-from tests.pack.test_pr_body_gate import (
     ISSUE_WITH_THREE_AC,
     ROWS1,
     ROWS2,
     ROWS3,
+    RUN_SH_TOOLS,
+    bash_payload,
     closes_body,
+    init_repo,
+    run_hook,
+    tool_bin,
 )
 
 # The hook runs as `lighthouse hook pr-create-gate` behind run.sh: the binary of this checkout.

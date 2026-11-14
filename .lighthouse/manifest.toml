@@ -8,14 +8,14 @@ kind = "file"
 path = ".agents/skills/lighthouse-audit-worktrees/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "c8a486cb3b8577f05e70133440941db0cfb3cac57bbb9148b303bda1a339a39a"
+sha256 = "d337b5ebf6b3aa43630b8e09e44c41ab340c02d3672b0e30bc99a3fd46053dbf"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "c7ea3eed1cd6e3d3101fa2ee06e69e1166dbb552464fd131992bfd7beadea57c"
+sha256 = "898aa6abc8fc99fade0b4b1007d6d3cd7cbb4c0c721b224c2f22e47197a7642d"
 
 [[unit]]
 kind = "file"
@@ -342,14 +342,14 @@ kind = "file"
 path = ".claude/skills/lighthouse-audit-worktrees/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "c8a486cb3b8577f05e70133440941db0cfb3cac57bbb9148b303bda1a339a39a"
+sha256 = "d337b5ebf6b3aa43630b8e09e44c41ab340c02d3672b0e30bc99a3fd46053dbf"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "4d76deefed22d4eff476fedf08d49ccf34beda665058ae210d8c5bb7ec45f523"
+sha256 = "c1074d620693dbaaa6c82a4b5d49b06c5be8291c418044dd5730f94074d13884"
 
 [[unit]]
 kind = "file"
@@ -528,31 +528,10 @@ sha256 = "0026a6fdd41692e374daa4233ca50108f9c70a51f6fd4e1f92a66de0593e60a5"
 
 [[unit]]
 kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/git_invocations.py"
-package = "core"
-version = "dev"
-sha256 = "967125f0cd9b61d28693beb4977cc6be1b517ee9a1936096770838865c03c526"
-
-[[unit]]
-kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/headings.py"
 package = "core"
 version = "dev"
 sha256 = "d91b117b414a6c4a9d486c89a914a07d02a6f70351c35b46633996616a590772"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/pr_body_gate.py"
-package = "core"
-version = "dev"
-sha256 = "feb55560160642dac53857e880eb0c6dee8fa658f7400352dbdf674f6dab2550"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/repo_identity.py"
-package = "core"
-version = "dev"
-sha256 = "071f1f3958a8cf101f4c19b0a2b2c5de791a2bd62f5b12f368ef965dcd3e56cf"
 
 [[unit]]
 kind = "file"
@@ -581,13 +560,6 @@ path = ".lighthouse/scripts/gate_node.py"
 package = "node"
 version = "dev"
 sha256 = "b333b7e2d9feca85cc3859e7fadd3df1549d741c76c8da4aa35ec59aec46faac"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/worktree_audit.py"
-package = "core"
-version = "dev"
-sha256 = "ec6fb638eea783728aaef359c88a8cb337451f34328480d1efc52d055ca5b1b6"
 
 [[unit]]
 kind = "block"

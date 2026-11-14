@@ -77,13 +77,9 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/__init__.py",
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
-		".lighthouse/lib/lighthouse_lib/git_invocations.py",
 		".lighthouse/lib/lighthouse_lib/headings.py",
-		".lighthouse/lib/lighthouse_lib/pr_body_gate.py",
-		".lighthouse/lib/lighthouse_lib/repo_identity.py",
 		".lighthouse/scripts/check-instructions.sh",
 		".lighthouse/scripts/create_labels.py",
-		".lighthouse/scripts/worktree_audit.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))

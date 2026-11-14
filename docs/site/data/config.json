@@ -151,9 +151,7 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "internal/worktreeaudit/collect.go",
-                "pack/core/lib/pr_body_gate.py",
                 "pack/core/scripts/create_labels.py",
-                "pack/core/scripts/worktree_audit.py",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
@@ -193,7 +191,6 @@
                 "internal/roborev/gate.go",
                 "internal/workplace/local/adapter.go",
                 "internal/worktreeaudit/collect.go",
-                "pack/core/scripts/worktree_audit.py",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/start-issue",
@@ -802,8 +799,7 @@
               "default": [],
               "about": "Worktree paths the audit never proposes to remove.",
               "readers": [
-                "internal/worktreeaudit/collect.go",
-                "pack/core/scripts/worktree_audit.py"
+                "internal/worktreeaudit/collect.go"
               ]
             },
             {
@@ -813,8 +809,7 @@
               "default": [],
               "about": "Branches the worktree audit never proposes to remove.",
               "readers": [
-                "internal/worktreeaudit/collect.go",
-                "pack/core/scripts/worktree_audit.py"
+                "internal/worktreeaudit/collect.go"
               ]
             }
           ]

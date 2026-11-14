@@ -1,46 +1,16 @@
-"""`pack/core/lib/git_invocations.py` (#884): the shared commit parser.
+"""The Python lib of pack/core (`pack/core/lib`, installed as `.lighthouse/lib/lighthouse_lib`).
 
-Moved out of the `IFS= read -r -d '' PARSE <<'PYEOF'` heredoc in
-main-commit-gate.sh. The existing coverage of that behaviour is in
-`test_instructie_hooks.py::test_commit_guard_*` (black box via the hook CLI);
-these tests exercise the module directly — the unit that from now on is also
-reused by the pre-commit test gate (task 2+).
+The hooks and scripts that still import it run under the host's `python3`, so it must import on
+Python 3.9 and must not shadow the standard library. Moved here when the commit parser of the
+lib became Go (`internal/gitinvocations`).
 """
 
 import ast
-import subprocess
 import sys
 
 import pytest
 
-from tests.pack._testkit import LIB, init_repo, load_hook_lib
-
-gi = load_hook_lib("git_invocations")
-
-
-def test_import_reads_no_stdin():  # the import above succeeded without stdin; pin it
-    assert callable(gi.main)
-
-
-def test_cli_contract(tmp_path):
-    x = tmp_path / "x"
-    init_repo(x)
-    out = subprocess.run(
-        [sys.executable, str(LIB / "git_invocations.py"), str(x)],
-        input="git commit -m x",
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert out.returncode == 0 and out.stdout == f"commit\t{x}\tno\t{x}\n"
-    bad = subprocess.run(
-        [sys.executable, str(LIB / "git_invocations.py"), str(x)],
-        input="git commit -m 'x",
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert bad.returncode == 3
+from tests.pack._testkit import LIB
 
 
 def _union_annotations(tree: ast.Module) -> list[int]:
@@ -91,24 +61,7 @@ def test_hook_lib_stays_importable_on_python_39(lib):
 
 
 def test_lib_names_do_not_shadow_the_stdlib():
-    """The guard runs `python3 <lib>/git_invocations.py`: the lib directory is then
+    """A hook that runs `python3 <lib>/<module>.py` makes the lib directory
     `sys.path[0]`, and a lib file named like a stdlib module would shadow it."""
     names = {p.stem for p in LIB.glob("*.py")} - {"__init__"}
     assert not names & set(sys.stdlib_module_names)
-
-
-def test_markers_are_english_tokens():
-    assert (gi.UNRESOLVED, gi.NEW_DIR) == ("<unknown>", "<new>")
-
-
-def test_cli_takes_the_default_branch(tmp_path):
-    x = tmp_path / "x"
-    init_repo(x, branch="issue-1-x")
-    out = subprocess.run(
-        [sys.executable, str(LIB / "git_invocations.py"), "--default-branch", "trunk", str(x)],
-        input="git push origin HEAD:trunk",
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert out.returncode == 0 and out.stdout == f"push\t{x}\tyes\t{x}\n"

@@ -5,9 +5,9 @@ them.
 Shared helpers for the hook tests (tasks 1 to 5 of #884/#886).
 
 Taken over from `test_instructie_hooks.py` (the private `_run`, `_git`,
-`_init_repo`, `_bash`, `_tool_bin` from before this task) so that
-`test_git_invocations.py` and later tasks (`test_pre_commit_gate.py`,
-`test_md_links.py`, `test_hook_deadline.py`) use the same plumbing instead of
+`_init_repo`, `_bash`, `_tool_bin` from before this task) so that the hook
+tests (`test_pre_commit_gate.py`, `test_md_links.py`, `test_hook_deadline.py`)
+use the same plumbing instead of
 reimplementing it. `test_instructie_hooks.py` itself stays unchanged: this
 file refactors no existing tests, it gives new tests the same building
 blocks.
@@ -85,7 +85,7 @@ def init_repo(path: Path, branch: str = "main") -> None:
 def build_fixture_setup(root: Path, steps: list[dict]) -> None:
     """Build the directory tree of a shared-fixture `setup` under `root`.
 
-    The steps are the ones of `fixtures/git_invocations/cases.json` (`repo`,
+    The steps are the ones of the git-invocations fixtures (`repo`,
     `dir`, `file`, `symlink`, `overwrite`), plus `worktree` (`{"worktree":
     "x/wt", "of": "x", "branch": "wt"}`: a linked worktree of repo `x`) and
     `origin` (`{"origin": "x", "url": ...}`: remote `origin` of repo `x`),
@@ -638,7 +638,7 @@ DEFAULT_FIXTURE_REPO = "Acme/widgets"
 def write_fixture_config(
     root: Path, repo: str | None = DEFAULT_FIXTURE_REPO, test_dir: str | None = None
 ) -> None:
-    """The config of a `pr_body_gate` or `evidence` fixture case, under `root`.
+    """The config of a PR-body-gate or `evidence` fixture case, under `root`.
 
     A `lighthouse.toml` with `forge.repo = repo` (no key when `repo` is None) and,
     with `test_dir`, `[test_gate] evidence_test_dir`; plus the headings table the
@@ -652,3 +652,26 @@ def write_fixture_config(
     (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
     (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(CORE / "headings.toml", root / ".lighthouse" / "headings.toml")
+
+
+# --- PR bodies for the pr-create-gate tests ---------------------------------------------------
+
+ROWS1 = [("1. een", "`grep -F a f`", "a")]
+ROWS2 = [*ROWS1, ("2. twee", "`ls`", "f")]
+ROWS3 = [*ROWS2, ("3. drie", "`true`", "ok")]
+
+ISSUE_WITH_THREE_AC = (
+    "## Context\n\ntekst\n\n"
+    "### Acceptatiecriteria\n- [ ] a\n- [x] b\n- [X] c\n\n"
+    "### Definition of Done\n- [ ] d\n"
+)
+
+
+def closes_body(nr: int, rows: list[tuple[str, str, str]]) -> str:
+    """A body with `Closes #nr` and an Evidence table with the given rows."""
+    table = "\n".join(f"| {ac} | {cmd} | {res} |" for ac, cmd, res in rows)
+    return (
+        f"## Related issues\n\nCloses #{nr}\n\n"
+        f"### Evidence #{nr}\n\n"
+        f"| AC | Command | Result |\n|---|---|---|\n{table}\n"
+    )
