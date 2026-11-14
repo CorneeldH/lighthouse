@@ -216,7 +216,15 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 		_, _ = fmt.Fprintln(env.Stderr, "worktree-audit: PR lookup skipped — [forge] repo is not set, so every PR state is unknown")
 	}
 	raw, lookupOK := c.pulls(repo)
-	pulls := ParsePulls(raw)
+	pulls := map[string]PullInfo{}
+	if lookupOK {
+		var perr error
+		if pulls, perr = ParsePulls(raw); perr != nil {
+			// An unreadable PR is no signal, and no signal is no cleanup yes.
+			_, _ = fmt.Fprintln(env.Stderr, "worktree-audit: PR lookup failed — "+perr.Error())
+			pulls, lookupOK = map[string]PullInfo{}, false
+		}
+	}
 
 	byBranch := map[string]WorktreeInfo{}
 	for _, w := range worktrees {

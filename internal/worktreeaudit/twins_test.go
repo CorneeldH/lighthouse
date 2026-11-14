@@ -497,3 +497,58 @@ func TestFnmatchMatchesPython(t *testing.T) {
 		}
 	}
 }
+
+// Python stopped the whole run on a pull it could not read; skipping an open PR would let a merged
+// one win.
+func TestParsePullsFailsOnAPullItCannotRead(t *testing.T) {
+	for name, pull := range map[string]string{
+		"number is no integer": `{"number":"x","state":"open","merged_at":null,"head":{"ref":"a"}}`,
+		"number is missing":    `{"state":"open","merged_at":null,"head":{"ref":"a"}}`,
+		"head is null":         `{"number":1,"state":"open","merged_at":null,"head":null}`,
+		"state is unknown":     `{"number":1,"state":"draft","merged_at":null,"head":{"ref":"a"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var item any
+			if err := json.Unmarshal([]byte(pull), &item); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := ParsePulls([]any{item}); err == nil {
+				t.Fatalf("ParsePulls = %v, want an error", got)
+			}
+		})
+	}
+}
+
+// An unreadable PR makes the whole lookup fail: the row says unknown and never cleans up.
+func TestCollectTreatsAnUnreadablePullAsAFailedLookup(t *testing.T) {
+	f := &gitFake{answer: func(args []string) *string {
+		if args[0] == "branch" && len(args) == 2 {
+			return ptr("main\nfeat-x\n")
+		}
+		return mainOnly(args)
+	}}
+	env, stderr := collectEnv(t, f, "[forge]\nrepo = \"o/r\"\n")
+	git := env.Run
+	env.Run = func(ctx context.Context, dir string, in *string, name string, args ...string) (procrun.Result, error) {
+		if name == "gh" {
+			return procrun.Result{Stdout: `{"number":1,"state":"merged","merged_at":"2026-01-01T00:00:00Z","head":{"ref":"feat-x"}}` + "\n" +
+				`{"number":"x","state":"open","merged_at":null,"head":{"ref":"feat-x"}}` + "\n"}, nil
+		}
+		return git(ctx, dir, in, name, args...)
+	}
+	audit, err := Collect(context.Background(), env, "/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), "PR lookup failed") {
+		t.Errorf("stderr %q does not say the lookup failed", stderr.String())
+	}
+	if len(audit.Rows) == 0 {
+		t.Fatal("no rows to check")
+	}
+	for _, r := range audit.Rows {
+		if r.PRLookupOK || r.PRState != nil {
+			t.Errorf("row %s: lookup ok %v, state %v; want an unknown PR", r.Name, r.PRLookupOK, r.PRState)
+		}
+	}
+}

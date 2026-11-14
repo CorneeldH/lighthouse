@@ -55,32 +55,40 @@ func jsonInt(v any) (int, bool) {
 }
 
 // prRank orders the PRs of one head branch: open weighs heaviest, then merged, then closed. A
-// state REST never gives sorts last (Python stops on it with a KeyError).
-func prRank(state string) int {
+// state REST never gives has no rank.
+func prRank(state string) (int, bool) {
 	switch state {
 	case "open":
-		return 0
+		return 0, true
 	case "merged":
-		return 1
+		return 1, true
 	case "closed":
-		return 2
+		return 2, true
 	}
-	return 3
+	return 0, false
 }
 
 // ParsePulls keys the REST pulls on their head branch. REST knows only open and closed: merged is
-// a set `merged_at`. Per head the heaviest state wins, then the highest number.
-func ParsePulls(payload []any) map[string]PullInfo {
+// a set `merged_at`. Per head the heaviest state wins, then the highest number. A pull without a
+// head, or with a head without a ref, is skipped; a pull whose number is no integer, whose head is
+// null or whose state REST never gives is an error: skipping an open PR could let a merged one win.
+func ParsePulls(payload []any) (map[string]PullInfo, error) {
 	best := map[string]PullInfo{}
 	for _, item := range payload {
 		pull := object(item)
+		if pull == nil {
+			continue
+		}
+		if head, present := pull["head"]; present && head == nil {
+			return nil, fmt.Errorf("pull %v has a null head", pull["number"])
+		}
 		ref, _ := object(pull["head"])["ref"].(string)
-		if pull == nil || ref == "" {
+		if ref == "" {
 			continue
 		}
 		number, ok := jsonInt(pull["number"])
 		if !ok {
-			continue
+			return nil, fmt.Errorf("pull of %s has a number that is no integer: %v", ref, pull["number"])
 		}
 		state := "closed"
 		switch s, present := pull["state"]; {
@@ -89,13 +97,18 @@ func ParsePulls(payload []any) map[string]PullInfo {
 		case present:
 			state = pyStr(s)
 		}
+		rank, known := prRank(state)
+		if !known {
+			return nil, fmt.Errorf("pull #%d has an unknown state %q", number, state)
+		}
 		info := PullInfo{Number: number, State: state, MergedAt: epoch(pull["merged_at"])}
 		cur, seen := best[ref]
-		if !seen || prRank(state) < prRank(cur.State) || (prRank(state) == prRank(cur.State) && number > cur.Number) {
+		curRank, _ := prRank(cur.State)
+		if !seen || rank < curRank || (rank == curRank && number > cur.Number) {
 			best[ref] = info
 		}
 	}
-	return best
+	return best, nil
 }
 
 // pyStr is str() of a decoded JSON scalar.

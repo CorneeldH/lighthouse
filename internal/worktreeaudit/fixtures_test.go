@@ -228,7 +228,11 @@ func parse(t *testing.T, c parseCase) (got, want any) {
 		}
 		return got, decode[[]string](t, c.Expect)
 	case "parse_pulls":
-		return ParsePulls(decode[struct{ Payload []any }](t, c.Input).Payload), decode[map[string]PullInfo](t, c.Expect)
+		got, err := ParsePulls(decode[struct{ Payload []any }](t, c.Input).Payload)
+		if err != nil {
+			t.Fatalf("ParsePulls: %v", err)
+		}
+		return got, decode[map[string]PullInfo](t, c.Expect)
 	case "parse_port_registry":
 		return ParsePortRegistry(decode[struct{ Text string }](t, c.Input).Text), decode[map[string]string](t, c.Expect)
 	case "parse_sessions":
