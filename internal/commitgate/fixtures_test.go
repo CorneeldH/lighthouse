@@ -10,6 +10,32 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
 )
 
+// Shared fixtures: tests/pack/fixtures/<name>/cases.json, read here and by the Python tests
+// (tests/pack/_testkit.py). Each file is a list of cases with a "name", a "kind" and an "expect".
+//
+//   - no_verify: {command, expect: bool}. Does the shell command carry --no-verify?
+//   - host_memory, kind "meminfo": {text, expect}. /proc/meminfo text to a map of fields in kB,
+//     or expect "raises" for text that does not parse.
+//   - host_memory, kind "shortfalls": {info, min_available_gib, min_swap_free_gib, expect:
+//     {found, notes}}. The fields and thresholds to what is short and the notes about it.
+//   - commit_base, kind "record": {setup, roots, expect: {heads: {root: sha}}}. The marker that
+//     Record writes for the roots.
+//   - commit_base, kind "moved": {setup, roots, commits, expect, expect_second}. Record the roots,
+//     apply commits, then MovedRoots must give the rows [root, base, head]; expect_second, when
+//     present, is a second call on the same marker.
+//   - commit_base, kind "changed_files": {setup, repo, base, head, expect}. The files that
+//     ChangedFiles reports between two revisions.
+//
+// A "setup" (and the "commits" of "moved") is a list of steps that fixturesetup.Build runs under
+// a temporary root, in the format of tests/pack/_testkit.py build_fixture_setup: repo, dir, file,
+// symlink, overwrite, worktree, origin, and unborn (git init without a commit), commit (add -A
+// and commit) and mv (git mv). Strings are filled by fixturesetup.Fill: {root} is the temporary
+// directory, {rev:<path>:<rev>} the output of git rev-parse <rev> in {root}/<path>, and
+// {empty_tree} the empty tree. The keys of an expected "heads" are filled too.
+//
+// commit_base/marker_python.json is not a case list: it is a marker as the Python gate wrote it
+// (json.dumps escapes the é of a root), which MovedRoots must read (TestMovedReadsAPythonWrittenMarker).
+
 const fixtureDir = "../../tests/pack/fixtures/"
 
 func readCases(t *testing.T, name string, into any) {
