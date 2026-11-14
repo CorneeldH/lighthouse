@@ -104,7 +104,14 @@ jobs:
               --repo CorneeldH/lighthouse \
               --pattern "lighthouse_${os}_${arch}" --pattern SHA256SUMS \
               --dir "$RUNNER_TEMP/bin"
-            (cd "$RUNNER_TEMP/bin" && sha256sum --check --ignore-missing SHA256SUMS)
+            (
+              cd "$RUNNER_TEMP/bin"
+              if command -v sha256sum >/dev/null; then
+                sha256sum --check --ignore-missing SHA256SUMS
+              else
+                shasum -a 256 -c --ignore-missing SHA256SUMS
+              fi
+            )
             mv "$RUNNER_TEMP/bin/lighthouse_${os}_${arch}" "$RUNNER_TEMP/bin/lighthouse"
             chmod +x "$RUNNER_TEMP/bin/lighthouse"
           fi

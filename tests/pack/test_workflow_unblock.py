@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -83,7 +84,7 @@ def _fake_tool(directory: Path, name: str, script: str) -> None:
 
 
 def _get_lighthouse(
-    tmp_path: Path, *, version: str, runner_os: str, arch: str, cmd: bool
+    tmp_path: Path, *, version: str, runner_os: str, arch: str, cmd: bool, sha256sum: bool = True, base_path: str | None = None
 ) -> tuple[subprocess.CompletedProcess[str], Path, list[str]]:
     """Run the `Get lighthouse` block in a tmp checkout with fake gh, sha256sum and go."""
     checkout = tmp_path / "checkout"
@@ -109,7 +110,9 @@ for f in lighthouse_linux_amd64 lighthouse_linux_arm64 lighthouse_darwin_amd64 l
 done
 """,
     )
-    _fake_tool(fakes, "sha256sum", f'echo "sha256sum $*" >> {calls}\n')
+    if sha256sum:
+        _fake_tool(fakes, "sha256sum", f'echo "sha256sum $*" >> {calls}\n')
+    _fake_tool(fakes, "shasum", f'echo "shasum $*" >> {calls}\n')
     _fake_tool(
         fakes,
         "go",
@@ -121,7 +124,7 @@ done
     runner_temp.mkdir()
     github_path = tmp_path / "github_path"
     env = {
-        "PATH": f"{fakes}{os.pathsep}{os.environ['PATH']}",
+        "PATH": f"{fakes}{os.pathsep}{base_path if base_path is not None else os.environ['PATH']}",
         "RUNNER_OS": runner_os,
         "RUNNER_ARCH": arch,
         "RUNNER_TEMP": str(runner_temp),
@@ -159,10 +162,28 @@ def test_get_lighthouse_maps_runner_and_refuses_unknown(tmp_path, runner_os, arc
         for c in calls
     ), calls
     assert "sha256sum --check --ignore-missing SHA256SUMS" in calls
+    assert not any(c.startswith("shasum") for c in calls), calls
     assert (runner_temp / "bin" / "lighthouse").is_file()
     assert os.access(runner_temp / "bin" / "lighthouse", os.X_OK)
     assert not (runner_temp / "bin" / asset).exists()
     assert (tmp_path / "github_path").read_text(encoding="utf-8") == f"{runner_temp}/bin\n"
+
+
+def test_get_lighthouse_verifies_with_shasum_where_sha256sum_is_missing(tmp_path) -> None:
+    """macOS runners have shasum only; a PATH without sha256sum must not fail the step."""
+    safe = tmp_path / "safe"
+    safe.mkdir()
+    for tool in ("bash", "dirname", "mkdir", "mv", "chmod", "cat", "grep", "sed", "uname", "env", "head", "tr", "cut", "rm", "touch"):
+        found = shutil.which(tool)
+        if found:
+            (safe / tool).symlink_to(found)
+    proc, _, calls = _get_lighthouse(
+        tmp_path, version="0.12.1", runner_os="macOS", arch="ARM64", cmd=False,
+        sha256sum=False, base_path=str(safe),
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "shasum -a 256 -c --ignore-missing SHA256SUMS" in calls
+    assert not any(c.startswith("sha256sum") for c in calls), calls
 
 
 def test_get_lighthouse_refuses_an_unknown_runner(tmp_path) -> None:
