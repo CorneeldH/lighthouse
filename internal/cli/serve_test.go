@@ -114,7 +114,7 @@ func startServe(t *testing.T) (addr string, stop func() error) {
 	errOut := &syncBuf{}
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, server.RunsMeta{}, errOut)
+		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, server.RunsMeta{}, server.RefreshInterval, errOut)
 	}()
 
 	addr = waitListening(t, errOut, done)
@@ -622,7 +622,7 @@ func (c *countingSource) Comments(context.Context, int) ([]protocol.Comment, err
 }
 
 func TestStartOverviewNoReposIsNotConfigured(t *testing.T) {
-	read, stopped := startOverview(context.Background(), nil)
+	read, stopped := startOverview(context.Background(), nil, server.RefreshInterval)
 	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
 		t.Fatalf("err = %v, want forge.ErrNotConfigured", err)
 	}
@@ -635,11 +635,40 @@ func TestStartOverviewNoReposIsNotConfigured(t *testing.T) {
 	}
 }
 
+func TestStartOverviewRebuildsOnTheInterval(t *testing.T) {
+	src := &countingSource{}
+	ctx, cancel := context.WithCancel(context.Background())
+	read, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}}, 20*time.Millisecond)
+	defer func() { cancel(); stopped() }()
+	if _, err := read(ctx); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for src.calls.Load() < 3 {
+		if time.Now().After(deadline) {
+			t.Fatalf("OpenIssues calls = %d after 5s at a 20ms interval, want at least 3", src.calls.Load())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestServeRefusesANonPositiveOverviewInterval(t *testing.T) {
+	for _, v := range []string{"0s", "-1s"} {
+		errOut := &syncBuf{}
+		root := NewRoot(strings.NewReader(""), io.Discard, errOut)
+		root.SetArgs([]string{"serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"),
+			"--overview-interval", v})
+		if err := root.ExecuteContext(context.Background()); err == nil || !strings.Contains(err.Error(), "--overview-interval must be positive") {
+			t.Errorf("%s: err = %v, want the positive-interval refusal", v, err)
+		}
+	}
+}
+
 func TestStartOverviewBuildsOnceAndStops(t *testing.T) {
 	src := &countingSource{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	read, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}})
+	read, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}}, server.RefreshInterval)
 	ov, err := read(ctx)
 	if err != nil {
 		t.Fatalf("read: %v", err)
