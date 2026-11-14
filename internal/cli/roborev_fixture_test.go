@@ -77,6 +77,10 @@ func gateWrite(t *testing.T, path, text string) {
 func newGateRun(t *testing.T, c gateCase) *gateRun {
 	t.Helper()
 	dir := t.TempDir()
+	// macOS: TempDir sits behind the /var -> /private/var symlink; the binary prints the resolved path.
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
 	r := &gateRun{t: t, tmp: filepath.Join(dir, "tmp"), repo: filepath.Join(dir, "repo"), vars: map[string]string{}}
 	if err := os.Mkdir(r.tmp, 0o755); err != nil {
 		t.Fatal(err)
