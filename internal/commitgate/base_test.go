@@ -168,3 +168,17 @@ func TestChangedFilesGitFailureIsAnError(t *testing.T) {
 		t.Errorf("ChangedFiles = %v, %v; want a commit_base: error", got, err)
 	}
 }
+
+func TestStateBaseFallsBackPerPlatform(t *testing.T) {
+	for _, c := range []struct{ goos, xdg, want string }{
+		{"linux", "/run/user/1000", "/run/user/1000"},
+		{"linux", "", "/tmp"},
+		{"darwin", "", "/tmp"},
+		{"windows", "", "C:/Temp"},
+		{"windows", "D:/rt", "D:/rt"},
+	} {
+		if got := stateBase(c.goos, c.xdg, "C:/Temp"); got != c.want {
+			t.Errorf("stateBase(%s, %q) = %q, want %q", c.goos, c.xdg, got, c.want)
+		}
+	}
+}

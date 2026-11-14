@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -33,11 +34,7 @@ func StateDir(sessionID string, create bool) (string, error) {
 	if strings.Contains(sessionID, "/") || sessionID == ".." {
 		return "", fmt.Errorf("invalid session_id: '%s'", sessionID)
 	}
-	base := os.Getenv("XDG_RUNTIME_DIR")
-	if base == "" {
-		base = "/tmp"
-	}
-	base = filepath.Join(base, "lighthouse-commit-test-gate")
+	base := filepath.Join(stateBase(runtime.GOOS, os.Getenv("XDG_RUNTIME_DIR"), os.TempDir()), "lighthouse-commit-test-gate")
 	path := filepath.Join(base, sessionID)
 	if create {
 		if err := os.MkdirAll(base, 0o755); err != nil {
@@ -51,6 +48,18 @@ func StateDir(sessionID string, create bool) (string, error) {
 		}
 	}
 	return path, nil
+}
+
+// stateBase is xdg ($XDG_RUNTIME_DIR), else /tmp; on Windows, which has no /tmp, tempDir.
+func stateBase(goos, xdg, tempDir string) string {
+	switch {
+	case xdg != "":
+		return xdg
+	case goos == "windows":
+		return tempDir
+	default:
+		return "/tmp"
+	}
 }
 
 // markerPath is the marker file of the Bash call in raw (its hook payload).
