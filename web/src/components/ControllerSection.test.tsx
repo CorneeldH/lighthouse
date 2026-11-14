@@ -60,7 +60,9 @@ describe('ControllerSection', () => {
 
     renderSection()
 
-    expect(await screen.findByText('tick 2 min ago')).toBeTruthy()
+    const tick = await screen.findByText('tick 2 min ago')
+    // The age changes every minute; a live region would read it out each time.
+    expect(tick.closest('[aria-live]')).toBeNull()
   })
 
   it('shows no tick without runs or deferred starts', async () => {

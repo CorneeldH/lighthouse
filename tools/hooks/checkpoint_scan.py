@@ -26,7 +26,8 @@ Subcommands:
                                findings (one line per ref and path), 2 could not
                                scan, including more than HOOK_VOLUME_LIMIT
                                unscanned without `--full`.
-    push <remote> [--full]     scan every `refs/entire/*` the checkpoint remote
+    push <remote> [--full] [--report-rss]
+                               scan every `refs/entire/*` the checkpoint remote
                                misses, write the dirty refs to `held.txt` next to
                                the ledger, and push the clean ones, as the
                                commits it scanned, with an atomic `git push`
@@ -877,7 +878,7 @@ def _push_cli(ns: argparse.Namespace) -> int:
         f"{PREFIX}: {len(missing)} refs to push, {len(todo)} blobs ({_mb(volume)} MB) to scan",
         file=sys.stderr,
     )
-    result = scan_blobs(repo, todo, config, limits, ledger, stop_on_cap=False)
+    result = scan_blobs(repo, todo, config, limits, ledger, stop_on_cap=False, report_rss=ns.report_rss)
     held_path = ledger.parent / "held.txt"
     if result.aborted is not None:
         # A held.txt of an earlier run no longer says what is held.
@@ -958,6 +959,9 @@ def _main(args: list[str]) -> int:
     push = sub.add_parser("push", help="scan the checkpoints a remote misses, push the clean ones")
     push.add_argument("remote", help="the checkpoint remote, by name or URL")
     push.add_argument("--full", action="store_true", help="ignore the ledger (still write it)")
+    push.add_argument(
+        "--report-rss", action="store_true", help="report gitleaks' peak RSS per batch (for a timer's journal)"
+    )
     rule = sub.add_parser(
         "entire-remote",
         help="for the hook: whether entire may push by itself, and whether <remote> is the checkpoint remote",

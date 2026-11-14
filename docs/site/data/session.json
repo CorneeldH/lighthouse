@@ -274,21 +274,21 @@
         "PreToolUse"
       ],
       "matcher": "Bash",
-      "command": "bash-write-check.sh pre",
+      "command": "run.sh bash-write-check pre",
       "effects": [
         "records"
       ],
       "label": "bash-write-check pre",
       "what": "Records a baseline of the files before a Bash call, so post can see what the call wrote.",
       "how": [
-        "It is a thin wrapper around lighthouse_lib/bash_writes.py.",
+        "It runs in the lighthouse binary, through run.sh.",
         "It records the baseline and a marker, and always exits 0: a PreToolUse exit 2 would block the Bash call itself.",
         "It stays silent by design; post reports a failure loudly."
       ],
       "when": "Before each Bash call.",
       "without": "The post gate cannot tell which files a Bash call wrote.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/bashwritecheck.go"
     },
     {
       "id": "md-link-check",
@@ -412,7 +412,7 @@
         "PostToolUseFailure"
       ],
       "matcher": "Bash",
-      "command": "bash-write-check.sh post",
+      "command": "run.sh bash-write-check post",
       "effects": [
         "blocks",
         "warns"
@@ -428,7 +428,7 @@
       "when": "After each Bash call, also one that failed.",
       "without": "What a Bash call writes skips the gates that an Edit or Write passes.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/bashwritecheck.go"
     },
     {
       "id": "ruff-format-check",

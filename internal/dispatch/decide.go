@@ -440,8 +440,14 @@ func noStart(rule func() (Action, bool)) func() (Action, bool, *fixPRStart) {
 // which claude ended its turn, or a turn claude took on the notification of such work (#270).
 // The silence and runtime rules still hold for such a run.
 func (c runCtx) done() bool {
-	t := c.state.Transcript
-	return c.hasStand && c.stand == workplace.Done && (t == nil || t.Background == 0 && !t.TurnOpen)
+	return c.hasStand && c.stand == workplace.Done && !workAfterStop(c.state.Transcript)
+}
+
+// workAfterStop reports whether t shows work after the Stop that made forge report done:
+// background work still running, or a turn on its notification. A nil t is not measurable and
+// shows none. RunViews uses it too, so the page and the tick agree on done (#309).
+func workAfterStop(t *workplace.Transcript) bool {
+	return t != nil && (t.Background > 0 || t.TurnOpen)
 }
 
 // closed closes row with o. A run that ends as done, handoff or question is over, but its
