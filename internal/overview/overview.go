@@ -14,26 +14,15 @@ import (
 // maxConcurrent caps the comment fetches that run at the same time.
 const maxConcurrent = 8
 
-// Source is where the open issues and their comments come from; *forge.GitHub satisfies it.
-type Source interface {
-	OpenIssues(ctx context.Context) ([]forge.Issue, error)
-	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
-}
-
 // Filter returns the numbers of the issues the overview may show. A nil Filter shows every
 // open issue, as without [dispatch].
 type Filter func(ctx context.Context) (map[int]bool, error)
 
-// BoardReader lists the items of one repo's board; *forge.GitHub satisfies it.
-type BoardReader interface {
-	BoardItems(ctx context.Context) ([]forge.BoardItem, error)
-}
-
-// ControllerIssues is the Filter of the issues of slug whose Status on the board of r is
+// ControllerIssues is the Filter of the issues of slug whose Status on the board of f is
 // Controller.
-func ControllerIssues(r BoardReader, slug string) Filter {
+func ControllerIssues(f forge.Forge, slug string) Filter {
 	return func(ctx context.Context) (map[int]bool, error) {
-		items, err := r.BoardItems(ctx)
+		items, err := f.BoardItems(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -80,7 +69,7 @@ type Overview struct {
 // controller filter (nil shows every open issue).
 type RepoSource struct {
 	Slug         string
-	Src          Source
+	Src          forge.Forge
 	InController Filter
 }
 
@@ -119,7 +108,7 @@ type entry[T any] struct {
 // Build lists the open questions and returned issues, oldest header comment first. With a
 // non-nil inController only the issues it names count, and no comments are read for the
 // others. Any failure fails the whole build: a partial list would hide issues.
-func Build(ctx context.Context, src Source, inController Filter) (Overview, error) {
+func Build(ctx context.Context, src forge.Forge, inController Filter) (Overview, error) {
 	issues, err := src.OpenIssues(ctx)
 	if err != nil {
 		return Overview{}, err
@@ -192,7 +181,7 @@ func sorted[T any](entries []entry[T]) []T {
 
 // fetchStatuses classifies the comments of every issue that has any, at most maxConcurrent
 // at a time. The first error cancels the rest and is the one returned.
-func fetchStatuses(ctx context.Context, src Source, issues []forge.Issue) ([]protocol.Status, error) {
+func fetchStatuses(ctx context.Context, src forge.Forge, issues []forge.Issue) ([]protocol.Status, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

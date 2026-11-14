@@ -24,7 +24,7 @@ func noRuns(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error
 }
 
 // testDeps serves src as the one repo o/r, narrowed by inController, with no leftovers and no runs.
-func testDeps(src overview.Source, inController overview.Filter) Deps {
+func testDeps(src forge.Forge, inController overview.Filter) Deps {
 	repos := []overview.RepoSource{{Slug: "o/r", Src: src, InController: inController}}
 	return Deps{
 		Report:    fakeReport,
@@ -37,6 +37,7 @@ func testDeps(src overview.Source, inController overview.Filter) Deps {
 
 // fakeSource serves canned issues and comments, or err from OpenIssues.
 type fakeSource struct {
+	forge.Forge
 	issues   []forge.Issue
 	comments map[int][]protocol.Comment
 	err      error

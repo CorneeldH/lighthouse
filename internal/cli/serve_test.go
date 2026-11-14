@@ -610,8 +610,11 @@ func TestServeRunsFromTickState(t *testing.T) {
 	}
 }
 
-// countingSource is an overview.Source without issues that counts its OpenIssues calls.
-type countingSource struct{ calls atomic.Int32 }
+// countingSource is a forge.Forge without issues that counts its OpenIssues calls.
+type countingSource struct {
+	forge.Forge
+	calls atomic.Int32
+}
 
 func (c *countingSource) OpenIssues(context.Context) ([]forge.Issue, error) {
 	c.calls.Add(1)

@@ -14,6 +14,7 @@ import (
 )
 
 type fakeSource struct {
+	forge.Forge
 	issues      []forge.Issue
 	listErr     error
 	comments    map[int][]protocol.Comment
@@ -224,6 +225,7 @@ func TestBuildFilterFails(t *testing.T) {
 }
 
 type fakeBoard struct {
+	forge.Forge
 	items []forge.BoardItem
 	err   error
 }
