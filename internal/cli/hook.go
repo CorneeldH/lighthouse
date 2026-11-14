@@ -11,6 +11,8 @@ import (
 	_ "github.com/CorneeldH/lighthouse/internal/codelang"
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/hook"
+	// The hooks register themselves with the runtime.
+	_ "github.com/CorneeldH/lighthouse/internal/hooks"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/version"
 )

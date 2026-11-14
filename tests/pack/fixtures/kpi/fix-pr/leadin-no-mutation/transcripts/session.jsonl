@@ -1,0 +1,2 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "627 pr heeft errors"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "gh pr checks 627"}}]}}

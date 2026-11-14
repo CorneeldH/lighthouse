@@ -52,11 +52,11 @@ def test_every_reference_link_exists():
     assert [p for p in sorted(reference_paths()) if not (ROOT / p).exists()] == []
 
 
-def test_reference_links_a_go_hook_to_its_package():
+def test_reference_links_a_go_hook_to_its_source():
     entries = run_map(f"m.referenceEntries({json.dumps(load('packs.json'))}, 'hooks')")
     hrefs = {i["name"]: i["href"] for e in entries for i in e["items"]}
-    assert hrefs["code-language-check"] == REPO_TREE + "internal/codelang"
-    assert hrefs["md-link-check"] == REPO_BLOB + "pack/core/hooks/md-link-check.sh"
+    assert hrefs["code-language-check"] == REPO_BLOB + "internal/codelang/hook.go"
+    assert hrefs["commit-test-gate"] == REPO_BLOB + "pack/core/hooks/commit-test-gate.sh"
 
 
 def test_reference_marks_standard_skills():

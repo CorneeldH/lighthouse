@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "gate",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"gate\": {\n    \"reported\": 1,\n    \"not_reported\": 0,\n    \"share\": 1.0,\n    \"distribution\": {\n      \"gate_2\": 1\n    },\n    \"pickup_without_skill\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_gate_text_may_sit_in_an_earlier_message"
+    ]
+  }
+]

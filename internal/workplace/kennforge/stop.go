@@ -20,8 +20,9 @@ const (
 )
 
 // UnitName is the systemd unit forge_agent.sh gives a worktree: every byte outside
-// [A-Za-z0-9_-] becomes a dash, so a multibyte character gives several.
-func UnitName(profile, worktreePath string) string {
+// [A-Za-z0-9_-] becomes a dash, so a multibyte character gives several. The prefix is
+// taken literally (trailing dash included) and comes from [dispatch.forge] unit_prefix.
+func UnitName(prefix, profile, worktreePath string) string {
 	base := filepath.Base(worktreePath)
 	b := []byte(base)
 	for i, c := range b {
@@ -31,7 +32,7 @@ func UnitName(profile, worktreePath string) string {
 			b[i] = '-'
 		}
 	}
-	return "paia-forge-" + profile + "-" + string(b)
+	return prefix + profile + "-" + string(b)
 }
 
 // Stop ends the processes of a workspace: its systemd unit and, for the software
@@ -40,6 +41,10 @@ func UnitName(profile, worktreePath string) string {
 func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
+	}
+	// No default: a host without the key must fail, not stop a wrong unit.
+	if a.UnitPrefix == "" {
+		return fmt.Errorf("stop workspace %s: dispatch.forge.unit_prefix is not set", workspaceID)
 	}
 	// An empty id would make pgrep -f and pkill -f match every process in the shared
 	// devcontainer, foreign sessions included.
@@ -55,7 +60,7 @@ func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []str
 	if w.WorktreeDir == "" {
 		return fmt.Errorf("workspace %s has no worktree_path", workspaceID)
 	}
-	unit := UnitName(a.Profile, w.WorktreeDir)
+	unit := UnitName(a.UnitPrefix, a.Profile, w.WorktreeDir)
 	// The exit code of stop is ignored: a unit that is not there fails, and is-active decides.
 	if _, _, err := a.Run(ctx, stopTimeout, "systemctl", "--user", "stop", unit); err != nil {
 		return fmt.Errorf("systemctl stop %s: %w", unit, err)

@@ -213,10 +213,10 @@ const REFERENCE_PARTS = {
     href: `${REPO_TREE}pack/${pack.name}/skills/${name}`,
   }),
   agents: (pack, name) => ({ sort: "agent", href: `${REPO_BLOB}pack/${pack.name}/agents/${name}.md` }),
-  // A hook of the lighthouse binary names its Go package as `source`; a script hook has none.
+  // A hook that runs as `lighthouse hook <name>` names its Go source; any other is a script.
   hooks: (pack, name, entry) => ({
     sort: "hook",
-    href: entry.source ? REPO_TREE + entry.source : `${REPO_BLOB}pack/${pack.name}/hooks/${name}.sh`,
+    href: entry.source ? `${REPO_BLOB}${entry.source}` : `${REPO_BLOB}pack/${pack.name}/hooks/${name}.sh`,
   }),
   workflows: (pack, name) => ({
     sort: "github",

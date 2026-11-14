@@ -150,7 +150,7 @@
       "when": "Before each Edit or Write.",
       "without": "A write into the main checkout on main passes without a warning.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/worktree-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/worktreecheck.go"
     },
     {
       "id": "using-git-worktrees",
@@ -217,14 +217,14 @@
       "what": "Blocks a markdown link that is absolute or points nowhere.",
       "how": [
         "It runs on PostToolUse for Edit and Write and checks only .md and .markdown files.",
-        "It finds the git root of the written file, and md_links.py resolves each relative link against the directory of that file.",
+        "It finds the git root of the written file and resolves each relative link against the directory of that file.",
         "A dead or absolute link blocks with exit 2 and a list of the bad targets.",
-        "When jq, git or python3 is missing, or the parser fails, it blocks with COULD NOT CHECK."
+        "When git is missing, the payload is not valid JSON, or the file cannot be read, it blocks with COULD NOT CHECK."
       ],
       "when": "After each Edit or Write.",
       "without": "A broken or absolute link in a .md file is committed.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/md-link-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/mdlinkcheck.go"
     },
     {
       "id": "review-spec",
@@ -238,7 +238,7 @@
         "Round 1 runs Codex in a read-only sandbox with a clean CODEX_HOME next to an Opus subagent, and the session decides blind on the merged table.",
         "Per finding it decides accept, reject with a reason, or defer to the plan, following receiving-code-review, and only accepted findings change the spec.",
         "Rounds 2 and 3 run on Opus and only check whether the accepted fixes hold; the review ends as converged, round_limit or aborted.",
-        "It records the outcome with plan_review_record.py and ends with a handoff to writing-plans."
+        "It records the outcome with lighthouse plan-review-record and ends with a handoff to writing-plans."
       ],
       "when": "After writing a spec and before writing-plans.",
       "without": "The spec is only checked by the model that wrote it.",
@@ -461,14 +461,14 @@
       "what": "Runs the write checks on what a Bash call wrote.",
       "how": [
         "The pre mode runs on PreToolUse for Bash, records a baseline and always exits 0.",
-        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, ruff-format-check.sh, run.sh code-language-check or md-link-check.sh.",
+        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, ruff-format-check.sh, run.sh code-language-check or run.sh md-link-check.",
         "A finding blocks with exit 2, and a gate whose pack is not installed is reported per file without blocking.",
-        "When python3 or the dispatcher fails, it blocks with COULD NOT CHECK."
+        "When the lighthouse binary is missing or the dispatcher fails, it blocks with COULD NOT CHECK."
       ],
       "when": "Before and after each Bash call, and after a failed one.",
       "without": "A file written through Bash skips the gates that Edit and Write get.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/bash-write-check.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/bashwritecheck.go"
     },
     {
       "id": "main-commit-gate",
@@ -487,7 +487,7 @@
       "when": "Before each Bash call.",
       "without": "A commit or push on main goes through.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/hooks/main-commit-gate.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/maincommitgate.go"
     },
     {
       "id": "commit-test-gate",
@@ -578,7 +578,7 @@
         "The template has sections for what and why, changes, related issues, open review points, before and after, and verification, and write-pr writes the related issues part.",
         "In lighthouse's own repo the ci workflow runs on every pull request: a changelog fragment check, a job per changed domain for Python, Go and web, and a binary build with smoke and end-to-end tests.",
         "The Go job also checks that the installed pack/core matches pack/, and a CLA workflow runs on every PR to main.",
-        "fix-pr repairs a red PR, and after the merge close-issue checks the evidence again."
+        "The tick squash-merges a green PR of a finished run itself, fix-pr repairs a PR that is red, conflicting, carries an unprocessed roborev review or failed to merge, and after the merge close-issue checks the evidence again."
       ],
       "when": "When the PR is opened and on each push to it.",
       "without": "Nothing checks the change before it merges.",
@@ -596,10 +596,10 @@
       "how": [
         "It opens with one read-only Bash call that shows the PR state, the checks, the worktree of the head branch, the error lines of the failed runs and any roborev comment.",
         "It then reuses or creates a worktree on the head branch, never a new branch from main, and reproduces the failing gate locally before it pushes.",
-        "It pushes once when the fix is done and reports as soon as the checks are green and the PR is mergeable, without merging or closing the issue.",
+        "It pushes once when the fix is done and reports as soon as the checks are green and the PR is mergeable, without merging or closing the issue; the tick does the merge after a finished run.",
         "For a roborev review it handles each finding through receiving-code-review and always posts one comment with a roborev-verwerkt marker."
       ],
-      "when": "When a PR is red, has merge conflicts or carries an unprocessed review comment.",
+      "when": "When a PR is red, has merge conflicts, carries an unprocessed review comment or the tick failed to merge it.",
       "without": "A red PR is fixed without a fixed diagnosis first.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/fix-pr"

@@ -2,12 +2,7 @@
 # exactly one entry (tests/test_sources.py). A file taken over has source_path (the
 # path in the source repository; a list when it merges several) and source_sha (the
 # commit it was taken from). A file written for lighthouse has new = true.
-# The first two files reached lighthouse through the English bootstrap of M0 (a0).
-
-[[file]]
-path = "pack/core/hooks/main-commit-gate.sh"
-source_path = ".claude/hooks/main-commit-guard.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+# The first file reached lighthouse through the English bootstrap of M0 (a0).
 
 [[file]]
 path = "pack/core/lib/git_invocations.py"
@@ -39,41 +34,7 @@ path = "pack/core/lib/repo_identity.py"
 new = true
 
 [[file]]
-path = "pack/core/lib/turn_roots.py"
-new = true
-
-[[file]]
 path = "pack/core/lib/config.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/usage_guard.py"
-source_path = ".claude/hooks/usage-guard.sh"
-source_sha = "5e1165861bf6f13385e6c5c390e20c95cf2cadc0"
-
-[[file]]
-path = "pack/core/hooks/permission-check.sh"
-new = true
-
-[[file]]
-path = "pack/core/hooks/permission-check/note.py"
-new = true
-
-[[file]]
-path = "pack/core/hooks/usage-gate.sh"
-source_path = ".claude/hooks/usage-guard.sh"
-source_sha = "5e1165861bf6f13385e6c5c390e20c95cf2cadc0"
-
-[[file]]
-path = "pack/core/hooks/usage-gate/alarm.sh"
-new = true
-
-[[file]]
-path = "pack/core/hooks/usage-gate/controller.py"
-new = true
-
-[[file]]
-path = "pack/core/hooks/usage-gate/resume.py"
 new = true
 
 [[file]]
@@ -112,11 +73,6 @@ path = "pack/core/lib/host_memory.py"
 new = true
 
 [[file]]
-path = "pack/core/lib/md_links.py"
-source_path = ".claude/hooks/lib/md_links.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/lib/no_verify.py"
 source_path = ".claude/hooks/lib/no_verify.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
@@ -141,23 +97,8 @@ path = "pack/core/lib/commit_base.py"
 new = true
 
 [[file]]
-path = "pack/core/hooks/worktree-check.sh"
-source_path = ".claude/hooks/worktree-guard.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/hooks/md-link-check.sh"
-source_path = ".claude/hooks/worktree-linkcheck.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/hooks/pr-create-gate.sh"
 source_path = ".claude/hooks/pr-create-gate.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/hooks/bash-write-check.sh"
-source_path = ".claude/hooks/bash-write-gates.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
@@ -190,16 +131,6 @@ path = "pack/core/scripts/create_labels.py"
 new = true
 
 [[file]]
-path = "pack/core/scripts/plan_review_record.py"
-source_path = "scripts/plan_review_record.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/review_pair.py"
-source_path = "scripts/review_pair.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/scripts/roborev_comment.py"
 new = true
 
@@ -210,16 +141,6 @@ new = true
 [[file]]
 path = "pack/core/scripts/codex_usage.py"
 source_path = "scripts/codex_usage.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/measure_start_issue_kpi.py"
-source_path = "scripts/measure_start_issue_kpi.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/measure_fix_pr_kpi.py"
-source_path = "scripts/measure_fix_pr_kpi.py"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
@@ -345,16 +266,6 @@ source_path = [".claude/skills/paia-spec-adversarial-review/verifier-prompt.md",
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/skills/review-spec/review.sh"
-source_path = [".claude/skills/paia-spec-adversarial-review/review.sh", ".agents/skills/paia-spec-adversarial-review/review.sh"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/skills/review-spec/verify.sh"
-source_path = [".claude/skills/paia-spec-adversarial-review/verify.sh", ".agents/skills/paia-spec-adversarial-review/verify.sh"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/permissions.json"
 source_path = ".claude/settings.json"
 source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
@@ -387,16 +298,6 @@ source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 [[file]]
 path = "pack/core/skills/review-plan/verifier-prompt.md"
 source_path = [".claude/skills/paia-plan-adversarial-review/verifier-prompt.md", ".agents/skills/paia-plan-adversarial-review/verifier-prompt.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/skills/review-plan/review.sh"
-source_path = [".claude/skills/paia-plan-adversarial-review/review.sh", ".agents/skills/paia-plan-adversarial-review/review.sh"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/skills/review-plan/verify.sh"
-source_path = [".claude/skills/paia-plan-adversarial-review/verify.sh", ".agents/skills/paia-plan-adversarial-review/verify.sh"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]

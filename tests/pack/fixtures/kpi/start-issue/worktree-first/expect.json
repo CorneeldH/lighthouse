@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "worktree-first",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"worktree-first\": {\n    \"in_worktree\": 1,\n    \"outside_worktree\": 1,\n    \"no_visible_write\": 0,\n    \"share\": 0.5,\n    \"note\": \"Write/Edit only; Bash writes are invisible\"\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_first_write_path_and_worktree_check"
+    ]
+  }
+]

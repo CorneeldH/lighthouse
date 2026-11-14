@@ -208,7 +208,7 @@ open. Zonder `stop_hook_summary` (geen Stop-hooks) blijft het onwaar.
 ### Stop
 
 `Stop(workspaceID, sessionIDs)` leest het `worktree_path` van de workspace en bepaalt de unit:
-`paia-forge-<profiel>-<basename van het pad>`, waarbij elke byte buiten `[A-Za-z0-9_-]` een streepje
+`<unit_prefix><profiel>-<basename van het pad>` (`unit_prefix` uit `[dispatch.forge]` in `host.toml`, verplicht, geen standaard), waarbij elke byte buiten `[A-Za-z0-9_-]` een streepje
 wordt (een multibyte teken geeft er dus meer). Dan:
 
 1. `systemctl --user stop <unit>`; de exitcode telt niet (een unit die er niet is, faalt).

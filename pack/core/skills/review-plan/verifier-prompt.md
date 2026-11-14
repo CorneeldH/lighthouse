@@ -1,10 +1,10 @@
 # Adversarial Plan Verifier Prompt
 
 This file is sent verbatim to the external reviewer. `SKILL.md` never parses the content;
-`../lighthouse-review-spec/review.sh` only substitutes `{{DOC_PATH}}`,
+`lighthouse review-run` only substitutes `{{DOC_PATH}}`,
 `{{CONTEXT_PATHS}}`, `{{REPO}}`, `{{ROUND}}` and `{{PRIOR_REVIEW_BLOCK}}`.
 
-From round 2 on `verify.sh` runs this prompt instead of `reviewer-prompt.md`: no new search
+From round 2 on `lighthouse review-run --verify` runs this prompt instead of `reviewer-prompt.md`: no new search
 for problems, only verifying whether the BLOCKERs and MAJORs of the previous round with
 `decision` `accept` or `spec` are actually resolved by the diff passed through `--context`.
 

@@ -1,5 +1,6 @@
-"""The `Notification` hook `permission-check.sh` (#115): a permission prompt in a
-controller run is written to `<LIGHTHOUSE_STATE_DIR>/runs/<run>/permission.json`.
+"""The `Notification` hook `permission-check` (#115), run as `run.sh permission-check`: a
+permission prompt in a controller run is written to
+`<LIGHTHOUSE_STATE_DIR>/runs/<run>/permission.json`.
 """
 
 import json
@@ -10,7 +11,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tests.pack._testkit import MINIMAL_TOML, guard_env, install_core
+from tests.pack._testkit import MINIMAL_TOML, guard_env, install_core, run_sh_hook
 
 RUN = "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f"
 MESSAGE = "Claude needs your permission to use Write"
@@ -48,16 +49,7 @@ def _run(
         env["LIGHTHOUSE_CONTROLLER_RUN"] = run
     if state:
         env["LIGHTHOUSE_STATE_DIR"] = str(state_dir)
-    result = subprocess.run(
-        [str(root / ".claude/hooks/lighthouse/permission-check.sh")],
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-        cwd=str(root),
-        env=env,
-        check=False,
-        timeout=30,
-    )
+    result = run_sh_hook(root, "permission-check", payload, cwd=root, env=env)
     return result, state_dir
 
 

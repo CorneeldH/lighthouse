@@ -40,7 +40,7 @@ def hook_name(command: str) -> str:
 
 
 def registered(name: str) -> dict[str, set[tuple[str, str]]]:
-    """script stem -> {(event, matcher)} from pack/<name>/hooks/hooks.json."""
+    """hook name -> {(event, matcher)} from pack/<name>/hooks/hooks.json."""
     path = PACK / name / "hooks" / "hooks.json"
     if not path.exists():
         return {}
@@ -48,7 +48,9 @@ def registered(name: str) -> dict[str, set[tuple[str, str]]]:
     for event, groups in json.loads(path.read_text(encoding="utf-8"))["hooks"].items():
         for group in groups:
             for hook in group["hooks"]:
-                stem = hook_name(hook["command"])
+                # `run.sh <name>` runs `lighthouse hook <name>`: the hook is the name.
+                match = re.search(r"hooks/([^/\s]+)\.sh(?: ([^\s]+))?", hook["command"])
+                stem = match.group(2) if match.group(1) == "run" else match.group(1)
                 found.setdefault(stem, set()).add((event, group.get("matcher", "")))
     return found
 

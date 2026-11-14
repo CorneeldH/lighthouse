@@ -578,6 +578,85 @@ def test_host_check_without_tailscale_ip_is_rc_1(tmp_path, monkeypatch, capsys):
     assert "Traceback" not in err
 
 
+@pytest.mark.parametrize(
+    ("body", "local", "rc", "out", "err"),
+    [
+        ("controller = true\n", False, 0, "host: box\n", ""),
+        ("controller = true\ntailscale_ip = \"192.0.2.1\"\n", False, 0, "host: box\n", ""),
+        (
+            "controller = false\ntailscale_ip = \"192.0.2.1\"\n",
+            True,
+            1,
+            "",
+            "config: host box ({path}) has host.controller = false, so it is not the controller host\n",
+        ),
+        ("tailscale_ip = \"192.0.2.1\"\n", True, 0, "host: box\n", ""),
+        (
+            "",
+            False,
+            1,
+            "",
+            "config: host box ({path}) has no tailscale_ip, so it is not the always-on host\n",
+        ),
+        (
+            "controller = \"yes\"\n",
+            False,
+            2,
+            "",
+            "config: {path}: key host.controller must be true or false: 'yes'\n",
+        ),
+        (
+            "controller = 1\n",
+            False,
+            2,
+            "",
+            "config: {path}: key host.controller must be true or false: 1\n",
+        ),
+        (
+            "controller = true\ntailscale_ip = \"nope\"\n",
+            False,
+            2,
+            "",
+            "config: {path}: key host.tailscale_ip must be an IPv4 address: 'nope'\n",
+        ),
+    ],
+    ids=[
+        "true-no-ip",
+        "true-nonlocal-ip",
+        "false-local-ip",
+        "absent-local-ip",
+        "absent-no-ip",
+        "string",
+        "integer",
+        "true-invalid-ip",
+    ],
+)
+def test_host_check_controller(tmp_path, monkeypatch, capsys, body, local, rc, out, err):
+    path = _host(tmp_path, '[host]\nname = "box"\n' + body)
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(path))
+    with patch.object(cfgmod, "is_local", return_value=local):
+        assert main(["host-check"]) == rc
+    captured = capsys.readouterr()
+    assert captured.out == out
+    assert captured.err == err.format(path=path)
+
+
+def test_host_check_controller_true_does_not_measure(tmp_path, monkeypatch):
+    path = _host(tmp_path, '[host]\nname = "box"\ncontroller = true\ntailscale_ip = "192.0.2.1"\n')
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(path))
+    with patch.object(cfgmod, "is_local", side_effect=AssertionError("is_local called")):
+        assert main(["host-check"]) == 0
+
+
+def test_host_controller_key_prints_lowercase(tmp_path, monkeypatch, capsys):
+    path = _host(tmp_path, '[host]\nname = "box"\ncontroller = false\n')
+    monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(path))
+    assert main(["host.controller"]) == 0
+    assert capsys.readouterr().out == "false\n"
+    path.write_text('[host]\nname = "box"\n', encoding="utf-8")
+    assert main(["host.controller"]) == 1
+
+
 def test_host_check_missing_is_rc_2(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(tmp_path / "host.toml"))
     assert main(["host-check"]) == 2

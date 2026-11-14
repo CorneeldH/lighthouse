@@ -270,12 +270,12 @@ plugin's own folder.
 
 | Metric | Target | Measurement |
 |---|---:|---|
-| Tool calls between pickup prompt and first `Skill`/`Write`/`Edit`/`AskUserQuestion` | ≤ 2 | `python3 .lighthouse/scripts/measure_start_issue_kpi.py leadin` |
-| Share of pickups where the first visible write fell under `.claude/worktrees/` | 100% | `python3 .lighthouse/scripts/measure_start_issue_kpi.py worktree-first` |
-| Sessions in which this skill loaded without an issue number in the prompt | 0 | `python3 .lighthouse/scripts/measure_start_issue_kpi.py mistrigger` |
-| New spec/plan files on the project paths instead of the superpowers default folder | 100% | `python3 .lighthouse/scripts/measure_start_issue_kpi.py paths` |
-| Pickups where the skill names the chosen gate explicitly | 100% | `python3 .lighthouse/scripts/measure_start_issue_kpi.py gate` |
-| Pickups at gate 4b/4c with a scout call or a concrete skip reason | 100% | `python3 .lighthouse/scripts/measure_start_issue_kpi.py scout` |
+| Tool calls between pickup prompt and first `Skill`/`Write`/`Edit`/`AskUserQuestion` | ≤ 2 | `lighthouse measure-start-issue-kpi leadin` |
+| Share of pickups where the first visible write fell under `.claude/worktrees/` | 100% | `lighthouse measure-start-issue-kpi worktree-first` |
+| Sessions in which this skill loaded without an issue number in the prompt | 0 | `lighthouse measure-start-issue-kpi mistrigger` |
+| New spec/plan files on the project paths instead of the superpowers default folder | 100% | `lighthouse measure-start-issue-kpi paths` |
+| Pickups where the skill names the chosen gate explicitly | 100% | `lighthouse measure-start-issue-kpi gate` |
+| Pickups at gate 4b/4c with a scout call or a concrete skip reason | 100% | `lighthouse measure-start-issue-kpi scout` |
 
 The "Already done?" call from step 2 raises the lead-in by 1 on purpose: one Bash call, before the
 first route call. Target ≤ 2 stays, but is reachable only for an issue without comments (read +
@@ -302,7 +302,7 @@ whether gates 1 and 2 fire at all or are dead wood.
 - **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
   only on the branch must carry the full absolute worktree path: the IDE resolves chat links
   against the main checkout. In a `.md` file, relative instead;
-  `.claude/hooks/lighthouse/md-link-check.sh` blocks an absolute path there.
+  `.claude/hooks/lighthouse/run.sh md-link-check` blocks an absolute path there.
 - **A milestone without DoD text does not exist.** If you come across one, report it — hanging
   the issue in it is a guess then.
 - **This skill sets exactly two transitions on the board: `To do` and `On hold` → `In progress`.**

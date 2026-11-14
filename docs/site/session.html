@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Inside a session</title>
-<link rel="stylesheet" href="map.css?v=bffdfde0">
-<script type="module" src="session.js?v=bffdfde0"></script>
+<link rel="stylesheet" href="map.css?v=d8f9721d">
+<script type="module" src="session.js?v=d8f9721d"></script>
 </head>
 <body>
 <header class="page-head">
@@ -38,7 +38,7 @@ browser blocks for a page opened straight from disk. From the root of the reposi
   <p><strong>A rule sets the norm, a hook steps in.</strong> Each hook is the counterpart of a rule
   in <code>AGENTS.md</code> or a skill. The rule carries the norm beforehand, so an agent that
   follows it rarely meets the hook. The hook steps in at the moment itself, with a warning or with a
-  hard line, as the headers of <code>main-commit-gate.sh</code> and <code>worktree-check.sh</code>
+  hard line, as the doc comments of <code>main-commit-gate</code> and <code>worktree-check</code>
   explain. When a hook blocks, its message goes back to the agent, which reads why and corrects
   its step. A skill and its hook often come as a pair. On this map, the model loads
   <code>go-standard</code> through a Skill call before it writes Go, and <code>gofmt-check</code> and <code>go-lint-gate</code> check what it wrote.

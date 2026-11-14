@@ -690,7 +690,8 @@ check_pairing() {
 # A lighthouse hook is named after what it does. `-gate` can block, so it sits on
 # PreToolUse, Stop or SubagentStop; `-check` reports after the fact and never
 # sits on Stop or SubagentStop. Only commands that carry `.claude/hooks/lighthouse/`
-# count: a hook of the project itself, or `npx ...`, is not ours to name.
+# count: a hook of the project itself, or `npx ...`, is not ours to name. For
+# `run.sh <name>` the hook is `<name>`.
 # A broken or non-object settings.json makes the python part exit non-zero.
 check_hook_names() {
   local settings="$ROOT/.claude/settings.json"
@@ -713,11 +714,7 @@ with open(sys.argv[1], encoding="utf-8") as f:
 hooks = data.get("hooks", {})
 if not isinstance(hooks, dict):
     raise AttributeError
-# A script hook is named after its script; a hook of the binary after the word that follows run.sh.
-path = re.compile(
-    r"\.claude/hooks/lighthouse/(?:[A-Za-z0-9_-]+/)*"
-    r"(?:run\.sh\s+([A-Za-z0-9_-]+)|([A-Za-z0-9_-]+)\.sh)"
-)
+path = re.compile(r"\.claude/hooks/lighthouse/(?:[A-Za-z0-9_-]+/)*([A-Za-z0-9_-]+)\.sh(?:\s+([A-Za-z0-9_-]+))?")
 events = {}
 
 
@@ -727,7 +724,9 @@ def walk(node, event):
             if key == "command" and isinstance(value, str):
                 match = path.search(value)
                 if match:
-                    events.setdefault(match.group(1) or match.group(2), set()).add(event)
+                    # run.sh <name> runs lighthouse hook <name>: the hook is the name.
+                    name = match.group(2) if match.group(1) == "run" and match.group(2) else match.group(1)
+                    events.setdefault(name, set()).add(event)
             else:
                 walk(value, event)
     elif isinstance(node, list):

@@ -1,0 +1,4 @@
+{"type": "user", "isSidechain": false, "userType": "external", "message": {"content": [{"type": "text", "text": "pak 610 op"}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "lighthouse-start-issue"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "text", "text": "Poort 2: systematic-debugging"}, {"type": "tool_use", "name": "Bash", "input": {"command": "gh api repos/x/y/issues/610", "description": "lees issue"}}]}}
+{"type": "assistant", "isSidechain": false, "message": {"content": [{"type": "tool_use", "name": "Skill", "input": {"skill": "superpowers:systematic-debugging"}}]}}

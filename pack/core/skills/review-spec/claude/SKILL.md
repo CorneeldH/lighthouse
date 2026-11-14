@@ -188,7 +188,7 @@ Then start an attempt (`dangerouslyDisableSandbox: true`, the script writes outs
 directory):
 
 ```bash
-python3 .lighthouse/scripts/plan_review_record.py start --kind spec <spec>
+lighthouse plan-review-record start --kind spec <spec>
 ```
 
 It prints the attempt directory (below `<ATTEMPT>`) and records the commit that round 1 reads.
@@ -214,7 +214,7 @@ the retry from the table there runs Codex alone. Do it yourself, as a Bash call 
 `run_in_background: true` and `dangerouslyDisableSandbox: true`, on one line, without `--context`:
 
 ```bash
-.claude/skills/lighthouse-review-spec/review.sh <spec> 1 <ATTEMPT>/round-1.json none [max] > <ATTEMPT>/round-1.retry.log 2>&1; echo "exit=$?"
+lighthouse review-run --kind spec <spec> 1 <ATTEMPT>/round-1.json none [max] > <ATTEMPT>/round-1.retry.log 2>&1; echo "exit=$?"
 ```
 
 Read only the exit code, never `round-1.retry.log`. On success make the `ID` table with the jq
@@ -245,10 +245,10 @@ The table carries an `ID` per finding: `r<round>-f<index>`, the position in `fin
 sorting. Decisions refer only to that ID (step 3); a verification round also carries a
 `Verifies`.
 
-Codex runs through `review.sh`: one fixed command shape that handles the prompt substitution,
-the clean `CODEX_HOME`, `--sandbox read-only` and `--output-schema`. The raw review stays in
-`OUT`; read it only when a finding is unclear. `verify.sh` (next to this file) is a thin wrapper
-around `review.sh` with the verification prompt and the verification schema; only the `.agents`
+Codex runs through `lighthouse review-run --kind spec`: one fixed command shape that handles the
+prompt substitution, the clean `CODEX_HOME`, `--sandbox read-only` and `--output-schema`. The raw
+review stays in `OUT`; read it only when a finding is unclear. `lighthouse review-run --kind spec
+--verify <spec> <n> <OUT> <PRIOR> --context <ATTEMPT>/round-<n>.fixes.diff` runs it with the verification prompt and the verification schema; only the `.agents`
 variant uses it, where no Opus subagent exists.
 
 **The allowlist, or the background round stalls on a prompt.** Codex cannot run inside the
@@ -258,8 +258,7 @@ instead of running. `lighthouse init` puts these rules in `.claude/settings.json
 
 ```json
 { "permissions": { "allow": [
-  "Bash(.claude/skills/lighthouse-review-spec/review.sh:*)",
-  "Bash(.claude/skills/lighthouse-review-spec/verify.sh:*)"
+  "Bash(lighthouse review-run:*)"
 ] } }
 ```
 
@@ -268,7 +267,7 @@ instead of running. `lighthouse init` puts these rules in `.claude/settings.json
 In round 1 Codex and an Opus reviewer run side by side; you decide blind. The mechanics are
 written once, in the plan skill: `lighthouse-review-plan`, step 5, *Round 1: Codex
 and Opus*. Follow that: two background reviewers in one message, then
-`python3 .lighthouse/scripts/review_pair.py blind <ATTEMPT>` and decide on the A/B table
+`lighthouse review-pair blind <ATTEMPT>` and decide on the A/B table
 (step 3), and for a failed pair the table there. You run `blind`, like `merge` and `write`, with
 `dangerouslyDisableSandbox: true`. Where that table says "run the retry from step 5 once", that
 is the retry in step 2 here. Only this differs here:
@@ -277,7 +276,7 @@ is the retry in step 2 here. Only this differs here:
   `--context`:
 
   ```bash
-  .claude/skills/lighthouse-review-spec/review.sh <spec> 1 <ATTEMPT>/round-1.codex.json \
+  lighthouse review-run --kind spec <spec> 1 <ATTEMPT>/round-1.codex.json \
     none [max] > <ATTEMPT>/round-1.codex.log 2>&1; echo "exit=$?"
   ```
 
@@ -349,7 +348,7 @@ may have gaps.
   `accept-open` in step 5, never by hand), `minor_yes` or `minor_no`.
 - `same_as`: the ID of the same finding in an earlier round; otherwise leave it out.
 
-`review.sh` names the sidecar in the prior block of round N+1, so that it sees what was
+`lighthouse review-run` names the sidecar in the prior block of round N+1, so that it sees what was
 rejected and why.
 
 **Paired round 1** (step 2, *Round 1: Codex and Opus*): you decide blind, as in step 6 of the
@@ -359,7 +358,7 @@ plan skill.
   blind IDs (`A-f<i>`, `B-f<i>`).
 - A duplicate finding (the same failure in the same place, by both reviewers) is one row with
   `also`: `{"finding_id": "A-f2", "also": "B-f1", "decision": "accept", "reason": "…"}`.
-- Then run `python3 .lighthouse/scripts/review_pair.py merge <ATTEMPT>`
+- Then run `lighthouse review-pair merge <ATTEMPT>`
   (`dangerouslyDisableSandbox: true`). It writes `round-1.json`, `round-1.decisions.json` and
   `round-1.sources.json`, and shows the unblinded table with the `r1-f<i>` IDs.
 - Exit 4 on a decision: repair the sidecar and run `merge` again. Exit 4 on a broken raw file:
@@ -399,7 +398,7 @@ No fixes = no commit; never make an empty commit.
 
 **At `round_limit` you record the open points and go on**, in this order:
 
-1. `python3 .lighthouse/scripts/plan_review_record.py accept-open <ATTEMPT> --doc <spec>`
+1. `lighthouse plan-review-record accept-open <ATTEMPT> --doc <spec>`
    (outside the sandbox, as with `start` and `write`). This rewrites `round-3.decisions.json`
    (every open point becomes `accepted_open`) and puts the block `heading:open_after_review` at
    the bottom of the spec; an existing block is replaced, never doubled. Exit 2 with on stderr
@@ -418,7 +417,7 @@ Then the record, at every outcome (`dangerouslyDisableSandbox: true`, otherwise 
 exit 4 and the record is lost):
 
 ```bash
-python3 .lighthouse/scripts/plan_review_record.py write <ATTEMPT> \
+lighthouse plan-review-record write <ATTEMPT> \
   --outcome <converged|round_limit|aborted> --review-mode <codex|fallback> \
   [--reviewer-model <model>] [--shadow-model <model>] [--level max]
 ```
@@ -477,7 +476,7 @@ Dispatch a `general-purpose` subagent with `model: "opus"` and the text between
 `---BEGIN PROMPT---` and `---END PROMPT---` from `reviewer-prompt.md` (round 1) or
 `verifier-prompt.md` (round ≥ 2), placeholders filled in by hand: `{{CONTEXT_PATHS}}` as lines
 `- <path>`, and `{{PRIOR_REVIEW_BLOCK}}` empty in round 1 and from round 2 on the paragraph that
-`review.sh` builds as `prior_block`, with `PRIOR` and its `.decisions.json` sidecar filled in.
+`lighthouse review-run` builds as `prior_block`, with `PRIOR` and its `.decisions.json` sidecar filled in.
 Instruct it to write the JSON answer following `findings.schema.json` or
 `verification.schema.json` to `OUT`. In a paired round 1 you skip the table below (step 2):
 `blind` makes the table. Otherwise you make the `ID` column yourself, **before** sorting:
@@ -503,9 +502,9 @@ jq -r '.verified // empty | "VERIFIED: " + (if length == 0 then "none" else join
 ## Extensions
 
 - Plans: `/lighthouse-review-plan`. Same runner, with its own prompt and schema
-  through `--prompt`/`--schema` and the spec(s) through `--context` (see the head of
-  `review.sh`).
-- Verification: `verify.sh` (next to this file) is a second wrapper on the same runner, with
+  through `--kind plan` (or `--prompt`/`--schema`) and the spec(s) through `--context` (see
+  `lighthouse review-run --help`).
+- Verification: `lighthouse review-run --kind spec --verify <spec> <n> <OUT> <PRIOR> --context <ATTEMPT>/round-<n>.fixes.diff` is the same runner, with
   `verifier-prompt.md` and `verification.schema.json` instead of the round-1 prompt and schema.
   Only the `.agents` variant uses it; in Claude Code Opus verifies (step 2).
 - Tune the prompt in `reviewer-prompt.md` — this SKILL.md never reads the content, only the

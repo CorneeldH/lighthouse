@@ -1,34 +1,34 @@
-"""pack/core md-link-check.sh, as installed (#886): does it block a dead or
+"""The md-link-check hook of pack/core, as installed (#886): does it block a dead or
 absolute markdown link, and does it say so when it could not look?
 
-The hook is bash and reads its payload as JSON on stdin. These tests run it
-as a subprocess with real temporary paths, so the contract (exit code +
-stderr) is tested and not a reimplementation of it.
+The hook runs as `run.sh md-link-check` (`lighthouse hook md-link-check`) and reads its
+payload as JSON on stdin. These tests run it as a subprocess with real temporary paths,
+so the contract (exit code + stderr) is tested and not a reimplementation of it.
 """
 
-import json
 import os
 import shutil
 import subprocess
 from pathlib import Path
 
-from tests.pack._testkit import INSTALLED_HOOKS, load_hook_lib, tool_bin
+from tests.pack._testkit import INSTALL_ROOT, RUN_SH_TOOLS, run_sh_hook, tool_bin
 
 
 def _run(
-    hook: Path,
-    payload: dict,
+    hook: str,
+    payload: dict | str,
     cwd: Path,
     env: dict | None = None,
+    *,
+    with_binary: bool = True,
 ) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [str(hook)],
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-        cwd=str(cwd),
+    return run_sh_hook(
+        INSTALL_ROOT,
+        hook,
+        payload,
+        cwd=cwd,
         env=dict(os.environ, **(env or {})),
-        check=False,
+        with_binary=with_binary,
     )
 
 
@@ -59,7 +59,7 @@ def _init_repo(path: Path, branch: str = "main") -> None:
     _git(path, "commit", "-qm", "init")
 
 
-LINKCHECK = INSTALLED_HOOKS / "md-link-check.sh"
+LINKCHECK = "md-link-check"
 
 
 def _repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
@@ -92,7 +92,6 @@ def test_linkcheck_allows_link_to_branch_only_spec(tmp_path):
     )
 
     assert result.returncode == 0, result.stderr
-    assert load_hook_lib("md_links").absolute_links(plan.read_text()) == []
 
 
 def test_linkcheck_allows_link_to_file_on_main(tmp_path):
@@ -298,14 +297,14 @@ def test_linkcheck_fails_loud_without_tooling(tmp_path):
     _repo, wt = _repo_with_worktree(tmp_path)
     note = wt / "docs" / "note.md"
     note.write_text("Zie [bestaat](bestaat.md).\n", encoding="utf-8")
-    empty_bin = tmp_path / "leeg-bin"
-    empty_bin.mkdir()
+    bin_dir = tool_bin(tmp_path / "bin", RUN_SH_TOOLS)
 
     result = _run(
         LINKCHECK,
         {"tool_name": "Write", "cwd": str(wt), "tool_input": {"file_path": str(note)}},
         cwd=wt,
-        env={"PATH": str(empty_bin)},
+        env={"PATH": str(bin_dir)},
+        with_binary=False,
     )
 
     assert result.returncode == 2
@@ -313,9 +312,8 @@ def test_linkcheck_fails_loud_without_tooling(tmp_path):
 
 
 def test_linkcheck_fails_loud_when_parser_crashes(tmp_path):
-    """Blocking hook: the python link parser crashing (here: the target
-    file is unreadable) is no more a green light than missing
-    tooling."""
+    """Blocking hook: a file the link parser cannot read is no more a green
+    light than missing tooling."""
     _repo, wt = _repo_with_worktree(tmp_path)
     note = wt / "docs" / "note.md"
     note.write_text("Zie [bestaat](bestaat.md).\n", encoding="utf-8")
@@ -342,7 +340,7 @@ def test_linkcheck_fails_loud_when_parser_crashes(tmp_path):
 
 # --- no silent exits (inventory §6) ---------------------------------------
 
-_TOOLS = ("jq", "git", "python3", "cat", "dirname", "realpath")
+_TOOLS = (*RUN_SH_TOOLS, "git")
 
 
 def _note(tmp_path: Path) -> tuple[Path, dict]:
@@ -358,29 +356,12 @@ def _assert_unchecked(result: subprocess.CompletedProcess) -> None:
 
 
 def test_linkcheck_invalid_json_is_unchecked(tmp_path):
-    proc = subprocess.run(
-        [str(LINKCHECK)], input="{nope", capture_output=True, text=True, cwd=tmp_path, check=False
-    )
-    _assert_unchecked(proc)
+    _assert_unchecked(_run(LINKCHECK, "{nope", cwd=tmp_path))
 
 
 def test_linkcheck_without_git(tmp_path):
     wt, payload = _note(tmp_path)
     bin_dir = tool_bin(tmp_path / "bin", _TOOLS, drop="git")
-    _assert_unchecked(_run(LINKCHECK, payload, cwd=wt, env={"PATH": str(bin_dir)}))
-
-
-def test_linkcheck_unresolvable_path(tmp_path):
-    wt, payload = _note(tmp_path)
-    real = shutil.which("python3")
-    bin_dir = tool_bin(
-        tmp_path / "bin",
-        _TOOLS,
-        stubs={
-            "realpath": "#!/bin/sh\nexit 1\n",
-            "python3": f'#!/bin/sh\ncase "$1" in -c) exit 1;; esac\nexec {real} "$@"\n',
-        },
-    )
     _assert_unchecked(_run(LINKCHECK, payload, cwd=wt, env={"PATH": str(bin_dir)}))
 
 

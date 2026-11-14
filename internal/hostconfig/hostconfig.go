@@ -50,10 +50,24 @@ type Dispatch struct {
 	Profiles          map[string]Profile
 }
 
-// DispatchForge locates the forge and its token.
+// DispatchForge locates the forge and its token. URL is where lighthouse talks to the forge
+// API; WebURL is where a browser opens the forge dashboard, for instance a tailscale serve
+// address, and is empty when unset. UnitPrefix is the systemd unit-name prefix of the
+// kenn-forge adapter, including the trailing dash; it has no default, and the adapter fails
+// when it is empty.
 type DispatchForge struct {
-	URL       string
-	TokenFile string
+	URL        string
+	WebURL     string
+	TokenFile  string
+	UnitPrefix string
+}
+
+// LinkURL returns the forge address for a link in the browser: WebURL, else URL.
+func (f DispatchForge) LinkURL() string {
+	if f.WebURL != "" {
+		return f.WebURL
+	}
+	return f.URL
 }
 
 // Profile is a run profile under [dispatch.profiles.<name>].
@@ -104,8 +118,10 @@ func LoadDispatch(path string) (Dispatch, error) {
 			AnswerPermissions []string `toml:"answer_permissions"`
 			Workplace         *string  `toml:"workplace"`
 			Forge             struct {
-				URL       *string `toml:"url"`
-				TokenFile *string `toml:"token_file"`
+				URL        *string `toml:"url"`
+				WebURL     *string `toml:"web_url"`
+				TokenFile  *string `toml:"token_file"`
+				UnitPrefix *string `toml:"unit_prefix"`
 			} `toml:"forge"`
 			Profiles map[string]Profile `toml:"profiles"`
 		} `toml:"dispatch"`
@@ -167,8 +183,14 @@ func LoadDispatch(path string) (Dispatch, error) {
 	if r.Forge.URL != nil {
 		d.Forge.URL = *r.Forge.URL
 	}
+	if r.Forge.WebURL != nil {
+		d.Forge.WebURL = *r.Forge.WebURL
+	}
 	if r.Forge.TokenFile != nil {
 		d.Forge.TokenFile = *r.Forge.TokenFile
+	}
+	if r.Forge.UnitPrefix != nil {
+		d.Forge.UnitPrefix = *r.Forge.UnitPrefix
 	}
 	d.Profiles = r.Profiles
 	return d, nil

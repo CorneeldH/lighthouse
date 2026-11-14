@@ -1,0 +1,15 @@
+[
+  {
+    "args": [
+      "gate",
+      "--dir",
+      "transcripts"
+    ],
+    "rc": 0,
+    "stdout": "{\n  \"gate\": {\n    \"reported\": 0,\n    \"not_reported\": 1,\n    \"share\": 0.0,\n    \"distribution\": {},\n    \"pickup_without_skill\": 0\n  }\n}\n",
+    "stderr": "",
+    "from": [
+      "test_text_after_the_route_call_does_not_count"
+    ]
+  }
+]
