@@ -16,8 +16,9 @@ const (
 	RefreshInterval = 90 * time.Second
 	// RefreshRetry is the wait after a failed build, measured from its start.
 	RefreshRetry = 20 * time.Second
-	// BuildTimeout bounds a single build. A live build takes 16–20 s.
-	BuildTimeout = 45 * time.Second
+	// BuildTimeout bounds a single build: three times the 16–20 s of a live build, for a slow
+	// GitHub. Builds read repositories one after the other, so more repositories need more.
+	BuildTimeout = 60 * time.Second
 )
 
 // BuildFunc builds the forge overview once.

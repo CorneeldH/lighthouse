@@ -168,14 +168,14 @@ it as `owner/name#number`. Every `owner/name#number` in the UI links to
 
 `/api/questions` and `/api/returned` do not call GitHub per request: they show one shared overview
 that `serve` builds at start and then every 90 s (start to start, never two builds at once,
-a time-out of 45 s per build; a live build takes 16–20 s). A build that fails is retried after 20 s, and until one succeeds
+a time-out of 60 s per build, three times the 16–20 s of a live build). A build that fails is retried after 20 s, and until one succeeds
 both endpoints answer 502 (503 without repositories or without a token) instead of old data. The first request after
 a start waits for the first build. So `serve` reads GitHub also when nobody looks: 40 builds an
-hour per set of repositories. The page re-reads that overview every 30 s. Its Refresh button
+hour per set of repositories. The page re-reads that overview every 15 s; that reads memory, not GitHub. Its Refresh button
 re-reads it too; it does not start a build.
 
 A new question or return is on the page within one tick interval (3 minutes) of its comment. The
-worst case is 90 s until the next build starts, 45 s for that build and 30 s until the page polls:
+worst case is 90 s until the next build starts, 60 s for that build and 15 s until the page polls:
 165 s. `TestNewCommentOnPageWithinTickInterval` in `internal/server` runs that case and fails
 when the sum passes the `OnUnitActiveSec` of `lighthouse-tick.timer`.
 
